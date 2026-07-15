@@ -6,6 +6,7 @@ import { Badge } from "../../packages/ui/src/components/ui/badge.tsx";
 import { Button } from "../../packages/ui/src/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "../../packages/ui/src/components/ui/card.tsx";
 import { Switch } from "../../packages/ui/src/components/ui/switch.tsx";
+import { collapseSidebarToExpandInspectorMorph, playPauseMorph } from "../../packages/ui/src/lib/morph-icon.ts";
 
 test("Button renders default button semantics and variant classes", () => {
   const html = renderToStaticMarkup(
@@ -76,4 +77,15 @@ test("Switch renders accessible checked and disabled state", () => {
   assert.match(html, /aria-label="Enable provider"/);
   assert.match(html, /disabled=""/);
   assert.match(html, /translate-x-\[24px\]/);
+});
+
+test("control morph assets interpolate directly without loading keyframes", () => {
+  for (const asset of [collapseSidebarToExpandInspectorMorph, playPauseMorph]) {
+    assert.equal(asset.loading, undefined);
+    assert.ok(asset.layers.length > 0);
+    for (const layer of asset.layers) {
+      assert.equal(layer.loading, undefined);
+      assert.equal(layer.loadingOpacity, undefined);
+    }
+  }
 });

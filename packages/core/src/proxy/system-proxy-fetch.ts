@@ -1,6 +1,13 @@
 import { ProxyAgent, type Dispatcher } from "undici";
 import { loadAppConfig } from "@ccr/core/config/config";
-import { readCurrentSystemUpstreamProxy, systemProxyManager, type UpstreamProxyConfig, type UpstreamProxyServer } from "@ccr/core/proxy/system-proxy";
+import {
+  customUpstreamProxyFromConfig,
+  readCurrentSystemUpstreamProxy,
+  systemProxyManager,
+  upstreamProxyUrl,
+  type UpstreamProxyConfig,
+  type UpstreamProxyServer
+} from "@ccr/core/proxy/system-proxy";
 import type { AppConfig } from "@ccr/core/contracts/app";
 
 type FetchInitWithDispatcher = RequestInit & {
@@ -27,7 +34,7 @@ export async function fetchWithSystemProxy(input: RequestInfo | URL, init?: Requ
     return fetch(input, init);
   }
 
-  const proxyUrl = await systemProxyUrlForRequest(url);
+  const proxyUrl = await configuredProxyUrlForRequest(url);
   if (!proxyUrl) {
     return fetch(input, init);
   }
@@ -44,29 +51,52 @@ export function readEnvProxyUrl(): string | undefined {
   return envProxy ? envProxy.trim() : undefined;
 }
 
-export async function getSystemProxyUrlForProtocol(protocol: "http" | "https" = "https"): Promise<string | undefined> {
-  const cache = await readSystemProxy();
+export async function getSystemProxyUrlForProtocol(protocol: "http" | "https" = "https", config?: AppConfig): Promise<string | undefined> {
+  const proxyConfig = config ?? await loadProxyConfig();
+  const mode = proxyConfig?.proxy.upstream.mode ?? "system";
+  if (mode === "none") {
+    return undefined;
+  }
+  if (mode === "custom") {
+    const server = proxyServerForRequest(customUpstreamProxyFromConfig(proxyConfig?.proxy.upstream), protocol);
+    return server ? formatProxyUrl(server) : undefined;
+  }
+
+  const cache = await readSystemProxy(proxyConfig);
   const server = proxyServerForRequest(cache.upstreamProxy, protocol);
   if (server) return formatProxyUrl(server);
 
   return readEnvProxyUrl();
 }
 
-async function systemProxyUrlForRequest(url: URL): Promise<string | undefined> {
-  const cache = await readSystemProxy();
-  const server = proxyServerForRequest(cache.upstreamProxy, url.protocol === "https:" ? "https" : "http");
+async function configuredProxyUrlForRequest(url: URL): Promise<string | undefined> {
+  const proxyConfig = await loadProxyConfig();
+  const mode = proxyConfig?.proxy.upstream.mode ?? "system";
+  if (mode === "none") {
+    return undefined;
+  }
+  const protocol = url.protocol === "https:" ? "https" : "http";
+  if (mode === "custom") {
+    const server = proxyServerForRequest(customUpstreamProxyFromConfig(proxyConfig?.proxy.upstream), protocol);
+    return server ? formatProxyUrl(server) : undefined;
+  }
+
+  const cache = await readSystemProxy(proxyConfig);
+  const server = proxyServerForRequest(cache.upstreamProxy, protocol);
   if (server) return formatProxyUrl(server);
 
   return readEnvProxyUrl();
 }
 
-async function readSystemProxy(): Promise<SystemProxyCache> {
+async function readSystemProxy(config?: AppConfig): Promise<SystemProxyCache> {
   const now = Date.now();
   const activeManagedEndpointUrl = systemProxyManager.getManagedEndpointUrl();
+  const configuredManagedEndpointUrl = config ? managedProxyEndpointUrl(config) : undefined;
   if (
     systemProxyCache &&
     systemProxyCache.expiresAt > now &&
-    (!activeManagedEndpointUrl || systemProxyCache.managedEndpointUrl === activeManagedEndpointUrl)
+    (!activeManagedEndpointUrl || systemProxyCache.managedEndpointUrl === activeManagedEndpointUrl) &&
+    (!configuredManagedEndpointUrl || systemProxyCache.managedEndpointUrl === configuredManagedEndpointUrl)
   ) {
     return systemProxyCache;
   }
@@ -74,7 +104,7 @@ async function readSystemProxy(): Promise<SystemProxyCache> {
     return systemProxyReadPromise;
   }
 
-  systemProxyReadPromise = readSystemProxyUncached()
+  systemProxyReadPromise = readSystemProxyUncached(config)
     .then((cache) => {
       systemProxyCache = {
         ...cache,
@@ -89,8 +119,8 @@ async function readSystemProxy(): Promise<SystemProxyCache> {
   return systemProxyReadPromise;
 }
 
-async function readSystemProxyUncached(): Promise<Omit<SystemProxyCache, "expiresAt">> {
-  const { managedEndpointUrl, systemProxyActive } = await readManagedProxyEndpoint();
+async function readSystemProxyUncached(config?: AppConfig): Promise<Omit<SystemProxyCache, "expiresAt">> {
+  const { managedEndpointUrl, systemProxyActive } = await readManagedProxyEndpoint(config);
   if (systemProxyActive) {
     const managedUpstreamProxy = systemProxyManager.getUpstreamProxy();
     if (managedUpstreamProxy) {
@@ -112,7 +142,7 @@ async function readSystemProxyUncached(): Promise<Omit<SystemProxyCache, "expire
   }
 }
 
-async function readManagedProxyEndpoint(): Promise<{ managedEndpointUrl: string; systemProxyActive: boolean }> {
+async function readManagedProxyEndpoint(config?: AppConfig): Promise<{ managedEndpointUrl: string; systemProxyActive: boolean }> {
   const activeManagedEndpointUrl = systemProxyManager.getManagedEndpointUrl();
   if (activeManagedEndpointUrl) {
     return {
@@ -121,8 +151,15 @@ async function readManagedProxyEndpoint(): Promise<{ managedEndpointUrl: string;
     };
   }
 
+  if (config) {
+    return {
+      managedEndpointUrl: managedProxyEndpointUrl(config),
+      systemProxyActive: config.proxy.enabled && config.proxy.systemProxy
+    };
+  }
+
   try {
-    const config = await loadAppConfig();
+    config = await loadAppConfig();
     return {
       managedEndpointUrl: managedProxyEndpointUrl(config),
       systemProxyActive: config.proxy.enabled && config.proxy.systemProxy
@@ -134,6 +171,15 @@ async function readManagedProxyEndpoint(): Promise<{ managedEndpointUrl: string;
     managedEndpointUrl: fallbackManagedEndpointUrl,
     systemProxyActive: false
   };
+}
+
+async function loadProxyConfig(): Promise<AppConfig | undefined> {
+  try {
+    return await loadAppConfig();
+  } catch (error) {
+    console.warn(`[network] Failed to read proxy config: ${formatError(error)}`);
+    return undefined;
+  }
 }
 
 function managedProxyEndpointUrl(config: AppConfig): string {
@@ -170,7 +216,7 @@ function proxyDispatcher(proxyUrl: string): Dispatcher {
 }
 
 function formatProxyUrl(server: UpstreamProxyServer): string {
-  return `${server.protocol}://${formatProxyHost(server.host)}:${server.port}`;
+  return upstreamProxyUrl(server);
 }
 
 function formatProxyHost(host: string): string {

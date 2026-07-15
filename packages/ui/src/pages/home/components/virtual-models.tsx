@@ -118,7 +118,7 @@ export function VirtualModelsView({
             <div className="m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center text-[12px] text-muted-foreground">{t("No matching virtual models")}</div>
           ) : null}
           {visibleProfiles.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="min-w-0">
               <div className={cn("w-full", virtualModelTableMinWidthClass)}>
                 <div className={cn("sticky top-0 z-10 grid h-10 items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground", virtualModelTableGridClass)}>
                   <div className="truncate">{t("Name")}</div>

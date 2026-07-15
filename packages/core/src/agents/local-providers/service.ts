@@ -7,15 +7,21 @@ import type {
 } from "@ccr/core/contracts/app";
 import { claudeCodeCandidate, importClaudeCodeProvider } from "@ccr/core/agents/local-providers/claude-code";
 import { codexCandidate, importCodexProvider, probeCodexProvider } from "@ccr/core/agents/local-providers/codex";
+import { grokCandidate, importGrokProvider } from "@ccr/core/agents/local-providers/grok";
+import { importOpenCodeProvider, opencodeCandidates } from "@ccr/core/agents/local-providers/opencode";
 import { importZcodeProvider, zcodeCandidate } from "@ccr/core/agents/local-providers/zcode";
 
 export { codexDefaultBaseUrl, readCodexAuth } from "@ccr/core/agents/local-providers/codex";
+export { grokDefaultBaseUrl, readGrokAuth, resolveGrokAuth } from "@ccr/core/agents/local-providers/grok";
+export { readZcodeLocalProviderCredential, zcodeDefaultBaseUrl } from "@ccr/core/agents/local-providers/zcode";
 export { localAgentProviderApiKey, type OAuthTokenSet } from "@ccr/core/agents/local-providers/shared";
 
 export function getLocalAgentProviderCandidates(): LocalAgentProviderCandidate[] {
   return [
     codexCandidate(),
     claudeCodeCandidate(),
+    grokCandidate(),
+    ...opencodeCandidates(),
     zcodeCandidate()
   ].filter((candidate) => candidate.status !== "missing");
 }
@@ -34,6 +40,12 @@ export async function importLocalAgentProvider(request: LocalAgentProviderImport
   }
   if (candidate.kind === "claude-code") {
     return importClaudeCodeProvider(candidate, request.providerNames ?? []);
+  }
+  if (candidate.kind === "grok") {
+    return importGrokProvider(candidate, request.providerNames ?? []);
+  }
+  if (candidate.kind === "opencode") {
+    return importOpenCodeProvider(candidate, request.providerNames ?? []);
   }
   return importZcodeProvider(candidate, request.providerNames ?? []);
 }

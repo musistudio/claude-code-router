@@ -392,6 +392,20 @@ export function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+export function normalizeProviderModelSelector(value: string | undefined): string {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) {
+    return "";
+  }
+  const commaIndex = trimmed.indexOf(",");
+  if (commaIndex > 0 && commaIndex < trimmed.length - 1) {
+    const provider = trimmed.slice(0, commaIndex).trim();
+    const model = trimmed.slice(commaIndex + 1).trim();
+    return provider && model ? `${provider}/${model}` : trimmed;
+  }
+  return trimmed;
+}
+
 export function uniqueStrings(values: string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];

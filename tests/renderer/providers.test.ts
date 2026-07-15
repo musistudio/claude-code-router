@@ -5,12 +5,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { newApiKeyUsageAccountConfig } from "../../packages/core/src/providers/new-api.ts";
 import { geminiProviderPreset } from "../../packages/core/src/providers/presets/gemini/index.ts";
 import { moonshotGlobalProviderPreset } from "../../packages/core/src/providers/presets/moonshot/index.ts";
-import { ProvidersView } from "../../packages/ui/src/pages/home/components/providers.tsx";
+import { qiniuAiProviderPreset } from "../../packages/core/src/providers/presets/qiniu-ai/index.ts";
+import { AddProviderDialog, ProvidersView } from "../../packages/ui/src/pages/home/components/providers.tsx";
 import {
   applyProviderProbeResult,
   createProviderConfigFromDeepLink,
   createProviderDraft,
   createProviderInstallLinkFromDraft,
+  localAgentProviderIconUrls,
   providerCapabilitiesForProtocols,
   providerCapabilityBaseUrlForProtocol,
   providerDisplayIcon,
@@ -38,6 +40,22 @@ test("Gemini preset keeps full protocol probing candidates", () => {
   assert.equal(candidates.length, 1);
   assert.deepEqual(candidates[0].protocols, providerProtocolOptions.map((option) => option.value));
   assert.deepEqual(candidates[0].declaredProtocols, ["gemini_generate_content", "gemini_interactions"]);
+});
+
+test("multi-endpoint presets probe only each endpoint's declared protocols", () => {
+  setProviderPresets([qiniuAiProviderPreset]);
+  const draft = {
+    ...createProviderDraft([]),
+    presetId: "qiniu-ai"
+  };
+
+  const candidates = providerProbeCandidates(draft);
+
+  assert.equal(candidates.length, qiniuAiProviderPreset.endpoints.length);
+  assert.deepEqual(
+    candidates.map((candidate) => [candidate.baseUrl, candidate.protocols]),
+    qiniuAiProviderPreset.endpoints.map((endpoint) => [endpoint.baseUrl, endpoint.protocols])
+  );
 });
 
 test("provider probe result drops unavailable selected protocols", () => {
@@ -88,6 +106,63 @@ test("provider probe result keeps only supported selected protocols", () => {
   });
 
   assert.deepEqual(next.selectedProtocols, ["gemini_generate_content"]);
+});
+
+test("provider protocol details keep failed endpoint rows unavailable", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    baseUrl: "https://api.example.com/v1",
+    name: "Example",
+    protocol: "openai_chat_completions" as const,
+    selectedProtocols: ["openai_chat_completions" as const]
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderDialog, {
+      canSubmit: true,
+      draft,
+      error: "",
+      mode: "edit",
+      onChange: () => undefined,
+      onClose: () => undefined,
+      onSubmit: async () => true,
+      probe: {
+        capabilities: [
+          {
+            baseUrl: "https://api.example.com/v1",
+            endpoint: "https://api.example.com/v1/chat/completions",
+            source: "detected" as const,
+            type: "openai_chat_completions" as const
+          }
+        ],
+        detectedProtocol: "openai_chat_completions" as const,
+        models: [],
+        normalizedBaseUrl: "https://api.example.com/v1",
+        protocols: [
+          {
+            baseUrl: "https://api.example.com",
+            endpoint: "https://api.example.com/chat/completions",
+            message: "HTTP 404",
+            protocol: "openai_chat_completions" as const,
+            status: 404,
+            supported: false
+          },
+          {
+            baseUrl: "https://api.example.com/v1",
+            endpoint: "https://api.example.com/v1/chat/completions",
+            message: "HTTP 400: model is required",
+            protocol: "openai_chat_completions" as const,
+            status: 400,
+            supported: true
+          }
+        ]
+      },
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /Unavailable/);
+  assert.match(html, /Available/);
 });
 
 test("provider probe result applies detected New API key quota account connector", () => {
@@ -392,6 +467,17 @@ test("provider display icon prefers custom icons and falls back to preset icons"
       type: "gemini_generate_content"
     }),
     providerPresetIconUrls.gemini
+  );
+  assert.equal(
+    providerDisplayIcon({
+      api_base_url: "https://cli-chat-proxy.grok.com/v1",
+      api_key: "ccr-local-agent-login",
+      icon: "/assets/grok-old.svg",
+      models: [],
+      name: "Grok CLI API",
+      type: "openai_responses"
+    }),
+    localAgentProviderIconUrls.grok
   );
 });
 

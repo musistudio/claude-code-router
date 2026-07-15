@@ -3,6 +3,7 @@ import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { OverviewView } from "../../packages/ui/src/pages/home/components/dashboard.tsx";
+import { parseStatusBucketDate } from "../../packages/ui/src/pages/home/shared/controls.tsx";
 import { providerAccountMeterDetailValidityProgress } from "../../packages/ui/src/pages/home/shared/provider-accounts.ts";
 import type { OverviewWidgetConfig, ProviderAccountSnapshot } from "../../packages/core/src/contracts/app.ts";
 import { accountSnapshots, installBrowserGlobals, usageStats } from "./fixtures.ts";
@@ -42,8 +43,14 @@ test("OverviewView renders every overview widget type", () => {
     />
   );
 
-  assert.match(html, /<h2 class="[^"]*">Overview<\/h2>/);
+  assert.doesNotMatch(html, /<h2 class="[^"]*">Overview<\/h2>/);
+  assert.match(html, /All providers/);
+  assert.match(html, /All models/);
   assert.match(html, /aria-label="Edit widgets"/);
+  assert.match(html, /aria-pressed="true"/);
+  assert.match(html, /overview-heading-icon/);
+  assert.match(html, /overview-metric-card/);
+  assert.doesNotMatch(html, /2026-06-20T00:00:00\.000Z/);
   assert.match(html, /System status/);
   assert.match(html, /API Service/);
   assert.match(html, /openai \/ Primary Key/);
@@ -67,6 +74,27 @@ test("OverviewView renders every overview widget type", () => {
   assert.match(html, /Spend Receipt/);
 });
 
+test("overview status dates accept ISO usage buckets", () => {
+  assert.equal(parseStatusBucketDate("2026-06-20T00:00:00.000Z")?.toISOString(), "2026-06-20T00:00:00.000Z");
+});
+
+test("overview metric cards only show progress for ratio-based data", () => {
+  const renderMetric = (metric: "cache-ratio" | "requests", variant: "bar" | "card") => renderToStaticMarkup(
+    <OverviewView
+      overviewWidgets={[{ enabled: true, id: `metric-${metric}-${variant}`, metric, size: "1:1", type: "metric", variant }]}
+      providerAccounts={[]}
+      setUsageRange={() => undefined}
+      usageRange="30d"
+      usageStats={usageStats("30d")}
+      onWidgetsChange={() => undefined}
+    />
+  );
+
+  assert.doesNotMatch(renderMetric("requests", "card"), /overview-metric-track/);
+  assert.match(renderMetric("cache-ratio", "card"), /overview-metric-track/);
+  assert.match(renderMetric("requests", "bar"), /overview-metric-track/);
+});
+
 test("OverviewView renders the empty widget layout state", () => {
   const html = renderToStaticMarkup(
     <OverviewView
@@ -79,7 +107,9 @@ test("OverviewView renders the empty widget layout state", () => {
     />
   );
 
-  assert.match(html, /Overview/);
+  assert.doesNotMatch(html, /<h2 class="[^"]*">Overview<\/h2>/);
+  assert.match(html, /All providers/);
+  assert.match(html, /All models/);
   assert.match(html, /No widgets configured/);
   assert.match(html, /aria-label="Edit widgets"/);
 });

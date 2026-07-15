@@ -40,6 +40,8 @@ export const docsContent = {
             icon: "book",
             items: [
               "安装并启动 CCR",
+              "CLI 安装与命令参考",
+              "Docker 部署",
               "接入供应商",
               "接入 Agent配置",
               "日志&观测",
@@ -51,6 +53,8 @@ export const docsContent = {
         sidebarChildren: {},
         sidebarLinks: {
           "安装并启动 CCR": "/guides/install/",
+          "CLI 安装与命令参考": "/guides/cli/",
+          "Docker 部署": "/guides/docker/",
           接入供应商: "/guides/provider/",
           "接入 Agent配置": "/guides/agent-profile/",
           "日志&观测": "/guides/observability/",
@@ -197,6 +201,8 @@ export const docsContent = {
             icon: "book",
             items: [
               "Install And Start CCR",
+              "CLI Installation And Reference",
+              "Docker Deployment",
               "Add A Provider",
               "Connect Agent Config",
               "Logs & Observability",
@@ -208,6 +214,8 @@ export const docsContent = {
         sidebarChildren: {},
         sidebarLinks: {
           "Install And Start CCR": "/en/guides/install/",
+          "CLI Installation And Reference": "/en/guides/cli/",
+          "Docker Deployment": "/en/guides/docker/",
           "Add A Provider": "/en/guides/provider/",
           "Connect Agent Config": "/en/guides/agent-profile/",
           "Logs & Observability": "/en/guides/observability/",

@@ -160,6 +160,8 @@ type AgentLogDetails = {
 
 type AgentTextSignalOptions = {
   allowStandaloneCodex?: boolean;
+  allowStandaloneGrok?: boolean;
+  allowStandaloneOpenCode?: boolean;
 };
 
 type AgentToolCallDetail = {
@@ -630,7 +632,10 @@ export class RequestLogStore {
     }
     const range = normalizeAgentAnalysisRange(filter.range);
     const since = getAgentAnalysisSince(range, now);
-    const rows = queryRows(
+    const requestedAgent = normalizeAgentFilter(filter.agent);
+    const analyzed: AnalyzedAgentRequest[] = [];
+    let scannedRequestCount = 0;
+    const rows = iterateRows(
       database,
         `
           SELECT
@@ -679,14 +684,17 @@ export class RequestLogStore {
           LIMIT ?
         `,
         ["%/count_tokens%", since.toISOString(), maxAgentAnalysisRows]
-    )
-      .map(toRequestLogEntry)
-      .reverse();
+    );
+    // Consume and compact each body before advancing so the query never retains all body text at once.
+    for (const row of rows) {
+      scannedRequestCount += 1;
+      const request = toAnalyzedAgentRequest(toRequestLogEntry(row));
+      if (requestedAgent === "all" || request.agent === requestedAgent) {
+        analyzed.push(request);
+      }
+    }
 
-    const requestedAgent = normalizeAgentFilter(filter.agent);
-    const analyzed = rows
-      .map(toAnalyzedAgentRequest)
-      .filter((request) => requestedAgent === "all" || request.agent === requestedAgent);
+    analyzed.reverse();
     const requests = applyRequestConcurrency(analyzed);
     const sessionScopedRequests = selectAgentSessionRequests(requests, filter);
     const analysisRequests = sessionScopedRequests
@@ -706,7 +714,7 @@ export class RequestLogStore {
       range,
       recentRequests: analysisRequests.slice(-50).reverse().map(stripAnalysisInternals),
       routes: buildAgentRouteRows(analysisRequests),
-      scannedRequestCount: rows.length,
+      scannedRequestCount,
       ...(selectedSession ? { selectedSession } : {}),
       sessions: buildAgentSessionRows(requests),
       subagents: buildAgentSubagentRows(analysisRequests),
@@ -997,7 +1005,11 @@ function inferAgentKind(
     stringifyForSearch(responsePayloads)
   ].join(" ").toLowerCase();
 
-  const bodyAgent = inferAgentFromText(haystack, { allowStandaloneCodex: false });
+  const bodyAgent = inferAgentFromText(haystack, {
+    allowStandaloneCodex: false,
+    allowStandaloneGrok: false,
+    allowStandaloneOpenCode: false
+  });
   if (bodyAgent) {
     return bodyAgent;
   }
@@ -1041,6 +1053,8 @@ function readAgentUserAgent(headers: Record<string, string | string[]>): string 
 function inferAgentFromText(value: string, options: AgentTextSignalOptions = {}): AgentKind | undefined {
   const normalized = value.toLowerCase();
   const allowStandaloneCodex = options.allowStandaloneCodex ?? true;
+  const allowStandaloneGrok = options.allowStandaloneGrok ?? true;
+  const allowStandaloneOpenCode = options.allowStandaloneOpenCode ?? true;
   if (normalized.includes("claude design") || normalized.includes("claude-design") || normalized.includes("claude.ai/design")) {
     return "claude-design";
   }
@@ -1051,6 +1065,26 @@ function inferAgentFromText(value: string, options: AgentTextSignalOptions = {})
     /(^|[^a-z0-9])zcode([/_\s-]|$)/.test(normalized)
   ) {
     return "zcode";
+  }
+  if (
+    allowStandaloneOpenCode && (
+      normalized.includes("opencode") ||
+      normalized.includes("open-code") ||
+      normalized.includes("open code") ||
+      /(^|[^a-z0-9])opencode([/_\s-]|$)/.test(normalized)
+    )
+  ) {
+    return "opencode";
+  }
+  if (
+    normalized.includes("xai-grok-cli") ||
+    (allowStandaloneGrok && (
+      normalized.includes("grok-cli") ||
+      normalized.includes("grok cli") ||
+      /(^|[^a-z0-9])grok([/_\s-]|$)/.test(normalized)
+    ))
+  ) {
+    return "grok";
   }
   if (
     normalized.includes("openai-codex") ||
@@ -2475,11 +2509,11 @@ function normalizeAgentAnalysisRange(value: UsageStatsRange | undefined): UsageS
 }
 
 function normalizeAgentFilter(value: AgentAnalysisFilter["agent"] | undefined): AgentKind | "all" {
-  return value === "claude-code" || value === "codex" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "opencode" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
 }
 
 function normalizeSessionAgentFilter(value: AgentAnalysisFilter["sessionAgent"] | undefined): AgentKind | undefined {
-  return value === "claude-code" || value === "codex" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "opencode" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
 }
 
 function agentDisplayName(agent: AgentKind): string {
@@ -2491,6 +2525,12 @@ function agentDisplayName(agent: AgentKind): string {
   }
   if (agent === "codex") {
     return "Codex";
+  }
+  if (agent === "grok") {
+    return "Grok CLI";
+  }
+  if (agent === "opencode") {
+    return "OpenCode";
   }
   if (agent === "zcode") {
     return "ZCode";
@@ -2859,6 +2899,14 @@ function configureSqliteDatabase(database: SqlDatabase): void {
 
 function queryRows(database: SqlDatabase, sql: string, params: SqlValue[] = []): Record<string, SqlValue>[] {
   return database.prepare(sql).all(...params) as Record<string, SqlValue>[];
+}
+
+function iterateRows(
+  database: SqlDatabase,
+  sql: string,
+  params: SqlValue[] = []
+): IterableIterator<Record<string, SqlValue>> {
+  return database.prepare(sql).iterate(...params) as IterableIterator<Record<string, SqlValue>>;
 }
 
 function firstNumber(rows: Record<string, SqlValue>[], column: string): number {

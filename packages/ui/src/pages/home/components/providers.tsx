@@ -99,7 +99,7 @@ export function ProvidersView({ accountSnapshots, addProvider, editProvider, not
             <div className="m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center text-[12px] text-muted-foreground">{t("No matching providers")}</div>
           ) : null}
           {visibleProviders.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="min-w-0">
               <div className="min-w-[1080px]">
                 <div className="sticky top-0 z-10 grid h-10 grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(160px,0.7fr)_minmax(150px,0.65fr)_80px_84px] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   <div className="truncate">{t("Name")}</div>
@@ -340,7 +340,7 @@ export function ModelsView({
             <div className="m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center text-[12px] text-muted-foreground">{t("No matching models")}</div>
           ) : null}
           {visibleRows.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="min-w-0">
               <div className="min-w-[680px]">
                 <div className="sticky top-0 z-10 grid h-10 grid-cols-[minmax(0,1fr)_minmax(260px,1.5fr)] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   <div className="truncate">{t("Model")}</div>
@@ -608,12 +608,6 @@ export function ProviderDeepLinkDialog({
                   <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
                     {t("This provider link came from an external website. Review details before importing.")}
                   </div>
-                </div>
-              ) : null}
-              {showExternalProviderWarnings ? (
-                <div className="flex items-start gap-2 rounded-md border border-border bg-background px-3 py-2 text-[11px] leading-4 text-muted-foreground">
-                  <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span>{t("Only enter an API key issued for this endpoint. Official provider keys must only be used with official endpoints.")}</span>
                 </div>
               ) : null}
               <div className="flex min-w-0 items-center gap-3 rounded-md border border-border bg-background px-3 py-2.5">
@@ -1195,7 +1189,7 @@ function LocalAgentProviderImportPanel({
         apiKey: result.provider.apiKey ?? "",
         baseUrl: result.provider.baseUrl,
         credentials: [],
-        icon: result.provider.icon ?? "",
+        icon: result.provider.icon?.trim() || localAgentProviderIconUrls[candidate.kind] || "",
         modelDescriptions: result.provider.modelDescriptions,
         modelDisplayNames: result.provider.modelDisplayNames,
         modelMetadata: result.provider.modelMetadata,
@@ -1219,8 +1213,8 @@ function LocalAgentProviderImportPanel({
     <div className="sm:col-span-2 rounded-md border border-border bg-muted/20 p-3">
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
         <div className="min-w-0">
-          <div className="truncate text-[12px] font-semibold text-foreground">{t("Import local agent login")}</div>
-          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t("CCR scanned this computer for Claude Code, Codex, and ZCode login states. Click Import to add one as a gateway provider.")}</div>
+          <div className="truncate text-[12px] font-semibold text-foreground">{t("Import local agent provider")}</div>
+          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t("CCR scanned this computer for local Claude Code, Codex, Grok CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.")}</div>
         </div>
         {loading ? <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" /> : null}
       </div>
@@ -1284,18 +1278,27 @@ function LocalAgentProviderImportPanel({
 }
 
 const localAgentProviderApiKey = "ccr-local-agent-login";
-const localAgentProviderPluginSuffixes: Record<LocalAgentProviderCandidate["kind"], string[]> = {
+const localAgentProviderPluginSuffixes: Record<Exclude<LocalAgentProviderCandidate["kind"], "opencode">, string[]> = {
   "claude-code": ["-claude-code-oauth", "-claude-code-oauth-internal"],
   codex: ["-codex-oauth", "-codex-oauth-internal"],
+  grok: ["-grok-cli-oauth", "-grok-cli-oauth-internal"],
   zcode: ["-zcode-api-key", "-zcode-api-key-internal"]
 };
+
+function localAgentProviderPluginSuffixesForCandidate(candidate: LocalAgentProviderCandidate): string[] {
+  if (candidate.kind === "opencode") {
+    const baseSuffix = `-opencode-${candidate.protocol.replaceAll("_", "-")}-api-key`;
+    return [baseSuffix, `${baseSuffix}-internal`];
+  }
+  return localAgentProviderPluginSuffixes[candidate.kind];
+}
 
 function localAgentProviderAlreadyImported(
   candidate: LocalAgentProviderCandidate,
   providers: GatewayProviderConfig[],
   providerPlugins: unknown[]
 ): boolean {
-  const suffixes = localAgentProviderPluginSuffixes[candidate.kind];
+  const suffixes = localAgentProviderPluginSuffixesForCandidate(candidate);
   const localProviderNames = new Set(providers
     .filter((provider) => provider.api_key === localAgentProviderApiKey)
     .flatMap((provider) => [
@@ -1383,7 +1386,6 @@ export function AddProviderForm({
   const protocolProbeRows = useMemo(() => uniqueProviderProbeProtocolRows(probe?.protocols ?? []), [probe]);
   const configuredModels = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
   const hasConnectivityCheckInputs = Boolean(
-    !localAgentImport &&
     draft.baseUrl.trim() &&
     draft.apiKey.trim() &&
     configuredModels.length > 0
@@ -1575,10 +1577,6 @@ export function AddProviderForm({
         ) : null}
         <Field className="sm:col-span-2" label={t("API key")}>
           <Input type="password" value={draft.apiKey} onChange={(event) => onChange({ apiKey: event.target.value }, true)} />
-          <div className="flex items-start gap-1.5 text-[11px] leading-4 text-muted-foreground">
-            <CircleAlert className="mt-0.5 h-3 w-3 shrink-0" />
-            <span>{t("Only enter an API key issued for this endpoint. Official provider keys must only be used with official endpoints.")}</span>
-          </div>
         </Field>
         {safetyIssue ? (
           <div className="sm:col-span-2 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] leading-5 text-amber-900 dark:text-amber-100">
@@ -1719,8 +1717,8 @@ export function AddProviderForm({
                     {protocolProbeRows.length ? (
                       <div className="space-y-1.5">
                         {protocolProbeRows.map((item) => {
-                          const available = item.supported || selectableProtocols.includes(item.protocol);
-                          const selectable = available && selectableProtocols.includes(item.protocol);
+                          const available = item.supported;
+                          const selectable = item.supported && selectableProtocols.includes(item.protocol);
                           const checked = selectable && draft.selectedProtocols.includes(item.protocol);
                           const itemKey = `${item.protocol}-${item.endpoint}`;
                           return (

@@ -10,26 +10,26 @@ import {
   createVirtualModelDraft, createVirtualModelDraftFromProfile, customProviderPresetId, DEFAULT_TRAY_WIDGETS, detectSystemLanguage, detectSystemTheme,
   enforceSingleEnabledGlobalProfilePerAgent,
   ExtensionConfigTarget, ExtensionDeleteTarget, ExtensionInstallDraft, ExtensionSource, fallbackAgentAnalysis, fallbackConfig,
-  fallbackGatewayStatus, fallbackInfo, fallbackProxyCertificateStatus, fallbackProxyNetworkSnapshot, fallbackProxyStatus, fallbackRequestLogPage,
-  fallbackUpdateStatus, fallbackUsageStats, formatAppError, formatProxyCertificateInstallMessage, GatewayProviderConfig,
+  fallbackGatewayStatus, fallbackInfo, fallbackProxyNetworkSnapshot, fallbackProxyStatus, fallbackRequestLogPage,
+  fallbackUpdateStatus, fallbackUsageStats, formatAppError, GatewayProviderConfig,
   fusionCustomMcpServerFromDraft, fusionCustomToolConfigFromProfile,
   GatewayProviderProbeResult, gatewayServiceMessage, GatewayStatus, getDefaultOnboardingStep, isClaudeDesignPluginConfig, isClaudeDesignRoutingDraftValid,
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
   isTraySupportedPlatform,
   isRoutingRewriteDraftRowValid,
   LayoutGroup, mergeModelDisplayNames, mergeModelMetadata, mergeProviderModelLists, modelDescriptionsForModels, modelDisplayNamesForModels, modelMetadataForModels,
-  navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets,
+  navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets, normalizeProxyConfig,
   normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterBuiltInRules, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
-  OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parsePluginObjectSettingsText, parsePluginPermissionsSettingsText, parseProviderAccountDraft,
+  OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
   providerCredentialsFromDraft,
-  persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginRuntimeSurfacesEnabled, pluginSettingsConfigFromDraft, PluginSettingsDraft, pluginSurfacesFromDraft, presetCapabilitiesFromDraft,
-  probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
+  persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
+  probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
-  providerCapabilitiesForProtocols, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
+  providerCapabilitiesForProtocols, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
-  ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, RouterRule, ServerActionBusy, SettingsPageId,
-  routingRewriteFromDraftRow, setProviderPresets, splitLines, translateAppErrorMessage, translateProxyCertificateMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
+  ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, RouterRule, SettingsPageId,
+  routingRewriteFromDraftRow, setProviderPresets, splitLines, translateAppErrorMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
   uniqueRoutingRuleId, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
   VirtualModelDraft, virtualModelProfileFromDraft
@@ -193,15 +193,14 @@ function App() {
   const [onboardingStatusLoaded, setOnboardingStatusLoaded] = useState(() => !window.ccr);
   const [providerPresetsLoaded, setProviderPresetsLoaded] = useState(() => !window.ccr);
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus>(fallbackGatewayStatus);
-  const [proxyCertificateStatus, setProxyCertificateStatus] = useState<ProxyCertificateStatus>(fallbackProxyCertificateStatus);
   const [proxyNetworkSnapshot, setProxyNetworkSnapshot] = useState<ProxyNetworkSnapshot>(fallbackProxyNetworkSnapshot);
   const [proxyStatus, setProxyStatus] = useState<ProxyStatus>(fallbackProxyStatus);
-  const [actionBusy, setActionBusy] = useState<ServerActionBusy>("");
   const [updateActionBusy, setUpdateActionBusy] = useState<"" | "check" | "download" | "install">("");
   const [updateActionError, setUpdateActionError] = useState("");
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updateDialogStatus, setUpdateDialogStatus] = useState<AppUpdateStatus>(fallbackUpdateStatus);
   const [gatewayActionBusy, setGatewayActionBusy] = useState(false);
+  const [gatewayActionTargetActive, setGatewayActionTargetActive] = useState<boolean>();
   const [actionMessage, setActionMessage] = useState("");
   const [actionError, setActionError] = useState("");
   const [profileActionError, setProfileActionError] = useState("");
@@ -210,6 +209,7 @@ function App() {
   const [profileDraft, setProfileDraft] = useState<AddProfileDraft>(() => createProfileDraft());
   const [profileEditDraft, setProfileEditDraft] = useState<AddProfileDraft>(() => createProfileDraft());
   const [profileEditIndex, setProfileEditIndex] = useState<number>();
+  const [profileDeleteIndex, setProfileDeleteIndex] = useState<number>();
   const [profileOpenDialog, setProfileOpenDialog] = useState<ProfileOpenDialogState>();
   const [profileActionBusy, setProfileActionBusy] = useState<ProfileActionBusy>();
   const [profileRuntimeStatus, setProfileRuntimeStatus] = useState<ProfileRuntimeStatus>({ profiles: [] });
@@ -233,8 +233,6 @@ function App() {
   const [providerDeepLinkRequest, setProviderDeepLinkRequest] = useState<ProviderDeepLinkRequest>();
   const [providerDeepLinkBusy, setProviderDeepLinkBusy] = useState(false);
   const [providerDeepLinkError, setProviderDeepLinkError] = useState("");
-  const [proxyCertificateChecking, setProxyCertificateChecking] = useState(false);
-  const [proxyEnablePending, setProxyEnablePending] = useState(false);
   const [providerProbeError, setProviderProbeError] = useState("");
   const [extensionInstallOpen, setExtensionInstallOpen] = useState(false);
   const [extensionInstallDraft, setExtensionInstallDraft] = useState<ExtensionInstallDraft>(() => createExtensionInstallDraft());
@@ -279,6 +277,8 @@ function App() {
   const [agentAnalysisLoading, setAgentAnalysisLoading] = useState(false);
   const [agentAnalysisRange, setAgentAnalysisRange] = useState<UsageStatsRange>("7d");
   const [agentAnalysisSession, setAgentAnalysisSession] = useState<AgentAnalysisSessionSelection>();
+  const [usageModelFilter, setUsageModelFilter] = useState("");
+  const [usageProviderFilter, setUsageProviderFilter] = useState("");
   const [usageRange, setUsageRange] = useState<UsageStatsRange>("7d");
   const [usageStats, setUsageStats] = useState<UsageStatsSnapshot>(fallbackUsageStats);
   const [providerAccountSnapshots, setProviderAccountSnapshots] = useState<ProviderAccountSnapshot[]>([]);
@@ -351,7 +351,6 @@ function App() {
       .catch(() => setActiveView("onboarding"))
       .finally(() => setOnboardingStatusLoaded(true));
     void window.ccr.getPluginMarketplace().then(setPluginMarketplace).catch(() => setPluginMarketplace([]));
-    void window.ccr.getProxyCertificateStatus().then(setProxyCertificateStatus);
     const unsubscribeOpenSettings = window.ccr.onOpenSettingsRequest(openSettingsDialog);
     const unsubscribeOpenUpdate = window.ccr.onOpenUpdateRequest(openUpdateDialog);
     const refreshRuntimeStatus = () => {
@@ -366,6 +365,14 @@ function App() {
       unsubscribeOpenUpdate();
     };
   }, []);
+
+  useEffect(() => {
+    if (!appInfo.chatgptAppPath && !appInfo.opencodeAppPath) {
+      return;
+    }
+    setProfileDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath, appInfo.opencodeAppPath));
+    setProfileEditDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath, appInfo.opencodeAppPath));
+  }, [appInfo.chatgptAppPath, appInfo.opencodeAppPath]);
 
   useEffect(() => {
     if (!window.ccr) {
@@ -450,7 +457,11 @@ function App() {
 
     let cancelled = false;
     const refreshUsageStats = () => {
-      const filter: UsageStatsFilter | undefined = usageRange === "today" ? { includeProxy: true } : undefined;
+      const filter: UsageStatsFilter = {
+        ...(usageRange === "today" ? { includeProxy: true } : {}),
+        ...(usageProviderFilter ? { provider: usageProviderFilter } : {}),
+        ...(usageModelFilter ? { model: usageModelFilter } : {})
+      };
       void window.ccr?.getUsageStats(usageRange, filter).then((snapshot) => {
         if (!cancelled) {
           setUsageStats(snapshot);
@@ -462,7 +473,29 @@ function App() {
       cancelled = true;
       stopPolling();
     };
-  }, [usageRange]);
+  }, [usageModelFilter, usageProviderFilter, usageRange]);
+
+  useEffect(() => {
+    if (!usageProviderFilter) {
+      return;
+    }
+    if (!draftConfig.Providers.some((provider) => provider.name === usageProviderFilter)) {
+      setUsageProviderFilter("");
+    }
+  }, [draftConfig.Providers, usageProviderFilter]);
+
+  useEffect(() => {
+    if (!usageModelFilter) {
+      return;
+    }
+    const modelAvailable = draftConfig.Providers.some((provider) =>
+      (!usageProviderFilter || provider.name === usageProviderFilter) &&
+      provider.models.some((model) => model.trim() === usageModelFilter)
+    );
+    if (!modelAvailable) {
+      setUsageModelFilter("");
+    }
+  }, [draftConfig.Providers, usageModelFilter, usageProviderFilter]);
 
   useEffect(() => {
     if (!window.ccr) {
@@ -642,6 +675,7 @@ function App() {
   const dirty = draftConfig !== savedConfig;
   const apiKeys = useMemo(() => createApiKeyList(draftConfig), [draftConfig.APIKEY, draftConfig.APIKEYS]);
   const apiKeyEditItem = apiKeyEditIndex === undefined ? undefined : apiKeys.find((apiKey) => apiKey.index === apiKeyEditIndex);
+  const profileDeleteItem = profileDeleteIndex === undefined ? undefined : draftConfig.profile.profiles[profileDeleteIndex];
   const providerDeleteItem = providerDeleteIndex === undefined ? undefined : draftConfig.Providers[providerDeleteIndex];
   const routingDeleteRule = routingDeleteIndex === undefined ? undefined : draftConfig.Router.rules[routingDeleteIndex];
   const extensionDeleteItem = useMemo(() => {
@@ -712,7 +746,7 @@ function App() {
     [copy, virtualModelValidationError]
   );
   const canSubmitVirtualModel = !virtualModelValidationError;
-  const canInstallExtension = Boolean(extensionInstallDraft.key.trim() && (extensionInstallDraft.modulePath.trim() || (extensionInstallDraft.apps?.length ?? 0) > 0));
+  const canInstallExtension = Boolean(extensionInstallDraft.key.trim() && extensionInstallDraft.modulePath.trim());
   const onboardingReadiness = useMemo<OnboardingReadinessOptions>(() => ({
     profileConfirmed: onboardingProfileConfirmed,
     requireProfileConfirmation: activeView === "onboarding" && !onboardingFinished
@@ -721,7 +755,7 @@ function App() {
 
   useEffect(() => {
     if (!networkCaptureEnabled && activeView === "networking") {
-      setActiveView("server");
+      setActiveView("overview");
     }
   }, [activeView, networkCaptureEnabled]);
 
@@ -768,9 +802,13 @@ function App() {
 
     onboardingProfileDraftSource.current = source;
     setProfileAgentTab(profile.agent);
-    setProfileDraft(createProfileDraftFromProfile(profile, draftConfig.botConfigs));
+    setProfileDraft(profileDraftWithDetectedAppPath(
+      createProfileDraftFromProfile(profile, draftConfig.botConfigs),
+      appInfo.chatgptAppPath,
+      appInfo.opencodeAppPath
+    ));
     setProfileActionError("");
-  }, [activeView, onboardingStep, onboardingProfileConfirmed, configLoaded, draftConfig.profile.profiles, draftConfig.botConfigs, profileDraft.agent]);
+  }, [activeView, onboardingStep, onboardingProfileConfirmed, configLoaded, draftConfig.profile.profiles, draftConfig.botConfigs, profileDraft.agent, appInfo.chatgptAppPath, appInfo.opencodeAppPath]);
 
   useEffect(() => {
     if (activeView !== "onboarding" || !configLoaded || !onboardingStatusLoaded || !providerPresetsLoaded || providerAddOpen) {
@@ -1389,6 +1427,7 @@ function App() {
         candidates,
         forceRefresh: true,
         models,
+        providerPlugins: providerDraft.providerPlugins,
         protocols
       });
       if (providerConnectivityRequestId.current !== requestId) {
@@ -1843,9 +1882,7 @@ function App() {
         key: selection.id,
         marketplaceId: "",
         modulePath: selection.modulePath,
-        permissions: selection.permissions,
-        selectedName: selection.name || selection.id,
-        surfaces: selection.surfaces
+        selectedName: selection.name || selection.id
       }));
       setExtensionInstallError("");
       setActionError("");
@@ -1858,10 +1895,6 @@ function App() {
     if (!canInstallExtension) {
       return;
     }
-    if (extensionInstallDraft.modulePath.trim() && pluginRuntimeSurfacesEnabled(extensionInstallDraft.surfaces) && !extensionInstallDraft.permissions?.includes("trusted-code")) {
-      setExtensionInstallError("Plugins that load JavaScript must declare trusted-code permission.");
-      return;
-    }
 
     const installPlan = resolvePluginInstallPlan(
       {
@@ -1869,22 +1902,13 @@ function App() {
         dependencies: extensionInstallDraft.dependencies,
         id: extensionInstallDraft.key.trim(),
         modulePath: extensionInstallDraft.modulePath.trim(),
-        name: extensionInstallDraft.selectedName,
-        permissions: extensionInstallDraft.permissions,
-        surfaces: extensionInstallDraft.surfaces
+        name: extensionInstallDraft.selectedName
       },
       pluginMarketplace,
       draftConfig.plugins ?? []
     );
     if (installPlan.missing.length > 0) {
       setExtensionInstallError(`Missing plugin dependencies: ${installPlan.missing.join(", ")}`);
-      return;
-    }
-    const missingTrustedCode = installPlan.items
-      .filter((item) => item.modulePath.trim() && pluginRuntimeSurfacesEnabled(item.surfaces) && !item.permissions?.includes("trusted-code"))
-      .map((item) => item.name || item.id);
-    if (missingTrustedCode.length > 0) {
-      setExtensionInstallError(`Plugins that load JavaScript must declare trusted-code permission: ${missingTrustedCode.join(", ")}`);
       return;
     }
 
@@ -1896,9 +1920,7 @@ function App() {
           ...(item.apps?.length ? { apps: item.apps } : {}),
           enabled: true,
           id: item.id,
-          ...(item.modulePath.trim() ? { module: item.modulePath } : {}),
-          ...(item.permissions !== undefined ? { permissions: item.permissions } : {}),
-          ...(item.surfaces !== undefined ? { surfaces: item.surfaces } : {})
+          module: item.modulePath
         }));
       config.plugins = [...(config.plugins ?? []), ...pluginsToAdd];
       return config;
@@ -1964,29 +1986,6 @@ function App() {
       return;
     }
 
-    const permissionsResult = parsePluginPermissionsSettingsText(pluginSettingsDraft.permissionsText);
-    if (!permissionsResult.ok) {
-      setPluginSettingsError(permissionsResult.message);
-      return;
-    }
-    const nextSurfaces = pluginSurfacesFromDraft(pluginSettingsDraft);
-    if (pluginSettingsDraft.modulePath.trim() && pluginRuntimeSurfacesEnabled(nextSurfaces) && !permissionsResult.value?.includes("trusted-code")) {
-      setPluginSettingsError("Plugins that load JavaScript must declare trusted-code permission.");
-      return;
-    }
-
-    const proxyResult = parsePluginObjectSettingsText(pluginSettingsDraft.proxyText, "Plugin proxy must be a JSON object.");
-    if (!proxyResult.ok) {
-      setPluginSettingsError(proxyResult.message);
-      return;
-    }
-
-    const coreGatewayResult = parsePluginObjectSettingsText(pluginSettingsDraft.coreGatewayText, "Plugin core gateway must be a JSON object.");
-    if (!coreGatewayResult.ok) {
-      setPluginSettingsError(coreGatewayResult.message);
-      return;
-    }
-
     updateConfig((config) => {
       const values = [...(config.plugins ?? [])];
       const item = values[extensionConfigTarget.index];
@@ -1994,18 +1993,12 @@ function App() {
         return config;
       }
       const nextConfig = pluginSettingsConfigFromDraft(item.config, configResult.value);
-      const nextCoreGateway = coreGatewayResult.value as AppConfig["plugins"][number]["coreGateway"] | undefined;
-      const nextProxy = proxyResult.value as AppConfig["plugins"][number]["proxy"] | undefined;
       values[extensionConfigTarget.index] = {
         ...item,
         ...(appsResult.value && appsResult.value.length > 0 ? { apps: appsResult.value } : { apps: undefined }),
         config: nextConfig,
-        ...(nextCoreGateway && Object.keys(nextCoreGateway).length > 0 ? { coreGateway: nextCoreGateway } : { coreGateway: undefined }),
         enabled: pluginSettingsDraft.enabled,
-        module: pluginSettingsDraft.modulePath.trim() || undefined,
-        ...(permissionsResult.value !== undefined ? { permissions: permissionsResult.value } : { permissions: undefined }),
-        ...(nextProxy && Object.keys(nextProxy).length > 0 ? { proxy: nextProxy } : { proxy: undefined }),
-        ...(nextSurfaces !== undefined ? { surfaces: nextSurfaces } : { surfaces: undefined })
+        module: pluginSettingsDraft.modulePath.trim()
       };
       config.plugins = values;
       return config;
@@ -2234,6 +2227,24 @@ function App() {
     }));
   }
 
+  function changeProxyConfig(patch: Partial<AppConfig["proxy"]>) {
+    updateConfig((config) => ({
+      ...config,
+      proxy: normalizeProxyConfig({
+        ...config.proxy,
+        ...patch,
+        upstream: {
+          ...config.proxy.upstream,
+          ...(patch.upstream ?? {}),
+          custom: {
+            ...config.proxy.upstream.custom,
+            ...(patch.upstream?.custom ?? {})
+          }
+        }
+      })
+    }));
+  }
+
   function changeToolHubConfig(patch: Partial<AppConfig["toolHub"]>) {
     updateConfig((config) => ({
       ...config,
@@ -2259,6 +2270,11 @@ function App() {
     setSettingsOpen(true);
   }
 
+  function openGeneralSettingsDialog() {
+    setSettingsInitialPage("general");
+    setSettingsOpen(true);
+  }
+
   function changeOverviewWidgets(widgets: OverviewWidgetConfig[]) {
     updateConfig((config) => ({
       ...config,
@@ -2270,26 +2286,6 @@ function App() {
     const language = normalizeLanguagePreference(value);
     setLanguagePreference(language);
     persistLanguagePreference(language);
-  }
-
-  async function restartProxy() {
-    if (!window.ccr) {
-      setActionError(t("Proxy restart is available in the Electron app."));
-      return;
-    }
-
-    setActionBusy("proxy");
-    setActionError("");
-    setActionMessage("");
-    try {
-      const status = await window.ccr.restartProxy();
-      setProxyStatus(status);
-      setActionMessage(translateAppErrorMessage(copy, proxyRestartMessage(status)));
-    } catch (error) {
-      setActionError(formatError(error));
-    } finally {
-      setActionBusy("");
-    }
   }
 
   async function completeOnboarding() {
@@ -2310,60 +2306,6 @@ function App() {
     setActiveView(id);
   }
 
-  async function refreshProxyCertificateStatus(): Promise<ProxyCertificateStatus | undefined> {
-    if (!window.ccr) {
-      setProxyCertificateStatus(fallbackProxyCertificateStatus);
-      return undefined;
-    }
-    const status = await window.ccr.getProxyCertificateStatus();
-    setProxyCertificateStatus(status);
-    return status;
-  }
-
-  async function checkProxyCertificateStatus() {
-    setProxyCertificateChecking(true);
-    setActionError("");
-    setActionMessage("");
-    try {
-      const status = await refreshProxyCertificateStatus();
-      setActionMessage(status?.trusted ? t("Proxy CA certificate is trusted.") : translateProxyCertificateMessage(status?.message, t) || t("Proxy CA certificate is not trusted."));
-    } catch (error) {
-      setActionError(formatError(error));
-    } finally {
-      setProxyCertificateChecking(false);
-    }
-  }
-
-  async function setProxyEnabled(checked: boolean) {
-    setActionError("");
-    setActionMessage("");
-    if (!checked) {
-      setProxyEnablePending(false);
-      updateConfig((next) => ({ ...next, proxy: { ...next.proxy, enabled: false } }));
-      return;
-    }
-    if (!window.ccr) {
-      setActionError(t("Proxy certificate detection is available in the Electron app."));
-      return;
-    }
-
-    setProxyCertificateChecking(true);
-    try {
-      const status = await refreshProxyCertificateStatus();
-      if (status?.trusted) {
-        setProxyEnablePending(false);
-        updateConfig((next) => ({ ...next, proxy: { ...next.proxy, enabled: true } }));
-        return;
-      }
-      setProxyEnablePending(true);
-      setActionMessage(translateProxyCertificateMessage(status?.message, t) || t("Install and trust the proxy CA certificate before enabling proxy mode."));
-    } catch (error) {
-      setActionError(formatError(error));
-    } finally {
-      setProxyCertificateChecking(false);
-    }
-  }
-
   async function toggleGatewayService() {
     if (!window.ccr) {
       setActionError(t("Service control is available in the Electron app."));
@@ -2371,6 +2313,7 @@ function App() {
     }
 
     const shouldStop = gatewayStatus.state === "running" || gatewayStatus.state === "starting";
+    setGatewayActionTargetActive(!shouldStop);
     setGatewayActionBusy(true);
     setActionError("");
     setActionMessage("");
@@ -2384,33 +2327,7 @@ function App() {
       setActionError(formatError(error));
     } finally {
       setGatewayActionBusy(false);
-    }
-  }
-
-  async function installProxyCertificate() {
-    if (!window.ccr) {
-      setActionError(t("Certificate install is available in the Electron app."));
-      return;
-    }
-
-    setActionBusy("cert");
-    setActionError("");
-    setActionMessage("");
-    try {
-      const result = await window.ccr.installProxyCertificate();
-      setProxyCertificateStatus(result.status);
-      const status = result.status.trusted ? result.status : await refreshProxyCertificateStatus();
-      if (proxyEnablePending && status?.trusted) {
-        updateConfig((next) => ({ ...next, proxy: { ...next.proxy, enabled: true } }));
-        setProxyEnablePending(false);
-        setActionMessage(t("Certificate installed and trusted. Proxy mode enabled."));
-        return;
-      }
-      setActionMessage(formatProxyCertificateInstallMessage(result, status, t));
-    } catch (error) {
-      setActionError(formatError(error));
-    } finally {
-      setActionBusy("");
+      setGatewayActionTargetActive(undefined);
     }
   }
 
@@ -2503,7 +2420,7 @@ function App() {
     updateConfig((next) => ({ ...next, proxy: { ...next.proxy, captureNetwork: enabled } }));
     setProxyNetworkSnapshot((current) => ({ ...current, captureEnabled: enabled }));
     if (!enabled && activeView === "networking") {
-      setActiveView("server");
+      setActiveView("overview");
     }
     if (!window.ccr) {
       return;
@@ -2516,15 +2433,9 @@ function App() {
     }
   }
 
-  function setProxySystemProxyEnabled(enabled: boolean) {
-    setActionError("");
-    setActionMessage("");
-    updateConfig((next) => ({ ...next, proxy: { ...next.proxy, systemProxy: enabled } }));
-  }
-
   function openAddProfileDialog(agent: ProfileConfig["agent"] = profileAgentTab) {
     setProfileAgentTab(agent);
-    setProfileDraft(createProfileDraft(agent));
+    setProfileDraft(profileDraftWithDetectedAppPath(createProfileDraft(agent), appInfo.chatgptAppPath, appInfo.opencodeAppPath));
     setProfileActionError("");
     setProfileAddOpen(true);
   }
@@ -2535,7 +2446,11 @@ function App() {
       return;
     }
     setProfileEditIndex(index);
-    setProfileEditDraft(createProfileDraftFromProfile(profile, draftConfig.botConfigs));
+    setProfileEditDraft(profileDraftWithDetectedAppPath(
+      createProfileDraftFromProfile(profile, draftConfig.botConfigs),
+      appInfo.chatgptAppPath,
+      appInfo.opencodeAppPath
+    ));
     setProfileActionError("");
   }
 
@@ -2757,10 +2672,10 @@ function App() {
       const next = { ...current, ...patch };
       if (patch.agent && patch.agent !== current.agent) {
         const name = current.name === profileAgentLabel(current.agent) ? undefined : next.name;
-        return {
+        return profileDraftWithDetectedAppPath({
           ...createProfileDraft(patch.agent, name),
           envRows: profileEnvRowsForAgent(patch.agent, current.envRows)
-        };
+        }, appInfo.chatgptAppPath, appInfo.opencodeAppPath);
       }
       return next;
     });
@@ -2772,10 +2687,10 @@ function App() {
       const next = { ...current, ...patch };
       if (patch.agent && patch.agent !== current.agent) {
         const name = current.name === profileAgentLabel(current.agent) ? undefined : next.name;
-        return {
+        return profileDraftWithDetectedAppPath({
           ...createProfileDraft(patch.agent, name),
           envRows: profileEnvRowsForAgent(patch.agent, current.envRows)
-        };
+        }, appInfo.chatgptAppPath, appInfo.opencodeAppPath);
       }
       return next;
     });
@@ -2903,6 +2818,14 @@ function App() {
     }));
   }
 
+  function confirmProfileDelete() {
+    if (profileDeleteIndex === undefined) {
+      return;
+    }
+    removeProfile(profileDeleteIndex);
+    setProfileDeleteIndex(undefined);
+  }
+
   return (
     <AppI18nContext.Provider value={copy}>
       <LayoutGroup id="home-shell">
@@ -2941,16 +2864,18 @@ function App() {
               activeView={activeView}
               agentAnalysisEnabled={agentAnalysisEnabled}
               compactLayout={compactLayout}
+              config={draftConfig}
               copy={copy}
               gatewayActionBusy={gatewayActionBusy}
               gatewayEndpoint={gatewayEndpoint}
               gatewayStartupError={gatewayStartupError}
               gatewayStatus={gatewayStatus}
+              gatewayTargetActive={gatewayActionTargetActive}
               isMac={isMac}
               needsTrafficLightSafeArea={needsTrafficLightSafeArea}
               networkCaptureEnabled={networkCaptureEnabled}
               onOpenUpdate={openSidebarUpdateDialog}
-              onOpenServerSettings={() => setActiveView("server")}
+              onOpenServerSettings={openGeneralSettingsDialog}
               onOpenSettings={openSettingsDialog}
               onSelectNavigationItem={selectNavigationItem}
               onToggleSidebar={() => setSidebarOpen((current) => !current)}
@@ -3009,6 +2934,13 @@ function App() {
                   snapshot: agentAnalysis
                 },
                 overview: {
+                  usageFilters: {
+                    modelFilter: usageModelFilter,
+                    providerFilter: usageProviderFilter,
+                    providers: draftConfig.Providers,
+                    setModelFilter: setUsageModelFilter,
+                    setProviderFilter: setUsageProviderFilter
+                  },
                   onWidgetsChange: changeOverviewWidgets,
                   overviewWidgets: normalizeOverviewWidgets(draftConfig.overviewWidgets),
                   providerAccounts: providerAccountSnapshots,
@@ -3027,7 +2959,7 @@ function App() {
                   openProfileApp: (index) => void openProfileAppFromList(index),
                   profileActionBusy,
                   profileRuntimeStatus,
-                  removeProfile,
+                  removeProfile: setProfileDeleteIndex,
                   stopProfileApp: (index) => void stopProfileAppFromList(index),
                   updateProfileItem
                 },
@@ -3066,22 +2998,6 @@ function App() {
                     return config;
                   }),
                   updateRule: updateRoutingRule
-                },
-                server: {
-                  actionBusy,
-                  actionError,
-                  actionMessage,
-                  config: draftConfig,
-                  installProxyCertificate,
-                  onProxyEnabledChange: (checked) => void setProxyEnabled(checked),
-                  onProxyNetworkCaptureChange: (enabled) => void setProxyNetworkCaptureEnabled(enabled),
-                  onProxySystemProxyChange: setProxySystemProxyEnabled,
-                  proxyCertificateChecking,
-                  proxyCertificateStatus,
-                  proxyStatus,
-                  refreshProxyCertificateStatus: () => void checkProxyCertificateStatus(),
-                  restartProxy,
-                  updateConfig
                 },
                 virtualModels: {
                   addVirtualModel: openAddVirtualModelDialog,
@@ -3181,6 +3097,11 @@ function App() {
 	              virtualModelProfiles: draftConfig.virtualModelProfiles ?? [],
 	              onSubmit: submitProfileDraft
 	            } : undefined}
+            profileDelete={profileDeleteItem ? {
+              onClose: () => setProfileDeleteIndex(undefined),
+              onConfirm: confirmProfileDelete,
+              profile: profileDeleteItem
+            } : undefined}
             profileEdit={profileEditIndex !== undefined ? {
               botConfigs: draftConfig.botConfigs,
               canSubmit: canSubmitProfileEdit,
@@ -3273,6 +3194,7 @@ function App() {
               appInfo,
               botAddRequestKey: settingsBotAddRequestKey,
               botConfigs: draftConfig.botConfigs,
+              config: draftConfig,
               copy,
               initialPage: settingsInitialPage,
               languagePreference,
@@ -3281,6 +3203,7 @@ function App() {
               onChangeLaunchAtLogin: changeLaunchAtLogin,
               onChangeLanguage: changeLanguagePreference,
               onChangeObservability: changeObservabilityConfig,
+              onChangeProxy: changeProxyConfig,
               onChangeTheme: changeThemePreference,
               onChangeToolHub: changeToolHubConfig,
               onChangeTrayBalanceProgress: changeTrayBalanceProgress,
@@ -3289,6 +3212,7 @@ function App() {
               onClose: () => setSettingsOpen(false),
               observability: draftConfig.observability,
               profiles: draftConfig.profile.profiles,
+              proxy: draftConfig.proxy,
               providers: draftConfig.Providers,
               systemLanguage,
               systemTheme,
@@ -3298,7 +3222,8 @@ function App() {
               trayBalanceProgress: normalizeTrayBalanceProgressConfig(draftConfig.trayBalanceProgress),
               trayIconPreference: draftConfig.trayIcon || "random",
               traySupported,
-              trayWidgets: normalizeTrayWidgets(draftConfig.trayWidgets ?? DEFAULT_TRAY_WIDGETS, draftConfig.trayWindowModules, draftConfig.trayComponentVariants)
+              trayWidgets: normalizeTrayWidgets(draftConfig.trayWidgets ?? DEFAULT_TRAY_WIDGETS, draftConfig.trayWindowModules, draftConfig.trayComponentVariants),
+              updateConfig
             } : undefined}
             update={updateDialogOpen ? {
               actionBusy: updateActionBusy,

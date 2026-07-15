@@ -382,7 +382,7 @@ export type OnboardingStepId = "provider" | "profile" | "enter";
 export type AppLanguagePreference = "system" | "en" | "zh";
 export type ResolvedLanguage = "en" | "zh";
 export type ResolvedTheme = "light" | "dark";
-export type SettingsPageId = "appearance" | "toolhub" | "observability" | "bots" | "tray" | "data";
+export type SettingsPageId = "general" | "appearance" | "toolhub" | "observability" | "bots" | "tray";
 export type TrayEditableModuleId = Exclude<TrayWindowModuleId, "footer">;
 export type TrayComponentOptionGroup = {
   key: keyof TrayComponentVariants;
@@ -520,7 +520,15 @@ export type BotGatewayConfigDraft = {
   botHandoffIdleSeconds: string;
   botHandoffPhoneBluetoothTargets: string;
   botHandoffPhoneWifiTargets: string;
+  botLanguage: "auto" | "en" | "zh-CN";
+  botMaxAttachmentMb: string;
+  botMaxTurnMinutes: string;
+  botMediaEnabled: boolean;
+  botMessageChunkChars: string;
   botPlatform: string;
+  botSessionIdleMinutes: string;
+  botShellEnabled: boolean;
+  botStreamReplies: boolean;
   name: string;
 };
 

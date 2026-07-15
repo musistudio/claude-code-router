@@ -3,16 +3,17 @@ import {
   botGatewayDefaultAuthType, botGatewayFieldsForAuth, botGatewayPickAuthFields, botGatewayPlatformLabel, botGatewayPlatformOptions,
   botGatewaySavedConfigFromDraft, botGatewaySavedConfigLabel, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitResult, BotGatewayQrWindowOpenResult, BotGatewaySavedConfig, Button,
   CircleAlert, closestCenter, cn, CSS, Database, Dialog, DialogBody, DialogContent,
-  DialogFooter, DialogHeader, DialogTitle, Field, formatAppError, formatProviderAccountMeterValue, formatSystemOption, Gauge,
+  DialogFooter, DialogHeader, DialogTitle, endpointFromHostPort, Field, formatAppError, formatProviderAccountMeterValue, formatSystemOption, Gauge,
   Globe,
-  createBotGatewayConfigDraft, createMcpServerDraft, createMcpServerDraftFromConfig, createMcpServerDraftFromUnknown, createRouteModelOptions, DndContext, DragEndEvent, GatewayMcpServerConfig, GatewayProviderConfig, Input, isBotGatewayConfigDraftSubmittable, KeyboardSensor, KeyRound, KeyValueRowsControl, languageDisplayName, Layers3, LoaderCircle,
-  mcpServerConfigFromDraft, mcpServerEndpointSummary, mcpServerTransportOptions, mcpStdioMessageModeOptions, McpServerDraft, normalizeBotGatewayAuthType, normalizeBotGatewayPlatform, normalizeToolHubConfig, Palette, Pencil, Plus, ProfileConfig, profileAgentLabel,
+  createBotGatewayConfigDraft, createMcpServerDraft, createMcpServerDraftFromConfig, createMcpServerDraftFromUnknown, DndContext, DragEndEvent, GatewayMcpServerConfig, GatewayProviderConfig, Input, isBotGatewayConfigDraftSubmittable, KeyboardSensor, KeyRound, KeyValueRowsControl, languageDisplayName, Layers3, LoaderCircle,
+  mcpServerConfigFromDraft, mcpServerEndpointSummary, mcpServerTransportOptions, mcpStdioMessageModeOptions, McpServerDraft, normalizeBotGatewayAuthType, normalizeBotGatewayPlatform, normalizeProviderModelSelector, normalizeProxyUpstreamConfig, normalizeToolHubConfig, numberValue, Palette, Pencil, Plus, ProfileConfig, profileAgentLabel,
   PanelLeftOpen, Power, ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ResolvedLanguage, ResolvedTheme, Select, SelectControl,
-  PointerSensor, rectSortingStrategy, SettingsPageId, SortableContext, sortableKeyboardCoordinates, themeDisplayName,
+  PointerSensor, rectSortingStrategy, Settings, SettingsPageId, SortableContext, sortableKeyboardCoordinates, themeDisplayName,
   translateOptions, TrayBalanceProgressConfig, TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant,
   appLogoUrl, trayMascotIconUrls, arrayMove, defaultTrayWidgetVariant, isTraySingletonWidgetType, normalizeTrayWidget, normalizeTrayWidgets, Switch, Textarea, Trash2, trayWidgetVariantOptions, useAppText, useEffect, useMemo, useRef, useSensor, useSensors, useSortable, useState, validateMcpServerDraft,
   X
 } from "../shared/index";
+import { ModelSelector } from "./model-selector";
 
 const settingsPageContentWidthClassName = "mx-auto w-full max-w-[900px]";
 
@@ -20,6 +21,7 @@ export function AppSettingsDialog({
   appInfo,
   botAddRequestKey,
   botConfigs,
+  config,
   copy,
   initialPage = "appearance",
   languagePreference,
@@ -27,6 +29,7 @@ export function AppSettingsDialog({
   onChangeBotConfigs,
   onChangeLaunchAtLogin,
   onChangeObservability,
+  onChangeProxy,
   onChangeToolHub,
   onChangeTrayBalanceProgress,
   onChangeLanguage,
@@ -36,6 +39,7 @@ export function AppSettingsDialog({
   onClose,
   observability,
   profiles,
+  proxy,
   providers,
   providerAccountSnapshots,
   systemLanguage,
@@ -45,11 +49,13 @@ export function AppSettingsDialog({
   traySupported,
   trayBalanceProgress,
   trayIconPreference,
-  trayWidgets
+  trayWidgets,
+  updateConfig
 }: {
   appInfo: AppInfo;
   botAddRequestKey?: number;
   botConfigs: BotGatewaySavedConfig[];
+  config: AppConfig;
   copy: AppCopy;
   initialPage?: SettingsPageId;
   languagePreference: AppLanguagePreference;
@@ -57,6 +63,7 @@ export function AppSettingsDialog({
   onChangeBotConfigs: (configs: BotGatewaySavedConfig[]) => void;
   onChangeLaunchAtLogin: (checked: boolean) => void;
   onChangeObservability: (patch: Partial<AppConfig["observability"]>) => void;
+  onChangeProxy: (patch: Partial<AppConfig["proxy"]>) => void;
   onChangeToolHub: (patch: Partial<AppConfig["toolHub"]>) => void;
   onChangeTrayBalanceProgress: (config: TrayBalanceProgressConfig) => void;
   onChangeLanguage: (value: string) => void;
@@ -66,6 +73,7 @@ export function AppSettingsDialog({
   onClose: () => void;
   observability: AppConfig["observability"];
   profiles: ProfileConfig[];
+  proxy: AppConfig["proxy"];
   providers: GatewayProviderConfig[];
   providerAccountSnapshots: ProviderAccountSnapshot[];
   systemLanguage: ResolvedLanguage;
@@ -76,6 +84,7 @@ export function AppSettingsDialog({
   trayBalanceProgress?: TrayBalanceProgressConfig;
   trayIconPreference: AppConfig["trayIcon"];
   trayWidgets: TrayWidgetConfig[];
+  updateConfig: (mutator: (config: AppConfig) => AppConfig) => void;
 }) {
   return (
     <SettingsLayout
@@ -83,14 +92,26 @@ export function AppSettingsDialog({
       initialPage={initialPage}
       onClose={onClose}
       renderPage={(activePage) => {
+        if (activePage === "general") {
+          return (
+            <GeneralSettingsPage
+              appInfo={appInfo}
+              config={config}
+              copy={copy}
+              launchAtLogin={launchAtLogin}
+              launchAtLoginSupported={appInfo.launchAtLoginSupported}
+              onChangeLaunchAtLogin={onChangeLaunchAtLogin}
+              onChangeProxy={onChangeProxy}
+              proxy={proxy}
+              updateConfig={updateConfig}
+            />
+          );
+        }
         if (activePage === "appearance") {
           return (
             <AppearanceSettingsPage
               copy={copy}
               languagePreference={languagePreference}
-              launchAtLogin={launchAtLogin}
-              launchAtLoginSupported={appInfo.launchAtLoginSupported}
-              onChangeLaunchAtLogin={onChangeLaunchAtLogin}
               onChangeLanguage={onChangeLanguage}
               onChangeTheme={onChangeTheme}
               systemLanguage={systemLanguage}
@@ -143,14 +164,6 @@ export function AppSettingsDialog({
             />
           );
         }
-        if (activePage === "data") {
-          return (
-            <DataSettingsPage
-              appInfo={appInfo}
-              copy={copy}
-            />
-          );
-        }
         return null;
       }}
       traySupported={traySupported}
@@ -199,6 +212,13 @@ function SettingsLayout({
               onClick={() => setActivePage("appearance")}
             />
             <SettingsPageButton
+              active={visiblePage === "general"}
+              className="mt-1"
+              icon={Settings}
+              label={copy.settings.general}
+              onClick={() => setActivePage("general")}
+            />
+            <SettingsPageButton
               active={visiblePage === "observability"}
               className="mt-1"
               icon={Activity}
@@ -219,13 +239,6 @@ function SettingsLayout({
               label={copy.settings.bots}
               onClick={() => setActivePage("bots")}
             />
-            <SettingsPageButton
-              active={visiblePage === "data"}
-              className="mt-1"
-              icon={Database}
-              label={copy.settings.data}
-              onClick={() => setActivePage("data")}
-            />
             {traySupported ? (
               <SettingsPageButton
                 active={visiblePage === "tray"}
@@ -241,12 +254,6 @@ function SettingsLayout({
             {renderPage(visiblePage)}
           </section>
         </DialogBody>
-
-        <DialogFooter>
-          <Button onClick={onClose} type="button">
-            {copy.settings.done}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -292,9 +299,6 @@ function SettingsPageButton({
 function AppearanceSettingsPage({
   copy,
   languagePreference,
-  launchAtLogin,
-  launchAtLoginSupported,
-  onChangeLaunchAtLogin,
   onChangeLanguage,
   onChangeTheme,
   systemLanguage,
@@ -303,9 +307,6 @@ function AppearanceSettingsPage({
 }: {
   copy: AppCopy;
   languagePreference: AppLanguagePreference;
-  launchAtLogin: boolean;
-  launchAtLoginSupported: boolean;
-  onChangeLaunchAtLogin: (checked: boolean) => void;
   onChangeLanguage: (value: string) => void;
   onChangeTheme: (value: string) => void;
   systemLanguage: ResolvedLanguage;
@@ -333,17 +334,192 @@ function AppearanceSettingsPage({
         <Field label={copy.settings.language}>
           <SelectControl onChange={onChangeLanguage} options={languageOptions} value={languagePreference} />
         </Field>
-        {launchAtLoginSupported ? (
-          <SettingsSwitchRow
-            checked={launchAtLogin}
-            description={copy.settings.launchAtLoginDescription}
-            icon={Power}
-            label={copy.settings.launchAtLogin}
-            onChange={onChangeLaunchAtLogin}
-          />
-        ) : null}
       </div>
     </div>
+  );
+}
+
+function GeneralSettingsPage({
+  appInfo,
+  config,
+  copy,
+  launchAtLogin,
+  launchAtLoginSupported,
+  onChangeLaunchAtLogin,
+  onChangeProxy,
+  proxy,
+  updateConfig
+}: {
+  appInfo: AppInfo;
+  config: AppConfig;
+  copy: AppCopy;
+  launchAtLogin: boolean;
+  launchAtLoginSupported: boolean;
+  onChangeLaunchAtLogin: (checked: boolean) => void;
+  onChangeProxy: (patch: Partial<AppConfig["proxy"]>) => void;
+  proxy: AppConfig["proxy"];
+  updateConfig: (mutator: (config: AppConfig) => AppConfig) => void;
+}) {
+  return (
+    <div className={cn(settingsPageContentWidthClassName, "grid grid-cols-1 gap-5")}>
+      <h3 className="text-[15px] font-semibold text-foreground">{copy.settings.general}</h3>
+      <ServerSettingsSection config={config} copy={copy} updateConfig={updateConfig} />
+      {launchAtLoginSupported ? (
+        <SettingsSwitchRow
+          checked={launchAtLogin}
+          description={copy.settings.launchAtLoginDescription}
+          icon={Power}
+          label={copy.settings.launchAtLogin}
+          onChange={onChangeLaunchAtLogin}
+        />
+      ) : null}
+      <ProxySettingsSection copy={copy} onChange={onChangeProxy} proxy={proxy} />
+      <DataSettingsSection appInfo={appInfo} copy={copy} />
+    </div>
+  );
+}
+
+function ServerSettingsSection({
+  config,
+  copy,
+  updateConfig
+}: {
+  config: AppConfig;
+  copy: AppCopy;
+  updateConfig: (mutator: (config: AppConfig) => AppConfig) => void;
+}) {
+  const t = (value: string) => copy.text[value] ?? value;
+
+  return (
+    <section className="grid grid-cols-1 gap-3">
+      <h4 className="text-[13px] font-semibold text-foreground">{t("Server")}</h4>
+      <div className="grid grid-cols-1 gap-3 rounded-md border border-border/70 bg-card/70 p-3 md:grid-cols-2">
+        <Field label={t("Host")}>
+          <Input
+            value={config.HOST}
+            onChange={(event) => updateConfig((next) => {
+              const host = event.target.value;
+              return {
+                ...next,
+                HOST: host,
+                gateway: { ...next.gateway, host },
+                routerEndpoint: endpointFromHostPort(host, next.PORT)
+              };
+            })}
+          />
+        </Field>
+        <Field label={t("Port")}>
+          <Input
+            type="number"
+            value={String(config.PORT)}
+            onChange={(event) => updateConfig((next) => {
+              const port = numberValue(event.target.value);
+              return {
+                ...next,
+                PORT: port,
+                gateway: { ...next.gateway, port },
+                routerEndpoint: endpointFromHostPort(next.HOST, port)
+              };
+            })}
+          />
+        </Field>
+      </div>
+    </section>
+  );
+}
+
+function ProxySettingsSection({
+  copy,
+  onChange,
+  proxy
+}: {
+  copy: AppCopy;
+  onChange: (patch: Partial<AppConfig["proxy"]>) => void;
+  proxy: AppConfig["proxy"];
+}) {
+  const t = (value: string) => copy.text[value] ?? value;
+  const upstream = normalizeProxyUpstreamConfig(proxy.upstream);
+  const modeOptions = [
+    { label: t("Do not use proxy"), value: "none" },
+    { label: t("Use system proxy"), value: "system" },
+    { label: t("Use custom proxy"), value: "custom" }
+  ];
+
+  const patchUpstream = (patch: Partial<AppConfig["proxy"]["upstream"]>) => {
+    onChange({
+      upstream: normalizeProxyUpstreamConfig({
+        ...upstream,
+        ...patch,
+        custom: {
+          ...upstream.custom,
+          ...(patch.custom ?? {})
+        }
+      })
+    });
+  };
+  const patchCustom = (custom: Partial<AppConfig["proxy"]["upstream"]["custom"]>) => {
+    patchUpstream({
+      custom: {
+        ...upstream.custom,
+        ...custom
+      }
+    });
+  };
+
+  return (
+    <section className="grid grid-cols-1 gap-3">
+      <h4 className="text-[13px] font-semibold text-foreground">{copy.settings.proxy}</h4>
+      <div className="grid grid-cols-1 gap-3 rounded-md border border-border/70 bg-card/70 p-3 md:grid-cols-2">
+        <Field className="md:col-span-2" label={t("Proxy source")}>
+          <SelectControl
+            onChange={(mode) => patchUpstream({ mode: mode as AppConfig["proxy"]["upstream"]["mode"] })}
+            options={modeOptions}
+            value={upstream.mode}
+          />
+        </Field>
+
+        {upstream.mode === "custom" ? (
+          <>
+            <Field label={t("Proxy server")}>
+              <Input
+                onChange={(event) => patchCustom({ server: event.target.value })}
+                placeholder="127.0.0.1"
+                value={upstream.custom.server}
+              />
+            </Field>
+            <Field label={t("Port")}>
+              <Input
+                max={65535}
+                min={1}
+                onChange={(event) => {
+                  const port = Number(event.target.value);
+                  if (Number.isFinite(port)) {
+                    patchCustom({ port });
+                  }
+                }}
+                type="number"
+                value={String(upstream.custom.port)}
+              />
+            </Field>
+            <Field label={t("Username")}>
+              <Input
+                autoComplete="off"
+                onChange={(event) => patchCustom({ username: event.target.value })}
+                value={upstream.custom.username}
+              />
+            </Field>
+            <Field label={t("Password")}>
+              <Input
+                autoComplete="new-password"
+                onChange={(event) => patchCustom({ password: event.target.value })}
+                type="password"
+                value={upstream.custom.password}
+              />
+            </Field>
+          </>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -391,7 +567,6 @@ function ToolHubSettingsPage({
   toolHub: AppConfig["toolHub"];
 }) {
   const t = useAppText();
-  const modelOptions = useMemo(() => createRouteModelOptions(providers), [providers]);
   const selectedProviderModel = useMemo(() => selectedToolHubProviderModelValue(toolHub, providers), [providers, toolHub]);
   const [mcpDialogDraft, setMcpDialogDraft] = useState<McpServerDraft>(() => createMcpServerDraft(toolHub.mcpServers));
   const [mcpDialogError, setMcpDialogError] = useState("");
@@ -403,6 +578,12 @@ function ToolHubSettingsPage({
 
   const selectProviderModel = (value: string) => {
     if (!value) {
+      onChange({
+        llm: {
+          ...toolHub.llm,
+          model: ""
+        }
+      });
       return;
     }
     const parsed = parseProviderModelSelectValue(value);
@@ -522,12 +703,10 @@ function ToolHubSettingsPage({
           />
           <div className="grid grid-cols-1 gap-3 rounded-md border border-border/70 bg-card/70 p-3 md:grid-cols-2">
             <Field className="md:col-span-2" label={copy.settings.toolHubModel}>
-              <SelectControl
+              <ModelSelector
                 onChange={selectProviderModel}
-                options={[
-                  { disabled: true, label: copy.settings.toolHubModelPlaceholder, value: "" },
-                  ...modelOptions
-                ]}
+                placeholder={copy.settings.toolHubModelPlaceholder}
+                providers={providers}
                 value={selectedProviderModel}
               />
             </Field>
@@ -879,16 +1058,17 @@ function selectedToolHubProviderModelValue(toolHub: AppConfig["toolHub"], provid
     provider.models?.includes(model) &&
     (!baseUrl || !providerBaseUrl(provider) || providerBaseUrl(provider) === baseUrl)
   ) ?? providers.find((provider) => provider.models?.includes(model));
-  return matchedProvider ? `${matchedProvider.name},${model}` : "";
+  return matchedProvider ? `${matchedProvider.name}/${model}` : normalizeProviderModelSelector(model);
 }
 
 function parseProviderModelSelectValue(value: string): { model: string; provider: string } | undefined {
-  const commaIndex = value.indexOf(",");
-  if (commaIndex <= 0 || commaIndex >= value.length - 1) {
+  const normalized = normalizeProviderModelSelector(value);
+  const slashIndex = normalized.indexOf("/");
+  if (slashIndex <= 0 || slashIndex >= normalized.length - 1) {
     return undefined;
   }
-  const provider = value.slice(0, commaIndex).trim();
-  const model = value.slice(commaIndex + 1).trim();
+  const provider = normalized.slice(0, slashIndex).trim();
+  const model = normalized.slice(slashIndex + 1).trim();
   return provider && model ? { model, provider } : undefined;
 }
 
@@ -935,7 +1115,7 @@ function SettingsSwitchRow({
   );
 }
 
-function DataSettingsPage({
+function DataSettingsSection({
   appInfo,
   copy
 }: {
@@ -971,10 +1151,9 @@ function DataSettingsPage({
   }
 
   return (
-    <div className={cn(settingsPageContentWidthClassName, "grid grid-cols-1 gap-5")}>
+    <section className="grid grid-cols-1 gap-3">
       <div className="min-w-0">
-        <h3 className="text-[15px] font-semibold text-foreground">{copy.settings.data}</h3>
-        <div className="mt-1 text-[12px] text-muted-foreground">{t("Configuration is stored in SQLite. The legacy JSON file is only read once for migration.")}</div>
+        <h4 className="text-[13px] font-semibold text-foreground">{copy.settings.data}</h4>
       </div>
 
       <div className="grid gap-2 rounded-md border border-border bg-background p-3">
@@ -1011,7 +1190,7 @@ function DataSettingsPage({
           </div>
         ) : null}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -1577,6 +1756,44 @@ function BotConfigDialog({
                 />
               </Field>
             ))}
+            <Field label={t("Bot language")}>
+              <SelectControl
+                onChange={(value) => update({ botLanguage: value as BotGatewayConfigDraft["botLanguage"] })}
+                options={[
+                  { label: t("Automatic"), value: "auto" },
+                  { label: "English", value: "en" },
+                  { label: "简体中文", value: "zh-CN" }
+                ]}
+                value={draft.botLanguage}
+              />
+            </Field>
+            <Field label={t("Maximum turn time (minutes)")}>
+              <Input min="1" max="60" type="number" value={draft.botMaxTurnMinutes} onChange={(event) => update({ botMaxTurnMinutes: event.target.value })} />
+            </Field>
+            <Field label={t("Session idle reset (minutes, 0 disables)")}>
+              <Input min="0" max="43200" type="number" value={draft.botSessionIdleMinutes} onChange={(event) => update({ botSessionIdleMinutes: event.target.value })} />
+            </Field>
+            <Field label={t("Long message chunk size")}>
+              <Input min="500" max="20000" type="number" value={draft.botMessageChunkChars} onChange={(event) => update({ botMessageChunkChars: event.target.value })} />
+            </Field>
+            <Field label={t("Maximum attachment size (MB)")}>
+              <Input min="1" max="100" type="number" value={draft.botMaxAttachmentMb} onChange={(event) => update({ botMaxAttachmentMb: event.target.value })} />
+            </Field>
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+              <span className="text-[12px] font-medium">{t("Stream replies and progress")}</span>
+              <Switch checked={draft.botStreamReplies} onCheckedChange={(checked) => update({ botStreamReplies: checked })} />
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+              <span className="text-[12px] font-medium">{t("Send and receive attachments")}</span>
+              <Switch checked={draft.botMediaEnabled} onCheckedChange={(checked) => update({ botMediaEnabled: checked })} />
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+              <div>
+                <div className="text-[12px] font-medium">{t("Allow Agent shell tools")}</div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">{t("Controls Agent tool permission; it does not add a Bot shell command.")}</div>
+              </div>
+              <Switch checked={draft.botShellEnabled} onCheckedChange={(checked) => update({ botShellEnabled: checked })} />
+            </div>
           </fieldset>
           {error ? (
             <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">

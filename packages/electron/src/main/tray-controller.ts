@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, Tray, app, nativeImage, screen } from "electron";
+import { BrowserWindow, Menu, Tray, app, nativeImage, screen, type BrowserWindowConstructorOptions } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { deflateSync } from "node:zlib";
@@ -17,7 +17,21 @@ const popoverDetailWidth = 420;
 const popoverMargin = 8;
 const trayActivationSuppressMs = 750;
 const trayMenuBarIconSize = 20;
-const trayWindowBackgroundColor = "#020617";
+const trayWindowBackgroundColor = "#1c1c1e";
+const trayWindowMaterialOptions: Pick<
+  BrowserWindowConstructorOptions,
+  "backgroundColor" | "transparent" | "vibrancy" | "visualEffectState"
+> = process.platform === "darwin"
+  ? {
+      backgroundColor: "#00000000",
+      transparent: true,
+      vibrancy: "under-window",
+      visualEffectState: "active"
+    }
+  : {
+      backgroundColor: trayWindowBackgroundColor,
+      transparent: false
+    };
 const trayTokenFallbackTitle = "0 tokens";
 const trayIconFallbackPath = path.join(__dirname, "../assets/tray.png");
 const trayMascotIconIds = ["violet", "orange", "cyan"] as const;
@@ -190,7 +204,6 @@ class TrayController {
     this.popover = new BrowserWindow({
       acceptFirstMouse: true,
       alwaysOnTop: true,
-      backgroundColor: trayWindowBackgroundColor,
       frame: false,
       fullscreenable: false,
       hasShadow: true,
@@ -203,7 +216,7 @@ class TrayController {
       show: false,
       skipTaskbar: true,
       title: `${APP_NAME} Usage`,
-      transparent: false,
+      ...trayWindowMaterialOptions,
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
@@ -215,6 +228,7 @@ class TrayController {
       width: popoverMenuWidth
     });
 
+    reinforceMacOSTrayMaterial(this.popover);
     prepareTrayWindowForSharpRendering(this.popover);
     this.popover.setAlwaysOnTop(true, "pop-up-menu");
     this.popover.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -235,7 +249,6 @@ class TrayController {
     this.detailPopover = new BrowserWindow({
       acceptFirstMouse: true,
       alwaysOnTop: true,
-      backgroundColor: trayWindowBackgroundColor,
       frame: false,
       fullscreenable: false,
       hasShadow: true,
@@ -248,7 +261,7 @@ class TrayController {
       show: false,
       skipTaskbar: true,
       title: `${APP_NAME} Usage Detail`,
-      transparent: false,
+      ...trayWindowMaterialOptions,
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
@@ -260,6 +273,7 @@ class TrayController {
       width: popoverDetailWidth
     });
 
+    reinforceMacOSTrayMaterial(this.detailPopover);
     prepareTrayWindowForSharpRendering(this.detailPopover);
     this.detailPopover.setAlwaysOnTop(true, "pop-up-menu");
     this.detailPopover.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -561,6 +575,22 @@ function createTrayPageUrl(mode: "detail" | "menu", provider?: string): string {
 function normalizeDetailProvider(provider?: string): string | undefined {
   const trimmed = provider?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function reinforceMacOSTrayMaterial(window: BrowserWindow): void {
+  if (process.platform !== "darwin") {
+    return;
+  }
+
+  const applyMaterial = () => {
+    if (!window.isDestroyed()) {
+      window.setBackgroundColor("#00000000");
+      window.setVibrancy("under-window");
+    }
+  };
+
+  applyMaterial();
+  window.webContents.on("did-finish-load", applyMaterial);
 }
 
 function prepareTrayWindowForSharpRendering(window: BrowserWindow): void {

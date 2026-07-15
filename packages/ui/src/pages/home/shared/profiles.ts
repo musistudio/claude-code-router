@@ -102,6 +102,8 @@ import { cn } from "@/lib/utils";
 import appLogoUrl from "@/assets/logo.png";
 import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
 import codexLogoUrl from "@/assets/agent-logos/codex.png";
+import grokLogoUrl from "@/assets/agent-logos/grok.ico";
+import openCodeLogoUrl from "@/assets/agent-logos/opencode.ico";
 import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
 import onboardingMascotSpriteUrl from "@/assets/onboarding/mascot-transition.svg";
 import anthropicProviderIconUrl from "@/assets/provider-icons/anthropic.png";
@@ -374,7 +376,7 @@ import type { AgentFilterValue, RouterConditionSource } from "./options";
 import type { MotionSafeDivAttributes } from "./motion";
 
 
-import { isPlainRecord, stringValue, uniqueStrings } from "./common";
+import { isPlainRecord, normalizeProviderModelSelector, stringValue, uniqueStrings } from "./common";
 import { virtualModelProfileModelNames } from "./providers";
 import { endpointFromHostPort } from "./services";
 import { keyValueRowsFromRecord, recordFromKeyValueRows, stringRecordValue, validateProfileEnvRows } from "./virtual-models";
@@ -397,17 +399,7 @@ export function defaultProfileClientModel(config: AppConfig): string {
 }
 
 export function normalizeProfileClientModel(value: string | undefined): string {
-  const trimmed = value?.trim();
-  if (!trimmed) {
-    return "";
-  }
-  const commaIndex = trimmed.indexOf(",");
-  if (commaIndex > 0 && commaIndex < trimmed.length - 1) {
-    const provider = trimmed.slice(0, commaIndex).trim();
-    const model = trimmed.slice(commaIndex + 1).trim();
-    return provider && model ? `${provider}/${model}` : "";
-  }
-  return trimmed;
+  return normalizeProviderModelSelector(value);
 }
 
 export type ProfileModelProviderOption = {
@@ -453,12 +445,8 @@ export function parseProfileModelValue(
   const providerOptions = profileModelProviderOptions(providers, virtualModelProfiles);
   for (const provider of providerOptions) {
     const slashPrefix = `${provider.name}/`;
-    const commaPrefix = `${provider.name},`;
     if (trimmed.startsWith(slashPrefix)) {
       return { model: trimmed.slice(slashPrefix.length).trim(), provider: provider.name };
-    }
-    if (trimmed.startsWith(commaPrefix)) {
-      return { model: trimmed.slice(commaPrefix.length).trim(), provider: provider.name };
     }
   }
   const slashIndex = trimmed.indexOf("/");
@@ -685,6 +673,11 @@ const botGatewayPlatformSpecs: readonly BotGatewayPlatformSpec[] = [
         ]
       }
     ]
+  },
+  {
+    value: "imessage",
+    label: "iMessage",
+    auth: [{ value: "local", label: "Local App", fields: [] }]
   }
 ];
 
@@ -770,6 +763,18 @@ export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code"
   };
 }
 
+export function profileDraftWithDetectedAppPath(
+  draft: AddProfileDraft,
+  chatgptAppPath?: string,
+  opencodeAppPath?: string
+): AddProfileDraft {
+  const detectedPath = (draft.agent === "codex" ? chatgptAppPath : draft.agent === "opencode" ? opencodeAppPath : "")?.trim() || "";
+  if (draft.appPath.trim() || !detectedPath) {
+    return draft;
+  }
+  return { ...draft, appPath: detectedPath };
+}
+
 export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs: BotGatewaySavedConfig[] = []): AddProfileDraft {
   const botDraft = createBotGatewayDraft(profile.botGateway);
   const botConfigId = profile.botConfigId || matchingBotConfigId(profile.botGateway, botConfigs);
@@ -790,6 +795,15 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
       surface
     };
   }
+  if (profile.agent === "grok") {
+    return {
+      ...createProfileDraft("grok", profile.name),
+      envRows: keyValueRowsFromRecord(codexCompatibleProfileEnv(profile.env ?? {})),
+      model: profile.model,
+      scope: "ccr",
+      surface: "cli"
+    };
+  }
   const surface = profile.agent === "zcode" ? "app" : normalizeProfileSurfaceForForm(profile.surface);
   return {
     ...createProfileDraft(profile.agent, profile.name),
@@ -803,7 +817,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
     providerId: profile.providerId ?? "claude-code-router",
     providerName: profile.providerName ?? "Claude Code Router",
     scope: normalizeProfileFormScope(profile.scope),
-    showAllSessions: profile.agent === "zcode" ? false : Boolean(profile.showAllSessions),
+    showAllSessions: profile.agent === "zcode" || profile.agent === "opencode" ? false : Boolean(profile.showAllSessions),
     surface
   };
 }
@@ -823,6 +837,9 @@ export function isProfileDraftSubmittable(draft: AddProfileDraft): boolean {
     return false;
   }
   if (draft.agent === "claude-code") {
+    return true;
+  }
+  if (draft.agent === "grok") {
     return true;
   }
   return (
@@ -878,7 +895,7 @@ export function profileConfigFromDraft(
     providerName: draft.providerName,
     scope: draft.scope,
     settingsFile: draft.settingsFile,
-    showAllSessions: draft.agent === "zcode" ? false : draft.showAllSessions,
+    showAllSessions: draft.agent === "zcode" || draft.agent === "opencode" ? false : draft.showAllSessions,
     smallFastModel: draft.smallFastModel,
     surface: draft.surface
   }, existingProfiles.length);
@@ -902,6 +919,7 @@ function botGatewayHandoffFromProfileDraft(
 
 export function createBotGatewayConfigDraft(config?: BotGatewaySavedConfig): BotGatewayConfigDraft {
   const botDraft = createBotGatewayDraft(config?.botGateway);
+  const bot = normalizeBotGatewayRuntimeConfig(config?.botGateway) ?? fallbackConfig.botGateway;
   return {
     botAuthFields: botDraft.botAuthFields,
     botAuthType: botDraft.botAuthType,
@@ -910,7 +928,15 @@ export function createBotGatewayConfigDraft(config?: BotGatewaySavedConfig): Bot
     botHandoffIdleSeconds: botDraft.botHandoffIdleSeconds,
     botHandoffPhoneBluetoothTargets: botDraft.botHandoffPhoneBluetoothTargets,
     botHandoffPhoneWifiTargets: botDraft.botHandoffPhoneWifiTargets,
+    botLanguage: bot.language,
+    botMaxAttachmentMb: String(Math.max(1, Math.round(bot.maxAttachmentBytes / (1024 * 1024)))),
+    botMaxTurnMinutes: String(Math.max(1, Math.round(bot.maxTurnTimeMs / 60_000))),
+    botMediaEnabled: bot.mediaEnabled,
+    botMessageChunkChars: String(bot.messageChunkChars),
     botPlatform: botDraft.botPlatform === "none" ? "weixin-ilink" : botDraft.botPlatform,
+    botSessionIdleMinutes: String(bot.sessionIdleMinutes),
+    botShellEnabled: bot.shellEnabled,
+    botStreamReplies: bot.streamReplies,
     name: config?.name ?? ""
   };
 }
@@ -978,12 +1004,20 @@ function botGatewayConfigFromDraft(
     },
     integrationConfig: authPayload.integrationConfig,
     integrationId: existingBotGateway?.integrationId?.trim() || createBotGatewayIntegrationId(configId),
+    language: draft.botLanguage,
+    maxAttachmentBytes: numberDraftValue(draft.botMaxAttachmentMb, 20, 1, 100) * 1024 * 1024,
+    maxTurnTimeMs: numberDraftValue(draft.botMaxTurnMinutes, 10, 1, 60) * 60_000,
+    mediaEnabled: draft.botMediaEnabled,
+    messageChunkChars: numberDraftValue(draft.botMessageChunkChars, 3500, 500, 20_000),
     platform,
     pollIntervalMs: fallbackConfig.botGateway.pollIntervalMs,
     requestTimeoutMs: fallbackConfig.botGateway.requestTimeoutMs,
+    sessionIdleMinutes: numberDraftValue(draft.botSessionIdleMinutes, 0, 0, 43_200),
+    shellEnabled: draft.botShellEnabled,
     sourceDir: "",
     startupTimeoutMs: fallbackConfig.botGateway.startupTimeoutMs,
     stateDir: existingBotGateway?.stateDir?.trim() || createBotGatewayStateDir(configId),
+    streamReplies: draft.botStreamReplies,
     tenantId: existingBotGateway?.tenantId?.trim() || createBotGatewayTenantId(configName || configId)
   };
   return config;
@@ -1297,6 +1331,17 @@ export function normalizeBotGatewayRuntimeConfig(value: unknown): BotGatewayRunt
     },
     integrationConfig: websocketBotGatewayIntegrationConfig(platform, isPlainRecord(record.integrationConfig) ? record.integrationConfig : {}),
     integrationId: typeof record.integrationId === "string" ? record.integrationId : fallbackConfig.botGateway.integrationId,
+    language: record.language === "en" || record.language === "zh-CN" || record.language === "auto" ? record.language : fallbackConfig.botGateway.language,
+    maxAttachmentBytes: Number.isFinite(Number(record.maxAttachmentBytes))
+      ? numberDraftValue(String(record.maxAttachmentBytes), fallbackConfig.botGateway.maxAttachmentBytes, 1024, 100 * 1024 * 1024)
+      : fallbackConfig.botGateway.maxAttachmentBytes,
+    maxTurnTimeMs: Number.isFinite(Number(record.maxTurnTimeMs))
+      ? numberDraftValue(String(record.maxTurnTimeMs), fallbackConfig.botGateway.maxTurnTimeMs, 10_000, 3_600_000)
+      : fallbackConfig.botGateway.maxTurnTimeMs,
+    mediaEnabled: typeof record.mediaEnabled === "boolean" ? record.mediaEnabled : fallbackConfig.botGateway.mediaEnabled,
+    messageChunkChars: Number.isFinite(Number(record.messageChunkChars))
+      ? numberDraftValue(String(record.messageChunkChars), fallbackConfig.botGateway.messageChunkChars, 500, 20_000)
+      : fallbackConfig.botGateway.messageChunkChars,
     platform,
     pollIntervalMs: Number.isFinite(Number(record.pollIntervalMs))
       ? numberDraftValue(String(record.pollIntervalMs), fallbackConfig.botGateway.pollIntervalMs, 500, 60_000)
@@ -1304,11 +1349,16 @@ export function normalizeBotGatewayRuntimeConfig(value: unknown): BotGatewayRunt
     requestTimeoutMs: Number.isFinite(Number(record.requestTimeoutMs))
       ? numberDraftValue(String(record.requestTimeoutMs), fallbackConfig.botGateway.requestTimeoutMs, 1000, 3_600_000)
       : fallbackConfig.botGateway.requestTimeoutMs,
+    sessionIdleMinutes: Number.isFinite(Number(record.sessionIdleMinutes))
+      ? numberDraftValue(String(record.sessionIdleMinutes), fallbackConfig.botGateway.sessionIdleMinutes, 0, 43_200)
+      : fallbackConfig.botGateway.sessionIdleMinutes,
+    shellEnabled: typeof record.shellEnabled === "boolean" ? record.shellEnabled : fallbackConfig.botGateway.shellEnabled,
     sourceDir: typeof record.sourceDir === "string" ? record.sourceDir : fallbackConfig.botGateway.sourceDir,
     startupTimeoutMs: Number.isFinite(Number(record.startupTimeoutMs))
       ? numberDraftValue(String(record.startupTimeoutMs), fallbackConfig.botGateway.startupTimeoutMs, 1000, 120_000)
       : fallbackConfig.botGateway.startupTimeoutMs,
     stateDir: typeof record.stateDir === "string" ? record.stateDir : fallbackConfig.botGateway.stateDir,
+    streamReplies: typeof record.streamReplies === "boolean" ? record.streamReplies : fallbackConfig.botGateway.streamReplies,
     tenantId: typeof record.tenantId === "string" ? record.tenantId : fallbackConfig.botGateway.tenantId
   };
   if (conversationRef) {
@@ -1368,7 +1418,7 @@ export function profileSummaryItems(
     : [];
   const appPath = profile.appPath?.trim() || "";
   const appPathSummaryItems = appPath && surface !== "cli" && profile.agent !== "zcode"
-    ? [{ label: t(profile.agent === "claude-code" ? "CLAUDE_APP_PATH" : "CHATGPT_APP_PATH"), value: appPath }]
+    ? [{ label: t(profile.agent === "claude-code" ? "CLAUDE_APP_PATH" : profile.agent === "opencode" ? "OPENCODE_APP_PATH" : "CHATGPT_APP_PATH"), value: appPath }]
     : [];
   const savedBot = profile.botConfigId
     ? config.botConfigs.find((item) => item.id === profile.botConfigId)
@@ -1413,10 +1463,17 @@ export function profileSummaryItems(
     ];
   }
 
+  if (profile.agent === "grok") {
+    return [
+      { label: t("Model"), value: modelValue },
+      ...envSummaryItems
+    ];
+  }
+
   return [
     { label: t("Model"), value: modelValue },
     { label: t("Provider ID"), value: profile.providerId ?? "claude-code-router" },
-    ...(profile.agent === "zcode" ? [] : [{ label: t("Show all sessions"), value: profile.showAllSessions ? t("Enabled") : t("Disabled") }]),
+    ...(profile.agent === "zcode" || profile.agent === "opencode" ? [] : [{ label: t("Show all sessions"), value: profile.showAllSessions ? t("Enabled") : t("Disabled") }]),
     ...appPathSummaryItems,
     ...botSummaryItems,
     ...envSummaryItems
@@ -1450,6 +1507,18 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
       surface
     };
   }
+  if (agent === "grok") {
+    return {
+      agent: "grok",
+      enabled: profile.enabled,
+      env: codexCompatibleProfileEnv(env),
+      id: profile.id || `profile-${index + 1}`,
+      model,
+      name,
+      scope: "ccr",
+      surface: "cli"
+    };
+  }
   return {
     agent: normalizeCodexCompatibleAgent(agent),
     ...(surface !== "cli" && agent !== "zcode" && profile.appPath?.trim() ? { appPath: profile.appPath.trim() } : {}),
@@ -1468,7 +1537,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
     providerId: profile.providerId?.trim() || "claude-code-router",
     providerName: profile.providerName?.trim() || "Claude Code Router",
     scope,
-    showAllSessions: agent === "zcode" ? false : Boolean(profile.showAllSessions),
+    showAllSessions: agent === "zcode" || agent === "opencode" ? false : Boolean(profile.showAllSessions),
     surface
   };
 }
@@ -1523,6 +1592,10 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
     ? "claude-code"
     : rawAgent === "codex"
       ? "codex"
+      : rawAgent === "grok" || rawAgent === "grok-cli" || rawAgent === "grok cli"
+        ? "grok"
+      : rawAgent === "opencode" || rawAgent === "open-code" || rawAgent === "open code"
+        ? "opencode"
       : rawAgent === "zcode" || rawAgent === "z-code" || rawAgent === "z code"
         ? "zcode"
         : undefined;
@@ -1551,6 +1624,12 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
                       ? value.codexAppPath
                       : agent === "codex" && typeof value.codex_app_path === "string"
                         ? value.codex_app_path
+                        : agent === "opencode" && typeof value.openCodeAppPath === "string"
+                          ? value.openCodeAppPath
+                          : agent === "opencode" && typeof value.opencodeAppPath === "string"
+                            ? value.opencodeAppPath
+                            : agent === "opencode" && typeof value.opencode_app_path === "string"
+                              ? value.opencode_app_path
                         : undefined,
     botConfigId: typeof value.botConfigId === "string" ? value.botConfigId : typeof value.bot_config_id === "string" ? value.bot_config_id : undefined,
     botGateway: normalizeBotGatewayRuntimeConfig(value.botGateway ?? value.bot_gateway ?? value.bot),
@@ -1600,6 +1679,12 @@ export function profileAgentLabel(agent: ProfileConfig["agent"]): string {
   if (agent === "zcode") {
     return "ZCode";
   }
+  if (agent === "grok") {
+    return "Grok CLI";
+  }
+  if (agent === "opencode") {
+    return "OpenCode";
+  }
   return "Codex";
 }
 
@@ -1626,6 +1711,9 @@ export function profileSurfaceLabel(surface: ProfileSurface): string {
 export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[] {
   if (profile.agent === "zcode") {
     return ["app"];
+  }
+  if (profile.agent === "grok") {
+    return ["cli"];
   }
   const surface = normalizeProfileSurface(profile.surface);
   if (surface === "cli") {
@@ -1655,23 +1743,33 @@ export function profileAgentLogoUrl(agent: ProfileConfig["agent"]): string {
   if (agent === "zcode") {
     return zcodeLogoUrl;
   }
+  if (agent === "grok") {
+    return grokLogoUrl;
+  }
+  if (agent === "opencode") {
+    return openCodeLogoUrl;
+  }
   return codexLogoUrl;
 }
 
-function normalizeCodexCompatibleAgent(agent: ProfileConfig["agent"]): "codex" | "zcode" {
-  return agent === "zcode" ? "zcode" : "codex";
+function normalizeCodexCompatibleAgent(agent: ProfileConfig["agent"]): "codex" | "opencode" | "zcode" {
+  return agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : "codex";
 }
 
 function normalizeProfileAgent(agent: ProfileConfig["agent"]): ProfileConfig["agent"] {
-  return agent === "zcode" ? "zcode" : agent === "codex" ? "codex" : "claude-code";
+  return agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : agent === "grok" ? "grok" : agent === "codex" ? "codex" : "claude-code";
 }
 
 function normalizeProfileSurfaceForAgent(agent: ProfileConfig["agent"], surface: unknown): ProfileSurface {
-  return agent === "zcode" ? "app" : normalizeProfileSurface(surface);
+  return agent === "zcode" ? "app" : agent === "grok" ? "cli" : normalizeProfileSurface(surface);
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "~/.zcode/cli/config.json" : "~/.codex/config.toml";
+  return agent === "zcode"
+    ? "~/.zcode/cli/config.json"
+    : agent === "opencode"
+      ? "~/.config/opencode/opencode.jsonc"
+      : "~/.codex/config.toml";
 }
 
 function normalizeCodexConfigFileForAgent(agent: ProfileConfig["agent"], value: string | undefined): string {

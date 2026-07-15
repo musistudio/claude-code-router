@@ -1,6 +1,7 @@
 export type AppInfo = {
   appConfigDbFile: string;
   apiKeysDbFile: string;
+  chatgptAppPath?: string;
   configDir: string;
   configFile: string;
   dataDir: string;
@@ -8,6 +9,7 @@ export type AppInfo = {
   launchAtLoginSupported: boolean;
   requestLogsDbFile: string;
   name: string;
+  opencodeAppPath?: string;
   platform: string;
   usageDbFile: string;
   version: string;
@@ -175,7 +177,7 @@ export type ProviderAccountStatus = "ok" | "warning" | "critical" | "error" | "u
 export type ProviderAccountMeterKind = "balance" | "subscription" | "quota" | "time_window" | "tokens" | "requests";
 export type ProviderAccountMeterUnit = "USD" | "CNY" | "hours" | "minutes" | "tokens" | "requests" | string;
 export type ProviderAccountMeterWindow = "5h" | "daily" | "weekly" | "monthly" | string;
-export type ProviderAccountHttpJsonParser = "kimi-code-usages" | "new-api-key-usage" | "new-api-user-self";
+export type ProviderAccountHttpJsonParser = "grok-subscription" | "kimi-code-usages" | "new-api-key-usage" | "new-api-user-self";
 
 export type ProviderAccountConfig = {
   connectors?: ProviderAccountConnectorConfig[];
@@ -329,7 +331,7 @@ export type ProviderManifestFetchResult = {
   url: string;
 };
 
-export type LocalAgentProviderKind = "claude-code" | "codex" | "zcode";
+export type LocalAgentProviderKind = "claude-code" | "codex" | "grok" | "opencode" | "zcode";
 
 export type LocalAgentProviderStatus = "available" | "locked" | "missing";
 
@@ -442,6 +444,7 @@ export type GatewayProviderProbeRequest = {
   forceRefresh?: boolean;
   mode?: "connectivity" | "models" | "protocols";
   models?: string[];
+  providerPlugins?: unknown[];
   protocols?: GatewayProviderProtocol[];
   skipModelDiscovery?: boolean;
 };
@@ -460,6 +463,7 @@ export type GatewayProviderProbeCandidatesRequest = {
   forceRefresh?: boolean;
   mode?: "connectivity" | "models" | "protocols";
   models?: string[];
+  providerPlugins?: unknown[];
   protocols?: GatewayProviderProtocol[];
 };
 
@@ -515,6 +519,7 @@ export type GatewayProviderConnectivityCheckRequest = {
   candidates: GatewayProviderProbeCandidate[];
   forceRefresh?: boolean;
   models: string[];
+  providerPlugins?: unknown[];
   protocols?: GatewayProviderProtocol[];
 };
 
@@ -612,6 +617,20 @@ export type GatewayRuntimeConfig = {
 export type ProxyMode = "gateway" | "transparent";
 
 export type ProxyForwardMode = ProxyMode | "plugin";
+
+export type ProxyUpstreamMode = "none" | "system" | "custom";
+
+export type ProxyUpstreamCustomConfig = {
+  password: string;
+  port: number;
+  server: string;
+  username: string;
+};
+
+export type ProxyUpstreamConfig = {
+  custom: ProxyUpstreamCustomConfig;
+  mode: ProxyUpstreamMode;
+};
 
 export type ProxyRouteTarget = {
   host: string;
@@ -995,6 +1014,7 @@ export type ProxyRuntimeConfig = {
   port: number;
   systemProxy: boolean;
   targets: ProxyRouteTarget[];
+  upstream: ProxyUpstreamConfig;
 };
 
 export type ObservabilityConfig = {
@@ -1173,7 +1193,7 @@ export const DEFAULT_TRAY_WIDGETS: TrayWidgetConfig[] = [
   { id: "model-share", type: "model-share", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.modelShare }
 ];
 
-export type ProfileClientKind = "claude-code" | "codex" | "zcode";
+export type ProfileClientKind = "claude-code" | "codex" | "grok" | "opencode" | "zcode";
 export type CodexProfileConfigFormat = "legacy" | "separate_profile_files";
 export type CodexRemoteFrontendMode = "app" | "cli" | "claude-code";
 export type ProfileScope = "ccr" | "global" | "custom";
@@ -1302,12 +1322,25 @@ export type ProfileOpenResult = {
 
 export type ProfileRuntimeEntry = {
   agent: AgentKind;
+  botGateway?: BotGatewayRuntimeStatus;
   pid?: number;
   profileId: string;
   profileName: string;
   startedAt: string;
   state: "running";
   surface: ProfileOpenSurface;
+};
+
+export type BotGatewayRuntimeStatus = {
+  lastDeliveryAt?: string;
+  lastDeliveryStatus?: string;
+  lastError?: string;
+  lastErrorAt?: string;
+  lastEventAt?: string;
+  lastEventType?: string;
+  outboxCount: number;
+  state: "connected" | "error" | "starting" | "stopped" | "unknown";
+  updatedAt?: string;
 };
 
 export type ProfileRuntimeStatus = {
@@ -1404,12 +1437,20 @@ export type BotGatewayRuntimeConfig = {
   handoff: BotGatewayHandoffConfig;
   integrationConfig: Record<string, unknown>;
   integrationId: string;
+  language: "auto" | "en" | "zh-CN";
+  maxAttachmentBytes: number;
+  maxTurnTimeMs: number;
+  mediaEnabled: boolean;
+  messageChunkChars: number;
   platform: string;
   pollIntervalMs: number;
   requestTimeoutMs: number;
+  sessionIdleMinutes: number;
+  shellEnabled: boolean;
   sourceDir: string;
   startupTimeoutMs: number;
   stateDir: string;
+  streamReplies: boolean;
   tenantId: string;
 };
 
@@ -1815,6 +1856,7 @@ export type UsageComparisonRow = UsageTotals & {
   credentialId?: string;
   key: string;
   label: string;
+  logicalModel?: string;
   maxShare: number;
   model?: string;
   provider?: string;
@@ -1831,7 +1873,7 @@ export type UsageStatsSnapshot = {
   totals: UsageTotals;
 };
 
-export type AgentKind = "claude-code" | "codex" | "zcode" | "claude-design" | "unknown";
+export type AgentKind = "claude-code" | "codex" | "grok" | "opencode" | "zcode" | "claude-design" | "unknown";
 
 export type AgentAnalysisFilter = {
   agent?: AgentKind | "all";

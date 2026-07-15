@@ -10,7 +10,9 @@ import {
   profileOpenSurfaces,
   resolveClaudeCodeSettingsFile,
   resolveCodexConfigFile,
-  resolveProfileOpenSurface
+  resolveOpenCodeConfigFile,
+  resolveProfileOpenSurface,
+  shouldAutoStartProfileGateway
 } from "../../packages/core/src/profiles/launch-core.ts";
 
 const claudeProfile = {
@@ -31,6 +33,27 @@ const codexProfile = {
   model: "provider,model",
   name: "Codex Main",
   providerId: "openai-codex",
+  scope: "ccr",
+  surface: "auto"
+};
+
+const grokProfile = {
+  agent: "grok",
+  enabled: true,
+  id: "grok-main",
+  model: "provider,model",
+  name: "Grok Main",
+  scope: "ccr",
+  surface: "cli"
+};
+
+const openCodeProfile = {
+  agent: "opencode",
+  enabled: true,
+  id: "opencode-main",
+  model: "provider,model",
+  name: "OpenCode Main",
+  providerId: "claude-code-router",
   scope: "ccr",
   surface: "auto"
 };
@@ -57,8 +80,11 @@ test("profile open surfaces enforce agent capabilities", () => {
   assert.deepEqual(profileOpenSurfaces(claudeProfile), ["cli", "app"]);
   assert.deepEqual(profileOpenSurfaces({ ...claudeProfile, surface: "cli" }), ["cli"]);
   assert.deepEqual(profileOpenSurfaces({ ...codexProfile, agent: "zcode" }), ["app"]);
+  assert.deepEqual(profileOpenSurfaces(grokProfile), ["cli"]);
+  assert.deepEqual(profileOpenSurfaces(openCodeProfile), ["cli", "app"]);
   assert.equal(resolveProfileOpenSurface(codexProfile, "app"), "app");
   assert.throws(() => resolveProfileOpenSurface({ ...claudeProfile, surface: "cli" }, "app"), /does not support APP/);
+  assert.throws(() => resolveProfileOpenSurface(grokProfile, "app"), /does not support APP/);
 });
 
 test("default profile command surface is CLI unless the agent is app-only", () => {
@@ -68,10 +94,18 @@ test("default profile command surface is CLI unless the agent is app-only", () =
   assert.equal(defaultProfileOpenSurface({ ...codexProfile, agent: "zcode" }), "app");
 });
 
+test("Grok CLI starts a temporary CCR gateway when none is already running", () => {
+  assert.equal(shouldAutoStartProfileGateway(grokProfile, "cli"), true);
+  assert.equal(shouldAutoStartProfileGateway(codexProfile, "cli"), false);
+  assert.equal(shouldAutoStartProfileGateway(claudeProfile, "app"), false);
+});
+
 test("buildProfileLaunchPlan creates CCR-managed launcher paths", () => {
   const configDir = path.join(path.sep, "tmp", "ccr-config");
   const codexPlan = buildProfileLaunchPlan(configDir, codexProfile, "app");
   const claudePlan = buildProfileLaunchPlan(configDir, claudeProfile, "cli", ["--debug"]);
+  const grokPlan = buildProfileLaunchPlan(configDir, grokProfile, "cli", ["--debug"]);
+  const openCodePlan = buildProfileLaunchPlan(configDir, openCodeProfile, "cli", ["--debug"]);
 
   assert.equal(codexPlan.surface, "app");
   assert.deepEqual(codexPlan.args, ["app"]);
@@ -87,6 +121,17 @@ test("buildProfileLaunchPlan creates CCR-managed launcher paths", () => {
   assert.equal(claudePlan.env.CCR_CLAUDE_CODE_MODEL, "provider/model");
   assert.equal(claudePlan.env.CODEXL_CLAUDE_CODE_MODEL, "provider/model");
   assert.equal(claudePlan.env.ANTHROPIC_SMALL_FAST_MODEL, "provider/small");
+
+  assert.equal(grokPlan.surface, "cli");
+  assert.deepEqual(grokPlan.args, ["--debug"]);
+  assert.equal(path.basename(grokPlan.command), process.platform === "win32" ? "ccr-grok-cli-wrapper-grok-main.cmd" : "ccr-grok-cli-wrapper-grok-main");
+  assert.equal(grokPlan.env.CCR_PROFILE_SURFACE, "cli");
+
+  assert.equal(openCodePlan.surface, "cli");
+  assert.deepEqual(openCodePlan.args, ["--debug"]);
+  assert.equal(path.basename(openCodePlan.command), process.platform === "win32" ? "ccr-opencode-wrapper-opencode-main.cmd" : "ccr-opencode-wrapper-opencode-main");
+  assert.match(openCodePlan.env.OPENCODE_CONFIG, /opencode[\\/]opencode\.jsonc$/);
+  assert.throws(() => buildProfileLaunchPlan(configDir, openCodeProfile, "app"), /OpenCode App profiles/);
 
   assert.throws(() => buildProfileLaunchPlan(configDir, claudeProfile, "app"), /Claude App opening/);
 });
@@ -109,6 +154,10 @@ test("profile config paths honor CCR, custom, and global scopes", () => {
     path.join(configDir, "profiles", "custom-profile", "custom", "codex", "config.toml")
   );
   assert.equal(resolveCodexConfigFile(configDir, globalCodex), path.join(process.env.HOME, "codex-home", "config.toml"));
+  assert.equal(
+    resolveOpenCodeConfigFile(configDir, openCodeProfile),
+    path.join(configDir, "profiles", "opencode-main", "opencode", "opencode.jsonc")
+  );
 });
 
 test("profileOpenCommand quotes profile references for shell usage", () => {

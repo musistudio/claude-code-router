@@ -102,6 +102,8 @@ import { cn } from "@/lib/utils";
 import appLogoUrl from "@/assets/logo.png";
 import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
 import codexLogoUrl from "@/assets/agent-logos/codex.png";
+import grokLogoUrl from "@/assets/agent-logos/grok.ico";
+import openCodeLogoUrl from "@/assets/agent-logos/opencode.ico";
 import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
 import onboardingMascotSpriteUrl from "@/assets/onboarding/mascot-transition.svg";
 import anthropicProviderIconUrl from "@/assets/provider-icons/anthropic.png";
@@ -377,7 +379,7 @@ import type { MotionSafeDivAttributes } from "./motion";
 
 
 import { normalizeApiKeyLimits, positiveInteger } from "./api-keys";
-import { isPlainRecord, stringValue, uniqueStrings } from "./common";
+import { isPlainRecord, normalizeProviderModelSelector, stringValue, uniqueStrings } from "./common";
 import { formatEditableJson } from "./extensions";
 import { findProviderPreset, findProviderPresetByBaseUrl, findProviderPresetByIdentity, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey, providerIdentitySafetyIssue } from "./external";
 import { fusionModelProviderName } from "./profiles";
@@ -388,8 +390,12 @@ import type { AddProviderDraft, AddRoutingRuleDraft, ModelCatalogItem, ProviderC
 export const localAgentProviderIconUrls: Record<LocalAgentProviderKind, string> = {
   "claude-code": claudeCodeLogoUrl,
   codex: codexLogoUrl,
+  grok: grokLogoUrl,
+  opencode: openCodeLogoUrl,
   zcode: zcodeLogoUrl
 };
+
+const localAgentProviderApiKeyValue = "ccr-local-agent-login";
 
 export function createModelCatalogItems(config: AppConfig): ModelCatalogItem[] {
   const rows: ModelCatalogItem[] = [];
@@ -488,16 +494,17 @@ export function createRouteModelOptions(providers: GatewayProviderConfig[]): Arr
     return provider.models
       .filter(Boolean)
       .map((model) => ({
-        label: `${provider.name}, ${providerModelDisplayName(provider, model)}`,
-        value: `${provider.name},${model}`
+        label: `${provider.name}/${providerModelDisplayName(provider, model)}`,
+        value: `${provider.name}/${model}`
       }));
   });
 }
 
 export function routeTargetOptions(modelOptions: Array<{ label: string; value: string }>, value: string): Array<{ label: string; value: string }> {
+  const normalizedValue = normalizeProviderModelSelector(value);
   const options = [{ label: "Unset", value: "" }, ...modelOptions];
-  if (value && !options.some((option) => option.value === value)) {
-    return [{ label: value, value }, ...options];
+  if (normalizedValue && !options.some((option) => option.value === normalizedValue)) {
+    return [{ label: normalizedValue, value: normalizedValue }, ...options];
   }
   return options;
 }
@@ -545,13 +552,13 @@ export function routerRuleRewriteFromRule(rule: RouterRule): RouterRuleRewrite |
 
 export function routerRuleRewritesFromRule(rule: RouterRule): RouterRuleRewrite[] {
   if (rule.rewrites?.length) {
-    return rule.rewrites;
+    return rule.rewrites.map(normalizeRouterModelRewrite);
   }
   if (rule.rewrite) {
-    return [rule.rewrite];
+    return [normalizeRouterModelRewrite(rule.rewrite)];
   }
   return rule.target
-    ? [{ key: "request.body.model", operation: "set", value: rule.target }]
+    ? [{ key: "request.body.model", operation: "set", value: normalizeProviderModelSelector(rule.target) }]
     : [];
 }
 
@@ -576,7 +583,8 @@ export function formatRouterFallbackSummary(fallback: RouterFallbackConfig): str
   if (fallback.mode === "retry") {
     return `retry ${fallback.retryCount}x`;
   }
-  return fallback.models.length ? `on failure ${fallback.models.join(" > ")}` : "fallback targets unset";
+  const models = fallback.models.map(normalizeProviderModelSelector);
+  return models.length ? `on failure ${models.join(" > ")}` : "fallback targets unset";
 }
 
 export function routerRuleMatchesQuery(rule: RouterRule, query: string): boolean {
@@ -682,12 +690,13 @@ export function createRoutingRewriteDraftRow(): RoutingRewriteDraftRow {
 }
 
 export function createRoutingRewriteDraftRowFromRewrite(rewrite: RouterRuleRewrite): RoutingRewriteDraftRow {
+  const key = rewrite.key;
   return {
     id: `rewrite-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    key: rewrite.key,
+    key,
     match: rewrite.match ?? "",
     operation: rewrite.operation ?? "set",
-    value: rewrite.value ?? ""
+    value: normalizeRouterModelRewriteValue(key, rewrite.value)
   };
 }
 
@@ -705,12 +714,29 @@ export function isRoutingRewriteDraftRowValid(row: RoutingRewriteDraftRow): bool
 }
 
 export function routingRewriteFromDraftRow(row: RoutingRewriteDraftRow): RouterRuleRewrite {
+  const key = row.key.trim();
+  const value = normalizeRouterModelRewriteValue(key, row.value);
   return {
-    key: row.key.trim(),
+    key,
     ...(row.operation !== "set" ? { operation: row.operation } : { operation: "set" as const }),
     ...(row.operation === "array-replace" ? { match: row.match.trim() } : {}),
-    ...(row.operation !== "delete" ? { value: row.value.trim() } : {})
+    ...(row.operation !== "delete" ? { value } : {})
   };
+}
+
+function normalizeRouterModelRewrite(rewrite: RouterRuleRewrite): RouterRuleRewrite {
+  return isModelRewriteKey(rewrite.key) && rewrite.value
+    ? { ...rewrite, value: normalizeProviderModelSelector(rewrite.value) }
+    : rewrite;
+}
+
+function normalizeRouterModelRewriteValue(key: string, value: string | undefined): string {
+  const trimmed = value?.trim() ?? "";
+  return isModelRewriteKey(key) ? normalizeProviderModelSelector(trimmed) : trimmed;
+}
+
+function isModelRewriteKey(key: string | undefined): boolean {
+  return key?.trim() === "request.body.model";
 }
 
 export function uniqueRoutingRuleId(rules: RouterRule[]): string {
@@ -774,6 +800,9 @@ export function providerDeepLinkDisplayIcon(payload: ProviderDeepLinkPayload): s
 }
 
 export function providerDisplayIcon(provider: GatewayProviderConfig): string {
+  if (isLocalGrokProvider(provider)) {
+    return grokLogoUrl;
+  }
   const icon = provider.icon?.trim();
   if (icon) {
     return icon;
@@ -781,6 +810,15 @@ export function providerDisplayIcon(provider: GatewayProviderConfig): string {
 
   const preset = findProviderPresetByBaseUrl(providerBaseUrl(provider));
   return preset ? providerPresetIconUrls[preset.id] ?? "" : "";
+}
+
+function isLocalGrokProvider(provider: GatewayProviderConfig): boolean {
+  if (providerApiKey(provider) !== localAgentProviderApiKeyValue) {
+    return false;
+  }
+  const baseUrl = normalizeProviderBaseUrl(providerBaseUrl(provider)).toLowerCase();
+  const name = provider.name?.toLowerCase() ?? "";
+  return baseUrl.includes("cli-chat-proxy.grok.com") || name.includes("grok");
 }
 
 export type ProviderDeepLinkCatalogModelsResolution = {
@@ -1716,10 +1754,11 @@ export function providerProbeCandidates(draft: AddProviderDraft): ProviderProbeC
   const preset = findProviderPreset(draft.presetId);
   const protocols = providerProtocolOptions.map((option) => option.value);
   if (preset) {
+    const probeAllProtocols = preset.endpoints.length === 1;
     return preset.endpoints.map((endpoint) => ({
       ...endpoint,
       declaredProtocols: endpoint.protocols,
-      protocols,
+      protocols: probeAllProtocols ? protocols : endpoint.protocols,
       source: "preset"
     }));
   }

@@ -9,7 +9,6 @@ import {
   Layers3,
   Network,
   Route,
-  Server,
   UserRound,
   type LucideIcon
 } from "lucide-react";
@@ -46,14 +45,17 @@ import bailianProviderIconUrl from "@/assets/provider-icons/bailian.ico";
 import claudeapiProviderIconUrl from "@/assets/provider-icons/claudeapi.png";
 import code0ProviderIconUrl from "@/assets/provider-icons/code0.png";
 import deepseekProviderIconUrl from "@/assets/provider-icons/deepseek.ico";
+import fennoProviderIconUrl from "@/assets/provider-icons/fenno.jpg";
 import geminiProviderIconUrl from "@/assets/provider-icons/gemini.svg";
 import mistralProviderIconUrl from "@/assets/provider-icons/mistral.webp";
 import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
 import openaiProviderIconUrl from "@/assets/provider-icons/openai.png";
 import openrouterProviderIconUrl from "@/assets/provider-icons/openrouter.ico";
+import qiniuAiProviderIconUrl from "@/assets/provider-icons/qiniu-ai.png";
 import runapiProviderIconUrl from "@/assets/provider-icons/runapi.jpg";
 import siliconflowProviderIconUrl from "@/assets/provider-icons/siliconflow.png";
 import teamorouterProviderIconUrl from "@/assets/provider-icons/teamorouter.png";
+import unity2ProviderIconUrl from "@/assets/provider-icons/unity2.jpg";
 import zaiGlobalCodingProviderIconUrl from "@/assets/provider-icons/zai-global-coding.svg";
 import zaiGlobalGeneralProviderIconUrl from "@/assets/provider-icons/zai-global-general.svg";
 import zhipuCnCodingProviderIconUrl from "@/assets/provider-icons/zhipu-cn-coding.png";
@@ -108,6 +110,8 @@ export const agentFilterOptions: Array<{ label: string; value: AgentFilterValue 
   { label: "All agents", value: "all" },
   { label: "Claude Code", value: "claude-code" },
   { label: "Codex", value: "codex" },
+  { label: "Grok CLI", value: "grok" },
+  { label: "OpenCode", value: "opencode" },
   { label: "ZCode", value: "zcode" },
   { label: "Claude Design", value: "claude-design" },
   { label: "Unknown", value: "unknown" }
@@ -116,6 +120,8 @@ export const agentFilterOptions: Array<{ label: string; value: AgentFilterValue 
 export const profileAgentOptions: Array<{ label: string; value: ProfileConfig["agent"] }> = [
   { label: "Claude Code", value: "claude-code" },
   { label: "Codex", value: "codex" },
+  { label: "Grok CLI", value: "grok" },
+  { label: "OpenCode", value: "opencode" },
   { label: "ZCode", value: "zcode" }
 ];
 
@@ -324,6 +330,7 @@ export const providerPresetIconUrls: Record<string, string> = {
   claudeapi: claudeapiProviderIconUrl,
   code0: code0ProviderIconUrl,
   deepseek: deepseekProviderIconUrl,
+  fenno: fennoProviderIconUrl,
   gemini: geminiProviderIconUrl,
   "kimi-coding": moonshotProviderIconUrl,
   mistral: mistralProviderIconUrl,
@@ -331,9 +338,11 @@ export const providerPresetIconUrls: Record<string, string> = {
   "moonshot-global": moonshotProviderIconUrl,
   openai: openaiProviderIconUrl,
   openrouter: openrouterProviderIconUrl,
+  "qiniu-ai": qiniuAiProviderIconUrl,
   runapi: runapiProviderIconUrl,
   siliconflow: siliconflowProviderIconUrl,
   teamorouter: teamorouterProviderIconUrl,
+  unity2: unity2ProviderIconUrl,
   "zai-global-coding": zaiGlobalCodingProviderIconUrl,
   "zai-global-general": zaiGlobalGeneralProviderIconUrl,
   "zhipu-cn-coding": zhipuCnCodingProviderIconUrl,
@@ -358,7 +367,6 @@ export const navigation: Array<{ icon: LucideIcon; id: NavigationId }> = [
   { icon: Box, id: "models" },
   { icon: Activity, id: "observability" },
   { icon: Database, id: "logs" },
-  { icon: Server, id: "server" },
   { icon: Network, id: "networking" },
   { icon: Braces, id: "extensions" }
 ];

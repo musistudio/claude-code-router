@@ -6,7 +6,10 @@ import {
   newApiUserSelfMetersForTest
 } from "../../packages/core/src/providers/account-service.ts";
 import { detectedProviderFromHeaders, newApiKeyUsageAccountConfig, newApiUserSelfConnectorConfig } from "../../packages/core/src/providers/new-api.ts";
-import { isProviderProtocolEndpointSupportedForProbe } from "../../packages/core/src/providers/probe.ts";
+import {
+  checkGatewayProviderConnectivity,
+  isProviderProtocolEndpointSupportedForProbe
+} from "../../packages/core/src/providers/probe.ts";
 
 test("protocol support probe does not treat Gemini auth errors as every protocol", () => {
   const message = "HTTP 403: API key not valid. Please pass a valid API key.";
@@ -76,6 +79,61 @@ test("protocol support probe still rejects HTTP 400 route misses", () => {
     isProviderProtocolEndpointSupportedForProbe(400, message, "openai_chat_completions", ["openai_chat_completions"]),
     false
   );
+});
+
+test("connectivity probe applies provider plugin auth for local agent imports", async (t) => {
+  const previousFetch = globalThis.fetch;
+  let called = false;
+
+  globalThis.fetch = async (input, init) => {
+    called = true;
+    const url = new URL(String(input));
+    const headers = new Headers(init?.headers);
+
+    assert.equal(url.origin, "http://127.0.0.1:49123");
+    assert.equal(url.pathname, "/v1/chat/completions");
+    assert.equal(url.searchParams.get("key"), "plugin-query-key");
+    assert.equal(headers.get("authorization"), "Bearer plugin-token");
+    assert.equal(headers.get("x-local-agent"), "opencode");
+
+    return new Response(JSON.stringify({ id: "ok" }), {
+      headers: { "content-type": "application/json" },
+      status: 200
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+
+  const report = await checkGatewayProviderConnectivity({
+    apiKey: "ccr-local-agent-login",
+    candidates: [{
+      baseUrl: "http://127.0.0.1:49123/v1",
+      name: "Local Agent",
+      protocols: ["openai_chat_completions"],
+      source: "preset"
+    }],
+    forceRefresh: true,
+    models: ["local-model"],
+    providerPlugins: [{
+      auth: {
+        headers: {
+          authorization: "Bearer plugin-token",
+          "x-local-agent": "opencode"
+        },
+        query: {
+          key: "plugin-query-key"
+        },
+        removeHeaders: ["authorization"]
+      }
+    }],
+    protocols: ["openai_chat_completions"]
+  });
+
+  assert.equal(called, true);
+  assert.equal(report.passed.length, 1);
+  assert.equal(report.failed.length, 0);
+  assert.equal(report.results[0]?.supported, true);
 });
 
 test("New API response headers enable key quota account connector", () => {

@@ -39,7 +39,7 @@ export function parseProviderBaseUrl(value: string): ParsedProviderBaseUrl {
   return {
     anthropicBaseUrl,
     anthropicBaseUrlCandidates,
-    geminiBaseUrl: rootBaseUrl,
+    geminiBaseUrl: providerGeminiBaseUrl(normalizedInputBaseUrl, rootBaseUrl),
     normalizedInputBaseUrl,
     openaiBaseUrl,
     openaiBaseUrlCandidates,
@@ -124,6 +124,41 @@ function stripProviderApiVersion(value: string): string {
   const url = new URL(value);
   url.pathname = url.pathname.replace(/\/(v1|v1beta)$/i, "") || "/";
   return compactProviderUrl(url);
+}
+
+function providerGeminiBaseUrl(normalizedInputBaseUrl: string, rootBaseUrl: string): string {
+  return isVersionedVertexBypassBaseUrl(normalizedInputBaseUrl) ||
+    isNestedVersionedGeminiBaseUrl(normalizedInputBaseUrl)
+    ? normalizedInputBaseUrl
+    : rootBaseUrl;
+}
+
+function isVersionedVertexBypassBaseUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    const segments = url.pathname
+      .split("/")
+      .map((segment) => segment.trim().toLowerCase())
+      .filter(Boolean);
+    return segments.includes("bypass") &&
+      segments.includes("vertex") &&
+      /^(v1|v1beta)$/.test(segments[segments.length - 1] ?? "");
+  } catch {
+    return false;
+  }
+}
+
+function isNestedVersionedGeminiBaseUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    const segments = url.pathname
+      .split("/")
+      .map((segment) => segment.trim().toLowerCase())
+      .filter(Boolean);
+    return segments.length > 1 && /^(v1|v1beta)$/.test(segments[segments.length - 1] ?? "");
+  } catch {
+    return false;
+  }
 }
 
 function stripNestedProviderApiVersion(pathname: string): string {

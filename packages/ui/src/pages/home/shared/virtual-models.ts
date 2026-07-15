@@ -372,7 +372,7 @@ import type { AgentFilterValue, RouterConditionSource } from "./options";
 import type { MotionSafeDivAttributes } from "./motion";
 
 
-import { isPlainRecord, stringValue, uniqueStrings } from "./common";
+import { isPlainRecord, normalizeProviderModelSelector, stringValue, uniqueStrings } from "./common";
 import { sanitizeConfigId } from "./extensions";
 import { createRouteModelOptions, numberValue } from "./providers";
 import { clampNumber } from "./services";
@@ -863,14 +863,7 @@ export function parseVirtualModelTextList(value: string): string[] {
 }
 
 export function normalizeCoreModelSelector(value: string): string {
-  const trimmed = value.trim();
-  const commaIndex = trimmed.indexOf(",");
-  if (commaIndex > 0 && commaIndex < trimmed.length - 1) {
-    const provider = trimmed.slice(0, commaIndex).trim();
-    const model = trimmed.slice(commaIndex + 1).trim();
-    return provider && model ? `${provider}/${model}` : trimmed;
-  }
-  return trimmed;
+  return normalizeProviderModelSelector(value);
 }
 
 export function uniqueVirtualModelKey(profiles: VirtualModelProfileConfig[]): string {

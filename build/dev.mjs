@@ -2,7 +2,7 @@ import electron from "electron";
 import esbuild from "esbuild";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync, watch } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import {
   buildStyles,
@@ -35,6 +35,8 @@ import {
 
 let electronProcess = null;
 let restartTimer = null;
+let restartInFlight = false;
+let restartQueued = false;
 let pendingRestartReasons = [];
 const watchSignatures = new Map();
 let shuttingDown = false;
@@ -93,13 +95,6 @@ function readyState() {
     .filter(([name]) => activeReadyNames.has(name))
     .map(([name, value]) => `${name}:${value ? "ready" : "pending"}`)
     .join(" ");
-}
-
-function describeWatchEvent(label, watchedPath, eventType, filename, isDirectory = false) {
-  const changedPath = filename
-    ? path.join(isDirectory ? watchedPath : path.dirname(watchedPath), String(filename))
-    : watchedPath;
-  return `${label} ${eventType} ${relativePath(changedPath)}`;
 }
 
 function contentSignature(targetPath) {
@@ -177,29 +172,12 @@ function listDirectoryFiles(targetPath, basePath = targetPath) {
   return files;
 }
 
-function rememberWatchSignature(label, targetPath) {
-  const signature = contentSignature(targetPath);
+function rememberWatchSignature(label, targetPath, options = {}) {
+  const signature = options.metadataOnly
+    ? metadataSignature(targetPath)
+    : contentSignature(targetPath);
   watchSignatures.set(label, signature.key);
   logDev(`watch baseline: ${label} ${relativePath(targetPath)}; ${signature.summary}`);
-}
-
-function handleWatchedInput(label, watchedPath, eventType, filename, options, onChange) {
-  const reason = describeWatchEvent(label, watchedPath, eventType, filename, options?.isDirectory);
-  const signature = contentSignature(watchedPath);
-  const previousSignature = watchSignatures.get(label);
-  const changed = previousSignature !== signature.key;
-  watchSignatures.set(label, signature.key);
-  logDev(`watch event: ${reason}; ${signature.summary}; content=${changed ? "changed" : "unchanged"}`);
-
-  if (!changed) {
-    logDev(`restart skipped: ${reason} (content unchanged)`);
-    return;
-  }
-
-  onChange();
-  if (enabled.electron && options?.restart !== false) {
-    scheduleRestart(reason);
-  }
 }
 
 function scheduleStyleBuild(reason) {
@@ -256,6 +234,64 @@ function pollStyleWatchRoots() {
   }
 }
 
+function pollWatchedInput(label, targetPath, onChange, options = {}) {
+  const signature = options.metadataOnly
+    ? metadataSignature(targetPath)
+    : contentSignature(targetPath);
+  const previousSignature = watchSignatures.get(label);
+  if (previousSignature === signature.key) {
+    return;
+  }
+
+  watchSignatures.set(label, signature.key);
+  logDev(`watch event: ${label} ${relativePath(targetPath)}; ${signature.summary}; content=changed`);
+  try {
+    onChange();
+    if (enabled.electron && options.restart !== false) {
+      scheduleRestart(label);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logDev(`watch action failed: ${label}; ${message}`);
+  }
+}
+
+function metadataSignature(targetPath) {
+  if (!existsSync(targetPath)) {
+    return {
+      key: "missing",
+      summary: "missing"
+    };
+  }
+
+  const stats = statSync(targetPath);
+  return {
+    key: `metadata:${stats.size}:${stats.mtimeMs}:${stats.ctimeMs}`,
+    summary: `size=${stats.size} mtime=${stats.mtime.toISOString()} ctime=${stats.ctime.toISOString()}`
+  };
+}
+
+function pollSourceWatchTargets() {
+  pollWatchedInput("home html", rendererHtmlInput, () => {
+    copyRendererHtml();
+    syncUiRendererToRuntimeDists();
+  });
+  pollWatchedInput("browser html", browserRendererHtmlInput, () => {
+    copyBrowserRendererHtml();
+    syncUiRendererToRuntimeDists();
+  });
+  pollWatchedInput("tray html", trayRendererHtmlInput, () => {
+    copyTrayRendererHtml();
+    syncUiRendererToRuntimeDists();
+  });
+  if (enabled.electron) {
+    pollWatchedInput("app assets", appAssetsInput, copyAppAssets);
+  }
+  if ((enabled.cli || enabled.electron) && existsSync(modelCatalogInput)) {
+    pollWatchedInput("model catalog", modelCatalogInput, copyModelCatalog, { metadataOnly: true });
+  }
+}
+
 function markReady(name, reason = `${name} esbuild completed`) {
   if (name === "browser" || name === "cli" || name === "main" || name === "renderer" || name === "tray" || name === "webBridge") {
     ready[name] = true;
@@ -281,34 +317,81 @@ function scheduleRestart(reason = "unknown trigger") {
   restartTimer = setTimeout(restartElectron, restartDelayMs);
 }
 
-function restartElectron() {
+async function restartElectron() {
+  if (restartInFlight) {
+    restartQueued = true;
+    return;
+  }
+  restartInFlight = true;
   const reasons = Array.from(new Set(pendingRestartReasons));
   pendingRestartReasons = [];
   restartTimer = null;
 
-  if (electronProcess) {
-    logDev(`stopping Electron pid=${electronProcess.pid ?? "unknown"}`);
-    electronProcess.kill();
-    electronProcess = null;
-  }
+  try {
+    if (electronProcess) {
+      await stopElectron(electronProcess);
+    }
 
-  logDev(`starting Electron; reasons=${reasons.join(" | ") || "initial start"}`);
-  const child = spawn(electron, ["."], {
-    cwd: projectRoot,
-    env: {
-      ...process.env,
-      NODE_ENV: "development"
-    },
-    stdio: "inherit"
-  });
-  electronProcess = child;
-  logDev(`Electron started pid=${child.pid ?? "unknown"}`);
-  child.on("exit", (code, signal) => {
-    logDev(`Electron exited pid=${child.pid ?? "unknown"} code=${code ?? "null"} signal=${signal ?? "null"}`);
+    if (shuttingDown) {
+      return;
+    }
+    logDev(`starting Electron; reasons=${reasons.join(" | ") || "initial start"}`);
+    const child = spawn(electron, ["."], {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        NODE_ENV: "development"
+      },
+      stdio: "inherit"
+    });
+    electronProcess = child;
+    logDev(`Electron started pid=${child.pid ?? "unknown"}`);
+    child.on("exit", (code, signal) => {
+      logDev(`Electron exited pid=${child.pid ?? "unknown"} code=${code ?? "null"} signal=${signal ?? "null"}`);
+      if (electronProcess === child) {
+        electronProcess = null;
+      }
+    });
+  } finally {
+    restartInFlight = false;
+    if (restartQueued || pendingRestartReasons.length > 0) {
+      restartQueued = false;
+      scheduleRestart("changes queued during Electron restart");
+    }
+  }
+}
+
+async function stopElectron(child) {
+  logDev(`stopping Electron pid=${child.pid ?? "unknown"}`);
+  if (child.exitCode !== null || child.signalCode !== null) {
     if (electronProcess === child) {
       electronProcess = null;
     }
+    return;
+  }
+
+  await new Promise((resolve) => {
+    let forceTimer = null;
+    let giveUpTimer = null;
+    const finish = () => {
+      if (forceTimer) clearTimeout(forceTimer);
+      if (giveUpTimer) clearTimeout(giveUpTimer);
+      child.off("exit", finish);
+      resolve();
+    };
+    child.once("exit", finish);
+    child.kill();
+    forceTimer = setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) {
+        logDev(`force stopping Electron pid=${child.pid ?? "unknown"}`);
+        child.kill("SIGKILL");
+      }
+    }, 2_000);
+    giveUpTimer = setTimeout(finish, 5_000);
   });
+  if (electronProcess === child) {
+    electronProcess = null;
+  }
 }
 
 logDev(`starting dev build target=${devTarget} ui=${enabled.ui ? "on" : "off"} cli=${enabled.cli ? "on" : "off"} electron=${enabled.electron ? "on" : "off"}`);
@@ -336,43 +419,13 @@ if (enabled.electron) {
   rememberWatchSignature("app assets", appAssetsInput);
 }
 if ((enabled.cli || enabled.electron) && existsSync(modelCatalogInput)) {
-  rememberWatchSignature("model catalog", modelCatalogInput);
+  rememberWatchSignature("model catalog", modelCatalogInput, { metadataOnly: true });
 }
 
-const htmlWatcher = watch(rendererHtmlInput, { persistent: true }, (eventType, filename) => {
-  handleWatchedInput("home html", rendererHtmlInput, eventType, filename, undefined, () => {
-    copyRendererHtml();
-    syncUiRendererToRuntimeDists();
-  });
-});
-
-const browserHtmlWatcher = watch(browserRendererHtmlInput, { persistent: true }, (eventType, filename) => {
-  handleWatchedInput("browser html", browserRendererHtmlInput, eventType, filename, undefined, () => {
-    copyBrowserRendererHtml();
-    syncUiRendererToRuntimeDists();
-  });
-});
-
-const trayHtmlWatcher = watch(trayRendererHtmlInput, { persistent: true }, (eventType, filename) => {
-  handleWatchedInput("tray html", trayRendererHtmlInput, eventType, filename, undefined, () => {
-    copyTrayRendererHtml();
-    syncUiRendererToRuntimeDists();
-  });
-});
-
-const stylePoller = setInterval(pollStyleWatchRoots, stylePollIntervalMs);
-
-const appAssetsWatcher = enabled.electron
-  ? watch(appAssetsInput, { persistent: true }, (eventType, filename) => {
-      handleWatchedInput("app assets", appAssetsInput, eventType, filename, { isDirectory: true }, copyAppAssets);
-    })
-  : { close: () => undefined };
-
-const modelCatalogWatcher = (enabled.cli || enabled.electron) && existsSync(modelCatalogInput)
-  ? watch(modelCatalogInput, { persistent: true }, (eventType, filename) => {
-      handleWatchedInput("model catalog", modelCatalogInput, eventType, filename, undefined, copyModelCatalog);
-    })
-  : { close: () => undefined };
+const sourcePoller = setInterval(() => {
+  pollStyleWatchRoots();
+  pollSourceWatchTargets();
+}, stylePollIntervalMs);
 
 const contexts = [];
 
@@ -467,17 +520,12 @@ async function shutdown() {
     clearTimeout(restartTimer);
   }
   if (electronProcess) {
-    electronProcess.kill();
+    await stopElectron(electronProcess);
   }
   if (styleBuildTimer) {
     clearTimeout(styleBuildTimer);
   }
-  htmlWatcher.close();
-  browserHtmlWatcher.close();
-  trayHtmlWatcher.close();
-  clearInterval(stylePoller);
-  appAssetsWatcher.close();
-  modelCatalogWatcher.close();
+  clearInterval(sourcePoller);
   await Promise.all(contexts.map((context) => context.dispose()));
   process.exit(0);
 }

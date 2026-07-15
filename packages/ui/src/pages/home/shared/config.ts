@@ -409,11 +409,7 @@ export function normalizeConfig(config: AppConfig): AppConfig {
     },
     launchAtLogin: Boolean(config.launchAtLogin),
     observability: normalizeObservabilityConfig(config.observability),
-    proxy: {
-      ...fallbackConfig.proxy,
-      ...(config.proxy || {}),
-      targets: Array.isArray(config.proxy?.targets) ? config.proxy.targets : fallbackConfig.proxy.targets
-    },
+    proxy: normalizeProxyConfig(config.proxy),
     profile: {
       ...fallbackConfig.profile,
       ...profileConfig,
@@ -451,6 +447,37 @@ export function normalizeObservabilityConfig(config: Partial<AppConfig["observab
     ...(config || {}),
     agentAnalysis: Boolean(config?.agentAnalysis),
     requestLogs: Boolean(config?.requestLogs)
+  };
+}
+
+export function normalizeProxyConfig(config: Partial<AppConfig["proxy"]> | undefined): AppConfig["proxy"] {
+  return {
+    ...fallbackConfig.proxy,
+    ...(config || {}),
+    targets: Array.isArray(config?.targets) ? config.targets : fallbackConfig.proxy.targets,
+    upstream: normalizeProxyUpstreamConfig(config?.upstream)
+  };
+}
+
+export function normalizeProxyUpstreamConfig(config: Partial<AppConfig["proxy"]["upstream"]> | undefined): AppConfig["proxy"]["upstream"] {
+  const mode = config?.mode === "none" || config?.mode === "system" || config?.mode === "custom"
+    ? config.mode
+    : fallbackConfig.proxy.upstream.mode;
+  const port = typeof config?.custom?.port === "number" && Number.isFinite(config.custom.port)
+    ? Math.min(Math.max(Math.floor(config.custom.port), 1), 65535)
+    : fallbackConfig.proxy.upstream.custom.port;
+  return {
+    ...fallbackConfig.proxy.upstream,
+    ...(config || {}),
+    custom: {
+      ...fallbackConfig.proxy.upstream.custom,
+      ...(config?.custom || {}),
+      password: typeof config?.custom?.password === "string" ? config.custom.password : fallbackConfig.proxy.upstream.custom.password,
+      port,
+      server: typeof config?.custom?.server === "string" ? config.custom.server.trim() : fallbackConfig.proxy.upstream.custom.server,
+      username: typeof config?.custom?.username === "string" ? config.custom.username.trim() : fallbackConfig.proxy.upstream.custom.username
+    },
+    mode
   };
 }
 

@@ -9,13 +9,23 @@ import {
 
 function createRouterPlugin(options = {}) {
   const agent = options.agent ?? "claude-code";
-  return new ClaudeCodeRouterPlugin({
+  const profiles = options.profiles ?? [
+    {
+      agent,
+      enabled: options.profileEnabled ?? true,
+      id: `${agent}-profile`,
+      model: options.profileModel ?? "",
+      name: agent,
+      scope: "global"
+    }
+  ];
+  const plugin = new ClaudeCodeRouterPlugin({
     CUSTOM_ROUTER_PATH: "",
     Providers: options.providers ?? [
       {
         modelDescriptions: options.modelDescriptions,
         modelDisplayNames: options.modelDisplayNames,
-        models: ["claude-sonnet", "gpt-5-codex"],
+        models: ["claude-sonnet", "claude-opus", "claude-haiku", "gpt-5-codex"],
         name: "Provider",
         type: "anthropic_messages"
       }
@@ -30,20 +40,22 @@ function createRouterPlugin(options = {}) {
     },
     profile: {
       enabled: options.profileRuntimeEnabled ?? true,
-      profiles: [
-        {
-          agent,
-          enabled: options.profileEnabled ?? true,
-          id: `${agent}-profile`,
-          model: options.profileModel ?? "",
-          name: agent,
-          scope: "global"
-        }
-      ]
+      profiles
     },
     toolHub: options.toolHub,
     virtualModelProfiles: options.virtualModelProfiles ?? []
   });
+  return {
+    routeRequest(input) {
+      if (options.authenticatedProfileId !== null && input.headers["x-auth-api-key-id"] === undefined) {
+        const authenticatedProfileId = options.authenticatedProfileId ?? profiles[0]?.id;
+        if (authenticatedProfileId) {
+          input.headers["x-auth-api-key-id"] = `profile:${authenticatedProfileId}`;
+        }
+      }
+      return plugin.routeRequest(input);
+    }
+  };
 }
 
 test("fallback retry delay backs off retryable HTTP statuses", () => {
@@ -274,6 +286,171 @@ test("built-in Claude Code route matches user-agent case-insensitively", async (
   assert.equal(result.decision.reason, "builtin:claude-code");
 });
 
+test("built-in Codex route uses the authenticated profile instead of the first Codex profile", async () => {
+  const plugin = createRouterPlugin({
+    agent: "codex",
+    authenticatedProfileId: "bs-2",
+    profiles: [
+      {
+        agent: "codex",
+        enabled: true,
+        id: "codex",
+        model: "Codex API/gpt-5.6-sol",
+        name: "Codex",
+        scope: "ccr"
+      },
+      {
+        agent: "codex",
+        enabled: true,
+        id: "bs-2",
+        model: "uuroute/gpt-5.5",
+        name: "bs",
+        scope: "ccr"
+      }
+    ],
+    providers: [
+      {
+        models: ["gpt-5.6-sol"],
+        name: "Codex API",
+        type: "openai_responses"
+      },
+      {
+        models: ["gpt-5.5"],
+        name: "uuroute",
+        type: "openai_responses"
+      }
+    ]
+  });
+  const result = await plugin.routeRequest({
+    body: {
+      model: "gpt-5"
+    },
+    headers: {
+      "user-agent": "Codex Desktop/0.144.0"
+    },
+    method: "POST",
+    url: "/v1/responses"
+  });
+
+  assert.equal(result.body.model, "uuroute/gpt-5.5");
+  assert.equal(result.decision.model, "uuroute/gpt-5.5");
+  assert.equal(result.decision.reason, "builtin:codex");
+});
+
+test("built-in Codex route preserves the requested model when the authenticated profile does not match", async () => {
+  const plugin = createRouterPlugin({
+    agent: "codex",
+    authenticatedProfileId: "missing-profile",
+    profileModel: "Provider/gpt-5-codex"
+  });
+  const result = await plugin.routeRequest({
+    body: {
+      model: "Provider/gpt-5-codex"
+    },
+    headers: {
+      "user-agent": "Codex Desktop/0.144.0"
+    },
+    method: "POST",
+    url: "/v1/responses"
+  });
+
+  assert.equal(result.body.model, "Provider/gpt-5-codex");
+  assert.equal(result.decision.model, "Provider/gpt-5-codex");
+  assert.equal(result.decision.reason, "default");
+});
+
+test("Grok internal title requests use the authenticated profile model", async () => {
+  const plugin = createRouterPlugin({
+    agent: "grok",
+    profileModel: "Provider/claude-sonnet"
+  });
+  const result = await plugin.routeRequest({
+    body: {
+      model: "grok-build"
+    },
+    headers: {
+      "user-agent": "grok/0.2.99"
+    },
+    method: "POST",
+    url: "/v1/responses"
+  });
+
+  assert.equal(result.body.model, "Provider/claude-sonnet");
+  assert.equal(result.decision.model, "Provider/claude-sonnet");
+  assert.equal(result.decision.reason, "builtin:grok-internal");
+});
+
+test("Grok internal title requests use the gateway default when the profile model is unset", async () => {
+  const plugin = createRouterPlugin({
+    agent: "grok",
+    profileModel: ""
+  });
+  const result = await plugin.routeRequest({
+    body: {
+      model: "grok-build"
+    },
+    headers: {
+      "user-agent": "grok/0.2.99"
+    },
+    method: "POST",
+    url: "/v1/responses"
+  });
+
+  assert.equal(result.body.model, "Provider/claude-sonnet");
+  assert.equal(result.decision.reason, "builtin:grok-internal");
+});
+
+test("Grok explicit model selection routes chat requests through a Responses provider", async () => {
+  const config = {
+    CUSTOM_ROUTER_PATH: "",
+    Providers: [{
+      api_base_url: "https://cli-chat-proxy.grok.com/v1",
+      api_key: "ccr-local-agent-login",
+      capabilities: [{
+        baseUrl: "https://cli-chat-proxy.grok.com/v1",
+        type: "openai_responses"
+      }],
+      models: ["grok-4.5"],
+      name: "Grok CLI API",
+      type: "openai_responses"
+    }],
+    Router: {
+      builtInRules: {
+        "claude-code": { enabled: true },
+        codex: { enabled: true }
+      },
+      fallback: { mode: "off", models: [], retryCount: 1 },
+      rules: []
+    },
+    profile: {
+      enabled: true,
+      profiles: [{
+        agent: "grok",
+        enabled: true,
+        id: "grok-cli",
+        model: "Grok CLI API/grok-4.5",
+        name: "Grok CLI",
+        scope: "ccr"
+      }]
+    },
+    virtualModelProfiles: []
+  };
+  const attempt = prepareGatewayUpstreamAttemptForTest({
+    body: {
+      messages: [{ content: "OK", role: "user" }],
+      model: "Grok CLI API/grok-4.5"
+    },
+    config,
+    headers: {},
+    method: "POST",
+    path: "/v1/chat/completions",
+    routedModel: "Grok CLI API/grok-4.5"
+  });
+
+  assert.equal(attempt.body.model, "grok-4.5");
+  assert.match(attempt.headers["x-target-provider"], /^provider-grok-cli-api-[a-f0-9]{10}::openai_responses$/);
+});
+
 test("built-in Claude Code route does not inject Claude Code native tool search", async () => {
   const plugin = createRouterPlugin({
     profileModel: "Provider/claude-sonnet",
@@ -432,6 +609,246 @@ test("router rules override the built-in Claude Code profile route", async () =>
   assert.equal(result.decision.reason, "rule:default");
 });
 
+test("issue 1520 configured bare profile models do not bypass rule fallback", async () => {
+  const plugin = createRouterPlugin({
+    profileModel: "deepseek-v4-flash",
+    providers: [
+      {
+        models: ["deepseek-v4-flash"],
+        name: "OpenCode",
+        type: "openai_chat_completions"
+      },
+      {
+        models: ["Qwen3-235B-A22B"],
+        name: "CoClaw",
+        type: "openai_chat_completions"
+      }
+    ],
+    routerRules: [
+      {
+        condition: {
+          left: "request.url",
+          operator: "contains",
+          right: "/v1"
+        },
+        enabled: true,
+        fallback: {
+          mode: "model-chain",
+          models: ["CoClaw/Qwen3-235B-A22B"],
+          retryCount: 0
+        },
+        id: "issue-1520",
+        name: "Issue 1520 default route",
+        rewrites: [
+          { key: "request.header.x-target-provider", operation: "set", value: "OpenCode" },
+          { key: "request.body.model", operation: "set", value: "deepseek-v4-flash" }
+        ],
+        type: "condition"
+      }
+    ]
+  });
+  const headers = {
+    "user-agent": "claude-code/1.0"
+  };
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "deepseek-v4-flash"
+    },
+    headers,
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.decision.reason, "rule:issue-1520");
+  assert.equal(result.decision.source, "rule");
+  assert.deepEqual(result.decision.fallback, {
+    mode: "model-chain",
+    models: ["CoClaw/Qwen3-235B-A22B"],
+    retryCount: 0
+  });
+  assert.equal(headers["x-target-provider"], "OpenCode");
+});
+
+test("router rules with unconfigured model rewrites are ignored", async () => {
+  const plugin = createRouterPlugin({
+    profileModel: "Provider/claude-sonnet",
+    routerRules: [
+      {
+        condition: {
+          left: "request.url",
+          operator: "contains",
+          right: "/v1"
+        },
+        enabled: true,
+        id: "unknown-target",
+        name: "Unknown target",
+        rewrites: [
+          { key: "request.header.x-target-provider", operation: "set", value: "Provider" },
+          { key: "request.body.model", operation: "set", value: "not-configured" }
+        ],
+        type: "condition"
+      },
+      {
+        condition: {
+          left: "request.url",
+          operator: "contains",
+          right: "/v1"
+        },
+        enabled: true,
+        id: "known-target",
+        name: "Known target",
+        rewrites: [
+          { key: "request.body.model", operation: "set", value: "Provider/gpt-5-codex" }
+        ],
+        type: "condition"
+      }
+    ]
+  });
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-default"
+    },
+    headers: {
+      "user-agent": "claude-code/1.0"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Provider/gpt-5-codex");
+  assert.equal(result.decision.model, "Provider/gpt-5-codex");
+  assert.equal(result.decision.reason, "rule:known-target");
+});
+
+test("router rules with unconfigured fallback models are ignored", async () => {
+  const plugin = createRouterPlugin({
+    profileModel: "Provider/claude-sonnet",
+    routerRules: [
+      {
+        condition: {
+          left: "request.url",
+          operator: "contains",
+          right: "/v1"
+        },
+        enabled: true,
+        fallback: { mode: "model-chain", models: ["Provider/not-configured"], retryCount: 0 },
+        id: "unknown-fallback",
+        name: "Unknown fallback",
+        rewrites: [
+          { key: "request.body.model", operation: "set", value: "Provider/gpt-5-codex" }
+        ],
+        type: "condition"
+      },
+      {
+        condition: {
+          left: "request.url",
+          operator: "contains",
+          right: "/v1"
+        },
+        enabled: true,
+        id: "known-fallback",
+        name: "Known fallback",
+        rewrites: [
+          { key: "request.body.model", operation: "set", value: "Provider/gpt-5-codex" }
+        ],
+        type: "condition"
+      }
+    ]
+  });
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-default"
+    },
+    headers: {
+      "user-agent": "claude-code/1.0"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Provider/gpt-5-codex");
+  assert.equal(result.decision.reason, "rule:known-fallback");
+});
+
+test("router rules normalize legacy comma provider selectors before gateway provider routing", async () => {
+  const config = {
+    CUSTOM_ROUTER_PATH: "",
+    Providers: [
+      {
+        capabilities: [
+          {
+            baseUrl: "https://provider.example/v1",
+            type: "openai_chat_completions"
+          }
+        ],
+        credentials: [{ apiKey: "provider-key", id: "provider-main" }],
+        models: ["gpt-5-codex"],
+        name: "Provider"
+      }
+    ],
+    Router: {
+      builtInRules: {
+        "claude-code": { enabled: false },
+        codex: { enabled: false }
+      },
+      fallback: { mode: "off", models: [], retryCount: 1 },
+      rules: [
+        {
+          condition: {
+            left: "request.url",
+            operator: "contains",
+            right: "/v1"
+          },
+          enabled: true,
+          id: "comma-selector",
+          name: "Legacy comma selector",
+          rewrites: [
+            { key: "request.body.model", operation: "set", value: "Provider,gpt-5-codex" }
+          ],
+          type: "condition"
+        }
+      ]
+    },
+    profile: {
+      enabled: false,
+      profiles: []
+    },
+    virtualModelProfiles: []
+  };
+  const plugin = new ClaudeCodeRouterPlugin(config);
+  const headers = {};
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-default"
+    },
+    headers,
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Provider/gpt-5-codex");
+  assert.equal(result.decision.model, "Provider/gpt-5-codex");
+  assert.equal(result.decision.reason, "rule:comma-selector");
+
+  const upstreamAttempt = prepareGatewayUpstreamAttemptForTest({
+    body: result.body,
+    config,
+    fallback: result.decision.fallback,
+    headers,
+    method: "POST",
+    path: "/v1/messages",
+    routedModel: result.decision.model
+  });
+
+  assert.equal(upstreamAttempt.logicalProvider, "Provider");
+  assert.equal(upstreamAttempt.credentialProtocol, "openai_chat_completions");
+  assert.equal(upstreamAttempt.body.model, "gpt-5-codex");
+});
+
 test("router rules can add headers after the built-in Claude Code profile route", async () => {
   const plugin = createRouterPlugin({
     profileModel: "Provider/claude-sonnet",
@@ -471,6 +888,70 @@ test("router rules can add headers after the built-in Claude Code profile route"
   assert.equal(result.decision.reason, "rule:target-provider");
 });
 
+test("router rules override explicit provider model requests", async () => {
+  const ruleFallback = { mode: "model-chain", models: ["CoClaw/Qwen3-235B-A22B"], retryCount: 0 };
+  const config = {
+    CUSTOM_ROUTER_PATH: "",
+    Providers: [
+      {
+        api_base_url: "https://opencode.example/v1/chat/completions",
+        models: ["deepseek-v4-flash"],
+        name: "OpenCode"
+      },
+      {
+        api_base_url: "https://coclaw.example/v1/chat/completions",
+        models: ["Qwen3-235B-A22B"],
+        name: "CoClaw"
+      }
+    ],
+    Router: {
+      fallback: { mode: "retry", models: [], retryCount: 1 },
+      rules: [
+        {
+          condition: {
+            left: "request.header.anthropic-background",
+            operator: "==",
+            right: "true"
+          },
+          enabled: true,
+          fallback: ruleFallback,
+          id: "background",
+          name: "Background tasks",
+          rewrites: [
+            { key: "request.header.x-target-provider", operation: "set", value: "CoClaw" },
+            { key: "request.body.model", operation: "set", value: "Qwen3-235B-A22B" }
+          ],
+          type: "condition"
+        }
+      ]
+    },
+    profile: {
+      enabled: false,
+      profiles: []
+    },
+    virtualModelProfiles: []
+  };
+  const plugin = new ClaudeCodeRouterPlugin(config);
+  const headers = {
+    "anthropic-background": "true"
+  };
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "OpenCode/deepseek-v4-flash"
+    },
+    headers,
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(headers["x-target-provider"], "CoClaw");
+  assert.equal(result.body.model, "Qwen3-235B-A22B");
+  assert.equal(result.decision.model, "Qwen3-235B-A22B");
+  assert.equal(result.decision.reason, "rule:background");
+  assert.deepEqual(result.decision.fallback, ruleFallback);
+});
+
 test("issue 1480 raw user config no longer reproduces the Claude Code profile routing failure", async () => {
   const config = createIssue1480UserConfig();
   const plugin = new ClaudeCodeRouterPlugin(config);
@@ -504,6 +985,7 @@ test("issue 1480 raw user config reproduces the old failure precondition when Ro
     }
   });
   const headers = {
+    "x-auth-api-key-id": "profile:claude-code-main",
     "user-agent": "claude-cli/2.1.187 (external, cli)"
   };
   const result = await plugin.routeRequest({
@@ -527,6 +1009,7 @@ test("issue 1480 raw user config ignores an unreplaced Provider/model subagent p
   const config = createIssue1480UserConfig();
   const plugin = new ClaudeCodeRouterPlugin(config);
   const headers = {
+    "x-auth-api-key-id": "profile:claude-code-main",
     "user-agent": "claude-cli/2.1.187 (external, cli)"
   };
   const result = await plugin.routeRequest({
@@ -552,6 +1035,7 @@ test("issue 1480 config routes Claude Code profile traffic through the user defa
   const config = createIssue1480RouterConfig();
   const plugin = new ClaudeCodeRouterPlugin(config);
   const headers = {
+    "x-auth-api-key-id": "profile:claude-code-main",
     "user-agent": "claude-cli/2.1.187 (external, cli)"
   };
   const result = await plugin.routeRequest({
@@ -648,10 +1132,132 @@ test("explicit OpenAI chat provider selectors request upstream usage chunks with
 
   assert.equal(upstreamAttempt.credentialProtocol, undefined);
   assert.equal(upstreamAttempt.logicalProvider, undefined);
+  assert.equal(upstreamAttempt.body.model, "kimi-for-coding");
   assert.equal(upstreamAttempt.body.stream_options.include_usage, true);
 });
 
-test("built-in Claude Code route preserves explicit virtual gateway models", async () => {
+test("explicit provider selectors without capability routing strip provider prefix upstream", () => {
+  const config = {
+    CUSTOM_ROUTER_PATH: "",
+    Providers: [
+      {
+        api_base_url: "https://nebulacoder.example/v1/chat/completions",
+        models: ["nebulacoder-v8.0", "nebulacoder-cot-v8.0"],
+        name: "NebulaCoder"
+      }
+    ],
+    Router: {
+      fallback: { mode: "off", models: [], retryCount: 0 },
+      rules: []
+    },
+    virtualModelProfiles: []
+  };
+
+  const upstreamAttempt = prepareGatewayUpstreamAttemptForTest({
+    body: {
+      messages: [],
+      model: "NebulaCoder/nebulacoder-cot-v8.0"
+    },
+    config,
+    headers: {},
+    method: "POST",
+    path: "/v1/chat/completions",
+    routedModel: "NebulaCoder/nebulacoder-cot-v8.0"
+  });
+
+  assert.equal(upstreamAttempt.body.model, "nebulacoder-cot-v8.0");
+});
+
+test("model-chain fallback model selectors must not keep stale target provider headers", () => {
+  const config = {
+    CUSTOM_ROUTER_PATH: "",
+    Providers: [
+      {
+        api_base_url: "https://opencode.example/v1/chat/completions",
+        models: ["deepseek-v4-flash"],
+        name: "OpenCode"
+      },
+      {
+        api_base_url: "https://coclaw.example/v1/chat/completions",
+        models: ["Qwen3-235B-A22B"],
+        name: "CoClaw"
+      }
+    ],
+    Router: {
+      fallback: { mode: "off", models: [], retryCount: 0 },
+      rules: []
+    },
+    virtualModelProfiles: []
+  };
+  const upstreamAttempt = prepareGatewayUpstreamAttemptForTest({
+    body: {
+      messages: [],
+      model: "Qwen3-235B-A22B"
+    },
+    config,
+    headers: {
+      "x-target-provider": "OpenCode"
+    },
+    method: "POST",
+    path: "/v1/chat/completions",
+    routedModel: "Qwen3-235B-A22B"
+  });
+
+  assert.notEqual(upstreamAttempt.headers["x-target-provider"], "OpenCode");
+  assert.equal(upstreamAttempt.body.model, "Qwen3-235B-A22B");
+});
+
+test("gateway strips unsupported OpenAI upstream request parameters", () => {
+  const config = {
+    CUSTOM_ROUTER_PATH: "",
+    Providers: [
+      {
+        api_base_url: "https://openai-compatible.example/v1",
+        capabilities: [
+          { baseUrl: "https://openai-compatible.example/v1", type: "openai_chat_completions" },
+          { baseUrl: "https://openai-compatible.example/v1", type: "openai_responses" }
+        ],
+        credentials: [{ apiKey: "provider-key", id: "provider-main" }],
+        models: ["gpt-compatible"],
+        name: "OpenAI Compatible"
+      }
+    ],
+    Router: {
+      fallback: { mode: "off", models: [], retryCount: 0 },
+      rules: []
+    },
+    virtualModelProfiles: []
+  };
+  const cases = [
+    {
+      body: { messages: [], model: "gpt-compatible", reasoning: { effort: "medium" }, reasoning_split: true, thinking: { type: "enabled" } },
+      path: "/v1/chat/completions"
+    },
+    {
+      body: { input: "hello", model: "gpt-compatible", reasoning: { effort: "medium" }, reasoning_split: true, thinking: { type: "enabled" } },
+      path: "/v1/responses"
+    }
+  ];
+
+  for (const item of cases) {
+    const upstreamAttempt = prepareGatewayUpstreamAttemptForTest({
+      body: item.body,
+      config,
+      headers: {
+        "x-target-provider": "OpenAI Compatible"
+      },
+      method: "POST",
+      path: item.path,
+      routedModel: "gpt-compatible"
+    });
+
+    assert.equal(upstreamAttempt.body.thinking, undefined);
+    assert.equal(upstreamAttempt.body.reasoning_split, undefined);
+    assert.deepEqual(upstreamAttempt.body.reasoning, { effort: "medium" });
+  }
+});
+
+test("built-in Claude Code route overrides explicit virtual gateway models", async () => {
   const plugin = createRouterPlugin({
     profileModel: "Provider/claude-sonnet",
     virtualModelProfiles: [
@@ -677,9 +1283,9 @@ test("built-in Claude Code route preserves explicit virtual gateway models", asy
     url: "/v1/messages"
   });
 
-  assert.equal(result.body.model, "Fusion/kimisearch");
-  assert.equal(result.decision.model, "Fusion/kimisearch");
-  assert.equal(result.decision.reason, "inline-model");
+  assert.equal(result.body.model, "Provider/claude-sonnet");
+  assert.equal(result.decision.model, "Provider/claude-sonnet");
+  assert.equal(result.decision.reason, "builtin:claude-code");
 });
 
 test("built-in Codex route stays inactive when profile model is unset", async () => {

@@ -376,7 +376,7 @@ import type { MotionSafeDivAttributes } from "./motion";
 
 
 import { positiveInteger } from "./api-keys";
-import { isPlainRecord, stringValue, uniqueStrings } from "./common";
+import { isPlainRecord, normalizeProviderModelSelector, stringValue, uniqueStrings } from "./common";
 import { sanitizeConfigId } from "./extensions";
 import { formatRouterRuleCondition, formatRouterRuleTarget, routerRuleTypeLabel } from "./providers";
 import { clampNumber } from "./services";
@@ -420,7 +420,11 @@ export function normalizeRouterFallbackConfig(value: Partial<RouterFallbackConfi
   const mode = parseRouterFallbackMode(record.mode) ?? fallbackConfig.Router.fallback.mode;
   const retryCount = clampNumber(Number(record.retryCount), 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
   const models = Array.isArray(record.models)
-    ? uniqueStrings(record.models.map((model) => stringValue(model)).filter((model): model is string => Boolean(model)))
+    ? uniqueStrings(
+      record.models
+        .map((model) => normalizeProviderModelSelector(stringValue(model)))
+        .filter(Boolean)
+    )
     : [];
 
   return {
@@ -460,7 +464,7 @@ export function normalizeRouterRules(value: unknown): RouterRule[] | undefined {
         return undefined;
       }
       const pattern = stringValue(item.pattern);
-      const target = stringValue(item.target);
+      const target = normalizeProviderModelSelector(stringValue(item.target));
       const threshold = Number(item.threshold);
       const condition = normalizeRouterRuleCondition(item.condition ?? item) ?? routerRuleConditionFromLegacy(type, {
         pattern
@@ -542,7 +546,7 @@ export function normalizeRouterRuleRewrites(rule: Record<string, unknown>): Rout
         .filter((item): item is RouterRuleRewrite => Boolean(item));
   }
   const rewrite = normalizeRouterRuleRewrite(rule.rewrite ?? rule.action);
-  const target = stringValue(rule.target);
+  const target = normalizeProviderModelSelector(stringValue(rule.target));
   return [
     ...(rewrite ? [rewrite] : []),
     ...(target ? [{ key: "request.body.model", operation: "set" as const, value: target }] : [])
@@ -560,7 +564,7 @@ export function normalizeRouterRuleRewrite(value: unknown): RouterRuleRewrite | 
     stringValue(value.field) ??
     stringValue(value.parameter);
   const operation = parseRouterRewriteOperation(value.operation ?? value.op ?? value.type) ?? "set";
-  const rewriteValue = stringifyRewriteValue(value.value);
+  const rewriteValue = normalizeRouterRewriteValue(key, stringifyRewriteValue(value.value));
   const match = stringifyRewriteValue(value.match);
 
   if (!key) {
@@ -594,6 +598,13 @@ function stringifyRewriteValue(value: unknown): string | undefined {
     return value.trim();
   }
   return value !== undefined ? String(value) : undefined;
+}
+
+function normalizeRouterRewriteValue(key: string | undefined, value: string | undefined): string | undefined {
+  if (key?.trim() !== "request.body.model" || value === undefined) {
+    return value;
+  }
+  return normalizeProviderModelSelector(value);
 }
 
 export function parseRouterRuleType(value: unknown): RouterRuleType | undefined {
@@ -883,7 +894,11 @@ export function routerBuiltInAgentProfile(config: AppConfig, agent: RouterBuiltI
   if (config.profile.enabled === false) {
     return undefined;
   }
-  return config.profile.profiles.find((profile) => profile.enabled && profile.agent === agent);
+  return config.profile.profiles.find((profile) =>
+    profile.enabled &&
+    profile.agent === agent &&
+    Boolean(profile.model.trim())
+  );
 }
 
 export function routerBuiltInAgentRouteTarget(config: AppConfig, agent: RouterBuiltInAgentRuleId): string {
@@ -895,11 +910,12 @@ export function routerBuiltInAgentRuleDisabledReason(config: AppConfig, agent: R
     return "Agent profiles are disabled.";
   }
   const agentName = routerBuiltInAgentRuleName(agent);
-  const profile = routerBuiltInAgentProfile(config, agent);
-  if (!profile) {
+  const enabledProfile = config.profile.profiles.find((profile) => profile.enabled && profile.agent === agent);
+  if (!enabledProfile) {
     return `Enable a ${agentName} profile before enabling this built-in route.`;
   }
-  if (!profile.model.trim()) {
+  const profile = routerBuiltInAgentProfile(config, agent);
+  if (!profile) {
     return `Set a model on the ${agentName} profile before enabling this built-in route.`;
   }
   return undefined;
@@ -982,7 +998,7 @@ export function composeRouteTargetValue(providerValue: unknown, modelValue: unkn
   const provider = stringValue(providerValue);
   const model = stringValue(modelValue);
   if (provider && model) {
-    return `${provider},${model}`;
+    return `${provider}/${model}`;
   }
   return model || provider;
 }

@@ -2,7 +2,7 @@ import type { ComponentProps, ReactElement } from "react";
 import { AnimatePresence, DialogStackLayer } from "../shared/index";
 import { AddApiKeyDialog, ApiKeyCreatedDialog, EditApiKeyDialog } from "./api-keys";
 import { ConfigureClaudeDesignDialog, DeleteExtensionDialog, PluginSettingsDialog } from "./extensions";
-import { AddProfileDialog, ProfileOpenDialog } from "./profiles";
+import { AddProfileDialog, DeleteProfileDialog, ProfileOpenDialog } from "./profiles";
 import { AddProviderDialog, DeleteProviderDialog, ProviderDeepLinkDialog } from "./providers";
 import { AddRoutingRuleDialog, DeleteRoutingRuleDialog } from "./routing";
 import { AppSettingsDialog } from "./settings";
@@ -19,6 +19,7 @@ export function AppDialogStack({
   extensionInstall,
   extensionSettings,
   profileAdd,
+  profileDelete,
   profileEdit,
   profileOpen,
   providerDeepLink,
@@ -39,6 +40,7 @@ export function AppDialogStack({
   extensionInstall?: ComponentProps<typeof InstallExtensionDialog>;
   extensionSettings?: ComponentProps<typeof PluginSettingsDialog>;
   profileAdd?: ComponentProps<typeof AddProfileDialog>;
+  profileDelete?: ComponentProps<typeof DeleteProfileDialog>;
   profileEdit?: ComponentProps<typeof AddProfileDialog>;
   profileOpen?: ComponentProps<typeof ProfileOpenDialog>;
   providerDeepLink?: ComponentProps<typeof ProviderDeepLinkDialog>;
@@ -56,6 +58,7 @@ export function AppDialogStack({
     profileAdd ? { key: "profile-add", node: <AddProfileDialog {...profileAdd} /> } : null,
     profileEdit ? { key: "profile-edit", node: <AddProfileDialog {...profileEdit} /> } : null,
     profileOpen ? { key: "profile-open", node: <ProfileOpenDialog {...profileOpen} /> } : null,
+    profileDelete ? { key: "profile-delete", node: <DeleteProfileDialog {...profileDelete} /> } : null,
     apiKeyEdit ? { key: "api-key-edit", node: <EditApiKeyDialog {...apiKeyEdit} /> } : null,
     providerDeepLink ? { key: "provider-deep-link", node: <ProviderDeepLinkDialog {...providerDeepLink} /> } : null,
     providerUpsert ? { key: "provider-upsert", node: <AddProviderDialog {...providerUpsert} /> } : null,

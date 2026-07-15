@@ -13,6 +13,7 @@ export function shouldRestartGatewayForRuntimeConfigChange(previousConfig: AppCo
     previousConfig.proxy.port !== nextConfig.proxy.port ||
     previousConfig.proxy.systemProxy !== nextConfig.proxy.systemProxy ||
     JSON.stringify(previousConfig.proxy.targets) !== JSON.stringify(nextConfig.proxy.targets) ||
+    JSON.stringify(previousConfig.proxy.upstream) !== JSON.stringify(nextConfig.proxy.upstream) ||
     JSON.stringify(previousConfig.agent) !== JSON.stringify(nextConfig.agent) ||
     JSON.stringify(previousConfig.Providers) !== JSON.stringify(nextConfig.Providers) ||
     JSON.stringify(previousConfig.plugins) !== JSON.stringify(nextConfig.plugins) ||

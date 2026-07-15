@@ -4,6 +4,8 @@ import { loadPersistedAppConfig, replacePersistedAppConfig } from "@ccr/core/con
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "@ccr/core/config/api-key-store";
 import { CONFIG_FILE, GATEWAY_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE } from "@ccr/core/config/constants";
 import { normalizeCodexProviderAccountConfig } from "@ccr/core/agents/local-providers/codex";
+import { normalizeGrokProviderAccountConfig } from "@ccr/core/agents/local-providers/grok";
+import { removeOpenCodeProviderAccountConfig } from "@ccr/core/agents/local-providers/opencode";
 import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent, knownGatewayPluginDefaultPermissions, knownGatewayPluginDefaultSurfaces } from "@ccr/core/contracts/app";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
@@ -174,6 +176,9 @@ function defaultBotGatewayAuthType(platform: string): string {
   }
   if (platform === "slack" || platform === "discord" || platform === "telegram" || platform === "line") {
     return "bot_token";
+  }
+  if (platform === "imessage") {
+    return "local";
   }
   return "";
 }
@@ -522,7 +527,7 @@ function sanitizeProfileConfigForDisk(profile: AppConfig["profile"]): AppConfig[
     ...profile,
     codex,
     profiles: profile.profiles.map((profileItem) => {
-      if (profileItem.agent !== "codex" && profileItem.agent !== "zcode") {
+      if (profileItem.agent !== "codex" && profileItem.agent !== "opencode" && profileItem.agent !== "zcode") {
         return profileItem;
       }
       const {
@@ -1070,7 +1075,9 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         transformer: item.transformer,
         type: readString(item.type)
       };
-      return normalizeCodexProviderAccountConfig(provider);
+      return removeOpenCodeProviderAccountConfig(
+        normalizeGrokProviderAccountConfig(normalizeCodexProviderAccountConfig(provider))
+      );
     })
     .filter((item): item is GatewayProviderConfig => Boolean(item));
 
@@ -1742,6 +1749,22 @@ function parseBotGateway(value: unknown): LoadedBotGatewayConfig | undefined {
     config.forwardAllAgentMessages = Boolean(value.forward_all_agent_messages ?? value.forward_all_codex_messages);
   }
 
+  if (typeof value.mediaEnabled === "boolean") {
+    config.mediaEnabled = value.mediaEnabled;
+  }
+  if (typeof value.streamReplies === "boolean") {
+    config.streamReplies = value.streamReplies;
+  }
+  if (typeof value.shellEnabled === "boolean") {
+    config.shellEnabled = value.shellEnabled;
+  } else if (typeof value.shell_enabled === "boolean") {
+    config.shellEnabled = value.shell_enabled;
+  }
+  const language = readString(value.language);
+  if (language === "auto" || language === "en" || language === "zh-CN") {
+    config.language = language;
+  }
+
   const requestTimeoutMs = readNumber(value.requestTimeoutMs ?? value.request_timeout_ms);
   if (requestTimeoutMs !== undefined) {
     config.requestTimeoutMs = clampNumber(requestTimeoutMs, 1000, 3_600_000);
@@ -1753,6 +1776,22 @@ function parseBotGateway(value: unknown): LoadedBotGatewayConfig | undefined {
   const pollIntervalMs = readNumber(value.pollIntervalMs ?? value.poll_interval_ms);
   if (pollIntervalMs !== undefined) {
     config.pollIntervalMs = clampNumber(pollIntervalMs, 500, 60_000);
+  }
+  const maxTurnTimeMs = readNumber(value.maxTurnTimeMs ?? value.max_turn_time_ms);
+  if (maxTurnTimeMs !== undefined) {
+    config.maxTurnTimeMs = clampNumber(maxTurnTimeMs, 10_000, 3_600_000);
+  }
+  const maxAttachmentBytes = readNumber(value.maxAttachmentBytes ?? value.max_attachment_bytes);
+  if (maxAttachmentBytes !== undefined) {
+    config.maxAttachmentBytes = clampNumber(maxAttachmentBytes, 1024, 100 * 1024 * 1024);
+  }
+  const messageChunkChars = readNumber(value.messageChunkChars ?? value.message_chunk_chars);
+  if (messageChunkChars !== undefined) {
+    config.messageChunkChars = clampNumber(messageChunkChars, 500, 20_000);
+  }
+  const sessionIdleMinutes = readNumber(value.sessionIdleMinutes ?? value.session_idle_minutes);
+  if (sessionIdleMinutes !== undefined) {
+    config.sessionIdleMinutes = clampNumber(sessionIdleMinutes, 0, 43_200);
   }
 
   const handoff = parseBotGatewayHandoff(value.handoff);
@@ -1971,11 +2010,67 @@ function parseProxy(value: unknown): Partial<ProxyRuntimeConfig> | undefined {
   } else if (typeof value.systemProxyEnabled === "boolean") {
     proxy.systemProxy = value.systemProxyEnabled;
   }
+  const upstream = parseProxyUpstream(value.upstream ?? value.upstreamProxy ?? value.outboundProxy);
+  if (upstream) {
+    proxy.upstream = upstream;
+  }
   const targets = parseProxyTargets(value.targets);
   if (targets) {
     proxy.targets = targets;
   }
   return proxy;
+}
+
+function parseProxyUpstream(value: unknown): ProxyRuntimeConfig["upstream"] | undefined {
+  const fallback = DEFAULT_CONFIG.proxy.upstream;
+  if (typeof value === "string") {
+    const mode = parseProxyUpstreamMode(value);
+    return mode ? { ...fallback, mode } : undefined;
+  }
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const mode = parseProxyUpstreamMode(value.mode ?? value.type);
+  const customInput = isObject(value.custom) ? value.custom : value;
+  const server = readString(customInput.server ?? customInput.host ?? customInput.hostname);
+  const port = readPort(customInput.port);
+  const username = readString(customInput.username ?? customInput.user);
+  const password = typeof customInput.password === "string"
+    ? customInput.password
+    : typeof customInput.pass === "string"
+      ? customInput.pass
+      : undefined;
+  const hasCustomInput = server !== undefined || port !== undefined || username !== undefined || password !== undefined;
+
+  return {
+    ...fallback,
+    custom: {
+      ...fallback.custom,
+      ...(server !== undefined ? { server } : {}),
+      ...(port !== undefined ? { port } : {}),
+      ...(username !== undefined ? { username } : {}),
+      ...(password !== undefined ? { password } : {})
+    },
+    mode: mode ?? (hasCustomInput ? "custom" : fallback.mode)
+  };
+}
+
+function parseProxyUpstreamMode(value: unknown): ProxyRuntimeConfig["upstream"]["mode"] | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s_-]+/g, "");
+  if (["none", "off", "disabled", "direct", "noproxy"].includes(normalized)) {
+    return "none";
+  }
+  if (["system", "systemproxy", "os", "osproxy", "env", "environment"].includes(normalized)) {
+    return "system";
+  }
+  if (["custom", "manual", "http", "httpproxy"].includes(normalized)) {
+    return "custom";
+  }
+  return undefined;
 }
 
 function parseProxyTargets(value: unknown): ProxyRouteTarget[] | undefined {
@@ -2506,6 +2601,19 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         };
       }
 
+      if (agent === "grok") {
+        return {
+          agent,
+          enabled,
+          env: codexCompatibleProfileEnv(env),
+          id,
+          model,
+          name,
+          scope: "ccr",
+          surface: "cli"
+        };
+      }
+
       const appPath = readProfileAppPath(item, agent);
       return {
         agent,
@@ -2526,7 +2634,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         providerName: readString(item.providerName) || "Claude Code Router",
         remoteFrontendMode: parseCodexRemoteFrontendMode(readString(item.remoteFrontendMode) || readString(item.frontendMode) || readString(item.coreMode)) || "app",
         scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
-        showAllSessions: agent === "zcode"
+        showAllSessions: agent === "zcode" || agent === "opencode"
           ? false
           : typeof item.showAllSessions === "boolean"
             ? item.showAllSessions
@@ -2548,6 +2656,8 @@ function readProfileAppPath(item: Record<string, unknown>, agent: ProfileConfig[
       ? readString(item.claudeAppPath) || readString(item.claude_app_path)
       : agent === "codex"
         ? readString(item.chatgptAppPath) || readString(item.chatgpt_app_path) || readString(item.codexAppPath) || readString(item.codex_app_path)
+        : agent === "opencode"
+          ? readString(item.openCodeAppPath) || readString(item.opencodeAppPath) || readString(item.opencode_app_path)
         : readString(item.zcodeAppPath) || readString(item.zcode_app_path));
 }
 
@@ -2562,6 +2672,12 @@ function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
   if (normalized === "codex") {
     return "codex";
   }
+  if (normalized === "grok" || normalized === "grok-cli" || normalized === "grok cli") {
+    return "grok";
+  }
+  if (normalized === "opencode" || normalized === "open-code" || normalized === "open code") {
+    return "opencode";
+  }
   if (normalized === "zcode" || normalized === "z-code" || normalized === "z code") {
     return "zcode";
   }
@@ -2575,11 +2691,21 @@ function defaultProfileAgentName(agent: ProfileConfig["agent"]): string {
   if (agent === "zcode") {
     return "ZCode";
   }
+  if (agent === "grok") {
+    return "Grok CLI";
+  }
+  if (agent === "opencode") {
+    return "OpenCode";
+  }
   return "Codex";
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "~/.zcode/cli/config.json" : "~/.codex/config.toml";
+  return agent === "zcode"
+    ? "~/.zcode/cli/config.json"
+    : agent === "opencode"
+      ? "~/.config/opencode/opencode.jsonc"
+      : "~/.codex/config.toml";
 }
 
 function normalizeCodexConfigFileForAgent(agent: ProfileConfig["agent"], value: string | undefined): string {

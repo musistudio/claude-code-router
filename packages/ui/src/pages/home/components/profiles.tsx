@@ -1,15 +1,15 @@
 import {
   AddProfileDraft, AgentLogo, AnimatedIconSwap, AnimatedPopover, AnimatePresence, AppConfig, Badge, BotGatewaySavedConfig, botGatewaySavedConfigLabel, BotHandoffScanTarget, Button,
-	  Card, CardContent, CardHeader, CardTitle, Check, ChevronDown, Copy,
-	  cn, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
-	  DialogTitle, Field, GatewayProviderConfig, Info, Input, KeyValueRowsControl, LoaderCircle, motion,
-  normalizeProfileScope, normalizeProfileSurface, parseProfileModelValue, Pencil, Plus, PopoverContent,
-  profileAgentLabel, profileAgentOptions, ProfileConfig, profileModelDisplayValue, profileModelMatchesQuery, profileModelProviderMatchesQuery,
-  profileModelOptionDisplayName, profileModelProviderOptions, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
-  Play, Power, RefreshCw, Search, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactDragEvent, type ReactNode, type VirtualModelProfileConfig,
+  Card, CardContent, CardHeader, CardTitle, Check, ChevronDown, CircleAlert, Copy,
+  cn, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
+  DialogTitle, Field, GatewayProviderConfig, Info, Input, KeyValueRowsControl, LoaderCircle, motion,
+  normalizeProfileScope, normalizeProfileSurface, Pencil, Plus, PopoverContent,
+  profileAgentLabel, profileAgentOptions, ProfileConfig, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
+  Play, Power, RefreshCw, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactDragEvent, type ReactNode, type VirtualModelProfileConfig,
   copyTextToClipboard,
-  useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, X
+  useCallback, useEffect, useMemo, useRef, useState, X
 } from "../shared/index";
+import { ModelSelector } from "./model-selector";
 
 type ProfileActionBusy = {
   profileId: string;
@@ -82,9 +82,10 @@ export function ProfileView({
               const summaryItems = profileSummaryItems(profile, config, t);
               const cliBusy = profileActionBusy?.profileId === profile.id && profileActionBusy.surface === "cli";
               const appBusy = profileActionBusy?.profileId === profile.id && profileActionBusy.surface === "app";
-              const appRunning = profileRuntimeStatus.profiles.some((entry) =>
+              const runtimeEntry = profileRuntimeStatus.profiles.find((entry) =>
                 entry.profileId === profile.id && entry.surface === "app" && entry.state === "running"
               );
+              const appRunning = Boolean(runtimeEntry);
               const appActionLabel = appRunning ? "Stop" : "Start";
               const appActionTooltip = `${t(appActionLabel)} ${t("App")}`;
               const cliActionTooltip = `${t("Copy")} ${t("CLI command")}`;
@@ -106,6 +107,11 @@ export function ProfileView({
                               {t(profileScopeLabel(scope))}
                             </Badge>
                             <Badge variant="outline">{t(profileSurfaceLabel(surface))}</Badge>
+                            {runtimeEntry?.botGateway ? (
+                              <Badge variant={runtimeEntry.botGateway.state === "connected" ? "success" : runtimeEntry.botGateway.lastError ? "warning" : "outline"}>
+                                {t("Bot")} · {t(runtimeEntry.botGateway.state === "connected" ? "Connected" : runtimeEntry.botGateway.state === "starting" ? "Starting" : runtimeEntry.botGateway.state)}
+                              </Badge>
+                            ) : null}
                           </div>
                         </div>
                         <div className="mt-2 min-w-0 space-y-1.5">
@@ -115,6 +121,19 @@ export function ProfileView({
                               <div className="min-w-0 truncate font-medium text-foreground" title={item.value}>{item.value}</div>
                             </div>
                           ))}
+                          {runtimeEntry?.botGateway ? (
+                            <div className="grid min-w-0 grid-cols-[96px_minmax(0,1fr)] items-baseline gap-2 text-[12px] sm:grid-cols-[128px_minmax(0,1fr)]">
+                              <div className="truncate text-muted-foreground">{t("Bot activity")}</div>
+                              <div className="min-w-0 truncate font-medium text-foreground" title={runtimeEntry.botGateway.lastError || runtimeEntry.botGateway.lastEventAt || ""}>
+                                {runtimeEntry.botGateway.lastError
+                                  ? runtimeEntry.botGateway.lastError
+                                  : runtimeEntry.botGateway.lastEventAt
+                                    ? `${t("Last event")}: ${new Date(runtimeEntry.botGateway.lastEventAt).toLocaleString()}`
+                                    : t("Waiting for messages")}
+                                {runtimeEntry.botGateway.outboxCount > 0 ? ` · ${runtimeEntry.botGateway.outboxCount} ${t("pending")}` : ""}
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -173,6 +192,63 @@ export function ProfileView({
         </CardContent>
       </Card>
     </motion.div>
+  );
+}
+
+export function DeleteProfileDialog({
+  onClose,
+  onConfirm,
+  profile
+}: {
+  onClose: () => void;
+  onConfirm: () => void;
+  profile: ProfileConfig;
+}) {
+  const t = useAppText();
+  const name = profile.name || t("Unnamed");
+  const agent = t(profileAgentLabel(profile.agent));
+
+  return (
+    <Dialog onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-[520px]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{t("Delete Profile")}</DialogTitle>
+          </div>
+          <Button aria-label={t("Close dialog")} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogHeader>
+
+        <DialogBody>
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5">
+            <div className="flex items-start gap-2 text-[12px] font-medium text-destructive">
+              <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{t("Delete this agent profile from the configuration?")}</span>
+            </div>
+            <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+              <div className="truncate" title={name}>
+                <span className="font-medium text-foreground">{t("Name")}:</span> {name}
+              </div>
+              <div className="truncate" title={agent}>
+                <span className="font-medium text-foreground">{t("Agent")}:</span> {agent}
+              </div>
+              <div>{t("This action is applied immediately to the draft config and will auto-save with other changes.")}</div>
+            </div>
+          </div>
+        </DialogBody>
+
+        <DialogFooter>
+          <Button autoFocus onClick={onClose} type="button" variant="outline">
+            {t("Cancel")}
+          </Button>
+          <Button onClick={onConfirm} type="button" variant="destructive">
+            <Trash2 className="h-4 w-4" />
+            {t("Delete")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -345,7 +421,7 @@ function ProfileAgentTabs({
   return (
     <div
       aria-label={t("Agent profiles")}
-      className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-3"
+      className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-5"
       role="tablist"
     >
       {profileAgentOptions.map((option) => {
@@ -479,283 +555,6 @@ function AgentSelectControl({
   );
 }
 
-function ProfileModelSelector({
-  onChange,
-  placeholder,
-  providers,
-  value,
-  virtualModelProfiles = []
-}: {
-  onChange: (value: string) => void;
-  placeholder?: string;
-  providers: GatewayProviderConfig[];
-  value: string;
-  virtualModelProfiles?: VirtualModelProfileConfig[];
-}) {
-  const t = useAppText();
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [popoverLayout, setPopoverLayout] = useState<{
-    gridHeight: number;
-    left: number;
-    maxHeight: number;
-    offset: number;
-    placement: "above" | "below";
-    width: number;
-  }>();
-  const parsedValue = useMemo(() => parseProfileModelValue(value, providers, virtualModelProfiles), [providers, value, virtualModelProfiles]);
-  const providerOptions = useMemo(() => profileModelProviderOptions(providers, virtualModelProfiles), [providers, virtualModelProfiles]);
-  const filteredProviders = useMemo(
-    () => providerOptions.filter((provider) => profileModelProviderMatchesQuery(provider, query)),
-    [providerOptions, query]
-  );
-  const [activeProviderName, setActiveProviderName] = useState("");
-  const rootRef = useRef<HTMLDivElement>(null);
-  const activeProvider =
-    filteredProviders.find((provider) => provider.name === activeProviderName) ??
-    filteredProviders.find((provider) => provider.name === parsedValue.provider) ??
-    filteredProviders[0];
-  const filteredModels = activeProvider
-    ? activeProvider.models.filter((model) => profileModelMatchesQuery(activeProvider.name, model, query, profileModelOptionDisplayName(activeProvider, model)))
-    : [];
-  const displayValue = profileModelDisplayValue(value, parsedValue, providers, placeholder, virtualModelProfiles);
-
-  useLayoutEffect(() => {
-    if (!open) {
-      setPopoverLayout(undefined);
-      return;
-    }
-
-    function updatePopoverLayout() {
-      const root = rootRef.current;
-      if (!root) {
-        return;
-      }
-      const anchor = root.getBoundingClientRect();
-      const margin = 12;
-      const gap = 6;
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-      const availableWidth = Math.max(240, viewportWidth - margin * 2);
-      const width = Math.min(560, availableWidth);
-      const left = Math.min(Math.max(margin, anchor.left), viewportWidth - margin - width);
-      const below = Math.max(0, viewportHeight - anchor.bottom - margin - gap);
-      const above = Math.max(0, anchor.top - margin - gap);
-      const placement = below < 240 && above > below ? "above" : "below";
-      const availableHeight = Math.max(144, placement === "above" ? above : below);
-      const maxHeight = Math.min(360, availableHeight);
-      const gridHeight = Math.max(128, Math.min(280, maxHeight - 58));
-      setPopoverLayout({
-        gridHeight,
-        left,
-        maxHeight,
-        offset: placement === "above" ? viewportHeight - anchor.top + gap : anchor.bottom + gap,
-        placement,
-        width
-      });
-    }
-
-    updatePopoverLayout();
-    window.addEventListener("resize", updatePopoverLayout);
-    window.addEventListener("scroll", updatePopoverLayout, true);
-    return () => {
-      window.removeEventListener("resize", updatePopoverLayout);
-      window.removeEventListener("scroll", updatePopoverLayout, true);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    function handlePointerDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    if (activeProviderName && filteredProviders.some((provider) => provider.name === activeProviderName)) {
-      return;
-    }
-    setActiveProviderName(parsedValue.provider || filteredProviders[0]?.name || "");
-  }, [activeProviderName, filteredProviders, open, parsedValue.provider]);
-
-  function chooseModel(providerName: string, model: string) {
-    onChange(`${providerName}/${model}`);
-    setOpen(false);
-    setQuery("");
-    setActiveProviderName(providerName);
-  }
-
-  function openSelector() {
-    setOpen(true);
-    setQuery("");
-    setActiveProviderName(parsedValue.provider || providerOptions[0]?.name || "");
-  }
-
-  function clearValue(event: React.MouseEvent<HTMLButtonElement>) {
-    event.preventDefault();
-    event.stopPropagation();
-    onChange("");
-    setOpen(false);
-    setQuery("");
-  }
-
-  return (
-    <div className="relative min-w-0" ref={rootRef}>
-      <div
-        className={cn(
-          "flex h-10 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-[12px] shadow-[inset_0_1px_1px_rgba(0,0,0,0.03)] outline-none transition-[background-color,border-color,box-shadow,color] hover:border-muted-foreground/45 focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-ring/25",
-          open && "border-ring/35 bg-muted/40",
-          !value.trim() && "text-muted-foreground"
-        )}
-      >
-        <button
-          aria-expanded={open}
-          aria-haspopup="dialog"
-          className="min-w-0 flex-1 truncate text-left outline-none"
-          onClick={openSelector}
-          type="button"
-        >
-          {displayValue}
-        </button>
-        {value.trim() ? (
-          <button
-            aria-label={t("Clear")}
-            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
-            onClick={clearValue}
-            title={t("Clear")}
-            type="button"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        ) : null}
-        <button
-          aria-label={open ? t("Collapse") : t("Expand")}
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
-          onClick={openSelector}
-          title={open ? t("Collapse") : t("Expand")}
-          type="button"
-        >
-          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} />
-        </button>
-      </div>
-
-      <AnimatePresence initial={false}>
-        {open ? (
-          <AnimatedPopover
-            className="fixed z-[70]"
-            placement={popoverLayout?.placement ?? "below"}
-            style={popoverLayout
-              ? {
-                left: `${popoverLayout.left}px`,
-                maxHeight: `${popoverLayout.maxHeight}px`,
-                width: `${popoverLayout.width}px`,
-                ...(popoverLayout.placement === "above"
-                  ? { bottom: `${popoverLayout.offset}px` }
-                  : { top: `${popoverLayout.offset}px` })
-              }
-              : undefined}
-          >
-            <PopoverContent className="w-full overflow-hidden p-2">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  autoFocus
-                  aria-label={t("Search models")}
-                  className="h-9 pl-8"
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={t("Search providers or models")}
-                  value={query}
-                />
-              </div>
-
-              {providerOptions.length === 0 ? (
-                <div className="mt-2 rounded-md border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-[12px] text-muted-foreground">
-                  {t("No models configured")}
-                </div>
-              ) : (
-                <div
-                  className="mt-2 grid grid-cols-[minmax(112px,0.38fr)_minmax(0,1fr)] overflow-hidden rounded-md border border-border"
-                  style={{ height: `${popoverLayout?.gridHeight ?? 220}px` }}
-                >
-                  <div className="min-w-0 overflow-auto border-r border-border bg-muted/30 p-1">
-                    {filteredProviders.length === 0 ? (
-                      <div className="px-2 py-6 text-center text-[11px] text-muted-foreground">{t("No matching providers")}</div>
-                    ) : null}
-                    {filteredProviders.map((provider) => {
-                      const active = provider.name === activeProvider?.name;
-                      return (
-                        <button
-                          className={cn(
-                            "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] outline-none transition-colors hover:bg-background focus-visible:ring-2 focus-visible:ring-ring/25",
-                            active && "bg-background text-primary"
-                          )}
-                          key={provider.name}
-                          onClick={() => setActiveProviderName(provider.name)}
-                          type="button"
-                        >
-                          <span className="min-w-0 flex-1 truncate">{provider.name}</span>
-                          <Badge className="shrink-0" variant="outline">{provider.models.length}</Badge>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="min-w-0 overflow-auto bg-background p-1">
-                    {!activeProvider ? (
-                      <div className="px-2 py-10 text-center text-[12px] text-muted-foreground">{t("No matching models")}</div>
-                    ) : null}
-                    {activeProvider && filteredModels.length === 0 ? (
-                      <div className="px-2 py-10 text-center text-[12px] text-muted-foreground">{t("No matching models")}</div>
-                    ) : null}
-                    {activeProvider && filteredModels.map((model) => {
-                      const selected = parsedValue.provider === activeProvider.name && parsedValue.model === model;
-                      const displayName = profileModelOptionDisplayName(activeProvider, model);
-                      return (
-                        <button
-                          className={cn(
-                            "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/25",
-                            selected && "bg-primary/10 text-primary"
-                          )}
-                          key={`${activeProvider.name}/${model}`}
-                          onClick={() => chooseModel(activeProvider.name, model)}
-                          type="button"
-                        >
-                          <span className="min-w-0 flex-1 truncate" title={displayName}>{displayName}</span>
-                          {selected ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </PopoverContent>
-          </AnimatedPopover>
-        ) : null}
-      </AnimatePresence>
-    </div>
-  );
-}
-
 export function AddProfileForm({
   botConfigs,
   draft,
@@ -821,7 +620,12 @@ export function AddProfileForm({
         <Field label={t("Effect scope")}>
           <SelectControl
             onChange={(scope) => onChange({ scope: normalizeProfileScope(scope) })}
-            options={translateOptions(profileScopeOptions, t)}
+            options={translateOptions(
+              draft.agent === "grok"
+                ? profileScopeOptions.filter((option) => option.value === "ccr")
+                : profileScopeOptions,
+              t
+            )}
             value={draft.scope}
           />
         </Field>
@@ -841,6 +645,8 @@ export function AddProfileForm({
             options={translateOptions(
               draft.agent === "zcode"
                 ? profileSurfaceOptions.filter((option) => option.value === "app")
+                : draft.agent === "grok"
+                  ? profileSurfaceOptions.filter((option) => option.value === "cli")
                 : profileSurfaceOptions,
               t
             )}
@@ -864,24 +670,34 @@ export function AddProfileForm({
         {draft.agent === "claude-code" ? (
           <>
             <Field label={t("Model override")}>
-              <ProfileModelSelector
-	                placeholder={t("Keep Claude Code default")}
-	                providers={providers}
-	                value={draft.model}
-	                virtualModelProfiles={virtualModelProfiles}
-	                onChange={(model) => onChange({ model })}
-	              />
+              <ModelSelector
+                placeholder={t("Keep Claude Code default")}
+                providers={providers}
+                value={draft.model}
+                virtualModelProfiles={virtualModelProfiles}
+                onChange={(model) => onChange({ model })}
+              />
             </Field>
             <Field label={t("Small fast model")}>
-              <ProfileModelSelector
-	                placeholder={t("Keep Claude Code default")}
-	                providers={providers}
-	                value={draft.smallFastModel}
-	                virtualModelProfiles={virtualModelProfiles}
-	                onChange={(smallFastModel) => onChange({ smallFastModel })}
-	              />
+              <ModelSelector
+                placeholder={t("Keep Claude Code default")}
+                providers={providers}
+                value={draft.smallFastModel}
+                virtualModelProfiles={virtualModelProfiles}
+                onChange={(smallFastModel) => onChange({ smallFastModel })}
+              />
             </Field>
           </>
+        ) : draft.agent === "grok" ? (
+          <Field className="sm:col-span-2" label={t("Grok model")}>
+            <ModelSelector
+              placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}
+              providers={providers}
+              value={draft.model}
+              virtualModelProfiles={virtualModelProfiles}
+              onChange={(model) => onChange({ model })}
+            />
+          </Field>
         ) : (
           <>
             <Field label={t("Provider ID")}>
@@ -890,20 +706,20 @@ export function AddProfileForm({
             <Field label={t("Provider name")}>
               <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
             </Field>
-            {draft.agent !== "zcode" ? (
+            {draft.agent !== "zcode" && draft.agent !== "opencode" ? (
               <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
                 <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
                 <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
               </div>
             ) : null}
-            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : "Codex model")}>
-              <ProfileModelSelector
-	                placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}
-	                providers={providers}
-	                value={draft.model}
-	                virtualModelProfiles={virtualModelProfiles}
-	                onChange={(model) => onChange({ model })}
-	              />
+            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : "Codex model")}>
+              <ModelSelector
+                placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}
+                providers={providers}
+                value={draft.model}
+                virtualModelProfiles={virtualModelProfiles}
+                onChange={(model) => onChange({ model })}
+              />
             </Field>
           </>
         )}
@@ -929,12 +745,15 @@ export function AddProfileForm({
   );
 }
 
-function profileAppPathLabel(agent: ProfileConfig["agent"]): "CLAUDE_APP_PATH" | "CHATGPT_APP_PATH" | undefined {
+function profileAppPathLabel(agent: ProfileConfig["agent"]): "CLAUDE_APP_PATH" | "CHATGPT_APP_PATH" | "OPENCODE_APP_PATH" | undefined {
   if (agent === "claude-code") {
     return "CLAUDE_APP_PATH";
   }
   if (agent === "codex") {
     return "CHATGPT_APP_PATH";
+  }
+  if (agent === "opencode") {
+    return "OPENCODE_APP_PATH";
   }
   return undefined;
 }
@@ -1168,6 +987,9 @@ function BotGatewaySelectForm({
                       onRefresh={() => void scanHandoffTargets("bluetooth")}
                       onSelect={(botHandoffPhoneBluetoothTargets) => onChange({ botHandoffPhoneBluetoothTargets })}
                     />
+                    <div className="sm:col-span-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] leading-4 text-amber-700 dark:text-amber-300">
+                      {t("Phone presence targets are experimental and do not affect runtime handoff yet. Handoff currently uses screen lock and idle time.")}
+                    </div>
                   </div>
                 ) : null}
               </div>

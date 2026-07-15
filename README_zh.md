@@ -41,31 +41,51 @@
 
 </div>
 
-Claude Code Router Desktop 是一个本地网关和桌面控制台，用来把 Claude Code、Codex、ZCode 以及兼容客户端的 Agent 请求路由到你真正想使用的模型服务。
+Claude Code Router Desktop 是给编程 Agent 用的本地控制平面。它为 Claude Code、Codex、Grok CLI、ZCode 以及兼容 API 客户端提供一个稳定的本地入口，然后由你在 CCR 中决定每个请求应该走哪个供应商、哪个模型、哪套路由策略、哪些工具能力和哪组账号凭据。
+
+相比在每个 Agent、每个模型服务里反复改配置，CCR 把模型层收束到本机桌面应用里：供应商预设、自定义端点、凭据池、Fallback、Fusion 组合模型、MCP 工具、请求日志、账号用量和 Agent 启动配置都在一个地方管理。
 
 <p align="center">
   <img src="blog/images/claude-code-router.png" width="720" alt="Claude Code Router Desktop 项目截图" />
 </p>
 
+## CCR 能帮你做什么
+
+| 目标 | CCR 提供的能力 |
+| --- | --- |
+| 保持 Agent 工作流不变，同时自由切换模型 | 为 Claude Code、Codex、Grok CLI、ZCode 创建本地配置档案，支持 CLI / App 启动入口和按配置选择模型 |
+| 快速接入多个模型供应商 | 内置供应商预设、自定义 OpenAI / Anthropic / Gemini 兼容端点、协议探测、模型发现和连通性检测 |
+| 把路由变成可配置策略 | 内置 Agent 路由、条件规则、请求改写、模型前缀路由、自动重试和 Fallback 模型链 |
+| 控制成本和额度压力 | 凭据池、Key 轮换、本地限额、账号余额快照、Token / 成本仪表盘和托盘状态 |
+| 给稳定模型补能力 | 通过 Fusion 给基础模型叠加视觉、联网搜索或指定 MCP 工具 |
+| 让大量工具变得可用 | ToolHub 把多个 MCP server 收束成一个紧凑入口，让 Agent 按任务动态解析和调用工具 |
+| 排查每一次请求 | 请求日志、最终供应商 / 模型、耗时、Token、成本估算、网络捕获和 Agent 观测链路 |
+
 ## 为什么使用 CCR
 
-- 用一个本地入口连接多个 Agent 工具，不需要在每个客户端里重复配置 Provider。
-- 在不改变工作流的情况下混用不同 Provider。CCR 支持 OpenAI 兼容 API、Anthropic Messages、Gemini Generate Content、OpenRouter、DeepSeek、SiliconFlow、Moonshot、Kimi Code、Mistral、Z.AI、百炼以及自定义 Provider。
-- 通过 fallback 路由、API Key 轮换、用量统计和请求日志来控制成本和可靠性。
+- **一个本地网关，接管整套 Agent 模型层**：客户端只需要指向 CCR，模型、供应商、Key、路由和工具能力都可以在桌面 UI 中调整。
+- **换供应商，不换工作流**：支持 OpenAI Chat / Responses、Anthropic Messages、Gemini Generate Content / Interactions、OpenRouter、DeepSeek、SiliconFlow、Moonshot、Kimi Code、Mistral、Z.AI、百炼以及自定义兼容供应商。
+- **可见、可改、可验证的可靠性策略**：配置请求什么时候改写、重试或切到备用模型，并在本地日志里确认真实命中结果。
+- **面向 AI 工作流的运营视角**：从仪表盘或托盘查看请求量、Token、成本估算、成功率、延迟、模型分布、供应商用量和账号余额。
+- **Agent 原生工具与扩展**：使用 Fusion 扩展模型能力，通过 ToolHub 暴露动态 MCP 工具，让内置浏览器参与任务，通过 IM Bot 接力 Agent，或安装本地扩展。
 
-## 功能和特性
+## 功能亮点
 
-- **概览仪表盘**：查看系统状态、用量组件、账号余额、模型分布和分享卡片。
-- **Provider 管理**：添加预设或自定义端点，探测协议支持，检测模型连通性，管理凭据，并在可用时查看账号余额。
-- **路由规则**：配置条件路由、模型前缀规则、失败降级和请求改写。
-- **Agent配置**：为 Claude Code、Codex 和 ZCode 配置启动入口、模型、作用范围和多开 App 配置。
-- **网关兼容层**：通过本地 CCR 模型网关转换支持的客户端请求。
-- **代理模式**：通过本地代理捕获支持的 API 流量，可选系统代理和网络捕获。
-- **Fusion 组合模型**：把基础模型与视觉、联网搜索或 MCP 工具组合成新的可选模型。
+- **Agent 配置档案**：为 Claude Code、Codex、Grok CLI 和 ZCode 创建配置档案，支持模型覆盖、作用范围、CLI / App 启动方式、环境变量和多开 App 工作流。
+- **供应商管理**：添加预设供应商或自定义端点；探测协议；发现模型列表；运行真实连通性检测；管理单 Key 或凭据池；在支持时导入本机 Agent 登录态。
+- **模型目录**：搜索全部已配置模型，编辑模型描述，并把这些描述用于 Claude Code Subagent、Task 和 Workflow 的模型选择提示。
+- **路由引擎**：组合内置 Agent 路由、请求 Header / Body 条件、模型前缀路由、请求改写、重试策略和有序 Fallback 目标。
+- **Fusion 组合模型**：发布可复用的虚拟模型，在保留基础模型手感的同时增加视觉、托管联网搜索或指定 MCP 工具。
+- **ToolHub**：把多个 MCP server 合并成一个动态 MCP server，让 Agent 只在任务需要时解析工具；桌面端还可暴露内置浏览器自动化和 Chrome 登录态导入。
+- **API Key 与限额**：创建访问 CCR 的客户端 Key，设置过期时间和本地请求 / Token / 图片限额，与上游供应商凭据分开管理。
+- **日志与观测**：查看请求 / 响应详情、最终供应商与模型、凭据、状态、耗时、Token、成本估算、工具调用和 Agent 执行链路。
+- **代理与网络捕获**：把 CCR 作为本地 HTTP / HTTPS 代理运行，可选安装 CA 证书，把支持的 API 流量接入 CCR，并保存网络请求用于排查。
+- **Bot 接力**：把 Agent 配置接入 Weixin iLink、企业微信、Slack、Discord、Telegram、LINE、飞书和钉钉等 IM 平台。
+- **扩展机制**：安装 wrapper plugin 和 core gateway plugin，注册本地路由、代理路由、供应商账号连接器、内置应用和虚拟模型。
 
 ## 文档
 
-完整文档见 [ccrdesk.top](https://ccrdesk.top/)。
+完整文档见 [ccrdesk.top](https://ccrdesk.top/)，其中包括 [CLI 命令参考](https://ccrdesk.top/guides/cli/) 和 [Docker 部署指南](https://ccrdesk.top/guides/docker/)。
 
 ## 下载和安装
 
@@ -78,11 +98,30 @@ Claude Code Router Desktop 是一个本地网关和桌面控制台，用来把 C
 3. 安装并启动 **Claude Code Router**。
 4. 首次启动后，CCR 会创建本地配置数据库：
    - macOS/Linux：`~/.claude-code-router/config.sqlite`
-   - Windows：`%APPDATA%\Claude Code Router\config.sqlite`
+   - Windows：`%APPDATA%\claude-code-router\config.sqlite`
 
 CCR 的运行配置存储在 SQLite 中。旧版 `config.json` 只会在没有 SQLite 配置时作为迁移来源读取一次。
 
-从 **服务** 页面启动后，CCR 默认监听 `http://localhost:8080`。**服务** 页面负责配置网关 `Host`、`Port`、代理模式、系统代理、网络捕获和 CA 证书状态。
+从 **服务** 页面启动后，CCR 默认监听 `http://127.0.0.1:3456`。**服务** 页面负责配置网关 `Host`、`Port`、代理模式、系统代理、网络捕获和 CA 证书状态。
+
+## CLI 与 Docker
+
+npm CLI 要求 Node.js 22 或更高版本，不依赖 Electron，也能提供浏览器管理界面、模型网关和 Agent 配置启动命令：
+
+```sh
+npm install -g @musistudio/claude-code-router
+ccr ui
+```
+
+CLI 管理界面默认是 `http://127.0.0.1:3458`，模型网关默认是 `http://127.0.0.1:3456`。后台 / 前台服务、全部选项、Profile 启动、鉴权和数据位置见[完整 CLI 参考](https://ccrdesk.top/guides/cli/)。
+
+如果要使用单一 Nginx 端口和持久化 Docker 数据卷运行管理 UI 与网关：
+
+```sh
+docker compose up -d --build
+```
+
+Docker 默认把管理和网关路径都发布在 `http://127.0.0.1:3458`。远程暴露前请先阅读 [Docker 部署指南](https://ccrdesk.top/guides/docker/)，其中包含内部端口拓扑、管理与网关鉴权、`CCR_PUBLIC_BASE_URL`、数据卷、备份恢复、升级和健康检查。
 
 ## 快速开始
 
@@ -90,25 +129,23 @@ CCR 可以完全通过桌面 UI 完成配置。首次使用建议按下面顺序
 
 ### 1. 添加 Provider
 
-打开 **供应商**，点击 **添加供应商**，选择内置预设或 **其他 / 自定义 API 端点**。按表单填写 Provider 名称、基础 URL、协议、API Key 和模型列表。可用时先运行协议探测和模型连通性检查，然后保存 Provider。
+打开 **供应商**，点击 **添加供应商**，选择内置预设、导入支持的本机 Agent 登录态，或选择 **其他 / 自定义 API 端点**。按表单填写 Provider 名称、基础 URL、协议、API Key 和模型列表。可用时先运行协议探测和模型连通性检查，然后保存 Provider。
 
 ### 2. 设置路由
 
-打开 **路由**，添加条件规则，配置请求改写和失败降级。
-
-如果需要更细粒度控制，使用 **添加路由规则** 添加模型前缀、请求条件或规则级失败降级目标。
+打开 **路由**，启用内置 Agent 路由，添加条件规则，配置请求改写和失败降级。如果需要更细粒度控制，使用 **添加路由规则** 添加模型前缀、请求条件或规则级失败降级目标。
 
 ### 3. 启动网关
 
-打开 **服务**，点击 **启动**。页面显示运行中后，CCR 会在本机监听 `http://localhost:8080`。如果希望每次打开桌面应用时自动启动网关，可以启用自动启动。
+打开 **服务**，点击 **启动**。页面显示运行中后，CCR 默认会在本机监听 `http://127.0.0.1:3456`。如果希望每次打开桌面应用时自动启动网关，可以启用自动启动。
 
 ### 4. 连接 Agent 工具
 
-打开 **Agent配置**，选择要使用的客户端。配置 Claude Code、Codex 或 ZCode，选择目标模型和作用范围，然后应用配置。对于 App 入口，可以使用 **打开 Agent** 操作通过 CCR 打开目标应用。
+打开 **Agent配置**，选择要使用的客户端。配置 Claude Code、Codex、Grok CLI 或 ZCode，选择目标模型和作用范围，然后应用配置。对于 App 入口，可以使用 **打开 Agent** 通过 CCR 打开目标应用。
 
 ### 5. 日常查看和调整
 
-到 **设置 → 日志与观测** 打开请求日志和 Agent 观测。使用 **日志** 确认 `request model`、`resolved provider`、`resolved model`、状态码、tokens、耗时和错误；使用托盘窗口快速查看 Token 和账号状态。
+到 **设置 → 日志与观测** 打开请求日志和 Agent 观测。使用 **日志** 确认 `request model`、`resolved provider`、`resolved model`、状态码、tokens、耗时和错误；使用概览仪表盘和托盘窗口查看 Token、成本、模型分布和账号状态。
 
 ## 致谢
 
@@ -209,17 +246,40 @@ CCR 可以完全通过桌面 UI 完成配置。首次使用建议按下面顺序
       </a>
     </td>
     <td align="center" width="330">
-      <a href="https://code0.ai?source=claudecoderouter">
+      <a href="https://code0.ai/agent/register/9n9jOsSnYQoemIVL?utm_source=claudecoderouter&amp;utm_medium=partner&amp;utm_campaign=claudecoderouter_2026&amp;utm_content=default">
         <img src="/docs/public/provider-icons/code0.png" width="42" height="42" alt="code0.ai 图标" />
         <br />
         <strong>code0.ai</strong>
       </a>
     </td>
     <td align="center" width="330">
-      <a href="https://www.claudeapi.com?source=claudecoderouter">
+      <a href="https://console.claudeapi.com/agent/register/LbmB7Y9kPloyzhwF?utm_source=claudecoderouter&amp;utm_medium=partner&amp;utm_campaign=claudecoderouter_2026&amp;utm_content=default">
         <img src="/docs/public/provider-icons/claudeapi.png" width="42" height="42" alt="claudeapi 图标" />
         <br />
         <strong>claudeapi</strong>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="330">
+      <a href="https://s.qiniu.com/AVjMVf">
+        <img src="/docs/public/provider-icons/qiniu-ai.png" width="42" height="42" alt="七牛云 AI 图标" />
+        <br />
+        <strong>七牛云 AI</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://api.fenno.ai/register?redirect=/purchase?tab=subscription%26group=16&amp;aff=9HHHAB5QLAES">
+        <img src="/docs/public/provider-icons/fenno.jpg" width="42" height="42" alt="Fenno.ai 图标" />
+        <br />
+        <strong>Fenno.ai</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://unity2.ai/register?source=claudecoderouter">
+        <img src="/docs/public/provider-icons/unity2.jpg" width="42" height="42" alt="Unity2.Ai 图标" />
+        <br />
+        <strong>Unity2.Ai</strong>
       </a>
     </td>
   </tr>

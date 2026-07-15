@@ -51,6 +51,9 @@ export function windowsDesktopAppCandidates(options: WindowsDesktopAppDiscoveryO
   for (const candidate of windowsAppExecutionAliasCandidates(options)) {
     pushUnique(candidates, candidate);
   }
+  for (const candidate of windowsShortcutTargetCandidates(options)) {
+    pushUnique(candidates, candidate);
+  }
   for (const candidate of windowsMsixPackageCandidates(options)) {
     pushUnique(candidates, candidate);
   }
@@ -58,6 +61,58 @@ export function windowsDesktopAppCandidates(options: WindowsDesktopAppDiscoveryO
     pushUnique(candidates, candidate);
   }
   return candidates;
+}
+
+function windowsShortcutTargetCandidates(options: WindowsDesktopAppDiscoveryOptions): string[] {
+  const names = unique([
+    ...options.packageKeywords,
+    ...options.appDirs,
+    ...options.exeNames.map((name) => path.basename(name, path.extname(name)))
+  ].map((name) => name.trim()).filter(Boolean));
+  if (names.length === 0) {
+    return [];
+  }
+
+  const pattern = names.map(escapeRegExp).join("|");
+  const script = [
+    "$ErrorActionPreference = 'SilentlyContinue';",
+    "$roots = @(",
+    "  [Environment]::GetFolderPath('Programs'),",
+    "  [Environment]::GetFolderPath('CommonPrograms'),",
+    "  [Environment]::GetFolderPath('Desktop'),",
+    "  [Environment]::GetFolderPath('CommonDesktopDirectory')",
+    ") | Where-Object { $_ } | Select-Object -Unique;",
+    `$pattern = '${powerShellSingleQuotedString(pattern)}';`,
+    "$shell = New-Object -ComObject WScript.Shell;",
+    "Get-ChildItem -LiteralPath $roots -Filter '*.lnk' -File -Recurse |",
+    "  Where-Object { $_.BaseName -match $pattern } |",
+    "  ForEach-Object {",
+    "    try {",
+    "      $target = $shell.CreateShortcut($_.FullName).TargetPath;",
+    "      if ($target) { $target }",
+    "    } catch {}",
+    "  }"
+  ].join(" ");
+
+  const result = spawnSync(windowsSystemCommand("powershell.exe"), [
+    "-NoProfile",
+    "-NonInteractive",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-Command",
+    script
+  ], {
+    encoding: "utf8",
+    windowsHide: true
+  });
+  if (result.status !== 0) {
+    return [];
+  }
+
+  return result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 export function normalizeWindowsDesktopAppCandidate(

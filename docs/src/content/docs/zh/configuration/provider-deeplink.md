@@ -78,13 +78,25 @@ lead: 快速添加常见模型供应商，确认无误后即可保存，减少�
     <span class="provider-import-icon-shell"><img src="../../provider-icons/teamorouter.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">TeamoRouter</span><span class="provider-import-meta">Anthropic / Chat / Responses</span></span>
   </a>
-  <a class="provider-import-button provider-code0" href="ccr://provider?name=code0.ai&amp;base_url=https%3A%2F%2Fconsole.code0.ai&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fcode0.ai%3Fsource%3Dclaudecoderouter" aria-label="导入 code0.ai 供应商">
+  <a class="provider-import-button provider-unity2" href="ccr://provider?name=Unity2.Ai&amp;base_url=https%3A%2F%2Funity2.ai%2Fv1&amp;protocol=openai_chat_completions&amp;source=https%3A%2F%2Funity2.ai%2Fregister%3Fsource%3Dclaudecoderouter" aria-label="导入 Unity2.Ai 供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/unity2.jpg" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">Unity2.Ai</span><span class="provider-import-meta">OpenAI 兼容网关</span></span>
+  </a>
+  <a class="provider-import-button provider-code0" href="ccr://provider?name=code0.ai&amp;base_url=https%3A%2F%2Fconsole.code0.ai&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fcode0.ai%2Fagent%2Fregister%2F9n9jOsSnYQoemIVL%3Futm_source%3Dclaudecoderouter%26utm_medium%3Dpartner%26utm_campaign%3Dclaudecoderouter_2026%26utm_content%3Ddefault" aria-label="导入 code0.ai 供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/code0.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">code0.ai</span><span class="provider-import-meta">Anthropic / Chat / Responses</span></span>
   </a>
-  <a class="provider-import-button provider-claudeapi" href="ccr://provider?name=claudeapi&amp;base_url=https%3A%2F%2Fgw.claudeapi.com&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fwww.claudeapi.com%3Fsource%3Dclaudecoderouter" aria-label="导入 claudeapi 供应商">
+  <a class="provider-import-button provider-claudeapi" href="ccr://provider?name=claudeapi&amp;base_url=https%3A%2F%2Fgw.claudeapi.com&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fconsole.claudeapi.com%2Fagent%2Fregister%2FLbmB7Y9kPloyzhwF%3Futm_source%3Dclaudecoderouter%26utm_medium%3Dpartner%26utm_campaign%3Dclaudecoderouter_2026%26utm_content%3Ddefault" aria-label="导入 claudeapi 供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/claudeapi.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">claudeapi</span><span class="provider-import-meta">Anthropic Messages</span></span>
+  </a>
+  <a class="provider-import-button provider-qiniu-ai" href="ccr://provider?name=%E4%B8%83%E7%89%9B%E4%BA%91+AI&amp;base_url=https%3A%2F%2Fapi.qnaigc.com&amp;protocol=openai_chat_completions&amp;source=https%3A%2F%2Fs.qiniu.com%2FAVjMVf" aria-label="导入七牛云 AI 供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/qiniu-ai.png" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">七牛云 AI</span><span class="provider-import-meta">Chat / Responses / Anthropic / Gemini Generate</span></span>
+  </a>
+  <a class="provider-import-button provider-fenno" href="ccr://provider?name=Fenno.ai&amp;base_url=https%3A%2F%2Fapi.fenno.ai&amp;protocol=openai_chat_completions&amp;source=https%3A%2F%2Fapi.fenno.ai%2Fregister%3Fredirect%3D%2Fpurchase%3Ftab%3Dsubscription%2526group%3D16%26aff%3D9HHHAB5QLAES" aria-label="导入 Fenno.ai 供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/fenno.jpg" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">Fenno.ai</span><span class="provider-import-meta">Chat / Responses / Anthropic</span></span>
   </a>
 </div>
 

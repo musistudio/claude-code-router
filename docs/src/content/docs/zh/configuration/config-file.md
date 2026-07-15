@@ -8,7 +8,9 @@ lead: 找到 CCR 桌面 App 默认维护的 SQLite 配置数据库。
 ## 默认位置
 
 - macOS/Linux：`~/.claude-code-router/config.sqlite`
-- Windows：`%APPDATA%\Claude Code Router\config.sqlite`
+- Windows：`%APPDATA%\claude-code-router\config.sqlite`
+
+Docker 设置 `HOME=/data`，因此配置数据库位于 `/data/.claude-code-router/config.sqlite`；需要持久化挂载整个 `/data`，而不是只挂载单个数据库文件。
 
 ## 生效方式
 

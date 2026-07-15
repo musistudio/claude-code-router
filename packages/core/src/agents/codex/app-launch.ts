@@ -161,6 +161,10 @@ export function findInstalledCodexAppExecutable(profileAppPath?: string): CodexA
   return findInstalledCodexCompatibleAppExecutable(codexAppSpec, profileAppPath);
 }
 
+export function findInstalledZcodeAppExecutable(profileAppPath?: string): CodexAppLookupResult {
+  return findInstalledCodexCompatibleAppExecutable(zcodeAppSpec, profileAppPath);
+}
+
 export function launchZcodeAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): CodexAppLaunchResult {
   return launchCodexCompatibleAppProfile(configDir, profile, zcodeAppSpec, config);
 }

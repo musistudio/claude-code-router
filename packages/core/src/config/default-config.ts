@@ -74,12 +74,20 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
       },
       integrationConfig: {},
       integrationId: "",
+      language: "auto",
+      maxAttachmentBytes: 20 * 1024 * 1024,
+      maxTurnTimeMs: 10 * 60 * 1000,
+      mediaEnabled: true,
+      messageChunkChars: 3500,
       platform: "none",
       pollIntervalMs: 2000,
       requestTimeoutMs: 600000,
+      sessionIdleMinutes: 0,
+      shellEnabled: false,
       sourceDir: "",
       startupTimeoutMs: 10000,
       stateDir: "",
+      streamReplies: true,
       tenantId: "ccr"
     },
     gateway: {
@@ -158,7 +166,16 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
       mode: "gateway",
       port: 7890,
       systemProxy: false,
-      targets: DEFAULT_PROXY_TARGETS
+      targets: DEFAULT_PROXY_TARGETS,
+      upstream: {
+        custom: {
+          password: "",
+          port: 7890,
+          server: "",
+          username: ""
+        },
+        mode: "system"
+      }
     },
     providerPlugins: [],
     overviewWidgets: DEFAULT_OVERVIEW_WIDGETS,

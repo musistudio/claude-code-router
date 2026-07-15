@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { MorphIcon } from "@musistudio/lucide-morph-react";
 import {
   closestCenter,
   DndContext,
@@ -18,7 +19,7 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove, rectSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { AnimatePresence, LayoutGroup, useReducedMotion } from "motion/react";
+import { AnimatePresence, LayoutGroup } from "motion/react";
 import {
   Activity,
   ArrowDown,
@@ -47,9 +48,7 @@ import {
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
-  Pause,
   Pencil,
-  Play,
   Plus,
   Power,
   QrCode,
@@ -98,6 +97,7 @@ import { PopoverContent } from "@/components/ui/popover";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { playPauseMorph } from "@/lib/morph-icon";
 import { cn } from "@/lib/utils";
 import appLogoUrl from "@/assets/logo.png";
 import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
@@ -372,7 +372,7 @@ import type { AgentFilterValue, RouterConditionSource } from "./options";
 import type { MotionSafeDivAttributes } from "./motion";
 
 
-import { metricToneBar } from "./common";
+import { metricToneBar, normalizeProviderModelSelector } from "./common";
 import { profileAgentLabel, profileAgentLogoUrl } from "./profiles";
 import { routeTargetOptions } from "./providers";
 import { createKeyValueDraftRow } from "./virtual-models";
@@ -424,13 +424,14 @@ export function RouteTargetControl({
   value: string;
 }) {
   const t = useAppText();
+  const normalizedValue = normalizeProviderModelSelector(value);
 
   if (modelOptions.length === 0) {
-    return <Input onChange={(event) => onChange(event.target.value)} value={value} />;
+    return <Input onChange={(event) => onChange(event.target.value)} value={normalizedValue} />;
   }
 
-  const options = routeTargetOptions(modelOptions, value);
-  return <SelectControl onChange={onChange} options={translateOptions(options, t)} value={value} />;
+  const options = routeTargetOptions(modelOptions, normalizedValue);
+  return <SelectControl onChange={onChange} options={translateOptions(options, t)} value={normalizedValue} />;
 }
 
 export function TextAreaControl({
@@ -535,9 +536,9 @@ export function Toggle({ checked, disabled = false, onChange, title }: { checked
 
 export type MetricTone = "amber" | "blue" | "indigo" | "rose" | "slate" | "teal";
 
-export function MetricCard({ label, tone, value }: { label: string; tone: MetricTone; value: string }) {
+export function MetricCard({ className, label, tone, value }: { className?: string; label: string; tone: MetricTone; value: string }) {
   return (
-    <Card className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+    <Card className={cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden", className)}>
       <div className={cn("h-1", metricToneBar(tone))} />
       <CardContent className="flex min-h-[88px] flex-1 flex-col justify-center">
         <div className="min-w-0">
@@ -585,6 +586,12 @@ export function formatStatusBucketDate(bucket: string, range: UsageStatsRange): 
 }
 
 export function parseStatusBucketDate(bucket: string): Date | undefined {
+  if (/^\d{4}-\d{1,2}-\d{1,2}T\d{1,2}:\d{2}/.test(bucket)) {
+    const isoDate = new Date(bucket);
+    if (Number.isFinite(isoDate.getTime())) {
+      return isoDate;
+    }
+  }
   const match = bucket.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2})(?::00)?)?$/);
   if (!match) {
     return undefined;
@@ -627,218 +634,27 @@ export function systemStatusSegmentClass(tone: SystemStatusTone): string {
   return "bg-muted-foreground/25";
 }
 
-type MorphLayer = {
-  id: string;
-  name: string;
-  from: string;
-  to: string;
-  fromOpacity: number;
-  toOpacity: number;
-  mode: "stroke" | "fill";
-  strokeWidth?: number;
-};
-
-type MorphAsset = {
-  id: string;
-  name: string;
-  fromLabel: string;
-  toLabel: string;
-  fromIcon?: string;
-  toIcon?: string;
-  viewBox: string;
-  layers: MorphLayer[];
-};
-
-const playToPauseAsset: MorphAsset = {
-  id: "lucide-play-pause",
-  name: "Play to Pause",
-  fromLabel: "Play",
-  toLabel: "Pause",
-  fromIcon: "Play",
-  toIcon: "Pause",
-  viewBox: "0 0 24 24",
-  layers: [
-    {
-      id: "left-bar",
-      name: "Left Bar",
-      mode: "stroke",
-      from: "M 6 3 L 6 21",
-      to: "M 8 4 L 8 20",
-      fromOpacity: 1,
-      toOpacity: 1
-    },
-    {
-      id: "right-bar",
-      name: "Right Bar",
-      mode: "stroke",
-      from: "M 6 3 L 20 12 L 6 21",
-      to: "M 16 4 L 16 12 L 16 20",
-      fromOpacity: 1,
-      toOpacity: 1
-    }
-  ]
-};
-
-const morphNumberPattern = /-?\d*\.?\d+(?:e[-+]?\d+)?/gi;
-
-function extractMorphNumbers(path: string) {
-  return path.match(morphNumberPattern)?.map(Number) ?? [];
-}
-
-function normalizeMorphTemplate(path: string) {
-  return path.replace(/\s+/g, " ").trim();
-}
-
-function createPathInterpolator(from: string, to: string) {
-  const fromNumbers = extractMorphNumbers(from);
-  const toNumbers = extractMorphNumbers(to);
-  const fromTemplate = from.replace(morphNumberPattern, "{}");
-  const toTemplate = to.replace(morphNumberPattern, "{}");
-
-  if (normalizeMorphTemplate(fromTemplate) !== normalizeMorphTemplate(toTemplate)) {
-    throw new Error("Path templates do not match.");
-  }
-
-  if (fromNumbers.length !== toNumbers.length) {
-    throw new Error("Path number counts do not match.");
-  }
-
-  return (progress: number) => {
-    let index = 0;
-
-    return fromTemplate.replace(/\{\}/g, () => {
-      const value = fromNumbers[index] + (toNumbers[index] - fromNumbers[index]) * progress;
-      index += 1;
-      const rounded = Number(value.toFixed(3));
-      return Object.is(rounded, -0) ? "0" : rounded.toString();
-    });
-  };
-}
-
-function easeOutCubic(progress: number) {
-  return 1 - Math.pow(1 - progress, 3);
-}
-
-function useAnimatedProgress(active: boolean, duration: number) {
-  const [progress, setProgress] = useState(active ? 1 : 0);
-  const progressRef = useRef(progress);
-
-  useEffect(() => {
-    progressRef.current = progress;
-  }, [progress]);
-
-  useEffect(() => {
-    const from = progressRef.current;
-    const to = active ? 1 : 0;
-
-    if (duration <= 0 || from === to) {
-      progressRef.current = to;
-      setProgress(to);
-      return;
-    }
-
-    const start = performance.now();
-    let frame = 0;
-
-    const tick = (now: number) => {
-      const elapsed = Math.min(1, (now - start) / duration);
-      const next = from + (to - from) * easeOutCubic(elapsed);
-      progressRef.current = next;
-      setProgress(next);
-
-      if (elapsed < 1) {
-        frame = requestAnimationFrame(tick);
-      }
-    };
-
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [active, duration]);
-
-  return progress;
-}
-
-const playToPauseLayers = playToPauseAsset.layers.map((layer) => ({
-  layer,
-  interpolate: createPathInterpolator(layer.from, layer.to)
-}));
-
-function PlayToPauseIcon({
-  active,
-  className,
-  color = "currentColor",
-  duration = 420,
-  size = 24,
-  strokeWidth = 2,
-  title
-}: {
-  active: boolean;
-  className?: string;
-  color?: string;
-  duration?: number;
-  size?: number;
-  strokeWidth?: number;
-  title?: string;
-}) {
-  const progress = useAnimatedProgress(active, duration);
-
-  return (
-    <svg
-      aria-hidden={title ? undefined : true}
-      aria-label={title}
-      className={className}
-      height={size}
-      role={title ? "img" : "presentation"}
-      style={{ color, overflow: "visible" }}
-      viewBox={playToPauseAsset.viewBox}
-      width={size}
-    >
-      {title ? <title>{title}</title> : null}
-      {playToPauseLayers.map(({ layer, interpolate }) => {
-        const d = interpolate(progress);
-        const opacity = layer.fromOpacity + (layer.toOpacity - layer.fromOpacity) * progress;
-        const width = layer.strokeWidth ?? strokeWidth;
-
-        if (layer.mode === "fill") {
-          return <path d={d} fill="currentColor" key={layer.id} opacity={opacity} />;
-        }
-
-        return (
-          <path
-            d={d}
-            fill="none"
-            key={layer.id}
-            opacity={opacity}
-            stroke="currentColor"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={width}
-          />
-        );
-      })}
-    </svg>
-  );
-}
-
 export function ServiceControlButton({
   busy,
   onClick,
-  state
+  state,
+  targetActive
 }: {
   busy: boolean;
   onClick: () => void;
   state: GatewayStatus["state"];
+  targetActive?: boolean;
 }) {
   const t = useAppText();
-  const shouldReduceMotion = useReducedMotion();
-  const active = state === "running" || state === "starting";
+  const runtimeActive = state === "running" || state === "starting";
+  const active = targetActive ?? runtimeActive;
   const title = active ? t("Pause service") : t("Start service");
 
   return (
     <Button
       aria-label={title}
       className={cn(
-        "app-no-drag app-service-control inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25",
+        "app-no-drag app-service-control inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25",
         active && "text-emerald-700 hover:text-emerald-800"
       )}
       disabled={busy}
@@ -848,15 +664,14 @@ export function ServiceControlButton({
       type="button"
       unstyled
     >
-      <span className="relative inline-flex h-3.5 w-3.5 items-center justify-center">
-        <PlayToPauseIcon
-          active={active}
-          className={cn("h-3.5 w-3.5 transition-opacity duration-150", busy && "opacity-0")}
-          duration={shouldReduceMotion ? 0 : 420}
-          size={14}
-        />
-        {busy ? <LoaderCircle className="absolute inset-0 h-3.5 w-3.5 animate-spin" /> : null}
-      </span>
+      <MorphIcon
+        active={active}
+        asset={playPauseMorph}
+        color="currentColor"
+        duration={300}
+        size={14}
+        strokeWidth={2}
+      />
     </Button>
   );
 }

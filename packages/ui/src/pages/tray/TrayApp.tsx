@@ -1,8 +1,8 @@
 import {
-  AppConfig, createSourceTabs, DEFAULT_TRAY_WIDGETS, defaultTrayWidgetVariant, emptySnapshots, formatCompactNumber, formatProviderName,
+  AppConfig, applyTrayThemePreference, createSourceTabs, DEFAULT_TRAY_WIDGETS, defaultTrayWidgetVariant, emptySnapshots, formatCompactNumber, formatProviderName,
   formatPercent, formatUpdated, formatUsdCost, normalizeTrayWidgets, ProviderAccountSnapshot, rangeLabel,
   SnapshotMap, SourceTab, TrayComponentVariants, TrayWidgetConfig, UsageComparisonRow, UsageStatsFilter, UsageStatsRange, UsageTotals, useCallback, useEffect,
-  useMemo, useState, useTrayErrorText, useTrayText
+  useMemo, useState, useTrayErrorText, useTrayText, useTrayThemePreference
 } from "./shared";
 import {
   AccountSummaryPanel, AnimatedUsageChart, ChartShell, ModelShareChart, RingMetrics,
@@ -16,8 +16,9 @@ const trayHeaderRanges: TrayHeaderRange[] = ["24h", "7d", "30d"];
 export function TrayApp() {
   const t = useTrayText();
   const formatError = useTrayErrorText();
+  useTrayThemePreference();
   const [allSnapshots, setAllSnapshots] = useState<SnapshotMap>(emptySnapshots);
-  const [configuredProviders, setConfiguredProviders] = useState<string[]>([]);
+  const [configuredProviders, setConfiguredProviders] = useState<AppConfig["Providers"]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<string>();
@@ -52,8 +53,9 @@ export function TrayApp() {
       setSnapshots({ today, "24h": day, "7d": week, "30d": month });
       setAllSnapshots((current) => ({ ...current, "30d": allMonth ?? month }));
       setAccountSnapshots(accounts);
-      setConfiguredProviders(config.Providers.map((provider) => provider.name.trim()).filter(Boolean));
+      setConfiguredProviders(config.Providers.filter((provider) => provider.name.trim()));
       setTrayWidgets(normalizeTrayWidgets(config.trayWidgets, config.trayWindowModules, config.trayComponentVariants));
+      applyTrayThemePreference(config.theme);
     } catch (nextError) {
       setError(formatError(nextError));
     } finally {
@@ -129,7 +131,7 @@ export function TrayApp() {
 
   return (
     <main className="h-screen w-screen overflow-hidden bg-transparent text-slate-100">
-      <aside className="flex h-full min-h-0 flex-col overflow-y-auto rounded-[14px] border border-slate-950/15 bg-slate-950 p-3 text-slate-50 shadow-[0_18px_42px_rgba(15,23,42,.28)]">
+      <aside className="tray-shell flex h-full min-h-0 flex-col overflow-y-auto p-3">
         <TrayStatusStrip totalTokens={activeTotals.totalTokens} />
 
         <section className="space-y-2">
@@ -153,12 +155,12 @@ export function TrayApp() {
           ))}
         </section>
 
-        {loading ? <div className="mt-1.5 text-[11px] font-medium text-slate-200/60">{t("Syncing usage...")}</div> : null}
+        {loading ? <div className="mt-1.5 text-[11px] font-medium text-slate-300/55">{t("Syncing usage...")}</div> : null}
 
-        {error ? <div className="mt-3 rounded-lg border border-rose-400/24 bg-rose-500/18 px-3 py-2 text-[12px] font-medium text-rose-100">{error}</div> : null}
+        {error ? <div className="mt-3 rounded-[12px] border border-rose-400/20 bg-rose-500/15 px-3 py-2 text-[12px] font-medium text-rose-100">{error}</div> : null}
 
         {!hasAnyVisibleModule && !error ? (
-          <div className="flex min-h-[260px] items-center justify-center rounded-[10px] border border-white/10 bg-white/[.03] px-4 text-center text-[12px] font-medium text-slate-400">
+          <div className="tray-panel-subtle flex min-h-[260px] items-center justify-center px-4 text-center text-[12px] font-medium text-slate-400">
             {t("No tray modules enabled")}
           </div>
         ) : null}
@@ -204,7 +206,7 @@ function TrayRuntimeWidget({
 
   if (widget.type === "header") {
     return (
-      <div className="flex min-w-0 items-start justify-between gap-2 rounded-[8px] border border-white/10 bg-white/[.04] px-2.5 py-2">
+      <div className="tray-panel flex min-w-0 items-start justify-between gap-2 px-3 py-2.5">
         <div className="min-w-0">
           <h1 className="truncate text-[13px] font-bold text-slate-50">{selectedProvider ? formatProviderName(selectedProvider) : t("Usage Overview")}</h1>
           <p className="mt-0.5 truncate text-[10px] font-medium text-slate-400">{formatUpdated(activeStats.generatedAt, t)}</p>
@@ -265,10 +267,11 @@ function TrayHeaderRangeSwitch({
   const t = useTrayText();
 
   return (
-    <div className="flex shrink-0 rounded-md border border-white/10 bg-slate-900/70 p-0.5">
+    <div className="tray-segmented flex shrink-0">
       {trayHeaderRanges.map((item) => (
         <button
-          className={`h-5 rounded-[5px] px-1.5 text-[10px] font-bold transition ${range === item ? "bg-white/14 text-slate-50" : "text-slate-400 hover:text-slate-100"}`}
+          className="tray-segmented-item h-5 px-1.5 text-[10px] font-semibold"
+          data-active={range === item}
           key={item}
           type="button"
           onClick={() => onChange(item)}
