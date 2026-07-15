@@ -21,6 +21,7 @@ import { delay } from "@ccr/core/gateway/internal/clock";
 import { retryDelayAfterNetworkError, retryDelayAfterStatus, shouldFallbackAfterStatus } from "@ccr/core/gateway/upstream/retry-policy";
 import { claudeCodeOauthBetaHeader, claudeCodeOauthRequiredBeta, UpstreamRequestError } from "@ccr/core/gateway/internal/shared";
 import type { ApiKeyLimitUsage, ProviderCredentialRoutingTarget, UpstreamAttempt, UpstreamFailedAttempt, UpstreamFetchResult } from "@ccr/core/gateway/internal/shared";
+import type { RouteTraceObserver } from "@ccr/core/observability/route-trace";
 
 const providerCredentialSpilloverThreshold = 0.8;
 
@@ -259,6 +260,7 @@ export async function fetchUpstreamWithFallback(input: {
   path: string;
   routedModel?: string;
   signal?: AbortSignal;
+  trace?: RouteTraceObserver;
   upstreamUrl: string;
 }): Promise<UpstreamFetchResult> {
   const fallbackMode = input.fallback.mode;
@@ -271,6 +273,13 @@ export async function fetchUpstreamWithFallback(input: {
     input.routedModel
   );
   const failedAttempts: UpstreamFailedAttempt[] = [];
+  input.trace?.capture({
+    decision: { reason: `fallback:${fallbackMode}`, source: "execution-plan" },
+    kind: "decision",
+    name: "fallback.execution-plan",
+    phase: "planning",
+    target: attempts[0]?.model ? { model: attempts[0].model } : undefined
+  });
 
   for (let index = 0; index < attempts.length; index += 1) {
     if (input.signal?.aborted) {
@@ -287,17 +296,73 @@ export async function fetchUpstreamWithFallback(input: {
       path: input.path
     });
     const hasNextAttempt = index < attempts.length - 1;
+    const attemptNumber = index + 1;
+    const attemptStartedAt = Date.now();
+    const attemptUrl = rewriteRouteModelInUrl(input.upstreamUrl, attempt.model);
+    const attemptHeaders = withCoreGatewayAuthHeader(
+      omitLocalObservabilityHeaders(attempt.headers ?? input.headers),
+      input.coreAuthToken
+    );
+    const attemptProvider = attempt.logicalProvider ?? (
+      attempt.target?.kind === "provider" ? attempt.target.provider.name : undefined
+    );
+    input.trace?.capture({
+      attempt: attemptNumber,
+      changes: [
+        ...(attempt.model && attempt.model !== input.routedModel
+          ? [{
+              ...(input.routedModel === undefined ? {} : { before: input.routedModel }),
+              after: attempt.model,
+              operation: input.routedModel === undefined ? "add" as const : "replace" as const,
+              path: "/body/model",
+              scope: "body" as const
+            }]
+          : []),
+        ...(attemptUrl !== input.upstreamUrl
+          ? [{ after: attemptUrl, before: input.upstreamUrl, operation: "replace" as const, path: "/url", scope: "url" as const }]
+          : [])
+      ],
+      kind: "attempt",
+      name: "upstream.attempt.prepare",
+      phase: "attempt",
+      startedAtMs: attemptStartedAt,
+      target: {
+        ...(attempt.credentialIds?.[0] ? { credentialId: attempt.credentialIds[0] } : {}),
+        ...(attempt.credentialIds?.length ? { credentialCandidates: attempt.credentialIds } : {}),
+        ...(attempt.model ? { model: attempt.model } : {}),
+        ...(attempt.credentialProtocol ? { protocol: attempt.credentialProtocol } : {}),
+        ...(attemptProvider ? { provider: attemptProvider } : {})
+      }
+    });
 
     try {
-      const response = await fetchWithSystemProxy(rewriteRouteModelInUrl(input.upstreamUrl, attempt.model), {
+      const response = await fetchWithSystemProxy(attemptUrl, {
         body: shouldSendBody(input.method) ? attempt.body?.toString("utf8") : undefined,
-        headers: withCoreGatewayAuthHeader(omitLocalObservabilityHeaders(attempt.headers ?? input.headers), input.coreAuthToken),
+        headers: attemptHeaders,
         method: input.method,
         signal: input.signal
       });
 
       if (hasNextAttempt && shouldFallbackAfterStatus(response.status, fallbackMode)) {
         const delayMs = retryDelayAfterStatus(response.headers, failedAttempts.length);
+        input.trace?.capture({
+          attempt: attemptNumber,
+          durationMs: Date.now() - attemptStartedAt,
+          kind: "outcome",
+          name: "upstream.attempt.outcome",
+          outcome: {
+            fallbackReason: `http:${response.status}`,
+            retryDelayMs: delayMs,
+            statusCode: response.status
+          },
+          phase: "outcome",
+          startedAtMs: attemptStartedAt,
+          status: "error",
+          target: {
+            ...(attempt.model ? { model: attempt.model } : {}),
+            ...(attemptProvider ? { provider: attemptProvider } : {})
+          }
+        });
         failedAttempts.push({
           credentialChain: attempt.credentialChain,
           credentialIds: attempt.credentialIds,
@@ -313,6 +378,21 @@ export async function fetchUpstreamWithFallback(input: {
         continue;
       }
 
+      input.trace?.capture({
+        attempt: attemptNumber,
+        durationMs: Date.now() - attemptStartedAt,
+        kind: "outcome",
+        name: "upstream.attempt.outcome",
+        outcome: { statusCode: response.status },
+        phase: "outcome",
+        startedAtMs: attemptStartedAt,
+        status: response.ok ? "ok" : "error",
+        target: {
+          ...(attempt.model ? { model: attempt.model } : {}),
+          ...(attemptProvider ? { provider: attemptProvider } : {})
+        }
+      });
+
       return {
         attempt,
         failedAttempts,
@@ -323,6 +403,23 @@ export async function fetchUpstreamWithFallback(input: {
       const delayMs = hasNextAttempt && !input.signal?.aborted
         ? retryDelayAfterNetworkError(failedAttempts.length)
         : 0;
+      input.trace?.capture({
+        attempt: attemptNumber,
+        durationMs: Date.now() - attemptStartedAt,
+        kind: "outcome",
+        name: "upstream.attempt.outcome",
+        outcome: {
+          error: message,
+          ...(hasNextAttempt ? { fallbackReason: "network-error", retryDelayMs: delayMs } : {})
+        },
+        phase: "outcome",
+        startedAtMs: attemptStartedAt,
+        status: "error",
+        target: {
+          ...(attempt.model ? { model: attempt.model } : {}),
+          ...(attemptProvider ? { provider: attemptProvider } : {})
+        }
+      });
       failedAttempts.push({
         credentialChain: attempt.credentialChain,
         credentialIds: attempt.credentialIds,

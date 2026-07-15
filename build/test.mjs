@@ -25,6 +25,8 @@ const testProjects = {
   core: {
     runtimeEntryPoints: {
       "runtime/fusion-vision-mcp": path.join(packageRoots.core, "mcp", "fusion-vision-mcp.ts"),
+      "runtime/request-log-worker": path.join(packageRoots.core, "observability", "request-log-worker.ts"),
+      "runtime/upstream-header-sanitizer": path.join(packageRoots.core, "gateway", "core-runtime", "upstream-header-sanitizer.ts"),
       "runtime/toolhub-mcp": path.join(packageRoots.core, "mcp", "toolhub-mcp.ts")
     },
     testDir: path.join(projectRoot, "packages", "core", "test")

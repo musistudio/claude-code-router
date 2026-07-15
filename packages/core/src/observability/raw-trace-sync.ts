@@ -1,26 +1,39 @@
 /**
  * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
  */
-import { readFileSync, rmSync } from "node:fs";
+import { readFile, rm, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, resolve as pathResolve, sep as pathSep } from "node:path";
 import type { AppConfig } from "@ccr/core/contracts/app";
 import { RAW_TRACE_SPOOL_DIR } from "@ccr/core/config/constants";
-import { updateGatewayRequestLogFromRawTrace, type RequestLogRawTraceUpdateInput } from "@ccr/core/observability/request-log-store";
+import {
+  updateGatewayRequestLogFromRawTrace,
+  type RequestLogRawTraceFiles,
+  type RequestLogRawTraceUpdateInput
+} from "@ccr/core/observability/request-log-store";
+import { resolveRawTraceBodyLimit } from "@ccr/core/observability/request-log-limits";
 import { isRecord, numberValue, stringValue } from "@ccr/core/gateway/internal/value";
 import { formatError, parseJsonObject, readHeader, readRequestBody, sendJson } from "@ccr/core/gateway/http/io";
 import { endpoint } from "@ccr/core/gateway/core-runtime/supervisor";
 import { maxUsageCaptureBytes, rawTraceSyncHeader, rawTraceSyncPath } from "@ccr/core/gateway/internal/shared";
 import type { RawTracePartText } from "@ccr/core/gateway/internal/shared";
 
-type PendingRawTraceUpdate = RequestLogRawTraceUpdateInput & { receivedAt: number };
-const maxPendingRawTraceUpdates = 200;
-const pendingRawTraceMaxAgeMs = 5 * 60 * 1000;
+type RawTraceSynchronizerDependencies = {
+  enqueueUpdate?: typeof updateGatewayRequestLogFromRawTrace;
+  getConfig: () => AppConfig | undefined;
+  spoolDirectory?: string;
+};
+
+type RawTraceRequestLogBundle = {
+  files: RequestLogRawTraceFiles;
+  update: RequestLogRawTraceUpdateInput;
+};
 
 export class RawTraceSynchronizer {
   readonly token = randomUUID();
-  private readonly pendingUpdates = new Map<string, PendingRawTraceUpdate>();
+
+  constructor(private readonly dependencies: RawTraceSynchronizerDependencies) {}
 
   async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     if (request.method !== "POST") {
@@ -33,51 +46,47 @@ export class RawTraceSynchronizer {
     }
 
     const manifest = parseJsonObject(await readRequestBody(request));
-    const update = readRawTraceRequestLogUpdate(manifest);
-    cleanupRawTraceBundle(manifest);
-    if (!update) {
+    const spoolDirectory = this.dependencies.spoolDirectory ?? RAW_TRACE_SPOOL_DIR;
+    const bundle = await readRawTraceRequestLogBundle(manifest, spoolDirectory);
+    if (!bundle) {
+      await cleanupRawTraceBundle(manifest, spoolDirectory);
       sendJson(response, 202, { applied: false, ok: true });
       return;
     }
 
-    const applied = await updateGatewayRequestLogFromRawTrace(update);
-    if (!applied) this.store(update);
-    sendJson(response, 200, { applied, ok: true });
-  }
-
-  take(requestId: string): RequestLogRawTraceUpdateInput | undefined {
-    const update = this.pendingUpdates.get(requestId);
-    if (!update) return undefined;
-    this.pendingUpdates.delete(requestId);
-    const { receivedAt: _receivedAt, ...input } = update;
-    return input;
-  }
-
-  private store(update: RequestLogRawTraceUpdateInput): void {
-    this.prune();
-    this.pendingUpdates.set(update.requestId, { ...update, receivedAt: Date.now() });
-    while (this.pendingUpdates.size > maxPendingRawTraceUpdates) {
-      const oldestKey = this.pendingUpdates.keys().next().value;
-      if (!oldestKey) break;
-      this.pendingUpdates.delete(oldestKey);
+    const config = this.dependencies.getConfig();
+    if (!config || !shouldRecordRequestLogs(config)) {
+      await cleanupRawTraceBundle(manifest, spoolDirectory);
+      sendJson(response, 202, { accepted: true, ok: true, reason: "disabled" });
+      return;
     }
-  }
-
-  private prune(): void {
-    const cutoff = Date.now() - pendingRawTraceMaxAgeMs;
-    for (const [requestId, update] of this.pendingUpdates) {
-      if (update.receivedAt < cutoff) this.pendingUpdates.delete(requestId);
+    const policy = applyRawTraceRequestLogPolicy(config, bundle.update);
+    if (policy.action === "discard") {
+      await cleanupRawTraceBundle(manifest, spoolDirectory);
+      sendJson(response, 202, { accepted: true, ok: true, reason: policy.reason });
+      return;
     }
+
+    const maxBodyBytes = resolveRawTraceBodyLimit(config.observability.requestLogMaxBodyBytes);
+    const files = policy.captureBodies
+      ? { ...bundle.files, maxBodyBytes }
+      : { cleanupDirectory: bundle.files.cleanupDirectory, maxBodyBytes };
+    const enqueueUpdate = this.dependencies.enqueueUpdate ?? updateGatewayRequestLogFromRawTrace;
+    const accepted = await enqueueUpdate(policy.update, files);
+    sendJson(response, accepted ? 200 : 503, { accepted, ok: accepted });
   }
 }
 
 
 export function buildRawTraceConfig(config: AppConfig, rawTraceSyncToken: string): Record<string, unknown> {
-  const enabled = rawTraceEnabledFromEnv() && shouldRecordRequestLogs(config);
+  const bodyCapture = config.observability.requestLogBodyCapture ?? "all";
+  const maxBodyBytes = resolveRawTraceBodyLimit(config.observability.requestLogMaxBodyBytes);
+  const bodyCaptureEnabled = bodyCapture !== "none" && maxBodyBytes >= 1024;
+  const enabled = rawTraceEnabledFromEnv() && shouldRecordRequestLogs(config) && bodyCaptureEnabled;
   return {
     deleteLocalAfterUpload: false,
     enabled,
-    maxPartBytes: maxUsageCaptureBytes,
+    maxPartBytes: maxBodyBytes,
     mode: "wire_raw",
     spoolDir: RAW_TRACE_SPOOL_DIR,
     sync: {
@@ -97,13 +106,82 @@ export function shouldRecordRequestLogs(config: AppConfig): boolean {
 }
 
 
+export type RawTraceRequestLogPolicy = {
+  action: "discard";
+  reason: "sampled";
+} | {
+  action: "enqueue";
+  captureBodies: boolean;
+  update: RequestLogRawTraceUpdateInput;
+};
+
+
+export function applyRawTraceRequestLogPolicy(
+  config: AppConfig,
+  input: RequestLogRawTraceUpdateInput
+): RawTraceRequestLogPolicy {
+  const successful = input.statusCode === undefined || (input.statusCode >= 200 && input.statusCode < 400);
+  if (successful && !requestLogSampled(
+    input.requestId,
+    config.observability.requestLogSuccessSampleRate ?? 1
+  )) {
+    return { action: "discard", reason: "sampled" };
+  }
+
+  const bodyCapture = config.observability.requestLogBodyCapture ?? "all";
+  const captureBodies = resolveRawTraceBodyLimit(config.observability.requestLogMaxBodyBytes) > 0 &&
+    (bodyCapture === "all" || (bodyCapture === "errors" && !successful));
+  return {
+    action: "enqueue",
+    captureBodies,
+    update: captureBodies ? input : suppressRawTraceBodies(input)
+  };
+}
+
+
+export function requestLogSampled(requestId: string, rate: number): boolean {
+  if (rate >= 1) return true;
+  if (rate <= 0) return false;
+  let hash = 2166136261;
+  for (let index = 0; index < requestId.length; index += 1) {
+    hash ^= requestId.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 0x1_0000_0000 < rate;
+}
+
+
+function suppressRawTraceBodies(input: RequestLogRawTraceUpdateInput): RequestLogRawTraceUpdateInput {
+  const requestSize = input.requestBodySizeBytes ??
+    (input.requestBodyText === undefined ? undefined : Buffer.byteLength(input.requestBodyText));
+  const responseSize = input.responseBodySizeBytes ??
+    (input.responseBodyText === undefined ? undefined : Buffer.byteLength(input.responseBodyText));
+  return {
+    ...input,
+    ...(requestSize === undefined ? {} : {
+      requestBodySizeBytes: requestSize,
+      requestBodyText: "",
+      requestBodyTruncated: Boolean(input.requestBodyTruncated) || requestSize > 0
+    }),
+    ...(responseSize === undefined ? {} : {
+      responseBodySizeBytes: responseSize,
+      responseBodyText: "",
+      responseBodyTruncated: Boolean(input.responseBodyTruncated) || responseSize > 0
+    })
+  };
+}
+
+
 function rawTraceEnabledFromEnv(): boolean {
   const value = (process.env.CCR_RAW_TRACE_ENABLED ?? process.env.CCR_RAW_TRACE ?? "").trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
 
-export function readRawTraceRequestLogUpdate(manifest: Record<string, unknown>): RequestLogRawTraceUpdateInput | undefined {
+export async function readRawTraceRequestLogBundle(
+  manifest: Record<string, unknown>,
+  spoolDirectory = RAW_TRACE_SPOOL_DIR
+): Promise<RawTraceRequestLogBundle | undefined> {
   const requestId = stringValue(manifest.turnKey);
   const parts = Array.isArray(manifest.parts)
     ? manifest.parts.filter((part): part is Record<string, unknown> => isRecord(part))
@@ -112,40 +190,63 @@ export function readRawTraceRequestLogUpdate(manifest: Record<string, unknown>):
     return undefined;
   }
 
-  const upstreamRequestMetadata = readRawTraceJsonPart(parts, "upstream_request_metadata");
-  const upstreamResponseMetadata = readRawTraceJsonPart(parts, "upstream_response_metadata");
-  const upstreamRequestBody = readRawTraceTextPart(parts, "upstream_request");
-  const upstreamResponseStream = readRawTraceTextPart(parts, "response_stream");
-  const upstreamResponseBody = upstreamResponseStream ?? readRawTraceTextPart(parts, "upstream_response");
+  const [
+    upstreamRequestMetadata,
+    upstreamResponseMetadata,
+    upstreamRequestBody,
+    upstreamResponseStream,
+    fallbackResponseBody
+  ] = await Promise.all([
+    readRawTraceJsonPart(parts, "upstream_request_metadata", spoolDirectory),
+    readRawTraceJsonPart(parts, "upstream_response_metadata", spoolDirectory),
+    readRawTracePart(parts, "upstream_request", spoolDirectory),
+    readRawTracePart(parts, "response_stream", spoolDirectory),
+    readRawTracePart(parts, "upstream_response", spoolDirectory)
+  ]);
+  const upstreamResponseBody = upstreamResponseStream ?? fallbackResponseBody;
   const target = isRecord(manifest.target) ? manifest.target : {};
   const rawUrl = stringValue(upstreamRequestMetadata?.url);
   const url = sanitizeUrlForLog(rawUrl);
 
   return {
-    method: stringValue(upstreamRequestMetadata?.method) || "POST",
-    model: stringValue(target.model),
-    path: pathFromUrl(url),
-    provider: stringValue(target.providerName) || stringValue(target.provider),
-    requestBodyContentType: upstreamRequestBody?.contentType,
-    requestBodyText: upstreamRequestBody?.text,
-    requestHeaders: headerRecordFromUnknown(upstreamRequestMetadata?.headers),
-    requestId,
-    isStream: upstreamResponseStream !== undefined,
-    responseBodyContentType: upstreamResponseBody?.contentType,
-    responseBodyText: upstreamResponseBody?.text,
-    responseHeaders: headerRecordFromUnknown(upstreamResponseMetadata?.headers),
-    statusCode: numberValue(upstreamResponseMetadata?.statusCode),
-    url
+    files: {
+      cleanupDirectory: rawTraceBundleDirectory(parts, spoolDirectory),
+      requestBody: upstreamRequestBody,
+      responseBody: upstreamResponseBody
+    },
+    update: {
+      method: stringValue(upstreamRequestMetadata?.method) || "POST",
+      model: stringValue(target.model),
+      path: pathFromUrl(url),
+      provider: stringValue(target.providerName) || stringValue(target.provider),
+      requestBodyContentType: upstreamRequestBody?.contentType,
+      requestBodySizeBytes: upstreamRequestBody?.sizeBytes,
+      requestBodyTruncated: upstreamRequestBody?.truncated,
+      requestHeaders: headerRecordFromUnknown(upstreamRequestMetadata?.headers),
+      requestId,
+      isStream: upstreamResponseStream !== undefined,
+      responseBodyContentType: upstreamResponseBody?.contentType,
+      responseBodySizeBytes: upstreamResponseBody?.sizeBytes,
+      responseBodyTruncated: upstreamResponseBody?.truncated,
+      responseHeaders: headerRecordFromUnknown(upstreamResponseMetadata?.headers),
+      statusCode: numberValue(upstreamResponseMetadata?.statusCode),
+      url
+    }
   };
 }
 
 
-function readRawTraceJsonPart(parts: Record<string, unknown>[], partType: string): Record<string, unknown> | undefined {
-  const text = readRawTraceTextPart(parts, partType)?.text;
-  if (!text) {
+async function readRawTraceJsonPart(
+  parts: Record<string, unknown>[],
+  partType: string,
+  spoolDirectory: string
+): Promise<Record<string, unknown> | undefined> {
+  const part = await readRawTracePart(parts, partType, spoolDirectory);
+  if (!part) {
     return undefined;
   }
   try {
+    const text = await readFile(part.filePath, "utf8");
     const parsed = JSON.parse(text) as unknown;
     return isRecord(parsed) ? parsed : undefined;
   } catch {
@@ -154,16 +255,23 @@ function readRawTraceJsonPart(parts: Record<string, unknown>[], partType: string
 }
 
 
-function readRawTraceTextPart(parts: Record<string, unknown>[], partType: string): RawTracePartText | undefined {
+async function readRawTracePart(
+  parts: Record<string, unknown>[],
+  partType: string,
+  spoolDirectory: string
+): Promise<RawTracePartText | undefined> {
   const part = parts.find((candidate) => stringValue(candidate.partType) === partType);
   const filePath = stringValue(part?.filePath);
-  if (!filePath || !isRawTraceSpoolFile(filePath)) {
+  if (!filePath || !isRawTraceSpoolFile(filePath, spoolDirectory)) {
     return undefined;
   }
   try {
+    const storedBytes = (await stat(filePath)).size;
     return {
       contentType: stringValue(part?.contentType),
-      text: readFileSync(filePath, "utf8")
+      filePath,
+      sizeBytes: Math.max(storedBytes, numberValue(part?.originalBytes) ?? 0),
+      truncated: storedBytes < (numberValue(part?.originalBytes) ?? storedBytes)
     };
   } catch (error) {
     console.warn(`[gateway] Failed to read raw trace part ${partType}: ${formatError(error)}`);
@@ -172,24 +280,33 @@ function readRawTraceTextPart(parts: Record<string, unknown>[], partType: string
 }
 
 
-export function cleanupRawTraceBundle(manifest: Record<string, unknown>): void {
+function rawTraceBundleDirectory(parts: Record<string, unknown>[], spoolDirectory: string): string | undefined {
+  const filePath = parts.map((part) => stringValue(part.filePath)).find((value): value is string => Boolean(value));
+  return filePath && isRawTraceSpoolFile(filePath, spoolDirectory) ? dirname(filePath) : undefined;
+}
+
+
+export async function cleanupRawTraceBundle(
+  manifest: Record<string, unknown>,
+  spoolDirectory = RAW_TRACE_SPOOL_DIR
+): Promise<void> {
   const parts = Array.isArray(manifest.parts)
     ? manifest.parts.filter((part): part is Record<string, unknown> => isRecord(part))
     : [];
   const firstFilePath = parts.map((part) => stringValue(part.filePath)).find((value): value is string => Boolean(value));
-  if (!firstFilePath || !isRawTraceSpoolFile(firstFilePath)) {
+  if (!firstFilePath || !isRawTraceSpoolFile(firstFilePath, spoolDirectory)) {
     return;
   }
   try {
-    rmSync(dirname(firstFilePath), { force: true, recursive: true });
+    await rm(dirname(firstFilePath), { force: true, recursive: true });
   } catch (error) {
     console.warn(`[gateway] Failed to clean raw trace bundle: ${formatError(error)}`);
   }
 }
 
 
-function isRawTraceSpoolFile(filePath: string): boolean {
-  const spoolDir = pathResolve(RAW_TRACE_SPOOL_DIR);
+function isRawTraceSpoolFile(filePath: string, spoolDirectory: string): boolean {
+  const spoolDir = pathResolve(spoolDirectory);
   const resolvedFile = pathResolve(filePath);
   return dirname(resolvedFile) !== spoolDir && resolvedFile.startsWith(`${spoolDir}${pathSep}`);
 }
@@ -250,32 +367,35 @@ function pathFromUrl(value: string | undefined): string | undefined {
 
 export function createBodySampler() {
   const chunks: Buffer[] = [];
+  let capturedBytes = 0;
   let totalBytes = 0;
   let truncated = false;
 
   return {
     append(chunk: Buffer | string) {
-      if (truncated) {
-        return;
-      }
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      if (totalBytes + buffer.byteLength > maxUsageCaptureBytes) {
-        const remaining = Math.max(0, maxUsageCaptureBytes - totalBytes);
+      totalBytes += buffer.byteLength;
+      if (truncated) return;
+      if (capturedBytes + buffer.byteLength > maxUsageCaptureBytes) {
+        const remaining = Math.max(0, maxUsageCaptureBytes - capturedBytes);
         if (remaining > 0) {
           chunks.push(buffer.subarray(0, remaining));
-          totalBytes += remaining;
+          capturedBytes += remaining;
         }
         truncated = true;
         return;
       }
       chunks.push(buffer);
-      totalBytes += buffer.byteLength;
+      capturedBytes += buffer.byteLength;
     },
     isTruncated() {
       return truncated;
     },
     read() {
-      return Buffer.concat(chunks, totalBytes).toString("utf8");
+      return Buffer.concat(chunks, capturedBytes).toString("utf8");
+    },
+    sizeBytes() {
+      return totalBytes;
     }
   };
 }

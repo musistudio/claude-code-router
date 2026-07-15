@@ -145,7 +145,9 @@ export type ApiKeyWindowCounter = {
 
 export type RawTracePartText = {
   contentType?: string;
-  text: string;
+  filePath: string;
+  sizeBytes: number;
+  truncated: boolean;
 };
 
 

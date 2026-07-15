@@ -8,6 +8,7 @@ import { normalizeGrokProviderAccountConfig } from "@ccr/core/agents/local-provi
 import { removeOpenCodeProviderAccountConfig } from "@ccr/core/agents/local-providers/opencode";
 import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "@ccr/core/contracts/app";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config";
+import { maxRequestLogBodyBytes } from "@ccr/core/observability/request-log-limits";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
 import type {
   AppConfig,
@@ -694,6 +695,15 @@ function parseObservability(value: unknown): Partial<ObservabilityConfig> | unde
   }
   if (typeof value.agentAnalysis === "boolean") {
     observability.agentAnalysis = value.agentAnalysis;
+  }
+  if (value.requestLogBodyCapture === "all" || value.requestLogBodyCapture === "errors" || value.requestLogBodyCapture === "none") {
+    observability.requestLogBodyCapture = value.requestLogBodyCapture;
+  }
+  if (typeof value.requestLogMaxBodyBytes === "number" && Number.isFinite(value.requestLogMaxBodyBytes)) {
+    observability.requestLogMaxBodyBytes = Math.max(0, Math.min(maxRequestLogBodyBytes, Math.floor(value.requestLogMaxBodyBytes)));
+  }
+  if (typeof value.requestLogSuccessSampleRate === "number" && Number.isFinite(value.requestLogSuccessSampleRate)) {
+    observability.requestLogSuccessSampleRate = Math.max(0, Math.min(1, value.requestLogSuccessSampleRate));
   }
   return Object.keys(observability).length ? observability : undefined;
 }

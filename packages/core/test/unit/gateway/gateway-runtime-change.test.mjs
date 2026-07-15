@@ -40,3 +40,27 @@ test("upstream proxy config changes restart the gateway runtime", () => {
 
   assert.equal(shouldRestartGatewayForRuntimeConfigChange(previous, next), true);
 });
+
+test("raw trace observability config changes restart the gateway runtime", () => {
+  const mutations = [
+    (config) => { config.observability.requestLogs = !config.observability.requestLogs; },
+    (config) => { config.observability.agentAnalysis = !config.observability.agentAnalysis; },
+    (config) => { config.observability.requestLogBodyCapture = "none"; },
+    (config) => { config.observability.requestLogMaxBodyBytes = 4 * 1024 * 1024; }
+  ];
+
+  for (const mutate of mutations) {
+    const previous = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+    const next = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+    mutate(next);
+    assert.equal(shouldRestartGatewayForRuntimeConfigChange(previous, next), true);
+  }
+});
+
+test("main-process-only observability changes do not restart the gateway runtime", () => {
+  const previous = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const next = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  next.observability.requestLogSuccessSampleRate = 0.25;
+
+  assert.equal(shouldRestartGatewayForRuntimeConfigChange(previous, next), false);
+});

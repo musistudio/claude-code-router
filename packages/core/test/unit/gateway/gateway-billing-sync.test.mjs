@@ -23,6 +23,10 @@ test("core gateway disables the full-trace billing webhook without disabling raw
     assert.deepEqual(compiled.billingWebhook, { enabled: false });
     assert.deepEqual(compiled.billingQueue, { enabled: false });
     assert.deepEqual(compiled.billing, { enabled: true });
+    const upstreamHeaderSanitizer = compiled.plugins?.at(-1);
+    assert.equal(upstreamHeaderSanitizer?.enabled, true);
+    assert.equal(upstreamHeaderSanitizer?.key, "ccr-upstream-header-sanitizer");
+    assert.match(upstreamHeaderSanitizer?.modulePath, /upstream-header-sanitizer\.js$/);
     assert.equal(compiled.rawTrace?.enabled, true);
     assert.deepEqual(compiled.rawTrace?.sync, {
       enabled: true,

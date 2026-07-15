@@ -42,8 +42,7 @@ class GatewayService {
     getConfig: () => this.config,
     getCoreAuthToken: () => this.coreAuthToken,
     getPlugin: () => this.plugin,
-    getStatus: () => ({ coreEndpoint: this.status.coreEndpoint, endpoint: this.status.endpoint }),
-    takePendingRawTraceUpdate: (requestId) => this.rawTraceSynchronizer.take(requestId)
+    getStatus: () => ({ coreEndpoint: this.status.coreEndpoint, endpoint: this.status.endpoint })
   });
 
   private browserAutomationMcpIntegration?: BrowserAutomationMcpIntegration;
@@ -56,7 +55,9 @@ class GatewayService {
   private config?: AppConfig;
   private coreAuthToken = "";
   private plugin?: ClaudeCodeRouterPlugin;
-  private readonly rawTraceSynchronizer = new RawTraceSynchronizer();
+  private readonly rawTraceSynchronizer = new RawTraceSynchronizer({
+    getConfig: () => this.config
+  });
   private server?: Server;
   private status: GatewayStatus = {
     coreEndpoint: "",

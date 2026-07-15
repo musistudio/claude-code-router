@@ -3,8 +3,11 @@ import { dirname } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { REQUEST_LOGS_DB_FILE } from "@ccr/core/config/constants";
 import { estimateUsageCostUsd } from "@ccr/core/models/pricing-service";
-import { createBetterSqliteDatabase, type BetterSqliteDatabase } from "@ccr/core/storage/sqlite-native";
+import { createBetterSqliteDatabase, type BetterSqliteDatabase, type BetterSqliteStatement } from "@ccr/core/storage/sqlite-native";
 import { normalizeUsageInputTokens } from "@ccr/core/usage/normalization";
+import { createRequestLogRuntime, type RequestLogEnqueueResult } from "@ccr/core/observability/request-log-runtime";
+import { maxRequestLogBodyBytes, rawTraceHardMaxBodyBytes } from "@ccr/core/observability/request-log-limits";
+import { compactBase64ImagePayloads } from "@ccr/core/observability/request-log-body";
 import type {
   AgentAnalysisAgentRow,
   AgentAnalysisFilter,
@@ -37,12 +40,14 @@ import type {
   RequestLogPage,
   RequestLogRetryAttempt,
   RequestLogStatusFilter,
+  RequestRouteTrace,
+  RequestRouteTraceHop,
+  RequestRouteTraceSnapshot,
   UsageStatsRange
 } from "@ccr/core/contracts/app";
 
 type SqlDatabase = BetterSqliteDatabase;
 type SqlValue = bigint | Buffer | number | string | null;
-
 type HeaderRecord = Record<string, string | string[] | undefined>;
 
 type UsageNumbers = {
@@ -65,20 +70,28 @@ type RequestLogUsageContext = {
   provider: string;
 };
 
-type RequestLogRecordInput = {
+export type RequestLogRecordInput = {
+  captureBody?: boolean;
   client?: string;
   completedAt?: string;
   durationMs: number;
   error?: string;
+  eventId?: string;
   fallbackModel?: string;
+  maxBodyBytes?: number;
   method: string;
+  model?: string;
   path: string;
   providerName?: string;
   providerProtocol?: GatewayProviderProtocol;
   requestBody: Buffer;
+  requestBodySizeBytes?: number;
+  requestBodyTruncated?: boolean;
   requestHeaders: HeaderRecord;
   requestId?: string;
+  routeTrace?: RequestRouteTrace;
   responseBodyText?: string;
+  responseBodySizeBytes?: number;
   responseBodyTruncated?: boolean;
   responseHeaders?: Headers | HeaderRecord;
   startedAt: string;
@@ -92,18 +105,46 @@ export type RequestLogRawTraceUpdateInput = {
   path?: string;
   provider?: string;
   requestBodyContentType?: string;
+  requestBodySizeBytes?: number;
   requestBodyText?: string;
   requestBodyTruncated?: boolean;
   requestHeaders?: HeaderRecord;
   requestId: string;
   isStream?: boolean;
   responseBodyContentType?: string;
+  responseBodySizeBytes?: number;
   responseBodyText?: string;
   responseBodyTruncated?: boolean;
   responseHeaders?: HeaderRecord;
   statusCode?: number;
   url?: string;
 };
+
+export type RequestLogRawTraceFile = {
+  contentType?: string;
+  filePath: string;
+  sizeBytes: number;
+  truncated?: boolean;
+};
+
+export type RequestLogRawTraceFiles = {
+  cleanupDirectory?: string;
+  maxBodyBytes?: number;
+  requestBody?: RequestLogRawTraceFile;
+  responseBody?: RequestLogRawTraceFile;
+};
+
+export type RequestLogStoreWriteCommand = {
+  sequence: number;
+} & ({
+  eventId: string;
+  input: RequestLogRecordInput;
+  kind: "record";
+} | {
+  input: RequestLogRawTraceUpdateInput;
+  kind: "raw-trace-update";
+  rawTraceFiles?: RequestLogRawTraceFiles;
+});
 
 type StoredRequestLogEntry = {
   cacheReadTokens: number;
@@ -130,6 +171,10 @@ type StoredRequestLogEntry = {
   requestBody: RequestLogBody;
   requestHeaders: Record<string, string | string[]>;
   requestId: string;
+  routeAttemptCount: number;
+  routeHopCount: number;
+  routeTrace?: RequestRouteTrace;
+  routeTraceTruncated: boolean;
   retryAttempts: RequestLogRetryAttempt[];
   responseBody?: RequestLogBody;
   responseHeaders: Record<string, string | string[]>;
@@ -195,7 +240,7 @@ type ToolCallStreamState = {
   indexToId: Map<string, string>;
 };
 
-const maxBodyBytes = 2 * 1024 * 1024;
+const maxBodyBytes = maxRequestLogBodyBytes;
 const maxAgentAnalysisRows = 5000;
 const maxAgentSessionDetailRequests = 250;
 const maxTracePayloadPreviewChars = 1600;
@@ -244,11 +289,62 @@ type AgentAnalysisCacheEntry = {
 export class RequestLogStore {
   private database?: SqlDatabase;
   private initPromise?: Promise<SqlDatabase>;
+  private insertRequestStatement?: BetterSqliteStatement;
+  private insertRouteTraceStatement?: BetterSqliteStatement;
   private lastRetentionCleanupDay?: string;
   private revision = 0;
   private analysisCache?: AgentAnalysisCacheEntry;
 
   constructor(private readonly dbFile: string) {}
+
+  async initialize(): Promise<void> {
+    await this.getDatabase();
+  }
+
+  invalidateAnalysisCache(): void {
+    this.analysisCache = undefined;
+  }
+
+  async checkpoint(): Promise<void> {
+    const database = await this.getDatabase();
+    database.pragma("wal_checkpoint(PASSIVE)");
+  }
+
+  async close(): Promise<void> {
+    const database = this.database ?? (this.initPromise ? await this.initPromise.catch(() => undefined) : undefined);
+    this.database = undefined;
+    this.initPromise = undefined;
+    this.insertRequestStatement = undefined;
+    this.insertRouteTraceStatement = undefined;
+    database?.close();
+  }
+
+  async writeBatch(commands: RequestLogStoreWriteCommand[]): Promise<void> {
+    if (commands.length === 0) return;
+    const database = await this.getDatabase();
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      for (const command of commands) {
+        if (command.kind === "record") {
+          await this.record({ ...command.input, eventId: command.eventId });
+          const requestId = command.input.requestId?.trim();
+          if (requestId) {
+            const pending = this.takePendingRawTraceUpdate(database, requestId);
+            if (pending) {
+              await this.updateFromRawTrace(pending);
+            }
+          }
+          continue;
+        }
+        const applied = await this.updateFromRawTrace(command.input);
+        if (!applied) this.storePendingRawTraceUpdate(database, command.input);
+      }
+      database.exec("COMMIT");
+    } catch (error) {
+      if (database.inTransaction) database.exec("ROLLBACK");
+      throw error;
+    }
+  }
 
   async record(input: RequestLogRecordInput): Promise<void> {
     const database = await this.getDatabase();
@@ -265,7 +361,7 @@ export class RequestLogStore {
       usageHint: bodyUsage
     }) ?? {};
     const route = splitRouteSelector(input.fallbackModel);
-    const requestModel = extractModelFromBody(input.requestBody.toString("utf8"));
+    const requestModel = normalizeFilterValue(input.model) ?? extractModelFromBody(input.requestBody.toString("utf8"));
     const provider =
       normalizeFilterValue(input.providerName) ??
       readResponseHeader(input.responseHeaders, "x-gateway-target-provider-name") ??
@@ -290,14 +386,20 @@ export class RequestLogStore {
       outputTokens,
       provider: providerName
     });
-    const requestBody = bodyFromBuffer(
+    const capturedRequestBody = bodyFromBuffer(
       input.requestBody,
       headerValue(requestHeaders, "content-type")
     );
+    const requestBody: RequestLogBody = {
+      ...capturedRequestBody,
+      sizeBytes: Math.max(capturedRequestBody.sizeBytes, normalizeCount(input.requestBodySizeBytes)),
+      truncated: capturedRequestBody.truncated || Boolean(input.requestBodyTruncated)
+    };
     const responseBody = bodyFromText(
       responseBodyText,
       headerValue(responseHeaders, "content-type"),
-      Boolean(input.responseBodyTruncated)
+      Boolean(input.responseBodyTruncated),
+      input.responseBodySizeBytes
     );
     const isStream = inferRequestLogIsStream({
       path: input.path,
@@ -308,11 +410,12 @@ export class RequestLogStore {
       url: input.url
     });
 
-    const statement = database.prepare(`
-      INSERT INTO request_logs (
+    const statement = this.insertRequestStatement ??= database.prepare(`
+      INSERT OR IGNORE INTO request_logs (
         created_at,
         completed_at,
         request_id,
+        event_id,
         client,
         method,
         path,
@@ -322,6 +425,10 @@ export class RequestLogStore {
         credential_chain,
         credential_saturated,
         model,
+        route_trace_version,
+        route_hop_count,
+        route_attempt_count,
+        route_trace_truncated,
         is_stream,
         status_code,
         ok,
@@ -346,48 +453,68 @@ export class RequestLogStore {
         response_body_size_bytes,
         response_body_truncated,
         error
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    statement.run(
-      input.startedAt,
-      input.completedAt ?? new Date().toISOString(),
-      input.requestId ?? "",
-      normalizeLabel(input.client, "unknown"),
-      input.method,
-      input.path,
-      input.url,
-      providerName,
-      credentialInfo.id,
-      credentialInfo.chain.join(","),
-      credentialInfo.saturated ? 1 : 0,
-      model,
-      isStream ? 1 : 0,
-      normalizeCount(input.statusCode),
-      isSuccessStatus(input.statusCode, responseError) ? 1 : 0,
-      normalizeCount(input.durationMs),
-      inputTokens,
-      outputTokens,
-      reasoningTokens,
-      cacheReadTokens,
-      cacheWriteTokens,
-      totalTokens,
-      cost?.amountUsd ?? null,
-      JSON.stringify(requestHeaders),
-      JSON.stringify(responseHeaders),
-      requestBody.text,
-      requestBody.encoding,
-      requestBody.contentType ?? "",
-      requestBody.sizeBytes,
-      requestBody.truncated ? 1 : 0,
-      responseBody.text,
-      responseBody.encoding,
-      responseBody.contentType ?? "",
-      responseBody.sizeBytes,
-      responseBody.truncated ? 1 : 0,
-      responseError ?? ""
-    );
-    this.revision += 1;
+    let inserted = false;
+    const insert = () => {
+      const result = statement.run(
+        input.startedAt,
+        input.completedAt ?? new Date().toISOString(),
+        input.requestId ?? "",
+        input.eventId ?? "",
+        normalizeLabel(input.client, "unknown"),
+        input.method,
+        input.path,
+        input.url,
+        providerName,
+        credentialInfo.id,
+        credentialInfo.chain.join(","),
+        credentialInfo.saturated ? 1 : 0,
+        model,
+        input.routeTrace?.version ?? 0,
+        input.routeTrace?.hopCount ?? 0,
+        input.routeTrace?.attemptCount ?? 0,
+        input.routeTrace?.truncated ? 1 : 0,
+        isStream ? 1 : 0,
+        normalizeCount(input.statusCode),
+        isSuccessStatus(input.statusCode, responseError) ? 1 : 0,
+        normalizeCount(input.durationMs),
+        inputTokens,
+        outputTokens,
+        reasoningTokens,
+        cacheReadTokens,
+        cacheWriteTokens,
+        totalTokens,
+        cost?.amountUsd ?? null,
+        JSON.stringify(requestHeaders),
+        JSON.stringify(responseHeaders),
+        requestBody.text,
+        requestBody.encoding,
+        requestBody.contentType ?? "",
+        requestBody.sizeBytes,
+        requestBody.truncated ? 1 : 0,
+        responseBody.text,
+        responseBody.encoding,
+        responseBody.contentType ?? "",
+        responseBody.sizeBytes,
+        responseBody.truncated ? 1 : 0,
+        responseError ?? ""
+      );
+      if (result.changes === 0) return;
+      inserted = true;
+      if (input.routeTrace) {
+        insertRequestRouteTrace(
+          this.insertRouteTraceStatement ??= prepareRequestRouteTraceInsert(database),
+          Number(result.lastInsertRowid),
+          input.requestId ?? "",
+          input.routeTrace
+        );
+      }
+    };
+    if (database.inTransaction) insert();
+    else database.transaction(insert)();
+    if (inserted) this.revision += 1;
   }
 
   async updateFromRawTrace(input: RequestLogRawTraceUpdateInput): Promise<boolean> {
@@ -519,7 +646,9 @@ export class RequestLogStore {
       const requestBody = bodyFromText(
         input.requestBodyText,
         input.requestBodyContentType ?? headerValue(mergedRequestHeaders ?? {}, "content-type"),
-        Boolean(input.requestBodyTruncated)
+        Boolean(input.requestBodyTruncated),
+        input.requestBodySizeBytes,
+        rawTraceHardMaxBodyBytes
       );
       pushBodyValues(sets, params, "request", requestBody);
     }
@@ -527,17 +656,23 @@ export class RequestLogStore {
       const responseBody = bodyFromText(
         input.responseBodyText,
         responseBodyContentType,
-        Boolean(input.responseBodyTruncated)
+        Boolean(input.responseBodyTruncated),
+        input.responseBodySizeBytes,
+        rawTraceHardMaxBodyBytes
       );
       pushBodyValues(sets, params, "response", responseBody);
     }
 
-    if (sets.length === 0) {
-      return true;
+    const update = () => {
+      if (sets.length > 0) {
+        database.prepare(`UPDATE request_logs SET ${sets.join(", ")} WHERE request_id = ?`).run(...params, requestId);
+      }
+    };
+    if (database.inTransaction) update();
+    else database.transaction(update)();
+    if (sets.length > 0) {
+      this.revision += 1;
     }
-
-    database.prepare(`UPDATE request_logs SET ${sets.join(", ")} WHERE request_id = ?`).run(...params, requestId);
-    this.revision += 1;
     return true;
   }
 
@@ -568,6 +703,10 @@ export class RequestLogStore {
             credential_chain,
             credential_saturated,
             model,
+            route_trace_version,
+            route_hop_count,
+            route_attempt_count,
+            route_trace_truncated,
             is_stream,
             status_code,
             ok,
@@ -616,7 +755,12 @@ export class RequestLogStore {
     if (requestLogId <= 0) {
       return undefined;
     }
-    return readRequestLogById(database, requestLogId);
+    const entry = readRequestLogById(database, requestLogId);
+    if (!entry) {
+      return undefined;
+    }
+    entry.routeTrace = readRequestRouteTrace(database, requestLogId);
+    return entry;
   }
 
   async analyze(filter: AgentAnalysisFilter = {}): Promise<AgentAnalysisSnapshot> {
@@ -785,6 +929,7 @@ export class RequestLogStore {
         created_at TEXT NOT NULL,
         completed_at TEXT NOT NULL DEFAULT '',
         request_id TEXT NOT NULL DEFAULT '',
+        event_id TEXT NOT NULL DEFAULT '',
         client TEXT NOT NULL DEFAULT 'unknown',
         method TEXT NOT NULL,
         path TEXT NOT NULL,
@@ -794,6 +939,10 @@ export class RequestLogStore {
         credential_chain TEXT NOT NULL DEFAULT '',
         credential_saturated INTEGER NOT NULL DEFAULT 0,
         model TEXT NOT NULL DEFAULT 'unknown',
+        route_trace_version INTEGER NOT NULL DEFAULT 0,
+        route_hop_count INTEGER NOT NULL DEFAULT 0,
+        route_attempt_count INTEGER NOT NULL DEFAULT 0,
+        route_trace_truncated INTEGER NOT NULL DEFAULT 0,
         is_stream INTEGER NOT NULL DEFAULT 0,
         status_code INTEGER NOT NULL DEFAULT 0,
         ok INTEGER NOT NULL DEFAULT 0,
@@ -819,8 +968,61 @@ export class RequestLogStore {
         response_body_truncated INTEGER NOT NULL DEFAULT 0,
         error TEXT NOT NULL DEFAULT ''
       );
+
+      CREATE TABLE IF NOT EXISTS request_route_traces (
+        request_log_id INTEGER PRIMARY KEY,
+        request_id TEXT NOT NULL DEFAULT '',
+        version INTEGER NOT NULL DEFAULT 1,
+        complete INTEGER NOT NULL DEFAULT 1,
+        ingress_snapshot_json TEXT NOT NULL DEFAULT '{}',
+        final_snapshot_json TEXT NOT NULL DEFAULT '{}',
+        hop_count INTEGER NOT NULL DEFAULT 0,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        truncated INTEGER NOT NULL DEFAULT 0,
+        trace_json TEXT NOT NULL DEFAULT '',
+        FOREIGN KEY(request_log_id) REFERENCES request_logs(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS request_route_hops (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        request_log_id INTEGER NOT NULL,
+        request_id TEXT NOT NULL DEFAULT '',
+        seq INTEGER NOT NULL,
+        phase TEXT NOT NULL,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        attempt_no INTEGER,
+        started_offset_ms INTEGER NOT NULL DEFAULT 0,
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'ok',
+        decision_json TEXT NOT NULL DEFAULT '{}',
+        target_json TEXT NOT NULL DEFAULT '{}',
+        changes_json TEXT NOT NULL DEFAULT '[]',
+        outcome_json TEXT NOT NULL DEFAULT '{}',
+        truncated INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY(request_log_id) REFERENCES request_logs(id) ON DELETE CASCADE,
+        UNIQUE(request_log_id, seq)
+      );
+
+      CREATE TABLE IF NOT EXISTS request_log_pending_updates (
+        request_id TEXT PRIMARY KEY,
+        received_at INTEGER NOT NULL,
+        update_json TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS request_route_hops_request_idx
+      ON request_route_hops(request_log_id, seq);
+
+      CREATE INDEX IF NOT EXISTS request_route_traces_request_id_idx
+      ON request_route_traces(request_id);
     `);
     ensureRequestLogSchema(database);
+    ensureRequestRouteTraceSchema(database);
+    database.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS request_logs_event_id_idx
+      ON request_logs(event_id)
+      WHERE event_id <> '';
+    `);
     backfillRequestLogStreamFlags(database);
 
     this.database = database;
@@ -855,30 +1057,56 @@ export class RequestLogStore {
     ).run(cutoff);
     this.lastRetentionCleanupDay = dayKey;
   }
+
+  private storePendingRawTraceUpdate(database: SqlDatabase, input: RequestLogRawTraceUpdateInput): void {
+    const requestId = input.requestId.trim();
+    if (!requestId) return;
+    const now = Date.now();
+    database.prepare(`
+      INSERT INTO request_log_pending_updates (request_id, received_at, update_json)
+      VALUES (?, ?, ?)
+      ON CONFLICT(request_id) DO UPDATE SET received_at = excluded.received_at, update_json = excluded.update_json
+    `).run(requestId, now, JSON.stringify(input));
+    database.prepare("DELETE FROM request_log_pending_updates WHERE received_at < ?").run(now - 5 * 60 * 1_000);
+    database.exec(`
+      DELETE FROM request_log_pending_updates
+      WHERE request_id NOT IN (
+        SELECT request_id FROM request_log_pending_updates ORDER BY received_at DESC LIMIT 200
+      )
+    `);
+  }
+
+  private takePendingRawTraceUpdate(database: SqlDatabase, requestId: string): RequestLogRawTraceUpdateInput | undefined {
+    const row = queryRows(
+      database,
+      "SELECT update_json FROM request_log_pending_updates WHERE request_id = ? LIMIT 1",
+      [requestId]
+    )[0];
+    if (!row) return undefined;
+    database.prepare("DELETE FROM request_log_pending_updates WHERE request_id = ?").run(requestId);
+    const parsed = parseJson(String(row.update_json ?? ""));
+    return isRecord(parsed) ? parsed as RequestLogRawTraceUpdateInput : undefined;
+  }
 }
 
 export const requestLogStore = new RequestLogStore(REQUEST_LOGS_DB_FILE);
+export const requestLogRuntime = createRequestLogRuntime({ dbFile: REQUEST_LOGS_DB_FILE });
+export { createRequestLogRuntime } from "@ccr/core/observability/request-log-runtime";
 
-export async function recordGatewayRequestLog(input: RequestLogRecordInput): Promise<void> {
-  try {
-    await requestLogStore.record(input);
-  } catch (error) {
-    console.warn(`[request-log] Failed to record request log: ${formatError(error)}`);
-  }
+export function recordGatewayRequestLog(input: RequestLogRecordInput): RequestLogEnqueueResult {
+  return requestLogRuntime.enqueueRecord(input);
 }
 
-export async function updateGatewayRequestLogFromRawTrace(input: RequestLogRawTraceUpdateInput): Promise<boolean> {
-  try {
-    return await requestLogStore.updateFromRawTrace(input);
-  } catch (error) {
-    console.warn(`[request-log] Failed to update request log from raw trace: ${formatError(error)}`);
-    return false;
-  }
+export async function updateGatewayRequestLogFromRawTrace(
+  input: RequestLogRawTraceUpdateInput,
+  rawTraceFiles?: RequestLogRawTraceFiles
+): Promise<boolean> {
+  return requestLogRuntime.enqueueRawTrace(input, rawTraceFiles).accepted;
 }
 
 export async function getRequestLogs(filter?: RequestLogListFilter): Promise<RequestLogPage> {
   try {
-    return await requestLogStore.list(filter);
+    return await requestLogRuntime.list(filter);
   } catch (error) {
     console.warn(`[request-log] Failed to read request logs: ${formatError(error)}`);
     throw error;
@@ -887,7 +1115,7 @@ export async function getRequestLogs(filter?: RequestLogListFilter): Promise<Req
 
 export async function getRequestLogDetail(request: RequestLogDetailRequest): Promise<RequestLogEntry | undefined> {
   try {
-    return await requestLogStore.getDetail(request);
+    return await requestLogRuntime.getDetail(request);
   } catch (error) {
     console.warn(`[request-log] Failed to read request log detail: ${formatError(error)}`);
     throw error;
@@ -896,7 +1124,7 @@ export async function getRequestLogDetail(request: RequestLogDetailRequest): Pro
 
 export async function getAgentAnalysis(filter?: AgentAnalysisFilter): Promise<AgentAnalysisSnapshot> {
   try {
-    return await requestLogStore.analyze(filter);
+    return await requestLogRuntime.analyze(filter);
   } catch (error) {
     console.warn(`[request-log] Failed to analyze agent logs: ${formatError(error)}`);
     throw error;
@@ -905,11 +1133,19 @@ export async function getAgentAnalysis(filter?: AgentAnalysisFilter): Promise<Ag
 
 export async function getAgentTracePayload(request: AgentAnalysisTracePayloadRequest): Promise<AgentAnalysisTracePayloadFullResult> {
   try {
-    return await requestLogStore.getTracePayload(request);
+    return await requestLogRuntime.getTracePayload(request);
   } catch (error) {
     console.warn(`[request-log] Failed to read agent trace payload: ${formatError(error)}`);
     throw error;
   }
+}
+
+export async function flushRequestLogRuntime(timeoutMs = 2_000): Promise<{ pending: number; timedOut: boolean }> {
+  return await requestLogRuntime.flush({ timeoutMs });
+}
+
+export async function closeRequestLogRuntime(timeoutMs = 2_000): Promise<void> {
+  await requestLogRuntime.close({ timeoutMs });
 }
 
 function toAnalyzedAgentRequest(entry: StoredRequestLogEntry): AnalyzedAgentRequest {
@@ -2687,6 +2923,7 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   addColumn("created_at", "TEXT NOT NULL DEFAULT ''");
   addColumn("completed_at", "TEXT NOT NULL DEFAULT ''");
   addColumn("request_id", "TEXT NOT NULL DEFAULT ''");
+  addColumn("event_id", "TEXT NOT NULL DEFAULT ''");
   addColumn("client", "TEXT NOT NULL DEFAULT 'unknown'");
   addColumn("method", "TEXT NOT NULL DEFAULT ''");
   addColumn("path", "TEXT NOT NULL DEFAULT ''");
@@ -2696,6 +2933,10 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   addColumn("credential_chain", "TEXT NOT NULL DEFAULT ''");
   addColumn("credential_saturated", "INTEGER NOT NULL DEFAULT 0");
   addColumn("model", "TEXT NOT NULL DEFAULT 'unknown'");
+  addColumn("route_trace_version", "INTEGER NOT NULL DEFAULT 0");
+  addColumn("route_hop_count", "INTEGER NOT NULL DEFAULT 0");
+  addColumn("route_attempt_count", "INTEGER NOT NULL DEFAULT 0");
+  addColumn("route_trace_truncated", "INTEGER NOT NULL DEFAULT 0");
   addColumn("is_stream", "INTEGER NOT NULL DEFAULT 0");
   addColumn("status_code", "INTEGER NOT NULL DEFAULT 0");
   addColumn("ok", "INTEGER NOT NULL DEFAULT 0");
@@ -2732,6 +2973,17 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   database.exec("CREATE INDEX IF NOT EXISTS request_logs_model_created_at_idx ON request_logs(model, created_at DESC)");
   database.exec("CREATE INDEX IF NOT EXISTS request_logs_provider_created_at_idx ON request_logs(provider, created_at DESC)");
   database.exec("CREATE INDEX IF NOT EXISTS request_logs_status_created_at_idx ON request_logs(ok, created_at DESC)");
+}
+
+function ensureRequestRouteTraceSchema(database: SqlDatabase): void {
+  const columns = new Set(
+    queryRows(database, "PRAGMA table_info(request_route_traces)")
+      .map((row) => String(row.name ?? ""))
+      .filter(Boolean)
+  );
+  if (!columns.has("trace_json")) {
+    database.exec("ALTER TABLE request_route_traces ADD COLUMN trace_json TEXT NOT NULL DEFAULT ''");
+  }
 }
 
 function backfillRequestLogStreamFlags(database: SqlDatabase): void {
@@ -2892,9 +3144,178 @@ function buildLogWhereClause(filter: RequestLogListFilter): { params: SqlValue[]
 }
 
 function configureSqliteDatabase(database: SqlDatabase): void {
+  database.pragma("foreign_keys = ON");
   database.pragma("journal_mode = WAL");
   database.pragma("synchronous = NORMAL");
   database.pragma("busy_timeout = 5000");
+}
+
+function insertRequestRouteTrace(
+  statement: BetterSqliteStatement,
+  requestLogId: number,
+  requestId: string,
+  trace: RequestRouteTrace
+): void {
+  statement.run(
+    requestLogId,
+    requestId,
+    trace.version,
+    trace.complete ? 1 : 0,
+    JSON.stringify(trace.ingressSnapshot ?? {}),
+    JSON.stringify(trace.finalSnapshot ?? {}),
+    trace.hopCount,
+    trace.attemptCount,
+    trace.truncated ? 1 : 0,
+    JSON.stringify(trace)
+  );
+}
+
+function prepareRequestRouteTraceInsert(database: SqlDatabase): BetterSqliteStatement {
+  return database.prepare(`
+    INSERT INTO request_route_traces (
+      request_log_id,
+      request_id,
+      version,
+      complete,
+      ingress_snapshot_json,
+      final_snapshot_json,
+      hop_count,
+      attempt_count,
+      truncated,
+      trace_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+}
+
+function readRequestRouteTrace(database: SqlDatabase, requestLogId: number): RequestRouteTrace | undefined {
+  const traceRow = queryRows(
+    database,
+    `
+      SELECT
+        version,
+        complete,
+        ingress_snapshot_json,
+        final_snapshot_json,
+        hop_count,
+        attempt_count,
+        truncated,
+        trace_json
+      FROM request_route_traces
+      WHERE request_log_id = ?
+      LIMIT 1
+    `,
+    [requestLogId]
+  )[0];
+  if (!traceRow) {
+    return undefined;
+  }
+
+  const storedTrace = parseRequestRouteTrace(traceRow.trace_json);
+  if (storedTrace) return storedTrace;
+
+  const hops = queryRows(
+    database,
+    `
+      SELECT
+        seq,
+        phase,
+        name,
+        kind,
+        attempt_no,
+        started_offset_ms,
+        duration_ms,
+        status,
+        decision_json,
+        target_json,
+        changes_json,
+        outcome_json,
+        truncated
+      FROM request_route_hops
+      WHERE request_log_id = ?
+      ORDER BY seq ASC
+    `,
+    [requestLogId]
+  ).map(requestRouteHopFromRow);
+  const ingressSnapshot = parseRouteTraceSnapshot(traceRow.ingress_snapshot_json);
+  const finalSnapshot = parseRouteTraceSnapshot(traceRow.final_snapshot_json);
+  return {
+    attemptCount: normalizeCount(traceRow.attempt_count),
+    complete: normalizeCount(traceRow.complete) === 1,
+    ...(finalSnapshot ? { finalSnapshot } : {}),
+    hopCount: Math.max(normalizeCount(traceRow.hop_count), hops.length),
+    hops,
+    ...(ingressSnapshot ? { ingressSnapshot } : {}),
+    truncated: normalizeCount(traceRow.truncated) === 1,
+    version: normalizeCount(traceRow.version) === 2 ? 2 : 1
+  };
+}
+
+function parseRequestRouteTrace(value: SqlValue): RequestRouteTrace | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const parsed = parseJson(value);
+  if (!isRecord(parsed) || !Array.isArray(parsed.hops)) return undefined;
+  return parsed as RequestRouteTrace;
+}
+
+function requestRouteHopFromRow(row: Record<string, SqlValue>): RequestRouteTraceHop {
+  const decision = parseJson(String(row.decision_json ?? ""));
+  const target = parseJson(String(row.target_json ?? ""));
+  const changes = parseJson(String(row.changes_json ?? ""));
+  const outcome = parseJson(String(row.outcome_json ?? ""));
+  const attempt = normalizeCount(row.attempt_no);
+  return {
+    ...(attempt > 0 ? { attempt } : {}),
+    changes: Array.isArray(changes) ? changes as RequestRouteTraceHop["changes"] : [],
+    ...(isRecord(decision) && Object.keys(decision).length > 0
+      ? { decision: decision as RequestRouteTraceHop["decision"] }
+      : {}),
+    durationMs: normalizeCount(row.duration_ms),
+    kind: requestRouteHopKind(row.kind),
+    name: String(row.name ?? "route-hop"),
+    ...(isRecord(outcome) && Object.keys(outcome).length > 0
+      ? { outcome: outcome as RequestRouteTraceHop["outcome"] }
+      : {}),
+    phase: requestRouteTracePhase(row.phase),
+    seq: normalizeCount(row.seq),
+    startedOffsetMs: normalizeCount(row.started_offset_ms),
+    status: requestRouteHopStatus(row.status),
+    ...(isRecord(target) && Object.keys(target).length > 0
+      ? { target: target as RequestRouteTraceHop["target"] }
+      : {}),
+    ...(normalizeCount(row.truncated) === 1 ? { truncated: true } : {})
+  };
+}
+
+function parseRouteTraceSnapshot(value: SqlValue): RequestRouteTraceSnapshot | undefined {
+  if (typeof value !== "string" || !value.trim()) {
+    return undefined;
+  }
+  const parsed = parseJson(value);
+  if (!isRecord(parsed) || typeof parsed.method !== "string" || typeof parsed.url !== "string") {
+    return undefined;
+  }
+  return parsed as RequestRouteTraceSnapshot;
+}
+
+function requestRouteHopKind(value: SqlValue): RequestRouteTraceHop["kind"] {
+  const kind = String(value ?? "");
+  return kind === "attempt" || kind === "decision" || kind === "outcome" || kind === "snapshot"
+    ? kind
+    : "mutation";
+}
+
+function requestRouteHopStatus(value: SqlValue): RequestRouteTraceHop["status"] {
+  const status = String(value ?? "");
+  return status === "error" || status === "noop" ? status : "ok";
+}
+
+function requestRouteTracePhase(value: SqlValue): RequestRouteTraceHop["phase"] {
+  const phase = String(value ?? "");
+  return phase === "ingress" || phase === "compatibility" || phase === "routing" ||
+    phase === "capability" || phase === "enrichment" || phase === "planning" ||
+    phase === "attempt" || phase === "core" || phase === "outcome"
+    ? phase
+    : "routing";
 }
 
 function queryRows(database: SqlDatabase, sql: string, params: SqlValue[] = []): Record<string, SqlValue>[] {
@@ -2932,6 +3353,10 @@ function readRequestLogById(database: SqlDatabase, id: number): StoredRequestLog
         credential_chain,
         credential_saturated,
         model,
+        route_trace_version,
+        route_hop_count,
+        route_attempt_count,
+        route_trace_truncated,
         is_stream,
         status_code,
         ok,
@@ -3004,6 +3429,9 @@ function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry
     requestBody,
     requestHeaders,
     requestId: String(row.request_id ?? ""),
+    routeAttemptCount: normalizeCount(row.route_attempt_count),
+    routeHopCount: normalizeCount(row.route_hop_count),
+    routeTraceTruncated: normalizeCount(row.route_trace_truncated) === 1,
     retryAttempts: parseRequestLogRetryAttempts(responseHeaders, normalizeCount(row.status_code)),
     responseBody,
     responseHeaders,
@@ -3080,27 +3508,38 @@ function readDistinctValues(database: SqlDatabase, column: "credential_id" | "mo
 }
 
 function bodyFromBuffer(buffer: Buffer, contentType?: string): RequestLogBody {
-  const truncated = buffer.byteLength > maxBodyBytes;
-  const data = truncated ? buffer.subarray(0, maxBodyBytes) : buffer;
+  const compacted = compactBase64ImagePayloads(buffer);
+  const exceedsCaptureLimit = compacted.buffer.byteLength > maxBodyBytes;
+  const data = exceedsCaptureLimit ? compacted.buffer.subarray(0, maxBodyBytes) : compacted.buffer;
   const textLike = isTextLikeContentType(contentType);
   return {
     contentType,
     encoding: textLike ? "utf8" : "base64",
     sizeBytes: buffer.byteLength,
     text: textLike ? data.toString("utf8") : data.toString("base64"),
-    truncated
+    truncated: compacted.compacted || exceedsCaptureLimit
   };
 }
 
-function bodyFromText(text: string, contentType?: string, alreadyTruncated = false): RequestLogBody {
+function bodyFromText(
+  text: string,
+  contentType?: string,
+  alreadyTruncated = false,
+  originalSizeBytes?: number,
+  captureLimitBytes = maxBodyBytes
+): RequestLogBody {
   const buffer = Buffer.from(text);
-  const truncated = alreadyTruncated || buffer.byteLength > maxBodyBytes;
-  const data = truncated ? buffer.subarray(0, maxBodyBytes) : buffer;
+  const sizeBytes = Math.max(buffer.byteLength, normalizeCount(originalSizeBytes));
+  const compacted = compactBase64ImagePayloads(buffer);
+  const truncated = alreadyTruncated || compacted.compacted || buffer.byteLength < sizeBytes ||
+    compacted.buffer.byteLength > captureLimitBytes;
+  const exceedsCaptureLimit = compacted.buffer.byteLength > captureLimitBytes;
+  const data = exceedsCaptureLimit ? compacted.buffer.subarray(0, captureLimitBytes) : compacted.buffer;
   return {
     contentType,
     encoding: "utf8",
-    sizeBytes: buffer.byteLength,
-    text: data.toString("utf8"),
+    sizeBytes,
+    text: exceedsCaptureLimit ? new StringDecoder("utf8").write(data) : data.toString("utf8"),
     truncated
   };
 }

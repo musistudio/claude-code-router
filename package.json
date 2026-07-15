@@ -59,6 +59,7 @@
     "test:e2e:install": "playwright install chromium",
     "test:main": "npm run test:core && npm run test:electron",
     "test:renderer": "npm run test:ui",
+    "benchmark:request-logs": "node build/benchmark-request-logs.mjs",
     "typecheck": "tsc --noEmit",
     "rebuild:sqlite3": "electron-rebuild -f -w better-sqlite3"
   },

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin.ts";
+import { RequestRouteTraceRecorder } from "@ccr/core/observability/route-trace.ts";
 import {
   fallbackRetryDelayAfterNetworkErrorForTest,
   fallbackRetryDelayAfterStatusForTest,
@@ -872,6 +873,8 @@ test("router rules can add headers after the built-in Claude Code profile route"
   const headers = {
     "user-agent": "Claude Code"
   };
+  const traceRecorder = new RequestRouteTraceRecorder(Date.now());
+  traceRecorder.captureIngress();
   const result = await plugin.routeRequest({
     body: {
       messages: [],
@@ -879,6 +882,7 @@ test("router rules can add headers after the built-in Claude Code profile route"
     },
     headers,
     method: "POST",
+    trace: traceRecorder,
     url: "/v1/messages"
   });
 
@@ -886,6 +890,13 @@ test("router rules can add headers after the built-in Claude Code profile route"
   assert.equal(result.body.model, "Provider/claude-sonnet");
   assert.equal(result.decision.model, "Provider/claude-sonnet");
   assert.equal(result.decision.reason, "rule:target-provider");
+  const rewriteHop = traceRecorder.finish().hops.find((hop) => hop.name === "router.rewrite:set:request.header.x-target-provider");
+  assert.deepEqual(rewriteHop?.changes, [{
+    after: "Provider",
+    operation: "add",
+    path: "/headers/x-target-provider",
+    scope: "headers"
+  }]);
 });
 
 test("router rules override explicit provider model requests", async () => {
@@ -935,6 +946,8 @@ test("router rules override explicit provider model requests", async () => {
   const headers = {
     "anthropic-background": "true"
   };
+  const traceRecorder = new RequestRouteTraceRecorder(Date.now());
+  traceRecorder.captureIngress();
   const result = await plugin.routeRequest({
     body: {
       messages: [],
@@ -942,6 +955,7 @@ test("router rules override explicit provider model requests", async () => {
     },
     headers,
     method: "POST",
+    trace: traceRecorder,
     url: "/v1/messages"
   });
 
@@ -950,6 +964,14 @@ test("router rules override explicit provider model requests", async () => {
   assert.equal(result.decision.model, "Qwen3-235B-A22B");
   assert.equal(result.decision.reason, "rule:background");
   assert.deepEqual(result.decision.fallback, ruleFallback);
+  const modelRewriteHop = traceRecorder.finish().hops.find((hop) => hop.name === "router.rewrite:set:request.body.model");
+  assert.deepEqual(modelRewriteHop?.changes, [{
+    after: "Qwen3-235B-A22B",
+    before: "OpenCode/deepseek-v4-flash",
+    operation: "replace",
+    path: "/body/model",
+    scope: "body"
+  }]);
 });
 
 test("issue 1480 raw user config no longer reproduces the Claude Code profile routing failure", async () => {

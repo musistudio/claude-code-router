@@ -7,6 +7,7 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { getHeapStatistics } from "node:v8";
 import { RequestLogStore } from "@ccr/core/observability/request-log-store.ts";
+import { RequestRouteTraceRecorder } from "@ccr/core/observability/route-trace.ts";
 import { createBetterSqliteDatabase } from "@ccr/core/storage/sqlite-native.ts";
 
 const execFileAsync = promisify(execFile);
@@ -141,6 +142,75 @@ test("RequestLogStore keeps list rows lightweight and detail rows complete", asy
     assert.ok(detail);
     assert.match(detail.requestBody.text, /request-model/);
     assert.match(detail.responseBody?.text ?? "", /response-model/);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore persists actively reported route hops without synthesizing Core diffs", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-route-trace-test-"));
+  try {
+    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const startedAtMs = Date.now();
+    const startedAt = new Date(startedAtMs).toISOString();
+    const recorder = new RequestRouteTraceRecorder(startedAtMs);
+    recorder.captureIngress();
+    recorder.capture({
+      changes: [{
+        after: "routed-model",
+        before: "request-model",
+        operation: "replace",
+        path: "/body/model",
+        scope: "body"
+      }],
+      decision: { policyId: "rule:test", reason: "test-rule", source: "rule" },
+      name: "router.policy",
+      phase: "routing",
+      target: { model: "routed-model", provider: "test-provider" }
+    });
+
+    await store.record({
+      completedAt: startedAt,
+      durationMs: 20,
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "test-provider",
+      requestBody: Buffer.from(JSON.stringify({ model: "routed-model", stream: true })),
+      requestHeaders: { "content-type": "application/json" },
+      requestId: "route-trace-request",
+      responseBodyText: "{}",
+      responseHeaders: { "content-type": "application/json" },
+      routeTrace: recorder.finish(),
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    const pageBeforeRawTrace = await store.list({ pageSize: 25 });
+    assert.equal(pageBeforeRawTrace.items[0].routeHopCount, 2);
+    assert.equal(pageBeforeRawTrace.items[0].routeAttemptCount, 0);
+    assert.equal(pageBeforeRawTrace.items[0].routeTrace, undefined);
+
+    const applied = await store.updateFromRawTrace({
+      method: "POST",
+      model: "wire-model",
+      path: "/v1/messages",
+      provider: "wire-provider",
+      requestBodyContentType: "application/json",
+      requestBodyText: JSON.stringify({ model: "wire-model", stream: true }),
+      requestHeaders: { "content-type": "application/json", "x-wire-header": "yes" },
+      requestId: "route-trace-request",
+      statusCode: 200,
+      url: "https://upstream.example/v1/messages"
+    });
+    assert.equal(applied, true);
+
+    const detail = await store.getDetail({ id: pageBeforeRawTrace.items[0].id });
+    assert.ok(detail?.routeTrace);
+    assert.equal(detail.routeTrace.version, 2);
+    assert.equal(detail.routeTrace.hopCount, 2);
+    assert.equal(detail.routeTrace.hops.at(-1).name, "router.policy");
+    assert.ok(detail.routeTrace.hops.at(-1).changes.some((change) => change.path === "/body/model"));
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }
