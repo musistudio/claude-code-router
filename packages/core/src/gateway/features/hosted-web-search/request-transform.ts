@@ -1,7 +1,7 @@
 import type { AppConfig } from "@ccr/core/contracts/app";
 import { isRecord, rawStringValue, stringValue } from "@ccr/core/gateway/internal/value";
 import type { AnthropicWebSearchProtocolContext, BrowserWebSearchProtocolRecord, ClaudeCodeWebSearchContinuationContext, HostedWebSearchProtocolContext } from "@ccr/core/gateway/internal/shared";
-import { parseJsonObjectSafe } from "@ccr/core/gateway/http/body";
+import { parseJsonObjectSafe, serializeJsonBody } from "@ccr/core/gateway/http/body";
 import { uniqueStrings } from "@ccr/core/gateway/internal/collections";
 import { requestProtocolForPath } from "@ccr/core/routing/protocol-endpoints";
 import { claudeCodeWebSearchToolResultTexts, extractAnthropicWebSearchQueryHint, extractClaudeCodeWebSearchToolResultQuery, extractHostedWebSearchQueryHint, fusionWebSearchToolNameForRequest, hasHostedWebSearchDeclaration, isAnthropicHostedWebSearchTool, isOpenAiHostedWebSearchTool, openAiToolChoiceNamesWebSearch, readHostedWebSearchMaxUses } from "@ccr/core/gateway/features/hosted-web-search/discovery";
@@ -108,7 +108,7 @@ export function prepareHostedWebSearchProtocolRequestBody(
   } else if (context.protocol === "gemini_generate_content") {
     next = prepareGeminiHostedWebSearchRequestBody(parsed, evidence);
   }
-  return next ? Buffer.from(`${JSON.stringify(next)}\n`, "utf8") : undefined;
+  return next ? serializeJsonBody(next) : undefined;
 }
 
 
@@ -130,7 +130,7 @@ export function prepareAnthropicWebSearchProtocolRequestBody(
     ...parsed,
     system: appendAnthropicSystemText(parsed.system, evidence)
   }));
-  return Buffer.from(`${JSON.stringify(next)}\n`, "utf8");
+  return serializeJsonBody(next);
 }
 
 
@@ -157,7 +157,7 @@ export function prepareClaudeCodeWebSearchContinuationRequestBody(
     ...parsed,
     system: appendAnthropicSystemText(parsed.system, evidence)
   }));
-  return Buffer.from(`${JSON.stringify(next)}\n`, "utf8");
+  return serializeJsonBody(next);
 }
 
 
@@ -453,4 +453,3 @@ function focusedWebSearchContent(content: string | undefined, queryHint: string 
   const start = Math.max(0, center - 300);
   return `${start > 0 ? "..." : ""}${text.slice(start, start + 1_200)}${start + 1_200 < text.length ? "..." : ""}`;
 }
-

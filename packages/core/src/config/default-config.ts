@@ -7,6 +7,7 @@ import {
   type AppConfig,
   type ProxyRouteTarget
 } from "@ccr/core/contracts/app";
+import { defaultRequestLogBodyBytes } from "@ccr/core/observability/request-log-limits";
 
 export const DEFAULT_PROXY_TARGETS: ProxyRouteTarget[] = [
   { host: "api.anthropic.com", paths: ["/v1/messages", "/v1/messages/count_tokens"] },
@@ -101,6 +102,9 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
     launchAtLogin: false,
     observability: {
       agentAnalysis: false,
+      requestLogBodyCapture: "all",
+      requestLogMaxBodyBytes: defaultRequestLogBodyBytes,
+      requestLogSuccessSampleRate: 1,
       requestLogs: false
     },
     preferredProvider: "",

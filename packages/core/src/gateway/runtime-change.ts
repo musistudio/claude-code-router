@@ -7,6 +7,10 @@ export function shouldRestartGatewayForRuntimeConfigChange(previousConfig: AppCo
     previousConfig.gateway.port !== nextConfig.gateway.port ||
     previousConfig.gateway.coreHost !== nextConfig.gateway.coreHost ||
     previousConfig.gateway.corePort !== nextConfig.gateway.corePort ||
+    previousConfig.observability.requestLogs !== nextConfig.observability.requestLogs ||
+    previousConfig.observability.agentAnalysis !== nextConfig.observability.agentAnalysis ||
+    previousConfig.observability.requestLogBodyCapture !== nextConfig.observability.requestLogBodyCapture ||
+    previousConfig.observability.requestLogMaxBodyBytes !== nextConfig.observability.requestLogMaxBodyBytes ||
     previousConfig.proxy.enabled !== nextConfig.proxy.enabled ||
     previousConfig.proxy.host !== nextConfig.proxy.host ||
     previousConfig.proxy.mode !== nextConfig.proxy.mode ||

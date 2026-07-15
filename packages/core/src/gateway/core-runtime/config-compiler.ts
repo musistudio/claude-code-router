@@ -1,6 +1,7 @@
 /**
  * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
  */
+import { join as pathJoin } from "node:path";
 import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
 import { codexDefaultBaseUrl, readCodexAuth, readGrokAuth, resolveGrokAuth } from "@ccr/core/agents/local-providers/service";
 import { grokAccessTokenExpired, grokClientVersion } from "@ccr/core/agents/local-providers/grok";
@@ -18,6 +19,8 @@ import { uniqueStrings } from "@ccr/core/gateway/internal/collections";
 import { isLocalClaudeCodeOauthProviderPlugin, mergeAnthropicBetaValues } from "@ccr/core/providers/oauth-plugin";
 import { resolveConfiguredProviderModelSelector, resolveUniqueConfiguredProviderModelSelector } from "@ccr/core/routing/model-resolution";
 
+const upstreamHeaderSanitizerPluginKey = "ccr-upstream-header-sanitizer";
+
 
 export async function compileCoreGatewayConfig(
   config: AppConfig,
@@ -28,6 +31,11 @@ export async function compileCoreGatewayConfig(
   upstreamProxyUrl?: string
 ): Promise<Record<string, unknown>> {
   const pluginCoreGatewayConfig = pluginService.getCoreGatewayConfig();
+  const configuredGatewayPlugins = Array.isArray(pluginCoreGatewayConfig.plugins)
+    ? pluginCoreGatewayConfig.plugins.filter((plugin) =>
+        !isRecord(plugin) || stringValue(plugin.key) !== upstreamHeaderSanitizerPluginKey
+      )
+    : [];
   const pluginBillingConfig = isRecord(pluginCoreGatewayConfig.billing) ? pluginCoreGatewayConfig.billing : {};
   const configuredProviderPlugins = normalizeClaudeCodeOauthProviderPlugins([
     ...(config.providerPlugins ?? []).filter(providerPluginEnabled),
@@ -108,6 +116,14 @@ export async function compileCoreGatewayConfig(
       enabled: false
     },
     port: config.gateway.corePort,
+    plugins: [
+      ...configuredGatewayPlugins,
+      {
+        enabled: true,
+        key: upstreamHeaderSanitizerPluginKey,
+        modulePath: pathJoin(__dirname, "upstream-header-sanitizer.js")
+      }
+    ],
     upstreamTimeoutMs: Number(config.API_TIMEOUT_MS) || 0,
     agent: {
       ...pluginAgentConfig,

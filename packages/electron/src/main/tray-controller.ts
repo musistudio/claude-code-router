@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, Tray, app, nativeImage, screen, type BrowserWindowConstructorOptions } from "electron";
+import { BrowserWindow, Menu, Tray, app, nativeImage, nativeTheme, screen, type BrowserWindowConstructorOptions } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { deflateSync } from "node:zlib";
@@ -17,21 +17,8 @@ const popoverDetailWidth = 420;
 const popoverMargin = 8;
 const trayActivationSuppressMs = 750;
 const trayMenuBarIconSize = 20;
-const trayWindowBackgroundColor = "#1c1c1e";
-const trayWindowMaterialOptions: Pick<
-  BrowserWindowConstructorOptions,
-  "backgroundColor" | "transparent" | "vibrancy" | "visualEffectState"
-> = process.platform === "darwin"
-  ? {
-      backgroundColor: "#00000000",
-      transparent: true,
-      vibrancy: "under-window",
-      visualEffectState: "active"
-    }
-  : {
-      backgroundColor: trayWindowBackgroundColor,
-      transparent: false
-    };
+const trayWindowDarkBackgroundColor = "#1c1c1e";
+const trayWindowLightBackgroundColor = "#f2f2f7";
 const trayTokenFallbackTitle = "0 tokens";
 const trayIconFallbackPath = path.join(__dirname, "../assets/tray.png");
 const trayMascotIconIds = ["violet", "orange", "cyan"] as const;
@@ -216,7 +203,7 @@ class TrayController {
       show: false,
       skipTaskbar: true,
       title: `${APP_NAME} Usage`,
-      ...trayWindowMaterialOptions,
+      ...trayWindowMaterialOptions(),
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
@@ -228,7 +215,7 @@ class TrayController {
       width: popoverMenuWidth
     });
 
-    reinforceMacOSTrayMaterial(this.popover);
+    reinforceTrayWindowMaterial(this.popover);
     prepareTrayWindowForSharpRendering(this.popover);
     this.popover.setAlwaysOnTop(true, "pop-up-menu");
     this.popover.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -261,7 +248,7 @@ class TrayController {
       show: false,
       skipTaskbar: true,
       title: `${APP_NAME} Usage Detail`,
-      ...trayWindowMaterialOptions,
+      ...trayWindowMaterialOptions(),
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
@@ -273,7 +260,7 @@ class TrayController {
       width: popoverDetailWidth
     });
 
-    reinforceMacOSTrayMaterial(this.detailPopover);
+    reinforceTrayWindowMaterial(this.detailPopover);
     prepareTrayWindowForSharpRendering(this.detailPopover);
     this.detailPopover.setAlwaysOnTop(true, "pop-up-menu");
     this.detailPopover.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -577,20 +564,49 @@ function normalizeDetailProvider(provider?: string): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
-function reinforceMacOSTrayMaterial(window: BrowserWindow): void {
-  if (process.platform !== "darwin") {
-    return;
-  }
-
+function reinforceTrayWindowMaterial(window: BrowserWindow): void {
   const applyMaterial = () => {
-    if (!window.isDestroyed()) {
+    if (window.isDestroyed()) {
+      return;
+    }
+    if (process.platform === "darwin") {
       window.setBackgroundColor("#00000000");
       window.setVibrancy("under-window");
+      return;
     }
+    window.setBackgroundColor(trayWindowBackgroundColor());
   };
 
   applyMaterial();
   window.webContents.on("did-finish-load", applyMaterial);
+  if (process.platform !== "darwin") {
+    nativeTheme.on("updated", applyMaterial);
+    window.once("closed", () => nativeTheme.off("updated", applyMaterial));
+  }
+}
+
+function trayWindowBackgroundColor(): string {
+  return nativeTheme.shouldUseDarkColors
+    ? trayWindowDarkBackgroundColor
+    : trayWindowLightBackgroundColor;
+}
+
+function trayWindowMaterialOptions(): Pick<
+  BrowserWindowConstructorOptions,
+  "backgroundColor" | "transparent" | "vibrancy" | "visualEffectState"
+> {
+  if (process.platform === "darwin") {
+    return {
+      backgroundColor: "#00000000",
+      transparent: true,
+      vibrancy: "under-window",
+      visualEffectState: "active"
+    };
+  }
+  return {
+    backgroundColor: trayWindowBackgroundColor(),
+    transparent: false
+  };
 }
 
 function prepareTrayWindowForSharpRendering(window: BrowserWindow): void {

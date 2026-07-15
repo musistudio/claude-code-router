@@ -1,4 +1,28 @@
-import type { ProxyNetworkExchange } from "@ccr/core/contracts/app";
+import type { ProxyNetworkExchange, RequestRouteTraceChange } from "@ccr/core/contracts/app";
+
+export function formatRouteTracePath(change: Pick<RequestRouteTraceChange, "path" | "scope">): string {
+  const segments = change.path
+    .split("/")
+    .filter(Boolean)
+    .map(decodeJsonPointerSegment);
+  const direction = segments[0] === "request" || segments[0] === "response"
+    ? segments.shift() as "request" | "response"
+    : "request";
+  const area = change.scope === "headers"
+    ? "header"
+    : change.scope;
+  if (
+    segments[0] === area ||
+    area === "header" && (segments[0] === "header" || segments[0] === "headers")
+  ) {
+    segments.shift();
+  }
+  return [direction, area, ...segments].filter(Boolean).join(".");
+}
+
+function decodeJsonPointerSegment(value: string): string {
+  return value.replace(/~1/g, "/").replace(/~0/g, "~");
+}
 
 export function networkExchangeMatchesQuery(exchange: ProxyNetworkExchange, query: string): boolean {
   if (!query) {

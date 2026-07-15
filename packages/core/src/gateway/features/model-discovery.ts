@@ -2,9 +2,9 @@
  * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
  */
 import type { IncomingHttpHeaders } from "node:http";
-import type { ApiKeyConfig, AppConfig } from "@ccr/core/contracts/app";
+import type { ApiKeyConfig, AppConfig, ProviderModelMetadata } from "@ccr/core/contracts/app";
 import { buildClaudeAppGatewayModelRoutes, resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
-import { normalizeRouteSelector } from "@ccr/core/routing/model-registry";
+import { modelRegistryForConfig, normalizeRouteSelector } from "@ccr/core/routing/model-registry";
 import { findModelCatalogEntry, modelCatalogMaxInputTokens, modelCatalogMaxOutputTokens, readCatalogCapability, type ModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
 import { stringValue } from "@ccr/core/gateway/internal/value";
 import { fusionModelSelector } from "@ccr/core/mcp/fusion-config";
@@ -120,7 +120,8 @@ function createClaudeAppGatewayModelsResponse(config: AppConfig): Record<string,
   const data = routes.map((route) => {
     const catalogId = stripClaudeCodeOneMillionContextSuffix(route.targetModel);
     const catalogEntry = findModelCatalogEntry(catalogId);
-    const maxInputTokens = claudeGatewayModelContextWindow(catalogEntry, route.oneMillionContext);
+    const modelMetadata = providerModelMetadataForSelector(config, catalogId);
+    const maxInputTokens = claudeGatewayModelContextWindow(catalogEntry, route.oneMillionContext, modelMetadata);
     const maxOutputTokens = modelCatalogMaxOutputTokens(catalogEntry);
     return {
       id: route.id,
@@ -151,7 +152,8 @@ function createClaudeCodeModelsResponse(config: AppConfig): Record<string, unkno
     const claudeId = claudeCodeDiscoveryModelId(model.id);
     const catalogId = stripClaudeCodeOneMillionContextSuffix(model.id);
     const catalogEntry = findModelCatalogEntry(catalogId);
-    const maxInputTokens = claudeGatewayModelContextWindow(catalogEntry, model.oneMillionContext);
+    const modelMetadata = providerModelMetadataForSelector(config, catalogId);
+    const maxInputTokens = claudeGatewayModelContextWindow(catalogEntry, model.oneMillionContext, modelMetadata);
     const maxOutputTokens = modelCatalogMaxOutputTokens(catalogEntry);
     return {
       id: claudeId,
@@ -176,12 +178,59 @@ function createClaudeCodeModelsResponse(config: AppConfig): Record<string, unkno
 }
 
 
-function claudeGatewayModelContextWindow(entry: ModelCatalogEntry | undefined, oneMillionContext: boolean): number {
+function claudeGatewayModelContextWindow(
+  entry: ModelCatalogEntry | undefined,
+  oneMillionContext: boolean,
+  metadata?: ProviderModelMetadata
+): number {
+  const providerContextWindow = effectiveProviderContextWindow(metadata);
+  if (providerContextWindow) {
+    return providerContextWindow;
+  }
   const contextWindow = modelCatalogMaxInputTokens(entry);
   if (contextWindow > 0) {
     return contextWindow;
   }
   return oneMillionContext ? 1_000_000 : 0;
+}
+
+
+function effectiveProviderContextWindow(metadata: ProviderModelMetadata | undefined): number | undefined {
+  const contextWindow = positiveInteger(metadata?.contextWindow) ?? positiveInteger(metadata?.maxContextWindow);
+  if (!contextWindow) {
+    return undefined;
+  }
+  const effectivePercent = percentage(metadata?.effectiveContextWindowPercent) ?? 100;
+  return Math.max(1, Math.floor((contextWindow * effectivePercent) / 100));
+}
+
+
+function providerModelMetadataForSelector(config: AppConfig, selector: string): ProviderModelMetadata | undefined {
+  const resolved = modelRegistryForConfig(config).resolveProviderModel(selector);
+  if (!resolved) {
+    return undefined;
+  }
+  const metadata = resolved.provider.modelMetadata ?? {};
+  const direct = metadata[resolved.model];
+  if (direct) {
+    return direct;
+  }
+  const normalizedModel = resolved.model.toLowerCase();
+  return Object.entries(metadata).find(([model]) => model.trim().toLowerCase() === normalizedModel)?.[1];
+}
+
+
+function percentage(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isFinite(value) && value > 0 && value <= 100
+    ? value
+    : undefined;
+}
+
+
+function positiveInteger(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isFinite(value) && value > 0
+    ? Math.trunc(value)
+    : undefined;
 }
 
 
@@ -386,7 +435,7 @@ function createClaudeCodeModelCapabilities(
   options: { maxInputTokens?: number; oneMillionContext?: boolean } = {}
 ): Record<string, unknown> {
   if (!entry) {
-    return createDefaultClaudeCodeModelCapabilities();
+    return createDefaultClaudeCodeModelCapabilities(options);
   }
 
   const capabilities = entry.capabilities ?? {};
@@ -455,7 +504,10 @@ function createClaudeCodeModelCapabilities(
 }
 
 
-function createDefaultClaudeCodeModelCapabilities(): Record<string, unknown> {
+function createDefaultClaudeCodeModelCapabilities(
+  options: { maxInputTokens?: number; oneMillionContext?: boolean } = {}
+): Record<string, unknown> {
+  const maxInputTokens = positiveInteger(options.maxInputTokens);
   return {
     batch: { supported: true },
     citations: { supported: true },
@@ -464,8 +516,19 @@ function createDefaultClaudeCodeModelCapabilities(): Record<string, unknown> {
       clear_thinking_20251015: { supported: true },
       clear_tool_uses_20250919: { supported: true },
       compact_20260112: { supported: true },
+      ...(maxInputTokens ? { max_input_tokens: maxInputTokens } : {}),
       supported: true
     },
+    ...(maxInputTokens
+      ? {
+          context_window: {
+            max_input_tokens: maxInputTokens,
+            one_million_context_variant: options.oneMillionContext === true,
+            supported: true,
+            supports_1m_context: maxInputTokens >= 1_000_000
+          }
+        }
+      : {}),
     effort: {
       high: { supported: true },
       low: { supported: true },
