@@ -23,6 +23,12 @@ import { claudeCodeOauthBetaHeader, claudeCodeOauthRequiredBeta, UpstreamRequest
 import type { ApiKeyLimitUsage, ProviderCredentialRoutingTarget, UpstreamAttempt, UpstreamFailedAttempt, UpstreamFetchResult } from "@ccr/core/gateway/internal/shared";
 
 const providerCredentialSpilloverThreshold = 0.8;
+const openAiResponsesReasoningEffortOrder = ["none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+const defaultOpenAiResponsesReasoningEfforts = new Map(
+  openAiResponsesReasoningEffortOrder
+    .filter((effort) => effort !== "max")
+    .map((effort) => [effort, effort])
+);
 
 
 export function applyProviderCapabilityRouting(input: {
@@ -546,7 +552,7 @@ function usageAwareOpenAiChatAttemptBody(input: {
   body: Buffer | undefined;
   config: AppConfig;
   path: string;
-  target?: { protocol: GatewayProviderProtocol };
+  target?: Pick<ProviderCredentialRoutingTarget, "model" | "protocol" | "provider">;
 }): Buffer | undefined {
   const clientProtocol = requestProtocolForPath(input.path);
   const parsedBody = parseJsonObjectSafe(input.body);
@@ -559,22 +565,105 @@ function usageAwareOpenAiChatAttemptBody(input: {
   if (providerProtocol !== "openai_chat_completions" && providerProtocol !== "openai_responses") {
     return input.body;
   }
-  const sanitizedBody = stripUnsupportedOpenAiRequestParameters(input.body);
+  const sanitizedBody = stripUnsupportedOpenAiRequestParameters(input.body, {
+    model: input.target?.model ?? modelSelector?.model ?? stringValue(parsedBody?.model),
+    protocol: providerProtocol,
+    provider: input.target?.provider ?? modelSelector?.provider
+  });
   return providerProtocol === "openai_chat_completions"
     ? usageAwareOpenAiChatBody(sanitizedBody)
     : sanitizedBody;
 }
 
 
-function stripUnsupportedOpenAiRequestParameters(body: Buffer | undefined): Buffer | undefined {
+function stripUnsupportedOpenAiRequestParameters(
+  body: Buffer | undefined,
+  target: {
+    model?: string;
+    protocol: GatewayProviderProtocol;
+    provider?: GatewayProviderConfig;
+  }
+): Buffer | undefined {
   const parsedBody = parseJsonObjectSafe(body);
-  if (!parsedBody || (!("thinking" in parsedBody) && !("reasoning_split" in parsedBody))) {
+  const hasResponsesOutputConfig = target.protocol === "openai_responses" && Boolean(parsedBody && "output_config" in parsedBody);
+  if (!parsedBody || (!("thinking" in parsedBody) && !("reasoning_split" in parsedBody) && !hasResponsesOutputConfig)) {
     return body;
   }
   const next = { ...parsedBody };
   delete next.thinking;
   delete next.reasoning_split;
+  if (hasResponsesOutputConfig) {
+    const outputConfig = isRecord(next.output_config) ? next.output_config : undefined;
+    const requestedEffort = stringValue(outputConfig?.effort);
+    const reasoning = isRecord(next.reasoning) ? { ...next.reasoning } : undefined;
+    delete next.output_config;
+
+    if (requestedEffort && !stringValue(reasoning?.effort)) {
+      const effort = openAiResponsesReasoningEffort(requestedEffort, target.provider, target.model);
+      if (effort) {
+        next.reasoning = {
+          ...(reasoning ?? {}),
+          effort
+        };
+      }
+    }
+  }
   return Buffer.from(`${JSON.stringify(next)}\n`, "utf8");
+}
+
+
+function openAiResponsesReasoningEffort(
+  requestedEffort: string,
+  provider: GatewayProviderConfig | undefined,
+  model: string | undefined
+): string | undefined {
+  const requested = requestedEffort.trim().toLowerCase();
+  const requestedIndex = openAiResponsesReasoningEffortOrder.findIndex((effort) => effort === requested);
+  if (requestedIndex < 0) {
+    return undefined;
+  }
+  const supported = providerModelReasoningEfforts(provider, model) ?? defaultOpenAiResponsesReasoningEfforts;
+  const exact = supported.get(requested);
+  if (exact) {
+    return exact;
+  }
+  for (let index = requestedIndex - 1; index >= 0; index -= 1) {
+    const fallback = supported.get(openAiResponsesReasoningEffortOrder[index]);
+    if (fallback) {
+      return fallback;
+    }
+  }
+  for (let index = requestedIndex + 1; index < openAiResponsesReasoningEffortOrder.length; index += 1) {
+    const fallback = supported.get(openAiResponsesReasoningEffortOrder[index]);
+    if (fallback) {
+      return fallback;
+    }
+  }
+  return undefined;
+}
+
+
+function providerModelReasoningEfforts(
+  provider: GatewayProviderConfig | undefined,
+  model: string | undefined
+): Map<string, string> | undefined {
+  if (!provider || !model) {
+    return undefined;
+  }
+  const normalizedModel = model.trim().toLowerCase();
+  const metadata = Object.entries(provider.modelMetadata ?? {})
+    .find(([candidate]) => candidate.trim().toLowerCase() === normalizedModel)?.[1];
+  if (!metadata?.supportedReasoningLevels) {
+    return undefined;
+  }
+  const efforts = new Map<string, string>();
+  for (const level of metadata.supportedReasoningLevels) {
+    const effort = stringValue(level.effort);
+    if (effort) {
+      efforts.set(effort.toLowerCase(), effort);
+    }
+  }
+  return efforts;
 }
 
 

@@ -1257,6 +1257,125 @@ test("gateway strips unsupported OpenAI upstream request parameters", () => {
   }
 });
 
+test("gateway maps Claude output_config effort to OpenAI Responses reasoning", () => {
+  const config = {
+    CUSTOM_ROUTER_PATH: "",
+    Providers: [
+      {
+        api_base_url: "https://responses-compatible.example/v1",
+        capabilities: [
+          { baseUrl: "https://responses-compatible.example/v1", type: "openai_responses" }
+        ],
+        credentials: [{ apiKey: "provider-key", id: "provider-main" }],
+        modelMetadata: {
+          "gpt-high": {
+            supportedReasoningLevels: [
+              { description: "Low", effort: "low" },
+              { description: "High", effort: "high" }
+            ]
+          },
+          "gpt-all": {
+            supportedReasoningLevels: [
+              { description: "Low", effort: "low" },
+              { description: "Medium", effort: "medium" },
+              { description: "High", effort: "high" },
+              { description: "Extra high", effort: "xhigh" },
+              { description: "Maximum", effort: "max" }
+            ]
+          }
+        },
+        models: ["gpt-all", "gpt-high", "gpt-unknown"],
+        name: "Responses Compatible"
+      }
+    ],
+    Router: {
+      fallback: { mode: "off", models: [], retryCount: 0 },
+      rules: []
+    },
+    virtualModelProfiles: []
+  };
+
+  const prepare = (model, body = {}) => prepareGatewayUpstreamAttemptForTest({
+    body: {
+      messages: [{ content: "hi", role: "user" }],
+      model,
+      output_config: { effort: "xhigh" },
+      ...body
+    },
+    config,
+    headers: {
+      "x-target-provider": "Responses Compatible"
+    },
+    method: "POST",
+    path: "/v1/messages",
+    routedModel: model
+  });
+
+  for (const effort of ["low", "medium", "high", "xhigh", "max"]) {
+    const supported = prepare("gpt-all", { output_config: { effort } });
+    assert.equal(supported.credentialProtocol, "openai_responses");
+    assert.equal(supported.body.output_config, undefined);
+    assert.deepEqual(supported.body.reasoning, { effort });
+  }
+
+  const downgraded = prepare("gpt-high");
+  assert.equal(downgraded.body.output_config, undefined);
+  assert.deepEqual(downgraded.body.reasoning, { effort: "high" });
+
+  const unknown = prepare("gpt-unknown", { output_config: { effort: "max" } });
+  assert.equal(unknown.body.output_config, undefined);
+  assert.deepEqual(unknown.body.reasoning, { effort: "xhigh" });
+
+  const invalid = prepare("gpt-unknown", { output_config: { effort: "ultracode" } });
+  assert.equal(invalid.body.output_config, undefined);
+  assert.equal(invalid.body.reasoning, undefined);
+
+  const nativeReasoning = prepare("gpt-all", {
+    output_config: { effort: "low" },
+    reasoning: { effort: "high", summary: "auto" }
+  });
+  assert.equal(nativeReasoning.body.output_config, undefined);
+  assert.deepEqual(nativeReasoning.body.reasoning, { effort: "high", summary: "auto" });
+});
+
+test("gateway keeps output_config for OpenAI chat compatibility plugins", () => {
+  const config = {
+    CUSTOM_ROUTER_PATH: "",
+    Providers: [
+      {
+        api_base_url: "https://chat-compatible.example/v1",
+        credentials: [{ apiKey: "provider-key", id: "provider-main" }],
+        models: ["deepseek-compatible"],
+        name: "Chat Compatible",
+        type: "openai_chat_completions"
+      }
+    ],
+    Router: {
+      fallback: { mode: "off", models: [], retryCount: 0 },
+      rules: []
+    },
+    virtualModelProfiles: []
+  };
+  const attempt = prepareGatewayUpstreamAttemptForTest({
+    body: {
+      messages: [{ content: "hi", role: "user" }],
+      model: "deepseek-compatible",
+      output_config: { effort: "high" }
+    },
+    config,
+    headers: {
+      "x-target-provider": "Chat Compatible"
+    },
+    method: "POST",
+    path: "/v1/messages",
+    routedModel: "deepseek-compatible"
+  });
+
+  assert.equal(attempt.credentialProtocol, "openai_chat_completions");
+  assert.deepEqual(attempt.body.output_config, { effort: "high" });
+  assert.equal(attempt.body.reasoning, undefined);
+});
+
 test("built-in Claude Code route overrides explicit virtual gateway models", async () => {
   const plugin = createRouterPlugin({
     profileModel: "Provider/claude-sonnet",
