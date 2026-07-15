@@ -150,8 +150,11 @@ export type ProviderReasoningLevel = {
 
 export type ProviderModelMetadata = {
   additionalSpeedTiers?: unknown[];
+  contextWindow?: number;
   defaultReasoningLevel?: string | null;
   defaultReasoningSummary?: string;
+  effectiveContextWindowPercent?: number;
+  maxContextWindow?: number;
   serviceTiers?: unknown[];
   supportedReasoningLevels?: ProviderReasoningLevel[];
   supportsReasoningSummaries?: boolean;

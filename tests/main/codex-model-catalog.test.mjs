@@ -71,8 +71,11 @@ test("codex catalog uses provider model metadata for reasoning effort and speed 
         modelMetadata: {
           "gpt-5-codex": {
             additionalSpeedTiers: [{ id: "fast", label: "Fast" }],
+            contextWindow: 272000,
             defaultReasoningLevel: "high",
             defaultReasoningSummary: "auto",
+            effectiveContextWindowPercent: 91,
+            maxContextWindow: 300000,
             serviceTiers: [{ id: "auto" }],
             supportedReasoningLevels: [
               { description: "Low", effort: "low" },
@@ -89,8 +92,11 @@ test("codex catalog uses provider model metadata for reasoning effort and speed 
   }, "Codex API/gpt-5-codex");
 
   assert.deepEqual(model.additional_speed_tiers, [{ id: "fast", label: "Fast" }]);
+  assert.equal(model.context_window, 272000);
   assert.equal(model.default_reasoning_level, "high");
   assert.equal(model.default_reasoning_summary, "auto");
+  assert.equal(model.effective_context_window_percent, 91);
+  assert.equal(model.max_context_window, 300000);
   assert.deepEqual(model.service_tiers, [{ id: "auto" }]);
   assert.deepEqual(model.supported_reasoning_levels, [
     { description: "Low", effort: "low" },
@@ -112,7 +118,10 @@ test("codex catalog falls back to local Codex model cache metadata", () => {
       models: [
         {
           additional_speed_tiers: [{ id: "fast", label: "Fast" }],
+          context_window: 272000,
           default_reasoning_level: "high",
+          effective_context_window_percent: 92,
+          max_context_window: 300000,
           service_tiers: [{ id: "auto" }],
           slug: "gpt-5-codex",
           supported_reasoning_levels: [
@@ -137,7 +146,10 @@ test("codex catalog falls back to local Codex model cache metadata", () => {
     }, "Codex API/gpt-5-codex");
 
     assert.deepEqual(model.additional_speed_tiers, [{ id: "fast", label: "Fast" }]);
+    assert.equal(model.context_window, 272000);
     assert.equal(model.default_reasoning_level, "high");
+    assert.equal(model.effective_context_window_percent, 92);
+    assert.equal(model.max_context_window, 300000);
     assert.deepEqual(model.service_tiers, [{ id: "auto" }]);
     assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), ["low", "high"]);
   } finally {
