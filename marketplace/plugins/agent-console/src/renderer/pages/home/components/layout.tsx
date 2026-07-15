@@ -231,6 +231,7 @@ export function ProjectSidebar({
   onOpenSettings,
   onOpenSearch,
   onStartNewSession,
+  onStartProjectSession,
   onCancelThreadRename,
   onRenameThread,
   onStartThreadRename,
@@ -255,6 +256,7 @@ export function ProjectSidebar({
   onOpenSettings: (section?: SettingsSectionId) => void;
   onOpenSearch: () => void;
   onStartNewSession: () => void;
+  onStartProjectSession: (project: SidebarProject) => void;
   onCancelThreadRename: () => void;
   onRenameThread: (thread: SidebarThread, title: string) => void | Promise<void>;
   onStartThreadRename: (thread: SidebarThread) => void;
@@ -326,6 +328,7 @@ export function ProjectSidebar({
                   expanded={expandedProjectIds.has(project.id)}
                   key={project.id}
                   onProjectContextMenu={onProjectContextMenu}
+                  onStartProjectSession={onStartProjectSession}
                   onCancelThreadRename={onCancelThreadRename}
                   onRenameThread={onRenameThread}
                   onStartThreadRename={onStartThreadRename}
@@ -389,6 +392,7 @@ export function ProjectGroup({
   onCancelThreadRename,
   onProjectContextMenu,
   onRenameThread,
+  onStartProjectSession,
   onStartThreadRename,
   onThreadContextMenu,
   onToggle,
@@ -402,6 +406,7 @@ export function ProjectGroup({
   onCancelThreadRename: () => void;
   onProjectContextMenu: (project: SidebarProject) => void | Promise<void>;
   onRenameThread: (thread: SidebarThread, title: string) => void | Promise<void>;
+  onStartProjectSession: (project: SidebarProject) => void;
   onStartThreadRename: (thread: SidebarThread) => void;
   onThreadContextMenu: (thread: SidebarThread) => void | Promise<void>;
   onToggle: () => void;
@@ -414,32 +419,49 @@ export function ProjectGroup({
   const containsSelectedThread = project.threads.some((thread) => thread.id === selectedThread);
   const selectedCollapsedProject = containsSelectedThread && !expanded;
   const label = project.name || t("sidebar.repositories");
+  const newSessionLabel = t("sidebar.newSessionInProject", { project: label });
   const handleProjectContextMenu = (event: ReactMouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
     void onProjectContextMenu(project);
   };
+  const handleStartProjectSession = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onStartProjectSession(project);
+  };
 
   return (
     <div className="project-group">
-      <button
-        aria-expanded={expanded}
-        className={cn(
-          "project-group-trigger relative flex min-h-8 w-full items-center gap-1.5 overflow-hidden rounded-md px-1.5 text-left text-[12px] font-medium transition-colors",
-          selectedCollapsedProject
-            ? "text-accent-foreground"
-            : cn("text-muted-foreground hover:bg-muted hover:text-foreground", containsSelectedThread && "text-foreground")
-        )}
-        onContextMenu={handleProjectContextMenu}
-        onClick={onToggle}
-        type="button"
-      >
-        {selectedCollapsedProject ? <AnimatedSelectionBackground layoutId="left-sidebar-active" /> : null}
-        <span className="relative z-10">
-          {expanded ? <FolderOpen className="h-[15px] w-[15px] shrink-0" /> : <Folder className="h-[15px] w-[15px] shrink-0" />}
-        </span>
-        <span className="relative z-10 min-w-0 flex-1 truncate">{label}</span>
-      </button>
+      <div className="flex min-h-8 w-full items-center gap-1">
+        <button
+          aria-expanded={expanded}
+          className={cn(
+            "project-group-trigger relative flex min-h-8 min-w-0 flex-1 items-center gap-1.5 overflow-hidden rounded-md px-1.5 text-left text-[12px] font-medium transition-colors",
+            selectedCollapsedProject
+              ? "text-accent-foreground"
+              : cn("text-muted-foreground hover:bg-muted hover:text-foreground", containsSelectedThread && "text-foreground")
+          )}
+          onContextMenu={handleProjectContextMenu}
+          onClick={onToggle}
+          type="button"
+        >
+          {selectedCollapsedProject ? <AnimatedSelectionBackground layoutId="left-sidebar-active" /> : null}
+          <span className="relative z-10">
+            {expanded ? <FolderOpen className="h-[15px] w-[15px] shrink-0" /> : <Folder className="h-[15px] w-[15px] shrink-0" />}
+          </span>
+          <span className="relative z-10 min-w-0 flex-1 truncate">{label}</span>
+        </button>
+        <button
+          aria-label={newSessionLabel}
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground/75 outline-none transition hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/20"
+          onClick={handleStartProjectSession}
+          title={newSessionLabel}
+          type="button"
+        >
+          <SquarePen className="h-[14px] w-[14px]" />
+        </button>
+      </div>
 
       <AnimatedTreeChildren expanded={expanded}>
         {project.threads.length ? (

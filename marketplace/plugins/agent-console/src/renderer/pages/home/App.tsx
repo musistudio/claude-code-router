@@ -1742,13 +1742,17 @@ function App() {
     });
   }, []);
 
-  const startNewSession = useCallback(() => {
+  const startNewSession = useCallback((projectId?: string) => {
     clearPendingRunStateForThread(newSessionThreadId);
     selectedThreadRef.current = newSessionThreadId;
     setSelectedThread(newSessionThreadId);
     setActivePage("chat");
     setMessages([]);
     setActiveStream(null);
+    if (projectId) {
+      setNewSessionProjectId(projectId);
+      setProjectBranchState(defaultProjectBranchState);
+    }
     setComposerValue("");
     setComposerAttachments([]);
   }, [clearPendingRunStateForThread]);
@@ -2864,11 +2868,14 @@ function App() {
     }
 
     const provisionalThreadId = selectedThread;
+    const submittedDraftKey = getComposerDraftKey(provisionalThreadId, newSessionProjectId);
     const nextStream = {
       id: assistantMessage.id,
       running: true,
       streamKey: Date.now()
     };
+    composerDraftsRef.current.delete(submittedDraftKey);
+    saveComposerDrafts(composerDraftsRef.current);
     pendingRunBindingsByThreadRef.current.set(provisionalThreadId, {
       assistantMessageId: assistantMessage.id,
       threadId: provisionalThreadId,
@@ -3091,6 +3098,7 @@ function App() {
           onOpenSettings={openSettings}
           onOpenSearch={() => setSearchDialogOpen(true)}
           onStartNewSession={startNewSession}
+          onStartProjectSession={(project) => startNewSession(project.id)}
           onCancelThreadRename={() => setRenamingSidebarThreadId(null)}
           onRenameThread={saveThreadTitle}
           onStartThreadRename={startThreadRename}
@@ -3263,6 +3271,7 @@ function App() {
               onOpenSettings={openSettings}
               onOpenSearch={() => setSearchDialogOpen(true)}
               onStartNewSession={startNewSession}
+              onStartProjectSession={(project) => startNewSession(project.id)}
               onCancelThreadRename={() => setRenamingSidebarThreadId(null)}
               onRenameThread={saveThreadTitle}
               onStartThreadRename={startThreadRename}
