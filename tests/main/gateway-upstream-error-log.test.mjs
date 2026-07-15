@@ -84,3 +84,22 @@ test("upstream diagnostics preserve non-sensitive error details", () => {
   assert.match(message, /failed to parse response from cache/);
   assert.match(message, /http:\/\/10\.0\.0\.5:8080\/v1/);
 });
+
+test("upstream diagnostics hide credential values in JSON error text", () => {
+  const message = formatUpstreamErrorForLog(
+    new Error('{"apiKey":"secret-value","api_key":"other-secret","x-api-key":"third-secret","model":"gpt-5"}'),
+    {
+      attempts: 1,
+      elapsedMs: 25,
+      fallbackFailures: 0,
+      operation: "fetch",
+      responseStarted: false
+    }
+  );
+
+  assert.match(message, /"apiKey":"\[redacted\]"/);
+  assert.match(message, /"api_key":"\[redacted\]"/);
+  assert.match(message, /"x-api-key":"\[redacted\]"/);
+  assert.match(message, /"model":"gpt-5"/);
+  assert.doesNotMatch(message, /secret-value|other-secret|third-secret/);
+});
