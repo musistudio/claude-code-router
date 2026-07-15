@@ -46,12 +46,13 @@ export class ClaudeCodeRouterPlugin {
 
   async routeRequest(input: {
     body: Record<string, unknown>;
+    bodyOwnership?: "borrowed" | "owned";
     headers: Record<string, HeaderValue>;
     method: string;
     trace?: RouteTraceObserver;
     url: string;
   }): Promise<{ body: Record<string, unknown>; decision: ClaudeCodeRouteDecision }> {
-    const body = cloneRecord(input.body);
+    const body = input.bodyOwnership === "owned" ? input.body : cloneRecord(input.body);
     const request: MutableRequestLike = {
       body,
       headers: input.headers,
@@ -59,8 +60,7 @@ export class ClaudeCodeRouterPlugin {
       method: input.method,
       url: input.url
     };
-    const enrichmentStartedAt = Date.now();
-    const appliedEnrichers = applyAgentRequestEnrichers(request, [{
+    applyAgentRequestEnrichers(request, [{
       enrich: (matchedRequest) => {
         injectClaudeCodeAgentToolDescription(matchedRequest.body, this.config);
         injectClaudeCodeToolHubInstructions(matchedRequest.body, this.config);
@@ -70,16 +70,6 @@ export class ClaudeCodeRouterPlugin {
       id: "claude-code",
       matches: (candidate) => builtInAgentRouteMatches(candidate, this.config, "claude-code")
     }]);
-    if (appliedEnrichers.length > 0) {
-      input.trace?.capture({
-        changes: [{ operation: "replace", path: "/body", scope: "body" }],
-        durationMs: Date.now() - enrichmentStartedAt,
-        kind: "mutation",
-        name: `agent-enricher.${appliedEnrichers.join("+")}`,
-        phase: "enrichment",
-        startedAtMs: enrichmentStartedAt
-      });
-    }
     const sessionId = resolveSessionId(body, input.headers);
     const tokenCount = calculateTokenCount(body.messages, body.system, body.tools);
     request.sessionId = sessionId;
@@ -91,7 +81,7 @@ export class ClaudeCodeRouterPlugin {
       input.trace?.capture({
         durationMs: Date.now() - customRouteStartedAt,
         kind: "decision",
-        name: "custom-router",
+        name: "customer.custom-router",
         phase: "routing",
         startedAtMs: customRouteStartedAt,
         target: requestedCustomModel ? { model: requestedCustomModel } : undefined
@@ -106,6 +96,7 @@ export class ClaudeCodeRouterPlugin {
           source: "custom"
         }]
       : [];
+    const routeDecisionStartedAt = Date.now();
     const configuredDecision = resolveConfiguredRouteDecision(request, this.config, this.compiled, customModel);
     const traceDecision = {
       diagnostics: [...this.compiled.diagnostics, ...customDiagnostic],
@@ -115,11 +106,28 @@ export class ClaudeCodeRouterPlugin {
       ...(configuredDecision.ruleName ? { ruleName: configuredDecision.ruleName } : {}),
       source: configuredDecision.source
     };
+    const previousModel = body.model;
+    const selectedModel = configuredDecision.model?.selector;
+    const modelChange: RequestRouteTraceChange | undefined = selectedModel === undefined || Object.is(previousModel, selectedModel)
+      ? undefined
+      : {
+          ...(previousModel === undefined ? {} : { before: previousModel }),
+          after: selectedModel,
+          operation: previousModel === undefined ? "add" : "replace",
+          path: "/body/model",
+          scope: "body"
+        };
+    if (modelChange) {
+      body.model = selectedModel;
+    }
     input.trace?.capture({
+      changes: modelChange ? [modelChange] : [],
       decision: traceDecision,
+      durationMs: Date.now() - routeDecisionStartedAt,
       kind: "decision",
-      name: "router.policy",
+      name: routeDecisionTraceName(configuredDecision),
       phase: "routing",
+      startedAtMs: routeDecisionStartedAt,
       target: configuredDecision.model ? {
         model: configuredDecision.model.selector,
         ...(configuredDecision.model.kind === "provider" ? { provider: configuredDecision.model.provider.name } : {})
@@ -127,6 +135,9 @@ export class ClaudeCodeRouterPlugin {
     });
     if (configuredDecision.rewrites.length) {
       for (const rewrite of configuredDecision.rewrites) {
+        if (selectedModel !== undefined && isBodyModelRewrite(rewrite)) {
+          continue;
+        }
         const rewriteStartedAt = Date.now();
         const change = applyRouterRewrite(rewrite, request);
         input.trace?.capture({
@@ -134,37 +145,11 @@ export class ClaudeCodeRouterPlugin {
           decision: traceDecision,
           durationMs: Date.now() - rewriteStartedAt,
           kind: "mutation",
-          name: `router.rewrite:${rewrite.operation ?? "set"}:${rewrite.key}`,
+          name: `customer.rewrite:${rewrite.operation ?? "set"}:${rewrite.key}`,
           phase: "routing",
           startedAtMs: rewriteStartedAt
         });
       }
-    }
-    if (configuredDecision.model) {
-      const modelStartedAt = Date.now();
-      const previousModel = body.model;
-      body.model = configuredDecision.model.selector;
-      input.trace?.capture({
-        changes: Object.is(previousModel, configuredDecision.model.selector)
-          ? []
-          : [{
-              ...(previousModel === undefined ? {} : { before: previousModel }),
-              after: configuredDecision.model.selector,
-              operation: previousModel === undefined ? "add" : "replace",
-              path: "/body/model",
-              scope: "body"
-            }],
-        decision: traceDecision,
-        durationMs: Date.now() - modelStartedAt,
-        kind: "mutation",
-        name: "router.model-selection",
-        phase: "routing",
-        startedAtMs: modelStartedAt,
-        target: {
-          model: configuredDecision.model.selector,
-          ...(configuredDecision.model.kind === "provider" ? { provider: configuredDecision.model.provider.name } : {})
-        }
-      });
     }
     const routedModel = configuredDecision.model?.selector ?? readString(body.model);
 
@@ -301,7 +286,7 @@ function resolveConfiguredRouteDecision(
         compiled.modelRegistry,
         compiled.fallback
       ),
-      id: "subagent"
+      id: "builtin-agent-claude-code-subagent"
     },
     ...compiled.rules.map((rule): RoutePolicy<MutableRequestLike, ConfiguredRouteDecision> => ({
       evaluate: (context) => {
@@ -314,7 +299,7 @@ function resolveConfiguredRouteDecision(
     })),
     {
       evaluate: () => builtInDecision,
-      id: "builtin"
+      id: builtInDecision ? builtInAgentPolicyId(builtInDecision) : "builtin-agent"
     },
     {
       evaluate: () => ({
@@ -380,11 +365,7 @@ function resolveBuiltInClaudeCodeSubagentRouteDecision(
     fallback,
     model: configuredTarget,
     reason: "builtin:claude-code-subagent",
-    rewrites: [{
-      key: "request.body.model",
-      operation: "set",
-      value: configuredTarget.selector
-    }],
+    rewrites: [],
     source: "subagent",
   };
 }
@@ -411,11 +392,7 @@ function resolveBuiltInAgentRouteDecision(
       fallback,
       model: target,
       reason: `builtin:${agent}`,
-      rewrites: [{
-        key: "request.body.model",
-        operation: "set",
-        value: target.selector
-      }],
+      rewrites: [],
       source: "builtin",
     };
   }
@@ -444,11 +421,7 @@ function resolveGrokInternalRouteDecision(
     fallback,
     model: target,
     reason: "builtin:grok-internal",
-    rewrites: [{
-      key: "request.body.model",
-      operation: "set",
-      value: target.selector
-    }],
+    rewrites: [],
     source: "builtin"
   };
 }
@@ -979,6 +952,37 @@ function routerRuleRewriteDecision(
     rewrites,
     source: "rule"
   };
+}
+
+function isBodyModelRewrite(rewrite: RouterRuleRewrite): boolean {
+  const parts = rewrite.key
+    .split(".")
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean);
+  return parts.length === 3 && parts[0] === "request" && parts[1] === "body" && parts[2] === "model";
+}
+
+function routeDecisionTraceName(decision: ResolvedConfiguredRouteDecision): string {
+  if (decision.source === "custom") {
+    return "customer.custom-router-decision";
+  }
+  if (decision.source === "rule") {
+    return "customer.rule-decision";
+  }
+  if (decision.source === "subagent") {
+    return `builtins.${decision.policyId}`;
+  }
+  if (decision.source === "builtin") {
+    return `builtins.${decision.policyId}`;
+  }
+  return "builtins.default-route";
+}
+
+function builtInAgentPolicyId(decision: ConfiguredRouteDecision): string {
+  const builtInRoute = decision.reason.startsWith("builtin:")
+    ? decision.reason.slice("builtin:".length)
+    : "agent";
+  return `builtin-agent-${builtInRoute}`;
 }
 
 function applyRouterRewrite(rewrite: RouterRuleRewrite, request: MutableRequestLike): RequestRouteTraceChange | undefined {

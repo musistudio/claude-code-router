@@ -3,9 +3,10 @@ import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ProfileConfig } from "@ccr/core/contracts/app.ts";
-import { DeleteProfileDialog } from "@ccr/ui/pages/home/components/profiles.tsx";
+import { DeleteProfileDialog, ProfileView } from "@ccr/ui/pages/home/components/profiles.tsx";
 import { AppI18nContext, appCopy } from "@ccr/ui/pages/home/shared/i18n.tsx";
 import { createProfileDraft, normalizeUnknownProfileItem, profileDraftWithDetectedAppPath } from "@ccr/ui/pages/home/shared/profiles.ts";
+import { appConfigFixture } from "../fixtures/index.ts";
 
 const profile: ProfileConfig = {
   agent: "claude-code",
@@ -39,6 +40,47 @@ test("DeleteProfileDialog renders the Chinese confirmation copy", () => {
   assert.match(html, /从配置中删除这个 Agent 配置档案？/);
   assert.match(html, />取消<\/button>/);
   assert.match(html, />删除<\/button>/);
+});
+
+test("ProfileView keeps launch actions directly accessible in an aligned action bar", () => {
+  const config = appConfigFixture();
+  config.profile.profiles = [
+    {
+      ...profile,
+      scope: "ccr",
+      surface: "auto"
+    },
+    {
+      agent: "zcode",
+      enabled: true,
+      id: "zcode-main",
+      model: "openai/gpt-5.2",
+      name: "ZCode Main",
+      scope: "global",
+      surface: "app"
+    }
+  ];
+
+  const html = renderToStaticMarkup(
+    <ProfileView
+      addProfile={() => undefined}
+      applyError=""
+      config={config}
+      copyProfileCliCommand={() => undefined}
+      editProfile={() => undefined}
+      openProfileApp={() => undefined}
+      profileRuntimeStatus={{ profiles: [] }}
+      removeProfile={() => undefined}
+      stopProfileApp={() => undefined}
+      updateProfileItem={() => undefined}
+    />
+  );
+
+  assert.equal(html.match(/aria-label="(?:Claude Code Main|ZCode Main) Profile actions"/g)?.length, 2);
+  assert.match(html, /aria-label="Copy CLI command Claude Code Main"/);
+  assert.match(html, /aria-label="Start App Claude Code Main"/);
+  assert.match(html, /aria-label="Start App ZCode Main"/);
+  assert.doesNotMatch(html, /aria-label="Copy CLI command ZCode Main"/);
 });
 
 test("detected CHATGPT_APP_PATH is used as the Codex profile default", () => {

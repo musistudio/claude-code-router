@@ -268,6 +268,14 @@ test("Gemini path-model adapter routes and restores generateContent requests", (
   );
 });
 
+test("body-model protocols do not require route input adaptation", () => {
+  const body = { messages: [], model: "claude-sonnet" };
+  const adaptation = adaptRouteRequestBody("/v1/messages", body);
+
+  assert.equal(adaptation.modelLocation, "body");
+  assert.equal(adaptation.body, body);
+});
+
 test("agent enrichers run only for matching agent contexts", () => {
   const request = { agent: "claude-code", enriched: [] };
   const applied = applyAgentRequestEnrichers(request, [

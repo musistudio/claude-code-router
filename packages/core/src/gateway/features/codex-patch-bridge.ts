@@ -8,7 +8,7 @@ import { normalizeRouteSelector } from "@ccr/core/routing/model-registry";
 import { isRecord, rawStringValue, stringValue } from "@ccr/core/gateway/internal/value";
 import { readHeader } from "@ccr/core/gateway/http/io";
 import { codexPatchBridgeInstructionText, codexPatchBridgeShellToolGuidance, virtualApplyPatchLarkGrammar, virtualApplyPatchToolName } from "@ccr/core/gateway/internal/shared";
-import { parseJsonObjectSafe } from "@ccr/core/gateway/http/body";
+import { parseJsonObjectSafe, serializeJsonBody } from "@ccr/core/gateway/http/body";
 import { requestProtocolForPath } from "@ccr/core/routing/protocol-endpoints";
 
 
@@ -36,7 +36,7 @@ export function prepareCodexApplyPatchBridgeRequest(input: {
     return undefined;
   }
   return {
-    body: Buffer.from(`${JSON.stringify(transformed.body)}\n`, "utf8"),
+    body: serializeJsonBody(transformed.body),
     diagnostic: `${model ?? "unknown"}:${transformed.changedParts.join(",")}`
   };
 }

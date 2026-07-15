@@ -2,7 +2,7 @@
  * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
  */
 import { Readable } from "node:stream";
-import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, ProviderCredentialConfig, RouterFallbackConfig } from "@ccr/core/contracts/app";
+import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, ProviderCredentialConfig, RequestRouteTraceChange, RouterFallbackConfig } from "@ccr/core/contracts/app";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
 import { createRouteExecutionPlan } from "@ccr/core/routing/execution-plan";
 import { rewriteRouteModelInUrl } from "@ccr/core/routing/protocol-adapter";
@@ -14,7 +14,7 @@ import { providerCredentialLimitState, readProviderCredentialCooldown, recordPro
 import { isRecord, stringValue } from "@ccr/core/gateway/internal/value";
 import { isLocalClaudeCodeOauthProviderPlugin, mergeAnthropicBetaValues } from "@ccr/core/providers/oauth-plugin";
 import { abortSignalMessage, formatError, omitLocalObservabilityHeaders, shouldSendBody, withCoreGatewayAuthHeader } from "@ccr/core/gateway/http/io";
-import { parseJsonObjectSafe, serializeJsonBodyWithModel } from "@ccr/core/gateway/http/body";
+import { parseJsonObjectSafe, releaseJsonObject, serializeJsonBody, serializeJsonBodyWithModel } from "@ccr/core/gateway/http/body";
 import { resolveGatewayPublicModelId } from "@ccr/core/gateway/features/model-discovery";
 import { activeProviderCredentials, findProviderByPublicOrInternalName, findProviderCredentialBySlug, normalizedProviderCapabilities, parseProviderCredentialInternalName, providerCapabilityForClientProtocol, providerCapabilityInternalName, providerCapabilityNameMatches, providerCredentialInternalName, providerCredentialPriority, providerCredentialRuntimeId, providerCredentialSlug, providerProtocolForClientProtocol, sanitizeHeaderValue } from "@ccr/core/providers/runtime-topology";
 import { delay } from "@ccr/core/gateway/internal/clock";
@@ -81,7 +81,7 @@ export function prepareGatewayUpstreamAttemptForTest(input: {
 } {
   const headers = { ...input.headers };
   const providerCapabilityRouting = applyProviderCapabilityRouting({
-    body: Buffer.from(`${JSON.stringify(input.body)}\n`, "utf8"),
+    body: serializeJsonBody(input.body),
     config: input.config,
     fallback: input.fallback ?? input.config.Router.fallback,
     headers,
@@ -173,7 +173,7 @@ function rewriteBodyModelForProtocol(body: Buffer | undefined, config: AppConfig
   if (!rewrittenModel || rewrittenModel === model) {
     return body;
   }
-  return Buffer.from(`${JSON.stringify({ ...parsedBody, model: rewrittenModel })}\n`, "utf8");
+  return serializeJsonBody({ ...parsedBody, model: rewrittenModel });
 }
 
 
@@ -258,6 +258,7 @@ export async function fetchUpstreamWithFallback(input: {
   headers: Record<string, string>;
   method: string;
   path: string;
+  preparationChanges?: readonly RequestRouteTraceChange[];
   routedModel?: string;
   signal?: AbortSignal;
   trace?: RouteTraceObserver;
@@ -288,6 +289,8 @@ export async function fetchUpstreamWithFallback(input: {
       });
     }
 
+    const attemptNumber = index + 1;
+    const attemptPreparationStartedAt = Date.now();
     const attempt = prepareUpstreamCredentialAttempt({
       attempt: attempts[index],
       config: input.config,
@@ -296,8 +299,6 @@ export async function fetchUpstreamWithFallback(input: {
       path: input.path
     });
     const hasNextAttempt = index < attempts.length - 1;
-    const attemptNumber = index + 1;
-    const attemptStartedAt = Date.now();
     const attemptUrl = rewriteRouteModelInUrl(input.upstreamUrl, attempt.model);
     const attemptHeaders = withCoreGatewayAuthHeader(
       omitLocalObservabilityHeaders(attempt.headers ?? input.headers),
@@ -306,9 +307,11 @@ export async function fetchUpstreamWithFallback(input: {
     const attemptProvider = attempt.logicalProvider ?? (
       attempt.target?.kind === "provider" ? attempt.target.provider.name : undefined
     );
+    const attemptStartedAt = Date.now();
     input.trace?.capture({
       attempt: attemptNumber,
       changes: [
+        ...(index === 0 ? input.preparationChanges ?? [] : []),
         ...(attempt.model && attempt.model !== input.routedModel
           ? [{
               ...(input.routedModel === undefined ? {} : { before: input.routedModel }),
@@ -322,10 +325,11 @@ export async function fetchUpstreamWithFallback(input: {
           ? [{ after: attemptUrl, before: input.upstreamUrl, operation: "replace" as const, path: "/url", scope: "url" as const }]
           : [])
       ],
+      durationMs: attemptStartedAt - attemptPreparationStartedAt,
       kind: "attempt",
       name: "upstream.attempt.prepare",
       phase: "attempt",
-      startedAtMs: attemptStartedAt,
+      startedAtMs: attemptPreparationStartedAt,
       target: {
         ...(attempt.credentialIds?.[0] ? { credentialId: attempt.credentialIds[0] } : {}),
         ...(attempt.credentialIds?.length ? { credentialCandidates: attempt.credentialIds } : {}),
@@ -334,6 +338,10 @@ export async function fetchUpstreamWithFallback(input: {
         ...(attemptProvider ? { provider: attemptProvider } : {})
       }
     });
+
+    releaseJsonObject(attempt.body);
+    releaseJsonObject(attempts[index].body);
+    releaseJsonObject(input.body);
 
     try {
       const response = await fetchWithSystemProxy(attemptUrl, {
@@ -671,7 +679,7 @@ function stripUnsupportedOpenAiRequestParameters(body: Buffer | undefined): Buff
   const next = { ...parsedBody };
   delete next.thinking;
   delete next.reasoning_split;
-  return Buffer.from(`${JSON.stringify(next)}\n`, "utf8");
+  return serializeJsonBody(next);
 }
 
 
@@ -688,13 +696,13 @@ function usageAwareOpenAiChatBody(body: Buffer | undefined): Buffer | undefined 
   if (streamOptions.include_usage === true || streamOptions.includeUsage === true) {
     return body;
   }
-  return Buffer.from(`${JSON.stringify({
+  return serializeJsonBody({
     ...parsedBody,
     stream_options: {
       ...streamOptions,
       include_usage: true
     }
-  })}\n`, "utf8");
+  });
 }
 
 

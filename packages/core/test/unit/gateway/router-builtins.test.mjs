@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin.ts";
+import { fetchUpstreamWithFallback } from "@ccr/core/gateway/upstream/executor.ts";
 import { RequestRouteTraceRecorder } from "@ccr/core/observability/route-trace.ts";
 import {
   fallbackRetryDelayAfterNetworkErrorForTest,
@@ -21,7 +25,7 @@ function createRouterPlugin(options = {}) {
     }
   ];
   const plugin = new ClaudeCodeRouterPlugin({
-    CUSTOM_ROUTER_PATH: "",
+    CUSTOM_ROUTER_PATH: options.customRouterPath ?? "",
     Providers: options.providers ?? [
       {
         modelDescriptions: options.modelDescriptions,
@@ -69,6 +73,52 @@ test("fallback retry delay backs off retryable HTTP statuses", () => {
 test("fallback retry delay backs off network errors", () => {
   assert.equal(fallbackRetryDelayAfterNetworkErrorForTest(), 1000);
   assert.equal(fallbackRetryDelayAfterNetworkErrorForTest(2), 4000);
+});
+
+test("upstream preparation includes transport header normalization changes", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('{"ok":true}', {
+    headers: { "content-type": "application/json" },
+    status: 200
+  });
+  try {
+    const traceRecorder = new RequestRouteTraceRecorder(Date.now());
+    traceRecorder.captureIngress();
+    await fetchUpstreamWithFallback({
+      body: Buffer.from('{"model":"unconfigured"}'),
+      config: {
+        Providers: [],
+        Router: { fallback: { mode: "off", models: [], retryCount: 0 }, rules: [] },
+        virtualModelProfiles: []
+      },
+      coreAuthToken: "core-token",
+      fallback: { mode: "off", models: [], retryCount: 0 },
+      headers: {},
+      method: "POST",
+      path: "/v1/messages",
+      preparationChanges: [{
+        before: "128",
+        operation: "remove",
+        path: "/headers/content-length",
+        scope: "headers"
+      }],
+      routedModel: "unconfigured",
+      trace: traceRecorder,
+      upstreamUrl: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    const trace = traceRecorder.finish();
+    assert.equal(trace.hops.some((hop) => hop.name === "gateway.content-length-normalization"), false);
+    const preparation = trace.hops.find((hop) => hop.name === "upstream.attempt.prepare");
+    assert.deepEqual(preparation?.changes, [{
+      before: "128",
+      operation: "remove",
+      path: "/headers/content-length",
+      scope: "headers"
+    }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 function createIssue1480UserConfig() {
@@ -285,6 +335,92 @@ test("built-in Claude Code route matches user-agent case-insensitively", async (
   assert.equal(result.body.model, "Provider/claude-sonnet");
   assert.equal(result.decision.model, "Provider/claude-sonnet");
   assert.equal(result.decision.reason, "builtin:claude-code");
+});
+
+test("gateway-owned route bodies avoid cloning and built-in model rewrites stay single-pass", async () => {
+  const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
+  const body = {
+    messages: [],
+    model: "claude-default"
+  };
+  const traceRecorder = new RequestRouteTraceRecorder(Date.now());
+  traceRecorder.captureIngress();
+  const result = await plugin.routeRequest({
+    body,
+    bodyOwnership: "owned",
+    headers: {
+      "user-agent": "claude-code/1.0"
+    },
+    method: "POST",
+    trace: traceRecorder,
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body, body);
+  assert.equal(body.model, "Provider/claude-sonnet");
+  const hops = traceRecorder.finish().hops;
+  assert.equal(hops.some((hop) => hop.name === "customer.rewrite:set:request.body.model"), false);
+  assert.equal(hops.some((hop) => hop.name === "router.model-selection"), false);
+  assert.equal(hops.some((hop) => hop.name === "agent-enricher.claude-code"), false);
+  assert.equal(hops.some((hop) => hop.name === "builtins.claude-code-request-enrichment"), false);
+  assert.equal(hops.some((hop) => hop.name === "enrichment.claude-code-request"), false);
+  const routeDecision = hops.find((hop) => hop.name === "builtins.builtin-agent-claude-code");
+  assert.equal(routeDecision?.decision?.policyId, "builtin-agent-claude-code");
+  assert.deepEqual(routeDecision?.changes, [{
+    after: "Provider/claude-sonnet",
+    before: "claude-default",
+    operation: "replace",
+    path: "/body/model",
+    scope: "body"
+  }]);
+});
+
+test("customer route modules use customer-prefixed trace names", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-customer-router-trace-"));
+  try {
+    const customRouterPath = path.join(dir, "router.cjs");
+    writeFileSync(customRouterPath, 'module.exports = () => "Provider/claude-opus";\n');
+    const plugin = createRouterPlugin({ authenticatedProfileId: null, customRouterPath });
+    const traceRecorder = new RequestRouteTraceRecorder(Date.now());
+    traceRecorder.captureIngress();
+
+    const result = await plugin.routeRequest({
+      body: { messages: [], model: "claude-default" },
+      headers: {},
+      method: "POST",
+      trace: traceRecorder,
+      url: "/v1/messages"
+    });
+
+    assert.equal(result.decision.source, "custom");
+    const names = traceRecorder.finish().hops.map((hop) => hop.name);
+    assert.ok(names.includes("customer.custom-router"));
+    assert.ok(names.includes("customer.custom-router-decision"));
+    assert.equal(names.includes("custom-router"), false);
+    assert.equal(names.includes("router.policy"), false);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("borrowed route bodies remain isolated from router mutations", async () => {
+  const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
+  const body = {
+    messages: [],
+    model: "claude-default"
+  };
+  const result = await plugin.routeRequest({
+    body,
+    headers: {
+      "user-agent": "claude-code/1.0"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.notEqual(result.body, body);
+  assert.equal(result.body.model, "Provider/claude-sonnet");
+  assert.equal(body.model, "claude-default");
 });
 
 test("built-in Codex route uses the authenticated profile instead of the first Codex profile", async () => {
@@ -890,7 +1026,9 @@ test("router rules can add headers after the built-in Claude Code profile route"
   assert.equal(result.body.model, "Provider/claude-sonnet");
   assert.equal(result.decision.model, "Provider/claude-sonnet");
   assert.equal(result.decision.reason, "rule:target-provider");
-  const rewriteHop = traceRecorder.finish().hops.find((hop) => hop.name === "router.rewrite:set:request.header.x-target-provider");
+  const hops = traceRecorder.finish().hops;
+  const rewriteHop = hops.find((hop) => hop.name === "customer.rewrite:set:request.header.x-target-provider");
+  assert.ok(hops.some((hop) => hop.name === "customer.rule-decision"));
   assert.deepEqual(rewriteHop?.changes, [{
     after: "Provider",
     operation: "add",
@@ -964,8 +1102,11 @@ test("router rules override explicit provider model requests", async () => {
   assert.equal(result.decision.model, "Qwen3-235B-A22B");
   assert.equal(result.decision.reason, "rule:background");
   assert.deepEqual(result.decision.fallback, ruleFallback);
-  const modelRewriteHop = traceRecorder.finish().hops.find((hop) => hop.name === "router.rewrite:set:request.body.model");
-  assert.deepEqual(modelRewriteHop?.changes, [{
+  const hops = traceRecorder.finish().hops;
+  assert.equal(hops.some((hop) => hop.name === "customer.rewrite:set:request.body.model"), false);
+  assert.equal(hops.some((hop) => hop.name === "router.model-selection"), false);
+  const routeDecision = hops.find((hop) => hop.name === "customer.rule-decision");
+  assert.deepEqual(routeDecision?.changes, [{
     after: "Qwen3-235B-A22B",
     before: "OpenCode/deepseek-v4-flash",
     operation: "replace",

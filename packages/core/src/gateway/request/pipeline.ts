@@ -10,7 +10,8 @@ import { reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
 import { recordProviderCredentialOutcome } from "@ccr/core/providers/credential-pool";
 import { codexApplyPatchBridgeResponseStream, prepareCodexApplyPatchBridgeRequest } from "@ccr/core/gateway/features/codex-patch-bridge";
 import { prepareCursorOpenAICompatChatBody } from "@ccr/core/gateway/features/cursor-compat";
-import { filteredResponseHeaders, formatError, forwardHeaders, inferGatewayClient, parseJsonObject, readRequestBody, sendJson, shouldCaptureGatewayUsage, shouldSendBody, stripLocalGatewayAuthHeaders } from "@ccr/core/gateway/http/io";
+import { filteredResponseHeaders, formatError, forwardHeaders, inferGatewayClient, readRequestBody, sendJson, shouldCaptureGatewayUsage, shouldSendBody, stripLocalGatewayAuthHeaders } from "@ccr/core/gateway/http/io";
+import { serializeJsonBody, takeJsonObject } from "@ccr/core/gateway/http/body";
 import { createGatewayModelsResponse, prepareClaudeAppDiscoveredModelRequest, prepareClaudeCodeDiscoveredModelRequest, shouldServeGatewayModelsResponse } from "@ccr/core/gateway/features/model-discovery";
 import { resolveProviderLogName, resolveResponseProviderProtocol, sanitizeHeaderValue } from "@ccr/core/providers/runtime-topology";
 import { createBodySampler, requestLogSampled, shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
@@ -266,23 +267,26 @@ export class GatewayRequestPipeline {
   
       if (shouldApplyGatewayRouting(method, path)) {
         const routeAdaptationStartedAt = Date.now();
-        const adaptation = adaptRouteRequestBody(path, parseJsonObject(bodyToForward ?? requestBody));
-        routeTrace?.capture({
-          changes: [{ operation: "replace", path: "/body", scope: "body" }],
-          durationMs: Date.now() - routeAdaptationStartedAt,
-          kind: "mutation",
-          name: "protocol-adapter.route-input",
-          phase: "routing",
-          startedAtMs: routeAdaptationStartedAt
-        });
+        const adaptation = adaptRouteRequestBody(path, takeJsonObject(bodyToForward ?? requestBody));
+        if (adaptation.modelLocation === "path") {
+          routeTrace?.capture({
+            changes: [{ after: adaptation.body.model, operation: "add", path: "/body/model", scope: "body" }],
+            durationMs: Date.now() - routeAdaptationStartedAt,
+            kind: "mutation",
+            name: "protocol-adapter.route-input",
+            phase: "routing",
+            startedAtMs: routeAdaptationStartedAt
+          });
+        }
         const routed = await this.plugin.routeRequest({
           body: adaptation.body,
+          bodyOwnership: "owned",
           headers: headers as Record<string, string | string[] | undefined>,
           method,
           trace: routeTrace,
           url: request.url ?? path
         });
-        const serialized = Buffer.from(`${JSON.stringify(restoreRouteRequestBody(routed.body, adaptation))}\n`, "utf8");
+        const serialized = serializeJsonBody(restoreRouteRequestBody(routed.body, adaptation));
         headers["content-type"] = "application/json";
         headers["x-ccr-route-reason"] = sanitizeHeaderValue(routed.decision.reason);
         headers["x-ccr-route-source"] = routed.decision.source;
@@ -476,14 +480,9 @@ export class GatewayRequestPipeline {
 
       const contentLengthHeader = headers["content-length"];
       delete headers["content-length"];
-      if (contentLengthHeader !== undefined) {
-        routeTrace?.capture({
-          changes: [{ before: contentLengthHeader, operation: "remove", path: "/headers/content-length", scope: "headers" }],
-          kind: "mutation",
-          name: "gateway.content-length-normalization",
-          phase: "compatibility"
-        });
-      }
+      const upstreamPreparationChanges: RequestRouteTraceChange[] = contentLengthHeader === undefined
+        ? []
+        : [{ before: contentLengthHeader, operation: "remove", path: "/headers/content-length", scope: "headers" }];
       const upstreamUrl = new URL(request.url || "/", this.status.coreEndpoint).toString();
       let upstreamResult: UpstreamFetchResult;
   
@@ -495,6 +494,7 @@ export class GatewayRequestPipeline {
           headers,
           method,
           path,
+          preparationChanges: upstreamPreparationChanges,
           routedModel,
           coreAuthToken: this.coreAuthToken,
           signal: upstreamAbortController.signal,

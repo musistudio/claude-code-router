@@ -16,8 +16,12 @@ import {
   withCoreGatewayAuthHeader
 } from "@ccr/core/gateway/http/io.ts";
 import {
+  parseJsonObjectCached,
   parseJsonObjectSafe,
-  serializeJsonBodyWithModel
+  releaseJsonObject,
+  serializeJsonBody,
+  serializeJsonBodyWithModel,
+  takeJsonObject
 } from "@ccr/core/gateway/http/body.ts";
 
 test("gateway client inference honors explicit, proxy, API-key, and user-agent identity", () => {
@@ -119,6 +123,27 @@ test("gateway JSON helpers accept only objects and preserve the selected model",
     serializeJsonBodyWithModel({ model: "old", stream: true }, "Provider/new").toString("utf8"),
     '{"model":"Provider/new","stream":true}\n'
   );
+});
+
+test("gateway JSON helpers reuse immutable parses and release mutable ownership", () => {
+  const buffer = Buffer.from('{"model":"old","stream":true}');
+  const cached = parseJsonObjectCached(buffer);
+  assert.equal(parseJsonObjectCached(buffer), cached);
+  assert.equal(parseJsonObjectSafe(buffer), cached);
+
+  const owned = takeJsonObject(buffer);
+  assert.equal(owned, cached);
+  owned.model = "mutated";
+
+  const reparsed = parseJsonObjectCached(buffer);
+  assert.notEqual(reparsed, owned);
+  assert.equal(reparsed.model, "old");
+
+  const body = { model: "Provider/new", stream: true };
+  const serialized = serializeJsonBody(body);
+  assert.equal(parseJsonObjectCached(serialized), body);
+  releaseJsonObject(serialized);
+  assert.notEqual(parseJsonObjectCached(serialized), body);
 });
 
 test("gateway method and abort helpers cover body and cancellation edge cases", () => {
