@@ -270,6 +270,7 @@ test("profile service injects ToolHub MCP into Codex config", { skip: !process.e
   const configFile = path.join(CONFIGDIR, "profiles", profileId, "codex", "config.toml");
   const content = readFileSync(configFile, "utf8");
   assert.match(content, /# BEGIN CCR managed ToolHub MCP/);
+  assert.match(content, /# CCR configured model = "Provider\/model"/);
   assert.match(content, /\[mcp_servers\.ccr-toolhub\]/);
   assert.equal(content.includes(`command = ${JSON.stringify(process.execPath)}`), true);
   assert.equal(content.includes(`args = [${JSON.stringify(path.join(CONFIGDIR, "bin", "toolhub-mcp.js"))}]`), true);
@@ -277,6 +278,64 @@ test("profile service injects ToolHub MCP into Codex config", { skip: !process.e
   assert.match(content, /TOOLHUB_OPENAI_API_KEY = "ccr-codex-profile-test"/);
   assert.match(content, new RegExp(`TOOLHUB_OPENAI_BASE_URL = "http://127\\.0\\.0\\.1:${config.gateway.port}/v1"`));
   assert.match(content, /TOOLHUB_OPENAI_MODEL = "Provider\/model"/);
+
+  const separateProfileFile = path.join(path.dirname(configFile), "claude-code-router.config.toml");
+  const initialSeparateProfile = readFileSync(separateProfileFile, "utf8");
+  assert.equal(initialSeparateProfile.includes("model_reasoning_effort"), false);
+
+  const codexEditedConfig = content
+    .replace(
+      'model = "Provider/model"',
+      'model = "User/selected-in-codex"\nmodel_reasoning_effort = "max"'
+    )
+    .replace(
+      "# END CCR managed ToolHub MCP",
+      [
+        "[desktop]",
+        'followUpQueueMode = "steer"',
+        "",
+        '[plugins."browser@openai-bundled"]',
+        "enabled = false",
+        "",
+        "[features]",
+        "js_repl = true",
+        "# END CCR managed ToolHub MCP"
+      ].join("\n")
+    );
+  writeFileSync(configFile, codexEditedConfig);
+  writeFileSync(
+    separateProfileFile,
+    initialSeparateProfile
+      .replace('model = "Provider/model"', 'model = "User/selected-in-cli"')
+      .replace(/\s*$/, '\nmodel_reasoning_effort = "ultra"\n')
+  );
+
+  await applyProfileConfig(config);
+
+  const preservedConfig = readFileSync(configFile, "utf8");
+  assert.match(preservedConfig, /model = "User\/selected-in-codex"/);
+  assert.match(preservedConfig, /model_reasoning_effort = "max"/);
+  assert.match(preservedConfig, /\[desktop\]\nfollowUpQueueMode = "steer"/);
+  assert.match(preservedConfig, /\[plugins\."browser@openai-bundled"\]\nenabled = false/);
+  assert.match(preservedConfig, /\[features\]\njs_repl = true/);
+  assert.equal((preservedConfig.match(/\[mcp_servers\.ccr-toolhub\]/g) ?? []).length, 1);
+  assert.equal((preservedConfig.match(/# BEGIN CCR managed ToolHub MCP/g) ?? []).length, 1);
+
+  const preservedSeparateProfile = readFileSync(separateProfileFile, "utf8");
+  assert.match(preservedSeparateProfile, /model = "User\/selected-in-cli"/);
+  assert.match(preservedSeparateProfile, /model_reasoning_effort = "ultra"/);
+
+  config.Providers[0].models.push("model-2");
+  config.profile.profiles[0].model = "Provider/model-2";
+  await applyProfileConfig(config);
+
+  const explicitlyUpdatedConfig = readFileSync(configFile, "utf8");
+  assert.match(explicitlyUpdatedConfig, /model = "Provider\/model-2"/);
+  assert.match(explicitlyUpdatedConfig, /model_reasoning_effort = "max"/);
+  assert.match(explicitlyUpdatedConfig, /\[desktop\]\nfollowUpQueueMode = "steer"/);
+  const explicitlyUpdatedSeparateProfile = readFileSync(separateProfileFile, "utf8");
+  assert.match(explicitlyUpdatedSeparateProfile, /model = "Provider\/model-2"/);
+  assert.match(explicitlyUpdatedSeparateProfile, /model_reasoning_effort = "ultra"/);
 });
 
 test("profile service writes a Grok CLI wrapper that points model discovery and inference to CCR", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {

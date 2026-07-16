@@ -186,7 +186,13 @@ function codexModelCapabilityProfile(
   const supportsFusionVision = codexVirtualModelSupportsFusionVision(model, config);
   const supportsFusionWebSearch = codexVirtualModelSupportsFusionWebSearch(model, config);
   const metadataReasoningLevels = normalizeProviderReasoningLevels(providerModelMetadata?.supportedReasoningLevels);
-  const supportsReasoning = providerModelMetadata?.supportsReasoningSummaries ?? (metadataReasoningLevels ? true : readCatalogCapability(capabilities, "reasoning"));
+  const documentedReasoning = documentedReasoningProfile(providerModel);
+  const resolvedReasoningLevels = metadataReasoningLevels
+    ?? documentedReasoning?.levels
+    ?? [];
+  const supportsReasoning = providerModelMetadata?.supportsReasoningSummaries
+    ?? documentedReasoning?.supportsReasoning
+    ?? (metadataReasoningLevels !== undefined || readCatalogCapability(capabilities, "reasoning"));
   const supportsImageInput = supportsFusionVision || catalogEntrySupportsImageInput(catalogEntry);
   const supportsParallelToolCalls = readCatalogCapability(capabilities, "parallelFunctionCalling");
   const applyPatchToolType = providerSupportsResponses || catalogModelLooksLikeGpt(model, catalogEntry) || codexPatchBridgeApplies(model, catalogEntry, config)
@@ -208,17 +214,19 @@ function codexModelCapabilityProfile(
     applyPatchToolType,
     catalogEntry,
     contextWindow: providerModelMetadata?.contextWindow,
-    defaultReasoningLevel: providerModelMetadata && providerModelMetadata.defaultReasoningLevel !== undefined
-      ? providerModelMetadata.defaultReasoningLevel
-      : supportsReasoning
-      ? "medium"
-      : null,
+    defaultReasoningLevel: resolveDefaultReasoningLevel(
+      providerModelMetadata?.defaultReasoningLevel !== undefined
+        ? providerModelMetadata.defaultReasoningLevel
+        : documentedReasoning?.defaultLevel,
+      resolvedReasoningLevels,
+      providerModelMetadata?.defaultReasoningLevel !== undefined || documentedReasoning !== undefined
+    ),
     defaultReasoningSummary: providerModelMetadata?.defaultReasoningSummary ?? "none",
     effectiveContextWindowPercent: providerModelMetadata?.effectiveContextWindowPercent,
     inputModalities: supportsImageInput ? ["text", "image"] : ["text"],
     serviceTiers: providerModelMetadata?.serviceTiers ?? [],
     maxContextWindow: providerModelMetadata?.maxContextWindow,
-    supportedReasoningLevels: metadataReasoningLevels ?? (supportsReasoning ? supportedReasoningLevels(capabilities) : []),
+    supportedReasoningLevels: resolvedReasoningLevels,
     supportsImageInput,
     supportsParallelToolCalls,
     supportsReasoning,
@@ -267,19 +275,60 @@ function providerApiKey(provider: GatewayProviderConfig): string {
 }
 
 function normalizeProviderReasoningLevels(levels: ProviderReasoningLevel[] | undefined): Array<{ description: string; effort: string }> | undefined {
-  const normalized = (levels ?? [])
-    .map((level) => ({
-      description: level.description.trim() || effortDescription(level.effort),
-      effort: level.effort.trim()
-    }))
-    .filter((level) => level.effort);
-  return normalized.length > 0 ? normalized : undefined;
+  if (levels === undefined) {
+    return undefined;
+  }
+  const seen = new Set<string>();
+  const normalized: Array<{ description: string; effort: string }> = [];
+  for (const level of levels) {
+    const effort = level.effort.trim().toLowerCase();
+    // Codex treats `none` as the absence of a reasoning selection and does not
+    // render it in the effort menu, so do not publish it as a selectable level.
+    if (!effort || effort === "none" || seen.has(effort)) {
+      continue;
+    }
+    seen.add(effort);
+    normalized.push({
+      description: level.description.trim() || effortDescription(effort),
+      effort
+    });
+  }
+  return normalized;
+}
+
+function resolveDefaultReasoningLevel(
+  configuredDefault: string | null | undefined,
+  levels: Array<{ effort: string }>,
+  hasConfiguredDefault: boolean
+): string | null {
+  if (hasConfiguredDefault && configuredDefault === null) {
+    return null;
+  }
+
+  const normalizedDefault = configuredDefault?.trim().toLowerCase();
+  const configuredMatch = normalizedDefault
+    ? levels.find((level) => level.effort.toLowerCase() === normalizedDefault)
+    : undefined;
+  if (configuredMatch) {
+    return configuredMatch.effort;
+  }
+  if (normalizedDefault === "none") {
+    return null;
+  }
+
+  return levels.find((level) => level.effort === "medium")?.effort
+    ?? levels.find((level) => level.effort === "high")?.effort
+    ?? levels[0]?.effort
+    ?? null;
 }
 
 function effortDescription(effort: string): string {
   const normalized = effort.trim().toLowerCase();
   if (normalized === "xhigh") {
     return "Extra high reasoning";
+  }
+  if (normalized === "ultra") {
+    return "Maximum reasoning with automatic task delegation";
   }
   return `${effort.slice(0, 1).toUpperCase()}${effort.slice(1)} reasoning`;
 }
@@ -309,26 +358,100 @@ function catalogEntrySupportsImageInput(entry: ModelCatalogEntry | undefined): b
     readCatalogCapability(capabilities, "multimodal");
 }
 
-function supportedReasoningLevels(capabilities: Record<string, unknown>): Array<{ description: string; effort: string }> {
-  const levels: Array<{ description: string; effort: string }> = [];
-  if (readCatalogCapability(capabilities, "noneReasoningEffort")) {
-    levels.push({ effort: "none", description: "No reasoning" });
+type DocumentedReasoningProfile = {
+  defaultLevel: string | null;
+  levels: Array<{ description: string; effort: string }>;
+  supportsReasoning: boolean;
+};
+
+function documentedReasoningProfile(model: string): DocumentedReasoningProfile | undefined {
+  const name = model.trim().toLowerCase().split("/").at(-1) ?? "";
+  const profile = (efforts: string[], defaultLevel: string | null, supportsReasoning = true): DocumentedReasoningProfile => ({
+    defaultLevel,
+    levels: efforts
+      .filter((effort) => effort !== "none")
+      .map((effort) => ({ description: effortDescription(effort), effort })),
+    supportsReasoning
+  });
+
+  // OpenAI API model pages define the API effort values. Codex additionally
+  // exposes its client-only Ultra mode for Sol/Terra, matching gateway metadata.
+  if (/^gpt-5\.6(?:-(?:sol|terra|luna))?(?:-\d{4}-\d{2}-\d{2})?$/.test(name)) {
+    const supportsUltra = !/^gpt-5\.6-luna(?:-|$)/.test(name);
+    return profile([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      ...(supportsUltra ? ["ultra"] : [])
+    ], "medium");
   }
-  if (readCatalogCapability(capabilities, "minimalReasoningEffort")) {
-    levels.push({ effort: "minimal", description: "Minimal reasoning" });
+  if (/^gpt-5\.5(?:-\d{4}-\d{2}-\d{2})?$/.test(name)) {
+    return profile(["none", "low", "medium", "high", "xhigh"], "medium");
   }
-  levels.push(
-    { effort: "low", description: "Low reasoning" },
-    { effort: "medium", description: "Medium reasoning" },
-    { effort: "high", description: "High reasoning" }
-  );
-  if (readCatalogCapability(capabilities, "xhighReasoningEffort") || readCatalogCapability(capabilities, "maxReasoningEffort")) {
-    levels.push({ effort: "xhigh", description: "Extra high reasoning" });
+  if (/^gpt-5\.5-pro(?:-\d{4}-\d{2}-\d{2})?$/.test(name)) {
+    return profile(["medium", "high", "xhigh"], "high");
   }
-  if (readCatalogCapability(capabilities, "maxReasoningEffort")) {
-    levels.push({ effort: "max", description: "Maximum reasoning" });
+  if (/^gpt-5\.4(?:-(?:mini|nano))?(?:-\d{4}-\d{2}-\d{2})?$/.test(name)) {
+    return profile(["none", "low", "medium", "high", "xhigh"], "none");
   }
-  return levels;
+  if (/^gpt-5\.4-pro(?:-\d{4}-\d{2}-\d{2})?$/.test(name)) {
+    return profile(["medium", "high", "xhigh"], "medium");
+  }
+  if (/^gpt-5\.3-codex(?:-\d{4}-\d{2}-\d{2})?$/.test(name)) {
+    return profile(["low", "medium", "high", "xhigh"], "medium");
+  }
+
+  // Anthropic effort is distinct from extended-thinking on/off or token budgets.
+  if (/^claude-(?:fable|mythos)-5(?:-|$)/.test(name)) {
+    return profile(["low", "medium", "high", "xhigh", "max"], "high");
+  }
+  if (/^claude-opus-4[.-](?:7|8)(?:-|$)/.test(name)) {
+    return profile(["low", "medium", "high", "xhigh", "max"], "high");
+  }
+  if (/^claude-(?:opus-4[.-]6|sonnet-4[.-]6)(?:-|$)/.test(name)) {
+    return profile(["low", "medium", "high", "max"], "high");
+  }
+  if (/^claude-opus-4[.-]5(?:-|$)/.test(name)) {
+    return profile(["low", "medium", "high"], "high");
+  }
+  if (/^claude-(?:sonnet|haiku)-4[.-]5(?:-|$)/.test(name)) {
+    return profile([], null);
+  }
+
+  // Gemini Interactions thinking levels. Gemini 2.5 defaults dynamically, so
+  // a null default preserves the provider default until the user selects a level.
+  if (/^gemini-3\.5-flash(?:-|$)/.test(name)) {
+    return profile(["minimal", "low", "medium", "high"], "medium");
+  }
+  if (/^gemini-3(?:\.0)?-flash(?:-|$)/.test(name)) {
+    return profile(["minimal", "low", "medium", "high"], "high");
+  }
+  if (/^gemini-3\.1-pro(?:-|$)/.test(name)) {
+    return profile(["low", "medium", "high"], "high");
+  }
+  if (/^gemini-2\.5-(?:pro|flash)(?:-|$)/.test(name)) {
+    return profile(["low", "medium", "high"], null);
+  }
+
+  if (/^deepseek-v4-(?:flash|pro)(?:-free)?$/.test(name)) {
+    return profile(["high", "max"], "high");
+  }
+  if (/^glm-5\.2(?:-|$)/.test(name)) {
+    return profile(["none", "minimal", "low", "medium", "high", "xhigh", "max"], "max");
+  }
+  if (/^glm-(?:5(?:\.1|-turbo)?|4\.7|4\.5-air|5v-turbo)(?:-|$)/.test(name)) {
+    return profile([], null);
+  }
+  if (/^kimi-(?:k2[.-](?:6|7)(?:-code)?|for-coding)(?:-|$)/.test(name)) {
+    return profile([], null);
+  }
+  if (/^grok-4[.-]5(?:-|$)/.test(name)) {
+    return profile(["low", "medium", "high"], "high");
+  }
+
+  return undefined;
 }
 
 function findConfiguredProvider(
@@ -651,7 +774,8 @@ function normalizeModelSelector(value: string | undefined): string {
 
 function pushUniqueModel(models: string[], model: string | undefined): void {
   const normalized = model?.trim();
-  if (normalized && !models.includes(normalized)) {
+  const dedupeKey = normalized?.toLowerCase();
+  if (normalized && dedupeKey && !models.some((candidate) => candidate.toLowerCase() === dedupeKey)) {
     models.push(normalized);
   }
 }

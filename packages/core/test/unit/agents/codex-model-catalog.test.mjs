@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { buildCodexModelCatalog } from "@ccr/core/agents/codex/model-catalog.ts";
+import { buildCodexModelCatalog, buildCodexModelCatalogIds } from "@ccr/core/agents/codex/model-catalog.ts";
 
 function catalogModelFor(config, slug) {
   const catalog = buildCodexModelCatalog(config, slug);
@@ -11,6 +11,16 @@ function catalogModelFor(config, slug) {
   assert.ok(model, `expected catalog model ${slug}`);
   return model;
 }
+
+test("codex catalog removes duplicate model IDs case-insensitively without reordering", () => {
+  const ids = buildCodexModelCatalogIds({
+    Providers: [
+      { name: "Provider", type: "openai_responses", models: ["Model-A", " model-a ", "MODEL-B"] }
+    ]
+  }, "provider/model-a");
+
+  assert.deepEqual(ids, ["provider/model-a", "Provider/MODEL-B"]);
+});
 
 test("codex catalog treats unknown models as text-only without advanced tools", () => {
   const model = catalogModelFor({
@@ -59,10 +69,12 @@ test("codex catalog enables multimodal reasoning and search when provider protoc
   assert.equal(model.supports_reasoning_summaries, true);
   assert.equal(model.supports_search_tool, true);
   assert.equal(model.web_search_tool_type, "text_and_image");
-  for (const effort of ["low", "medium", "high"]) {
-    assert.ok(model.supported_reasoning_levels.some((level) => level.effort === effort));
-  }
-  assert.equal(model.default_reasoning_level, "medium");
+  assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), [
+    "low",
+    "medium",
+    "high"
+  ]);
+  assert.equal(model.default_reasoning_level, null);
   assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
@@ -80,16 +92,141 @@ test("codex catalog exposes current capabilities for the GPT-5.6 family", () => 
     assert.equal(model.supports_image_detail_original, true);
     assert.equal(model.supports_parallel_tool_calls, true);
     assert.equal(model.supports_reasoning_summaries, true);
-    assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), [
-      "none",
+    const efforts = model.supported_reasoning_levels.map((level) => level.effort);
+    assert.deepEqual(efforts, [
       "low",
       "medium",
       "high",
       "xhigh",
-      "max"
+      "max",
+      ...(/-luna$/.test(modelName) ? [] : ["ultra"])
     ]);
+    assert.equal(new Set(efforts).size, efforts.length);
     assert.equal(model.default_reasoning_level, "medium");
   }
+});
+
+test("codex catalog uses documented reasoning levels instead of aggregate capability guesses", () => {
+  const cases = [
+    ["abacus", "mimo-v2-pro", [], null],
+    ["x-ai", "grok-4.5", ["low", "medium", "high"], "high"],
+    ["z-ai", "glm-4.5-air", [], null],
+    ["z-ai", "glm-5.2", ["minimal", "low", "medium", "high", "xhigh", "max"], "max"],
+    ["google", "gemini-3.5-flash", ["minimal", "low", "medium", "high"], "medium"],
+    ["deepseek", "deepseek-v4-flash", ["high", "max"], "high"],
+    ["deepseek", "deepseek-v4-pro", ["high", "max"], "high"],
+    ["opencode", "deepseek-v4-flash-free", ["high", "max"], "high"],
+    ["kimi", "kimi-k2.7-code", [], null]
+  ];
+
+  for (const [provider, modelName, expectedEfforts, expectedDefault] of cases) {
+    const model = catalogModelFor({
+      Providers: [
+        { name: provider, type: "openai_responses", models: [modelName] }
+      ]
+    }, `${provider}/${modelName}`);
+
+    assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), expectedEfforts);
+    assert.equal(new Set(expectedEfforts).size, expectedEfforts.length);
+    assert.equal(model.default_reasoning_level, expectedDefault);
+  }
+});
+
+test("codex catalog follows Anthropic's model-specific effort matrix", () => {
+  const cases = [
+    ["claude-fable-5", ["low", "medium", "high", "xhigh", "max"]],
+    ["claude-opus-4.8", ["low", "medium", "high", "xhigh", "max"]],
+    ["claude-opus-4-7", ["low", "medium", "high", "xhigh", "max"]],
+    ["claude-opus-4-6", ["low", "medium", "high", "max"]],
+    ["claude-sonnet-4.6", ["low", "medium", "high", "max"]],
+    ["claude-opus-4-5", ["low", "medium", "high"]],
+    ["claude-sonnet-4-5-20250929", []],
+    ["claude-haiku-4-5", []]
+  ];
+
+  for (const [modelName, expectedEfforts] of cases) {
+    const model = catalogModelFor({
+      Providers: [
+        { name: "anthropic", type: "anthropic_messages", models: [modelName] }
+      ]
+    }, `anthropic/${modelName}`);
+
+    assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), expectedEfforts);
+    assert.equal(model.default_reasoning_level, expectedEfforts.length > 0 ? "high" : null);
+  }
+});
+
+test("codex catalog follows official OpenAI API reasoning levels for custom providers", () => {
+  const cases = [
+    ["gpt-5.5", ["low", "medium", "high", "xhigh"], "medium"],
+    ["gpt-5.4", ["low", "medium", "high", "xhigh"], null],
+    ["gpt-5.4-mini", ["low", "medium", "high", "xhigh"], null],
+    ["gpt-5.3-codex", ["low", "medium", "high", "xhigh"], "medium"]
+  ];
+
+  for (const [modelName, expectedEfforts, expectedDefault] of cases) {
+    const model = catalogModelFor({
+      Providers: [
+        { name: "custom", type: "openai_responses", models: [modelName] }
+      ]
+    }, `custom/${modelName}`);
+
+    assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), expectedEfforts);
+    assert.equal(model.default_reasoning_level, expectedDefault);
+  }
+});
+
+test("codex catalog preserves explicit reasoning metadata while removing duplicate efforts", () => {
+  const model = catalogModelFor({
+    Providers: [
+      {
+        modelMetadata: {
+          "custom-reasoner": {
+            defaultReasoningLevel: "unsupported",
+            supportedReasoningLevels: [
+              { description: "No reasoning", effort: "none" },
+              { description: "First low", effort: " LOW " },
+              { description: "Duplicate low", effort: "low" },
+              { description: "High", effort: "HIGH" }
+            ],
+            supportsReasoningSummaries: true
+          }
+        },
+        models: ["custom-reasoner"],
+        name: "custom",
+        type: "openai_responses"
+      }
+    ]
+  }, "custom/custom-reasoner");
+
+  assert.deepEqual(model.supported_reasoning_levels, [
+    { description: "First low", effort: "low" },
+    { description: "High", effort: "high" }
+  ]);
+  assert.equal(model.default_reasoning_level, "high");
+});
+
+test("codex catalog preserves an explicit empty provider reasoning-level list", () => {
+  const model = catalogModelFor({
+    Providers: [
+      {
+        modelMetadata: {
+          "gpt-5.6-sol": {
+            defaultReasoningLevel: null,
+            supportedReasoningLevels: [],
+            supportsReasoningSummaries: false
+          }
+        },
+        models: ["gpt-5.6-sol"],
+        name: "custom",
+        type: "openai_responses"
+      }
+    ]
+  }, "custom/gpt-5.6-sol");
+
+  assert.deepEqual(model.supported_reasoning_levels, []);
+  assert.equal(model.default_reasoning_level, null);
+  assert.equal(model.supports_reasoning_summaries, false);
 });
 
 test("codex catalog uses provider model metadata for reasoning effort and speed tiers", () => {
