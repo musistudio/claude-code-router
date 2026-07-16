@@ -94,7 +94,10 @@ async function runWindowsHarness() {
     agent: "claude-code",
     claudeConfigMode: "inherit",
     enabled: true,
-    env: { CCR_CLAUDE_CODE_BIN: fakeClient },
+    env: {
+      claude_config_dir: "C:\\untrusted-profile-config",
+      CCR_CLAUDE_CODE_BIN: fakeClient
+    },
     id: profileId,
     model: "Provider/model",
     name: "Windows Inherited Wrapper Test",
@@ -126,4 +129,29 @@ async function runWindowsHarness() {
   const observed = JSON.parse(readFileSync(outputFile, "utf8"));
   assert.equal(observed.authToken, "ccr-profile-test");
   assert.equal(observed.configDir, settingsDir);
+
+  config.profile.profiles[0].settingsFile = "~/.claude/settings.json";
+  const defaultApplied = await applyProfileConfig(config);
+  const defaultStatus = defaultApplied.clients.find((entry) => entry.client === "claude-code" && entry.enabled);
+  assert.ok(defaultStatus);
+  assert.equal(defaultStatus.ok, true, defaultStatus.message);
+  const defaultWrapper = readFileSync(wrapperFile, "utf8");
+  assert.match(defaultWrapper, /set "CLAUDE_CONFIG_DIR="/);
+  assert.doesNotMatch(defaultWrapper, /set "CLAUDE_CONFIG_DIR=[^\r\n]+"/);
+  assert.equal(defaultWrapper.includes("C:\\untrusted-profile-config"), false);
+
+  const defaultLaunched = spawnSync(process.env.ComSpec || process.env.COMSPEC || "cmd.exe", ["/d", "/s", "/c", command], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CLAUDE_CONFIG_DIR: "C:\\untrusted-config",
+      CCR_REMOTE_SYNC_ENABLED: "0",
+      CCR_WINDOWS_INHERIT_OUTPUT: outputFile
+    },
+    windowsHide: true
+  });
+  assert.equal(defaultLaunched.status, 0, defaultLaunched.stderr);
+  const defaultObserved = JSON.parse(readFileSync(outputFile, "utf8"));
+  assert.equal(defaultObserved.authToken, "ccr-profile-test");
+  assert.equal(defaultObserved.configDir, "");
 }

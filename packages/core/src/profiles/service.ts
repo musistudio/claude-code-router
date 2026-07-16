@@ -52,6 +52,7 @@ const privateExecutableMode = 0o700;
 const privateFileMode = 0o600;
 const publicExecutableMode = 0o755;
 const claudeCodeReservedWrapperEnv = new Set([
+  "CLAUDE_CONFIG_DIR",
   "CCR_CLAUDE_CODE_AUTH_HELPER",
   "CCR_CLAUDE_CODE_BIN",
   "CCR_CLAUDE_CODE_CONFIG_MODE",
@@ -481,6 +482,19 @@ function applyInheritedClaudeCodeProfile(config: AppConfig, profile: ProfileConf
   const settingsFile = resolveUserPath(profile.settingsFile || "~/.claude/settings.json");
   if (!profile.enabled) {
     return disabledStatus("claude-code", settingsFile, "Claude Code profile is disabled.");
+  }
+  if (path.basename(settingsFile) !== "settings.json") {
+    const cleanupResult = cleanupClaudeCodeProfileLaunchArtifactsResult(profile);
+    const cleanupMessage = cleanupResult.message
+      ? ` Failed to retire generated launch artifacts: ${cleanupResult.message}`
+      : "";
+    return {
+      client: "claude-code",
+      enabled: true,
+      message: `Choose a settings file named settings.json for inherited configuration.${cleanupMessage}`,
+      ok: false,
+      path: settingsFile
+    };
   }
   let settingsInsideManagedProfiles: boolean;
   try {
@@ -1159,12 +1173,12 @@ function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig,
   const remoteEndpoint = `${gatewayEndpoint(config)}/__ccr/remote`;
   const settingsDir = resolveClaudeCodeLaunchConfigDir(CONFIGDIR, profile);
   const envExports = Object.entries(profileEnv(profile))
-    .filter(([key]) => !claudeCodeReservedWrapperEnv.has(key))
+    .filter(([key]) => !claudeCodeReservedWrapperEnv.has(key.toUpperCase()))
     .map(([key, value]) => `export ${key}=${shellQuote(value)}`);
   const botEnvExports = shellBotGatewayEnvExports(config, profile);
   return [
     "#!/bin/sh",
-    "unset CCR_CLAUDE_CODE_AUTH_HELPER CCR_CLAUDE_CODE_CONFIG_MODE",
+    "unset CLAUDE_CONFIG_DIR CCR_CLAUDE_CODE_AUTH_HELPER CCR_CLAUDE_CODE_CONFIG_MODE",
     ...envExports,
     ...shellEnvExports(claudeCodeRuntimeEnv(config, profile, settingsDir)),
     ...shellEnvExports(claudeCodeInheritedAuthEnv(profile, apiKeyHelperFile)),
@@ -1193,11 +1207,12 @@ function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, r
   const remoteEndpoint = `${gatewayEndpoint(config)}/__ccr/remote`;
   const settingsDir = resolveClaudeCodeLaunchConfigDir(CONFIGDIR, profile);
   const envExports = Object.entries(profileEnv(profile))
-    .filter(([key]) => !claudeCodeReservedWrapperEnv.has(key))
+    .filter(([key]) => !claudeCodeReservedWrapperEnv.has(key.toUpperCase()))
     .map(([key, value]) => cmdSetLine(key, value));
   const botEnvExports = cmdBotGatewayEnvExports(config, profile);
   return [
     "@echo off",
+    cmdSetLine("CLAUDE_CONFIG_DIR", ""),
     cmdSetLine("CCR_CLAUDE_CODE_AUTH_HELPER", ""),
     cmdSetLine("CCR_CLAUDE_CODE_CONFIG_MODE", ""),
     ...envExports,
@@ -1868,14 +1883,16 @@ function writeCodexCliMiddleware(
   };
 }
 
-function claudeCodeRuntimeEnv(config: AppConfig, profile: ProfileConfig, settingsDir: string): Record<string, string> {
+function claudeCodeRuntimeEnv(config: AppConfig, profile: ProfileConfig, settingsDir: string | undefined): Record<string, string> {
   const endpoint = gatewayEndpoint(config);
   const env: Record<string, string> = {
     ANTHROPIC_API_BASE_URL: endpoint,
     ANTHROPIC_BASE_URL: endpoint,
-    CLAUDE_AGENT_API_BASE_URL: endpoint,
-    CLAUDE_CONFIG_DIR: settingsDir
+    CLAUDE_AGENT_API_BASE_URL: endpoint
   };
+  if (settingsDir) {
+    env.CLAUDE_CONFIG_DIR = settingsDir;
+  }
   const model = normalizeClientModel(profile.model);
   if (model) {
     env.ANTHROPIC_MODEL = model;

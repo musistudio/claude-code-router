@@ -65,7 +65,7 @@ General guidance:
 
 ### Claude Code
 
-In **Agent Config**, choose Claude Code, set the model and small fast model, then choose a configuration mode. The default uses an isolated CCR-managed configuration. For a CLI-only profile scoped to **Only opened from CCR**, **Reuse existing Claude configuration** loads existing plugins, hooks, statusline, skills, agents, and sessions. CCR uses the selected settings file's parent directory as `CLAUDE_CONFIG_DIR`; routing, authentication, model, and environment overrides apply only to that launch. Open Claude Code from CCR and send one request to verify it in request logs.
+In **Agent Config**, choose Claude Code, set the model and small fast model, then choose a configuration mode. The default uses an isolated CCR-managed configuration. For a CLI-only profile scoped to **Only opened from CCR**, **Reuse existing Claude configuration** loads existing plugins, hooks, statusline, skills, agents, and sessions. The native default `~/.claude/settings.json` keeps native config resolution. A custom file must also be named `settings.json`; CCR uses its parent directory as `CLAUDE_CONFIG_DIR`. Routing, authentication, model, and environment overrides apply only to that launch. Open Claude Code from CCR and send one request to verify it in request logs.
 
 ### Codex
 

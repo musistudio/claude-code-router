@@ -379,13 +379,73 @@ test("inherited Claude Code profiles do not create managed settings", { skip: !p
   }
 });
 
+test("inherited Claude Code default settings preserve native config resolution", { skip: process.platform === "win32" || !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const previousHome = process.env.HOME;
+  const home = mkdtempSync(path.join(os.tmpdir(), "ccr-inherited-default-resolution-"));
+  const settingsFile = path.join(home, ".claude", "settings.json");
+  const profileId = "inherited-default-resolution-test";
+  const wrapperFile = path.join(CONFIGDIR, "bin", `ccr-claude-code-wrapper-${profileId}`);
+  mkdirSync(path.dirname(settingsFile), { recursive: true });
+  writeFileSync(settingsFile, "{}");
+  process.env.HOME = home;
+
+  try {
+    const result = await applyProfileConfig(inheritedClaudeProfileConfig(profileId, "~/.claude/settings.json"));
+    const wrapper = readFileSync(wrapperFile, "utf8");
+
+    assert.equal(result.clients[0].ok, true);
+    assert.match(wrapper, /unset CLAUDE_CONFIG_DIR/);
+    assert.doesNotMatch(wrapper, /export CLAUDE_CONFIG_DIR=/);
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+    rmSync(home, { force: true, recursive: true });
+  }
+});
+
+test("inherited Claude Code profiles reject settings files with a nonstandard name", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "inherited-nonstandard-settings-name-test";
+  const userConfigDir = mkdtempSync(path.join(os.tmpdir(), "ccr-inherited-nonstandard-settings-"));
+  const validSettingsFile = path.join(userConfigDir, "settings.json");
+  const settingsFile = path.join(userConfigDir, "preferences.json");
+  const originalSettings = '{"statusLine":{"type":"command","command":"status"}}';
+  const commandExtension = process.platform === "win32" ? ".cmd" : "";
+  const helperFile = path.join(CONFIGDIR, "bin", `ccr-claude-code-api-key-${profileId}${commandExtension}`);
+  const wrapperFile = path.join(CONFIGDIR, "bin", `ccr-claude-code-wrapper-${profileId}${commandExtension}`);
+  writeFileSync(validSettingsFile, originalSettings);
+  writeFileSync(settingsFile, originalSettings);
+
+  try {
+    const config = inheritedClaudeProfileConfig(profileId, validSettingsFile);
+    const validResult = await applyProfileConfig(config);
+    assert.equal(validResult.clients[0].ok, true);
+    assert.equal(existsSync(helperFile), true);
+    assert.equal(existsSync(wrapperFile), true);
+
+    config.profile.profiles[0].settingsFile = settingsFile;
+    const result = await applyProfileConfig(config);
+
+    assert.equal(result.clients[0].ok, false);
+    assert.match(result.clients[0].message, /named settings\.json/);
+    assert.equal(readFileSync(settingsFile, "utf8"), originalSettings);
+    assert.equal(existsSync(helperFile), false);
+    assert.equal(existsSync(wrapperFile), false);
+  } finally {
+    rmSync(userConfigDir, { force: true, recursive: true });
+  }
+});
+
 test("profile environment cannot enable inherited Claude Code configuration", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "reserved-inherited-env-test";
   const config = inheritedClaudeProfileConfig(profileId, "~/.claude/settings.json");
   config.profile.profiles[0].claudeConfigMode = "isolated";
   config.profile.profiles[0].env = {
-    CCR_CLAUDE_CODE_AUTH_HELPER: "/tmp/untrusted-helper",
-    CCR_CLAUDE_CODE_CONFIG_MODE: "inherit"
+    claude_config_dir: "/tmp/untrusted-config",
+    Ccr_Claude_Code_Auth_Helper: "/tmp/untrusted-helper",
+    ccr_claude_code_config_mode: "inherit"
   };
 
   const result = await applyProfileConfig(config);
@@ -394,14 +454,15 @@ test("profile environment cannot enable inherited Claude Code configuration", { 
   const wrapper = readFileSync(wrapperFile, "utf8");
 
   assert.equal(result.clients[0].ok, true);
+  assert.equal(wrapper.includes("/tmp/untrusted-config"), false);
   assert.equal(wrapper.includes("/tmp/untrusted-helper"), false);
   if (process.platform === "win32") {
     assert.match(wrapper, /set "CCR_CLAUDE_CODE_AUTH_HELPER="/);
     assert.match(wrapper, /set "CCR_CLAUDE_CODE_CONFIG_MODE="/);
   } else {
-    assert.match(wrapper, /unset CCR_CLAUDE_CODE_AUTH_HELPER CCR_CLAUDE_CODE_CONFIG_MODE/);
+    assert.match(wrapper, /unset CLAUDE_CONFIG_DIR CCR_CLAUDE_CODE_AUTH_HELPER CCR_CLAUDE_CODE_CONFIG_MODE/);
   }
-  assert.doesNotMatch(wrapper, /CCR_CLAUDE_CODE_CONFIG_MODE[='" ]+inherit/);
+  assert.doesNotMatch(wrapper.toLowerCase(), /ccr_claude_code_config_mode[='" ]+inherit/);
 });
 
 test("profile service does not read inherited Claude Code settings", { skip: process.platform === "win32" || !process.env.CCR_INTERNAL_HOME_DIR }, async () => {

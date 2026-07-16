@@ -695,7 +695,7 @@ export function AddProfileForm({
               onChange={(event) => onChange({ settingsFile: event.target.value })}
             />
             <span className="block text-[11px] font-normal normal-case tracking-normal text-muted-foreground">
-              {t("CCR uses the selected file's parent directory as CLAUDE_CONFIG_DIR without reading or modifying the file during inherited applies.")}
+              {t("CCR keeps native default paths for ~/.claude/settings.json. Custom selections must also be named settings.json and use the file's parent directory as CLAUDE_CONFIG_DIR. CCR does not read or modify the selected file during inherited applies.")}
             </span>
           </Field>
         ) : null}

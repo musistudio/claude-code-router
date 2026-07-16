@@ -213,9 +213,13 @@ export function resolveClaudeCodeSettingsFile(configDir: string, profile: Profil
   return resolveUserPath(profile.settingsFile || "~/.claude/settings.json");
 }
 
-export function resolveClaudeCodeLaunchConfigDir(configDir: string, profile: ProfileConfig): string {
+export function resolveClaudeCodeLaunchConfigDir(configDir: string, profile: ProfileConfig): string | undefined {
   if (isInheritedClaudeCodeProfile(profile)) {
-    return path.dirname(resolveUserPath(profile.settingsFile || "~/.claude/settings.json"));
+    const settingsFile = resolveUserPath(profile.settingsFile || "~/.claude/settings.json");
+    if (sameFilePath(settingsFile, resolveUserPath("~/.claude/settings.json"))) {
+      return undefined;
+    }
+    return path.dirname(settingsFile);
   }
   return path.dirname(resolveClaudeCodeSettingsFile(configDir, profile));
 }
@@ -267,11 +271,12 @@ function buildClaudeCodeLaunchPlan(
     throw new Error("Claude App opening is available from the CCR desktop app.");
   }
   const launcher = path.join(configDir, "bin", claudeCodeWrapperFilename(profile));
+  const launchConfigDir = resolveClaudeCodeLaunchConfigDir(configDir, profile);
   return {
     args: extraArgs,
     command: launcher,
     env: {
-      CLAUDE_CONFIG_DIR: resolveClaudeCodeLaunchConfigDir(configDir, profile),
+      ...(launchConfigDir ? { CLAUDE_CONFIG_DIR: launchConfigDir } : {}),
       CCR_PROFILE_SURFACE: surface,
       ...claudeCodeModelEnv(profile),
       ...claudeCodeUtcTimezoneEnvOverride()
@@ -378,6 +383,14 @@ function resolveUserPath(value: string): string {
 
 function homeDir(): string {
   return process.env.HOME || process.env.USERPROFILE || ".";
+}
+
+function sameFilePath(left: string, right: string): boolean {
+  const normalizedLeft = path.resolve(left);
+  const normalizedRight = path.resolve(right);
+  return process.platform === "win32"
+    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
+    : normalizedLeft === normalizedRight;
 }
 
 function sanitizeCodexProviderId(value: string): string {
