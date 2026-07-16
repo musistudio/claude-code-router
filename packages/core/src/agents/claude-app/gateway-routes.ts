@@ -1,6 +1,7 @@
 import type { AppConfig } from "@ccr/core/contracts/app";
 import { availableGatewayModelIds, normalizeProfileScopeValue } from "@ccr/core/contracts/app";
 import { modelRegistryForConfig } from "@ccr/core/routing/model-registry";
+import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
 
 export const CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX = "[1m]";
 const CLAUDE_APP_ENCODED_ROUTE_PREFIX = "anthropic/claude-ccr-h";
@@ -131,16 +132,21 @@ export function effectiveProviderModelContextWindow(
   config: Pick<AppConfig, "Providers" | "virtualModelProfiles">,
   model: string
 ): number | undefined {
-  const resolved = modelRegistryForConfig(config).resolveProviderModel(
-    stripClaudeAppGatewayOneMillionContextSuffix(model)
+  const registry = modelRegistryForConfig(config);
+  const normalizedModel = stripClaudeAppGatewayOneMillionContextSuffix(model);
+  const direct = registry.resolveProviderModel(normalizedModel);
+  const attribution = direct ? undefined : resolveUsageModelAttribution(config, normalizedModel);
+  const physicalModel = direct?.model ?? attribution?.model;
+  const provider = direct?.provider ?? (
+    attribution?.provider ? registry.findProvider(attribution.provider) : undefined
   );
-  if (!resolved) {
+  if (!provider || !physicalModel) {
     return undefined;
   }
 
-  const modelMetadata = resolved.provider.modelMetadata ?? {};
-  const metadata = modelMetadata[resolved.model] ?? Object.entries(modelMetadata).find(
-    ([candidate]) => candidate.trim().toLowerCase() === resolved.model.toLowerCase()
+  const modelMetadata = provider.modelMetadata ?? {};
+  const metadata = modelMetadata[physicalModel] ?? Object.entries(modelMetadata).find(
+    ([candidate]) => candidate.trim().toLowerCase() === physicalModel.toLowerCase()
   )?.[1];
   const contextWindow = positiveMetadataInteger(metadata?.contextWindow) ??
     positiveMetadataInteger(metadata?.maxContextWindow);

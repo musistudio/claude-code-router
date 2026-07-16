@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildClaudeAppGatewayInferenceModels,
   buildClaudeAppGatewayModelRoutes,
+  effectiveProviderModelContextWindow,
   inferClaudeAppGatewayTargetModel,
   resolveClaudeAppGatewayRouteModel
 } from "@ccr/core/agents/claude-app/gateway-routes.ts";
@@ -42,6 +43,62 @@ function createClaudeModelsResponse(config) {
 
 function createClaudeCodeModelsResponse(config) {
   return createGatewayModelsResponse(config, { "user-agent": "claude-cli/2.1.215" });
+}
+
+function createFrontierProvider() {
+  return {
+    modelMetadata: {
+      "custom-frontier": {
+        contextWindow: 1_000_000,
+        maxContextWindow: 1_000_000
+      }
+    },
+    models: ["custom-frontier"],
+    name: "Gateway",
+    type: "openai_responses"
+  };
+}
+
+function createVirtualModelProfile({ baseModel, exactAliases = [], id, prefixes = [], suffixes = [] }) {
+  return {
+    baseModel,
+    displayName: id,
+    enabled: true,
+    execution: {
+      clientToolsPolicy: "allow",
+      maxToolCalls: 1,
+      maxTurns: 1,
+      mode: "decorate_only",
+      streamMode: "buffered"
+    },
+    id,
+    key: id,
+    match: { exactAliases, prefixes, suffixes },
+    materialization: { enabled: true, includeInGatewayModels: true },
+    tools: []
+  };
+}
+
+function findPublishedClaudeAppRoute(config, targetModel) {
+  const route = buildClaudeAppGatewayModelRoutes(config).find((item) => item.targetModel === targetModel);
+  assert.ok(route, `expected published route for ${targetModel}`);
+  const inferenceModel = buildClaudeAppGatewayInferenceModels(config).find((item) => item.name === route.id);
+  assert.ok(inferenceModel, `expected inference model for ${targetModel}`);
+  const model = createClaudeModelsResponse(config).data.find((item) => item.id === route.id);
+  assert.ok(model, `expected model discovery entry for ${targetModel}`);
+  return { inferenceModel, model, route };
+}
+
+function assertOneMillionVirtualRoute(config, targetModel) {
+  const { inferenceModel, model, route } = findPublishedClaudeAppRoute(config, targetModel);
+
+  assert.equal(route.oneMillionContext, true);
+  assert.equal(inferenceModel.supports1m, true);
+  assert.equal(model.max_input_tokens, 1_000_000);
+  assert.equal(model.capabilities.context_management.max_input_tokens, 1_000_000);
+  assert.equal(model.capabilities.context_window.max_input_tokens, 1_000_000);
+  assert.equal(model.capabilities.context_window.supports_1m_context, true);
+  assert.equal(model.capabilities.context_window.one_million_context_variant, true);
 }
 
 function assertPublishedRoutesResolveUniquely(config) {
@@ -358,6 +415,117 @@ test("Claude App discovery lets provider metadata enable one-million context", (
   assert.equal(model.max_input_tokens, 1_000_000);
   assert.equal(model.capabilities.context_window.supports_1m_context, true);
   assert.equal(model.capabilities.context_window.one_million_context_variant, true);
+});
+
+test("Claude App discovery resolves provider context through a virtual prefix profile", () => {
+  const config = createConfig({
+    providers: [createFrontierProvider()],
+    virtualModelProfiles: [
+      createVirtualModelProfile({
+        baseModel: { mode: "strip_prefix" },
+        id: "tools-prefix",
+        prefixes: ["tools-"]
+      })
+    ]
+  });
+
+  assertOneMillionVirtualRoute(config, "Gateway/tools-custom-frontier");
+});
+
+test("Claude App discovery resolves provider context through a virtual suffix profile", () => {
+  const config = createConfig({
+    providers: [createFrontierProvider()],
+    virtualModelProfiles: [
+      createVirtualModelProfile({
+        baseModel: { mode: "strip_suffix" },
+        id: "tools-suffix",
+        suffixes: ["-tools"]
+      })
+    ]
+  });
+
+  assertOneMillionVirtualRoute(config, "Gateway/custom-frontier-tools");
+});
+
+test("Claude App discovery resolves provider context through a fixed-alias profile", () => {
+  const config = createConfig({
+    providers: [createFrontierProvider()],
+    virtualModelProfiles: [
+      createVirtualModelProfile({
+        baseModel: { fixedModel: "Gateway/custom-frontier", mode: "fixed" },
+        exactAliases: ["frontier-tools"],
+        id: "frontier-tools"
+      })
+    ]
+  });
+
+  assertOneMillionVirtualRoute(config, "Fusion/frontier-tools");
+});
+
+test("Claude App discovery keeps physical metadata distinct from a colliding fixed alias", () => {
+  const config = createConfig({
+    providers: [
+      createFrontierProvider(),
+      {
+        modelMetadata: {
+          tiny: {
+            contextWindow: 128_000,
+            maxContextWindow: 128_000
+          }
+        },
+        models: ["tiny"],
+        name: "Small",
+        type: "openai_responses"
+      }
+    ],
+    virtualModelProfiles: [
+      createVirtualModelProfile({
+        baseModel: { fixedModel: "Small/tiny", mode: "fixed" },
+        exactAliases: ["custom-frontier"],
+        id: "custom-frontier-alias"
+      })
+    ]
+  });
+  const physical = findPublishedClaudeAppRoute(config, "Gateway/custom-frontier");
+  const virtual = findPublishedClaudeAppRoute(config, "Fusion/custom-frontier");
+
+  assert.notEqual(physical.route.id, virtual.route.id);
+  assert.equal(effectiveProviderModelContextWindow(config, physical.route.targetModel), 1_000_000);
+  assert.equal(physical.route.oneMillionContext, true);
+  assert.equal(physical.inferenceModel.supports1m, true);
+  assert.equal(physical.model.max_input_tokens, 1_000_000);
+  assert.equal(physical.model.capabilities.context_window.max_input_tokens, 1_000_000);
+
+  assert.equal(effectiveProviderModelContextWindow(config, virtual.route.targetModel), 128_000);
+  assert.equal(virtual.route.oneMillionContext, false);
+  assert.equal(virtual.inferenceModel.supports1m, undefined);
+  assert.equal(virtual.model.max_input_tokens, 128_000);
+  assert.equal(virtual.model.capabilities.context_window.max_input_tokens, 128_000);
+});
+
+test("Claude App discovery falls back safely for cyclic fixed-alias profiles", () => {
+  const config = createConfig({
+    providers: [createFrontierProvider()],
+    virtualModelProfiles: [
+      createVirtualModelProfile({
+        baseModel: { fixedModel: "Fusion/loop-b", mode: "fixed" },
+        exactAliases: ["loop-a"],
+        id: "loop-a"
+      }),
+      createVirtualModelProfile({
+        baseModel: { fixedModel: "Fusion/loop-a", mode: "fixed" },
+        exactAliases: ["loop-b"],
+        id: "loop-b"
+      })
+    ]
+  });
+  const { inferenceModel, model, route } = findPublishedClaudeAppRoute(config, "Fusion/loop-a");
+
+  assert.equal(effectiveProviderModelContextWindow(config, "Fusion/loop-a"), undefined);
+  assert.equal(route.oneMillionContext, false);
+  assert.equal(inferenceModel.supports1m, undefined);
+  assert.equal(model.max_input_tokens, 0);
+  assert.equal(model.capabilities.context_window, undefined);
 });
 
 test("Claude App discovery rejects an explicit one-million suffix for a bounded provider model", () => {
