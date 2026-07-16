@@ -40,13 +40,8 @@ export function buildClaudeAppGatewayModelRoutes(
   options: ClaudeAppGatewayModelRouteOptions = {}
 ): ClaudeAppGatewayModelRoute[] {
   const targetModels = claudeAppGatewayTargetModels(config);
-  const displayNames = claudeAppGatewayDisplayNames(targetModels, options);
-  const configuredTargetKeys = new Set(targetModels.map((model) =>
-    stripClaudeAppGatewayOneMillionContextSuffix(model).toLowerCase()
-  ));
-  const usedRouteIds = new Set<string>();
   const seenTargets = new Set<string>();
-  return targetModels.flatMap((rawTargetModel, index) => {
+  const effectiveTargets = targetModels.flatMap((rawTargetModel) => {
     const targetModel = stripClaudeAppGatewayOneMillionContextSuffix(rawTargetModel);
     const oneMillionContext = claudeAppGatewaySupportsOneMillionContext(rawTargetModel, config, options);
     const targetKey = `${targetModel.toLowerCase()}::${oneMillionContext ? "1m" : "base"}`;
@@ -54,7 +49,17 @@ export function buildClaudeAppGatewayModelRoutes(
       return [];
     }
     seenTargets.add(targetKey);
-
+    return [{ oneMillionContext, rawTargetModel, targetModel }];
+  });
+  const displayNames = claudeAppGatewayDisplayNames(
+    effectiveTargets.map(({ rawTargetModel }) => rawTargetModel),
+    options
+  );
+  const configuredTargetKeys = new Set(targetModels.map((model) =>
+    stripClaudeAppGatewayOneMillionContextSuffix(model).toLowerCase()
+  ));
+  const usedRouteIds = new Set<string>();
+  return effectiveTargets.flatMap(({ oneMillionContext, rawTargetModel, targetModel }, index) => {
     const routeId = claudeAppGatewayRouteId(targetModel, usedRouteIds, configuredTargetKeys);
     if (!routeId) {
       return [];
@@ -122,6 +127,40 @@ export function stripClaudeAppGatewayOneMillionContextSuffix(id: string): string
   return id.trim().replace(/\[1m\]$/i, "").trim();
 }
 
+export function effectiveProviderModelContextWindow(
+  config: Pick<AppConfig, "Providers" | "virtualModelProfiles">,
+  model: string
+): number | undefined {
+  const resolved = modelRegistryForConfig(config).resolveProviderModel(
+    stripClaudeAppGatewayOneMillionContextSuffix(model)
+  );
+  if (!resolved) {
+    return undefined;
+  }
+
+  const modelMetadata = resolved.provider.modelMetadata ?? {};
+  const metadata = modelMetadata[resolved.model] ?? Object.entries(modelMetadata).find(
+    ([candidate]) => candidate.trim().toLowerCase() === resolved.model.toLowerCase()
+  )?.[1];
+  const contextWindow = positiveMetadataInteger(metadata?.contextWindow) ??
+    positiveMetadataInteger(metadata?.maxContextWindow);
+  if (!contextWindow) {
+    return undefined;
+  }
+
+  const effectivePercent = metadataPercentage(metadata?.effectiveContextWindowPercent) ?? 100;
+  return Math.max(1, Math.floor((contextWindow * effectivePercent) / 100));
+}
+
+export function providerModelSupportsOneMillionContext(
+  config: Pick<AppConfig, "Providers" | "virtualModelProfiles">,
+  model: string,
+  fallback = false
+): boolean {
+  const contextWindow = effectiveProviderModelContextWindow(config, model);
+  return contextWindow === undefined ? fallback : contextWindow >= 1_000_000;
+}
+
 function inferGlobalClaudeProfileModel(config: Pick<AppConfig, "profile">): string {
   return config.profile.profiles.find((profile) =>
     profile.enabled &&
@@ -144,11 +183,16 @@ function canonicalClaudeAppGatewayTargetModel(
   model: string,
   config: Pick<AppConfig, "Providers" | "virtualModelProfiles">
 ): string | undefined {
-  const oneMillionContext = hasClaudeAppGatewayOneMillionContextSuffix(model);
+  const requestedOneMillionContext = hasClaudeAppGatewayOneMillionContextSuffix(model);
   const resolved = modelRegistryForConfig(config).resolve(stripClaudeAppGatewayOneMillionContextSuffix(model));
   if (!resolved) {
     return undefined;
   }
+  const oneMillionContext = requestedOneMillionContext && providerModelSupportsOneMillionContext(
+    config,
+    resolved.canonicalSelector,
+    true
+  );
   return oneMillionContext
     ? `${resolved.canonicalSelector}${CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX}`
     : resolved.canonicalSelector;
@@ -160,41 +204,18 @@ function claudeAppGatewaySupportsOneMillionContext(
   options: ClaudeAppGatewayModelRouteOptions
 ): boolean {
   const baseModel = stripClaudeAppGatewayOneMillionContextSuffix(model);
-  if (hasClaudeAppGatewayOneMillionContextSuffix(model)) {
-    return true;
-  }
-
-  const providerOverride = claudeAppGatewayProviderSupportsOneMillionContext(baseModel, config);
-  return providerOverride ?? Boolean(options.supportsOneMillionContext?.(baseModel));
+  const fallback = hasClaudeAppGatewayOneMillionContextSuffix(model) ||
+    Boolean(options.supportsOneMillionContext?.(baseModel));
+  return providerModelSupportsOneMillionContext(config, baseModel, fallback);
 }
 
-function claudeAppGatewayProviderSupportsOneMillionContext(
-  model: string,
-  config: Pick<AppConfig, "Providers" | "virtualModelProfiles">
-): boolean | undefined {
-  const resolved = modelRegistryForConfig(config).resolveProviderModel(model);
-  if (!resolved) {
-    return undefined;
-  }
-  const normalizedModel = resolved.model.trim().toLowerCase();
-  const metadata = resolved.provider.modelMetadata?.[resolved.model] ??
-    Object.entries(resolved.provider.modelMetadata ?? {})
-      .find(([candidate]) => candidate.trim().toLowerCase() === normalizedModel)?.[1];
-  const contextWindow = positiveInteger(metadata?.contextWindow) ?? positiveInteger(metadata?.maxContextWindow);
-  if (!contextWindow) {
-    return undefined;
-  }
-  const effectivePercent = percentage(metadata?.effectiveContextWindowPercent) ?? 100;
-  return Math.floor((contextWindow * effectivePercent) / 100) >= 1_000_000;
-}
-
-function positiveInteger(value: number | undefined): number | undefined {
+function positiveMetadataInteger(value: number | undefined): number | undefined {
   return value !== undefined && Number.isFinite(value) && value > 0
     ? Math.trunc(value)
     : undefined;
 }
 
-function percentage(value: number | undefined): number | undefined {
+function metadataPercentage(value: number | undefined): number | undefined {
   return value !== undefined && Number.isFinite(value) && value > 0 && value <= 100
     ? value
     : undefined;

@@ -254,9 +254,13 @@ test("Claude App discovery publishes the effective provider context for uncatalo
   const model = response.data.find((item) => item.id === route.id);
 
   assert.ok(model);
+  assert.equal(route.oneMillionContext, false);
+  assert.equal(buildClaudeAppGatewayInferenceModels(config)[0].supports1m, undefined);
   assert.equal(model.max_input_tokens, 258400);
   assert.equal(model.capabilities.context_management.max_input_tokens, 258400);
   assert.equal(model.capabilities.context_window.max_input_tokens, 258400);
+  assert.equal(model.capabilities.context_window.supports_1m_context, false);
+  assert.equal(model.capabilities.context_window.one_million_context_variant, false);
 });
 
 test("Claude App discovery honors configured reasoning levels for uncatalogued models", () => {
@@ -318,7 +322,94 @@ test("Claude App discovery prefers provider context metadata over the static cat
   const model = response.data.find((item) => item.id === route.id);
 
   assert.ok(model);
+  assert.equal(route.oneMillionContext, false);
+  assert.equal(buildClaudeAppGatewayInferenceModels(config)[0].supports1m, undefined);
   assert.equal(model.max_input_tokens, 244800);
   assert.equal(model.capabilities.context_management.max_input_tokens, 244800);
   assert.equal(model.capabilities.context_window.max_input_tokens, 244800);
+  assert.equal(model.capabilities.context_window.supports_1m_context, false);
+  assert.equal(model.capabilities.context_window.one_million_context_variant, false);
+});
+
+test("Claude App discovery lets provider metadata enable one-million context", () => {
+  const config = createConfig({
+    providers: [
+      {
+        modelMetadata: {
+          "custom-frontier": {
+            contextWindow: 1_000_000,
+            maxContextWindow: 1_000_000
+          }
+        },
+        models: ["custom-frontier"],
+        name: "Gateway",
+        type: "openai_responses"
+      }
+    ]
+  });
+  const route = buildClaudeAppGatewayModelRoutes(config)[0];
+  const inferenceModel = buildClaudeAppGatewayInferenceModels(config)[0];
+  const response = createClaudeModelsResponse(config);
+  const model = response.data.find((item) => item.id === route.id);
+
+  assert.ok(model);
+  assert.equal(route.oneMillionContext, true);
+  assert.equal(inferenceModel.supports1m, true);
+  assert.equal(model.max_input_tokens, 1_000_000);
+  assert.equal(model.capabilities.context_window.supports_1m_context, true);
+  assert.equal(model.capabilities.context_window.one_million_context_variant, true);
+});
+
+test("Claude App discovery rejects an explicit one-million suffix for a bounded provider model", () => {
+  const config = createConfig({
+    profileModel: "Codex API/gpt-5-codex[1m]",
+    providers: [
+      {
+        modelMetadata: {
+          "gpt-5-codex": {
+            contextWindow: 272000,
+            effectiveContextWindowPercent: 90,
+            maxContextWindow: 272000
+          }
+        },
+        models: ["gpt-5-codex"],
+        name: "Codex API",
+        type: "openai_responses"
+      }
+    ]
+  });
+  const route = buildClaudeAppGatewayModelRoutes(config)[0];
+  const response = createClaudeModelsResponse(config);
+  const model = response.data.find((item) => item.id === route.id);
+
+  assert.ok(model);
+  assert.equal(inferClaudeAppGatewayTargetModel(config), "Codex API/gpt-5-codex");
+  assert.equal(route.oneMillionContext, false);
+  assert.equal(route.targetModel, "Codex API/gpt-5-codex");
+  assert.equal(model.max_input_tokens, 244800);
+  assert.equal(model.capabilities.context_window.supports_1m_context, false);
+  assert.equal(model.capabilities.context_window.one_million_context_variant, false);
+});
+
+test("Claude App discovery does not number a deduplicated bounded context route", () => {
+  const config = createConfig({
+    profileModel: "Codex API/gpt-5-codex[1m]",
+    providers: [
+      {
+        modelMetadata: {
+          "gpt-5-codex": {
+            contextWindow: 272000,
+            maxContextWindow: 272000
+          }
+        },
+        models: ["gpt-5-codex"],
+        name: "Codex API",
+        type: "openai_responses"
+      }
+    ]
+  });
+  const routes = buildClaudeAppGatewayModelRoutes(config);
+
+  assert.equal(routes.length, 1);
+  assert.equal(routes[0].displayName, "Codex API/gpt-5-codex");
 });

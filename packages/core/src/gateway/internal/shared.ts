@@ -164,12 +164,6 @@ export type CursorOpenAICompatPreparation = {
 };
 
 
-export type ClaudeCodeDiscoverableModel = {
-  id: string;
-  oneMillionContext: boolean;
-};
-
-
 export type UpstreamAttempt = {
   body?: Buffer;
   credentialChain?: string[];
