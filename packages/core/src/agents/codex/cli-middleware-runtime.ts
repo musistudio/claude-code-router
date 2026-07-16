@@ -139,6 +139,7 @@ async function runClaudeCodeCliWrapper(args) {
       "CCR_CLAUDE_CODE_CONFIG_MODE",
       "CCR_CLAUDE_CODE_WRAPPER",
       "CCR_REAL_CLAUDE_CODE_BIN",
+      "CLAUDE_CODE_HOST_AUTH_ENV_VAR",
       "CCR_REMOTE_SYNC_API_KEY",
       "CCR_REMOTE_SYNC_API_KEY_HELPER"
     ]),
@@ -146,6 +147,7 @@ async function runClaudeCodeCliWrapper(args) {
   };
   if (process.env.CCR_CLAUDE_CODE_CONFIG_MODE === "inherit") {
     childEnv.ANTHROPIC_AUTH_TOKEN = await readClaudeCodeInheritedAuthToken();
+    childEnv.CLAUDE_CODE_HOST_AUTH_ENV_VAR = "ANTHROPIC_AUTH_TOKEN";
     delete childEnv.ANTHROPIC_API_KEY;
   }
   log("claude_code_wrapper_start", { realCli, args, realArgs });
