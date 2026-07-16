@@ -164,6 +164,7 @@ test("Windows inherited authentication supports helper paths with shell metachar
     "fs.writeFileSync(process.env.CCR_FAKE_CLAUDE_OUT, JSON.stringify({",
     "  env: {",
     "    ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN || '',",
+    "    CLAUDE_CODE_HOST_AUTH_ENV_VAR: process.env.CLAUDE_CODE_HOST_AUTH_ENV_VAR || '',",
     "    CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR || ''",
     "  }",
     "}));",
@@ -199,6 +200,7 @@ test("Windows inherited authentication supports helper paths with shell metachar
   assert.equal(result.status, 0, result.stderr);
   const observed = JSON.parse(readFileSync(outputFile, "utf8"));
   assert.equal(observed.env.ANTHROPIC_AUTH_TOKEN, "profile-token");
+  assert.equal(observed.env.CLAUDE_CODE_HOST_AUTH_ENV_VAR, "ANTHROPIC_AUTH_TOKEN");
   assert.equal(observed.env.CLAUDE_CONFIG_DIR, configDir);
 });
 
@@ -591,6 +593,7 @@ test("inherited Claude Code wrapper authenticates from its generated helper", { 
   assert.deepEqual(observed.argv, ["--settings", settingsFile, "-p", "hi"]);
   assert.equal(observed.env.ANTHROPIC_AUTH_TOKEN, "profile-token");
   assert.equal(observed.env.ANTHROPIC_API_KEY, "");
+  assert.equal(observed.env.CLAUDE_CODE_HOST_AUTH_ENV_VAR, "ANTHROPIC_AUTH_TOKEN");
   assert.equal(observed.env.CLAUDE_CONFIG_DIR, dir);
   assert.equal(observed.env.CCR_CLAUDE_CODE_AUTH_HELPER, "");
   assert.equal(observed.env.CCR_REMOTE_SYNC_API_KEY, "");
@@ -1182,6 +1185,7 @@ function writeFakeClaudeCli(dir) {
     "    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',",
     "    ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN || '',",
     "    ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || '',",
+    "    CLAUDE_CODE_HOST_AUTH_ENV_VAR: process.env.CLAUDE_CODE_HOST_AUTH_ENV_VAR || '',",
     "    CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR || '',",
     "    CCR_CLAUDE_CODE_AUTH_HELPER: process.env.CCR_CLAUDE_CODE_AUTH_HELPER || '',",
     "    CCR_CLAUDE_CODE_MODEL: process.env.CCR_CLAUDE_CODE_MODEL || '',",

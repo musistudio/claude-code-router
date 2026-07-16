@@ -56,6 +56,7 @@ async function runWindowsHarness() {
     "const fs = require('node:fs');",
     "fs.writeFileSync(process.env.CCR_WINDOWS_INHERIT_OUTPUT, JSON.stringify({",
     "  authToken: process.env.ANTHROPIC_AUTH_TOKEN || '',",
+    "  hostAuthEnvVar: process.env.CLAUDE_CODE_HOST_AUTH_ENV_VAR || '',",
     "  configDir: process.env.CLAUDE_CONFIG_DIR || ''",
     "}));",
     ""
@@ -128,6 +129,7 @@ async function runWindowsHarness() {
   assert.equal(launched.status, 0, launched.stderr);
   const observed = JSON.parse(readFileSync(outputFile, "utf8"));
   assert.equal(observed.authToken, "ccr-profile-test");
+  assert.equal(observed.hostAuthEnvVar, "ANTHROPIC_AUTH_TOKEN");
   assert.equal(observed.configDir, settingsDir);
 
   config.profile.profiles[0].settingsFile = "~/.claude/settings.json";
@@ -153,5 +155,6 @@ async function runWindowsHarness() {
   assert.equal(defaultLaunched.status, 0, defaultLaunched.stderr);
   const defaultObserved = JSON.parse(readFileSync(outputFile, "utf8"));
   assert.equal(defaultObserved.authToken, "ccr-profile-test");
+  assert.equal(defaultObserved.hostAuthEnvVar, "ANTHROPIC_AUTH_TOKEN");
   assert.equal(defaultObserved.configDir, "");
 }

@@ -53,6 +53,7 @@ const privateFileMode = 0o600;
 const publicExecutableMode = 0o755;
 const claudeCodeReservedWrapperEnv = new Set([
   "CLAUDE_CONFIG_DIR",
+  "CLAUDE_CODE_HOST_AUTH_ENV_VAR",
   "CCR_CLAUDE_CODE_AUTH_HELPER",
   "CCR_CLAUDE_CODE_BIN",
   "CCR_CLAUDE_CODE_CONFIG_MODE",
@@ -1178,7 +1179,7 @@ function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig,
   const botEnvExports = shellBotGatewayEnvExports(config, profile);
   return [
     "#!/bin/sh",
-    "unset CLAUDE_CONFIG_DIR CCR_CLAUDE_CODE_AUTH_HELPER CCR_CLAUDE_CODE_CONFIG_MODE",
+    "unset CLAUDE_CONFIG_DIR CLAUDE_CODE_HOST_AUTH_ENV_VAR CCR_CLAUDE_CODE_AUTH_HELPER CCR_CLAUDE_CODE_CONFIG_MODE",
     ...envExports,
     ...shellEnvExports(claudeCodeRuntimeEnv(config, profile, settingsDir)),
     ...shellEnvExports(claudeCodeInheritedAuthEnv(profile, apiKeyHelperFile)),
@@ -1213,6 +1214,7 @@ function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, r
   return [
     "@echo off",
     cmdSetLine("CLAUDE_CONFIG_DIR", ""),
+    cmdSetLine("CLAUDE_CODE_HOST_AUTH_ENV_VAR", ""),
     cmdSetLine("CCR_CLAUDE_CODE_AUTH_HELPER", ""),
     cmdSetLine("CCR_CLAUDE_CODE_CONFIG_MODE", ""),
     ...envExports,

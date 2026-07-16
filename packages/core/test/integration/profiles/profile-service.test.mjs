@@ -444,6 +444,7 @@ test("profile environment cannot enable inherited Claude Code configuration", { 
   config.profile.profiles[0].claudeConfigMode = "isolated";
   config.profile.profiles[0].env = {
     claude_config_dir: "/tmp/untrusted-config",
+    Claude_Code_Host_Auth_Env_Var: "CLAUDE_CODE_OAUTH_TOKEN",
     Ccr_Claude_Code_Auth_Helper: "/tmp/untrusted-helper",
     ccr_claude_code_config_mode: "inherit"
   };
@@ -456,11 +457,13 @@ test("profile environment cannot enable inherited Claude Code configuration", { 
   assert.equal(result.clients[0].ok, true);
   assert.equal(wrapper.includes("/tmp/untrusted-config"), false);
   assert.equal(wrapper.includes("/tmp/untrusted-helper"), false);
+  assert.equal(wrapper.includes("CLAUDE_CODE_OAUTH_TOKEN"), false);
   if (process.platform === "win32") {
+    assert.match(wrapper, /set "CLAUDE_CODE_HOST_AUTH_ENV_VAR="/);
     assert.match(wrapper, /set "CCR_CLAUDE_CODE_AUTH_HELPER="/);
     assert.match(wrapper, /set "CCR_CLAUDE_CODE_CONFIG_MODE="/);
   } else {
-    assert.match(wrapper, /unset CLAUDE_CONFIG_DIR CCR_CLAUDE_CODE_AUTH_HELPER CCR_CLAUDE_CODE_CONFIG_MODE/);
+    assert.match(wrapper, /unset CLAUDE_CONFIG_DIR CLAUDE_CODE_HOST_AUTH_ENV_VAR CCR_CLAUDE_CODE_AUTH_HELPER CCR_CLAUDE_CODE_CONFIG_MODE/);
   }
   assert.doesNotMatch(wrapper.toLowerCase(), /ccr_claude_code_config_mode[='" ]+inherit/);
 });
