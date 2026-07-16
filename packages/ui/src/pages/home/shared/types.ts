@@ -155,6 +155,7 @@ import type {
   BotGatewayRuntimeConfig,
   BotGatewaySavedConfig,
   BotHandoffScanTarget,
+  ClaudeCodeConfigMode,
   GatewayProviderConfig,
   GatewayProviderCapability,
   GatewayPluginAppConfig,
@@ -500,6 +501,7 @@ export type AddProfileDraft = {
   botHandoffPhoneBluetoothTargets: string;
   botHandoffPhoneWifiTargets: string;
   botPlatform: string;
+  claudeConfigMode: ClaudeCodeConfigMode;
   configFile: string;
   envRows: KeyValueDraftRow[];
   model: string;
