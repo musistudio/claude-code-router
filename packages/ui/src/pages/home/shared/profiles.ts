@@ -849,7 +849,7 @@ export function isProfileDraftSubmittable(draft: AddProfileDraft): boolean {
     return draft.claudeConfigMode !== "inherit" || (
       draft.scope === "ccr" &&
       draft.surface === "cli" &&
-      Boolean(draft.settingsFile.trim())
+      isClaudeCodeSettingsFilePath(draft.settingsFile)
     );
   }
   if (draft.agent === "grok") {
@@ -862,6 +862,10 @@ export function isProfileDraftSubmittable(draft: AddProfileDraft): boolean {
     Boolean(draft.providerId.trim()) &&
     Boolean(draft.providerName.trim())
   );
+}
+
+function isClaudeCodeSettingsFilePath(value: string): boolean {
+  return /(?:^|[\\/])settings\.json$/.test(value.trim());
 }
 
 function matchingBotConfigId(botGateway: BotGatewayRuntimeConfig | undefined, botConfigs: BotGatewaySavedConfig[]): string {

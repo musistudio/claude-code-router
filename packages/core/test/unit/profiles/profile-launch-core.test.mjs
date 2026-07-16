@@ -174,6 +174,22 @@ test("inherited Claude Code profile launches from the existing config directory"
   assert.deepEqual(plan.args, ["--debug"]);
 });
 
+test("inherited Claude Code profile preserves native default config resolution", () => {
+  const configDir = path.join(path.sep, "tmp", "ccr-config");
+  const plan = buildProfileLaunchPlan(
+    configDir,
+    {
+      ...claudeProfile,
+      claudeConfigMode: "inherit",
+      settingsFile: "~/.claude/settings.json",
+      surface: "cli"
+    },
+    "cli"
+  );
+
+  assert.equal("CLAUDE_CONFIG_DIR" in plan.env, false);
+});
+
 test("profile config paths honor CCR, custom, and global scopes", () => {
   const configDir = path.join(path.sep, "tmp", "ccr-config");
   const customProfile = { ...codexProfile, id: "Custom Profile", scope: "custom" };

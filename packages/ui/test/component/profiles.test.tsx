@@ -235,7 +235,7 @@ test("inherited Claude Code profile form exposes the existing settings path", ()
   assert.match(html, /Existing Claude settings file/);
   assert.match(html, /After any managed System-default backup is restored/);
   assert.match(html, /Changes made by the launched CLI remain shared/);
-  assert.match(html, /CCR uses the selected file&#x27;s parent directory as CLAUDE_CONFIG_DIR without reading or modifying the file during inherited applies/);
+  assert.match(html, /CCR keeps native default paths for ~\/.claude\/settings.json. Custom selections must also be named settings.json and use the file&#x27;s parent directory as CLAUDE_CONFIG_DIR/);
   assert.match(html, /value="~\/.claude\/settings.json"/);
 });
 
@@ -264,6 +264,9 @@ test("inherited Claude Code profile draft requires a CLI-only CCR settings path"
 
   assert.equal(isProfileDraftSubmittable(draft), true);
   assert.equal(isProfileDraftSubmittable({ ...draft, settingsFile: " " }), false);
+  assert.equal(isProfileDraftSubmittable({ ...draft, settingsFile: "~/.claude/preferences.json" }), false);
+  assert.equal(isProfileDraftSubmittable({ ...draft, settingsFile: "C:\\Users\\example-user\\.claude\\SETTINGS.JSON" }), false);
+  assert.equal(isProfileDraftSubmittable({ ...draft, settingsFile: "C:\\Users\\example-user\\.claude\\settings.json" }), true);
   assert.equal(isProfileDraftSubmittable({ ...draft, scope: "global" }), false);
   assert.equal(isProfileDraftSubmittable({ ...draft, surface: "auto" }), false);
 });
