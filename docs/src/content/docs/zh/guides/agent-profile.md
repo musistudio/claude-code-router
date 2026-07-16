@@ -7,13 +7,13 @@ lead: 让 Claude Code、Codex、Grok CLI、Kimi CLI、ZCode 等 Agent 使用 CCR
 
 ## 通用建议
 
-- 试用阶段优先选择“仅从 CCR 打开时生效”，只影响从 CCR 打开的 Agent。
+- 试用阶段优先选择“仅从 CCR 打开时生效”，让路由和模型覆盖只影响从 CCR 打开的 Agent。Claude Code 默认保持 **CCR 隔离配置**，除非你明确希望共享现有配置目录。
 - 稳定后再考虑系统默认配置。
 - 应用后尽量使用 CCR 里的“打开 Agent”启动 Agent。
 
 ## Claude Code
 
-在 **Agent配置** 中选择 Claude Code，设置模型、小型快速模型和设置文件，然后点击应用。
+在 **Agent配置** 中选择 Claude Code，设置模型和小型快速模型，然后选择配置模式。使用 **CCR 隔离配置** 可以保持完全独立。对于 **仅从 CCR 打开时生效** 且为 `CLI only` 的配置，可以选择 **复用现有 Claude 配置**，使用现有插件、Hooks、状态栏、Skills、Agents 和会话。CCR 会把所选设置文件的父目录设为 `CLAUDE_CONFIG_DIR`，路由、鉴权、模型和环境变量覆盖只影响此次启动。
 
 从 CCR 打开 Claude Code 后，发一次请求到请求日志里验证。
 

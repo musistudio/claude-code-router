@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { AppConfig, ProfileConfig, ProfileOpenSurface } from "@ccr/core/contracts/app";
+import { isInheritedClaudeCodeProfile, type AppConfig, type ProfileConfig, type ProfileOpenSurface } from "@ccr/core/contracts/app";
 import { claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
 import { resolveOpenCodeConfigFile as resolveOpenCodeProfileConfigFile } from "@ccr/core/agents/opencode/profile-config";
 import { resolveZcodeConfigFile } from "@ccr/core/agents/zcode/profile-config";
@@ -213,6 +213,13 @@ export function resolveClaudeCodeSettingsFile(configDir: string, profile: Profil
   return resolveUserPath(profile.settingsFile || "~/.claude/settings.json");
 }
 
+export function resolveClaudeCodeLaunchConfigDir(configDir: string, profile: ProfileConfig): string {
+  if (isInheritedClaudeCodeProfile(profile)) {
+    return path.dirname(resolveUserPath(profile.settingsFile || "~/.claude/settings.json"));
+  }
+  return path.dirname(resolveClaudeCodeSettingsFile(configDir, profile));
+}
+
 export function resolveCodexConfigFile(configDir: string, profile: ProfileConfig): string {
   if (profile.agent === "zcode") {
     return resolveZcodeConfigFile(profile);
@@ -259,13 +266,12 @@ function buildClaudeCodeLaunchPlan(
   if (surface === "app") {
     throw new Error("Claude App opening is available from the CCR desktop app.");
   }
-  const settingsFile = resolveClaudeCodeSettingsFile(configDir, profile);
   const launcher = path.join(configDir, "bin", claudeCodeWrapperFilename(profile));
   return {
     args: extraArgs,
     command: launcher,
     env: {
-      CLAUDE_CONFIG_DIR: path.dirname(settingsFile),
+      CLAUDE_CONFIG_DIR: resolveClaudeCodeLaunchConfigDir(configDir, profile),
       CCR_PROFILE_SURFACE: surface,
       ...claudeCodeModelEnv(profile),
       ...claudeCodeUtcTimezoneEnvOverride()

@@ -155,6 +155,25 @@ test("buildProfileLaunchPlan creates CCR-managed launcher paths", () => {
   assert.throws(() => buildProfileLaunchPlan(configDir, claudeProfile, "app"), /Claude App opening/);
 });
 
+test("inherited Claude Code profile launches from the existing config directory", () => {
+  const configDir = path.join(path.sep, "tmp", "ccr-config");
+  const settingsFile = path.join(path.sep, "home", "user", ".claude", "settings.json");
+  const plan = buildProfileLaunchPlan(
+    configDir,
+    {
+      ...claudeProfile,
+      claudeConfigMode: "inherit",
+      settingsFile,
+      surface: "cli"
+    },
+    "cli",
+    ["--debug"]
+  );
+
+  assert.equal(plan.env.CLAUDE_CONFIG_DIR, path.dirname(settingsFile));
+  assert.deepEqual(plan.args, ["--debug"]);
+});
+
 test("profile config paths honor CCR, custom, and global scopes", () => {
   const configDir = path.join(path.sep, "tmp", "ccr-config");
   const customProfile = { ...codexProfile, id: "Custom Profile", scope: "custom" };

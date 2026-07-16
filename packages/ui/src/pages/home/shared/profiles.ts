@@ -133,6 +133,7 @@ import {
   DEFAULT_TRAY_WIDGETS,
   DEFAULT_TRAY_WINDOW_MODULES,
   enforceSingleEnabledGlobalProfilePerAgent,
+  normalizeClaudeCodeConfigModeValue,
   normalizeProfileScopeValue,
   OVERVIEW_WIDGET_SIZE_VALUES,
   TRAY_SINGLETON_WIDGET_TYPES,
@@ -750,6 +751,7 @@ export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code"
     appPath: "",
     availableModels: [],
     ...createBotGatewayDraft(),
+    claudeConfigMode: "isolated",
     configFile: defaultCodexConfigFile(agent),
     envRows: agent === "claude-code" ? keyValueRowsFromRecord(claudeCodeProfileEnv()) : [],
     model: "",
@@ -788,6 +790,9 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
       appPath: profile.appPath ?? "",
       botConfigId,
       botEnabled: surface !== "cli" && Boolean(selectedBot || profile.botGateway?.enabled),
+      claudeConfigMode: normalizeProfileFormScope(profile.scope) === "ccr" && surface === "cli"
+        ? normalizeClaudeCodeConfigModeValue(profile.claudeConfigMode)
+        : "isolated",
       envRows: keyValueRowsFromRecord(claudeCodeProfileEnv(profile.env ?? {})),
       model: profile.model,
       scope: normalizeProfileFormScope(profile.scope),
@@ -841,7 +846,11 @@ export function isProfileDraftSubmittable(draft: AddProfileDraft): boolean {
     return false;
   }
   if (draft.agent === "claude-code") {
-    return true;
+    return draft.claudeConfigMode !== "inherit" || (
+      draft.scope === "ccr" &&
+      draft.surface === "cli" &&
+      Boolean(draft.settingsFile.trim())
+    );
   }
   if (draft.agent === "grok") {
     return true;
@@ -893,6 +902,7 @@ export function profileConfigFromDraft(
     appPath: draft.appPath,
     availableModels: draft.agent === "kimi" ? draft.availableModels : undefined,
     ...botGateway,
+    claudeConfigMode: draft.claudeConfigMode,
     configFile: draft.configFile,
     enabled: existingProfile?.enabled ?? true,
     env: draft.agent === "claude-code" ? recordFromKeyValueRows(draft.envRows) : codexCompatibleProfileEnv(recordFromKeyValueRows(draft.envRows)),
@@ -1451,8 +1461,23 @@ export function profileSummaryItems(
       : defaultProfileClientModel(config);
 
   if (profile.agent === "claude-code") {
+    const usesCcrClaudeConfig = normalizeProfileScope(profile.scope) === "ccr";
+    const inheritsClaudeConfig = usesCcrClaudeConfig
+      && surface === "cli"
+      && normalizeClaudeCodeConfigModeValue(profile.claudeConfigMode) === "inherit";
     return [
       { label: t("Model"), value: modelValue },
+      ...(usesCcrClaudeConfig
+        ? [{
+            label: t("Claude configuration"),
+            value: t(inheritsClaudeConfig
+              ? "Reuse existing Claude configuration"
+              : "Isolated CCR configuration")
+          }]
+        : []),
+      ...(inheritsClaudeConfig
+        ? [{ label: t("Settings file"), value: profile.settingsFile?.trim() || "~/.claude/settings.json" }]
+        : []),
       {
         label: t("Small fast model"),
         value: smallFastModel
@@ -1509,11 +1534,15 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
   const botConfigId = surface !== "cli" ? stringValue(profile.botConfigId) : "";
   if (agent === "claude-code") {
     const appPath = profile.appPath?.trim() || "";
+    const claudeConfigMode = scope === "ccr" && surface === "cli"
+      ? normalizeClaudeCodeConfigModeValue(profile.claudeConfigMode)
+      : "isolated";
     return {
       agent: "claude-code",
       ...(surface !== "cli" && appPath ? { appPath } : {}),
       ...(botConfigId ? { botConfigId } : {}),
       ...(botGateway ? { botGateway } : {}),
+      claudeConfigMode,
       enabled: profile.enabled,
       env: claudeCodeProfileEnv(env),
       id: profile.id || `profile-${index + 1}`,
@@ -1662,6 +1691,9 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
     botConfigId: typeof value.botConfigId === "string" ? value.botConfigId : typeof value.bot_config_id === "string" ? value.bot_config_id : undefined,
     botGateway: normalizeBotGatewayRuntimeConfig(value.botGateway ?? value.bot_gateway ?? value.bot),
     cliMiddleware: typeof value.cliMiddleware === "boolean" ? value.cliMiddleware : undefined,
+    claudeConfigMode: typeof value.claudeConfigMode === "string"
+      ? normalizeClaudeCodeConfigModeValue(value.claudeConfigMode)
+      : undefined,
     codexCliPath: typeof value.codexCliPath === "string" ? value.codexCliPath : undefined,
     codexHome: typeof value.codexHome === "string" ? value.codexHome : undefined,
     configFormat: typeof value.configFormat === "string" ? normalizeCodexConfigFormat(value.configFormat) : undefined,

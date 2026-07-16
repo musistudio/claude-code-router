@@ -133,6 +133,21 @@ function directProfileDispatchArgs(args) {
 async function runClaudeCodeCliWrapper(args) {
   const realCli = expandHome(nonEmptyEnv("CCR_REAL_CLAUDE_CODE_BIN") || nonEmptyEnv("CCR_CLAUDE_CODE_BIN") || nonEmptyEnv("CODEXL_CLAUDE_CODE_BIN") || "claude");
   const realArgs = claudeCodeCliWrapperArgs(args);
+  const childEnv = {
+    ...withoutKeys(process.env, [
+      "CCR_CLAUDE_CODE_AUTH_HELPER",
+      "CCR_CLAUDE_CODE_CONFIG_MODE",
+      "CCR_CLAUDE_CODE_WRAPPER",
+      "CCR_REAL_CLAUDE_CODE_BIN",
+      "CCR_REMOTE_SYNC_API_KEY",
+      "CCR_REMOTE_SYNC_API_KEY_HELPER"
+    ]),
+    ...claudeCodeUtcTimezoneEnvOverride()
+  };
+  if (process.env.CCR_CLAUDE_CODE_CONFIG_MODE === "inherit") {
+    childEnv.ANTHROPIC_AUTH_TOKEN = await readClaudeCodeInheritedAuthToken();
+    delete childEnv.ANTHROPIC_API_KEY;
+  }
   log("claude_code_wrapper_start", { realCli, args, realArgs });
   const captureStdout = shouldCaptureClaudeCodeCliStdout(args);
   const remoteSync = createRemoteSyncClient({
@@ -143,10 +158,7 @@ async function runClaudeCodeCliWrapper(args) {
   });
   const injectRemoteStdin = boolEnv("CCR_REMOTE_SYNC_INJECT_STDIN");
   const child = spawnAgentCli(realCli, realArgs, {
-    env: {
-      ...withoutKeys(process.env, ["CCR_CLAUDE_CODE_WRAPPER", "CCR_REAL_CLAUDE_CODE_BIN"]),
-      ...claudeCodeUtcTimezoneEnvOverride()
-    },
+    env: childEnv,
     stdio: [injectRemoteStdin ? "pipe" : "inherit", captureStdout ? "pipe" : "inherit", "inherit"]
   });
   if (injectRemoteStdin && child.stdin) {
@@ -190,6 +202,74 @@ async function runClaudeCodeCliWrapper(args) {
   remoteSync.stop();
   log("claude_code_wrapper_exit", { code });
   process.exitCode = code;
+}
+
+async function readClaudeCodeInheritedAuthToken() {
+  const helper = nonEmptyEnv("CCR_CLAUDE_CODE_AUTH_HELPER");
+  if (!helper) {
+    throw new Error("Inherited Claude Code configuration requires a generated authentication helper.");
+  }
+  return new Promise((resolve, reject) => {
+    let child;
+    let settled = false;
+    let stdout = "";
+    let stdoutBytes = 0;
+    let timeout;
+    const settle = (callback) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      callback();
+    };
+    const fail = (message) => settle(() => reject(new Error(message)));
+    try {
+      child = spawnAgentCli(expandHome(helper), [], {
+        stdio: ["ignore", "pipe", "ignore"],
+        windowsHide: true
+      });
+    } catch (error) {
+      fail("Failed to read inherited Claude Code profile authentication: " + formatError(error));
+      return;
+    }
+    timeout = setTimeout(() => {
+      child.kill();
+      fail("Inherited Claude Code profile authentication helper timed out.");
+    }, 3000);
+    child.on("error", (error) => {
+      fail("Failed to read inherited Claude Code profile authentication: " + formatError(error));
+    });
+    if (!child.stdout) {
+      child.kill();
+      fail("Inherited Claude Code profile authentication helper did not expose output.");
+      return;
+    }
+    child.stdout.on("data", (chunk) => {
+      const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+      stdoutBytes += value.length;
+      if (stdoutBytes > 4096) {
+        child.kill();
+        fail("Inherited Claude Code profile authentication helper exceeded its output limit.");
+        return;
+      }
+      stdout += value.toString("utf8");
+    });
+    child.on("close", (code) => {
+      if (code !== 0) {
+        fail("Inherited Claude Code profile authentication helper exited unsuccessfully.");
+        return;
+      }
+      const tokens = String(stdout || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      if (tokens.length === 0) {
+        fail("Inherited Claude Code profile authentication helper returned no token.");
+        return;
+      }
+      if (tokens.length !== 1) {
+        fail("Inherited Claude Code profile authentication helper returned malformed output.");
+        return;
+      }
+      settle(() => resolve(tokens[0]));
+    });
+  });
 }
 
 function claudeCodeCliWrapperArgs(args) {

@@ -9,12 +9,12 @@ lead: Create reusable launch configurations for Claude Code, Codex, Grok CLI, Ki
 
 1. Add at least one usable provider and model in **Provider Config**, or create the Fusion model you want to use.
 2. Open **Agent Config** and click **Add profile**.
-3. Choose the agent type, name the config, then choose the effect scope and entry mode.
+3. Choose the agent type, name the config, then choose the effect scope, entry mode, and configuration mode where available.
 4. Select a model. The value is usually `Provider name/model name`, and Fusion models can be selected too.
 5. If the entry mode includes App, optionally bind a Bot and choose whether to forward agent messages or enable handoff.
 6. Save the config, then open it from the Agent Config card: the terminal button copies the CLI command, and the play button starts the App instance.
 
-During trial, prefer **Only opened from CCR** and always open the agent from CCR. That keeps the config limited to CCR-launched instances and avoids changing the Claude Code, Codex, Grok CLI, Kimi CLI, or ZCode setup you open directly from the system.
+During trial, prefer **Only opened from CCR** and always open the agent from CCR. That keeps the config limited to CCR-launched instances and avoids changing the Claude Code, Codex, Grok CLI, Kimi CLI, or ZCode setup you open directly from the system. For Claude Code, keep **Isolated CCR configuration** for complete separation. Choose **Reuse existing Claude configuration** only when you intentionally want the CCR-launched CLI to share an existing configuration directory.
 
 ## Multi-Instance Mechanism
 
@@ -22,7 +22,8 @@ Every Agent Config has its own `id` and name. When CCR opens an agent, it finds 
 
 | Mechanism | Actual behavior |
 | --- | --- |
-| Separate config files | With **Only opened from CCR**, Claude Code and Codex write CCR-managed config files in directories separated by config `id` |
+| Separate config files | With **Only opened from CCR**, Claude Code and Codex default to CCR-managed config files in directories separated by config `id` |
+| Existing Claude configuration | A CLI-only Claude Code config can instead reuse an existing Claude configuration directory while keeping CCR routing limited to that launch |
 | Separate launchers | Claude Code, Grok CLI, and Kimi CLI use separate launch wrappers; Codex and ZCode use separate middleware launchers; filenames are also separated by config `id` or name |
 | Separate app data directories | When opening App mode, Claude App, ChatGPT (the renamed Codex desktop app), and ZCode App use user-data directories separated by config `id` |
 | Runtime state | CCR tracks running app instances by entry mode and config `id`; reopening the same config activates the existing window, while a different config can open a separate instance |
@@ -36,8 +37,9 @@ This lets you create multiple configs for the same agent, such as "Claude Code -
 | Agent | All | Claude Code, Codex, OpenCode, Grok CLI, Kimi CLI, or ZCode. Grok CLI and Kimi CLI support CLI only; ZCode supports App only. |
 | Config name | All | Identifies the config in CCR and can be used as the `ccr-app <config-name>` launch target. Names can contain spaces; copied commands are quoted automatically. |
 | Enabled | All | Disabled configs are not exposed as active launch entries and are not applied as effective startup configs. |
-| Effect scope | All | **Only opened from CCR** uses CCR-managed isolated config; **System default** writes the agent's default config. Only one enabled system-default config is allowed per agent. |
+| Effect scope | All | **Only opened from CCR** uses a profile-specific launcher and defaults to CCR-managed isolated config; **System default** writes the agent's default config. Only one enabled system-default config is allowed per agent. |
 | Entry mode | Claude Code, Codex, OpenCode, Grok CLI, Kimi CLI | `CLI & APP` exposes both CLI and App entry points; `CLI only` only generates a CLI command; `App only` only exposes the App entry point. Grok CLI and Kimi CLI are fixed to `CLI only`. |
+| Claude configuration | Claude Code CLI | **Isolated CCR configuration** is the default. **Reuse existing Claude configuration** is available only with **Only opened from CCR** and `CLI only`. |
 | Model | All | Default model for the opened agent, either a provider model or Fusion model. For Claude Code, leaving it empty keeps the Claude Code default. |
 | Available models | Kimi CLI | Models exposed by Kimi's `/model` command. The default model is always included. |
 | Bot | App entry | Bot forwarding only works for App mode opened from CCR. CLI does not forward Bot messages yet. |
@@ -51,9 +53,16 @@ This lets you create multiple configs for the same agent, such as "Claude Code -
 | --- | --- |
 | Model override | Writes `ANTHROPIC_MODEL` for Claude Code. Leave it empty to keep Claude Code's own default model. |
 | Small fast model | Writes `ANTHROPIC_SMALL_FAST_MODEL` for Claude Code lightweight tasks. Leave it empty to keep the Claude Code default. |
-| Settings file | System-default mode uses the Claude Code default settings file; Only opened from CCR creates an isolated settings file under CCR's config directory, separated by Agent Config `id`. |
-| Environment variables | Merged into the Claude Code settings `env`. CCR also writes the gateway endpoint, API key helper, and launch wrapper. |
+| Claude configuration | The isolated mode creates a CCR-managed configuration. The reuse mode points the CLI launch at the directory containing the selected existing settings file. |
+| Settings file | System-default mode uses the Claude Code default settings file. Isolated CCR mode creates a settings file under CCR's config directory, separated by Agent Config `id`. In reuse mode, the selected file is a directory anchor and is not read or modified by CCR. |
+| Environment variables | Injected into the launched process. Managed modes also persist them in the managed settings file. Reuse mode does not write them into the selected existing settings file. |
 | Bot | Applies only to the Claude App entry. Select a saved Bot, then choose message forwarding or handoff. |
+
+With **Reuse existing Claude configuration**, CCR sets `CLAUDE_CONFIG_DIR` to the directory containing the selected settings file. The launched CLI can use the existing plugins, hooks, statusline, skills, agents, and sessions from that directory. CCR applies the gateway endpoint, profile authentication, selected models, and profile environment only to that process. Normal inherited-profile applies do not read, rewrite, or back up the selected settings file, and a normal `claude` command remains unaffected. The launched CLI itself still shares that configuration directory, so changes it makes there remain shared.
+
+Reuse mode rejects settings files inside CCR's managed `profiles` directory. Choose a user-owned settings file outside that tree so managed routing fields cannot conflict with inherited configuration.
+
+When changing an actively managed **System default** profile directly to reuse mode, CCR first restores the original settings from its owned backup. If that restoration cannot be completed, reuse mode fails closed and no launch wrapper or authentication helper is generated. This mode is restricted to **Only opened from CCR** and `CLI only`; other scope or entry combinations use isolated configuration.
 
 After Claude Code CLI is opened from CCR, it uses CCR gateway model discovery. In Claude Code CLI, enter `/model` to view and switch the models exposed by CCR, including normal provider models and visible Fusion models.
 
@@ -132,7 +141,7 @@ ZCode supports App only, so its entry mode is fixed to `App only`. The `Show all
 
 ### Claude Code
 
-Claude Code CLI config writes a settings file. With **Only opened from CCR**, CCR creates an isolated settings file under its own config directory and opens Claude Code through a separate launch wrapper.
+With **Only opened from CCR**, Claude Code uses a profile-specific isolated settings file by default. An opt-in `CLI only` profile can instead reuse an existing configuration directory. Both modes open through a CCR launch wrapper; reuse mode injects routing, authentication, and model overrides only into that launched process.
 
 When opening Claude App from the desktop app, CCR also prepares a separate user-data directory for that config. Different Agent Config entries use different directories, so multiple Claude App instances can run at the same time.
 
@@ -169,6 +178,6 @@ With a Bot bound, ZCode uses the Codex-compatible companion worker and native Se
 ## Multi-Instance Suggestions
 
 1. Create one Agent Config for each agent instance that should run independently.
-2. While testing, prefer **Only opened from CCR** to avoid changing the system default agent.
+2. While testing, prefer **Only opened from CCR**. Keep Claude Code on **Isolated CCR configuration** unless you intentionally want the launched CLI to share existing configuration state.
 3. To keep desktop windows side by side, use `App only` or `CLI & APP`, then open the App from CCR.
 4. If the same config is already running, opening it again activates the existing window. Create another Agent Config when you need a second instance.

@@ -23,6 +23,7 @@ import {
 import type {
   AgentKind,
   AppConfig,
+  ClaudeCodeConfigMode,
   GatewayMcpServerTransport,
   GatewayMcpStdioMessageMode,
   GatewayProviderProtocol,
@@ -133,6 +134,11 @@ export const profileAgentOptions: Array<{ label: string; value: ProfileConfig["a
 export const profileScopeOptions: Array<{ label: string; value: ProfileScope }> = [
   { label: "Only opened from CCR", value: "ccr" },
   { label: "System default", value: "global" }
+];
+
+export const claudeConfigModeOptions: Array<{ label: string; value: ClaudeCodeConfigMode }> = [
+  { label: "Isolated CCR configuration", value: "isolated" },
+  { label: "Reuse existing Claude configuration", value: "inherit" }
 ];
 
 export const profileSurfaceOptions: Array<{ label: string; value: ProfileSurface }> = [

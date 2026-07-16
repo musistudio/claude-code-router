@@ -140,6 +140,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
       profiles: [
         {
           agent: "claude-code",
+          claudeConfigMode: "isolated",
           enabled: true,
           env: { ...CLAUDE_CODE_DEFAULT_ENV },
           id: "default-claude-code",
