@@ -170,9 +170,11 @@ const webClientBridge: CcrApi = {
   stopGateway: () => rpc("stopGateway") as ReturnType<CcrApi["stopGateway"]>,
   stopProfile: (request) => rpc("stopProfile", [request]) as ReturnType<CcrApi["stopProfile"]>,
   testProviderAccountConnector: (request) => rpc("testProviderAccountConnector", [request]) as ReturnType<CcrApi["testProviderAccountConnector"]>,
+  testRouteScript: (request) => rpc("testRouteScript", [request]) as ReturnType<CcrApi["testRouteScript"]>,
   updateCheck: () => rpc("updateCheck") as ReturnType<CcrApi["updateCheck"]>,
   updateDownload: () => rpc("updateDownload") as ReturnType<CcrApi["updateDownload"]>,
   updateInstall: () => rpc("updateInstall") as ReturnType<CcrApi["updateInstall"]>,
+  validateRouteScript: (request) => rpc("validateRouteScript", [request]) as ReturnType<CcrApi["validateRouteScript"]>,
   waitBotGatewayQrLogin: (request) => rpc("waitBotGatewayQrLogin", [request]) as ReturnType<CcrApi["waitBotGatewayQrLogin"]>
 };
 

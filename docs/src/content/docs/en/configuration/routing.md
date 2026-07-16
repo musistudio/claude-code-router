@@ -81,6 +81,336 @@ The dialog fields map directly to the saved rule:
 
 The **Add** or **Save** button is enabled only when the form is valid: name, condition field, and condition value are required; every rewrite row must have a key. **Delete** only requires a key. **Replace in array** requires both **Match value** and **Value**. Other operations require **Value**.
 
+Choose **Node.js script** as the rule type when a single condition is not enough. After selecting a local script file, it can return the target model, rewrites, and fallback dynamically. The dialog reads and compiles the file before saving and includes a JSON request editor for testing it without sending a real upstream model request.
+
+### Node.js Script Rules
+
+Use a Node.js script rule when ordinary conditions cannot express multi-field decisions, gradual rollouts, external policy lookups, or dynamic request rewrites. A script runs as asynchronous JavaScript in a reusable Worker: it reads the complete request, uses the controlled `api` object to access the network, filesystem, and environment, and returns whether the rule matched together with its model, rewrites, and fallback behavior.
+
+Scripts run in rule-list order. A non-match continues to the next rule; a match uses the routing decision returned by the script. Exceptions, timeouts, and invalid results are fail-open: CCR records a routing diagnostic and continues to the next rule.
+
+#### Create A Script File
+
+1. Create a local file with a `.js`, `.mjs`, or `.cjs` extension.
+2. Set **Rule type** to **Node.js script** in the routing rule editor.
+3. Select the script file, choose a timeout from 10 to 30000 milliseconds, and use **Validate** or **Test script** to check it.
+4. Save the rule. CCR reads the file before every execution, so later file edits do not require saving the rule again.
+
+The Desktop file picker stores an absolute path. A Web UI cannot obtain the real local path selected by the browser, so enter an absolute, relative, or `~/...` path on the machine running CCR. Relative paths resolve from the CCR process working directory. A script file may be at most 64 KiB.
+
+The script file is an **async function body**, not a CommonJS or ES module. Use the injected `input`, `api`, and `return` directly:
+
+```js
+if (input.body.model !== "Provider/original-model") {
+  return null;
+}
+
+return {
+  model: "Provider/target-model"
+};
+```
+
+Top-level `await` is supported. Do not add `module.exports`, `export default`, or `import`, and do not use `require`, `process`, `Buffer`, or native `fetch`; use the APIs documented below for network and file operations. Both `input` and `api` are frozen. Return `rewrites` instead of mutating `input.body` or `input.headers`.
+
+#### `input`: Request Parameters
+
+Each execution receives its own read-only `input` object:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `input.body` | `Record<string, unknown>` | Complete JSON request body. |
+| `input.headers` | `Record<string, string \| string[]>` | Complete request headers, potentially including authentication, cookies, API keys, and CCR-internal headers. |
+| `input.method` | `string` | HTTP method, such as `POST`. |
+| `input.url` | `string` | Gateway-relative request URL, such as `/v1/messages`. |
+| `input.model` | `string \| undefined` | Shortcut for `input.body.model` when that value is a string. |
+| `input.tokenCount` | `number` | CCR's estimated input token count, or `0` when unavailable. |
+| `input.sessionId` | `string \| undefined` | Session ID when CCR can resolve it. |
+| `input.apiKeyId` | `string \| undefined` | CCR API-key identifier from `x-auth-api-key-id`; this is not the raw key. |
+| `input.builtInSubagentModel` | `string \| undefined` | Built-in subagent model when CCR can identify it. |
+| `input.summary.lastUserText` | `string` | Text from the last user message, limited to 16 KiB characters. |
+| `input.summary.systemText` | `string` | Text from the system content, limited to 8 KiB characters. |
+| `input.summary.messageCount` | `number` | Number of elements in `body.messages`. |
+| `input.summary.toolNames` | `string[]` | Tool names extracted from `body.tools`, limited to 128 entries. |
+| `input.summary.hasImage` | `boolean` | Whether image content was detected anywhere in the request body. |
+
+Header names should normally be read in lowercase. A value can be an array of strings, so handle both forms when needed:
+
+```js
+const rawTenant = input.headers["x-tenant-id"];
+const tenant = Array.isArray(rawTenant) ? rawTenant[0] : rawTenant;
+```
+
+#### Test Request JSON
+
+The rule editor's **Test request JSON** builds one script input without sending a real model-upstream request. `body` must be a JSON object; the remaining fields are optional:
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `body` | JSON object | Required |
+| `headers` | `Record<string, string \| string[]>` | `{}` |
+| `method` | `string` | `POST` |
+| `url` | `string` | `/v1/messages` |
+| `sessionId` | `string` | None |
+| `tokenCount` | `number` | `0` |
+
+Headers and the body can be supplied together:
+
+```json
+{
+  "headers": {
+    "authorization": "Bearer test-token",
+    "x-tenant-id": "enterprise",
+    "x-tags": ["review", "production"]
+  },
+  "body": {
+    "model": "Provider/original-model",
+    "messages": [
+      { "role": "user", "content": "Review this code" }
+    ]
+  },
+  "method": "POST",
+  "url": "/v1/messages",
+  "sessionId": "test-session",
+  "tokenCount": 1200
+}
+```
+
+The test does not call a model, but `api.fetch`, filesystem reads, and filesystem writes made by the script are real. Use dedicated test endpoints and files when the script has side effects.
+
+#### `api.fetch`: Network Access
+
+```js
+const response = await api.fetch(url, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ tenant: "enterprise" })
+});
+```
+
+- `url` must be an `http:` or `https:` URL without embedded credentials. Local and private-network services are allowed.
+- `method` defaults to `GET`; `headers` accepts string values only; `body` must be a string.
+- Redirects are not followed automatically, and all network operations share the script's overall timeout.
+- The request body is limited to 256 KiB and the response body to 1 MiB. The body is always returned as a UTF-8 string; call `JSON.parse` yourself for JSON.
+
+The returned object has this shape:
+
+```js
+{
+  ok: true,                  // Whether the HTTP status is 2xx
+  status: 200,
+  statusText: "OK",
+  url: "https://example.com/policy",
+  headers: { "content-type": "application/json" },
+  body: "{\"model\":\"Provider/target-model\"}",
+  redirected: false
+}
+```
+
+#### `api.fs`: Filesystem Access
+
+Paths may be absolute, relative, or start with `~/...`. There is no path allowlist, but access is still limited by the operating-system permissions of the CCR process.
+
+| API | Returns | Description |
+| --- | --- | --- |
+| `await api.fs.exists(path)` | `boolean` | Whether a file or directory is accessible. |
+| `await api.fs.readText(path)` | `string` | Read a file as UTF-8 text. |
+| `await api.fs.readJson(path)` | `unknown` | Read UTF-8 text and apply `JSON.parse`. |
+| `await api.fs.list(path)` | `Array<{ name, isFile, isDirectory, isSymbolicLink }>` | List one directory level, up to 256 entries. |
+| `await api.fs.stat(path)` | `{ size, modifiedAt, isFile, isDirectory }` | Return byte size, ISO modification time, and file type. |
+| `await api.fs.writeText(path, value)` | `void` | Write a UTF-8 string; parent directories are not created. |
+| `await api.fs.writeJson(path, value)` | `void` | Write two-space-indented JSON with a trailing newline. |
+
+Each file read or write is limited to 1 MiB.
+
+#### `api.env` And `api.hash`
+
+| API | Returns | Description |
+| --- | --- | --- |
+| `api.env(name)` | `string \| undefined` | Read any environment variable visible to the CCR process. |
+| `api.hash(value)` | `number` | Return a stable unsigned 32-bit hash of the string form, useful for stable rollout buckets. It is not cryptographic. |
+
+#### Return Values
+
+Except for `undefined`, the script result must be JSON-serializable and at most 64 KiB.
+
+| Return value | Routing behavior |
+| --- | --- |
+| `null`, `undefined`, or `false` | This rule does not match; continue to the next rule. |
+| `{ match: false }` | This rule does not match; other fields in the object are ignored. |
+| `true` | This rule matches and uses the rule or global default fallback. |
+| `{ match?, model?, rewrites?, fallback? }` | This rule matches and uses the dynamic decision in the object. |
+
+A dynamic decision object supports:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `match` | `boolean` | Only `false` is special and means no match. |
+| `model` | `string` | Target model selector; it must identify a currently configured CCR model. |
+| `rewrites` | `Rewrite[]` | Request rewrites, limited to 32 and applied in array order. |
+| `fallback` | `Fallback` | Override the rule or global default fallback behavior. |
+
+A string, number, or array is not a valid routing result. Unknown object fields do not participate in routing.
+
+##### Rewrite Shape
+
+```js
+{
+  key: "request.body.temperature",
+  operation: "set",
+  value: 0.2
+}
+```
+
+`key` must start with `request.body.`, `request.header.`, or `request.headers.`. Body paths use dot-separated segments, and numeric segments address array indexes. Header names are converted to lowercase. Header rewrites should use only `set` or `delete`, and a header `set` value must be a string.
+
+| `operation` | Required fields | Behavior |
+| --- | --- | --- |
+| `set` | `value` | Set or create a field. This is the default when `operation` is omitted. |
+| `delete` | None | Delete a field or array index. |
+| `array-append` | `value` | Add an element to the end; start from an empty array when the current value is not an array. |
+| `array-prepend` | `value` | Add an element to the beginning. |
+| `array-remove` | `value` | Remove array elements that match `value`. |
+| `array-replace` | `match`, `value` | Replace array elements that match `match` with `value`. |
+
+Rewrite `value` and `match` properties must be JSON values. Unsafe path segments such as `__proto__`, `constructor`, and `prototype` are rejected. Scripts cannot rewrite authentication, cookie, host, content-length, connection-control, `x-auth-*`, `x-ccr-*`, and other protected headers.
+
+##### Fallback Shape
+
+```js
+{
+  mode: "model-chain",
+  models: ["Provider/backup-one", "Provider/backup-two"],
+  retryCount: 0
+}
+```
+
+| `mode` | Behavior |
+| --- | --- |
+| `off` | Attempt only the selected model. |
+| `retry` | Retry the selected model `retryCount` times after the first failure. |
+| `model-chain` | Try models in `models` order after the selected model fails. |
+
+`mode` is required. `models` is optional and defaults to `[]`; every entry must be a configured model selector. `retryCount` is optional and defaults to `0`; it must be an integer from 0 to 9999.
+
+#### Complete Example: Tenant Policy, Rollout, And Rewrites
+
+The following `enterprise-route.js` reads a tenant header, obtains policy from a local JSON file and an optional remote service, uses the session ID for stable rollout bucketing, and returns a model, request rewrites, and a fallback model chain:
+
+```js
+const rawTenant = input.headers["x-tenant-id"];
+const tenant = Array.isArray(rawTenant) ? rawTenant[0] : rawTenant;
+
+// Let later rules handle requests without tenant information.
+if (!tenant) {
+  return null;
+}
+
+// Local file example: { "enterprise": { "model": "Provider/primary" } }
+const policyFile = api.env("CCR_ROUTING_POLICY_FILE")
+  ?? "~/.config/ccr/routing-policy.json";
+let policy = {};
+if (await api.fs.exists(policyFile)) {
+  const policies = await api.fs.readJson(policyFile);
+  policy = policies?.[tenant] ?? {};
+}
+
+// If a policy service is configured, its result overrides local policy.
+const policyUrl = api.env("CCR_ROUTING_POLICY_URL");
+if (policyUrl) {
+  const response = await api.fetch(policyUrl, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${api.env("CCR_ROUTING_POLICY_TOKEN") ?? ""}`
+    },
+    body: JSON.stringify({
+      tenant,
+      model: input.model,
+      sessionId: input.sessionId,
+      tokenCount: input.tokenCount,
+      lastUserText: input.summary.lastUserText
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Policy service returned HTTP ${response.status}`);
+  }
+  policy = { ...policy, ...JSON.parse(response.body) };
+}
+
+if (!policy.model || policy.enabled === false) {
+  return { match: false };
+}
+
+// The same session maps to the same 0-99 bucket.
+const bucketKey = input.sessionId ?? `${tenant}:${input.summary.lastUserText}`;
+const bucket = api.hash(bucketKey) % 100;
+const rolloutPercent = Number(policy.rolloutPercent ?? 100);
+if (bucket >= rolloutPercent) {
+  return null;
+}
+
+return {
+  model: policy.model,
+  rewrites: [
+    {
+      key: "request.body.temperature",
+      operation: "set",
+      value: Number(policy.temperature ?? 0.2)
+    },
+    {
+      key: "request.header.x-route-policy",
+      operation: "set",
+      value: `tenant:${tenant}`
+    }
+  ],
+  fallback: {
+    mode: "model-chain",
+    models: Array.isArray(policy.fallbackModels)
+      ? policy.fallbackModels
+      : ["Provider/backup-model"],
+    retryCount: 0
+  }
+};
+```
+
+The example's `policy.model` and `policy.fallbackModels` values must identify models already configured in CCR. Otherwise, the rule emits a diagnostic and is treated as a non-match.
+
+#### Saved Configuration And Runtime Limits
+
+The saved rule has the following shape. It is normally generated by the UI and does not need to be edited manually:
+
+```json
+{
+  "id": "enterprise-policy",
+  "name": "Enterprise tenant policy",
+  "enabled": true,
+  "type": "script",
+  "script": {
+    "apiVersion": 1,
+    "file": "/Users/example/.config/ccr/enterprise-route.js",
+    "language": "javascript",
+    "timeoutMs": 2000
+  }
+}
+```
+
+| Limit | Current value |
+| --- | --- |
+| Script file | 64 KiB maximum |
+| Execution timeout | 10-30000 ms; 2000 ms by default |
+| Fetch request / response body | 256 KiB / 1 MiB |
+| Individual file read or write | 1 MiB |
+| Directory listing | 256 entries maximum |
+| Dynamic rewrites | 32 maximum |
+| Script result | 64 KiB maximum and JSON-serializable |
+
+Workers enforce heap, stack, pending-queue, and hard-timeout resource limits. Three failures for the same rule within 60 seconds open its circuit breaker for 30 seconds. A changed script file is recompiled and treated as a new script version for circuit-breaker accounting.
+
+Worker isolation is not an operating-system security sandbox. `api.fetch`, `api.fs`, and `api.env` have no allowlist and inherit the network, file, and environment access available to the CCR process. Run trusted scripts only.
+
+Legacy inline `source` continues to run. Selecting a script file for the rule and saving it migrates the rule to the local `file` shape above. Legacy `readPaths`, `permissions`, and static script-rule `rewrites` are no longer needed; return `model` or `rewrites` from the script when a request must be changed.
+
 ### Condition
 
 The **Condition** area has four controls: source, field, operator, and value.

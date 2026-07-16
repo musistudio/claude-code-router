@@ -7,6 +7,7 @@ import { createRouteExecutionPlan } from "@ccr/core/routing/execution-plan.ts";
 import { classifyRouteFailure } from "@ccr/core/routing/failure-classifier.ts";
 import { ModelRegistry } from "@ccr/core/routing/model-registry.ts";
 import { RoutePolicyEngine } from "@ccr/core/routing/policy-engine.ts";
+import { compileConfiguredRouteRewrite, compileScriptRouteRewrite } from "@ccr/core/routing/rewrite.ts";
 import {
   adaptRouteRequestBody,
   restoreRouteRequestBody,
@@ -197,14 +198,67 @@ test("router config compilation ignores diagnostics from disabled rules", () => 
   assert.deepEqual(compiled.diagnostics, []);
 });
 
-test("route policy engine returns the first matching policy", () => {
+test("router config compilation accepts unrestricted Node.js script rules", () => {
+  const config = routingConfig();
+  config.Router.rules = [
+    {
+      enabled: true,
+      id: "script-valid",
+      name: "Script valid",
+      script: {
+        apiVersion: 1,
+        file: "/tmp/route-script.js",
+        language: "javascript",
+        timeoutMs: 1000
+      },
+      type: "script"
+    },
+    {
+      enabled: true,
+      id: "script-invalid-timeout",
+      name: "Script invalid timeout",
+      script: {
+        apiVersion: 1,
+        file: "/tmp/route-script.js",
+        language: "javascript",
+        timeoutMs: 1
+      },
+      type: "script"
+    }
+  ];
+
+  const compiled = compileRouterConfig(config);
+
+  assert.equal(compiled.rules[0].active, true);
+  assert.deepEqual(compiled.rules[0].diagnostics, []);
+  assert.equal(compiled.rules[1].active, false);
+  assert.equal(compiled.rules[1].diagnostics[0].code, "script-source-invalid");
+});
+
+test("dynamic script rewrites cannot mutate protected headers without breaking trusted static config", () => {
+  const rewrite = {
+    key: "request.header.authorization",
+    operation: "set",
+    value: "Bearer configured"
+  };
+
+  assert.ok(compileConfiguredRouteRewrite(rewrite).rewrite);
+  assert.match(compileScriptRouteRewrite(rewrite).error, /protected header/i);
+  assert.equal(compileConfiguredRouteRewrite({
+    key: "request.header.x-boolean-text",
+    operation: "set",
+    value: "true"
+  }).rewrite?.value, "true");
+});
+
+test("route policy engine returns the first matching policy", async () => {
   const engine = new RoutePolicyEngine([
     { evaluate: () => undefined, id: "custom" },
     { evaluate: () => ({ model: "Primary/alpha" }), id: "rule:first" },
     { evaluate: () => ({ model: "Secondary/beta" }), id: "default" }
   ]);
 
-  const match = engine.evaluate({});
+  const match = await engine.evaluate({});
 
   assert.equal(match.policyId, "rule:first");
   assert.equal(match.decision.model, "Primary/alpha");

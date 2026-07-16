@@ -1,0 +1,45 @@
+listen:
+  host: 0.0.0.0
+  port: 8080
+  public_url: http://localhost:8080
+
+oidc:
+  issuer: http://127.0.0.1:5556/dex
+  client_id: claude-gateway-local
+  client_secret: ${OIDC_CLIENT_SECRET}
+  allowed_email_domains:
+    - example.com
+  userinfo_fallback: true
+  scopes:
+    - openid
+    - profile
+    - email
+    - offline_access
+    - groups
+
+session:
+  jwt_secret: ${GATEWAY_JWT_SECRET}
+  ttl_hours: 1
+
+store:
+  postgres_url: ${GATEWAY_POSTGRES_URL}
+
+upstreams:
+  - provider: anthropic
+    auth:
+      api_key: ${ANTHROPIC_API_KEY}
+
+auto_include_builtin_models: false
+
+models:
+  - id: claude-sonnet-4-6
+    upstream_model:
+      anthropic: claude-sonnet-4-6
+
+managed:
+  policies:
+    - match: {}
+      cli:
+        availableModels:
+          - claude-sonnet-4-6
+        enforceAvailableModels: true

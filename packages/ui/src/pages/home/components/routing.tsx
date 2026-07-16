@@ -4,13 +4,17 @@ import {
   CardHeader, Check, CircleAlert, clampNumber, cn, createRouteModelOptions, createRoutingRewriteDraftRow,
   Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle,
   disclosureSpringTransition, Field, formatRouterRuleCondition, formatRouterRuleTarget, GatewayProviderConfig, Input,
-  AppI18nContext, appCopy, ExternalLink, Info, motion, normalizeRouterFallbackConfig, Pencil, Plus, Route, RouterFallbackConfig,
+  AppI18nContext, appCopy, ExternalLink, FolderOpen, Info, motion, normalizeRouteScriptSampleRequest, normalizeRouterFallbackConfig, Pencil, Plus, Route, RouterFallbackConfig,
   RouterBuiltInAgentRuleId, RouterFallbackMode, routerConditionSourceOptions, routerFallbackModeOptions, RouterRule, routerRewriteOperationOptions, routerRuleOperatorOptions,
-  RouterBuiltInAgentRuleConfig,
+  RouterBuiltInAgentRuleConfig, routerRuleTypeOptions,
   RouteTargetControl, routingRuleRowMatchesQuery, Search, SelectControl, Toggle, translateOptions,
-  Trash2, uniqueStrings, useAppText, useContext, useMemo, useState, X
+  Textarea, Trash2, uniqueStrings, useAppText, useContext, useMemo, useRef, useState, X
 } from "../shared/index";
-import { ROUTER_FALLBACK_MAX_RETRY_COUNT } from "@ccr/core/contracts/app";
+import {
+  ROUTER_FALLBACK_MAX_RETRY_COUNT,
+  ROUTER_SCRIPT_API_VERSION,
+  type RouterRuleScript
+} from "@ccr/core/contracts/app";
 export function RoutingView({
   addRule,
   config,
@@ -439,8 +443,24 @@ export function AddRoutingRuleDialog({
   providers: GatewayProviderConfig[];
 }) {
   const t = useAppText();
+  const copy = useContext(AppI18nContext);
   const conditionSourceOptions = translateOptions(routerConditionSourceOptions, t);
   const rewriteOperationOptions = translateOptions(routerRewriteOperationOptions, t);
+  const ruleTypeOptions = translateOptions(routerRuleTypeOptions, t);
+  const [scriptBusy, setScriptBusy] = useState<"submit" | "test" | "validate">();
+  const [scriptMessage, setScriptMessage] = useState<{ ok: boolean; text: string }>();
+  const scriptFileInputRef = useRef<HTMLInputElement>(null);
+  const [scriptSample, setScriptSample] = useState(`{
+  "headers": {
+    "x-tenant-id": "demo"
+  },
+  "body": {
+    "model": "claude-sonnet-4-5",
+    "messages": [{ "role": "user", "content": "hello" }]
+  },
+  "method": "POST",
+  "url": "/v1/messages"
+}`);
 
   function addRewrite() {
     onChange({ rewrites: [...draft.rewrites, createRoutingRewriteDraftRow()] });
@@ -458,6 +478,67 @@ export function AddRoutingRuleDialog({
     onChange({ rewrites: draft.rewrites.filter((_, rewriteIndex) => rewriteIndex !== index) });
   }
 
+  function scriptFromDraft(): RouterRuleScript {
+    return {
+      apiVersion: ROUTER_SCRIPT_API_VERSION,
+      file: draft.scriptFile.trim(),
+      language: "javascript",
+      timeoutMs: Number(draft.scriptTimeoutMs)
+    };
+  }
+
+  function selectScriptFile(file: File | undefined) {
+    if (!file) return;
+    const filePath = window.ccr?.getFilePath?.(file);
+    if (!filePath) {
+      setScriptMessage({ ok: false, text: t("Selecting a local script file requires CCR Desktop. Enter the server-local path manually when using the web UI.") });
+      return;
+    }
+    onChange({ scriptFile: filePath });
+    setScriptMessage(undefined);
+  }
+
+  async function validateScript(action: "submit" | "validate" = "validate"): Promise<boolean> {
+    setScriptBusy(action);
+    setScriptMessage(undefined);
+    try {
+      const ccr = window.ccr;
+      if (!ccr) throw new Error(t("Gateway API is unavailable"));
+      const result = await ccr.validateRouteScript({ script: scriptFromDraft() });
+      const message = result.ok
+        ? t("Script validation passed")
+        : result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      setScriptMessage({ ok: result.ok, text: message });
+      if (result.ok && action === "submit") onSubmit();
+      return result.ok;
+    } catch (error) {
+      setScriptMessage({ ok: false, text: error instanceof Error ? error.message : String(error) });
+      return false;
+    } finally {
+      setScriptBusy(undefined);
+    }
+  }
+
+  async function testScript() {
+    setScriptBusy("test");
+    setScriptMessage(undefined);
+    try {
+      const ccr = window.ccr;
+      if (!ccr) throw new Error(t("Gateway API is unavailable"));
+      const parsed = JSON.parse(scriptSample) as unknown;
+      const request = normalizeRouteScriptSampleRequest(parsed);
+      const result = await ccr.testRouteScript({ request, script: scriptFromDraft() });
+      const details = result.ok
+        ? `${result.matched ? t("Matched") : t("Not matched")} · ${Math.round(result.durationMs ?? 0)}ms${result.output === undefined ? "" : `\n${JSON.stringify(result.output, null, 2)}`}`
+        : result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      setScriptMessage({ ok: result.ok, text: details });
+    } catch (error) {
+      setScriptMessage({ ok: false, text: error instanceof Error ? t(error.message) : String(error) });
+    } finally {
+      setScriptBusy(undefined);
+    }
+  }
+
   return (
     <Dialog onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
@@ -471,11 +552,27 @@ export function AddRoutingRuleDialog({
         </DialogHeader>
 
         <DialogBody>
-          <motion.div className="grid grid-cols-1 gap-3 sm:grid-cols-2" layout transition={disclosureSpringTransition}>
+          <motion.div className="grid grid-cols-1 gap-3 sm:grid-cols-2" layout="position" transition={disclosureSpringTransition}>
             <Field className="sm:col-span-2" label={t("Name")}>
               <Input value={draft.name} onChange={(event) => onChange({ name: event.target.value })} />
             </Field>
-            <Field className="sm:col-span-2" label={t("Condition")}>
+            <Field className="sm:col-span-2" label={t("Rule type")}>
+              <SelectControl
+                onChange={(type) => onChange({
+                  type: type as AddRoutingRuleDraft["type"],
+                  ...(type === "script" && draft.name === "Condition" ? { name: "Node.js script" } : {}),
+                  ...(type === "condition" && draft.name === "Node.js script" ? { name: "Condition" } : {}),
+                  ...(type === "script"
+                    ? { rewrites: [] }
+                    : draft.rewrites.length === 0
+                      ? { rewrites: [createRoutingRewriteDraftRow()] }
+                      : {})
+                })}
+                options={ruleTypeOptions}
+                value={draft.type}
+              />
+            </Field>
+            {draft.type === "condition" ? <Field className="sm:col-span-2" label={t("Condition")}>
               <div className="rounded-md border border-border bg-muted/20 p-2">
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-[160px_minmax(0,1fr)_112px_minmax(0,1fr)]">
                   <SelectControl
@@ -502,8 +599,88 @@ export function AddRoutingRuleDialog({
                   />
                 </div>
               </div>
-            </Field>
-            <Field className="sm:col-span-2" label={t("Rewrite request parameters")}>
+            </Field> : (
+              <>
+                <div className="sm:col-span-2 min-w-0 space-y-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="min-w-0 truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {t("Node.js route script file")}
+                    </span>
+                    <a
+                      className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                      href={routeScriptDocsUrl(copy === appCopy.zh ? "zh" : "en")}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        openExternalUrl(routeScriptDocsUrl(copy === appCopy.zh ? "zh" : "en"));
+                      }}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      {t("Docs")}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                  <div className="flex min-w-0 gap-2">
+                    <Input
+                      aria-label={t("Node.js route script file")}
+                      className="min-w-0 flex-1 font-mono text-[12px]"
+                      onChange={(event) => onChange({ scriptFile: event.target.value })}
+                      placeholder="/path/to/route-script.js"
+                      value={draft.scriptFile}
+                    />
+                    <Button onClick={() => scriptFileInputRef.current?.click()} type="button" variant="outline">
+                      <FolderOpen className="h-4 w-4" />
+                      {t("Choose file")}
+                    </Button>
+                    <input
+                      accept=".js,.mjs,.cjs,text/javascript,application/javascript"
+                      className="hidden"
+                      onChange={(event) => {
+                        selectScriptFile(event.target.files?.[0]);
+                        event.currentTarget.value = "";
+                      }}
+                      ref={scriptFileInputRef}
+                      type="file"
+                    />
+                  </div>
+                </div>
+                <Field label={t("Timeout (ms)")}>
+                  <Input
+                    inputMode="numeric"
+                    max={30000}
+                    min={10}
+                    onChange={(event) => onChange({ scriptTimeoutMs: event.target.value })}
+                    type="number"
+                    value={draft.scriptTimeoutMs}
+                  />
+                </Field>
+                <Field className="sm:col-span-2" label={t("Test request JSON")}>
+                  <Textarea
+                    className="min-h-36 resize-y font-mono text-[12px]"
+                    onChange={(event) => setScriptSample(event.target.value)}
+                    spellCheck={false}
+                    value={scriptSample}
+                  />
+                </Field>
+                <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
+                  <Button disabled={Boolean(scriptBusy)} onClick={() => void validateScript()} type="button" variant="outline">
+                    {t("Validate")}
+                  </Button>
+                  <Button disabled={Boolean(scriptBusy)} onClick={() => void testScript()} type="button" variant="outline">
+                    {t("Test script")}
+                  </Button>
+                </div>
+                {scriptMessage ? (
+                  <pre className={cn(
+                    "sm:col-span-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md border px-3 py-2 text-xs",
+                    scriptMessage.ok ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200" : "border-destructive/30 bg-destructive/10 text-destructive"
+                  )}>
+                    {scriptMessage.text}
+                  </pre>
+                ) : null}
+              </>
+            )}
+            {draft.type === "condition" ? <Field className="sm:col-span-2" label={t("Rewrite request parameters")}>
               <div className="space-y-2 rounded-md border border-border bg-muted/20 p-2">
                 {draft.rewrites.map((rewrite, index) => (
                   <div
@@ -564,7 +741,7 @@ export function AddRoutingRuleDialog({
                   {t("Add parameter")}
                 </Button>
               </div>
-            </Field>
+            </Field> : null}
             <Field label={t("Enabled")}>
               <Toggle checked={draft.enabled} onChange={(enabled) => onChange({ enabled })} />
             </Field>
@@ -582,7 +759,11 @@ export function AddRoutingRuleDialog({
           <Button onClick={onClose} type="button" variant="outline">
             {t("Cancel")}
           </Button>
-          <Button disabled={!canSubmit} onClick={onSubmit} type="button">
+          <Button
+            disabled={!canSubmit || Boolean(scriptBusy)}
+            onClick={() => draft.type === "script" ? void validateScript("submit") : onSubmit()}
+            type="button"
+          >
             {mode === "edit" ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
             {mode === "edit" ? t("Save") : t("Add")}
           </Button>
@@ -590,4 +771,12 @@ export function AddRoutingRuleDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function routeScriptDocsUrl(language: "en" | "zh"): string {
+  const path = language === "zh" ? "/configuration/routing" : "/en/configuration/routing";
+  const section = language === "zh"
+    ? "#nodejs-%E8%84%9A%E6%9C%AC%E8%A7%84%E5%88%99"
+    : "#nodejs-script-rules";
+  return `https://ccrdesk.top${path}${section}`;
 }

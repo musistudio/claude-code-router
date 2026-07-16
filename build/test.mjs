@@ -26,6 +26,7 @@ const testProjects = {
     runtimeEntryPoints: {
       "runtime/fusion-vision-mcp": path.join(packageRoots.core, "mcp", "fusion-vision-mcp.ts"),
       "runtime/request-log-worker": path.join(packageRoots.core, "observability", "request-log-worker.ts"),
+      "runtime/route-script-worker": path.join(packageRoots.core, "routing", "route-script-worker.ts"),
       "runtime/upstream-header-sanitizer": path.join(packageRoots.core, "gateway", "core-runtime", "upstream-header-sanitizer.ts"),
       "runtime/toolhub-mcp": path.join(packageRoots.core, "mcp", "toolhub-mcp.ts")
     },
@@ -62,7 +63,7 @@ for (const [name, project] of selectedProjects) {
   const projectOutDir = path.join(testsOutDir, name);
   const scopedTestDir = scope ? path.join(project.testDir, scope) : project.testDir;
   const entryPoints = testEntryPoints(scopedTestDir);
-  if (!scope || scope === "integration") {
+  if (!scope || scope === "integration" || scope === "unit") {
     Object.assign(entryPoints, project.runtimeEntryPoints ?? {});
   }
 

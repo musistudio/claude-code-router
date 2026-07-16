@@ -189,7 +189,8 @@ export const apiKeyLimitMetricOptions: Array<{ label: string; value: ApiKeyLimit
 ];
 
 export const routerRuleTypeOptions: Array<{ label: string; value: RouterRuleType }> = [
-  { label: "Condition", value: "condition" }
+  { label: "Condition", value: "condition" },
+  { label: "Node.js script", value: "script" }
 ];
 
 export type RouterConditionSource = "request.header" | "request.body";

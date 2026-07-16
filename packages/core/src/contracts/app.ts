@@ -535,7 +535,8 @@ export type GatewayProviderConnectivityCheckReport = {
 
 export type RouterRuleType =
   | "condition"
-  | "model-prefix";
+  | "model-prefix"
+  | "script";
 
 export type RouterRuleOperator =
   | "=="
@@ -570,6 +571,20 @@ export type RouterRuleRewrite = {
   value?: string;
 };
 
+export const ROUTER_SCRIPT_API_VERSION = 1 as const;
+export const ROUTER_SCRIPT_MAX_SOURCE_BYTES = 64 * 1024;
+export const ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS = 2_000;
+export const ROUTER_SCRIPT_MAX_TIMEOUT_MS = 30_000;
+
+export type RouterRuleScript = {
+  apiVersion: typeof ROUTER_SCRIPT_API_VERSION;
+  file?: string;
+  language: "javascript";
+  /** Legacy inline source. New rules persist `file` instead. */
+  source?: string;
+  timeoutMs: number;
+};
+
 export type RouterRule = {
   condition?: RouterRuleCondition;
   enabled: boolean;
@@ -579,6 +594,7 @@ export type RouterRule = {
   pattern?: string;
   rewrite?: RouterRuleRewrite;
   rewrites?: RouterRuleRewrite[];
+  script?: RouterRuleScript;
   target?: string;
   threshold?: number;
   type: RouterRuleType;
@@ -606,6 +622,41 @@ export type RouterConfig = {
   builtInRules: RouterBuiltInRulesConfig;
   fallback: RouterFallbackConfig;
   rules: RouterRule[];
+};
+
+export type RouteScriptDiagnostic = {
+  code: string;
+  column?: number;
+  line?: number;
+  message: string;
+};
+
+export type RouteScriptValidationRequest = {
+  script: RouterRuleScript;
+};
+
+export type RouteScriptValidationResult = {
+  diagnostics: RouteScriptDiagnostic[];
+  ok: boolean;
+};
+
+export type RouteScriptSampleRequest = {
+  body: Record<string, unknown>;
+  headers?: Record<string, string | string[] | undefined>;
+  method?: string;
+  sessionId?: string;
+  tokenCount?: number;
+  url?: string;
+};
+
+export type RouteScriptTestRequest = RouteScriptValidationRequest & {
+  request: RouteScriptSampleRequest;
+};
+
+export type RouteScriptTestResult = RouteScriptValidationResult & {
+  durationMs?: number;
+  matched: boolean;
+  output?: unknown;
 };
 
 export type GatewayRuntimeConfig = {

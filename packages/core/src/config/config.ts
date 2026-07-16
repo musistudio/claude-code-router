@@ -6,7 +6,7 @@ import { CONFIG_FILE, GATEWAY_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CO
 import { normalizeCodexProviderAccountConfig } from "@ccr/core/agents/local-providers/codex";
 import { normalizeGrokProviderAccountConfig } from "@ccr/core/agents/local-providers/grok";
 import { removeOpenCodeProviderAccountConfig } from "@ccr/core/agents/local-providers/opencode";
-import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "@ccr/core/contracts/app";
+import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, ROUTER_SCRIPT_API_VERSION, ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS, ROUTER_SCRIPT_MAX_TIMEOUT_MS, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "@ccr/core/contracts/app";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config";
 import { maxRequestLogBodyBytes } from "@ccr/core/observability/request-log-limits";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
@@ -51,6 +51,7 @@ import type {
   RouterRuleOperator,
   RouterRuleRewrite,
   RouterRuleRewriteOperation,
+  RouterRuleScript,
   RouterRuleType,
   TrayBalanceProgressConfig,
   TrayComponentVariants,
@@ -1505,6 +1506,7 @@ function parseRouterRules(value: unknown): RouterRule[] | undefined {
         pattern
       });
       const rewrites = parseRouterRuleRewrites(item);
+      const script = type === "script" ? parseRouterRuleScript(item.script ?? item) : undefined;
       const fallback = parseRouterFallback(item.fallback ?? item.failureFallback ?? item.fallbackStrategy);
 
       return {
@@ -1516,9 +1518,10 @@ function parseRouterRules(value: unknown): RouterRule[] | undefined {
         ...(pattern ? { pattern } : {}),
         ...(rewrites.length === 1 ? { rewrite: rewrites[0] } : {}),
         ...(rewrites.length > 0 ? { rewrites } : {}),
+        ...(script ? { script } : {}),
         ...(target ? { target } : {}),
         ...(threshold !== undefined && threshold > 0 ? { threshold } : {}),
-        type: condition ? "condition" : type
+        type: type === "script" ? "script" : condition ? "condition" : type
       };
     })
     .filter((item): item is RouterRule => Boolean(item));
@@ -1532,11 +1535,46 @@ function parseRouterRuleType(value: unknown): RouterRuleType | undefined {
   const normalized = value.trim().toLowerCase();
   if (
     normalized === "condition" ||
-    normalized === "model-prefix"
+    normalized === "model-prefix" ||
+    normalized === "script"
   ) {
     return normalized;
   }
   return undefined;
+}
+
+function parseRouterRuleScript(value: unknown): RouterRuleScript | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const file = readString(value.file ?? value.filePath ?? value.path);
+  const source = typeof value.source === "string"
+    ? value.source
+    : typeof value.code === "string"
+      ? value.code
+      : undefined;
+  if (!file && source === undefined) {
+    return undefined;
+  }
+  const language = readString(value.language)?.toLowerCase();
+  if (language && language !== "javascript" && language !== "js") {
+    return undefined;
+  }
+  const apiVersion = readNumber(value.apiVersion ?? value.version) ?? ROUTER_SCRIPT_API_VERSION;
+  if (apiVersion !== ROUTER_SCRIPT_API_VERSION) {
+    return undefined;
+  }
+  const timeoutValue = readNumber(value.timeoutMs ?? value.timeout);
+  const timeoutMs = timeoutValue === undefined
+    ? ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS
+    : Math.max(10, Math.min(ROUTER_SCRIPT_MAX_TIMEOUT_MS, Math.trunc(timeoutValue)));
+  return {
+    apiVersion: ROUTER_SCRIPT_API_VERSION,
+    ...(file ? { file } : {}),
+    language: "javascript",
+    ...(source !== undefined ? { source } : {}),
+    timeoutMs
+  };
 }
 
 function parseRouterRuleCondition(value: unknown): RouterRuleCondition | undefined {
@@ -1676,7 +1714,7 @@ function readRewriteValue(value: unknown): string | undefined {
 }
 
 function routerRuleTypeLabel(type: RouterRuleType): string {
-  return type === "condition" ? "Condition" : "Legacy";
+  return type === "condition" ? "Condition" : type === "script" ? "JavaScript" : "Legacy";
 }
 
 function parseAgent(value: unknown, legacyMcpServers?: unknown): Partial<GatewayAgentConfig> | undefined {

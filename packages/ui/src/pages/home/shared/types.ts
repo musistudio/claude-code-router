@@ -564,6 +564,8 @@ export type AddRoutingRuleDraft = {
   rewriteKey: string;
   rewriteValue: string;
   rewrites: RoutingRewriteDraftRow[];
+  scriptFile: string;
+  scriptTimeoutMs: string;
   target: string;
   threshold: string;
   type: RouterRuleType;

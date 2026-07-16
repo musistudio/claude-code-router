@@ -221,6 +221,7 @@ export function createMainBuildOptions({ mode = "production", plugins = [] } = {
       path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "toolhub-mcp.ts"),
       path.join(coreSourceRoot, "observability", "request-log-worker.ts"),
+      path.join(coreSourceRoot, "routing", "route-script-worker.ts"),
       upstreamHeaderSanitizerInput,
       electronUndiciProxyAgentInput,
       path.join(electronSourceRoot, "main", "preload.ts")
@@ -250,6 +251,7 @@ export function createCliBuildOptions({ mode = "production", plugins = [] } = {}
       path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "toolhub-mcp.ts"),
       path.join(coreSourceRoot, "observability", "request-log-worker.ts"),
+      path.join(coreSourceRoot, "routing", "route-script-worker.ts"),
       upstreamHeaderSanitizerInput
     ],
     external: nodeExternals.filter((moduleName) => moduleName !== "electron"),
@@ -276,6 +278,7 @@ export function createCoreServerBuildOptions({ mode = "production", plugins = []
       path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "toolhub-mcp.ts"),
       path.join(coreSourceRoot, "observability", "request-log-worker.ts"),
+      path.join(coreSourceRoot, "routing", "route-script-worker.ts"),
       upstreamHeaderSanitizerInput
     ],
     external: nodeExternals.filter((moduleName) => moduleName !== "electron"),

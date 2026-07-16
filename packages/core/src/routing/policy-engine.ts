@@ -1,5 +1,5 @@
 export type RoutePolicy<TContext, TDecision> = {
-  evaluate: (context: TContext) => TDecision | undefined;
+  evaluate: (context: TContext) => Promise<TDecision | undefined> | TDecision | undefined;
   id: string;
 };
 
@@ -11,9 +11,9 @@ export type RoutePolicyMatch<TDecision> = {
 export class RoutePolicyEngine<TContext, TDecision> {
   constructor(private readonly policies: RoutePolicy<TContext, TDecision>[]) {}
 
-  evaluate(context: TContext): RoutePolicyMatch<TDecision> | undefined {
+  async evaluate(context: TContext): Promise<RoutePolicyMatch<TDecision> | undefined> {
     for (const policy of this.policies) {
-      const decision = policy.evaluate(context);
+      const decision = await policy.evaluate(context);
       if (decision) {
         return { decision, policyId: policy.id };
       }

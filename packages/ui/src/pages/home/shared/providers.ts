@@ -134,6 +134,7 @@ import {
   enforceSingleEnabledGlobalProfilePerAgent,
   normalizeProfileScopeValue,
   OVERVIEW_WIDGET_SIZE_VALUES,
+  ROUTER_SCRIPT_MAX_TIMEOUT_MS,
   TRAY_SINGLETON_WIDGET_TYPES,
   TRAY_TOP_WIDGET_TYPES,
   TRAY_WINDOW_MODULE_IDS
@@ -510,10 +511,15 @@ export function routeTargetOptions(modelOptions: Array<{ label: string; value: s
 }
 
 export function routerRuleTypeLabel(type: RouterRuleType): string {
-  return type === "condition" ? "Condition" : "Legacy";
+  if (type === "condition") return "Condition";
+  if (type === "script") return "Node.js script";
+  return "Legacy";
 }
 
 export function formatRouterRuleCondition(rule: RouterRule): string {
+  if (rule.type === "script") {
+    return `Node.js · ${rule.script?.timeoutMs ?? 2000}ms`;
+  }
   const condition = routerRuleConditionFromRule(rule);
   if (condition) {
     return `${condition.left} ${condition.operator} ${condition.right}`;
@@ -542,7 +548,7 @@ export function formatRouterRuleTarget(rule: RouterRule): string {
   const rewrites = routerRuleRewritesFromRule(rule);
   const action = rewrites.length
     ? rewrites.map(formatRouterRewriteSummary).join("; ")
-    : "No request rewrite";
+    : rule.type === "script" ? "Dynamic script decision" : "No request rewrite";
   return rule.fallback ? `${action} · ${formatRouterFallbackSummary(rule.fallback)}` : action;
 }
 
@@ -633,6 +639,8 @@ export function createRoutingRuleDraft(config?: AppConfig): AddRoutingRuleDraft 
     rewriteKey: rewrite.key,
     rewriteValue: rewrite.value,
     rewrites: [rewrite],
+    scriptFile: "",
+    scriptTimeoutMs: "2000",
     target: "",
     threshold: "200000",
     type: "condition"
@@ -656,10 +664,12 @@ export function createRoutingRuleDraftFromRule(rule: RouterRule, config?: AppCon
     pattern: rule.pattern ?? "",
     rewriteKey: firstRewrite.key,
     rewriteValue: firstRewrite.value,
-    rewrites: rewrites.length ? rewrites : [firstRewrite],
+    rewrites: rule.type === "script" ? [] : rewrites.length ? rewrites : [firstRewrite],
+    scriptFile: rule.script?.file ?? "",
+    scriptTimeoutMs: String(rule.script?.timeoutMs ?? 2000),
     target: rule.target ?? "",
     threshold: String(rule.threshold ?? 200000),
-    type: "condition"
+    type: rule.type === "script" ? "script" : "condition"
   };
 }
 
@@ -711,6 +721,20 @@ export function isRoutingRewriteDraftRowValid(row: RoutingRewriteDraftRow): bool
     return Boolean(row.match.trim() && row.value.trim());
   }
   return Boolean(row.value.trim());
+}
+
+export function isRoutingRuleDraftSubmittable(draft: AddRoutingRuleDraft): boolean {
+  if (!draft.name.trim()) return false;
+  if (draft.type === "script") {
+    const timeoutMs = Number(draft.scriptTimeoutMs);
+    return Boolean(draft.scriptFile.trim()) &&
+      Number.isInteger(timeoutMs) &&
+      timeoutMs >= 10 &&
+      timeoutMs <= ROUTER_SCRIPT_MAX_TIMEOUT_MS;
+  }
+  return draft.rewrites.length > 0 &&
+    draft.rewrites.every(isRoutingRewriteDraftRowValid) &&
+    Boolean(draft.conditionField.trim() && draft.conditionOperator && draft.conditionRight.trim());
 }
 
 export function routingRewriteFromDraftRow(row: RoutingRewriteDraftRow): RouterRuleRewrite {

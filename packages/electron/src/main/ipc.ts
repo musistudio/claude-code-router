@@ -35,7 +35,7 @@ import { appUpdateService } from "./update-service";
 import { getUsageStats } from "@ccr/core/usage/store";
 import { applyNativeThemePreference } from "./native-theme";
 import windowsManager from "./windows";
-import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppCaptureElementPngRequest, AppCaptureElementPngResult, AppConfig, AppDataExportResult, AppImageExportTargetRequest, AppImageExportTargetResult, AppInfo, AppRenderHtmlPngRequest, AppRenderHtmlPngResult, AppSaveConfigOptions, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountResetRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "@ccr/core/contracts/app";
+import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppCaptureElementPngRequest, AppCaptureElementPngResult, AppConfig, AppDataExportResult, AppImageExportTargetRequest, AppImageExportTargetResult, AppInfo, AppRenderHtmlPngRequest, AppRenderHtmlPngResult, AppSaveConfigOptions, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountResetRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, RouteScriptTestRequest, RouteScriptValidationRequest, UsageStatsFilter, UsageStatsRange } from "@ccr/core/contracts/app";
 
 const pluginMarketplace: PluginMarketplaceEntry[] = [
   {
@@ -193,7 +193,7 @@ ipcMain.handle(IPC_CHANNELS.appApplyClaudeAppGateway, async (_event, config?: Ap
   if (synced.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig) || runtimeStatus.state !== "running") {
     runtimeStatus = await gatewayService.start(savedConfig);
   } else {
-    gatewayService.updateConfig(savedConfig);
+    await gatewayService.updateConfig(savedConfig);
   }
 
   await builtInBrowserService.syncProxy(savedConfig);
@@ -251,6 +251,12 @@ ipcMain.handle(IPC_CHANNELS.appResetCodexRateLimitCredit, (_event, request: Prov
 ipcMain.handle(IPC_CHANNELS.appTestProviderAccountConnector, (_event, request: ProviderAccountTestRequest) => {
   return testProviderAccountConnector(request);
 });
+ipcMain.handle(IPC_CHANNELS.appValidateRouteScript, (_event, request: RouteScriptValidationRequest) => {
+  return gatewayService.validateRouteScript(request);
+});
+ipcMain.handle(IPC_CHANNELS.appTestRouteScript, async (_event, request: RouteScriptTestRequest) => {
+  return gatewayService.testRouteScript(await loadAppConfig(), request);
+});
 ipcMain.handle(IPC_CHANNELS.appUpdateCheck, () => appUpdateService.checkForUpdates());
 ipcMain.handle(IPC_CHANNELS.appUpdateDownload, () => appUpdateService.downloadUpdate());
 ipcMain.handle(IPC_CHANNELS.appUpdateInstall, () => appUpdateService.installUpdate());
@@ -289,7 +295,7 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, opt
   if (syncedClaudeAppConfig.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig)) {
     runtimeStatus = await gatewayService.start(savedConfig);
   } else {
-    gatewayService.updateConfig(savedConfig);
+    await gatewayService.updateConfig(savedConfig);
   }
   if (options?.applyProfile !== false) {
     await applyProfileIfServiceRunning(savedConfig, runtimeStatus);
@@ -303,7 +309,7 @@ ipcMain.handle(IPC_CHANNELS.appSaveApiKeys, async (_event, apiKeys: ApiKeyConfig
   const savedConfig = await saveApiKeysConfig(apiKeys);
   const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(savedConfig);
   const nextConfig = syncedClaudeAppConfig.config;
-  gatewayService.updateConfig(nextConfig);
+  await gatewayService.updateConfig(nextConfig);
   logProfileApplyResult(await applyProfileConfig(nextConfig));
   invalidateProviderAccountSnapshotCache();
   return nextConfig;

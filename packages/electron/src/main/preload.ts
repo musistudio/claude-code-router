@@ -72,6 +72,10 @@ import type {
   RequestLogEntry,
   RequestLogListFilter,
   RequestLogPage,
+  RouteScriptTestRequest,
+  RouteScriptTestResult,
+  RouteScriptValidationRequest,
+  RouteScriptValidationResult,
   UsageStatsFilter,
   UsageStatsRange,
   UsageStatsSnapshot
@@ -157,9 +161,11 @@ contextBridge.exposeInMainWorld("ccr", {
   scanBotHandoffBluetoothTargets: () => invoke(IPC_CHANNELS.appBotHandoffBluetoothTargetsScan) as Promise<BotHandoffScanTarget[]>,
   scanBotHandoffWifiTargets: () => invoke(IPC_CHANNELS.appBotHandoffWifiTargetsScan) as Promise<BotHandoffScanTarget[]>,
   testProviderAccountConnector: (request: ProviderAccountTestRequest) => invoke(IPC_CHANNELS.appTestProviderAccountConnector, request) as Promise<ProviderAccountTestResult>,
+  testRouteScript: (request: RouteScriptTestRequest) => invoke(IPC_CHANNELS.appTestRouteScript, request) as Promise<RouteScriptTestResult>,
   updateCheck: () => invoke(IPC_CHANNELS.appUpdateCheck) as Promise<AppUpdateStatus>,
   updateDownload: () => invoke(IPC_CHANNELS.appUpdateDownload) as Promise<AppUpdateStatus>,
   updateInstall: () => invoke(IPC_CHANNELS.appUpdateInstall) as Promise<void>,
+  validateRouteScript: (request: RouteScriptValidationRequest) => invoke(IPC_CHANNELS.appValidateRouteScript, request) as Promise<RouteScriptValidationResult>,
   waitBotGatewayQrLogin: (request: BotGatewayQrLoginWaitRequest) => invoke(IPC_CHANNELS.appBotGatewayQrLoginWait, request) as Promise<BotGatewayQrLoginWaitResult>,
   onBeforeQuit: (callback: () => void) => {
     const handler = () => callback();

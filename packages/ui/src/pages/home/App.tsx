@@ -15,8 +15,8 @@ import {
   fusionCustomMcpServerFromDraft, fusionCustomToolConfigFromProfile,
   GatewayProviderProbeResult, gatewayServiceMessage, GatewayStatus, getDefaultOnboardingStep, isClaudeDesignPluginConfig, isClaudeDesignRoutingDraftValid,
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
+  isRoutingRuleDraftSubmittable,
   isTraySupportedPlatform,
-  isRoutingRewriteDraftRowValid,
   LayoutGroup, mergeModelDisplayNames, mergeModelMetadata, mergeProviderModelLists, modelDescriptionsForModels, modelDisplayNamesForModels, modelMetadataForModels,
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets, normalizeProxyConfig,
   normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterBuiltInRules, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
@@ -38,6 +38,7 @@ import { startVisiblePolling } from "./shared/polling";
 import {
   AppDialogStack, LightToast, MainLayout, OnboardingLayout
 } from "./components/index";
+import { ROUTER_SCRIPT_API_VERSION } from "@ccr/core/contracts/app";
 
 type ProfileOpenDialogState = {
   busy?: "" | "cli" | "app";
@@ -733,11 +734,7 @@ function App() {
   const canSubmitProfileEdit = profileEditIndex !== undefined && isProfileDraftSubmittable(profileEditDraft) && isProfileBotSelectionValid(profileEditDraft, draftConfig.botConfigs);
   const canSubmitApiKey = Boolean(apiKeyDraft.name.trim()) && (apiKeyDraft.expirationPreset !== "custom" || Boolean(apiKeyDraft.expiresAt.trim()));
   const canSubmitApiKeyEdit = apiKeyEditDraft.expirationPreset !== "custom" || Boolean(apiKeyEditDraft.expiresAt.trim());
-  const canSubmitRoutingRule =
-    Boolean(routingRuleDraft.name.trim()) &&
-    routingRuleDraft.rewrites.length > 0 &&
-    routingRuleDraft.rewrites.every(isRoutingRewriteDraftRowValid) &&
-    Boolean(routingRuleDraft.conditionField.trim() && routingRuleDraft.conditionOperator && routingRuleDraft.conditionRight.trim());
+  const canSubmitRoutingRule = isRoutingRuleDraftSubmittable(routingRuleDraft);
   const canSubmitClaudeDesignRouting = isClaudeDesignRoutingDraftValid(claudeDesignRoutingDraft);
   const canSubmitCursorProxyRouting = isClaudeDesignRoutingDraftValid(cursorProxyRoutingDraft);
   const virtualModelValidationError = useMemo(() => validateVirtualModelDraft(virtualModelDraft), [virtualModelDraft]);
@@ -1701,19 +1698,34 @@ function App() {
       return;
     }
 
-    const rule: RouterRule = {
-      condition: {
-        left: buildRouterConditionPath(routingRuleDraft.conditionSource, routingRuleDraft.conditionField),
-        operator: routingRuleDraft.conditionOperator,
-        right: routingRuleDraft.conditionRight.trim()
-      },
+    const rewrites = routingRuleDraft.rewrites.map(routingRewriteFromDraftRow);
+    const commonRule = {
       enabled: routingRuleDraft.enabled,
       fallback: normalizeRouterFallbackConfig(routingRuleDraft.fallback),
       id: uniqueRoutingRuleId(draftConfig.Router.rules),
-      name: routingRuleDraft.name.trim(),
-      rewrites: routingRuleDraft.rewrites.map(routingRewriteFromDraftRow),
-      type: "condition"
+      name: routingRuleDraft.name.trim()
     };
+    const rule: RouterRule = routingRuleDraft.type === "script"
+      ? {
+          ...commonRule,
+          script: {
+            apiVersion: ROUTER_SCRIPT_API_VERSION,
+            file: routingRuleDraft.scriptFile.trim(),
+            language: "javascript",
+            timeoutMs: Number(routingRuleDraft.scriptTimeoutMs)
+          },
+          type: "script"
+        }
+      : {
+          ...commonRule,
+          condition: {
+            left: buildRouterConditionPath(routingRuleDraft.conditionSource, routingRuleDraft.conditionField),
+            operator: routingRuleDraft.conditionOperator,
+            right: routingRuleDraft.conditionRight.trim()
+          },
+          rewrites,
+          type: "condition"
+        };
 
     updateConfig((config) => {
       if (routingEditIndex === undefined) {

@@ -4,7 +4,7 @@
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { ApiKeyConfig, AppConfig, GatewayStatus } from "@ccr/core/contracts/app";
+import type { ApiKeyConfig, AppConfig, GatewayStatus, RouteScriptTestRequest, RouteScriptTestResult, RouteScriptValidationRequest, RouteScriptValidationResult, RouterRule } from "@ccr/core/contracts/app";
 import { NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, hasAvailableGatewayModels } from "@ccr/core/contracts/app";
 import { backendService } from "@ccr/core/plugins/backend-service";
 import { getSystemProxyUrlForProtocol } from "@ccr/core/proxy/system-proxy-fetch";
@@ -19,6 +19,10 @@ import { assertLoopbackCoreHost, endpoint, gatewayNetworkEndpoints, generateCore
 import type { BrowserAutomationMcpIntegration, BrowserWebSearchMcpIntegration, GatewayStopOptions } from "@ccr/core/gateway/internal/shared";
 import { GatewayRequestPipeline } from "@ccr/core/gateway/request/pipeline";
 import { GatewayHttpRequestHandler } from "@ccr/core/gateway/http/request-handler";
+import { RouteScriptRuntime } from "@ccr/core/routing/route-script-runtime";
+import { buildRouteScriptInput } from "@ccr/core/routing/route-script-context";
+import { compileRouterConfig } from "@ccr/core/routing/config-compiler";
+import { normalizeRouteScriptResult, scriptResultPreview } from "@ccr/core/routing/route-script-result";
 
 
 class GatewayService {
@@ -58,6 +62,7 @@ class GatewayService {
   private readonly rawTraceSynchronizer = new RawTraceSynchronizer({
     getConfig: () => this.config
   });
+  private readonly routeScriptRuntime = new RouteScriptRuntime();
   private server?: Server;
   private status: GatewayStatus = {
     coreEndpoint: "",
@@ -88,7 +93,11 @@ class GatewayService {
     await this.stop();
     this.config = config;
     const coreAuthToken = generateCoreGatewayAuthToken();
-    this.plugin = new ClaudeCodeRouterPlugin(config);
+    const scriptValidationErrors = await this.routeScriptRuntime.prepare(config.Router.rules);
+    this.plugin = new ClaudeCodeRouterPlugin(config, {
+      scriptRuntime: this.routeScriptRuntime,
+      scriptValidationErrors
+    });
     this.status = {
       coreEndpoint: endpoint(config.gateway.coreHost, config.gateway.corePort),
       endpoint: endpoint(config.gateway.host, config.gateway.port),
@@ -186,6 +195,7 @@ class GatewayService {
       await closeServer(server);
     }
     await this.rawTraceSynchronizer.stop();
+    await this.routeScriptRuntime.close();
 
     await proxyService.stop(options.proxyRestoreTimeoutMs);
     await pluginService.stop();
@@ -215,10 +225,15 @@ class GatewayService {
     };
   }
 
-  updateConfig(config: AppConfig): void {
+  async updateConfig(config: AppConfig): Promise<void> {
     assertLoopbackCoreHost(config.gateway.coreHost);
+    const scriptValidationErrors = await this.routeScriptRuntime.prepare(config.Router.rules);
+    const nextPlugin = new ClaudeCodeRouterPlugin(config, {
+      scriptRuntime: this.routeScriptRuntime,
+      scriptValidationErrors
+    });
     this.config = config;
-    this.plugin = new ClaudeCodeRouterPlugin(config);
+    this.plugin = nextPlugin;
     proxyService.updateConfig(config);
     this.status = {
       ...this.status,
@@ -226,6 +241,65 @@ class GatewayService {
       endpoint: endpoint(config.gateway.host, config.gateway.port),
       generatedConfigFile: config.gateway.generatedConfigFile,
       networkEndpoints: gatewayNetworkEndpoints(config.gateway.host, config.gateway.port)
+    };
+  }
+
+  validateRouteScript(request: RouteScriptValidationRequest): Promise<RouteScriptValidationResult> {
+    return this.routeScriptRuntime.validate(request.script);
+  }
+
+  async testRouteScript(config: AppConfig, request: RouteScriptTestRequest): Promise<RouteScriptTestResult> {
+    const validation = await this.routeScriptRuntime.validate(request.script);
+    if (!validation.ok) return { ...validation, matched: false };
+    const rule: RouterRule = {
+      enabled: true,
+      id: "route-script-test",
+      name: "Route script test",
+      script: request.script,
+      type: "script"
+    };
+    const testConfig: AppConfig = {
+      ...config,
+      Router: { ...config.Router, rules: [rule] }
+    };
+    const compiled = compileRouterConfig(testConfig);
+    const compiledRule = compiled.rules[0];
+    const routeRequest = {
+      body: request.request.body,
+      headers: request.request.headers ?? {},
+      log: console,
+      method: request.request.method ?? "POST",
+      sessionId: request.request.sessionId,
+      tokenCount: request.request.tokenCount ?? 0,
+      url: request.request.url ?? "/v1/messages"
+    };
+    const context = buildRouteScriptInput(routeRequest);
+    const execution = await this.routeScriptRuntime.execute(rule.id, request.script, context, {
+      circuitBreaker: false
+    });
+    if (execution.status !== "ok") {
+      return {
+        diagnostics: [{
+          code: execution.status === "timeout" ? "script-timeout" : "script-runtime-error",
+          message: execution.error ?? execution.status
+        }],
+        durationMs: execution.durationMs,
+        matched: false,
+        ok: false
+      };
+    }
+    const normalized = normalizeRouteScriptResult({
+      compiledRule,
+      defaultFallback: compiled.fallback,
+      modelRegistry: compiled.modelRegistry,
+      value: execution.value
+    });
+    return {
+      diagnostics: normalized.diagnostics.map((diagnostic) => ({ code: diagnostic.code, message: diagnostic.message })),
+      durationMs: execution.durationMs,
+      matched: normalized.matched,
+      ok: normalized.diagnostics.length === 0,
+      output: scriptResultPreview(execution.value)
     };
   }
 
