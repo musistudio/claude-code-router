@@ -1689,6 +1689,23 @@ function parseStringArray(value: unknown): string[] | undefined {
   return list.length ? list : undefined;
 }
 
+function parseCaseInsensitiveStringArray(value: unknown): string[] | undefined {
+  const list = parseStringArray(value);
+  if (!list) {
+    return undefined;
+  }
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of list) {
+    const key = item.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(item);
+    }
+  }
+  return result.length ? result : undefined;
+}
+
 function parseRouterRules(value: unknown): RouterRule[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
@@ -2636,6 +2653,9 @@ export function parseProfileConfigs(value: unknown): ProfileConfig[] | undefined
           : "isolated";
         return {
           agent,
+          ...(scope === "ccr" && surface !== "app"
+            ? { allowedModels: parseCaseInsensitiveStringArray(item.allowedModels) }
+            : {}),
           ...(appPath ? { appPath } : {}),
           ...(botConfigId ? { botConfigId } : {}),
           ...(botGateway ? { botGateway } : {}),

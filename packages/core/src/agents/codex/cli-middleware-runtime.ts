@@ -1,3 +1,5 @@
+import { CLAUDE_CODE_MANAGED_SETTINGS_ENV as managedSettingsEnv } from "@ccr/core/agents/claude-code/environment";
+
 export function codexCliMiddlewareRuntimeScript(): string {
   return String.raw`#!/usr/bin/env node
 "use strict";
@@ -22,6 +24,7 @@ const CONFIG_DIR = resolveConfigDir();
 const LOG_PATH = process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG || "";
 const CLAUDE_CODE_MCP_CONFIG_ENV = "CCR_CLAUDE_CODE_MCP_CONFIG";
 const CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV = "CODEXL_CLAUDE_CODE_MCP_CONFIG";
+const CLAUDE_CODE_MANAGED_SETTINGS_ENV = "${managedSettingsEnv}";
 const CLAUDE_CODE_CHINA_TIME_ZONES = new Set([
   "asia/chongqing",
   "asia/chungking",
@@ -137,6 +140,7 @@ async function runClaudeCodeCliWrapper(args) {
     ...withoutKeys(process.env, [
       "CCR_CLAUDE_CODE_AUTH_HELPER",
       "CCR_CLAUDE_CODE_CONFIG_MODE",
+      CLAUDE_CODE_MANAGED_SETTINGS_ENV,
       "CCR_CLAUDE_CODE_WRAPPER",
       "CCR_REAL_CLAUDE_CODE_BIN",
       "CLAUDE_CODE_HOST_AUTH_ENV_VAR",
@@ -277,7 +281,8 @@ async function readClaudeCodeInheritedAuthToken() {
 function claudeCodeCliWrapperArgs(args) {
   // Keep the profile model as an environment default. Promoting it to an
   // explicit startup argument can prevent /model from controlling the session.
-  return claudeCodeArgsWithMcpConfig(args, process.env);
+  const mcpArgs = claudeCodeArgsWithMcpConfig(args, process.env);
+  return claudeCodeArgsWithManagedSettings(mcpArgs, process.env);
 }
 
 function claudeCodeArgsWithMcpConfig(args, env) {
@@ -288,6 +293,18 @@ function claudeCodeArgsWithMcpConfig(args, env) {
   return ["--mcp-config", mcpConfig, ...args];
 }
 
+function claudeCodeArgsWithManagedSettings(args, env) {
+  const settings = nonEmptyEnvFrom(env, CLAUDE_CODE_MANAGED_SETTINGS_ENV);
+  if (!settings || claudeCodeArgsShouldSkipModelInjection(args)) {
+    return args;
+  }
+  if (claudeCodeArgsHaveManagedSettings(args)) {
+    throw new Error(
+      "This CCR Claude Code profile supplies --managed-settings for allowedModels. Remove the explicit --managed-settings option or launch Claude Code without this profile."
+    );
+  }
+  return ["--managed-settings", settings, ...args];
+}
 function claudeCodeArgsHaveMcpConfig(args) {
   for (const arg of args) {
     if (arg === "--mcp-config" || arg.startsWith("--mcp-config=")) {
@@ -297,8 +314,24 @@ function claudeCodeArgsHaveMcpConfig(args) {
   return false;
 }
 
+function claudeCodeArgsHaveManagedSettings(args) {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--") {
+      return false;
+    }
+    if (arg === "--managed-settings" || arg.startsWith("--managed-settings=")) {
+      return true;
+    }
+    if (claudeCodeOptionTakesValue(arg) && !arg.includes("=")) {
+      index += 1;
+    }
+  }
+  return false;
+}
+
 function claudeCodeArgsShouldSkipModelInjection(args) {
-  if (args.some((arg) => arg === "--help" || arg === "-h" || arg === "--version" || arg === "-v")) {
+  if (claudeCodeArgsHaveDiagnosticFlag(args)) {
     return true;
   }
   const command = firstClaudeCodePositionalArg(args);
@@ -314,6 +347,22 @@ function claudeCodeArgsShouldSkipModelInjection(args) {
     "upgrade",
     "version"
   ]).has(command.toLowerCase()));
+}
+
+function claudeCodeArgsHaveDiagnosticFlag(args) {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--") {
+      return false;
+    }
+    if (arg === "--help" || arg === "-h" || arg === "--version" || arg === "-v") {
+      return true;
+    }
+    if (claudeCodeOptionTakesValue(arg) && !arg.includes("=")) {
+      index += 1;
+    }
+  }
+  return false;
 }
 
 function firstClaudeCodePositionalArg(args) {
@@ -342,6 +391,7 @@ function claudeCodeOptionTakesValue(arg) {
     "--fallback-model",
     "--model",
     "--mcp-config",
+    "--managed-settings",
     "--output-format",
     "--permission-mode",
     "--resume",

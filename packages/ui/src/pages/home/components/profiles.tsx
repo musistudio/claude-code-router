@@ -5,7 +5,7 @@ import {
   DialogTitle, Field, GatewayProviderConfig, Info, Input, KeyValueRowsControl, LoaderCircle, motion,
   normalizeProfileScope, normalizeProfileSurface, Pencil, Plus, PopoverContent,
   profileAgentLabel, profileAgentOptions, ProfileConfig, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
-  Play, Power, RefreshCw, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactDragEvent, type ReactNode, type VirtualModelProfileConfig,
+  Play, Power, RefreshCw, Select, SelectControl, Terminal, Textarea, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactDragEvent, type ReactNode, type VirtualModelProfileConfig,
   copyTextToClipboard,
   useCallback, useEffect, useMemo, useRef, useState, X
 } from "../shared/index";
@@ -659,7 +659,7 @@ export function AddProfileForm({
             onChange={(scope) => {
               const nextScope = normalizeProfileScope(scope);
               onChange(draft.agent === "claude-code" && nextScope !== "ccr"
-                ? { claudeConfigMode: "isolated", scope: nextScope }
+                ? { allowedModels: "", claudeConfigMode: "isolated", scope: nextScope }
                 : { scope: nextScope });
             }}
             options={translateOptions(
@@ -705,7 +705,12 @@ export function AddProfileForm({
               const nextSurface = normalizeProfileSurface(surface);
               onChange(nextSurface !== "cli"
                 ? {
-                    ...(draft.agent === "claude-code" ? { claudeConfigMode: "isolated" as const } : {}),
+                    ...(draft.agent === "claude-code"
+                      ? {
+                          ...(nextSurface === "app" ? { allowedModels: "" } : {}),
+                          claudeConfigMode: "isolated" as const
+                        }
+                      : {}),
                     surface: nextSurface
                   }
                 : {
@@ -742,6 +747,20 @@ export function AddProfileForm({
         ) : null}
         {draft.agent === "claude-code" ? (
           <>
+            {draft.scope === "ccr" && draft.surface !== "app" ? (
+              <Field className="sm:col-span-2" label={t("Allowed models")}>
+                <Textarea
+                  className="min-h-[88px] resize-y font-mono text-[12px]"
+                  onChange={(event) => onChange({ allowedModels: event.target.value })}
+                  placeholder={"opus\nfable\nopenai/model"}
+                  spellCheck={false}
+                  value={draft.allowedModels}
+                />
+                <span className="block text-[11px] font-normal normal-case tracking-normal text-muted-foreground">
+                  {t("Limits Claude Code's model picker to these entries. Separate entries with new lines or commas. Use native aliases such as opus or fable, or configured provider selectors such as openai/model. Leave empty to keep Claude Code's existing model availability.")}
+                </span>
+              </Field>
+            ) : null}
             <Field label={t("Model override")}>
               <ModelSelector
                 placeholder={t("Keep Claude Code default")}

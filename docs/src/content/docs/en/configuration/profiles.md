@@ -42,6 +42,7 @@ This lets you create multiple configs for the same agent, such as "Claude Code -
 | Claude configuration | Claude Code CLI | **Isolated CCR configuration** is the default. **Reuse existing Claude configuration** is available only with **Only opened from CCR** and `CLI only`. |
 | Model | All | Default model for the opened agent, either a provider model or Fusion model. For Claude Code, leaving it empty keeps the Claude Code default. |
 | Available models | Kimi CLI | Models exposed by Kimi's `/model` command. The default model is always included. |
+| Allowed models | Claude Code CLI | Optional per-profile list that limits Claude Code's model picker. Use native aliases or configured provider/model selectors. Leave it empty to keep the existing model availability. |
 | Bot | App entry | Bot forwarding only works for App mode opened from CCR. CLI does not forward Bot messages yet. |
 | Environment variables | All | Extra environment variables injected into this config. Claude Code includes `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1` by default so gateway model discovery is enabled. |
 
@@ -53,10 +54,49 @@ This lets you create multiple configs for the same agent, such as "Claude Code -
 | --- | --- |
 | Model override | Writes `ANTHROPIC_MODEL` for Claude Code. Leave it empty to keep Claude Code's own default model. |
 | Small fast model | Writes `ANTHROPIC_SMALL_FAST_MODEL` for Claude Code lightweight tasks. Leave it empty to keep the Claude Code default. |
+| Allowed models | Limits the model picker to the listed native Claude models and configured gateway models for this profile. |
 | Claude configuration | The isolated mode creates a CCR-managed configuration. The reuse mode points the CLI launch at the directory containing the selected existing settings file. |
 | Settings file | System-default mode uses the Claude Code default settings file. Isolated CCR mode creates a settings file under CCR's config directory, separated by Agent Config `id`. In reuse mode, the selected file is a directory anchor and is not read or modified by CCR. |
 | Environment variables | Injected into the launched process. Managed modes also persist them in the managed settings file. Reuse mode does not write them into the selected existing settings file. |
 | Bot | Applies only to the Claude App entry. Select a saved Bot, then choose message forwarding or handoff. |
+
+#### Allowed Models
+
+Use **Allowed models** when a CCR-scoped Claude Code profile should expose only a specific set of choices in `/model`. Enter one model per line, or separate entries with commas. Native Claude Code aliases such as `opus` and `fable` remain readable. A configured gateway selector such as `openai/gpt-5.6-sol` is resolved to the same route ID that CCR advertises through gateway model discovery. Unknown or ambiguous selectors cause the profile apply to fail instead of silently selecting another model.
+
+CCR compiles a non-empty list into policy JSON with `availableModels` and `enforceAvailableModels: true`, then supplies it through stock Claude Code's SDK-facing `--managed-settings <json>` option. This keeps `availableModels` exact instead of unioning it with arrays from ordinary `--settings`, and activates enforcement only when Claude Code is launched through that CCR profile. Existing enterprise managed policy remains authoritative. Leaving the field empty preserves Claude Code's existing model availability.
+
+Profile allowlists require Claude Code CLI 2.1.118 or newer. CCR uses the stock hidden `--managed-settings` option for these launches, and older clients exit with an unknown-option error. Update Claude Code before enabling the field on an older installation.
+
+`availableModels` constrains selectable main models and explicit subagent model overrides, but it does not replace Claude Code's separate lightweight-model default. If you do not want those internal calls to default to Haiku, also set **Small fast model** (`smallFastModel`) to an allowed entry such as `fable`.
+
+This configuration fragment limits the profile to two native aliases and one configured gateway model:
+
+```json
+{
+  "profile": {
+    "profiles": [
+      {
+        "id": "claude-work",
+        "name": "Claude Work",
+        "agent": "claude-code",
+        "enabled": true,
+        "scope": "ccr",
+        "surface": "cli",
+        "claudeConfigMode": "inherit",
+        "model": "fable",
+        "allowedModels": [
+          "opus",
+          "fable",
+          "openai/gpt-5.6-sol"
+        ]
+      }
+    ]
+  }
+}
+```
+
+In **Reuse existing Claude configuration** mode, CCR injects the compiled policy JSON only for the profile launch. It does not create a settings overlay file or edit the inherited `~/.claude/settings.json`. Callers can continue to use ordinary `--settings`. The wrapper rejects only an explicitly supplied `--managed-settings` option because CCR already uses that launch-only channel for the active allowlist.
 
 With **Reuse existing Claude configuration**, selecting the native default `~/.claude/settings.json` leaves `CLAUDE_CONFIG_DIR` unset, so the CLI keeps the same account, project, plugin, hook, statusline, skill, agent, and session paths as a normal launch. A custom selection must also be named `settings.json`; CCR sets `CLAUDE_CONFIG_DIR` to its parent directory. CCR applies the gateway endpoint, profile authentication, selected models, and profile environment only to that process. Normal inherited-profile applies do not read, rewrite, or back up the selected settings file, and a normal `claude` command remains unaffected. The launched CLI itself still shares that configuration, so changes it makes there remain shared.
 

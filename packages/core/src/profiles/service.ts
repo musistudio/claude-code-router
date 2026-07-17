@@ -6,6 +6,7 @@ import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MO
 import { replacePersistedApiKeys } from "@ccr/core/config/api-key-store";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import {
+  CLAUDE_CODE_MANAGED_SETTINGS_ENV,
   CLAUDE_CODE_MCP_CONFIG_ENV,
   CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV,
   claudeCodeMcpConfigEnv,
@@ -22,6 +23,12 @@ import {
 } from "@ccr/core/agents/opencode/profile-config";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { resolveClaudeCodeLaunchConfigDir } from "@ccr/core/profiles/launch-core";
+import {
+  compileClaudeCodeAllowedModels,
+  compileClaudeCodeModelSelector,
+  isClaudeCodeModelAllowedByPolicy,
+  type ClaudeCodeAllowedModelsSettings
+} from "@ccr/core/profiles/claude-code-model-policy";
 import { resolveZcodeConfigFile, writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "@ccr/core/agents/zcode/profile-config";
 import { normalizeRouteSelector } from "@ccr/core/gateway/claude-code-router-plugin";
 import { findModelCatalogEntry, modelCatalogMaxInputTokens, readCatalogCapability, type ModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
@@ -47,6 +54,7 @@ const originalBackupSuffix = ".ccr-original";
 const originalMissingSuffix = ".ccr-original-missing";
 const globalProfileTakeoverFile = path.join(CONFIGDIR, "global-profile-takeover.json");
 const fallbackClientToken = "ccr-local";
+const claudeCodeManagedSettingsMaxBytes = 6 * 1024;
 const privateDirMode = 0o700;
 const privateExecutableMode = 0o700;
 const privateFileMode = 0o600;
@@ -57,6 +65,7 @@ const claudeCodeReservedWrapperEnv = new Set([
   "CCR_CLAUDE_CODE_AUTH_HELPER",
   "CCR_CLAUDE_CODE_BIN",
   "CCR_CLAUDE_CODE_CONFIG_MODE",
+  CLAUDE_CODE_MANAGED_SETTINGS_ENV,
   "CCR_CLAUDE_CODE_WRAPPER",
   "CCR_REAL_CLAUDE_CODE_BIN",
   "CODEXL_CLAUDE_CODE_BIN"
@@ -75,6 +84,12 @@ type GlobalProfileTakeoverRecord = {
 
 type ApplyProfileConfigOptions = {
   excludeAgents?: readonly ProfileClientKind[];
+};
+
+type ClaudeCodeLaunchModels = {
+  managedSettings?: string;
+  model: string;
+  smallFastModel: string;
 };
 
 export async function applyProfileConfig(
@@ -416,6 +431,7 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
   }
 
   try {
+    const launchModels = claudeCodeLaunchModels(config, profile);
     const endpoint = gatewayEndpoint(config);
     const settings = readJsonObject(settingsFile);
     const settingsEnv = withoutBotGatewayEnv(Object.fromEntries(stringRecord(settings.env)));
@@ -430,18 +446,17 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
     env.CLAUDE_AGENT_API_BASE_URL = endpoint;
     delete env.ANTHROPIC_AUTH_TOKEN;
     delete env.ANTHROPIC_API_KEY;
-    if (profile.model.trim()) {
-      const model = normalizeClientModel(profile.model);
-      env.ANTHROPIC_MODEL = model;
-      env.CCR_CLAUDE_CODE_MODEL = model;
-      env.CODEXL_CLAUDE_CODE_MODEL = model;
+    if (launchModels.model) {
+      env.ANTHROPIC_MODEL = launchModels.model;
+      env.CCR_CLAUDE_CODE_MODEL = launchModels.model;
+      env.CODEXL_CLAUDE_CODE_MODEL = launchModels.model;
     } else {
       delete env.ANTHROPIC_MODEL;
       delete env.CCR_CLAUDE_CODE_MODEL;
       delete env.CODEXL_CLAUDE_CODE_MODEL;
     }
-    if (profile.smallFastModel?.trim()) {
-      env.ANTHROPIC_SMALL_FAST_MODEL = normalizeClientModel(profile.smallFastModel);
+    if (launchModels.smallFastModel) {
+      env.ANTHROPIC_SMALL_FAST_MODEL = launchModels.smallFastModel;
     } else {
       delete env.ANTHROPIC_SMALL_FAST_MODEL;
     }
@@ -449,8 +464,14 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
     Object.assign(env, claudeCodeMcpConfigEnv(toolHubMcpConfigResult.file), claudeCodeUtcTimezoneEnvOverride());
 
     const helperResult = writeClaudeCodeApiKeyHelper(profile, token);
-    const wrapperResult = writeClaudeCodeWrapper(config, profile, helperResult.file, toolHubMcpConfigResult.file);
-    const nextSettings = {
+    const wrapperResult = writeClaudeCodeWrapper(
+      config,
+      profile,
+      helperResult.file,
+      toolHubMcpConfigResult.file,
+      launchModels
+    );
+    const nextSettings: Record<string, unknown> = {
       ...settings,
       apiKeyHelper: process.platform === "win32" ? `"${helperResult.file}"` : helperResult.file,
       env
@@ -469,10 +490,14 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
       path: settingsFile
     };
   } catch (error) {
+    const cleanupResult = cleanupClaudeCodeProfileLaunchArtifactsResult(profile);
+    const cleanupMessage = cleanupResult.message
+      ? ` Failed to retire generated launch artifacts: ${cleanupResult.message}`
+      : "";
     return {
       client: "claude-code",
       enabled: true,
-      message: formatError(error),
+      message: `${formatError(error)}${cleanupMessage}`,
       ok: false,
       path: settingsFile
     };
@@ -528,9 +553,16 @@ function applyInheritedClaudeCodeProfile(config: AppConfig, profile: ProfileConf
   }
 
   try {
+    const launchModels = claudeCodeLaunchModels(config, profile);
     const toolHubMcpConfigResult = writeClaudeCodeToolHubMcpConfig(config, profile, token);
     const helperResult = writeClaudeCodeApiKeyHelper(profile, token);
-    const wrapperResult = writeClaudeCodeWrapper(config, profile, helperResult.file, toolHubMcpConfigResult.file);
+    const wrapperResult = writeClaudeCodeWrapper(
+      config,
+      profile,
+      helperResult.file,
+      toolHubMcpConfigResult.file,
+      launchModels
+    );
     const changed = helperResult.changed || wrapperResult.changed || toolHubMcpConfigResult.changed;
     return {
       appliedAt,
@@ -889,6 +921,56 @@ function claudeCodeToolHubMcpConfigFile(profile: ProfileConfig): string {
   return path.join(ccrManagedProfileDir(profile), "claude", "toolhub-mcp.json");
 }
 
+function claudeCodeLaunchModels(
+  config: AppConfig,
+  profile: ProfileConfig
+): ClaudeCodeLaunchModels {
+  const settings = profile.scope === "ccr" && profile.surface !== "app"
+    ? compileClaudeCodeAllowedModels(config, profile.allowedModels)
+    : undefined;
+  let model = normalizeClientModel(profile.model);
+  let smallFastModel = normalizeClientModel(profile.smallFastModel);
+
+  if (settings) {
+    model = compileClaudeCodeProfileModel(config, settings, model, "model");
+    smallFastModel = compileClaudeCodeProfileModel(
+      config,
+      settings,
+      smallFastModel,
+      "smallFastModel"
+    );
+  }
+
+  const managedSettings = settings ? JSON.stringify(settings) : undefined;
+  if (
+    managedSettings &&
+    Buffer.byteLength(managedSettings, "utf8") > claudeCodeManagedSettingsMaxBytes
+  ) {
+    throw new Error(
+      `Claude Code allowedModels compiled policy exceeds ${claudeCodeManagedSettingsMaxBytes} UTF-8 bytes. Reduce the number or length of entries.`
+    );
+  }
+  return { managedSettings, model, smallFastModel };
+}
+
+function compileClaudeCodeProfileModel(
+  config: AppConfig,
+  settings: ClaudeCodeAllowedModelsSettings,
+  value: string,
+  field: "model" | "smallFastModel"
+): string {
+  if (!value) {
+    return "";
+  }
+  const compiled = compileClaudeCodeModelSelector(config, value);
+  if (!isClaudeCodeModelAllowedByPolicy(settings, compiled)) {
+    throw new Error(
+      `Claude Code profile ${field} "${value}" is not included in allowedModels.`
+    );
+  }
+  return compiled;
+}
+
 function writeClaudeCodeToolHubMcpConfig(config: AppConfig, profile: ProfileConfig, token: string): { changed: boolean; file?: string } {
   const file = claudeCodeToolHubMcpConfigFile(profile);
   const entryPath = path.join(CONFIGDIR, "bin", TOOL_HUB_MCP_RUNTIME_FILE_NAME);
@@ -1145,15 +1227,21 @@ function claudeCodeApiKeyHelperCmdScript(token: string): string {
   ].join("\r\n");
 }
 
-function writeClaudeCodeWrapper(config: AppConfig, profile: ProfileConfig, apiKeyHelperFile: string, mcpConfigFile: string | undefined): { backupFile?: string; changed: boolean; file: string } {
+function writeClaudeCodeWrapper(
+  config: AppConfig,
+  profile: ProfileConfig,
+  apiKeyHelperFile: string,
+  mcpConfigFile: string | undefined,
+  launchModels: ClaudeCodeLaunchModels
+): { backupFile?: string; changed: boolean; file: string } {
   const binDir = path.join(CONFIGDIR, "bin");
   mkdirSync(binDir, { mode: privateDirMode, recursive: true });
   const runtimeFile = path.join(binDir, codexMiddlewareRuntimeFilename());
   const runtimeResult = writeGeneratedFileIfChanged(runtimeFile, codexCliMiddlewareRuntimeScript(), { mode: publicExecutableMode });
   const file = path.join(binDir, claudeCodeWrapperFilename(profile));
   const content = process.platform === "win32"
-    ? claudeCodeWrapperCmdScript(config, profile, runtimeFile, apiKeyHelperFile, mcpConfigFile)
-    : claudeCodeWrapperShellScript(config, profile, runtimeFile, apiKeyHelperFile, mcpConfigFile);
+    ? claudeCodeWrapperCmdScript(config, profile, runtimeFile, apiKeyHelperFile, mcpConfigFile, launchModels)
+    : claudeCodeWrapperShellScript(config, profile, runtimeFile, apiKeyHelperFile, mcpConfigFile, launchModels);
   const writeResult = writeGeneratedFileIfChanged(file, content, { mode: privateExecutableMode });
   return {
     changed: writeResult.changed || runtimeResult.changed,
@@ -1168,7 +1256,14 @@ function claudeCodeWrapperFilename(profile: ProfileConfig): string {
     : `ccr-claude-code-wrapper-${slug}`;
 }
 
-function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig, runtimeFile: string, apiKeyHelperFile: string, mcpConfigFile: string | undefined): string {
+function claudeCodeWrapperShellScript(
+  config: AppConfig,
+  profile: ProfileConfig,
+  runtimeFile: string,
+  apiKeyHelperFile: string,
+  mcpConfigFile: string | undefined,
+  launchModels: ClaudeCodeLaunchModels
+): string {
   const realClaude = profile.env?.CCR_CLAUDE_CODE_BIN?.trim() || "claude";
   const surface = normalizeProfileSurface(profile.surface);
   const remoteEndpoint = `${gatewayEndpoint(config)}/__ccr/remote`;
@@ -1179,10 +1274,11 @@ function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig,
   const botEnvExports = shellBotGatewayEnvExports(config, profile);
   return [
     "#!/bin/sh",
-    "unset CLAUDE_CONFIG_DIR CLAUDE_CODE_HOST_AUTH_ENV_VAR CCR_CLAUDE_CODE_AUTH_HELPER CCR_CLAUDE_CODE_CONFIG_MODE",
+    `unset CLAUDE_CONFIG_DIR CLAUDE_CODE_HOST_AUTH_ENV_VAR CCR_CLAUDE_CODE_AUTH_HELPER CCR_CLAUDE_CODE_CONFIG_MODE ${CLAUDE_CODE_MANAGED_SETTINGS_ENV}`,
     ...envExports,
-    ...shellEnvExports(claudeCodeRuntimeEnv(config, profile, settingsDir)),
+    ...shellEnvExports(claudeCodeRuntimeEnv(config, launchModels, settingsDir)),
     ...shellEnvExports(claudeCodeInheritedAuthEnv(profile, apiKeyHelperFile)),
+    ...shellEnvExports(claudeCodeManagedSettingsEnv(launchModels.managedSettings)),
     ...shellEnvExports(claudeCodeMcpConfigEnv(mcpConfigFile)),
     ...shellEnvExports(claudeCodeUtcTimezoneEnvOverride()),
     `: "\${CCR_PROFILE_SURFACE:=${surface}}"`,
@@ -1202,7 +1298,14 @@ function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig,
   ].join("\n");
 }
 
-function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, runtimeFile: string, apiKeyHelperFile: string, mcpConfigFile: string | undefined): string {
+function claudeCodeWrapperCmdScript(
+  config: AppConfig,
+  profile: ProfileConfig,
+  runtimeFile: string,
+  apiKeyHelperFile: string,
+  mcpConfigFile: string | undefined,
+  launchModels: ClaudeCodeLaunchModels
+): string {
   const realClaude = profile.env?.CCR_CLAUDE_CODE_BIN?.trim() || "claude";
   const surface = normalizeProfileSurface(profile.surface);
   const remoteEndpoint = `${gatewayEndpoint(config)}/__ccr/remote`;
@@ -1217,9 +1320,11 @@ function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, r
     cmdSetLine("CLAUDE_CODE_HOST_AUTH_ENV_VAR", ""),
     cmdSetLine("CCR_CLAUDE_CODE_AUTH_HELPER", ""),
     cmdSetLine("CCR_CLAUDE_CODE_CONFIG_MODE", ""),
+    cmdSetLine(CLAUDE_CODE_MANAGED_SETTINGS_ENV, ""),
     ...envExports,
-    ...cmdEnvExports(claudeCodeRuntimeEnv(config, profile, settingsDir)),
+    ...cmdEnvExports(claudeCodeRuntimeEnv(config, launchModels, settingsDir)),
     ...cmdEnvExports(claudeCodeInheritedAuthEnv(profile, apiKeyHelperFile)),
+    ...cmdEnvExports(claudeCodeManagedSettingsEnv(launchModels.managedSettings)),
     ...cmdEnvExports(claudeCodeMcpConfigEnv(mcpConfigFile)),
     ...cmdEnvExports(claudeCodeUtcTimezoneEnvOverride()),
     `if not defined CCR_PROFILE_SURFACE ${cmdSetLine("CCR_PROFILE_SURFACE", surface)}`,
@@ -1885,7 +1990,11 @@ function writeCodexCliMiddleware(
   };
 }
 
-function claudeCodeRuntimeEnv(config: AppConfig, profile: ProfileConfig, settingsDir: string | undefined): Record<string, string> {
+function claudeCodeRuntimeEnv(
+  config: AppConfig,
+  launchModels: ClaudeCodeLaunchModels,
+  settingsDir: string | undefined
+): Record<string, string> {
   const endpoint = gatewayEndpoint(config);
   const env: Record<string, string> = {
     ANTHROPIC_API_BASE_URL: endpoint,
@@ -1895,15 +2004,13 @@ function claudeCodeRuntimeEnv(config: AppConfig, profile: ProfileConfig, setting
   if (settingsDir) {
     env.CLAUDE_CONFIG_DIR = settingsDir;
   }
-  const model = normalizeClientModel(profile.model);
-  if (model) {
-    env.ANTHROPIC_MODEL = model;
-    env.CCR_CLAUDE_CODE_MODEL = model;
-    env.CODEXL_CLAUDE_CODE_MODEL = model;
+  if (launchModels.model) {
+    env.ANTHROPIC_MODEL = launchModels.model;
+    env.CCR_CLAUDE_CODE_MODEL = launchModels.model;
+    env.CODEXL_CLAUDE_CODE_MODEL = launchModels.model;
   }
-  const smallFastModel = normalizeClientModel(profile.smallFastModel);
-  if (smallFastModel) {
-    env.ANTHROPIC_SMALL_FAST_MODEL = smallFastModel;
+  if (launchModels.smallFastModel) {
+    env.ANTHROPIC_SMALL_FAST_MODEL = launchModels.smallFastModel;
   }
   return env;
 }
@@ -1916,6 +2023,10 @@ function claudeCodeInheritedAuthEnv(profile: ProfileConfig, apiKeyHelperFile: st
     CCR_CLAUDE_CODE_AUTH_HELPER: apiKeyHelperFile,
     CCR_CLAUDE_CODE_CONFIG_MODE: "inherit"
   };
+}
+
+function claudeCodeManagedSettingsEnv(managedSettings: string | undefined): Record<string, string> {
+  return managedSettings ? { [CLAUDE_CODE_MANAGED_SETTINGS_ENV]: managedSettings } : {};
 }
 
 function codexMiddlewareRuntimeFilename(): string {

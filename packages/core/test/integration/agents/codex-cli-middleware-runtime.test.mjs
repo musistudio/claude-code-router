@@ -562,6 +562,174 @@ test("Claude Code wrapper does not duplicate an explicit MCP config argument", {
   assert.deepEqual(observed.argv, ["--mcp-config", explicitMcpConfigFile, "-p", "hi"]);
 });
 
+test("Claude Code wrapper injects the managed model policy", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-managed-settings-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const { fakeCli, outputFile } = writeFakeClaudeCli(dir);
+  const managedSettings = JSON.stringify({
+    availableModels: ["opus", "anthropic/claude-ccr-h736f6c"],
+    enforceAvailableModels: true
+  });
+
+  execFileSync(process.execPath, [runtimeFile, "-p", "hi"], {
+    env: {
+      ...process.env,
+      ANTHROPIC_MODEL: "",
+      CCR_CLAUDE_CODE_MANAGED_SETTINGS: managedSettings,
+      CCR_CLAUDE_CODE_MODEL: "",
+      CCR_CLAUDE_CODE_WRAPPER: "1",
+      CCR_FAKE_CLAUDE_OUT: outputFile,
+      CCR_REAL_CLAUDE_CODE_BIN: fakeCli,
+      CODEXL_CLAUDE_CODE_MODEL: "",
+      CCR_REMOTE_SYNC_ENABLED: "0"
+    },
+    stdio: "pipe"
+  });
+
+  const observed = JSON.parse(readFileSync(outputFile, "utf8"));
+  assert.deepEqual(observed.argv, ["--managed-settings", managedSettings, "-p", "hi"]);
+  assert.equal(observed.env.CCR_CLAUDE_CODE_MANAGED_SETTINGS, "");
+});
+
+test("Claude Code wrapper composes managed policy with both ordinary settings syntaxes", { skip: process.platform === "win32" }, () => {
+  for (const syntax of ["separate", "equals"]) {
+    const dir = mkdtempSync(path.join(os.tmpdir(), `ccr-runtime-managed-with-settings-${syntax}-`));
+    const runtimeFile = writeRuntimeScript(dir);
+    const { fakeCli, outputFile } = writeFakeClaudeCli(dir);
+    const managedSettings = JSON.stringify({
+      availableModels: ["opus", "anthropic/claude-ccr-h736f6c"],
+      enforceAvailableModels: true
+    });
+    const manualSettingsFile = path.join(dir, "manual-settings.json");
+    const explicitArgs = syntax === "separate"
+      ? ["--settings", manualSettingsFile, "-p", "hi"]
+      : [`--settings=${manualSettingsFile}`, "-p", "hi"];
+
+    execFileSync(process.execPath, [runtimeFile, ...explicitArgs], {
+      env: {
+        ...process.env,
+        ANTHROPIC_MODEL: "",
+        CCR_CLAUDE_CODE_MANAGED_SETTINGS: managedSettings,
+        CCR_CLAUDE_CODE_MODEL: "",
+        CCR_CLAUDE_CODE_WRAPPER: "1",
+        CCR_FAKE_CLAUDE_OUT: outputFile,
+        CCR_REAL_CLAUDE_CODE_BIN: fakeCli,
+        CODEXL_CLAUDE_CODE_MODEL: "",
+        CCR_REMOTE_SYNC_ENABLED: "0"
+      },
+      stdio: "pipe"
+    });
+
+    const observed = JSON.parse(readFileSync(outputFile, "utf8"));
+    assert.deepEqual(observed.argv, ["--managed-settings", managedSettings, ...explicitArgs]);
+  }
+});
+
+test("Claude Code wrapper rejects both explicit managed settings syntaxes", { skip: process.platform === "win32" }, () => {
+  for (const syntax of ["separate", "equals"]) {
+    const dir = mkdtempSync(path.join(os.tmpdir(), `ccr-runtime-managed-conflict-${syntax}-`));
+    const runtimeFile = writeRuntimeScript(dir);
+    const { fakeCli, outputFile } = writeFakeClaudeCli(dir);
+    const managedSettings = JSON.stringify({
+      availableModels: ["opus", "anthropic/claude-ccr-h736f6c"],
+      enforceAvailableModels: true
+    });
+    const explicitManagedSettings = JSON.stringify({ availableModels: ["fable"] });
+    const explicitArgs = syntax === "separate"
+      ? ["--managed-settings", explicitManagedSettings, "-p", "hi"]
+      : [`--managed-settings=${explicitManagedSettings}`, "-p", "hi"];
+
+    const result = spawnSync(process.execPath, [runtimeFile, ...explicitArgs], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ANTHROPIC_MODEL: "",
+        CCR_CLAUDE_CODE_MANAGED_SETTINGS: managedSettings,
+        CCR_CLAUDE_CODE_MODEL: "",
+        CCR_CLAUDE_CODE_WRAPPER: "1",
+        CCR_FAKE_CLAUDE_OUT: outputFile,
+        CCR_REAL_CLAUDE_CODE_BIN: fakeCli,
+        CODEXL_CLAUDE_CODE_MODEL: "",
+        CCR_REMOTE_SYNC_ENABLED: "0"
+      }
+    });
+
+    assert.notEqual(result.status, 0, `${syntax} syntax unexpectedly launched Claude Code`);
+    assert.equal(existsSync(outputFile), false, `${syntax} syntax reached the real CLI`);
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /profile[^\n]*--managed-settings|--managed-settings[^\n]*profile/i
+    );
+  }
+});
+
+test("Claude Code wrapper ignores managed-settings text in option values and after the delimiter", { skip: process.platform === "win32" }, () => {
+  for (const explicitArgs of [
+    ["-p", "--managed-settings"],
+    ["--", "--managed-settings"]
+  ]) {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-managed-literal-"));
+    const runtimeFile = writeRuntimeScript(dir);
+    const { fakeCli, outputFile } = writeFakeClaudeCli(dir);
+    const managedSettings = JSON.stringify({
+      availableModels: ["opus", "anthropic/claude-ccr-h736f6c"],
+      enforceAvailableModels: true
+    });
+
+    execFileSync(process.execPath, [runtimeFile, ...explicitArgs], {
+      env: {
+        ...process.env,
+        ANTHROPIC_MODEL: "",
+        CCR_CLAUDE_CODE_MANAGED_SETTINGS: managedSettings,
+        CCR_CLAUDE_CODE_MODEL: "",
+        CCR_CLAUDE_CODE_WRAPPER: "1",
+        CCR_FAKE_CLAUDE_OUT: outputFile,
+        CCR_REAL_CLAUDE_CODE_BIN: fakeCli,
+        CODEXL_CLAUDE_CODE_MODEL: "",
+        CCR_REMOTE_SYNC_ENABLED: "0"
+      },
+      stdio: "pipe"
+    });
+
+    const observed = JSON.parse(readFileSync(outputFile, "utf8"));
+    assert.deepEqual(observed.argv, ["--managed-settings", managedSettings, ...explicitArgs]);
+  }
+});
+
+test("Claude Code wrapper injects managed policy when diagnostic flags are literal values", { skip: process.platform === "win32" }, () => {
+  for (const explicitArgs of [
+    ["-p", "--help"],
+    ["--append-system-prompt", "--version", "-p", "hi"],
+    ["--model", "haiku", "--", "--help"]
+  ]) {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-managed-diagnostic-literal-"));
+    const runtimeFile = writeRuntimeScript(dir);
+    const { fakeCli, outputFile } = writeFakeClaudeCli(dir);
+    const managedSettings = JSON.stringify({
+      availableModels: ["opus", "fable"],
+      enforceAvailableModels: true
+    });
+
+    execFileSync(process.execPath, [runtimeFile, ...explicitArgs], {
+      env: {
+        ...process.env,
+        ANTHROPIC_MODEL: "",
+        CCR_CLAUDE_CODE_MANAGED_SETTINGS: managedSettings,
+        CCR_CLAUDE_CODE_MODEL: "",
+        CCR_CLAUDE_CODE_WRAPPER: "1",
+        CCR_FAKE_CLAUDE_OUT: outputFile,
+        CCR_REAL_CLAUDE_CODE_BIN: fakeCli,
+        CODEXL_CLAUDE_CODE_MODEL: "",
+        CCR_REMOTE_SYNC_ENABLED: "0"
+      },
+      stdio: "pipe"
+    });
+
+    const observed = JSON.parse(readFileSync(outputFile, "utf8"));
+    assert.deepEqual(observed.argv, ["--managed-settings", managedSettings, ...explicitArgs]);
+  }
+});
+
 test("inherited Claude Code wrapper authenticates from its generated helper", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-inherited-auth-"));
   const runtimeFile = writeRuntimeScript(dir);
@@ -1188,6 +1356,7 @@ function writeFakeClaudeCli(dir) {
     "    CLAUDE_CODE_HOST_AUTH_ENV_VAR: process.env.CLAUDE_CODE_HOST_AUTH_ENV_VAR || '',",
     "    CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR || '',",
     "    CCR_CLAUDE_CODE_AUTH_HELPER: process.env.CCR_CLAUDE_CODE_AUTH_HELPER || '',",
+    "    CCR_CLAUDE_CODE_MANAGED_SETTINGS: process.env.CCR_CLAUDE_CODE_MANAGED_SETTINGS || '',",
     "    CCR_CLAUDE_CODE_MODEL: process.env.CCR_CLAUDE_CODE_MODEL || '',",
     "    CCR_CLAUDE_CODE_MCP_CONFIG: process.env.CCR_CLAUDE_CODE_MCP_CONFIG || '',",
     "    CCR_REMOTE_SYNC_API_KEY: process.env.CCR_REMOTE_SYNC_API_KEY || '',",

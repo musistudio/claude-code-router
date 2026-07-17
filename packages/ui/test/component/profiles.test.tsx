@@ -135,6 +135,119 @@ test("inherited Claude Code configuration survives profile editing", () => {
   assert.equal(saved.settingsFile, "~/.claude/settings.json");
 });
 
+test("Claude Code allowed models survive profile editing", () => {
+  const existing = {
+    ...profile,
+    allowedModels: ["opus", "fable", "openai/gpt-5.6-sol"],
+    scope: "ccr",
+    surface: "cli"
+  } satisfies ProfileConfig;
+  const draft = createProfileDraftFromProfile(existing);
+
+  assert.equal(draft.allowedModels, "opus\nfable\nopenai/gpt-5.6-sol");
+  const saved = profileConfigFromDraft(draft, [existing], existing);
+  assert.deepEqual(saved.allowedModels, ["opus", "fable", "openai/gpt-5.6-sol"]);
+  assert.deepEqual(
+    profileSummaryItems(existing, appConfigFixture(), (value) => value)
+      .find((item) => item.label === "Allowed models"),
+    { label: "Allowed models", value: "opus, fable, openai/gpt-5.6-sol" }
+  );
+});
+
+test("Claude Code allowed models accept lines and commas while empty input stays unset", () => {
+  const draft = createProfileDraft("claude-code");
+
+  assert.deepEqual(
+    profileConfigFromDraft({ ...draft, allowedModels: "opus, fable\nopenai/gpt-5.6-sol\nOPUS" }, []).allowedModels,
+    ["opus", "fable", "openai/gpt-5.6-sol"]
+  );
+  assert.equal(profileConfigFromDraft({ ...draft, allowedModels: " \n, " }, []).allowedModels, undefined);
+  assert.equal(profileConfigFromDraft({ ...createProfileDraft("codex"), allowedModels: "opus" }, []).allowedModels, undefined);
+});
+
+test("app-only Claude Code profiles hide and drop allowed models", () => {
+  const existing = {
+    ...profile,
+    allowedModels: ["opus", "fable"],
+    surface: "app"
+  } satisfies ProfileConfig;
+  const draft = createProfileDraftFromProfile(existing);
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={[]}
+      draft={draft}
+      error=""
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={[]}
+    />
+  );
+
+  assert.equal(draft.allowedModels, "");
+  assert.equal(profileConfigFromDraft({ ...draft, allowedModels: "opus" }, [existing], existing).allowedModels, undefined);
+  assert.equal(normalizeUnknownProfileItem(existing, 0)?.allowedModels, undefined);
+  assert.equal(
+    profileSummaryItems(existing, appConfigFixture(), (value) => value)
+      .find((item) => item.label === "Allowed models"),
+    undefined
+  );
+  assert.doesNotMatch(html, /Allowed models/);
+  assert.doesNotMatch(html, /Use native aliases such as opus or fable/);
+});
+
+test("global Claude Code profiles hide and drop allowed models", () => {
+  const existing = {
+    ...profile,
+    allowedModels: ["opus", "fable"],
+    scope: "global",
+    surface: "cli"
+  } satisfies ProfileConfig;
+  const draft = createProfileDraftFromProfile(existing);
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={[]}
+      draft={draft}
+      error=""
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={[]}
+    />
+  );
+
+  assert.equal(draft.allowedModels, "");
+  assert.equal(profileConfigFromDraft({ ...draft, allowedModels: "opus" }, [existing], existing).allowedModels, undefined);
+  assert.equal(normalizeUnknownProfileItem(existing, 0)?.allowedModels, undefined);
+  assert.equal(
+    profileSummaryItems(existing, appConfigFixture(), (value) => value)
+      .find((item) => item.label === "Allowed models"),
+    undefined
+  );
+  assert.doesNotMatch(html, /Allowed models/);
+  assert.doesNotMatch(html, /Use native aliases such as opus or fable/);
+});
+
+test("auto Claude Code profiles retain and expose allowed models", () => {
+  const draft = {
+    ...createProfileDraft("claude-code"),
+    allowedModels: "opus, fable",
+    surface: "auto" as const
+  };
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={[]}
+      draft={draft}
+      error=""
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={[]}
+    />
+  );
+
+  assert.deepEqual(profileConfigFromDraft(draft, []).allowedModels, ["opus", "fable"]);
+  assert.match(html, /Allowed models/);
+  assert.match(html, /Use native aliases such as opus or fable/);
+});
+
 test("persisted inherited Claude Code configuration survives normalization", () => {
   const normalized = normalizeUnknownProfileItem({
     agent: "claude-code",
@@ -149,6 +262,21 @@ test("persisted inherited Claude Code configuration survives normalization", () 
   }, 0);
 
   assert.equal(normalized?.claudeConfigMode, "inherit");
+});
+
+test("persisted Claude Code allowed models survive normalization", () => {
+  const normalized = normalizeUnknownProfileItem({
+    agent: "claude-code",
+    allowedModels: [" opus ", "fable", "opus", null],
+    enabled: true,
+    id: "allowed-models-cli",
+    model: "",
+    name: "Allowed Models CLI",
+    scope: "ccr",
+    surface: "cli"
+  }, 0);
+
+  assert.deepEqual(normalized?.allowedModels, ["opus", "fable"]);
 });
 
 test("inherited Claude Code profile summary identifies the reused configuration", () => {
@@ -201,6 +329,24 @@ test("Claude Code profile form exposes isolated and inherited configuration", ()
   assert.match(html, /Claude configuration/);
   assert.match(html, /Isolated CCR configuration/);
   assert.match(html, /Reuse existing Claude configuration/);
+  assert.match(html, /Allowed models/);
+  assert.match(html, /Use native aliases such as opus or fable/);
+});
+
+test("non-Claude profile form hides the allowed models control", () => {
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={[]}
+      draft={createProfileDraft("codex")}
+      error=""
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={[]}
+    />
+  );
+
+  assert.doesNotMatch(html, /Allowed models/);
+  assert.doesNotMatch(html, /Use native aliases such as opus or fable/);
 });
 
 test("system-default Claude Code profile form hides CCR configuration modes", () => {

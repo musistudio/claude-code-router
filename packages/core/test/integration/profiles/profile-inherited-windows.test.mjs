@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -55,6 +55,7 @@ async function runWindowsHarness() {
   writeFileSync(fakeClientScript, [
     "const fs = require('node:fs');",
     "fs.writeFileSync(process.env.CCR_WINDOWS_INHERIT_OUTPUT, JSON.stringify({",
+    "  argv: process.argv.slice(2),",
     "  authToken: process.env.ANTHROPIC_AUTH_TOKEN || '',",
     "  hostAuthEnvVar: process.env.CLAUDE_CODE_HOST_AUTH_ENV_VAR || '',",
     "  configDir: process.env.CLAUDE_CONFIG_DIR || ''",
@@ -68,10 +69,16 @@ async function runWindowsHarness() {
     ""
   ].join("\r\n"));
 
-  const [{ createDefaultAppConfig }, { CONFIGDIR }, { applyProfileConfig }] = await Promise.all([
+  const [
+    { createDefaultAppConfig },
+    { CONFIGDIR },
+    { applyProfileConfig },
+    { compileClaudeCodeAllowedModels }
+  ] = await Promise.all([
     import("@ccr/core/config/default-config.ts"),
     import("@ccr/core/config/constants.ts"),
-    import("@ccr/core/profiles/service.ts")
+    import("@ccr/core/profiles/service.ts"),
+    import("@ccr/core/profiles/claude-code-model-policy.ts")
   ]);
   const profileId = "windows-inherited-wrapper";
   const config = createDefaultAppConfig({
@@ -93,6 +100,7 @@ async function runWindowsHarness() {
   }];
   config.profile.profiles = [{
     agent: "claude-code",
+    allowedModels: ["Provider/model"],
     claudeConfigMode: "inherit",
     enabled: true,
     env: {
@@ -107,6 +115,12 @@ async function runWindowsHarness() {
     smallFastModel: "",
     surface: "cli"
   }];
+  const managedPolicy = compileClaudeCodeAllowedModels(
+    config,
+    config.profile.profiles[0].allowedModels
+  );
+  assert.ok(managedPolicy);
+  const managedSettings = JSON.stringify(managedPolicy);
 
   const applied = await applyProfileConfig(config);
   const status = applied.clients.find((entry) => entry.client === "claude-code" && entry.enabled);
@@ -115,6 +129,18 @@ async function runWindowsHarness() {
   const wrapperFile = status.path;
   assert.ok(wrapperFile);
   assert.equal(wrapperFile.startsWith(CONFIGDIR), true);
+  const legacyOverlayFile = path.join(
+    CONFIGDIR,
+    "profiles",
+    profileId,
+    "claude",
+    "allowed-models.settings.json"
+  );
+  const wrapperWithPolicy = readFileSync(wrapperFile, "utf8");
+  assert.equal(existsSync(legacyOverlayFile), false);
+  assert.match(wrapperWithPolicy, /set "CCR_CLAUDE_CODE_MANAGED_SETTINGS=[^"\r\n]+"/);
+  assert.match(wrapperWithPolicy, /availableModels/);
+  assert.equal(wrapperWithPolicy.includes(managedPolicy.availableModels.at(-1)), true);
 
   const command = `call "${wrapperFile}" -p hi`;
   const launched = spawnSync(process.env.ComSpec || process.env.COMSPEC || "cmd.exe", ["/d", "/s", "/c", command], {
@@ -131,7 +157,9 @@ async function runWindowsHarness() {
   assert.equal(observed.authToken, "ccr-profile-test");
   assert.equal(observed.hostAuthEnvVar, "ANTHROPIC_AUTH_TOKEN");
   assert.equal(observed.configDir, settingsDir);
+  assert.deepEqual(observed.argv, ["--managed-settings", managedSettings, "-p", "hi"]);
 
+  delete config.profile.profiles[0].allowedModels;
   config.profile.profiles[0].settingsFile = "~/.claude/settings.json";
   const defaultApplied = await applyProfileConfig(config);
   const defaultStatus = defaultApplied.clients.find((entry) => entry.client === "claude-code" && entry.enabled);
@@ -140,6 +168,9 @@ async function runWindowsHarness() {
   const defaultWrapper = readFileSync(wrapperFile, "utf8");
   assert.match(defaultWrapper, /set "CLAUDE_CONFIG_DIR="/);
   assert.doesNotMatch(defaultWrapper, /set "CLAUDE_CONFIG_DIR=[^\r\n]+"/);
+  assert.match(defaultWrapper, /set "CCR_CLAUDE_CODE_MANAGED_SETTINGS="/);
+  assert.doesNotMatch(defaultWrapper, /set "CCR_CLAUDE_CODE_MANAGED_SETTINGS=[^"\r\n]+"/);
+  assert.equal(existsSync(legacyOverlayFile), false);
   assert.equal(defaultWrapper.includes("C:\\untrusted-profile-config"), false);
 
   const defaultLaunched = spawnSync(process.env.ComSpec || process.env.COMSPEC || "cmd.exe", ["/d", "/s", "/c", command], {
@@ -157,4 +188,5 @@ async function runWindowsHarness() {
   assert.equal(defaultObserved.authToken, "ccr-profile-test");
   assert.equal(defaultObserved.hostAuthEnvVar, "ANTHROPIC_AUTH_TOKEN");
   assert.equal(defaultObserved.configDir, "");
+  assert.deepEqual(defaultObserved.argv, ["-p", "hi"]);
 }

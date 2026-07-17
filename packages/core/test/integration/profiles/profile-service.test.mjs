@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 import { CONFIGDIR } from "@ccr/core/config/constants.ts";
+import { buildClaudeAppGatewayModelRoutes } from "@ccr/core/agents/claude-app/gateway-routes.ts";
 import { applyProfileConfig, cleanupGeneratedBinBackups, resolveGrokSourceHome, resolveKimiSourceHome, restoreInactiveGlobalProfileConfigs, restoreGlobalProfileConfigsOnExit } from "@ccr/core/profiles/service.ts";
 
 function inheritedClaudeProfileConfig(profileId, settingsFile) {
@@ -375,6 +376,273 @@ test("inherited Claude Code profiles do not create managed settings", { skip: !p
       []
     );
   } finally {
+    rmSync(userConfigDir, { force: true, recursive: true });
+  }
+});
+
+test("inherited Claude Code model policy uses managed settings without changing user settings", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "inherited-model-policy-test";
+  const userConfigDir = mkdtempSync(path.join(os.tmpdir(), "ccr-inherited-model-policy-"));
+  const settingsFile = path.join(userConfigDir, "settings.json");
+  const originalSettings = '{\n  "statusLine" : {"type":"command","command":"status"},\n  "env": {"USER_SECRET":"kept"}\n}';
+  const legacyOverlayFile = path.join(
+    CONFIGDIR,
+    "profiles",
+    profileId,
+    "claude",
+    "allowed-models.settings.json"
+  );
+  const commandExtension = process.platform === "win32" ? ".cmd" : "";
+  const wrapperFile = path.join(
+    CONFIGDIR,
+    "bin",
+    `ccr-claude-code-wrapper-${profileId}${commandExtension}`
+  );
+  writeFileSync(settingsFile, originalSettings);
+
+  const assertUserSettingsUntouched = () => {
+    assert.equal(readFileSync(settingsFile, "utf8"), originalSettings);
+  };
+
+  try {
+    const config = inheritedClaudeProfileConfig(profileId, settingsFile);
+    config.profile.profiles[0].allowedModels = ["opus", "fable", "Provider/model"];
+    const route = buildClaudeAppGatewayModelRoutes(config)
+      .find((candidate) => candidate.targetModel === "Provider/model");
+    assert.ok(route);
+
+    const applied = await applyProfileConfig(config);
+    assert.equal(applied.clients[0].ok, true);
+    assertUserSettingsUntouched();
+    assert.equal(existsSync(legacyOverlayFile), false);
+    const wrapperWithPolicy = readFileSync(wrapperFile, "utf8");
+    assert.match(wrapperWithPolicy, /CCR_CLAUDE_CODE_MANAGED_SETTINGS/);
+    assert.match(wrapperWithPolicy, /availableModels/);
+    assert.equal(wrapperWithPolicy.includes(route.id), true);
+    assert.equal(
+      wrapperWithPolicy.includes(`export CCR_CLAUDE_CODE_MODEL='${route.id}'`),
+      process.platform !== "win32"
+    );
+    assert.equal(wrapperWithPolicy.includes("Provider/model"), false);
+    assert.doesNotMatch(wrapperWithPolicy, /USER_SECRET|provider-key|ccr-profile-test/);
+
+    config.profile.profiles[0].allowedModels = ["opus", "fable"];
+    const rejectedModel = await applyProfileConfig(config);
+    assert.equal(rejectedModel.clients[0].ok, false);
+    assert.match(rejectedModel.clients[0].message, /profile model[^\n]*not included in allowedModels/i);
+    assert.equal(existsSync(wrapperFile), false);
+
+    config.profile.profiles[0].allowedModels = ["opus", "fable", "Provider/model"];
+    config.profile.profiles[0].smallFastModel = "haiku";
+    const rejectedSmallFastModel = await applyProfileConfig(config);
+    assert.equal(rejectedSmallFastModel.clients[0].ok, false);
+    assert.match(
+      rejectedSmallFastModel.clients[0].message,
+      /smallFastModel[^\n]*not included in allowedModels/i
+    );
+    assert.equal(existsSync(wrapperFile), false);
+
+    config.profile.profiles[0].smallFastModel = "";
+    assert.equal((await applyProfileConfig(config)).clients[0].ok, true);
+
+    delete config.profile.profiles[0].allowedModels;
+    assert.equal((await applyProfileConfig(config)).clients[0].ok, true);
+    assertUserSettingsUntouched();
+    assert.equal(existsSync(legacyOverlayFile), false);
+    const wrapperWithoutPolicy = readFileSync(wrapperFile, "utf8");
+    assert.match(wrapperWithoutPolicy, /CCR_CLAUDE_CODE_MANAGED_SETTINGS/);
+    assert.doesNotMatch(wrapperWithoutPolicy, /availableModels/);
+    assert.equal(wrapperWithoutPolicy.includes(route.id), false);
+
+    config.profile.profiles[0].allowedModels = ["opus", "fable", "Provider/model"];
+    assert.equal((await applyProfileConfig(config)).clients[0].ok, true);
+    assert.equal(existsSync(legacyOverlayFile), false);
+    config.profile.profiles[0].enabled = false;
+    assert.equal((await applyProfileConfig(config)).clients[0].ok, true);
+    assertUserSettingsUntouched();
+    assert.equal(existsSync(legacyOverlayFile), false);
+    assert.equal(existsSync(wrapperFile), false);
+
+    config.profile.profiles[0].enabled = true;
+    assert.equal((await applyProfileConfig(config)).clients[0].ok, true);
+    assert.equal(existsSync(legacyOverlayFile), false);
+    config.profile.profiles = [];
+    assert.equal((await applyProfileConfig(config)).clients.length, 0);
+    assertUserSettingsUntouched();
+    assert.equal(existsSync(legacyOverlayFile), false);
+  } finally {
+    rmSync(userConfigDir, { force: true, recursive: true });
+  }
+});
+
+test("CCR-owned Claude settings keep model policy wrapper-only without dropping unrelated settings", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "isolated-model-policy-lifecycle-test";
+  const profileDir = path.join(CONFIGDIR, "profiles", profileId);
+  const settingsFile = path.join(profileDir, "claude", "settings.json");
+  const legacyOverlayFile = path.join(profileDir, "claude", "allowed-models.settings.json");
+  const commandExtension = process.platform === "win32" ? ".cmd" : "";
+  const wrapperFile = path.join(
+    CONFIGDIR,
+    "bin",
+    `ccr-claude-code-wrapper-${profileId}${commandExtension}`
+  );
+  rmSync(profileDir, { force: true, recursive: true });
+  mkdirSync(path.dirname(settingsFile), { recursive: true });
+  writeFileSync(settingsFile, `${JSON.stringify({
+    env: {
+      USER_VALUE: "kept"
+    },
+    hooks: {
+      PreToolUse: []
+    },
+    theme: "dark"
+  }, null, 2)}\n`);
+
+  const config = inheritedClaudeProfileConfig(profileId, "~/.claude/settings.json");
+  config.profile.profiles[0].claudeConfigMode = "isolated";
+  config.profile.profiles[0].allowedModels = ["opus", "fable", "Provider/model"];
+  const route = buildClaudeAppGatewayModelRoutes(config)
+    .find((candidate) => candidate.targetModel === "Provider/model");
+  assert.ok(route);
+
+  try {
+    assert.equal((await applyProfileConfig(config)).clients[0].ok, true);
+    const restrictedSettings = JSON.parse(readFileSync(settingsFile, "utf8"));
+    assert.equal(restrictedSettings.availableModels, undefined);
+    assert.equal(restrictedSettings.enforceAvailableModels, undefined);
+    assert.equal(restrictedSettings.theme, "dark");
+    assert.deepEqual(restrictedSettings.hooks, { PreToolUse: [] });
+    assert.equal(restrictedSettings.env.USER_VALUE, "kept");
+    assert.equal(existsSync(legacyOverlayFile), false);
+    const wrapperWithPolicy = readFileSync(wrapperFile, "utf8");
+    assert.match(wrapperWithPolicy, /CCR_CLAUDE_CODE_MANAGED_SETTINGS/);
+    assert.match(wrapperWithPolicy, /availableModels/);
+    assert.equal(wrapperWithPolicy.includes(route.id), true);
+
+    delete config.profile.profiles[0].allowedModels;
+    assert.equal((await applyProfileConfig(config)).clients[0].ok, true);
+    const unrestrictedSettings = JSON.parse(readFileSync(settingsFile, "utf8"));
+    assert.equal(unrestrictedSettings.availableModels, undefined);
+    assert.equal(unrestrictedSettings.enforceAvailableModels, undefined);
+    assert.equal(unrestrictedSettings.theme, "dark");
+    assert.deepEqual(unrestrictedSettings.hooks, { PreToolUse: [] });
+    assert.equal(unrestrictedSettings.env.USER_VALUE, "kept");
+    assert.equal(existsSync(legacyOverlayFile), false);
+    const wrapperWithoutPolicy = readFileSync(wrapperFile, "utf8");
+    assert.match(wrapperWithoutPolicy, /CCR_CLAUDE_CODE_MANAGED_SETTINGS/);
+    assert.doesNotMatch(wrapperWithoutPolicy, /availableModels/);
+    assert.equal(wrapperWithoutPolicy.includes(route.id), false);
+  } finally {
+    config.profile.profiles = [];
+    await applyProfileConfig(config);
+    rmSync(profileDir, { force: true, recursive: true });
+  }
+});
+
+test("global Claude settings ignore profile allowlists and preserve the user's model policy", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const previousHome = process.env.HOME;
+  const home = mkdtempSync(path.join(os.tmpdir(), "ccr-global-model-policy-"));
+  const settingsFile = path.join(home, ".claude", "settings.json");
+  const profileId = "global-model-policy-test";
+  const commandExtension = process.platform === "win32" ? ".cmd" : "";
+  const wrapperFile = path.join(
+    CONFIGDIR,
+    "bin",
+    `ccr-claude-code-wrapper-${profileId}${commandExtension}`
+  );
+  const legacyOverlayFile = path.join(
+    CONFIGDIR,
+    "profiles",
+    profileId,
+    "claude",
+    "allowed-models.settings.json"
+  );
+  const originalSettings = {
+    availableModels: ["opus", "fable"],
+    enforceAvailableModels: false,
+    env: {
+      USER_VALUE: "kept"
+    },
+    theme: "dark"
+  };
+  mkdirSync(path.dirname(settingsFile), { recursive: true });
+  writeFileSync(settingsFile, `${JSON.stringify(originalSettings, null, 2)}\n`);
+  process.env.HOME = home;
+
+  const config = inheritedClaudeProfileConfig(profileId, "~/.claude/settings.json");
+  config.profile.profiles[0].claudeConfigMode = "isolated";
+  config.profile.profiles[0].scope = "global";
+  config.profile.profiles[0].surface = "auto";
+  config.profile.profiles[0].allowedModels = ["Provider/model"];
+  const route = buildClaudeAppGatewayModelRoutes(config)
+    .find((candidate) => candidate.targetModel === "Provider/model");
+  assert.ok(route);
+
+  try {
+    assert.equal((await applyProfileConfig(config)).clients[0].ok, true);
+    const restrictedSettings = JSON.parse(readFileSync(settingsFile, "utf8"));
+    assert.deepEqual(restrictedSettings.availableModels, originalSettings.availableModels);
+    assert.equal(restrictedSettings.enforceAvailableModels, originalSettings.enforceAvailableModels);
+    assert.equal(restrictedSettings.theme, "dark");
+    assert.equal(restrictedSettings.env.USER_VALUE, "kept");
+    assert.equal(existsSync(legacyOverlayFile), false);
+    const wrapperWithIgnoredPolicy = readFileSync(wrapperFile, "utf8");
+    assert.match(wrapperWithIgnoredPolicy, /CCR_CLAUDE_CODE_MANAGED_SETTINGS/);
+    assert.doesNotMatch(wrapperWithIgnoredPolicy, /availableModels/);
+    assert.equal(wrapperWithIgnoredPolicy.includes(route.id), false);
+
+    delete config.profile.profiles[0].allowedModels;
+    assert.equal((await applyProfileConfig(config)).clients[0].ok, true);
+    const restoredSettings = JSON.parse(readFileSync(settingsFile, "utf8"));
+    assert.deepEqual(restoredSettings.availableModels, originalSettings.availableModels);
+    assert.equal(restoredSettings.enforceAvailableModels, originalSettings.enforceAvailableModels);
+    assert.equal(restoredSettings.theme, "dark");
+    assert.equal(restoredSettings.env.USER_VALUE, "kept");
+    assert.equal(existsSync(legacyOverlayFile), false);
+    const wrapperWithoutPolicy = readFileSync(wrapperFile, "utf8");
+    assert.match(wrapperWithoutPolicy, /CCR_CLAUDE_CODE_MANAGED_SETTINGS/);
+    assert.doesNotMatch(wrapperWithoutPolicy, /availableModels/);
+    assert.equal(wrapperWithoutPolicy.includes(route.id), false);
+  } finally {
+    config.profile.profiles = [];
+    await applyProfileConfig(config);
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+    rmSync(home, { force: true, recursive: true });
+  }
+});
+
+test("Claude Code model policy rejects an oversized launch payload", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "oversized-model-policy-test";
+  const userConfigDir = mkdtempSync(path.join(os.tmpdir(), "ccr-oversized-model-policy-"));
+  const settingsFile = path.join(userConfigDir, "settings.json");
+  const commandExtension = process.platform === "win32" ? ".cmd" : "";
+  const wrapperFile = path.join(
+    CONFIGDIR,
+    "bin",
+    `ccr-claude-code-wrapper-${profileId}${commandExtension}`
+  );
+  writeFileSync(settingsFile, "{}\n");
+
+  const config = inheritedClaudeProfileConfig(profileId, settingsFile);
+  config.profile.profiles[0].model = "";
+  config.profile.profiles[0].allowedModels = Array.from(
+    { length: 64 },
+    (_, index) => `claude-opus-${index}-${"x".repeat(96)}`
+  );
+
+  try {
+    const applied = await applyProfileConfig(config);
+    assert.equal(applied.clients[0].ok, false);
+    assert.match(applied.clients[0].message, /compiled policy exceeds 6144 UTF-8 bytes/i);
+    assert.equal(existsSync(wrapperFile), false);
+    assert.equal(readFileSync(settingsFile, "utf8"), "{}\n");
+  } finally {
+    config.profile.profiles = [];
+    await applyProfileConfig(config);
     rmSync(userConfigDir, { force: true, recursive: true });
   }
 });
