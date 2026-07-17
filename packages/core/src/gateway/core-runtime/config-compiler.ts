@@ -1,42 +1,49 @@
 /**
  * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
  */
-import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol } from "@ccr/core/contracts/app";
+import { join as pathJoin } from "node:path";
+import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
 import { codexDefaultBaseUrl, readCodexAuth, readGrokAuth, resolveGrokAuth } from "@ccr/core/agents/local-providers/service";
 import { grokAccessTokenExpired, grokClientVersion } from "@ccr/core/agents/local-providers/grok";
 import { pluginService } from "@ccr/core/plugins/service";
 import { normalizeRouteSelector, providerRuntimeId } from "@ccr/core/routing/model-registry";
-import { isRecord, stringValue } from "@ccr/core/gateway/internal/value";
+import { isRecord, stringListValue, stringValue } from "@ccr/core/gateway/internal/value";
 import { fusionBuiltinToolArtifacts, fusionToolFallbackMcpServer, normalizeFusionWebSearchProfileToolName, toolHubMcpServer, withCodexCompatibleVirtualModelProfiles, withFusionVirtualModelAliases, withFusionWebSearchToolInstructions } from "@ccr/core/mcp/fusion-config";
 import { resolveGatewayPublicModelId } from "@ccr/core/gateway/features/model-discovery";
 import { activeProviderCredentials, inferProtocol, normalizedProviderCapabilities, normalizeProviderProtocol, providerCapabilityForClientProtocol, providerCapabilityInternalName, providerCredentialInternalName, providerProtocolForClientProtocol, sortProviderCredentialsForConfig, toCoreGatewayProviders } from "@ccr/core/providers/runtime-topology";
 import { buildRawTraceConfig } from "@ccr/core/observability/raw-trace-sync";
 import { endpoint, resolveUndiciProxyAgentModule, writeGatewayProxyPreloadFile } from "@ccr/core/gateway/core-runtime/supervisor";
-import { claudeCodeOauthBetaHeader, claudeCodeOauthRequiredBeta, coreGatewayAuthHeader, coreGatewayAuthTokenEnv } from "@ccr/core/gateway/internal/shared";
+import { billingUsageSyncHeader, billingUsageSyncPath, claudeCodeOauthBetaHeader, claudeCodeOauthRequiredBeta, coreGatewayAuthHeader, coreGatewayAuthTokenEnv } from "@ccr/core/gateway/internal/shared";
 import type { BrowserWebSearchMcpIntegration, CoreGatewayProvider } from "@ccr/core/gateway/internal/shared";
 import { uniqueStrings } from "@ccr/core/gateway/internal/collections";
 import { isLocalClaudeCodeOauthProviderPlugin, mergeAnthropicBetaValues } from "@ccr/core/providers/oauth-plugin";
 import { resolveConfiguredProviderModelSelector, resolveUniqueConfiguredProviderModelSelector } from "@ccr/core/routing/model-resolution";
 
+const upstreamHeaderSanitizerPluginKey = "ccr-upstream-header-sanitizer";
+
 
 export async function compileCoreGatewayConfig(
   config: AppConfig,
   rawTraceSyncToken: string,
+  billingUsageSyncToken: string,
   coreAuthToken: string,
   browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration,
   upstreamProxyUrl?: string
 ): Promise<Record<string, unknown>> {
   const pluginCoreGatewayConfig = pluginService.getCoreGatewayConfig();
+  const configuredGatewayPlugins = Array.isArray(pluginCoreGatewayConfig.plugins)
+    ? pluginCoreGatewayConfig.plugins.filter((plugin) =>
+        !isRecord(plugin) || stringValue(plugin.key) !== upstreamHeaderSanitizerPluginKey
+      )
+    : [];
+  const pluginBillingConfig = isRecord(pluginCoreGatewayConfig.billing) ? pluginCoreGatewayConfig.billing : {};
   const configuredProviderPlugins = normalizeClaudeCodeOauthProviderPlugins([
     ...(config.providerPlugins ?? []).filter(providerPluginEnabled),
     ...pluginService.getCoreProviderPlugins().filter(providerPluginEnabled)
   ]);
   const providerPlugins = await withGrokOauthRuntimeDefaults(withCodexOauthRuntimeDefaults(configuredProviderPlugins));
   const codexOauthProviderNames = codexOauthLocalProviderNames(providerPlugins);
-  const virtualModelProfiles = normalizeCoreGatewayVirtualModelProfiles(withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases([
-    ...(config.virtualModelProfiles ?? []),
-    ...pluginService.getVirtualModelProfiles()
-  ])), config);
+  const virtualModelProfiles = coreGatewayVirtualModelProfiles(config);
   const coreEndpoint = endpoint(config.gateway.coreHost, config.gateway.corePort);
   const proxyPreloadFile = upstreamProxyUrl ? writeGatewayProxyPreloadFile(config, upstreamProxyUrl) : undefined;
   const proxyEnv = upstreamProxyUrl
@@ -48,7 +55,12 @@ export async function compileCoreGatewayConfig(
     coreAuthToken,
     browserWebSearchMcpIntegration,
     proxyPreloadFile,
-    proxyEnv
+    proxyEnv,
+    {
+      endpoint: `${endpoint(config.gateway.host, config.gateway.port)}${billingUsageSyncPath}`,
+      header: billingUsageSyncHeader,
+      token: billingUsageSyncToken
+    }
   );
   const providers = [
     ...config.Providers
@@ -89,6 +101,7 @@ export async function compileCoreGatewayConfig(
       }
     },
     billing: {
+      ...pluginBillingConfig,
       enabled: true
     },
     billingQueue: {
@@ -103,6 +116,14 @@ export async function compileCoreGatewayConfig(
       enabled: false
     },
     port: config.gateway.corePort,
+    plugins: [
+      ...configuredGatewayPlugins,
+      {
+        enabled: true,
+        key: upstreamHeaderSanitizerPluginKey,
+        modulePath: pathJoin(__dirname, "upstream-header-sanitizer.js")
+      }
+    ],
     upstreamTimeoutMs: Number(config.API_TIMEOUT_MS) || 0,
     agent: {
       ...pluginAgentConfig,
@@ -123,6 +144,44 @@ function providerPluginEnabled(plugin: unknown): boolean {
 
 export function normalizeCoreGatewayVirtualModelProfiles(profiles: unknown[], config: AppConfig): unknown[] {
   return profiles.map((profile) => normalizeCoreGatewayVirtualModelProfile(profile, config));
+}
+
+
+export function coreGatewayUsageAttributionConfig(
+  config: AppConfig
+): Pick<AppConfig, "Providers" | "virtualModelProfiles"> {
+  return {
+    Providers: config.Providers,
+    virtualModelProfiles: coreGatewayVirtualModelProfiles(config).flatMap(normalizeUsageVirtualModelProfile)
+  };
+}
+
+
+function coreGatewayVirtualModelProfiles(config: AppConfig): unknown[] {
+  return normalizeCoreGatewayVirtualModelProfiles(withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases([
+    ...(config.virtualModelProfiles ?? []),
+    ...pluginService.getVirtualModelProfiles()
+  ])), config);
+}
+
+
+function normalizeUsageVirtualModelProfile(value: unknown): VirtualModelProfileConfig[] {
+  if (!isRecord(value) || !isRecord(value.match)) {
+    return [];
+  }
+  const match = {
+    exactAliases: stringListValue(value.match.exactAliases),
+    prefixes: stringListValue(value.match.prefixes),
+    suffixes: stringListValue(value.match.suffixes)
+  };
+  if (match.exactAliases.length === 0 && match.prefixes.length === 0 && match.suffixes.length === 0) {
+    return [];
+  }
+  return [{
+    ...value,
+    enabled: value.enabled !== false,
+    match
+  } as VirtualModelProfileConfig];
 }
 
 

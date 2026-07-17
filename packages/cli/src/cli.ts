@@ -550,14 +550,21 @@ function printHelp(exitCode: number): void {
   const command = cliCommandName();
   const output = [
     "Usage:",
-    `  ${command} start [--host <host>] [--port <port>] [--open] [--no-gateway]`,
-    `  ${command} ui [--host <host>] [--port <port>] [--no-gateway]`,
+    `  ${command} start [--host <host>] [--port <port>] [--open|--no-open] [--gateway|--no-gateway]`,
+    `  ${command} ui [--host <host>] [--port <port>] [--open|--no-open] [--gateway|--no-gateway]`,
+    `  ${command} serve [--host <host>] [--port <port>] [--open|--no-open] [--gateway|--no-gateway]`,
     `  ${command} stop`,
     `  ${command} <profile-name-or-id> [cli|app] [-- <agent args>]`,
+    "",
+    "Notes:",
+    `  ${command} web is an alias for ${command} serve.`,
+    "  --cli and --app are alternatives to the positional profile surface.",
+    "  Put agent-specific arguments after --.",
     "",
     "Examples:",
     `  ${command} start`,
     `  ${command} ui`,
+    `  ${command} serve --no-open`,
     `  ${command} stop`,
     `  ${command} Codex`,
     `  ${command} default-codex -- --model gpt-5-codex`,
@@ -572,16 +579,19 @@ function printStartHelp(exitCode: number): void {
   const command = cliCommandName();
   const output = [
     "Usage:",
-    `  ${command} start [--host <host>] [--port <port>] [--open] [--no-gateway]`,
+    `  ${command} start [--host <host>] [--port <port>] [--open|--no-open] [--gateway|--no-gateway]`,
     "",
     "Options:",
-    "  --host <host>    Management server host. Defaults to 127.0.0.1.",
-    "  --port <port>    Management server port. Defaults to 3458.",
+    "  --host <host>    Management server host. Defaults to CCR_WEB_HOST or 127.0.0.1.",
+    "  --port <port>    Management server port. Defaults to CCR_WEB_PORT or 3458.",
     "  --open           Open the management page in the default browser.",
     "  --no-open        Do not open the management page.",
+    "  --gateway        Start the configured model gateway (default).",
     "  --no-gateway     Start only the web management server.",
     "",
     "Environment:",
+    "  CCR_WEB_HOST        Default management server host.",
+    "  CCR_WEB_PORT        Default management server port.",
     "  CCR_WEB_AUTH_TOKEN  Use this token for management UI and RPC authentication."
   ].join("\n");
   const stream = exitCode === 0 ? process.stdout : process.stderr;
@@ -593,17 +603,21 @@ function printUiHelp(exitCode: number): void {
   const command = cliCommandName();
   const output = [
     "Usage:",
-    `  ${command} ui [--host <host>] [--port <port>] [--no-gateway]`,
+    `  ${command} ui [--host <host>] [--port <port>] [--open|--no-open] [--gateway|--no-gateway]`,
     "",
     "Starts the background CCR service if needed and opens the management UI in the default browser.",
     "",
     "Options:",
-    "  --host <host>    Management server host. Defaults to 127.0.0.1.",
-    "  --port <port>    Management server port. Defaults to 3458.",
+    "  --host <host>    Management server host. Defaults to CCR_WEB_HOST or 127.0.0.1.",
+    "  --port <port>    Management server port. Defaults to CCR_WEB_PORT or 3458.",
+    "  --open           Open the management page (default).",
     "  --no-open        Start or find the service and print the management URL without opening a browser.",
+    "  --gateway        Start the configured model gateway (default).",
     "  --no-gateway     Start only the web management server when the service is not already running.",
     "",
     "Environment:",
+    "  CCR_WEB_HOST        Default management server host.",
+    "  CCR_WEB_PORT        Default management server port.",
     "  CCR_WEB_AUTH_TOKEN  Use this token for management UI and RPC authentication."
   ].join("\n");
   const stream = exitCode === 0 ? process.stdout : process.stderr;
@@ -628,15 +642,21 @@ function printWebHelp(exitCode: number): void {
   const command = cliCommandName();
   const output = [
     "Usage:",
-    `  ${command} serve [--host <host>] [--port <port>] [--open] [--no-gateway]`,
+    `  ${command} serve [--host <host>] [--port <port>] [--open|--no-open] [--gateway|--no-gateway]`,
+    "",
+    `Runs in the foreground. ${command} web is an alias.`,
     "",
     "Options:",
-    "  --host <host>    Management server host. Defaults to 127.0.0.1.",
-    "  --port <port>    Management server port. Defaults to 3458.",
+    "  --host <host>    Management server host. Defaults to CCR_WEB_HOST or 127.0.0.1.",
+    "  --port <port>    Management server port. Defaults to CCR_WEB_PORT or 3458.",
     "  --open           Open the management page in the default browser.",
+    "  --no-open        Do not open the management page (default).",
+    "  --gateway        Start the configured model gateway (default).",
     "  --no-gateway     Start only the web management server.",
     "",
     "Environment:",
+    "  CCR_WEB_HOST        Default management server host.",
+    "  CCR_WEB_PORT        Default management server port.",
     "  CCR_WEB_AUTH_TOKEN  Use this token for management UI and RPC authentication."
   ].join("\n");
   const stream = exitCode === 0 ? process.stdout : process.stderr;

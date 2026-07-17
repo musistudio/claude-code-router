@@ -12,6 +12,7 @@ import {
 export async function writeCoreGatewayConfig(
   config: AppConfig,
   rawTraceSyncToken: string,
+  billingUsageSyncToken: string,
   coreAuthToken: string,
   browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration,
   upstreamProxyUrl?: string
@@ -25,6 +26,7 @@ export async function writeCoreGatewayConfig(
   const payload = await compileCoreGatewayConfig(
     config,
     rawTraceSyncToken,
+    billingUsageSyncToken,
     coreAuthToken,
     browserWebSearchMcpIntegration,
     upstreamProxyUrl

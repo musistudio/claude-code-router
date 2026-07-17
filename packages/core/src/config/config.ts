@@ -8,6 +8,7 @@ import { normalizeGrokProviderAccountConfig } from "@ccr/core/agents/local-provi
 import { removeOpenCodeProviderAccountConfig } from "@ccr/core/agents/local-providers/opencode";
 import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "@ccr/core/contracts/app";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config";
+import { maxRequestLogBodyBytes } from "@ccr/core/observability/request-log-limits";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
 import type {
   AppConfig,
@@ -173,6 +174,9 @@ function defaultBotGatewayAuthType(platform: string): string {
   }
   if (platform === "slack" || platform === "discord" || platform === "telegram" || platform === "line") {
     return "bot_token";
+  }
+  if (platform === "imessage") {
+    return "local";
   }
   return "";
 }
@@ -521,7 +525,7 @@ function sanitizeProfileConfigForDisk(profile: AppConfig["profile"]): AppConfig[
     ...profile,
     codex,
     profiles: profile.profiles.map((profileItem) => {
-      if (profileItem.agent !== "codex" && profileItem.agent !== "zcode") {
+      if (profileItem.agent !== "codex" && profileItem.agent !== "opencode" && profileItem.agent !== "zcode") {
         return profileItem;
       }
       const {
@@ -691,6 +695,15 @@ function parseObservability(value: unknown): Partial<ObservabilityConfig> | unde
   }
   if (typeof value.agentAnalysis === "boolean") {
     observability.agentAnalysis = value.agentAnalysis;
+  }
+  if (value.requestLogBodyCapture === "all" || value.requestLogBodyCapture === "errors" || value.requestLogBodyCapture === "none") {
+    observability.requestLogBodyCapture = value.requestLogBodyCapture;
+  }
+  if (typeof value.requestLogMaxBodyBytes === "number" && Number.isFinite(value.requestLogMaxBodyBytes)) {
+    observability.requestLogMaxBodyBytes = Math.max(0, Math.min(maxRequestLogBodyBytes, Math.floor(value.requestLogMaxBodyBytes)));
+  }
+  if (typeof value.requestLogSuccessSampleRate === "number" && Number.isFinite(value.requestLogSuccessSampleRate)) {
+    observability.requestLogSuccessSampleRate = Math.max(0, Math.min(1, value.requestLogSuccessSampleRate));
   }
   return Object.keys(observability).length ? observability : undefined;
 }
@@ -1131,15 +1144,21 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
     return undefined;
   }
   const supportedReasoningLevels = parseProviderReasoningLevels(value.supportedReasoningLevels ?? value.supported_reasoning_levels);
+  const contextWindow = readPositiveInteger(value.contextWindow ?? value.context_window);
+  const effectiveContextWindowPercent = readPercentage(value.effectiveContextWindowPercent ?? value.effective_context_window_percent);
+  const maxContextWindow = readPositiveInteger(value.maxContextWindow ?? value.max_context_window);
   const metadata: ProviderModelMetadata = {
     ...(Array.isArray(value.additionalSpeedTiers) ? { additionalSpeedTiers: value.additionalSpeedTiers } : {}),
     ...(Array.isArray(value.additional_speed_tiers) ? { additionalSpeedTiers: value.additional_speed_tiers } : {}),
+    ...(contextWindow ? { contextWindow } : {}),
     ...(value.defaultReasoningLevel === null ? { defaultReasoningLevel: null } : {}),
     ...(readString(value.defaultReasoningLevel) ? { defaultReasoningLevel: readString(value.defaultReasoningLevel) } : {}),
     ...(value.default_reasoning_level === null ? { defaultReasoningLevel: null } : {}),
     ...(readString(value.default_reasoning_level) ? { defaultReasoningLevel: readString(value.default_reasoning_level) } : {}),
     ...(readString(value.defaultReasoningSummary) ? { defaultReasoningSummary: readString(value.defaultReasoningSummary) } : {}),
     ...(readString(value.default_reasoning_summary) ? { defaultReasoningSummary: readString(value.default_reasoning_summary) } : {}),
+    ...(effectiveContextWindowPercent ? { effectiveContextWindowPercent } : {}),
+    ...(maxContextWindow ? { maxContextWindow } : {}),
     ...(Array.isArray(value.serviceTiers) ? { serviceTiers: value.serviceTiers } : {}),
     ...(Array.isArray(value.service_tiers) ? { serviceTiers: value.service_tiers } : {}),
     ...(supportedReasoningLevels ? { supportedReasoningLevels } : {}),
@@ -1147,6 +1166,10 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
     ...(typeof value.supports_reasoning_summaries === "boolean" ? { supportsReasoningSummaries: value.supports_reasoning_summaries } : {})
   };
   return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+export function providerModelMetadataFromConfigForTest(value: unknown): ProviderModelMetadata | undefined {
+  return parseProviderModelMetadata(value);
 }
 
 function parseProviderReasoningLevels(value: unknown): ProviderReasoningLevel[] | undefined {
@@ -1743,6 +1766,22 @@ function parseBotGateway(value: unknown): LoadedBotGatewayConfig | undefined {
     config.forwardAllAgentMessages = Boolean(value.forward_all_agent_messages ?? value.forward_all_codex_messages);
   }
 
+  if (typeof value.mediaEnabled === "boolean") {
+    config.mediaEnabled = value.mediaEnabled;
+  }
+  if (typeof value.streamReplies === "boolean") {
+    config.streamReplies = value.streamReplies;
+  }
+  if (typeof value.shellEnabled === "boolean") {
+    config.shellEnabled = value.shellEnabled;
+  } else if (typeof value.shell_enabled === "boolean") {
+    config.shellEnabled = value.shell_enabled;
+  }
+  const language = readString(value.language);
+  if (language === "auto" || language === "en" || language === "zh-CN") {
+    config.language = language;
+  }
+
   const requestTimeoutMs = readNumber(value.requestTimeoutMs ?? value.request_timeout_ms);
   if (requestTimeoutMs !== undefined) {
     config.requestTimeoutMs = clampNumber(requestTimeoutMs, 1000, 3_600_000);
@@ -1754,6 +1793,22 @@ function parseBotGateway(value: unknown): LoadedBotGatewayConfig | undefined {
   const pollIntervalMs = readNumber(value.pollIntervalMs ?? value.poll_interval_ms);
   if (pollIntervalMs !== undefined) {
     config.pollIntervalMs = clampNumber(pollIntervalMs, 500, 60_000);
+  }
+  const maxTurnTimeMs = readNumber(value.maxTurnTimeMs ?? value.max_turn_time_ms);
+  if (maxTurnTimeMs !== undefined) {
+    config.maxTurnTimeMs = clampNumber(maxTurnTimeMs, 10_000, 3_600_000);
+  }
+  const maxAttachmentBytes = readNumber(value.maxAttachmentBytes ?? value.max_attachment_bytes);
+  if (maxAttachmentBytes !== undefined) {
+    config.maxAttachmentBytes = clampNumber(maxAttachmentBytes, 1024, 100 * 1024 * 1024);
+  }
+  const messageChunkChars = readNumber(value.messageChunkChars ?? value.message_chunk_chars);
+  if (messageChunkChars !== undefined) {
+    config.messageChunkChars = clampNumber(messageChunkChars, 500, 20_000);
+  }
+  const sessionIdleMinutes = readNumber(value.sessionIdleMinutes ?? value.session_idle_minutes);
+  if (sessionIdleMinutes !== undefined) {
+    config.sessionIdleMinutes = clampNumber(sessionIdleMinutes, 0, 43_200);
   }
 
   const handoff = parseBotGatewayHandoff(value.handoff);
@@ -2374,7 +2429,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         providerName: readString(item.providerName) || "Claude Code Router",
         remoteFrontendMode: parseCodexRemoteFrontendMode(readString(item.remoteFrontendMode) || readString(item.frontendMode) || readString(item.coreMode)) || "app",
         scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
-        showAllSessions: agent === "zcode"
+        showAllSessions: agent === "zcode" || agent === "opencode"
           ? false
           : typeof item.showAllSessions === "boolean"
             ? item.showAllSessions
@@ -2396,6 +2451,8 @@ function readProfileAppPath(item: Record<string, unknown>, agent: ProfileConfig[
       ? readString(item.claudeAppPath) || readString(item.claude_app_path)
       : agent === "codex"
         ? readString(item.chatgptAppPath) || readString(item.chatgpt_app_path) || readString(item.codexAppPath) || readString(item.codex_app_path)
+        : agent === "opencode"
+          ? readString(item.openCodeAppPath) || readString(item.opencodeAppPath) || readString(item.opencode_app_path)
         : readString(item.zcodeAppPath) || readString(item.zcode_app_path));
 }
 
@@ -2413,6 +2470,9 @@ function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
   if (normalized === "grok" || normalized === "grok-cli" || normalized === "grok cli") {
     return "grok";
   }
+  if (normalized === "opencode" || normalized === "open-code" || normalized === "open code") {
+    return "opencode";
+  }
   if (normalized === "zcode" || normalized === "z-code" || normalized === "z code") {
     return "zcode";
   }
@@ -2429,11 +2489,18 @@ function defaultProfileAgentName(agent: ProfileConfig["agent"]): string {
   if (agent === "grok") {
     return "Grok CLI";
   }
+  if (agent === "opencode") {
+    return "OpenCode";
+  }
   return "Codex";
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "~/.zcode/cli/config.json" : "~/.codex/config.toml";
+  return agent === "zcode"
+    ? "~/.zcode/cli/config.json"
+    : agent === "opencode"
+      ? "~/.config/opencode/opencode.jsonc"
+      : "~/.codex/config.toml";
 }
 
 function normalizeCodexConfigFileForAgent(agent: ProfileConfig["agent"], value: string | undefined): string {
@@ -2771,6 +2838,16 @@ function readNumber(value: unknown): number | undefined {
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function readPercentage(value: unknown): number | undefined {
+  const parsed = readNumber(value);
+  return parsed !== undefined && parsed > 0 && parsed <= 100 ? parsed : undefined;
+}
+
+function readPositiveInteger(value: unknown): number | undefined {
+  const parsed = readNumber(value);
+  return parsed !== undefined && parsed > 0 ? Math.trunc(parsed) : undefined;
 }
 
 function clampNumber(value: number, min: number, max: number): number {

@@ -10,6 +10,7 @@ import { cancelBotGatewayQrLogin, startBotGatewayQrLogin, waitBotGatewayQrLogin 
 import { closeBotGatewayQrWindow, openBotGatewayQrWindow } from "./bot-gateway-qr-window-service";
 import { syncClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
 import { findInstalledCodexAppExecutable } from "@ccr/core/agents/codex/app-launch";
+import { findInstalledOpenCodeAppExecutable } from "@ccr/core/agents/opencode/app-launch";
 import { loadAppConfig, saveApiKeysConfig, saveAppConfig } from "@ccr/core/config/config";
 import { API_KEYS_DB_FILE, APP_CONFIG_DB_FILE, APP_NAME, CONFIGDIR, CONFIG_FILE, DATADIR, GATEWAY_CONFIG_FILE, IPC_CHANNELS, LEGACY_CONFIG_FILE, ONBOARDING_FINISHED_FILE, PROXY_CA_CERT_FILE, REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "@ccr/core/config/constants";
 import { deepLinkService } from "./deep-link";
@@ -32,6 +33,7 @@ import { getAgentAnalysis, getAgentTracePayload, getRequestLogDetail, getRequest
 import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
 import { getUsageStats } from "@ccr/core/usage/store";
+import { applyNativeThemePreference } from "./native-theme";
 import windowsManager from "./windows";
 import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppCaptureElementPngRequest, AppCaptureElementPngResult, AppConfig, AppDataExportResult, AppImageExportTargetRequest, AppImageExportTargetResult, AppInfo, AppRenderHtmlPngRequest, AppRenderHtmlPngResult, AppSaveConfigOptions, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountResetRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "@ccr/core/contracts/app";
 
@@ -58,6 +60,7 @@ const imageExportTargets = new Map<string, string>();
 
 ipcMain.handle(IPC_CHANNELS.appGetInfo, () => {
   const chatgptAppPath = findInstalledCodexAppExecutable().executable;
+  const opencodeAppPath = findInstalledOpenCodeAppExecutable().executable;
   return {
     appConfigDbFile: APP_CONFIG_DB_FILE,
     apiKeysDbFile: API_KEYS_DB_FILE,
@@ -68,6 +71,7 @@ ipcMain.handle(IPC_CHANNELS.appGetInfo, () => {
     gatewayConfigFile: GATEWAY_CONFIG_FILE,
     launchAtLoginSupported: isLaunchAtLoginSupported(),
     name: APP_NAME,
+    ...(opencodeAppPath ? { opencodeAppPath } : {}),
     platform: process.platform,
     requestLogsDbFile: REQUEST_LOGS_DB_FILE,
     usageDbFile: USAGE_DB_FILE,
@@ -181,6 +185,7 @@ ipcMain.handle(IPC_CHANNELS.appOpenProfile, async (_event, request: ProfileOpenR
 ipcMain.handle(IPC_CHANNELS.appApplyClaudeAppGateway, async (_event, config?: AppConfig) => {
   const previousConfig = await loadAppConfig();
   const baseConfig = config ? await saveAppConfig(config) : previousConfig;
+  applyNativeThemePreference(baseConfig.theme);
   const synced = await syncClaudeAppGatewayConfig(baseConfig);
   const savedConfig = synced.config;
   let runtimeStatus = gatewayService.getStatus();
@@ -266,6 +271,7 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, opt
   }
   const launchAtLoginChanged = Boolean(config.launchAtLogin) !== Boolean(previousConfig.launchAtLogin);
   let savedConfig = await saveAppConfig(config);
+  applyNativeThemePreference(savedConfig.theme);
   if (launchAtLoginChanged) {
     try {
       syncLaunchAtLogin(savedConfig);

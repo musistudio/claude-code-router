@@ -518,7 +518,15 @@ export type BotGatewayConfigDraft = {
   botHandoffIdleSeconds: string;
   botHandoffPhoneBluetoothTargets: string;
   botHandoffPhoneWifiTargets: string;
+  botLanguage: "auto" | "en" | "zh-CN";
+  botMaxAttachmentMb: string;
+  botMaxTurnMinutes: string;
+  botMediaEnabled: boolean;
+  botMessageChunkChars: string;
   botPlatform: string;
+  botSessionIdleMinutes: string;
+  botShellEnabled: boolean;
+  botStreamReplies: boolean;
   name: string;
 };
 

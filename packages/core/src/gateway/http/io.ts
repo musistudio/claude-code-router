@@ -134,6 +134,147 @@ export function formatError(error: unknown): string {
 }
 
 
+export type UpstreamErrorLogContext = {
+  attempts: number;
+  elapsedMs: number;
+  fallbackFailures: number;
+  operation: "fetch" | "stream";
+  responseStarted: boolean;
+  retryDelayMs?: number;
+};
+
+
+export function formatUpstreamErrorForLog(error: unknown, context: UpstreamErrorLogContext): string {
+  const chain = collectErrorChain(error);
+  const outer = chain[0];
+  const cause = chain[chain.length - 1] ?? outer;
+  const code = firstErrorProperty(chain, "code");
+  const errno = firstErrorProperty(chain, "errno");
+  const syscall = firstErrorProperty(chain, "syscall");
+  const message = redactUpstreamCredentialValues(outer?.message || formatError(error)) || "Unknown upstream error";
+  const causeMessage = redactUpstreamCredentialValues(cause?.message || "");
+  const phase = inferUpstreamErrorPhase({
+    code,
+    message: `${message} ${causeMessage}`,
+    name: cause?.name,
+    responseStarted: context.responseStarted,
+    syscall
+  });
+  const fields = [
+    `cause=${normalizeDiagnosticValue(cause?.name || "UnknownError")}`,
+    code ? `code=${normalizeDiagnosticValue(code)}` : undefined,
+    errno ? `errno=${normalizeDiagnosticValue(errno)}` : undefined,
+    syscall ? `syscall=${normalizeDiagnosticValue(syscall)}` : undefined,
+    `phase=${phase}`,
+    `response_started=${context.responseStarted}`,
+    `attempts=${Math.max(1, Math.trunc(context.attempts))}`,
+    `fallback_failures=${Math.max(0, Math.trunc(context.fallbackFailures))}`,
+    `retry_delay_ms=${Math.max(0, Math.trunc(context.retryDelayMs ?? 0))}`,
+    `elapsed_ms=${Math.max(0, Math.trunc(context.elapsedMs))}`,
+    !code && causeMessage && causeMessage !== message ? `detail=${JSON.stringify(causeMessage)}` : undefined
+  ].filter((field): field is string => Boolean(field));
+  return `Upstream ${context.operation} failed: ${message} [${fields.join("; ")}]`;
+}
+
+
+type ErrorChainItem = {
+  error: object;
+  message?: string;
+  name?: string;
+};
+
+
+function collectErrorChain(error: unknown): ErrorChainItem[] {
+  const chain: ErrorChainItem[] = [];
+  const seen = new Set<object>();
+  let current = error;
+  for (let depth = 0; depth < 6 && isObject(current) && !seen.has(current); depth += 1) {
+    seen.add(current);
+    chain.push({
+      error: current,
+      message: typeof readErrorProperty(current, "message") === "string"
+        ? String(readErrorProperty(current, "message"))
+        : undefined,
+      name: typeof readErrorProperty(current, "name") === "string"
+        ? String(readErrorProperty(current, "name"))
+        : undefined
+    });
+    current = readErrorProperty(current, "cause");
+  }
+  return chain;
+}
+
+
+function firstErrorProperty(chain: ErrorChainItem[], key: "code" | "errno" | "syscall"): string | undefined {
+  for (const item of chain) {
+    const value = readErrorProperty(item.error, key);
+    if (typeof value === "string" || typeof value === "number") {
+      const normalized = String(value).trim();
+      if (normalized) {
+        return normalized;
+      }
+    }
+  }
+  return undefined;
+}
+
+
+function inferUpstreamErrorPhase(input: {
+  code?: string;
+  message: string;
+  name?: string;
+  responseStarted: boolean;
+  syscall?: string;
+}): "aborted" | "connect" | "dns" | "fetch" | "response_body" | "response_headers" | "tls" {
+  const signature = `${input.code ?? ""} ${input.name ?? ""} ${input.message} ${input.syscall ?? ""}`.toUpperCase();
+  if (/ABORT|CANCEL/.test(signature)) return "aborted";
+  if (/ENOTFOUND|EAI_AGAIN|DNS/.test(signature)) return "dns";
+  if (/CERT|TLS|SSL|EPROTO/.test(signature)) return "tls";
+  if (/HEADERS?_TIMEOUT|RESPONSE_HEADERS|WAITING FOR HEADERS/.test(signature)) return "response_headers";
+  if (/BODY_TIMEOUT|RESPONSE_BODY/.test(signature)) return "response_body";
+  if (/ECONNRESET|EPIPE|UND_ERR_SOCKET/.test(signature)) {
+    return input.responseStarted ? "response_body" : "connect";
+  }
+  if (/CONNECT|ECONNREFUSED|ETIMEDOUT/.test(signature)) return "connect";
+  return input.responseStarted ? "response_body" : "fetch";
+}
+
+
+function redactUpstreamCredentialValues(value: string): string {
+  return value
+    .replace(/(\b(?:https?|wss?):\/\/[^/\s:@]+:)[^@\s/]+@/gi, "$1[redacted]@")
+    .replace(/([?&](?:api[-_]?key|key|token|access[-_]?token|refresh[-_]?token|client[-_]?secret|auth|authorization|password)=)[^&\s#]*/gi, "$1[redacted]")
+    .replace(/"((?:proxy[-_])?authorization|(?:x[-_](?:[a-z0-9]+[-_])*)?api[-_]?key|access[-_]?token|refresh[-_]?token|client[-_]?secret|token|password)"\s*:\s*"(?:\\.|[^"\\])*"/gi, '"$1":"[redacted]"')
+    .replace(/\b((?:proxy[-_])?authorization)\s*([:=])\s*(?:(?:Bearer|Basic)\s+)?[^\s,;&#]+/gi, "$1$2[redacted]")
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, "Bearer [redacted]")
+    .replace(/\b(?:sk|rk|pk)-[A-Za-z0-9_-]{12,}/gi, "[redacted-secret]")
+    .replace(/\b((?:x[-_](?:[a-z0-9]+[-_])*)?api[-_]?key|access[-_]?token|refresh[-_]?token|client[-_]?secret|token|password)\s*([:=])\s*(?:"[^"]*"|'[^']*'|[^\s,;&#"']+)/gi, "$1$2[redacted]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 240);
+}
+
+
+function normalizeDiagnosticValue(value: string): string {
+  const normalized = value.replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 80);
+  return normalized || "unknown";
+}
+
+
+function readErrorProperty(error: object, key: string): unknown {
+  try {
+    return (error as Record<string, unknown>)[key];
+  } catch {
+    return undefined;
+  }
+}
+
+
+function isObject(value: unknown): value is object {
+  return (typeof value === "object" && value !== null) || typeof value === "function";
+}
+
+
 export function abortSignalMessage(signal: AbortSignal): string {
   const reason = signal.reason as unknown;
   if (reason instanceof Error && reason.message) {

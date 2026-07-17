@@ -14,6 +14,7 @@ import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plu
 import { writeCoreGatewayConfig } from "@ccr/core/gateway/core-runtime/config-writer";
 import { closeServer, formatError } from "@ccr/core/gateway/http/io";
 import { RawTraceSynchronizer } from "@ccr/core/observability/raw-trace-sync";
+import { GatewayBillingSynchronizer } from "@ccr/core/usage/billing-sync";
 import { assertLoopbackCoreHost, endpoint, gatewayNetworkEndpoints, generateCoreGatewayAuthToken, isCoreGatewayHealthy, loopbackCoreHostError, removeManagedCoreGatewayMarker, shouldRunGatewayRuntime, shouldRunUnifiedServer, spawnGatewayProcess, stopPreviousManagedCoreGateway, writeManagedCoreGatewayMarker } from "@ccr/core/gateway/core-runtime/supervisor";
 import type { BrowserAutomationMcpIntegration, BrowserWebSearchMcpIntegration, GatewayStopOptions } from "@ccr/core/gateway/internal/shared";
 import { GatewayRequestPipeline } from "@ccr/core/gateway/request/pipeline";
@@ -32,6 +33,7 @@ class GatewayService {
       state: this.status.state
     }),
     handleRawTraceSync: (request, response) => this.rawTraceSynchronizer.handle(request, response),
+    handleBillingUsageSync: (request, response) => this.billingSynchronizer.handle(request, response),
     proxyRequest: (request, response, path, apiKey) => this.proxyRequest(request, response, path, apiKey)
   });
 
@@ -40,17 +42,22 @@ class GatewayService {
     getConfig: () => this.config,
     getCoreAuthToken: () => this.coreAuthToken,
     getPlugin: () => this.plugin,
-    getStatus: () => ({ coreEndpoint: this.status.coreEndpoint, endpoint: this.status.endpoint }),
-    takePendingRawTraceUpdate: (requestId) => this.rawTraceSynchronizer.take(requestId)
+    getStatus: () => ({ coreEndpoint: this.status.coreEndpoint, endpoint: this.status.endpoint })
   });
 
   private browserAutomationMcpIntegration?: BrowserAutomationMcpIntegration;
   private browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration;
+  private readonly billingSynchronizer = new GatewayBillingSynchronizer({
+    getConfig: () => this.config,
+    getGlobalBillingConfig: () => pluginService.getCoreGatewayConfig().billing
+  });
   private child?: ChildProcess;
   private config?: AppConfig;
   private coreAuthToken = "";
   private plugin?: ClaudeCodeRouterPlugin;
-  private readonly rawTraceSynchronizer = new RawTraceSynchronizer();
+  private readonly rawTraceSynchronizer = new RawTraceSynchronizer({
+    getConfig: () => this.config
+  });
   private server?: Server;
   private status: GatewayStatus = {
     coreEndpoint: "",
@@ -108,6 +115,7 @@ class GatewayService {
         return this.status;
       }
 
+      await this.rawTraceSynchronizer.start();
       await this.listen(config);
       if (this.server) {
         const proxyStatus = await proxyService.attach(config, this.server);
@@ -119,7 +127,14 @@ class GatewayService {
       if (shouldRunGateway) {
         await proxyService.refreshUpstreamProxyFromCurrentSystem();
         const upstreamProxyUrl = proxyService.getUpstreamProxyUrl("https") ?? await getSystemProxyUrlForProtocol("https", config);
-        await writeCoreGatewayConfig(config, this.rawTraceSynchronizer.token, coreAuthToken, this.browserWebSearchMcpIntegration, upstreamProxyUrl);
+        await writeCoreGatewayConfig(
+          config,
+          this.rawTraceSynchronizer.token,
+          this.billingSynchronizer.token,
+          coreAuthToken,
+          this.browserWebSearchMcpIntegration,
+          upstreamProxyUrl
+        );
         await stopPreviousManagedCoreGateway(config, this.status.coreEndpoint);
         if (await isCoreGatewayHealthy(this.status.coreEndpoint)) {
           throw new Error(`Core gateway endpoint is already in use: ${this.status.coreEndpoint}`);
@@ -170,6 +185,7 @@ class GatewayService {
     if (server) {
       await closeServer(server);
     }
+    await this.rawTraceSynchronizer.stop();
 
     await proxyService.stop(options.proxyRestoreTimeoutMs);
     await pluginService.stop();

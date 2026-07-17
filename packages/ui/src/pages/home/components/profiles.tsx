@@ -82,9 +82,10 @@ export function ProfileView({
               const summaryItems = profileSummaryItems(profile, config, t);
               const cliBusy = profileActionBusy?.profileId === profile.id && profileActionBusy.surface === "cli";
               const appBusy = profileActionBusy?.profileId === profile.id && profileActionBusy.surface === "app";
-              const appRunning = profileRuntimeStatus.profiles.some((entry) =>
+              const runtimeEntry = profileRuntimeStatus.profiles.find((entry) =>
                 entry.profileId === profile.id && entry.surface === "app" && entry.state === "running"
               );
+              const appRunning = Boolean(runtimeEntry);
               const appActionLabel = appRunning ? "Stop" : "Start";
               const appActionTooltip = `${t(appActionLabel)} ${t("App")}`;
               const cliActionTooltip = `${t("Copy")} ${t("CLI command")}`;
@@ -106,6 +107,11 @@ export function ProfileView({
                               {t(profileScopeLabel(scope))}
                             </Badge>
                             <Badge variant="outline">{t(profileSurfaceLabel(surface))}</Badge>
+                            {runtimeEntry?.botGateway ? (
+                              <Badge variant={runtimeEntry.botGateway.state === "connected" ? "success" : runtimeEntry.botGateway.lastError ? "warning" : "outline"}>
+                                {t("Bot")} · {t(runtimeEntry.botGateway.state === "connected" ? "Connected" : runtimeEntry.botGateway.state === "starting" ? "Starting" : runtimeEntry.botGateway.state)}
+                              </Badge>
+                            ) : null}
                           </div>
                         </div>
                         <div className="mt-2 min-w-0 space-y-1.5">
@@ -115,11 +121,33 @@ export function ProfileView({
                               <div className="min-w-0 truncate font-medium text-foreground" title={item.value}>{item.value}</div>
                             </div>
                           ))}
+                          {runtimeEntry?.botGateway ? (
+                            <div className="grid min-w-0 grid-cols-[96px_minmax(0,1fr)] items-baseline gap-2 text-[12px] sm:grid-cols-[128px_minmax(0,1fr)]">
+                              <div className="truncate text-muted-foreground">{t("Bot activity")}</div>
+                              <div className="min-w-0 truncate font-medium text-foreground" title={runtimeEntry.botGateway.lastError || runtimeEntry.botGateway.lastEventAt || ""}>
+                                {runtimeEntry.botGateway.lastError
+                                  ? runtimeEntry.botGateway.lastError
+                                  : runtimeEntry.botGateway.lastEventAt
+                                    ? `${t("Last event")}: ${new Date(runtimeEntry.botGateway.lastEventAt).toLocaleString()}`
+                                    : t("Waiting for messages")}
+                                {runtimeEntry.botGateway.outboxCount > 0 ? ` · ${runtimeEntry.botGateway.outboxCount} ${t("pending")}` : ""}
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <Toggle checked={profile.enabled} onChange={(enabled) => updateProfileItem(index, { enabled })} />
+                    <div
+                      aria-label={`${profile.name || t("Profile")} ${t("Profile actions")}`}
+                      className="ml-auto grid shrink-0 grid-cols-[54px_1px_28px_28px_1px_28px_28px] items-center gap-1.5"
+                      role="group"
+                    >
+                      <Toggle
+                        checked={profile.enabled}
+                        onChange={(enabled) => updateProfileItem(index, { enabled })}
+                        title={t(profile.enabled ? "Enabled" : "Disabled")}
+                      />
+                      <span aria-hidden="true" className="h-5 w-px bg-border/80" />
                       {showProfileLaunchActions && openSurfaces.includes("cli") ? (
                         <ProfileActionTooltip label={cliActionTooltip}>
                           <Button
@@ -128,14 +156,14 @@ export function ProfileView({
                             onClick={() => copyProfileCliCommand(index)}
                             size="iconSm"
                             type="button"
-                            variant="ghost"
+                            variant="subtle"
                           >
 	                            <AnimatedIconSwap iconKey={cliBusy ? "busy" : "terminal"}>
 	                              {cliBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Terminal className="h-3.5 w-3.5" />}
 	                            </AnimatedIconSwap>
                           </Button>
                         </ProfileActionTooltip>
-                      ) : null}
+                      ) : <span aria-hidden="true" className="h-7 w-7" />}
                       {showProfileLaunchActions && openSurfaces.includes("app") ? (
                         <ProfileActionTooltip label={appActionTooltip}>
                           <Button
@@ -144,20 +172,32 @@ export function ProfileView({
                             onClick={() => appRunning ? stopProfileApp(index) : openProfileApp(index)}
                             size="iconSm"
                             type="button"
-                            variant={appRunning ? "outline" : "ghost"}
+                            variant={appRunning ? "outline" : "subtle"}
                           >
 	                            <AnimatedIconSwap iconKey={appBusy ? "busy" : appRunning ? "stop" : "play"}>
 	                              {appBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : appRunning ? <Power className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
 	                            </AnimatedIconSwap>
                           </Button>
                         </ProfileActionTooltip>
-                      ) : null}
-                      <Button aria-label={`${t("Edit")} ${profile.name || t("Profile")}`} onClick={() => editProfile(index)} size="iconSm" title={t("Edit")} type="button" variant="ghost">
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button aria-label={t("Remove profile")} onClick={() => removeProfile(index)} size="iconSm" title={t("Remove profile")} type="button" variant="ghost">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      ) : <span aria-hidden="true" className="h-7 w-7" />}
+                      <span aria-hidden="true" className="h-5 w-px bg-border/80" />
+                      <ProfileActionTooltip label={t("Edit")}>
+                        <Button aria-label={`${t("Edit")} ${profile.name || t("Profile")}`} onClick={() => editProfile(index)} size="iconSm" type="button" variant="ghost">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      </ProfileActionTooltip>
+                      <ProfileActionTooltip label={t("Remove profile")}>
+                        <Button
+                          aria-label={t("Remove profile")}
+                          className="hover:bg-destructive/10 hover:text-destructive focus-visible:text-destructive"
+                          onClick={() => removeProfile(index)}
+                          size="iconSm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </ProfileActionTooltip>
                     </div>
                   </div>
                 </div>
@@ -402,7 +442,7 @@ function ProfileAgentTabs({
   return (
     <div
       aria-label={t("Agent profiles")}
-      className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-4"
+      className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-5"
       role="tablist"
     >
       {profileAgentOptions.map((option) => {
@@ -687,13 +727,13 @@ export function AddProfileForm({
             <Field label={t("Provider name")}>
               <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
             </Field>
-            {draft.agent !== "zcode" ? (
+            {draft.agent !== "zcode" && draft.agent !== "opencode" ? (
               <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
                 <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
                 <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
               </div>
             ) : null}
-            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : "Codex model")}>
+            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : "Codex model")}>
               <ModelSelector
                 placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}
                 providers={providers}
@@ -726,12 +766,15 @@ export function AddProfileForm({
   );
 }
 
-function profileAppPathLabel(agent: ProfileConfig["agent"]): "CLAUDE_APP_PATH" | "CHATGPT_APP_PATH" | undefined {
+function profileAppPathLabel(agent: ProfileConfig["agent"]): "CLAUDE_APP_PATH" | "CHATGPT_APP_PATH" | "OPENCODE_APP_PATH" | undefined {
   if (agent === "claude-code") {
     return "CLAUDE_APP_PATH";
   }
   if (agent === "codex") {
     return "CHATGPT_APP_PATH";
+  }
+  if (agent === "opencode") {
+    return "OPENCODE_APP_PATH";
   }
   return undefined;
 }
@@ -965,6 +1008,9 @@ function BotGatewaySelectForm({
                       onRefresh={() => void scanHandoffTargets("bluetooth")}
                       onSelect={(botHandoffPhoneBluetoothTargets) => onChange({ botHandoffPhoneBluetoothTargets })}
                     />
+                    <div className="sm:col-span-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] leading-4 text-amber-700 dark:text-amber-300">
+                      {t("Phone presence targets are experimental and do not affect runtime handoff yet. Handoff currently uses screen lock and idle time.")}
+                    </div>
                   </div>
                 ) : null}
               </div>

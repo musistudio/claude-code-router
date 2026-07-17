@@ -13,7 +13,9 @@ const { pathToFileURL } = require("node:url");
 const VERSION = "3.0.0";
 const DEFAULT_MODEL = "claude-sonnet-4-5";
 const PROTOCOL_VERSION = "2025-06-18";
-const BOT_SESSION_ENTRY_VERSION = 2;
+const BOT_SESSION_ENTRY_VERSION = 3;
+const OPENCODE_BOT_SESSION_STORE_VERSION = 3;
+const BOT_RUNTIME_STATE_VERSION = 1;
 const REQUEST_TIMEOUT_MS = numberEnv("CCR_CODEX_APP_REQUEST_TIMEOUT_MS", 10 * 60 * 1000);
 const TURN_IDLE_TIMEOUT_MS = numberEnv("CCR_CODEX_CLAUDE_TURN_IDLE_TIMEOUT_MS", 10 * 60 * 1000);
 const CONFIG_DIR = resolveConfigDir();
@@ -77,8 +79,16 @@ function botBridge() {
 
 async function main() {
   const args = directProfileDispatchArgs(process.argv.slice(2));
+  if (process.env.CCR_OPENCODE_BOT_WORKER === "1" || args[0] === "opencode-bot-worker") {
+    await runOpenCodeBotWorker(args);
+    return;
+  }
   if (process.env.CCR_CLAUDE_CODE_BOT_WORKER === "1" || args[0] === "claude-bot-worker") {
     await runClaudeCodeBotWorker(args);
+    return;
+  }
+  if (process.env.CCR_CODEX_BOT_WORKER === "1" || args[0] === "codex-bot-worker") {
+    await runCodexBotWorker(args);
     return;
   }
   if (process.env.CCR_CLAUDE_CODE_WRAPPER === "1") {
@@ -1024,7 +1034,7 @@ async function runClaudeCodeAppServer(args) {
 
 async function runClaudeCodeBotWorker(args) {
   const options = parseAppServerOptions(args);
-  const lock = acquireClaudeBotWorkerLock();
+  const lock = acquireBotWorkerLock("claude");
   if (!lock) return;
   try {
     const server = new ClaudeCodeAppServer(options);
@@ -1041,12 +1051,1368 @@ async function runClaudeCodeBotWorker(args) {
     await botBridge().stop();
     log("claude_bot_worker_stop", { pid: process.pid });
   } finally {
-    releaseClaudeBotWorkerLock(lock);
+    releaseBotWorkerLock(lock);
   }
 }
 
-function acquireClaudeBotWorkerLock() {
-  const lockPath = claudeBotWorkerLockPath();
+async function runOpenCodeBotWorker(args) {
+  const options = parseOpenCodeBotWorkerOptions(args);
+  const lock = acquireBotWorkerLock("opencode");
+  if (!lock) return;
+  try {
+    const worker = new OpenCodeBotWorker(options);
+    worker.ensureBotBridgeRegistered();
+    log("opencode_bot_worker_start", {
+      workspaceName: options.workspaceName,
+      pid: process.pid,
+      lockPath: lock.path,
+      cwd: worker.defaultCwd,
+      command: worker.command
+    });
+    await waitForTerminationSignal();
+    await botBridge().stop();
+    log("opencode_bot_worker_stop", { pid: process.pid });
+  } finally {
+    releaseBotWorkerLock(lock);
+  }
+}
+
+async function runCodexBotWorker(args) {
+  const options = parseCodexBotWorkerOptions(args);
+  const agent = codexRuntimeAgent();
+  const lock = acquireBotWorkerLock(agent);
+  if (!lock) return;
+  try {
+    const worker = new CodexBotWorker(options);
+    worker.ensureBotBridgeRegistered();
+    log(agent + "_bot_worker_start", {
+      workspaceName: options.workspaceName,
+      pid: process.pid,
+      lockPath: lock.path,
+      cwd: worker.defaultCwd,
+      command: worker.command
+    });
+    await waitForTerminationSignal();
+    await botBridge().stop();
+    log(agent + "_bot_worker_stop", { pid: process.pid });
+  } finally {
+    releaseBotWorkerLock(lock);
+  }
+}
+
+class OpenCodeBotWorker {
+  constructor(options) {
+    this.workspaceName = options.workspaceName || "OpenCode";
+    this.command = expandHome(nonEmptyEnv("CCR_OPENCODE_BIN") || nonEmptyEnv("OPENCODE_BIN") || "opencode");
+    this.defaultCwd = resolveOpenCodeBotCwd(
+      nonEmptyEnv("CCR_OPENCODE_BOT_CWD"),
+      nonEmptyEnv("CCR_BOT_GATEWAY_CWD")
+    );
+    this.store = null;
+    this.turnStates = new Map();
+    this.restoredPendingTurns = false;
+  }
+
+  ensureBotBridgeRegistered() {
+    const bridge = botBridge();
+    bridge.setInboundHandler((event, queued, eventId, activeBridge) => this.handleInbound(event, queued, eventId, activeBridge));
+    this.restorePendingTurns(bridge);
+  }
+
+  async handleInbound(event, _queued, eventId, bridge) {
+    let text = botEventText(event);
+    if (!text) {
+      log("bot_gateway_inbound_skip", { eventId, reason: "empty_text", agent: "opencode" });
+      return;
+    }
+    const commandReply = await this.handleCommand(event, text, bridge);
+    if (commandReply && typeof commandReply === "object" && commandReply.forwardText) {
+      text = commandReply.forwardText;
+    } else if (commandReply !== null) {
+      await bridge.sendReplyToEvent(event, commandReply, "ccr:opencode:command:" + eventId);
+      log("bot_gateway_command_replied", { eventId, agent: "opencode", textLen: commandReply.length });
+      return;
+    }
+
+    const position = this.enqueueTurn(event, eventId, bridge, text);
+    if (position > 0) {
+      await bridge.sendReplyToEvent(event, "Queued behind the active turn (position " + position + "). Use /session status or /session cancel.", "ccr:opencode:queued:" + eventId);
+    }
+  }
+
+  enqueueTurn(event, eventId, bridge, text) {
+    const key = botConversationKey(event);
+    const state = this.turnStates.get(key) || { active: null, pending: [] };
+    const job = { id: eventId || stableBotKey(botEventDedupeKey(event)), event, eventId, text, key, createdAt: Date.now(), bridge };
+    state.pending.push(job);
+    this.turnStates.set(key, state);
+    this.persistPendingTurn(job);
+    const position = (state.active ? 1 : 0) + state.pending.length - 1;
+    log("opencode_bot_turn_queued", { eventId, position });
+    void this.drainTurnQueue(key, state);
+    return position;
+  }
+
+  async drainTurnQueue(key, state) {
+    if (state.draining) return;
+    state.draining = true;
+    try {
+      while (state.pending.length) {
+        const job = state.pending.shift();
+        state.active = { job, child: null, startedAt: Date.now(), cancelRequested: false };
+        try {
+          await this.runTurn(job.event, job.eventId, job.bridge, job.text, key, state.active);
+        } catch (error) {
+          try {
+            await job.bridge.sendReplyToEvent(job.event, "Agent turn failed: " + conciseError(error), "ccr:opencode:error:" + job.eventId);
+          } catch (replyError) {
+            log("opencode_bot_turn_error_reply_failed", { eventId: job.eventId, error: formatError(error), replyError: formatError(replyError) });
+          }
+          log("opencode_bot_turn_failed", { eventId: job.eventId, error: formatError(error) });
+        } finally {
+          this.removePendingTurn(job.id);
+          state.active = null;
+        }
+      }
+    } finally {
+      state.draining = false;
+      if (!state.active && !state.pending.length) this.turnStates.delete(key);
+    }
+  }
+
+  async runTurn(event, eventId, bridge, text, key, activeTurn) {
+    let entry = this.conversationEntry(key);
+    if (entry && entry.sessionId && bridge.config.sessionIdleMinutes > 0 && Date.now() - Number(entry.updatedAt || 0) >= bridge.config.sessionIdleMinutes * 60_000) {
+      entry = { ...entry, sessionId: "", title: "", updatedAt: Date.now() };
+      this.setConversationEntry(key, entry);
+    }
+    const cwd = resolveOpenCodeBotCwd(entry && entry.projectDirectory, this.defaultCwd);
+    let prompt = await botPromptWithAttachments(event, text, bridge.config, path.join(bridge.config.stateDir || cwd, "attachments"));
+    if (!bridge.config.shellEnabled) {
+      prompt = "Bot policy: shell and terminal tools are disabled. Do not invoke shell commands; use non-shell tools only.\n\n" + prompt;
+    }
+    if (entry && Array.isArray(entry.memory) && entry.memory.length) {
+      prompt = "Persistent session context:\n" + entry.memory.map((item) => "- " + item).join("\n") + "\n\nUser message:\n" + prompt;
+    }
+    const args = ["run", "--format", "json", "--dir", cwd];
+    if (entry && entry.model) args.push("--model", entry.model);
+    if (entry && entry.effort) args.push("--variant", entry.effort);
+    if (entry && entry.mode) args.push("--agent", entry.mode);
+    if (entry && entry.sessionId) {
+      args.push("--session", entry.sessionId);
+    } else {
+      args.push("--title", stringValue(entry && entry.title) || "Bot: " + this.workspaceName);
+    }
+    if (boolEnv("CCR_OPENCODE_BOT_AUTO_APPROVE")) args.push("--auto");
+    args.push("--", prompt);
+
+    const streamId = "opencode-" + stableBotKey(eventId).slice(-16);
+    let streamedText = "";
+    let lastStreamAt = 0;
+    const result = await runOpenCodeBotCli(this.command, args, cwd, {
+      timeoutMs: bridge.config.maxTurnTimeMs,
+      onSpawn: (child) => { activeTurn.child = child; },
+      onJson: (value) => {
+        const parsedEvent = parseOpenCodeRunOutput(JSON.stringify(value));
+        if (!parsedEvent.text || parsedEvent.text === streamedText) return;
+        streamedText = parsedEvent.text;
+        if (Date.now() - lastStreamAt < 700) return;
+        lastStreamAt = Date.now();
+        void bridge.sendStreamToEvent(event, streamId, streamedText, false, "ccr:opencode:stream:" + eventId).catch((error) => bridge.logError("stream_failed", error));
+      }
+    });
+    const parsed = parseOpenCodeRunOutput(result.stdout);
+    const sessionId = parsed.sessionId || (entry && entry.sessionId) || "";
+    if (sessionId) {
+      this.setConversationEntry(key, {
+        ...(entry || {}),
+        sessionId,
+        projectDirectory: cwd,
+        title: (entry && entry.title) || "Bot: " + this.workspaceName,
+        updatedAt: Date.now()
+      });
+    }
+    const errorText = parsed.error || result.error || (result.exitCode !== 0
+      ? result.stderr || "OpenCode exited with code " + result.exitCode
+      : "");
+    const responseText = errorText
+      ? "Agent turn failed: " + errorText
+      : parsed.text || parsed.fallbackText || "OpenCode completed the turn without a text response.";
+    if (bridge.config.streamReplies && !errorText) {
+      await bridge.sendStreamToEvent(event, streamId, responseText, true, "ccr:opencode:stream:" + eventId).catch(() => undefined);
+    } else {
+      await bridge.sendReplyToEvent(event, responseText, "ccr:opencode:" + eventId + ":" + (sessionId || uuid()));
+    }
+    await sendBotTextArtifacts(event, bridge, responseText, cwd, "ccr:opencode:artifact:" + eventId);
+    log("bot_gateway_inbound_replied", {
+      eventId,
+      agent: "opencode",
+      sessionId,
+      exitCode: result.exitCode,
+      textLen: responseText.length
+    });
+  }
+
+  async handleCommand(event, text, bridge) {
+    const command = parseBotCommand(text);
+    if (!command) return null;
+    const key = botConversationKey(event);
+    try {
+      if (command.name === "unknown") return "Unknown Bot command. Send /project or /session to see available commands.";
+      if (command.domain === "project") {
+        if (command.name === "help") return projectCommandHelpText("OpenCode");
+        if (command.name === "current") return this.renderCurrentProject(key);
+        const sessions = await this.listSessions();
+        const projects = agentProjectsFromDirectories(
+          [this.defaultCwd, ...sessions.map((session) => session.directory)],
+          this.defaultCwd
+        );
+        for (const project of projects) project.name = this.projectLabel(project.directory, project.name);
+        if (command.name === "ls") {
+          return renderAgentProjectList("OpenCode", projects, this.projectDirectory(key), { args: command.args });
+        }
+        if (command.name === "search") {
+          return renderAgentProjectList("OpenCode", projects, this.projectDirectory(key), { query: command.args });
+        }
+        if (command.name === "rename") {
+          if (!command.args) return "Usage: /project name <label>.";
+          this.loadStore().projectAliases[comparableProjectDirectory(this.projectDirectory(key))] = command.args.slice(0, 80);
+          this.saveStore();
+          return "Project label updated to " + command.args.slice(0, 80) + ".";
+        }
+        if (command.name === "select") {
+          if (!command.args) return "Usage: /project use <project-number>. Send /project list to list projects.";
+          const project = resolveAgentProject(command.args, projects);
+          if (!project) return "Project '" + command.args + "' was not found. Send /project list to list projects.";
+          this.setConversationEntry(key, {
+            sessionId: "",
+            projectDirectory: project.directory,
+            title: "",
+            updatedAt: Date.now()
+          });
+          return "Selected project " + project.name + "\npath: " + project.directory + "\nUse /session list or /session new to choose a session.";
+        }
+      }
+      if (command.domain === "session") {
+        if (command.name === "help") return sessionCommandHelpText("OpenCode");
+        if (command.name === "status") return this.renderTurnStatus(key);
+        if (command.name === "cancel") return this.cancelTurns(key);
+        if (["approve", "deny", "answer"].includes(command.name)) return "No permission request is waiting for this conversation.";
+        if (command.name === "current") return this.renderCurrentSession(key);
+        if (command.name === "reset" || command.name === "new") {
+          const directory = this.projectDirectory(key);
+          this.setConversationEntry(key, {
+            sessionId: "",
+            projectDirectory: directory,
+            title: command.name === "new" ? command.args : "",
+            updatedAt: Date.now()
+          });
+          return command.name === "new"
+            ? "Ready. The next message will create a new OpenCode session in project " + projectNameFromDirectory(directory) + "."
+            : "Session selection cleared. The next message will create a new OpenCode session in the current project.";
+        }
+        const directory = this.projectDirectory(key);
+        const includeArchived = command.name === "ls" && command.args.toLowerCase() === "archived";
+        const sessions = (await this.listSessions(includeArchived)).filter((session) => sameProjectDirectory(session.directory, directory));
+        if (command.name === "ls") {
+          return renderOpenCodeSessionList(sessions, this.conversationEntry(key), directory, { args: includeArchived ? "1" : command.args });
+        }
+        if (command.name === "search") {
+          return renderOpenCodeSessionList(sessions, this.conversationEntry(key), directory, { query: command.args });
+        }
+        if (command.name === "select") {
+          if (!command.args) return "Usage: /session use <session-number>. Send /session list to list sessions.";
+          const session = resolveOpenCodeSession(command.args, sessions);
+          if (!session) return "Session '" + command.args + "' was not found in the current project. Send /session list to list sessions.";
+          this.setConversationEntry(key, {
+            sessionId: session.id,
+            projectDirectory: resolveOpenCodeBotCwd(session.directory, directory),
+            title: session.title,
+            updatedAt: session.updatedAt || Date.now()
+          });
+          return "Selected session " + shortSessionId(session.id) + ": " + session.title + "\nNext message will continue in this OpenCode session.";
+        }
+        if (command.name === "rename") return this.renameCurrentSession(key, command.args);
+        if (["archive", "restore", "delete"].includes(command.name)) return this.mutateSession(command.name, command.args, sessions, key);
+        if (command.name === "history") return this.renderSessionHistory(key, command.args);
+        if (command.name === "model") return this.updateSessionSetting(key, "model", command.args);
+        if (command.name === "effort") return this.updateSessionSetting(key, "effort", command.args);
+        if (command.name === "mode") return this.updateSessionSetting(key, "mode", command.args);
+        if (command.name === "models") return this.renderModels(command.args);
+        if (command.name === "usage") return this.renderSessionUsage(key);
+        if (command.name === "memory") return this.updateSessionMemory(key, command.args);
+        if (command.name === "skills") return renderAgentSkills(directory, "opencode");
+        if (command.name === "skill") return forwardSkillCommand(command.args);
+        if (command.name === "shortcut") return this.handleSessionShortcut(key, command.args);
+        if (command.name === "doctor") return renderBotDiagnostics(bridge.diagnostics());
+        if (command.name === "deliveries") return renderBotDeliveries(bridge.diagnostics());
+      }
+      return null;
+    } catch (error) {
+      return "OpenCode bot command failed: " + conciseError(error);
+    }
+  }
+
+  async listSessions(includeArchived = false) {
+    const result = await runOpenCodeBotCli(this.command, ["session", "list", "--format", "json", "-n", "100"], this.defaultCwd);
+    if (result.exitCode !== 0) {
+      throw new Error(result.error || result.stderr || "OpenCode session list exited with code " + result.exitCode);
+    }
+    const store = this.loadStore();
+    return parseOpenCodeSessionList(result.stdout)
+      .map((session) => ({ ...session, title: store.sessionAliases[session.id] || session.title, archived: store.archivedSessionIds.includes(session.id) }))
+      .filter((session) => includeArchived ? session.archived : !session.archived);
+  }
+
+  loadStore() {
+    if (this.store) return this.store;
+    const value = readJsonFile(openCodeBotSessionStorePath());
+    const conversations = value && typeof value === "object" &&
+      Number(value.version || 0) >= 2 &&
+      value.conversations && typeof value.conversations === "object"
+      ? value.conversations
+      : {};
+    const pendingTurns = value && Array.isArray(value.pendingTurns) ? value.pendingTurns.filter((item) => item && typeof item === "object") : [];
+    const projectAliases = value && value.projectAliases && typeof value.projectAliases === "object" ? value.projectAliases : {};
+    const sessionAliases = value && value.sessionAliases && typeof value.sessionAliases === "object" ? value.sessionAliases : {};
+    const archivedSessionIds = value && Array.isArray(value.archivedSessionIds) ? value.archivedSessionIds.filter((item) => typeof item === "string") : [];
+    this.store = { version: OPENCODE_BOT_SESSION_STORE_VERSION, conversations, pendingTurns, projectAliases, sessionAliases, archivedSessionIds };
+    return this.store;
+  }
+
+  saveStore() {
+    const file = openCodeBotSessionStorePath();
+    const temporary = file + "." + process.pid + ".tmp";
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(temporary, JSON.stringify(this.loadStore(), null, 2) + "\n", { mode: 0o600 });
+    fs.renameSync(temporary, file);
+  }
+
+  conversationEntry(key) {
+    const entry = this.loadStore().conversations[key];
+    if (!entry || typeof entry !== "object") return null;
+    const projectDirectory = stringValue(entry.projectDirectory) || stringValue(entry.directory);
+    if (!projectDirectory) return null;
+    try {
+      return fs.statSync(expandHome(projectDirectory)).isDirectory()
+        ? { ...entry, projectDirectory }
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  setConversationEntry(key, entry) {
+    this.loadStore().conversations[key] = entry;
+    this.saveStore();
+  }
+
+  projectDirectory(key) {
+    const entry = this.conversationEntry(key);
+    return resolveOpenCodeBotCwd(entry && entry.projectDirectory, this.defaultCwd);
+  }
+
+  renderCurrentProject(key) {
+    const directory = this.projectDirectory(key);
+    return [
+      "Current OpenCode project:",
+      projectNameFromDirectory(directory),
+      "path: " + directory
+    ].join("\n");
+  }
+
+  renderCurrentSession(key) {
+    const entry = this.conversationEntry(key);
+    const directory = this.projectDirectory(key);
+    if (!entry || !stringValue(entry.sessionId)) {
+      return "No selected OpenCode session in project " + projectNameFromDirectory(directory) + ". Use /session list, /session use <n>, or send any message to create one.";
+    }
+    return [
+      "Current OpenCode session:",
+      shortSessionId(entry.sessionId) + " " + (entry.title || "OpenCode session"),
+      "project: " + projectNameFromDirectory(directory),
+      "path: " + directory
+    ].join("\n");
+  }
+
+  projectLabel(directory, fallback) {
+    return this.loadStore().projectAliases[comparableProjectDirectory(directory)] || fallback;
+  }
+
+  renameCurrentSession(key, label) {
+    const entry = this.conversationEntry(key);
+    if (!entry || !entry.sessionId) return "No session is selected.";
+    const name = String(label || "").trim().slice(0, 100);
+    if (!name) return "Usage: /session name <label>.";
+    this.loadStore().sessionAliases[entry.sessionId] = name;
+    this.setConversationEntry(key, { ...entry, title: name, updatedAt: Date.now() });
+    return "Session renamed to " + name + ".";
+  }
+
+  async mutateSession(action, args, visibleSessions, key) {
+    const parsed = parseConfirmedTarget(args);
+    const all = action === "restore" ? await this.listSessions(true) : visibleSessions;
+    const session = resolveOpenCodeSession(parsed.target, all);
+    if (!session) return "Session '" + parsed.target + "' was not found.";
+    const store = this.loadStore();
+    if (action === "archive") {
+      if (!store.archivedSessionIds.includes(session.id)) store.archivedSessionIds.push(session.id);
+      if (this.conversationEntry(key) && this.conversationEntry(key).sessionId === session.id) {
+        this.setConversationEntry(key, { sessionId: "", projectDirectory: this.projectDirectory(key), title: "", updatedAt: Date.now() });
+      } else this.saveStore();
+      return "Session archived: " + session.title + ". Use /session list archived to view archived sessions.";
+    }
+    if (action === "restore") {
+      store.archivedSessionIds = store.archivedSessionIds.filter((id) => id !== session.id);
+      this.saveStore();
+      return "Session restored: " + session.title + ".";
+    }
+    if (!parsed.confirmed) return "Deletion is permanent. Send /session delete " + parsed.target + " confirm.";
+    const result = await runOpenCodeBotCli(this.command, ["session", "delete", session.id], this.defaultCwd, { timeoutMs: 60_000 });
+    if (result.exitCode !== 0) return "Session deletion failed: " + (result.error || result.stderr || "exit " + result.exitCode);
+    delete store.sessionAliases[session.id];
+    store.archivedSessionIds = store.archivedSessionIds.filter((id) => id !== session.id);
+    this.saveStore();
+    return "Session deleted: " + session.title + ".";
+  }
+
+  async renderSessionHistory(key, args) {
+    const entry = this.conversationEntry(key);
+    if (!entry || !entry.sessionId) return "No session is selected.";
+    const result = await runOpenCodeBotCli(this.command, ["export", entry.sessionId], this.projectDirectory(key), { timeoutMs: 60_000 });
+    if (result.exitCode !== 0) return "Unable to read session history: " + (result.error || result.stderr);
+    return renderExportedHistory(result.stdout, args);
+  }
+
+  updateSessionSetting(key, setting, args) {
+    const entry = this.conversationEntry(key) || { sessionId: "", projectDirectory: this.projectDirectory(key), title: "" };
+    const value = String(args || "").trim();
+    if (!value) return "Current " + setting + ": " + (entry[setting] || "default") + ".";
+    const allowed = setting === "effort" ? new Set(["low", "medium", "high", "xhigh", "max", "reset"]) : null;
+    if (allowed && !allowed.has(value)) return "Supported effort values: low, medium, high, xhigh, max, reset.";
+    entry[setting] = value === "reset" ? "" : value;
+    entry.updatedAt = Date.now();
+    this.setConversationEntry(key, entry);
+    return setting + " set to " + (entry[setting] || "default") + ".";
+  }
+
+  async renderModels(query) {
+    const args = ["models"];
+    if (String(query || "").trim()) args.push(String(query).trim());
+    const result = await runOpenCodeBotCli(this.command, args, this.defaultCwd, { timeoutMs: 60_000 });
+    if (result.exitCode !== 0) return "Unable to list models: " + (result.error || result.stderr);
+    return splitBotMessage(result.stdout, 3500)[0] || "No models were returned.";
+  }
+
+  async renderSessionUsage(key) {
+    const entry = this.conversationEntry(key);
+    if (!entry || !entry.sessionId) return "No session is selected.";
+    const result = await runOpenCodeBotCli(this.command, ["export", entry.sessionId], this.projectDirectory(key), { timeoutMs: 60_000 });
+    if (result.exitCode !== 0) return "Unable to read usage: " + (result.error || result.stderr);
+    return renderExportedUsage(result.stdout);
+  }
+
+  updateSessionMemory(key, args) {
+    const entry = this.conversationEntry(key) || { sessionId: "", projectDirectory: this.projectDirectory(key), title: "" };
+    const command = parseSubcommand(args);
+    const memory = Array.isArray(entry.memory) ? entry.memory : [];
+    if (!command.name || command.name === "list") return memory.length ? "Session memory:\n" + memory.map((item, index) => (index + 1) + ". " + item).join("\n") : "Session memory is empty.";
+    if (command.name === "clear") entry.memory = [];
+    else if (command.name === "add" && command.args) entry.memory = [...memory, command.args.slice(0, 2000)].slice(-20);
+    else return "Usage: /session memory list | add <text> | clear.";
+    entry.updatedAt = Date.now();
+    this.setConversationEntry(key, entry);
+    return command.name === "clear" ? "Session memory cleared." : "Session memory added.";
+  }
+
+  handleSessionShortcut(key, args) {
+    const entry = this.conversationEntry(key) || { sessionId: "", projectDirectory: this.projectDirectory(key), title: "" };
+    const shortcuts = entry.shortcuts && typeof entry.shortcuts === "object" ? entry.shortcuts : {};
+    const command = parseSubcommand(args);
+    if (!command.name || command.name === "list") {
+      const names = Object.keys(shortcuts).sort();
+      return names.length ? "Session shortcuts:\n" + names.map((name) => "- " + name + ": " + shortcuts[name]).join("\n") : "No session shortcuts are configured.";
+    }
+    if (command.name === "add") {
+      const definition = parseSubcommand(command.args);
+      if (!definition.name || !definition.args) return "Usage: /session shortcut add <name> <prompt>.";
+      shortcuts[definition.name] = definition.args.slice(0, 2000);
+      entry.shortcuts = shortcuts;
+      this.setConversationEntry(key, { ...entry, updatedAt: Date.now() });
+      return "Shortcut saved: " + definition.name + ".";
+    }
+    if (command.name === "remove") {
+      delete shortcuts[String(command.args || "").trim().toLowerCase()];
+      entry.shortcuts = shortcuts;
+      this.setConversationEntry(key, { ...entry, updatedAt: Date.now() });
+      return "Shortcut removed.";
+    }
+    if (command.name === "run") {
+      const invocation = parseSubcommand(command.args);
+      const prompt = shortcuts[invocation.name];
+      return prompt ? { forwardText: prompt + (invocation.args ? "\n\n" + invocation.args : "") } : "Shortcut '" + invocation.name + "' was not found.";
+    }
+    return "Usage: /session shortcut list | add <name> <prompt> | remove <name> | run <name> [input].";
+  }
+
+  renderTurnStatus(key) {
+    const state = this.turnStates.get(key);
+    if (!state || (!state.active && !state.pending.length)) return "No Agent turn is running or queued for this conversation.";
+    const lines = [];
+    if (state.active) lines.push("Running for " + formatDuration(Date.now() - state.active.startedAt) + ": " + promptTitle(state.active.job.text));
+    lines.push("Queued turns: " + state.pending.length);
+    lines.push("Use /session cancel to stop the active turn and clear this conversation's queue.");
+    return lines.join("\n");
+  }
+
+  cancelTurns(key) {
+    const state = this.turnStates.get(key);
+    if (!state || (!state.active && !state.pending.length)) return "No Agent turn is running or queued for this conversation.";
+    const cleared = state.pending.splice(0);
+    for (const job of cleared) this.removePendingTurn(job.id);
+    if (state.active) {
+      state.active.cancelRequested = true;
+      interruptChildProcess(state.active.child);
+    }
+    return "Cancellation requested. Cleared " + cleared.length + " queued turn" + (cleared.length === 1 ? "" : "s") + ".";
+  }
+
+  persistPendingTurn(job) {
+    const store = this.loadStore();
+    if (!store.pendingTurns.some((item) => item.id === job.id)) {
+      store.pendingTurns.push({ id: job.id, event: job.event, eventId: job.eventId, text: job.text, key: job.key, createdAt: job.createdAt });
+      store.pendingTurns = store.pendingTurns.slice(-100);
+      this.saveStore();
+    }
+  }
+
+  removePendingTurn(id) {
+    const store = this.loadStore();
+    const next = store.pendingTurns.filter((item) => item.id !== id);
+    if (next.length !== store.pendingTurns.length) {
+      store.pendingTurns = next;
+      this.saveStore();
+    }
+  }
+
+  restorePendingTurns(bridge) {
+    if (this.restoredPendingTurns) return;
+    this.restoredPendingTurns = true;
+    for (const item of this.loadStore().pendingTurns.slice()) {
+      if (!item.event || !item.text) continue;
+      const key = item.key || botConversationKey(item.event);
+      const state = this.turnStates.get(key) || { active: null, pending: [] };
+      state.pending.push({ ...item, key, bridge });
+      this.turnStates.set(key, state);
+      void this.drainTurnQueue(key, state);
+    }
+  }
+}
+
+class CodexBotWorker extends OpenCodeBotWorker {
+  constructor(options) {
+    super(options);
+    this.agent = codexRuntimeAgent();
+    this.agentLabel = this.agent === "zcode" ? "ZCode" : "Codex";
+    this.workspaceName = options.workspaceName || this.agentLabel;
+    this.command = expandHome(codexRuntimeRealCli(this.agent));
+    this.defaultCwd = resolveOpenCodeBotCwd(nonEmptyEnv("CCR_BOT_GATEWAY_CWD"), os.homedir());
+    this.store = null;
+  }
+
+  async handleCommand(event, text, bridge) {
+    const parsed = parseBotCommand(text);
+    if (parsed && parsed.domain === "session" && parsed.name === "skills") {
+      return renderAgentSkills(this.projectDirectory(botConversationKey(event)), this.agent);
+    }
+    const response = await super.handleCommand(event, text, bridge);
+    return typeof response === "string" ? response.replace(/OpenCode/g, this.agentLabel) : response;
+  }
+
+  async runTurn(event, eventId, bridge, text, key, activeTurn) {
+    let entry = this.conversationEntry(key);
+    if (entry && entry.sessionId && bridge.config.sessionIdleMinutes > 0 && Date.now() - Number(entry.updatedAt || 0) >= bridge.config.sessionIdleMinutes * 60_000) {
+      entry = { ...entry, sessionId: "", title: "", updatedAt: Date.now() };
+      this.setConversationEntry(key, entry);
+    }
+    const cwd = resolveOpenCodeBotCwd(entry && entry.projectDirectory, this.defaultCwd);
+    const input = await botInputForEvent(event, text, bridge.config, path.join(bridge.config.stateDir || cwd, "attachments"));
+    let prompt = botPromptFromInput(input);
+    if (!bridge.config.shellEnabled) {
+      prompt = "Bot policy: shell and terminal tools are disabled. Do not invoke shell commands; use non-shell tools only.\n\n" + prompt;
+    }
+    if (entry && entry.mode === "plan") {
+      prompt = "Session mode: plan only. Analyze and propose a plan without modifying files.\n\n" + prompt;
+    }
+    if (entry && Array.isArray(entry.memory) && entry.memory.length) {
+      prompt = "Persistent session context:\n" + entry.memory.map((item) => "- " + item).join("\n") + "\n\nUser message:\n" + prompt;
+    }
+    const args = ["exec"];
+    if (entry && entry.sessionId) args.push("resume");
+    args.push("--json", "--skip-git-repo-check");
+    for (const imagePath of botImagePathsFromInput(input)) args.push("--image", imagePath);
+    if (entry && entry.model) args.push("--model", entry.model);
+    if (entry && entry.effort) args.push("-c", "model_reasoning_effort=" + JSON.stringify(entry.effort));
+    const sandboxMode = bridge.config.shellEnabled ? "workspace-write" : "read-only";
+    if (entry && entry.sessionId) args.push("-c", "sandbox_mode=" + JSON.stringify(sandboxMode));
+    else args.push("--sandbox", sandboxMode);
+    if (entry && entry.sessionId) args.push(entry.sessionId);
+    args.push(prompt);
+
+    const streamId = this.agent + "-" + stableBotKey(eventId).slice(-16);
+    const streamParts = new Map();
+    let lastStreamAt = 0;
+    const result = await runCodexBotCli(this.command, args, cwd, this.agent, {
+      timeoutMs: bridge.config.maxTurnTimeMs,
+      onSpawn: (child) => { activeTurn.child = child; },
+      onJson: (value) => {
+        rememberCodexBotOutput(value, streamParts);
+        const streamedText = Array.from(streamParts.values()).join("\n").trim();
+        if (!streamedText || Date.now() - lastStreamAt < 700) return;
+        lastStreamAt = Date.now();
+        void bridge.sendStreamToEvent(event, streamId, streamedText, false, "ccr:" + this.agent + ":stream:" + eventId).catch((error) => bridge.logError("stream_failed", error));
+      }
+    });
+    const parsed = parseCodexBotOutput(result.stdout);
+    const sessionId = parsed.sessionId || entry && entry.sessionId || "";
+    if (sessionId) {
+      this.setConversationEntry(key, {
+        ...(entry || {}),
+        sessionId,
+        projectDirectory: cwd,
+        title: entry && entry.title || "Bot: " + this.workspaceName,
+        updatedAt: Date.now()
+      });
+    }
+    const errorText = parsed.error || result.error || (result.exitCode !== 0 ? result.stderr || this.agentLabel + " exited with code " + result.exitCode : "");
+    const responseText = errorText
+      ? "Agent turn failed: " + errorText
+      : parsed.text || parsed.fallbackText || this.agentLabel + " completed the turn without a text response.";
+    if (bridge.config.streamReplies && !errorText) {
+      await bridge.sendStreamToEvent(event, streamId, responseText, true, "ccr:" + this.agent + ":stream:" + eventId).catch(() => undefined);
+    } else {
+      await bridge.sendReplyToEvent(event, responseText, "ccr:" + this.agent + ":" + eventId + ":" + (sessionId || uuid()));
+    }
+    await sendBotTextArtifacts(event, bridge, responseText, cwd, "ccr:" + this.agent + ":artifact:" + eventId);
+    log("bot_gateway_inbound_replied", { eventId, agent: this.agent, sessionId, exitCode: result.exitCode, textLen: responseText.length });
+  }
+
+  async listSessions(includeArchived = false) {
+    const store = this.loadStore();
+    return scanCodexBotSessions(codexRuntimeHome())
+      .map((session) => ({
+        ...session,
+        title: store.sessionAliases[session.id] || session.title,
+        archived: store.archivedSessionIds.includes(session.id)
+      }))
+      .filter((session) => includeArchived ? session.archived : !session.archived);
+  }
+
+  loadStore() {
+    if (this.store) return this.store;
+    const value = readJsonFile(codexBotSessionStorePath(this.agent));
+    const conversations = value && typeof value === "object" && value.conversations && typeof value.conversations === "object" ? value.conversations : {};
+    const pendingTurns = value && Array.isArray(value.pendingTurns) ? value.pendingTurns.filter((item) => item && typeof item === "object") : [];
+    const projectAliases = value && value.projectAliases && typeof value.projectAliases === "object" ? value.projectAliases : {};
+    const sessionAliases = value && value.sessionAliases && typeof value.sessionAliases === "object" ? value.sessionAliases : {};
+    const archivedSessionIds = value && Array.isArray(value.archivedSessionIds) ? value.archivedSessionIds.filter((item) => typeof item === "string") : [];
+    this.store = { version: OPENCODE_BOT_SESSION_STORE_VERSION, conversations, pendingTurns, projectAliases, sessionAliases, archivedSessionIds };
+    return this.store;
+  }
+
+  saveStore() {
+    writeJsonAtomic(codexBotSessionStorePath(this.agent), this.loadStore());
+  }
+
+  async mutateSession(action, args, visibleSessions, key) {
+    const parsed = parseConfirmedTarget(args);
+    const all = action === "restore" ? await this.listSessions(true) : visibleSessions;
+    const session = resolveOpenCodeSession(parsed.target, all);
+    if (!session) return "Session '" + parsed.target + "' was not found.";
+    const store = this.loadStore();
+    if (action === "archive") {
+      if (!store.archivedSessionIds.includes(session.id)) store.archivedSessionIds.push(session.id);
+      if (this.conversationEntry(key) && this.conversationEntry(key).sessionId === session.id) {
+        this.setConversationEntry(key, { sessionId: "", projectDirectory: this.projectDirectory(key), title: "", updatedAt: Date.now() });
+      } else this.saveStore();
+      return "Session archived: " + session.title + ". Use /session list archived to view archived sessions.";
+    }
+    if (action === "restore") {
+      store.archivedSessionIds = store.archivedSessionIds.filter((id) => id !== session.id);
+      this.saveStore();
+      return "Session restored: " + session.title + ".";
+    }
+    if (!parsed.confirmed) return "Deletion is permanent. Send /session delete " + parsed.target + " confirm.";
+    try {
+      fs.unlinkSync(session.file);
+    } catch (error) {
+      return "Session deletion failed: " + conciseError(error);
+    }
+    delete store.sessionAliases[session.id];
+    store.archivedSessionIds = store.archivedSessionIds.filter((id) => id !== session.id);
+    this.saveStore();
+    return "Session deleted: " + session.title + ".";
+  }
+
+  async renderSessionHistory(key, args) {
+    const entry = this.conversationEntry(key);
+    if (!entry || !entry.sessionId) return "No session is selected.";
+    const session = (await this.listSessions(true)).find((item) => item.id === entry.sessionId);
+    if (!session || !session.file) return "Unable to read session history.";
+    return renderCodexBotHistory(session.file, args);
+  }
+
+  async renderSessionUsage(key) {
+    const entry = this.conversationEntry(key);
+    if (!entry || !entry.sessionId) return "No session is selected.";
+    const session = (await this.listSessions(true)).find((item) => item.id === entry.sessionId);
+    if (!session || !session.file) return "Usage data is unavailable for this session.";
+    const values = readJsonLines(session.file, 2000);
+    return renderExportedUsage(JSON.stringify(values));
+  }
+
+  async renderModels(query) {
+    const file = this.agent === "zcode"
+      ? nonEmptyEnv("CCR_ZCODE_MODEL_CATALOG_FILE") || nonEmptyEnv("CODEXL_ZCODE_MODEL_CATALOG_FILE")
+      : nonEmptyEnv("CCR_CODEX_MODEL_CATALOG_FILE") || nonEmptyEnv("CODEXL_CODEX_MODEL_CATALOG_FILE");
+    const ids = Array.from(collectCodexModelIds(readJsonFile(file), new Set())).sort();
+    const search = String(query || "").trim().toLowerCase();
+    const filtered = search ? ids.filter((id) => id.toLowerCase().includes(search)) : ids;
+    return filtered.length ? this.agentLabel + " models:\n" + filtered.slice(0, 100).map((id) => "- " + id).join("\n") : "No matching models were found.";
+  }
+}
+
+function parseCodexBotWorkerOptions(args) {
+  let workspaceName = nonEmptyEnv("CCR_CODEX_WORKSPACE_NAME") || nonEmptyEnv("CODEXL_CODEX_WORKSPACE_NAME") || nonEmptyEnv("CODEXL_ZCODE_WORKSPACE_NAME") || "Codex";
+  for (let i = 0; i < args.length; i += 1) {
+    if (args[i] === "--workspace-name" && args[i + 1]) {
+      workspaceName = args[i + 1];
+      i += 1;
+    }
+  }
+  return { workspaceName };
+}
+
+function codexBotSessionStorePath(agent) {
+  const stateDir = nonEmptyEnv("CCR_BOT_GATEWAY_STATE_DIR") || nonEmptyEnv("CODEXL_BOT_GATEWAY_STATE_DIR") || nonEmptyEnv("BOT_GATEWAY_STATE_DIR") || path.join(CONFIG_DIR, "bot-gateway", safePathSegment(nonEmptyEnv("CCR_BOT_PROFILE_ID") || "default"));
+  return path.join(expandHome(stateDir), safePathSegment(agent) + "-bot-sessions.json");
+}
+
+async function runCodexBotCli(command, args, cwd, agent, options = {}) {
+  const env = childEnvForAgent(agent);
+  delete env.CCR_CODEX_BOT_WORKER;
+  delete env.CCR_CLI_DIRECT_PROFILE_DISPATCH;
+  delete env.ELECTRON_RUN_AS_NODE;
+  let child;
+  try {
+    child = spawnAgentCli(command, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+  } catch (error) {
+    return { exitCode: 1, stdout: "", stderr: "", error: conciseError(error) };
+  }
+  if (typeof options.onSpawn === "function") options.onSpawn(child);
+  let stdout = "";
+  let stderr = "";
+  let pendingJson = "";
+  let spawnError = "";
+  const append = (current, chunk) => {
+    const next = current + chunk.toString("utf8");
+    return next.length > 4 * 1024 * 1024 ? next.slice(-4 * 1024 * 1024) : next;
+  };
+  child.stdout.on("data", (chunk) => {
+    stdout = append(stdout, chunk);
+    if (typeof options.onJson !== "function") return;
+    pendingJson += chunk.toString("utf8");
+    const lines = pendingJson.split(/\r?\n/g);
+    pendingJson = lines.pop() || "";
+    for (const line of lines) {
+      try { options.onJson(JSON.parse(line)); } catch { /* Ignore diagnostics. */ }
+    }
+  });
+  child.stderr.on("data", (chunk) => { stderr = append(stderr, chunk); });
+  child.once("error", (error) => { spawnError = conciseError(error); });
+  let timedOut = false;
+  let forceKillTimer = null;
+  const timeoutMs = Number(options.timeoutMs) || 10 * 60 * 1000;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    interruptChildProcess(child);
+    forceKillTimer = setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* Already exited. */ } }, 5000);
+  }, timeoutMs);
+  const result = await waitForChildResult(child);
+  clearTimeout(timer);
+  if (forceKillTimer) clearTimeout(forceKillTimer);
+  return { exitCode: result.exitCode, stdout: stdout.trim(), stderr: stderr.trim(), error: timedOut ? "Agent timed out after " + timeoutMs + "ms" : spawnError };
+}
+
+function rememberCodexBotOutput(value, parts) {
+  if (!value || typeof value !== "object") return;
+  const item = value.item && typeof value.item === "object" ? value.item : value;
+  const type = String(item.type || value.type || "").toLowerCase();
+  if (!type.includes("agent_message") && !(type.includes("message") && String(item.role || "").toLowerCase() === "assistant")) return;
+  const text = stringValue(item.text) || textFromContent(item.content);
+  if (text) parts.set(stringValue(item.id) || "message-" + parts.size, text);
+}
+
+function parseCodexBotOutput(output) {
+  let sessionId = "";
+  let error = "";
+  const parts = new Map();
+  const fallback = [];
+  for (const rawLine of String(output || "").split(/\r?\n/g)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    let value;
+    try { value = JSON.parse(line); } catch { fallback.push(line); continue; }
+    sessionId = valueStringAtPaths(value, ["/thread_id", "/threadId", "/session_id", "/sessionId", "/payload/id"]) || sessionId;
+    rememberCodexBotOutput(value, parts);
+    const type = String(value.type || "").toLowerCase();
+    if (type.includes("error") || type === "turn.failed") error = valueStringAtPaths(value, ["/message", "/error/message", "/error"]) || error;
+  }
+  return { sessionId, error, text: Array.from(parts.values()).join("\n").trim(), fallbackText: fallback.join("\n").trim() };
+}
+
+function scanCodexBotSessions(home) {
+  const root = path.join(expandHome(home), "sessions");
+  const files = [];
+  const visit = (directory, depth) => {
+    if (depth > 6 || files.length >= 500) return;
+    let entries = [];
+    try { entries = fs.readdirSync(directory, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      const file = path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(file, depth + 1);
+      else if (entry.isFile() && entry.name.endsWith(".jsonl")) files.push(file);
+    }
+  };
+  visit(root, 0);
+  return files.map(parseCodexBotSessionFile).filter(Boolean).sort((left, right) => right.updatedAt - left.updatedAt);
+}
+
+function parseCodexBotSessionFile(file) {
+  const values = readJsonLines(file, -80);
+  if (!values.length) return null;
+  let id = "";
+  let directory = "";
+  let title = "";
+  let timestamp = "";
+  for (const value of values) {
+    const payload = value && value.payload && typeof value.payload === "object" ? value.payload : value;
+    id = id || valueStringAtPaths(payload, ["/id", "/session_id", "/sessionId"]);
+    directory = directory || valueStringAtPaths(payload, ["/cwd", "/directory", "/path"]);
+    timestamp = timestamp || valueStringAtPaths(payload, ["/timestamp", "/created_at", "/createdAt"]);
+    if (!title) {
+      const role = String(payload && payload.role || "").toLowerCase();
+      if (role === "user") title = (textFromContent(payload.content) || stringValue(payload.text)).slice(0, 100);
+    }
+  }
+  if (!id) id = path.basename(file, ".jsonl").replace(/^rollout-/, "");
+  let updatedAt = Date.parse(timestamp) || 0;
+  try { updatedAt = Math.max(updatedAt, fs.statSync(file).mtimeMs); } catch { /* Keep parsed time. */ }
+  return { id, title: title || "Untitled", directory: directory || os.homedir(), updatedAt, file };
+}
+
+function readJsonLines(file, limit) {
+  let text = "";
+  try { text = fs.readFileSync(file, "utf8"); } catch { return []; }
+  const lines = text.split(/\r?\n/g).filter(Boolean);
+  const count = Number(limit) || lines.length;
+  const selected = count < 0 ? lines.slice(0, Math.abs(count)) : lines.slice(Math.max(0, lines.length - count));
+  return selected.map((line) => {
+    try { return JSON.parse(line); } catch { return null; }
+  }).filter(Boolean);
+}
+
+function renderCodexBotHistory(file, countArg) {
+  const messages = [];
+  for (const value of readJsonLines(file, 2000)) {
+    const payload = value && value.payload && typeof value.payload === "object" ? value.payload : value;
+    const role = String(payload && payload.role || "").toLowerCase();
+    if (role !== "user" && role !== "assistant") continue;
+    const text = textFromContent(payload.content) || stringValue(payload.text);
+    if (text) messages.push({ role: role === "user" ? "User" : "Agent", text });
+  }
+  const requested = Number(countArg);
+  const count = Number.isInteger(requested) ? Math.min(30, Math.max(1, requested)) : 10;
+  const recent = messages.slice(-count);
+  return recent.length ? "Recent session history:\n" + recent.map((item) => item.role + ": " + item.text.slice(0, 500)).join("\n\n") : "Session history is empty.";
+}
+
+function collectCodexModelIds(value, output, depth = 0) {
+  if (!value || typeof value !== "object" || depth > 6) return output;
+  if (!Array.isArray(value)) {
+    const id = stringValue(value.id) || stringValue(value.slug) || stringValue(value.model);
+    if (id && id.length < 200) output.add(id);
+  }
+  for (const child of Array.isArray(value) ? value : Object.values(value)) collectCodexModelIds(child, output, depth + 1);
+  return output;
+}
+
+function parseOpenCodeBotWorkerOptions(args) {
+  let workspaceName = nonEmptyEnv("CCR_OPENCODE_WORKSPACE_NAME") || "OpenCode";
+  for (let i = 0; i < args.length; i += 1) {
+    if (args[i] === "--workspace-name" && args[i + 1]) {
+      workspaceName = args[i + 1];
+      i += 1;
+    }
+  }
+  return { workspaceName };
+}
+
+function openCodeBotSessionStorePath() {
+  const stateDir = nonEmptyEnv("CCR_BOT_GATEWAY_STATE_DIR") ||
+    nonEmptyEnv("CODEXL_BOT_GATEWAY_STATE_DIR") ||
+    nonEmptyEnv("BOT_GATEWAY_STATE_DIR") ||
+    path.join(CONFIG_DIR, "bot-gateway", safePathSegment(nonEmptyEnv("CCR_BOT_PROFILE_ID") || "default"));
+  return path.join(expandHome(stateDir), "opencode-bot-sessions.json");
+}
+
+function resolveOpenCodeBotCwd() {
+  const candidates = Array.from(arguments).concat([openCodeDesktopDefaultCwd(), os.homedir(), process.cwd()]);
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const resolved = expandHome(candidate);
+    try {
+      if (fs.statSync(resolved).isDirectory()) return resolved;
+    } catch {
+      // Try the next configured directory.
+    }
+  }
+  return process.cwd();
+}
+
+function openCodeDesktopDefaultCwd() {
+  return path.parse(os.homedir()).root || process.cwd();
+}
+
+async function runOpenCodeBotCli(command, args, cwd, options = {}) {
+  const env = withoutKeys(process.env, [
+    "CCR_OPENCODE_BOT_WORKER",
+    "CCR_CLI_DIRECT_PROFILE_DISPATCH",
+    "ELECTRON_RUN_AS_NODE"
+  ]);
+  env.OPENCODE_CLIENT = "cli";
+  if (process.platform !== "win32") env.PWD = cwd;
+  let child;
+  try {
+    child = spawnAgentCli(command, args, {
+      cwd,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    });
+  } catch (error) {
+    return { exitCode: 1, stdout: "", stderr: "", error: conciseError(error) };
+  }
+  if (typeof options.onSpawn === "function") options.onSpawn(child);
+
+  let stdout = "";
+  let stderr = "";
+  let spawnError = "";
+  const append = (current, chunk) => {
+    const next = current + chunk.toString("utf8");
+    return next.length > 4 * 1024 * 1024 ? next.slice(-4 * 1024 * 1024) : next;
+  };
+  let pendingJson = "";
+  child.stdout.on("data", (chunk) => {
+    stdout = append(stdout, chunk);
+    if (typeof options.onJson !== "function") return;
+    pendingJson += chunk.toString("utf8");
+    const lines = pendingJson.split(/\r?\n/g);
+    pendingJson = lines.pop() || "";
+    for (const line of lines) {
+      try { options.onJson(JSON.parse(line)); } catch { /* Ignore diagnostics. */ }
+    }
+  });
+  child.stderr.on("data", (chunk) => { stderr = append(stderr, chunk); });
+  child.once("error", (error) => { spawnError = conciseError(error); });
+
+  let timedOut = false;
+  let forceKillTimer = null;
+  const timeoutMs = Number(options.timeoutMs) || numberEnv("CCR_OPENCODE_BOT_TURN_TIMEOUT_MS", 10 * 60 * 1000);
+  const timer = setTimeout(() => {
+    timedOut = true;
+    try {
+      child.kill("SIGTERM");
+    } catch {
+      // The process may have already exited.
+    }
+    forceKillTimer = setTimeout(() => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // The process may have already exited.
+      }
+    }, 5000);
+  }, timeoutMs);
+  const result = await waitForChildResult(child);
+  clearTimeout(timer);
+  if (forceKillTimer) clearTimeout(forceKillTimer);
+  return {
+    exitCode: result.exitCode,
+    stdout: stdout.trim(),
+    stderr: stderr.trim(),
+    error: timedOut ? "OpenCode timed out after " + timeoutMs + "ms" : spawnError
+  };
+}
+
+function parseOpenCodeRunOutput(output) {
+  let sessionId = "";
+  let error = "";
+  const textParts = new Map();
+  const fallback = [];
+  let unnamedPart = 0;
+  for (const rawLine of String(output || "").split(/\r?\n/g)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    let value;
+    try {
+      value = JSON.parse(line);
+    } catch {
+      fallback.push(line);
+      continue;
+    }
+    if (!value || typeof value !== "object") continue;
+    sessionId = valueStringAtPaths(value, ["/sessionID", "/sessionId", "/session/id", "/part/sessionID"]) || sessionId;
+    const type = stringValue(value.type) || "";
+    if (type === "text") {
+      const part = value.part && typeof value.part === "object" ? value.part : value;
+      const text = stringValue(part.text) || stringValue(value.text);
+      if (text) {
+        const partId = stringValue(part.id) || "part-" + (++unnamedPart);
+        textParts.set(partId, text);
+      }
+    } else if (type === "error") {
+      error = openCodeEventError(value) || error;
+    }
+  }
+  return {
+    sessionId,
+    error,
+    text: Array.from(textParts.values()).join("\n").trim(),
+    fallbackText: fallback.join("\n").trim()
+  };
+}
+
+function openCodeEventError(value) {
+  return valueStringAtPaths(value, [
+    "/error/data/message",
+    "/error/message",
+    "/error/data/name",
+    "/error/name",
+    "/message"
+  ]) || stringValue(value && value.error) || "OpenCode returned an error";
+}
+
+function parseOpenCodeSessionList(output) {
+  const text = String(output || "").trim();
+  if (!text) return [];
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    const lines = text.split(/\r?\n/g).map((line) => line.trim()).filter(Boolean);
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+      try {
+        const parsed = JSON.parse(lines[i]);
+        if (Array.isArray(parsed)) {
+          value = parsed;
+          break;
+        }
+      } catch {
+        // Ignore non-JSON diagnostic lines.
+      }
+    }
+  }
+  const values = Array.isArray(value)
+    ? value
+    : value && Array.isArray(value.sessions)
+      ? value.sessions
+      : value && Array.isArray(value.data)
+        ? value.data
+        : [];
+  return values.map(normalizeOpenCodeSession).filter(Boolean).sort((left, right) => right.updatedAt - left.updatedAt);
+}
+
+function normalizeOpenCodeSession(value) {
+  if (!value || typeof value !== "object") return null;
+  const id = valueStringAtPaths(value, ["/id", "/sessionID", "/sessionId"]);
+  if (!id) return null;
+  const title = valueStringAtPaths(value, ["/title", "/name", "/summary/title"]) || "Untitled";
+  const directory = valueStringAtPaths(value, ["/directory", "/cwd", "/path"]);
+  const rawUpdatedAt = valueAtPointer(value, "/time/updated") ?? value.updatedAt ?? value.updated_at ?? valueAtPointer(value, "/time/created");
+  const numericUpdatedAt = Number(rawUpdatedAt);
+  const parsedUpdatedAt = typeof rawUpdatedAt === "string" ? Date.parse(rawUpdatedAt) : 0;
+  return {
+    id,
+    title,
+    directory,
+    updatedAt: Number.isFinite(numericUpdatedAt) && numericUpdatedAt > 0
+      ? numericUpdatedAt
+      : Number.isFinite(parsedUpdatedAt) ? parsedUpdatedAt : 0
+  };
+}
+
+function resolveOpenCodeSession(query, sessions) {
+  const text = String(query || "").trim();
+  const index = Number(text);
+  if (Number.isInteger(index) && index >= 1 && index <= sessions.length) return sessions[index - 1];
+  const lower = text.toLowerCase();
+  const matches = sessions.filter((session) =>
+    session.id.toLowerCase() === lower ||
+    session.id.toLowerCase().startsWith(lower) ||
+    session.title.toLowerCase().includes(lower)
+  );
+  if (!matches.length) return null;
+  matches.sort((left, right) => {
+    const leftExact = left.id.toLowerCase() === lower ? 0 : left.id.toLowerCase().startsWith(lower) ? 1 : 2;
+    const rightExact = right.id.toLowerCase() === lower ? 0 : right.id.toLowerCase().startsWith(lower) ? 1 : 2;
+    return leftExact - rightExact || right.updatedAt - left.updatedAt;
+  });
+  return matches[0];
+}
+
+function renderOpenCodeSessionList(sessions, current, directory, options = {}) {
+  const page = botListPage(sessions, options.args, options.query, (session) => session.title + " " + session.id);
+  sessions = page.items;
+  if (!sessions.length) {
+    return "No OpenCode sessions found in project " + projectNameFromDirectory(directory) + ". Send any message to create one.";
+  }
+  const lines = ["OpenCode sessions in " + projectNameFromDirectory(directory) + ":", "page " + page.page + "/" + page.pages];
+  for (let i = 0; i < sessions.length; i += 1) {
+    const session = sessions[i];
+    const selected = current && current.sessionId === session.id ? " [selected]" : "";
+    lines.push("[" + (page.offset + i + 1) + "] " + shortSessionId(session.id) + " " + session.title + selected);
+  }
+  lines.push("Commands: /session use <n>, /session new, /session current, /session reset");
+  if (page.pages > 1) lines.push("Use /session list <page> to see more.");
+  return lines.join("\n");
+}
+
+function agentProjectsFromDirectories(directories, fallbackDirectory) {
+  const projects = [];
+  for (const value of directories) {
+    const raw = stringValue(value);
+    if (!raw) continue;
+    const directory = path.resolve(expandHome(raw));
+    try {
+      if (!fs.statSync(directory).isDirectory()) continue;
+    } catch {
+      continue;
+    }
+    if (projects.some((project) => sameProjectDirectory(project.directory, directory))) continue;
+    projects.push({ directory, name: projectNameFromDirectory(directory) });
+  }
+  if (!projects.length && fallbackDirectory) {
+    const directory = path.resolve(expandHome(fallbackDirectory));
+    projects.push({ directory, name: projectNameFromDirectory(directory) });
+  }
+  return projects;
+}
+
+function sameProjectDirectory(left, right) {
+  const leftPath = stringValue(left);
+  const rightPath = stringValue(right);
+  if (!leftPath || !rightPath) return false;
+  return comparableProjectDirectory(leftPath) === comparableProjectDirectory(rightPath);
+}
+
+function comparableProjectDirectory(value) {
+  const resolved = path.resolve(expandHome(stringValue(value) || process.cwd()));
+  try {
+    return normalizeComparablePath(fs.realpathSync(resolved));
+  } catch {
+    return normalizeComparablePath(resolved);
+  }
+}
+
+function resolveExistingProjectDirectory(value, fallbackDirectory) {
+  for (const candidate of [value, fallbackDirectory, process.cwd()]) {
+    const raw = stringValue(candidate);
+    if (!raw) continue;
+    const directory = path.resolve(expandHome(raw));
+    try {
+      if (fs.statSync(directory).isDirectory()) return directory;
+    } catch {
+      // Try the next project candidate.
+    }
+  }
+  return path.resolve(expandHome(stringValue(fallbackDirectory) || process.cwd()));
+}
+
+function projectNameFromDirectory(directory) {
+  const resolved = path.resolve(expandHome(stringValue(directory) || process.cwd()));
+  return path.basename(resolved) || resolved;
+}
+
+function resolveAgentProject(query, projects) {
+  const value = String(query || "").trim();
+  if (!value) return null;
+  const numeric = Number(value);
+  if (Number.isInteger(numeric) && numeric >= 1 && numeric <= projects.length) {
+    return projects[numeric - 1];
+  }
+  const lower = value.toLowerCase();
+  const matches = projects.filter((project) =>
+    project.name.toLowerCase() === lower ||
+    comparableProjectDirectory(project.directory) === comparableProjectDirectory(value)
+  );
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function renderAgentProjectList(agentName, projects, currentDirectory, options = {}) {
+  const page = botListPage(projects, options.args, options.query, (project) => project.name + " " + project.directory);
+  projects = page.items;
+  if (!projects.length) return "No " + agentName + " projects found.";
+  const lines = [agentName + " projects:", "page " + page.page + "/" + page.pages];
+  for (let i = 0; i < projects.length; i += 1) {
+    const project = projects[i];
+    const selected = sameProjectDirectory(project.directory, currentDirectory) ? " [selected]" : "";
+    lines.push("[" + (page.offset + i + 1) + "] " + project.name + selected);
+    lines.push("    path: " + project.directory);
+  }
+  lines.push("Commands: /project use <n>, /project current");
+  if (page.pages > 1) lines.push("Use /project list <page> to see more.");
+  return lines.join("\n");
+}
+
+function botListPage(values, args, query, label) {
+  const pageSize = 8;
+  const search = String(query || "").trim().toLowerCase();
+  const filtered = search ? values.filter((item) => String(label(item) || "").toLowerCase().includes(search)) : values;
+  const requested = Number(String(args || "").trim());
+  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const page = Number.isInteger(requested) ? Math.min(pages, Math.max(1, requested)) : 1;
+  const offset = (page - 1) * pageSize;
+  return { items: filtered.slice(offset, page * pageSize), page, pages, total: filtered.length, offset };
+}
+
+function parseSubcommand(value) {
+  const input = String(value || "").trim();
+  const space = input.search(/\s/);
+  return space < 0
+    ? { name: input.toLowerCase(), args: "" }
+    : { name: input.slice(0, space).toLowerCase(), args: input.slice(space + 1).trim() };
+}
+
+function forwardSkillCommand(args) {
+  const command = parseSubcommand(args);
+  if (!command.name) return "Usage: /session skill <name> [task].";
+  if (!/^[A-Za-z0-9_.-]+$/.test(command.name)) return "Skill names may contain letters, numbers, dots, underscores, and hyphens.";
+  return { forwardText: "/" + command.name + (command.args ? " " + command.args : "") };
+}
+
+function parseConfirmedTarget(value) {
+  const parts = String(value || "").trim().split(/\s+/).filter(Boolean);
+  const confirmed = parts.at(-1) && parts.at(-1).toLowerCase() === "confirm";
+  if (confirmed) parts.pop();
+  return { target: parts.join(" "), confirmed };
+}
+
+function renderExportedHistory(output, countArg) {
+  let value;
+  try { value = JSON.parse(String(output || "")); } catch { return splitBotMessage(String(output || ""), 3500)[0] || "Session history is empty."; }
+  const messages = [];
+  collectHistoryMessages(value, messages, new Set());
+  const requested = Number(countArg);
+  const count = Number.isInteger(requested) ? Math.min(30, Math.max(1, requested)) : 10;
+  const recent = messages.slice(-count);
+  return recent.length
+    ? "Recent session history:\n" + recent.map((item) => item.role + ": " + item.text.slice(0, 500)).join("\n\n")
+    : "Session history is empty.";
+}
+
+function collectHistoryMessages(value, output, seen) {
+  if (!value || typeof value !== "object" || seen.has(value)) return;
+  seen.add(value);
+  if (!Array.isArray(value)) {
+    const role = stringValue(value.role) || stringValue(value.type);
+    const text = stringValue(value.text) || stringValue(value.content) || stringValue(value.message);
+    if (role && text && ["user", "assistant", "agent", "text"].some((item) => role.toLowerCase().includes(item))) {
+      output.push({ role: role.toLowerCase().includes("user") ? "User" : "Agent", text });
+    }
+  }
+  for (const child of Array.isArray(value) ? value : Object.values(value)) collectHistoryMessages(child, output, seen);
+}
+
+function renderExportedUsage(output) {
+  let value;
+  try { value = JSON.parse(String(output || "")); } catch { return "Usage data is unavailable for this session."; }
+  const totals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+  collectUsageValues(value, totals, new Set());
+  return [
+    "Session usage:",
+    "input tokens: " + totals.input,
+    "output tokens: " + totals.output,
+    "cache read: " + totals.cacheRead,
+    "cache write: " + totals.cacheWrite,
+    "cost: " + (totals.cost ? "$" + totals.cost.toFixed(4) : "unavailable")
+  ].join("\n");
+}
+
+function collectUsageValues(value, totals, seen) {
+  if (!value || typeof value !== "object" || seen.has(value)) return;
+  seen.add(value);
+  if (!Array.isArray(value)) {
+    for (const [key, raw] of Object.entries(value)) {
+      const number = Number(raw);
+      if (!Number.isFinite(number)) continue;
+      const normalized = key.toLowerCase().replace(/[^a-z]/g, "");
+      if (normalized === "inputtokens") totals.input += number;
+      else if (normalized === "outputtokens") totals.output += number;
+      else if (normalized.includes("cacheread")) totals.cacheRead += number;
+      else if (normalized.includes("cachewrite")) totals.cacheWrite += number;
+      else if (normalized === "cost" || normalized === "costusd") totals.cost += number;
+    }
+  }
+  for (const child of Array.isArray(value) ? value : Object.values(value)) collectUsageValues(child, totals, seen);
+}
+
+function renderAgentSkills(directory, agent) {
+  const roots = agent === "opencode"
+    ? [path.join(directory, ".opencode", "skills"), path.join(os.homedir(), ".config", "opencode", "skills")]
+    : agent === "codex" || agent === "zcode"
+      ? [path.join(directory, ".agents", "skills"), path.join(codexRuntimeHome(), "skills"), path.join(os.homedir(), ".codex", "skills")]
+      : [path.join(directory, ".claude", "skills"), path.join(os.homedir(), ".claude", "skills")];
+  const skills = [];
+  for (const root of roots) {
+    let entries = [];
+    try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch { continue; }
+    for (const entry of entries) {
+      if ((entry.isDirectory() || entry.name.endsWith(".md")) && !skills.includes(entry.name.replace(/\.md$/i, ""))) skills.push(entry.name.replace(/\.md$/i, ""));
+    }
+  }
+  return skills.length ? "Available skills:\n" + skills.sort().map((item) => "- " + item).join("\n") : "No project or user skills were found.";
+}
+
+function renderBotDiagnostics(value) {
+  return [
+    "Bot diagnostics:",
+    "connection: " + (value.state || "unknown"),
+    "platform: " + (value.platform || "unknown"),
+    "last event: " + (value.lastEventAt || "none"),
+    "last delivery: " + (value.lastDeliveryAt || "none") + (value.lastDeliveryStatus ? " (" + value.lastDeliveryStatus + ")" : ""),
+    "pending deliveries: " + Number(value.outboxCount || 0),
+    "processed events: " + Number(value.processedEventCount || 0),
+    "last error: " + (value.lastError || "none")
+  ].join("\n");
+}
+
+function renderBotDeliveries(value) {
+  const deliveries = Array.isArray(value.recentDeliveries) ? value.recentDeliveries : [];
+  if (!deliveries.length) return "No recent Bot deliveries.";
+  return "Recent Bot deliveries:\n" + deliveries.slice(-10).reverse().map((item) =>
+    new Date(item.deliveredAt).toISOString() + " " + item.kind + " " + item.status
+  ).join("\n");
+}
+
+function conciseError(error) {
+  return error && typeof error.message === "string" && error.message.trim()
+    ? error.message.trim()
+    : String(error || "Unknown error");
+}
+
+function acquireBotWorkerLock(agent) {
+  const lockPath = botWorkerLockPath(agent);
   const token = uuid();
   const payload = {
     pid: process.pid,
@@ -1058,30 +2424,30 @@ function acquireClaudeBotWorkerLock() {
     try {
       fs.writeFileSync(lockPath, JSON.stringify(payload, null, 2), { flag: "wx" });
       const lock = { path: lockPath, token };
-      process.once("exit", () => releaseClaudeBotWorkerLock(lock));
+      process.once("exit", () => releaseBotWorkerLock(lock));
       return lock;
     } catch (error) {
       if (!error || error.code !== "EEXIST") throw error;
       const existing = readJsonFile(lockPath) || {};
       const existingPid = Number(existing.pid);
       if (existingPid && existingPid !== process.pid && processIsRunning(existingPid)) {
-        log("claude_bot_worker_lock_held", { lockPath, pid: process.pid, ownerPid: existingPid });
+        log(agent + "_bot_worker_lock_held", { lockPath, pid: process.pid, ownerPid: existingPid });
         return null;
       }
       try {
         fs.unlinkSync(lockPath);
-        log("claude_bot_worker_stale_lock_removed", { lockPath, pid: process.pid, ownerPid: existingPid || null });
+        log(agent + "_bot_worker_stale_lock_removed", { lockPath, pid: process.pid, ownerPid: existingPid || null });
       } catch (unlinkError) {
-        log("claude_bot_worker_lock_remove_failed", { lockPath, pid: process.pid, error: formatError(unlinkError) });
+        log(agent + "_bot_worker_lock_remove_failed", { lockPath, pid: process.pid, error: formatError(unlinkError) });
         return null;
       }
     }
   }
-  log("claude_bot_worker_lock_failed", { lockPath, pid: process.pid });
+  log(agent + "_bot_worker_lock_failed", { lockPath, pid: process.pid });
   return null;
 }
 
-function releaseClaudeBotWorkerLock(lock) {
+function releaseBotWorkerLock(lock) {
   if (!lock || !lock.path) return;
   try {
     const existing = readJsonFile(lock.path) || {};
@@ -1092,12 +2458,12 @@ function releaseClaudeBotWorkerLock(lock) {
   }
 }
 
-function claudeBotWorkerLockPath() {
+function botWorkerLockPath(agent) {
   const stateDir = nonEmptyEnv("CCR_BOT_GATEWAY_STATE_DIR") ||
     nonEmptyEnv("CODEXL_BOT_GATEWAY_STATE_DIR") ||
     nonEmptyEnv("BOT_GATEWAY_STATE_DIR") ||
     path.join(CONFIG_DIR, "bot-gateway", safePathSegment(nonEmptyEnv("CCR_BOT_PROFILE_ID") || "default"));
-  return path.join(expandHome(stateDir), "claude-bot-worker.lock");
+  return path.join(expandHome(stateDir), safePathSegment(agent) + "-bot-worker.lock");
 }
 
 function processIsRunning(pid) {
@@ -1153,10 +2519,14 @@ class ClaudeCodeAppServer {
     this.active = new Map();
     this.appResponses = new Map();
     this.botBridgeRegistered = false;
-    this.botSessionStore = { version: 1, conversations: {} };
+    this.botSessionStore = { version: BOT_SESSION_ENTRY_VERSION, conversations: {}, pendingTurns: [], projectAliases: {} };
     this.botSessionStoreLoaded = false;
     this.botThreadKeys = new Map();
     this.botThreads = new Map();
+    this.botTurnStates = new Map();
+    this.botPendingApprovals = new Map();
+    this.botSessionApprovals = new Set();
+    this.restoredBotPendingTurns = false;
     this.configValues = {};
     this.pollingEvents = false;
     this.stdin = readline.createInterface({ input: process.stdin, crlfDelay: Infinity, terminal: false });
@@ -1412,23 +2782,82 @@ class ClaudeCodeAppServer {
   }
 
   async handleBotInbound(event, _queued, eventId, bridge) {
-    const text = botEventText(event);
+    let text = botEventText(event) || botInteractionText(event);
     if (!text) {
       log("bot_gateway_inbound_skip", { eventId, reason: "empty_text" });
       return;
     }
-    const commandReply = this.handleBotCommand(event, text);
-    if (commandReply !== null) {
+    const commandReply = this.handleBotCommand(event, text, bridge);
+    if (commandReply && typeof commandReply === "object" && commandReply.forwardText) {
+      text = commandReply.forwardText;
+    } else if (commandReply !== null) {
       await bridge.sendReplyToEvent(event, commandReply, "ccr:claude-code:command:" + eventId);
       log("bot_gateway_command_replied", { eventId, textLen: commandReply.length });
       return;
     }
+    const position = this.enqueueBotTurn(event, eventId, bridge, text);
+    if (position > 0) {
+      await bridge.sendReplyToEvent(event, "Queued behind the active turn (position " + position + "). Use /session status or /session cancel.", "ccr:claude-code:queued:" + eventId);
+    }
+  }
+
+  enqueueBotTurn(event, eventId, bridge, text) {
+    const key = botConversationKey(event);
+    const state = this.botTurnStates.get(key) || { active: null, pending: [] };
+    const job = { id: eventId || stableBotKey(botEventDedupeKey(event)), event, eventId, text, key, createdAt: Date.now(), bridge };
+    state.pending.push(job);
+    this.botTurnStates.set(key, state);
+    this.persistBotPendingTurn(job);
+    const position = (state.active ? 1 : 0) + state.pending.length - 1;
+    void this.drainBotTurnQueue(key, state);
+    return position;
+  }
+
+  async drainBotTurnQueue(key, state) {
+    if (state.draining) return;
+    state.draining = true;
+    try {
+      while (state.pending.length) {
+        const job = state.pending.shift();
+        state.active = { job, threadId: "", turnId: "", startedAt: Date.now(), cancelRequested: false };
+        try {
+          await this.runBotTurn(job, state.active);
+        } catch (error) {
+          try {
+            await job.bridge.sendReplyToEvent(job.event, "Agent turn failed: " + conciseError(error), "ccr:claude-code:error:" + job.eventId);
+          } catch (replyError) {
+            log("claude_bot_turn_error_reply_failed", { eventId: job.eventId, error: formatError(error), replyError: formatError(replyError) });
+          }
+        } finally {
+          this.removeBotPendingTurn(job.id);
+          state.active = null;
+        }
+      }
+    } finally {
+      state.draining = false;
+      if (!state.active && !state.pending.length) this.botTurnStates.delete(key);
+    }
+  }
+
+  async runBotTurn(job, activeTurn) {
+    const { event, eventId, bridge, text, key } = job;
+    this.expireIdleBotSession(key, bridge.config.sessionIdleMinutes);
     const thread = this.botThreadForEvent(event, text);
+    const entry = this.loadBotSessionStore().conversations[key];
+    let input = await botInputForEvent(event, text, bridge.config, thread.claudeAppSessionFile ? path.join(path.dirname(thread.claudeAppSessionFile), thread.claudeAppSessionId || "", "uploads") : path.join(thread.cwd, ".ccr-bot-uploads"));
+    if (entry && Array.isArray(entry.memory) && entry.memory.length) {
+      input = [{ type: "text", text: "Persistent session context:\n" + entry.memory.map((item) => "- " + item).join("\n") }, ...input];
+    }
     const prepared = this.startTurn({
       cwd: thread.cwd,
-      input: [{ type: "text", text }],
+      input,
       threadId: thread.id
     });
+    prepared.work.botContext = { event, eventId, bridge, conversationKey: key };
+    prepared.work.botStream = { id: "claude-" + prepared.turn.id, lastSentAt: 0, pending: "", timer: null };
+    activeTurn.work = prepared.work;
+    activeTurn.threadId = thread.id;
+    activeTurn.turnId = prepared.turn.id;
     for (const notification of prepared.notifications) writeRaw(notification);
     bridge.suppressTurn(prepared.turn.id);
     try {
@@ -1441,34 +2870,92 @@ class ClaudeCodeAppServer {
     const responseText = completed.error
       ? "Agent turn failed: " + completed.error
       : (completed.agentText || "").trim() || "Claude Code completed the turn without a text response.";
-    await bridge.sendReplyToEvent(event, responseText, "ccr:claude-code:" + eventId + ":" + prepared.turn.id);
+    if (bridge.config.streamReplies && !completed.error) {
+      await bridge.sendStreamToEvent(event, "claude-" + prepared.turn.id, responseText, true, "ccr:claude-code:stream:" + eventId).catch(() => undefined);
+    } else {
+      await bridge.sendReplyToEvent(event, responseText, "ccr:claude-code:" + eventId + ":" + prepared.turn.id);
+    }
+    await sendBotTurnArtifacts(event, bridge, completed, thread.cwd, "ccr:claude-code:artifact:" + eventId);
     log("bot_gateway_inbound_replied", { eventId, threadId: thread.id, turnId: prepared.turn.id, textLen: responseText.length });
   }
 
-  handleBotCommand(event, text) {
+  handleBotCommand(event, text, bridge) {
     const command = parseBotCommand(text);
     if (!command) return null;
     const key = botConversationKey(event);
     try {
-      if (command.name === "help") return botCommandHelpText();
-      if (command.name === "ls") return this.renderBotSessionList(key);
-      if (command.name === "current" || command.name === "status") return this.renderCurrentBotSession(key);
-      if (command.name === "reset") {
-        this.clearBotThreadForConversation(key);
-        return "Reset. The next message will create a new Claude App session.";
+      if (command.name === "unknown") return "Unknown Bot command. Send /project or /session to see available commands.";
+      if (command.domain === "project") {
+        if (command.name === "help") return projectCommandHelpText("Claude App");
+        if (command.name === "current") return this.renderCurrentBotProject(key);
+        const sessions = claudeAppLocalAgentSessions();
+        const projects = claudeAppProjects(sessions, this.defaultBotProjectDirectory());
+        for (const project of projects) project.name = this.botProjectLabel(project.directory, project.name);
+        if (command.name === "ls") {
+          return renderAgentProjectList("Claude App", projects, this.selectedBotProjectDirectory(key), { args: command.args });
+        }
+        if (command.name === "search") {
+          return renderAgentProjectList("Claude App", projects, this.selectedBotProjectDirectory(key), { query: command.args });
+        }
+        if (command.name === "rename") {
+          if (!command.args) return "Usage: /project name <label>.";
+          this.loadBotSessionStore().projectAliases[comparableProjectDirectory(this.selectedBotProjectDirectory(key))] = command.args.slice(0, 80);
+          this.saveBotSessionStore();
+          return "Project label updated to " + command.args.slice(0, 80) + ".";
+        }
+        if (command.name === "select") {
+          if (!command.args) return "Usage: /project use <project-number>. Send /project list to list projects.";
+          const project = resolveAgentProject(command.args, projects);
+          if (!project) return "Project '" + command.args + "' was not found. Send /project list to list projects.";
+          this.setBotProjectForConversation(key, project.directory);
+          return "Selected project " + project.name + "\npath: " + project.directory + "\nUse /session list or /session new to choose a session.";
+        }
       }
-      if (command.name === "new") {
-        this.clearBotThreadForConversation(key);
-        const seed = command.args.replace(/^session\b/i, "").trim() || "New Claude App bot session";
-        const thread = this.botThreadForEvent(event, seed);
-        return "Created session " + shortSessionId(thread.claudeAppSessionId || thread.sessionId || thread.id) + ": " + (thread.preview || "New Claude App session") + "\nNext message will continue in this Claude App session.";
-      }
-      if (command.name === "select" || command.name === "use") {
-        if (!command.args) return "Usage: select <session-number-or-id>. Send 'ls' to list sessions.";
-        const session = resolveClaudeAppLocalAgentSession(command.args);
-        if (!session) return "Session '" + command.args + "' was not found. Send 'ls' to list sessions.";
-        const thread = this.bindBotConversationToClaudeAppSession(key, session);
-        return "Selected session " + shortSessionId(session.sessionId) + ": " + botSessionTitle(session) + "\nNext message will continue in this Claude App session.";
+      if (command.domain === "session") {
+        if (command.name === "help") return sessionCommandHelpText("Claude App");
+        if (command.name === "status") return this.renderBotTurnStatus(key);
+        if (command.name === "cancel") return this.cancelBotTurns(key);
+        if (["approve", "deny", "answer"].includes(command.name)) return this.resolveBotApproval(key, command.name, command.args);
+        if (command.name === "ls") return this.renderBotSessionList(key, command.args);
+        if (command.name === "search") return this.renderBotSessionList(key, "", command.args);
+        if (command.name === "current") return this.renderCurrentBotSession(key);
+        if (command.name === "reset") {
+          const directory = this.selectedBotProjectDirectory(key);
+          this.setBotProjectForConversation(key, directory);
+          return "Session selection cleared. The next message will create a new Claude App session in the current project.";
+        }
+        if (command.name === "new") {
+          const directory = this.selectedBotProjectDirectory(key);
+          this.setBotProjectForConversation(key, directory);
+          const seed = command.args || "New Claude App bot session";
+          const thread = this.botThreadForEvent(event, seed);
+          return "Created session " + shortSessionId(thread.claudeAppSessionId || thread.sessionId || thread.id) + ": " + (thread.preview || "New Claude App session") + "\nProject: " + projectNameFromDirectory(thread.cwd) + "\nNext message will continue in this Claude App session.";
+        }
+        if (command.name === "select") {
+          if (!command.args) return "Usage: /session use <session-number>. Send /session list to list sessions.";
+          const directory = this.selectedBotProjectDirectory(key);
+          const sessions = claudeAppLocalAgentSessions().filter((session) =>
+            sameProjectDirectory(claudeAppSessionProjectDirectory(session), directory)
+          );
+          const session = resolveClaudeAppLocalAgentSession(command.args, sessions);
+          if (!session) return "Session '" + command.args + "' was not found in the current project. Send /session list to list sessions.";
+          const thread = this.bindBotConversationToClaudeAppSession(key, session);
+          return "Selected session " + shortSessionId(session.sessionId) + ": " + botSessionTitle(session) + "\nNext message will continue in this Claude App session.";
+        }
+        if (command.name === "rename") return this.renameBotSession(key, command.args);
+        if (["archive", "restore", "delete"].includes(command.name)) return this.mutateClaudeBotSession(key, command.name, command.args);
+        if (command.name === "history") return this.renderClaudeBotHistory(key, command.args);
+        if (command.name === "model") return this.updateClaudeBotSetting(key, "model", command.args);
+        if (command.name === "effort") return this.updateClaudeBotSetting(key, "effort", command.args);
+        if (command.name === "mode") return this.updateClaudeBotSetting(key, "mode", command.args);
+        if (command.name === "models") return this.renderClaudeBotModels();
+        if (command.name === "usage") return this.renderClaudeBotUsage(key);
+        if (command.name === "memory") return this.updateClaudeBotMemory(key, command.args);
+        if (command.name === "skills") return renderAgentSkills(this.selectedBotProjectDirectory(key), "claude");
+        if (command.name === "skill") return forwardSkillCommand(command.args);
+        if (command.name === "shortcut") return this.handleClaudeBotShortcut(key, command.args);
+        if (command.name === "doctor") return renderBotDiagnostics(bridge.diagnostics());
+        if (command.name === "deliveries") return renderBotDeliveries(bridge.diagnostics());
       }
       return null;
     } catch (error) {
@@ -1479,7 +2966,9 @@ class ClaudeCodeAppServer {
   ensureBotBridgeRegistered() {
     if (this.botBridgeRegistered) return;
     this.botBridgeRegistered = true;
-    botBridge().setInboundHandler((event, queued, eventId, bridge) => this.handleBotInbound(event, queued, eventId, bridge));
+    const bridge = botBridge();
+    bridge.setInboundHandler((event, queued, eventId, activeBridge) => this.handleBotInbound(event, queued, eventId, activeBridge));
+    this.restoreBotPendingTurns(bridge);
   }
 
   botThreadForEvent(event, text) {
@@ -1493,9 +2982,10 @@ class ClaudeCodeAppServer {
       if (!restoredThread.preview) restoredThread.preview = text.slice(0, 160);
       return restoredThread;
     }
-    const appThread = this.createBotThreadForNewClaudeAppSession(key, text);
+    const projectDirectory = this.selectedBotProjectDirectory(key);
+    const appThread = this.createBotThreadForNewClaudeAppSession(key, text, projectDirectory);
     if (appThread) return appThread;
-    const thread = this.createThread({ cwd: process.cwd(), workspaceKind: "local" });
+    const thread = this.createThread({ cwd: projectDirectory, workspaceKind: "local" });
     if (!thread.preview) thread.preview = text.slice(0, 160);
     this.botThreads.set(key, thread.id);
     this.botThreadKeys.set(thread.id, key);
@@ -1507,7 +2997,7 @@ class ClaudeCodeAppServer {
     const oldThreadId = this.botThreads.get(key);
     if (oldThreadId) this.botThreadKeys.delete(oldThreadId);
     const thread = this.createThread({
-      cwd: session.cwd || process.cwd(),
+      cwd: claudeAppSessionProjectDirectory(session),
       model: session.model || undefined,
       workspaceKind: "local",
       claudeConfigDir: session.claudeConfigDir || null
@@ -1526,38 +3016,84 @@ class ClaudeCodeAppServer {
     return thread;
   }
 
-  clearBotThreadForConversation(key) {
+  defaultBotProjectDirectory() {
+    const configured = nonEmptyEnv("CCR_BOT_GATEWAY_CWD");
+    if (configured) return resolveExistingProjectDirectory(configured, process.cwd());
+    const latest = latestClaudeAppLocalAgentSession();
+    return latest ? claudeAppSessionProjectDirectory(latest) : process.cwd();
+  }
+
+  selectedBotProjectDirectory(key) {
+    const threadId = this.botThreads.get(key);
+    const thread = threadId ? this.threads.get(threadId) : null;
+    if (thread && thread.cwd) return resolveExistingProjectDirectory(thread.cwd, this.defaultBotProjectDirectory());
+    const entry = this.loadBotSessionStore().conversations[key];
+    return resolveExistingProjectDirectory(
+      entry && (entry.projectDirectory || entry.cwd),
+      this.defaultBotProjectDirectory()
+    );
+  }
+
+  setBotProjectForConversation(key, directory) {
     const threadId = this.botThreads.get(key);
     if (threadId) this.botThreadKeys.delete(threadId);
     this.botThreads.delete(key);
+    const projectDirectory = resolveExistingProjectDirectory(directory, this.defaultBotProjectDirectory());
     const store = this.loadBotSessionStore();
-    delete store.conversations[key];
+    store.conversations[key] = {
+      entryVersion: BOT_SESSION_ENTRY_VERSION,
+      projectDirectory,
+      cwd: projectDirectory,
+      updatedAt: Date.now(),
+      updatedAtSeconds: nowSeconds()
+    };
     this.saveBotSessionStore();
   }
 
-  renderBotSessionList(key) {
-    const sessions = claudeAppLocalAgentSessions();
-    if (!sessions.length) return "No Claude App sessions found. Send any message to create a new session.";
+  renderCurrentBotProject(key) {
+    const directory = this.selectedBotProjectDirectory(key);
+    return [
+      "Current Claude App project:",
+      projectNameFromDirectory(directory),
+      "path: " + directory
+    ].join("\n");
+  }
+
+  botProjectLabel(directory, fallback) {
+    return this.loadBotSessionStore().projectAliases[comparableProjectDirectory(directory)] || fallback;
+  }
+
+  renderBotSessionList(key, args = "", query = "") {
+    const directory = this.selectedBotProjectDirectory(key);
+    const includeArchived = String(args).trim().toLowerCase() === "archived";
+    let sessions = claudeAppLocalAgentSessions({ includeArchived }).filter((session) =>
+      sameProjectDirectory(claudeAppSessionProjectDirectory(session), directory)
+    );
+    const page = botListPage(sessions, includeArchived ? "1" : args, query, (session) => botSessionTitle(session) + " " + session.sessionId);
+    sessions = page.items;
+    if (!sessions.length) return "No Claude App sessions found in project " + projectNameFromDirectory(directory) + ". Send any message to create one.";
     const current = this.currentBotSessionInfo(key);
-    const lines = ["Claude App sessions:"];
+    const lines = ["Claude App sessions in " + projectNameFromDirectory(directory) + ":", "page " + page.page + "/" + page.pages];
     for (let i = 0; i < sessions.length; i += 1) {
       const session = sessions[i];
       const selected = current && current.sessionId === session.sessionId ? " [selected]" : "";
-      lines.push("[" + (i + 1) + "] " + shortSessionId(session.sessionId) + " " + botSessionTitle(session) + selected);
-      lines.push("    cwd: " + (session.cwd || "(unknown)"));
+      lines.push("[" + (page.offset + i + 1) + "] " + shortSessionId(session.sessionId) + " " + botSessionTitle(session) + selected + (session.archived ? " [archived]" : ""));
     }
-    lines.push("Commands: select <n>, new, current, reset, help");
+    lines.push("Commands: /session use <n>, /session new, /session current, /session reset");
+    if (page.pages > 1) lines.push("Use /session list <page> to see more.");
     return lines.join("\n");
   }
 
   renderCurrentBotSession(key) {
     const current = this.currentBotSessionInfo(key);
-    if (!current) return "No selected Claude App session. Send any message to create a new session, or send 'ls' and then 'select <n>'.";
+    const directory = this.selectedBotProjectDirectory(key);
+    if (!current) return "No selected Claude App session in project " + projectNameFromDirectory(directory) + ". Use /session list, /session use <n>, or send any message to create one.";
     const title = current.title || current.sessionId || "Claude App session";
     return [
       "Current Claude App session:",
       shortSessionId(current.sessionId || current.threadId || "") + " " + title,
-      "cwd: " + (current.cwd || "(unknown)")
+      "project: " + projectNameFromDirectory(directory),
+      "path: " + directory
     ].join("\n");
   }
 
@@ -1574,7 +3110,8 @@ class ClaudeCodeAppServer {
     }
     const entry = this.loadBotSessionStore().conversations[key];
     if (!entry || typeof entry !== "object") return null;
-    if (Number(entry.entryVersion || 0) < BOT_SESSION_ENTRY_VERSION) return null;
+    if (Number(entry.entryVersion || 0) < 2) return null;
+    if (!entry.claudeAppSessionId && !entry.claudeSessionId && !entry.sessionId) return null;
     return {
       sessionId: entry.claudeAppSessionId || entry.sessionId || "",
       threadId: entry.threadId || "",
@@ -1583,10 +3120,163 @@ class ClaudeCodeAppServer {
     };
   }
 
+  renameBotSession(key, label) {
+    const current = this.currentBotSessionInfo(key);
+    const name = String(label || "").trim().slice(0, 100);
+    if (!current) return "No session is selected.";
+    if (!name) return "Usage: /session name <label>.";
+    const session = claudeAppLocalAgentSessions({ includeArchived: true }).find((item) => item.sessionId === current.sessionId);
+    if (session) updateClaudeSessionFile(session.file, { title: name });
+    const threadId = this.botThreads.get(key);
+    const thread = threadId ? this.threads.get(threadId) : null;
+    if (thread) {
+      thread.name = name;
+      thread.preview = name;
+      this.persistBotThread(thread.id);
+    } else {
+      const entry = this.loadBotSessionStore().conversations[key];
+      if (entry) {
+        entry.preview = name;
+        entry.updatedAt = Date.now();
+        this.saveBotSessionStore();
+      }
+    }
+    return "Session renamed to " + name + ".";
+  }
+
+  mutateClaudeBotSession(key, action, args) {
+    const directory = this.selectedBotProjectDirectory(key);
+    const sessions = claudeAppLocalAgentSessions({ includeArchived: true }).filter((session) => sameProjectDirectory(claudeAppSessionProjectDirectory(session), directory));
+    const parsed = parseConfirmedTarget(args);
+    const session = resolveClaudeAppLocalAgentSession(parsed.target, sessions);
+    if (!session) return "Session '" + parsed.target + "' was not found in the current project.";
+    if (action === "archive" || action === "restore") {
+      updateClaudeSessionFile(session.file, { isArchived: action === "archive", archived: action === "archive", lastActivityAt: Date.now() });
+      if (action === "archive" && this.currentBotSessionInfo(key) && this.currentBotSessionInfo(key).sessionId === session.sessionId) {
+        this.setBotProjectForConversation(key, directory);
+      }
+      return "Session " + (action === "archive" ? "archived" : "restored") + ": " + botSessionTitle(session) + ".";
+    }
+    if (!parsed.confirmed) return "Deletion is permanent. Send /session delete " + parsed.target + " confirm.";
+    try {
+      fs.rmSync(session.file, { force: true });
+      const sessionDir = path.join(path.dirname(session.file), session.sessionId);
+      if (pathIsInside(sessionDir, path.dirname(session.file))) fs.rmSync(sessionDir, { force: true, recursive: true });
+    } catch (error) {
+      return "Session deletion failed: " + conciseError(error);
+    }
+    if (this.currentBotSessionInfo(key) && this.currentBotSessionInfo(key).sessionId === session.sessionId) this.setBotProjectForConversation(key, directory);
+    return "Session deleted: " + botSessionTitle(session) + ".";
+  }
+
+  renderClaudeBotHistory(key, countArg) {
+    const threadId = this.botThreads.get(key);
+    const thread = threadId ? this.threads.get(threadId) : null;
+    if (!thread) return "No loaded session history is available. Select or send a message to the session first.";
+    const requested = Number(countArg);
+    const count = Number.isInteger(requested) ? Math.min(30, Math.max(1, requested)) : 10;
+    const turns = thread.turns.slice(-count);
+    if (!turns.length) return "Session history is empty.";
+    return "Recent session history:\n" + turns.map((turn) => {
+      const user = turn.input.map((item) => promptTextForItem(item)).join(" ").slice(0, 500);
+      return "User: " + user + "\nAgent: " + String(turn.agentText || turn.error || "(no response)").slice(0, 1000);
+    }).join("\n\n");
+  }
+
+  updateClaudeBotSetting(key, setting, args) {
+    const value = String(args || "").trim();
+    const entry = this.loadBotSessionStore().conversations[key] || { entryVersion: BOT_SESSION_ENTRY_VERSION, projectDirectory: this.selectedBotProjectDirectory(key), cwd: this.selectedBotProjectDirectory(key) };
+    const threadId = this.botThreads.get(key);
+    const thread = threadId ? this.threads.get(threadId) : null;
+    const current = setting === "mode"
+      ? entry.permissionMode || thread && thread.permissionMode
+      : setting === "effort"
+        ? entry.effort || thread && thread.reasoningEffort
+        : entry[setting] || thread && thread[setting];
+    if (!value) return "Current " + setting + ": " + (current || "default") + ".";
+    if (setting === "effort" && !["low", "medium", "high", "xhigh", "max", "reset"].includes(value)) return "Supported effort values: low, medium, high, xhigh, max, reset.";
+    if (setting === "mode" && !["manual", "acceptEdits", "plan", "auto", "dontAsk", "reset"].includes(value)) return "Supported modes: manual, acceptEdits, plan, auto, dontAsk, reset.";
+    const next = value === "reset" ? "" : value;
+    if (setting === "mode") entry.permissionMode = next;
+    else entry[setting] = next;
+    entry.updatedAt = Date.now();
+    this.loadBotSessionStore().conversations[key] = entry;
+    if (thread) {
+      if (setting === "mode") thread.permissionMode = next;
+      else if (setting === "effort") thread.reasoningEffort = next;
+      else thread[setting] = next;
+      this.persistBotThread(thread.id);
+    } else this.saveBotSessionStore();
+    return setting + " set to " + (next || "default") + ".";
+  }
+
+  renderClaudeBotModels() {
+    const result = modelList({});
+    const items = Array.isArray(result && result.data) ? result.data : [];
+    return items.length ? "Available models:\n" + items.slice(0, 30).map((item) => "- " + (item.model || item.id || item.name)).join("\n") : "No models were returned by the current profile.";
+  }
+
+  renderClaudeBotUsage(key) {
+    const threadId = this.botThreads.get(key);
+    const thread = threadId ? this.threads.get(threadId) : null;
+    const usage = thread && thread.latestTokenUsageInfo;
+    if (!usage) return "No usage data is available for the selected session yet.";
+    return "Latest session usage:\nmodel: " + (usage.model || thread.model || "default") + "\n" + JSON.stringify(usage.usage, null, 2);
+  }
+
+  updateClaudeBotMemory(key, args) {
+    const entry = this.loadBotSessionStore().conversations[key] || { entryVersion: BOT_SESSION_ENTRY_VERSION, projectDirectory: this.selectedBotProjectDirectory(key), cwd: this.selectedBotProjectDirectory(key) };
+    const command = parseSubcommand(args);
+    const memory = Array.isArray(entry.memory) ? entry.memory : [];
+    if (!command.name || command.name === "list") return memory.length ? "Session memory:\n" + memory.map((item, index) => (index + 1) + ". " + item).join("\n") : "Session memory is empty.";
+    if (command.name === "clear") entry.memory = [];
+    else if (command.name === "add" && command.args) entry.memory = [...memory, command.args.slice(0, 2000)].slice(-20);
+    else return "Usage: /session memory list | add <text> | clear.";
+    entry.updatedAt = Date.now();
+    this.loadBotSessionStore().conversations[key] = entry;
+    this.saveBotSessionStore();
+    return command.name === "clear" ? "Session memory cleared." : "Session memory added.";
+  }
+
+  handleClaudeBotShortcut(key, args) {
+    const store = this.loadBotSessionStore();
+    const entry = store.conversations[key] || { entryVersion: BOT_SESSION_ENTRY_VERSION, projectDirectory: this.selectedBotProjectDirectory(key), cwd: this.selectedBotProjectDirectory(key) };
+    const shortcuts = entry.shortcuts && typeof entry.shortcuts === "object" ? entry.shortcuts : {};
+    const command = parseSubcommand(args);
+    if (!command.name || command.name === "list") {
+      const names = Object.keys(shortcuts).sort();
+      return names.length ? "Session shortcuts:\n" + names.map((name) => "- " + name + ": " + shortcuts[name]).join("\n") : "No session shortcuts are configured.";
+    }
+    if (command.name === "add") {
+      const definition = parseSubcommand(command.args);
+      if (!definition.name || !definition.args) return "Usage: /session shortcut add <name> <prompt>.";
+      shortcuts[definition.name] = definition.args.slice(0, 2000);
+      entry.shortcuts = shortcuts;
+      entry.updatedAt = Date.now();
+      store.conversations[key] = entry;
+      this.saveBotSessionStore();
+      return "Shortcut saved: " + definition.name + ".";
+    }
+    if (command.name === "remove") {
+      delete shortcuts[String(command.args || "").trim().toLowerCase()];
+      entry.shortcuts = shortcuts;
+      entry.updatedAt = Date.now();
+      store.conversations[key] = entry;
+      this.saveBotSessionStore();
+      return "Shortcut removed.";
+    }
+    if (command.name === "run") {
+      const invocation = parseSubcommand(command.args);
+      const prompt = shortcuts[invocation.name];
+      return prompt ? { forwardText: prompt + (invocation.args ? "\n\n" + invocation.args : "") } : "Shortcut '" + invocation.name + "' was not found.";
+    }
+    return "Usage: /session shortcut list | add <name> <prompt> | remove <name> | run <name> [input].";
+  }
+
   restoreBotThreadForConversation(key) {
     const entry = this.loadBotSessionStore().conversations[key];
     if (!entry || typeof entry !== "object") return null;
-    if (Number(entry.entryVersion || 0) < BOT_SESSION_ENTRY_VERSION) {
+    if (Number(entry.entryVersion || 0) < 2) {
       log("bot_gateway_session_legacy_skip", {
         conversationKeyPrefix: key.slice(0, 80),
         threadId: entry.threadId || "",
@@ -1619,6 +3309,8 @@ class ClaudeCodeAppServer {
     thread.claudeAppSessionId = entry.claudeAppSessionId || null;
     thread.claudeAppSessionFile = entry.claudeAppSessionFile || "";
     thread.preview = entry.preview || "";
+    thread.reasoningEffort = entry.effort || entry.reasoningEffort || null;
+    thread.permissionMode = entry.permissionMode || "";
     thread.updatedAt = entry.updatedAtSeconds || nowSeconds();
     this.botThreads.set(key, thread.id);
     this.botThreadKeys.set(thread.id, key);
@@ -1630,8 +3322,8 @@ class ClaudeCodeAppServer {
     return thread;
   }
 
-  createBotThreadForNewClaudeAppSession(key, text) {
-    const session = createClaudeAppLocalAgentSession(text);
+  createBotThreadForNewClaudeAppSession(key, text, projectDirectory) {
+    const session = createClaudeAppLocalAgentSession(text, projectDirectory);
     if (!session) return null;
     const thread = this.createThread({
       cwd: session.cwd || process.cwd(),
@@ -1644,6 +3336,10 @@ class ClaudeCodeAppServer {
     thread.claudeConfigDir = session.claudeConfigDir || null;
     thread.claudeAppSessionId = session.sessionId || null;
     thread.claudeAppSessionFile = session.file || "";
+    const entry = this.loadBotSessionStore().conversations[key] || {};
+    if (entry.model) thread.model = entry.model;
+    if (entry.effort) thread.reasoningEffort = entry.effort;
+    if (entry.permissionMode) thread.permissionMode = entry.permissionMode;
     thread.preview = session.title || text.slice(0, 160);
     thread.name = session.title || this.workspaceName;
     thread.updatedAt = Math.floor((session.lastActivityAt || Date.now()) / 1000);
@@ -1673,15 +3369,102 @@ class ClaudeCodeAppServer {
     try {
       this.botSessionStore = normalizeBotSessionStore(JSON.parse(fs.readFileSync(botSessionStorePath(), "utf8")));
     } catch {
-      this.botSessionStore = { version: 1, conversations: {} };
+      this.botSessionStore = { version: BOT_SESSION_ENTRY_VERSION, conversations: {}, pendingTurns: [], projectAliases: {} };
     }
     return this.botSessionStore;
   }
 
   saveBotSessionStore() {
     const file = botSessionStorePath();
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(this.botSessionStore, null, 2));
+    writeJsonAtomic(file, this.botSessionStore);
+  }
+
+  persistBotPendingTurn(job) {
+    const store = this.loadBotSessionStore();
+    if (!Array.isArray(store.pendingTurns)) store.pendingTurns = [];
+    if (!store.pendingTurns.some((item) => item.id === job.id)) {
+      store.pendingTurns.push({ id: job.id, event: job.event, eventId: job.eventId, text: job.text, key: job.key, createdAt: job.createdAt });
+      store.pendingTurns = store.pendingTurns.slice(-100);
+      this.saveBotSessionStore();
+    }
+  }
+
+  removeBotPendingTurn(id) {
+    const store = this.loadBotSessionStore();
+    if (!Array.isArray(store.pendingTurns)) return;
+    const next = store.pendingTurns.filter((item) => item.id !== id);
+    if (next.length !== store.pendingTurns.length) {
+      store.pendingTurns = next;
+      this.saveBotSessionStore();
+    }
+  }
+
+  restoreBotPendingTurns(bridge) {
+    if (this.restoredBotPendingTurns) return;
+    this.restoredBotPendingTurns = true;
+    const pending = this.loadBotSessionStore().pendingTurns;
+    for (const item of Array.isArray(pending) ? pending.slice() : []) {
+      if (!item.event || !item.text) continue;
+      const key = item.key || botConversationKey(item.event);
+      const state = this.botTurnStates.get(key) || { active: null, pending: [] };
+      state.pending.push({ ...item, key, bridge });
+      this.botTurnStates.set(key, state);
+      void this.drainBotTurnQueue(key, state);
+    }
+  }
+
+  renderBotTurnStatus(key) {
+    const state = this.botTurnStates.get(key);
+    const approval = this.botPendingApprovals.get(key);
+    if ((!state || (!state.active && !state.pending.length)) && !approval) return "No Agent turn is running or queued for this conversation.";
+    const lines = [];
+    if (state && state.active) lines.push("Running for " + formatDuration(Date.now() - state.active.startedAt) + ": " + promptTitle(state.active.job.text));
+    if (approval) lines.push("Waiting for permission: " + approval.label);
+    lines.push("Queued turns: " + (state ? state.pending.length : 0));
+    lines.push("Use /session cancel to stop the active turn and clear this conversation's queue.");
+    return lines.join("\n");
+  }
+
+  cancelBotTurns(key) {
+    const state = this.botTurnStates.get(key);
+    if (!state || (!state.active && !state.pending.length)) return "No Agent turn is running or queued for this conversation.";
+    const cleared = state.pending.splice(0);
+    for (const job of cleared) this.removeBotPendingTurn(job.id);
+    if (state.active) {
+      state.active.cancelRequested = true;
+      if (state.active.work) state.active.work.cancelRequested = true;
+      const active = findActiveForThread(this.active, state.active.threadId);
+      interruptChildProcess(active && active.child);
+    }
+    const approval = this.botPendingApprovals.get(key);
+    if (approval) {
+      this.botPendingApprovals.delete(key);
+      approval.resolve({ decision: "deny", reason: "Turn canceled" });
+    }
+    return "Cancellation requested. Cleared " + cleared.length + " queued turn" + (cleared.length === 1 ? "" : "s") + ".";
+  }
+
+  expireIdleBotSession(key, idleMinutes) {
+    const minutes = Number(idleMinutes) || 0;
+    if (minutes <= 0) return;
+    const entry = this.loadBotSessionStore().conversations[key];
+    if (!entry || !entry.updatedAt || Date.now() - Number(entry.updatedAt) < minutes * 60_000) return;
+    this.setBotProjectForConversation(key, entry.projectDirectory || entry.cwd || this.defaultBotProjectDirectory());
+  }
+
+  resolveBotApproval(key, action, args) {
+    const pending = this.botPendingApprovals.get(key);
+    if (!pending) return "No permission request is waiting for this conversation.";
+    this.botPendingApprovals.delete(key);
+    const input = String(args || "").trim();
+    if (action === "answer") {
+      pending.resolve({ action: "accept", content: input, value: input });
+      return "Answer sent to the Agent.";
+    }
+    const sessionScope = input.toLowerCase() === "session";
+    if (action === "approve" && sessionScope) this.botSessionApprovals.add(key);
+    pending.resolve({ decision: action === "approve" ? "allow" : "deny", scope: sessionScope ? "session" : "once" });
+    return action === "approve" ? "Permission approved." : "Permission denied.";
   }
 
   persistBotThread(threadId) {
@@ -1690,7 +3473,9 @@ class ClaudeCodeAppServer {
     const thread = this.threads.get(threadId);
     if (!thread) return;
     const store = this.loadBotSessionStore();
+    const existing = store.conversations[key] && typeof store.conversations[key] === "object" ? store.conversations[key] : {};
     store.conversations[key] = {
+      ...existing,
       entryVersion: BOT_SESSION_ENTRY_VERSION,
       threadId: thread.id,
       sessionId: thread.sessionId || thread.id,
@@ -1698,8 +3483,11 @@ class ClaudeCodeAppServer {
       claudeAppSessionId: thread.claudeAppSessionId || null,
       claudeAppSessionFile: thread.claudeAppSessionFile || null,
       claudeConfigDir: thread.claudeConfigDir || null,
+      projectDirectory: thread.cwd || process.cwd(),
       cwd: thread.cwd || process.cwd(),
       model: thread.model || "",
+      effort: thread.reasoningEffort || "",
+      permissionMode: thread.permissionMode || "",
       preview: thread.preview || "",
       updatedAt: Date.now(),
       updatedAtSeconds: thread.updatedAt || nowSeconds()
@@ -1829,7 +3617,9 @@ class ClaudeCodeAppServer {
       resumeExisting: Boolean(thread.claudeSessionId),
       claudeSessionId: thread.claudeSessionId,
       claudeConfigDir: thread.claudeConfigDir,
-      model: thread.model
+      model: thread.model,
+      reasoningEffort: thread.reasoningEffort,
+      permissionMode: thread.permissionMode || ""
     };
     const userItem = userItemJson(turn);
     const notifications = [
@@ -1914,6 +3704,15 @@ class ClaudeCodeAppServer {
         writeNotification("thread/stream/state", threadStreamState(thread));
       }
     }, 1000);
+    const wallTimeoutMs = work.botContext && work.botContext.bridge
+      ? Number(work.botContext.bridge.config.maxTurnTimeMs) || TURN_IDLE_TIMEOUT_MS
+      : TURN_IDLE_TIMEOUT_MS;
+    const wallTimeout = setTimeout(() => {
+      work.timedOut = true;
+      log("claude_turn_wall_timeout", { threadId: work.threadId, turnId: work.turnId, wallTimeoutMs });
+      interruptChildProcess(child);
+    }, wallTimeoutMs);
+    if (typeof wallTimeout.unref === "function") wallTimeout.unref();
 
     const childDone = waitForChild(child).then((code) => ({ kind: "exit", code }));
     const resultDone = resultSeen.then(() => sleep(250).then(() => ({ kind: "result", code: 0 })));
@@ -1932,13 +3731,19 @@ class ClaudeCodeAppServer {
     }
     const code = done.code;
     clearInterval(idle);
+    clearTimeout(wallTimeout);
+    if (work.botStream && work.botStream.timer) clearTimeout(work.botStream.timer);
     stdoutRl.close();
     stderrRl.close();
     this.active.delete(key);
     const text = stream.resultText || stream.emitted || stream.pending;
     turn.agentText = text;
-    turn.error = stream.resultError || (childSpawnError ? formatError(childSpawnError) : code === 0 ? null : stderr.trim() || "Claude Code exited with code " + code);
-    turn.status = turn.error ? "failed" : "completed";
+    turn.error = work.cancelRequested
+      ? "Turn canceled."
+      : work.timedOut
+        ? "Turn timed out after " + formatDuration(wallTimeoutMs) + "."
+        : stream.resultError || (childSpawnError ? formatError(childSpawnError) : code === 0 ? null : stderr.trim() || "Claude Code exited with code " + code);
+    turn.status = work.cancelRequested ? "interrupted" : turn.error ? "failed" : "completed";
     turn.completedAt = nowSeconds();
     turn.durationMs = Date.now() - started;
     turn.toolItems = Array.from(stream.tools.values()).map((tool) => toolItemJson(work.threadId, work.cwd, tool));
@@ -2008,6 +3813,17 @@ class ClaudeCodeAppServer {
     const params = method === "item/permissions/requestApproval"
       ? permissionRequestParams(work, requestId, message)
       : elicitationRequestParams(work, requestId, message);
+    if (work.botContext) {
+      this.requestBotControl(work, requestId, method, params).then((approval) => {
+        const response = method === "item/permissions/requestApproval"
+          ? claudeControlPermissionResponse(message, requestId, approval)
+          : claudeControlElicitationResponse(requestId, approval);
+        child.stdin.write(JSON.stringify(response) + "\n");
+      }).catch((error) => {
+        child.stdin.write(JSON.stringify({ type: "control_response", response: { subtype: "error", request_id: requestId, error: formatError(error) } }) + "\n");
+      });
+      return;
+    }
     writeRaw({ id: requestId, method, params });
     waitForAppResponse(this.appResponses, requestId, REQUEST_TIMEOUT_MS).then((approval) => {
       const response = method === "item/permissions/requestApproval"
@@ -2017,6 +3833,56 @@ class ClaudeCodeAppServer {
     }).catch((error) => {
       child.stdin.write(JSON.stringify({ type: "control_response", response: { subtype: "error", request_id: requestId, error: formatError(error) } }) + "\n");
     });
+  }
+
+  async requestBotControl(work, requestId, method, params) {
+    const context = work.botContext;
+    const key = context.conversationKey;
+    if (method === "item/permissions/requestApproval" && !context.bridge.config.shellEnabled && isShellPermissionRequest(params)) {
+      return { decision: "deny", reason: "Agent shell tools are disabled in Bot Settings." };
+    }
+    if (method === "item/permissions/requestApproval" && this.botSessionApprovals.has(key)) {
+      return { decision: "allow", scope: "session" };
+    }
+    if (this.botPendingApprovals.has(key)) throw new Error("Another Agent request is already waiting for this conversation.");
+    const isPermission = method === "item/permissions/requestApproval";
+    const label = isPermission ? String(params.reason || "Agent permission") : String(params.message || "Agent input request");
+    const fallbackText = isPermission
+      ? label + "\nReply /session approve, /session approve session, or /session deny."
+      : label + "\nReply /session answer <text> or /session deny.";
+    const actions = isPermission
+      ? [
+          { type: "button", label: "Approve once", value: "/session approve" },
+          { type: "button", label: "Approve for session", value: "/session approve session" },
+          { type: "button", label: "Deny", value: "/session deny" }
+        ]
+      : [{ type: "button", label: "Deny", value: "/session deny" }];
+    const promise = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        if (this.botPendingApprovals.get(key) && this.botPendingApprovals.get(key).requestId === requestId) {
+          this.botPendingApprovals.delete(key);
+        }
+        reject(new Error("Bot approval timed out."));
+      }, Math.min(REQUEST_TIMEOUT_MS, context.bridge.config.maxTurnTimeMs));
+      if (typeof timeout.unref === "function") timeout.unref();
+      this.botPendingApprovals.set(key, {
+        requestId,
+        label,
+        kind: isPermission ? "permission" : "elicitation",
+        resolve: (value) => { clearTimeout(timeout); resolve(value); },
+        reject
+      });
+    });
+    await context.bridge.sendCardToEvent(context.event, {
+      title: isPermission ? "Agent permission required" : "Agent needs input",
+      body: label,
+      fields: [
+        { label: "Project", value: projectNameFromDirectory(work.cwd) },
+        { label: "Session", value: shortSessionId(work.threadId) }
+      ],
+      actions
+    }, fallbackText, "ccr:claude-code:control:" + requestId);
+    return promise;
   }
 }
 
@@ -2102,6 +3968,7 @@ function handleClaudeContentBlock(block, work, stream) {
       result: ""
     };
     stream.tools.set(id, tool);
+    queueBotProgress(work, "Using " + tool.name + "…");
     writeNotification("item/started", { threadId: work.threadId, turnId: work.turnId, item: toolItemJson(work.threadId, work.cwd, tool), startedAtMs: Date.now() });
   } else if (String(type || "").includes("tool_result")) {
     handleClaudeToolResults([block], work, stream);
@@ -2119,6 +3986,7 @@ function emitAgentDelta(work, stream, text) {
     });
   }
   stream.emitted += text;
+  queueBotStreamUpdate(work, stream.emitted);
   writeNotification("item/updated", {
     threadId: work.threadId,
     turnId: work.turnId,
@@ -2126,6 +3994,36 @@ function emitAgentDelta(work, stream, text) {
     delta: text,
     updatedAtMs: Date.now()
   });
+}
+
+function queueBotProgress(work, text) {
+  if (!work.botContext || !work.botContext.bridge.config.streamReplies) return;
+  const current = work.botStream && work.botStream.pending || "";
+  if (!current) queueBotStreamUpdate(work, text);
+}
+
+function queueBotStreamUpdate(work, text) {
+  if (!work.botContext || !work.botStream || !work.botContext.bridge.config.streamReplies) return;
+  work.botStream.pending = String(text || "").slice(-12000);
+  const send = () => {
+    work.botStream.timer = null;
+    const value = work.botStream.pending;
+    if (!value) return;
+    work.botStream.lastSentAt = Date.now();
+    void work.botContext.bridge.sendStreamToEvent(
+      work.botContext.event,
+      work.botStream.id,
+      value,
+      false,
+      "ccr:claude-code:stream:" + work.botContext.eventId
+    ).catch((error) => work.botContext.bridge.logError("stream_failed", error));
+  };
+  const delay = Math.max(0, 700 - (Date.now() - work.botStream.lastSentAt));
+  if (delay === 0) {
+    send();
+  } else if (!work.botStream.timer) {
+    work.botStream.timer = setTimeout(send, delay);
+  }
 }
 
 function emitAgentSnapshot(work, stream, text) {
@@ -2156,6 +4054,8 @@ function claudeCommand(work) {
   ];
   const model = nonEmptyEnv("CCR_CLAUDE_CODE_MODEL") || nonEmptyEnv("CODEXL_CLAUDE_CODE_MODEL") || work.model;
   if (model) args.push("--model", model);
+  if (work.reasoningEffort) args.push("--effort", work.reasoningEffort);
+  if (work.permissionMode) args.push("--permission-mode", work.permissionMode);
   if (work.resumeExisting && work.claudeSessionId) args.push("--resume", work.claudeSessionId);
   const extra = splitShellLike(nonEmptyEnv("CCR_CLAUDE_CODE_EXTRA_ARGS") || nonEmptyEnv("CODEXL_CLAUDE_CODE_EXTRA_ARGS") || "");
   args.push(...extra);
@@ -2760,10 +4660,16 @@ function permissionRequestParams(work, requestId, message) {
     threadId: work.threadId,
     turnId: work.turnId,
     itemId: firstString(message, ["/request/tool_use_id", "/request/toolUseId", "/params/tool_use_id"]) || requestId,
+    toolName,
     cwd: work.cwd,
     reason: "Claude Code wants to use " + label + ".",
     permissions: { network: { enabled: true }, fileSystem: { read: [work.cwd], write: [work.cwd] } }
   };
+}
+
+function isShellPermissionRequest(params) {
+  const name = String(params && params.toolName || "").trim().toLowerCase();
+  return ["bash", "shell", "shell_command", "terminal", "execute_command", "run_command"].includes(name);
 }
 
 function elicitationRequestParams(work, requestId, message) {
@@ -3068,16 +4974,31 @@ function readBotGatewayBridgeConfig() {
     },
     integrationConfig: websocketBotGatewayIntegrationConfig(platform, jsonObjectEnv("CCR_BOT_GATEWAY_CONFIG_JSON") || {}),
     integrationId: nonEmptyEnv("CCR_BOT_GATEWAY_INTEGRATION_ID") || nonEmptyEnv("CODEXL_BOT_GATEWAY_INTEGRATION_ID") || "",
+    language: normalizeBotLanguage(nonEmptyEnv("CCR_BOT_GATEWAY_LANGUAGE") || "auto"),
+    maxAttachmentBytes: numberEnv("CCR_BOT_GATEWAY_MAX_ATTACHMENT_BYTES", 20 * 1024 * 1024),
+    maxTurnTimeMs: numberEnv("CCR_BOT_GATEWAY_MAX_TURN_TIME_MS", 10 * 60 * 1000),
+    mediaEnabled: boolEnv("CCR_BOT_GATEWAY_MEDIA_ENABLED"),
+    messageChunkChars: numberEnv("CCR_BOT_GATEWAY_MESSAGE_CHUNK_CHARS", 3500),
     platform,
     pollIntervalMs: numberEnv("CCR_BOT_GATEWAY_POLL_INTERVAL_MS", 2000),
     profileId: nonEmptyEnv("CCR_BOT_PROFILE_ID") || agentEnv(codexRuntimeAgent(), "PROFILE") || "default",
     profileName: nonEmptyEnv("CCR_BOT_PROFILE_NAME") || agentEnv(codexRuntimeAgent(), "WORKSPACE_NAME") || "CCR",
     requestTimeoutMs: numberEnv("CCR_BOT_GATEWAY_REQUEST_TIMEOUT_MS", 600000),
+    sessionIdleMinutes: numberEnv("CCR_BOT_GATEWAY_SESSION_IDLE_MINUTES", 0),
+    shellEnabled: boolEnv("CCR_BOT_GATEWAY_SHELL_ENABLED"),
     sourceDir: nonEmptyEnv("CCR_BOT_GATEWAY_SOURCE_DIR") || "",
     startupTimeoutMs: numberEnv("CCR_BOT_GATEWAY_STARTUP_TIMEOUT_MS", 10000),
     stateDir: nonEmptyEnv("CCR_BOT_GATEWAY_STATE_DIR") || nonEmptyEnv("CODEXL_BOT_GATEWAY_STATE_DIR") || nonEmptyEnv("BOT_GATEWAY_STATE_DIR") || "",
+    streamReplies: boolEnv("CCR_BOT_GATEWAY_STREAM_REPLIES"),
     tenantId: nonEmptyEnv("CCR_BOT_GATEWAY_TENANT_ID") || nonEmptyEnv("CODEXL_BOT_GATEWAY_TENANT_ID") || "ccr"
   };
+}
+
+function normalizeBotLanguage(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "zh" || normalized === "zh-cn" || normalized === "zh_cn") return "zh-CN";
+  if (normalized === "en" || normalized === "en-us" || normalized === "en_us") return "en";
+  return "auto";
 }
 
 function normalizeBotGatewayPlatform(value) {
@@ -3107,6 +5028,7 @@ function defaultBotGatewayAuthType(platform) {
   if (platform === "weixin-ilink") return "qr_login";
   if (platform === "feishu" || platform === "dingtalk" || platform === "wecom") return "app_secret";
   if (platform === "slack" || platform === "discord" || platform === "telegram" || platform === "line") return "bot_token";
+  if (platform === "imessage") return "local";
   return "";
 }
 
@@ -3143,13 +5065,15 @@ class BotGatewayBridge {
     this.config = config;
     this.child = null;
     this.client = null;
-    this.forwarded = new Set();
+    this.runtimeState = loadBotRuntimeState(config);
+    this.forwarded = new Set(Object.keys(this.runtimeState.forwarded || {}));
     this.inboundHandler = null;
-    this.inboundEvents = new Set();
+    this.inboundEvents = new Set(Object.keys(this.runtimeState.processedEvents || {}));
     this.latestEvent = null;
     this.messageCounter = 0;
     this.pollTimer = null;
     this.startPromise = null;
+    this.flushingOutbox = null;
     this.suppressedTurnIds = new Set();
     this.claudeCliCapture = { finalText: "", resultCount: 0, text: "" };
     this.turnCaptures = new Map();
@@ -3178,6 +5102,7 @@ class BotGatewayBridge {
     const client = this.client;
     this.client = null;
     this.startPromise = null;
+    this.updateDiagnostics({ state: "stopped", stoppedAt: new Date().toISOString() });
     await closeBotGatewayClient(client);
   }
 
@@ -3334,11 +5259,11 @@ class BotGatewayBridge {
   }
 
   forwardDecision() {
-    if (!this.config.forwardAllAgentMessages) {
-      return { shouldForward: false, reason: "forward_all_disabled" };
+    if (this.config.forwardAllAgentMessages) {
+      return { shouldForward: true, reason: "forward_all" };
     }
     if (!this.config.handoff.enabled) {
-      return { shouldForward: false, reason: "handoff_disabled" };
+      return { shouldForward: false, reason: "forwarding_disabled" };
     }
     const presence = evaluateHandoffPresence(this.config.handoff);
     return {
@@ -3352,7 +5277,6 @@ class BotGatewayBridge {
     if (!conversationRef) {
       throw new Error("No Bot Gateway conversationRef is configured and no inbound bot event context is available.");
     }
-    this.messageCounter += 1;
     const outbound = {
       tenantId: this.resolveTenantId(),
       integrationId: this.resolveIntegrationId(),
@@ -3361,9 +5285,10 @@ class BotGatewayBridge {
         type: "text",
         text
       },
-      idempotencyKey: "ccr:handoff:" + this.config.profileId + ":" + key + ":" + this.messageCounter
+      idempotencyKey: "ccr:handoff:" + this.config.profileId + ":" + stableBotKey(key)
     };
-    await withTimeout(this.client.send(outbound), this.config.requestTimeoutMs, "Bot Gateway request timed out: outbound.send");
+    await this.sendDurable(outbound, { kind: "handoff", sourceKey: key });
+    this.rememberForwarded(key);
     log("bot_gateway_forward_sent", {
       key,
       reason: decision.reason,
@@ -3376,22 +5301,118 @@ class BotGatewayBridge {
   async sendReplyToEvent(event, text, key) {
     if (!text || !String(text).trim()) return;
     await this.ensureStarted();
+    text = localizeBotReply(String(text), botLanguageForEvent(this.config.language, event));
     const conversationRef = conversationRefFromEvent(event) || this.config.conversationRef;
     if (!conversationRef) {
       throw new Error("No Bot Gateway conversationRef is available for inbound bot response.");
     }
-    this.messageCounter += 1;
-    const outbound = {
+    const chunks = splitBotMessage(String(text), this.config.messageChunkChars);
+    for (let index = 0; index < chunks.length; index += 1) {
+      const chunk = chunks[index];
+      const outbound = this.outboundForEvent(event, conversationRef, botTextIntent(chunk), key + ":part:" + (index + 1));
+      await this.sendDurable(outbound, { kind: "reply", sourceKey: key });
+    }
+  }
+
+  async sendCardToEvent(event, card, fallbackText, key) {
+    await this.ensureStarted();
+    const conversationRef = conversationRefFromEvent(event) || this.config.conversationRef;
+    if (!conversationRef) throw new Error("No Bot Gateway conversationRef is available for card response.");
+    const language = botLanguageForEvent(this.config.language, event);
+    const localizedFallback = localizeBotReply(fallbackText, language);
+    const localizedCard = language === "zh-CN" ? localizeBotCard(card) : card;
+    const outbound = this.outboundForEvent(event, conversationRef, { type: "card", card: localizedCard, fallbackText: localizedFallback }, key);
+    await this.sendDurable(outbound, { kind: "card", sourceKey: key });
+  }
+
+  async sendMediaToEvent(event, media, caption, key) {
+    if (!this.config.mediaEnabled) return;
+    await this.ensureStarted();
+    const conversationRef = conversationRefFromEvent(event) || this.config.conversationRef;
+    if (!conversationRef) throw new Error("No Bot Gateway conversationRef is available for media response.");
+    const fallbackText = caption || media.filename || media.url || "Attachment";
+    const outbound = this.outboundForEvent(event, conversationRef, { type: "media", media, caption, fallbackText }, key);
+    await this.sendDurable(outbound, { kind: "media", sourceKey: key });
+  }
+
+  async sendStreamToEvent(event, streamId, text, final, key) {
+    if (!this.config.streamReplies || !text) return;
+    await this.ensureStarted();
+    const conversationRef = conversationRefFromEvent(event) || this.config.conversationRef;
+    if (!conversationRef) return;
+    const outbound = this.outboundForEvent(event, conversationRef, {
+      type: "stream_text",
+      streamId,
+      text,
+      final: Boolean(final),
+      fallbackText: text
+    }, key + ":" + (final ? "final" : stableBotKey(text.slice(-160))));
+    await this.sendDurable(outbound, { kind: "stream", sourceKey: key });
+  }
+
+  outboundForEvent(event, conversationRef, intent, key) {
+    return {
       tenantId: eventString(event, "tenantId") || this.config.tenantId || "ccr",
       integrationId: eventString(event, "integrationId") || this.config.integrationId,
       conversationRef,
-      intent: {
-        type: "text",
-        text
-      },
-      idempotencyKey: key + ":" + this.messageCounter
+      intent,
+      idempotencyKey: stableBotKey(key)
     };
-    await withTimeout(this.client.send(outbound), this.config.requestTimeoutMs, "Bot Gateway request timed out: inbound outbound.send");
+  }
+
+  async sendDurable(outbound, metadata) {
+    const id = outbound.idempotencyKey || stableBotKey(JSON.stringify(outbound));
+    let entry = this.runtimeState.outbox.find((item) => item.id === id);
+    if (!entry) {
+      entry = { id, outbound, metadata, attempts: 0, createdAt: Date.now(), nextAttemptAt: 0 };
+      this.runtimeState.outbox.push(entry);
+      this.saveRuntimeState();
+    }
+    return this.deliverOutboxEntry(entry);
+  }
+
+  async deliverOutboxEntry(entry) {
+    entry.attempts += 1;
+    entry.lastAttemptAt = Date.now();
+    this.saveRuntimeState();
+    try {
+      const response = await withTimeout(this.client.send(entry.outbound), this.config.requestTimeoutMs, "Bot Gateway request timed out: outbound.send");
+      const result = response && response.result && typeof response.result === "object" ? response.result : response || {};
+      this.runtimeState.outbox = this.runtimeState.outbox.filter((item) => item.id !== entry.id);
+      this.runtimeState.deliveries.push({
+        id: entry.id,
+        kind: entry.metadata && entry.metadata.kind || "message",
+        status: stringValue(result.status) || "sent",
+        platformMessageId: stringValue(result.platformMessageId),
+        deliveredAt: Date.now()
+      });
+      this.runtimeState.deliveries = this.runtimeState.deliveries.slice(-100);
+      this.updateDiagnostics({ lastDeliveryAt: new Date().toISOString(), lastDeliveryStatus: stringValue(result.status) || "sent" }, false);
+      this.saveRuntimeState();
+      return response;
+    } catch (error) {
+      entry.lastError = formatError(error);
+      entry.nextAttemptAt = Date.now() + Math.min(60_000, 1000 * 2 ** Math.min(entry.attempts, 6));
+      this.updateDiagnostics({ lastError: entry.lastError, lastErrorAt: new Date().toISOString() }, false);
+      this.saveRuntimeState();
+      throw error;
+    }
+  }
+
+  async flushOutbox() {
+    if (this.flushingOutbox) return this.flushingOutbox;
+    this.flushingOutbox = (async () => {
+      const now = Date.now();
+      for (const entry of this.runtimeState.outbox.slice()) {
+        if (entry.nextAttemptAt && entry.nextAttemptAt > now) continue;
+        try {
+          await this.deliverOutboxEntry(entry);
+        } catch {
+          // Retain the entry for the next retry window.
+        }
+      }
+    })().finally(() => { this.flushingOutbox = null; });
+    return this.flushingOutbox;
   }
 
   resolveTenantId() {
@@ -3426,9 +5447,12 @@ class BotGatewayBridge {
     const clientOptions = botGatewaySdkClientOptions(this.config, env, sdk);
     this.client = sdk.createBotGatewayClient(clientOptions);
     await withTimeout(this.client.health(), this.config.startupTimeoutMs, "Bot Gateway health check timed out.");
+    this.updateDiagnostics({ state: "connected", connectedAt: new Date().toISOString(), lastError: "" });
     await this.ensureIntegration();
+    await this.flushOutbox();
     await this.pollEvents();
     this.pollTimer = setInterval(() => {
+      this.flushOutbox().catch((error) => this.logError("outbox_flush_failed", error));
       this.pollEvents().catch((error) => this.logError("poll_failed", error));
     }, Math.max(500, this.config.pollIntervalMs));
     log("bot_gateway_started", { platform: this.config.platform, sdkTransport: clientOptions.transport, command: clientOptions.command || "sdk-bundled" });
@@ -3467,6 +5491,7 @@ class BotGatewayBridge {
         if (!event || !this.matchesEvent(event)) continue;
         if (event.actor && event.actor.isBot === true) continue;
         this.latestEvent = event;
+        this.updateDiagnostics({ lastEventAt: new Date().toISOString(), lastEventType: eventString(event, "type") }, false);
         const eventId = eventIdFromQueued(queued, event);
         if (this.inboundHandler) {
           await this.dispatchInboundEvent(queued, event, eventId);
@@ -3481,10 +5506,14 @@ class BotGatewayBridge {
 
   async dispatchInboundEvent(queued, event, eventId) {
     const key = eventId || botEventDedupeKey(event);
-    if (this.inboundEvents.has(key)) return;
+    if (this.inboundEvents.has(key)) {
+      await this.ackEvent(eventId);
+      return;
+    }
     this.inboundEvents.add(key);
     try {
       await this.inboundHandler(event, queued, eventId || key, this);
+      this.rememberProcessedEvent(key);
       await this.ackEvent(eventId);
     } catch (error) {
       this.inboundEvents.delete(key);
@@ -3506,18 +5535,41 @@ class BotGatewayBridge {
     return true;
   }
 
-  stop() {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = null;
-    }
-    if (this.client && typeof this.client.close === "function") {
-      this.client.close();
-    }
-    this.client = null;
+  rememberProcessedEvent(key) {
+    this.runtimeState.processedEvents[key] = Date.now();
+    pruneTimestampRecord(this.runtimeState.processedEvents, 2000, 7 * 24 * 60 * 60 * 1000);
+    this.saveRuntimeState();
+  }
+
+  rememberForwarded(key) {
+    this.runtimeState.forwarded[key] = Date.now();
+    pruneTimestampRecord(this.runtimeState.forwarded, 1000, 24 * 60 * 60 * 1000);
+    this.forwarded = new Set(Object.keys(this.runtimeState.forwarded));
+    this.saveRuntimeState();
+  }
+
+  diagnostics() {
+    return {
+      ...this.runtimeState.diagnostics,
+      outboxCount: this.runtimeState.outbox.length,
+      recentDeliveries: this.runtimeState.deliveries.slice(-10),
+      processedEventCount: Object.keys(this.runtimeState.processedEvents).length,
+      platform: this.config.platform,
+      integrationId: this.config.integrationId
+    };
+  }
+
+  updateDiagnostics(patch, save = true) {
+    this.runtimeState.diagnostics = { ...this.runtimeState.diagnostics, ...patch, updatedAt: new Date().toISOString() };
+    if (save) this.saveRuntimeState();
+  }
+
+  saveRuntimeState() {
+    writeJsonAtomic(botRuntimeStatePath(this.config), this.runtimeState);
   }
 
   logError(event, error) {
+    this.updateDiagnostics({ lastError: formatError(error), lastErrorAt: new Date().toISOString(), lastErrorEvent: event });
     log("bot_gateway_" + event, { error: formatError(error) });
   }
 }
@@ -3780,48 +5832,306 @@ function botSessionStorePath() {
   return path.join(expandHome(stateDir), "claude-bot-sessions.json");
 }
 
+function botRuntimeStatePath(config) {
+  const stateDir = stringValue(config && config.stateDir) ||
+    nonEmptyEnv("CCR_BOT_GATEWAY_STATE_DIR") ||
+    nonEmptyEnv("BOT_GATEWAY_STATE_DIR") ||
+    path.join(CONFIG_DIR, "bot-gateway", safePathSegment(config && config.profileId || "default"));
+  return path.join(expandHome(stateDir), "bot-runtime-state.json");
+}
+
+function loadBotRuntimeState(config) {
+  const value = readJsonFile(botRuntimeStatePath(config));
+  const state = value && typeof value === "object" ? value : {};
+  const processedEvents = state.processedEvents && typeof state.processedEvents === "object" ? state.processedEvents : {};
+  const forwarded = state.forwarded && typeof state.forwarded === "object" ? state.forwarded : {};
+  pruneTimestampRecord(processedEvents, 2000, 7 * 24 * 60 * 60 * 1000);
+  pruneTimestampRecord(forwarded, 1000, 24 * 60 * 60 * 1000);
+  return {
+    version: BOT_RUNTIME_STATE_VERSION,
+    processedEvents,
+    forwarded,
+    outbox: Array.isArray(state.outbox) ? state.outbox.filter((item) => item && typeof item === "object" && item.id && item.outbound).slice(-500) : [],
+    deliveries: Array.isArray(state.deliveries) ? state.deliveries.slice(-100) : [],
+    diagnostics: state.diagnostics && typeof state.diagnostics === "object" ? state.diagnostics : { state: "starting" }
+  };
+}
+
+function pruneTimestampRecord(record, maxEntries, maxAgeMs) {
+  const now = Date.now();
+  const entries = Object.entries(record || {})
+    .filter(([, value]) => Number.isFinite(Number(value)) && now - Number(value) <= maxAgeMs)
+    .sort((left, right) => Number(right[1]) - Number(left[1]))
+    .slice(0, maxEntries);
+  for (const key of Object.keys(record || {})) delete record[key];
+  for (const [key, value] of entries) record[key] = Number(value);
+}
+
+function writeJsonAtomic(file, value) {
+  const temporary = file + "." + process.pid + ".tmp";
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(temporary, JSON.stringify(value, null, 2) + "\n", { mode: 0o600 });
+  fs.renameSync(temporary, file);
+}
+
+function stableBotKey(value) {
+  return "ccr:" + crypto.createHash("sha256").update(String(value || "")).digest("hex").slice(0, 32);
+}
+
+function splitBotMessage(value, maxChars) {
+  const text = String(value || "").trim();
+  const limit = Math.max(500, Number(maxChars) || 3500);
+  if (!text || text.length <= limit) return text ? [text] : [];
+  const chunks = [];
+  let remaining = text;
+  while (remaining.length > limit) {
+    const window = remaining.slice(0, limit + 1);
+    const newline = window.lastIndexOf("\n");
+    const space = window.lastIndexOf(" ");
+    const cut = Math.max(newline >= limit * 0.55 ? newline : 0, space >= limit * 0.7 ? space : 0) || limit;
+    chunks.push(remaining.slice(0, cut).trim());
+    remaining = remaining.slice(cut).trim();
+  }
+  if (remaining) chunks.push(remaining);
+  return chunks;
+}
+
+function botTextIntent(text) {
+  const value = String(text || "");
+  const markdown = /(^|\n)\s{0,3}(#{1,6}\s|[-*+]\s|\d+\.\s|\x60{3}|>\s)|\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*/m.test(value);
+  return markdown
+    ? { type: "markdown", markdown: value, fallbackText: value }
+    : { type: "text", text: value };
+}
+
+function botLanguageForEvent(configured, event) {
+  if (configured === "en" || configured === "zh-CN") return configured;
+  const locale = valueStringAtPaths(event, ["/actor/locale", "/raw/locale", "/raw/language", "/raw/user/locale"]) || process.env.LANG || "";
+  return /^zh(?:[-_]|$)/i.test(locale) ? "zh-CN" : "en";
+}
+
+function localizeBotReply(text, language) {
+  if (language !== "zh-CN") return text;
+  const replacements = [
+    ["Unknown Bot command. Send /project or /session to see available commands.", "未知的 Bot 命令。发送 /project 或 /session 查看可用命令。"],
+    ["CCR App project commands", "CCR App 项目命令"],
+    ["CCR App session commands", "CCR App 会话命令"],
+    ["Projects are managed separately with /project. The relay is available only while this App is opened through CCR.", "项目通过 /project 单独管理。只有通过 CCR 打开此 App 时，消息接力才在线。"],
+    ["Sessions are managed separately with /session. The relay is available only while this App is opened through CCR.", "会话通过 /session 单独管理。只有通过 CCR 打开此 App 时，消息接力才在线。"],
+    [" - list Agent projects", " - 列出 Agent 项目"],
+    [" - search Agent projects", " - 搜索 Agent 项目"],
+    [" - show the selected project", " - 显示当前项目"],
+    [" - select a listed project", " - 选择列表中的项目"],
+    [" - set a Bot display label for the current project", " - 设置当前项目的 Bot 显示名称"],
+    [" - list sessions in the current project", " - 列出当前项目中的会话"],
+    [" - search sessions in the current project", " - 搜索当前项目中的会话"],
+    [" - show the selected session", " - 显示当前会话"],
+    [" - show the active turn and queue", " - 显示正在运行和排队的任务"],
+    [" - stop the active turn and clear queued turns", " - 停止当前任务并清空队列"],
+    [" - approve a pending Agent permission", " - 允许待处理的 Agent 权限"],
+    [" - deny a pending Agent permission or input request", " - 拒绝待处理的权限或输入请求"],
+    [" - answer a pending Agent input request", " - 回答待处理的 Agent 输入请求"],
+    [" - start a session in the current project", " - 在当前项目中新建会话"],
+    [" - continue a listed session", " - 继续列表中的会话"],
+    [" - clear the selected session", " - 清除当前会话选择"],
+    [" - rename the selected session", " - 重命名当前会话"],
+    [" - show recent turns", " - 显示最近的对话"],
+    [" - show or change model/provider", " - 查看或切换模型/Provider"],
+    [" - show the latest token and cost data", " - 显示最近的 Token 与费用数据"],
+    [" - manage persistent session context", " - 管理持久会话上下文"],
+    [" - list project and user skills", " - 列出项目和用户 Skills"],
+    [" - invoke an Agent-native skill", " - 调用 Agent 原生 Skill"],
+    [" - manage conversation shortcuts", " - 管理会话快捷指令"],
+    [" - show Bot connection and delivery diagnostics", " - 显示 Bot 连接和投递诊断"],
+    [" - show recent outbound delivery results", " - 显示最近的出站投递结果"],
+    ["No Agent turn is running or queued for this conversation.", "当前会话没有正在运行或排队的 Agent 任务。"],
+    ["No permission request is waiting for this conversation.", "当前会话没有待处理的权限请求。"],
+    ["Permission approved.", "已允许本次权限请求。"],
+    ["Permission denied.", "已拒绝本次权限请求。"],
+    ["Answer sent to the Agent.", "已将回答发送给 Agent。"],
+    ["Bot diagnostics:", "Bot 诊断："],
+    ["Recent Bot deliveries:", "最近的 Bot 投递："],
+    ["No recent Bot deliveries.", "暂无最近的 Bot 投递记录。"],
+    ["Current Claude App project:", "当前 Claude App 项目："],
+    ["Current OpenCode project:", "当前 OpenCode 项目："],
+    ["Current Claude App session:", "当前 Claude App 会话："],
+    ["Current OpenCode session:", "当前 OpenCode 会话："],
+    ["Available models:", "可用模型："],
+    ["Available skills:", "可用 Skills："],
+    ["Session memory:", "会话记忆："],
+    ["Session memory is empty.", "会话记忆为空。"],
+    ["Session memory cleared.", "会话记忆已清空。"],
+    ["Session memory added.", "已添加会话记忆。"],
+    ["Recent session history:", "最近会话历史："],
+    ["Session history is empty.", "会话历史为空。"],
+    ["Queued turns:", "排队任务："],
+    ["Running for ", "已运行 "],
+    ["Waiting for permission:", "等待权限确认："],
+    ["Agent turn failed:", "Agent 运行失败："]
+  ];
+  let output = String(text || "");
+  for (const [source, target] of replacements) output = output.split(source).join(target);
+  return output;
+}
+
+function localizeBotCard(card) {
+  const labelMap = {
+    "Agent permission required": "Agent 需要权限",
+    "Agent needs input": "Agent 需要输入",
+    "Approve once": "允许一次",
+    "Approve for session": "本会话始终允许",
+    "Deny": "拒绝",
+    "Project": "项目",
+    "Session": "会话"
+  };
+  return {
+    ...card,
+    title: labelMap[card.title] || card.title,
+    fields: Array.isArray(card.fields) ? card.fields.map((field) => ({ ...field, label: labelMap[field.label] || field.label })) : card.fields,
+    actions: Array.isArray(card.actions) ? card.actions.map((action) => ({ ...action, label: labelMap[action.label] || action.label })) : card.actions
+  };
+}
+
 function normalizeBotSessionStore(value) {
   const conversations = value && typeof value === "object" && value.conversations && typeof value.conversations === "object"
     ? value.conversations
     : {};
-  return { version: BOT_SESSION_ENTRY_VERSION, conversations };
+  const pendingTurns = value && typeof value === "object" && Array.isArray(value.pendingTurns)
+    ? value.pendingTurns.filter((item) => item && typeof item === "object")
+    : [];
+  const projectAliases = value && typeof value === "object" && value.projectAliases && typeof value.projectAliases === "object"
+    ? value.projectAliases
+    : {};
+  return { version: BOT_SESSION_ENTRY_VERSION, conversations, pendingTurns, projectAliases };
 }
 
 function parseBotCommand(text) {
-  let trimmed = String(text || "").trim();
-  if (!trimmed) return null;
-  if (trimmed.startsWith("/")) trimmed = trimmed.slice(1).trim();
+  const input = String(text || "").trim();
+  if (!input || !input.startsWith("/")) return null;
+  const trimmed = input.slice(1).trim();
   const space = trimmed.search(/\s/);
   const rawName = space >= 0 ? trimmed.slice(0, space) : trimmed;
-  const name = rawName.toLowerCase();
+  const domain = rawName.toLowerCase();
   const args = space >= 0 ? trimmed.slice(space + 1).trim() : "";
-  if (["help", "?", "h"].includes(name)) return { name: "help", args };
-  if (["ls", "list", "sessions"].includes(name)) return { name: "ls", args };
-  if (["current", "status", "pwd"].includes(name)) return { name: "current", args };
-  if (["new", "create"].includes(name)) return { name: "new", args };
-  if (name === "reset") return { name, args };
-  if (name === "select" || name === "use") return { name, args };
-  return null;
+  if (domain !== "project" && domain !== "session") return { name: "unknown", args: trimmed };
+  const actionSpace = args.search(/\s/);
+  const action = (actionSpace >= 0 ? args.slice(0, actionSpace) : args).toLowerCase();
+  const actionArgs = actionSpace >= 0 ? args.slice(actionSpace + 1).trim() : "";
+  if (!action || ["help", "?"].includes(action)) return { domain, name: "help", args: "" };
+  if (["list", "ls"].includes(action)) return { domain, name: "ls", args: actionArgs };
+  if (["find", "search"].includes(action)) return { domain, name: "search", args: actionArgs };
+  if (action === "current") return { domain, name: "current", args: actionArgs };
+  if (domain === "session" && action === "status") return { domain, name: "status", args: actionArgs };
+  if (domain === "session" && ["cancel", "stop"].includes(action)) return { domain, name: "cancel", args: actionArgs };
+  if (domain === "session" && action === "approve") return { domain, name: "approve", args: actionArgs };
+  if (domain === "session" && action === "deny") return { domain, name: "deny", args: actionArgs };
+  if (domain === "session" && action === "answer") return { domain, name: "answer", args: actionArgs };
+  if (domain === "project" && ["name", "rename"].includes(action)) return { domain, name: "rename", args: actionArgs };
+  if (domain === "session" && ["name", "rename"].includes(action)) return { domain, name: "rename", args: actionArgs };
+  if (domain === "session" && ["archive", "restore", "delete", "history", "model", "models", "effort", "mode", "usage", "memory", "skills", "skill", "shortcut", "doctor", "deliveries"].includes(action)) {
+    return { domain, name: action, args: actionArgs };
+  }
+  if (["use", "select"].includes(action)) return { domain, name: "select", args: actionArgs };
+  if (domain === "session" && ["new", "create"].includes(action)) return { domain, name: "new", args: actionArgs };
+  if (domain === "session" && action === "reset") return { domain, name: "reset", args: actionArgs };
+  return { domain, name: "unknown", args };
 }
 
-function botCommandHelpText() {
+function projectCommandHelpText(agentName) {
   return [
-    "Bot commands:",
-    "ls - list Claude App sessions",
-    "new - create and select a new Claude App session",
-    "select <n|id> - continue a listed session",
-    "use <n|id> - alias for select",
-    "current - show selected session",
-    "reset - clear selected session; next message creates a new Claude App session",
-    "help - show this message"
+    "CCR App project commands (" + agentName + "):",
+    "/project list - list Agent projects",
+    "/project find <text> - search Agent projects",
+    "/project current - show the selected project",
+    "/project use <n> - select a listed project",
+    "/project name <label> - set a Bot display label for the current project",
+    "",
+    "Sessions are managed separately with /session. The relay is available only while this App is opened through CCR."
   ].join("\n");
+}
+
+function sessionCommandHelpText(agentName) {
+  return [
+    "CCR App session commands (" + agentName + "):",
+    "/session list - list sessions in the current project",
+    "/session find <text> - search sessions in the current project",
+    "/session current - show the selected session",
+    "/session status - show the active turn and queue",
+    "/session cancel - stop the active turn and clear queued turns",
+    "/session approve [session] - approve a pending Agent permission",
+    "/session deny - deny a pending Agent permission or input request",
+    "/session answer <text> - answer a pending Agent input request",
+    "/session new [title] - start a session in the current project",
+    "/session use <n> - continue a listed session",
+    "/session reset - clear the selected session",
+    "/session name <label> - rename the selected session",
+    "/session archive <n> | restore <n> | delete <n> confirm",
+    "/session history [count] - show recent turns",
+    "/session model [selector|reset] - show or change model/provider",
+    "/session effort [low|medium|high|xhigh|max|reset]",
+    "/session mode [manual|acceptEdits|plan|auto|dontAsk|reset]",
+    "/session usage - show the latest token and cost data",
+    "/session memory [list|add <text>|clear] - manage persistent session context",
+    "/session skills - list project and user skills",
+    "/session skill <name> [task] - invoke an Agent-native skill",
+    "/session shortcut list|add|remove|run - manage conversation shortcuts",
+    "/session doctor - show Bot connection and delivery diagnostics",
+    "/session deliveries - show recent outbound delivery results",
+    "",
+    "Projects are managed separately with /project. The relay is available only while this App is opened through CCR."
+  ].join("\n");
+}
+
+function formatDuration(ms) {
+  const seconds = Math.max(0, Math.floor(Number(ms || 0) / 1000));
+  if (seconds < 60) return seconds + "s";
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return minutes + "m " + rest + "s";
+}
+
+function interruptChildProcess(child) {
+  if (!child || child.killed) return false;
+  try {
+    if (process.platform !== "win32" && child.pid) {
+      try { process.kill(-child.pid, "SIGTERM"); } catch { child.kill("SIGTERM"); }
+    } else {
+      child.kill("SIGTERM");
+    }
+    const timer = setTimeout(() => {
+      if (child.exitCode === null && !child.killed) {
+        try {
+          if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGKILL");
+          else child.kill("SIGKILL");
+        } catch { /* Process already exited. */ }
+      }
+    }, 5000);
+    if (typeof timer.unref === "function") timer.unref();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function latestClaudeAppLocalAgentSession() {
   return claudeAppLocalAgentSessions()[0] || null;
 }
 
-function claudeAppLocalAgentSessions() {
+function claudeAppSessionProjectDirectory(session) {
+  const metadata = session && session.metadata && typeof session.metadata === "object" ? session.metadata : {};
+  const selectedFolders = Array.isArray(metadata.userSelectedFolders) ? metadata.userSelectedFolders : [];
+  const selected = selectedFolders.find((item) => stringValue(item));
+  return resolveExistingProjectDirectory(selected || (session && session.cwd), process.cwd());
+}
+
+function claudeAppProjects(sessions, fallbackDirectory) {
+  return agentProjectsFromDirectories(
+    [fallbackDirectory, ...sessions.map((session) => claudeAppSessionProjectDirectory(session))],
+    fallbackDirectory
+  );
+}
+
+function claudeAppLocalAgentSessions(options = {}) {
   const baseDir = currentClaudeAppUserDataDir();
   if (!baseDir) return [];
   const root = path.join(baseDir, "local-agent-mode-sessions");
@@ -3834,7 +6144,9 @@ function claudeAppLocalAgentSessions() {
     } catch {
       continue;
     }
-    if (!value || typeof value !== "object" || value.isArchived === true || value.archived === true) continue;
+    if (!value || typeof value !== "object") continue;
+    const archived = value.isArchived === true || value.archived === true;
+    if (archived && !options.includeArchived) continue;
     const cliSessionId = stringValue(value.cliSessionId) || stringValue(value.cli_session_id);
     if (!cliSessionId) continue;
     const sessionId = stringValue(value.sessionId) || path.basename(file, ".json");
@@ -3849,12 +6161,20 @@ function claudeAppLocalAgentSessions() {
       initialMessage: stringValue(value.initialMessage) || "",
       lastActivityAt,
       claudeConfigDir: claudeAppSessionConfigDir(file, value),
-      metadata: value
+      metadata: value,
+      archived
     };
     sessions.push(item);
   }
   sessions.sort((left, right) => (right.lastActivityAt || 0) - (left.lastActivityAt || 0));
   return sessions;
+}
+
+function updateClaudeSessionFile(file, patch) {
+  const value = readJsonFile(file);
+  if (!value || typeof value !== "object") return false;
+  writeJsonAtomic(file, { ...value, ...patch });
+  return true;
 }
 
 function currentClaudeAppUserDataDir() {
@@ -3888,10 +6208,10 @@ function normalizeComparablePath(value) {
   return process.platform === "win32" ? value.toLowerCase() : value;
 }
 
-function resolveClaudeAppLocalAgentSession(selector) {
+function resolveClaudeAppLocalAgentSession(selector, availableSessions) {
   const query = String(selector || "").trim();
   if (!query) return null;
-  const sessions = claudeAppLocalAgentSessions();
+  const sessions = Array.isArray(availableSessions) ? availableSessions : claudeAppLocalAgentSessions();
   const numeric = Number(query);
   if (Number.isInteger(numeric) && numeric >= 1 && numeric <= sessions.length) {
     return sessions[numeric - 1];
@@ -3935,7 +6255,7 @@ function shortSessionId(value) {
   return text.slice(0, 8);
 }
 
-function createClaudeAppLocalAgentSession(text) {
+function createClaudeAppLocalAgentSession(text, projectDirectory) {
   const baseDir = nonEmptyEnv("CCR_CLAUDE_APP_USER_DATA_PATH") || nonEmptyEnv("CLAUDE_USER_DATA_DIR");
   if (!baseDir) return null;
   const root = path.join(expandHome(baseDir), "local-agent-mode-sessions");
@@ -3943,12 +6263,13 @@ function createClaudeAppLocalAgentSession(text) {
   const parentDir = template && template.file ? path.dirname(template.file) : defaultClaudeAppLocalAgentParentDir(root);
   const sessionId = "local_" + uuid();
   const sessionDir = path.join(parentDir, sessionId);
-  const cwd = path.join(sessionDir, "outputs");
+  const outputDirectory = path.join(sessionDir, "outputs");
+  const cwd = resolveExistingProjectDirectory(projectDirectory, outputDirectory);
   const claudeConfigDir = path.join(sessionDir, ".claude");
   const file = path.join(parentDir, sessionId + ".json");
   const now = Date.now();
   const title = promptTitle(text);
-  fs.mkdirSync(cwd, { recursive: true });
+  fs.mkdirSync(outputDirectory, { recursive: true });
   fs.mkdirSync(path.join(sessionDir, "uploads"), { recursive: true });
   fs.mkdirSync(claudeConfigDir, { recursive: true });
   copyClaudeConfigTemplate(claudeConfigDir, template);
@@ -3958,7 +6279,7 @@ function createClaudeAppLocalAgentSession(text) {
     processName: "ccr-bot-" + sessionId.slice(6, 14),
     cliSessionId: "",
     cwd,
-    userSelectedFolders: [],
+    userSelectedFolders: [cwd],
     createdAt: now,
     lastActivityAt: now,
     model: nonEmptyEnv("CCR_CLAUDE_CODE_MODEL") || nonEmptyEnv("CODEXL_CLAUDE_CODE_MODEL") || agentEnv(codexRuntimeAgent(), "MODEL") || DEFAULT_MODEL,
@@ -4211,6 +6532,150 @@ function botEventText(event) {
     "/raw/audioText",
     "/raw/audio_text"
   ]) || "";
+}
+
+function botInteractionText(event) {
+  if (!event || !String(event.type || "").includes("interaction")) return "";
+  return valueStringAtPaths(event, [
+    "/raw/value",
+    "/raw/action/value",
+    "/raw/actions/0/value",
+    "/raw/data/value",
+    "/message/richText/value"
+  ]);
+}
+
+function botEventAttachments(event) {
+  const candidates = [
+    valueAtPointer(event, "/message/attachments"),
+    valueAtPointer(event, "/raw/attachments"),
+    valueAtPointer(event, "/raw/message/attachments")
+  ];
+  const values = candidates.find(Array.isArray) || [];
+  return values.filter((item) => item && typeof item === "object").map((item, index) => ({
+    id: stringValue(item.id) || "attachment-" + (index + 1),
+    type: stringValue(item.type) || "unknown",
+    url: stringValue(item.url) || stringValue(item.href) || stringValue(item.downloadUrl),
+    name: stringValue(item.name) || stringValue(item.filename) || "attachment-" + (index + 1),
+    mimeType: stringValue(item.mimeType) || stringValue(item.contentType),
+    sizeBytes: Number(item.sizeBytes || item.size || 0) || 0,
+    raw: item.raw
+  }));
+}
+
+async function botInputForEvent(event, text, config, destinationDir) {
+  const input = [{ type: "text", text }];
+  if (!config.mediaEnabled) return input;
+  const attachments = botEventAttachments(event);
+  for (const attachment of attachments) {
+    if (attachment.sizeBytes > config.maxAttachmentBytes) {
+      input.push({ type: "text", text: "Attachment skipped because it exceeds the configured size limit: " + attachment.name });
+      continue;
+    }
+    const file = await materializeBotAttachment(attachment, destinationDir, config.maxAttachmentBytes);
+    if (file) {
+      if (attachment.type === "image" || String(attachment.mimeType).startsWith("image/")) {
+        input.push({ type: "image", path: file, mimeType: attachment.mimeType || mimeTypeForPath(file) });
+      } else {
+        input.push({ type: "text", text: "User attachment available at: " + file + (attachment.mimeType ? " (" + attachment.mimeType + ")" : "") });
+      }
+    } else if (attachment.url) {
+      input.push({ type: "text", text: "User attachment: " + attachment.name + "\nURL: " + attachment.url });
+    }
+  }
+  return input;
+}
+
+async function botPromptWithAttachments(event, text, config, destinationDir) {
+  const input = await botInputForEvent(event, text, config, destinationDir);
+  return botPromptFromInput(input);
+}
+
+function botPromptFromInput(input) {
+  const lines = [];
+  for (const item of Array.isArray(input) ? input : []) {
+    if (item.type === "text") lines.push(item.text);
+    else if (item.path) lines.push("User image attachment: " + item.path);
+    else if (item.url) lines.push("User image attachment: " + item.url);
+  }
+  return lines.filter(Boolean).join("\n\n");
+}
+
+function botImagePathsFromInput(input) {
+  return (Array.isArray(input) ? input : [])
+    .filter((item) => item && (item.type === "image" || item.type === "localImage") && item.path)
+    .map((item) => String(item.path));
+}
+
+async function materializeBotAttachment(attachment, destinationDir, maxBytes) {
+  if (!attachment.url || !/^https?:\/\//i.test(attachment.url)) return "";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const response = await fetch(attachment.url, { signal: controller.signal });
+    if (!response.ok) return "";
+    const contentLength = Number(response.headers.get("content-length") || 0);
+    if (contentLength > maxBytes) return "";
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > maxBytes) return "";
+    const filename = safeAttachmentFilename(attachment.name || attachment.id);
+    const directory = path.resolve(expandHome(destinationDir));
+    fs.mkdirSync(directory, { recursive: true });
+    const file = path.join(directory, Date.now() + "-" + filename);
+    fs.writeFileSync(file, buffer, { mode: 0o600 });
+    return file;
+  } catch (error) {
+    log("bot_attachment_download_failed", { name: attachment.name, error: formatError(error) });
+    return "";
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function safeAttachmentFilename(value) {
+  const basename = path.basename(String(value || "attachment")).replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return basename || "attachment";
+}
+
+async function sendBotTurnArtifacts(event, bridge, turn, cwd, keyPrefix) {
+  const results = Array.isArray(turn && turn.toolItems) ? turn.toolItems.map((item) => String(item.result || "")) : [];
+  return sendBotTextArtifacts(event, bridge, [String(turn && turn.agentText || ""), ...results].join("\n"), cwd, keyPrefix);
+}
+
+async function sendBotTextArtifacts(event, bridge, text, cwd, keyPrefix) {
+  if (!bridge.config.mediaEnabled) return;
+  const files = localArtifactPaths(text, cwd).slice(0, 8);
+  for (let index = 0; index < files.length; index += 1) {
+    const file = files[index];
+    const stat = fs.statSync(file);
+    if (!stat.isFile() || stat.size > bridge.config.maxAttachmentBytes) continue;
+    await bridge.sendMediaToEvent(event, {
+      url: pathToFileURL(file).href,
+      filename: path.basename(file),
+      mimeType: mimeTypeForPath(file),
+      sizeBytes: stat.size,
+      raw: { path: file }
+    }, path.basename(file), keyPrefix + ":" + index);
+  }
+}
+
+function localArtifactPaths(text, cwd) {
+  const matches = [];
+  const value = String(text || "");
+  const patterns = [/\]\((\/[^)]+)\)/g, /\x60(\/[^\x60]+)\x60/g, /(?:^|\s)(\/[^\s"'<>]+\.[A-Za-z0-9]{1,10})(?=\s|$)/gm];
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(value))) {
+      let file = match[1].trim();
+      try { file = decodeURIComponent(file); } catch { /* Keep the original path. */ }
+      try {
+        const resolved = fs.realpathSync(file);
+        if (!pathIsInside(resolved, cwd) || !fs.statSync(resolved).isFile()) continue;
+        if (!matches.includes(resolved)) matches.push(resolved);
+      } catch { /* Ignore non-local paths. */ }
+    }
+  }
+  return matches;
 }
 
 function conversationRefFromEvent(event) {

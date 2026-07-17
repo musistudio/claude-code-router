@@ -200,6 +200,7 @@ function App() {
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updateDialogStatus, setUpdateDialogStatus] = useState<AppUpdateStatus>(fallbackUpdateStatus);
   const [gatewayActionBusy, setGatewayActionBusy] = useState(false);
+  const [gatewayActionTargetActive, setGatewayActionTargetActive] = useState<boolean>();
   const [actionMessage, setActionMessage] = useState("");
   const [actionError, setActionError] = useState("");
   const [profileActionError, setProfileActionError] = useState("");
@@ -366,12 +367,12 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!appInfo.chatgptAppPath) {
+    if (!appInfo.chatgptAppPath && !appInfo.opencodeAppPath) {
       return;
     }
-    setProfileDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath));
-    setProfileEditDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath));
-  }, [appInfo.chatgptAppPath]);
+    setProfileDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath, appInfo.opencodeAppPath));
+    setProfileEditDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath, appInfo.opencodeAppPath));
+  }, [appInfo.chatgptAppPath, appInfo.opencodeAppPath]);
 
   useEffect(() => {
     if (!window.ccr) {
@@ -803,10 +804,11 @@ function App() {
     setProfileAgentTab(profile.agent);
     setProfileDraft(profileDraftWithDetectedAppPath(
       createProfileDraftFromProfile(profile, draftConfig.botConfigs),
-      appInfo.chatgptAppPath
+      appInfo.chatgptAppPath,
+      appInfo.opencodeAppPath
     ));
     setProfileActionError("");
-  }, [activeView, onboardingStep, onboardingProfileConfirmed, configLoaded, draftConfig.profile.profiles, draftConfig.botConfigs, profileDraft.agent]);
+  }, [activeView, onboardingStep, onboardingProfileConfirmed, configLoaded, draftConfig.profile.profiles, draftConfig.botConfigs, profileDraft.agent, appInfo.chatgptAppPath, appInfo.opencodeAppPath]);
 
   useEffect(() => {
     if (activeView !== "onboarding" || !configLoaded || !onboardingStatusLoaded || !providerPresetsLoaded || providerAddOpen) {
@@ -2311,6 +2313,7 @@ function App() {
     }
 
     const shouldStop = gatewayStatus.state === "running" || gatewayStatus.state === "starting";
+    setGatewayActionTargetActive(!shouldStop);
     setGatewayActionBusy(true);
     setActionError("");
     setActionMessage("");
@@ -2324,6 +2327,7 @@ function App() {
       setActionError(formatError(error));
     } finally {
       setGatewayActionBusy(false);
+      setGatewayActionTargetActive(undefined);
     }
   }
 
@@ -2431,7 +2435,7 @@ function App() {
 
   function openAddProfileDialog(agent: ProfileConfig["agent"] = profileAgentTab) {
     setProfileAgentTab(agent);
-    setProfileDraft(profileDraftWithDetectedAppPath(createProfileDraft(agent), appInfo.chatgptAppPath));
+    setProfileDraft(profileDraftWithDetectedAppPath(createProfileDraft(agent), appInfo.chatgptAppPath, appInfo.opencodeAppPath));
     setProfileActionError("");
     setProfileAddOpen(true);
   }
@@ -2444,7 +2448,8 @@ function App() {
     setProfileEditIndex(index);
     setProfileEditDraft(profileDraftWithDetectedAppPath(
       createProfileDraftFromProfile(profile, draftConfig.botConfigs),
-      appInfo.chatgptAppPath
+      appInfo.chatgptAppPath,
+      appInfo.opencodeAppPath
     ));
     setProfileActionError("");
   }
@@ -2670,7 +2675,7 @@ function App() {
         return profileDraftWithDetectedAppPath({
           ...createProfileDraft(patch.agent, name),
           envRows: profileEnvRowsForAgent(patch.agent, current.envRows)
-        }, appInfo.chatgptAppPath);
+        }, appInfo.chatgptAppPath, appInfo.opencodeAppPath);
       }
       return next;
     });
@@ -2685,7 +2690,7 @@ function App() {
         return profileDraftWithDetectedAppPath({
           ...createProfileDraft(patch.agent, name),
           envRows: profileEnvRowsForAgent(patch.agent, current.envRows)
-        }, appInfo.chatgptAppPath);
+        }, appInfo.chatgptAppPath, appInfo.opencodeAppPath);
       }
       return next;
     });
@@ -2865,6 +2870,7 @@ function App() {
               gatewayEndpoint={gatewayEndpoint}
               gatewayStartupError={gatewayStartupError}
               gatewayStatus={gatewayStatus}
+              gatewayTargetActive={gatewayActionTargetActive}
               isMac={isMac}
               needsTrafficLightSafeArea={needsTrafficLightSafeArea}
               networkCaptureEnabled={networkCaptureEnabled}

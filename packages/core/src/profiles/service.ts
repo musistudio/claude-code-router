@@ -14,6 +14,12 @@ import {
 import { writeCodexCompatibleAppModelCatalog } from "@ccr/core/agents/codex/app-launch";
 import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-middleware-runtime";
 import { codexModelCatalogJson } from "@ccr/core/agents/codex/model-catalog";
+import {
+  isManagedOpenCodeConfigContent,
+  openCodeProviderId,
+  resolveOpenCodeConfigFile,
+  writeOpenCodeGatewayConfig
+} from "@ccr/core/agents/opencode/profile-config";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { resolveZcodeConfigFile, writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "@ccr/core/agents/zcode/profile-config";
 import { normalizeRouteSelector } from "@ccr/core/gateway/claude-code-router-plugin";
@@ -52,10 +58,21 @@ type GlobalProfileTakeoverRecord = {
   settingsFile?: string;
 };
 
-export async function applyProfileConfig(config: AppConfig): Promise<ProfileApplyResult> {
+type ApplyProfileConfigOptions = {
+  excludeAgents?: readonly ProfileClientKind[];
+};
+
+export async function applyProfileConfig(
+  config: AppConfig,
+  options: ApplyProfileConfigOptions = {}
+): Promise<ProfileApplyResult> {
   cleanupGeneratedBinBackups();
   const appliedAt = new Date().toISOString();
-  const profiles = profileEntries(config);
+  const excludedAgents = new Set(options.excludeAgents ?? []);
+  const allProfiles = profileEntries(config);
+  const profiles = allProfiles.filter((profile) => !excludedAgents.has(profile.agent));
+  cleanupInactiveOpenCodeWrappers(allProfiles);
+  await pruneInactiveProfileApiKeys(config, allProfiles);
   const result: ProfileApplyResult = {
     appliedAt,
     clients: [],
@@ -63,7 +80,8 @@ export async function applyProfileConfig(config: AppConfig): Promise<ProfileAppl
   };
   const takeoverStatuses = synchronizeGlobalProfileTakeovers(
     profiles,
-    result.enabled && hasAvailableGatewayModels(config)
+    result.enabled && hasAvailableGatewayModels(config),
+    excludedAgents
   );
 
   if (!result.enabled) {
@@ -108,6 +126,8 @@ export async function applyProfileConfig(config: AppConfig): Promise<ProfileAppl
         ? applyClaudeCodeProfile(config, profile, token, appliedAt)
         : profile.agent === "grok"
           ? applyGrokProfile(config, profile, token, appliedAt)
+        : profile.agent === "opencode"
+          ? applyOpenCodeProfile(config, profile, token, appliedAt)
         : profile.agent === "zcode"
           ? applyZcodeProfile(config, profile, token, appliedAt)
           : applyCodexProfile(config, profile, token, appliedAt)
@@ -248,6 +268,8 @@ export function applyProfileRuntimeConfig(config: AppConfig, profile: ProfileCon
     ? applyClaudeCodeProfile(config, profile, token, appliedAt)
     : profile.agent === "grok"
       ? applyGrokProfile(config, profile, token, appliedAt)
+    : profile.agent === "opencode"
+      ? applyOpenCodeProfile(config, profile, token, appliedAt)
     : profile.agent === "zcode"
       ? applyZcodeProfile(config, profile, token, appliedAt)
       : applyCodexProfile(config, profile, token, appliedAt);
@@ -439,6 +461,43 @@ function applyGrokProfile(config: AppConfig, profile: ProfileConfig, token: stri
   }
 }
 
+function applyOpenCodeProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
+  const configFile = resolveOpenCodeConfigFile(CONFIGDIR, profile);
+  const providerId = openCodeProviderId(profile);
+  if (!profile.enabled) {
+    return restoreDisabledGlobalProfile(
+      profile,
+      configFile,
+      "OpenCode profile is disabled.",
+      (content) => isManagedOpenCodeConfigContent(content, providerId)
+    );
+  }
+
+  try {
+    const configResult = writeOpenCodeGatewayConfig(CONFIGDIR, config, profile, token, { backup: true });
+    const wrapperResult = writeOpenCodeWrapper(profile, configResult.file, configResult.inlineConfig);
+    return {
+      appliedAt,
+      backupFile: configResult.backupFile,
+      client: "opencode",
+      enabled: true,
+      message: configResult.changed || wrapperResult.changed
+        ? `OpenCode is configured to use CCR (config ${configResult.file}, wrapper ${wrapperResult.file}).`
+        : "OpenCode config already matches CCR.",
+      ok: true,
+      path: configResult.file
+    };
+  } catch (error) {
+    return {
+      client: "opencode",
+      enabled: true,
+      message: formatError(error),
+      ok: false,
+      path: configFile
+    };
+  }
+}
+
 function applyZcodeProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
   const configFile = resolveZcodeConfigFile(profile);
   if (!profile.enabled) {
@@ -494,7 +553,7 @@ async function ensureProfileApiKeys(config: AppConfig, profiles: ProfileConfig[]
   const tokens = new Map<string, string>();
   let changed = false;
 
-  for (const profile of profiles) {
+  for (const profile of profiles.filter((candidate) => candidate.enabled)) {
     const id = profileApiKeyId(profile);
     const name = profileApiKeyName(profile);
     const existing = byId.get(id);
@@ -530,6 +589,21 @@ async function ensureProfileApiKeys(config: AppConfig, profiles: ProfileConfig[]
   return tokens;
 }
 
+async function pruneInactiveProfileApiKeys(config: AppConfig, profiles: ProfileConfig[]): Promise<void> {
+  const activeIds = new Set(profiles
+    .filter((profile) => profile.enabled)
+    .map(profileApiKeyId));
+  const current = Array.isArray(config.APIKEYS) ? config.APIKEYS : [];
+  const retained = current.filter((apiKey) =>
+    !apiKey.id.startsWith("profile:") || activeIds.has(apiKey.id)
+  );
+  if (retained.length === current.length) {
+    return;
+  }
+  config.APIKEYS = await replacePersistedApiKeys(retained);
+  config.APIKEY = config.APIKEYS[0]?.key ?? "";
+}
+
 function profileApiKeyId(profile: ProfileConfig): string {
   return `profile:${sanitizeProfilePathSegment(profile.id || profile.name || profile.agent) || "profile"}`;
 }
@@ -551,6 +625,8 @@ function profilePath(profile: ProfileConfig): string {
     ? resolveClaudeCodeSettingsFile(profile)
     : profile.agent === "grok"
       ? grokWrapperPath(profile)
+    : profile.agent === "opencode"
+      ? resolveOpenCodeConfigFile(CONFIGDIR, profile)
     : resolveCodexConfigFile(profile);
 }
 
@@ -886,6 +962,76 @@ function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, r
     ...nodeRuntimeCmdExecLines(runtimeFile),
     ""
   ].join("\r\n");
+}
+
+function writeOpenCodeWrapper(
+  profile: ProfileConfig,
+  configFile: string,
+  inlineConfig: string
+): { changed: boolean; file: string } {
+  const binDir = path.join(CONFIGDIR, "bin");
+  mkdirSync(binDir, { mode: privateDirMode, recursive: true });
+  const file = openCodeWrapperPath(profile);
+  const content = process.platform === "win32"
+    ? openCodeWrapperCmdScript(profile, configFile, inlineConfig)
+    : openCodeWrapperShellScript(profile, configFile, inlineConfig);
+  const writeResult = writeGeneratedFileIfChanged(file, content, { mode: privateExecutableMode });
+  return { changed: writeResult.changed, file };
+}
+
+function openCodeWrapperPath(profile: ProfileConfig): string {
+  return path.join(CONFIGDIR, "bin", openCodeWrapperFilename(profile));
+}
+
+function openCodeWrapperFilename(profile: ProfileConfig): string {
+  const slug = sanitizeProfilePathSegment(profile.id || profile.name || profile.agent).toLowerCase() || "opencode";
+  return process.platform === "win32"
+    ? `ccr-opencode-wrapper-${slug}.cmd`
+    : `ccr-opencode-wrapper-${slug}`;
+}
+
+function openCodeWrapperShellScript(profile: ProfileConfig, configFile: string, inlineConfig: string): string {
+  const realOpenCode = profile.env?.CCR_OPENCODE_BIN?.trim() || profile.env?.OPENCODE_BIN?.trim() || "opencode";
+  const envExports = Object.entries(profileEnv(profile))
+    .filter(([key]) => !isOpenCodeManagedEnvKey(key))
+    .map(([key, value]) => `export ${key}=${shellQuote(value)}`);
+  return [
+    "#!/bin/sh",
+    ...envExports,
+    `export OPENCODE_CONFIG=${shellQuote(configFile)}`,
+    `export OPENCODE_CONFIG_CONTENT=${shellQuote(inlineConfig)}`,
+    "export OPENCODE_CLIENT=cli",
+    "export CCR_PROFILE_SURFACE=cli",
+    `exec ${shellQuote(realOpenCode)} "$@"`,
+    ""
+  ].join("\n");
+}
+
+function openCodeWrapperCmdScript(profile: ProfileConfig, configFile: string, inlineConfig: string): string {
+  const realOpenCode = profile.env?.CCR_OPENCODE_BIN?.trim() || profile.env?.OPENCODE_BIN?.trim() || "opencode";
+  const envExports = Object.entries(profileEnv(profile))
+    .filter(([key]) => !isOpenCodeManagedEnvKey(key))
+    .map(([key, value]) => cmdSetLine(key, value));
+  return [
+    "@echo off",
+    ...envExports,
+    cmdSetLine("OPENCODE_CONFIG", configFile),
+    cmdSetLine("OPENCODE_CONFIG_CONTENT", inlineConfig),
+    cmdSetLine("OPENCODE_CLIENT", "cli"),
+    cmdSetLine("CCR_PROFILE_SURFACE", "cli"),
+    `${cmdQuote(realOpenCode)} %*`,
+    "exit /b %ERRORLEVEL%",
+    ""
+  ].join("\r\n");
+}
+
+function isOpenCodeManagedEnvKey(key: string): boolean {
+  return key === "CCR_OPENCODE_BIN" ||
+    key === "OPENCODE_BIN" ||
+    key === "OPENCODE_CLIENT" ||
+    key === "OPENCODE_CONFIG" ||
+    key === "OPENCODE_CONFIG_CONTENT" ||
+    key === "CCR_PROFILE_SURFACE";
 }
 
 function writeGrokWrapper(config: AppConfig, profile: ProfileConfig, token: string, model: string): { changed: boolean; file: string } {
@@ -1577,6 +1723,29 @@ export function cleanupGeneratedBinBackups(configDir = CONFIGDIR): number {
   return removed;
 }
 
+function cleanupInactiveOpenCodeWrappers(profiles: ProfileConfig[]): number {
+  const binDir = path.join(CONFIGDIR, "bin");
+  const activeFiles = new Set(profiles
+    .filter((profile) => profile.agent === "opencode" && profile.enabled)
+    .map(openCodeWrapperFilename));
+  let entries: string[];
+  try {
+    entries = readdirSync(binDir);
+  } catch {
+    return 0;
+  }
+
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.startsWith("ccr-opencode-wrapper-") || activeFiles.has(entry)) {
+      continue;
+    }
+    rmSync(path.join(binDir, entry), { force: true });
+    removed += 1;
+  }
+  return removed;
+}
+
 function generatedBinBackupBaseName(entry: string): string | undefined {
   const backupMarker = ".ccr-backup-";
   const backupIndex = entry.indexOf(backupMarker);
@@ -1601,6 +1770,7 @@ function isManagedGeneratedBinFile(fileName: string): boolean {
     normalized.startsWith("ccr-claude-code-api-key-") ||
     normalized.startsWith("ccr-claude-code-wrapper-") ||
     normalized.startsWith("ccr-grok-cli-wrapper-") ||
+    normalized.startsWith("ccr-opencode-wrapper-") ||
     normalized.startsWith("ccr-codex-cli-stdio-");
 }
 
@@ -1635,6 +1805,15 @@ function disabledProfileStatus(profile: ProfileConfig): ProfileClientApplyStatus
   }
   if (profile.agent === "grok") {
     return disabledStatus("grok", grokWrapperPath(profile), "Grok CLI profile is disabled.");
+  }
+  if (profile.agent === "opencode") {
+    const providerId = openCodeProviderId(profile);
+    return restoreDisabledGlobalProfile(
+      profile,
+      resolveOpenCodeConfigFile(CONFIGDIR, profile),
+      "OpenCode profile is disabled.",
+      (content) => isManagedOpenCodeConfigContent(content, providerId)
+    );
   }
   const providerId = sanitizeCodexProviderId(profile.providerId || "") || "claude-code-router";
   return restoreDisabledGlobalProfile(
@@ -1678,6 +1857,22 @@ export function restoreInactiveGlobalProfileConfigs(profiles: ProfileConfig[]): 
       }
     }
   }
+  const openCodeProfiles = profiles.filter((profile) => profile.agent === "opencode");
+  if (openCodeProfiles.length > 0 && !openCodeProfiles.some((profile) => profile.enabled && isGlobalProfile(profile))) {
+    const providerIds = [...new Set([
+      "claude-code-router",
+      ...openCodeProfiles.map(openCodeProviderId)
+    ])];
+    for (const file of uniqueResolvedPaths(openCodeProfiles.map(globalOpenCodeConfigCandidate))) {
+      const restoreResult = restoreGlobalConfigFile(file, {
+        isManagedContent: (content) => providerIds.some((providerId) => isManagedOpenCodeConfigContent(content, providerId)),
+        mode: privateFileMode
+      });
+      if (restoreResult.changed || restoreResult.missingBackup) {
+        statuses.push(inactiveGlobalCleanupStatus("opencode", file, restoreResult));
+      }
+    }
+  }
   const zcodeProfiles = profiles.filter((profile) => profile.agent === "zcode");
   if (zcodeProfiles.length > 0 && !zcodeProfiles.some((profile) => profile.enabled && isGlobalProfile(profile))) {
     const providerIds = [...new Set([
@@ -1715,6 +1910,10 @@ function globalCodexConfigCandidate(profile: ProfileConfig): string {
   return profile.configFile || "~/.codex/config.toml";
 }
 
+function globalOpenCodeConfigCandidate(profile: ProfileConfig): string {
+  return resolveOpenCodeConfigFile(CONFIGDIR, { ...profile, scope: "global" });
+}
+
 export function restoreGlobalProfileConfigsOnExit(
   profiles: ProfileConfig[],
   options: { manageMarker?: boolean } = {}
@@ -1732,17 +1931,23 @@ export function restoreGlobalProfileConfigsOnExit(
   return statuses;
 }
 
-function synchronizeGlobalProfileTakeovers(profiles: ProfileConfig[], canTakeOver: boolean): ProfileClientApplyStatus[] {
+function synchronizeGlobalProfileTakeovers(
+  profiles: ProfileConfig[],
+  canTakeOver: boolean,
+  excludedAgents: ReadonlySet<ProfileClientKind> = new Set()
+): ProfileClientApplyStatus[] {
   const next = canTakeOver ? globalProfileTakeoverRecords(profiles) : [];
   const previous = ownedGlobalProfileTakeovers ?? readGlobalProfileTakeoverMarker();
-  if (ownedGlobalProfileTakeovers !== undefined && JSON.stringify(previous) === JSON.stringify(next)) {
+  const preserved = previous.filter((record) => excludedAgents.has(record.agent));
+  const restorable = previous.filter((record) => !excludedAgents.has(record.agent));
+  if (ownedGlobalProfileTakeovers !== undefined && JSON.stringify(restorable) === JSON.stringify(next)) {
     return [];
   }
 
-  const statuses = previous.length > 0 ? restoreGlobalProfileTakeoverRecords(previous) : [];
+  const statuses = restorable.length > 0 ? restoreGlobalProfileTakeoverRecords(restorable) : [];
   const markerRecords = statuses.every((status) => status.ok)
-    ? next
-    : dedupeGlobalProfileTakeovers([...previous, ...next]);
+    ? dedupeGlobalProfileTakeovers([...preserved, ...next])
+    : dedupeGlobalProfileTakeovers([...preserved, ...restorable, ...next]);
   if (markerRecords.length > 0) {
     writeGlobalProfileTakeoverMarker(markerRecords);
   } else {
@@ -1797,7 +2002,7 @@ function readGlobalProfileTakeoverMarker(): GlobalProfileTakeoverRecord[] {
     }
     return parsed.profiles.filter((value): value is GlobalProfileTakeoverRecord =>
       isRecord(value) &&
-      (value.agent === "claude-code" || value.agent === "codex" || value.agent === "zcode") &&
+      (value.agent === "claude-code" || value.agent === "codex" || value.agent === "opencode" || value.agent === "zcode") &&
       typeof value.id === "string" &&
       typeof value.name === "string"
     );
@@ -2060,6 +2265,9 @@ function disabledProfileMessage(profile: ProfileConfig): string {
   if (profile.agent === "grok") {
     return "Grok CLI profile is disabled.";
   }
+  if (profile.agent === "opencode") {
+    return "OpenCode profile is disabled.";
+  }
   return `${codexCompatibleClientName(profile.agent)} profile is disabled.`;
 }
 
@@ -2208,6 +2416,9 @@ function codexCompatibleClientName(agent: ProfileConfig["agent"]): string {
   }
   if (agent === "grok") {
     return "Grok CLI";
+  }
+  if (agent === "opencode") {
+    return "OpenCode";
   }
   return agent === "zcode" ? "ZCode" : "Codex";
 }

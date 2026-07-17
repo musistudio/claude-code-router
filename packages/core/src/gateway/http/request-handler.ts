@@ -9,7 +9,7 @@ import { authorize, reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-a
 import { parseJsonObject, readRequestBody, sendJson } from "@ccr/core/gateway/http/io";
 import { shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
 import { applyCors, endpoint, shouldServeGatewayRequest } from "@ccr/core/gateway/core-runtime/supervisor";
-import { rawTraceSyncPath } from "@ccr/core/gateway/internal/shared";
+import { billingUsageSyncPath, rawTraceSyncPath } from "@ccr/core/gateway/internal/shared";
 import type { BrowserAutomationMcpIntegration } from "@ccr/core/gateway/internal/shared";
 
 export type GatewayHttpRequestHandlerDependencies = {
@@ -17,6 +17,7 @@ export type GatewayHttpRequestHandlerDependencies = {
   getConfig: () => AppConfig | undefined;
   getPlugin: () => ClaudeCodeRouterPlugin | undefined;
   getStatus: () => { coreEndpoint: string; coreManagedExternally?: boolean; endpoint: string; state: string };
+  handleBillingUsageSync: (request: IncomingMessage, response: ServerResponse) => Promise<void>;
   handleRawTraceSync: (request: IncomingMessage, response: ServerResponse) => Promise<void>;
   proxyRequest: (request: IncomingMessage, response: ServerResponse, path: string, apiKey?: ApiKeyConfig) => Promise<void>;
 };
@@ -28,6 +29,7 @@ export class GatewayHttpRequestHandler {
   private get config() { return this.dependencies.getConfig(); }
   private get plugin() { return this.dependencies.getPlugin(); }
   private get status() { return this.dependencies.getStatus(); }
+  private handleBillingUsageSync(request: IncomingMessage, response: ServerResponse) { return this.dependencies.handleBillingUsageSync(request, response); }
   private handleRawTraceSync(request: IncomingMessage, response: ServerResponse) { return this.dependencies.handleRawTraceSync(request, response); }
   private proxyRequest(request: IncomingMessage, response: ServerResponse, path: string, apiKey?: ApiKeyConfig) { return this.dependencies.proxyRequest(request, response, path, apiKey); }
 
@@ -46,6 +48,10 @@ export class GatewayHttpRequestHandler {
       }
   
       const path = request.url ? new URL(request.url, this.status.endpoint || "http://127.0.0.1").pathname : "/";
+      if (path === billingUsageSyncPath) {
+        await this.handleBillingUsageSync(request, response);
+        return;
+      }
       if (path === rawTraceSyncPath) {
         if (!shouldRecordRequestLogs(this.config)) {
           sendJson(response, 202, { applied: false, disabled: true, ok: true });
@@ -165,4 +171,3 @@ export class GatewayHttpRequestHandler {
       await this.proxyRequest(request, response, path, authorization.apiKey);
     }
 }
-

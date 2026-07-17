@@ -1,0 +1,62 @@
+{
+  "architecture": "main-thread-store",
+  "cpu": "arm64",
+  "label": "baseline",
+  "node": "v24.16.0",
+  "platform": "darwin",
+  "results": [
+    {
+      "accepted": 2000,
+      "batchP99Ms": 6.366,
+      "degraded": 0,
+      "dropped": 0,
+      "durableMs": 201.032,
+      "durableRecordsPerSecond": 9948.653,
+      "eventLoopMaxMs": 6.365,
+      "eventLoopP99Ms": 4.239,
+      "flushMs": 0.002,
+      "heapDeltaMb": 1.586,
+      "name": "small-no-trace",
+      "records": 2000,
+      "requestPathMs": 201.03,
+      "requestPathRecordsPerSecond": 9948.756,
+      "rssDeltaMb": 18.484
+    },
+    {
+      "accepted": 1000,
+      "batchP99Ms": 7.765,
+      "degraded": 0,
+      "dropped": 0,
+      "durableMs": 168.879,
+      "durableRecordsPerSecond": 5921.412,
+      "eventLoopMaxMs": 7.782,
+      "eventLoopP99Ms": 7.782,
+      "flushMs": 0.003,
+      "heapDeltaMb": -1.761,
+      "name": "small-10-hops",
+      "records": 1000,
+      "requestPathMs": 168.875,
+      "requestPathRecordsPerSecond": 5921.534,
+      "rssDeltaMb": 10.172
+    },
+    {
+      "accepted": 50,
+      "batchP99Ms": 203.52,
+      "degraded": 0,
+      "dropped": 0,
+      "durableMs": 397.142,
+      "durableRecordsPerSecond": 125.9,
+      "eventLoopMaxMs": 204.079,
+      "eventLoopP99Ms": 204.079,
+      "flushMs": 0.003,
+      "heapDeltaMb": 2.151,
+      "name": "large-2mb-10-hops",
+      "records": 50,
+      "requestPathMs": 397.139,
+      "requestPathRecordsPerSecond": 125.901,
+      "rssDeltaMb": 130.203
+    }
+  ],
+  "timestamp": "2026-07-14T23:42:58.245Z",
+  "runtime": "electron"
+}

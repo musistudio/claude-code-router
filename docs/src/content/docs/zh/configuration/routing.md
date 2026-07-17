@@ -29,7 +29,7 @@ Claude Code 的 Agent / Task / Workflow 可以派生新的模型请求。CCR 使
 4. Claude Code 调用 `Agent` / `Task`，或 Workflow 内部创建 Agent 时，prompt 第一行会携带 `<CCR-SUBAGENT-MODEL>供应商/模型</CCR-SUBAGENT-MODEL>`。
 5. 派生请求进入 CCR 后，CCR 从 system 或前两条 user message 中提取并删除这个标签，然后把该请求路由到标签里的模型。
 
-因此，Subagent / Workflow 的自动路由不是靠 `x-claude-code-agent-id` 之类的 Header 决定模型，而是靠 prompt 标签。Header 只能作为观测线索，真正的模型选择来自标签。
+因此，Subagent / Workflow 的自动路由由 prompt 标签决定模型。`x-claude-code-agent-id` 等 Header 用于观测，模型选择以标签为准。
 
 ##### 与模型页配合
 

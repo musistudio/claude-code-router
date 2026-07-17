@@ -24,7 +24,7 @@ export function AccountSummaryPanel({
 
   if (!snapshot) {
     return (
-      <div className="rounded-[8px] border border-white/10 bg-white/[.03] px-3 py-2 text-[11px] font-medium text-slate-400">
+      <div className="tray-panel-subtle px-3 py-2 text-[11px] font-medium text-slate-400">
         {t("No account data configured")}
       </div>
     );
@@ -33,12 +33,12 @@ export function AccountSummaryPanel({
   const meters = accountMetersForDisplay(snapshot, variant === "stacked" ? 3 : 2);
 
   return (
-    <div className="rounded-[8px] border border-white/10 bg-white/[.04] p-2">
+    <div className="tray-panel p-2.5">
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
         <h3 className="truncate text-[11px] font-bold text-slate-100">{accountSnapshotLabel(snapshot)}</h3>
         <button
           aria-label={t("Refresh")}
-          className={`m-0 inline-flex shrink-0 appearance-none items-center justify-center border-0 bg-transparent p-0 shadow-none transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${accountStatusButtonClass(snapshot.status)}`}
+          className={`inline-flex h-5 w-5 shrink-0 appearance-none items-center justify-center rounded-md border-0 bg-transparent p-0 shadow-none transition-colors hover:bg-white/[.07] disabled:cursor-not-allowed disabled:opacity-50 ${accountStatusButtonClass(snapshot.status)}`}
           disabled={refreshing || !onRefresh}
           onClick={() => {
             void onRefresh?.();
@@ -87,7 +87,7 @@ function AccountMeters({
     return (
       <div className="grid grid-cols-2 gap-1.5">
         {meters.map((meter) => (
-          <div className="min-w-0 rounded-md bg-white/[.04] px-2 py-1" key={meter.id}>
+          <div className="tray-stat-cell min-w-0 px-2 py-1" key={meter.id}>
             <div className="truncate text-[9px] font-medium text-slate-400">{formatAccountMeterTitle(meter, t)}</div>
             <div className="truncate text-[12px] font-bold text-slate-50">{formatAccountMeterValue(meter, t)}</div>
           </div>

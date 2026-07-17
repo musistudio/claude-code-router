@@ -13,7 +13,9 @@ import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
 import { browserAutomationMcpService } from "./browser-automation-mcp";
 import { browserWebSearchMcpService } from "./electron-web-search-mcp";
+import { applyNativeThemePreference } from "./native-theme";
 import windowsManager from "./windows";
+import { closeRequestLogRuntime } from "@ccr/core/observability/request-log-store";
 
 const gotTheLock = app.requestSingleInstanceLock();
 const quitProxyRestoreTimeoutMs = 30_000;
@@ -41,7 +43,8 @@ function startPrimaryInstance(): void {
     queueEnsureConfiguredProxyModeActive("second-instance");
   });
 
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
+    applyNativeThemePreference((await loadAppConfig()).theme);
     configureProxyDesktopIntegration();
     let ccrLauncherPreparation: CcrCliLauncherPreparation | undefined;
     try {
@@ -177,6 +180,9 @@ function stopServicesForQuit(): Promise<void> {
         console.error(`Failed to stop services before quit: ${formatError(error)}`);
       })
       .finally(async () => {
+        await closeRequestLogRuntime().catch((error) => {
+          console.error(`Failed to flush request logs before quit: ${formatError(error)}`);
+        });
         try {
           const config = await loadAppConfig();
           for (const status of restoreGlobalProfileConfigsOnExit(config.profile.profiles)) {
@@ -222,7 +228,7 @@ function startConfiguredServices(reason: string): Promise<void> {
           console.error(`Failed to start gateway during ${reason}: ${status.lastError}`);
         }
         if (status.state === "running") {
-          const profileResult = await applyProfileConfig(config);
+          const profileResult = await applyProfileConfig(config, { excludeAgents: ["zcode"] });
           for (const client of profileResult.clients) {
             if (!client.ok) {
               console.error(`Failed to apply ${client.client} profile during ${reason}: ${client.message}`);

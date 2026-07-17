@@ -2,7 +2,7 @@
  * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
  */
 import { Readable } from "node:stream";
-import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, ProviderCredentialConfig, RouterFallbackConfig } from "@ccr/core/contracts/app";
+import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, ProviderCredentialConfig, RequestRouteTraceChange, RouterFallbackConfig } from "@ccr/core/contracts/app";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
 import { createRouteExecutionPlan } from "@ccr/core/routing/execution-plan";
 import { rewriteRouteModelInUrl } from "@ccr/core/routing/protocol-adapter";
@@ -14,13 +14,14 @@ import { providerCredentialLimitState, readProviderCredentialCooldown, recordPro
 import { isRecord, stringValue } from "@ccr/core/gateway/internal/value";
 import { isLocalClaudeCodeOauthProviderPlugin, mergeAnthropicBetaValues } from "@ccr/core/providers/oauth-plugin";
 import { abortSignalMessage, formatError, omitLocalObservabilityHeaders, shouldSendBody, withCoreGatewayAuthHeader } from "@ccr/core/gateway/http/io";
-import { parseJsonObjectSafe, serializeJsonBodyWithModel } from "@ccr/core/gateway/http/body";
+import { parseJsonObjectSafe, releaseJsonObject, serializeJsonBody, serializeJsonBodyWithModel } from "@ccr/core/gateway/http/body";
 import { resolveGatewayPublicModelId } from "@ccr/core/gateway/features/model-discovery";
 import { activeProviderCredentials, findProviderByPublicOrInternalName, findProviderCredentialBySlug, normalizedProviderCapabilities, parseProviderCredentialInternalName, providerCapabilityForClientProtocol, providerCapabilityInternalName, providerCapabilityNameMatches, providerCredentialInternalName, providerCredentialPriority, providerCredentialRuntimeId, providerCredentialSlug, providerProtocolForClientProtocol, sanitizeHeaderValue } from "@ccr/core/providers/runtime-topology";
 import { delay } from "@ccr/core/gateway/internal/clock";
 import { retryDelayAfterNetworkError, retryDelayAfterStatus, shouldFallbackAfterStatus } from "@ccr/core/gateway/upstream/retry-policy";
 import { claudeCodeOauthBetaHeader, claudeCodeOauthRequiredBeta, UpstreamRequestError } from "@ccr/core/gateway/internal/shared";
 import type { ApiKeyLimitUsage, ProviderCredentialRoutingTarget, UpstreamAttempt, UpstreamFailedAttempt, UpstreamFetchResult } from "@ccr/core/gateway/internal/shared";
+import type { RouteTraceObserver } from "@ccr/core/observability/route-trace";
 
 const providerCredentialSpilloverThreshold = 0.8;
 
@@ -80,7 +81,7 @@ export function prepareGatewayUpstreamAttemptForTest(input: {
 } {
   const headers = { ...input.headers };
   const providerCapabilityRouting = applyProviderCapabilityRouting({
-    body: Buffer.from(`${JSON.stringify(input.body)}\n`, "utf8"),
+    body: serializeJsonBody(input.body),
     config: input.config,
     fallback: input.fallback ?? input.config.Router.fallback,
     headers,
@@ -172,7 +173,7 @@ function rewriteBodyModelForProtocol(body: Buffer | undefined, config: AppConfig
   if (!rewrittenModel || rewrittenModel === model) {
     return body;
   }
-  return Buffer.from(`${JSON.stringify({ ...parsedBody, model: rewrittenModel })}\n`, "utf8");
+  return serializeJsonBody({ ...parsedBody, model: rewrittenModel });
 }
 
 
@@ -257,8 +258,10 @@ export async function fetchUpstreamWithFallback(input: {
   headers: Record<string, string>;
   method: string;
   path: string;
+  preparationChanges?: readonly RequestRouteTraceChange[];
   routedModel?: string;
   signal?: AbortSignal;
+  trace?: RouteTraceObserver;
   upstreamUrl: string;
 }): Promise<UpstreamFetchResult> {
   const fallbackMode = input.fallback.mode;
@@ -271,6 +274,13 @@ export async function fetchUpstreamWithFallback(input: {
     input.routedModel
   );
   const failedAttempts: UpstreamFailedAttempt[] = [];
+  input.trace?.capture({
+    decision: { reason: `fallback:${fallbackMode}`, source: "execution-plan" },
+    kind: "decision",
+    name: "fallback.execution-plan",
+    phase: "planning",
+    target: attempts[0]?.model ? { model: attempts[0].model } : undefined
+  });
 
   for (let index = 0; index < attempts.length; index += 1) {
     if (input.signal?.aborted) {
@@ -279,6 +289,8 @@ export async function fetchUpstreamWithFallback(input: {
       });
     }
 
+    const attemptNumber = index + 1;
+    const attemptPreparationStartedAt = Date.now();
     const attempt = prepareUpstreamCredentialAttempt({
       attempt: attempts[index],
       config: input.config,
@@ -287,17 +299,84 @@ export async function fetchUpstreamWithFallback(input: {
       path: input.path
     });
     const hasNextAttempt = index < attempts.length - 1;
+    const attemptUrl = rewriteRouteModelInUrl(input.upstreamUrl, attempt.model);
+    const attemptHeaders = {
+      ...withCoreGatewayAuthHeader(
+        omitLocalObservabilityHeaders(attempt.headers ?? input.headers),
+        input.coreAuthToken
+      ),
+      // Core raw traces use a unique request id for every fallback attempt,
+      // while turnKey identifies the outer gateway request. Keep both and mark
+      // the attempt so only the final response may refine the stored outcome.
+      "x-ccr-route-attempt": String(attemptNumber)
+    };
+    const attemptProvider = attempt.logicalProvider ?? (
+      attempt.target?.kind === "provider" ? attempt.target.provider.name : undefined
+    );
+    const attemptStartedAt = Date.now();
+    input.trace?.capture({
+      attempt: attemptNumber,
+      changes: [
+        ...(index === 0 ? input.preparationChanges ?? [] : []),
+        ...(attempt.model && attempt.model !== input.routedModel
+          ? [{
+              ...(input.routedModel === undefined ? {} : { before: input.routedModel }),
+              after: attempt.model,
+              operation: input.routedModel === undefined ? "add" as const : "replace" as const,
+              path: "/body/model",
+              scope: "body" as const
+            }]
+          : []),
+        ...(attemptUrl !== input.upstreamUrl
+          ? [{ after: attemptUrl, before: input.upstreamUrl, operation: "replace" as const, path: "/url", scope: "url" as const }]
+          : [])
+      ],
+      durationMs: attemptStartedAt - attemptPreparationStartedAt,
+      kind: "attempt",
+      name: "upstream.attempt.prepare",
+      phase: "attempt",
+      startedAtMs: attemptPreparationStartedAt,
+      target: {
+        ...(attempt.credentialIds?.[0] ? { credentialId: attempt.credentialIds[0] } : {}),
+        ...(attempt.credentialIds?.length ? { credentialCandidates: attempt.credentialIds } : {}),
+        ...(attempt.model ? { model: attempt.model } : {}),
+        ...(attempt.credentialProtocol ? { protocol: attempt.credentialProtocol } : {}),
+        ...(attemptProvider ? { provider: attemptProvider } : {})
+      }
+    });
+
+    releaseJsonObject(attempt.body);
+    releaseJsonObject(attempts[index].body);
+    releaseJsonObject(input.body);
 
     try {
-      const response = await fetchWithSystemProxy(rewriteRouteModelInUrl(input.upstreamUrl, attempt.model), {
+      const response = await fetchWithSystemProxy(attemptUrl, {
         body: shouldSendBody(input.method) ? attempt.body?.toString("utf8") : undefined,
-        headers: withCoreGatewayAuthHeader(omitLocalObservabilityHeaders(attempt.headers ?? input.headers), input.coreAuthToken),
+        headers: attemptHeaders,
         method: input.method,
         signal: input.signal
       });
 
       if (hasNextAttempt && shouldFallbackAfterStatus(response.status, fallbackMode)) {
         const delayMs = retryDelayAfterStatus(response.headers, failedAttempts.length);
+        input.trace?.capture({
+          attempt: attemptNumber,
+          durationMs: Date.now() - attemptStartedAt,
+          kind: "outcome",
+          name: "upstream.attempt.outcome",
+          outcome: {
+            fallbackReason: `http:${response.status}`,
+            retryDelayMs: delayMs,
+            statusCode: response.status
+          },
+          phase: "outcome",
+          startedAtMs: attemptStartedAt,
+          status: "error",
+          target: {
+            ...(attempt.model ? { model: attempt.model } : {}),
+            ...(attemptProvider ? { provider: attemptProvider } : {})
+          }
+        });
         failedAttempts.push({
           credentialChain: attempt.credentialChain,
           credentialIds: attempt.credentialIds,
@@ -313,6 +392,21 @@ export async function fetchUpstreamWithFallback(input: {
         continue;
       }
 
+      input.trace?.capture({
+        attempt: attemptNumber,
+        durationMs: Date.now() - attemptStartedAt,
+        kind: "outcome",
+        name: "upstream.attempt.outcome",
+        outcome: { statusCode: response.status },
+        phase: "outcome",
+        startedAtMs: attemptStartedAt,
+        status: response.ok ? "ok" : "error",
+        target: {
+          ...(attempt.model ? { model: attempt.model } : {}),
+          ...(attemptProvider ? { provider: attemptProvider } : {})
+        }
+      });
+
       return {
         attempt,
         failedAttempts,
@@ -323,6 +417,23 @@ export async function fetchUpstreamWithFallback(input: {
       const delayMs = hasNextAttempt && !input.signal?.aborted
         ? retryDelayAfterNetworkError(failedAttempts.length)
         : 0;
+      input.trace?.capture({
+        attempt: attemptNumber,
+        durationMs: Date.now() - attemptStartedAt,
+        kind: "outcome",
+        name: "upstream.attempt.outcome",
+        outcome: {
+          error: message,
+          ...(hasNextAttempt ? { fallbackReason: "network-error", retryDelayMs: delayMs } : {})
+        },
+        phase: "outcome",
+        startedAtMs: attemptStartedAt,
+        status: "error",
+        target: {
+          ...(attempt.model ? { model: attempt.model } : {}),
+          ...(attemptProvider ? { provider: attemptProvider } : {})
+        }
+      });
       failedAttempts.push({
         credentialChain: attempt.credentialChain,
         credentialIds: attempt.credentialIds,
@@ -374,9 +485,7 @@ function prepareUpstreamCredentialAttempt(input: {
     target
   });
   if (!target) {
-    const body = bodyHasConfiguredProviderModelSelector(input.attempt.body, input.config)
-      ? input.attempt.body
-      : normalizedBody?.body ?? input.attempt.body;
+    const body = normalizedBody?.body ?? input.attempt.body;
     return {
       ...input.attempt,
       body: attemptBody(body),
@@ -576,7 +685,7 @@ function stripUnsupportedOpenAiRequestParameters(body: Buffer | undefined): Buff
   const next = { ...parsedBody };
   delete next.thinking;
   delete next.reasoning_split;
-  return Buffer.from(`${JSON.stringify(next)}\n`, "utf8");
+  return serializeJsonBody(next);
 }
 
 
@@ -593,13 +702,13 @@ function usageAwareOpenAiChatBody(body: Buffer | undefined): Buffer | undefined 
   if (streamOptions.include_usage === true || streamOptions.includeUsage === true) {
     return body;
   }
-  return Buffer.from(`${JSON.stringify({
+  return serializeJsonBody({
     ...parsedBody,
     stream_options: {
       ...streamOptions,
       include_usage: true
     }
-  })}\n`, "utf8");
+  });
 }
 
 
@@ -620,11 +729,6 @@ function normalizeConfiguredProviderModelBody(
 }
 
 
-function bodyHasConfiguredProviderModelSelector(body: Buffer | undefined, config: AppConfig): boolean {
-  const parsedBody = parseJsonObjectSafe(body);
-  const model = stringValue(parsedBody?.model);
-  return Boolean(resolveConfiguredProviderModelSelector(model, config));
-}
 
 
 function resolveProviderCredentialRoutingTarget(

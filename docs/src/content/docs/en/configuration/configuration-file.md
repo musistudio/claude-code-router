@@ -8,7 +8,9 @@ lead: Locate the SQLite configuration database maintained by the CCR desktop app
 ## Default Locations
 
 - **macOS/Linux**: `~/.claude-code-router/config.sqlite`
-- **Windows**: `%APPDATA%\Claude Code Router\config.sqlite`
+- **Windows**: `%APPDATA%\claude-code-router\config.sqlite`
+
+Docker sets `HOME=/data`, so its configuration database is `/data/.claude-code-router/config.sqlite`. Persist the complete `/data` directory rather than mounting only one database file.
 
 ## Applying Changes
 

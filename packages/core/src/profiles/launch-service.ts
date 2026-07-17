@@ -2,12 +2,14 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { assertAvailableGatewayModels, type AppConfig, type ProfileOpenCommandResult, type ProfileOpenRequest, type ProfileOpenResult, type ProfileRuntimeEntry, type ProfileRuntimeStatus, type ProfileStopResult } from "@ccr/core/contracts/app";
+import { assertAvailableGatewayModels, type AppConfig, type ProfileConfig, type ProfileOpenCommandResult, type ProfileOpenRequest, type ProfileOpenResult, type ProfileRuntimeEntry, type ProfileRuntimeStatus, type ProfileStopResult } from "@ccr/core/contracts/app";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { applyClaudeAppGatewayConfig, readClaudeAppGatewayApiKeyCandidates } from "@ccr/core/agents/claude-app/gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "@ccr/core/agents/claude-app/launch";
 import { claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
 import { codexDesktopAppName, launchCodexAppProfile, launchZcodeAppProfile, refreshCodexCompatibleAppProfileFiles } from "@ccr/core/agents/codex/app-launch";
+import { findRunningOpenCodeAppPid, launchOpenCodeAppProfile, openCodeAppLaunchSignature } from "@ccr/core/agents/opencode/app-launch";
+import { writeOpenCodeGatewayConfig } from "@ccr/core/agents/opencode/profile-config";
 import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-middleware-runtime";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { gatewayService } from "@ccr/core/gateway/service";
@@ -23,6 +25,12 @@ const desktopCliRuntimeFileName = "ccr-cli.js";
 const desktopCliCommandNameEnv = "CCR_CLI_COMMAND_NAME";
 let claudeAppBotWorker: ChildProcess | undefined;
 let claudeAppBotWorkerProfileId: string | undefined;
+let claudeAppBotWorkerStateDir: string | undefined;
+let openCodeAppBotWorker: ChildProcess | undefined;
+let openCodeAppBotWorkerProfileId: string | undefined;
+let openCodeAppBotWorkerSignature: string | undefined;
+let openCodeAppBotWorkerStateDir: string | undefined;
+const codexAppBotWorkers = new Map<string, { agent: ProfileConfig["agent"]; child: ChildProcess; stateDir?: string }>();
 
 type ProfileOpenCommandOptions = {
   commandName?: string;
@@ -49,6 +57,7 @@ type ProfileAppLaunchResult = {
   child: ChildProcess;
   claudeDesignProxy?: boolean;
   command: string;
+  launchSignature?: string;
   pidIsLauncher?: boolean;
   pid?: number;
   userDataDir: string;
@@ -58,13 +67,18 @@ type RunningProfileApp = ProfileRuntimeEntry & {
   child: ChildProcess;
   claudeDesignProxy?: boolean;
   command: string;
+  launchSignature?: string;
   pidIsLauncher?: boolean;
   spawnError?: string;
   stopRequested?: boolean;
   userDataDir: string;
 };
 
-process.once("exit", () => stopClaudeAppBotWorker());
+process.once("exit", () => {
+  stopClaudeAppBotWorker();
+  stopOpenCodeAppBotWorker();
+  stopCodexAppBotWorker();
+});
 
 export async function getProfileOpenCommand(config: AppConfig, request: ProfileOpenRequest, options: ProfileOpenCommandOptions = {}): Promise<ProfileOpenCommandResult> {
   assertAvailableGatewayModels(config);
@@ -92,6 +106,9 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
   }
   if ((profile.agent === "codex" || profile.agent === "zcode") && surface === "app") {
     return await openCodexAppProfile(config, profile);
+  }
+  if (profile.agent === "opencode" && surface === "app") {
+    return await openOpenCodeAppProfile(config, profile);
   }
   const plan = buildProfileLaunchPlan(CONFIGDIR, profile, surface);
   if (path.isAbsolute(plan.command) && !existsSync(plan.command)) {
@@ -123,12 +140,109 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
   };
 }
 
+async function openOpenCodeAppProfile(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): Promise<ProfileOpenResult> {
+  const appName = "OpenCode App";
+  const profileGatewayConfig = await ensureProfileGateway(config, profile, appName);
+  const configResult = writeOpenCodeGatewayConfig(
+    CONFIGDIR,
+    profileGatewayConfig,
+    profile,
+    profileGatewayConfig.APIKEY,
+    { backup: false }
+  );
+  const botEnv = botGatewayProfileEnv(profileGatewayConfig, profile, "app");
+  const launchSignature = openCodeAppLaunchSignature(profile, configResult.file, configResult.inlineConfig, botEnv);
+  const existing = runningProfileApp(profile.id, "app");
+  if (existing) {
+    if (existing.launchSignature === launchSignature) {
+      startOpenCodeAppBotWorker(
+        profileGatewayConfig,
+        profile,
+        configResult.file,
+        configResult.inlineConfig,
+        launchSignature
+      );
+      activateProfileAppWindow(existing);
+      return {
+        message: `${appName} is already running with ${profile.name || profile.id}.`,
+        profileId: profile.id,
+        profileName: profile.name,
+        surface: "app"
+      };
+    }
+    const stopped = await stopRunningProfileApp(profileRuntimeKey(profile.id, "app"), existing);
+    if (!stopped && isProfileAppRunning(existing)) {
+      throw new Error(
+        `${appName} is still running with stale settings for ${profile.name || profile.id}. ` +
+        "Close it before reopening this profile."
+      );
+    }
+    stopOpenCodeAppBotWorker(profile.id);
+  }
+  const otherProfile = runningProfileAppForAgent("opencode", "app", profile.id);
+  if (otherProfile) {
+    const stopped = await stopRunningProfileApp(profileRuntimeKey(otherProfile.profileId, "app"), otherProfile);
+    if (!stopped && isProfileAppRunning(otherProfile)) {
+      throw new Error(
+        `OpenCode App is already running with ${otherProfile.profileName || otherProfile.profileId}. ` +
+        "Close it before switching OpenCode App profiles."
+      );
+    }
+    stopOpenCodeAppBotWorker(otherProfile.profileId);
+  }
+  const unmanagedPid = findRunningOpenCodeAppPid(profile.appPath);
+  if (unmanagedPid) {
+    throw new Error(
+      `OpenCode App is already running outside CCR (PID ${unmanagedPid}). ` +
+      "Close it before opening an OpenCode App profile."
+    );
+  }
+  const launch = {
+    ...launchOpenCodeAppProfile(
+      CONFIGDIR,
+      profile,
+      configResult.file,
+      configResult.inlineConfig,
+      botEnv
+    ),
+    launchSignature
+  };
+  const entry = registerProfileApp(profile, "app", launch);
+  const started = await waitForStableProfileAppStart(entry, 12000, 1000);
+  if (!started) {
+    cleanupProfileAppEntry(profileRuntimeKey(profile.id, "app"), entry);
+    sendProfileProcessSignal(entry.pid, "SIGTERM");
+    throw new Error([
+      `${appName} did not stay open for ${profile.name || profile.id}.`,
+      ...(entry.spawnError ? [`Error: ${entry.spawnError}`] : []),
+      "Close any OpenCode App instance that was not opened by CCR, then try again.",
+      `Command: ${entry.command}`,
+      `User data: ${entry.userDataDir}`
+    ].join(" "));
+  }
+  activateProfileAppWindow(entry);
+  startOpenCodeAppBotWorker(
+    profileGatewayConfig,
+    profile,
+    configResult.file,
+    configResult.inlineConfig,
+    launchSignature
+  );
+  return {
+    message: `Opened ${appName} with ${profile.name || profile.id}.`,
+    profileId: profile.id,
+    profileName: profile.name,
+    surface: "app"
+  };
+}
+
 async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): Promise<ProfileOpenResult> {
   const appName = profile.agent === "zcode" ? "ZCode App" : codexDesktopAppName;
   const profileGatewayConfig = await ensureProfileGateway(config, profile, appName);
   const existing = runningProfileApp(profile.id, "app");
   if (existing) {
     refreshCodexCompatibleAppProfileFiles(CONFIGDIR, profile, profileGatewayConfig);
+    startCodexAppBotWorker(profileGatewayConfig, profile);
     activateProfileAppWindow(existing);
     return {
       message: `${appName} is already running with ${profile.name || profile.id}.`,
@@ -153,6 +267,7 @@ async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof
     ].join(" "));
   }
   activateProfileAppWindow(entry);
+  startCodexAppBotWorker(profileGatewayConfig, profile);
   return {
     message: `Opened ${appName} with ${profile.name || profile.id}.`,
     profileId: profile.id,
@@ -166,6 +281,7 @@ async function openClaudeAppProfile(config: AppConfig, profile: ReturnType<typeo
   const existing = runningProfileApp(profile.id, "app");
   if (existing) {
     if (!claudeAppDesignProxyRequired(profileGatewayConfig) || existing.claudeDesignProxy) {
+      startClaudeAppBotWorker(config, profile);
       activateProfileAppWindow(existing);
       return {
         message: `Claude App is already running with ${profile.name || profile.id}.`,
@@ -565,6 +681,36 @@ function claudeAppDesignProxyRequired(config: AppConfig): boolean {
   return config.plugins.some((plugin) => plugin.enabled !== false && plugin.id === "claude-design");
 }
 
+function profileBotRuntimeStatus(profileId: string): ProfileRuntimeEntry["botGateway"] | undefined {
+  const codexWorker = codexAppBotWorkers.get(profileId);
+  const stateDir = claudeAppBotWorkerProfileId === profileId
+    ? claudeAppBotWorkerStateDir
+    : openCodeAppBotWorkerProfileId === profileId
+      ? openCodeAppBotWorkerStateDir
+      : codexWorker?.stateDir;
+  if (!stateDir) return undefined;
+  try {
+    const value = JSON.parse(readFileSync(path.join(stateDir, "bot-runtime-state.json"), "utf8")) as Record<string, unknown>;
+    const diagnostics = value.diagnostics && typeof value.diagnostics === "object" ? value.diagnostics as Record<string, unknown> : {};
+    const outbox = Array.isArray(value.outbox) ? value.outbox : [];
+    const rawState = typeof diagnostics.state === "string" ? diagnostics.state : "unknown";
+    const state = rawState === "connected" || rawState === "error" || rawState === "starting" || rawState === "stopped" ? rawState : "unknown";
+    return {
+      state,
+      outboxCount: outbox.length,
+      ...(typeof diagnostics.lastDeliveryAt === "string" ? { lastDeliveryAt: diagnostics.lastDeliveryAt } : {}),
+      ...(typeof diagnostics.lastDeliveryStatus === "string" ? { lastDeliveryStatus: diagnostics.lastDeliveryStatus } : {}),
+      ...(typeof diagnostics.lastError === "string" && diagnostics.lastError ? { lastError: diagnostics.lastError } : {}),
+      ...(typeof diagnostics.lastErrorAt === "string" ? { lastErrorAt: diagnostics.lastErrorAt } : {}),
+      ...(typeof diagnostics.lastEventAt === "string" ? { lastEventAt: diagnostics.lastEventAt } : {}),
+      ...(typeof diagnostics.lastEventType === "string" ? { lastEventType: diagnostics.lastEventType } : {}),
+      ...(typeof diagnostics.updatedAt === "string" ? { updatedAt: diagnostics.updatedAt } : {})
+    };
+  } catch {
+    return { state: "starting", outboxCount: 0 };
+  }
+}
+
 export function getProfileRuntimeStatus(): ProfileRuntimeStatus {
   cleanupExitedProfileApps();
   return {
@@ -572,6 +718,7 @@ export function getProfileRuntimeStatus(): ProfileRuntimeStatus {
       .filter((entry) => !entry.stopRequested)
       .map((entry) => ({
         agent: entry.agent,
+        ...(profileBotRuntimeStatus(entry.profileId) ? { botGateway: profileBotRuntimeStatus(entry.profileId) } : {}),
         pid: entry.pid,
         profileId: entry.profileId,
         profileName: entry.profileName,
@@ -602,8 +749,14 @@ export async function stopProfileFromCcr(config: AppConfig, request: ProfileOpen
   }
 
   const stopped = await stopRunningProfileApp(key, entry);
-  if (stopped && profile.agent === "claude-code") {
-    stopClaudeAppBotWorker(profile.id);
+  if (stopped) {
+    if (profile.agent === "claude-code") {
+      stopClaudeAppBotWorker(profile.id);
+    } else if (profile.agent === "opencode") {
+      stopOpenCodeAppBotWorker(profile.id);
+    } else if (profile.agent === "codex" || profile.agent === "zcode") {
+      stopCodexAppBotWorker(profile.id);
+    }
   }
   return {
     message: stopped
@@ -634,6 +787,7 @@ function registerProfileApp(
     child: launch.child,
     claudeDesignProxy: launch.claudeDesignProxy,
     command: launch.command,
+    launchSignature: launch.launchSignature,
     pid: launch.pid,
     pidIsLauncher: launch.pidIsLauncher,
     profileId: profile.id,
@@ -707,6 +861,20 @@ function runningProfileApp(profileId: string, surface: ProfileOpenRequest["surfa
   return undefined;
 }
 
+function runningProfileAppForAgent(
+  agent: ProfileConfig["agent"],
+  surface: ProfileOpenRequest["surface"],
+  excludedProfileId?: string
+): RunningProfileApp | undefined {
+  cleanupExitedProfileApps();
+  return [...runningProfileApps.values()].find((entry) =>
+    entry.agent === agent &&
+    entry.surface === surface &&
+    entry.profileId !== excludedProfileId &&
+    isProfileAppRunning(entry)
+  );
+}
+
 function cleanupExitedProfileApps(): void {
   for (const [key, entry] of runningProfileApps) {
     if (!isProfileAppRunning(entry)) {
@@ -720,8 +888,14 @@ function cleanupProfileAppEntry(key: string, entry: RunningProfileApp): void {
     return;
   }
   runningProfileApps.delete(key);
-  if (entry.stopRequested && entry.agent === "claude-code") {
+  if (entry.agent === "claude-code") {
     stopClaudeAppBotWorker(entry.profileId);
+  }
+  if (entry.agent === "opencode") {
+    stopOpenCodeAppBotWorker(entry.profileId);
+  }
+  if (entry.agent === "codex" || entry.agent === "zcode") {
+    stopCodexAppBotWorker(entry.profileId);
   }
 }
 
@@ -910,6 +1084,34 @@ async function waitForProfileAppStart(entry: Pick<RunningProfileApp, "pid" | "pi
   return !entry.spawnError && (Boolean(profileAppMainPid(entry)) || (!entry.pidIsLauncher && isProcessAlive(entry.pid)));
 }
 
+async function waitForStableProfileAppStart(
+  entry: Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "spawnError" | "userDataDir">,
+  timeoutMs: number,
+  stableMs: number
+): Promise<boolean> {
+  const startedAt = Date.now();
+  let runningSince: number | undefined;
+  while (Date.now() - startedAt < timeoutMs) {
+    if (entry.spawnError) {
+      return false;
+    }
+    const running = Boolean(profileAppMainPid(entry)) || (!entry.pidIsLauncher && isProcessAlive(entry.pid));
+    if (running) {
+      runningSince ??= Date.now();
+      if (Date.now() - runningSince >= stableMs) {
+        return true;
+      }
+    } else {
+      runningSince = undefined;
+      if (!entry.pidIsLauncher && !isProcessAlive(entry.pid)) {
+        return false;
+      }
+    }
+    await sleep(100);
+  }
+  return false;
+}
+
 function waitForImmediateSpawnError(child: ChildProcess, timeoutMs: number): Promise<string | undefined> {
   return new Promise((resolve) => {
     let settled = false;
@@ -964,7 +1166,7 @@ function startClaudeAppBotWorker(config: AppConfig, profile: ReturnType<typeof f
   }
 
   const runtimeFile = path.join(CONFIGDIR, "bin", "ccr-codex-cli-middleware.js");
-  ensureClaudeBotWorkerRuntime(runtimeFile);
+  ensureBotWorkerRuntime(runtimeFile);
 
   const settingsFile = resolveClaudeCodeSettingsFile(CONFIGDIR, profile);
   const settingsEnv = readClaudeCodeSettingsEnv(settingsFile);
@@ -999,6 +1201,7 @@ function startClaudeAppBotWorker(config: AppConfig, profile: ReturnType<typeof f
   });
   claudeAppBotWorker = child;
   claudeAppBotWorkerProfileId = profile.id;
+  claudeAppBotWorkerStateDir = botEnv.CCR_BOT_GATEWAY_STATE_DIR;
   child.stderr?.on("data", (chunk) => {
     console.warn(`[profile] Claude App bot worker stderr: ${chunk.toString("utf8").trim()}`);
   });
@@ -1006,6 +1209,7 @@ function startClaudeAppBotWorker(config: AppConfig, profile: ReturnType<typeof f
     if (claudeAppBotWorker === child) {
       claudeAppBotWorker = undefined;
       claudeAppBotWorkerProfileId = undefined;
+      claudeAppBotWorkerStateDir = undefined;
     }
     if (code && code !== 0) {
       console.warn(`[profile] Claude App bot worker exited: code=${code}${signal ? ` signal=${signal}` : ""}`);
@@ -1015,8 +1219,129 @@ function startClaudeAppBotWorker(config: AppConfig, profile: ReturnType<typeof f
     if (claudeAppBotWorker === child) {
       claudeAppBotWorker = undefined;
       claudeAppBotWorkerProfileId = undefined;
+      claudeAppBotWorkerStateDir = undefined;
     }
     console.warn(`[profile] Claude App bot worker failed: ${formatError(error)}`);
+  });
+}
+
+function startOpenCodeAppBotWorker(
+  config: AppConfig,
+  profile: ReturnType<typeof findProfileForOpen>,
+  configFile: string,
+  inlineConfig: string,
+  launchSignature: string
+): void {
+  const botEnv = botGatewayProfileEnv(config, profile, "app");
+  if (botEnv.CCR_BOT_GATEWAY_ENABLED !== "true") {
+    stopOpenCodeAppBotWorker(profile.id);
+    return;
+  }
+  if (
+    openCodeAppBotWorker &&
+    !openCodeAppBotWorker.killed &&
+    openCodeAppBotWorker.exitCode === null &&
+    openCodeAppBotWorkerProfileId === profile.id &&
+    openCodeAppBotWorkerSignature === launchSignature
+  ) {
+    return;
+  }
+
+  stopOpenCodeAppBotWorker();
+  const runtimeFile = path.join(CONFIGDIR, "bin", "ccr-codex-cli-middleware.js");
+  ensureBotWorkerRuntime(runtimeFile);
+  const nodeLaunch = nodeRuntimeLaunch();
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...stringRecord(profile.env),
+    ...botEnv,
+    ...(nodeLaunch.electronRunAsNode ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+    CCR_OPENCODE_BOT_WORKER: "1",
+    CCR_OPENCODE_WORKSPACE_NAME: profile.name || profile.id,
+    CCR_PROFILE_SURFACE: "app",
+    OPENCODE_CLIENT: "cli",
+    OPENCODE_CONFIG: configFile,
+    OPENCODE_CONFIG_CONTENT: inlineConfig
+  };
+  delete env.ELECTRON_NO_ATTACH_CONSOLE;
+
+  const child = spawn(nodeLaunch.command, [runtimeFile, "opencode-bot-worker", "--workspace-name", profile.name || profile.id], {
+    detached: false,
+    env,
+    stdio: ["ignore", "ignore", "pipe"],
+    windowsHide: true
+  });
+  openCodeAppBotWorker = child;
+  openCodeAppBotWorkerProfileId = profile.id;
+  openCodeAppBotWorkerSignature = launchSignature;
+  openCodeAppBotWorkerStateDir = botEnv.CCR_BOT_GATEWAY_STATE_DIR;
+  child.stderr?.on("data", (chunk) => {
+    console.warn(`[profile] OpenCode App bot worker stderr: ${chunk.toString("utf8").trim()}`);
+  });
+  child.once("exit", (code, signal) => {
+    if (openCodeAppBotWorker === child) {
+      openCodeAppBotWorker = undefined;
+      openCodeAppBotWorkerProfileId = undefined;
+      openCodeAppBotWorkerSignature = undefined;
+      openCodeAppBotWorkerStateDir = undefined;
+    }
+    if (code && code !== 0) {
+      console.warn(`[profile] OpenCode App bot worker exited: code=${code}${signal ? ` signal=${signal}` : ""}`);
+    }
+  });
+  child.once("error", (error) => {
+    if (openCodeAppBotWorker === child) {
+      openCodeAppBotWorker = undefined;
+      openCodeAppBotWorkerProfileId = undefined;
+      openCodeAppBotWorkerSignature = undefined;
+      openCodeAppBotWorkerStateDir = undefined;
+    }
+    console.warn(`[profile] OpenCode App bot worker failed: ${formatError(error)}`);
+  });
+}
+
+function startCodexAppBotWorker(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): void {
+  const botEnv = botGatewayProfileEnv(config, profile, "app");
+  if (botEnv.CCR_BOT_GATEWAY_ENABLED !== "true") {
+    stopCodexAppBotWorker(profile.id);
+    return;
+  }
+  const existing = codexAppBotWorkers.get(profile.id);
+  if (existing && !existing.child.killed && existing.child.exitCode === null) {
+    return;
+  }
+  stopCodexAppBotWorker(profile.id);
+  const plan = buildProfileLaunchPlan(CONFIGDIR, profile, "app", ["codex-bot-worker", "--workspace-name", profile.name || profile.id]);
+  const launch = profileLaunchSpawnCommand(plan);
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...plan.env,
+    ...botEnv,
+    CCR_CODEX_BOT_WORKER: "1",
+    CCR_PROFILE_SURFACE: "app",
+    CODEXL_PROFILE_SURFACE: "app"
+  };
+  delete env.ELECTRON_NO_ATTACH_CONSOLE;
+  const child = spawn(launch.command, launch.args, {
+    detached: false,
+    env,
+    stdio: ["ignore", "ignore", "pipe"],
+    windowsHide: true,
+    windowsVerbatimArguments: launch.windowsVerbatimArguments
+  });
+  codexAppBotWorkers.set(profile.id, { agent: profile.agent, child, stateDir: botEnv.CCR_BOT_GATEWAY_STATE_DIR });
+  child.stderr?.on("data", (chunk) => {
+    console.warn(`[profile] ${profile.agent === "zcode" ? "ZCode" : "Codex"} App bot worker stderr: ${chunk.toString("utf8").trim()}`);
+  });
+  child.once("exit", (code, signal) => {
+    if (codexAppBotWorkers.get(profile.id)?.child === child) codexAppBotWorkers.delete(profile.id);
+    if (code && code !== 0) {
+      console.warn(`[profile] ${profile.agent === "zcode" ? "ZCode" : "Codex"} App bot worker exited: code=${code}${signal ? ` signal=${signal}` : ""}`);
+    }
+  });
+  child.once("error", (error) => {
+    if (codexAppBotWorkers.get(profile.id)?.child === child) codexAppBotWorkers.delete(profile.id);
+    console.warn(`[profile] ${profile.agent === "zcode" ? "ZCode" : "Codex"} App bot worker failed: ${formatError(error)}`);
   });
 }
 
@@ -1049,7 +1374,7 @@ function isEnvName(value: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
 }
 
-function ensureClaudeBotWorkerRuntime(runtimeFile: string): void {
+function ensureBotWorkerRuntime(runtimeFile: string): void {
   const content = codexCliMiddlewareRuntimeScript();
   const existing = existsSync(runtimeFile) ? readFileSync(runtimeFile, "utf8") : "";
   if (existing !== content) {
@@ -1059,8 +1384,15 @@ function ensureClaudeBotWorkerRuntime(runtimeFile: string): void {
       chmodSync(runtimeFile, 0o755);
     }
   }
-  if (!content.includes("CCR_CLAUDE_CODE_BOT_WORKER") || !content.includes("claude-bot-worker")) {
-    throw new Error("Claude bot worker runtime does not contain the bot worker entrypoint.");
+  if (
+    !content.includes("CCR_CLAUDE_CODE_BOT_WORKER") ||
+    !content.includes("claude-bot-worker") ||
+    !content.includes("CCR_OPENCODE_BOT_WORKER") ||
+    !content.includes("opencode-bot-worker") ||
+    !content.includes("CCR_CODEX_BOT_WORKER") ||
+    !content.includes("codex-bot-worker")
+  ) {
+    throw new Error("Bot worker runtime does not contain all required entrypoints.");
   }
 }
 
@@ -1071,6 +1403,7 @@ function stopClaudeAppBotWorker(profileId?: string): void {
   const child = claudeAppBotWorker;
   claudeAppBotWorker = undefined;
   claudeAppBotWorkerProfileId = undefined;
+  claudeAppBotWorkerStateDir = undefined;
   if (!child || child.killed) {
     return;
   }
@@ -1078,6 +1411,41 @@ function stopClaudeAppBotWorker(profileId?: string): void {
     child.kill("SIGTERM");
   } catch {
     // The worker may have already exited.
+  }
+}
+
+function stopOpenCodeAppBotWorker(profileId?: string): void {
+  if (profileId && openCodeAppBotWorkerProfileId && openCodeAppBotWorkerProfileId !== profileId) {
+    return;
+  }
+  const child = openCodeAppBotWorker;
+  openCodeAppBotWorker = undefined;
+  openCodeAppBotWorkerProfileId = undefined;
+  openCodeAppBotWorkerSignature = undefined;
+  openCodeAppBotWorkerStateDir = undefined;
+  if (!child || child.killed) {
+    return;
+  }
+  try {
+    child.kill("SIGTERM");
+  } catch {
+    // The worker may have already exited.
+  }
+}
+
+function stopCodexAppBotWorker(profileId?: string): void {
+  const entries = profileId
+    ? [[profileId, codexAppBotWorkers.get(profileId)] as const]
+    : [...codexAppBotWorkers.entries()];
+  for (const [id, entry] of entries) {
+    if (!entry) continue;
+    codexAppBotWorkers.delete(id);
+    if (entry.child.killed) continue;
+    try {
+      entry.child.kill("SIGTERM");
+    } catch {
+      // The worker may have already exited.
+    }
   }
 }
 

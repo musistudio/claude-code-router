@@ -145,7 +145,9 @@ export type ApiKeyWindowCounter = {
 
 export type RawTracePartText = {
   contentType?: string;
-  text: string;
+  filePath: string;
+  sizeBytes: number;
+  truncated: boolean;
 };
 
 
@@ -235,6 +237,28 @@ export const clientClosedRequestStatusCode = 499;
 
 export const clientDisconnectMessage = "Client connection closed before response completed.";
 
+export function resolveStreamRequestLogOutcome(input: {
+  clientDisconnected: boolean;
+  detectedError?: string;
+  streamError?: string;
+  terminalEventSeen: boolean;
+  upstreamStatus: number;
+}): { error?: string; statusCode: number } {
+  const interrupted = input.clientDisconnected && !input.terminalEventSeen;
+  if (interrupted) {
+    return {
+      error: clientDisconnectMessage,
+      statusCode: clientClosedRequestStatusCode
+    };
+  }
+  return {
+    error: input.clientDisconnected && input.terminalEventSeen
+      ? input.detectedError
+      : input.streamError ?? input.detectedError,
+    statusCode: input.upstreamStatus
+  };
+}
+
 export const localObservabilityHeaderNames = new Set([
   "x-ccr-claude-app-model-rewrite",
   "x-ccr-codex-patch-bridge",
@@ -257,10 +281,14 @@ export const gatewayRuntimeMarkerFile = "gateway-runtime.json";
 
 export const rawTraceSyncHeader = "x-ccr-raw-trace-token";
 
+export const billingUsageSyncHeader = "x-ccr-billing-usage-token";
+
 export const virtualApplyPatchToolName = "virtual_apply_patch";
 
 
 export const rawTraceSyncPath = "/__ccr/raw-trace-sync";
+
+export const billingUsageSyncPath = "/__ccr/billing-usage-sync";
 
 export const gatewayEntryOverrideEnv = "CCR_GATEWAY_ENTRY";
 

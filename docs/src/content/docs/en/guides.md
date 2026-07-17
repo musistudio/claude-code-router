@@ -7,17 +7,15 @@ lead: Start from installation, connect a provider, let agents send requests thro
 
 ## Install And Start CCR
 
-### Download And Install
+CCR is available as a desktop app, a Node.js 22+ npm CLI, and a single-entrypoint Docker deployment.
 
-1. Open the [GitHub Releases](https://github.com/musistudio/claude-code-router/releases) page.
-2. Download the package for your system: `.dmg` or `.zip` for macOS, `.exe` for Windows, and `.AppImage` for Linux.
-3. Install and open **Claude Code Router** like a normal desktop app.
+| Distribution | Start entry | Default management | Default model gateway |
+| --- | --- | --- | --- |
+| Desktop | App UI / `ccr-app` | In-app window | `http://127.0.0.1:3456` |
+| npm CLI | `ccr ui` / `ccr serve` | `http://127.0.0.1:3458` | `http://127.0.0.1:3456` |
+| Docker | `docker compose up -d --build` | Shared `http://127.0.0.1:3458` | Shared Nginx endpoint |
 
-### Start The Service
-
-Open the **Server** page and click **Start**. After the page shows Running, CCR listens on the default local address `http://localhost:8080`.
-
-If you want the service to start when the app opens, enable **Auto start** on the Server page.
+Use the [installation page](install/) to choose a distribution. See the [CLI reference](cli/) for terminal commands and [Docker Deployment](docker/) for container ports, authentication, persistence, and upgrades.
 
 ## Add A Provider
 
