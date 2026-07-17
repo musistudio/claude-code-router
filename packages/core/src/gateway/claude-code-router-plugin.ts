@@ -6,7 +6,7 @@ import { type AppConfig, type ProfileClientKind, type RequestRouteTraceChange, t
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { applyAgentRequestEnrichers } from "@ccr/core/agents/request-enricher";
 import { buildClaudeAppGatewayModelRoutes, type ClaudeAppGatewayModelRoute, resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
-import { claudeAppGatewayModelRouteOptions } from "@ccr/core/gateway/internal/shared";
+import { claudeAppGatewayModelRouteOptions } from "@ccr/core/agents/claude-app/model-route-options";
 import { compileRouterConfig, type CompiledRouterConfig, type CompiledRouterRule } from "@ccr/core/routing/config-compiler";
 import type { RouteDecision, RouteDiagnostic, RouteModelRef, RouteRequest, RouteSource } from "@ccr/core/routing/contracts";
 import { ModelRegistry, normalizeRouteSelector } from "@ccr/core/routing/model-registry";
@@ -423,7 +423,11 @@ function resolveBuiltInClaudeCodeSubagentRouteDecision(
   }
   const target = normalizeRouteSelector(request.builtInSubagentModel);
   const discoveredTarget = target
-    ? resolveClaudeAppGatewayRouteModel(target, config, claudeAppGatewayModelRouteOptions)
+    ? resolveClaudeAppGatewayRouteModel(
+        target,
+        config,
+        claudeAppGatewayModelRouteOptions(config)
+      )
     : undefined;
   const configuredTarget = modelRegistry.resolve(discoveredTarget ?? target);
   if (!target || isSubagentModelPlaceholder(target) || !configuredTarget) {
@@ -872,7 +876,10 @@ function claudeCodeAgentToolInstructions(config: AppConfig): { prompt: string; t
 
 function configuredSubagentModelDescriptionRows(config: AppConfig): string[] {
   const routeByTarget = new Map<string, ClaudeAppGatewayModelRoute>();
-  for (const route of buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions)) {
+  for (const route of buildClaudeAppGatewayModelRoutes(
+    config,
+    claudeAppGatewayModelRouteOptions(config)
+  )) {
     const key = route.targetModel.toLowerCase();
     const current = routeByTarget.get(key);
     if (!current || (current.oneMillionContext && !route.oneMillionContext)) {

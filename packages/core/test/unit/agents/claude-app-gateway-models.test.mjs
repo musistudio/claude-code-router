@@ -388,13 +388,14 @@ test("Claude App discovery prefers provider context metadata over the static cat
   assert.equal(model.capabilities.context_window.one_million_context_variant, false);
 });
 
-test("Claude App discovery lets provider metadata enable one-million context", () => {
+test("Claude App discovery uses physical provider capacity for one-million support", () => {
   const config = createConfig({
     providers: [
       {
         modelMetadata: {
           "custom-frontier": {
             contextWindow: 1_000_000,
+            effectiveContextWindowPercent: 95,
             maxContextWindow: 1_000_000
           }
         },
@@ -412,7 +413,37 @@ test("Claude App discovery lets provider metadata enable one-million context", (
   assert.ok(model);
   assert.equal(route.oneMillionContext, true);
   assert.equal(inferenceModel.supports1m, true);
-  assert.equal(model.max_input_tokens, 1_000_000);
+  assert.equal(model.max_input_tokens, 950_000);
+  assert.equal(model.capabilities.context_window.supports_1m_context, true);
+  assert.equal(model.capabilities.context_window.one_million_context_variant, true);
+});
+
+test("Claude App discovery uses maximum capacity for optional one-million support", () => {
+  const config = createConfig({
+    providers: [
+      {
+        modelMetadata: {
+          "custom-frontier": {
+            contextWindow: 272_000,
+            effectiveContextWindowPercent: 95,
+            maxContextWindow: 1_000_000
+          }
+        },
+        models: ["custom-frontier"],
+        name: "Gateway",
+        type: "openai_responses"
+      }
+    ]
+  });
+  const route = buildClaudeAppGatewayModelRoutes(config)[0];
+  const inferenceModel = buildClaudeAppGatewayInferenceModels(config)[0];
+  const response = createClaudeModelsResponse(config);
+  const model = response.data.find((item) => item.id === route.id);
+
+  assert.ok(model);
+  assert.equal(route.oneMillionContext, true);
+  assert.equal(inferenceModel.supports1m, true);
+  assert.equal(model.max_input_tokens, 258_400);
   assert.equal(model.capabilities.context_window.supports_1m_context, true);
   assert.equal(model.capabilities.context_window.one_million_context_variant, true);
 });

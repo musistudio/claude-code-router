@@ -1,4 +1,4 @@
-import type { AppConfig } from "@ccr/core/contracts/app";
+import type { AppConfig, ProviderModelMetadata } from "@ccr/core/contracts/app";
 import { availableGatewayModelIds, normalizeProfileScopeValue } from "@ccr/core/contracts/app";
 import { modelRegistryForConfig } from "@ccr/core/routing/model-registry";
 import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
@@ -132,24 +132,8 @@ export function effectiveProviderModelContextWindow(
   config: Pick<AppConfig, "Providers" | "virtualModelProfiles">,
   model: string
 ): number | undefined {
-  const registry = modelRegistryForConfig(config);
-  const normalizedModel = stripClaudeAppGatewayOneMillionContextSuffix(model);
-  const direct = registry.resolveProviderModel(normalizedModel);
-  const attribution = direct ? undefined : resolveUsageModelAttribution(config, normalizedModel);
-  const physicalModel = direct?.model ?? attribution?.model;
-  const provider = direct?.provider ?? (
-    attribution?.provider ? registry.findProvider(attribution.provider) : undefined
-  );
-  if (!provider || !physicalModel) {
-    return undefined;
-  }
-
-  const modelMetadata = provider.modelMetadata ?? {};
-  const metadata = modelMetadata[physicalModel] ?? Object.entries(modelMetadata).find(
-    ([candidate]) => candidate.trim().toLowerCase() === physicalModel.toLowerCase()
-  )?.[1];
-  const contextWindow = positiveMetadataInteger(metadata?.contextWindow) ??
-    positiveMetadataInteger(metadata?.maxContextWindow);
+  const metadata = providerModelMetadata(config, model);
+  const contextWindow = providerEffectiveContextWindow(metadata);
   if (!contextWindow) {
     return undefined;
   }
@@ -163,8 +147,44 @@ export function providerModelSupportsOneMillionContext(
   model: string,
   fallback = false
 ): boolean {
-  const contextWindow = effectiveProviderModelContextWindow(config, model);
+  const contextWindow = providerMaximumContextWindow(providerModelMetadata(config, model));
   return contextWindow === undefined ? fallback : contextWindow >= 1_000_000;
+}
+
+function providerModelMetadata(
+  config: Pick<AppConfig, "Providers" | "virtualModelProfiles">,
+  model: string
+): ProviderModelMetadata | undefined {
+  const registry = modelRegistryForConfig(config);
+  const normalizedModel = stripClaudeAppGatewayOneMillionContextSuffix(model);
+  const direct = registry.resolveProviderModel(normalizedModel);
+  const attribution = direct ? undefined : resolveUsageModelAttribution(config, normalizedModel);
+  const physicalModel = direct?.model ?? attribution?.model;
+  const provider = direct?.provider ?? (
+    attribution?.provider ? registry.findProvider(attribution.provider) : undefined
+  );
+  if (!provider || !physicalModel) {
+    return undefined;
+  }
+
+  const modelMetadata = provider.modelMetadata ?? {};
+  return modelMetadata[physicalModel] ?? Object.entries(modelMetadata).find(
+    ([candidate]) => candidate.trim().toLowerCase() === physicalModel.toLowerCase()
+  )?.[1];
+}
+
+function providerEffectiveContextWindow(
+  metadata: ProviderModelMetadata | undefined
+): number | undefined {
+  return positiveMetadataInteger(metadata?.contextWindow) ??
+    positiveMetadataInteger(metadata?.maxContextWindow);
+}
+
+function providerMaximumContextWindow(
+  metadata: ProviderModelMetadata | undefined
+): number | undefined {
+  return positiveMetadataInteger(metadata?.maxContextWindow) ??
+    positiveMetadataInteger(metadata?.contextWindow);
 }
 
 function inferGlobalClaudeProfileModel(config: Pick<AppConfig, "profile">): string {

@@ -8,12 +8,13 @@ import {
   effectiveProviderModelContextWindow,
   resolveClaudeAppGatewayRouteModel
 } from "@ccr/core/agents/claude-app/gateway-routes";
+import { claudeAppGatewayModelRouteOptions } from "@ccr/core/agents/claude-app/model-route-options";
 import { modelRegistryForConfig, normalizeRouteSelector } from "@ccr/core/routing/model-registry";
 import { findModelCatalogEntry, modelCatalogMaxInputTokens, modelCatalogMaxOutputTokens, readCatalogCapability, type ModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
 import { stringValue } from "@ccr/core/gateway/internal/value";
 import { fusionModelSelector } from "@ccr/core/mcp/fusion-config";
 import { readHeader } from "@ccr/core/gateway/http/io";
-import { claudeAppGatewayModelRouteOptions, claudeCodeOneMillionContextSuffix } from "@ccr/core/gateway/internal/shared";
+import { claudeCodeOneMillionContextSuffix } from "@ccr/core/gateway/internal/shared";
 import { parseJsonObjectSafe, serializeJsonBodyWithModel } from "@ccr/core/gateway/http/body";
 import { uniqueStrings } from "@ccr/core/gateway/internal/collections";
 
@@ -76,7 +77,7 @@ export function prepareClaudeAppDiscoveredModelRequest(
   const routedModel = resolveClaudeAppGatewayRouteModel(
     normalizedModel,
     config,
-    claudeAppGatewayModelRouteOptions
+    claudeAppGatewayModelRouteOptions(config)
   );
   if (!routedModel || routedModel.toLowerCase() === normalizedModel.toLowerCase()) {
     return undefined;
@@ -124,7 +125,10 @@ function createClaudeAppGatewayModelsResponse(
   config: AppConfig,
   options: { claudeCode?: boolean } = {}
 ): Record<string, unknown> {
-  const routes = buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions);
+  const routes = buildClaudeAppGatewayModelRoutes(
+    config,
+    claudeAppGatewayModelRouteOptions(config)
+  );
   const data = routes.map((route) => {
     const catalogId = stripClaudeCodeOneMillionContextSuffix(route.targetModel);
     const catalogEntry = findModelCatalogEntry(catalogId);
@@ -303,7 +307,11 @@ export function resolveGatewayPublicModelId(model: string | undefined, config: A
     return undefined;
   }
   return resolveClaudeCodeDiscoveredModelId(normalized, config) ??
-    resolveClaudeAppGatewayRouteModel(normalized, config, claudeAppGatewayModelRouteOptions);
+    resolveClaudeAppGatewayRouteModel(
+      normalized,
+      config,
+      claudeAppGatewayModelRouteOptions(config)
+    );
 }
 
 
