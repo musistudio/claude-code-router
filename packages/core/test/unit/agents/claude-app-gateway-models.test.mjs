@@ -65,6 +65,43 @@ test("issue 1535 Claude App discovery defaults to the first configured provider 
   assertPublishedRoutesResolveUniquely(config);
 });
 
+test("issue 1535 the discovered default is routable and the bare fallback resolves to a provider", () => {
+  const config = createConfig({
+    providers: [
+      { models: ["AED"], name: "provider-1" },
+      { models: ["claude-sonnet-4-5"], name: "provider-2" },
+      { models: ["deepseek-v4-flash"], name: "provider-3" }
+    ]
+  });
+  const response = createClaudeModelsResponse(config);
+
+  assert.equal(
+    response.data.some((model) => model.id === "claude-sonnet-4-5"),
+    false,
+    "the unroutable bare fallback must never be published by GET /v1/models"
+  );
+  assert.ok(response.first_id, "discovery must publish a routable default model");
+
+  const rewritten = prepareClaudeAppDiscoveredModelRequest(
+    config,
+    "POST",
+    "/v1/messages",
+    Buffer.from(JSON.stringify({ messages: [], model: response.first_id }))
+  );
+  assert.equal(
+    rewritten?.routedModel,
+    "provider-1/AED",
+    "the discovered default must round-trip to a provider-prefixed selector instead of model-chain fallback"
+  );
+
+  const registry = new ModelRegistry(config);
+  assert.equal(
+    registry.resolve("claude-sonnet-4-5")?.canonicalSelector,
+    "provider-2/claude-sonnet-4-5",
+    "a bare fallback model id must resolve to a provider rather than going unroutable"
+  );
+});
+
 test("issue 1535 Claude App discovery canonicalizes a uniquely configured bare profile model", () => {
   const config = createConfig({
     profileModel: "claude-sonnet-4-5",
