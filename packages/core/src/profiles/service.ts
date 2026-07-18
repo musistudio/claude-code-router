@@ -23,6 +23,7 @@ import {
 } from "@ccr/core/agents/opencode/profile-config";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { resolveClaudeCodeLaunchConfigDir } from "@ccr/core/profiles/launch-core";
+import { profileApiKeyId } from "@ccr/core/profiles/profile-api-key";
 import {
   compileClaudeCodeAllowedModels,
   compileClaudeCodeModelSelector,
@@ -878,10 +879,6 @@ async function pruneInactiveProfileApiKeys(config: AppConfig, profiles: ProfileC
   }
   config.APIKEYS = await replacePersistedApiKeys(retained);
   config.APIKEY = config.APIKEYS[0]?.key ?? "";
-}
-
-function profileApiKeyId(profile: ProfileConfig): string {
-  return `profile:${sanitizeProfilePathSegment(profile.id || profile.name || profile.agent) || "profile"}`;
 }
 
 function profileApiKeyName(profile: ProfileConfig): string {

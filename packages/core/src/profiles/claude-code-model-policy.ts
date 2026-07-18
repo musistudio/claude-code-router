@@ -65,7 +65,7 @@ export function isClaudeCodeModelAllowedByPolicy(
   model: string
 ): boolean {
   const normalizedModel = stripClaudeAppGatewayOneMillionContextSuffix(model).toLowerCase();
-  const modelFamily = nativeClaudeModelFamily(normalizedModel);
+  const modelFamily = claudeCodeNativeModelFamily(normalizedModel);
   return settings.availableModels.some((allowedModel) => {
     const normalizedAllowedModel = stripClaudeAppGatewayOneMillionContextSuffix(allowedModel)
       .toLowerCase();
@@ -214,7 +214,7 @@ function stripNativeClaudeModelPrefix(value: string): string {
     : withoutProvider;
 }
 
-function nativeClaudeModelFamily(value: string): string | undefined {
+export function claudeCodeNativeModelFamily(value: string): string | undefined {
   const normalized = value.toLowerCase();
   if (nativeClaudeAliasPattern.test(normalized)) {
     return normalized;

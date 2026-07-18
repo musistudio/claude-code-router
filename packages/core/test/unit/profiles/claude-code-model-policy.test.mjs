@@ -22,6 +22,40 @@ function createConfig(providers) {
   };
 }
 
+function addClaudeProfile(config, overrides = {}) {
+  const profile = {
+    agent: "claude-code",
+    allowedModels: ["fable"],
+    enabled: true,
+    id: "claudex",
+    model: "fable",
+    name: "Claudex",
+    scope: "ccr",
+    surface: "cli",
+    ...overrides
+  };
+  config.profile.profiles.push(profile);
+  return profile;
+}
+
+function createProfileApiKey(profile) {
+  return {
+    createdAt: "1970-01-01T00:00:00.000Z",
+    id: `profile:${profile.id}`,
+    key: "profile-token",
+    name: `Profile: ${profile.name}`
+  };
+}
+
+function discoveredModelIds(config, apiKey, userAgent = "claude-code/2.1.211") {
+  const discovery = createGatewayModelsResponse(
+    config,
+    { "user-agent": userAgent },
+    apiKey
+  );
+  return discovery.data.map((model) => model.id);
+}
+
 test("Claude Code allowed models compile provider selectors to discovery route IDs", () => {
   const config = createConfig([
     {
@@ -61,6 +95,144 @@ test("Claude Code allowed models compile provider selectors to discovery route I
   assert.equal(
     resolveClaudeAppGatewayRouteModel(route.id, config),
     "openai/gpt-5.6-sol"
+  );
+});
+
+test("authenticated profile discovery hides provider routes covered by native aliases", () => {
+  const config = createConfig([
+    {
+      models: ["claude-fable-5", "claude-opus-4-8"],
+      name: "anthropic",
+      type: "anthropic"
+    },
+    {
+      models: ["gpt-5.6-sol"],
+      name: "openai",
+      type: "openai_responses"
+    }
+  ]);
+  const profile = addClaudeProfile(config, {
+    allowedModels: ["opus", "fable", "openai/gpt-5.6-sol"]
+  });
+  const routes = buildClaudeAppGatewayModelRoutes(config);
+  const solRoute = routes.find((route) => route.targetModel === "openai/gpt-5.6-sol");
+  assert.ok(solRoute);
+
+  assert.deepEqual(discoveredModelIds(config, createProfileApiKey(profile)), [solRoute.id]);
+});
+
+test("authenticated profile discovery retains an explicitly selected provider route", () => {
+  const config = createConfig([
+    {
+      models: ["claude-fable-5"],
+      name: "anthropic",
+      type: "anthropic"
+    }
+  ]);
+  const profile = addClaudeProfile(config, {
+    allowedModels: ["fable", "anthropic/claude-fable-5"]
+  });
+  const route = buildClaudeAppGatewayModelRoutes(config)[0];
+  assert.ok(route);
+
+  assert.deepEqual(discoveredModelIds(config, createProfileApiKey(profile)), [route.id]);
+});
+
+test("routes hidden from discovery remain available to inference", () => {
+  const config = createConfig([
+    {
+      models: ["claude-fable-5"],
+      name: "anthropic",
+      type: "anthropic"
+    }
+  ]);
+  const profile = addClaudeProfile(config);
+  const route = buildClaudeAppGatewayModelRoutes(config)[0];
+  assert.ok(route);
+
+  assert.deepEqual(discoveredModelIds(config, createProfileApiKey(profile)), []);
+  assert.equal(resolveClaudeAppGatewayRouteModel(route.id, config), route.targetModel);
+});
+
+test("discovery keeps all provider routes for an unrelated API key", () => {
+  const config = createConfig([
+    {
+      models: ["claude-fable-5"],
+      name: "anthropic",
+      type: "anthropic"
+    }
+  ]);
+  addClaudeProfile(config);
+  const routes = buildClaudeAppGatewayModelRoutes(config);
+
+  assert.deepEqual(
+    discoveredModelIds(config, {
+      createdAt: "1970-01-01T00:00:00.000Z",
+      id: "general",
+      key: "general-token",
+      name: "General"
+    }),
+    routes.map((route) => route.id)
+  );
+});
+
+test("discovery keeps all provider routes when profiles are globally disabled", () => {
+  const config = createConfig([
+    {
+      models: ["claude-fable-5"],
+      name: "anthropic",
+      type: "anthropic"
+    }
+  ]);
+  const profile = addClaudeProfile(config);
+  const routes = buildClaudeAppGatewayModelRoutes(config);
+  config.profile.enabled = false;
+
+  assert.deepEqual(
+    discoveredModelIds(config, createProfileApiKey(profile)),
+    routes.map((route) => route.id)
+  );
+});
+
+test("discovery keeps all provider routes for an app-surface profile", () => {
+  const config = createConfig([
+    {
+      models: ["claude-fable-5"],
+      name: "anthropic",
+      type: "anthropic"
+    }
+  ]);
+  const profile = addClaudeProfile(config, {
+    id: "claudex-app",
+    name: "Claudex App",
+    surface: "app"
+  });
+  const routes = buildClaudeAppGatewayModelRoutes(config);
+
+  assert.deepEqual(
+    discoveredModelIds(config, createProfileApiKey(profile), "claude-app/1.0"),
+    routes.map((route) => route.id)
+  );
+});
+
+test("discovery keeps all provider routes for a non-CCR profile", () => {
+  const config = createConfig([
+    {
+      models: ["claude-fable-5"],
+      name: "anthropic",
+      type: "anthropic"
+    }
+  ]);
+  const profile = addClaudeProfile(config, {
+    id: "claude-global",
+    name: "Claude Global",
+    scope: "global"
+  });
+  const routes = buildClaudeAppGatewayModelRoutes(config);
+
+  assert.deepEqual(
+    discoveredModelIds(config, createProfileApiKey(profile)),
+    routes.map((route) => route.id)
   );
 });
 
