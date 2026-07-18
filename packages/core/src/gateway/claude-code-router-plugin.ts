@@ -66,7 +66,7 @@ export class ClaudeCodeRouterPlugin {
       enrich: (matchedRequest) => {
         injectClaudeCodeAgentToolDescription(matchedRequest.body, this.config);
         injectClaudeCodeToolHubInstructions(matchedRequest.body, this.config);
-        removeClaudeCodeBillingSystemHeader(matchedRequest.body);
+        matchedRequest.builtInClaudeCodeSubagent = removeClaudeCodeBillingSystemHeader(matchedRequest.body);
         matchedRequest.builtInSubagentModel = extractAndRemoveClaudeCodeSubagentModelTag(matchedRequest.body);
       },
       id: "claude-code",
@@ -268,6 +268,13 @@ function resolveConfiguredRouteDecision(
   const requestedModel = readString(request.body.model);
   const explicitModel = normalizeRouteSelector(requestedModel);
   const builtInDecision = resolveBuiltInAgentRouteDecision(request, config, compiled.modelRegistry, compiled.fallback);
+  const subagentEnvDecision = resolveBuiltInClaudeCodeSubagentEnvRouteDecision(
+    request,
+    config,
+    compiled.modelRegistry,
+    compiled.fallback
+  );
+  const builtInRuleBaseDecision = subagentEnvDecision ?? builtInDecision;
   const policies: Array<RoutePolicy<MutableRequestLike, ConfiguredRouteDecision>> = [
     {
       evaluate: () => customModel
@@ -293,12 +300,16 @@ function resolveConfiguredRouteDecision(
     ...compiled.rules.map((rule): RoutePolicy<MutableRequestLike, ConfiguredRouteDecision> => ({
       evaluate: (context) => {
         const decision = resolveRouterRule(rule, context, compiled.fallback);
-        return decision && builtInDecision
-          ? mergeConfiguredRouteDecisions(builtInDecision, decision)
+        return decision && builtInRuleBaseDecision
+          ? mergeConfiguredRouteDecisions(builtInRuleBaseDecision, decision)
           : decision;
       },
       id: `rule:${rule.rule.id}`
     })),
+    {
+      evaluate: () => subagentEnvDecision,
+      id: "builtin-agent-claude-code-subagent-env"
+    },
     {
       evaluate: () => builtInDecision,
       id: builtInDecision ? builtInAgentPolicyId(builtInDecision) : "builtin-agent"
@@ -373,6 +384,57 @@ function resolveBuiltInClaudeCodeSubagentRouteDecision(
     rewrites: [],
     source: "subagent",
   };
+}
+
+function resolveBuiltInClaudeCodeSubagentEnvRouteDecision(
+  request: MutableRequestLike,
+  config: AppConfig,
+  modelRegistry: ModelRegistry,
+  fallback: RouterFallbackConfig
+): ConfiguredRouteDecision | undefined {
+  if (!builtInAgentRouteMatches(request, config, "claude-code")) {
+    return undefined;
+  }
+  if (request.builtInClaudeCodeSubagent !== true) {
+    return undefined;
+  }
+  const profile = resolveAuthenticatedProfile(request, config, "claude-code");
+  const configuredTarget = resolveConfiguredClaudeCodeModel(
+    profile?.env?.[claudeCodeSubagentModelEnv],
+    config,
+    modelRegistry
+  );
+  const requestedTarget = resolveConfiguredClaudeCodeModel(
+    readString(request.body.model),
+    config,
+    modelRegistry
+  );
+  if (
+    !configuredTarget ||
+    !requestedTarget ||
+    configuredTarget.canonicalSelector.toLowerCase() !== requestedTarget.canonicalSelector.toLowerCase()
+  ) {
+    return undefined;
+  }
+  return {
+    fallback,
+    model: configuredTarget,
+    reason: "builtin:claude-code-subagent-env",
+    rewrites: [],
+    source: "subagent"
+  };
+}
+
+function resolveConfiguredClaudeCodeModel(
+  selector: string | undefined,
+  config: AppConfig,
+  modelRegistry: ModelRegistry
+): RouteModelRef | undefined {
+  const target = normalizeRouteSelector(selector);
+  const discoveredTarget = target
+    ? resolveClaudeAppGatewayRouteModel(target, config, claudeAppGatewayModelRouteOptions)
+    : undefined;
+  return modelRegistry.resolve(discoveredTarget ?? target);
 }
 
 function resolveBuiltInAgentRouteDecision(
@@ -508,6 +570,7 @@ const ccrSubagentModelCloseTag = "</CCR-SUBAGENT-MODEL>";
 const ccrSubagentModelTagExample = `${ccrSubagentModelOpenTag}Provider/model${ccrSubagentModelCloseTag}`;
 const ccrSubagentModelPlaceholder = "provider/model";
 const claudeCodeBillingSystemHeaderPrefix = "x-anthropic-billing-header";
+const claudeCodeSubagentModelEnv = "CLAUDE_CODE_SUBAGENT_MODEL";
 const ccrSubagentToolModelInstruction =
   `CCR subagent routing is enabled. When calling this tool, the prompt parameter MUST start with ` +
   `${ccrSubagentModelTagExample} on its own first line, replacing Provider/model with the best client model ID from the list below. ` +
@@ -796,10 +859,10 @@ function compareCodeUnitStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-function removeClaudeCodeBillingSystemHeader(body: Record<string, unknown>): void {
+function removeClaudeCodeBillingSystemHeader(body: Record<string, unknown>): boolean {
   const system = body.system;
   if (!Array.isArray(system) || system.length === 0) {
-    return;
+    return false;
   }
   const firstBlock = system[0];
   const firstText = typeof firstBlock === "string"
@@ -808,12 +871,45 @@ function removeClaudeCodeBillingSystemHeader(body: Record<string, unknown>): voi
       ? firstBlock.text
       : undefined;
   if (!firstText?.startsWith(claudeCodeBillingSystemHeaderPrefix)) {
-    return;
+    return false;
   }
+  const isSubagent = claudeCodeBillingMetadataIsSubagent(firstText);
   system.shift();
   if (system.length === 0) {
     delete body.system;
   }
+  return isSubagent;
+}
+
+function claudeCodeBillingMetadataIsSubagent(text: string): boolean {
+  const prefix = `${claudeCodeBillingSystemHeaderPrefix}:`;
+  if (!text.startsWith(prefix)) {
+    return false;
+  }
+  const payload = text.slice(prefix.length).trim();
+  if (!payload) {
+    return false;
+  }
+  if (payload.startsWith("{")) {
+    try {
+      const metadata = JSON.parse(payload) as unknown;
+      return isRecord(metadata) && metadata.cc_is_subagent === true;
+    } catch {
+      return false;
+    }
+  }
+  const values = payload
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .flatMap((part) => {
+      const separator = part.indexOf("=");
+      if (separator < 0 || part.slice(0, separator).trim() !== "cc_is_subagent") {
+        return [];
+      }
+      return [part.slice(separator + 1).trim()];
+    });
+  return values.length === 1 && values[0] === "true";
 }
 
 function extractAndRemoveClaudeCodeSubagentModelTag(body: Record<string, unknown>): string | undefined {

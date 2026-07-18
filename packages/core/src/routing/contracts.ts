@@ -44,6 +44,7 @@ export type RouteDecision = {
 };
 
 export type RouteRequest = {
+  builtInClaudeCodeSubagent?: boolean;
   builtInSubagentModel?: string;
   body: Record<string, unknown>;
   headers: Record<string, string | string[] | undefined>;
