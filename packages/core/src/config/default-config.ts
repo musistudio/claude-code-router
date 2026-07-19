@@ -99,6 +99,14 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
       host: "127.0.0.1",
       port: 3456
     },
+    mediaTools: {
+      allowedInputRoots: [],
+      artifactTtlHours: 24,
+      enabled: false,
+      jobTimeoutMs: 600000,
+      maxImageConcurrency: 2,
+      maxVideoConcurrency: 1
+    },
     launchAtLogin: false,
     observability: {
       agentAnalysis: false,

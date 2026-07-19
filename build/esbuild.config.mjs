@@ -69,7 +69,7 @@ export const cssOutput = path.join(rendererAssetsDir, "main.css");
 export const webClientBridgeOutput = path.join(rendererAssetsDir, "web-client-bridge.js");
 export const electronUndiciProxyAgentInput = path.join(coreSourceRoot, "proxy", "undici-proxy-agent.ts");
 export const upstreamHeaderSanitizerInput = path.join(coreSourceRoot, "gateway", "core-runtime", "upstream-header-sanitizer.ts");
-const lightweightMcpBundleNames = ["browser-web-search-proxy-mcp.js", "fusion-vision-mcp.js", "fusion-tool-fallback-mcp.js"];
+const lightweightMcpBundleNames = ["browser-web-search-proxy-mcp.js", "fusion-vision-mcp.js", "fusion-tool-fallback-mcp.js", "media-tools-proxy-mcp.js"];
 const lightweightMcpBundleMaxBytes = 128 * 1024;
 const forbiddenLightweightMcpInputs = [
   { prefix: "packages/core/src/config/", reason: "config modules can pull in native storage side effects" },
@@ -219,6 +219,7 @@ export function createMainBuildOptions({ mode = "production", plugins = [] } = {
       path.join(coreSourceRoot, "mcp", "browser-web-search-proxy-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts"),
+      path.join(coreSourceRoot, "mcp", "media-tools-proxy-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "toolhub-mcp.ts"),
       path.join(coreSourceRoot, "observability", "request-log-worker.ts"),
       path.join(coreSourceRoot, "routing", "route-script-worker.ts"),
@@ -249,6 +250,7 @@ export function createCliBuildOptions({ mode = "production", plugins = [] } = {}
       path.join(cliSourceRoot, "cli.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts"),
+      path.join(coreSourceRoot, "mcp", "media-tools-proxy-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "toolhub-mcp.ts"),
       path.join(coreSourceRoot, "observability", "request-log-worker.ts"),
       path.join(coreSourceRoot, "routing", "route-script-worker.ts"),
@@ -276,6 +278,7 @@ export function createCoreServerBuildOptions({ mode = "production", plugins = []
       path.join(coreSourceRoot, "entrypoints", "server.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts"),
+      path.join(coreSourceRoot, "mcp", "media-tools-proxy-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "toolhub-mcp.ts"),
       path.join(coreSourceRoot, "observability", "request-log-worker.ts"),
       path.join(coreSourceRoot, "routing", "route-script-worker.ts"),

@@ -5,6 +5,7 @@ import path from "node:path";
 import type { AppConfig, ProfileConfig } from "@ccr/core/contracts/app";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { codexModelCatalogJson } from "@ccr/core/agents/codex/model-catalog";
+import { prepareCodexAppCdpUserDataDir } from "@ccr/core/agents/codex/media-preview-bridge";
 import { buildProfileLaunchPlan, resolveCodexConfigFile } from "@ccr/core/profiles/launch-core";
 import { normalizeWindowsDesktopAppCandidate, windowsDesktopAppCandidates } from "@ccr/core/platform/windows-app-discovery";
 import { writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "@ccr/core/agents/zcode/profile-config";
@@ -254,6 +255,7 @@ function launchCodexCompatibleAppProfile(
   const configFile = resolveCodexConfigFile(configDir, profile);
   const codexHome = codexCompatibleHomeFromConfigFile(spec, configFile);
   const { modelCatalogFile, userDataDir } = refreshCodexCompatibleAppProfileFiles(configDir, profile, config);
+  if (spec.kind === "codex") prepareCodexAppCdpUserDataDir(userDataDir);
 
   const appEnv: Record<string, string> = {
     ...plan.env,
@@ -403,12 +405,17 @@ function bundledCodexCliPath(appExecutable: string, spec: CodexCompatibleAppSpec
 function codexElectronArgs(userDataDir: string): string[] {
   return [
     "--remote-debugging-port=0",
+    "--remote-debugging-address=127.0.0.1",
     `--user-data-dir=${userDataDir}`,
     "--remote-allow-origins=*",
     "--disable-renderer-backgrounding",
     "--disable-background-timer-throttling",
     "--disable-backgrounding-occluded-windows"
   ];
+}
+
+export function codexElectronArgsForTest(userDataDir: string): string[] {
+  return codexElectronArgs(userDataDir);
 }
 
 function codexAppLaunchCommand(executable: string, userDataDir: string): { args: string[]; command: string; pidIsLauncher?: boolean } {

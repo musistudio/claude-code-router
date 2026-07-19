@@ -14,6 +14,7 @@ import {
   createProviderInstallLinkFromDraft,
   localAgentProviderIconUrls,
   providerCapabilitiesForProtocols,
+  providerCapabilitiesForSave,
   providerCapabilityBaseUrlForProtocol,
   providerDisplayIcon,
   providerAccountConnectorsTextWithNewApiUserBalanceTemplate,
@@ -55,6 +56,63 @@ test("multi-endpoint presets probe only each endpoint's declared protocols", () 
   assert.deepEqual(
     candidates.map((candidate) => [candidate.baseUrl, candidate.protocols]),
     qiniuAiProviderPreset.endpoints.map((endpoint) => [endpoint.baseUrl, endpoint.protocols])
+  );
+});
+
+test("custom providers probe generic image and video generation protocols", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    baseUrl: "https://gateway.example/v1"
+  };
+
+  const candidates = providerProbeCandidates(draft);
+
+  assert.deepEqual(candidates[0].protocols.slice(-2), [
+    "openai_image_generations",
+    "openai_video_generations"
+  ]);
+});
+
+test("provider save drops capabilities from the previous base URL", () => {
+  const current = [{
+    baseUrl: "https://new.example/v1",
+    source: "detected" as const,
+    type: "openai_chat_completions" as const
+  }];
+  const previous = [
+    {
+      baseUrl: "https://old.example/v1",
+      source: "detected" as const,
+      type: "openai_chat_completions" as const
+    },
+    {
+      baseUrl: "https://old-media.example/v1",
+      source: "detected" as const,
+      type: "openai_image_generations" as const
+    }
+  ];
+
+  assert.deepEqual(
+    providerCapabilitiesForSave(current, previous, "https://old.example/v1", "https://new.example/v1"),
+    current
+  );
+});
+
+test("provider save keeps explicit secondary media origins when the base URL is unchanged", () => {
+  const current = [{
+    baseUrl: "https://chat.example/v1",
+    source: "detected" as const,
+    type: "openai_chat_completions" as const
+  }];
+  const media = [{
+    baseUrl: "https://media.example/v1",
+    source: "preset" as const,
+    type: "openai_image_generations" as const
+  }];
+
+  assert.deepEqual(
+    providerCapabilitiesForSave(current, media, "https://chat.example/v1/", "https://chat.example/v1"),
+    [...current, ...media]
   );
 });
 

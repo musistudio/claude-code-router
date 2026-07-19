@@ -16,6 +16,7 @@ import { closeServer, formatError } from "@ccr/core/gateway/http/io";
 import { RawTraceSynchronizer } from "@ccr/core/observability/raw-trace-sync";
 import { GatewayBillingSynchronizer } from "@ccr/core/usage/billing-sync";
 import { assertLoopbackCoreHost, endpoint, gatewayNetworkEndpoints, generateCoreGatewayAuthToken, isCoreGatewayHealthy, loopbackCoreHostError, removeManagedCoreGatewayMarker, shouldRunGatewayRuntime, shouldRunUnifiedServer, spawnGatewayProcess, stopPreviousManagedCoreGateway, writeManagedCoreGatewayMarker } from "@ccr/core/gateway/core-runtime/supervisor";
+import { coreGatewayAuthHeader } from "@ccr/core/gateway/internal/shared";
 import type { BrowserAutomationMcpIntegration, BrowserWebSearchMcpIntegration, GatewayStopOptions } from "@ccr/core/gateway/internal/shared";
 import { GatewayRequestPipeline } from "@ccr/core/gateway/request/pipeline";
 import { GatewayHttpRequestHandler } from "@ccr/core/gateway/http/request-handler";
@@ -23,6 +24,8 @@ import { RouteScriptRuntime } from "@ccr/core/routing/route-script-runtime";
 import { buildRouteScriptInput } from "@ccr/core/routing/route-script-context";
 import { compileRouterConfig } from "@ccr/core/routing/config-compiler";
 import { normalizeRouteScriptResult, scriptResultPreview } from "@ccr/core/routing/route-script-result";
+import { mediaService } from "@ccr/core/media/service";
+import { mediaToolsGatewayEndpoint } from "@ccr/core/mcp/grok-media-config";
 
 
 class GatewayService {
@@ -107,13 +110,19 @@ class GatewayService {
     };
 
     try {
+      mediaService.start(config, mediaToolsGatewayEndpoint(config), {
+        authHeader: coreGatewayAuthHeader,
+        authToken: coreAuthToken,
+        baseUrl: endpoint(config.gateway.coreHost, config.gateway.corePort)
+      });
       await pluginService.start(config);
-      const shouldRunServer = shouldRunUnifiedServer(config) || pluginService.hasGatewayRoutes();
+      const shouldRunServer = shouldRunUnifiedServer(config) || pluginService.hasGatewayRoutes() || config.mediaTools.enabled;
       const shouldRunGateway = shouldRunGatewayRuntime(config);
       if (shouldRunGateway && !hasAvailableGatewayModels(config)) {
         throw new Error(NO_AVAILABLE_GATEWAY_MODELS_MESSAGE);
       }
       if (!shouldRunServer) {
+        await mediaService.stop();
         await pluginService.stop();
         await backendService.stopAll();
         this.coreAuthToken = "";
@@ -196,6 +205,7 @@ class GatewayService {
     }
     await this.rawTraceSynchronizer.stop();
     await this.routeScriptRuntime.close();
+    await mediaService.stop();
 
     await proxyService.stop(options.proxyRestoreTimeoutMs);
     await pluginService.stop();
@@ -234,6 +244,11 @@ class GatewayService {
     });
     this.config = config;
     this.plugin = nextPlugin;
+    mediaService.updateConfig(config, mediaToolsGatewayEndpoint(config), {
+      authHeader: coreGatewayAuthHeader,
+      authToken: this.coreAuthToken,
+      baseUrl: endpoint(config.gateway.coreHost, config.gateway.corePort)
+    });
     proxyService.updateConfig(config);
     this.status = {
       ...this.status,

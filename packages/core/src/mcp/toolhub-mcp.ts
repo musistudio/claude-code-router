@@ -1406,8 +1406,6 @@ class StdioMcpClient implements McpClient {
 }
 
 const treeSitterToolName = "tree_sitter_collect_tool_references";
-const defaultMaxTurns = 3;
-const maxTurnsLimit = 6;
 const minSearchTimeoutMs = 8_000;
 const maxTurnTimeoutMs = 60_000;
 const minTurnRemainingMs = 3_500;
@@ -1469,7 +1467,6 @@ class OpenAiToolHubSearchAgent {
   async search(input: {
     catalog: SearchCatalogItem[];
     code?: string;
-    maxTurns?: number;
     query: string;
     timeoutMs?: number;
     topK?: number;
@@ -1486,7 +1483,6 @@ class OpenAiToolHubSearchAgent {
     }
 
     const topK = normalizeTopK(input.topK);
-    const maxTurns = normalizeSearchMaxTurns(input.maxTurns);
     const timeoutMs = normalizeSearchTimeout(input.timeoutMs);
     const deadlineAt = Date.now() + timeoutMs;
     await waitForLocalResolverEndpoint(baseURL, apiKey, timeoutMs);
@@ -1510,7 +1506,7 @@ class OpenAiToolHubSearchAgent {
     let referencedTokens: string[] = [];
     let latestResolvedFromAnalyzer: string[] = [];
 
-    for (let turn = 0; turn < maxTurns; turn += 1) {
+    while (true) {
       const remainingMs = deadlineAt - Date.now();
       const minTurnTimeoutMs = didCallAnalyzer ? minFinalAnswerTurnTimeoutMs : minTurnRemainingMs;
       if (remainingMs <= minTurnTimeoutMs + timeoutHeadroomMs) {
@@ -1607,7 +1603,7 @@ class OpenAiToolHubSearchAgent {
         : selectedToolNames.length === 0
           ? "Your current answer resolved to zero valid catalog tools. Call the tree-sitter tool on a revised TypeScript workflow sketch before answering."
           : undefined;
-      if (refinementFeedback && turn + 1 < maxTurns) {
+      if (refinementFeedback) {
         messages.push(responseMessage);
         messages.push({ role: "user", content: refinementFeedback });
         continue;
@@ -2183,10 +2179,6 @@ function toStringArray(value: unknown): string[] {
 
 function normalizeTopK(value: unknown): number {
   return Math.min(Math.max(toPositiveIntOrDefault(value, defaultMaxTools), 1), 20);
-}
-
-function normalizeSearchMaxTurns(value: unknown): number {
-  return Math.min(Math.max(toPositiveIntOrDefault(value, defaultMaxTurns), 1), maxTurnsLimit);
 }
 
 function normalizeSearchTimeout(value: unknown): number {

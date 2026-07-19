@@ -9,6 +9,7 @@ import { pluginService } from "@ccr/core/plugins/service";
 import { normalizeRouteSelector, providerRuntimeId } from "@ccr/core/routing/model-registry";
 import { isRecord, stringListValue, stringValue } from "@ccr/core/gateway/internal/value";
 import { fusionBuiltinToolArtifacts, fusionToolFallbackMcpServer, normalizeFusionWebSearchProfileToolName, toolHubMcpServer, withCodexCompatibleVirtualModelProfiles, withFusionVirtualModelAliases, withFusionWebSearchToolInstructions } from "@ccr/core/mcp/fusion-config";
+import { mediaToolsMcpServer } from "@ccr/core/mcp/grok-media-config";
 import { resolveGatewayPublicModelId } from "@ccr/core/gateway/features/model-discovery";
 import { activeProviderCredentials, inferProtocol, normalizedProviderCapabilities, normalizeProviderProtocol, providerCapabilityForClientProtocol, providerCapabilityInternalName, providerCredentialInternalName, providerProtocolForClientProtocol, sortProviderCredentialsForConfig, toCoreGatewayProviders } from "@ccr/core/providers/runtime-topology";
 import { buildRawTraceConfig } from "@ccr/core/observability/raw-trace-sync";
@@ -20,6 +21,8 @@ import { isLocalClaudeCodeOauthProviderPlugin, mergeAnthropicBetaValues } from "
 import { resolveConfiguredProviderModelSelector, resolveUniqueConfiguredProviderModelSelector } from "@ccr/core/routing/model-resolution";
 
 const upstreamHeaderSanitizerPluginKey = "ccr-upstream-header-sanitizer";
+export const unlimitedVirtualModelToolCalls = Number.MAX_SAFE_INTEGER;
+export const unlimitedVirtualModelToolTurns = Number.MAX_SAFE_INTEGER;
 
 
 export async function compileCoreGatewayConfig(
@@ -42,6 +45,7 @@ export async function compileCoreGatewayConfig(
     ...pluginService.getCoreProviderPlugins().filter(providerPluginEnabled)
   ]);
   const providerPlugins = await withGrokOauthRuntimeDefaults(withCodexOauthRuntimeDefaults(configuredProviderPlugins));
+  const providerPluginsWithCapabilityAliases = withProviderCapabilityPluginAliases(providerPlugins, config.Providers);
   const codexOauthProviderNames = codexOauthLocalProviderNames(providerPlugins);
   const virtualModelProfiles = coreGatewayVirtualModelProfiles(config);
   const coreEndpoint = endpoint(config.gateway.coreHost, config.gateway.corePort);
@@ -76,12 +80,15 @@ export async function compileCoreGatewayConfig(
     ...(config.toolHub?.mcpServers ?? [])
   ];
   const toolHubServer = toolHubMcpServer(config, externalMcpServers);
+  const mediaMcpServer = mediaToolsMcpServer(config);
   const mcpServers = [
     ...builtinToolArtifacts.mcpServers,
+    ...(mediaMcpServer ? [mediaMcpServer] : []),
     ...(toolHubServer ? [toolHubServer] : externalMcpServers)
   ];
   const fallbackMcpServer = fusionToolFallbackMcpServer(virtualModelProfiles, [
     ...builtinToolArtifacts.mcpServers,
+    ...(mediaMcpServer ? [mediaMcpServer] : []),
     ...externalMcpServers
   ]);
   if (fallbackMcpServer) {
@@ -110,7 +117,10 @@ export async function compileCoreGatewayConfig(
     billingWebhook: {
       enabled: false
     },
-    bodyLimitBytes: 50 * 1024 * 1024,
+    // Seven 25 MB reference images expand to roughly 234 MB when encoded as
+    // JSON data URLs, so the internal gateway must accept the complete media
+    // request even though normal chat payloads are much smaller.
+    bodyLimitBytes: 256 * 1024 * 1024,
     host: config.gateway.coreHost,
     mcpGateway: {
       enabled: false
@@ -130,10 +140,52 @@ export async function compileCoreGatewayConfig(
       mcpServers
     },
     rawTrace: buildRawTraceConfig(config, rawTraceSyncToken),
-    providerPlugins,
+    providerPlugins: providerPluginsWithCapabilityAliases,
     providers,
     virtualModelProfiles
   };
+}
+
+
+function withProviderCapabilityPluginAliases(
+  providerPlugins: unknown[],
+  providers: GatewayProviderConfig[]
+): unknown[] {
+  const aliases: unknown[] = [];
+  const explicitlyBoundProviderNames = new Set(
+    providerPlugins
+      .map((plugin) => isRecord(plugin) ? stringValue(plugin.providerName)?.toLowerCase() : undefined)
+      .filter((name): name is string => Boolean(name))
+  );
+  for (const plugin of providerPlugins) {
+    if (!isRecord(plugin)) {
+      continue;
+    }
+    const providerName = stringValue(plugin.providerName);
+    const key = stringValue(plugin.key);
+    if (!providerName || !key) {
+      continue;
+    }
+    const provider = providers.find((item) => item.name.trim().toLowerCase() === providerName.toLowerCase());
+    if (!provider) {
+      continue;
+    }
+    for (const runtimeProvider of toCoreGatewayProviders(provider)) {
+      const runtimeProviderName = runtimeProvider.name.trim().toLowerCase();
+      if (
+        runtimeProviderName === providerName.toLowerCase() ||
+        explicitlyBoundProviderNames.has(runtimeProviderName)
+      ) {
+        continue;
+      }
+      aliases.push({
+        ...plugin,
+        key: `${key}-runtime-${runtimeProvider.name}`,
+        providerName: runtimeProvider.name
+      });
+    }
+  }
+  return [...providerPlugins, ...aliases];
 }
 
 
@@ -158,10 +210,13 @@ export function coreGatewayUsageAttributionConfig(
 
 
 function coreGatewayVirtualModelProfiles(config: AppConfig): unknown[] {
-  return normalizeCoreGatewayVirtualModelProfiles(withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases([
+  const configuredProfiles = [
     ...(config.virtualModelProfiles ?? []),
     ...pluginService.getVirtualModelProfiles()
-  ])), config);
+  ];
+  return normalizeCoreGatewayVirtualModelProfiles(withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases(
+    configuredProfiles
+  )), config);
 }
 
 
@@ -230,7 +285,21 @@ function normalizeCoreGatewayVirtualModelProfile(profile: unknown, config: AppCo
   }
 
   const profileAfterVision = nextProfile ?? profile;
-  const profileAfterWebSearchToolName = normalizeFusionWebSearchProfileToolName(profileAfterVision) ?? profileAfterVision;
+  const execution = isRecord(profileAfterVision.execution) ? profileAfterVision.execution : {};
+  const profileWithoutToolLoopLimits = stringValue(execution.mode) === "decorate_only"
+    ? profileAfterVision
+    : {
+        ...profileAfterVision,
+        execution: {
+          ...execution,
+          // Core Gateway requires numeric values and supplies finite defaults when
+          // either field is missing. MAX_SAFE_INTEGER is the internal no-limit
+          // sentinel for both dimensions; request timeout and cancellation remain.
+          maxToolCalls: unlimitedVirtualModelToolCalls,
+          maxTurns: unlimitedVirtualModelToolTurns
+        }
+      };
+  const profileAfterWebSearchToolName = normalizeFusionWebSearchProfileToolName(profileWithoutToolLoopLimits) ?? profileWithoutToolLoopLimits;
   return withFusionWebSearchToolInstructions(profileAfterWebSearchToolName) ?? profileAfterWebSearchToolName;
 }
 

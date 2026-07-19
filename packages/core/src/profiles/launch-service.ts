@@ -8,12 +8,14 @@ import { applyClaudeAppGatewayConfig, readClaudeAppGatewayApiKeyCandidates } fro
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "@ccr/core/agents/claude-app/launch";
 import { claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
 import { codexDesktopAppName, launchCodexAppProfile, launchZcodeAppProfile, refreshCodexCompatibleAppProfileFiles } from "@ccr/core/agents/codex/app-launch";
+import { CodexAppMediaPreviewBridge, shouldEnableCodexMediaPreviewBridge } from "@ccr/core/agents/codex/media-preview-bridge";
 import { findRunningOpenCodeAppPid, launchOpenCodeAppProfile, openCodeAppLaunchSignature } from "@ccr/core/agents/opencode/app-launch";
 import { writeOpenCodeGatewayConfig } from "@ccr/core/agents/opencode/profile-config";
 import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-middleware-runtime";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { gatewayService } from "@ccr/core/gateway/service";
 import { TOOL_HUB_MCP_RUNTIME_FILE_NAME, bundledToolHubMcpEntryPathCandidates } from "@ccr/core/mcp/toolhub-config";
+import { mediaToolsGatewayEndpoint } from "@ccr/core/mcp/grok-media-config";
 import { buildProfileLaunchPlan, findProfileForOpen, profileLaunchSpawnCommand, profileOpenCommand, profileOpenSurfaces, resolveClaudeCodeSettingsFile, resolveProfileOpenSurface } from "@ccr/core/profiles/launch-core";
 import { applyProfileConfig, cleanupGeneratedBinBackups } from "@ccr/core/profiles/service";
 import { windowsEnvironmentChangedPowerShellLines, windowsSystemCommand } from "@ccr/core/platform/windows-system";
@@ -23,6 +25,17 @@ const ccrPathBlockEnd = "# <<< Claude Code Router CLI <<<";
 export const desktopCliCommandName = "ccr-app";
 const desktopCliRuntimeFileName = "ccr-cli.js";
 const desktopCliCommandNameEnv = "CCR_CLI_COMMAND_NAME";
+export const CCR_CLI_COMPANION_RUNTIME_FILE_NAMES = [
+  "browser-web-search-proxy-mcp.js",
+  "fusion-tool-fallback-mcp.js",
+  "fusion-vision-mcp.js",
+  "media-tools-proxy-mcp.js",
+  "next-ai-gateway.js",
+  "request-log-worker.js",
+  "route-script-worker.js",
+  "undici-proxy-agent.js",
+  "upstream-header-sanitizer.js"
+] as const;
 let claudeAppBotWorker: ChildProcess | undefined;
 let claudeAppBotWorkerProfileId: string | undefined;
 let claudeAppBotWorkerStateDir: string | undefined;
@@ -31,6 +44,7 @@ let openCodeAppBotWorkerProfileId: string | undefined;
 let openCodeAppBotWorkerSignature: string | undefined;
 let openCodeAppBotWorkerStateDir: string | undefined;
 const codexAppBotWorkers = new Map<string, { agent: ProfileConfig["agent"]; child: ChildProcess; stateDir?: string }>();
+const codexAppMediaPreviewBridges = new Map<string, { bridge: CodexAppMediaPreviewBridge; signature: string }>();
 
 type ProfileOpenCommandOptions = {
   commandName?: string;
@@ -64,10 +78,11 @@ type ProfileAppLaunchResult = {
 };
 
 type RunningProfileApp = ProfileRuntimeEntry & {
-  child: ChildProcess;
+  child?: ChildProcess;
   claudeDesignProxy?: boolean;
   command: string;
   launchSignature?: string;
+  monitor?: NodeJS.Timeout;
   pidIsLauncher?: boolean;
   spawnError?: string;
   stopRequested?: boolean;
@@ -78,6 +93,7 @@ process.once("exit", () => {
   stopClaudeAppBotWorker();
   stopOpenCodeAppBotWorker();
   stopCodexAppBotWorker();
+  stopCodexAppMediaPreviewBridge();
 });
 
 export async function getProfileOpenCommand(config: AppConfig, request: ProfileOpenRequest, options: ProfileOpenCommandOptions = {}): Promise<ProfileOpenCommandResult> {
@@ -243,6 +259,7 @@ async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof
   if (existing) {
     refreshCodexCompatibleAppProfileFiles(CONFIGDIR, profile, profileGatewayConfig);
     startCodexAppBotWorker(profileGatewayConfig, profile);
+    startCodexAppMediaPreviewBridge(profileGatewayConfig, profile, existing.userDataDir);
     activateProfileAppWindow(existing);
     return {
       message: `${appName} is already running with ${profile.name || profile.id}.`,
@@ -250,6 +267,26 @@ async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof
       profileName: profile.name,
       surface: "app"
     };
+  }
+  if (profile.agent === "codex") {
+    const files = refreshCodexCompatibleAppProfileFiles(CONFIGDIR, profile, profileGatewayConfig);
+    const unmanagedPid = profileAppMainPid({ userDataDir: files.userDataDir });
+    if (unmanagedPid) {
+      const entry = registerExistingProfileApp(profile, "app", {
+        command: appName,
+        pid: unmanagedPid,
+        userDataDir: files.userDataDir
+      });
+      startCodexAppBotWorker(profileGatewayConfig, profile);
+      startCodexAppMediaPreviewBridge(profileGatewayConfig, profile, entry.userDataDir);
+      activateProfileAppWindow(entry);
+      return {
+        message: `${appName} is already running with ${profile.name || profile.id}.`,
+        profileId: profile.id,
+        profileName: profile.name,
+        surface: "app"
+      };
+    }
   }
   const launch = profile.agent === "zcode"
     ? launchZcodeAppProfile(CONFIGDIR, profile, profileGatewayConfig)
@@ -268,6 +305,7 @@ async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof
   }
   activateProfileAppWindow(entry);
   startCodexAppBotWorker(profileGatewayConfig, profile);
+  startCodexAppMediaPreviewBridge(profileGatewayConfig, profile, entry.userDataDir);
   return {
     message: `Opened ${appName} with ${profile.name || profile.id}.`,
     profileId: profile.id,
@@ -756,6 +794,7 @@ export async function stopProfileFromCcr(config: AppConfig, request: ProfileOpen
       stopOpenCodeAppBotWorker(profile.id);
     } else if (profile.agent === "codex" || profile.agent === "zcode") {
       stopCodexAppBotWorker(profile.id);
+      stopCodexAppMediaPreviewBridge(profile.id);
     }
   }
   return {
@@ -818,6 +857,32 @@ function registerProfileApp(
     entry.spawnError = formatError(error);
     cleanupProfileAppEntry(key, entry);
   });
+  return entry;
+}
+
+function registerExistingProfileApp(
+  profile: ReturnType<typeof findProfileForOpen>,
+  surface: ProfileOpenRequest["surface"],
+  existing: { command: string; pid: number; userDataDir: string }
+): RunningProfileApp {
+  const key = profileRuntimeKey(profile.id, surface);
+  const entry: RunningProfileApp = {
+    agent: profile.agent,
+    command: existing.command,
+    pid: existing.pid,
+    pidIsLauncher: true,
+    profileId: profile.id,
+    profileName: profile.name,
+    startedAt: new Date().toISOString(),
+    state: "running",
+    surface,
+    userDataDir: existing.userDataDir
+  };
+  entry.monitor = setInterval(() => {
+    if (!isProfileAppRunning(entry)) cleanupProfileAppEntry(key, entry);
+  }, 2_000);
+  entry.monitor.unref?.();
+  runningProfileApps.set(key, entry);
   return entry;
 }
 
@@ -887,6 +952,7 @@ function cleanupProfileAppEntry(key: string, entry: RunningProfileApp): void {
   if (runningProfileApps.get(key) !== entry) {
     return;
   }
+  if (entry.monitor) clearInterval(entry.monitor);
   runningProfileApps.delete(key);
   if (entry.agent === "claude-code") {
     stopClaudeAppBotWorker(entry.profileId);
@@ -896,19 +962,20 @@ function cleanupProfileAppEntry(key: string, entry: RunningProfileApp): void {
   }
   if (entry.agent === "codex" || entry.agent === "zcode") {
     stopCodexAppBotWorker(entry.profileId);
+    stopCodexAppMediaPreviewBridge(entry.profileId);
   }
 }
 
 async function stopRunningProfileApp(key: string, entry: RunningProfileApp): Promise<boolean> {
   if (!isProfileAppRunning(entry)) {
-    runningProfileApps.delete(key);
+    cleanupProfileAppEntry(key, entry);
     return false;
   }
 
   entry.stopRequested = true;
   sendProfileProcessSignal(profileAppMainPid(entry) ?? entry.pid, "SIGTERM");
   if (await waitForProfileAppExit(entry, 5000)) {
-    runningProfileApps.delete(key);
+    cleanupProfileAppEntry(key, entry);
     return true;
   }
 
@@ -967,13 +1034,7 @@ function posixProfileAppMainPid(marker: string): number | undefined {
       if (!Number.isFinite(pid) || pid <= 0 || pid === process.pid) {
         continue;
       }
-      if (path.basename(command.trim().split(/\s+/)[0] || "") === "open") {
-        continue;
-      }
-      if (command.includes(" --type=")) {
-        continue;
-      }
-      if (normalizeProcessPath(command).includes(marker)) {
+      if (isProfileAppMainProcessCommand(command, marker)) {
         return pid;
       }
     }
@@ -981,6 +1042,21 @@ function posixProfileAppMainPid(marker: string): number | undefined {
     return undefined;
   }
   return undefined;
+}
+
+function isProfileAppMainProcessCommand(command: string, marker: string): boolean {
+  const executable = command.trim().split(/\s+/)[0] || "";
+  if (path.basename(executable) === "open") return false;
+  if (/(?:^|\s)--type=/.test(command)) return false;
+  // Chromium crash handlers outlive the desktop app and include its user-data
+  // directory in --database. They are helpers, not evidence of a live window.
+  if (/(?:^|[\\/])(?:browser_)?crashpad_handler(?:\.exe)?(?:\s|$)/i.test(command)) return false;
+  if (/\bptype=crashpad-handler\b/i.test(command)) return false;
+  return normalizeProcessPath(command).includes(marker);
+}
+
+export function isProfileAppMainProcessCommandForTest(command: string, userDataDir: string): boolean {
+  return isProfileAppMainProcessCommand(command, normalizeProcessPath(userDataDir));
 }
 
 function normalizeProcessPath(value: string): string {
@@ -998,7 +1074,9 @@ function windowsProfileAppMainPid(marker: string): number | undefined {
     "  $_.ProcessId -ne $hostPid -and",
     "  $_.CommandLine -and",
     "  (($_.CommandLine -replace '\\\\', '/').ToLowerInvariant().Contains($marker)) -and",
-    "  ($_.CommandLine -notmatch '\\s--type=')",
+    "  ($_.CommandLine -notmatch '\\s--type=') -and",
+    "  ($_.CommandLine -notmatch '(?i)(?:browser_)?crashpad_handler(?:\\.exe)?(?:\\s|$)') -and",
+    "  ($_.CommandLine -notmatch '(?i)ptype=crashpad-handler')",
     "} | Sort-Object ProcessId | Select-Object -First 1 -ExpandProperty ProcessId"
   ].join("\n");
   try {
@@ -1345,6 +1423,27 @@ function startCodexAppBotWorker(config: AppConfig, profile: ReturnType<typeof fi
   });
 }
 
+function startCodexAppMediaPreviewBridge(
+  config: AppConfig,
+  profile: ReturnType<typeof findProfileForOpen>,
+  userDataDir: string
+): void {
+  if (profile.agent !== "codex" || !shouldEnableCodexMediaPreviewBridge(config.mediaTools.enabled)) {
+    stopCodexAppMediaPreviewBridge(profile.id);
+    return;
+  }
+  const bridge = new CodexAppMediaPreviewBridge({
+    endpoint: mediaToolsGatewayEndpoint(config),
+    profileId: profile.id,
+    userDataDir
+  });
+  const existing = codexAppMediaPreviewBridges.get(profile.id);
+  if (existing?.signature === bridge.signature) return;
+  existing?.bridge.stop();
+  codexAppMediaPreviewBridges.set(profile.id, { bridge, signature: bridge.signature });
+  bridge.start();
+}
+
 function readClaudeCodeSettingsEnv(settingsFile: string): Record<string, string> {
   if (!existsSync(settingsFile)) {
     return {};
@@ -1449,6 +1548,17 @@ function stopCodexAppBotWorker(profileId?: string): void {
   }
 }
 
+function stopCodexAppMediaPreviewBridge(profileId?: string): void {
+  const entries = profileId
+    ? [[profileId, codexAppMediaPreviewBridges.get(profileId)] as const]
+    : [...codexAppMediaPreviewBridges.entries()];
+  for (const [id, entry] of entries) {
+    if (!entry) continue;
+    codexAppMediaPreviewBridges.delete(id);
+    entry.bridge.stop();
+  }
+}
+
 function nodeRuntimeLaunch(): { command: string; electronRunAsNode: boolean } {
   const configured = process.env.CCR_NODE_BIN?.trim();
   if (configured) {
@@ -1485,10 +1595,25 @@ export function prepareCcrCliLauncherRuntime(): CcrCliLauncherPreparation {
   const runtimeSource = findBundledCcrCliSource();
   writeFileIfChanged(runtimeFile, readFileSync(runtimeSource, "utf8"));
   chmodSafe(runtimeFile);
+  syncCcrCliCompanionRuntimes(runtimeSource, binDir);
   ensureBundledToolHubMcpRuntime(path.join(binDir, TOOL_HUB_MCP_RUNTIME_FILE_NAME));
   prependProcessPath(binDir);
 
   return { binDir, persistentPathRequired };
+}
+
+export function syncCcrCliCompanionRuntimes(runtimeSource: string, binDir: string): string[] {
+  const sourceDir = path.dirname(runtimeSource);
+  const synced: string[] = [];
+  for (const fileName of CCR_CLI_COMPANION_RUNTIME_FILE_NAMES) {
+    const source = path.join(sourceDir, fileName);
+    if (!existsSync(source)) continue;
+    const destination = path.join(binDir, fileName);
+    writeFileIfChanged(destination, readFileSync(source, "utf8"));
+    chmodSafe(destination);
+    synced.push(destination);
+  }
+  return synced;
 }
 
 export function persistPreparedCcrCliPath(preparation: CcrCliLauncherPreparation): void {

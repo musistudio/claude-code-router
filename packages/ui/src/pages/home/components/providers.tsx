@@ -1188,6 +1188,7 @@ function LocalAgentProviderImportPanel({
         ...accountDraft,
         apiKey: result.provider.apiKey ?? "",
         baseUrl: result.provider.baseUrl,
+        capabilities: result.provider.capabilities ?? [],
         credentials: [],
         icon: result.provider.icon?.trim() || localAgentProviderIconUrls[candidate.kind] || "",
         modelDescriptions: result.provider.modelDescriptions,
@@ -1718,8 +1719,9 @@ export function AddProviderForm({
                       <div className="space-y-1.5">
                         {protocolProbeRows.map((item) => {
                           const available = item.supported;
-                          const selectable = item.supported && selectableProtocols.includes(item.protocol);
-                          const checked = selectable && draft.selectedProtocols.includes(item.protocol);
+                          const selectableProtocol = selectableProtocols.find((protocol) => protocol === item.protocol);
+                          const selectable = item.supported && Boolean(selectableProtocol);
+                          const checked = Boolean(selectableProtocol && draft.selectedProtocols.includes(selectableProtocol));
                           const itemKey = `${item.protocol}-${item.endpoint}`;
                           return (
                             <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={itemKey}>
@@ -1728,13 +1730,13 @@ export function AddProviderForm({
                                 checked={checked}
                                 disabled={!selectable}
                                 onCheckedChange={() => {
-                                  if (!selectable) {
+                                  if (!selectableProtocol) {
                                     return;
                                   }
                                   onChange({
                                     selectedProtocols: checked
-                                      ? draft.selectedProtocols.filter((protocol) => protocol !== item.protocol)
-                                      : uniqueProviderProtocols([...draft.selectedProtocols, item.protocol])
+                                      ? draft.selectedProtocols.filter((protocol) => protocol !== selectableProtocol)
+                                      : uniqueProviderProtocols([...draft.selectedProtocols, selectableProtocol])
                                   });
                                 }}
                               />
