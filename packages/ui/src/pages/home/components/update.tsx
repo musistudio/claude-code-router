@@ -5,6 +5,10 @@ import {
 
 export type UpdateActionBusy = "" | "check" | "download" | "install";
 
+export function shouldCheckForUpdateOnOpen(status: AppUpdateStatus): boolean {
+  return status.state === "idle" || status.state === "not-available" || status.state === "error";
+}
+
 export function UpdateDialog({
   actionBusy,
   actionError,

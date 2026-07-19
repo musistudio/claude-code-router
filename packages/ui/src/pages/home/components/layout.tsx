@@ -3,7 +3,7 @@ import { MorphIcon } from "@musistudio/lucide-morph-react";
 import { collapseSidebarToExpandInspectorMorph } from "@/lib/morph-icon";
 import {
   AnimatePresence, AppConfig, AppCopy, Button, Check, CircleAlert, cn, EndpointTitleBar,
-  AppUpdateStatus, Download, GatewayStatus, listSpringTransition, LucideIcon, motion, motionEase,
+  AppUpdateStatus, GatewayStatus, listSpringTransition, LucideIcon, motion, motionEase,
   LoaderCircle, NavigationId, RefreshCw,
   reducedMotionTransition, ServiceControlButton, Settings, ViewId,
   useAppText, ViewMotionShell, viewUsesInternalScroll
@@ -116,21 +116,6 @@ export function MainLayout({
   const windowControlSafeAreaWidth = showUpdateButton
     ? (isMac ? 188 : 124)
     : (isMac ? 152 : 88);
-  const updateBusy =
-    updateActionBusy ||
-    updateStatus.state === "checking" ||
-    updateStatus.state === "downloading" ||
-    updateStatus.state === "installing";
-  const updateLabel = updateStatus.state === "downloaded"
-    ? copy.text["Update ready to install"] ?? "Update ready to install"
-    : updateStatus.state === "downloading"
-      ? copy.text["Downloading update"] ?? "Downloading update"
-      : updateStatus.state === "checking"
-        ? copy.text["Checking for updates"] ?? "Checking for updates"
-        : updateStatus.state === "available"
-          ? copy.text["Download update"] ?? "Download update"
-          : copy.text["Check for updates"] ?? "Check for updates";
-
   return (
     <>
       <div className={cn(
@@ -164,25 +149,12 @@ export function MainLayout({
           targetActive={gatewayTargetActive}
         />
         {showUpdateButton ? (
-          <Button
-            aria-label={updateLabel}
-            className="app-no-drag inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-primary outline-none transition-colors hover:bg-primary/10 hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/25"
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={onOpenUpdate}
-            title={updateLabel}
-            type="button"
-            unstyled
-          >
-            {updateBusy ? (
-              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-            ) : updateStatus.state === "downloaded" ? (
-              <Check className="h-3.5 w-3.5" />
-            ) : updateStatus.state === "available" ? (
-              <Download className="h-3.5 w-3.5" />
-            ) : (
-              <RefreshCw className="h-3.5 w-3.5" />
-            )}
-          </Button>
+          <UpdateEntryButton
+            actionBusy={updateActionBusy}
+            copy={copy}
+            onOpen={onOpenUpdate}
+            status={updateStatus}
+          />
         ) : null}
       </div>
 
@@ -301,6 +273,56 @@ export function MainLayout({
         </div>
       </main>
     </>
+  );
+}
+
+export function UpdateEntryButton({
+  actionBusy,
+  copy,
+  onOpen,
+  status
+}: {
+  actionBusy: boolean;
+  copy: AppCopy;
+  onOpen: () => void;
+  status: AppUpdateStatus;
+}) {
+  const busy = actionBusy || status.state === "checking" || status.state === "downloading" || status.state === "installing";
+  const label = status.state === "downloaded"
+    ? copy.text["Update ready to install"] ?? "Update ready to install"
+    : status.state === "downloading"
+      ? copy.text["Downloading update"] ?? "Downloading update"
+      : status.state === "checking"
+        ? copy.text["Checking for updates"] ?? "Checking for updates"
+        : status.state === "available"
+          ? copy.text["Update available"] ?? "Update available"
+          : copy.text["Online updates"] ?? "Online updates";
+
+  return (
+    <Button
+      aria-label={label}
+      className="app-no-drag relative inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-primary outline-none transition-colors hover:bg-primary/10 hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/25"
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={onOpen}
+      title={label}
+      type="button"
+      unstyled
+    >
+      {busy ? (
+        <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+      ) : status.state === "downloaded" ? (
+        <Check className="h-3.5 w-3.5" />
+      ) : (
+        <RefreshCw className="h-3.5 w-3.5" />
+      )}
+      {status.state === "available" ? (
+        <span
+          aria-hidden="true"
+          className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-amber-500 ring-2 ring-background"
+          data-update-available-indicator
+        />
+      ) : null}
+    </Button>
   );
 }
 

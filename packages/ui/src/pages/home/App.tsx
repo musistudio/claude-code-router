@@ -36,7 +36,7 @@ import {
 } from "./shared/index";
 import { startVisiblePolling } from "./shared/polling";
 import {
-  AppDialogStack, LightToast, MainLayout, OnboardingLayout
+  AppDialogStack, LightToast, MainLayout, OnboardingLayout, shouldCheckForUpdateOnOpen
 } from "./components/index";
 
 type ProfileOpenDialogState = {
@@ -893,20 +893,9 @@ function App() {
   function openSidebarUpdateDialog() {
     setUpdateDialogOpen(true);
     setUpdateActionError("");
-    if (updateDialogStatus.canDownload || updateDialogStatus.state === "available") {
-      void downloadAppUpdate();
-      return;
+    if (shouldCheckForUpdateOnOpen(updateDialogStatus)) {
+      void checkForAppUpdate();
     }
-    if (
-      updateDialogStatus.canInstall ||
-      updateDialogStatus.state === "checking" ||
-      updateDialogStatus.state === "downloading" ||
-      updateDialogStatus.state === "downloaded" ||
-      updateDialogStatus.state === "installing"
-    ) {
-      return;
-    }
-    void checkForAppUpdate();
   }
 
   async function checkForAppUpdate() {

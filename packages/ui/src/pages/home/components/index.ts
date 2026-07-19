@@ -1,9 +1,9 @@
 export { OnboardingView } from "./onboarding";
 export { LightToast } from "./feedback";
 export { AppDialogStack } from "./dialog-stack";
-export { MainLayout, OnboardingLayout } from "./layout";
+export { MainLayout, OnboardingLayout, UpdateEntryButton } from "./layout";
 export { AppSettingsDialog } from "./settings";
-export { UpdateDialog } from "./update";
+export { shouldCheckForUpdateOnOpen, UpdateDialog } from "./update";
 export { OverviewView, AgentAnalysisView } from "./dashboard";
 export { ApiKeysView, AddApiKeyDialog, EditApiKeyDialog } from "./api-keys";
 export { ProfileView, AddProfileForm, AddProfileDialog, DeleteProfileDialog } from "./profiles";
