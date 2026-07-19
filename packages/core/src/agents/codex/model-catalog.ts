@@ -182,7 +182,6 @@ function codexModelCapabilityProfile(
   const catalogEntry = findModelCatalogEntry(model);
   const capabilities = catalogEntry?.capabilities ?? {};
   const providerProtocol = provider ? codexProviderProtocol(provider) : undefined;
-  const providerSupportsResponses = provider ? codexProviderSupportsResponses(provider) : false;
   const supportsFusionVision = codexVirtualModelSupportsFusionVision(model, config);
   const supportsFusionWebSearch = codexVirtualModelSupportsFusionWebSearch(model, config);
   const metadataReasoningLevels = normalizeProviderReasoningLevels(providerModelMetadata?.supportedReasoningLevels);
@@ -195,9 +194,9 @@ function codexModelCapabilityProfile(
     ?? (metadataReasoningLevels !== undefined || readCatalogCapability(capabilities, "reasoning"));
   const supportsImageInput = supportsFusionVision || catalogEntrySupportsImageInput(catalogEntry);
   const supportsParallelToolCalls = readCatalogCapability(capabilities, "parallelFunctionCalling");
-  const applyPatchToolType = providerSupportsResponses || catalogModelLooksLikeGpt(model, catalogEntry) || codexPatchBridgeApplies(model, catalogEntry, config)
-    ? "freeform"
-    : null;
+  // Codex must emit apply_patch for both native GPT models and non-GPT models
+  // that the gateway converts through the compatibility bridge.
+  const applyPatchToolType = "freeform";
   const supportsSearchTool =
     supportsFusionWebSearch ||
     (
@@ -489,13 +488,6 @@ function codexProviderProtocol(provider: GatewayProviderConfig): GatewayProvider
   return normalizeProviderProtocol(provider.type) ?? normalizeProviderProtocol(provider.provider) ?? inferProviderProtocol(provider);
 }
 
-function codexProviderSupportsResponses(provider: GatewayProviderConfig): boolean {
-  return uniqueProviderProtocols((provider.capabilities ?? []).map((capability) => normalizeProviderProtocol(capability.type))).includes("openai_responses") ||
-    normalizeProviderProtocol(provider.type) === "openai_responses" ||
-    normalizeProviderProtocol(provider.provider) === "openai_responses" ||
-    providerEndpointLooksLikeResponses(provider);
-}
-
 function inferProviderProtocol(provider: GatewayProviderConfig): GatewayProviderProtocol {
   const url = (provider.baseUrl || provider.baseurl || provider.api_base_url || "").toLowerCase();
   const transformer = JSON.stringify(provider.transformer ?? "").toLowerCase();
@@ -517,30 +509,6 @@ function inferProviderProtocol(provider: GatewayProviderConfig): GatewayProvider
 function providerEndpointLooksLikeResponses(provider: GatewayProviderConfig): boolean {
   const url = (provider.baseUrl || provider.baseurl || provider.api_base_url || "").toLowerCase();
   return url.endsWith("/responses") || url.includes("/responses?");
-}
-
-function catalogModelLooksLikeGpt(model: string, entry: ModelCatalogEntry | undefined): boolean {
-  return [
-    model,
-    entry?.id,
-    entry?.model
-  ].some((value) => typeof value === "string" && value.toLowerCase().includes("gpt"));
-}
-
-function codexPatchBridgeApplies(
-  model: string,
-  entry: ModelCatalogEntry | undefined,
-  config?: Partial<Pick<AppConfig, "Router">>
-): boolean {
-  const codexRule = config?.Router?.builtInRules?.codex;
-  if (!codexRule || codexRule.enabled === false) {
-    return false;
-  }
-  return !catalogModelLooksLikeGpt(modelNameForPatchBridge(model), entry);
-}
-
-function modelNameForPatchBridge(model: string): string {
-  return parseModelSelector(model)?.model ?? model;
 }
 
 function normalizeProviderProtocol(value: unknown): GatewayProviderProtocol | undefined {

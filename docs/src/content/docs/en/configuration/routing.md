@@ -55,11 +55,11 @@ After saving, CCR formats those descriptions as “Configured CCR gateway models
 
 ### Codex
 
-The built-in Codex route adapts Codex's `apply_patch` file-editing tool for third-party or non-GPT models. The goal is for those models to edit files through the patch tool instead of generating commands or scripts such as `cat >`, `sed -i`, `python`, or `node`.
+CCR automatically adapts Codex's `apply_patch` file-editing tool for third-party or non-GPT models. The goal is for those models to edit files through the patch tool instead of generating commands or scripts such as `cat >`, `sed -i`, `python`, or `node`.
 
 Technically, this is a tool protocol bridge. Native Codex `apply_patch` is a custom/freeform tool whose input is raw patch text, while many OpenAI-compatible third-party models handle ordinary function tools more reliably. CCR rewrites `apply_patch` into an upstream-visible `virtual_apply_patch` function tool and injects the full `apply_patch.lark` grammar into the tool description, requiring the model to put the patch in the `patch` field.
 
-When the model returns `virtual_apply_patch`, CCR rewrites it back to Codex's expected shape: `custom_tool_call` with `name = apply_patch` and `input = raw patch text`. CCR does not edit files directly; Codex still executes the resulting patch. This adaptation follows the built-in **Codex** route and has no separate switch. GPT-named models keep using Codex's native freeform `apply_patch` path.
+When the model returns `virtual_apply_patch`, CCR rewrites it back to Codex's expected shape: `custom_tool_call` with `name = apply_patch` and `input = raw patch text`. CCR does not edit files directly; Codex still executes the resulting patch. This adaptation is enabled automatically for non-GPT models and is independent of the built-in **Codex** routing switch. GPT-named models, including Fusion models whose resolved base model is GPT, keep using Codex's native freeform `apply_patch` path.
 
 ## Custom Routing
 

@@ -22,7 +22,7 @@ test("codex catalog removes duplicate model IDs case-insensitively without reord
   assert.deepEqual(ids, ["provider/model-a", "Provider/MODEL-B"]);
 });
 
-test("codex catalog treats unknown models as text-only without advanced tools", () => {
+test("codex catalog treats unknown models as text-only while enabling apply_patch", () => {
   const model = catalogModelFor({
     Providers: [
       { name: "Custom", type: "openai_chat_completions", models: ["unknown-model"] }
@@ -36,7 +36,7 @@ test("codex catalog treats unknown models as text-only without advanced tools", 
   assert.equal(model.supports_image_detail_original, false);
   assert.deepEqual(model.supported_reasoning_levels, []);
   assert.equal(model.default_reasoning_level, null);
-  assert.equal(model.apply_patch_tool_type, null);
+  assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
 test("codex catalog uses model catalog capabilities for known text models", () => {
@@ -53,7 +53,7 @@ test("codex catalog uses model catalog capabilities for known text models", () =
   assert.equal(model.supports_image_detail_original, false);
   assert.deepEqual(model.supported_reasoning_levels, []);
   assert.equal(model.default_reasoning_level, null);
-  assert.equal(model.apply_patch_tool_type, null);
+  assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
 test("codex catalog enables multimodal reasoning and search when provider protocol supports it", () => {
@@ -342,7 +342,7 @@ test("codex catalog enables native search for Gemini Interactions providers", ()
   assert.equal(model.supports_search_tool, true);
 });
 
-test("codex catalog does not expose native search through chat-completions-only providers", () => {
+test("codex catalog omits native search but enables apply_patch for non-GPT chat-completions models", () => {
   const model = catalogModelFor({
     Providers: [
       { name: "openrouter", type: "openai_chat_completions", models: ["google/gemini-2.5-pro"] }
@@ -354,7 +354,7 @@ test("codex catalog does not expose native search through chat-completions-only 
   assert.equal(model.supports_reasoning_summaries, true);
   assert.equal(model.supports_search_tool, false);
   assert.equal(model.web_search_tool_type, "text");
-  assert.equal(model.apply_patch_tool_type, null);
+  assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
 test("codex catalog keeps freeform apply_patch for GPT-named chat-compatible models", () => {
@@ -403,7 +403,7 @@ test("codex catalog enables apply_patch bridge for non-GPT models when Codex bui
   assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
-test("codex catalog disables apply_patch bridge for non-GPT models when the Codex built-in route is off", () => {
+test("codex catalog automatically enables apply_patch bridge for non-GPT models when the Codex built-in route is off", () => {
   const model = catalogModelFor({
     Providers: [
       { name: "openrouter", type: "openai_chat_completions", models: ["google/gemini-2.5-pro"] }
@@ -418,7 +418,7 @@ test("codex catalog disables apply_patch bridge for non-GPT models when the Code
     }
   }, "openrouter/google/gemini-2.5-pro");
 
-  assert.equal(model.apply_patch_tool_type, null);
+  assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
 test("codex catalog marks Fusion aliases with builtin web search as searchable", () => {
@@ -451,7 +451,7 @@ test("codex catalog marks Fusion aliases with builtin web search as searchable",
   assert.deepEqual(model.input_modalities, ["text"]);
   assert.equal(model.supports_search_tool, true);
   assert.equal(model.web_search_tool_type, "text");
-  assert.equal(model.apply_patch_tool_type, null);
+  assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
 test("codex catalog marks image-recognition Fusion aliases as image capable", () => {
@@ -514,5 +514,5 @@ test("codex catalog marks prefixed Fusion virtual models with legacy web search 
   assert.deepEqual(model.input_modalities, ["text"]);
   assert.equal(model.supports_search_tool, true);
   assert.equal(model.web_search_tool_type, "text");
-  assert.equal(model.apply_patch_tool_type, null);
+  assert.equal(model.apply_patch_tool_type, "freeform");
 });
