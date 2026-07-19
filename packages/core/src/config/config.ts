@@ -4,7 +4,7 @@ import { loadPersistedAppConfig, replacePersistedAppConfig } from "@ccr/core/con
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "@ccr/core/config/api-key-store";
 import { CONFIG_FILE, GATEWAY_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE } from "@ccr/core/config/constants";
 import { normalizeCodexProviderAccountConfig } from "@ccr/core/agents/local-providers/codex";
-import { normalizeGrokProviderAccountConfig } from "@ccr/core/agents/local-providers/grok";
+import { normalizeGrokProviderAccountConfig, normalizeGrokProviderMediaCapabilities } from "@ccr/core/agents/local-providers/grok";
 import { removeOpenCodeProviderAccountConfig } from "@ccr/core/agents/local-providers/opencode";
 import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, ROUTER_SCRIPT_API_VERSION, ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS, ROUTER_SCRIPT_MAX_TIMEOUT_MS, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "@ccr/core/contracts/app";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config";
@@ -25,8 +25,10 @@ import type {
   GatewayPluginAppConfig,
   GatewayPluginProxyRouteConfig,
   GatewayProviderCapability,
+  GatewayProviderCapabilityProtocol,
   GatewayProviderConfig,
   GatewayProviderProtocol,
+  MediaToolsConfig,
   ObservabilityConfig,
   OverviewMetricKind,
   OverviewWidgetConfig,
@@ -73,12 +75,13 @@ type LoadedBotGatewayConfig = Partial<Omit<BotGatewayRuntimeConfig, "handoff">> 
   handoff?: Partial<BotGatewayRuntimeConfig["handoff"]>;
 };
 
-type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway" | "gateway" | "observability" | "profile" | "proxy" | "toolHub">> & {
+type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway" | "gateway" | "mediaTools" | "observability" | "profile" | "proxy" | "toolHub">> & {
   Router?: Partial<RouterConfig>;
   agent?: Partial<GatewayAgentConfig>;
   botConfigs?: BotGatewaySavedConfig[];
   botGateway?: LoadedBotGatewayConfig;
   gateway?: Partial<AppConfig["gateway"]>;
+  mediaTools?: Partial<MediaToolsConfig>;
   observability?: Partial<ObservabilityConfig>;
   profile?: LoadedProfileConfig;
   proxy?: Partial<ProxyRuntimeConfig>;
@@ -259,6 +262,11 @@ export async function loadAppConfig(): Promise<AppConfig> {
         generatedConfigFile: GATEWAY_CONFIG_FILE,
         host: gatewayConfig.host ?? host,
         port: gatewayConfig.port ?? port
+      },
+      mediaTools: {
+        ...DEFAULT_CONFIG.mediaTools,
+        ...(picked.mediaTools ?? {}),
+        allowedInputRoots: picked.mediaTools?.allowedInputRoots ?? DEFAULT_CONFIG.mediaTools.allowedInputRoots
       },
       observability: {
         ...DEFAULT_CONFIG.observability,
@@ -574,8 +582,9 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   if (Array.isArray((value as Record<string, unknown>).providerPlugins)) {
     config.providerPlugins = (value as Record<string, unknown>).providerPlugins as unknown[];
   }
-  if (Array.isArray((value as Record<string, unknown>).virtualModelProfiles)) {
-    config.virtualModelProfiles = (value as Record<string, unknown>).virtualModelProfiles as AppConfig["virtualModelProfiles"];
+  const virtualModelProfiles = (value as Record<string, unknown>).virtualModelProfiles;
+  if (Array.isArray(virtualModelProfiles)) {
+    config.virtualModelProfiles = virtualModelProfiles.map(removeVirtualModelToolLoopLimits) as AppConfig["virtualModelProfiles"];
   }
   const plugins = parseGatewayPlugins((value as Record<string, unknown>).plugins ?? (value as Record<string, unknown>).gatewayPlugins);
   if (plugins) {
@@ -635,6 +644,10 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   if (observability) {
     config.observability = observability;
   }
+  const mediaTools = parseMediaTools((value as Record<string, unknown>).mediaTools ?? (value as Record<string, unknown>).media_tools ?? (value as Record<string, unknown>).grokMedia ?? (value as Record<string, unknown>).grok_media);
+  if (mediaTools) {
+    config.mediaTools = mediaTools;
+  }
   const toolHub = parseToolHub((value as Record<string, unknown>).toolHub ?? (value as Record<string, unknown>).tool_hub);
   if (toolHub) {
     config.toolHub = toolHub;
@@ -683,6 +696,25 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   }
 
   return config;
+}
+
+function removeVirtualModelToolLoopLimits(value: unknown): unknown {
+  if (
+    !isObject(value) ||
+    !isObject(value.execution) ||
+    (!("maxTurns" in value.execution) && !("maxToolCalls" in value.execution))
+  ) {
+    return value;
+  }
+  const { maxToolCalls: _maxToolCalls, maxTurns: _maxTurns, ...execution } = value.execution;
+  return {
+    ...value,
+    execution
+  };
+}
+
+export function virtualModelProfileFromRawForTest(value: unknown): unknown {
+  return removeVirtualModelToolLoopLimits(value);
 }
 
 function parseObservability(value: unknown): Partial<ObservabilityConfig> | undefined {
@@ -754,6 +786,34 @@ function parseToolHub(value: unknown): Partial<ToolHubConfig> | undefined {
   }
 
   return Object.keys(toolHub).length ? toolHub : undefined;
+}
+
+function parseMediaTools(value: unknown): Partial<MediaToolsConfig> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const config: Partial<MediaToolsConfig> = {};
+  if (typeof value.enabled === "boolean") config.enabled = value.enabled;
+  const rawAllowedInputRoots = value.allowedInputRoots ?? value.allowed_input_roots;
+  if (Array.isArray(rawAllowedInputRoots)) {
+    config.allowedInputRoots = rawAllowedInputRoots
+      .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+      .map((item) => item.trim());
+  }
+  const artifactTtlHours = readNumber(value.artifactTtlHours ?? value.artifact_ttl_hours);
+  if (artifactTtlHours !== undefined) config.artifactTtlHours = clampNumber(artifactTtlHours, 1, 720);
+  const jobTimeoutMs = readNumber(value.jobTimeoutMs ?? value.job_timeout_ms);
+  if (jobTimeoutMs !== undefined) config.jobTimeoutMs = clampNumber(jobTimeoutMs, 30000, 3600000);
+  const maxImageConcurrency = readNumber(value.maxImageConcurrency ?? value.max_image_concurrency);
+  if (maxImageConcurrency !== undefined) config.maxImageConcurrency = clampNumber(maxImageConcurrency, 1, 8);
+  const maxVideoConcurrency = readNumber(value.maxVideoConcurrency ?? value.max_video_concurrency);
+  if (maxVideoConcurrency !== undefined) config.maxVideoConcurrency = clampNumber(maxVideoConcurrency, 1, 4);
+  return Object.keys(config).length ? config : undefined;
+}
+
+export function mediaToolsConfigFromRawForTest(value: unknown): Partial<MediaToolsConfig> | undefined {
+  return parseMediaTools(value);
 }
 
 function parseOverviewWidgets(value: unknown): OverviewWidgetConfig[] | undefined {
@@ -1084,7 +1144,9 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         type: readString(item.type)
       };
       return removeOpenCodeProviderAccountConfig(
-        normalizeGrokProviderAccountConfig(normalizeCodexProviderAccountConfig(provider))
+        normalizeGrokProviderMediaCapabilities(
+          normalizeGrokProviderAccountConfig(normalizeCodexProviderAccountConfig(provider))
+        )
       );
     })
     .filter((item): item is GatewayProviderConfig => Boolean(item));
@@ -1325,7 +1387,7 @@ function parseProviderCapabilities(value: unknown): GatewayProviderCapability[] 
   return capabilities.length > 0 ? capabilities : undefined;
 }
 
-function parseProviderCapabilityProtocol(value: string | undefined): GatewayProviderProtocol | undefined {
+function parseProviderCapabilityProtocol(value: string | undefined): GatewayProviderCapabilityProtocol | undefined {
   if (!value) {
     return undefined;
   }
@@ -1335,6 +1397,12 @@ function parseProviderCapabilityProtocol(value: string | undefined): GatewayProv
   }
   if (normalized === "openai_chat" || normalized === "openai_chat_completions") {
     return "openai_chat_completions";
+  }
+  if (normalized === "openai_image_generations" || normalized === "openai_images") {
+    return "openai_image_generations";
+  }
+  if (normalized === "openai_video_generations" || normalized === "openai_videos") {
+    return "openai_video_generations";
   }
   if (normalized === "anthropic" || normalized === "anthropic_messages") {
     return "anthropic_messages";

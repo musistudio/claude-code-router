@@ -290,6 +290,20 @@ async function resolveConfiguredRouteDecision(
 ): Promise<ResolvedConfiguredRouteDecision> {
   const requestedModel = readString(request.body.model);
   const explicitModel = normalizeRouteSelector(requestedModel);
+  const resolvedExplicitModel = compiled.modelRegistry.resolve(explicitModel) ?? compiled.modelRegistry.resolve(
+    explicitModel
+      ? resolveClaudeAppGatewayRouteModel(explicitModel, config, claudeAppGatewayModelRouteOptions)
+      : undefined
+  );
+  const explicitDecision: ConfiguredRouteDecision | undefined = resolvedExplicitModel
+    ? {
+        fallback: compiled.fallback,
+        model: resolvedExplicitModel,
+        reason: "default",
+        rewrites: [],
+        source: "default"
+      }
+    : undefined;
   const builtInDecision = resolveBuiltInAgentRouteDecision(request, config, compiled.modelRegistry, compiled.fallback);
   const policies: Array<RoutePolicy<MutableRequestLike, ConfiguredRouteDecision>> = [
     {
@@ -316,12 +330,20 @@ async function resolveConfiguredRouteDecision(
     ...compiled.rules.map((rule): RoutePolicy<MutableRequestLike, ConfiguredRouteDecision> => ({
       evaluate: async (context) => {
         const decision = await resolveRouterRule(rule, context, compiled, runtime);
-        return decision && builtInDecision
-          ? mergeConfiguredRouteDecisions(builtInDecision, decision)
+        if (!decision || decision.rewrites.some(isBodyModelCompiledRewrite)) {
+          return decision;
+        }
+        const baseDecision = explicitDecision ?? builtInDecision;
+        return baseDecision
+          ? mergeConfiguredRouteDecisions(baseDecision, decision)
           : decision;
       },
       id: `rule:${rule.rule.id}`
     })),
+    {
+      evaluate: () => explicitDecision,
+      id: "client-model"
+    },
     {
       evaluate: () => builtInDecision,
       id: builtInDecision ? builtInAgentPolicyId(builtInDecision) : "builtin-agent"
@@ -329,7 +351,7 @@ async function resolveConfiguredRouteDecision(
     {
       evaluate: () => ({
         fallback: compiled.fallback,
-        model: compiled.modelRegistry.resolve(explicitModel),
+        model: undefined,
         reason: "default",
         rewrites: [],
         source: "default"
@@ -350,7 +372,7 @@ async function resolveConfiguredRouteDecision(
   }
   return {
     fallback: compiled.fallback,
-    model: compiled.modelRegistry.resolve(explicitModel),
+    model: resolvedExplicitModel,
     policyId: "default",
     reason: "default",
     rewrites: [],

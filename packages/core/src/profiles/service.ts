@@ -38,6 +38,7 @@ const managedProviderStart = "# BEGIN CCR managed Codex provider";
 const managedProviderEnd = "# END CCR managed Codex provider";
 const managedToolHubMcpStart = "# BEGIN CCR managed ToolHub MCP";
 const managedToolHubMcpEnd = "# END CCR managed ToolHub MCP";
+const managedConfiguredModelPrefix = "# CCR configured model = ";
 const originalBackupSuffix = ".ccr-original";
 const originalMissingSuffix = ".ccr-original-missing";
 const globalProfileTakeoverFile = path.join(CONFIGDIR, "global-profile-takeover.json");
@@ -737,9 +738,14 @@ function buildCodexConfigToml(
     toolHubMcp?: ToolHubMcpRuntimeConfig;
   }
 ): string {
-  let content = removeManagedBlock(source, managedRootStart, managedRootEnd);
-  content = removeManagedBlock(content, managedProviderStart, managedProviderEnd);
-  content = removeManagedBlock(content, managedToolHubMcpStart, managedToolHubMcpEnd);
+  let content = removeManagedMarkerLines(source, [
+    managedRootStart,
+    managedRootEnd,
+    managedProviderStart,
+    managedProviderEnd,
+    managedToolHubMcpStart,
+    managedToolHubMcpEnd
+  ]);
   content = removeCodexProviderTable(content, values.providerId);
   content = removeCodexMcpServerTable(content, TOOL_HUB_MCP_SERVER_NAME);
   if (values.configFormat === "separate_profile_files") {
@@ -749,13 +755,20 @@ function buildCodexConfigToml(
   const firstTableIndex = firstTomlTableIndex(content);
   const rootSource = firstTableIndex === -1 ? content : content.slice(0, firstTableIndex);
   const restSource = firstTableIndex === -1 ? "" : content.slice(firstTableIndex);
-  const cleanedRoot = removeRootTomlKeys(rootSource, ["model", "model_catalog_json", "model_provider", "profile", "show_all_sessions"]);
+  const modelAssignment = managedModelAssignment(rootSource, values.model);
+  const showAllSessionsAssignment = rootTomlAssignment(rootSource, "show_all_sessions")
+    ?? (values.showAllSessions ? "show_all_sessions = true" : undefined);
+  const cleanedRoot = removeManagedConfiguredModelLine(removeRootTomlKeys(
+    rootSource,
+    ["model", "model_catalog_json", "model_provider", "show_all_sessions"]
+  ));
   const rootBlock = [
     managedRootStart,
     `model_provider = ${tomlString(values.providerId)}`,
-    `model = ${tomlString(values.model)}`,
+    modelAssignment,
     `model_catalog_json = ${tomlString(values.modelCatalogFile)}`,
-    ...(values.showAllSessions ? ["show_all_sessions = true"] : []),
+    `${managedConfiguredModelPrefix}${tomlString(values.model)}`,
+    ...(showAllSessionsAssignment ? [showAllSessionsAssignment] : []),
     managedRootEnd,
     ""
   ].join("\n");
@@ -831,12 +844,18 @@ function buildSeparateCodexProfileToml(
   const firstTableIndex = firstTomlTableIndex(source);
   const rootSource = firstTableIndex === -1 ? source : source.slice(0, firstTableIndex);
   const restSource = firstTableIndex === -1 ? "" : source.slice(firstTableIndex);
-  const cleanedRoot = removeRootTomlKeys(rootSource, ["model", "model_provider", "model_reasoning_effort", "show_all_sessions"]);
+  const modelAssignment = managedModelAssignment(rootSource, values.model);
+  const showAllSessionsAssignment = rootTomlAssignment(rootSource, "show_all_sessions")
+    ?? (values.showAllSessions ? "show_all_sessions = true" : undefined);
+  const cleanedRoot = removeManagedConfiguredModelLine(removeRootTomlKeys(
+    rootSource,
+    ["model", "model_provider", "show_all_sessions"]
+  ));
   const rootBlock = [
     `model_provider = ${tomlString(values.providerId)}`,
-    `model = ${tomlString(values.model)}`,
-    `model_reasoning_effort = "xhigh"`,
-    ...(values.showAllSessions ? ["show_all_sessions = true"] : []),
+    modelAssignment,
+    `${managedConfiguredModelPrefix}${tomlString(values.model)}`,
+    ...(showAllSessionsAssignment ? [showAllSessionsAssignment] : []),
     ""
   ].join("\n");
   return ensureTrailingNewline(`${rootBlock}${trimLeadingBlankLines(cleanedRoot)}${restSource}`.replace(/\n{4,}/g, "\n\n\n"));
@@ -1559,6 +1578,32 @@ function removeRootTomlKeys(source: string, keys: string[]): string {
   return source.replace(pattern, "");
 }
 
+function rootTomlAssignment(source: string, key: string): string | undefined {
+  const rootEnd = firstTomlTableIndex(source);
+  const rootSource = rootEnd === -1 ? source : source.slice(0, rootEnd);
+  const pattern = new RegExp(`^\\s*${escapeRegExp(key)}\\s*=.*$`, "m");
+  return rootSource.match(pattern)?.[0].trim();
+}
+
+function managedModelAssignment(source: string, configuredModel: string): string {
+  const currentAssignment = rootTomlAssignment(source, "model");
+  const previousConfiguredModel = managedConfiguredModel(source);
+  const configuredModelChanged = previousConfiguredModel !== undefined && previousConfiguredModel !== tomlString(configuredModel);
+  return currentAssignment && !configuredModelChanged
+    ? currentAssignment
+    : `model = ${tomlString(configuredModel)}`;
+}
+
+function managedConfiguredModel(source: string): string | undefined {
+  const pattern = new RegExp(`^\\s*${escapeRegExp(managedConfiguredModelPrefix)}(.+?)\\s*$`, "m");
+  return source.match(pattern)?.[1];
+}
+
+function removeManagedConfiguredModelLine(source: string): string {
+  const pattern = new RegExp(`^\\s*${escapeRegExp(managedConfiguredModelPrefix)}.*(?:\\n|$)`, "gm");
+  return source.replace(pattern, "");
+}
+
 function removeCodexProviderTable(source: string, providerId: string): string {
   return removeTomlTable(source, "model_providers", providerId);
 }
@@ -1638,9 +1683,10 @@ function legacyCodexProfileTableBody(source: string, providerId: string): string
   return lines.join("\n").trim();
 }
 
-function removeManagedBlock(source: string, start: string, end: string): string {
-  const pattern = new RegExp(`\\n?${escapeRegExp(start)}[\\s\\S]*?${escapeRegExp(end)}\\n?`, "g");
-  return source.replace(pattern, "\n");
+function removeManagedMarkerLines(source: string, markers: string[]): string {
+  const markerPattern = markers.map(escapeRegExp).join("|");
+  const pattern = new RegExp(`^\\s*(?:${markerPattern})\\s*(?:\\n|$)`, "gm");
+  return source.replace(pattern, "");
 }
 
 function firstTomlTableIndex(source: string): number {

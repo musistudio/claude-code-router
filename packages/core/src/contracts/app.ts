@@ -110,6 +110,39 @@ export type AppUpdateStatus = {
 export const BUILTIN_FUSION_TOOL_SERVER_NAME = "ccr-fusion-builtins";
 export const BUILTIN_FUSION_VISION_TOOL_NAME = "vision_understand";
 export const BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME = "web_search";
+export const BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME = "image_generation";
+export const BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME = "video_generation";
+export const GROK_API_MEDIA_BASE_URL = "https://api.x.ai/v1";
+export const GROK_API_DEFAULT_IMAGE_MODEL = "grok-imagine-image-quality";
+export const GROK_API_DEFAULT_VIDEO_MODEL = "grok-imagine-video";
+// Legacy sentinel retained only to migrate configs created before media execution
+// moved from the Grok CLI subprocess to the Grok API.
+export const GROK_CLI_MEDIA_MODEL_SELECTOR = "grok-cli";
+export const MEDIA_TOOLS_MCP_SERVER_NAME = "ccr-media-tools";
+export const MEDIA_IMAGE_GENERATE_TOOL_PREFIX = "image_generate";
+export const MEDIA_IMAGE_EDIT_TOOL_PREFIX = "image_edit";
+export const MEDIA_VIDEO_START_TOOL_PREFIX = "video_generate";
+export const MEDIA_JOB_GET_TOOL_PREFIX = "media_job_get";
+export const MEDIA_JOB_CANCEL_TOOL_PREFIX = "media_job_cancel";
+
+// Legacy names are retained only so configs created by the first Grok-specific
+// implementation can be opened and migrated into the generic media tools.
+export const BUILTIN_FUSION_GROK_MEDIA_TOOL_NAME = "grok_media";
+export const GROK_MEDIA_MCP_SERVER_NAME = MEDIA_TOOLS_MCP_SERVER_NAME;
+export const GROK_MEDIA_IMAGE_GENERATE_TOOL_NAME = "grok_media_image_generate";
+export const GROK_MEDIA_IMAGE_EDIT_TOOL_NAME = "grok_media_image_edit";
+export const GROK_MEDIA_VIDEO_START_TOOL_NAME = "grok_media_video_start";
+export const GROK_MEDIA_JOB_GET_TOOL_NAME = "grok_media_job_get";
+export const GROK_MEDIA_JOB_CANCEL_TOOL_NAME = "grok_media_job_cancel";
+export const GROK_MEDIA_CAPABILITIES_TOOL_NAME = "grok_media_capabilities";
+export const GROK_MEDIA_FUSION_TOOL_NAMES = [
+  GROK_MEDIA_IMAGE_GENERATE_TOOL_NAME,
+  GROK_MEDIA_IMAGE_EDIT_TOOL_NAME,
+  GROK_MEDIA_VIDEO_START_TOOL_NAME,
+  GROK_MEDIA_JOB_GET_TOOL_NAME,
+  GROK_MEDIA_JOB_CANCEL_TOOL_NAME,
+  GROK_MEDIA_CAPABILITIES_TOOL_NAME
+] as const;
 
 export type GatewayProviderProtocol =
   | "openai_responses"
@@ -117,6 +150,12 @@ export type GatewayProviderProtocol =
   | "anthropic_messages"
   | "gemini_generate_content"
   | "gemini_interactions";
+
+export type GatewayMediaProtocol =
+  | "openai_image_generations"
+  | "openai_video_generations";
+
+export type GatewayProviderCapabilityProtocol = GatewayProviderProtocol | GatewayMediaProtocol;
 
 export type GatewayProviderConfig = {
   account?: ProviderAccountConfig;
@@ -310,6 +349,7 @@ export type ProviderDeepLinkPayload = {
   account?: ProviderAccountConfig;
   apiKey?: string;
   baseUrl: string;
+  capabilities?: GatewayProviderCapability[];
   icon?: string;
   modelDescriptions?: Record<string, string>;
   modelDisplayNames?: Record<string, string>;
@@ -436,7 +476,7 @@ export type GatewayProviderCapability = {
   baseUrl: string;
   endpoint?: string;
   source?: "detected" | "preset";
-  type: GatewayProviderProtocol;
+  type: GatewayProviderCapabilityProtocol;
 };
 
 export type GatewayProviderDetectedProvider = "new-api";
@@ -448,15 +488,15 @@ export type GatewayProviderProbeRequest = {
   mode?: "connectivity" | "models" | "protocols";
   models?: string[];
   providerPlugins?: unknown[];
-  protocols?: GatewayProviderProtocol[];
+  protocols?: GatewayProviderCapabilityProtocol[];
   skipModelDiscovery?: boolean;
 };
 
 export type GatewayProviderProbeCandidate = {
   baseUrl: string;
-  declaredProtocols?: GatewayProviderProtocol[];
+  declaredProtocols?: GatewayProviderCapabilityProtocol[];
   label?: string;
-  protocols: GatewayProviderProtocol[];
+  protocols: GatewayProviderCapabilityProtocol[];
   source: "custom" | "preset";
 };
 
@@ -467,7 +507,7 @@ export type GatewayProviderProbeCandidatesRequest = {
   mode?: "connectivity" | "models" | "protocols";
   models?: string[];
   providerPlugins?: unknown[];
-  protocols?: GatewayProviderProtocol[];
+  protocols?: GatewayProviderCapabilityProtocol[];
 };
 
 export type ProviderIconDetectionRequest = {
@@ -487,7 +527,7 @@ export type GatewayProviderProbeProtocolResult = {
   detectedProvider?: GatewayProviderDetectedProvider;
   endpoint: string;
   message: string;
-  protocol: GatewayProviderProtocol;
+  protocol: GatewayProviderCapabilityProtocol;
   status?: number;
   supported: boolean;
 };
@@ -523,7 +563,7 @@ export type GatewayProviderConnectivityCheckRequest = {
   forceRefresh?: boolean;
   models: string[];
   providerPlugins?: unknown[];
-  protocols?: GatewayProviderProtocol[];
+  protocols?: GatewayProviderCapabilityProtocol[];
 };
 
 export type GatewayProviderConnectivityCheckReport = {
@@ -759,6 +799,15 @@ export type ToolHubConfig = {
   requestTimeoutMs: number;
 };
 
+export type MediaToolsConfig = {
+  allowedInputRoots: string[];
+  artifactTtlHours: number;
+  enabled: boolean;
+  jobTimeoutMs: number;
+  maxImageConcurrency: number;
+  maxVideoConcurrency: number;
+};
+
 export const CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV = "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY";
 export const CLAUDE_CODE_DEFAULT_ENV: Record<string, string> = {
   [CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV]: "1"
@@ -804,8 +853,6 @@ export type VirtualModelExecutionConfig = {
   clientToolsPolicy: "allow" | "deny";
   matchMultimodal?: boolean;
   matchWebSearch?: boolean;
-  maxToolCalls: number;
-  maxTurns: number;
   mode: VirtualModelExecutionMode;
   streamMode: "buffered" | "optimistic";
 };
@@ -842,6 +889,16 @@ export type VirtualModelFusionWebSearchConfig = {
   resultCount?: number;
   timeoutMs?: number;
   toolName?: string;
+};
+
+export type VirtualModelFusionMediaConfig = {
+  imageEditToolName?: string;
+  imageGenerateToolName?: string;
+  imageModelSelector?: string;
+  jobCancelToolName?: string;
+  jobGetToolName?: string;
+  videoModelSelector?: string;
+  videoStartToolName?: string;
 };
 
 export type VirtualModelFusionCustomToolConfig = {
@@ -1530,6 +1587,7 @@ export type AppConfig = {
   botConfigs: BotGatewaySavedConfig[];
   botGateway: BotGatewayRuntimeConfig;
   gateway: GatewayRuntimeConfig;
+  mediaTools: MediaToolsConfig;
   launchAtLogin: boolean;
   observability: ObservabilityConfig;
   preferredProvider: string;

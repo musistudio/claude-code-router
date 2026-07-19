@@ -1,7 +1,7 @@
 /**
  * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
  */
-import type { AppConfig, GatewayProviderCapability, GatewayProviderConfig, GatewayProviderProtocol, ProviderCredentialConfig } from "@ccr/core/contracts/app";
+import type { AppConfig, GatewayProviderCapability, GatewayProviderCapabilityProtocol, GatewayProviderConfig, GatewayProviderProtocol, ProviderCredentialConfig } from "@ccr/core/contracts/app";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue } from "@ccr/core/providers/presets/index";
 import { normalizeProviderBaseUrl as normalizeProviderBaseUrlInput } from "@ccr/core/providers/url";
 import { modelRegistryForConfig, parseProviderModelSelector, providerRuntimeId } from "@ccr/core/routing/model-registry";
@@ -10,10 +10,12 @@ import { gatewayProviderProtocolFallbackOrder, type CoreGatewayProvider } from "
 export function providerCapabilityForClientProtocol(
   provider: GatewayProviderConfig,
   clientProtocol: GatewayProviderProtocol
-): GatewayProviderCapability | undefined {
+): (GatewayProviderCapability & { type: GatewayProviderProtocol }) | undefined {
   const capabilities = normalizedProviderCapabilities(provider);
   for (const protocol of providerProtocolPreferenceForClient(clientProtocol)) {
-    const capability = capabilities.find((item) => item.type === protocol);
+    const capability = capabilities.find(
+      (item): item is GatewayProviderCapability & { type: GatewayProviderProtocol } => item.type === protocol
+    );
     if (capability) {
       return capability;
     }
@@ -173,9 +175,9 @@ export function sortProviderCredentialsForConfig(credentials: ProviderCredential
 export function normalizedProviderCapabilities(provider: GatewayProviderConfig): GatewayProviderCapability[] {
   const capabilities = Array.isArray(provider.capabilities) ? provider.capabilities : [];
   const normalized: GatewayProviderCapability[] = [];
-  const byProtocol = new Map<GatewayProviderProtocol, GatewayProviderCapability>();
+  const byProtocol = new Map<GatewayProviderCapabilityProtocol, GatewayProviderCapability>();
   for (const capability of capabilities) {
-    const type = normalizeProviderProtocol(capability.type);
+    const type = normalizeProviderCapabilityProtocol(capability.type);
     const baseUrl = capability.baseUrl?.trim();
     if (!type || !baseUrl) {
       continue;
@@ -191,7 +193,7 @@ export function normalizedProviderCapabilities(provider: GatewayProviderConfig):
     }
   }
   for (const capability of capabilities) {
-    const type = normalizeProviderProtocol(capability.type);
+    const type = normalizeProviderCapabilityProtocol(capability.type);
     const selected = type ? byProtocol.get(type) : undefined;
     if (selected && !normalized.includes(selected)) {
       normalized.push(selected);
@@ -211,7 +213,10 @@ function applyPresetProtocolLock(
   }
 
   const lockedProtocolSet = new Set(lockedProtocols);
-  const lockedCapabilities = capabilities.filter((capability) => lockedProtocolSet.has(capability.type));
+  const lockedCapabilities = capabilities.filter((capability) => {
+    const protocol = normalizeProviderProtocol(capability.type);
+    return Boolean(protocol && lockedProtocolSet.has(protocol));
+  });
   if (lockedCapabilities.length > 0) {
     return lockedCapabilities;
   }
@@ -255,17 +260,17 @@ function providerCapabilityPriority(capability: GatewayProviderCapability): numb
 }
 
 
-export function providerCapabilityInternalName(provider: GatewayProviderConfig, protocol: GatewayProviderProtocol): string {
+export function providerCapabilityInternalName(provider: GatewayProviderConfig, protocol: GatewayProviderCapabilityProtocol): string {
   return `${providerRuntimeId(provider)}::${protocol}`;
 }
 
 
-function providerCapabilityLegacyInternalName(providerName: string, protocol: GatewayProviderProtocol): string {
+function providerCapabilityLegacyInternalName(providerName: string, protocol: GatewayProviderCapabilityProtocol): string {
   return `${providerName}::${protocol}`;
 }
 
 
-export function providerCapabilityNameMatches(provider: GatewayProviderConfig, protocol: GatewayProviderProtocol, value: string): boolean {
+export function providerCapabilityNameMatches(provider: GatewayProviderConfig, protocol: GatewayProviderCapabilityProtocol, value: string): boolean {
   const normalized = value.trim().toLowerCase();
   return providerCapabilityInternalName(provider, protocol).toLowerCase() === normalized ||
     providerCapabilityLegacyInternalName(provider.name, protocol).toLowerCase() === normalized;
@@ -289,7 +294,7 @@ export function sanitizeHeaderValue(value: unknown): string {
 
 export function providerCredentialInternalName(
   provider: GatewayProviderConfig,
-  protocol: GatewayProviderProtocol,
+  protocol: GatewayProviderCapabilityProtocol,
   credential: ProviderCredentialConfig
 ): string {
   return `${providerCapabilityInternalName(provider, protocol)}::cred:${providerCredentialSlug(providerCredentialRuntimeId(provider, credential))}`;
@@ -299,7 +304,7 @@ export function providerCredentialInternalName(
 export function parseProviderCredentialInternalName(value: string | undefined): {
   credentialSlug: string;
   providerId: string;
-  protocol: GatewayProviderProtocol;
+  protocol: GatewayProviderCapabilityProtocol;
 } | undefined {
   const marker = "::cred:";
   const markerIndex = value?.lastIndexOf(marker) ?? -1;
@@ -312,7 +317,7 @@ export function parseProviderCredentialInternalName(value: string | undefined): 
   if (!credentialSlug || protocolSeparator <= 0) {
     return undefined;
   }
-  const protocol = normalizeProviderProtocol(baseName.slice(protocolSeparator + 2));
+  const protocol = normalizeProviderCapabilityProtocol(baseName.slice(protocolSeparator + 2));
   const providerId = baseName.slice(0, protocolSeparator).trim();
   return protocol && providerId ? { credentialSlug, providerId, protocol } : undefined;
 }
@@ -404,6 +409,24 @@ export function normalizeProviderProtocol(value: unknown): GatewayProviderProtoc
   return undefined;
 }
 
+export function normalizeProviderCapabilityProtocol(value: unknown): GatewayProviderCapabilityProtocol | undefined {
+  const chatProtocol = normalizeProviderProtocol(value);
+  if (chatProtocol) {
+    return chatProtocol;
+  }
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "openai_image_generations" || normalized === "openai_images") {
+    return "openai_image_generations";
+  }
+  if (normalized === "openai_video_generations" || normalized === "openai_videos") {
+    return "openai_video_generations";
+  }
+  return undefined;
+}
+
 
 export function inferProtocol(provider: GatewayProviderConfig): GatewayProviderProtocol {
   const url = readBaseUrl(provider)?.toLowerCase() ?? "";
@@ -434,7 +457,7 @@ export function resolveResponseProviderProtocol(headers: Headers, config: AppCon
   }
   const credentialInternalName = parseProviderCredentialInternalName(providerName);
   if (credentialInternalName) {
-    return credentialInternalName.protocol;
+    return normalizeProviderProtocol(credentialInternalName.protocol);
   }
   const provider = config ? findProviderByPublicOrInternalName(config, providerName) : undefined;
   if (!provider) {
@@ -443,8 +466,8 @@ export function resolveResponseProviderProtocol(headers: Headers, config: AppCon
   const capability = normalizedProviderCapabilities(provider).find((item) =>
     providerCapabilityNameMatches(provider, item.type, providerName)
   );
-  if (capability) {
-    return capability.type;
+  if (capability && normalizeProviderProtocol(capability.type)) {
+    return normalizeProviderProtocol(capability.type);
   }
   return normalizeProviderProtocol(provider.type) ?? normalizeProviderProtocol(provider.provider) ?? inferProtocol(provider);
 }
@@ -477,11 +500,13 @@ function providerMatchesName(provider: GatewayProviderConfig, name: string): boo
 }
 
 
-function normalizeProviderRuntimeBaseUrl(value: string | undefined, type: GatewayProviderProtocol): string | undefined {
+function normalizeProviderRuntimeBaseUrl(value: string | undefined, type: GatewayProviderCapabilityProtocol): string | undefined {
   if (!value) {
     return undefined;
   }
-  return normalizeProviderBaseUrlInput(value, type) || undefined;
+  return normalizeProviderProtocol(type)
+    ? normalizeProviderBaseUrlInput(value, normalizeProviderProtocol(type)) || undefined
+    : normalizeProviderBaseUrlInput(value) || undefined;
 }
 
 

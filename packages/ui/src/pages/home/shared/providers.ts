@@ -161,6 +161,7 @@ import type {
   BotHandoffScanTarget,
   GatewayProviderConfig,
   GatewayProviderCapability,
+  GatewayProviderCapabilityProtocol,
   GatewayPluginAppConfig,
   GatewayProviderConnectivityCheckModelResult,
   GatewayProviderConnectivityCheckReport,
@@ -930,6 +931,7 @@ export function createProviderDraftFromDeepLinkPayload(
     ...accountDraft,
     apiKey: payload.apiKey?.trim() || "",
     baseUrl,
+    capabilities: payload.capabilities ?? [],
     credentials: [],
     icon: payload.icon?.trim() || "",
     modelDescriptions: modelDescriptionsForModels(payload.modelDescriptions, models),
@@ -986,7 +988,10 @@ export function createProviderConfigFromDeepLink(
     throw new Error(accountKeySafetyIssue.message);
   }
 
-  const capabilities = providerCapabilitiesForProtocols(payload.baseUrl, [protocol], probe);
+  const capabilities = mergeProviderCapabilities(
+    payload.capabilities ?? [],
+    providerCapabilitiesForProtocols(payload.baseUrl, [protocol], probe)
+  );
 
   return {
     account: cloneProviderAccountConfig(account),
@@ -1019,6 +1024,7 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
     ...accountDraft,
     apiKey: "",
     baseUrl: "",
+    capabilities: [],
     credentials: [],
     icon: "",
     modelDescriptions: undefined,
@@ -1044,6 +1050,7 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
     ...accountDraft,
     apiKey: providerApiKey(provider),
     baseUrl,
+    capabilities: provider.capabilities ?? [],
     credentials: (provider.credentials ?? []).map(providerCredentialDraftFromConfig),
     icon: provider.icon ?? "",
     modelDescriptions: modelDescriptionsForModels(provider.modelDescriptions, provider.models),
@@ -1776,13 +1783,21 @@ export function providerDraftSafetyIssue(draft: AddProviderDraft, baseUrl = draf
 
 export function providerProbeCandidates(draft: AddProviderDraft): ProviderProbeCandidate[] {
   const preset = findProviderPreset(draft.presetId);
-  const protocols = providerProtocolOptions.map((option) => option.value);
+  const mediaProtocols: GatewayProviderCapabilityProtocol[] = [
+    "openai_image_generations",
+    "openai_video_generations"
+  ];
+  const chatProtocols = providerProtocolOptions.map((option) => option.value);
+  const customProtocols: GatewayProviderCapabilityProtocol[] = [
+    ...chatProtocols,
+    ...mediaProtocols
+  ];
   if (preset) {
     const probeAllProtocols = preset.endpoints.length === 1;
     return preset.endpoints.map((endpoint) => ({
       ...endpoint,
       declaredProtocols: endpoint.protocols,
-      protocols: probeAllProtocols ? protocols : endpoint.protocols,
+      protocols: probeAllProtocols ? chatProtocols : endpoint.protocols,
       source: "preset"
     }));
   }
@@ -1790,7 +1805,7 @@ export function providerProbeCandidates(draft: AddProviderDraft): ProviderProbeC
   return [
     {
       baseUrl: draft.baseUrl.trim(),
-      protocols,
+      protocols: customProtocols,
       source: "custom"
     }
   ];
@@ -1965,6 +1980,24 @@ export function mergeProviderCapabilities(...groups: GatewayProviderCapability[]
   return capabilities;
 }
 
+export function providerCapabilitiesForSave(
+  currentCapabilities: GatewayProviderCapability[],
+  preservedCapabilities: GatewayProviderCapability[],
+  existingBaseUrl: string | undefined,
+  nextBaseUrl: string
+): GatewayProviderCapability[] {
+  const normalizedExistingBaseUrl = existingBaseUrl === undefined
+    ? undefined
+    : normalizeProviderBaseUrl(existingBaseUrl) || existingBaseUrl.trim();
+  const normalizedNextBaseUrl = normalizeProviderBaseUrl(nextBaseUrl) || nextBaseUrl.trim();
+  const preserveExisting = normalizedExistingBaseUrl === undefined ||
+    normalizedExistingBaseUrl === normalizedNextBaseUrl;
+  return mergeProviderCapabilities(
+    currentCapabilities,
+    ...(preserveExisting ? [preservedCapabilities] : [])
+  );
+}
+
 export function providerGlobalBaseUrlForProbe(
   inputBaseUrl: string,
   _probe: GatewayProviderProbeResult | undefined,
@@ -2019,7 +2052,10 @@ export function providerCapabilitiesForProtocols(
     })
     .filter((item): item is GatewayProviderCapability => Boolean(item));
 
-  return mergeProviderCapabilities(selectedCapabilities);
+  const detectedMediaCapabilities = detectedCapabilities.filter((capability) =>
+    capability.type === "openai_image_generations" || capability.type === "openai_video_generations"
+  );
+  return mergeProviderCapabilities(selectedCapabilities, detectedMediaCapabilities);
 }
 
 export function applyProviderProbeResult(draft: AddProviderDraft, probe: GatewayProviderProbeResult): AddProviderDraft {

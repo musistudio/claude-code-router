@@ -421,6 +421,7 @@ export type AddProviderDraft = {
   accountRefreshIntervalMs: string;
   apiKey: string;
   baseUrl: string;
+  capabilities: GatewayProviderCapability[];
   credentials: ProviderCredentialDraft[];
   icon: string;
   modelDescriptions?: Record<string, string>;
@@ -601,6 +602,7 @@ export type ClaudeDesignRoutingDraft = {
 export type VirtualModelClientToolsPolicy = "allow" | "deny";
 export type VirtualModelMatchMode = "alias" | "prefix" | "suffix";
 export const fusionCustomToolMetadataKey = "fusionTool";
+export const fusionMediaMetadataKey = "fusionMedia";
 export const fusionVisionMetadataKey = "fusionVision";
 export const fusionWebSearchMetadataKey = "fusionWebSearch";
 
@@ -624,6 +626,7 @@ export type VirtualModelDraft = {
   fixedModel: string;
   id: string;
   includeInGatewayModels: boolean;
+  imageGenerationModel: string;
   instructionsAppend: string;
   instructionsPrepend: string;
   instructionsReplace: string;
@@ -632,8 +635,6 @@ export type VirtualModelDraft = {
   matchMultimodal: boolean;
   matchMode: VirtualModelMatchMode;
   matchWebSearch: boolean;
-  maxToolCalls: string;
-  maxTurns: string;
   prefixesText: string;
   suffixesText: string;
   toolChoiceText: string;
@@ -642,6 +643,7 @@ export type VirtualModelDraft = {
   customMcpServer: McpServerDraft;
   customToolName: string;
   visionModel: string;
+  videoGenerationModel: string;
   webSearchEnvRows: KeyValueDraftRow[];
   webSearchProvider: VirtualModelFusionWebSearchProvider;
   executionMode: VirtualModelExecutionMode;

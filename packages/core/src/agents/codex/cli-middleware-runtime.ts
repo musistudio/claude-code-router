@@ -1488,8 +1488,8 @@ class OpenCodeBotWorker {
     const entry = this.conversationEntry(key) || { sessionId: "", projectDirectory: this.projectDirectory(key), title: "" };
     const value = String(args || "").trim();
     if (!value) return "Current " + setting + ": " + (entry[setting] || "default") + ".";
-    const allowed = setting === "effort" ? new Set(["low", "medium", "high", "xhigh", "max", "reset"]) : null;
-    if (allowed && !allowed.has(value)) return "Supported effort values: low, medium, high, xhigh, max, reset.";
+    const allowed = setting === "effort" ? new Set(["low", "medium", "high", "xhigh", "max", "ultra", "reset"]) : null;
+    if (allowed && !allowed.has(value)) return "Supported effort values: low, medium, high, xhigh, max, ultra, reset.";
     entry[setting] = value === "reset" ? "" : value;
     entry.updatedAt = Date.now();
     this.setConversationEntry(key, entry);
@@ -3194,7 +3194,7 @@ class ClaudeCodeAppServer {
         ? entry.effort || thread && thread.reasoningEffort
         : entry[setting] || thread && thread[setting];
     if (!value) return "Current " + setting + ": " + (current || "default") + ".";
-    if (setting === "effort" && !["low", "medium", "high", "xhigh", "max", "reset"].includes(value)) return "Supported effort values: low, medium, high, xhigh, max, reset.";
+    if (setting === "effort" && !["low", "medium", "high", "xhigh", "max", "ultra", "reset"].includes(value)) return "Supported effort values: low, medium, high, xhigh, max, ultra, reset.";
     if (setting === "mode" && !["manual", "acceptEdits", "plan", "auto", "dontAsk", "reset"].includes(value)) return "Supported modes: manual, acceptEdits, plan, auto, dontAsk, reset.";
     const next = value === "reset" ? "" : value;
     if (setting === "mode") entry.permissionMode = next;
@@ -6068,7 +6068,7 @@ function sessionCommandHelpText(agentName) {
     "/session archive <n> | restore <n> | delete <n> confirm",
     "/session history [count] - show recent turns",
     "/session model [selector|reset] - show or change model/provider",
-    "/session effort [low|medium|high|xhigh|max|reset]",
+    "/session effort [low|medium|high|xhigh|max|ultra|reset]",
     "/session mode [manual|acceptEdits|plan|auto|dontAsk|reset]",
     "/session usage - show the latest token and cost data",
     "/session memory [list|add <text>|clear] - manage persistent session context",

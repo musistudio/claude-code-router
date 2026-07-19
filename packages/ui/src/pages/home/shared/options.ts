@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import {
   BUILTIN_FUSION_TOOL_SERVER_NAME,
+  BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME,
+  BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME,
   BUILTIN_FUSION_VISION_TOOL_NAME,
   BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME,
   OVERVIEW_WIDGET_SIZE_VALUES
@@ -279,6 +281,16 @@ export const fusionToolOptions: Array<{ description: string; label: string; valu
     description: "Generic web search tool supporting hidden in-app browser search plus Brave, Bing, Google CSE, Serper, SerpAPI, Tavily, and Exa.",
     label: `${BUILTIN_FUSION_TOOL_SERVER_NAME} / ${BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME}`,
     value: BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME
+  },
+  {
+    description: "Generate and edit images with a media-capable provider model.",
+    label: `${BUILTIN_FUSION_TOOL_SERVER_NAME} / ${BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME}`,
+    value: BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME
+  },
+  {
+    description: "Generate and manage asynchronous videos with a media-capable provider model.",
+    label: `${BUILTIN_FUSION_TOOL_SERVER_NAME} / ${BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME}`,
+    value: BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME
   }
 ];
 

@@ -9,6 +9,7 @@ import type {
   GatewayProviderProbeProtocolResult,
   GatewayProviderProbeRequest,
   GatewayProviderProbeResult,
+  GatewayProviderCapabilityProtocol,
   GatewayProviderProtocol
 } from "@ccr/core/contracts/app";
 import { providerApiKeySafetyIssue } from "@ccr/core/providers/presets/index";
@@ -28,7 +29,7 @@ import {
 type ModelSource = NonNullable<GatewayProviderProbeResult["modelSource"]>;
 
 type ParsedProviderUrl = ParsedProviderBaseUrl & {
-  hints: GatewayProviderProtocol[];
+  hints: GatewayProviderCapabilityProtocol[];
 };
 
 type FetchJsonResult = {
@@ -62,12 +63,14 @@ type ProbeCacheEntry = {
   result: GatewayProviderProbeResult;
 };
 
-const protocolOrder: GatewayProviderProtocol[] = [
+const protocolOrder: GatewayProviderCapabilityProtocol[] = [
   "openai_responses",
   "openai_chat_completions",
   "anthropic_messages",
   "gemini_generate_content",
-  "gemini_interactions"
+  "gemini_interactions",
+  "openai_image_generations",
+  "openai_video_generations"
 ];
 
 const modelSourceOrder: ModelSource[] = ["openai", "anthropic", "gemini"];
@@ -317,11 +320,14 @@ function mergeProviderProbeCandidateResults(
   );
   const models = uniqueStrings(results.flatMap((result) => result.probe.models));
   const protocols = results.flatMap((result) => result.probe.protocols);
-  const detectedCapability = capabilities.find((capability) => capability.type === usable.probe.detectedProtocol) ?? capabilities[0];
+  const detectedCapability = capabilities.find((capability) => capability.type === usable.probe.detectedProtocol)
+    ?? capabilities.find((capability) => isChatProtocol(capability.type));
   const probe: GatewayProviderProbeResult = {
     ...usable.probe,
     capabilities,
-    detectedProtocol: detectedCapability?.type ?? usable.probe.detectedProtocol,
+    detectedProtocol: detectedCapability && isChatProtocol(detectedCapability.type)
+      ? detectedCapability.type
+      : usable.probe.detectedProtocol,
     models,
     normalizedBaseUrl: detectedCapability?.baseUrl ?? usable.probe.normalizedBaseUrl,
     protocols
@@ -358,9 +364,9 @@ function providerProbePresetCapabilities(candidate: GatewayProviderProbeCandidat
   }));
 }
 
-function providerProbeCandidateBaseUrlForProtocol(baseUrl: string, protocol: GatewayProviderProtocol): string {
+function providerProbeCandidateBaseUrlForProtocol(baseUrl: string, protocol: GatewayProviderCapabilityProtocol): string {
   try {
-    return providerBaseUrlForProtocol(parseProviderBaseUrl(baseUrl), protocol);
+    return providerBaseUrlForCapability(parseProviderBaseUrl(baseUrl), protocol);
   } catch {
     return baseUrl.trim();
   }
@@ -405,7 +411,7 @@ function capabilitiesFromProtocolResults(results: GatewayProviderProbeProtocolRe
 async function probeModels(
   parsed: ParsedProviderUrl,
   apiKey: string | undefined,
-  allowedProtocols: GatewayProviderProtocol[] = []
+  allowedProtocols: GatewayProviderCapabilityProtocol[] = []
 ): Promise<ModelProbeResult> {
   for (const source of orderedModelSources(parsed, allowedProtocols)) {
     const result = await fetchModelsForSource(parsed, source, apiKey);
@@ -484,7 +490,7 @@ async function probeProtocols(
   parsed: ParsedProviderUrl,
   apiKey: string | undefined,
   models: string[],
-  allowedProtocols: GatewayProviderProtocol[] = [],
+  allowedProtocols: GatewayProviderCapabilityProtocol[] = [],
   mode: NonNullable<GatewayProviderProbeRequest["mode"]> = "protocols",
   providerPlugins: unknown[] = []
 ): Promise<GatewayProviderProbeProtocolResult[]> {
@@ -492,7 +498,7 @@ async function probeProtocols(
 
   for (const protocol of orderedProtocols(parsed, allowedProtocols)) {
     results.push(
-      mode === "connectivity"
+      mode === "connectivity" && isChatProtocol(protocol)
         ? await probeProtocolConnectivity(parsed, apiKey, models, protocol, providerPlugins)
         : await probeProtocolSupport(parsed, apiKey, protocol)
     );
@@ -504,10 +510,10 @@ async function probeProtocols(
 async function probeProtocolSupport(
   parsed: ParsedProviderUrl,
   apiKey: string | undefined,
-  protocol: GatewayProviderProtocol
+  protocol: GatewayProviderCapabilityProtocol
 ): Promise<GatewayProviderProbeProtocolResult> {
   const endpoints = endpointsForProtocol(parsed, protocol, undefined);
-  const endpoint = endpoints[0]?.endpoint ?? providerBaseUrlForProtocol(parsed, protocol);
+  const endpoint = endpoints[0]?.endpoint ?? providerBaseUrlForCapability(parsed, protocol);
   let firstResult: GatewayProviderProbeProtocolResult | undefined;
 
   for (const candidate of endpoints) {
@@ -542,12 +548,12 @@ async function probeProtocolConnectivity(
   parsed: ParsedProviderUrl,
   apiKey: string | undefined,
   models: string[],
-  protocol: GatewayProviderProtocol,
+  protocol: GatewayProviderCapabilityProtocol,
   providerPlugins: unknown[] = []
 ): Promise<GatewayProviderProbeProtocolResult> {
   const model = pickProbeModel(models, protocol);
   const endpoints = endpointsForProtocol(parsed, protocol, model);
-  const endpoint = endpoints[0]?.endpoint ?? providerBaseUrlForProtocol(parsed, protocol);
+  const endpoint = endpoints[0]?.endpoint ?? providerBaseUrlForCapability(parsed, protocol);
 
   if (!model) {
     return {
@@ -593,7 +599,7 @@ async function probeProtocolConnectivity(
   };
 }
 
-function requestForProtocol(protocol: GatewayProviderProtocol, model: string, apiKey: string | undefined): RequestInit {
+function requestForProtocol(protocol: GatewayProviderCapabilityProtocol, model: string, apiKey: string | undefined): RequestInit {
   if (protocol === "openai_responses") {
     return {
       body: JSON.stringify({
@@ -675,15 +681,33 @@ function requestForProtocol(protocol: GatewayProviderProtocol, model: string, ap
   };
 }
 
-function requestForProtocolSupport(protocol: GatewayProviderProtocol, apiKey: string | undefined): RequestInit {
+function requestForProtocolSupport(protocol: GatewayProviderCapabilityProtocol, apiKey: string | undefined): RequestInit {
   return {
-    body: JSON.stringify({}),
+    body: JSON.stringify(mediaProbeBody(protocol)),
     headers: {
       "content-type": "application/json",
       ...headersForProtocol(protocol, apiKey)
     },
     method: "POST"
   };
+}
+
+function mediaProbeBody(protocol: GatewayProviderCapabilityProtocol): Record<string, unknown> {
+  if (protocol === "openai_image_generations") {
+    return {
+      model: "__ccr_media_protocol_probe__",
+      n: 0,
+      prompt: ""
+    };
+  }
+  if (protocol === "openai_video_generations") {
+    return {
+      duration: 0,
+      model: "__ccr_media_protocol_probe__",
+      prompt: ""
+    };
+  }
+  return {};
 }
 
 function providerProbeAuthRequest(
@@ -791,7 +815,7 @@ function parseProviderUrl(value: string): ParsedProviderUrl {
 
 function endpointsForProtocol(
   parsed: ParsedProviderUrl,
-  protocol: GatewayProviderProtocol,
+  protocol: GatewayProviderCapabilityProtocol,
   model: string | undefined
 ): ProtocolEndpoint[] {
   if (protocol === "openai_responses") {
@@ -832,6 +856,20 @@ function endpointsForProtocol(
         endpoint: geminiApiEndpoint(parsed.geminiBaseUrl, "interactions", "v1")
       }
     ];
+  }
+
+  if (protocol === "openai_image_generations") {
+    return parsed.openaiBaseUrlCandidates.map((baseUrl) => ({
+      baseUrl,
+      endpoint: `${baseUrl}/images/generations`
+    }));
+  }
+
+  if (protocol === "openai_video_generations") {
+    return parsed.openaiBaseUrlCandidates.map((baseUrl) => ({
+      baseUrl,
+      endpoint: `${baseUrl}/videos/generations`
+    }));
   }
 
   const encodedModel = encodeURIComponent(stripGeminiModelPrefix(model || "model"));
@@ -884,7 +922,7 @@ function geminiHeaders(apiKey: string | undefined): Record<string, string> {
     : {};
 }
 
-function headersForProtocol(protocol: GatewayProviderProtocol, apiKey: string | undefined): Record<string, string> {
+function headersForProtocol(protocol: GatewayProviderCapabilityProtocol, apiKey: string | undefined): Record<string, string> {
   if (protocol === "anthropic_messages") {
     return anthropicHeaders(apiKey);
   }
@@ -969,7 +1007,7 @@ function stripGeminiModelPrefix(value: string): string {
   return value.replace(/^models\//i, "");
 }
 
-function pickProbeModel(models: string[], protocol: GatewayProviderProtocol): string | undefined {
+function pickProbeModel(models: string[], protocol: GatewayProviderCapabilityProtocol): string | undefined {
   const candidates = uniqueStrings(models);
   if (candidates.length === 0) {
     return undefined;
@@ -993,8 +1031,8 @@ function pickProbeModel(models: string[], protocol: GatewayProviderProtocol): st
 
 function orderedProtocols(
   parsed: ParsedProviderUrl,
-  allowedProtocols: GatewayProviderProtocol[] = []
-): GatewayProviderProtocol[] {
+  allowedProtocols: GatewayProviderCapabilityProtocol[] = []
+): GatewayProviderCapabilityProtocol[] {
   const ordered = uniqueProtocols([...parsed.hints, ...protocolOrder]);
   if (allowedProtocols.length === 0) {
     return ordered;
@@ -1005,7 +1043,7 @@ function orderedProtocols(
 
 function orderedModelSources(
   parsed: ParsedProviderUrl,
-  allowedProtocols: GatewayProviderProtocol[] = []
+  allowedProtocols: GatewayProviderCapabilityProtocol[] = []
 ): ModelSource[] {
   const allowedSources = allowedProtocols.length > 0
     ? new Set(allowedProtocols.map(protocolModelSource))
@@ -1020,7 +1058,7 @@ function orderedModelSources(
   return ordered.filter((source) => allowedSources.has(source));
 }
 
-function protocolModelSource(protocol: GatewayProviderProtocol): ModelSource {
+function protocolModelSource(protocol: GatewayProviderCapabilityProtocol): ModelSource {
   if (protocol === "anthropic_messages") {
     return "anthropic";
   }
@@ -1030,15 +1068,25 @@ function protocolModelSource(protocol: GatewayProviderProtocol): ModelSource {
   return "openai";
 }
 
-function orderedProtocolFallback(allowedProtocols: GatewayProviderProtocol[] = []): GatewayProviderProtocol | undefined {
-  if (allowedProtocols.length === 0) {
-    return undefined;
-  }
-  const allowed = new Set(allowedProtocols);
-  return protocolOrder.find((protocol) => allowed.has(protocol)) ?? allowedProtocols[0];
+function isChatProtocol(protocol: GatewayProviderCapabilityProtocol): protocol is GatewayProviderProtocol {
+  return protocol !== "openai_image_generations" && protocol !== "openai_video_generations";
 }
 
-function protocolIsAllowed(protocol: GatewayProviderProtocol, allowedProtocols: GatewayProviderProtocol[]): boolean {
+function isMediaProtocol(protocol: GatewayProviderCapabilityProtocol): boolean {
+  return !isChatProtocol(protocol);
+}
+
+function orderedProtocolFallback(allowedProtocols: GatewayProviderCapabilityProtocol[] = []): GatewayProviderProtocol | undefined {
+  const chatProtocols = allowedProtocols.filter(isChatProtocol);
+  if (chatProtocols.length === 0) {
+    return undefined;
+  }
+  const allowed = new Set(chatProtocols);
+  return protocolOrder.find((protocol): protocol is GatewayProviderProtocol => isChatProtocol(protocol) && allowed.has(protocol))
+    ?? chatProtocols[0];
+}
+
+function protocolIsAllowed(protocol: GatewayProviderProtocol, allowedProtocols: GatewayProviderCapabilityProtocol[]): boolean {
   return allowedProtocols.length === 0 || allowedProtocols.includes(protocol);
 }
 
@@ -1046,14 +1094,16 @@ function detectProtocol(
   parsed: ParsedProviderUrl,
   protocols: GatewayProviderProbeProtocolResult[],
   modelSource: ModelSource | undefined,
-  allowedProtocols: GatewayProviderProtocol[] = []
+  allowedProtocols: GatewayProviderCapabilityProtocol[] = []
 ): GatewayProviderProtocol | undefined {
-  const supported = protocols.find((item) => item.supported);
+  const supported = protocols.find((item) => item.supported && isChatProtocol(item.protocol));
   if (supported) {
-    return supported.protocol;
+    return supported.protocol as GatewayProviderProtocol;
   }
 
-  const hinted = parsed.hints.find((protocol) => protocolIsAllowed(protocol, allowedProtocols));
+  const hinted = parsed.hints.find((protocol): protocol is GatewayProviderProtocol =>
+    isChatProtocol(protocol) && protocolIsAllowed(protocol, allowedProtocols)
+  );
   if (hinted) {
     return hinted;
   }
@@ -1105,9 +1155,9 @@ function resolveProbeBaseUrl(
   return providerBaseUrlForProtocol(parsed, protocol);
 }
 
-function protocolHints(value: string): GatewayProviderProtocol[] {
+function protocolHints(value: string): GatewayProviderCapabilityProtocol[] {
   const normalized = value.toLowerCase();
-  const hints: GatewayProviderProtocol[] = [];
+  const hints: GatewayProviderCapabilityProtocol[] = [];
 
   if (normalized.includes("chat/completions")) {
     hints.push("openai_chat_completions");
@@ -1130,6 +1180,12 @@ function protocolHints(value: string): GatewayProviderProtocol[] {
   if (normalized.includes("generativelanguage.googleapis.com")) {
     hints.push("gemini_interactions");
   }
+  if (normalized.includes("images/generations")) {
+    hints.push("openai_image_generations");
+  }
+  if (normalized.includes("videos/generations")) {
+    hints.push("openai_video_generations");
+  }
 
   return hints;
 }
@@ -1137,7 +1193,7 @@ function protocolHints(value: string): GatewayProviderProtocol[] {
 function isProtocolSupported(
   status: number | undefined,
   message: string,
-  protocol?: GatewayProviderProtocol
+  protocol?: GatewayProviderCapabilityProtocol
 ): boolean {
   if (status === undefined) {
     return false;
@@ -1151,7 +1207,7 @@ function isProtocolSupported(
     return true;
   }
 
-  if (status === 400) {
+  if (status === 400 || status === 422) {
     const normalized = message.toLowerCase();
     if (/not found|unknown endpoint|unknown route|no route/.test(normalized)) {
       return false;
@@ -1165,8 +1221,8 @@ function isProtocolSupported(
 export function isProviderProtocolEndpointSupportedForProbe(
   status: number | undefined,
   message: string,
-  protocol: GatewayProviderProtocol,
-  hints: GatewayProviderProtocol[] = []
+  protocol: GatewayProviderCapabilityProtocol,
+  hints: GatewayProviderCapabilityProtocol[] = []
 ): boolean {
   if (isProtocolSupported(status, message, protocol)) {
     return true;
@@ -1174,14 +1230,17 @@ export function isProviderProtocolEndpointSupportedForProbe(
 
   if (status === 401 || status === 403) {
     const normalized = message.toLowerCase();
-    return (hints.length === 0 || protocolMatchesHints(protocol, hints)) &&
+    const hintMatches = isMediaProtocol(protocol)
+      ? status === 401 || hints.includes(protocol)
+      : hints.length === 0 || protocolMatchesHints(protocol, hints);
+    return hintMatches &&
       !/not found|unknown endpoint|unknown route|no route/.test(normalized);
   }
 
   return false;
 }
 
-function protocolMatchesHints(protocol: GatewayProviderProtocol, hints: GatewayProviderProtocol[]): boolean {
+function protocolMatchesHints(protocol: GatewayProviderCapabilityProtocol, hints: GatewayProviderCapabilityProtocol[]): boolean {
   if (hints.includes(protocol)) {
     return true;
   }
@@ -1260,8 +1319,15 @@ function uniqueStrings(values: string[]): string[] {
   return result;
 }
 
-function uniqueProtocols(values: GatewayProviderProtocol[]): GatewayProviderProtocol[] {
+function uniqueProtocols(values: GatewayProviderCapabilityProtocol[]): GatewayProviderCapabilityProtocol[] {
   return values.filter((value, index) => values.indexOf(value) === index);
+}
+
+function providerBaseUrlForCapability(
+  parsed: ParsedProviderBaseUrl,
+  protocol: GatewayProviderCapabilityProtocol
+): string {
+  return isChatProtocol(protocol) ? providerBaseUrlForProtocol(parsed, protocol) : parsed.openaiBaseUrl;
 }
 
 function uniqueProtocolEndpoints(values: ProtocolEndpoint[]): ProtocolEndpoint[] {

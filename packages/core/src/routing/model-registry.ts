@@ -228,7 +228,9 @@ const providerInternalProtocols = new Set([
   "gemini_generate_content",
   "gemini_interactions",
   "openai_chat_completions",
-  "openai_responses"
+  "openai_image_generations",
+  "openai_responses",
+  "openai_video_generations"
 ]);
 
 function sanitizeProviderHeaderId(value: string | undefined): string | undefined {

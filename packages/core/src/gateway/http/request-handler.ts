@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ApiKeyConfig, AppConfig } from "@ccr/core/contracts/app";
 import { handleNetworkCaptureMcpRequest, isNetworkCaptureMcpPath } from "@ccr/core/mcp/network-capture-mcp";
+import { LEGACY_GROK_MEDIA_ARTIFACT_PATH_PREFIX, MEDIA_ARTIFACT_PATH_PREFIX, handleMediaArtifactRequest, handleMediaToolsMcpRequest } from "@ccr/core/mcp/grok-media-mcp";
+import { LEGACY_GROK_MEDIA_MCP_PATH, MEDIA_TOOLS_MCP_PATH } from "@ccr/core/mcp/grok-media-config";
 import { BROWSER_AUTOMATION_MCP_PATH, browserAutomationMcpEnabled } from "@ccr/core/mcp/toolhub-config";
 import { pluginService } from "@ccr/core/plugins/service";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin";
@@ -47,7 +49,8 @@ export class GatewayHttpRequestHandler {
         return;
       }
   
-      const path = request.url ? new URL(request.url, this.status.endpoint || "http://127.0.0.1").pathname : "/";
+      const requestUrl = new URL(request.url ?? "/", this.status.endpoint || "http://127.0.0.1");
+      const path = requestUrl.pathname;
       if (path === billingUsageSyncPath) {
         await this.handleBillingUsageSync(request, response);
         return;
@@ -99,6 +102,22 @@ export class GatewayHttpRequestHandler {
           return;
         }
         await this.browserAutomationMcpIntegration.handleBrowserAutomationMcpRequest(request, response);
+        return;
+      }
+
+      if ([MEDIA_TOOLS_MCP_PATH, LEGACY_GROK_MEDIA_MCP_PATH].some((mcpPath) => path === mcpPath || path === `${mcpPath}/`)) {
+        if (!this.config.mediaTools.enabled) {
+          sendJson(response, 404, { error: { message: "CCR Media Tools MCP is disabled." } });
+          return;
+        }
+        const authorization = await authorize(request, response, this.config);
+        if (!authorization.ok) return;
+        await handleMediaToolsMcpRequest(request, response);
+        return;
+      }
+
+      if (path.startsWith(MEDIA_ARTIFACT_PATH_PREFIX) || path.startsWith(LEGACY_GROK_MEDIA_ARTIFACT_PATH_PREFIX)) {
+        handleMediaArtifactRequest(request, response, requestUrl);
         return;
       }
   

@@ -11,7 +11,7 @@ import {
   enforceSingleEnabledGlobalProfilePerAgent,
   ExtensionConfigTarget, ExtensionDeleteTarget, ExtensionInstallDraft, ExtensionSource, fallbackAgentAnalysis, fallbackConfig,
   fallbackGatewayStatus, fallbackInfo, fallbackProxyNetworkSnapshot, fallbackProxyStatus, fallbackRequestLogPage,
-  fallbackUpdateStatus, fallbackUsageStats, formatAppError, GatewayProviderConfig,
+  fallbackUpdateStatus, fallbackUsageStats, formatAppError, GatewayProviderConfig, GatewayProviderProtocol,
   fusionCustomMcpServerFromDraft, fusionCustomToolConfigFromProfile,
   GatewayProviderProbeResult, gatewayServiceMessage, GatewayStatus, getDefaultOnboardingStep, isClaudeDesignPluginConfig, isClaudeDesignRoutingDraftValid,
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
@@ -26,13 +26,13 @@ import {
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
-  providerCapabilitiesForProtocols, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
+  providerBaseUrl, providerCapabilitiesForProtocols, providerCapabilitiesForSave, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerProtocolOptions, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
   ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, RouterRule, SettingsPageId,
   routingRewriteFromDraftRow, setProviderPresets, splitLines, translateAppErrorMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
   uniqueRoutingRuleId, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
-  VirtualModelDraft, virtualModelProfileFromDraft
+  VirtualModelDraft, virtualModelProfileFromDraft, virtualModelProfilesUseMediaTools
 } from "./shared/index";
 import { startVisiblePolling } from "./shared/polling";
 import {
@@ -1389,7 +1389,7 @@ function App() {
     const candidates = providerProbeCandidates(providerDraft)
       .map((candidate) => ({
         ...candidate,
-        protocols: candidate.protocols.filter((protocol) => protocols.includes(protocol))
+        protocols: candidate.protocols.filter((protocol) => protocols.some((selected) => selected === protocol))
       }))
       .filter((candidate) => isProviderProbeCandidateReady(candidate) && candidate.protocols.length > 0);
 
@@ -1498,11 +1498,19 @@ function App() {
     const modelDescriptions = modelDescriptionsForModels(providerDraft.modelDescriptions, models);
     const modelDisplayNames = modelDisplayNamesForModels(providerDraft.modelDisplayNames, models);
     const modelMetadata = modelMetadataForModels(providerDraft.modelMetadata, models);
-    const capabilities = providerCapabilitiesForProtocols(providerDraft.baseUrl, protocolsToSave, probe, presetCapabilitiesFromDraft(providerDraft));
+    const existingProvider = providerEditIndex !== undefined ? draftConfig.Providers[providerEditIndex] : undefined;
+    const capabilities = providerCapabilitiesForSave(
+      providerCapabilitiesForProtocols(providerDraft.baseUrl, protocolsToSave, probe, presetCapabilitiesFromDraft(providerDraft)),
+      providerDraft.capabilities,
+      existingProvider ? providerBaseUrl(existingProvider) : undefined,
+      providerDraft.baseUrl
+    );
     const primaryCapability =
       capabilities.find((capability) => capability.type === fallbackProtocol) ??
-      capabilities[0];
-    const protocol = primaryCapability?.type ?? fallbackProtocol;
+      capabilities.find((capability) => providerProtocolOptions.some((option) => option.value === capability.type));
+    const protocol = primaryCapability && providerProtocolOptions.some((option) => option.value === primaryCapability.type)
+      ? primaryCapability.type as GatewayProviderProtocol
+      : fallbackProtocol;
     const baseUrl = fallbackBaseUrl;
 
     const keySafetyIssue = providerApiKeySafetyIssue({
@@ -1548,7 +1556,6 @@ function App() {
       return false;
     }
 
-    const existingProvider = providerEditIndex !== undefined ? draftConfig.Providers[providerEditIndex] : undefined;
     const providerId = existingProvider?.id ?? providerNameSlug(providerName);
     const provider: GatewayProviderConfig = {
       api_base_url: normalizeProviderBaseUrl(baseUrl),
@@ -1820,6 +1827,7 @@ function App() {
         values[virtualModelEditIndex] = profile;
       }
       config.virtualModelProfiles = values;
+      config.mediaTools.enabled = virtualModelProfilesUseMediaTools(values);
       const existingMcpServers = [...(config.agent?.mcpServers ?? [])];
       const replacementIndex = previousMcpServerName
         ? existingMcpServers.findIndex((server) => server.name === previousMcpServerName)
@@ -1854,6 +1862,7 @@ function App() {
       }
       values[index] = { ...item, enabled };
       config.virtualModelProfiles = values;
+      config.mediaTools.enabled = virtualModelProfilesUseMediaTools(values);
       return config;
     });
   }
@@ -1861,6 +1870,7 @@ function App() {
   function removeVirtualModel(index: number) {
     updateConfig((config) => {
       config.virtualModelProfiles = (config.virtualModelProfiles ?? []).filter((_, itemIndex) => itemIndex !== index);
+      config.mediaTools.enabled = virtualModelProfilesUseMediaTools(config.virtualModelProfiles);
       return config;
     });
   }

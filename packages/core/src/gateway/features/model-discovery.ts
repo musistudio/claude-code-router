@@ -78,7 +78,6 @@ export function prepareClaudeAppDiscoveredModelRequest(
   if (!routedModel || routedModel.toLowerCase() === normalizedModel.toLowerCase()) {
     return undefined;
   }
-
   return {
     body: serializeJsonBodyWithModel(parsedBody, routedModel),
     diagnostic: `${model}->${routedModel}`,
