@@ -323,17 +323,54 @@ export async function loadAppConfig(): Promise<AppConfig> {
   }
 }
 
+let appConfigWriteQueue: Promise<void> = Promise.resolve();
+let appThemePreferenceOverride: AppConfig["theme"] | undefined;
+
 export async function saveAppConfig(config: AppConfig): Promise<AppConfig> {
+  return enqueueAppConfigWrite(() => saveAppConfigNow(config));
+}
+
+export async function saveAppThemePreference(theme: unknown): Promise<AppConfig["theme"]> {
+  const normalizedTheme = normalizeAppThemePreference(theme);
+  appThemePreferenceOverride = normalizedTheme;
+  return enqueueAppConfigWrite(async () => {
+    const currentConfig = await loadAppConfig();
+    await writeSanitizedConfig({
+      ...currentConfig,
+      theme: normalizedTheme
+    });
+    return normalizedTheme;
+  });
+}
+
+async function saveAppConfigNow(config: AppConfig): Promise<AppConfig> {
   const normalizedConfig = withSingleEnabledGlobalProfiles(config);
   assertProviderApiKeysAreSafe(normalizedConfig);
   const apiKeys = ensureGatewayApiKeys(normalizeApiKeys(normalizedConfig.APIKEYS, normalizedConfig.APIKEY).filter((apiKey) => !isDefaultSeedApiKey(apiKey)));
   await replacePersistedApiKeys(apiKeys);
   await writeSanitizedConfig({
     ...normalizedConfig,
+    theme: appThemePreferenceOverride ?? normalizedConfig.theme,
     APIKEY: apiKeys[0]?.key ?? "",
     APIKEYS: apiKeys
   });
   return loadAppConfig();
+}
+
+function normalizeAppThemePreference(theme: unknown): AppConfig["theme"] {
+  if (theme === "system" || theme === "light" || theme === "dark") {
+    return theme;
+  }
+  throw new Error("Invalid theme preference.");
+}
+
+function enqueueAppConfigWrite<T>(operation: () => Promise<T>): Promise<T> {
+  const result = appConfigWriteQueue.then(operation, operation);
+  appConfigWriteQueue = result.then(
+    () => undefined,
+    () => undefined
+  );
+  return result;
 }
 
 function withSingleEnabledGlobalProfiles(config: AppConfig): AppConfig {

@@ -3,7 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { deflateSync } from "node:zlib";
 import { loadAppConfig } from "@ccr/core/config/config";
-import { APP_NAME } from "@ccr/core/config/constants";
+import { APP_NAME, IPC_CHANNELS } from "@ccr/core/config/constants";
 import { getProviderAccountSnapshots } from "@ccr/core/providers/account-service";
 import { getTodayUsageTotals, onUsageRecorded } from "@ccr/core/usage/store";
 import windowsManager from "./windows";
@@ -142,6 +142,18 @@ class TrayController {
       return;
     }
     this.applyTrayIcon(this.resolveTrayIconId(nextPreference));
+  }
+
+  refreshTheme(theme: AppConfig["theme"]): void {
+    for (const window of [this.popover, this.detailPopover]) {
+      if (!window || window.isDestroyed()) {
+        continue;
+      }
+      applyTrayWindowMaterial(window);
+      if (!window.webContents.isDestroyed()) {
+        window.webContents.send(IPC_CHANNELS.appThemePreferenceChanged, theme);
+      }
+    }
   }
 
   setDetailOpen(open: boolean, _provider?: string): void {
@@ -566,15 +578,7 @@ function normalizeDetailProvider(provider?: string): string | undefined {
 
 function reinforceTrayWindowMaterial(window: BrowserWindow): void {
   const applyMaterial = () => {
-    if (window.isDestroyed()) {
-      return;
-    }
-    if (process.platform === "darwin") {
-      window.setBackgroundColor("#00000000");
-      window.setVibrancy("under-window");
-      return;
-    }
-    window.setBackgroundColor(trayWindowBackgroundColor());
+    applyTrayWindowMaterial(window);
   };
 
   applyMaterial();
@@ -583,6 +587,18 @@ function reinforceTrayWindowMaterial(window: BrowserWindow): void {
     nativeTheme.on("updated", applyMaterial);
     window.once("closed", () => nativeTheme.off("updated", applyMaterial));
   }
+}
+
+function applyTrayWindowMaterial(window: BrowserWindow): void {
+  if (window.isDestroyed()) {
+    return;
+  }
+  if (process.platform === "darwin") {
+    window.setBackgroundColor("#00000000");
+    window.setVibrancy("under-window");
+    return;
+  }
+  window.setBackgroundColor(trayWindowBackgroundColor());
 }
 
 function trayWindowBackgroundColor(): string {
