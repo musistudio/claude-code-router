@@ -16,7 +16,7 @@
     "test:integration": "node ../../build/test.mjs core --scope integration && node ../../build/run-tests.mjs core"
   },
   "dependencies": {
-    "@the-next-ai/ai-gateway": "^1.0.9",
+    "@the-next-ai/ai-gateway": "^1.0.10",
     "@the-next-ai/bot-gateway-sdk": "^0.1.0",
     "better-sqlite3": "^12.11.1",
     "node-forge": "^1.4.0",

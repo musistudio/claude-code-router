@@ -42,3 +42,26 @@ test("core gateway disables the full-trace billing webhook without disabling raw
     }
   }
 });
+
+test("Codex OAuth providers remove unsupported Responses request fields", async () => {
+  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-generated-config.json" });
+  config.providerPlugins = [{
+    codexOauth: {},
+    enabled: true,
+    key: "ccr-local-agent-codex-oauth-test",
+    providerName: "Codex API::openai_responses",
+    request: {
+      bodyRemove: ["custom-field"]
+    }
+  }];
+
+  const compiled = await compileCoreGatewayConfig(
+    config,
+    "raw-trace-token",
+    "billing-usage-token",
+    "core-auth-token"
+  );
+  const plugin = compiled.providerPlugins.find((item) => item.key === "ccr-local-agent-codex-oauth-test");
+
+  assert.deepEqual(plugin.request.bodyRemove, ["custom-field", "max_output_tokens", "stop"]);
+});
