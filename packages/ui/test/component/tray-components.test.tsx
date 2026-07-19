@@ -296,6 +296,8 @@ test("TokenActivityPanel renders summary, grid, and legend", () => {
   assert.match(html, /Activity/);
   assert.match(html, /Longest streak/);
   assert.match(html, /aria-label="Activity Tokens"/);
+  assert.match(html, /tray-activity-tooltip/);
+  assert.doesNotMatch(html, /bg-slate-950/);
   assert.match(html, /Less/);
   assert.match(html, /More/);
 });
