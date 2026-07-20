@@ -3,7 +3,7 @@ import {
   AnimatePresence, AnimatedDisclosure, AnimatedIconSwap,
   Area, arrayMove, Badge, Bar, BarChart, Button,
   Card, CardContent, CardHeader, CardTitle, CartesianGrid, Cell, constrainOverviewWidgetSize,
-  Check, ChevronDown, ChevronRight, CircleAlert, cn, compactId,
+  Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, cn, codexLogoUrl, compactId,
   compactUserAgent, compareProviderAccountSnapshots, ComposedChart, CSS, DEFAULT_OVERVIEW_WIDGETS, DndContext,
   Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle,
   DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, Field, formatAxisNumber, formatBytes,
@@ -25,8 +25,8 @@ import {
 import { buildTokenActivity, type TokenActivityCell } from "@/lib/usage-activity";
 import { ShareCardWidget } from "./share-cards";
 import {
-  CalendarDays, ChartNoAxesCombined, ChartPie, Cloud, GripHorizontal, Inbox, Layers3,
-  Rocket, Server, UsersRound, WalletCards
+  CalendarDays, ChartNoAxesCombined, ChartPie, CreditCard, GripHorizontal, Inbox, Layers3,
+  Rocket, Server, UsersRound, WalletCards, Wifi
 } from "lucide-react";
 import { createPortal } from "react-dom";
 
@@ -2598,6 +2598,7 @@ function ProviderAccountMeterLine({
       </AnimatePresence>
       <CodexResetCreditDialog
         account={account}
+        details={meter.details ?? []}
         detail={resetDialogDetail}
         open={Boolean(resetDialogDetail)}
         onClose={() => setResetDialogDetail(undefined)}
@@ -2724,36 +2725,70 @@ function providerAccountMeterDetailStatusLabel(status: string | undefined, t: (v
   return t(status ?? "");
 }
 
-type CodexResetLaunchStatus = "idle" | "launching" | "launched";
+type CodexResetCardStatus = "idle" | "resetting" | "complete";
+type CodexResetCreditDetail = NonNullable<ProviderAccountMeter["details"]>[number];
 
 function CodexResetCreditDialog({
   account,
+  details,
   detail,
   onClose,
   onResetComplete,
   open
 }: {
   account: ProviderAccountSnapshot;
-  detail: NonNullable<ProviderAccountMeter["details"]>[number] | undefined;
+  details: CodexResetCreditDetail[];
+  detail: CodexResetCreditDetail | undefined;
   onClose: () => void;
   onResetComplete?: () => void | Promise<void>;
   open: boolean;
 }) {
   const t = useAppText();
-  const [status, setStatus] = useState<CodexResetLaunchStatus>("idle");
+  const cards = useMemo(() => details.filter((item) => Boolean(item.id)), [details]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [direction, setDirection] = useState(0);
+  const [status, setStatus] = useState<CodexResetCardStatus>("idle");
   const [error, setError] = useState("");
-  const detailLabel = detail ? providerAccountMeterDetailLabel(detail, 0, t) : "";
-  const detailStatus = providerAccountMeterDetailStatusLabel(detail?.status, t);
+  const activeDetail = cards[activeIndex] ?? detail;
+  const detailLabel = activeDetail ? providerAccountMeterDetailLabel(activeDetail, activeIndex, t) : "";
+  const detailStatus = providerAccountMeterDetailStatusLabel(activeDetail?.status, t);
+  const canNavigate = cards.length > 1 && status === "idle";
 
   useEffect(() => {
-    if (!open) {
-      setStatus("idle");
-      setError("");
+    if (open) {
+      const initialIndex = cards.findIndex((item) => item.id === detail?.id);
+      setActiveIndex(initialIndex >= 0 ? initialIndex : 0);
+      setDirection(0);
     }
+    setStatus("idle");
+    setError("");
   }, [open, detail?.id]);
 
+  useEffect(() => {
+    if (activeIndex >= cards.length && cards.length > 0) {
+      setActiveIndex(cards.length - 1);
+    }
+  }, [activeIndex, cards.length]);
+
+  function showCard(nextIndex: number, nextDirection: number) {
+    if (!canNavigate) {
+      return;
+    }
+    setDirection(nextDirection);
+    setActiveIndex((nextIndex + cards.length) % cards.length);
+    setError("");
+  }
+
+  function showPreviousCard() {
+    showCard(activeIndex - 1, -1);
+  }
+
+  function showNextCard() {
+    showCard(activeIndex + 1, 1);
+  }
+
   async function resetCredit() {
-    if (status !== "idle" || !detail?.id) {
+    if (status !== "idle" || !activeDetail?.id || activeDetail.redeemable === false) {
       return;
     }
     if (!window.ccr?.resetCodexRateLimitCredit) {
@@ -2762,95 +2797,49 @@ function CodexResetCreditDialog({
     }
 
     setError("");
-    setStatus("launching");
-    const ignition = delay(2000);
+    setStatus("resetting");
+    const cardTransition = delay(650);
     try {
       await window.ccr.resetCodexRateLimitCredit({
         credentialId: account.credentialId,
-        creditId: detail.id,
+        creditId: activeDetail.id,
         provider: account.provider
       });
-      await ignition;
-      setStatus("launched");
+      await cardTransition;
+      setStatus("complete");
       await onResetComplete?.();
       window.setTimeout(() => {
         onClose();
         setStatus("idle");
-      }, 1800);
+      }, 1200);
     } catch (resetError) {
-      await ignition.catch(() => undefined);
+      await cardTransition.catch(() => undefined);
       setError(formatDialogError(resetError));
       setStatus("idle");
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen && status !== "launching") onClose(); }}>
-      <DialogContent className="max-w-[560px] overflow-hidden border-slate-700/60 bg-slate-950 p-0 text-white shadow-[0_24px_80px_rgba(2,6,23,0.55)]">
-        <DialogBody className="relative min-h-[420px] overflow-hidden p-0">
-          <style>{codexResetSpaceAnimationCss}</style>
-          <div className="pointer-events-none absolute inset-0">
-            <div className="absolute inset-0 bg-[linear-gradient(180deg,#020617_0%,#030712_48%,#07111f_100%)]" />
-            <div
-              className="ccr-codex-starfield-slow absolute -inset-12 opacity-80"
-              style={{
-                backgroundImage: codexResetStarfieldDense,
-                backgroundSize: "180px 180px"
-              }}
-            />
-            <div
-              className="ccr-codex-starfield-deep absolute -inset-16 opacity-55"
-              style={{
-                backgroundImage: codexResetStarfieldWide,
-                backgroundSize: "320px 320px"
-              }}
-            />
-            <div className="ccr-codex-nebula absolute -inset-24 opacity-75" />
-            {codexResetSpaceDust.map((dust) => (
-              <div
-                className="ccr-codex-space-dust absolute rounded-full bg-cyan-100/60 shadow-[0_0_12px_rgba(125,211,252,0.55)]"
-                key={dust.id}
-                style={{
-                  animationDelay: `${dust.delay}s`,
-                  animationDuration: `${dust.duration}s`,
-                  height: dust.size,
-                  left: `${dust.left}%`,
-                  top: `${dust.top}%`,
-                  width: dust.size
-                }}
-              />
-            ))}
-            {codexResetLaunchStars.map((star) => (
-              <div
-                className="ccr-codex-twinkle-star absolute rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.75)]"
-                key={star.id}
-                style={{
-                  animationDelay: `${star.delay}s`,
-                  animationDuration: `${star.duration}s`,
-                  height: star.size,
-                  left: `${star.left}%`,
-                  top: `${star.top}%`,
-                  width: star.size
-                }}
-              />
-            ))}
-            {codexResetShootingStars.map((meteor) => (
-              <div
-                className="ccr-codex-meteor absolute h-px w-36 rounded-full bg-gradient-to-r from-transparent via-white to-transparent shadow-[0_0_16px_rgba(255,255,255,0.95)]"
-                key={meteor.id}
-                style={{
-                  animationDelay: `${meteor.delay}s`,
-                  animationDuration: `${meteor.duration}s`,
-                  opacity: meteor.opacity,
-                  top: `${meteor.top}%`
-                }}
-              />
-            ))}
-          </div>
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen && status !== "resetting") onClose(); }}>
+      <DialogContent className="max-w-[620px] overflow-hidden border-border/70 bg-background p-0 text-foreground shadow-[0_28px_90px_rgba(15,23,42,0.24)]">
+        <DialogBody
+          className="relative overflow-hidden p-0"
+          onKeyDown={(event) => {
+            if (event.key === "ArrowLeft") {
+              event.preventDefault();
+              showPreviousCard();
+            }
+            if (event.key === "ArrowRight") {
+              event.preventDefault();
+              showNextCard();
+            }
+          }}
+        >
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-56 bg-[radial-gradient(circle_at_20%_0%,rgba(16,185,129,0.12),transparent_42%),radial-gradient(circle_at_90%_15%,rgba(99,102,241,0.12),transparent_38%)]" />
           <Button
             aria-label={t("Close")}
-            className="absolute right-3 top-3 z-20 text-slate-300 hover:bg-white/10 hover:text-white"
-            disabled={status === "launching"}
+            className="absolute right-4 top-4 z-20 text-muted-foreground hover:bg-muted hover:text-foreground"
+            disabled={status === "resetting"}
             onClick={onClose}
             size="iconSm"
             title={t("Close")}
@@ -2859,282 +2848,199 @@ function CodexResetCreditDialog({
           >
             <X className="h-3.5 w-3.5" />
           </Button>
-          <div className="absolute left-5 right-14 top-5 z-10 min-w-0 text-slate-300">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">{t("Manual reset credit")}</div>
-            <div className="mt-1 truncate text-[15px] font-semibold text-white" title={detailLabel || undefined}>{detailLabel || "-"}</div>
-            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-slate-400">
-              <span>{t("Expires")}: {formatProviderAccountDetailDate(detail?.expiresAt)}</span>
-              {detailStatus ? <span className="rounded-full border border-white/10 px-1.5 py-0.5 text-[10px] text-slate-300">{detailStatus}</span> : null}
+          <div className="relative z-10 px-6 pb-3 pt-6 sm:px-8">
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              <CreditCard className="h-3.5 w-3.5" />
+              {t("Manual reset credit")}
             </div>
+            <h2 className="mt-1.5 text-[21px] font-semibold tracking-tight">{t("Choose a reset card")}</h2>
+            <p className="mt-1 text-[12px] text-muted-foreground">{t("Use the arrows to switch between available reset credits.")}</p>
           </div>
-          <div className="relative z-10 flex min-h-[420px] flex-col items-center justify-center px-4 py-16 font-sans">
-            <div className="flex flex-col items-center">
-              <motion.button
-                animate={status === "launching" ? {
-                  x: [-2, 2, -3, 3, -1, 1, 0],
-                  y: [-1, 1, -2, 2, -1, 1, 0]
-                } : {}}
-                className="group relative overflow-hidden rounded-full border border-red-400/50 bg-gradient-to-b from-orange-500 to-red-600 shadow-[0_0_40px_rgba(239,68,68,0.3)] transition-shadow duration-300 hover:shadow-[0_0_60px_rgba(239,68,68,0.6)] disabled:cursor-not-allowed"
-                disabled={status !== "idle"}
-                onClick={() => void resetCredit()}
-                transition={status === "launching" ? { duration: 0.3, repeat: Infinity } : {}}
+          <div className="relative z-10 px-3 pb-2 sm:px-5">
+            <div className="grid grid-cols-[36px_minmax(0,440px)_36px] items-center justify-center gap-1 sm:grid-cols-[40px_minmax(0,440px)_40px] sm:gap-3">
+              <Button
+                aria-label={t("Previous reset card")}
+                className="rounded-full border border-border/80 bg-background/90 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
+                disabled={!canNavigate}
+                onClick={showPreviousCard}
+                size="iconSm"
+                title={t("Previous reset card")}
                 type="button"
-                whileHover={status === "idle" ? { scale: 1.05 } : {}}
-                whileTap={status === "idle" ? { scale: 0.95 } : {}}
+                variant="ghost"
               >
-                <div className="relative z-10 flex w-64 items-center justify-center gap-4 px-10 py-5">
-                  <AnimatePresence mode="wait">
-                    {status === "idle" ? (
-                      <motion.div
-                        animate={{ opacity: 1, y: 0 }}
-                        className="flex items-center gap-3 text-xl font-bold uppercase tracking-wider text-white"
-                        exit={{ opacity: 0, y: -10 }}
-                        initial={{ opacity: 0, y: 10 }}
-                        key="idle-text"
-                      >
-                        <Rocket className="h-6 w-6" />
-                        <span>{t("Reset")}</span>
-                      </motion.div>
-                    ) : null}
-                    {status === "launching" ? (
-                      <motion.div
-                        animate={{ opacity: 1, y: 0 }}
-                        className="flex items-center gap-3 text-xl font-bold uppercase tracking-wider text-white"
-                        exit={{ opacity: 0, scale: 0.9 }}
-                        initial={{ opacity: 0, y: 10 }}
-                        key="launching-text"
-                      >
-                        <motion.div animate={{ y: [0, -3, 0] }} transition={{ duration: 0.2, repeat: Infinity }}>
-                          <Rocket className="h-6 w-6 fill-white" />
-                        </motion.div>
-                        <span>{t("Resetting")}</span>
-                      </motion.div>
-                    ) : null}
-                    {status === "launched" ? (
-                      <motion.div
-                        animate={{ opacity: 1 }}
-                        className="flex items-center gap-3 text-xl font-bold uppercase tracking-wider text-white"
-                        exit={{ opacity: 0 }}
-                        initial={{ opacity: 0 }}
-                        key="launched-text"
-                      >
-                        <span className="bg-gradient-to-r from-yellow-200 to-white bg-clip-text text-transparent">{t("Reset complete")}</span>
-                      </motion.div>
-                    ) : null}
-                  </AnimatePresence>
-                </div>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
 
-                <AnimatePresence>
-                  {(status === "launching" || status === "launched") ? (
-                    <motion.div
-                      animate={status === "launching" ? {
-                        bottom: "-20px",
-                        height: ["40px", "70px", "50px"],
-                        opacity: [0.6, 1, 0.6],
-                        width: ["50px", "60px", "50px"]
-                      } : {
-                        bottom: "-100px",
-                        height: "250px",
-                        opacity: 0,
-                        width: "100px"
-                      }}
-                      className="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 rounded-full bg-gradient-to-t from-yellow-300 via-orange-500 to-transparent blur-md"
-                      exit={{ opacity: 0 }}
-                      initial={{ height: 0, opacity: 0, width: "40px" }}
-                      transition={status === "launching" ? { duration: 0.1, repeat: Infinity } : { duration: 0.8, ease: "easeOut" }}
-                    />
-                  ) : null}
-                </AnimatePresence>
-
-                <AnimatePresence>
-                  {status === "launched" ? (
-                    <motion.div
-                      animate={{ opacity: 0, scale: 0.5, y: -800 }}
-                      className="pointer-events-none absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2"
-                      initial={{ opacity: 1, scale: 1.2, y: 0 }}
-                      transition={{ duration: 1.5, ease: "easeIn" }}
-                    >
-                      <div className="relative">
-                        <Rocket className="h-10 w-10 fill-white text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.8)]" />
-                        <motion.div
-                          animate={{
-                            height: ["100px", "150px", "120px"],
-                            opacity: [0.8, 1, 0.8]
-                          }}
-                          className="absolute left-1/2 top-full h-32 w-6 -translate-x-1/2 rounded-full bg-gradient-to-b from-yellow-200 via-orange-500 to-transparent blur-sm"
-                          transition={{ duration: 0.1, repeat: Infinity }}
-                        />
-                      </div>
-                    </motion.div>
-                  ) : null}
-                </AnimatePresence>
-              </motion.button>
-
-              <AnimatePresence>
-                {status !== "idle" ? (
+              <div className="relative min-w-0 pb-3 pt-2 [perspective:1200px]">
+                {cards.length > 1 ? (
+                  <>
+                    <div className="absolute inset-x-5 bottom-0 top-5 rounded-[22px] border border-slate-700/40 bg-slate-900/45 opacity-35" />
+                    <div className="absolute inset-x-2.5 bottom-1.5 top-3.5 rounded-[22px] border border-slate-700/50 bg-slate-900/70 opacity-55" />
+                  </>
+                ) : null}
+                <AnimatePresence custom={direction} initial={false} mode="wait">
                   <motion.div
-                    animate={status === "launching" ? {
-                      opacity: 1,
-                      scale: 1,
-                      y: 0
-                    } : {
-                      opacity: 0,
-                      scale: 2.5,
-                      y: 50
+                    animate={{ opacity: 1, rotateY: 0, scale: 1, x: 0 }}
+                    className="relative aspect-[1.586/1] w-full cursor-grab select-none overflow-hidden rounded-[22px] border border-white/10 bg-[radial-gradient(circle_at_82%_18%,rgba(129,140,248,0.42),transparent_29%),radial-gradient(circle_at_14%_92%,rgba(16,185,129,0.34),transparent_34%),linear-gradient(135deg,#171a20_0%,#07090d_55%,#111827_100%)] text-white shadow-[0_22px_45px_rgba(15,23,42,0.34)] active:cursor-grabbing"
+                    drag={canNavigate ? "x" : false}
+                    dragConstraints={{ left: 0, right: 0 }}
+                    dragElastic={0.16}
+                    exit={{ opacity: 0, rotateY: direction > 0 ? -7 : 7, scale: 0.97, x: direction > 0 ? -48 : 48 }}
+                    initial={{ opacity: 0, rotateY: direction > 0 ? 7 : -7, scale: 0.97, x: direction > 0 ? 48 : -48 }}
+                    key={activeDetail?.id ?? "empty-reset-card"}
+                    onDragEnd={(_, info) => {
+                      if (info.offset.x < -48) showNextCard();
+                      if (info.offset.x > 48) showPreviousCard();
                     }}
-                    className="pointer-events-none absolute top-full mt-2 flex w-full justify-center"
-                    exit={{ opacity: 0 }}
-                    initial={{ opacity: 0, scale: 0.8, y: -20 }}
-                    transition={{ duration: status === "launching" ? 1 : 1.5 }}
+                    transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
                   >
-                    <div className="relative h-24 w-48">
-                      <motion.div animate={{ x: [-5, 5, -5] }} className="absolute left-4 top-0 text-slate-300 drop-shadow-xl" transition={{ duration: 2, ease: "easeInOut", repeat: Infinity }}>
-                        <Cloud className="h-20 w-20 fill-slate-300 opacity-90" />
-                      </motion.div>
-                      <motion.div animate={{ x: [5, -5, 5] }} className="absolute right-4 top-4 text-slate-400 drop-shadow-xl" transition={{ duration: 2.5, ease: "easeInOut", repeat: Infinity }}>
-                        <Cloud className="h-24 w-24 fill-slate-400 opacity-80" />
-                      </motion.div>
-                      <motion.div animate={{ y: [-3, 3, -3] }} className="absolute -top-2 left-16 text-slate-200 drop-shadow-xl" transition={{ duration: 1.5, ease: "easeInOut", repeat: Infinity }}>
-                        <Cloud className="h-16 w-16 fill-slate-200 opacity-95" />
-                      </motion.div>
+                    <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full border border-white/[0.07]" />
+                    <div className="pointer-events-none absolute -right-8 -top-14 h-48 w-48 rounded-full border border-white/[0.06]" />
+                    <div className="pointer-events-none absolute inset-0 opacity-[0.045] [background-image:repeating-linear-gradient(115deg,transparent_0,transparent_8px,#fff_9px,transparent_10px)]" />
+                    <div className="relative flex h-full flex-col justify-between p-[clamp(12px,5.5%,26px)]">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white/10 shadow-inner">
+                            <img alt="Codex" className="h-5 w-5 rounded-full" draggable={false} src={codexLogoUrl} />
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white">CODEX</div>
+                            <div className="text-[8px] uppercase tracking-[0.16em] text-white/45">RESET CREDIT</div>
+                          </div>
+                        </div>
+                        {detailStatus ? <span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-emerald-200">{detailStatus}</span> : null}
+                      </div>
+
+                      <div>
+                        <div className="mb-3 flex items-center gap-3">
+                          <div className="relative h-7 w-10 overflow-hidden rounded-md border border-amber-100/40 bg-gradient-to-br from-amber-100 via-yellow-400 to-amber-600 shadow-inner">
+                            <div className="absolute inset-y-0 left-1/2 w-px bg-amber-900/30" />
+                            <div className="absolute inset-x-0 top-1/2 h-px bg-amber-900/30" />
+                            <div className="absolute inset-y-1 left-1/2 w-4 -translate-x-1/2 rounded border border-amber-900/25" />
+                          </div>
+                          <Wifi className="h-6 w-6 rotate-90 text-white/50" />
+                        </div>
+                        <div aria-label={`${t("Card number")}: ${activeDetail?.id ?? "-"}`} className="flex min-h-10 flex-wrap content-center gap-x-3 gap-y-0.5 font-mono text-[clamp(14px,3.8vw,20px)] font-medium tracking-[0.1em] text-white" title={activeDetail?.id}>
+                          {formatCodexResetCardNumber(activeDetail?.id).map((group, index) => <span key={`${group}-${index}`}>{group}</span>)}
+                        </div>
+                      </div>
+
+                      <div className="flex items-end justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="text-[7px] font-medium uppercase tracking-[0.18em] text-white/40">{t("Reset type")}</div>
+                          <div className="mt-0.5 truncate text-[10px] font-semibold uppercase tracking-[0.13em] text-white/85" title={detailLabel || undefined}>{detailLabel || "-"}</div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <div className="text-[7px] font-medium uppercase tracking-[0.18em] text-white/40">{t("Valid thru")}</div>
+                          <div className="mt-0.5 font-mono text-[13px] font-semibold tracking-[0.12em]">{formatCodexResetCardExpiry(activeDetail?.expiresAt)}</div>
+                        </div>
+                      </div>
                     </div>
                   </motion.div>
-                ) : null}
-              </AnimatePresence>
+                </AnimatePresence>
+              </div>
+
+              <Button
+                aria-label={t("Next reset card")}
+                className="rounded-full border border-border/80 bg-background/90 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
+                disabled={!canNavigate}
+                onClick={showNextCard}
+                size="iconSm"
+                title={t("Next reset card")}
+                type="button"
+                variant="ghost"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div aria-label={`${t("Reset card")} ${activeIndex + 1} / ${Math.max(cards.length, 1)}`} className="mt-1 flex h-5 items-center justify-center gap-1.5">
+              {cards.map((card, index) => (
+                <button
+                  aria-label={`${t("Reset card")} ${index + 1}`}
+                  className={cn("h-1.5 rounded-full transition-all", index === activeIndex ? "w-5 bg-foreground" : "w-1.5 bg-muted-foreground/25 hover:bg-muted-foreground/50")}
+                  disabled={status !== "idle"}
+                  key={card.id}
+                  onClick={() => showCard(index, index > activeIndex ? 1 : -1)}
+                  type="button"
+                />
+              ))}
             </div>
           </div>
-          {error ? <div className="absolute bottom-4 left-5 right-5 z-20 rounded-md border border-red-400/30 bg-red-950/70 px-3 py-2 text-[11px] text-red-100">{error}</div> : null}
+
+          <div className="relative z-10 border-t border-border/70 bg-muted/20 px-6 py-5 sm:px-8">
+            <div className="mb-4 flex min-w-0 items-center justify-between gap-4 text-[11px]">
+              <div className="min-w-0">
+                <div className="text-muted-foreground">{t("Expires")}</div>
+                <div className="mt-0.5 truncate font-medium text-foreground">{formatProviderAccountDetailDate(activeDetail?.expiresAt)}</div>
+              </div>
+              <div className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-[10px] font-medium text-muted-foreground">{activeIndex + 1} / {Math.max(cards.length, 1)}</div>
+            </div>
+            <Button
+              className={cn(
+                "group relative h-14 w-full overflow-hidden rounded-full border border-red-400/50 bg-gradient-to-b from-orange-500 to-red-600 px-5 text-white shadow-[0_10px_28px_rgba(239,68,68,0.28)] transition-shadow hover:from-orange-400 hover:to-red-600 hover:shadow-[0_14px_36px_rgba(239,68,68,0.4)] disabled:opacity-100",
+                status === "complete" && "border-emerald-400/40 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-500 hover:to-emerald-700"
+              )}
+              disabled={status !== "idle" || !activeDetail?.id || activeDetail.redeemable === false}
+              onClick={() => void resetCredit()}
+              type="button"
+            >
+              <motion.span
+                animate={status === "resetting" ? { x: [-1, 1, -2, 2, 0], y: [0, -1, 1, -1, 0] } : {}}
+                className="relative z-10 flex items-center justify-center gap-2.5 text-[14px] font-bold uppercase tracking-[0.1em]"
+                transition={status === "resetting" ? { duration: 0.22, repeat: Infinity } : {}}
+              >
+                {status === "idle" ? <><Rocket className="h-5 w-5" /><span>{t("Launch reset")}</span></> : null}
+                {status === "resetting" ? (
+                  <>
+                    <span className="relative">
+                      <Rocket className="h-5 w-5 fill-white" />
+                      <motion.span
+                        animate={{ height: [8, 15, 10], opacity: [0.55, 1, 0.65] }}
+                        className="absolute left-1/2 top-full mt-0.5 w-1.5 -translate-x-1/2 rounded-full bg-gradient-to-b from-yellow-200 via-orange-300 to-transparent blur-[1px]"
+                        transition={{ duration: 0.12, repeat: Infinity }}
+                      />
+                    </span>
+                    <span>{t("Resetting")}</span>
+                  </>
+                ) : null}
+                {status === "complete" ? <><CheckCircle2 className="h-5 w-5" /><span>{t("Reset complete")}</span></> : null}
+              </motion.span>
+              <AnimatePresence>
+                {status === "resetting" ? (
+                  <motion.span
+                    animate={{ opacity: [0.3, 0.7, 0.3], scaleX: [0.8, 1.25, 0.9] }}
+                    className="pointer-events-none absolute inset-x-10 bottom-0 h-4 rounded-full bg-yellow-200/40 blur-xl"
+                    exit={{ opacity: 0 }}
+                    initial={{ opacity: 0 }}
+                    transition={{ duration: 0.18, repeat: Infinity }}
+                  />
+                ) : null}
+              </AnimatePresence>
+            </Button>
+            {error ? <div className="mt-3 rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">{error}</div> : null}
+          </div>
         </DialogBody>
       </DialogContent>
     </Dialog>
   );
 }
 
-const codexResetStarfieldDense = [
-  "radial-gradient(circle at 12% 18%, rgba(255,255,255,0.75) 0 1px, transparent 1.4px)",
-  "radial-gradient(circle at 42% 36%, rgba(186,230,253,0.65) 0 1px, transparent 1.6px)",
-  "radial-gradient(circle at 74% 22%, rgba(255,255,255,0.6) 0 1px, transparent 1.5px)",
-  "radial-gradient(circle at 18% 72%, rgba(226,232,240,0.55) 0 1px, transparent 1.4px)",
-  "radial-gradient(circle at 88% 78%, rgba(147,197,253,0.5) 0 1px, transparent 1.6px)"
-].join(", ");
+export function formatCodexResetCardNumber(value: string | undefined): string[] {
+  const normalized = value?.trim().replace(/\s+/g, "") || "----";
+  return normalized.match(/.{1,4}/g) ?? [normalized];
+}
 
-const codexResetStarfieldWide = [
-  "radial-gradient(circle at 18% 28%, rgba(255,255,255,0.5) 0 1.4px, transparent 2px)",
-  "radial-gradient(circle at 58% 16%, rgba(219,234,254,0.45) 0 1.2px, transparent 2px)",
-  "radial-gradient(circle at 78% 62%, rgba(255,255,255,0.42) 0 1.3px, transparent 2px)",
-  "radial-gradient(circle at 34% 82%, rgba(125,211,252,0.35) 0 1.2px, transparent 2px)"
-].join(", ");
-
-const codexResetLaunchStars = Array.from({ length: 76 }, (_, index) => ({
-  delay: (index % 9) * 0.18,
-  duration: 2 + (index % 7) * 0.35,
-  id: index,
-  left: (index * 37) % 100,
-  opacity: 0.45 + (index % 5) * 0.11,
-  size: `${1.2 + (index % 4) * 0.65}px`,
-  top: (index * 53) % 100
-}));
-
-const codexResetSpaceDust = Array.from({ length: 26 }, (_, index) => ({
-  delay: (index % 8) * 0.55,
-  duration: 5.5 + (index % 6) * 0.75,
-  id: index,
-  left: (index * 41) % 100,
-  size: `${2 + (index % 3)}px`,
-  top: (index * 29) % 100
-}));
-
-const codexResetShootingStars = Array.from({ length: 5 }, (_, index) => ({
-  delay: 1.4 + index * 2.8,
-  drop: 14 + (index % 3) * 5,
-  duration: 5.8 + index * 0.7,
-  id: index,
-  opacity: 0.55 + (index % 3) * 0.12,
-  repeatDelay: 8 + index * 1.4,
-  rotate: 14 + (index % 2) * 6,
-  top: 12 + index * 15
-}));
-
-const codexResetSpaceAnimationCss = `
-  .ccr-codex-starfield-slow {
-    animation: ccr-codex-starfield-slow 9s linear infinite;
-    will-change: background-position;
+export function formatCodexResetCardExpiry(value: string | undefined): string {
+  if (!value) {
+    return "--/--";
   }
-
-  .ccr-codex-starfield-deep {
-    animation: ccr-codex-starfield-deep 15s linear infinite;
-    will-change: background-position;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    return "--/--";
   }
-
-  .ccr-codex-nebula {
-    background:
-      radial-gradient(circle at 24% 52%, rgba(239, 68, 68, 0.2), transparent 32%),
-      radial-gradient(circle at 70% 42%, rgba(59, 130, 246, 0.18), transparent 36%),
-      radial-gradient(circle at 54% 76%, rgba(20, 184, 166, 0.12), transparent 38%);
-    animation: ccr-codex-nebula 6s ease-in-out infinite alternate;
-    will-change: opacity, transform;
-  }
-
-  .ccr-codex-twinkle-star {
-    animation-name: ccr-codex-twinkle-star;
-    animation-timing-function: ease-in-out;
-    animation-iteration-count: infinite;
-    opacity: 0.24;
-    will-change: opacity, transform;
-  }
-
-  .ccr-codex-space-dust {
-    animation-name: ccr-codex-space-dust;
-    animation-timing-function: ease-in-out;
-    animation-iteration-count: infinite;
-    opacity: 0;
-    will-change: opacity, transform;
-  }
-
-  .ccr-codex-meteor {
-    left: -32%;
-    opacity: 0;
-    transform: translate3d(-160px, -40px, 0) rotate(16deg);
-    animation-name: ccr-codex-meteor;
-    animation-timing-function: linear;
-    animation-iteration-count: infinite;
-    will-change: opacity, transform;
-  }
-
-  @keyframes ccr-codex-starfield-slow {
-    from { background-position: 0 0; }
-    to { background-position: 180px 180px; }
-  }
-
-  @keyframes ccr-codex-starfield-deep {
-    from { background-position: 0 0; }
-    to { background-position: -320px 320px; }
-  }
-
-  @keyframes ccr-codex-nebula {
-    0% { opacity: 0.42; transform: translate3d(-18px, 10px, 0) scale(1); }
-    100% { opacity: 0.82; transform: translate3d(18px, -14px, 0) scale(1.08); }
-  }
-
-  @keyframes ccr-codex-twinkle-star {
-    0%, 100% { opacity: 0.18; transform: scale(0.65); }
-    45% { opacity: 0.95; transform: scale(1.8); }
-    70% { opacity: 0.36; transform: scale(1.1); }
-  }
-
-  @keyframes ccr-codex-space-dust {
-    0% { opacity: 0; transform: translate3d(-10px, 24px, 0) scale(0.7); }
-    35% { opacity: 0.75; }
-    100% { opacity: 0; transform: translate3d(34px, -44px, 0) scale(1.35); }
-  }
-
-  @keyframes ccr-codex-meteor {
-    0%, 48% { opacity: 0; transform: translate3d(-180px, -72px, 0) rotate(16deg) scaleX(0.75); }
-    54% { opacity: 1; }
-    72% { opacity: 0.85; }
-    100% { opacity: 0; transform: translate3d(860px, 210px, 0) rotate(16deg) scaleX(1.25); }
-  }
-`;
+  return `${String(date.getUTCMonth() + 1).padStart(2, "0")}/${String(date.getUTCDate()).padStart(2, "0")}`;
+}
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));

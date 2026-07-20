@@ -10,7 +10,8 @@ import {
   grokDefaultSubscriptionEndpoint,
   grokModelCatalogFromPayloadForTest,
   importGrokProvider,
-  normalizeGrokProviderAccountConfig
+  normalizeGrokProviderAccountConfig,
+  normalizeGrokProviderMediaCapabilities
 } from "@ccr/core/agents/local-providers/grok.ts";
 import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared.ts";
 
@@ -39,6 +40,12 @@ test("Grok local provider imports bearer token and model override plugin", async
     assert.equal(result.provider.baseUrl, grokDefaultBaseUrl);
     assert.equal(result.provider.protocol, "openai_responses");
     assert.equal(result.provider.apiKey, "ccr-local-agent-login");
+    assert.deepEqual(
+      result.provider.capabilities.map((capability) => capability.type),
+      ["openai_responses", "openai_image_generations", "xai_video_generations"]
+    );
+    assert.ok(result.provider.models.includes("grok-imagine-image-quality"));
+    assert.ok(result.provider.models.includes("grok-imagine-video"));
     assert.equal(result.provider.account?.enabled, true);
     assert.equal(result.provider.account?.connectors?.length, 2);
     assert.equal(result.provider.account?.connectors?.[0]?.type, "http-json");
@@ -248,6 +255,43 @@ test("Grok local provider account config keeps custom connectors", () => {
   });
 
   assert.equal(provider.account, account);
+});
+
+test("persisted Grok Agent providers are upgraded with gateway media capabilities", () => {
+  const provider = normalizeGrokProviderMediaCapabilities({
+    api_base_url: grokDefaultBaseUrl,
+    api_key: localAgentProviderApiKey,
+    models: ["grok-4.5"],
+    name: "Grok CLI API",
+    protocol: "openai_responses"
+  });
+
+  assert.deepEqual(provider.capabilities?.map((capability) => capability.type), [
+    "openai_responses",
+    "openai_image_generations",
+    "xai_video_generations"
+  ]);
+  assert.ok(provider.models.includes("grok-imagine-image-quality"));
+  assert.ok(provider.models.includes("grok-imagine-video"));
+});
+
+test("persisted Grok Agent providers migrate legacy xAI video capabilities", () => {
+  const provider = normalizeGrokProviderMediaCapabilities({
+    api_base_url: grokDefaultBaseUrl,
+    api_key: localAgentProviderApiKey,
+    capabilities: [{
+      baseUrl: "https://api.x.ai/v1",
+      endpoint: "https://api.x.ai/v1/videos/generations",
+      source: "preset",
+      type: "openai_video_generations"
+    }],
+    models: ["grok-imagine-video"],
+    name: "Grok CLI API",
+    protocol: "openai_responses"
+  });
+
+  assert.equal(provider.capabilities?.some((capability) => capability.type === "openai_video_generations"), false);
+  assert.equal(provider.capabilities?.some((capability) => capability.type === "xai_video_generations"), true);
 });
 
 async function withGrokHome(run) {

@@ -511,7 +511,9 @@ export function shouldRunUnifiedServer(config: AppConfig): boolean {
 
 
 export function shouldRunGatewayRuntime(config: AppConfig): boolean {
-  return config.gateway.enabled || (config.proxy.enabled && config.proxy.mode === "gateway");
+  return config.gateway.enabled ||
+    config.mediaTools.enabled ||
+    (config.proxy.enabled && config.proxy.mode === "gateway");
 }
 
 

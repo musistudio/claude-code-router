@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type {
+  GatewayProviderCapability,
   GatewayProviderConfig,
   LocalAgentProviderCandidate,
   LocalAgentProviderImportResult,
@@ -9,6 +10,11 @@ import type {
   ProviderAccountConnectorConfig,
   ProviderAccountMappingConfig,
   ProviderModelMetadata
+} from "@ccr/core/contracts/app";
+import {
+  GROK_API_DEFAULT_IMAGE_MODEL,
+  GROK_API_DEFAULT_VIDEO_MODEL,
+  GROK_API_MEDIA_BASE_URL
 } from "@ccr/core/contracts/app";
 import {
   bearerAuthPlugin,
@@ -420,6 +426,33 @@ function importGrokProviderWithAuth(
     catalog.baseUrl,
     grokProviderAccountConfig()
   );
+  const providerWithMedia = {
+    ...provider,
+    capabilities: [
+      {
+        baseUrl: catalog.baseUrl,
+        source: "preset" as const,
+        type: "openai_responses" as const
+      },
+      {
+        baseUrl: GROK_API_MEDIA_BASE_URL,
+        endpoint: `${GROK_API_MEDIA_BASE_URL}/images/generations`,
+        source: "preset" as const,
+        type: "openai_image_generations" as const
+      },
+      {
+        baseUrl: GROK_API_MEDIA_BASE_URL,
+        endpoint: `${GROK_API_MEDIA_BASE_URL}/videos/generations`,
+        source: "preset" as const,
+        type: "xai_video_generations" as const
+      }
+    ],
+    models: uniqueStrings([
+      ...provider.models,
+      GROK_API_DEFAULT_IMAGE_MODEL,
+      GROK_API_DEFAULT_VIDEO_MODEL
+    ])
+  };
   return {
     candidate: {
       ...candidate,
@@ -427,7 +460,7 @@ function importGrokProviderWithAuth(
       modelMetadata: catalog.modelMetadata,
       models: catalog.models
     },
-    provider,
+    provider: providerWithMedia,
     providerPlugins: [
       grokOauthPlugin("grok-cli-oauth", auth.accessToken ?? ""),
       grokOauthPlugin("grok-cli-oauth-internal", auth.accessToken ?? "", providerInternalNamePlaceholder)
@@ -477,6 +510,53 @@ export function normalizeGrokProviderAccountConfig(provider: GatewayProviderConf
       refreshIntervalMs: provider.account?.refreshIntervalMs ?? account.refreshIntervalMs
     }
   };
+}
+
+export function normalizeGrokProviderMediaCapabilities(provider: GatewayProviderConfig): GatewayProviderConfig {
+  if (!isLocalGrokProvider(provider)) {
+    return provider;
+  }
+  const capabilities = (provider.capabilities ?? []).map((capability) =>
+    capability.type === "openai_video_generations" && isXaiApiBaseUrl(capability.baseUrl)
+      ? { ...capability, type: "xai_video_generations" as const }
+      : capability
+  );
+  const ensureCapability = (capability: GatewayProviderCapability): void => {
+    if (!capabilities.some((item) => item.type === capability.type)) {
+      capabilities.push(capability);
+    }
+  };
+  const chatBaseUrl = providerBaseUrl(provider) || grokDefaultBaseUrl;
+  ensureCapability({ baseUrl: chatBaseUrl, source: "preset", type: "openai_responses" });
+  ensureCapability({
+    baseUrl: GROK_API_MEDIA_BASE_URL,
+    endpoint: `${GROK_API_MEDIA_BASE_URL}/images/generations`,
+    source: "preset",
+    type: "openai_image_generations"
+  });
+  ensureCapability({
+    baseUrl: GROK_API_MEDIA_BASE_URL,
+    endpoint: `${GROK_API_MEDIA_BASE_URL}/videos/generations`,
+    source: "preset",
+    type: "xai_video_generations"
+  });
+  return {
+    ...provider,
+    capabilities,
+    models: uniqueStrings([
+      ...provider.models,
+      GROK_API_DEFAULT_IMAGE_MODEL,
+      GROK_API_DEFAULT_VIDEO_MODEL
+    ])
+  };
+}
+
+function isXaiApiBaseUrl(value: string): boolean {
+  try {
+    return /(?:^|\.)api\.x\.ai$/i.test(new URL(value).hostname);
+  } catch {
+    return false;
+  }
 }
 
 function isLocalGrokProvider(provider: GatewayProviderConfig): boolean {

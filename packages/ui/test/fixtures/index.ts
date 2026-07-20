@@ -25,6 +25,14 @@ export function appConfigFixture(): AppConfig {
     agent: {
       mcpServers: []
     },
+    mediaTools: {
+      allowedInputRoots: [],
+      artifactTtlHours: 24,
+      enabled: false,
+      jobTimeoutMs: 600000,
+      maxImageConcurrency: 2,
+      maxVideoConcurrency: 1
+    },
     profile: {
       enabled: true,
       profiles: []

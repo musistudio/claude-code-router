@@ -62,6 +62,89 @@ test("Codex patch bridge leaves GPT models untouched", () => {
   assert.equal(result, undefined);
 });
 
+test("Codex patch bridge automatically rewrites non-GPT models when the built-in route is disabled", () => {
+  const result = prepareCodexApplyPatchBridgeRequest({
+    body: Buffer.from(JSON.stringify({
+      model: "openrouter/google/gemini-2.5-pro",
+      tools: [{ type: "custom", name: "apply_patch" }]
+    })),
+    config: {
+      ...config,
+      Router: {
+        ...config.Router,
+        builtInRules: {
+          ...config.Router.builtInRules,
+          codex: { enabled: false }
+        }
+      }
+    },
+    headers: { "user-agent": "codex-test" },
+    method: "POST",
+    path: "/v1/responses"
+  });
+
+  assert.ok(result);
+  const body = JSON.parse(result.body.toString("utf8"));
+  assert.equal(body.tools[0].type, "function");
+  assert.equal(body.tools[0].name, "virtual_apply_patch");
+});
+
+test("Codex patch bridge leaves GPT-backed Fusion models untouched", () => {
+  const result = prepareCodexApplyPatchBridgeRequest({
+    body: Buffer.from(JSON.stringify({
+      model: "Fusion/research",
+      tools: [{ type: "custom", name: "apply_patch" }]
+    })),
+    config: {
+      ...config,
+      Providers: [
+        { name: "openai", type: "openai_chat_completions", models: ["gpt-5-codex"] }
+      ],
+      virtualModelProfiles: [
+        {
+          baseModel: { fixedModel: "openai/gpt-5-codex", mode: "fixed" },
+          enabled: true,
+          match: { exactAliases: ["research"], prefixes: [], suffixes: [] }
+        }
+      ]
+    },
+    headers: { "user-agent": "codex-test" },
+    method: "POST",
+    path: "/v1/responses"
+  });
+
+  assert.equal(result, undefined);
+});
+
+test("Codex patch bridge rewrites non-GPT-backed Fusion models", () => {
+  const result = prepareCodexApplyPatchBridgeRequest({
+    body: Buffer.from(JSON.stringify({
+      model: "Fusion/research",
+      tools: [{ type: "custom", name: "apply_patch" }]
+    })),
+    config: {
+      ...config,
+      Providers: [
+        { name: "anthropic", type: "anthropic_messages", models: ["claude-sonnet-4"] }
+      ],
+      virtualModelProfiles: [
+        {
+          baseModel: { fixedModel: "anthropic/claude-sonnet-4", mode: "fixed" },
+          enabled: true,
+          match: { exactAliases: ["research"], prefixes: [], suffixes: [] }
+        }
+      ]
+    },
+    headers: { "user-agent": "codex-test" },
+    method: "POST",
+    path: "/v1/responses"
+  });
+
+  assert.ok(result);
+  const body = JSON.parse(result.body.toString("utf8"));
+  assert.equal(body.tools[0].name, "virtual_apply_patch");
+});
+
 test("Codex patch bridge discourages shell-based file edits", () => {
   const result = prepareCodexApplyPatchBridgeRequest({
     body: Buffer.from(JSON.stringify({

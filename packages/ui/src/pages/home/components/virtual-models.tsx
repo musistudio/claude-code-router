@@ -4,7 +4,7 @@ import {
   cn, createMcpServerDraftFromConfig, createRouteModelOptions, defaultFusionWebSearchProvider, Dialog, DialogBody, DialogContent, DialogFooter,
   DialogHeader, DialogTitle, ExtensionInstallDraft, Field, FolderOpen, formatPluginDependencies,
   createFusionWebSearchEnvRows, createKeyValueDraftRow, customFusionToolName, fusionToolExecutionFlagsFromTools, fusionToolOptions,
-  fusionWebSearchProviderOptions, GatewayMcpServerConfig, GatewayMcpToolInfo, GatewayProviderConfig, Input, isBuiltInFusionToolName, isFusionVisionToolName, isFusionWebSearchToolName, KeyValueRowsControl, LoaderCircle,
+  fusionWebSearchProviderOptions, GatewayMcpServerConfig, GatewayMcpToolInfo, GatewayProviderConfig, Input, isBuiltInFusionToolName, isFusionImageGenerationToolName, isFusionVideoGenerationToolName, isFusionVisionToolName, isFusionWebSearchToolName, KeyValueRowsControl, LoaderCircle,
   mcpServerConfigFromDraft, mcpServerEndpointSummary, mcpServerTransportOptions,
   mcpStdioMessageModeOptions, motion, normalizeFusionToolName, Pencil,
   PluginMarketplaceEntry, Plus, PopoverContent, RouteTargetControl, Search, selectedFusionToolNames,
@@ -13,6 +13,7 @@ import {
   type KeyValueDraftRow,
   VirtualModelProfileConfig, virtualModelToolSummary, X
 } from "../shared/index";
+import { createGrokMediaModelOptions } from "@ccr/core/media/models";
 
 const virtualModelTableGridClass = "grid-cols-[minmax(180px,0.9fr)_minmax(220px,1.1fr)_minmax(220px,1.1fr)_minmax(170px,0.85fr)_112px_96px]";
 const virtualModelTableMinWidthClass = "min-w-[1100px]";
@@ -174,6 +175,41 @@ export function VirtualModelsView({
   );
 }
 
+export function MediaModelConfigurationPanel({
+  draft,
+  kind,
+  modelOptions,
+  onChange
+}: {
+  draft: VirtualModelDraft;
+  kind: "image" | "video";
+  modelOptions: ReturnType<typeof createRouteModelOptions>;
+  onChange: (patch: Partial<VirtualModelDraft>) => void;
+}) {
+  const t = useAppText();
+  const value = kind === "image" ? draft.imageGenerationModel : draft.videoGenerationModel;
+  const options = useMemo(() => {
+    const values = [...modelOptions];
+    if (value && !values.some((option) => option.value === value)) {
+      values.push({ label: value, value });
+    }
+    return values;
+  }, [modelOptions, t, value]);
+
+  return (
+    <div className="grid grid-cols-1 gap-2 rounded-md border border-border/70 bg-muted/25 p-3">
+      <Field label={t(kind === "image" ? "Image model" : "Video model")}>
+        <SelectControl
+          onChange={(model) => onChange(kind === "image" ? { imageGenerationModel: model } : { videoGenerationModel: model })}
+          options={options}
+          value={value}
+        />
+      </Field>
+      <p className="text-[11px] leading-4 text-muted-foreground">{t("CCR routes media through the selected ai-gateway provider. Imported Grok Agents reuse their existing login automatically.")}</p>
+    </div>
+  );
+}
+
 export function VirtualModelDialog({
   canSubmit,
   draft,
@@ -198,6 +234,8 @@ export function VirtualModelDialog({
   const t = useAppText();
   const formatError = useAppErrorText();
   const modelOptions = useMemo(() => createRouteModelOptions(providers), [providers]);
+  const imageModelOptions = useMemo(() => createGrokMediaModelOptions(providers, "image"), [providers]);
+  const videoModelOptions = useMemo(() => createGrokMediaModelOptions(providers, "video"), [providers]);
   const selectedTools = selectedFusionToolNames(draft.toolsText);
   const [customMcpDialogOpen, setCustomMcpDialogOpen] = useState(false);
   const [customMcpDialogDraft, setCustomMcpDialogDraft] = useState(draft.customMcpServer);
@@ -387,39 +425,41 @@ export function VirtualModelDialog({
               <Field label={t("Base model")}>
                 <RouteTargetControl modelOptions={modelOptions} onChange={(fixedModel) => onChange({ fixedModel })} value={draft.fixedModel} />
               </Field>
-	              <div className="flex h-5 items-center justify-center font-mono text-[13px] font-semibold text-muted-foreground">+</div>
-	              <Field label={t("Tools")}>
-	                <FusionToolsListControl
-                    adding={addingFusionTool}
-                    draft={draft}
-	                  mcpServers={availableMcpServers}
-	                  mcpToolStateByServer={mcpToolStateByServer}
-                    modelOptions={modelOptions}
-	                  onAddCustomMcpTool={openCustomMcpDialog}
-                    onAddTool={() => setAddingFusionTool(true)}
-                    onAppendTool={appendFusionTool}
-                    onCancelAddTool={() => setAddingFusionTool(false)}
-                    onChange={onChange}
-	                  onChangeTool={updateFusionTool}
-	                  onDiscoverMcpTools={(server, force) => {
-	                    if (server) {
-	                      void discoverMcpServerTools(server, force);
-	                      return;
-	                    }
-	                    discoverVisibleMcpServers();
-	                  }}
-                    onRemoveTool={removeFusionTool}
-	                  selectedMcpServerName={draft.customMcpServer.name}
-	                  values={selectedTools}
-	                />
-	              </Field>
+              <div className="flex h-5 items-center justify-center font-mono text-[13px] font-semibold text-muted-foreground">+</div>
+              <Field label={t("Tools")}>
+                <FusionToolsListControl
+                  adding={addingFusionTool}
+                  draft={draft}
+                  imageModelOptions={imageModelOptions}
+                  mcpServers={availableMcpServers}
+                  mcpToolStateByServer={mcpToolStateByServer}
+                  modelOptions={modelOptions}
+                  onAddCustomMcpTool={openCustomMcpDialog}
+                  onAddTool={() => setAddingFusionTool(true)}
+                  onAppendTool={appendFusionTool}
+                  onCancelAddTool={() => setAddingFusionTool(false)}
+                  onChange={onChange}
+                  onChangeTool={updateFusionTool}
+                  onDiscoverMcpTools={(server, force) => {
+                    if (server) {
+                      void discoverMcpServerTools(server, force);
+                      return;
+                    }
+                    discoverVisibleMcpServers();
+                  }}
+                  onRemoveTool={removeFusionTool}
+                  selectedMcpServerName={draft.customMcpServer.name}
+                  videoModelOptions={videoModelOptions}
+                  values={selectedTools}
+                />
+              </Field>
             </div>
 
-	            {error ? (
-	              <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">{t(error)}</div>
-	            ) : null}
-	          </div>
-	        </DialogBody>
+            {error ? (
+              <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">{t(error)}</div>
+            ) : null}
+          </div>
+        </DialogBody>
 
         <DialogFooter>
           <Button onClick={onClose} type="button" variant="outline">
@@ -702,20 +742,30 @@ function CustomMcpToolDialog({
 
 function FusionToolConfigurationPanel({
   draft,
+  imageModelOptions,
   modelOptions,
   onChange,
-  toolName
+  toolName,
+  videoModelOptions
 }: {
   draft: VirtualModelDraft;
+  imageModelOptions: ReturnType<typeof createGrokMediaModelOptions>;
   modelOptions: ReturnType<typeof createRouteModelOptions>;
   onChange: (patch: Partial<VirtualModelDraft>) => void;
   toolName: string;
+  videoModelOptions: ReturnType<typeof createGrokMediaModelOptions>;
 }) {
   if (isFusionVisionToolName(toolName)) {
     return <VisionToolConfigurationPanel draft={draft} modelOptions={modelOptions} onChange={onChange} />;
   }
   if (isFusionWebSearchToolName(toolName)) {
     return <WebSearchToolConfigurationPanel draft={draft} onChange={onChange} />;
+  }
+  if (isFusionImageGenerationToolName(toolName)) {
+    return <MediaModelConfigurationPanel draft={draft} kind="image" modelOptions={imageModelOptions} onChange={onChange} />;
+  }
+  if (isFusionVideoGenerationToolName(toolName)) {
+    return <MediaModelConfigurationPanel draft={draft} kind="video" modelOptions={videoModelOptions} onChange={onChange} />;
   }
   return null;
 }
@@ -743,6 +793,7 @@ function VisionToolConfigurationPanel({
 function FusionToolsListControl({
   adding,
   draft,
+  imageModelOptions,
   mcpServers,
   mcpToolStateByServer,
   modelOptions,
@@ -755,10 +806,12 @@ function FusionToolsListControl({
   onDiscoverMcpTools,
   onRemoveTool,
   selectedMcpServerName,
+  videoModelOptions,
   values
 }: {
   adding: boolean;
   draft: VirtualModelDraft;
+  imageModelOptions: ReturnType<typeof createGrokMediaModelOptions>;
   mcpServers: GatewayMcpServerConfig[];
   mcpToolStateByServer: Record<string, {
     error?: string;
@@ -775,6 +828,7 @@ function FusionToolsListControl({
   onDiscoverMcpTools: (server?: GatewayMcpServerConfig, force?: boolean) => void;
   onRemoveTool: (index: number) => void;
   selectedMcpServerName: string;
+  videoModelOptions: ReturnType<typeof createGrokMediaModelOptions>;
   values: string[];
 }) {
   const t = useAppText();
@@ -810,9 +864,11 @@ function FusionToolsListControl({
           </div>
           <FusionToolConfigurationPanel
             draft={draft}
+            imageModelOptions={imageModelOptions}
             modelOptions={modelOptions}
             onChange={onChange}
             toolName={value}
+            videoModelOptions={videoModelOptions}
           />
         </div>
       ))}
@@ -897,7 +953,7 @@ function FusionToolSelectControl({
   const selectedServer = selectedMcpServerName
     ? mcpServers.find((server) => server.name === selectedMcpServerName)
     : mcpServers.find((server) => mcpToolStateByServer[server.name]?.tools?.some((tool) => tool.name === normalizedValue));
-  const selectedLabel = selected?.label ?? (selectedServer && normalizedValue ? `${selectedServer.name} / ${normalizedValue}` : normalizedValue || t("Select tool"));
+  const selectedLabel = selected ? t(selected.label) : (selectedServer && normalizedValue ? `${selectedServer.name} / ${normalizedValue}` : normalizedValue || t("Select tool"));
 
   useLayoutEffect(() => {
     if (!open) {
@@ -1033,7 +1089,7 @@ function FusionToolSelectControl({
                     type="button"
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[12px] font-semibold">{option.label}</span>
+                      <span className="block truncate text-[12px] font-semibold">{t(option.label)}</span>
                       <span className={cn("mt-0.5 block text-[11px] leading-4", selectedOption ? "text-primary/80" : "text-muted-foreground")}>
                         {t(option.description)}
                       </span>

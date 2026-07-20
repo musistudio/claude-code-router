@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { createPortal } from "react-dom";
 import { Maximize2, Route, X } from "lucide-react";
 import type { RequestRouteTrace, RequestRouteTraceChange, RequestRouteTraceHop } from "@ccr/core/contracts/app";
 import {
@@ -1102,14 +1103,88 @@ function LogMetric({ label, value }: { label: string; value: string }) {
 function LogModelRouteCell({ entry }: { entry: RequestLogEntry }) {
   const requestModel = logRequestModel(entry);
   const responseModel = logResponseModel(entry);
-  const title = `${requestModel} -> ${responseModel}`;
+  return <LogModelTooltip requestModel={requestModel} responseModel={responseModel} />;
+}
+
+type LogModelTooltipState = {
+  left: number;
+  placement: "above" | "below";
+  top: number;
+  width: number;
+};
+
+function LogModelTooltip({
+  requestModel,
+  responseModel
+}: {
+  requestModel: string;
+  responseModel: string;
+}) {
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const [tooltip, setTooltip] = useState<LogModelTooltipState>();
+  const value = `${requestModel} -> ${responseModel}`;
+
+  useEffect(() => {
+    if (!tooltip) return;
+    const dismiss = () => setTooltip(undefined);
+    window.addEventListener("resize", dismiss);
+    window.addEventListener("scroll", dismiss, true);
+    return () => {
+      window.removeEventListener("resize", dismiss);
+      window.removeEventListener("scroll", dismiss, true);
+    };
+  }, [tooltip]);
+
+  const showTooltip = () => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const margin = 12;
+    const gap = 6;
+    const availableWidth = Math.max(0, window.innerWidth - margin * 2);
+    const width = Math.min(availableWidth, Math.max(160, Math.min(480, value.length * 7 + 24)));
+    const left = Math.min(
+      Math.max(margin, rect.left + rect.width / 2 - width / 2),
+      Math.max(margin, window.innerWidth - width - margin)
+    );
+    const placement = window.innerHeight - rect.bottom >= 72 || rect.top < 72 ? "below" : "above";
+    setTooltip({
+      left,
+      placement,
+      top: placement === "below" ? rect.bottom + gap : rect.top - gap,
+      width
+    });
+  };
 
   return (
-    <div className="flex min-w-0 items-center px-2" title={title}>
-      <span className="min-w-0 max-w-[45%] truncate">{requestModel}</span>
-      <MoveRight className="mx-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="min-w-0 max-w-[45%] truncate">{responseModel}</span>
-    </div>
+    <>
+      <div
+        className="flex min-w-0 items-center px-2"
+        onMouseEnter={showTooltip}
+        onMouseLeave={() => setTooltip(undefined)}
+        ref={triggerRef}
+      >
+        <span className="min-w-0 max-w-[45%] truncate">{requestModel}</span>
+        <MoveRight className="mx-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="min-w-0 max-w-[45%] truncate">{responseModel}</span>
+      </div>
+      {tooltip ? createPortal(
+        <div
+          className="pointer-events-none fixed z-[100] break-all rounded-md border border-border bg-popover px-2.5 py-1.5 font-mono text-[11px] font-medium text-popover-foreground shadow-card-elevated"
+          role="tooltip"
+          style={{
+            left: tooltip.left,
+            top: tooltip.top,
+            transform: tooltip.placement === "above" ? "translateY(-100%)" : undefined,
+            width: tooltip.width
+          }}
+        >
+          {value}
+        </div>,
+        document.body
+      ) : null}
+    </>
   );
 }
 

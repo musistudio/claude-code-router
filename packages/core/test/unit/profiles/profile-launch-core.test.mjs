@@ -47,6 +47,16 @@ const grokProfile = {
   surface: "cli"
 };
 
+const kimiProfile = {
+  agent: "kimi",
+  enabled: true,
+  id: "kimi-main",
+  model: "provider,model",
+  name: "Kimi Main",
+  scope: "ccr",
+  surface: "cli"
+};
+
 const openCodeProfile = {
   agent: "opencode",
   enabled: true,
@@ -81,10 +91,12 @@ test("profile open surfaces enforce agent capabilities", () => {
   assert.deepEqual(profileOpenSurfaces({ ...claudeProfile, surface: "cli" }), ["cli"]);
   assert.deepEqual(profileOpenSurfaces({ ...codexProfile, agent: "zcode" }), ["app"]);
   assert.deepEqual(profileOpenSurfaces(grokProfile), ["cli"]);
+  assert.deepEqual(profileOpenSurfaces(kimiProfile), ["cli"]);
   assert.deepEqual(profileOpenSurfaces(openCodeProfile), ["cli", "app"]);
   assert.equal(resolveProfileOpenSurface(codexProfile, "app"), "app");
   assert.throws(() => resolveProfileOpenSurface({ ...claudeProfile, surface: "cli" }, "app"), /does not support APP/);
   assert.throws(() => resolveProfileOpenSurface(grokProfile, "app"), /does not support APP/);
+  assert.throws(() => resolveProfileOpenSurface(kimiProfile, "app"), /does not support APP/);
 });
 
 test("default profile command surface is CLI unless the agent is app-only", () => {
@@ -94,8 +106,9 @@ test("default profile command surface is CLI unless the agent is app-only", () =
   assert.equal(defaultProfileOpenSurface({ ...codexProfile, agent: "zcode" }), "app");
 });
 
-test("Grok CLI starts a temporary CCR gateway when none is already running", () => {
+test("Grok and Kimi CLI start a temporary CCR gateway when none is already running", () => {
   assert.equal(shouldAutoStartProfileGateway(grokProfile, "cli"), true);
+  assert.equal(shouldAutoStartProfileGateway(kimiProfile, "cli"), true);
   assert.equal(shouldAutoStartProfileGateway(codexProfile, "cli"), false);
   assert.equal(shouldAutoStartProfileGateway(claudeProfile, "app"), false);
 });
@@ -105,6 +118,7 @@ test("buildProfileLaunchPlan creates CCR-managed launcher paths", () => {
   const codexPlan = buildProfileLaunchPlan(configDir, codexProfile, "app");
   const claudePlan = buildProfileLaunchPlan(configDir, claudeProfile, "cli", ["--debug"]);
   const grokPlan = buildProfileLaunchPlan(configDir, grokProfile, "cli", ["--debug"]);
+  const kimiPlan = buildProfileLaunchPlan(configDir, kimiProfile, "cli", ["--debug"]);
   const openCodePlan = buildProfileLaunchPlan(configDir, openCodeProfile, "cli", ["--debug"]);
 
   assert.equal(codexPlan.surface, "app");
@@ -126,6 +140,11 @@ test("buildProfileLaunchPlan creates CCR-managed launcher paths", () => {
   assert.deepEqual(grokPlan.args, ["--debug"]);
   assert.equal(path.basename(grokPlan.command), process.platform === "win32" ? "ccr-grok-cli-wrapper-grok-main.cmd" : "ccr-grok-cli-wrapper-grok-main");
   assert.equal(grokPlan.env.CCR_PROFILE_SURFACE, "cli");
+
+  assert.equal(kimiPlan.surface, "cli");
+  assert.deepEqual(kimiPlan.args, ["--debug"]);
+  assert.equal(path.basename(kimiPlan.command), process.platform === "win32" ? "ccr-kimi-cli-wrapper-kimi-main.cmd" : "ccr-kimi-cli-wrapper-kimi-main");
+  assert.equal(kimiPlan.env.CCR_PROFILE_SURFACE, "cli");
 
   assert.equal(openCodePlan.surface, "cli");
   assert.deepEqual(openCodePlan.args, ["--debug"]);

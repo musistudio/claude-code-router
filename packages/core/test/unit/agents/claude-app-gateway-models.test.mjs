@@ -33,7 +33,15 @@ function createConfig({ profileModel, providers = [], virtualModelProfiles = [] 
 }
 
 function createClaudeModelsResponse(config) {
-  return createGatewayModelsResponse(config, { "user-agent": "claude-app/1.0" });
+  return createGatewayModelsResponse(
+    config,
+    { "user-agent": "claude-app/1.0" },
+    { name: "Claude App" }
+  );
+}
+
+function createClaudeCodeModelsResponse(config) {
+  return createGatewayModelsResponse(config, { "user-agent": "claude-cli/2.1.215" });
 }
 
 function assertPublishedRoutesResolveUniquely(config) {
@@ -164,6 +172,66 @@ test("issue 1535 canonical profile resolution preserves the Claude App 1M contex
   assertPublishedRoutesResolveUniquely(config);
 });
 
+test("Claude App marks a custom model with a configured 1M context window", () => {
+  const config = createConfig({
+    providers: [
+      {
+        modelMetadata: {
+          aaa: {
+            contextWindow: 1_000_000,
+            maxContextWindow: 1_000_000
+          }
+        },
+        models: ["aaa"],
+        name: "Zhipu AI (China) - Coding Plan",
+        type: "openai_chat_completions"
+      }
+    ]
+  });
+  const route = buildClaudeAppGatewayModelRoutes(config)[0];
+  const inferenceModel = buildClaudeAppGatewayInferenceModels(config)[0];
+  const discoveredModel = createClaudeModelsResponse(config).data[0];
+
+  assert.equal(route.oneMillionContext, true);
+  assert.equal(inferenceModel.supports1m, true);
+  assert.equal(discoveredModel.max_input_tokens, 1_000_000);
+  assert.equal(discoveredModel.capabilities.context_window.max_input_tokens, 1_000_000);
+  assert.equal(discoveredModel.capabilities.context_window.supports_1m_context, true);
+  assert.equal(discoveredModel.capabilities.context_window.one_million_context_variant, true);
+});
+
+test("Claude Code exposes a configured 1M context window as a visible model variant", () => {
+  const config = createConfig({
+    providers: [
+      {
+        modelMetadata: {
+          aaa: {
+            contextWindow: 1_000_000,
+            maxContextWindow: 1_000_000
+          }
+        },
+        models: ["aaa"],
+        name: "Zhipu AI (China) - Coding Plan",
+        type: "openai_chat_completions"
+      }
+    ]
+  });
+  const discoveredModel = createClaudeCodeModelsResponse(config).data[0];
+
+  assert.match(discoveredModel.id, /\[1m\]$/);
+  assert.equal(discoveredModel.display_name, "Zhipu AI (China) - Coding Plan/aaa (1M context)");
+  assert.equal(discoveredModel.max_input_tokens, 1_000_000);
+  assert.equal(discoveredModel.capabilities.context_window.one_million_context_variant, true);
+
+  const rewrite = prepareClaudeAppDiscoveredModelRequest(
+    config,
+    "POST",
+    "/v1/messages",
+    Buffer.from(JSON.stringify({ messages: [], model: discoveredModel.id }))
+  );
+  assert.equal(rewrite?.routedModel, "Zhipu AI (China) - Coding Plan/aaa");
+});
+
 test("Claude App discovery publishes the effective provider context for uncatalogued models", () => {
   const config = createConfig({
     providers: [
@@ -189,6 +257,43 @@ test("Claude App discovery publishes the effective provider context for uncatalo
   assert.equal(model.max_input_tokens, 258400);
   assert.equal(model.capabilities.context_management.max_input_tokens, 258400);
   assert.equal(model.capabilities.context_window.max_input_tokens, 258400);
+});
+
+test("Claude App discovery honors configured reasoning levels for uncatalogued models", () => {
+  const config = createConfig({
+    providers: [
+      {
+        modelMetadata: {
+          "custom-model": {
+            capabilities: { imageInput: false },
+            contextWindow: 64000,
+            supportedReasoningLevels: [
+              { description: "Low", effort: "low" },
+              { description: "High", effort: "high" },
+              { description: "Ultra", effort: "ultra" }
+            ],
+            supportsReasoningSummaries: true
+          }
+        },
+        models: ["custom-model"],
+        name: "Custom",
+        type: "openai_responses"
+      }
+    ]
+  });
+  const response = createClaudeModelsResponse(config);
+  const model = response.data[0];
+
+  assert.ok(model);
+  assert.equal(model.max_input_tokens, 64000);
+  assert.equal(model.capabilities.image_input.supported, false);
+  assert.equal(model.capabilities.thinking.supported, true);
+  assert.equal(model.capabilities.effort.low.supported, true);
+  assert.equal(model.capabilities.effort.medium.supported, false);
+  assert.equal(model.capabilities.effort.high.supported, true);
+  assert.equal(model.capabilities.effort.xhigh.supported, false);
+  assert.equal(model.capabilities.effort.max.supported, false);
+  assert.equal(model.capabilities.effort.ultra.supported, true);
 });
 
 test("Claude App discovery prefers provider context metadata over the static catalog", () => {

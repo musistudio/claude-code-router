@@ -1420,7 +1420,7 @@ test("gateway strips unsupported OpenAI upstream request parameters", () => {
   }
 });
 
-test("built-in Claude Code route overrides explicit virtual gateway models", async () => {
+test("explicit virtual gateway models override the built-in Claude Code profile route", async () => {
   const plugin = createRouterPlugin({
     profileModel: "Provider/claude-sonnet",
     virtualModelProfiles: [
@@ -1446,9 +1446,107 @@ test("built-in Claude Code route overrides explicit virtual gateway models", asy
     url: "/v1/messages"
   });
 
-  assert.equal(result.body.model, "Provider/claude-sonnet");
-  assert.equal(result.decision.model, "Provider/claude-sonnet");
-  assert.equal(result.decision.reason, "builtin:claude-code");
+  assert.equal(result.body.model, "Fusion/kimisearch");
+  assert.equal(result.decision.model, "Fusion/kimisearch");
+  assert.equal(result.decision.reason, "default");
+});
+
+test("Claude Code encoded model selections override the built-in profile route", async () => {
+  const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
+  const selectedModel = "Provider/claude-opus";
+  const encodedModel = `anthropic/claude-ccr-h${Buffer.from(selectedModel, "utf8").toString("hex")}`;
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: encodedModel
+    },
+    headers: {
+      "user-agent": "claude-code/1.0"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, selectedModel);
+  assert.equal(result.decision.model, selectedModel);
+  assert.equal(result.decision.reason, "default");
+});
+
+test("non-model router rewrites preserve the explicit Claude Code model selection", async () => {
+  const plugin = createRouterPlugin({
+    profileModel: "Provider/claude-sonnet",
+    routerRules: [
+      {
+        condition: {
+          left: "request.url",
+          operator: "contains",
+          right: "/v1/messages"
+        },
+        enabled: true,
+        id: "add-client-header",
+        name: "Add client header",
+        rewrites: [
+          { key: "request.header.x-client-route", operation: "set", value: "claude-code" }
+        ],
+        type: "condition"
+      }
+    ]
+  });
+  const headers = {
+    "user-agent": "claude-code/1.0"
+  };
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "Provider/claude-opus"
+    },
+    headers,
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(headers["x-client-route"], "claude-code");
+  assert.equal(result.body.model, "Provider/claude-opus");
+  assert.equal(result.decision.model, "Provider/claude-opus");
+  assert.equal(result.decision.reason, "rule:add-client-header");
+});
+
+test("non-model router rewrites preserve normalized explicit models outside built-in agents", async () => {
+  const plugin = createRouterPlugin({
+    routerRules: [
+      {
+        condition: {
+          left: "request.url",
+          operator: "contains",
+          right: "/v1/messages"
+        },
+        enabled: true,
+        id: "add-generic-header",
+        name: "Add generic header",
+        rewrites: [
+          { key: "request.header.x-client-route", operation: "set", value: "generic" }
+        ],
+        type: "condition"
+      }
+    ]
+  });
+  const headers = {
+    "user-agent": "generic-client/1.0"
+  };
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "Provider,claude-opus"
+    },
+    headers,
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(headers["x-client-route"], "generic");
+  assert.equal(result.body.model, "Provider/claude-opus");
+  assert.equal(result.decision.model, "Provider/claude-opus");
+  assert.equal(result.decision.reason, "rule:add-generic-header");
 });
 
 test("built-in Codex route stays inactive when profile model is unset", async () => {
@@ -1935,6 +2033,24 @@ test("built-in Claude Code main route does not trust the configured subagent bod
 
   assert.equal(result.body.model, "Codex API/gpt-5.6-sol");
   assert.equal(result.decision.reason, "builtin:claude-code");
+});
+
+test("ordinary Claude Code explicit selections still override the built-in profile route", async () => {
+  const plugin = createClaudeCodeSubagentEnvPlugin();
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "DeepSeek/deepseek-v4-pro"
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "DeepSeek/deepseek-v4-pro");
+  assert.equal(result.decision.reason, "default");
 });
 
 test("built-in Claude Code subagent env route requires a true billing marker", async () => {

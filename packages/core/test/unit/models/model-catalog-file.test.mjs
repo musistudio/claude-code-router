@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { loadModelCatalogPayload, modelCatalogPathCandidates } from "@ccr/core/models/catalog-file.ts";
+import { loadModelCatalogPayload, modelCatalogPathCandidates, resolveModelCatalogPath } from "@ccr/core/models/catalog-file.ts";
 
 test("modelCatalogPathCandidates prefers env paths and removes duplicates", () => {
   const previousCatalogPath = process.env.CCR_MODEL_CATALOG_PATH;
@@ -43,6 +43,7 @@ test("loadModelCatalogPayload reads the first configured existing catalog", () =
 
     const loaded = loadModelCatalogPayload();
 
+    assert.equal(resolveModelCatalogPath(), catalogFile);
     assert.equal(loaded?.loadedFrom, catalogFile);
     assert.deepEqual(loaded?.payload, { models: [{ id: "test-model" }] });
   } finally {

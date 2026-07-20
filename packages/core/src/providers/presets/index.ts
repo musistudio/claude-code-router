@@ -9,6 +9,7 @@ import { kimiCodingProviderPreset } from "@ccr/core/providers/presets/kimi-codin
 import { minimaxChinaProviderPreset, minimaxGlobalProviderPreset } from "@ccr/core/providers/presets/minimax/index";
 import { mistralProviderPreset } from "@ccr/core/providers/presets/mistral/index";
 import { moonshotChinaProviderPreset, moonshotGlobalProviderPreset } from "@ccr/core/providers/presets/moonshot/index";
+import { nvidiaProviderPreset } from "@ccr/core/providers/presets/nvidia/index";
 import { openaiProviderPreset } from "@ccr/core/providers/presets/openai/index";
 import { openRouterProviderPreset } from "@ccr/core/providers/presets/openrouter/index";
 import { qiniuAiProviderPreset } from "@ccr/core/providers/presets/qiniu-ai/index";
@@ -36,6 +37,7 @@ export const providerPresets: ProviderPreset[] = [
   anthropicProviderPreset,
   geminiProviderPreset,
   openRouterProviderPreset,
+  nvidiaProviderPreset,
   deepSeekProviderPreset,
   kimiCodingProviderPreset,
   zhipuCnCodingProviderPreset,

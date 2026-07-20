@@ -19,6 +19,7 @@ export function shouldRestartGatewayForRuntimeConfigChange(previousConfig: AppCo
     JSON.stringify(previousConfig.proxy.targets) !== JSON.stringify(nextConfig.proxy.targets) ||
     JSON.stringify(previousConfig.proxy.upstream) !== JSON.stringify(nextConfig.proxy.upstream) ||
     JSON.stringify(previousConfig.agent) !== JSON.stringify(nextConfig.agent) ||
+    JSON.stringify(previousConfig.mediaTools) !== JSON.stringify(nextConfig.mediaTools) ||
     JSON.stringify(previousConfig.Providers) !== JSON.stringify(nextConfig.Providers) ||
     JSON.stringify(previousConfig.plugins) !== JSON.stringify(nextConfig.plugins) ||
     JSON.stringify(previousConfig.providerPlugins) !== JSON.stringify(nextConfig.providerPlugins) ||

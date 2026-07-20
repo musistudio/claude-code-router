@@ -6,14 +6,15 @@ import path from "node:path";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { applyClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "@ccr/core/agents/claude-app/launch";
-import { codexDesktopAppName, launchCodexAppProfile, launchZcodeAppProfile } from "@ccr/core/agents/codex/app-launch";
+import { codexDesktopAppName, launchZcodeAppProfile } from "@ccr/core/agents/codex/app-launch";
 import { loadAppConfig } from "@ccr/core/config/config";
 import { CONFIGDIR } from "@ccr/core/config/constants";
+import { resolveModelCatalogPath } from "@ccr/core/models/catalog-file";
 import { applyProfileConfig, applyProfileRuntimeConfig } from "@ccr/core/profiles/service";
 import { ensureProfileGateway, ProfileGatewayUnavailableError } from "@ccr/core/profiles/launch-service";
 import { buildProfileLaunchPlan, defaultProfileOpenSurface, findProfileForOpen, profileLaunchSpawnCommand, resolveProfileOpenSurface, shouldAutoStartProfileGateway } from "@ccr/core/profiles/launch-core";
 import { openSystemExternal, startWebManagementServer } from "@ccr/core/web/management-server";
-import { assertAvailableGatewayModels, type AppConfig, type GatewayStatus, type ProfileConfig, type ProfileOpenSurface } from "@ccr/core/contracts/app";
+import { assertAvailableGatewayModels, type AppConfig, type GatewayStatus, type ProfileConfig, type ProfileOpenResult, type ProfileOpenSurface } from "@ccr/core/contracts/app";
 
 type ProfileCliOptions = {
   agentArgs: string[];
@@ -120,6 +121,20 @@ async function main(): Promise<void> {
   if (profile.agent === "claude-code" && resolvedSurface === "app" && profileOptions.agentArgs.length > 0) {
     throw new Error("Claude App profiles do not support agent arguments.");
   }
+  if (profile.agent === "codex" && resolvedSurface === "app" && profileOptions.agentArgs.length === 0) {
+    const state = await startService({
+      command: "start",
+      daemonChild: false,
+      ensureGatewayRunning: true,
+      help: false,
+      open: false,
+      profileManaged: false,
+      startGateway: true
+    });
+    const opened = await callServiceRpc<ProfileOpenResult>(state, "openProfile", [{ profileId: profile.id, surface: "app" }], 30_000);
+    process.stdout.write(`${opened.message}\n`);
+    return;
+  }
 
   const autoStartProfileGateway = shouldAutoStartProfileGateway(profile, resolvedSurface);
   let profileGatewayLease = autoStartProfileGateway ? acquireManagedProfileGatewayLease() : undefined;
@@ -174,22 +189,13 @@ async function main(): Promise<void> {
       process.stdout.write(`Opened Claude App with ${profile.name || profile.id}.\n`);
       return;
     }
-    if ((profile.agent === "codex" || profile.agent === "zcode") && resolvedSurface === "app" && profileOptions.agentArgs.length === 0) {
-      if (profile.agent === "zcode") {
-        const launch = launchZcodeAppProfile(configDir, profile, launchConfig);
-        const spawnError = await waitForImmediateSpawnError(launch.child, 500);
-        if (spawnError) {
-          throw new Error(`Failed to open ZCode App: ${spawnError}`);
-        }
-        process.stdout.write(`Opened ZCode App with ${profile.name || profile.id}.\n`);
-      } else {
-        const launch = launchCodexAppProfile(configDir, profile, launchConfig);
-        const spawnError = await waitForImmediateSpawnError(launch.child, 500);
-        if (spawnError) {
-          throw new Error(`Failed to open ${codexDesktopAppName}: ${spawnError}`);
-        }
-        process.stdout.write(`Opened ${codexDesktopAppName} with ${profile.name || profile.id}.\n`);
+    if (profile.agent === "zcode" && resolvedSurface === "app" && profileOptions.agentArgs.length === 0) {
+      const launch = launchZcodeAppProfile(configDir, profile, launchConfig);
+      const spawnError = await waitForImmediateSpawnError(launch.child, 500);
+      if (spawnError) {
+        throw new Error(`Failed to open ZCode App: ${spawnError}`);
       }
+      process.stdout.write(`Opened ZCode App with ${profile.name || profile.id}.\n`);
       return;
     }
 
@@ -449,6 +455,10 @@ async function openManagementUrl(url: string): Promise<void> {
 function serviceChildEnv(serviceToken: string): NodeJS.ProcessEnv {
   const env = { ...process.env };
   env[serviceInstanceTokenEnv] = serviceToken;
+  const modelCatalogPath = resolveModelCatalogPath();
+  if (modelCatalogPath) {
+    env.CCR_MODEL_CATALOG_PATH = modelCatalogPath;
+  }
   if (process.versions.electron) {
     env.ELECTRON_RUN_AS_NODE = "1";
   } else {
@@ -927,7 +937,7 @@ async function waitForServiceUnavailable(state: ServiceState, timeoutMs: number)
   return appInfo?.name !== "Claude Code Router";
 }
 
-async function callServiceRpc<T>(state: ServiceState, method: string, args: unknown[] = []): Promise<T> {
+async function callServiceRpc<T>(state: ServiceState, method: string, args: unknown[] = [], timeoutMs = serviceRpcTimeoutMs): Promise<T> {
   const endpoint = serviceRpcEndpoint(state.url);
   const authToken = serviceAuthToken(state.url);
   if (!endpoint || !authToken) {
@@ -935,7 +945,7 @@ async function callServiceRpc<T>(state: ServiceState, method: string, args: unkn
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), serviceRpcTimeoutMs);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(endpoint, {
       body: JSON.stringify({ args, method }),

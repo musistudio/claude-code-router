@@ -71,6 +71,7 @@ function fallbackModelCatalogEntry(model: string): ModelCatalogEntry | undefined
     capabilities: {
       functionCalling: true,
       imageInput: true,
+      lowReasoningEffort: true,
       maxReasoningEffort: true,
       noneReasoningEffort: true,
       parallelFunctionCalling: true,
@@ -79,6 +80,7 @@ function fallbackModelCatalogEntry(model: string): ModelCatalogEntry | undefined
       structuredOutput: true,
       supports1MContext: true,
       toolCalling: true,
+      ultraReasoningEffort: !/^gpt-5\.6-luna(?:-|$)/.test(modelName),
       vision: true,
       webSearch: true,
       xhighReasoningEffort: true

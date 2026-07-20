@@ -79,7 +79,11 @@ test("gateway config rewrites Fusion fixed base and vision models to core provid
     profile.metadata.fusionVision.modelSelector,
     /^provider-zhipu-ai-china---coding-plan-[a-f0-9]{10}::openai_chat_completions::cred:test-1\/glm-5v-turbo$/
   );
+  assert.equal(profile.execution.maxToolCalls, Number.MAX_SAFE_INTEGER);
+  assert.equal(profile.execution.maxTurns, Number.MAX_SAFE_INTEGER);
   assert.equal(profiles[0].baseModel.fixedModel, `${providerName}/glm-5.2`);
+  assert.equal(profiles[0].execution.maxToolCalls, 8);
+  assert.equal(profiles[0].execution.maxTurns, 6);
 });
 
 test("issue 1480 Fusion vision config injects core auth token into MCP gateway runtime", async () => {

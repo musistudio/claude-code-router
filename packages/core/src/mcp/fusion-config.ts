@@ -3,7 +3,7 @@
  */
 import { join as pathJoin } from "node:path";
 import type { AppConfig, GatewayMcpServerConfig, VirtualModelFusionVisionConfig, VirtualModelFusionWebSearchConfig, VirtualModelFusionWebSearchProvider } from "@ccr/core/contracts/app";
-import { BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME } from "@ccr/core/contracts/app";
+import { BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, GROK_MEDIA_FUSION_TOOL_NAMES, MEDIA_TOOLS_MCP_SERVER_NAME, MEDIA_IMAGE_EDIT_TOOL_PREFIX, MEDIA_IMAGE_GENERATE_TOOL_PREFIX, MEDIA_JOB_CANCEL_TOOL_PREFIX, MEDIA_JOB_GET_TOOL_PREFIX, MEDIA_VIDEO_START_TOOL_PREFIX } from "@ccr/core/contracts/app";
 import { TOOL_HUB_MCP_SERVER_NAME, toolHubBuiltInBackendServers, toolHubMcpRuntimeConfig, toolHubRequestTimeoutMs } from "@ccr/core/mcp/toolhub-config";
 import { isRecord, numberValue, stringListValue, stringValue } from "@ccr/core/gateway/internal/value";
 import { defaultFusionWebSearchProvider, fusionModelProviderName } from "@ccr/core/gateway/internal/shared";
@@ -233,7 +233,7 @@ export function fusionFallbackToolDefinitions(
         if (!name) {
           continue;
         }
-        if (backedToolNames.has(name)) {
+        if (fusionToolIsBacked(name, backedToolNames)) {
           continue;
         }
 
@@ -345,6 +345,9 @@ export function fusionToolNamesBackedByMcpServers(servers: unknown[]): Set<strin
     const serverName = stringValue(server.name);
     if (serverName) {
       names.add(serverName);
+      if (serverName === MEDIA_TOOLS_MCP_SERVER_NAME) {
+        for (const toolName of GROK_MEDIA_FUSION_TOOL_NAMES) names.add(toolName);
+      }
     }
 
     const env = isRecord(server.env) ? server.env : undefined;
@@ -354,6 +357,19 @@ export function fusionToolNamesBackedByMcpServers(servers: unknown[]): Set<strin
     }
   }
   return names;
+}
+
+
+function fusionToolIsBacked(name: string, backedToolNames: Set<string>): boolean {
+  if (backedToolNames.has(name)) return true;
+  if (!backedToolNames.has(MEDIA_TOOLS_MCP_SERVER_NAME)) return false;
+  return [
+    MEDIA_IMAGE_EDIT_TOOL_PREFIX,
+    MEDIA_IMAGE_GENERATE_TOOL_PREFIX,
+    MEDIA_JOB_CANCEL_TOOL_PREFIX,
+    MEDIA_JOB_GET_TOOL_PREFIX,
+    MEDIA_VIDEO_START_TOOL_PREFIX
+  ].some((prefix) => name === prefix || name.startsWith(`${prefix}_`));
 }
 
 

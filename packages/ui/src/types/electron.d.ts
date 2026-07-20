@@ -71,6 +71,10 @@ import type {
   RequestLogEntry,
   RequestLogListFilter,
   RequestLogPage,
+  RouteScriptTestRequest,
+  RouteScriptTestResult,
+  RouteScriptValidationRequest,
+  RouteScriptValidationResult,
   UsageStatsFilter,
   UsageStatsRange,
   UsageStatsSnapshot
@@ -145,9 +149,11 @@ declare global {
       scanBotHandoffBluetoothTargets: () => Promise<BotHandoffScanTarget[]>;
       scanBotHandoffWifiTargets: () => Promise<BotHandoffScanTarget[]>;
       testProviderAccountConnector: (request: ProviderAccountTestRequest) => Promise<ProviderAccountTestResult>;
+      testRouteScript: (request: RouteScriptTestRequest) => Promise<RouteScriptTestResult>;
       updateCheck: () => Promise<AppUpdateStatus>;
       updateDownload: () => Promise<AppUpdateStatus>;
       updateInstall: () => Promise<void>;
+      validateRouteScript: (request: RouteScriptValidationRequest) => Promise<RouteScriptValidationResult>;
       waitBotGatewayQrLogin: (request: BotGatewayQrLoginWaitRequest) => Promise<BotGatewayQrLoginWaitResult>;
       onBeforeQuit: (callback: () => void) => () => void;
       onOpenSettingsRequest: (callback: () => void) => () => void;

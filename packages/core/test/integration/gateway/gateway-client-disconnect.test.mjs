@@ -69,7 +69,7 @@ test("gateway treats downstream client aborts as expected stream cleanup", async
     config.gateway.corePort = upstreamPort;
     config.gateway.host = "127.0.0.1";
     config.gateway.port = 0;
-    gatewayService.updateConfig(config);
+    await gatewayService.updateConfig(config);
     gatewayService.coreAuthToken = "test-core-auth-token";
 
     await listen(gateway);
