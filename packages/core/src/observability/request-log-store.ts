@@ -16,6 +16,7 @@ import {
 } from "@ccr/core/observability/request-log-runtime";
 import { maxRequestLogBodyBytes, rawTraceHardMaxBodyBytes } from "@ccr/core/observability/request-log-limits";
 import { compactBase64ImagePayloads } from "@ccr/core/observability/request-log-body";
+import { requestLogRequestedModel, requestLogResponseModel } from "@ccr/core/observability/request-log-model";
 import { isSensitiveRequestLogHeaderName } from "@ccr/core/observability/sensitive-headers";
 import type {
   AgentAnalysisAgentRow,
@@ -110,15 +111,18 @@ export type RequestLogRecordInput = {
   path: string;
   providerName?: string;
   providerProtocol?: GatewayProviderProtocol;
+  requestedModel?: string;
   requestBody: Buffer;
   requestBodySizeBytes?: number;
   requestBodyTruncated?: boolean;
   requestHeaders: HeaderRecord;
   requestId?: string;
+  resolvedModel?: string;
   routeTrace?: RequestRouteTrace;
   responseBodyText?: string;
   responseBodySizeBytes?: number;
   responseBodyTruncated?: boolean;
+  responseModel?: string;
   responseHeaders?: Headers | HeaderRecord;
   startedAt: string;
   statusCode: number;
@@ -210,6 +214,7 @@ type StoredRequestLogEntry = {
   path: string;
   provider: string;
   reasoningTokens: number;
+  requestedModel: string;
   requestBody: RequestLogBody;
   requestHeaders: Record<string, string | string[]>;
   requestId: string;
@@ -218,7 +223,9 @@ type StoredRequestLogEntry = {
   routeTrace?: RequestRouteTrace;
   routeTraceTruncated: boolean;
   retryAttempts: RequestLogRetryAttempt[];
+  resolvedModel: string;
   responseBody?: RequestLogBody;
+  responseModel: string;
   responseHeaders: Record<string, string | string[]>;
   statusCode: number;
   totalTokens: number;
@@ -504,7 +511,18 @@ export class RequestLogStore {
       usageHint: bodyUsage
     }) ?? {};
     const route = splitRouteSelector(input.fallbackModel);
-    const requestModel = normalizeFilterValue(input.model) ?? extractModelFromBody(input.requestBody.toString("utf8"));
+    const bodyModel = requestLogRequestedModel(input.requestBody, input.path);
+    const requestModel = normalizeFilterValue(input.model) ?? bodyModel;
+    const requestedModel = normalizeFilterValue(input.requestedModel) ?? bodyModel ?? "";
+    const resolvedModel = normalizeFilterValue(input.resolvedModel) ??
+      normalizeFilterValue(input.model) ??
+      route.model ??
+      bodyModel ??
+      normalizeFilterValue(input.fallbackModel) ??
+      "";
+    const responseModel = normalizeFilterValue(input.responseModel) ??
+      requestLogResponseModel(responseBodyText) ??
+      "";
     const provider =
       normalizeFilterValue(input.providerName) ??
       readResponseHeader(input.responseHeaders, "x-gateway-target-provider-name") ??
@@ -574,6 +592,9 @@ export class RequestLogStore {
         credential_chain,
         credential_saturated,
         model,
+        requested_model,
+        resolved_model,
+        response_model,
         route_trace_version,
         route_hop_count,
         route_attempt_count,
@@ -602,7 +623,7 @@ export class RequestLogStore {
         response_body_size_bytes,
         response_body_truncated,
         error
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     let inserted = false;
@@ -621,6 +642,9 @@ export class RequestLogStore {
         credentialInfo.chain.join(","),
         credentialInfo.saturated ? 1 : 0,
         model,
+        requestedModel,
+        resolvedModel,
+        responseModel,
         input.routeTrace?.version ?? 0,
         input.routeTrace?.hopCount ?? 0,
         input.routeTrace?.attemptCount ?? 0,
@@ -747,6 +771,9 @@ export class RequestLogStore {
     const path = normalizeFilterValue(input.path) ?? pathFromUrl(url);
     const usagePath = path ?? existingUsageContext.path;
     const modelFromTrace = normalizeFilterValue(input.model);
+    const responseModelFromTrace = rawInput.responseBodyText === undefined
+      ? undefined
+      : requestLogResponseModel(rawInput.responseBodyText);
     const providerFromTrace = normalizeFilterValue(input.provider);
     const statusCode = rawStatusCode;
     const requestCredentialHeaders = input.requestHeaders ?? {};
@@ -764,6 +791,8 @@ export class RequestLogStore {
     pushValue("url", url);
     pushValue("provider", providerFromTrace);
     pushValue("model", modelFromTrace);
+    pushValue("resolved_model", modelFromTrace);
+    pushValue("response_model", responseModelFromTrace);
     // The gateway's terminal failure is authoritative, even when it has only
     // an HTTP error status and no error string. A final-attempt raw failure may
     // still refine a gateway success (for example an SSE error inside HTTP 200).
@@ -917,6 +946,9 @@ export class RequestLogStore {
             credential_chain,
             credential_saturated,
             model,
+            requested_model,
+            resolved_model,
+            response_model,
             route_trace_version,
             route_hop_count,
             route_attempt_count,
@@ -1010,6 +1042,9 @@ export class RequestLogStore {
             credential_chain,
             credential_saturated,
             model,
+            requested_model,
+            resolved_model,
+            response_model,
             is_stream,
             status_code,
             ok,
@@ -1153,6 +1188,9 @@ export class RequestLogStore {
         credential_chain TEXT NOT NULL DEFAULT '',
         credential_saturated INTEGER NOT NULL DEFAULT 0,
         model TEXT NOT NULL DEFAULT 'unknown',
+        requested_model TEXT NOT NULL DEFAULT '',
+        resolved_model TEXT NOT NULL DEFAULT '',
+        response_model TEXT NOT NULL DEFAULT '',
         route_trace_version INTEGER NOT NULL DEFAULT 0,
         route_hop_count INTEGER NOT NULL DEFAULT 0,
         route_attempt_count INTEGER NOT NULL DEFAULT 0,
@@ -3157,12 +3195,47 @@ function parseDateMs(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function migrateRequestLogModelSummaries(database: SqlDatabase): void {
+  const rows = queryRows(database, `
+    SELECT
+      rowid AS id,
+      model,
+      path,
+      request_body_text,
+      response_body_text
+    FROM request_logs
+  `);
+  if (rows.length === 0) {
+    return;
+  }
+
+  const update = database.prepare(`
+    UPDATE request_logs
+    SET requested_model = ?, resolved_model = ?, response_model = ?
+    WHERE rowid = ?
+  `);
+  database.transaction(() => {
+    for (const row of rows) {
+      const requestedModel = requestLogRequestedModel(
+        String(row.request_body_text ?? ""),
+        String(row.path ?? "")
+      ) ?? "";
+      const resolvedModel = normalizeFilterValue(String(row.model ?? "")) ?? "";
+      const responseModel = requestLogResponseModel(String(row.response_body_text ?? "")) ?? "";
+      update.run(requestedModel, resolvedModel, responseModel, normalizeCount(row.id));
+    }
+  })();
+}
+
 function ensureRequestLogSchema(database: SqlDatabase): void {
   const columns = new Set(
     queryRows(database, "PRAGMA table_info(request_logs)")
       .map((row) => String(row.name ?? ""))
       .filter(Boolean)
   );
+  const needsModelSummaryMigration = !columns.has("requested_model") ||
+    !columns.has("resolved_model") ||
+    !columns.has("response_model");
   const addColumn = (name: string, definition: string) => {
     if (!columns.has(name)) {
       database.exec(`ALTER TABLE request_logs ADD COLUMN ${name} ${definition}`);
@@ -3184,6 +3257,9 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   addColumn("credential_chain", "TEXT NOT NULL DEFAULT ''");
   addColumn("credential_saturated", "INTEGER NOT NULL DEFAULT 0");
   addColumn("model", "TEXT NOT NULL DEFAULT 'unknown'");
+  addColumn("requested_model", "TEXT NOT NULL DEFAULT ''");
+  addColumn("resolved_model", "TEXT NOT NULL DEFAULT ''");
+  addColumn("response_model", "TEXT NOT NULL DEFAULT ''");
   addColumn("route_trace_version", "INTEGER NOT NULL DEFAULT 0");
   addColumn("route_hop_count", "INTEGER NOT NULL DEFAULT 0");
   addColumn("route_attempt_count", "INTEGER NOT NULL DEFAULT 0");
@@ -3218,6 +3294,10 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   addColumn("response_body_size_bytes", "INTEGER NOT NULL DEFAULT 0");
   addColumn("response_body_truncated", "INTEGER NOT NULL DEFAULT 0");
   addColumn("error", "TEXT NOT NULL DEFAULT ''");
+
+  if (needsModelSummaryMigration) {
+    migrateRequestLogModelSummaries(database);
+  }
 
   ensureRequestLogMigrationSchema(database);
   migrateGatewayOutcome(database);
@@ -3779,6 +3859,9 @@ function readRequestLogById(database: SqlDatabase, id: number): StoredRequestLog
         credential_chain,
         credential_saturated,
         model,
+        requested_model,
+        resolved_model,
+        response_model,
         route_trace_version,
         route_hop_count,
         route_attempt_count,
@@ -3852,6 +3935,7 @@ function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry
     path: normalizeLabel(String(row.path ?? ""), "/"),
     provider: normalizeLabel(String(row.provider ?? ""), "unknown"),
     reasoningTokens: normalizeCount(row.reasoning_tokens),
+    requestedModel: normalizeLabel(String(row.requested_model ?? ""), ""),
     requestBody,
     requestHeaders,
     requestId: String(row.request_id ?? ""),
@@ -3859,8 +3943,10 @@ function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry
     routeHopCount: normalizeCount(row.route_hop_count),
     routeTraceTruncated: normalizeCount(row.route_trace_truncated) === 1,
     retryAttempts: parseRequestLogRetryAttempts(responseHeaders, normalizeCount(row.status_code)),
+    resolvedModel: normalizeLabel(String(row.resolved_model ?? ""), ""),
     responseBody,
     responseHeaders,
+    responseModel: normalizeLabel(String(row.response_model ?? ""), ""),
     statusCode: normalizeCount(row.status_code),
     totalTokens: normalizeCount(row.total_tokens),
     url: String(row.url ?? "")
@@ -4669,14 +4755,6 @@ function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
       asNumber(usage.thinking_tokens),
     totalTokens: asNumber(usage.total_tokens)
   };
-}
-
-function extractModelFromBody(text: string): string | undefined {
-  const parsed = parseJson(text.trim());
-  if (!isRecord(parsed)) {
-    return undefined;
-  }
-  return asString(parsed.model);
 }
 
 function hasUsageNumbers(snapshot: UsageNumbers): boolean {

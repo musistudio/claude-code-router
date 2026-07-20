@@ -7,12 +7,76 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { getHeapStatistics } from "node:v8";
 import { createSseErrorDetector, RequestLogStore } from "@ccr/core/observability/request-log-store.ts";
+import { requestLogRequestedModel, requestLogResponseModel } from "@ccr/core/observability/request-log-model.ts";
 import { resolveStreamRequestLogOutcome } from "@ccr/core/gateway/internal/shared.ts";
 import { RequestRouteTraceRecorder } from "@ccr/core/observability/route-trace.ts";
 import { createBetterSqliteDatabase } from "@ccr/core/storage/sqlite-native.ts";
 
 const execFileAsync = promisify(execFile);
 const isBoundedHeapWorker = process.env.CCR_REQUEST_LOG_BOUNDED_HEAP_WORKER === "1";
+
+test("request log model summaries support routed paths and streamed responses", () => {
+  assert.equal(
+    requestLogRequestedModel("{}", "/v1beta/models/gemini-2.5-pro:streamGenerateContent"),
+    "gemini-2.5-pro"
+  );
+  assert.equal(
+    requestLogResponseModel([
+      "event: message_start",
+      "data: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-response\"}}",
+      "",
+      "event: message_stop",
+      "data: {\"type\":\"message_stop\"}"
+    ].join("\n")),
+    "claude-response"
+  );
+  assert.equal(
+    requestLogResponseModel("data: {\"type\":\"response.created\",\"response\":{\"model\":\"gpt-response\"}}\n\n"),
+    "gpt-response"
+  );
+});
+
+test("RequestLogStore backfills model summaries when upgrading an existing database", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-model-migration-test-"));
+  const dbFile = path.join(dir, "request-logs.sqlite");
+  let store;
+  try {
+    const legacy = createBetterSqliteDatabase(dbFile);
+    try {
+      legacy.exec(`
+        CREATE TABLE request_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          created_at TEXT NOT NULL,
+          method TEXT NOT NULL,
+          path TEXT NOT NULL,
+          model TEXT NOT NULL,
+          request_body_text TEXT NOT NULL,
+          response_body_text TEXT NOT NULL
+        );
+      `);
+      legacy.prepare(`
+        INSERT INTO request_logs (
+          created_at, method, path, model, request_body_text, response_body_text
+        ) VALUES (?, 'POST', '/v1/messages', 'resolved-model', ?, ?)
+      `).run(
+        new Date().toISOString(),
+        JSON.stringify({ model: "request-model" }),
+        JSON.stringify({ model: "response-model" })
+      );
+    } finally {
+      legacy.close();
+    }
+
+    store = new RequestLogStore(dbFile);
+    const page = await store.list({ pageSize: 25 });
+    assert.equal(page.items[0].requestedModel, "request-model");
+    assert.equal(page.items[0].resolvedModel, "resolved-model");
+    assert.equal(page.items[0].responseModel, "response-model");
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
 
 test("RequestLogStore resumes interrupted gateway migrations across bounded batches", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-paged-migration-test-"));
@@ -232,6 +296,9 @@ test("RequestLogStore keeps list rows lightweight and detail rows complete", asy
 
     const page = await store.list({ pageSize: 25 });
     assert.equal(page.items.length, 1);
+    assert.equal(page.items[0].requestedModel, "request-model");
+    assert.equal(page.items[0].resolvedModel, "request-model");
+    assert.equal(page.items[0].responseModel, "response-model");
     assert.equal(page.items[0].requestBody.text, "");
     assert.equal(page.items[0].responseBody?.text, "");
     assert.equal(page.items[0].requestBody.sizeBytes, Buffer.byteLength(body));
@@ -239,6 +306,9 @@ test("RequestLogStore keeps list rows lightweight and detail rows complete", asy
 
     const detail = await store.getDetail({ id: page.items[0].id });
     assert.ok(detail);
+    assert.equal(detail.requestedModel, "request-model");
+    assert.equal(detail.resolvedModel, "request-model");
+    assert.equal(detail.responseModel, "response-model");
     assert.match(detail.requestBody.text, /request-model/);
     assert.match(detail.responseBody?.text ?? "", /response-model/);
   } finally {

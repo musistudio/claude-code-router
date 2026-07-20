@@ -1935,6 +1935,7 @@ export type RequestLogEntry = {
   path: string;
   provider: string;
   reasoningTokens: number;
+  requestedModel?: string;
   requestBody: RequestLogBody;
   requestHeaders: Record<string, string | string[]>;
   requestId: string;
@@ -1943,7 +1944,9 @@ export type RequestLogEntry = {
   routeTrace?: RequestRouteTrace;
   routeTraceTruncated: boolean;
   retryAttempts: RequestLogRetryAttempt[];
+  resolvedModel?: string;
   responseBody?: RequestLogBody;
+  responseModel?: string;
   responseHeaders: Record<string, string | string[]>;
   statusCode: number;
   totalTokens: number;

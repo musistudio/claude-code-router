@@ -7,6 +7,7 @@ import {
   markGatewayRequestLogDropped,
   recordGatewayRequestLog
 } from "@ccr/core/observability/request-log-store";
+import { requestLogRequestedModel, requestLogResponseModel } from "@ccr/core/observability/request-log-model";
 import { recordGatewayUsageCapture, type UsageCaptureInput } from "@ccr/core/usage/store";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin";
 import { adaptRouteRequestBody, restoreRouteRequestBody } from "@ccr/core/routing/protocol-adapter";
@@ -75,6 +76,7 @@ export class GatewayRequestPipeline {
   
       const method = request.method ?? "GET";
       const requestBody = await readRequestBody(request);
+      const requestedModel = requestLogRequestedModel(requestBody, path);
       const startedAt = Date.now();
       const startedAtIso = new Date(startedAt).toISOString();
       const requestId = randomUUID();
@@ -243,14 +245,17 @@ export class GatewayRequestPipeline {
           path,
           providerName: resolveProviderLogName(responseHeaders, config, routedModel),
           providerProtocol: resolveResponseProviderProtocol(responseHeaders, this.config),
+          requestedModel,
           requestBody: shouldSendBody(method) ? bodyToForward ?? Buffer.alloc(0) : Buffer.alloc(0),
           requestHeaders: headers,
           requestId,
+          resolvedModel: routedModel,
           routeTrace: routeTrace?.finish({ captureBodyValues: captureBody }),
           responseBodyText,
           responseBodySizeBytes,
           responseBodyTruncated,
           responseHeaders,
+          responseModel: requestLogResponseModel(responseBodyText),
           startedAt: startedAtIso,
           statusCode,
           url: requestUrl
