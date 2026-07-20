@@ -16,6 +16,12 @@ import {
   moonshotGlobalProviderPreset
 } from "@ccr/core/providers/presets/moonshot/index.ts";
 import {
+  nvidiaProviderPreset
+} from "@ccr/core/providers/presets/nvidia/index.ts";
+import {
+  providerPresets
+} from "@ccr/core/providers/presets/index.ts";
+import {
   qiniuAiProviderPreset
 } from "@ccr/core/providers/presets/qiniu-ai/index.ts";
 import {
@@ -95,6 +101,23 @@ test("sponsor provider presets expose requested endpoints and protocols", () => 
   assert.deepEqual(unity2ProviderPreset.endpoints[0]?.protocols, [
     "openai_chat_completions"
   ]);
+});
+
+test("NVIDIA preset exposes the hosted NIM OpenAI-compatible endpoint", () => {
+  assert.equal(providerPresets.find((preset) => preset.id === "nvidia"), nvidiaProviderPreset);
+  assert.equal(nvidiaProviderPreset.websiteUrl, "https://build.nvidia.com/models");
+  assert.deepEqual(nvidiaProviderPreset.defaultModels, [
+    "nvidia/nemotron-3-super-120b-a12b",
+    "nvidia/nemotron-3-ultra-550b-a55b"
+  ]);
+  assert.deepEqual(nvidiaProviderPreset.endpoints, [
+    {
+      baseUrl: "https://integrate.api.nvidia.com/v1",
+      protocols: ["openai_chat_completions"]
+    }
+  ]);
+  assert.equal(providerPresetMatchesBaseUrl(nvidiaProviderPreset, "https://integrate.api.nvidia.com/v1/chat/completions"), true);
+  assert.equal(providerPresetMatchesBaseUrl(nvidiaProviderPreset, "https://build.nvidia.com/models"), false);
 });
 
 test("provider identity safety does not block branded third-party endpoints", () => {

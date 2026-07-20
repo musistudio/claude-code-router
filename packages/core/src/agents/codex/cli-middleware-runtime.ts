@@ -179,16 +179,9 @@ async function runClaudeCodeCliWrapper(args) {
 }
 
 function claudeCodeCliWrapperArgs(args) {
-  const modelArgs = claudeCodeArgsWithModel(args);
-  return claudeCodeArgsWithMcpConfig(modelArgs, process.env);
-}
-
-function claudeCodeArgsWithModel(args) {
-  const model = nonEmptyEnv("CCR_CLAUDE_CODE_MODEL") || nonEmptyEnv("CODEXL_CLAUDE_CODE_MODEL") || nonEmptyEnv("ANTHROPIC_MODEL");
-  if (!model || claudeCodeArgsHaveModel(args) || claudeCodeArgsShouldSkipModelInjection(args)) {
-    return args;
-  }
-  return ["--model", model, ...args];
+  // Keep the profile model as an environment default. Promoting it to an
+  // explicit startup argument can prevent /model from controlling the session.
+  return claudeCodeArgsWithMcpConfig(args, process.env);
 }
 
 function claudeCodeArgsWithMcpConfig(args, env) {
@@ -197,15 +190,6 @@ function claudeCodeArgsWithMcpConfig(args, env) {
     return args;
   }
   return ["--mcp-config", mcpConfig, ...args];
-}
-
-function claudeCodeArgsHaveModel(args) {
-  for (const arg of args) {
-    if (arg === "--model" || arg === "-m" || arg.startsWith("--model=")) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function claudeCodeArgsHaveMcpConfig(args) {

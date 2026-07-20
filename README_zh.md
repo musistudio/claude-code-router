@@ -64,7 +64,7 @@ Claude Code Router Desktop 是给编程 Agent 用的本地控制平面。它为 
 ## 为什么使用 CCR
 
 - **一个本地网关，接管整套 Agent 模型层**：客户端只需要指向 CCR，模型、供应商、Key、路由和工具能力都可以在桌面 UI 中调整。
-- **换供应商，不换工作流**：支持 OpenAI Chat / Responses、Anthropic Messages、Gemini Generate Content / Interactions、OpenRouter、DeepSeek、SiliconFlow、Moonshot、Kimi Code、Mistral、Z.AI、百炼以及自定义兼容供应商。
+- **换供应商，不换工作流**：支持 OpenAI Chat / Responses、Anthropic Messages、Gemini Generate Content / Interactions、OpenRouter、NVIDIA NIM、DeepSeek、SiliconFlow、Moonshot、Kimi Code、Mistral、Z.AI、百炼以及自定义兼容供应商。
 - **可见、可改、可验证的可靠性策略**：配置请求什么时候改写、重试或切到备用模型，并在本地日志里确认真实命中结果。
 - **面向 AI 工作流的运营视角**：从仪表盘或托盘查看请求量、Token、成本估算、成功率、延迟、模型分布、供应商用量和账号余额。
 - **Agent 原生工具与扩展**：使用 Fusion 扩展模型能力，通过 ToolHub 暴露动态 MCP 工具，让内置浏览器参与任务，通过 IM Bot 接力 Agent，或安装本地扩展。

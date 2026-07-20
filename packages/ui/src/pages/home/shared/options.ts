@@ -51,6 +51,7 @@ import fennoProviderIconUrl from "@/assets/provider-icons/fenno.jpg";
 import geminiProviderIconUrl from "@/assets/provider-icons/gemini.svg";
 import mistralProviderIconUrl from "@/assets/provider-icons/mistral.webp";
 import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
+import nvidiaProviderIconUrl from "@/assets/provider-icons/nvidia.svg";
 import openaiProviderIconUrl from "@/assets/provider-icons/openai.png";
 import openrouterProviderIconUrl from "@/assets/provider-icons/openrouter.ico";
 import qiniuAiProviderIconUrl from "@/assets/provider-icons/qiniu-ai.png";
@@ -351,6 +352,7 @@ export const providerPresetIconUrls: Record<string, string> = {
   mistral: mistralProviderIconUrl,
   moonshot: moonshotProviderIconUrl,
   "moonshot-global": moonshotProviderIconUrl,
+  nvidia: nvidiaProviderIconUrl,
   openai: openaiProviderIconUrl,
   openrouter: openrouterProviderIconUrl,
   "qiniu-ai": qiniuAiProviderIconUrl,

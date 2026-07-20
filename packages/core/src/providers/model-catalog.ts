@@ -38,6 +38,7 @@ const presetCatalogProviderIds: Record<string, string[]> = {
   mistral: ["mistral"],
   moonshot: ["moonshotai-cn"],
   "moonshot-global": ["moonshotai"],
+  nvidia: ["nvidia"],
   openai: ["openai"],
   openrouter: ["openrouter"],
   siliconflow: ["siliconflow-cn"],

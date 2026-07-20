@@ -275,7 +275,7 @@ test("Codex app-server delegates the native model catalog unchanged", { skip: pr
   });
 });
 
-test("Claude Code wrapper injects the scoped profile model into real CLI args", { skip: process.platform === "win32" }, () => {
+test("Claude Code wrapper leaves the scoped profile model as an environment default", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-wrapper-"));
   const runtimeFile = writeRuntimeScript(dir);
   const { fakeCli, outputFile } = writeFakeClaudeCli(dir);
@@ -294,12 +294,12 @@ test("Claude Code wrapper injects the scoped profile model into real CLI args", 
   });
 
   const observed = JSON.parse(readFileSync(outputFile, "utf8"));
-  assert.deepEqual(observed.argv, ["--model", "Fusion/kimisearch", "-p", "hi"]);
+  assert.deepEqual(observed.argv, ["-p", "hi"]);
   assert.equal(observed.env.ANTHROPIC_MODEL, "Fusion/kimisearch");
   assert.equal(observed.env.CCR_CLAUDE_CODE_MODEL, "Fusion/kimisearch");
 });
 
-test("Claude Code wrapper does not duplicate an explicit model argument", { skip: process.platform === "win32" }, () => {
+test("Claude Code wrapper preserves an explicit model argument", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-wrapper-"));
   const runtimeFile = writeRuntimeScript(dir);
   const { fakeCli, outputFile } = writeFakeClaudeCli(dir);
