@@ -132,6 +132,9 @@ import {
   normalizeProfileScopeValue,
   OVERVIEW_WIDGET_SIZE_VALUES,
   ROUTER_FALLBACK_MAX_RETRY_COUNT,
+  ROUTER_SCRIPT_API_VERSION,
+  ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS,
+  ROUTER_SCRIPT_MAX_TIMEOUT_MS,
   TRAY_SINGLETON_WIDGET_TYPES,
   TRAY_TOP_WIDGET_TYPES,
   TRAY_WINDOW_MODULE_IDS
@@ -205,6 +208,7 @@ import type {
   RequestLogListFilter,
   RequestLogPage,
   RequestLogStatusFilter,
+  RouteScriptSampleRequest,
   RouterBuiltInAgentRuleId,
   RouterBuiltInRulesConfig,
   RouterConfig,
@@ -470,6 +474,7 @@ export function normalizeRouterRules(value: unknown): RouterRule[] | undefined {
         pattern
       });
       const rewrites = normalizeRouterRuleRewrites(item);
+      const script = type === "script" ? normalizeRouterRuleScript(item.script ?? item) : undefined;
       const rawFallback = item.fallback ?? item.failureFallback ?? item.fallbackStrategy;
       const fallback = isPlainRecord(rawFallback) ? normalizeRouterFallbackConfig(rawFallback) : undefined;
       return {
@@ -481,12 +486,74 @@ export function normalizeRouterRules(value: unknown): RouterRule[] | undefined {
         ...(pattern ? { pattern } : {}),
         ...(rewrites.length === 1 ? { rewrite: rewrites[0] } : {}),
         ...(rewrites.length > 0 ? { rewrites } : {}),
+        ...(script ? { script } : {}),
         ...(target ? { target } : {}),
         ...(Number.isFinite(threshold) && threshold > 0 ? { threshold: Math.trunc(threshold) } : {}),
-        type: condition ? "condition" : type
+        type: type === "script" ? "script" : condition ? "condition" : type
       };
     })
     .filter((item): item is RouterRule => Boolean(item));
+}
+
+export function normalizeRouterRuleScript(value: unknown): RouterRule["script"] | undefined {
+  if (!isPlainRecord(value)) return undefined;
+  const file = stringValue(value.file ?? value.filePath ?? value.path);
+  const source = typeof value.source === "string"
+    ? value.source
+    : typeof value.code === "string"
+      ? value.code
+      : undefined;
+  if (!file && source === undefined) return undefined;
+  const language = stringValue(value.language)?.toLowerCase();
+  if (language && language !== "javascript" && language !== "js") return undefined;
+  const apiVersion = Number(value.apiVersion ?? value.version ?? ROUTER_SCRIPT_API_VERSION);
+  if (apiVersion !== ROUTER_SCRIPT_API_VERSION) return undefined;
+  const rawTimeout = Number(value.timeoutMs ?? value.timeout ?? ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS);
+  const timeoutMs = Number.isFinite(rawTimeout)
+    ? Math.max(10, Math.min(ROUTER_SCRIPT_MAX_TIMEOUT_MS, Math.trunc(rawTimeout)))
+    : ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS;
+  return {
+    apiVersion: ROUTER_SCRIPT_API_VERSION,
+    ...(file ? { file } : {}),
+    language: "javascript",
+    ...(source !== undefined ? { source } : {}),
+    timeoutMs
+  };
+}
+
+export function normalizeRouteScriptSampleRequest(value: unknown): RouteScriptSampleRequest {
+  if (!isPlainRecord(value) || !isPlainRecord(value.body)) {
+    throw new Error("Sample must be a JSON object with an object body");
+  }
+  const headers = normalizeRouteScriptSampleHeaders(value.headers);
+  return {
+    body: value.body,
+    headers,
+    ...(typeof value.method === "string" ? { method: value.method } : {}),
+    ...(typeof value.sessionId === "string" ? { sessionId: value.sessionId } : {}),
+    ...(typeof value.tokenCount === "number" ? { tokenCount: value.tokenCount } : {}),
+    ...(typeof value.url === "string" ? { url: value.url } : {})
+  };
+}
+
+function normalizeRouteScriptSampleHeaders(value: unknown): Record<string, string | string[]> {
+  if (value === undefined) return {};
+  if (!isPlainRecord(value)) {
+    throw new Error("Sample headers must be a JSON object containing string or string-array values");
+  }
+  const headers: Record<string, string | string[]> = {};
+  for (const [name, headerValue] of Object.entries(value)) {
+    if (typeof headerValue === "string") {
+      headers[name] = headerValue;
+      continue;
+    }
+    if (Array.isArray(headerValue) && headerValue.every((entry) => typeof entry === "string")) {
+      headers[name] = headerValue;
+      continue;
+    }
+    throw new Error("Sample headers must be a JSON object containing string or string-array values");
+  }
+  return headers;
 }
 
 export function normalizeRouterRuleCondition(value: unknown): RouterRuleCondition | undefined {

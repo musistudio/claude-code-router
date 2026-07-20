@@ -9,7 +9,7 @@ import {
   copyTextToClipboard,
   useCallback, useEffect, useMemo, useRef, useState, X
 } from "../shared/index";
-import { ModelSelector } from "./model-selector";
+import { ModelMultiSelector, ModelSelector } from "./model-selector";
 
 type ProfileActionBusy = {
   profileId: string;
@@ -631,7 +631,20 @@ export function AddProfileForm({
       >
         <Field label={t("Agent")}>
           <AgentSelectControl
-            onChange={(agent) => onChange({ agent })}
+            onChange={(agent) => onChange(agent === "grok" || agent === "kimi"
+              ? {
+                  agent,
+                  availableModels: [],
+                  botConfigId: "",
+                  botConfigured: true,
+                  botEnabled: false,
+                  model: "",
+                  scope: "ccr",
+                  surface: "cli"
+                }
+              : agent === "zcode"
+                ? { agent, surface: "app" }
+                : { agent })}
             value={draft.agent}
           />
         </Field>
@@ -642,7 +655,7 @@ export function AddProfileForm({
           <SelectControl
             onChange={(scope) => onChange({ scope: normalizeProfileScope(scope) })}
             options={translateOptions(
-              draft.agent === "grok"
+              draft.agent === "grok" || draft.agent === "kimi"
                 ? profileScopeOptions.filter((option) => option.value === "ccr")
                 : profileScopeOptions,
               t
@@ -666,7 +679,7 @@ export function AddProfileForm({
             options={translateOptions(
               draft.agent === "zcode"
                 ? profileSurfaceOptions.filter((option) => option.value === "app")
-                : draft.agent === "grok"
+                : draft.agent === "grok" || draft.agent === "kimi"
                   ? profileSurfaceOptions.filter((option) => option.value === "cli")
                 : profileSurfaceOptions,
               t
@@ -719,6 +732,34 @@ export function AddProfileForm({
               onChange={(model) => onChange({ model })}
             />
           </Field>
+        ) : draft.agent === "kimi" ? (
+          <>
+            <Field className="sm:col-span-2" label={t("Default model")}>
+              <ModelSelector
+                placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}
+                providers={providers}
+                value={draft.model}
+                virtualModelProfiles={virtualModelProfiles}
+                onChange={(model) => onChange({
+                  availableModels: model && !draft.availableModels.includes(model)
+                    ? [model, ...draft.availableModels]
+                    : draft.availableModels,
+                  model
+                })}
+              />
+            </Field>
+            <Field className="sm:col-span-2" label={t("Available models")}>
+              <ModelMultiSelector
+                providers={providers}
+                value={draft.availableModels}
+                virtualModelProfiles={virtualModelProfiles}
+                onChange={(availableModels) => onChange({
+                  availableModels,
+                  model: availableModels.includes(draft.model) ? draft.model : availableModels[0] ?? ""
+                })}
+              />
+            </Field>
+          </>
         ) : (
           <>
             <Field label={t("Provider ID")}>

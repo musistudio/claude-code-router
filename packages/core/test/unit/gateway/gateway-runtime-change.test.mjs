@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
+import { mediaToolsConfigFromRawForTest, virtualModelProfileFromRawForTest } from "@ccr/core/config/config.ts";
 import { shouldRestartGatewayForRuntimeConfigChange } from "@ccr/core/gateway/runtime-change.ts";
 
 test("ToolHub config changes restart the gateway runtime", () => {
@@ -23,6 +24,57 @@ test("ToolHub config changes restart the gateway runtime", () => {
   };
 
   assert.equal(shouldRestartGatewayForRuntimeConfigChange(previous, next), true);
+});
+
+test("media tool policy changes restart the gateway runtime", () => {
+  const previous = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const next = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  next.mediaTools.enabled = true;
+
+  assert.equal(shouldRestartGatewayForRuntimeConfigChange(previous, next), true);
+});
+
+test("legacy Grok media input migrates only internal policy and drops xAI-specific execution fields", () => {
+  const migrated = mediaToolsConfigFromRawForTest({
+    allowedInputRoots: ["/tmp/media"],
+    apiKey: "must-not-survive",
+    artifactTtlHours: 48,
+    backend: "xai-api",
+    baseUrl: "https://api.x.ai/v1",
+    enabled: true,
+    imageModel: "legacy-image-model",
+    maxImageConcurrency: 3,
+    videoModel: "legacy-video-model"
+  });
+
+  assert.deepEqual(migrated, {
+    allowedInputRoots: ["/tmp/media"],
+    artifactTtlHours: 48,
+    enabled: true,
+    maxImageConcurrency: 3
+  });
+});
+
+test("legacy virtual model tool loop limits are removed from application config", () => {
+  const migrated = virtualModelProfileFromRawForTest({
+    execution: {
+      clientToolsPolicy: "allow",
+      maxToolCalls: 8,
+      maxTurns: 6,
+      mode: "tool_loop",
+      streamMode: "optimistic"
+    },
+    id: "fusion-media"
+  });
+
+  assert.deepEqual(migrated, {
+    execution: {
+      clientToolsPolicy: "allow",
+      mode: "tool_loop",
+      streamMode: "optimistic"
+    },
+    id: "fusion-media"
+  });
 });
 
 test("upstream proxy config changes restart the gateway runtime", () => {

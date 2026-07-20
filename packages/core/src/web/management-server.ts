@@ -63,6 +63,8 @@ import type {
   ProviderManifestFetchRequest,
   RequestLogDetailRequest,
   RequestLogListFilter,
+  RouteScriptTestRequest,
+  RouteScriptValidationRequest,
   UsageStatsFilter,
   UsageStatsRange
 } from "@ccr/core/contracts/app";
@@ -254,7 +256,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
     if (synced.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig) || runtimeStatus.state !== "running") {
       runtimeStatus = await gatewayService.start(savedConfig);
     } else {
-      gatewayService.updateConfig(savedConfig);
+      await gatewayService.updateConfig(savedConfig);
     }
     if (config || synced.configChanged) {
       invalidateProviderAccountSnapshotCache();
@@ -373,7 +375,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
     const savedConfig = await saveApiKeysConfig(apiKeys as ApiKeyConfig[]);
     const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(savedConfig);
     const nextConfig = syncedClaudeAppConfig.config;
-    gatewayService.updateConfig(nextConfig);
+    await gatewayService.updateConfig(nextConfig);
     logProfileApplyResult(await applyProfileConfig(nextConfig));
     invalidateProviderAccountSnapshotCache();
     return nextConfig;
@@ -394,7 +396,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
     if (syncedClaudeAppConfig.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig)) {
       runtimeStatus = await gatewayService.start(savedConfig);
     } else {
-      gatewayService.updateConfig(savedConfig);
+      await gatewayService.updateConfig(savedConfig);
     }
     if ((options as AppSaveConfigOptions | undefined)?.applyProfile !== false) {
       await applyProfileIfServiceRunning(savedConfig, runtimeStatus);
@@ -421,6 +423,8 @@ const rpcHandlers: Record<string, RpcHandler> = {
   stopGateway: () => gatewayService.stop(),
   stopProfile: async (request) => stopProfileFromCcr(await loadAppConfig(), request as ProfileOpenRequest),
   testProviderAccountConnector: (request) => testProviderAccountConnector(request as ProviderAccountTestRequest),
+  testRouteScript: async (request) => gatewayService.testRouteScript(await loadAppConfig(), request as RouteScriptTestRequest),
+  validateRouteScript: (request) => gatewayService.validateRouteScript(request as RouteScriptValidationRequest),
   updateCheck: () => unsupportedUpdateStatus,
   updateDownload: () => unsupportedUpdateStatus,
   updateInstall: () => {

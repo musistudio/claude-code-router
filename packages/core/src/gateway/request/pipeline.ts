@@ -7,6 +7,7 @@ import {
   markGatewayRequestLogDropped,
   recordGatewayRequestLog
 } from "@ccr/core/observability/request-log-store";
+import { requestLogRequestedModel, requestLogResponseModel } from "@ccr/core/observability/request-log-model";
 import { recordGatewayUsageCapture, type UsageCaptureInput } from "@ccr/core/usage/store";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin";
 import { adaptRouteRequestBody, restoreRouteRequestBody } from "@ccr/core/routing/protocol-adapter";
@@ -22,6 +23,7 @@ import { createBodySampler, requestLogSampled, shouldRecordRequestLogs } from "@
 import { RequestRouteTraceRecorder } from "@ccr/core/observability/route-trace";
 import { endpoint } from "@ccr/core/gateway/core-runtime/supervisor";
 import { coreGatewayUsageAttributionConfig } from "@ccr/core/gateway/core-runtime/config-compiler";
+import { providerModelPricingForUsage } from "@ccr/core/models/pricing-service";
 import { clientClosedRequestStatusCode, clientDisconnectMessage, resolveStreamRequestLogOutcome, UpstreamRequestError } from "@ccr/core/gateway/internal/shared";
 import type { BrowserWebSearchMcpIntegration, BrowserWebSearchProtocolRecord, UpstreamFetchResult } from "@ccr/core/gateway/internal/shared";
 import { applyProviderCapabilityRouting, cancelResponseBody, destroyResponseStreams, fetchUpstreamWithFallback, mergeFallbackResponseHeaders, rewriteCapabilityResponseHeaders, uniqueStreams, upstreamResponseHeaders } from "@ccr/core/gateway/upstream/executor";
@@ -75,6 +77,7 @@ export class GatewayRequestPipeline {
   
       const method = request.method ?? "GET";
       const requestBody = await readRequestBody(request);
+      const requestedModel = requestLogRequestedModel(requestBody, path);
       const startedAt = Date.now();
       const startedAtIso = new Date(startedAt).toISOString();
       const requestId = randomUUID();
@@ -242,15 +245,23 @@ export class GatewayRequestPipeline {
           model: routedModel,
           path,
           providerName: resolveProviderLogName(responseHeaders, config, routedModel),
+          pricing: providerModelPricingForUsage(
+            config,
+            resolveProviderLogName(responseHeaders, config, routedModel),
+            routedModel
+          ),
           providerProtocol: resolveResponseProviderProtocol(responseHeaders, this.config),
+          requestedModel,
           requestBody: shouldSendBody(method) ? bodyToForward ?? Buffer.alloc(0) : Buffer.alloc(0),
           requestHeaders: headers,
           requestId,
+          resolvedModel: routedModel,
           routeTrace: routeTrace?.finish({ captureBodyValues: captureBody }),
           responseBodyText,
           responseBodySizeBytes,
           responseBodyTruncated,
           responseHeaders,
+          responseModel: requestLogResponseModel(responseBodyText),
           startedAt: startedAtIso,
           statusCode,
           url: requestUrl

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  normalizeProviderPresetCapabilitiesForTest
+} from "@ccr/core/config/config.ts";
+import {
   findProviderPresetByBaseUrlInList,
   findProviderPresetByIdentityInList,
   providerApiKeySafetyIssueInList,
@@ -15,6 +18,16 @@ import {
   moonshotChinaProviderPreset,
   moonshotGlobalProviderPreset
 } from "@ccr/core/providers/presets/moonshot/index.ts";
+import {
+  nvidiaProviderPreset
+} from "@ccr/core/providers/presets/nvidia/index.ts";
+import {
+  providerPresets
+} from "@ccr/core/providers/presets/index.ts";
+import {
+  normalizedProviderCapabilities,
+  providerCapabilityForClientProtocol
+} from "@ccr/core/providers/runtime-topology.ts";
 import {
   qiniuAiProviderPreset
 } from "@ccr/core/providers/presets/qiniu-ai/index.ts";
@@ -94,6 +107,79 @@ test("sponsor provider presets expose requested endpoints and protocols", () => 
   assert.equal(providerPresetMatchesBaseUrl(unity2ProviderPreset, "https://api.unity2.ai/v1"), false);
   assert.deepEqual(unity2ProviderPreset.endpoints[0]?.protocols, [
     "openai_chat_completions"
+  ]);
+});
+
+test("NVIDIA preset exposes the hosted NIM OpenAI-compatible endpoint", () => {
+  assert.equal(providerPresets.find((preset) => preset.id === "nvidia"), nvidiaProviderPreset);
+  assert.equal(nvidiaProviderPreset.websiteUrl, "https://build.nvidia.com/models");
+  assert.deepEqual(nvidiaProviderPreset.defaultModels, [
+    "nvidia/nemotron-3-super-120b-a12b",
+    "nvidia/nemotron-3-ultra-550b-a55b"
+  ]);
+  assert.deepEqual(nvidiaProviderPreset.endpoints, [
+    {
+      baseUrl: "https://integrate.api.nvidia.com/v1",
+      protocols: ["openai_chat_completions"]
+    }
+  ]);
+  assert.equal(providerPresetMatchesBaseUrl(nvidiaProviderPreset, "https://integrate.api.nvidia.com/v1/chat/completions"), true);
+  assert.equal(providerPresetMatchesBaseUrl(nvidiaProviderPreset, "https://build.nvidia.com/models"), false);
+});
+
+test("NVIDIA preset ignores stale Responses detection and converts Codex requests to Chat Completions", () => {
+  const provider = {
+    api_base_url: "https://integrate.api.nvidia.com/v1",
+    capabilities: [
+      {
+        baseUrl: "https://integrate.api.nvidia.com/v1",
+        source: "detected",
+        type: "openai_chat_completions"
+      },
+      {
+        baseUrl: "https://integrate.api.nvidia.com/v1",
+        source: "detected",
+        type: "openai_responses"
+      }
+    ],
+    models: ["z-ai/glm-5.2"],
+    name: "NVIDIA"
+  };
+
+  assert.deepEqual(normalizedProviderCapabilities(provider), [
+    {
+      baseUrl: "https://integrate.api.nvidia.com/v1",
+      source: "detected",
+      type: "openai_chat_completions"
+    }
+  ]);
+  assert.equal(
+    providerCapabilityForClientProtocol(provider, "openai_responses")?.type,
+    "openai_chat_completions"
+  );
+});
+
+test("NVIDIA config normalization removes a previously persisted Responses capability", () => {
+  const provider = normalizeProviderPresetCapabilitiesForTest({
+    api_base_url: "https://integrate.api.nvidia.com/v1",
+    capabilities: [
+      {
+        baseUrl: "https://integrate.api.nvidia.com/v1",
+        source: "detected",
+        type: "openai_responses"
+      }
+    ],
+    models: ["z-ai/glm-5.2"],
+    name: "NVIDIA"
+  });
+
+  assert.deepEqual(provider.capabilities, [
+    {
+      baseUrl: "https://integrate.api.nvidia.com/v1",
+      endpoint: undefined,
+      source: "preset",
+      type: "openai_chat_completions"
+    }
   ]);
 });
 

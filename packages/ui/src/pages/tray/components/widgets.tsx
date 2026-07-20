@@ -264,9 +264,9 @@ function TokenActivityGrid({
               gridRow: cell.dayIndex + 1
             }}
           >
-            <span className={`pointer-events-none absolute z-30 hidden min-w-[96px] rounded-md border border-white/10 bg-slate-950/95 px-2 py-1.5 text-left text-[10px] text-slate-100 shadow-[0_10px_24px_rgba(0,0,0,.32)] group-hover:block ${trayActivityTooltipPositionClass(cell, activity.weekCount)}`}>
+            <span className={`tray-activity-tooltip pointer-events-none absolute z-30 hidden min-w-[96px] rounded-md border px-2 py-1.5 text-left text-[10px] group-hover:block ${trayActivityTooltipPositionClass(cell, activity.weekCount)}`}>
               <span className="block font-bold">{cell.dateLabel}</span>
-              <span className="mt-0.5 block font-medium text-slate-400">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
+              <span className="tray-activity-tooltip-detail mt-0.5 block font-medium">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
             </span>
           </span>
         ))}

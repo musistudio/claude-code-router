@@ -8,7 +8,8 @@ import {
 import { detectedProviderFromHeaders, newApiKeyUsageAccountConfig, newApiUserSelfConnectorConfig } from "@ccr/core/providers/new-api.ts";
 import {
   checkGatewayProviderConnectivity,
-  isProviderProtocolEndpointSupportedForProbe
+  isProviderProtocolEndpointSupportedForProbe,
+  probeGatewayProvider
 } from "@ccr/core/providers/probe.ts";
 
 test("protocol support probe does not treat Gemini auth errors as every protocol", () => {
@@ -46,6 +47,45 @@ test("protocol support probe keeps auth-only fallback for unhinted endpoints", (
   );
 });
 
+test("NVIDIA probe never requests or persists the Responses protocol", async (t) => {
+  const previousFetch = globalThis.fetch;
+  const paths = [];
+
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    paths.push(url.pathname);
+    return new Response(JSON.stringify({ error: { message: "Unauthorized" } }), {
+      headers: { "content-type": "application/json" },
+      status: 401
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+
+  const probe = await probeGatewayProvider({
+    baseUrl: "https://integrate.api.nvidia.com/v1",
+    forceRefresh: true,
+    mode: "protocols",
+    protocols: ["openai_responses", "openai_chat_completions"]
+  });
+
+  assert.deepEqual(paths, ["/v1/chat/completions"]);
+  assert.deepEqual(
+    probe.protocols.map(({ protocol, status, supported }) => ({ protocol, status, supported })),
+    [{ protocol: "openai_chat_completions", status: 401, supported: true }]
+  );
+  assert.deepEqual(
+    probe.capabilities?.map(({ type }) => type),
+    ["openai_chat_completions"]
+  );
+  assert.equal(probe.detectedProtocol, "openai_chat_completions");
+  assert.equal(
+    probe.catalogModelMetadata?.["qwen/qwen2.5-coder-32b-instruct"]?.contextWindow,
+    128000
+  );
+});
+
 test("protocol support probe treats HTTP 400 validation as protocol support", () => {
   const message = "HTTP 400: * GenerateContentRequest.contents: contents is not specified";
 
@@ -78,6 +118,100 @@ test("protocol support probe still rejects HTTP 400 route misses", () => {
   assert.equal(
     isProviderProtocolEndpointSupportedForProbe(400, message, "openai_chat_completions", ["openai_chat_completions"]),
     false
+  );
+});
+
+test("media protocol support recognizes validation responses and HTTP 401 endpoints", () => {
+  assert.equal(
+    isProviderProtocolEndpointSupportedForProbe(
+      422,
+      "prompt is required",
+      "openai_image_generations",
+      []
+    ),
+    true
+  );
+  assert.equal(
+    isProviderProtocolEndpointSupportedForProbe(
+      401,
+      "Unauthorized",
+      "openai_video_generations",
+      []
+    ),
+    true
+  );
+  assert.equal(
+    isProviderProtocolEndpointSupportedForProbe(
+      401,
+      "Unauthorized",
+      "openai_video_generations",
+      ["openai_video_generations"]
+    ),
+    true
+  );
+  assert.equal(
+    isProviderProtocolEndpointSupportedForProbe(
+      401,
+      "Unauthorized",
+      "openai_image_generations",
+      []
+    ),
+    true
+  );
+  assert.equal(
+    isProviderProtocolEndpointSupportedForProbe(
+      401,
+      "unknown route",
+      "openai_image_generations",
+      []
+    ),
+    false
+  );
+  assert.equal(
+    isProviderProtocolEndpointSupportedForProbe(
+      403,
+      "Forbidden",
+      "openai_video_generations",
+      []
+    ),
+    false
+  );
+});
+
+test("provider probe exposes image and video capabilities when their endpoints return HTTP 401", async (t) => {
+  const previousFetch = globalThis.fetch;
+  const paths = [];
+
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    paths.push(url.pathname);
+    return new Response(JSON.stringify({ error: { message: "Unauthorized" } }), {
+      headers: { "content-type": "application/json" },
+      status: 401
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+
+  const probe = await probeGatewayProvider({
+    baseUrl: "http://127.0.0.1:49124/v1",
+    forceRefresh: true,
+    mode: "protocols",
+    protocols: ["openai_image_generations", "openai_video_generations"]
+  });
+
+  assert.deepEqual(paths, ["/v1/images/generations", "/v1/videos/generations"]);
+  assert.deepEqual(
+    probe.protocols.map(({ protocol, status, supported }) => ({ protocol, status, supported })),
+    [
+      { protocol: "openai_image_generations", status: 401, supported: true },
+      { protocol: "openai_video_generations", status: 401, supported: true }
+    ]
+  );
+  assert.deepEqual(
+    probe.capabilities?.map(({ type }) => type),
+    ["openai_image_generations", "openai_video_generations"]
   );
 });
 

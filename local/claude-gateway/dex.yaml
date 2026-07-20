@@ -1,0 +1,27 @@
+issuer: http://127.0.0.1:5556/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+oauth2:
+  skipApprovalScreen: true
+
+staticClients:
+  - id: claude-gateway-local
+    name: Claude Gateway Local
+    secret: local-client-secret
+    redirectURIs:
+      - http://localhost:8080/oauth/callback
+
+enablePasswordDB: true
+
+staticPasswords:
+  - email: dev@example.com
+    hash: "$2a$10$klluJBD.Yrmd0qbaUoM8VOy8QklhO/83qprudC1XMnMOgESwIfvCq"
+    username: dev
+    userID: "11111111-1111-1111-1111-111111111111"
+    groups:
+      - developers

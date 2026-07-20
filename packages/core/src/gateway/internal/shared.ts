@@ -3,7 +3,7 @@
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createRequire } from "node:module";
-import type { ApiKeyConfig, GatewayMcpServerConfig, GatewayProviderConfig, GatewayProviderProtocol, VirtualModelFusionWebSearchProvider } from "@ccr/core/contracts/app";
+import type { ApiKeyConfig, GatewayMcpServerConfig, GatewayProviderCapabilityProtocol, GatewayProviderConfig, GatewayProviderProtocol, VirtualModelFusionWebSearchProvider } from "@ccr/core/contracts/app";
 import type { ClaudeAppGatewayModelRouteOptions } from "@ccr/core/agents/claude-app/gateway-routes";
 import type { RouteModelRef } from "@ccr/core/routing/contracts";
 import { findModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
@@ -17,7 +17,7 @@ export type CoreGatewayProvider = {
   extraHeaders?: unknown;
   models: string[];
   name: string;
-  type: GatewayProviderProtocol;
+  type: GatewayProviderCapabilityProtocol;
 };
 
 

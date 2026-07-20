@@ -3,12 +3,13 @@
  */
 import { join as pathJoin } from "node:path";
 import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
-import { codexDefaultBaseUrl, readCodexAuth, readGrokAuth, resolveGrokAuth } from "@ccr/core/agents/local-providers/service";
+import { codexDefaultBaseUrl, kimiAccessTokenExpired, kimiIdentityHeaders, readCodexAuth, readGrokAuth, readKimiAuth, resolveGrokAuth, resolveKimiAuth } from "@ccr/core/agents/local-providers/service";
 import { grokAccessTokenExpired, grokClientVersion } from "@ccr/core/agents/local-providers/grok";
 import { pluginService } from "@ccr/core/plugins/service";
 import { normalizeRouteSelector, providerRuntimeId } from "@ccr/core/routing/model-registry";
 import { isRecord, stringListValue, stringValue } from "@ccr/core/gateway/internal/value";
 import { fusionBuiltinToolArtifacts, fusionToolFallbackMcpServer, normalizeFusionWebSearchProfileToolName, toolHubMcpServer, withCodexCompatibleVirtualModelProfiles, withFusionVirtualModelAliases, withFusionWebSearchToolInstructions } from "@ccr/core/mcp/fusion-config";
+import { mediaToolsMcpServer } from "@ccr/core/mcp/grok-media-config";
 import { resolveGatewayPublicModelId } from "@ccr/core/gateway/features/model-discovery";
 import { activeProviderCredentials, inferProtocol, normalizedProviderCapabilities, normalizeProviderProtocol, providerCapabilityForClientProtocol, providerCapabilityInternalName, providerCredentialInternalName, providerProtocolForClientProtocol, sortProviderCredentialsForConfig, toCoreGatewayProviders } from "@ccr/core/providers/runtime-topology";
 import { buildRawTraceConfig } from "@ccr/core/observability/raw-trace-sync";
@@ -20,6 +21,8 @@ import { isLocalClaudeCodeOauthProviderPlugin, mergeAnthropicBetaValues } from "
 import { resolveConfiguredProviderModelSelector, resolveUniqueConfiguredProviderModelSelector } from "@ccr/core/routing/model-resolution";
 
 const upstreamHeaderSanitizerPluginKey = "ccr-upstream-header-sanitizer";
+export const unlimitedVirtualModelToolCalls = Number.MAX_SAFE_INTEGER;
+export const unlimitedVirtualModelToolTurns = Number.MAX_SAFE_INTEGER;
 
 
 export async function compileCoreGatewayConfig(
@@ -41,7 +44,10 @@ export async function compileCoreGatewayConfig(
     ...(config.providerPlugins ?? []).filter(providerPluginEnabled),
     ...pluginService.getCoreProviderPlugins().filter(providerPluginEnabled)
   ]);
-  const providerPlugins = await withGrokOauthRuntimeDefaults(withCodexOauthRuntimeDefaults(configuredProviderPlugins));
+  const providerPlugins = await withKimiOauthRuntimeDefaults(
+    await withGrokOauthRuntimeDefaults(withCodexOauthRuntimeDefaults(configuredProviderPlugins))
+  );
+  const providerPluginsWithCapabilityAliases = withProviderCapabilityPluginAliases(providerPlugins, config.Providers);
   const codexOauthProviderNames = codexOauthLocalProviderNames(providerPlugins);
   const virtualModelProfiles = coreGatewayVirtualModelProfiles(config);
   const coreEndpoint = endpoint(config.gateway.coreHost, config.gateway.corePort);
@@ -76,12 +82,15 @@ export async function compileCoreGatewayConfig(
     ...(config.toolHub?.mcpServers ?? [])
   ];
   const toolHubServer = toolHubMcpServer(config, externalMcpServers);
+  const mediaMcpServer = mediaToolsMcpServer(config);
   const mcpServers = [
     ...builtinToolArtifacts.mcpServers,
+    ...(mediaMcpServer ? [mediaMcpServer] : []),
     ...(toolHubServer ? [toolHubServer] : externalMcpServers)
   ];
   const fallbackMcpServer = fusionToolFallbackMcpServer(virtualModelProfiles, [
     ...builtinToolArtifacts.mcpServers,
+    ...(mediaMcpServer ? [mediaMcpServer] : []),
     ...externalMcpServers
   ]);
   if (fallbackMcpServer) {
@@ -110,7 +119,10 @@ export async function compileCoreGatewayConfig(
     billingWebhook: {
       enabled: false
     },
-    bodyLimitBytes: 50 * 1024 * 1024,
+    // Seven 25 MB reference images expand to roughly 234 MB when encoded as
+    // JSON data URLs, so the internal gateway must accept the complete media
+    // request even though normal chat payloads are much smaller.
+    bodyLimitBytes: 256 * 1024 * 1024,
     host: config.gateway.coreHost,
     mcpGateway: {
       enabled: false
@@ -130,10 +142,52 @@ export async function compileCoreGatewayConfig(
       mcpServers
     },
     rawTrace: buildRawTraceConfig(config, rawTraceSyncToken),
-    providerPlugins,
+    providerPlugins: providerPluginsWithCapabilityAliases,
     providers,
     virtualModelProfiles
   };
+}
+
+
+function withProviderCapabilityPluginAliases(
+  providerPlugins: unknown[],
+  providers: GatewayProviderConfig[]
+): unknown[] {
+  const aliases: unknown[] = [];
+  const explicitlyBoundProviderNames = new Set(
+    providerPlugins
+      .map((plugin) => isRecord(plugin) ? stringValue(plugin.providerName)?.toLowerCase() : undefined)
+      .filter((name): name is string => Boolean(name))
+  );
+  for (const plugin of providerPlugins) {
+    if (!isRecord(plugin)) {
+      continue;
+    }
+    const providerName = stringValue(plugin.providerName);
+    const key = stringValue(plugin.key);
+    if (!providerName || !key) {
+      continue;
+    }
+    const provider = providers.find((item) => item.name.trim().toLowerCase() === providerName.toLowerCase());
+    if (!provider) {
+      continue;
+    }
+    for (const runtimeProvider of toCoreGatewayProviders(provider)) {
+      const runtimeProviderName = runtimeProvider.name.trim().toLowerCase();
+      if (
+        runtimeProviderName === providerName.toLowerCase() ||
+        explicitlyBoundProviderNames.has(runtimeProviderName)
+      ) {
+        continue;
+      }
+      aliases.push({
+        ...plugin,
+        key: `${key}-runtime-${runtimeProvider.name}`,
+        providerName: runtimeProvider.name
+      });
+    }
+  }
+  return [...providerPlugins, ...aliases];
 }
 
 
@@ -158,10 +212,13 @@ export function coreGatewayUsageAttributionConfig(
 
 
 function coreGatewayVirtualModelProfiles(config: AppConfig): unknown[] {
-  return normalizeCoreGatewayVirtualModelProfiles(withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases([
+  const configuredProfiles = [
     ...(config.virtualModelProfiles ?? []),
     ...pluginService.getVirtualModelProfiles()
-  ])), config);
+  ];
+  return normalizeCoreGatewayVirtualModelProfiles(withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases(
+    configuredProfiles
+  )), config);
 }
 
 
@@ -230,7 +287,21 @@ function normalizeCoreGatewayVirtualModelProfile(profile: unknown, config: AppCo
   }
 
   const profileAfterVision = nextProfile ?? profile;
-  const profileAfterWebSearchToolName = normalizeFusionWebSearchProfileToolName(profileAfterVision) ?? profileAfterVision;
+  const execution = isRecord(profileAfterVision.execution) ? profileAfterVision.execution : {};
+  const profileWithoutToolLoopLimits = stringValue(execution.mode) === "decorate_only"
+    ? profileAfterVision
+    : {
+        ...profileAfterVision,
+        execution: {
+          ...execution,
+          // Core Gateway requires numeric values and supplies finite defaults when
+          // either field is missing. MAX_SAFE_INTEGER is the internal no-limit
+          // sentinel for both dimensions; request timeout and cancellation remain.
+          maxToolCalls: unlimitedVirtualModelToolCalls,
+          maxTurns: unlimitedVirtualModelToolTurns
+        }
+      };
+  const profileAfterWebSearchToolName = normalizeFusionWebSearchProfileToolName(profileWithoutToolLoopLimits) ?? profileWithoutToolLoopLimits;
   return withFusionWebSearchToolInstructions(profileAfterWebSearchToolName) ?? profileAfterWebSearchToolName;
 }
 
@@ -353,6 +424,49 @@ async function withGrokOauthRuntimeDefaults(providerPlugins: unknown[]): Promise
 }
 
 
+async function withKimiOauthRuntimeDefaults(providerPlugins: unknown[]): Promise<unknown[]> {
+  if (!providerPlugins.some(isLocalKimiOauthProviderPlugin)) {
+    return providerPlugins;
+  }
+  const identityHeaders = kimiIdentityHeaders();
+  return Promise.all(providerPlugins.map(async (plugin) => {
+    if (!isLocalKimiOauthProviderPlugin(plugin)) {
+      return plugin;
+    }
+    const oauth = isRecord(plugin.kimiOauth) ? plugin.kimiOauth : {};
+    const oauthReference = {
+      key: stringValue(oauth.key),
+      oauthHost: stringValue(oauth.oauthHost) ?? stringValue(oauth.oauth_host)
+    };
+    const kimiAuth = await resolveKimiAuth(oauthReference).catch(() => readKimiAuth(oauthReference));
+    const currentAuth = isRecord(plugin.auth) ? plugin.auth : {};
+    const currentAuthHeaders = isRecord(currentAuth.headers) ? currentAuth.headers : {};
+    const currentRequest = isRecord(plugin.request) ? plugin.request : {};
+    const currentRequestHeaders = isRecord(currentRequest.headers) ? currentRequest.headers : {};
+    return {
+      ...plugin,
+      auth: {
+        ...currentAuth,
+        headers: {
+          ...currentAuthHeaders,
+          ...(kimiAuth?.accessToken && !kimiAccessTokenExpired(kimiAuth)
+            ? { authorization: `Bearer ${kimiAuth.accessToken}` }
+            : {})
+        }
+      },
+      request: {
+        ...currentRequest,
+        headers: {
+          ...currentRequestHeaders,
+          ...identityHeaders
+        },
+        strict: currentRequest.strict ?? true
+      }
+    };
+  }));
+}
+
+
 function codexOauthLocalProviderNames(providerPlugins: unknown[]): Set<string> {
   const names = new Set<string>();
   for (const plugin of providerPlugins) {
@@ -468,6 +582,15 @@ function isLocalGrokOauthProviderPlugin(value: unknown): value is Record<string,
 }
 
 
+function isLocalKimiOauthProviderPlugin(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const key = stringValue(value.key)?.toLowerCase() ?? "";
+  return key.startsWith("ccr-local-agent-") && key.includes("kimi-cli-oauth");
+}
+
+
 function withCodexBackendRequestTransform(request: unknown): Record<string, unknown> {
   const currentRequest = isRecord(request) ? request : {};
   const bodyRemove = Array.isArray(currentRequest.bodyRemove)
@@ -475,7 +598,7 @@ function withCodexBackendRequestTransform(request: unknown): Record<string, unkn
     : [];
   return {
     ...currentRequest,
-    bodyRemove: uniqueStrings([...bodyRemove, "max_output_tokens"])
+    bodyRemove: uniqueStrings([...bodyRemove, "max_output_tokens", "stop"])
   };
 }
 

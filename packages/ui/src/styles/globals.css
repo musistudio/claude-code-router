@@ -41,6 +41,7 @@
     --foreground: #23272f;
     --card: #ffffff;
     --card-foreground: #23272f;
+    --card-inset-highlight: rgba(255, 255, 255, .5);
     --popover: #ffffff;
     --popover-foreground: #23272f;
     --primary: #0f766e;
@@ -102,6 +103,7 @@
     --foreground: #e8ecef;
     --card: #181b1f;
     --card-foreground: #e8ecef;
+    --card-inset-highlight: transparent;
     --popover: #181b1f;
     --popover-foreground: #e8ecef;
     --primary: #2dd4bf;
@@ -156,6 +158,7 @@
       --foreground: #e8ecef;
       --card: #181b1f;
       --card-foreground: #e8ecef;
+      --card-inset-highlight: transparent;
       --popover: #181b1f;
       --popover-foreground: #e8ecef;
       --primary: #2dd4bf;
@@ -213,6 +216,16 @@
     width: 100%;
   }
 
+  .theme-aware-select {
+    color-scheme: inherit;
+  }
+
+  .theme-aware-select-option,
+  .theme-aware-select optgroup {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+  }
+
   html {
     overflow: hidden;
   }
@@ -261,6 +274,10 @@
     --tray-status-error: light-dark(#b4232d, #fecdd3);
     --tray-status-warning: light-dark(#8a4b00, #fef3c7);
     --tray-status-ok: light-dark(#006b5f, #ccfbf1);
+    --tray-tooltip-fill: light-dark(rgba(255, 255, 255, .96), rgba(36, 36, 40, .96));
+    --tray-tooltip-border: light-dark(rgba(60, 60, 67, .2), rgba(255, 255, 255, .14));
+    --tray-tooltip-shadow: light-dark(rgba(31, 35, 41, .16), rgba(0, 0, 0, .38));
+    --tray-tooltip-highlight: light-dark(rgba(255, 255, 255, .82), rgba(255, 255, 255, .08));
     background: transparent;
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
     overflow: hidden;
@@ -807,6 +824,21 @@
     background: var(--tray-panel-subtle-fill);
     border: 1px solid var(--tray-panel-subtle-border);
     border-radius: 11px;
+  }
+
+  .tray-activity-tooltip {
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    backdrop-filter: blur(18px) saturate(150%);
+    background: var(--tray-tooltip-fill);
+    border-color: var(--tray-tooltip-border);
+    box-shadow:
+      0 10px 28px var(--tray-tooltip-shadow),
+      inset 0 1px 0 var(--tray-tooltip-highlight);
+    color: var(--tray-text-primary);
+  }
+
+  .tray-activity-tooltip-detail {
+    color: var(--tray-text-secondary);
   }
 
   .tray-segmented {

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { buildCodexModelCatalog } from "@ccr/core/agents/codex/model-catalog.ts";
+import { buildCodexModelCatalog, buildCodexModelCatalogIds } from "@ccr/core/agents/codex/model-catalog.ts";
 
 function catalogModelFor(config, slug) {
   const catalog = buildCodexModelCatalog(config, slug);
@@ -12,7 +12,17 @@ function catalogModelFor(config, slug) {
   return model;
 }
 
-test("codex catalog treats unknown models as text-only without advanced tools", () => {
+test("codex catalog removes duplicate model IDs case-insensitively without reordering", () => {
+  const ids = buildCodexModelCatalogIds({
+    Providers: [
+      { name: "Provider", type: "openai_responses", models: ["Model-A", " model-a ", "MODEL-B"] }
+    ]
+  }, "provider/model-a");
+
+  assert.deepEqual(ids, ["provider/model-a", "Provider/MODEL-B"]);
+});
+
+test("codex catalog treats unknown models as text-only while enabling apply_patch", () => {
   const model = catalogModelFor({
     Providers: [
       { name: "Custom", type: "openai_chat_completions", models: ["unknown-model"] }
@@ -26,7 +36,7 @@ test("codex catalog treats unknown models as text-only without advanced tools", 
   assert.equal(model.supports_image_detail_original, false);
   assert.deepEqual(model.supported_reasoning_levels, []);
   assert.equal(model.default_reasoning_level, null);
-  assert.equal(model.apply_patch_tool_type, null);
+  assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
 test("codex catalog uses model catalog capabilities for known text models", () => {
@@ -43,7 +53,7 @@ test("codex catalog uses model catalog capabilities for known text models", () =
   assert.equal(model.supports_image_detail_original, false);
   assert.deepEqual(model.supported_reasoning_levels, []);
   assert.equal(model.default_reasoning_level, null);
-  assert.equal(model.apply_patch_tool_type, null);
+  assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
 test("codex catalog enables multimodal reasoning and search when provider protocol supports it", () => {
@@ -59,11 +69,57 @@ test("codex catalog enables multimodal reasoning and search when provider protoc
   assert.equal(model.supports_reasoning_summaries, true);
   assert.equal(model.supports_search_tool, true);
   assert.equal(model.web_search_tool_type, "text_and_image");
-  for (const effort of ["low", "medium", "high"]) {
-    assert.ok(model.supported_reasoning_levels.some((level) => level.effort === effort));
-  }
-  assert.equal(model.default_reasoning_level, "medium");
+  assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), [
+    "low",
+    "medium",
+    "high"
+  ]);
+  assert.equal(model.default_reasoning_level, null);
   assert.equal(model.apply_patch_tool_type, "freeform");
+});
+
+test("codex catalog honors configured image, web search, and six reasoning levels", () => {
+  const model = catalogModelFor({
+    Providers: [
+      {
+        modelMetadata: {
+          "deepseek-chat": {
+            capabilities: {
+              imageInput: true,
+              webSearch: true
+            },
+            supportedReasoningLevels: [
+              { description: "Low", effort: "low" },
+              { description: "Medium", effort: "medium" },
+              { description: "High", effort: "high" },
+              { description: "Extra high", effort: "xhigh" },
+              { description: "Max", effort: "max" },
+              { description: "Ultra", effort: "ultra" }
+            ],
+            supportsReasoningSummaries: true
+          }
+        },
+        models: ["deepseek-chat"],
+        name: "custom",
+        type: "openai_responses"
+      }
+    ]
+  }, "custom/deepseek-chat");
+
+  assert.deepEqual(model.input_modalities, ["text", "image"]);
+  assert.equal(model.supports_image_detail_original, true);
+  assert.equal(model.supports_parallel_tool_calls, true);
+  assert.equal(model.supports_reasoning_summaries, true);
+  assert.equal(model.supports_search_tool, true);
+  assert.equal(model.web_search_tool_type, "text_and_image");
+  assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), [
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+    "ultra"
+  ]);
 });
 
 test("codex catalog exposes current capabilities for the GPT-5.6 family", () => {
@@ -80,16 +136,141 @@ test("codex catalog exposes current capabilities for the GPT-5.6 family", () => 
     assert.equal(model.supports_image_detail_original, true);
     assert.equal(model.supports_parallel_tool_calls, true);
     assert.equal(model.supports_reasoning_summaries, true);
-    assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), [
-      "none",
+    const efforts = model.supported_reasoning_levels.map((level) => level.effort);
+    assert.deepEqual(efforts, [
       "low",
       "medium",
       "high",
       "xhigh",
-      "max"
+      "max",
+      ...(/-luna$/.test(modelName) ? [] : ["ultra"])
     ]);
+    assert.equal(new Set(efforts).size, efforts.length);
     assert.equal(model.default_reasoning_level, "medium");
   }
+});
+
+test("codex catalog uses documented reasoning levels instead of aggregate capability guesses", () => {
+  const cases = [
+    ["abacus", "mimo-v2-pro", [], null],
+    ["x-ai", "grok-4.5", ["low", "medium", "high"], "high"],
+    ["z-ai", "glm-4.5-air", [], null],
+    ["z-ai", "glm-5.2", ["minimal", "low", "medium", "high", "xhigh", "max"], "max"],
+    ["google", "gemini-3.5-flash", ["minimal", "low", "medium", "high"], "medium"],
+    ["deepseek", "deepseek-v4-flash", ["high", "max"], "high"],
+    ["deepseek", "deepseek-v4-pro", ["high", "max"], "high"],
+    ["opencode", "deepseek-v4-flash-free", ["high", "max"], "high"],
+    ["kimi", "kimi-k2.7-code", [], null]
+  ];
+
+  for (const [provider, modelName, expectedEfforts, expectedDefault] of cases) {
+    const model = catalogModelFor({
+      Providers: [
+        { name: provider, type: "openai_responses", models: [modelName] }
+      ]
+    }, `${provider}/${modelName}`);
+
+    assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), expectedEfforts);
+    assert.equal(new Set(expectedEfforts).size, expectedEfforts.length);
+    assert.equal(model.default_reasoning_level, expectedDefault);
+  }
+});
+
+test("codex catalog follows Anthropic's model-specific effort matrix", () => {
+  const cases = [
+    ["claude-fable-5", ["low", "medium", "high", "xhigh", "max"]],
+    ["claude-opus-4.8", ["low", "medium", "high", "xhigh", "max"]],
+    ["claude-opus-4-7", ["low", "medium", "high", "xhigh", "max"]],
+    ["claude-opus-4-6", ["low", "medium", "high", "max"]],
+    ["claude-sonnet-4.6", ["low", "medium", "high", "max"]],
+    ["claude-opus-4-5", ["low", "medium", "high"]],
+    ["claude-sonnet-4-5-20250929", []],
+    ["claude-haiku-4-5", []]
+  ];
+
+  for (const [modelName, expectedEfforts] of cases) {
+    const model = catalogModelFor({
+      Providers: [
+        { name: "anthropic", type: "anthropic_messages", models: [modelName] }
+      ]
+    }, `anthropic/${modelName}`);
+
+    assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), expectedEfforts);
+    assert.equal(model.default_reasoning_level, expectedEfforts.length > 0 ? "high" : null);
+  }
+});
+
+test("codex catalog follows official OpenAI API reasoning levels for custom providers", () => {
+  const cases = [
+    ["gpt-5.5", ["low", "medium", "high", "xhigh"], "medium"],
+    ["gpt-5.4", ["low", "medium", "high", "xhigh"], null],
+    ["gpt-5.4-mini", ["low", "medium", "high", "xhigh"], null],
+    ["gpt-5.3-codex", ["low", "medium", "high", "xhigh"], "medium"]
+  ];
+
+  for (const [modelName, expectedEfforts, expectedDefault] of cases) {
+    const model = catalogModelFor({
+      Providers: [
+        { name: "custom", type: "openai_responses", models: [modelName] }
+      ]
+    }, `custom/${modelName}`);
+
+    assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), expectedEfforts);
+    assert.equal(model.default_reasoning_level, expectedDefault);
+  }
+});
+
+test("codex catalog preserves explicit reasoning metadata while removing duplicate efforts", () => {
+  const model = catalogModelFor({
+    Providers: [
+      {
+        modelMetadata: {
+          "custom-reasoner": {
+            defaultReasoningLevel: "unsupported",
+            supportedReasoningLevels: [
+              { description: "No reasoning", effort: "none" },
+              { description: "First low", effort: " LOW " },
+              { description: "Duplicate low", effort: "low" },
+              { description: "High", effort: "HIGH" }
+            ],
+            supportsReasoningSummaries: true
+          }
+        },
+        models: ["custom-reasoner"],
+        name: "custom",
+        type: "openai_responses"
+      }
+    ]
+  }, "custom/custom-reasoner");
+
+  assert.deepEqual(model.supported_reasoning_levels, [
+    { description: "First low", effort: "low" },
+    { description: "High", effort: "high" }
+  ]);
+  assert.equal(model.default_reasoning_level, "high");
+});
+
+test("codex catalog preserves an explicit empty provider reasoning-level list", () => {
+  const model = catalogModelFor({
+    Providers: [
+      {
+        modelMetadata: {
+          "gpt-5.6-sol": {
+            defaultReasoningLevel: null,
+            supportedReasoningLevels: [],
+            supportsReasoningSummaries: false
+          }
+        },
+        models: ["gpt-5.6-sol"],
+        name: "custom",
+        type: "openai_responses"
+      }
+    ]
+  }, "custom/gpt-5.6-sol");
+
+  assert.deepEqual(model.supported_reasoning_levels, []);
+  assert.equal(model.default_reasoning_level, null);
+  assert.equal(model.supports_reasoning_summaries, false);
 });
 
 test("codex catalog uses provider model metadata for reasoning effort and speed tiers", () => {
@@ -205,7 +386,7 @@ test("codex catalog enables native search for Gemini Interactions providers", ()
   assert.equal(model.supports_search_tool, true);
 });
 
-test("codex catalog does not expose native search through chat-completions-only providers", () => {
+test("codex catalog omits native search but enables apply_patch for non-GPT chat-completions models", () => {
   const model = catalogModelFor({
     Providers: [
       { name: "openrouter", type: "openai_chat_completions", models: ["google/gemini-2.5-pro"] }
@@ -217,7 +398,7 @@ test("codex catalog does not expose native search through chat-completions-only 
   assert.equal(model.supports_reasoning_summaries, true);
   assert.equal(model.supports_search_tool, false);
   assert.equal(model.web_search_tool_type, "text");
-  assert.equal(model.apply_patch_tool_type, null);
+  assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
 test("codex catalog keeps freeform apply_patch for GPT-named chat-compatible models", () => {
@@ -266,7 +447,7 @@ test("codex catalog enables apply_patch bridge for non-GPT models when Codex bui
   assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
-test("codex catalog disables apply_patch bridge for non-GPT models when the Codex built-in route is off", () => {
+test("codex catalog automatically enables apply_patch bridge for non-GPT models when the Codex built-in route is off", () => {
   const model = catalogModelFor({
     Providers: [
       { name: "openrouter", type: "openai_chat_completions", models: ["google/gemini-2.5-pro"] }
@@ -281,7 +462,7 @@ test("codex catalog disables apply_patch bridge for non-GPT models when the Code
     }
   }, "openrouter/google/gemini-2.5-pro");
 
-  assert.equal(model.apply_patch_tool_type, null);
+  assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
 test("codex catalog marks Fusion aliases with builtin web search as searchable", () => {
@@ -314,7 +495,7 @@ test("codex catalog marks Fusion aliases with builtin web search as searchable",
   assert.deepEqual(model.input_modalities, ["text"]);
   assert.equal(model.supports_search_tool, true);
   assert.equal(model.web_search_tool_type, "text");
-  assert.equal(model.apply_patch_tool_type, null);
+  assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
 test("codex catalog marks image-recognition Fusion aliases as image capable", () => {
@@ -377,5 +558,95 @@ test("codex catalog marks prefixed Fusion virtual models with legacy web search 
   assert.deepEqual(model.input_modalities, ["text"]);
   assert.equal(model.supports_search_tool, true);
   assert.equal(model.web_search_tool_type, "text");
-  assert.equal(model.apply_patch_tool_type, null);
+  assert.equal(model.apply_patch_tool_type, "freeform");
+});
+
+test("codex catalog inherits reasoning levels from each Fusion alias base model", () => {
+  const cases = [
+    ["gpt", "gpt-5.6-sol", ["low", "medium", "high", "xhigh", "max", "ultra"], "medium"],
+    ["anthropic", "claude-sonnet-4.6", ["low", "medium", "high", "max"], "high"],
+    ["google", "gemini-3.5-flash", ["minimal", "low", "medium", "high"], "medium"],
+    ["kimi", "kimi-for-coding", [], null]
+  ];
+
+  for (const [providerName, baseModel, expectedEfforts, expectedDefault] of cases) {
+    const alias = `fusion-${providerName}`;
+    const model = catalogModelFor({
+      Providers: [
+        { name: providerName, type: "openai_responses", models: [baseModel] }
+      ],
+      virtualModelProfiles: [
+        {
+          baseModel: { fixedModel: `${providerName}/${baseModel}`, mode: "fixed" },
+          displayName: alias,
+          enabled: true,
+          execution: {
+            clientToolsPolicy: "allow",
+            maxToolCalls: 4,
+            maxTurns: 4,
+            mode: "tool_loop",
+            streamMode: "optimistic"
+          },
+          id: alias,
+          key: alias,
+          match: { exactAliases: [alias], prefixes: [], suffixes: [] },
+          materialization: { enabled: true, includeInGatewayModels: true },
+          tools: []
+        }
+      ]
+    }, `Fusion/${alias}`);
+
+    assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), expectedEfforts);
+    assert.equal(model.default_reasoning_level, expectedDefault);
+  }
+});
+
+test("codex catalog inherits explicit provider reasoning metadata through Fusion aliases", () => {
+  const model = catalogModelFor({
+    Providers: [
+      {
+        modelMetadata: {
+          "custom-base": {
+            contextWindow: 320000,
+            defaultReasoningLevel: "high",
+            supportedReasoningLevels: [
+              { description: "Quick", effort: "low" },
+              { description: "Thorough", effort: "high" }
+            ],
+            supportsReasoningSummaries: true
+          }
+        },
+        models: ["custom-base"],
+        name: "Custom Provider",
+        type: "openai_responses"
+      }
+    ],
+    virtualModelProfiles: [
+      {
+        baseModel: { fixedModel: "Custom Provider/custom-base", mode: "fixed" },
+        displayName: "Custom Fusion",
+        enabled: true,
+        execution: {
+          clientToolsPolicy: "allow",
+          maxToolCalls: 4,
+          maxTurns: 4,
+          mode: "tool_loop",
+          streamMode: "optimistic"
+        },
+        id: "custom-fusion",
+        key: "custom-fusion",
+        match: { exactAliases: ["custom-fusion"], prefixes: [], suffixes: [] },
+        materialization: { enabled: true, includeInGatewayModels: true },
+        tools: []
+      }
+    ]
+  }, "Fusion/custom-fusion");
+
+  assert.deepEqual(model.supported_reasoning_levels, [
+    { description: "Quick", effort: "low" },
+    { description: "Thorough", effort: "high" }
+  ]);
+  assert.equal(model.default_reasoning_level, "high");
+  assert.equal(model.supports_reasoning_summaries, true);
+  assert.equal(model.context_window, 320000);
 });

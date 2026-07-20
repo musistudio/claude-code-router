@@ -5,10 +5,13 @@ import {
   Badge,
   Button,
   Check,
+  Checkbox,
   ChevronDown,
   cn,
   GatewayProviderConfig,
   Input,
+  Label,
+  normalizeProviderModelSelector,
   parseProfileModelValue,
   PopoverContent,
   profileModelDisplayValue,
@@ -300,6 +303,95 @@ export function ModelSelector({
           </AnimatedPopover>
         ) : null}
       </AnimatePresence>
+    </div>
+  );
+}
+
+export function ModelMultiSelector({
+  onChange,
+  providers,
+  value,
+  virtualModelProfiles = []
+}: {
+  onChange: (value: string[]) => void;
+  providers: GatewayProviderConfig[];
+  value: string[];
+  virtualModelProfiles?: VirtualModelProfileConfig[];
+}) {
+  const t = useAppText();
+  const [query, setQuery] = useState("");
+  const providerOptions = useMemo(
+    () => profileModelProviderOptions(providers, virtualModelProfiles),
+    [providers, virtualModelProfiles]
+  );
+  const normalizedQuery = query.trim().toLowerCase();
+  const models = providerOptions.flatMap((provider) => provider.models
+    .map((model) => ({
+      displayName: profileModelOptionDisplayName(provider, model),
+      provider: provider.name,
+      value: `${provider.name}/${model}`
+    })))
+    .filter((model) => !normalizedQuery ||
+      model.provider.toLowerCase().includes(normalizedQuery) ||
+      model.value.toLowerCase().includes(normalizedQuery) ||
+      model.displayName.toLowerCase().includes(normalizedQuery));
+  const selected = new Set(value.map(normalizeProviderModelSelector).filter(Boolean));
+
+  function toggleModel(model: string) {
+    onChange(selected.has(model)
+      ? value.filter((candidate) => normalizeProviderModelSelector(candidate) !== model)
+      : [...value, model]);
+  }
+
+  function selectVisibleModels() {
+    onChange(Array.from(new Set([...value.map(normalizeProviderModelSelector).filter(Boolean), ...models.map((model) => model.value)])));
+  }
+
+  return (
+    <div className="rounded-md border border-input bg-card">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border p-2">
+        <div className="relative min-w-[180px] flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            aria-label={t("Search models")}
+            className="pl-8"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t("Search providers or models")}
+            value={query}
+          />
+        </div>
+        <Button disabled={models.length === 0} onClick={selectVisibleModels} size="sm" type="button" variant="outline">
+          {t("All")}
+        </Button>
+        <Button disabled={selected.size === 0} onClick={() => onChange([])} size="sm" type="button" variant="outline">
+          {t("Clear")}
+        </Button>
+      </div>
+      <div className="max-h-[220px] overflow-auto p-2">
+        {models.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-6 text-center text-[12px] text-muted-foreground">
+            {t(providerOptions.length === 0 ? "No models configured" : "No matching models")}
+          </div>
+        ) : null}
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {models.map((model) => {
+            const checked = selected.has(model.value);
+            return (
+              <Label
+                className={cn(
+                  "flex h-9 min-w-0 cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2 text-left text-[12px] transition-colors hover:bg-muted",
+                  checked && "border-primary bg-accent"
+                )}
+                key={model.value}
+                title={`${model.provider}/${model.displayName}`}
+              >
+                <Checkbox checked={checked} onCheckedChange={() => toggleModel(model.value)} />
+                <span className="min-w-0 flex-1 truncate">{model.provider} / {model.displayName}</span>
+              </Label>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

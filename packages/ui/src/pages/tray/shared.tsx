@@ -164,8 +164,12 @@ export function useTrayThemePreference(): void {
     };
 
     syncTheme();
+    const unsubscribeThemePreference = window.ccr?.onThemePreferenceChanged?.(applyTrayThemePreference);
     window.addEventListener("focus", syncTheme);
-    return () => window.removeEventListener("focus", syncTheme);
+    return () => {
+      unsubscribeThemePreference?.();
+      window.removeEventListener("focus", syncTheme);
+    };
   }, []);
 }
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -224,6 +224,42 @@ test("Codex local account credential falls back to the live auth file when plugi
 
   assert.equal(credential?.apiKey, accessToken);
   assert.equal(credential?.headers?.["ChatGPT-Account-Id"], "acct-live");
+});
+
+test("Kimi local account credential carries its API key and CLI identity", async (t) => {
+  const home = useTemporaryCodexHome(t, "ccr-kimi-account-plugin-");
+  const previousVersion = process.env.KIMI_CODE_VERSION;
+  process.env.KIMI_CODE_VERSION = "0.27.0-test";
+  t.after(() => {
+    if (previousVersion === undefined) delete process.env.KIMI_CODE_VERSION;
+    else process.env.KIMI_CODE_VERSION = previousVersion;
+  });
+
+  const credential = await localAgentProviderAccountCredentialForTest({
+    providerPlugins: [
+      {
+        auth: {
+          headers: { authorization: "Bearer kimi-plugin-key" },
+          strict: true
+        },
+        key: "ccr-local-agent-kimi-api-kimi-cli-api-key-internal",
+        providerName: "kimi-api::openai_chat_completions"
+      }
+    ]
+  }, {
+    api_base_url: "https://api.kimi.com/coding/v1",
+    api_key: localAgentProviderApiKey,
+    id: "kimi-api",
+    models: ["k3"],
+    name: "Renamed Kimi API",
+    type: "openai_chat_completions"
+  });
+
+  assert.equal(credential?.apiKey, "kimi-plugin-key");
+  assert.equal(credential?.headers?.["User-Agent"], "kimi-code-cli/0.27.0-test");
+  assert.equal(credential?.headers?.["X-Msh-Platform"], "kimi_code_cli");
+  assert.ok(credential?.headers?.["X-Msh-Device-Id"]);
+  assert.equal(existsSync(path.join(home, ".kimi-code", "device_id")), true);
 });
 
 test("ZCode local account credential matches internal provider plugin names", async () => {

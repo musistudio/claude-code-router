@@ -50,7 +50,7 @@ export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[
   if (profile.agent === "zcode") {
     return ["app"];
   }
-  if (profile.agent === "grok") {
+  if (profile.agent === "grok" || profile.agent === "kimi") {
     return ["cli"];
   }
   const surface = normalizeProfileSurface(profile.surface);
@@ -82,7 +82,7 @@ export function shouldAutoStartProfileGateway(
   profile: Pick<ProfileConfig, "agent">,
   surface: ProfileOpenSurface
 ): boolean {
-  return profile.agent === "grok" && surface === "cli";
+  return (profile.agent === "grok" || profile.agent === "kimi") && surface === "cli";
 }
 
 export function profileOpenCommand(
@@ -108,6 +108,9 @@ export function buildProfileLaunchPlan(
   const resolvedSurface = resolveProfileOpenSurface(profile, surface);
   if (profile.agent === "grok") {
     return buildGrokLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
+  }
+  if (profile.agent === "kimi") {
+    return buildKimiLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
   }
   if (profile.agent === "opencode") {
     return buildOpenCodeLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
@@ -151,6 +154,26 @@ function buildGrokLaunchPlan(
   return {
     args: extraArgs,
     command: path.join(configDir, "bin", grokWrapperFilename(profile)),
+    env: {
+      CCR_PROFILE_SURFACE: "cli"
+    },
+    profile,
+    surface
+  };
+}
+
+function buildKimiLaunchPlan(
+  configDir: string,
+  profile: ProfileConfig,
+  surface: ProfileOpenSurface,
+  extraArgs: string[]
+): ProfileLaunchPlan {
+  if (surface !== "cli") {
+    throw new Error("Kimi CLI profiles only support CLI opening.");
+  }
+  return {
+    args: extraArgs,
+    command: path.join(configDir, "bin", kimiWrapperFilename(profile)),
     env: {
       CCR_PROFILE_SURFACE: "cli"
     },
@@ -276,6 +299,13 @@ function grokWrapperFilename(profile: ProfileConfig): string {
   return process.platform === "win32"
     ? `ccr-grok-cli-wrapper-${slug}.cmd`
     : `ccr-grok-cli-wrapper-${slug}`;
+}
+
+function kimiWrapperFilename(profile: ProfileConfig): string {
+  const slug = sanitizePathSegment(profile.id || profile.name || profile.agent) || "kimi";
+  return process.platform === "win32"
+    ? `ccr-kimi-cli-wrapper-${slug}.cmd`
+    : `ccr-kimi-cli-wrapper-${slug}`;
 }
 
 function openCodeWrapperFilename(profile: ProfileConfig): string {

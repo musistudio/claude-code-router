@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { OverviewView } from "@ccr/ui/pages/home/components/dashboard.tsx";
+import { formatCodexResetCardExpiry, formatCodexResetCardNumber, OverviewView } from "@ccr/ui/pages/home/components/dashboard.tsx";
 import { parseStatusBucketDate } from "@ccr/ui/pages/home/shared/controls.tsx";
 import { providerAccountMeterDetailValidityProgress } from "@ccr/ui/pages/home/shared/provider-accounts.ts";
 import type { OverviewWidgetConfig, ProviderAccountSnapshot } from "@ccr/core/contracts/app.ts";
@@ -273,4 +273,10 @@ test("provider account reset credit detail progress uses each validity window", 
     effectiveAt: expiresAt,
     expiresAt
   }, Date.parse("2026-07-06T00:00:00.000Z")), undefined);
+});
+
+test("Codex reset cards format the credit id and expiry like card data", () => {
+  assert.deepEqual(formatCodexResetCardNumber("reset-root-1"), ["rese", "t-ro", "ot-1"]);
+  assert.equal(formatCodexResetCardExpiry("2026-08-02T00:00:00Z"), "08/02");
+  assert.equal(formatCodexResetCardExpiry("not-a-date"), "--/--");
 });

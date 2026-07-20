@@ -37,6 +37,20 @@ const ACCOUNT_REMOTE_PLUGIN_MARKETPLACE_KINDS = new Set([
   "shared-with-me",
   "workspace-directory"
 ]);
+const SIGNED_CODEX_SUPERVISOR_SOURCE = [
+  'const { spawn } = require("node:child_process");',
+  "const executable = process.argv[1];",
+  "const args = process.argv.slice(2);",
+  'const child = spawn(executable, args, { env: process.env, stdio: "inherit" });',
+  'for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {',
+  "  process.once(signal, () => child.kill(signal));",
+  "}",
+  'child.once("error", (error) => {',
+  '  console.error("Failed to launch supervised Codex CLI: " + error.message);',
+  "  process.exit(1);",
+  "});",
+  'child.once("exit", (code) => process.exit(code == null ? 1 : code));'
+].join("\n");
 let BOT_BRIDGE_INSTANCE = null;
 
 function claudeCodeUtcTimezoneEnvOverride() {
@@ -179,16 +193,9 @@ async function runClaudeCodeCliWrapper(args) {
 }
 
 function claudeCodeCliWrapperArgs(args) {
-  const modelArgs = claudeCodeArgsWithModel(args);
-  return claudeCodeArgsWithMcpConfig(modelArgs, process.env);
-}
-
-function claudeCodeArgsWithModel(args) {
-  const model = nonEmptyEnv("CCR_CLAUDE_CODE_MODEL") || nonEmptyEnv("CODEXL_CLAUDE_CODE_MODEL") || nonEmptyEnv("ANTHROPIC_MODEL");
-  if (!model || claudeCodeArgsHaveModel(args) || claudeCodeArgsShouldSkipModelInjection(args)) {
-    return args;
-  }
-  return ["--model", model, ...args];
+  // Keep the profile model as an environment default. Promoting it to an
+  // explicit startup argument can prevent /model from controlling the session.
+  return claudeCodeArgsWithMcpConfig(args, process.env);
 }
 
 function claudeCodeArgsWithMcpConfig(args, env) {
@@ -197,15 +204,6 @@ function claudeCodeArgsWithMcpConfig(args, env) {
     return args;
   }
   return ["--mcp-config", mcpConfig, ...args];
-}
-
-function claudeCodeArgsHaveModel(args) {
-  for (const arg of args) {
-    if (arg === "--model" || arg === "-m" || arg.startsWith("--model=")) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function claudeCodeArgsHaveMcpConfig(args) {
@@ -315,7 +313,8 @@ async function runCodexCliMiddleware(args) {
   }
 
   const cleanupAuthBootstrap = createEphemeralCodexApiKeyBootstrap(runtimeAgent);
-  const child = spawnAgentCli(realCli, realArgs, {
+  const launch = supervisedCodexAppServerLaunch(runtimeAgent, realCli, realArgs);
+  const child = spawnAgentCli(launch.command, launch.args, {
     env: childEnvForAgent(runtimeAgent),
     stdio: ["pipe", "pipe", "inherit"]
   });
@@ -357,6 +356,35 @@ async function runCodexCliMiddleware(args) {
   cleanupAuthBootstrap();
   log("codex_cli_exit", { code: exit.code, signal: exit.signal, exitCode: exit.exitCode });
   process.exitCode = exit.exitCode;
+}
+
+function supervisedCodexAppServerLaunch(runtimeAgent, realCli, realArgs) {
+  if (runtimeAgent !== "codex" || process.platform !== "darwin") {
+    return { command: realCli, args: realArgs };
+  }
+  const configured = nonEmptyEnv("CCR_SIGNED_CODEX_SUPERVISOR_NODE_PATH") ||
+    nonEmptyEnv("CODEXL_SIGNED_CODEX_SUPERVISOR_NODE_PATH");
+  const bundled = path.join(path.dirname(realCli), "cua_node", "bin", "node");
+  const node = [configured, bundled].find(isExecutableFile);
+  if (!node) {
+    return { command: realCli, args: realArgs };
+  }
+  // Browser's native-pipe authorizer validates the connecting process and its
+  // parent/grandparent. Keep the middleware while placing ChatGPT's signed Node
+  // runtime between it and the main app-server.
+  return {
+    command: node,
+    args: ["-e", SIGNED_CODEX_SUPERVISOR_SOURCE, realCli, ...realArgs]
+  };
+}
+
+function isExecutableFile(file) {
+  if (!file) return false;
+  try {
+    return fs.statSync(file).isFile();
+  } catch {
+    return false;
+  }
 }
 
 function createEphemeralCodexApiKeyBootstrap(runtimeAgent) {
@@ -1488,8 +1516,8 @@ class OpenCodeBotWorker {
     const entry = this.conversationEntry(key) || { sessionId: "", projectDirectory: this.projectDirectory(key), title: "" };
     const value = String(args || "").trim();
     if (!value) return "Current " + setting + ": " + (entry[setting] || "default") + ".";
-    const allowed = setting === "effort" ? new Set(["low", "medium", "high", "xhigh", "max", "reset"]) : null;
-    if (allowed && !allowed.has(value)) return "Supported effort values: low, medium, high, xhigh, max, reset.";
+    const allowed = setting === "effort" ? new Set(["low", "medium", "high", "xhigh", "max", "ultra", "reset"]) : null;
+    if (allowed && !allowed.has(value)) return "Supported effort values: low, medium, high, xhigh, max, ultra, reset.";
     entry[setting] = value === "reset" ? "" : value;
     entry.updatedAt = Date.now();
     this.setConversationEntry(key, entry);
@@ -3194,7 +3222,7 @@ class ClaudeCodeAppServer {
         ? entry.effort || thread && thread.reasoningEffort
         : entry[setting] || thread && thread[setting];
     if (!value) return "Current " + setting + ": " + (current || "default") + ".";
-    if (setting === "effort" && !["low", "medium", "high", "xhigh", "max", "reset"].includes(value)) return "Supported effort values: low, medium, high, xhigh, max, reset.";
+    if (setting === "effort" && !["low", "medium", "high", "xhigh", "max", "ultra", "reset"].includes(value)) return "Supported effort values: low, medium, high, xhigh, max, ultra, reset.";
     if (setting === "mode" && !["manual", "acceptEdits", "plan", "auto", "dontAsk", "reset"].includes(value)) return "Supported modes: manual, acceptEdits, plan, auto, dontAsk, reset.";
     const next = value === "reset" ? "" : value;
     if (setting === "mode") entry.permissionMode = next;
@@ -4568,14 +4596,30 @@ function loadChatGptAuth() {
     planType: "",
     workspaceName
   };
-  const value = readJsonFile(path.join(codexRuntimeHome(), "auth.json"));
-  if (!value || !isPlainObject(value)) return fallback;
-  if (typeof value.auth_mode === "string" && value.auth_mode !== "chatgpt") return fallback;
-  if (!isPlainObject(value.tokens)) return fallback;
+  const seen = new Set();
+  for (const authFile of [
+    path.join(codexRuntimeHome(), "auth.json"),
+    nonEmptyEnv("CCR_CODEX_CHATGPT_AUTH_FILE"),
+    nonEmptyEnv("CODEXL_CODEX_CHATGPT_AUTH_FILE")
+  ]) {
+    if (!authFile || seen.has(authFile)) continue;
+    seen.add(authFile);
+    const auth = chatGptAuthFromFile(authFile, workspaceName);
+    if (auth) return auth;
+  }
+  return fallback;
+}
+
+function chatGptAuthFromFile(authFile, workspaceName) {
+  const value = readJsonFile(authFile);
+  if (!value || !isPlainObject(value)) return undefined;
+  if (typeof value.auth_mode === "string" && value.auth_mode !== "chatgpt") return undefined;
+  if (!isPlainObject(value.tokens)) return undefined;
 
   const authToken = stringValue(value.tokens.access_token);
   const idToken = stringValue(value.tokens.id_token);
   const claims = jwtPayloadClaims(authToken) || jwtPayloadClaims(idToken) || {};
+  if (!usableChatGptAuthToken(authToken, claims)) return undefined;
   const profileClaims = isPlainObject(claims["https://api.openai.com/profile"])
     ? claims["https://api.openai.com/profile"]
     : {};
@@ -4588,6 +4632,12 @@ function loadChatGptAuth() {
     planType: stringValue(authClaims.chatgpt_plan_type) || stringValue(claims.chatgpt_plan_type),
     workspaceName
   };
+}
+
+function usableChatGptAuthToken(token, claims) {
+  if (!token) return false;
+  const expiresAt = Number(claims && claims.exp);
+  return !Number.isFinite(expiresAt) || expiresAt > Math.floor(Date.now() / 1000) + 30;
 }
 
 function jwtPayloadClaims(token) {
@@ -4605,6 +4655,7 @@ function jwtPayloadClaims(token) {
 }
 
 function codexAppAccountRead(auth) {
+  if (!auth.authToken) return mockAccountRead();
   return {
     account: {
       type: "chatgpt",
@@ -4616,6 +4667,7 @@ function codexAppAccountRead(auth) {
 }
 
 function codexAppAuthStatus(auth, includeToken) {
+  if (!auth.authToken) return mockAuthStatus(includeToken);
   const result = {
     authMethod: "chatgpt",
     requiresOpenaiAuth: true
@@ -6068,7 +6120,7 @@ function sessionCommandHelpText(agentName) {
     "/session archive <n> | restore <n> | delete <n> confirm",
     "/session history [count] - show recent turns",
     "/session model [selector|reset] - show or change model/provider",
-    "/session effort [low|medium|high|xhigh|max|reset]",
+    "/session effort [low|medium|high|xhigh|max|ultra|reset]",
     "/session mode [manual|acceptEdits|plan|auto|dontAsk|reset]",
     "/session usage - show the latest token and cost data",
     "/session memory [list|add <text>|clear] - manage persistent session context",
@@ -7026,10 +7078,21 @@ function codexRuntimeRealCli(agent) {
       nonEmptyEnv("ZCODE_CLI_PATH") ||
       "zcode";
   }
-  return nonEmptyEnv("CCR_REAL_CODEX_CLI_PATH") ||
-    nonEmptyEnv("CODEXL_REAL_CODEX_CLI_PATH") ||
-    nonEmptyEnv("CODEX_CLI_PATH") ||
-    "codex";
+  for (const candidate of [
+    nonEmptyEnv("CCR_REAL_CODEX_CLI_PATH"),
+    nonEmptyEnv("CODEXL_REAL_CODEX_CLI_PATH"),
+    nonEmptyEnv("CCR_BUNDLED_CODEX_CLI_PATH"),
+    nonEmptyEnv("CODEXL_BUNDLED_CODEX_CLI_PATH"),
+    nonEmptyEnv("CODEX_CLI_PATH")
+  ]) {
+    if (candidate && !codexCliPathIsMiddleware(candidate)) return candidate;
+  }
+  return "codex";
+}
+
+function codexCliPathIsMiddleware(value) {
+  const name = path.basename(String(value || "")).toLowerCase().replace(/\.cmd$/i, "");
+  return name === "ccr-codex-cli-middleware.js" || name.startsWith("ccr-codex-cli-stdio-");
 }
 
 function codexRuntimeHome() {

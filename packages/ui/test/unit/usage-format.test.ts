@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatLogTokenSummary } from "@ccr/ui/pages/home/shared/logs.ts";
+import { formatLogTokenSummary, logRequestModel, logResponseModel } from "@ccr/ui/pages/home/shared/logs.ts";
 import { formatCompactNumber, formatUsdCost as formatHomeUsdCost } from "@ccr/ui/pages/home/shared/usage.ts";
 import { formatUsdCost as formatTrayUsdCost } from "@ccr/ui/pages/tray/shared.tsx";
 import type { RequestLogEntry } from "@ccr/core/contracts/app.ts";
@@ -50,4 +50,41 @@ test("formatLogTokenSummary uses the provided locale for token counts", () => {
 
   assert.equal(formatLogTokenSummary(entry, translate, "en-US"), "123.5K 入  12K 出");
   assert.equal(formatLogTokenSummary(entry, translate, "zh-CN"), "12.3万 入  1.2万 出");
+});
+
+test("request log model summaries stay stable without list body text", () => {
+  const entry: RequestLogEntry = {
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    client: "test",
+    createdAt: "2026-07-20T00:00:00.000Z",
+    credentialChain: [],
+    credentialSaturated: false,
+    durationMs: 10,
+    id: 1,
+    inputTokens: 0,
+    isStream: true,
+    method: "POST",
+    model: "legacy-model",
+    ok: true,
+    outputTokens: 0,
+    path: "/v1/messages",
+    provider: "test-provider",
+    reasoningTokens: 0,
+    requestedModel: "request-model",
+    requestBody: { encoding: "utf8", sizeBytes: 128, text: "", truncated: false },
+    requestHeaders: {},
+    requestId: "req_models",
+    resolvedModel: "resolved-model",
+    responseHeaders: {},
+    responseModel: "response-model",
+    retryAttempts: [],
+    statusCode: 200,
+    totalTokens: 0,
+    url: "https://example.test/v1/messages"
+  };
+
+  assert.equal(logRequestModel(entry), "request-model");
+  assert.equal(logResponseModel(entry), "response-model");
+  assert.equal(logResponseModel({ ...entry, responseModel: "" }), "resolved-model");
 });

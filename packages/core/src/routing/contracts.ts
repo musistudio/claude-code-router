@@ -1,4 +1,5 @@
-import type { GatewayProviderConfig, RouterFallbackConfig, RouterRuleRewrite } from "@ccr/core/contracts/app";
+import type { GatewayProviderConfig, RouterFallbackConfig } from "@ccr/core/contracts/app";
+import type { CompiledRouteRewrite } from "@ccr/core/routing/rewrite";
 
 export type RouteSource = "builtin" | "custom" | "default" | "rule" | "subagent";
 
@@ -24,7 +25,14 @@ export type RouteDiagnosticCode =
   | "fallback-model-not-configured"
   | "profile-model-not-configured"
   | "rule-model-not-configured"
-  | "rule-provider-model-conflict";
+  | "rule-provider-model-conflict"
+  | "rule-rewrite-invalid"
+  | "script-api-unsupported"
+  | "script-invalid-result"
+  | "script-model-not-configured"
+  | "script-runtime-error"
+  | "script-source-invalid"
+  | "script-timeout";
 
 export type RouteDiagnostic = {
   code: RouteDiagnosticCode;
@@ -39,11 +47,12 @@ export type RouteDecision = {
   fallback: RouterFallbackConfig;
   model?: RouteModelRef;
   reason: string;
-  rewrites: RouterRuleRewrite[];
+  rewrites: CompiledRouteRewrite[];
   source: RouteSource;
 };
 
 export type RouteRequest = {
+  builtInClaudeCodeSubagent?: boolean;
   builtInSubagentModel?: string;
   body: Record<string, unknown>;
   headers: Record<string, string | string[] | undefined>;

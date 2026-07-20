@@ -37,6 +37,21 @@ test("parseProviderDeepLinkPayload reads payload JSON, models, descriptions, dis
     model_descriptions: {
       "model-a": "Fast general-purpose model."
     },
+    model_metadata: {
+      "model-a": {
+        capabilities: { image_input: true, web_search: true },
+        context_window: 128000,
+        pricing: {
+          cache_write_1h_usd_per_million_tokens: 6,
+          cache_write_5m_usd_per_million_tokens: 3.75,
+          input_usd_per_million_tokens: 2,
+          output_usd_per_million_tokens: 8
+        },
+        supported_reasoning_levels: ["low", "medium", "high", "xhigh", "max", "ultra"],
+        supports_reasoning_summaries: true
+      },
+      "not-installed": { context_window: 1 }
+    },
     models: [
       { description: "Best at coding tasks.", displayName: "Model B", id: "model-b" },
       "model-a,model-c"
@@ -60,6 +75,27 @@ test("parseProviderDeepLinkPayload reads payload JSON, models, descriptions, dis
   assert.deepEqual(parsed.modelDescriptions, {
     "model-a": "Fast general-purpose model.",
     "model-b": "Best at coding tasks."
+  });
+  assert.deepEqual(parsed.modelMetadata, {
+    "model-a": {
+      capabilities: { imageInput: true, webSearch: true },
+      contextWindow: 128000,
+      pricing: {
+        cacheWrite1hUsdPerMillionTokens: 6,
+        cacheWrite5mUsdPerMillionTokens: 3.75,
+        inputUsdPerMillionTokens: 2,
+        outputUsdPerMillionTokens: 8
+      },
+      supportedReasoningLevels: [
+        { description: "low", effort: "low" },
+        { description: "medium", effort: "medium" },
+        { description: "high", effort: "high" },
+        { description: "xhigh", effort: "xhigh" },
+        { description: "max", effort: "max" },
+        { description: "ultra", effort: "ultra" }
+      ],
+      supportsReasoningSummaries: true
+    }
   });
   assert.equal(parsed.account?.enabled, true);
   assert.equal(parsed.account?.refreshIntervalMs, 60000);

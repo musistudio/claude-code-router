@@ -5,10 +5,36 @@ import path from "node:path";
 import test from "node:test";
 import {
   codexDesktopAppName,
+  codexSharedChatGptAuthEnvForTest,
   findInstalledCodexAppExecutable,
   removeLegacyCodexVirtualAuthMarker,
   writeCodexCompatibleAppModelCatalog
 } from "@ccr/core/agents/codex/app-launch.ts";
+
+test("ChatGPT app launch shares Codex login only when an auth file is explicitly configured", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-chatgpt-shared-auth-"));
+  const authFile = path.join(root, "auth.json");
+  const previousCcr = process.env.CCR_CODEX_CHATGPT_AUTH_FILE;
+  const previousCodexl = process.env.CODEXL_CODEX_CHATGPT_AUTH_FILE;
+  try {
+    writeFileSync(authFile, JSON.stringify({ auth_mode: "chatgpt", tokens: { access_token: "token" } }));
+    delete process.env.CCR_CODEX_CHATGPT_AUTH_FILE;
+    delete process.env.CODEXL_CODEX_CHATGPT_AUTH_FILE;
+    assert.deepEqual(codexSharedChatGptAuthEnvForTest(), {});
+
+    process.env.CCR_CODEX_CHATGPT_AUTH_FILE = authFile;
+    assert.deepEqual(codexSharedChatGptAuthEnvForTest(), {
+      CCR_CODEX_CHATGPT_AUTH_FILE: authFile,
+      CODEXL_CODEX_CHATGPT_AUTH_FILE: authFile
+    });
+  } finally {
+    if (previousCcr === undefined) delete process.env.CCR_CODEX_CHATGPT_AUTH_FILE;
+    else process.env.CCR_CODEX_CHATGPT_AUTH_FILE = previousCcr;
+    if (previousCodexl === undefined) delete process.env.CODEXL_CODEX_CHATGPT_AUTH_FILE;
+    else process.env.CODEXL_CODEX_CHATGPT_AUTH_FILE = previousCodexl;
+    rmSync(root, { force: true, recursive: true });
+  }
+});
 
 test("ChatGPT model catalog write includes patch bridge capabilities", () => {
   const configDir = mkdtempSync(path.join(os.tmpdir(), "ccr-codex-app-catalog-"));

@@ -364,10 +364,13 @@ test("lightweight Fusion usage normalizes OpenAI cache tokens and estimates unco
     assert.equal(stats.models[0]?.provider, "OpenAI Compatible");
     assert.deepEqual(estimatedInputs, [{
       cacheReadTokens: 10,
+      cacheWrite1hTokens: 0,
+      cacheWrite5mTokens: 0,
       cacheWriteTokens: 0,
       inputTokens: 40,
       model: "openai-vision",
       outputTokens: 5,
+      pricing: undefined,
       provider: "OpenAI Compatible"
     }]);
   } finally {
@@ -409,10 +412,13 @@ test("lightweight Fusion usage preserves slash-containing external model IDs thr
     assert.equal(stats.recentRequests[0]?.logicalModel, model);
     assert.deepEqual(estimatedInputs, [{
       cacheReadTokens: 0,
+      cacheWrite1hTokens: 0,
+      cacheWrite5mTokens: 0,
       cacheWriteTokens: 0,
       inputTokens: 10,
       model,
       outputTokens: 3,
+      pricing: undefined,
       provider: "unknown"
     }]);
   } finally {

@@ -443,6 +443,9 @@ test("RequestLogRuntime preserves original response sizes when normal body captu
     runtime.enqueueRecord({
       ...createRecord("metadata-response"),
       captureBody: false,
+      requestedModel: "client-model",
+      resolvedModel: "resolved-model",
+      responseModel: "response-model",
       responseBodyText: "exists"
     });
     await runtime.flush({ timeoutMs: 10_000 });
@@ -453,6 +456,9 @@ test("RequestLogRuntime preserves original response sizes when normal body captu
     const truncated = await runtime.getDetail({ id: truncatedEntry.id });
     const metadata = await runtime.getDetail({ id: metadataEntry.id });
 
+    assert.equal(metadataEntry.requestedModel, "client-model");
+    assert.equal(metadataEntry.resolvedModel, "resolved-model");
+    assert.equal(metadataEntry.responseModel, "response-model");
     assert.equal(truncated.responseBody.sizeBytes, Buffer.byteLength(fullResponse));
     assert.equal(Buffer.byteLength(truncated.responseBody.text), 512 * 1024);
     assert.equal(truncated.responseBody.truncated, true);

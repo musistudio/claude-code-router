@@ -16,6 +16,7 @@ import {
 } from "@ccr/core/observability/request-log-runtime";
 import { maxRequestLogBodyBytes, rawTraceHardMaxBodyBytes } from "@ccr/core/observability/request-log-limits";
 import { compactBase64ImagePayloads } from "@ccr/core/observability/request-log-body";
+import { requestLogRequestedModel, requestLogResponseModel } from "@ccr/core/observability/request-log-model";
 import { isSensitiveRequestLogHeaderName } from "@ccr/core/observability/sensitive-headers";
 import type {
   AgentAnalysisAgentRow,
@@ -41,6 +42,7 @@ import type {
   AgentObservabilityRouteRow,
   AgentKind,
   GatewayProviderProtocol,
+  ProviderModelPricing,
   RequestLogBody,
   RequestLogDetailRequest,
   RequestLogEntry,
@@ -61,6 +63,8 @@ type HeaderRecord = Record<string, string | string[] | undefined>;
 
 type UsageNumbers = {
   cacheReadTokens?: number;
+  cacheWrite1hTokens?: number;
+  cacheWrite5mTokens?: number;
   cacheWriteTokens?: number;
   inputIncludesCacheTokens?: boolean;
   inputTokens?: number;
@@ -76,6 +80,7 @@ type UsageSnapshot = UsageNumbers & {
 type RequestLogUsageContext = {
   model: string;
   path: string;
+  pricing?: ProviderModelPricing;
   provider: string;
 };
 
@@ -109,16 +114,20 @@ export type RequestLogRecordInput = {
   model?: string;
   path: string;
   providerName?: string;
+  pricing?: ProviderModelPricing;
   providerProtocol?: GatewayProviderProtocol;
+  requestedModel?: string;
   requestBody: Buffer;
   requestBodySizeBytes?: number;
   requestBodyTruncated?: boolean;
   requestHeaders: HeaderRecord;
   requestId?: string;
+  resolvedModel?: string;
   routeTrace?: RequestRouteTrace;
   responseBodyText?: string;
   responseBodySizeBytes?: number;
   responseBodyTruncated?: boolean;
+  responseModel?: string;
   responseHeaders?: Headers | HeaderRecord;
   startedAt: string;
   statusCode: number;
@@ -210,6 +219,7 @@ type StoredRequestLogEntry = {
   path: string;
   provider: string;
   reasoningTokens: number;
+  requestedModel: string;
   requestBody: RequestLogBody;
   requestHeaders: Record<string, string | string[]>;
   requestId: string;
@@ -218,7 +228,9 @@ type StoredRequestLogEntry = {
   routeTrace?: RequestRouteTrace;
   routeTraceTruncated: boolean;
   retryAttempts: RequestLogRetryAttempt[];
+  resolvedModel: string;
   responseBody?: RequestLogBody;
+  responseModel: string;
   responseHeaders: Record<string, string | string[]>;
   statusCode: number;
   totalTokens: number;
@@ -248,6 +260,7 @@ type AgentLogDetails = {
 type AgentTextSignalOptions = {
   allowStandaloneCodex?: boolean;
   allowStandaloneGrok?: boolean;
+  allowStandaloneKimi?: boolean;
   allowStandaloneOpenCode?: boolean;
 };
 
@@ -449,6 +462,7 @@ export class RequestLogStore {
           input_tokens,
           model,
           output_tokens,
+          pricing_json,
           provider
         FROM request_logs
         WHERE cost_usd IS NULL
@@ -469,6 +483,7 @@ export class RequestLogStore {
           inputTokens: normalizeCount(row.input_tokens),
           model: String(row.model ?? ""),
           outputTokens: normalizeCount(row.output_tokens),
+          pricing: parseStoredModelPricing(row.pricing_json),
           provider: String(row.provider ?? "")
         });
         if (!cost) continue;
@@ -497,13 +512,24 @@ export class RequestLogStore {
     const responseError = normalizeFilterValue(input.error) ??
       detectSseError(responseBodyText, headerValue(responseHeaders, "content-type"));
     const bodyUsage = extractUsageFromBody(responseBodyText);
-    const usage: UsageSnapshot = normalizeUsageInputTokens(extractUsageFromBillingHeaders(input.responseHeaders) ?? bodyUsage, {
+    const usage: UsageSnapshot = normalizeUsageInputTokens(mergeUsageSnapshots(extractUsageFromBillingHeaders(input.responseHeaders), bodyUsage), {
       path: input.path,
       providerProtocol: input.providerProtocol,
       usageHint: bodyUsage
     }) ?? {};
     const route = splitRouteSelector(input.fallbackModel);
-    const requestModel = normalizeFilterValue(input.model) ?? extractModelFromBody(input.requestBody.toString("utf8"));
+    const bodyModel = requestLogRequestedModel(input.requestBody, input.path);
+    const requestModel = normalizeFilterValue(input.model) ?? bodyModel;
+    const requestedModel = normalizeFilterValue(input.requestedModel) ?? bodyModel ?? "";
+    const resolvedModel = normalizeFilterValue(input.resolvedModel) ??
+      normalizeFilterValue(input.model) ??
+      route.model ??
+      bodyModel ??
+      normalizeFilterValue(input.fallbackModel) ??
+      "";
+    const responseModel = normalizeFilterValue(input.responseModel) ??
+      requestLogResponseModel(responseBodyText) ??
+      "";
     const provider =
       normalizeFilterValue(input.providerName) ??
       readResponseHeader(input.responseHeaders, "x-gateway-target-provider-name") ??
@@ -513,6 +539,8 @@ export class RequestLogStore {
     const outputTokens = normalizeCount(usage.outputTokens);
     const reasoningTokens = normalizeCount(usage.reasoningTokens);
     const cacheReadTokens = normalizeCount(usage.cacheReadTokens);
+    const cacheWrite1hTokens = normalizeCount(usage.cacheWrite1hTokens);
+    const cacheWrite5mTokens = normalizeCount(usage.cacheWrite5mTokens);
     const cacheWriteTokens = normalizeCount(usage.cacheWriteTokens);
     const totalTokens =
       normalizeCount(usage.totalTokens) ||
@@ -525,10 +553,13 @@ export class RequestLogStore {
     const credentialInfo = readCredentialLogInfo(rawResponseHeaders, rawRequestHeaders);
     const costInput = {
       cacheReadTokens,
+      cacheWrite1hTokens,
+      cacheWrite5mTokens,
       cacheWriteTokens,
       inputTokens,
       model,
       outputTokens,
+      pricing: input.pricing,
       provider: providerName
     };
     const cost = database.inTransaction
@@ -573,6 +604,9 @@ export class RequestLogStore {
         credential_chain,
         credential_saturated,
         model,
+        requested_model,
+        resolved_model,
+        response_model,
         route_trace_version,
         route_hop_count,
         route_attempt_count,
@@ -588,6 +622,7 @@ export class RequestLogStore {
         cache_write_tokens,
         total_tokens,
         cost_usd,
+        pricing_json,
         request_headers,
         response_headers,
         request_body_text,
@@ -601,7 +636,7 @@ export class RequestLogStore {
         response_body_size_bytes,
         response_body_truncated,
         error
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     let inserted = false;
@@ -620,6 +655,9 @@ export class RequestLogStore {
         credentialInfo.chain.join(","),
         credentialInfo.saturated ? 1 : 0,
         model,
+        requestedModel,
+        resolvedModel,
+        responseModel,
         input.routeTrace?.version ?? 0,
         input.routeTrace?.hopCount ?? 0,
         input.routeTrace?.attemptCount ?? 0,
@@ -635,6 +673,7 @@ export class RequestLogStore {
         cacheWriteTokens,
         totalTokens,
         cost?.amountUsd ?? null,
+        input.pricing ? JSON.stringify(input.pricing) : "",
         JSON.stringify(requestHeaders),
         JSON.stringify(responseHeaders),
         requestBody.text,
@@ -746,6 +785,9 @@ export class RequestLogStore {
     const path = normalizeFilterValue(input.path) ?? pathFromUrl(url);
     const usagePath = path ?? existingUsageContext.path;
     const modelFromTrace = normalizeFilterValue(input.model);
+    const responseModelFromTrace = rawInput.responseBodyText === undefined
+      ? undefined
+      : requestLogResponseModel(rawInput.responseBodyText);
     const providerFromTrace = normalizeFilterValue(input.provider);
     const statusCode = rawStatusCode;
     const requestCredentialHeaders = input.requestHeaders ?? {};
@@ -763,6 +805,8 @@ export class RequestLogStore {
     pushValue("url", url);
     pushValue("provider", providerFromTrace);
     pushValue("model", modelFromTrace);
+    pushValue("resolved_model", modelFromTrace);
+    pushValue("response_model", responseModelFromTrace);
     // The gateway's terminal failure is authoritative, even when it has only
     // an HTTP error status and no error string. A final-attempt raw failure may
     // still refine a gateway success (for example an SSE error inside HTTP 200).
@@ -787,7 +831,7 @@ export class RequestLogStore {
       const bodyUsage = input.responseBodyText === undefined
         ? undefined
         : extractUsageFromBody(input.responseBodyText);
-      const usage: UsageSnapshot = normalizeUsageInputTokens<UsageSnapshot>(extractUsageFromBillingHeaders(responseHeaders) ?? bodyUsage, {
+      const usage: UsageSnapshot = normalizeUsageInputTokens<UsageSnapshot>(mergeUsageSnapshots(extractUsageFromBillingHeaders(responseHeaders), bodyUsage), {
         path: usagePath,
         usageHint: bodyUsage
       }) ?? {};
@@ -796,6 +840,8 @@ export class RequestLogStore {
         const outputTokens = normalizeCount(usage.outputTokens);
         const reasoningTokens = normalizeCount(usage.reasoningTokens);
         const cacheReadTokens = normalizeCount(usage.cacheReadTokens);
+        const cacheWrite1hTokens = normalizeCount(usage.cacheWrite1hTokens);
+        const cacheWrite5mTokens = normalizeCount(usage.cacheWrite5mTokens);
         const cacheWriteTokens = normalizeCount(usage.cacheWriteTokens);
         const totalTokens =
           normalizeCount(usage.totalTokens) ||
@@ -804,10 +850,13 @@ export class RequestLogStore {
         const provider = normalizeLabel(providerFromTrace ?? existingUsageContext.provider, "unknown");
         const costInput = {
           cacheReadTokens,
+          cacheWrite1hTokens,
+          cacheWrite5mTokens,
           cacheWriteTokens,
           inputTokens,
           model,
           outputTokens,
+          pricing: existingUsageContext.pricing,
           provider
         };
         const cost = database.inTransaction
@@ -820,7 +869,7 @@ export class RequestLogStore {
         pushValue("cache_read_tokens", cacheReadTokens);
         pushValue("cache_write_tokens", cacheWriteTokens);
         pushValue("total_tokens", totalTokens);
-        pushValue("cost_usd", cost?.amountUsd ?? null);
+        pushValue("cost_usd", cost?.amountUsd);
         if (usage.model && !modelFromTrace) {
           pushValue("model", model);
         }
@@ -916,6 +965,9 @@ export class RequestLogStore {
             credential_chain,
             credential_saturated,
             model,
+            requested_model,
+            resolved_model,
+            response_model,
             route_trace_version,
             route_hop_count,
             route_attempt_count,
@@ -1009,6 +1061,9 @@ export class RequestLogStore {
             credential_chain,
             credential_saturated,
             model,
+            requested_model,
+            resolved_model,
+            response_model,
             is_stream,
             status_code,
             ok,
@@ -1152,6 +1207,9 @@ export class RequestLogStore {
         credential_chain TEXT NOT NULL DEFAULT '',
         credential_saturated INTEGER NOT NULL DEFAULT 0,
         model TEXT NOT NULL DEFAULT 'unknown',
+        requested_model TEXT NOT NULL DEFAULT '',
+        resolved_model TEXT NOT NULL DEFAULT '',
+        response_model TEXT NOT NULL DEFAULT '',
         route_trace_version INTEGER NOT NULL DEFAULT 0,
         route_hop_count INTEGER NOT NULL DEFAULT 0,
         route_attempt_count INTEGER NOT NULL DEFAULT 0,
@@ -1173,6 +1231,7 @@ export class RequestLogStore {
         cache_write_tokens INTEGER NOT NULL DEFAULT 0,
         total_tokens INTEGER NOT NULL DEFAULT 0,
         cost_usd REAL,
+        pricing_json TEXT NOT NULL DEFAULT '',
         request_headers TEXT NOT NULL DEFAULT '{}',
         response_headers TEXT NOT NULL DEFAULT '{}',
         request_body_text TEXT NOT NULL DEFAULT '',
@@ -1478,6 +1537,7 @@ function inferAgentKind(
   const bodyAgent = inferAgentFromText(haystack, {
     allowStandaloneCodex: false,
     allowStandaloneGrok: false,
+    allowStandaloneKimi: false,
     allowStandaloneOpenCode: false
   });
   if (bodyAgent) {
@@ -1524,6 +1584,7 @@ function inferAgentFromText(value: string, options: AgentTextSignalOptions = {})
   const normalized = value.toLowerCase();
   const allowStandaloneCodex = options.allowStandaloneCodex ?? true;
   const allowStandaloneGrok = options.allowStandaloneGrok ?? true;
+  const allowStandaloneKimi = options.allowStandaloneKimi ?? true;
   const allowStandaloneOpenCode = options.allowStandaloneOpenCode ?? true;
   if (normalized.includes("claude design") || normalized.includes("claude-design") || normalized.includes("claude.ai/design")) {
     return "claude-design";
@@ -1555,6 +1616,17 @@ function inferAgentFromText(value: string, options: AgentTextSignalOptions = {})
     ))
   ) {
     return "grok";
+  }
+  if (
+    normalized.includes("kimi-code-cli") ||
+    normalized.includes("kimi_code_cli") ||
+    (allowStandaloneKimi && (
+      normalized.includes("kimi-cli") ||
+      normalized.includes("kimi cli") ||
+      /(^|[^a-z0-9])kimi([/_\s-]|$)/.test(normalized)
+    ))
+  ) {
+    return "kimi";
   }
   if (
     normalized.includes("openai-codex") ||
@@ -2979,11 +3051,11 @@ function normalizeAgentAnalysisRange(value: UsageStatsRange | undefined): UsageS
 }
 
 function normalizeAgentFilter(value: AgentAnalysisFilter["agent"] | undefined): AgentKind | "all" {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "opencode" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "opencode" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
 }
 
 function normalizeSessionAgentFilter(value: AgentAnalysisFilter["sessionAgent"] | undefined): AgentKind | undefined {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "opencode" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "opencode" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
 }
 
 function agentDisplayName(agent: AgentKind): string {
@@ -2998,6 +3070,9 @@ function agentDisplayName(agent: AgentKind): string {
   }
   if (agent === "grok") {
     return "Grok CLI";
+  }
+  if (agent === "kimi") {
+    return "Kimi CLI";
   }
   if (agent === "opencode") {
     return "OpenCode";
@@ -3140,12 +3215,47 @@ function parseDateMs(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function migrateRequestLogModelSummaries(database: SqlDatabase): void {
+  const rows = queryRows(database, `
+    SELECT
+      rowid AS id,
+      model,
+      path,
+      request_body_text,
+      response_body_text
+    FROM request_logs
+  `);
+  if (rows.length === 0) {
+    return;
+  }
+
+  const update = database.prepare(`
+    UPDATE request_logs
+    SET requested_model = ?, resolved_model = ?, response_model = ?
+    WHERE rowid = ?
+  `);
+  database.transaction(() => {
+    for (const row of rows) {
+      const requestedModel = requestLogRequestedModel(
+        String(row.request_body_text ?? ""),
+        String(row.path ?? "")
+      ) ?? "";
+      const resolvedModel = normalizeFilterValue(String(row.model ?? "")) ?? "";
+      const responseModel = requestLogResponseModel(String(row.response_body_text ?? "")) ?? "";
+      update.run(requestedModel, resolvedModel, responseModel, normalizeCount(row.id));
+    }
+  })();
+}
+
 function ensureRequestLogSchema(database: SqlDatabase): void {
   const columns = new Set(
     queryRows(database, "PRAGMA table_info(request_logs)")
       .map((row) => String(row.name ?? ""))
       .filter(Boolean)
   );
+  const needsModelSummaryMigration = !columns.has("requested_model") ||
+    !columns.has("resolved_model") ||
+    !columns.has("response_model");
   const addColumn = (name: string, definition: string) => {
     if (!columns.has(name)) {
       database.exec(`ALTER TABLE request_logs ADD COLUMN ${name} ${definition}`);
@@ -3167,6 +3277,9 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   addColumn("credential_chain", "TEXT NOT NULL DEFAULT ''");
   addColumn("credential_saturated", "INTEGER NOT NULL DEFAULT 0");
   addColumn("model", "TEXT NOT NULL DEFAULT 'unknown'");
+  addColumn("requested_model", "TEXT NOT NULL DEFAULT ''");
+  addColumn("resolved_model", "TEXT NOT NULL DEFAULT ''");
+  addColumn("response_model", "TEXT NOT NULL DEFAULT ''");
   addColumn("route_trace_version", "INTEGER NOT NULL DEFAULT 0");
   addColumn("route_hop_count", "INTEGER NOT NULL DEFAULT 0");
   addColumn("route_attempt_count", "INTEGER NOT NULL DEFAULT 0");
@@ -3188,6 +3301,7 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   addColumn("cache_write_tokens", "INTEGER NOT NULL DEFAULT 0");
   addColumn("total_tokens", "INTEGER NOT NULL DEFAULT 0");
   addColumn("cost_usd", "REAL");
+  addColumn("pricing_json", "TEXT NOT NULL DEFAULT ''");
   addColumn("request_headers", "TEXT NOT NULL DEFAULT '{}'");
   addColumn("response_headers", "TEXT NOT NULL DEFAULT '{}'");
   addColumn("request_body_text", "TEXT NOT NULL DEFAULT ''");
@@ -3201,6 +3315,10 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   addColumn("response_body_size_bytes", "INTEGER NOT NULL DEFAULT 0");
   addColumn("response_body_truncated", "INTEGER NOT NULL DEFAULT 0");
   addColumn("error", "TEXT NOT NULL DEFAULT ''");
+
+  if (needsModelSummaryMigration) {
+    migrateRequestLogModelSummaries(database);
+  }
 
   ensureRequestLogMigrationSchema(database);
   migrateGatewayOutcome(database);
@@ -3762,6 +3880,9 @@ function readRequestLogById(database: SqlDatabase, id: number): StoredRequestLog
         credential_chain,
         credential_saturated,
         model,
+        requested_model,
+        resolved_model,
+        response_model,
         route_trace_version,
         route_hop_count,
         route_attempt_count,
@@ -3835,6 +3956,7 @@ function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry
     path: normalizeLabel(String(row.path ?? ""), "/"),
     provider: normalizeLabel(String(row.provider ?? ""), "unknown"),
     reasoningTokens: normalizeCount(row.reasoning_tokens),
+    requestedModel: normalizeLabel(String(row.requested_model ?? ""), ""),
     requestBody,
     requestHeaders,
     requestId: String(row.request_id ?? ""),
@@ -3842,8 +3964,10 @@ function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry
     routeHopCount: normalizeCount(row.route_hop_count),
     routeTraceTruncated: normalizeCount(row.route_trace_truncated) === 1,
     retryAttempts: parseRequestLogRetryAttempts(responseHeaders, normalizeCount(row.status_code)),
+    resolvedModel: normalizeLabel(String(row.resolved_model ?? ""), ""),
     responseBody,
     responseHeaders,
+    responseModel: normalizeLabel(String(row.response_model ?? ""), ""),
     statusCode: normalizeCount(row.status_code),
     totalTokens: normalizeCount(row.total_tokens),
     url: String(row.url ?? "")
@@ -4191,12 +4315,36 @@ function finalAttemptFromHeaders(
 }
 
 function readRequestLogUsageContext(database: SqlDatabase, requestId: string): RequestLogUsageContext {
-  const row = queryRows(database, "SELECT model, path, provider FROM request_logs WHERE request_id = ? LIMIT 1", [requestId])[0];
+  const row = queryRows(database, "SELECT model, path, pricing_json, provider FROM request_logs WHERE request_id = ? LIMIT 1", [requestId])[0];
   return {
     model: normalizeLabel(String(row?.model ?? ""), "unknown"),
     path: normalizeLabel(String(row?.path ?? ""), ""),
+    pricing: parseStoredModelPricing(row?.pricing_json),
     provider: normalizeLabel(String(row?.provider ?? ""), "unknown")
   };
+}
+
+function parseStoredModelPricing(value: unknown): ProviderModelPricing | undefined {
+  const parsed = typeof value === "string" ? parseJson(value) : value;
+  if (!isRecord(parsed)) {
+    return undefined;
+  }
+  const pricing: ProviderModelPricing = {};
+  const fields: Array<keyof ProviderModelPricing> = [
+    "cacheReadUsdPerMillionTokens",
+    "cacheWriteUsdPerMillionTokens",
+    "cacheWrite1hUsdPerMillionTokens",
+    "cacheWrite5mUsdPerMillionTokens",
+    "inputUsdPerMillionTokens",
+    "outputUsdPerMillionTokens"
+  ];
+  for (const field of fields) {
+    const candidate = parsed[field];
+    if (typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0) {
+      pricing[field] = candidate;
+    }
+  }
+  return Object.keys(pricing).length > 0 ? pricing : undefined;
 }
 
 function mergeRequestHeadersForRawTrace(
@@ -4264,7 +4412,7 @@ function batchNeedsUsagePricing(
       if (rawTraceHasBillableUsage(command.input)) return true;
       continue;
     }
-    if (recordHasBillableUsage(command.input)) return true;
+    if (recordHasBillableUsage(command.input) && !hasCompleteCustomPricing(command.input.pricing)) return true;
     const requestId = command.input.requestId?.trim();
     if (!requestId) continue;
     const row = queryRows(
@@ -4283,14 +4431,23 @@ function batchNeedsUsagePricing(
 function recordHasBillableUsage(input: RequestLogRecordInput): boolean {
   const bodyUsage = extractUsageFromBody(input.responseBodyText ?? "");
   return hasBillableUsageComponents(
-    extractUsageFromBillingHeaders(input.responseHeaders) ?? bodyUsage ?? {}
+    mergeUsageSnapshots(extractUsageFromBillingHeaders(input.responseHeaders), bodyUsage) ?? {}
   );
+}
+
+function hasCompleteCustomPricing(pricing: ProviderModelPricing | undefined): boolean {
+  return typeof pricing?.inputUsdPerMillionTokens === "number" &&
+    Number.isFinite(pricing.inputUsdPerMillionTokens) &&
+    pricing.inputUsdPerMillionTokens >= 0 &&
+    typeof pricing.outputUsdPerMillionTokens === "number" &&
+    Number.isFinite(pricing.outputUsdPerMillionTokens) &&
+    pricing.outputUsdPerMillionTokens >= 0;
 }
 
 function rawTraceHasBillableUsage(input: RequestLogRawTraceUpdateInput): boolean {
   const bodyUsage = extractUsageFromBody(input.responseBodyText ?? "");
   return hasBillableUsageComponents(
-    extractUsageFromBillingHeaders(input.responseHeaders) ?? bodyUsage ?? {}
+    mergeUsageSnapshots(extractUsageFromBillingHeaders(input.responseHeaders), bodyUsage) ?? {}
   );
 }
 
@@ -4298,6 +4455,8 @@ function hasBillableUsageComponents(usage: UsageNumbers): boolean {
   return normalizeCount(usage.inputTokens) +
     normalizeCount(usage.outputTokens) +
     normalizeCount(usage.cacheReadTokens) +
+    normalizeCount(usage.cacheWrite1hTokens) +
+    normalizeCount(usage.cacheWrite5mTokens) +
     normalizeCount(usage.cacheWriteTokens) > 0;
 }
 
@@ -4308,15 +4467,20 @@ function extractUsageFromBillingHeaders(headers: Headers | HeaderRecord | undefi
     readNumberResponseHeader(headers, "x-gateway-billing-reasoning-tokens") ??
     readNumberResponseHeader(headers, "x-gateway-billing-thinking-tokens");
   const cacheReadTokens = readNumberResponseHeader(headers, "x-gateway-billing-cache-read-tokens");
-  const cacheWriteTokens = readNumberResponseHeader(headers, "x-gateway-billing-cache-write-tokens");
+  const cacheWrite1hTokens = readNumberResponseHeader(headers, "x-gateway-billing-cache-write-1h-tokens");
+  const cacheWrite5mTokens = readNumberResponseHeader(headers, "x-gateway-billing-cache-write-5m-tokens");
+  const cacheWriteTokens = readNumberResponseHeader(headers, "x-gateway-billing-cache-write-tokens") ??
+    sumOptionalNumbers(cacheWrite5mTokens, cacheWrite1hTokens);
   const totalTokens = readNumberResponseHeader(headers, "x-gateway-billing-total-tokens");
 
-  if ([inputTokens, outputTokens, reasoningTokens, cacheReadTokens, cacheWriteTokens, totalTokens].every((value) => value === undefined)) {
+  if ([inputTokens, outputTokens, reasoningTokens, cacheReadTokens, cacheWrite1hTokens, cacheWrite5mTokens, cacheWriteTokens, totalTokens].every((value) => value === undefined)) {
     return undefined;
   }
 
   return {
     cacheReadTokens,
+    cacheWrite1hTokens,
+    cacheWrite5mTokens,
     cacheWriteTokens,
     inputTokens,
     outputTokens,
@@ -4345,7 +4509,11 @@ function extractUsageFromBody(text: string): UsageSnapshot | undefined {
     }
   }
 
-  return snapshots.at(-1);
+  let merged: UsageSnapshot | undefined;
+  for (const snapshot of snapshots) {
+    merged = mergeUsageSnapshots(snapshot, merged);
+  }
+  return merged;
 }
 
 function parseStreamPayloads(text: string): unknown[] {
@@ -4581,10 +4749,13 @@ function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
   }
 
   const response = isRecord(payload.response) ? payload.response : payload;
+  const message = isRecord(payload.message) ? payload.message : undefined;
   const usage = isRecord(response.usage)
     ? response.usage
     : isRecord(payload.usage)
       ? payload.usage
+      : isRecord(message?.usage)
+        ? message.usage
       : undefined;
   const usageMetadata = isRecord(response.usageMetadata)
     ? response.usageMetadata
@@ -4625,6 +4796,9 @@ function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
     inputDetails?.cache_creation_tokens !== undefined ||
     usage.cached_tokens !== undefined ||
     usage.prompt_tokens !== undefined;
+  const cacheCreation = isRecord(usage.cache_creation) ? usage.cache_creation : undefined;
+  const cacheWrite5mTokens = asNumber(cacheCreation?.ephemeral_5m_input_tokens);
+  const cacheWrite1hTokens = asNumber(cacheCreation?.ephemeral_1h_input_tokens);
 
   return {
     cacheReadTokens:
@@ -4632,16 +4806,20 @@ function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
       asNumber(usage.cache_read_input_tokens) ??
       asNumber(usage.cached_tokens) ??
       asNumber(inputDetails?.cached_tokens),
+    cacheWrite1hTokens,
+    cacheWrite5mTokens,
     cacheWriteTokens:
       asNumber(usage.cache_write_tokens) ??
       asNumber(usage.cache_creation_tokens) ??
       asNumber(usage.cache_creation_input_tokens) ??
-      asNumber(inputDetails?.cache_creation_tokens),
+      asNumber(inputDetails?.cache_creation_tokens) ??
+      sumOptionalNumbers(cacheWrite5mTokens, cacheWrite1hTokens),
     inputIncludesCacheTokens: hasAnthropicCacheFields ? false : hasOpenAiCacheFields ? true : undefined,
     inputTokens: asNumber(usage.input_tokens) ?? asNumber(usage.prompt_tokens),
     model:
       asString(response.model) ??
       asString(payload.model) ??
+      asString(message?.model) ??
       asString(response.modelVersion) ??
       asString(payload.modelVersion),
     outputTokens: asNumber(usage.output_tokens) ?? asNumber(usage.completion_tokens),
@@ -4654,23 +4832,31 @@ function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
   };
 }
 
-function extractModelFromBody(text: string): string | undefined {
-  const parsed = parseJson(text.trim());
-  if (!isRecord(parsed)) {
-    return undefined;
-  }
-  return asString(parsed.model);
-}
-
 function hasUsageNumbers(snapshot: UsageNumbers): boolean {
   return [
     snapshot.cacheReadTokens,
+    snapshot.cacheWrite1hTokens,
+    snapshot.cacheWrite5mTokens,
     snapshot.cacheWriteTokens,
     snapshot.inputTokens,
     snapshot.outputTokens,
     snapshot.reasoningTokens,
     snapshot.totalTokens
   ].some((value) => value !== undefined);
+}
+
+function mergeUsageSnapshots(primary: UsageNumbers | undefined, fallback: UsageSnapshot | undefined): UsageSnapshot | undefined {
+  if (!primary) return fallback;
+  if (!fallback) return primary;
+  return {
+    ...fallback,
+    ...Object.fromEntries(Object.entries(primary).filter(([, value]) => value !== undefined))
+  };
+}
+
+function sumOptionalNumbers(...values: Array<number | undefined>): number | undefined {
+  const present = values.filter((value): value is number => value !== undefined);
+  return present.length > 0 ? present.reduce((total, value) => total + value, 0) : undefined;
 }
 
 function readResponseHeader(headers: Headers | HeaderRecord | undefined, name: string): string | undefined {

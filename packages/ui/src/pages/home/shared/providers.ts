@@ -134,6 +134,7 @@ import {
   enforceSingleEnabledGlobalProfilePerAgent,
   normalizeProfileScopeValue,
   OVERVIEW_WIDGET_SIZE_VALUES,
+  ROUTER_SCRIPT_MAX_TIMEOUT_MS,
   TRAY_SINGLETON_WIDGET_TYPES,
   TRAY_TOP_WIDGET_TYPES,
   TRAY_WINDOW_MODULE_IDS
@@ -160,6 +161,7 @@ import type {
   BotHandoffScanTarget,
   GatewayProviderConfig,
   GatewayProviderCapability,
+  GatewayProviderCapabilityProtocol,
   GatewayPluginAppConfig,
   GatewayProviderConnectivityCheckModelResult,
   GatewayProviderConnectivityCheckReport,
@@ -391,6 +393,7 @@ export const localAgentProviderIconUrls: Record<LocalAgentProviderKind, string> 
   "claude-code": claudeCodeLogoUrl,
   codex: codexLogoUrl,
   grok: grokLogoUrl,
+  kimi: moonshotProviderIconUrl,
   opencode: openCodeLogoUrl,
   zcode: zcodeLogoUrl
 };
@@ -510,10 +513,15 @@ export function routeTargetOptions(modelOptions: Array<{ label: string; value: s
 }
 
 export function routerRuleTypeLabel(type: RouterRuleType): string {
-  return type === "condition" ? "Condition" : "Legacy";
+  if (type === "condition") return "Condition";
+  if (type === "script") return "Node.js script";
+  return "Legacy";
 }
 
 export function formatRouterRuleCondition(rule: RouterRule): string {
+  if (rule.type === "script") {
+    return `Node.js · ${rule.script?.timeoutMs ?? 2000}ms`;
+  }
   const condition = routerRuleConditionFromRule(rule);
   if (condition) {
     return `${condition.left} ${condition.operator} ${condition.right}`;
@@ -542,7 +550,7 @@ export function formatRouterRuleTarget(rule: RouterRule): string {
   const rewrites = routerRuleRewritesFromRule(rule);
   const action = rewrites.length
     ? rewrites.map(formatRouterRewriteSummary).join("; ")
-    : "No request rewrite";
+    : rule.type === "script" ? "Dynamic script decision" : "No request rewrite";
   return rule.fallback ? `${action} · ${formatRouterFallbackSummary(rule.fallback)}` : action;
 }
 
@@ -633,6 +641,8 @@ export function createRoutingRuleDraft(config?: AppConfig): AddRoutingRuleDraft 
     rewriteKey: rewrite.key,
     rewriteValue: rewrite.value,
     rewrites: [rewrite],
+    scriptFile: "",
+    scriptTimeoutMs: "2000",
     target: "",
     threshold: "200000",
     type: "condition"
@@ -656,10 +666,12 @@ export function createRoutingRuleDraftFromRule(rule: RouterRule, config?: AppCon
     pattern: rule.pattern ?? "",
     rewriteKey: firstRewrite.key,
     rewriteValue: firstRewrite.value,
-    rewrites: rewrites.length ? rewrites : [firstRewrite],
+    rewrites: rule.type === "script" ? [] : rewrites.length ? rewrites : [firstRewrite],
+    scriptFile: rule.script?.file ?? "",
+    scriptTimeoutMs: String(rule.script?.timeoutMs ?? 2000),
     target: rule.target ?? "",
     threshold: String(rule.threshold ?? 200000),
-    type: "condition"
+    type: rule.type === "script" ? "script" : "condition"
   };
 }
 
@@ -711,6 +723,20 @@ export function isRoutingRewriteDraftRowValid(row: RoutingRewriteDraftRow): bool
     return Boolean(row.match.trim() && row.value.trim());
   }
   return Boolean(row.value.trim());
+}
+
+export function isRoutingRuleDraftSubmittable(draft: AddRoutingRuleDraft): boolean {
+  if (!draft.name.trim()) return false;
+  if (draft.type === "script") {
+    const timeoutMs = Number(draft.scriptTimeoutMs);
+    return Boolean(draft.scriptFile.trim()) &&
+      Number.isInteger(timeoutMs) &&
+      timeoutMs >= 10 &&
+      timeoutMs <= ROUTER_SCRIPT_MAX_TIMEOUT_MS;
+  }
+  return draft.rewrites.length > 0 &&
+    draft.rewrites.every(isRoutingRewriteDraftRowValid) &&
+    Boolean(draft.conditionField.trim() && draft.conditionOperator && draft.conditionRight.trim());
 }
 
 export function routingRewriteFromDraftRow(row: RoutingRewriteDraftRow): RouterRuleRewrite {
@@ -906,6 +932,8 @@ export function createProviderDraftFromDeepLinkPayload(
     ...accountDraft,
     apiKey: payload.apiKey?.trim() || "",
     baseUrl,
+    capabilities: payload.capabilities ?? [],
+    catalogModelMetadata: undefined,
     credentials: [],
     icon: payload.icon?.trim() || "",
     modelDescriptions: modelDescriptionsForModels(payload.modelDescriptions, models),
@@ -962,7 +990,10 @@ export function createProviderConfigFromDeepLink(
     throw new Error(accountKeySafetyIssue.message);
   }
 
-  const capabilities = providerCapabilitiesForProtocols(payload.baseUrl, [protocol], probe);
+  const capabilities = mergeProviderCapabilities(
+    payload.capabilities ?? [],
+    providerCapabilitiesForProtocols(payload.baseUrl, [protocol], probe)
+  );
 
   return {
     account: cloneProviderAccountConfig(account),
@@ -995,6 +1026,8 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
     ...accountDraft,
     apiKey: "",
     baseUrl: "",
+    capabilities: [],
+    catalogModelMetadata: undefined,
     credentials: [],
     icon: "",
     modelDescriptions: undefined,
@@ -1020,6 +1053,8 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
     ...accountDraft,
     apiKey: providerApiKey(provider),
     baseUrl,
+    capabilities: provider.capabilities ?? [],
+    catalogModelMetadata: undefined,
     credentials: (provider.credentials ?? []).map(providerCredentialDraftFromConfig),
     icon: provider.icon ?? "",
     modelDescriptions: modelDescriptionsForModels(provider.modelDescriptions, provider.models),
@@ -1752,13 +1787,21 @@ export function providerDraftSafetyIssue(draft: AddProviderDraft, baseUrl = draf
 
 export function providerProbeCandidates(draft: AddProviderDraft): ProviderProbeCandidate[] {
   const preset = findProviderPreset(draft.presetId);
-  const protocols = providerProtocolOptions.map((option) => option.value);
+  const mediaProtocols: GatewayProviderCapabilityProtocol[] = [
+    "openai_image_generations",
+    "openai_video_generations"
+  ];
+  const chatProtocols = providerProtocolOptions.map((option) => option.value);
+  const customProtocols: GatewayProviderCapabilityProtocol[] = [
+    ...chatProtocols,
+    ...mediaProtocols
+  ];
   if (preset) {
     const probeAllProtocols = preset.endpoints.length === 1;
     return preset.endpoints.map((endpoint) => ({
       ...endpoint,
       declaredProtocols: endpoint.protocols,
-      protocols: probeAllProtocols ? protocols : endpoint.protocols,
+      protocols: probeAllProtocols ? chatProtocols : endpoint.protocols,
       source: "preset"
     }));
   }
@@ -1766,7 +1809,7 @@ export function providerProbeCandidates(draft: AddProviderDraft): ProviderProbeC
   return [
     {
       baseUrl: draft.baseUrl.trim(),
-      protocols,
+      protocols: customProtocols,
       source: "custom"
     }
   ];
@@ -1941,6 +1984,24 @@ export function mergeProviderCapabilities(...groups: GatewayProviderCapability[]
   return capabilities;
 }
 
+export function providerCapabilitiesForSave(
+  currentCapabilities: GatewayProviderCapability[],
+  preservedCapabilities: GatewayProviderCapability[],
+  existingBaseUrl: string | undefined,
+  nextBaseUrl: string
+): GatewayProviderCapability[] {
+  const normalizedExistingBaseUrl = existingBaseUrl === undefined
+    ? undefined
+    : normalizeProviderBaseUrl(existingBaseUrl) || existingBaseUrl.trim();
+  const normalizedNextBaseUrl = normalizeProviderBaseUrl(nextBaseUrl) || nextBaseUrl.trim();
+  const preserveExisting = normalizedExistingBaseUrl === undefined ||
+    normalizedExistingBaseUrl === normalizedNextBaseUrl;
+  return mergeProviderCapabilities(
+    currentCapabilities,
+    ...(preserveExisting ? [preservedCapabilities] : [])
+  );
+}
+
 export function providerGlobalBaseUrlForProbe(
   inputBaseUrl: string,
   _probe: GatewayProviderProbeResult | undefined,
@@ -1995,7 +2056,12 @@ export function providerCapabilitiesForProtocols(
     })
     .filter((item): item is GatewayProviderCapability => Boolean(item));
 
-  return mergeProviderCapabilities(selectedCapabilities);
+  const detectedMediaCapabilities = detectedCapabilities.filter((capability) =>
+    capability.type === "openai_image_generations" ||
+    capability.type === "openai_video_generations" ||
+    capability.type === "xai_video_generations"
+  );
+  return mergeProviderCapabilities(selectedCapabilities, detectedMediaCapabilities);
 }
 
 export function applyProviderProbeResult(draft: AddProviderDraft, probe: GatewayProviderProbeResult): AddProviderDraft {
@@ -2007,6 +2073,7 @@ export function applyProviderProbeResult(draft: AddProviderDraft, probe: Gateway
     ? detectedProtocol
     : selectedProtocols[0] ?? detectedProtocol;
   const modelDisplayNames = mergeModelDisplayNames(draft.modelDisplayNames, probe.modelDisplayNames);
+  const catalogModelMetadata = mergeModelMetadata(draft.catalogModelMetadata, probe.catalogModelMetadata);
   const modelMetadata = mergeModelMetadata(draft.modelMetadata, probe.modelMetadata);
   const accountDraft = providerProbeAccountDraftPatch(draft, probe.account);
   const baseUrl = providerGlobalBaseUrlForProbe(draft.baseUrl, probe, selectedProtocols);
@@ -2016,6 +2083,7 @@ export function applyProviderProbeResult(draft: AddProviderDraft, probe: Gateway
       ...draft,
       ...accountDraft,
       baseUrl,
+      catalogModelMetadata,
       modelDisplayNames,
       modelMetadata,
       protocol,
@@ -2040,6 +2108,7 @@ export function applyProviderProbeResult(draft: AddProviderDraft, probe: Gateway
     ...draft,
     ...accountDraft,
     baseUrl,
+    catalogModelMetadata,
     modelDisplayNames,
     modelMetadata,
     protocol,

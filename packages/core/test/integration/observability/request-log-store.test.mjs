@@ -7,12 +7,76 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { getHeapStatistics } from "node:v8";
 import { createSseErrorDetector, RequestLogStore } from "@ccr/core/observability/request-log-store.ts";
+import { requestLogRequestedModel, requestLogResponseModel } from "@ccr/core/observability/request-log-model.ts";
 import { resolveStreamRequestLogOutcome } from "@ccr/core/gateway/internal/shared.ts";
 import { RequestRouteTraceRecorder } from "@ccr/core/observability/route-trace.ts";
 import { createBetterSqliteDatabase } from "@ccr/core/storage/sqlite-native.ts";
 
 const execFileAsync = promisify(execFile);
 const isBoundedHeapWorker = process.env.CCR_REQUEST_LOG_BOUNDED_HEAP_WORKER === "1";
+
+test("request log model summaries support routed paths and streamed responses", () => {
+  assert.equal(
+    requestLogRequestedModel("{}", "/v1beta/models/gemini-2.5-pro:streamGenerateContent"),
+    "gemini-2.5-pro"
+  );
+  assert.equal(
+    requestLogResponseModel([
+      "event: message_start",
+      "data: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-response\"}}",
+      "",
+      "event: message_stop",
+      "data: {\"type\":\"message_stop\"}"
+    ].join("\n")),
+    "claude-response"
+  );
+  assert.equal(
+    requestLogResponseModel("data: {\"type\":\"response.created\",\"response\":{\"model\":\"gpt-response\"}}\n\n"),
+    "gpt-response"
+  );
+});
+
+test("RequestLogStore backfills model summaries when upgrading an existing database", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-model-migration-test-"));
+  const dbFile = path.join(dir, "request-logs.sqlite");
+  let store;
+  try {
+    const legacy = createBetterSqliteDatabase(dbFile);
+    try {
+      legacy.exec(`
+        CREATE TABLE request_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          created_at TEXT NOT NULL,
+          method TEXT NOT NULL,
+          path TEXT NOT NULL,
+          model TEXT NOT NULL,
+          request_body_text TEXT NOT NULL,
+          response_body_text TEXT NOT NULL
+        );
+      `);
+      legacy.prepare(`
+        INSERT INTO request_logs (
+          created_at, method, path, model, request_body_text, response_body_text
+        ) VALUES (?, 'POST', '/v1/messages', 'resolved-model', ?, ?)
+      `).run(
+        new Date().toISOString(),
+        JSON.stringify({ model: "request-model" }),
+        JSON.stringify({ model: "response-model" })
+      );
+    } finally {
+      legacy.close();
+    }
+
+    store = new RequestLogStore(dbFile);
+    const page = await store.list({ pageSize: 25 });
+    assert.equal(page.items[0].requestedModel, "request-model");
+    assert.equal(page.items[0].resolvedModel, "resolved-model");
+    assert.equal(page.items[0].responseModel, "response-model");
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
 
 test("RequestLogStore resumes interrupted gateway migrations across bounded batches", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-paged-migration-test-"));
@@ -232,6 +296,9 @@ test("RequestLogStore keeps list rows lightweight and detail rows complete", asy
 
     const page = await store.list({ pageSize: 25 });
     assert.equal(page.items.length, 1);
+    assert.equal(page.items[0].requestedModel, "request-model");
+    assert.equal(page.items[0].resolvedModel, "request-model");
+    assert.equal(page.items[0].responseModel, "response-model");
     assert.equal(page.items[0].requestBody.text, "");
     assert.equal(page.items[0].responseBody?.text, "");
     assert.equal(page.items[0].requestBody.sizeBytes, Buffer.byteLength(body));
@@ -239,6 +306,9 @@ test("RequestLogStore keeps list rows lightweight and detail rows complete", asy
 
     const detail = await store.getDetail({ id: page.items[0].id });
     assert.ok(detail);
+    assert.equal(detail.requestedModel, "request-model");
+    assert.equal(detail.resolvedModel, "request-model");
+    assert.equal(detail.responseModel, "response-model");
     assert.match(detail.requestBody.text, /request-model/);
     assert.match(detail.responseBody?.text ?? "", /response-model/);
   } finally {
@@ -1132,6 +1202,47 @@ test("RequestLogStore does not identify an unknown client as Grok CLI from its m
     const analysis = await store.analyze({ agent: "all", range: "30d" });
     assert.equal(analysis.scannedRequestCount, 1);
     assert.equal(analysis.agents[0]?.agent, "unknown");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore identifies Kimi CLI without inferring it from a Kimi model name", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-kimi-agent-test-"));
+  try {
+    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const startedAt = new Date().toISOString();
+    for (const [requestId, requestHeaders] of [
+      ["kimi-agent-request", { "content-type": "application/json", "user-agent": "kimi-code-cli/0.27.0" }],
+      ["kimi-model-request", { "content-type": "application/json", "user-agent": "generic-openai-client/1.0" }]
+    ]) {
+      await store.record({
+        completedAt: startedAt,
+        durationMs: 25,
+        method: "POST",
+        path: "/v1/chat/completions",
+        providerName: "test-provider",
+        providerProtocol: "openai_chat_completions",
+        requestBody: Buffer.from(JSON.stringify({ messages: [], model: "Moonshot/kimi-k3" }), "utf8"),
+        requestHeaders,
+        requestId,
+        responseBodyText: JSON.stringify({ choices: [], model: "Moonshot/kimi-k3" }),
+        responseHeaders: { "content-type": "application/json" },
+        startedAt,
+        statusCode: 200,
+        url: "http://127.0.0.1:3456/v1/chat/completions"
+      });
+    }
+
+    const kimiAnalysis = await store.analyze({ agent: "kimi", range: "30d" });
+    assert.equal(kimiAnalysis.scannedRequestCount, 2);
+    assert.equal(kimiAnalysis.totals.requestCount, 1);
+    assert.equal(kimiAnalysis.agents[0]?.agent, "kimi");
+    assert.equal(kimiAnalysis.agents[0]?.label, "Kimi CLI");
+
+    const unknownAnalysis = await store.analyze({ agent: "unknown", range: "30d" });
+    assert.equal(unknownAnalysis.scannedRequestCount, 2);
+    assert.equal(unknownAnalysis.totals.requestCount, 1);
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }
