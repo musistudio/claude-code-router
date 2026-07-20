@@ -8,6 +8,7 @@ import { normalizeGrokProviderMediaCapabilities } from "@ccr/core/agents/local-p
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 import { GatewayMediaExecutor } from "@ccr/core/media/executors.ts";
 import { MediaService, mediaServiceForTest, resolveProviderMediaTarget } from "@ccr/core/media/service.ts";
+import { mediaMcpToolDefinition } from "@ccr/core/media/tools.ts";
 import { MEDIA_ARTIFACT_PATH_PREFIX, handleMediaArtifactRequest, handleMediaToolsMcpRequest } from "@ccr/core/mcp/grok-media-mcp.ts";
 
 const png = Buffer.concat([
@@ -33,7 +34,7 @@ test("media tools bind profile-specific runtime names to gateway media models", 
   assert.deepEqual(service.toolBindings(), [
     { modelSelector: "Media Provider/grok-imagine-image-quality", name: "image_generate_test", operation: "image-generate" },
     { modelSelector: "Media Provider/grok-imagine-image-quality", name: "image_edit_test", operation: "image-edit" },
-    { modelSelector: "Media Provider/grok-imagine-video", name: "video_generate_test", operation: "video-generate" },
+    { modelSelector: "Media Provider/grok-imagine-video", name: "video_generate_test", operation: "video-generate", protocol: "xai_video_generations" },
     { modelSelector: "Media Provider/grok-imagine-video", name: "media_job_get_test", operation: "job-get" },
     { modelSelector: "Media Provider/grok-imagine-video", name: "media_job_cancel_test", operation: "job-cancel" }
   ]);
@@ -49,6 +50,7 @@ test("media tools bind profile-specific runtime names to gateway media models", 
 test("media artifact downloads reject private-network URLs from public providers", async () => {
   const executor = new GatewayMediaExecutor({
     model: "image-model",
+    protocol: "openai_image_generations",
     providerBaseUrl: "https://8.8.8.8/v1",
     providerName: "Public Media Provider",
     providerSelector: "public-media::openai_image_generations"
@@ -61,6 +63,7 @@ test("media artifact downloads reject private-network URLs from public providers
 
   const localExecutor = new GatewayMediaExecutor({
     model: "image-model",
+    protocol: "openai_image_generations",
     providerBaseUrl: "http://127.0.0.1:3000/v1",
     providerName: "Local Media Provider",
     providerSelector: "local-media::openai_image_generations"
@@ -71,11 +74,67 @@ test("media artifact downloads reject private-network URLs from public providers
   );
 });
 
+test("media gateway errors expose the concrete failed provider attempt", async (t) => {
+  const server = createServer(async (_request, response) => {
+    response.writeHead(400, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      error: {
+        attempts: [{
+          message: "xAI video duration \"6\" cannot be represented by OpenAI, which supports 4, 8, or 12 seconds.",
+          provider: "openai",
+          provider_name: "grok-cli-api::openai_video_generations",
+          stage: "upstream_request_build",
+          status: 400
+        }],
+        message: "All target providers failed."
+      }
+    }));
+  });
+  if (!await listenOrSkip(t, server)) return;
+  t.after(() => server.close());
+
+  const executor = new GatewayMediaExecutor({
+    model: "grok-imagine-video",
+    protocol: "xai_video_generations",
+    providerBaseUrl: "https://api.x.ai/v1",
+    providerName: "Grok CLI API",
+    providerSelector: "grok-cli-api::xai_video_generations"
+  }, { baseUrl: baseUrl(server) });
+  await assert.rejects(
+    executor.videoGenerate({ duration: 6, images: [], prompt: "Animate", resolution: "480p" }, {
+      job: { id: "media-error-test" },
+      onRemoteRequestId() {},
+      signal: new AbortController().signal
+    }),
+    (error) => {
+      assert.equal(error.code, "gateway_http_400");
+      assert.match(error.message, /xAI video duration "6" cannot be represented by OpenAI/);
+      assert.match(error.message, /upstream_request_build/);
+      assert.doesNotMatch(error.message, /All target providers failed/);
+      return true;
+    }
+  );
+});
+
 test("implicit media input roots reject the filesystem root and home directory", () => {
   const home = path.resolve(os.homedir());
   assert.equal(mediaServiceForTest.isSafeImplicitWorkingDirectory(path.parse(home).root, home), false);
   assert.equal(mediaServiceForTest.isSafeImplicitWorkingDirectory(home, home), false);
   assert.equal(mediaServiceForTest.isSafeImplicitWorkingDirectory(path.join(home, "workspace", "project"), home), true);
+});
+
+test("OpenAI video bindings expose the exact cross-protocol parameter subset", () => {
+  const tool = mediaMcpToolDefinition({
+    modelSelector: "OpenAI/sora",
+    name: "video_generate_openai",
+    operation: "video-generate",
+    protocol: "openai_video_generations"
+  });
+
+  assert.deepEqual(tool.inputSchema.properties.duration.enum, [4, 8, 12]);
+  assert.deepEqual(tool.inputSchema.properties.aspect_ratio.enum, ["16:9", "9:16"]);
+  assert.deepEqual(tool.inputSchema.properties.resolution.enum, ["720p"]);
+  assert.deepEqual(tool.inputSchema.required, ["prompt", "duration", "aspect_ratio", "resolution"]);
 });
 
 test("an imported Grok Agent supplies OAuth-backed Grok API media models without an API key", async (t) => {
@@ -114,7 +173,7 @@ test("an imported Grok Agent supplies OAuth-backed Grok API media models without
 
   assert.deepEqual(service.toolBindings(), [
     { modelSelector: "Imported Grok/grok-imagine-image-quality", name: "image_generate_imported", operation: "image-generate" },
-    { modelSelector: "Imported Grok/grok-imagine-video", name: "video_generate_imported", operation: "video-generate" }
+    { modelSelector: "Imported Grok/grok-imagine-video", name: "video_generate_imported", operation: "video-generate", protocol: "xai_video_generations" }
   ]);
   const target = resolveProviderMediaTarget(config, "Imported Grok/grok-imagine-image-quality", "image-generate");
   assert.equal(target.model, "grok-imagine-image-quality");
@@ -189,6 +248,13 @@ test("provider image jobs use the internal media gateway, persist artifacts, and
     "media_job_get_test",
     "media_job_cancel_test"
   ]);
+  const videoTool = listPayload.result.tools.find((tool) => tool.name === "video_generate_test");
+  assert.equal(videoTool.inputSchema.properties.duration.type, "integer");
+  assert.equal(videoTool.inputSchema.properties.duration.minimum, 1);
+  assert.equal(videoTool.inputSchema.properties.duration.maximum, 15);
+  assert.deepEqual(videoTool.inputSchema.properties.aspect_ratio.enum, ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
+  assert.deepEqual(videoTool.inputSchema.properties.resolution.enum, ["480p", "720p"]);
+  assert.deepEqual(videoTool.inputSchema.required, ["prompt"]);
 
   const callResponse = await fetch(`${baseUrl(server)}/mcp`, {
     body: JSON.stringify({
@@ -312,7 +378,7 @@ function mediaConfig(baseUrlValue) {
     capabilities: [
       { baseUrl: `${baseUrlValue}/v1`, source: "detected", type: "openai_chat_completions" },
       { baseUrl: `${baseUrlValue}/v1`, source: "detected", type: "openai_image_generations" },
-      { baseUrl: `${baseUrlValue}/v1`, source: "detected", type: "openai_video_generations" }
+      { baseUrl: `${baseUrlValue}/v1`, source: "detected", type: "xai_video_generations" }
     ],
     models: ["grok-imagine-image-quality", "grok-imagine-video"],
     name: "Media Provider"

@@ -51,10 +51,10 @@ export type ImageEditRequest = ImageGenerateRequest & {
 
 export type VideoGenerateRequest = {
   aspectRatio?: string;
-  duration: 6 | 10;
+  duration: number;
   images: string[];
   prompt: string;
-  resolution: "480p" | "720p";
+  resolution: string;
 };
 
 export type MediaRequest = ImageEditRequest | ImageGenerateRequest | VideoGenerateRequest;

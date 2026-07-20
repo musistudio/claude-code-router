@@ -20,7 +20,8 @@ test("core gateway compiles media capabilities and provider plugin aliases for c
     capabilities: [
       { baseUrl: "https://chat.example/v1", source: "detected", type: "openai_chat_completions" },
       { baseUrl: "https://media.example/v1", source: "detected", type: "openai_image_generations" },
-      { baseUrl: "https://media.example/v1", source: "detected", type: "openai_video_generations" }
+      { baseUrl: "https://media.example/v1", source: "detected", type: "openai_video_generations" },
+      { baseUrl: "https://api.x.ai/v1", source: "detected", type: "xai_video_generations" }
     ],
     credentials: [{ apiKey: "provider-key", enabled: true, id: "primary", priority: 1 }],
     id: "media-provider",
@@ -50,7 +51,8 @@ test("core gateway compiles media capabilities and provider plugin aliases for c
   assert.deepEqual(providers.map((provider) => [provider.name, provider.type, provider.baseurl]), [
     ["media-provider::openai_chat_completions::cred:primary", "openai_chat_completions", "https://chat.example/v1"],
     ["media-provider::openai_image_generations::cred:primary", "openai_image_generations", "https://media.example/v1"],
-    ["media-provider::openai_video_generations::cred:primary", "openai_video_generations", "https://media.example/v1"]
+    ["media-provider::openai_video_generations::cred:primary", "openai_video_generations", "https://media.example/v1"],
+    ["media-provider::xai_video_generations::cred:primary", "xai_video_generations", "https://api.x.ai/v1"]
   ]);
   assert.deepEqual(
     providerPlugins.map((plugin) => plugin.providerName).filter(Boolean).sort(),
@@ -58,7 +60,8 @@ test("core gateway compiles media capabilities and provider plugin aliases for c
       "Media Provider",
       "media-provider::openai_chat_completions::cred:primary",
       "media-provider::openai_image_generations::cred:primary",
-      "media-provider::openai_video_generations::cred:primary"
+      "media-provider::openai_video_generations::cred:primary",
+      "media-provider::xai_video_generations::cred:primary"
     ].sort()
   );
 });

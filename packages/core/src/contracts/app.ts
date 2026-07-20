@@ -153,7 +153,8 @@ export type GatewayProviderProtocol =
 
 export type GatewayMediaProtocol =
   | "openai_image_generations"
-  | "openai_video_generations";
+  | "openai_video_generations"
+  | "xai_video_generations";
 
 export type GatewayProviderCapabilityProtocol = GatewayProviderProtocol | GatewayMediaProtocol;
 

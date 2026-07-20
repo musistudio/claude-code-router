@@ -2054,7 +2054,9 @@ export function providerCapabilitiesForProtocols(
     .filter((item): item is GatewayProviderCapability => Boolean(item));
 
   const detectedMediaCapabilities = detectedCapabilities.filter((capability) =>
-    capability.type === "openai_image_generations" || capability.type === "openai_video_generations"
+    capability.type === "openai_image_generations" ||
+    capability.type === "openai_video_generations" ||
+    capability.type === "xai_video_generations"
   );
   return mergeProviderCapabilities(selectedCapabilities, detectedMediaCapabilities);
 }

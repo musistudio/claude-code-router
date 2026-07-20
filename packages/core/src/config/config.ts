@@ -1459,6 +1459,9 @@ function parseProviderCapabilityProtocol(value: string | undefined): GatewayProv
   if (normalized === "openai_video_generations" || normalized === "openai_videos") {
     return "openai_video_generations";
   }
+  if (normalized === "xai_video_generations" || normalized === "xai_videos") {
+    return "xai_video_generations";
+  }
   if (normalized === "anthropic" || normalized === "anthropic_messages") {
     return "anthropic_messages";
   }

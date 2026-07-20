@@ -5,6 +5,7 @@ import { isIP } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import type { GatewayMediaProtocol } from "@ccr/core/contracts/app";
 import type { ImageEditRequest, ImageGenerateRequest, MediaExecutionContext, MediaExecutionResult, VideoGenerateRequest } from "@ccr/core/media/contracts";
 import { detectMediaType } from "@ccr/core/media/storage";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
@@ -14,6 +15,7 @@ const maxArtifactRedirects = 5;
 
 export type GatewayMediaTarget = {
   model: string;
+  protocol: GatewayMediaProtocol;
   providerBaseUrl: string;
   providerName: string;
   providerSelector: string;
@@ -327,7 +329,7 @@ async function readApiResponse(response: Response): Promise<Record<string, unkno
   }
   if (!response.ok) {
     const record = isRecord(payload) ? payload : {};
-    const message = sanitizeRemoteError(readNestedString(record, ["error", "message"]) ?? readString(record, "message") ?? `Media gateway request failed with HTTP ${response.status}.`);
+    const message = sanitizeRemoteError(coreGatewayErrorMessage(record) ?? `Media gateway request failed with HTTP ${response.status}.`);
     throw mediaError(`gateway_http_${response.status}`, message, response.status === 408 || response.status === 429 || response.status >= 500);
   }
   if (!isRecord(payload)) throw mediaError("invalid_api_response", "Media gateway returned a non-object response.", false);
@@ -369,6 +371,32 @@ function readUsage(payload: Record<string, unknown>): { costUsdTicks?: number } 
 
 function sanitizeRemoteError(value: string): string {
   return value.replace(/Bearer\s+\S+/gi, "Bearer [redacted]").replace(/[A-Za-z0-9_-]{40,}/g, "[redacted]").trim().slice(0, 2000);
+}
+
+function coreGatewayErrorMessage(payload: Record<string, unknown>): string | undefined {
+  const error = isRecord(payload.error) ? payload.error : undefined;
+  const fallback = readString(error ?? payload, "message") ?? readString(payload, "message");
+  const attempts = Array.isArray(error?.attempts) ? error.attempts.filter(isRecord) : [];
+  const failures = attempts
+    .map(formatGatewayAttempt)
+    .filter((value): value is string => Boolean(value));
+  if (!failures.length) return fallback;
+  return [...new Set(failures)].slice(0, 3).join("; ");
+}
+
+function formatGatewayAttempt(attempt: Record<string, unknown>): string | undefined {
+  const message = readString(attempt, "message");
+  const details = isRecord(attempt.details) ? attempt.details : undefined;
+  const detail = details ? readString(details, "message", "error", "raw", "code") : undefined;
+  const core = message && detail && !message.includes(detail)
+    ? `${message}: ${detail}`
+    : message ?? detail;
+  if (!core) return undefined;
+  const provider = readString(attempt, "provider_name", "provider");
+  const stage = readString(attempt, "stage");
+  const status = typeof attempt.status === "number" && Number.isFinite(attempt.status) ? `HTTP ${attempt.status}` : undefined;
+  const context = [provider, stage, status].filter(Boolean).join(", ");
+  return context ? `${core} (${context})` : core;
 }
 
 function stripUndefined(value: Record<string, unknown>): Record<string, unknown> {

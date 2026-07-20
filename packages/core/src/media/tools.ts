@@ -6,14 +6,15 @@ import {
   GROK_MEDIA_JOB_GET_TOOL_NAME,
   GROK_MEDIA_VIDEO_START_TOOL_NAME
 } from "@ccr/core/contracts/app";
-import type { AppConfig } from "@ccr/core/contracts/app";
+import type { AppConfig, GatewayMediaProtocol } from "@ccr/core/contracts/app";
 import type { MediaOperation } from "@ccr/core/media/contracts";
-import { defaultGrokMediaModelSelector, migrateLegacyGrokMediaModelSelector } from "@ccr/core/media/models";
+import { defaultGrokMediaModelSelector, migrateLegacyGrokMediaModelSelector, videoGenerationConstraints } from "@ccr/core/media/models";
 
 export type MediaToolBinding = {
   modelSelector: string;
   name: string;
   operation: MediaOperation | "capabilities" | "job-cancel" | "job-get";
+  protocol?: GatewayMediaProtocol;
 };
 
 export type MediaMcpToolDefinition = {
@@ -87,18 +88,30 @@ export function mediaMcpToolDefinition(binding: MediaToolBinding): MediaMcpToolD
     }, ["images", "prompt"]),
     name: binding.name
   };
-  if (binding.operation === "video-generate") return {
-    description: `Start a media provider video job with ${binding.modelSelector}. Returns immediately with a job id. Supply zero images for text-to-video, one for image-to-video, or two to seven reference images.`,
-    inputSchema: objectSchema({
-      aspect_ratio: { description: "Optional output aspect ratio.", type: "string" },
-      duration: { description: "Video duration in seconds.", enum: [6, 10], type: "number" },
-      idempotency_key: { description: "Stable caller-generated key that prevents duplicate paid submissions.", type: "string" },
-      images: { description: "Up to seven absolute local image paths.", items: { type: "string" }, maxItems: 7, type: "array" },
-      prompt: { description: "Video generation prompt.", maxLength: 20000, type: "string" },
-      resolution: { description: "Requested output resolution.", enum: ["480p", "720p"], type: "string" }
-    }, ["prompt"]),
-    name: binding.name
-  };
+  if (binding.operation === "video-generate") {
+    const protocol = binding.protocol ?? "xai_video_generations";
+    const constraints = videoGenerationConstraints(protocol);
+    const durationSchema = constraints.durations
+      ? { description: `Video duration in seconds for ${protocol}.`, enum: constraints.durations, type: "integer" }
+      : {
+          description: `Video duration in seconds for ${protocol}.`,
+          maximum: constraints.durationMaximum,
+          minimum: constraints.durationMinimum,
+          type: "integer"
+        };
+    return {
+      description: `Start a ${protocol} video job with ${binding.modelSelector}. Returns immediately with a job id. Supply zero images for text-to-video, one for image-to-video, or two to seven reference images.`,
+      inputSchema: objectSchema({
+        aspect_ratio: { description: `Output aspect ratio for ${protocol}.`, enum: constraints.aspectRatios, type: "string" },
+        duration: durationSchema,
+        idempotency_key: { description: "Stable caller-generated key that prevents duplicate paid submissions.", type: "string" },
+        images: { description: "Up to seven absolute local image paths.", items: { type: "string" }, maxItems: 7, type: "array" },
+        prompt: { description: "Video generation prompt.", maxLength: 20000, type: "string" },
+        resolution: { description: `Requested output resolution for ${protocol}.`, enum: constraints.resolutions, type: "string" }
+      }, ["prompt", ...constraints.requiredParameters]),
+      name: binding.name
+    };
+  }
   if (binding.operation === "job-get") return {
     description: "Get the current state and artifact of a media job.",
     inputSchema: objectSchema({ job_id: { description: "Job id returned by a start or image call.", type: "string" } }, ["job_id"]),

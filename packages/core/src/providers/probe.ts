@@ -70,7 +70,8 @@ const protocolOrder: GatewayProviderCapabilityProtocol[] = [
   "gemini_generate_content",
   "gemini_interactions",
   "openai_image_generations",
-  "openai_video_generations"
+  "openai_video_generations",
+  "xai_video_generations"
 ];
 
 const modelSourceOrder: ModelSource[] = ["openai", "anthropic", "gemini"];
@@ -718,7 +719,7 @@ function mediaProbeBody(protocol: GatewayProviderCapabilityProtocol): Record<str
       prompt: ""
     };
   }
-  if (protocol === "openai_video_generations") {
+  if (protocol === "openai_video_generations" || protocol === "xai_video_generations") {
     return {
       duration: 0,
       model: "__ccr_media_protocol_probe__",
@@ -883,7 +884,7 @@ function endpointsForProtocol(
     }));
   }
 
-  if (protocol === "openai_video_generations") {
+  if (protocol === "openai_video_generations" || protocol === "xai_video_generations") {
     return parsed.openaiBaseUrlCandidates.map((baseUrl) => ({
       baseUrl,
       endpoint: `${baseUrl}/videos/generations`
@@ -1087,7 +1088,9 @@ function protocolModelSource(protocol: GatewayProviderCapabilityProtocol): Model
 }
 
 function isChatProtocol(protocol: GatewayProviderCapabilityProtocol): protocol is GatewayProviderProtocol {
-  return protocol !== "openai_image_generations" && protocol !== "openai_video_generations";
+  return protocol !== "openai_image_generations" &&
+    protocol !== "openai_video_generations" &&
+    protocol !== "xai_video_generations";
 }
 
 function isMediaProtocol(protocol: GatewayProviderCapabilityProtocol): boolean {

@@ -444,7 +444,7 @@ function importGrokProviderWithAuth(
         baseUrl: GROK_API_MEDIA_BASE_URL,
         endpoint: `${GROK_API_MEDIA_BASE_URL}/videos/generations`,
         source: "preset" as const,
-        type: "openai_video_generations" as const
+        type: "xai_video_generations" as const
       }
     ],
     models: uniqueStrings([
@@ -516,7 +516,11 @@ export function normalizeGrokProviderMediaCapabilities(provider: GatewayProvider
   if (!isLocalGrokProvider(provider)) {
     return provider;
   }
-  const capabilities = [...(provider.capabilities ?? [])];
+  const capabilities = (provider.capabilities ?? []).map((capability) =>
+    capability.type === "openai_video_generations" && isXaiApiBaseUrl(capability.baseUrl)
+      ? { ...capability, type: "xai_video_generations" as const }
+      : capability
+  );
   const ensureCapability = (capability: GatewayProviderCapability): void => {
     if (!capabilities.some((item) => item.type === capability.type)) {
       capabilities.push(capability);
@@ -534,7 +538,7 @@ export function normalizeGrokProviderMediaCapabilities(provider: GatewayProvider
     baseUrl: GROK_API_MEDIA_BASE_URL,
     endpoint: `${GROK_API_MEDIA_BASE_URL}/videos/generations`,
     source: "preset",
-    type: "openai_video_generations"
+    type: "xai_video_generations"
   });
   return {
     ...provider,
@@ -545,6 +549,14 @@ export function normalizeGrokProviderMediaCapabilities(provider: GatewayProvider
       GROK_API_DEFAULT_VIDEO_MODEL
     ])
   };
+}
+
+function isXaiApiBaseUrl(value: string): boolean {
+  try {
+    return /(?:^|\.)api\.x\.ai$/i.test(new URL(value).hostname);
+  } catch {
+    return false;
+  }
 }
 
 function isLocalGrokProvider(provider: GatewayProviderConfig): boolean {

@@ -9,6 +9,7 @@ import {
 import { codexDefaultBaseUrl, readCodexLocalModelCatalog } from "@ccr/core/agents/local-providers/codex";
 import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared";
 import { normalizeProviderBaseUrl } from "@ccr/core/providers/url";
+import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
 
 const fusionModelProviderName = "Fusion";
 const codexDefaultContextWindow = 128_000;
@@ -174,12 +175,24 @@ function codexModelCapabilityProfile(
   config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>
 ): CodexCapabilityProfile {
   const selector = parseModelSelector(model);
-  const provider = selector?.provider ? findConfiguredProvider(config, selector.provider) : findConfiguredProviderForModel(config, model);
-  const providerModel = selector?.model ?? model;
+  const attributionConfig = config
+    ? {
+        Providers: config.Providers ?? [],
+        virtualModelProfiles: config.virtualModelProfiles ?? []
+      }
+    : undefined;
+  const attribution = resolveUsageModelAttribution(attributionConfig, model);
+  const provider = attribution.provider
+    ? findConfiguredProvider(config, attribution.provider)
+    : selector?.provider
+      ? findConfiguredProvider(config, selector.provider)
+      : findConfiguredProviderForModel(config, attribution.model ?? model);
+  const providerModel = attribution.model ?? selector?.model ?? model;
   const providerModelMetadata = provider
     ? providerModelMetadataFor(provider, providerModel) ?? localCodexModelMetadataFor(provider, providerModel)
     : undefined;
-  const catalogEntry = findModelCatalogEntry(model);
+  const physicalModelSelector = provider ? `${provider.name}/${providerModel}` : providerModel;
+  const catalogEntry = findModelCatalogEntry(physicalModelSelector);
   const capabilities = catalogEntry?.capabilities ?? {};
   const providerProtocol = provider ? codexProviderProtocol(provider) : undefined;
   const supportsFusionVision = codexVirtualModelSupportsFusionVision(model, config);

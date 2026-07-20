@@ -337,10 +337,10 @@ function codexSharedChatGptAuthEnv(): Record<string, string> {
     process.env.CCR_CODEX_CHATGPT_AUTH_FILE,
     process.env.CODEXL_CODEX_CHATGPT_AUTH_FILE
   ].map((value) => value?.trim()).find((value) => value && isFile(resolveUserPath(value)));
-  const authFile = configured ? resolveUserPath(configured) : path.join(os.homedir(), ".codex", "auth.json");
-  if (!isFile(authFile)) {
+  if (!configured) {
     return {};
   }
+  const authFile = resolveUserPath(configured);
   return {
     CCR_CODEX_CHATGPT_AUTH_FILE: authFile,
     CODEXL_CODEX_CHATGPT_AUTH_FILE: authFile

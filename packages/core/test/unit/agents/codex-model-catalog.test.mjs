@@ -516,3 +516,93 @@ test("codex catalog marks prefixed Fusion virtual models with legacy web search 
   assert.equal(model.web_search_tool_type, "text");
   assert.equal(model.apply_patch_tool_type, "freeform");
 });
+
+test("codex catalog inherits reasoning levels from each Fusion alias base model", () => {
+  const cases = [
+    ["gpt", "gpt-5.6-sol", ["low", "medium", "high", "xhigh", "max", "ultra"], "medium"],
+    ["anthropic", "claude-sonnet-4.6", ["low", "medium", "high", "max"], "high"],
+    ["google", "gemini-3.5-flash", ["minimal", "low", "medium", "high"], "medium"],
+    ["kimi", "kimi-for-coding", [], null]
+  ];
+
+  for (const [providerName, baseModel, expectedEfforts, expectedDefault] of cases) {
+    const alias = `fusion-${providerName}`;
+    const model = catalogModelFor({
+      Providers: [
+        { name: providerName, type: "openai_responses", models: [baseModel] }
+      ],
+      virtualModelProfiles: [
+        {
+          baseModel: { fixedModel: `${providerName}/${baseModel}`, mode: "fixed" },
+          displayName: alias,
+          enabled: true,
+          execution: {
+            clientToolsPolicy: "allow",
+            maxToolCalls: 4,
+            maxTurns: 4,
+            mode: "tool_loop",
+            streamMode: "optimistic"
+          },
+          id: alias,
+          key: alias,
+          match: { exactAliases: [alias], prefixes: [], suffixes: [] },
+          materialization: { enabled: true, includeInGatewayModels: true },
+          tools: []
+        }
+      ]
+    }, `Fusion/${alias}`);
+
+    assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), expectedEfforts);
+    assert.equal(model.default_reasoning_level, expectedDefault);
+  }
+});
+
+test("codex catalog inherits explicit provider reasoning metadata through Fusion aliases", () => {
+  const model = catalogModelFor({
+    Providers: [
+      {
+        modelMetadata: {
+          "custom-base": {
+            contextWindow: 320000,
+            defaultReasoningLevel: "high",
+            supportedReasoningLevels: [
+              { description: "Quick", effort: "low" },
+              { description: "Thorough", effort: "high" }
+            ],
+            supportsReasoningSummaries: true
+          }
+        },
+        models: ["custom-base"],
+        name: "Custom Provider",
+        type: "openai_responses"
+      }
+    ],
+    virtualModelProfiles: [
+      {
+        baseModel: { fixedModel: "Custom Provider/custom-base", mode: "fixed" },
+        displayName: "Custom Fusion",
+        enabled: true,
+        execution: {
+          clientToolsPolicy: "allow",
+          maxToolCalls: 4,
+          maxTurns: 4,
+          mode: "tool_loop",
+          streamMode: "optimistic"
+        },
+        id: "custom-fusion",
+        key: "custom-fusion",
+        match: { exactAliases: ["custom-fusion"], prefixes: [], suffixes: [] },
+        materialization: { enabled: true, includeInGatewayModels: true },
+        tools: []
+      }
+    ]
+  }, "Fusion/custom-fusion");
+
+  assert.deepEqual(model.supported_reasoning_levels, [
+    { description: "Quick", effort: "low" },
+    { description: "Thorough", effort: "high" }
+  ]);
+  assert.equal(model.default_reasoning_level, "high");
+  assert.equal(model.supports_reasoning_summaries, true);
+  assert.equal(model.context_window, 320000);
+});

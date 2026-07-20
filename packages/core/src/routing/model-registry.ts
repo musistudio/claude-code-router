@@ -230,7 +230,8 @@ const providerInternalProtocols = new Set([
   "openai_chat_completions",
   "openai_image_generations",
   "openai_responses",
-  "openai_video_generations"
+  "openai_video_generations",
+  "xai_video_generations"
 ]);
 
 function sanitizeProviderHeaderId(value: string | undefined): string | undefined {

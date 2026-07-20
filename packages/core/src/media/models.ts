@@ -3,11 +3,22 @@ import {
   GROK_API_DEFAULT_VIDEO_MODEL,
   GROK_CLI_MEDIA_MODEL_SELECTOR
 } from "@ccr/core/contracts/app";
-import type { GatewayProviderConfig } from "@ccr/core/contracts/app";
+import type { GatewayMediaProtocol, GatewayProviderConfig } from "@ccr/core/contracts/app";
 
 const localAgentProviderApiKey = "ccr-local-agent-login";
 
 export type GrokMediaKind = "image" | "video";
+
+export type VideoGenerationConstraints = {
+  aspectRatios: string[];
+  defaultDuration?: number;
+  defaultResolution?: string;
+  durationMaximum?: number;
+  durationMinimum?: number;
+  durations?: number[];
+  requiredParameters: Array<"aspect_ratio" | "duration" | "resolution">;
+  resolutions: string[];
+};
 
 export type GrokMediaModelOption = {
   label: string;
@@ -47,10 +58,32 @@ export function grokMediaModelsForProvider(provider: GatewayProviderConfig, kind
 }
 
 export function providerSupportsMediaKind(provider: GatewayProviderConfig, kind: GrokMediaKind): boolean {
-  const capability = kind === "image" ? "openai_image_generations" : "openai_video_generations";
+  const capabilities = kind === "image"
+    ? ["openai_image_generations"]
+    : ["xai_video_generations", "openai_video_generations"];
   return isImportedGrokAgentProvider(provider) ||
-    (provider.capabilities ?? []).some((item) => item.type === capability) ||
+    (provider.capabilities ?? []).some((item) => capabilities.includes(item.type)) ||
     (provider.models ?? []).some((model) => grokMediaModelKind(model) === kind);
+}
+
+export function videoGenerationConstraints(protocol: GatewayMediaProtocol): VideoGenerationConstraints {
+  if (protocol === "openai_video_generations") {
+    return {
+      aspectRatios: ["16:9", "9:16"],
+      durations: [4, 8, 12],
+      requiredParameters: ["duration", "aspect_ratio", "resolution"],
+      resolutions: ["720p"]
+    };
+  }
+  return {
+    aspectRatios: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],
+    defaultDuration: 6,
+    defaultResolution: "480p",
+    durationMaximum: 15,
+    durationMinimum: 1,
+    requiredParameters: [],
+    resolutions: ["480p", "720p"]
+  };
 }
 
 export function createGrokMediaModelOptions(

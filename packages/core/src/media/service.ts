@@ -7,7 +7,7 @@ import type { AppConfig, GatewayMediaProtocol, MediaToolsConfig } from "@ccr/cor
 import type { ImageEditRequest, ImageGenerateRequest, MediaArtifact, MediaExecutionContext, MediaExecutionResult, MediaJob, MediaJobError, MediaOperation, MediaRequest, PublicMediaArtifact, PublicMediaJob, VideoGenerateRequest } from "@ccr/core/media/contracts";
 import { GatewayMediaExecutor } from "@ccr/core/media/executors";
 import type { GatewayMediaTarget, GatewayMediaTransport } from "@ccr/core/media/executors";
-import { grokMediaModelKind, isImportedGrokAgentProvider, migrateLegacyGrokMediaModelSelector, providerSupportsMediaKind } from "@ccr/core/media/models";
+import { grokMediaModelKind, isImportedGrokAgentProvider, migrateLegacyGrokMediaModelSelector, providerSupportsMediaKind, videoGenerationConstraints } from "@ccr/core/media/models";
 import { detectMediaType, MediaArtifactStore, MediaJobStore } from "@ccr/core/media/storage";
 import { mediaToolBindingsForConfig } from "@ccr/core/media/tools";
 import type { MediaToolBinding } from "@ccr/core/media/tools";
@@ -129,12 +129,32 @@ export class MediaService {
   }
 
   videoStart(args: Record<string, unknown>, modelSelector: string): PublicMediaJob {
-    const durationValue = numberValue(args.duration) ?? 6;
-    if (durationValue !== 6 && durationValue !== 10) throw new Error("duration must be 6 or 10 seconds.");
-    const resolution = optionalString(args.resolution) ?? "480p";
-    if (resolution !== "480p" && resolution !== "720p") throw new Error("resolution must be 480p or 720p.");
+    const target = resolveProviderMediaTarget(this.requireConfig(), modelSelector, "video-generate");
+    const constraints = videoGenerationConstraints(target.protocol);
+    const durationValue = numberValue(args.duration) ?? constraints.defaultDuration;
+    if (durationValue === undefined) throw new Error(`duration is required for ${target.protocol}.`);
+    if (!Number.isInteger(durationValue)) throw new Error("duration must be an integer number of seconds.");
+    if (constraints.durations && !constraints.durations.includes(durationValue)) {
+      throw new Error(`duration must be one of ${constraints.durations.join(", ")} seconds for ${target.protocol}.`);
+    }
+    if (constraints.durationMinimum !== undefined && constraints.durationMaximum !== undefined &&
+      (durationValue < constraints.durationMinimum || durationValue > constraints.durationMaximum)) {
+      throw new Error(`duration must be between ${constraints.durationMinimum} and ${constraints.durationMaximum} seconds for ${target.protocol}.`);
+    }
+    const resolution = optionalString(args.resolution) ?? constraints.defaultResolution;
+    if (!resolution) throw new Error(`resolution is required for ${target.protocol}.`);
+    if (!constraints.resolutions.includes(resolution)) {
+      throw new Error(`resolution must be one of ${constraints.resolutions.join(", ")} for ${target.protocol}.`);
+    }
+    const aspectRatio = optionalString(args.aspect_ratio);
+    if (constraints.requiredParameters.includes("aspect_ratio") && !aspectRatio) {
+      throw new Error(`aspect_ratio is required for ${target.protocol}.`);
+    }
+    if (aspectRatio && !constraints.aspectRatios.includes(aspectRatio)) {
+      throw new Error(`aspect_ratio must be one of ${constraints.aspectRatios.join(", ")} for ${target.protocol}.`);
+    }
     const request: VideoGenerateRequest = {
-      aspectRatio: optionalString(args.aspect_ratio),
+      aspectRatio,
       duration: durationValue,
       images: args.images === undefined && args.image === undefined ? [] : this.validateImages(args.images ?? args.image, 1, 7),
       prompt: requiredPrompt(args.prompt),
@@ -162,15 +182,22 @@ export class MediaService {
   capabilities(): Record<string, unknown> {
     const config = this.requireConfig();
     const runtime = config.mediaTools;
+    const bindings = this.toolBindings();
     return {
       backend: "gateway-media-api",
-      bindings: this.toolBindings(),
+      bindings,
       constraints: {
         imageEditMaxInputs: 3,
         inputFileMaxBytes: maxInputBytes,
         videoReferenceMaxInputs: 7,
-        videoDurations: [6, 10],
-        videoResolutions: ["480p", "720p"]
+        videoTools: bindings
+          .filter((binding) => binding.operation === "video-generate" && binding.protocol)
+          .map((binding) => ({
+            modelSelector: binding.modelSelector,
+            name: binding.name,
+            protocol: binding.protocol,
+            ...videoGenerationConstraints(binding.protocol!)
+          }))
       },
       enabled: runtime.enabled,
       operations: ["image-generate", "image-edit", "video-generate", "image-to-video", "reference-to-video"]
@@ -178,7 +205,11 @@ export class MediaService {
   }
 
   toolBindings(): MediaToolBinding[] {
-    return mediaToolBindingsForConfig(this.requireConfig());
+    return mediaToolBindingsForConfig(this.requireConfig()).map((binding) =>
+      binding.operation === "video-generate"
+        ? { ...binding, protocol: resolveProviderMediaTarget(this.requireConfig(), binding.modelSelector, binding.operation).protocol }
+        : binding
+    );
   }
 
   bindingForTool(name: string): MediaToolBinding | undefined {
@@ -536,9 +567,14 @@ export function resolveProviderMediaTarget(config: AppConfig, selector: string, 
     throw new Error(`Provider ${provider.name} does not declare ${kind ?? "media"} generation support.`);
   }
   const protocol: GatewayMediaProtocol = kind === "video"
-    ? "openai_video_generations"
+    ? provider.capabilities?.some((item) => item.type === "xai_video_generations") || isImportedGrokAgentProvider(provider)
+      ? "xai_video_generations"
+      : "openai_video_generations"
     : "openai_image_generations";
-  const capability = provider.capabilities?.find((item) => item.type === protocol);
+  const capability = provider.capabilities?.find((item) => item.type === protocol) ??
+    (protocol === "xai_video_generations" && isImportedGrokAgentProvider(provider)
+      ? provider.capabilities?.find((item) => item.type === "openai_video_generations")
+      : undefined);
   const providerBaseUrl = capability?.baseUrl ?? provider.baseurl ?? provider.baseUrl ?? provider.api_base_url;
   if (!providerBaseUrl?.trim()) {
     throw new Error(`Provider ${provider.name} does not configure a media API base URL.`);
@@ -549,6 +585,7 @@ export function resolveProviderMediaTarget(config: AppConfig, selector: string, 
   const credential = sortProviderCredentialsForConfig(activeProviderCredentials(provider))[0];
   return {
     model: resolved.model,
+    protocol,
     providerBaseUrl: providerBaseUrl.trim(),
     providerName: provider.name,
     providerSelector: credential
