@@ -11,7 +11,7 @@ import { closeBotGatewayQrWindow, openBotGatewayQrWindow } from "./bot-gateway-q
 import { syncClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
 import { findInstalledCodexAppExecutable } from "@ccr/core/agents/codex/app-launch";
 import { findInstalledOpenCodeAppExecutable } from "@ccr/core/agents/opencode/app-launch";
-import { loadAppConfig, saveApiKeysConfig, saveAppConfig } from "@ccr/core/config/config";
+import { loadAppConfig, saveApiKeysConfig, saveAppConfig, saveAppThemePreference } from "@ccr/core/config/config";
 import { API_KEYS_DB_FILE, APP_CONFIG_DB_FILE, APP_NAME, CONFIGDIR, CONFIG_FILE, DATADIR, GATEWAY_CONFIG_FILE, IPC_CHANNELS, LEGACY_CONFIG_FILE, ONBOARDING_FINISHED_FILE, PROXY_CA_CERT_FILE, REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "@ccr/core/config/constants";
 import { deepLinkService } from "./deep-link";
 import { gatewayService } from "@ccr/core/gateway/service";
@@ -57,6 +57,11 @@ const pluginMarketplace: PluginMarketplaceEntry[] = [
 ];
 const onboardingFinishedAtSettingKey = "onboardingFinishedAt";
 const imageExportTargets = new Map<string, string>();
+
+function applyAppThemePreference(theme: AppConfig["theme"]): void {
+  applyNativeThemePreference(theme);
+  trayController.refreshTheme(theme);
+}
 
 ipcMain.handle(IPC_CHANNELS.appGetInfo, () => {
   const chatgptAppPath = findInstalledCodexAppExecutable().executable;
@@ -277,7 +282,7 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, opt
   }
   const launchAtLoginChanged = Boolean(config.launchAtLogin) !== Boolean(previousConfig.launchAtLogin);
   let savedConfig = await saveAppConfig(config);
-  applyNativeThemePreference(savedConfig.theme);
+  applyAppThemePreference(savedConfig.theme);
   if (launchAtLoginChanged) {
     try {
       syncLaunchAtLogin(savedConfig);
@@ -304,6 +309,11 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, opt
   await trayController.refreshIconFromConfig(savedConfig);
   invalidateProviderAccountSnapshotCache();
   return savedConfig;
+});
+ipcMain.handle(IPC_CHANNELS.appSetThemePreference, async (_event, theme: unknown) => {
+  const savedTheme = await saveAppThemePreference(theme);
+  applyAppThemePreference(savedTheme);
+  return savedTheme;
 });
 ipcMain.handle(IPC_CHANNELS.appSaveApiKeys, async (_event, apiKeys: ApiKeyConfig[]) => {
   const savedConfig = await saveApiKeysConfig(apiKeys);

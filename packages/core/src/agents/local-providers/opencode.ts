@@ -141,13 +141,26 @@ export function importOpenCodeProvider(
   if (publicOnly && !candidate.models.every((model) => catalog.models[protocol].includes(model))) {
     throw new Error("OpenCode CLI public models were not found.");
   }
-  const apiKey = credential?.apiKey || "public";
-  const authSuffix = `opencode-${candidate.protocol.replaceAll("_", "-")}-api-key`;
   const provider = providerPayload(
     candidate,
     uniqueProviderName(providerNames, candidate.name),
     catalog.baseUrl
   );
+  if (publicOnly) {
+    return {
+      candidate,
+      provider: {
+        ...provider,
+        apiKey: "public"
+      },
+      providerPlugins: []
+    };
+  }
+  const apiKey = credential?.apiKey;
+  if (!apiKey) {
+    throw new Error("OpenCode CLI API key was not found.");
+  }
+  const authSuffix = `opencode-${candidate.protocol.replaceAll("_", "-")}-api-key`;
   return {
     candidate,
     provider,

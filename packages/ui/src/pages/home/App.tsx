@@ -36,7 +36,7 @@ import {
 } from "./shared/index";
 import { startVisiblePolling } from "./shared/polling";
 import {
-  AppDialogStack, LightToast, MainLayout, OnboardingLayout
+  AppDialogStack, LightToast, MainLayout, OnboardingLayout, shouldCheckForUpdateOnOpen
 } from "./components/index";
 import { ROUTER_SCRIPT_API_VERSION } from "@ccr/core/contracts/app";
 
@@ -262,6 +262,7 @@ function App() {
   const [compactLayout, setCompactLayout] = useState(() => window.matchMedia("(max-width: 720px)").matches);
   const [toast, setToast] = useState<AppToast>();
   const [languagePreference, setLanguagePreference] = useState<AppLanguagePreference>(() => readLanguagePreference());
+  const [themePreference, setThemePreference] = useState<AppConfig["theme"]>(() => fallbackConfig.theme || "system");
   const [systemLanguage, setSystemLanguage] = useState<ResolvedLanguage>(() => detectSystemLanguage());
   const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(() => detectSystemTheme());
   const [requestLogError, setRequestLogError] = useState("");
@@ -300,14 +301,14 @@ function App() {
 
   useEffect(() => {
     const root = document.documentElement;
-    const theme = draftConfig.theme || "system";
+    const theme = themePreference;
     if (theme === "system") {
       root.removeAttribute("data-theme");
       return;
     }
 
     root.dataset.theme = theme;
-  }, [draftConfig.theme]);
+  }, [themePreference]);
 
   useEffect(() => {
     document.documentElement.lang = resolvedLanguage === "zh" ? "zh-CN" : "en";
@@ -716,6 +717,7 @@ function App() {
     [agentAnalysisEnabled, networkCaptureEnabled, requestLogsEnabled]
   );
   const autoSaveRequestId = useRef(0);
+  const themePreferenceRequestId = useRef(0);
   const onboardingProfileDraftSource = useRef("");
   const providerProbeRequestId = useRef(0);
   const providerConnectivityRequestId = useRef(0);
@@ -844,7 +846,10 @@ function App() {
 
     const requestId = autoSaveRequestId.current + 1;
     autoSaveRequestId.current = requestId;
-    const configToSave = draftConfig;
+    const configToSave = normalizeConfig({
+      ...draftConfig,
+      theme: themePreference
+    });
     const options = deferProfileApplyOnSave ? { applyProfile: false } : undefined;
     const timer = window.setTimeout(() => {
       void window.ccr?.saveConfig(configToSave, options)
@@ -862,12 +867,13 @@ function App() {
     }, 400);
 
     return () => window.clearTimeout(timer);
-  }, [dirty, draftConfig, deferProfileApplyOnSave]);
+  }, [dirty, draftConfig, deferProfileApplyOnSave, themePreference]);
 
   function syncConfigState(config: AppConfig) {
     const normalized = normalizeConfig(config);
     setSavedConfig(normalized);
     setDraftConfig(normalized);
+    setThemePreference(normalized.theme || "system");
   }
 
   function showToast(message: string) {
@@ -890,20 +896,9 @@ function App() {
   function openSidebarUpdateDialog() {
     setUpdateDialogOpen(true);
     setUpdateActionError("");
-    if (updateDialogStatus.canDownload || updateDialogStatus.state === "available") {
-      void downloadAppUpdate();
-      return;
+    if (shouldCheckForUpdateOnOpen(updateDialogStatus)) {
+      void checkForAppUpdate();
     }
-    if (
-      updateDialogStatus.canInstall ||
-      updateDialogStatus.state === "checking" ||
-      updateDialogStatus.state === "downloading" ||
-      updateDialogStatus.state === "downloaded" ||
-      updateDialogStatus.state === "installing"
-    ) {
-      return;
-    }
-    void checkForAppUpdate();
   }
 
   async function checkForAppUpdate() {
@@ -987,14 +982,18 @@ function App() {
 
   async function persistConfig(config: AppConfig, setError: (message: string) => void, options?: AppSaveConfigOptions): Promise<boolean> {
     autoSaveRequestId.current += 1;
+    const configWithTheme = normalizeConfig({
+      ...config,
+      theme: themePreference
+    });
     if (!window.ccr) {
-      syncConfigState(config);
+      syncConfigState(configWithTheme);
       return true;
     }
 
     try {
       const saveOptions = options ?? (deferProfileApplyOnSave ? { applyProfile: false } : undefined);
-      const saved = await window.ccr.saveConfig(config, saveOptions);
+      const saved = await window.ccr.saveConfig(configWithTheme, saveOptions);
       syncConfigState(saved);
       setError("");
       return true;
@@ -2182,10 +2181,34 @@ function App() {
 
   function changeThemePreference(value: string) {
     const theme = normalizeThemePreference(value);
-    updateConfig((config) => ({
-      ...config,
-      theme
-    }));
+    const previousTheme = themePreference;
+    setThemePreference(theme);
+
+    if (!window.ccr?.setThemePreference) {
+      updateConfig((config) => ({
+        ...config,
+        theme
+      }));
+      return;
+    }
+
+    const requestId = themePreferenceRequestId.current + 1;
+    themePreferenceRequestId.current = requestId;
+    void window.ccr.setThemePreference(theme)
+      .then((savedTheme) => {
+        if (themePreferenceRequestId.current !== requestId) {
+          return;
+        }
+        setThemePreference(savedTheme);
+        setActionError("");
+      })
+      .catch((error) => {
+        if (themePreferenceRequestId.current !== requestId) {
+          return;
+        }
+        setThemePreference(previousTheme);
+        setActionError(formatError(error));
+      });
   }
 
   function changeLaunchAtLogin(launchAtLogin: boolean) {
@@ -3240,7 +3263,7 @@ function App() {
               providers: draftConfig.Providers,
               systemLanguage,
               systemTheme,
-              themePreference: draftConfig.theme || "system",
+              themePreference,
               toolHub: draftConfig.toolHub,
               providerAccountSnapshots,
               trayBalanceProgress: normalizeTrayBalanceProgressConfig(draftConfig.trayBalanceProgress),

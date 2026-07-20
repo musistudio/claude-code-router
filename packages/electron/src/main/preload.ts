@@ -152,6 +152,7 @@ contextBridge.exposeInMainWorld("ccr", {
   selectPluginDirectory: () => invoke(IPC_CHANNELS.appSelectPluginDirectory) as Promise<PluginDirectorySelection | undefined>,
   setOnboardingFinished: () => invoke(IPC_CHANNELS.appSetOnboardingFinished) as Promise<boolean>,
   setProxyNetworkCaptureEnabled: (enabled: boolean) => invoke(IPC_CHANNELS.appSetProxyNetworkCaptureEnabled, enabled) as Promise<ProxyNetworkSnapshot>,
+  setThemePreference: (theme: AppConfig["theme"]) => invoke(IPC_CHANNELS.appSetThemePreference, theme) as Promise<AppConfig["theme"]>,
   setTrayDetailOpen: (open: boolean, provider?: string) => invoke(IPC_CHANNELS.appSetTrayDetailOpen, open, provider) as Promise<void>,
   showMainWindow: () => invoke(IPC_CHANNELS.appShowMainWindow) as Promise<void>,
   startGateway: () => invoke(IPC_CHANNELS.appStartGateway) as Promise<GatewayStatus>,
@@ -186,6 +187,11 @@ contextBridge.exposeInMainWorld("ccr", {
     const handler = () => callback();
     ipcRenderer.on(IPC_CHANNELS.appOpenUpdate, handler);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.appOpenUpdate, handler);
+  },
+  onThemePreferenceChanged: (callback: (theme: AppConfig["theme"]) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, theme: AppConfig["theme"]) => callback(theme);
+    ipcRenderer.on(IPC_CHANNELS.appThemePreferenceChanged, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.appThemePreferenceChanged, handler);
   },
   onUpdateStatusChanged: (callback: (status: AppUpdateStatus) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, status: AppUpdateStatus) => callback(status);

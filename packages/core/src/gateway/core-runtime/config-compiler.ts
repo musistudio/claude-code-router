@@ -598,7 +598,7 @@ function withCodexBackendRequestTransform(request: unknown): Record<string, unkn
     : [];
   return {
     ...currentRequest,
-    bodyRemove: uniqueStrings([...bodyRemove, "max_output_tokens"])
+    bodyRemove: uniqueStrings([...bodyRemove, "max_output_tokens", "stop"])
   };
 }
 

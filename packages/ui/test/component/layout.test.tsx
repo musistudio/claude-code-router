@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GatewayStartupErrorBanner } from "@ccr/ui/pages/home/components/layout.tsx";
+import { GatewayStartupErrorBanner, UpdateEntryButton } from "@ccr/ui/pages/home/components/layout.tsx";
 import { MediaModelConfigurationPanel, VirtualModelsView } from "@ccr/ui/pages/home/components/virtual-models.tsx";
 import { AppI18nContext, appCopy } from "@ccr/ui/pages/home/shared/i18n.tsx";
 import { createVirtualModelDraft } from "@ccr/ui/pages/home/shared/virtual-models.ts";
 import { appConfigFixture } from "../fixtures/index.ts";
+import { fallbackUpdateStatus } from "@ccr/ui/pages/home/shared/fallbacks.ts";
+import { shouldCheckForUpdateOnOpen } from "@ccr/ui/pages/home/components/update.tsx";
 
 test("GatewayStartupErrorBanner renders startup failure details", () => {
   const html = renderToStaticMarkup(
@@ -72,4 +74,35 @@ test("media tool configuration renders a generic provider model selector without
   assert.match(html, /Grok Agent/);
   assert.doesNotMatch(html, /Grok CLI（内置）/);
   assert.doesNotMatch(html, /API Key|允许读取图片|产物保留|图片并发|视频并发|执行后端/);
+});
+
+test("UpdateEntryButton keeps update-center semantics when an update is available", () => {
+  const html = renderToStaticMarkup(
+    <UpdateEntryButton
+      actionBusy={false}
+      copy={appCopy.en}
+      onOpen={() => undefined}
+      status={{
+        ...fallbackUpdateStatus,
+        availableVersion: "3.0.15",
+        canDownload: true,
+        state: "available",
+        supported: true
+      }}
+    />
+  );
+
+  assert.match(html, /aria-label="Update available"/);
+  assert.match(html, /lucide-refresh-cw/);
+  assert.match(html, /data-update-available-indicator/);
+  assert.doesNotMatch(html, /lucide-download/);
+});
+
+test("opening the update entry only checks when the status is not already actionable", () => {
+  for (const state of ["idle", "not-available", "error"] as const) {
+    assert.equal(shouldCheckForUpdateOnOpen({ ...fallbackUpdateStatus, state }), true, state);
+  }
+  for (const state of ["checking", "available", "downloading", "downloaded", "installing"] as const) {
+    assert.equal(shouldCheckForUpdateOnOpen({ ...fallbackUpdateStatus, state }), false, state);
+  }
 });

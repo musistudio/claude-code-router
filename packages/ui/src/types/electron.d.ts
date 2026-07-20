@@ -139,6 +139,7 @@ declare global {
       selectPluginDirectory: () => Promise<PluginDirectorySelection | undefined>;
       setOnboardingFinished: () => Promise<boolean>;
       setProxyNetworkCaptureEnabled: (enabled: boolean) => Promise<ProxyNetworkSnapshot>;
+      setThemePreference?: (theme: AppConfig["theme"]) => Promise<AppConfig["theme"]>;
       setTrayDetailOpen: (open: boolean, provider?: string) => Promise<void>;
       showMainWindow: () => Promise<void>;
       startGateway: () => Promise<GatewayStatus>;
@@ -158,6 +159,7 @@ declare global {
       onOpenSettingsRequest: (callback: () => void) => () => void;
       onOpenUpdateRequest: (callback: () => void) => () => void;
       onProviderDeepLink: (callback: (request: ProviderDeepLinkRequest) => void) => () => void;
+      onThemePreferenceChanged?: (callback: (theme: AppConfig["theme"]) => void) => () => void;
       onUpdateStatusChanged: (callback: (status: AppUpdateStatus) => void) => () => void;
     };
   }

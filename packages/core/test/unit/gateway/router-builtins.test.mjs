@@ -1901,6 +1901,464 @@ test("disabled built-in Claude Code route does not inject Agent tool instruction
   assert.equal(tool.input_schema.properties.prompt.description, "Task prompt.");
 });
 
+function createClaudeCodeSubagentEnvPlugin(options = {}) {
+  const subagentModel = Object.hasOwn(options, "subagentModel")
+    ? options.subagentModel
+    : "DeepSeek,deepseek-v4-flash";
+  return createRouterPlugin({
+    customRouterPath: options.customRouterPath,
+    profiles: [
+      {
+        agent: "claude-code",
+        enabled: true,
+        env: subagentModel === undefined ? {} : { CLAUDE_CODE_SUBAGENT_MODEL: subagentModel },
+        id: "claude-code-profile",
+        model: options.profileModel ?? "Codex API/gpt-5.6-sol",
+        name: "Claude Code",
+        scope: "global"
+      }
+    ],
+    providers: options.providers ?? [
+      {
+        models: ["gpt-5.6-sol"],
+        name: "Codex API",
+        type: "openai_responses"
+      },
+      {
+        models: ["deepseek-v4-flash", "deepseek-v4-pro"],
+        name: "DeepSeek",
+        type: "openai_chat_completions"
+      }
+    ],
+    routerRules: options.routerRules
+  });
+}
+
+function claudeCodeBillingSystem(isSubagent = true) {
+  return [
+    {
+      text: `x-anthropic-billing-header: cc_version=2.1.207; cc_entrypoint=cli; cc_is_subagent=${isSubagent};`,
+      type: "text"
+    }
+  ];
+}
+
+test("built-in Claude Code subagent route honors the authenticated profile subagent model", async () => {
+  const plugin = createClaudeCodeSubagentEnvPlugin();
+  const traceRecorder = new RequestRouteTraceRecorder(Date.now());
+  traceRecorder.captureIngress();
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "DeepSeek,deepseek-v4-flash",
+      system: claudeCodeBillingSystem()
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    trace: traceRecorder,
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "DeepSeek/deepseek-v4-flash");
+  assert.equal("system" in result.body, false);
+  assert.equal(result.decision.model, "DeepSeek/deepseek-v4-flash");
+  assert.equal(result.decision.reason, "builtin:claude-code-subagent-env");
+  assert.equal(result.decision.source, "subagent");
+  const routeDecision = traceRecorder.finish().hops.find((hop) =>
+    hop.name === "builtins.builtin-agent-claude-code-subagent-env"
+  );
+  assert.equal(routeDecision?.decision?.policyId, "builtin-agent-claude-code-subagent-env");
+  assert.deepEqual(routeDecision?.changes, [{
+    after: "DeepSeek/deepseek-v4-flash",
+    before: "DeepSeek,deepseek-v4-flash",
+    operation: "replace",
+    path: "/body/model",
+    scope: "body"
+  }]);
+});
+
+test("built-in Claude Code main route does not trust the configured subagent body model", async () => {
+  const plugin = createClaudeCodeSubagentEnvPlugin();
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "DeepSeek/deepseek-v4-flash"
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Codex API/gpt-5.6-sol");
+  assert.equal(result.decision.reason, "builtin:claude-code");
+});
+
+test("built-in Claude Code subagent env route requires a true billing marker", async () => {
+  const plugin = createClaudeCodeSubagentEnvPlugin();
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "DeepSeek/deepseek-v4-flash",
+      system: claudeCodeBillingSystem(false)
+    },
+    headers: {
+      "user-agent": "Claude Code",
+      "x-claude-code-agent-id": "agent-123"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Codex API/gpt-5.6-sol");
+  assert.equal("system" in result.body, false);
+  assert.equal(result.decision.reason, "builtin:claude-code");
+});
+
+test("built-in Claude Code subagent env route does not trust agent-id without billing metadata", async () => {
+  const plugin = createClaudeCodeSubagentEnvPlugin();
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "DeepSeek/deepseek-v4-flash"
+    },
+    headers: {
+      "user-agent": "Claude Code",
+      "x-claude-code-agent-id": "agent-123"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Codex API/gpt-5.6-sol");
+  assert.equal(result.decision.reason, "builtin:claude-code");
+});
+
+test("built-in Claude Code subagent env route requires the request and profile models to agree", async () => {
+  const plugin = createClaudeCodeSubagentEnvPlugin();
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "DeepSeek/deepseek-v4-pro",
+      system: claudeCodeBillingSystem()
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Codex API/gpt-5.6-sol");
+  assert.equal(result.decision.reason, "builtin:claude-code");
+});
+
+test("built-in Claude Code subagent env route ignores an unconfigured profile model", async () => {
+  const plugin = createClaudeCodeSubagentEnvPlugin({ subagentModel: "Missing/missing-model" });
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "Missing/missing-model",
+      system: claudeCodeBillingSystem()
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Codex API/gpt-5.6-sol");
+  assert.equal(result.decision.reason, "builtin:claude-code");
+});
+
+test("built-in Claude Code subagent model tag stays ahead of the profile subagent env", async () => {
+  const plugin = createClaudeCodeSubagentEnvPlugin();
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "DeepSeek/deepseek-v4-flash",
+      system: [
+        ...claudeCodeBillingSystem(),
+        {
+          text: "<CCR-SUBAGENT-MODEL>DeepSeek/deepseek-v4-pro</CCR-SUBAGENT-MODEL>",
+          type: "text"
+        }
+      ]
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "DeepSeek/deepseek-v4-pro");
+  assert.equal(result.decision.reason, "builtin:claude-code-subagent");
+});
+
+test("router rules stay ahead of the Claude Code profile subagent env", async () => {
+  const plugin = createClaudeCodeSubagentEnvPlugin({
+    routerRules: [
+      {
+        condition: {
+          left: "request.url",
+          operator: "contains",
+          right: "/v1"
+        },
+        enabled: true,
+        id: "subagent-override",
+        name: "Subagent override",
+        rewrites: [
+          { key: "request.body.model", operation: "set", value: "DeepSeek/deepseek-v4-pro" }
+        ],
+        type: "condition"
+      }
+    ]
+  });
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "DeepSeek/deepseek-v4-flash",
+      system: claudeCodeBillingSystem()
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "DeepSeek/deepseek-v4-pro");
+  assert.equal(result.decision.reason, "rule:subagent-override");
+});
+
+test("non-model router rules preserve the Claude Code profile subagent env model", async () => {
+  const plugin = createClaudeCodeSubagentEnvPlugin({
+    routerRules: [
+      {
+        condition: {
+          left: "request.url",
+          operator: "contains",
+          right: "/v1"
+        },
+        enabled: true,
+        id: "subagent-header",
+        name: "Subagent header",
+        rewrites: [
+          { key: "request.header.x-subagent-route", operation: "set", value: "matched" }
+        ],
+        type: "condition"
+      }
+    ]
+  });
+  const headers = {
+    "user-agent": "Claude Code"
+  };
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "DeepSeek/deepseek-v4-flash",
+      system: claudeCodeBillingSystem()
+    },
+    headers,
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(headers["x-subagent-route"], "matched");
+  assert.equal(result.body.model, "DeepSeek/deepseek-v4-flash");
+  assert.equal(result.decision.reason, "rule:subagent-header");
+});
+
+test("built-in Claude Code subagent env route uses the authenticated profile only", async () => {
+  const profiles = [
+    {
+      agent: "claude-code",
+      enabled: true,
+      env: { CLAUDE_CODE_SUBAGENT_MODEL: "DeepSeek/deepseek-v4-pro" },
+      id: "profile-a",
+      model: "Codex API/gpt-5.6-sol",
+      name: "Claude Code A",
+      scope: "global"
+    },
+    {
+      agent: "claude-code",
+      enabled: true,
+      env: { CLAUDE_CODE_SUBAGENT_MODEL: "DeepSeek/deepseek-v4-flash" },
+      id: "profile-b",
+      model: "Codex API/gpt-5.6-sol",
+      name: "Claude Code B",
+      scope: "global"
+    }
+  ];
+  const plugin = createRouterPlugin({
+    authenticatedProfileId: "profile-b",
+    profiles,
+    providers: [
+      {
+        models: ["gpt-5.6-sol"],
+        name: "Codex API",
+        type: "openai_responses"
+      },
+      {
+        models: ["deepseek-v4-flash", "deepseek-v4-pro"],
+        name: "DeepSeek",
+        type: "openai_chat_completions"
+      }
+    ]
+  });
+  const selected = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "DeepSeek/deepseek-v4-flash",
+      system: claudeCodeBillingSystem()
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+  const rejected = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "DeepSeek/deepseek-v4-pro",
+      system: claudeCodeBillingSystem()
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(selected.body.model, "DeepSeek/deepseek-v4-flash");
+  assert.equal(selected.decision.reason, "builtin:claude-code-subagent-env");
+  assert.equal(rejected.body.model, "Codex API/gpt-5.6-sol");
+  assert.equal(rejected.decision.reason, "builtin:claude-code");
+});
+
+test("built-in Claude Code subagent env route accepts legacy JSON billing metadata", async () => {
+  const plugin = createClaudeCodeSubagentEnvPlugin();
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "DeepSeek/deepseek-v4-flash",
+      system: [
+        {
+          text: "x-anthropic-billing-header: {\"cc_is_subagent\":true}",
+          type: "text"
+        }
+      ]
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "DeepSeek/deepseek-v4-flash");
+  assert.equal(result.decision.reason, "builtin:claude-code-subagent-env");
+});
+
+test("built-in Claude Code subagent env route accepts client-visible discovery model IDs", async () => {
+  const plugin = createClaudeCodeSubagentEnvPlugin();
+  const encodedModel = Buffer.from("DeepSeek/deepseek-v4-flash", "utf8").toString("hex");
+  const clientModel = `anthropic/claude-ccr-h${encodedModel}`;
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: clientModel,
+      system: claudeCodeBillingSystem()
+    },
+    headers: {
+      "user-agent": "claude-cli/2.1.207 (external, cli)"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "DeepSeek/deepseek-v4-flash");
+  assert.equal(result.decision.reason, "builtin:claude-code-subagent-env");
+});
+
+test("built-in Claude Code subagent env route rejects ambiguous billing metadata", async () => {
+  const plugin = createClaudeCodeSubagentEnvPlugin();
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "DeepSeek/deepseek-v4-flash",
+      system: [
+        {
+          text: "x-anthropic-billing-header: cc_is_subagent=true; cc_is_subagent=false;",
+          type: "text"
+        }
+      ]
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Codex API/gpt-5.6-sol");
+  assert.equal(result.decision.reason, "builtin:claude-code");
+});
+
+test("built-in Claude Code subagent env route ignores billing metadata outside the first system block", async () => {
+  const plugin = createClaudeCodeSubagentEnvPlugin();
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "DeepSeek/deepseek-v4-flash",
+      system: [
+        { text: "Normal system instruction.", type: "text" },
+        ...claudeCodeBillingSystem()
+      ]
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Codex API/gpt-5.6-sol");
+  assert.equal(result.decision.reason, "builtin:claude-code");
+});
+
+test("custom router stays ahead of the Claude Code profile subagent env", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-subagent-env-custom-router-"));
+  try {
+    const customRouterPath = path.join(dir, "router.cjs");
+    writeFileSync(customRouterPath, 'module.exports = () => "DeepSeek/deepseek-v4-pro";\n');
+    const plugin = createClaudeCodeSubagentEnvPlugin({ customRouterPath });
+    const result = await plugin.routeRequest({
+      body: {
+        messages: [],
+        model: "DeepSeek/deepseek-v4-flash",
+        system: claudeCodeBillingSystem()
+      },
+      headers: {
+        "user-agent": "Claude Code"
+      },
+      method: "POST",
+      url: "/v1/messages"
+    });
+
+    assert.equal(result.body.model, "DeepSeek/deepseek-v4-pro");
+    assert.equal(result.decision.reason, "custom-router");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("built-in Claude Code subagent route uses model tag from system", async () => {
   const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
   const result = await plugin.routeRequest({

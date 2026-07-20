@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@ccr/ui/components/ui/
 import { Checkbox } from "@ccr/ui/components/ui/checkbox.tsx";
 import { Input } from "@ccr/ui/components/ui/input.tsx";
 import { Label } from "@ccr/ui/components/ui/label.tsx";
+import { Select } from "@ccr/ui/components/ui/select.tsx";
 import { Switch } from "@ccr/ui/components/ui/switch.tsx";
 import { Textarea } from "@ccr/ui/components/ui/textarea.tsx";
 import { collapseSidebarToExpandInspectorMorph, playPauseMorph } from "@ccr/ui/lib/morph-icon.ts";
@@ -40,6 +41,18 @@ test("Button unstyled mode keeps caller supplied styling only", () => {
   assert.doesNotMatch(html, /inline-flex/);
 });
 
+test("Select marks the control and native options for theme-aware rendering", () => {
+  const html = renderToStaticMarkup(
+    <Select options={[
+      { label: "System", value: "system" },
+      { label: "Dark", value: "dark" }
+    ]} value="dark" />
+  );
+
+  assert.match(html, /theme-aware-select/);
+  assert.equal((html.match(/theme-aware-select-option/g) ?? []).length, 2);
+});
+
 test("Badge renders the selected visual variant", () => {
   const html = renderToStaticMarkup(
     <Badge className="status-badge" variant="warning">
@@ -68,6 +81,8 @@ test("Card primitives compose the expected document structure", () => {
   assert.match(html, /settings-card/);
   assert.match(html, /<h2 class="[^"]*text-\[13px\][^"]*">Provider settings<\/h2>/);
   assert.match(html, /<div class="p-4">Ready<\/div>/);
+  assert.match(html, /var\(--card-inset-highlight\)/);
+  assert.doesNotMatch(html, /rgba\(255,255,255,0\.5\)/);
 });
 
 test("Switch renders accessible checked and disabled state", () => {
