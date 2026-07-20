@@ -311,7 +311,15 @@ async function resolveConfiguredRouteDecision(
     compiled.modelRegistry,
     compiled.fallback
   );
-  const builtInRuleBaseDecision = subagentEnvDecision ?? builtInDecision;
+  const clientModelDecision = explicitDecision && explicitClientModelCanOverrideBuiltInClaudeCodeRoute(
+    request,
+    config,
+    compiled.modelRegistry,
+    explicitDecision.model
+  )
+    ? explicitDecision
+    : undefined;
+  const ruleBaseDecision = subagentEnvDecision ?? clientModelDecision ?? builtInDecision;
   const policies: Array<RoutePolicy<MutableRequestLike, ConfiguredRouteDecision>> = [
     {
       evaluate: () => customModel
@@ -340,20 +348,19 @@ async function resolveConfiguredRouteDecision(
         if (!decision || decision.rewrites.some(isBodyModelCompiledRewrite)) {
           return decision;
         }
-        const baseDecision = explicitDecision ?? builtInDecision;
-        return baseDecision && builtInRuleBaseDecision
-          ? mergeConfiguredRouteDecisions(baseDecision, decision)
+        return ruleBaseDecision
+          ? mergeConfiguredRouteDecisions(ruleBaseDecision, decision)
           : decision;
       },
       id: `rule:${rule.rule.id}`
     })),
     {
-      evaluate: () => explicitDecision,
-      id: "client-model"
-    },
-    {
       evaluate: () => subagentEnvDecision,
       id: "builtin-agent-claude-code-subagent-env"
+    },
+    {
+      evaluate: () => clientModelDecision,
+      id: "client-model"
     },
     {
       evaluate: () => builtInDecision,
@@ -480,6 +487,28 @@ function resolveConfiguredClaudeCodeModel(
     ? resolveClaudeAppGatewayRouteModel(target, config, claudeAppGatewayModelRouteOptions)
     : undefined;
   return modelRegistry.resolve(discoveredTarget ?? target);
+}
+
+function explicitClientModelCanOverrideBuiltInClaudeCodeRoute(
+  request: MutableRequestLike,
+  config: AppConfig,
+  modelRegistry: ModelRegistry,
+  explicitModel: RouteModelRef | undefined
+): boolean {
+  if (!builtInAgentRouteMatches(request, config, "claude-code")) {
+    return true;
+  }
+  if (request.builtInClaudeCodeSubagent === true) {
+    return false;
+  }
+  const profile = resolveAuthenticatedProfile(request, config, "claude-code");
+  const configuredSubagentModel = resolveConfiguredClaudeCodeModel(
+    profile?.env?.[claudeCodeSubagentModelEnv],
+    config,
+    modelRegistry
+  );
+  return !configuredSubagentModel || !explicitModel ||
+    configuredSubagentModel.canonicalSelector.toLowerCase() !== explicitModel.canonicalSelector.toLowerCase();
 }
 
 function resolveBuiltInAgentRouteDecision(
