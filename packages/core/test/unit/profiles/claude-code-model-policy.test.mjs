@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildClaudeAppGatewayModelRoutes,
-  resolveClaudeAppGatewayRouteModel
+  resolveClaudeAppGatewayRouteModel,
+  stripClaudeAppGatewayOneMillionContextSuffix
 } from "@ccr/core/agents/claude-app/gateway-routes.ts";
+import { claudeAppGatewayModelRouteOptions } from "@ccr/core/agents/claude-app/model-route-options.ts";
 import { createGatewayModelsResponse } from "@ccr/core/gateway/features/model-discovery.ts";
 import {
   compileClaudeCodeAllowedModels,
@@ -56,6 +58,14 @@ function discoveredModelIds(config, apiKey, userAgent = "claude-code/2.1.211") {
   return discovery.data.map((model) => model.id);
 }
 
+function buildClaudeCodeGatewayRoutes(config) {
+  return buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions(config));
+}
+
+function claudeCodePublishedRouteId(route) {
+  return route.oneMillionContext ? `${route.id}[1m]` : route.id;
+}
+
 test("Claude Code allowed models compile provider selectors to discovery route IDs", () => {
   const config = createConfig([
     {
@@ -64,7 +74,7 @@ test("Claude Code allowed models compile provider selectors to discovery route I
       type: "openai_responses"
     }
   ]);
-  const route = buildClaudeAppGatewayModelRoutes(config)
+  const route = buildClaudeCodeGatewayRoutes(config)
     .find((candidate) => candidate.targetModel === "openai/gpt-5.6-sol");
   const discovery = createGatewayModelsResponse(config, {
     "user-agent": "claude-code/2.1.211"
@@ -72,11 +82,10 @@ test("Claude Code allowed models compile provider selectors to discovery route I
 
   assert.ok(route);
   assert.ok(Array.isArray(discovery.data));
-  assert.equal(
-    discovery.data.some((model) => model.id === route.id),
-    true,
-    "the compiled ID must be the exact route published by gateway discovery"
-  );
+  const publishedRouteId = discovery.data.find((model) =>
+    stripClaudeAppGatewayOneMillionContextSuffix(model.id) === route.id
+  )?.id;
+  assert.equal(publishedRouteId, claudeCodePublishedRouteId(route));
 
   const policy = compileClaudeCodeAllowedModels(config, [
     "opus",
@@ -85,11 +94,11 @@ test("Claude Code allowed models compile provider selectors to discovery route I
   ]);
 
   assert.deepEqual(policy, {
-    availableModels: ["opus", "fable", route.id],
+    availableModels: ["opus", "fable", publishedRouteId],
     enforceAvailableModels: true
   });
-  assert.equal(compileClaudeCodeModelSelector(config, "openai/gpt-5.6-sol"), route.id);
-  assert.equal(isClaudeCodeModelAllowedByPolicy(policy, route.id), true);
+  assert.equal(compileClaudeCodeModelSelector(config, "openai/gpt-5.6-sol"), publishedRouteId);
+  assert.equal(isClaudeCodeModelAllowedByPolicy(policy, publishedRouteId), true);
   assert.equal(isClaudeCodeModelAllowedByPolicy(policy, "fable[1m]"), true);
   assert.equal(policy.availableModels.some((model) => /haiku/i.test(model)), false);
   assert.equal(
@@ -114,11 +123,14 @@ test("authenticated profile discovery hides provider routes covered by native al
   const profile = addClaudeProfile(config, {
     allowedModels: ["opus", "fable", "openai/gpt-5.6-sol"]
   });
-  const routes = buildClaudeAppGatewayModelRoutes(config);
+  const routes = buildClaudeCodeGatewayRoutes(config);
   const solRoute = routes.find((route) => route.targetModel === "openai/gpt-5.6-sol");
   assert.ok(solRoute);
 
-  assert.deepEqual(discoveredModelIds(config, createProfileApiKey(profile)), [solRoute.id]);
+  assert.deepEqual(
+    discoveredModelIds(config, createProfileApiKey(profile)),
+    [claudeCodePublishedRouteId(solRoute)]
+  );
 });
 
 test("authenticated profile discovery retains an explicitly selected provider route", () => {
@@ -132,10 +144,13 @@ test("authenticated profile discovery retains an explicitly selected provider ro
   const profile = addClaudeProfile(config, {
     allowedModels: ["fable", "anthropic/claude-fable-5"]
   });
-  const route = buildClaudeAppGatewayModelRoutes(config)[0];
+  const route = buildClaudeCodeGatewayRoutes(config)[0];
   assert.ok(route);
 
-  assert.deepEqual(discoveredModelIds(config, createProfileApiKey(profile)), [route.id]);
+  assert.deepEqual(
+    discoveredModelIds(config, createProfileApiKey(profile)),
+    [claudeCodePublishedRouteId(route)]
+  );
 });
 
 test("routes hidden from discovery remain available to inference", () => {
@@ -147,7 +162,7 @@ test("routes hidden from discovery remain available to inference", () => {
     }
   ]);
   const profile = addClaudeProfile(config);
-  const route = buildClaudeAppGatewayModelRoutes(config)[0];
+  const route = buildClaudeCodeGatewayRoutes(config)[0];
   assert.ok(route);
 
   assert.deepEqual(discoveredModelIds(config, createProfileApiKey(profile)), []);
@@ -163,7 +178,7 @@ test("discovery keeps all provider routes for an unrelated API key", () => {
     }
   ]);
   addClaudeProfile(config);
-  const routes = buildClaudeAppGatewayModelRoutes(config);
+  const routes = buildClaudeCodeGatewayRoutes(config);
 
   assert.deepEqual(
     discoveredModelIds(config, {
@@ -172,7 +187,7 @@ test("discovery keeps all provider routes for an unrelated API key", () => {
       key: "general-token",
       name: "General"
     }),
-    routes.map((route) => route.id)
+    routes.map(claudeCodePublishedRouteId)
   );
 });
 
@@ -185,12 +200,12 @@ test("discovery keeps all provider routes when profiles are globally disabled", 
     }
   ]);
   const profile = addClaudeProfile(config);
-  const routes = buildClaudeAppGatewayModelRoutes(config);
+  const routes = buildClaudeCodeGatewayRoutes(config);
   config.profile.enabled = false;
 
   assert.deepEqual(
     discoveredModelIds(config, createProfileApiKey(profile)),
-    routes.map((route) => route.id)
+    routes.map(claudeCodePublishedRouteId)
   );
 });
 
@@ -207,11 +222,11 @@ test("discovery keeps all provider routes for an app-surface profile", () => {
     name: "Claudex App",
     surface: "app"
   });
-  const routes = buildClaudeAppGatewayModelRoutes(config);
+  const routes = buildClaudeCodeGatewayRoutes(config);
 
   assert.deepEqual(
     discoveredModelIds(config, createProfileApiKey(profile), "claude-app/1.0"),
-    routes.map((route) => route.id)
+    routes.map(claudeCodePublishedRouteId)
   );
 });
 
@@ -228,11 +243,11 @@ test("discovery keeps all provider routes for a non-CCR profile", () => {
     name: "Claude Global",
     scope: "global"
   });
-  const routes = buildClaudeAppGatewayModelRoutes(config);
+  const routes = buildClaudeCodeGatewayRoutes(config);
 
   assert.deepEqual(
     discoveredModelIds(config, createProfileApiKey(profile)),
-    routes.map((route) => route.id)
+    routes.map(claudeCodePublishedRouteId)
   );
 });
 
@@ -354,7 +369,7 @@ test("Claude Code allowed models deduplicate aliases and provider routes case-in
       type: "openai_responses"
     }
   ]);
-  const route = buildClaudeAppGatewayModelRoutes(config)
+  const route = buildClaudeCodeGatewayRoutes(config)
     .find((candidate) => candidate.targetModel === "openai/gpt-5.6-sol");
   assert.ok(route);
 
@@ -368,7 +383,7 @@ test("Claude Code allowed models deduplicate aliases and provider routes case-in
       "OPENAI/GPT-5.6-SOL"
     ]),
     {
-      availableModels: ["opus", "fable", route.id],
+      availableModels: ["opus", "fable", claudeCodePublishedRouteId(route)],
       enforceAvailableModels: true
     }
   );
@@ -382,7 +397,7 @@ test("Claude Code allowed models reject encoded routes absent from current disco
       type: "openai_responses"
     }
   ]);
-  const route = buildClaudeAppGatewayModelRoutes(config)
+  const route = buildClaudeCodeGatewayRoutes(config)
     .find((candidate) => candidate.targetModel === "openai/gpt-5.6-sol");
   assert.ok(route);
   const staleRouteId = `${route.id}00`;

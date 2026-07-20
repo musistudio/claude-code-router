@@ -196,7 +196,7 @@ function routeClientModelId(
   if (oneMillionContext && !route.oneMillionContext) {
     throw new Error(`Claude Code allowed model "${sourceValue}" does not support 1M context.`);
   }
-  return oneMillionContext ? `${route.id}[1m]` : route.id;
+  return route.oneMillionContext ? `${route.id}[1m]` : route.id;
 }
 
 function isNativeClaudeModel(value: string): boolean {
