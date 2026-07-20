@@ -1,14 +1,3 @@
-<h1 align="center">Claude Code Router</h1>
-
-<p align="center">
-  <a href="README.md"><img alt="English README" src="https://img.shields.io/badge/%F0%9F%87%AC%F0%9F%87%A7-English-000aff?style=flat" /></a>
-  <a href="https://discord.gg/rdftVMaUcS"><img alt="Discord" src="https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white" /></a>
-  <a href="https://x.com/musistudio2026"><img alt="X" src="https://img.shields.io/badge/X-@musistudio2026-000000?logo=x&logoColor=white" /></a>
-  <a href="https://github.com/musistudio/claude-code-router/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/musistudio/claude-code-router" /></a>
-  <a href="https://github.com/musistudio/claude-code-router/releases"><img alt="桌面端下载次数" src="https://img.shields.io/github/downloads/musistudio/claude-code-router/total?label=%E6%A1%8C%E9%9D%A2%E7%AB%AF%E4%B8%8B%E8%BD%BD&logo=github" /></a>
-  <a href="https://ccrdesk.top/"><img alt="文档" src="https://img.shields.io/badge/%E6%96%87%E6%A1%A3-ccrdesk.top-0ea5e9?style=flat" /></a>
-</p>
-
 <div align="center">
 
 <table width="100%">
@@ -41,115 +30,129 @@
 
 </div>
 
-Claude Code Router Desktop 是给编程 Agent 用的本地控制平面。它为 Claude Code、Codex、Grok CLI、Kimi CLI、ZCode 以及兼容 API 客户端提供一个稳定的本地入口，然后由你在 CCR 中决定每个请求应该走哪个供应商、哪个模型、哪套路由策略、哪些工具能力和哪组账号凭据。
+<div align="center">
 
-相比在每个 Agent、每个模型服务里反复改配置，CCR 把模型层收束到本机桌面应用里：供应商预设、自定义端点、凭据池、Fallback、Fusion 组合模型、MCP 工具、请求日志、账号用量和 Agent 启动配置都在一个地方管理。
+# Claude Code Router
 
-<p align="center">
-  <img src="blog/images/claude-code-router.png" width="720" alt="Claude Code Router Desktop 项目截图" />
+### 在一个地方，管理你所有的 Agent 与 Provider
+
+让 Claude Code、Codex、Grok CLI、ZCode 和兼容 API 客户端连接你选择的供应商，并在一个应用里完成每次请求的路由、降级、增强与观测。
+
+<p>
+  <a href="https://github.com/musistudio/claude-code-router/releases"><img alt="下载桌面端" src="https://img.shields.io/badge/%E7%AB%8B%E5%8D%B3%E4%B8%8B%E8%BD%BD-%E6%A1%8C%E9%9D%A2%E5%AE%A2%E6%88%B7%E7%AB%AF-2563EB?style=for-the-badge&logo=github&logoColor=white" /></a>
+  <a href="#快速开始"><img alt="快速开始" src="https://img.shields.io/badge/%E7%AB%8B%E5%8D%B3%E4%BD%BF%E7%94%A8-%E5%BF%AB%E9%80%9F%E5%BC%80%E5%A7%8B-16A34A?style=for-the-badge&logo=rocket&logoColor=white" /></a>
+  <a href="https://ccrdesk.top/"><img alt="查看文档" src="https://img.shields.io/badge/%E6%B7%B1%E5%85%A5%E4%BA%86%E8%A7%A3-%E5%AE%8C%E6%95%B4%E6%96%87%E6%A1%A3-0F172A?style=for-the-badge&logo=readthedocs&logoColor=white" /></a>
 </p>
 
-## CCR 能帮你做什么
+<p>
+  <a href="README.md"><img alt="English README" src="https://img.shields.io/badge/%F0%9F%87%AC%F0%9F%87%A7-English-000aff?style=flat" /></a>
+  <a href="https://discord.gg/rdftVMaUcS"><img alt="Discord" src="https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white" /></a>
+  <a href="https://x.com/musistudio2026"><img alt="X" src="https://img.shields.io/badge/X-@musistudio2026-000000?logo=x&logoColor=white" /></a>
+  <a href="https://github.com/musistudio/claude-code-router/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/musistudio/claude-code-router" /></a>
+</p>
 
-| 目标 | CCR 提供的能力 |
-| --- | --- |
-| 保持 Agent 工作流不变，同时自由切换模型 | 为 Claude Code、Codex、Grok CLI、Kimi CLI、ZCode 创建本地配置档案，支持 CLI / App 启动入口和按配置选择模型 |
-| 快速接入多个模型供应商 | 内置供应商预设、自定义 OpenAI / Anthropic / Gemini 兼容端点、协议探测、模型发现和连通性检测 |
-| 把路由变成可配置策略 | 内置 Agent 路由、条件规则、请求改写、模型前缀路由、自动重试和 Fallback 模型链 |
-| 控制成本和额度压力 | 凭据池、Key 轮换、本地限额、账号余额快照、Token / 成本仪表盘和托盘状态 |
-| 给稳定模型补能力 | 通过 Fusion 给基础模型叠加视觉、联网搜索或指定 MCP 工具 |
-| 让大量工具变得可用 | ToolHub 把多个 MCP server 收束成一个紧凑入口，让 Agent 按任务动态解析和调用工具 |
-| 排查每一次请求 | 请求日志、最终供应商 / 模型、耗时、Token、成本估算、网络捕获和 Agent 观测链路 |
+<br />
 
-## 为什么使用 CCR
+<img src="blog/images/claude-code-router.png" width="820" alt="Claude Code Router 桌面端控制台" />
 
-- **一个本地网关，接管整套 Agent 模型层**：客户端只需要指向 CCR，模型、供应商、Key、路由和工具能力都可以在桌面 UI 中调整。
-- **换供应商，不换工作流**：支持 OpenAI Chat / Responses、Anthropic Messages、Gemini Generate Content / Interactions、OpenRouter、NVIDIA NIM、DeepSeek、SiliconFlow、Moonshot、Kimi Code、Mistral、Z.AI、百炼以及自定义兼容供应商。
-- **可见、可改、可验证的可靠性策略**：配置请求什么时候改写、重试或切到备用模型，并在本地日志里确认真实命中结果。
-- **面向 AI 工作流的运营视角**：从仪表盘或托盘查看请求量、Token、成本估算、成功率、延迟、模型分布、供应商用量和账号余额。
-- **Agent 原生工具与扩展**：使用 Fusion 扩展模型能力，通过 ToolHub 暴露动态 MCP 工具，让内置浏览器参与任务，通过 IM Bot 接力 Agent，或安装本地扩展。
+</div>
 
-## 功能亮点
+## 为什么使用 Claude Code Router？
 
-- **Agent 配置档案**：为 Claude Code、Codex、Grok CLI、Kimi CLI 和 ZCode 创建配置档案，支持模型覆盖、作用范围、CLI / App 启动方式、环境变量和多开 App 工作流。
-- **供应商管理**：添加预设供应商或自定义端点；探测协议；发现模型列表；运行真实连通性检测；管理单 Key 或凭据池；在支持时导入本机 Agent 登录态。
-- **模型目录**：搜索全部已配置模型，编辑模型描述，并把这些描述用于 Claude Code Subagent、Task 和 Workflow 的模型选择提示。
-- **路由引擎**：组合内置 Agent 路由、请求 Header / Body 条件、模型前缀路由、请求改写、重试策略和有序 Fallback 目标。
-- **Fusion 组合模型**：发布可复用的虚拟模型，在保留基础模型手感的同时增加视觉、托管联网搜索或指定 MCP 工具。
-- **ToolHub**：把多个 MCP server 合并成一个动态 MCP server，让 Agent 只在任务需要时解析工具；桌面端还可暴露内置浏览器自动化和 Chrome 登录态导入。
-- **API Key 与限额**：创建访问 CCR 的客户端 Key，设置过期时间和本地请求 / Token / 图片限额，与上游供应商凭据分开管理。
-- **日志与观测**：查看请求 / 响应详情、最终供应商与模型、凭据、状态、耗时、Token、成本估算、工具调用和 Agent 执行链路。
-- **代理与网络捕获**：把 CCR 作为本地 HTTP / HTTPS 代理运行，可选安装 CA 证书，把支持的 API 流量接入 CCR，并保存网络请求用于排查。
-- **Bot 接力**：把 Agent 配置接入 Weixin iLink、企业微信、Slack、Discord、Telegram、LINE、飞书和钉钉等 IM 平台。
-- **扩展机制**：安装 wrapper plugin 和 core gateway plugin，注册本地路由、代理路由、供应商账号连接器、内置应用和虚拟模型。
+Claude Code Router（CCR）是面向编程 Agent 的本地模型网关与控制平面。它为 Claude Code、Codex、Grok CLI、ZCode 和兼容 API 客户端提供**一个稳定的本地入口**，让你在一个地方管理入口背后的供应商、模型、账号、路由规则与工具。
 
-## 文档
+你可以使用 CCR：
 
-完整文档见 [ccrdesk.top](https://ccrdesk.top/)，其中包括 [CLI 命令参考](https://ccrdesk.top/guides/cli/) 和 [Docker 部署指南](https://ccrdesk.top/guides/docker/)。
+- **统一管理所有 Agent 与 Provider**，不再为每个客户端维护一套独立模型配置。
+- **切换供应商或模型而不改变工作流**，无需反复修改 Agent 配置文件。
+- **通过重试、凭据池、Key 轮换和 Fallback 保持请求可用**。
+- **通过 Fusion 视觉、联网搜索、MCP 工具和 ToolHub 扩展现有模型**。
+- **通过请求日志、最终路由、耗时、Token、成本估算和账号状态了解真实运行情况**。
 
-## 下载和安装
+CCR 支持 OpenAI Chat / Responses、Anthropic Messages、Gemini Generate Content / Interactions、OpenRouter、DeepSeek、SiliconFlow、Moonshot、Kimi Code、Mistral、Z.AI、百炼以及自定义兼容供应商。
 
-1. 打开 [GitHub Releases 页面](https://github.com/musistudio/claude-code-router/releases)。
-2. 按系统下载对应安装包：
-   - macOS Apple 芯片：`Claude-Code-Router_<version>-mac-Apple-Silicon-arm64.dmg` 或 `.zip`
-   - macOS Intel 芯片：`Claude-Code-Router_<version>-mac-Intel-x64.dmg` 或 `.zip`
-   - Windows：`Claude Code Router_<version>.exe`
-   - Linux：`Claude Code Router_<version>.AppImage`
-3. 安装并启动 **Claude Code Router**。
-4. 首次启动后，CCR 会创建本地配置数据库：
-   - macOS/Linux：`~/.claude-code-router/config.sqlite`
-   - Windows：`%APPDATA%\claude-code-router\config.sqlite`
+## 快速开始
 
-CCR 的运行配置存储在 SQLite 中。旧版 `config.json` 只会在没有 SQLite 配置时作为迁移来源读取一次。
+### 桌面端（推荐）
 
-从 **服务** 页面启动后，CCR 默认监听 `http://127.0.0.1:3456`。**服务** 页面负责配置网关 `Host`、`Port`、代理模式、系统代理、网络捕获和 CA 证书状态。
+1. **[下载 Claude Code Router](https://github.com/musistudio/claude-code-router/releases)**，选择 macOS、Windows 或 Linux 版本并启动应用。
+2. 打开 **供应商 → 添加供应商**。选择内置预设或自定义端点，填写 API Key，选择协议与模型，然后保存。
+3. 打开 **服务** 并点击 **启动**。本地模型网关默认监听 `http://127.0.0.1:3456`。
+4. 打开 **Agent配置**，选择 Claude Code、Codex、Grok CLI 或 ZCode，指定模型并应用配置档案。
+5. 开始使用 Agent。在 **日志** 中确认最终供应商、模型、状态、Token、耗时与错误。
 
-## CLI 与 Docker
+现在 Agent 已经连接到 CCR。如需增加条件规则、自动重试、请求改写或 Fallback 模型，请打开 **路由**。
 
-npm CLI 要求 Node.js 22 或更高版本，不依赖 Electron，也能提供浏览器管理界面、模型网关和 Agent 配置启动命令：
+<details>
+<summary><strong>桌面安装包与本地数据位置</strong></summary>
+
+- macOS Apple 芯片：`Claude-Code-Router_<version>-mac-Apple-Silicon-arm64.dmg` 或 `.zip`
+- macOS Intel 芯片：`Claude-Code-Router_<version>-mac-Intel-x64.dmg` 或 `.zip`
+- Windows：`Claude Code Router_<version>.exe`
+- Linux：`Claude Code Router_<version>.AppImage`
+
+运行配置使用 SQLite 存储：macOS / Linux 位于 `~/.claude-code-router/config.sqlite`，Windows 位于 `%APPDATA%\claude-code-router\config.sqlite`。只有在不存在 SQLite 配置时，CCR 才会读取一次旧版 `config.json` 用于迁移。
+
+</details>
+
+### CLI
+
+npm CLI 要求 Node.js 22 或更高版本。无需 Electron，也能启动相同的模型网关与浏览器管理界面：
 
 ```sh
 npm install -g @musistudio/claude-code-router
 ccr ui
 ```
 
-CLI 管理界面默认是 `http://127.0.0.1:3458`，模型网关默认是 `http://127.0.0.1:3456`。后台 / 前台服务、全部选项、Profile 启动、鉴权和数据位置见[完整 CLI 参考](https://ccrdesk.top/guides/cli/)。
+打开 `http://127.0.0.1:3458`，然后按照上面的 **供应商 → 服务 → Agent配置** 流程操作。模型网关仍位于 `http://127.0.0.1:3456`。服务模式、鉴权和 Profile 命令见 [CLI 命令参考](https://ccrdesk.top/guides/cli/)。
 
-如果要使用单一 Nginx 端口和持久化 Docker 数据卷运行管理 UI 与网关：
+### Docker
 
 ```sh
 docker compose up -d --build
 ```
 
-Docker 默认把管理和网关路径都发布在 `http://127.0.0.1:3458`。远程暴露前请先阅读 [Docker 部署指南](https://ccrdesk.top/guides/docker/)，其中包含内部端口拓扑、管理与网关鉴权、`CCR_PUBLIC_BASE_URL`、数据卷、备份恢复、升级和健康检查。
+Docker 默认通过 `http://127.0.0.1:3458` 提供管理界面与网关路由。远程暴露 CCR 前，请先阅读 [Docker 部署指南](https://ccrdesk.top/guides/docker/)。
 
-## 快速开始
+## 工作方式
 
-CCR 可以完全通过桌面 UI 完成配置。首次使用建议按下面顺序操作。
+```text
+Claude Code · Codex · Grok CLI · ZCode · 兼容 API 客户端
+                              │
+                              ▼
+                 Claude Code Router :3456
+              配置档案 · 路由 · 凭据 · 工具 · 日志
+                              │
+                              ▼
+                  命中的供应商、模型与账号
+```
 
-### 1. 添加 Provider
+## 核心能力
 
-打开 **供应商**，点击 **添加供应商**，选择内置预设、导入支持的本机 Agent 登录态，或选择 **其他 / 自定义 API 端点**。按表单填写 Provider 名称、基础 URL、协议、API Key 和模型列表。可用时先运行协议探测和模型连通性检查，然后保存 Provider。
+| 能力领域 | 功能亮点 |
+| --- | --- |
+| **Agent** | Claude Code、Codex、Grok CLI 和 ZCode 配置档案；模型覆盖；作用范围；环境变量；CLI / App 启动入口；多开工作流 |
+| **供应商** | 内置预设和自定义端点；协议探测；模型发现；连通性检测；按支持情况导入本机登录态；单 Key 与凭据池 |
+| **模型与路由** | 可搜索模型目录；用于任务选择的模型描述；Header / Body 条件；模型前缀；请求改写；重试；有序 Fallback |
+| **工具与扩展** | Fusion 模型；ToolHub；内置浏览器自动化；Chrome 登录态导入；wrapper / core gateway plugin；本地路由与虚拟模型 |
+| **访问与额度** | 独立的 CCR 客户端 Key，可设置有效期以及本地请求、Token 和图片限额 |
+| **日志与观测** | 请求 / 响应详情；最终供应商、模型与凭据；状态；耗时；Token；成本估算；工具调用；Agent 执行链路 |
+| **网络与接力** | 本地 HTTP / HTTPS 代理、可选 CA、网络捕获，以及通过微信 iLink、企业微信、Slack、Discord、Telegram、LINE、飞书和钉钉接力 Agent |
 
-### 2. 设置路由
+## 准备好后，继续深入
 
-打开 **路由**，启用内置 Agent 路由，添加条件规则，配置请求改写和失败降级。如果需要更细粒度控制，使用 **添加路由规则** 添加模型前缀、请求条件或规则级失败降级目标。
+完整文档位于 **[ccrdesk.top](https://ccrdesk.top/)**。
 
-### 3. 启动网关
-
-打开 **服务**，点击 **启动**。页面显示运行中后，CCR 默认会在本机监听 `http://127.0.0.1:3456`。如果希望每次打开桌面应用时自动启动网关，可以启用自动启动。
-
-### 4. 连接 Agent 工具
-
-打开 **Agent配置**，选择要使用的客户端。配置 Claude Code、Codex、Grok CLI、Kimi CLI 或 ZCode，选择目标模型和作用范围，然后应用配置。对于 App 入口，可以使用 **打开 Agent** 通过 CCR 打开目标应用。
-
-### 5. 日常查看和调整
-
-到 **设置 → 日志与观测** 打开请求日志和 Agent 观测。使用 **日志** 确认 `request model`、`resolved provider`、`resolved model`、状态码、tokens、耗时和错误；使用概览仪表盘和托盘窗口查看 Token、成本、模型分布和账号状态。
+- [安装并启动 CCR](https://ccrdesk.top/guides/install/)
+- [配置供应商](https://ccrdesk.top/guides/provider/)
+- [了解路由与完整配置](https://ccrdesk.top/configuration/)
+- [使用 CLI](https://ccrdesk.top/guides/cli/)
+- [通过 Docker 部署](https://ccrdesk.top/guides/docker/)
+- [排查常见问题](https://ccrdesk.top/troubleshooting/)
 
 ## 致谢
 
-对 Codex 的支持来自于 [musistudio/codexl](https://github.com/musistudio/codexl) 这个项目。
+对 Codex 的支持来自 [musistudio/codexl](https://github.com/musistudio/codexl)。
 
 ## 支持与赞助
 
