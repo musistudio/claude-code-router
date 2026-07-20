@@ -397,7 +397,8 @@ async function ensureGatewayConfigRunning(
     }
     if (existingGateway.state === "unavailable") {
       if (!startIfMissing) {
-        throw new ProfileGatewayUnavailableError(`CCR gateway is not running at ${profileGatewayEndpoint(config)}. Start CCR Desktop or run ccr start before opening ${appName}.`);
+        const reason = existingGateway.reason ? `: ${existingGateway.reason}` : "";
+        throw new ProfileGatewayUnavailableError(`CCR gateway is not running at ${profileGatewayEndpoint(config)}${reason}. Start CCR Desktop or run ccr start before opening ${appName}.`);
       }
     } else {
       throw new Error(existingGatewayConflictMessage(existingGateway, appName));
@@ -437,24 +438,26 @@ type ExistingGatewayHttpProbe = {
   status?: number;
 };
 
+const existingGatewayFetchAttempts = 3;
+
 async function probeExistingProfileGateway(
   config: AppConfig,
   profile: ReturnType<typeof findProfileForOpen>,
   candidateConfig: AppConfig = config
 ): Promise<ExistingProfileGatewayProbe> {
   const endpoint = profileGatewayEndpoint(config);
-  const root = await fetchExistingGateway(endpoint, "/");
-  if (root.status === undefined) {
-    return { endpoint, reason: root.reason, state: "unavailable" };
-  }
-
-  let ccrGateway = isCcrGatewayRoot(root.payload);
+  const health = await fetchExistingGateway(endpoint, "/health");
+  let ccrGateway = isCcrGatewayHealth(health.payload);
+  let root: ExistingGatewayHttpProbe | undefined;
   if (!ccrGateway) {
-    const health = await fetchExistingGateway(endpoint, "/health");
-    ccrGateway = isCcrGatewayHealth(health.payload);
+    root = await fetchExistingGateway(endpoint, "/");
+    ccrGateway = isCcrGatewayRoot(root.payload);
   }
   if (!ccrGateway) {
-    return { endpoint, status: root.status, state: "not-ccr" };
+    if (health.status === undefined && root?.status === undefined) {
+      return { endpoint, reason: health.reason || root?.reason, state: "unavailable" };
+    }
+    return { endpoint, status: health.status ?? root?.status, state: "not-ccr" };
   }
 
   let lastUnauthorized: ExistingGatewayHttpProbe | undefined;
@@ -492,22 +495,26 @@ async function fetchExistingGateway(
   pathname: string,
   init: RequestInit = {}
 ): Promise<ExistingGatewayHttpProbe> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 1200);
-  try {
-    const response = await fetch(new URL(pathname, endpoint).toString(), {
-      ...init,
-      signal: controller.signal
-    });
-    return {
-      payload: await readResponseJson(response),
-      status: response.status
-    };
-  } catch (error) {
-    return { reason: formatError(error) };
-  } finally {
-    clearTimeout(timeout);
+  let reason: string | undefined;
+  for (let attempt = 0; attempt < existingGatewayFetchAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1200);
+    try {
+      const response = await fetch(new URL(pathname, endpoint).toString(), {
+        ...init,
+        signal: controller.signal
+      });
+      return {
+        payload: await readResponseJson(response),
+        status: response.status
+      };
+    } catch (error) {
+      reason = formatError(error);
+    } finally {
+      clearTimeout(timeout);
+    }
   }
+  return { reason };
 }
 
 async function readResponseJson(response: Response): Promise<unknown> {
