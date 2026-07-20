@@ -1,6 +1,6 @@
 {
   "name": "@claude-code-router/core",
-  "version": "3.0.6",
+  "version": "3.0.7",
   "private": true,
   "description": "Claude Code Router core gateway, routing, provider, and storage services.",
   "main": "dist/main/server.js",
