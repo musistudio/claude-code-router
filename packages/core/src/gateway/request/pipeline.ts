@@ -23,6 +23,7 @@ import { createBodySampler, requestLogSampled, shouldRecordRequestLogs } from "@
 import { RequestRouteTraceRecorder } from "@ccr/core/observability/route-trace";
 import { endpoint } from "@ccr/core/gateway/core-runtime/supervisor";
 import { coreGatewayUsageAttributionConfig } from "@ccr/core/gateway/core-runtime/config-compiler";
+import { providerModelPricingForUsage } from "@ccr/core/models/pricing-service";
 import { clientClosedRequestStatusCode, clientDisconnectMessage, resolveStreamRequestLogOutcome, UpstreamRequestError } from "@ccr/core/gateway/internal/shared";
 import type { BrowserWebSearchMcpIntegration, BrowserWebSearchProtocolRecord, UpstreamFetchResult } from "@ccr/core/gateway/internal/shared";
 import { applyProviderCapabilityRouting, cancelResponseBody, destroyResponseStreams, fetchUpstreamWithFallback, mergeFallbackResponseHeaders, rewriteCapabilityResponseHeaders, uniqueStreams, upstreamResponseHeaders } from "@ccr/core/gateway/upstream/executor";
@@ -244,6 +245,11 @@ export class GatewayRequestPipeline {
           model: routedModel,
           path,
           providerName: resolveProviderLogName(responseHeaders, config, routedModel),
+          pricing: providerModelPricingForUsage(
+            config,
+            resolveProviderLogName(responseHeaders, config, routedModel),
+            routedModel
+          ),
           providerProtocol: resolveResponseProviderProtocol(responseHeaders, this.config),
           requestedModel,
           requestBody: shouldSendBody(method) ? bodyToForward ?? Buffer.alloc(0) : Buffer.alloc(0),

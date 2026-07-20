@@ -188,13 +188,30 @@ export type ProviderReasoningLevel = {
   effort: string;
 };
 
+export type ProviderModelCapabilities = {
+  imageInput?: boolean;
+  webSearch?: boolean;
+};
+
+export type ProviderModelPricing = {
+  cacheReadUsdPerMillionTokens?: number;
+  /** Legacy cache-write price, treated as the 5-minute price when no explicit 5m price exists. */
+  cacheWriteUsdPerMillionTokens?: number;
+  cacheWrite1hUsdPerMillionTokens?: number;
+  cacheWrite5mUsdPerMillionTokens?: number;
+  inputUsdPerMillionTokens?: number;
+  outputUsdPerMillionTokens?: number;
+};
+
 export type ProviderModelMetadata = {
   additionalSpeedTiers?: unknown[];
+  capabilities?: ProviderModelCapabilities;
   contextWindow?: number;
   defaultReasoningLevel?: string | null;
   defaultReasoningSummary?: string;
   effectiveContextWindowPercent?: number;
   maxContextWindow?: number;
+  pricing?: ProviderModelPricing;
   serviceTiers?: unknown[];
   supportedReasoningLevels?: ProviderReasoningLevel[];
   supportsReasoningSummaries?: boolean;
@@ -536,6 +553,7 @@ export type GatewayProviderProbeProtocolResult = {
 export type GatewayProviderProbeResult = {
   account?: ProviderAccountConfig;
   capabilities?: GatewayProviderCapability[];
+  catalogModelMetadata?: Record<string, ProviderModelMetadata>;
   detectedProvider?: GatewayProviderDetectedProvider;
   detectedProtocol?: GatewayProviderProtocol;
   modelDisplayNames?: Record<string, string>;

@@ -78,6 +78,50 @@ test("codex catalog enables multimodal reasoning and search when provider protoc
   assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
+test("codex catalog honors configured image, web search, and six reasoning levels", () => {
+  const model = catalogModelFor({
+    Providers: [
+      {
+        modelMetadata: {
+          "deepseek-chat": {
+            capabilities: {
+              imageInput: true,
+              webSearch: true
+            },
+            supportedReasoningLevels: [
+              { description: "Low", effort: "low" },
+              { description: "Medium", effort: "medium" },
+              { description: "High", effort: "high" },
+              { description: "Extra high", effort: "xhigh" },
+              { description: "Max", effort: "max" },
+              { description: "Ultra", effort: "ultra" }
+            ],
+            supportsReasoningSummaries: true
+          }
+        },
+        models: ["deepseek-chat"],
+        name: "custom",
+        type: "openai_responses"
+      }
+    ]
+  }, "custom/deepseek-chat");
+
+  assert.deepEqual(model.input_modalities, ["text", "image"]);
+  assert.equal(model.supports_image_detail_original, true);
+  assert.equal(model.supports_parallel_tool_calls, true);
+  assert.equal(model.supports_reasoning_summaries, true);
+  assert.equal(model.supports_search_tool, true);
+  assert.equal(model.web_search_tool_type, "text_and_image");
+  assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), [
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+    "ultra"
+  ]);
+});
+
 test("codex catalog exposes current capabilities for the GPT-5.6 family", () => {
   for (const modelName of ["gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]) {
     const model = catalogModelFor({

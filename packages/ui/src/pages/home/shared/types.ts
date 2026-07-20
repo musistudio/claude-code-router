@@ -422,6 +422,7 @@ export type AddProviderDraft = {
   apiKey: string;
   baseUrl: string;
   capabilities: GatewayProviderCapability[];
+  catalogModelMetadata?: Record<string, ProviderModelMetadata>;
   credentials: ProviderCredentialDraft[];
   icon: string;
   modelDescriptions?: Record<string, string>;

@@ -12,6 +12,7 @@ import {
   createProviderConfigFromDeepLink,
   createProviderDraft,
   createProviderInstallLinkFromDraft,
+  FieldGroup,
   localAgentProviderIconUrls,
   providerCapabilitiesForProtocols,
   providerCapabilitiesForSave,
@@ -28,6 +29,22 @@ import {
 import { installBrowserGlobals } from "../fixtures/index.ts";
 
 installBrowserGlobals();
+
+test("composite field groups do not label their nested controls", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      FieldGroup,
+      { label: "Models" },
+      React.createElement("input", { "aria-label": "Search models" }),
+      React.createElement("button", { type: "button" }, "Model settings")
+    )
+  );
+
+  assert.match(html, /^<div/);
+  assert.doesNotMatch(html, /^<label/);
+  assert.match(html, /Search models/);
+  assert.match(html, /Model settings/);
+});
 
 test("Gemini preset keeps full protocol probing candidates", () => {
   setProviderPresets([geminiProviderPreset]);
@@ -164,6 +181,34 @@ test("provider probe result keeps only supported selected protocols", () => {
   });
 
   assert.deepEqual(next.selectedProtocols, ["gemini_generate_content"]);
+});
+
+test("provider probe keeps catalog model defaults separate from user overrides", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    baseUrl: "https://api.example.com/v1",
+    modelMetadata: {
+      "model-a": { contextWindow: 64000 }
+    }
+  };
+
+  const next = applyProviderProbeResult(draft, {
+    catalogModelMetadata: {
+      "model-a": {
+        capabilities: { imageInput: true },
+        contextWindow: 128000,
+        pricing: { inputUsdPerMillionTokens: 2, outputUsdPerMillionTokens: 8 }
+      }
+    },
+    models: [],
+    normalizedBaseUrl: draft.baseUrl,
+    protocols: []
+  });
+
+  assert.equal(next.modelMetadata?.["model-a"]?.contextWindow, 64000);
+  assert.equal(next.modelMetadata?.["model-a"]?.pricing, undefined);
+  assert.equal(next.catalogModelMetadata?.["model-a"]?.contextWindow, 128000);
+  assert.equal(next.catalogModelMetadata?.["model-a"]?.capabilities?.imageInput, true);
 });
 
 test("provider protocol details keep failed endpoint rows unavailable", () => {

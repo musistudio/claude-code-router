@@ -87,8 +87,11 @@ export function prepareClaudeAppDiscoveredModelRequest(
 
 
 export function createGatewayModelsResponse(config: AppConfig, headers: IncomingHttpHeaders, apiKey?: ApiKeyConfig): Record<string, unknown> {
-  if (isClaudeAppApiKey(apiKey) || isClaudeCodeUserAgent(headers)) {
+  if (isClaudeAppApiKey(apiKey)) {
     return createClaudeAppGatewayModelsResponse(config);
+  }
+  if (isClaudeCodeUserAgent(headers)) {
+    return createClaudeAppGatewayModelsResponse(config, { claudeCode: true });
   }
   return createOpenAICompatibleGatewayModelsResponse(config);
 }
@@ -114,7 +117,10 @@ function createOpenAICompatibleGatewayModelsResponse(config: AppConfig): Record<
 }
 
 
-function createClaudeAppGatewayModelsResponse(config: AppConfig): Record<string, unknown> {
+function createClaudeAppGatewayModelsResponse(
+  config: AppConfig,
+  options: { claudeCode?: boolean } = {}
+): Record<string, unknown> {
   const routes = buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions);
   const data = routes.map((route) => {
     const catalogId = stripClaudeCodeOneMillionContextSuffix(route.targetModel);
@@ -122,14 +128,18 @@ function createClaudeAppGatewayModelsResponse(config: AppConfig): Record<string,
     const modelMetadata = providerModelMetadataForSelector(config, catalogId);
     const maxInputTokens = claudeGatewayModelContextWindow(catalogEntry, route.oneMillionContext, modelMetadata);
     const maxOutputTokens = modelCatalogMaxOutputTokens(catalogEntry);
+    const exposeOneMillionContextVariant = options.claudeCode && route.oneMillionContext;
     return {
-      id: route.id,
+      id: exposeOneMillionContextVariant ? claudeCodeOneMillionContextModelId(route.id) : route.id,
       capabilities: createClaudeCodeModelCapabilities(catalogEntry, {
         maxInputTokens,
-        oneMillionContext: route.oneMillionContext
+        oneMillionContext: route.oneMillionContext,
+        ...providerModelCapabilityOverrides(modelMetadata)
       }),
       created_at: "1970-01-01T00:00:00Z",
-      display_name: route.displayName,
+      display_name: exposeOneMillionContextVariant
+        ? `${route.displayName} (1M context)`
+        : route.displayName,
       max_input_tokens: maxInputTokens,
       max_tokens: maxOutputTokens,
       type: "model"
@@ -158,7 +168,8 @@ function createClaudeCodeModelsResponse(config: AppConfig): Record<string, unkno
       id: claudeId,
       capabilities: createClaudeCodeModelCapabilities(catalogEntry, {
         maxInputTokens,
-        oneMillionContext: model.oneMillionContext
+        oneMillionContext: model.oneMillionContext,
+        ...providerModelCapabilityOverrides(modelMetadata)
       }),
       created_at: "1970-01-01T00:00:00Z",
       display_name: formatClaudeCodeModelDisplayName(claudeId, catalogEntry, model.oneMillionContext),
@@ -431,7 +442,13 @@ function formatClaudeCodeModelDisplayName(
 
 function createClaudeCodeModelCapabilities(
   entry?: ModelCatalogEntry,
-  options: { maxInputTokens?: number; oneMillionContext?: boolean } = {}
+  options: {
+    imageInput?: boolean;
+    maxInputTokens?: number;
+    oneMillionContext?: boolean;
+    reasoning?: boolean;
+    reasoningLevels?: string[];
+  } = {}
 ): Record<string, unknown> {
   if (!entry) {
     return createDefaultClaudeCodeModelCapabilities(options);
@@ -440,25 +457,31 @@ function createClaudeCodeModelCapabilities(
   const capabilities = entry.capabilities ?? {};
   const inputModalities = new Set((entry.modalities?.input ?? []).map((item) => item.toLowerCase()));
   const outputModalities = new Set((entry.modalities?.output ?? []).map((item) => item.toLowerCase()));
-  const supportsReasoning = readCatalogCapability(capabilities, "reasoning");
-  const supportsImageInput = readCatalogCapability(capabilities, "imageInput") || inputModalities.has("image");
+  const supportsReasoning = options.reasoning ?? readCatalogCapability(capabilities, "reasoning");
+  const supportsReasoningLevel = (effort: string) => options.reasoningLevels
+    ? options.reasoningLevels.includes(effort)
+    : supportsReasoning;
+  const supportsImageInput = options.imageInput ??
+    (readCatalogCapability(capabilities, "imageInput") || inputModalities.has("image"));
   const supportsPdfInput = readCatalogCapability(capabilities, "pdfInput") || inputModalities.has("pdf");
-  const supportsStructuredOutput =
+  const catalogSupportsStructuredOutput =
     readCatalogCapability(capabilities, "structuredOutput") ||
     readCatalogCapability(capabilities, "nativeStructuredOutput") ||
     readCatalogCapability(capabilities, "responseSchema");
+  const supportsStructuredOutput = catalogSupportsStructuredOutput;
   const supportsCodeExecution = readCatalogCapability(capabilities, "codeExecution");
   const supportsAdaptiveThinking = readCatalogCapability(capabilities, "adaptiveThinking");
-  const supportsToolUse =
+  const catalogSupportsToolUse =
     readCatalogCapability(capabilities, "toolCalling") ||
     readCatalogCapability(capabilities, "functionCalling");
+  const supportsToolUse = catalogSupportsToolUse;
   const supportsBatch = readCatalogCapability(capabilities, "batch");
   const supportsCitations = readCatalogCapability(capabilities, "citations");
   const supportsAudioInput = readCatalogCapability(capabilities, "audioInput") || inputModalities.has("audio");
   const supportsAudioOutput = readCatalogCapability(capabilities, "audioOutput") || outputModalities.has("audio");
   const supportsVideoInput = readCatalogCapability(capabilities, "videoInput") || inputModalities.has("video");
   const maxInputTokens = options.maxInputTokens ?? modelCatalogMaxInputTokens(entry);
-  const supportsOneMillionContext = Boolean(entry.limits?.supports1MContext);
+  const supportsOneMillionContext = maxInputTokens >= 1_000_000 || Boolean(entry.limits?.supports1MContext);
 
   return {
     audio_input: { supported: supportsAudioInput },
@@ -480,12 +503,13 @@ function createClaudeCodeModelCapabilities(
       one_million_context_variant: options.oneMillionContext === true
     },
     effort: {
-      high: { supported: supportsReasoning },
-      low: { supported: supportsReasoning },
-      max: { supported: supportsReasoning },
-      medium: { supported: supportsReasoning },
+      high: { supported: supportsReasoningLevel("high") },
+      low: { supported: supportsReasoningLevel("low") },
+      max: { supported: supportsReasoningLevel("max") },
+      medium: { supported: supportsReasoningLevel("medium") },
       supported: supportsReasoning,
-      xhigh: { supported: supportsReasoning }
+      ultra: { supported: supportsReasoningLevel("ultra") },
+      xhigh: { supported: supportsReasoningLevel("xhigh") }
     },
     image_input: { supported: supportsImageInput },
     pdf_input: { supported: supportsPdfInput },
@@ -504,15 +528,26 @@ function createClaudeCodeModelCapabilities(
 
 
 function createDefaultClaudeCodeModelCapabilities(
-  options: { maxInputTokens?: number; oneMillionContext?: boolean } = {}
+  options: {
+    imageInput?: boolean;
+    maxInputTokens?: number;
+    oneMillionContext?: boolean;
+    reasoning?: boolean;
+    reasoningLevels?: string[];
+  } = {}
 ): Record<string, unknown> {
   const maxInputTokens = positiveInteger(options.maxInputTokens);
+  const supportsReasoning = options.reasoning ?? true;
+  const supportsReasoningLevel = (effort: string) => options.reasoningLevels
+    ? options.reasoningLevels.includes(effort)
+    : supportsReasoning;
   return {
+    audio_input: { supported: false },
     batch: { supported: true },
     citations: { supported: true },
     code_execution: { supported: true },
     context_management: {
-      clear_thinking_20251015: { supported: true },
+      clear_thinking_20251015: { supported: supportsReasoning },
       clear_tool_uses_20250919: { supported: true },
       compact_20260112: { supported: true },
       ...(maxInputTokens ? { max_input_tokens: maxInputTokens } : {}),
@@ -529,24 +564,50 @@ function createDefaultClaudeCodeModelCapabilities(
         }
       : {}),
     effort: {
-      high: { supported: true },
-      low: { supported: true },
-      max: { supported: true },
-      medium: { supported: true },
-      supported: true,
-      xhigh: { supported: true }
+      high: { supported: supportsReasoningLevel("high") },
+      low: { supported: supportsReasoningLevel("low") },
+      max: { supported: supportsReasoningLevel("max") },
+      medium: { supported: supportsReasoningLevel("medium") },
+      supported: supportsReasoning,
+      ultra: { supported: supportsReasoningLevel("ultra") },
+      xhigh: { supported: supportsReasoningLevel("xhigh") }
     },
-    image_input: { supported: true },
+    image_input: { supported: options.imageInput ?? true },
     pdf_input: { supported: true },
     structured_outputs: { supported: true },
     thinking: {
-      supported: true,
+      supported: supportsReasoning,
       types: {
-        adaptive: { supported: true },
-        enabled: { supported: true }
+        adaptive: { supported: supportsReasoning },
+        enabled: { supported: supportsReasoning }
       }
-    }
+    },
+    tool_use: { supported: true },
+    video_input: { supported: false }
   };
+}
+
+
+function providerModelCapabilityOverrides(
+  metadata: ProviderModelMetadata | undefined
+): { imageInput?: boolean; reasoning?: boolean; reasoningLevels?: string[] } {
+  const imageInput = metadata?.capabilities?.imageInput;
+  const imageOverride = imageInput === undefined ? {} : { imageInput };
+  if (metadata?.supportedReasoningLevels !== undefined) {
+    const reasoningLevels = uniqueStrings(
+      metadata.supportedReasoningLevels
+        .map((level) => level.effort.trim().toLowerCase())
+        .filter(Boolean)
+    );
+    return {
+      ...imageOverride,
+      reasoning: reasoningLevels.length > 0,
+      reasoningLevels
+    };
+  }
+  return metadata?.supportsReasoningSummaries === undefined
+    ? imageOverride
+    : { ...imageOverride, reasoning: metadata.supportsReasoningSummaries };
 }
 
 

@@ -115,6 +115,104 @@ test("RequestLogStore commits while a background pricing refresh is stalled", as
   }
 });
 
+test("RequestLogStore applies persisted custom model pricing to raw trace usage updates", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-custom-pricing-test-"));
+  const dbFile = path.join(dir, "request-logs.sqlite");
+  const store = new RequestLogStore(dbFile);
+  try {
+    const record = createRecord(
+      "custom-pricing-request",
+      '{"usage":{"input_tokens":1000000,"output_tokens":500000}}'
+    );
+    record.model = "custom-model";
+    record.providerName = "custom-provider";
+    record.pricing = {
+      inputUsdPerMillionTokens: 2,
+      outputUsdPerMillionTokens: 8
+    };
+    const result = await store.writeBatch([{
+      eventId: "custom-pricing-event",
+      input: record,
+      kind: "record",
+      sequence: 1
+    }]);
+    assert.equal(result.pricingRefreshNeeded, false);
+
+    let page = await store.list({ pageSize: 10 });
+    let detail = await store.getDetail({ id: page.items[0].id });
+    assert.equal(detail.costUsd, 6);
+
+    assert.equal(await store.updateFromRawTrace({
+      model: "custom-model",
+      provider: "custom-provider",
+      requestId: "custom-pricing-request",
+      responseBodyText: '{"usage":{"input_tokens":2000000,"output_tokens":1000000}}'
+    }), true);
+    page = await store.list({ pageSize: 10 });
+    detail = await store.getDetail({ id: page.items[0].id });
+    assert.equal(detail.costUsd, 12);
+  } finally {
+    await store.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore prices Anthropic 5m and 1h cache writes separately", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-cache-duration-pricing-test-"));
+  const dbFile = path.join(dir, "request-logs.sqlite");
+  const store = new RequestLogStore(dbFile);
+  try {
+    const record = createRecord(
+      "cache-duration-pricing-request",
+      [
+        "event: message_start",
+        `data: ${JSON.stringify({
+          message: {
+            model: "custom-model",
+            usage: {
+              cache_creation: {
+                ephemeral_1h_input_tokens: 100000,
+                ephemeral_5m_input_tokens: 200000
+              },
+              cache_creation_input_tokens: 300000,
+              input_tokens: 1000000
+            }
+          },
+          type: "message_start"
+        })}`,
+        "",
+        "event: message_delta",
+        `data: ${JSON.stringify({ type: "message_delta", usage: { output_tokens: 500000 } })}`,
+        ""
+      ].join("\n")
+    );
+    record.model = "custom-model";
+    record.providerName = "custom-provider";
+    record.pricing = {
+      cacheWrite1hUsdPerMillionTokens: 6,
+      cacheWrite5mUsdPerMillionTokens: 3,
+      inputUsdPerMillionTokens: 2,
+      outputUsdPerMillionTokens: 8
+    };
+
+    const result = await store.writeBatch([{
+      eventId: "cache-duration-pricing-event",
+      input: record,
+      kind: "record",
+      sequence: 1
+    }]);
+    assert.equal(result.pricingRefreshNeeded, false);
+
+    const page = await store.list({ pageSize: 10 });
+    const detail = await store.getDetail({ id: page.items[0].id });
+    assert.equal(detail.cacheWriteTokens, 300000);
+    assert.ok(Math.abs(detail.costUsd - 7.2) < 1e-12);
+  } finally {
+    await store.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 function createRecord(requestId, responseBodyText) {
   const now = new Date().toISOString();
   return {

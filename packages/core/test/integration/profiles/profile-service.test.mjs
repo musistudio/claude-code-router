@@ -553,6 +553,7 @@ test("profile service writes a multi-model Kimi CLI home that points inference t
       modelDisplayNames: { fast: "Fast Model" },
       modelMetadata: {
         fast: {
+          capabilities: { imageInput: true },
           defaultReasoningLevel: "high",
           supportedReasoningLevels: [
             { description: "Fast", effort: "low" },
@@ -642,7 +643,7 @@ test("profile service writes a multi-model Kimi CLI home that points inference t
   assert.equal(profileConfigContent.includes('[models."Provider/legacy-extra"]'), false);
   assert.match(profileConfigContent, /max_context_size = 200000/);
   assert.match(profileConfigContent, /\[models\."Provider\/model"\][\s\S]*?capabilities = \["tool_use"\]/);
-  assert.match(profileConfigContent, /\[models\."Provider\/fast"\][\s\S]*?capabilities = \["tool_use", "thinking"\]\nsupport_efforts = \["low", "high"\]\ndefault_effort = "high"/);
+  assert.match(profileConfigContent, /\[models\."Provider\/fast"\][\s\S]*?capabilities = \["tool_use", "image_in", "thinking"\]\nsupport_efforts = \["low", "high"\]\ndefault_effort = "high"/);
   assert.match(profileConfigContent, /display_name = "Provider \/ Fast Model"/);
   assert.match(profileConfigContent, /telemetry = false/);
   assert.match(profileConfigContent, /\[thinking\]/);
@@ -659,13 +660,13 @@ test("profile service writes a multi-model Kimi CLI home that points inference t
   assert.match(legacyProfileConfigContent, /default_model = "Provider\/model"/);
   assert.match(legacyProfileConfigContent, /\[models\."Provider\/model"\]/);
   assert.match(legacyProfileConfigContent, /\[models\."Provider\/fast"\]/);
-  assert.match(legacyProfileConfigContent, /\[models\."Provider\/gpt-5\.6-sol"\]\nprovider = "claude-code-router"\nmodel = "Provider\/gpt-5\.6-sol"\nmax_context_size = 1050000\ncapabilities = \["tool_use", "thinking"\]/);
-  assert.match(legacyProfileConfigContent, /\[models\."Provider\/gpt-5\.5-pro"\][\s\S]*?capabilities = \["tool_use", "always_thinking"\]/);
+  assert.match(legacyProfileConfigContent, /\[models\."Provider\/gpt-5\.6-sol"\]\nprovider = "claude-code-router"\nmodel = "Provider\/gpt-5\.6-sol"\nmax_context_size = 1050000\ncapabilities = \["tool_use", "image_in", "thinking"\]/);
+  assert.match(legacyProfileConfigContent, /\[models\."Provider\/gpt-5\.5-pro"\][\s\S]*?capabilities = \["tool_use", "image_in", "always_thinking"\]/);
   assert.match(legacyProfileConfigContent, /\[models\."Provider\/legacy-extra"\]/);
   assert.match(legacyProfileConfigContent, /\[models\."Custom Gemini\/gemini-2\.5-pro"\]\nprovider = "claude-code-router"\nmodel = "Custom Gemini\/gemini-2\.5-pro"\nmax_context_size = 1065535/);
   assert.match(legacyProfileConfigContent, /\[models\."DeepSeek\/deepseek-v4-flash"\]\nprovider = "claude-code-router"\nmodel = "DeepSeek\/deepseek-v4-flash"\nmax_context_size = 1050000\ncapabilities = \["tool_use", "thinking"\]/);
   assert.match(legacyProfileConfigContent, /\[models\."Zhipu Coding\/glm-5\.2"\]\nprovider = "claude-code-router"\nmodel = "Zhipu Coding\/glm-5\.2"\nmax_context_size = 1049000\ncapabilities = \["tool_use", "thinking"\]/);
-  assert.match(legacyProfileConfigContent, /\[models\."Fusion\/catalog-context"\]\nprovider = "claude-code-router"\nmodel = "Fusion\/catalog-context"\nmax_context_size = 1050000\ncapabilities = \["tool_use", "thinking"\]/);
+  assert.match(legacyProfileConfigContent, /\[models\."Fusion\/catalog-context"\]\nprovider = "claude-code-router"\nmodel = "Fusion\/catalog-context"\nmax_context_size = 1050000\ncapabilities = \["tool_use", "image_in", "thinking"\]/);
 });
 
 test("profile service writes an OpenCode CLI wrapper and shared CLI/App config", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {

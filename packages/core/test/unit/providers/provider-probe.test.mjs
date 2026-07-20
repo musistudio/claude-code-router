@@ -80,6 +80,10 @@ test("NVIDIA probe never requests or persists the Responses protocol", async (t)
     ["openai_chat_completions"]
   );
   assert.equal(probe.detectedProtocol, "openai_chat_completions");
+  assert.equal(
+    probe.catalogModelMetadata?.["qwen/qwen2.5-coder-32b-instruct"]?.contextWindow,
+    128000
+  );
 });
 
 test("protocol support probe treats HTTP 400 validation as protocol support", () => {

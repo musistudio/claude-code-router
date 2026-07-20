@@ -13,6 +13,7 @@ import type {
   GatewayProviderProtocol
 } from "@ccr/core/contracts/app";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue } from "@ccr/core/providers/presets/index";
+import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
 import {
   compactProviderUrl,
@@ -244,10 +245,12 @@ async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest)
     : parsed.normalizedInputBaseUrl;
   const detectedProvider = detectProvider(protocolResults);
   const account = detectedProvider === "new-api" ? newApiKeyUsageAccountConfig(normalizedBaseUrl) : undefined;
+  const catalog = getProviderCatalogModels({ baseUrl: normalizedBaseUrl });
 
   return {
     ...(account ? { account } : {}),
     capabilities: capabilitiesFromProtocolResults(protocolResults),
+    catalogModelMetadata: catalog.modelMetadata,
     ...(detectedProvider ? { detectedProvider } : {}),
     detectedProtocol,
     modelDisplayNames: modelProbe.modelDisplayNames,

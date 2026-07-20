@@ -4,13 +4,14 @@ import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "@ccr/core/config/constants";
-import { estimateUsageCostUsd } from "@ccr/core/models/pricing-service";
+import { estimateUsageCostUsd, providerModelPricingForUsage } from "@ccr/core/models/pricing-service";
 import { createBetterSqliteDatabase, type BetterSqliteDatabase } from "@ccr/core/storage/sqlite-native";
 import { normalizeUsageInputTokens } from "@ccr/core/usage/normalization";
 import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
 import type {
   AppConfig,
   GatewayProviderProtocol,
+  ProviderModelPricing,
   UsageComparisonRow,
   UsageStatsFilter,
   UsageSeriesPoint,
@@ -24,6 +25,8 @@ type SqlValue = bigint | Buffer | number | string | null;
 
 type UsageNumbers = {
   cacheReadTokens?: number;
+  cacheWrite1hTokens?: number;
+  cacheWrite5mTokens?: number;
   cacheWriteTokens?: number;
   inputIncludesCacheTokens?: boolean;
   inputTokens?: number;
@@ -44,6 +47,7 @@ export type UsageEventInput = {
   modelIsRouteSelector?: boolean;
   path: string;
   provider?: string;
+  pricing?: ProviderModelPricing;
   requestId?: string;
   statusCode: number;
   usage?: UsageNumbers;
@@ -137,6 +141,8 @@ export class UsageStore {
     const inputTokens = normalizeCount(usage.inputTokens);
     const outputTokens = normalizeCount(usage.outputTokens);
     const cacheReadTokens = normalizeCount(usage.cacheReadTokens);
+    const cacheWrite1hTokens = normalizeCount(usage.cacheWrite1hTokens);
+    const cacheWrite5mTokens = normalizeCount(usage.cacheWrite5mTokens);
     const cacheWriteTokens = normalizeCount(usage.cacheWriteTokens);
     const cacheTokens = cacheReadTokens + cacheWriteTokens;
     const totalTokens = normalizeCount(usage.totalTokens) || inputTokens + outputTokens + cacheTokens;
@@ -149,10 +155,13 @@ export class UsageStore {
     const estimatedCost = explicitCost === undefined
       ? await this.estimateCost({
           cacheReadTokens,
+          cacheWrite1hTokens,
+          cacheWrite5mTokens,
           cacheWriteTokens,
           inputTokens,
           model,
           outputTokens,
+          pricing: event.pricing,
           provider
         })
       : undefined;
@@ -462,7 +471,7 @@ export async function recordGatewayUsageCapture(input: UsageCaptureInput): Promi
   try {
     const headersUsage = extractUsageFromBillingHeaders(input.responseHeaders);
     const bodyUsage = extractUsageFromBody(input.bodyText);
-    const usage = normalizeUsageInputTokens(headersUsage ?? bodyUsage, {
+    const usage = normalizeUsageInputTokens(mergeUsageSnapshots(headersUsage, bodyUsage), {
       path: input.path,
       providerProtocol: input.providerProtocol,
       usageHint: bodyUsage
@@ -481,16 +490,18 @@ export async function recordGatewayUsageCapture(input: UsageCaptureInput): Promi
       responseAttribution.provider ??
       fallbackAttribution.provider ??
       route.provider;
+    const model = responseAttribution.model ?? fallbackAttribution.model ?? route.model ?? input.fallbackModel;
 
     await usageStore.record({
       durationMs: input.durationMs,
       method: input.method,
       logicalModel: fallbackAttribution.logicalModel ?? input.fallbackModel,
-      model: responseAttribution.model ?? fallbackAttribution.model ?? route.model ?? input.fallbackModel,
+      model,
       modelIsRouteSelector: false,
       path: input.path,
       client: input.client,
       provider,
+      pricing: providerModelPricingForUsage(input.config, provider, model),
       credentialId: readCredentialId(input.responseHeaders),
       requestId: input.requestId,
       statusCode: input.statusCode,
@@ -1046,15 +1057,20 @@ function extractUsageFromBillingHeaders(headers: Headers): UsageNumbers | undefi
   const inputTokens = readNumberHeader(headers, "x-gateway-billing-input-tokens");
   const outputTokens = readNumberHeader(headers, "x-gateway-billing-output-tokens");
   const cacheReadTokens = readNumberHeader(headers, "x-gateway-billing-cache-read-tokens");
-  const cacheWriteTokens = readNumberHeader(headers, "x-gateway-billing-cache-write-tokens");
+  const cacheWrite1hTokens = readNumberHeader(headers, "x-gateway-billing-cache-write-1h-tokens");
+  const cacheWrite5mTokens = readNumberHeader(headers, "x-gateway-billing-cache-write-5m-tokens");
+  const cacheWriteTokens = readNumberHeader(headers, "x-gateway-billing-cache-write-tokens") ??
+    sumOptionalNumbers(cacheWrite5mTokens, cacheWrite1hTokens);
   const totalTokens = readNumberHeader(headers, "x-gateway-billing-total-tokens");
 
-  if ([inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens].every((value) => value === undefined)) {
+  if ([inputTokens, outputTokens, cacheReadTokens, cacheWrite1hTokens, cacheWrite5mTokens, cacheWriteTokens, totalTokens].every((value) => value === undefined)) {
     return undefined;
   }
 
   return {
     cacheReadTokens,
+    cacheWrite1hTokens,
+    cacheWrite5mTokens,
     cacheWriteTokens,
     inputTokens,
     outputTokens,
@@ -1082,7 +1098,11 @@ function extractUsageFromBody(text: string): UsageSnapshot | undefined {
     }
   }
 
-  return snapshots.at(-1);
+  let merged: UsageSnapshot | undefined;
+  for (const snapshot of snapshots) {
+    merged = mergeUsageSnapshots(snapshot, merged);
+  }
+  return merged;
 }
 
 function parseStreamPayloads(text: string): unknown[] {
@@ -1107,10 +1127,13 @@ function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
   }
 
   const response = isRecord(payload.response) ? payload.response : payload;
+  const message = isRecord(payload.message) ? payload.message : undefined;
   const usage = isRecord(response.usage)
     ? response.usage
     : isRecord(payload.usage)
       ? payload.usage
+      : isRecord(message?.usage)
+        ? message.usage
       : undefined;
   const usageMetadata = isRecord(response.usageMetadata)
     ? response.usageMetadata
@@ -1146,6 +1169,9 @@ function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
     inputDetails?.cache_creation_tokens !== undefined ||
     usage.cached_tokens !== undefined ||
     usage.prompt_tokens !== undefined;
+  const cacheCreation = isRecord(usage.cache_creation) ? usage.cache_creation : undefined;
+  const cacheWrite5mTokens = asNumber(cacheCreation?.ephemeral_5m_input_tokens);
+  const cacheWrite1hTokens = asNumber(cacheCreation?.ephemeral_1h_input_tokens);
 
   return {
     cacheReadTokens:
@@ -1153,16 +1179,20 @@ function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
       asNumber(usage.cache_read_input_tokens) ??
       asNumber(usage.cached_tokens) ??
       asNumber(inputDetails?.cached_tokens),
+    cacheWrite1hTokens,
+    cacheWrite5mTokens,
     cacheWriteTokens:
       asNumber(usage.cache_write_tokens) ??
       asNumber(usage.cache_creation_tokens) ??
       asNumber(usage.cache_creation_input_tokens) ??
-      asNumber(inputDetails?.cache_creation_tokens),
+      asNumber(inputDetails?.cache_creation_tokens) ??
+      sumOptionalNumbers(cacheWrite5mTokens, cacheWrite1hTokens),
     inputIncludesCacheTokens: hasAnthropicCacheFields ? false : hasOpenAiCacheFields ? true : undefined,
     inputTokens: asNumber(usage.input_tokens) ?? asNumber(usage.prompt_tokens),
     model:
       asString(response.model) ??
       asString(payload.model) ??
+      asString(message?.model) ??
       asString(response.modelVersion) ??
       asString(payload.modelVersion),
     outputTokens: asNumber(usage.output_tokens) ?? asNumber(usage.completion_tokens),
@@ -1173,11 +1203,27 @@ function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
 function hasUsageNumbers(snapshot: UsageNumbers): boolean {
   return [
     snapshot.cacheReadTokens,
+    snapshot.cacheWrite1hTokens,
+    snapshot.cacheWrite5mTokens,
     snapshot.cacheWriteTokens,
     snapshot.inputTokens,
     snapshot.outputTokens,
     snapshot.totalTokens
   ].some((value) => value !== undefined);
+}
+
+function mergeUsageSnapshots(primary: UsageNumbers | undefined, fallback: UsageSnapshot | undefined): UsageSnapshot | undefined {
+  if (!primary) return fallback;
+  if (!fallback) return primary;
+  return {
+    ...fallback,
+    ...Object.fromEntries(Object.entries(primary).filter(([, value]) => value !== undefined))
+  };
+}
+
+function sumOptionalNumbers(...values: Array<number | undefined>): number | undefined {
+  const present = values.filter((value): value is number => value !== undefined);
+  return present.length > 0 ? present.reduce((total, value) => total + value, 0) : undefined;
 }
 
 function readHeader(headers: Headers, name: string): string | undefined {

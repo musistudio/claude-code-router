@@ -1357,17 +1357,26 @@ function kimiProfileReasoningMetadata(
         .map((level) => level.effort.trim().toLowerCase())
         .filter((effort) => effort !== "off" && effort !== "none"));
   const catalogCapabilities = catalogEntry?.capabilities ?? {};
-  const supportsReasoning = configuredEfforts.length > 0 ||
-    metadata?.supportsReasoningSummaries === true ||
-    readCatalogCapability(catalogCapabilities, "reasoning");
-  if (!supportsReasoning) {
-    return { capabilities: ["tool_use"], supportEfforts: [] };
-  }
-
+  const catalogInputModalities = new Set(
+    (catalogEntry?.modalities?.input ?? []).map((modality) => modality.trim().toLowerCase())
+  );
+  const supportsImageInput = metadata?.capabilities?.imageInput ??
+    (
+      readCatalogCapability(catalogCapabilities, "imageInput") ||
+      readCatalogCapability(catalogCapabilities, "vision") ||
+      catalogInputModalities.has("image")
+    );
   const capabilities = [
     "tool_use",
-    catalogCapabilities.noneReasoningEffort === false ? "always_thinking" : "thinking"
+    ...(supportsImageInput ? ["image_in"] : [])
   ];
+  const supportsReasoning = metadata?.supportsReasoningSummaries ??
+    (configuredEfforts.length > 0 || readCatalogCapability(catalogCapabilities, "reasoning"));
+  if (!supportsReasoning) {
+    return { capabilities, supportEfforts: [] };
+  }
+
+  capabilities.push(catalogCapabilities.noneReasoningEffort === false ? "always_thinking" : "thinking");
   const configuredDefault = metadata?.defaultReasoningLevel?.trim().toLowerCase();
   const defaultEffort = configuredDefault && configuredEfforts.includes(configuredDefault)
     ? configuredDefault

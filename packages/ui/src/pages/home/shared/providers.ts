@@ -933,6 +933,7 @@ export function createProviderDraftFromDeepLinkPayload(
     apiKey: payload.apiKey?.trim() || "",
     baseUrl,
     capabilities: payload.capabilities ?? [],
+    catalogModelMetadata: undefined,
     credentials: [],
     icon: payload.icon?.trim() || "",
     modelDescriptions: modelDescriptionsForModels(payload.modelDescriptions, models),
@@ -1026,6 +1027,7 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
     apiKey: "",
     baseUrl: "",
     capabilities: [],
+    catalogModelMetadata: undefined,
     credentials: [],
     icon: "",
     modelDescriptions: undefined,
@@ -1052,6 +1054,7 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
     apiKey: providerApiKey(provider),
     baseUrl,
     capabilities: provider.capabilities ?? [],
+    catalogModelMetadata: undefined,
     credentials: (provider.credentials ?? []).map(providerCredentialDraftFromConfig),
     icon: provider.icon ?? "",
     modelDescriptions: modelDescriptionsForModels(provider.modelDescriptions, provider.models),
@@ -2070,6 +2073,7 @@ export function applyProviderProbeResult(draft: AddProviderDraft, probe: Gateway
     ? detectedProtocol
     : selectedProtocols[0] ?? detectedProtocol;
   const modelDisplayNames = mergeModelDisplayNames(draft.modelDisplayNames, probe.modelDisplayNames);
+  const catalogModelMetadata = mergeModelMetadata(draft.catalogModelMetadata, probe.catalogModelMetadata);
   const modelMetadata = mergeModelMetadata(draft.modelMetadata, probe.modelMetadata);
   const accountDraft = providerProbeAccountDraftPatch(draft, probe.account);
   const baseUrl = providerGlobalBaseUrlForProbe(draft.baseUrl, probe, selectedProtocols);
@@ -2079,6 +2083,7 @@ export function applyProviderProbeResult(draft: AddProviderDraft, probe: Gateway
       ...draft,
       ...accountDraft,
       baseUrl,
+      catalogModelMetadata,
       modelDisplayNames,
       modelMetadata,
       protocol,
@@ -2103,6 +2108,7 @@ export function applyProviderProbeResult(draft: AddProviderDraft, probe: Gateway
     ...draft,
     ...accountDraft,
     baseUrl,
+    catalogModelMetadata,
     modelDisplayNames,
     modelMetadata,
     protocol,

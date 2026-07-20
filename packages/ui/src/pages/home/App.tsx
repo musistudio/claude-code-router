@@ -1191,8 +1191,9 @@ function App() {
     const initialDraftFromPayload = createProviderDraftFromDeepLinkPayload(nextPayload, draftConfig.Providers);
     const initialDraft = {
       ...initialDraftFromPayload,
+      catalogModelMetadata: mergeModelMetadata(initialDraftFromPayload.catalogModelMetadata, catalogModelMetadata),
       modelDisplayNames: mergeModelDisplayNames(initialDraftFromPayload.modelDisplayNames, catalogModelDisplayNames),
-      modelMetadata: mergeModelMetadata(initialDraftFromPayload.modelMetadata, catalogModelMetadata)
+      modelMetadata: initialDraftFromPayload.modelMetadata
     };
     setProviderEditIndex(undefined);
     setProviderImportOpen(true);
@@ -1231,9 +1232,10 @@ function App() {
 
       return {
         ...next,
+        catalogModelMetadata: patch.catalogModelMetadata,
         modelDescriptions: patch.modelDescriptions ?? current.modelDescriptions,
         modelDisplayNames: patch.modelDisplayNames,
-        modelMetadata: patch.modelMetadata ?? current.modelMetadata,
+        modelMetadata: "modelMetadata" in patch ? patch.modelMetadata : current.modelMetadata,
         modelsText: mergeProviderModelLists(current.selectedModels, splitLines(next.modelsText)).join("\n"),
         selectedModels: [],
         selectedProtocols: patch.selectedProtocols ?? current.selectedProtocols

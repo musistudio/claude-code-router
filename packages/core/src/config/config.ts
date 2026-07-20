@@ -38,7 +38,9 @@ import type {
   ProviderAccountConfig,
   ProviderAccountConnectorConfig,
   ProviderCredentialConfig,
+  ProviderModelCapabilities,
   ProviderModelMetadata,
+  ProviderModelPricing,
   ProviderReasoningLevel,
   ProfileConfig,
   ProfileRuntimeConfig,
@@ -1262,12 +1264,15 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
     return undefined;
   }
   const supportedReasoningLevels = parseProviderReasoningLevels(value.supportedReasoningLevels ?? value.supported_reasoning_levels);
+  const capabilities = parseProviderModelCapabilities(value.capabilities);
   const contextWindow = readPositiveInteger(value.contextWindow ?? value.context_window);
   const effectiveContextWindowPercent = readPercentage(value.effectiveContextWindowPercent ?? value.effective_context_window_percent);
   const maxContextWindow = readPositiveInteger(value.maxContextWindow ?? value.max_context_window);
+  const pricing = parseProviderModelPricing(value.pricing);
   const metadata: ProviderModelMetadata = {
     ...(Array.isArray(value.additionalSpeedTiers) ? { additionalSpeedTiers: value.additionalSpeedTiers } : {}),
     ...(Array.isArray(value.additional_speed_tiers) ? { additionalSpeedTiers: value.additional_speed_tiers } : {}),
+    ...(capabilities ? { capabilities } : {}),
     ...(contextWindow ? { contextWindow } : {}),
     ...(value.defaultReasoningLevel === null ? { defaultReasoningLevel: null } : {}),
     ...(readString(value.defaultReasoningLevel) ? { defaultReasoningLevel: readString(value.defaultReasoningLevel) } : {}),
@@ -1277,6 +1282,7 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
     ...(readString(value.default_reasoning_summary) ? { defaultReasoningSummary: readString(value.default_reasoning_summary) } : {}),
     ...(effectiveContextWindowPercent ? { effectiveContextWindowPercent } : {}),
     ...(maxContextWindow ? { maxContextWindow } : {}),
+    ...(pricing ? { pricing } : {}),
     ...(Array.isArray(value.serviceTiers) ? { serviceTiers: value.serviceTiers } : {}),
     ...(Array.isArray(value.service_tiers) ? { serviceTiers: value.service_tiers } : {}),
     ...(supportedReasoningLevels ? { supportedReasoningLevels } : {}),
@@ -1284,6 +1290,46 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
     ...(typeof value.supports_reasoning_summaries === "boolean" ? { supportsReasoningSummaries: value.supports_reasoning_summaries } : {})
   };
   return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function parseProviderModelCapabilities(value: unknown): ProviderModelCapabilities | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const capabilities: ProviderModelCapabilities = {};
+  const fields: Array<keyof ProviderModelCapabilities> = ["imageInput", "webSearch"];
+  for (const field of fields) {
+    const snakeCaseField = field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+    const candidate = value[field] ?? value[snakeCaseField];
+    if (typeof candidate === "boolean") {
+      capabilities[field] = candidate;
+    }
+  }
+  return Object.keys(capabilities).length > 0 ? capabilities : undefined;
+}
+
+function parseProviderModelPricing(value: unknown): ProviderModelPricing | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const pricing: ProviderModelPricing = {};
+  const fields: Array<keyof ProviderModelPricing> = [
+    "cacheReadUsdPerMillionTokens",
+    "cacheWriteUsdPerMillionTokens",
+    "cacheWrite1hUsdPerMillionTokens",
+    "cacheWrite5mUsdPerMillionTokens",
+    "inputUsdPerMillionTokens",
+    "outputUsdPerMillionTokens"
+  ];
+  for (const field of fields) {
+    const snakeCaseField = field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+    const durationSnakeCaseField = snakeCaseField.replace(/([a-z])([0-9])/g, "$1_$2");
+    const parsed = readNonNegativeNumber(value[field] ?? value[durationSnakeCaseField] ?? value[snakeCaseField]);
+    if (parsed !== undefined) {
+      pricing[field] = parsed;
+    }
+  }
+  return Object.keys(pricing).length > 0 ? pricing : undefined;
 }
 
 export function providerModelMetadataFromConfigForTest(value: unknown): ProviderModelMetadata | undefined {
@@ -1310,7 +1356,7 @@ function parseProviderReasoningLevels(value: unknown): ProviderReasoningLevel[] 
       };
     })
     .filter((item): item is ProviderReasoningLevel => Boolean(item));
-  return levels.length > 0 ? levels : undefined;
+  return levels.length > 0 ? levels : value.length === 0 ? [] : undefined;
 }
 
 function withProviderIds(providers: GatewayProviderConfig[]): GatewayProviderConfig[] {
@@ -3013,6 +3059,11 @@ function readNumber(value: unknown): number | undefined {
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function readNonNegativeNumber(value: unknown): number | undefined {
+  const parsed = readNumber(value);
+  return parsed !== undefined && parsed >= 0 ? parsed : undefined;
 }
 
 function readPercentage(value: unknown): number | undefined {

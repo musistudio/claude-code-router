@@ -194,6 +194,7 @@ function codexModelCapabilityProfile(
   const physicalModelSelector = provider ? `${provider.name}/${providerModel}` : providerModel;
   const catalogEntry = findModelCatalogEntry(physicalModelSelector);
   const capabilities = catalogEntry?.capabilities ?? {};
+  const configuredCapabilities = providerModelMetadata?.capabilities;
   const providerProtocol = provider ? codexProviderProtocol(provider) : undefined;
   const supportsFusionVision = codexVirtualModelSupportsFusionVision(model, config);
   const supportsFusionWebSearch = codexVirtualModelSupportsFusionWebSearch(model, config);
@@ -205,7 +206,8 @@ function codexModelCapabilityProfile(
   const supportsReasoning = providerModelMetadata?.supportsReasoningSummaries
     ?? documentedReasoning?.supportsReasoning
     ?? (metadataReasoningLevels !== undefined || readCatalogCapability(capabilities, "reasoning"));
-  const supportsImageInput = supportsFusionVision || catalogEntrySupportsImageInput(catalogEntry);
+  const supportsImageInput = supportsFusionVision ||
+    (configuredCapabilities?.imageInput ?? catalogEntrySupportsImageInput(catalogEntry));
   const supportsParallelToolCalls = readCatalogCapability(capabilities, "parallelFunctionCalling");
   // Codex must emit apply_patch for both native GPT models and non-GPT models
   // that the gateway converts through the compatibility bridge.
@@ -213,7 +215,7 @@ function codexModelCapabilityProfile(
   const supportsSearchTool =
     supportsFusionWebSearch ||
     (
-      readCatalogCapability(capabilities, "webSearch") &&
+      (configuredCapabilities?.webSearch ?? readCatalogCapability(capabilities, "webSearch")) &&
       (
         providerProtocol === "openai_responses" ||
         providerProtocol === "anthropic_messages" ||

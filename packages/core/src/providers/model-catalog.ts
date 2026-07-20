@@ -1,10 +1,17 @@
-import type { ProviderCatalogModelsRequest, ProviderCatalogModelsResult } from "@ccr/core/contracts/app";
+import type {
+  ProviderCatalogModelsRequest,
+  ProviderCatalogModelsResult,
+  ProviderModelMetadata,
+  ProviderModelPricing
+} from "@ccr/core/contracts/app";
 import { providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
 import { loadModelCatalogPayload } from "@ccr/core/models/catalog-file";
 import { findProviderPreset, findProviderPresetByBaseUrl } from "@ccr/core/providers/presets/index";
 
 type CatalogProviderEntry = {
   apiUrls: string[];
+  modelDisplayNames: Record<string, string>;
+  modelMetadata: Record<string, ProviderModelMetadata>;
   models: string[];
   provider: string;
   providerName?: string;
@@ -48,10 +55,17 @@ const presetCatalogProviderIds: Record<string, string[]> = {
   "zhipu-cn-general": ["zhipuai"]
 };
 
-const presetCatalogModelOverrides: Record<string, { modelDisplayNames?: Record<string, string>; models: string[]; provider?: string; providerName?: string }> = {
+type CatalogProviderModelOverride = ProviderCatalogModelsResult & {
+  metadataModelAliases?: Record<string, string>;
+};
+
+const presetCatalogModelOverrides: Record<string, CatalogProviderModelOverride> = {
   "kimi-coding": {
     modelDisplayNames: {
       "kimi-for-coding": "K2.7 Code"
+    },
+    metadataModelAliases: {
+      "kimi-for-coding": "k2p7"
     },
     models: ["kimi-for-coding"],
     provider: "kimi-for-coding",
@@ -65,9 +79,11 @@ export function getProviderCatalogModels(request: ProviderCatalogModelsRequest):
   const index = loadCatalogIndex();
   const modelOverride = providerCatalogModelOverride(request);
   if (modelOverride) {
+    const { metadataModelAliases, ...result } = modelOverride;
     return {
       loadedFrom: index.loadedFrom,
-      ...modelOverride
+      ...result,
+      modelMetadata: catalogOverrideModelMetadata(index.providers, modelOverride, metadataModelAliases)
     };
   }
 
@@ -82,18 +98,21 @@ export function getProviderCatalogModels(request: ProviderCatalogModelsRequest):
   return {
     loadedFrom: index.loadedFrom,
     matchedBy: match.matchedBy,
+    modelDisplayNames: nonEmptyRecord(match.entry.modelDisplayNames),
+    modelMetadata: nonEmptyRecord(match.entry.modelMetadata),
     models: match.entry.models,
     provider: match.entry.provider,
     providerName: match.entry.providerName
   };
 }
 
-function providerCatalogModelOverride(request: ProviderCatalogModelsRequest): ProviderCatalogModelsResult | undefined {
+function providerCatalogModelOverride(request: ProviderCatalogModelsRequest): CatalogProviderModelOverride | undefined {
   const providerPresetId = request.providerPresetId?.trim() || "";
   const providerPresetOverride = presetCatalogModelOverrides[providerPresetId];
   if (providerPresetOverride) {
     return {
       matchedBy: "provider-id",
+      metadataModelAliases: providerPresetOverride.metadataModelAliases,
       modelDisplayNames: providerPresetOverride.modelDisplayNames,
       models: providerPresetOverride.models,
       provider: providerPresetOverride.provider,
@@ -106,6 +125,7 @@ function providerCatalogModelOverride(request: ProviderCatalogModelsRequest): Pr
   if (baseUrlOverride) {
     return {
       matchedBy: "base-url",
+      metadataModelAliases: baseUrlOverride.metadataModelAliases,
       modelDisplayNames: baseUrlOverride.modelDisplayNames,
       models: baseUrlOverride.models,
       provider: baseUrlOverride.provider,
@@ -114,6 +134,25 @@ function providerCatalogModelOverride(request: ProviderCatalogModelsRequest): Pr
   }
 
   return undefined;
+}
+
+function catalogOverrideModelMetadata(
+  providers: CatalogProviderEntry[],
+  override: CatalogProviderModelOverride,
+  aliases: Record<string, string> | undefined
+): Record<string, ProviderModelMetadata> | undefined {
+  const entry = providers.find((candidate) => candidate.provider === override.provider);
+  if (!entry) {
+    return undefined;
+  }
+  const result: Record<string, ProviderModelMetadata> = {};
+  for (const model of override.models) {
+    const metadata = entry.modelMetadata[aliases?.[model] ?? model];
+    if (metadata) {
+      result[model] = metadata;
+    }
+  }
+  return nonEmptyRecord(result);
 }
 
 function loadCatalogIndex(): CatalogIndex {
@@ -173,6 +212,14 @@ function buildCatalogIndex(payload: unknown, loadedFrom: string): CatalogIndex {
       if (!entry.modelSet.has(model)) {
         entry.modelSet.add(model);
         entry.models.push(model);
+        const displayName = stringValue(sourceRecord.displayName) || stringValue(item.displayName);
+        if (displayName && displayName !== model) {
+          entry.modelDisplayNames[model] = displayName;
+        }
+        const metadata = providerModelMetadataFromCatalog(item, sourceRecord, provider, model);
+        if (metadata) {
+          entry.modelMetadata[model] = metadata;
+        }
       }
       providers.set(provider, entry);
     }
@@ -182,6 +229,8 @@ function buildCatalogIndex(payload: unknown, loadedFrom: string): CatalogIndex {
     loadedFrom,
     providers: Array.from(providers.values()).map((entry) => ({
       apiUrls: Array.from(entry.apiUrls),
+      modelDisplayNames: entry.modelDisplayNames,
+      modelMetadata: entry.modelMetadata,
       models: sortCatalogProviderModels(entry.models),
       provider: entry.provider,
       providerName: entry.providerName,
@@ -193,11 +242,166 @@ function buildCatalogIndex(payload: unknown, loadedFrom: string): CatalogIndex {
 function createMutableCatalogProviderEntry(provider: string): MutableCatalogProviderEntry {
   return {
     apiUrls: new Set(),
+    modelDisplayNames: {},
+    modelMetadata: {},
     models: [],
     modelSet: new Set(),
     provider,
     tokens: new Set([normalizeProviderToken(provider)])
   };
+}
+
+function providerModelMetadataFromCatalog(
+  modelEntry: Record<string, unknown>,
+  sourceRecord: Record<string, unknown>,
+  provider: string,
+  model: string
+): ProviderModelMetadata | undefined {
+  const limits = isRecord(modelEntry.limits) ? modelEntry.limits : {};
+  const contextWindow = maxPositiveInteger(limits.contextTokens, limits.inputTokens, limits.maxTokens);
+  const capabilities = isRecord(modelEntry.capabilities) ? modelEntry.capabilities : {};
+  const imageInput = booleanValue(capabilities.imageInput);
+  const webSearch = booleanValue(capabilities.webSearch);
+  const supportedReasoningLevels = catalogReasoningLevels(sourceRecord, capabilities);
+  const supportsReasoningSummaries = booleanValue(capabilities.reasoning);
+  const pricing = providerModelPricingFromCatalog(modelEntry, provider, model);
+  const metadata: ProviderModelMetadata = {
+    ...(imageInput !== undefined || webSearch !== undefined
+      ? {
+          capabilities: {
+            ...(imageInput !== undefined ? { imageInput } : {}),
+            ...(webSearch !== undefined ? { webSearch } : {})
+          }
+        }
+      : {}),
+    ...(contextWindow ? { contextWindow, maxContextWindow: contextWindow } : {}),
+    ...(pricing ? { pricing } : {}),
+    ...(supportedReasoningLevels.length > 0 ? { supportedReasoningLevels } : {}),
+    ...(supportsReasoningSummaries !== undefined ? { supportsReasoningSummaries } : {})
+  };
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function catalogReasoningLevels(
+  sourceRecord: Record<string, unknown>,
+  capabilities: Record<string, unknown>
+): NonNullable<ProviderModelMetadata["supportedReasoningLevels"]> {
+  const sourceMetadata = isRecord(sourceRecord.metadata) ? sourceRecord.metadata : {};
+  const reasoningOptions = Array.isArray(sourceMetadata.reasoningOptions) ? sourceMetadata.reasoningOptions : [];
+  const allowed = new Set(["low", "medium", "high", "xhigh", "max", "ultra"]);
+  const efforts = uniqueStrings(reasoningOptions.flatMap((option) =>
+    isRecord(option) && stringValue(option.type).toLowerCase() === "effort"
+      ? stringListValue(option.values).map((effort) => effort.toLowerCase())
+      : []
+  )).filter((effort) => allowed.has(effort));
+  const inferred = efforts.length > 0 ? efforts : [
+    booleanValue(capabilities.lowReasoningEffort) ? "low" : "",
+    booleanValue(capabilities.mediumReasoningEffort) ? "medium" : "",
+    booleanValue(capabilities.highReasoningEffort) ? "high" : "",
+    booleanValue(capabilities.xhighReasoningEffort) ? "xhigh" : "",
+    booleanValue(capabilities.maxReasoningEffort) ? "max" : "",
+    booleanValue(capabilities.ultraReasoningEffort) ? "ultra" : ""
+  ].filter(Boolean);
+  return inferred.map((effort) => ({ description: reasoningEffortDescription(effort), effort }));
+}
+
+function reasoningEffortDescription(effort: string): string {
+  if (effort === "xhigh") return "Extra high";
+  return effort.slice(0, 1).toUpperCase() + effort.slice(1);
+}
+
+function providerModelPricingFromCatalog(
+  modelEntry: Record<string, unknown>,
+  provider: string,
+  model: string
+): ProviderModelPricing | undefined {
+  const pricing = isRecord(modelEntry.pricing) ? modelEntry.pricing : {};
+  const offers = Array.isArray(pricing.offers) ? pricing.offers.filter(isRecord) : [];
+  const normalizedProvider = normalizeProviderToken(provider);
+  const normalizedModel = normalizeModelToken(model);
+  const matchingOffers = offers
+    .map((candidate, index) => ({
+      candidate,
+      index,
+      providerMatch: normalizeProviderToken(stringValue(candidate.provider)) === normalizedProvider,
+      modelMatch: normalizeModelToken(stringValue(candidate.model)) === normalizedModel,
+      sourceRank: catalogPricingSourceRank(stringValue(candidate.source))
+    }))
+    .filter((candidate) => candidate.providerMatch)
+    .sort((left, right) =>
+      Number(right.modelMatch) - Number(left.modelMatch) ||
+      left.sourceRank - right.sourceRank ||
+      left.index - right.index
+    )
+    .map(({ candidate }) => candidate);
+  if (matchingOffers.length === 0) {
+    return undefined;
+  }
+  const result: ProviderModelPricing = {};
+  for (const offer of matchingOffers) {
+    const candidate = providerModelPricingFromOffer(offer);
+    for (const [field, value] of Object.entries(candidate) as Array<[keyof ProviderModelPricing, number]>) {
+      if (result[field] === undefined) {
+        result[field] = value;
+      }
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function providerModelPricingFromOffer(offer: Record<string, unknown>): ProviderModelPricing {
+  const per1MTokens = isRecord(offer.per1MTokens) ? offer.per1MTokens : {};
+  const extra = isRecord(offer.extra) ? offer.extra : {};
+  const sourceUnit = stringValue(offer.sourceUnit);
+  const cacheWriteLegacy = nonNegativeNumber(per1MTokens.cacheWrite);
+  const cacheWrite5m = nonNegativeNumber(per1MTokens.cacheWrite5m) ?? cacheWriteLegacy;
+  const cacheWrite1h = nonNegativeNumber(per1MTokens.cacheWrite1h) ??
+    catalogExtraCacheWrite1h(extra, sourceUnit);
+  return {
+    ...(nonNegativeNumber(per1MTokens.cacheRead) !== undefined
+      ? { cacheReadUsdPerMillionTokens: nonNegativeNumber(per1MTokens.cacheRead) }
+      : {}),
+    ...(cacheWrite5m !== undefined ? { cacheWrite5mUsdPerMillionTokens: cacheWrite5m } : {}),
+    ...(cacheWrite1h !== undefined ? { cacheWrite1hUsdPerMillionTokens: cacheWrite1h } : {}),
+    ...(nonNegativeNumber(per1MTokens.input) !== undefined
+      ? { inputUsdPerMillionTokens: nonNegativeNumber(per1MTokens.input) }
+      : {}),
+    ...(nonNegativeNumber(per1MTokens.output) !== undefined
+      ? { outputUsdPerMillionTokens: nonNegativeNumber(per1MTokens.output) }
+      : {})
+  };
+}
+
+function catalogExtraCacheWrite1h(extra: Record<string, unknown>, sourceUnit: string): number | undefined {
+  const value = nonNegativeNumber(extra.input_cache_write_1h) ??
+    nonNegativeNumber(extra.cache_creation_input_token_cost_above_1hr);
+  if (value === undefined) {
+    return undefined;
+  }
+  return sourceUnit === "usd_per_1m_tokens" ? value : value * 1_000_000;
+}
+
+function catalogPricingSourceRank(source: string): number {
+  if (source === "models.dev") return 0;
+  if (source === "litellm") return 1;
+  if (source === "openrouter") return 2;
+  return 3;
+}
+
+function maxPositiveInteger(...values: unknown[]): number | undefined {
+  const parsed = values
+    .map((value) => nonNegativeNumber(value))
+    .filter((value): value is number => value !== undefined && value > 0)
+    .map((value) => Math.trunc(value));
+  return parsed.length > 0 ? Math.max(...parsed) : undefined;
+}
+
+function normalizeModelToken(value: string): string {
+  return value.trim().toLowerCase().replace(/^.*\//, "");
+}
+
+function nonEmptyRecord<T>(value: Record<string, T>): Record<string, T> | undefined {
+  return Object.keys(value).length > 0 ? value : undefined;
 }
 
 function providerModelName(sourceRecord: Record<string, unknown>, modelEntry: Record<string, unknown>): string {
@@ -481,6 +685,19 @@ function addSetValue(values: Set<string>, value: string): void {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function booleanValue(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function nonNegativeNumber(value: unknown): number | undefined {
+  const parsed = typeof value === "number"
+    ? value
+    : typeof value === "string" && value.trim()
+      ? Number(value)
+      : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
 function stringValue(value: unknown): string {
