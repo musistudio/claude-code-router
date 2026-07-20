@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtempSync, rmSync } from "node:fs";
-import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 import { gatewayService } from "@ccr/core/gateway/service.ts";
+import { waitForTcpListener } from "../../support/loopback-listener.mjs";
 
 test("gateway treats downstream client aborts as expected stream cleanup", async (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-gateway-client-abort-test-"));
@@ -152,38 +152,6 @@ function closeServer(server) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function waitForTcpListener(server, timeoutMs = 1000) {
-  const port = serverPort(server);
-  const deadline = Date.now() + timeoutMs;
-  let lastError;
-  while (Date.now() < deadline) {
-    try {
-      await new Promise((resolve, reject) => {
-        const socket = connect(port, "127.0.0.1");
-        const timer = setTimeout(() => {
-          socket.destroy();
-          reject(new Error(`Timed out connecting to TCP listener on port ${port}`));
-        }, Math.max(1, deadline - Date.now()));
-        socket.once("connect", () => {
-          clearTimeout(timer);
-          socket.end();
-          resolve();
-        });
-        socket.once("error", (error) => {
-          clearTimeout(timer);
-          socket.destroy();
-          reject(error);
-        });
-      });
-      return;
-    } catch (error) {
-      lastError = error;
-      await sleep(10);
-    }
-  }
-  throw lastError ?? new Error(`Timed out waiting for TCP listener on port ${port}`);
 }
 
 async function waitFor(predicate, timeoutMs) {
