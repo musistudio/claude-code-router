@@ -240,8 +240,15 @@ function lockedProviderPresetProtocols(
   ].filter((value): value is string => Boolean(value?.trim()));
 
   for (const baseUrl of baseUrls) {
-    if (findProviderPresetByBaseUrl(baseUrl)?.id === "gemini") {
+    const presetId = findProviderPresetByBaseUrl(baseUrl)?.id;
+    if (presetId === "gemini") {
       return ["gemini_generate_content", "gemini_interactions"];
+    }
+    if (presetId === "nvidia") {
+      // NVIDIA NIM exposes OpenAI Chat Completions at this official endpoint,
+      // but not the Responses API. Ignore stale or auth-only probe results that
+      // would otherwise route Codex directly to a non-existent /responses path.
+      return ["openai_chat_completions"];
     }
   }
 

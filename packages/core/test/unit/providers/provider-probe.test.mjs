@@ -47,6 +47,41 @@ test("protocol support probe keeps auth-only fallback for unhinted endpoints", (
   );
 });
 
+test("NVIDIA probe never requests or persists the Responses protocol", async (t) => {
+  const previousFetch = globalThis.fetch;
+  const paths = [];
+
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    paths.push(url.pathname);
+    return new Response(JSON.stringify({ error: { message: "Unauthorized" } }), {
+      headers: { "content-type": "application/json" },
+      status: 401
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+
+  const probe = await probeGatewayProvider({
+    baseUrl: "https://integrate.api.nvidia.com/v1",
+    forceRefresh: true,
+    mode: "protocols",
+    protocols: ["openai_responses", "openai_chat_completions"]
+  });
+
+  assert.deepEqual(paths, ["/v1/chat/completions"]);
+  assert.deepEqual(
+    probe.protocols.map(({ protocol, status, supported }) => ({ protocol, status, supported })),
+    [{ protocol: "openai_chat_completions", status: 401, supported: true }]
+  );
+  assert.deepEqual(
+    probe.capabilities?.map(({ type }) => type),
+    ["openai_chat_completions"]
+  );
+  assert.equal(probe.detectedProtocol, "openai_chat_completions");
+});
+
 test("protocol support probe treats HTTP 400 validation as protocol support", () => {
   const message = "HTTP 400: * GenerateContentRequest.contents: contents is not specified";
 

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { existsSync, lstatSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, existsSync, lstatSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -216,6 +217,92 @@ test("profile service overwrites generated bin files without creating backups", 
     ) && entry.includes(".ccr-")
   );
   assert.deepEqual(backupEntries, []);
+});
+
+test("Codex profile launcher bypasses middleware for Browser and Computer Use helpers", { skip: process.platform === "win32" || !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-browser-helper-bypass-"));
+  const profileId = "browser-helper-bypass-test";
+  try {
+    const fakeCodex = path.join(root, "real-codex");
+    writeFileSync(fakeCodex, [
+      "#!/bin/sh",
+      "printf '%s|%s|%s|cli_path=%s\\n' \"$1\" \"$2\" \"$3\" \"${CODEX_CLI_PATH:-}\"",
+      ""
+    ].join("\n"));
+    chmodSync(fakeCodex, 0o700);
+
+    const config = createDefaultAppConfig({
+      generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
+    });
+    config.APIKEY = "ccr-browser-helper-test";
+    config.APIKEYS = [{
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profileId}`,
+      key: config.APIKEY,
+      name: "Profile: Browser Helper Bypass"
+    }];
+    config.Providers = [{
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model"],
+      name: "Provider"
+    }];
+    config.profile.profiles = [{
+      agent: "codex",
+      cliMiddleware: true,
+      codexCliPath: fakeCodex,
+      codexHome: "",
+      configFile: "",
+      configFormat: "separate_profile_files",
+      enabled: true,
+      env: {},
+      id: profileId,
+      model: "Provider/model",
+      name: "Browser Helper Bypass",
+      providerId: "claude-code-router",
+      providerName: "Claude Code Router",
+      scope: "ccr",
+      showAllSessions: false,
+      surface: "app"
+    }];
+
+    const applied = await applyProfileConfig(config);
+    assert.equal(applied.clients[0].ok, true);
+    const launcher = path.join(CONFIGDIR, "bin", `ccr-codex-cli-stdio-${profileId}`);
+    const content = readFileSync(launcher, "utf8");
+    assert.ok(content.includes("CCR_BUNDLED_CODEX_CLI_PATH"));
+    assert.ok(content.includes("app-server' ] && [ \"${2:-}\" = '--listen'"));
+
+    const result = spawnSync(launcher, ["app-server", "--listen", "stdio://"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        CCR_BUNDLED_CODEX_CLI_PATH: "",
+        CCR_REAL_CODEX_CLI_PATH: "",
+        CODEXL_BUNDLED_CODEX_CLI_PATH: "",
+        CODEXL_REAL_CODEX_CLI_PATH: "",
+        CODEX_CLI_PATH: launcher
+      }
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, "app-server|--listen|stdio://|cli_path=\n");
+
+    const sandboxResult = spawnSync(launcher, ["sandbox"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        CCR_BUNDLED_CODEX_CLI_PATH: "",
+        CCR_REAL_CODEX_CLI_PATH: "",
+        CODEXL_BUNDLED_CODEX_CLI_PATH: "",
+        CODEXL_REAL_CODEX_CLI_PATH: "",
+        CODEX_CLI_PATH: launcher
+      }
+    });
+    assert.equal(sandboxResult.status, 0, sandboxResult.stderr);
+    assert.equal(sandboxResult.stdout, "sandbox|||cli_path=\n");
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
 });
 
 test("profile service injects ToolHub MCP into Codex config", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {

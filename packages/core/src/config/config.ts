@@ -9,7 +9,7 @@ import { removeOpenCodeProviderAccountConfig } from "@ccr/core/agents/local-prov
 import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, ROUTER_SCRIPT_API_VERSION, ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS, ROUTER_SCRIPT_MAX_TIMEOUT_MS, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "@ccr/core/contracts/app";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config";
 import { maxRequestLogBodyBytes } from "@ccr/core/observability/request-log-limits";
-import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
+import { findProviderPresetByBaseUrl, primaryProviderPresetEndpoint, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
 import type {
   AppConfig,
   ApiKeyConfig,
@@ -305,10 +305,11 @@ export async function loadAppConfig(): Promise<AppConfig> {
       }
     });
     const shouldPersistApiKeys = loadedApiKeys.length === 0 || hasConfigFileApiKeys(rawValue) || configFileApiKeys.length > 0;
+    const shouldRepairProviderCapabilities = hasUnsupportedNvidiaCapabilities(value.Providers);
     if (shouldPersistApiKeys) {
       await replacePersistedApiKeys(apiKeys);
     }
-    if (loadedRawConfig.source !== "sqlite" || shouldPersistApiKeys) {
+    if (loadedRawConfig.source !== "sqlite" || shouldPersistApiKeys || shouldRepairProviderCapabilities) {
       await writeSanitizedConfig(config);
     }
     return config;
@@ -348,11 +349,63 @@ export async function saveAppConfig(config: AppConfig): Promise<AppConfig> {
 function withSingleEnabledGlobalProfiles(config: AppConfig): AppConfig {
   return {
     ...config,
+    Providers: config.Providers.map(normalizeProviderPresetCapabilities),
     profile: {
       ...config.profile,
       profiles: enforceSingleEnabledGlobalProfilePerAgent(config.profile.profiles)
     }
   };
+}
+
+function normalizeProviderPresetCapabilities(provider: GatewayProviderConfig): GatewayProviderConfig {
+  const preset = findProviderPresetByBaseUrl(providerBaseUrl(provider));
+  if (preset?.id !== "nvidia") {
+    return provider;
+  }
+
+  const chatCapability = provider.capabilities?.find((capability) =>
+    capability.type === "openai_chat_completions"
+  );
+  const presetBaseUrl = primaryProviderPresetEndpoint(preset)?.baseUrl ?? providerBaseUrl(provider);
+  return {
+    ...provider,
+    capabilities: [{
+      baseUrl: chatCapability?.baseUrl || presetBaseUrl,
+      endpoint: chatCapability?.endpoint,
+      source: chatCapability?.source ?? "preset",
+      type: "openai_chat_completions"
+    }]
+  };
+}
+
+export function normalizeProviderPresetCapabilitiesForTest(
+  provider: GatewayProviderConfig
+): GatewayProviderConfig {
+  return normalizeProviderPresetCapabilities(provider);
+}
+
+function hasUnsupportedNvidiaCapabilities(value: unknown): boolean {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  return value.some((item) => {
+    if (!isObject(item)) {
+      return false;
+    }
+    const baseUrl = readString(item.api_base_url) || readString(item.baseUrl) || readString(item.baseurl);
+    if (!baseUrl || findProviderPresetByBaseUrl(baseUrl)?.id !== "nvidia" || !Array.isArray(item.capabilities)) {
+      return false;
+    }
+    return item.capabilities.some((capability) => {
+      if (!isObject(capability)) {
+        return false;
+      }
+      const protocol = parseProviderCapabilityProtocol(
+        readString(capability.type) || readString(capability.protocol)
+      );
+      return Boolean(protocol && protocol !== "openai_chat_completions");
+    });
+  });
 }
 
 function assertProviderApiKeysAreSafe(config: AppConfig): void {
@@ -1144,8 +1197,10 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         type: readString(item.type)
       };
       return removeOpenCodeProviderAccountConfig(
-        normalizeGrokProviderMediaCapabilities(
-          normalizeGrokProviderAccountConfig(normalizeCodexProviderAccountConfig(provider))
+        normalizeProviderPresetCapabilities(
+          normalizeGrokProviderMediaCapabilities(
+            normalizeGrokProviderAccountConfig(normalizeCodexProviderAccountConfig(provider))
+          )
         )
       );
     })

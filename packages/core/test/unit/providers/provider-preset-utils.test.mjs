@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  normalizeProviderPresetCapabilitiesForTest
+} from "@ccr/core/config/config.ts";
+import {
   findProviderPresetByBaseUrlInList,
   findProviderPresetByIdentityInList,
   providerApiKeySafetyIssueInList,
@@ -21,6 +24,10 @@ import {
 import {
   providerPresets
 } from "@ccr/core/providers/presets/index.ts";
+import {
+  normalizedProviderCapabilities,
+  providerCapabilityForClientProtocol
+} from "@ccr/core/providers/runtime-topology.ts";
 import {
   qiniuAiProviderPreset
 } from "@ccr/core/providers/presets/qiniu-ai/index.ts";
@@ -118,6 +125,62 @@ test("NVIDIA preset exposes the hosted NIM OpenAI-compatible endpoint", () => {
   ]);
   assert.equal(providerPresetMatchesBaseUrl(nvidiaProviderPreset, "https://integrate.api.nvidia.com/v1/chat/completions"), true);
   assert.equal(providerPresetMatchesBaseUrl(nvidiaProviderPreset, "https://build.nvidia.com/models"), false);
+});
+
+test("NVIDIA preset ignores stale Responses detection and converts Codex requests to Chat Completions", () => {
+  const provider = {
+    api_base_url: "https://integrate.api.nvidia.com/v1",
+    capabilities: [
+      {
+        baseUrl: "https://integrate.api.nvidia.com/v1",
+        source: "detected",
+        type: "openai_chat_completions"
+      },
+      {
+        baseUrl: "https://integrate.api.nvidia.com/v1",
+        source: "detected",
+        type: "openai_responses"
+      }
+    ],
+    models: ["z-ai/glm-5.2"],
+    name: "NVIDIA"
+  };
+
+  assert.deepEqual(normalizedProviderCapabilities(provider), [
+    {
+      baseUrl: "https://integrate.api.nvidia.com/v1",
+      source: "detected",
+      type: "openai_chat_completions"
+    }
+  ]);
+  assert.equal(
+    providerCapabilityForClientProtocol(provider, "openai_responses")?.type,
+    "openai_chat_completions"
+  );
+});
+
+test("NVIDIA config normalization removes a previously persisted Responses capability", () => {
+  const provider = normalizeProviderPresetCapabilitiesForTest({
+    api_base_url: "https://integrate.api.nvidia.com/v1",
+    capabilities: [
+      {
+        baseUrl: "https://integrate.api.nvidia.com/v1",
+        source: "detected",
+        type: "openai_responses"
+      }
+    ],
+    models: ["z-ai/glm-5.2"],
+    name: "NVIDIA"
+  });
+
+  assert.deepEqual(provider.capabilities, [
+    {
+      baseUrl: "https://integrate.api.nvidia.com/v1",
+      endpoint: undefined,
+      source: "preset",
+      type: "openai_chat_completions"
+    }
+  ]);
 });
 
 test("provider identity safety does not block branded third-party endpoints", () => {

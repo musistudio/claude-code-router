@@ -317,16 +317,38 @@ function codexProfileEnv(profile: ProfileConfig, appExecutable: string, spec: Co
     ...(process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG?.trim()
       ? { CCR_CODEX_CLI_MIDDLEWARE_LOG: process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG.trim() }
       : {}),
+    ...codexSharedChatGptAuthEnv(),
     CCR_CODEX_MODEL_PROVIDER: providerId,
     CCR_CODEX_PROFILE: providerId,
     CCR_CODEX_REMOTE_FRONTEND_MODE: remoteFrontendMode,
+    CCR_BUNDLED_CODEX_CLI_PATH: realCliPath,
     CCR_REAL_CODEX_CLI_PATH: realCliPath,
+    CODEXL_BUNDLED_CODEX_CLI_PATH: realCliPath,
     CODEXL_CODEX_CORE_MODE: remoteFrontendMode,
     CODEXL_CODEX_MODEL_PROVIDER: providerId,
     CODEXL_CODEX_PROFILE: providerId,
     CODEXL_CODEX_WORKSPACE_NAME: profile.name || providerId,
     CODEXL_REAL_CODEX_CLI_PATH: realCliPath
   };
+}
+
+function codexSharedChatGptAuthEnv(): Record<string, string> {
+  const configured = [
+    process.env.CCR_CODEX_CHATGPT_AUTH_FILE,
+    process.env.CODEXL_CODEX_CHATGPT_AUTH_FILE
+  ].map((value) => value?.trim()).find((value) => value && isFile(resolveUserPath(value)));
+  const authFile = configured ? resolveUserPath(configured) : path.join(os.homedir(), ".codex", "auth.json");
+  if (!isFile(authFile)) {
+    return {};
+  }
+  return {
+    CCR_CODEX_CHATGPT_AUTH_FILE: authFile,
+    CODEXL_CODEX_CHATGPT_AUTH_FILE: authFile
+  };
+}
+
+export function codexSharedChatGptAuthEnvForTest(): Record<string, string> {
+  return codexSharedChatGptAuthEnv();
 }
 
 function codexAppAgentEnv(

@@ -1778,6 +1778,10 @@ function codexMiddlewareShellScript(
         `  CCR_REAL_CODEX_CLI_PATH=${shellQuote(codexCli)}`,
         "fi",
         "export CCR_REAL_CODEX_CLI_PATH",
+        "if [ -z \"${CCR_BUNDLED_CODEX_CLI_PATH:-}\" ]; then",
+        "  CCR_BUNDLED_CODEX_CLI_PATH=$CCR_REAL_CODEX_CLI_PATH",
+        "fi",
+        "export CCR_BUNDLED_CODEX_CLI_PATH",
         `export CCR_CODEX_PROFILE=${shellQuote(values.providerId)}`,
         `export CCR_CODEX_MODEL=${shellQuote(values.model)}`,
         `export CCR_CODEX_MODEL_CATALOG_FILE=${shellQuote(values.modelCatalogFile)}`,
@@ -1789,6 +1793,10 @@ function codexMiddlewareShellScript(
         "  CODEXL_REAL_CODEX_CLI_PATH=$CCR_REAL_CODEX_CLI_PATH",
         "fi",
         "export CODEXL_REAL_CODEX_CLI_PATH",
+        "if [ -z \"${CODEXL_BUNDLED_CODEX_CLI_PATH:-}\" ]; then",
+        "  CODEXL_BUNDLED_CODEX_CLI_PATH=$CCR_BUNDLED_CODEX_CLI_PATH",
+        "fi",
+        "export CODEXL_BUNDLED_CODEX_CLI_PATH",
         `export CODEXL_CODEX_PROFILE=${shellQuote(values.providerId)}`,
         `export CODEXL_CODEX_MODEL_CATALOG_FILE=${shellQuote(values.modelCatalogFile)}`,
         `export CODEXL_CODEX_MODEL_PROVIDER=${shellQuote(values.providerId)}`,
@@ -1803,6 +1811,7 @@ function codexMiddlewareShellScript(
     ...shellProfileSurfaceExports(surface),
     ...botEnvExports,
     ...shellCodexlProfileSurfaceExports(),
+    ...(profile.agent === "codex" ? codexNativeHelperBypassShellLines() : []),
     ...nodeRuntimeShellExecLines(runtimeFile),
     ""
   ].join("\n");
@@ -1825,6 +1834,16 @@ function cmdProfileSurfaceExports(surface: "auto" | "cli" | "app"): string[] {
 function cmdCodexlProfileSurfaceExports(): string[] {
   return [
     "if not defined CODEXL_PROFILE_SURFACE set \"CODEXL_PROFILE_SURFACE=%CCR_PROFILE_SURFACE%\""
+  ];
+}
+
+function codexNativeHelperBypassShellLines(): string[] {
+  return [
+    "# Browser's native-pipe authorizer requires helper processes to bypass the CCR middleware.",
+    "if [ \"${1:-}\" = 'sandbox' ] || { [ \"${1:-}\" = 'app-server' ] && [ \"${2:-}\" = '--listen' ] && [ \"${3:-}\" = 'stdio://' ]; }; then",
+    "  unset CODEX_CLI_PATH",
+    "  exec \"$CCR_BUNDLED_CODEX_CLI_PATH\" \"$@\"",
+    "fi"
   ];
 }
 
@@ -1890,6 +1909,7 @@ function codexMiddlewareCmdScript(
     : [
         cmdSetLine("CODEX_HOME", resolvedCodexHome),
         `if not defined CCR_REAL_CODEX_CLI_PATH ${cmdSetLine("CCR_REAL_CODEX_CLI_PATH", codexCli)}`,
+        "if not defined CCR_BUNDLED_CODEX_CLI_PATH set \"CCR_BUNDLED_CODEX_CLI_PATH=%CCR_REAL_CODEX_CLI_PATH%\"",
         cmdSetLine("CCR_CODEX_PROFILE", values.providerId),
         cmdSetLine("CCR_CODEX_MODEL", values.model),
         cmdSetLine("CCR_CODEX_MODEL_CATALOG_FILE", values.modelCatalogFile),
@@ -1898,6 +1918,7 @@ function codexMiddlewareCmdScript(
         cmdSetLine("CCR_PROFILE_SCOPE", normalizeProfileScope(profile.scope)),
         cmdSetLine("CCR_CODEX_REMOTE_FRONTEND_MODE", remoteFrontendMode),
         "if not defined CODEXL_REAL_CODEX_CLI_PATH set \"CODEXL_REAL_CODEX_CLI_PATH=%CCR_REAL_CODEX_CLI_PATH%\"",
+        "if not defined CODEXL_BUNDLED_CODEX_CLI_PATH set \"CODEXL_BUNDLED_CODEX_CLI_PATH=%CCR_BUNDLED_CODEX_CLI_PATH%\"",
         cmdSetLine("CODEXL_CODEX_PROFILE", values.providerId),
         cmdSetLine("CODEXL_CODEX_MODEL_CATALOG_FILE", values.modelCatalogFile),
         cmdSetLine("CODEXL_CODEX_MODEL_PROVIDER", values.providerId),

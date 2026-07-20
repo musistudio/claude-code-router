@@ -13,6 +13,73 @@ test("generated Codex CLI middleware runtime is valid JavaScript", () => {
   execFileSync(process.execPath, ["--check", file], { stdio: "pipe" });
 });
 
+test("Codex app-server uses ChatGPT's bundled Node as a signed supervisor", { skip: process.platform !== "darwin" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-signed-supervisor-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const resourcesDir = path.join(dir, "ChatGPT.app", "Contents", "Resources");
+  const fakeCodex = path.join(resourcesDir, "codex");
+  const bundledNode = path.join(resourcesDir, "cua_node", "bin", "node");
+  const observedFile = path.join(dir, "supervisor-args.txt");
+  mkdirSync(path.dirname(bundledNode), { recursive: true });
+  writeFileSync(fakeCodex, [
+    "#!/bin/sh",
+    "IFS= read -r request",
+    "printf '%s\\n' '{\"id\":1,\"result\":{\"supervised\":true}}'",
+    ""
+  ].join("\n"));
+  writeFileSync(bundledNode, [
+    "#!/bin/sh",
+    "printf '%s\\n' \"$@\" > \"$CCR_FAKE_SUPERVISOR_ARGS\"",
+    "exec \"$CCR_TEST_NODE\" \"$@\"",
+    ""
+  ].join("\n"));
+  chmodSync(fakeCodex, 0o700);
+  chmodSync(bundledNode, 0o700);
+
+  const result = spawnSync(process.execPath, [runtimeFile, "app-server"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
+      CCR_FAKE_SUPERVISOR_ARGS: observedFile,
+      CCR_PROFILE_SCOPE: "global",
+      CCR_REAL_CODEX_CLI_PATH: fakeCodex,
+      CCR_TEST_NODE: process.execPath
+    },
+    input: JSON.stringify({ id: 1, method: "probe/supervisor", params: {} }) + "\n"
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout.trim()).result, { supervised: true });
+  const observed = readFileSync(observedFile, "utf8");
+  assert.match(observed, /^-e\n/);
+  assert.ok(observed.includes(fakeCodex));
+  assert.ok(observed.includes("app-server"));
+});
+
+test("Codex runtime ignores middleware recursion and uses the bundled real CLI fallback", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-real-cli-fallback-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const fakeCodex = path.join(dir, "real-codex");
+  writeFileSync(fakeCodex, "#!/bin/sh\nprintf 'real-codex\\n'\n");
+  chmodSync(fakeCodex, 0o700);
+
+  const result = spawnSync(process.execPath, [runtimeFile, "--version"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CCR_BUNDLED_CODEX_CLI_PATH: fakeCodex,
+      CCR_CODEX_PROFILE: "claude-code-router",
+      CCR_REAL_CODEX_CLI_PATH: "",
+      CODEXL_REAL_CODEX_CLI_PATH: "",
+      CODEX_CLI_PATH: path.join(dir, "ccr-codex-cli-stdio-profile")
+    }
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, "real-codex\n");
+});
+
 test("Codex CLI middleware launches Windows cmd shims", { skip: process.platform !== "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-windows-cmd-"));
   const runtimeFile = writeRuntimeScript(dir);
@@ -70,7 +137,7 @@ test("Windows direct profile dispatch strips the profile command arguments", { s
   assert.deepEqual(JSON.parse(result.stdout), ["--version"]);
 });
 
-test("Codex app-server exposes a ChatGPT-shaped workspace identity without credentials", { skip: process.platform === "win32" }, () => {
+test("Codex app-server uses a local non-OpenAI identity without credentials", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-virtual-auth-"));
   const runtimeFile = writeRuntimeScript(dir);
   const fakeCodex = path.join(dir, "fake-codex");
@@ -101,9 +168,11 @@ test("Codex app-server exposes a ChatGPT-shaped workspace identity without crede
     env: {
       ...process.env,
       CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
+      CCR_CODEX_CHATGPT_AUTH_FILE: "",
       CCR_PROFILE_SCOPE: "ccr",
       CCR_REAL_CODEX_CLI_PATH: fakeCodex,
       CODEX_HOME: codexHome,
+      CODEXL_CODEX_CHATGPT_AUTH_FILE: "",
       CODEXL_CODEX_WORKSPACE_NAME: "CCR Workspace"
     },
     input: [
@@ -119,17 +188,18 @@ test("Codex app-server exposes a ChatGPT-shaped workspace identity without crede
   const responses = result.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line));
   assert.deepEqual(responses[0].result, { sawBootstrap: true });
   assert.deepEqual(responses[1].result, {
-    authMethod: "chatgpt",
-    authToken: null,
-    requiresOpenaiAuth: true
+    authMethod: "amazonBedrock",
+    authToken: "ccr-local-profile",
+    requiresOpenaiAuth: false
   });
   assert.deepEqual(responses[2].result, {
-    authMethod: "chatgpt",
-    requiresOpenaiAuth: true
+    authMethod: "amazonBedrock",
+    authToken: null,
+    requiresOpenaiAuth: false
   });
   assert.deepEqual(responses[3].result, {
-    account: { type: "chatgpt", email: "CCR Workspace", planType: "unknown" },
-    requiresOpenaiAuth: true
+    account: { type: "amazonBedrock", credentialSource: "codexManaged" },
+    requiresOpenaiAuth: false
   });
   assert.equal(existsSync(path.join(codexHome, "auth.json")), false);
 });
@@ -190,6 +260,64 @@ test("Codex app-server reads but never overwrites an existing ChatGPT auth file"
     requiresOpenaiAuth: true
   });
   assert.deepEqual(JSON.parse(readFileSync(authFile, "utf8")), existingAuth);
+});
+
+test("Codex app-server bridges shared ChatGPT auth into an isolated profile without copying it", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-shared-auth-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const fakeCodex = path.join(dir, "fake-codex");
+  const codexHome = path.join(dir, "codex-home");
+  const sharedAuthFile = path.join(dir, "shared-auth.json");
+  const token = "header.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL3Byb2ZpbGUiOnsiZW1haWwiOiJzaGFyZWRAZXhhbXBsZS5jb20ifSwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfcGxhbl90eXBlIjoicHJvIn19.signature";
+  const sharedAuth = {
+    auth_mode: "chatgpt",
+    tokens: { access_token: token, id_token: token, refresh_token: "shared-refresh" }
+  };
+  mkdirSync(codexHome, { recursive: true });
+  writeFileSync(sharedAuthFile, JSON.stringify(sharedAuth));
+  writeFileSync(fakeCodex, [
+    "#!/usr/bin/env node",
+    "const readline = require('node:readline');",
+    "const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });",
+    "input.on('line', (line) => {",
+    "  const request = JSON.parse(line);",
+    "  process.stdout.write(JSON.stringify({ id: request.id, result: {} }) + '\\n');",
+    "});",
+    ""
+  ].join("\n"));
+  chmodSync(fakeCodex, 0o700);
+
+  const result = spawnSync(process.execPath, [runtimeFile, "app-server"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CCR_CODEX_CHATGPT_AUTH_FILE: sharedAuthFile,
+      CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
+      CCR_PROFILE_SCOPE: "ccr",
+      CCR_REAL_CODEX_CLI_PATH: fakeCodex,
+      CODEX_HOME: codexHome,
+      CODEXL_CODEX_CHATGPT_AUTH_FILE: ""
+    },
+    input: [
+      JSON.stringify({ id: 1, method: "getAuthStatus", params: { includeToken: true, refreshToken: false } }),
+      JSON.stringify({ id: 2, method: "account/read", params: {} }),
+      ""
+    ].join("\n")
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const responses = result.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line));
+  assert.deepEqual(responses[0].result, {
+    authMethod: "chatgpt",
+    authToken: token,
+    requiresOpenaiAuth: true
+  });
+  assert.deepEqual(responses[1].result, {
+    account: { type: "chatgpt", email: "shared@example.com", planType: "pro" },
+    requiresOpenaiAuth: true
+  });
+  assert.equal(existsSync(path.join(codexHome, "auth.json")), false);
+  assert.deepEqual(JSON.parse(readFileSync(sharedAuthFile, "utf8")), sharedAuth);
 });
 
 test("Codex app-server delegates public Git marketplaces and leaves account-private marketplaces empty", { skip: process.platform === "win32" }, () => {

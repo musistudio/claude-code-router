@@ -12,7 +12,7 @@ import type {
   GatewayProviderCapabilityProtocol,
   GatewayProviderProtocol
 } from "@ccr/core/contracts/app";
-import { providerApiKeySafetyIssue } from "@ccr/core/providers/presets/index";
+import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue } from "@ccr/core/providers/presets/index";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
 import {
   compactProviderUrl,
@@ -228,7 +228,7 @@ async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest)
   }
 
   const parsed = parseProviderUrl(request.baseUrl);
-  const protocols = uniqueProtocols(request.protocols ?? []);
+  const protocols = providerProbeProtocolsForBaseUrl(request.baseUrl, request.protocols ?? []);
   const typedModels = uniqueStrings(request.models ?? []);
   const modelProbe = mode !== "models" || request.skipModelDiscovery
     ? { models: [] }
@@ -264,7 +264,7 @@ function providerProbeCacheKey(request: GatewayProviderProbeRequest): string {
     mode: request.mode ?? "protocols",
     models: uniqueStrings(request.models ?? []),
     providerPluginsHash: hashSensitiveValue(JSON.stringify(request.providerPlugins ?? [])),
-    protocols: uniqueProtocols(request.protocols ?? []),
+    protocols: providerProbeProtocolsForBaseUrl(request.baseUrl, request.protocols ?? []),
     skipModelDiscovery: request.skipModelDiscovery === true
   });
 }
@@ -347,7 +347,12 @@ function providerProbeCapabilities(
   candidate: GatewayProviderProbeCandidate,
   probe: GatewayProviderProbeResult
 ): GatewayProviderCapability[] {
-  const detectedCapabilities = mergeProviderCapabilities(probe.capabilities ?? []);
+  const allowedProtocols = new Set(providerProbeProtocolsForBaseUrl(
+    candidate.baseUrl,
+    (probe.capabilities ?? []).map((capability) => capability.type)
+  ));
+  const detectedCapabilities = mergeProviderCapabilities(probe.capabilities ?? [])
+    .filter((capability) => allowedProtocols.has(capability.type));
   const presetCapabilities = providerProbePresetCapabilities(candidate);
   return mergeProviderCapabilities(detectedCapabilities, presetCapabilities);
 }
@@ -357,11 +362,24 @@ function providerProbePresetCapabilities(candidate: GatewayProviderProbeCandidat
     return [];
   }
 
-  return uniqueProtocols(candidate.declaredProtocols ?? []).map((type) => ({
+  return providerProbeProtocolsForBaseUrl(candidate.baseUrl, candidate.declaredProtocols ?? []).map((type) => ({
     baseUrl: providerProbeCandidateBaseUrlForProtocol(candidate.baseUrl, type),
     source: "preset" as const,
     type
   }));
+}
+
+function providerProbeProtocolsForBaseUrl(
+  baseUrl: string,
+  requestedProtocols: GatewayProviderCapabilityProtocol[]
+): GatewayProviderCapabilityProtocol[] {
+  if (findProviderPresetByBaseUrl(baseUrl)?.id === "nvidia") {
+    // NVIDIA NIM's official OpenAI-compatible endpoint only exposes Chat
+    // Completions. Never probe /responses: an auth-only response can otherwise
+    // be mistaken for protocol support and persisted as a false capability.
+    return ["openai_chat_completions"];
+  }
+  return uniqueProtocols(requestedProtocols);
 }
 
 function providerProbeCandidateBaseUrlForProtocol(baseUrl: string, protocol: GatewayProviderCapabilityProtocol): string {
