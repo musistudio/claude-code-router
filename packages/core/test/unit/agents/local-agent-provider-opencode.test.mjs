@@ -172,12 +172,14 @@ test("OpenCode local provider imports public free models without a login", async
     assert.ok(available.every((candidate) => candidate.detail.includes("No login is required")));
 
     const chatResult = importOpenCodeProvider(candidateForProtocol(candidates, "openai_chat_completions"), []);
-    assert.equal(chatResult.providerPlugins[0].auth.headers.authorization, "Bearer public");
+    assert.deepEqual(chatResult.providerPlugins, []);
+    assert.equal(chatResult.provider.apiKey, "public");
     assert.deepEqual(chatResult.provider.models, ["chat-free"]);
     assert.equal(chatResult.provider.account, undefined);
 
     const anthropicResult = importOpenCodeProvider(candidateForProtocol(candidates, "anthropic_messages"), []);
-    assert.equal(anthropicResult.providerPlugins[0].auth.headers["x-api-key"], "public");
+    assert.deepEqual(anthropicResult.providerPlugins, []);
+    assert.equal(anthropicResult.provider.apiKey, "public");
   });
 });
 
