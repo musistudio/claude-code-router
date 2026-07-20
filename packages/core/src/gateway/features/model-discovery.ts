@@ -337,6 +337,13 @@ function isConfiguredGatewayModelSelector(model: string, config: AppConfig): boo
 }
 
 
+function claudeCodeOneMillionContextModelId(id: string): string {
+  return hasClaudeCodeOneMillionContextSuffix(id)
+    ? id
+    : `${id}${claudeCodeOneMillionContextSuffix}`;
+}
+
+
 function hasClaudeCodeOneMillionContextSuffix(id: string): boolean {
   return id.trim().toLowerCase().endsWith(claudeCodeOneMillionContextSuffix);
 }

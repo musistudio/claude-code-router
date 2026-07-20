@@ -292,7 +292,7 @@ async function resolveConfiguredRouteDecision(
   const explicitModel = normalizeRouteSelector(requestedModel);
   const resolvedExplicitModel = compiled.modelRegistry.resolve(explicitModel) ?? compiled.modelRegistry.resolve(
     explicitModel
-      ? resolveClaudeAppGatewayRouteModel(explicitModel, config, claudeAppGatewayModelRouteOptions)
+      ? resolveClaudeAppGatewayRouteModel(explicitModel, config, claudeAppGatewayModelRouteOptions(config))
       : undefined
   );
   const explicitDecision: ConfiguredRouteDecision | undefined = resolvedExplicitModel
@@ -488,7 +488,7 @@ function resolveConfiguredClaudeCodeModel(
 ): RouteModelRef | undefined {
   const target = normalizeRouteSelector(selector);
   const discoveredTarget = target
-    ? resolveClaudeAppGatewayRouteModel(target, config, claudeAppGatewayModelRouteOptions)
+    ? resolveClaudeAppGatewayRouteModel(target, config, claudeAppGatewayModelRouteOptions(config))
     : undefined;
   return modelRegistry.resolve(discoveredTarget ?? target);
 }
