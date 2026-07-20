@@ -4,9 +4,13 @@ import { attachCodexRateLimitResetCreditDetails } from "@ccr/core/agents/local-p
 import {
   codexDefaultBaseUrl,
   localAgentProviderApiKey,
+  kimiAccessTokenExpired,
+  kimiIdentityHeaders,
   readCodexAuth,
   readGrokAuth,
+  readKimiAuth,
   resolveGrokAuth,
+  resolveKimiAuth,
   readZcodeLocalProviderCredential,
   zcodeDefaultBaseUrl
 } from "@ccr/core/agents/local-providers/service";
@@ -1381,6 +1385,12 @@ async function localAgentProviderAccountCredential(
     if (key.includes("grok-cli-oauth")) {
       return await localGrokAccountCredential(plugin);
     }
+    if (key.includes("kimi-cli-oauth")) {
+      return await localKimiAccountCredential(plugin);
+    }
+    if (key.includes("kimi-cli-api-key")) {
+      return localKimiApiKeyAccountCredential(plugin);
+    }
     if (key.includes("zcode-api-key")) {
       return localApiKeyHeaderAccountCredential(plugin);
     }
@@ -1711,6 +1721,37 @@ async function localGrokAccountCredential(plugin: Record<string, unknown>): Prom
   return {
     apiKey,
     headers: withoutHeader(headers, "authorization")
+  };
+}
+
+async function localKimiAccountCredential(plugin: Record<string, unknown>): Promise<{ apiKey?: string; headers?: Record<string, string> }> {
+  const headers = localProviderPluginAuthHeaders(plugin);
+  const oauth = isRecord(plugin.kimiOauth) ? plugin.kimiOauth : {};
+  const oauthReference = {
+    key: readString(oauth.key),
+    oauthHost: readString(oauth.oauthHost) || readString(oauth.oauth_host)
+  };
+  const auth = await resolveKimiAuth(oauthReference).catch(() => readKimiAuth(oauthReference));
+  const apiKey = auth?.accessToken && !kimiAccessTokenExpired(auth)
+    ? auth.accessToken
+    : readBearerToken(headers.authorization || headers.Authorization);
+  return {
+    apiKey,
+    headers: {
+      ...withoutHeader(headers, "authorization"),
+      ...kimiIdentityHeaders()
+    }
+  };
+}
+
+function localKimiApiKeyAccountCredential(plugin: Record<string, unknown>): { apiKey?: string; headers?: Record<string, string> } {
+  const credential = localBearerAccountCredential(plugin);
+  return {
+    ...credential,
+    headers: {
+      ...credential.headers,
+      ...kimiIdentityHeaders()
+    }
   };
 }
 

@@ -3,7 +3,7 @@
  */
 import { join as pathJoin } from "node:path";
 import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
-import { codexDefaultBaseUrl, readCodexAuth, readGrokAuth, resolveGrokAuth } from "@ccr/core/agents/local-providers/service";
+import { codexDefaultBaseUrl, kimiAccessTokenExpired, kimiIdentityHeaders, readCodexAuth, readGrokAuth, readKimiAuth, resolveGrokAuth, resolveKimiAuth } from "@ccr/core/agents/local-providers/service";
 import { grokAccessTokenExpired, grokClientVersion } from "@ccr/core/agents/local-providers/grok";
 import { pluginService } from "@ccr/core/plugins/service";
 import { normalizeRouteSelector, providerRuntimeId } from "@ccr/core/routing/model-registry";
@@ -44,7 +44,9 @@ export async function compileCoreGatewayConfig(
     ...(config.providerPlugins ?? []).filter(providerPluginEnabled),
     ...pluginService.getCoreProviderPlugins().filter(providerPluginEnabled)
   ]);
-  const providerPlugins = await withGrokOauthRuntimeDefaults(withCodexOauthRuntimeDefaults(configuredProviderPlugins));
+  const providerPlugins = await withKimiOauthRuntimeDefaults(
+    await withGrokOauthRuntimeDefaults(withCodexOauthRuntimeDefaults(configuredProviderPlugins))
+  );
   const providerPluginsWithCapabilityAliases = withProviderCapabilityPluginAliases(providerPlugins, config.Providers);
   const codexOauthProviderNames = codexOauthLocalProviderNames(providerPlugins);
   const virtualModelProfiles = coreGatewayVirtualModelProfiles(config);
@@ -422,6 +424,49 @@ async function withGrokOauthRuntimeDefaults(providerPlugins: unknown[]): Promise
 }
 
 
+async function withKimiOauthRuntimeDefaults(providerPlugins: unknown[]): Promise<unknown[]> {
+  if (!providerPlugins.some(isLocalKimiOauthProviderPlugin)) {
+    return providerPlugins;
+  }
+  const identityHeaders = kimiIdentityHeaders();
+  return Promise.all(providerPlugins.map(async (plugin) => {
+    if (!isLocalKimiOauthProviderPlugin(plugin)) {
+      return plugin;
+    }
+    const oauth = isRecord(plugin.kimiOauth) ? plugin.kimiOauth : {};
+    const oauthReference = {
+      key: stringValue(oauth.key),
+      oauthHost: stringValue(oauth.oauthHost) ?? stringValue(oauth.oauth_host)
+    };
+    const kimiAuth = await resolveKimiAuth(oauthReference).catch(() => readKimiAuth(oauthReference));
+    const currentAuth = isRecord(plugin.auth) ? plugin.auth : {};
+    const currentAuthHeaders = isRecord(currentAuth.headers) ? currentAuth.headers : {};
+    const currentRequest = isRecord(plugin.request) ? plugin.request : {};
+    const currentRequestHeaders = isRecord(currentRequest.headers) ? currentRequest.headers : {};
+    return {
+      ...plugin,
+      auth: {
+        ...currentAuth,
+        headers: {
+          ...currentAuthHeaders,
+          ...(kimiAuth?.accessToken && !kimiAccessTokenExpired(kimiAuth)
+            ? { authorization: `Bearer ${kimiAuth.accessToken}` }
+            : {})
+        }
+      },
+      request: {
+        ...currentRequest,
+        headers: {
+          ...currentRequestHeaders,
+          ...identityHeaders
+        },
+        strict: currentRequest.strict ?? true
+      }
+    };
+  }));
+}
+
+
 function codexOauthLocalProviderNames(providerPlugins: unknown[]): Set<string> {
   const names = new Set<string>();
   for (const plugin of providerPlugins) {
@@ -534,6 +579,15 @@ function isLocalGrokOauthProviderPlugin(value: unknown): value is Record<string,
   }
   const key = stringValue(value.key)?.toLowerCase() ?? "";
   return key.startsWith("ccr-local-agent-") && key.includes("grok-cli-oauth");
+}
+
+
+function isLocalKimiOauthProviderPlugin(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const key = stringValue(value.key)?.toLowerCase() ?? "";
+  return key.startsWith("ccr-local-agent-") && key.includes("kimi-cli-oauth");
 }
 
 

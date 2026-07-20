@@ -9,6 +9,7 @@ import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "@ccr
 import { codexDesktopAppName, launchZcodeAppProfile } from "@ccr/core/agents/codex/app-launch";
 import { loadAppConfig } from "@ccr/core/config/config";
 import { CONFIGDIR } from "@ccr/core/config/constants";
+import { resolveModelCatalogPath } from "@ccr/core/models/catalog-file";
 import { applyProfileConfig, applyProfileRuntimeConfig } from "@ccr/core/profiles/service";
 import { ensureProfileGateway, ProfileGatewayUnavailableError } from "@ccr/core/profiles/launch-service";
 import { buildProfileLaunchPlan, defaultProfileOpenSurface, findProfileForOpen, profileLaunchSpawnCommand, resolveProfileOpenSurface, shouldAutoStartProfileGateway } from "@ccr/core/profiles/launch-core";
@@ -454,6 +455,10 @@ async function openManagementUrl(url: string): Promise<void> {
 function serviceChildEnv(serviceToken: string): NodeJS.ProcessEnv {
   const env = { ...process.env };
   env[serviceInstanceTokenEnv] = serviceToken;
+  const modelCatalogPath = resolveModelCatalogPath();
+  if (modelCatalogPath) {
+    env.CCR_MODEL_CATALOG_PATH = modelCatalogPath;
+  }
   if (process.versions.electron) {
     env.ELECTRON_RUN_AS_NODE = "1";
   } else {

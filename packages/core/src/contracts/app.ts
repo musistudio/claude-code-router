@@ -374,7 +374,7 @@ export type ProviderManifestFetchResult = {
   url: string;
 };
 
-export type LocalAgentProviderKind = "claude-code" | "codex" | "grok" | "opencode" | "zcode";
+export type LocalAgentProviderKind = "claude-code" | "codex" | "grok" | "kimi" | "opencode" | "zcode";
 
 export type LocalAgentProviderStatus = "available" | "locked" | "missing";
 
@@ -1241,7 +1241,7 @@ export const DEFAULT_TRAY_WIDGETS: TrayWidgetConfig[] = [
   { id: "model-share", type: "model-share", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.modelShare }
 ];
 
-export type ProfileClientKind = "claude-code" | "codex" | "grok" | "opencode" | "zcode";
+export type ProfileClientKind = "claude-code" | "codex" | "grok" | "kimi" | "opencode" | "zcode";
 export type CodexProfileConfigFormat = "legacy" | "separate_profile_files";
 export type CodexRemoteFrontendMode = "app" | "cli" | "claude-code";
 export type ProfileScope = "ccr" | "global" | "custom";
@@ -1272,6 +1272,7 @@ export type CodexProfileConfig = {
 export type ProfileConfig = {
   agent: ProfileClientKind;
   appPath?: string;
+  availableModels?: string[];
   botConfigId?: string;
   botGateway?: BotGatewayRuntimeConfig;
   configFile?: string;
@@ -2014,7 +2015,7 @@ export type UsageStatsSnapshot = {
   totals: UsageTotals;
 };
 
-export type AgentKind = "claude-code" | "codex" | "grok" | "opencode" | "zcode" | "claude-design" | "unknown";
+export type AgentKind = "claude-code" | "codex" | "grok" | "kimi" | "opencode" | "zcode" | "claude-design" | "unknown";
 
 export type AgentAnalysisFilter = {
   agent?: AgentKind | "all";

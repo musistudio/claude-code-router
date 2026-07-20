@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 import { CONFIGDIR } from "@ccr/core/config/constants.ts";
-import { applyProfileConfig, cleanupGeneratedBinBackups, resolveGrokSourceHome, restoreInactiveGlobalProfileConfigs, restoreGlobalProfileConfigsOnExit } from "@ccr/core/profiles/service.ts";
+import { applyProfileConfig, cleanupGeneratedBinBackups, resolveGrokSourceHome, resolveKimiSourceHome, restoreInactiveGlobalProfileConfigs, restoreGlobalProfileConfigsOnExit } from "@ccr/core/profiles/service.ts";
 
 test("Grok profile source home follows profile and process environment overrides", () => {
   const previous = {
@@ -27,6 +27,22 @@ test("Grok profile source home follows profile and process environment overrides
       } else {
         process.env[key] = value;
       }
+    }
+  }
+});
+
+test("Kimi profile source home follows profile and process environment overrides", () => {
+  const previous = process.env.KIMI_CODE_HOME;
+  try {
+    process.env.KIMI_CODE_HOME = "/tmp/process-kimi-home";
+    assert.equal(resolveKimiSourceHome({ env: {} }), path.resolve("/tmp/process-kimi-home"));
+    assert.equal(resolveKimiSourceHome({ env: { KIMI_CODE_HOME: "/tmp/profile-kimi-home" } }), path.resolve("/tmp/profile-kimi-home"));
+    assert.equal(resolveKimiSourceHome({ env: { CCR_KIMI_SOURCE_HOME: "/tmp/profile-kimi-source" } }), path.resolve("/tmp/profile-kimi-source"));
+  } finally {
+    if (previous === undefined) {
+      delete process.env.KIMI_CODE_HOME;
+    } else {
+      process.env.KIMI_CODE_HOME = previous;
     }
   }
 });
@@ -415,6 +431,154 @@ test("profile service writes a Grok CLI wrapper that points model discovery and 
   assert.equal(existsSync(path.join(profileGrokHome, "sessions")), true);
   assert.equal(existsSync(path.join(profileGrokHome, "skills")), true);
   assert.equal(existsSync(path.join(profileGrokHome, "auth.json")), false);
+});
+
+test("profile service writes a multi-model Kimi CLI home that points inference to CCR", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "kimi-gateway-test";
+  const sourceKimiHome = path.join(process.env.CCR_INTERNAL_HOME_DIR, ".kimi-code");
+  const sourceKimiConfig = path.join(sourceKimiHome, "config.toml");
+  mkdirSync(path.join(sourceKimiHome, "sessions"), { recursive: true });
+  mkdirSync(path.join(sourceKimiHome, "skills"), { recursive: true });
+  writeFileSync(sourceKimiConfig, [
+    'default_model = "original/model"',
+    "telemetry = false",
+    "",
+    '[providers."original"]',
+    'type = "openai"',
+    'api_key = "original-key"',
+    "",
+    '[models."original/model"]',
+    'provider = "original"',
+    'model = "model"',
+    "max_context_size = 8192",
+    "",
+    "[thinking]",
+    "enabled = false",
+    ""
+  ].join("\n"));
+  const config = createDefaultAppConfig({
+    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
+  });
+  config.Providers = [
+    {
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      modelDisplayNames: { fast: "Fast Model" },
+      modelMetadata: {
+        fast: {
+          defaultReasoningLevel: "high",
+          supportedReasoningLevels: [
+            { description: "Fast", effort: "low" },
+            { description: "Thorough", effort: "high" }
+          ]
+        },
+        model: { maxContextWindow: 200000 }
+      },
+      models: ["model", "fast", "gpt-5.6-sol", "gpt-5.5-pro", "legacy-extra"],
+      name: "Provider"
+    },
+    {
+      api_base_url: "https://generativelanguage.googleapis.com",
+      api_key: "gemini-key",
+      models: ["gemini-2.5-pro"],
+      name: "Custom Gemini"
+    },
+    {
+      api_base_url: "https://api.deepseek.com",
+      api_key: "deepseek-key",
+      models: ["deepseek-v4-flash"],
+      name: "DeepSeek"
+    },
+    {
+      api_base_url: "https://open.bigmodel.cn/api/coding/paas/v4",
+      api_key: "zhipu-key",
+      models: ["glm-5.2"],
+      name: "Zhipu Coding"
+    }
+  ];
+  config.preferredProvider = "Provider";
+  config.virtualModelProfiles = [{
+    baseModel: { fixedModel: "Provider/gpt-5.6-sol", mode: "fixed" },
+    enabled: true,
+    match: { exactAliases: ["catalog-context"], prefixes: [], suffixes: [] },
+    materialization: { enabled: true, includeInGatewayModels: true }
+  }];
+  config.APIKEY = "ccr-kimi-profile-test";
+  config.APIKEYS = [
+    {
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profileId}`,
+      key: "ccr-kimi-profile-test",
+      name: "Profile: Kimi Gateway Test"
+    }
+  ];
+  config.profile.profiles = [
+    {
+      agent: "kimi",
+      availableModels: ["Provider/model", "Provider/fast"],
+      enabled: true,
+      env: {
+        CCR_KIMI_BIN: "/custom/bin/kimi",
+        KIMI_MODEL_BASE_URL: "https://ignored.example/v1",
+        USER_VALUE: "kept"
+      },
+      id: profileId,
+      model: "Provider/model",
+      name: "Kimi Gateway Test",
+      scope: "ccr",
+      surface: "cli"
+    }
+  ];
+
+  const result = await applyProfileConfig(config);
+  assert.equal(result.clients.length, 1);
+  assert.equal(result.clients[0].client, "kimi");
+  assert.equal(result.clients[0].ok, true);
+
+  const commandExtension = process.platform === "win32" ? ".cmd" : "";
+  const wrapperFile = path.join(CONFIGDIR, "bin", `ccr-kimi-cli-wrapper-${profileId}${commandExtension}`);
+  const content = readFileSync(wrapperFile, "utf8");
+  const profileKimiHome = path.join(CONFIGDIR, "profiles", profileId, "kimi");
+  const profileConfigContent = readFileSync(path.join(profileKimiHome, "config.toml"), "utf8");
+  assert.match(content, new RegExp(`KIMI_CODE_HOME.*profiles.*${profileId}.*kimi`));
+  assert.match(content, /KIMI_MODEL_NAME/);
+  assert.match(content, /USER_VALUE.*kept/);
+  assert.match(content, /NO_PROXY.*127\.0\.0\.1,localhost,::1/);
+  assert.match(content, /\/custom\/bin\/kimi/);
+  assert.equal(content.includes("https://ignored.example/v1"), false);
+  assert.match(profileConfigContent, /default_model = "Provider\/model"/);
+  assert.match(profileConfigContent, /\[providers\."claude-code-router"\]/);
+  assert.match(profileConfigContent, new RegExp(`base_url = "http://127\\.0\\.0\\.1:${config.gateway.port}/v1"`));
+  assert.match(profileConfigContent, /api_key = "ccr-kimi-profile-test"/);
+  assert.match(profileConfigContent, /\[models\."Provider\/model"\]/);
+  assert.match(profileConfigContent, /\[models\."Provider\/fast"\]/);
+  assert.equal(profileConfigContent.includes('[models."Provider/legacy-extra"]'), false);
+  assert.match(profileConfigContent, /max_context_size = 200000/);
+  assert.match(profileConfigContent, /\[models\."Provider\/model"\][\s\S]*?capabilities = \["tool_use"\]/);
+  assert.match(profileConfigContent, /\[models\."Provider\/fast"\][\s\S]*?capabilities = \["tool_use", "thinking"\]\nsupport_efforts = \["low", "high"\]\ndefault_effort = "high"/);
+  assert.match(profileConfigContent, /display_name = "Provider \/ Fast Model"/);
+  assert.match(profileConfigContent, /telemetry = false/);
+  assert.match(profileConfigContent, /\[thinking\]/);
+  assert.equal(profileConfigContent.includes("original-key"), false);
+  assert.equal(readFileSync(sourceKimiConfig, "utf8").includes("original-key"), true);
+  assert.equal(existsSync(path.join(profileKimiHome, "sessions")), true);
+  assert.equal(existsSync(path.join(profileKimiHome, "skills")), true);
+
+  delete config.profile.profiles[0].availableModels;
+  config.profile.profiles[0].model = "";
+  const legacyResult = await applyProfileConfig(config);
+  assert.equal(legacyResult.clients[0].ok, true);
+  const legacyProfileConfigContent = readFileSync(path.join(profileKimiHome, "config.toml"), "utf8");
+  assert.match(legacyProfileConfigContent, /default_model = "Provider\/model"/);
+  assert.match(legacyProfileConfigContent, /\[models\."Provider\/model"\]/);
+  assert.match(legacyProfileConfigContent, /\[models\."Provider\/fast"\]/);
+  assert.match(legacyProfileConfigContent, /\[models\."Provider\/gpt-5\.6-sol"\]\nprovider = "claude-code-router"\nmodel = "Provider\/gpt-5\.6-sol"\nmax_context_size = 1050000\ncapabilities = \["tool_use", "thinking"\]/);
+  assert.match(legacyProfileConfigContent, /\[models\."Provider\/gpt-5\.5-pro"\][\s\S]*?capabilities = \["tool_use", "always_thinking"\]/);
+  assert.match(legacyProfileConfigContent, /\[models\."Provider\/legacy-extra"\]/);
+  assert.match(legacyProfileConfigContent, /\[models\."Custom Gemini\/gemini-2\.5-pro"\]\nprovider = "claude-code-router"\nmodel = "Custom Gemini\/gemini-2\.5-pro"\nmax_context_size = 1065535/);
+  assert.match(legacyProfileConfigContent, /\[models\."DeepSeek\/deepseek-v4-flash"\]\nprovider = "claude-code-router"\nmodel = "DeepSeek\/deepseek-v4-flash"\nmax_context_size = 1050000\ncapabilities = \["tool_use", "thinking"\]/);
+  assert.match(legacyProfileConfigContent, /\[models\."Zhipu Coding\/glm-5\.2"\]\nprovider = "claude-code-router"\nmodel = "Zhipu Coding\/glm-5\.2"\nmax_context_size = 1049000\ncapabilities = \["tool_use", "thinking"\]/);
+  assert.match(legacyProfileConfigContent, /\[models\."Fusion\/catalog-context"\]\nprovider = "claude-code-router"\nmodel = "Fusion\/catalog-context"\nmax_context_size = 1050000\ncapabilities = \["tool_use", "thinking"\]/);
 });
 
 test("profile service writes an OpenCode CLI wrapper and shared CLI/App config", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {

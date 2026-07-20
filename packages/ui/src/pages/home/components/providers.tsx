@@ -1215,7 +1215,7 @@ function LocalAgentProviderImportPanel({
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
         <div className="min-w-0">
           <div className="truncate text-[12px] font-semibold text-foreground">{t("Import local agent provider")}</div>
-          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t("CCR scanned this computer for local Claude Code, Codex, Grok CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.")}</div>
+          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t("CCR scanned this computer for local Claude Code, Codex, Grok CLI, Kimi CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.")}</div>
         </div>
         {loading ? <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" /> : null}
       </div>
@@ -1283,6 +1283,7 @@ const localAgentProviderPluginSuffixes: Record<Exclude<LocalAgentProviderCandida
   "claude-code": ["-claude-code-oauth", "-claude-code-oauth-internal"],
   codex: ["-codex-oauth", "-codex-oauth-internal"],
   grok: ["-grok-cli-oauth", "-grok-cli-oauth-internal"],
+  kimi: ["-kimi-cli-oauth", "-kimi-cli-oauth-internal", "-kimi-cli-api-key", "-kimi-cli-api-key-internal"],
   zcode: ["-zcode-api-key", "-zcode-api-key-internal"]
 };
 

@@ -2474,6 +2474,10 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       const id = readString(item.id) || `profile-${index + 1}`;
       const name = readString(item.name) || defaultProfileAgentName(agent);
       const model = readString(item.model) ?? "";
+      const availableModels = uniqueStrings([
+        model,
+        ...parseStringList(item.availableModels ?? item.available_models ?? item.models)
+      ]);
       const env = parseStringRecord(item.env) ?? {};
       const parsedSurface = parseProfileSurface(readString(item.surface) || readString(item.entry) || readString(item.frontend)) || "auto";
       const surface = agent === "zcode" ? "app" : parsedSurface;
@@ -2502,9 +2506,10 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         };
       }
 
-      if (agent === "grok") {
+      if (agent === "grok" || agent === "kimi") {
         return {
           agent,
+          ...(agent === "kimi" ? { availableModels } : {}),
           enabled,
           env: codexCompatibleProfileEnv(env),
           id,
@@ -2576,6 +2581,9 @@ function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
   if (normalized === "grok" || normalized === "grok-cli" || normalized === "grok cli") {
     return "grok";
   }
+  if (normalized === "kimi" || normalized === "kimi-cli" || normalized === "kimi cli" || normalized === "kimi-code" || normalized === "kimi code") {
+    return "kimi";
+  }
   if (normalized === "opencode" || normalized === "open-code" || normalized === "open code") {
     return "opencode";
   }
@@ -2594,6 +2602,9 @@ function defaultProfileAgentName(agent: ProfileConfig["agent"]): string {
   }
   if (agent === "grok") {
     return "Grok CLI";
+  }
+  if (agent === "kimi") {
+    return "Kimi CLI";
   }
   if (agent === "opencode") {
     return "OpenCode";

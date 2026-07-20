@@ -393,6 +393,7 @@ export const localAgentProviderIconUrls: Record<LocalAgentProviderKind, string> 
   "claude-code": claudeCodeLogoUrl,
   codex: codexLogoUrl,
   grok: grokLogoUrl,
+  kimi: moonshotProviderIconUrl,
   opencode: openCodeLogoUrl,
   zcode: zcodeLogoUrl
 };

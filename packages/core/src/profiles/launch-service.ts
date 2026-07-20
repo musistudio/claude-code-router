@@ -1596,6 +1596,7 @@ export function prepareCcrCliLauncherRuntime(): CcrCliLauncherPreparation {
   writeFileIfChanged(runtimeFile, readFileSync(runtimeSource, "utf8"));
   chmodSafe(runtimeFile);
   syncCcrCliCompanionRuntimes(runtimeSource, binDir);
+  syncCcrCliModelCatalog(runtimeSource, binDir);
   ensureBundledToolHubMcpRuntime(path.join(binDir, TOOL_HUB_MCP_RUNTIME_FILE_NAME));
   prependProcessPath(binDir);
 
@@ -1614,6 +1615,20 @@ export function syncCcrCliCompanionRuntimes(runtimeSource: string, binDir: strin
     synced.push(destination);
   }
   return synced;
+}
+
+export function syncCcrCliModelCatalog(runtimeSource: string, binDir: string): string | undefined {
+  const sourceDir = path.dirname(runtimeSource);
+  const source = [
+    path.join(sourceDir, "..", "models.json"),
+    path.join(sourceDir, "models.json")
+  ].find((candidate) => existsSync(candidate));
+  if (!source) {
+    return undefined;
+  }
+  const destination = path.join(binDir, "..", "models.json");
+  writeFileIfChanged(destination, readFileSync(source, "utf8"));
+  return destination;
 }
 
 export function persistPreparedCcrCliPath(preparation: CcrCliLauncherPreparation): void {

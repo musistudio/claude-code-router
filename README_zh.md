@@ -41,7 +41,7 @@
 
 </div>
 
-Claude Code Router Desktop 是给编程 Agent 用的本地控制平面。它为 Claude Code、Codex、Grok CLI、ZCode 以及兼容 API 客户端提供一个稳定的本地入口，然后由你在 CCR 中决定每个请求应该走哪个供应商、哪个模型、哪套路由策略、哪些工具能力和哪组账号凭据。
+Claude Code Router Desktop 是给编程 Agent 用的本地控制平面。它为 Claude Code、Codex、Grok CLI、Kimi CLI、ZCode 以及兼容 API 客户端提供一个稳定的本地入口，然后由你在 CCR 中决定每个请求应该走哪个供应商、哪个模型、哪套路由策略、哪些工具能力和哪组账号凭据。
 
 相比在每个 Agent、每个模型服务里反复改配置，CCR 把模型层收束到本机桌面应用里：供应商预设、自定义端点、凭据池、Fallback、Fusion 组合模型、MCP 工具、请求日志、账号用量和 Agent 启动配置都在一个地方管理。
 
@@ -53,7 +53,7 @@ Claude Code Router Desktop 是给编程 Agent 用的本地控制平面。它为 
 
 | 目标 | CCR 提供的能力 |
 | --- | --- |
-| 保持 Agent 工作流不变，同时自由切换模型 | 为 Claude Code、Codex、Grok CLI、ZCode 创建本地配置档案，支持 CLI / App 启动入口和按配置选择模型 |
+| 保持 Agent 工作流不变，同时自由切换模型 | 为 Claude Code、Codex、Grok CLI、Kimi CLI、ZCode 创建本地配置档案，支持 CLI / App 启动入口和按配置选择模型 |
 | 快速接入多个模型供应商 | 内置供应商预设、自定义 OpenAI / Anthropic / Gemini 兼容端点、协议探测、模型发现和连通性检测 |
 | 把路由变成可配置策略 | 内置 Agent 路由、条件规则、请求改写、模型前缀路由、自动重试和 Fallback 模型链 |
 | 控制成本和额度压力 | 凭据池、Key 轮换、本地限额、账号余额快照、Token / 成本仪表盘和托盘状态 |
@@ -71,7 +71,7 @@ Claude Code Router Desktop 是给编程 Agent 用的本地控制平面。它为 
 
 ## 功能亮点
 
-- **Agent 配置档案**：为 Claude Code、Codex、Grok CLI 和 ZCode 创建配置档案，支持模型覆盖、作用范围、CLI / App 启动方式、环境变量和多开 App 工作流。
+- **Agent 配置档案**：为 Claude Code、Codex、Grok CLI、Kimi CLI 和 ZCode 创建配置档案，支持模型覆盖、作用范围、CLI / App 启动方式、环境变量和多开 App 工作流。
 - **供应商管理**：添加预设供应商或自定义端点；探测协议；发现模型列表；运行真实连通性检测；管理单 Key 或凭据池；在支持时导入本机 Agent 登录态。
 - **模型目录**：搜索全部已配置模型，编辑模型描述，并把这些描述用于 Claude Code Subagent、Task 和 Workflow 的模型选择提示。
 - **路由引擎**：组合内置 Agent 路由、请求 Header / Body 条件、模型前缀路由、请求改写、重试策略和有序 Fallback 目标。
@@ -141,7 +141,7 @@ CCR 可以完全通过桌面 UI 完成配置。首次使用建议按下面顺序
 
 ### 4. 连接 Agent 工具
 
-打开 **Agent配置**，选择要使用的客户端。配置 Claude Code、Codex、Grok CLI 或 ZCode，选择目标模型和作用范围，然后应用配置。对于 App 入口，可以使用 **打开 Agent** 通过 CCR 打开目标应用。
+打开 **Agent配置**，选择要使用的客户端。配置 Claude Code、Codex、Grok CLI、Kimi CLI 或 ZCode，选择目标模型和作用范围，然后应用配置。对于 App 入口，可以使用 **打开 Agent** 通过 CCR 打开目标应用。
 
 ### 5. 日常查看和调整
 

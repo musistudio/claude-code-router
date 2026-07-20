@@ -1137,6 +1137,47 @@ test("RequestLogStore does not identify an unknown client as Grok CLI from its m
   }
 });
 
+test("RequestLogStore identifies Kimi CLI without inferring it from a Kimi model name", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-kimi-agent-test-"));
+  try {
+    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const startedAt = new Date().toISOString();
+    for (const [requestId, requestHeaders] of [
+      ["kimi-agent-request", { "content-type": "application/json", "user-agent": "kimi-code-cli/0.27.0" }],
+      ["kimi-model-request", { "content-type": "application/json", "user-agent": "generic-openai-client/1.0" }]
+    ]) {
+      await store.record({
+        completedAt: startedAt,
+        durationMs: 25,
+        method: "POST",
+        path: "/v1/chat/completions",
+        providerName: "test-provider",
+        providerProtocol: "openai_chat_completions",
+        requestBody: Buffer.from(JSON.stringify({ messages: [], model: "Moonshot/kimi-k3" }), "utf8"),
+        requestHeaders,
+        requestId,
+        responseBodyText: JSON.stringify({ choices: [], model: "Moonshot/kimi-k3" }),
+        responseHeaders: { "content-type": "application/json" },
+        startedAt,
+        statusCode: 200,
+        url: "http://127.0.0.1:3456/v1/chat/completions"
+      });
+    }
+
+    const kimiAnalysis = await store.analyze({ agent: "kimi", range: "30d" });
+    assert.equal(kimiAnalysis.scannedRequestCount, 2);
+    assert.equal(kimiAnalysis.totals.requestCount, 1);
+    assert.equal(kimiAnalysis.agents[0]?.agent, "kimi");
+    assert.equal(kimiAnalysis.agents[0]?.label, "Kimi CLI");
+
+    const unknownAnalysis = await store.analyze({ agent: "unknown", range: "30d" });
+    assert.equal(unknownAnalysis.scannedRequestCount, 2);
+    assert.equal(unknownAnalysis.totals.requestCount, 1);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("RequestLogStore identifies OpenCode from its explicit client header", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-opencode-agent-test-"));
   try {

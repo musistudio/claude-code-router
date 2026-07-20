@@ -105,10 +105,10 @@ ccr <profile-name-or-id> [cli|app] [-- <agent arguments>]
 
 - `--cli` and `--app` are accepted alternatives to the positional surface.
 - Put agent-specific arguments after `--` so they cannot be confused with CCR options.
-- If the surface is omitted, CCR uses the first surface allowed by the profile: CLI for Claude Code, Codex, and Grok CLI; App for ZCode.
+- If the surface is omitted, CCR uses the first surface allowed by the profile: CLI for Claude Code, Codex, Grok CLI, and Kimi CLI; App for ZCode.
 - Grok supports CLI only. ZCode supports App only. Claude App and ZCode App do not accept trailing agent arguments.
 - Desktop App launches require that app to be installed and a graphical session to be available.
-- Start the CCR service before opening most profiles. A Grok CLI profile can start a temporary shared service automatically and stops it after the last managed session exits.
+- Start the CCR service before opening most profiles. Grok CLI and Kimi CLI profiles can start a temporary shared service automatically and stop it after the last managed session exits.
 
 The desktop application installs a related command named `ccr-app`. Commands copied from desktop Agent Config cards use `ccr-app`; the npm package documented here installs `ccr`.
 

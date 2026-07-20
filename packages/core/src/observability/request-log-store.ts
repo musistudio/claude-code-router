@@ -248,6 +248,7 @@ type AgentLogDetails = {
 type AgentTextSignalOptions = {
   allowStandaloneCodex?: boolean;
   allowStandaloneGrok?: boolean;
+  allowStandaloneKimi?: boolean;
   allowStandaloneOpenCode?: boolean;
 };
 
@@ -1478,6 +1479,7 @@ function inferAgentKind(
   const bodyAgent = inferAgentFromText(haystack, {
     allowStandaloneCodex: false,
     allowStandaloneGrok: false,
+    allowStandaloneKimi: false,
     allowStandaloneOpenCode: false
   });
   if (bodyAgent) {
@@ -1524,6 +1526,7 @@ function inferAgentFromText(value: string, options: AgentTextSignalOptions = {})
   const normalized = value.toLowerCase();
   const allowStandaloneCodex = options.allowStandaloneCodex ?? true;
   const allowStandaloneGrok = options.allowStandaloneGrok ?? true;
+  const allowStandaloneKimi = options.allowStandaloneKimi ?? true;
   const allowStandaloneOpenCode = options.allowStandaloneOpenCode ?? true;
   if (normalized.includes("claude design") || normalized.includes("claude-design") || normalized.includes("claude.ai/design")) {
     return "claude-design";
@@ -1555,6 +1558,17 @@ function inferAgentFromText(value: string, options: AgentTextSignalOptions = {})
     ))
   ) {
     return "grok";
+  }
+  if (
+    normalized.includes("kimi-code-cli") ||
+    normalized.includes("kimi_code_cli") ||
+    (allowStandaloneKimi && (
+      normalized.includes("kimi-cli") ||
+      normalized.includes("kimi cli") ||
+      /(^|[^a-z0-9])kimi([/_\s-]|$)/.test(normalized)
+    ))
+  ) {
+    return "kimi";
   }
   if (
     normalized.includes("openai-codex") ||
@@ -2979,11 +2993,11 @@ function normalizeAgentAnalysisRange(value: UsageStatsRange | undefined): UsageS
 }
 
 function normalizeAgentFilter(value: AgentAnalysisFilter["agent"] | undefined): AgentKind | "all" {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "opencode" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "opencode" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
 }
 
 function normalizeSessionAgentFilter(value: AgentAnalysisFilter["sessionAgent"] | undefined): AgentKind | undefined {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "opencode" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "opencode" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
 }
 
 function agentDisplayName(agent: AgentKind): string {
@@ -2998,6 +3012,9 @@ function agentDisplayName(agent: AgentKind): string {
   }
   if (agent === "grok") {
     return "Grok CLI";
+  }
+  if (agent === "kimi") {
+    return "Kimi CLI";
   }
   if (agent === "opencode") {
     return "OpenCode";
