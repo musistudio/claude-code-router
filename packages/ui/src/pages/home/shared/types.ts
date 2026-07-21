@@ -432,6 +432,7 @@ export type AddProviderDraft = {
   modelsText: string;
   name: string;
   presetId: string;
+  protocolDetectionMode: "auto" | "manual";
   providerPlugins: unknown[];
   protocol: GatewayProviderProtocol;
   selectedModels: string[];

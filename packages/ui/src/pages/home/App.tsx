@@ -30,7 +30,7 @@ import {
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
   ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, RouterRule, SettingsPageId,
   routingRewriteFromDraftRow, setProviderPresets, splitLines, translateAppErrorMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
-  uniqueRoutingRuleId, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
+  uniqueProviderProtocols, uniqueRoutingRuleId, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
   VirtualModelDraft, virtualModelProfileFromDraft, virtualModelProfilesUseMediaTools
 } from "./shared/index";
@@ -1210,13 +1210,19 @@ function App() {
   }
 
   function updateProviderDraft(patch: Partial<AddProviderDraft>, resetProbe = false) {
-    const shouldResetProtocolProbe = resetProbe && (patch.baseUrl !== undefined || patch.presetId !== undefined || patch.protocol !== undefined);
+    const shouldResetProtocolProbe = resetProbe && (
+      patch.baseUrl !== undefined ||
+      patch.presetId !== undefined ||
+      patch.protocol !== undefined ||
+      patch.protocolDetectionMode !== undefined
+    );
     const shouldResetConnectivityProbe = resetProbe ||
       patch.apiKey !== undefined ||
       patch.baseUrl !== undefined ||
       patch.modelsText !== undefined ||
       patch.presetId !== undefined ||
       patch.protocol !== undefined ||
+      patch.protocolDetectionMode !== undefined ||
       patch.selectedModels !== undefined ||
       patch.selectedProtocols !== undefined;
 
@@ -1256,6 +1262,12 @@ function App() {
   useEffect(() => {
     const providerFormVisible = providerAddOpen || (activeView === "onboarding" && onboardingStep === "provider");
     if (!window.ccr || !providerFormVisible) {
+      return;
+    }
+    if (providerDraft.protocolDetectionMode === "manual") {
+      providerProbeRequestId.current += 1;
+      setProviderProbeError("");
+      setProviderProbeLoading(false);
       return;
     }
     if (isLocalCodexProviderDraft(providerDraft)) {
@@ -1378,7 +1390,7 @@ function App() {
         setProviderProbeLoading(false);
       }
     };
-  }, [activeView, onboardingStep, providerAddOpen, providerDraft.apiKey, providerDraft.baseUrl, providerDraft.presetId, providerDraft.protocol, providerDraft.providerPlugins]);
+  }, [activeView, onboardingStep, providerAddOpen, providerDraft.apiKey, providerDraft.baseUrl, providerDraft.presetId, providerDraft.protocol, providerDraft.protocolDetectionMode, providerDraft.providerPlugins]);
 
   async function checkProviderDraft(modelsToCheck?: string[]): Promise<ProviderConnectivityCheckReport> {
     const emptyReport: ProviderConnectivityCheckReport = { failed: [], passed: [], results: [] };
@@ -1482,26 +1494,30 @@ function App() {
       setProviderProbeError(translateAppErrorMessage(copy, credentials));
       return false;
     }
-    const selectableProtocols = providerSelectableProtocolsFromProbe(probe);
+    const manualProtocolDetection = providerDraft.protocolDetectionMode === "manual";
+    const saveProbe = manualProtocolDetection ? undefined : probe;
+    const selectableProtocols = providerSelectableProtocolsFromProbe(saveProbe);
     const selectedProtocols = providerDraft.selectedProtocols.length > 0
-      ? providerDraft.selectedProtocols.filter((protocol) => !probe || selectableProtocols.includes(protocol))
+      ? manualProtocolDetection
+        ? uniqueProviderProtocols(providerDraft.selectedProtocols)
+        : providerDraft.selectedProtocols.filter((protocol) => !saveProbe || selectableProtocols.includes(protocol))
       : [];
-    if (selectableProtocols.length > 0 && selectedProtocols.length === 0) {
+    if ((manualProtocolDetection || selectableProtocols.length > 0) && selectedProtocols.length === 0) {
       setProviderProbeError(t("Select at least one protocol."));
       return false;
     }
 
-    const protocolsToSave = selectedProtocols.length > 0 ? selectedProtocols : [probe?.detectedProtocol ?? providerDraft.protocol];
+    const protocolsToSave = selectedProtocols.length > 0 ? selectedProtocols : [saveProbe?.detectedProtocol ?? providerDraft.protocol];
     const fallbackProtocol = protocolsToSave.includes(providerDraft.protocol)
       ? providerDraft.protocol
-      : protocolsToSave[0] ?? probe?.detectedProtocol ?? providerDraft.protocol;
-    const fallbackBaseUrl = providerGlobalBaseUrlForProbe(providerDraft.baseUrl, probe, protocolsToSave);
+      : protocolsToSave[0] ?? saveProbe?.detectedProtocol ?? providerDraft.protocol;
+    const fallbackBaseUrl = providerGlobalBaseUrlForProbe(providerDraft.baseUrl, saveProbe, protocolsToSave);
     const modelDescriptions = modelDescriptionsForModels(providerDraft.modelDescriptions, models);
     const modelDisplayNames = modelDisplayNamesForModels(providerDraft.modelDisplayNames, models);
     const modelMetadata = modelMetadataForModels(providerDraft.modelMetadata, models);
     const existingProvider = providerEditIndex !== undefined ? draftConfig.Providers[providerEditIndex] : undefined;
     const capabilities = providerCapabilitiesForSave(
-      providerCapabilitiesForProtocols(providerDraft.baseUrl, protocolsToSave, probe, presetCapabilitiesFromDraft(providerDraft)),
+      providerCapabilitiesForProtocols(providerDraft.baseUrl, protocolsToSave, saveProbe, presetCapabilitiesFromDraft(providerDraft)),
       providerDraft.capabilities,
       existingProvider ? providerBaseUrl(existingProvider) : undefined,
       providerDraft.baseUrl
@@ -1571,6 +1587,7 @@ function App() {
       modelMetadata,
       models,
       name: providerName,
+      protocolDetectionMode: providerDraft.protocolDetectionMode === "manual" ? "manual" : undefined,
       type: protocol
     };
     const importedProviderPlugins = materializeProviderPluginTemplates(providerDraft.providerPlugins, providerName, protocol, providerId);

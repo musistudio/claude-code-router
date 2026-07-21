@@ -12,7 +12,7 @@ import {
   providerAccountConnectorsTextWithNewApiUserBalanceTemplate, providerAccountSnapshotCredentialLabel, providerAccountSnapshotLabel, ProviderAccountTestPath,
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
   ProviderConnectivityCheckReport, providerCapabilityBaseUrlForProtocol, providerDeepLinkDisplayIcon, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
-  providerDisplayIcon, providerGlobalBaseUrlForProbe, providerModelDisplayName, providerModelDisplayTitle, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
+  providerDisplayIcon, providerGlobalBaseUrlForProbe, providerModelDisplayName, providerModelDisplayTitle, providerProtocolOptions, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
   resolveProviderDeepLinkPreset, ShieldCheck, splitLines, splitModelTagInput, Switch, Textarea, translatedProviderProtocolLabel, translateOptions,
   translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppErrorText, useAppText, useEffect, useMemo,
   useRef, useState, X, isPlainRecord
@@ -1364,6 +1364,7 @@ export function AddProviderForm({
   const t = useAppText();
   const [advancedOpen, setAdvancedOpen] = useState(mode === "edit");
   const [iconDetecting, setIconDetecting] = useState(false);
+  const [autoDetectInfoPosition, setAutoDetectInfoPosition] = useState<{ left: number; top: number }>();
   const [protocolProbeDetails, setProtocolProbeDetails] = useState<ProviderProtocolProbeDetailsState>();
   const iconDetectionRequestRef = useRef(0);
   const onChangeRef = useRef(onChange);
@@ -1379,12 +1380,15 @@ export function AddProviderForm({
   const detectedBaseUrl = providerCapabilityBaseUrlForProtocol(draft.baseUrl, detectedProtocol, probe);
   const safetyIssue = providerDraftSafetyIssue(draft, detectedBaseUrl);
   const localAgentImport = draft.providerPlugins.length > 0;
+  const manualProtocolDetection = draft.protocolDetectionMode === "manual";
   const providerPresetOptions = [
     { iconUrl: draft.icon, label: t("Other / custom API endpoint"), value: customProviderPresetId },
     { label: t("Select preset provider"), value: "" },
     ...getProviderPresets().map((preset) => ({ label: t(preset.name), preset, value: preset.id }))
   ];
-  const selectableProtocols = providerSelectableProtocolsFromProbe(probe);
+  const selectableProtocols = manualProtocolDetection
+    ? providerProtocolOptions.map((option) => option.value)
+    : providerSelectableProtocolsFromProbe(probe);
   const protocolProbeRows = useMemo(() => uniqueProviderProbeProtocolRows(probe?.protocols ?? []), [probe]);
   const configuredModels = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
   const catalogModelIds = new Set(probe?.models ?? []);
@@ -1401,6 +1405,15 @@ export function AddProviderForm({
     });
   }
 
+  function updateAutoProtocolDetection(enabled: boolean) {
+    onChange({
+      protocolDetectionMode: enabled ? "auto" : "manual",
+      selectedProtocols: !enabled && draft.selectedProtocols.length === 0
+        ? [draft.protocol]
+        : draft.selectedProtocols
+    }, true);
+  }
+
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
@@ -1410,10 +1423,13 @@ export function AddProviderForm({
   }, [probe]);
 
   useEffect(() => {
-    if (!protocolProbeDetails) {
+    if (!autoDetectInfoPosition && !protocolProbeDetails) {
       return;
     }
-    const close = () => setProtocolProbeDetails(undefined);
+    const close = () => {
+      setAutoDetectInfoPosition(undefined);
+      setProtocolProbeDetails(undefined);
+    };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         close();
@@ -1429,7 +1445,7 @@ export function AddProviderForm({
       window.removeEventListener("resize", close);
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [protocolProbeDetails]);
+  }, [autoDetectInfoPosition, protocolProbeDetails]);
 
   useEffect(() => {
     onIconDetectingChange?.(iconDetecting);
@@ -1540,11 +1556,21 @@ export function AddProviderForm({
   ) {
     const rect = button.getBoundingClientRect();
     const position = providerProtocolProbeTooltipPosition(rect);
+    setAutoDetectInfoPosition(undefined);
     setProtocolProbeDetails((current) => current?.key === itemKey ? undefined : {
       item,
       key: itemKey,
       ...position
     });
+  }
+
+  function toggleAutoDetectInfo(button: HTMLButtonElement) {
+    const rect = button.getBoundingClientRect();
+    const position = providerProtocolProbeTooltipPosition(rect);
+    setProtocolProbeDetails(undefined);
+    setAutoDetectInfoPosition((current) =>
+      current && current.left === position.left && current.top === position.top ? undefined : position
+    );
   }
 
   return (
@@ -1701,6 +1727,33 @@ export function AddProviderForm({
           {advancedOpen ? (
             <AnimatedDisclosure className="sm:col-span-2" key="provider-advanced">
               <div className="grid grid-cols-1 gap-3 rounded-md border border-border bg-muted/20 p-3 sm:grid-cols-2">
+                <div className="sm:col-span-2 flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-background px-3 py-2 text-[12px] font-semibold">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="min-w-0 truncate">{t("Auto detect protocols")}</span>
+                    <button
+                      aria-label={t("Auto detect protocols info")}
+                      aria-pressed={Boolean(autoDetectInfoPosition)}
+                      className={cn(
+                        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30",
+                        autoDetectInfoPosition && "bg-muted text-foreground"
+                      )}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleAutoDetectInfo(event.currentTarget);
+                      }}
+                      onMouseDown={(event) => event.stopPropagation()}
+                      title={t("Auto detect protocols info")}
+                      type="button"
+                    >
+                      <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </span>
+                  <Switch
+                    aria-label={t("Auto detect protocols")}
+                    checked={!manualProtocolDetection}
+                    onCheckedChange={updateAutoProtocolDetection}
+                  />
+                </div>
                 <ProviderCredentialSettings
                   draft={draft}
                   onChange={onChange}
@@ -1713,7 +1766,33 @@ export function AddProviderForm({
                 />
                 <Field className="sm:col-span-2" label={t("Protocol details")}>
                   <div className="max-h-[128px] overflow-auto rounded-md border border-border bg-background p-2">
-                    {protocolProbeRows.length ? (
+                    {manualProtocolDetection ? (
+                      <div className="space-y-1.5">
+                        {providerProtocolOptions.map((option) => {
+                          const protocol = option.value;
+                          const checked = draft.selectedProtocols.includes(protocol);
+                          return (
+                            <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={protocol}>
+                              <Checkbox
+                                aria-label={`${t("Add")} ${translatedProviderProtocolLabel(protocol, t)}`}
+                                checked={checked}
+                                onCheckedChange={() => {
+                                  onChange({
+                                    selectedProtocols: checked
+                                      ? draft.selectedProtocols.filter((selected) => selected !== protocol)
+                                      : uniqueProviderProtocols([...draft.selectedProtocols, protocol])
+                                  });
+                                }}
+                              />
+                              <span className="truncate font-medium">{translatedProviderProtocolLabel(protocol, t)}</span>
+                              <span className={cn("inline-flex min-w-0 items-center justify-end", checked ? "text-foreground" : "text-muted-foreground")}>
+                                <span className="truncate">{checked ? t("Selected") : ""}</span>
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : protocolProbeRows.length ? (
                       <div className="space-y-1.5">
                         {protocolProbeRows.map((item) => {
                           const available = item.supported;
@@ -1782,10 +1861,39 @@ export function AddProviderForm({
             t={t}
           />
         ) : null}
+        {autoDetectInfoPosition ? (
+          <AutoDetectProtocolsTooltip
+            left={autoDetectInfoPosition.left}
+            t={t}
+            top={autoDetectInfoPosition.top}
+          />
+        ) : null}
       </div>
 
       {error ? <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive"><CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>{error}</span></div> : null}
     </>
+  );
+}
+
+function AutoDetectProtocolsTooltip({
+  left,
+  t,
+  top
+}: {
+  left: number;
+  t: (value: string) => string;
+  top: number;
+}) {
+  return (
+    <div
+      className="fixed z-[120] w-[260px] rounded-md border border-border bg-popover p-2.5 text-left text-[11px] leading-4 text-popover-foreground shadow-card-elevated"
+      onMouseDown={(event) => event.stopPropagation()}
+      role="tooltip"
+      style={{ left, top }}
+    >
+      <div className="mb-1.5 font-semibold">{t("Auto detect protocols")}</div>
+      <div className="text-muted-foreground">{t("Auto detect protocols description")}</div>
+    </div>
   );
 }
 

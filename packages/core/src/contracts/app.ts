@@ -179,6 +179,7 @@ export type GatewayProviderConfig = {
   models: string[];
   name: string;
   provider?: string;
+  protocolDetectionMode?: "auto" | "manual";
   transformer?: unknown;
   type?: GatewayProviderProtocol | string;
 };
