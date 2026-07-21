@@ -11,6 +11,7 @@ import {
   applyProviderProbeResult,
   createProviderConfigFromDeepLink,
   createProviderDraft,
+  createProviderDraftFromProvider,
   createProviderInstallLinkFromDraft,
   FieldGroup,
   localAgentProviderIconUrls,
@@ -181,6 +182,57 @@ test("provider probe result keeps only supported selected protocols", () => {
   });
 
   assert.deepEqual(next.selectedProtocols, ["gemini_generate_content"]);
+});
+
+test("provider draft restores manual protocol detection mode", () => {
+  const draft = createProviderDraftFromProvider({
+    api_base_url: "https://local.example/v1",
+    capabilities: [{
+      baseUrl: "https://local.example/v1",
+      source: "preset",
+      type: "openai_chat_completions"
+    }],
+    models: ["custom-model"],
+    name: "Local OpenAI",
+    protocolDetectionMode: "manual",
+    type: "openai_chat_completions"
+  });
+
+  assert.equal(draft.protocolDetectionMode, "manual");
+  assert.deepEqual(draft.selectedProtocols, ["openai_chat_completions"]);
+});
+
+test("manual provider protocol mode renders editable protocol choices without probe", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    baseUrl: "https://local.example/v1",
+    modelsText: "custom-model",
+    name: "Local OpenAI",
+    protocolDetectionMode: "manual" as const,
+    selectedProtocols: ["openai_chat_completions" as const]
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderDialog, {
+      canSubmit: true,
+      draft,
+      error: "",
+      mode: "edit",
+      onChange: () => undefined,
+      onClose: () => undefined,
+      onSubmit: async () => true,
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /Auto detect protocols/);
+  assert.match(html, /Auto detect protocols info/);
+  assert.ok(html.indexOf("Advanced settings") < html.indexOf("Auto detect protocols"));
+  assert.ok(html.indexOf("Auto detect protocols") < html.indexOf("Credential pool"));
+  assert.doesNotMatch(html, /Detection mode/);
+  assert.match(html, /OpenAI Chat/);
+  assert.match(html, /Selected/);
+  assert.doesNotMatch(html, /No protocol detection yet/);
 });
 
 test("provider probe keeps catalog model defaults separate from user overrides", () => {

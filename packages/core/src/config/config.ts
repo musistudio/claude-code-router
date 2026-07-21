@@ -1235,6 +1235,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         models,
         name,
         provider: readString(item.provider),
+        protocolDetectionMode: parseEnumValue(item.protocolDetectionMode, ["auto", "manual"], undefined),
         transformer: item.transformer,
         type: readString(item.type)
       };

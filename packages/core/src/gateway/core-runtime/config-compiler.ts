@@ -11,7 +11,7 @@ import { isRecord, stringListValue, stringValue } from "@ccr/core/gateway/intern
 import { fusionBuiltinToolArtifacts, fusionToolFallbackMcpServer, normalizeFusionWebSearchProfileToolName, toolHubMcpServer, withCodexCompatibleVirtualModelProfiles, withFusionVirtualModelAliases, withFusionWebSearchToolInstructions } from "@ccr/core/mcp/fusion-config";
 import { mediaToolsMcpServer } from "@ccr/core/mcp/grok-media-config";
 import { resolveGatewayPublicModelId } from "@ccr/core/gateway/features/model-discovery";
-import { activeProviderCredentials, inferProtocol, normalizedProviderCapabilities, normalizeProviderProtocol, providerCapabilityForClientProtocol, providerCapabilityInternalName, providerCredentialInternalName, providerProtocolForClientProtocol, sortProviderCredentialsForConfig, toCoreGatewayProviders } from "@ccr/core/providers/runtime-topology";
+import { activeProviderCredentials, inferProtocol, normalizedProviderCapabilities, normalizeProviderProtocol, providerCapabilityForClientProtocol, providerCapabilityInternalName, providerCapabilityNameMatches, providerCredentialInternalName, providerProtocolForClientProtocol, sortProviderCredentialsForConfig, toCoreGatewayProviders } from "@ccr/core/providers/runtime-topology";
 import { buildRawTraceConfig } from "@ccr/core/observability/raw-trace-sync";
 import { endpoint, resolveUndiciProxyAgentModule, writeGatewayProxyPreloadFile } from "@ccr/core/gateway/core-runtime/supervisor";
 import { billingUsageSyncHeader, billingUsageSyncPath, claudeCodeOauthBetaHeader, claudeCodeOauthRequiredBeta, coreGatewayAuthHeader, coreGatewayAuthTokenEnv } from "@ccr/core/gateway/internal/shared";
@@ -44,11 +44,12 @@ export async function compileCoreGatewayConfig(
     ...(config.providerPlugins ?? []).filter(providerPluginEnabled),
     ...pluginService.getCoreProviderPlugins().filter(providerPluginEnabled)
   ]);
-  const providerPlugins = await withKimiOauthRuntimeDefaults(
+  const providerPluginsWithRuntimeDefaults = await withKimiOauthRuntimeDefaults(
     await withGrokOauthRuntimeDefaults(withCodexOauthRuntimeDefaults(configuredProviderPlugins))
   );
+  const codexOauthProviderNames = codexOauthLocalProviderNames(providerPluginsWithRuntimeDefaults);
+  const providerPlugins = normalizeCoreProviderPluginNames(providerPluginsWithRuntimeDefaults, config.Providers);
   const providerPluginsWithCapabilityAliases = withProviderCapabilityPluginAliases(providerPlugins, config.Providers);
-  const codexOauthProviderNames = codexOauthLocalProviderNames(providerPlugins);
   const virtualModelProfiles = coreGatewayVirtualModelProfiles(config);
   const coreEndpoint = endpoint(config.gateway.coreHost, config.gateway.corePort);
   const proxyPreloadFile = upstreamProxyUrl ? writeGatewayProxyPreloadFile(config, upstreamProxyUrl) : undefined;
@@ -559,6 +560,57 @@ export function normalizeClaudeCodeOauthProviderPlugins(providerPlugins: unknown
       }
     };
   });
+}
+
+
+function normalizeCoreProviderPluginNames(
+  providerPlugins: unknown[],
+  providers: GatewayProviderConfig[]
+): unknown[] {
+  return providerPlugins.map((plugin) => {
+    if (!isRecord(plugin)) {
+      return plugin;
+    }
+    const configuredName = stringValue(plugin.providerName);
+    if (!configuredName) {
+      return plugin;
+    }
+    const providerName = compiledProviderNameForPlugin(configuredName, providers);
+    return providerName === configuredName ? plugin : { ...plugin, providerName };
+  });
+}
+
+
+function compiledProviderNameForPlugin(
+  configuredName: string,
+  providers: GatewayProviderConfig[]
+): string {
+  for (const provider of providers) {
+    const capabilities = normalizedProviderCapabilities(provider);
+    if (capabilities.length === 0) {
+      const protocol: GatewayProviderProtocol =
+        normalizeProviderProtocol(provider.type) ??
+        normalizeProviderProtocol(provider.provider) ??
+        inferProtocol(provider);
+      const normalizedConfiguredName = configuredName.trim().toLowerCase();
+      if (
+        providerRuntimeId(provider).toLowerCase() === normalizedConfiguredName ||
+        provider.name.trim().toLowerCase() === normalizedConfiguredName ||
+        providerCapabilityNameMatches(provider, protocol, configuredName)
+      ) {
+        return providerRuntimeId(provider);
+      }
+      continue;
+    }
+
+    for (const capability of capabilities) {
+      if (providerCapabilityNameMatches(provider, capability.type, configuredName)) {
+        return providerCapabilityInternalName(provider, capability.type);
+      }
+    }
+  }
+
+  return configuredName;
 }
 
 

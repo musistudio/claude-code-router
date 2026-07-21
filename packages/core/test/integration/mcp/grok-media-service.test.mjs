@@ -10,6 +10,7 @@ import { GatewayMediaExecutor } from "@ccr/core/media/executors.ts";
 import { MediaService, mediaServiceForTest, resolveProviderMediaTarget } from "@ccr/core/media/service.ts";
 import { mediaMcpToolDefinition } from "@ccr/core/media/tools.ts";
 import { MEDIA_ARTIFACT_PATH_PREFIX, handleMediaArtifactRequest, handleMediaToolsMcpRequest } from "@ccr/core/mcp/grok-media-mcp.ts";
+import { waitForTcpListener } from "../../support/loopback-listener.mjs";
 
 const png = Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -91,6 +92,7 @@ test("media gateway errors expose the concrete failed provider attempt", async (
     }));
   });
   if (!await listenOrSkip(t, server)) return;
+  await waitForTcpListener(server);
   t.after(() => server.close());
 
   const executor = new GatewayMediaExecutor({
@@ -220,6 +222,7 @@ test("provider image jobs use the internal media gateway, persist artifacts, and
     response.writeHead(404).end();
   });
   if (!await listenOrSkip(t, server)) return;
+  await waitForTcpListener(server);
   t.after(() => server.close());
 
   const root = mkdtempSync(path.join(os.tmpdir(), "ccr-grok-media-image-"));
@@ -332,6 +335,7 @@ test("provider video jobs return immediately and finish through asynchronous pol
     response.writeHead(404).end();
   });
   if (!await listenOrSkip(t, server)) return;
+  await waitForTcpListener(server);
   t.after(() => server.close());
 
   const root = mkdtempSync(path.join(os.tmpdir(), "ccr-grok-media-video-"));
