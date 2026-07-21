@@ -1,12 +1,13 @@
 import { app, dialog } from "electron";
 import path from "node:path";
 import { appDeepLinkProtocol, createProviderDeepLinkRequest as createSharedProviderDeepLinkRequest, isAppDeepLinkUrl } from "@ccr/core/contracts/deep-link";
-import type { AppConfig, GatewayPluginAppConfig, ProviderDeepLinkRequest } from "@ccr/core/contracts/app";
+import { CLAUDE_DESIGN_PLUGIN_ID, knownGatewayPluginDefaultApps, type AppConfig, type GatewayPluginAppConfig, type ProviderDeepLinkRequest } from "@ccr/core/contracts/app";
 import { IPC_CHANNELS } from "@ccr/core/config/constants";
 import { loadAppConfig } from "@ccr/core/config/config";
 import { syncClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
 import { gatewayService } from "@ccr/core/gateway/service";
 import { providerIdentitySafetyIssue } from "@ccr/core/providers/presets/index";
+import { loadClaudeDesignWindowCdpOptions } from "./claude-design-window";
 import windowsManager from "./windows";
 
 type PluginDeepLinkRequest = {
@@ -133,9 +134,15 @@ class DeepLinkService {
         throw new Error(status.lastError || "CCR gateway did not start.");
       }
       const appUrl = resolveGatewayPluginAppUrl(config, pluginApp.url);
-      await ensurePluginAppUrlAvailable(config, appUrl, startedGateway);
+      const claudeDesignCdp = request.pluginId === CLAUDE_DESIGN_PLUGIN_ID
+        ? await ensureClaudeDesignWindowCdpOptions(config, startedGateway)
+        : undefined;
+      if (!claudeDesignCdp) {
+        await ensurePluginAppUrlAvailable(config, appUrl, startedGateway);
+      }
 
       windowsManager.openPluginAppWindow({
+        ...(claudeDesignCdp ? { claudeDesignCdp } : {}),
         id: `${request.pluginId}:${pluginApp.id || pluginApp.name}`,
         title: pluginApp.name,
         url: appUrl
@@ -186,6 +193,23 @@ async function ensurePluginAppUrlAvailable(config: AppConfig, appUrl: string, st
     throw new Error(restartedStatus.lastError || "CCR gateway did not restart.");
   }
   await waitForPluginAppUrl(appUrl, pluginAppStartupProbeTimeoutMs);
+}
+
+async function ensureClaudeDesignWindowCdpOptions(config: AppConfig, startedGateway: boolean): ReturnType<typeof loadClaudeDesignWindowCdpOptions> {
+  try {
+    return await loadClaudeDesignWindowCdpOptions(config);
+  } catch (error) {
+    if (startedGateway) {
+      throw error;
+    }
+    console.warn(`[deep-link] Claude Design plugin status was not reachable on the running gateway; restarting gateway once. ${formatError(error)}`);
+  }
+
+  const restartedStatus = await gatewayService.start(config);
+  if (restartedStatus.state !== "running") {
+    throw new Error(restartedStatus.lastError || "CCR gateway did not restart.");
+  }
+  return await loadClaudeDesignWindowCdpOptions(config);
 }
 
 async function waitForPluginAppUrl(appUrl: string, timeoutMs: number): Promise<void> {
@@ -302,11 +326,11 @@ function resolvePluginApp(config: AppConfig, request: PluginDeepLinkRequest): Ga
   return apps[0];
 }
 
-function configuredPluginApps(_pluginId: string, apps: GatewayPluginAppConfig[] | undefined): GatewayPluginAppConfig[] {
+function configuredPluginApps(pluginId: string, apps: GatewayPluginAppConfig[] | undefined): GatewayPluginAppConfig[] {
   if (apps?.length) {
     return apps;
   }
-  return [];
+  return knownGatewayPluginDefaultApps(pluginId) || [];
 }
 
 function resolveGatewayPluginAppUrl(config: AppConfig, url: string): string {

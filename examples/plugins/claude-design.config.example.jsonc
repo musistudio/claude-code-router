@@ -1,21 +1,24 @@
 {
-  "proxy": {
-    "enabled": true,
-    "host": "127.0.0.1",
-    "mode": "transparent",
-    "port": 7890,
-    "targets": []
-  },
   "plugins": [
     {
       "id": "claude-design",
       "enabled": true,
       "module": "./plugins/claude-design-plugin.cjs",
+      "surfaces": { "apps": true, "gateway": true, "provider": false },
+      "permissions": ["trusted-code", "apps", "gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
+      "apps": [
+        {
+          "id": "claude-design",
+          "name": "Claude Design",
+          "description": "Open Claude Design in a dedicated CCR Electron window.",
+          "icon": "palette",
+          "url": "https://claude.ai/design"
+        }
+      ],
       "config": {
         "host": "claude.ai",
         "fallbackHosts": ["claude.com", "www.anthropic.com", "anthropic.com"],
         "paths": [
-          "/",
           "/_bootstrap",
           "/api/bootstrap",
           "/design/anthropic.omelette.api.v1alpha.OmeletteService",
@@ -50,9 +53,16 @@
         "upstreamOrigin": "https://claude.ai",
         // Optional. Missing lazy-loaded assets are fetched from these origins in order.
         "upstreamOrigins": ["https://claude.ai"],
-        "gatewayUrl": "http://127.0.0.1:3456",
-        // Optional. Required only when CCR has API keys configured.
-        "gatewayApiKey": "",
+        // Optional. Defaults to the active CCR gateway host and port.
+        // "gatewayUrl": "http://127.0.0.1:3456",
+        // Optional. Defaults to the active CCR gateway API key.
+        // "gatewayApiKey": "",
+        // Optional. Use "none" only for local debugging on a trusted machine.
+        "adminAuth": "gateway",
+        // Optional. Request logs are off by default because they can contain prompt and project data.
+        "requestLogging": false,
+        "requestLogLimit": 500,
+        "requestLogRetentionHours": 24,
         // Optional. Used when old Claude Design model ids need a gateway-safe fallback.
         // Defaults to Router.default, then claude-sonnet-4-20250514.
         "defaultGatewayModel": "claude-sonnet-4-20250514",

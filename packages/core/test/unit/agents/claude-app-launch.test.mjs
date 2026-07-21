@@ -18,7 +18,6 @@ test("claudeAppLaunchCommand opens macOS app bundles through LaunchServices", (t
     executable,
     path.join(tempDir, "profile data"),
     49152,
-    "http://127.0.0.1:3456",
     {
       "BAD-NAME": "ignored",
       CLAUDE_CONFIG_DIR: path.join(tempDir, "config"),
@@ -45,7 +44,7 @@ test("claudeAppLaunchCommand opens macOS app bundles through LaunchServices", (t
   assert.equal(launch.args[appIndex + 1], "--args");
   assert.ok(launch.args.includes("--remote-debugging-port=49152"));
   assert.ok(launch.args.includes("--remote-debugging-address=127.0.0.1"));
-  assert.ok(launch.args.includes("--proxy-server=http://127.0.0.1:3456"));
+  assert.equal(launch.args.some((arg) => arg.startsWith("--proxy-server=")), false);
   assert.ok(launch.args.includes(`--user-data-dir=${path.join(tempDir, "profile data")}`));
 });
 

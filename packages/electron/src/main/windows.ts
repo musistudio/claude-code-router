@@ -3,10 +3,12 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { APP_NAME, IPC_CHANNELS, ONBOARDING_FINISHED_FILE } from "@ccr/core/config/constants";
+import { configureClaudeDesignWindowCdp, type ClaudeDesignWindowCdpOptions } from "./claude-design-window";
 
 type WindowName = "main" | string;
 type WindowBounds = { height: number; width: number; x?: number; y?: number };
 type PluginAppWindowOptions = {
+  claudeDesignCdp?: ClaudeDesignWindowCdpOptions;
   id: string;
   title: string;
   url: string;
@@ -115,8 +117,8 @@ class WindowsManager {
       }
       existing.show();
       existing.focus();
-      if (existing.webContents.getURL() !== options.url) {
-        void existing.loadURL(options.url);
+      if (options.claudeDesignCdp || existing.webContents.getURL() !== options.url) {
+        void loadPluginAppWindowUrl(existing, options);
       }
       return existing;
     }
@@ -226,7 +228,7 @@ class WindowsManager {
       });
     });
 
-    void window.loadURL(options.url);
+    void loadPluginAppWindowUrl(window, options);
     return window;
   }
 
@@ -424,6 +426,27 @@ function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(value, max));
 }
 
+async function loadPluginAppWindowUrl(window: BrowserWindow, options: PluginAppWindowOptions): Promise<void> {
+  try {
+    if (options.claudeDesignCdp) {
+      await configureClaudeDesignWindowCdp(window.webContents, options.claudeDesignCdp);
+    }
+    if (!window.isDestroyed()) {
+      await window.loadURL(options.url);
+    }
+  } catch (error) {
+    console.warn(`[window] Failed to load plugin app ${options.id}: ${formatError(error)}`);
+    if (!window.isDestroyed()) {
+      await window.loadURL(pluginAppLoadFailurePageUrl({
+        errorCode: 0,
+        errorDescription: formatError(error),
+        title: options.title,
+        url: options.url
+      }));
+    }
+  }
+}
+
 function pluginAppLoadFailurePageUrl(options: {
   errorCode: number;
   errorDescription: string;
@@ -497,6 +520,10 @@ function pluginAppLoadFailurePageUrl(options: {
 </html>`;
 
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function escapeHtml(value: string): string {

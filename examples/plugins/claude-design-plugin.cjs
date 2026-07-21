@@ -28,7 +28,7 @@ const CLAUDE_APP_SPA_ROUTE_PATHS = [
 const OMELETTE_RPC_PATH_PREFIX = "/design/anthropic.omelette.api.v1alpha.OmeletteService";
 const AUTH_ESCAPE_ROUTE_PATHS = ["/login", "/auth", "/oauth"];
 const BOOTSTRAP_ROUTE_PATHS = ["/_bootstrap", "/api/bootstrap", "/edge-api/bootstrap"];
-const REQUIRED_ROUTE_PATHS = ["/", OMELETTE_RPC_PATH_PREFIX, "/v1/design", ...CLAUDE_APP_SPA_ROUTE_PATHS, ...BOOTSTRAP_ROUTE_PATHS, ...AUTH_ESCAPE_ROUTE_PATHS];
+const REQUIRED_ROUTE_PATHS = [OMELETTE_RPC_PATH_PREFIX, "/v1/design", ...CLAUDE_APP_SPA_ROUTE_PATHS, ...BOOTSTRAP_ROUTE_PATHS, ...AUTH_ESCAPE_ROUTE_PATHS];
 const DEFAULT_ROUTE_PATHS = ["/design", "/v1/design", "/api", "/organizations", "/cdn-cgi", ...BOOTSTRAP_ROUTE_PATHS, ...AUTH_ESCAPE_ROUTE_PATHS];
 const FALLBACK_ROUTE_PATHS = ["/app-unavailable-in-region", "/cdn-cgi", "/design", ...AUTH_ESCAPE_ROUTE_PATHS];
 const DEFAULT_SCRIPT_PATH = "/design/assets/v1/index-C0BEUHEw.js";
@@ -95,6 +95,8 @@ const DEFAULT_EXTERNAL_ASSET_BASE_URLS = ["https://assets-proxy.anthropic.com/cl
 const DESIGN_INDEX_ASSET_DISCOVERY_TTL_MS = 5 * 60 * 1000;
 const MAX_UPSTREAM_ASSET_REDIRECTS = 5;
 const MAX_LOG_BODY_CHARS = 128 * 1024;
+const DEFAULT_REQUEST_LOG_LIMIT = 500;
+const DEFAULT_REQUEST_LOG_RETENTION_MS = 24 * 60 * 60 * 1000;
 const COMMENT_COLLECTION = "comments";
 const DESIGN_SYSTEM_COLLECTION = "design_systems";
 const EVENT_COLLECTION = "events";
@@ -230,7 +232,11 @@ module.exports = {
     const stylePath = shouldKeepCurrentStylePath(configuredStylePath) ? configuredStylePath : DEFAULT_STYLE_PATH;
     const assetAutoUpdate = options.assetAutoUpdate !== false;
     const autoAnswerQuestions = options.autoAnswerQuestions !== false;
-    const gatewayUrl = stringValue(options.gatewayUrl) || DEFAULT_GATEWAY_URL;
+    const adminAuth = normalizeAdminAuth(options.adminAuth);
+    const requestLogging = options.requestLogging === true || options.logRequests === true;
+    const requestLogLimit = normalizeRequestLogLimit(options.requestLogLimit ?? options.maxRequestLogs);
+    const requestLogRetentionMs = normalizeRequestLogRetentionMs(options);
+    const gatewayUrl = stringValue(options.gatewayUrl) || configuredGatewayUrl(ctx.config) || DEFAULT_GATEWAY_URL;
     const gatewayApiKey = stringValue(options.gatewayApiKey) || configuredGatewayApiKey(ctx.config);
     const gatewayConfigPath = stringValue(options.gatewayConfigPath) ||
       stringValue(ctx.config?.gateway?.generatedConfigFile) ||
@@ -242,12 +248,13 @@ module.exports = {
       stringValue(options.gatewayModel)
     );
     const defaultGatewayModel = configuredDefaultGatewayModel ||
-      normalizeRouteTarget(stringValue(ctx.config?.Router?.default)) ||
+      configuredDefaultModel(ctx.config) ||
       DEFAULT_GATEWAY_MODEL;
     const frontendDefaultModel = normalizeRouteTarget(
       stringValue(options.frontendDefaultModel) ||
       stringValue(options.defaultModelId) ||
-      configuredDefaultGatewayModel
+      configuredDefaultGatewayModel ||
+      configuredDefaultModel(ctx.config)
     ) || DEFAULT_GATEWAY_MODEL;
     const availableProviderNames = claudeDesignProviderSelectorNames(modelSourceConfig);
     const gatewayModelPresets = claudeDesignGatewayModelPresets(modelSourceConfig, frontendDefaultModel);
@@ -325,6 +332,7 @@ module.exports = {
 
     const runtime = {
       autoAnswerQuestions,
+      adminAuth,
       assetProxy,
       assetAutoUpdate,
       assetDir,
@@ -358,6 +366,9 @@ module.exports = {
       routeHost,
       fallbackRouteHosts,
       routePaths,
+      requestLogging,
+      requestLogLimit,
+      requestLogRetentionMs,
       scriptPath,
       store,
       stylePath,
@@ -371,6 +382,8 @@ module.exports = {
         await handleMockRequest(runtime, request, response);
       }
     });
+
+    registerClaudeDesignBrowserApp(ctx, routeHost);
 
     if (assetPassthrough) {
       ctx.registerProxyRoute({
@@ -401,7 +414,7 @@ module.exports = {
     }
 
     ctx.registerGatewayRoute({
-      auth: "none",
+      auth: adminAuth,
       handler(request, response, helpers) {
         return handleAdminRequest(runtime, backend, request, response, helpers);
       },
@@ -413,6 +426,23 @@ module.exports = {
     ctx.logger.info(`Claude Design mock listening at ${backend.url} for ${routeHost} ${routePaths.join(", ")}`);
   }
 };
+
+function registerClaudeDesignBrowserApp(ctx, routeHost) {
+  if (!Array.isArray(ctx.permissions) || !ctx.permissions.includes("apps")) {
+    return;
+  }
+  try {
+    ctx.registerApp({
+      description: "Open Claude Design in a dedicated CCR Electron window.",
+      icon: "palette",
+      id: "claude-design",
+      name: "Claude Design",
+      url: `https://${routeHost || DEFAULT_HOST}/design`
+    });
+  } catch (error) {
+    ctx.logger.warn(`Claude Design app entry was not registered: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
 
 async function handleMockRequest(runtime, request, response) {
   const url = new URL(request.url || "/", "http://claude-design.local");
@@ -442,7 +472,7 @@ async function handleMockRequest(runtime, request, response) {
   }
 
   sendResponse(response, result);
-  logRequest(runtime.store, {
+  maybeLogRequest(runtime, {
     method,
     path: url.pathname,
     requestBody,
@@ -733,23 +763,23 @@ async function handleOmeletteConnectRpc(runtime, method, path, request, requestB
       return protoResponse(sendMultiplayerMessage(runtime, rpcBody));
     case "DeleteAccount":
     case "DeleteOrganization":
-      return protoResponse(Buffer.alloc(0));
+      return unsupportedRpcResponse(rpcName);
     case "FigmaCallTool":
     case "McpCallTool":
-      return protoResponse(encodeToolCallResponse(rpcName, rpcBody));
+      return unsupportedRpcResponse(rpcName);
     case "FigmaDisconnect":
     case "FigmaExchangeCode":
     case "FigmaStartAuth":
     case "GithubDisconnect":
     case "GithubExchangeCode":
     case "GithubStartAuth":
-      return protoResponse(encodeIntegrationAuthResponse(rpcName));
+      return unsupportedRpcResponse(rpcName);
     case "FigmaListTools":
     case "GithubListRepos":
     case "GithubGetTree":
     case "GithubReadFile":
     case "GithubImportRepo":
-      return protoResponse(encodeIntegrationListResponse(rpcName, rpcBody));
+      return unsupportedRpcResponse(rpcName);
     case "RenewTurn":
     case "ReleaseTurn":
       return protoResponse(Buffer.alloc(0));
@@ -765,10 +795,18 @@ async function handleOmeletteConnectRpc(runtime, method, path, request, requestB
     case "McpListConnectors":
     case "McpListDesignImportPartners":
     case "McpListTools":
-      return protoResponse(Buffer.alloc(0));
+      return unsupportedRpcResponse(rpcName);
     default:
-      return protoResponse(Buffer.alloc(0));
+      return unsupportedRpcResponse(rpcName);
   }
+}
+
+function unsupportedRpcResponse(rpcName) {
+  return jsonResponse(501, {
+    error: {
+      message: `Claude Design RPC ${rpcName || "unknown"} is not supported by CCR.`
+    }
+  });
 }
 
 async function serveAsset(runtime, path, request) {
@@ -2300,6 +2338,7 @@ async function handleAdminRequest(runtime, backend, request, response, helpers) 
 
   if (method === "GET" && path === "/plugins/claude-design") {
     helpers.sendJson(response, 200, {
+      adminAuth: runtime.adminAuth,
       autoAnswerQuestions: runtime.autoAnswerQuestions,
       backend: backend.url,
       dbFile: runtime.store.dbFile,
@@ -2308,6 +2347,7 @@ async function handleAdminRequest(runtime, backend, request, response, helpers) 
       frontendDefaultModel: runtime.frontendDefaultModel,
       gatewayConfigPath: runtime.gatewayConfigPath,
       gatewayModels: runtime.gatewayModelPresets,
+      gatewayUrl: runtime.gatewayUrl,
       plugin: "claude-design",
       proxy: {
         assetDir: runtime.assetDir,
@@ -2315,7 +2355,12 @@ async function handleAdminRequest(runtime, backend, request, response, helpers) 
         assetSource: runtime.assetSource,
         fallbackHosts: runtime.fallbackRouteHosts,
         host: runtime.routeHost,
-        paths: runtime.routePaths
+        paths: claudeDesignWindowRoutePaths(runtime)
+      },
+      requestLogging: {
+        enabled: runtime.requestLogging,
+        limit: runtime.requestLogLimit,
+        retentionMs: runtime.requestLogRetentionMs
       },
       upstreamOrigins: runtime.upstreamOrigins,
       routes: {
@@ -2357,8 +2402,7 @@ async function handleAdminRequest(runtime, backend, request, response, helpers) 
   }
 
   if (method === "DELETE" && path === "/plugins/claude-design/requests") {
-    runtime.store.database.run("DELETE FROM claude_design_requests");
-    runtime.store.persist();
+    clearRequestLogs(runtime.store);
     helpers.sendJson(response, 200, { cleared: true });
     return;
   }
@@ -4431,33 +4475,6 @@ function encodeCommentReply(reply) {
     protoString(4, normalized.author_display_name),
     protoString(5, normalized.body)
   ]);
-}
-
-function encodeToolCallResponse(rpcName, requestBody) {
-  const strings = decodeAllProtoStrings(requestBody);
-  const payload = {
-    mock: true,
-    method: rpcName,
-    request: strings
-  };
-  return Buffer.concat([
-    protoString(1, JSON.stringify(payload)),
-    protoBool(2, false)
-  ]);
-}
-
-function encodeIntegrationAuthResponse(rpcName) {
-  if (!rpcName.endsWith("StartAuth")) {
-    return Buffer.alloc(0);
-  }
-  return Buffer.concat([
-    protoString(1, `${rpcName}:mock`),
-    protoString(2, "mock-connected")
-  ]);
-}
-
-function encodeIntegrationListResponse(rpcName, requestBody) {
-  return Buffer.alloc(0);
 }
 
 function updateOrgSettings(runtime, requestBody) {
@@ -7472,6 +7489,10 @@ function isDesignAuthEscapeRoute(path) {
   return AUTH_ESCAPE_ROUTE_PATHS.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
 }
 
+function claudeDesignWindowRoutePaths(runtime) {
+  return [...new Set([...(runtime.routePaths || []), "/assets"])];
+}
+
 function listRequests(store, limit) {
   const safeLimit = Math.max(1, Math.min(Number(limit) || 100, 500));
   return queryRows(
@@ -7494,6 +7515,18 @@ function listRequests(store, limit) {
   }));
 }
 
+function maybeLogRequest(runtime, entry) {
+  if (!runtime.requestLogging) {
+    return;
+  }
+  try {
+    logRequest(runtime.store, entry);
+    pruneRequestLogs(runtime.store, runtime.requestLogLimit, runtime.requestLogRetentionMs);
+  } catch (error) {
+    runtime.logger?.warn?.(`Claude Design failed to write request log: ${error?.message || error}`);
+  }
+}
+
 function logRequest(store, entry) {
   const responseBody = bodyToLogText(entry.responseBody);
   store.database.run(
@@ -7509,6 +7542,30 @@ function logRequest(store, entry) {
       truncateText(responseBody)
     ]
   );
+  store.persist();
+}
+
+function pruneRequestLogs(store, limit, retentionMs) {
+  const safeLimit = normalizeRequestLogLimit(limit);
+  store.database.run(`
+    DELETE FROM claude_design_requests
+    WHERE id NOT IN (
+      SELECT id FROM claude_design_requests
+      ORDER BY id DESC
+      LIMIT ?
+    )
+  `, [safeLimit]);
+  if (retentionMs > 0) {
+    store.database.run(
+      "DELETE FROM claude_design_requests WHERE created_at < ?",
+      [new Date(Date.now() - retentionMs).toISOString()]
+    );
+  }
+  store.persist();
+}
+
+function clearRequestLogs(store) {
+  store.database.run("DELETE FROM claude_design_requests");
   store.persist();
 }
 
@@ -8134,6 +8191,111 @@ function configuredGatewayApiKey(config) {
     }
   }
   return undefined;
+}
+
+function parseHttpUrl(value) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function configuredGatewayUrl(config) {
+  if (!isRecord(config)) {
+    return undefined;
+  }
+  const routerEndpoint = stringValue(config.routerEndpoint);
+  if (routerEndpoint) {
+    const endpoint = parseHttpUrl(routerEndpoint);
+    if (endpoint) {
+      return endpoint.toString().replace(/\/+$/, "");
+    }
+  }
+  const host = configuredGatewayHost(config.gateway?.host || config.HOST);
+  const port = configuredGatewayPort(config);
+  return host && port ? `http://${host}:${port}` : undefined;
+}
+
+function configuredGatewayHost(value) {
+  const host = stringValue(value) || "127.0.0.1";
+  if (host === "0.0.0.0" || host === "::" || host === "[::]") {
+    return "127.0.0.1";
+  }
+  if (host.includes(":") && !host.startsWith("[")) {
+    return `[${host}]`;
+  }
+  return host;
+}
+
+function configuredGatewayPort(config) {
+  const values = [config?.gateway?.port, config?.PORT];
+  for (const value of values) {
+    const port = Number(value);
+    if (Number.isInteger(port) && port > 0 && port <= 65535) {
+      return port;
+    }
+  }
+  return undefined;
+}
+
+function configuredDefaultModel(config) {
+  if (!isRecord(config)) {
+    return undefined;
+  }
+  const routerDefault = normalizeRouteTarget(stringValue(config.Router?.default));
+  if (routerDefault) {
+    return routerDefault;
+  }
+  const providers = Array.isArray(config.Providers) ? config.Providers : [];
+  const preferredProvider = stringValue(config.preferredProvider);
+  const preferred = preferredProvider
+    ? providers.find((provider) => isRecord(provider) && stringValue(provider.name) === preferredProvider)
+    : undefined;
+  return firstProviderRouteTarget(preferred) || providers.map(firstProviderRouteTarget).find(Boolean);
+}
+
+function firstProviderRouteTarget(provider) {
+  if (!isRecord(provider)) {
+    return undefined;
+  }
+  const model = Array.isArray(provider.models)
+    ? provider.models.map(stringValue).find(Boolean)
+    : undefined;
+  if (!model) {
+    return undefined;
+  }
+  const providerName = stringValue(provider.name);
+  return normalizeRouteTarget(providerName ? `${providerName}/${model}` : model);
+}
+
+function normalizeAdminAuth(value) {
+  return stringValue(value)?.toLowerCase() === "none" ? "none" : "gateway";
+}
+
+function normalizeRequestLogLimit(value) {
+  const limit = Number(value);
+  if (!Number.isFinite(limit) || limit <= 0) {
+    return DEFAULT_REQUEST_LOG_LIMIT;
+  }
+  return Math.max(1, Math.min(Math.floor(limit), 5000));
+}
+
+function normalizeRequestLogRetentionMs(options) {
+  const explicitMs = numberValue(options?.requestLogRetentionMs);
+  if (explicitMs !== undefined && explicitMs >= 0) {
+    return explicitMs;
+  }
+  const hours = positiveNumber(options?.requestLogRetentionHours);
+  if (hours !== undefined) {
+    return Math.floor(hours * 60 * 60 * 1000);
+  }
+  const days = positiveNumber(options?.requestLogRetentionDays);
+  if (days !== undefined) {
+    return Math.floor(days * 24 * 60 * 60 * 1000);
+  }
+  return DEFAULT_REQUEST_LOG_RETENTION_MS;
 }
 
 function numberValue(value) {

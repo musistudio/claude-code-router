@@ -23,12 +23,21 @@
     {
       "id": "claude-design",
       "name": "Claude Design",
-      "description": "Routes Claude App Design traffic through the local CCR wrapper backend with configurable model routing.",
-      "capabilities": ["Wrapper runtime", "Claude App proxy", "Claude Design", "Model routing"],
-      "surfaces": ["gateway"],
-      "permissions": ["trusted-code", "gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
-      "integrity": "sha256:d58f31975789f27082ea6542b9ad07c2502d396dbbaa678143d945063cf43836",
-      "module": "../examples/plugins/claude-design-plugin.cjs"
+      "description": "Opens Claude Design in a dedicated Electron window and routes Design traffic through the local CCR wrapper backend with configurable model routing.",
+      "capabilities": ["Wrapper runtime", "Electron window", "CDP request rewrite", "Claude Design", "Model routing"],
+      "surfaces": ["apps", "gateway"],
+      "permissions": ["trusted-code", "apps", "gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
+      "integrity": "sha256:d1723abdbf5eb9a371cc1d952b7a4fcfb801a20ec69543faba3531246eb19d02",
+      "module": "../examples/plugins/claude-design-plugin.cjs",
+      "apps": [
+        {
+          "id": "claude-design",
+          "name": "Claude Design",
+          "description": "Open Claude Design in a dedicated CCR Electron window.",
+          "icon": "palette",
+          "url": "https://claude.ai/design"
+        }
+      ]
     },
     {
       "id": "cursor-proxy",

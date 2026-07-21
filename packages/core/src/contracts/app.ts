@@ -770,6 +770,15 @@ export type GatewayPluginAppConfig = {
   url: string;
 };
 
+export const CLAUDE_DESIGN_PLUGIN_ID = "claude-design";
+export const DEFAULT_CLAUDE_DESIGN_APP: GatewayPluginAppConfig = {
+  description: "Open Claude Design in a dedicated CCR Electron window.",
+  icon: "palette",
+  id: "claude-design",
+  name: "Claude Design",
+  url: "https://claude.ai/design"
+};
+
 export const GATEWAY_PLUGIN_SURFACE_IDS = [
   "apps",
   "gateway",
@@ -807,8 +816,8 @@ export const KNOWN_GATEWAY_PLUGIN_DEFAULTS: Record<string, KnownGatewayPluginDef
     surfaces: { apps: true, gateway: true, provider: false }
   },
   "claude-design": {
-    permissions: ["trusted-code", "gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
-    surfaces: { apps: false, gateway: true, provider: false }
+    permissions: ["trusted-code", "apps", "gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
+    surfaces: { apps: true, gateway: true, provider: false }
   },
   "cursor-proxy": {
     permissions: ["trusted-code", "gateway-routes", "proxy-routes", "http-backends"],
@@ -824,6 +833,13 @@ export function knownGatewayPluginDefaultPermissions(id: string): GatewayPluginP
 export function knownGatewayPluginDefaultSurfaces(id: string): GatewayPluginSurfacesConfig | undefined {
   const surfaces = KNOWN_GATEWAY_PLUGIN_DEFAULTS[id.trim().toLowerCase()]?.surfaces;
   return surfaces ? { ...surfaces } : undefined;
+}
+
+export function knownGatewayPluginDefaultApps(id: string): GatewayPluginAppConfig[] | undefined {
+  if (id.trim().toLowerCase() !== CLAUDE_DESIGN_PLUGIN_ID) {
+    return undefined;
+  }
+  return [{ ...DEFAULT_CLAUDE_DESIGN_APP }];
 }
 
 export type GatewayMcpServerTransport = "stdio" | "streamable-http" | "sse";

@@ -18,7 +18,6 @@ export type ClaudeAppLaunchResult = {
   child: ChildProcess;
   command: string;
   cdpPort?: number;
-  claudeDesignProxy?: boolean;
   pidIsLauncher?: boolean;
   pid?: number;
   userDataDir: string;
@@ -75,8 +74,7 @@ export async function launchClaudeAppProfile(configDir: string, profile: Profile
   delete env.ELECTRON_RUN_AS_NODE;
 
   const designUrl = claudeAppDesignUrl(config);
-  const proxyUrl = claudeAppProxyUrl(config);
-  const launch = claudeAppLaunchCommand(lookup.executable, userDataDir, cdpPort, proxyUrl, appEnv);
+  const launch = claudeAppLaunchCommand(lookup.executable, userDataDir, cdpPort, appEnv);
   const child = spawn(launch.command, launch.args, {
     detached: true,
     env,
@@ -92,7 +90,6 @@ export async function launchClaudeAppProfile(configDir: string, profile: Profile
 
   return {
     child,
-    claudeDesignProxy: Boolean(proxyUrl),
     command: launch.command,
     ...(cdpPort ? { cdpPort } : {}),
     ...(launch.pidIsLauncher ? { pidIsLauncher: launch.pidIsLauncher } : {}),
@@ -124,45 +121,12 @@ function claudeDesignPluginConfig(config: AppConfig | undefined): AppConfig["plu
   return config?.plugins.find((plugin) => plugin.enabled !== false && plugin.id === "claude-design");
 }
 
-function claudeAppProxyUrl(config: AppConfig | undefined): string | undefined {
-  if (!config?.proxy?.enabled) {
-    return undefined;
-  }
-  const port = Number.isInteger(config.gateway?.port) && config.gateway.port > 0
-    ? config.gateway.port
-    : Number.isInteger(config.PORT) && config.PORT > 0
-      ? config.PORT
-      : undefined;
-  if (!port) {
-    return undefined;
-  }
-  const host = formatLoopbackGatewayHost(config.gateway?.host || "127.0.0.1");
-  return `http://${host}:${port}`;
-}
-
-function formatLoopbackGatewayHost(host: string): string {
-  const trimmed = host.trim();
-  if (!trimmed || trimmed === "0.0.0.0" || trimmed === "::" || trimmed === "[::]") {
-    return "127.0.0.1";
-  }
-  if (trimmed.includes(":") && !trimmed.startsWith("[")) {
-    return `[${trimmed}]`;
-  }
-  return trimmed;
-}
-
-function claudeElectronArgs(userDataDir: string, cdpPort?: number, proxyUrl?: string): string[] {
+function claudeElectronArgs(userDataDir: string, cdpPort?: number): string[] {
   return [
     ...(cdpPort
       ? [
           `--remote-debugging-port=${cdpPort}`,
           "--remote-debugging-address=127.0.0.1"
-        ]
-      : []),
-    ...(proxyUrl
-      ? [
-          `--proxy-server=${proxyUrl}`,
-          "--proxy-bypass-list=localhost;127.0.0.1;[::1]"
         ]
       : []),
     `--user-data-dir=${userDataDir}`,
@@ -177,10 +141,9 @@ export function claudeAppLaunchCommand(
   executable: string,
   userDataDir: string,
   cdpPort: number | undefined,
-  proxyUrl: string | undefined,
   env: Record<string, string>
 ): { args: string[]; command: string; pidIsLauncher?: boolean } {
-  const args = claudeElectronArgs(userDataDir, cdpPort, proxyUrl);
+  const args = claudeElectronArgs(userDataDir, cdpPort);
   const appBundle = process.platform === "darwin" ? macAppBundleFromExecutable(executable) : undefined;
   if (appBundle) {
     return {
