@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 import { gatewayService } from "@ccr/core/gateway/service.ts";
+import { waitForTcpListener } from "../../support/loopback-listener.mjs";
 
 test("gateway treats downstream client aborts as expected stream cleanup", async (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-gateway-client-abort-test-"));
@@ -62,6 +63,7 @@ test("gateway treats downstream client aborts as expected stream cleanup", async
       }
       throw error;
     }
+    await waitForTcpListener(upstream);
     const upstreamPort = serverPort(upstream);
     const config = createDefaultAppConfig({ generatedConfigFile: path.join(dir, "gateway.config.json") });
     config.APIKEY = "test-api-key";
@@ -73,6 +75,7 @@ test("gateway treats downstream client aborts as expected stream cleanup", async
     gatewayService.coreAuthToken = "test-core-auth-token";
 
     await listen(gateway);
+    await waitForTcpListener(gateway);
     const gatewayUrl = `http://127.0.0.1:${serverPort(gateway)}/v1/responses`;
     const controller = new AbortController();
     const response = await fetch(gatewayUrl, {
