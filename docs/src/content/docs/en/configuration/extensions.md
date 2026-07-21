@@ -1,11 +1,11 @@
 ---
-title: Extension Mechanism
-pageTitle: Extension Mechanism
-eyebrow: Detailed Configuration
+title: Extension mechanism
+pageTitle: Extension mechanism
+eyebrow: Extensions
 lead: Learn how CCR extensions are loaded, what they can register, and how to create, install, and debug your own extension.
 ---
 
-## Extension Types
+## Extension types
 
 CCR has two extension layers:
 
@@ -16,7 +16,7 @@ CCR has two extension layers:
 
 Most custom extensions should start as a Wrapper plugin. It receives CCR config, a private data directory, a logger, and registration helpers through `ctx`.
 
-## Loading Flow
+## Loading flow
 
 When the gateway starts, CCR reads the `plugins` array and processes each plugin whose `enabled !== false`:
 
@@ -53,7 +53,7 @@ module.exports = async function setup(ctx) {
 
 `setup(ctx)` or `activate(ctx)` can call `ctx.register...` methods directly, or return a registration object. Returned registrations support `apps`, `gatewayRoutes`, `proxyRoutes`, `providerAccountConnectors`, `coreGateway`, `virtualModelProfiles`, `stop`, and `onStop`.
 
-## ctx Reference
+## ctx reference
 
 `setup(ctx)` receives these common fields and helpers:
 
@@ -85,7 +85,7 @@ Gateway route handlers also receive helper functions:
 
 `registerGatewayRoute` defaults to `auth: "gateway"`. If CCR has API keys configured, requests must include `Authorization: Bearer <key>` or `x-api-key: <key>`. Use `auth: "none"` only for debugging or local public status routes.
 
-## Create Your First Extension
+## Create your first extension
 
 Create a directory such as `~/ccr-extensions/hello-extension`:
 
@@ -167,7 +167,7 @@ This exposes:
 - A local echo backend: CCR assigns a free port automatically.
 - A proxy rule: proxy-captured `api.example.local/v1...` traffic is forwarded to the echo backend.
 
-## Install The Extension
+## Install the extension
 
 The recommended flow is through the desktop UI:
 
@@ -194,7 +194,7 @@ CCR stores runtime configuration in SQLite. Add extensions through the UI; the l
 }
 ```
 
-Restart the gateway after saving the extension config. See [Config Database Location](/en/configuration/configuration-file/).
+Restart the gateway after saving the extension config. See [Config database location](/en/configuration/configuration-file/).
 
 The local directory picker recognizes entry metadata from:
 
@@ -206,7 +206,7 @@ The local directory picker recognizes entry metadata from:
 
 If no entrypoint is declared, CCR tries `index.cjs`, `index.mjs`, `index.js`, `plugin.cjs`, `plugin.mjs`, or `plugin.js` in the selected directory.
 
-## Debug Extensions
+## Debug extensions
 
 ### 1. Check syntax first
 
@@ -261,7 +261,7 @@ Proxy route matching rules:
 - `stripPathPrefix` removes the matched prefix from the forwarded path.
 - `rewritePathPrefix` replaces the matched prefix with a configured prefix.
 
-### 5. Common Issues
+### 5. Common issues
 
 | Symptom | What to check |
 | --- | --- |
@@ -272,7 +272,7 @@ Proxy route matching rules:
 | Port is already in use | Omit `port` in `registerHttpBackend` so CCR can allocate one automatically |
 | Proxy route misses requests | Confirm proxy mode is enabled, the certificate is installed, and host matches the real request hostname |
 
-## Security Notes
+## Security notes
 
 - Use `auth: "none"` only for status pages, health checks, or local debugging routes.
 - Do not log API keys, OAuth tokens, cookies, or complete request headers.

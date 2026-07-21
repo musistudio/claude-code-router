@@ -1,11 +1,11 @@
 ---
-title: Routing Config
-pageTitle: Routing Config
-eyebrow: Detailed Configuration
-lead: Choose the model for a request, then automatically retry or switch to fallback models when the request fails.
+title: Routing
+pageTitle: Routing
+eyebrow: Routing
+lead: "Control how CCR picks a model for each request: built-in routes for Claude Code and Codex, custom rules with conditions and rewrites, and fallback retry or failover when a request fails."
 ---
 
-## Built-In Routing
+## Built-in routing
 
 ### Claude Code
 
@@ -13,7 +13,7 @@ The built-in Claude Code route detects requests from Claude Code and routes main
 
 Claude Code **main requests** prefer an explicit client-selected model that CCR recognizes. The Agent Config model is only the default when the client model is missing or unrecognized; if it is unset, the built-in route remains inactive. User-configured routing rules can still rewrite the model. CCR also automatically removes the first `x-anthropic-billing-header` system message injected by Claude Code so that billing helper messages do not affect later routing decisions. Claude Code Subagent, Task, and Workflow-created agents can still choose different models through the tag mechanism below.
 
-#### Subagent / Workflow Auto-Routing
+#### Subagent / Workflow auto-routing
 
 Claude Code Agent / Task / Workflow can spawn additional model requests. CCR uses tag injection to let those spawned requests choose a more appropriate CCR model:
 
@@ -29,9 +29,9 @@ The full flow is:
 4. When Claude Code calls `Agent` / `Task`, or when a Workflow creates an agent, the prompt starts with `<CCR-SUBAGENT-MODEL>provider/model</CCR-SUBAGENT-MODEL>`.
 5. When the spawned request reaches CCR, CCR extracts and removes the tag from the system prompt or the first two user messages, then routes that request to the tagged model.
 
-Subagent / Workflow auto-routing therefore does not use headers such as `x-claude-code-agent-id` as the model selector. Those headers can help with observation, but the actual model selection comes from the prompt tag.
+Subagent / Workflow auto-routing therefore selects the model from the prompt tag. Headers such as `x-claude-code-agent-id` help with observation, but they do not drive model selection.
 
-##### Pairing It With The Models Page
+##### Pairing it with the Models page
 
 The **Description** field on the Models page is both the enablement switch and the selection guide for this mechanism. If no model has a Description, CCR does not inject Agent / Task / Workflow routing instructions, so it does not write an empty model list into tool descriptions.
 
@@ -43,7 +43,7 @@ Recommended setup:
 4. Confirm that the built-in **Claude Code** route is enabled on the **Routing** page.
 5. Use Agent, Task, or Workflow in Claude Code. When Claude Code spawns an agent, it can choose a CCR model from the descriptions and write the tag.
 
-Write descriptions around tasks instead of only naming the provider. For example:
+Write descriptions around the tasks the model handles. For example:
 
 | Model purpose | Description example |
 | --- | --- |
@@ -55,19 +55,19 @@ After saving, CCR formats those descriptions as “Configured CCR gateway models
 
 ### Codex
 
-CCR automatically adapts Codex's `apply_patch` file-editing tool for third-party or non-GPT models. The goal is for those models to edit files through the patch tool instead of generating commands or scripts such as `cat >`, `sed -i`, `python`, or `node`.
+CCR automatically adapts Codex's `apply_patch` file-editing tool for third-party or non-GPT models, so those models edit files through the patch tool.
 
 Technically, this is a tool protocol bridge. Native Codex `apply_patch` is a custom/freeform tool whose input is raw patch text, while many OpenAI-compatible third-party models handle ordinary function tools more reliably. CCR rewrites `apply_patch` into an upstream-visible `virtual_apply_patch` function tool and injects the full `apply_patch.lark` grammar into the tool description, requiring the model to put the patch in the `patch` field.
 
 When the model returns `virtual_apply_patch`, CCR rewrites it back to Codex's expected shape: `custom_tool_call` with `name = apply_patch` and `input = raw patch text`. CCR does not edit files directly; Codex still executes the resulting patch. This adaptation is enabled automatically for non-GPT models and is independent of the built-in **Codex** routing switch. GPT-named models, including Fusion models whose resolved base model is GPT, keep using Codex's native freeform `apply_patch` path.
 
-## Custom Routing
+## Custom routing
 
 Custom routes are configured in the Routing page rule list. The top **Search routing rules** field filters by rule name, condition, request action, and related row text; the top-right **Add** button opens the **Add Routing Rule** dialog. The table shows each rule under **Name**, **Condition**, **Request action**, **Status**, and **Action**.
 
 Custom rules match in list order, and the first enabled matching rule rewrites the request. Use the move up and move down buttons to adjust priority. Use the edit button to open **Edit Routing Rule**, and the delete button to open a confirmation dialog. Turning off the **Status** toggle keeps the rule in the list but removes it from matching.
 
-### Add Or Edit A Rule
+### Add or edit a rule
 
 The dialog fields map directly to the saved rule:
 
@@ -83,13 +83,13 @@ The **Add** or **Save** button is enabled only when the form is valid: name, con
 
 Choose **Node.js script** as the rule type when a single condition is not enough. After selecting a local script file, it can return the target model, rewrites, and fallback dynamically. The dialog reads and compiles the file before saving and includes a JSON request editor for testing it without sending a real upstream model request.
 
-### Node.js Script Rules
+### Node.js script rules
 
 Use a Node.js script rule when ordinary conditions cannot express multi-field decisions, gradual rollouts, external policy lookups, or dynamic request rewrites. A script runs as asynchronous JavaScript in a reusable Worker: it reads the complete request, uses the controlled `api` object to access the network, filesystem, and environment, and returns whether the rule matched together with its model, rewrites, and fallback behavior.
 
 Scripts run in rule-list order. A non-match continues to the next rule; a match uses the routing decision returned by the script. Exceptions, timeouts, and invalid results are fail-open: CCR records a routing diagnostic and continues to the next rule.
 
-#### Create A Script File
+#### Create a script file
 
 1. Create a local file with a `.js`, `.mjs`, or `.cjs` extension.
 2. Set **Rule type** to **Node.js script** in the routing rule editor.
@@ -98,7 +98,7 @@ Scripts run in rule-list order. A non-match continues to the next rule; a match 
 
 The Desktop file picker stores an absolute path. A Web UI cannot obtain the real local path selected by the browser, so enter an absolute, relative, or `~/...` path on the machine running CCR. Relative paths resolve from the CCR process working directory. A script file may be at most 64 KiB.
 
-The script file is an **async function body**, not a CommonJS or ES module. Use the injected `input`, `api`, and `return` directly:
+The script file is an **async function body**. Use the injected `input`, `api`, and `return` directly; do not write it as a CommonJS or ES module:
 
 ```js
 if (input.body.model !== "Provider/original-model") {
@@ -110,9 +110,9 @@ return {
 };
 ```
 
-Top-level `await` is supported. Do not add `module.exports`, `export default`, or `import`, and do not use `require`, `process`, `Buffer`, or native `fetch`; use the APIs documented below for network and file operations. Both `input` and `api` are frozen. Return `rewrites` instead of mutating `input.body` or `input.headers`.
+The script environment exposes only `input`, `api`, `return`, and top-level `await`. Network and file operations use the APIs documented below; `input` and `api` are frozen, so scripts change the request by returning `rewrites`.
 
-#### `input`: Request Parameters
+#### `input`: Request parameters
 
 Each execution receives its own read-only `input` object:
 
@@ -125,7 +125,7 @@ Each execution receives its own read-only `input` object:
 | `input.model` | `string \| undefined` | Shortcut for `input.body.model` when that value is a string. |
 | `input.tokenCount` | `number` | CCR's estimated input token count, or `0` when unavailable. |
 | `input.sessionId` | `string \| undefined` | Session ID when CCR can resolve it. |
-| `input.apiKeyId` | `string \| undefined` | CCR API-key identifier from `x-auth-api-key-id`; this is not the raw key. |
+| `input.apiKeyId` | `string \| undefined` | CCR API-key identifier from `x-auth-api-key-id`; use it to distinguish keys. |
 | `input.builtInSubagentModel` | `string \| undefined` | Built-in subagent model when CCR can identify it. |
 | `input.summary.lastUserText` | `string` | Text from the last user message, limited to 16 KiB characters. |
 | `input.summary.systemText` | `string` | Text from the system content, limited to 8 KiB characters. |
@@ -140,7 +140,7 @@ const rawTenant = input.headers["x-tenant-id"];
 const tenant = Array.isArray(rawTenant) ? rawTenant[0] : rawTenant;
 ```
 
-#### Test Request JSON
+#### Test request JSON
 
 The rule editor's **Test request JSON** builds one script input without sending a real model-upstream request. `body` must be a JSON object; the remaining fields are optional:
 
@@ -175,9 +175,9 @@ Headers and the body can be supplied together:
 }
 ```
 
-The test does not call a model, but `api.fetch`, filesystem reads, and filesystem writes made by the script are real. Use dedicated test endpoints and files when the script has side effects.
+The test runs the script without calling a model, yet `api.fetch`, filesystem reads, and filesystem writes made by the script are real. Use dedicated test endpoints and files when the script has side effects.
 
-#### `api.fetch`: Network Access
+#### `api.fetch`: Network access
 
 ```js
 const response = await api.fetch(url, {
@@ -206,7 +206,7 @@ The returned object has this shape:
 }
 ```
 
-#### `api.fs`: Filesystem Access
+#### `api.fs`: Filesystem access
 
 Paths may be absolute, relative, or start with `~/...`. There is no path allowlist, but access is still limited by the operating-system permissions of the CCR process.
 
@@ -222,14 +222,14 @@ Paths may be absolute, relative, or start with `~/...`. There is no path allowli
 
 Each file read or write is limited to 1 MiB.
 
-#### `api.env` And `api.hash`
+#### `api.env` and `api.hash`
 
 | API | Returns | Description |
 | --- | --- | --- |
 | `api.env(name)` | `string \| undefined` | Read any environment variable visible to the CCR process. |
-| `api.hash(value)` | `number` | Return a stable unsigned 32-bit hash of the string form, useful for stable rollout buckets. It is not cryptographic. |
+| `api.hash(value)` | `number` | Return a stable unsigned 32-bit hash of the string form, useful for stable rollout buckets. Use it for bucketing only, not for security. |
 
-#### Return Values
+#### Return values
 
 Except for `undefined`, the script result must be JSON-serializable and at most 64 KiB.
 
@@ -251,7 +251,7 @@ A dynamic decision object supports:
 
 A string, number, or array is not a valid routing result. Unknown object fields do not participate in routing.
 
-##### Rewrite Shape
+##### Rewrite shape
 
 ```js
 {
@@ -267,14 +267,14 @@ A string, number, or array is not a valid routing result. Unknown object fields 
 | --- | --- | --- |
 | `set` | `value` | Set or create a field. This is the default when `operation` is omitted. |
 | `delete` | None | Delete a field or array index. |
-| `array-append` | `value` | Add an element to the end; start from an empty array when the current value is not an array. |
+| `array-append` | `value` | Add an element to the end. If the current value is already an array, append to it; otherwise CCR starts from an empty array. |
 | `array-prepend` | `value` | Add an element to the beginning. |
 | `array-remove` | `value` | Remove array elements that match `value`. |
 | `array-replace` | `match`, `value` | Replace array elements that match `match` with `value`. |
 
 Rewrite `value` and `match` properties must be JSON values. Unsafe path segments such as `__proto__`, `constructor`, and `prototype` are rejected. Scripts cannot rewrite authentication, cookie, host, content-length, connection-control, `x-auth-*`, `x-ccr-*`, and other protected headers.
 
-##### Fallback Shape
+##### Fallback shape
 
 ```js
 {
@@ -292,7 +292,7 @@ Rewrite `value` and `match` properties must be JSON values. Unsafe path segments
 
 `mode` is required. `models` is optional and defaults to `[]`; every entry must be a configured model selector. `retryCount` is optional and defaults to `0`; it must be an integer from 0 to 9999.
 
-#### Complete Example: Tenant Policy, Rollout, And Rewrites
+#### Complete example: tenant policy, rollout, and rewrites
 
 The following `enterprise-route.js` reads a tenant header, obtains policy from a local JSON file and an optional remote service, uses the session ID for stable rollout bucketing, and returns a model, request rewrites, and a fallback model chain:
 
@@ -376,7 +376,7 @@ return {
 
 The example's `policy.model` and `policy.fallbackModels` values must identify models already configured in CCR. Otherwise, the rule emits a diagnostic and is treated as a non-match.
 
-#### Saved Configuration And Runtime Limits
+#### Saved configuration and runtime limits
 
 The saved rule has the following shape. It is normally generated by the UI and does not need to be edited manually:
 
@@ -407,7 +407,7 @@ The saved rule has the following shape. It is normally generated by the UI and d
 
 Workers enforce heap, stack, pending-queue, and hard-timeout resource limits. Three failures for the same rule within 60 seconds open its circuit breaker for 30 seconds. A changed script file is recompiled and treated as a new script version for circuit-breaker accounting.
 
-Worker isolation is not an operating-system security sandbox. `api.fetch`, `api.fs`, and `api.env` have no allowlist and inherit the network, file, and environment access available to the CCR process. Run trusted scripts only.
+Worker isolation isolates script execution at the execution level; scripts still inherit the network, file, and environment access available to the CCR process. Run trusted scripts only.
 
 Legacy inline `source` continues to run. Selecting a script file for the rule and saving it migrates the rule to the local `file` shape above. Legacy `readPaths`, `permissions`, and static script-rule `rewrites` are no longer needed; return `model` or `rewrites` from the script when a request must be changed.
 
@@ -433,7 +433,7 @@ The value field is parsed as a common literal when possible: `true`, `false`, `n
 | `contains deep` | Recursively checks objects and arrays. Useful for searching `messages` and `tools`. |
 | `not contains` | The inverse of `contains`. |
 
-### Rewrite Request Parameters
+### Rewrite request parameters
 
 The **Rewrite request parameters** area starts with one `request.body.model` row. This is the common model-routing path: choose **Set**, use key `request.body.model`, and set the value to a target `provider/model` or Fusion model.
 
@@ -443,14 +443,14 @@ Click **Add parameter** to add more rewrite rows. The trash button removes a row
 | --- | --- | --- |
 | **Set** | key, value | Sets a request field, such as `request.body.model = provider/model` or `request.body.temperature = 0.2`. |
 | **Delete** | key | Deletes a request field. Deleting `request.header.x-test` removes that header; deleting `request.body.foo` removes that body field. |
-| **Append to array** | key, value | Appends the value to the target array. If the target is not an array, CCR starts from an empty array. |
+| **Append to array** | key, value | Appends the value to the target array. If the target is already an array, append to it; otherwise CCR starts from an empty array. |
 | **Prepend to array** | key, value | Prepends the value to the target array. |
 | **Remove from array** | key, value | Removes array elements equal to the value. |
 | **Replace in array** | key, match value, value | Replaces array elements matching **Match value** with the new value. |
 
 Rewrite values are also parsed as literals, so `0.2` becomes a number, `true` becomes a boolean, and `{"type":"web_search"}` becomes an object. Only `request.body.model` receives additional CCR model-selector normalization.
 
-### On Failure
+### On failure
 
 The dialog **On failure** control is the same control used by the page-level **Default on failure** setting. Choose **Off** to avoid fallback. Choose **Retry** to reveal **Retries**. Choose **Fallback targets** to reveal the **Fallback target** input and **Add** button. Added targets appear as tags with move up, move down, and remove buttons for ordering the fallback chain.
 
@@ -467,23 +467,23 @@ When a rule matches, its **On failure** setting is used. Requests that do not ma
 
 After saving, the rule appears in the list. Use request logs, especially `request model`, `resolved provider`, `resolved model`, and route reason, to verify that it matched.
 
-## Fallback Handling
+## Fallback handling
 
 Fallback is the failure strategy after a model or upstream request fails. Routing picks the first model; Fallback decides whether CCR should keep trying after the current target fails.
 
 The **Default on failure** control at the top of the Routing page is the global Fallback. Each rule also has **On failure**. When a rule matches, its rule-level Fallback overrides the global Fallback.
 
-## Fallback Modes
+## Fallback modes
 
 | Mode | Behavior |
 | --- | --- |
-| Off | Do not fallback; send the request once to the current model |
+| Off | Do not fall back; send the request once to the current model |
 | Retry | Retry the same model up to `Retries` times |
 | Fallback targets | Try the current model first, then switch through configured fallback models in order |
 
 Use **Retry** for transient timeout, rate-limit, or network failures. Use **Fallback targets** when the primary model or provider should fail over to another model or provider.
 
-## Failure Triggers
+## Failure triggers
 
 Network errors move to the next attempt. Status-code fallback depends on the mode:
 
@@ -496,9 +496,9 @@ Before moving to the next attempt, CCR waits for every fallback-triggering failu
 
 **Fallback targets** also switches on `4xx` because model-not-found, auth, or provider-side rejection errors may only affect the current target. If the fallback model works, the request can still succeed.
 
-## How To Configure
+## How to configure
 
-### Global Fallback
+### Global fallback
 
 Configure **Default on failure** at the top of the Routing page:
 
@@ -508,7 +508,7 @@ Configure **Default on failure** at the top of the Routing page:
 
 Global Fallback applies to routing rules that do not define their own Fallback.
 
-### Rule-Level Fallback
+### Rule-level fallback
 
 When adding or editing a routing rule, configure **On failure** for that rule.
 

@@ -1,13 +1,13 @@
 ---
 title: Server
 pageTitle: Server
-eyebrow: Detailed Configuration
+eyebrow: Detailed configuration
 lead: Configure the CCR gateway host, port, and Proxy mode for MITM interception and proxying into CCR.
 ---
 
-## Management And Gateway Addresses Are Separate
+## Management and gateway addresses are separate
 
-The Host/Port fields under **Server** configure the model gateway, not the browser management page:
+The Host/Port fields under **Server** configure the model gateway. The browser management page uses a separate address and port:
 
 | Distribution | Management entry | Model gateway |
 | --- | --- | --- |
@@ -17,7 +17,7 @@ The Host/Port fields under **Server** configure the model gateway, not the brows
 
 CLI `--host`/`--port` options configure management; this page configures the gateway. Docker internal listeners should not be published separately. See [Docker Deployment](../../guides/docker/).
 
-## Main Fields
+## Main fields
 
 | Field | Capability |
 | --- | --- |
@@ -28,7 +28,7 @@ CLI `--host`/`--port` options configure management; this page configures the gat
 
 Management tokens, CCR client API keys, and upstream credentials are separate. Gateway clients use keys created under **API Keys** and should never receive upstream provider credentials.
 
-## Start And Verify
+## Start and verify
 
 1. Add at least one provider and model.
 2. Create a client key under **API Keys**.
@@ -38,7 +38,7 @@ Management tokens, CCR client API keys, and upstream credentials are separate. G
 
 A reachable management UI does not prove the gateway is running. Docker returns `502` from `/health` until the gateway starts, and desktop/CLI can keep management available without usable models.
 
-## Proxy Mode
+## Proxy mode
 
 Proxy mode is the local proxy capability. When enabled, clients can send HTTP/HTTPS traffic to CCR. CCR uses MITM interception to identify and decrypt HTTPS requests, then proxies supported model requests into the CCR gateway path.
 
@@ -53,4 +53,4 @@ Proxy mode is the local proxy capability. When enabled, clients can send HTTP/HT
 | Proxy status | Shows whether the proxy service is running. |
 | Restart Proxy | Restarts the proxy service when proxy mode is enabled. |
 
-Proxy mode changes local networking and certificate trust and is primarily a desktop feature. Container deployments should normally point clients directly at the public CCR Nginx gateway instead of trying to change the host system proxy or install a host CA from inside the container.
+Proxy mode changes local networking and certificate trust and is primarily a desktop feature. Container deployments should normally point clients directly at the public CCR Nginx gateway; changing the host system proxy or installing a host CA from inside the container is not supported.

@@ -137,7 +137,8 @@ Claude Code · Codex · Grok CLI · ZCode · 兼容 API 客户端
 | **工具与扩展** | Fusion 模型；ToolHub；内置浏览器自动化；Chrome 登录态导入；wrapper / core gateway plugin；本地路由与虚拟模型 |
 | **访问与额度** | 独立的 CCR 客户端 Key，可设置有效期以及本地请求、Token 和图片限额 |
 | **日志与观测** | 请求 / 响应详情；最终供应商、模型与凭据；状态；耗时；Token；成本估算；工具调用；Agent 执行链路 |
-| **网络与接力** | 本地 HTTP / HTTPS 代理、可选 CA、网络捕获，以及通过微信 iLink、企业微信、Slack、Discord、Telegram、LINE、飞书和钉钉接力 Agent |
+| **AgentClaw 与接力** | 将本机 Agent 作为 OpenClaw 使用，并通过微信 iLink、企业微信、Slack、Discord、Telegram、LINE、飞书和钉钉接力 |
+| **网络** | 本地 HTTP / HTTPS 代理、可选 CA、网络捕获，以及系统 / 自定义代理模式 |
 
 ## 准备好后，继续深入
 
@@ -145,7 +146,13 @@ Claude Code · Codex · Grok CLI · ZCode · 兼容 API 客户端
 
 - [安装并启动 CCR](https://ccrdesk.top/guides/install/)
 - [配置供应商](https://ccrdesk.top/guides/provider/)
-- [了解路由与完整配置](https://ccrdesk.top/configuration/)
+- [了解智能路由](https://ccrdesk.top/routing/)
+- [使用 Fusion 增强模型](https://ccrdesk.top/fusion/)
+- [使用 ToolHub 管理工具](https://ccrdesk.top/toolhub/)
+- [了解完整配置](https://ccrdesk.top/configuration/)
+- [使用 AgentClaw 接入本机 Agent](https://ccrdesk.top/agentclaw/)
+- [一键导入供应商](https://ccrdesk.top/provider-import/)
+- [开发本地扩展](https://ccrdesk.top/extensions/)
 - [使用 CLI](https://ccrdesk.top/guides/cli/)
 - [通过 Docker 部署](https://ccrdesk.top/guides/docker/)
 - [排查常见问题](https://ccrdesk.top/troubleshooting/)

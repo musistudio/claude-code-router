@@ -1,20 +1,20 @@
 ---
 title: ToolHub
 pageTitle: ToolHub
-eyebrow: Detailed Configuration
+eyebrow: ToolHub
 lead: Collapse many MCP servers into one compact entry point so agents lazy-load task-specific tools and save context.
 ---
 
-## When To Use It
+## When to use it
 
 As your MCP setup grows, exposing every tool directly to an agent makes the eager tool list large and easier to misuse. ToolHub exposes one `ccr-toolhub` MCP server with two meta tools:
 
 - `tool_hub.resolve`: searches the available MCP tool catalog for the current task.
 - `tool_hub.invoke`: calls a real MCP tool that was selected for this task.
 
-Use ToolHub for tools that are not needed often but are still useful occasionally. It lazy-loads them only when a task actually needs them. The main value is saving context: large low-frequency tool catalogs do not have to stay in the agent's eager tool list, which reduces context use and the chance of selecting the wrong tool. Simple local code, file, or conversation tasks usually do not need ToolHub.
+Use ToolHub for tools that are useful occasionally but do not need to stay loaded for every task. It lazy-loads them only when a task actually needs them. The main value is saving context: large low-frequency tool catalogs stay out of the agent's eager tool list, which reduces context use and the chance of selecting the wrong tool. Simple local code, file, or conversation tasks usually do not need ToolHub.
 
-## How It Works
+## How it works
 
 1. Enable ToolHub in **Settings → ToolHub**.
 2. Select a configured model as the **Resolver model**. It reads the MCP tool catalog and chooses the tools needed for the task. Prefer `deepseek-v4-flash`, or another stable lightweight model in a similar flash-price tier.
@@ -24,7 +24,7 @@ Use ToolHub for tools that are not needed often but are still useful occasionall
 
 ToolHub combines MCP servers configured on the ToolHub page with compatible global Agent MCP servers from older configs, and excludes `ccr-toolhub` itself to avoid recursive calls.
 
-## Built-In Browser Automation
+## Built-in browser automation
 
 When ToolHub is enabled in CCR Desktop and **Built-in browser automation** is turned on, agents can use the desktop built-in browser for web tasks. You do not need to add a browser backend on the ToolHub page, and you do not need a separate API key; CCR connects to it through the local gateway authentication path.
 
@@ -46,7 +46,7 @@ Built-in browser automation is useful for tasks that need real browser state, su
 
 When a web flow needs login, verification codes, CAPTCHA, a human check, or manual confirmation, CCR shows the built-in browser window and displays the requested action in the top toolbar. After the user clicks **Done** or **Hide**, the agent receives the result and continues. Handoff waits support up to 10 minutes.
 
-### Chrome Login Import Extension
+### Chrome login import extension
 
 Built-in browser automation can also import login state for selected domains from system Chrome into CCR's in-app browser. This lets the agent reuse sites where you are already signed in to Chrome. It requires the unpacked Chrome extension in this repository: `extension/chrome`.
 
@@ -60,7 +60,7 @@ Install it:
 Import flow:
 
 1. When a task needs existing Chrome login state, the agent can request an import; the user can also click the key button in CCR's in-app browser toolbar.
-2. CCR creates a one-time import job and opens a confirmation page. If your default browser is not Chrome, copy the confirmation URL into Chrome with the extension installed.
+2. CCR creates a one-time import job and opens a confirmation page. Open the confirmation URL in Chrome with the extension installed.
 3. Review the requested domains on the confirmation page, then click **Confirm and Import**.
 4. The Chrome extension reads cookies and localStorage for those domains and submits them to CCR. After it completes, the agent can continue the task in the built-in browser.
 
@@ -80,7 +80,7 @@ The extension reads only the domains listed in the CCR import job. It does not e
 | MCP servers | Backend tool sources. Each server needs a unique name plus transport, command or URL, environment variables, headers, and timeouts. |
 | Import JSON | Imports common MCP JSON shapes. Supports a root object, array, `mcpServers`, or `mcp_servers`. |
 
-## Add MCP Servers
+## Add MCP servers
 
 ### stdio
 
@@ -102,7 +102,7 @@ Remote MCP servers need a URL. Authentication can use:
 
 If a remote server starts slowly or has long-running calls, adjust that server's **Startup timeout** or **Request timeout**.
 
-## JSON Example
+## JSON example
 
 The desktop app's SQLite config is the effective source, so prefer editing through the UI. The fields below are useful for backups, migration, or troubleshooting:
 
@@ -161,7 +161,7 @@ The import dialog also accepts common MCP JSON:
 - Agent cannot see ToolHub: make sure ToolHub is enabled and at least one backend MCP server is configured or **Built-in browser automation** is turned on, then reopen Claude Code or Codex from CCR.
 - Missing resolver model or API key: select a configured resolver model and confirm the provider credential works.
 - The agent cannot use built-in browser automation: make sure you are using CCR Desktop, turned on **Built-in browser automation** in **Settings → ToolHub**, and reopened Claude Code or Codex from CCR. CLI, server deployments, and pure web environments do not include this built-in capability.
-- Chrome login import confirmation keeps waiting for the extension: make sure the unpacked `extension/chrome` extension is loaded in Chrome and has site access for the target domains. If your default browser is not Chrome, copy the confirmation URL into Chrome manually.
+- Chrome login import confirmation keeps waiting for the extension: make sure the unpacked `extension/chrome` extension is loaded in Chrome and has site access for the target domains. Open the confirmation URL in Chrome manually.
 - No tools are resolved: confirm the MCP server can list tools, improve tool names and descriptions, or increase **Max tools**.
 - Calls time out: check ToolHub **Timeout ms** and the backend server request/startup timeouts.
 - Import fails: validate JSON, avoid duplicate server names, make sure `stdio` entries have a command and remote entries have a URL.

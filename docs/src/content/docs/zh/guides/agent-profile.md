@@ -1,8 +1,8 @@
 ---
-title: 接入 Agent配置
-pageTitle: 接入 Agent配置
+title: 接入 Agent 配置
+pageTitle: 接入 Agent 配置
 eyebrow: 快速开始
-lead: 让 Claude Code、Codex、Grok CLI、Kimi CLI、ZCode 等 Agent 使用 CCR 的供应商、路由和模型选择配置。
+lead: 供应商配置完成后，用本页把 Claude Code、Codex、Grok CLI、Kimi CLI、ZCode 等 Agent 接入 CCR 的供应商、路由和模型选择。
 ---
 
 ## 通用建议
@@ -13,13 +13,13 @@ lead: 让 Claude Code、Codex、Grok CLI、Kimi CLI、ZCode 等 Agent 使用 CCR
 
 ## Claude Code
 
-在 **Agent配置** 中选择 Claude Code，设置模型、小型快速模型和设置文件，然后点击应用。
+在 **Agent 配置** 中选择 Claude Code，设置模型、小型快速模型和设置文件，然后点击应用。
 
 从 CCR 打开 Claude Code 后，发一次请求到请求日志里验证。
 
 ## Codex
 
-在 **Agent配置** 中选择 Codex，确认供应商 ID、供应商名称、模型和配置文件。
+在 **Agent 配置** 中选择 Codex，确认供应商 ID、供应商名称、模型和配置文件。
 
 需要特定 CLI 时再填写 Codex CLI path 和 Codex home。
 
@@ -33,7 +33,7 @@ lead: 让 Claude Code、Codex、Grok CLI、Kimi CLI、ZCode 等 Agent 使用 CCR
 
 ## ZCode
 
-ZCode 主要关注模型、供应商 ID、供应商名称，以及是否从 CCR 启动。它走 App surface，不需要 Codex CLI 的路径字段。
+ZCode 主要关注模型、供应商 ID、供应商名称，以及是否从 CCR 启动。它以 App 形态运行，不需要 Codex CLI 的路径字段。
 
 ## 复用本机已登录的 Agent
 

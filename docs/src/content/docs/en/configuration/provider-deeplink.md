@@ -1,11 +1,11 @@
 ---
-title: One click import
-pageTitle: One click import
-eyebrow: Detailed Configuration
-lead: Quickly add common model providers, review the details, and save them without filling everything in by hand.
+title: One-click provider import
+pageTitle: One-click provider import
+eyebrow: Import
+lead: "Import a model provider into CCR with a preset button or a ccr://provider deeplink: CCR previews the config before anything is saved. Providers can also embed a button or publish a manifest so users can import from a webpage."
 ---
 
-## One-Click Import
+## One-click import
 
 Choose a provider below to get started. CCR shows what will be added before saving it; when using a custom entry point, make sure the source is one you trust.
 
@@ -104,7 +104,7 @@ Choose a provider below to get started. CCR shows what will be added before savi
   </a>
 </div>
 
-## Embeddable Button Component
+## Embeddable button component
 
 CCR also ships a framework-free button script that providers can embed on their own webpages so users can import that provider into CCR with one click. The script registers Web Components automatically.
 
@@ -152,7 +152,7 @@ For larger configs, pass a manifest:
 </script>
 ```
 
-### Render Parameters
+### Render parameters
 
 `CCRProviderButtons.render(target, options)` and `<ccr-provider-button>` support the same parameter set. Parameter names match the `ccr://provider` protocol:
 
@@ -200,7 +200,7 @@ For larger configs, put JSON in `payload`. The value can be URL-encoded JSON or 
 ccr://provider?payload=%7B%22name%22%3A%22Example%20AI%22%2C%22base_url%22%3A%22https%3A%2F%2Fapi.example.com%2Fv1%22%2C%22models%22%3A%5B%22example-chat%22%5D%7D
 ```
 
-## Manifest Import
+## Manifest import
 
 Providers can also pass a manifest URL:
 
@@ -282,7 +282,7 @@ Complete manifest example:
 }
 ```
 
-## Supported Parameters
+## Supported parameters
 
 | Parameter | Description |
 | --- | --- |

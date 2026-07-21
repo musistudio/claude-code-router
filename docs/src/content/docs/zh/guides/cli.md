@@ -2,7 +2,7 @@
 title: CLI 安装与命令参考
 pageTitle: CLI 安装与命令参考
 eyebrow: 快速开始
-lead: 使用 npm 版 CCR 在开发机或无桌面服务器上运行管理界面、模型网关，并按 Agent 配置启动本机工具。
+lead: 面向不使用桌面应用的部署：通过 npm 安装 CCR CLI，管理后台服务、网关端口与凭据，并按 Agent 配置启动本机 Agent。
 ---
 
 ## CLI 与桌面版命令的区别
@@ -11,8 +11,8 @@ CCR 有两个相关命令：
 
 | 命令 | 来源 | 主要用途 |
 | --- | --- | --- |
-| `ccr` | npm 包 `@musistudio/claude-code-router` | 不依赖 Electron，启动浏览器管理界面、模型网关和 Agent 配置。 |
-| `ccr-app` | CCR 桌面应用 | 桌面版生成的配置启动器；Agent配置卡片复制的命令使用这个名称。 |
+| `ccr` | npm 包 `@musistudio/claude-code-router` | 不依赖 Electron，提供浏览器管理界面和模型网关，并按配置启动 Agent。 |
+| `ccr-app` | CCR 桌面应用 | 桌面版生成的配置启动器；Agent 配置卡片复制的命令使用这个名称。 |
 
 两个发行版会读取同一套本机配置目录，但不要把命令名混用。需要托盘、桌面通知、自动更新和桌面专属浏览器集成时，使用桌面版；需要无桌面部署或由进程管理器托管时，使用 npm CLI。
 
@@ -55,7 +55,7 @@ ccr ui --no-open
 
 1. 添加供应商和至少一个模型。
 2. 在 **API 密钥** 页面创建用于访问网关的 CCR 客户端 Key。
-3. 按需要设置默认模型、路由规则和 Fallback。
+3. 按需要设置默认模型、路由规则和回退。
 4. 在 **服务** 页面确认网关已经运行。
 5. 把客户端 Base URL 指向界面显示的网关地址。
 
@@ -125,7 +125,7 @@ ccr start --host 127.0.0.1 --port 3458
 
 ## 按 Agent 配置启动
 
-先在 **Agent配置** 中创建并启用配置，然后使用：
+先在 **Agent 配置** 中创建并启用配置，然后使用：
 
 ```text
 ccr <配置名称或 ID> [cli|app] [-- <Agent 参数>]
@@ -196,7 +196,7 @@ ccr profile-id -- --help
 
 管理服务可以在没有可用模型网关时运行。添加供应商和模型、创建 CCR 客户端 Key，然后从 **服务** 页面启动或重启网关。使用 `ccr serve` 查看启动错误。
 
-### 实际管理端口不是 3458
+### 管理端口发生偏移
 
 3458 已被占用，CCR 使用了后续可用端口。以命令打印的 URL 为准；需要固定端口时，先停止冲突进程。
 
@@ -215,6 +215,6 @@ ccr profile-id -- --help
 ## 相关页面
 
 - [安装并启动 CCR](../install/)
-- [Agent配置](../../configuration/profile/)
+- [Agent 配置](../../configuration/profiles/)
 - [服务配置](../../configuration/server/)
 - [Docker 部署](../docker/)

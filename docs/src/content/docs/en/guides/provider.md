@@ -1,20 +1,20 @@
 ---
-title: Add A Provider
-pageTitle: Add A Provider
-eyebrow: Quick Start
-lead: Add an upstream model service, then run protocol, model, and usage checks before saving.
+title: Add a provider
+pageTitle: Add a provider
+eyebrow: Quick start
+lead: "Add an upstream model provider to CCR: choose a protocol, enter credentials and models, and run protocol probing, model connectivity, and account usage checks before saving."
 ---
 
-## Add The Provider
+## Add the provider
 
 1. Open **Providers** and click **Add Provider**.
 2. Choose a built-in preset under **Preset providers**. Presets fill common Base URLs, protocols, and icons automatically.
 3. If the service is not listed, choose **Other / custom API endpoint**.
 4. Fill in **Name**, **Base URL**, **Protocol**, **API Key**, and **Models**.
 
-## Choose A Protocol
+## Choose a protocol
 
-| Protocol | Best For |
+| Protocol | Best for |
 | --- | --- |
 | OpenAI Chat Completions | Most OpenAI-compatible services |
 | OpenAI Responses | Services that support the Responses API |
@@ -23,7 +23,7 @@ lead: Add an upstream model service, then run protocol, model, and usage checks 
 
 If you are unsure, run protocol probing in the app first, then use the model connectivity check to confirm.
 
-## Check These Before Saving
+## Run these checks before saving
 
 1. **Protocol probing**: confirm which protocols the Base URL supports.
 2. **Model connectivity check**: send test requests to one or two models.
@@ -31,7 +31,7 @@ If you are unsure, run protocol probing in the app first, then use the model con
 
 Save the provider after these checks pass.
 
-## Multiple Keys And Usage Panel
+## Multiple keys and the usage panel
 
 For teams or high-frequency usage, add multiple credentials in the provider form and configure priority, weight, and limits.
 

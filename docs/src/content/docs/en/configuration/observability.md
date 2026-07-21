@@ -1,24 +1,24 @@
 ---
-title: Logs & Observability
-pageTitle: Logs & Observability
-eyebrow: Detailed Configuration
-lead: Configure Request logs and Agent observability to inspect request details, execution traces, tool calls, tool results, and performance.
+title: Logs and observability
+pageTitle: Logs and observability
+eyebrow: Detailed configuration
+lead: "This page is the configuration reference for logging and observability: configure Request logs and Agent observability to inspect request details, execution traces, tool calls, tool results, and performance. For first-run verification of the pipeline, see [Enable logging and observability](../../guides/observability/)."
 ---
 
-## How To Enable
+## How to enable
 
 Open **Settings → Logs & Observability**:
 
 1. Enable **Request logs** to record same-day CCR request details.
-2. Enable **Agent observability** to populate the observability panel with agent execution traces.
+2. Enable **Agent observability** to populate the Observability page with agent execution traces.
 
-## View The Observability Panel
+## View the Observability page
 
-Enable **Agent observability** when you need to inspect an agent's execution trace and performance. The panel shows which step called which tool, what result the tool returned, how long each step took, and where an agent may have stalled or failed.
+Enable **Agent observability** when you need to inspect an agent's execution trace and performance. The Observability page shows which step called which tool, what result the tool returned, how long each step took, and where an agent may have stalled or failed.
 
 It helps diagnose agents getting stuck, unexpected tool results, slow steps, or context flow that does not match expectations. Request logs provide the request body, response body, and error details for individual model requests.
 
-## Request Logs
+## Request logs
 
 Request logs record model request details passing through CCR, including request time, request ID, client, path, requested model, resolved provider and model, credential, status code, success state, duration, tokens, cost estimate, request headers, request body, response headers, response body, and errors.
 

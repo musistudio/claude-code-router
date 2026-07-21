@@ -1,23 +1,15 @@
 ---
 import DocPage from "../../../components/DocPage.astro";
+import { pageKeyFromSlug } from "../../../docs-structure";
 import { enGuideDocs, sectionSlugFromPath } from "../../../section-docs";
 
 export function getStaticPaths() {
-  const activeLabels: Record<string, string> = {
-    install: "Install And Start CCR",
-    cli: "CLI Installation And Reference",
-    docker: "Docker Deployment",
-    provider: "Add A Provider",
-    "agent-profile": "Connect Agent Config",
-    observability: "Logs & Observability",
-  };
-
   return Object.entries(enGuideDocs).map(([filePath, mod]) => {
     const slug = sectionSlugFromPath(filePath);
 
     return {
       params: { slug },
-      props: { mod, activeSidebarItem: activeLabels[slug] },
+      props: { mod, activeSidebarItem: pageKeyFromSlug("guides", "en", slug) },
     };
   });
 }

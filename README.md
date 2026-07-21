@@ -137,7 +137,8 @@ Claude Code · Codex · Grok CLI · ZCode · Compatible API clients
 | **Tools & extensions** | Fusion models; ToolHub; built-in browser automation; Chrome login-state import; wrapper and core gateway plugins; local routes and virtual models |
 | **Access & quotas** | Separate CCR client keys with expiration and local request, token, and image limits |
 | **Observability** | Request and response details; resolved provider, model, and credential; status; latency; tokens; estimated cost; tool calls; agent traces |
-| **Network & relay** | Local HTTP / HTTPS proxy, optional CA, network capture, and bot relay through Weixin iLink, WeCom, Slack, Discord, Telegram, LINE, Feishu, and DingTalk |
+| **AgentClaw & relay** | Use a local agent as OpenClaw, plus bot relay through Weixin iLink, WeCom, Slack, Discord, Telegram, LINE, Feishu, and DingTalk |
+| **Network** | Local HTTP / HTTPS proxy, optional CA, network capture, and system/custom proxy modes |
 
 ## Go deeper when you are ready
 
@@ -145,7 +146,13 @@ The complete documentation lives at **[ccrdesk.top](https://ccrdesk.top/)**.
 
 - [Install and launch CCR](https://ccrdesk.top/en/guides/install/)
 - [Configure providers](https://ccrdesk.top/en/guides/provider/)
-- [Explore routing and configuration](https://ccrdesk.top/en/configuration/)
+- [Explore routing](https://ccrdesk.top/en/routing/)
+- [Enhance models with Fusion](https://ccrdesk.top/en/fusion/)
+- [Manage tools with ToolHub](https://ccrdesk.top/en/toolhub/)
+- [Explore detailed configuration](https://ccrdesk.top/en/configuration/)
+- [Use AgentClaw with local agents](https://ccrdesk.top/en/agentclaw/)
+- [Import providers in one click](https://ccrdesk.top/en/provider-import/)
+- [Build local extensions](https://ccrdesk.top/en/extensions/)
 - [Use the CLI](https://ccrdesk.top/en/guides/cli/)
 - [Deploy with Docker](https://ccrdesk.top/en/guides/docker/)
 - [Troubleshoot common issues](https://ccrdesk.top/en/troubleshooting/)

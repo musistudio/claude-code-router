@@ -1,7 +1,7 @@
 ---
 title: 扩展机制
 pageTitle: 扩展机制
-eyebrow: 详细配置
+eyebrow: 扩展
 lead: 了解 CCR 扩展如何加载、能注册哪些能力，并从零创建、安装和调试自己的扩展。
 ---
 
@@ -11,8 +11,8 @@ CCR 的扩展分为两层：
 
 | 类型 | 配置位置 | 运行位置 | 适合做什么 |
 | --- | --- | --- | --- |
-| Wrapper plugin | `plugins` | CCR Desktop 的 Electron wrapper 进程 | 注册本地 HTTP 路由、启动本地后端、拦截代理流量、添加内置浏览器入口、连接 Provider 账号用量 |
-| Core gateway plugin | `providerPlugins` 或 `plugins[].coreGateway.providerPlugins` | core gateway runtime | 扩展上游 Provider、认证方式或 core gateway 内部能力 |
+| Wrapper plugin | `plugins` | CCR Desktop 的 Electron wrapper 进程 | 注册本地 HTTP 路由、启动本地后端、拦截代理流量、添加内置浏览器入口、连接供应商账号用量 |
+| Core gateway plugin | `providerPlugins` 或 `plugins[].coreGateway.providerPlugins` | core gateway runtime | 扩展上游供应商、认证方式或 core gateway 内部能力 |
 
 多数用户自定义扩展应从 Wrapper plugin 开始。它能拿到 CCR 配置、私有数据目录和日志对象，并通过 `ctx` 注册能力。
 
@@ -71,7 +71,7 @@ module.exports = async function setup(ctx) {
 | `ctx.registerProxyRoute(route)` | 把代理模式捕获到的某个 host/path 转发到扩展后端或其他 upstream |
 | `ctx.registerApp(app)` | 在内置浏览器应用列表里添加入口 |
 | `ctx.openSqliteStore(options)` | 在扩展数据目录打开 SQLite store |
-| `ctx.registerProviderAccountConnector(connector)` | 注册 Provider 账号余额或额度读取器 |
+| `ctx.registerProviderAccountConnector(connector)` | 注册供应商账号余额或额度读取器 |
 | `ctx.registerCoreGatewayProviderPlugin(plugin)` | 向 core gateway 注入 provider plugin |
 | `ctx.registerCoreGatewayVirtualModelProfile(profile)` | 向 core gateway 注入虚拟模型配置 |
 
@@ -194,7 +194,7 @@ CCR 的运行配置存储在 SQLite 中。请通过 UI 添加扩展；旧版 JSO
 }
 ```
 
-保存扩展配置后需要重启网关。配置数据库位置见 [配置数据库位置](/configuration/config-file/)。
+保存扩展配置后需要重启网关。配置数据库位置见 [配置数据库位置](/configuration/configuration-file/)。
 
 本地目录选择器会按顺序识别这些入口信息：
 

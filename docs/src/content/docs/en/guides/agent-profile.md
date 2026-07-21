@@ -1,11 +1,11 @@
 ---
 title: Connect Agent Config
 pageTitle: Connect Agent Config
-eyebrow: Quick Start
-lead: Let Claude Code, Codex, Grok CLI, Kimi CLI, ZCode, and other agents use CCR's providers, routing, and model selection.
+eyebrow: Quick start
+lead: After connecting a provider, use this page to point Claude Code, Codex, Grok CLI, Kimi CLI, ZCode, and other agents at CCR's providers, routing, and model selection.
 ---
 
-## General Guidance
+## General guidance
 
 - During trial, prefer **Only opened from CCR** so only agents launched from CCR are affected.
 - After it is stable, consider **System default** if you want the agent's default config changed.
@@ -33,8 +33,8 @@ Choose Kimi CLI, select a default model and one or more available CCR models, th
 
 ## ZCode
 
-ZCode mainly uses model, Provider ID, Provider Name, and whether it is launched from CCR. It uses the App surface and does not need Codex CLI path fields.
+ZCode mainly uses model, Provider ID, Provider Name, and whether it is launched from CCR. It launches as an app rather than a CLI and does not need Codex CLI path fields.
 
-## Reuse A Locally Logged-In Agent
+## Reuse a locally logged-in agent
 
 If Claude Code, Codex, Grok CLI, Kimi CLI, or ZCode is already logged in on this machine, import it as a **Local Agent Provider** from **Providers** to reuse the existing authorization without applying for another key. Kimi CLI imports both managed OAuth logins and API-key providers from `~/.kimi-code/config.toml`.

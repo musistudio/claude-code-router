@@ -1,11 +1,11 @@
 ---
-title: Claude Code Router Quick Start
-pageTitle: Quick Start
-eyebrow: Getting Started
-lead: Start from installation, connect a provider, let agents send requests through CCR, and confirm the path through logs and observability.
+title: Claude Code Router quick start
+pageTitle: Quick start
+eyebrow: Getting started
+lead: "The first-run path for CCR: install and start the service, connect a provider, point an agent at the CCR gateway, then confirm requests in logs and on the Observability page."
 ---
 
-## Install And Start CCR
+## Install and start CCR
 
 CCR is available as a desktop app, a Node.js 22+ npm CLI, and a single-entrypoint Docker deployment.
 
@@ -15,22 +15,22 @@ CCR is available as a desktop app, a Node.js 22+ npm CLI, and a single-entrypoin
 | npm CLI | `ccr ui` / `ccr serve` | `http://127.0.0.1:3458` | `http://127.0.0.1:3456` |
 | Docker | `docker compose up -d --build` | Shared `http://127.0.0.1:3458` | Shared Nginx endpoint |
 
-Use the [installation page](install/) to choose a distribution. See the [CLI reference](cli/) for terminal commands and [Docker Deployment](docker/) for container ports, authentication, persistence, and upgrades.
+Use the [installation page](install/) to choose a distribution. See the [CLI reference](cli/) for terminal commands and [Docker deployment](docker/) for container ports, authentication, persistence, and upgrades.
 
-## Add A Provider
+## Add a provider
 
 A provider is the upstream model service CCR forwards requests to, such as OpenRouter, DeepSeek, Z.AI, or any service compatible with the OpenAI, Anthropic, or Gemini protocols.
 
-### Add The Provider
+### Add the provider
 
 1. Open **Providers** and click **Add Provider**.
 2. Choose a built-in preset under **Preset providers**. Presets fill common Base URLs, protocols, and icons automatically.
 3. If the service is not listed, choose **Other / custom API endpoint**.
 4. Fill in **Name**, **Base URL**, **Protocol**, **API Key**, and **Models**.
 
-### Choose A Protocol
+### Choose a protocol
 
-| Protocol | Best For |
+| Protocol | Best for |
 | --- | --- |
 | OpenAI Chat Completions | Most OpenAI-compatible services |
 | OpenAI Responses | Services that support the Responses API |
@@ -39,7 +39,7 @@ A provider is the upstream model service CCR forwards requests to, such as OpenR
 
 If you are unsure, run protocol probing in the app first, then use the model connectivity check to confirm.
 
-### Check These Before Saving
+### Run these checks before saving
 
 1. **Protocol probing**: confirm which protocols the Base URL supports.
 2. **Model connectivity check**: send test requests to one or two models.
@@ -47,7 +47,7 @@ If you are unsure, run protocol probing in the app first, then use the model con
 
 Save the provider after these checks pass.
 
-### Multiple Keys And Usage Panel
+### Multiple keys and the usage panel
 
 For teams or high-frequency usage, add multiple credentials in the provider form and configure priority, weight, and limits. After saving, filter request logs by credential to verify rotation.
 
@@ -55,7 +55,7 @@ If you want the overview to show balance or remaining quota, open the provider's
 
 ## Connect Agent Config
 
-Agent Config lets Claude Code, Codex, Grok CLI, ZCode, and other agents use CCR's providers, routing, and model selection.
+Agent Config lets Claude Code, Codex, OpenCode, Grok CLI, Kimi CLI, ZCode, and other agents use CCR's providers, routing, and model selection.
 
 General guidance:
 
@@ -77,31 +77,14 @@ Choose Grok CLI and select a default model, then run the copied `ccr-app <profil
 
 ### ZCode
 
-ZCode mainly uses model, Provider ID, Provider Name, and whether it is launched from CCR. It uses the App surface and does not need Codex CLI path fields.
+ZCode mainly uses model, Provider ID, Provider Name, and whether it is launched from CCR. It launches as an app rather than a CLI and does not need Codex CLI path fields.
 
-### Reuse A Locally Logged-In Agent
+### Reuse a locally logged-in agent
 
-If Claude Code, Codex, Grok CLI, or ZCode is already logged in on this machine, import it as a **Local Agent Provider** from **Providers** to reuse the existing authorization without applying for another key.
+If Claude Code, Codex, OpenCode, Grok CLI, Kimi CLI, or ZCode is already logged in on this machine, import it as a **Local Agent Provider** from **Providers** to reuse the existing authorization without applying for another key.
 
-## Logs & Observability
+## Logs and observability
 
-### Enable The Switches
+Open **Settings → Logs & Observability** and enable **Request logs** and **Agent observability**, then send one request to verify: request logs record the request body, response body, resolved model, and errors of each model request, and the Observability page shows the agent's execution trace, tool calls, and timing.
 
-Open **Settings → Logs & Observability**:
-
-1. Enable **Request logs**.
-2. Enable **Agent observability**.
-
-### View The Observability Panel
-
-The observability panel is for inspecting an agent's execution trace and performance: when each step happened, which tool it called, what result the tool returned, how long it took, whether it failed, and how the following steps continued.
-
-It helps diagnose stuck agents, unexpected tool results, slow steps, or context flow that does not match expectations. Request logs provide request bodies, response bodies, and error details for individual model requests.
-
-### Request Logs
-
-Request logs record model request details passing through CCR, including request time, request ID, client, path, requested model, final provider and model, credential, status code, duration, tokens, cost estimate, request body, response body, and errors.
-
-The Logs page supports filtering by status, provider, model, credential, request ID, model name, request body, or response body. A single record shows the main request and response fields, including `request model`, `resolved provider`, `resolved model`, status code, response body, errors, duration, tokens, and cost estimate.
-
-Regular request logs are kept locally for the current day. When the local date changes, the next request-log read or write cleans up the previous day's regular logs.
+See [Enable logging and observability](guides/observability/) for the full first-run verification steps, and the [logs and observability configuration reference](configuration/observability/) for all switches and page capabilities.

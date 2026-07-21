@@ -1,8 +1,8 @@
 ---
-title: 日志&观测
-pageTitle: 日志&观测
+title: 日志与可观测性
+pageTitle: 日志与可观测性
 eyebrow: 详细配置
-lead: 在设置中开启请求日志和 Agent 观测，查看请求明细，并分析 Agent 的执行链路和性能。
+lead: 本页是日志与观测相关开关和面板能力的配置参考：在设置中开启请求日志和 Agent 观测，查看请求明细，并分析 Agent 的执行链路和性能。首次接入后验证链路是否生效，见 [开启日志与观测](../../guides/observability/)。
 ---
 
 ## 开启方式

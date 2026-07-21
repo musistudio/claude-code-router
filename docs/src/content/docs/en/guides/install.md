@@ -1,11 +1,11 @@
 ---
-title: Install And Start CCR
-pageTitle: Install And Start CCR
-eyebrow: Quick Start
-lead: Choose the desktop app, npm CLI, or Docker for the deployment, and distinguish the management address from the model gateway address.
+title: Install and start CCR
+pageTitle: Install and start CCR
+eyebrow: Quick start
+lead: Choose among the desktop app, npm CLI, and Docker distributions, complete installation and first startup, and verify the management UI and model gateway addresses. The CLI requires Node.js 22 or newer.
 ---
 
-## Choose A Distribution
+## Choose a distribution
 
 | Distribution | Best for | Entry | Default management address | Default gateway address |
 | --- | --- | --- | --- | --- |
@@ -13,9 +13,9 @@ lead: Choose the desktop app, npm CLI, or Docker for the deployment, and disting
 | npm CLI | Terminal, SSH, no Electron, external process supervisors | `ccr` | `http://127.0.0.1:3458` | `http://127.0.0.1:3456` |
 | Docker | Persistent servers and container operations | Nginx | Shared public endpoint | `http://127.0.0.1:3458` with the default mapping |
 
-In desktop/CLI deployments, management and the model gateway do not use the same port. Do not use CLI management port `3458` as the default model gateway. Docker intentionally combines both through one Nginx endpoint.
+In desktop/CLI deployments, management and the model gateway use different ports. CLI management uses `3458` by default, while the model gateway uses `3456`. Docker intentionally combines both through one Nginx endpoint.
 
-## Install The Desktop App
+## Install the desktop app
 
 1. Open [GitHub Releases](https://github.com/musistudio/claude-code-router/releases).
 2. Download `.dmg`/`.zip` for macOS, `.exe` for Windows, or `.AppImage` for Linux.
@@ -24,7 +24,7 @@ In desktop/CLI deployments, management and the model gateway do not use the same
 
 When Server shows Running, the model gateway defaults to `http://127.0.0.1:3456`. Enable automatic startup under Server if the gateway should start whenever the app opens.
 
-## Install The npm CLI
+## Install the npm CLI
 
 Node.js 22 or newer is required:
 
@@ -33,7 +33,7 @@ npm install -g @musistudio/claude-code-router
 ccr ui
 ```
 
-`ccr ui` starts a background service and opens the browser. Use `ccr ui --no-open` on a headless host or `ccr serve --no-open` under a process supervisor. See [CLI Installation And Reference](../cli/) for all commands and profile launches.
+`ccr ui` starts a background service and opens the browser. Use `ccr ui --no-open` on a headless host or `ccr serve --no-open` under a process supervisor. See the [CLI installation and reference](../cli/) for all commands and profile launches.
 
 ## Use Docker
 
@@ -43,9 +43,9 @@ From a source checkout:
 docker compose up -d --build
 ```
 
-Open <http://127.0.0.1:3458>. Docker publishes one Nginx endpoint shared by management and the gateway. Add a provider/model, create a CCR client key, and start the gateway under Server. See [Docker Deployment](../docker/) for ports, authentication, persistence, backups, and remote access.
+Open <http://127.0.0.1:3458>. Docker publishes one Nginx endpoint shared by management and the gateway. Add a provider/model, create a CCR client key, and start the gateway under Server. See [Docker deployment](../docker/) for ports, authentication, persistence, backups, and remote access.
 
-## Verify The Installation
+## Verify the installation
 
 After configuring a provider, model, and CCR client key:
 
@@ -56,7 +56,7 @@ After configuring a provider, model, and CCR client key:
 
 A reachable management UI does not prove that the model gateway is usable. Docker `/health` returning `502` is expected before a provider/model has been configured.
 
-## Data Locations
+## Data locations
 
 | Distribution | Configuration location |
 | --- | --- |

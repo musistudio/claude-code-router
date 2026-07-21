@@ -1,9 +1,10 @@
 ---
 import "../styles/global.css";
 import {
+  ArrowLeft,
+  ArrowRight,
   BookOpen,
   ChevronDown,
-  ChevronRight,
   Download,
   Github,
   List,
@@ -15,8 +16,13 @@ import {
   WandSparkles,
 } from "lucide-astro";
 
+import { enToZhPath, zhToEnPath } from "../docs-structure";
+
 const {
   title = "Documentation",
+  docTitle,
+  isHome = false,
+  description,
   htmlLang = "zh-CN",
   locale = "zh",
   languageLabel = "中文",
@@ -27,11 +33,12 @@ const {
   navItems = ["Documentation", "Guides", "API reference", "Changelog"],
   sidebarTree = [],
   sidebarGroups = [],
-  expandableSidebarItems = [],
-  sidebarChildren = {},
   sidebarLinks = {},
   tocTitle = "On this page",
   tocItems = [],
+  prevPage,
+  nextPage,
+  editUrl,
   ui = {
     searchLabel: "Search docs",
     searchPlaceholder: "Search...",
@@ -65,10 +72,43 @@ const absoluteHref = (href) => {
 
   return new URL(resolvedHref, Astro.site).toString();
 };
+const ensureTrailingSlash = (path) => {
+  if (!path) return "/";
+  return path.endsWith("/") ? path : `${path}/`;
+};
+const basePath = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+const rawCurrentPath = ensureTrailingSlash(Astro.url.pathname || "/");
+const currentPath =
+  basePath !== "/" && rawCurrentPath.startsWith(basePath)
+    ? ensureTrailingSlash(`/${rawCurrentPath.slice(basePath.length)}`)
+    : rawCurrentPath;
+const toEnglishPath = (path) => {
+  const normalizedPath = ensureTrailingSlash(path);
+
+  if (normalizedPath === "/") return "/en/";
+  if (normalizedPath.startsWith("/en/")) return normalizedPath;
+  if (zhToEnPath[normalizedPath]) return zhToEnPath[normalizedPath];
+
+  return "/en/";
+};
+const toChinesePath = (path) => {
+  const normalizedPath = ensureTrailingSlash(path);
+
+  if (normalizedPath === "/" || !normalizedPath.startsWith("/en/")) return normalizedPath;
+  if (normalizedPath === "/en/") return "/";
+  if (enToZhPath[normalizedPath]) return enToZhPath[normalizedPath];
+
+  return ensureTrailingSlash(normalizedPath.slice("/en".length));
+};
+const languageHref = (option) => {
+  if (option.locale === "en") return toEnglishPath(currentPath);
+  if (option.locale === "zh") return toChinesePath(currentPath);
+  return option.href;
+};
 const resolvedLanguageOptions = languageOptions.map((option) => ({
   ...option,
-  href: withBase(option.href),
-  absoluteHref: absoluteHref(option.href),
+  href: withBase(languageHref(option)),
+  absoluteHref: absoluteHref(languageHref(option)),
 }));
 const resolvedNavItems = navItems.map((item, index) => {
   const navItem = typeof item === "string" ? { label: item, href: "#" } : item;
@@ -88,62 +128,21 @@ const sidebarIcons = {
   wand: WandSparkles,
   pen: PenLine,
 };
-const searchEntryKeys = new Set();
-const searchEntries = [];
-const addSearchEntry = (entry) => {
-  const label = String(entry.label ?? "").trim();
-  const href = String(entry.href ?? "").trim();
-
-  if (!label || !href || href === "#") return;
-
-  const resolvedHref = withBase(href);
-  const key = `${label}\n${resolvedHref}`;
-
-  if (searchEntryKeys.has(key)) return;
-
-  searchEntryKeys.add(key);
-  searchEntries.push({
-    label,
-    href: resolvedHref,
-    section: String(entry.section ?? "").trim(),
-  });
-};
-
-if (sidebarTree.length > 0) {
-  for (const section of sidebarTree) {
-    addSearchEntry({ label: section.label, href: section.href, section: section.label });
-
-    for (const group of section.groups ?? []) {
-      for (const item of group.items ?? []) {
-        addSearchEntry({ label: item.label, href: item.href, section: section.label });
-
-        for (const child of item.children ?? []) {
-          addSearchEntry({ label: child.label, href: child.href, section: `${section.label} / ${item.label}` });
-        }
-      }
-    }
-  }
-} else {
-  for (const group of sidebarGroups) {
-    for (const item of group.items ?? []) {
-      addSearchEntry({ label: item, href: sidebarLinks[item], section: group.label });
-
-      for (const child of sidebarChildren[item] ?? []) {
-        addSearchEntry({ label: child, href: sidebarLinks[child], section: `${group.label} / ${item}` });
-      }
-    }
-  }
-}
-
-for (const item of tocItems) {
-  if (typeof item !== "string") {
-    addSearchEntry({ label: item.label, href: item.href, section: tocTitle });
-  }
-}
-
+const pageDescription =
+  description ??
+  (locale === "zh"
+    ? "Claude Code Router（CCR）文档：安装、配置、供应商接入与故障排查指南。"
+    : "Claude Code Router (CCR) documentation: installation, configuration, provider setup, and troubleshooting guides.");
+const pageTitle = isHome && docTitle ? String(docTitle) : `${title} | Claude Code Router`;
+const canonicalUrl = absoluteHref(currentPath);
+const ogImageUrl = absoluteHref("/logo.png");
+const sitemapUrl = withBase("/sitemap-index.xml");
+const searchIndexUrl = withBase(`/search-index-${locale}.json`);
+const currentYear = new Date().getFullYear();
 const searchNoResults = locale === "zh" ? "没有匹配结果" : "No results";
 const sidebarToggleLabel = locale === "zh" ? "打开目录" : "Open navigation";
 const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
+const featuredNavLabel = locale === "zh" ? "主要入口" : "Primary navigation";
 ---
 
 <!doctype html>
@@ -151,10 +150,14 @@ const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      name="description"
-      content="Claude Code Router documentation site built with Astro."
-    />
+    <meta name="description" content={pageDescription} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={pageDescription} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:image" content={ogImageUrl} />
+    <meta name="twitter:card" content="summary" />
+    <link rel="sitemap" href={sitemapUrl} />
     <script is:inline>
       (() => {
         const storageKey = "ccr-docs-theme";
@@ -187,86 +190,110 @@ const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
         />
       ))
     }
-    <title>{title} | Claude Code Router Docs</title>
+    <title>{pageTitle}</title>
   </head>
   <body>
     <div class="shell">
-      <header class="topbar">
-        <a class="brand" href={homeHref} aria-label="Claude Code Router Docs">
-          <img src={logoSrc} alt="" class="brand-logo" />
-          <span>CCR docs</span>
-        </a>
+      <header class="topbar" data-topbar>
+        <div class="top-left">
+          <a class="brand" href={homeHref} aria-label="Claude Code Router Docs">
+            <img src={logoSrc} alt="" class="brand-logo" />
+            <span>CCR docs</span>
+          </a>
 
-        <details class="language-switcher">
-          <summary>
-            <span>{languageLabel}</span>
-            <ChevronDown size={16} aria-hidden="true" />
-          </summary>
-          <div class="language-menu">
-            {
-              resolvedLanguageOptions.map((option) => (
-                <a
-                  class:list={{ active: option.locale === locale }}
-                  href={option.href}
-                  hreflang={option.locale === "zh" ? "zh-CN" : "en"}
-                >
-                  {option.label}
-                </a>
-              ))
-            }
-          </div>
-        </details>
+          <details class="language-switcher">
+            <summary>
+              <span>{languageLabel}</span>
+              <ChevronDown size={16} aria-hidden="true" />
+            </summary>
+            <div class="language-menu">
+              {
+                resolvedLanguageOptions.map((option) => (
+                  <a
+                    class:list={{ active: option.locale === locale }}
+                    href={option.href}
+                    hreflang={option.locale === "zh" ? "zh-CN" : "en"}
+                  >
+                    {option.label}
+                  </a>
+                ))
+              }
+            </div>
+          </details>
+        </div>
 
-        <div class="top-actions">
-          <button
-            class="icon-button sidebar-toggle"
-            type="button"
-            aria-label={sidebarToggleLabel}
-            aria-controls="docs-sidebar"
-            aria-expanded="false"
-            data-sidebar-toggle
-          >
-            <List size={19} aria-hidden="true" />
-          </button>
-          <div class="search" role="search" aria-label={ui.searchLabel}>
-            <Search size={18} aria-hidden="true" />
-            <input
-              type="search"
-              placeholder={ui.searchPlaceholder}
-              aria-label={ui.searchLabel}
-              autocomplete="off"
-              spellcheck="false"
-              role="combobox"
+        <nav class="top-tabs" aria-label={featuredNavLabel}>
+          {
+            resolvedNavItems.map((item) => (
+              <a class:list={["top-tab", { active: item.active }]} href={item.href}>
+                {item.label}
+              </a>
+            ))
+          }
+        </nav>
+
+        <div class="top-right">
+          <div class="top-actions">
+            <button
+              class="icon-button sidebar-toggle"
+              type="button"
+              aria-label={sidebarToggleLabel}
+              aria-controls="docs-sidebar"
               aria-expanded="false"
-              aria-controls="docs-search-results"
-              data-search-input
-            />
-            <kbd>⌘K</kbd>
-            <div class="search-results" id="docs-search-results" role="listbox" hidden data-search-results></div>
+              data-sidebar-toggle
+            >
+              <List size={19} aria-hidden="true" />
+            </button>
+            <button
+              class="icon-button search-toggle"
+              type="button"
+              aria-label={ui.searchLabel}
+              aria-expanded="false"
+              data-search-toggle
+            >
+              <Search size={19} aria-hidden="true" />
+            </button>
+            <div class="search" role="search" aria-label={ui.searchLabel}>
+              <Search size={18} aria-hidden="true" />
+              <input
+                type="search"
+                placeholder={ui.searchPlaceholder}
+                aria-label={ui.searchLabel}
+                autocomplete="off"
+                spellcheck="false"
+                role="combobox"
+                aria-expanded="false"
+                aria-controls="docs-search-results"
+                data-search-input
+              />
+              <kbd>⌘K</kbd>
+              <div class="search-results" id="docs-search-results" role="listbox" hidden data-search-results></div>
+            </div>
+            <a
+              class="cta-button"
+              href="https://github.com/musistudio/claude-code-router/releases"
+              aria-label={ui.downloadLabel}
+            >
+              <Download size={16} aria-hidden="true" />
+              <span>{ui.downloadLabel}</span>
+            </a>
+            <a
+              class="icon-button github-button hide-small"
+              href="https://github.com/musistudio/claude-code-router"
+              aria-label={ui.githubLabel}
+            >
+              <Github size={18} aria-hidden="true" />
+              <strong id="github-stars" aria-label="GitHub stars">Stars</strong>
+            </a>
+            <button class="icon-button theme-toggle" type="button" aria-label={ui.themeLabel} data-theme-toggle>
+              <span class="theme-icon theme-icon-sun" aria-hidden="true">
+                <Sun size={19} />
+              </span>
+              <span class="theme-icon theme-icon-moon" aria-hidden="true">
+                <Moon size={19} />
+              </span>
+            </button>
           </div>
-          <a
-            class="soft-button icon-link"
-            href="https://github.com/musistudio/claude-code-router/releases"
-            aria-label={ui.downloadLabel}
-          >
-            <Download size={18} aria-hidden="true" />
-          </a>
-          <a
-            class="soft-button github-button hide-small"
-            href="https://github.com/musistudio/claude-code-router"
-            aria-label={ui.githubLabel}
-          >
-            <Github size={18} aria-hidden="true" />
-            <strong id="github-stars" aria-label="GitHub stars">Stars</strong>
-          </a>
-          <button class="icon-button theme-toggle" type="button" aria-label={ui.themeLabel} data-theme-toggle>
-            <span class="theme-icon theme-icon-sun" aria-hidden="true">
-              <Sun size={19} />
-            </span>
-            <span class="theme-icon theme-icon-moon" aria-hidden="true">
-              <Moon size={19} />
-            </span>
-          </button>
         </div>
       </header>
 
@@ -287,7 +314,7 @@ const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
                         >
                           <span>{section.label}</span>
                         </a>
-                        {section.open && (
+                        {section.open && section.groups.length > 0 && (
                           <ul class="sidebar-children directory-children">
                             {section.groups.map((group) => (
                               <li class="directory-group">
@@ -345,39 +372,16 @@ const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
                         {group.label}
                       </h2>
                       <ul>
-                        {group.items.map((item) => {
-                          const childItems = sidebarChildren[item] ?? [];
-                          const isExpandable = expandableSidebarItems.includes(item) && childItems.length > 0;
-
-                          return (
-                            <li>
-                              {isExpandable ? (
-                                <details class="sidebar-details">
-                                  <summary class="sidebar-link" aria-expanded="false">
-                                    <span>{item}</span>
-                                    <ChevronRight size={16} aria-hidden="true" />
-                                  </summary>
-                                  <ul class="sidebar-children">
-                                    {childItems.map((child) => (
-                                      <li>
-                                        <a class="sidebar-child-link" href={withBase(sidebarLinks[child] ?? "#")}>
-                                          {child}
-                                        </a>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </details>
-                              ) : (
-                                <a
-                                  class:list={["sidebar-link", { active: group.active === item }]}
-                                  href={withBase(sidebarLinks[item] ?? "#")}
-                                >
-                                  <span>{item}</span>
-                                </a>
-                              )}
-                            </li>
-                          );
-                        })}
+                        {group.items.map((item) => (
+                          <li>
+                            <a
+                              class:list={["sidebar-link", { active: group.active === item }]}
+                              href={withBase(sidebarLinks[item] ?? "#")}
+                            >
+                              <span>{item}</span>
+                            </a>
+                          </li>
+                        ))}
                       </ul>
                     </section>
                   );
@@ -389,6 +393,45 @@ const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
 
         <main class="doc-main">
           <slot />
+          {
+            (prevPage || nextPage) && (
+              <nav class="page-nav" aria-label={ui.pageNavLabel}>
+                {prevPage ? (
+                  <a class="page-nav-link page-nav-prev" href={withBase(prevPage.href)}>
+                    <small>{ui.prevPage}</small>
+                    <span class="page-nav-title">
+                      <ArrowLeft size={15} aria-hidden="true" />
+                      <span>{prevPage.label}</span>
+                    </span>
+                  </a>
+                ) : (
+                  <span class="page-nav-spacer" aria-hidden="true" />
+                )}
+                {nextPage ? (
+                  <a class="page-nav-link page-nav-next" href={withBase(nextPage.href)}>
+                    <small>{ui.nextPage}</small>
+                    <span class="page-nav-title">
+                      <span>{nextPage.label}</span>
+                      <ArrowRight size={15} aria-hidden="true" />
+                    </span>
+                  </a>
+                ) : (
+                  <span class="page-nav-spacer" aria-hidden="true" />
+                )}
+              </nav>
+            )
+          }
+          <footer class="site-footer">
+            {
+              editUrl && (
+                <a class="edit-page" href={editUrl} target="_blank" rel="noreferrer">
+                  <PenLine size={15} aria-hidden="true" />
+                  <span>{ui.editPage}</span>
+                </a>
+              )
+            }
+            <p class="copyright">© {currentYear} Claude Code Router</p>
+          </footer>
         </main>
 
         <aside class="toc" aria-label={tocTitle}>
@@ -451,7 +494,7 @@ const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
           }
         });
     </script>
-    <script define:vars={{ searchEntries, searchNoResults }}>
+    <script define:vars={{ searchNoResults, searchIndexUrl, searchLoadingLabel: ui.searchLoading }}>
       const themeToggle = document.querySelector("[data-theme-toggle]");
       const themeStorageKey = "ccr-docs-theme";
       const themeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
@@ -497,25 +540,39 @@ const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
         }
       });
 
-      document.querySelectorAll(".sidebar-details").forEach((details) => {
-        const summary = details.querySelector("summary");
+      const languageSwitcher = document.querySelector(".language-switcher");
 
-        if (!(details instanceof HTMLDetailsElement) || !(summary instanceof HTMLElement)) {
-          return;
-        }
+      if (languageSwitcher instanceof HTMLDetailsElement) {
+        document.addEventListener("click", (event) => {
+          if (!(event.target instanceof Node)) return;
 
-        const syncExpandedState = () => {
-          summary.setAttribute("aria-expanded", details.open ? "true" : "false");
-        };
-
-        syncExpandedState();
-        details.addEventListener("toggle", syncExpandedState);
-      });
+          if (languageSwitcher.open && !languageSwitcher.contains(event.target)) {
+            languageSwitcher.open = false;
+          }
+        });
+      }
 
       const sidebarToggle = document.querySelector("[data-sidebar-toggle]");
       const sidebarBackdrop = document.querySelector("[data-sidebar-backdrop]");
       const docsSidebar = document.querySelector("[data-sidebar]");
+      const topbar = document.querySelector("[data-topbar]");
       const sidebarMediaQuery = window.matchMedia("(max-width: 920px)");
+
+      const syncTopbarHeight = () => {
+        if (!(topbar instanceof HTMLElement)) return;
+        document.documentElement.style.setProperty(
+          "--topbar-height",
+          `${Math.ceil(topbar.getBoundingClientRect().height)}px`
+        );
+      };
+
+      syncTopbarHeight();
+      window.addEventListener("resize", syncTopbarHeight);
+
+      if (topbar instanceof HTMLElement && "ResizeObserver" in window) {
+        const topbarResizeObserver = new ResizeObserver(syncTopbarHeight);
+        topbarResizeObserver.observe(topbar);
+      }
 
       const setSidebarOpen = (open) => {
         const nextOpen = Boolean(open) && sidebarMediaQuery.matches;
@@ -560,8 +617,11 @@ const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
 
       const searchInput = document.querySelector("[data-search-input]");
       const searchResults = document.querySelector("[data-search-results]");
+      const searchToggle = document.querySelector("[data-search-toggle]");
       let activeSearchIndex = -1;
       let visibleSearchEntries = [];
+      let searchIndex = null;
+      let searchIndexPromise = null;
 
       const normalizeSearchText = (value) =>
         String(value ?? "")
@@ -575,6 +635,69 @@ const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
           '"': "&quot;",
           "'": "&#39;",
         })[character]);
+      const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+      const highlightTerms = (escapedText, terms) => {
+        let result = escapedText;
+
+        for (const term of terms) {
+          if (!term) continue;
+          result = result.replace(
+            new RegExp(`(${escapeRegExp(escapeSearchHtml(term))})`, "gi"),
+            "<mark>$1</mark>"
+          );
+        }
+
+        return result;
+      };
+
+      const buildSearchSnippet = (text, terms) => {
+        const source = String(text ?? "").trim();
+        if (!source) return "";
+
+        const lowerSource = source.toLocaleLowerCase();
+        let firstIndex = -1;
+
+        for (const term of terms) {
+          const index = lowerSource.indexOf(term);
+          if (index !== -1 && (firstIndex === -1 || index < firstIndex)) {
+            firstIndex = index;
+          }
+        }
+
+        const start = firstIndex === -1 ? 0 : Math.max(0, firstIndex - 48);
+        const snippet = source.slice(start, start + 180);
+        const prefix = start > 0 ? "…" : "";
+        const suffix = start + snippet.length < source.length ? "…" : "";
+
+        return prefix + highlightTerms(escapeSearchHtml(snippet), terms) + suffix;
+      };
+
+      const loadSearchIndex = () => {
+        if (!searchIndexPromise) {
+          searchIndexPromise = fetch(searchIndexUrl)
+            .then((response) => {
+              if (!response.ok) throw new Error("Search index request failed");
+              return response.json();
+            })
+            .then((data) => {
+              searchIndex = Array.isArray(data) ? data : [];
+            })
+            .catch(() => {
+              searchIndex = [];
+            });
+        }
+
+        return searchIndexPromise;
+      };
+
+      const setSearchOpen = (open) => {
+        document.body.classList.toggle("search-open", Boolean(open));
+
+        if (searchToggle instanceof HTMLButtonElement) {
+          searchToggle.setAttribute("aria-expanded", open ? "true" : "false");
+        }
+      };
 
       const closeSearchResults = () => {
         if (!(searchInput instanceof HTMLInputElement) || !(searchResults instanceof HTMLElement)) return;
@@ -604,7 +727,7 @@ const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
         }
       };
 
-      const renderSearchResults = () => {
+      const renderSearchResults = async () => {
         if (!(searchInput instanceof HTMLInputElement) || !(searchResults instanceof HTMLElement)) return;
 
         const query = normalizeSearchText(searchInput.value);
@@ -615,25 +738,35 @@ const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
           return;
         }
 
-        visibleSearchEntries = searchEntries
+        if (!searchIndex) {
+          searchResults.innerHTML = `<div class="search-empty">${searchLoadingLabel}</div>`;
+          searchResults.hidden = false;
+          searchInput.setAttribute("aria-expanded", "true");
+          await loadSearchIndex();
+
+          if (normalizeSearchText(searchInput.value) !== query) return;
+        }
+
+        visibleSearchEntries = (searchIndex ?? [])
           .map((entry) => {
-            const label = normalizeSearchText(entry.label);
-            const section = normalizeSearchText(entry.section);
-            const haystack = `${label} ${section}`;
+            const title = normalizeSearchText(entry.title);
+            const breadcrumb = normalizeSearchText(entry.breadcrumb);
+            const excerpt = normalizeSearchText(entry.excerpt);
+            const haystack = `${title} ${breadcrumb} ${excerpt}`;
 
             if (!terms.every((term) => haystack.includes(term))) return null;
 
             const score =
-              label.startsWith(query) ? 0 :
-              label.includes(query) ? 1 :
-              section.includes(query) ? 2 :
+              entry.kind === "page" && title.includes(query) ? 0 :
+              title.includes(query) ? 1 :
+              excerpt.includes(query) ? 2 :
               3;
 
             return { ...entry, score };
           })
           .filter(Boolean)
-          .sort((left, right) => left.score - right.score || left.label.localeCompare(right.label))
-          .slice(0, 8);
+          .sort((left, right) => left.score - right.score || left.title.localeCompare(right.title))
+          .slice(0, 10);
 
         searchResults.hidden = false;
         searchInput.setAttribute("aria-expanded", "true");
@@ -646,18 +779,23 @@ const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
         }
 
         searchResults.innerHTML = visibleSearchEntries
-          .map((entry, index) => `
+          .map((entry, index) => {
+            const snippet = buildSearchSnippet(entry.excerpt, terms);
+
+            return `
             <a
               class="search-result"
               id="docs-search-result-${index}"
               role="option"
-              href="${escapeSearchHtml(entry.href)}"
+              href="${escapeSearchHtml(entry.path)}"
               data-search-option
             >
-              <span>${escapeSearchHtml(entry.label)}</span>
-              ${entry.section ? `<small>${escapeSearchHtml(entry.section)}</small>` : ""}
+              <span>${highlightTerms(escapeSearchHtml(entry.title), terms)}</span>
+              ${entry.breadcrumb ? `<small class="search-breadcrumb">${escapeSearchHtml(entry.breadcrumb)}</small>` : ""}
+              ${snippet ? `<small class="search-snippet">${snippet}</small>` : ""}
             </a>
-          `)
+          `;
+          })
           .join("");
         setActiveSearchIndex(0);
       };
@@ -665,11 +803,22 @@ const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
       if (searchInput instanceof HTMLInputElement && searchResults instanceof HTMLElement) {
         searchInput.addEventListener("input", renderSearchResults);
         searchInput.addEventListener("focus", () => {
+          loadSearchIndex();
           if (searchInput.value.trim()) renderSearchResults();
+        });
+        searchToggle?.addEventListener("click", () => {
+          const nextOpen = !document.body.classList.contains("search-open");
+          setSearchOpen(nextOpen);
+
+          if (nextOpen) {
+            loadSearchIndex();
+            searchInput.focus();
+          }
         });
         searchInput.addEventListener("keydown", (event) => {
           if (event.key === "Escape") {
             closeSearchResults();
+            setSearchOpen(false);
             searchInput.blur();
             return;
           }
@@ -692,7 +841,7 @@ const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
 
           if (event.key === "Enter" && visibleSearchEntries[activeSearchIndex]) {
             event.preventDefault();
-            window.location.href = visibleSearchEntries[activeSearchIndex].href;
+            window.location.href = visibleSearchEntries[activeSearchIndex].path;
           }
         });
 
@@ -703,21 +852,60 @@ const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
           const option = event.target instanceof Element ? event.target.closest("[data-search-option]") : null;
 
           if (option instanceof HTMLAnchorElement) {
+            setSearchOpen(false);
             window.location.href = option.href;
           }
         });
         document.addEventListener("click", (event) => {
+          if (!(event.target instanceof Element)) return;
+          if (event.target.closest("[data-search-toggle]")) return;
+
           if (!searchInput.closest(".search")?.contains(event.target)) {
             closeSearchResults();
+            setSearchOpen(false);
           }
         });
         document.addEventListener("keydown", (event) => {
           if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "k") {
             event.preventDefault();
+            setSearchOpen(true);
+            loadSearchIndex();
             searchInput.focus();
             searchInput.select();
           }
         });
+      }
+
+      const tocNav = document.querySelector(".toc nav");
+      const tocLinks = tocNav ? Array.from(tocNav.querySelectorAll("a")) : [];
+      const tocHeadings = tocLinks
+        .map((link) => {
+          const href = link.getAttribute("href");
+          if (!href || !href.startsWith("#")) return null;
+          return document.querySelector(`.doc-markdown [id="${href.slice(1)}"]`);
+        })
+        .filter(Boolean);
+
+      if (tocLinks.length > 0 && tocHeadings.length > 0) {
+        const syncTocActive = () => {
+          const topOffset = window.innerHeight * 0.25;
+          let activeIndex = 0;
+
+          for (let i = 0; i < tocHeadings.length; i++) {
+            if (tocHeadings[i].getBoundingClientRect().top <= topOffset) {
+              activeIndex = i;
+            } else {
+              break;
+            }
+          }
+
+          tocLinks.forEach((link, index) => {
+            link.classList.toggle("active", index === activeIndex);
+          });
+        };
+
+        window.addEventListener("scroll", syncTocActive, { passive: true });
+        syncTocActive();
       }
     </script>
   </body>

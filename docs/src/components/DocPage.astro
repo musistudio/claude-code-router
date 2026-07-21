@@ -1,15 +1,16 @@
 ---
 import DocsLayout from "../layouts/DocsLayout.astro";
 import { docsContent, type DocPageKey, type Locale } from "../i18n/content";
-import * as enConfigurationDoc from "../content/docs/en/configuration.md";
-import * as enGuidesDoc from "../content/docs/en/guides.md";
-import * as enDoc from "../content/docs/en/index.md";
-import * as enTroubleshootingDoc from "../content/docs/en/troubleshooting.md";
-import * as zhConfigurationDoc from "../content/docs/zh/configuration.md";
-import * as zhGuidesDoc from "../content/docs/zh/guides.md";
-import * as zhDoc from "../content/docs/zh/index.md";
-import * as zhTroubleshootingDoc from "../content/docs/zh/troubleshooting.md";
-import { Check, Copy } from "lucide-astro";
+import {
+  docModule,
+  docSections,
+  getPage,
+  getPrevNext,
+  getSection,
+  resolveSidebarGroups,
+  sectionIndexSource,
+} from "../docs-structure";
+import { Check, ChevronDown, Copy, List } from "lucide-astro";
 
 interface Props {
   locale: Locale;
@@ -18,35 +19,16 @@ interface Props {
   activeSidebarItem?: string;
 }
 
-const docsByLocale = {
-  zh: {
-    documentation: zhDoc,
-    guides: zhGuidesDoc,
-    configuration: zhConfigurationDoc,
-    troubleshooting: zhTroubleshootingDoc,
-  },
-  en: {
-    documentation: enDoc,
-    guides: enGuidesDoc,
-    configuration: enConfigurationDoc,
-    troubleshooting: enTroubleshootingDoc,
-  },
-} satisfies Record<Locale, Record<DocPageKey, any>>;
-
 const {
   locale,
-  pageKey: pageKeyProp = "documentation",
+  pageKey = "documentation",
   doc: docProp,
   activeSidebarItem: activeSidebarItemProp,
 } = Astro.props;
 const content = docsContent[locale];
-const pages = content.pages as Record<DocPageKey, any>;
-const pageKey = pageKeyProp;
-const pageContent = pages[pageKey] ?? pages.documentation;
-const sectionDoc = docsByLocale[locale][pageKey] ?? docsByLocale[locale].documentation;
-const sectionHref =
-  content.navItems.find((item) => item.pageKey === pageKey)?.href ??
-  (locale === "en" ? "/en/" : "/");
+const section = getSection(pageKey);
+const sectionDoc = docModule(locale, sectionIndexSource(section)[locale]);
+const sectionHref = section.navPath[locale] ?? (locale === "en" ? "/en/" : "/");
 const isSectionDoc = !docProp || docProp === sectionDoc;
 const doc = docProp ?? sectionDoc;
 const { Content, frontmatter } = doc;
@@ -73,10 +55,16 @@ const getHeadingLinks = (targetDoc: any, baseHref: string, useLocalHashes: boole
   return links;
 };
 const sectionHeadingLinks = getHeadingLinks(sectionDoc, sectionHref, isSectionDoc);
-const resolveDocTarget = (target?: string, headingLinks = sectionHeadingLinks) => {
-  if (!target) return "#";
+const githubSlugify = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\p{M}\s_-]/gu, "")
+    .replace(/\s+/g, "-");
+const resolveDocTarget = (target?: string, headingLinks = sectionHeadingLinks, baseHref = sectionHref) => {
+  if (!target) return baseHref;
   if (isExplicitHref(target)) return target;
-  return headingLinks.get(target) ?? "#";
+  return headingLinks.get(target) ?? `${baseHref}#${githubSlugify(target)}`;
 };
 const navItems = content.navItems.map((item) => {
   return {
@@ -84,102 +72,136 @@ const navItems = content.navItems.map((item) => {
     active: item.pageKey === pageKey,
   };
 });
-const sidebarLabels = new Set<string>();
-
-for (const group of pageContent.sidebarGroups) {
-  for (const item of group.items) {
-    sidebarLabels.add(item);
-
-    for (const child of pageContent.sidebarChildren[item] ?? []) {
-      sidebarLabels.add(child);
-    }
-  }
-}
-
-const sidebarLinks = Object.fromEntries(
-  Array.from(sidebarLabels).map((label) => [
-    label,
-    resolveDocTarget(
-      pageContent.sidebarLinks[label] ??
-        pageContent.sidebarTargets[label] ??
-        label
-    ),
-  ])
-);
-const sidebarNavItems = content.navItems.filter((navItem) => navItem.pageKey !== "documentation");
-const sidebarTree = sidebarNavItems.map((navItem, index) => {
-  const navPageKey = navItem.pageKey as DocPageKey;
-  const navPageContent = pages[navPageKey] ?? pages.documentation;
-  const navSectionDoc = docsByLocale[locale][navPageKey] ?? docsByLocale[locale].documentation;
-  const navHref = navItem.href ?? "#";
-  const navIsCurrentSection = navPageKey === pageKey && isSectionDoc;
-  const navHeadingLinks = getHeadingLinks(navSectionDoc, navHref, navIsCurrentSection);
-  const navActive = navPageKey === pageKey;
-  const openByDefault = pageKey === "documentation" && index === 0;
+// The active top tab follows the section the current page belongs to:
+// documentation/guides share the "docs" tab; feature sections use their feature key.
+const activeFeatureKey = section.feature?.key ?? "docs";
+const featuredNavItems = (content.featureNavItems ?? navItems).map((item) => ({
+  ...item,
+  active: item.featureKey ? item.featureKey === activeFeatureKey : item.active,
+}));
+const pageGroups = resolveSidebarGroups(pageKey, locale);
+const pageSidebarGroups = pageGroups.map((group) => {
+  const activeKey = activeSidebarItemProp
+    ? group.items.some((item) => item.key === activeSidebarItemProp)
+      ? activeSidebarItemProp
+      : ""
+    : group.activeItem ?? "";
 
   return {
-    label: navItem.label,
+    label: group.label,
+    icon: group.icon,
+    items: group.items.map((item) => item.label),
+    active: group.items.find((item) => item.key === activeKey)?.label ?? "",
+  };
+});
+const sidebarLinks = Object.fromEntries(
+  pageGroups.flatMap((group) =>
+    group.items.map((item) => [item.label, item.path ?? resolveDocTarget(item.label)])
+  )
+);
+const useSectionOnlySidebar = Boolean(section.standalone);
+const sidebarTreeSections = docSections.filter((treeSection) => treeSection.inSidebarTree);
+const buildSectionTree = (
+  treeSections: typeof docSections,
+  options: { openCurrent: boolean; useLocalHashes: boolean }
+) => treeSections.map((treeSection) => {
+  const treeSectionDoc = docModule(locale, sectionIndexSource(treeSection)[locale]);
+  const navHref = treeSection.navPath[locale] ?? "#";
+  const navActive = treeSection.key === pageKey;
+  const isCurrentSectionIndex = navActive && isSectionDoc;
+  const navHeadingLinks = getHeadingLinks(
+    treeSectionDoc,
+    navHref,
+    options.useLocalHashes && isCurrentSectionIndex
+  );
+
+  return {
+    label: treeSection.navLabel[locale],
     href: navHref,
     active: navActive,
-    open: navActive || openByDefault,
-    groups: navPageContent.sidebarGroups.map((group) => ({
-      ...group,
-      active: navActive && group.active,
-      items: group.items.map((item) => {
-        const childItems = navPageContent.sidebarChildren[item] ?? [];
-        const itemHref = resolveDocTarget(
-          navPageContent.sidebarLinks[item] ??
-            navPageContent.sidebarTargets[item] ??
-            item,
-          navHeadingLinks
-        );
-
-        const children = childItems.map((child) => ({
-          label: child,
-          href: resolveDocTarget(
-            navPageContent.sidebarLinks[child] ??
-              navPageContent.sidebarTargets[child] ??
-              child,
-            navHeadingLinks
-          ),
-          active: navActive && activeSidebarItemProp === child,
-        }));
-
-        return {
-          label: item,
-          href: itemHref,
-          active: navActive && (activeSidebarItemProp ? activeSidebarItemProp === item : group.active === item),
-          children,
-        };
-      }),
+    open: options.openCurrent && navActive,
+    groups: resolveSidebarGroups(treeSection.key, locale).map((group) => ({
+      label: group.label,
+      icon: group.icon,
+      active: navActive && (group.activeItem ?? ""),
+      items: group.items.map((item) => ({
+        label: item.label,
+        href: item.path ?? resolveDocTarget(item.label, navHeadingLinks, navHref),
+        active:
+          navActive &&
+          (activeSidebarItemProp
+            ? activeSidebarItemProp === item.key
+            : // On a section index page only the directory link is highlighted.
+              !isCurrentSectionIndex && group.activeItem === item.key),
+        children: [],
+      })),
     })),
   };
 });
+const sidebarTree = useSectionOnlySidebar
+  ? []
+  : buildSectionTree(sidebarTreeSections, { openCurrent: true, useLocalHashes: true });
 const tocItems = tocHeadings.map((heading) => ({
   label: heading.text,
   href: `#${heading.slug}`,
   depth: heading.depth,
 }));
+const currentPageKey = activeSidebarItemProp ?? pageKey;
+const currentPage = getPage(currentPageKey);
+const { prev: prevPageDef, next: nextPageDef } = getPrevNext(currentPageKey);
+const toPageNavLink = (page?: { label: Record<Locale, string>; path: Record<Locale, string> }) =>
+  page ? { label: page.label[locale], href: page.path[locale] } : undefined;
+const prevPage = toPageNavLink(prevPageDef);
+const nextPage = toPageNavLink(nextPageDef);
+const editSource = (currentPage?.source ?? sectionIndexSource(section))[locale];
+const editUrl = `https://github.com/musistudio/claude-code-router/edit/main/docs/src/content/docs/${locale}/${editSource}`;
+const isHome = pageKey === "documentation" && isSectionDoc;
 const pageMarkdown = doc.rawContent();
 ---
 
 <DocsLayout
   title={frontmatter.pageTitle ?? content.pageTitle}
+  docTitle={frontmatter.title}
+  isHome={isHome}
+  description={frontmatter.lead ?? content.metaDescription}
   htmlLang={content.htmlLang}
   locale={locale}
   languageLabel={content.languageLabel}
   languageOptions={content.languageOptions}
-  navItems={navItems}
+  navItems={featuredNavItems}
   sidebarTree={sidebarTree}
-  sidebarGroups={pageContent.sidebarGroups}
-  expandableSidebarItems={pageContent.expandableSidebarItems}
-  sidebarChildren={pageContent.sidebarChildren}
+  sidebarGroups={pageSidebarGroups}
   sidebarLinks={sidebarLinks}
   tocTitle={content.tocTitle}
   tocItems={tocItems}
+  prevPage={prevPage}
+  nextPage={nextPage}
+  editUrl={editUrl}
   ui={content.ui}
 >
   <article class="doc-article">
+    {
+      tocItems.length > 0 && (
+        <details class="toc-inline">
+          <summary>
+            <List size={16} aria-hidden="true" />
+            <span>{content.tocTitle}</span>
+            <ChevronDown size={14} aria-hidden="true" />
+          </summary>
+          <nav>
+            {tocItems.map((item) => {
+              const depth = Math.min(Math.max(Number(item.depth), 2), 6);
+
+              return (
+                <a class={`toc-depth-${depth}`} href={item.href}>
+                  {item.label}
+                </a>
+              );
+            })}
+          </nav>
+        </details>
+      )
+    }
     <header class="article-header">
       <div>
         <p class="eyebrow">{frontmatter.eyebrow}</p>
@@ -187,8 +209,10 @@ const pageMarkdown = doc.rawContent();
         <p class="lead">{frontmatter.lead}</p>
       </div>
       <button class="copy-page" type="button" data-copy-page>
-        <Copy size={18} aria-hidden="true" />
+        <Copy size={16} aria-hidden="true" />
         <span data-copy-label>{content.ui.copyPage}</span>
+        <span class="copy-page-divider" aria-hidden="true" />
+        <ChevronDown size={14} aria-hidden="true" />
       </button>
     </header>
 

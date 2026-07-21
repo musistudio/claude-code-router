@@ -2,7 +2,7 @@
 title: 自定义 MCP 工具
 pageTitle: 自定义 MCP 工具
 eyebrow: Fusion
-lead: 将内置工具、本地或远程 MCP 工具接入 Fusion 模型。
+lead: 将内置工具、本地或远程 MCP 工具接入 Fusion 模型，包括图片生成、视频生成等内置媒体工具的配置方式。
 ---
 
 ## 添加入口

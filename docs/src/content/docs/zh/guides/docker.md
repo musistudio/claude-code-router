@@ -2,7 +2,7 @@
 title: Docker 部署
 pageTitle: Docker 部署
 eyebrow: 快速开始
-lead: 使用 Nginx 单入口运行 CCR Core 和浏览器管理界面，并正确处理端口、鉴权、持久化、远程访问、备份和升级。
+lead: 面向常驻服务器部署：用 Docker 和 Nginx 单入口运行 CCR Core 与浏览器管理界面，并配置端口、鉴权、持久化、远程访问、备份和升级。
 ---
 
 ## 适用范围与限制
@@ -34,7 +34,7 @@ Nginx 对外提供：
 | --- | --- |
 | `/`、`/pages/home/index.html` | 管理 UI。根路径会跳转到带管理 Token 的页面。 |
 | `/api/ccr/rpc` | 需要管理 Token 的管理 RPC。 |
-| `/health` | 模型网关健康状态，不是容器或 UI 健康状态。 |
+| `/health` | 模型网关健康状态；容器或 UI 状态不在此接口反映。 |
 | `/v1/*`、`/v1beta/*`、`/messages`、`/chat/completions`、`/responses`、`/interactions`、`/mcp/*` | 模型和 MCP 网关接口。 |
 
 ## 使用 Compose 快速启动

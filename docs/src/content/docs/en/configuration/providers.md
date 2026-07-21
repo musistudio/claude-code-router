@@ -1,11 +1,11 @@
 ---
-title: Provider Config
-pageTitle: Provider Config
-eyebrow: Detailed Configuration
-lead: Configure upstream model services, credentials, protocols, base URLs, and model lists.
+title: Provider config
+pageTitle: Provider config
+eyebrow: Detailed configuration
+lead: "Add and manage upstream model providers in CCR: import local agent sign-ins, configure the protocol, API endpoint, model list, and credential pool, and set up account usage fetching. Use this page when adding or adjusting a provider."
 ---
 
-## Import Local Agent Login
+## Import local agent login
 
 When you add a provider, CCR scans for reusable local agent login state. If usable credentials are found, the add dialog shows the matching import entry. Importing creates a normal provider plus provider plugins, so CCR can reuse the local agent authorization without requiring a pasted API key.
 
@@ -48,7 +48,7 @@ After import:
 
 If CCR detects ZCode login state but no usable provider API key, the import entry remains unavailable. Configure a usable model provider in ZCode first, then return to CCR and add the provider.
 
-## Main Fields
+## Main fields
 
 | Field | Capability |
 | --- | --- |
@@ -56,14 +56,14 @@ If CCR detects ZCode login state but no usable provider API key, the import entr
 | Name | Internal CCR display name. It is also used by routing, model selectors, logs, and config references. Names must be unique. |
 | API endpoint | Upstream API base URL. It controls where requests are sent, and is also used for protocol probing, model discovery, icon detection, and safety checks. Preset providers hide it by default while adding, but it can be overridden in Advanced settings. Custom providers must provide it. |
 | API key | Default provider credential. When the credential pool is empty, model requests use this key. Protocol probing, model discovery, connection checks, and default usage fetching also use it. Only use a key issued for the selected endpoint. |
-| Models | Model IDs exposed by CCR. Routing rules, profile model selectors, the model catalog, and client `/models` responses all use this list. |
+| Models | Model IDs exposed by CCR. Routing rules, Agent Config model selectors, the model catalog, and client `/models` responses all use this list. |
 | Search models / All / Clear | When CCR can discover models from the upstream or catalog, you can search, select all, clear, and choose models. Selected models are saved to the provider. |
 | Custom models | Manually adds model IDs that discovery did not return. Use this when the provider lacks a `/models` endpoint or a new model is not in the catalog yet. |
 | Check Connection | Sends real test requests with the current endpoint, API key, protocol, and selected models. It verifies key, model name, and protocol usability. |
 | Models to check | Model selection inside the connection-check confirmation dialog. Use it to test only some models. |
 | Check results | Shows whether each model is available, which protocol matched, and the upstream diagnostic message. Results are diagnostic. Add models through the main model selection when you want them saved. |
 
-## Connectivity Checks
+## Connectivity checks
 
 `Check Connection` sends real model requests for the models you select. It verifies whether the endpoint, API key, protocol, and model IDs are usable. The check limits generated output, but it can still create extra token usage or count against provider-side request limits.
 
@@ -108,7 +108,7 @@ Example:
 
 The credential pool is an upstream provider key pool. It is separate from the client access keys configured on the API Keys page.
 
-## Usage Fetching
+## Usage fetching
 
 `Fetch usage` lets CCR show balance, subscription quota, status, and messages in the provider list, tray, and account panels. It does not affect whether models can be requested.
 
@@ -118,11 +118,11 @@ The credential pool is an upstream provider key pool. It is separate from the cl
 | Usage mode | Usage connector mode. `Standard usage endpoint` uses CCR standard account endpoints; `HTTP JSON request` maps a custom JSON endpoint; `Raw connector JSON` edits the connector array directly. |
 | Refresh interval ms | Usage refresh interval in milliseconds. Empty uses the default interval. The minimum effective interval is 30000ms. |
 
-### Standard Usage Endpoint
+### Standard usage endpoint
 
 This mode tries provider-hosted CCR account endpoints such as `/.well-known/ccr/account` and `/v1/account/limits`. It is best for providers or presets that already implement CCR's standard account format.
 
-### HTTP JSON Request
+### HTTP JSON request
 
 Use this mode when the provider has a balance or quota endpoint that returns a custom JSON shape.
 
@@ -156,7 +156,7 @@ Field paths use CCR's lightweight JSONPath syntax:
 | `$.limits[?(@.type=="TOKENS")].remaining` | First array item matching simple equality filters |
 | `100 - $.data.percentage` | Numeric subtraction expression, often used to convert used percent into remaining percent |
 
-### Raw Connector JSON
+### Raw connector JSON
 
 `Connectors JSON` edits the `account.connectors` array directly for more complex provider setups.
 

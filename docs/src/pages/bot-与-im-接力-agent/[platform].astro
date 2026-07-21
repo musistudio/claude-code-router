@@ -1,22 +1,15 @@
 ---
-import DocPage from "../../components/DocPage.astro";
-import { BOT_PLATFORM_LABELS_ZH, zhBotDocs, botPlatformFromPath } from "../../bot-platforms";
+import Redirect from "../../components/Redirect.astro";
+import { AGENTCLAW_DOC_ORDER } from "../../agentclaw-docs";
 
 export function getStaticPaths() {
-  return Object.entries(zhBotDocs).map(([filePath, mod]) => {
-    const platform = botPlatformFromPath(filePath) as keyof typeof BOT_PLATFORM_LABELS_ZH;
-
-    return {
-      params: { platform },
-      props: {
-        mod,
-        activeSidebarItem: BOT_PLATFORM_LABELS_ZH[platform],
-      },
-    };
-  });
+  return AGENTCLAW_DOC_ORDER.filter((platform) => platform !== "setup").map((platform) => ({
+    params: { platform },
+    props: { target: `/agentclaw/${platform}/` },
+  }));
 }
 
-const { mod, activeSidebarItem } = Astro.props;
+const { target } = Astro.props;
 ---
 
-<DocPage locale="zh" pageKey="configuration" doc={mod} activeSidebarItem={activeSidebarItem} />
+<Redirect target={target} lang="zh-CN" label="AgentClaw" />

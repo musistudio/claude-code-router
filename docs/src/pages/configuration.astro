@@ -1,17 +1,5 @@
 ---
-const target = "/configuration/overview/";
+import Redirect from "../components/Redirect.astro";
 ---
 
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta http-equiv="refresh" content={`0;url=${target}`} />
-    <link rel="canonical" href={target} />
-    <script is:inline>
-      window.location.replace("/configuration/overview/");
-    </script>
-  </head>
-  <body>
-    <a href={target}>概览仪表盘</a>
-  </body>
-</html>
+<Redirect target="/configuration/overview/" lang="zh-CN" label="概览仪表盘" />

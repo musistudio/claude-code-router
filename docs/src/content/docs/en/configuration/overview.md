@@ -1,11 +1,11 @@
 ---
-title: Overview Dashboard
-pageTitle: Overview Dashboard
-eyebrow: Detailed Configuration
+title: Overview dashboard
+pageTitle: Overview dashboard
+eyebrow: Detailed configuration
 lead: Customize the CCR home dashboard to inspect system status, account balance, requests, tokens, cost, and model distribution.
 ---
 
-## When To Use It
+## When to use it
 
 | Scenario | What to inspect |
 | --- | --- |
@@ -15,7 +15,7 @@ lead: Customize the CCR home dashboard to inspect system status, account balance
 | Watch account quota | Balance, subscription quota, remaining quota, account status |
 | Report or share usage | AI Usage Wrapped, CCR Route Map, Model Leaderboard, Spend Receipt, and other share cards |
 
-## Time Range
+## Time range
 
 The `Usage over time` control at the top drives every widget that depends on usage stats. After you switch ranges, requests, tokens, cost, trends, distribution, and share cards are recomputed for the selected window.
 
@@ -28,7 +28,7 @@ The `Usage over time` control at the top drives every widget that depends on usa
 
 The account balance widget does not use this time range. It shows the latest snapshot returned by provider account connectors.
 
-## Edit Layout
+## Edit layout
 
 Click the pencil button in the upper-right corner to enter editing mode. Editing mode has three columns:
 
@@ -50,7 +50,7 @@ Common operations:
 
 Removing a widget only removes that card from the overview layout. It does not delete request logs, providers, account connectors, or upstream configuration. If all widgets are removed, the page shows `No widgets configured`.
 
-## Widget Catalog
+## Widget catalog
 
 Sizes are written as `width:height`, with both dimensions from `1` to `4`. The overview grid has up to 4 columns on desktop and collapses automatically on narrow screens.
 
@@ -73,7 +73,7 @@ Size constraints:
 | The account widget has a minimum size of `2:2` when showing All accounts with the Compact style. | Multi-account lists need readable space. |
 | Legacy aliases are still accepted: `small` -> `1:1`, `medium` / `large` -> `2:2`, `wide` -> `3:2`, `full` -> `4:1` or `4:2`. | Backward compatibility for older config. |
 
-## Metric Data
+## Metric data
 
 `metric` widgets use the `metric` field to choose the displayed value.
 
@@ -90,7 +90,7 @@ Size constraints:
 | `errors` | Error count |
 | `avg-latency` | Average latency |
 
-## Account Widget
+## Account widget
 
 The account widget reads provider account / usage connectors. To show balance or remaining quota, first enable and test `Fetch usage` in provider configuration.
 
@@ -106,7 +106,7 @@ If the account widget is empty, check:
 3. Whether the API key or account endpoint is still valid.
 4. Whether the selected account was deleted or renamed.
 
-## Share Cards
+## Share cards
 
 Share card widgets can export PNGs through the download button in the card header. The desktop app uses native export when available; browser environments fall back to frontend canvas export. The exported image size is `1080 x 1350`.
 
@@ -119,7 +119,7 @@ Share card widgets can export PNGs through the download button in the card heade
 | Token Calendar Poster | `share-token-calendar` | Contribution-calendar style token activity poster. |
 | Spend Receipt | `share-spend-receipt` | Estimated cost, requests, tokens, latency, and success rate for the selected range. |
 
-## Data Sources And Troubleshooting
+## Data sources and troubleshooting
 
 | Symptom | Likely cause | What to do |
 | --- | --- | --- |
