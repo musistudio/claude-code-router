@@ -30,13 +30,15 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwind-merge": "^3.6.0",
-    "tailwindcss": "^4.3.0"
+    "tailwindcss": "^4.3.0",
+    "turndown": "^7.2.4"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "@types/turndown": "^5.0.6",
     "@vitejs/plugin-react": "^4.3.4",
     "esbuild": "^0.27.7",
     "typescript": "^5.9.3",

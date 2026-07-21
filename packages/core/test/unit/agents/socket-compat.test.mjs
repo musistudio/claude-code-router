@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { Socket } from "node:net";
 import test from "node:test";
-import { installSocketTypeOfServiceCompat, isIgnorableSocketTypeOfServiceError } from "../../packages/core/src/platform/socket-compat.ts";
+import { installSocketTypeOfServiceCompat, isIgnorableSocketTypeOfServiceError } from "@ccr/core/platform/socket-compat.ts";
 
 test("socket type-of-service compat ignores Electron EINVAL failures", () => {
   withSocketSetTypeOfService(() => {

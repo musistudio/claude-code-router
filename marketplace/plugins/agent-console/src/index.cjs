@@ -2171,17 +2171,38 @@ function codexModelReasoningProfile(model) {
   const reasoningConfig = fallbackEfforts.length > 0
     ? { ...effortConfig, defaultEffort: "medium", efforts: fallbackEfforts, supportsReasoning: true }
     : effortConfig;
-  const supportsReasoning = capabilities.reasoning === true || reasoningConfig.supportsReasoning;
+  const orderedReasoningConfig = {
+    ...reasoningConfig,
+    efforts: agentConsoleReasoningEffortsForModel(model, reasoningConfig.efforts)
+  };
+  const supportsReasoning = capabilities.reasoning === true || orderedReasoningConfig.supportsReasoning;
   return {
-    defaultReasoningEffort: defaultReasoningEffort(reasoningConfig),
-    defaultReasoningLevel: defaultReasoningLevel(reasoningConfig),
-    supportedReasoningEfforts: reasoningConfig.efforts,
-    supportedReasoningLevels: reasoningConfig.efforts.map(reasoningLevel),
+    defaultReasoningEffort: defaultReasoningEffort(orderedReasoningConfig),
+    defaultReasoningLevel: defaultReasoningLevel(orderedReasoningConfig),
+    supportedReasoningEfforts: orderedReasoningConfig.efforts,
+    supportedReasoningLevels: orderedReasoningConfig.efforts.map(reasoningLevel),
     supportsReasoning
   };
 }
 
+function agentConsoleReasoningEffortsForModel(model, efforts) {
+  const providerName = normalizeModelCatalogToken(providerNameFromModel(model));
+  const modelName = modelCatalogLastSegmentKey(normalizeModelCatalogKey(modelNameFromModel(model)));
+  if (providerName === "openrouter" && modelName === "glm-5.2" && efforts.includes("xhigh") && efforts.includes("high")) {
+    return ["xhigh", "high", ...efforts.filter((effort) => effort !== "xhigh" && effort !== "high")];
+  }
+  return efforts;
+}
+
 function modelContextWindowTokens(model) {
+  const providerName = normalizeModelCatalogToken(providerNameFromModel(model));
+  const modelName = modelCatalogLastSegmentKey(normalizeModelCatalogKey(modelNameFromModel(model)));
+  if (modelName === "glm-5.2" || modelName.startsWith("glm-5.2-")) {
+    return 1048576;
+  }
+  if (providerName !== "codex-api" && /^gpt-5\.6(?:-|$)/.test(modelName)) {
+    return DEFAULT_CODEX_CONTEXT_WINDOW_TOKENS;
+  }
   return modelCatalogMaxInputTokens(findModelCatalogEntry(model)) || DEFAULT_CODEX_CONTEXT_WINDOW_TOKENS;
 }
 

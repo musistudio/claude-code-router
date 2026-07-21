@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import vm from "node:vm";
-import agentConsolePlugin from "../../marketplace/plugins/agent-console/index.cjs";
+import agentConsolePlugin from "../../../../../marketplace/plugins/agent-console/index.cjs";
 
 const DEFAULT_LAUNCHER_BUNDLE_ID = "com.claudecoderouter.plugin.agent-console.launcher";
 

@@ -2674,6 +2674,7 @@ function App() {
             running: true,
             streamKey: currentStream?.streamKey ?? Date.now()
           }, event.threadId);
+          persistPendingRunSnapshotForThread(event.threadId);
           if (pendingAssistantMessageIdRef.current === pendingRunBinding.assistantMessageId) {
             pendingAssistantMessageIdRef.current = null;
             pendingUserMessageIdRef.current = null;
@@ -2725,6 +2726,7 @@ function App() {
           running: true,
           streamKey: currentStream?.streamKey ?? Date.now()
         }, event.threadId);
+        persistPendingRunSnapshotForThread(event.threadId);
       }
 
       const messageId = runMessageIdsRef.current.get(event.runId) ?? pendingRunBinding?.assistantMessageId;
@@ -2808,7 +2810,7 @@ function App() {
       canceled = true;
       dispose();
     };
-  }, [clearLocalRunMessages, enqueueApprovalPrompt, enqueueQuestionPrompt, reloadProjects, setVisibleActiveStream, t, toast, updateContextUsage, updateInFlightMessage]);
+  }, [clearLocalRunMessages, enqueueApprovalPrompt, enqueueQuestionPrompt, persistPendingRunSnapshotForThread, reloadProjects, setVisibleActiveStream, t, toast, updateContextUsage, updateInFlightMessage]);
 
   const enqueuePrompt = useCallback((rawPrompt: string) => {
     const userPrompt = rawPrompt.trim();

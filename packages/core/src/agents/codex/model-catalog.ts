@@ -14,16 +14,6 @@ import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution"
 const fusionModelProviderName = "Fusion";
 const codexDefaultContextWindow = 128_000;
 const codexEffectiveContextWindowPercent = 95;
-const openAiReasoningFallbackLevels = [
-  { effort: "minimal", description: "Minimal reasoning" },
-  { effort: "low", description: "Low reasoning" },
-  { effort: "medium", description: "Medium reasoning" },
-  { effort: "high", description: "High reasoning" }
-];
-const openAiExtendedReasoningFallbackLevels = [
-  ...openAiReasoningFallbackLevels,
-  { effort: "xhigh", description: "Extra high reasoning" }
-];
 
 export type CodexModelCatalog = {
   models: CodexModelCatalogItem[];
@@ -240,9 +230,6 @@ function codexModelCapabilityProfile(
     ?? (metadataReasoningLevels !== undefined || readCatalogCapability(capabilities, "reasoning"));
   const supportsImageInput = supportsFusionVision ||
     (configuredCapabilities?.imageInput ?? catalogEntrySupportsImageInput(catalogEntry));
-  const fallbackReasoningLevels = openAiGptReasoningFallbackLevels(provider, providerModel);
-  const supportsReasoning = providerModelMetadata?.supportsReasoningSummaries ?? (metadataReasoningLevels || fallbackReasoningLevels ? true : readCatalogCapability(capabilities, "reasoning"));
-  const supportsImageInput = catalogEntrySupportsImageInput(catalogEntry);
   const supportsParallelToolCalls = readCatalogCapability(capabilities, "parallelFunctionCalling");
   // Codex must emit apply_patch for both native GPT models and non-GPT models
   // that the gateway converts through the compatibility bridge.
@@ -274,7 +261,6 @@ function codexModelCapabilityProfile(
     effectiveContextWindowPercent: providerModelMetadata?.effectiveContextWindowPercent,
     inputModalities: supportsImageInput ? ["text", "image"] : ["text"],
     serviceTiers: providerModelMetadata?.serviceTiers ?? [],
-    supportedReasoningLevels: metadataReasoningLevels ?? fallbackReasoningLevels ?? (supportsReasoning ? supportedReasoningLevels(capabilities) : []),
     maxContextWindow: providerModelMetadata?.maxContextWindow,
     supportedReasoningLevels: resolvedReasoningLevels,
     supportsImageInput,
@@ -282,30 +268,6 @@ function codexModelCapabilityProfile(
     supportsReasoning,
     supportsSearchTool
   };
-}
-
-function openAiGptReasoningFallbackLevels(
-  provider: GatewayProviderConfig | undefined,
-  model: string
-): Array<{ description: string; effort: string }> | undefined {
-  if (!provider) {
-    return undefined;
-  }
-  const normalizedModel = model.trim().toLowerCase();
-  if (openAiGptSupportsXHighFallback(normalizedModel)) {
-    return openAiExtendedReasoningFallbackLevels;
-  }
-  return /^gpt-[0-9]/.test(normalizedModel) || /^o[0-9]/.test(normalizedModel)
-    ? openAiReasoningFallbackLevels
-    : undefined;
-}
-
-function openAiGptSupportsXHighFallback(model: string): boolean {
-  const match = model.match(/^gpt-(\d+)(?:[.-](\d+))?/);
-  if (!match) return false;
-  const major = Number.parseInt(match[1], 10);
-  const minor = Number.parseInt(match[2] || "0", 10);
-  return major > 5 || (major === 5 && minor >= 6);
 }
 
 function providerModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {

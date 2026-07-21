@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { AppConfig, PluginMarketplaceEntry } from "../../packages/core/src/contracts/app.ts";
-import { resolvePluginInstallPlan } from "../../packages/ui/src/pages/home/shared/extensions.ts";
-import type { PluginInstallCandidate } from "../../packages/ui/src/pages/home/shared/types.ts";
+import type { AppConfig, PluginMarketplaceEntry } from "@ccr/core/contracts/app.ts";
+import { pluginConfigPatchFromSettingsDraft, resolvePluginInstallPlan } from "@ccr/ui/pages/home/shared/extensions.ts";
+import type { PluginInstallCandidate, PluginSettingsDraft } from "@ccr/ui/pages/home/shared/types.ts";
 
 test("extension install dependencies require enabled installed plugins with required surfaces", () => {
   const marketplace: PluginMarketplaceEntry[] = [{
@@ -70,4 +70,73 @@ test("extension install dependencies without required surfaces still require ena
 
   const plan = resolvePluginInstallPlan(root, [], installed);
   assert.deepEqual(plan.missing, ["dependency"]);
+});
+
+test("plugin settings draft persists advanced fields", () => {
+  const draft: PluginSettingsDraft = {
+    appsSurfaceEnabled: true,
+    appsText: JSON.stringify([{ name: "Console", url: "/plugins/console" }]),
+    configText: JSON.stringify({ message: "hello" }),
+    coreGatewayText: JSON.stringify({ config: { billing: { enabled: true } } }),
+    enabled: true,
+    gatewaySurfaceEnabled: false,
+    modulePath: " /tmp/plugin.cjs ",
+    permissionsText: JSON.stringify(["trusted-code", "apps"]),
+    providerSurfaceEnabled: true,
+    proxyText: JSON.stringify({
+      routes: [{ host: "api.example.com", upstream: "http://127.0.0.1:1234" }]
+    })
+  };
+
+  const result = pluginConfigPatchFromSettingsDraft({ routing: { enabled: true } }, draft);
+  if (!result.ok) {
+    assert.fail(result.message);
+  }
+
+  assert.deepEqual(result.value, {
+    apps: [{ name: "Console", url: "/plugins/console" }],
+    config: {
+      message: "hello",
+      routing: { enabled: true }
+    },
+    coreGateway: { config: { billing: { enabled: true } } },
+    enabled: true,
+    module: "/tmp/plugin.cjs",
+    permissions: ["trusted-code", "apps"],
+    proxy: {
+      routes: [{ host: "api.example.com", upstream: "http://127.0.0.1:1234" }]
+    },
+    surfaces: { apps: true, gateway: false, provider: true }
+  });
+});
+
+test("plugin settings draft omits empty advanced objects", () => {
+  const draft: PluginSettingsDraft = {
+    appsSurfaceEnabled: true,
+    appsText: "[]",
+    configText: "{}",
+    coreGatewayText: "{}",
+    enabled: false,
+    gatewaySurfaceEnabled: true,
+    modulePath: " ",
+    permissionsText: "[]",
+    providerSurfaceEnabled: true,
+    proxyText: "{}"
+  };
+
+  const result = pluginConfigPatchFromSettingsDraft(undefined, draft);
+  if (!result.ok) {
+    assert.fail(result.message);
+  }
+
+  assert.deepEqual(result.value, {
+    apps: undefined,
+    config: undefined,
+    coreGateway: undefined,
+    enabled: false,
+    module: undefined,
+    permissions: undefined,
+    proxy: undefined,
+    surfaces: undefined
+  });
 });

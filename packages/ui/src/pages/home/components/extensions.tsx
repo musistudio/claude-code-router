@@ -1,9 +1,9 @@
 import {
-  AnimatedListItem, AnimatePresence, AppConfig, Braces, buildExtensionList, Button,
-  Card, CardContent, CardHeader, Check, CircleAlert, ClaudeDesignRouteRuleType,
+  AnimatedDisclosure, AnimatedListItem, AnimatePresence, AppConfig, Braces, buildExtensionList, Button,
+  Card, CardContent, CardHeader, Check, ChevronDown, CircleAlert, ClaudeDesignRouteRuleType,
   claudeDesignRouteRuleTypeLabel, claudeDesignRouteRuleTypeOptions, ClaudeDesignRoutingDraft, ClaudeDesignRoutingRuleDraft, createRouteModelOptions, Dialog,
   DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, ExtensionListItem,
-  extensionMatchesQuery, ExtensionSource, Field, GatewayProviderConfig, Input, isClaudeDesignStaticRuleType,
+  cn, extensionMatchesQuery, ExtensionSource, Field, GatewayProviderConfig, Input, isClaudeDesignStaticRuleType,
   Label, motion, normalizeClaudeDesignRuleTypeChange, PluginSettingsDraft, Plus, RouteTargetControl,
   Search, SelectControl, Settings, TextAreaControl, Toggle, translateOptions,
   Trash2, useAppText, useMemo, useState, X
@@ -199,6 +199,7 @@ export function PluginSettingsDialog({
   onSubmit: () => void;
 }) {
   const t = useAppText();
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   return (
     <Dialog onOpenChange={(open) => !open && onClose()}>
@@ -218,15 +219,6 @@ export function PluginSettingsDialog({
               <Field label={t("Enabled")}>
                 <Toggle checked={draft.enabled} onChange={(enabled) => onChange({ enabled })} />
               </Field>
-              <Field label={t("App surface")}>
-                <Toggle checked={draft.appsSurfaceEnabled} onChange={(appsSurfaceEnabled) => onChange({ appsSurfaceEnabled })} />
-              </Field>
-              <Field label={t("Gateway surface")}>
-                <Toggle checked={draft.gatewaySurfaceEnabled} onChange={(gatewaySurfaceEnabled) => onChange({ gatewaySurfaceEnabled })} />
-              </Field>
-              <Field label={t("Provider surface")}>
-                <Toggle checked={draft.providerSurfaceEnabled} onChange={(providerSurfaceEnabled) => onChange({ providerSurfaceEnabled })} />
-              </Field>
               <Field label={t("Name")}>
                 <Input readOnly value={extension.name} />
               </Field>
@@ -235,25 +227,57 @@ export function PluginSettingsDialog({
               </Field>
             </div>
 
-            <Field label={t("Browser apps JSON")}>
-              <TextAreaControl minHeight={132} value={draft.appsText} onChange={(appsText) => onChange({ appsText })} />
-            </Field>
+            <div className="overflow-hidden rounded-md border border-border bg-background">
+              <Button
+                aria-expanded={advancedOpen}
+                className="flex h-10 w-full items-center justify-between gap-3 px-3 text-left text-[12px] font-medium transition-colors hover:bg-muted/40"
+                onClick={() => setAdvancedOpen((value) => !value)}
+                type="button"
+                unstyled
+              >
+                <span className="min-w-0 truncate">{t("Advanced settings")}</span>
+                <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", advancedOpen && "rotate-180")} />
+              </Button>
+              <AnimatePresence initial={false}>
+                {advancedOpen ? (
+                  <AnimatedDisclosure key="plugin-settings-advanced">
+                    <div className="space-y-4 border-t border-border p-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <Field label={t("App surface")}>
+                          <Toggle checked={draft.appsSurfaceEnabled} onChange={(appsSurfaceEnabled) => onChange({ appsSurfaceEnabled })} />
+                        </Field>
+                        <Field label={t("Gateway surface")}>
+                          <Toggle checked={draft.gatewaySurfaceEnabled} onChange={(gatewaySurfaceEnabled) => onChange({ gatewaySurfaceEnabled })} />
+                        </Field>
+                        <Field label={t("Provider surface")}>
+                          <Toggle checked={draft.providerSurfaceEnabled} onChange={(providerSurfaceEnabled) => onChange({ providerSurfaceEnabled })} />
+                        </Field>
+                      </div>
 
-            <Field label={t("Plugin permissions JSON")}>
-              <TextAreaControl minHeight={120} value={draft.permissionsText} onChange={(permissionsText) => onChange({ permissionsText })} />
-            </Field>
+                      <Field label={t("Browser apps JSON")}>
+                        <TextAreaControl minHeight={132} value={draft.appsText} onChange={(appsText) => onChange({ appsText })} />
+                      </Field>
 
-            <Field label={t("Plugin proxy JSON")}>
-              <TextAreaControl minHeight={120} value={draft.proxyText} onChange={(proxyText) => onChange({ proxyText })} />
-            </Field>
+                      <Field label={t("Plugin permissions JSON")}>
+                        <TextAreaControl minHeight={120} value={draft.permissionsText} onChange={(permissionsText) => onChange({ permissionsText })} />
+                      </Field>
 
-            <Field label={t("Plugin core gateway JSON")}>
-              <TextAreaControl minHeight={132} value={draft.coreGatewayText} onChange={(coreGatewayText) => onChange({ coreGatewayText })} />
-            </Field>
+                      <Field label={t("Plugin proxy JSON")}>
+                        <TextAreaControl minHeight={120} value={draft.proxyText} onChange={(proxyText) => onChange({ proxyText })} />
+                      </Field>
 
-            <Field label={t("Plugin config JSON")}>
-              <TextAreaControl minHeight={160} value={draft.configText} onChange={(configText) => onChange({ configText })} />
-            </Field>
+                      <Field label={t("Plugin core gateway JSON")}>
+                        <TextAreaControl minHeight={132} value={draft.coreGatewayText} onChange={(coreGatewayText) => onChange({ coreGatewayText })} />
+                      </Field>
+
+                      <Field label={t("Plugin config JSON")}>
+                        <TextAreaControl minHeight={160} value={draft.configText} onChange={(configText) => onChange({ configText })} />
+                      </Field>
+                    </div>
+                  </AnimatedDisclosure>
+                ) : null}
+              </AnimatePresence>
+            </div>
 
             {error ? (
               <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">{t(error)}</div>

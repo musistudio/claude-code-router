@@ -16,6 +16,7 @@ import {
   type ProviderAccountMeter,
   type ProviderAccountPluginConnectorConfig,
   type ProviderAccountSnapshot,
+  GATEWAY_PLUGIN_PERMISSION_IDS,
   knownGatewayPluginDefaultPermissions,
   knownGatewayPluginDefaultSurfaces
 } from "@ccr/core/contracts/app";
@@ -176,7 +177,7 @@ type PluginServiceStateSnapshot = {
   providerAccountConnectors: Map<string, GatewayPluginProviderAccountConnector>;
   proxyRoutes: RegisteredProxyRoute[];
   resourceOwnerIds: Set<string>;
-  stopHooks: Array<() => MaybePromise<void>>;
+  stopHooks: StopHook[];
   virtualModelProfiles: unknown[];
 };
 
@@ -199,6 +200,8 @@ class GatewayPluginService {
     await this.stop({ nextConfig: config });
     this.config = config;
     this.running = true;
+    let firstStartupError: unknown;
+    let loadedPluginCount = 0;
 
     for (const pluginConfig of config.plugins ?? []) {
       if (pluginConfig.enabled === false) {
@@ -208,10 +211,17 @@ class GatewayPluginService {
       this.resourceOwnerIds.add(pluginConfig.id);
       try {
         await this.loadConfiguredPlugin(pluginConfig);
+        loadedPluginCount += 1;
       } catch (error) {
         await this.rollbackConfiguredPluginLoad(pluginConfig.id, snapshot);
         console.warn(`[plugin:${pluginConfig.id}] Disabled after startup failure: ${formatError(error)}`);
+        firstStartupError ??= error;
       }
+    }
+
+    if (firstStartupError && loadedPluginCount === 0) {
+      await this.stop();
+      throw firstStartupError;
     }
   }
 
@@ -699,7 +709,7 @@ class GatewayPluginService {
 
     for (const stopHook of newStopHooks) {
       try {
-        await stopHook();
+        await stopHook.stop({ reason: "disabled" });
       } catch (error) {
         console.warn(`[plugin:${pluginId}] Rollback stop hook failed: ${formatError(error)}`);
       }
@@ -715,8 +725,10 @@ class GatewayPluginService {
 
 export const pluginService = new GatewayPluginService();
 
-function pluginPermissionAccess(pluginConfig: Pick<GatewayPluginConfig, "id" | "permissions">): PluginPermissionAccess {
-  const permissions = pluginConfig.permissions ?? knownGatewayPluginDefaultPermissions(pluginConfig.id);
+function pluginPermissionAccess(pluginConfig: Pick<GatewayPluginConfig, "enabled" | "id" | "permissions">): PluginPermissionAccess {
+  const permissions = pluginConfig.permissions
+    ?? knownGatewayPluginDefaultPermissions(pluginConfig.id)
+    ?? (pluginConfig.enabled === true ? undefined : [...GATEWAY_PLUGIN_PERMISSION_IDS]);
   return {
     explicit: permissions !== undefined,
     permissions: new Set(permissions ?? []),

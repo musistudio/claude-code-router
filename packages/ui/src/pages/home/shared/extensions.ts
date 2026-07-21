@@ -160,6 +160,7 @@ import type {
   GatewayProviderConfig,
   GatewayProviderCapability,
   GatewayPluginAppConfig,
+  GatewayPluginConfig,
   GatewayPluginPermission,
   GatewayPluginSurfacesConfig,
   GatewayProviderConnectivityCheckModelResult,
@@ -379,6 +380,11 @@ import type { MotionSafeDivAttributes } from "./motion";
 import { isPlainRecord, stringValue } from "./common";
 import { isClaudeDesignPluginConfig, isCursorProxyPluginConfig, readClaudeDesignRoutingConfig } from "./routing";
 import type { ExtensionInstallDraft, ExtensionListItem, ExtensionSource, PluginInstallCandidate, PluginSettingsDraft } from "./types";
+
+export type PluginSettingsConfigPatch = Pick<
+  GatewayPluginConfig,
+  "apps" | "config" | "coreGateway" | "enabled" | "module" | "permissions" | "proxy" | "surfaces"
+>;
 
 const gatewayPluginPermissionIdSet = new Set<string>(GATEWAY_PLUGIN_PERMISSION_IDS);
 
@@ -615,12 +621,60 @@ function isAllPluginPermissionsKey(value: string): boolean {
   return normalized === "*" || normalized === "all";
 }
 
+export function pluginConfigPatchFromSettingsDraft(
+  previousConfig: unknown,
+  draft: PluginSettingsDraft
+): { ok: true; value: PluginSettingsConfigPatch } | { ok: false; message: string } {
+  const appsResult = parsePluginAppsSettingsText(draft.appsText);
+  if (!appsResult.ok) {
+    return appsResult;
+  }
+
+  const permissionsResult = parsePluginPermissionsSettingsText(draft.permissionsText);
+  if (!permissionsResult.ok) {
+    return permissionsResult;
+  }
+
+  const proxyResult = parsePluginObjectSettingsText(draft.proxyText, "Plugin proxy must be a JSON object.");
+  if (!proxyResult.ok) {
+    return proxyResult;
+  }
+
+  const coreGatewayResult = parsePluginObjectSettingsText(draft.coreGatewayText, "Plugin core gateway must be a JSON object.");
+  if (!coreGatewayResult.ok) {
+    return coreGatewayResult;
+  }
+
+  const configResult = parsePluginConfigSettingsText(draft.configText);
+  if (!configResult.ok) {
+    return configResult;
+  }
+
+  return {
+    ok: true,
+    value: {
+      apps: appsResult.value && appsResult.value.length > 0 ? appsResult.value : undefined,
+      config: pluginSettingsConfigFromDraft(previousConfig, configResult.value),
+      coreGateway: nonEmptyObject(coreGatewayResult.value) as GatewayPluginConfig["coreGateway"],
+      enabled: draft.enabled,
+      module: draft.modulePath.trim() || undefined,
+      permissions: permissionsResult.value && permissionsResult.value.length > 0 ? permissionsResult.value : undefined,
+      proxy: nonEmptyObject(proxyResult.value) as GatewayPluginConfig["proxy"],
+      surfaces: pluginSurfacesFromDraft(draft)
+    }
+  };
+}
+
 export function pluginSettingsConfigFromDraft(previousConfig: unknown, nonRoutingConfig: Record<string, unknown> | undefined): unknown {
   const output: Record<string, unknown> = nonRoutingConfig ? { ...nonRoutingConfig } : {};
   if (isPlainRecord(previousConfig) && Object.prototype.hasOwnProperty.call(previousConfig, "routing")) {
     output.routing = previousConfig.routing;
   }
   return Object.keys(output).length > 0 ? output : undefined;
+}
+
+function nonEmptyObject<T extends Record<string, unknown>>(value: T | undefined): T | undefined {
+  return value && Object.keys(value).length > 0 ? value : undefined;
 }
 
 export function formatEditableJson(value: unknown): string {

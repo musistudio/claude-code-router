@@ -93,7 +93,7 @@ class GatewayService {
       };
       return this.status;
     }
-    await this.stop();
+    await this.stop({ nextConfig: config });
     this.config = config;
     const coreAuthToken = generateCoreGatewayAuthToken();
     const scriptValidationErrors = await this.routeScriptRuntime.prepare(config.Router.rules);
@@ -208,7 +208,7 @@ class GatewayService {
     await mediaService.stop();
 
     await proxyService.stop(options.proxyRestoreTimeoutMs);
-    await pluginService.stop();
+    await pluginService.stop(options.nextConfig ? { nextConfig: options.nextConfig } : {});
     await backendService.stopAll();
     await this.browserWebSearchMcpIntegration?.stopBrowserWebSearchMcpServers().catch((error) => {
       console.warn(`[gateway] Failed to stop browser web search MCP: ${formatError(error)}`);

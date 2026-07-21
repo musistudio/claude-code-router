@@ -21,9 +21,9 @@ import {
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets, normalizeProxyConfig,
   normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterBuiltInRules, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
-  OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
+  OverviewWidgetConfig, parseProviderAccountDraft, pluginConfigPatchFromSettingsDraft,
   providerCredentialsFromDraft,
-  persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
+  persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
   providerBaseUrl, providerCapabilitiesForProtocols, providerCapabilitiesForSave, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerProtocolOptions, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
@@ -745,7 +745,10 @@ function App() {
     [copy, virtualModelValidationError]
   );
   const canSubmitVirtualModel = !virtualModelValidationError;
-  const canInstallExtension = Boolean(extensionInstallDraft.key.trim() && extensionInstallDraft.modulePath.trim());
+  const canInstallExtension = Boolean(
+    extensionInstallDraft.key.trim() &&
+    (extensionInstallDraft.modulePath.trim() || (extensionInstallDraft.apps?.length ?? 0) > 0)
+  );
   const onboardingReadiness = useMemo<OnboardingReadinessOptions>(() => ({
     profileConfirmed: onboardingProfileConfirmed,
     requireProfileConfirmation: activeView === "onboarding" && !onboardingFinished
@@ -1905,7 +1908,9 @@ function App() {
         key: selection.id,
         marketplaceId: "",
         modulePath: selection.modulePath,
-        selectedName: selection.name || selection.id
+        permissions: selection.permissions,
+        selectedName: selection.name || selection.id,
+        surfaces: selection.surfaces
       }));
       setExtensionInstallError("");
       setActionError("");
@@ -1925,7 +1930,9 @@ function App() {
         dependencies: extensionInstallDraft.dependencies,
         id: extensionInstallDraft.key.trim(),
         modulePath: extensionInstallDraft.modulePath.trim(),
-        name: extensionInstallDraft.selectedName
+        name: extensionInstallDraft.selectedName,
+        permissions: extensionInstallDraft.permissions,
+        surfaces: extensionInstallDraft.surfaces
       },
       pluginMarketplace,
       draftConfig.plugins ?? []
@@ -1943,7 +1950,9 @@ function App() {
           ...(item.apps?.length ? { apps: item.apps } : {}),
           enabled: true,
           id: item.id,
-          module: item.modulePath
+          ...(item.modulePath.trim() ? { module: item.modulePath.trim() } : {}),
+          ...(item.permissions?.length ? { permissions: item.permissions } : {}),
+          ...(item.surfaces ? { surfaces: item.surfaces } : {})
         }));
       config.plugins = [...(config.plugins ?? []), ...pluginsToAdd];
       return config;
@@ -1997,15 +2006,12 @@ function App() {
       return;
     }
 
-    const appsResult = parsePluginAppsSettingsText(pluginSettingsDraft.appsText);
-    if (!appsResult.ok) {
-      setPluginSettingsError(appsResult.message);
-      return;
-    }
-
-    const configResult = parsePluginConfigSettingsText(pluginSettingsDraft.configText);
-    if (!configResult.ok) {
-      setPluginSettingsError(configResult.message);
+    const settingsResult = pluginConfigPatchFromSettingsDraft(
+      draftConfig.plugins[extensionConfigTarget.index]?.config,
+      pluginSettingsDraft
+    );
+    if (!settingsResult.ok) {
+      setPluginSettingsError(settingsResult.message);
       return;
     }
 
@@ -2015,13 +2021,9 @@ function App() {
       if (!item) {
         return config;
       }
-      const nextConfig = pluginSettingsConfigFromDraft(item.config, configResult.value);
       values[extensionConfigTarget.index] = {
         ...item,
-        ...(appsResult.value && appsResult.value.length > 0 ? { apps: appsResult.value } : { apps: undefined }),
-        config: nextConfig,
-        enabled: pluginSettingsDraft.enabled,
-        module: pluginSettingsDraft.modulePath.trim()
+        ...settingsResult.value
       };
       config.plugins = values;
       return config;

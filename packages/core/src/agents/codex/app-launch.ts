@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AppConfig, ProfileConfig } from "@ccr/core/contracts/app";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
-import { codexModelCatalogJson } from "@ccr/core/agents/codex/model-catalog";
+import { buildCodexModelCatalog, type CodexModelCatalog, type CodexModelCatalogItem } from "@ccr/core/agents/codex/model-catalog";
 import { prepareCodexAppCdpUserDataDir } from "@ccr/core/agents/codex/media-preview-bridge";
 import { buildProfileLaunchPlan, resolveCodexConfigFile } from "@ccr/core/profiles/launch-core";
 import { normalizeWindowsDesktopAppCandidate, windowsDesktopAppCandidates } from "@ccr/core/platform/windows-app-discovery";
@@ -33,6 +33,8 @@ type CodexCompatibleAppSpec = {
   windowsVendorDirs: string[];
   windowsWhereNames: string[];
 };
+
+type CodexCompatibleAppModelCatalogConfig = Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>;
 
 export type CodexAppLaunchResult = {
   child: ChildProcess;
@@ -201,12 +203,111 @@ export function writeCodexCompatibleAppModelCatalog(
   const userDataDir = codexElectronUserDataDir(codexHome, profile, spec);
   mkdirSync(userDataDir, { recursive: true });
   const file = codexAppModelCatalogFile(userDataDir, spec);
-  const content = codexModelCatalogJson(config, profile.model);
+  const content = codexCompatibleAppModelCatalogJson(config, profile.model);
   const previous = existsSync(file) ? readFileSync(file, "utf8") : undefined;
   if (previous !== content) {
     writeFileSync(file, content, "utf8");
   }
   return { changed: previous !== content, file, userDataDir };
+}
+
+function codexCompatibleAppModelCatalogJson(config?: CodexCompatibleAppModelCatalogConfig, selectedModel?: string): string {
+  return `${JSON.stringify(codexCompatibleAppModelCatalog(config, selectedModel), null, 2)}\n`;
+}
+
+function codexCompatibleAppModelCatalog(config?: CodexCompatibleAppModelCatalogConfig, selectedModel?: string): CodexModelCatalog {
+  const catalog = buildCodexModelCatalog(config, selectedModel);
+  return {
+    models: catalog.models.map((model) => codexCompatibleAppModelCatalogItem(model, config))
+  };
+}
+
+function codexCompatibleAppModelCatalogItem(
+  model: CodexModelCatalogItem,
+  config?: CodexCompatibleAppModelCatalogConfig
+): CodexModelCatalogItem {
+  const fallbackReasoningLevels = codexCompatibleAppOpenAiReasoningFallbackLevels(model.slug, config);
+  if (!fallbackReasoningLevels) {
+    return model;
+  }
+  return {
+    ...model,
+    defaultReasoningEffort: "medium",
+    default_reasoning_effort: "medium",
+    default_reasoning_level: "medium",
+    supportedReasoningEfforts: fallbackReasoningLevels.map((level) => ({
+      description: level.description,
+      reasoningEffort: level.effort,
+      reasoning_effort: level.effort
+    })),
+    supported_reasoning_efforts: fallbackReasoningLevels.map((level) => level.effort),
+    supported_reasoning_levels: fallbackReasoningLevels,
+    supports_reasoning_summaries: true
+  };
+}
+
+function codexCompatibleAppOpenAiReasoningFallbackLevels(
+  catalogModel: string,
+  config?: CodexCompatibleAppModelCatalogConfig
+): Array<{ description: string; effort: string }> | undefined {
+  const selector = parseCodexCompatibleCatalogModelSelector(catalogModel);
+  if (!selector) {
+    return undefined;
+  }
+  if (providerHasExplicitModelMetadata(config, selector.provider, selector.model)) {
+    return undefined;
+  }
+  const normalizedModel = selector.model.trim().toLowerCase();
+  if (codexCompatibleAppOpenAiSupportsXHighFallback(normalizedModel)) {
+    return [
+      { effort: "minimal", description: "Minimal reasoning" },
+      { effort: "low", description: "Low reasoning" },
+      { effort: "medium", description: "Medium reasoning" },
+      { effort: "high", description: "High reasoning" },
+      { effort: "xhigh", description: "Extra high reasoning" }
+    ];
+  }
+  return /^gpt-[0-9]/.test(normalizedModel) || /^o[0-9]/.test(normalizedModel)
+    ? [
+        { effort: "minimal", description: "Minimal reasoning" },
+        { effort: "low", description: "Low reasoning" },
+        { effort: "medium", description: "Medium reasoning" },
+        { effort: "high", description: "High reasoning" }
+      ]
+    : undefined;
+}
+
+function codexCompatibleAppOpenAiSupportsXHighFallback(model: string): boolean {
+  const match = model.match(/^gpt-(\d+)(?:[.-](\d+))?/);
+  if (!match) return false;
+  const major = Number.parseInt(match[1], 10);
+  const minor = Number.parseInt(match[2] || "0", 10);
+  return major > 5 || (major === 5 && minor >= 6);
+}
+
+function providerHasExplicitModelMetadata(
+  config: CodexCompatibleAppModelCatalogConfig | undefined,
+  providerName: string,
+  modelName: string
+): boolean {
+  const normalizedProviderName = providerName.trim().toLowerCase();
+  const normalizedModelName = modelName.trim().toLowerCase();
+  const provider = (config?.Providers ?? []).find((candidate) => candidate.name.trim().toLowerCase() === normalizedProviderName);
+  return Boolean(
+    provider?.modelMetadata &&
+    Object.keys(provider.modelMetadata).some((candidate) => candidate.trim().toLowerCase() === normalizedModelName)
+  );
+}
+
+function parseCodexCompatibleCatalogModelSelector(model: string): { model: string; provider: string } | undefined {
+  const slashIndex = model.indexOf("/");
+  if (slashIndex <= 0 || slashIndex >= model.length - 1) {
+    return undefined;
+  }
+  return {
+    provider: model.slice(0, slashIndex),
+    model: model.slice(slashIndex + 1)
+  };
 }
 
 export function removeLegacyCodexVirtualAuthMarker(codexHome: string): boolean {
