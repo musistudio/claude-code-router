@@ -19,10 +19,10 @@
   <tr>
     <td align="left">
       <p>
-        <strong>Thanks to Kimi for sponsoring this project!</strong> Kimi K2.7 Code is an open-source, coding-focused agentic model developed by Moonshot AI, with substantial gains on real-world long-horizon coding tasks and higher end-to-end success across complex software engineering workflows. It also cuts thinking-token usage by approximately 30% compared with K2.6. Inside CCR, Kimi ships as built-in provider presets: import the pay-as-you-go API or the Kimi Code subscription in one click and route your coding agent's requests to Kimi, the subscription endpoint passes straight through natively with no protocol conversion, API endpoints are adapted automatically, and your balance and subscription usage show up right in the CCR dashboard.
+        <strong>Thanks to Kimi for sponsoring this project!</strong> Kimi K3 is Moonshot AI's most capable model and the world's first open 3T-class model. With 2.8 trillion parameters, native vision, and a 1-million-token context window, K3 delivers frontier performance across long-horizon coding, knowledge work, and reasoning. Inside CCR, Kimi ships as a built-in provider preset: import the pay-as-you-go API or Kimi Code subscription in one click and route your coding agent's requests to Kimi. The subscription endpoint passes through natively without protocol conversion, API endpoints are adapted automatically, and account balance and subscription usage are visible in the CCR dashboard.
       </p>
       <p align="center">
-        CCR already supports Kimi. Visit the Kimi Open Platform (<a href="https://platform.kimi.com?aff=ccr">中文站</a> | <a href="https://platform.kimi.ai?aff=ccr">Global</a>) to try the API, or explore the <a href="https://www.kimi.com/code?aff=ccr">cost-effective Coding Plan</a>.
+        CCR already includes Kimi provider presets. Visit the Kimi Open Platform (<a href="https://platform.kimi.com?aff=ccr">中文站</a> | <a href="https://platform.kimi.ai?aff=ccr">Global</a>) to try the API, or explore the <a href="https://www.kimi.com/code?aff=ccr">Kimi Code subscription</a>.
       </p>
     </td>
   </tr>
