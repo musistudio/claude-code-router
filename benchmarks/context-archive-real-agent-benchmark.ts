@@ -5,6 +5,7 @@ import { createDefaultAppConfig } from "../packages/core/src/config/default-conf
 import type { AppConfig } from "../packages/core/src/contracts/app";
 import {
   contextArchiveService,
+  finalizeContextArchiveRequest,
   prepareContextArchiveRequest
 } from "../packages/core/src/gateway/context-archive";
 import { defaultTaskCaseId, findTaskCase, selectTaskCases, taskCaseIds } from "./context-archive-task-cases.mjs";
@@ -54,10 +55,11 @@ type ClaudeRun = {
 };
 
 type ToolRequest = {
-  deep?: boolean;
-  max_chunks?: number;
-  prompt?: string;
+  archive_id?: string;
+  question?: string;
   session_id?: string;
+  session_token?: string;
+  task?: string;
 };
 
 type CaseReport = {
@@ -114,7 +116,7 @@ async function runCase(taskCase: TaskCase, options: BenchmarkOptions): Promise<C
   const prepared = await prepareContextArchiveRequest({
     body: original,
     config,
-    headers: { "user-agent": "generic-agent/1.0", "x-session-id": sessionId },
+    headers: { "x-ccr-context-compact": "handoff", "x-session-id": sessionId },
     method: "POST",
     path: "/v1/messages",
     protocol: "anthropic_messages",
@@ -123,6 +125,11 @@ async function runCase(taskCase: TaskCase, options: BenchmarkOptions): Promise<C
   if (!prepared) {
     throw new Error(`CCR did not prepare context archive request for ${taskCase.id}.`);
   }
+  finalizeContextArchiveRequest(prepared.record, {
+    logicalProvider: "benchmark-provider",
+    providerProtocol: "anthropic_messages",
+    routedModel: "claude-sonnet-4-5"
+  }, config);
 
   const compactedBody = JSON.parse(prepared.body.toString("utf8")) as Record<string, unknown>;
   const compactedText = renderCompactedBody(compactedBody);
@@ -132,19 +139,25 @@ async function runCase(taskCase: TaskCase, options: BenchmarkOptions): Promise<C
     maxBudgetUsd: options.maxBudgetUsd,
     sessionId: randomUUID()
   });
-  const toolRequests = parseToolRequests(initialAgent.output, corpus, sessionId);
+  const preparedText = prepared.body.toString("utf8");
+  const archiveId = prepared.record.archiveId;
+  const sessionToken = /Archive session token:\s*([A-Za-z0-9_-]+)/.exec(preparedText)?.[1];
+  if (!sessionToken) {
+    throw new Error(`CCR handoff did not include a session token for ${taskCase.id}.`);
+  }
+  const toolRequests = parseToolRequests(initialAgent.output, corpus, sessionId, archiveId, sessionToken);
   const toolResults = [];
+  const executor = mockHistoryExecutor(corpus.facts);
   for (const request of toolRequests) {
-    const prompt = request.prompt?.trim();
-    if (!prompt) {
+    const task = (request.task || request.question)?.trim();
+    if (!task) {
       continue;
     }
-    const result = await contextArchiveService.search({
-      deep: request.deep !== false,
-      maxChunks: request.max_chunks,
-      prompt,
-      sessionId: request.session_id || sessionId
-    }, config.contextArchive);
+    const result = await contextArchiveService.ask({
+      archiveId: request.archive_id || archiveId,
+      sessionToken: request.session_token || sessionToken,
+      task
+    }, config.contextArchive, executor);
     toolResults.push({ request, result });
   }
 
@@ -183,6 +196,40 @@ async function runCase(taskCase: TaskCase, options: BenchmarkOptions): Promise<C
   };
 }
 
+function mockHistoryExecutor(facts: CorpusFact[]) {
+  return async (input: { body: Buffer }) => {
+    const payload = JSON.parse(input.body.toString("utf8")) as Record<string, unknown>;
+    const payloadText = allPayloadStrings(payload).join("\n");
+    const messages = Array.isArray(payload.messages) ? payload.messages : [];
+    const taskText = allPayloadStrings(messages.at(-1)).join("\n");
+    const fact = facts.find((candidate) =>
+      taskText.includes(candidate.detail) &&
+      payloadText.includes(candidate.expected)
+    );
+    const content = fact
+      ? `The archived replay request records ${fact.expected}.`
+      : "The archived replay request supplied to the history agent does not contain enough information to answer.";
+    return {
+      body: JSON.stringify({ content: [{ text: content, type: "text" }] }),
+      contentType: "application/json",
+      statusCode: 200
+    };
+  };
+}
+
+function allPayloadStrings(value: unknown): string[] {
+  if (typeof value === "string") {
+    return [value];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap(allPayloadStrings);
+  }
+  if (isRecord(value)) {
+    return Object.values(value).flatMap(allPayloadStrings);
+  }
+  return [];
+}
+
 function benchmarkConfig(): AppConfig {
   const config = createDefaultAppConfig({
     generatedConfigFile: "/tmp/ccr-context-archive-real-agent-benchmark.json"
@@ -194,11 +241,10 @@ function benchmarkConfig(): AppConfig {
     contextArchive: {
       ...config.contextArchive,
       enabled: true,
-      handoffMaxCharacters: 16000,
-      maxEntries: 50000,
-      maxSearchResults: 8,
-      retainRecentItems: 8,
-      triggerTokenLimit: 1
+      maxBytes: 1024 * 1024 * 1024,
+      maxSnapshotBytes: 256 * 1024 * 1024,
+      maxSnapshots: 1000,
+      storagePath: `/tmp/ccr-context-archive-real-benchmark-${process.pid}-${randomUUID()}.sqlite`
     }
   };
 }
@@ -325,10 +371,10 @@ function renderCompactedBody(body: Record<string, unknown>): string {
 function initialAgentPrompt(corpus: Corpus, compactedText: string, sessionId: string): string {
   return [
     "You are a real post-compaction coding agent evaluating CCR context continuity.",
-    "You received only the CCR-compressed context below. Exact older details may require ccr_history_search.",
-    "Do not guess marker strings. Request retrieval for every marker that is not directly visible.",
+    "You received only the CCR-compressed context below. Exact older details may require ccr_history_ask.",
+    "Do not guess marker strings. Ask the archived previous-context agent for every marker that is not directly visible.",
     "Return ONLY JSON in this shape:",
-    '{"tool_calls":[{"prompt":"specific retrieval question","deep":true,"session_id":"archive session id"}]}',
+    '{"tool_calls":[{"task":"specific natural-language history question","archive_id":"archive id","session_token":"archive token"}]}',
     "",
     `Archive session id: ${sessionId}`,
     "Continuity facts to recover:",
@@ -347,7 +393,7 @@ function synthesisPrompt(
   toolResults: Array<{ request: ToolRequest; result: unknown }>
 ): string {
   return [
-    "Use the CCR-compressed context and ccr_history_search evidence to answer the continuity probe.",
+    "Use the CCR-compressed context and ccr_history_ask answers to answer the continuity probe.",
     "Return ONLY JSON in this exact shape:",
     `{"final":{${corpus.facts.map((fact) => `"${fact.key}":"exact marker or UNKNOWN"`).join(",")}}}`,
     "Do not guess. If evidence is insufficient, use UNKNOWN.",
@@ -358,30 +404,43 @@ function synthesisPrompt(
     compactedText,
     "CCR_COMPRESSED_CONTEXT_END",
     "",
-    "CCR_HISTORY_SEARCH_RESULTS_BEGIN",
+    "CCR_HISTORY_ASK_RESULTS_BEGIN",
     JSON.stringify(toolResults, null, 2),
-    "CCR_HISTORY_SEARCH_RESULTS_END"
+    "CCR_HISTORY_ASK_RESULTS_END"
   ].join("\n");
 }
 
-function parseToolRequests(output: string, corpus: Corpus, sessionId: string): ToolRequest[] {
+function parseToolRequests(
+  output: string,
+  corpus: Corpus,
+  sessionId: string,
+  archiveId: string,
+  sessionToken: string
+): ToolRequest[] {
   const parsed = parseJsonObject(output);
   const rawCalls = Array.isArray(parsed?.tool_calls) ? parsed.tool_calls : undefined;
   if (rawCalls?.length) {
     return rawCalls
       .filter(isRecord)
       .map((call) => ({
-        deep: call.deep === false ? false : true,
-        max_chunks: typeof call.max_chunks === "number" ? call.max_chunks : undefined,
-        prompt: typeof call.prompt === "string" ? call.prompt : undefined,
-        session_id: typeof call.session_id === "string" ? call.session_id : sessionId
+        archive_id: typeof call.archive_id === "string" ? call.archive_id : archiveId,
+        question: typeof call.question === "string"
+          ? call.question
+          : typeof call.prompt === "string"
+            ? call.prompt
+            : undefined,
+        session_id: typeof call.session_id === "string" ? call.session_id : sessionId,
+        session_token: typeof call.session_token === "string" ? call.session_token : sessionToken,
+        task: typeof call.task === "string" ? call.task : undefined
       }))
-      .filter((call) => Boolean(call.prompt));
+      .filter((call) => Boolean(call.task || call.question));
   }
   return corpus.facts.map((fact) => ({
-    deep: true,
-    prompt: fact.query,
-    session_id: sessionId
+    archive_id: archiveId,
+    question: fact.query,
+    session_id: sessionId,
+    session_token: sessionToken,
+    task: fact.query
   }));
 }
 

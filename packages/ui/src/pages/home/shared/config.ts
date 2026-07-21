@@ -448,24 +448,22 @@ export function normalizeConfig(config: AppConfig): AppConfig {
 
 export function normalizeContextArchiveConfig(config: Partial<AppConfig["contextArchive"]> | undefined): AppConfig["contextArchive"] {
   return {
-    ...fallbackConfig.contextArchive,
-    ...(config || {}),
-    claudeCodeCompact: Boolean(config?.claudeCodeCompact),
     enabled: Boolean(config?.enabled),
+    maxBytes: finiteNumber(config?.maxBytes, fallbackConfig.contextArchive.maxBytes),
+    maxSnapshotBytes: finiteNumber(config?.maxSnapshotBytes, fallbackConfig.contextArchive.maxSnapshotBytes),
+    maxSnapshots: finiteNumber(config?.maxSnapshots, fallbackConfig.contextArchive.maxSnapshots),
     mcpEnabled: config?.mcpEnabled !== false,
-    llm: {
-      ...fallbackConfig.contextArchive.llm,
-      ...(config?.llm || {}),
-      apiKey: typeof config?.llm?.apiKey === "string" ? config.llm.apiKey : "",
-      baseUrl: typeof config?.llm?.baseUrl === "string" && config.llm.baseUrl.trim()
-        ? config.llm.baseUrl.trim()
-        : fallbackConfig.contextArchive.llm.baseUrl,
-      model: typeof config?.llm?.model === "string" ? config.llm.model.trim() : "",
-      timeoutMs: typeof config?.llm?.timeoutMs === "number" && Number.isFinite(config.llm.timeoutMs)
-        ? Math.min(Math.max(Math.floor(config.llm.timeoutMs), 8000), 600000)
-        : fallbackConfig.contextArchive.llm.timeoutMs
-    }
+    replayTimeoutMs: finiteNumber(config?.replayTimeoutMs, fallbackConfig.contextArchive.replayTimeoutMs),
+    retentionDays: finiteNumber(config?.retentionDays, fallbackConfig.contextArchive.retentionDays),
+    storagePath: typeof config?.storagePath === "string" ? config.storagePath.trim() : "",
+    toolName: typeof config?.toolName === "string" && config.toolName.trim()
+      ? config.toolName.trim()
+      : fallbackConfig.contextArchive.toolName
   };
+}
+
+function finiteNumber(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 export function normalizeObservabilityConfig(config: Partial<AppConfig["observability"]> | undefined): AppConfig["observability"] {

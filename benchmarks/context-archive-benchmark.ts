@@ -1,8 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { createDefaultAppConfig } from "../packages/core/src/config/default-config";
 import type { AppConfig, GatewayProviderProtocol } from "../packages/core/src/contracts/app";
 import {
   contextArchiveService,
+  finalizeContextArchiveRequest,
   prepareContextArchiveRequest
 } from "../packages/core/src/gateway/context-archive";
 import { selectTaskCases } from "./context-archive-task-cases.mjs";
@@ -28,13 +30,7 @@ type Corpus = {
   messages: Array<{ content: string; role: "assistant" | "user" }>;
 };
 
-type StrategyId =
-  | "archive-only"
-  | "auto-prune-handoff"
-  | "claude-ccr-compact"
-  | "claude-summary-adapter"
-  | "codex-summary-adapter"
-  | "false-positive-guard";
+type StrategyId = "anthropic" | "false-positive-guard" | "openai-chat" | "openai-responses";
 
 type Strategy = {
   description: string;
@@ -51,6 +47,7 @@ type Scenario = {
 };
 
 type RunMetric = {
+  askMs: number[];
   archiveRecall: number;
   bodyRecall: number;
   caseId: string;
@@ -61,11 +58,12 @@ type RunMetric = {
   historyAccessInjected: boolean;
   originalBytes: number;
   prepareMs: number;
-  searchMs: number[];
   strategy: StrategyId;
 };
 
 type SummaryMetric = {
+  askP50Ms: number;
+  askP95Ms: number;
   archiveRecall: number;
   bodyRecall: number;
   caseId?: string;
@@ -78,31 +76,21 @@ type SummaryMetric = {
   prepareP50Ms: number;
   prepareP95Ms: number;
   score: number;
-  searchP50Ms: number;
-  searchP95Ms: number;
   strategy: StrategyId;
 };
 
 const strategies: Strategy[] = [
   {
-    description: "Gateway-side pruning plus CCR handoff and archive search.",
-    id: "auto-prune-handoff"
+    description: "Immutable OpenAI Chat snapshot plus exact archived-agent replay.",
+    id: "openai-chat"
   },
   {
-    description: "Codex client summary request; preserve full payload and inject archive access.",
-    id: "codex-summary-adapter"
+    description: "Immutable OpenAI Responses snapshot plus exact archived-agent replay.",
+    id: "openai-responses"
   },
   {
-    description: "Claude Code ordinary summary request; preserve full payload and inject archive access.",
-    id: "claude-summary-adapter"
-  },
-  {
-    description: "Claude Code compact request with CCR replacement enabled; prune to CCR handoff plus recent context.",
-    id: "claude-ccr-compact"
-  },
-  {
-    description: "Archive the request only; no gateway compaction and no handoff injection.",
-    id: "archive-only"
+    description: "Immutable Anthropic snapshot plus exact archived-agent replay.",
+    id: "anthropic"
   },
   {
     description: "Claude Code request with unrelated 'compact' wording; should not trigger compaction.",
@@ -125,7 +113,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
   }
 
   const summaries = strategies.map((strategy) => summarizeStrategy(strategy.id, runs));
-  const caseSummaries = taskCases.map((taskCase) => summarizeStrategy("auto-prune-handoff", runs, taskCase.id));
+  const caseSummaries = taskCases.map((taskCase) => summarizeStrategy("openai-chat", runs, taskCase.id));
   if (options.json) {
     console.log(JSON.stringify({
       caseSummaries,
@@ -152,14 +140,14 @@ async function runStrategy(strategy: StrategyId, corpus: Corpus, iteration: numb
     method: "POST",
     path: scenario.path,
     protocol: scenario.protocol,
-    requestId: `${strategy}-${iteration}`
+    requestId: `${strategy}-${corpus.caseId}-${iteration}`
   });
   const prepareMs = performance.now() - started;
   const forwarded = result?.body ?? original;
   const forwardedText = forwarded.toString("utf8");
   const diagnostic = result?.diagnostic ?? "none";
   if (strategy === "false-positive-guard") {
-    const passed = diagnostic.startsWith("archived:");
+    const passed = result === undefined;
     return {
       archiveRecall: passed ? 1 : 0,
       bodyRecall: passed ? 1 : 0,
@@ -168,24 +156,38 @@ async function runStrategy(strategy: StrategyId, corpus: Corpus, iteration: numb
       diagnostic,
       falsePositive: !passed,
       forwardedBytes: forwarded.byteLength,
-      historyAccessInjected: forwardedText.includes("Archived history access") || forwardedText.includes("CCR CONTEXT HANDOFF"),
+      historyAccessInjected: forwardedText.includes("CCR ARCHIVED HISTORY ACCESS"),
       originalBytes: original.byteLength,
       prepareMs,
-      searchMs: [],
+      askMs: [],
       strategy
     };
   }
-  const searchMs: number[] = [];
+  if (!result) {
+    throw new Error(`Explicit compact benchmark did not create an archive for ${strategy}.`);
+  }
+  finalizeContextArchiveRequest(result.record, {
+    logicalProvider: "benchmark-provider",
+    providerProtocol: scenario.protocol,
+    routedModel: String(scenario.body.model || "benchmark-model")
+  }, scenario.config);
+  const token = /Archive session token:\s*([A-Za-z0-9_-]+)/.exec(forwardedText)?.[1];
+  if (!token) {
+    throw new Error(`Compact handoff did not contain an archive token for ${strategy}.`);
+  }
+  const askMs: number[] = [];
   let archiveHits = 0;
 
+  const executor = mockHistoryExecutor(corpus.facts);
   for (const fact of corpus.facts) {
-    const searchStarted = performance.now();
-    const search = await contextArchiveService.search({
-      prompt: fact.query,
-      sessionId: scenario.sessionId
-    }, scenario.config.contextArchive);
-    searchMs.push(performance.now() - searchStarted);
-    if (searchOutputContains(search, fact.expected)) {
+    const askStarted = performance.now();
+    const answer = await contextArchiveService.ask({
+      archiveId: result.record.archiveId,
+      sessionToken: token,
+      task: fact.query
+    }, scenario.config.contextArchive, executor);
+    askMs.push(performance.now() - askStarted);
+    if (askOutputContains(answer, fact.expected)) {
       archiveHits += 1;
     }
   }
@@ -197,62 +199,95 @@ async function runStrategy(strategy: StrategyId, corpus: Corpus, iteration: numb
     caseId: corpus.caseId,
     compressionRatio: forwarded.byteLength / original.byteLength,
     diagnostic,
-    falsePositive: strategy === "false-positive-guard" && !diagnostic.startsWith("archived:"),
+    falsePositive: false,
     forwardedBytes: forwarded.byteLength,
-    historyAccessInjected: forwardedText.includes("Archived history access") || forwardedText.includes("CCR CONTEXT HANDOFF"),
+    historyAccessInjected: forwardedText.includes("CCR ARCHIVED HISTORY ACCESS"),
     originalBytes: original.byteLength,
     prepareMs,
-    searchMs,
+    askMs,
     strategy
   };
+}
+
+function mockHistoryExecutor(facts: Fact[]) {
+  return async (input: { body: Buffer; snapshot: { protocol: GatewayProviderProtocol } }) => {
+    const payload = JSON.parse(input.body.toString("utf8")) as Record<string, unknown>;
+    const payloadText = allPayloadStrings(payload).join("\n");
+    const taskText = replayTaskText(payload);
+    const fact = facts.find((candidate) =>
+      taskText.includes(candidate.detail) &&
+      payloadText.includes(candidate.expected)
+    );
+    const content = fact
+      ? `The archived replay request records ${fact.expected}.`
+      : "The archived replay request supplied to the history agent does not contain enough information to answer.";
+    const responseBody = input.snapshot.protocol === "anthropic_messages"
+      ? { content: [{ text: content, type: "text" }] }
+      : input.snapshot.protocol === "openai_responses"
+        ? { output: [{ content: [{ text: content, type: "output_text" }], role: "assistant", type: "message" }] }
+        : { choices: [{ message: { content } }] };
+    return {
+      body: JSON.stringify(responseBody),
+      contentType: "application/json",
+      statusCode: 200
+    };
+  };
+}
+
+function replayTaskText(payload: Record<string, unknown>): string {
+  const items = Array.isArray(payload.messages)
+    ? payload.messages
+    : Array.isArray(payload.input)
+      ? payload.input
+      : [];
+  return allPayloadStrings(items.at(-1)).join("\n");
+}
+
+function allPayloadStrings(value: unknown): string[] {
+  if (typeof value === "string") {
+    return [value];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap(allPayloadStrings);
+  }
+  if (isRecord(value)) {
+    return Object.values(value).flatMap(allPayloadStrings);
+  }
+  return [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function buildScenario(strategy: StrategyId, corpus: Corpus, iteration: number): Scenario {
   const sessionId = `${strategy}-${iteration}`;
   switch (strategy) {
-    case "auto-prune-handoff":
+    case "openai-chat":
       return {
         body: openAiChatBody(corpus),
-        config: benchmarkConfig(1),
-        headers: { "user-agent": "generic-openai-client/1.0", "x-session-id": sessionId },
+        config: benchmarkConfig(),
+        headers: { "x-ccr-context-compact": "handoff", "x-session-id": sessionId },
         path: "/v1/chat/completions",
         protocol: "openai_chat_completions",
         sessionId
       };
-    case "codex-summary-adapter":
+    case "openai-responses":
       return {
         body: openAiResponsesBody(corpus, "Please summarize the conversation so far for context compaction. Include decisions, constraints, commands, and next steps."),
-        config: benchmarkConfig(999999),
-        headers: { "user-agent": "codex-cli/1.0", "x-codex-session-id": sessionId },
+        config: benchmarkConfig(),
+        headers: { "x-ccr-context-compact": "handoff", "x-codex-session-id": sessionId },
         path: "/v1/responses",
         protocol: "openai_responses",
         sessionId
       };
-    case "claude-summary-adapter":
+    case "anthropic":
       return {
         body: anthropicMessagesBody(corpus, "Summarize the conversation so far for handoff into a new context window."),
-        config: benchmarkConfig(999999),
-        headers: { "user-agent": "claude-code/2.0", "x-claude-code-session-id": sessionId },
+        config: benchmarkConfig(),
+        headers: { "x-ccr-context-compact": "handoff", "x-claude-code-session-id": sessionId },
         path: "/v1/messages",
         protocol: "anthropic_messages",
-        sessionId
-      };
-    case "claude-ccr-compact":
-      return {
-        body: anthropicMessagesBody(corpus, "Summarize the conversation so far for handoff into a new context window."),
-        config: benchmarkConfig(999999, { claudeCodeCompact: true }),
-        headers: { "user-agent": "claude-code/2.0", "x-claude-code-session-id": sessionId },
-        path: "/v1/messages",
-        protocol: "anthropic_messages",
-        sessionId
-      };
-    case "archive-only":
-      return {
-        body: openAiChatBody(corpus),
-        config: benchmarkConfig(999999),
-        headers: { "user-agent": "generic-openai-client/1.0", "x-session-id": sessionId },
-        path: "/v1/chat/completions",
-        protocol: "openai_chat_completions",
         sessionId
       };
     case "false-positive-guard":
@@ -265,7 +300,7 @@ function buildScenario(strategy: StrategyId, corpus: Corpus, iteration: number):
           model: "claude-sonnet-4-5",
           system: "You are Claude Code."
         },
-        config: benchmarkConfig(999999),
+        config: benchmarkConfig(),
         headers: { "user-agent": "claude-code/2.0", "x-claude-code-session-id": sessionId },
         path: "/v1/messages",
         protocol: "anthropic_messages",
@@ -274,7 +309,7 @@ function buildScenario(strategy: StrategyId, corpus: Corpus, iteration: number):
   }
 }
 
-function benchmarkConfig(triggerTokenLimit: number, contextArchiveOverrides: Partial<AppConfig["contextArchive"]> = {}): AppConfig {
+function benchmarkConfig(): AppConfig {
   const config = createDefaultAppConfig({
     generatedConfigFile: "/tmp/ccr-context-archive-benchmark-gateway.json"
   });
@@ -285,12 +320,10 @@ function benchmarkConfig(triggerTokenLimit: number, contextArchiveOverrides: Par
     contextArchive: {
       ...config.contextArchive,
       enabled: true,
-      handoffMaxCharacters: 16000,
-      maxEntries: 20000,
-      maxSearchResults: 8,
-      retainRecentItems: 8,
-      triggerTokenLimit,
-      ...contextArchiveOverrides
+      maxBytes: 256 * 1024 * 1024,
+      maxSnapshotBytes: 64 * 1024 * 1024,
+      maxSnapshots: 1000,
+      storagePath: `/tmp/ccr-context-archive-benchmark-${process.pid}-${randomUUID()}.sqlite`
     }
   };
 }
@@ -358,7 +391,8 @@ function openAiChatBody(corpus: Corpus): Record<string, unknown> {
   return {
     messages: [
       { content: "You are a coding agent.", role: "system" },
-      ...corpus.messages
+      ...corpus.messages,
+      { content: "Produce a compact handoff for a fresh context.", role: "user" }
     ],
     model: "benchmark-model"
   };
@@ -394,7 +428,7 @@ function anthropicMessagesBody(corpus: Corpus, finalPrompt: string): Record<stri
   };
 }
 
-function searchOutputContains(value: unknown, expected: string): boolean {
+function askOutputContains(value: unknown, expected: string): boolean {
   return JSON.stringify(value).includes(expected);
 }
 
@@ -411,8 +445,8 @@ function summarizeStrategy(strategy: StrategyId, runs: RunMetric[], caseId?: str
     originalBytes: average(selected.map((run) => run.originalBytes)),
     prepareP50Ms: percentile(selected.map((run) => run.prepareMs), 50),
     prepareP95Ms: percentile(selected.map((run) => run.prepareMs), 95),
-    searchP50Ms: percentile(selected.flatMap((run) => run.searchMs), 50),
-    searchP95Ms: percentile(selected.flatMap((run) => run.searchMs), 95),
+    askP50Ms: percentile(selected.flatMap((run) => run.askMs), 50),
+    askP95Ms: percentile(selected.flatMap((run) => run.askMs), 95),
     strategy
   };
   return {
@@ -424,9 +458,8 @@ function summarizeStrategy(strategy: StrategyId, runs: RunMetric[], caseId?: str
 
 function scoreSummary(summary: Omit<SummaryMetric, "score">): number {
   const quality = clamp01(summary.archiveRecall);
-  const efficiency = 1 - Math.min(1, Math.max(0, summary.compressionRatio));
   const safety = 1 - clamp01(summary.falsePositiveRate);
-  return quality * 0.5 + efficiency * 0.3 + safety * 0.2;
+  return quality * 0.8 + safety * 0.2;
 }
 
 function printSummary(options: BenchmarkOptions, summaries: SummaryMetric[], caseSummaries: SummaryMetric[]): void {
@@ -443,7 +476,7 @@ function printSummary(options: BenchmarkOptions, summaries: SummaryMetric[], cas
     "handoff",
     "false_pos",
     "prep_p50",
-    "search_p95",
+    "ask_p95",
     "score"
   ];
   const rows = summaries.map((summary) => [
@@ -455,25 +488,25 @@ function printSummary(options: BenchmarkOptions, summaries: SummaryMetric[], cas
     formatPercent(summary.historyAccessRate),
     formatPercent(summary.falsePositiveRate),
     `${formatNumber(summary.prepareP50Ms)}ms`,
-    `${formatNumber(summary.searchP95Ms)}ms`,
+    `${formatNumber(summary.askP95Ms)}ms`,
     formatNumber(summary.score)
   ]);
   printTable(headers, rows);
   console.log("");
-  console.log("Auto-prune-handoff by task case:");
+  console.log("OpenAI chat replay by task case:");
   printTable([
     "case",
     "ratio",
     "body_recall",
     "archive_recall",
-    "search_p95",
+    "ask_p95",
     "score"
   ], caseSummaries.map((summary) => [
     summary.caseId ?? "all",
     formatNumber(summary.compressionRatio),
     formatPercent(summary.bodyRecall),
     formatPercent(summary.archiveRecall),
-    `${formatNumber(summary.searchP95Ms)}ms`,
+    `${formatNumber(summary.askP95Ms)}ms`,
     formatNumber(summary.score)
   ]));
 }
@@ -481,11 +514,11 @@ function printSummary(options: BenchmarkOptions, summaries: SummaryMetric[], cas
 function benchmarkNotes(): string {
   return [
     "Notes:",
-    "ratio=forwarded request bytes/original request bytes; lower is better for gateway-side compression.",
-    "body_recall=continuity markers still visible in the forwarded compact body without retrieval.",
-    "archive_recall=continuity markers recovered through ccr_history_search.",
-    "score=0.5*archive_recall + 0.3*(1-min(ratio,1)) + 0.2*(1-false_positive_rate).",
-    "This benchmark does not judge external LLM summary quality."
+    "ratio=handoff-generation request bytes/original request bytes; it measures task overhead, not compression.",
+    "body_recall=markers preserved because the compact generation request remains complete.",
+    "archive_recall=continuity markers recovered through ccr_history_ask.",
+    "score=0.8*archive_recall + 0.2*(1-false_positive_rate).",
+    "This benchmark does not perform lexical, chunk, or embedding retrieval."
   ].join(" ");
 }
 

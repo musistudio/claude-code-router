@@ -245,12 +245,15 @@ export async function loadAppConfig(): Promise<AppConfig> {
       botConfigs: picked.botConfigs ?? DEFAULT_CONFIG.botConfigs,
       botGateway: completeBotGatewayConfig(picked.botGateway),
       contextArchive: {
-        ...DEFAULT_CONFIG.contextArchive,
-        ...(picked.contextArchive ?? {}),
-        llm: {
-          ...DEFAULT_CONFIG.contextArchive.llm,
-          ...(picked.contextArchive?.llm ?? {})
-        }
+        enabled: picked.contextArchive?.enabled ?? DEFAULT_CONFIG.contextArchive.enabled,
+        maxBytes: picked.contextArchive?.maxBytes ?? DEFAULT_CONFIG.contextArchive.maxBytes,
+        maxSnapshotBytes: picked.contextArchive?.maxSnapshotBytes ?? DEFAULT_CONFIG.contextArchive.maxSnapshotBytes,
+        maxSnapshots: picked.contextArchive?.maxSnapshots ?? DEFAULT_CONFIG.contextArchive.maxSnapshots,
+        mcpEnabled: picked.contextArchive?.mcpEnabled ?? DEFAULT_CONFIG.contextArchive.mcpEnabled,
+        replayTimeoutMs: picked.contextArchive?.replayTimeoutMs ?? DEFAULT_CONFIG.contextArchive.replayTimeoutMs,
+        retentionDays: picked.contextArchive?.retentionDays ?? DEFAULT_CONFIG.contextArchive.retentionDays,
+        storagePath: picked.contextArchive?.storagePath ?? DEFAULT_CONFIG.contextArchive.storagePath,
+        toolName: picked.contextArchive?.toolName ?? DEFAULT_CONFIG.contextArchive.toolName
       },
       gateway: {
         ...DEFAULT_CONFIG.gateway,
@@ -703,55 +706,33 @@ function parseContextArchive(value: unknown): Partial<ContextArchiveConfig> | un
   if (typeof mcpEnabled === "boolean") {
     contextArchive.mcpEnabled = mcpEnabled;
   }
-  const claudeCodeCompact = value.claudeCodeCompact ?? value.claude_code_compact ?? value.overrideClaudeCodeCompact ?? value.override_claude_code_compact;
-  if (typeof claudeCodeCompact === "boolean") {
-    contextArchive.claudeCodeCompact = claudeCodeCompact;
+  const maxBytes = readNumber(value.maxBytes ?? value.max_bytes);
+  if (maxBytes !== undefined) {
+    contextArchive.maxBytes = clampNumber(maxBytes, 1024 * 1024, 64 * 1024 * 1024 * 1024);
   }
-  const triggerTokenLimit = readNumber(value.triggerTokenLimit ?? value.trigger_token_limit);
-  if (triggerTokenLimit !== undefined) {
-    contextArchive.triggerTokenLimit = clampNumber(triggerTokenLimit, 1000, 2_000_000);
+  const maxSnapshotBytes = readNumber(value.maxSnapshotBytes ?? value.max_snapshot_bytes);
+  if (maxSnapshotBytes !== undefined) {
+    contextArchive.maxSnapshotBytes = clampNumber(maxSnapshotBytes, 64 * 1024, 1024 * 1024 * 1024);
   }
-  const retainRecentItems = readNumber(value.retainRecentItems ?? value.retain_recent_items);
-  if (retainRecentItems !== undefined) {
-    contextArchive.retainRecentItems = clampNumber(retainRecentItems, 2, 200);
+  const maxSnapshots = readNumber(value.maxSnapshots ?? value.max_snapshots);
+  if (maxSnapshots !== undefined) {
+    contextArchive.maxSnapshots = clampNumber(maxSnapshots, 1, 100000);
   }
-  const maxEntries = readNumber(value.maxEntries ?? value.max_entries);
-  if (maxEntries !== undefined) {
-    contextArchive.maxEntries = clampNumber(maxEntries, 50, 100000);
+  const replayTimeoutMs = readNumber(value.replayTimeoutMs ?? value.replay_timeout_ms);
+  if (replayTimeoutMs !== undefined) {
+    contextArchive.replayTimeoutMs = clampNumber(replayTimeoutMs, 1000, 600000);
   }
-  const maxSearchResults = readNumber(value.maxSearchResults ?? value.max_search_results);
-  if (maxSearchResults !== undefined) {
-    contextArchive.maxSearchResults = clampNumber(maxSearchResults, 1, 50);
+  const retentionDays = readNumber(value.retentionDays ?? value.retention_days);
+  if (retentionDays !== undefined) {
+    contextArchive.retentionDays = clampNumber(retentionDays, 1, 3650);
   }
-  const handoffMaxCharacters = readNumber(value.handoffMaxCharacters ?? value.handoff_max_characters);
-  if (handoffMaxCharacters !== undefined) {
-    contextArchive.handoffMaxCharacters = clampNumber(handoffMaxCharacters, 1000, 200000);
+  const storagePath = readString(value.storagePath ?? value.storage_path);
+  if (storagePath !== undefined) {
+    contextArchive.storagePath = storagePath;
   }
   const toolName = readString(value.toolName ?? value.tool_name);
   if (toolName !== undefined) {
     contextArchive.toolName = toolName;
-  }
-
-  const rawLlm = isObject(value.llm) ? value.llm : value;
-  const llm: Partial<ContextArchiveConfig["llm"]> = {};
-  const apiKey = readString(rawLlm.apiKey) || readString(rawLlm.api_key);
-  if (apiKey !== undefined) {
-    llm.apiKey = apiKey;
-  }
-  const baseUrl = readString(rawLlm.baseUrl) || readString(rawLlm.base_url);
-  if (baseUrl !== undefined) {
-    llm.baseUrl = baseUrl;
-  }
-  const model = readString(rawLlm.model);
-  if (model !== undefined) {
-    llm.model = model;
-  }
-  const timeoutMs = readNumber(rawLlm.timeoutMs ?? rawLlm.timeout_ms);
-  if (timeoutMs !== undefined) {
-    llm.timeoutMs = clampNumber(timeoutMs, 8000, 600000);
-  }
-  if (Object.keys(llm).length > 0) {
-    contextArchive.llm = llm as ContextArchiveConfig["llm"];
   }
 
   return Object.keys(contextArchive).length ? contextArchive : undefined;

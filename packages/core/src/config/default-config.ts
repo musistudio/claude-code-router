@@ -83,21 +83,15 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
       tenantId: "ccr"
     },
     contextArchive: {
-      claudeCodeCompact: false,
       enabled: false,
-      handoffMaxCharacters: 24000,
-      llm: {
-        apiKey: "",
-        baseUrl: "https://api.openai.com/v1",
-        model: "",
-        timeoutMs: 60000
-      },
-      maxEntries: 2000,
-      maxSearchResults: 8,
+      maxBytes: 512 * 1024 * 1024,
+      maxSnapshotBytes: 32 * 1024 * 1024,
+      maxSnapshots: 200,
       mcpEnabled: true,
-      retainRecentItems: 12,
-      toolName: "ccr_history_search",
-      triggerTokenLimit: 100000
+      replayTimeoutMs: 60000,
+      retentionDays: 30,
+      storagePath: "",
+      toolName: "ccr_history_ask"
     },
     gateway: {
       coreHost,

@@ -48,10 +48,15 @@ import { handleNetworkCaptureMcpRequest, isNetworkCaptureMcpPath } from "@ccr/co
 import { BROWSER_AUTOMATION_MCP_PATH, TOOL_HUB_MCP_SERVER_NAME, browserAutomationMcpEnabled, toolHubBuiltInBackendServers, toolHubMcpRuntimeConfig, toolHubRequestTimeoutMs } from "@ccr/core/mcp/toolhub-config";
 import {
   contextArchiveMcpServer,
+  contextArchiveHandoffResponseStream,
+  failContextArchiveRequest,
+  finalizeContextArchiveRequest,
   handleContextArchiveMcpRequest,
   isContextArchiveMcpPath,
   prepareContextArchiveRequest,
-  recordContextArchiveResponse
+  type ContextArchiveRecord,
+  type ContextArchiveReplayInput,
+  type ContextArchiveReplayResult
 } from "@ccr/core/gateway/context-archive";
 import { pluginService } from "@ccr/core/plugins/service";
 import { proxyService } from "@ccr/core/proxy/service";
@@ -218,8 +223,6 @@ type UpstreamAttempt = {
   logicalProvider?: string;
   model?: string;
 };
-
-type ContextArchiveForwardRecord = Parameters<typeof recordContextArchiveResponse>[0];
 
 type UpstreamFailedAttempt = {
   credentialChain?: string[];
@@ -617,7 +620,12 @@ class GatewayService {
       if (!authorization.ok) {
         return;
       }
-      await handleContextArchiveMcpRequest(request, response, this.config);
+      await handleContextArchiveMcpRequest(
+        request,
+        response,
+        this.config,
+        (input) => this.replayContextArchive(input)
+      );
       return;
     }
 
@@ -935,7 +943,7 @@ class GatewayService {
       }
     }
 
-    let contextArchiveRecord: ContextArchiveForwardRecord;
+    let contextArchiveRecord: ContextArchiveRecord | undefined;
     const contextArchivePreparation = await prepareContextArchiveRequest({
       body: bodyToForward,
       config: this.config,
@@ -970,6 +978,7 @@ class GatewayService {
         upstreamUrl
       });
     } catch (error) {
+      failContextArchiveRequest(contextArchiveRecord, this.config);
       const message = formatError(error);
       if (error instanceof UpstreamRequestError) {
         bodyToForward = error.attempt?.body ?? bodyToForward;
@@ -1011,7 +1020,21 @@ class GatewayService {
       this.config
     );
     const upstreamResponse = upstreamResult.response;
+    if (upstreamResponse.ok) {
+      finalizeContextArchiveRequest(contextArchiveRecord, {
+        credentialChain: upstreamResult.attempt.credentialChain,
+        credentialIds: upstreamResult.attempt.credentialIds,
+        logicalProvider: upstreamResult.attempt.logicalProvider ?? responseHeaders.get("x-gateway-target-provider-name") ?? undefined,
+        providerProtocol: upstreamResult.attempt.credentialProtocol ?? resolveResponseProviderProtocol(responseHeaders, this.config),
+        routedModel
+      }, this.config);
+    } else {
+      failContextArchiveRequest(contextArchiveRecord, this.config);
+    }
     if (codexApplyPatchBridgeActive) {
+      responseHeaders.delete("content-length");
+    }
+    if (contextArchiveRecord) {
       responseHeaders.delete("content-length");
     }
     const hostedWebSearchResponseContentType = responseHeaders.get("content-type")?.toLowerCase() ?? "";
@@ -1050,7 +1073,7 @@ class GatewayService {
     const patchedResponseBody = codexApplyPatchBridgeActive
       ? codexApplyPatchBridgeResponseStream(upstreamBody, responseHeaders)
       : upstreamBody;
-    const responseBody = hostedWebSearchProtocolContext
+    const protocolResponseBody = hostedWebSearchProtocolContext
       ? hostedWebSearchProtocolResponseStream(
           patchedResponseBody,
           responseHeaders,
@@ -1058,6 +1081,14 @@ class GatewayService {
           this.browserWebSearchMcpIntegration
         )
       : patchedResponseBody;
+    const responseBody = contextArchiveRecord
+      ? contextArchiveHandoffResponseStream(
+          protocolResponseBody,
+          contextArchiveRecord,
+          requestProtocolForPath(path) ?? "anthropic_messages",
+          responseHeaders.get("content-type") ?? undefined
+        )
+      : protocolResponseBody;
     const sampler = createBodySampler();
     const sseErrorDetector = createSseErrorDetector(responseHeaders.get("content-type") ?? undefined);
     let streamDetectedError: string | undefined;
@@ -1092,12 +1123,12 @@ class GatewayService {
     responseBody.once("end", () => {
       upstreamStreamEnded = true;
       streamDetectedError ??= sseErrorDetector.finish();
-      recordContextArchiveResponse(contextArchiveRecord, sampler.read(), this.config);
       if (responseCompleted || response.writableEnded) {
         writeStreamLog();
       }
     });
     responseBody.on("error", (error) => {
+      failContextArchiveRequest(contextArchiveRecord, this.config);
       streamDetectedError ??= sseErrorDetector.finish();
       writeStreamLog(clientDisconnected ? clientDisconnectMessage : formatError(error));
     });
@@ -1119,6 +1150,49 @@ class GatewayService {
       });
     }
     responseBody.pipe(response);
+  }
+
+  private async replayContextArchive(input: ContextArchiveReplayInput): Promise<ContextArchiveReplayResult> {
+    const config = this.config;
+    if (!config || !this.coreAuthToken || !this.status.coreEndpoint) {
+      throw new Error("ARCHIVE_REPLAY_UNAVAILABLE: Gateway runtime is not ready.");
+    }
+    const route = input.snapshot.route;
+    if (!route) {
+      throw new Error(`ARCHIVE_ROUTE_UNAVAILABLE: Archive ${input.snapshot.archiveId} has no finalized route.`);
+    }
+
+    const normalizedBody = normalizeConfiguredProviderModelBody(input.body, config)?.body ?? input.body;
+    const body = usageAwareOpenAiChatAttemptBody({
+      body: normalizedBody,
+      config,
+      path: input.snapshot.path,
+      target: route.providerProtocol ? { protocol: route.providerProtocol } : undefined
+    });
+    const headers: Record<string, string> = {
+      ...input.snapshot.replayHeaders,
+      "content-type": "application/json",
+      "x-ccr-context-archive-replay": input.snapshot.archiveId,
+      "x-client-request-id": randomUUID()
+    };
+    if (route.credentialChain?.length) {
+      headers["x-target-providers"] = route.credentialChain.join(",");
+    } else if (route.logicalProvider) {
+      headers["x-gateway-target-provider"] = route.logicalProvider;
+    }
+
+    const upstreamUrl = new URL(input.snapshot.path, this.status.coreEndpoint).toString();
+    const response = await fetchWithSystemProxy(upstreamUrl, {
+      body: body?.toString("utf8"),
+      headers: withCoreGatewayAuthHeader(omitLocalObservabilityHeaders(headers), this.coreAuthToken),
+      method: input.snapshot.method,
+      signal: input.signal
+    });
+    return {
+      body: Buffer.from(await response.arrayBuffer()),
+      contentType: response.headers.get("content-type") ?? undefined,
+      statusCode: response.status
+    };
   }
 
   private async handleRawTraceSync(request: IncomingMessage, response: ServerResponse): Promise<void> {

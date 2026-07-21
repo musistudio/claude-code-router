@@ -2668,11 +2668,7 @@ function App() {
   function updateProfileContextArchiveDraft(patch: Partial<AppConfig["contextArchive"]>) {
     setProfileContextArchiveDraft((current) => normalizeContextArchiveConfig({
       ...current,
-      ...patch,
-      llm: {
-        ...current.llm,
-        ...(patch.llm ?? {})
-      }
+      ...patch
     }));
   }
 

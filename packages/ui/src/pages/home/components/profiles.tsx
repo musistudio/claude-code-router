@@ -184,8 +184,7 @@ function ClaudeCodeContextArchiveCompactSetting({
   onChange: (patch: Partial<AppConfig["contextArchive"]>) => void;
 }) {
   const t = useAppText();
-  const checked = Boolean(contextArchive.claudeCodeCompact);
-  const archiveReady = Boolean(contextArchive.enabled && contextArchive.mcpEnabled !== false);
+  const checked = Boolean(contextArchive.enabled && contextArchive.mcpEnabled !== false);
 
   return (
     <div className="rounded-md border border-border bg-muted/20 px-3 py-3">
@@ -200,24 +199,17 @@ function ClaudeCodeContextArchiveCompactSetting({
               </div>
             </div>
           </div>
-          {checked && !archiveReady ? (
-            <div className="mt-2 flex min-w-0 items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[12px] leading-5 text-amber-700 dark:text-amber-300">
-              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span className="min-w-0">{t("Context archive and MCP access will be enabled for this compact mode.")}</span>
-            </div>
-          ) : null}
         </div>
         <Toggle
           checked={checked}
           title={t("CCR compact for Claude Code")}
           onChange={(enabled) => onChange(enabled
             ? {
-                claudeCodeCompact: true,
                 enabled: true,
                 mcpEnabled: true
               }
             : {
-                claudeCodeCompact: false
+                enabled: false
               })}
         />
       </div>

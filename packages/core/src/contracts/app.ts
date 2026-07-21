@@ -656,24 +656,16 @@ export type ToolHubConfig = {
   requestTimeoutMs: number;
 };
 
-export type ContextArchiveLlmConfig = {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
-  timeoutMs: number;
-};
-
 export type ContextArchiveConfig = {
-  claudeCodeCompact: boolean;
   enabled: boolean;
-  handoffMaxCharacters: number;
-  llm: ContextArchiveLlmConfig;
-  maxEntries: number;
-  maxSearchResults: number;
+  maxBytes: number;
+  maxSnapshotBytes: number;
+  maxSnapshots: number;
   mcpEnabled: boolean;
-  retainRecentItems: number;
+  replayTimeoutMs: number;
+  retentionDays: number;
+  storagePath: string;
   toolName: string;
-  triggerTokenLimit: number;
 };
 
 export const CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV = "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY";
