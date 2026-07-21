@@ -387,6 +387,15 @@ export function Field({ children, className, label }: { children: React.ReactNod
   );
 }
 
+export function FieldGroup({ children, className, label }: { children: React.ReactNode; className?: string; label: string }) {
+  return (
+    <div className={cn("block min-w-0 space-y-1", className)}>
+      <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+      {children}
+    </div>
+  );
+}
+
 export function AgentLogo({ agent, className }: { agent: ProfileConfig["agent"]; className?: string }) {
   const label = profileAgentLabel(agent);
 
@@ -608,16 +617,6 @@ export function systemStatusPointTooltip(segment: SystemStatusPoint, t: (value: 
     `${t("Failed requests")}: ${formatCompactNumber(segment.point.errorCount)}`,
     `${t("Duration")}: ${formatDuration(segment.point.avgDurationMs)}`
   ].join("\n");
-}
-
-export function systemStatusTooltipPositionClass(index: number, total: number): string {
-  if (index <= 1) {
-    return "left-0";
-  }
-  if (index >= total - 2) {
-    return "right-0";
-  }
-  return "left-1/2 -translate-x-1/2";
 }
 
 export function systemStatusIconClass(tone: SystemStatusTone): string {

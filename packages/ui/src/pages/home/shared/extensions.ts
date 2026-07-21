@@ -914,6 +914,7 @@ export function providerPluginCapability(item: Record<string, unknown>): string 
   if (item.deepseekThinking || item.deepSeekThinking) capabilities.push("DeepSeek thinking");
   if (item.codexOauth) capabilities.push("Codex OAuth");
   if (typeof item.key === "string" && item.key.includes("grok-cli-oauth")) capabilities.push("Grok OAuth");
+  if (typeof item.key === "string" && item.key.includes("kimi-cli-oauth")) capabilities.push("Kimi OAuth");
   if (item.auth) capabilities.push("Auth mutation");
   if (item.request) capabilities.push("Request mutation");
   if (item.response) capabilities.push("Response mutation");

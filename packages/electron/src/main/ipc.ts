@@ -11,7 +11,7 @@ import { closeBotGatewayQrWindow, openBotGatewayQrWindow } from "./bot-gateway-q
 import { syncClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
 import { findInstalledCodexAppExecutable } from "@ccr/core/agents/codex/app-launch";
 import { findInstalledOpenCodeAppExecutable } from "@ccr/core/agents/opencode/app-launch";
-import { loadAppConfig, saveApiKeysConfig, saveAppConfig } from "@ccr/core/config/config";
+import { loadAppConfig, saveApiKeysConfig, saveAppConfig, saveAppThemePreference } from "@ccr/core/config/config";
 import { API_KEYS_DB_FILE, APP_CONFIG_DB_FILE, APP_NAME, CONFIGDIR, CONFIG_FILE, DATADIR, GATEWAY_CONFIG_FILE, IPC_CHANNELS, LEGACY_CONFIG_FILE, ONBOARDING_FINISHED_FILE, PROXY_CA_CERT_FILE, REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "@ccr/core/config/constants";
 import { deepLinkService } from "./deep-link";
 import { gatewayService } from "@ccr/core/gateway/service";
@@ -37,10 +37,35 @@ import { getUsageStats } from "@ccr/core/usage/store";
 import { applyNativeThemePreference } from "./native-theme";
 import windowsManager from "./windows";
 import { GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, type AgentAnalysisFilter, type AgentAnalysisTracePayloadRequest, type ApiKeyConfig, type AppCaptureElementPngRequest, type AppCaptureElementPngResult, type AppConfig, type AppDataExportResult, type AppImageExportTargetRequest, type AppImageExportTargetResult, type AppInfo, type AppRenderHtmlPngRequest, type AppRenderHtmlPngResult, type AppSaveConfigOptions, type BotGatewayQrLoginCancelRequest, type BotGatewayQrLoginStartRequest, type BotGatewayQrLoginWaitRequest, type BotGatewayQrWindowCloseRequest, type BotGatewayQrWindowOpenRequest, type GatewayPluginAppConfig, type GatewayPluginPermission, type GatewayPluginSurface, type GatewayProviderConnectivityCheckRequest, type GatewayProviderProbeCandidatesRequest, type GatewayProviderProbeRequest, type GatewayStatus, type LocalAgentProviderImportRequest, type PluginDependency, type PluginDirectorySelection, type ProfileApplyResult, type ProfileOpenRequest, type ProviderAccountResetRequest, type ProviderAccountSnapshotRequestOptions, type ProviderAccountTestRequest, type ProviderCatalogModelsRequest, type ProviderIconDetectionRequest, type ProviderManifestFetchRequest, type RequestLogListFilter, type UsageStatsFilter, type UsageStatsRange } from "@ccr/core/contracts/app";
+import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppCaptureElementPngRequest, AppCaptureElementPngResult, AppConfig, AppDataExportResult, AppImageExportTargetRequest, AppImageExportTargetResult, AppInfo, AppRenderHtmlPngRequest, AppRenderHtmlPngResult, AppSaveConfigOptions, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountResetRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, RouteScriptTestRequest, RouteScriptValidationRequest, UsageStatsFilter, UsageStatsRange } from "@ccr/core/contracts/app";
+
+const pluginMarketplace: PluginMarketplaceEntry[] = [
+  {
+    capabilities: ["Wrapper runtime", "Claude App proxy", "Claude Design", "Model routing"],
+    dependencies: [],
+    description: "Routes Claude App Design traffic through the local CCR wrapper backend with configurable model routing.",
+    id: "claude-design",
+    modulePath: path.join(__dirname, "..", "marketplace", "plugins", "claude-design-plugin.cjs"),
+    name: "Claude Design"
+  },
+  {
+    capabilities: ["Wrapper runtime", "Proxy mode", "Cursor", "Model routing", "OpenAI/Anthropic/Gemini forwarding"],
+    dependencies: [],
+    description: "Routes Cursor-compatible LLM traffic captured by proxy mode into the local CCR gateway.",
+    id: "cursor-proxy",
+    modulePath: path.join(__dirname, "..", "marketplace", "plugins", "cursor-proxy-plugin.cjs"),
+    name: "Cursor Proxy"
+  }
+];
 const onboardingFinishedAtSettingKey = "onboardingFinishedAt";
 const imageExportTargets = new Map<string, string>();
 const gatewayPluginPermissionIdSet = new Set<string>(GATEWAY_PLUGIN_PERMISSION_IDS);
 const gatewayPluginSurfaceIdSet = new Set<string>(GATEWAY_PLUGIN_SURFACE_IDS);
+
+function applyAppThemePreference(theme: AppConfig["theme"]): void {
+  applyNativeThemePreference(theme);
+  trayController.refreshTheme(theme);
+}
 
 ipcMain.handle(IPC_CHANNELS.appGetInfo, () => {
   const chatgptAppPath = findInstalledCodexAppExecutable().executable;
@@ -181,7 +206,7 @@ ipcMain.handle(IPC_CHANNELS.appApplyClaudeAppGateway, async (_event, config?: Ap
   if (synced.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig) || runtimeStatus.state !== "running") {
     runtimeStatus = await gatewayService.start(savedConfig);
   } else {
-    gatewayService.updateConfig(savedConfig);
+    await gatewayService.updateConfig(savedConfig);
   }
 
   await builtInBrowserService.syncProxy(savedConfig);
@@ -239,6 +264,12 @@ ipcMain.handle(IPC_CHANNELS.appResetCodexRateLimitCredit, (_event, request: Prov
 ipcMain.handle(IPC_CHANNELS.appTestProviderAccountConnector, (_event, request: ProviderAccountTestRequest) => {
   return testProviderAccountConnector(request);
 });
+ipcMain.handle(IPC_CHANNELS.appValidateRouteScript, (_event, request: RouteScriptValidationRequest) => {
+  return gatewayService.validateRouteScript(request);
+});
+ipcMain.handle(IPC_CHANNELS.appTestRouteScript, async (_event, request: RouteScriptTestRequest) => {
+  return gatewayService.testRouteScript(await loadAppConfig(), request);
+});
 ipcMain.handle(IPC_CHANNELS.appUpdateCheck, () => appUpdateService.checkForUpdates());
 ipcMain.handle(IPC_CHANNELS.appUpdateDownload, () => appUpdateService.downloadUpdate());
 ipcMain.handle(IPC_CHANNELS.appUpdateInstall, () => appUpdateService.installUpdate());
@@ -259,7 +290,7 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, opt
   }
   const launchAtLoginChanged = Boolean(config.launchAtLogin) !== Boolean(previousConfig.launchAtLogin);
   let savedConfig = await saveAppConfig(config);
-  applyNativeThemePreference(savedConfig.theme);
+  applyAppThemePreference(savedConfig.theme);
   if (launchAtLoginChanged) {
     try {
       syncLaunchAtLogin(savedConfig);
@@ -277,7 +308,7 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, opt
   if (syncedClaudeAppConfig.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig)) {
     runtimeStatus = await gatewayService.start(savedConfig);
   } else {
-    gatewayService.updateConfig(savedConfig);
+    await gatewayService.updateConfig(savedConfig);
   }
   if (options?.applyProfile !== false) {
     await applyProfileIfServiceRunning(savedConfig, runtimeStatus);
@@ -287,11 +318,16 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, opt
   invalidateProviderAccountSnapshotCache();
   return savedConfig;
 });
+ipcMain.handle(IPC_CHANNELS.appSetThemePreference, async (_event, theme: unknown) => {
+  const savedTheme = await saveAppThemePreference(theme);
+  applyAppThemePreference(savedTheme);
+  return savedTheme;
+});
 ipcMain.handle(IPC_CHANNELS.appSaveApiKeys, async (_event, apiKeys: ApiKeyConfig[]) => {
   const savedConfig = await saveApiKeysConfig(apiKeys);
   const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(savedConfig);
   const nextConfig = syncedClaudeAppConfig.config;
-  gatewayService.updateConfig(nextConfig);
+  await gatewayService.updateConfig(nextConfig);
   logProfileApplyResult(await applyProfileConfig(nextConfig));
   invalidateProviderAccountSnapshotCache();
   return nextConfig;

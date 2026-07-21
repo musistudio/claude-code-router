@@ -7,6 +7,7 @@ import {
   type AppConfig,
   type ProxyRouteTarget
 } from "@ccr/core/contracts/app";
+import { defaultRequestLogBodyBytes } from "@ccr/core/observability/request-log-limits";
 
 export const DEFAULT_PROXY_TARGETS: ProxyRouteTarget[] = [
   { host: "api.anthropic.com", paths: ["/v1/messages", "/v1/messages/count_tokens"] },
@@ -98,9 +99,20 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
       host: "127.0.0.1",
       port: 3456
     },
+    mediaTools: {
+      allowedInputRoots: [],
+      artifactTtlHours: 24,
+      enabled: false,
+      jobTimeoutMs: 600000,
+      maxImageConcurrency: 2,
+      maxVideoConcurrency: 1
+    },
     launchAtLogin: false,
     observability: {
       agentAnalysis: false,
+      requestLogBodyCapture: "all",
+      requestLogMaxBodyBytes: defaultRequestLogBodyBytes,
+      requestLogSuccessSampleRate: 1,
       requestLogs: false
     },
     preferredProvider: "",

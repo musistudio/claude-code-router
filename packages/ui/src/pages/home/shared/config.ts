@@ -407,6 +407,7 @@ export function normalizeConfig(config: AppConfig): AppConfig {
       ...(config.gateway || {}),
       coreHost: fallbackConfig.gateway.coreHost
     },
+    mediaTools: normalizeMediaToolsConfig(config.mediaTools),
     launchAtLogin: Boolean(config.launchAtLogin),
     observability: normalizeObservabilityConfig(config.observability),
     proxy: normalizeProxyConfig(config.proxy),
@@ -446,6 +447,9 @@ export function normalizeObservabilityConfig(config: Partial<AppConfig["observab
     ...fallbackConfig.observability,
     ...(config || {}),
     agentAnalysis: Boolean(config?.agentAnalysis),
+    requestLogBodyCapture: config?.requestLogBodyCapture ?? fallbackConfig.observability.requestLogBodyCapture,
+    requestLogMaxBodyBytes: config?.requestLogMaxBodyBytes ?? fallbackConfig.observability.requestLogMaxBodyBytes,
+    requestLogSuccessSampleRate: config?.requestLogSuccessSampleRate ?? fallbackConfig.observability.requestLogSuccessSampleRate,
     requestLogs: Boolean(config?.requestLogs)
   };
 }
@@ -505,5 +509,22 @@ export function normalizeToolHubConfig(config: Partial<AppConfig["toolHub"]> | u
     mcpServers: Array.isArray(config?.mcpServers) ? normalizeMcpServers(config.mcpServers) : fallbackConfig.toolHub.mcpServers,
     maxTools,
     requestTimeoutMs
+  };
+}
+
+export function normalizeMediaToolsConfig(config: Partial<AppConfig["mediaTools"]> | undefined): AppConfig["mediaTools"] {
+  const clampInteger = (value: unknown, fallback: number, min: number, max: number) =>
+    typeof value === "number" && Number.isFinite(value) ? Math.min(Math.max(Math.floor(value), min), max) : fallback;
+  return {
+    ...fallbackConfig.mediaTools,
+    ...(config || {}),
+    allowedInputRoots: Array.isArray(config?.allowedInputRoots)
+      ? config.allowedInputRoots.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).map((item) => item.trim())
+      : [],
+    artifactTtlHours: clampInteger(config?.artifactTtlHours, fallbackConfig.mediaTools.artifactTtlHours, 1, 720),
+    enabled: Boolean(config?.enabled),
+    jobTimeoutMs: clampInteger(config?.jobTimeoutMs, fallbackConfig.mediaTools.jobTimeoutMs, 30000, 3600000),
+    maxImageConcurrency: clampInteger(config?.maxImageConcurrency, fallbackConfig.mediaTools.maxImageConcurrency, 1, 8),
+    maxVideoConcurrency: clampInteger(config?.maxVideoConcurrency, fallbackConfig.mediaTools.maxVideoConcurrency, 1, 4)
   };
 }

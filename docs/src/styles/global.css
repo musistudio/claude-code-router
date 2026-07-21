@@ -1306,6 +1306,12 @@ h1 {
   --provider-brand-3: #d9e3f1;
 }
 
+.doc-markdown a.provider-import-button.provider-nvidia {
+  --provider-brand: #101600;
+  --provider-brand-2: #76b900;
+  --provider-brand-3: #dfff9f;
+}
+
 .doc-markdown a.provider-import-button.provider-runapi {
   --provider-brand: #070707;
   --provider-brand-2: #747474;

@@ -11,12 +11,12 @@ import {
   enforceSingleEnabledGlobalProfilePerAgent,
   ExtensionConfigTarget, ExtensionDeleteTarget, ExtensionInstallDraft, ExtensionSource, fallbackAgentAnalysis, fallbackConfig,
   fallbackGatewayStatus, fallbackInfo, fallbackProxyNetworkSnapshot, fallbackProxyStatus, fallbackRequestLogPage,
-  fallbackUpdateStatus, fallbackUsageStats, formatAppError, GatewayProviderConfig,
+  fallbackUpdateStatus, fallbackUsageStats, formatAppError, GatewayProviderConfig, GatewayProviderProtocol,
   fusionCustomMcpServerFromDraft, fusionCustomToolConfigFromProfile,
   GatewayProviderProbeResult, gatewayServiceMessage, GatewayStatus, getDefaultOnboardingStep, isClaudeDesignPluginConfig, isClaudeDesignRoutingDraftValid,
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
+  isRoutingRuleDraftSubmittable,
   isTraySupportedPlatform,
-  isRoutingRewriteDraftRowValid,
   LayoutGroup, mergeModelDisplayNames, mergeModelMetadata, mergeProviderModelLists, modelDescriptionsForModels, modelDisplayNamesForModels, modelMetadataForModels,
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets, normalizeProxyConfig,
   normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterBuiltInRules, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
@@ -26,18 +26,19 @@ import {
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
-  providerCapabilitiesForProtocols, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
+  providerBaseUrl, providerCapabilitiesForProtocols, providerCapabilitiesForSave, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerProtocolOptions, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
   ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, RouterRule, SettingsPageId,
   routingRewriteFromDraftRow, setProviderPresets, splitLines, translateAppErrorMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
   uniqueRoutingRuleId, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
-  VirtualModelDraft, virtualModelProfileFromDraft
+  VirtualModelDraft, virtualModelProfileFromDraft, virtualModelProfilesUseMediaTools
 } from "./shared/index";
 import { startVisiblePolling } from "./shared/polling";
 import {
-  AppDialogStack, LightToast, MainLayout, OnboardingLayout
+  AppDialogStack, LightToast, MainLayout, OnboardingLayout, shouldCheckForUpdateOnOpen
 } from "./components/index";
+import { ROUTER_SCRIPT_API_VERSION } from "@ccr/core/contracts/app";
 
 type ProfileOpenDialogState = {
   busy?: "" | "cli" | "app";
@@ -261,6 +262,7 @@ function App() {
   const [compactLayout, setCompactLayout] = useState(() => window.matchMedia("(max-width: 720px)").matches);
   const [toast, setToast] = useState<AppToast>();
   const [languagePreference, setLanguagePreference] = useState<AppLanguagePreference>(() => readLanguagePreference());
+  const [themePreference, setThemePreference] = useState<AppConfig["theme"]>(() => fallbackConfig.theme || "system");
   const [systemLanguage, setSystemLanguage] = useState<ResolvedLanguage>(() => detectSystemLanguage());
   const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(() => detectSystemTheme());
   const [requestLogError, setRequestLogError] = useState("");
@@ -299,14 +301,14 @@ function App() {
 
   useEffect(() => {
     const root = document.documentElement;
-    const theme = draftConfig.theme || "system";
+    const theme = themePreference;
     if (theme === "system") {
       root.removeAttribute("data-theme");
       return;
     }
 
     root.dataset.theme = theme;
-  }, [draftConfig.theme]);
+  }, [themePreference]);
 
   useEffect(() => {
     document.documentElement.lang = resolvedLanguage === "zh" ? "zh-CN" : "en";
@@ -715,6 +717,7 @@ function App() {
     [agentAnalysisEnabled, networkCaptureEnabled, requestLogsEnabled]
   );
   const autoSaveRequestId = useRef(0);
+  const themePreferenceRequestId = useRef(0);
   const onboardingProfileDraftSource = useRef("");
   const providerProbeRequestId = useRef(0);
   const providerConnectivityRequestId = useRef(0);
@@ -733,11 +736,7 @@ function App() {
   const canSubmitProfileEdit = profileEditIndex !== undefined && isProfileDraftSubmittable(profileEditDraft) && isProfileBotSelectionValid(profileEditDraft, draftConfig.botConfigs);
   const canSubmitApiKey = Boolean(apiKeyDraft.name.trim()) && (apiKeyDraft.expirationPreset !== "custom" || Boolean(apiKeyDraft.expiresAt.trim()));
   const canSubmitApiKeyEdit = apiKeyEditDraft.expirationPreset !== "custom" || Boolean(apiKeyEditDraft.expiresAt.trim());
-  const canSubmitRoutingRule =
-    Boolean(routingRuleDraft.name.trim()) &&
-    routingRuleDraft.rewrites.length > 0 &&
-    routingRuleDraft.rewrites.every(isRoutingRewriteDraftRowValid) &&
-    Boolean(routingRuleDraft.conditionField.trim() && routingRuleDraft.conditionOperator && routingRuleDraft.conditionRight.trim());
+  const canSubmitRoutingRule = isRoutingRuleDraftSubmittable(routingRuleDraft);
   const canSubmitClaudeDesignRouting = isClaudeDesignRoutingDraftValid(claudeDesignRoutingDraft);
   const canSubmitCursorProxyRouting = isClaudeDesignRoutingDraftValid(cursorProxyRoutingDraft);
   const virtualModelValidationError = useMemo(() => validateVirtualModelDraft(virtualModelDraft), [virtualModelDraft]);
@@ -847,7 +846,10 @@ function App() {
 
     const requestId = autoSaveRequestId.current + 1;
     autoSaveRequestId.current = requestId;
-    const configToSave = draftConfig;
+    const configToSave = normalizeConfig({
+      ...draftConfig,
+      theme: themePreference
+    });
     const options = deferProfileApplyOnSave ? { applyProfile: false } : undefined;
     const timer = window.setTimeout(() => {
       void window.ccr?.saveConfig(configToSave, options)
@@ -865,12 +867,13 @@ function App() {
     }, 400);
 
     return () => window.clearTimeout(timer);
-  }, [dirty, draftConfig, deferProfileApplyOnSave]);
+  }, [dirty, draftConfig, deferProfileApplyOnSave, themePreference]);
 
   function syncConfigState(config: AppConfig) {
     const normalized = normalizeConfig(config);
     setSavedConfig(normalized);
     setDraftConfig(normalized);
+    setThemePreference(normalized.theme || "system");
   }
 
   function showToast(message: string) {
@@ -893,20 +896,9 @@ function App() {
   function openSidebarUpdateDialog() {
     setUpdateDialogOpen(true);
     setUpdateActionError("");
-    if (updateDialogStatus.canDownload || updateDialogStatus.state === "available") {
-      void downloadAppUpdate();
-      return;
+    if (shouldCheckForUpdateOnOpen(updateDialogStatus)) {
+      void checkForAppUpdate();
     }
-    if (
-      updateDialogStatus.canInstall ||
-      updateDialogStatus.state === "checking" ||
-      updateDialogStatus.state === "downloading" ||
-      updateDialogStatus.state === "downloaded" ||
-      updateDialogStatus.state === "installing"
-    ) {
-      return;
-    }
-    void checkForAppUpdate();
   }
 
   async function checkForAppUpdate() {
@@ -990,14 +982,18 @@ function App() {
 
   async function persistConfig(config: AppConfig, setError: (message: string) => void, options?: AppSaveConfigOptions): Promise<boolean> {
     autoSaveRequestId.current += 1;
+    const configWithTheme = normalizeConfig({
+      ...config,
+      theme: themePreference
+    });
     if (!window.ccr) {
-      syncConfigState(config);
+      syncConfigState(configWithTheme);
       return true;
     }
 
     try {
       const saveOptions = options ?? (deferProfileApplyOnSave ? { applyProfile: false } : undefined);
-      const saved = await window.ccr.saveConfig(config, saveOptions);
+      const saved = await window.ccr.saveConfig(configWithTheme, saveOptions);
       syncConfigState(saved);
       setError("");
       return true;
@@ -1194,8 +1190,9 @@ function App() {
     const initialDraftFromPayload = createProviderDraftFromDeepLinkPayload(nextPayload, draftConfig.Providers);
     const initialDraft = {
       ...initialDraftFromPayload,
+      catalogModelMetadata: mergeModelMetadata(initialDraftFromPayload.catalogModelMetadata, catalogModelMetadata),
       modelDisplayNames: mergeModelDisplayNames(initialDraftFromPayload.modelDisplayNames, catalogModelDisplayNames),
-      modelMetadata: mergeModelMetadata(initialDraftFromPayload.modelMetadata, catalogModelMetadata)
+      modelMetadata: initialDraftFromPayload.modelMetadata
     };
     setProviderEditIndex(undefined);
     setProviderImportOpen(true);
@@ -1234,9 +1231,10 @@ function App() {
 
       return {
         ...next,
+        catalogModelMetadata: patch.catalogModelMetadata,
         modelDescriptions: patch.modelDescriptions ?? current.modelDescriptions,
         modelDisplayNames: patch.modelDisplayNames,
-        modelMetadata: patch.modelMetadata ?? current.modelMetadata,
+        modelMetadata: "modelMetadata" in patch ? patch.modelMetadata : current.modelMetadata,
         modelsText: mergeProviderModelLists(current.selectedModels, splitLines(next.modelsText)).join("\n"),
         selectedModels: [],
         selectedProtocols: patch.selectedProtocols ?? current.selectedProtocols
@@ -1392,7 +1390,7 @@ function App() {
     const candidates = providerProbeCandidates(providerDraft)
       .map((candidate) => ({
         ...candidate,
-        protocols: candidate.protocols.filter((protocol) => protocols.includes(protocol))
+        protocols: candidate.protocols.filter((protocol) => protocols.some((selected) => selected === protocol))
       }))
       .filter((candidate) => isProviderProbeCandidateReady(candidate) && candidate.protocols.length > 0);
 
@@ -1501,11 +1499,19 @@ function App() {
     const modelDescriptions = modelDescriptionsForModels(providerDraft.modelDescriptions, models);
     const modelDisplayNames = modelDisplayNamesForModels(providerDraft.modelDisplayNames, models);
     const modelMetadata = modelMetadataForModels(providerDraft.modelMetadata, models);
-    const capabilities = providerCapabilitiesForProtocols(providerDraft.baseUrl, protocolsToSave, probe, presetCapabilitiesFromDraft(providerDraft));
+    const existingProvider = providerEditIndex !== undefined ? draftConfig.Providers[providerEditIndex] : undefined;
+    const capabilities = providerCapabilitiesForSave(
+      providerCapabilitiesForProtocols(providerDraft.baseUrl, protocolsToSave, probe, presetCapabilitiesFromDraft(providerDraft)),
+      providerDraft.capabilities,
+      existingProvider ? providerBaseUrl(existingProvider) : undefined,
+      providerDraft.baseUrl
+    );
     const primaryCapability =
       capabilities.find((capability) => capability.type === fallbackProtocol) ??
-      capabilities[0];
-    const protocol = primaryCapability?.type ?? fallbackProtocol;
+      capabilities.find((capability) => providerProtocolOptions.some((option) => option.value === capability.type));
+    const protocol = primaryCapability && providerProtocolOptions.some((option) => option.value === primaryCapability.type)
+      ? primaryCapability.type as GatewayProviderProtocol
+      : fallbackProtocol;
     const baseUrl = fallbackBaseUrl;
 
     const keySafetyIssue = providerApiKeySafetyIssue({
@@ -1551,7 +1557,6 @@ function App() {
       return false;
     }
 
-    const existingProvider = providerEditIndex !== undefined ? draftConfig.Providers[providerEditIndex] : undefined;
     const providerId = existingProvider?.id ?? providerNameSlug(providerName);
     const provider: GatewayProviderConfig = {
       api_base_url: normalizeProviderBaseUrl(baseUrl),
@@ -1701,19 +1706,34 @@ function App() {
       return;
     }
 
-    const rule: RouterRule = {
-      condition: {
-        left: buildRouterConditionPath(routingRuleDraft.conditionSource, routingRuleDraft.conditionField),
-        operator: routingRuleDraft.conditionOperator,
-        right: routingRuleDraft.conditionRight.trim()
-      },
+    const rewrites = routingRuleDraft.rewrites.map(routingRewriteFromDraftRow);
+    const commonRule = {
       enabled: routingRuleDraft.enabled,
       fallback: normalizeRouterFallbackConfig(routingRuleDraft.fallback),
       id: uniqueRoutingRuleId(draftConfig.Router.rules),
-      name: routingRuleDraft.name.trim(),
-      rewrites: routingRuleDraft.rewrites.map(routingRewriteFromDraftRow),
-      type: "condition"
+      name: routingRuleDraft.name.trim()
     };
+    const rule: RouterRule = routingRuleDraft.type === "script"
+      ? {
+          ...commonRule,
+          script: {
+            apiVersion: ROUTER_SCRIPT_API_VERSION,
+            file: routingRuleDraft.scriptFile.trim(),
+            language: "javascript",
+            timeoutMs: Number(routingRuleDraft.scriptTimeoutMs)
+          },
+          type: "script"
+        }
+      : {
+          ...commonRule,
+          condition: {
+            left: buildRouterConditionPath(routingRuleDraft.conditionSource, routingRuleDraft.conditionField),
+            operator: routingRuleDraft.conditionOperator,
+            right: routingRuleDraft.conditionRight.trim()
+          },
+          rewrites,
+          type: "condition"
+        };
 
     updateConfig((config) => {
       if (routingEditIndex === undefined) {
@@ -1808,6 +1828,7 @@ function App() {
         values[virtualModelEditIndex] = profile;
       }
       config.virtualModelProfiles = values;
+      config.mediaTools.enabled = virtualModelProfilesUseMediaTools(values);
       const existingMcpServers = [...(config.agent?.mcpServers ?? [])];
       const replacementIndex = previousMcpServerName
         ? existingMcpServers.findIndex((server) => server.name === previousMcpServerName)
@@ -1842,6 +1863,7 @@ function App() {
       }
       values[index] = { ...item, enabled };
       config.virtualModelProfiles = values;
+      config.mediaTools.enabled = virtualModelProfilesUseMediaTools(values);
       return config;
     });
   }
@@ -1849,6 +1871,7 @@ function App() {
   function removeVirtualModel(index: number) {
     updateConfig((config) => {
       config.virtualModelProfiles = (config.virtualModelProfiles ?? []).filter((_, itemIndex) => itemIndex !== index);
+      config.mediaTools.enabled = virtualModelProfilesUseMediaTools(config.virtualModelProfiles);
       return config;
     });
   }
@@ -2158,10 +2181,34 @@ function App() {
 
   function changeThemePreference(value: string) {
     const theme = normalizeThemePreference(value);
-    updateConfig((config) => ({
-      ...config,
-      theme
-    }));
+    const previousTheme = themePreference;
+    setThemePreference(theme);
+
+    if (!window.ccr?.setThemePreference) {
+      updateConfig((config) => ({
+        ...config,
+        theme
+      }));
+      return;
+    }
+
+    const requestId = themePreferenceRequestId.current + 1;
+    themePreferenceRequestId.current = requestId;
+    void window.ccr.setThemePreference(theme)
+      .then((savedTheme) => {
+        if (themePreferenceRequestId.current !== requestId) {
+          return;
+        }
+        setThemePreference(savedTheme);
+        setActionError("");
+      })
+      .catch((error) => {
+        if (themePreferenceRequestId.current !== requestId) {
+          return;
+        }
+        setThemePreference(previousTheme);
+        setActionError(formatError(error));
+      });
   }
 
   function changeLaunchAtLogin(launchAtLogin: boolean) {
@@ -3216,7 +3263,7 @@ function App() {
               providers: draftConfig.Providers,
               systemLanguage,
               systemTheme,
-              themePreference: draftConfig.theme || "system",
+              themePreference,
               toolHub: draftConfig.toolHub,
               providerAccountSnapshots,
               trayBalanceProgress: normalizeTrayBalanceProgressConfig(draftConfig.trayBalanceProgress),

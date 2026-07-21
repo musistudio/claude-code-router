@@ -8,8 +8,9 @@ import { normalizeRouteSelector } from "@ccr/core/routing/model-registry";
 import { isRecord, rawStringValue, stringValue } from "@ccr/core/gateway/internal/value";
 import { readHeader } from "@ccr/core/gateway/http/io";
 import { codexPatchBridgeInstructionText, codexPatchBridgeShellToolGuidance, virtualApplyPatchLarkGrammar, virtualApplyPatchToolName } from "@ccr/core/gateway/internal/shared";
-import { parseJsonObjectSafe } from "@ccr/core/gateway/http/body";
+import { parseJsonObjectSafe, serializeJsonBody } from "@ccr/core/gateway/http/body";
 import { requestProtocolForPath } from "@ccr/core/routing/protocol-endpoints";
+import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
 
 
 export function prepareCodexApplyPatchBridgeRequest(input: {
@@ -20,7 +21,7 @@ export function prepareCodexApplyPatchBridgeRequest(input: {
   path: string;
   routedModel?: string;
 }): { body: Buffer; diagnostic: string } | undefined {
-  if (!codexApplyPatchBridgeEnabled(input.config, input.headers, input.method, input.path)) {
+  if (!codexApplyPatchBridgeEnabled(input.headers, input.method, input.path)) {
     return undefined;
   }
   const parsedBody = parseJsonObjectSafe(input.body);
@@ -28,7 +29,7 @@ export function prepareCodexApplyPatchBridgeRequest(input: {
     return undefined;
   }
   const model = input.routedModel || stringValue(parsedBody.model);
-  if (!codexPatchBridgeModelEligible(model)) {
+  if (!codexPatchBridgeModelEligible(model, input.config)) {
     return undefined;
   }
   const transformed = transformCodexApplyPatchBridgeRequestBody(parsedBody);
@@ -36,7 +37,7 @@ export function prepareCodexApplyPatchBridgeRequest(input: {
     return undefined;
   }
   return {
-    body: Buffer.from(`${JSON.stringify(transformed.body)}\n`, "utf8"),
+    body: serializeJsonBody(transformed.body),
     diagnostic: `${model ?? "unknown"}:${transformed.changedParts.join(",")}`
   };
 }
@@ -255,12 +256,10 @@ function virtualApplyPatchToolSpec(): Record<string, unknown> {
 }
 
 
-function codexApplyPatchBridgeEnabled(config: AppConfig, headers: IncomingHttpHeaders, method: string, path: string): boolean {
-  const codexRule = config.Router.builtInRules?.codex;
+function codexApplyPatchBridgeEnabled(headers: IncomingHttpHeaders, method: string, path: string): boolean {
   return (method || "GET").toUpperCase() === "POST" &&
     requestProtocolForPath(path) === "openai_responses" &&
-    isCodexUserAgent(headers) &&
-    codexRule?.enabled !== false;
+    isCodexUserAgent(headers);
 }
 
 
@@ -269,9 +268,13 @@ function isCodexUserAgent(headers: IncomingHttpHeaders): boolean {
 }
 
 
-function codexPatchBridgeModelEligible(model: string | undefined): boolean {
+function codexPatchBridgeModelEligible(model: string | undefined, config: AppConfig): boolean {
   const modelName = modelNameForPatchBridge(model);
-  return Boolean(modelName) && !modelName.toLowerCase().includes("gpt");
+  if (!modelName || modelName.toLowerCase().includes("gpt")) {
+    return false;
+  }
+  const baseModelName = modelNameForPatchBridge(resolveUsageModelAttribution(config, model).model);
+  return !baseModelName.toLowerCase().includes("gpt");
 }
 
 

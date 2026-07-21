@@ -1,0 +1,4 @@
+{
+  "forceLoginMethod": "gateway",
+  "forceLoginGatewayUrl": "http://localhost:8080"
+}

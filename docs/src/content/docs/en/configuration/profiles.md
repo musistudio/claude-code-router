@@ -2,7 +2,7 @@
 title: Agent Config
 pageTitle: Agent Config
 eyebrow: Detailed Configuration
-lead: Create reusable launch configurations for Claude Code, Codex, Grok CLI, and ZCode, and open separate agent instances from different configs.
+lead: Create reusable launch configurations for Claude Code, Codex, Grok CLI, Kimi CLI, and ZCode, and open separate agent instances from different configs.
 ---
 
 ## Configuration Flow
@@ -14,7 +14,7 @@ lead: Create reusable launch configurations for Claude Code, Codex, Grok CLI, an
 5. If the entry mode includes App, optionally bind a Bot and choose whether to forward agent messages or enable handoff.
 6. Save the config, then open it from the Agent Config card: the terminal button copies the CLI command, and the play button starts the App instance.
 
-During trial, prefer **Only opened from CCR** and always open the agent from CCR. That keeps the config limited to CCR-launched instances and avoids changing the Claude Code, Codex, Grok CLI, or ZCode setup you open directly from the system.
+During trial, prefer **Only opened from CCR** and always open the agent from CCR. That keeps the config limited to CCR-launched instances and avoids changing the Claude Code, Codex, Grok CLI, Kimi CLI, or ZCode setup you open directly from the system.
 
 ## Multi-Instance Mechanism
 
@@ -23,7 +23,7 @@ Every Agent Config has its own `id` and name. When CCR opens an agent, it finds 
 | Mechanism | Actual behavior |
 | --- | --- |
 | Separate config files | With **Only opened from CCR**, Claude Code and Codex write CCR-managed config files in directories separated by config `id` |
-| Separate launchers | Claude Code and Grok CLI use separate launch wrappers; Codex and ZCode use separate middleware launchers; filenames are also separated by config `id` or name |
+| Separate launchers | Claude Code, Grok CLI, and Kimi CLI use separate launch wrappers; Codex and ZCode use separate middleware launchers; filenames are also separated by config `id` or name |
 | Separate app data directories | When opening App mode, Claude App, ChatGPT (the renamed Codex desktop app), and ZCode App use user-data directories separated by config `id` |
 | Runtime state | CCR tracks running app instances by entry mode and config `id`; reopening the same config activates the existing window, while a different config can open a separate instance |
 
@@ -33,12 +33,13 @@ This lets you create multiple configs for the same agent, such as "Claude Code -
 
 | Option | Applies to | Description |
 | --- | --- | --- |
-| Agent | All | Claude Code, Codex, OpenCode, Grok CLI, or ZCode. Grok CLI supports CLI only; ZCode supports App only. |
+| Agent | All | Claude Code, Codex, OpenCode, Grok CLI, Kimi CLI, or ZCode. Grok CLI and Kimi CLI support CLI only; ZCode supports App only. |
 | Config name | All | Identifies the config in CCR and can be used as the `ccr-app <config-name>` launch target. Names can contain spaces; copied commands are quoted automatically. |
 | Enabled | All | Disabled configs are not exposed as active launch entries and are not applied as effective startup configs. |
 | Effect scope | All | **Only opened from CCR** uses CCR-managed isolated config; **System default** writes the agent's default config. Only one enabled system-default config is allowed per agent. |
-| Entry mode | Claude Code, Codex, OpenCode, Grok CLI | `CLI & APP` exposes both CLI and App entry points; `CLI only` only generates a CLI command; `App only` only exposes the App entry point. Grok CLI is fixed to `CLI only`. |
+| Entry mode | Claude Code, Codex, OpenCode, Grok CLI, Kimi CLI | `CLI & APP` exposes both CLI and App entry points; `CLI only` only generates a CLI command; `App only` only exposes the App entry point. Grok CLI and Kimi CLI are fixed to `CLI only`. |
 | Model | All | Default model for the opened agent, either a provider model or Fusion model. For Claude Code, leaving it empty keeps the Claude Code default. |
+| Available models | Kimi CLI | Models exposed by Kimi's `/model` command. The default model is always included. |
 | Bot | App entry | Bot forwarding only works for App mode opened from CCR. CLI does not forward Bot messages yet. |
 | Environment variables | All | Extra environment variables injected into this config. Claude Code includes `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1` by default so gateway model discovery is enabled. |
 
@@ -92,7 +93,7 @@ The OpenCode CLI must be available as `opencode` in the CCR Desktop process envi
 | Environment variables | Injected into Codex CLI or ChatGPT. Claude Code-specific model discovery variables are not passed to Codex. |
 | Bot | Applies only to the ChatGPT app entry. |
 
-After saving, use the terminal button on the config card to copy the Codex CLI command, for example `ccr-app "Codex - Work"`. Use the play button to open ChatGPT. Following the CodexL launch model, CCR starts the Electron executable inside the ChatGPT app bundle directly, gives it an isolated user-data directory, and points `CODEX_CLI_PATH` at the CCR middleware. The middleware forwards app-server traffic to ChatGPT's bundled Codex CLI and only adapts the account display: an existing valid ChatGPT token is shown as the real ChatGPT account, while a profile without credentials uses a tokenless ChatGPT-shaped workspace identity so the desktop renderer keeps model selection available without storing a real user login. To make the native app-server select its official API marketplace, CCR creates the exact `ccr-local-profile` bootstrap only during process startup and removes it after the first native response; it is also cleaned after startup or abnormal exit and is never retained as login state. Every other authentication file is preserved. Older `Codex.app` installations remain supported.
+After saving, use the terminal button on the config card to copy the Codex CLI command, for example `ccr-app "Codex - Work"`. Use the play button to open ChatGPT. Following the CodexL launch model, CCR starts the Electron executable inside the ChatGPT app bundle directly, gives it an isolated user-data directory, and points `CODEX_CLI_PATH` at the CCR middleware. The middleware forwards app-server traffic to ChatGPT's bundled Codex CLI and only adapts the account display. Each profile reads ChatGPT login state only from its own Codex home. A profile without credentials reports a local non-OpenAI compatibility identity so current ChatGPT builds do not enter a repeated authentication and attestation loop. Shared login is opt-in: set `CCR_CODEX_CHATGPT_AUTH_FILE` (or the legacy `CODEXL_CODEX_CHATGPT_AUTH_FILE`) to a valid `auth.json` when a profile should bridge that token in memory without copying it. To make the native app-server select its official API marketplace, CCR creates the exact `ccr-local-profile` bootstrap only during process startup and removes it after the first native response; it is also cleaned after startup or abnormal exit and is never retained as login state. Every other authentication file is preserved. Older `Codex.app` installations remain supported.
 
 Model and public plugin listings are not synthesized by the middleware. The native Codex app-server reads the generated `model_catalog_json` and handles `model/list` plus public `plugin/list` requests unchanged. This lets Codex refresh the official public [`openai/plugins`](https://github.com/openai/plugins) Git marketplace over the network. In a virtual workspace, only account-private marketplace requests are answered with an explicit empty result because the native service requires real ChatGPT authentication for those sections; they are never replaced with local plugins. Any downloaded Git checkout is owned only by Codex as its normal last-known-good data, not used by CCR as a replacement catalog.
 
@@ -101,6 +102,10 @@ Model and public plugin listings are not synthesized by the middleware. The nati
 Grok CLI profiles are fixed to **Only opened from CCR** and **CLI only**. After saving, copy and run the card command, for example `ccr-app "Grok - Work"`.
 
 The generated wrapper sets Grok's model base URL and model-list URL to CCR's `/v1` gateway, supplies the profile-specific CCR API key, and sets the selected CCR model as the default. If the CCR Desktop gateway is not running, `ccr-app` starts a shared temporary service for Grok sessions and cleans it up after the last session exits. Grok CLI does not expose a separate user-config-file option, so CCR points `GROK_HOME` at a profile-specific directory. Its `config.toml` starts as a private copy of the user's config and can change independently, while `auth.json` is excluded to prevent a local xAI OAuth token from overriding the CCR key. Plugins, skills, and sessions remain shared with the original Grok home. Inside Grok CLI, use `/model` to switch among the provider and Fusion models returned by CCR; switched requests continue through CCR.
+
+### Kimi CLI
+
+Kimi CLI profiles are fixed to **Only opened from CCR** and **CLI only**. Select one default model and one or more available models. The generated wrapper points `KIMI_CODE_HOME` at a profile-specific directory whose `config.toml` defines a private OpenAI-compatible CCR provider and a model entry for every selection. Kimi's `/model` command can therefore switch models without bypassing CCR. CCR preserves non-provider settings from the source config and reuses available sessions, skills, plugins, MCP configuration, and credentials without rewriting the original `~/.kimi-code/config.toml`. If CCR Desktop is not running, the launcher starts a shared temporary gateway and stops it after the last managed Kimi session exits.
 
 ### ZCode
 
@@ -150,6 +155,10 @@ When a Bot is selected and the App is opened from CCR, CCR starts a companion wo
 ### Grok CLI
 
 Grok CLI supports CLI only. CCR opens it through a profile-specific wrapper that injects the CCR model gateway, model discovery endpoint, API key, and default model. A profile-specific Grok home excludes xAI OAuth credentials so inference reliably uses the CCR key without rewriting the user's original Grok home.
+
+### Kimi CLI
+
+Kimi CLI supports CLI only. CCR opens it through a profile-specific wrapper and generated Kimi home containing the selected default model plus every available model. All generated model entries use the CCR gateway and profile API key, so `/model` switches remain routed through CCR; the user's original Kimi configuration remains untouched.
 
 ### ZCode
 

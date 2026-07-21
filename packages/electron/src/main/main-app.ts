@@ -15,6 +15,7 @@ import { browserAutomationMcpService } from "./browser-automation-mcp";
 import { browserWebSearchMcpService } from "./electron-web-search-mcp";
 import { applyNativeThemePreference } from "./native-theme";
 import windowsManager from "./windows";
+import { closeRequestLogRuntime } from "@ccr/core/observability/request-log-store";
 
 const gotTheLock = app.requestSingleInstanceLock();
 const quitProxyRestoreTimeoutMs = 30_000;
@@ -179,6 +180,9 @@ function stopServicesForQuit(): Promise<void> {
         console.error(`Failed to stop services before quit: ${formatError(error)}`);
       })
       .finally(async () => {
+        await closeRequestLogRuntime().catch((error) => {
+          console.error(`Failed to flush request logs before quit: ${formatError(error)}`);
+        });
         try {
           const config = await loadAppConfig();
           for (const status of restoreGlobalProfileConfigsOnExit(config.profile.profiles)) {

@@ -4,11 +4,13 @@ import { loadPersistedAppConfig, replacePersistedAppConfig } from "@ccr/core/con
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "@ccr/core/config/api-key-store";
 import { CONFIG_FILE, GATEWAY_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE } from "@ccr/core/config/constants";
 import { normalizeCodexProviderAccountConfig } from "@ccr/core/agents/local-providers/codex";
-import { normalizeGrokProviderAccountConfig } from "@ccr/core/agents/local-providers/grok";
+import { normalizeGrokProviderAccountConfig, normalizeGrokProviderMediaCapabilities } from "@ccr/core/agents/local-providers/grok";
 import { removeOpenCodeProviderAccountConfig } from "@ccr/core/agents/local-providers/opencode";
+import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, ROUTER_SCRIPT_API_VERSION, ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS, ROUTER_SCRIPT_MAX_TIMEOUT_MS, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "@ccr/core/contracts/app";
 import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent, knownGatewayPluginDefaultPermissions, knownGatewayPluginDefaultSurfaces } from "@ccr/core/contracts/app";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config";
-import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
+import { maxRequestLogBodyBytes } from "@ccr/core/observability/request-log-limits";
+import { findProviderPresetByBaseUrl, primaryProviderPresetEndpoint, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
 import type {
   AppConfig,
   ApiKeyConfig,
@@ -26,8 +28,10 @@ import type {
   GatewayPluginPermission,
   GatewayPluginSurface,
   GatewayProviderCapability,
+  GatewayProviderCapabilityProtocol,
   GatewayProviderConfig,
   GatewayProviderProtocol,
+  MediaToolsConfig,
   ObservabilityConfig,
   OverviewMetricKind,
   OverviewWidgetConfig,
@@ -37,7 +41,9 @@ import type {
   ProviderAccountConfig,
   ProviderAccountConnectorConfig,
   ProviderCredentialConfig,
+  ProviderModelCapabilities,
   ProviderModelMetadata,
+  ProviderModelPricing,
   ProviderReasoningLevel,
   ProfileConfig,
   ProfileRuntimeConfig,
@@ -52,6 +58,7 @@ import type {
   RouterRuleOperator,
   RouterRuleRewrite,
   RouterRuleRewriteOperation,
+  RouterRuleScript,
   RouterRuleType,
   TrayBalanceProgressConfig,
   TrayComponentVariants,
@@ -73,12 +80,13 @@ type LoadedBotGatewayConfig = Partial<Omit<BotGatewayRuntimeConfig, "handoff">> 
   handoff?: Partial<BotGatewayRuntimeConfig["handoff"]>;
 };
 
-type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway" | "gateway" | "observability" | "profile" | "proxy" | "toolHub">> & {
+type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway" | "gateway" | "mediaTools" | "observability" | "profile" | "proxy" | "toolHub">> & {
   Router?: Partial<RouterConfig>;
   agent?: Partial<GatewayAgentConfig>;
   botConfigs?: BotGatewaySavedConfig[];
   botGateway?: LoadedBotGatewayConfig;
   gateway?: Partial<AppConfig["gateway"]>;
+  mediaTools?: Partial<MediaToolsConfig>;
   observability?: Partial<ObservabilityConfig>;
   profile?: LoadedProfileConfig;
   proxy?: Partial<ProxyRuntimeConfig>;
@@ -261,6 +269,11 @@ export async function loadAppConfig(): Promise<AppConfig> {
         host: gatewayConfig.host ?? host,
         port: gatewayConfig.port ?? port
       },
+      mediaTools: {
+        ...DEFAULT_CONFIG.mediaTools,
+        ...(picked.mediaTools ?? {}),
+        allowedInputRoots: picked.mediaTools?.allowedInputRoots ?? DEFAULT_CONFIG.mediaTools.allowedInputRoots
+      },
       observability: {
         ...DEFAULT_CONFIG.observability,
         ...(picked.observability ?? {})
@@ -298,10 +311,11 @@ export async function loadAppConfig(): Promise<AppConfig> {
       }
     });
     const shouldPersistApiKeys = loadedApiKeys.length === 0 || hasConfigFileApiKeys(rawValue) || configFileApiKeys.length > 0;
+    const shouldRepairProviderCapabilities = hasUnsupportedNvidiaCapabilities(value.Providers);
     if (shouldPersistApiKeys) {
       await replacePersistedApiKeys(apiKeys);
     }
-    if (loadedRawConfig.source !== "sqlite" || shouldPersistApiKeys) {
+    if (loadedRawConfig.source !== "sqlite" || shouldPersistApiKeys || shouldRepairProviderCapabilities) {
       await writeSanitizedConfig(config);
     }
     return config;
@@ -325,27 +339,116 @@ export async function loadAppConfig(): Promise<AppConfig> {
   }
 }
 
+let appConfigWriteQueue: Promise<void> = Promise.resolve();
+let appThemePreferenceOverride: AppConfig["theme"] | undefined;
+
 export async function saveAppConfig(config: AppConfig): Promise<AppConfig> {
+  return enqueueAppConfigWrite(() => saveAppConfigNow(config));
+}
+
+export async function saveAppThemePreference(theme: unknown): Promise<AppConfig["theme"]> {
+  const normalizedTheme = normalizeAppThemePreference(theme);
+  appThemePreferenceOverride = normalizedTheme;
+  return enqueueAppConfigWrite(async () => {
+    const currentConfig = await loadAppConfig();
+    await writeSanitizedConfig({
+      ...currentConfig,
+      theme: normalizedTheme
+    });
+    return normalizedTheme;
+  });
+}
+
+async function saveAppConfigNow(config: AppConfig): Promise<AppConfig> {
   const normalizedConfig = withSingleEnabledGlobalProfiles(config);
   assertProviderApiKeysAreSafe(normalizedConfig);
   const apiKeys = ensureGatewayApiKeys(normalizeApiKeys(normalizedConfig.APIKEYS, normalizedConfig.APIKEY).filter((apiKey) => !isDefaultSeedApiKey(apiKey)));
   await replacePersistedApiKeys(apiKeys);
   await writeSanitizedConfig({
     ...normalizedConfig,
+    theme: appThemePreferenceOverride ?? normalizedConfig.theme,
     APIKEY: apiKeys[0]?.key ?? "",
     APIKEYS: apiKeys
   });
   return loadAppConfig();
 }
 
+function normalizeAppThemePreference(theme: unknown): AppConfig["theme"] {
+  if (theme === "system" || theme === "light" || theme === "dark") {
+    return theme;
+  }
+  throw new Error("Invalid theme preference.");
+}
+
+function enqueueAppConfigWrite<T>(operation: () => Promise<T>): Promise<T> {
+  const result = appConfigWriteQueue.then(operation, operation);
+  appConfigWriteQueue = result.then(
+    () => undefined,
+    () => undefined
+  );
+  return result;
+}
+
 function withSingleEnabledGlobalProfiles(config: AppConfig): AppConfig {
   return {
     ...config,
+    Providers: config.Providers.map(normalizeProviderPresetCapabilities),
     profile: {
       ...config.profile,
       profiles: enforceSingleEnabledGlobalProfilePerAgent(config.profile.profiles)
     }
   };
+}
+
+function normalizeProviderPresetCapabilities(provider: GatewayProviderConfig): GatewayProviderConfig {
+  const preset = findProviderPresetByBaseUrl(providerBaseUrl(provider));
+  if (preset?.id !== "nvidia") {
+    return provider;
+  }
+
+  const chatCapability = provider.capabilities?.find((capability) =>
+    capability.type === "openai_chat_completions"
+  );
+  const presetBaseUrl = primaryProviderPresetEndpoint(preset)?.baseUrl ?? providerBaseUrl(provider);
+  return {
+    ...provider,
+    capabilities: [{
+      baseUrl: chatCapability?.baseUrl || presetBaseUrl,
+      endpoint: chatCapability?.endpoint,
+      source: chatCapability?.source ?? "preset",
+      type: "openai_chat_completions"
+    }]
+  };
+}
+
+export function normalizeProviderPresetCapabilitiesForTest(
+  provider: GatewayProviderConfig
+): GatewayProviderConfig {
+  return normalizeProviderPresetCapabilities(provider);
+}
+
+function hasUnsupportedNvidiaCapabilities(value: unknown): boolean {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  return value.some((item) => {
+    if (!isObject(item)) {
+      return false;
+    }
+    const baseUrl = readString(item.api_base_url) || readString(item.baseUrl) || readString(item.baseurl);
+    if (!baseUrl || findProviderPresetByBaseUrl(baseUrl)?.id !== "nvidia" || !Array.isArray(item.capabilities)) {
+      return false;
+    }
+    return item.capabilities.some((capability) => {
+      if (!isObject(capability)) {
+        return false;
+      }
+      const protocol = parseProviderCapabilityProtocol(
+        readString(capability.type) || readString(capability.protocol)
+      );
+      return Boolean(protocol && protocol !== "openai_chat_completions");
+    });
+  });
 }
 
 function assertProviderApiKeysAreSafe(config: AppConfig): void {
@@ -575,8 +678,9 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   if (Array.isArray((value as Record<string, unknown>).providerPlugins)) {
     config.providerPlugins = (value as Record<string, unknown>).providerPlugins as unknown[];
   }
-  if (Array.isArray((value as Record<string, unknown>).virtualModelProfiles)) {
-    config.virtualModelProfiles = (value as Record<string, unknown>).virtualModelProfiles as AppConfig["virtualModelProfiles"];
+  const virtualModelProfiles = (value as Record<string, unknown>).virtualModelProfiles;
+  if (Array.isArray(virtualModelProfiles)) {
+    config.virtualModelProfiles = virtualModelProfiles.map(removeVirtualModelToolLoopLimits) as AppConfig["virtualModelProfiles"];
   }
   const plugins = parseGatewayPlugins((value as Record<string, unknown>).plugins ?? (value as Record<string, unknown>).gatewayPlugins);
   if (plugins) {
@@ -636,6 +740,10 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   if (observability) {
     config.observability = observability;
   }
+  const mediaTools = parseMediaTools((value as Record<string, unknown>).mediaTools ?? (value as Record<string, unknown>).media_tools ?? (value as Record<string, unknown>).grokMedia ?? (value as Record<string, unknown>).grok_media);
+  if (mediaTools) {
+    config.mediaTools = mediaTools;
+  }
   const toolHub = parseToolHub((value as Record<string, unknown>).toolHub ?? (value as Record<string, unknown>).tool_hub);
   if (toolHub) {
     config.toolHub = toolHub;
@@ -686,6 +794,25 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   return config;
 }
 
+function removeVirtualModelToolLoopLimits(value: unknown): unknown {
+  if (
+    !isObject(value) ||
+    !isObject(value.execution) ||
+    (!("maxTurns" in value.execution) && !("maxToolCalls" in value.execution))
+  ) {
+    return value;
+  }
+  const { maxToolCalls: _maxToolCalls, maxTurns: _maxTurns, ...execution } = value.execution;
+  return {
+    ...value,
+    execution
+  };
+}
+
+export function virtualModelProfileFromRawForTest(value: unknown): unknown {
+  return removeVirtualModelToolLoopLimits(value);
+}
+
 function parseObservability(value: unknown): Partial<ObservabilityConfig> | undefined {
   if (!isObject(value)) {
     return undefined;
@@ -697,6 +824,15 @@ function parseObservability(value: unknown): Partial<ObservabilityConfig> | unde
   }
   if (typeof value.agentAnalysis === "boolean") {
     observability.agentAnalysis = value.agentAnalysis;
+  }
+  if (value.requestLogBodyCapture === "all" || value.requestLogBodyCapture === "errors" || value.requestLogBodyCapture === "none") {
+    observability.requestLogBodyCapture = value.requestLogBodyCapture;
+  }
+  if (typeof value.requestLogMaxBodyBytes === "number" && Number.isFinite(value.requestLogMaxBodyBytes)) {
+    observability.requestLogMaxBodyBytes = Math.max(0, Math.min(maxRequestLogBodyBytes, Math.floor(value.requestLogMaxBodyBytes)));
+  }
+  if (typeof value.requestLogSuccessSampleRate === "number" && Number.isFinite(value.requestLogSuccessSampleRate)) {
+    observability.requestLogSuccessSampleRate = Math.max(0, Math.min(1, value.requestLogSuccessSampleRate));
   }
   return Object.keys(observability).length ? observability : undefined;
 }
@@ -746,6 +882,34 @@ function parseToolHub(value: unknown): Partial<ToolHubConfig> | undefined {
   }
 
   return Object.keys(toolHub).length ? toolHub : undefined;
+}
+
+function parseMediaTools(value: unknown): Partial<MediaToolsConfig> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const config: Partial<MediaToolsConfig> = {};
+  if (typeof value.enabled === "boolean") config.enabled = value.enabled;
+  const rawAllowedInputRoots = value.allowedInputRoots ?? value.allowed_input_roots;
+  if (Array.isArray(rawAllowedInputRoots)) {
+    config.allowedInputRoots = rawAllowedInputRoots
+      .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+      .map((item) => item.trim());
+  }
+  const artifactTtlHours = readNumber(value.artifactTtlHours ?? value.artifact_ttl_hours);
+  if (artifactTtlHours !== undefined) config.artifactTtlHours = clampNumber(artifactTtlHours, 1, 720);
+  const jobTimeoutMs = readNumber(value.jobTimeoutMs ?? value.job_timeout_ms);
+  if (jobTimeoutMs !== undefined) config.jobTimeoutMs = clampNumber(jobTimeoutMs, 30000, 3600000);
+  const maxImageConcurrency = readNumber(value.maxImageConcurrency ?? value.max_image_concurrency);
+  if (maxImageConcurrency !== undefined) config.maxImageConcurrency = clampNumber(maxImageConcurrency, 1, 8);
+  const maxVideoConcurrency = readNumber(value.maxVideoConcurrency ?? value.max_video_concurrency);
+  if (maxVideoConcurrency !== undefined) config.maxVideoConcurrency = clampNumber(maxVideoConcurrency, 1, 4);
+  return Object.keys(config).length ? config : undefined;
+}
+
+export function mediaToolsConfigFromRawForTest(value: unknown): Partial<MediaToolsConfig> | undefined {
+  return parseMediaTools(value);
 }
 
 function parseOverviewWidgets(value: unknown): OverviewWidgetConfig[] | undefined {
@@ -1076,7 +1240,11 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         type: readString(item.type)
       };
       return removeOpenCodeProviderAccountConfig(
-        normalizeGrokProviderAccountConfig(normalizeCodexProviderAccountConfig(provider))
+        normalizeProviderPresetCapabilities(
+          normalizeGrokProviderMediaCapabilities(
+            normalizeGrokProviderAccountConfig(normalizeCodexProviderAccountConfig(provider))
+          )
+        )
       );
     })
     .filter((item): item is GatewayProviderConfig => Boolean(item));
@@ -1137,15 +1305,25 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
     return undefined;
   }
   const supportedReasoningLevels = parseProviderReasoningLevels(value.supportedReasoningLevels ?? value.supported_reasoning_levels);
+  const capabilities = parseProviderModelCapabilities(value.capabilities);
+  const contextWindow = readPositiveInteger(value.contextWindow ?? value.context_window);
+  const effectiveContextWindowPercent = readPercentage(value.effectiveContextWindowPercent ?? value.effective_context_window_percent);
+  const maxContextWindow = readPositiveInteger(value.maxContextWindow ?? value.max_context_window);
+  const pricing = parseProviderModelPricing(value.pricing);
   const metadata: ProviderModelMetadata = {
     ...(Array.isArray(value.additionalSpeedTiers) ? { additionalSpeedTiers: value.additionalSpeedTiers } : {}),
     ...(Array.isArray(value.additional_speed_tiers) ? { additionalSpeedTiers: value.additional_speed_tiers } : {}),
+    ...(capabilities ? { capabilities } : {}),
+    ...(contextWindow ? { contextWindow } : {}),
     ...(value.defaultReasoningLevel === null ? { defaultReasoningLevel: null } : {}),
     ...(readString(value.defaultReasoningLevel) ? { defaultReasoningLevel: readString(value.defaultReasoningLevel) } : {}),
     ...(value.default_reasoning_level === null ? { defaultReasoningLevel: null } : {}),
     ...(readString(value.default_reasoning_level) ? { defaultReasoningLevel: readString(value.default_reasoning_level) } : {}),
     ...(readString(value.defaultReasoningSummary) ? { defaultReasoningSummary: readString(value.defaultReasoningSummary) } : {}),
     ...(readString(value.default_reasoning_summary) ? { defaultReasoningSummary: readString(value.default_reasoning_summary) } : {}),
+    ...(effectiveContextWindowPercent ? { effectiveContextWindowPercent } : {}),
+    ...(maxContextWindow ? { maxContextWindow } : {}),
+    ...(pricing ? { pricing } : {}),
     ...(Array.isArray(value.serviceTiers) ? { serviceTiers: value.serviceTiers } : {}),
     ...(Array.isArray(value.service_tiers) ? { serviceTiers: value.service_tiers } : {}),
     ...(supportedReasoningLevels ? { supportedReasoningLevels } : {}),
@@ -1153,6 +1331,50 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
     ...(typeof value.supports_reasoning_summaries === "boolean" ? { supportsReasoningSummaries: value.supports_reasoning_summaries } : {})
   };
   return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function parseProviderModelCapabilities(value: unknown): ProviderModelCapabilities | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const capabilities: ProviderModelCapabilities = {};
+  const fields: Array<keyof ProviderModelCapabilities> = ["imageInput", "webSearch"];
+  for (const field of fields) {
+    const snakeCaseField = field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+    const candidate = value[field] ?? value[snakeCaseField];
+    if (typeof candidate === "boolean") {
+      capabilities[field] = candidate;
+    }
+  }
+  return Object.keys(capabilities).length > 0 ? capabilities : undefined;
+}
+
+function parseProviderModelPricing(value: unknown): ProviderModelPricing | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const pricing: ProviderModelPricing = {};
+  const fields: Array<keyof ProviderModelPricing> = [
+    "cacheReadUsdPerMillionTokens",
+    "cacheWriteUsdPerMillionTokens",
+    "cacheWrite1hUsdPerMillionTokens",
+    "cacheWrite5mUsdPerMillionTokens",
+    "inputUsdPerMillionTokens",
+    "outputUsdPerMillionTokens"
+  ];
+  for (const field of fields) {
+    const snakeCaseField = field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+    const durationSnakeCaseField = snakeCaseField.replace(/([a-z])([0-9])/g, "$1_$2");
+    const parsed = readNonNegativeNumber(value[field] ?? value[durationSnakeCaseField] ?? value[snakeCaseField]);
+    if (parsed !== undefined) {
+      pricing[field] = parsed;
+    }
+  }
+  return Object.keys(pricing).length > 0 ? pricing : undefined;
+}
+
+export function providerModelMetadataFromConfigForTest(value: unknown): ProviderModelMetadata | undefined {
+  return parseProviderModelMetadata(value);
 }
 
 function parseProviderReasoningLevels(value: unknown): ProviderReasoningLevel[] | undefined {
@@ -1175,7 +1397,7 @@ function parseProviderReasoningLevels(value: unknown): ProviderReasoningLevel[] 
       };
     })
     .filter((item): item is ProviderReasoningLevel => Boolean(item));
-  return levels.length > 0 ? levels : undefined;
+  return levels.length > 0 ? levels : value.length === 0 ? [] : undefined;
 }
 
 function withProviderIds(providers: GatewayProviderConfig[]): GatewayProviderConfig[] {
@@ -1307,7 +1529,7 @@ function parseProviderCapabilities(value: unknown): GatewayProviderCapability[] 
   return capabilities.length > 0 ? capabilities : undefined;
 }
 
-function parseProviderCapabilityProtocol(value: string | undefined): GatewayProviderProtocol | undefined {
+function parseProviderCapabilityProtocol(value: string | undefined): GatewayProviderCapabilityProtocol | undefined {
   if (!value) {
     return undefined;
   }
@@ -1317,6 +1539,15 @@ function parseProviderCapabilityProtocol(value: string | undefined): GatewayProv
   }
   if (normalized === "openai_chat" || normalized === "openai_chat_completions") {
     return "openai_chat_completions";
+  }
+  if (normalized === "openai_image_generations" || normalized === "openai_images") {
+    return "openai_image_generations";
+  }
+  if (normalized === "openai_video_generations" || normalized === "openai_videos") {
+    return "openai_video_generations";
+  }
+  if (normalized === "xai_video_generations" || normalized === "xai_videos") {
+    return "xai_video_generations";
   }
   if (normalized === "anthropic" || normalized === "anthropic_messages") {
     return "anthropic_messages";
@@ -1488,6 +1719,7 @@ function parseRouterRules(value: unknown): RouterRule[] | undefined {
         pattern
       });
       const rewrites = parseRouterRuleRewrites(item);
+      const script = type === "script" ? parseRouterRuleScript(item.script ?? item) : undefined;
       const fallback = parseRouterFallback(item.fallback ?? item.failureFallback ?? item.fallbackStrategy);
 
       return {
@@ -1499,9 +1731,10 @@ function parseRouterRules(value: unknown): RouterRule[] | undefined {
         ...(pattern ? { pattern } : {}),
         ...(rewrites.length === 1 ? { rewrite: rewrites[0] } : {}),
         ...(rewrites.length > 0 ? { rewrites } : {}),
+        ...(script ? { script } : {}),
         ...(target ? { target } : {}),
         ...(threshold !== undefined && threshold > 0 ? { threshold } : {}),
-        type: condition ? "condition" : type
+        type: type === "script" ? "script" : condition ? "condition" : type
       };
     })
     .filter((item): item is RouterRule => Boolean(item));
@@ -1515,11 +1748,46 @@ function parseRouterRuleType(value: unknown): RouterRuleType | undefined {
   const normalized = value.trim().toLowerCase();
   if (
     normalized === "condition" ||
-    normalized === "model-prefix"
+    normalized === "model-prefix" ||
+    normalized === "script"
   ) {
     return normalized;
   }
   return undefined;
+}
+
+function parseRouterRuleScript(value: unknown): RouterRuleScript | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const file = readString(value.file ?? value.filePath ?? value.path);
+  const source = typeof value.source === "string"
+    ? value.source
+    : typeof value.code === "string"
+      ? value.code
+      : undefined;
+  if (!file && source === undefined) {
+    return undefined;
+  }
+  const language = readString(value.language)?.toLowerCase();
+  if (language && language !== "javascript" && language !== "js") {
+    return undefined;
+  }
+  const apiVersion = readNumber(value.apiVersion ?? value.version) ?? ROUTER_SCRIPT_API_VERSION;
+  if (apiVersion !== ROUTER_SCRIPT_API_VERSION) {
+    return undefined;
+  }
+  const timeoutValue = readNumber(value.timeoutMs ?? value.timeout);
+  const timeoutMs = timeoutValue === undefined
+    ? ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS
+    : Math.max(10, Math.min(ROUTER_SCRIPT_MAX_TIMEOUT_MS, Math.trunc(timeoutValue)));
+  return {
+    apiVersion: ROUTER_SCRIPT_API_VERSION,
+    ...(file ? { file } : {}),
+    language: "javascript",
+    ...(source !== undefined ? { source } : {}),
+    timeoutMs
+  };
 }
 
 function parseRouterRuleCondition(value: unknown): RouterRuleCondition | undefined {
@@ -1659,7 +1927,7 @@ function readRewriteValue(value: unknown): string | undefined {
 }
 
 function routerRuleTypeLabel(type: RouterRuleType): string {
-  return type === "condition" ? "Condition" : "Legacy";
+  return type === "condition" ? "Condition" : type === "script" ? "JavaScript" : "Legacy";
 }
 
 function parseAgent(value: unknown, legacyMcpServers?: unknown): Partial<GatewayAgentConfig> | undefined {
@@ -2573,6 +2841,10 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       const id = readString(item.id) || `profile-${index + 1}`;
       const name = readString(item.name) || defaultProfileAgentName(agent);
       const model = readString(item.model) ?? "";
+      const availableModels = uniqueStrings([
+        model,
+        ...parseStringList(item.availableModels ?? item.available_models ?? item.models)
+      ]);
       const env = parseStringRecord(item.env) ?? {};
       const parsedSurface = parseProfileSurface(readString(item.surface) || readString(item.entry) || readString(item.frontend)) || "auto";
       const surface = agent === "zcode" ? "app" : parsedSurface;
@@ -2601,9 +2873,10 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         };
       }
 
-      if (agent === "grok") {
+      if (agent === "grok" || agent === "kimi") {
         return {
           agent,
+          ...(agent === "kimi" ? { availableModels } : {}),
           enabled,
           env: codexCompatibleProfileEnv(env),
           id,
@@ -2675,6 +2948,9 @@ function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
   if (normalized === "grok" || normalized === "grok-cli" || normalized === "grok cli") {
     return "grok";
   }
+  if (normalized === "kimi" || normalized === "kimi-cli" || normalized === "kimi cli" || normalized === "kimi-code" || normalized === "kimi code") {
+    return "kimi";
+  }
   if (normalized === "opencode" || normalized === "open-code" || normalized === "open code") {
     return "opencode";
   }
@@ -2693,6 +2969,9 @@ function defaultProfileAgentName(agent: ProfileConfig["agent"]): string {
   }
   if (agent === "grok") {
     return "Grok CLI";
+  }
+  if (agent === "kimi") {
+    return "Kimi CLI";
   }
   if (agent === "opencode") {
     return "OpenCode";
@@ -3043,6 +3322,21 @@ function readNumber(value: unknown): number | undefined {
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function readNonNegativeNumber(value: unknown): number | undefined {
+  const parsed = readNumber(value);
+  return parsed !== undefined && parsed >= 0 ? parsed : undefined;
+}
+
+function readPercentage(value: unknown): number | undefined {
+  const parsed = readNumber(value);
+  return parsed !== undefined && parsed > 0 && parsed <= 100 ? parsed : undefined;
+}
+
+function readPositiveInteger(value: unknown): number | undefined {
+  const parsed = readNumber(value);
+  return parsed !== undefined && parsed > 0 ? Math.trunc(parsed) : undefined;
 }
 
 function clampNumber(value: number, min: number, max: number): number {

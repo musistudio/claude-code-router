@@ -423,11 +423,15 @@ export function formatLogTokenSummary(entry: RequestLogEntry, t: (value: string)
 }
 
 export function logRequestModel(entry: RequestLogEntry): string {
-  return logBodyModel(entry.requestBody) || entry.model || "unknown";
+  return entry.requestedModel || logBodyModel(entry.requestBody) || entry.model || "unknown";
 }
 
 export function logResponseModel(entry: RequestLogEntry): string {
-  return logBodyModel(entry.responseBody) || entry.model || "unknown";
+  return entry.responseModel ||
+    logBodyModel(entry.responseBody) ||
+    entry.resolvedModel ||
+    entry.model ||
+    "unknown";
 }
 
 export function logBodyModel(body: RequestLogBody | undefined): string | undefined {

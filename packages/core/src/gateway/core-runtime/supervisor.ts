@@ -114,6 +114,13 @@ function createGatewayProcessEnv(config: AppConfig, upstreamProxyUrl: string | u
     PORT: String(config.gateway.corePort)
   };
 
+  // The managed gateway must use the generated raw-trace policy. Inheriting
+  // the upstream gateway's RAW_TRACE_* overrides could bypass CCR privacy,
+  // size, spool, or sync-endpoint controls.
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("RAW_TRACE_")) delete env[key];
+  }
+
   const noProxy = mergeNoProxy(env.NO_PROXY || env.no_proxy, [
     "127.0.0.1",
     "localhost",
@@ -504,7 +511,9 @@ export function shouldRunUnifiedServer(config: AppConfig): boolean {
 
 
 export function shouldRunGatewayRuntime(config: AppConfig): boolean {
-  return config.gateway.enabled || (config.proxy.enabled && config.proxy.mode === "gateway");
+  return config.gateway.enabled ||
+    config.mediaTools.enabled ||
+    (config.proxy.enabled && config.proxy.mode === "gateway");
 }
 
 

@@ -4,7 +4,7 @@ import {
   Check, Checkbox, ChevronDown, ChevronRight, CircleAlert, cn,
   compareProviderAccountSnapshots, copyTextToClipboard, createDefaultProviderAccountDraft, createModelCatalogItems, createProviderAccountDraftFromConfig, createProviderCredentialDraft,
   customProviderPresetId, defaultProviderAccountConfigForPreset, Dialog, DialogBody, DialogContent, DialogFooter,
-  DialogHeader, DialogTitle, ExternalLink, Field, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
+  DialogHeader, DialogTitle, ExternalLink, Field, FieldGroup, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
   GatewayProviderProbeResult, getProviderPresets, Globe, inferProviderNameFromBaseUrl, Info, Input, KeyValueRowsControl, Label,
   Layers3, LoaderCircle, localAgentProviderIconUrls, mergeProviderModelLists, modelCatalogItemMatchesQuery, motion,
   Pencil, Plus, PopoverContent, primaryProviderAccountMeter, primaryProviderPresetEndpoint,
@@ -1188,6 +1188,7 @@ function LocalAgentProviderImportPanel({
         ...accountDraft,
         apiKey: result.provider.apiKey ?? "",
         baseUrl: result.provider.baseUrl,
+        capabilities: result.provider.capabilities ?? [],
         credentials: [],
         icon: result.provider.icon?.trim() || localAgentProviderIconUrls[candidate.kind] || "",
         modelDescriptions: result.provider.modelDescriptions,
@@ -1214,7 +1215,7 @@ function LocalAgentProviderImportPanel({
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
         <div className="min-w-0">
           <div className="truncate text-[12px] font-semibold text-foreground">{t("Import local agent provider")}</div>
-          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t("CCR scanned this computer for local Claude Code, Codex, Grok CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.")}</div>
+          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t("CCR scanned this computer for local Claude Code, Codex, Grok CLI, Kimi CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.")}</div>
         </div>
         {loading ? <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" /> : null}
       </div>
@@ -1282,6 +1283,7 @@ const localAgentProviderPluginSuffixes: Record<Exclude<LocalAgentProviderCandida
   "claude-code": ["-claude-code-oauth", "-claude-code-oauth-internal"],
   codex: ["-codex-oauth", "-codex-oauth-internal"],
   grok: ["-grok-cli-oauth", "-grok-cli-oauth-internal"],
+  kimi: ["-kimi-cli-oauth", "-kimi-cli-oauth-internal", "-kimi-cli-api-key", "-kimi-cli-api-key-internal"],
   zcode: ["-zcode-api-key", "-zcode-api-key-internal"]
 };
 
@@ -1385,11 +1387,19 @@ export function AddProviderForm({
   const selectableProtocols = providerSelectableProtocolsFromProbe(probe);
   const protocolProbeRows = useMemo(() => uniqueProviderProbeProtocolRows(probe?.protocols ?? []), [probe]);
   const configuredModels = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
+  const catalogModelIds = new Set(probe?.models ?? []);
   const hasConnectivityCheckInputs = Boolean(
     draft.baseUrl.trim() &&
     draft.apiKey.trim() &&
     configuredModels.length > 0
   );
+
+  function updateConfiguredModels(models: string[]) {
+    onChange({
+      modelsText: models.filter((model) => !catalogModelIds.has(model)).join("\n"),
+      selectedModels: models.filter((model) => catalogModelIds.has(model))
+    });
+  }
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -1467,6 +1477,7 @@ export function AddProviderForm({
       onChange({
         ...createDefaultProviderAccountDraft(),
         baseUrl: "",
+        catalogModelMetadata: undefined,
         icon: "",
         modelDescriptions: undefined,
         modelDisplayNames: undefined,
@@ -1484,6 +1495,7 @@ export function AddProviderForm({
       onChange({
         ...createDefaultProviderAccountDraft(),
         baseUrl: "",
+        catalogModelMetadata: undefined,
         icon: "",
         modelDescriptions: undefined,
         modelDisplayNames: undefined,
@@ -1505,6 +1517,7 @@ export function AddProviderForm({
     onChange({
       ...accountDraft,
       baseUrl: endpoint?.baseUrl ?? "",
+      catalogModelMetadata: undefined,
       icon: "",
       modelDescriptions: undefined,
       modelDisplayNames: preset?.defaultModelDisplayNames,
@@ -1592,31 +1605,16 @@ export function AddProviderForm({
             </div>
           </div>
         ) : null}
-        <Field className="sm:col-span-2" label={t("Models")}>
+        <FieldGroup className="sm:col-span-2" label={t("Models")}>
           {hasModelCatalog && probe ? (
-            <div className="space-y-2">
-              <ModelMultiSelect
-                displayNames={draft.modelDisplayNames}
-                models={probe.models}
-                onQueryChange={(modelSearch) => onChange({ modelSearch })}
-                onSelectedChange={(selectedModels) => onChange({ selectedModels })}
-                query={draft.modelSearch}
-                selected={draft.selectedModels}
-              />
-              <div className="space-y-1.5">
-                <div className="flex min-w-0 items-center justify-between gap-2">
-                  <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Custom models")}</span>
-                  <span className="shrink-0 text-[11px] font-medium leading-4 text-muted-foreground/75">{t("Press Enter to add")}</span>
-                </div>
-                <ModelTagInput
-                  ariaLabel={t("Custom models")}
-                  displayNames={draft.modelDisplayNames}
-                  onChange={(models) => onChange({ modelsText: models.join("\n") })}
-                  placeholder={t("Model name")}
-                  value={splitLines(draft.modelsText)}
-                />
-              </div>
-            </div>
+            <ModelMultiSelect
+              displayNames={draft.modelDisplayNames}
+              models={mergeProviderModelLists(probe.models, splitLines(draft.modelsText))}
+              onQueryChange={(modelSearch) => onChange({ modelSearch })}
+              onSelectedChange={updateConfiguredModels}
+              query={draft.modelSearch}
+              selected={configuredModels}
+            />
           ) : (
             <ModelTagInput
               ariaLabel={t("Models")}
@@ -1626,13 +1624,14 @@ export function AddProviderForm({
               value={splitLines(draft.modelsText)}
             />
           )}
-          <ModelDescriptionsEditor
-            descriptions={draft.modelDescriptions}
+          <ModelMetadataEditor
+            defaults={draft.catalogModelMetadata}
             displayNames={draft.modelDisplayNames}
+            metadata={draft.modelMetadata}
             models={configuredModels}
-            onChange={(modelDescriptions) => onChange({ modelDescriptions })}
+            onChange={(modelMetadata) => onChange({ modelMetadata })}
           />
-        </Field>
+        </FieldGroup>
         <div className="sm:col-span-2 flex min-w-0 flex-wrap items-center justify-between gap-2 text-[12px] text-muted-foreground">
           <div className="min-w-0 flex-1">
             {connectivityLoading ? (
@@ -1718,8 +1717,9 @@ export function AddProviderForm({
                       <div className="space-y-1.5">
                         {protocolProbeRows.map((item) => {
                           const available = item.supported;
-                          const selectable = item.supported && selectableProtocols.includes(item.protocol);
-                          const checked = selectable && draft.selectedProtocols.includes(item.protocol);
+                          const selectableProtocol = selectableProtocols.find((protocol) => protocol === item.protocol);
+                          const selectable = item.supported && Boolean(selectableProtocol);
+                          const checked = Boolean(selectableProtocol && draft.selectedProtocols.includes(selectableProtocol));
                           const itemKey = `${item.protocol}-${item.endpoint}`;
                           return (
                             <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={itemKey}>
@@ -1728,13 +1728,13 @@ export function AddProviderForm({
                                 checked={checked}
                                 disabled={!selectable}
                                 onCheckedChange={() => {
-                                  if (!selectable) {
+                                  if (!selectableProtocol) {
                                     return;
                                   }
                                   onChange({
                                     selectedProtocols: checked
-                                      ? draft.selectedProtocols.filter((protocol) => protocol !== item.protocol)
-                                      : uniqueProviderProtocols([...draft.selectedProtocols, item.protocol])
+                                      ? draft.selectedProtocols.filter((protocol) => protocol !== selectableProtocol)
+                                      : uniqueProviderProtocols([...draft.selectedProtocols, selectableProtocol])
                                   });
                                 }}
                               />
@@ -2753,60 +2753,330 @@ function ModelTagInput({
   );
 }
 
-function ModelDescriptionsEditor({
-  descriptions,
+const providerReasoningLevelOptions = [
+  { description: "Low", effort: "low", label: "Low" },
+  { description: "Medium", effort: "medium", label: "Medium" },
+  { description: "High", effort: "high", label: "High" },
+  { description: "Extra high", effort: "xhigh", label: "Extra high" },
+  { description: "Max", effort: "max", label: "Max" },
+  { description: "Ultra", effort: "ultra", label: "Ultra" }
+] as const;
+
+function ModelMetadataEditor({
+  defaults,
   displayNames,
+  metadata,
   models,
   onChange
 }: {
-  descriptions?: Record<string, string>;
+  defaults?: NonNullable<AddProviderDraft["catalogModelMetadata"]>;
   displayNames?: Record<string, string>;
+  metadata?: NonNullable<AddProviderDraft["modelMetadata"]>;
   models: string[];
-  onChange: (value: Record<string, string> | undefined) => void;
+  onChange: (value: AddProviderDraft["modelMetadata"]) => void;
 }) {
   const t = useAppText();
   const normalizedModels = mergeProviderModelLists(models);
+  const [expandedModels, setExpandedModels] = useState<Set<string>>(() => new Set());
   if (normalizedModels.length === 0) {
     return null;
   }
 
-  function updateDescription(model: string, value: string) {
-    const next: Record<string, string> = {};
-    for (const item of normalizedModels) {
-      const description = (item === model ? value : descriptions?.[item] ?? "").trim();
-      if (description) {
-        next[item] = description;
-      }
+  type Metadata = NonNullable<AddProviderDraft["modelMetadata"]>[string];
+  type CapabilityKey = keyof NonNullable<Metadata["capabilities"]>;
+  type PricingKey = keyof NonNullable<Metadata["pricing"]>;
+
+  function updateMetadata(model: string, updater: (current: Metadata) => Metadata) {
+    const next = { ...(metadata ?? {}) };
+    const updated = updater({ ...(next[model] ?? {}) });
+    if (Object.keys(updated).length > 0) {
+      next[model] = updated;
+    } else {
+      delete next[model];
     }
     onChange(Object.keys(next).length > 0 ? next : undefined);
+  }
+
+  function updateContextWindow(model: string, rawValue: string) {
+    updateMetadata(model, (current) => {
+      const next = { ...current };
+      const parsed = optionalPositiveInteger(rawValue);
+      if (parsed === undefined) {
+        delete next.contextWindow;
+        delete next.maxContextWindow;
+      } else {
+        next.contextWindow = parsed;
+        next.maxContextWindow = parsed;
+      }
+      return next;
+    });
+  }
+
+  function resetContextWindow(model: string) {
+    updateMetadata(model, (current) => {
+      const next = { ...current };
+      delete next.contextWindow;
+      delete next.maxContextWindow;
+      return next;
+    });
+  }
+
+  function updatePricing(model: string, key: PricingKey, rawValue: string) {
+    updateMetadata(model, (current) => {
+      const pricing = { ...(defaults?.[model]?.pricing ?? {}), ...(current.pricing ?? {}) };
+      const parsed = optionalNonNegativeNumber(rawValue);
+      if (parsed === undefined) delete pricing[key];
+      else pricing[key] = parsed;
+      if (key === "cacheWrite5mUsdPerMillionTokens") {
+        delete pricing.cacheWriteUsdPerMillionTokens;
+      }
+      const next = { ...current };
+      if (Object.keys(pricing).length > 0) next.pricing = pricing;
+      else delete next.pricing;
+      return next;
+    });
+  }
+
+  function resetPricing(model: string) {
+    updateMetadata(model, (current) => {
+      const next = { ...current };
+      delete next.pricing;
+      return next;
+    });
+  }
+
+  function updateReasoningLevel(model: string, effort: string, checked: boolean) {
+    updateMetadata(model, (current) => {
+      const selected = new Set(
+        (current.supportedReasoningLevels ?? defaults?.[model]?.supportedReasoningLevels ?? [])
+          .map((level) => level.effort.trim().toLowerCase())
+      );
+      if (checked) selected.add(effort);
+      else selected.delete(effort);
+      const supportedReasoningLevels = providerReasoningLevelOptions
+        .filter((option) => selected.has(option.effort))
+        .map(({ description, effort: optionEffort }) => ({ description, effort: optionEffort }));
+      const next: Metadata = {
+        ...current,
+        supportedReasoningLevels,
+        supportsReasoningSummaries: supportedReasoningLevels.length > 0
+      };
+      const defaultReasoningLevel = current.defaultReasoningLevel?.trim().toLowerCase();
+      if (defaultReasoningLevel && !selected.has(defaultReasoningLevel)) {
+        delete next.defaultReasoningLevel;
+      }
+      return next;
+    });
+  }
+
+  function resetReasoning(model: string) {
+    updateMetadata(model, (current) => {
+      const next = { ...current };
+      delete next.defaultReasoningLevel;
+      delete next.supportedReasoningLevels;
+      delete next.supportsReasoningSummaries;
+      return next;
+    });
+  }
+
+  function updateCapability(model: string, key: CapabilityKey, checked: boolean) {
+    updateMetadata(model, (current) => ({
+      ...current,
+      capabilities: { ...(current.capabilities ?? {}), [key]: checked }
+    }));
+  }
+
+  function resetCapability(model: string, key: CapabilityKey) {
+    updateMetadata(model, (current) => {
+      const capabilities = { ...(current.capabilities ?? {}) };
+      delete capabilities[key];
+      const next = { ...current };
+      if (Object.keys(capabilities).length > 0) next.capabilities = capabilities;
+      else delete next.capabilities;
+      return next;
+    });
+  }
+
+  function toggleExpanded(model: string) {
+    setExpandedModels((current) => {
+      const next = new Set(current);
+      if (next.has(model)) next.delete(model);
+      else next.add(model);
+      return next;
+    });
   }
 
   return (
     <div className="space-y-2 rounded-md border border-border bg-muted/20 p-2">
       <div className="flex min-w-0 items-center justify-between gap-2">
-        <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Model descriptions")}</span>
-        <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">{t("Used in Agent routing prompts")}</span>
+        <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Model settings")}</span>
+        <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">{t("Context, pricing, reasoning, web search, and image")}</span>
       </div>
-      <div className="grid grid-cols-1 gap-2">
+      <div className="space-y-2">
         {normalizedModels.map((model) => {
+          const modelMetadata = metadata?.[model];
+          const modelDefaults = defaults?.[model];
+          const effectiveContextWindow = modelMetadata?.contextWindow ?? modelMetadata?.maxContextWindow ??
+            modelDefaults?.contextWindow ?? modelDefaults?.maxContextWindow;
+          const effectivePricing = {
+            cacheReadUsdPerMillionTokens: modelMetadata?.pricing?.cacheReadUsdPerMillionTokens ?? modelDefaults?.pricing?.cacheReadUsdPerMillionTokens,
+            cacheWrite1hUsdPerMillionTokens: modelMetadata?.pricing?.cacheWrite1hUsdPerMillionTokens ?? modelDefaults?.pricing?.cacheWrite1hUsdPerMillionTokens,
+            cacheWrite5mUsdPerMillionTokens: modelMetadata?.pricing?.cacheWrite5mUsdPerMillionTokens ??
+              modelMetadata?.pricing?.cacheWriteUsdPerMillionTokens ??
+              modelDefaults?.pricing?.cacheWrite5mUsdPerMillionTokens ??
+              modelDefaults?.pricing?.cacheWriteUsdPerMillionTokens,
+            inputUsdPerMillionTokens: modelMetadata?.pricing?.inputUsdPerMillionTokens ?? modelDefaults?.pricing?.inputUsdPerMillionTokens,
+            outputUsdPerMillionTokens: modelMetadata?.pricing?.outputUsdPerMillionTokens ?? modelDefaults?.pricing?.outputUsdPerMillionTokens
+          };
+          const expanded = expandedModels.has(model);
           const label = displayNames?.[model]?.trim() || model;
+          const hasCustomDetails = Boolean(
+            modelMetadata?.contextWindow ||
+            modelMetadata?.maxContextWindow ||
+            modelMetadata?.pricing ||
+            modelMetadata?.capabilities ||
+            modelMetadata?.supportedReasoningLevels !== undefined ||
+            modelMetadata?.supportsReasoningSummaries !== undefined
+          );
+          const configuredReasoningLevels = new Set(
+            (modelMetadata?.supportedReasoningLevels ?? modelDefaults?.supportedReasoningLevels ?? [])
+              .map((level) => level.effort.trim().toLowerCase())
+          );
+          const reasoningConfigured = modelMetadata?.supportedReasoningLevels !== undefined ||
+            modelMetadata?.supportsReasoningSummaries !== undefined;
           return (
-            <div className="grid grid-cols-1 gap-1 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)] sm:items-start" key={model}>
-              <Label className="min-h-8 min-w-0 pt-1.5 text-[12px] font-medium text-foreground" title={model}>
-                <span className="block truncate">{label}</span>
-              </Label>
-              <Textarea
-                className="min-h-[58px] resize-y text-[12px]"
-                onChange={(event) => updateDescription(model, event.target.value)}
-                placeholder={t("Describe model strengths, tradeoffs, and best-fit tasks.")}
-                value={descriptions?.[model] ?? ""}
-              />
+            <div className="overflow-hidden rounded-md border border-border bg-background/70" key={model}>
+              <button
+                aria-expanded={expanded}
+                className="flex w-full min-w-0 items-center gap-2 px-2.5 py-2 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/25"
+                onClick={() => toggleExpanded(model)}
+                type="button"
+              >
+                <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90")} />
+                <span className="min-w-0 flex-1 truncate text-[12px] font-medium" title={model}>{label}</span>
+                {hasCustomDetails ? <Badge variant="secondary">{t("Custom")}</Badge> : null}
+                {!hasCustomDetails && modelDefaults ? <Badge variant="outline">{t("Preset")}</Badge> : null}
+              </button>
+              {expanded ? (
+                <div className="space-y-3 border-t border-border/60 p-3">
+                  <div className="space-y-2">
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <Label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Context window (tokens)")}</Label>
+                      {modelMetadata?.contextWindow !== undefined || modelMetadata?.maxContextWindow !== undefined ? (
+                        <Button className="h-6 px-2 text-[10px]" onClick={() => resetContextWindow(model)} type="button" variant="ghost">
+                          {t("Use preset")}
+                        </Button>
+                      ) : null}
+                    </div>
+                    <Input
+                      min={1}
+                      onChange={(event) => updateContextWindow(model, event.target.value)}
+                      placeholder={t("Detected automatically")}
+                      step={1}
+                      type="number"
+                      value={effectiveContextWindow ?? ""}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <Label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Pricing")}</Label>
+                      {modelMetadata?.pricing ? (
+                        <Button className="h-6 px-2 text-[10px]" onClick={() => resetPricing(model)} type="button" variant="ghost">
+                          {t("Use preset")}
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <ModelPriceInput label={`${t("Input")}(1M tokens/$)`} onChange={(value) => updatePricing(model, "inputUsdPerMillionTokens", value)} value={effectivePricing.inputUsdPerMillionTokens} />
+                      <ModelPriceInput label={`${t("Output")}(1M tokens/$)`} onChange={(value) => updatePricing(model, "outputUsdPerMillionTokens", value)} value={effectivePricing.outputUsdPerMillionTokens} />
+                      <ModelPriceInput label={`${t("Cache read")}(1M tokens/$)`} onChange={(value) => updatePricing(model, "cacheReadUsdPerMillionTokens", value)} value={effectivePricing.cacheReadUsdPerMillionTokens} />
+                      <ModelPriceInput label={`${t("Cache write 5m")}(1M tokens/$)`} onChange={(value) => updatePricing(model, "cacheWrite5mUsdPerMillionTokens", value)} value={effectivePricing.cacheWrite5mUsdPerMillionTokens} />
+                      <ModelPriceInput label={`${t("Cache write 1h")}(1M tokens/$)`} onChange={(value) => updatePricing(model, "cacheWrite1hUsdPerMillionTokens", value)} value={effectivePricing.cacheWrite1hUsdPerMillionTokens} />
+                    </div>
+                    <div className="text-[10px] leading-4 text-muted-foreground/75">{t("Input and output prices are both required to override catalog pricing.")}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <Label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Reasoning levels")}</Label>
+                      {reasoningConfigured ? (
+                        <Button className="h-6 px-2 text-[10px]" onClick={() => resetReasoning(model)} type="button" variant="ghost">
+                          {t("Use preset")}
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3">
+                      {providerReasoningLevelOptions.map((option) => (
+                        <Label className="flex min-w-0 items-center gap-2 text-[11px] font-normal" key={option.effort}>
+                          <Checkbox
+                            checked={configuredReasoningLevels.has(option.effort)}
+                            onCheckedChange={(checked) => updateReasoningLevel(model, option.effort, checked)}
+                          />
+                          <span className="truncate">{t(option.label)}</span>
+                        </Label>
+                      ))}
+                    </div>
+                    <div className="text-[10px] leading-4 text-muted-foreground/75">{t("Select every reasoning effort supported by this model.")}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <Label className="flex min-w-0 items-center gap-2 text-[12px] font-medium">
+                        <Checkbox
+                          checked={modelMetadata?.capabilities?.webSearch ?? modelDefaults?.capabilities?.webSearch ?? false}
+                          onCheckedChange={(checked) => updateCapability(model, "webSearch", checked)}
+                        />
+                        <span>{t("Web search")}</span>
+                      </Label>
+                      {modelMetadata?.capabilities?.webSearch !== undefined ? (
+                        <Button className="h-6 px-2 text-[10px]" onClick={() => resetCapability(model, "webSearch")} type="button" variant="ghost">
+                          {t("Use preset")}
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="text-[10px] leading-4 text-muted-foreground/75">{t("Declare whether the model provides native web search.")}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <Label className="flex min-w-0 items-center gap-2 text-[12px] font-medium">
+                        <Checkbox
+                          checked={modelMetadata?.capabilities?.imageInput ?? modelDefaults?.capabilities?.imageInput ?? false}
+                          onCheckedChange={(checked) => updateCapability(model, "imageInput", checked)}
+                        />
+                        <span>{t("Image")}</span>
+                      </Label>
+                      {modelMetadata?.capabilities?.imageInput !== undefined ? (
+                        <Button className="h-6 px-2 text-[10px]" onClick={() => resetCapability(model, "imageInput")} type="button" variant="ghost">
+                          {t("Use preset")}
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="text-[10px] leading-4 text-muted-foreground/75">{t("Declare whether the model accepts image input.")}</div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           );
         })}
       </div>
     </div>
   );
+}
+
+function ModelPriceInput({ label, onChange, value }: { label: string; onChange: (value: string) => void; value?: number }) {
+  return (
+    <Field label={label}>
+      <Input min={0} onChange={(event) => onChange(event.target.value)} placeholder="0" step="any" type="number" value={value ?? ""} />
+    </Field>
+  );
+}
+
+function optionalPositiveInteger(value: string): number | undefined {
+  const parsed = Number(value);
+  return value.trim() && Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : undefined;
+}
+
+function optionalNonNegativeNumber(value: string): number | undefined {
+  const parsed = Number(value);
+  return value.trim() && Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
 function ModelMultiSelect({
@@ -2829,6 +3099,8 @@ function ModelMultiSelect({
   const visibleModels = normalized
     ? models.filter((model) => model.toLowerCase().includes(normalized) || (displayNames?.[model] ?? "").toLowerCase().includes(normalized))
     : models;
+  const customModel = query.trim();
+  const canAddCustomModel = Boolean(customModel && visibleModels.length === 0);
 
   function toggleModel(model: string) {
     onSelectedChange(selected.includes(model) ? selected.filter((item) => item !== model) : [...selected, model]);
@@ -2838,12 +3110,32 @@ function ModelMultiSelect({
     onSelectedChange(Array.from(new Set([...selected, ...visibleModels])));
   }
 
+  function addCustomModel() {
+    if (!canAddCustomModel) {
+      return;
+    }
+    onSelectedChange(mergeProviderModelLists(selected, [customModel]));
+    onQueryChange("");
+  }
+
   return (
     <div className="rounded-md border border-input bg-card">
       <div className="flex flex-wrap items-center gap-2 border-b border-border p-2">
         <div className="relative min-w-[180px] flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input aria-label={t("Search models")} className="pl-8" onChange={(event) => onQueryChange(event.target.value)} placeholder={t("Search models")} value={query} />
+          <Input
+            aria-label={t("Search models")}
+            className="pl-8"
+            onChange={(event) => onQueryChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && canAddCustomModel) {
+                event.preventDefault();
+                addCustomModel();
+              }
+            }}
+            placeholder={t("Search models")}
+            value={query}
+          />
         </div>
         <Button disabled={visibleModels.length === 0} onClick={selectVisibleModels} size="sm" type="button" variant="outline">
           {t("All")}
@@ -2854,7 +3146,13 @@ function ModelMultiSelect({
       </div>
       <div className="max-h-[220px] overflow-auto p-2">
         {visibleModels.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-6 text-center text-[12px] text-muted-foreground">{t("No matching models")}</div>
+          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-6 text-center text-[12px] text-muted-foreground">
+            {canAddCustomModel ? (
+              <button className="font-medium text-foreground hover:underline" onClick={addCustomModel} type="button">
+                {t("Press Enter to add custom model")}: <span className="font-mono">{customModel}</span>
+              </button>
+            ) : t("No matching models")}
+          </div>
         ) : null}
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {visibleModels.map((model) => {

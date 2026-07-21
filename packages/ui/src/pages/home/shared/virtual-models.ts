@@ -121,8 +121,23 @@ import trayOrangeIconUrl from "@/assets/tray-orange.png";
 import trayVioletIconUrl from "@/assets/tray-violet.png";
 import {
   BUILTIN_FUSION_TOOL_SERVER_NAME,
+  BUILTIN_FUSION_GROK_MEDIA_TOOL_NAME,
+  BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME,
   BUILTIN_FUSION_VISION_TOOL_NAME,
+  BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME,
   BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME,
+  GROK_MEDIA_CAPABILITIES_TOOL_NAME,
+  GROK_MEDIA_FUSION_TOOL_NAMES,
+  GROK_MEDIA_IMAGE_EDIT_TOOL_NAME,
+  GROK_MEDIA_IMAGE_GENERATE_TOOL_NAME,
+  GROK_MEDIA_JOB_CANCEL_TOOL_NAME,
+  GROK_MEDIA_JOB_GET_TOOL_NAME,
+  GROK_MEDIA_VIDEO_START_TOOL_NAME,
+  MEDIA_IMAGE_EDIT_TOOL_PREFIX,
+  MEDIA_IMAGE_GENERATE_TOOL_PREFIX,
+  MEDIA_JOB_CANCEL_TOOL_PREFIX,
+  MEDIA_JOB_GET_TOOL_PREFIX,
+  MEDIA_VIDEO_START_TOOL_PREFIX,
   CLAUDE_CODE_DEFAULT_ENV,
   DEFAULT_OVERVIEW_WIDGETS,
   DEFAULT_TRAY_COMPONENT_VARIANTS,
@@ -228,6 +243,7 @@ import type {
   VirtualModelBaseModelMode,
   VirtualModelExecutionMode,
   VirtualModelFusionCustomToolConfig,
+  VirtualModelFusionMediaConfig,
   VirtualModelFusionVisionConfig,
   VirtualModelFusionWebSearchConfig,
   VirtualModelFusionWebSearchProvider,
@@ -375,14 +391,17 @@ import type { MotionSafeDivAttributes } from "./motion";
 import { isPlainRecord, normalizeProviderModelSelector, stringValue, uniqueStrings } from "./common";
 import { sanitizeConfigId } from "./extensions";
 import { createRouteModelOptions, numberValue } from "./providers";
+import { createGrokMediaModelOptions, migrateLegacyGrokMediaModelSelector } from "@ccr/core/media/models";
 import { clampNumber } from "./services";
-import { fusionCustomToolMetadataKey, fusionVisionMetadataKey, fusionWebSearchMetadataKey } from "./types";
+import { fusionCustomToolMetadataKey, fusionMediaMetadataKey, fusionVisionMetadataKey, fusionWebSearchMetadataKey } from "./types";
 import type { KeyValueDraftRow, McpServerDraft, VirtualModelDraft, VirtualModelMatchMode, VirtualModelToolDraft } from "./types";
 
 export function createVirtualModelDraft(config: AppConfig): VirtualModelDraft {
   const profiles = config.virtualModelProfiles ?? [];
   const key = uniqueVirtualModelKey(profiles);
   const defaultModel = createRouteModelOptions(config.Providers)[0]?.value ?? "";
+  const defaultImageModel = createGrokMediaModelOptions(config.Providers, "image")[0]?.value ?? "";
+  const defaultVideoModel = createGrokMediaModelOptions(config.Providers, "video")[0]?.value ?? "";
   return {
     baseModelMode: "fixed",
     clientToolsPolicy: "allow",
@@ -397,6 +416,7 @@ export function createVirtualModelDraft(config: AppConfig): VirtualModelDraft {
     fixedModel: defaultModel,
     id: uniqueVirtualModelId(profiles, key),
     includeInGatewayModels: true,
+    imageGenerationModel: defaultImageModel,
     instructionsAppend: "",
     instructionsPrepend: "",
     instructionsReplace: "",
@@ -405,14 +425,13 @@ export function createVirtualModelDraft(config: AppConfig): VirtualModelDraft {
     matchMultimodal: true,
     matchMode: "alias",
     matchWebSearch: false,
-    maxToolCalls: "8",
-    maxTurns: "6",
     prefixesText: "",
     suffixesText: "",
     toolChoiceText: "",
     tools: [],
     toolsText: BUILTIN_FUSION_VISION_TOOL_NAME,
     visionModel: defaultModel,
+    videoGenerationModel: defaultVideoModel,
     webSearchEnvRows: createFusionWebSearchEnvRows(defaultFusionWebSearchProvider),
     webSearchProvider: defaultFusionWebSearchProvider,
     executionMode: "tool_loop"
@@ -428,10 +447,12 @@ export function createVirtualModelDraftFromProfile(profile: VirtualModelProfileC
   const toolDrafts = (profile.tools ?? []).map((tool, index) => createVirtualModelToolDraft(tool, index));
   const visionConfig = fusionVisionConfigFromProfile(profile);
   const webSearchConfig = fusionWebSearchConfigFromProfile(profile);
+  const mediaConfig = fusionMediaConfigFromProfile(profile);
   const selectedToolNames = selectedFusionToolNamesFromProfile(toolDrafts, profile);
   const flags = fusionToolExecutionFlagsFromTools(selectedToolNames);
   const routeModelOptions = createRouteModelOptions(config?.Providers ?? []);
   const defaultVisionModel = routeModelOptions[0]?.value ?? "";
+  const providers = config?.Providers ?? [];
   const customToolConfig = fusionCustomToolConfigFromProfile(profile);
   const customToolName = selectedToolNames.find((toolName) => !isBuiltInFusionToolName(toolName)) ?? customFusionToolName;
   const configuredMcpServers = config?.agent?.mcpServers ?? [];
@@ -458,6 +479,7 @@ export function createVirtualModelDraftFromProfile(profile: VirtualModelProfileC
     fixedModel: profile.baseModel?.fixedModel ?? "",
     id: profile.id,
     includeInGatewayModels: profile.materialization?.includeInGatewayModels !== false,
+    imageGenerationModel: migrateLegacyGrokMediaModelSelector(providers, mediaConfig?.imageModelSelector, "image") ?? "",
     instructionsAppend: profile.instructions?.append ?? "",
     instructionsPrepend: profile.instructions?.prepend ?? "",
     instructionsReplace: profile.instructions?.replace ?? "",
@@ -466,14 +488,13 @@ export function createVirtualModelDraftFromProfile(profile: VirtualModelProfileC
     matchMultimodal: flags.matchMultimodal,
     matchMode: "alias",
     matchWebSearch: flags.matchWebSearch,
-    maxToolCalls: String(profile.execution?.maxToolCalls ?? 8),
-    maxTurns: String(profile.execution?.maxTurns ?? 6),
     prefixesText: (profile.match?.prefixes ?? []).join(", "),
     suffixesText: (profile.match?.suffixes ?? []).join(", "),
     toolChoiceText: formatVirtualModelToolChoice(profile.toolChoice),
     tools: toolDrafts,
     toolsText: selectedToolNames.join(", "),
     visionModel: visionConfig?.modelSelector ?? visionConfig?.model ?? defaultVisionModel,
+    videoGenerationModel: migrateLegacyGrokMediaModelSelector(providers, mediaConfig?.videoModelSelector, "video") ?? "",
     webSearchEnvRows: createFusionWebSearchEnvRows(webSearchConfig?.provider ?? defaultFusionWebSearchProvider, keyValueRowsFromRecord(webSearchConfig?.env ?? {})),
     webSearchProvider: webSearchConfig?.provider ?? defaultFusionWebSearchProvider,
     executionMode: "tool_loop"
@@ -628,6 +649,50 @@ export function fusionWebSearchToolName(key: string): string {
   return `${normalized || "fusion"}_web_search`;
 }
 
+export function fusionMediaConfigFromProfile(profile: VirtualModelProfileConfig): VirtualModelFusionMediaConfig | undefined {
+  const value = profile.metadata?.[fusionMediaMetadataKey];
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+  const config: VirtualModelFusionMediaConfig = {
+    imageEditToolName: stringValue(value.imageEditToolName),
+    imageGenerateToolName: stringValue(value.imageGenerateToolName),
+    imageModelSelector: stringValue(value.imageModelSelector),
+    jobCancelToolName: stringValue(value.jobCancelToolName),
+    jobGetToolName: stringValue(value.jobGetToolName),
+    videoModelSelector: stringValue(value.videoModelSelector),
+    videoStartToolName: stringValue(value.videoStartToolName)
+  };
+  return Object.values(config).some(Boolean) ? config : undefined;
+}
+
+export function fusionMediaConfigFromDraft(draft: VirtualModelDraft, key: string): VirtualModelFusionMediaConfig | undefined {
+  const selectedTools = selectedFusionToolNames(draft.toolsText);
+  const imageEnabled = selectedTools.some(isFusionImageGenerationToolName);
+  const videoEnabled = selectedTools.some(isFusionVideoGenerationToolName);
+  if (!imageEnabled && !videoEnabled) {
+    return undefined;
+  }
+  return {
+    ...(imageEnabled ? {
+      imageEditToolName: fusionMediaToolName(MEDIA_IMAGE_EDIT_TOOL_PREFIX, key),
+      imageGenerateToolName: fusionMediaToolName(MEDIA_IMAGE_GENERATE_TOOL_PREFIX, key),
+      imageModelSelector: draft.imageGenerationModel.trim()
+    } : {}),
+    ...(videoEnabled ? {
+      jobCancelToolName: fusionMediaToolName(MEDIA_JOB_CANCEL_TOOL_PREFIX, key),
+      jobGetToolName: fusionMediaToolName(MEDIA_JOB_GET_TOOL_PREFIX, key),
+      videoModelSelector: draft.videoGenerationModel.trim(),
+      videoStartToolName: fusionMediaToolName(MEDIA_VIDEO_START_TOOL_PREFIX, key)
+    } : {})
+  };
+}
+
+export function fusionMediaToolName(prefix: string, key: string): string {
+  const normalized = sanitizeConfigId(key).replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+  return `${prefix}_${normalized || "fusion"}`;
+}
+
 export function fusionCustomToolConfigFromProfile(profile: VirtualModelProfileConfig): VirtualModelFusionCustomToolConfig | undefined {
   const value = profile.metadata?.[fusionCustomToolMetadataKey];
   if (!isPlainRecord(value)) {
@@ -703,6 +768,12 @@ export function validateVirtualModelDraft(draft: VirtualModelDraft): string {
   if (flags.matchMultimodal && !draft.visionModel.trim()) {
     return "Vision model is required.";
   }
+  if (selectedTools.some(isFusionImageGenerationToolName) && !draft.imageGenerationModel.trim()) {
+    return "Image generation model is required.";
+  }
+  if (selectedTools.some(isFusionVideoGenerationToolName) && !draft.videoGenerationModel.trim()) {
+    return "Video generation model is required.";
+  }
   if (flags.matchWebSearch && !validateKeyValueRows(draft.webSearchEnvRows)) {
     return "Environment variable keys are required when values are set.";
   }
@@ -727,24 +798,30 @@ export function virtualModelProfileFromDraft(
   const displayName = titleFromConfigKey(primaryMatchValue) || primaryMatchValue || draft.displayName.trim() || key;
   const fusionVisionConfig = fusionVisionConfigFromDraft(draft, id);
   const fusionWebSearchConfig = fusionWebSearchConfigFromDraft(draft, id);
+  const fusionMediaConfig = fusionMediaConfigFromDraft(draft, id);
   const fusionCustomToolConfig = fusionCustomToolConfigFromDraft(draft);
   const selectedTools = selectedFusionToolNames(draft.toolsText);
-  const toolNames = selectedTools.map((toolName) => {
+  const toolNames = selectedTools.flatMap((toolName) => {
     if (fusionVisionConfig?.toolName && isFusionVisionToolName(toolName)) {
-      return fusionVisionConfig.toolName;
+      return [fusionVisionConfig.toolName];
     }
     if (fusionWebSearchConfig?.toolName && isFusionWebSearchToolName(toolName)) {
-      return fusionWebSearchConfig.toolName;
+      return [fusionWebSearchConfig.toolName];
     }
-    return toolName;
+    if (isFusionImageGenerationToolName(toolName) && fusionMediaConfig) {
+      return [fusionMediaConfig.imageGenerateToolName, fusionMediaConfig.imageEditToolName].filter((name): name is string => Boolean(name));
+    }
+    if (isFusionVideoGenerationToolName(toolName) && fusionMediaConfig) {
+      return [fusionMediaConfig.videoStartToolName, fusionMediaConfig.jobGetToolName, fusionMediaConfig.jobCancelToolName].filter((name): name is string => Boolean(name));
+    }
+    return [toolName];
   });
   const tools = virtualModelToolsFromDraft(draft, toolNames);
-  const maxToolCalls = numberValue(draft.maxToolCalls);
-  const maxTurns = numberValue(draft.maxTurns);
   const flags = fusionToolExecutionFlagsFromTools(toolNames);
   const metadata = {
     ...(fusionVisionConfig ? { [fusionVisionMetadataKey]: fusionVisionConfig } : {}),
     ...(fusionWebSearchConfig ? { [fusionWebSearchMetadataKey]: fusionWebSearchConfig } : {}),
+    ...(fusionMediaConfig ? { [fusionMediaMetadataKey]: fusionMediaConfig } : {}),
     ...(fusionCustomToolConfig ? { [fusionCustomToolMetadataKey]: fusionCustomToolConfig } : {})
   };
   return {
@@ -754,8 +831,6 @@ export function virtualModelProfileFromDraft(
     execution: {
       clientToolsPolicy: "allow",
       ...flags,
-      maxToolCalls: clampNumber(maxToolCalls || Math.max(tools.length, 1), 1, 50),
-      maxTurns: clampNumber(maxTurns || 6, 1, 50),
       mode: "tool_loop",
       streamMode: "optimistic"
     },
@@ -951,18 +1026,25 @@ export function virtualModelToolSummary(profile: VirtualModelProfileConfig): str
   }
   const visionConfig = fusionVisionConfigFromProfile(profile);
   const webSearchConfig = fusionWebSearchConfigFromProfile(profile);
+  const mediaConfig = fusionMediaConfigFromProfile(profile);
   const customToolConfig = fusionCustomToolConfigFromProfile(profile);
-  return profile.tools.map((tool) => {
+  return uniqueStrings(profile.tools.map((tool) => {
     if (visionConfig?.toolName && tool.name === visionConfig.toolName) {
       return `${fusionToolDisplayName(BUILTIN_FUSION_VISION_TOOL_NAME)}${visionConfig.modelSelector || visionConfig.model ? ` (${visionConfig.modelSelector || visionConfig.model})` : ""}`;
     }
     if (webSearchConfig?.toolName && tool.name === webSearchConfig.toolName) {
       return `${fusionToolDisplayName(BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME)}${webSearchConfig.provider ? ` (${fusionWebSearchProviderLabel(webSearchConfig.provider)})` : ""}`;
     }
+    if (isFusionImageGenerationToolName(tool.name)) {
+      return `${fusionToolDisplayName(BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME)}${mediaConfig?.imageModelSelector ? ` (${mediaConfig.imageModelSelector})` : ""}`;
+    }
+    if (isFusionVideoGenerationToolName(tool.name)) {
+      return `${fusionToolDisplayName(BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME)}${mediaConfig?.videoModelSelector ? ` (${mediaConfig.videoModelSelector})` : ""}`;
+    }
     return customToolConfig?.mcpServerName
       ? `${customToolConfig.mcpServerName} / ${fusionToolDisplayName(tool.name)}`
       : fusionToolDisplayName(tool.name);
-  }).join(", ");
+  })).join(", ");
 }
 
 export function normalizeFusionToolName(name: string): string {
@@ -979,7 +1061,38 @@ export function isFusionToolName(name: string): boolean {
 
 export function isBuiltInFusionToolName(name: string): boolean {
   const normalized = normalizeFusionToolName(name);
-  return isFusionVisionToolName(normalized) || isFusionWebSearchToolName(normalized);
+  return isFusionVisionToolName(normalized) || isFusionWebSearchToolName(normalized) || isFusionImageGenerationToolName(normalized) || isFusionVideoGenerationToolName(normalized) || isGrokMediaFusionToolName(normalized);
+}
+
+export function isGrokMediaFusionToolName(name: string): boolean {
+  const normalized = normalizeFusionToolName(name);
+  return normalized === BUILTIN_FUSION_GROK_MEDIA_TOOL_NAME || (GROK_MEDIA_FUSION_TOOL_NAMES as readonly string[]).includes(normalized);
+}
+
+export function isFusionImageGenerationToolName(name: string): boolean {
+  const normalized = normalizeFusionToolName(name);
+  return normalized === BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME ||
+    normalized === GROK_MEDIA_IMAGE_GENERATE_TOOL_NAME ||
+    normalized === GROK_MEDIA_IMAGE_EDIT_TOOL_NAME ||
+    normalized.startsWith(`${MEDIA_IMAGE_GENERATE_TOOL_PREFIX}_`) ||
+    normalized.startsWith(`${MEDIA_IMAGE_EDIT_TOOL_PREFIX}_`);
+}
+
+export function isFusionVideoGenerationToolName(name: string): boolean {
+  const normalized = normalizeFusionToolName(name);
+  return normalized === BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME ||
+    normalized === GROK_MEDIA_VIDEO_START_TOOL_NAME ||
+    normalized === GROK_MEDIA_JOB_GET_TOOL_NAME ||
+    normalized === GROK_MEDIA_JOB_CANCEL_TOOL_NAME ||
+    normalized.startsWith(`${MEDIA_VIDEO_START_TOOL_PREFIX}_`) ||
+    normalized.startsWith(`${MEDIA_JOB_GET_TOOL_PREFIX}_`) ||
+    normalized.startsWith(`${MEDIA_JOB_CANCEL_TOOL_PREFIX}_`);
+}
+
+export function virtualModelProfilesUseMediaTools(profiles: VirtualModelProfileConfig[]): boolean {
+  return profiles.some((profile) => profile.enabled !== false && profile.tools?.some((tool) =>
+    isFusionImageGenerationToolName(tool.name) || isFusionVideoGenerationToolName(tool.name) || isGrokMediaFusionToolName(tool.name)
+  ));
 }
 
 export function isFusionVisionToolName(name: string): boolean {
@@ -1010,18 +1123,31 @@ export function selectedFusionToolNameFromProfile(toolDrafts: VirtualModelToolDr
 export function selectedFusionToolNamesFromProfile(toolDrafts: VirtualModelToolDraft[], profile: VirtualModelProfileConfig): string[] {
   const visionConfig = fusionVisionConfigFromProfile(profile);
   const webSearchConfig = fusionWebSearchConfigFromProfile(profile);
+  const mediaConfig = fusionMediaConfigFromProfile(profile);
   const directTools = uniqueStrings(
     toolDrafts
       .map((tool) => normalizeFusionToolName(tool.name))
       .filter(isFusionToolName)
-      .map((toolName) => {
+      .flatMap((toolName) => {
         if (visionConfig?.toolName && toolName === visionConfig.toolName) {
-          return BUILTIN_FUSION_VISION_TOOL_NAME;
+          return [BUILTIN_FUSION_VISION_TOOL_NAME];
         }
         if (webSearchConfig?.toolName && toolName === webSearchConfig.toolName) {
-          return BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME;
+          return [BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME];
         }
-        return toolName;
+        if (toolName === BUILTIN_FUSION_GROK_MEDIA_TOOL_NAME) {
+          return [BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME, BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME];
+        }
+        if (toolName === GROK_MEDIA_CAPABILITIES_TOOL_NAME) {
+          return [];
+        }
+        if ((mediaConfig?.imageGenerateToolName === toolName || mediaConfig?.imageEditToolName === toolName) || isFusionImageGenerationToolName(toolName)) {
+          return [BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME];
+        }
+        if ([mediaConfig?.videoStartToolName, mediaConfig?.jobGetToolName, mediaConfig?.jobCancelToolName].includes(toolName) || isFusionVideoGenerationToolName(toolName)) {
+          return [BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME];
+        }
+        return [toolName];
       })
   );
   if (directTools.length > 0) {
@@ -1063,12 +1189,20 @@ export function fusionToolDescription(name: string): string {
 
 export function fusionToolDisplayName(name: string): string {
   const normalized = fusionToolBaseName(name);
+  if (normalized === BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME) return "Image generation";
+  if (normalized === BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME) return "Video generation";
   const option = fusionToolOptions.find((item) => item.value === normalized);
   return option?.label ?? normalized;
 }
 
 export function fusionToolBaseName(name: string): string {
   const normalized = normalizeFusionToolName(name);
+  if (isFusionImageGenerationToolName(normalized)) {
+    return BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME;
+  }
+  if (isFusionVideoGenerationToolName(normalized)) {
+    return BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME;
+  }
   if (isFusionVisionToolName(normalized)) {
     return BUILTIN_FUSION_VISION_TOOL_NAME;
   }
@@ -1105,7 +1239,7 @@ export function virtualModelExecutionSummary(profile: VirtualModelProfileConfig)
     execution?.matchMultimodal ? "image" : "",
     execution?.matchWebSearch ? "web search" : ""
   ].filter(Boolean);
-  return `${execution?.mode || "tool_loop"} · ${execution?.maxTurns ?? 6}/${execution?.maxToolCalls ?? 8}${features.length ? ` · ${features.join(", ")}` : ""}`;
+  return `${execution?.mode || "tool_loop"}${features.length ? ` · ${features.join(", ")}` : ""}`;
 }
 
 export function createMcpServerDraft(servers: GatewayMcpServerConfig[] = []): McpServerDraft {

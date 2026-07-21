@@ -423,6 +423,8 @@ export type AddProviderDraft = {
   accountRefreshIntervalMs: string;
   apiKey: string;
   baseUrl: string;
+  capabilities: GatewayProviderCapability[];
+  catalogModelMetadata?: Record<string, ProviderModelMetadata>;
   credentials: ProviderCredentialDraft[];
   icon: string;
   modelDescriptions?: Record<string, string>;
@@ -488,6 +490,7 @@ export type AddApiKeyDraft = {
 export type AddProfileDraft = {
   agent: ProfileConfig["agent"];
   appPath: string;
+  availableModels: string[];
   botConfigId: string;
   botAuthFields: Record<string, string>;
   botAuthType: string;
@@ -566,6 +569,8 @@ export type AddRoutingRuleDraft = {
   rewriteKey: string;
   rewriteValue: string;
   rewrites: RoutingRewriteDraftRow[];
+  scriptFile: string;
+  scriptTimeoutMs: string;
   target: string;
   threshold: string;
   type: RouterRuleType;
@@ -601,6 +606,7 @@ export type ClaudeDesignRoutingDraft = {
 export type VirtualModelClientToolsPolicy = "allow" | "deny";
 export type VirtualModelMatchMode = "alias" | "prefix" | "suffix";
 export const fusionCustomToolMetadataKey = "fusionTool";
+export const fusionMediaMetadataKey = "fusionMedia";
 export const fusionVisionMetadataKey = "fusionVision";
 export const fusionWebSearchMetadataKey = "fusionWebSearch";
 
@@ -624,6 +630,7 @@ export type VirtualModelDraft = {
   fixedModel: string;
   id: string;
   includeInGatewayModels: boolean;
+  imageGenerationModel: string;
   instructionsAppend: string;
   instructionsPrepend: string;
   instructionsReplace: string;
@@ -632,8 +639,6 @@ export type VirtualModelDraft = {
   matchMultimodal: boolean;
   matchMode: VirtualModelMatchMode;
   matchWebSearch: boolean;
-  maxToolCalls: string;
-  maxTurns: string;
   prefixesText: string;
   suffixesText: string;
   toolChoiceText: string;
@@ -642,6 +647,7 @@ export type VirtualModelDraft = {
   customMcpServer: McpServerDraft;
   customToolName: string;
   visionModel: string;
+  videoGenerationModel: string;
   webSearchEnvRows: KeyValueDraftRow[];
   webSearchProvider: VirtualModelFusionWebSearchProvider;
   executionMode: VirtualModelExecutionMode;

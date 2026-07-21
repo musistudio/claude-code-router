@@ -1,8 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
-import type { ApiKeyConfig, AppConfig } from "@ccr/core/contracts/app";
-import { createSseErrorDetector, recordGatewayRequestLog, updateGatewayRequestLogFromRawTrace, type RequestLogRawTraceUpdateInput } from "@ccr/core/observability/request-log-store";
+import type { ApiKeyConfig, AppConfig, RequestRouteTraceChange } from "@ccr/core/contracts/app";
+import {
+  createSseErrorDetector,
+  markGatewayRequestLogDropped,
+  recordGatewayRequestLog
+} from "@ccr/core/observability/request-log-store";
+import { requestLogRequestedModel, requestLogResponseModel } from "@ccr/core/observability/request-log-model";
 import { recordGatewayUsageCapture, type UsageCaptureInput } from "@ccr/core/usage/store";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin";
 import { adaptRouteRequestBody, restoreRouteRequestBody } from "@ccr/core/routing/protocol-adapter";
@@ -10,13 +15,16 @@ import { reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
 import { recordProviderCredentialOutcome } from "@ccr/core/providers/credential-pool";
 import { codexApplyPatchBridgeResponseStream, prepareCodexApplyPatchBridgeRequest } from "@ccr/core/gateway/features/codex-patch-bridge";
 import { prepareCursorOpenAICompatChatBody } from "@ccr/core/gateway/features/cursor-compat";
-import { filteredResponseHeaders, formatError, forwardHeaders, inferGatewayClient, parseJsonObject, readRequestBody, sendJson, shouldCaptureGatewayUsage, shouldSendBody, stripLocalGatewayAuthHeaders } from "@ccr/core/gateway/http/io";
+import { filteredResponseHeaders, formatError, formatUpstreamErrorForLog, forwardHeaders, inferGatewayClient, readRequestBody, sendJson, shouldCaptureGatewayUsage, shouldSendBody, stripLocalGatewayAuthHeaders } from "@ccr/core/gateway/http/io";
+import { serializeJsonBody, takeJsonObject } from "@ccr/core/gateway/http/body";
 import { createGatewayModelsResponse, prepareClaudeAppDiscoveredModelRequest, prepareClaudeCodeDiscoveredModelRequest, shouldServeGatewayModelsResponse } from "@ccr/core/gateway/features/model-discovery";
 import { resolveProviderLogName, resolveResponseProviderProtocol, sanitizeHeaderValue } from "@ccr/core/providers/runtime-topology";
-import { createBodySampler, shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
+import { createBodySampler, requestLogSampled, shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
+import { RequestRouteTraceRecorder } from "@ccr/core/observability/route-trace";
 import { endpoint } from "@ccr/core/gateway/core-runtime/supervisor";
 import { coreGatewayUsageAttributionConfig } from "@ccr/core/gateway/core-runtime/config-compiler";
-import { clientClosedRequestStatusCode, clientDisconnectMessage, UpstreamRequestError } from "@ccr/core/gateway/internal/shared";
+import { providerModelPricingForUsage } from "@ccr/core/models/pricing-service";
+import { clientClosedRequestStatusCode, clientDisconnectMessage, resolveStreamRequestLogOutcome, UpstreamRequestError } from "@ccr/core/gateway/internal/shared";
 import type { BrowserWebSearchMcpIntegration, BrowserWebSearchProtocolRecord, UpstreamFetchResult } from "@ccr/core/gateway/internal/shared";
 import { applyProviderCapabilityRouting, cancelResponseBody, destroyResponseStreams, fetchUpstreamWithFallback, mergeFallbackResponseHeaders, rewriteCapabilityResponseHeaders, uniqueStreams, upstreamResponseHeaders } from "@ccr/core/gateway/upstream/executor";
 import { shouldApplyGatewayRouting } from "@ccr/core/routing/protocol-endpoints";
@@ -28,8 +36,29 @@ export type GatewayRequestPipelineDependencies = {
   getCoreAuthToken: () => string;
   getPlugin: () => ClaudeCodeRouterPlugin | undefined;
   getStatus: () => { coreEndpoint: string; endpoint: string };
-  takePendingRawTraceUpdate: (requestId: string) => RequestLogRawTraceUpdateInput | undefined;
 };
+
+function reportedRouteChange(
+  scope: RequestRouteTraceChange["scope"],
+  path: string,
+  before: unknown,
+  after: unknown
+): RequestRouteTraceChange | undefined {
+  if (Object.is(before, after)) {
+    return undefined;
+  }
+  return {
+    ...(after === undefined ? {} : { after }),
+    ...(before === undefined ? {} : { before }),
+    operation: before === undefined ? "add" : after === undefined ? "remove" : "replace",
+    path,
+    scope
+  };
+}
+
+function isReportedRouteChange(change: RequestRouteTraceChange | undefined): change is RequestRouteTraceChange {
+  return change !== undefined;
+}
 
 export class GatewayRequestPipeline {
   constructor(private readonly dependencies: GatewayRequestPipelineDependencies) {}
@@ -39,7 +68,6 @@ export class GatewayRequestPipeline {
   private get coreAuthToken() { return this.dependencies.getCoreAuthToken(); }
   private get plugin() { return this.dependencies.getPlugin(); }
   private get status() { return this.dependencies.getStatus(); }
-  private takePendingRawTraceUpdate(requestId: string) { return this.dependencies.takePendingRawTraceUpdate(requestId); }
 
   async proxyRequest(request: IncomingMessage, response: ServerResponse, path: string, apiKey?: ApiKeyConfig): Promise<void> {
       if (!this.config || !this.plugin) {
@@ -47,46 +75,114 @@ export class GatewayRequestPipeline {
         return;
       }
   
+      const method = request.method ?? "GET";
+      const requestBody = await readRequestBody(request);
+      const requestedModel = requestLogRequestedModel(requestBody, path);
+      const startedAt = Date.now();
+      const startedAtIso = new Date(startedAt).toISOString();
+      const requestId = randomUUID();
+      const requestUrl = new URL(request.url || path, this.status.endpoint || "http://127.0.0.1").toString();
+      const routeTrace = shouldRecordRequestLogs(this.config)
+        ? new RequestRouteTraceRecorder(startedAt)
+        : undefined;
+      routeTrace?.captureIngress();
+      const headerNormalizationStartedAt = Date.now();
       const headers = forwardHeaders(request.headers);
+      const previousAuthorization = headers.authorization;
+      const previousApiKey = headers["x-api-key"];
+      const previousLegacyApiKey = headers["api-key"];
+      const previousAuthApiKeyId = headers["x-auth-api-key-id"];
+      const previousAuthSub = headers["x-auth-sub"];
+      const previousClientRequestId = headers["x-client-request-id"];
       if (apiKey) {
         stripLocalGatewayAuthHeaders(headers);
         headers["x-auth-api-key-id"] = apiKey.id;
         headers["x-auth-sub"] = apiKey.id;
       }
-      const method = request.method ?? "GET";
-      const requestBody = await readRequestBody(request);
+      headers["x-client-request-id"] = requestId;
+      routeTrace?.capture({
+        changes: [
+          ...(apiKey ? [
+            reportedRouteChange("headers", "/headers/authorization", previousAuthorization, undefined),
+            reportedRouteChange("headers", "/headers/x-api-key", previousApiKey, undefined),
+            reportedRouteChange("headers", "/headers/api-key", previousLegacyApiKey, undefined),
+            reportedRouteChange("headers", "/headers/x-auth-api-key-id", previousAuthApiKeyId, apiKey.id),
+            reportedRouteChange("headers", "/headers/x-auth-sub", previousAuthSub, apiKey.id)
+          ] : []),
+          reportedRouteChange("headers", "/headers/x-client-request-id", previousClientRequestId, requestId)
+        ].filter(isReportedRouteChange),
+        durationMs: Date.now() - headerNormalizationStartedAt,
+        kind: "mutation",
+        name: "gateway.header-normalization",
+        phase: "ingress",
+        startedAtMs: headerNormalizationStartedAt
+      });
       const client = inferGatewayClient(apiKey, request.headers);
+      const cursorCompatStartedAt = Date.now();
       const cursorCompatPreparation = prepareCursorOpenAICompatChatBody(this.config, client, method, path, requestBody);
       if (cursorCompatPreparation) {
         headers["x-ccr-cursor-openai-compat"] = sanitizeHeaderValue(cursorCompatPreparation.diagnostic);
       }
       let bodyToForward: Buffer | undefined = cursorCompatPreparation?.body ?? requestBody;
+      if (cursorCompatPreparation) {
+        routeTrace?.capture({
+          changes: [
+            { operation: "replace", path: "/body", scope: "body" },
+            { after: headers["x-ccr-cursor-openai-compat"], operation: "add", path: "/headers/x-ccr-cursor-openai-compat", scope: "headers" }
+          ],
+          durationMs: Date.now() - cursorCompatStartedAt,
+          kind: "mutation",
+          name: "compatibility.cursor-openai",
+          phase: "compatibility",
+          startedAtMs: cursorCompatStartedAt
+        });
+      }
       let routeFallback = this.config.Router.fallback;
       let routedModel: string | undefined;
       let codexApplyPatchBridgeActive = false;
+      const claudeModelRewriteStartedAt = Date.now();
       const claudeModelRewrite = prepareClaudeCodeDiscoveredModelRequest(this.config, request.headers, method, path, bodyToForward);
       if (claudeModelRewrite) {
         headers["x-ccr-claude-model-discovery"] = sanitizeHeaderValue(claudeModelRewrite.diagnostic);
         bodyToForward = claudeModelRewrite.body;
+        routeTrace?.capture({
+          changes: [
+            { operation: "replace", path: "/body/model", scope: "body" },
+            { after: headers["x-ccr-claude-model-discovery"], operation: "add", path: "/headers/x-ccr-claude-model-discovery", scope: "headers" }
+          ],
+          durationMs: Date.now() - claudeModelRewriteStartedAt,
+          kind: "mutation",
+          name: "model-discovery.claude-code",
+          phase: "compatibility",
+          startedAtMs: claudeModelRewriteStartedAt
+        });
       }
+      const claudeAppModelRewriteStartedAt = Date.now();
       const claudeAppModelRewrite = prepareClaudeAppDiscoveredModelRequest(this.config, method, path, bodyToForward);
       if (claudeAppModelRewrite) {
         headers["x-ccr-claude-app-model-rewrite"] = sanitizeHeaderValue(claudeAppModelRewrite.diagnostic);
         bodyToForward = claudeAppModelRewrite.body;
         routedModel = claudeAppModelRewrite.routedModel;
+        routeTrace?.capture({
+          changes: [
+            { after: routedModel, operation: "replace", path: "/body/model", scope: "body" },
+            { after: headers["x-ccr-claude-app-model-rewrite"], operation: "add", path: "/headers/x-ccr-claude-app-model-rewrite", scope: "headers" }
+          ],
+          durationMs: Date.now() - claudeAppModelRewriteStartedAt,
+          kind: "mutation",
+          name: "model-discovery.claude-app",
+          phase: "compatibility",
+          startedAtMs: claudeAppModelRewriteStartedAt,
+          target: routedModel ? { model: routedModel } : undefined
+        });
       }
       if (!reserveApiKeyLimits(apiKey, request, response, bodyToForward)) {
         return;
       }
-      const startedAt = Date.now();
-      const startedAtIso = new Date(startedAt).toISOString();
-      const requestId = randomUUID();
-      headers["x-client-request-id"] = requestId;
       const usageAttributionConfig = coreGatewayUsageAttributionConfig(this.config);
       const recordUsage = (input: Omit<UsageCaptureInput, "config">) => {
         void recordGatewayUsageCapture({ ...input, config: usageAttributionConfig });
       };
-      const requestUrl = new URL(request.url || path, this.status.endpoint || "http://127.0.0.1").toString();
       const upstreamAbortController = new AbortController();
       let clientDisconnected = false;
       let responseCompleted = false;
@@ -121,38 +217,55 @@ export class GatewayRequestPipeline {
         responseHeaders: Headers,
         responseBodyText = "",
         responseBodyTruncated = false,
-        error?: string
+        error?: string,
+        responseBodySizeBytes = Buffer.byteLength(responseBodyText)
       ) => {
         const config = this.config;
         if (!config || !shouldRecordRequestLogs(config)) {
           return;
         }
-        void (async () => {
-          await recordGatewayRequestLog({
-            client,
-            completedAt: new Date().toISOString(),
-            durationMs: Date.now() - startedAt,
-            error,
-            fallbackModel: routedModel,
-            method,
-            path,
-            providerName: resolveProviderLogName(responseHeaders, config, routedModel),
-            providerProtocol: resolveResponseProviderProtocol(responseHeaders, this.config),
-            requestBody: shouldSendBody(method) ? bodyToForward ?? Buffer.alloc(0) : Buffer.alloc(0),
-            requestHeaders: headers,
-            requestId,
-            responseBodyText,
-            responseBodyTruncated,
-            responseHeaders,
-            startedAt: startedAtIso,
-            statusCode,
-            url: requestUrl
-          });
-          const pendingRawTraceUpdate = this.takePendingRawTraceUpdate(requestId);
-          if (pendingRawTraceUpdate) {
-            await updateGatewayRequestLogFromRawTrace(pendingRawTraceUpdate);
-          }
-        })();
+        const successful = statusCode >= 200 && statusCode < 400 && !error;
+        const successSampleRate = config.observability.requestLogSuccessSampleRate ?? 1;
+        if (successful && !requestLogSampled(requestId, successSampleRate)) {
+          markGatewayRequestLogDropped(requestId, "sampled");
+          return;
+        }
+        const bodyCapture = config.observability.requestLogBodyCapture ?? "all";
+        const captureBody = bodyCapture === "all" || (bodyCapture === "errors" && !successful);
+        recordGatewayRequestLog({
+          bodyCapturePolicy: bodyCapture,
+          captureBody,
+          client,
+          completedAt: new Date().toISOString(),
+          durationMs: Date.now() - startedAt,
+          error,
+          fallbackModel: routedModel,
+          maxBodyBytes: config.observability.requestLogMaxBodyBytes,
+          method,
+          model: routedModel,
+          path,
+          providerName: resolveProviderLogName(responseHeaders, config, routedModel),
+          pricing: providerModelPricingForUsage(
+            config,
+            resolveProviderLogName(responseHeaders, config, routedModel),
+            routedModel
+          ),
+          providerProtocol: resolveResponseProviderProtocol(responseHeaders, this.config),
+          requestedModel,
+          requestBody: shouldSendBody(method) ? bodyToForward ?? Buffer.alloc(0) : Buffer.alloc(0),
+          requestHeaders: headers,
+          requestId,
+          resolvedModel: routedModel,
+          routeTrace: routeTrace?.finish({ captureBodyValues: captureBody }),
+          responseBodyText,
+          responseBodySizeBytes,
+          responseBodyTruncated,
+          responseHeaders,
+          responseModel: requestLogResponseModel(responseBodyText),
+          startedAt: startedAtIso,
+          statusCode,
+          url: requestUrl
+        });
       };
   
       const shouldCaptureUsage = shouldCaptureGatewayUsage(method, path);
@@ -171,14 +284,27 @@ export class GatewayRequestPipeline {
       }
   
       if (shouldApplyGatewayRouting(method, path)) {
-        const adaptation = adaptRouteRequestBody(path, parseJsonObject(bodyToForward ?? requestBody));
+        const routeAdaptationStartedAt = Date.now();
+        const adaptation = adaptRouteRequestBody(path, takeJsonObject(bodyToForward ?? requestBody));
+        if (adaptation.modelLocation === "path") {
+          routeTrace?.capture({
+            changes: [{ after: adaptation.body.model, operation: "add", path: "/body/model", scope: "body" }],
+            durationMs: Date.now() - routeAdaptationStartedAt,
+            kind: "mutation",
+            name: "protocol-adapter.route-input",
+            phase: "routing",
+            startedAtMs: routeAdaptationStartedAt
+          });
+        }
         const routed = await this.plugin.routeRequest({
           body: adaptation.body,
+          bodyOwnership: "owned",
           headers: headers as Record<string, string | string[] | undefined>,
           method,
+          trace: routeTrace,
           url: request.url ?? path
         });
-        const serialized = Buffer.from(`${JSON.stringify(restoreRouteRequestBody(routed.body, adaptation))}\n`, "utf8");
+        const serialized = serializeJsonBody(restoreRouteRequestBody(routed.body, adaptation));
         headers["content-type"] = "application/json";
         headers["x-ccr-route-reason"] = sanitizeHeaderValue(routed.decision.reason);
         headers["x-ccr-route-source"] = routed.decision.source;
@@ -191,8 +317,27 @@ export class GatewayRequestPipeline {
           routedModel = routed.decision.model;
         }
         bodyToForward = serialized;
+        routeTrace?.capture({
+          changes: [
+            { operation: "replace", path: "/body", scope: "body" },
+            { after: headers["content-type"], operation: "replace", path: "/headers/content-type", scope: "headers" },
+            { after: headers["x-ccr-route-reason"], operation: "add", path: "/headers/x-ccr-route-reason", scope: "headers" },
+            { after: headers["x-ccr-route-source"], operation: "add", path: "/headers/x-ccr-route-source", scope: "headers" },
+            ...(routedModel ? [{ after: routedModel, operation: "add" as const, path: "/headers/x-ccr-routed-model", scope: "headers" as const }] : [])
+          ],
+          decision: {
+            diagnostics: routed.decision.diagnostics,
+            reason: routed.decision.reason,
+            source: routed.decision.source
+          },
+          kind: "mutation",
+          name: "router.route-output",
+          phase: "routing",
+          target: routedModel ? { model: routedModel } : undefined
+        });
       }
-  
+
+      const codexBridgeStartedAt = Date.now();
       const codexApplyPatchBridgeRequest = prepareCodexApplyPatchBridgeRequest({
         body: bodyToForward,
         config: this.config,
@@ -206,8 +351,29 @@ export class GatewayRequestPipeline {
         codexApplyPatchBridgeActive = true;
         headers["x-ccr-codex-patch-bridge"] = sanitizeHeaderValue(codexApplyPatchBridgeRequest.diagnostic);
         headers["content-type"] = "application/json";
+        routeTrace?.capture({
+          changes: [
+            { operation: "replace", path: "/body", scope: "body" },
+            { after: headers["x-ccr-codex-patch-bridge"], operation: "add", path: "/headers/x-ccr-codex-patch-bridge", scope: "headers" },
+            { after: headers["content-type"], operation: "replace", path: "/headers/content-type", scope: "headers" }
+          ],
+          durationMs: Date.now() - codexBridgeStartedAt,
+          kind: "mutation",
+          name: "compatibility.codex-apply-patch",
+          phase: "compatibility",
+          startedAtMs: codexBridgeStartedAt
+        });
       }
-  
+
+      const capabilityRoutingStartedAt = Date.now();
+      const capabilityBodyBefore = bodyToForward;
+      const capabilityFallbackBefore = routeFallback;
+      const capabilityModelBefore = routedModel;
+      const capabilityProviderHeadersBefore = {
+        gateway: headers["x-gateway-target-provider"],
+        list: headers["x-target-providers"],
+        target: headers["x-target-provider"]
+      };
       const providerCapabilityRouting = applyProviderCapabilityRouting({
         body: bodyToForward,
         config: this.config,
@@ -219,6 +385,22 @@ export class GatewayRequestPipeline {
       bodyToForward = providerCapabilityRouting.body;
       routeFallback = providerCapabilityRouting.fallback;
       routedModel = providerCapabilityRouting.routedModel;
+      routeTrace?.capture({
+        changes: [
+          ...(capabilityBodyBefore === bodyToForward ? [] : [{ operation: "replace" as const, path: "/body/model", scope: "body" as const }]),
+          reportedRouteChange("routing", "/routing/model", capabilityModelBefore, routedModel),
+          ...(capabilityFallbackBefore === routeFallback ? [] : [{ after: routeFallback, before: capabilityFallbackBefore, operation: "replace" as const, path: "/routing/fallback", scope: "routing" as const }]),
+          reportedRouteChange("headers", "/headers/x-target-provider", capabilityProviderHeadersBefore.target, headers["x-target-provider"]),
+          reportedRouteChange("headers", "/headers/x-target-providers", capabilityProviderHeadersBefore.list, headers["x-target-providers"]),
+          reportedRouteChange("headers", "/headers/x-gateway-target-provider", capabilityProviderHeadersBefore.gateway, headers["x-gateway-target-provider"])
+        ].filter(isReportedRouteChange),
+        durationMs: Date.now() - capabilityRoutingStartedAt,
+        kind: "mutation",
+        name: "provider.capability-routing",
+        phase: "capability",
+        startedAtMs: capabilityRoutingStartedAt,
+        target: routedModel ? { model: routedModel } : undefined
+      });
   
       const hostedWebSearchProtocolContext = createHostedWebSearchProtocolContext({
         body: bodyToForward,
@@ -241,6 +423,7 @@ export class GatewayRequestPipeline {
         });
         if (records.length > 0) {
           hostedWebSearchProtocolContext.records = records;
+          const webSearchEnrichmentStartedAt = Date.now();
           const webSearchContextBody = prepareHostedWebSearchProtocolRequestBody(
             bodyToForward,
             records,
@@ -250,6 +433,18 @@ export class GatewayRequestPipeline {
             bodyToForward = webSearchContextBody;
             headers["content-type"] = "application/json";
             headers["x-ccr-hosted-web-search-context"] = hostedWebSearchProtocolContext.protocol;
+            routeTrace?.capture({
+              changes: [
+                { operation: "replace", path: "/body/tools", scope: "body" },
+                { after: headers["x-ccr-hosted-web-search-context"], operation: "add", path: "/headers/x-ccr-hosted-web-search-context", scope: "headers" }
+              ],
+              durationMs: Date.now() - webSearchEnrichmentStartedAt,
+              kind: "mutation",
+              name: "enrichment.hosted-web-search",
+              phase: "enrichment",
+              startedAtMs: webSearchEnrichmentStartedAt,
+              target: { protocol: hostedWebSearchProtocolContext.protocol }
+            });
           }
         }
         if (records.length === 0 && !this.browserWebSearchMcpIntegration) {
@@ -277,6 +472,7 @@ export class GatewayRequestPipeline {
           claudeCodeWebSearchContinuationContext,
           this.browserWebSearchMcpIntegration
         );
+        const webSearchContinuationStartedAt = Date.now();
         const webSearchContinuationBody = prepareClaudeCodeWebSearchContinuationRequestBody(
           bodyToForward,
           records,
@@ -286,10 +482,25 @@ export class GatewayRequestPipeline {
           bodyToForward = webSearchContinuationBody;
           headers["content-type"] = "application/json";
           headers["x-ccr-claude-code-web-search-continuation"] = records.length > 0 ? "in-app-browser-evidence" : "tool-result-evidence";
+          routeTrace?.capture({
+            changes: [
+              { operation: "replace", path: "/body/messages", scope: "body" },
+              { after: headers["x-ccr-claude-code-web-search-continuation"], operation: "add", path: "/headers/x-ccr-claude-code-web-search-continuation", scope: "headers" }
+            ],
+            durationMs: Date.now() - webSearchContinuationStartedAt,
+            kind: "mutation",
+            name: "enrichment.web-search-continuation",
+            phase: "enrichment",
+            startedAtMs: webSearchContinuationStartedAt
+          });
         }
       }
-  
+
+      const contentLengthHeader = headers["content-length"];
       delete headers["content-length"];
+      const upstreamPreparationChanges: RequestRouteTraceChange[] = contentLengthHeader === undefined
+        ? []
+        : [{ before: contentLengthHeader, operation: "remove", path: "/headers/content-length", scope: "headers" }];
       const upstreamUrl = new URL(request.url || "/", this.status.coreEndpoint).toString();
       let upstreamResult: UpstreamFetchResult;
   
@@ -301,13 +512,23 @@ export class GatewayRequestPipeline {
           headers,
           method,
           path,
+          preparationChanges: upstreamPreparationChanges,
           routedModel,
           coreAuthToken: this.coreAuthToken,
           signal: upstreamAbortController.signal,
+          trace: routeTrace,
           upstreamUrl
         });
       } catch (error) {
-        const message = formatError(error);
+        const failedAttempts = error instanceof UpstreamRequestError ? error.failedAttempts : [];
+        const message = formatUpstreamErrorForLog(error, {
+          attempts: Math.max(1, failedAttempts.length),
+          elapsedMs: Date.now() - startedAt,
+          fallbackFailures: Math.max(0, failedAttempts.length - 1),
+          operation: "fetch",
+          responseStarted: false,
+          retryDelayMs: failedAttempts.reduce((total, attempt) => total + Math.max(0, attempt.delayMs ?? 0), 0)
+        });
         if (error instanceof UpstreamRequestError) {
           bodyToForward = error.attempt?.body ?? bodyToForward;
           routedModel = error.attempt?.model ?? routedModel;
@@ -418,16 +639,25 @@ export class GatewayRequestPipeline {
           return;
         }
         logRecorded = true;
+        const outcome = resolveStreamRequestLogOutcome({
+          clientDisconnected,
+          detectedError: streamDetectedError,
+          streamError: error,
+          terminalEventSeen: sseErrorDetector.hasTerminalEvent(),
+          upstreamStatus: upstreamResponse.status
+        });
         writeRequestLog(
-          clientDisconnected ? clientClosedRequestStatusCode : upstreamResponse.status,
+          outcome.statusCode,
           responseHeaders,
           sampler.read(),
           sampler.isTruncated(),
-          error ?? streamDetectedError
+          outcome.error,
+          sampler.sizeBytes()
         );
       };
       onClientDisconnect = () => {
-        writeStreamLog(clientDisconnectMessage);
+        streamDetectedError ??= sseErrorDetector.finish();
+        writeStreamLog();
         responseBody.unpipe(response);
         destroyResponseStreams(responseStreams);
       };
@@ -438,7 +668,17 @@ export class GatewayRequestPipeline {
       };
       const onResponseStreamError = (error: Error) => {
         streamDetectedError ??= sseErrorDetector.finish();
-        writeStreamLog(clientDisconnected ? clientDisconnectMessage : formatError(error));
+        writeStreamLog(clientDisconnected ? clientDisconnectMessage : formatUpstreamErrorForLog(error, {
+          attempts: upstreamResult.failedAttempts.length + 1,
+          elapsedMs: Date.now() - startedAt,
+          fallbackFailures: upstreamResult.failedAttempts.length,
+          operation: "stream",
+          responseStarted: true,
+          retryDelayMs: upstreamResult.failedAttempts.reduce(
+            (total, attempt) => total + Math.max(0, attempt.delayMs ?? 0),
+            0
+          )
+        }));
       };
       for (const stream of responseStreams) {
         stream.on("error", onResponseStreamError);

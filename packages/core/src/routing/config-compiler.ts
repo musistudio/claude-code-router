@@ -4,14 +4,21 @@ import type {
   RouterRule,
   RouterRuleRewrite
 } from "@ccr/core/contracts/app";
+import { ROUTER_SCRIPT_MAX_SOURCE_BYTES, ROUTER_SCRIPT_MAX_TIMEOUT_MS } from "@ccr/core/contracts/app";
 import type { RouteDiagnostic, RouteModelRef } from "@ccr/core/routing/contracts";
 import { ModelRegistry } from "@ccr/core/routing/model-registry";
+import {
+  compileConfiguredRouteRewrite,
+  effectiveBodyModelRewriteValue,
+  effectiveTargetProviderName,
+  type CompiledRouteRewrite
+} from "@ccr/core/routing/rewrite";
 
 export type CompiledRouterRule = {
   active: boolean;
   diagnostics: RouteDiagnostic[];
   model?: RouteModelRef;
-  rewrites: RouterRuleRewrite[];
+  rewrites: CompiledRouteRewrite[];
   rule: RouterRule;
 };
 
@@ -22,9 +29,13 @@ export type CompiledRouterConfig = {
   rules: CompiledRouterRule[];
 };
 
-export function compileRouterConfig(config: AppConfig): CompiledRouterConfig {
+export type CompileRouterConfigOptions = {
+  scriptValidationErrors?: ReadonlyMap<string, string>;
+};
+
+export function compileRouterConfig(config: AppConfig, options: CompileRouterConfigOptions = {}): CompiledRouterConfig {
   const modelRegistry = new ModelRegistry(config);
-  const rules = (config.Router.rules ?? []).map((rule) => compileRouterRule(rule, modelRegistry));
+  const rules = (config.Router.rules ?? []).map((rule) => compileRouterRule(rule, modelRegistry, options));
   const fallbackDiagnostics = fallbackModelDiagnostics(config.Router.fallback, modelRegistry, "default");
   const profileDiagnostics = configuredProfileDiagnostics(config, modelRegistry);
   const validFallbackModels = config.Router.fallback.models.filter((model) => modelRegistry.isConfigured(model));
@@ -52,8 +63,13 @@ function configuredProfileDiagnostics(config: AppConfig, modelRegistry: ModelReg
     }));
 }
 
-function compileRouterRule(rule: RouterRule, modelRegistry: ModelRegistry): CompiledRouterRule {
-  const rewrites = routerRuleRewrites(rule);
+function compileRouterRule(
+  rule: RouterRule,
+  modelRegistry: ModelRegistry,
+  options: CompileRouterConfigOptions
+): CompiledRouterRule {
+  const rewriteResults = routerRuleRewrites(rule).map(compileConfiguredRouteRewrite);
+  const rewrites = rewriteResults.flatMap((result) => result.rewrite ? [result.rewrite] : []);
   if (!rule.enabled) {
     return {
       active: false,
@@ -62,7 +78,13 @@ function compileRouterRule(rule: RouterRule, modelRegistry: ModelRegistry): Comp
       rule
     };
   }
-  const diagnostics: RouteDiagnostic[] = [];
+  const diagnostics: RouteDiagnostic[] = rewriteResults.flatMap((result) => result.error ? [{
+    code: "rule-rewrite-invalid" as const,
+    message: `Router rule "${rule.name}" has an invalid rewrite: ${result.error}`,
+    ruleId: rule.id,
+    source: "rule" as const
+  }] : []);
+  diagnostics.push(...scriptRuleDiagnostics(rule, options));
   const providerName = effectiveTargetProviderName(rewrites);
   const targetProvider = providerName ? modelRegistry.findProvider(providerName) : undefined;
   let model: RouteModelRef | undefined;
@@ -92,12 +114,70 @@ function compileRouterRule(rule: RouterRule, modelRegistry: ModelRegistry): Comp
   }
   diagnostics.push(...fallbackModelDiagnostics(rule.fallback, modelRegistry, "rule", rule));
   return {
-    active: rewrites.length > 0 && diagnostics.length === 0,
+    active: (rule.type === "script" ? Boolean(rule.script) : rewrites.length > 0) && diagnostics.length === 0,
     diagnostics,
     model,
     rewrites,
     rule
   };
+}
+
+function scriptRuleDiagnostics(rule: RouterRule, options: CompileRouterConfigOptions): RouteDiagnostic[] {
+  if (rule.type !== "script") return [];
+  if (!rule.script) {
+    return [{
+      code: "script-source-invalid",
+      message: `Router rule "${rule.name}" does not contain a script.`,
+      ruleId: rule.id,
+      source: "rule"
+    }];
+  }
+  if (rule.script.apiVersion !== 1 || rule.script.language !== "javascript") {
+    return [{
+      code: "script-api-unsupported",
+      message: `Router rule "${rule.name}" uses an unsupported script API or language.`,
+      ruleId: rule.id,
+      source: "rule"
+    }];
+  }
+  const file = rule.script.file?.trim();
+  const legacySource = rule.script.source;
+  const sourceInvalid = !file && (
+    legacySource === undefined ||
+    !legacySource.trim() ||
+    Buffer.byteLength(legacySource, "utf8") > ROUTER_SCRIPT_MAX_SOURCE_BYTES
+  );
+  if (sourceInvalid) {
+    return [{
+      code: "script-source-invalid",
+      message: `Router rule "${rule.name}" requires a local JavaScript file.`,
+      ruleId: rule.id,
+      source: "rule"
+    }];
+  }
+  if (file && !/\.(?:cjs|js|mjs)$/i.test(file)) {
+    return [{
+      code: "script-source-invalid",
+      message: `Router rule "${rule.name}" script file must use a .js, .mjs, or .cjs extension.`,
+      ruleId: rule.id,
+      source: "rule"
+    }];
+  }
+  if (!Number.isInteger(rule.script.timeoutMs) || rule.script.timeoutMs < 10 || rule.script.timeoutMs > ROUTER_SCRIPT_MAX_TIMEOUT_MS) {
+    return [{
+      code: "script-source-invalid",
+      message: `Router rule "${rule.name}" script timeout must be between 10 and ${ROUTER_SCRIPT_MAX_TIMEOUT_MS} ms.`,
+      ruleId: rule.id,
+      source: "rule"
+    }];
+  }
+  const externalError = options.scriptValidationErrors?.get(rule.id);
+  return externalError ? [{
+    code: "script-source-invalid",
+    message: `Router rule "${rule.name}" script failed validation: ${externalError}`,
+    ruleId: rule.id,
+    source: "rule"
+  }] : [];
 }
 
 function fallbackModelDiagnostics(
@@ -132,68 +212,4 @@ function routerRuleRewrites(rule: RouterRule): RouterRuleRewrite[] {
   return rule.target
     ? [{ key: "request.body.model", operation: "set", value: rule.target }]
     : [];
-}
-
-function effectiveBodyModelRewriteValue(rewrites: RouterRuleRewrite[]): string | undefined {
-  let value: string | undefined;
-  for (const rewrite of rewrites) {
-    const path = rewritePath(rewrite.key);
-    if (path.scope !== "body" || path.name !== "model") {
-      continue;
-    }
-    const operation = rewrite.operation ?? "set";
-    if (operation === "delete") {
-      value = undefined;
-    } else if (operation === "set") {
-      value = rewrite.value;
-    }
-  }
-  return value;
-}
-
-function effectiveTargetProviderName(rewrites: RouterRuleRewrite[]): string | undefined {
-  const headers: Record<string, string> = {};
-  for (const rewrite of rewrites) {
-    const path = rewritePath(rewrite.key);
-    if (path.scope !== "header" || !isTargetProviderHeader(path.name)) {
-      continue;
-    }
-    if ((rewrite.operation ?? "set") === "delete") {
-      delete headers[path.name];
-    } else if (rewrite.value !== undefined) {
-      headers[path.name] = rewrite.value;
-    }
-  }
-  const provider = headers["x-target-provider"] || headers["x-gateway-target-provider"];
-  if (provider?.trim()) {
-    return provider.trim();
-  }
-  return headers["x-target-providers"]
-    ?.split(",")
-    .map((item) => item.trim())
-    .find(Boolean);
-}
-
-function isTargetProviderHeader(name: string): boolean {
-  return name === "x-target-provider" ||
-    name === "x-gateway-target-provider" ||
-    name === "x-target-providers";
-}
-
-function rewritePath(key: string): { name: string; scope?: "body" | "header" } {
-  const parts = key
-    .split(".")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  const [scope, section, ...rest] = parts;
-  if (scope !== "request") {
-    return { name: "" };
-  }
-  if (section === "header" || section === "headers") {
-    return { name: rest.join(".").trim().toLowerCase(), scope: "header" };
-  }
-  if (section === "body") {
-    return { name: rest.join("."), scope: "body" };
-  }
-  return { name: "" };
 }

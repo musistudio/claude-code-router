@@ -5,6 +5,10 @@ import {
 
 export type UpdateActionBusy = "" | "check" | "download" | "install";
 
+export function shouldCheckForUpdateOnOpen(status: AppUpdateStatus): boolean {
+  return status.state === "idle" || status.state === "not-available" || status.state === "error";
+}
+
 export function UpdateDialog({
   actionBusy,
   actionError,
@@ -31,13 +35,25 @@ export function UpdateDialog({
   const progressPercent = clampPercent(status.progress?.percent);
   const error = actionError || status.lastError || "";
   const installing = actionBusy === "install" || status.state === "installing";
+  const showStateBadge = status.state === "error" ||
+    status.state === "not-available" ||
+    status.state === "available" ||
+    status.state === "downloaded" ||
+    status.state === "downloading";
+  const stateDescription = updateStateDescription(status, t);
 
   return (
     <Dialog onOpenChange={(open) => !open && !installing && onClose()} open>
       <DialogContent className="max-w-[560px]">
         <DialogHeader>
-          <div className="min-w-0">
+          <div className="flex min-w-0 flex-1 items-center gap-2 pr-2">
             <DialogTitle>{t("Online updates")}</DialogTitle>
+            {showStateBadge ? (
+              <UpdateStateBadge
+                label={updateStateLabel(status, t)}
+                status={status}
+              />
+            ) : null}
           </div>
           <Button aria-label={copy.settings.close} disabled={installing} onClick={onClose} size="iconSm" title={copy.settings.close} type="button" variant="ghost">
             <X className="h-4 w-4" />
@@ -45,17 +61,9 @@ export function UpdateDialog({
         </DialogHeader>
 
         <DialogBody className="grid gap-4">
-          <div className="flex min-w-0 items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              {updateStateDescription(status, t) ? (
-                <div className="text-[12px] leading-5 text-muted-foreground">{updateStateDescription(status, t)}</div>
-              ) : null}
-            </div>
-            <UpdateStateBadge
-              label={updateStateLabel(status, t)}
-              status={status}
-            />
-          </div>
+          {stateDescription ? (
+            <div className="text-[12px] leading-5 text-muted-foreground">{stateDescription}</div>
+          ) : null}
 
           <div className="grid grid-cols-2 gap-2 max-[520px]:grid-cols-1">
             <UpdateInfoRow label={t("Current version")} value={status.currentVersion} />
@@ -154,7 +162,7 @@ function UpdateInfoRow({ label, scroll = false, value }: { label: string; scroll
 function UpdateStateBadge({ label, status }: { label: string; status: AppUpdateStatus }) {
   return (
     <span className={cn(
-      "shrink-0 rounded-full border px-2 py-1 text-[11px] font-medium",
+      "inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-medium",
       status.state === "error"
         ? "border-destructive/25 bg-destructive/10 text-destructive"
         : status.state === "not-available"
@@ -186,7 +194,7 @@ function updateStateDescription(status: AppUpdateStatus, t: (value: string) => s
   if (status.state === "downloaded") return t("Update downloaded");
   if (status.state === "not-available") return "";
   if (status.state === "downloading") return t("Downloading update");
-  return t("Online updates");
+  return "";
 }
 
 function clampPercent(value: number | undefined): number | undefined {

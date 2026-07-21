@@ -22,6 +22,11 @@
       "@ccr/ui/*": ["./packages/ui/src/*"]
     }
   },
-  "include": ["packages/**/*.ts", "packages/**/*.d.ts", "packages/**/*.tsx", "tests/e2e/**/*.ts"],
+  "include": [
+    "packages/*/src/**/*.ts",
+    "packages/*/src/**/*.d.ts",
+    "packages/*/src/**/*.tsx",
+    "tests/e2e/**/*.ts"
+  ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

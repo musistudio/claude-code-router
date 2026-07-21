@@ -48,7 +48,7 @@ export function buildClaudeAppGatewayModelRoutes(
   const seenTargets = new Set<string>();
   return targetModels.flatMap((rawTargetModel, index) => {
     const targetModel = stripClaudeAppGatewayOneMillionContextSuffix(rawTargetModel);
-    const oneMillionContext = claudeAppGatewaySupportsOneMillionContext(rawTargetModel, options);
+    const oneMillionContext = claudeAppGatewaySupportsOneMillionContext(rawTargetModel, config, options);
     const targetKey = `${targetModel.toLowerCase()}::${oneMillionContext ? "1m" : "base"}`;
     if (seenTargets.has(targetKey)) {
       return [];
@@ -156,11 +156,48 @@ function canonicalClaudeAppGatewayTargetModel(
 
 function claudeAppGatewaySupportsOneMillionContext(
   model: string,
+  config: Pick<AppConfig, "Providers" | "virtualModelProfiles">,
   options: ClaudeAppGatewayModelRouteOptions
 ): boolean {
   const baseModel = stripClaudeAppGatewayOneMillionContextSuffix(model);
-  return hasClaudeAppGatewayOneMillionContextSuffix(model) ||
-    Boolean(options.supportsOneMillionContext?.(baseModel));
+  if (hasClaudeAppGatewayOneMillionContextSuffix(model)) {
+    return true;
+  }
+
+  const providerOverride = claudeAppGatewayProviderSupportsOneMillionContext(baseModel, config);
+  return providerOverride ?? Boolean(options.supportsOneMillionContext?.(baseModel));
+}
+
+function claudeAppGatewayProviderSupportsOneMillionContext(
+  model: string,
+  config: Pick<AppConfig, "Providers" | "virtualModelProfiles">
+): boolean | undefined {
+  const resolved = modelRegistryForConfig(config).resolveProviderModel(model);
+  if (!resolved) {
+    return undefined;
+  }
+  const normalizedModel = resolved.model.trim().toLowerCase();
+  const metadata = resolved.provider.modelMetadata?.[resolved.model] ??
+    Object.entries(resolved.provider.modelMetadata ?? {})
+      .find(([candidate]) => candidate.trim().toLowerCase() === normalizedModel)?.[1];
+  const contextWindow = positiveInteger(metadata?.contextWindow) ?? positiveInteger(metadata?.maxContextWindow);
+  if (!contextWindow) {
+    return undefined;
+  }
+  const effectivePercent = percentage(metadata?.effectiveContextWindowPercent) ?? 100;
+  return Math.floor((contextWindow * effectivePercent) / 100) >= 1_000_000;
+}
+
+function positiveInteger(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isFinite(value) && value > 0
+    ? Math.trunc(value)
+    : undefined;
+}
+
+function percentage(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isFinite(value) && value > 0 && value <= 100
+    ? value
+    : undefined;
 }
 
 function claudeAppGatewayRouteId(

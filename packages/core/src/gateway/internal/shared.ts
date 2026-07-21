@@ -3,7 +3,7 @@
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createRequire } from "node:module";
-import type { ApiKeyConfig, GatewayMcpServerConfig, GatewayProviderConfig, GatewayProviderProtocol, VirtualModelFusionWebSearchProvider } from "@ccr/core/contracts/app";
+import type { ApiKeyConfig, GatewayMcpServerConfig, GatewayProviderCapabilityProtocol, GatewayProviderConfig, GatewayProviderProtocol, VirtualModelFusionWebSearchProvider } from "@ccr/core/contracts/app";
 import type { ClaudeAppGatewayModelRouteOptions } from "@ccr/core/agents/claude-app/gateway-routes";
 import type { RouteModelRef } from "@ccr/core/routing/contracts";
 import { findModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
@@ -17,7 +17,7 @@ export type CoreGatewayProvider = {
   extraHeaders?: unknown;
   models: string[];
   name: string;
-  type: GatewayProviderProtocol;
+  type: GatewayProviderCapabilityProtocol;
 };
 
 
@@ -145,7 +145,9 @@ export type ApiKeyWindowCounter = {
 
 export type RawTracePartText = {
   contentType?: string;
-  text: string;
+  filePath: string;
+  sizeBytes: number;
+  truncated: boolean;
 };
 
 
@@ -234,6 +236,28 @@ export const coreGatewayAuthTokenEnv = "CCR_CORE_GATEWAY_AUTH_TOKEN";
 export const clientClosedRequestStatusCode = 499;
 
 export const clientDisconnectMessage = "Client connection closed before response completed.";
+
+export function resolveStreamRequestLogOutcome(input: {
+  clientDisconnected: boolean;
+  detectedError?: string;
+  streamError?: string;
+  terminalEventSeen: boolean;
+  upstreamStatus: number;
+}): { error?: string; statusCode: number } {
+  const interrupted = input.clientDisconnected && !input.terminalEventSeen;
+  if (interrupted) {
+    return {
+      error: clientDisconnectMessage,
+      statusCode: clientClosedRequestStatusCode
+    };
+  }
+  return {
+    error: input.clientDisconnected && input.terminalEventSeen
+      ? input.detectedError
+      : input.streamError ?? input.detectedError,
+    statusCode: input.upstreamStatus
+  };
+}
 
 export const localObservabilityHeaderNames = new Set([
   "x-ccr-claude-app-model-rewrite",

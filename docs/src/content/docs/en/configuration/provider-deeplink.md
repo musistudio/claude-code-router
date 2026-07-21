@@ -26,6 +26,10 @@ Choose a provider below to get started. CCR shows what will be added before savi
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/openrouter.ico" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">OpenRouter</span><span class="provider-import-meta">OpenAI compatible gateway</span></span>
   </a>
+  <a class="provider-import-button provider-nvidia" href="ccr://provider?name=NVIDIA&amp;base_url=https%3A%2F%2Fintegrate.api.nvidia.com%2Fv1&amp;protocol=openai_chat_completions&amp;models=nvidia%2Fnemotron-3-super-120b-a12b%2Cnvidia%2Fnemotron-3-ultra-550b-a55b&amp;source=https%3A%2F%2Fbuild.nvidia.com%2Fmodels" aria-label="Import NVIDIA NIM provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/nvidia.svg" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">NVIDIA</span><span class="provider-import-meta">NIM Chat Completions</span></span>
+  </a>
   <a class="provider-import-button provider-deepseek" href="ccr://provider?name=DeepSeek&amp;base_url=https%3A%2F%2Fapi.deepseek.com&amp;protocol=openai_chat_completions&amp;models=deepseek-v4-pro%2Cdeepseek-v4-flash%2Cdeepseek-v3.2%2Cdeepseek-reasoner%2Cdeepseek-chat" aria-label="Import DeepSeek provider">
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/deepseek.ico" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">DeepSeek</span><span class="provider-import-meta">Chat Completions</span></span>
