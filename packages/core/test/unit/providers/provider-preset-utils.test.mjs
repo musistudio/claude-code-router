@@ -19,6 +19,10 @@ import {
   moonshotGlobalProviderPreset
 } from "@ccr/core/providers/presets/moonshot/index.ts";
 import {
+  minimaxChinaProviderPreset,
+  minimaxGlobalProviderPreset
+} from "@ccr/core/providers/presets/minimax/index.ts";
+import {
   nvidiaProviderPreset
 } from "@ccr/core/providers/presets/nvidia/index.ts";
 import {
@@ -77,6 +81,19 @@ test("provider identity lookup normalizes aliases and punctuation", () => {
 test("provider identity lookup prefers exact Kimi regional names over shared aliases", () => {
   assert.equal(findProviderPresetByIdentityInList(moonshotPresets, "Kimi API (Global)")?.id, "moonshot-global");
   assert.equal(findProviderPresetByIdentityInList(moonshotPresets, "Kimi API (China)")?.id, "moonshot");
+});
+
+test("MiniMax presets expose current models and regional endpoints", () => {
+  assert.deepEqual(minimaxGlobalProviderPreset.defaultModels, ["MiniMax-M3", "MiniMax-M2.7"]);
+  assert.deepEqual(minimaxChinaProviderPreset.defaultModels, ["MiniMax-M3", "MiniMax-M2.7"]);
+  assert.deepEqual(minimaxGlobalProviderPreset.endpoints.map((endpoint) => endpoint.baseUrl), [
+    "https://api.minimax.io/v1",
+    "https://api.minimax.io/anthropic"
+  ]);
+  assert.deepEqual(minimaxChinaProviderPreset.endpoints.map((endpoint) => endpoint.baseUrl), [
+    "https://api.minimaxi.com/v1",
+    "https://api.minimaxi.com/anthropic"
+  ]);
 });
 
 test("sponsor provider presets expose requested endpoints and protocols", () => {
