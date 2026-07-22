@@ -3,7 +3,7 @@
  */
 import { join as pathJoin } from "node:path";
 import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
-import { codexDefaultBaseUrl, kimiAccessTokenExpired, kimiIdentityHeaders, readCodexAuth, readGrokAuth, readKimiAuth, resolveGrokAuth, resolveKimiAuth } from "@ccr/core/agents/local-providers/service";
+import { codexDefaultBaseUrl, kimiAccessTokenExpired, kimiIdentityHeaders, readClaudeCodeOauth, readCodexAuth, readGrokAuth, readKimiAuth, resolveGrokAuth, resolveKimiAuth } from "@ccr/core/agents/local-providers/service";
 import { grokAccessTokenExpired, grokClientVersion } from "@ccr/core/agents/local-providers/grok";
 import { pluginService } from "@ccr/core/plugins/service";
 import { normalizeRouteSelector, providerRuntimeId } from "@ccr/core/routing/model-registry";
@@ -45,7 +45,7 @@ export async function compileCoreGatewayConfig(
     ...pluginService.getCoreProviderPlugins().filter(providerPluginEnabled)
   ]);
   const providerPluginsWithRuntimeDefaults = await withKimiOauthRuntimeDefaults(
-    await withGrokOauthRuntimeDefaults(withCodexOauthRuntimeDefaults(configuredProviderPlugins))
+    await withGrokOauthRuntimeDefaults(withClaudeCodeOauthRuntimeDefaults(withCodexOauthRuntimeDefaults(configuredProviderPlugins)))
   );
   const codexOauthProviderNames = codexOauthLocalProviderNames(providerPluginsWithRuntimeDefaults);
   const providerPlugins = normalizeCoreProviderPluginNames(providerPluginsWithRuntimeDefaults, config.Providers);
@@ -383,6 +383,35 @@ function withCodexOauthRuntimeDefaults(providerPlugins: unknown[]): unknown[] {
     }
 
     return nextPlugin;
+  });
+}
+
+
+function withClaudeCodeOauthRuntimeDefaults(providerPlugins: unknown[]): unknown[] {
+  if (!providerPlugins.some(isLocalClaudeCodeOauthProviderPlugin)) {
+    return providerPlugins;
+  }
+  const oauth = readClaudeCodeOauth();
+  if (!oauth?.accessToken) {
+    return providerPlugins;
+  }
+
+  return providerPlugins.map((plugin) => {
+    if (!isLocalClaudeCodeOauthProviderPlugin(plugin)) {
+      return plugin;
+    }
+    const currentAuth = isRecord(plugin.auth) ? plugin.auth : {};
+    const currentHeaders = isRecord(currentAuth.headers) ? currentAuth.headers : {};
+    return {
+      ...plugin,
+      auth: {
+        ...currentAuth,
+        headers: {
+          ...currentHeaders,
+          authorization: `Bearer ${oauth.accessToken}`
+        }
+      }
+    };
   });
 }
 

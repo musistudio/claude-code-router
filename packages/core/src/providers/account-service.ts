@@ -6,6 +6,7 @@ import {
   localAgentProviderApiKey,
   kimiAccessTokenExpired,
   kimiIdentityHeaders,
+  readClaudeCodeOauth,
   readCodexAuth,
   readGrokAuth,
   readKimiAuth,
@@ -1380,7 +1381,7 @@ async function localAgentProviderAccountCredential(
       return await localCodexAccountCredential(plugin);
     }
     if (key.includes("claude-code-oauth")) {
-      return localBearerAccountCredential(plugin);
+      return localClaudeCodeAccountCredential(plugin);
     }
     if (key.includes("grok-cli-oauth")) {
       return await localGrokAccountCredential(plugin);
@@ -1706,6 +1707,16 @@ function codexJwtPayload(token: string | undefined): Record<string, unknown> | u
 function localBearerAccountCredential(plugin: Record<string, unknown>): { apiKey?: string; headers?: Record<string, string> } {
   const headers = localProviderPluginAuthHeaders(plugin);
   const apiKey = readBearerToken(headers.authorization || headers.Authorization);
+  return {
+    apiKey,
+    headers: withoutHeader(headers, "authorization")
+  };
+}
+
+function localClaudeCodeAccountCredential(plugin: Record<string, unknown>): { apiKey?: string; headers?: Record<string, string> } {
+  const headers = localProviderPluginAuthHeaders(plugin);
+  const oauth = readClaudeCodeOauth();
+  const apiKey = oauth?.accessToken || readBearerToken(headers.authorization || headers.Authorization);
   return {
     apiKey,
     headers: withoutHeader(headers, "authorization")
