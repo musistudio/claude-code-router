@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ClaudeCodeRouterPlugin } from "../../packages/core/src/gateway/claude-code-router-plugin.ts";
-import { prepareGatewayUpstreamAttemptForTest } from "../../packages/core/src/gateway/service.ts";
+import { createClaudeCodeModelsResponseForTest, prepareGatewayUpstreamAttemptForTest } from "../../packages/core/src/gateway/service.ts";
 
 function createRouterPlugin(options = {}) {
   const agent = options.agent ?? "claude-code";
@@ -41,6 +41,43 @@ function createRouterPlugin(options = {}) {
     virtualModelProfiles: options.virtualModelProfiles ?? []
   });
 }
+
+function claudeCodeCompactSupported(config) {
+  const response = createClaudeCodeModelsResponseForTest(config);
+  return response.data[0]?.capabilities?.context_management?.compact_20260112?.supported;
+}
+
+test("Claude Code model discovery exposes compact only when context archive MCP is enabled", () => {
+  const baseConfig = {
+    Providers: [
+      {
+        models: ["custom-claude-compatible"],
+        name: "Provider",
+        type: "anthropic_messages"
+      }
+    ],
+    contextArchive: {
+      enabled: false,
+      mcpEnabled: true
+    }
+  };
+
+  assert.equal(claudeCodeCompactSupported(baseConfig), false);
+  assert.equal(claudeCodeCompactSupported({
+    ...baseConfig,
+    contextArchive: {
+      enabled: true,
+      mcpEnabled: false
+    }
+  }), false);
+  assert.equal(claudeCodeCompactSupported({
+    ...baseConfig,
+    contextArchive: {
+      enabled: true,
+      mcpEnabled: true
+    }
+  }), true);
+});
 
 function createIssue1480UserConfig() {
   return {

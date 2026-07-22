@@ -45,6 +45,7 @@
     "prepublishOnly": "npm run typecheck",
     "preview": "npm run build:assets && electron .",
     "bench:context-archive": "node benchmarks/run-context-archive-benchmark.mjs",
+    "bench:context-archive-agent": "node benchmarks/run-context-archive-real-agent-benchmark.mjs",
     "bench:context-archive-real": "node benchmarks/run-context-archive-real-agent-benchmark.mjs",
     "bench:claude-compact-real": "node benchmarks/claude-code-real-compact.mjs",
     "docker:build": "docker build -t claude-code-router:local .",

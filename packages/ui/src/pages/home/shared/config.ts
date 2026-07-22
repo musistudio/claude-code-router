@@ -420,13 +420,15 @@ export function normalizeConfig(config: AppConfig): AppConfig {
       ...profileConfig,
       claudeCode: {
         ...fallbackConfig.profile.claudeCode,
-        ...(profileConfig.claudeCode || {})
+        ...(profileConfig.claudeCode || {}),
+        managedCompact: Boolean(profileConfig.claudeCode?.managedCompact)
       },
       codex: {
         ...fallbackConfig.profile.codex,
         ...(profileConfig.codex || {}),
         cliMiddleware: true,
         configFormat: normalizeCodexConfigFormat(profileConfig.codex?.configFormat),
+        managedCompact: Boolean(profileConfig.codex?.managedCompact),
         showAllSessions: Boolean(profileConfig.codex?.showAllSessions)
       },
       profiles

@@ -49,6 +49,42 @@ function archiveToken(preparedBody) {
   return match[1];
 }
 
+function archiveCredentialsFromText(text) {
+  const archiveId = text.match(/Archive id:\s*(arc_[A-Za-z0-9_-]+)/)?.[1];
+  const sessionToken = text.match(/Archive session token:\s*([A-Za-z0-9_-]+)/)?.[1];
+  assert.ok(archiveId, "expected archive id in compact handoff text");
+  assert.ok(sessionToken, "expected archive session token in compact handoff text");
+  return { archiveId, sessionToken };
+}
+
+function claudeAutoCompactPrompt() {
+  return [
+    "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.",
+    "",
+    "- Do NOT use Read, Bash, Grep, Glob, Edit, Write, or ANY other tool.",
+    "- You already have all the context you need in the conversation above.",
+    "- Your entire response must be plain text: an <analysis> block followed by a <summary> block.",
+    "",
+    "Your task is to create a detailed summary of the conversation so far, paying close attention to the user's explicit requests and your previous actions.",
+    "This summary should be thorough in capturing technical details, code patterns, and architectural decisions that would be essential for continuing development work without losing context."
+  ].join("\n");
+}
+
+function sseJsonPayloads(raw) {
+  const payloads = [];
+  for (const block of raw.split(/\n\n+/)) {
+    const data = block
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice("data:".length).trim())
+      .join("\n");
+    if (data && data !== "[DONE]") {
+      payloads.push(JSON.parse(data));
+    }
+  }
+  return payloads;
+}
+
 function ready(result, config, route = {}) {
   finalizeContextArchiveRequest(result.record, {
     credentialChain: ["provider-openai_chat_completions-credential-primary"],
@@ -108,9 +144,71 @@ async function streamText(stream) {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+test("managed compact profile enables archive only for that profile API key", async () => {
+  const config = testConfig({ enabled: false });
+  config.APIKEYS = [
+    { id: "profile:managed-compact", key: "managed-key", name: "Managed Compact" },
+    { id: "profile:plain-profile", key: "plain-key", name: "Plain Profile" }
+  ];
+  config.profile.profiles = [
+    {
+      agent: "claude-code",
+      enabled: true,
+      env: {},
+      id: "managed-compact",
+      managedCompact: true,
+      model: "test/model",
+      name: "Managed Compact",
+      scope: "ccr",
+      settingsFile: "~/.claude/settings.json",
+      smallFastModel: "",
+      surface: "auto"
+    },
+    {
+      agent: "claude-code",
+      enabled: true,
+      env: {},
+      id: "plain-profile",
+      managedCompact: false,
+      model: "test/model",
+      name: "Plain Profile",
+      scope: "ccr",
+      settingsFile: "~/.claude/settings.json",
+      smallFastModel: "",
+      surface: "auto"
+    }
+  ];
+  const body = Buffer.from(JSON.stringify({
+    messages: [
+      { content: "Historical decision: use SQLite.", role: "user" },
+      { content: "Create a compact handoff.", role: "user" }
+    ],
+    model: "test-model"
+  }));
+  const input = {
+    body,
+    config,
+    headers: compactHeaders("managed-session"),
+    method: "POST",
+    path: "/v1/chat/completions",
+    protocol: "openai_chat_completions",
+    requestId: "managed-request"
+  };
+
+  assert.equal(await prepareContextArchiveRequest(input), undefined);
+  assert.equal(await prepareContextArchiveRequest({ ...input, apiKey: { id: "profile:plain-profile" } }), undefined);
+
+  const result = await prepareContextArchiveRequest({ ...input, apiKey: { id: "profile:managed-compact" } });
+  assert.ok(result);
+  assert.equal(result.config.contextArchive.enabled, true);
+  assert.equal(result.config.contextArchive.mcpEnabled, true);
+  assert.match(result.diagnostic, /^compact-handoff:managed-session:1:arc_/);
+});
+
 test("compact stores an immutable full request and appends one handoff task", async () => {
   const config = testConfig();
   const body = {
+    context_management: { edits: [{ reason: "compact", type: "compact_20260112" }] },
     max_tokens: 777,
     messages: [
       { content: "Historical decision: use SQLite.", role: "user" },
@@ -147,13 +245,15 @@ test("compact stores an immutable full request and appends one handoff task", as
   assert.deepEqual(forwarded.messages.slice(0, body.messages.length), body.messages);
   assert.equal(forwarded.messages.length, body.messages.length + 1);
   assert.equal(forwarded.model, body.model);
-  assert.equal(forwarded.max_tokens, body.max_tokens);
-  assert.deepEqual(forwarded.response_format, body.response_format);
-  assert.deepEqual(forwarded.tools, body.tools);
-  assert.deepEqual(forwarded.tool_choice, body.tool_choice);
+  assert.equal(forwarded.max_tokens, 2048);
+  assert.equal(forwarded.context_management, undefined);
+  assert.equal(forwarded.response_format, undefined);
+  assert.equal(forwarded.tools, undefined);
+  assert.equal(forwarded.tool_choice, undefined);
   assert.equal(forwarded.stream, true);
   assert.match(forwarded.messages.at(-1).content, /CCR compact handoff task/);
   assert.match(forwarded.messages.at(-1).content, /ccr_history_ask/);
+  assert.match(forwarded.messages.at(-1).content, /mcp__ccr-context-archive__ccr_history_ask/);
 });
 
 test("history ask replays the exact snapshot with only one appended natural-language task", async () => {
@@ -244,6 +344,61 @@ test("each compact generation remains independently addressable", async () => {
   }, config.contextArchive, replay.executor);
   assert.match(firstAnswer.answer, /PostgreSQL/);
   assert.match(secondAnswer.answer, /SQLite/);
+});
+
+test("latest archive token searches parent generations when the current compact snapshot is insufficient", async () => {
+  const config = testConfig();
+  const firstBody = {
+    messages: [{ content: "Generation one hidden marker: PEARL-LINEAGE-01.", role: "user" }],
+    model: "test-model"
+  };
+  const secondBody = {
+    messages: [{ content: "Generation two compact summary omitted the hidden marker but continued the task.", role: "user" }],
+    model: "test-model"
+  };
+  const first = await prepareContextArchiveRequest({
+    body: Buffer.from(JSON.stringify(firstBody)),
+    config,
+    headers: compactHeaders("lineage-search"),
+    method: "POST",
+    path: "/v1/chat/completions",
+    protocol: "openai_chat_completions",
+    requestId: "lineage-search-1"
+  });
+  const second = await prepareContextArchiveRequest({
+    body: Buffer.from(JSON.stringify(secondBody)),
+    config,
+    headers: compactHeaders("lineage-search"),
+    method: "POST",
+    path: "/v1/chat/completions",
+    protocol: "openai_chat_completions",
+    requestId: "lineage-search-2"
+  });
+  assert.ok(first);
+  assert.ok(second);
+  ready(first, config, { providerProtocol: "openai_chat_completions" });
+  ready(second, config, { providerProtocol: "openai_chat_completions" });
+
+  const replay = mockReplay([{
+    answer: "The generation one hidden marker is PEARL-LINEAGE-01.",
+    needle: "PEARL-LINEAGE-01",
+    question: "What was the generation one hidden marker?"
+  }]);
+  const output = await contextArchiveService.ask({
+    archiveId: second.record.archiveId,
+    sessionToken: archiveToken(JSON.parse(second.body.toString("utf8"))),
+    task: "What was the generation one hidden marker?"
+  }, config.contextArchive, replay.executor);
+
+  assert.match(output.answer, /PEARL-LINEAGE-01/);
+  assert.equal(output.archiveId, second.record.archiveId);
+  assert.equal(output.generation, 2);
+  assert.equal(output.sourceArchiveId, first.record.archiveId);
+  assert.equal(output.sourceGeneration, 1);
+  assert.deepEqual(output.searchedGenerations, [2, 1]);
+  assert.equal(replay.calls.length, 2);
+  assert.equal(replay.calls[0].input.snapshot.archiveId, second.record.archiveId);
+  assert.equal(replay.calls[1].input.snapshot.archiveId, first.record.archiveId);
 });
 
 test("archive token grants access only to its exact archive", async () => {
@@ -357,6 +512,286 @@ test("OpenAI Responses and Anthropic use protocol-native appended messages", asy
   }
 });
 
+test("compact handoff strips protocol-specific tool and schema constraints", async () => {
+  const config = testConfig();
+  const result = await prepareContextArchiveRequest({
+    body: Buffer.from(JSON.stringify({
+      input: [{ content: [{ text: "Responses fact", type: "input_text" }], role: "user", type: "message" }],
+      max_output_tokens: 128,
+      metadata: { ccr_context_compact: true, keep: "yes" },
+      model: "gpt-test",
+      parallel_tool_calls: true,
+      text: { format: { name: "handoff", schema: { type: "object" }, type: "json_schema" } },
+      tool_choice: "auto",
+      tools: [{ name: "read_file", type: "function" }]
+    })),
+    config,
+    headers: { "x-session-id": "responses-sanitize" },
+    method: "POST",
+    path: "/v1/responses",
+    protocol: "openai_responses",
+    requestId: "responses-sanitize"
+  });
+
+  assert.ok(result);
+  const forwarded = JSON.parse(result.body.toString("utf8"));
+  assert.equal(forwarded.tools, undefined);
+  assert.equal(forwarded.tool_choice, undefined);
+  assert.equal(forwarded.parallel_tool_calls, undefined);
+  assert.equal(forwarded.metadata.ccr_context_compact, undefined);
+  assert.equal(forwarded.metadata.keep, "yes");
+  assert.deepEqual(forwarded.text.format, { type: "text" });
+  assert.equal(forwarded.max_output_tokens, 2048);
+  assert.equal(forwarded.input.length, 2);
+  assert.match(forwarded.input.at(-1).content[0].text, /CCR compact handoff task/);
+});
+
+test("Codex /responses/compact prepares a Responses handoff and Codex compact JSON response", async () => {
+  const config = testConfig();
+  const body = {
+    client_metadata: { session_id: "codex-session" },
+    input: [
+      { content: [{ text: "Keep this decision.", type: "input_text" }], role: "user", type: "message" }
+    ],
+    model: "gpt-5-codex",
+    parallel_tool_calls: true,
+    tools: [{ name: "apply_patch", type: "custom" }]
+  };
+  const original = Buffer.from(JSON.stringify(body));
+  const result = await prepareContextArchiveRequest({
+    body: original,
+    config,
+    headers: { "user-agent": "codex-test" },
+    method: "POST",
+    path: "/v1/responses/compact",
+    protocol: "openai_responses",
+    requestId: "codex-compact"
+  });
+
+  assert.ok(result);
+  assert.equal(result.upstreamPath, "/v1/responses");
+  assert.equal(result.responseMode, "codex_responses_compact_json");
+  assert.equal(result.responseContentType, "application/json; charset=utf-8");
+  const snapshot = contextArchiveService.getSnapshot(result.record.archiveId, config.contextArchive);
+  assert.ok(snapshot);
+  assert.equal(snapshot.path, "/v1/responses");
+  assert.deepEqual(snapshot.body, original);
+
+  const forwarded = JSON.parse(result.body.toString("utf8"));
+  assert.equal(forwarded.tools, undefined);
+  assert.equal(forwarded.parallel_tool_calls, undefined);
+  assert.equal(forwarded.client_metadata.session_id, "codex-session");
+  assert.equal(forwarded.input.length, 2);
+  assert.match(forwarded.input.at(-1).content[0].text, /CCR compact handoff task/);
+
+  const transformed = await streamText(contextArchiveHandoffResponseStream(
+    Readable.from([JSON.stringify({ output: [{ content: [{ text: "Handoff summary", type: "output_text" }], role: "assistant", type: "message" }] })]),
+    result.record,
+    "openai_responses",
+    "application/json",
+    result.responseMode
+  ));
+  const compact = JSON.parse(transformed);
+  assert.equal(compact.output.length, 1);
+  assert.equal(compact.output[0].type, "compaction");
+  assert.match(compact.output[0].encrypted_content, /Handoff summary/);
+  assert.match(compact.output[0].encrypted_content, /Archive id: arc_/);
+});
+
+test("Codex Responses compaction trigger prepares a compact SSE response item", async () => {
+  const config = testConfig();
+  const body = {
+    input: [
+      { content: [{ text: "Earlier user request.", type: "input_text" }], role: "user", type: "message" },
+      { type: "compaction_trigger" }
+    ],
+    model: "gpt-5-codex",
+    stream: true,
+    tools: [{ name: "apply_patch", type: "custom" }]
+  };
+  const result = await prepareContextArchiveRequest({
+    body: Buffer.from(JSON.stringify(body)),
+    config,
+    headers: { "user-agent": "codex-test" },
+    method: "POST",
+    path: "/v1/responses",
+    protocol: "openai_responses",
+    requestId: "codex-compact-v2"
+  });
+
+  assert.ok(result);
+  assert.equal(result.upstreamPath, undefined);
+  assert.equal(result.responseMode, "codex_responses_compaction_sse");
+  assert.equal(result.responseContentType, "text/event-stream; charset=utf-8");
+  const forwarded = JSON.parse(result.body.toString("utf8"));
+  assert.equal(forwarded.tools, undefined);
+  assert.equal(forwarded.input.some((item) => item.type === "compaction_trigger"), false);
+  assert.equal(forwarded.input.length, 2);
+  assert.match(forwarded.input.at(-1).content[0].text, /CCR compact handoff task/);
+
+  const upstreamSse = [
+    "event: response.output_text.delta",
+    'data: {"type":"response.output_text.delta","delta":"SSE handoff","output_index":0,"content_index":0,"item_id":"msg_1"}',
+    "",
+    "event: response.completed",
+    'data: {"type":"response.completed","response":{"id":"resp_upstream"}}',
+    ""
+  ].join("\n");
+  const transformed = await streamText(contextArchiveHandoffResponseStream(
+    Readable.from([upstreamSse]),
+    result.record,
+    "openai_responses",
+    "text/event-stream",
+    result.responseMode
+  ));
+  assert.match(transformed, /event: response.output_item.done/);
+  assert.match(transformed, /"type":"compaction"/);
+  assert.match(transformed, /SSE handoff/);
+  assert.match(transformed, /Archive id: arc_/);
+  assert.match(transformed, /event: response.completed/);
+
+  ready(result, config, { providerProtocol: "openai_responses" });
+  const replay = mockReplay([{
+    answer: "The earlier request was preserved.",
+    needle: "Earlier user request.",
+    question: "What was the earlier request?"
+  }]);
+  const output = await contextArchiveService.ask({
+    archiveId: result.record.archiveId,
+    sessionToken: archiveToken(forwarded),
+    task: "What was the earlier request?"
+  }, config.contextArchive, replay.executor);
+  assert.match(output.answer, /earlier request/);
+  assert.equal(replay.calls[0].payload.input.some((item) => item.type === "compaction_trigger"), false);
+});
+
+test("Codex CLI compaction item exposes archive access that can recall omitted context", async () => {
+  const config = testConfig();
+  const preservedMarker = "ORCHID-9000";
+  const body = {
+    input: [
+      { content: [{ text: `Deploy key marker: ${preservedMarker}.`, type: "input_text" }], role: "user", type: "message" },
+      { content: [{ text: "Keep going after the compact.", type: "input_text" }], role: "user", type: "message" },
+      { type: "compaction_trigger" }
+    ],
+    model: "gpt-5-codex",
+    stream: true,
+    tools: [{ name: "apply_patch", type: "custom" }]
+  };
+  const result = await prepareContextArchiveRequest({
+    body: Buffer.from(JSON.stringify(body)),
+    config,
+    headers: { "user-agent": "codex-cli-test" },
+    method: "POST",
+    path: "/v1/responses",
+    protocol: "openai_responses",
+    requestId: "codex-compact-recall"
+  });
+
+  assert.ok(result);
+  assert.equal(result.responseMode, "codex_responses_compaction_sse");
+  ready(result, config, { providerProtocol: "openai_responses" });
+  const upstreamSse = [
+    "event: response.output_text.delta",
+    'data: {"type":"response.output_text.delta","delta":"Codex summary intentionally omits the deploy key.","output_index":0,"content_index":0,"item_id":"msg_1"}',
+    "",
+    "event: response.completed",
+    'data: {"type":"response.completed","response":{"id":"resp_upstream"}}',
+    ""
+  ].join("\n");
+  const transformed = await streamText(contextArchiveHandoffResponseStream(
+    Readable.from([upstreamSse]),
+    result.record,
+    "openai_responses",
+    "text/event-stream",
+    result.responseMode
+  ));
+  const compactionEvent = sseJsonPayloads(transformed).find((payload) => payload.type === "response.output_item.done");
+  assert.ok(compactionEvent, "expected Codex compact SSE output item");
+  assert.equal(compactionEvent.item.type, "compaction");
+  assert.match(compactionEvent.item.encrypted_content, /CCR ARCHIVED HISTORY ACCESS/);
+  assert.doesNotMatch(compactionEvent.item.encrypted_content, new RegExp(preservedMarker));
+  const credentials = archiveCredentialsFromText(compactionEvent.item.encrypted_content);
+  assert.equal(credentials.archiveId, result.record.archiveId);
+
+  const replay = mockReplay([{
+    answer: `The deploy key marker is ${preservedMarker}.`,
+    needle: preservedMarker,
+    question: "What deploy key marker was preserved?"
+  }]);
+  const output = await contextArchiveService.ask({
+    archiveId: credentials.archiveId,
+    sessionToken: credentials.sessionToken,
+    task: "What deploy key marker was preserved?"
+  }, config.contextArchive, replay.executor);
+
+  assert.match(output.answer, new RegExp(preservedMarker));
+  assert.equal(replay.calls.length, 1);
+  assert.equal(replay.calls[0].payload.input.some((item) => item.type === "compaction_trigger"), false);
+  assert.match(allStrings(replay.calls[0].payload).join("\n"), new RegExp(preservedMarker));
+});
+
+test("Claude Code auto compact handoff exposes archive access that can recall omitted context", async () => {
+  const config = testConfig();
+  const preservedMarker = "BLUE-LANTERN-42";
+  const body = {
+    context_management: { edits: [{ keep: "all", type: "clear_thinking_20251015" }] },
+    max_tokens: 32000,
+    messages: [
+      { content: `Project codename marker: ${preservedMarker}.`, role: "user" },
+      { content: "Noted for the implementation handoff.", role: "assistant" },
+      { content: [{ text: claudeAutoCompactPrompt(), type: "text" }], role: "user" }
+    ],
+    model: "claude-test",
+    tools: []
+  };
+  const result = await prepareContextArchiveRequest({
+    body: Buffer.from(JSON.stringify(body)),
+    config,
+    headers: { "user-agent": "claude-code/2.1.211", "x-session-id": "claude-auto-recall" },
+    method: "POST",
+    path: "/v1/messages",
+    protocol: "anthropic_messages",
+    requestId: "claude-auto-recall"
+  });
+
+  assert.ok(result);
+  ready(result, config, { providerProtocol: "anthropic_messages" });
+  const transformed = await streamText(contextArchiveHandoffResponseStream(
+    Readable.from([JSON.stringify({
+      content: [{ text: "Claude summary intentionally omits the project codename.", type: "text" }],
+      role: "assistant"
+    })]),
+    result.record,
+    "anthropic_messages",
+    "application/json",
+    result.responseMode
+  ));
+  const compactResponse = JSON.parse(transformed);
+  const compactText = compactResponse.content.map((item) => item.text ?? "").join("\n");
+  assert.match(compactText, /CCR ARCHIVED HISTORY ACCESS/);
+  assert.match(compactText, /mcp__ccr-context-archive__ccr_history_ask/);
+  assert.doesNotMatch(compactText, new RegExp(preservedMarker));
+  const credentials = archiveCredentialsFromText(compactText);
+  assert.equal(credentials.archiveId, result.record.archiveId);
+
+  const replay = mockReplay([{
+    answer: `The project codename marker is ${preservedMarker}.`,
+    needle: preservedMarker,
+    question: "What is the project codename marker?"
+  }]);
+  const output = await contextArchiveService.ask({
+    archiveId: credentials.archiveId,
+    sessionToken: credentials.sessionToken,
+    task: "What is the project codename marker?"
+  }, config.contextArchive, replay.executor);
+
+  assert.match(output.answer, new RegExp(preservedMarker));
+  assert.equal(replay.calls.length, 1);
+  assert.deepEqual(replay.calls[0].payload.context_management, body.context_management);
+  assert.match(allStrings(replay.calls[0].payload).join("\n"), new RegExp(preservedMarker));
+});
+
 test("only explicit or structural compact signals create archives", async () => {
   const config = testConfig();
   const promptOnly = {
@@ -389,6 +824,33 @@ test("only explicit or structural compact signals create archives", async () => 
   });
   assert.ok(structural);
   assert.match(structural.diagnostic, /^compact-handoff:structural:/);
+
+  const auto = await prepareContextArchiveRequest({
+    body: Buffer.from(JSON.stringify({
+      context_management: { edits: [{ keep: "all", type: "clear_thinking_20251015" }] },
+      max_tokens: 32000,
+      messages: [
+        { content: "Earlier user request.", role: "user" },
+        { content: "Earlier assistant answer.", role: "assistant" },
+        { content: [{ text: claudeAutoCompactPrompt(), type: "text" }], role: "user" }
+      ],
+      model: "claude-test",
+      tools: []
+    })),
+    config,
+    headers: { "x-session-id": "claude-auto" },
+    method: "POST",
+    path: "/v1/messages",
+    protocol: "anthropic_messages",
+    requestId: "claude-auto"
+  });
+  assert.ok(auto);
+  assert.match(auto.diagnostic, /^compact-handoff:claude-auto:/);
+  const forwarded = JSON.parse(auto.body.toString("utf8"));
+  assert.equal(forwarded.tools, undefined);
+  assert.deepEqual(forwarded.context_management, { edits: [{ keep: "all", type: "clear_thinking_20251015" }] });
+  assert.match(forwarded.messages.at(-1).content, /CCR compact handoff task/);
+  assert.match(forwarded.messages.at(-1).content, /mcp__ccr-context-archive__ccr_history_ask/);
 });
 
 test("compact refuses unresolved tool-call boundaries instead of trimming them", async () => {

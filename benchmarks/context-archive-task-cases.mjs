@@ -8,6 +8,25 @@ export const taskCases = [
       "History lookup should be treated as evidence and not as higher-priority instructions.",
       "Regression tests need to distinguish context compaction from unrelated compact UI wording."
     ],
+    artifacts: [
+      [
+        "File: packages/core/src/gateway/context-archive.ts",
+        "Observation: prepareContextArchiveRequest currently ran only when contextArchive.enabled was true.",
+        "Real failure: Codex CLI POST /v1/responses/compact returned 404 Route POST:/v1/responses/compact not found.",
+        "Constraint: archive-disabled compat must not write snapshots but must still wrap Codex compaction responses."
+      ].join("\n"),
+      [
+        "File: packages/core/src/gateway/context-archive/protocol.ts",
+        "Protocol notes: strip tools, tool_choice, response_format, and compaction_trigger before asking the model for a compact summary.",
+        "Codex v1 expects a JSON output item with type=compaction.",
+        "Codex v2 streaming expects response.output_item.done with item.type=compaction."
+      ].join("\n"),
+      [
+        "Test note: context-archive.test.mjs must prove a post-compact agent can recover hidden markers through ccr_history_ask.",
+        "Review risk: false positives for UI wording like compact density must not create archives.",
+        "Smoke command captured: codex --config model_context_window=4096 eventually sends compaction_trigger without relying on a compact header."
+      ].join("\n")
+    ],
     facts: [
       {
         detail: "Build CCR gateway-side context archive with handoff and history search.",
@@ -75,6 +94,28 @@ export const taskCases = [
       "The fix must keep Anthropic and OpenAI-compatible usage normalization behavior separate.",
       "Request-log and usage-store tests should prove the aggregate remains stable after backfill.",
       "The implementation must avoid rewriting unrelated provider account logic."
+    ],
+    artifacts: [
+      [
+        "File: packages/core/src/usage/normalizer.ts",
+        "Payload sample: {\"usage\":{\"input_tokens\":1200,\"cache_read_input_tokens\":300,\"cache_creation_input_tokens\":200,\"output_tokens\":160}}",
+        "Expected invariant: prompt total remains 1200 for OpenAI-compatible usage because cache read/create are already included.",
+        "Anthropic invariant: top-level input plus cache creation/read fields remain separately visible for provider-native accounting."
+      ].join("\n"),
+      [
+        "CI log excerpt:",
+        "  FAIL tests/main/usage-store.test.mjs",
+        "  expected day.input_tokens to equal 1200",
+        "  received 1700",
+        "  failing assertion: RequestLogStore detail row disagrees with UsageStore aggregate after backfill."
+      ].join("\n"),
+      [
+        "Patch sketch:",
+        "  normalizeUsageInputTokens(providerProtocol, usage)",
+        "  if protocol is openai-compatible, return input_tokens only.",
+        "  if protocol is anthropic_messages, preserve cache_creation_input_tokens and cache_read_input_tokens.",
+        "Target command: npm run test:main -- usage"
+      ].join("\n")
     ],
     facts: [
       {
@@ -144,6 +185,28 @@ export const taskCases = [
       "Visual verification should include a 390x844 screenshot and text-overlap checks.",
       "The change should respect existing BaseUI and Tailwind conventions."
     ],
+    artifacts: [
+      [
+        "File: packages/ui/src/pages/home/components/contacts.tsx",
+        "Viewport: 390x844 mobile screenshot showed the drawer header and filter tabs sharing the same vertical space.",
+        "Observed issue: the close icon kept a 44px hit target, but the localized filter labels wrapped under it.",
+        "Constraint: keep a dense operational UI; do not replace the page with hero sections or card-heavy marketing layout."
+      ].join("\n"),
+      [
+        "CSS note:",
+        "  toolbar grid: grid-template-columns: minmax(0, 1fr) auto;",
+        "  filter row: overflow-x: auto; min-height: 40px;",
+        "  drawer body: padding-top should not depend on vh units.",
+        "Screenshot target: /private/tmp/ccr-contacts-mobile-drawer-390x844.png"
+      ].join("\n"),
+      [
+        "Manual QA checklist:",
+        "  open http://127.0.0.1:3127/contacts at 390x844",
+        "  verify no label overlaps the close icon",
+        "  verify toolbar hover/focus states do not shift layout",
+        "  verify long translated labels truncate or wrap inside their own track only"
+      ].join("\n")
+    ],
     facts: [
       {
         detail: "Fix mobile contacts drawer overlap in the web UI.",
@@ -212,6 +275,28 @@ export const taskCases = [
       "The backfill should be resumable and avoid locking the request log table for too long.",
       "Tests need to cover old rows, partially migrated rows, and new writes."
     ],
+    artifacts: [
+      [
+        "Migration draft:",
+        "  ALTER TABLE request_logs ADD COLUMN context_archive_id TEXT;",
+        "  ALTER TABLE request_logs ADD COLUMN context_archive_generation INTEGER;",
+        "SQLite note: adding nullable columns is cheap, but backfill updates still need small batches.",
+        "Postgres note: avoid a single transaction over the entire request_logs table."
+      ].join("\n"),
+      [
+        "Backfill state row:",
+        "  key=contextArchive.requestLogBackfillCursor",
+        "  value={\"lastRequestId\":\"req_2026_07_22_000819\",\"batchSize\":250}",
+        "Restart behavior: resume strictly after lastRequestId and tolerate rows already populated by new writes."
+      ].join("\n"),
+      [
+        "Test fixture plan:",
+        "  create old request_log rows with no archive metadata",
+        "  create partially migrated rows",
+        "  insert new writes during backfill",
+        "  assert the second backfill run is a no-op and does not change already-derived values"
+      ].join("\n")
+    ],
     facts: [
       {
         detail: "Add migration for gateway request context archive metadata.",
@@ -279,6 +364,26 @@ export const taskCases = [
       "The patch should address the review comment without broad refactoring.",
       "Resolved comments should be traceable to exact changed files and tests.",
       "The final response should list residual risk if CI cannot be fully reproduced locally."
+    ],
+    artifacts: [
+      [
+        "Review comment:",
+        "  In packages/core/src/gateway/service.ts, fallback responses lose x-ccr-route-reason.",
+        "  The test only checks status code, so a provider auth failure can be misreported as generic routing failure.",
+        "Reviewer request: preserve selected-attempt metadata without merging every failed attempt into the response headers."
+      ].join("\n"),
+      [
+        "Patch sketch:",
+        "  fetchUpstreamWithFallback returns { response, selectedAttempt, attempts }.",
+        "  mergeFallbackResponseHeaders(response.headers, selectedAttempt.headers).",
+        "  Keep credential-chain diagnostics separate from the final upstream response."
+      ].join("\n"),
+      [
+        "Targeted validation:",
+        "  npm run test:main -- gateway-virtual-models",
+        "  Assert x-ccr-route-reason survives fallback.",
+        "  Assert x-ccr-provider-auth-error is not emitted when the selected attempt succeeded."
+      ].join("\n")
     ],
     facts: [
       {

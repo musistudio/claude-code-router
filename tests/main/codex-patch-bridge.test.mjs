@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
+import { Readable } from "node:stream";
 import test from "node:test";
 import {
+  codexCompactResponseStream
+} from "../../packages/core/src/gateway/context-archive.ts";
+import {
   prepareCodexApplyPatchBridgeRequest,
+  prepareCodexCompactCompatRequest,
   transformCodexApplyPatchBridgeResponseValue,
   transformCodexApplyPatchBridgeSseEvent
 } from "../../packages/core/src/gateway/service.ts";
@@ -60,6 +65,115 @@ test("Codex patch bridge leaves GPT models untouched", () => {
   });
 
   assert.equal(result, undefined);
+});
+
+test("Codex patch bridge skips compaction requests", () => {
+  const endpointResult = prepareCodexApplyPatchBridgeRequest({
+    body: Buffer.from(JSON.stringify({
+      input: [{ content: [{ text: "Compact history.", type: "input_text" }], role: "user", type: "message" }],
+      model: "openrouter/google/gemini-2.5-pro",
+      tools: [{ type: "custom", name: "apply_patch" }]
+    })),
+    config,
+    headers: { "user-agent": "codex-test" },
+    method: "POST",
+    path: "/v1/responses/compact"
+  });
+  assert.equal(endpointResult, undefined);
+
+  const triggerResult = prepareCodexApplyPatchBridgeRequest({
+    body: Buffer.from(JSON.stringify({
+      input: [{ type: "compaction_trigger" }],
+      model: "openrouter/google/gemini-2.5-pro",
+      tools: [{ type: "custom", name: "apply_patch" }]
+    })),
+    config,
+    headers: { "user-agent": "codex-test" },
+    method: "POST",
+    path: "/v1/responses"
+  });
+  assert.equal(triggerResult, undefined);
+});
+
+test("Codex compact compat rewrites compact endpoint without context archive", async () => {
+  const result = prepareCodexCompactCompatRequest({
+    body: Buffer.from(JSON.stringify({
+      input: [
+        { content: [{ text: "Need to remember ISSUE-1776.", type: "input_text" }], role: "user", type: "message" }
+      ],
+      model: "gpt-5-codex",
+      parallel_tool_calls: true,
+      tools: [{ name: "apply_patch", type: "custom" }]
+    })),
+    method: "POST",
+    path: "/v1/responses/compact",
+    protocol: "openai_responses"
+  });
+
+  assert.ok(result);
+  assert.equal(result.upstreamPath, "/v1/responses");
+  assert.equal(result.responseMode, "codex_responses_compact_json");
+  assert.equal(result.responseContentType, "application/json; charset=utf-8");
+  const forwarded = JSON.parse(result.body.toString("utf8"));
+  assert.equal(forwarded.tools, undefined);
+  assert.equal(forwarded.parallel_tool_calls, undefined);
+  assert.match(forwarded.input.at(-1).content[0].text, /compact continuation summary/);
+
+  const transformed = await streamText(codexCompactResponseStream(
+    Readable.from([JSON.stringify({ output: [{ content: [{ text: "Compat summary", type: "output_text" }], role: "assistant", type: "message" }] })]),
+    "openai_responses",
+    "application/json",
+    result.responseMode
+  ));
+  const compact = JSON.parse(transformed);
+  assert.equal(compact.output[0].type, "compaction");
+  assert.equal(compact.output[0].encrypted_content, "Compat summary");
+  assert.doesNotMatch(compact.output[0].encrypted_content, /CCR ARCHIVED HISTORY ACCESS/);
+});
+
+test("Codex compact compat rewrites compaction trigger without context archive", async () => {
+  const result = prepareCodexCompactCompatRequest({
+    body: Buffer.from(JSON.stringify({
+      input: [
+        { content: [{ text: "Need to remember TASK-4242.", type: "input_text" }], role: "user", type: "message" },
+        { type: "compaction_trigger" }
+      ],
+      model: "gpt-5-codex",
+      stream: true,
+      tools: [{ name: "apply_patch", type: "custom" }]
+    })),
+    method: "POST",
+    path: "/v1/responses",
+    protocol: "openai_responses"
+  });
+
+  assert.ok(result);
+  assert.equal(result.upstreamPath, undefined);
+  assert.equal(result.responseMode, "codex_responses_compaction_sse");
+  assert.equal(result.responseContentType, "text/event-stream; charset=utf-8");
+  const forwarded = JSON.parse(result.body.toString("utf8"));
+  assert.equal(forwarded.tools, undefined);
+  assert.equal(forwarded.input.some((item) => item.type === "compaction_trigger"), false);
+  assert.match(forwarded.input.at(-1).content[0].text, /compact continuation summary/);
+
+  const upstreamSse = [
+    "event: response.output_text.delta",
+    'data: {"type":"response.output_text.delta","delta":"Trigger summary","output_index":0,"content_index":0,"item_id":"msg_1"}',
+    "",
+    "event: response.completed",
+    'data: {"type":"response.completed","response":{"id":"resp_upstream"}}',
+    ""
+  ].join("\n");
+  const transformed = await streamText(codexCompactResponseStream(
+    Readable.from([upstreamSse]),
+    "openai_responses",
+    "text/event-stream",
+    result.responseMode
+  ));
+  assert.match(transformed, /event: response.output_item.done/);
+  assert.match(transformed, /"type":"compaction"/);
+  assert.match(transformed, /Trigger summary/);
+  assert.doesNotMatch(transformed, /CCR ARCHIVED HISTORY ACCESS/);
 });
 
 test("Codex patch bridge discourages shell-based file edits", () => {
@@ -147,3 +261,11 @@ test("Codex patch bridge rewrites virtual function SSE events", () => {
   assert.equal(data.item.name, "apply_patch");
   assert.equal(data.item.input, patch);
 });
+
+async function streamText(stream) {
+  const chunks = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}

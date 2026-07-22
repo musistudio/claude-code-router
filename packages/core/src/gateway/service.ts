@@ -47,7 +47,11 @@ import { fetchWithSystemProxy, getSystemProxyUrlForProtocol } from "@ccr/core/pr
 import { handleNetworkCaptureMcpRequest, isNetworkCaptureMcpPath } from "@ccr/core/mcp/network-capture-mcp";
 import { BROWSER_AUTOMATION_MCP_PATH, TOOL_HUB_MCP_SERVER_NAME, browserAutomationMcpEnabled, toolHubBuiltInBackendServers, toolHubMcpRuntimeConfig, toolHubRequestTimeoutMs } from "@ccr/core/mcp/toolhub-config";
 import {
+  contextArchiveConfigForApiKey,
+  contextArchiveMcpEnabled,
   contextArchiveMcpServer,
+  contextArchiveService,
+  codexCompactResponseStream,
   contextArchiveHandoffResponseStream,
   failContextArchiveRequest,
   finalizeContextArchiveRequest,
@@ -56,8 +60,17 @@ import {
   prepareContextArchiveRequest,
   type ContextArchiveRecord,
   type ContextArchiveReplayInput,
+  type ContextArchiveReplayExecutor,
   type ContextArchiveReplayResult
 } from "@ccr/core/gateway/context-archive";
+import {
+  appendCompactHandoffTask,
+  codexCompactArchiveResponseContentType,
+  codexResponsesPathForCompact,
+  hasCodexResponsesCompactionTrigger,
+  isCodexResponsesCompactPath,
+  type ContextArchiveResponseMode
+} from "@ccr/core/gateway/context-archive/protocol";
 import { pluginService } from "@ccr/core/plugins/service";
 import { proxyService } from "@ccr/core/proxy/service";
 import { createSseErrorDetector, recordGatewayRequestLog, updateGatewayRequestLogFromRawTrace, type RequestLogRawTraceUpdateInput } from "@ccr/core/observability/request-log-store";
@@ -88,6 +101,11 @@ type CoreGatewayProvider = {
 const defaultFusionWebSearchProvider: VirtualModelFusionWebSearchProvider = "brave";
 const fusionModelProviderName = "Fusion";
 const claudeCodeOneMillionContextSuffix = "[1m]";
+const codexCompactCompatSummaryTask = [
+  "Create a compact continuation summary of the conversation so far.",
+  "Preserve the current goal, user requirements, decisions, important files, commands run, test results, open issues, and any exact identifiers needed later.",
+  "Do not continue the task and do not call tools. Return plain text only."
+].join("\n");
 const claudeAppGatewayModelRouteOptions: ClaudeAppGatewayModelRouteOptions = {
   displayName: (model) => findModelCatalogEntry(model)?.displayName,
   supportsOneMillionContext: (model) => Boolean(findModelCatalogEntry(model)?.limits?.supports1MContext)
@@ -130,6 +148,22 @@ type ClaudeCodeWebSearchContinuationContext = {
   queryHint?: string;
   sinceMs: number;
   toolName: string;
+};
+
+type ContextArchiveToolContinuationContext = {
+  archiveId: string;
+  body: Buffer;
+  config: AppConfig;
+  executedCalls: number;
+  maxIterations: number;
+  sessionToken: string;
+  toolName: string;
+};
+
+type ContextArchiveFunctionCall = {
+  arguments: string;
+  callId: string;
+  name: string;
 };
 
 export type BrowserWebSearchMcpRegistration = {
@@ -620,10 +654,15 @@ class GatewayService {
       if (!authorization.ok) {
         return;
       }
+      const contextArchiveConfig = contextArchiveConfigForApiKey(this.config, authorization.apiKey);
+      if (!contextArchiveConfig) {
+        sendJson(response, 404, { error: { message: "CCR context archive MCP is disabled." } });
+        return;
+      }
       await handleContextArchiveMcpRequest(
         request,
         response,
-        this.config,
+        contextArchiveConfig,
         (input) => this.replayContextArchive(input)
       );
       return;
@@ -943,25 +982,73 @@ class GatewayService {
       }
     }
 
+    const contextArchiveToolContinuation = prepareContextArchiveToolContinuationRequest({
+      apiKey,
+      body: bodyToForward,
+      config: this.config,
+      method,
+      path,
+      protocol: requestProtocolForPath(path)
+    });
+    if (contextArchiveToolContinuation) {
+      bodyToForward = contextArchiveToolContinuation.body;
+      headers["content-type"] = "application/json";
+      headers["x-ccr-context-archive-tool"] = "injected";
+    }
+
     let contextArchiveRecord: ContextArchiveRecord | undefined;
+    let contextArchiveResponseContentType: string | undefined;
+    let contextArchiveResponseMode: ContextArchiveResponseMode | undefined;
+    let codexCompactCompatResponseMode: ContextArchiveResponseMode | undefined;
+    let upstreamPath = path;
+    const requestProtocol = requestProtocolForPath(path);
     const contextArchivePreparation = await prepareContextArchiveRequest({
+      apiKey,
       body: bodyToForward,
       config: this.config,
       headers: request.headers,
       method,
       path,
-      protocol: requestProtocolForPath(path),
+      protocol: requestProtocol,
       requestId
     });
+    const contextArchiveRequestConfig = contextArchivePreparation?.config ?? this.config;
     if (contextArchivePreparation) {
       bodyToForward = contextArchivePreparation.body;
       contextArchiveRecord = contextArchivePreparation.record;
+      contextArchiveResponseContentType = contextArchivePreparation.responseContentType;
+      contextArchiveResponseMode = contextArchivePreparation.responseMode;
+      upstreamPath = contextArchivePreparation.upstreamPath ?? upstreamPath;
       headers["content-type"] = "application/json";
       headers["x-ccr-context-archive"] = sanitizeHeaderValue(contextArchivePreparation.diagnostic);
+      delete headers["x-ccr-context-compact"];
+      delete headers["x-context-compact"];
+    }
+    const codexCompactCompatPreparation = contextArchivePreparation
+      ? undefined
+      : prepareCodexCompactCompatRequest({
+          body: bodyToForward,
+          method,
+          path,
+          protocol: requestProtocol
+        });
+    if (codexCompactCompatPreparation) {
+      bodyToForward = codexCompactCompatPreparation.body;
+      contextArchiveResponseContentType = codexCompactCompatPreparation.responseContentType;
+      contextArchiveResponseMode = codexCompactCompatPreparation.responseMode;
+      codexCompactCompatResponseMode = codexCompactCompatPreparation.responseMode;
+      upstreamPath = codexCompactCompatPreparation.upstreamPath ?? upstreamPath;
+      headers["content-type"] = "application/json";
+      headers["x-ccr-codex-compact"] = sanitizeHeaderValue(codexCompactCompatPreparation.diagnostic);
+      delete headers["content-length"];
     }
 
     delete headers["content-length"];
-    const upstreamUrl = new URL(request.url || "/", this.status.coreEndpoint).toString();
+    const originalRequestUrl = new URL(request.url || path, "http://127.0.0.1");
+    const upstreamRequestPath = upstreamPath === path
+      ? request.url || path
+      : `${upstreamPath}${originalRequestUrl.search}`;
+    const upstreamUrl = new URL(upstreamRequestPath, this.status.coreEndpoint).toString();
     let upstreamResult: UpstreamFetchResult;
 
     try {
@@ -971,14 +1058,14 @@ class GatewayService {
         fallback: routeFallback,
         headers,
         method,
-        path,
+        path: upstreamPath,
         routedModel,
         coreAuthToken: this.coreAuthToken,
         signal: upstreamAbortController.signal,
         upstreamUrl
       });
     } catch (error) {
-      failContextArchiveRequest(contextArchiveRecord, this.config);
+      failContextArchiveRequest(contextArchiveRecord, contextArchiveRequestConfig);
       const message = formatError(error);
       if (error instanceof UpstreamRequestError) {
         bodyToForward = error.attempt?.body ?? bodyToForward;
@@ -1007,6 +1094,22 @@ class GatewayService {
       throw error;
     }
 
+    if (contextArchiveToolContinuation && upstreamResult.response.ok) {
+      upstreamResult = await resolveContextArchiveToolContinuation({
+        context: contextArchiveToolContinuation,
+        coreAuthToken: this.coreAuthToken,
+        executor: (input: ContextArchiveReplayInput) => this.replayContextArchive(input),
+        fallback: routeFallback,
+        headers,
+        method,
+        path: upstreamPath,
+        routedModel,
+        signal: upstreamAbortController.signal,
+        upstreamResult,
+        upstreamUrl
+      });
+    }
+
     bodyToForward = upstreamResult.attempt.body ?? bodyToForward;
     routedModel = upstreamResult.attempt.model ?? routedModel;
     const responseHeaders = rewriteCapabilityResponseHeaders(
@@ -1027,15 +1130,25 @@ class GatewayService {
         logicalProvider: upstreamResult.attempt.logicalProvider ?? responseHeaders.get("x-gateway-target-provider-name") ?? undefined,
         providerProtocol: upstreamResult.attempt.credentialProtocol ?? resolveResponseProviderProtocol(responseHeaders, this.config),
         routedModel
-      }, this.config);
+      }, contextArchiveRequestConfig);
     } else {
-      failContextArchiveRequest(contextArchiveRecord, this.config);
+      failContextArchiveRequest(contextArchiveRecord, contextArchiveRequestConfig);
     }
+    const appendContextArchiveFooter = Boolean(contextArchiveRecord && upstreamResponse.ok);
+    const transformCodexCompactResponse = Boolean(!contextArchiveRecord && codexCompactCompatResponseMode && upstreamResponse.ok);
+    const contextArchiveSourceContentType = responseHeaders.get("content-type") ?? undefined;
     if (codexApplyPatchBridgeActive) {
       responseHeaders.delete("content-length");
     }
-    if (contextArchiveRecord) {
+    if (appendContextArchiveFooter || transformCodexCompactResponse) {
       responseHeaders.delete("content-length");
+      if (contextArchiveResponseContentType) {
+        responseHeaders.set("content-type", contextArchiveResponseContentType);
+      }
+    }
+    if (contextArchiveToolContinuation?.executedCalls) {
+      responseHeaders.delete("content-length");
+      responseHeaders.set("x-ccr-context-archive-tool-calls", String(contextArchiveToolContinuation.executedCalls));
     }
     const hostedWebSearchResponseContentType = responseHeaders.get("content-type")?.toLowerCase() ?? "";
     if (
@@ -1081,13 +1194,21 @@ class GatewayService {
           this.browserWebSearchMcpIntegration
         )
       : patchedResponseBody;
-    const responseBody = contextArchiveRecord
+    const responseBody = appendContextArchiveFooter && contextArchiveRecord
       ? contextArchiveHandoffResponseStream(
           protocolResponseBody,
           contextArchiveRecord,
-          requestProtocolForPath(path) ?? "anthropic_messages",
-          responseHeaders.get("content-type") ?? undefined
+          requestProtocolForPath(upstreamPath) ?? "anthropic_messages",
+          contextArchiveSourceContentType,
+          contextArchiveResponseMode
         )
+      : transformCodexCompactResponse && codexCompactCompatResponseMode
+        ? codexCompactResponseStream(
+            protocolResponseBody,
+            requestProtocolForPath(upstreamPath) ?? "openai_responses",
+            contextArchiveSourceContentType,
+            codexCompactCompatResponseMode
+          )
       : protocolResponseBody;
     const sampler = createBodySampler();
     const sseErrorDetector = createSseErrorDetector(responseHeaders.get("content-type") ?? undefined);
@@ -1128,7 +1249,7 @@ class GatewayService {
       }
     });
     responseBody.on("error", (error) => {
-      failContextArchiveRequest(contextArchiveRecord, this.config);
+      failContextArchiveRequest(contextArchiveRecord, contextArchiveRequestConfig);
       streamDetectedError ??= sseErrorDetector.finish();
       writeStreamLog(clientDisconnected ? clientDisconnectMessage : formatError(error));
     });
@@ -1162,7 +1283,10 @@ class GatewayService {
       throw new Error(`ARCHIVE_ROUTE_UNAVAILABLE: Archive ${input.snapshot.archiveId} has no finalized route.`);
     }
 
-    const normalizedBody = normalizeConfiguredProviderModelBody(input.body, config)?.body ?? input.body;
+    const normalizedBody = bodyHasConfiguredProviderModelSelector(input.body, config) ||
+      bodyHasInternalProviderCapabilityModelSelector(input.body)
+      ? input.body
+      : normalizeConfiguredProviderModelBody(input.body, config)?.body ?? input.body;
     const body = usageAwareOpenAiChatAttemptBody({
       body: normalizedBody,
       config,
@@ -2550,6 +2674,43 @@ export function prepareGatewayUpstreamAttemptForTest(input: {
   };
 }
 
+export function prepareCodexCompactCompatRequest(input: {
+  body?: Buffer;
+  method: string;
+  path: string;
+  protocol?: GatewayProviderProtocol;
+}): {
+  body: Buffer;
+  diagnostic: string;
+  responseContentType?: string;
+  responseMode: ContextArchiveResponseMode;
+  upstreamPath?: string;
+} | undefined {
+  if (input.method.toUpperCase() !== "POST" || input.protocol !== "openai_responses") {
+    return undefined;
+  }
+  const parsedBody = parseJsonObjectSafe(input.body);
+  if (!parsedBody) {
+    return undefined;
+  }
+  const upstreamPath = codexResponsesPathForCompact(input.path);
+  const responseMode: ContextArchiveResponseMode | undefined = upstreamPath
+    ? "codex_responses_compact_json"
+    : hasCodexResponsesCompactionTrigger(parsedBody)
+      ? "codex_responses_compaction_sse"
+      : undefined;
+  if (!responseMode) {
+    return undefined;
+  }
+  return {
+    body: appendCompactHandoffTask(input.body ?? Buffer.alloc(0), input.protocol, codexCompactCompatSummaryTask),
+    diagnostic: upstreamPath ? "responses-compact" : "responses-compaction-trigger",
+    responseContentType: codexCompactArchiveResponseContentType(responseMode),
+    responseMode,
+    upstreamPath
+  };
+}
+
 export function prepareCodexApplyPatchBridgeRequest(input: {
   body?: Buffer;
   config: AppConfig;
@@ -2563,6 +2724,9 @@ export function prepareCodexApplyPatchBridgeRequest(input: {
   }
   const parsedBody = parseJsonObjectSafe(input.body);
   if (!parsedBody) {
+    return undefined;
+  }
+  if (isCodexResponsesCompactPath(input.path) || hasCodexResponsesCompactionTrigger(parsedBody)) {
     return undefined;
   }
   const model = input.routedModel || stringValue(parsedBody.model);
@@ -3044,6 +3208,252 @@ function createClaudeCodeWebSearchContinuationContext(input: {
     sinceMs: input.sinceMs,
     toolName
   };
+}
+
+function prepareContextArchiveToolContinuationRequest(input: {
+  apiKey?: ApiKeyConfig;
+  body: Buffer | undefined;
+  config: AppConfig;
+  method: string;
+  path: string;
+  protocol?: GatewayProviderProtocol;
+}): ContextArchiveToolContinuationContext | undefined {
+  if (input.method !== "POST" || input.protocol !== "openai_responses") {
+    return undefined;
+  }
+  const config = contextArchiveConfigForApiKey(input.config, input.apiKey);
+  if (!config || !contextArchiveMcpEnabled(config)) {
+    return undefined;
+  }
+  const body = parseJsonObjectSafe(input.body);
+  if (!body) {
+    return undefined;
+  }
+  const archiveAccess = openAiResponsesContextArchiveAccess(body);
+  if (!archiveAccess) {
+    return undefined;
+  }
+  const toolName = config.contextArchive.toolName || "ccr_history_ask";
+  const next = { ...body };
+  next.instructions = appendStringInstruction(next.instructions, contextArchiveToolContinuationGuidance(toolName));
+  next.tools = appendContextArchiveOpenAiResponsesTool(next.tools, toolName);
+  return {
+    archiveId: archiveAccess.archiveId,
+    body: Buffer.from(`${JSON.stringify(next)}\n`, "utf8"),
+    config,
+    executedCalls: 0,
+    maxIterations: 4,
+    sessionToken: archiveAccess.sessionToken,
+    toolName
+  };
+}
+
+async function resolveContextArchiveToolContinuation(input: {
+  context: ContextArchiveToolContinuationContext;
+  coreAuthToken: string;
+  executor: ContextArchiveReplayExecutor;
+  fallback: RouterFallbackConfig;
+  headers: Record<string, string>;
+  method: string;
+  path: string;
+  routedModel?: string;
+  signal: AbortSignal;
+  upstreamResult: UpstreamFetchResult;
+  upstreamUrl: string;
+}): Promise<UpstreamFetchResult> {
+  let requestBody = input.context.body;
+  let result = input.upstreamResult;
+  for (let iteration = 0; iteration < input.context.maxIterations; iteration += 1) {
+    const responseHeaders = upstreamResponseHeaders(result);
+    const contentType = responseHeaders.get("content-type")?.toLowerCase() ?? "";
+    if (!contentType.includes("application/json")) {
+      return result;
+    }
+    const responseBody = Buffer.from(await result.response.arrayBuffer());
+    const parsedResponse = parseJsonObjectSafe(responseBody);
+    if (!parsedResponse) {
+      return withBufferedResponse(result, responseBody);
+    }
+    const calls = openAiResponsesFunctionCalls(parsedResponse);
+    const archiveCalls = calls.filter((call) => call.name === input.context.toolName);
+    if (archiveCalls.length === 0) {
+      return withBufferedResponse(result, responseBody);
+    }
+    if (archiveCalls.length !== calls.length) {
+      return withBufferedResponse(result, responseBody);
+    }
+    const toolOutputs: Record<string, unknown>[] = [];
+    for (const call of archiveCalls) {
+      const output = await executeContextArchiveFunctionCall(input.context, call, input.executor);
+      toolOutputs.push({
+        call_id: call.callId,
+        output: JSON.stringify(output),
+        type: "function_call_output"
+      });
+      input.context.executedCalls += 1;
+    }
+    const nextBody = appendOpenAiResponsesToolOutputs(requestBody, parsedResponse, toolOutputs);
+    if (!nextBody) {
+      return withBufferedResponse(result, responseBody);
+    }
+    requestBody = nextBody;
+    const headers: Record<string, string> = {
+      ...input.headers,
+      "content-type": "application/json",
+      "x-ccr-context-archive-tool": "continuation",
+      "x-ccr-context-archive-tool-calls": String(input.context.executedCalls)
+    };
+    delete headers["content-length"];
+    result = await fetchUpstreamWithFallback({
+      body: requestBody,
+      config: input.context.config,
+      fallback: input.fallback,
+      headers,
+      method: input.method,
+      path: input.path,
+      routedModel: input.routedModel,
+      coreAuthToken: input.coreAuthToken,
+      signal: input.signal,
+      upstreamUrl: input.upstreamUrl
+    });
+  }
+  return result;
+}
+
+function withBufferedResponse(result: UpstreamFetchResult, body: Buffer): UpstreamFetchResult {
+  return {
+    ...result,
+    response: new Response(new Uint8Array(body), {
+      headers: new Headers(result.response.headers),
+      status: result.response.status,
+      statusText: result.response.statusText
+    })
+  };
+}
+
+async function executeContextArchiveFunctionCall(
+  context: ContextArchiveToolContinuationContext,
+  call: ContextArchiveFunctionCall,
+  executor: ContextArchiveReplayExecutor
+): Promise<Record<string, unknown>> {
+  const args = parseFunctionCallArguments(call.arguments);
+  const output = await contextArchiveService.ask({
+    archiveId: stringValue(args.archive_id ?? args.archiveId) ?? context.archiveId,
+    sessionToken: stringValue(args.session_token ?? args.sessionToken) ?? context.sessionToken,
+    task: stringValue(args.task) ?? ""
+  }, context.config.contextArchive, executor);
+  return output as unknown as Record<string, unknown>;
+}
+
+function parseFunctionCallArguments(value: string): Record<string, unknown> {
+  if (!value.trim()) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function appendOpenAiResponsesToolOutputs(
+  requestBody: Buffer,
+  responseBody: Record<string, unknown>,
+  toolOutputs: Record<string, unknown>[]
+): Buffer | undefined {
+  const body = parseJsonObjectSafe(requestBody);
+  if (!body || toolOutputs.length === 0) {
+    return undefined;
+  }
+  const responseOutput = Array.isArray(responseBody.output) ? responseBody.output : [];
+  const input = Array.isArray(body.input)
+    ? body.input
+    : body.input === undefined
+      ? []
+      : [body.input];
+  const next = {
+    ...body,
+    input: [...input, ...responseOutput, ...toolOutputs]
+  };
+  return Buffer.from(`${JSON.stringify(next)}\n`, "utf8");
+}
+
+function openAiResponsesFunctionCalls(responseBody: Record<string, unknown>): ContextArchiveFunctionCall[] {
+  const output = Array.isArray(responseBody.output) ? responseBody.output : [];
+  return output.flatMap((item) => {
+    if (!isRecord(item) || item.type !== "function_call") {
+      return [];
+    }
+    const name = stringValue(item.name);
+    const callId = stringValue(item.call_id) ?? stringValue(item.id);
+    if (!name || !callId) {
+      return [];
+    }
+    return [{
+      arguments: typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments ?? {}),
+      callId,
+      name
+    }];
+  });
+}
+
+function appendContextArchiveOpenAiResponsesTool(tools: unknown, toolName: string): unknown[] {
+  const current = Array.isArray(tools) ? tools : [];
+  if (current.some((tool) => isRecord(tool) && stringValue(tool.name) === toolName)) {
+    return current;
+  }
+  return [...current, contextArchiveOpenAiResponsesTool(toolName)];
+}
+
+function contextArchiveOpenAiResponsesTool(toolName: string): Record<string, unknown> {
+  return {
+    type: "function",
+    name: toolName,
+    description: [
+      "Ask the archived pre-compaction agent lineage a natural-language history task.",
+      "Use this when the compact handoff says historical details are available in CCR archived history.",
+      "Pass archive_id and session_token exactly from the compact handoff.",
+      "For many related questions, include every question id and full question text in one task and ask for JSON evidence keyed by question id."
+    ].join(" "),
+    parameters: {
+      additionalProperties: false,
+      properties: {
+        archive_id: { description: "Exact immutable archive id from the handoff.", type: "string" },
+        session_token: { description: "Opaque access token from the same handoff.", type: "string" },
+        task: { description: "Natural-language task for the archived previous-context agent.", type: "string" }
+      },
+      required: ["archive_id", "session_token", "task"],
+      type: "object"
+    }
+  };
+}
+
+function contextArchiveToolContinuationGuidance(toolName: string): string {
+  return [
+    "CCR context archive is available for this compacted continuation.",
+    `If the compact handoff indicates missing historical details are stored in archived history, use the ${toolName} tool when that history is needed.`,
+    "Use ordinary task judgment: answer directly when the compact handoff and retained tail are sufficient; call the history tool when exact pre-compaction details are needed."
+  ].join(" ");
+}
+
+function openAiResponsesContextArchiveAccess(body: Record<string, unknown>): { archiveId: string; sessionToken: string } | undefined {
+  const input = Array.isArray(body.input) ? body.input : [];
+  for (const item of input) {
+    if (!isRecord(item) || item.type !== "compaction") {
+      continue;
+    }
+    const text = rawStringValue(item.encrypted_content) ?? "";
+    if (!text.includes("CCR ARCHIVED HISTORY ACCESS")) {
+      continue;
+    }
+    const archiveId = (/Archive id:\s*([A-Za-z0-9_-]+)/.exec(text) ?? [])[1];
+    const sessionToken = (/Archive session token:\s*([A-Za-z0-9_-]+)/.exec(text) ?? [])[1];
+    if (archiveId && sessionToken) {
+      return { archiveId, sessionToken };
+    }
+  }
+  return undefined;
 }
 
 export function prepareHostedWebSearchProtocolRequestBody(
@@ -5547,6 +5957,9 @@ function requestProtocolForPath(path: string): GatewayProviderProtocol | undefin
   if (normalized === "/v1/responses" || normalized === "/responses" || normalized.endsWith("/responses")) {
     return "openai_responses";
   }
+  if (isCodexResponsesCompactPath(normalized)) {
+    return "openai_responses";
+  }
   if (/\/v1(?:beta)?\/models\/[^/]+:(?:generatecontent|streamgeneratecontent)$/i.test(normalized)) {
     return "gemini_generate_content";
   }
@@ -5885,20 +6298,34 @@ function prepareUpstreamCredentialAttempt(input: {
 
   const credentials = activeProviderCredentials(target.provider);
   if (credentials.length === 0) {
+    const headers: Record<string, string> = {
+      ...input.headers,
+      "x-gateway-target-provider": providerRuntimeId(target.provider),
+      "x-ccr-logical-provider": providerRuntimeId(target.provider)
+    };
     return {
       ...input.attempt,
-      body: attemptBody(target.body ?? normalizedBody?.body ?? input.attempt.body),
-      headers: input.headers
+      body: attemptBody(input.attempt.body ?? target.body ?? normalizedBody?.body),
+      credentialProtocol: target.protocol,
+      headers,
+      logicalProvider: target.provider.name
     };
   }
 
   const usage = estimateLimitUsage(input.method, input.attempt.body ?? Buffer.alloc(0));
   const selection = selectProviderCredentials(target.provider, target.protocol, credentials, usage);
   if (selection.credentials.length === 0) {
+    const headers: Record<string, string> = {
+      ...input.headers,
+      "x-gateway-target-provider": providerRuntimeId(target.provider),
+      "x-ccr-logical-provider": providerRuntimeId(target.provider)
+    };
     return {
       ...input.attempt,
-      body: attemptBody(target.body ?? normalizedBody?.body ?? input.attempt.body),
-      headers: input.headers
+      body: attemptBody(input.attempt.body ?? target.body ?? normalizedBody?.body),
+      credentialProtocol: target.protocol,
+      headers,
+      logicalProvider: target.provider.name
     };
   }
 
@@ -5991,6 +6418,12 @@ function bodyHasConfiguredProviderModelSelector(body: Buffer | undefined, config
   const parsedBody = parseJsonObjectSafe(body);
   const model = stringValue(parsedBody?.model);
   return Boolean(resolveConfiguredProviderModelSelector(model, config));
+}
+
+function bodyHasInternalProviderCapabilityModelSelector(body: Buffer | undefined): boolean {
+  const parsedBody = parseJsonObjectSafe(body);
+  const model = normalizeRouteSelector(stringValue(parsedBody?.model));
+  return Boolean(model && /^[^/]+::[a-z_]+\/[^/]+$/i.test(model));
 }
 
 function resolveProviderCredentialRoutingTarget(
@@ -7753,10 +8186,11 @@ function prepareClaudeAppFallbackModelRequest(
 }
 
 function createGatewayModelsResponse(config: AppConfig, headers: IncomingHttpHeaders, apiKey?: ApiKeyConfig): Record<string, unknown> {
+  const modelConfig = contextArchiveConfigForApiKey(config, apiKey) ?? config;
   if (isClaudeAppApiKey(apiKey) || isClaudeCodeUserAgent(headers)) {
-    return createClaudeAppGatewayModelsResponse(config);
+    return createClaudeAppGatewayModelsResponse(modelConfig);
   }
-  return createOpenAICompatibleGatewayModelsResponse(config);
+  return createOpenAICompatibleGatewayModelsResponse(modelConfig);
 }
 
 function createOpenAICompatibleGatewayModelsResponse(config: AppConfig): Record<string, unknown> {
@@ -7780,6 +8214,7 @@ function createOpenAICompatibleGatewayModelsResponse(config: AppConfig): Record<
 
 function createClaudeAppGatewayModelsResponse(config: AppConfig): Record<string, unknown> {
   const routes = buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions);
+  const contextArchiveCompact = contextArchiveMcpEnabled(config);
   const data = routes.map((route) => {
     const catalogId = stripClaudeCodeOneMillionContextSuffix(route.targetModel);
     const catalogEntry = findModelCatalogEntry(catalogId);
@@ -7789,7 +8224,8 @@ function createClaudeAppGatewayModelsResponse(config: AppConfig): Record<string,
       id: route.id,
       capabilities: createClaudeCodeModelCapabilities(catalogEntry, {
         maxInputTokens,
-        oneMillionContext: route.oneMillionContext
+        oneMillionContext: route.oneMillionContext,
+        contextArchiveCompact
       }),
       created_at: "1970-01-01T00:00:00Z",
       display_name: route.displayName,
@@ -7809,6 +8245,7 @@ function createClaudeAppGatewayModelsResponse(config: AppConfig): Record<string,
 
 function createClaudeCodeModelsResponse(config: AppConfig): Record<string, unknown> {
   const models = buildClaudeCodeDiscoverableModels(config);
+  const contextArchiveCompact = contextArchiveMcpEnabled(config);
   const data = models.map((model) => {
     const claudeId = claudeCodeDiscoveryModelId(model.id);
     const catalogId = stripClaudeCodeOneMillionContextSuffix(model.id);
@@ -7819,7 +8256,8 @@ function createClaudeCodeModelsResponse(config: AppConfig): Record<string, unkno
       id: claudeId,
       capabilities: createClaudeCodeModelCapabilities(catalogEntry, {
         maxInputTokens,
-        oneMillionContext: model.oneMillionContext
+        oneMillionContext: model.oneMillionContext,
+        contextArchiveCompact
       }),
       created_at: "1970-01-01T00:00:00Z",
       display_name: formatClaudeCodeModelDisplayName(claudeId, catalogEntry, model.oneMillionContext),
@@ -7835,6 +8273,10 @@ function createClaudeCodeModelsResponse(config: AppConfig): Record<string, unkno
     has_more: false,
     last_id: data[data.length - 1]?.id ?? null
   };
+}
+
+export function createClaudeCodeModelsResponseForTest(config: AppConfig): Record<string, unknown> {
+  return createClaudeCodeModelsResponse(config);
 }
 
 function claudeGatewayModelContextWindow(entry: ModelCatalogEntry | undefined, oneMillionContext: boolean): number {
@@ -8030,10 +8472,10 @@ function formatClaudeCodeModelDisplayName(
 
 function createClaudeCodeModelCapabilities(
   entry?: ModelCatalogEntry,
-  options: { maxInputTokens?: number; oneMillionContext?: boolean } = {}
+  options: { contextArchiveCompact?: boolean; maxInputTokens?: number; oneMillionContext?: boolean } = {}
 ): Record<string, unknown> {
   if (!entry) {
-    return createDefaultClaudeCodeModelCapabilities();
+    return createDefaultClaudeCodeModelCapabilities(options);
   }
 
   const capabilities = entry.capabilities ?? {};
@@ -8058,6 +8500,7 @@ function createClaudeCodeModelCapabilities(
   const supportsVideoInput = readCatalogCapability(capabilities, "videoInput") || inputModalities.has("video");
   const maxInputTokens = options.maxInputTokens ?? modelCatalogMaxInputTokens(entry);
   const supportsOneMillionContext = Boolean(entry.limits?.supports1MContext);
+  const supportsCompact = options.contextArchiveCompact === true && maxInputTokens > 0;
 
   return {
     audio_input: { supported: supportsAudioInput },
@@ -8068,7 +8511,7 @@ function createClaudeCodeModelCapabilities(
     context_management: {
       clear_thinking_20251015: { supported: supportsReasoning },
       clear_tool_uses_20250919: { supported: supportsToolUse },
-      compact_20260112: { supported: maxInputTokens > 0 },
+      compact_20260112: { supported: supportsCompact },
       max_input_tokens: maxInputTokens,
       supported: maxInputTokens > 0
     },
@@ -8101,7 +8544,9 @@ function createClaudeCodeModelCapabilities(
   };
 }
 
-function createDefaultClaudeCodeModelCapabilities(): Record<string, unknown> {
+function createDefaultClaudeCodeModelCapabilities(
+  options: { contextArchiveCompact?: boolean } = {}
+): Record<string, unknown> {
   return {
     batch: { supported: true },
     citations: { supported: true },
@@ -8109,7 +8554,7 @@ function createDefaultClaudeCodeModelCapabilities(): Record<string, unknown> {
     context_management: {
       clear_thinking_20251015: { supported: true },
       clear_tool_uses_20250919: { supported: true },
-      compact_20260112: { supported: true },
+      compact_20260112: { supported: options.contextArchiveCompact === true },
       supported: true
     },
     effort: {

@@ -1,0 +1,23 @@
+{
+  "benchmark": "native-vs-text-original-fixtures-via-ccr-gateway-agent",
+  "apiUrl": "http://127.0.0.1:3456/v1/responses",
+  "archiveMaxOutputTokens": null,
+  "categories": [
+    "exact_recall",
+    "relational_state",
+    "tool_history",
+    "distractor_resolution",
+    "task_continuation"
+  ],
+  "compressedArm": "[ccr compaction item, retained tail, original questions]; original fixture tools are present; CCR injects and executes history retrieval in gateway",
+  "createdAt": "2026-07-22T15:24:19.718Z",
+  "evaluator": "Original fixture questions; runner does not expose or call ccr_history_ask; gateway injects/parses/executes it; primary scorer accepts flat or wrapped JSON and expected-value containment",
+  "evaluationMaxOutputTokens": null,
+  "fixtureCount": 1,
+  "model": "DeepSeek/deepseek-v4-flash",
+  "questionsPerFixture": 75,
+  "scorer": "lenient",
+  "sourceFixtures": "/tmp/pi-openai-server-compaction.tbp5qj/benchmarks/native-vs-text/final-results/2026-07-17T01-51-59-774Z_gpt-5.6-sol/fixtures.json",
+  "toolChoice": "auto",
+  "trials": 1
+}

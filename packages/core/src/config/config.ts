@@ -2139,6 +2139,10 @@ function parseProfile(value: unknown): LoadedProfileConfig | undefined {
     if (typeof claudeCode.enabled === "boolean") {
       profile.claudeCode.enabled = claudeCode.enabled;
     }
+    const managedCompact = readManagedCompact(claudeCode);
+    if (managedCompact !== undefined) {
+      profile.claudeCode.managedCompact = managedCompact;
+    }
     const settingsFile = readString(claudeCode.settingsFile) || readString(claudeCode.configFile) || readString(claudeCode.path);
     if (settingsFile) {
       profile.claudeCode.settingsFile = settingsFile;
@@ -2158,6 +2162,10 @@ function parseProfile(value: unknown): LoadedProfileConfig | undefined {
     profile.codex = {};
     if (typeof codex.enabled === "boolean") {
       profile.codex.enabled = codex.enabled;
+    }
+    const managedCompact = readManagedCompact(codex);
+    if (managedCompact !== undefined) {
+      profile.codex.managedCompact = managedCompact;
     }
     if (typeof codex.cliMiddleware === "boolean") {
       profile.codex.cliMiddleware = codex.cliMiddleware;
@@ -2257,6 +2265,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         : "";
       const parsedBotGateway = parseBotGateway(item.botGateway ?? item.bot_gateway ?? item.bot);
       const botGateway = surface !== "cli" && parsedBotGateway ? completeBotGatewayConfig(parsedBotGateway) : undefined;
+      const managedCompact = readManagedCompact(item);
 
       if (agent === "claude-code") {
         return {
@@ -2266,6 +2275,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
           enabled,
           env: claudeCodeProfileEnv(env),
           id,
+          ...(managedCompact !== undefined ? { managedCompact } : {}),
           model,
           name,
           scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
@@ -2287,6 +2297,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         enabled,
         env: codexCompatibleProfileEnv(env),
         id,
+        ...(managedCompact !== undefined ? { managedCompact } : {}),
         model,
         name,
         providerId: readString(item.providerId) || readString(item.provider) || "claude-code-router",
@@ -2323,6 +2334,16 @@ function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
   return undefined;
 }
 
+function readManagedCompact(value: Record<string, unknown>): boolean | undefined {
+  const candidate = value.managedCompact ??
+    value.managed_compact ??
+    value.ccrManagedCompact ??
+    value.ccr_managed_compact ??
+    value.contextArchiveCompact ??
+    value.context_archive_compact;
+  return typeof candidate === "boolean" ? candidate : undefined;
+}
+
 function defaultProfileAgentName(agent: ProfileConfig["agent"]): string {
   if (agent === "claude-code") {
     return "Claude Code";
@@ -2351,6 +2372,7 @@ function profileFromClaudeCodeConfig(config: ClaudeCodeProfileConfig): ProfileCo
     enabled: config.enabled,
     env: claudeCodeProfileEnv(),
     id: "default-claude-code",
+    managedCompact: config.managedCompact,
     model: config.model,
     name: "Claude Code",
     scope: "global",
@@ -2383,6 +2405,7 @@ function profileFromCodexConfig(config: CodexProfileConfig): ProfileConfig {
     enabled: config.enabled,
     env: {},
     id: "default-codex",
+    managedCompact: config.managedCompact,
     model: config.model,
     name: "Codex",
     providerId: config.providerId,

@@ -1,0 +1,69 @@
+{
+  "byArm": {
+    "ccr_compressed_agent": {
+      "correct": 75,
+      "total": 75,
+      "accuracy": 1
+    }
+  },
+  "byCategory": {
+    "exact_recall": {
+      "ccr_compressed_agent": {
+        "correct": 15,
+        "total": 15,
+        "accuracy": 1
+      }
+    },
+    "relational_state": {
+      "ccr_compressed_agent": {
+        "correct": 15,
+        "total": 15,
+        "accuracy": 1
+      }
+    },
+    "tool_history": {
+      "ccr_compressed_agent": {
+        "correct": 15,
+        "total": 15,
+        "accuracy": 1
+      }
+    },
+    "distractor_resolution": {
+      "ccr_compressed_agent": {
+        "correct": 15,
+        "total": 15,
+        "accuracy": 1
+      }
+    },
+    "task_continuation": {
+      "ccr_compressed_agent": {
+        "correct": 15,
+        "total": 15,
+        "accuracy": 1
+      }
+    }
+  },
+  "completedTrials": 1,
+  "diagnosticStrictOriginal": {
+    "correct": 0,
+    "total": 75,
+    "accuracy": 0
+  },
+  "perFixture": {
+    "fixture-01": {
+      "ccr_compressed_agent": {
+        "correct": 75,
+        "total": 75,
+        "accuracy": 1
+      }
+    }
+  },
+  "toolCalls": {
+    "total": 1,
+    "withSearchedGeneration": 1
+  },
+  "usage": {
+    "totalInputTokens": 14940,
+    "totalOutputTokens": 3232
+  }
+}

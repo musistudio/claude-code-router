@@ -176,41 +176,36 @@ export function ProfileView({
   );
 }
 
-function ClaudeCodeContextArchiveCompactSetting({
-  contextArchive,
+function ManagedCompactSetting({
+  agent,
+  checked,
   onChange
 }: {
-  contextArchive: AppConfig["contextArchive"];
-  onChange: (patch: Partial<AppConfig["contextArchive"]>) => void;
+  agent: ProfileConfig["agent"];
+  checked: boolean;
+  onChange: (checked: boolean) => void;
 }) {
   const t = useAppText();
-  const checked = Boolean(contextArchive.enabled && contextArchive.mcpEnabled !== false);
+  const title = t("CCR managed compact");
 
   return (
     <div className="rounded-md border border-border bg-muted/20 px-3 py-3">
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
-            <AgentLogo agent="claude-code" className="h-6 w-6 rounded-[5px]" />
+            <AgentLogo agent={agent} className="h-6 w-6 rounded-[5px]" />
             <div className="min-w-0">
-              <div className="truncate text-[13px] font-semibold">{t("CCR compact for Claude Code")}</div>
+              <div className="truncate text-[13px] font-semibold">{title}</div>
               <div className="mt-0.5 text-[12px] leading-5 text-muted-foreground">
-                {t("Use CCR context archive when Claude Code runs /compact.")}
+                {t("Use CCR context archive for this profile's auto compact requests.")}
               </div>
             </div>
           </div>
         </div>
         <Toggle
           checked={checked}
-          title={t("CCR compact for Claude Code")}
-          onChange={(enabled) => onChange(enabled
-            ? {
-                enabled: true,
-                mcpEnabled: true
-              }
-            : {
-                enabled: false
-              })}
+          title={title}
+          onChange={onChange}
         />
       </div>
     </div>
@@ -799,21 +794,17 @@ function ProfileModelSelector({
 
 export function AddProfileForm({
   botConfigs,
-  contextArchive,
   draft,
   error,
   onChange,
-  onChangeContextArchive,
   onCreateBot,
   providers,
   virtualModelProfiles = []
 }: {
   botConfigs: BotGatewaySavedConfig[];
-  contextArchive?: AppConfig["contextArchive"];
   draft: AddProfileDraft;
   error: string;
   onChange: (patch: Partial<AddProfileDraft>) => void;
-  onChangeContextArchive?: (patch: Partial<AppConfig["contextArchive"]>) => void;
   onCreateBot: () => void;
   providers: GatewayProviderConfig[];
   virtualModelProfiles?: VirtualModelProfileConfig[];
@@ -907,11 +898,12 @@ export function AddProfileForm({
             </Field>
           </>
         )}
-        {draft.agent === "claude-code" && contextArchive && onChangeContextArchive ? (
+        {draft.agent === "claude-code" || draft.agent === "codex" ? (
           <div className="sm:col-span-2">
-            <ClaudeCodeContextArchiveCompactSetting
-              contextArchive={contextArchive}
-              onChange={onChangeContextArchive}
+            <ManagedCompactSetting
+              agent={draft.agent}
+              checked={draft.managedCompact}
+              onChange={(managedCompact) => onChange({ managedCompact })}
             />
           </div>
         ) : null}
@@ -1239,12 +1231,10 @@ function handoffTargetMatchesSavedValue(target: BotHandoffScanTarget, savedValue
 export function AddProfileDialog({
   botConfigs,
   canSubmit,
-  contextArchive,
   draft,
   error,
   mode = "add",
   onChange,
-  onChangeContextArchive,
   onCreateBot,
   onClose,
   providers,
@@ -1254,12 +1244,10 @@ export function AddProfileDialog({
 }: {
   botConfigs: BotGatewaySavedConfig[];
   canSubmit: boolean;
-  contextArchive: AppConfig["contextArchive"];
   draft: AddProfileDraft;
   error: string;
   mode?: "add" | "edit";
   onChange: (patch: Partial<AddProfileDraft>) => void;
-  onChangeContextArchive: (patch: Partial<AppConfig["contextArchive"]>) => void;
   onCreateBot: () => void;
   onClose: () => void;
   providers: GatewayProviderConfig[];
@@ -1280,11 +1268,9 @@ export function AddProfileDialog({
         <DialogBody>
 	          <AddProfileForm
               botConfigs={botConfigs}
-              contextArchive={contextArchive}
               draft={draft}
               error={error}
               onChange={onChange}
-              onChangeContextArchive={onChangeContextArchive}
               onCreateBot={onCreateBot}
               providers={providers}
               virtualModelProfiles={virtualModelProfiles}

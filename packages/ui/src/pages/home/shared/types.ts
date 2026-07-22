@@ -496,6 +496,7 @@ export type AddProfileDraft = {
   botPlatform: string;
   configFile: string;
   envRows: KeyValueDraftRow[];
+  managedCompact: boolean;
   model: string;
   name: string;
   providerId: string;

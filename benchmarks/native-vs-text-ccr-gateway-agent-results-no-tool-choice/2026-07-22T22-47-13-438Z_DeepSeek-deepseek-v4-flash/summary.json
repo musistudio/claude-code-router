@@ -1,0 +1,101 @@
+{
+  "byArm": {
+    "ccr_gateway_agent": {
+      "correct": 885,
+      "total": 900,
+      "accuracy": 0.9833333333333333
+    }
+  },
+  "byCategory": {
+    "exact_recall": {
+      "ccr_gateway_agent": {
+        "correct": 177,
+        "total": 180,
+        "accuracy": 0.9833333333333333
+      }
+    },
+    "relational_state": {
+      "ccr_gateway_agent": {
+        "correct": 170,
+        "total": 180,
+        "accuracy": 0.9444444444444444
+      }
+    },
+    "tool_history": {
+      "ccr_gateway_agent": {
+        "correct": 180,
+        "total": 180,
+        "accuracy": 1
+      }
+    },
+    "distractor_resolution": {
+      "ccr_gateway_agent": {
+        "correct": 180,
+        "total": 180,
+        "accuracy": 1
+      }
+    },
+    "task_continuation": {
+      "ccr_gateway_agent": {
+        "correct": 178,
+        "total": 180,
+        "accuracy": 0.9888888888888889
+      }
+    }
+  },
+  "completedTrials": 12,
+  "diagnosticStrictOriginal": {
+    "correct": 0,
+    "total": 900,
+    "accuracy": 0
+  },
+  "gatewayHistoryToolCalls": 15,
+  "perFixture": {
+    "fixture-01": {
+      "ccr_gateway_agent": {
+        "correct": 150,
+        "total": 150,
+        "accuracy": 1
+      }
+    },
+    "fixture-02": {
+      "ccr_gateway_agent": {
+        "correct": 149,
+        "total": 150,
+        "accuracy": 0.9933333333333333
+      }
+    },
+    "fixture-03": {
+      "ccr_gateway_agent": {
+        "correct": 149,
+        "total": 150,
+        "accuracy": 0.9933333333333333
+      }
+    },
+    "fixture-04": {
+      "ccr_gateway_agent": {
+        "correct": 138,
+        "total": 150,
+        "accuracy": 0.92
+      }
+    },
+    "fixture-05": {
+      "ccr_gateway_agent": {
+        "correct": 149,
+        "total": 150,
+        "accuracy": 0.9933333333333333
+      }
+    },
+    "fixture-06": {
+      "ccr_gateway_agent": {
+        "correct": 150,
+        "total": 150,
+        "accuracy": 1
+      }
+    }
+  },
+  "usage": {
+    "totalInputTokens": 95673,
+    "totalOutputTokens": 61138
+  }
+}

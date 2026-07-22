@@ -1,0 +1,65 @@
+{
+  "byArm": {
+    "ccr_tool_retrieval": {
+      "correct": 73,
+      "total": 75,
+      "accuracy": 0.9733333333333334
+    }
+  },
+  "byCategory": {
+    "exact_recall": {
+      "ccr_tool_retrieval": {
+        "correct": 15,
+        "total": 15,
+        "accuracy": 1
+      }
+    },
+    "relational_state": {
+      "ccr_tool_retrieval": {
+        "correct": 15,
+        "total": 15,
+        "accuracy": 1
+      }
+    },
+    "tool_history": {
+      "ccr_tool_retrieval": {
+        "correct": 15,
+        "total": 15,
+        "accuracy": 1
+      }
+    },
+    "distractor_resolution": {
+      "ccr_tool_retrieval": {
+        "correct": 13,
+        "total": 15,
+        "accuracy": 0.8666666666666667
+      }
+    },
+    "task_continuation": {
+      "ccr_tool_retrieval": {
+        "correct": 15,
+        "total": 15,
+        "accuracy": 1
+      }
+    }
+  },
+  "completedTrials": 1,
+  "diagnosticStrictOriginal": {
+    "correct": 0,
+    "total": 75,
+    "accuracy": 0
+  },
+  "perFixture": {
+    "fixture-01": {
+      "ccr_tool_retrieval": {
+        "correct": 73,
+        "total": 75,
+        "accuracy": 0.9733333333333334
+      }
+    }
+  },
+  "usage": {
+    "totalInputTokens": 39551,
+    "totalOutputTokens": 2792
+  }
+}

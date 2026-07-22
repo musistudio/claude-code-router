@@ -1,0 +1,72 @@
+{
+  "byArm": {
+    "ccr_archive_replay": {
+      "correct": 900,
+      "total": 900,
+      "accuracy": 1
+    }
+  },
+  "byCategory": {
+    "exact_recall": {
+      "correct": 180,
+      "total": 180,
+      "accuracy": 1
+    },
+    "relational_state": {
+      "correct": 180,
+      "total": 180,
+      "accuracy": 1
+    },
+    "tool_history": {
+      "correct": 180,
+      "total": 180,
+      "accuracy": 1
+    },
+    "distractor_resolution": {
+      "correct": 180,
+      "total": 180,
+      "accuracy": 1
+    },
+    "task_continuation": {
+      "correct": 180,
+      "total": 180,
+      "accuracy": 1
+    }
+  },
+  "byFixture": {
+    "fixture-01": {
+      "correct": 150,
+      "total": 150,
+      "accuracy": 1
+    },
+    "fixture-02": {
+      "correct": 150,
+      "total": 150,
+      "accuracy": 1
+    },
+    "fixture-03": {
+      "correct": 150,
+      "total": 150,
+      "accuracy": 1
+    },
+    "fixture-04": {
+      "correct": 150,
+      "total": 150,
+      "accuracy": 1
+    },
+    "fixture-05": {
+      "correct": 150,
+      "total": 150,
+      "accuracy": 1
+    },
+    "fixture-06": {
+      "correct": 150,
+      "total": 150,
+      "accuracy": 1
+    }
+  },
+  "costUsd": 3.6583270000000003,
+  "completedTrials": 12,
+  "totalInputTokens": 474182,
+  "totalOutputTokens": 59056
+}

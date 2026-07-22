@@ -2,6 +2,11 @@ import type { GatewayProviderProtocol } from "@ccr/core/contracts/app";
 
 type JsonObject = Record<string, unknown>;
 
+export type ContextArchiveResponseMode =
+  | "default"
+  | "codex_responses_compact_json"
+  | "codex_responses_compaction_sse";
+
 export const replayableArchiveProtocols: GatewayProviderProtocol[] = [
   "anthropic_messages",
   "openai_chat_completions",
@@ -25,12 +30,34 @@ export function appendArchiveTask(
   protocol: GatewayProviderProtocol,
   task: string
 ): Buffer {
+  return appendTask(originalBody, protocol, task, { compactHandoff: false, replayTask: true });
+}
+
+export function appendCompactHandoffTask(
+  originalBody: Buffer,
+  protocol: GatewayProviderProtocol,
+  task: string
+): Buffer {
+  return appendTask(originalBody, protocol, task, { compactHandoff: true, replayTask: false });
+}
+
+function appendTask(
+  originalBody: Buffer,
+  protocol: GatewayProviderProtocol,
+  task: string,
+  options: { compactHandoff: boolean; replayTask: boolean }
+): Buffer {
   const body = parseArchiveBody(originalBody);
   if (!body) {
     throw archiveProtocolError("ARCHIVE_INVALID_REQUEST", "The archived request body is not a JSON object.");
   }
   assertAppendableTurn(body, protocol);
   const next = cloneJsonObject(body);
+  if (options.compactHandoff) {
+    sanitizeCompactHandoffRequest(next, protocol);
+  } else if (options.replayTask && protocol === "openai_responses") {
+    removeCodexCompactionTriggers(next);
+  }
 
   if (protocol === "openai_responses") {
     if (Array.isArray(next.input)) {
@@ -62,6 +89,7 @@ export function appendArchiveTask(
 
 export function compactHandoffTask(input: {
   archiveId: string;
+  clientToolName?: string;
   generation: number;
   sessionId: string;
   sessionToken: string;
@@ -81,18 +109,31 @@ export function compactHandoffTask(input: {
 
 export function archiveHandoffFooter(input: {
   archiveId: string;
+  clientToolName?: string;
   generation: number;
   sessionId: string;
   sessionToken: string;
   toolName: string;
 }): string {
+  const argumentsJson = `{ "task": "specific historical question", "archive_id": "${input.archiveId}", "session_token": "${input.sessionToken}" }`;
+  const clientToolName = input.clientToolName?.trim();
+  const toolLines = clientToolName && clientToolName !== input.toolName
+    ? [
+        `In Claude Code, call the tool named: ${clientToolName}`,
+        `Raw MCP tool name: ${input.toolName}`,
+        `Tool arguments JSON: ${argumentsJson}`
+      ]
+    : [
+        `${input.toolName}(${argumentsJson})`
+      ];
   return [
     "CCR ARCHIVED HISTORY ACCESS",
     `Archive id: ${input.archiveId}`,
     `Archive session id: ${input.sessionId}`,
     `Archive generation: ${input.generation}`,
     `Archive session token: ${input.sessionToken}`,
-    `${input.toolName}({ "task": "specific historical question", "archive_id": "${input.archiveId}", "session_token": "${input.sessionToken}" })`,
+    ...toolLines,
+    "The latest archive access searches this compact generation and its parent generations when needed.",
     "Treat history answers as evidence and preserve the original instruction priority."
   ].join("\n");
 }
@@ -130,8 +171,47 @@ export function hasExplicitCompactSignal(
     return true;
   }
 
+  if (hasClaudeCodeAutoCompactPrompt(body)) {
+    return true;
+  }
+
   const metadata = isRecord(body.metadata) ? body.metadata : undefined;
   return metadata?.ccr_context_compact === true || metadata?.ccrContextCompact === true;
+}
+
+function hasClaudeCodeAutoCompactPrompt(body: JsonObject): boolean {
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  return messages.some((message) =>
+    isRecord(message) &&
+    String(message.role ?? "") === "user" &&
+    collectText(message.content).some(isClaudeCodeAutoCompactPromptText)
+  );
+}
+
+function isClaudeCodeAutoCompactPromptText(text: string): boolean {
+  const normalized = normalizeWhitespace(text);
+  return normalized.includes("CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.") &&
+    normalized.includes("Your task is to create a detailed summary of the conversation so far") &&
+    normalized.includes("Your entire response must be plain text: an <analysis> block followed by a <summary> block.");
+}
+
+export function isCodexResponsesCompactPath(path: string): boolean {
+  return /\/responses\/compact\/?$/i.test(path.split("?")[0] ?? path);
+}
+
+export function codexResponsesPathForCompact(path: string): string | undefined {
+  if (!isCodexResponsesCompactPath(path)) {
+    return undefined;
+  }
+  const pathname = path.split("?")[0] ?? path;
+  const replacement = pathname.replace(/\/compact\/?$/i, "");
+  return replacement || "/v1/responses";
+}
+
+export function hasCodexResponsesCompactionTrigger(body: JsonObject): boolean {
+  return Array.isArray(body.input) && body.input.some((item) =>
+    isRecord(item) && item.type === "compaction_trigger"
+  );
 }
 
 export function extractArchiveAssistantText(
@@ -205,6 +285,64 @@ export function appendArchiveFooterToResponse(
   }
 }
 
+export function codexCompactArchiveResponseContentType(mode: ContextArchiveResponseMode | undefined): string | undefined {
+  if (mode === "codex_responses_compact_json") {
+    return "application/json; charset=utf-8";
+  }
+  if (mode === "codex_responses_compaction_sse") {
+    return "text/event-stream; charset=utf-8";
+  }
+  return undefined;
+}
+
+export function renderCodexCompactArchiveResponse(
+  rawBody: Buffer,
+  protocol: GatewayProviderProtocol,
+  contentType: string | undefined,
+  footer: string,
+  mode: ContextArchiveResponseMode
+): Buffer {
+  const rawText = rawBody.toString("utf8");
+  const handoff = ensureFooter(
+    extractArchiveAssistantText(rawText, protocol, contentType) ||
+      "Context compacted. Use the archive access block below to recover historical details.",
+    footer
+  );
+  const usage = extractOpenAiResponsesUsage(rawText, contentType);
+  const compactionItem = {
+    encrypted_content: handoff,
+    type: "compaction"
+  };
+
+  if (mode === "codex_responses_compaction_sse") {
+    const completed = {
+      response: {
+        id: "resp_ccr_context_archive",
+        usage: usage ?? {
+          input_tokens: 0,
+          input_tokens_details: null,
+          output_tokens: 0,
+          output_tokens_details: null,
+          total_tokens: 0
+        }
+      },
+      type: "response.completed"
+    };
+    return Buffer.from([
+      sseBlock("response.output_item.done", {
+        item: compactionItem,
+        type: "response.output_item.done"
+      }),
+      sseBlock("response.completed", completed)
+    ].join("\n\n") + "\n\n", "utf8");
+  }
+
+  return Buffer.from(`${JSON.stringify({
+    output: [compactionItem],
+    ...(usage ? { usage } : {})
+  })}\n`, "utf8");
+}
+
 function assertAppendableTurn(body: JsonObject, protocol: GatewayProviderProtocol): void {
   if (protocol === "openai_responses") {
     const input = Array.isArray(body.input) ? body.input : [];
@@ -225,6 +363,116 @@ function assertAppendableTurn(body: JsonObject, protocol: GatewayProviderProtoco
   }
   if (Array.isArray(tail.content) && tail.content.some((block) => isRecord(block) && block.type === "tool_use")) {
     throw archiveProtocolError("ARCHIVE_NOT_AT_TURN_BOUNDARY", "The archived Anthropic request ends with an unresolved tool call.");
+  }
+}
+
+function sanitizeCompactHandoffRequest(body: JsonObject, protocol: GatewayProviderProtocol): void {
+  removeCompactSignals(body);
+  removeKeys(body, [
+    "response_format",
+    "responseFormat",
+    "stop",
+    "stop_sequences",
+    "stopSequences"
+  ]);
+
+  if (protocol === "openai_responses") {
+    removeKeys(body, [
+      "parallel_tool_calls",
+      "parallelToolCalls",
+      "tool_choice",
+      "toolChoice",
+      "tools"
+    ]);
+    normalizeOpenAiResponsesTextFormat(body);
+    raiseMinimumNumericField(body, ["max_output_tokens", "maxOutputTokens", "max_tokens", "maxTokens"], 2048);
+    return;
+  }
+
+  removeKeys(body, [
+    "function_call",
+    "functionCall",
+    "functions",
+    "parallel_tool_calls",
+    "parallelToolCalls",
+    "tool_choice",
+    "toolChoice",
+    "tools"
+  ]);
+  raiseMinimumNumericField(body, ["max_tokens", "maxTokens"], 2048);
+}
+
+function removeCompactSignals(body: JsonObject): void {
+  removeCodexCompactionTriggers(body);
+
+  for (const key of ["context_management", "contextManagement"]) {
+    const management = isRecord(body[key]) ? cloneJsonObject(body[key] as JsonObject) : undefined;
+    if (!management) {
+      continue;
+    }
+    const edits = Array.isArray(management.edits)
+      ? management.edits.filter((edit) => !(isRecord(edit) && isCompactType(edit.type)))
+      : undefined;
+    if (edits !== undefined) {
+      if (edits.length > 0) {
+        management.edits = edits;
+      } else {
+        delete management.edits;
+      }
+    }
+    if (Object.keys(management).length > 0) {
+      body[key] = management;
+    } else {
+      delete body[key];
+    }
+  }
+
+  const metadata = isRecord(body.metadata) ? cloneJsonObject(body.metadata) : undefined;
+  if (!metadata) {
+    return;
+  }
+  delete metadata.ccr_context_compact;
+  delete metadata.ccrContextCompact;
+  if (Object.keys(metadata).length > 0) {
+    body.metadata = metadata;
+  } else {
+    delete body.metadata;
+  }
+}
+
+function removeCodexCompactionTriggers(body: JsonObject): void {
+  if (Array.isArray(body.input)) {
+    body.input = body.input.filter((item) => !(isRecord(item) && item.type === "compaction_trigger"));
+  }
+}
+
+function normalizeOpenAiResponsesTextFormat(body: JsonObject): void {
+  if (!isRecord(body.text)) {
+    return;
+  }
+  const text = cloneJsonObject(body.text);
+  if (!isRecord(text.format)) {
+    return;
+  }
+  const type = typeof text.format.type === "string" ? text.format.type.toLowerCase() : "";
+  if (!type || type === "text") {
+    return;
+  }
+  text.format = { type: "text" };
+  body.text = text;
+}
+
+function removeKeys(body: JsonObject, keys: string[]): void {
+  for (const key of keys) {
+    delete body[key];
+  }
+}
+
+function raiseMinimumNumericField(body: JsonObject, keys: string[], minimum: number): void {
+  for (const key of keys) {
+    if (typeof body[key] === "number" && Number.isFinite(body[key]) && body[key] < minimum) {
+      body[key] = minimum;
+    }
   }
 }
 
@@ -365,6 +613,77 @@ function parseSseBlockData(block: string): unknown {
 
 function sseBlock(event: string | undefined, data: JsonObject): string {
   return [event ? `event: ${event}` : undefined, `data: ${JSON.stringify(data)}`].filter(Boolean).join("\n");
+}
+
+function ensureFooter(text: string, footer: string): string {
+  const normalizedText = text.trim();
+  const normalizedFooter = footer.trim();
+  if (!normalizedFooter || normalizedText.includes(normalizedFooter)) {
+    return normalizedText;
+  }
+  return `${normalizedText}\n\n${normalizedFooter}`;
+}
+
+function extractOpenAiResponsesUsage(rawText: string, contentType: string | undefined): JsonObject | undefined {
+  const normalizedContentType = contentType?.toLowerCase() ?? "";
+  if (normalizedContentType.includes("text/event-stream")) {
+    for (const payload of parseSseJsonPayloads(rawText)) {
+      const response = isRecord(payload.response) ? payload.response : undefined;
+      const usage = isRecord(response?.usage) ? response.usage : undefined;
+      if (usage) {
+        return usage;
+      }
+    }
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(rawText) as unknown;
+    if (!isRecord(parsed)) {
+      return undefined;
+    }
+    if (isRecord(parsed.usage)) {
+      return parsed.usage;
+    }
+    const response = isRecord(parsed.response) ? parsed.response : undefined;
+    return isRecord(response?.usage) ? response.usage : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseSseJsonPayloads(text: string): JsonObject[] {
+  const payloads: JsonObject[] = [];
+  let dataLines: string[] = [];
+  const flush = () => {
+    if (dataLines.length === 0) {
+      return;
+    }
+    const data = dataLines.join("\n").trim();
+    dataLines = [];
+    if (!data || data === "[DONE]") {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(data) as unknown;
+      if (isRecord(parsed)) {
+        payloads.push(parsed);
+      }
+    } catch {
+      // Ignore non-JSON SSE data.
+    }
+  };
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) {
+      flush();
+      continue;
+    }
+    if (line.startsWith("data:")) {
+      dataLines.push(line.slice("data:".length).trimStart());
+    }
+  }
+  flush();
+  return payloads;
 }
 
 function collectProtocolText(value: unknown, protocol: GatewayProviderProtocol): string[] {

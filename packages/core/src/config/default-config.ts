@@ -111,6 +111,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
     profile: {
       claudeCode: {
         enabled: true,
+        managedCompact: false,
         model: "",
         settingsFile: "~/.claude/settings.json",
         smallFastModel: ""
@@ -122,6 +123,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
         configFormat: "separate_profile_files",
         configFile: "~/.codex/config.toml",
         enabled: true,
+        managedCompact: false,
         model: "",
         providerId: "claude-code-router",
         providerName: "Claude Code Router",
@@ -134,6 +136,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
           enabled: true,
           env: { ...CLAUDE_CODE_DEFAULT_ENV },
           id: "default-claude-code",
+          managedCompact: false,
           model: "",
           name: "Claude Code",
           scope: "global",
@@ -151,6 +154,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
           enabled: true,
           env: {},
           id: "default-codex",
+          managedCompact: false,
           model: "",
           name: "Codex",
           providerId: "claude-code-router",

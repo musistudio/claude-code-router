@@ -1,0 +1,20 @@
+{
+  "benchmark": "native-vs-text-original-fixtures-via-ccr-context-archive-tool",
+  "apiUrl": "http://127.0.0.1:3466/v1/responses",
+  "categories": [
+    "exact_recall",
+    "relational_state",
+    "tool_history",
+    "distractor_resolution",
+    "task_continuation"
+  ],
+  "createdAt": "2026-07-22T13:08:28.109Z",
+  "evaluator": "Original fixture questions and exact-string scoring; CCR compaction plus ccr_history_ask retrieval; final answer via CCR /v1/responses JSON schema",
+  "fixtureCount": 6,
+  "historyToolName": "ccr_history_ask",
+  "mcpUrl": "http://127.0.0.1:3466/__ccr/context-archive/mcp",
+  "model": "智谱 AI (国内) - Coding Plan/glm-5.2",
+  "questionsPerFixture": 75,
+  "sourceFixtures": "/tmp/pi-openai-server-compaction.tbp5qj/benchmarks/native-vs-text/final-results/2026-07-17T01-51-59-774Z_gpt-5.6-sol/fixtures.json",
+  "trials": 2
+}

@@ -16,7 +16,7 @@ import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-midd
 import { codexModelCatalogJson } from "@ccr/core/agents/codex/model-catalog";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { resolveZcodeConfigFile, writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "@ccr/core/agents/zcode/profile-config";
-import { CONTEXT_ARCHIVE_MCP_SERVER_NAME, contextArchiveMcpServer } from "@ccr/core/gateway/context-archive";
+import { CONTEXT_ARCHIVE_MCP_SERVER_NAME, contextArchiveConfigForProfile, contextArchiveMcpServer } from "@ccr/core/gateway/context-archive";
 import { normalizeRouteSelector } from "@ccr/core/gateway/claude-code-router-plugin";
 import {
   TOOL_HUB_MCP_RUNTIME_FILE_NAME,
@@ -34,6 +34,8 @@ const managedProviderStart = "# BEGIN CCR managed Codex provider";
 const managedProviderEnd = "# END CCR managed Codex provider";
 const managedToolHubMcpStart = "# BEGIN CCR managed ToolHub MCP";
 const managedToolHubMcpEnd = "# END CCR managed ToolHub MCP";
+const managedContextArchiveMcpStart = "# BEGIN CCR managed Context Archive MCP";
+const managedContextArchiveMcpEnd = "# END CCR managed Context Archive MCP";
 const originalBackupSuffix = ".ccr-original";
 const originalMissingSuffix = ".ccr-original-missing";
 const fallbackClientToken = "ccr-local";
@@ -41,6 +43,13 @@ const privateDirMode = 0o700;
 const privateExecutableMode = 0o700;
 const privateFileMode = 0o600;
 const publicExecutableMode = 0o755;
+
+type CodexContextArchiveMcpConfig = {
+  headers: Record<string, string>;
+  requestTimeoutMs: number;
+  startupTimeoutMs: number;
+  url: string;
+};
 
 export async function applyProfileConfig(config: AppConfig): Promise<ProfileApplyResult> {
   cleanupGeneratedBinBackups();
@@ -324,8 +333,12 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
     const appModelCatalogResult = writeCodexCompatibleAppModelCatalog(CONFIGDIR, { ...profile, model }, config);
     const showAllSessions = profile.agent === "zcode" ? false : Boolean(profile.showAllSessions);
     const toolHubMcpResult = writeCodexToolHubMcpRuntimeConfig(config, token);
+    const contextArchiveMcp = profile.agent === "codex"
+      ? codexContextArchiveMcpConfig(config, profile, token)
+      : undefined;
     const nextConfig = buildCodexConfigToml(source, {
       baseUrl: endpoint,
+      contextArchiveMcp,
       modelCatalogFile,
       configFormat,
       model,
@@ -361,6 +374,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
       modelCatalogFile ? `catalog ${modelCatalogFile}` : "",
       appModelCatalogResult.file ? `app catalog ${appModelCatalogResult.file}` : "",
       toolHubMcpResult.file ? `toolhub runtime ${toolHubMcpResult.file}` : "",
+      contextArchiveMcp ? "context archive MCP" : "",
       separateProfileResult?.file ? `profile ${separateProfileResult.file}` : "",
       middlewareResult?.file ? `middleware ${middlewareResult.file}` : ""
     ].filter(Boolean);
@@ -521,7 +535,7 @@ function writeClaudeCodeToolHubMcpConfig(config: AppConfig, profile: ProfileConf
       model: toolHubResolverModel(config)
     }
   });
-  const contextArchiveMcpConfig = claudeCodeContextArchiveMcpConfig(config, token);
+  const contextArchiveMcpConfig = claudeCodeContextArchiveMcpConfig(config, profile, token);
   const mcpServers = {
     ...(toolHubMcpConfig?.mcpServers ?? {}),
     ...(contextArchiveMcpConfig ? { [CONTEXT_ARCHIVE_MCP_SERVER_NAME]: contextArchiveMcpConfig } : {})
@@ -540,8 +554,12 @@ function writeClaudeCodeToolHubMcpConfig(config: AppConfig, profile: ProfileConf
   return { changed: runtimeResult.changed || writeResult.changed, file };
 }
 
-function claudeCodeContextArchiveMcpConfig(config: AppConfig, token: string): ClaudeCodeMcpServerConfig | undefined {
-  const server = contextArchiveMcpServer(config, gatewayEndpoint(config), token);
+function claudeCodeContextArchiveMcpConfig(config: AppConfig, profile: ProfileConfig, token: string): ClaudeCodeMcpServerConfig | undefined {
+  const contextArchiveConfig = contextArchiveConfigForProfile(config, profile);
+  if (!contextArchiveConfig) {
+    return undefined;
+  }
+  const server = contextArchiveMcpServer(contextArchiveConfig, gatewayEndpoint(config), token);
   if (!server || !("url" in server)) {
     return undefined;
   }
@@ -552,6 +570,27 @@ function claudeCodeContextArchiveMcpConfig(config: AppConfig, token: string): Cl
   return {
     ...(Object.keys(headers).length > 0 ? { headers } : {}),
     type: "http",
+    url: server.url
+  };
+}
+
+function codexContextArchiveMcpConfig(config: AppConfig, profile: ProfileConfig, token: string): CodexContextArchiveMcpConfig | undefined {
+  const contextArchiveConfig = contextArchiveConfigForProfile(config, profile);
+  if (!contextArchiveConfig) {
+    return undefined;
+  }
+  const server = contextArchiveMcpServer(contextArchiveConfig, gatewayEndpoint(config), token);
+  if (!server || !("url" in server)) {
+    return undefined;
+  }
+  const headers = {
+    ...(server.headers ?? {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  };
+  return {
+    headers,
+    requestTimeoutMs: server.requestTimeoutMs,
+    startupTimeoutMs: server.startupTimeoutMs,
     url: server.url
   };
 }
@@ -618,6 +657,7 @@ function buildCodexConfigToml(
   source: string,
   values: {
     baseUrl: string;
+    contextArchiveMcp?: CodexContextArchiveMcpConfig;
     modelCatalogFile: string;
     configFormat: "legacy" | "separate_profile_files";
     model: string;
@@ -631,8 +671,10 @@ function buildCodexConfigToml(
   let content = removeManagedBlock(source, managedRootStart, managedRootEnd);
   content = removeManagedBlock(content, managedProviderStart, managedProviderEnd);
   content = removeManagedBlock(content, managedToolHubMcpStart, managedToolHubMcpEnd);
+  content = removeManagedBlock(content, managedContextArchiveMcpStart, managedContextArchiveMcpEnd);
   content = removeCodexProviderTable(content, values.providerId);
   content = removeCodexMcpServerTable(content, TOOL_HUB_MCP_SERVER_NAME);
+  content = removeCodexMcpServerTable(content, CONTEXT_ARCHIVE_MCP_SERVER_NAME);
   if (values.configFormat === "separate_profile_files") {
     content = removeCodexProfileTable(content, values.providerId);
   }
@@ -662,8 +704,9 @@ function buildCodexConfigToml(
     ""
   ].join("\n");
   const toolHubMcpBlock = buildCodexToolHubMcpBlock(values.toolHubMcp);
+  const contextArchiveMcpBlock = buildCodexContextArchiveMcpBlock(values.contextArchiveMcp);
 
-  return `${rootBlock}${trimLeadingBlankLines(cleanedRoot)}${restSource}${providerBlock}${toolHubMcpBlock}`.replace(/\n{4,}/g, "\n\n\n");
+  return `${rootBlock}${trimLeadingBlankLines(cleanedRoot)}${restSource}${providerBlock}${toolHubMcpBlock}${contextArchiveMcpBlock}`.replace(/\n{4,}/g, "\n\n\n");
 }
 
 function buildCodexToolHubMcpBlock(runtime: ToolHubMcpRuntimeConfig | undefined): string {
@@ -682,6 +725,25 @@ function buildCodexToolHubMcpBlock(runtime: ToolHubMcpRuntimeConfig | undefined)
     `[${serverTable}.env]`,
     ...Object.entries(runtime.env).map(([key, value]) => `${tomlKey(key)} = ${tomlString(value)}`),
     managedToolHubMcpEnd,
+    ""
+  ].join("\n");
+}
+
+function buildCodexContextArchiveMcpBlock(config: CodexContextArchiveMcpConfig | undefined): string {
+  if (!config) {
+    return "";
+  }
+
+  const serverTable = `mcp_servers.${tomlKey(CONTEXT_ARCHIVE_MCP_SERVER_NAME)}`;
+  return [
+    "",
+    managedContextArchiveMcpStart,
+    `[${serverTable}]`,
+    `url = ${tomlString(config.url)}`,
+    ...(Object.keys(config.headers).length > 0 ? [`http_headers = ${tomlInlineStringTable(config.headers)}`] : []),
+    `startup_timeout_sec = ${Math.max(1, Math.ceil(config.startupTimeoutMs / 1000))}`,
+    `tool_timeout_sec = ${Math.max(1, Math.ceil(config.requestTimeoutMs / 1000))}`,
+    managedContextArchiveMcpEnd,
     ""
   ].join("\n");
 }
@@ -1195,7 +1257,11 @@ function removeCodexMcpServerTable(source: string, serverName: string): string {
     `[mcp_servers.${serverName}]`,
     `[mcp_servers.${tomlQuotedKey(serverName)}]`,
     `[mcp_servers.${serverName}.env]`,
-    `[mcp_servers.${tomlQuotedKey(serverName)}.env]`
+    `[mcp_servers.${tomlQuotedKey(serverName)}.env]`,
+    `[mcp_servers.${serverName}.http_headers]`,
+    `[mcp_servers.${tomlQuotedKey(serverName)}.http_headers]`,
+    `[mcp_servers.${serverName}.env_http_headers]`,
+    `[mcp_servers.${tomlQuotedKey(serverName)}.env_http_headers]`
   ]);
   const kept: string[] = [];
   for (let index = 0; index < lines.length; index += 1) {
@@ -1869,6 +1935,13 @@ function tomlString(value: string): string {
 
 function tomlStringArray(values: string[]): string {
   return `[${values.map((value) => tomlString(value)).join(", ")}]`;
+}
+
+function tomlInlineStringTable(values: Record<string, string>): string {
+  return `{ ${Object.entries(values)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${tomlKey(key)} = ${tomlString(value)}`)
+    .join(", ")} }`;
 }
 
 function tomlStringContent(value: string): string {

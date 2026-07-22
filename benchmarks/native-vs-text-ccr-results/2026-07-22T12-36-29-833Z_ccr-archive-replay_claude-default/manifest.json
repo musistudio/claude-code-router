@@ -1,0 +1,12 @@
+{
+  "benchmark": "native-vs-text-original-fixtures-ccr-archive-replay",
+  "sourceFixtures": "/tmp/pi-openai-server-compaction.tbp5qj/benchmarks/native-vs-text/final-results/2026-07-17T01-51-59-774Z_gpt-5.6-sol/fixtures.json",
+  "createdAt": "2026-07-22T12:36:29.834Z",
+  "evaluator": "Claude CLI archive replay; exact string scoring",
+  "fixtures": 1,
+  "trials": 1,
+  "questionsPerFixture": 75,
+  "totalQuestions": 75,
+  "model": "claude-default",
+  "claudeBin": "claude"
+}

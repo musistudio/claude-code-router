@@ -1098,6 +1098,7 @@ export type ProfileOpenSurface = "cli" | "app";
 
 export type ClaudeCodeProfileConfig = {
   enabled: boolean;
+  managedCompact: boolean;
   model: string;
   settingsFile: string;
   smallFastModel: string;
@@ -1110,6 +1111,7 @@ export type CodexProfileConfig = {
   configFormat: CodexProfileConfigFormat;
   configFile: string;
   enabled: boolean;
+  managedCompact: boolean;
   model: string;
   providerId: string;
   providerName: string;
@@ -1129,6 +1131,7 @@ export type ProfileConfig = {
   enabled: boolean;
   env?: Record<string, string>;
   id: string;
+  managedCompact?: boolean;
   model: string;
   name: string;
   providerId?: string;

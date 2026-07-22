@@ -4,22 +4,30 @@ import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:
 import { Readable, Transform } from "node:stream";
 import { CONTEXT_ARCHIVE_DB_FILE } from "@ccr/core/config/constants";
 import type {
+  ApiKeyConfig,
   AppConfig,
   ContextArchiveConfig,
   GatewayMcpServerConfig,
-  GatewayProviderProtocol
+  GatewayProviderProtocol,
+  ProfileConfig
 } from "@ccr/core/contracts/app";
 import {
   appendArchiveTask,
+  appendCompactHandoffTask,
   appendArchiveFooterToResponse,
   archiveHandoffFooter,
   archiveResponseRequiresTool,
+  codexCompactArchiveResponseContentType,
+  codexResponsesPathForCompact,
   compactHandoffTask,
   extractArchiveAssistantText,
+  hasCodexResponsesCompactionTrigger,
   hasExplicitCompactSignal,
   historyReplayTask,
   parseArchiveBody,
-  replayableArchiveProtocols
+  renderCodexCompactArchiveResponse,
+  replayableArchiveProtocols,
+  type ContextArchiveResponseMode
 } from "@ccr/core/gateway/context-archive/protocol";
 import {
   ContextArchiveStore,
@@ -54,10 +62,14 @@ export type ContextArchiveRecord = {
   sessionId: string;
 };
 
-type ContextArchivePreparation = {
+export type ContextArchivePreparation = {
   body: Buffer;
+  config: AppConfig;
   diagnostic: string;
   record: ContextArchiveRecord;
+  responseContentType?: string;
+  responseMode?: ContextArchiveResponseMode;
+  upstreamPath?: string;
 };
 
 export type ContextArchiveReplayInput = {
@@ -80,6 +92,9 @@ export type ContextArchiveAskOutput = {
   answer: string;
   archiveId: string;
   generation: number;
+  searchedGenerations?: number[];
+  sourceArchiveId?: string;
+  sourceGeneration?: number;
   task: string;
 };
 
@@ -87,6 +102,7 @@ const protocolVersion = "2024-11-05";
 const maxMcpRequestBytes = 2 * 1024 * 1024;
 const defaultToolName = "ccr_history_ask";
 const maxUpstreamErrorCharacters = 4000;
+const maxLineageReplayDepth = 32;
 
 export const CONTEXT_ARCHIVE_MCP_SERVER_NAME = "ccr-context-archive";
 export const CONTEXT_ARCHIVE_MCP_PATH = "/__ccr/context-archive/mcp";
@@ -153,6 +169,7 @@ export class ContextArchiveService {
     });
     const footer = archiveHandoffFooter({
       archiveId,
+      clientToolName: contextArchiveClaudeCodeToolName(input.config.toolName || defaultToolName),
       generation: snapshot.generation,
       sessionId: input.sessionId,
       sessionToken,
@@ -200,59 +217,62 @@ export class ContextArchiveService {
       throw contextArchiveError("ARCHIVE_INVALID_ARGUMENT", `${toolName} requires archive_id, session_token, and task.`);
     }
 
-    const snapshot = this.store(config).get(archiveId);
-    if (!snapshot) {
+    const store = this.store(config);
+    const rootSnapshot = store.get(archiveId);
+    if (!rootSnapshot) {
       throw contextArchiveError("ARCHIVE_NOT_FOUND", `Archive ${archiveId} does not exist or has expired.`);
     }
-    if (snapshot.expiresAt !== undefined && snapshot.expiresAt <= Date.now()) {
+    if (rootSnapshot.expiresAt !== undefined && rootSnapshot.expiresAt <= Date.now()) {
       throw contextArchiveError("ARCHIVE_EXPIRED", `Archive ${archiveId} has expired.`);
     }
-    if (snapshot.status !== "ready") {
-      throw contextArchiveError("ARCHIVE_NOT_READY", `Archive ${archiveId} is ${snapshot.status}.`);
+    if (rootSnapshot.status !== "ready") {
+      throw contextArchiveError("ARCHIVE_NOT_READY", `Archive ${archiveId} is ${rootSnapshot.status}.`);
     }
-    if (!constantTimeEqual(snapshot.tokenHash, sha256(sessionToken))) {
+    if (!constantTimeEqual(rootSnapshot.tokenHash, sha256(sessionToken))) {
       throw contextArchiveError("ARCHIVE_ACCESS_DENIED", "The archive session token is invalid.");
     }
     if (!executor) {
       throw contextArchiveError("ARCHIVE_REPLAY_UNAVAILABLE", "The gateway replay executor is not available.");
     }
 
-    const replayBody = appendArchiveTask(snapshot.body, snapshot.protocol, historyReplayTask(task));
-    const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(contextArchiveError("ARCHIVE_REPLAY_TIMEOUT", "The archived agent replay timed out.")),
-      clampInteger(config.replayTimeoutMs, 1000, 600000, 60000)
-    );
-    let result: ContextArchiveReplayResult;
-    try {
-      result = await executor({ body: replayBody, signal: controller.signal, snapshot });
-    } finally {
-      clearTimeout(timeout);
+    const lineage = store.lineage(archiveId, maxLineageReplayDepth);
+    const searchedGenerations: number[] = [];
+    let lastInsufficientAnswer: { answer: string; snapshot: ArchiveSnapshot } | undefined;
+    for (const snapshot of lineage) {
+      if (snapshot.expiresAt !== undefined && snapshot.expiresAt <= Date.now()) {
+        continue;
+      }
+      if (snapshot.status !== "ready") {
+        continue;
+      }
+      const answer = await replayArchiveSnapshot(snapshot, task, config, executor);
+      searchedGenerations.push(snapshot.generation);
+      if (isInsufficientArchiveAnswer(answer) && snapshot.parentArchiveId) {
+        lastInsufficientAnswer = { answer, snapshot };
+        continue;
+      }
+      return {
+        answer,
+        archiveId,
+        generation: rootSnapshot.generation,
+        searchedGenerations,
+        sourceArchiveId: snapshot.archiveId,
+        sourceGeneration: snapshot.generation,
+        task
+      };
     }
-
-    const rawText = Buffer.isBuffer(result.body) ? result.body.toString("utf8") : result.body;
-    if (result.statusCode < 200 || result.statusCode >= 300) {
-      throw contextArchiveError(
-        "ARCHIVE_UPSTREAM_ERROR",
-        `Archived agent returned HTTP ${result.statusCode}: ${rawText.slice(0, maxUpstreamErrorCharacters)}`
-      );
+    if (lastInsufficientAnswer) {
+      return {
+        answer: lastInsufficientAnswer.answer,
+        archiveId,
+        generation: rootSnapshot.generation,
+        searchedGenerations,
+        sourceArchiveId: lastInsufficientAnswer.snapshot.archiveId,
+        sourceGeneration: lastInsufficientAnswer.snapshot.generation,
+        task
+      };
     }
-    const answer = extractArchiveAssistantText(rawText, snapshot.protocol, result.contentType);
-    if (!answer && archiveResponseRequiresTool(rawText)) {
-      throw contextArchiveError(
-        "ARCHIVE_REPLAY_TOOL_REQUIRED",
-        "The archived agent requested a tool. Exact replay does not execute external client tools."
-      );
-    }
-    if (!answer) {
-      throw contextArchiveError("ARCHIVE_EMPTY_ANSWER", "The archived agent returned no textual answer.");
-    }
-    return {
-      answer,
-      archiveId,
-      generation: snapshot.generation,
-      task
-    };
+    throw contextArchiveError("ARCHIVE_NOT_READY", `Archive ${archiveId} has no ready lineage snapshots.`);
   }
 
   private store(config: ContextArchiveConfig): ContextArchiveStore {
@@ -268,12 +288,134 @@ export class ContextArchiveService {
 
 export const contextArchiveService = new ContextArchiveService();
 
+function contextArchiveClaudeCodeToolName(toolName: string): string {
+  return `mcp__${CONTEXT_ARCHIVE_MCP_SERVER_NAME}__${toolName}`;
+}
+
+async function replayArchiveSnapshot(
+  snapshot: ArchiveSnapshot,
+  task: string,
+  config: ContextArchiveConfig,
+  executor: ContextArchiveReplayExecutor
+): Promise<string> {
+  const replayBody = appendArchiveTask(snapshot.body, snapshot.protocol, historyReplayTask(task));
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(contextArchiveError("ARCHIVE_REPLAY_TIMEOUT", "The archived agent replay timed out.")),
+    clampInteger(config.replayTimeoutMs, 1000, 600000, 60000)
+  );
+  let result: ContextArchiveReplayResult;
+  try {
+    result = await executor({ body: replayBody, signal: controller.signal, snapshot });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const rawText = Buffer.isBuffer(result.body) ? result.body.toString("utf8") : result.body;
+  if (result.statusCode < 200 || result.statusCode >= 300) {
+    throw contextArchiveError(
+      "ARCHIVE_UPSTREAM_ERROR",
+      `Archived agent returned HTTP ${result.statusCode}: ${rawText.slice(0, maxUpstreamErrorCharacters)}`
+    );
+  }
+  const answer = extractArchiveAssistantText(rawText, snapshot.protocol, result.contentType);
+  if (!answer && archiveResponseRequiresTool(rawText)) {
+    throw contextArchiveError(
+      "ARCHIVE_REPLAY_TOOL_REQUIRED",
+      "The archived agent requested a tool. Exact replay does not execute external client tools."
+    );
+  }
+  if (!answer) {
+    throw contextArchiveError("ARCHIVE_EMPTY_ANSWER", "The archived agent returned no textual answer.");
+  }
+  return answer;
+}
+
+function isInsufficientArchiveAnswer(answer: string): boolean {
+  const normalized = answer.toLowerCase().replace(/\s+/g, " ").trim();
+  return [
+    "context is insufficient",
+    "insufficient context",
+    "not enough information",
+    "not enough context",
+    "does not contain",
+    "doesn't contain",
+    "cannot determine",
+    "can't determine",
+    "could not determine",
+    "unable to determine",
+    "unable to find",
+    "not mentioned",
+    "no relevant",
+    "unknown"
+  ].some((phrase) => normalized.includes(phrase));
+}
+
 export function contextArchiveEnabled(config: AppConfig | undefined): boolean {
   return Boolean(config?.contextArchive?.enabled);
 }
 
 export function contextArchiveMcpEnabled(config: AppConfig | undefined): boolean {
   return Boolean(config?.contextArchive?.enabled && config.contextArchive.mcpEnabled !== false);
+}
+
+export function profileManagedCompactEnabled(profile: Pick<ProfileConfig, "enabled" | "managedCompact"> | undefined): boolean {
+  return Boolean(profile?.enabled && profile.managedCompact === true);
+}
+
+export function contextArchiveConfigForProfile(
+  config: AppConfig,
+  profile: Pick<ProfileConfig, "enabled" | "managedCompact"> | undefined
+): AppConfig | undefined {
+  if (profileManagedCompactEnabled(profile)) {
+    return withManagedContextArchiveEnabled(config);
+  }
+  return contextArchiveEnabled(config) ? config : undefined;
+}
+
+export function contextArchiveConfigForApiKey(
+  config: AppConfig,
+  apiKey: Pick<ApiKeyConfig, "id"> | undefined
+): AppConfig | undefined {
+  if (apiKeyMatchesManagedCompactProfile(config, apiKey)) {
+    return withManagedContextArchiveEnabled(config);
+  }
+  return contextArchiveEnabled(config) ? config : undefined;
+}
+
+function withManagedContextArchiveEnabled(config: AppConfig): AppConfig {
+  if (config.contextArchive.enabled && config.contextArchive.mcpEnabled !== false) {
+    return config;
+  }
+  return {
+    ...config,
+    contextArchive: {
+      ...config.contextArchive,
+      enabled: true,
+      mcpEnabled: true
+    }
+  };
+}
+
+function apiKeyMatchesManagedCompactProfile(
+  config: AppConfig,
+  apiKey: Pick<ApiKeyConfig, "id"> | undefined
+): boolean {
+  const id = apiKey?.id?.trim();
+  if (!id || config.profile.enabled === false) {
+    return false;
+  }
+  return config.profile.profiles.some((profile) =>
+    profileManagedCompactEnabled(profile) && id === profileApiKeyId(profile)
+  );
+}
+
+function profileApiKeyId(profile: Pick<ProfileConfig, "agent" | "id" | "name">): string {
+  return `profile:${sanitizeProfilePathSegment(profile.id || profile.name || profile.agent) || "profile"}`;
+}
+
+function sanitizeProfilePathSegment(value: string): string {
+  return value.trim().replace(/[^a-zA-Z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
 export function contextArchiveMcpServer(
@@ -301,6 +443,7 @@ export function isContextArchiveMcpPath(path: string): boolean {
 }
 
 export async function prepareContextArchiveRequest(input: {
+  apiKey?: Pick<ApiKeyConfig, "id">;
   body: Buffer | undefined;
   config: AppConfig;
   headers: IncomingHttpHeaders | Record<string, string | string[] | undefined>;
@@ -309,7 +452,8 @@ export async function prepareContextArchiveRequest(input: {
   protocol?: GatewayProviderProtocol;
   requestId: string;
 }): Promise<ContextArchivePreparation | undefined> {
-  if (!contextArchiveEnabled(input.config) || input.method.toUpperCase() !== "POST") {
+  const config = contextArchiveConfigForApiKey(input.config, input.apiKey);
+  if (!config || input.method.toUpperCase() !== "POST") {
     return undefined;
   }
   const protocol = input.protocol;
@@ -317,17 +461,26 @@ export async function prepareContextArchiveRequest(input: {
     return undefined;
   }
   const parsedBody = parseArchiveBody(input.body);
-  if (!parsedBody || !hasExplicitCompactSignal(parsedBody, input.headers as Record<string, string | string[] | undefined>)) {
+  if (!parsedBody) {
+    return undefined;
+  }
+  const upstreamPath = codexResponsesPathForCompact(input.path);
+  const responseMode: ContextArchiveResponseMode | undefined = upstreamPath
+    ? "codex_responses_compact_json"
+    : protocol === "openai_responses" && hasCodexResponsesCompactionTrigger(parsedBody)
+      ? "codex_responses_compaction_sse"
+      : undefined;
+  if (!upstreamPath && !responseMode && !hasExplicitCompactSignal(parsedBody, input.headers as Record<string, string | string[] | undefined>)) {
     return undefined;
   }
   const originalBody = Buffer.from(input.body ?? Buffer.alloc(0));
   const sessionId = resolveArchiveSessionId(parsedBody, input.headers, input.requestId);
   const created = contextArchiveService.createSnapshot({
     body: originalBody,
-    config: input.config.contextArchive,
+    config: config.contextArchive,
     headers: input.headers,
     method: input.method,
-    path: input.path,
+    path: upstreamPath ?? input.path,
     protocol,
     requestId: input.requestId,
     sessionId
@@ -335,18 +488,23 @@ export async function prepareContextArchiveRequest(input: {
   try {
     const task = compactHandoffTask({
       archiveId: created.record.archiveId,
+      clientToolName: contextArchiveClaudeCodeToolName(config.contextArchive.toolName || defaultToolName),
       generation: created.record.generation,
       sessionId,
       sessionToken: created.sessionToken,
-      toolName: input.config.contextArchive.toolName || defaultToolName
+      toolName: config.contextArchive.toolName || defaultToolName
     });
     return {
-      body: appendArchiveTask(originalBody, protocol, task),
+      body: appendCompactHandoffTask(originalBody, protocol, task),
+      config,
       diagnostic: `compact-handoff:${sessionId}:${created.record.generation}:${created.record.archiveId}`,
-      record: created.record
+      record: created.record,
+      responseContentType: codexCompactArchiveResponseContentType(responseMode),
+      responseMode,
+      upstreamPath
     };
   } catch (error) {
-    contextArchiveService.fail(created.record, input.config.contextArchive);
+    contextArchiveService.fail(created.record, config.contextArchive);
     throw error;
   }
 }
@@ -376,7 +534,8 @@ export function contextArchiveHandoffResponseStream(
   input: Readable,
   record: ContextArchiveRecord,
   protocol: GatewayProviderProtocol,
-  contentType?: string
+  contentType?: string,
+  responseMode: ContextArchiveResponseMode = "default"
 ): Readable {
   const chunks: Buffer[] = [];
   return input.pipe(new Transform({
@@ -387,7 +546,33 @@ export function contextArchiveHandoffResponseStream(
     flush(callback) {
       const rawBody = Buffer.concat(chunks);
       try {
-        this.push(appendArchiveFooterToResponse(rawBody, protocol, contentType, record.footer));
+        this.push(responseMode === "default"
+          ? appendArchiveFooterToResponse(rawBody, protocol, contentType, record.footer)
+          : renderCodexCompactArchiveResponse(rawBody, protocol, contentType, record.footer, responseMode));
+      } catch {
+        this.push(rawBody);
+      }
+      callback();
+    }
+  }));
+}
+
+export function codexCompactResponseStream(
+  input: Readable,
+  protocol: GatewayProviderProtocol,
+  contentType: string | undefined,
+  responseMode: ContextArchiveResponseMode
+): Readable {
+  const chunks: Buffer[] = [];
+  return input.pipe(new Transform({
+    transform(chunk, _encoding, callback) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      callback();
+    },
+    flush(callback) {
+      const rawBody = Buffer.concat(chunks);
+      try {
+        this.push(renderCodexCompactArchiveResponse(rawBody, protocol, contentType, "", responseMode));
       } catch {
         this.push(rawBody);
       }
@@ -492,9 +677,10 @@ async function callHistoryTool(
 function historyAskTool(config: ContextArchiveConfig): McpTool {
   return {
     description: [
-      "Ask one exact archived pre-compaction agent a natural-language history task.",
-      "CCR loads the immutable original request and appends only this task before replaying the original model route.",
-      "Use archive_id and session_token exactly as provided by the compact handoff."
+      "Ask the archived pre-compaction agent lineage a natural-language history task.",
+      "CCR starts with the provided archive and automatically searches parent compact generations when the latest snapshot lacks the answer.",
+      "CCR loads immutable original requests and appends only this task before replaying the original model route.",
+      "Use archive_id and session_token exactly as provided by the latest compact handoff."
     ].join(" "),
     inputSchema: {
       additionalProperties: false,

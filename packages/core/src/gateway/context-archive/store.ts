@@ -117,6 +117,7 @@ export class ContextArchiveStore {
       return { generation, parentArchiveId };
     });
     const lineage = transaction();
+    this.extendLineageExpiry(input.archiveId, input.expiresAt, retention);
     this.prune(retention, input.archiveId);
     this.secureFiles();
     return {
@@ -146,6 +147,22 @@ export class ContextArchiveStore {
     return row ? snapshotFromRow(row) : undefined;
   }
 
+  lineage(archiveId: string, limit = 32): ArchiveSnapshot[] {
+    const snapshots: ArchiveSnapshot[] = [];
+    const seen = new Set<string>();
+    let currentArchiveId: string | undefined = archiveId;
+    while (currentArchiveId && snapshots.length < Math.max(1, Math.floor(limit)) && !seen.has(currentArchiveId)) {
+      seen.add(currentArchiveId);
+      const snapshot = this.get(currentArchiveId);
+      if (!snapshot) {
+        break;
+      }
+      snapshots.push(snapshot);
+      currentArchiveId = snapshot.parentArchiveId;
+    }
+    return snapshots;
+  }
+
   clear(): void {
     this.database.prepare("DELETE FROM archive_snapshots").run();
   }
@@ -155,22 +172,31 @@ export class ContextArchiveStore {
   }
 
   private prune(retention: ArchiveRetention, protectedArchiveId: string): void {
+    const protectedIds = this.protectedLineageIds(protectedArchiveId, retention);
     const now = Date.now();
-    this.database.prepare(`
-      DELETE FROM archive_snapshots
-      WHERE expires_at IS NOT NULL AND expires_at <= ? AND archive_id <> ?
-    `).run(now, protectedArchiveId);
+    const expiredRows = this.database.prepare(`
+      SELECT archive_id
+      FROM archive_snapshots
+      WHERE expires_at IS NOT NULL AND expires_at <= ?
+    `).all(now) as Array<{ archive_id: string }>;
+    for (const row of expiredRows) {
+      if (!protectedIds.has(row.archive_id)) {
+        this.database.prepare("DELETE FROM archive_snapshots WHERE archive_id = ?").run(row.archive_id);
+      }
+    }
 
     const maxSnapshots = Math.max(1, Math.floor(retention.maxSnapshots));
-    this.database.prepare(`
-      DELETE FROM archive_snapshots
-      WHERE archive_id IN (
-        SELECT archive_id FROM archive_snapshots
-        WHERE archive_id <> ?
-        ORDER BY created_at DESC, rowid DESC
-        LIMIT -1 OFFSET ?
-      )
-    `).run(protectedArchiveId, Math.max(0, maxSnapshots - 1));
+    const snapshotRows = this.database.prepare(`
+      SELECT archive_id
+      FROM archive_snapshots
+      ORDER BY created_at DESC, rowid DESC
+    `).all() as Array<{ archive_id: string }>;
+    for (let index = maxSnapshots; index < snapshotRows.length; index += 1) {
+      const archiveId = snapshotRows[index]?.archive_id;
+      if (archiveId && !protectedIds.has(archiveId)) {
+        this.database.prepare("DELETE FROM archive_snapshots WHERE archive_id = ?").run(archiveId);
+      }
+    }
 
     const maxBytes = Math.max(1, Math.floor(retention.maxBytes));
     const rows = this.database.prepare(`
@@ -181,9 +207,26 @@ export class ContextArchiveStore {
     let retainedBytes = 0;
     for (const row of rows) {
       retainedBytes += Number(row.body_bytes ?? 0);
-      if (retainedBytes > maxBytes && row.archive_id !== protectedArchiveId) {
+      if (retainedBytes > maxBytes && !protectedIds.has(row.archive_id)) {
         this.database.prepare("DELETE FROM archive_snapshots WHERE archive_id = ?").run(row.archive_id);
       }
+    }
+  }
+
+  private protectedLineageIds(archiveId: string, retention: ArchiveRetention): Set<string> {
+    return new Set(this.lineage(archiveId, Math.max(1, Math.floor(retention.maxSnapshots))).map((snapshot) => snapshot.archiveId));
+  }
+
+  private extendLineageExpiry(archiveId: string, expiresAt: number | undefined, retention: ArchiveRetention): void {
+    if (expiresAt === undefined) {
+      return;
+    }
+    for (const snapshot of this.lineage(archiveId, Math.max(1, Math.floor(retention.maxSnapshots)))) {
+      this.database.prepare(`
+        UPDATE archive_snapshots
+        SET expires_at = ?
+        WHERE archive_id = ? AND (expires_at IS NULL OR expires_at < ?)
+      `).run(expiresAt, snapshot.archiveId, expiresAt);
     }
   }
 
