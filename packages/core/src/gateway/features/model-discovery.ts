@@ -2,6 +2,7 @@
  * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
  */
 import type { IncomingHttpHeaders } from "node:http";
+import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { ApiKeyConfig, AppConfig, ProviderModelMetadata } from "@ccr/core/contracts/app";
 import { buildClaudeAppGatewayModelRoutes, resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
 import { modelRegistryForConfig, normalizeRouteSelector } from "@ccr/core/routing/model-registry";
@@ -263,7 +264,7 @@ function buildGatewayDiscoverableModelIds(config: AppConfig): string[] {
   const baseEntries: Array<{ modelName: string; providerName: string }> = [];
   for (const provider of config.Providers) {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       continue;
     }
     for (const rawModel of provider.models) {
@@ -400,6 +401,9 @@ function isConfiguredGatewayModelSelector(model: string, config: AppConfig): boo
   }
 
   for (const provider of config.Providers) {
+    if (!isGatewayProviderEnabled(provider)) {
+      continue;
+    }
     if (provider.models.some((candidate) => candidate.trim().toLowerCase() === normalized)) {
       return true;
     }

@@ -83,7 +83,7 @@ These two are the required fields in CCR.
 4. Fill in **App ID** and **App Secret**.
 5. For Lark or a special domain, fill in **Domain**.
 6. Save the bot.
-7. Open **Agent Config** and edit the Agent Config you want to attach it to.
+7. Open **Agent Profiles** and edit the Agent Profiles you want to attach it to.
 8. Turn on **Bot** and select the bot.
 9. Optionally enable **Forward agent messages** or **Handoff**.
 10. Reopen the agent from CCR.

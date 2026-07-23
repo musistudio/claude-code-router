@@ -78,7 +78,7 @@ CCR 支持 OpenAI Chat / Responses、Anthropic Messages、Gemini Generate Conten
 1. **[下载 Claude Code Router](https://github.com/musistudio/claude-code-router/releases)**，选择 macOS、Windows 或 Linux 版本并启动应用。
 2. 打开 **供应商 → 添加供应商**。选择内置预设或自定义端点，填写 API Key，选择协议与模型，然后保存。
 3. 打开 **服务** 并点击 **启动**。本地模型网关默认监听 `http://127.0.0.1:3456`。
-4. 打开 **Agent配置**，选择 Claude Code、Codex、Grok CLI 或 ZCode，指定模型并应用配置档案。
+4. 打开 **Agent 配置档案**，选择 Claude Code、Codex、Grok CLI 或 ZCode，指定模型并应用配置档案。
 5. 开始使用 Agent。在 **日志** 中确认最终供应商、模型、状态、Token、耗时与错误。
 
 现在 Agent 已经连接到 CCR。如需增加条件规则、自动重试、请求改写或 Fallback 模型，请打开 **路由**。
@@ -104,7 +104,7 @@ npm install -g @musistudio/claude-code-router
 ccr ui
 ```
 
-打开 `http://127.0.0.1:3458`，然后按照上面的 **供应商 → 服务 → Agent配置** 流程操作。模型网关仍位于 `http://127.0.0.1:3456`。服务模式、鉴权和 Profile 命令见 [CLI 命令参考](https://ccrdesk.top/guides/cli/)。
+打开 `http://127.0.0.1:3458`，然后按照上面的 **供应商 → 服务 → Agent 配置档案** 流程操作。模型网关仍位于 `http://127.0.0.1:3456`。服务模式、鉴权和 Profile 命令见 [CLI 命令参考](https://ccrdesk.top/guides/cli/)。
 
 ### Docker
 

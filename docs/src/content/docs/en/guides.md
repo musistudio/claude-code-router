@@ -53,9 +53,9 @@ For teams or high-frequency usage, add multiple credentials in the provider form
 
 If you want the overview to show balance or remaining quota, open the provider's **Account / Usage** section, configure the usage integration, and test field mapping.
 
-## Connect Agent Config
+## Connect Agent Profiles
 
-Agent Config lets Claude Code, Codex, Grok CLI, ZCode, and other agents use CCR's providers, routing, and model selection.
+Agent Profiles lets Claude Code, Codex, Grok CLI, ZCode, and other agents use CCR's providers, routing, and model selection.
 
 General guidance:
 
@@ -65,11 +65,11 @@ General guidance:
 
 ### Claude Code
 
-In **Agent Config**, choose Claude Code, set the model, small fast model, and settings file, then click Apply. Open Claude Code from CCR and send one request to verify it in request logs.
+In **Agent Profiles**, choose Claude Code, set the model, small fast model, and settings file, then click Apply. Open Claude Code from CCR and send one request to verify it in request logs.
 
 ### Codex
 
-In **Agent Config**, choose Codex and confirm Provider ID, Provider Name, model, and config file. Only fill Codex CLI path and Codex home when you need a specific CLI or home directory.
+In **Agent Profiles**, choose Codex and confirm Provider ID, Provider Name, model, and config file. Only fill Codex CLI path and Codex home when you need a specific CLI or home directory.
 
 ### Grok CLI
 

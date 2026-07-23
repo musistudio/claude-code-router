@@ -67,7 +67,7 @@ DingTalk is for bringing agent messages into an enterprise collaboration environ
 5. Paste the Client Secret into **App Secret**.
 6. If you copied a RobotCode, paste it into **Robot Code**.
 7. Save the bot.
-8. Open **Agent Config** and edit the Agent Config you want to attach it to.
+8. Open **Agent Profiles** and edit the Agent Profiles you want to attach it to.
 9. Turn on **Bot** and select the bot.
 10. Optionally enable **Forward agent messages** or **Handoff**.
 11. Reopen the agent from CCR.

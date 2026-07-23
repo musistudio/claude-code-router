@@ -54,6 +54,20 @@ test("model registry accepts known internal provider suffixes only", () => {
   assert.equal(registry.findProvider("Primary::bogus"), undefined);
 });
 
+test("model registry ignores disabled provider models", () => {
+  const registry = new ModelRegistry(routingConfig({
+    Providers: [
+      { enabled: false, models: ["alpha", "disabled-only"], name: "Primary" },
+      { models: ["beta"], name: "Secondary" }
+    ]
+  }));
+
+  assert.equal(registry.findProvider("Primary"), undefined);
+  assert.equal(registry.resolve("Primary/alpha"), undefined);
+  assert.equal(registry.resolve("disabled-only"), undefined);
+  assert.equal(registry.resolve("beta")?.canonicalSelector, "Secondary/beta");
+});
+
 test("router config compilation disables invalid rules and reports their model", () => {
   const config = routingConfig();
   config.Router.rules = [

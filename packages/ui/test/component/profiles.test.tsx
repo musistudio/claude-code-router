@@ -3,7 +3,7 @@ import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ProfileConfig } from "@ccr/core/contracts/app.ts";
-import { DeleteProfileDialog, ProfileView } from "@ccr/ui/pages/home/components/profiles.tsx";
+import { AgentProfileContextPanel, DeleteProfileDialog, ProfileView } from "@ccr/ui/pages/home/components/profiles.tsx";
 import { AppI18nContext, appCopy } from "@ccr/ui/pages/home/shared/i18n.tsx";
 import { createProfileDraft, normalizeUnknownProfileItem, profileDraftWithDetectedAppPath } from "@ccr/ui/pages/home/shared/profiles.ts";
 import { appConfigFixture } from "../fixtures/index.ts";
@@ -77,10 +77,23 @@ test("ProfileView keeps launch actions directly accessible in an aligned action 
   );
 
   assert.equal(html.match(/aria-label="(?:Claude Code Main|ZCode Main) Profile actions"/g)?.length, 2);
+  assert.match(html, /Configuration/);
+  assert.match(html, /aria-label="Claude Code Main Launch actions"/);
+  assert.match(html, /aria-label="Claude Code Main Management actions"/);
   assert.match(html, /aria-label="Copy CLI command Claude Code Main"/);
   assert.match(html, /aria-label="Start App Claude Code Main"/);
   assert.match(html, /aria-label="Start App ZCode Main"/);
   assert.doesNotMatch(html, /aria-label="Copy CLI command ZCode Main"/);
+});
+
+test("AgentProfileContextPanel explains agent-specific requirements and provider availability", () => {
+  const html = renderToStaticMarkup(
+    <AgentProfileContextPanel agent="codex" providerCount={1} />
+  );
+
+  assert.match(html, /Profile requirements/);
+  assert.match(html, /Provider ID and Provider name identify the routed provider in Codex\./);
+  assert.match(html, /1 providers/);
 });
 
 test("detected CHATGPT_APP_PATH is used as the Codex profile default", () => {

@@ -1288,6 +1288,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         extraHeaders: item.extraHeaders,
         icon: readString(item.icon),
         id: readString(item.id),
+        enabled: item.enabled === false ? false : undefined,
         modelDescriptions,
         modelDisplayNames,
         modelMetadata,

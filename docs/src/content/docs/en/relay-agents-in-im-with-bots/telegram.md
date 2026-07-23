@@ -52,7 +52,7 @@ To use it in groups:
 3. Auth is **Bot Token**.
 4. Paste the token into **Bot Token**.
 5. Save the bot.
-6. Open **Agent Config** and edit the Agent Config you want to attach it to.
+6. Open **Agent Profiles** and edit the Agent Profiles you want to attach it to.
 7. Turn on **Bot** and select the bot.
 8. Optionally enable **Forward agent messages** or **Handoff**.
 9. Reopen the agent from CCR.

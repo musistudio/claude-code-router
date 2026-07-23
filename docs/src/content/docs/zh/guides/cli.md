@@ -12,7 +12,7 @@ CCR 有两个相关命令：
 | 命令 | 来源 | 主要用途 |
 | --- | --- | --- |
 | `ccr` | npm 包 `@musistudio/claude-code-router` | 不依赖 Electron，启动浏览器管理界面、模型网关和 Agent 配置。 |
-| `ccr-app` | CCR 桌面应用 | 桌面版生成的配置启动器；Agent配置卡片复制的命令使用这个名称。 |
+| `ccr-app` | CCR 桌面应用 | 桌面版生成的配置启动器；Agent 配置档案卡片复制的命令使用这个名称。 |
 
 两个发行版会读取同一套本机配置目录，但不要把命令名混用。需要托盘、桌面通知、自动更新和桌面专属浏览器集成时，使用桌面版；需要无桌面部署或由进程管理器托管时，使用 npm CLI。
 
@@ -125,7 +125,7 @@ ccr start --host 127.0.0.1 --port 3458
 
 ## 按 Agent 配置启动
 
-先在 **Agent配置** 中创建并启用配置，然后使用：
+先在 **Agent 配置档案** 中创建并启用配置，然后使用：
 
 ```text
 ccr <配置名称或 ID> [cli|app] [-- <Agent 参数>]
@@ -215,6 +215,6 @@ ccr profile-id -- --help
 ## 相关页面
 
 - [安装并启动 CCR](../install/)
-- [Agent配置](../../configuration/profile/)
+- [Agent 配置档案](../../configuration/profile/)
 - [服务配置](../../configuration/server/)
 - [Docker 部署](../docker/)

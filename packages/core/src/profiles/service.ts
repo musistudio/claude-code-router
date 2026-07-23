@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readlinkSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, availableGatewayModelIds, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "@ccr/core/contracts/app";
+import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, availableGatewayModelIds, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, isGatewayProviderEnabled, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "@ccr/core/contracts/app";
 import { replacePersistedApiKeys } from "@ccr/core/config/api-key-store";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import {
@@ -1400,6 +1400,7 @@ function kimiProfileModelMetadata(config: AppConfig, selector: string): {
 } {
   const attribution = resolveUsageModelAttribution(config, selector);
   const provider = config.Providers.find((candidate) =>
+    isGatewayProviderEnabled(candidate) &&
     candidate.name.toLowerCase() === attribution.provider?.toLowerCase()
   );
   const model = attribution.model?.trim() || selector;
@@ -1424,6 +1425,7 @@ function kimiProfileModelMetadata(config: AppConfig, selector: string): {
   const reasoning = kimiProfileReasoningMetadata(metadata, catalogEntries[0]);
 
   const logicalProvider = config.Providers.find((candidate) =>
+    isGatewayProviderEnabled(candidate) &&
     selector.toLowerCase().startsWith(`${candidate.name}/`.toLowerCase())
   );
   if (!logicalProvider) {
@@ -2908,7 +2910,8 @@ function gatewayEndpoint(config: AppConfig): string {
 }
 
 function defaultClientModel(config: AppConfig): string {
-  const preferred = config.Providers.find((provider) => provider.name === config.preferredProvider) ?? config.Providers[0];
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const preferred = enabledProviders.find((provider) => provider.name === config.preferredProvider) ?? enabledProviders[0];
   if (preferred?.name && preferred.models[0]) {
     return `${preferred.name}/${preferred.models[0]}`;
   }
@@ -2924,10 +2927,11 @@ function toolHubResolverModel(config: AppConfig): string {
     return model;
   }
   const baseUrl = normalizeUrlForMatch(config.toolHub.llm.baseUrl);
-  const provider = config.Providers.find((candidate) =>
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const provider = enabledProviders.find((candidate) =>
     candidate.models.includes(model) &&
     (!baseUrl || normalizeUrlForMatch(providerBaseUrl(candidate)) === baseUrl)
-  ) ?? config.Providers.find((candidate) => candidate.models.includes(model));
+  ) ?? enabledProviders.find((candidate) => candidate.models.includes(model));
   return provider?.name ? `${provider.name}/${model}` : model;
 }
 

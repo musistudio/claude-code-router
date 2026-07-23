@@ -13,7 +13,7 @@ import {
   motion, normalizeAgentFilterValue, normalizeOverviewWidget, normalizeOverviewWidgets,
   OverviewMetricKind, overviewMetricOptions, overviewWidgetCollisionDetection, OverviewWidgetConfig, OverviewWidgetSize, overviewWidgetSizeOptions,
   OverviewWidgetType, OverviewWidgetVariant, Pencil, Pie, PieChart, Plus,
-  PointerSensor, primaryProviderAccountMeter, providerAccountMeterDetailValidityProgress, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass, isProviderAccountManualResetMeter,
+  PointerSensor, primaryProviderAccountMeter, providerAccountMeterDetailValidityProgress, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass, isGatewayProviderEnabled, isProviderAccountManualResetMeter,
   providerAccountSnapshotKey, providerAccountSnapshotLabel,
   ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ReactPointerEvent, rectSortingStrategy, RefreshCw, Select,
   SelectControl, SortableContext, sortableKeyboardCoordinates, systemStatusPointTooltip,
@@ -525,6 +525,9 @@ function OverviewDonutCenter({ label, value }: { label: string; value: string })
 function overviewProviderFilterOptions(providers: GatewayProviderConfig[], translate: (value: string) => string): Array<{ label: string; value: string }> {
   const providerNames = new Set<string>();
   for (const provider of providers) {
+    if (!isGatewayProviderEnabled(provider)) {
+      continue;
+    }
     const name = provider.name.trim();
     if (name) {
       providerNames.add(name);
@@ -543,6 +546,9 @@ function overviewModelFilterOptions(
 ): Array<{ label: string; value: string }> {
   const models = new Set<string>();
   for (const provider of providers) {
+    if (!isGatewayProviderEnabled(provider)) {
+      continue;
+    }
     if (providerFilter && provider.name !== providerFilter) {
       continue;
     }
@@ -561,6 +567,7 @@ function overviewModelFilterOptions(
 
 function overviewProviderHasModel(providers: GatewayProviderConfig[], providerName: string, modelName: string): boolean {
   return providers.some((provider) =>
+    isGatewayProviderEnabled(provider) &&
     provider.name === providerName &&
     provider.models.some((model) => model.trim() === modelName)
   );

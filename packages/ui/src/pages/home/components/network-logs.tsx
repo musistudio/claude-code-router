@@ -149,8 +149,8 @@ export function NetworkingView({
       transition={{ duration: 0.15 }}
     >
       <div className="network-shell flex min-h-0 flex-col overflow-hidden rounded-lg border">
-        <div className="network-toolbar flex h-10 min-w-0 shrink-0 items-center gap-2 border-b px-3">
-          <div className="relative min-w-[220px] flex-1">
+        <div className="network-toolbar flex h-10 min-w-0 shrink-0 items-center gap-2 border-b px-3 max-[720px]:h-auto max-[720px]:flex-wrap max-[720px]:py-2">
+          <div className="relative min-w-[220px] flex-1 max-[720px]:min-w-0 max-[720px]:basis-full">
             <Search className="network-search-icon pointer-events-none absolute left-2.5 top-1/2 z-[1] h-3.5 w-3.5 -translate-y-1/2" />
             <input
               aria-label={t("Search network captures")}
@@ -195,7 +195,18 @@ export function NetworkingView({
             className="network-table-scroll min-h-0 overflow-auto border-b"
             style={{ flex: selected ? `0 0 ${listHeightPercent}%` : "1 1 auto" }}
           >
-            <div className="min-w-[1180px]">
+            <div className="grid gap-2 p-2 min-[721px]:hidden">
+              {captures.map((item, index) => (
+                <NetworkCaptureCard
+                  exchange={item}
+                  key={item.id}
+                  onSelect={() => setSelectedId(item.id)}
+                  rowId={networkRowId(item, index, captures.length)}
+                  selected={selected?.id === item.id}
+                />
+              ))}
+            </div>
+            <div className="min-w-[1180px] max-[720px]:hidden">
               <div className="network-table-header sticky top-0 z-10 grid h-9 grid-cols-[34px_64px_minmax(460px,1fr)_220px_104px_116px_88px] items-center border-b text-[12px] font-semibold">
                 <NetworkHeaderCell label="" />
                 <NetworkHeaderCell label="ID" />
@@ -251,7 +262,7 @@ export function NetworkingView({
                 type="button"
               />
               <div className="network-detail flex min-h-0 flex-1 flex-col">
-                <div className="network-detail-bar flex h-12 min-w-0 shrink-0 items-center gap-2 border-b px-3">
+                <div className="network-detail-bar flex h-12 min-w-0 shrink-0 items-center gap-2 border-b px-3 max-[720px]:h-auto max-[720px]:flex-wrap max-[720px]:py-2">
                   <span className="network-method-pill rounded-full px-3 py-1 text-[12px] font-bold">{selected.method}</span>
                   <span className={cn(
                     "rounded-full px-3 py-1 text-[12px] font-bold uppercase",
@@ -266,13 +277,13 @@ export function NetworkingView({
                   </span>
                 </div>
 
-                <div className="network-detail-panes flex min-h-0 flex-1" ref={networkDetailPanesRef}>
+                <div className="network-detail-panes flex min-h-0 flex-1 max-[720px]:flex-col" ref={networkDetailPanesRef}>
                   <div className="min-w-0" style={{ flex: `0 0 ${requestWidthPercent}%` }}>
                     <NetworkRequestInspector exchange={selected} selectedTab={requestTab} setSelectedTab={setRequestTab} />
                   </div>
                   <button
                     aria-label={t("Resize request and response panels")}
-                    className="network-resize-handle-x shrink-0"
+                    className="network-resize-handle-x shrink-0 max-[720px]:hidden"
                     onPointerDown={startDetailResize}
                     title={t("Resize request/response")}
                     type="button"
@@ -287,6 +298,52 @@ export function NetworkingView({
         </div>
       </div>
     </motion.div>
+  );
+}
+
+function NetworkCaptureCard({
+  exchange,
+  onSelect,
+  rowId,
+  selected
+}: {
+  exchange: ProxyNetworkExchange;
+  onSelect: () => void;
+  rowId: string;
+  selected: boolean;
+}) {
+  return (
+    <button
+      className={cn(
+        "network-row rounded-md border px-3 py-2 text-left text-[12px] outline-none transition-colors",
+        selected && "network-row-selected"
+      )}
+      onClick={onSelect}
+      type="button"
+    >
+      <div className="flex min-w-0 items-start gap-2">
+        <span className="mt-1 shrink-0"><NetworkStatusDot exchange={exchange} /></span>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="network-row-id shrink-0 font-mono text-[11px]">#{rowId}</span>
+            <span className="min-w-0 truncate font-mono font-semibold" title={exchange.url}>{exchange.host}{exchange.path}</span>
+          </div>
+          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
+            <span className="network-method-pill rounded-full px-2 py-0.5 text-[11px] font-bold">{exchange.method}</span>
+            <span className={cn(
+              "rounded-full px-2 py-0.5 text-[11px] font-bold uppercase",
+              exchange.state === "pending" ? "network-state-pill-active" : exchange.state === "error" ? "network-state-pill-error" : "network-state-pill-completed"
+            )}>
+              {networkLifecycleLabel(exchange)}
+            </span>
+            <span className="network-row-secondary rounded-full px-2 py-0.5 text-[11px] font-semibold">{networkCodeLabel(exchange)}</span>
+          </div>
+          <div className="mt-2 min-w-0">
+            <NetworkClientCell client={exchange.client} />
+          </div>
+        </div>
+      </div>
+    </button>
   );
 }
 

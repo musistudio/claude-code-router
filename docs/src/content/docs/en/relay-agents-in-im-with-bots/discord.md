@@ -71,7 +71,7 @@ If something asks for Application ID or Public Key:
 4. Paste the token into **Bot Token**.
 5. Add **Application ID** and **Public Key** if needed.
 6. Save the bot.
-7. Open **Agent Config** and edit the Agent Config you want to attach it to.
+7. Open **Agent Profiles** and edit the Agent Profiles you want to attach it to.
 8. Turn on **Bot** and select the bot.
 9. Optionally enable **Forward agent messages** or **Handoff**.
 10. Reopen the agent from CCR.

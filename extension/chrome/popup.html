@@ -33,6 +33,13 @@
         margin: 0;
       }
 
+      p {
+        color: color-mix(in srgb, CanvasText 72%, transparent);
+        font-size: 12px;
+        line-height: 1.45;
+        margin: 0;
+      }
+
       label {
         display: grid;
         gap: 6px;
@@ -77,6 +84,87 @@
         opacity: 0.58;
       }
 
+      .steps {
+        display: grid;
+        gap: 6px;
+        margin: 0;
+        padding: 0;
+      }
+
+      .step {
+        align-items: start;
+        display: grid;
+        gap: 8px;
+        grid-template-columns: 22px minmax(0, 1fr);
+        list-style: none;
+      }
+
+      .step-index {
+        align-items: center;
+        background: color-mix(in srgb, #0f766e 14%, Canvas);
+        border: 1px solid color-mix(in srgb, #0f766e 28%, transparent);
+        border-radius: 999px;
+        color: #0f766e;
+        display: inline-flex;
+        font-size: 11px;
+        font-weight: 750;
+        height: 22px;
+        justify-content: center;
+        width: 22px;
+      }
+
+      .step-title {
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.35;
+      }
+
+      .step-copy {
+        color: color-mix(in srgb, CanvasText 62%, transparent);
+        font-size: 11px;
+        line-height: 1.4;
+        margin-top: 1px;
+      }
+
+      .domains {
+        border: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+        border-radius: 8px;
+        display: grid;
+        gap: 6px;
+        padding: 8px;
+      }
+
+      .domains[hidden] {
+        display: none;
+      }
+
+      .domain-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+      }
+
+      .domain-pill {
+        background: color-mix(in srgb, CanvasText 6%, Canvas);
+        border: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 650;
+        max-width: 100%;
+        overflow: hidden;
+        padding: 3px 7px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .note {
+        background: color-mix(in srgb, #0f766e 8%, Canvas);
+        border: 1px solid color-mix(in srgb, #0f766e 18%, transparent);
+        border-radius: 8px;
+        color: color-mix(in srgb, CanvasText 78%, transparent);
+        padding: 8px;
+      }
+
       .status {
         border-radius: 8px;
         color: color-mix(in srgb, CanvasText 74%, transparent);
@@ -98,10 +186,39 @@
   <body>
     <main>
       <h1>CCR Login Import</h1>
+      <p>Import browser login state only into a local CCR job. The URL must point to localhost or 127.0.0.1.</p>
+      <ol class="steps" aria-label="Import steps">
+        <li class="step">
+          <span class="step-index">1</span>
+          <span>
+            <span class="step-title">Paste the CCR import URL</span>
+            <span class="step-copy">Create the job in CCR, then paste the copied URL here.</span>
+          </span>
+        </li>
+        <li class="step">
+          <span class="step-index">2</span>
+          <span>
+            <span class="step-title">Review requested domains</span>
+            <span class="step-copy">CCR tells the extension exactly which domains it needs.</span>
+          </span>
+        </li>
+        <li class="step">
+          <span class="step-index">3</span>
+          <span>
+            <span class="step-title">Import cookies and localStorage</span>
+            <span class="step-copy">Only the selected domains are read and sent back to the local CCR job.</span>
+          </span>
+        </li>
+      </ol>
       <label>
         Import URL
         <textarea id="import-url" spellcheck="false" placeholder="Paste the URL copied from CCR"></textarea>
       </label>
+      <section id="domain-preview" class="domains" hidden>
+        <strong class="step-title">Domains requested by CCR</strong>
+        <div id="domain-list" class="domain-list"></div>
+      </section>
+      <p class="note">This extension rejects remote import URLs. If Chrome asks for site access, grant only the domains shown above.</p>
       <button id="import-button" type="button">Import Selected Domains</button>
       <div id="status" class="status" role="status"></div>
     </main>

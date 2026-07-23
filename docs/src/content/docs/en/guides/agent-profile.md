@@ -1,6 +1,6 @@
 ---
-title: Connect Agent Config
-pageTitle: Connect Agent Config
+title: Connect Agent Profiles
+pageTitle: Connect Agent Profiles
 eyebrow: Quick Start
 lead: Let Claude Code, Codex, Grok CLI, Kimi CLI, ZCode, and other agents use CCR's providers, routing, and model selection.
 ---
@@ -13,13 +13,13 @@ lead: Let Claude Code, Codex, Grok CLI, Kimi CLI, ZCode, and other agents use CC
 
 ## Claude Code
 
-In **Agent Config**, choose Claude Code, set the model, small fast model, and settings file, then click Apply.
+In **Agent Profiles**, choose Claude Code, set the model, small fast model, and settings file, then click Apply.
 
 Open Claude Code from CCR and send one request to verify it in request logs.
 
 ## Codex
 
-In **Agent Config**, choose Codex and confirm Provider ID, Provider Name, model, and config file.
+In **Agent Profiles**, choose Codex and confirm Provider ID, Provider Name, model, and config file.
 
 Only fill Codex CLI path and Codex home when you need a specific CLI or home directory.
 

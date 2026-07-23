@@ -28,7 +28,9 @@ async function rpc(method: string, args: unknown[] = []): Promise<unknown> {
   if (!response.ok || !payload?.ok) {
     const message = payload && !payload.ok
       ? payload.error.message
-      : `CCR web API failed with HTTP ${response.status}`;
+      : response.status === 404
+        ? "CCR management service is unavailable. Make sure the CCR app or ccr ui command is running, then retry."
+        : `CCR web API failed with HTTP ${response.status}`;
     throw new Error(message);
   }
   return payload.value;

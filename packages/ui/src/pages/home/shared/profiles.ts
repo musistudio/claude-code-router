@@ -380,6 +380,7 @@ import { isPlainRecord, normalizeProviderModelSelector, stringValue, uniqueStrin
 import { virtualModelProfileModelNames } from "./providers";
 import { endpointFromHostPort } from "./services";
 import { keyValueRowsFromRecord, recordFromKeyValueRows, stringRecordValue, validateProfileEnvRows } from "./virtual-models";
+import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { AddProfileDraft, BotGatewayConfigDraft } from "./types";
 
 export function gatewayEndpointFromConfig(config: AppConfig): string {
@@ -391,7 +392,8 @@ export function gatewayEndpointFromConfig(config: AppConfig): string {
 }
 
 export function defaultProfileClientModel(config: AppConfig): string {
-  const preferred = config.Providers.find((provider) => provider.name === config.preferredProvider) ?? config.Providers[0];
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const preferred = enabledProviders.find((provider) => provider.name === config.preferredProvider) ?? enabledProviders[0];
   if (preferred?.name && preferred.models[0]) {
     return `${preferred.name}/${preferred.models[0]}`;
   }
@@ -420,7 +422,7 @@ export function profileModelProviderOptions(
   virtualModelProfiles: VirtualModelProfileConfig[] = []
 ): ProfileModelProviderOption[] {
   const providerOptions = providers
-    .filter((provider) => provider.name?.trim() && Array.isArray(provider.models))
+    .filter((provider) => isGatewayProviderEnabled(provider) && provider.name?.trim() && Array.isArray(provider.models))
     .map((provider) => ({
       modelDisplayNames: profileModelDisplayNamesForModels(provider.modelDisplayNames, provider.models),
       models: uniqueStrings(provider.models.filter(Boolean)),

@@ -14,7 +14,7 @@ import {
   fallbackUpdateStatus, fallbackUsageStats, formatAppError, GatewayProviderConfig, GatewayProviderProtocol,
   fusionCustomMcpServerFromDraft, fusionCustomToolConfigFromProfile,
   GatewayProviderProbeResult, gatewayServiceMessage, GatewayStatus, getDefaultOnboardingStep, isClaudeDesignPluginConfig, isClaudeDesignRoutingDraftValid,
-  isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
+  isCursorProxyPluginConfig, isGatewayProviderEnabled, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
   isRoutingRuleDraftSubmittable,
   isTraySupportedPlatform,
   LayoutGroup, mergeModelDisplayNames, mergeModelMetadata, mergeProviderModelLists, modelDescriptionsForModels, modelDisplayNamesForModels, modelMetadataForModels,
@@ -26,7 +26,7 @@ import {
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
-  providerBaseUrl, providerCapabilitiesForProtocols, providerCapabilitiesForSave, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerProtocolOptions, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
+  providerBaseUrl, providerCapabilitiesForProtocols, providerCapabilitiesForSave, providerConnectivityApiKeyFromDraft, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerProtocolOptions, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
   ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, RouterRule, SettingsPageId,
   routingRewriteFromDraftRow, setProviderPresets, splitLines, translateAppErrorMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
@@ -491,6 +491,7 @@ function App() {
       return;
     }
     const modelAvailable = draftConfig.Providers.some((provider) =>
+      isGatewayProviderEnabled(provider) &&
       (!usageProviderFilter || provider.name === usageProviderFilter) &&
       provider.models.some((model) => model.trim() === usageModelFilter)
     );
@@ -1329,9 +1330,10 @@ function App() {
     providerProbeRequestId.current += 1;
     const requestId = providerProbeRequestId.current;
     const candidates = providerProbeCandidates(providerDraft).filter(isProviderProbeCandidateReady);
-    const shouldDiscoverModels = Boolean(providerDraft.apiKey.trim());
+    const draftProbeApiKey = providerConnectivityApiKeyFromDraft(providerDraft);
+    const shouldDiscoverModels = Boolean(draftProbeApiKey);
     const probeMode = shouldDiscoverModels ? "models" : "protocols";
-    const probeApiKey = shouldDiscoverModels ? providerDraft.apiKey.trim() : "";
+    const probeApiKey = shouldDiscoverModels ? draftProbeApiKey : "";
     const inputKey = providerProbeInputKey(candidates, probeApiKey, []);
 
     setProviderProbeError("");
@@ -1356,8 +1358,9 @@ function App() {
           setProviderProbe(result.probe);
           setProviderDraft((current) => {
             const currentCandidates = providerProbeCandidates(current).filter(isProviderProbeCandidateReady);
-            const currentShouldDiscoverModels = Boolean(current.apiKey.trim());
-            const currentProbeApiKey = currentShouldDiscoverModels ? current.apiKey.trim() : "";
+            const currentDraftProbeApiKey = providerConnectivityApiKeyFromDraft(current);
+            const currentShouldDiscoverModels = Boolean(currentDraftProbeApiKey);
+            const currentProbeApiKey = currentShouldDiscoverModels ? currentDraftProbeApiKey : "";
             const currentKey = providerProbeInputKey(currentCandidates, currentProbeApiKey, []);
             if (currentKey !== inputKey) {
               return current;
@@ -1390,13 +1393,13 @@ function App() {
         setProviderProbeLoading(false);
       }
     };
-  }, [activeView, onboardingStep, providerAddOpen, providerDraft.apiKey, providerDraft.baseUrl, providerDraft.presetId, providerDraft.protocol, providerDraft.protocolDetectionMode, providerDraft.providerPlugins]);
+  }, [activeView, onboardingStep, providerAddOpen, providerDraft.apiKey, providerDraft.baseUrl, providerDraft.credentialMode, providerDraft.credentials, providerDraft.presetId, providerDraft.protocol, providerDraft.protocolDetectionMode, providerDraft.providerPlugins]);
 
   async function checkProviderDraft(modelsToCheck?: string[]): Promise<ProviderConnectivityCheckReport> {
     const emptyReport: ProviderConnectivityCheckReport = { failed: [], passed: [], results: [] };
     providerConnectivityRequestId.current += 1;
     const requestId = providerConnectivityRequestId.current;
-    const apiKey = providerDraft.apiKey.trim();
+    const apiKey = providerConnectivityApiKeyFromDraft(providerDraft);
     const models = mergeProviderModelLists(modelsToCheck ?? mergeProviderModelLists(providerDraft.selectedModels, splitLines(providerDraft.modelsText)));
     const protocols = providerDraft.selectedProtocols.length > 0 ? providerDraft.selectedProtocols : [providerDraft.protocol];
     const candidates = providerProbeCandidates(providerDraft)
@@ -1489,7 +1492,9 @@ function App() {
       setProviderProbeError(translateAppErrorMessage(copy, accountConfig));
       return false;
     }
-    const credentials = providerCredentialsFromDraft(providerDraft);
+    const useCredentialPool = providerDraft.credentialMode === "pool";
+    const primaryApiKey = useCredentialPool ? "" : providerDraft.apiKey.trim();
+    const credentials = useCredentialPool ? providerCredentialsFromDraft(providerDraft) : [];
     if (typeof credentials === "string") {
       setProviderProbeError(translateAppErrorMessage(copy, credentials));
       return false;
@@ -1531,7 +1536,7 @@ function App() {
     const baseUrl = fallbackBaseUrl;
 
     const keySafetyIssue = providerApiKeySafetyIssue({
-      apiKey: providerDraft.apiKey,
+      apiKey: primaryApiKey,
       baseUrl,
       name: providerName,
       presetId: providerDraft.presetId
@@ -1563,7 +1568,7 @@ function App() {
     }
 
     const accountKeySafetyIssue = providerAccountApiKeySafetyIssue(accountConfig, {
-      apiKey: providerDraft.apiKey,
+      apiKey: primaryApiKey,
       baseUrl,
       providerName,
       providerPresetId: providerDraft.presetId
@@ -1576,10 +1581,11 @@ function App() {
     const providerId = existingProvider?.id ?? providerNameSlug(providerName);
     const provider: GatewayProviderConfig = {
       api_base_url: normalizeProviderBaseUrl(baseUrl),
-      api_key: providerDraft.apiKey.trim(),
+      api_key: primaryApiKey,
       capabilities: capabilities.length > 0 ? capabilities : undefined,
       account: accountConfig,
       credentials: credentials.length > 0 ? credentials : undefined,
+      enabled: existingProvider?.enabled === false ? false : undefined,
       icon: providerDraft.icon.trim() || undefined,
       id: providerId,
       modelDescriptions,
@@ -1665,6 +1671,22 @@ function App() {
     });
     setConfigDraft(next);
     return persistConfig(next, setActionError);
+  }
+
+  function setProviderEnabled(index: number, enabled: boolean) {
+    const next = buildConfigUpdate((config) => {
+      const provider = config.Providers[index];
+      if (!provider) {
+        return config;
+      }
+      config.Providers[index] = {
+        ...provider,
+        enabled: enabled ? undefined : false
+      };
+      return config;
+    });
+    setConfigDraft(next);
+    void persistConfig(next, setActionError);
   }
 
   function updateProviderModelDescription(providerIndex: number, model: string, description: string) {
@@ -3033,7 +3055,8 @@ function App() {
                   editProvider: openEditProviderDialog,
                   notify: showToast,
                   providers,
-                  removeProvider: setProviderDeleteIndex
+                  removeProvider: setProviderDeleteIndex,
+                  setProviderEnabled
                 },
                 routing: {
                   addRule: openAddRoutingRuleDialog,

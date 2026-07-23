@@ -56,7 +56,7 @@ WeCom is for bringing the agent into an enterprise messaging environment, so tea
 3. Auth is **App Secret**.
 4. Fill in **Corp ID**, **Agent ID**, and **Secret**.
 5. Save the bot.
-6. Open **Agent Config** and edit the Agent Config you want to attach it to.
+6. Open **Agent Profiles** and edit the Agent Profiles you want to attach it to.
 7. Turn on **Bot** and select the bot.
 8. Optionally enable **Forward agent messages** or **Handoff**.
 9. Reopen the agent from CCR.

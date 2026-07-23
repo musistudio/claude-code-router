@@ -55,9 +55,9 @@ export function ProfileView({
         <CardHeader>
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
-              <CardTitle>{t("Agent access")}</CardTitle>
+              <CardTitle>{t("Agent profiles")}</CardTitle>
               <p className="mt-1 text-[12px] text-muted-foreground">
-                {t("Choose where each agent uses CCR.")}
+                {t("Create profiles that tell each agent which model and entry mode to use.")}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -114,7 +114,8 @@ export function ProfileView({
                             ) : null}
                           </div>
                         </div>
-                        <div className="mt-2 min-w-0 space-y-1.5">
+                        <div className="mt-2 min-w-0 space-y-1.5 rounded-md border border-border/60 bg-background/55 px-2.5 py-2">
+                          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">{t("Configuration")}</div>
                           {summaryItems.map((item) => (
                             <div className="grid min-w-0 grid-cols-[96px_minmax(0,1fr)] items-baseline gap-2 text-[12px] sm:grid-cols-[128px_minmax(0,1fr)]" key={item.label}>
                               <div className="truncate text-muted-foreground">{item.label}</div>
@@ -139,65 +140,75 @@ export function ProfileView({
                     </div>
                     <div
                       aria-label={`${profile.name || t("Profile")} ${t("Profile actions")}`}
-                      className="ml-auto grid shrink-0 grid-cols-[54px_1px_28px_28px_1px_28px_28px] items-center gap-1.5"
+                      className="ml-auto flex shrink-0 flex-col items-end gap-2 max-[520px]:ml-0 max-[520px]:w-full max-[520px]:flex-row max-[520px]:items-center max-[520px]:justify-between max-[520px]:pl-9"
                       role="group"
                     >
-                      <Toggle
-                        checked={profile.enabled}
-                        onChange={(enabled) => updateProfileItem(index, { enabled })}
-                        title={t(profile.enabled ? "Enabled" : "Disabled")}
-                      />
-                      <span aria-hidden="true" className="h-5 w-px bg-border/80" />
-                      {showProfileLaunchActions && openSurfaces.includes("cli") ? (
-                        <ProfileActionTooltip label={cliActionTooltip}>
-                          <Button
-                            aria-label={`${cliActionTooltip} ${profile.name || t("Profile")}`}
-                            disabled={profileActionDisabled}
-                            onClick={() => copyProfileCliCommand(index)}
-                            size="iconSm"
-                            type="button"
-                            variant="subtle"
-                          >
-	                            <AnimatedIconSwap iconKey={cliBusy ? "busy" : "terminal"}>
-	                              {cliBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Terminal className="h-3.5 w-3.5" />}
-	                            </AnimatedIconSwap>
+                      <div
+                        aria-label={`${profile.name || t("Profile")} ${t("Launch actions")}`}
+                        className="inline-flex items-center gap-1 rounded-md border border-border bg-background/70 p-1 shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
+                        role="group"
+                      >
+                        <Toggle
+                          checked={profile.enabled}
+                          onChange={(enabled) => updateProfileItem(index, { enabled })}
+                          title={t(profile.enabled ? "Enabled" : "Disabled")}
+                        />
+                        {showProfileLaunchActions && openSurfaces.includes("cli") ? (
+                          <ProfileActionTooltip label={cliActionTooltip}>
+                            <Button
+                              aria-label={`${cliActionTooltip} ${profile.name || t("Profile")}`}
+                              disabled={profileActionDisabled}
+                              onClick={() => copyProfileCliCommand(index)}
+                              size="iconSm"
+                              type="button"
+                              variant="subtle"
+                            >
+	                              <AnimatedIconSwap iconKey={cliBusy ? "busy" : "terminal"}>
+	                                {cliBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Terminal className="h-3.5 w-3.5" />}
+	                              </AnimatedIconSwap>
+                            </Button>
+                          </ProfileActionTooltip>
+                        ) : null}
+                        {showProfileLaunchActions && openSurfaces.includes("app") ? (
+                          <ProfileActionTooltip label={appActionTooltip}>
+                            <Button
+                              aria-label={`${appActionTooltip} ${profile.name || t("Profile")}`}
+                              disabled={profileActionDisabled}
+                              onClick={() => appRunning ? stopProfileApp(index) : openProfileApp(index)}
+                              size="iconSm"
+                              type="button"
+                              variant={appRunning ? "outline" : "subtle"}
+                            >
+	                              <AnimatedIconSwap iconKey={appBusy ? "busy" : appRunning ? "stop" : "play"}>
+	                                {appBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : appRunning ? <Power className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+	                              </AnimatedIconSwap>
+                            </Button>
+                          </ProfileActionTooltip>
+                        ) : null}
+                      </div>
+                      <div
+                        aria-label={`${profile.name || t("Profile")} ${t("Management actions")}`}
+                        className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background/40 p-1"
+                        role="group"
+                      >
+                        <ProfileActionTooltip label={t("Edit")}>
+                          <Button aria-label={`${t("Edit")} ${profile.name || t("Profile")}`} onClick={() => editProfile(index)} size="iconSm" type="button" variant="ghost">
+                            <Pencil className="h-3.5 w-3.5" />
                           </Button>
                         </ProfileActionTooltip>
-                      ) : <span aria-hidden="true" className="h-7 w-7" />}
-                      {showProfileLaunchActions && openSurfaces.includes("app") ? (
-                        <ProfileActionTooltip label={appActionTooltip}>
+                        <ProfileActionTooltip label={t("Remove profile")}>
                           <Button
-                            aria-label={`${appActionTooltip} ${profile.name || t("Profile")}`}
-                            disabled={profileActionDisabled}
-                            onClick={() => appRunning ? stopProfileApp(index) : openProfileApp(index)}
+                            aria-label={t("Remove profile")}
+                            className="hover:bg-destructive/10 hover:text-destructive focus-visible:text-destructive"
+                            onClick={() => removeProfile(index)}
                             size="iconSm"
                             type="button"
-                            variant={appRunning ? "outline" : "subtle"}
+                            variant="ghost"
                           >
-	                            <AnimatedIconSwap iconKey={appBusy ? "busy" : appRunning ? "stop" : "play"}>
-	                              {appBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : appRunning ? <Power className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-	                            </AnimatedIconSwap>
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </ProfileActionTooltip>
-                      ) : <span aria-hidden="true" className="h-7 w-7" />}
-                      <span aria-hidden="true" className="h-5 w-px bg-border/80" />
-                      <ProfileActionTooltip label={t("Edit")}>
-                        <Button aria-label={`${t("Edit")} ${profile.name || t("Profile")}`} onClick={() => editProfile(index)} size="iconSm" type="button" variant="ghost">
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                      </ProfileActionTooltip>
-                      <ProfileActionTooltip label={t("Remove profile")}>
-                        <Button
-                          aria-label={t("Remove profile")}
-                          className="hover:bg-destructive/10 hover:text-destructive focus-visible:text-destructive"
-                          onClick={() => removeProfile(index)}
-                          size="iconSm"
-                          type="button"
-                          variant="ghost"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </ProfileActionTooltip>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -612,6 +623,58 @@ function AgentSelectControl({
   );
 }
 
+export function AgentProfileContextPanel({
+  agent,
+  providerCount
+}: {
+  agent: ProfileConfig["agent"];
+  providerCount: number;
+}) {
+  const t = useAppText();
+  const guidance = agentProfileGuidance(agent);
+
+  return (
+    <div className="sm:col-span-2 rounded-md border border-border bg-muted/20 px-3 py-2.5">
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="truncate text-[12px] font-semibold text-foreground">{t("Profile requirements")}</div>
+          <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{t(guidance)}</p>
+        </div>
+        <Badge className="shrink-0" variant={providerCount > 0 ? "secondary" : "warning"}>
+          {providerCount > 0 ? `${providerCount} ${t("providers")}` : t("No providers")}
+        </Badge>
+      </div>
+      {providerCount === 0 ? (
+        <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-2.5 py-1.5 text-[11px] leading-4 text-amber-700 dark:text-amber-300">
+          {t("A provider is required before profiles can route traffic.")}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function agentProfileGuidance(agent: ProfileConfig["agent"]): string {
+  if (agent === "claude-code") {
+    return "Model overrides are optional; empty fields keep Claude Code defaults.";
+  }
+  if (agent === "codex") {
+    return "Provider ID and Provider name identify the routed provider in Codex.";
+  }
+  if (agent === "grok") {
+    return "Grok CLI profiles use CCR scope and CLI entry mode.";
+  }
+  if (agent === "kimi") {
+    return "Kimi profiles need a default model and an allowed model list.";
+  }
+  if (agent === "opencode") {
+    return "OpenCode profiles can target CLI, APP, or both entry modes.";
+  }
+  if (agent === "zcode") {
+    return "ZCode profiles use APP entry mode.";
+  }
+  return "Choose an agent, model, and required profile settings.";
+}
+
 export function AddProfileForm({
   botConfigs,
   draft,
@@ -687,6 +750,7 @@ export function AddProfileForm({
         <Field label={t("Profile name")}>
           <Input value={draft.name} onChange={(event) => onChange({ name: event.target.value })} />
         </Field>
+        <AgentProfileContextPanel agent={draft.agent} providerCount={providers.length} />
         <Field label={t("Effect scope")}>
           <SelectControl
             onChange={(scope) => onChange({ scope: normalizeProfileScope(scope) })}

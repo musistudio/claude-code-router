@@ -20,6 +20,7 @@ import { getUsageTotalsSince } from "@ccr/core/usage/store";
 import { findProviderPresetByBaseUrl, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
 import { normalizeProviderBaseUrl, providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
+import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type {
   AppConfig,
   GatewayProviderConfig,
@@ -116,6 +117,9 @@ export async function getProviderAccountSnapshots(
   pruneProviderAccountCache();
   const normalizedProviderName = normalizeProviderName(providerName);
   const providers = config.Providers.filter((provider) => {
+    if (!isGatewayProviderEnabled(provider)) {
+      return false;
+    }
     if (!normalizedProviderName) {
       return true;
     }
@@ -443,7 +447,10 @@ function providerAccountTargets(provider: GatewayProviderConfig): ProviderAccoun
 
 function codexResetProvider(config: AppConfig, providerName: string, credentialId: string | undefined): GatewayProviderConfig {
   const normalizedProviderName = normalizeProviderName(providerName);
-  const provider = config.Providers.find((candidate) => normalizeProviderName(candidate.name) === normalizedProviderName);
+  const provider = config.Providers.find((candidate) =>
+    isGatewayProviderEnabled(candidate) &&
+    normalizeProviderName(candidate.name) === normalizedProviderName
+  );
   if (!provider) {
     throw new Error("Provider account was not found.");
   }

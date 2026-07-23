@@ -1,6 +1,6 @@
 import {
   AddProfileDraft, AddProviderDraft, AppConfig, Button, Check, ChevronLeft,
-  ChevronRight, cn, GatewayProviderProbeResult, GatewayStatus, Gauge, getNextOnboardingStep,
+  ChevronRight, CircleAlert, cn, GatewayProviderProbeResult, GatewayStatus, Gauge, getNextOnboardingStep,
   isOnboardingProfileReady, isOnboardingProviderReady, Layers3, LucideIcon, motion, motionEase,
   LoaderCircle, onboardingMascotSpriteUrl, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder, ProviderConnectivityCheckReport, reducedMotionTransition, useAppText, useReducedMotion,
   useState,
@@ -122,6 +122,16 @@ export function OnboardingView({
     : activeStep === "profile"
       ? !(profileReady || (providerReady && canSubmitProfile))
       : !routeReady;
+  const nextGuidance = onboardingNextGuidance({
+    activeStep,
+    canSubmitProfile,
+    canSubmitProvider,
+    profileReady,
+    providerReady,
+    providerSubmitLoading,
+    routeReady,
+    serviceReady
+  });
 
   function goToPreviousStep() {
     if (previousStep) {
@@ -200,6 +210,13 @@ export function OnboardingView({
                   <h2 className="text-[20px] font-semibold tracking-normal">{t(activeDetails.title)}</h2>
                   <p className="mt-1 text-[12px] leading-5 text-muted-foreground">{t(activeDetails.description)}</p>
                 </div>
+                <OnboardingReadinessChecklist
+                  activeStep={activeStep}
+                  profileReady={profileReady}
+                  providerReady={providerReady}
+                  routeReady={routeReady}
+                  serviceReady={serviceReady}
+                />
               </div>
 
               <div className="onboarding-step-panels mt-5 min-h-0 flex-1 overflow-hidden">
@@ -233,12 +250,12 @@ export function OnboardingView({
                     <AddProfileForm
                       botConfigs={[]}
                       draft={profileDraft}
-	                      error={profileError}
-	                      onChange={onChangeProfile}
-	                      onCreateBot={() => undefined}
-	                      providers={config.Providers}
-	                      virtualModelProfiles={config.virtualModelProfiles ?? []}
-	                    />
+                      error={profileError}
+                      onChange={onChangeProfile}
+                      onCreateBot={() => undefined}
+                      providers={config.Providers}
+                      virtualModelProfiles={config.virtualModelProfiles ?? []}
+                    />
                   </div>
                 </div>
 
@@ -267,7 +284,15 @@ export function OnboardingView({
                 </div>
               </div>
 
-              <div className="mt-5 flex shrink-0 items-center justify-end gap-3 border-t border-border/60 pt-4">
+              <div className="mt-5 flex shrink-0 items-center justify-between gap-3 border-t border-border/60 pt-4 max-[640px]:flex-col max-[640px]:items-stretch">
+                <div className="min-w-0 flex-1">
+                  {nextGuidance ? (
+                    <div className="flex min-w-0 items-start gap-2 rounded-md border border-border bg-muted/25 px-3 py-2 text-[12px] leading-5 text-muted-foreground">
+                      <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span className="min-w-0">{t(nextGuidance)}</span>
+                    </div>
+                  ) : null}
+                </div>
                 <Button disabled={nextDisabled} onClick={() => void goToNextStep()} type="button">
                   {providerSubmitLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : activeStep === "enter" ? <Check className="h-4 w-4" /> : null}
                   {providerSubmitLoading ? t("Loading") : activeStep === "enter" ? t("Let's start") : t("Next step")}
@@ -279,6 +304,102 @@ export function OnboardingView({
         </div>
       </div>
     </motion.div>
+  );
+}
+
+function onboardingNextGuidance({
+  activeStep,
+  canSubmitProfile,
+  canSubmitProvider,
+  profileReady,
+  providerReady,
+  providerSubmitLoading,
+  routeReady,
+  serviceReady
+}: {
+  activeStep: OnboardingStepId;
+  canSubmitProfile: boolean;
+  canSubmitProvider: boolean;
+  profileReady: boolean;
+  providerReady: boolean;
+  providerSubmitLoading: boolean;
+  routeReady: boolean;
+  serviceReady: boolean;
+}): string {
+  if (providerSubmitLoading) {
+    return "CCR is checking this provider. Wait for the check to finish before continuing.";
+  }
+  if (activeStep === "provider") {
+    if (canSubmitProvider) {
+      return "Save this provider to continue.";
+    }
+    if (!providerReady) {
+      return "Choose a provider preset or endpoint, enter an API key, and add at least one model.";
+    }
+  }
+  if (activeStep === "profile") {
+    if (!providerReady) {
+      return "Configure a provider before creating an agent profile.";
+    }
+    if (canSubmitProfile) {
+      return "Save this agent profile to continue.";
+    }
+    if (!profileReady) {
+      return "Choose an agent, model, and required profile settings.";
+    }
+  }
+  if (activeStep === "enter") {
+    if (!routeReady) {
+      return "Finish the provider and agent profile steps before entering the app.";
+    }
+    if (!serviceReady) {
+      return "The gateway is configured. Start the service from the toolbar when you are ready to test traffic.";
+    }
+    return "Send a request from your agent, then confirm it appears in Logs.";
+  }
+  return "";
+}
+
+function OnboardingReadinessChecklist({
+  activeStep,
+  profileReady,
+  providerReady,
+  routeReady,
+  serviceReady
+}: {
+  activeStep: OnboardingStepId;
+  profileReady: boolean;
+  providerReady: boolean;
+  routeReady: boolean;
+  serviceReady: boolean;
+}) {
+  const t = useAppText();
+  const items = [
+    { active: activeStep === "provider", label: "Provider", ready: providerReady },
+    { active: activeStep === "profile", label: "Agent profile", ready: profileReady },
+    { active: activeStep === "enter", label: "Gateway service", ready: serviceReady },
+    { active: activeStep === "enter" && routeReady, label: "Ready to test", ready: routeReady }
+  ];
+
+  return (
+    <div className="mt-2 flex max-w-full flex-wrap items-center justify-center gap-1.5" aria-label={t("Setup readiness")}>
+      {items.map((item) => (
+        <span
+          className={cn(
+            "inline-flex h-6 max-w-full items-center gap-1.5 rounded-full border px-2 text-[11px] font-medium",
+            item.ready
+              ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
+              : item.active
+                ? "border-primary/25 bg-primary/10 text-primary"
+                : "border-border bg-muted/30 text-muted-foreground"
+          )}
+          key={item.label}
+        >
+          {item.ready ? <Check className="h-3 w-3 shrink-0" /> : <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70" />}
+          <span className="truncate">{t(item.label)}</span>
+        </span>
+      ))}
+    </div>
   );
 }
 

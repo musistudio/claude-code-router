@@ -1,31 +1,36 @@
 import {
   AddProviderDraft, AnimatedDisclosure, AnimatedIconSwap, AnimatedListItem, AnimatedPopover, AnimatePresence, AppConfig, Badge,
   Box, Braces, Button, Card, CardContent, CardHeader, CardTitle,
-  Check, Checkbox, ChevronDown, ChevronRight, CircleAlert, cn,
+  Check, Checkbox, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, cn,
   compareProviderAccountSnapshots, copyTextToClipboard, createDefaultProviderAccountDraft, createModelCatalogItems, createProviderAccountDraftFromConfig, createProviderCredentialDraft,
   customProviderPresetId, defaultProviderAccountConfigForPreset, Dialog, DialogBody, DialogContent, DialogFooter,
-  DialogHeader, DialogTitle, ExternalLink, Field, FieldGroup, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
+  DialogHeader, DialogTitle, ExternalLink, Eye, EyeOff, Field, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
   GatewayProviderProbeResult, getProviderPresets, Globe, inferProviderNameFromBaseUrl, Info, Input, KeyValueRowsControl, Label,
   Layers3, LoaderCircle, localAgentProviderIconUrls, mergeProviderModelLists, modelCatalogItemMatchesQuery, motion,
   Pencil, Plus, PopoverContent, primaryProviderAccountMeter, primaryProviderPresetEndpoint,
   providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountSnapshot,
   providerAccountConnectorsTextWithNewApiUserBalanceTemplate, providerAccountSnapshotCredentialLabel, providerAccountSnapshotLabel, ProviderAccountTestPath,
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
-  ProviderConnectivityCheckReport, providerCapabilityBaseUrlForProtocol, providerDeepLinkDisplayIcon, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
+  ProviderConnectivityCheckReport, providerCapabilityBaseUrlForProtocol, providerConnectivityApiKeyFromDraft, providerDeepLinkDisplayIcon, providerDraftHasReadyCredentialPool, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
   providerDisplayIcon, providerGlobalBaseUrlForProbe, providerModelDisplayName, providerModelDisplayTitle, providerProtocolOptions, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
-  resolveProviderDeepLinkPreset, ShieldCheck, splitLines, splitModelTagInput, Switch, Textarea, translatedProviderProtocolLabel, translateOptions,
-  translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppErrorText, useAppText, useEffect, useMemo,
-  useRef, useState, X, isPlainRecord
+  resolveProviderDeepLinkPreset, ShieldCheck, splitLines, Switch, Textarea, Toggle, translatedProviderProtocolLabel, translateOptions,
+  translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppErrorText, useAppText, useEffect, useLayoutEffect, useMemo,
+  useRef, useState, X, isGatewayProviderEnabled, isPlainRecord
 } from "../shared/index";
 import { providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
+import { createPortal } from "react-dom";
 import type { LocalAgentProviderCandidate } from "@ccr/core/contracts/app";
-export function ProvidersView({ accountSnapshots, addProvider, editProvider, notify, providers, removeProvider }: {
+
+const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+export function ProvidersView({ accountSnapshots, addProvider, editProvider, notify, providers, removeProvider, setProviderEnabled }: {
   accountSnapshots: ProviderAccountSnapshot[];
   addProvider: () => void;
   editProvider: (index: number) => void;
   notify: (message: string) => void;
   providers: Array<{ provider: GatewayProviderConfig; index: number }>;
   removeProvider: (index: number) => void;
+  setProviderEnabled: (index: number, enabled: boolean) => void;
 }) {
   const t = useAppText();
   const [query, setQuery] = useState("");
@@ -46,6 +51,9 @@ export function ProvidersView({ accountSnapshots, addProvider, editProvider, not
   }, [accountSnapshots]);
 
   function toggleProvider(provider: GatewayProviderConfig, index: number) {
+    if (!isGatewayProviderEnabled(provider)) {
+      return;
+    }
     const key = providerListItemKey(provider, index);
     setExpandedProviders((current) => {
       const next = new Set(current);
@@ -61,6 +69,21 @@ export function ProvidersView({ accountSnapshots, addProvider, editProvider, not
   async function copyModel(model: string) {
     await copyTextToClipboard(model);
     notify(`${t("Copied")} ${model}`);
+  }
+
+  function changeProviderEnabled(provider: GatewayProviderConfig, index: number, enabled: boolean) {
+    if (!enabled) {
+      const key = providerListItemKey(provider, index);
+      setExpandedProviders((current) => {
+        if (!current.has(key)) {
+          return current;
+        }
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
+    setProviderEnabled(index, enabled);
   }
 
   return (
@@ -99,156 +122,325 @@ export function ProvidersView({ accountSnapshots, addProvider, editProvider, not
             <div className="m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center text-[12px] text-muted-foreground">{t("No matching providers")}</div>
           ) : null}
           {visibleProviders.length > 0 ? (
-            <div className="min-w-0">
-              <div className="min-w-[1080px]">
-                <div className="sticky top-0 z-10 grid h-10 grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(160px,0.7fr)_minmax(150px,0.65fr)_80px_84px] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                  <div className="truncate">{t("Name")}</div>
-                  <div className="truncate">{t("Base URL")}</div>
-                  <div className="truncate">{t("Capability")}</div>
-                  <div className="truncate">{t("Account")}</div>
-                  <div className="truncate">{t("Models")}</div>
-                  <div aria-hidden="true" />
-                </div>
-                <div className="divide-y divide-border/60">
-                  <AnimatePresence initial={false}>
-                    {visibleProviders.map(({ provider, index }) => {
-                      const itemKey = providerListItemKey(provider, index);
-                      const expanded = expandedProviders.has(itemKey);
-                      const providerAccountSnapshots = accountSnapshotsByProvider.get(provider.name) ?? [];
-                      const providerIconUrl = providerDisplayIcon(provider);
-                      return (
-                        <AnimatedListItem key={itemKey}>
-                          <div
-                            className="grid min-h-[58px] cursor-pointer grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(160px,0.7fr)_minmax(150px,0.65fr)_80px_84px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
-                            onClick={() => toggleProvider(provider, index)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                toggleProvider(provider, index);
-                              }
-                            }}
-                            role="button"
-                            tabIndex={0}
-                          >
-                          <div className="flex min-w-0 items-center gap-2">
-                            <button
-                              aria-expanded={expanded}
-                              aria-label={`${expanded ? t("Collapse") : t("Expand")} ${provider.name || t("provider")} ${t("models")}`}
-                              className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                toggleProvider(provider, index);
-                              }}
-                              title={expanded ? t("Collapse models") : t("Expand models")}
-                              type="button"
-                            >
-                              {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                            </button>
-                            <ProviderPresetIcon className="h-8 w-8 rounded-md" iconUrl={providerIconUrl} />
-                            <div className="min-w-0">
-                              <div className="truncate text-[12px] font-semibold">{provider.name || t("Unnamed")}</div>
-                            </div>
-                          </div>
-                          <div className="min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={providerBaseUrl(provider)}>
-                            {providerBaseUrl(provider) || t("Not set")}
-                          </div>
-                          <div className="min-w-0 truncate text-[11px] text-muted-foreground" title={providerCapabilitiesSummary(provider, t)}>
-                            {providerCapabilitiesSummary(provider, t)}
-                          </div>
-                          <ProviderAccountListCell provider={provider} snapshots={providerAccountSnapshots} />
-                          <div className="min-w-0">
-                            <button
-                              aria-expanded={expanded}
-                              className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                toggleProvider(provider, index);
-                              }}
-                              title={expanded ? t("Collapse models") : t("Expand models")}
-                              type="button"
-                            >
-                              <Badge variant={provider.models.length > 0 ? "outline" : "warning"}>{provider.models.length}</Badge>
-                            </button>
-                          </div>
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              aria-label={`${t("Edit")} ${provider.name || t("provider")}`}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                editProvider(index);
-                              }}
-                              size="iconSm"
-                              title={t("Edit provider")}
-                              type="button"
-                              variant="ghost"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              aria-label={`${t("Remove")} ${provider.name || t("provider")}`}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                removeProvider(index);
-                              }}
-                              size="iconSm"
-                              title={t("Remove provider")}
-                              type="button"
-                              variant="ghost"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </div>
-                        <AnimatePresence initial={false}>
-                          {expanded ? (
-                            <AnimatedDisclosure key="provider-models">
-                              <div className="border-t border-border/50 bg-muted/20 px-4 py-3">
-                                {provider.capabilities?.length ? (
-                                  <div className="mb-3 flex flex-wrap gap-2">
-                                    {provider.capabilities.map((capability) => (
-                                      <Badge key={`${capability.type}:${capability.baseUrl}`} variant="secondary">
-                                        {translatedProviderProtocolLabel(capability.type, t)}
-                                      </Badge>
-                                    ))}
-                                  </div>
-                                ) : null}
-                                {provider.models.length === 0 ? (
-                                  <div className="rounded-md border border-dashed border-border bg-background/60 px-3 py-4 text-center text-[12px] text-muted-foreground">{t("No models configured")}</div>
-                                ) : (
-                                  <div className="flex flex-wrap gap-2">
-                                    {provider.models.map((model) => {
-                                      const modelKey = `${itemKey}:${model}`;
-                                      const displayName = providerModelDisplayName(provider, model);
-                                      return (
-                                        <button
-                                          aria-label={`${t("Double click to copy")} ${displayName}`}
-                                          className="inline-flex max-w-full items-center rounded-full border border-border bg-background px-2.5 py-1 text-[11px] leading-4 text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-                                          key={modelKey}
-                                          onDoubleClick={() => void copyModel(model)}
-                                          title={`${providerModelDisplayTitle(provider, model)} · ${t("Double click to copy")}`}
-                                          type="button"
-                                        >
-                                          <span className="min-w-0 truncate">{displayName}</span>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            </AnimatedDisclosure>
-                          ) : null}
-                        </AnimatePresence>
-                      </AnimatedListItem>
+            <>
+              <div className="grid gap-2 p-3 md:hidden">
+                <AnimatePresence initial={false}>
+                  {visibleProviders.map(({ provider, index }) => {
+                    const itemKey = providerListItemKey(provider, index);
+                    const expanded = isGatewayProviderEnabled(provider) && expandedProviders.has(itemKey);
+                    const providerAccountSnapshots = accountSnapshotsByProvider.get(provider.name) ?? [];
+                    return (
+                      <ProviderMobileCard
+                        expanded={expanded}
+                        index={index}
+                        key={itemKey}
+                        onCopyModel={copyModel}
+                        onEdit={editProvider}
+                        onRemove={removeProvider}
+                        onSetEnabled={(providerIndex, enabled) => changeProviderEnabled(provider, providerIndex, enabled)}
+                        onToggle={toggleProvider}
+                        provider={provider}
+                        snapshots={providerAccountSnapshots}
+                      />
                     );
                   })}
-                  </AnimatePresence>
+                </AnimatePresence>
+              </div>
+              <div className="hidden min-w-0 md:block">
+                <div className="min-w-[1080px]">
+                  <div className="sticky top-0 z-10 grid h-10 grid-cols-[minmax(260px,1fr)_80px_minmax(150px,0.65fr)_minmax(260px,1fr)_132px] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <div className="truncate">{t("Provider")}</div>
+                    <div className="truncate">{t("Models")}</div>
+                    <div className="truncate">{t("Account Usage")}</div>
+                    <div className="truncate">{t("Endpoint")}</div>
+                    <div aria-hidden="true" />
+                  </div>
+                  <div className="divide-y divide-border/60">
+                    <AnimatePresence initial={false}>
+                      {visibleProviders.map(({ provider, index }) => {
+                        const itemKey = providerListItemKey(provider, index);
+                        const providerEnabled = isGatewayProviderEnabled(provider);
+                        const expanded = providerEnabled && expandedProviders.has(itemKey);
+                        const providerAccountSnapshots = accountSnapshotsByProvider.get(provider.name) ?? [];
+                        const providerIconUrl = providerDisplayIcon(provider);
+                        return (
+                          <AnimatedListItem key={itemKey}>
+                            <div
+                              className={cn(
+                                "grid min-h-[58px] grid-cols-[minmax(260px,1fr)_80px_minmax(150px,0.65fr)_minmax(260px,1fr)_132px] items-center gap-3 px-4 py-2.5 transition-colors",
+                                providerEnabled ? "cursor-pointer hover:bg-muted/35" : "bg-muted/10 text-muted-foreground"
+                              )}
+                              onClick={() => toggleProvider(provider, index)}
+                              onKeyDown={(event) => {
+                                if (providerEnabled && (event.key === "Enter" || event.key === " ")) {
+                                  event.preventDefault();
+                                  toggleProvider(provider, index);
+                                }
+                              }}
+                              role={providerEnabled ? "button" : undefined}
+                              tabIndex={providerEnabled ? 0 : undefined}
+                            >
+                              <div className="flex min-w-0 items-center gap-2">
+                                {providerEnabled ? (
+                                  <button
+                                    aria-expanded={expanded}
+                                    aria-label={`${expanded ? t("Collapse") : t("Expand")} ${provider.name || t("provider")} ${t("models")}`}
+                                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      toggleProvider(provider, index);
+                                    }}
+                                    title={expanded ? t("Collapse models") : t("Expand models")}
+                                    type="button"
+                                  >
+                                    {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                                  </button>
+                                ) : <div aria-hidden="true" className="h-6 w-6 shrink-0" />}
+                                <ProviderPresetIcon className="h-8 w-8 rounded-md" iconUrl={providerIconUrl} />
+                                <div className="min-w-0">
+                                  <div className="truncate text-[12px] font-semibold text-foreground">{provider.name || t("Unnamed")}</div>
+                                  <div className="mt-0.5 truncate text-[10px] text-muted-foreground" title={providerCapabilitiesSummary(provider, t)}>
+                                    {providerCapabilitiesSummary(provider, t)}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="min-w-0">
+                                {providerEnabled ? (
+                                  <button
+                                    aria-expanded={expanded}
+                                    className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      toggleProvider(provider, index);
+                                    }}
+                                    title={expanded ? t("Collapse models") : t("Expand models")}
+                                    type="button"
+                                  >
+                                    <Badge variant={provider.models.length > 0 ? "outline" : "warning"}>{provider.models.length}</Badge>
+                                  </button>
+                                ) : <span className="text-[11px] text-muted-foreground">-</span>}
+                              </div>
+                              <ProviderAccountListCell provider={provider} snapshots={providerAccountSnapshots} />
+                              <div className="min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={providerBaseUrl(provider)}>
+                                {providerBaseUrl(provider) || t("Not set")}
+                              </div>
+                              <div className="flex items-center justify-end gap-2">
+                                <div
+                                  onClick={(event) => event.stopPropagation()}
+                                  role="presentation"
+                                >
+                                  <Toggle
+                                    ariaLabel={`${t(providerEnabled ? "Disable provider" : "Enable provider")} ${provider.name || t("provider")}`}
+                                    checked={providerEnabled}
+                                    onChange={(enabled) => changeProviderEnabled(provider, index, enabled)}
+                                    title={t(providerEnabled ? "Enabled" : "Disabled")}
+                                  />
+                                </div>
+                                <Button
+                                  aria-label={`${t("Edit")} ${provider.name || t("provider")}`}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    editProvider(index);
+                                  }}
+                                  size="iconSm"
+                                  title={t("Edit provider")}
+                                  type="button"
+                                  variant="ghost"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  aria-label={`${t("Remove")} ${provider.name || t("provider")}`}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    removeProvider(index);
+                                  }}
+                                  size="iconSm"
+                                  title={t("Remove provider")}
+                                  type="button"
+                                  variant="ghost"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </div>
+                            <AnimatePresence initial={false}>
+                              {providerEnabled && expanded ? (
+                                <AnimatedDisclosure key="provider-models">
+                                  <div className="border-t border-border/50 bg-muted/20 px-4 py-3">
+                                    {provider.capabilities?.length ? (
+                                      <div className="mb-3 flex flex-wrap gap-2">
+                                        {provider.capabilities.map((capability) => (
+                                          <Badge key={`${capability.type}:${capability.baseUrl}`} variant="secondary">
+                                            {translatedProviderProtocolLabel(capability.type, t)}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                    {provider.models.length === 0 ? (
+                                      <div className="rounded-md border border-dashed border-border bg-background/60 px-3 py-4 text-center text-[12px] text-muted-foreground">{t("No models configured")}</div>
+                                    ) : (
+                                      <div className="flex flex-wrap gap-2">
+                                        {provider.models.map((model) => {
+                                          const modelKey = `${itemKey}:${model}`;
+                                          const displayName = providerModelDisplayName(provider, model);
+                                          return (
+                                            <button
+                                              aria-label={`${t("Double click to copy")} ${displayName}`}
+                                              className="inline-flex max-w-full items-center rounded-full border border-border bg-background px-2.5 py-1 text-[11px] leading-4 text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                                              key={modelKey}
+                                              onDoubleClick={() => void copyModel(model)}
+                                              title={`${providerModelDisplayTitle(provider, model)} · ${t("Double click to copy")}`}
+                                              type="button"
+                                            >
+                                              <span className="min-w-0 truncate">{displayName}</span>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                </AnimatedDisclosure>
+                              ) : null}
+                            </AnimatePresence>
+                          </AnimatedListItem>
+                        );
+                      })}
+                    </AnimatePresence>
+                  </div>
                 </div>
               </div>
-            </div>
+            </>
           ) : null}
         </CardContent>
       </Card>
     </motion.div>
+  );
+}
+
+function ProviderMobileCard({
+  expanded,
+  index,
+  onCopyModel,
+  onEdit,
+  onRemove,
+  onSetEnabled,
+  onToggle,
+  provider,
+  snapshots
+}: {
+  expanded: boolean;
+  index: number;
+  onCopyModel: (model: string) => void | Promise<void>;
+  onEdit: (index: number) => void;
+  onRemove: (index: number) => void;
+  onSetEnabled: (index: number, enabled: boolean) => void;
+  onToggle: (provider: GatewayProviderConfig, index: number) => void;
+  provider: GatewayProviderConfig;
+  snapshots: ProviderAccountSnapshot[];
+}) {
+  const t = useAppText();
+  const providerIconUrl = providerDisplayIcon(provider);
+  const providerEnabled = isGatewayProviderEnabled(provider);
+  const models = providerEnabled ? provider.models : [];
+
+  return (
+    <AnimatedListItem>
+      <article className={cn("rounded-md border border-border p-3", providerEnabled ? "bg-background" : "bg-muted/10 text-muted-foreground")}>
+        <div className="flex min-w-0 items-start gap-3">
+          <ProviderPresetIcon className="h-9 w-9 rounded-md" iconUrl={providerIconUrl} />
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <h3 className="min-w-0 truncate text-[13px] font-semibold text-foreground">{provider.name || t("Unnamed")}</h3>
+              {providerEnabled ? <Badge variant={models.length > 0 ? "outline" : "warning"}>{models.length} {t("models")}</Badge> : null}
+            </div>
+            <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground" title={providerBaseUrl(provider)}>
+              {providerBaseUrl(provider) || t("Not set")}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <Toggle
+              ariaLabel={`${t(providerEnabled ? "Disable provider" : "Enable provider")} ${provider.name || t("provider")}`}
+              checked={providerEnabled}
+              onChange={(enabled) => onSetEnabled(index, enabled)}
+              title={t(providerEnabled ? "Enabled" : "Disabled")}
+            />
+            <Button
+              aria-label={`${t("Edit")} ${provider.name || t("provider")}`}
+              onClick={() => onEdit(index)}
+              size="iconSm"
+              title={t("Edit provider")}
+              type="button"
+              variant="ghost"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              aria-label={`${t("Remove")} ${provider.name || t("provider")}`}
+              onClick={() => onRemove(index)}
+              size="iconSm"
+              title={t("Remove provider")}
+              type="button"
+              variant="ghost"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        <dl className="mt-3 grid grid-cols-1 gap-2 text-[12px]">
+          <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
+            <dt className="truncate text-muted-foreground">{t("Capability")}</dt>
+            <dd className="min-w-0 truncate font-medium" title={providerCapabilitiesSummary(provider, t)}>{providerCapabilitiesSummary(provider, t)}</dd>
+          </div>
+          <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
+            <dt className="truncate text-muted-foreground">{t("Account Usage")}</dt>
+            <dd className="min-w-0"><ProviderAccountListCell provider={provider} snapshots={snapshots} /></dd>
+          </div>
+        </dl>
+
+        {providerEnabled ? (
+          <button
+            aria-expanded={expanded}
+            className="mt-3 flex h-8 w-full items-center justify-between rounded-md border border-border bg-muted/20 px-2 text-[12px] font-medium text-muted-foreground"
+            onClick={() => onToggle(provider, index)}
+            type="button"
+          >
+            <span>{expanded ? t("Hide models") : t("Show models")}</span>
+            {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          </button>
+        ) : null}
+
+        <AnimatePresence initial={false}>
+          {providerEnabled && expanded ? (
+            <AnimatedDisclosure key="provider-mobile-models">
+              <div className="mt-2 rounded-md border border-border bg-muted/20 p-2">
+                {models.length === 0 ? (
+                  <div className="px-2 py-3 text-center text-[12px] text-muted-foreground">{t("No models configured")}</div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {models.map((model) => {
+                      const displayName = providerModelDisplayName(provider, model);
+                      return (
+                        <button
+                          className="inline-flex max-w-full items-center rounded-full border border-border bg-background px-2.5 py-1 text-[11px] leading-4 text-foreground"
+                          key={`${provider.name}:${model}`}
+                          onDoubleClick={() => void onCopyModel(model)}
+                          title={`${providerModelDisplayTitle(provider, model)} · ${t("Double click to copy")}`}
+                          type="button"
+                        >
+                          <span className="truncate">{displayName}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </AnimatedDisclosure>
+          ) : null}
+        </AnimatePresence>
+      </article>
+    </AnimatedListItem>
   );
 }
 
@@ -465,6 +657,9 @@ function ModelCatalogDescriptionDialog({
 
 function ProviderAccountListCell({ provider, snapshots }: { provider: GatewayProviderConfig; snapshots: ProviderAccountSnapshot[] }) {
   const t = useAppText();
+  if (!isGatewayProviderEnabled(provider)) {
+    return <div className="min-w-0 truncate text-[11px] text-muted-foreground">{t("Disabled")}</div>;
+  }
   const sortedSnapshots = [...snapshots].sort(compareProviderAccountSnapshots);
   const snapshot = sortedSnapshots[0];
   const meter = snapshot ? primaryProviderAccountMeter(snapshot) : undefined;
@@ -753,6 +948,15 @@ function ProviderPresetCombobox({
   const t = useAppText();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [popoverLayout, setPopoverLayout] = useState<{
+    left: number;
+    listHeight: number;
+    maxHeight: number;
+    offset: number;
+    placement: "above" | "below";
+    width: number;
+  }>();
+  const panelRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const selected = options.find((option) => option.value === value) ?? options.find((option) => option.value === "");
@@ -761,7 +965,52 @@ function ProviderPresetCombobox({
     ? options.filter((option) => providerPresetOptionMatchesQuery(option, normalizedQuery))
     : options;
   const selectedExternalUrl = providerPresetOptionPlatformUrl(selected);
-  const selectedDetail = providerPresetOptionDetail(selected, t);
+  const selectedEndpointUrl = selected?.preset ? primaryProviderPresetEndpoint(selected.preset)?.baseUrl : undefined;
+
+  useClientLayoutEffect(() => {
+    if (!open) {
+      setPopoverLayout(undefined);
+      return;
+    }
+
+    function updatePopoverLayout() {
+      const root = rootRef.current;
+      if (!root) {
+        return;
+      }
+      const anchor = root.getBoundingClientRect();
+      const margin = 12;
+      const gap = 6;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const availableWidth = Math.max(220, viewportWidth - margin * 2);
+      const width = Math.min(Math.max(260, anchor.width), availableWidth);
+      const left = Math.min(Math.max(margin, anchor.left), viewportWidth - margin - width);
+      const below = Math.max(0, viewportHeight - anchor.bottom - margin - gap);
+      const above = Math.max(0, anchor.top - margin - gap);
+      const placement = below < 260 && above > below ? "above" : "below";
+      const availableHeight = Math.max(140, placement === "above" ? above : below);
+      const maxHeight = Math.min(328, availableHeight);
+      const listHeight = Math.max(96, Math.min(248, maxHeight - 44));
+
+      setPopoverLayout({
+        left,
+        listHeight,
+        maxHeight,
+        offset: placement === "above" ? viewportHeight - anchor.top + gap : anchor.bottom + gap,
+        placement,
+        width
+      });
+    }
+
+    updatePopoverLayout();
+    window.addEventListener("resize", updatePopoverLayout);
+    window.addEventListener("scroll", updatePopoverLayout, true);
+    return () => {
+      window.removeEventListener("resize", updatePopoverLayout);
+      window.removeEventListener("scroll", updatePopoverLayout, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -770,7 +1019,8 @@ function ProviderPresetCombobox({
 
     const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 0);
     const handlePointerDown = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !panelRef.current?.contains(target)) {
         setOpen(false);
       }
     };
@@ -796,6 +1046,9 @@ function ProviderPresetCombobox({
   }
 
   function toggleOpen() {
+    if (!open) {
+      setQuery("");
+    }
     setOpen((current) => !current);
   }
 
@@ -813,7 +1066,7 @@ function ProviderPresetCombobox({
         aria-expanded={open}
         aria-haspopup="listbox"
         className={cn(
-          "flex min-h-[62px] w-full min-w-0 cursor-pointer items-center gap-3 rounded-md border border-border bg-background px-3 py-2.5 text-left outline-none transition-[background-color,border-color,box-shadow,color] hover:border-muted-foreground/45 hover:bg-muted/20 focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-ring/25",
+          "flex min-h-12 w-full min-w-0 cursor-pointer items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-left outline-none transition-[background-color,border-color,box-shadow,color] hover:border-muted-foreground/45 hover:bg-muted/20 focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-ring/25",
           open && "border-ring/35 bg-muted/30"
         )}
         onClick={toggleOpen}
@@ -826,11 +1079,11 @@ function ProviderPresetCombobox({
         role="button"
         tabIndex={0}
       >
-        <ProviderPresetIcon className="h-10 w-10 rounded-md" iconUrl={selected?.iconUrl} preset={selected?.preset} />
+        <ProviderPresetIcon className="h-8 w-8 rounded-md" iconUrl={selected?.iconUrl} preset={selected?.preset} />
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13px] font-semibold text-foreground">{selected ? selected.label : t("Select preset provider")}</div>
-          {selectedDetail ? (
-            <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground" title={selectedDetail}>{selectedDetail}</div>
+          {selectedEndpointUrl ? (
+            <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground" title={selectedEndpointUrl}>{selectedEndpointUrl}</div>
           ) : null}
         </div>
         {selectedExternalUrl ? (
@@ -854,62 +1107,80 @@ function ProviderPresetCombobox({
             <ExternalLink className="h-4 w-4" />
           </Button>
         ) : null}
+        <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
       </div>
 
-      <AnimatePresence initial={false}>
-        {open ? (
-          <AnimatedPopover className="absolute left-0 right-0 top-full z-50 mt-1">
-            <PopoverContent className="overflow-hidden p-1">
-              <div className="relative mb-1">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  aria-label={t("Filter")}
-                  className="h-8 pl-8"
-                  onChange={(event) => setQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      const first = filteredOptions[0];
-                      if (first) {
-                        chooseOption(first.value);
-                      }
+      {open && typeof document !== "undefined" ? createPortal(
+        <AnimatedPopover
+          className="fixed z-[140]"
+          placement={popoverLayout?.placement ?? "below"}
+          style={popoverLayout
+            ? {
+              left: `${popoverLayout.left}px`,
+              maxHeight: `${popoverLayout.maxHeight}px`,
+              width: `${popoverLayout.width}px`,
+              ...(popoverLayout.placement === "above"
+                ? { bottom: `${popoverLayout.offset}px` }
+                : { top: `${popoverLayout.offset}px` })
+            }
+            : undefined}
+        >
+          <PopoverContent className="w-full overflow-hidden p-1" ref={panelRef}>
+            <div className="relative mb-1">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                aria-label={t("Filter")}
+                className="h-8 pl-8"
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    const first = filteredOptions[0];
+                    if (first) {
+                      chooseOption(first.value);
                     }
-                  }}
-                  placeholder={t("Filter")}
-                  ref={inputRef}
-                  value={query}
-                />
-              </div>
-              <div className="max-h-[240px] overflow-auto" id="provider-preset-options" role="listbox">
-                {filteredOptions.length > 0 ? (
-                  filteredOptions.map((option) => {
-                    const selectedOption = option.value === value;
-                    return (
-                      <button
-                        aria-selected={selectedOption}
-                        className={cn(
-                          "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
-                          selectedOption ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
-                        )}
-                        key={option.value}
-                        onClick={() => chooseOption(option.value)}
-                        role="option"
-                        type="button"
-                      >
-                        <ProviderPresetIcon className="h-5 w-5 rounded-[5px]" iconUrl={option.iconUrl} preset={option.preset} />
-                        <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                        {selectedOption ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
-                      </button>
-                    );
-                  })
-                ) : (
-                  <div className="px-2 py-5 text-center text-[12px] text-muted-foreground">{t("No provider presets found")}</div>
-                )}
-              </div>
-            </PopoverContent>
-          </AnimatedPopover>
-        ) : null}
-      </AnimatePresence>
+                  }
+                }}
+                placeholder={t("Filter")}
+                ref={inputRef}
+                value={query}
+              />
+            </div>
+            <div
+              className="overflow-auto"
+              id="provider-preset-options"
+              role="listbox"
+              style={{ maxHeight: `${popoverLayout?.listHeight ?? 240}px` }}
+            >
+              {filteredOptions.length > 0 ? (
+                filteredOptions.map((option) => {
+                  const selectedOption = option.value === value;
+                  return (
+                    <button
+                      aria-selected={selectedOption}
+                      className={cn(
+                        "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
+                        selectedOption ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+                      )}
+                      key={option.value}
+                      onClick={() => chooseOption(option.value)}
+                      role="option"
+                      type="button"
+                    >
+                      <ProviderPresetIcon className="h-5 w-5 rounded-[5px]" iconUrl={option.iconUrl} preset={option.preset} />
+                      <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                      {selectedOption ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="px-2 py-5 text-center text-[12px] text-muted-foreground">{t("No provider presets found")}</div>
+              )}
+            </div>
+          </PopoverContent>
+        </AnimatedPopover>,
+        document.body
+      ) : null}
     </div>
   );
 }
@@ -1048,19 +1319,6 @@ function providerPresetOptionMatchesQuery(
   return haystack.includes(query);
 }
 
-function providerPresetOptionDetail(option: ProviderPresetComboboxOption | undefined, t: (value: string) => string): string {
-  if (!option) {
-    return "";
-  }
-  if (option.preset) {
-    return primaryProviderPresetEndpoint(option.preset)?.baseUrl ?? option.preset.websiteUrl ?? "";
-  }
-  if (option.value === customProviderPresetId) {
-    return t("API endpoint");
-  }
-  return "";
-}
-
 function providerPresetOptionPlatformUrl(option: ProviderPresetComboboxOption | undefined): string | undefined {
   if (!option?.preset) {
     return undefined;
@@ -1189,6 +1447,7 @@ function LocalAgentProviderImportPanel({
         apiKey: result.provider.apiKey ?? "",
         baseUrl: result.provider.baseUrl,
         capabilities: result.provider.capabilities ?? [],
+        credentialMode: "apiKey",
         credentials: [],
         icon: result.provider.icon?.trim() || localAgentProviderIconUrls[candidate.kind] || "",
         modelDescriptions: result.provider.modelDescriptions,
@@ -1332,7 +1591,375 @@ function localAgentProviderAlreadyImported(
   });
 }
 
+type ProviderSetupStepId = "provider" | "credentials" | "models" | "verify";
+
+const providerSetupStepIds: ProviderSetupStepId[] = ["provider", "credentials", "models", "verify"];
+
+function ProviderSetupProgress({
+  activeStep,
+  className,
+  credentialReady,
+  modelsReady,
+  onSelectStep,
+  providerReady,
+  variant = "block",
+  verified
+}: {
+  activeStep?: ProviderSetupStepId;
+  className?: string;
+  credentialReady: boolean;
+  modelsReady: boolean;
+  onSelectStep?: (step: ProviderSetupStepId) => void;
+  providerReady: boolean;
+  variant?: "block" | "divider";
+  verified: boolean;
+}) {
+  const t = useAppText();
+  const steps = [
+    { complete: providerReady, description: "Endpoint and identity", id: "provider" as const, label: "Choose provider" },
+    { complete: credentialReady, description: "Secret used for requests", id: "credentials" as const, label: "Add credentials" },
+    { complete: modelsReady, description: "Available model IDs", id: "models" as const, label: "Pick models" },
+    { complete: verified, description: "Optional health check", id: "verify" as const, label: "Verify connection" }
+  ];
+  const firstIncompleteIndex = steps.findIndex((step) => !step.complete);
+  const activeIndex = activeStep
+    ? Math.max(0, steps.findIndex((step) => step.id === activeStep))
+    : Math.max(0, firstIncompleteIndex);
+
+  if (activeStep) {
+    const progressPercent = ((activeIndex + 1) / steps.length) * 100;
+
+    return (
+      <div
+        aria-label={`${t("Step")} ${activeIndex + 1} / ${steps.length}`}
+        className={cn("min-w-0", variant === "divider" && "shrink-0", className)}
+        role="progressbar"
+        aria-valuemin={1}
+        aria-valuemax={steps.length}
+        aria-valuenow={activeIndex + 1}
+      >
+        <div className={cn(
+          "overflow-hidden bg-muted",
+          variant === "divider" ? "h-0.5 bg-border" : "h-1.5 rounded-full"
+        )}>
+          <div
+            className={cn("h-full bg-primary transition-[width]", variant === "block" && "rounded-full")}
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "grid grid-cols-1 gap-2 rounded-md border border-border/70 bg-muted/15 p-2 sm:grid-cols-4",
+        className
+      )}
+    >
+      {steps.map((step, index) => {
+        const complete = step.complete;
+        const active = index === activeIndex;
+        const className = cn(
+          "flex min-h-11 min-w-0 items-center gap-2 rounded-[5px] border px-2 py-1.5 text-left",
+          onSelectStep && "transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25",
+          complete
+            ? active
+              ? "border-border bg-background text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
+              : "border-transparent bg-transparent text-foreground"
+            : active
+              ? "border-border bg-background text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
+              : "border-transparent bg-transparent text-muted-foreground"
+        );
+        const content = (
+          <>
+            <span className={cn(
+              "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold",
+              complete
+                ? "border-primary/25 bg-primary/10 text-primary"
+                : active
+                  ? "border-foreground/15 bg-foreground text-background"
+                  : "border-border bg-background text-muted-foreground"
+            )}>
+              {complete ? <Check className="h-3.5 w-3.5" /> : index + 1}
+            </span>
+            <div className="min-w-0">
+              <div className="truncate text-[12px] font-semibold">{t(step.label)}</div>
+              <div className="truncate text-[10.5px] leading-4 text-muted-foreground">
+                {complete ? t("Done") : active ? t("In progress") : t("Pending")}
+              </div>
+            </div>
+          </>
+        );
+
+        return onSelectStep ? (
+          <button
+            aria-current={active ? "step" : undefined}
+            className={className}
+            key={step.label}
+            onClick={() => onSelectStep(step.id)}
+            type="button"
+          >
+            {content}
+          </button>
+        ) : (
+          <div aria-current={active ? "step" : undefined} className={className} key={step.label}>
+            {content}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProviderFormStepHeader({
+  description,
+  index,
+  title
+}: {
+  description: string;
+  index: number;
+  title: string;
+}) {
+  const t = useAppText();
+
+  return (
+    <div className="sm:col-span-2 flex min-w-0 items-start justify-between gap-3 pb-1">
+      <div className="min-w-0 space-y-1">
+        <div className="truncate text-[14px] font-semibold text-foreground">{title}</div>
+        <p className="max-w-[540px] text-[12px] leading-5 text-muted-foreground">{description}</p>
+      </div>
+      <div className="shrink-0 rounded-full border border-border bg-muted/30 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+        {index} / {providerSetupStepIds.length}
+      </div>
+    </div>
+  );
+}
+
+function ProviderConnectionStatusPanel({
+  className,
+  connectivityLoading,
+  connectivityProbe,
+  hasConnectivityCheckInputs,
+  localAgentImport,
+  onCheck,
+  probe,
+  probeLoading
+}: {
+  className?: string;
+  connectivityLoading: boolean;
+  connectivityProbe?: GatewayProviderProbeResult;
+  hasConnectivityCheckInputs: boolean;
+  localAgentImport: boolean;
+  onCheck?: () => Promise<unknown>;
+  probe?: GatewayProviderProbeResult;
+  probeLoading: boolean;
+}) {
+  const t = useAppText();
+  const protocolDetected = providerProbeHasSupportedProtocol(probe) || Boolean(probe?.detectedProtocol);
+  const connectionVerified = providerProbeHasSupportedProtocol(connectivityProbe);
+  const protocolTitle = probeLoading
+    ? "Detecting protocols"
+    : localAgentImport
+      ? "Local login provider"
+      : protocolDetected
+        ? "Protocols detected"
+        : "Waiting for provider details";
+  const protocolDescription = probeLoading
+    ? "CCR is checking which API protocols this endpoint supports."
+    : protocolDetected
+      ? "Compatible API protocols were found automatically."
+      : "Choose a provider endpoint so CCR can detect compatible protocols.";
+  const requestTitle = connectivityLoading
+    ? "Checking connection"
+    : localAgentImport
+      ? "Available after saving"
+      : connectionVerified
+        ? "Connection verified"
+        : hasConnectivityCheckInputs
+          ? "Not verified yet"
+          : "Waiting for required fields";
+  const requestDescription = connectivityLoading
+    ? "CCR is sending a limited real model request."
+    : localAgentImport
+      ? "The imported local agent login is connected when this provider is saved."
+      : connectionVerified
+        ? "A real model request succeeded with the selected provider settings."
+        : hasConnectivityCheckInputs
+          ? "Run Check Connection before relying on this provider."
+          : "API endpoint, API key, and at least one model are required before verification.";
+
+  return (
+    <div className={cn("rounded-md border border-border bg-muted/20 p-3", className)}>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <ProviderConnectionStatusRow
+          description={t(protocolDescription)}
+          loading={probeLoading}
+          state={protocolDetected || localAgentImport ? "success" : "pending"}
+          title={t(protocolTitle)}
+        />
+        <ProviderConnectionStatusRow
+          description={t(requestDescription)}
+          loading={connectivityLoading}
+          state={connectionVerified || localAgentImport ? "success" : hasConnectivityCheckInputs ? "warning" : "pending"}
+          title={t(requestTitle)}
+        />
+      </div>
+      <div className="mt-3 flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
+        <p className="min-w-0 flex-1 text-[11px] leading-4 text-muted-foreground">
+          {t("Protocol detection checks compatibility; connection verification confirms a real model request succeeds.")}
+        </p>
+        {onCheck && hasConnectivityCheckInputs ? (
+          <Button
+            className="h-8 px-2"
+            disabled={connectivityLoading || probeLoading}
+            onClick={() => void onCheck()}
+            type="button"
+            variant="outline"
+          >
+            <AnimatedIconSwap iconKey={connectivityLoading ? "checking" : "check"}>
+              {connectivityLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+            </AnimatedIconSwap>
+            {t("Check Connection")}
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ProviderConnectionStatusRow({
+  description,
+  loading,
+  state,
+  title
+}: {
+  description: string;
+  loading?: boolean;
+  state: "pending" | "success" | "warning";
+  title: string;
+}) {
+  return (
+    <div className={cn(
+      "flex min-w-0 items-start gap-2 rounded-md border bg-background px-3 py-2",
+      state === "success" && "border-emerald-200",
+      state === "warning" && "border-amber-200",
+      state === "pending" && "border-border"
+    )}>
+      <span className={cn(
+        "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full",
+        state === "success" && "bg-emerald-50 text-emerald-700",
+        state === "warning" && "bg-amber-50 text-amber-700",
+        state === "pending" && "bg-muted text-muted-foreground"
+      )}>
+        {loading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : state === "success" ? <Check className="h-3.5 w-3.5" /> : <Info className="h-3.5 w-3.5" />}
+      </span>
+      <div className="min-w-0">
+        <div className="truncate text-[12px] font-semibold text-foreground">{title}</div>
+        <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{description}</div>
+      </div>
+    </div>
+  );
+}
+
+function ProviderApiKeyInput({
+  onChange,
+  resetProbe,
+  value
+}: {
+  onChange: (value: string, resetProbe?: boolean) => void;
+  resetProbe?: boolean;
+  value: string;
+}) {
+  const t = useAppText();
+  const [visible, setVisible] = useState(false);
+  const label = visible ? "Hide API key" : "Show API key";
+
+  return (
+    <div className="relative min-w-0">
+      <Input
+        className="pr-9"
+        type={visible ? "text" : "password"}
+        value={value}
+        onChange={(event) => onChange(event.target.value, resetProbe)}
+      />
+      <Button
+        aria-label={t(label)}
+        aria-pressed={visible}
+        className="absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2"
+        onClick={() => setVisible((current) => !current)}
+        onMouseDown={(event) => event.preventDefault()}
+        size="iconSm"
+        title={t(label)}
+        type="button"
+        variant="ghost"
+      >
+        {visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+      </Button>
+    </div>
+  );
+}
+
+function ProviderCredentialModeTabs({
+  onChange,
+  value
+}: {
+  onChange: (value: AddProviderDraft["credentialMode"]) => void;
+  value: AddProviderDraft["credentialMode"];
+}) {
+  const t = useAppText();
+  const options: Array<{
+    description: string;
+    label: string;
+    value: AddProviderDraft["credentialMode"];
+  }> = [
+    {
+      description: "Use one key for every request.",
+      label: "API key",
+      value: "apiKey"
+    },
+    {
+      description: "Use multiple keys with optional limits.",
+      label: "Credential pool",
+      value: "pool"
+    }
+  ];
+
+  return (
+    <div
+      aria-label={t("Credential method")}
+      className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-2"
+      role="tablist"
+    >
+      {options.map((option) => {
+        const selected = value === option.value;
+
+        return (
+          <button
+            aria-selected={selected}
+            className={cn(
+              "min-w-0 rounded-[5px] px-3 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
+              selected
+                ? "bg-background text-foreground shadow-card"
+                : "text-muted-foreground hover:bg-background/70 hover:text-foreground"
+            )}
+            key={option.value}
+            onClick={() => onChange(option.value)}
+            role="tab"
+            type="button"
+          >
+            <span className="block truncate text-[12px] font-semibold">{t(option.label)}</span>
+            <span className="mt-0.5 block truncate text-[11px] font-normal text-muted-foreground">{t(option.description)}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function AddProviderForm({
+  activeStep,
   draft,
   error,
   connectivityLoading = false,
@@ -1342,11 +1969,13 @@ export function AddProviderForm({
   onCheck,
   onChange,
   onIconDetectingChange,
+  onSelectStep,
   probe,
   probeLoading,
   providerPlugins = [],
   providers
 }: {
+  activeStep?: ProviderSetupStepId;
   connectivityLoading?: boolean;
   connectivityProbe?: GatewayProviderProbeResult;
   draft: AddProviderDraft;
@@ -1356,6 +1985,7 @@ export function AddProviderForm({
   onCheck?: () => Promise<unknown>;
   onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
   onIconDetectingChange?: (detecting: boolean) => void;
+  onSelectStep?: (step: ProviderSetupStepId) => void;
   probe?: GatewayProviderProbeResult;
   probeLoading: boolean;
   providerPlugins?: unknown[];
@@ -1368,7 +1998,6 @@ export function AddProviderForm({
   const [protocolProbeDetails, setProtocolProbeDetails] = useState<ProviderProtocolProbeDetailsState>();
   const iconDetectionRequestRef = useRef(0);
   const onChangeRef = useRef(onChange);
-  const hasModelCatalog = Boolean(probe?.models.length);
   const selectedPreset = findProviderPreset(draft.presetId);
   const customEndpoint = draft.presetId === customProviderPresetId;
   const importMode = Boolean(importProvider);
@@ -1383,7 +2012,6 @@ export function AddProviderForm({
   const manualProtocolDetection = draft.protocolDetectionMode === "manual";
   const providerPresetOptions = [
     { iconUrl: draft.icon, label: t("Other / custom API endpoint"), value: customProviderPresetId },
-    { label: t("Select preset provider"), value: "" },
     ...getProviderPresets().map((preset) => ({ label: t(preset.name), preset, value: preset.id }))
   ];
   const selectableProtocols = manualProtocolDetection
@@ -1392,11 +2020,22 @@ export function AddProviderForm({
   const protocolProbeRows = useMemo(() => uniqueProviderProbeProtocolRows(probe?.protocols ?? []), [probe]);
   const configuredModels = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
   const catalogModelIds = new Set(probe?.models ?? []);
+  const credentialApiKey = providerConnectivityApiKeyFromDraft(draft);
+  const credentialPoolReady = providerDraftHasReadyCredentialPool(draft);
   const hasConnectivityCheckInputs = Boolean(
     draft.baseUrl.trim() &&
-    draft.apiKey.trim() &&
+    credentialApiKey &&
     configuredModels.length > 0
   );
+  const providerIdentityReady = importMode || Boolean(selectedPreset || draft.baseUrl.trim());
+  const credentialReady = localAgentImport || Boolean(
+    draft.credentialMode === "pool"
+      ? credentialPoolReady
+      : draft.apiKey.trim()
+  );
+  const modelsReady = configuredModels.length > 0;
+  const connectionVerified = localAgentImport || providerProbeHasSupportedProtocol(connectivityProbe);
+  const showStep = (step: ProviderSetupStepId) => !activeStep || activeStep === step;
 
   function updateConfiguredModels(models: string[]) {
     onChange({
@@ -1411,6 +2050,18 @@ export function AddProviderForm({
       selectedProtocols: !enabled && draft.selectedProtocols.length === 0
         ? [draft.protocol]
         : draft.selectedProtocols
+    }, true);
+  }
+
+  function updateCredentialMode(credentialMode: AddProviderDraft["credentialMode"]) {
+    if (credentialMode === draft.credentialMode) {
+      return;
+    }
+    onChange({
+      credentialMode,
+      ...(credentialMode === "pool" && draft.credentials.length === 0
+        ? { credentials: [createProviderCredentialDraft(0)] }
+        : {})
     }, true);
   }
 
@@ -1575,158 +2226,176 @@ export function AddProviderForm({
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {importProvider ? (
-          <ProviderImportHeader draft={draft} provider={importProvider} preset={selectedPreset} />
-        ) : (
+      <div className={cn(activeStep ? "space-y-5" : "grid grid-cols-1 gap-4 sm:grid-cols-2")}>
+        {!activeStep ? (
+          <ProviderSetupProgress
+            className="sm:col-span-2"
+            credentialReady={credentialReady}
+            modelsReady={modelsReady}
+            onSelectStep={onSelectStep}
+            providerReady={providerIdentityReady}
+            verified={connectionVerified}
+          />
+        ) : null}
+        <div
+          className={cn(
+            "min-w-0",
+            activeStep
+              ? activeStep === "models"
+                ? "mx-auto w-full max-w-[980px] space-y-4 py-1"
+                : "mx-auto w-full max-w-[560px] space-y-4 py-1"
+              : "grid grid-cols-1 gap-3 sm:col-span-2 sm:grid-cols-2"
+          )}
+        >
+        {showStep("provider") ? (
           <>
-            <LocalAgentProviderImportPanel
-              mode={mode}
-              onChange={onChange}
-              providerPlugins={[...providerPlugins, ...draft.providerPlugins]}
-              providers={providers}
+            <ProviderFormStepHeader
+              description={t("Pick a preset provider or use a custom compatible API endpoint.")}
+              index={1}
+              title={t("Choose provider")}
             />
-            <div className="block min-w-0 space-y-1 sm:col-span-2">
-              <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Select preset provider")}</span>
-              <ProviderPresetCombobox
-                value={draft.presetId}
-                onChange={updatePreset}
-                options={providerPresetOptions}
+            {importProvider ? (
+              <ProviderImportHeader draft={draft} provider={importProvider} preset={selectedPreset} />
+            ) : (
+              <>
+                <LocalAgentProviderImportPanel
+                  mode={mode}
+                  onChange={onChange}
+                  providerPlugins={[...providerPlugins, ...draft.providerPlugins]}
+                  providers={providers}
+                />
+                <div className="block min-w-0 space-y-1 sm:col-span-2">
+                  <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Select preset provider")}</span>
+                  <ProviderPresetCombobox
+                    value={draft.presetId}
+                    onChange={updatePreset}
+                    options={providerPresetOptions}
+                  />
+                </div>
+              </>
+            )}
+            <Field className="sm:col-span-2" label={t("Name")}>
+              <Input value={draft.name} onChange={(event) => onChange({ name: event.target.value })} />
+            </Field>
+            {showBaseUrl ? (
+              <Field className="sm:col-span-2" label={t("API endpoint")}>
+                <Input value={draft.baseUrl} onChange={(event) => onChange({ baseUrl: event.target.value, icon: "" }, true)} />
+                {customEndpoint ? (
+                  <div className="flex min-h-4 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
+                    {iconDetecting ? <LoaderCircle className="h-3 w-3 shrink-0 animate-spin" /> : null}
+                    <span className="min-w-0">
+                      {iconDetecting
+                        ? t("Detecting icon")
+                        : t("Enter API endpoint, API key, and at least one model to enable connectivity check.")}
+                    </span>
+                  </div>
+                ) : null}
+              </Field>
+            ) : null}
+          </>
+        ) : null}
+        {showStep("credentials") ? (
+          <>
+            <ProviderFormStepHeader
+              description={t("Choose how this provider authenticates model requests.")}
+              index={2}
+              title={t("Add credentials")}
+            />
+            <div className="sm:col-span-2 space-y-4">
+              <ProviderCredentialModeTabs
+                value={draft.credentialMode}
+                onChange={updateCredentialMode}
+              />
+              {draft.credentialMode === "apiKey" ? (
+                <div className="space-y-3">
+                  <Field label={t("API key")}>
+                    <ProviderApiKeyInput
+                      value={draft.apiKey}
+                      onChange={(apiKey, resetProbe) => onChange({ apiKey }, resetProbe)}
+                      resetProbe
+                    />
+                  </Field>
+                  {safetyIssue ? (
+                    <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] leading-5 text-amber-900 dark:text-amber-100">
+                      <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>{safetyIssue.message}</span>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <ProviderCredentialSettings
+                    draft={draft}
+                    onChange={onChange}
+                  />
+                  {safetyIssue ? (
+                    <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] leading-5 text-amber-900 dark:text-amber-100">
+                      <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>{safetyIssue.message}</span>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </>
+        ) : null}
+        {showStep("models") ? (
+          <>
+            <ProviderFormStepHeader
+              description={t("Choose the models that should be available through this provider.")}
+              index={3}
+              title={t("Pick models")}
+            />
+            <div className="sm:col-span-2">
+              <ProviderModelPicker
+                catalogModels={probe?.models ?? []}
+                defaults={draft.catalogModelMetadata}
+                displayNames={draft.modelDisplayNames}
+                loading={probeLoading}
+                metadata={draft.modelMetadata}
+                onMetadataChange={(modelMetadata) => onChange({ modelMetadata })}
+                onQueryChange={(modelSearch) => onChange({ modelSearch })}
+                onSelectedChange={updateConfiguredModels}
+                query={draft.modelSearch}
+                selected={configuredModels}
               />
             </div>
           </>
-        )}
-        <Field className="sm:col-span-2" label={t("Name")}>
-          <Input value={draft.name} onChange={(event) => onChange({ name: event.target.value })} />
-        </Field>
-        {showBaseUrl ? (
-          <Field className="sm:col-span-2" label={t("API endpoint")}>
-            <Input value={draft.baseUrl} onChange={(event) => onChange({ baseUrl: event.target.value, icon: "" }, true)} />
-            {customEndpoint ? (
-              <div className="flex min-h-4 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
-                {iconDetecting ? <LoaderCircle className="h-3 w-3 shrink-0 animate-spin" /> : null}
-                <span className="min-w-0">
-                  {iconDetecting
-                    ? t("Detecting icon")
-                    : t("Enter API endpoint, API key, and at least one model to enable connectivity check.")}
-                </span>
-              </div>
-            ) : null}
-          </Field>
         ) : null}
-        <Field className="sm:col-span-2" label={t("API key")}>
-          <Input type="password" value={draft.apiKey} onChange={(event) => onChange({ apiKey: event.target.value }, true)} />
-        </Field>
-        {safetyIssue ? (
-          <div className="sm:col-span-2 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] leading-5 text-amber-900 dark:text-amber-100">
-            <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>{safetyIssue.message}</span>
-          </div>
-        ) : null}
-        {selectedPreset && !showBaseUrl && !importMode ? (
-          <div className="sm:col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[12px] text-muted-foreground">
-            <div className="flex min-w-0 items-center gap-2">
-              <Globe className="h-3.5 w-3.5 shrink-0" />
-              <span className="min-w-0 truncate" title={detectedBaseUrl}>{detectedBaseUrl}</span>
-            </div>
-          </div>
-        ) : null}
-        <FieldGroup className="sm:col-span-2" label={t("Models")}>
-          {hasModelCatalog && probe ? (
-            <ModelMultiSelect
-              displayNames={draft.modelDisplayNames}
-              models={mergeProviderModelLists(probe.models, splitLines(draft.modelsText))}
-              onQueryChange={(modelSearch) => onChange({ modelSearch })}
-              onSelectedChange={updateConfiguredModels}
-              query={draft.modelSearch}
-              selected={configuredModels}
+        {showStep("verify") ? (
+          <>
+            <ProviderFormStepHeader
+              description={t("Run a real model request before relying on this provider.")}
+              index={4}
+              title={t("Verify connection")}
             />
-          ) : (
-            <ModelTagInput
-              ariaLabel={t("Models")}
-              displayNames={draft.modelDisplayNames}
-              onChange={(models) => onChange({ modelsText: models.join("\n") }, true)}
-              placeholder={t("Model name")}
-              value={splitLines(draft.modelsText)}
+            <ProviderConnectionStatusPanel
+              className="sm:col-span-2"
+              connectivityLoading={connectivityLoading}
+              connectivityProbe={connectivityProbe}
+              hasConnectivityCheckInputs={hasConnectivityCheckInputs}
+              localAgentImport={localAgentImport}
+              onCheck={onCheck}
+              probe={probe}
+              probeLoading={probeLoading}
             />
-          )}
-          <ModelMetadataEditor
-            defaults={draft.catalogModelMetadata}
-            displayNames={draft.modelDisplayNames}
-            metadata={draft.modelMetadata}
-            models={configuredModels}
-            onChange={(modelMetadata) => onChange({ modelMetadata })}
-          />
-        </FieldGroup>
-        <div className="sm:col-span-2 flex min-w-0 flex-wrap items-center justify-between gap-2 text-[12px] text-muted-foreground">
-          <div className="min-w-0 flex-1">
-            {connectivityLoading ? (
-              <span className="inline-flex items-center gap-1.5">
-                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                {t("Checking connection")}
-              </span>
-            ) : localAgentImport ? (
-              <span>{t("Local agent login will be connected after saving this provider.")}</span>
-            ) : providerProbeHasSupportedProtocol(connectivityProbe) ? (
-              <span className="inline-flex items-center gap-1.5 text-foreground">
-                <Check className="h-3.5 w-3.5" />
-                {t("Connection verified")}
-              </span>
-            ) : probeLoading ? (
-              <span className="inline-flex items-center gap-1.5">
-                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                {t("Detecting protocols")}
-              </span>
-            ) : providerProbeHasSupportedProtocol(probe) ? (
-              <span className="inline-flex items-center gap-1.5 text-foreground">
-                <Check className="h-3.5 w-3.5" />
-                {t("Protocols detected")}
-              </span>
-            ) : probe?.detectedProtocol ? (
-              <span className="inline-flex items-center gap-1.5 text-foreground">
-                <Check className="h-3.5 w-3.5" />
-                {t("Detected")}
-              </span>
-            ) : hasConnectivityCheckInputs ? (
-              <span>{t("Click Check Connection to verify connectivity with a real model request.")}</span>
-            ) : draft.baseUrl.trim() || draft.apiKey.trim() || splitLines(draft.modelsText).length > 0 || draft.selectedModels.length > 0 ? (
-              <span>{t("Enter API endpoint, API key, and at least one model to enable connectivity check.")}</span>
-            ) : null}
-          </div>
-          <div className="flex shrink-0 flex-wrap justify-end gap-2">
-            {onCheck && hasConnectivityCheckInputs ? (
-              <Button
-                className="h-8 px-2"
-                disabled={connectivityLoading || probeLoading}
-                onClick={() => void onCheck()}
+
+            <div className="sm:col-span-2">
+              <button
+                aria-expanded={advancedOpen}
+                className="inline-flex min-w-0 items-center gap-2 border-0 bg-transparent p-0 text-[12px] font-semibold text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
+                onClick={() => setAdvancedOpen((value) => !value)}
                 type="button"
-                variant="outline"
               >
-                <AnimatedIconSwap iconKey={connectivityLoading ? "checking" : "check"}>
-                  {connectivityLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
-                </AnimatedIconSwap>
-                {t("Check Connection")}
-              </Button>
-            ) : null}
-          </div>
-        </div>
+                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", advancedOpen && "rotate-180")} />
+                <span>{t("Advanced settings")}</span>
+              </button>
+            </div>
 
-        <div className="sm:col-span-2">
-          <button
-            aria-expanded={advancedOpen}
-            className="inline-flex min-w-0 items-center gap-2 border-0 bg-transparent p-0 text-[12px] font-semibold text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
-            onClick={() => setAdvancedOpen((value) => !value)}
-            type="button"
-          >
-            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", advancedOpen && "rotate-180")} />
-            <span>{t("Advanced settings")}</span>
-          </button>
-        </div>
-
-        <AnimatePresence initial={false}>
-          {advancedOpen ? (
-            <AnimatedDisclosure className="sm:col-span-2" key="provider-advanced">
-              <div className="grid grid-cols-1 gap-3 rounded-md border border-border bg-muted/20 p-3 sm:grid-cols-2">
+            <AnimatePresence initial={false}>
+              {advancedOpen ? (
+                <AnimatedDisclosure className="sm:col-span-2" key="provider-advanced">
+                  <div className="grid grid-cols-1 gap-3 rounded-md border border-border bg-muted/20 p-3 sm:grid-cols-2">
                 <div className="sm:col-span-2 flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-background px-3 py-2 text-[12px] font-semibold">
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span className="min-w-0 truncate">{t("Auto detect protocols")}</span>
@@ -1754,10 +2423,6 @@ export function AddProviderForm({
                     onCheckedChange={updateAutoProtocolDetection}
                   />
                 </div>
-                <ProviderCredentialSettings
-                  draft={draft}
-                  onChange={onChange}
-                />
                 <ProviderUsageSettings
                   customEndpoint={customEndpoint}
                   draft={draft}
@@ -1849,25 +2514,28 @@ export function AddProviderForm({
                     )}
                   </div>
                 </Field>
-              </div>
-            </AnimatedDisclosure>
-          ) : null}
-        </AnimatePresence>
-        {protocolProbeDetails ? (
-          <ProtocolProbeDetailsTooltip
-            item={protocolProbeDetails.item}
-            left={protocolProbeDetails.left}
-            top={protocolProbeDetails.top}
-            t={t}
-          />
+                  </div>
+                </AnimatedDisclosure>
+              ) : null}
+            </AnimatePresence>
+            {protocolProbeDetails ? (
+              <ProtocolProbeDetailsTooltip
+                item={protocolProbeDetails.item}
+                left={protocolProbeDetails.left}
+                top={protocolProbeDetails.top}
+                t={t}
+              />
+            ) : null}
+            {autoDetectInfoPosition ? (
+              <AutoDetectProtocolsTooltip
+                left={autoDetectInfoPosition.left}
+                t={t}
+                top={autoDetectInfoPosition.top}
+              />
+            ) : null}
+          </>
         ) : null}
-        {autoDetectInfoPosition ? (
-          <AutoDetectProtocolsTooltip
-            left={autoDetectInfoPosition.left}
-            t={t}
-            top={autoDetectInfoPosition.top}
-          />
-        ) : null}
+        </div>
       </div>
 
       {error ? <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive"><CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>{error}</span></div> : null}
@@ -1979,7 +2647,6 @@ function ProviderCredentialSettings({
   const t = useAppText();
   const formatError = useAppErrorText();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [expanded, setExpanded] = useState(false);
   const [importError, setImportError] = useState("");
 
   function addCredential() {
@@ -1988,7 +2655,7 @@ function ProviderCredentialSettings({
         ...draft.credentials,
         createProviderCredentialDraft(draft.credentials.length)
       ]
-    });
+    }, true);
     setImportError("");
   }
 
@@ -1997,13 +2664,13 @@ function ProviderCredentialSettings({
       credentials: draft.credentials.map((credential, credentialIndex) =>
         credentialIndex === index ? { ...credential, ...patch } : credential
       )
-    });
+    }, true);
   }
 
   function removeCredential(index: number) {
     onChange({
       credentials: draft.credentials.filter((_, credentialIndex) => credentialIndex !== index)
-    });
+    }, true);
   }
 
   async function importCredentialFile(file: File | undefined) {
@@ -2017,7 +2684,7 @@ function ProviderCredentialSettings({
         setImportError(formatError(new Error(patch)));
         return;
       }
-      onChange(patch);
+      onChange(patch, true);
       setImportError("");
     } catch (error) {
       setImportError(formatError(error));
@@ -2029,67 +2696,54 @@ function ProviderCredentialSettings({
   }
 
   return (
-    <div className="sm:col-span-2 space-y-3 rounded-md border border-border bg-background/60 p-3">
+    <div className="space-y-3">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <Label className="text-[12px] font-semibold">{t("Credential pool")}</Label>
-          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t("Configure multiple provider API keys for this supplier.")}</div>
+          <Label className="text-[12px] font-semibold">{t("Pool keys")}</Label>
+          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t("Use multiple API keys with optional priorities, weights, and limits.")}</div>
         </div>
-        <Label className="flex shrink-0 items-center gap-2 text-[12px] font-medium text-muted-foreground">
-          <span>{t("Show credential settings")}</span>
-          <Switch
-            aria-label={t("Show credential settings")}
-            checked={expanded}
-            onCheckedChange={setExpanded}
+        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+          <input
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(event) => void importCredentialFile(event.target.files?.[0])}
+            ref={fileInputRef}
+            type="file"
           />
-        </Label>
+          <Button className="h-8 px-2" onClick={() => fileInputRef.current?.click()} type="button" variant="outline">
+            <Braces className="h-3.5 w-3.5" />
+            {t("Import JSON")}
+          </Button>
+          <Button className="h-8 px-2" onClick={addCredential} type="button" variant="outline">
+            <Plus className="h-3.5 w-3.5" />
+            {t("Add key")}
+          </Button>
+        </div>
       </div>
 
-      {expanded ? (
-        <>
-          <div className="flex min-w-0 flex-wrap justify-end gap-2">
-            <input
-              accept=".json,application/json"
-              className="hidden"
-              onChange={(event) => void importCredentialFile(event.target.files?.[0])}
-              ref={fileInputRef}
-              type="file"
+      {draft.credentials.length === 0 ? (
+        <div className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-4 text-center text-[12px] text-muted-foreground">
+          {t("No provider credentials configured")}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {draft.credentials.map((credential, index) => (
+            <ProviderCredentialRow
+              credential={credential}
+              index={index}
+              key={`credential-${index}`}
+              onChange={(patch) => updateCredential(index, patch)}
+              onRemove={() => removeCredential(index)}
             />
-            <Button className="h-8 px-2" onClick={() => fileInputRef.current?.click()} type="button" variant="outline">
-              <Braces className="h-3.5 w-3.5" />
-              {t("Import JSON")}
-            </Button>
-            <Button className="h-8 px-2" onClick={addCredential} type="button" variant="outline">
-              <Plus className="h-3.5 w-3.5" />
-              {t("Add key")}
-            </Button>
-          </div>
+          ))}
+        </div>
+      )}
 
-          {draft.credentials.length === 0 ? (
-            <div className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-4 text-center text-[12px] text-muted-foreground">
-              {t("No provider credentials configured")}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {draft.credentials.map((credential, index) => (
-                <ProviderCredentialRow
-                  credential={credential}
-                  index={index}
-                  key={`credential-${index}`}
-                  onChange={(patch) => updateCredential(index, patch)}
-                  onRemove={() => removeCredential(index)}
-                />
-              ))}
-            </div>
-          )}
-
-          {importError ? (
-            <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
-              <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>{t(importError)}</span>
-            </div>
-          ) : null}
-        </>
+      {importError ? (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
+          <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{t(importError)}</span>
+        </div>
       ) : null}
     </div>
   );
@@ -2130,7 +2784,10 @@ function ProviderCredentialRow({
           <Input value={credential.name} onChange={(event) => onChange({ name: event.target.value })} />
         </Field>
         <Field label={t("API key")}>
-          <Input type="password" value={credential.apiKey} onChange={(event) => onChange({ apiKey: event.target.value })} />
+          <ProviderApiKeyInput
+            value={credential.apiKey}
+            onChange={(apiKey) => onChange({ apiKey })}
+          />
         </Field>
         <div className="flex items-end justify-end">
           <Button aria-label={`${t("Remove")} ${label}`} onClick={onRemove} size="iconSm" title={t("Remove")} type="button" variant="ghost">
@@ -2193,6 +2850,7 @@ function ProviderUsageSettings({
   const [newApiUserId, setNewApiUserId] = useState("");
   const modeOptions = translateOptions(providerAccountModeOptions, t);
   const globalBaseUrl = providerGlobalBaseUrlForProbe(draft.baseUrl, probe, draft.selectedProtocols);
+  const usageApiKey = providerConnectivityApiKeyFromDraft(draft);
   const showNewApiUserBalanceTemplate = probe?.detectedProvider === "new-api" ||
     draft.accountConnectorsText.includes("new-api-key-usage") ||
     draft.accountConnectorsText.includes("new-api-user-self");
@@ -2213,7 +2871,7 @@ function ProviderUsageSettings({
       return;
     }
     const safetyIssue = providerAccountConnectorApiKeySafetyIssue(connector, {
-      apiKey: draft.apiKey,
+      apiKey: usageApiKey,
       baseUrl: globalBaseUrl,
       providerName: draft.name.trim(),
       providerPresetId: draft.presetId
@@ -2227,7 +2885,7 @@ function ProviderUsageSettings({
     setTestError("");
     try {
       const result = await window.ccr.testProviderAccountConnector({
-        apiKey: draft.apiKey.trim(),
+        apiKey: usageApiKey,
         baseUrl: draft.baseUrl.trim(),
         connector,
         providerName: draft.name.trim()
@@ -2529,9 +3187,73 @@ export function AddProviderDialog({
   const [submitting, setSubmitting] = useState(false);
   const [checkModelSelection, setCheckModelSelection] = useState<string[]>([]);
   const [checkResult, setCheckResult] = useState<ProviderConnectivityCheckReport>();
+  const [activeStep, setActiveStep] = useState<ProviderSetupStepId>("provider");
   const checkModels = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
   const submitLoading = probeLoading || connectivityLoading || iconDetecting || submitting;
   const submitDisabled = !canSubmit || submitLoading;
+  const wizardMode = mode === "add";
+  const selectedPreset = findProviderPreset(draft.presetId);
+  const localAgentImport = draft.providerPlugins.length > 0;
+  const providerIdentityReady = Boolean(importProvider) || Boolean(selectedPreset || draft.baseUrl.trim());
+  const credentialPoolReady = providerDraftHasReadyCredentialPool(draft);
+  const credentialReady = localAgentImport || Boolean(
+    draft.credentialMode === "pool"
+      ? credentialPoolReady
+      : draft.apiKey.trim()
+  );
+  const modelsReady = checkModels.length > 0;
+  const activeStepIndex = Math.max(0, providerSetupStepIds.indexOf(activeStep));
+  const previousStep = wizardMode ? providerSetupStepIds[activeStepIndex - 1] : undefined;
+  const nextStep = wizardMode ? providerSetupStepIds[activeStepIndex + 1] : undefined;
+  const nextDisabled = submitting || !providerDialogStepReady(activeStep);
+  const finalWizardSubmit = wizardMode && !nextStep && mode === "add";
+
+  useEffect(() => {
+    if (!wizardMode || providerDialogStepUnlocked(activeStep)) {
+      return;
+    }
+    const latestUnlockedStep = [...providerSetupStepIds].reverse().find(providerDialogStepUnlocked) ?? "provider";
+    setActiveStep(latestUnlockedStep);
+  }, [activeStep, credentialReady, modelsReady, providerIdentityReady, wizardMode]);
+
+  function providerDialogStepReady(step: ProviderSetupStepId): boolean {
+    switch (step) {
+      case "provider":
+        return providerIdentityReady;
+      case "credentials":
+        return credentialReady;
+      case "models":
+        return modelsReady;
+      case "verify":
+        return true;
+    }
+  }
+
+  function providerDialogStepUnlocked(step: ProviderSetupStepId): boolean {
+    switch (step) {
+      case "provider":
+        return true;
+      case "credentials":
+        return providerIdentityReady;
+      case "models":
+        return providerIdentityReady && credentialReady;
+      case "verify":
+        return providerIdentityReady && credentialReady && modelsReady;
+    }
+  }
+
+  function selectSetupStep(step: ProviderSetupStepId) {
+    if (providerDialogStepUnlocked(step)) {
+      setActiveStep(step);
+    }
+  }
+
+  function goToNextStep() {
+    if (!nextStep || nextDisabled) {
+      return;
+    }
+    setActiveStep(nextStep);
+  }
 
   function openCheckConfirm() {
     setCheckModelSelection(checkModels);
@@ -2578,19 +3300,36 @@ export function AddProviderDialog({
 
   return (
     <>
-      <Dialog className="items-start" onOpenChange={(open) => !open && !submitting && onClose()}>
-        <DialogContent className="mt-[clamp(8px,2dvh,20px)] h-[calc(100dvh-1.5rem-clamp(8px,2dvh,20px))] max-w-[820px] origin-top sm:mt-[clamp(8px,3dvh,28px)] sm:h-[min(860px,calc(100dvh-3rem-clamp(8px,3dvh,28px)))]">
-          <DialogHeader>
-            <div className="min-w-0">
-              <DialogTitle>{title ?? (mode === "edit" ? t("Edit Provider") : t("Add Provider"))}</DialogTitle>
-            </div>
+      <Dialog onOpenChange={(open) => !open && !submitting && onClose()}>
+        <DialogContent
+          className={cn(
+            "origin-center border-border/70 bg-background shadow-[0_18px_70px_rgba(15,23,42,0.16)]",
+            wizardMode
+              ? "h-[calc(100dvh-1.5rem)] w-[calc(100vw-1.5rem)] max-h-none max-w-none sm:h-[min(760px,calc(100dvh-3rem))] sm:w-[min(1040px,calc(100vw-3rem))]"
+              : "h-[calc(100dvh-1.5rem-clamp(8px,2dvh,20px))] max-w-[820px] sm:h-[min(860px,calc(100dvh-3rem-clamp(8px,3dvh,28px)))]"
+          )}
+        >
+          <DialogHeader className={cn("h-11", wizardMode && "border-b-0")}>
+            <DialogTitle>{title ?? (mode === "edit" ? t("Edit Provider") : t("Add Provider"))}</DialogTitle>
             <Button aria-label={t("Close dialog")} disabled={submitting} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
               <X className="h-4 w-4" />
             </Button>
           </DialogHeader>
+          {wizardMode ? (
+            <ProviderSetupProgress
+              activeStep={activeStep}
+              className="w-full"
+              credentialReady={credentialReady}
+              modelsReady={modelsReady}
+              providerReady={providerIdentityReady}
+              variant="divider"
+              verified={localAgentImport || providerProbeHasSupportedProtocol(connectivityProbe)}
+            />
+          ) : null}
 
-          <DialogBody>
+          <DialogBody className="bg-background px-5 py-4">
             <AddProviderForm
+              activeStep={wizardMode ? activeStep : undefined}
               connectivityLoading={connectivityLoading}
               connectivityProbe={connectivityProbe}
               draft={draft}
@@ -2600,6 +3339,7 @@ export function AddProviderDialog({
               onCheck={onCheck ? async () => openCheckConfirm() : undefined}
               onChange={onChange}
               onIconDetectingChange={setIconDetecting}
+              onSelectStep={wizardMode ? selectSetupStep : undefined}
               probe={probe}
               probeLoading={probeLoading}
               providerPlugins={providerPlugins}
@@ -2607,16 +3347,28 @@ export function AddProviderDialog({
             />
           </DialogBody>
 
-          <DialogFooter>
-            <Button disabled={submitting} onClick={onClose} type="button" variant="outline">
-              {t("Cancel")}
-            </Button>
-            <Button disabled={submitDisabled} onClick={() => void submit()} type="button">
-              <AnimatedIconSwap iconKey={submitLoading ? "loading" : mode}>
-                {submitLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : mode === "edit" ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-              </AnimatedIconSwap>
-              {submitLoading ? t("Loading") : submitLabel ?? (mode === "edit" ? t("Save") : t("Add"))}
-            </Button>
+          <DialogFooter className={cn("px-5 py-3", wizardMode && previousStep && "justify-between")}>
+            {wizardMode && previousStep ? (
+              <Button disabled={submitting} onClick={() => setActiveStep(previousStep)} type="button" variant="outline">
+                <ChevronLeft className="h-4 w-4" />
+                {t("Previous")}
+              </Button>
+            ) : null}
+            <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+              {wizardMode && nextStep ? (
+                <Button disabled={nextDisabled} onClick={goToNextStep} type="button">
+                  {t("Next")}
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button disabled={submitDisabled} onClick={() => void submit()} type="button">
+                  <AnimatedIconSwap iconKey={submitLoading ? "loading" : finalWizardSubmit ? "done" : mode}>
+                    {submitLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : mode === "edit" || finalWizardSubmit ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                  </AnimatedIconSwap>
+                  {submitLoading ? t("Loading") : submitLabel ?? (finalWizardSubmit ? t("Done") : mode === "edit" ? t("Save") : t("Add"))}
+                </Button>
+              )}
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2790,77 +3542,6 @@ function ProviderConnectivityResultGroup({
   );
 }
 
-function ModelTagInput({
-  ariaLabel,
-  displayNames,
-  onChange,
-  placeholder,
-  value
-}: {
-  ariaLabel: string;
-  displayNames?: Record<string, string>;
-  onChange: (value: string[]) => void;
-  placeholder: string;
-  value: string[];
-}) {
-  const t = useAppText();
-  const [draft, setDraft] = useState("");
-  const models = mergeProviderModelLists(value);
-
-  function addModels(rawValue = draft) {
-    const nextModels = splitModelTagInput(rawValue);
-    if (nextModels.length === 0) {
-      return;
-    }
-    onChange(mergeProviderModelLists(models, nextModels));
-    setDraft("");
-  }
-
-  function removeModel(model: string) {
-    onChange(models.filter((item) => item !== model));
-  }
-
-  return (
-    <>
-      <Input
-        aria-label={ariaLabel}
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            addModels();
-          }
-        }}
-        placeholder={placeholder}
-        value={draft}
-      />
-      {models.length > 0 ? (
-        <div className="flex max-h-[120px] flex-wrap gap-1.5 overflow-auto">
-          {models.map((model) => {
-            const displayName = displayNames?.[model] ?? model;
-            return (
-              <Badge className="max-w-full pr-1" key={model} variant="secondary">
-                <span className="min-w-0 max-w-[260px] truncate" title={displayName}>
-                  {displayName}
-                </span>
-                <button
-                  aria-label={`${t("Remove model")} ${displayName}`}
-                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
-                  onClick={() => removeModel(model)}
-                  title={t("Remove model")}
-                  type="button"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            );
-          })}
-        </div>
-      ) : null}
-    </>
-  );
-}
-
 const providerReasoningLevelOptions = [
   { description: "Low", effort: "low", label: "Low" },
   { description: "Medium", effort: "medium", label: "Medium" },
@@ -2870,24 +3551,422 @@ const providerReasoningLevelOptions = [
   { description: "Ultra", effort: "ultra", label: "Ultra" }
 ] as const;
 
-function ModelMetadataEditor({
+function ProviderModelPicker({
+  catalogModels,
   defaults,
   displayNames,
+  loading = false,
   metadata,
-  models,
-  onChange
+  onMetadataChange,
+  onQueryChange,
+  onSelectedChange,
+  query,
+  selected
 }: {
+  catalogModels: string[];
   defaults?: NonNullable<AddProviderDraft["catalogModelMetadata"]>;
   displayNames?: Record<string, string>;
+  loading?: boolean;
+  metadata?: NonNullable<AddProviderDraft["modelMetadata"]>;
+  onMetadataChange: (value: AddProviderDraft["modelMetadata"]) => void;
+  onQueryChange: (value: string) => void;
+  onSelectedChange: (value: string[]) => void;
+  query: string;
+  selected: string[];
+}) {
+  const t = useAppText();
+  const [addedQuery, setAddedQuery] = useState("");
+  const [customModel, setCustomModel] = useState("");
+  const [customModelEditing, setCustomModelEditing] = useState(false);
+  const [customModelReturning, setCustomModelReturning] = useState(false);
+  const [addedControlsWidth, setAddedControlsWidth] = useState(136);
+  const addedControlsRef = useRef<HTMLDivElement>(null);
+  const customModelInputRef = useRef<HTMLInputElement>(null);
+  const catalog = mergeProviderModelLists(catalogModels);
+  const selectedModels = mergeProviderModelLists(selected);
+  const selectedModelSet = new Set(selectedModels);
+  const sourceQuery = query.trim().toLowerCase();
+  const targetQuery = addedQuery.trim().toLowerCase();
+  const visibleCatalogModels = sourceQuery
+    ? catalog.filter((model) => providerModelMatchesSearch(model, sourceQuery, displayNames))
+    : catalog;
+  const visibleAddedModels = targetQuery
+    ? selectedModels.filter((model) => providerModelMatchesSearch(model, targetQuery, displayNames))
+    : selectedModels;
+  const trimmedCustomModel = customModel.trim();
+  const customModelExists = selectedModels.some((model) => model.toLowerCase() === trimmedCustomModel.toLowerCase());
+  const canAddCustomModel = Boolean(trimmedCustomModel && !customModelExists);
+  const customModelButtonWidth = 136;
+  const customModelControlGap = 8;
+  const customModelEditorWidth = Math.max(customModelButtonWidth, addedControlsWidth);
+  const returningSearchWidth = Math.max(0, customModelEditorWidth - customModelButtonWidth - customModelControlGap);
+
+  function addCatalogModel(model: string) {
+    if (selectedModelSet.has(model)) {
+      return;
+    }
+    onSelectedChange(mergeProviderModelLists(selectedModels, [model]));
+  }
+
+  function addCustomModel() {
+    if (!canAddCustomModel) {
+      return;
+    }
+    onSelectedChange(mergeProviderModelLists(selectedModels, [trimmedCustomModel]));
+    setCustomModel("");
+    closeCustomModelEditor();
+  }
+
+  function cancelCustomModel() {
+    setCustomModel("");
+    closeCustomModelEditor();
+  }
+
+  function closeCustomModelEditor() {
+    setCustomModelReturning(true);
+    setCustomModelEditing(false);
+  }
+
+  function removeModel(model: string) {
+    onSelectedChange(selectedModels.filter((item) => item !== model));
+    if (!metadata?.[model]) {
+      return;
+    }
+    const nextMetadata = { ...metadata };
+    delete nextMetadata[model];
+    onMetadataChange(Object.keys(nextMetadata).length > 0 ? nextMetadata : undefined);
+  }
+
+  useClientLayoutEffect(() => {
+    const node = addedControlsRef.current;
+    if (!node) {
+      return;
+    }
+    const updateWidth = () => {
+      setAddedControlsWidth(Math.max(136, Math.round(node.getBoundingClientRect().width)));
+    };
+    updateWidth();
+    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(updateWidth);
+    observer?.observe(node);
+    window.addEventListener("resize", updateWidth);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", updateWidth);
+    };
+  }, [loading]);
+
+  useEffect(() => {
+    if (!customModelEditing) {
+      return;
+    }
+    const focusTimer = window.setTimeout(() => customModelInputRef.current?.focus(), 140);
+    return () => window.clearTimeout(focusTimer);
+  }, [customModelEditing]);
+
+  return (
+    <div className="grid grid-cols-1 gap-3 lg:h-[min(500px,calc(100dvh-300px))] lg:min-h-[360px] lg:grid-cols-[minmax(0,1fr)_34px_minmax(0,1fr)]">
+      <section className="flex h-[360px] min-w-0 flex-col overflow-hidden rounded-md border border-border bg-card lg:h-full lg:min-h-0">
+        <div className="flex min-w-0 items-center justify-between gap-2 border-b border-border px-3 py-2.5">
+          <div className="min-w-0">
+            <div className="truncate text-[12px] font-semibold">{t("Provider models")}</div>
+            <div className="truncate text-[11px] text-muted-foreground">{t("Models detected from this provider")}</div>
+          </div>
+          <Badge variant="outline">{loading ? <LoaderCircle className="h-3 w-3 animate-spin" /> : catalog.length}</Badge>
+        </div>
+        {!loading ? (
+          <div className="border-b border-border p-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                aria-label={t("Search provider models")}
+                className="pl-8"
+                onChange={(event) => onQueryChange(event.target.value)}
+                placeholder={t("Search provider models")}
+                value={query}
+              />
+            </div>
+          </div>
+        ) : null}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
+          {loading ? (
+            <ProviderModelListSkeleton />
+          ) : visibleCatalogModels.length === 0 ? (
+            <div className="rounded-md border border-dashed border-border bg-muted/20 px-3 py-8 text-center text-[12px] text-muted-foreground">
+              {catalog.length === 0 ? t("No provider models") : t("No matching models")}
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {visibleCatalogModels.map((model) => {
+                const label = displayNames?.[model]?.trim() || model;
+                const added = selectedModelSet.has(model);
+                return (
+                  <button
+                    className={cn(
+                      "flex min-h-10 w-full min-w-0 items-center gap-2 rounded-md border border-border bg-background px-2.5 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
+                      added ? "text-muted-foreground" : "hover:bg-muted/50 hover:text-foreground"
+                    )}
+                    disabled={added}
+                    key={model}
+                    onClick={() => addCatalogModel(model)}
+                    title={model}
+                    type="button"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12px] font-medium text-foreground">{label}</span>
+                      {label !== model ? <span className="block truncate font-mono text-[10px] text-muted-foreground">{model}</span> : null}
+                    </span>
+                    {added ? (
+                      <Badge variant="secondary">
+                        <Check className="h-3 w-3" />
+                        {t("Added")}
+                      </Badge>
+                    ) : (
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <div className="hidden min-h-0 items-center justify-center lg:flex" aria-hidden="true">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-muted/30 text-muted-foreground shadow-sm">
+          <ChevronRight className="h-4 w-4" />
+        </div>
+      </div>
+
+      <section className="flex h-[360px] min-w-0 flex-col overflow-hidden rounded-md border border-border bg-card lg:h-full lg:min-h-0">
+        <div className="flex min-w-0 items-center justify-between gap-2 border-b border-border px-3 py-2.5">
+          <div className="min-w-0">
+            <div className="truncate text-[12px] font-semibold">{t("Added models")}</div>
+            <div className="truncate text-[11px] text-muted-foreground">{t("Click a model to edit settings")}</div>
+          </div>
+          <Badge variant={selectedModels.length > 0 ? "secondary" : "outline"}>{selectedModels.length}</Badge>
+        </div>
+        {!loading ? (
+          <div className="border-b border-border p-2">
+            <div className="relative h-9 min-w-0" ref={addedControlsRef}>
+              <AnimatePresence initial={false} mode="wait">
+                {customModelEditing ? (
+                <motion.div
+                  animate={{ opacity: 1, width: customModelEditorWidth }}
+                  className="absolute inset-y-0 right-0 flex items-center gap-1 overflow-hidden rounded-md border border-input bg-background px-1 shadow-sm"
+                  exit={{ opacity: 0, width: customModelEditorWidth }}
+                  initial={{ opacity: 0.92, width: customModelButtonWidth }}
+                  key="custom-model-input"
+                  transition={{
+                    opacity: { duration: 0.12 },
+                    width: { duration: 0.34, ease: [0.22, 1, 0.36, 1] }
+                  }}
+                >
+                  <Input
+                    aria-label={t("Custom model")}
+                    aria-invalid={customModelExists && trimmedCustomModel ? true : undefined}
+                    className="h-7 min-w-0 flex-1 border-0 bg-transparent px-2 font-mono text-[12px] shadow-none focus-visible:ring-0"
+                    onChange={(event) => setCustomModel(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && canAddCustomModel) {
+                        event.preventDefault();
+                        addCustomModel();
+                      }
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        cancelCustomModel();
+                      }
+                    }}
+                    placeholder={customModelExists && trimmedCustomModel ? t("Model already added") : t("Custom model")}
+                    ref={customModelInputRef}
+                    title={customModelExists && trimmedCustomModel ? t("Model already added") : undefined}
+                    value={customModel}
+                  />
+                  <Button
+                    aria-label={t("Cancel custom model")}
+                    className="h-7 w-7 shrink-0"
+                    onClick={cancelCustomModel}
+                    size="iconSm"
+                    title={t("Cancel custom model")}
+                    type="button"
+                    variant="ghost"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    aria-label={t("Add custom model")}
+                    className="h-7 w-7 shrink-0"
+                    disabled={!canAddCustomModel}
+                    onClick={addCustomModel}
+                    size="iconSm"
+                    title={t("Add custom model")}
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </Button>
+                </motion.div>
+                ) : customModelReturning ? (
+                <motion.div
+                  animate={{ opacity: 1 }}
+                  className="absolute inset-y-0 left-0 flex items-center gap-2"
+                  exit={{ opacity: 0 }}
+                  initial={{ opacity: 1 }}
+                  key="search-returning"
+                  transition={{ duration: 0.12 }}
+                >
+                  <motion.div
+                    animate={{ width: returningSearchWidth }}
+                    className="relative min-w-0 shrink-0 overflow-hidden"
+                    initial={{ width: 0 }}
+                    onAnimationComplete={() => setCustomModelReturning(false)}
+                    transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      aria-label={t("Search added models")}
+                      className="pl-8"
+                      onChange={(event) => setAddedQuery(event.target.value)}
+                      placeholder={t("Search added models")}
+                      value={addedQuery}
+                    />
+                  </motion.div>
+                  <button
+                    className="inline-flex h-9 w-[136px] shrink-0 items-center justify-center gap-2 rounded-md border border-input bg-background px-3 text-[12px] font-medium text-foreground outline-none transition-colors hover:bg-muted/45 focus-visible:ring-2 focus-visible:ring-ring/25"
+                    onClick={() => {
+                      setCustomModelReturning(false);
+                      setCustomModelEditing(true);
+                    }}
+                    title={t("Custom model")}
+                    type="button"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span className="truncate">{t("Custom model")}</span>
+                  </button>
+                </motion.div>
+                ) : (
+                <motion.div
+                  animate={{ opacity: 1 }}
+                  className="absolute inset-0 flex min-w-0 items-center gap-2"
+                  exit={{ opacity: 0 }}
+                  initial={{ opacity: 0 }}
+                  key="search-and-custom-button"
+                  transition={{ duration: 0.12 }}
+                >
+                  <div className="relative min-w-0 flex-1">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      aria-label={t("Search added models")}
+                      className="pl-8"
+                      onChange={(event) => setAddedQuery(event.target.value)}
+                      placeholder={t("Search added models")}
+                      value={addedQuery}
+                    />
+                  </div>
+                  <button
+                    className="inline-flex h-9 w-[136px] shrink-0 items-center justify-center gap-2 rounded-md border border-input bg-background px-3 text-[12px] font-medium text-foreground outline-none transition-colors hover:bg-muted/45 focus-visible:ring-2 focus-visible:ring-ring/25"
+                    onClick={() => {
+                      setCustomModelReturning(false);
+                      setCustomModelEditing(true);
+                    }}
+                    title={t("Custom model")}
+                    type="button"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span className="truncate">{t("Custom model")}</span>
+                  </button>
+                </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+        ) : null}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
+          {loading ? (
+            <ProviderModelListSkeleton compact />
+          ) : (
+            <ModelMetadataEditor
+              defaults={defaults}
+              displayNames={displayNames}
+              emptyLabel={selectedModels.length === 0 ? t("No models added") : t("No matching models")}
+              header={false}
+              metadata={metadata}
+              models={visibleAddedModels}
+              onChange={onMetadataChange}
+              onRemoveModel={removeModel}
+              sourceModels={catalog}
+            />
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ProviderModelListSkeleton({ compact = false }: { compact?: boolean }) {
+  const t = useAppText();
+
+  return (
+    <div aria-busy="true" aria-label={t("Loading provider models")} className="space-y-1.5">
+      {Array.from({ length: 8 }).map((_, index) => (
+        <div
+          className="flex min-h-10 w-full min-w-0 items-center gap-2 rounded-md border border-border bg-background px-2.5 py-2"
+          key={index}
+        >
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className={cn(
+              "provider-skeleton-shimmer h-3 rounded-full",
+              index % 3 === 0 ? "w-7/12" : index % 3 === 1 ? "w-9/12" : "w-5/12"
+            )} />
+            {!compact && index % 2 === 0 ? <div className="provider-skeleton-shimmer h-2 w-4/12 rounded-full" /> : null}
+          </div>
+          <div className="provider-skeleton-shimmer h-4 w-4 shrink-0 rounded-full" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function providerModelMatchesSearch(model: string, normalizedQuery: string, displayNames?: Record<string, string>): boolean {
+  if (!normalizedQuery) {
+    return true;
+  }
+  return model.toLowerCase().includes(normalizedQuery) ||
+    (displayNames?.[model] ?? "").toLowerCase().includes(normalizedQuery);
+}
+
+function ModelMetadataEditor({
+  className,
+  defaults,
+  displayNames,
+  emptyLabel,
+  header = true,
+  metadata,
+  models,
+  onChange,
+  onRemoveModel,
+  sourceModels
+}: {
+  className?: string;
+  defaults?: NonNullable<AddProviderDraft["catalogModelMetadata"]>;
+  displayNames?: Record<string, string>;
+  emptyLabel?: string;
+  header?: boolean;
   metadata?: NonNullable<AddProviderDraft["modelMetadata"]>;
   models: string[];
   onChange: (value: AddProviderDraft["modelMetadata"]) => void;
+  onRemoveModel?: (model: string) => void;
+  sourceModels?: string[];
 }) {
   const t = useAppText();
   const normalizedModels = mergeProviderModelLists(models);
+  const sourceModelSet = new Set(sourceModels ?? Object.keys(defaults ?? {}));
   const [expandedModels, setExpandedModels] = useState<Set<string>>(() => new Set());
   if (normalizedModels.length === 0) {
-    return null;
+    return emptyLabel ? (
+      <div className={cn("rounded-md border border-dashed border-border bg-muted/20 px-3 py-8 text-center text-[12px] text-muted-foreground", className)}>
+        {emptyLabel}
+      </div>
+    ) : null;
   }
 
   type Metadata = NonNullable<AddProviderDraft["modelMetadata"]>[string];
@@ -3015,11 +4094,13 @@ function ModelMetadataEditor({
   }
 
   return (
-    <div className="space-y-2 rounded-md border border-border bg-muted/20 p-2">
-      <div className="flex min-w-0 items-center justify-between gap-2">
-        <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Model settings")}</span>
-        <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">{t("Context, pricing, reasoning, web search, and image")}</span>
-      </div>
+    <div className={cn("space-y-2", header && "rounded-md border border-border bg-muted/20 p-2", className)}>
+      {header ? (
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Model settings")}</span>
+          <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">{t("Context, pricing, reasoning, web search, and image")}</span>
+        </div>
+      ) : null}
       <div className="space-y-2">
         {normalizedModels.map((model) => {
           const modelMetadata = metadata?.[model];
@@ -3038,6 +4119,7 @@ function ModelMetadataEditor({
           };
           const expanded = expandedModels.has(model);
           const label = displayNames?.[model]?.trim() || model;
+          const fromSource = sourceModelSet.has(model) || Boolean(modelDefaults);
           const hasCustomDetails = Boolean(
             modelMetadata?.contextWindow ||
             modelMetadata?.maxContextWindow ||
@@ -3054,19 +4136,39 @@ function ModelMetadataEditor({
             modelMetadata?.supportsReasoningSummaries !== undefined;
           return (
             <div className="overflow-hidden rounded-md border border-border bg-background/70" key={model}>
-              <button
-                aria-expanded={expanded}
-                className="flex w-full min-w-0 items-center gap-2 px-2.5 py-2 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/25"
-                onClick={() => toggleExpanded(model)}
-                type="button"
-              >
-                <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90")} />
-                <span className="min-w-0 flex-1 truncate text-[12px] font-medium" title={model}>{label}</span>
-                {hasCustomDetails ? <Badge variant="secondary">{t("Custom")}</Badge> : null}
-                {!hasCustomDetails && modelDefaults ? <Badge variant="outline">{t("Preset")}</Badge> : null}
-              </button>
+              <div className="flex min-w-0 items-center">
+                <button
+                  aria-expanded={expanded}
+                  className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/25"
+                  onClick={() => toggleExpanded(model)}
+                  type="button"
+                >
+                  <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90")} />
+                  <span className="min-w-0 flex-1 truncate text-[12px] font-medium" title={model}>{label}</span>
+                  {!fromSource ? <Badge variant="secondary">{t("Custom model")}</Badge> : null}
+                  {hasCustomDetails ? <Badge variant="secondary">{t("Custom")}</Badge> : null}
+                  {!hasCustomDetails && fromSource ? <Badge variant="outline">{t("Preset")}</Badge> : null}
+                </button>
+                {onRemoveModel ? (
+                  <Button
+                    aria-label={`${t("Remove model")} ${label}`}
+                    className="mr-1 h-7 w-7 shrink-0 text-muted-foreground"
+                    onClick={() => onRemoveModel(model)}
+                    size="iconSm"
+                    title={t("Remove model")}
+                    type="button"
+                    variant="ghost"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                ) : null}
+              </div>
               {expanded ? (
                 <div className="space-y-3 border-t border-border/60 p-3">
+                  <div className="flex min-w-0 items-center justify-between gap-2">
+                    <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Model settings")}</span>
+                    <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">{t("Context, pricing, reasoning, web search, and image")}</span>
+                  </div>
                   <div className="space-y-2">
                     <div className="flex min-w-0 items-center justify-between gap-2">
                       <Label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Context window (tokens)")}</Label>
@@ -3185,103 +4287,4 @@ function optionalPositiveInteger(value: string): number | undefined {
 function optionalNonNegativeNumber(value: string): number | undefined {
   const parsed = Number(value);
   return value.trim() && Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
-}
-
-function ModelMultiSelect({
-  displayNames,
-  models,
-  onQueryChange,
-  onSelectedChange,
-  query,
-  selected
-}: {
-  displayNames?: Record<string, string>;
-  models: string[];
-  onQueryChange: (value: string) => void;
-  onSelectedChange: (value: string[]) => void;
-  query: string;
-  selected: string[];
-}) {
-  const t = useAppText();
-  const normalized = query.trim().toLowerCase();
-  const visibleModels = normalized
-    ? models.filter((model) => model.toLowerCase().includes(normalized) || (displayNames?.[model] ?? "").toLowerCase().includes(normalized))
-    : models;
-  const customModel = query.trim();
-  const canAddCustomModel = Boolean(customModel && visibleModels.length === 0);
-
-  function toggleModel(model: string) {
-    onSelectedChange(selected.includes(model) ? selected.filter((item) => item !== model) : [...selected, model]);
-  }
-
-  function selectVisibleModels() {
-    onSelectedChange(Array.from(new Set([...selected, ...visibleModels])));
-  }
-
-  function addCustomModel() {
-    if (!canAddCustomModel) {
-      return;
-    }
-    onSelectedChange(mergeProviderModelLists(selected, [customModel]));
-    onQueryChange("");
-  }
-
-  return (
-    <div className="rounded-md border border-input bg-card">
-      <div className="flex flex-wrap items-center gap-2 border-b border-border p-2">
-        <div className="relative min-w-[180px] flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            aria-label={t("Search models")}
-            className="pl-8"
-            onChange={(event) => onQueryChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && canAddCustomModel) {
-                event.preventDefault();
-                addCustomModel();
-              }
-            }}
-            placeholder={t("Search models")}
-            value={query}
-          />
-        </div>
-        <Button disabled={visibleModels.length === 0} onClick={selectVisibleModels} size="sm" type="button" variant="outline">
-          {t("All")}
-        </Button>
-        <Button disabled={selected.length === 0} onClick={() => onSelectedChange([])} size="sm" type="button" variant="outline">
-          {t("Clear")}
-        </Button>
-      </div>
-      <div className="max-h-[220px] overflow-auto p-2">
-        {visibleModels.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-6 text-center text-[12px] text-muted-foreground">
-            {canAddCustomModel ? (
-              <button className="font-medium text-foreground hover:underline" onClick={addCustomModel} type="button">
-                {t("Press Enter to add custom model")}: <span className="font-mono">{customModel}</span>
-              </button>
-            ) : t("No matching models")}
-          </div>
-        ) : null}
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {visibleModels.map((model) => {
-            const checked = selected.includes(model);
-            const displayName = displayNames?.[model];
-            return (
-              <Label
-                className={cn(
-                  "flex h-8 min-w-0 cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2 text-left text-[12px] transition-colors hover:bg-muted",
-                  checked && "border-primary bg-accent"
-                )}
-                key={model}
-                title={displayName ?? model}
-              >
-                <Checkbox checked={checked} onCheckedChange={() => toggleModel(model)} />
-                <span className="min-w-0 flex-1 truncate">{displayName ?? model}</span>
-              </Label>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
 }

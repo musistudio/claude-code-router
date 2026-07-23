@@ -88,7 +88,7 @@ ccr serve [--host <host>] [--port <port>] [--open|--no-open] [--gateway|--no-gat
 
 ## Agent 配置启动
 
-先在 **Agent配置** 中创建并启用配置，然后按名称或 ID 启动：
+先在 **Agent 配置档案** 中创建并启用配置，然后按名称或 ID 启动：
 
 ```sh
 ccr "Codex - Work"
@@ -110,7 +110,7 @@ ccr <配置名称或 ID> [cli|app] [-- <Agent 参数>]
 - 启动桌面 App 时，本机必须已安装对应应用，并且当前环境必须有图形会话。
 - 大多数配置需要先启动 CCR 服务。Grok CLI 和 Kimi CLI 配置可以自动启动一个临时共享服务，并在最后一个受管会话退出后停止。
 
-桌面应用会安装一个相关命令 `ccr-app`。桌面 Agent配置卡片复制出来的命令使用 `ccr-app`；本文介绍的 npm 包安装的是 `ccr`。
+桌面应用会安装一个相关命令 `ccr-app`。桌面 Agent 配置档案卡片复制出来的命令使用 `ccr-app`；本文介绍的 npm 包安装的是 `ccr`。
 
 ## 配置与运行文件
 

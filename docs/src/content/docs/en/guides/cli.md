@@ -12,7 +12,7 @@ CCR has two related commands:
 | Command | Source | Primary use |
 | --- | --- | --- |
 | `ccr` | npm package `@musistudio/claude-code-router` | Electron-free management UI, gateway service, and profile launches. |
-| `ccr-app` | CCR desktop application | Desktop-managed profile launcher used by commands copied from Agent Config cards. |
+| `ccr-app` | CCR desktop application | Desktop-managed profile launcher used by commands copied from Agent Profiles cards. |
 
 Both distributions use the same local configuration directory, but their command names are not interchangeable. Use the desktop app for tray features, notifications, automatic app updates, and desktop-only browser integrations. Use the npm CLI for headless hosts or external process supervision.
 
@@ -62,7 +62,7 @@ The management token and CCR client keys are separate credentials. The first pro
 | `ccr stop` | One-shot | Stops the service created by `start` or `ui`. |
 | `ccr serve` | Foreground | Runs in the current terminal for logs or process supervision. |
 | `ccr web` | Foreground | Alias of `serve`. |
-| `ccr <profile>` | Foreground | Launches an enabled Agent Config profile. |
+| `ccr <profile>` | Foreground | Launches an enabled Agent Profiles profile. |
 
 ## Service Options
 
@@ -99,9 +99,9 @@ ccr stop
 ccr start --host 127.0.0.1 --port 3458
 ```
 
-## Launch Agent Config Profiles
+## Launch Agent Profiles
 
-Create and enable a profile under **Agent Config**, then use:
+Create and enable a profile under **Agent Profiles**, then use:
 
 ```text
 ccr <profile-name-or-id> [cli|app] [-- <agent arguments>]
@@ -156,6 +156,6 @@ Use `ccr serve --no-open` with an external supervisor. Fix the service user, `HO
 ## Related Pages
 
 - [Install And Start CCR](../install/)
-- [Agent Config](../../configuration/profiles/)
+- [Agent Profiles](../../configuration/profiles/)
 - [Server](../../configuration/server/)
 - [Docker Deployment](../docker/)

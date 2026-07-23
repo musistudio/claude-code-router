@@ -54,7 +54,7 @@ The management token and CCR client API keys are different credentials. The mana
 | `ccr ui` | Reuses or starts the background service and opens the management UI. |
 | `ccr stop` | Stops the detached service started by `ccr start` or `ccr ui`. |
 | `ccr serve` | Runs the management service and gateway in the foreground. `ccr web` is an alias. |
-| `ccr <profile>` | Opens an enabled Agent Config profile by name or ID. |
+| `ccr <profile>` | Opens an enabled Agent Profiles profile by name or ID. |
 
 ### `ccr start`
 
@@ -86,9 +86,9 @@ ccr serve [--host <host>] [--port <port>] [--open|--no-open] [--gateway|--no-gat
 
 If the preferred management port is occupied, CCR tries the next available ports and prints the actual URL. When `start` or `ui` reuses an existing service, new host, port, and `--no-gateway` choices do not reconfigure that process. Run `ccr stop` first when those settings must change.
 
-## Agent Config Profiles
+## Agent Profiles
 
-Create and enable profiles in **Agent Config**, then launch one by name or ID:
+Create and enable profiles in **Agent Profiles**, then launch one by name or ID:
 
 ```sh
 ccr "Codex - Work"
@@ -110,7 +110,7 @@ ccr <profile-name-or-id> [cli|app] [-- <agent arguments>]
 - Desktop App launches require that app to be installed and a graphical session to be available.
 - Start the CCR service before opening most profiles. Grok CLI and Kimi CLI profiles can start a temporary shared service automatically and stop it after the last managed session exits.
 
-The desktop application installs a related command named `ccr-app`. Commands copied from desktop Agent Config cards use `ccr-app`; the npm package documented here installs `ccr`.
+The desktop application installs a related command named `ccr-app`. Commands copied from desktop Agent Profiles cards use `ccr-app`; the npm package documented here installs `ccr`.
 
 ## Configuration And Runtime Files
 

@@ -47,9 +47,9 @@ Use this only if you already have a token from an external WeChat bot service, a
 
 ## Bind It To An Agent In CCR
 
-Whichever login you used, bind the bot to Agent Config:
+Whichever login you used, bind the bot to Agent Profiles:
 
-1. Open **Agent Config** and edit the Agent Config you want to attach it to.
+1. Open **Agent Profiles** and edit the Agent Profiles you want to attach it to.
 2. Turn on **Bot** and select the bot you just saved.
 3. Optionally enable **Forward agent messages** or **Handoff** (next section).
 4. Reopen the agent from CCR.
@@ -72,7 +72,7 @@ Whichever login you used, bind the bot to Agent Config:
 ## Common Issues
 
 - **QR code expired**: close the login window and scan again.
-- **Scan succeeded but nothing forwards**: confirm the agent was reopened from CCR after Agent Config changes and the Bot toggle is still on.
+- **Scan succeeded but nothing forwards**: confirm the agent was reopened from CCR after Agent Profiles changes and the Bot toggle is still on.
 - **Drops shortly after scanning**: check that phone and computer networks are stable; verify WeChat didn't log in elsewhere and invalidate the session.
 - **Token mode won't connect**: re-copy the Bot Token — avoid expired values or stray spaces.
 - **Third-party service needs Account ID / User ID**: make sure these come from the same account — don't mix a token and IDs from different accounts.

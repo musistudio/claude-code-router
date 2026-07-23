@@ -64,7 +64,7 @@ Skip this if you only use DMs.
 4. Paste `xoxb-...` into **Bot Token**.
 5. Paste `xapp-...` into **App Token**.
 6. Save the bot.
-7. Open **Agent Config** and edit the Agent Config you want to attach it to.
+7. Open **Agent Profiles** and edit the Agent Profiles you want to attach it to.
 8. Turn on **Bot** and select the bot you just saved.
 9. Optionally enable **Forward agent messages** or **Handoff** (next section).
 10. Reopen the agent from CCR.

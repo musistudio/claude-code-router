@@ -173,6 +173,7 @@ export type GatewayProviderConfig = {
   extraHeaders?: unknown;
   icon?: string;
   id?: string;
+  enabled?: boolean;
   modelDescriptions?: Record<string, string>;
   modelDisplayNames?: Record<string, string>;
   modelMetadata?: Record<string, ProviderModelMetadata>;
@@ -183,6 +184,10 @@ export type GatewayProviderConfig = {
   transformer?: unknown;
   type?: GatewayProviderProtocol | string;
 };
+
+export function isGatewayProviderEnabled(provider: Pick<GatewayProviderConfig, "enabled">): boolean {
+  return provider.enabled !== false;
+}
 
 export type ProviderReasoningLevel = {
   description: string;
@@ -1005,7 +1010,7 @@ export function availableGatewayModelIds(config: Pick<AppConfig, "Providers" | "
 function availableGatewayBaseModelEntries(providers: GatewayProviderConfig[]): Array<{ modelName: string; providerName: string }> {
   return providers.flatMap((provider) => {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       return [];
     }
     return provider.models.flatMap((rawModel) => {

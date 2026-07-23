@@ -9,9 +9,9 @@ lead: Choose the model for a request, then automatically retry or switch to fall
 
 ### Claude Code
 
-The built-in Claude Code route detects requests from Claude Code and routes main requests to the Claude Code Agent Config model when the client has not selected a recognized model.
+The built-in Claude Code route detects requests from Claude Code and routes main requests to the Claude Code Agent Profiles model when the client has not selected a recognized model.
 
-Claude Code **main requests** prefer an explicit client-selected model that CCR recognizes. The Agent Config model is only the default when the client model is missing or unrecognized; if it is unset, the built-in route remains inactive. User-configured routing rules can still rewrite the model. CCR also automatically removes the first `x-anthropic-billing-header` system message injected by Claude Code so that billing helper messages do not affect later routing decisions. Claude Code Subagent, Task, and Workflow-created agents can still choose different models through the tag mechanism below.
+Claude Code **main requests** prefer an explicit client-selected model that CCR recognizes. The Agent Profiles model is only the default when the client model is missing or unrecognized; if it is unset, the built-in route remains inactive. User-configured routing rules can still rewrite the model. CCR also automatically removes the first `x-anthropic-billing-header` system message injected by Claude Code so that billing helper messages do not affect later routing decisions. Claude Code Subagent, Task, and Workflow-created agents can still choose different models through the tag mechanism below.
 
 #### Subagent / Workflow Auto-Routing
 
@@ -39,7 +39,7 @@ Recommended setup:
 
 1. Add usable models under **Providers**, and verify that the model IDs can be requested.
 2. Open **Models** and fill Description for the models you want Subagents to choose automatically. Describe task fit, speed, cost, and limits.
-3. Enable a Claude Code config under **Agent Config**, and choose the default model. Claude Code uses it when the client has not selected a recognized model.
+3. Enable a Claude Code config under **Agent Profiles**, and choose the default model. Claude Code uses it when the client has not selected a recognized model.
 4. Confirm that the built-in **Claude Code** route is enabled on the **Routing** page.
 5. Use Agent, Task, or Workflow in Claude Code. When Claude Code spawns an agent, it can choose a CCR model from the descriptions and write the tag.
 

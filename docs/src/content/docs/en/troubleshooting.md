@@ -9,7 +9,7 @@ lead: Start here when an agent does not go through CCR, a provider fails, routin
 
 ### Q: The agent does not go through CCR. Where is the relevant information?
 
-A: Service status, agent launch method, Agent Config application status, and effect scope all affect whether the agent goes through CCR.
+A: Service status, agent launch method, Agent Profiles application status, and effect scope all affect whether the agent goes through CCR.
 
 ### Q: What if a request hits the wrong model?
 
@@ -21,7 +21,7 @@ A: Related fields include API Key, credential enabled state, Base URL, protocol,
 
 ### Q: How do I diagnose `model not found`?
 
-A: The provider model list, the model selected by routing, and the model in Agent Config can all affect `model not found`.
+A: The provider model list, the model selected by routing, and the model in Agent Profiles can all affect `model not found`.
 
 ### Q: What if Fusion does not call a tool?
 

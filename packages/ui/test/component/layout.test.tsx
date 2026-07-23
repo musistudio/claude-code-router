@@ -2,13 +2,35 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GatewayStartupErrorBanner, UpdateEntryButton } from "@ccr/ui/pages/home/components/layout.tsx";
+import { GatewayStartupErrorBanner, groupSidebarNavigation, UpdateEntryButton } from "@ccr/ui/pages/home/components/layout.tsx";
 import { MediaModelConfigurationPanel, VirtualModelsView } from "@ccr/ui/pages/home/components/virtual-models.tsx";
 import { AppI18nContext, appCopy } from "@ccr/ui/pages/home/shared/i18n.tsx";
 import { createVirtualModelDraft } from "@ccr/ui/pages/home/shared/virtual-models.ts";
 import { appConfigFixture } from "../fixtures/index.ts";
 import { fallbackUpdateStatus } from "@ccr/ui/pages/home/shared/fallbacks.ts";
+import { navigation } from "@ccr/ui/pages/home/shared/options.ts";
 import { shouldCheckForUpdateOnOpen } from "@ccr/ui/pages/home/components/update.tsx";
+
+test("sidebar navigation groups pages and hides networking from the sidebar", () => {
+  const groups = groupSidebarNavigation(navigation);
+
+  assert.deepEqual(groups.map((group) => group.label), ["Workspace", "Setup", "Monitor", "Advanced"]);
+  assert.deepEqual(groups.map((group) => group.items.map((item) => item.id)), [
+    ["overview"],
+    ["providers", "profile", "routing"],
+    ["logs", "observability"],
+    ["virtual-models", "models", "api-keys", "extensions"]
+  ]);
+  assert.equal(groups.some((group) => group.items.some((item) => item.id === "networking")), false);
+
+  const filteredGroups = groupSidebarNavigation(navigation.filter((item) => item.id !== "observability"));
+  assert.deepEqual(filteredGroups.map((group) => group.items.map((item) => item.id)), [
+    ["overview"],
+    ["providers", "profile", "routing"],
+    ["logs"],
+    ["virtual-models", "models", "api-keys", "extensions"]
+  ]);
+});
 
 test("GatewayStartupErrorBanner renders startup failure details", () => {
   const html = renderToStaticMarkup(
