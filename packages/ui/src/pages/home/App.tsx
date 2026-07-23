@@ -271,6 +271,7 @@ function App() {
     pageSize: 25,
     status: "all"
   });
+  const [focusedRequestLogId, setFocusedRequestLogId] = useState<number>();
   const [requestLogLoading, setRequestLogLoading] = useState(false);
   const [requestLogPage, setRequestLogPage] = useState<RequestLogPage>(fallbackRequestLogPage);
   const [agentAnalysis, setAgentAnalysis] = useState<AgentAnalysisSnapshot>(fallbackAgentAnalysis);
@@ -711,11 +712,9 @@ function App() {
   const networkCaptureEnabled = draftConfig.proxy.enabled && draftConfig.proxy.captureNetwork;
   const visibleNavigation = useMemo(
     () => navigation.filter((item) =>
-      (item.id !== "networking" || networkCaptureEnabled) &&
-      (item.id !== "logs" || requestLogsEnabled) &&
-      (item.id !== "observability" || agentAnalysisEnabled)
+      item.id !== "networking" || networkCaptureEnabled
     ),
-    [agentAnalysisEnabled, networkCaptureEnabled, requestLogsEnabled]
+    [networkCaptureEnabled]
   );
   const autoSaveRequestId = useRef(0);
   const themePreferenceRequestId = useRef(0);
@@ -759,15 +758,6 @@ function App() {
       setActiveView("overview");
     }
   }, [activeView, networkCaptureEnabled]);
-
-  useEffect(() => {
-    if (
-      (activeView === "logs" && !requestLogsEnabled) ||
-      (activeView === "observability" && !agentAnalysisEnabled)
-    ) {
-      setActiveView("overview");
-    }
-  }, [activeView, agentAnalysisEnabled, requestLogsEnabled]);
 
   useEffect(() => {
     if (activeView !== "onboarding" || !configLoaded || !onboardingStatusLoaded || !providerPresetsLoaded) {
@@ -2485,6 +2475,21 @@ function App() {
     }));
   }
 
+  function openRequestLogFromAnalysis(request: { id: number; requestId: string }) {
+    setFocusedRequestLogId(request.id);
+    setAgentAnalysisSession(undefined);
+    setRequestLogFilter((current) => ({
+      ...current,
+      credential: undefined,
+      model: undefined,
+      page: 1,
+      provider: undefined,
+      query: request.requestId,
+      status: "all"
+    }));
+    setActiveView("logs");
+  }
+
   function updateAgentAnalysisAgent(value: AgentFilterValue) {
     setAgentAnalysisAgent(value);
     setAgentAnalysisSession(undefined);
@@ -3039,9 +3044,13 @@ function App() {
                   setExtensionEnabled
                 },
                 logs: {
+                  enabled: requestLogsEnabled,
                   error: requestLogError,
                   filter: requestLogFilter,
+                  focusedRequestId: focusedRequestLogId,
                   loading: requestLogLoading,
+                  onEnable: () => changeObservabilityConfig({ requestLogs: true }),
+                  onFocusedRequestHandled: () => setFocusedRequestLogId(undefined),
                   page: requestLogPage,
                   refreshLogs: () => void refreshRequestLogs(),
                   updateFilter: updateRequestLogFilter
@@ -3059,8 +3068,11 @@ function App() {
                 },
                 observability: {
                   agentFilter: agentAnalysisAgent,
+                  enabled: agentAnalysisEnabled,
                   error: agentAnalysisError,
                   loading: agentAnalysisLoading,
+                  onEnable: () => changeObservabilityConfig({ agentAnalysis: true }),
+                  openRequestLog: openRequestLogFromAnalysis,
                   range: agentAnalysisRange,
                   refreshAnalysis: () => void refreshAgentAnalysis(),
                   selectedSession: agentAnalysisSession,

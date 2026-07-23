@@ -25,10 +25,11 @@ import {
 import { buildTokenActivity, type TokenActivityCell } from "@/lib/usage-activity";
 import { ShareCardWidget } from "./share-cards";
 import {
-  CalendarDays, ChartNoAxesCombined, ChartPie, CreditCard, GripHorizontal, Inbox, Layers3,
+  Activity, CalendarDays, ChartNoAxesCombined, ChartPie, CreditCard, GripHorizontal, Inbox, Layers3,
   Rocket, Server, UsersRound, WalletCards, Wifi
 } from "lucide-react";
 import { createPortal } from "react-dom";
+import { MonitorDisabledView } from "./network-logs";
 
 type OverviewUsageFilters = {
   modelFilter: string;
@@ -3384,8 +3385,11 @@ function providerAccountShowExtraCount(dimensions: OverviewWidgetDimensions): bo
 
 export function AgentAnalysisView({
   agentFilter,
+  enabled = true,
   error,
   loading,
+  onEnable,
+  openRequestLog,
   range,
   refreshAnalysis,
   selectedSession,
@@ -3395,8 +3399,11 @@ export function AgentAnalysisView({
   snapshot
 }: {
   agentFilter: AgentFilterValue;
+  enabled?: boolean;
   error: string;
   loading: boolean;
+  onEnable?: () => void;
+  openRequestLog?: (request: { id: number; requestId: string }) => void;
   range: UsageStatsRange;
   refreshAnalysis: () => void;
   selectedSession?: AgentAnalysisSessionSelection;
@@ -3406,6 +3413,18 @@ export function AgentAnalysisView({
   snapshot: AgentAnalysisSnapshot;
 }) {
   const t = useAppText();
+
+  if (!enabled) {
+    return (
+      <MonitorDisabledView
+        actionLabel="Enable agent observability"
+        description="Agent observability records session metadata, routing decisions, tools, and errors for diagnosis."
+        icon={<Activity className="h-8 w-8" />}
+        onEnable={onEnable}
+        title="Agent observability is off"
+      />
+    );
+  }
 
   return (
     <motion.div
@@ -3462,18 +3481,71 @@ export function AgentAnalysisView({
         <AgentSessionDetailCard
           clearSession={() => setSelectedSession(undefined)}
           detail={snapshot.selectedSession}
+          onOpenRequestLog={openRequestLog}
           selectedSession={selectedSession}
         />
       ) : null}
 
-      <section className="min-h-0 flex-1">
-        <AgentSessionsCard
-          onSelectSession={setSelectedSession}
-          selectedSession={selectedSession}
-          sessions={snapshot.sessions}
-        />
-      </section>
+      <div className="min-h-0 flex-1 space-y-3 overflow-auto pr-1">
+        <AgentAnalysisSummaryGrid snapshot={snapshot} />
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+          <AgentErrorsCard errors={snapshot.errors} />
+          <AgentRoutesCard routes={snapshot.routes} />
+          <AgentToolsCard tools={snapshot.tools} />
+          <AgentEndpointsCard endpoints={snapshot.endpoints} />
+          <AgentClientsCard clients={snapshot.clients} />
+          <AgentSubagentsCard subagents={snapshot.subagents} />
+        </div>
+        <AgentRecentRequestsCard onOpenRequestLog={openRequestLog} requests={snapshot.recentRequests} />
+        <section className="min-h-[360px]">
+          <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+            <div className="text-[12px] font-semibold">{t("Sessions")}</div>
+            <Badge variant="outline">{snapshot.sessions.length}</Badge>
+          </div>
+          <AgentSessionsCard
+            onSelectSession={setSelectedSession}
+            selectedSession={selectedSession}
+            sessions={snapshot.sessions}
+          />
+        </section>
+      </div>
     </motion.div>
+  );
+}
+
+function AgentAnalysisSummaryGrid({ snapshot }: { snapshot: AgentAnalysisSnapshot }) {
+  const t = useAppText();
+  const totals = snapshot.totals;
+
+  return (
+    <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">
+      <AgentAnalysisMetricCard label={t("Requests")} value={formatCompactNumber(totals.requestCount)} />
+      <AgentAnalysisMetricCard label={t("Sessions")} value={formatCompactNumber(totals.sessionCount)} />
+      <AgentAnalysisMetricCard label={t("Success rate")} value={formatPercent(totals.successRate)} />
+      <AgentAnalysisMetricCard label={t("Errors")} tone={totals.errorCount > 0 ? "danger" : undefined} value={formatCompactNumber(totals.errorCount)} />
+      <AgentAnalysisMetricCard label={t("P95")} value={formatDuration(totals.p95DurationMs)} />
+      <AgentAnalysisMetricCard label={t("Tools")} value={formatCompactNumber(totals.toolCallCount)} />
+    </div>
+  );
+}
+
+function AgentAnalysisMetricCard({
+  label,
+  tone,
+  value
+}: {
+  label: string;
+  tone?: "danger";
+  value: string;
+}) {
+  return (
+    <div className={cn(
+      "min-w-0 rounded-md border border-border/70 bg-card/70 px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
+      tone === "danger" && "border-rose-200 bg-rose-50/70 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-200"
+    )}>
+      <div className="truncate text-[11px] text-muted-foreground">{label}</div>
+      <div className="mt-1 truncate font-mono text-[16px] font-semibold" title={value}>{value}</div>
+    </div>
   );
 }
 
@@ -3668,10 +3740,12 @@ function AgentErrorsCard({ errors }: { errors: AgentAnalysisSnapshot["errors"] }
 function AgentSessionDetailCard({
   clearSession,
   detail,
+  onOpenRequestLog,
   selectedSession
 }: {
   clearSession: () => void;
   detail?: AgentAnalysisSnapshot["selectedSession"];
+  onOpenRequestLog?: (request: { id: number; requestId: string }) => void;
   selectedSession?: AgentAnalysisSessionSelection;
 }) {
   const t = useAppText();
@@ -3701,7 +3775,7 @@ function AgentSessionDetailCard({
           <AnalysisEmptyState label={t("Loading session metrics")} />
         ) : (
           <div className="space-y-4">
-            <AgentTracePanel trace={detail.trace} />
+            <AgentTracePanel onOpenRequestLog={onOpenRequestLog} trace={detail.trace} />
 
             <div className="min-w-0">
               <div className="mb-2 flex items-center justify-between gap-2">
@@ -3711,7 +3785,7 @@ function AgentSessionDetailCard({
                 <AnalysisEmptyState label={t("No session requests")} />
               ) : (
                 <div className={cn("max-h-[260px]", agentListFrameClassName)}>
-                  <table className={cn("min-w-[980px]", agentListTableClassName)}>
+                  <table className={cn("min-w-[1080px]", agentListTableClassName)}>
                     <thead className={agentListHeadClassName}>
                       <tr>
                         <th className="px-3 py-2 font-semibold">{t("Time")}</th>
@@ -3721,6 +3795,7 @@ function AgentSessionDetailCard({
                         <th className="px-3 py-2 text-right font-semibold">{t("Tools")}</th>
                         <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
                         <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
+                        <th className={agentListActionHeadClassName}>{t("Action")}</th>
                       </tr>
                     </thead>
                     <tbody className={agentListBodyClassName}>
@@ -3733,6 +3808,9 @@ function AgentSessionDetailCard({
                           <td className="px-3 py-2 text-right" title={request.tools.join(", ")}>{formatCompactNumber(request.toolCallCount)}</td>
                           <td className="px-3 py-2 text-right">{formatCompactNumber(request.totalTokens)}</td>
                           <td className="px-3 py-2 text-right">{formatDuration(request.durationMs)}</td>
+                          <td className={agentListActionCellClassName}>
+                            <OpenRequestLogButton onOpen={onOpenRequestLog ? () => onOpenRequestLog({ id: request.id, requestId: request.requestId }) : undefined} />
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -3753,6 +3831,25 @@ const agentListFrameClassName = cn("overflow-auto", agentListSurfaceClassName);
 const agentListTableClassName = "w-full border-collapse text-left text-[11px]";
 const agentListHeadClassName = "sticky top-0 z-10 border-b border-border/70 bg-muted/80 text-muted-foreground backdrop-blur";
 const agentListBodyClassName = "divide-y divide-border/50";
+const agentListActionHeadClassName = "sticky right-0 z-20 border-l border-border/60 bg-muted/95 px-3 py-2 text-right font-semibold shadow-[-8px_0_14px_rgba(15,23,42,0.05)] backdrop-blur";
+const agentListActionCellClassName = "sticky right-0 z-10 border-l border-border/50 bg-card px-3 py-2 text-right shadow-[-8px_0_14px_rgba(15,23,42,0.04)]";
+
+function OpenRequestLogButton({ onOpen }: { onOpen?: () => void }) {
+  const t = useAppText();
+
+  return (
+    <Button
+      aria-label={t("Open request log")}
+      className="h-7 border-border bg-transparent px-2 text-[11px] shadow-none hover:bg-transparent active:bg-transparent"
+      disabled={!onOpen}
+      onClick={onOpen}
+      type="button"
+      variant="outline"
+    >
+      {t("Open log")}
+    </Button>
+  );
+}
 
 function agentListRowClassName({
   danger,
@@ -3771,7 +3868,13 @@ function agentListRowClassName({
 type AgentTraceDetail = NonNullable<AgentAnalysisSnapshot["selectedSession"]>["trace"];
 type TracePayloadPreviewValue = NonNullable<NonNullable<AgentAnalysisTraceRun["tool"]>["input"]>;
 
-function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
+function AgentTracePanel({
+  onOpenRequestLog,
+  trace
+}: {
+  onOpenRequestLog?: (request: { id: number; requestId: string }) => void;
+  trace: AgentTraceDetail;
+}) {
   const t = useAppText();
   const durationMs = Math.max(trace.durationMs, 1);
   const [selectedToolRun, setSelectedToolRun] = useState<AgentAnalysisTraceRun>();
@@ -3792,7 +3895,7 @@ function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
         <AnalysisEmptyState label={t("No trace runs")} />
       ) : (
         <div className={cn("max-h-[420px]", agentListFrameClassName)}>
-          <table className={cn("min-w-[1180px]", agentListTableClassName)}>
+          <table className={cn("min-w-[1280px]", agentListTableClassName)}>
             <thead className={agentListHeadClassName}>
               <tr>
                 <th className="px-3 py-2 font-semibold">{t("Run")}</th>
@@ -3803,6 +3906,7 @@ function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
                 <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Concurrency")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
+                <th className={agentListActionHeadClassName}>{t("Action")}</th>
               </tr>
             </thead>
             <tbody className={agentListBodyClassName}>
@@ -3841,6 +3945,11 @@ function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
                   <td className="px-3 py-2 text-right">{run.cacheReadTokens + run.cacheWriteTokens > 0 ? formatCompactNumber(run.cacheReadTokens + run.cacheWriteTokens) : "-"}</td>
                   <td className="px-3 py-2 text-right">{formatCompactNumber(run.concurrentRequests)}</td>
                   <td className="px-3 py-2 text-right">{formatDuration(run.durationMs)}</td>
+                  <td className={agentListActionCellClassName}>
+                    {run.requestLogId !== undefined && run.requestId ? (
+                      <OpenRequestLogButton onOpen={onOpenRequestLog ? () => onOpenRequestLog({ id: run.requestLogId!, requestId: run.requestId! }) : undefined} />
+                    ) : "-"}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -4402,7 +4511,13 @@ function AgentSubagentsCard({ subagents }: { subagents: AgentAnalysisSnapshot["s
   );
 }
 
-function AgentRecentRequestsCard({ requests }: { requests: AgentAnalysisSnapshot["recentRequests"] }) {
+function AgentRecentRequestsCard({
+  onOpenRequestLog,
+  requests
+}: {
+  onOpenRequestLog?: (request: { id: number; requestId: string }) => void;
+  requests: AgentAnalysisSnapshot["recentRequests"];
+}) {
   const t = useAppText();
 
   return (
@@ -4416,7 +4531,7 @@ function AgentRecentRequestsCard({ requests }: { requests: AgentAnalysisSnapshot
           <AnalysisEmptyState label={t("No recent agent requests")} />
         ) : (
           <div className={cn("max-h-[360px]", agentListFrameClassName)}>
-            <table className={cn("min-w-[1240px]", agentListTableClassName)}>
+            <table className={cn("min-w-[1340px]", agentListTableClassName)}>
               <thead className={agentListHeadClassName}>
                 <tr>
                   <th className="px-3 py-2 font-semibold">{t("Time")}</th>
@@ -4431,6 +4546,7 @@ function AgentRecentRequestsCard({ requests }: { requests: AgentAnalysisSnapshot
                   <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
                   <th className="px-3 py-2 text-right font-semibold">{t("Concurrency")}</th>
                   <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
+                  <th className={agentListActionHeadClassName}>{t("Action")}</th>
                 </tr>
               </thead>
               <tbody className={agentListBodyClassName}>
@@ -4448,6 +4564,9 @@ function AgentRecentRequestsCard({ requests }: { requests: AgentAnalysisSnapshot
                     <td className="px-3 py-2 text-right">{formatCompactNumber(request.cacheReadTokens + request.cacheWriteTokens)}</td>
                     <td className="px-3 py-2 text-right">{formatCompactNumber(request.concurrentRequests)}</td>
                     <td className="px-3 py-2 text-right">{formatDuration(request.durationMs)}</td>
+                    <td className={agentListActionCellClassName}>
+                      <OpenRequestLogButton onOpen={onOpenRequestLog ? () => onOpenRequestLog({ id: request.id, requestId: request.requestId }) : undefined} />
+                    </td>
                   </tr>
                 ))}
               </tbody>

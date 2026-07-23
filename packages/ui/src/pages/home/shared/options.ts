@@ -148,10 +148,10 @@ export const requestLogStatusOptions: Array<{ label: string; value: RequestLogSt
 ];
 
 export const requestLogPageSizeOptions = [
-  { label: "10 / 页", value: "10" },
-  { label: "25 / 页", value: "25" },
-  { label: "50 / 页", value: "50" },
-  { label: "100 / 页", value: "100" }
+  { label: "10 / page", value: "10" },
+  { label: "25 / page", value: "25" },
+  { label: "50 / page", value: "50" },
+  { label: "100 / page", value: "100" }
 ];
 
 export const providerProtocolOptions: Array<{ label: string; value: GatewayProviderProtocol }> = [

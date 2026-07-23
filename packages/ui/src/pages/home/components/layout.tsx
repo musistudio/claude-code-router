@@ -290,9 +290,7 @@ export function MainLayout({
         >
           <MainViewSwitch
             activeView={activeView}
-            agentAnalysisEnabled={agentAnalysisEnabled}
             networkCaptureEnabled={networkCaptureEnabled}
-            requestLogsEnabled={requestLogsEnabled}
             viewProps={viewProps}
           />
         </div>
@@ -438,26 +436,22 @@ export function GatewayStartupErrorBanner({
 
 function MainViewSwitch({
   activeView,
-  agentAnalysisEnabled,
   networkCaptureEnabled,
-  requestLogsEnabled,
   viewProps
 }: {
   activeView: ViewId;
-  agentAnalysisEnabled: boolean;
   networkCaptureEnabled: boolean;
-  requestLogsEnabled: boolean;
   viewProps: MainViewProps;
 }) {
   return (
     <AnimatePresence initial={false} mode="wait">
       <ViewMotionShell key={activeView} view={activeView}>
         {activeView === "overview" ? <OverviewView {...viewProps.overview} /> : null}
-        {activeView === "observability" && agentAnalysisEnabled ? <AgentAnalysisView {...viewProps.observability} /> : null}
+        {activeView === "observability" ? <AgentAnalysisView {...viewProps.observability} /> : null}
         {activeView === "api-keys" ? <ApiKeysView {...viewProps.apiKeys} /> : null}
         {activeView === "profile" ? <ProfileView {...viewProps.profile} /> : null}
         {activeView === "networking" && networkCaptureEnabled ? <NetworkingView {...viewProps.networking} /> : null}
-        {activeView === "logs" && requestLogsEnabled ? <LogsView {...viewProps.logs} /> : null}
+        {activeView === "logs" ? <LogsView {...viewProps.logs} /> : null}
         {activeView === "providers" ? <ProvidersView {...viewProps.providers} /> : null}
         {activeView === "models" ? <ModelsView {...viewProps.models} /> : null}
         {activeView === "routing" ? <RoutingView {...viewProps.routing} /> : null}
