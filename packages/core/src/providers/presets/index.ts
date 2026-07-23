@@ -16,6 +16,7 @@ import { qiniuAiProviderPreset } from "@ccr/core/providers/presets/qiniu-ai/inde
 import { runApiProviderPreset } from "@ccr/core/providers/presets/runapi/index";
 import { siliconFlowProviderPreset } from "@ccr/core/providers/presets/siliconflow/index";
 import { teamoRouterProviderPreset } from "@ccr/core/providers/presets/teamorouter/index";
+import { daoxeProviderPreset } from "@ccr/core/providers/presets/daoxe/index";
 import { unity2ProviderPreset } from "@ccr/core/providers/presets/unity2/index";
 import { zaiGlobalCodingProviderPreset } from "@ccr/core/providers/presets/zai-global-coding/index";
 import { zaiGlobalGeneralProviderPreset } from "@ccr/core/providers/presets/zai-global-general/index";
@@ -55,6 +56,7 @@ export const providerPresets: ProviderPreset[] = [
   fennoProviderPreset,
   runApiProviderPreset,
   teamoRouterProviderPreset,
+  daoxeProviderPreset,
   unity2ProviderPreset,
   code0ProviderPreset,
   claudeApiProviderPreset

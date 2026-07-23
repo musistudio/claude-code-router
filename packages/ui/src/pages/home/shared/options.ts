@@ -58,6 +58,7 @@ import qiniuAiProviderIconUrl from "@/assets/provider-icons/qiniu-ai.png";
 import runapiProviderIconUrl from "@/assets/provider-icons/runapi.jpg";
 import siliconflowProviderIconUrl from "@/assets/provider-icons/siliconflow.png";
 import teamorouterProviderIconUrl from "@/assets/provider-icons/teamorouter.png";
+import daoxeProviderIconUrl from "@/assets/provider-icons/daoxe.png";
 import unity2ProviderIconUrl from "@/assets/provider-icons/unity2.jpg";
 import zaiGlobalCodingProviderIconUrl from "@/assets/provider-icons/zai-global-coding.svg";
 import zaiGlobalGeneralProviderIconUrl from "@/assets/provider-icons/zai-global-general.svg";
@@ -359,6 +360,7 @@ export const providerPresetIconUrls: Record<string, string> = {
   runapi: runapiProviderIconUrl,
   siliconflow: siliconflowProviderIconUrl,
   teamorouter: teamorouterProviderIconUrl,
+  daoxe: daoxeProviderIconUrl,
   unity2: unity2ProviderIconUrl,
   "zai-global-coding": zaiGlobalCodingProviderIconUrl,
   "zai-global-general": zaiGlobalGeneralProviderIconUrl,
