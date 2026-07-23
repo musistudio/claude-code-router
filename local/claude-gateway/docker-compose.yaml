@@ -1,0 +1,46 @@
+services:
+  dex:
+    image: ghcr.io/dexidp/dex:v2.43.1
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+    ports:
+      - "5556:5556"
+      - "8080:8080"
+    volumes:
+      - ./dex.yaml:/etc/dex/config.yaml:ro
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: gw
+      POSTGRES_PASSWORD: pw
+      POSTGRES_DB: gateway
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gw -d gateway"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  gateway:
+    build:
+      context: .
+    image: claude-gateway-local:latest
+    network_mode: service:dex
+    depends_on:
+      dex:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./gateway.yaml:/etc/claude/gateway.yaml:ro
+    environment:
+      CLAUDE_GATEWAY_ALLOW_LOOPBACK: "1"
+      CLAUDE_GATEWAY_LOG_LEVEL: info
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      GATEWAY_JWT_SECRET: ${GATEWAY_JWT_SECRET}
+      GATEWAY_POSTGRES_URL: ${GATEWAY_POSTGRES_URL}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+
+volumes:
+  pgdata:

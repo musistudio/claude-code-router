@@ -4,9 +4,12 @@ import { loadPersistedAppConfig, replacePersistedAppConfig } from "@ccr/core/con
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "@ccr/core/config/api-key-store";
 import { CONFIG_FILE, GATEWAY_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE } from "@ccr/core/config/constants";
 import { normalizeCodexProviderAccountConfig } from "@ccr/core/agents/local-providers/codex";
-import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "@ccr/core/contracts/app";
+import { normalizeGrokProviderAccountConfig, normalizeGrokProviderMediaCapabilities } from "@ccr/core/agents/local-providers/grok";
+import { removeOpenCodeProviderAccountConfig } from "@ccr/core/agents/local-providers/opencode";
+import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, ROUTER_SCRIPT_API_VERSION, ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS, ROUTER_SCRIPT_MAX_TIMEOUT_MS, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "@ccr/core/contracts/app";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config";
-import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
+import { maxRequestLogBodyBytes } from "@ccr/core/observability/request-log-limits";
+import { findProviderPresetByBaseUrl, primaryProviderPresetEndpoint, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
 import type {
   AppConfig,
   ApiKeyConfig,
@@ -23,8 +26,10 @@ import type {
   GatewayPluginAppConfig,
   GatewayPluginProxyRouteConfig,
   GatewayProviderCapability,
+  GatewayProviderCapabilityProtocol,
   GatewayProviderConfig,
   GatewayProviderProtocol,
+  MediaToolsConfig,
   ObservabilityConfig,
   OverviewMetricKind,
   OverviewWidgetConfig,
@@ -34,6 +39,10 @@ import type {
   ProviderAccountConfig,
   ProviderAccountConnectorConfig,
   ProviderCredentialConfig,
+  ProviderModelCapabilities,
+  ProviderModelMetadata,
+  ProviderModelPricing,
+  ProviderReasoningLevel,
   ProfileConfig,
   ProfileRuntimeConfig,
   ProxyRouteTarget,
@@ -47,6 +56,7 @@ import type {
   RouterRuleOperator,
   RouterRuleRewrite,
   RouterRuleRewriteOperation,
+  RouterRuleScript,
   RouterRuleType,
   TrayBalanceProgressConfig,
   TrayComponentVariants,
@@ -68,13 +78,14 @@ type LoadedBotGatewayConfig = Partial<Omit<BotGatewayRuntimeConfig, "handoff">> 
   handoff?: Partial<BotGatewayRuntimeConfig["handoff"]>;
 };
 
-type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway" | "contextArchive" | "gateway" | "observability" | "profile" | "proxy" | "toolHub">> & {
+type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway" | "contextArchive" | "gateway" | "mediaTools" | "observability" | "profile" | "proxy" | "toolHub">> & {
   Router?: Partial<RouterConfig>;
   agent?: Partial<GatewayAgentConfig>;
   botConfigs?: BotGatewaySavedConfig[];
   botGateway?: LoadedBotGatewayConfig;
   contextArchive?: Partial<ContextArchiveConfig>;
   gateway?: Partial<AppConfig["gateway"]>;
+  mediaTools?: Partial<MediaToolsConfig>;
   observability?: Partial<ObservabilityConfig>;
   profile?: LoadedProfileConfig;
   proxy?: Partial<ProxyRuntimeConfig>;
@@ -172,6 +183,9 @@ function defaultBotGatewayAuthType(platform: string): string {
   if (platform === "slack" || platform === "discord" || platform === "telegram" || platform === "line") {
     return "bot_token";
   }
+  if (platform === "imessage") {
+    return "local";
+  }
   return "";
 }
 
@@ -264,6 +278,11 @@ export async function loadAppConfig(): Promise<AppConfig> {
         host: gatewayConfig.host ?? host,
         port: gatewayConfig.port ?? port
       },
+      mediaTools: {
+        ...DEFAULT_CONFIG.mediaTools,
+        ...(picked.mediaTools ?? {}),
+        allowedInputRoots: picked.mediaTools?.allowedInputRoots ?? DEFAULT_CONFIG.mediaTools.allowedInputRoots
+      },
       observability: {
         ...DEFAULT_CONFIG.observability,
         ...(picked.observability ?? {})
@@ -301,10 +320,11 @@ export async function loadAppConfig(): Promise<AppConfig> {
       }
     });
     const shouldPersistApiKeys = loadedApiKeys.length === 0 || hasConfigFileApiKeys(rawValue) || configFileApiKeys.length > 0;
+    const shouldRepairProviderCapabilities = hasUnsupportedNvidiaCapabilities(value.Providers);
     if (shouldPersistApiKeys) {
       await replacePersistedApiKeys(apiKeys);
     }
-    if (loadedRawConfig.source !== "sqlite" || shouldPersistApiKeys) {
+    if (loadedRawConfig.source !== "sqlite" || shouldPersistApiKeys || shouldRepairProviderCapabilities) {
       await writeSanitizedConfig(config);
     }
     return config;
@@ -328,27 +348,116 @@ export async function loadAppConfig(): Promise<AppConfig> {
   }
 }
 
+let appConfigWriteQueue: Promise<void> = Promise.resolve();
+let appThemePreferenceOverride: AppConfig["theme"] | undefined;
+
 export async function saveAppConfig(config: AppConfig): Promise<AppConfig> {
+  return enqueueAppConfigWrite(() => saveAppConfigNow(config));
+}
+
+export async function saveAppThemePreference(theme: unknown): Promise<AppConfig["theme"]> {
+  const normalizedTheme = normalizeAppThemePreference(theme);
+  appThemePreferenceOverride = normalizedTheme;
+  return enqueueAppConfigWrite(async () => {
+    const currentConfig = await loadAppConfig();
+    await writeSanitizedConfig({
+      ...currentConfig,
+      theme: normalizedTheme
+    });
+    return normalizedTheme;
+  });
+}
+
+async function saveAppConfigNow(config: AppConfig): Promise<AppConfig> {
   const normalizedConfig = withSingleEnabledGlobalProfiles(config);
   assertProviderApiKeysAreSafe(normalizedConfig);
   const apiKeys = ensureGatewayApiKeys(normalizeApiKeys(normalizedConfig.APIKEYS, normalizedConfig.APIKEY).filter((apiKey) => !isDefaultSeedApiKey(apiKey)));
   await replacePersistedApiKeys(apiKeys);
   await writeSanitizedConfig({
     ...normalizedConfig,
+    theme: appThemePreferenceOverride ?? normalizedConfig.theme,
     APIKEY: apiKeys[0]?.key ?? "",
     APIKEYS: apiKeys
   });
   return loadAppConfig();
 }
 
+function normalizeAppThemePreference(theme: unknown): AppConfig["theme"] {
+  if (theme === "system" || theme === "light" || theme === "dark") {
+    return theme;
+  }
+  throw new Error("Invalid theme preference.");
+}
+
+function enqueueAppConfigWrite<T>(operation: () => Promise<T>): Promise<T> {
+  const result = appConfigWriteQueue.then(operation, operation);
+  appConfigWriteQueue = result.then(
+    () => undefined,
+    () => undefined
+  );
+  return result;
+}
+
 function withSingleEnabledGlobalProfiles(config: AppConfig): AppConfig {
   return {
     ...config,
+    Providers: config.Providers.map(normalizeProviderPresetCapabilities),
     profile: {
       ...config.profile,
       profiles: enforceSingleEnabledGlobalProfilePerAgent(config.profile.profiles)
     }
   };
+}
+
+function normalizeProviderPresetCapabilities(provider: GatewayProviderConfig): GatewayProviderConfig {
+  const preset = findProviderPresetByBaseUrl(providerBaseUrl(provider));
+  if (preset?.id !== "nvidia") {
+    return provider;
+  }
+
+  const chatCapability = provider.capabilities?.find((capability) =>
+    capability.type === "openai_chat_completions"
+  );
+  const presetBaseUrl = primaryProviderPresetEndpoint(preset)?.baseUrl ?? providerBaseUrl(provider);
+  return {
+    ...provider,
+    capabilities: [{
+      baseUrl: chatCapability?.baseUrl || presetBaseUrl,
+      endpoint: chatCapability?.endpoint,
+      source: chatCapability?.source ?? "preset",
+      type: "openai_chat_completions"
+    }]
+  };
+}
+
+export function normalizeProviderPresetCapabilitiesForTest(
+  provider: GatewayProviderConfig
+): GatewayProviderConfig {
+  return normalizeProviderPresetCapabilities(provider);
+}
+
+function hasUnsupportedNvidiaCapabilities(value: unknown): boolean {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  return value.some((item) => {
+    if (!isObject(item)) {
+      return false;
+    }
+    const baseUrl = readString(item.api_base_url) || readString(item.baseUrl) || readString(item.baseurl);
+    if (!baseUrl || findProviderPresetByBaseUrl(baseUrl)?.id !== "nvidia" || !Array.isArray(item.capabilities)) {
+      return false;
+    }
+    return item.capabilities.some((capability) => {
+      if (!isObject(capability)) {
+        return false;
+      }
+      const protocol = parseProviderCapabilityProtocol(
+        readString(capability.type) || readString(capability.protocol)
+      );
+      return Boolean(protocol && protocol !== "openai_chat_completions");
+    });
+  });
 }
 
 function assertProviderApiKeysAreSafe(config: AppConfig): void {
@@ -530,7 +639,7 @@ function sanitizeProfileConfigForDisk(profile: AppConfig["profile"]): AppConfig[
     ...profile,
     codex,
     profiles: profile.profiles.map((profileItem) => {
-      if (profileItem.agent !== "codex" && profileItem.agent !== "zcode") {
+      if (profileItem.agent !== "codex" && profileItem.agent !== "opencode" && profileItem.agent !== "zcode") {
         return profileItem;
       }
       const {
@@ -578,8 +687,9 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   if (Array.isArray((value as Record<string, unknown>).providerPlugins)) {
     config.providerPlugins = (value as Record<string, unknown>).providerPlugins as unknown[];
   }
-  if (Array.isArray((value as Record<string, unknown>).virtualModelProfiles)) {
-    config.virtualModelProfiles = (value as Record<string, unknown>).virtualModelProfiles as AppConfig["virtualModelProfiles"];
+  const virtualModelProfiles = (value as Record<string, unknown>).virtualModelProfiles;
+  if (Array.isArray(virtualModelProfiles)) {
+    config.virtualModelProfiles = virtualModelProfiles.map(removeVirtualModelToolLoopLimits) as AppConfig["virtualModelProfiles"];
   }
   const plugins = parseGatewayPlugins((value as Record<string, unknown>).plugins ?? (value as Record<string, unknown>).gatewayPlugins);
   if (plugins) {
@@ -642,6 +752,10 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   const observability = parseObservability((value as Record<string, unknown>).observability);
   if (observability) {
     config.observability = observability;
+  }
+  const mediaTools = parseMediaTools((value as Record<string, unknown>).mediaTools ?? (value as Record<string, unknown>).media_tools ?? (value as Record<string, unknown>).grokMedia ?? (value as Record<string, unknown>).grok_media);
+  if (mediaTools) {
+    config.mediaTools = mediaTools;
   }
   const toolHub = parseToolHub((value as Record<string, unknown>).toolHub ?? (value as Record<string, unknown>).tool_hub);
   if (toolHub) {
@@ -738,6 +852,25 @@ function parseContextArchive(value: unknown): Partial<ContextArchiveConfig> | un
   return Object.keys(contextArchive).length ? contextArchive : undefined;
 }
 
+function removeVirtualModelToolLoopLimits(value: unknown): unknown {
+  if (
+    !isObject(value) ||
+    !isObject(value.execution) ||
+    (!("maxTurns" in value.execution) && !("maxToolCalls" in value.execution))
+  ) {
+    return value;
+  }
+  const { maxToolCalls: _maxToolCalls, maxTurns: _maxTurns, ...execution } = value.execution;
+  return {
+    ...value,
+    execution
+  };
+}
+
+export function virtualModelProfileFromRawForTest(value: unknown): unknown {
+  return removeVirtualModelToolLoopLimits(value);
+}
+
 function parseObservability(value: unknown): Partial<ObservabilityConfig> | undefined {
   if (!isObject(value)) {
     return undefined;
@@ -749,6 +882,15 @@ function parseObservability(value: unknown): Partial<ObservabilityConfig> | unde
   }
   if (typeof value.agentAnalysis === "boolean") {
     observability.agentAnalysis = value.agentAnalysis;
+  }
+  if (value.requestLogBodyCapture === "all" || value.requestLogBodyCapture === "errors" || value.requestLogBodyCapture === "none") {
+    observability.requestLogBodyCapture = value.requestLogBodyCapture;
+  }
+  if (typeof value.requestLogMaxBodyBytes === "number" && Number.isFinite(value.requestLogMaxBodyBytes)) {
+    observability.requestLogMaxBodyBytes = Math.max(0, Math.min(maxRequestLogBodyBytes, Math.floor(value.requestLogMaxBodyBytes)));
+  }
+  if (typeof value.requestLogSuccessSampleRate === "number" && Number.isFinite(value.requestLogSuccessSampleRate)) {
+    observability.requestLogSuccessSampleRate = Math.max(0, Math.min(1, value.requestLogSuccessSampleRate));
   }
   return Object.keys(observability).length ? observability : undefined;
 }
@@ -798,6 +940,34 @@ function parseToolHub(value: unknown): Partial<ToolHubConfig> | undefined {
   }
 
   return Object.keys(toolHub).length ? toolHub : undefined;
+}
+
+function parseMediaTools(value: unknown): Partial<MediaToolsConfig> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const config: Partial<MediaToolsConfig> = {};
+  if (typeof value.enabled === "boolean") config.enabled = value.enabled;
+  const rawAllowedInputRoots = value.allowedInputRoots ?? value.allowed_input_roots;
+  if (Array.isArray(rawAllowedInputRoots)) {
+    config.allowedInputRoots = rawAllowedInputRoots
+      .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+      .map((item) => item.trim());
+  }
+  const artifactTtlHours = readNumber(value.artifactTtlHours ?? value.artifact_ttl_hours);
+  if (artifactTtlHours !== undefined) config.artifactTtlHours = clampNumber(artifactTtlHours, 1, 720);
+  const jobTimeoutMs = readNumber(value.jobTimeoutMs ?? value.job_timeout_ms);
+  if (jobTimeoutMs !== undefined) config.jobTimeoutMs = clampNumber(jobTimeoutMs, 30000, 3600000);
+  const maxImageConcurrency = readNumber(value.maxImageConcurrency ?? value.max_image_concurrency);
+  if (maxImageConcurrency !== undefined) config.maxImageConcurrency = clampNumber(maxImageConcurrency, 1, 8);
+  const maxVideoConcurrency = readNumber(value.maxVideoConcurrency ?? value.max_video_concurrency);
+  if (maxVideoConcurrency !== undefined) config.maxVideoConcurrency = clampNumber(maxVideoConcurrency, 1, 4);
+  return Object.keys(config).length ? config : undefined;
+}
+
+export function mediaToolsConfigFromRawForTest(value: unknown): Partial<MediaToolsConfig> | undefined {
+  return parseMediaTools(value);
 }
 
 function parseOverviewWidgets(value: unknown): OverviewWidgetConfig[] | undefined {
@@ -1097,6 +1267,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         : [];
       const modelDescriptions = parseModelDescriptions(item.modelDescriptions ?? item.model_descriptions, models);
       const modelDisplayNames = parseModelDisplayNames(item.modelDisplayNames ?? item.model_display_names, models);
+      const modelMetadata = parseModelMetadata(item.modelMetadata ?? item.model_metadata, models);
 
       if (!name) {
         return undefined;
@@ -1119,13 +1290,21 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         id: readString(item.id),
         modelDescriptions,
         modelDisplayNames,
+        modelMetadata,
         models,
         name,
         provider: readString(item.provider),
+        protocolDetectionMode: parseEnumValue(item.protocolDetectionMode, ["auto", "manual"], undefined),
         transformer: item.transformer,
         type: readString(item.type)
       };
-      return normalizeCodexProviderAccountConfig(provider);
+      return removeOpenCodeProviderAccountConfig(
+        normalizeProviderPresetCapabilities(
+          normalizeGrokProviderMediaCapabilities(
+            normalizeGrokProviderAccountConfig(normalizeCodexProviderAccountConfig(provider))
+          )
+        )
+      );
     })
     .filter((item): item is GatewayProviderConfig => Boolean(item));
 
@@ -1162,6 +1341,122 @@ function parseModelDisplayNames(value: unknown, models: string[]): Record<string
     });
 
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function parseModelMetadata(value: unknown, models: string[]): Record<string, ProviderModelMetadata> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const modelIds = new Set(models);
+  const entries = Object.entries(value)
+    .map(([rawModel, rawMetadata]) => [rawModel.trim(), parseProviderModelMetadata(rawMetadata)] as const)
+    .filter((entry): entry is [string, ProviderModelMetadata] => {
+      const [model, metadata] = entry;
+      return Boolean(model && metadata && modelIds.has(model));
+    });
+
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const supportedReasoningLevels = parseProviderReasoningLevels(value.supportedReasoningLevels ?? value.supported_reasoning_levels);
+  const capabilities = parseProviderModelCapabilities(value.capabilities);
+  const contextWindow = readPositiveInteger(value.contextWindow ?? value.context_window);
+  const effectiveContextWindowPercent = readPercentage(value.effectiveContextWindowPercent ?? value.effective_context_window_percent);
+  const maxContextWindow = readPositiveInteger(value.maxContextWindow ?? value.max_context_window);
+  const pricing = parseProviderModelPricing(value.pricing);
+  const metadata: ProviderModelMetadata = {
+    ...(Array.isArray(value.additionalSpeedTiers) ? { additionalSpeedTiers: value.additionalSpeedTiers } : {}),
+    ...(Array.isArray(value.additional_speed_tiers) ? { additionalSpeedTiers: value.additional_speed_tiers } : {}),
+    ...(capabilities ? { capabilities } : {}),
+    ...(contextWindow ? { contextWindow } : {}),
+    ...(value.defaultReasoningLevel === null ? { defaultReasoningLevel: null } : {}),
+    ...(readString(value.defaultReasoningLevel) ? { defaultReasoningLevel: readString(value.defaultReasoningLevel) } : {}),
+    ...(value.default_reasoning_level === null ? { defaultReasoningLevel: null } : {}),
+    ...(readString(value.default_reasoning_level) ? { defaultReasoningLevel: readString(value.default_reasoning_level) } : {}),
+    ...(readString(value.defaultReasoningSummary) ? { defaultReasoningSummary: readString(value.defaultReasoningSummary) } : {}),
+    ...(readString(value.default_reasoning_summary) ? { defaultReasoningSummary: readString(value.default_reasoning_summary) } : {}),
+    ...(effectiveContextWindowPercent ? { effectiveContextWindowPercent } : {}),
+    ...(maxContextWindow ? { maxContextWindow } : {}),
+    ...(pricing ? { pricing } : {}),
+    ...(Array.isArray(value.serviceTiers) ? { serviceTiers: value.serviceTiers } : {}),
+    ...(Array.isArray(value.service_tiers) ? { serviceTiers: value.service_tiers } : {}),
+    ...(supportedReasoningLevels ? { supportedReasoningLevels } : {}),
+    ...(typeof value.supportsReasoningSummaries === "boolean" ? { supportsReasoningSummaries: value.supportsReasoningSummaries } : {}),
+    ...(typeof value.supports_reasoning_summaries === "boolean" ? { supportsReasoningSummaries: value.supports_reasoning_summaries } : {})
+  };
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function parseProviderModelCapabilities(value: unknown): ProviderModelCapabilities | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const capabilities: ProviderModelCapabilities = {};
+  const fields: Array<keyof ProviderModelCapabilities> = ["imageInput", "webSearch"];
+  for (const field of fields) {
+    const snakeCaseField = field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+    const candidate = value[field] ?? value[snakeCaseField];
+    if (typeof candidate === "boolean") {
+      capabilities[field] = candidate;
+    }
+  }
+  return Object.keys(capabilities).length > 0 ? capabilities : undefined;
+}
+
+function parseProviderModelPricing(value: unknown): ProviderModelPricing | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const pricing: ProviderModelPricing = {};
+  const fields: Array<keyof ProviderModelPricing> = [
+    "cacheReadUsdPerMillionTokens",
+    "cacheWriteUsdPerMillionTokens",
+    "cacheWrite1hUsdPerMillionTokens",
+    "cacheWrite5mUsdPerMillionTokens",
+    "inputUsdPerMillionTokens",
+    "outputUsdPerMillionTokens"
+  ];
+  for (const field of fields) {
+    const snakeCaseField = field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+    const durationSnakeCaseField = snakeCaseField.replace(/([a-z])([0-9])/g, "$1_$2");
+    const parsed = readNonNegativeNumber(value[field] ?? value[durationSnakeCaseField] ?? value[snakeCaseField]);
+    if (parsed !== undefined) {
+      pricing[field] = parsed;
+    }
+  }
+  return Object.keys(pricing).length > 0 ? pricing : undefined;
+}
+
+export function providerModelMetadataFromConfigForTest(value: unknown): ProviderModelMetadata | undefined {
+  return parseProviderModelMetadata(value);
+}
+
+function parseProviderReasoningLevels(value: unknown): ProviderReasoningLevel[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const levels = value
+    .map((item): ProviderReasoningLevel | undefined => {
+      if (!isObject(item)) {
+        const effort = readString(item);
+        return effort ? { description: effort, effort } : undefined;
+      }
+      const effort = readString(item.effort);
+      if (!effort) {
+        return undefined;
+      }
+      return {
+        description: readString(item.description) || effort,
+        effort
+      };
+    })
+    .filter((item): item is ProviderReasoningLevel => Boolean(item));
+  return levels.length > 0 ? levels : value.length === 0 ? [] : undefined;
 }
 
 function withProviderIds(providers: GatewayProviderConfig[]): GatewayProviderConfig[] {
@@ -1293,7 +1588,7 @@ function parseProviderCapabilities(value: unknown): GatewayProviderCapability[] 
   return capabilities.length > 0 ? capabilities : undefined;
 }
 
-function parseProviderCapabilityProtocol(value: string | undefined): GatewayProviderProtocol | undefined {
+function parseProviderCapabilityProtocol(value: string | undefined): GatewayProviderCapabilityProtocol | undefined {
   if (!value) {
     return undefined;
   }
@@ -1303,6 +1598,15 @@ function parseProviderCapabilityProtocol(value: string | undefined): GatewayProv
   }
   if (normalized === "openai_chat" || normalized === "openai_chat_completions") {
     return "openai_chat_completions";
+  }
+  if (normalized === "openai_image_generations" || normalized === "openai_images") {
+    return "openai_image_generations";
+  }
+  if (normalized === "openai_video_generations" || normalized === "openai_videos") {
+    return "openai_video_generations";
+  }
+  if (normalized === "xai_video_generations" || normalized === "xai_videos") {
+    return "xai_video_generations";
   }
   if (normalized === "anthropic" || normalized === "anthropic_messages") {
     return "anthropic_messages";
@@ -1474,6 +1778,7 @@ function parseRouterRules(value: unknown): RouterRule[] | undefined {
         pattern
       });
       const rewrites = parseRouterRuleRewrites(item);
+      const script = type === "script" ? parseRouterRuleScript(item.script ?? item) : undefined;
       const fallback = parseRouterFallback(item.fallback ?? item.failureFallback ?? item.fallbackStrategy);
 
       return {
@@ -1485,9 +1790,10 @@ function parseRouterRules(value: unknown): RouterRule[] | undefined {
         ...(pattern ? { pattern } : {}),
         ...(rewrites.length === 1 ? { rewrite: rewrites[0] } : {}),
         ...(rewrites.length > 0 ? { rewrites } : {}),
+        ...(script ? { script } : {}),
         ...(target ? { target } : {}),
         ...(threshold !== undefined && threshold > 0 ? { threshold } : {}),
-        type: condition ? "condition" : type
+        type: type === "script" ? "script" : condition ? "condition" : type
       };
     })
     .filter((item): item is RouterRule => Boolean(item));
@@ -1501,11 +1807,46 @@ function parseRouterRuleType(value: unknown): RouterRuleType | undefined {
   const normalized = value.trim().toLowerCase();
   if (
     normalized === "condition" ||
-    normalized === "model-prefix"
+    normalized === "model-prefix" ||
+    normalized === "script"
   ) {
     return normalized;
   }
   return undefined;
+}
+
+function parseRouterRuleScript(value: unknown): RouterRuleScript | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const file = readString(value.file ?? value.filePath ?? value.path);
+  const source = typeof value.source === "string"
+    ? value.source
+    : typeof value.code === "string"
+      ? value.code
+      : undefined;
+  if (!file && source === undefined) {
+    return undefined;
+  }
+  const language = readString(value.language)?.toLowerCase();
+  if (language && language !== "javascript" && language !== "js") {
+    return undefined;
+  }
+  const apiVersion = readNumber(value.apiVersion ?? value.version) ?? ROUTER_SCRIPT_API_VERSION;
+  if (apiVersion !== ROUTER_SCRIPT_API_VERSION) {
+    return undefined;
+  }
+  const timeoutValue = readNumber(value.timeoutMs ?? value.timeout);
+  const timeoutMs = timeoutValue === undefined
+    ? ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS
+    : Math.max(10, Math.min(ROUTER_SCRIPT_MAX_TIMEOUT_MS, Math.trunc(timeoutValue)));
+  return {
+    apiVersion: ROUTER_SCRIPT_API_VERSION,
+    ...(file ? { file } : {}),
+    language: "javascript",
+    ...(source !== undefined ? { source } : {}),
+    timeoutMs
+  };
 }
 
 function parseRouterRuleCondition(value: unknown): RouterRuleCondition | undefined {
@@ -1645,7 +1986,7 @@ function readRewriteValue(value: unknown): string | undefined {
 }
 
 function routerRuleTypeLabel(type: RouterRuleType): string {
-  return type === "condition" ? "Condition" : "Legacy";
+  return type === "condition" ? "Condition" : type === "script" ? "JavaScript" : "Legacy";
 }
 
 function parseAgent(value: unknown, legacyMcpServers?: unknown): Partial<GatewayAgentConfig> | undefined {
@@ -1735,6 +2076,22 @@ function parseBotGateway(value: unknown): LoadedBotGatewayConfig | undefined {
     config.forwardAllAgentMessages = Boolean(value.forward_all_agent_messages ?? value.forward_all_codex_messages);
   }
 
+  if (typeof value.mediaEnabled === "boolean") {
+    config.mediaEnabled = value.mediaEnabled;
+  }
+  if (typeof value.streamReplies === "boolean") {
+    config.streamReplies = value.streamReplies;
+  }
+  if (typeof value.shellEnabled === "boolean") {
+    config.shellEnabled = value.shellEnabled;
+  } else if (typeof value.shell_enabled === "boolean") {
+    config.shellEnabled = value.shell_enabled;
+  }
+  const language = readString(value.language);
+  if (language === "auto" || language === "en" || language === "zh-CN") {
+    config.language = language;
+  }
+
   const requestTimeoutMs = readNumber(value.requestTimeoutMs ?? value.request_timeout_ms);
   if (requestTimeoutMs !== undefined) {
     config.requestTimeoutMs = clampNumber(requestTimeoutMs, 1000, 3_600_000);
@@ -1746,6 +2103,22 @@ function parseBotGateway(value: unknown): LoadedBotGatewayConfig | undefined {
   const pollIntervalMs = readNumber(value.pollIntervalMs ?? value.poll_interval_ms);
   if (pollIntervalMs !== undefined) {
     config.pollIntervalMs = clampNumber(pollIntervalMs, 500, 60_000);
+  }
+  const maxTurnTimeMs = readNumber(value.maxTurnTimeMs ?? value.max_turn_time_ms);
+  if (maxTurnTimeMs !== undefined) {
+    config.maxTurnTimeMs = clampNumber(maxTurnTimeMs, 10_000, 3_600_000);
+  }
+  const maxAttachmentBytes = readNumber(value.maxAttachmentBytes ?? value.max_attachment_bytes);
+  if (maxAttachmentBytes !== undefined) {
+    config.maxAttachmentBytes = clampNumber(maxAttachmentBytes, 1024, 100 * 1024 * 1024);
+  }
+  const messageChunkChars = readNumber(value.messageChunkChars ?? value.message_chunk_chars);
+  if (messageChunkChars !== undefined) {
+    config.messageChunkChars = clampNumber(messageChunkChars, 500, 20_000);
+  }
+  const sessionIdleMinutes = readNumber(value.sessionIdleMinutes ?? value.session_idle_minutes);
+  if (sessionIdleMinutes !== undefined) {
+    config.sessionIdleMinutes = clampNumber(sessionIdleMinutes, 0, 43_200);
   }
 
   const handoff = parseBotGatewayHandoff(value.handoff);
@@ -1964,11 +2337,67 @@ function parseProxy(value: unknown): Partial<ProxyRuntimeConfig> | undefined {
   } else if (typeof value.systemProxyEnabled === "boolean") {
     proxy.systemProxy = value.systemProxyEnabled;
   }
+  const upstream = parseProxyUpstream(value.upstream ?? value.upstreamProxy ?? value.outboundProxy);
+  if (upstream) {
+    proxy.upstream = upstream;
+  }
   const targets = parseProxyTargets(value.targets);
   if (targets) {
     proxy.targets = targets;
   }
   return proxy;
+}
+
+function parseProxyUpstream(value: unknown): ProxyRuntimeConfig["upstream"] | undefined {
+  const fallback = DEFAULT_CONFIG.proxy.upstream;
+  if (typeof value === "string") {
+    const mode = parseProxyUpstreamMode(value);
+    return mode ? { ...fallback, mode } : undefined;
+  }
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const mode = parseProxyUpstreamMode(value.mode ?? value.type);
+  const customInput = isObject(value.custom) ? value.custom : value;
+  const server = readString(customInput.server ?? customInput.host ?? customInput.hostname);
+  const port = readPort(customInput.port);
+  const username = readString(customInput.username ?? customInput.user);
+  const password = typeof customInput.password === "string"
+    ? customInput.password
+    : typeof customInput.pass === "string"
+      ? customInput.pass
+      : undefined;
+  const hasCustomInput = server !== undefined || port !== undefined || username !== undefined || password !== undefined;
+
+  return {
+    ...fallback,
+    custom: {
+      ...fallback.custom,
+      ...(server !== undefined ? { server } : {}),
+      ...(port !== undefined ? { port } : {}),
+      ...(username !== undefined ? { username } : {}),
+      ...(password !== undefined ? { password } : {})
+    },
+    mode: mode ?? (hasCustomInput ? "custom" : fallback.mode)
+  };
+}
+
+function parseProxyUpstreamMode(value: unknown): ProxyRuntimeConfig["upstream"]["mode"] | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s_-]+/g, "");
+  if (["none", "off", "disabled", "direct", "noproxy"].includes(normalized)) {
+    return "none";
+  }
+  if (["system", "systemproxy", "os", "osproxy", "env", "environment"].includes(normalized)) {
+    return "system";
+  }
+  if (["custom", "manual", "http", "httpproxy"].includes(normalized)) {
+    return "custom";
+  }
+  return undefined;
 }
 
 function parseProxyTargets(value: unknown): ProxyRouteTarget[] | undefined {
@@ -2257,6 +2686,10 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       const id = readString(item.id) || `profile-${index + 1}`;
       const name = readString(item.name) || defaultProfileAgentName(agent);
       const model = readString(item.model) ?? "";
+      const availableModels = uniqueStrings([
+        model,
+        ...parseStringList(item.availableModels ?? item.available_models ?? item.models)
+      ]);
       const env = parseStringRecord(item.env) ?? {};
       const parsedSurface = parseProfileSurface(readString(item.surface) || readString(item.entry) || readString(item.frontend)) || "auto";
       const surface = agent === "zcode" ? "app" : parsedSurface;
@@ -2268,8 +2701,10 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       const managedCompact = readManagedCompact(item);
 
       if (agent === "claude-code") {
+        const appPath = readProfileAppPath(item, agent);
         return {
           agent,
+          ...(appPath ? { appPath } : {}),
           ...(botConfigId ? { botConfigId } : {}),
           ...(botGateway ? { botGateway } : {}),
           enabled,
@@ -2285,8 +2720,24 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         };
       }
 
+      if (agent === "grok" || agent === "kimi") {
+        return {
+          agent,
+          ...(agent === "kimi" ? { availableModels } : {}),
+          enabled,
+          env: codexCompatibleProfileEnv(env),
+          id,
+          model,
+          name,
+          scope: "ccr",
+          surface: "cli"
+        };
+      }
+
+      const appPath = readProfileAppPath(item, agent);
       return {
         agent,
+        ...(appPath ? { appPath } : {}),
         ...(botConfigId ? { botConfigId } : {}),
         ...(botGateway ? { botGateway } : {}),
         cliMiddleware: true,
@@ -2304,7 +2755,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         providerName: readString(item.providerName) || "Claude Code Router",
         remoteFrontendMode: parseCodexRemoteFrontendMode(readString(item.remoteFrontendMode) || readString(item.frontendMode) || readString(item.coreMode)) || "app",
         scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
-        showAllSessions: agent === "zcode"
+        showAllSessions: agent === "zcode" || agent === "opencode"
           ? false
           : typeof item.showAllSessions === "boolean"
             ? item.showAllSessions
@@ -2317,6 +2768,20 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
     .filter((item): item is ProfileConfig => Boolean(item));
 }
 
+function readProfileAppPath(item: Record<string, unknown>, agent: ProfileConfig["agent"]): string | undefined {
+  return readString(item.appPath) ||
+    readString(item.app_path) ||
+    readString(item.appExecutablePath) ||
+    readString(item.app_executable_path) ||
+    (agent === "claude-code"
+      ? readString(item.claudeAppPath) || readString(item.claude_app_path)
+      : agent === "codex"
+        ? readString(item.chatgptAppPath) || readString(item.chatgpt_app_path) || readString(item.codexAppPath) || readString(item.codex_app_path)
+        : agent === "opencode"
+          ? readString(item.openCodeAppPath) || readString(item.opencodeAppPath) || readString(item.opencode_app_path)
+        : readString(item.zcodeAppPath) || readString(item.zcode_app_path));
+}
+
 function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -2327,6 +2792,15 @@ function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
   }
   if (normalized === "codex") {
     return "codex";
+  }
+  if (normalized === "grok" || normalized === "grok-cli" || normalized === "grok cli") {
+    return "grok";
+  }
+  if (normalized === "kimi" || normalized === "kimi-cli" || normalized === "kimi cli" || normalized === "kimi-code" || normalized === "kimi code") {
+    return "kimi";
+  }
+  if (normalized === "opencode" || normalized === "open-code" || normalized === "open code") {
+    return "opencode";
   }
   if (normalized === "zcode" || normalized === "z-code" || normalized === "z code") {
     return "zcode";
@@ -2351,11 +2825,24 @@ function defaultProfileAgentName(agent: ProfileConfig["agent"]): string {
   if (agent === "zcode") {
     return "ZCode";
   }
+  if (agent === "grok") {
+    return "Grok CLI";
+  }
+  if (agent === "kimi") {
+    return "Kimi CLI";
+  }
+  if (agent === "opencode") {
+    return "OpenCode";
+  }
   return "Codex";
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "~/.zcode/cli/config.json" : "~/.codex/config.toml";
+  return agent === "zcode"
+    ? "~/.zcode/cli/config.json"
+    : agent === "opencode"
+      ? "~/.config/opencode/opencode.jsonc"
+      : "~/.codex/config.toml";
 }
 
 function normalizeCodexConfigFileForAgent(agent: ProfileConfig["agent"], value: string | undefined): string {
@@ -2695,6 +3182,21 @@ function readNumber(value: unknown): number | undefined {
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function readNonNegativeNumber(value: unknown): number | undefined {
+  const parsed = readNumber(value);
+  return parsed !== undefined && parsed >= 0 ? parsed : undefined;
+}
+
+function readPercentage(value: unknown): number | undefined {
+  const parsed = readNumber(value);
+  return parsed !== undefined && parsed > 0 && parsed <= 100 ? parsed : undefined;
+}
+
+function readPositiveInteger(value: unknown): number | undefined {
+  const parsed = readNumber(value);
+  return parsed !== undefined && parsed > 0 ? Math.trunc(parsed) : undefined;
 }
 
 function clampNumber(value: number, min: number, max: number): number {

@@ -102,6 +102,8 @@ import { cn } from "@/lib/utils";
 import appLogoUrl from "@/assets/logo.png";
 import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
 import codexLogoUrl from "@/assets/agent-logos/codex.png";
+import grokLogoUrl from "@/assets/agent-logos/grok.ico";
+import openCodeLogoUrl from "@/assets/agent-logos/opencode.ico";
 import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
 import onboardingMascotSpriteUrl from "@/assets/onboarding/mascot-transition.svg";
 import anthropicProviderIconUrl from "@/assets/provider-icons/anthropic.png";
@@ -132,6 +134,7 @@ import {
   enforceSingleEnabledGlobalProfilePerAgent,
   normalizeProfileScopeValue,
   OVERVIEW_WIDGET_SIZE_VALUES,
+  ROUTER_SCRIPT_MAX_TIMEOUT_MS,
   TRAY_SINGLETON_WIDGET_TYPES,
   TRAY_TOP_WIDGET_TYPES,
   TRAY_WINDOW_MODULE_IDS
@@ -158,6 +161,7 @@ import type {
   BotHandoffScanTarget,
   GatewayProviderConfig,
   GatewayProviderCapability,
+  GatewayProviderCapabilityProtocol,
   GatewayPluginAppConfig,
   GatewayProviderConnectivityCheckModelResult,
   GatewayProviderConnectivityCheckReport,
@@ -190,6 +194,7 @@ import type {
   ProviderCredentialConfig,
   ProviderDeepLinkPayload,
   ProviderDeepLinkRequest,
+  ProviderModelMetadata,
   ProfileConfig,
   ProfileOpenSurface,
   CodexProfileConfigFormat,
@@ -376,7 +381,7 @@ import type { MotionSafeDivAttributes } from "./motion";
 
 
 import { normalizeApiKeyLimits, positiveInteger } from "./api-keys";
-import { isPlainRecord, stringValue, uniqueStrings } from "./common";
+import { isPlainRecord, normalizeProviderModelSelector, stringValue, uniqueStrings } from "./common";
 import { formatEditableJson } from "./extensions";
 import { findProviderPreset, findProviderPresetByBaseUrl, findProviderPresetByIdentity, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey, providerIdentitySafetyIssue } from "./external";
 import { fusionModelProviderName } from "./profiles";
@@ -387,8 +392,13 @@ import type { AddProviderDraft, AddRoutingRuleDraft, ModelCatalogItem, ProviderC
 export const localAgentProviderIconUrls: Record<LocalAgentProviderKind, string> = {
   "claude-code": claudeCodeLogoUrl,
   codex: codexLogoUrl,
+  grok: grokLogoUrl,
+  kimi: moonshotProviderIconUrl,
+  opencode: openCodeLogoUrl,
   zcode: zcodeLogoUrl
 };
+
+const localAgentProviderApiKeyValue = "ccr-local-agent-login";
 
 export function createModelCatalogItems(config: AppConfig): ModelCatalogItem[] {
   const rows: ModelCatalogItem[] = [];
@@ -487,25 +497,31 @@ export function createRouteModelOptions(providers: GatewayProviderConfig[]): Arr
     return provider.models
       .filter(Boolean)
       .map((model) => ({
-        label: `${provider.name}, ${providerModelDisplayName(provider, model)}`,
-        value: `${provider.name},${model}`
+        label: `${provider.name}/${providerModelDisplayName(provider, model)}`,
+        value: `${provider.name}/${model}`
       }));
   });
 }
 
 export function routeTargetOptions(modelOptions: Array<{ label: string; value: string }>, value: string): Array<{ label: string; value: string }> {
+  const normalizedValue = normalizeProviderModelSelector(value);
   const options = [{ label: "Unset", value: "" }, ...modelOptions];
-  if (value && !options.some((option) => option.value === value)) {
-    return [{ label: value, value }, ...options];
+  if (normalizedValue && !options.some((option) => option.value === normalizedValue)) {
+    return [{ label: normalizedValue, value: normalizedValue }, ...options];
   }
   return options;
 }
 
 export function routerRuleTypeLabel(type: RouterRuleType): string {
-  return type === "condition" ? "Condition" : "Legacy";
+  if (type === "condition") return "Condition";
+  if (type === "script") return "Node.js script";
+  return "Legacy";
 }
 
 export function formatRouterRuleCondition(rule: RouterRule): string {
+  if (rule.type === "script") {
+    return `Node.js · ${rule.script?.timeoutMs ?? 2000}ms`;
+  }
   const condition = routerRuleConditionFromRule(rule);
   if (condition) {
     return `${condition.left} ${condition.operator} ${condition.right}`;
@@ -534,7 +550,7 @@ export function formatRouterRuleTarget(rule: RouterRule): string {
   const rewrites = routerRuleRewritesFromRule(rule);
   const action = rewrites.length
     ? rewrites.map(formatRouterRewriteSummary).join("; ")
-    : "No request rewrite";
+    : rule.type === "script" ? "Dynamic script decision" : "No request rewrite";
   return rule.fallback ? `${action} · ${formatRouterFallbackSummary(rule.fallback)}` : action;
 }
 
@@ -544,13 +560,13 @@ export function routerRuleRewriteFromRule(rule: RouterRule): RouterRuleRewrite |
 
 export function routerRuleRewritesFromRule(rule: RouterRule): RouterRuleRewrite[] {
   if (rule.rewrites?.length) {
-    return rule.rewrites;
+    return rule.rewrites.map(normalizeRouterModelRewrite);
   }
   if (rule.rewrite) {
-    return [rule.rewrite];
+    return [normalizeRouterModelRewrite(rule.rewrite)];
   }
   return rule.target
-    ? [{ key: "request.body.model", operation: "set", value: rule.target }]
+    ? [{ key: "request.body.model", operation: "set", value: normalizeProviderModelSelector(rule.target) }]
     : [];
 }
 
@@ -575,7 +591,8 @@ export function formatRouterFallbackSummary(fallback: RouterFallbackConfig): str
   if (fallback.mode === "retry") {
     return `retry ${fallback.retryCount}x`;
   }
-  return fallback.models.length ? `on failure ${fallback.models.join(" > ")}` : "fallback targets unset";
+  const models = fallback.models.map(normalizeProviderModelSelector);
+  return models.length ? `on failure ${models.join(" > ")}` : "fallback targets unset";
 }
 
 export function routerRuleMatchesQuery(rule: RouterRule, query: string): boolean {
@@ -624,6 +641,8 @@ export function createRoutingRuleDraft(config?: AppConfig): AddRoutingRuleDraft 
     rewriteKey: rewrite.key,
     rewriteValue: rewrite.value,
     rewrites: [rewrite],
+    scriptFile: "",
+    scriptTimeoutMs: "2000",
     target: "",
     threshold: "200000",
     type: "condition"
@@ -647,10 +666,12 @@ export function createRoutingRuleDraftFromRule(rule: RouterRule, config?: AppCon
     pattern: rule.pattern ?? "",
     rewriteKey: firstRewrite.key,
     rewriteValue: firstRewrite.value,
-    rewrites: rewrites.length ? rewrites : [firstRewrite],
+    rewrites: rule.type === "script" ? [] : rewrites.length ? rewrites : [firstRewrite],
+    scriptFile: rule.script?.file ?? "",
+    scriptTimeoutMs: String(rule.script?.timeoutMs ?? 2000),
     target: rule.target ?? "",
     threshold: String(rule.threshold ?? 200000),
-    type: "condition"
+    type: rule.type === "script" ? "script" : "condition"
   };
 }
 
@@ -681,12 +702,13 @@ export function createRoutingRewriteDraftRow(): RoutingRewriteDraftRow {
 }
 
 export function createRoutingRewriteDraftRowFromRewrite(rewrite: RouterRuleRewrite): RoutingRewriteDraftRow {
+  const key = rewrite.key;
   return {
     id: `rewrite-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    key: rewrite.key,
+    key,
     match: rewrite.match ?? "",
     operation: rewrite.operation ?? "set",
-    value: rewrite.value ?? ""
+    value: normalizeRouterModelRewriteValue(key, rewrite.value)
   };
 }
 
@@ -703,13 +725,44 @@ export function isRoutingRewriteDraftRowValid(row: RoutingRewriteDraftRow): bool
   return Boolean(row.value.trim());
 }
 
+export function isRoutingRuleDraftSubmittable(draft: AddRoutingRuleDraft): boolean {
+  if (!draft.name.trim()) return false;
+  if (draft.type === "script") {
+    const timeoutMs = Number(draft.scriptTimeoutMs);
+    return Boolean(draft.scriptFile.trim()) &&
+      Number.isInteger(timeoutMs) &&
+      timeoutMs >= 10 &&
+      timeoutMs <= ROUTER_SCRIPT_MAX_TIMEOUT_MS;
+  }
+  return draft.rewrites.length > 0 &&
+    draft.rewrites.every(isRoutingRewriteDraftRowValid) &&
+    Boolean(draft.conditionField.trim() && draft.conditionOperator && draft.conditionRight.trim());
+}
+
 export function routingRewriteFromDraftRow(row: RoutingRewriteDraftRow): RouterRuleRewrite {
+  const key = row.key.trim();
+  const value = normalizeRouterModelRewriteValue(key, row.value);
   return {
-    key: row.key.trim(),
+    key,
     ...(row.operation !== "set" ? { operation: row.operation } : { operation: "set" as const }),
     ...(row.operation === "array-replace" ? { match: row.match.trim() } : {}),
-    ...(row.operation !== "delete" ? { value: row.value.trim() } : {})
+    ...(row.operation !== "delete" ? { value } : {})
   };
+}
+
+function normalizeRouterModelRewrite(rewrite: RouterRuleRewrite): RouterRuleRewrite {
+  return isModelRewriteKey(rewrite.key) && rewrite.value
+    ? { ...rewrite, value: normalizeProviderModelSelector(rewrite.value) }
+    : rewrite;
+}
+
+function normalizeRouterModelRewriteValue(key: string, value: string | undefined): string {
+  const trimmed = value?.trim() ?? "";
+  return isModelRewriteKey(key) ? normalizeProviderModelSelector(trimmed) : trimmed;
+}
+
+function isModelRewriteKey(key: string | undefined): boolean {
+  return key?.trim() === "request.body.model";
 }
 
 export function uniqueRoutingRuleId(rules: RouterRule[]): string {
@@ -772,8 +825,31 @@ export function providerDeepLinkDisplayIcon(payload: ProviderDeepLinkPayload): s
   return presetIcon || payload.icon?.trim() || "";
 }
 
+export function providerDisplayIcon(provider: GatewayProviderConfig): string {
+  if (isLocalGrokProvider(provider)) {
+    return grokLogoUrl;
+  }
+  const icon = provider.icon?.trim();
+  if (icon) {
+    return icon;
+  }
+
+  const preset = findProviderPresetByBaseUrl(providerBaseUrl(provider));
+  return preset ? providerPresetIconUrls[preset.id] ?? "" : "";
+}
+
+function isLocalGrokProvider(provider: GatewayProviderConfig): boolean {
+  if (providerApiKey(provider) !== localAgentProviderApiKeyValue) {
+    return false;
+  }
+  const baseUrl = normalizeProviderBaseUrl(providerBaseUrl(provider)).toLowerCase();
+  const name = provider.name?.toLowerCase() ?? "";
+  return baseUrl.includes("cli-chat-proxy.grok.com") || name.includes("grok");
+}
+
 export type ProviderDeepLinkCatalogModelsResolution = {
   modelDisplayNames?: Record<string, string>;
+  modelMetadata?: Record<string, ProviderModelMetadata>;
   models: string[];
 };
 
@@ -794,6 +870,7 @@ export async function resolveProviderDeepLinkCatalogModels(payload: ProviderDeep
     });
     return {
       modelDisplayNames: mergeModelDisplayNames(result.modelDisplayNames),
+      modelMetadata: modelMetadataForModels(result.modelMetadata, result.models),
       models: mergeProviderModelLists(result.models)
     };
   } catch {
@@ -855,6 +932,8 @@ export function createProviderDraftFromDeepLinkPayload(
     ...accountDraft,
     apiKey: payload.apiKey?.trim() || "",
     baseUrl,
+    capabilities: payload.capabilities ?? [],
+    catalogModelMetadata: undefined,
     credentials: [],
     icon: payload.icon?.trim() || "",
     modelDescriptions: modelDescriptionsForModels(payload.modelDescriptions, models),
@@ -862,10 +941,12 @@ export function createProviderDraftFromDeepLinkPayload(
       mergeModelDisplayNames(providerPresetModelDisplayNames(preset), payload.modelDisplayNames),
       models
     ),
+    modelMetadata: modelMetadataForModels(payload.modelMetadata, models),
     modelSearch: "",
     modelsText: models.join("\n"),
     name: uniqueProviderName(providers, baseName),
     presetId: preset?.id ?? customProviderPresetId,
+    protocolDetectionMode: "auto",
     providerPlugins: [],
     protocol,
     selectedModels: [],
@@ -878,8 +959,8 @@ export function createProviderConfigFromDeepLink(
   providers: GatewayProviderConfig[],
   probe: GatewayProviderProbeResult | undefined
 ): GatewayProviderConfig {
-  const protocol = probe?.detectedProtocol ?? payload.protocol ?? "openai_chat_completions";
-  const baseUrl = probe?.normalizedBaseUrl || payload.baseUrl;
+  const protocol = payload.protocol ?? probe?.detectedProtocol ?? "openai_chat_completions";
+  const baseUrl = providerGlobalBaseUrlForProbe(payload.baseUrl, probe, [protocol]);
   const apiKey = payload.apiKey?.trim() || "";
   const models = apiKey && probe?.models.length
     ? mergeProviderModelLists(probe.models)
@@ -911,18 +992,19 @@ export function createProviderConfigFromDeepLink(
   }
 
   const capabilities = mergeProviderCapabilities(
-    probe?.capabilities ?? [],
-    protocol && baseUrl ? [{ baseUrl, source: probe?.detectedProtocol ? "detected" : "preset", type: protocol }] : []
+    payload.capabilities ?? [],
+    providerCapabilitiesForProtocols(payload.baseUrl, [protocol], probe)
   );
 
   return {
     account: cloneProviderAccountConfig(account),
-    api_base_url: normalizeProviderBaseUrl(baseUrl, protocol),
+    api_base_url: normalizeProviderBaseUrl(baseUrl),
     api_key: apiKey,
     capabilities: capabilities.length > 0 ? capabilities : undefined,
     icon: payload.icon?.trim() || undefined,
     modelDescriptions: modelDescriptionsForModels(payload.modelDescriptions, models),
     modelDisplayNames: modelDisplayNamesForModels(mergeModelDisplayNames(payload.modelDisplayNames, probe?.modelDisplayNames), models),
+    modelMetadata: modelMetadataForModels(mergeModelMetadata(payload.modelMetadata, probe?.modelMetadata), models),
     models,
     name,
     type: protocol
@@ -945,14 +1027,18 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
     ...accountDraft,
     apiKey: "",
     baseUrl: "",
+    capabilities: [],
+    catalogModelMetadata: undefined,
     credentials: [],
     icon: "",
     modelDescriptions: undefined,
     modelDisplayNames: undefined,
+    modelMetadata: undefined,
     modelSearch: "",
     modelsText: "",
     name: uniqueProviderName(providers),
     presetId: "",
+    protocolDetectionMode: "auto",
     providerPlugins: [],
     protocol: "openai_chat_completions",
     selectedModels: [],
@@ -969,6 +1055,8 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
     ...accountDraft,
     apiKey: providerApiKey(provider),
     baseUrl,
+    capabilities: provider.capabilities ?? [],
+    catalogModelMetadata: undefined,
     credentials: (provider.credentials ?? []).map(providerCredentialDraftFromConfig),
     icon: provider.icon ?? "",
     modelDescriptions: modelDescriptionsForModels(provider.modelDescriptions, provider.models),
@@ -976,10 +1064,12 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
       mergeModelDisplayNames(providerPresetModelDisplayNames(preset), provider.modelDisplayNames),
       provider.models
     ),
+    modelMetadata: modelMetadataForModels(provider.modelMetadata, provider.models),
     modelSearch: "",
     modelsText: provider.models.join("\n"),
     name: provider.name,
     presetId: preset?.id ?? customProviderPresetId,
+    protocolDetectionMode: provider.protocolDetectionMode === "manual" ? "manual" : "auto",
     providerPlugins: [],
     protocol,
     selectedModels: [],
@@ -1489,8 +1579,13 @@ export function providerUsageFieldPatch(target: ProviderUsageFieldTarget, path: 
 
 export function createProviderInstallLinkFromDraft(draft: AddProviderDraft, probe: GatewayProviderProbeResult | undefined): string {
   const providerName = draft.name.trim();
-  const baseUrl = (probe?.normalizedBaseUrl || draft.baseUrl).trim();
-  const protocol = probe?.detectedProtocol ?? draft.protocol;
+  const selectedProtocols = uniqueProviderProtocols(draft.selectedProtocols);
+  const protocol = selectedProtocols.includes(draft.protocol)
+    ? draft.protocol
+    : selectedProtocols.length === 1
+    ? selectedProtocols[0]
+    : probe?.detectedProtocol ?? draft.protocol;
+  const baseUrl = providerGlobalBaseUrlForProbe(draft.baseUrl, probe, selectedProtocols.length > 0 ? selectedProtocols : [protocol]);
   const models = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
   if (!providerName || !baseUrl) {
     return "Provider name and Base URL are required.";
@@ -1532,12 +1627,14 @@ export function createProviderInstallLinkFromDraft(draft: AddProviderDraft, prob
 
   const modelDescriptions = modelDescriptionsForModels(draft.modelDescriptions, models);
   const modelDisplayNames = modelDisplayNamesForModels(draft.modelDisplayNames, models);
+  const modelMetadata = modelMetadataForModels(draft.modelMetadata, models);
   const payload: ProviderDeepLinkPayload = {
     ...(account ? { account } : {}),
     baseUrl,
     ...(draft.icon.trim() ? { icon: draft.icon.trim() } : {}),
     ...(modelDescriptions ? { modelDescriptions } : {}),
     ...(modelDisplayNames ? { modelDisplayNames } : {}),
+    ...(modelMetadata ? { modelMetadata } : {}),
     models,
     name: providerName,
     protocol
@@ -1693,11 +1790,21 @@ export function providerDraftSafetyIssue(draft: AddProviderDraft, baseUrl = draf
 
 export function providerProbeCandidates(draft: AddProviderDraft): ProviderProbeCandidate[] {
   const preset = findProviderPreset(draft.presetId);
-  const protocols = providerProtocolOptions.map((option) => option.value);
+  const mediaProtocols: GatewayProviderCapabilityProtocol[] = [
+    "openai_image_generations",
+    "openai_video_generations"
+  ];
+  const chatProtocols = providerProtocolOptions.map((option) => option.value);
+  const customProtocols: GatewayProviderCapabilityProtocol[] = [
+    ...chatProtocols,
+    ...mediaProtocols
+  ];
   if (preset) {
+    const probeAllProtocols = preset.endpoints.length === 1;
     return preset.endpoints.map((endpoint) => ({
       ...endpoint,
-      protocols,
+      declaredProtocols: endpoint.protocols,
+      protocols: probeAllProtocols ? chatProtocols : endpoint.protocols,
       source: "preset"
     }));
   }
@@ -1705,7 +1812,7 @@ export function providerProbeCandidates(draft: AddProviderDraft): ProviderProbeC
   return [
     {
       baseUrl: draft.baseUrl.trim(),
-      protocols,
+      protocols: customProtocols,
       source: "custom"
     }
   ];
@@ -1786,7 +1893,10 @@ export function providerSelectableProtocolsFromProbe(probe: GatewayProviderProbe
     return [];
   }
 
-  return uniqueProviderProtocols(probe.protocols.filter((item) => item.supported).map((item) => item.protocol));
+  return uniqueProviderProtocols([
+    ...probe.protocols.filter((item) => item.supported).map((item) => item.protocol),
+    ...(probe.capabilities ?? []).map((capability) => capability.type)
+  ]);
 }
 
 export function selectedProviderProtocolsFromCapabilities(
@@ -1877,18 +1987,108 @@ export function mergeProviderCapabilities(...groups: GatewayProviderCapability[]
   return capabilities;
 }
 
+export function providerCapabilitiesForSave(
+  currentCapabilities: GatewayProviderCapability[],
+  preservedCapabilities: GatewayProviderCapability[],
+  existingBaseUrl: string | undefined,
+  nextBaseUrl: string
+): GatewayProviderCapability[] {
+  const normalizedExistingBaseUrl = existingBaseUrl === undefined
+    ? undefined
+    : normalizeProviderBaseUrl(existingBaseUrl) || existingBaseUrl.trim();
+  const normalizedNextBaseUrl = normalizeProviderBaseUrl(nextBaseUrl) || nextBaseUrl.trim();
+  const preserveExisting = normalizedExistingBaseUrl === undefined ||
+    normalizedExistingBaseUrl === normalizedNextBaseUrl;
+  return mergeProviderCapabilities(
+    currentCapabilities,
+    ...(preserveExisting ? [preservedCapabilities] : [])
+  );
+}
+
+export function providerGlobalBaseUrlForProbe(
+  inputBaseUrl: string,
+  _probe: GatewayProviderProbeResult | undefined,
+  _protocols: GatewayProviderProtocol[] = []
+): string {
+  return normalizeProviderBaseUrl(inputBaseUrl) || inputBaseUrl.trim();
+}
+
+export function providerCapabilityBaseUrlForProtocol(
+  inputBaseUrl: string,
+  protocol: GatewayProviderProtocol,
+  probe: GatewayProviderProbeResult | undefined
+): string {
+  const detectedCapability = (probe?.capabilities ?? []).find((capability) =>
+    capability.type === protocol && capability.baseUrl.trim()
+  );
+  if (detectedCapability) {
+    return detectedCapability.baseUrl.trim();
+  }
+
+  if (probe?.detectedProtocol === protocol && probe.normalizedBaseUrl.trim()) {
+    return probe.normalizedBaseUrl.trim();
+  }
+
+  return normalizeProviderBaseUrl(inputBaseUrl, protocol) || normalizeProviderBaseUrl(inputBaseUrl) || inputBaseUrl.trim();
+}
+
+export function providerCapabilitiesForProtocols(
+  inputBaseUrl: string,
+  protocols: GatewayProviderProtocol[],
+  probe: GatewayProviderProbeResult | undefined,
+  presetCapabilities: GatewayProviderCapability[] = []
+): GatewayProviderCapability[] {
+  const detectedCapabilities = probe?.capabilities ?? [];
+  const selectedCapabilities = uniqueProviderProtocols(protocols)
+    .map((type) => {
+      const capability =
+        detectedCapabilities.find((item) => item.type === type && item.baseUrl.trim()) ??
+        presetCapabilities.find((item) => item.type === type && item.baseUrl.trim());
+      if (capability) {
+        return capability;
+      }
+
+      const baseUrl = providerCapabilityBaseUrlForProtocol(inputBaseUrl, type, probe);
+      return baseUrl
+        ? {
+            baseUrl,
+            source: probe?.detectedProtocol ? ("detected" as const) : ("preset" as const),
+            type
+          }
+        : undefined;
+    })
+    .filter((item): item is GatewayProviderCapability => Boolean(item));
+
+  const detectedMediaCapabilities = detectedCapabilities.filter((capability) =>
+    capability.type === "openai_image_generations" ||
+    capability.type === "openai_video_generations" ||
+    capability.type === "xai_video_generations"
+  );
+  return mergeProviderCapabilities(selectedCapabilities, detectedMediaCapabilities);
+}
+
 export function applyProviderProbeResult(draft: AddProviderDraft, probe: GatewayProviderProbeResult): AddProviderDraft {
-  const protocol = probe.detectedProtocol ?? draft.protocol;
-  const selectedProtocols = selectedProviderProtocolsForProbe(draft.selectedProtocols, probe, protocol, draft.presetId);
+  const detectedProtocol = probe.detectedProtocol ?? draft.protocol;
+  const selectedProtocols = selectedProviderProtocolsForProbe(draft.selectedProtocols, probe, detectedProtocol, draft.presetId);
+  const protocol = selectedProtocols.includes(draft.protocol)
+    ? draft.protocol
+    : selectedProtocols.includes(detectedProtocol)
+    ? detectedProtocol
+    : selectedProtocols[0] ?? detectedProtocol;
   const modelDisplayNames = mergeModelDisplayNames(draft.modelDisplayNames, probe.modelDisplayNames);
+  const catalogModelMetadata = mergeModelMetadata(draft.catalogModelMetadata, probe.catalogModelMetadata);
+  const modelMetadata = mergeModelMetadata(draft.modelMetadata, probe.modelMetadata);
   const accountDraft = providerProbeAccountDraftPatch(draft, probe.account);
+  const baseUrl = providerGlobalBaseUrlForProbe(draft.baseUrl, probe, selectedProtocols);
 
   if (probe.models.length === 0) {
     return {
       ...draft,
       ...accountDraft,
-      baseUrl: probe.normalizedBaseUrl || draft.baseUrl,
+      baseUrl,
+      catalogModelMetadata,
       modelDisplayNames,
+      modelMetadata,
       protocol,
       selectedModels: mergeProviderModelLists(draft.selectedModels),
       selectedProtocols
@@ -1910,8 +2110,10 @@ export function applyProviderProbeResult(draft: AddProviderDraft, probe: Gateway
   return {
     ...draft,
     ...accountDraft,
-    baseUrl: probe.normalizedBaseUrl || draft.baseUrl,
+    baseUrl,
+    catalogModelMetadata,
     modelDisplayNames,
+    modelMetadata,
     protocol,
     modelsText: customModels.join("\n"),
     selectedModels: nextSelectedModels,
@@ -1944,6 +2146,33 @@ export function mergeModelDisplayNames(
     }
   }
   return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+export function mergeModelMetadata(
+  ...groups: Array<Record<string, ProviderModelMetadata> | undefined>
+): Record<string, ProviderModelMetadata> | undefined {
+  const merged: Record<string, ProviderModelMetadata> = {};
+  for (const group of groups) {
+    for (const [rawModel, metadata] of Object.entries(group ?? {})) {
+      const model = rawModel.trim();
+      if (!model || !metadata || typeof metadata !== "object") {
+        continue;
+      }
+      merged[model] = metadata;
+    }
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+export function modelMetadataForModels(
+  value: Record<string, ProviderModelMetadata> | undefined,
+  models: string[]
+): Record<string, ProviderModelMetadata> | undefined {
+  const modelIds = new Set(models);
+  const entries = Object.entries(value ?? {})
+    .map(([rawModel, metadata]) => [rawModel.trim(), metadata] as const)
+    .filter(([model, metadata]) => model && modelIds.has(model) && metadata && typeof metadata === "object");
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 export function modelDisplayNamesForModels(

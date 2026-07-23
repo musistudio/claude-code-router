@@ -40,6 +40,8 @@ import type {
   LocalAgentProviderCandidate,
   LocalAgentProviderImportRequest,
   LocalAgentProviderImportResult,
+  LocalAgentProviderProbeRequest,
+  LocalAgentProviderProbeResult,
   PluginDirectorySelection,
   PluginMarketplaceEntry,
   ProfileOpenCommandResult,
@@ -69,6 +71,10 @@ import type {
   RequestLogEntry,
   RequestLogListFilter,
   RequestLogPage,
+  RouteScriptTestRequest,
+  RouteScriptTestResult,
+  RouteScriptValidationRequest,
+  RouteScriptValidationResult,
   UsageStatsFilter,
   UsageStatsRange,
   UsageStatsSnapshot
@@ -93,6 +99,7 @@ declare global {
       getAgentTracePayload: (request: AgentAnalysisTracePayloadRequest) => Promise<AgentAnalysisTracePayloadFullResult>;
       getAppInfo: () => Promise<AppInfo>;
       getConfig: () => Promise<AppConfig>;
+      getFilePath?: (file: File) => string;
       getGatewayStatus: () => Promise<GatewayStatus>;
       getLocalAgentProviderCandidates: () => Promise<LocalAgentProviderCandidate[]>;
       getOnboardingFinished: () => Promise<boolean>;
@@ -118,6 +125,7 @@ declare global {
       openExternal: (url: string) => Promise<void>;
       openProfile: (request: ProfileOpenRequest) => Promise<ProfileOpenResult>;
       prepareImageExportTarget?: (request: AppImageExportTargetRequest) => Promise<AppImageExportTargetResult>;
+      probeLocalAgentProvider?: (request: LocalAgentProviderProbeRequest) => Promise<LocalAgentProviderProbeResult>;
       probeProviderCandidates: (request: GatewayProviderProbeCandidatesRequest) => Promise<GatewayProviderProbeCandidateResult | undefined>;
       probeProvider: (request: GatewayProviderProbeRequest) => Promise<GatewayProviderProbeResult>;
       quitApp: () => Promise<void>;
@@ -131,6 +139,7 @@ declare global {
       selectPluginDirectory: () => Promise<PluginDirectorySelection | undefined>;
       setOnboardingFinished: () => Promise<boolean>;
       setProxyNetworkCaptureEnabled: (enabled: boolean) => Promise<ProxyNetworkSnapshot>;
+      setThemePreference?: (theme: AppConfig["theme"]) => Promise<AppConfig["theme"]>;
       setTrayDetailOpen: (open: boolean, provider?: string) => Promise<void>;
       showMainWindow: () => Promise<void>;
       startGateway: () => Promise<GatewayStatus>;
@@ -140,14 +149,17 @@ declare global {
       scanBotHandoffBluetoothTargets: () => Promise<BotHandoffScanTarget[]>;
       scanBotHandoffWifiTargets: () => Promise<BotHandoffScanTarget[]>;
       testProviderAccountConnector: (request: ProviderAccountTestRequest) => Promise<ProviderAccountTestResult>;
+      testRouteScript: (request: RouteScriptTestRequest) => Promise<RouteScriptTestResult>;
       updateCheck: () => Promise<AppUpdateStatus>;
       updateDownload: () => Promise<AppUpdateStatus>;
       updateInstall: () => Promise<void>;
+      validateRouteScript: (request: RouteScriptValidationRequest) => Promise<RouteScriptValidationResult>;
       waitBotGatewayQrLogin: (request: BotGatewayQrLoginWaitRequest) => Promise<BotGatewayQrLoginWaitResult>;
       onBeforeQuit: (callback: () => void) => () => void;
       onOpenSettingsRequest: (callback: () => void) => () => void;
       onOpenUpdateRequest: (callback: () => void) => () => void;
       onProviderDeepLink: (callback: (request: ProviderDeepLinkRequest) => void) => () => void;
+      onThemePreferenceChanged?: (callback: (theme: AppConfig["theme"]) => void) => () => void;
       onUpdateStatusChanged: (callback: (status: AppUpdateStatus) => void) => () => void;
     };
   }

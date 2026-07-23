@@ -1,83 +1,154 @@
-<h1 align="center">Claude Code Router</h1>
+<div align="center">
 
-<p align="center">
+<table width="100%">
+  <tr>
+    <td align="center">
+      <a href="https://www.kimi.com/code?aff=ccr">
+        <img src="https://gcdn.moonshot.cn/growth-cdn/sponsor/kimi-en.png" width="960" alt="Kimi K2.7 Code sponsor banner" />
+      </a>
+      <br />
+      <sub>
+        <a href="https://www.kimi.com/code?aff=ccr"><strong>Kimi Code Subscription</strong></a>
+        &nbsp;·&nbsp;
+        <a href="https://platform.kimi.ai?aff=ccr"><strong>API Global</strong></a>
+        &nbsp;·&nbsp;
+        <a href="https://platform.kimi.com?aff=ccr">API China</a>
+      </sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="left">
+      <p>
+        <strong>Thanks to Kimi for sponsoring this project!</strong> Kimi K3 is Moonshot AI's most capable model and the world's first open 3T-class model. With 2.8 trillion parameters, native vision, and a 1-million-token context window, K3 delivers frontier performance across long-horizon coding, knowledge work, and reasoning. Inside CCR, Kimi ships as a built-in provider preset: import the pay-as-you-go API or Kimi Code subscription in one click and route your coding agent's requests to Kimi. The subscription endpoint passes through natively without protocol conversion, API endpoints are adapted automatically, and account balance and subscription usage are visible in the CCR dashboard.
+      </p>
+      <p align="center">
+        CCR already includes Kimi provider presets. Visit the Kimi Open Platform (<a href="https://platform.kimi.com?aff=ccr">中文站</a> | <a href="https://platform.kimi.ai?aff=ccr">Global</a>) to try the API, or explore the <a href="https://www.kimi.com/code?aff=ccr">Kimi Code subscription</a>.
+      </p>
+    </td>
+  </tr>
+</table>
+
+</div>
+
+<div align="center">
+
+# Claude Code Router
+
+### Manage every agent and provider from one place.
+
+Connect Claude Code, Codex, Grok CLI, ZCode, and compatible API clients to the providers you choose—then route, fail over, extend, and observe every request from one app.
+
+<p>
+  <a href="https://github.com/musistudio/claude-code-router/releases"><img alt="Download Desktop" src="https://img.shields.io/badge/Download-Desktop_App-2563EB?style=for-the-badge&logo=github&logoColor=white" /></a>
+  <a href="#quick-start"><img alt="Quick Start" src="https://img.shields.io/badge/Get_Started-Quick_Start-16A34A?style=for-the-badge&logo=rocket&logoColor=white" /></a>
+  <a href="https://ccrdesk.top/"><img alt="Read the Docs" src="https://img.shields.io/badge/Explore-Documentation-0F172A?style=for-the-badge&logo=readthedocs&logoColor=white" /></a>
+</p>
+
+<p>
   <a href="README_zh.md"><img alt="Chinese README" src="https://img.shields.io/badge/%F0%9F%87%A8%F0%9F%87%B3-%E4%B8%AD%E6%96%87%E7%89%88-ff0000?style=flat" /></a>
   <a href="https://discord.gg/rdftVMaUcS"><img alt="Discord" src="https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white" /></a>
   <a href="https://x.com/musistudio2026"><img alt="X" src="https://img.shields.io/badge/X-@musistudio2026-000000?logo=x&logoColor=white" /></a>
   <a href="https://github.com/musistudio/claude-code-router/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/musistudio/claude-code-router" /></a>
-  <a href="https://github.com/musistudio/claude-code-router/releases"><img alt="Desktop downloads" src="https://img.shields.io/github/downloads/musistudio/claude-code-router/total?label=Desktop%20downloads&logo=github" /></a>
-  <a href="https://ccrdesk.top/"><img alt="Documentation" src="https://img.shields.io/badge/Docs-ccrdesk.top-0ea5e9?style=flat" /></a>
 </p>
 
-<p align="center">
-  <img src="blog/images/claude-code-router.png" width="720" alt="Claude Code Router Desktop screenshot" />
-</p>
+<br />
 
-Claude Code Router Desktop is a local gateway and desktop control panel for routing agent requests from Claude Code, Codex, ZCode, and compatible clients to the model provider you actually want to use.
+<img src="blog/images/claude-code-router.png" width="820" alt="Claude Code Router Desktop dashboard" />
 
-## Why Use CCR
+</div>
 
-- Use one local endpoint for multiple agent tools instead of configuring every client separately.
-- Route requests with default routing, conditional rules, fallback targets, and request rewrites instead of editing client configuration by hand.
-- Mix providers without changing your workflow. CCR supports OpenAI-compatible APIs, Anthropic Messages, Gemini Generate Content, OpenRouter, DeepSeek, SiliconFlow, Moonshot, Kimi Code, Mistral, Z.AI, Bailian, and custom providers.
-- Control cost and reliability with fallback routing, API key rotation, usage statistics, and request logs.
+## Why use Claude Code Router?
 
-## Features
+Claude Code Router (CCR) is a local model gateway and control plane for coding agents. It gives Claude Code, Codex, Grok CLI, ZCode, and compatible API clients **one stable local endpoint**, while you manage the providers, models, accounts, routing rules, and tools behind it from one place.
 
-- **Overview dashboard**: inspect system status, usage widgets, account balances, model distribution, and share cards.
-- **Provider management**: add provider presets or custom endpoints, probe protocol support, test model connectivity, manage credentials, and monitor supported account balances where available.
-- **Routing rules**: configure default routing, conditional and model-prefix rules, fallback handling, and request rewrites.
-- **Agent Config**: configure Claude Code, Codex, and ZCode launch entries, models, scopes, and multi-instance app profiles.
-- **Gateway compatibility**: translate supported client requests through the local CCR model gateway.
-- **Proxy mode**: capture supported API traffic through a local proxy with optional system proxy integration and network capture.
-- **Fusion models**: combine a base model with vision, web search, or MCP tools into a reusable selectable model.
+Use CCR to:
 
-## Documentation
+- **Manage all agents and providers together** instead of maintaining a separate model configuration for every client.
+- **Switch providers or models without changing your workflow** or repeatedly editing agent configuration files.
+- **Keep requests running** with retries, credential pools, key rotation, and ordered fallback models.
+- **Add capabilities to existing models** with Fusion vision, web search, MCP tools, and ToolHub.
+- **See what actually happened** through request logs, resolved routes, latency, token usage, cost estimates, and account status.
 
-Read the full documentation at [ccrdesk.top](https://ccrdesk.top/).
-
-## Download And Install
-
-1. Open the [GitHub Releases page](https://github.com/musistudio/claude-code-router/releases).
-2. Download the package for your platform:
-   - macOS Apple Silicon: `Claude-Code-Router_<version>-mac-Apple-Silicon-arm64.dmg` or `.zip`
-   - macOS Intel: `Claude-Code-Router_<version>-mac-Intel-x64.dmg` or `.zip`
-   - Windows: `Claude Code Router_<version>.exe`
-   - Linux: `Claude Code Router_<version>.AppImage`
-3. Install and launch **Claude Code Router**.
-4. On first launch, CCR creates its local configuration database:
-   - macOS/Linux: `~/.claude-code-router/config.sqlite`
-   - Windows: `%APPDATA%\Claude Code Router\config.sqlite`
-
-CCR stores runtime configuration in SQLite. A legacy `config.json` is read only once for migration when no SQLite config exists.
-
-After the service is started from the **Server** page, CCR listens on `http://localhost:8080` by default. The **Server** page controls the gateway `Host`, `Port`, proxy mode, system proxy, network capture, and CA certificate status.
+CCR supports OpenAI Chat / Responses, Anthropic Messages, Gemini Generate Content / Interactions, OpenRouter, DeepSeek, SiliconFlow, Moonshot, Kimi Code, Mistral, Z.AI, Bailian, and custom compatible providers.
 
 ## Quick Start
 
-CCR can be configured entirely from the desktop UI. Use this setup order for a clean first run.
+### Desktop app (recommended)
 
-### 1. Add a provider
+1. **[Download Claude Code Router](https://github.com/musistudio/claude-code-router/releases)** for macOS, Windows, or Linux, then launch the app.
+2. Open **Providers → Add Provider**. Choose a built-in preset or a custom endpoint, enter the API key, select the protocol and models, then save.
+3. Open **Server** and click **Start**. The local model gateway listens on `http://127.0.0.1:3456` by default.
+4. Open **Agent Config**, choose Claude Code, Codex, Grok CLI, or ZCode, select a model, and apply the profile.
+5. Start using your agent. Open **Logs** to confirm the resolved provider, model, status, tokens, latency, and errors.
 
-Open **Providers**, click **Add Provider**, then choose a built-in preset or **Other / custom API endpoint**. Fill in the provider name, base URL, protocol, API key, and model list. Run protocol probing and model connectivity checks when available, then save the provider.
+Your agent is now connected to CCR. To add conditions, retries, request rewrites, or fallback models, open **Routing**.
 
-### 2. Configure routing
+<details>
+<summary><strong>Desktop packages and local data locations</strong></summary>
 
-Open **Routing** to add conditional rules, configure request rewrites, and set fallback behavior.
+- macOS Apple Silicon: `Claude-Code-Router_<version>-mac-Apple-Silicon-arm64.dmg` or `.zip`
+- macOS Intel: `Claude-Code-Router_<version>-mac-Intel-x64.dmg` or `.zip`
+- Windows: `Claude Code Router_<version>.exe`
+- Linux: `Claude Code Router_<version>.AppImage`
 
-Use **Add Routing Rule** for request conditions, model-prefix routing, or rule-level fallback targets.
+Runtime configuration is stored in SQLite at `~/.claude-code-router/config.sqlite` on macOS/Linux and `%APPDATA%\claude-code-router\config.sqlite` on Windows. A legacy `config.json` is read once for migration only when no SQLite configuration exists.
 
-### 3. Start the gateway
+</details>
 
-Open **Server** and click **Start**. After the page shows Running, CCR listens on `http://localhost:8080`. Enable **Auto start** if you want CCR to start the local gateway whenever the desktop app opens.
+### CLI
 
-### 4. Connect your agent tool
+The npm CLI requires Node.js 22 or newer. It starts the same gateway and a browser-based management UI without Electron:
 
-Open **Agent Config** and choose the client you want to use. Configure Claude Code, Codex, or ZCode, select the target model and effect scope, then apply the config. For app entries, use the **Open Agent** action to open the target app through CCR.
+```sh
+npm install -g @musistudio/claude-code-router
+ccr ui
+```
 
-### 5. Monitor and adjust
+Open `http://127.0.0.1:3458`, then follow the same **Providers → Server → Agent Config** flow above. The model gateway remains at `http://127.0.0.1:3456`. See the [CLI reference](https://ccrdesk.top/en/guides/cli/) for service modes, authentication, and profile commands.
 
-Use **Settings → Logs & Observability** to enable request logs and agent observability. Use **Logs** to confirm `request model`, `resolved provider`, `resolved model`, status, tokens, latency, and errors; use the tray window for quick token and account status.
+### Docker
+
+```sh
+docker compose up -d --build
+```
+
+Docker exposes the management UI and gateway routes through `http://127.0.0.1:3458` by default. Read the [Docker deployment guide](https://ccrdesk.top/en/guides/docker/) before exposing CCR remotely.
+
+## How it works
+
+```text
+Claude Code · Codex · Grok CLI · ZCode · Compatible API clients
+                              │
+                              ▼
+                 Claude Code Router :3456
+          Profiles · Routing · Credentials · Tools · Logs
+                              │
+                              ▼
+             Selected provider, model, and account
+```
+
+## Core capabilities
+
+| Area | Highlights |
+| --- | --- |
+| **Agents** | Profiles for Claude Code, Codex, Grok CLI, and ZCode; model overrides; scopes; environment settings; CLI and app launch entries; multi-instance workflows |
+| **Providers** | Presets and custom endpoints; protocol probing; model discovery; connectivity checks; local login import where supported; single keys and credential pools |
+| **Models & routing** | Searchable catalog; model descriptions for task selection; conditions on headers and bodies; prefixes; rewrites; retries; ordered fallbacks |
+| **Tools & extensions** | Fusion models; ToolHub; built-in browser automation; Chrome login-state import; wrapper and core gateway plugins; local routes and virtual models |
+| **Access & quotas** | Separate CCR client keys with expiration and local request, token, and image limits |
+| **Observability** | Request and response details; resolved provider, model, and credential; status; latency; tokens; estimated cost; tool calls; agent traces |
+| **Network & relay** | Local HTTP / HTTPS proxy, optional CA, network capture, and bot relay through Weixin iLink, WeCom, Slack, Discord, Telegram, LINE, Feishu, and DingTalk |
+
+## Go deeper when you are ready
+
+The complete documentation lives at **[ccrdesk.top](https://ccrdesk.top/)**.
+
+- [Install and launch CCR](https://ccrdesk.top/en/guides/install/)
+- [Configure providers](https://ccrdesk.top/en/guides/provider/)
+- [Explore routing and configuration](https://ccrdesk.top/en/configuration/)
+- [Use the CLI](https://ccrdesk.top/en/guides/cli/)
+- [Deploy with Docker](https://ccrdesk.top/en/guides/docker/)
+- [Troubleshoot common issues](https://ccrdesk.top/en/troubleshooting/)
 
 ## Acknowledgements
 
@@ -178,17 +249,40 @@ Codex support is powered by [musistudio/codexl](https://github.com/musistudio/co
       </a>
     </td>
     <td align="center" width="330">
-      <a href="https://code0.ai?source=claudecoderouter">
+      <a href="https://code0.ai/agent/register/9n9jOsSnYQoemIVL?utm_source=claudecoderouter&amp;utm_medium=partner&amp;utm_campaign=claudecoderouter_2026&amp;utm_content=default">
         <img src="/docs/public/provider-icons/code0.png" width="42" height="42" alt="code0.ai icon" />
         <br />
         <strong>code0.ai</strong>
       </a>
     </td>
     <td align="center" width="330">
-      <a href="https://www.claudeapi.com?source=claudecoderouter">
+      <a href="https://console.claudeapi.com/agent/register/LbmB7Y9kPloyzhwF?utm_source=claudecoderouter&amp;utm_medium=partner&amp;utm_campaign=claudecoderouter_2026&amp;utm_content=default">
         <img src="/docs/public/provider-icons/claudeapi.png" width="42" height="42" alt="claudeapi icon" />
         <br />
         <strong>claudeapi</strong>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="330">
+      <a href="https://s.qiniu.com/AVjMVf">
+        <img src="/docs/public/provider-icons/qiniu-ai.png" width="42" height="42" alt="Qiniu Cloud AI icon" />
+        <br />
+        <strong>Qiniu Cloud AI</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://api.fenno.ai/register?redirect=/purchase?tab=subscription%26group=16&amp;aff=9HHHAB5QLAES">
+        <img src="/docs/public/provider-icons/fenno.jpg" width="42" height="42" alt="Fenno.ai icon" />
+        <br />
+        <strong>Fenno.ai</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://unity2.ai/register?source=claudecoderouter">
+        <img src="/docs/public/provider-icons/unity2.jpg" width="42" height="42" alt="Unity2.Ai icon" />
+        <br />
+        <strong>Unity2.Ai</strong>
       </a>
     </td>
   </tr>

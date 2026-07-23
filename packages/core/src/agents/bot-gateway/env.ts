@@ -36,13 +36,21 @@ export function botGatewayProfileEnv(config: AppConfig, profile: ProfileConfig, 
     CCR_BOT_GATEWAY_ENABLED: "true",
     CCR_BOT_GATEWAY_FORWARD_ALL_AGENT_MESSAGES: boolEnv(bot.forwardAllAgentMessages),
     CCR_BOT_GATEWAY_INTEGRATION_ID: bot.integrationId ?? "",
+    CCR_BOT_GATEWAY_LANGUAGE: bot.language ?? "auto",
+    CCR_BOT_GATEWAY_MAX_ATTACHMENT_BYTES: String(bot.maxAttachmentBytes ?? 20 * 1024 * 1024),
+    CCR_BOT_GATEWAY_MAX_TURN_TIME_MS: String(bot.maxTurnTimeMs ?? 10 * 60 * 1000),
+    CCR_BOT_GATEWAY_MEDIA_ENABLED: boolEnv(bot.mediaEnabled),
+    CCR_BOT_GATEWAY_MESSAGE_CHUNK_CHARS: String(bot.messageChunkChars ?? 3500),
     CCR_BOT_GATEWAY_PLATFORM: bot.platform,
     CCR_BOT_GATEWAY_POLL_INTERVAL_MS: String(bot.pollIntervalMs ?? 2000),
     CCR_BOT_GATEWAY_REQUEST_TIMEOUT_MS: String(bot.requestTimeoutMs ?? 600000),
+    CCR_BOT_GATEWAY_SESSION_IDLE_MINUTES: String(bot.sessionIdleMinutes ?? 0),
+    CCR_BOT_GATEWAY_SHELL_ENABLED: boolEnv(bot.shellEnabled),
     CCR_BOT_GATEWAY_SOURCE_DIR: "",
     ...botGatewaySdkEnv(),
     CCR_BOT_GATEWAY_STARTUP_TIMEOUT_MS: String(bot.startupTimeoutMs ?? 10000),
     CCR_BOT_GATEWAY_STATE_DIR: stateDir,
+    CCR_BOT_GATEWAY_STREAM_REPLIES: boolEnv(bot.streamReplies),
     CCR_BOT_GATEWAY_TENANT_ID: bot.tenantId ?? "ccr",
     CCR_BOT_HANDOFF_ENABLED: boolEnv(handoff.enabled),
     CCR_BOT_HANDOFF_IDLE_SECONDS: String(handoff.idleSeconds ?? 30),
@@ -216,6 +224,9 @@ function defaultBotGatewayAuthType(platform: string): string {
   }
   if (platform === "slack" || platform === "discord" || platform === "telegram" || platform === "line") {
     return "bot_token";
+  }
+  if (platform === "imessage") {
+    return "local";
   }
   return "";
 }

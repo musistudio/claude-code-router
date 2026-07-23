@@ -96,6 +96,7 @@ async function main() {
     .map(finalizeEntry)
     .sort((a, b) => a.id.localeCompare(b.id));
   const models = dedupeModels(providerModelRecords);
+  assertUniqueModelCatalog(models);
 
   const payload = {
     schemaVersion,
@@ -150,6 +151,7 @@ function ingestModelsDev(entries, payload) {
         openWeights: readBoolean(model.open_weights),
         pdfInput: modalities.input.includes("pdf"),
         reasoning: readBoolean(model.reasoning),
+        ...reasoningEffortCapabilities(model.reasoning_options),
         structuredOutput: readBoolean(model.structured_output),
         temperature: readBoolean(model.temperature),
         toolCalling: readBoolean(model.tool_call),
@@ -373,6 +375,29 @@ function dedupeModels(providerModelRecords) {
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
+function assertUniqueModelCatalog(models) {
+  const modelIds = new Map();
+  const aliases = new Map();
+
+  for (const model of models) {
+    const id = normalizeEntryKey(model.id);
+    const previousId = modelIds.get(id);
+    if (previousId) {
+      throw new Error(`Duplicate model ID after deduplication: ${model.id} (${previousId})`);
+    }
+    modelIds.set(id, model.id);
+
+    for (const alias of model.aliases ?? []) {
+      const key = normalizeEntryKey(alias);
+      const previousModel = aliases.get(key);
+      if (previousModel && previousModel !== model.id) {
+        throw new Error(`Alias collision after deduplication: ${alias} (${previousModel}, ${model.id})`);
+      }
+      aliases.set(key, model.id);
+    }
+  }
+}
+
 function mergeDedupedModel(identity, records) {
   const sortedRecords = records.slice().sort((a, b) => providerModelRecordScore(a, identity) - providerModelRecordScore(b, identity));
   const representative = sortedRecords[0];
@@ -570,6 +595,8 @@ function pricingFromModelsDev(cost) {
   const per1MTokens = compactObject({
     cacheRead: readNumber(cost.cache_read),
     cacheWrite: readNumber(cost.cache_write),
+    cacheWrite1h: readNumber(cost.cache_write_1h),
+    cacheWrite5m: readNumber(cost.cache_write_5m) ?? readNumber(cost.cache_write),
     input: readNumber(cost.input),
     inputAudio: readNumber(cost.input_audio),
     output: readNumber(cost.output),
@@ -577,7 +604,7 @@ function pricingFromModelsDev(cost) {
     reasoningOutput: readNumber(cost.reasoning)
   });
 
-  const known = new Set(["cache_read", "cache_write", "input", "input_audio", "output", "output_audio", "reasoning", "tiers", "context_over_200k"]);
+  const known = new Set(["cache_read", "cache_write", "cache_write_1h", "cache_write_5m", "input", "input_audio", "output", "output_audio", "reasoning", "tiers", "context_over_200k"]);
   const extra = numericObjectExcept(cost, known);
 
   return compactObject({
@@ -600,6 +627,15 @@ function pricingFromLiteLlm(model) {
       "cache_read_cost_per_token"
     ])),
     cacheWrite: per1MFromPerToken(firstNumber(model, consumed, [
+      "cache_creation_input_token_cost",
+      "input_cache_write_cost_per_token",
+      "cache_write_cost_per_token"
+    ])),
+    cacheWrite1h: per1MFromPerToken(firstNumber(model, consumed, [
+      "cache_creation_input_token_cost_above_1hr",
+      "input_cache_write_1h"
+    ])),
+    cacheWrite5m: per1MFromPerToken(firstNumber(model, consumed, [
       "cache_creation_input_token_cost",
       "input_cache_write_cost_per_token",
       "cache_write_cost_per_token"
@@ -704,6 +740,8 @@ function pricingFromOpenRouter(pricing) {
   const per1MTokens = compactObject({
     cacheRead: per1MFromPerToken(firstNumber(pricing, consumed, ["input_cache_read"])),
     cacheWrite: per1MFromPerToken(firstNumber(pricing, consumed, ["input_cache_write"])),
+    cacheWrite1h: per1MFromPerToken(firstNumber(pricing, consumed, ["input_cache_write_1h"])),
+    cacheWrite5m: per1MFromPerToken(firstNumber(pricing, consumed, ["input_cache_write"])),
     input: per1MFromPerToken(firstNumber(pricing, consumed, ["prompt"])),
     internalReasoning: per1MFromPerToken(firstNumber(pricing, consumed, ["internal_reasoning"])),
     output: per1MFromPerToken(firstNumber(pricing, consumed, ["completion"]))
@@ -741,8 +779,10 @@ function capabilitiesFromLiteLlm(model, mode, modalities) {
       readBoolean(model.supports_embedding_image_input) ||
       modalities.input.includes("image"),
     imageOutput: mode === "image_generation" || modalities.output.includes("image"),
+    highReasoningEffort: readBoolean(model.supports_high_reasoning_effort),
     lowReasoningEffort: readBoolean(model.supports_low_reasoning_effort),
     maxReasoningEffort: readBoolean(model.supports_max_reasoning_effort),
+    mediumReasoningEffort: readBoolean(model.supports_medium_reasoning_effort),
     minimalReasoningEffort: readBoolean(model.supports_minimal_reasoning_effort),
     moderation: mode === "moderation",
     multimodal: readBoolean(model.supports_multimodal),
@@ -762,10 +802,30 @@ function capabilitiesFromLiteLlm(model, mode, modalities) {
     toolChoice: readBoolean(model.supports_tool_choice),
     transcription: mode === "audio_transcription",
     urlContext: readBoolean(model.supports_url_context),
+    ultraReasoningEffort: readBoolean(model.supports_ultra_reasoning_effort),
     videoInput: readBoolean(model.supports_video_input) || modalities.input.includes("video"),
     vision: readBoolean(model.supports_vision),
     webSearch: readBoolean(model.supports_web_search),
     xhighReasoningEffort: readBoolean(model.supports_xhigh_reasoning_effort)
+  });
+}
+
+function reasoningEffortCapabilities(value) {
+  const efforts = new Set(
+    (Array.isArray(value) ? value : [])
+      .flatMap((option) => isRecord(option) && Array.isArray(option.values) ? option.values : [])
+      .map((effort) => readString(effort)?.toLowerCase() ?? "")
+      .filter(Boolean)
+  );
+  return compactObject({
+    lowReasoningEffort: efforts.has("low") || undefined,
+    mediumReasoningEffort: efforts.has("medium") || undefined,
+    highReasoningEffort: efforts.has("high") || undefined,
+    maxReasoningEffort: efforts.has("max") || undefined,
+    minimalReasoningEffort: efforts.has("minimal") || undefined,
+    noneReasoningEffort: efforts.has("none") || undefined,
+    ultraReasoningEffort: efforts.has("ultra") || undefined,
+    xhighReasoningEffort: efforts.has("xhigh") || undefined
   });
 }
 

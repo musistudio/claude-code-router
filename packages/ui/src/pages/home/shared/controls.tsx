@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { MorphIcon } from "@musistudio/lucide-morph-react";
 import {
   closestCenter,
   DndContext,
@@ -47,9 +48,7 @@ import {
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
-  Pause,
   Pencil,
-  Play,
   Plus,
   Power,
   QrCode,
@@ -98,6 +97,7 @@ import { PopoverContent } from "@/components/ui/popover";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { playPauseMorph } from "@/lib/morph-icon";
 import { cn } from "@/lib/utils";
 import appLogoUrl from "@/assets/logo.png";
 import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
@@ -372,7 +372,7 @@ import type { AgentFilterValue, RouterConditionSource } from "./options";
 import type { MotionSafeDivAttributes } from "./motion";
 
 
-import { metricToneBar } from "./common";
+import { metricToneBar, normalizeProviderModelSelector } from "./common";
 import { profileAgentLabel, profileAgentLogoUrl } from "./profiles";
 import { routeTargetOptions } from "./providers";
 import { createKeyValueDraftRow } from "./virtual-models";
@@ -384,6 +384,15 @@ export function Field({ children, className, label }: { children: React.ReactNod
       <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
       {children}
     </Label>
+  );
+}
+
+export function FieldGroup({ children, className, label }: { children: React.ReactNode; className?: string; label: string }) {
+  return (
+    <div className={cn("block min-w-0 space-y-1", className)}>
+      <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+      {children}
+    </div>
   );
 }
 
@@ -424,13 +433,14 @@ export function RouteTargetControl({
   value: string;
 }) {
   const t = useAppText();
+  const normalizedValue = normalizeProviderModelSelector(value);
 
   if (modelOptions.length === 0) {
-    return <Input onChange={(event) => onChange(event.target.value)} value={value} />;
+    return <Input onChange={(event) => onChange(event.target.value)} value={normalizedValue} />;
   }
 
-  const options = routeTargetOptions(modelOptions, value);
-  return <SelectControl onChange={onChange} options={translateOptions(options, t)} value={value} />;
+  const options = routeTargetOptions(modelOptions, normalizedValue);
+  return <SelectControl onChange={onChange} options={translateOptions(options, t)} value={normalizedValue} />;
 }
 
 export function TextAreaControl({
@@ -535,9 +545,9 @@ export function Toggle({ checked, disabled = false, onChange, title }: { checked
 
 export type MetricTone = "amber" | "blue" | "indigo" | "rose" | "slate" | "teal";
 
-export function MetricCard({ label, tone, value }: { label: string; tone: MetricTone; value: string }) {
+export function MetricCard({ className, label, tone, value }: { className?: string; label: string; tone: MetricTone; value: string }) {
   return (
-    <Card className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+    <Card className={cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden", className)}>
       <div className={cn("h-1", metricToneBar(tone))} />
       <CardContent className="flex min-h-[88px] flex-1 flex-col justify-center">
         <div className="min-w-0">
@@ -585,6 +595,12 @@ export function formatStatusBucketDate(bucket: string, range: UsageStatsRange): 
 }
 
 export function parseStatusBucketDate(bucket: string): Date | undefined {
+  if (/^\d{4}-\d{1,2}-\d{1,2}T\d{1,2}:\d{2}/.test(bucket)) {
+    const isoDate = new Date(bucket);
+    if (Number.isFinite(isoDate.getTime())) {
+      return isoDate;
+    }
+  }
   const match = bucket.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2})(?::00)?)?$/);
   if (!match) {
     return undefined;
@@ -601,16 +617,6 @@ export function systemStatusPointTooltip(segment: SystemStatusPoint, t: (value: 
     `${t("Failed requests")}: ${formatCompactNumber(segment.point.errorCount)}`,
     `${t("Duration")}: ${formatDuration(segment.point.avgDurationMs)}`
   ].join("\n");
-}
-
-export function systemStatusTooltipPositionClass(index: number, total: number): string {
-  if (index <= 1) {
-    return "left-0";
-  }
-  if (index >= total - 2) {
-    return "right-0";
-  }
-  return "left-1/2 -translate-x-1/2";
 }
 
 export function systemStatusIconClass(tone: SystemStatusTone): string {
@@ -630,22 +636,24 @@ export function systemStatusSegmentClass(tone: SystemStatusTone): string {
 export function ServiceControlButton({
   busy,
   onClick,
-  state
+  state,
+  targetActive
 }: {
   busy: boolean;
   onClick: () => void;
   state: GatewayStatus["state"];
+  targetActive?: boolean;
 }) {
   const t = useAppText();
-  const active = state === "running" || state === "starting";
+  const runtimeActive = state === "running" || state === "starting";
+  const active = targetActive ?? runtimeActive;
   const title = active ? t("Pause service") : t("Start service");
-  const Icon = active ? Pause : Play;
 
   return (
     <Button
       aria-label={title}
       className={cn(
-        "app-no-drag app-service-control inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25",
+        "app-no-drag app-service-control inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25",
         active && "text-emerald-700 hover:text-emerald-800"
       )}
       disabled={busy}
@@ -655,7 +663,14 @@ export function ServiceControlButton({
       type="button"
       unstyled
     >
-      {busy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Icon className="h-3.5 w-3.5" />}
+      <MorphIcon
+        active={active}
+        asset={playPauseMorph}
+        color="currentColor"
+        duration={300}
+        size={14}
+        strokeWidth={2}
+      />
     </Button>
   );
 }

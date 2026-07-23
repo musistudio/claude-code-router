@@ -7,10 +7,11 @@ export function RangeSwitch({ range, onChange }: { range: UsageStatsRange; onCha
   const t = useTrayText();
 
   return (
-    <div className="flex rounded-lg border border-white/8 bg-slate-900/28 p-0.5">
+    <div className="tray-segmented flex">
       {ranges.map((item) => (
         <button
-          className={`h-7 rounded-[7px] px-2.5 text-[11px] font-bold ${range === item ? "bg-white/14 text-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,.18)]" : "text-slate-300/72 hover:text-slate-100"}`}
+          className="tray-segmented-item h-7 px-2.5 text-[11px] font-semibold"
+          data-active={range === item}
           key={item}
           type="button"
           onClick={() => onChange(item)}
@@ -24,7 +25,7 @@ export function RangeSwitch({ range, onChange }: { range: UsageStatsRange; onCha
 
 export function ChartShell({ children, meta, title }: { children: ReactNode; meta?: string; title: string }) {
   return (
-    <div className="relative min-w-0 overflow-hidden rounded-[8px] border border-white/10 bg-white/[.04] p-2">
+    <div className="tray-panel relative min-w-0 overflow-hidden p-2.5">
       <div className="relative z-10 flex min-w-0 items-center justify-between gap-2">
         <h3 className="truncate text-[11px] font-bold text-slate-100">{title}</h3>
         {meta ? <span className="min-w-0 truncate text-[10px] font-medium text-slate-400">{meta}</span> : null}
@@ -43,7 +44,7 @@ export function StatsGrid({
 }) {
   if (variant === "compact") {
     return (
-      <div className="mb-2 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
+      <div className="tray-panel mb-2 p-2.5">
         {items.map((item) => (
           <div className="flex min-w-0 items-center justify-between gap-2 py-0.5 text-[10px]" key={item.label}>
             <span className="truncate font-medium text-slate-400">{item.label}</span>
@@ -58,7 +59,7 @@ export function StatsGrid({
     return (
       <div className="mb-2 flex flex-wrap gap-1.5">
         {items.map((item) => (
-          <div className="rounded-full border border-white/10 bg-white/[.05] px-2 py-1 text-[10px] font-bold text-slate-100" key={item.label}>
+          <div className="tray-stat-cell rounded-full px-2 py-1 text-[10px] font-semibold text-slate-100" key={item.label}>
             <span className="text-slate-400">{item.label}</span> {item.value}
           </div>
         ))}
@@ -77,7 +78,7 @@ export function StatsGrid({
 
 function StatChip({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-[7px] border border-white/10 bg-white/[.04] px-2 py-1.5">
+    <div className="tray-stat-cell min-w-0 px-2 py-1.5">
       <div className="truncate text-[10px] font-medium text-slate-400">{label}</div>
       <div className="truncate text-[13px] font-bold text-slate-50">{value}</div>
     </div>
@@ -102,37 +103,38 @@ export function AnimatedUsageChart({
     <div className="min-w-0">
       <svg className="mt-2 h-16 w-full overflow-visible" preserveAspectRatio="none" role="img" viewBox="0 0 260 72" aria-label={t("Usage chart")}>
         <defs>
-          <filter id={`${chartId}-glow`} x="-20%" y="-40%" width="140%" height="180%">
-            <feGaussianBlur stdDeviation="2.8" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
+          <linearGradient id={`${chartId}-primary-fill`} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stopColor="rgba(10,132,255,.32)" />
+            <stop offset="1" stopColor="rgba(10,132,255,.015)" />
+          </linearGradient>
+          <linearGradient id={`${chartId}-secondary-fill`} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stopColor="rgba(191,90,242,.2)" />
+            <stop offset="1" stopColor="rgba(191,90,242,.01)" />
+          </linearGradient>
         </defs>
         {[20, 68, 116, 164, 212].map((x) => (
-          <line key={x} stroke="rgba(148,163,184,.12)" strokeWidth="1" x1={x} x2={x} y1="0" y2="72" />
+          <line key={x} stroke="rgba(235,235,245,.075)" strokeWidth="1" x1={x} x2={x} y1="0" y2="72" />
         ))}
         {variant === "bar" ? (
           <>
             {tokenGeometry.bars.map((bar) => (
-              <rect fill="rgba(45,212,191,.9)" height={bar.height} key={`token-${bar.x}`} rx="3" width={bar.width} x={bar.x} y={bar.y} />
+              <rect fill="rgba(10,132,255,.92)" height={bar.height} key={`token-${bar.x}`} rx="3" width={bar.width} x={bar.x} y={bar.y} />
             ))}
             {cacheGeometry.bars.map((bar) => (
-              <rect fill="rgba(167,139,250,.72)" height={bar.height} key={`cache-${bar.x}`} rx="3" width={Math.max(2, bar.width * 0.52)} x={bar.x + bar.width * 0.24} y={bar.y} />
+              <rect fill="rgba(191,90,242,.72)" height={bar.height} key={`cache-${bar.x}`} rx="3" width={Math.max(2, bar.width * 0.52)} x={bar.x + bar.width * 0.24} y={bar.y} />
             ))}
           </>
         ) : null}
         {variant === "area" ? (
           <>
-            <path d={tokenGeometry.areaPath} fill="rgba(45,212,191,.18)" />
-            <path d={cacheGeometry.areaPath} fill="rgba(167,139,250,.12)" />
+            <path d={tokenGeometry.areaPath} fill={`url(#${chartId}-primary-fill)`} />
+            <path d={cacheGeometry.areaPath} fill={`url(#${chartId}-secondary-fill)`} />
           </>
         ) : null}
         {variant !== "bar" ? (
           <>
-            <path className="tray-line-draw" d={tokenGeometry.linePath} fill="none" filter={`url(#${chartId}-glow)`} stroke="rgba(45,212,191,.95)" strokeLinecap="round" strokeLinejoin="round" strokeWidth={variant === "sparkline" ? "3" : "4"} vectorEffect="non-scaling-stroke" />
-            {variant === "sparkline" ? null : <path className="tray-line-draw" d={cacheGeometry.linePath} fill="none" stroke="rgba(167,139,250,.72)" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />}
+            <path className="tray-line-draw" d={tokenGeometry.linePath} fill="none" stroke="rgba(10,132,255,.98)" strokeLinecap="round" strokeLinejoin="round" strokeWidth={variant === "sparkline" ? "3" : "3.5"} vectorEffect="non-scaling-stroke" />
+            {variant === "sparkline" ? null : <path className="tray-line-draw" d={cacheGeometry.linePath} fill="none" stroke="rgba(191,90,242,.78)" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25" vectorEffect="non-scaling-stroke" />}
           </>
         ) : null}
       </svg>
@@ -149,13 +151,13 @@ export function TokenActivityPanel({
   const activity = buildTokenActivity(series, { maxWeeks: 14, minWeeks: 10 });
 
   return (
-    <div className="min-w-0 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
+    <div className="tray-panel min-w-0 p-2.5">
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
         <div className="truncate text-[11px] font-bold text-slate-100">{t("Activity")}</div>
         <div className="shrink-0 text-[10px] font-medium text-slate-400">{t("Tokens")}</div>
       </div>
 
-      <div className="mb-2 grid grid-cols-4 gap-px overflow-hidden rounded-[7px] border border-white/8 bg-white/[.08]">
+      <div className="tray-panel-subtle mb-2 grid grid-cols-4 gap-px overflow-hidden">
         <TokenActivityStat label={t("Longest streak")} value={formatCompactNumber(activity.longestStreak)} unit={t(activity.longestStreak === 1 ? "day" : "days")} />
         <TokenActivityStat label={t("Avg / day")} value={formatCompactNumber(Math.round(activity.avgPerDay))} />
         <TokenActivityStat label={t("Avg / week")} value={formatCompactNumber(Math.round(activity.avgPerWeek))} />
@@ -190,7 +192,7 @@ function TokenActivityStat({
   value: string;
 }) {
   return (
-    <div className="min-w-0 bg-slate-950/35 px-1.5 py-1">
+    <div className="min-w-0 bg-black/10 px-1.5 py-1">
       <div className="truncate text-[8px] font-semibold text-slate-400">{label}</div>
       <div className="flex min-w-0 items-baseline gap-1">
         <span className="truncate text-[11px] font-bold text-slate-50">{value}</span>
@@ -262,9 +264,9 @@ function TokenActivityGrid({
               gridRow: cell.dayIndex + 1
             }}
           >
-            <span className={`pointer-events-none absolute z-30 hidden min-w-[96px] rounded-md border border-white/10 bg-slate-950/95 px-2 py-1.5 text-left text-[10px] text-slate-100 shadow-[0_10px_24px_rgba(0,0,0,.32)] group-hover:block ${trayActivityTooltipPositionClass(cell, activity.weekCount)}`}>
+            <span className={`tray-activity-tooltip pointer-events-none absolute z-30 hidden min-w-[96px] rounded-md border px-2 py-1.5 text-left text-[10px] group-hover:block ${trayActivityTooltipPositionClass(cell, activity.weekCount)}`}>
               <span className="block font-bold">{cell.dateLabel}</span>
-              <span className="mt-0.5 block font-medium text-slate-400">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
+              <span className="tray-activity-tooltip-detail mt-0.5 block font-medium">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
             </span>
           </span>
         ))}
@@ -290,12 +292,12 @@ function trayActivityTooltipPositionClass(cell: TokenActivityCell, weekCount: nu
 }
 
 function trayActivityColor(intensity: TokenActivityCell["intensity"], inRange: boolean): string {
-  if (!inRange) return "rgba(129,140,248,.06)";
-  if (intensity === 0) return "rgba(129,140,248,.14)";
-  if (intensity === 1) return "rgba(129,140,248,.32)";
-  if (intensity === 2) return "rgba(129,140,248,.52)";
-  if (intensity === 3) return "rgba(129,140,248,.72)";
-  return "rgba(129,140,248,.94)";
+  if (!inRange) return "rgba(10,132,255,.045)";
+  if (intensity === 0) return "rgba(10,132,255,.12)";
+  if (intensity === 1) return "rgba(10,132,255,.3)";
+  if (intensity === 2) return "rgba(10,132,255,.5)";
+  if (intensity === 3) return "rgba(10,132,255,.72)";
+  return "rgba(10,132,255,.96)";
 }
 
 export function TokenMixPanel({
@@ -307,14 +309,14 @@ export function TokenMixPanel({
 }) {
   const t = useTrayText();
   const rows = [
-    { className: "bg-blue-400", color: "rgb(96,165,250)", label: t("Input"), value: totals.inputTokens },
-    { className: "bg-amber-300", color: "rgb(252,211,77)", label: t("Output"), value: totals.outputTokens },
-    { className: "bg-rose-300", color: "rgb(253,164,175)", label: t("Cache"), value: totals.cacheTokens }
+    { className: "bg-[#0a84ff]", color: "rgb(10,132,255)", label: t("Input"), value: totals.inputTokens },
+    { className: "bg-[#ff9f0a]", color: "rgb(255,159,10)", label: t("Output"), value: totals.outputTokens },
+    { className: "bg-[#bf5af2]", color: "rgb(191,90,242)", label: t("Cache"), value: totals.cacheTokens }
   ];
   const max = Math.max(...rows.map((row) => row.value), 1);
 
   return (
-    <div className="min-w-0 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
+    <div className="tray-panel min-w-0 p-2.5">
       <div className="mb-2 truncate text-[11px] font-bold text-slate-100">{t("Token Mix")}</div>
       {variant === "donut" || variant === "pie" ? (
         <div className="grid grid-cols-[64px_minmax(0,1fr)] items-center gap-2">
@@ -364,7 +366,7 @@ export function RingMetrics({
   const successRequests = Math.round(totals.requestCount * Math.max(0, Math.min(1, totals.successRate)));
 
   return (
-    <div className="min-w-0 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
+    <div className="tray-panel min-w-0 p-2.5">
       <div className="mb-2 truncate text-[11px] font-bold text-slate-100">{t("Circular metrics")}</div>
       <div className="grid grid-cols-2 gap-2">
         <RingMetric centerUnit={t("requests")} centerValue={formatCompactNumber(successRequests)} label={t("Success")} value={totals.successRate} variant={variant} />
@@ -388,7 +390,7 @@ function RingMetric({
   variant: TrayComponentVariants["rings"];
 }) {
   const clamped = Math.max(0, Math.min(1, value));
-  const stroke = clamped > 0.8 ? "rgb(45,212,191)" : "rgb(129,140,248)";
+  const stroke = clamped > 0.8 ? "rgb(48,209,88)" : "rgb(10,132,255)";
   return (
     <div className="flex min-w-0 flex-col items-center text-center">
       <div className="aspect-square w-full min-w-0">
@@ -417,21 +419,21 @@ export function ModelShareChart({
 
   if (rows.length === 0) {
     return (
-    <div className="mb-2 rounded-[8px] border border-white/10 bg-white/[.03] px-3 py-8 text-center text-[12px] font-medium text-slate-400">
+    <div className="tray-panel-subtle mb-2 px-3 py-8 text-center text-[12px] font-medium text-slate-400">
         {t("No usage captured yet")}
       </div>
     );
   }
 
   const chartRows = rows.slice(0, 4).map((row, index) => ({
-    className: ["bg-teal-300", "bg-indigo-400", "bg-amber-300", "bg-rose-300"][index] ?? "bg-slate-300",
-    color: ["rgb(45,212,191)", "rgb(129,140,248)", "rgb(251,191,36)", "rgb(253,164,175)"][index] ?? "rgb(203,213,225)",
+    className: ["bg-[#0a84ff]", "bg-[#bf5af2]", "bg-[#ff9f0a]", "bg-[#ff375f]"][index] ?? "bg-slate-300",
+    color: ["rgb(10,132,255)", "rgb(191,90,242)", "rgb(255,159,10)", "rgb(255,55,95)"][index] ?? "rgb(203,213,225)",
     label: row.label,
     value: row.totalTokens
   }));
 
   return (
-    <div className="mb-2 min-w-0 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
+    <div className="tray-panel mb-2 min-w-0 p-2.5">
       <div className="mb-2 truncate text-[11px] font-bold text-slate-100">{t("Model Share")}</div>
       {variant === "donut" || variant === "pie" ? (
         <div className="grid grid-cols-[64px_minmax(0,1fr)] items-center gap-2">
@@ -457,7 +459,7 @@ export function ModelShareChart({
                 <div className="min-w-0 flex-1 truncate text-[10px] font-medium text-slate-300">{row.label}</div>
                 <div className="h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-white/10">
                   <div
-                    className="h-full rounded-full bg-teal-300"
+                    className="h-full rounded-full bg-[#0a84ff]"
                     style={{ width: `${Math.max(3, row.maxShare * 100)}%` }}
                   />
                 </div>
@@ -514,7 +516,7 @@ function ShareChart({
           transform="rotate(-90 20 20)"
         />
       ))}
-      {variant === "donut" ? <circle cx="20" cy="20" fill="rgb(15,23,42)" r="8" /> : null}
+      {variant === "donut" ? <circle cx="20" cy="20" fill="rgb(36,36,38)" r="8" /> : null}
     </svg>
   );
 }

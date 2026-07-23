@@ -2,52 +2,70 @@ import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
-import { availableGatewayModelIds, type AppConfig, type RouterBuiltInAgentRuleId, type RouterConfig, type RouterFallbackConfig, type RouterRule, type RouterRuleCondition, type RouterRuleRewrite } from "@ccr/core/contracts/app";
+import { type AppConfig, type ProfileClientKind, type RequestRouteTraceChange, type RouterBuiltInAgentRuleId, type RouterFallbackConfig, type RouterRule, type RouterRuleCondition } from "@ccr/core/contracts/app";
 import { CONFIGDIR } from "@ccr/core/config/constants";
+import { applyAgentRequestEnrichers } from "@ccr/core/agents/request-enricher";
+import { buildClaudeAppGatewayModelRoutes, type ClaudeAppGatewayModelRoute, resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
+import { claudeAppGatewayModelRouteOptions } from "@ccr/core/gateway/internal/shared";
+import { compileRouterConfig, type CompiledRouterConfig, type CompiledRouterRule } from "@ccr/core/routing/config-compiler";
+import type { RouteDecision, RouteDiagnostic, RouteModelRef, RouteRequest, RouteSource } from "@ccr/core/routing/contracts";
+import { ModelRegistry, normalizeRouteSelector } from "@ccr/core/routing/model-registry";
+import { RoutePolicyEngine, type RoutePolicy } from "@ccr/core/routing/policy-engine";
+import type { RouteTraceObserver } from "@ccr/core/observability/route-trace";
+import { applyCompiledRouteRewrite, isBodyModelCompiledRewrite, type CompiledRouteRewrite } from "@ccr/core/routing/rewrite";
+import { buildRouteScriptInput } from "@ccr/core/routing/route-script-context";
+import { normalizeRouteScriptResult } from "@ccr/core/routing/route-script-result";
+import type { RouteScriptRuntime } from "@ccr/core/routing/route-script-runtime";
+
+export { normalizeRouteSelector } from "@ccr/core/routing/model-registry";
 
 type HeaderValue = string | string[] | undefined;
 
-export type MutableRequestLike = {
-  builtInSubagentModel?: string;
-  body: Record<string, unknown>;
-  headers: Record<string, HeaderValue>;
-  log: Pick<Console, "debug" | "error" | "info" | "warn">;
-  method: string;
-  sessionId?: string;
-  tokenCount?: number;
-  url: string;
+export type MutableRequestLike = RouteRequest;
+
+export type ClaudeCodeRouterPluginOptions = {
+  scriptRuntime?: RouteScriptRuntime;
+  scriptValidationErrors?: ReadonlyMap<string, string>;
 };
 
 export type ClaudeCodeRouteDecision = {
-  fallback?: RouterFallbackConfig;
+  diagnostics: RouteDiagnostic[];
+  fallback: RouterFallbackConfig;
   model?: string;
   reason: string;
   sessionId?: string;
+  source: RouteSource;
   tokenCount: number;
 };
 
-type ConfiguredRouteDecision = {
-  fallback?: RouterFallbackConfig;
-  model?: string;
-  reason: string;
-  rewrite?: RouterRuleRewrite;
-  rewrites?: RouterRuleRewrite[];
+type ConfiguredRouteDecision = Omit<RouteDecision, "diagnostics">;
+type ResolvedConfiguredRouteDecision = ConfiguredRouteDecision & {
+  policyId: string;
+  ruleId?: string;
+  ruleName?: string;
 };
 
 const requireFromHere = createRequire(__filename);
 
 export class ClaudeCodeRouterPlugin {
+  private readonly compiled: CompiledRouterConfig;
   private readonly event = new EventEmitter();
+  private readonly scriptRuntime?: RouteScriptRuntime;
 
-  constructor(private readonly config: AppConfig) {}
+  constructor(private readonly config: AppConfig, options: ClaudeCodeRouterPluginOptions = {}) {
+    this.compiled = compileRouterConfig(config, { scriptValidationErrors: options.scriptValidationErrors });
+    this.scriptRuntime = options.scriptRuntime;
+  }
 
   async routeRequest(input: {
     body: Record<string, unknown>;
+    bodyOwnership?: "borrowed" | "owned";
     headers: Record<string, HeaderValue>;
     method: string;
+    trace?: RouteTraceObserver;
     url: string;
   }): Promise<{ body: Record<string, unknown>; decision: ClaudeCodeRouteDecision }> {
-    const body = cloneRecord(input.body);
+    const body = input.bodyOwnership === "owned" ? input.body : cloneRecord(input.body);
     const request: MutableRequestLike = {
       body,
       headers: input.headers,
@@ -55,42 +73,113 @@ export class ClaudeCodeRouterPlugin {
       method: input.method,
       url: input.url
     };
-    if (builtInAgentRouteMatches(request, this.config, "claude-code")) {
-      injectClaudeCodeAgentToolDescription(body, this.config);
-      injectClaudeCodeToolHubInstructions(body, this.config);
-      removeClaudeCodeBillingSystemHeader(body);
-      request.builtInSubagentModel = extractAndRemoveClaudeCodeSubagentModelTag(body);
-    }
+    applyAgentRequestEnrichers(request, [{
+      enrich: (matchedRequest) => {
+        injectClaudeCodeAgentToolDescription(matchedRequest.body, this.config);
+        injectClaudeCodeToolHubInstructions(matchedRequest.body, this.config);
+        matchedRequest.builtInClaudeCodeSubagent = removeClaudeCodeBillingSystemHeader(matchedRequest.body);
+        matchedRequest.builtInSubagentModel = extractAndRemoveClaudeCodeSubagentModelTag(matchedRequest.body);
+      },
+      id: "claude-code",
+      matches: (candidate) => builtInAgentRouteMatches(candidate, this.config, "claude-code")
+    }]);
     const sessionId = resolveSessionId(body, input.headers);
     const tokenCount = calculateTokenCount(body.messages, body.system, body.tools);
     request.sessionId = sessionId;
     request.tokenCount = tokenCount;
 
-    const customModel = await this.resolveCustomRoute(request);
-    const configuredDecision = resolveConfiguredRouteDecision(request, this.config);
-    if (customModel) {
-      body.model = customModel;
-    } else {
-      if (configuredDecision.rewrites?.length) {
-        for (const rewrite of configuredDecision.rewrites) {
-          applyRouterRewrite(rewrite, request);
+    const customRouteStartedAt = Date.now();
+    const requestedCustomModel = await this.resolveCustomRoute(request);
+    if (this.config.CUSTOM_ROUTER_PATH) {
+      input.trace?.capture({
+        durationMs: Date.now() - customRouteStartedAt,
+        kind: "decision",
+        name: "customer.custom-router",
+        phase: "routing",
+        startedAtMs: customRouteStartedAt,
+        target: requestedCustomModel ? { model: requestedCustomModel } : undefined
+      });
+    }
+    const customModel = this.compiled.modelRegistry.resolve(requestedCustomModel);
+    const customDiagnostic: RouteDiagnostic[] = requestedCustomModel && !customModel
+      ? [{
+          code: "custom-model-not-configured",
+          message: `Custom router returned unconfigured model "${requestedCustomModel}".`,
+          model: requestedCustomModel,
+          source: "custom"
+        }]
+      : [];
+    const routeDecisionStartedAt = Date.now();
+    const runtimeDiagnostics: RouteDiagnostic[] = [];
+    const configuredDecision = await resolveConfiguredRouteDecision(request, this.config, this.compiled, customModel, {
+      runtimeDiagnostics,
+      scriptRuntime: this.scriptRuntime,
+      trace: input.trace
+    });
+    const traceDecision = {
+      diagnostics: [...this.compiled.diagnostics, ...customDiagnostic, ...runtimeDiagnostics],
+      policyId: configuredDecision.policyId,
+      reason: configuredDecision.reason,
+      ...(configuredDecision.ruleId ? { ruleId: configuredDecision.ruleId } : {}),
+      ...(configuredDecision.ruleName ? { ruleName: configuredDecision.ruleName } : {}),
+      source: configuredDecision.source
+    };
+    const previousModel = body.model;
+    const selectedModel = configuredDecision.model?.selector;
+    const modelChange: RequestRouteTraceChange | undefined = selectedModel === undefined || Object.is(previousModel, selectedModel)
+      ? undefined
+      : {
+          ...(previousModel === undefined ? {} : { before: previousModel }),
+          after: selectedModel,
+          operation: previousModel === undefined ? "add" : "replace",
+          path: "/body/model",
+          scope: "body"
+        };
+    if (modelChange) {
+      body.model = selectedModel;
+    }
+    input.trace?.capture({
+      changes: modelChange ? [modelChange] : [],
+      decision: traceDecision,
+      durationMs: Date.now() - routeDecisionStartedAt,
+      kind: "decision",
+      name: routeDecisionTraceName(configuredDecision),
+      phase: "routing",
+      startedAtMs: routeDecisionStartedAt,
+      target: configuredDecision.model ? {
+        model: configuredDecision.model.selector,
+        ...(configuredDecision.model.kind === "provider" ? { provider: configuredDecision.model.provider.name } : {})
+      } : undefined
+    });
+    if (configuredDecision.rewrites.length) {
+      for (const rewrite of configuredDecision.rewrites) {
+        if (selectedModel !== undefined && isBodyModelCompiledRewrite(rewrite)) {
+          continue;
         }
-      } else if (configuredDecision.rewrite) {
-        applyRouterRewrite(configuredDecision.rewrite, request);
-      }
-      if (configuredDecision.model) {
-        body.model = configuredDecision.model;
+        const rewriteStartedAt = Date.now();
+        const change = applyCompiledRouteRewrite(rewrite, request);
+        input.trace?.capture({
+          changes: change ? [change] : [],
+          decision: traceDecision,
+          durationMs: Date.now() - rewriteStartedAt,
+          kind: "mutation",
+          name: `customer.rewrite:${rewrite.operation ?? "set"}:${rewrite.key}`,
+          phase: "routing",
+          startedAtMs: rewriteStartedAt
+        });
       }
     }
-    const routedModel = customModel ?? configuredDecision.model ?? readString(body.model);
+    const routedModel = configuredDecision.model?.selector ?? readString(body.model);
 
     return {
       body,
       decision: {
-        fallback: customModel ? this.config.Router.fallback : configuredDecision.fallback,
+        diagnostics: [...this.compiled.diagnostics, ...customDiagnostic, ...runtimeDiagnostics],
+        fallback: configuredDecision.fallback,
         model: routedModel,
-        reason: customModel ? "custom-router" : configuredDecision.reason,
+        reason: configuredDecision.reason,
         sessionId,
+        source: configuredDecision.source,
         tokenCount
       }
     };
@@ -100,6 +189,10 @@ export class ClaudeCodeRouterPlugin {
     return {
       input_tokens: calculateTokenCount(body.messages, body.system, body.tools)
     };
+  }
+
+  getRouteDiagnostics(): RouteDiagnostic[] {
+    return [...this.compiled.diagnostics];
   }
 
   private async resolveCustomRoute(request: MutableRequestLike): Promise<string | undefined> {
@@ -182,109 +275,307 @@ function isPathInside(file: string, root: string): boolean {
   return relative === "" || (Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-function resolveConfiguredRouteDecision(
-  request: MutableRequestLike,
-  config: AppConfig
-): ConfiguredRouteDecision {
-  const builtInSubagentDecision = resolveBuiltInClaudeCodeSubagentRouteDecision(request, config);
-  if (builtInSubagentDecision) {
-    return builtInSubagentDecision;
-  }
+type RouteResolutionRuntime = {
+  runtimeDiagnostics: RouteDiagnostic[];
+  scriptRuntime?: RouteScriptRuntime;
+  trace?: RouteTraceObserver;
+};
 
+async function resolveConfiguredRouteDecision(
+  request: MutableRequestLike,
+  config: AppConfig,
+  compiled: CompiledRouterConfig,
+  customModel: RouteModelRef | undefined,
+  runtime: RouteResolutionRuntime
+): Promise<ResolvedConfiguredRouteDecision> {
   const requestedModel = readString(request.body.model);
   const explicitModel = normalizeRouteSelector(requestedModel);
-  if (explicitModel && isKnownInlineRoute(explicitModel, config)) {
-    return { fallback: config.Router.fallback, model: explicitModel, reason: "inline-model" };
-  }
-
-  const router = config.Router;
-  const builtInDecision = resolveBuiltInAgentRouteDecision(request, config);
-  const rules = router.rules ?? [];
-  for (const rule of rules) {
-    const decision = resolveRouterRule(rule, request, router);
-    if (decision) {
-      return builtInDecision ? mergeConfiguredRouteDecisions(builtInDecision, decision) : decision;
+  const resolvedExplicitModel = compiled.modelRegistry.resolve(explicitModel) ?? compiled.modelRegistry.resolve(
+    explicitModel
+      ? resolveClaudeAppGatewayRouteModel(explicitModel, config, claudeAppGatewayModelRouteOptions)
+      : undefined
+  );
+  const explicitDecision: ConfiguredRouteDecision | undefined = resolvedExplicitModel
+    ? {
+        fallback: compiled.fallback,
+        model: resolvedExplicitModel,
+        reason: "default",
+        rewrites: [],
+        source: "default"
+      }
+    : undefined;
+  const builtInDecision = resolveBuiltInAgentRouteDecision(request, config, compiled.modelRegistry, compiled.fallback);
+  const subagentEnvDecision = resolveBuiltInClaudeCodeSubagentEnvRouteDecision(
+    request,
+    config,
+    compiled.modelRegistry,
+    compiled.fallback
+  );
+  const clientModelDecision = explicitDecision && explicitClientModelCanOverrideBuiltInClaudeCodeRoute(
+    request,
+    config,
+    compiled.modelRegistry,
+    explicitDecision.model
+  )
+    ? explicitDecision
+    : undefined;
+  const ruleBaseDecision = subagentEnvDecision ?? clientModelDecision ?? builtInDecision;
+  const policies: Array<RoutePolicy<MutableRequestLike, ConfiguredRouteDecision>> = [
+    {
+      evaluate: () => customModel
+        ? {
+            fallback: compiled.fallback,
+            model: customModel,
+            reason: "custom-router",
+            rewrites: [],
+            source: "custom"
+          }
+        : undefined,
+      id: "custom"
+    },
+    {
+      evaluate: (context) => resolveBuiltInClaudeCodeSubagentRouteDecision(
+        context,
+        config,
+        compiled.modelRegistry,
+        compiled.fallback
+      ),
+      id: "builtin-agent-claude-code-subagent"
+    },
+    ...compiled.rules.map((rule): RoutePolicy<MutableRequestLike, ConfiguredRouteDecision> => ({
+      evaluate: async (context) => {
+        const decision = await resolveRouterRule(rule, context, compiled, runtime);
+        if (!decision || decision.rewrites.some(isBodyModelCompiledRewrite)) {
+          return decision;
+        }
+        return ruleBaseDecision
+          ? mergeConfiguredRouteDecisions(ruleBaseDecision, decision)
+          : decision;
+      },
+      id: `rule:${rule.rule.id}`
+    })),
+    {
+      evaluate: () => subagentEnvDecision,
+      id: "builtin-agent-claude-code-subagent-env"
+    },
+    {
+      evaluate: () => clientModelDecision,
+      id: "client-model"
+    },
+    {
+      evaluate: () => builtInDecision,
+      id: builtInDecision ? builtInAgentPolicyId(builtInDecision) : "builtin-agent"
+    },
+    {
+      evaluate: () => ({
+        fallback: compiled.fallback,
+        model: undefined,
+        reason: "default",
+        rewrites: [],
+        source: "default"
+      }),
+      id: "default"
     }
+  ];
+  const match = await new RoutePolicyEngine(policies).evaluate(request);
+  if (match) {
+    const compiledRule = match.policyId.startsWith("rule:")
+      ? compiled.rules.find((rule) => `rule:${rule.rule.id}` === match.policyId)
+      : undefined;
+    return {
+      ...match.decision,
+      policyId: match.policyId,
+      ...(compiledRule ? { ruleId: compiledRule.rule.id, ruleName: compiledRule.rule.name } : {})
+    };
   }
-
-  if (builtInDecision) {
-    return builtInDecision;
-  }
-
-  return { fallback: router.fallback, model: explicitModel, reason: "default" };
+  return {
+    fallback: compiled.fallback,
+    model: resolvedExplicitModel,
+    policyId: "default",
+    reason: "default",
+    rewrites: [],
+    source: "default"
+  };
 }
 
 function mergeConfiguredRouteDecisions(
   base: ConfiguredRouteDecision,
   override: ConfiguredRouteDecision
 ): ConfiguredRouteDecision {
-  const rewrites = [
-    ...configuredRouteDecisionRewrites(base),
-    ...configuredRouteDecisionRewrites(override)
-  ];
+  const rewrites = [...base.rewrites, ...override.rewrites];
   return {
     fallback: override.fallback ?? base.fallback,
     model: override.model ?? base.model,
     reason: override.reason,
-    ...(rewrites.length === 1 ? { rewrite: rewrites[0] } : {}),
-    ...(rewrites.length > 0 ? { rewrites } : {})
+    source: override.source,
+    rewrites
   };
-}
-
-function configuredRouteDecisionRewrites(decision: ConfiguredRouteDecision): RouterRuleRewrite[] {
-  if (decision.rewrites?.length) {
-    return decision.rewrites;
-  }
-  return decision.rewrite ? [decision.rewrite] : [];
 }
 
 function resolveBuiltInClaudeCodeSubagentRouteDecision(
   request: MutableRequestLike,
-  config: AppConfig
+  config: AppConfig,
+  modelRegistry: ModelRegistry,
+  fallback: RouterFallbackConfig
 ): ConfiguredRouteDecision | undefined {
   if (!builtInAgentRouteMatches(request, config, "claude-code")) {
     return undefined;
   }
   const target = normalizeRouteSelector(request.builtInSubagentModel);
-  if (!target || isSubagentModelPlaceholder(target) || !isKnownInlineRoute(target, config)) {
+  const discoveredTarget = target
+    ? resolveClaudeAppGatewayRouteModel(target, config, claudeAppGatewayModelRouteOptions)
+    : undefined;
+  const configuredTarget = modelRegistry.resolve(discoveredTarget ?? target);
+  if (!target || isSubagentModelPlaceholder(target) || !configuredTarget) {
     return undefined;
   }
   return {
-    fallback: config.Router.fallback,
-    model: target,
+    fallback,
+    model: configuredTarget,
     reason: "builtin:claude-code-subagent",
-    rewrite: {
-      key: "request.body.model",
-      operation: "set",
-      value: target
-    }
+    rewrites: [],
+    source: "subagent",
   };
+}
+
+function resolveBuiltInClaudeCodeSubagentEnvRouteDecision(
+  request: MutableRequestLike,
+  config: AppConfig,
+  modelRegistry: ModelRegistry,
+  fallback: RouterFallbackConfig
+): ConfiguredRouteDecision | undefined {
+  if (!builtInAgentRouteMatches(request, config, "claude-code")) {
+    return undefined;
+  }
+  if (request.builtInClaudeCodeSubagent !== true) {
+    return undefined;
+  }
+  const profile = resolveAuthenticatedProfile(request, config, "claude-code");
+  const configuredTarget = resolveConfiguredClaudeCodeModel(
+    profile?.env?.[claudeCodeSubagentModelEnv],
+    config,
+    modelRegistry
+  );
+  const requestedTarget = resolveConfiguredClaudeCodeModel(
+    readString(request.body.model),
+    config,
+    modelRegistry
+  );
+  if (
+    !configuredTarget ||
+    !requestedTarget ||
+    configuredTarget.canonicalSelector.toLowerCase() !== requestedTarget.canonicalSelector.toLowerCase()
+  ) {
+    return undefined;
+  }
+  return {
+    fallback,
+    model: configuredTarget,
+    reason: "builtin:claude-code-subagent-env",
+    rewrites: [],
+    source: "subagent"
+  };
+}
+
+function resolveConfiguredClaudeCodeModel(
+  selector: string | undefined,
+  config: AppConfig,
+  modelRegistry: ModelRegistry
+): RouteModelRef | undefined {
+  const target = normalizeRouteSelector(selector);
+  const discoveredTarget = target
+    ? resolveClaudeAppGatewayRouteModel(target, config, claudeAppGatewayModelRouteOptions)
+    : undefined;
+  return modelRegistry.resolve(discoveredTarget ?? target);
+}
+
+function explicitClientModelCanOverrideBuiltInClaudeCodeRoute(
+  request: MutableRequestLike,
+  config: AppConfig,
+  modelRegistry: ModelRegistry,
+  explicitModel: RouteModelRef | undefined
+): boolean {
+  if (!builtInAgentRouteMatches(request, config, "claude-code")) {
+    return true;
+  }
+  if (request.builtInClaudeCodeSubagent === true) {
+    return false;
+  }
+  const profile = resolveAuthenticatedProfile(request, config, "claude-code");
+  const configuredSubagentModel = resolveConfiguredClaudeCodeModel(
+    profile?.env?.[claudeCodeSubagentModelEnv],
+    config,
+    modelRegistry
+  );
+  return !configuredSubagentModel || !explicitModel ||
+    configuredSubagentModel.canonicalSelector.toLowerCase() !== explicitModel.canonicalSelector.toLowerCase();
 }
 
 function resolveBuiltInAgentRouteDecision(
   request: MutableRequestLike,
-  config: AppConfig
+  config: AppConfig,
+  modelRegistry: ModelRegistry,
+  fallback: RouterFallbackConfig
 ): ConfiguredRouteDecision | undefined {
+  const grokInternalDecision = resolveGrokInternalRouteDecision(request, config, modelRegistry, fallback);
+  if (grokInternalDecision) {
+    return grokInternalDecision;
+  }
   for (const agent of builtInAgentRuleIds) {
     if (!builtInAgentRouteMatches(request, config, agent)) {
       continue;
     }
-    const target = resolveBuiltInAgentRouteTarget(config, agent);
+    const target = modelRegistry.resolve(resolveBuiltInAgentRouteTarget(request, config, agent));
     if (!target) {
       continue;
     }
     return {
-      fallback: config.Router.fallback,
+      fallback,
       model: target,
       reason: `builtin:${agent}`,
-      rewrite: {
-        key: "request.body.model",
-        operation: "set",
-        value: target
-      }
+      rewrites: [],
+      source: "builtin",
     };
   }
   return undefined;
+}
+
+function resolveGrokInternalRouteDecision(
+  request: MutableRequestLike,
+  config: AppConfig,
+  modelRegistry: ModelRegistry,
+  fallback: RouterFallbackConfig
+): ConfiguredRouteDecision | undefined {
+  const requestedModel = normalizeRouteSelector(readString(request.body.model));
+  if (requestedModel?.toLowerCase() !== "grok-build") {
+    return undefined;
+  }
+  const profile = resolveAuthenticatedProfile(request, config, "grok");
+  const userAgent = readRequestHeader(request.headers, "user-agent")?.toLowerCase() ?? "";
+  const target = userAgent.includes("grok")
+    ? modelRegistry.resolve(resolveGrokProfileRouteTarget(config, profile?.model))
+    : undefined;
+  if (!target) {
+    return undefined;
+  }
+  return {
+    fallback,
+    model: target,
+    reason: "builtin:grok-internal",
+    rewrites: [],
+    source: "builtin"
+  };
+}
+
+function resolveGrokProfileRouteTarget(config: AppConfig, profileModel: string | undefined): string | undefined {
+  const configured = normalizeRouteSelector(profileModel);
+  if (configured) {
+    return configured;
+  }
+  const preferred = config.Providers.find((provider) => provider.name === config.preferredProvider) ?? config.Providers[0];
+  return preferred?.name && preferred.models[0]
+    ? `${preferred.name}/${preferred.models[0]}`
+    : undefined;
 }
 
 const builtInAgentRuleIds: RouterBuiltInAgentRuleId[] = ["claude-code", "codex"];
@@ -297,22 +588,51 @@ function builtInAgentRouteMatches(
   if (config.Router.builtInRules?.[agent]?.enabled === false) {
     return false;
   }
-  if (!resolveBuiltInAgentProfile(config, agent)) {
+  if (!resolveBuiltInAgentProfile(request, config, agent)) {
     return false;
   }
   const userAgent = readRequestHeader(request.headers, "user-agent")?.toLowerCase() ?? "";
   return userAgent.includes(builtInAgentUserAgentNeedle(agent));
 }
 
-function resolveBuiltInAgentProfile(config: AppConfig, agent: RouterBuiltInAgentRuleId) {
+function resolveBuiltInAgentProfile(
+  request: MutableRequestLike,
+  config: AppConfig,
+  agent: RouterBuiltInAgentRuleId
+) {
+  return resolveAuthenticatedProfile(request, config, agent);
+}
+
+function resolveAuthenticatedProfile(
+  request: MutableRequestLike,
+  config: AppConfig,
+  agent: ProfileClientKind
+) {
   if (config.profile.enabled === false) {
     return undefined;
   }
-  return config.profile.profiles.find((profile) => profile.enabled && profile.agent === agent);
+  const authenticatedApiKeyId = readRequestHeader(request.headers, "x-auth-api-key-id")?.trim();
+  if (!authenticatedApiKeyId) {
+    return undefined;
+  }
+  return config.profile.profiles.find((profile) =>
+    profile.enabled &&
+    profile.agent === agent &&
+    profileApiKeyId(profile.id || profile.name || profile.agent) === authenticatedApiKeyId
+  );
 }
 
-function resolveBuiltInAgentRouteTarget(config: AppConfig, agent: RouterBuiltInAgentRuleId): string | undefined {
-  return normalizeRouteSelector(resolveBuiltInAgentProfile(config, agent)?.model);
+function resolveBuiltInAgentRouteTarget(
+  request: MutableRequestLike,
+  config: AppConfig,
+  agent: RouterBuiltInAgentRuleId
+): string | undefined {
+  return normalizeRouteSelector(resolveBuiltInAgentProfile(request, config, agent)?.model);
+}
+
+function profileApiKeyId(value: string): string {
+  const profileId = value.trim().replace(/[^a-zA-Z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
+  return `profile:${profileId || "profile"}`;
 }
 
 function builtInAgentUserAgentNeedle(agent: RouterBuiltInAgentRuleId): string {
@@ -324,22 +644,26 @@ const ccrSubagentModelCloseTag = "</CCR-SUBAGENT-MODEL>";
 const ccrSubagentModelTagExample = `${ccrSubagentModelOpenTag}Provider/model${ccrSubagentModelCloseTag}`;
 const ccrSubagentModelPlaceholder = "provider/model";
 const claudeCodeBillingSystemHeaderPrefix = "x-anthropic-billing-header";
+const claudeCodeSubagentModelEnv = "CLAUDE_CODE_SUBAGENT_MODEL";
 const ccrSubagentToolModelInstruction =
   `CCR subagent routing is enabled. When calling this tool, the prompt parameter MUST start with ` +
-  `${ccrSubagentModelTagExample} on its own first line, replacing Provider/model with the best configured CCR gateway model. ` +
+  `${ccrSubagentModelTagExample} on its own first line, replacing Provider/model with the best client model ID from the list below. ` +
+  `When the tool model field accepts exact strings, set it to the same client model ID so the client initializes the child with the correct model limits. ` +
   `CCR consumes the tag, removes it from the prompt, and routes the spawned agent request to that model. ` +
-  `Do not omit the tag, do not put it in description or subagent_type, and do not rely on the tool model enum for CCR-specific models. ` +
-  `中文要求：调用该工具时，prompt 参数第一行必须写入 ${ccrSubagentModelTagExample}，并将 Provider/model 替换成最适合的 CCR 模型。`;
+  `If the model field only permits built-in aliases, leave it unset and use the tag as the routing fallback. ` +
+  `Do not omit the tag or put it in description or subagent_type. ` +
+  `中文要求：调用该工具时，prompt 参数第一行必须写入 ${ccrSubagentModelTagExample}，并将 Provider/model 替换成列表中的客户端模型 ID；若 model 字段支持任意字符串，也必须使用同一个 ID。`;
 const ccrWorkflowSubagentModelInstruction =
   `CCR workflow subagent routing is enabled. When this workflow creates Agent/Task subagents, each spawned agent prompt MUST start with ` +
-  `${ccrSubagentModelTagExample} on its own first line, replacing Provider/model with the best configured CCR gateway model. ` +
+  `${ccrSubagentModelTagExample} on its own first line, replacing Provider/model with the best client model ID from the list below. ` +
+  `Set each spawned agent's model option to that same client model ID when the agent API accepts exact strings. ` +
   `Put the tag inside the Agent/Task prompt created by the workflow, not in the workflow description or subagent_type. ` +
   `CCR consumes the tag from the spawned agent request, removes it, and routes that request to the selected model. ` +
-  `Do not rely on the Agent/Task model enum for CCR-specific models. ` +
-  `中文要求：Workflow 中创建 Agent/Task 时，每个被创建 agent 的 prompt 第一行必须写入 ${ccrSubagentModelTagExample}，并替换成最适合的 CCR 模型。`;
+  `中文要求：Workflow 中创建 Agent/Task 时，每个被创建 agent 的 prompt 第一行必须写入 ${ccrSubagentModelTagExample}，并替换成列表中的客户端模型 ID；若 agent API 支持任意模型字符串，也必须将 model 设为同一个 ID。`;
 const ccrSubagentPromptFieldInstruction =
   `CCR subagent routing is enabled. This prompt string MUST start with ${ccrSubagentModelTagExample} on its own first line, ` +
-  `with Provider/model replaced by one configured CCR gateway model. Put the subagent task after that line; CCR removes the tag before the subagent runs. ` +
+  `with Provider/model replaced by one client model ID from the list below. When the adjacent model field accepts exact strings, use the same client model ID there. ` +
+  `Put the subagent task after that line; CCR removes the tag before the subagent runs. ` +
   `中文要求：这个 prompt 字符串第一行必须是替换后的模型标签，后面再写 subagent 任务正文。`;
 type ClaudeCodeSubagentToolKind = "subagent" | "workflow";
 const claudeCodeAgentToolNames = new Set(["agent", "task"]);
@@ -524,7 +848,7 @@ function claudeCodeAgentToolInstructions(config: AppConfig): { prompt: string; t
     return undefined;
   }
   const modelList = [
-    "Configured CCR gateway models:",
+    "Configured CCR gateway models (client model -> CCR target):",
     ...modelRows
   ].join("\n");
   return {
@@ -547,6 +871,14 @@ function claudeCodeAgentToolInstructions(config: AppConfig): { prompt: string; t
 }
 
 function configuredSubagentModelDescriptionRows(config: AppConfig): string[] {
+  const routeByTarget = new Map<string, ClaudeAppGatewayModelRoute>();
+  for (const route of buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions)) {
+    const key = route.targetModel.toLowerCase();
+    const current = routeByTarget.get(key);
+    if (!current || (current.oneMillionContext && !route.oneMillionContext)) {
+      routeByTarget.set(key, route);
+    }
+  }
   const candidates: Array<{ key: string; row: string; selector: string }> = [];
   for (const provider of config.Providers) {
     const providerName = provider.name?.trim();
@@ -561,11 +893,15 @@ function configuredSubagentModelDescriptionRows(config: AppConfig): string[] {
       }
       const selector = `${providerName}/${model}`;
       const key = selector.toLowerCase();
+      const clientModel = routeByTarget.get(key)?.id;
+      if (!clientModel) {
+        continue;
+      }
       const displayName = provider.modelDisplayNames?.[model]?.trim();
       const label = displayName && displayName !== model ? `${selector} (${displayName})` : selector;
       candidates.push({
         key,
-        row: `- ${label}: ${singleLineText(description, 320)}`,
+        row: `- ${clientModel} -> ${label}: ${singleLineText(description, 320)}`,
         selector
       });
     }
@@ -597,10 +933,10 @@ function compareCodeUnitStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-function removeClaudeCodeBillingSystemHeader(body: Record<string, unknown>): void {
+function removeClaudeCodeBillingSystemHeader(body: Record<string, unknown>): boolean {
   const system = body.system;
   if (!Array.isArray(system) || system.length === 0) {
-    return;
+    return false;
   }
   const firstBlock = system[0];
   const firstText = typeof firstBlock === "string"
@@ -609,12 +945,45 @@ function removeClaudeCodeBillingSystemHeader(body: Record<string, unknown>): voi
       ? firstBlock.text
       : undefined;
   if (!firstText?.startsWith(claudeCodeBillingSystemHeaderPrefix)) {
-    return;
+    return false;
   }
+  const isSubagent = claudeCodeBillingMetadataIsSubagent(firstText);
   system.shift();
   if (system.length === 0) {
     delete body.system;
   }
+  return isSubagent;
+}
+
+function claudeCodeBillingMetadataIsSubagent(text: string): boolean {
+  const prefix = `${claudeCodeBillingSystemHeaderPrefix}:`;
+  if (!text.startsWith(prefix)) {
+    return false;
+  }
+  const payload = text.slice(prefix.length).trim();
+  if (!payload) {
+    return false;
+  }
+  if (payload.startsWith("{")) {
+    try {
+      const metadata = JSON.parse(payload) as unknown;
+      return isRecord(metadata) && metadata.cc_is_subagent === true;
+    } catch {
+      return false;
+    }
+  }
+  const values = payload
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .flatMap((part) => {
+      const separator = part.indexOf("=");
+      if (separator < 0 || part.slice(0, separator).trim() !== "cc_is_subagent") {
+        return [];
+      }
+      return [part.slice(separator + 1).trim()];
+    });
+  return values.length === 1 && values[0] === "true";
 }
 
 function extractAndRemoveClaudeCodeSubagentModelTag(body: Record<string, unknown>): string | undefined {
@@ -730,24 +1099,96 @@ function extractAndRemoveSubagentModelTagFromText(
   return model;
 }
 
-function resolveRouterRule(
-  rule: RouterRule,
+async function resolveRouterRule(
+  compiledRule: CompiledRouterRule,
   request: MutableRequestLike,
-  router: RouterConfig
-): ConfiguredRouteDecision | undefined {
-  if (!rule.enabled) {
+  compiled: CompiledRouterConfig,
+  runtime: RouteResolutionRuntime
+): Promise<ConfiguredRouteDecision | undefined> {
+  if (!compiledRule.active) {
     return undefined;
   }
-  const fallback = rule.fallback ?? router.fallback;
+  const rule = compiledRule.rule;
+  const fallback = rule.fallback ?? compiled.fallback;
 
-  const rewrites = routerRuleRewritesFromRule(rule);
-  if (rewrites.length === 0) {
-    return undefined;
+  const rewrites = compiledRule.rewrites;
+
+  if (rule.type === "script") {
+    if (!rule.script || !runtime.scriptRuntime) {
+      runtime.runtimeDiagnostics.push({
+        code: "script-runtime-error",
+        message: `Router script "${rule.name}" runtime is unavailable.`,
+        ruleId: rule.id,
+        source: "rule"
+      });
+      return undefined;
+    }
+    const context = buildRouteScriptInput(request);
+    const startedAtMs = Date.now();
+    const execution = await runtime.scriptRuntime.execute(rule.id, rule.script, context);
+    if (execution.status !== "ok") {
+      const timeout = execution.status === "timeout";
+      const diagnostic: RouteDiagnostic = {
+        code: timeout ? "script-timeout" : "script-runtime-error",
+        message: `Router script "${rule.name}" ${timeout ? "timed out" : "failed"}: ${execution.error ?? execution.status}`,
+        ruleId: rule.id,
+        source: "rule"
+      };
+      runtime.runtimeDiagnostics.push(diagnostic);
+      runtime.trace?.capture({
+        decision: { diagnostics: [diagnostic], policyId: `rule:${rule.id}`, ruleId: rule.id, ruleName: rule.name, source: "rule" },
+        durationMs: execution.durationMs,
+        kind: "decision",
+        name: `customer.script:${rule.id}`,
+        outcome: { error: diagnostic.message },
+        phase: "routing",
+        startedAtMs,
+        status: "error"
+      });
+      return undefined;
+    }
+    const normalized = normalizeRouteScriptResult({
+      compiledRule,
+      defaultFallback: compiled.fallback,
+      modelRegistry: compiled.modelRegistry,
+      value: execution.value
+    });
+    runtime.runtimeDiagnostics.push(...normalized.diagnostics);
+    runtime.trace?.capture({
+      decision: {
+        diagnostics: normalized.diagnostics,
+        policyId: `rule:${rule.id}`,
+        reason: normalized.matched ? `script:${rule.id}` : undefined,
+        ruleId: rule.id,
+        ruleName: rule.name,
+        source: "rule"
+      },
+      durationMs: execution.durationMs,
+      kind: "decision",
+      name: `customer.script:${rule.id}`,
+      ...(normalized.diagnostics.length ? { outcome: { error: normalized.diagnostics[0].message } } : {}),
+      phase: "routing",
+      startedAtMs,
+      status: normalized.diagnostics.length ? "error" : normalized.matched ? "ok" : "noop",
+      target: normalized.model ? {
+        model: normalized.model.selector,
+        ...(normalized.model.kind === "provider" ? { provider: normalized.model.provider.name } : {})
+      } : undefined
+    });
+    return normalized.matched
+      ? {
+          fallback: normalized.fallback ?? fallback,
+          model: normalized.model,
+          reason: `script:${rule.id}`,
+          rewrites: normalized.rewrites,
+          source: "rule"
+        }
+      : undefined;
   }
 
   if (rule.type === "condition") {
     return rule.condition && routerRuleConditionMatches(rule.condition, request)
-      ? routerRuleRewriteDecision(rule, rewrites, fallback)
+      ? routerRuleRewriteDecision(rule, rewrites, fallback, compiledRule.model)
       : undefined;
   }
 
@@ -755,7 +1196,7 @@ function resolveRouterRule(
     const pattern = readString(rule.pattern);
     const requestedModel = readString(request.body.model);
     return pattern && requestedModel?.startsWith(pattern)
-      ? routerRuleRewriteDecision(rule, rewrites, fallback)
+      ? routerRuleRewriteDecision(rule, rewrites, fallback, compiledRule.model)
       : undefined;
   }
 
@@ -764,178 +1205,40 @@ function resolveRouterRule(
 
 function routerRuleRewriteDecision(
   rule: RouterRule,
-  rewrites: RouterRuleRewrite[],
-  fallback: RouterFallbackConfig
+  rewrites: CompiledRouteRewrite[],
+  fallback: RouterFallbackConfig,
+  model: RouteModelRef | undefined
 ): ConfiguredRouteDecision {
-  const modelRewrite = rewrites.find((rewrite) => (rewrite.operation ?? "set") === "set" && rewrite.key === "request.body.model");
   return {
     fallback,
-    model: modelRewrite?.value ? normalizeRouteSelector(modelRewrite.value) : undefined,
+    model,
     reason: routerRuleReason(rule),
-    rewrite: rewrites[0],
-    rewrites
+    rewrites,
+    source: "rule"
   };
 }
 
-function routerRuleRewritesFromRule(rule: RouterRule): RouterRuleRewrite[] {
-  if (rule.rewrites?.length) {
-    return rule.rewrites;
+function routeDecisionTraceName(decision: ResolvedConfiguredRouteDecision): string {
+  if (decision.source === "custom") {
+    return "customer.custom-router-decision";
   }
-  if (rule.rewrite) {
-    return [rule.rewrite];
+  if (decision.source === "rule") {
+    return "customer.rule-decision";
   }
-  return rule.target
-    ? [{ key: "request.body.model", operation: "set", value: rule.target }]
-    : [];
+  if (decision.source === "subagent") {
+    return `builtins.${decision.policyId}`;
+  }
+  if (decision.source === "builtin") {
+    return `builtins.${decision.policyId}`;
+  }
+  return "builtins.default-route";
 }
 
-function applyRouterRewrite(rewrite: RouterRuleRewrite, request: MutableRequestLike): void {
-  const parts = rewrite.key
-    .split(".")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  const [scope, section, ...rest] = parts;
-  if (scope !== "request") {
-    return;
-  }
-
-  if (section === "header" || section === "headers") {
-    const name = rest.join(".").trim().toLowerCase();
-    if (!name) {
-      return;
-    }
-    if ((rewrite.operation ?? "set") === "delete") {
-      delete request.headers[name];
-    } else if (rewrite.value !== undefined) {
-      request.headers[name] = rewrite.value;
-    }
-    return;
-  }
-
-  if (section === "body") {
-    applyBodyRewrite(request.body, rest, rewrite);
-  }
-}
-
-function applyBodyRewrite(body: Record<string, unknown>, path: string[], rewrite: RouterRuleRewrite): void {
-  const operation = rewrite.operation ?? "set";
-  if (operation === "delete") {
-    deletePathValue(body, path);
-    return;
-  }
-
-  const value = rewrite.key === "request.body.model" && rewrite.value !== undefined
-    ? normalizeRouteSelector(rewrite.value) ?? rewrite.value
-    : rewrite.value !== undefined
-      ? parseRewriteLiteral(rewrite.value)
-      : undefined;
-
-  if (operation === "set") {
-    setPathValue(body, path, value);
-    return;
-  }
-
-  const current = readPathValue(body, path);
-  const array = Array.isArray(current) ? [...current] : [];
-  if (operation === "array-append") {
-    array.push(value);
-    setPathValue(body, path, array);
-    return;
-  }
-  if (operation === "array-prepend") {
-    array.unshift(value);
-    setPathValue(body, path, array);
-    return;
-  }
-  if (operation === "array-remove") {
-    setPathValue(body, path, array.filter((item) => !arrayElementMatches(item, value)));
-    return;
-  }
-  if (operation === "array-replace" && rewrite.match !== undefined) {
-    const match = parseRewriteLiteral(rewrite.match);
-    setPathValue(body, path, array.map((item) => arrayElementMatches(item, match) ? value : item));
-  }
-}
-
-function setPathValue(target: Record<string, unknown>, path: string[], value: unknown): void {
-  if (path.length === 0) {
-    return;
-  }
-
-  let current: unknown = target;
-  for (let index = 0; index < path.length - 1; index += 1) {
-    const key = path[index];
-    const nextKey = path[index + 1];
-    if (Array.isArray(current)) {
-      const arrayIndex = Number(key);
-      if (!Number.isInteger(arrayIndex)) {
-        return;
-      }
-      if (!isRecord(current[arrayIndex]) && !Array.isArray(current[arrayIndex])) {
-        current[arrayIndex] = numericPathSegment(nextKey) ? [] : {};
-      }
-      current = current[arrayIndex];
-      continue;
-    }
-    if (!isRecord(current)) {
-      return;
-    }
-    if (!isRecord(current[key]) && !Array.isArray(current[key])) {
-      current[key] = numericPathSegment(nextKey) ? [] : {};
-    }
-    current = current[key];
-  }
-
-  const lastKey = path[path.length - 1];
-  if (Array.isArray(current)) {
-    const arrayIndex = Number(lastKey);
-    if (Number.isInteger(arrayIndex)) {
-      current[arrayIndex] = value;
-    }
-    return;
-  }
-  if (isRecord(current)) {
-    current[lastKey] = value;
-  }
-}
-
-function deletePathValue(target: Record<string, unknown>, path: string[]): void {
-  if (path.length === 0) {
-    return;
-  }
-  const parent = readPathValue(target, path.slice(0, -1));
-  const key = path[path.length - 1];
-  if (Array.isArray(parent)) {
-    const index = Number(key);
-    if (Number.isInteger(index)) {
-      parent.splice(index, 1);
-    }
-    return;
-  }
-  if (isRecord(parent)) {
-    delete parent[key];
-  }
-}
-
-function numericPathSegment(value: string): boolean {
-  return /^\d+$/.test(value);
-}
-
-function parseRewriteLiteral(value: string): unknown {
-  const trimmed = value.trim();
-  if (trimmed === "true") return true;
-  if (trimmed === "false") return false;
-  if (trimmed === "null") return null;
-  const json = parseJsonLiteral(trimmed);
-  if (json.ok) return json.value;
-  if (
-    (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1);
-  }
-  const parsedNumber = Number(trimmed);
-  return trimmed && Number.isFinite(parsedNumber) ? parsedNumber : trimmed;
+function builtInAgentPolicyId(decision: ConfiguredRouteDecision): string {
+  const builtInRoute = decision.reason.startsWith("builtin:")
+    ? decision.reason.slice("builtin:".length)
+    : "agent";
+  return `builtin-agent-${builtInRoute}`;
 }
 
 function routerRuleConditionMatches(condition: RouterRuleCondition, request: MutableRequestLike): boolean {
@@ -1163,42 +1466,6 @@ function routerRuleReason(rule: RouterRule): string {
     return rule.id.replace(/^legacy-/, "");
   }
   return `rule:${rule.id}`;
-}
-
-export function normalizeRouteSelector(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-
-  const commaIndex = trimmed.indexOf(",");
-  if (commaIndex > 0 && commaIndex < trimmed.length - 1) {
-    const provider = trimmed.slice(0, commaIndex).trim();
-    const model = trimmed.slice(commaIndex + 1).trim();
-    return provider && model ? `${provider}/${model}` : undefined;
-  }
-
-  return trimmed;
-}
-
-function isKnownInlineRoute(model: string | undefined, config: AppConfig): boolean {
-  const normalizedModel = normalizeRouteSelector(model);
-  if (!normalizedModel) {
-    return false;
-  }
-
-  const normalizedModelLower = normalizedModel.toLowerCase();
-  if (availableGatewayModelIds(config).some((id) => id.toLowerCase() === normalizedModelLower)) {
-    return true;
-  }
-
-  const separator = normalizedModel.indexOf("/");
-  if (separator <= 0) {
-    return false;
-  }
-
-  const providerName = normalizedModel.slice(0, separator).trim().toLowerCase();
-  return config.Providers.some((provider) => provider.name.trim().toLowerCase() === providerName);
 }
 
 function isSubagentModelPlaceholder(model: string): boolean {

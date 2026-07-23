@@ -148,6 +148,7 @@ const webClientBridge: CcrApi = {
     window.open(normalizeExternalHttpUrl(url), "_blank", "noopener,noreferrer");
   },
   openProfile: (request) => rpc("openProfile", [request]) as ReturnType<CcrApi["openProfile"]>,
+  probeLocalAgentProvider: (request) => rpc("probeLocalAgentProvider", [request]) as ReturnType<NonNullable<CcrApi["probeLocalAgentProvider"]>>,
   probeProvider: (request) => rpc("probeProvider", [request]) as ReturnType<CcrApi["probeProvider"]>,
   probeProviderCandidates: (request) => rpc("probeProviderCandidates", [request]) as ReturnType<CcrApi["probeProviderCandidates"]>,
   quitApp: () => rpc("quitApp") as ReturnType<CcrApi["quitApp"]>,
@@ -169,9 +170,11 @@ const webClientBridge: CcrApi = {
   stopGateway: () => rpc("stopGateway") as ReturnType<CcrApi["stopGateway"]>,
   stopProfile: (request) => rpc("stopProfile", [request]) as ReturnType<CcrApi["stopProfile"]>,
   testProviderAccountConnector: (request) => rpc("testProviderAccountConnector", [request]) as ReturnType<CcrApi["testProviderAccountConnector"]>,
+  testRouteScript: (request) => rpc("testRouteScript", [request]) as ReturnType<CcrApi["testRouteScript"]>,
   updateCheck: () => rpc("updateCheck") as ReturnType<CcrApi["updateCheck"]>,
   updateDownload: () => rpc("updateDownload") as ReturnType<CcrApi["updateDownload"]>,
   updateInstall: () => rpc("updateInstall") as ReturnType<CcrApi["updateInstall"]>,
+  validateRouteScript: (request) => rpc("validateRouteScript", [request]) as ReturnType<CcrApi["validateRouteScript"]>,
   waitBotGatewayQrLogin: (request) => rpc("waitBotGatewayQrLogin", [request]) as ReturnType<CcrApi["waitBotGatewayQrLogin"]>
 };
 

@@ -2,53 +2,99 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { assertAvailableGatewayModels, type AppConfig, type ProfileOpenCommandResult, type ProfileOpenRequest, type ProfileOpenResult, type ProfileRuntimeEntry, type ProfileRuntimeStatus, type ProfileStopResult } from "@ccr/core/contracts/app";
+import { assertAvailableGatewayModels, type AppConfig, type ProfileConfig, type ProfileOpenCommandResult, type ProfileOpenRequest, type ProfileOpenResult, type ProfileRuntimeEntry, type ProfileRuntimeStatus, type ProfileStopResult } from "@ccr/core/contracts/app";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { applyClaudeAppGatewayConfig, readClaudeAppGatewayApiKeyCandidates } from "@ccr/core/agents/claude-app/gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "@ccr/core/agents/claude-app/launch";
 import { claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
-import { launchCodexAppProfile, launchZcodeAppProfile, refreshCodexCompatibleAppProfileFiles } from "@ccr/core/agents/codex/app-launch";
+import { codexDesktopAppName, launchCodexAppProfile, launchZcodeAppProfile, refreshCodexCompatibleAppProfileFiles } from "@ccr/core/agents/codex/app-launch";
+import { CodexAppMediaPreviewBridge, shouldEnableCodexMediaPreviewBridge } from "@ccr/core/agents/codex/media-preview-bridge";
+import { findRunningOpenCodeAppPid, launchOpenCodeAppProfile, openCodeAppLaunchSignature } from "@ccr/core/agents/opencode/app-launch";
+import { writeOpenCodeGatewayConfig } from "@ccr/core/agents/opencode/profile-config";
 import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-middleware-runtime";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { gatewayService } from "@ccr/core/gateway/service";
 import { TOOL_HUB_MCP_RUNTIME_FILE_NAME, bundledToolHubMcpEntryPathCandidates } from "@ccr/core/mcp/toolhub-config";
-import { buildProfileLaunchPlan, findProfileForOpen, profileLaunchSpawnCommand, profileOpenCommand, resolveClaudeCodeSettingsFile, resolveProfileOpenSurface } from "@ccr/core/profiles/launch-core";
+import { mediaToolsGatewayEndpoint } from "@ccr/core/mcp/grok-media-config";
+import { buildProfileLaunchPlan, findProfileForOpen, profileLaunchSpawnCommand, profileOpenCommand, profileOpenSurfaces, resolveClaudeCodeSettingsFile, resolveProfileOpenSurface } from "@ccr/core/profiles/launch-core";
 import { applyProfileConfig, cleanupGeneratedBinBackups } from "@ccr/core/profiles/service";
-import { broadcastWindowsEnvironmentChanged, windowsSystemCommand } from "@ccr/core/platform/windows-system";
+import { windowsEnvironmentChangedPowerShellLines, windowsSystemCommand } from "@ccr/core/platform/windows-system";
 
 const ccrPathBlockStart = "# >>> Claude Code Router CLI >>>";
 const ccrPathBlockEnd = "# <<< Claude Code Router CLI <<<";
 export const desktopCliCommandName = "ccr-app";
 const desktopCliRuntimeFileName = "ccr-cli.js";
 const desktopCliCommandNameEnv = "CCR_CLI_COMMAND_NAME";
+export const CCR_CLI_COMPANION_RUNTIME_FILE_NAMES = [
+  "browser-web-search-proxy-mcp.js",
+  "fusion-tool-fallback-mcp.js",
+  "fusion-vision-mcp.js",
+  "media-tools-proxy-mcp.js",
+  "next-ai-gateway.js",
+  "request-log-worker.js",
+  "route-script-worker.js",
+  "undici-proxy-agent.js",
+  "upstream-header-sanitizer.js"
+] as const;
 let claudeAppBotWorker: ChildProcess | undefined;
 let claudeAppBotWorkerProfileId: string | undefined;
+let claudeAppBotWorkerStateDir: string | undefined;
+let openCodeAppBotWorker: ChildProcess | undefined;
+let openCodeAppBotWorkerProfileId: string | undefined;
+let openCodeAppBotWorkerSignature: string | undefined;
+let openCodeAppBotWorkerStateDir: string | undefined;
+const codexAppBotWorkers = new Map<string, { agent: ProfileConfig["agent"]; child: ChildProcess; stateDir?: string }>();
+const codexAppMediaPreviewBridges = new Map<string, { bridge: CodexAppMediaPreviewBridge; signature: string }>();
 
 type ProfileOpenCommandOptions = {
   commandName?: string;
   ensureLauncher?: boolean;
 };
 
+export class ProfileGatewayUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProfileGatewayUnavailableError";
+  }
+}
+
+export type CcrCliLauncherPreparation = {
+  binDir: string;
+  persistentPathRequired: boolean;
+};
+
+type EnsureCcrCliLauncherOptions = {
+  persistPath?: boolean;
+};
+
 type ProfileAppLaunchResult = {
   child: ChildProcess;
   claudeDesignProxy?: boolean;
   command: string;
+  launchSignature?: string;
   pidIsLauncher?: boolean;
   pid?: number;
   userDataDir: string;
 };
 
 type RunningProfileApp = ProfileRuntimeEntry & {
-  child: ChildProcess;
+  child?: ChildProcess;
   claudeDesignProxy?: boolean;
   command: string;
+  launchSignature?: string;
+  monitor?: NodeJS.Timeout;
   pidIsLauncher?: boolean;
   spawnError?: string;
   stopRequested?: boolean;
   userDataDir: string;
 };
 
-process.once("exit", () => stopClaudeAppBotWorker());
+process.once("exit", () => {
+  stopClaudeAppBotWorker();
+  stopOpenCodeAppBotWorker();
+  stopCodexAppBotWorker();
+  stopCodexAppMediaPreviewBridge();
+});
 
 export async function getProfileOpenCommand(config: AppConfig, request: ProfileOpenRequest, options: ProfileOpenCommandOptions = {}): Promise<ProfileOpenCommandResult> {
   assertAvailableGatewayModels(config);
@@ -56,7 +102,7 @@ export async function getProfileOpenCommand(config: AppConfig, request: ProfileO
   const profile = findProfileForOpen(config, request.profileId);
   const surface = resolveProfileOpenSurface(profile, request.surface);
   if (options.ensureLauncher) {
-    ensureCcrCliLauncher();
+    ensureCcrCliLauncher(config);
   }
   return {
     command: profileOpenCommand(profile, surface, options.commandName ?? "ccr", commandProfileRef(config, profile)),
@@ -76,6 +122,9 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
   }
   if ((profile.agent === "codex" || profile.agent === "zcode") && surface === "app") {
     return await openCodexAppProfile(config, profile);
+  }
+  if (profile.agent === "opencode" && surface === "app") {
+    return await openOpenCodeAppProfile(config, profile);
   }
   const plan = buildProfileLaunchPlan(CONFIGDIR, profile, surface);
   if (path.isAbsolute(plan.command) && !existsSync(plan.command)) {
@@ -107,12 +156,110 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
   };
 }
 
+async function openOpenCodeAppProfile(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): Promise<ProfileOpenResult> {
+  const appName = "OpenCode App";
+  const profileGatewayConfig = await ensureProfileGateway(config, profile, appName);
+  const configResult = writeOpenCodeGatewayConfig(
+    CONFIGDIR,
+    profileGatewayConfig,
+    profile,
+    profileGatewayConfig.APIKEY,
+    { backup: false }
+  );
+  const botEnv = botGatewayProfileEnv(profileGatewayConfig, profile, "app");
+  const launchSignature = openCodeAppLaunchSignature(profile, configResult.file, configResult.inlineConfig, botEnv);
+  const existing = runningProfileApp(profile.id, "app");
+  if (existing) {
+    if (existing.launchSignature === launchSignature) {
+      startOpenCodeAppBotWorker(
+        profileGatewayConfig,
+        profile,
+        configResult.file,
+        configResult.inlineConfig,
+        launchSignature
+      );
+      activateProfileAppWindow(existing);
+      return {
+        message: `${appName} is already running with ${profile.name || profile.id}.`,
+        profileId: profile.id,
+        profileName: profile.name,
+        surface: "app"
+      };
+    }
+    const stopped = await stopRunningProfileApp(profileRuntimeKey(profile.id, "app"), existing);
+    if (!stopped && isProfileAppRunning(existing)) {
+      throw new Error(
+        `${appName} is still running with stale settings for ${profile.name || profile.id}. ` +
+        "Close it before reopening this profile."
+      );
+    }
+    stopOpenCodeAppBotWorker(profile.id);
+  }
+  const otherProfile = runningProfileAppForAgent("opencode", "app", profile.id);
+  if (otherProfile) {
+    const stopped = await stopRunningProfileApp(profileRuntimeKey(otherProfile.profileId, "app"), otherProfile);
+    if (!stopped && isProfileAppRunning(otherProfile)) {
+      throw new Error(
+        `OpenCode App is already running with ${otherProfile.profileName || otherProfile.profileId}. ` +
+        "Close it before switching OpenCode App profiles."
+      );
+    }
+    stopOpenCodeAppBotWorker(otherProfile.profileId);
+  }
+  const unmanagedPid = findRunningOpenCodeAppPid(profile.appPath);
+  if (unmanagedPid) {
+    throw new Error(
+      `OpenCode App is already running outside CCR (PID ${unmanagedPid}). ` +
+      "Close it before opening an OpenCode App profile."
+    );
+  }
+  const launch = {
+    ...launchOpenCodeAppProfile(
+      CONFIGDIR,
+      profile,
+      configResult.file,
+      configResult.inlineConfig,
+      botEnv
+    ),
+    launchSignature
+  };
+  const entry = registerProfileApp(profile, "app", launch);
+  const started = await waitForStableProfileAppStart(entry, 12000, 1000);
+  if (!started) {
+    cleanupProfileAppEntry(profileRuntimeKey(profile.id, "app"), entry);
+    sendProfileProcessSignal(entry.pid, "SIGTERM");
+    throw new Error([
+      `${appName} did not stay open for ${profile.name || profile.id}.`,
+      ...(entry.spawnError ? [`Error: ${entry.spawnError}`] : []),
+      "Close any OpenCode App instance that was not opened by CCR, then try again.",
+      `Command: ${entry.command}`,
+      `User data: ${entry.userDataDir}`
+    ].join(" "));
+  }
+  activateProfileAppWindow(entry);
+  startOpenCodeAppBotWorker(
+    profileGatewayConfig,
+    profile,
+    configResult.file,
+    configResult.inlineConfig,
+    launchSignature
+  );
+  return {
+    message: `Opened ${appName} with ${profile.name || profile.id}.`,
+    profileId: profile.id,
+    profileName: profile.name,
+    surface: "app"
+  };
+}
+
 async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): Promise<ProfileOpenResult> {
-  const appName = profile.agent === "zcode" ? "ZCode App" : "Codex App";
+  const appName = profile.agent === "zcode" ? "ZCode App" : codexDesktopAppName;
   const profileGatewayConfig = await ensureProfileGateway(config, profile, appName);
   const existing = runningProfileApp(profile.id, "app");
   if (existing) {
     refreshCodexCompatibleAppProfileFiles(CONFIGDIR, profile, profileGatewayConfig);
+    startCodexAppBotWorker(profileGatewayConfig, profile);
+    startCodexAppMediaPreviewBridge(profileGatewayConfig, profile, existing.userDataDir);
     activateProfileAppWindow(existing);
     return {
       message: `${appName} is already running with ${profile.name || profile.id}.`,
@@ -120,6 +267,26 @@ async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof
       profileName: profile.name,
       surface: "app"
     };
+  }
+  if (profile.agent === "codex") {
+    const files = refreshCodexCompatibleAppProfileFiles(CONFIGDIR, profile, profileGatewayConfig);
+    const unmanagedPid = profileAppMainPid({ userDataDir: files.userDataDir });
+    if (unmanagedPid) {
+      const entry = registerExistingProfileApp(profile, "app", {
+        command: appName,
+        pid: unmanagedPid,
+        userDataDir: files.userDataDir
+      });
+      startCodexAppBotWorker(profileGatewayConfig, profile);
+      startCodexAppMediaPreviewBridge(profileGatewayConfig, profile, entry.userDataDir);
+      activateProfileAppWindow(entry);
+      return {
+        message: `${appName} is already running with ${profile.name || profile.id}.`,
+        profileId: profile.id,
+        profileName: profile.name,
+        surface: "app"
+      };
+    }
   }
   const launch = profile.agent === "zcode"
     ? launchZcodeAppProfile(CONFIGDIR, profile, profileGatewayConfig)
@@ -137,6 +304,8 @@ async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof
     ].join(" "));
   }
   activateProfileAppWindow(entry);
+  startCodexAppBotWorker(profileGatewayConfig, profile);
+  startCodexAppMediaPreviewBridge(profileGatewayConfig, profile, entry.userDataDir);
   return {
     message: `Opened ${appName} with ${profile.name || profile.id}.`,
     profileId: profile.id,
@@ -150,6 +319,7 @@ async function openClaudeAppProfile(config: AppConfig, profile: ReturnType<typeo
   const existing = runningProfileApp(profile.id, "app");
   if (existing) {
     if (!claudeAppDesignProxyRequired(profileGatewayConfig) || existing.claudeDesignProxy) {
+      startClaudeAppBotWorker(config, profile);
       activateProfileAppWindow(existing);
       return {
         message: `Claude App is already running with ${profile.name || profile.id}.`,
@@ -227,7 +397,8 @@ async function ensureGatewayConfigRunning(
     }
     if (existingGateway.state === "unavailable") {
       if (!startIfMissing) {
-        throw new Error(`CCR gateway is not running at ${profileGatewayEndpoint(config)}. Start CCR Desktop or run ccr start before opening ${appName}.`);
+        const reason = existingGateway.reason ? `: ${existingGateway.reason}` : "";
+        throw new ProfileGatewayUnavailableError(`CCR gateway is not running at ${profileGatewayEndpoint(config)}${reason}. Start CCR Desktop or run ccr start before opening ${appName}.`);
       }
     } else {
       throw new Error(existingGatewayConflictMessage(existingGateway, appName));
@@ -235,7 +406,7 @@ async function ensureGatewayConfigRunning(
   }
 
   if (!startIfMissing) {
-    throw new Error(`CCR gateway is not running at ${profileGatewayEndpoint(config)}. Start CCR Desktop or run ccr start before opening ${appName}.`);
+    throw new ProfileGatewayUnavailableError(`CCR gateway is not running at ${profileGatewayEndpoint(config)}. Start CCR Desktop or run ccr start before opening ${appName}.`);
   }
 
   const startedStatus = await gatewayService.start(config);
@@ -267,24 +438,26 @@ type ExistingGatewayHttpProbe = {
   status?: number;
 };
 
+const existingGatewayFetchAttempts = 3;
+
 async function probeExistingProfileGateway(
   config: AppConfig,
   profile: ReturnType<typeof findProfileForOpen>,
   candidateConfig: AppConfig = config
 ): Promise<ExistingProfileGatewayProbe> {
   const endpoint = profileGatewayEndpoint(config);
-  const root = await fetchExistingGateway(endpoint, "/");
-  if (root.status === undefined) {
-    return { endpoint, reason: root.reason, state: "unavailable" };
-  }
-
-  let ccrGateway = isCcrGatewayRoot(root.payload);
+  const health = await fetchExistingGateway(endpoint, "/health");
+  let ccrGateway = isCcrGatewayHealth(health.payload);
+  let root: ExistingGatewayHttpProbe | undefined;
   if (!ccrGateway) {
-    const health = await fetchExistingGateway(endpoint, "/health");
-    ccrGateway = isCcrGatewayHealth(health.payload);
+    root = await fetchExistingGateway(endpoint, "/");
+    ccrGateway = isCcrGatewayRoot(root.payload);
   }
   if (!ccrGateway) {
-    return { endpoint, status: root.status, state: "not-ccr" };
+    if (health.status === undefined && root?.status === undefined) {
+      return { endpoint, reason: health.reason || root?.reason, state: "unavailable" };
+    }
+    return { endpoint, status: health.status ?? root?.status, state: "not-ccr" };
   }
 
   let lastUnauthorized: ExistingGatewayHttpProbe | undefined;
@@ -322,22 +495,26 @@ async function fetchExistingGateway(
   pathname: string,
   init: RequestInit = {}
 ): Promise<ExistingGatewayHttpProbe> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 1200);
-  try {
-    const response = await fetch(new URL(pathname, endpoint).toString(), {
-      ...init,
-      signal: controller.signal
-    });
-    return {
-      payload: await readResponseJson(response),
-      status: response.status
-    };
-  } catch (error) {
-    return { reason: formatError(error) };
-  } finally {
-    clearTimeout(timeout);
+  let reason: string | undefined;
+  for (let attempt = 0; attempt < existingGatewayFetchAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1200);
+    try {
+      const response = await fetch(new URL(pathname, endpoint).toString(), {
+        ...init,
+        signal: controller.signal
+      });
+      return {
+        payload: await readResponseJson(response),
+        status: response.status
+      };
+    } catch (error) {
+      reason = formatError(error);
+    } finally {
+      clearTimeout(timeout);
+    }
   }
+  return { reason };
 }
 
 async function readResponseJson(response: Response): Promise<unknown> {
@@ -549,6 +726,36 @@ function claudeAppDesignProxyRequired(config: AppConfig): boolean {
   return config.plugins.some((plugin) => plugin.enabled !== false && plugin.id === "claude-design");
 }
 
+function profileBotRuntimeStatus(profileId: string): ProfileRuntimeEntry["botGateway"] | undefined {
+  const codexWorker = codexAppBotWorkers.get(profileId);
+  const stateDir = claudeAppBotWorkerProfileId === profileId
+    ? claudeAppBotWorkerStateDir
+    : openCodeAppBotWorkerProfileId === profileId
+      ? openCodeAppBotWorkerStateDir
+      : codexWorker?.stateDir;
+  if (!stateDir) return undefined;
+  try {
+    const value = JSON.parse(readFileSync(path.join(stateDir, "bot-runtime-state.json"), "utf8")) as Record<string, unknown>;
+    const diagnostics = value.diagnostics && typeof value.diagnostics === "object" ? value.diagnostics as Record<string, unknown> : {};
+    const outbox = Array.isArray(value.outbox) ? value.outbox : [];
+    const rawState = typeof diagnostics.state === "string" ? diagnostics.state : "unknown";
+    const state = rawState === "connected" || rawState === "error" || rawState === "starting" || rawState === "stopped" ? rawState : "unknown";
+    return {
+      state,
+      outboxCount: outbox.length,
+      ...(typeof diagnostics.lastDeliveryAt === "string" ? { lastDeliveryAt: diagnostics.lastDeliveryAt } : {}),
+      ...(typeof diagnostics.lastDeliveryStatus === "string" ? { lastDeliveryStatus: diagnostics.lastDeliveryStatus } : {}),
+      ...(typeof diagnostics.lastError === "string" && diagnostics.lastError ? { lastError: diagnostics.lastError } : {}),
+      ...(typeof diagnostics.lastErrorAt === "string" ? { lastErrorAt: diagnostics.lastErrorAt } : {}),
+      ...(typeof diagnostics.lastEventAt === "string" ? { lastEventAt: diagnostics.lastEventAt } : {}),
+      ...(typeof diagnostics.lastEventType === "string" ? { lastEventType: diagnostics.lastEventType } : {}),
+      ...(typeof diagnostics.updatedAt === "string" ? { updatedAt: diagnostics.updatedAt } : {})
+    };
+  } catch {
+    return { state: "starting", outboxCount: 0 };
+  }
+}
+
 export function getProfileRuntimeStatus(): ProfileRuntimeStatus {
   cleanupExitedProfileApps();
   return {
@@ -556,6 +763,7 @@ export function getProfileRuntimeStatus(): ProfileRuntimeStatus {
       .filter((entry) => !entry.stopRequested)
       .map((entry) => ({
         agent: entry.agent,
+        ...(profileBotRuntimeStatus(entry.profileId) ? { botGateway: profileBotRuntimeStatus(entry.profileId) } : {}),
         pid: entry.pid,
         profileId: entry.profileId,
         profileName: entry.profileName,
@@ -586,8 +794,15 @@ export async function stopProfileFromCcr(config: AppConfig, request: ProfileOpen
   }
 
   const stopped = await stopRunningProfileApp(key, entry);
-  if (stopped && profile.agent === "claude-code") {
-    stopClaudeAppBotWorker(profile.id);
+  if (stopped) {
+    if (profile.agent === "claude-code") {
+      stopClaudeAppBotWorker(profile.id);
+    } else if (profile.agent === "opencode") {
+      stopOpenCodeAppBotWorker(profile.id);
+    } else if (profile.agent === "codex" || profile.agent === "zcode") {
+      stopCodexAppBotWorker(profile.id);
+      stopCodexAppMediaPreviewBridge(profile.id);
+    }
   }
   return {
     message: stopped
@@ -618,6 +833,7 @@ function registerProfileApp(
     child: launch.child,
     claudeDesignProxy: launch.claudeDesignProxy,
     command: launch.command,
+    launchSignature: launch.launchSignature,
     pid: launch.pid,
     pidIsLauncher: launch.pidIsLauncher,
     profileId: profile.id,
@@ -648,6 +864,32 @@ function registerProfileApp(
     entry.spawnError = formatError(error);
     cleanupProfileAppEntry(key, entry);
   });
+  return entry;
+}
+
+function registerExistingProfileApp(
+  profile: ReturnType<typeof findProfileForOpen>,
+  surface: ProfileOpenRequest["surface"],
+  existing: { command: string; pid: number; userDataDir: string }
+): RunningProfileApp {
+  const key = profileRuntimeKey(profile.id, surface);
+  const entry: RunningProfileApp = {
+    agent: profile.agent,
+    command: existing.command,
+    pid: existing.pid,
+    pidIsLauncher: true,
+    profileId: profile.id,
+    profileName: profile.name,
+    startedAt: new Date().toISOString(),
+    state: "running",
+    surface,
+    userDataDir: existing.userDataDir
+  };
+  entry.monitor = setInterval(() => {
+    if (!isProfileAppRunning(entry)) cleanupProfileAppEntry(key, entry);
+  }, 2_000);
+  entry.monitor.unref?.();
+  runningProfileApps.set(key, entry);
   return entry;
 }
 
@@ -691,6 +933,20 @@ function runningProfileApp(profileId: string, surface: ProfileOpenRequest["surfa
   return undefined;
 }
 
+function runningProfileAppForAgent(
+  agent: ProfileConfig["agent"],
+  surface: ProfileOpenRequest["surface"],
+  excludedProfileId?: string
+): RunningProfileApp | undefined {
+  cleanupExitedProfileApps();
+  return [...runningProfileApps.values()].find((entry) =>
+    entry.agent === agent &&
+    entry.surface === surface &&
+    entry.profileId !== excludedProfileId &&
+    isProfileAppRunning(entry)
+  );
+}
+
 function cleanupExitedProfileApps(): void {
   for (const [key, entry] of runningProfileApps) {
     if (!isProfileAppRunning(entry)) {
@@ -703,22 +959,30 @@ function cleanupProfileAppEntry(key: string, entry: RunningProfileApp): void {
   if (runningProfileApps.get(key) !== entry) {
     return;
   }
+  if (entry.monitor) clearInterval(entry.monitor);
   runningProfileApps.delete(key);
-  if (entry.stopRequested && entry.agent === "claude-code") {
+  if (entry.agent === "claude-code") {
     stopClaudeAppBotWorker(entry.profileId);
+  }
+  if (entry.agent === "opencode") {
+    stopOpenCodeAppBotWorker(entry.profileId);
+  }
+  if (entry.agent === "codex" || entry.agent === "zcode") {
+    stopCodexAppBotWorker(entry.profileId);
+    stopCodexAppMediaPreviewBridge(entry.profileId);
   }
 }
 
 async function stopRunningProfileApp(key: string, entry: RunningProfileApp): Promise<boolean> {
   if (!isProfileAppRunning(entry)) {
-    runningProfileApps.delete(key);
+    cleanupProfileAppEntry(key, entry);
     return false;
   }
 
   entry.stopRequested = true;
   sendProfileProcessSignal(profileAppMainPid(entry) ?? entry.pid, "SIGTERM");
   if (await waitForProfileAppExit(entry, 5000)) {
-    runningProfileApps.delete(key);
+    cleanupProfileAppEntry(key, entry);
     return true;
   }
 
@@ -777,13 +1041,7 @@ function posixProfileAppMainPid(marker: string): number | undefined {
       if (!Number.isFinite(pid) || pid <= 0 || pid === process.pid) {
         continue;
       }
-      if (path.basename(command.trim().split(/\s+/)[0] || "") === "open") {
-        continue;
-      }
-      if (command.includes(" --type=")) {
-        continue;
-      }
-      if (normalizeProcessPath(command).includes(marker)) {
+      if (isProfileAppMainProcessCommand(command, marker)) {
         return pid;
       }
     }
@@ -791,6 +1049,21 @@ function posixProfileAppMainPid(marker: string): number | undefined {
     return undefined;
   }
   return undefined;
+}
+
+function isProfileAppMainProcessCommand(command: string, marker: string): boolean {
+  const executable = command.trim().split(/\s+/)[0] || "";
+  if (path.basename(executable) === "open") return false;
+  if (/(?:^|\s)--type=/.test(command)) return false;
+  // Chromium crash handlers outlive the desktop app and include its user-data
+  // directory in --database. They are helpers, not evidence of a live window.
+  if (/(?:^|[\\/])(?:browser_)?crashpad_handler(?:\.exe)?(?:\s|$)/i.test(command)) return false;
+  if (/\bptype=crashpad-handler\b/i.test(command)) return false;
+  return normalizeProcessPath(command).includes(marker);
+}
+
+export function isProfileAppMainProcessCommandForTest(command: string, userDataDir: string): boolean {
+  return isProfileAppMainProcessCommand(command, normalizeProcessPath(userDataDir));
 }
 
 function normalizeProcessPath(value: string): string {
@@ -808,7 +1081,9 @@ function windowsProfileAppMainPid(marker: string): number | undefined {
     "  $_.ProcessId -ne $hostPid -and",
     "  $_.CommandLine -and",
     "  (($_.CommandLine -replace '\\\\', '/').ToLowerInvariant().Contains($marker)) -and",
-    "  ($_.CommandLine -notmatch '\\s--type=')",
+    "  ($_.CommandLine -notmatch '\\s--type=') -and",
+    "  ($_.CommandLine -notmatch '(?i)(?:browser_)?crashpad_handler(?:\\.exe)?(?:\\s|$)') -and",
+    "  ($_.CommandLine -notmatch '(?i)ptype=crashpad-handler')",
     "} | Sort-Object ProcessId | Select-Object -First 1 -ExpandProperty ProcessId"
   ].join("\n");
   try {
@@ -894,6 +1169,34 @@ async function waitForProfileAppStart(entry: Pick<RunningProfileApp, "pid" | "pi
   return !entry.spawnError && (Boolean(profileAppMainPid(entry)) || (!entry.pidIsLauncher && isProcessAlive(entry.pid)));
 }
 
+async function waitForStableProfileAppStart(
+  entry: Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "spawnError" | "userDataDir">,
+  timeoutMs: number,
+  stableMs: number
+): Promise<boolean> {
+  const startedAt = Date.now();
+  let runningSince: number | undefined;
+  while (Date.now() - startedAt < timeoutMs) {
+    if (entry.spawnError) {
+      return false;
+    }
+    const running = Boolean(profileAppMainPid(entry)) || (!entry.pidIsLauncher && isProcessAlive(entry.pid));
+    if (running) {
+      runningSince ??= Date.now();
+      if (Date.now() - runningSince >= stableMs) {
+        return true;
+      }
+    } else {
+      runningSince = undefined;
+      if (!entry.pidIsLauncher && !isProcessAlive(entry.pid)) {
+        return false;
+      }
+    }
+    await sleep(100);
+  }
+  return false;
+}
+
 function waitForImmediateSpawnError(child: ChildProcess, timeoutMs: number): Promise<string | undefined> {
   return new Promise((resolve) => {
     let settled = false;
@@ -948,7 +1251,7 @@ function startClaudeAppBotWorker(config: AppConfig, profile: ReturnType<typeof f
   }
 
   const runtimeFile = path.join(CONFIGDIR, "bin", "ccr-codex-cli-middleware.js");
-  ensureClaudeBotWorkerRuntime(runtimeFile);
+  ensureBotWorkerRuntime(runtimeFile);
 
   const settingsFile = resolveClaudeCodeSettingsFile(CONFIGDIR, profile);
   const settingsEnv = readClaudeCodeSettingsEnv(settingsFile);
@@ -983,6 +1286,7 @@ function startClaudeAppBotWorker(config: AppConfig, profile: ReturnType<typeof f
   });
   claudeAppBotWorker = child;
   claudeAppBotWorkerProfileId = profile.id;
+  claudeAppBotWorkerStateDir = botEnv.CCR_BOT_GATEWAY_STATE_DIR;
   child.stderr?.on("data", (chunk) => {
     console.warn(`[profile] Claude App bot worker stderr: ${chunk.toString("utf8").trim()}`);
   });
@@ -990,6 +1294,7 @@ function startClaudeAppBotWorker(config: AppConfig, profile: ReturnType<typeof f
     if (claudeAppBotWorker === child) {
       claudeAppBotWorker = undefined;
       claudeAppBotWorkerProfileId = undefined;
+      claudeAppBotWorkerStateDir = undefined;
     }
     if (code && code !== 0) {
       console.warn(`[profile] Claude App bot worker exited: code=${code}${signal ? ` signal=${signal}` : ""}`);
@@ -999,9 +1304,151 @@ function startClaudeAppBotWorker(config: AppConfig, profile: ReturnType<typeof f
     if (claudeAppBotWorker === child) {
       claudeAppBotWorker = undefined;
       claudeAppBotWorkerProfileId = undefined;
+      claudeAppBotWorkerStateDir = undefined;
     }
     console.warn(`[profile] Claude App bot worker failed: ${formatError(error)}`);
   });
+}
+
+function startOpenCodeAppBotWorker(
+  config: AppConfig,
+  profile: ReturnType<typeof findProfileForOpen>,
+  configFile: string,
+  inlineConfig: string,
+  launchSignature: string
+): void {
+  const botEnv = botGatewayProfileEnv(config, profile, "app");
+  if (botEnv.CCR_BOT_GATEWAY_ENABLED !== "true") {
+    stopOpenCodeAppBotWorker(profile.id);
+    return;
+  }
+  if (
+    openCodeAppBotWorker &&
+    !openCodeAppBotWorker.killed &&
+    openCodeAppBotWorker.exitCode === null &&
+    openCodeAppBotWorkerProfileId === profile.id &&
+    openCodeAppBotWorkerSignature === launchSignature
+  ) {
+    return;
+  }
+
+  stopOpenCodeAppBotWorker();
+  const runtimeFile = path.join(CONFIGDIR, "bin", "ccr-codex-cli-middleware.js");
+  ensureBotWorkerRuntime(runtimeFile);
+  const nodeLaunch = nodeRuntimeLaunch();
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...stringRecord(profile.env),
+    ...botEnv,
+    ...(nodeLaunch.electronRunAsNode ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+    CCR_OPENCODE_BOT_WORKER: "1",
+    CCR_OPENCODE_WORKSPACE_NAME: profile.name || profile.id,
+    CCR_PROFILE_SURFACE: "app",
+    OPENCODE_CLIENT: "cli",
+    OPENCODE_CONFIG: configFile,
+    OPENCODE_CONFIG_CONTENT: inlineConfig
+  };
+  delete env.ELECTRON_NO_ATTACH_CONSOLE;
+
+  const child = spawn(nodeLaunch.command, [runtimeFile, "opencode-bot-worker", "--workspace-name", profile.name || profile.id], {
+    detached: false,
+    env,
+    stdio: ["ignore", "ignore", "pipe"],
+    windowsHide: true
+  });
+  openCodeAppBotWorker = child;
+  openCodeAppBotWorkerProfileId = profile.id;
+  openCodeAppBotWorkerSignature = launchSignature;
+  openCodeAppBotWorkerStateDir = botEnv.CCR_BOT_GATEWAY_STATE_DIR;
+  child.stderr?.on("data", (chunk) => {
+    console.warn(`[profile] OpenCode App bot worker stderr: ${chunk.toString("utf8").trim()}`);
+  });
+  child.once("exit", (code, signal) => {
+    if (openCodeAppBotWorker === child) {
+      openCodeAppBotWorker = undefined;
+      openCodeAppBotWorkerProfileId = undefined;
+      openCodeAppBotWorkerSignature = undefined;
+      openCodeAppBotWorkerStateDir = undefined;
+    }
+    if (code && code !== 0) {
+      console.warn(`[profile] OpenCode App bot worker exited: code=${code}${signal ? ` signal=${signal}` : ""}`);
+    }
+  });
+  child.once("error", (error) => {
+    if (openCodeAppBotWorker === child) {
+      openCodeAppBotWorker = undefined;
+      openCodeAppBotWorkerProfileId = undefined;
+      openCodeAppBotWorkerSignature = undefined;
+      openCodeAppBotWorkerStateDir = undefined;
+    }
+    console.warn(`[profile] OpenCode App bot worker failed: ${formatError(error)}`);
+  });
+}
+
+function startCodexAppBotWorker(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): void {
+  const botEnv = botGatewayProfileEnv(config, profile, "app");
+  if (botEnv.CCR_BOT_GATEWAY_ENABLED !== "true") {
+    stopCodexAppBotWorker(profile.id);
+    return;
+  }
+  const existing = codexAppBotWorkers.get(profile.id);
+  if (existing && !existing.child.killed && existing.child.exitCode === null) {
+    return;
+  }
+  stopCodexAppBotWorker(profile.id);
+  const plan = buildProfileLaunchPlan(CONFIGDIR, profile, "app", ["codex-bot-worker", "--workspace-name", profile.name || profile.id]);
+  const launch = profileLaunchSpawnCommand(plan);
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...plan.env,
+    ...botEnv,
+    CCR_CODEX_BOT_WORKER: "1",
+    CCR_PROFILE_SURFACE: "app",
+    CODEXL_PROFILE_SURFACE: "app"
+  };
+  delete env.ELECTRON_NO_ATTACH_CONSOLE;
+  const child = spawn(launch.command, launch.args, {
+    detached: false,
+    env,
+    stdio: ["ignore", "ignore", "pipe"],
+    windowsHide: true,
+    windowsVerbatimArguments: launch.windowsVerbatimArguments
+  });
+  codexAppBotWorkers.set(profile.id, { agent: profile.agent, child, stateDir: botEnv.CCR_BOT_GATEWAY_STATE_DIR });
+  child.stderr?.on("data", (chunk) => {
+    console.warn(`[profile] ${profile.agent === "zcode" ? "ZCode" : "Codex"} App bot worker stderr: ${chunk.toString("utf8").trim()}`);
+  });
+  child.once("exit", (code, signal) => {
+    if (codexAppBotWorkers.get(profile.id)?.child === child) codexAppBotWorkers.delete(profile.id);
+    if (code && code !== 0) {
+      console.warn(`[profile] ${profile.agent === "zcode" ? "ZCode" : "Codex"} App bot worker exited: code=${code}${signal ? ` signal=${signal}` : ""}`);
+    }
+  });
+  child.once("error", (error) => {
+    if (codexAppBotWorkers.get(profile.id)?.child === child) codexAppBotWorkers.delete(profile.id);
+    console.warn(`[profile] ${profile.agent === "zcode" ? "ZCode" : "Codex"} App bot worker failed: ${formatError(error)}`);
+  });
+}
+
+function startCodexAppMediaPreviewBridge(
+  config: AppConfig,
+  profile: ReturnType<typeof findProfileForOpen>,
+  userDataDir: string
+): void {
+  if (profile.agent !== "codex" || !shouldEnableCodexMediaPreviewBridge(config.mediaTools.enabled)) {
+    stopCodexAppMediaPreviewBridge(profile.id);
+    return;
+  }
+  const bridge = new CodexAppMediaPreviewBridge({
+    endpoint: mediaToolsGatewayEndpoint(config),
+    profileId: profile.id,
+    userDataDir
+  });
+  const existing = codexAppMediaPreviewBridges.get(profile.id);
+  if (existing?.signature === bridge.signature) return;
+  existing?.bridge.stop();
+  codexAppMediaPreviewBridges.set(profile.id, { bridge, signature: bridge.signature });
+  bridge.start();
 }
 
 function readClaudeCodeSettingsEnv(settingsFile: string): Record<string, string> {
@@ -1033,7 +1480,7 @@ function isEnvName(value: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
 }
 
-function ensureClaudeBotWorkerRuntime(runtimeFile: string): void {
+function ensureBotWorkerRuntime(runtimeFile: string): void {
   const content = codexCliMiddlewareRuntimeScript();
   const existing = existsSync(runtimeFile) ? readFileSync(runtimeFile, "utf8") : "";
   if (existing !== content) {
@@ -1043,8 +1490,15 @@ function ensureClaudeBotWorkerRuntime(runtimeFile: string): void {
       chmodSync(runtimeFile, 0o755);
     }
   }
-  if (!content.includes("CCR_CLAUDE_CODE_BOT_WORKER") || !content.includes("claude-bot-worker")) {
-    throw new Error("Claude bot worker runtime does not contain the bot worker entrypoint.");
+  if (
+    !content.includes("CCR_CLAUDE_CODE_BOT_WORKER") ||
+    !content.includes("claude-bot-worker") ||
+    !content.includes("CCR_OPENCODE_BOT_WORKER") ||
+    !content.includes("opencode-bot-worker") ||
+    !content.includes("CCR_CODEX_BOT_WORKER") ||
+    !content.includes("codex-bot-worker")
+  ) {
+    throw new Error("Bot worker runtime does not contain all required entrypoints.");
   }
 }
 
@@ -1055,6 +1509,7 @@ function stopClaudeAppBotWorker(profileId?: string): void {
   const child = claudeAppBotWorker;
   claudeAppBotWorker = undefined;
   claudeAppBotWorkerProfileId = undefined;
+  claudeAppBotWorkerStateDir = undefined;
   if (!child || child.killed) {
     return;
   }
@@ -1062,6 +1517,52 @@ function stopClaudeAppBotWorker(profileId?: string): void {
     child.kill("SIGTERM");
   } catch {
     // The worker may have already exited.
+  }
+}
+
+function stopOpenCodeAppBotWorker(profileId?: string): void {
+  if (profileId && openCodeAppBotWorkerProfileId && openCodeAppBotWorkerProfileId !== profileId) {
+    return;
+  }
+  const child = openCodeAppBotWorker;
+  openCodeAppBotWorker = undefined;
+  openCodeAppBotWorkerProfileId = undefined;
+  openCodeAppBotWorkerSignature = undefined;
+  openCodeAppBotWorkerStateDir = undefined;
+  if (!child || child.killed) {
+    return;
+  }
+  try {
+    child.kill("SIGTERM");
+  } catch {
+    // The worker may have already exited.
+  }
+}
+
+function stopCodexAppBotWorker(profileId?: string): void {
+  const entries = profileId
+    ? [[profileId, codexAppBotWorkers.get(profileId)] as const]
+    : [...codexAppBotWorkers.entries()];
+  for (const [id, entry] of entries) {
+    if (!entry) continue;
+    codexAppBotWorkers.delete(id);
+    if (entry.child.killed) continue;
+    try {
+      entry.child.kill("SIGTERM");
+    } catch {
+      // The worker may have already exited.
+    }
+  }
+}
+
+function stopCodexAppMediaPreviewBridge(profileId?: string): void {
+  const entries = profileId
+    ? [[profileId, codexAppMediaPreviewBridges.get(profileId)] as const]
+    : [...codexAppMediaPreviewBridges.entries()];
+  for (const [id, entry] of entries) {
+    if (!entry) continue;
+    codexAppMediaPreviewBridges.delete(id);
+    entry.bridge.stop();
   }
 }
 
@@ -1090,8 +1591,9 @@ function commandProfileRef(config: AppConfig, profile: ReturnType<typeof findPro
   return duplicateName ? profile.id : name;
 }
 
-export function ensureCcrCliLauncher(): string {
+export function prepareCcrCliLauncherRuntime(): CcrCliLauncherPreparation {
   const binDir = path.join(CONFIGDIR, "bin");
+  const persistentPathRequired = !processPathIncludes(binDir);
   mkdirSync(binDir, { recursive: true });
   cleanupGeneratedBinBackups();
   cleanupLegacyCcrCliLauncher(binDir);
@@ -1100,15 +1602,63 @@ export function ensureCcrCliLauncher(): string {
   const runtimeSource = findBundledCcrCliSource();
   writeFileIfChanged(runtimeFile, readFileSync(runtimeSource, "utf8"));
   chmodSafe(runtimeFile);
+  syncCcrCliCompanionRuntimes(runtimeSource, binDir);
+  syncCcrCliModelCatalog(runtimeSource, binDir);
   ensureBundledToolHubMcpRuntime(path.join(binDir, TOOL_HUB_MCP_RUNTIME_FILE_NAME));
+  prependProcessPath(binDir);
+
+  return { binDir, persistentPathRequired };
+}
+
+export function syncCcrCliCompanionRuntimes(runtimeSource: string, binDir: string): string[] {
+  const sourceDir = path.dirname(runtimeSource);
+  const synced: string[] = [];
+  for (const fileName of CCR_CLI_COMPANION_RUNTIME_FILE_NAMES) {
+    const source = path.join(sourceDir, fileName);
+    if (!existsSync(source)) continue;
+    const destination = path.join(binDir, fileName);
+    writeFileIfChanged(destination, readFileSync(source, "utf8"));
+    chmodSafe(destination);
+    synced.push(destination);
+  }
+  return synced;
+}
+
+export function syncCcrCliModelCatalog(runtimeSource: string, binDir: string): string | undefined {
+  const sourceDir = path.dirname(runtimeSource);
+  const source = [
+    path.join(sourceDir, "..", "models.json"),
+    path.join(sourceDir, "models.json")
+  ].find((candidate) => existsSync(candidate));
+  if (!source) {
+    return undefined;
+  }
+  const destination = path.join(binDir, "..", "models.json");
+  writeFileIfChanged(destination, readFileSync(source, "utf8"));
+  return destination;
+}
+
+export function persistPreparedCcrCliPath(preparation: CcrCliLauncherPreparation): void {
+  if (!preparation.persistentPathRequired) {
+    return;
+  }
+  persistCcrBinOnPath(preparation.binDir);
+}
+
+export function ensureCcrCliLauncher(config?: AppConfig, options: EnsureCcrCliLauncherOptions = {}): string {
+  const preparation = prepareCcrCliLauncherRuntime();
+  const { binDir } = preparation;
+  const runtimeFile = path.join(binDir, desktopCliRuntimeFileName);
 
   const launcherFile = path.join(binDir, process.platform === "win32" ? `${desktopCliCommandName}.cmd` : desktopCliCommandName);
   const launcherContent = process.platform === "win32"
-    ? windowsCcrLauncher(runtimeFile)
+    ? windowsCcrLauncher(runtimeFile, config)
     : posixCcrLauncher(runtimeFile);
   writeFileIfChanged(launcherFile, launcherContent);
   chmodSafe(launcherFile);
-  ensureCcrBinOnPath(binDir);
+  if (options.persistPath !== false) {
+    persistPreparedCcrCliPath(preparation);
+  }
 
   return launcherFile;
 }
@@ -1183,8 +1733,9 @@ function posixCcrLauncher(runtimeFile: string): string {
   ].join("\n") + "\n";
 }
 
-function windowsCcrLauncher(runtimeFile: string): string {
+export function windowsCcrLauncher(runtimeFile: string, config?: AppConfig): string {
   const nodePath = bundledNodePath();
+  const dispatches = config ? windowsProfileCliDispatches(config) : [];
   return [
     "@echo off",
     "setlocal",
@@ -1196,14 +1747,54 @@ function windowsCcrLauncher(runtimeFile: string): string {
     ") else (",
     "  set \"NODE_PATH=%CCR_CLI_NODE_PATH%\"",
     ")",
+    ...(dispatches.length > 0
+      ? [
+          "if /I \"%~2\"==\"app\" goto ccr_run_cli",
+          "if /I \"%~2\"==\"--app\" goto ccr_run_cli",
+          ...dispatches.map((dispatch, index) => `if /I \"%~1\"==\"${cmdValue(dispatch.profileRef)}\" goto ccr_profile_${index}`),
+          ":ccr_run_cli"
+        ]
+      : []),
     "if defined CCR_NODE_BIN (",
     '  "%CCR_NODE_BIN%" "%CCR_CLI_RUNTIME%" %*',
     "  exit /b %ERRORLEVEL%",
     ")",
     "set \"ELECTRON_RUN_AS_NODE=1\"",
     `${cmdQuote(process.execPath)} "%CCR_CLI_RUNTIME%" %*`,
-    "exit /b %ERRORLEVEL%"
+    "exit /b %ERRORLEVEL%",
+    ...dispatches.flatMap((dispatch, index) => [
+      `:ccr_profile_${index}`,
+      "set \"CCR_CLI_PREPARE_PROFILE_ONLY=1\"",
+      "set \"ELECTRON_RUN_AS_NODE=1\"",
+      `${cmdQuote(process.execPath)} "%CCR_CLI_RUNTIME%" %*`,
+      "if errorlevel 1 exit /b %ERRORLEVEL%",
+      "set \"CCR_CLI_PREPARE_PROFILE_ONLY=\"",
+      "set \"ELECTRON_RUN_AS_NODE=\"",
+      "set \"CCR_CLI_DIRECT_PROFILE_DISPATCH=1\"",
+      `call ${cmdQuote(dispatch.launcher)} %*`,
+      "exit /b %ERRORLEVEL%"
+    ])
   ].join("\r\n") + "\r\n";
+}
+
+function windowsProfileCliDispatches(config: AppConfig): Array<{ launcher: string; profileRef: string }> {
+  const dispatches: Array<{ launcher: string; profileRef: string }> = [];
+  const refs = new Set<string>();
+  for (const profile of config.profile.profiles) {
+    if (!profile.enabled || !profileOpenSurfaces(profile).includes("cli")) {
+      continue;
+    }
+    const launcher = buildProfileLaunchPlan(CONFIGDIR, profile, "cli").command;
+    for (const profileRef of uniqueStrings([commandProfileRef(config, profile), profile.id])) {
+      const normalized = profileRef.trim().toLowerCase();
+      if (!normalized || refs.has(normalized)) {
+        continue;
+      }
+      refs.add(normalized);
+      dispatches.push({ launcher, profileRef });
+    }
+  }
+  return dispatches;
 }
 
 function bundledNodePath(): string {
@@ -1242,8 +1833,7 @@ function writeFileIfChanged(file: string, content: string): void {
   writeFileSync(file, content, "utf8");
 }
 
-function ensureCcrBinOnPath(binDir: string): void {
-  prependProcessPath(binDir);
+function persistCcrBinOnPath(binDir: string): void {
   try {
     if (process.platform === "win32") {
       ensureWindowsUserPath(binDir);
@@ -1253,6 +1843,13 @@ function ensureCcrBinOnPath(binDir: string): void {
   } catch (error) {
     console.warn(`[profile] Failed to persist ccr PATH: ${formatError(error)}`);
   }
+}
+
+function processPathIncludes(binDir: string): boolean {
+  const pathKey = process.platform === "win32"
+    ? Object.keys(process.env).find((key) => key.toLowerCase() === "path") || "Path"
+    : "PATH";
+  return pathSegmentsInclude((process.env[pathKey] || "").split(path.delimiter).filter(Boolean), binDir);
 }
 
 function prependProcessPath(binDir: string): void {
@@ -1268,7 +1865,8 @@ function prependProcessPath(binDir: string): void {
   process.env[pathKey] = [binDir, ...segments].join(delimiter);
 }
 
-function ensureWindowsUserPath(binDir: string): void {
+function ensureWindowsUserPath(binDir: string): boolean {
+  const broadcastLines = windowsEnvironmentChangedPowerShellLines().map((line) => `  ${line}`);
   const script = [
     "$ErrorActionPreference = 'Stop'",
     `$bin = ${powershellString(binDir)}`,
@@ -1281,6 +1879,10 @@ function ensureWindowsUserPath(binDir: string): void {
     "$expandedSegments = $segments | ForEach-Object { [Environment]::ExpandEnvironmentVariables($_).TrimEnd('\\\\') }",
     "if ($expandedSegments -notcontains $expandedBin) {",
     "  [Environment]::SetEnvironmentVariable('Path', ((@($bin) + $segments) -join ';'), 'User')",
+    ...broadcastLines,
+    "  Write-Output 'CHANGED'",
+    "} else {",
+    "  Write-Output 'UNCHANGED'",
     "}"
   ].join("\n");
   const result = spawnSync(windowsSystemCommand("powershell.exe"), [
@@ -1300,7 +1902,7 @@ function ensureWindowsUserPath(binDir: string): void {
   if (result.status !== 0) {
     throw new Error((result.stderr || result.stdout || `powershell.exe exited with ${result.status}`).trim());
   }
-  broadcastWindowsEnvironmentChanged();
+  return result.stdout.trim().split(/\r?\n/).includes("CHANGED");
 }
 
 function ensurePosixShellPath(binDir: string): void {

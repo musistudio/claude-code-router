@@ -155,7 +155,7 @@ export function formatUsdCost(value: number | undefined): string {
   return new Intl.NumberFormat(undefined, {
     currency: "USD",
     maximumFractionDigits: normalized >= 100 ? 0 : 2,
-    minimumFractionDigits: 2,
+    minimumFractionDigits: normalized >= 100 ? 0 : 2,
     style: "currency"
   }).format(normalized);
 }
@@ -180,7 +180,7 @@ export function logSelectOptions(label: string, values: string[], selected: stri
 }
 
 export function normalizeAgentFilterValue(value: string): AgentFilterValue {
-  return value === "claude-code" || value === "codex" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "opencode" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
 }
 
 export function agentKindLabel(agent: AgentKind): string {
@@ -192,6 +192,15 @@ export function agentKindLabel(agent: AgentKind): string {
   }
   if (agent === "codex") {
     return "Codex";
+  }
+  if (agent === "grok") {
+    return "Grok CLI";
+  }
+  if (agent === "kimi") {
+    return "Kimi CLI";
+  }
+  if (agent === "opencode") {
+    return "OpenCode";
   }
   if (agent === "zcode") {
     return "ZCode";

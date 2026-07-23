@@ -66,7 +66,7 @@ export function ExtensionsView({
             <div className="m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center text-[12px] text-muted-foreground">{t("No matching extensions")}</div>
           ) : null}
           {visibleExtensions.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="min-w-0">
               <div className="min-w-[720px]">
                 <div className="sticky top-0 z-10 grid h-10 grid-cols-[minmax(180px,0.95fr)_minmax(220px,1.15fr)_minmax(240px,1.2fr)_116px_84px] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   <div className="truncate">{t("Name")}</div>

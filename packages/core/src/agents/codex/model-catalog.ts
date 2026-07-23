@@ -1,11 +1,15 @@
-import { BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME } from "@ccr/core/contracts/app";
-import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
+import { BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME } from "@ccr/core/contracts/app";
+import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, ProviderModelMetadata, ProviderReasoningLevel, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
 import {
   findModelCatalogEntry,
   modelCatalogMaxInputTokens,
   readCatalogCapability,
   type ModelCatalogEntry
 } from "@ccr/core/gateway/model-catalog";
+import { codexDefaultBaseUrl, readCodexLocalModelCatalog } from "@ccr/core/agents/local-providers/codex";
+import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared";
+import { normalizeProviderBaseUrl } from "@ccr/core/providers/url";
+import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
 
 const fusionModelProviderName = "Fusion";
 const codexDefaultContextWindow = 128_000;
@@ -113,23 +117,25 @@ function codexModelCatalogItem(
   config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>
 ): CodexModelCatalogItem {
   const profile = codexModelCapabilityProfile(model, config);
-  const contextWindow = codexModelContextWindow(model, profile.catalogEntry);
+  const contextWindow = positiveInteger(profile.contextWindow) ?? positiveInteger(profile.maxContextWindow) ?? codexModelContextWindow(model, profile.catalogEntry);
+  const maxContextWindow = Math.max(contextWindow, positiveInteger(profile.maxContextWindow) ?? contextWindow);
+  const effectiveContextWindowPercent = percentage(profile.effectiveContextWindowPercent) ?? codexEffectiveContextWindowPercent;
   return {
-    additional_speed_tiers: [],
+    additional_speed_tiers: profile.additionalSpeedTiers,
     apply_patch_tool_type: profile.applyPatchToolType,
     availability_nux: null,
     base_instructions: "You are Codex, a coding agent.",
     context_window: contextWindow,
-    default_reasoning_level: profile.supportsReasoning ? "medium" : null,
-    default_reasoning_summary: "none",
+    default_reasoning_level: profile.defaultReasoningLevel,
+    default_reasoning_summary: profile.defaultReasoningSummary,
     description: `CCR gateway model ${model}`,
     display_name: model,
-    effective_context_window_percent: codexEffectiveContextWindowPercent,
+    effective_context_window_percent: effectiveContextWindowPercent,
     experimental_supported_tools: [],
     input_modalities: profile.inputModalities,
-    max_context_window: contextWindow,
+    max_context_window: maxContextWindow,
     priority,
-    service_tiers: [],
+    service_tiers: profile.serviceTiers,
     shell_type: "shell_command",
     slug: model,
     support_verbosity: true,
@@ -147,10 +153,17 @@ function codexModelCatalogItem(
 }
 
 type CodexCapabilityProfile = {
+  additionalSpeedTiers: unknown[];
   applyPatchToolType: string | null;
   catalogEntry?: ModelCatalogEntry;
+  contextWindow?: number;
+  defaultReasoningLevel: string | null;
+  defaultReasoningSummary: string;
+  effectiveContextWindowPercent?: number;
   inputModalities: string[];
   supportedReasoningLevels: Array<{ description: string; effort: string }>;
+  serviceTiers: unknown[];
+  maxContextWindow?: number;
   supportsImageInput: boolean;
   supportsParallelToolCalls: boolean;
   supportsReasoning: boolean;
@@ -162,22 +175,47 @@ function codexModelCapabilityProfile(
   config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>
 ): CodexCapabilityProfile {
   const selector = parseModelSelector(model);
-  const provider = selector?.provider ? findConfiguredProvider(config, selector.provider) : undefined;
-  const catalogEntry = findModelCatalogEntry(model);
+  const attributionConfig = config
+    ? {
+        Providers: config.Providers ?? [],
+        virtualModelProfiles: config.virtualModelProfiles ?? []
+      }
+    : undefined;
+  const attribution = resolveUsageModelAttribution(attributionConfig, model);
+  const provider = attribution.provider
+    ? findConfiguredProvider(config, attribution.provider)
+    : selector?.provider
+      ? findConfiguredProvider(config, selector.provider)
+      : findConfiguredProviderForModel(config, attribution.model ?? model);
+  const providerModel = attribution.model ?? selector?.model ?? model;
+  const providerModelMetadata = provider
+    ? providerModelMetadataFor(provider, providerModel) ?? localCodexModelMetadataFor(provider, providerModel)
+    : undefined;
+  const physicalModelSelector = provider ? `${provider.name}/${providerModel}` : providerModel;
+  const catalogEntry = findModelCatalogEntry(physicalModelSelector);
   const capabilities = catalogEntry?.capabilities ?? {};
+  const configuredCapabilities = providerModelMetadata?.capabilities;
   const providerProtocol = provider ? codexProviderProtocol(provider) : undefined;
-  const providerSupportsResponses = provider ? codexProviderSupportsResponses(provider) : false;
+  const supportsFusionVision = codexVirtualModelSupportsFusionVision(model, config);
   const supportsFusionWebSearch = codexVirtualModelSupportsFusionWebSearch(model, config);
-  const supportsReasoning = readCatalogCapability(capabilities, "reasoning");
-  const supportsImageInput = catalogEntrySupportsImageInput(catalogEntry);
+  const metadataReasoningLevels = normalizeProviderReasoningLevels(providerModelMetadata?.supportedReasoningLevels);
+  const documentedReasoning = documentedReasoningProfile(providerModel);
+  const resolvedReasoningLevels = metadataReasoningLevels
+    ?? documentedReasoning?.levels
+    ?? [];
+  const supportsReasoning = providerModelMetadata?.supportsReasoningSummaries
+    ?? documentedReasoning?.supportsReasoning
+    ?? (metadataReasoningLevels !== undefined || readCatalogCapability(capabilities, "reasoning"));
+  const supportsImageInput = supportsFusionVision ||
+    (configuredCapabilities?.imageInput ?? catalogEntrySupportsImageInput(catalogEntry));
   const supportsParallelToolCalls = readCatalogCapability(capabilities, "parallelFunctionCalling");
-  const applyPatchToolType = providerSupportsResponses || catalogModelLooksLikeGpt(model, catalogEntry) || codexPatchBridgeApplies(model, catalogEntry, config)
-    ? "freeform"
-    : null;
+  // Codex must emit apply_patch for both native GPT models and non-GPT models
+  // that the gateway converts through the compatibility bridge.
+  const applyPatchToolType = "freeform";
   const supportsSearchTool =
     supportsFusionWebSearch ||
     (
-      readCatalogCapability(capabilities, "webSearch") &&
+      (configuredCapabilities?.webSearch ?? readCatalogCapability(capabilities, "webSearch")) &&
       (
         providerProtocol === "openai_responses" ||
         providerProtocol === "anthropic_messages" ||
@@ -186,10 +224,23 @@ function codexModelCapabilityProfile(
     );
 
   return {
+    additionalSpeedTiers: providerModelMetadata?.additionalSpeedTiers ?? [],
     applyPatchToolType,
     catalogEntry,
+    contextWindow: providerModelMetadata?.contextWindow,
+    defaultReasoningLevel: resolveDefaultReasoningLevel(
+      providerModelMetadata?.defaultReasoningLevel !== undefined
+        ? providerModelMetadata.defaultReasoningLevel
+        : documentedReasoning?.defaultLevel,
+      resolvedReasoningLevels,
+      providerModelMetadata?.defaultReasoningLevel !== undefined || documentedReasoning !== undefined
+    ),
+    defaultReasoningSummary: providerModelMetadata?.defaultReasoningSummary ?? "none",
+    effectiveContextWindowPercent: providerModelMetadata?.effectiveContextWindowPercent,
     inputModalities: supportsImageInput ? ["text", "image"] : ["text"],
-    supportedReasoningLevels: supportsReasoning ? supportedReasoningLevels(capabilities) : [],
+    serviceTiers: providerModelMetadata?.serviceTiers ?? [],
+    maxContextWindow: providerModelMetadata?.maxContextWindow,
+    supportedReasoningLevels: resolvedReasoningLevels,
     supportsImageInput,
     supportsParallelToolCalls,
     supportsReasoning,
@@ -197,8 +248,119 @@ function codexModelCapabilityProfile(
   };
 }
 
+function providerModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {
+  const metadata = provider.modelMetadata ?? {};
+  const direct = metadata[model];
+  if (direct) {
+    return direct;
+  }
+  const normalized = model.trim().toLowerCase();
+  const match = Object.entries(metadata).find(([candidate]) => candidate.trim().toLowerCase() === normalized);
+  return match?.[1];
+}
+
+function localCodexModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {
+  if (!isLocalCodexProvider(provider)) {
+    return undefined;
+  }
+  return readCodexLocalModelCatalog().modelMetadata?.[model];
+}
+
+function isLocalCodexProvider(provider: GatewayProviderConfig): boolean {
+  const baseUrl = providerBaseUrl(provider).trim().replace(/\/+$/g, "");
+  const normalizedBaseUrl = normalizeProviderBaseUrl(baseUrl);
+  const normalizedCodexBaseUrl = normalizeProviderBaseUrl(codexDefaultBaseUrl);
+  return (
+    providerApiKey(provider) === localAgentProviderApiKey &&
+    (
+      baseUrl.toLowerCase() === codexDefaultBaseUrl.toLowerCase() ||
+      baseUrl.toLowerCase().includes("chatgpt.com/backend-api/codex") ||
+      normalizedBaseUrl === normalizedCodexBaseUrl
+    )
+  );
+}
+
+function providerBaseUrl(provider: GatewayProviderConfig): string {
+  return provider.api_base_url || provider.baseUrl || provider.baseurl || "";
+}
+
+function providerApiKey(provider: GatewayProviderConfig): string {
+  return provider.api_key || provider.apiKey || provider.apikey || "";
+}
+
+function normalizeProviderReasoningLevels(levels: ProviderReasoningLevel[] | undefined): Array<{ description: string; effort: string }> | undefined {
+  if (levels === undefined) {
+    return undefined;
+  }
+  const seen = new Set<string>();
+  const normalized: Array<{ description: string; effort: string }> = [];
+  for (const level of levels) {
+    const effort = level.effort.trim().toLowerCase();
+    // Codex treats `none` as the absence of a reasoning selection and does not
+    // render it in the effort menu, so do not publish it as a selectable level.
+    if (!effort || effort === "none" || seen.has(effort)) {
+      continue;
+    }
+    seen.add(effort);
+    normalized.push({
+      description: level.description.trim() || effortDescription(effort),
+      effort
+    });
+  }
+  return normalized;
+}
+
+function resolveDefaultReasoningLevel(
+  configuredDefault: string | null | undefined,
+  levels: Array<{ effort: string }>,
+  hasConfiguredDefault: boolean
+): string | null {
+  if (hasConfiguredDefault && configuredDefault === null) {
+    return null;
+  }
+
+  const normalizedDefault = configuredDefault?.trim().toLowerCase();
+  const configuredMatch = normalizedDefault
+    ? levels.find((level) => level.effort.toLowerCase() === normalizedDefault)
+    : undefined;
+  if (configuredMatch) {
+    return configuredMatch.effort;
+  }
+  if (normalizedDefault === "none") {
+    return null;
+  }
+
+  return levels.find((level) => level.effort === "medium")?.effort
+    ?? levels.find((level) => level.effort === "high")?.effort
+    ?? levels[0]?.effort
+    ?? null;
+}
+
+function effortDescription(effort: string): string {
+  const normalized = effort.trim().toLowerCase();
+  if (normalized === "xhigh") {
+    return "Extra high reasoning";
+  }
+  if (normalized === "ultra") {
+    return "Maximum reasoning with automatic task delegation";
+  }
+  return `${effort.slice(0, 1).toUpperCase()}${effort.slice(1)} reasoning`;
+}
+
 function codexModelContextWindow(model: string, entry = findModelCatalogEntry(model)): number {
   return modelCatalogMaxInputTokens(entry) || codexDefaultContextWindow;
+}
+
+function percentage(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isFinite(value) && value > 0 && value <= 100
+    ? value
+    : undefined;
+}
+
+function positiveInteger(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isFinite(value) && value > 0
+    ? Math.trunc(value)
+    : undefined;
 }
 
 function catalogEntrySupportsImageInput(entry: ModelCatalogEntry | undefined): boolean {
@@ -210,16 +372,100 @@ function catalogEntrySupportsImageInput(entry: ModelCatalogEntry | undefined): b
     readCatalogCapability(capabilities, "multimodal");
 }
 
-function supportedReasoningLevels(capabilities: Record<string, unknown>): Array<{ description: string; effort: string }> {
-  const levels = [
-    { effort: "low", description: "Low reasoning" },
-    { effort: "medium", description: "Medium reasoning" },
-    { effort: "high", description: "High reasoning" }
-  ];
-  if (readCatalogCapability(capabilities, "xhighReasoningEffort") || readCatalogCapability(capabilities, "maxReasoningEffort")) {
-    levels.push({ effort: "xhigh", description: "Extra high reasoning" });
+type DocumentedReasoningProfile = {
+  defaultLevel: string | null;
+  levels: Array<{ description: string; effort: string }>;
+  supportsReasoning: boolean;
+};
+
+function documentedReasoningProfile(model: string): DocumentedReasoningProfile | undefined {
+  const name = model.trim().toLowerCase().split("/").at(-1) ?? "";
+  const profile = (efforts: string[], defaultLevel: string | null, supportsReasoning = true): DocumentedReasoningProfile => ({
+    defaultLevel,
+    levels: efforts
+      .filter((effort) => effort !== "none")
+      .map((effort) => ({ description: effortDescription(effort), effort })),
+    supportsReasoning
+  });
+
+  // OpenAI API model pages define the API effort values. Codex additionally
+  // exposes its client-only Ultra mode for Sol/Terra, matching gateway metadata.
+  if (/^gpt-5\.6(?:-(?:sol|terra|luna))?(?:-\d{4}-\d{2}-\d{2})?$/.test(name)) {
+    const supportsUltra = !/^gpt-5\.6-luna(?:-|$)/.test(name);
+    return profile([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      ...(supportsUltra ? ["ultra"] : [])
+    ], "medium");
   }
-  return levels;
+  if (/^gpt-5\.5(?:-\d{4}-\d{2}-\d{2})?$/.test(name)) {
+    return profile(["none", "low", "medium", "high", "xhigh"], "medium");
+  }
+  if (/^gpt-5\.5-pro(?:-\d{4}-\d{2}-\d{2})?$/.test(name)) {
+    return profile(["medium", "high", "xhigh"], "high");
+  }
+  if (/^gpt-5\.4(?:-(?:mini|nano))?(?:-\d{4}-\d{2}-\d{2})?$/.test(name)) {
+    return profile(["none", "low", "medium", "high", "xhigh"], "none");
+  }
+  if (/^gpt-5\.4-pro(?:-\d{4}-\d{2}-\d{2})?$/.test(name)) {
+    return profile(["medium", "high", "xhigh"], "medium");
+  }
+  if (/^gpt-5\.3-codex(?:-\d{4}-\d{2}-\d{2})?$/.test(name)) {
+    return profile(["low", "medium", "high", "xhigh"], "medium");
+  }
+
+  // Anthropic effort is distinct from extended-thinking on/off or token budgets.
+  if (/^claude-(?:fable|mythos)-5(?:-|$)/.test(name)) {
+    return profile(["low", "medium", "high", "xhigh", "max"], "high");
+  }
+  if (/^claude-opus-4[.-](?:7|8)(?:-|$)/.test(name)) {
+    return profile(["low", "medium", "high", "xhigh", "max"], "high");
+  }
+  if (/^claude-(?:opus-4[.-]6|sonnet-4[.-]6)(?:-|$)/.test(name)) {
+    return profile(["low", "medium", "high", "max"], "high");
+  }
+  if (/^claude-opus-4[.-]5(?:-|$)/.test(name)) {
+    return profile(["low", "medium", "high"], "high");
+  }
+  if (/^claude-(?:sonnet|haiku)-4[.-]5(?:-|$)/.test(name)) {
+    return profile([], null);
+  }
+
+  // Gemini Interactions thinking levels. Gemini 2.5 defaults dynamically, so
+  // a null default preserves the provider default until the user selects a level.
+  if (/^gemini-3\.5-flash(?:-|$)/.test(name)) {
+    return profile(["minimal", "low", "medium", "high"], "medium");
+  }
+  if (/^gemini-3(?:\.0)?-flash(?:-|$)/.test(name)) {
+    return profile(["minimal", "low", "medium", "high"], "high");
+  }
+  if (/^gemini-3\.1-pro(?:-|$)/.test(name)) {
+    return profile(["low", "medium", "high"], "high");
+  }
+  if (/^gemini-2\.5-(?:pro|flash)(?:-|$)/.test(name)) {
+    return profile(["low", "medium", "high"], null);
+  }
+
+  if (/^deepseek-v4-(?:flash|pro)(?:-free)?$/.test(name)) {
+    return profile(["high", "max"], "high");
+  }
+  if (/^glm-5\.2(?:-|$)/.test(name)) {
+    return profile(["none", "minimal", "low", "medium", "high", "xhigh", "max"], "max");
+  }
+  if (/^glm-(?:5(?:\.1|-turbo)?|4\.7|4\.5-air|5v-turbo)(?:-|$)/.test(name)) {
+    return profile([], null);
+  }
+  if (/^kimi-(?:k2[.-](?:6|7)(?:-code)?|for-coding)(?:-|$)/.test(name)) {
+    return profile([], null);
+  }
+  if (/^grok-4[.-]5(?:-|$)/.test(name)) {
+    return profile(["low", "medium", "high"], "high");
+  }
+
+  return undefined;
 }
 
 function findConfiguredProvider(
@@ -233,6 +479,19 @@ function findConfiguredProvider(
   return (config?.Providers ?? []).find((provider) => provider.name.trim().toLowerCase() === normalized);
 }
 
+function findConfiguredProviderForModel(
+  config: Partial<Pick<AppConfig, "Providers" | "virtualModelProfiles">> | undefined,
+  model: string
+): GatewayProviderConfig | undefined {
+  const normalized = model.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  return (config?.Providers ?? []).find((provider) =>
+    provider.models.some((candidate) => candidate.trim().toLowerCase() === normalized)
+  );
+}
+
 function codexProviderProtocol(provider: GatewayProviderConfig): GatewayProviderProtocol | undefined {
   const capabilityProtocols = uniqueProviderProtocols((provider.capabilities ?? []).map((capability) => normalizeProviderProtocol(capability.type)));
   for (const protocol of ["openai_responses", "openai_chat_completions", "anthropic_messages", "gemini_generate_content", "gemini_interactions"] as GatewayProviderProtocol[]) {
@@ -242,13 +501,6 @@ function codexProviderProtocol(provider: GatewayProviderConfig): GatewayProvider
   }
 
   return normalizeProviderProtocol(provider.type) ?? normalizeProviderProtocol(provider.provider) ?? inferProviderProtocol(provider);
-}
-
-function codexProviderSupportsResponses(provider: GatewayProviderConfig): boolean {
-  return uniqueProviderProtocols((provider.capabilities ?? []).map((capability) => normalizeProviderProtocol(capability.type))).includes("openai_responses") ||
-    normalizeProviderProtocol(provider.type) === "openai_responses" ||
-    normalizeProviderProtocol(provider.provider) === "openai_responses" ||
-    providerEndpointLooksLikeResponses(provider);
 }
 
 function inferProviderProtocol(provider: GatewayProviderConfig): GatewayProviderProtocol {
@@ -272,30 +524,6 @@ function inferProviderProtocol(provider: GatewayProviderConfig): GatewayProvider
 function providerEndpointLooksLikeResponses(provider: GatewayProviderConfig): boolean {
   const url = (provider.baseUrl || provider.baseurl || provider.api_base_url || "").toLowerCase();
   return url.endsWith("/responses") || url.includes("/responses?");
-}
-
-function catalogModelLooksLikeGpt(model: string, entry: ModelCatalogEntry | undefined): boolean {
-  return [
-    model,
-    entry?.id,
-    entry?.model
-  ].some((value) => typeof value === "string" && value.toLowerCase().includes("gpt"));
-}
-
-function codexPatchBridgeApplies(
-  model: string,
-  entry: ModelCatalogEntry | undefined,
-  config?: Partial<Pick<AppConfig, "Router">>
-): boolean {
-  const codexRule = config?.Router?.builtInRules?.codex;
-  if (!codexRule || codexRule.enabled === false) {
-    return false;
-  }
-  return !catalogModelLooksLikeGpt(modelNameForPatchBridge(model), entry);
-}
-
-function modelNameForPatchBridge(model: string): string {
-  return parseModelSelector(model)?.model ?? model;
 }
 
 function normalizeProviderProtocol(value: unknown): GatewayProviderProtocol | undefined {
@@ -361,6 +589,17 @@ function codexVirtualModelSupportsFusionWebSearch(
     virtualModelIsCatalogVisible(profile) &&
     virtualModelMatchesCatalogModel(profile, model, config) &&
     virtualModelProfileSupportsFusionWebSearch(profile)
+  );
+}
+
+function codexVirtualModelSupportsFusionVision(
+  model: string,
+  config?: Partial<Pick<AppConfig, "Providers" | "virtualModelProfiles">>
+): boolean {
+  return (config?.virtualModelProfiles ?? []).some((profile) =>
+    virtualModelIsCatalogVisible(profile) &&
+    virtualModelMatchesCatalogModel(profile, model, config) &&
+    virtualModelProfileSupportsFusionVision(profile)
   );
 }
 
@@ -436,6 +675,26 @@ function virtualModelProfileSupportsFusionWebSearch(profile: VirtualModelProfile
   });
 }
 
+function virtualModelProfileSupportsFusionVision(profile: VirtualModelProfileConfig): boolean {
+  const metadata = recordValue(profile.metadata);
+  const fusionVision = recordValue(metadata?.fusionVision);
+  if (stringRecordValue(fusionVision, "toolName")) {
+    return true;
+  }
+
+  if (recordValue(profile.execution)?.matchMultimodal === true) {
+    return true;
+  }
+
+  return (profile.tools ?? []).some((tool) => fusionVisionToolNameMatches(tool.name.trim()));
+}
+
+function fusionVisionToolNameMatches(name: string): boolean {
+  const normalized = name.toLowerCase().replace(/[-.]/g, "_");
+  return normalized === BUILTIN_FUSION_VISION_TOOL_NAME ||
+    normalized.startsWith(`${BUILTIN_FUSION_VISION_TOOL_NAME}_`);
+}
+
 function fusionWebSearchToolNameMatches(name: string): boolean {
   const normalized = name.toLowerCase().replace(/[-.]/g, "_");
   return normalized === BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME ||
@@ -498,7 +757,8 @@ function normalizeModelSelector(value: string | undefined): string {
 
 function pushUniqueModel(models: string[], model: string | undefined): void {
   const normalized = model?.trim();
-  if (normalized && !models.includes(normalized)) {
+  const dedupeKey = normalized?.toLowerCase();
+  if (normalized && dedupeKey && !models.some((candidate) => candidate.toLowerCase() === dedupeKey)) {
     models.push(normalized);
   }
 }

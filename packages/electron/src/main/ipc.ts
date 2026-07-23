@@ -9,7 +9,9 @@ import { scanBotHandoffBluetoothTargets, scanBotHandoffWifiTargets } from "@ccr/
 import { cancelBotGatewayQrLogin, startBotGatewayQrLogin, waitBotGatewayQrLogin } from "@ccr/core/agents/bot-gateway/qr-login-service";
 import { closeBotGatewayQrWindow, openBotGatewayQrWindow } from "./bot-gateway-qr-window-service";
 import { syncClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
-import { loadAppConfig, saveApiKeysConfig, saveAppConfig } from "@ccr/core/config/config";
+import { findInstalledCodexAppExecutable } from "@ccr/core/agents/codex/app-launch";
+import { findInstalledOpenCodeAppExecutable } from "@ccr/core/agents/opencode/app-launch";
+import { loadAppConfig, saveApiKeysConfig, saveAppConfig, saveAppThemePreference } from "@ccr/core/config/config";
 import { API_KEYS_DB_FILE, APP_CONFIG_DB_FILE, APP_NAME, CONFIGDIR, CONFIG_FILE, DATADIR, GATEWAY_CONFIG_FILE, IPC_CHANNELS, LEGACY_CONFIG_FILE, ONBOARDING_FINISHED_FILE, PROXY_CA_CERT_FILE, REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "@ccr/core/config/constants";
 import { deepLinkService } from "./deep-link";
 import { gatewayService } from "@ccr/core/gateway/service";
@@ -17,7 +19,7 @@ import { shouldRestartGatewayForRuntimeConfigChange } from "@ccr/core/gateway/ru
 import { getProviderAccountSnapshots, invalidateProviderAccountSnapshotCache, resetCodexRateLimitCredit, testProviderAccountConnector } from "@ccr/core/providers/account-service";
 import { detectProviderIcon } from "@ccr/core/providers/icons";
 import { fetchProviderManifest } from "@ccr/core/providers/manifest-service";
-import { getLocalAgentProviderCandidates, importLocalAgentProvider } from "@ccr/core/agents/local-providers/service";
+import { getLocalAgentProviderCandidates, importLocalAgentProvider, probeLocalAgentProvider } from "@ccr/core/agents/local-providers/service";
 import { isLaunchAtLoginSupported, syncLaunchAtLogin } from "./launch-at-login";
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
 import { getProviderPresets } from "@ccr/core/providers/presets/index";
@@ -31,8 +33,9 @@ import { getAgentAnalysis, getAgentTracePayload, getRequestLogDetail, getRequest
 import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
 import { getUsageStats } from "@ccr/core/usage/store";
+import { applyNativeThemePreference } from "./native-theme";
 import windowsManager from "./windows";
-import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppCaptureElementPngRequest, AppCaptureElementPngResult, AppConfig, AppDataExportResult, AppImageExportTargetRequest, AppImageExportTargetResult, AppInfo, AppRenderHtmlPngRequest, AppRenderHtmlPngResult, AppSaveConfigOptions, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountResetRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "@ccr/core/contracts/app";
+import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppCaptureElementPngRequest, AppCaptureElementPngResult, AppConfig, AppDataExportResult, AppImageExportTargetRequest, AppImageExportTargetResult, AppInfo, AppRenderHtmlPngRequest, AppRenderHtmlPngResult, AppSaveConfigOptions, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountResetRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, RouteScriptTestRequest, RouteScriptValidationRequest, UsageStatsFilter, UsageStatsRange } from "@ccr/core/contracts/app";
 
 const pluginMarketplace: PluginMarketplaceEntry[] = [
   {
@@ -55,16 +58,25 @@ const pluginMarketplace: PluginMarketplaceEntry[] = [
 const onboardingFinishedAtSettingKey = "onboardingFinishedAt";
 const imageExportTargets = new Map<string, string>();
 
+function applyAppThemePreference(theme: AppConfig["theme"]): void {
+  applyNativeThemePreference(theme);
+  trayController.refreshTheme(theme);
+}
+
 ipcMain.handle(IPC_CHANNELS.appGetInfo, () => {
+  const chatgptAppPath = findInstalledCodexAppExecutable().executable;
+  const opencodeAppPath = findInstalledOpenCodeAppExecutable().executable;
   return {
     appConfigDbFile: APP_CONFIG_DB_FILE,
     apiKeysDbFile: API_KEYS_DB_FILE,
+    ...(chatgptAppPath ? { chatgptAppPath } : {}),
     configDir: CONFIGDIR,
     configFile: CONFIG_FILE,
     dataDir: DATADIR,
     gatewayConfigFile: GATEWAY_CONFIG_FILE,
     launchAtLoginSupported: isLaunchAtLoginSupported(),
     name: APP_NAME,
+    ...(opencodeAppPath ? { opencodeAppPath } : {}),
     platform: process.platform,
     requestLogsDbFile: REQUEST_LOGS_DB_FILE,
     usageDbFile: USAGE_DB_FILE,
@@ -117,6 +129,7 @@ ipcMain.handle(IPC_CHANNELS.appGetUpdateStatus, () => appUpdateService.getStatus
 ipcMain.handle(IPC_CHANNELS.appGetUsageStats, (_event, range?: UsageStatsRange, filter?: UsageStatsFilter) => getUsageStats(range, filter));
 ipcMain.handle(IPC_CHANNELS.appFetchProviderManifest, (_event, request: ProviderManifestFetchRequest) => fetchProviderManifest(request));
 ipcMain.handle(IPC_CHANNELS.appImportLocalAgentProvider, (_event, request: LocalAgentProviderImportRequest) => importLocalAgentProvider(request));
+ipcMain.handle(IPC_CHANNELS.appProbeLocalAgentProvider, (_event, request) => probeLocalAgentProvider(request));
 ipcMain.handle(IPC_CHANNELS.appInstallProxyCertificate, () => proxyService.installCertificate());
 ipcMain.handle(IPC_CHANNELS.appListMcpServerTools, async (_event, serverName: string) => {
   const name = typeof serverName === "string" ? serverName.trim() : "";
@@ -177,6 +190,7 @@ ipcMain.handle(IPC_CHANNELS.appOpenProfile, async (_event, request: ProfileOpenR
 ipcMain.handle(IPC_CHANNELS.appApplyClaudeAppGateway, async (_event, config?: AppConfig) => {
   const previousConfig = await loadAppConfig();
   const baseConfig = config ? await saveAppConfig(config) : previousConfig;
+  applyNativeThemePreference(baseConfig.theme);
   const synced = await syncClaudeAppGatewayConfig(baseConfig);
   const savedConfig = synced.config;
   let runtimeStatus = gatewayService.getStatus();
@@ -184,7 +198,7 @@ ipcMain.handle(IPC_CHANNELS.appApplyClaudeAppGateway, async (_event, config?: Ap
   if (synced.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig) || runtimeStatus.state !== "running") {
     runtimeStatus = await gatewayService.start(savedConfig);
   } else {
-    gatewayService.updateConfig(savedConfig);
+    await gatewayService.updateConfig(savedConfig);
   }
 
   await builtInBrowserService.syncProxy(savedConfig);
@@ -242,6 +256,12 @@ ipcMain.handle(IPC_CHANNELS.appResetCodexRateLimitCredit, (_event, request: Prov
 ipcMain.handle(IPC_CHANNELS.appTestProviderAccountConnector, (_event, request: ProviderAccountTestRequest) => {
   return testProviderAccountConnector(request);
 });
+ipcMain.handle(IPC_CHANNELS.appValidateRouteScript, (_event, request: RouteScriptValidationRequest) => {
+  return gatewayService.validateRouteScript(request);
+});
+ipcMain.handle(IPC_CHANNELS.appTestRouteScript, async (_event, request: RouteScriptTestRequest) => {
+  return gatewayService.testRouteScript(await loadAppConfig(), request);
+});
 ipcMain.handle(IPC_CHANNELS.appUpdateCheck, () => appUpdateService.checkForUpdates());
 ipcMain.handle(IPC_CHANNELS.appUpdateDownload, () => appUpdateService.downloadUpdate());
 ipcMain.handle(IPC_CHANNELS.appUpdateInstall, () => appUpdateService.installUpdate());
@@ -262,6 +282,7 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, opt
   }
   const launchAtLoginChanged = Boolean(config.launchAtLogin) !== Boolean(previousConfig.launchAtLogin);
   let savedConfig = await saveAppConfig(config);
+  applyAppThemePreference(savedConfig.theme);
   if (launchAtLoginChanged) {
     try {
       syncLaunchAtLogin(savedConfig);
@@ -279,7 +300,7 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, opt
   if (syncedClaudeAppConfig.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig)) {
     runtimeStatus = await gatewayService.start(savedConfig);
   } else {
-    gatewayService.updateConfig(savedConfig);
+    await gatewayService.updateConfig(savedConfig);
   }
   if (options?.applyProfile !== false) {
     await applyProfileIfServiceRunning(savedConfig, runtimeStatus);
@@ -289,11 +310,16 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, opt
   invalidateProviderAccountSnapshotCache();
   return savedConfig;
 });
+ipcMain.handle(IPC_CHANNELS.appSetThemePreference, async (_event, theme: unknown) => {
+  const savedTheme = await saveAppThemePreference(theme);
+  applyAppThemePreference(savedTheme);
+  return savedTheme;
+});
 ipcMain.handle(IPC_CHANNELS.appSaveApiKeys, async (_event, apiKeys: ApiKeyConfig[]) => {
   const savedConfig = await saveApiKeysConfig(apiKeys);
   const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(savedConfig);
   const nextConfig = syncedClaudeAppConfig.config;
-  gatewayService.updateConfig(nextConfig);
+  await gatewayService.updateConfig(nextConfig);
   logProfileApplyResult(await applyProfileConfig(nextConfig));
   invalidateProviderAccountSnapshotCache();
   return nextConfig;

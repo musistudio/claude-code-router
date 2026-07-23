@@ -1,10 +1,12 @@
 import { memo } from "react";
-import { Maximize2, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Maximize2, Route, X } from "lucide-react";
+import type { RequestRouteTrace, RequestRouteTraceChange, RequestRouteTraceHop } from "@ccr/core/contracts/app";
 import {
   AnimatedIconSwap, Check, ChevronDown, ChevronLeft,
   ChevronRight, clampNumber, clientInitial, cn, Copy, copyTextToClipboard,
-  Database, filterLogText, formatBytes, formatCompactNumber, formatDuration,
-  formatLogBodyView, formatLogDateTime, formatLogTokenSummary, formatNetworkRequestRaw, formatNetworkResponseRaw, formatUsdCost,
+  Database, Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle, filterLogText, formatBytes, formatCompactNumber, formatDuration,
+  formatLogBodyView, formatLogDateTime, formatLogTokenSummary, formatNetworkRequestRaw, formatNetworkResponseRaw, formatRouteTracePath, formatUsdCost,
   isJsonContainer, jsonChildPath, logRequestModel,
   logResponseModel, logSelectOptions, motion, MoveRight, Network, networkCodeLabel,
   networkExchangeMatchesQuery, networkHeaderRows, networkLifecycleLabel, networkQueryRows, networkRowId, networkSummaryRows,
@@ -459,37 +461,38 @@ export function LogsView({
               value={filter.credential ?? ""}
             />
           ) : null}
-          <span className="network-count rounded-full px-2 py-0.5 text-[11px] font-semibold">{page.total}</span>
-          <button
-            aria-label={t("Previous page")}
-            className="network-control-button flex h-7 w-7 items-center justify-center rounded-md border outline-none disabled:cursor-not-allowed disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-ring/30"
-            disabled={page.page <= 1}
-            onClick={() => updateFilter({ page: page.page - 1 }, false)}
-            title={t("上一页")}
-            type="button"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </button>
-          <span className="network-count min-w-[132px] rounded-full px-2 py-0.5 text-center text-[11px] font-semibold">
-            {firstItem}-{lastItem} / {page.total}
-          </span>
-          <button
-            aria-label={t("Next page")}
-            className="network-control-button flex h-7 w-7 items-center justify-center rounded-md border outline-none disabled:cursor-not-allowed disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-ring/30"
-            disabled={page.page >= page.totalPages}
-            onClick={() => updateFilter({ page: page.page + 1 }, false)}
-            title={t("下一页")}
-            type="button"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-          <Select
-            aria-label={t("Request log page size")}
-            className="h-7 w-[92px] bg-[length:14px] px-2 pr-7 text-[11px]"
-            onValueChange={(value) => updateFilter({ pageSize: Number(value) })}
-            options={requestLogPageSizeOptions}
-            value={String(page.pageSize)}
-          />
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              aria-label={t("Previous page")}
+              className="network-control-button flex h-7 w-7 items-center justify-center rounded-md border outline-none disabled:cursor-not-allowed disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-ring/30"
+              disabled={page.page <= 1}
+              onClick={() => updateFilter({ page: page.page - 1 }, false)}
+              title={t("上一页")}
+              type="button"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <span className="network-count min-w-[132px] rounded-full px-2 py-0.5 text-center text-[11px] font-semibold">
+              {firstItem}-{lastItem} / {page.total}
+            </span>
+            <button
+              aria-label={t("Next page")}
+              className="network-control-button flex h-7 w-7 items-center justify-center rounded-md border outline-none disabled:cursor-not-allowed disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-ring/30"
+              disabled={page.page >= page.totalPages}
+              onClick={() => updateFilter({ page: page.page + 1 }, false)}
+              title={t("下一页")}
+              type="button"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+            <Select
+              aria-label={t("Request log page size")}
+              className="h-7 w-[92px] bg-[length:14px] px-2 pr-7 text-[11px]"
+              onValueChange={(value) => updateFilter({ pageSize: Number(value) })}
+              options={requestLogPageSizeOptions}
+              value={String(page.pageSize)}
+            />
+          </div>
           <button
             aria-label={t("Refresh request logs")}
             className="network-control-button flex h-7 w-7 items-center justify-center rounded-md border outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
@@ -706,6 +709,7 @@ function LogExpandedDetails({
         <LogMetric label={t("Cost")} value={formatUsdCost(entry.costUsd ?? 0)} />
       </div>
       {entry.retryAttempts.length > 0 ? <LogRetryAttempts attempts={entry.retryAttempts} /> : null}
+      {entry.routeTrace ? <LogRouteTrace trace={entry.routeTrace} /> : null}
       {detailLoading || detailError ? (
         <div className={cn("border-b px-3 py-2 text-[12px] font-semibold", detailError ? "network-error-box" : "network-body-meta")}>
           {detailError || t("Loading full payload...")}
@@ -724,6 +728,330 @@ function LogExpandedDetails({
       </div>
     </div>
   );
+}
+
+const hiddenLegacyRouteHopNames = new Set([
+  "agent-enricher.claude-code",
+  "builtins.claude-code-request-enrichment",
+  "enrichment.claude-code-request"
+]);
+
+function visibleRouteTraceHops(trace: RequestRouteTrace): RequestRouteTraceHop[] {
+  return trace.hops.filter((hop) => !hiddenLegacyRouteHopNames.has(hop.name));
+}
+
+function LogRouteTrace({ trace }: { trace: RequestRouteTrace }) {
+  const t = useAppText();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const visibleHopCount = visibleRouteTraceHops(trace).length;
+
+  return (
+    <>
+      <div className="network-body-meta flex min-w-0 flex-wrap items-center justify-between gap-3 border-b px-3 py-2.5 text-[12px]">
+        <div className="min-w-0">
+          <div className="font-semibold">{t("Route trace")}</div>
+          <div className="network-muted mt-0.5 text-[11px]">
+            {visibleHopCount} {t("hops")}
+            {trace.truncated ? ` · ${t("truncated")}` : ""}
+          </div>
+        </div>
+        <button
+          className="network-control-button flex h-8 shrink-0 items-center gap-2 rounded-md border px-3 text-[11px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+          onClick={() => setDialogOpen(true)}
+          type="button"
+        >
+          <Route className="h-3.5 w-3.5" aria-hidden="true" />
+          {t("View route graph")}
+        </button>
+      </div>
+      {dialogOpen ? <LogRouteTraceDialog onClose={() => setDialogOpen(false)} trace={trace} /> : null}
+    </>
+  );
+}
+
+function LogRouteTraceDialog({
+  onClose,
+  trace
+}: {
+  onClose: () => void;
+  trace: RequestRouteTrace;
+}) {
+  const t = useAppText();
+  const [activeHopSequence, setActiveHopSequence] = useState<number>();
+  const hops = visibleRouteTraceHops(trace);
+  const activeHopIndex = hops.findIndex((hop) => hop.seq === activeHopSequence);
+  const activeHop = activeHopIndex >= 0 ? hops[activeHopIndex] : undefined;
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  return (
+    <Dialog className="items-start" onOpenChange={(open) => !open && onClose()} open>
+      <DialogContent className="h-[calc(100dvh-1.5rem)] max-w-[1240px] origin-top sm:h-[min(820px,calc(100dvh-3rem))]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{t("Route graph")}</DialogTitle>
+            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+              <span>{hops.length} {t("hops")}</span>
+              {trace.truncated ? <><span aria-hidden="true">·</span><span>{t("truncated")}</span></> : null}
+            </div>
+          </div>
+          <button
+            aria-label={t("Close")}
+            className="network-control-button flex h-7 w-7 items-center justify-center rounded-md border outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+            onClick={onClose}
+            title={t("Close")}
+            type="button"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        </DialogHeader>
+        <DialogBody className="flex min-h-0 flex-col overflow-hidden p-0">
+          <div className="network-body-meta shrink-0 border-b px-4 py-3">
+            <div className="network-muted text-[11px] font-semibold">{t("Hover a node to inspect routing operations")}</div>
+            <div className="mt-3 overflow-x-auto rounded-md border border-[color:var(--network-border)] bg-card/40">
+              {hops.length === 0 ? (
+                <div className="network-muted flex min-h-40 items-center justify-center px-4 text-[12px]">{t("No route activity")}</div>
+              ) : (
+                <div className="flex min-w-max items-center px-5 py-6" role="list" aria-label={t("Route graph")}>
+                  {hops.map((hop, index) => (
+                    <div className="flex items-center" key={`${hop.seq}-${hop.name}`} role="listitem">
+                      {index > 0 ? (
+                        <div className="flex w-12 shrink-0 items-center text-border" aria-hidden="true">
+                          <span className="h-px flex-1 bg-current" />
+                          <ChevronRight className="-ml-1 h-4 w-4" />
+                        </div>
+                      ) : null}
+                      <button
+                        aria-label={`${t("Route node")} ${index + 1}: ${routeHopDisplayName(hop.name, t)}`}
+                        className={cn(
+                          "flex h-[116px] w-[184px] shrink-0 flex-col rounded-md border border-border bg-card p-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/40",
+                          activeHopSequence === hop.seq && "border-primary/60 bg-primary/5 ring-2 ring-primary/10"
+                        )}
+                        onFocus={() => setActiveHopSequence(hop.seq)}
+                        onMouseEnter={() => setActiveHopSequence(hop.seq)}
+                        type="button"
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className={cn(
+                            "h-2.5 w-2.5 shrink-0 rounded-full",
+                            hop.status === "error"
+                              ? "network-dot-error"
+                              : hop.status === "noop"
+                                ? "network-service-muted"
+                                : "network-dot-completed"
+                          )} />
+                          <span className="network-muted truncate text-[10px] font-bold uppercase">#{index + 1}</span>
+                          {hop.attempt ? <span className="network-muted ml-auto shrink-0 text-[10px]">A{hop.attempt}</span> : null}
+                        </span>
+                        <span className="mt-3 line-clamp-2 break-words text-[12px] font-bold leading-4">{routeHopDisplayName(hop.name, t)}</span>
+                        <span className="network-muted mt-auto flex items-center justify-end text-[10px]">
+                          <span>{formatDuration(hop.durationMs)}</span>
+                        </span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto p-4" id="route-hop-details">
+            {activeHop ? (
+              <LogRouteHopDetails hop={activeHop} index={activeHopIndex} />
+            ) : (
+              <div className="network-muted flex min-h-52 items-center justify-center rounded-md border border-dashed border-border px-4 text-center text-[12px]">
+                {t("Hover over a route node to inspect its operations.")}
+              </div>
+            )}
+          </div>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function LogRouteHopDetails({ hop, index }: { hop: RequestRouteTraceHop; index: number }) {
+  const t = useAppText();
+  const target = routeHopTargetSummary(hop);
+  const outcome = routeHopOutcomeSummary(hop);
+  const explanation = [hop.decision?.source, hop.decision?.ruleName ?? hop.decision?.ruleId, hop.decision?.reason]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <div className="min-w-0">
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3 border-b border-border pb-3">
+        <div className="min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="network-muted text-[10px] font-bold uppercase">{t("Route node")} #{index + 1}</span>
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">{t(hop.phase)}</span>
+            <span className={cn(
+              "rounded px-1.5 py-0.5 text-[10px] font-bold uppercase",
+              hop.status === "error" ? "network-state-pill-error" : hop.status === "noop" ? "network-service-muted" : "network-state-pill-completed"
+            )}>{t(hop.status)}</span>
+            {hop.attempt ? <span className="network-muted text-[10px]">{t("Attempt")} #{hop.attempt}</span> : null}
+          </div>
+          <div className="mt-1 break-words font-mono text-[13px] font-bold">{hop.name}</div>
+        </div>
+        <div className="network-muted shrink-0 text-right font-mono text-[10px]">
+          <div>{formatDuration(hop.durationMs)}</div>
+        </div>
+      </div>
+      {explanation || target || outcome ? (
+        <div className="grid gap-2 border-b border-border py-3 text-[11px] md:grid-cols-3">
+          {explanation ? <RouteHopDetail label={t("Decision")} value={explanation} /> : null}
+          {target ? <RouteHopDetail label={t("Target")} mono value={target} /> : null}
+          {outcome ? <RouteHopDetail danger={hop.status === "error"} label={t("Result")} value={outcome} /> : null}
+        </div>
+      ) : null}
+      <div className="pt-3">
+        <div className="mb-2 text-[11px] font-semibold">{t("Routing operations")}</div>
+        {hop.changes.length > 0 ? (
+          <div className="overflow-x-auto rounded border border-[color:var(--network-border)]">
+            {hop.changes.map((change, changeIndex) => (
+              <LogRouteChange change={change} index={changeIndex} key={`${change.path}-${changeIndex}`} />
+            ))}
+          </div>
+        ) : <div className="network-muted rounded border border-dashed border-border px-3 py-4 text-[11px]">{t("No request fields changed")}</div>}
+        {hop.truncated ? <div className="network-service-paused mt-2 text-[10px]">{t("This hop was truncated")}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+function RouteHopDetail({
+  danger,
+  label,
+  mono,
+  value
+}: {
+  danger?: boolean;
+  label: string;
+  mono?: boolean;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-md bg-muted/50 px-3 py-2">
+      <div className="network-muted text-[10px] font-semibold uppercase">{label}</div>
+      <div className={cn("mt-1 break-words text-[11px]", mono && "font-mono", danger && "network-error-text")}>{value}</div>
+    </div>
+  );
+}
+
+function routeHopDisplayName(name: string, t: (value: string) => string): string {
+  if (name.startsWith("router.rewrite:") || name.startsWith("customer.rewrite:")) return t("Apply request rewrite");
+  if (
+    name === "agent-enricher.claude-code" ||
+    name === "builtins.claude-code-request-enrichment" ||
+    name === "enrichment.claude-code-request"
+  ) {
+    return t("Enrich Claude Code request");
+  }
+  if (name.startsWith("agent-enricher.") || name.endsWith("-request-enrichment")) return t("Enrich agent request");
+  if (
+    (name.startsWith("builtins.") && (name.endsWith("-route") || name.includes(".builtin-agent-"))) ||
+    name === "customer.custom-router-decision" ||
+    name === "customer.rule-decision"
+  ) return t("Select target model");
+  const labels: Record<string, string> = {
+    "compatibility.codex-apply-patch": "Convert apply_patch calls",
+    "compatibility.cursor-openai": "Convert Cursor request",
+    "custom-router": "Call custom router",
+    "customer.custom-router": "Call custom router",
+    "enrichment.hosted-web-search": "Inject web search results",
+    "enrichment.web-search-continuation": "Inject web search continuation",
+    "fallback.execution-plan": "Build model fallback chain",
+    "gateway.content-length-normalization": "Remove content-length header",
+    "gateway.header-normalization": "Rewrite gateway headers",
+    "model-discovery.claude-app": "Resolve Claude App model",
+    "model-discovery.claude-code": "Resolve Claude Code model",
+    "protocol-adapter.route-input": "Read model from request path",
+    "provider.capability-routing": "Match provider capabilities",
+    "request.ingress": "Receive request",
+    "router.model-selection": "Apply selected model",
+    "router.policy": "Select target model",
+    "router.route-output": "Write routing result",
+    "upstream.attempt.outcome": "Record upstream result",
+    "upstream.attempt.prepare": "Build upstream request"
+  };
+  return t(labels[name] ?? name);
+}
+
+function LogRouteChange({ change, index }: { change: RequestRouteTraceChange; index: number }) {
+  const t = useAppText();
+  const displayPath = formatRouteTracePath(change);
+  return (
+    <div className={cn(
+      "grid min-w-[560px] grid-cols-[76px_minmax(160px,0.8fr)_minmax(0,1fr)_28px_minmax(0,1fr)] border-b last:border-b-0 text-[10px]",
+      index % 2 === 0 ? "network-kv-row-even" : "network-kv-row-odd"
+    )}>
+      <div className="border-r border-[color:var(--network-border)] px-2 py-1.5 font-bold uppercase">{t(change.operation)}</div>
+      <div className="border-r border-[color:var(--network-border)] px-2 py-1.5 font-mono" title={displayPath}>{displayPath}</div>
+      <RouteTraceChangeValue change={change} side="before" />
+      <div className="network-muted flex items-center justify-center border-r border-[color:var(--network-border)]">→</div>
+      <RouteTraceChangeValue change={change} side="after" />
+    </div>
+  );
+}
+
+function RouteTraceChangeValue({
+  change,
+  side
+}: {
+  change: RequestRouteTraceChange;
+  side: "after" | "before";
+}) {
+  const t = useAppText();
+  const hasRecordedValue = Object.prototype.hasOwnProperty.call(change, side);
+  const value = change[side];
+  const isAbsentValue = side === "before" && change.operation === "add" ||
+    side === "after" && change.operation === "remove";
+  const text = hasRecordedValue
+    ? formatRouteTraceValue(value)
+    : t(isAbsentValue ? "Not present" : "Not recorded");
+  return (
+    <div className="max-h-24 overflow-auto whitespace-pre-wrap break-all border-r border-[color:var(--network-border)] px-2 py-1.5 font-mono last:border-r-0" title={text}>
+      {text}
+    </div>
+  );
+}
+
+function routeHopTargetSummary(hop: RequestRouteTraceHop): string {
+  const target = hop.target;
+  if (!target) return "";
+  return [
+    target.provider ? `provider=${target.provider}` : "",
+    target.model ? `model=${target.model}` : "",
+    target.protocol ? `protocol=${target.protocol}` : "",
+    target.credentialId ? `credential=${target.credentialId}` : "",
+    target.credentialCandidates?.length ? `candidates=${target.credentialCandidates.join(" > ")}` : ""
+  ].filter(Boolean).join(" · ");
+}
+
+function routeHopOutcomeSummary(hop: RequestRouteTraceHop): string {
+  const outcome = hop.outcome;
+  if (!outcome) return "";
+  return [
+    outcome.statusCode ? `HTTP ${outcome.statusCode}` : "",
+    outcome.error ?? "",
+    outcome.fallbackReason ? `fallback=${outcome.fallbackReason}` : "",
+    outcome.retryDelayMs !== undefined ? `retry in ${formatDuration(outcome.retryDelayMs)}` : ""
+  ].filter(Boolean).join(" · ");
+}
+
+function formatRouteTraceValue(value: unknown): string {
+  if (value === undefined) return "undefined";
+  if (typeof value === "string") return value || '""';
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
 }
 
 function LogRetryAttempts({ attempts }: { attempts: RequestLogEntry["retryAttempts"] }) {
@@ -775,14 +1103,88 @@ function LogMetric({ label, value }: { label: string; value: string }) {
 function LogModelRouteCell({ entry }: { entry: RequestLogEntry }) {
   const requestModel = logRequestModel(entry);
   const responseModel = logResponseModel(entry);
-  const title = `${requestModel} -> ${responseModel}`;
+  return <LogModelTooltip requestModel={requestModel} responseModel={responseModel} />;
+}
+
+type LogModelTooltipState = {
+  left: number;
+  placement: "above" | "below";
+  top: number;
+  width: number;
+};
+
+function LogModelTooltip({
+  requestModel,
+  responseModel
+}: {
+  requestModel: string;
+  responseModel: string;
+}) {
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const [tooltip, setTooltip] = useState<LogModelTooltipState>();
+  const value = `${requestModel} -> ${responseModel}`;
+
+  useEffect(() => {
+    if (!tooltip) return;
+    const dismiss = () => setTooltip(undefined);
+    window.addEventListener("resize", dismiss);
+    window.addEventListener("scroll", dismiss, true);
+    return () => {
+      window.removeEventListener("resize", dismiss);
+      window.removeEventListener("scroll", dismiss, true);
+    };
+  }, [tooltip]);
+
+  const showTooltip = () => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const margin = 12;
+    const gap = 6;
+    const availableWidth = Math.max(0, window.innerWidth - margin * 2);
+    const width = Math.min(availableWidth, Math.max(160, Math.min(480, value.length * 7 + 24)));
+    const left = Math.min(
+      Math.max(margin, rect.left + rect.width / 2 - width / 2),
+      Math.max(margin, window.innerWidth - width - margin)
+    );
+    const placement = window.innerHeight - rect.bottom >= 72 || rect.top < 72 ? "below" : "above";
+    setTooltip({
+      left,
+      placement,
+      top: placement === "below" ? rect.bottom + gap : rect.top - gap,
+      width
+    });
+  };
 
   return (
-    <div className="flex min-w-0 items-center px-2" title={title}>
-      <span className="min-w-0 max-w-[45%] truncate">{requestModel}</span>
-      <MoveRight className="mx-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="min-w-0 max-w-[45%] truncate">{responseModel}</span>
-    </div>
+    <>
+      <div
+        className="flex min-w-0 items-center px-2"
+        onMouseEnter={showTooltip}
+        onMouseLeave={() => setTooltip(undefined)}
+        ref={triggerRef}
+      >
+        <span className="min-w-0 max-w-[45%] truncate">{requestModel}</span>
+        <MoveRight className="mx-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="min-w-0 max-w-[45%] truncate">{responseModel}</span>
+      </div>
+      {tooltip ? createPortal(
+        <div
+          className="pointer-events-none fixed z-[100] break-all rounded-md border border-border bg-popover px-2.5 py-1.5 font-mono text-[11px] font-medium text-popover-foreground shadow-card-elevated"
+          role="tooltip"
+          style={{
+            left: tooltip.left,
+            top: tooltip.top,
+            transform: tooltip.placement === "above" ? "translateY(-100%)" : undefined,
+            width: tooltip.width
+          }}
+        >
+          {value}
+        </div>,
+        document.body
+      ) : null}
+    </>
   );
 }
 
@@ -883,12 +1285,13 @@ function LogJsonPanel({
       <div className="network-pane-header flex h-10 min-w-0 shrink-0 items-center gap-3 border-b px-3">
         <span className="network-pane-title shrink-0 text-[14px] font-bold">{title}</span>
         {subtitle ? <span className="network-muted shrink-0 text-[12px] font-semibold">{subtitle}</span> : null}
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="network-payload-tabs flex min-w-0 items-center rounded-md border p-0.5">
           {(["body", "header"] as const).map((tab) => (
             <button
+              aria-pressed={selectedTab === tab}
               className={cn(
-                "network-tab border-0 bg-transparent p-0 text-[12px] font-semibold capitalize outline-none",
-                selectedTab === tab && "network-tab-active"
+                "network-payload-tab h-6 rounded-[5px] border border-transparent px-2.5 text-[12px] font-semibold capitalize outline-none transition-[background-color,border-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-ring/30",
+                selectedTab === tab && "network-payload-tab-active"
               )}
               key={tab}
               onClick={() => setSelectedTab(tab)}

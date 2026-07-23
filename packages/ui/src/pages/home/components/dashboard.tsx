@@ -3,28 +3,43 @@ import {
   AnimatePresence, AnimatedDisclosure, AnimatedIconSwap,
   Area, arrayMove, Badge, Bar, BarChart, Button,
   Card, CardContent, CardHeader, CardTitle, CartesianGrid, Cell, constrainOverviewWidgetSize,
-  Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, cn, compactId,
+  Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, cn, codexLogoUrl, compactId,
   compactUserAgent, compareProviderAccountSnapshots, ComposedChart, CSS, DEFAULT_OVERVIEW_WIDGETS, DndContext,
   Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle,
   DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, Field, formatAxisNumber, formatBytes,
   formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatProviderAccountDetailDate, formatProviderAccountMeterTitle, formatProviderAccountMeterValue,
   formatStatusBucketDate, formatStatusCodeCounts, formatSystemStatusRange, formatToolCounts, formatUsdCost, KeyboardSensor,
-  LabelList, LayoutGroup, Line, LoaderCircle, MeasuringStrategy, MetricCard, MetricTone,
-  metricToneBar, metricToneStroke, motion, normalizeAgentFilterValue, normalizeOverviewWidget, normalizeOverviewWidgets,
+  LabelList, LayoutGroup, Line, LoaderCircle, MeasuringStrategy, MetricTone,
+  motion, normalizeAgentFilterValue, normalizeOverviewWidget, normalizeOverviewWidgets,
   OverviewMetricKind, overviewMetricOptions, overviewWidgetCollisionDetection, OverviewWidgetConfig, OverviewWidgetSize, overviewWidgetSizeOptions,
   OverviewWidgetType, OverviewWidgetVariant, Pencil, Pie, PieChart, Plus,
   PointerSensor, primaryProviderAccountMeter, providerAccountMeterDetailValidityProgress, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass, isProviderAccountManualResetMeter,
   providerAccountSnapshotKey, providerAccountSnapshotLabel,
   ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ReactPointerEvent, rectSortingStrategy, RefreshCw, Select,
-  SelectControl, SortableContext, sortableKeyboardCoordinates, systemStatusIconClass, systemStatusPointTooltip, systemStatusSegmentClass,
-  systemStatusTooltipPositionClass, Tooltip, translateOptions, Trash2, UsageComparisonRow, usageRangeOptions,
-  UsageSeriesPoint, UsageStatsRange, UsageStatsSnapshot, usageStatusTone, UsageTotals, useAppText,
+  SelectControl, SortableContext, sortableKeyboardCoordinates, systemStatusPointTooltip,
+  Tooltip, translateOptions, Trash2, UsageComparisonRow, usageRangeOptions,
+  GatewayProviderConfig, UsageSeriesPoint, UsageStatsRange, UsageStatsSnapshot, usageStatusTone, UsageTotals, useAppText,
   useEffect, useMemo, useRef, useSensor, useSensors, useSortable,
   useState, X, XAxis, YAxis
 } from "../shared/index";
 import { buildTokenActivity, type TokenActivityCell } from "@/lib/usage-activity";
 import { ShareCardWidget } from "./share-cards";
-import { Cloud, Rocket } from "lucide-react";
+import {
+  CalendarDays, ChartNoAxesCombined, ChartPie, CreditCard, GripHorizontal, Inbox, Layers3,
+  Rocket, Server, UsersRound, WalletCards, Wifi
+} from "lucide-react";
+import { createPortal } from "react-dom";
+
+type OverviewUsageFilters = {
+  modelFilter: string;
+  providerFilter: string;
+  providers: GatewayProviderConfig[];
+  setModelFilter: (model: string) => void;
+  setProviderFilter: (provider: string) => void;
+};
+
+const emptyOverviewProviders: GatewayProviderConfig[] = [];
+
 export function OverviewView({
   onWidgetsChange,
   overviewWidgets,
@@ -32,6 +47,7 @@ export function OverviewView({
   providerAccountRefreshing = false,
   refreshProviderAccounts,
   setUsageRange,
+  usageFilters,
   usageRange,
   usageStats
 }: {
@@ -41,6 +57,7 @@ export function OverviewView({
   providerAccountRefreshing?: boolean;
   refreshProviderAccounts?: () => void | Promise<void>;
   setUsageRange: (range: UsageStatsRange) => void;
+  usageFilters?: OverviewUsageFilters;
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
 }) {
@@ -67,6 +84,11 @@ export function OverviewView({
   const visibleWidgets = displayWidgets.filter((widget) => widget.enabled);
   const activeWidget = visibleWidgets.find((widget) => widget.id === activeWidgetId);
   const selectedWidget = widgets.find((widget) => widget.id === selectedWidgetId);
+  const filterProviders = usageFilters?.providers ?? emptyOverviewProviders;
+  const providerFilter = usageFilters?.providerFilter ?? "";
+  const modelFilter = usageFilters?.modelFilter ?? "";
+  const providerOptions = useMemo(() => overviewProviderFilterOptions(filterProviders, t), [filterProviders, t]);
+  const modelOptions = useMemo(() => overviewModelFilterOptions(filterProviders, providerFilter, t), [filterProviders, providerFilter, t]);
 
   useEffect(() => {
     if (!editing) {
@@ -151,6 +173,17 @@ export function OverviewView({
   function removeWidget(id: string) {
     onWidgetsChange(widgets.filter((widget) => widget.id !== id));
     setSelectedWidgetId((current) => current === id ? undefined : current);
+  }
+
+  function changeProviderFilter(provider: string) {
+    usageFilters?.setProviderFilter(provider);
+    if (modelFilter && provider && !overviewProviderHasModel(filterProviders, provider, modelFilter)) {
+      usageFilters?.setModelFilter("");
+    }
+  }
+
+  function changeModelFilter(model: string) {
+    usageFilters?.setModelFilter(model);
   }
 
   useEffect(() => {
@@ -276,9 +309,7 @@ export function OverviewView({
               </SortableOverviewWidget>
             ))}
             {visibleWidgets.length === 0 ? (
-              <div className="col-span-1 rounded-lg border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-[12px] text-muted-foreground sm:col-span-2 xl:col-span-4">
-                {t("No widgets configured")}
-              </div>
+              <OverviewEmptyState className="col-span-1 sm:col-span-2 xl:col-span-4" label={t("No widgets configured")} />
             ) : null}
           </section>
         </LayoutGroup>
@@ -301,15 +332,29 @@ export function OverviewView({
   return (
     <motion.div
       animate={{ opacity: 1 }}
-      className="space-y-4"
+      className="overview-view space-y-5"
+      data-editing={editing}
       initial={{ opacity: 0 }}
       ref={viewRef}
       transition={{ duration: 0.15 }}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="overview-toolbar flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h2 className="truncate text-[18px] font-semibold tracking-tight">{t("Overview")}</h2>
           <OverviewUsageRangeSelector range={usageRange} setRange={setUsageRange} />
+          <Select
+            aria-label={t("Provider")}
+            className="h-9 w-[168px] rounded-[10px] bg-[length:14px] px-3 pr-8 text-[12px] shadow-none"
+            onValueChange={changeProviderFilter}
+            options={providerOptions}
+            value={providerFilter}
+          />
+          <Select
+            aria-label={t("Model")}
+            className="h-9 w-[220px] rounded-[10px] bg-[length:14px] px-3 pr-8 text-[12px] shadow-none"
+            onValueChange={changeModelFilter}
+            options={modelOptions}
+            value={modelFilter}
+          />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {editing ? (
@@ -334,7 +379,7 @@ export function OverviewView({
 
       {editing ? (
         <div className="grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-[220px_minmax(0,1fr)_260px]">
-          <aside className="min-w-0 rounded-lg border border-border bg-card p-3 xl:sticky xl:top-4 xl:self-start">
+          <aside className="overview-editor-panel min-w-0 border p-3 xl:sticky xl:top-4 xl:self-start">
             <div className="mb-3 flex items-center justify-between gap-2">
               <h3 className="truncate text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t("Components")}</h3>
               <Badge variant="outline">{overviewWidgetTemplates().length}</Badge>
@@ -350,7 +395,7 @@ export function OverviewView({
             {widgetGrid}
           </main>
 
-          <aside className="min-w-0 rounded-lg border border-border bg-card p-3 xl:sticky xl:top-4 xl:self-start">
+          <aside className="overview-editor-panel min-w-0 border p-3 xl:sticky xl:top-4 xl:self-start">
             <OverviewWidgetProperties
               providerAccounts={providerAccounts}
               widget={selectedWidget}
@@ -384,13 +429,15 @@ function OverviewUsageRangeSelector({
   const t = useAppText();
 
   return (
-    <div aria-label={t("Usage over time")} className="flex rounded-md border border-input bg-card p-0.5 shadow-sm" role="group">
+    <div aria-label={t("Usage over time")} className="overview-segmented flex" role="group">
       {usageRangeOptions.map((option) => (
         <Button
+          aria-pressed={range === option.value}
           className={cn(
-            "h-7 rounded px-2.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground",
-            range === option.value && "bg-background text-foreground shadow-sm"
+            "overview-segmented-item h-7 px-2.5 text-[11px] font-medium text-muted-foreground hover:text-foreground",
+            range === option.value && "text-foreground"
           )}
+          data-active={range === option.value}
           key={option.value}
           onClick={() => setRange(option.value)}
           type="button"
@@ -400,6 +447,122 @@ function OverviewUsageRangeSelector({
         </Button>
       ))}
     </div>
+  );
+}
+
+type OverviewHeadingTone = "blue" | "green" | "orange" | "purple" | "red" | "slate";
+type OverviewHeadingIcon = typeof Inbox;
+
+function OverviewCardHeading({
+  icon: Icon,
+  title,
+  tone = "blue",
+  trailing
+}: {
+  icon: OverviewHeadingIcon;
+  title: string;
+  tone?: OverviewHeadingTone;
+  trailing?: ReactNode;
+}) {
+  return (
+    <CardHeader className="overview-card-header shrink-0 flex-row items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span aria-hidden="true" className="overview-heading-icon" data-tone={tone}>
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+        <CardTitle>{title}</CardTitle>
+      </div>
+      {trailing ? <div className="min-w-0 shrink-0">{trailing}</div> : null}
+    </CardHeader>
+  );
+}
+
+function OverviewEmptyState({
+  className,
+  compact = false,
+  label
+}: {
+  className?: string;
+  compact?: boolean;
+  label: string;
+}) {
+  return (
+    <div className={cn(
+      "overview-empty-state overview-nested-surface flex min-h-0 flex-col items-center justify-center border border-dashed px-4 text-center text-muted-foreground",
+      compact ? "py-7" : "py-10",
+      className
+    )}>
+      <span aria-hidden="true" className="overview-empty-state-icon">
+        <Inbox className="h-4 w-4" />
+      </span>
+      <span className="mt-2 text-[12px] font-medium">{label}</span>
+    </div>
+  );
+}
+
+function OverviewChartLegend({ items }: { items: Array<{ color: string; label: string }> }) {
+  return (
+    <div className="overview-chart-legend hidden items-center gap-3 md:flex">
+      {items.map((item) => (
+        <span className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground" key={item.label}>
+          <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: item.color }} />
+          <span className="max-w-[96px] truncate">{item.label}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function OverviewDonutCenter({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center">
+      <span className="text-[17px] font-semibold tracking-[-0.025em] text-foreground">{value}</span>
+      <span className="mt-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</span>
+    </div>
+  );
+}
+
+function overviewProviderFilterOptions(providers: GatewayProviderConfig[], translate: (value: string) => string): Array<{ label: string; value: string }> {
+  const providerNames = new Set<string>();
+  for (const provider of providers) {
+    const name = provider.name.trim();
+    if (name) {
+      providerNames.add(name);
+    }
+  }
+  return [
+    { label: translate("All providers"), value: "" },
+    ...Array.from(providerNames).map((provider) => ({ label: provider, value: provider }))
+  ];
+}
+
+function overviewModelFilterOptions(
+  providers: GatewayProviderConfig[],
+  providerFilter: string,
+  translate: (value: string) => string
+): Array<{ label: string; value: string }> {
+  const models = new Set<string>();
+  for (const provider of providers) {
+    if (providerFilter && provider.name !== providerFilter) {
+      continue;
+    }
+    for (const rawModel of provider.models) {
+      const model = rawModel.trim();
+      if (model) {
+        models.add(model);
+      }
+    }
+  }
+  return [
+    { label: translate("All models"), value: "" },
+    ...Array.from(models).map((model) => ({ label: model, value: model }))
+  ];
+}
+
+function overviewProviderHasModel(providers: GatewayProviderConfig[], providerName: string, modelName: string): boolean {
+  return providers.some((provider) =>
+    provider.name === providerName &&
+    provider.models.some((model) => model.trim() === modelName)
   );
 }
 
@@ -427,7 +590,7 @@ function OverviewWidgetPalette({
     <div className="grid grid-cols-1 gap-2">
       {templates.map((template) => (
         <Button
-          className="grid h-auto w-full grid-cols-[18px_minmax(0,1fr)] items-center gap-2 rounded-md border border-border bg-background px-2.5 py-2 text-left transition-colors hover:bg-muted/55 focus-visible:ring-2 focus-visible:ring-ring/25"
+          className="overview-palette-item grid h-auto w-full grid-cols-[18px_minmax(0,1fr)] items-center gap-2 border px-2.5 py-2 text-left focus-visible:ring-2 focus-visible:ring-ring/25"
           key={overviewWidgetTemplateKey(template)}
           onClick={() => onAdd(template)}
           type="button"
@@ -472,11 +635,7 @@ function OverviewWidgetProperties({
   const t = useAppText();
 
   if (!widget) {
-    return (
-      <div className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-[12px] text-muted-foreground">
-        {t("No widget selected")}
-      </div>
-    );
+    return <OverviewEmptyState compact label={t("No widget selected")} />;
   }
 
   const category = overviewWidgetCategory(widget.type);
@@ -683,10 +842,9 @@ function OverviewWidgetFrame({
     <div
       aria-selected={editing ? selected : undefined}
       className={cn(
-        "group/overview-widget relative h-full min-h-0 min-w-0 transition-opacity",
-        editing && (selected
-          ? "rounded-xl outline outline-2 outline-primary outline-offset-2 ring-2 ring-primary/20"
-          : "rounded-xl outline outline-2 outline-primary/35 outline-offset-2")
+        "overview-widget-frame group/overview-widget relative h-full min-h-0 min-w-0 transition-opacity",
+        editing && "is-editing",
+        selected && "is-selected"
       )}
       role={editing ? "group" : undefined}
       onFocus={editing ? onSelect : undefined}
@@ -696,6 +854,12 @@ function OverviewWidgetFrame({
       {children}
       {editing ? (
         <>
+          <span
+            aria-hidden="true"
+            className={cn("overview-widget-drag-handle", selected && "is-selected")}
+          >
+            <GripHorizontal className="h-3.5 w-3.5" />
+          </span>
           <OverviewWidgetResizeHandle
             axis="width"
             label={t("Resize widget width")}
@@ -888,13 +1052,17 @@ function OverviewMetricWidget({
 }) {
   const t = useAppText();
   const item = overviewMetricDatum(metric, totals, t);
+  const showsRatio = overviewMetricShowsRatio(metric);
 
   if (variant === "compact") {
     return (
-      <Card className="flex h-full min-h-0 min-w-0 flex-col">
+      <Card className="overview-card overview-metric-card flex h-full min-h-0 min-w-0 flex-col" data-tone={item.tone}>
         <CardContent className="flex min-h-0 flex-1 items-center justify-between gap-3 p-3">
-          <div className="min-w-0 truncate text-[12px] font-medium text-muted-foreground">{item.label}</div>
-          <div className="shrink-0 text-[18px] font-semibold tracking-tight">{item.value}</div>
+          <div className="flex min-w-0 items-center gap-2">
+            <span aria-hidden="true" className="overview-metric-dot" />
+            <div className="min-w-0 truncate text-[12px] font-medium text-muted-foreground">{item.label}</div>
+          </div>
+          <div className="shrink-0 text-[19px] font-semibold tracking-[-0.02em]">{item.value}</div>
         </CardContent>
       </Card>
     );
@@ -902,14 +1070,14 @@ function OverviewMetricWidget({
 
   if (variant === "bar") {
     return (
-      <Card className="flex h-full min-h-0 min-w-0 flex-col">
+      <Card className="overview-card overview-metric-card flex h-full min-h-0 min-w-0 flex-col" data-tone={item.tone}>
         <CardContent className="min-h-0 flex-1 p-3">
           <div className="flex items-end justify-between gap-3">
             <div className="min-w-0 truncate text-[12px] font-medium text-muted-foreground">{item.label}</div>
             <div className="shrink-0 text-[18px] font-semibold tracking-tight">{item.value}</div>
           </div>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
-            <div className={cn("h-full rounded-full", metricToneBar(item.tone))} style={{ width: `${Math.max(3, Math.round(item.ratio * 100))}%` }} />
+          <div className="overview-metric-track mt-3">
+            <div className="overview-metric-fill" style={{ width: `${Math.max(3, Math.round(item.ratio * 100))}%` }} />
           </div>
         </CardContent>
       </Card>
@@ -918,7 +1086,7 @@ function OverviewMetricWidget({
 
   if (variant === "ring") {
     return (
-      <Card className="flex h-full min-h-0 min-w-0 flex-col">
+      <Card className="overview-card overview-metric-card flex h-full min-h-0 min-w-0 flex-col" data-tone={item.tone}>
         <CardContent className="grid min-h-0 flex-1 grid-cols-[58px_minmax(0,1fr)] items-center gap-3 p-3">
           <OverviewRingMetric ratio={item.ratio} tone={item.tone} />
           <div className="min-w-0">
@@ -930,7 +1098,27 @@ function OverviewMetricWidget({
     );
   }
 
-  return <MetricCard label={item.label} tone={item.tone} value={item.value} />;
+  return (
+    <Card className="overview-card overview-metric-card flex h-full min-h-0 min-w-0 flex-col" data-tone={item.tone}>
+      <CardContent className="relative flex min-h-0 flex-1 flex-col justify-between p-4">
+        <div className="flex items-center justify-between gap-3">
+          <span aria-hidden="true" className="overview-metric-dot" />
+          {showsRatio ? (
+            <span className="text-[10px] font-semibold text-muted-foreground">{Math.round(Math.max(0, Math.min(1, item.ratio)) * 100)}%</span>
+          ) : null}
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-[11px] font-medium text-muted-foreground">{item.label}</div>
+          <div className="mt-0.5 truncate text-[24px] font-semibold tracking-[-0.035em] text-foreground">{item.value}</div>
+        </div>
+        {showsRatio ? (
+          <div className="overview-metric-track">
+            <div className="overview-metric-fill" style={{ width: `${Math.max(3, Math.round(item.ratio * 100))}%` }} />
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
 }
 
 function OverviewRingMetric({ ratio, tone }: { ratio: number; tone: MetricTone }) {
@@ -940,13 +1128,13 @@ function OverviewRingMetric({ ratio, tone }: { ratio: number; tone: MetricTone }
 
   return (
     <svg aria-hidden="true" className="h-[58px] w-[58px]" viewBox="0 0 48 48">
-      <circle cx="24" cy="24" fill="none" r={radius} stroke="hsl(var(--muted))" strokeWidth="6" />
+      <circle cx="24" cy="24" fill="none" r={radius} stroke="var(--muted)" strokeWidth="6" />
       <circle
         cx="24"
         cy="24"
         fill="none"
         r={radius}
-        stroke={metricToneStroke(tone)}
+        stroke={overviewMetricToneColor(tone)}
         strokeDasharray={circumference}
         strokeDashoffset={circumference * (1 - clamped)}
         strokeLinecap="round"
@@ -955,6 +1143,20 @@ function OverviewRingMetric({ ratio, tone }: { ratio: number; tone: MetricTone }
       />
     </svg>
   );
+}
+
+function overviewMetricToneColor(tone: MetricTone): string {
+  if (tone === "blue") return "#007aff";
+  if (tone === "indigo") return "#5856d6";
+  if (tone === "amber") return "#ff9f0a";
+  if (tone === "rose") return "#ff3b30";
+  if (tone === "slate") return "#8e8e93";
+  return "#30b0c7";
+}
+
+function overviewMetricShowsRatio(metric: OverviewMetricKind): boolean {
+  return metric === "cache-ratio" || metric === "success-rate" || metric === "errors" ||
+    metric === "input-tokens" || metric === "output-tokens" || metric === "cache-tokens";
 }
 
 function UsageTrendWidget({
@@ -972,25 +1174,38 @@ function UsageTrendWidget({
   const chartMargin = dimensions.height <= 1
     ? { bottom: 0, left: 0, right: 4, top: 8 }
     : { bottom: 4, left: 0, right: 8, top: 8 };
+  const legendItems = variant === "composed"
+    ? [
+        { color: "#007aff", label: t("Total tokens") },
+        { color: "#34c759", label: t("Requests") },
+        { color: overviewCacheColor, label: t("Cache tokens") }
+      ]
+    : variant === "bar"
+      ? [
+          { color: "#007aff", label: t("Total tokens") },
+          { color: "#34c759", label: t("Requests") }
+        ]
+      : [
+          { color: "#007aff", label: t("Total tokens") },
+          { color: overviewCacheColor, label: t("Cache tokens") }
+        ];
 
   return (
-    <Card className="flex h-full min-h-0 min-w-0 flex-col">
-      <CardHeader className="shrink-0 flex-row items-center justify-between">
-        <CardTitle>{t("Usage Trend")}</CardTitle>
-      </CardHeader>
+    <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
+      <OverviewCardHeading icon={ChartNoAxesCombined} title={t("Usage Trend")} trailing={dimensions.width >= 2 ? <OverviewChartLegend items={legendItems} /> : null} />
       <CardContent className="min-h-0 flex-1">
         <ChartFrame fill>
           {({ height, width }) => (
             <ComposedChart data={usageStats.series} height={height} margin={chartMargin} width={width}>
-              <CartesianGrid stroke="#dfe3e8" strokeDasharray="3 3" vertical={false} />
-              <XAxis axisLine={false} dataKey="label" hide={dimensions.height <= 1} tick={{ fill: "#5f6b7a", fontSize: 11 }} tickLine={false} />
-              <YAxis axisLine={false} hide={dimensions.width <= 1} tick={{ fill: "#5f6b7a", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} yAxisId="tokens" />
+              <CartesianGrid stroke="var(--overview-chart-grid)" strokeDasharray="2 5" vertical={false} />
+              <XAxis axisLine={false} dataKey="label" hide={dimensions.height <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} />
+              <YAxis axisLine={false} hide={dimensions.width <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} yAxisId="tokens" />
               <YAxis axisLine={false} hide orientation="right" yAxisId="requests" />
               <Tooltip content={<UsageTooltip />} />
               {variant === "composed" ? (
                 <>
-                  <Area dataKey="totalTokens" fill="#0f766e" fillOpacity={0.14} name={t("Total tokens")} stroke="#0f766e" strokeWidth={2} type="monotone" yAxisId="tokens" />
-                  <Bar barSize={12} dataKey="requestCount" fill="#2563eb" name={t("Requests")} radius={[3, 3, 0, 0]} yAxisId="requests">
+                  <Area dataKey="totalTokens" fill="#007aff" fillOpacity={0.12} name={t("Total tokens")} stroke="#007aff" strokeWidth={2.25} type="monotone" yAxisId="tokens" />
+                  <Bar barSize={12} dataKey="requestCount" fill="#34c759" name={t("Requests")} radius={[4, 4, 0, 0]} yAxisId="requests">
                     <LabelList content={<RequestHealthBarLabel />} dataKey="requestCount" />
                   </Bar>
                   <Line dataKey="cacheTokens" dot={false} name={t("Cache tokens")} stroke={overviewCacheColor} strokeWidth={2} type="monotone" yAxisId="tokens" />
@@ -998,20 +1213,20 @@ function UsageTrendWidget({
               ) : null}
               {variant === "area" ? (
                 <>
-                  <Area dataKey="totalTokens" fill="#0f766e" fillOpacity={0.18} name={t("Total tokens")} stroke="#0f766e" strokeWidth={2} type="monotone" yAxisId="tokens" />
+                  <Area dataKey="totalTokens" fill="#007aff" fillOpacity={0.14} name={t("Total tokens")} stroke="#007aff" strokeWidth={2.25} type="monotone" yAxisId="tokens" />
                   <Area dataKey="cacheTokens" fill={overviewCacheColor} fillOpacity={0.12} name={t("Cache tokens")} stroke={overviewCacheColor} strokeWidth={2} type="monotone" yAxisId="tokens" />
                 </>
               ) : null}
               {variant === "line" ? (
                 <>
-                  <Line dataKey="totalTokens" dot={false} name={t("Total tokens")} stroke="#0f766e" strokeWidth={2.5} type="monotone" yAxisId="tokens" />
+                  <Line dataKey="totalTokens" dot={false} name={t("Total tokens")} stroke="#007aff" strokeWidth={2.5} type="monotone" yAxisId="tokens" />
                   <Line dataKey="cacheTokens" dot={false} name={t("Cache tokens")} stroke={overviewCacheColor} strokeWidth={2} type="monotone" yAxisId="tokens" />
                 </>
               ) : null}
               {variant === "bar" ? (
                 <>
-                  <Bar barSize={14} dataKey="totalTokens" fill="#0f766e" name={t("Total tokens")} radius={[4, 4, 0, 0]} yAxisId="tokens" />
-                  <Line dataKey="requestCount" dot={false} name={t("Requests")} stroke="#2563eb" strokeWidth={2} type="monotone" yAxisId="requests" />
+                  <Bar barSize={14} dataKey="totalTokens" fill="#007aff" name={t("Total tokens")} radius={[4, 4, 0, 0]} yAxisId="tokens" />
+                  <Line dataKey="requestCount" dot={false} name={t("Requests")} stroke="#34c759" strokeWidth={2} type="monotone" yAxisId="requests" />
                 </>
               ) : null}
             </ComposedChart>
@@ -1039,14 +1254,11 @@ function TokenActivityOverviewWidget({
   const showLegend = dimensions.height >= 2 && dimensions.width >= 2;
 
   return (
-    <Card className="flex h-full min-h-0 min-w-0 flex-col">
-      <CardHeader className="shrink-0 flex-row items-center justify-between">
-        <CardTitle>{t("Activity")}</CardTitle>
-        <Badge variant="outline">{t("Tokens")}</Badge>
-      </CardHeader>
+    <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
+      <OverviewCardHeading icon={CalendarDays} title={t("Activity")} tone="green" trailing={<Badge variant="outline">{t("Tokens")}</Badge>} />
       <CardContent className="flex min-h-0 flex-1 flex-col overflow-visible p-3">
         {showSummary ? (
-          <div className={cn("mb-3 grid overflow-hidden rounded-lg border border-border bg-muted/20", dimensions.width >= 2 ? "grid-cols-4" : "grid-cols-2")}>
+          <div className={cn("overview-nested-surface mb-3 grid overflow-hidden border", dimensions.width >= 2 ? "grid-cols-4" : "grid-cols-2")}>
             <OverviewActivityStat label={t("Longest streak")} value={formatCompactNumber(activity.longestStreak)} unit={t(activity.longestStreak === 1 ? "day" : "days")} />
             <OverviewActivityStat label={t("Avg / day")} value={formatCompactNumber(Math.round(activity.avgPerDay))} />
             <OverviewActivityStat label={t("Avg / week")} value={formatCompactNumber(Math.round(activity.avgPerWeek))} />
@@ -1062,7 +1274,7 @@ function TokenActivityOverviewWidget({
             {[0, 1, 2, 3, 4].map((intensity) => (
               <span
                 aria-hidden="true"
-                className="h-3 w-3 rounded-[3px]"
+                className="overview-activity-cell h-3 w-3 rounded-[3px]"
                 key={intensity}
                 style={{ backgroundColor: overviewActivityColor(intensity as TokenActivityCell["intensity"], true) }}
               />
@@ -1098,7 +1310,7 @@ function OverviewActivityStat({
   value: string;
 }) {
   return (
-    <div className="min-w-0 border-r border-border bg-card/60 px-3 py-2 last:border-r-0">
+    <div className="overview-activity-stat min-w-0 border-r border-border/60 bg-transparent px-3 py-2 last:border-r-0">
       <div className="truncate text-[11px] font-medium text-muted-foreground">{label}</div>
       <div className="mt-0.5 flex min-w-0 items-baseline gap-1">
         <span className="truncate text-[17px] font-semibold tracking-tight text-foreground">{value}</span>
@@ -1168,7 +1380,7 @@ function OverviewActivityGrid({
             {activity.cells.map((cell) => (
               <span
                 aria-label={`${cell.dateLabel}: ${formatActivityTokenCount(cell.totalTokens)} ${t("tokens")}`}
-                className="group relative aspect-square w-full rounded-[4px]"
+                className="overview-activity-cell group relative aspect-square w-full rounded-[4px]"
                 key={cell.dateKey}
                 style={{
                   backgroundColor: overviewActivityColor(cell.intensity, cell.inObservedRange),
@@ -1205,12 +1417,12 @@ function overviewActivityTooltipPositionClass(cell: TokenActivityCell, weekCount
 }
 
 function overviewActivityColor(intensity: TokenActivityCell["intensity"], inRange: boolean): string {
-  if (!inRange) return "rgba(99,102,241,.06)";
-  if (intensity === 0) return "rgba(99,102,241,.12)";
-  if (intensity === 1) return "rgba(99,102,241,.30)";
-  if (intensity === 2) return "rgba(99,102,241,.50)";
-  if (intensity === 3) return "rgba(99,102,241,.70)";
-  return "rgba(99,102,241,.92)";
+  if (!inRange) return "rgba(0,122,255,.05)";
+  if (intensity === 0) return "rgba(0,122,255,.12)";
+  if (intensity === 1) return "rgba(0,122,255,.30)";
+  if (intensity === 2) return "rgba(0,122,255,.50)";
+  if (intensity === 3) return "rgba(0,122,255,.72)";
+  return "rgba(0,122,255,.94)";
 }
 
 function TokenMixOverviewWidget({
@@ -1224,8 +1436,8 @@ function TokenMixOverviewWidget({
 }) {
   const t = useAppText();
   const tokenMix = [
-    { color: "#2563eb", name: t("Input"), value: totals.inputTokens },
-    { color: "#d97706", name: t("Output"), value: totals.outputTokens },
+    { color: "#007aff", name: t("Input"), value: totals.inputTokens },
+    { color: "#ff9f0a", name: t("Output"), value: totals.outputTokens },
     { color: overviewCacheColor, name: t("Cache"), value: totals.cacheTokens }
   ];
   const total = tokenMix.reduce((sum, item) => sum + item.value, 0);
@@ -1235,11 +1447,8 @@ function TokenMixOverviewWidget({
     : { bottom: 8, left: 8, right: 12, top: 8 };
 
   return (
-    <Card className="flex h-full min-h-0 min-w-0 flex-col">
-      <CardHeader className="shrink-0 flex-row items-center justify-between">
-        <CardTitle>{t("Token Mix")}</CardTitle>
-        <Badge variant="outline">{formatCompactNumber(totals.totalTokens)}</Badge>
-      </CardHeader>
+    <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
+      <OverviewCardHeading icon={ChartPie} title={t("Token Mix")} tone="purple" trailing={<Badge variant="outline">{formatCompactNumber(totals.totalTokens)}</Badge>} />
       <CardContent className="min-h-0 flex-1 overflow-hidden">
         {variant === "stacked" ? (
           <div className="space-y-3">
@@ -1252,35 +1461,41 @@ function TokenMixOverviewWidget({
           </div>
         ) : null}
         {variant === "donut" || variant === "pie" ? (
-          <ChartFrame fill>
-            {({ height, width }) => (
-              <PieChart height={height} width={width}>
-                <Tooltip content={<TokenTooltip />} />
-                <Pie
-                  cx="50%"
-                  cy="50%"
-                  data={tokenMix}
-                  dataKey="value"
-                  innerRadius={variant === "donut" ? Math.min(height, width) * 0.22 : 0}
-                  nameKey="name"
-                  outerRadius={Math.min(height, width) * 0.34}
-                  paddingAngle={variant === "donut" ? 2 : 0}
-                >
-                  {tokenMix.map((item) => (
-                    <Cell fill={item.color} key={item.name} />
-                  ))}
-                </Pie>
-              </PieChart>
-            )}
-          </ChartFrame>
+          <div className={cn("grid h-full min-h-0 items-center gap-3", showLegend && "grid-cols-[minmax(96px,1fr)_minmax(0,1fr)]")}>
+            <div className="relative h-full min-h-0">
+              <ChartFrame fill>
+                {({ height, width }) => (
+                  <PieChart height={height} width={width}>
+                    <Tooltip content={<TokenTooltip />} />
+                    <Pie
+                      cx="50%"
+                      cy="50%"
+                      data={tokenMix}
+                      dataKey="value"
+                      innerRadius={variant === "donut" ? Math.min(height, width) * 0.22 : 0}
+                      nameKey="name"
+                      outerRadius={Math.min(height, width) * 0.34}
+                      paddingAngle={variant === "donut" ? 2 : 0}
+                    >
+                      {tokenMix.map((item) => (
+                        <Cell fill={item.color} key={item.name} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                )}
+              </ChartFrame>
+              {variant === "donut" ? <OverviewDonutCenter label={t("Tokens")} value={formatCompactNumber(total)} /> : null}
+            </div>
+            {showLegend ? <OverviewTokenLegend rows={tokenMix} /> : null}
+          </div>
         ) : null}
         {variant === "bars" ? (
           <ChartFrame fill>
             {({ height, width }) => (
               <BarChart data={tokenMix} height={height} layout="vertical" margin={chartMargin} width={width}>
-                <CartesianGrid stroke="#dfe3e8" strokeDasharray="3 3" horizontal={false} />
-                <XAxis axisLine={false} hide={dimensions.height <= 1} tick={{ fill: "#5f6b7a", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
-                <YAxis axisLine={false} dataKey="name" tick={{ fill: "#5f6b7a", fontSize: 11 }} tickLine={false} type="category" width={dimensions.width <= 1 ? 42 : 52} />
+                <CartesianGrid stroke="var(--overview-chart-grid)" strokeDasharray="2 5" horizontal={false} />
+                <XAxis axisLine={false} hide={dimensions.height <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
+                <YAxis axisLine={false} dataKey="name" tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} type="category" width={dimensions.width <= 1 ? 42 : 52} />
                 <Tooltip content={<TokenTooltip />} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                   {tokenMix.map((item) => (
@@ -1314,16 +1529,11 @@ function ModelDistributionOverviewWidget({
     : { bottom: 8, left: 8, right: 12, top: 8 };
 
   return (
-    <Card className="flex h-full min-h-0 min-w-0 flex-col">
-      <CardHeader className="shrink-0 flex-row items-center justify-between">
-        <CardTitle>{t("Model Distribution")}</CardTitle>
-        <Badge variant="outline">{formatCompactNumber(total)}</Badge>
-      </CardHeader>
+    <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
+      <OverviewCardHeading icon={Layers3} title={t("Model Distribution")} tone="orange" trailing={<Badge variant="outline">{formatCompactNumber(total)}</Badge>} />
       <CardContent className="min-h-0 flex-1 overflow-hidden">
         {modelRows.length === 0 ? (
-          <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 px-3 py-4 text-center text-[12px] text-muted-foreground">
-            {t("No model activity")}
-          </div>
+          <OverviewEmptyState className="h-full py-4" compact label={t("No model activity")} />
         ) : variant === "stacked" ? (
           <div className="space-y-3">
             <div className="flex h-3 overflow-hidden rounded-full bg-muted">
@@ -1335,36 +1545,39 @@ function ModelDistributionOverviewWidget({
           </div>
         ) : variant === "donut" || variant === "pie" ? (
           <div className={cn("grid h-full min-h-0 items-center gap-3", showLegend && "grid-cols-[minmax(96px,1fr)_minmax(0,1fr)]")}>
-            <ChartFrame fill>
-              {({ height, width }) => (
-                <PieChart height={height} width={width}>
-                  <Tooltip content={<TokenTooltip />} />
-                  <Pie
-                    cx="50%"
-                    cy="50%"
-                    data={modelRows}
-                    dataKey="value"
-                    innerRadius={variant === "donut" ? Math.min(height, width) * 0.22 : 0}
-                    nameKey="name"
-                    outerRadius={Math.min(height, width) * 0.34}
-                    paddingAngle={variant === "donut" ? 2 : 0}
-                  >
-                    {modelRows.map((item) => (
-                      <Cell fill={item.color} key={item.name} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              )}
-            </ChartFrame>
+            <div className="relative h-full min-h-0">
+              <ChartFrame fill>
+                {({ height, width }) => (
+                  <PieChart height={height} width={width}>
+                    <Tooltip content={<TokenTooltip />} />
+                    <Pie
+                      cx="50%"
+                      cy="50%"
+                      data={modelRows}
+                      dataKey="value"
+                      innerRadius={variant === "donut" ? Math.min(height, width) * 0.22 : 0}
+                      nameKey="name"
+                      outerRadius={Math.min(height, width) * 0.34}
+                      paddingAngle={variant === "donut" ? 2 : 0}
+                    >
+                      {modelRows.map((item) => (
+                        <Cell fill={item.color} key={item.name} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                )}
+              </ChartFrame>
+              {variant === "donut" ? <OverviewDonutCenter label={t("Tokens")} value={formatCompactNumber(total)} /> : null}
+            </div>
             {showLegend ? <OverviewTokenLegend rows={modelRows} /> : null}
           </div>
         ) : (
           <ChartFrame fill>
             {({ height, width }) => (
               <BarChart data={modelRows} height={height} layout="vertical" margin={chartMargin} width={width}>
-                <CartesianGrid stroke="#dfe3e8" strokeDasharray="3 3" horizontal={false} />
-                <XAxis axisLine={false} hide={dimensions.height <= 1} tick={{ fill: "#5f6b7a", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
-                <YAxis axisLine={false} dataKey="name" tick={{ fill: "#5f6b7a", fontSize: 11 }} tickLine={false} type="category" width={dimensions.width <= 1 ? 58 : 88} />
+              <CartesianGrid stroke="var(--overview-chart-grid)" strokeDasharray="2 5" horizontal={false} />
+                <XAxis axisLine={false} hide={dimensions.height <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
+                <YAxis axisLine={false} dataKey="name" tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} type="category" width={dimensions.width <= 1 ? 58 : 88} />
                 <Tooltip content={<TokenTooltip />} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                   {modelRows.map((item) => (
@@ -1381,7 +1594,7 @@ function ModelDistributionOverviewWidget({
 }
 
 function overviewModelDistributionRows(rows: UsageComparisonRow[], translate: (value: string) => string): Array<{ color: string; name: string; value: number }> {
-  const colors = ["#2563eb", "#0f766e", "#d97706", "#be123c", "#7c3aed", "#64748b"];
+  const colors = ["#007aff", "#34c759", "#ff9f0a", "#ff3b30", "#af52de", "#8e8e93"];
   const positiveRows = rows
     .filter((row) => row.totalTokens > 0)
     .sort((a, b) => b.totalTokens - a.totalTokens);
@@ -1403,9 +1616,9 @@ function overviewModelDistributionRows(rows: UsageComparisonRow[], translate: (v
 
 function OverviewTokenLegend({ rows }: { rows: Array<{ color: string; name: string; value: number }> }) {
   return (
-    <div className="grid grid-cols-1 gap-2">
+    <div className="grid grid-cols-1 gap-1.5">
       {rows.map((row) => (
-        <div className="flex min-w-0 items-center gap-2 text-[12px]" key={row.name}>
+        <div className="overview-legend-row flex min-w-0 items-center gap-2 rounded-[8px] px-2 py-1.5 text-[11px]" key={row.name}>
           <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: row.color }} />
           <span className="min-w-0 flex-1 truncate text-muted-foreground">{row.name}</span>
           <span className="shrink-0 font-semibold">{formatCompactNumber(row.value)}</span>
@@ -1446,18 +1659,15 @@ function OverviewAnalysisWidget({
 
   if (shouldUseCompact) {
     return (
-      <Card className="flex h-full min-h-0 min-w-0 flex-col">
-        <CardHeader className="shrink-0 flex-row items-center justify-between">
-          <CardTitle>{title}</CardTitle>
-          <Badge variant="outline">{rows.length}</Badge>
-        </CardHeader>
+      <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
+        <OverviewCardHeading icon={UsersRound} title={title} tone="slate" trailing={<Badge variant="outline">{rows.length}</Badge>} />
         <CardContent className="min-h-0 flex-1 overflow-hidden">
           {rows.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-7 text-center text-[12px] text-muted-foreground">{emptyLabel}</div>
+            <OverviewEmptyState compact label={emptyLabel} />
           ) : (
             <div className="space-y-2">
               {rows.slice(0, rowLimit).map((row) => (
-                <div className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2" key={row.key}>
+                <div className="overview-nested-surface flex min-w-0 items-center justify-between gap-3 border px-3 py-2" key={row.key}>
                   <span className="min-w-0 truncate text-[12px] font-medium">{row.label}</span>
                   <span className="shrink-0 text-[12px] font-semibold">{formatCompactNumber(row.totalTokens)}</span>
                 </div>
@@ -1775,7 +1985,7 @@ function overviewWidgetOverlaySizeClass(size: OverviewWidgetSize): string {
 
 type OverviewWidgetDimensions = { height: 1 | 2 | 3 | 4; width: 1 | 2 | 3 | 4 };
 
-const overviewCacheColor = "#6366f1";
+const overviewCacheColor = "#af52de";
 
 function overviewWidgetDimensions(size: OverviewWidgetSize): OverviewWidgetDimensions {
   const [widthText, heightText] = size.split(":");
@@ -1896,6 +2106,43 @@ type SystemStatusPoint = {
   tone: SystemStatusTone;
 };
 
+type SystemStatusTooltipState = {
+  arrowLeft: number;
+  left: number;
+  placement: "above" | "below";
+  segment: SystemStatusPoint;
+  top: number;
+};
+
+const systemStatusTooltipWidth = 190;
+const systemStatusTooltipHeight = 104;
+const systemStatusTooltipGap = 10;
+const systemStatusTooltipViewportMargin = 12;
+
+function resolveSystemStatusTooltipPosition(rect: DOMRect): Omit<SystemStatusTooltipState, "segment"> {
+  const availableWidth = Math.max(0, window.innerWidth - systemStatusTooltipViewportMargin * 2);
+  const width = Math.min(systemStatusTooltipWidth, availableWidth);
+  const maxLeft = Math.max(systemStatusTooltipViewportMargin, window.innerWidth - width - systemStatusTooltipViewportMargin);
+  const left = Math.min(
+    Math.max(systemStatusTooltipViewportMargin, rect.left + rect.width / 2 - width / 2),
+    maxLeft
+  );
+  const spaceAbove = rect.top - systemStatusTooltipViewportMargin - systemStatusTooltipGap;
+  const spaceBelow = window.innerHeight - rect.bottom - systemStatusTooltipViewportMargin - systemStatusTooltipGap;
+  const placement = spaceAbove >= systemStatusTooltipHeight || spaceAbove >= spaceBelow ? "above" : "below";
+  const preferredTop = placement === "above"
+    ? rect.top - systemStatusTooltipGap - systemStatusTooltipHeight
+    : rect.bottom + systemStatusTooltipGap;
+  const maxTop = Math.max(
+    systemStatusTooltipViewportMargin,
+    window.innerHeight - systemStatusTooltipHeight - systemStatusTooltipViewportMargin
+  );
+  const top = Math.min(Math.max(systemStatusTooltipViewportMargin, preferredTop), maxTop);
+  const arrowLeft = Math.min(Math.max(12, rect.left + rect.width / 2 - left), Math.max(12, width - 12));
+
+  return { arrowLeft, left, placement, top };
+}
+
 function SystemStatusBar({
   variant = "timeline",
   usageRange,
@@ -1906,6 +2153,7 @@ function SystemStatusBar({
   usageStats: UsageStatsSnapshot;
 }) {
   const t = useAppText();
+  const [statusTooltip, setStatusTooltip] = useState<SystemStatusTooltipState>();
   const segments = usageStats.series.map((point) => ({
     dateLabel: formatStatusBucketDate(point.bucket, usageRange),
     point,
@@ -1916,12 +2164,29 @@ function SystemStatusBar({
   const StatusIcon = overallTone === "ok" ? Check : CircleAlert;
   const rangeLabel = formatSystemStatusRange(segments, usageRange);
 
+  useEffect(() => {
+    if (!statusTooltip) {
+      return;
+    }
+    const dismiss = () => setStatusTooltip(undefined);
+    window.addEventListener("resize", dismiss);
+    window.addEventListener("scroll", dismiss, true);
+    return () => {
+      window.removeEventListener("resize", dismiss);
+      window.removeEventListener("scroll", dismiss, true);
+    };
+  }, [statusTooltip]);
+
+  const showStatusTooltip = (segment: SystemStatusPoint, target: HTMLElement) => {
+    setStatusTooltip({ segment, ...resolveSystemStatusTooltipPosition(target.getBoundingClientRect()) });
+  };
+
   if (variant === "compact") {
     return (
-      <Card className="flex h-full min-h-0 min-w-0 flex-col border-border/70 bg-card">
+      <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
         <CardContent className="flex min-h-0 min-w-0 flex-1 items-center justify-between gap-3 p-4">
           <div className="flex min-w-0 items-center gap-2">
-            <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full", systemStatusIconClass(overallTone))}>
+            <span className="overview-status-icon flex h-5 w-5 shrink-0 items-center justify-center rounded-full" data-tone={overallTone}>
               <StatusIcon className="h-3.5 w-3.5" />
             </span>
             <div className="min-w-0">
@@ -1938,66 +2203,82 @@ function SystemStatusBar({
   }
 
   return (
-    <Card className="flex h-full min-h-0 min-w-0 flex-col border-border/70 bg-card">
-      <CardContent className="min-h-0 flex-1 space-y-4 overflow-hidden p-4">
-        <div className="flex min-w-0 items-center justify-between gap-3">
-          <h2 className="truncate text-[15px] font-semibold tracking-tight">{t("System status")}</h2>
-          <div className="flex shrink-0 items-center gap-2 text-[12px] font-medium text-muted-foreground">
-            <ChevronLeft aria-hidden="true" className="h-3.5 w-3.5 opacity-60" />
-            <span>{rangeLabel}</span>
-            <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 opacity-60" />
-          </div>
-        </div>
-
+    <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
+      <OverviewCardHeading
+        icon={Server}
+        title={t("System status")}
+        tone={overallTone === "ok" ? "green" : overallTone === "warn" ? "orange" : overallTone === "error" ? "red" : "slate"}
+        trailing={<span className="overview-date-pill block max-w-[320px] truncate">{rangeLabel}</span>}
+      />
+      <CardContent className="min-h-0 flex-1 overflow-hidden p-3">
         <div className="space-y-2.5">
           <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
-              <span className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded-full", systemStatusIconClass(overallTone))}>
+              <span className="overview-status-icon flex h-4 w-4 shrink-0 items-center justify-center rounded-full" data-tone={overallTone}>
                 <StatusIcon className="h-3 w-3" />
               </span>
               <span className="min-w-0 truncate text-[13px] font-semibold">{t("API Service")}</span>
             </div>
-            <div className="shrink-0 text-[12px] font-medium text-muted-foreground">
+            <Badge variant={overallTone === "ok" ? "success" : overallTone === "warn" ? "warning" : overallTone === "error" ? "danger" : "outline"}>
               {formatPercent(availability)} {t("Availability")}
-            </div>
+            </Badge>
           </div>
 
           <div className="flex min-w-0 gap-1" aria-label={t("System status")}>
             {segments.map((segment, index) => (
               <span
-                className="group relative flex h-5 min-w-[3px] flex-1"
+                aria-label={systemStatusPointTooltip(segment, t)}
+                className="relative flex h-5 min-w-[3px] flex-1 outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                 key={`${segment.point.bucket}-${index}`}
+                onBlur={() => setStatusTooltip(undefined)}
+                onFocus={(event) => showStatusTooltip(segment, event.currentTarget)}
+                onMouseEnter={(event) => showStatusTooltip(segment, event.currentTarget)}
+                onMouseLeave={() => setStatusTooltip(undefined)}
+                tabIndex={0}
               >
                 <span
-                  className={cn("h-full w-full rounded-[3px]", systemStatusSegmentClass(segment.tone))}
                   aria-label={systemStatusPointTooltip(segment, t)}
+                  className="overview-status-segment h-full w-full rounded-[4px]"
+                  data-tone={segment.tone}
                 />
-                <span
-                  className={cn(
-                    "pointer-events-none absolute bottom-full z-50 mb-2 hidden w-[190px] max-w-[calc(100vw-32px)] rounded-md border border-border/70 bg-popover px-3 py-2 text-left text-[11px] text-popover-foreground shadow-card-elevated group-hover:block",
-                    systemStatusTooltipPositionClass(index, segments.length)
-                  )}
-                >
-                  <span className="block font-semibold">{segment.dateLabel}</span>
-                  <span className="mt-1 flex justify-between gap-3">
-                    <span className="text-muted-foreground">{t("Requests")}</span>
-                    <span className="font-medium">{formatCompactNumber(segment.point.requestCount)}</span>
-                  </span>
-                  <span className="flex justify-between gap-3">
-                    <span className="text-muted-foreground">{t("Success rate")}</span>
-                    <span className="font-medium">{formatPercent(segment.point.successRate)}</span>
-                  </span>
-                  <span className="flex justify-between gap-3">
-                    <span className="text-muted-foreground">{t("Failed requests")}</span>
-                    <span className="font-medium">{formatCompactNumber(segment.point.errorCount)}</span>
-                  </span>
-                  <span className="flex justify-between gap-3">
-                    <span className="text-muted-foreground">{t("Duration")}</span>
-                    <span className="font-medium">{formatDuration(segment.point.avgDurationMs)}</span>
-                  </span>
-                </span>
               </span>
             ))}
+            {statusTooltip ? createPortal(
+              <span
+                className="pointer-events-none fixed z-[150] w-[190px] max-w-[calc(100vw-24px)] rounded-md border border-border/70 bg-popover px-3 py-2 text-left text-[11px] leading-4 text-popover-foreground shadow-card-elevated ring-1 ring-black/5"
+                role="tooltip"
+                style={{ left: statusTooltip.left, top: statusTooltip.top }}
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "absolute h-2 w-2 -translate-x-1/2 rotate-45 bg-popover",
+                    statusTooltip.placement === "above"
+                      ? "-bottom-1 border-b border-r border-border/70"
+                      : "-top-1 border-l border-t border-border/70"
+                  )}
+                  style={{ left: statusTooltip.arrowLeft }}
+                />
+                <span className="block font-semibold">{statusTooltip.segment.dateLabel}</span>
+                <span className="mt-1 flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t("Requests")}</span>
+                  <span className="font-medium">{formatCompactNumber(statusTooltip.segment.point.requestCount)}</span>
+                </span>
+                <span className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t("Success rate")}</span>
+                  <span className="font-medium">{formatPercent(statusTooltip.segment.point.successRate)}</span>
+                </span>
+                <span className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t("Failed requests")}</span>
+                  <span className="font-medium">{formatCompactNumber(statusTooltip.segment.point.errorCount)}</span>
+                </span>
+                <span className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t("Duration")}</span>
+                  <span className="font-medium">{formatDuration(statusTooltip.segment.point.avgDurationMs)}</span>
+                </span>
+              </span>,
+              document.body
+            ) : null}
           </div>
         </div>
       </CardContent>
@@ -2028,22 +2309,29 @@ function ProviderAccountsOverview({
     : sortedAccounts
       .filter((account) => account.meters.length > 0 || account.status === "error");
   const isSingleAccount = visibleAccounts.length === 1;
+  const showHeading = dimensions.height >= 2 && dimensions.width >= 2;
 
   return (
-    <Card className="flex h-full min-h-0 min-w-0 flex-col">
+    <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
+      {showHeading ? (
+        <OverviewCardHeading
+          icon={WalletCards}
+          title={t("Account Balance")}
+          tone="green"
+          trailing={<Badge variant="outline">{visibleAccounts.length}</Badge>}
+        />
+      ) : null}
       <CardContent className={cn("min-h-0 flex-1 overflow-hidden", providerAccountContentPaddingClass(dimensions))}>
         {visibleAccounts.length === 0 ? (
-          <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 px-3 py-4 text-center text-[12px] text-muted-foreground">
-            {t("No account balance connectors configured")}
-          </div>
+          <OverviewEmptyState className="h-full py-4" compact label={t("No account balance connectors configured")} />
         ) : isSingleAccount ? (
           <ProviderAccountSinglePanel account={visibleAccounts[0]} dimensions={dimensions} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />
         ) : variant === "compact" ? (
-          <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions))}>
+          <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions, visibleAccounts.length))}>
             {visibleAccounts.map((account) => {
               const meter = primaryProviderAccountDisplayMeter(account);
               return (
-                <div className="flex min-h-0 min-w-0 items-center justify-between gap-3 overflow-hidden rounded-lg border border-border bg-muted/20 px-3 py-2" key={providerAccountSnapshotKey(account)}>
+                <div className="overview-nested-surface flex min-h-0 min-w-0 items-center justify-between gap-3 overflow-hidden border px-3 py-2" key={providerAccountSnapshotKey(account)}>
                   <div className="min-w-0">
                     <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
                     {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
@@ -2085,7 +2373,7 @@ function ProviderAccountsOverview({
             })}
           </div>
         ) : (
-          <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions))}>
+          <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions, visibleAccounts.length))}>
             {visibleAccounts.map((account) => {
               return <ProviderAccountSummaryCard account={account} dimensions={dimensions} key={providerAccountSnapshotKey(account)} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />;
             })}
@@ -2164,7 +2452,7 @@ function ProviderAccountSummaryCard({
   const showQuotaVisual = providerAccountUsesQuotaVisual(variant) && quotaMeters.length > 0;
 
   return (
-    <div className={cn("min-h-0 min-w-0 overflow-hidden rounded-lg border border-border bg-muted/20", providerAccountCardPaddingClass(dimensions))}>
+    <div className={cn("overview-nested-surface min-h-0 min-w-0 overflow-hidden border", providerAccountCardPaddingClass(dimensions))}>
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate text-[13px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
@@ -2310,6 +2598,7 @@ function ProviderAccountMeterLine({
       </AnimatePresence>
       <CodexResetCreditDialog
         account={account}
+        details={meter.details ?? []}
         detail={resetDialogDetail}
         open={Boolean(resetDialogDetail)}
         onClose={() => setResetDialogDetail(undefined)}
@@ -2436,36 +2725,70 @@ function providerAccountMeterDetailStatusLabel(status: string | undefined, t: (v
   return t(status ?? "");
 }
 
-type CodexResetLaunchStatus = "idle" | "launching" | "launched";
+type CodexResetCardStatus = "idle" | "resetting" | "complete";
+type CodexResetCreditDetail = NonNullable<ProviderAccountMeter["details"]>[number];
 
 function CodexResetCreditDialog({
   account,
+  details,
   detail,
   onClose,
   onResetComplete,
   open
 }: {
   account: ProviderAccountSnapshot;
-  detail: NonNullable<ProviderAccountMeter["details"]>[number] | undefined;
+  details: CodexResetCreditDetail[];
+  detail: CodexResetCreditDetail | undefined;
   onClose: () => void;
   onResetComplete?: () => void | Promise<void>;
   open: boolean;
 }) {
   const t = useAppText();
-  const [status, setStatus] = useState<CodexResetLaunchStatus>("idle");
+  const cards = useMemo(() => details.filter((item) => Boolean(item.id)), [details]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [direction, setDirection] = useState(0);
+  const [status, setStatus] = useState<CodexResetCardStatus>("idle");
   const [error, setError] = useState("");
-  const detailLabel = detail ? providerAccountMeterDetailLabel(detail, 0, t) : "";
-  const detailStatus = providerAccountMeterDetailStatusLabel(detail?.status, t);
+  const activeDetail = cards[activeIndex] ?? detail;
+  const detailLabel = activeDetail ? providerAccountMeterDetailLabel(activeDetail, activeIndex, t) : "";
+  const detailStatus = providerAccountMeterDetailStatusLabel(activeDetail?.status, t);
+  const canNavigate = cards.length > 1 && status === "idle";
 
   useEffect(() => {
-    if (!open) {
-      setStatus("idle");
-      setError("");
+    if (open) {
+      const initialIndex = cards.findIndex((item) => item.id === detail?.id);
+      setActiveIndex(initialIndex >= 0 ? initialIndex : 0);
+      setDirection(0);
     }
+    setStatus("idle");
+    setError("");
   }, [open, detail?.id]);
 
+  useEffect(() => {
+    if (activeIndex >= cards.length && cards.length > 0) {
+      setActiveIndex(cards.length - 1);
+    }
+  }, [activeIndex, cards.length]);
+
+  function showCard(nextIndex: number, nextDirection: number) {
+    if (!canNavigate) {
+      return;
+    }
+    setDirection(nextDirection);
+    setActiveIndex((nextIndex + cards.length) % cards.length);
+    setError("");
+  }
+
+  function showPreviousCard() {
+    showCard(activeIndex - 1, -1);
+  }
+
+  function showNextCard() {
+    showCard(activeIndex + 1, 1);
+  }
+
   async function resetCredit() {
-    if (status !== "idle" || !detail?.id) {
+    if (status !== "idle" || !activeDetail?.id || activeDetail.redeemable === false) {
       return;
     }
     if (!window.ccr?.resetCodexRateLimitCredit) {
@@ -2474,95 +2797,49 @@ function CodexResetCreditDialog({
     }
 
     setError("");
-    setStatus("launching");
-    const ignition = delay(2000);
+    setStatus("resetting");
+    const cardTransition = delay(650);
     try {
       await window.ccr.resetCodexRateLimitCredit({
         credentialId: account.credentialId,
-        creditId: detail.id,
+        creditId: activeDetail.id,
         provider: account.provider
       });
-      await ignition;
-      setStatus("launched");
+      await cardTransition;
+      setStatus("complete");
       await onResetComplete?.();
       window.setTimeout(() => {
         onClose();
         setStatus("idle");
-      }, 1800);
+      }, 1200);
     } catch (resetError) {
-      await ignition.catch(() => undefined);
+      await cardTransition.catch(() => undefined);
       setError(formatDialogError(resetError));
       setStatus("idle");
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen && status !== "launching") onClose(); }}>
-      <DialogContent className="max-w-[560px] overflow-hidden border-slate-700/60 bg-slate-950 p-0 text-white shadow-[0_24px_80px_rgba(2,6,23,0.55)]">
-        <DialogBody className="relative min-h-[420px] overflow-hidden p-0">
-          <style>{codexResetSpaceAnimationCss}</style>
-          <div className="pointer-events-none absolute inset-0">
-            <div className="absolute inset-0 bg-[linear-gradient(180deg,#020617_0%,#030712_48%,#07111f_100%)]" />
-            <div
-              className="ccr-codex-starfield-slow absolute -inset-12 opacity-80"
-              style={{
-                backgroundImage: codexResetStarfieldDense,
-                backgroundSize: "180px 180px"
-              }}
-            />
-            <div
-              className="ccr-codex-starfield-deep absolute -inset-16 opacity-55"
-              style={{
-                backgroundImage: codexResetStarfieldWide,
-                backgroundSize: "320px 320px"
-              }}
-            />
-            <div className="ccr-codex-nebula absolute -inset-24 opacity-75" />
-            {codexResetSpaceDust.map((dust) => (
-              <div
-                className="ccr-codex-space-dust absolute rounded-full bg-cyan-100/60 shadow-[0_0_12px_rgba(125,211,252,0.55)]"
-                key={dust.id}
-                style={{
-                  animationDelay: `${dust.delay}s`,
-                  animationDuration: `${dust.duration}s`,
-                  height: dust.size,
-                  left: `${dust.left}%`,
-                  top: `${dust.top}%`,
-                  width: dust.size
-                }}
-              />
-            ))}
-            {codexResetLaunchStars.map((star) => (
-              <div
-                className="ccr-codex-twinkle-star absolute rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.75)]"
-                key={star.id}
-                style={{
-                  animationDelay: `${star.delay}s`,
-                  animationDuration: `${star.duration}s`,
-                  height: star.size,
-                  left: `${star.left}%`,
-                  top: `${star.top}%`,
-                  width: star.size
-                }}
-              />
-            ))}
-            {codexResetShootingStars.map((meteor) => (
-              <div
-                className="ccr-codex-meteor absolute h-px w-36 rounded-full bg-gradient-to-r from-transparent via-white to-transparent shadow-[0_0_16px_rgba(255,255,255,0.95)]"
-                key={meteor.id}
-                style={{
-                  animationDelay: `${meteor.delay}s`,
-                  animationDuration: `${meteor.duration}s`,
-                  opacity: meteor.opacity,
-                  top: `${meteor.top}%`
-                }}
-              />
-            ))}
-          </div>
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen && status !== "resetting") onClose(); }}>
+      <DialogContent className="max-w-[620px] overflow-hidden border-border/70 bg-background p-0 text-foreground shadow-[0_28px_90px_rgba(15,23,42,0.24)]">
+        <DialogBody
+          className="relative overflow-hidden p-0"
+          onKeyDown={(event) => {
+            if (event.key === "ArrowLeft") {
+              event.preventDefault();
+              showPreviousCard();
+            }
+            if (event.key === "ArrowRight") {
+              event.preventDefault();
+              showNextCard();
+            }
+          }}
+        >
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-56 bg-[radial-gradient(circle_at_20%_0%,rgba(16,185,129,0.12),transparent_42%),radial-gradient(circle_at_90%_15%,rgba(99,102,241,0.12),transparent_38%)]" />
           <Button
             aria-label={t("Close")}
-            className="absolute right-3 top-3 z-20 text-slate-300 hover:bg-white/10 hover:text-white"
-            disabled={status === "launching"}
+            className="absolute right-4 top-4 z-20 text-muted-foreground hover:bg-muted hover:text-foreground"
+            disabled={status === "resetting"}
             onClick={onClose}
             size="iconSm"
             title={t("Close")}
@@ -2571,282 +2848,199 @@ function CodexResetCreditDialog({
           >
             <X className="h-3.5 w-3.5" />
           </Button>
-          <div className="absolute left-5 right-14 top-5 z-10 min-w-0 text-slate-300">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">{t("Manual reset credit")}</div>
-            <div className="mt-1 truncate text-[15px] font-semibold text-white" title={detailLabel || undefined}>{detailLabel || "-"}</div>
-            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-slate-400">
-              <span>{t("Expires")}: {formatProviderAccountDetailDate(detail?.expiresAt)}</span>
-              {detailStatus ? <span className="rounded-full border border-white/10 px-1.5 py-0.5 text-[10px] text-slate-300">{detailStatus}</span> : null}
+          <div className="relative z-10 px-6 pb-3 pt-6 sm:px-8">
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              <CreditCard className="h-3.5 w-3.5" />
+              {t("Manual reset credit")}
             </div>
+            <h2 className="mt-1.5 text-[21px] font-semibold tracking-tight">{t("Choose a reset card")}</h2>
+            <p className="mt-1 text-[12px] text-muted-foreground">{t("Use the arrows to switch between available reset credits.")}</p>
           </div>
-          <div className="relative z-10 flex min-h-[420px] flex-col items-center justify-center px-4 py-16 font-sans">
-            <div className="flex flex-col items-center">
-              <motion.button
-                animate={status === "launching" ? {
-                  x: [-2, 2, -3, 3, -1, 1, 0],
-                  y: [-1, 1, -2, 2, -1, 1, 0]
-                } : {}}
-                className="group relative overflow-hidden rounded-full border border-red-400/50 bg-gradient-to-b from-orange-500 to-red-600 shadow-[0_0_40px_rgba(239,68,68,0.3)] transition-shadow duration-300 hover:shadow-[0_0_60px_rgba(239,68,68,0.6)] disabled:cursor-not-allowed"
-                disabled={status !== "idle"}
-                onClick={() => void resetCredit()}
-                transition={status === "launching" ? { duration: 0.3, repeat: Infinity } : {}}
+          <div className="relative z-10 px-3 pb-2 sm:px-5">
+            <div className="grid grid-cols-[36px_minmax(0,440px)_36px] items-center justify-center gap-1 sm:grid-cols-[40px_minmax(0,440px)_40px] sm:gap-3">
+              <Button
+                aria-label={t("Previous reset card")}
+                className="rounded-full border border-border/80 bg-background/90 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
+                disabled={!canNavigate}
+                onClick={showPreviousCard}
+                size="iconSm"
+                title={t("Previous reset card")}
                 type="button"
-                whileHover={status === "idle" ? { scale: 1.05 } : {}}
-                whileTap={status === "idle" ? { scale: 0.95 } : {}}
+                variant="ghost"
               >
-                <div className="relative z-10 flex w-64 items-center justify-center gap-4 px-10 py-5">
-                  <AnimatePresence mode="wait">
-                    {status === "idle" ? (
-                      <motion.div
-                        animate={{ opacity: 1, y: 0 }}
-                        className="flex items-center gap-3 text-xl font-bold uppercase tracking-wider text-white"
-                        exit={{ opacity: 0, y: -10 }}
-                        initial={{ opacity: 0, y: 10 }}
-                        key="idle-text"
-                      >
-                        <Rocket className="h-6 w-6" />
-                        <span>{t("Reset")}</span>
-                      </motion.div>
-                    ) : null}
-                    {status === "launching" ? (
-                      <motion.div
-                        animate={{ opacity: 1, y: 0 }}
-                        className="flex items-center gap-3 text-xl font-bold uppercase tracking-wider text-white"
-                        exit={{ opacity: 0, scale: 0.9 }}
-                        initial={{ opacity: 0, y: 10 }}
-                        key="launching-text"
-                      >
-                        <motion.div animate={{ y: [0, -3, 0] }} transition={{ duration: 0.2, repeat: Infinity }}>
-                          <Rocket className="h-6 w-6 fill-white" />
-                        </motion.div>
-                        <span>{t("Resetting")}</span>
-                      </motion.div>
-                    ) : null}
-                    {status === "launched" ? (
-                      <motion.div
-                        animate={{ opacity: 1 }}
-                        className="flex items-center gap-3 text-xl font-bold uppercase tracking-wider text-white"
-                        exit={{ opacity: 0 }}
-                        initial={{ opacity: 0 }}
-                        key="launched-text"
-                      >
-                        <span className="bg-gradient-to-r from-yellow-200 to-white bg-clip-text text-transparent">{t("Reset complete")}</span>
-                      </motion.div>
-                    ) : null}
-                  </AnimatePresence>
-                </div>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
 
-                <AnimatePresence>
-                  {(status === "launching" || status === "launched") ? (
-                    <motion.div
-                      animate={status === "launching" ? {
-                        bottom: "-20px",
-                        height: ["40px", "70px", "50px"],
-                        opacity: [0.6, 1, 0.6],
-                        width: ["50px", "60px", "50px"]
-                      } : {
-                        bottom: "-100px",
-                        height: "250px",
-                        opacity: 0,
-                        width: "100px"
-                      }}
-                      className="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 rounded-full bg-gradient-to-t from-yellow-300 via-orange-500 to-transparent blur-md"
-                      exit={{ opacity: 0 }}
-                      initial={{ height: 0, opacity: 0, width: "40px" }}
-                      transition={status === "launching" ? { duration: 0.1, repeat: Infinity } : { duration: 0.8, ease: "easeOut" }}
-                    />
-                  ) : null}
-                </AnimatePresence>
-
-                <AnimatePresence>
-                  {status === "launched" ? (
-                    <motion.div
-                      animate={{ opacity: 0, scale: 0.5, y: -800 }}
-                      className="pointer-events-none absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2"
-                      initial={{ opacity: 1, scale: 1.2, y: 0 }}
-                      transition={{ duration: 1.5, ease: "easeIn" }}
-                    >
-                      <div className="relative">
-                        <Rocket className="h-10 w-10 fill-white text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.8)]" />
-                        <motion.div
-                          animate={{
-                            height: ["100px", "150px", "120px"],
-                            opacity: [0.8, 1, 0.8]
-                          }}
-                          className="absolute left-1/2 top-full h-32 w-6 -translate-x-1/2 rounded-full bg-gradient-to-b from-yellow-200 via-orange-500 to-transparent blur-sm"
-                          transition={{ duration: 0.1, repeat: Infinity }}
-                        />
-                      </div>
-                    </motion.div>
-                  ) : null}
-                </AnimatePresence>
-              </motion.button>
-
-              <AnimatePresence>
-                {status !== "idle" ? (
+              <div className="relative min-w-0 pb-3 pt-2 [perspective:1200px]">
+                {cards.length > 1 ? (
+                  <>
+                    <div className="absolute inset-x-5 bottom-0 top-5 rounded-[22px] border border-slate-700/40 bg-slate-900/45 opacity-35" />
+                    <div className="absolute inset-x-2.5 bottom-1.5 top-3.5 rounded-[22px] border border-slate-700/50 bg-slate-900/70 opacity-55" />
+                  </>
+                ) : null}
+                <AnimatePresence custom={direction} initial={false} mode="wait">
                   <motion.div
-                    animate={status === "launching" ? {
-                      opacity: 1,
-                      scale: 1,
-                      y: 0
-                    } : {
-                      opacity: 0,
-                      scale: 2.5,
-                      y: 50
+                    animate={{ opacity: 1, rotateY: 0, scale: 1, x: 0 }}
+                    className="relative aspect-[1.586/1] w-full cursor-grab select-none overflow-hidden rounded-[22px] border border-white/10 bg-[radial-gradient(circle_at_82%_18%,rgba(129,140,248,0.42),transparent_29%),radial-gradient(circle_at_14%_92%,rgba(16,185,129,0.34),transparent_34%),linear-gradient(135deg,#171a20_0%,#07090d_55%,#111827_100%)] text-white shadow-[0_22px_45px_rgba(15,23,42,0.34)] active:cursor-grabbing"
+                    drag={canNavigate ? "x" : false}
+                    dragConstraints={{ left: 0, right: 0 }}
+                    dragElastic={0.16}
+                    exit={{ opacity: 0, rotateY: direction > 0 ? -7 : 7, scale: 0.97, x: direction > 0 ? -48 : 48 }}
+                    initial={{ opacity: 0, rotateY: direction > 0 ? 7 : -7, scale: 0.97, x: direction > 0 ? 48 : -48 }}
+                    key={activeDetail?.id ?? "empty-reset-card"}
+                    onDragEnd={(_, info) => {
+                      if (info.offset.x < -48) showNextCard();
+                      if (info.offset.x > 48) showPreviousCard();
                     }}
-                    className="pointer-events-none absolute top-full mt-2 flex w-full justify-center"
-                    exit={{ opacity: 0 }}
-                    initial={{ opacity: 0, scale: 0.8, y: -20 }}
-                    transition={{ duration: status === "launching" ? 1 : 1.5 }}
+                    transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
                   >
-                    <div className="relative h-24 w-48">
-                      <motion.div animate={{ x: [-5, 5, -5] }} className="absolute left-4 top-0 text-slate-300 drop-shadow-xl" transition={{ duration: 2, ease: "easeInOut", repeat: Infinity }}>
-                        <Cloud className="h-20 w-20 fill-slate-300 opacity-90" />
-                      </motion.div>
-                      <motion.div animate={{ x: [5, -5, 5] }} className="absolute right-4 top-4 text-slate-400 drop-shadow-xl" transition={{ duration: 2.5, ease: "easeInOut", repeat: Infinity }}>
-                        <Cloud className="h-24 w-24 fill-slate-400 opacity-80" />
-                      </motion.div>
-                      <motion.div animate={{ y: [-3, 3, -3] }} className="absolute -top-2 left-16 text-slate-200 drop-shadow-xl" transition={{ duration: 1.5, ease: "easeInOut", repeat: Infinity }}>
-                        <Cloud className="h-16 w-16 fill-slate-200 opacity-95" />
-                      </motion.div>
+                    <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full border border-white/[0.07]" />
+                    <div className="pointer-events-none absolute -right-8 -top-14 h-48 w-48 rounded-full border border-white/[0.06]" />
+                    <div className="pointer-events-none absolute inset-0 opacity-[0.045] [background-image:repeating-linear-gradient(115deg,transparent_0,transparent_8px,#fff_9px,transparent_10px)]" />
+                    <div className="relative flex h-full flex-col justify-between p-[clamp(12px,5.5%,26px)]">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white/10 shadow-inner">
+                            <img alt="Codex" className="h-5 w-5 rounded-full" draggable={false} src={codexLogoUrl} />
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white">CODEX</div>
+                            <div className="text-[8px] uppercase tracking-[0.16em] text-white/45">RESET CREDIT</div>
+                          </div>
+                        </div>
+                        {detailStatus ? <span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-emerald-200">{detailStatus}</span> : null}
+                      </div>
+
+                      <div>
+                        <div className="mb-3 flex items-center gap-3">
+                          <div className="relative h-7 w-10 overflow-hidden rounded-md border border-amber-100/40 bg-gradient-to-br from-amber-100 via-yellow-400 to-amber-600 shadow-inner">
+                            <div className="absolute inset-y-0 left-1/2 w-px bg-amber-900/30" />
+                            <div className="absolute inset-x-0 top-1/2 h-px bg-amber-900/30" />
+                            <div className="absolute inset-y-1 left-1/2 w-4 -translate-x-1/2 rounded border border-amber-900/25" />
+                          </div>
+                          <Wifi className="h-6 w-6 rotate-90 text-white/50" />
+                        </div>
+                        <div aria-label={`${t("Card number")}: ${activeDetail?.id ?? "-"}`} className="flex min-h-10 flex-wrap content-center gap-x-3 gap-y-0.5 font-mono text-[clamp(14px,3.8vw,20px)] font-medium tracking-[0.1em] text-white" title={activeDetail?.id}>
+                          {formatCodexResetCardNumber(activeDetail?.id).map((group, index) => <span key={`${group}-${index}`}>{group}</span>)}
+                        </div>
+                      </div>
+
+                      <div className="flex items-end justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="text-[7px] font-medium uppercase tracking-[0.18em] text-white/40">{t("Reset type")}</div>
+                          <div className="mt-0.5 truncate text-[10px] font-semibold uppercase tracking-[0.13em] text-white/85" title={detailLabel || undefined}>{detailLabel || "-"}</div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <div className="text-[7px] font-medium uppercase tracking-[0.18em] text-white/40">{t("Valid thru")}</div>
+                          <div className="mt-0.5 font-mono text-[13px] font-semibold tracking-[0.12em]">{formatCodexResetCardExpiry(activeDetail?.expiresAt)}</div>
+                        </div>
+                      </div>
                     </div>
                   </motion.div>
-                ) : null}
-              </AnimatePresence>
+                </AnimatePresence>
+              </div>
+
+              <Button
+                aria-label={t("Next reset card")}
+                className="rounded-full border border-border/80 bg-background/90 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
+                disabled={!canNavigate}
+                onClick={showNextCard}
+                size="iconSm"
+                title={t("Next reset card")}
+                type="button"
+                variant="ghost"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div aria-label={`${t("Reset card")} ${activeIndex + 1} / ${Math.max(cards.length, 1)}`} className="mt-1 flex h-5 items-center justify-center gap-1.5">
+              {cards.map((card, index) => (
+                <button
+                  aria-label={`${t("Reset card")} ${index + 1}`}
+                  className={cn("h-1.5 rounded-full transition-all", index === activeIndex ? "w-5 bg-foreground" : "w-1.5 bg-muted-foreground/25 hover:bg-muted-foreground/50")}
+                  disabled={status !== "idle"}
+                  key={card.id}
+                  onClick={() => showCard(index, index > activeIndex ? 1 : -1)}
+                  type="button"
+                />
+              ))}
             </div>
           </div>
-          {error ? <div className="absolute bottom-4 left-5 right-5 z-20 rounded-md border border-red-400/30 bg-red-950/70 px-3 py-2 text-[11px] text-red-100">{error}</div> : null}
+
+          <div className="relative z-10 border-t border-border/70 bg-muted/20 px-6 py-5 sm:px-8">
+            <div className="mb-4 flex min-w-0 items-center justify-between gap-4 text-[11px]">
+              <div className="min-w-0">
+                <div className="text-muted-foreground">{t("Expires")}</div>
+                <div className="mt-0.5 truncate font-medium text-foreground">{formatProviderAccountDetailDate(activeDetail?.expiresAt)}</div>
+              </div>
+              <div className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-[10px] font-medium text-muted-foreground">{activeIndex + 1} / {Math.max(cards.length, 1)}</div>
+            </div>
+            <Button
+              className={cn(
+                "group relative h-14 w-full overflow-hidden rounded-full border border-red-400/50 bg-gradient-to-b from-orange-500 to-red-600 px-5 text-white shadow-[0_10px_28px_rgba(239,68,68,0.28)] transition-shadow hover:from-orange-400 hover:to-red-600 hover:shadow-[0_14px_36px_rgba(239,68,68,0.4)] disabled:opacity-100",
+                status === "complete" && "border-emerald-400/40 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-500 hover:to-emerald-700"
+              )}
+              disabled={status !== "idle" || !activeDetail?.id || activeDetail.redeemable === false}
+              onClick={() => void resetCredit()}
+              type="button"
+            >
+              <motion.span
+                animate={status === "resetting" ? { x: [-1, 1, -2, 2, 0], y: [0, -1, 1, -1, 0] } : {}}
+                className="relative z-10 flex items-center justify-center gap-2.5 text-[14px] font-bold uppercase tracking-[0.1em]"
+                transition={status === "resetting" ? { duration: 0.22, repeat: Infinity } : {}}
+              >
+                {status === "idle" ? <><Rocket className="h-5 w-5" /><span>{t("Launch reset")}</span></> : null}
+                {status === "resetting" ? (
+                  <>
+                    <span className="relative">
+                      <Rocket className="h-5 w-5 fill-white" />
+                      <motion.span
+                        animate={{ height: [8, 15, 10], opacity: [0.55, 1, 0.65] }}
+                        className="absolute left-1/2 top-full mt-0.5 w-1.5 -translate-x-1/2 rounded-full bg-gradient-to-b from-yellow-200 via-orange-300 to-transparent blur-[1px]"
+                        transition={{ duration: 0.12, repeat: Infinity }}
+                      />
+                    </span>
+                    <span>{t("Resetting")}</span>
+                  </>
+                ) : null}
+                {status === "complete" ? <><CheckCircle2 className="h-5 w-5" /><span>{t("Reset complete")}</span></> : null}
+              </motion.span>
+              <AnimatePresence>
+                {status === "resetting" ? (
+                  <motion.span
+                    animate={{ opacity: [0.3, 0.7, 0.3], scaleX: [0.8, 1.25, 0.9] }}
+                    className="pointer-events-none absolute inset-x-10 bottom-0 h-4 rounded-full bg-yellow-200/40 blur-xl"
+                    exit={{ opacity: 0 }}
+                    initial={{ opacity: 0 }}
+                    transition={{ duration: 0.18, repeat: Infinity }}
+                  />
+                ) : null}
+              </AnimatePresence>
+            </Button>
+            {error ? <div className="mt-3 rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">{error}</div> : null}
+          </div>
         </DialogBody>
       </DialogContent>
     </Dialog>
   );
 }
 
-const codexResetStarfieldDense = [
-  "radial-gradient(circle at 12% 18%, rgba(255,255,255,0.75) 0 1px, transparent 1.4px)",
-  "radial-gradient(circle at 42% 36%, rgba(186,230,253,0.65) 0 1px, transparent 1.6px)",
-  "radial-gradient(circle at 74% 22%, rgba(255,255,255,0.6) 0 1px, transparent 1.5px)",
-  "radial-gradient(circle at 18% 72%, rgba(226,232,240,0.55) 0 1px, transparent 1.4px)",
-  "radial-gradient(circle at 88% 78%, rgba(147,197,253,0.5) 0 1px, transparent 1.6px)"
-].join(", ");
+export function formatCodexResetCardNumber(value: string | undefined): string[] {
+  const normalized = value?.trim().replace(/\s+/g, "") || "----";
+  return normalized.match(/.{1,4}/g) ?? [normalized];
+}
 
-const codexResetStarfieldWide = [
-  "radial-gradient(circle at 18% 28%, rgba(255,255,255,0.5) 0 1.4px, transparent 2px)",
-  "radial-gradient(circle at 58% 16%, rgba(219,234,254,0.45) 0 1.2px, transparent 2px)",
-  "radial-gradient(circle at 78% 62%, rgba(255,255,255,0.42) 0 1.3px, transparent 2px)",
-  "radial-gradient(circle at 34% 82%, rgba(125,211,252,0.35) 0 1.2px, transparent 2px)"
-].join(", ");
-
-const codexResetLaunchStars = Array.from({ length: 76 }, (_, index) => ({
-  delay: (index % 9) * 0.18,
-  duration: 2 + (index % 7) * 0.35,
-  id: index,
-  left: (index * 37) % 100,
-  opacity: 0.45 + (index % 5) * 0.11,
-  size: `${1.2 + (index % 4) * 0.65}px`,
-  top: (index * 53) % 100
-}));
-
-const codexResetSpaceDust = Array.from({ length: 26 }, (_, index) => ({
-  delay: (index % 8) * 0.55,
-  duration: 5.5 + (index % 6) * 0.75,
-  id: index,
-  left: (index * 41) % 100,
-  size: `${2 + (index % 3)}px`,
-  top: (index * 29) % 100
-}));
-
-const codexResetShootingStars = Array.from({ length: 5 }, (_, index) => ({
-  delay: 1.4 + index * 2.8,
-  drop: 14 + (index % 3) * 5,
-  duration: 5.8 + index * 0.7,
-  id: index,
-  opacity: 0.55 + (index % 3) * 0.12,
-  repeatDelay: 8 + index * 1.4,
-  rotate: 14 + (index % 2) * 6,
-  top: 12 + index * 15
-}));
-
-const codexResetSpaceAnimationCss = `
-  .ccr-codex-starfield-slow {
-    animation: ccr-codex-starfield-slow 9s linear infinite;
-    will-change: background-position;
+export function formatCodexResetCardExpiry(value: string | undefined): string {
+  if (!value) {
+    return "--/--";
   }
-
-  .ccr-codex-starfield-deep {
-    animation: ccr-codex-starfield-deep 15s linear infinite;
-    will-change: background-position;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    return "--/--";
   }
-
-  .ccr-codex-nebula {
-    background:
-      radial-gradient(circle at 24% 52%, rgba(239, 68, 68, 0.2), transparent 32%),
-      radial-gradient(circle at 70% 42%, rgba(59, 130, 246, 0.18), transparent 36%),
-      radial-gradient(circle at 54% 76%, rgba(20, 184, 166, 0.12), transparent 38%);
-    animation: ccr-codex-nebula 6s ease-in-out infinite alternate;
-    will-change: opacity, transform;
-  }
-
-  .ccr-codex-twinkle-star {
-    animation-name: ccr-codex-twinkle-star;
-    animation-timing-function: ease-in-out;
-    animation-iteration-count: infinite;
-    opacity: 0.24;
-    will-change: opacity, transform;
-  }
-
-  .ccr-codex-space-dust {
-    animation-name: ccr-codex-space-dust;
-    animation-timing-function: ease-in-out;
-    animation-iteration-count: infinite;
-    opacity: 0;
-    will-change: opacity, transform;
-  }
-
-  .ccr-codex-meteor {
-    left: -32%;
-    opacity: 0;
-    transform: translate3d(-160px, -40px, 0) rotate(16deg);
-    animation-name: ccr-codex-meteor;
-    animation-timing-function: linear;
-    animation-iteration-count: infinite;
-    will-change: opacity, transform;
-  }
-
-  @keyframes ccr-codex-starfield-slow {
-    from { background-position: 0 0; }
-    to { background-position: 180px 180px; }
-  }
-
-  @keyframes ccr-codex-starfield-deep {
-    from { background-position: 0 0; }
-    to { background-position: -320px 320px; }
-  }
-
-  @keyframes ccr-codex-nebula {
-    0% { opacity: 0.42; transform: translate3d(-18px, 10px, 0) scale(1); }
-    100% { opacity: 0.82; transform: translate3d(18px, -14px, 0) scale(1.08); }
-  }
-
-  @keyframes ccr-codex-twinkle-star {
-    0%, 100% { opacity: 0.18; transform: scale(0.65); }
-    45% { opacity: 0.95; transform: scale(1.8); }
-    70% { opacity: 0.36; transform: scale(1.1); }
-  }
-
-  @keyframes ccr-codex-space-dust {
-    0% { opacity: 0; transform: translate3d(-10px, 24px, 0) scale(0.7); }
-    35% { opacity: 0.75; }
-    100% { opacity: 0; transform: translate3d(34px, -44px, 0) scale(1.35); }
-  }
-
-  @keyframes ccr-codex-meteor {
-    0%, 48% { opacity: 0; transform: translate3d(-180px, -72px, 0) rotate(16deg) scaleX(0.75); }
-    54% { opacity: 1; }
-    72% { opacity: 0.85; }
-    100% { opacity: 0; transform: translate3d(860px, 210px, 0) rotate(16deg) scaleX(1.25); }
-  }
-`;
+  return `${String(date.getUTCMonth() + 1).padStart(2, "0")}/${String(date.getUTCDate()).padStart(2, "0")}`;
+}
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
@@ -2942,7 +3136,7 @@ function ProviderAccountQuotaGauge({
     const path = describeSvgArc(60, 66, 42, start, end);
     return (
       <svg aria-hidden="true" className={sizeClass} viewBox="0 0 120 120">
-        <path d={path} fill="none" pathLength={100} stroke="hsl(var(--muted))" strokeLinecap="round" strokeWidth="11" />
+        <path d={path} fill="none" pathLength={100} stroke="var(--muted)" strokeLinecap="round" strokeWidth="11" />
         <path d={path} fill="none" pathLength={100} stroke={stroke} strokeDasharray={`${Math.round(primaryRatio * 100)} 100`} strokeLinecap="round" strokeWidth="11" />
         <text className="fill-foreground text-[18px] font-semibold" dy="0.35em" textAnchor="middle" x="60" y="60">{formatProviderAccountMeterValue(primary)}</text>
       </svg>
@@ -2989,7 +3183,7 @@ function ProviderAccountQuotaCircle({
 
   return (
     <>
-      <circle cx={cx} cy={cy} fill="none" r={radius} stroke="hsl(var(--muted))" strokeWidth={strokeWidth} />
+      <circle cx={cx} cy={cy} fill="none" r={radius} stroke="var(--muted)" strokeWidth={strokeWidth} />
       <circle
         cx={cx}
         cy={cy}
@@ -3155,8 +3349,8 @@ function providerAccountStackClass(dimensions: OverviewWidgetDimensions): string
   return dimensions.height <= 1 ? "space-y-1.5" : "space-y-2.5";
 }
 
-function providerAccountGridClass(dimensions: OverviewWidgetDimensions): string {
-  if (dimensions.width >= 3) return "md:grid-cols-2 xl:grid-cols-3";
+function providerAccountGridClass(dimensions: OverviewWidgetDimensions, itemCount: number): string {
+  if (dimensions.width >= 3) return itemCount <= 2 ? "md:grid-cols-2" : "md:grid-cols-2 xl:grid-cols-3";
   if (dimensions.width >= 2) return "md:grid-cols-2";
   return "";
 }
@@ -4292,14 +4486,11 @@ function UsageAnalysisCard({
   const showCacheRate = dimensions.width >= 4 && dimensions.height >= 3;
 
   return (
-    <Card className="flex h-full min-h-0 min-w-0 flex-col">
-      <CardHeader className="shrink-0 flex-row items-center justify-between">
-        <CardTitle>{title}</CardTitle>
-        <Badge variant="outline">{rows.length}</Badge>
-      </CardHeader>
+    <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
+      <OverviewCardHeading icon={UsersRound} title={title} tone="slate" trailing={<Badge variant="outline">{rows.length}</Badge>} />
       <CardContent className="min-h-0 flex-1 overflow-hidden">
         {rows.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-[12px] text-muted-foreground">{emptyLabel}</div>
+          <OverviewEmptyState compact label={emptyLabel} />
         ) : (
           <div className={cn("h-full overflow-hidden", agentListSurfaceClassName)}>
             <table className={cn("table-fixed", agentListTableClassName)}>
@@ -4399,7 +4590,7 @@ function UsageTooltip({
   const point = payload.find((item) => item.payload)?.payload;
 
   return (
-    <div className="rounded-lg border border-border/60 bg-card/95 glass-surface px-3 py-2.5 text-[11px] shadow-card-elevated">
+    <div className="overview-tooltip rounded-xl border px-3 py-2.5 text-[11px]">
       <div className="mb-1 font-semibold">{label}</div>
       <div className="space-y-1">
         {payload.map((item) => (
@@ -4486,7 +4677,7 @@ function TokenTooltip({
   const title = label || payload[0]?.name || "";
 
   return (
-    <div className="rounded-lg border border-border/60 bg-card/95 glass-surface px-3 py-2.5 text-[11px] shadow-card-elevated">
+    <div className="overview-tooltip rounded-xl border px-3 py-2.5 text-[11px]">
       <div className="font-semibold">{title}</div>
       <div className="mt-1 text-muted-foreground">{formatCompactNumber(Number(payload[0]?.value) || 0)} tokens</div>
     </div>

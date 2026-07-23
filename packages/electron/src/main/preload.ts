@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { browserErrorI18nLanguage, formatLocalizedErrorMessage } from "@ccr/core/contracts/i18n";
 import { IPC_CHANNELS } from "@ccr/core/contracts/ipc-channels";
 import type {
@@ -41,6 +41,8 @@ import type {
   LocalAgentProviderCandidate,
   LocalAgentProviderImportRequest,
   LocalAgentProviderImportResult,
+  LocalAgentProviderProbeRequest,
+  LocalAgentProviderProbeResult,
   PluginDirectorySelection,
   PluginMarketplaceEntry,
   ProfileOpenCommandResult,
@@ -70,6 +72,10 @@ import type {
   RequestLogEntry,
   RequestLogListFilter,
   RequestLogPage,
+  RouteScriptTestRequest,
+  RouteScriptTestResult,
+  RouteScriptValidationRequest,
+  RouteScriptValidationResult,
   UsageStatsFilter,
   UsageStatsRange,
   UsageStatsSnapshot
@@ -106,6 +112,7 @@ contextBridge.exposeInMainWorld("ccr", {
   getAgentTracePayload: (request: AgentAnalysisTracePayloadRequest) => invoke(IPC_CHANNELS.appGetAgentTracePayload, request) as Promise<AgentAnalysisTracePayloadFullResult>,
   getAppInfo: () => invoke(IPC_CHANNELS.appGetInfo) as Promise<AppInfo>,
   getConfig: () => invoke(IPC_CHANNELS.appGetConfig) as Promise<AppConfig>,
+  getFilePath: (file: File) => webUtils.getPathForFile(file),
   getGatewayStatus: () => invoke(IPC_CHANNELS.appGetGatewayStatus) as Promise<GatewayStatus>,
   getLocalAgentProviderCandidates: () => invoke(IPC_CHANNELS.appGetLocalAgentProviderCandidates) as Promise<LocalAgentProviderCandidate[]>,
   getOnboardingFinished: () => invoke(IPC_CHANNELS.appGetOnboardingFinished) as Promise<boolean>,
@@ -131,6 +138,7 @@ contextBridge.exposeInMainWorld("ccr", {
   openExternal: (url: string) => invoke(IPC_CHANNELS.appOpenExternal, url) as Promise<void>,
   openProfile: (request: ProfileOpenRequest) => invoke(IPC_CHANNELS.appOpenProfile, request) as Promise<ProfileOpenResult>,
   prepareImageExportTarget: (request: AppImageExportTargetRequest) => invoke(IPC_CHANNELS.appPrepareImageExportTarget, request) as Promise<AppImageExportTargetResult>,
+  probeLocalAgentProvider: (request: LocalAgentProviderProbeRequest) => invoke(IPC_CHANNELS.appProbeLocalAgentProvider, request) as Promise<LocalAgentProviderProbeResult>,
   probeProviderCandidates: (request: GatewayProviderProbeCandidatesRequest) => invoke(IPC_CHANNELS.appProbeProviderCandidates, request) as Promise<GatewayProviderProbeCandidateResult | undefined>,
   probeProvider: (request: GatewayProviderProbeRequest) => invoke(IPC_CHANNELS.appProbeProvider, request) as Promise<GatewayProviderProbeResult>,
   quitApp: () => invoke(IPC_CHANNELS.appQuit) as Promise<void>,
@@ -144,6 +152,7 @@ contextBridge.exposeInMainWorld("ccr", {
   selectPluginDirectory: () => invoke(IPC_CHANNELS.appSelectPluginDirectory) as Promise<PluginDirectorySelection | undefined>,
   setOnboardingFinished: () => invoke(IPC_CHANNELS.appSetOnboardingFinished) as Promise<boolean>,
   setProxyNetworkCaptureEnabled: (enabled: boolean) => invoke(IPC_CHANNELS.appSetProxyNetworkCaptureEnabled, enabled) as Promise<ProxyNetworkSnapshot>,
+  setThemePreference: (theme: AppConfig["theme"]) => invoke(IPC_CHANNELS.appSetThemePreference, theme) as Promise<AppConfig["theme"]>,
   setTrayDetailOpen: (open: boolean, provider?: string) => invoke(IPC_CHANNELS.appSetTrayDetailOpen, open, provider) as Promise<void>,
   showMainWindow: () => invoke(IPC_CHANNELS.appShowMainWindow) as Promise<void>,
   startGateway: () => invoke(IPC_CHANNELS.appStartGateway) as Promise<GatewayStatus>,
@@ -153,9 +162,11 @@ contextBridge.exposeInMainWorld("ccr", {
   scanBotHandoffBluetoothTargets: () => invoke(IPC_CHANNELS.appBotHandoffBluetoothTargetsScan) as Promise<BotHandoffScanTarget[]>,
   scanBotHandoffWifiTargets: () => invoke(IPC_CHANNELS.appBotHandoffWifiTargetsScan) as Promise<BotHandoffScanTarget[]>,
   testProviderAccountConnector: (request: ProviderAccountTestRequest) => invoke(IPC_CHANNELS.appTestProviderAccountConnector, request) as Promise<ProviderAccountTestResult>,
+  testRouteScript: (request: RouteScriptTestRequest) => invoke(IPC_CHANNELS.appTestRouteScript, request) as Promise<RouteScriptTestResult>,
   updateCheck: () => invoke(IPC_CHANNELS.appUpdateCheck) as Promise<AppUpdateStatus>,
   updateDownload: () => invoke(IPC_CHANNELS.appUpdateDownload) as Promise<AppUpdateStatus>,
   updateInstall: () => invoke(IPC_CHANNELS.appUpdateInstall) as Promise<void>,
+  validateRouteScript: (request: RouteScriptValidationRequest) => invoke(IPC_CHANNELS.appValidateRouteScript, request) as Promise<RouteScriptValidationResult>,
   waitBotGatewayQrLogin: (request: BotGatewayQrLoginWaitRequest) => invoke(IPC_CHANNELS.appBotGatewayQrLoginWait, request) as Promise<BotGatewayQrLoginWaitResult>,
   onBeforeQuit: (callback: () => void) => {
     const handler = () => callback();
@@ -176,6 +187,11 @@ contextBridge.exposeInMainWorld("ccr", {
     const handler = () => callback();
     ipcRenderer.on(IPC_CHANNELS.appOpenUpdate, handler);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.appOpenUpdate, handler);
+  },
+  onThemePreferenceChanged: (callback: (theme: AppConfig["theme"]) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, theme: AppConfig["theme"]) => callback(theme);
+    ipcRenderer.on(IPC_CHANNELS.appThemePreferenceChanged, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.appThemePreferenceChanged, handler);
   },
   onUpdateStatusChanged: (callback: (status: AppUpdateStatus) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, status: AppUpdateStatus) => callback(status);

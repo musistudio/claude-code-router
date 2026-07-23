@@ -1,7 +1,7 @@
 import type { AppConfig } from "@ccr/core/contracts/app";
-import { normalizeProfileScopeValue } from "@ccr/core/contracts/app";
+import { availableGatewayModelIds, normalizeProfileScopeValue } from "@ccr/core/contracts/app";
+import { modelRegistryForConfig } from "@ccr/core/routing/model-registry";
 
-export const CLAUDE_APP_FALLBACK_MODEL = "claude-sonnet-4-5";
 export const CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX = "[1m]";
 const CLAUDE_APP_ENCODED_ROUTE_PREFIX = "anthropic/claude-ccr-h";
 
@@ -25,9 +25,14 @@ export type ClaudeAppGatewayInferenceModel = {
   supports1m?: true;
 };
 
-export function inferClaudeAppGatewayTargetModel(config: Pick<AppConfig, "profile">): string {
-  return inferGlobalClaudeProfileModel(config) ||
-    CLAUDE_APP_FALLBACK_MODEL;
+export function inferClaudeAppGatewayTargetModel(
+  config: Pick<AppConfig, "Providers" | "profile" | "virtualModelProfiles">
+): string | undefined {
+  const profileModel = inferGlobalClaudeProfileModel(config);
+  const resolvedProfileModel = profileModel
+    ? canonicalClaudeAppGatewayTargetModel(profileModel, config)
+    : undefined;
+  return resolvedProfileModel ?? availableGatewayModelIds(config)[0];
 }
 
 export function buildClaudeAppGatewayModelRoutes(
@@ -43,7 +48,7 @@ export function buildClaudeAppGatewayModelRoutes(
   const seenTargets = new Set<string>();
   return targetModels.flatMap((rawTargetModel, index) => {
     const targetModel = stripClaudeAppGatewayOneMillionContextSuffix(rawTargetModel);
-    const oneMillionContext = claudeAppGatewaySupportsOneMillionContext(rawTargetModel, options);
+    const oneMillionContext = claudeAppGatewaySupportsOneMillionContext(rawTargetModel, config, options);
     const targetKey = `${targetModel.toLowerCase()}::${oneMillionContext ? "1m" : "base"}`;
     if (seenTargets.has(targetKey)) {
       return [];
@@ -102,13 +107,11 @@ export function buildClaudeAppGatewayInferenceModels(
   options: ClaudeAppGatewayModelRouteOptions = {}
 ): ClaudeAppGatewayInferenceModel[] {
   const routes = buildClaudeAppGatewayModelRoutes(config, options);
-  return routes.length
-    ? routes.map((route) => ({
-        labelOverride: route.displayName,
-        name: route.id,
-        ...(route.oneMillionContext ? { supports1m: true as const } : {})
-      }))
-    : [{ labelOverride: "Claude Sonnet 4.5", name: CLAUDE_APP_FALLBACK_MODEL }];
+  return routes.map((route) => ({
+    labelOverride: route.displayName,
+    name: route.id,
+    ...(route.oneMillionContext ? { supports1m: true as const } : {})
+  }));
 }
 
 export function hasClaudeAppGatewayOneMillionContextSuffix(id: string): boolean {
@@ -129,61 +132,72 @@ function inferGlobalClaudeProfileModel(config: Pick<AppConfig, "profile">): stri
 }
 
 function claudeAppGatewayTargetModels(config: Pick<AppConfig, "Providers" | "profile" | "virtualModelProfiles">): string[] {
-  const baseEntries = config.Providers.flatMap((provider) => {
-    const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
-      return [];
-    }
-    return provider.models.flatMap((rawModel) => {
-      const modelName = rawModel.trim();
-      return modelName ? [{ modelName, providerName }] : [];
-    });
-  });
+  const defaultTargetModel = inferClaudeAppGatewayTargetModel(config);
 
   return uniqueStrings([
-    inferClaudeAppGatewayTargetModel(config),
-    ...baseEntries.map((entry) => `${entry.providerName}/${entry.modelName}`),
-    ...(config.virtualModelProfiles ?? []).flatMap((profile) => {
-      if (
-        profile.enabled === false ||
-        profile.materialization?.enabled === false ||
-        profile.materialization?.includeInGatewayModels === false
-      ) {
-        return [];
-      }
-      const derivedModels = baseEntries.flatMap((entry) => [
-        ...(profile.match?.prefixes ?? []).flatMap((prefix) => {
-          const normalizedPrefix = prefix.trim();
-          return normalizedPrefix ? [`${entry.providerName}/${normalizedPrefix}${entry.modelName}`] : [];
-        }),
-        ...(profile.match?.suffixes ?? []).flatMap((suffix) => {
-          const normalizedSuffix = suffix.trim();
-          return normalizedSuffix ? [`${entry.providerName}/${entry.modelName}${normalizedSuffix}`] : [];
-        })
-      ]);
-      return [
-        ...derivedModels,
-        ...(profile.match?.exactAliases ?? []).flatMap((alias) => {
-          const normalizedAlias = alias.trim();
-          if (!normalizedAlias) {
-            return [];
-          }
-          return normalizedAlias.toLowerCase().startsWith("fusion/")
-            ? [normalizedAlias]
-            : [`Fusion/${normalizedAlias}`];
-        })
-      ];
-    })
+    ...(defaultTargetModel ? [defaultTargetModel] : []),
+    ...availableGatewayModelIds(config)
   ]);
+}
+
+function canonicalClaudeAppGatewayTargetModel(
+  model: string,
+  config: Pick<AppConfig, "Providers" | "virtualModelProfiles">
+): string | undefined {
+  const oneMillionContext = hasClaudeAppGatewayOneMillionContextSuffix(model);
+  const resolved = modelRegistryForConfig(config).resolve(stripClaudeAppGatewayOneMillionContextSuffix(model));
+  if (!resolved) {
+    return undefined;
+  }
+  return oneMillionContext
+    ? `${resolved.canonicalSelector}${CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX}`
+    : resolved.canonicalSelector;
 }
 
 function claudeAppGatewaySupportsOneMillionContext(
   model: string,
+  config: Pick<AppConfig, "Providers" | "virtualModelProfiles">,
   options: ClaudeAppGatewayModelRouteOptions
 ): boolean {
   const baseModel = stripClaudeAppGatewayOneMillionContextSuffix(model);
-  return hasClaudeAppGatewayOneMillionContextSuffix(model) ||
-    Boolean(options.supportsOneMillionContext?.(baseModel));
+  if (hasClaudeAppGatewayOneMillionContextSuffix(model)) {
+    return true;
+  }
+
+  const providerOverride = claudeAppGatewayProviderSupportsOneMillionContext(baseModel, config);
+  return providerOverride ?? Boolean(options.supportsOneMillionContext?.(baseModel));
+}
+
+function claudeAppGatewayProviderSupportsOneMillionContext(
+  model: string,
+  config: Pick<AppConfig, "Providers" | "virtualModelProfiles">
+): boolean | undefined {
+  const resolved = modelRegistryForConfig(config).resolveProviderModel(model);
+  if (!resolved) {
+    return undefined;
+  }
+  const normalizedModel = resolved.model.trim().toLowerCase();
+  const metadata = resolved.provider.modelMetadata?.[resolved.model] ??
+    Object.entries(resolved.provider.modelMetadata ?? {})
+      .find(([candidate]) => candidate.trim().toLowerCase() === normalizedModel)?.[1];
+  const contextWindow = positiveInteger(metadata?.contextWindow) ?? positiveInteger(metadata?.maxContextWindow);
+  if (!contextWindow) {
+    return undefined;
+  }
+  const effectivePercent = percentage(metadata?.effectiveContextWindowPercent) ?? 100;
+  return Math.floor((contextWindow * effectivePercent) / 100) >= 1_000_000;
+}
+
+function positiveInteger(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isFinite(value) && value > 0
+    ? Math.trunc(value)
+    : undefined;
+}
+
+function percentage(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isFinite(value) && value > 0 && value <= 100
+    ? value
+    : undefined;
 }
 
 function claudeAppGatewayRouteId(

@@ -1,36 +1,45 @@
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
+import type { AppConfig, ProviderModelPricing } from "@ccr/core/contracts/app";
 
 type ModelPricingSource = "litellm" | "models.dev" | "openrouter";
+type UsagePricingSource = ModelPricingSource | "custom";
 
 export type UsageCostInput = {
   cacheReadTokens?: number;
+  cacheWrite1hTokens?: number;
+  cacheWrite5mTokens?: number;
   cacheWriteTokens?: number;
   inputTokens?: number;
   model?: string;
   outputTokens?: number;
+  pricing?: ProviderModelPricing;
   provider?: string;
 };
 
 export type UsageCostEstimate = {
   amountUsd: number;
   model: string;
-  source: ModelPricingSource;
+  source: UsagePricingSource;
 };
 
 type ModelPrice = {
   cacheReadUsdPerToken?: number;
+  cacheWrite1hUsdPerToken?: number;
+  cacheWrite5mUsdPerToken?: number;
   cacheWriteUsdPerToken?: number;
   inputUsdPerToken: number;
   model: string;
   outputUsdPerToken: number;
   provider?: string;
-  source: ModelPricingSource;
+  source: UsagePricingSource;
 };
 
 type PriceCatalog = {
+  index: PriceIndex;
   loadedAt: number;
-  prices: ModelPrice[];
 };
+
+type PriceIndex = Map<ModelPricingSource, Map<string, ModelPrice>>;
 
 const catalogTtlMs = 24 * 60 * 60 * 1000;
 const fetchTimeoutMs = 5000;
@@ -42,26 +51,136 @@ let catalog: PriceCatalog | undefined;
 let catalogPromise: Promise<PriceCatalog> | undefined;
 
 export async function estimateUsageCostUsd(input: UsageCostInput): Promise<UsageCostEstimate | undefined> {
+  if (!hasBillableUsage(input)) {
+    return undefined;
+  }
   const model = input.model?.trim();
   if (!model || model === "unknown") {
     return undefined;
   }
 
+  const customEstimate = estimateUsageCostFromCustomPricing(input, model);
+  if (customEstimate) {
+    return customEstimate;
+  }
+
   const prices = await getPriceCatalog();
-  const price = findModelPrice(prices.prices, model, input.provider);
+  return estimateUsageCostFromIndex(input, prices.index, model);
+}
+
+/**
+ * Loads the remote catalog without holding a caller's database transaction.
+ * Callers that own a write transaction can then use the cache-only estimator.
+ */
+export async function preloadUsagePriceCatalog(): Promise<void> {
+  await getPriceCatalog();
+}
+
+export function usagePriceCatalogNeedsRefresh(): boolean {
+  return !catalog || Date.now() - catalog.loadedAt >= catalogTtlMs;
+}
+
+/** Never performs I/O. Returns undefined when no fresh catalog is loaded. */
+export function estimateUsageCostUsdFromLoadedCatalog(
+  input: UsageCostInput
+): UsageCostEstimate | undefined {
+  if (!hasBillableUsage(input)) {
+    return undefined;
+  }
+  const model = input.model?.trim();
+  if (!model || model === "unknown") {
+    return undefined;
+  }
+  const customEstimate = estimateUsageCostFromCustomPricing(input, model);
+  if (customEstimate) {
+    return customEstimate;
+  }
+  if (usagePriceCatalogNeedsRefresh() || !catalog) {
+    return undefined;
+  }
+  return estimateUsageCostFromIndex(input, catalog.index, model);
+}
+
+export function providerModelPricingForUsage(
+  config: Pick<AppConfig, "Providers"> | undefined,
+  providerName: string | undefined,
+  modelName: string | undefined
+): ProviderModelPricing | undefined {
+  const normalizedProvider = providerName?.trim().toLowerCase();
+  let normalizedModel = modelName?.trim().toLowerCase();
+  if (!config || !normalizedProvider || !normalizedModel) {
+    return undefined;
+  }
+  const provider = config.Providers.find((candidate) => candidate.name?.trim().toLowerCase() === normalizedProvider);
+  if (!provider) {
+    return undefined;
+  }
+  const selectorPrefix = `${normalizedProvider}/`;
+  if (normalizedModel.startsWith(selectorPrefix)) {
+    normalizedModel = normalizedModel.slice(selectorPrefix.length);
+  }
+  const metadata = Object.entries(provider.modelMetadata ?? {})
+    .find(([candidate]) => candidate.trim().toLowerCase() === normalizedModel)?.[1];
+  return metadata?.pricing;
+}
+
+function estimateUsageCostFromCustomPricing(
+  input: UsageCostInput,
+  model: string
+): UsageCostEstimate | undefined {
+  const pricing = input.pricing;
+  const inputUsdPerToken = divideByMillion(pricing?.inputUsdPerMillionTokens);
+  const outputUsdPerToken = divideByMillion(pricing?.outputUsdPerMillionTokens);
+  if (inputUsdPerToken === undefined || outputUsdPerToken === undefined) {
+    return undefined;
+  }
+  const price: ModelPrice = {
+    cacheReadUsdPerToken: divideByMillion(pricing?.cacheReadUsdPerMillionTokens),
+    cacheWrite1hUsdPerToken: divideByMillion(pricing?.cacheWrite1hUsdPerMillionTokens),
+    cacheWrite5mUsdPerToken: divideByMillion(
+      pricing?.cacheWrite5mUsdPerMillionTokens ?? pricing?.cacheWriteUsdPerMillionTokens
+    ),
+    cacheWriteUsdPerToken: divideByMillion(pricing?.cacheWriteUsdPerMillionTokens),
+    inputUsdPerToken,
+    model,
+    outputUsdPerToken,
+    provider: input.provider,
+    source: "custom"
+  };
+  return estimateUsageCostFromPrice(input, price);
+}
+
+function estimateUsageCostFromIndex(
+  input: UsageCostInput,
+  index: PriceIndex,
+  model: string
+): UsageCostEstimate | undefined {
+  const price = findModelPrice(index, model, input.provider);
   if (!price) {
     return undefined;
   }
 
+  return estimateUsageCostFromPrice(input, price);
+}
+
+function estimateUsageCostFromPrice(input: UsageCostInput, price: ModelPrice): UsageCostEstimate | undefined {
   const inputTokens = normalizeCount(input.inputTokens);
   const outputTokens = normalizeCount(input.outputTokens);
   const cacheReadTokens = normalizeCount(input.cacheReadTokens);
-  const cacheWriteTokens = normalizeCount(input.cacheWriteTokens);
+  const cacheWrite5mTokens = normalizeCount(input.cacheWrite5mTokens);
+  const cacheWrite1hTokens = normalizeCount(input.cacheWrite1hTokens);
+  const classifiedCacheWriteTokens = cacheWrite5mTokens + cacheWrite1hTokens;
+  const cacheWriteTokens = Math.max(normalizeCount(input.cacheWriteTokens), classifiedCacheWriteTokens);
+  const unclassifiedCacheWriteTokens = Math.max(0, cacheWriteTokens - classifiedCacheWriteTokens);
+  const cacheWrite5mUsdPerToken = price.cacheWrite5mUsdPerToken ?? price.cacheWriteUsdPerToken ?? price.inputUsdPerToken;
+  const cacheWrite1hUsdPerToken = price.cacheWrite1hUsdPerToken ?? cacheWrite5mUsdPerToken;
   const amountUsd =
     inputTokens * price.inputUsdPerToken +
     outputTokens * price.outputUsdPerToken +
     cacheReadTokens * (price.cacheReadUsdPerToken ?? price.inputUsdPerToken) +
-    cacheWriteTokens * (price.cacheWriteUsdPerToken ?? price.inputUsdPerToken);
+    cacheWrite5mTokens * cacheWrite5mUsdPerToken +
+    cacheWrite1hTokens * cacheWrite1hUsdPerToken +
+    unclassifiedCacheWriteTokens * cacheWrite5mUsdPerToken;
 
   if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
     return undefined;
@@ -72,6 +191,15 @@ export async function estimateUsageCostUsd(input: UsageCostInput): Promise<Usage
     model: price.model,
     source: price.source
   };
+}
+
+function hasBillableUsage(input: UsageCostInput): boolean {
+  return normalizeCount(input.inputTokens) +
+    normalizeCount(input.outputTokens) +
+    normalizeCount(input.cacheReadTokens) +
+    normalizeCount(input.cacheWriteTokens) +
+    normalizeCount(input.cacheWrite5mTokens) +
+    normalizeCount(input.cacheWrite1hTokens) > 0;
 }
 
 async function getPriceCatalog(): Promise<PriceCatalog> {
@@ -96,8 +224,8 @@ async function loadPriceCatalog(): Promise<PriceCatalog> {
   ]);
   const prices = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   return {
-    loadedAt: Date.now(),
-    prices
+    index: buildPriceIndex(prices),
+    loadedAt: Date.now()
   };
 }
 
@@ -132,6 +260,10 @@ async function fetchLiteLlmPrices(): Promise<ModelPrice[]> {
           "input_cache_write_cost_per_token",
           "cache_write_cost_per_token"
         ]),
+        cacheWrite1hUsdPerToken: firstNumber(value, [
+          "cache_creation_input_token_cost_above_1hr",
+          "input_cache_write_1h"
+        ]),
         inputUsdPerToken,
         model,
         outputUsdPerToken,
@@ -161,6 +293,8 @@ async function fetchModelsDevPrices(): Promise<ModelPrice[]> {
       const price = priceFromMillionTokenCosts({
         cacheReadUsdPerMillionTokens: readNumber(cost.cache_read),
         cacheWriteUsdPerMillionTokens: readNumber(cost.cache_write),
+        cacheWrite1hUsdPerMillionTokens: readNumber(cost.cache_write_1h),
+        cacheWrite5mUsdPerMillionTokens: readNumber(cost.cache_write_5m) ?? readNumber(cost.cache_write),
         inputUsdPerMillionTokens: readNumber(cost.input),
         model: readString(model.id) || modelKey,
         outputUsdPerMillionTokens: readNumber(cost.output),
@@ -190,6 +324,8 @@ async function fetchOpenRouterPrices(): Promise<ModelPrice[]> {
       return priceFromTokenCosts({
         cacheReadUsdPerToken: readNumber(pricing.input_cache_read),
         cacheWriteUsdPerToken: readNumber(pricing.input_cache_write),
+        cacheWrite1hUsdPerToken: readNumber(pricing.input_cache_write_1h),
+        cacheWrite5mUsdPerToken: readNumber(pricing.input_cache_write),
         inputUsdPerToken: readNumber(pricing.prompt),
         model: readString(model.id) || readString(model.canonical_slug),
         outputUsdPerToken: readNumber(pricing.completion),
@@ -202,15 +338,21 @@ async function fetchOpenRouterPrices(): Promise<ModelPrice[]> {
 
 function priceFromMillionTokenCosts(input: {
   cacheReadUsdPerMillionTokens?: number;
+  cacheWrite1hUsdPerMillionTokens?: number;
+  cacheWrite5mUsdPerMillionTokens?: number;
   cacheWriteUsdPerMillionTokens?: number;
   inputUsdPerMillionTokens?: number;
   model: string;
   outputUsdPerMillionTokens?: number;
   provider?: string;
-  source: ModelPricingSource;
+  source: UsagePricingSource;
 }): ModelPrice | undefined {
   return priceFromTokenCosts({
     cacheReadUsdPerToken: divideByMillion(input.cacheReadUsdPerMillionTokens),
+    cacheWrite1hUsdPerToken: divideByMillion(input.cacheWrite1hUsdPerMillionTokens),
+    cacheWrite5mUsdPerToken: divideByMillion(
+      input.cacheWrite5mUsdPerMillionTokens ?? input.cacheWriteUsdPerMillionTokens
+    ),
     cacheWriteUsdPerToken: divideByMillion(input.cacheWriteUsdPerMillionTokens),
     inputUsdPerToken: divideByMillion(input.inputUsdPerMillionTokens),
     model: input.model,
@@ -222,12 +364,14 @@ function priceFromMillionTokenCosts(input: {
 
 function priceFromTokenCosts(input: {
   cacheReadUsdPerToken?: number;
+  cacheWrite1hUsdPerToken?: number;
+  cacheWrite5mUsdPerToken?: number;
   cacheWriteUsdPerToken?: number;
   inputUsdPerToken?: number;
   model?: string;
   outputUsdPerToken?: number;
   provider?: string;
-  source: ModelPricingSource;
+  source: UsagePricingSource;
 }): ModelPrice | undefined {
   const model = input.model?.trim();
   const inputUsdPerToken = normalizePrice(input.inputUsdPerToken);
@@ -238,6 +382,8 @@ function priceFromTokenCosts(input: {
 
   return {
     cacheReadUsdPerToken: normalizePrice(input.cacheReadUsdPerToken),
+    cacheWrite1hUsdPerToken: normalizePrice(input.cacheWrite1hUsdPerToken),
+    cacheWrite5mUsdPerToken: normalizePrice(input.cacheWrite5mUsdPerToken ?? input.cacheWriteUsdPerToken),
     cacheWriteUsdPerToken: normalizePrice(input.cacheWriteUsdPerToken),
     inputUsdPerToken,
     model,
@@ -247,7 +393,7 @@ function priceFromTokenCosts(input: {
   };
 }
 
-function findModelPrice(prices: ModelPrice[], model: string, provider: string | undefined): ModelPrice | undefined {
+function findModelPrice(index: PriceIndex, model: string, provider: string | undefined): ModelPrice | undefined {
   const candidateKeys = modelCandidateKeys(model, provider);
   const providerIsOpenRouter = normalizeKey(provider).includes("openrouter");
   const sourcePriority: ModelPricingSource[] = providerIsOpenRouter
@@ -255,8 +401,10 @@ function findModelPrice(prices: ModelPrice[], model: string, provider: string | 
     : ["models.dev", "litellm", "openrouter"];
 
   for (const source of sourcePriority) {
+    const sourceIndex = index.get(source);
+    if (!sourceIndex) continue;
     for (const key of candidateKeys) {
-      const price = prices.find((item) => item.source === source && priceMatchesKey(item, key));
+      const price = sourceIndex.get(key);
       if (price) {
         return price;
       }
@@ -265,16 +413,32 @@ function findModelPrice(prices: ModelPrice[], model: string, provider: string | 
   return undefined;
 }
 
-function priceMatchesKey(price: ModelPrice, key: string): boolean {
-  const keys = new Set<string>([
+function buildPriceIndex(prices: ModelPrice[]): PriceIndex {
+  const index: PriceIndex = new Map();
+  for (const price of prices) {
+    if (price.source === "custom") continue;
+    let sourceIndex = index.get(price.source);
+    if (!sourceIndex) {
+      sourceIndex = new Map();
+      index.set(price.source, sourceIndex);
+    }
+    for (const key of priceIndexKeys(price)) {
+      if (!sourceIndex.has(key)) sourceIndex.set(key, price);
+    }
+  }
+  return index;
+}
+
+function priceIndexKeys(price: ModelPrice): string[] {
+  const keys = [
     normalizeKey(price.model),
     normalizeKey(lastPathSegment(price.model))
-  ]);
+  ];
   if (price.provider) {
-    keys.add(normalizeKey(`${price.provider}/${price.model}`));
-    keys.add(normalizeKey(`${price.provider}/${lastPathSegment(price.model)}`));
+    keys.push(normalizeKey(`${price.provider}/${price.model}`));
+    keys.push(normalizeKey(`${price.provider}/${lastPathSegment(price.model)}`));
   }
-  return keys.has(key);
+  return unique(keys.filter(Boolean));
 }
 
 function modelCandidateKeys(model: string, provider: string | undefined): string[] {

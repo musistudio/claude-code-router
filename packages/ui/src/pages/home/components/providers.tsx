@@ -4,15 +4,15 @@ import {
   Check, Checkbox, ChevronDown, ChevronRight, CircleAlert, cn,
   compareProviderAccountSnapshots, copyTextToClipboard, createDefaultProviderAccountDraft, createModelCatalogItems, createProviderAccountDraftFromConfig, createProviderCredentialDraft,
   customProviderPresetId, defaultProviderAccountConfigForPreset, Dialog, DialogBody, DialogContent, DialogFooter,
-  DialogHeader, DialogTitle, ExternalLink, Field, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
+  DialogHeader, DialogTitle, ExternalLink, Field, FieldGroup, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
   GatewayProviderProbeResult, getProviderPresets, Globe, inferProviderNameFromBaseUrl, Info, Input, KeyValueRowsControl, Label,
   Layers3, LoaderCircle, localAgentProviderIconUrls, mergeProviderModelLists, modelCatalogItemMatchesQuery, motion,
   Pencil, Plus, PopoverContent, primaryProviderAccountMeter, primaryProviderPresetEndpoint,
   providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountSnapshot,
   providerAccountConnectorsTextWithNewApiUserBalanceTemplate, providerAccountSnapshotCredentialLabel, providerAccountSnapshotLabel, ProviderAccountTestPath,
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
-  ProviderConnectivityCheckReport, providerDeepLinkDisplayIcon, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
-  providerModelDisplayName, providerModelDisplayTitle, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
+  ProviderConnectivityCheckReport, providerCapabilityBaseUrlForProtocol, providerDeepLinkDisplayIcon, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
+  providerDisplayIcon, providerGlobalBaseUrlForProbe, providerModelDisplayName, providerModelDisplayTitle, providerProtocolOptions, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
   resolveProviderDeepLinkPreset, ShieldCheck, splitLines, splitModelTagInput, Switch, Textarea, translatedProviderProtocolLabel, translateOptions,
   translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppErrorText, useAppText, useEffect, useMemo,
   useRef, useState, X, isPlainRecord
@@ -99,7 +99,7 @@ export function ProvidersView({ accountSnapshots, addProvider, editProvider, not
             <div className="m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center text-[12px] text-muted-foreground">{t("No matching providers")}</div>
           ) : null}
           {visibleProviders.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="min-w-0">
               <div className="min-w-[1080px]">
                 <div className="sticky top-0 z-10 grid h-10 grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(160px,0.7fr)_minmax(150px,0.65fr)_80px_84px] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   <div className="truncate">{t("Name")}</div>
@@ -111,24 +111,25 @@ export function ProvidersView({ accountSnapshots, addProvider, editProvider, not
                 </div>
                 <div className="divide-y divide-border/60">
                   <AnimatePresence initial={false}>
-                  {visibleProviders.map(({ provider, index }) => {
-                    const itemKey = providerListItemKey(provider, index);
-                    const expanded = expandedProviders.has(itemKey);
+                    {visibleProviders.map(({ provider, index }) => {
+                      const itemKey = providerListItemKey(provider, index);
+                      const expanded = expandedProviders.has(itemKey);
                       const providerAccountSnapshots = accountSnapshotsByProvider.get(provider.name) ?? [];
-                    return (
-                      <AnimatedListItem key={itemKey}>
-                        <div
-                          className="grid min-h-[58px] cursor-pointer grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(160px,0.7fr)_minmax(150px,0.65fr)_80px_84px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
-                          onClick={() => toggleProvider(provider, index)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              toggleProvider(provider, index);
-                            }
-                          }}
-                          role="button"
-                          tabIndex={0}
-                        >
+                      const providerIconUrl = providerDisplayIcon(provider);
+                      return (
+                        <AnimatedListItem key={itemKey}>
+                          <div
+                            className="grid min-h-[58px] cursor-pointer grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(160px,0.7fr)_minmax(150px,0.65fr)_80px_84px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
+                            onClick={() => toggleProvider(provider, index)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                toggleProvider(provider, index);
+                              }
+                            }}
+                            role="button"
+                            tabIndex={0}
+                          >
                           <div className="flex min-w-0 items-center gap-2">
                             <button
                               aria-expanded={expanded}
@@ -143,6 +144,7 @@ export function ProvidersView({ accountSnapshots, addProvider, editProvider, not
                             >
                               {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                             </button>
+                            <ProviderPresetIcon className="h-8 w-8 rounded-md" iconUrl={providerIconUrl} />
                             <div className="min-w-0">
                               <div className="truncate text-[12px] font-semibold">{provider.name || t("Unnamed")}</div>
                             </div>
@@ -338,7 +340,7 @@ export function ModelsView({
             <div className="m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center text-[12px] text-muted-foreground">{t("No matching models")}</div>
           ) : null}
           {visibleRows.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="min-w-0">
               <div className="min-w-[680px]">
                 <div className="sticky top-0 z-10 grid h-10 grid-cols-[minmax(0,1fr)_minmax(260px,1.5fr)] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   <div className="truncate">{t("Model")}</div>
@@ -606,12 +608,6 @@ export function ProviderDeepLinkDialog({
                   <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
                     {t("This provider link came from an external website. Review details before importing.")}
                   </div>
-                </div>
-              ) : null}
-              {showExternalProviderWarnings ? (
-                <div className="flex items-start gap-2 rounded-md border border-border bg-background px-3 py-2 text-[11px] leading-4 text-muted-foreground">
-                  <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span>{t("Only enter an API key issued for this endpoint. Official provider keys must only be used with official endpoints.")}</span>
                 </div>
               ) : null}
               <div className="flex min-w-0 items-center gap-3 rounded-md border border-border bg-background px-3 py-2.5">
@@ -1192,10 +1188,12 @@ function LocalAgentProviderImportPanel({
         ...accountDraft,
         apiKey: result.provider.apiKey ?? "",
         baseUrl: result.provider.baseUrl,
+        capabilities: result.provider.capabilities ?? [],
         credentials: [],
-        icon: result.provider.icon ?? "",
+        icon: result.provider.icon?.trim() || localAgentProviderIconUrls[candidate.kind] || "",
         modelDescriptions: result.provider.modelDescriptions,
         modelDisplayNames: result.provider.modelDisplayNames,
+        modelMetadata: result.provider.modelMetadata,
         modelSearch: "",
         modelsText: result.provider.models.join("\n"),
         name: result.provider.name?.trim() || inferProviderNameFromBaseUrl(result.provider.baseUrl),
@@ -1216,8 +1214,8 @@ function LocalAgentProviderImportPanel({
     <div className="sm:col-span-2 rounded-md border border-border bg-muted/20 p-3">
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
         <div className="min-w-0">
-          <div className="truncate text-[12px] font-semibold text-foreground">{t("Import local agent login")}</div>
-          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t("CCR scanned this computer for Claude Code, Codex, and ZCode login states. Click Import to add one as a gateway provider.")}</div>
+          <div className="truncate text-[12px] font-semibold text-foreground">{t("Import local agent provider")}</div>
+          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t("CCR scanned this computer for local Claude Code, Codex, Grok CLI, Kimi CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.")}</div>
         </div>
         {loading ? <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" /> : null}
       </div>
@@ -1281,18 +1279,28 @@ function LocalAgentProviderImportPanel({
 }
 
 const localAgentProviderApiKey = "ccr-local-agent-login";
-const localAgentProviderPluginSuffixes: Record<LocalAgentProviderCandidate["kind"], string[]> = {
+const localAgentProviderPluginSuffixes: Record<Exclude<LocalAgentProviderCandidate["kind"], "opencode">, string[]> = {
   "claude-code": ["-claude-code-oauth", "-claude-code-oauth-internal"],
   codex: ["-codex-oauth", "-codex-oauth-internal"],
+  grok: ["-grok-cli-oauth", "-grok-cli-oauth-internal"],
+  kimi: ["-kimi-cli-oauth", "-kimi-cli-oauth-internal", "-kimi-cli-api-key", "-kimi-cli-api-key-internal"],
   zcode: ["-zcode-api-key", "-zcode-api-key-internal"]
 };
+
+function localAgentProviderPluginSuffixesForCandidate(candidate: LocalAgentProviderCandidate): string[] {
+  if (candidate.kind === "opencode") {
+    const baseSuffix = `-opencode-${candidate.protocol.replaceAll("_", "-")}-api-key`;
+    return [baseSuffix, `${baseSuffix}-internal`];
+  }
+  return localAgentProviderPluginSuffixes[candidate.kind];
+}
 
 function localAgentProviderAlreadyImported(
   candidate: LocalAgentProviderCandidate,
   providers: GatewayProviderConfig[],
   providerPlugins: unknown[]
 ): boolean {
-  const suffixes = localAgentProviderPluginSuffixes[candidate.kind];
+  const suffixes = localAgentProviderPluginSuffixesForCandidate(candidate);
   const localProviderNames = new Set(providers
     .filter((provider) => provider.api_key === localAgentProviderApiKey)
     .flatMap((provider) => [
@@ -1356,6 +1364,7 @@ export function AddProviderForm({
   const t = useAppText();
   const [advancedOpen, setAdvancedOpen] = useState(mode === "edit");
   const [iconDetecting, setIconDetecting] = useState(false);
+  const [autoDetectInfoPosition, setAutoDetectInfoPosition] = useState<{ left: number; top: number }>();
   const [protocolProbeDetails, setProtocolProbeDetails] = useState<ProviderProtocolProbeDetailsState>();
   const iconDetectionRequestRef = useRef(0);
   const onChangeRef = useRef(onChange);
@@ -1364,24 +1373,46 @@ export function AddProviderForm({
   const customEndpoint = draft.presetId === customProviderPresetId;
   const importMode = Boolean(importProvider);
   const showBaseUrl = customEndpoint || mode === "edit";
-  const detectedProtocol = probe?.detectedProtocol ?? draft.protocol;
-  const detectedBaseUrl = probe?.normalizedBaseUrl || draft.baseUrl;
+  const selectedDisplayProtocols = uniqueProviderProtocols(draft.selectedProtocols);
+  const detectedProtocol = selectedDisplayProtocols.length === 1
+    ? selectedDisplayProtocols[0]
+    : probe?.detectedProtocol ?? draft.protocol;
+  const detectedBaseUrl = providerCapabilityBaseUrlForProtocol(draft.baseUrl, detectedProtocol, probe);
   const safetyIssue = providerDraftSafetyIssue(draft, detectedBaseUrl);
   const localAgentImport = draft.providerPlugins.length > 0;
+  const manualProtocolDetection = draft.protocolDetectionMode === "manual";
   const providerPresetOptions = [
     { iconUrl: draft.icon, label: t("Other / custom API endpoint"), value: customProviderPresetId },
     { label: t("Select preset provider"), value: "" },
     ...getProviderPresets().map((preset) => ({ label: t(preset.name), preset, value: preset.id }))
   ];
-  const selectableProtocols = providerSelectableProtocolsFromProbe(probe);
+  const selectableProtocols = manualProtocolDetection
+    ? providerProtocolOptions.map((option) => option.value)
+    : providerSelectableProtocolsFromProbe(probe);
   const protocolProbeRows = useMemo(() => uniqueProviderProbeProtocolRows(probe?.protocols ?? []), [probe]);
   const configuredModels = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
+  const catalogModelIds = new Set(probe?.models ?? []);
   const hasConnectivityCheckInputs = Boolean(
-    !localAgentImport &&
     draft.baseUrl.trim() &&
     draft.apiKey.trim() &&
     configuredModels.length > 0
   );
+
+  function updateConfiguredModels(models: string[]) {
+    onChange({
+      modelsText: models.filter((model) => !catalogModelIds.has(model)).join("\n"),
+      selectedModels: models.filter((model) => catalogModelIds.has(model))
+    });
+  }
+
+  function updateAutoProtocolDetection(enabled: boolean) {
+    onChange({
+      protocolDetectionMode: enabled ? "auto" : "manual",
+      selectedProtocols: !enabled && draft.selectedProtocols.length === 0
+        ? [draft.protocol]
+        : draft.selectedProtocols
+    }, true);
+  }
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -1392,10 +1423,13 @@ export function AddProviderForm({
   }, [probe]);
 
   useEffect(() => {
-    if (!protocolProbeDetails) {
+    if (!autoDetectInfoPosition && !protocolProbeDetails) {
       return;
     }
-    const close = () => setProtocolProbeDetails(undefined);
+    const close = () => {
+      setAutoDetectInfoPosition(undefined);
+      setProtocolProbeDetails(undefined);
+    };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         close();
@@ -1411,7 +1445,7 @@ export function AddProviderForm({
       window.removeEventListener("resize", close);
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [protocolProbeDetails]);
+  }, [autoDetectInfoPosition, protocolProbeDetails]);
 
   useEffect(() => {
     onIconDetectingChange?.(iconDetecting);
@@ -1459,9 +1493,11 @@ export function AddProviderForm({
       onChange({
         ...createDefaultProviderAccountDraft(),
         baseUrl: "",
+        catalogModelMetadata: undefined,
         icon: "",
         modelDescriptions: undefined,
         modelDisplayNames: undefined,
+        modelMetadata: undefined,
         modelSearch: "",
         presetId,
         providerPlugins: [],
@@ -1475,9 +1511,11 @@ export function AddProviderForm({
       onChange({
         ...createDefaultProviderAccountDraft(),
         baseUrl: "",
+        catalogModelMetadata: undefined,
         icon: "",
         modelDescriptions: undefined,
         modelDisplayNames: undefined,
+        modelMetadata: undefined,
         modelSearch: "",
         presetId,
         providerPlugins: [],
@@ -1495,9 +1533,11 @@ export function AddProviderForm({
     onChange({
       ...accountDraft,
       baseUrl: endpoint?.baseUrl ?? "",
+      catalogModelMetadata: undefined,
       icon: "",
       modelDescriptions: undefined,
       modelDisplayNames: preset?.defaultModelDisplayNames,
+      modelMetadata: undefined,
       modelSearch: "",
       modelsText: draft.modelsText.trim() || preset?.defaultModels?.join("\n") || "",
       name: mode === "add" && preset && generatedName ? uniqueProviderName(providers, t(preset.name)) : draft.name,
@@ -1516,11 +1556,21 @@ export function AddProviderForm({
   ) {
     const rect = button.getBoundingClientRect();
     const position = providerProtocolProbeTooltipPosition(rect);
+    setAutoDetectInfoPosition(undefined);
     setProtocolProbeDetails((current) => current?.key === itemKey ? undefined : {
       item,
       key: itemKey,
       ...position
     });
+  }
+
+  function toggleAutoDetectInfo(button: HTMLButtonElement) {
+    const rect = button.getBoundingClientRect();
+    const position = providerProtocolProbeTooltipPosition(rect);
+    setProtocolProbeDetails(undefined);
+    setAutoDetectInfoPosition((current) =>
+      current && current.left === position.left && current.top === position.top ? undefined : position
+    );
   }
 
   return (
@@ -1566,10 +1616,6 @@ export function AddProviderForm({
         ) : null}
         <Field className="sm:col-span-2" label={t("API key")}>
           <Input type="password" value={draft.apiKey} onChange={(event) => onChange({ apiKey: event.target.value }, true)} />
-          <div className="flex items-start gap-1.5 text-[11px] leading-4 text-muted-foreground">
-            <CircleAlert className="mt-0.5 h-3 w-3 shrink-0" />
-            <span>{t("Only enter an API key issued for this endpoint. Official provider keys must only be used with official endpoints.")}</span>
-          </div>
         </Field>
         {safetyIssue ? (
           <div className="sm:col-span-2 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] leading-5 text-amber-900 dark:text-amber-100">
@@ -1585,31 +1631,16 @@ export function AddProviderForm({
             </div>
           </div>
         ) : null}
-        <Field className="sm:col-span-2" label={t("Models")}>
+        <FieldGroup className="sm:col-span-2" label={t("Models")}>
           {hasModelCatalog && probe ? (
-            <div className="space-y-2">
-              <ModelMultiSelect
-                displayNames={draft.modelDisplayNames}
-                models={probe.models}
-                onQueryChange={(modelSearch) => onChange({ modelSearch })}
-                onSelectedChange={(selectedModels) => onChange({ selectedModels })}
-                query={draft.modelSearch}
-                selected={draft.selectedModels}
-              />
-              <div className="space-y-1.5">
-                <div className="flex min-w-0 items-center justify-between gap-2">
-                  <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Custom models")}</span>
-                  <span className="shrink-0 text-[11px] font-medium leading-4 text-muted-foreground/75">{t("Press Enter to add")}</span>
-                </div>
-                <ModelTagInput
-                  ariaLabel={t("Custom models")}
-                  displayNames={draft.modelDisplayNames}
-                  onChange={(models) => onChange({ modelsText: models.join("\n") })}
-                  placeholder={t("Model name")}
-                  value={splitLines(draft.modelsText)}
-                />
-              </div>
-            </div>
+            <ModelMultiSelect
+              displayNames={draft.modelDisplayNames}
+              models={mergeProviderModelLists(probe.models, splitLines(draft.modelsText))}
+              onQueryChange={(modelSearch) => onChange({ modelSearch })}
+              onSelectedChange={updateConfiguredModels}
+              query={draft.modelSearch}
+              selected={configuredModels}
+            />
           ) : (
             <ModelTagInput
               ariaLabel={t("Models")}
@@ -1619,13 +1650,14 @@ export function AddProviderForm({
               value={splitLines(draft.modelsText)}
             />
           )}
-          <ModelDescriptionsEditor
-            descriptions={draft.modelDescriptions}
+          <ModelMetadataEditor
+            defaults={draft.catalogModelMetadata}
             displayNames={draft.modelDisplayNames}
+            metadata={draft.modelMetadata}
             models={configuredModels}
-            onChange={(modelDescriptions) => onChange({ modelDescriptions })}
+            onChange={(modelMetadata) => onChange({ modelMetadata })}
           />
-        </Field>
+        </FieldGroup>
         <div className="sm:col-span-2 flex min-w-0 flex-wrap items-center justify-between gap-2 text-[12px] text-muted-foreground">
           <div className="min-w-0 flex-1">
             {connectivityLoading ? (
@@ -1695,17 +1727,33 @@ export function AddProviderForm({
           {advancedOpen ? (
             <AnimatedDisclosure className="sm:col-span-2" key="provider-advanced">
               <div className="grid grid-cols-1 gap-3 rounded-md border border-border bg-muted/20 p-3 sm:grid-cols-2">
-                {selectedPreset && !customEndpoint && mode === "add" ? (
-                  <Field className="sm:col-span-2" label={t("API endpoint")}>
-                    <Input value={draft.baseUrl} onChange={(event) => onChange({ baseUrl: event.target.value }, true)} />
-                  </Field>
-                ) : null}
-                <Field label={t("Detected compatibility")}>
-                  <Input readOnly value={translatedProviderProtocolLabel(detectedProtocol, t)} />
-                </Field>
-                <Field label={t("Detected endpoint")}>
-                  <Input readOnly value={detectedBaseUrl} />
-                </Field>
+                <div className="sm:col-span-2 flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-background px-3 py-2 text-[12px] font-semibold">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="min-w-0 truncate">{t("Auto detect protocols")}</span>
+                    <button
+                      aria-label={t("Auto detect protocols info")}
+                      aria-pressed={Boolean(autoDetectInfoPosition)}
+                      className={cn(
+                        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30",
+                        autoDetectInfoPosition && "bg-muted text-foreground"
+                      )}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleAutoDetectInfo(event.currentTarget);
+                      }}
+                      onMouseDown={(event) => event.stopPropagation()}
+                      title={t("Auto detect protocols info")}
+                      type="button"
+                    >
+                      <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </span>
+                  <Switch
+                    aria-label={t("Auto detect protocols")}
+                    checked={!manualProtocolDetection}
+                    onCheckedChange={updateAutoProtocolDetection}
+                  />
+                </div>
                 <ProviderCredentialSettings
                   draft={draft}
                   onChange={onChange}
@@ -1718,11 +1766,39 @@ export function AddProviderForm({
                 />
                 <Field className="sm:col-span-2" label={t("Protocol details")}>
                   <div className="max-h-[128px] overflow-auto rounded-md border border-border bg-background p-2">
-                    {protocolProbeRows.length ? (
+                    {manualProtocolDetection ? (
+                      <div className="space-y-1.5">
+                        {providerProtocolOptions.map((option) => {
+                          const protocol = option.value;
+                          const checked = draft.selectedProtocols.includes(protocol);
+                          return (
+                            <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={protocol}>
+                              <Checkbox
+                                aria-label={`${t("Add")} ${translatedProviderProtocolLabel(protocol, t)}`}
+                                checked={checked}
+                                onCheckedChange={() => {
+                                  onChange({
+                                    selectedProtocols: checked
+                                      ? draft.selectedProtocols.filter((selected) => selected !== protocol)
+                                      : uniqueProviderProtocols([...draft.selectedProtocols, protocol])
+                                  });
+                                }}
+                              />
+                              <span className="truncate font-medium">{translatedProviderProtocolLabel(protocol, t)}</span>
+                              <span className={cn("inline-flex min-w-0 items-center justify-end", checked ? "text-foreground" : "text-muted-foreground")}>
+                                <span className="truncate">{checked ? t("Selected") : ""}</span>
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : protocolProbeRows.length ? (
                       <div className="space-y-1.5">
                         {protocolProbeRows.map((item) => {
-                          const selectable = item.supported && selectableProtocols.includes(item.protocol);
-                          const checked = selectable && draft.selectedProtocols.includes(item.protocol);
+                          const available = item.supported;
+                          const selectableProtocol = selectableProtocols.find((protocol) => protocol === item.protocol);
+                          const selectable = item.supported && Boolean(selectableProtocol);
+                          const checked = Boolean(selectableProtocol && draft.selectedProtocols.includes(selectableProtocol));
                           const itemKey = `${item.protocol}-${item.endpoint}`;
                           return (
                             <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={itemKey}>
@@ -1731,19 +1807,19 @@ export function AddProviderForm({
                                 checked={checked}
                                 disabled={!selectable}
                                 onCheckedChange={() => {
-                                  if (!selectable) {
+                                  if (!selectableProtocol) {
                                     return;
                                   }
                                   onChange({
                                     selectedProtocols: checked
-                                      ? draft.selectedProtocols.filter((protocol) => protocol !== item.protocol)
-                                      : uniqueProviderProtocols([...draft.selectedProtocols, item.protocol])
+                                      ? draft.selectedProtocols.filter((protocol) => protocol !== selectableProtocol)
+                                      : uniqueProviderProtocols([...draft.selectedProtocols, selectableProtocol])
                                   });
                                 }}
                               />
                               <span className="truncate font-medium">{translatedProviderProtocolLabel(item.protocol, t)}</span>
-                              <span className={cn("inline-flex min-w-0 items-center justify-end gap-1.5", item.supported ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground")}>
-                                <span className="truncate">{item.supported ? t("Available") : t("Unavailable")}</span>
+                              <span className={cn("inline-flex min-w-0 items-center justify-end gap-1.5", available ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground")}>
+                                <span className="truncate">{available ? t("Available") : t("Unavailable")}</span>
                                 <button
                                   aria-label={t("Protocol detection details")}
                                   aria-pressed={protocolProbeDetails?.key === itemKey}
@@ -1785,10 +1861,39 @@ export function AddProviderForm({
             t={t}
           />
         ) : null}
+        {autoDetectInfoPosition ? (
+          <AutoDetectProtocolsTooltip
+            left={autoDetectInfoPosition.left}
+            t={t}
+            top={autoDetectInfoPosition.top}
+          />
+        ) : null}
       </div>
 
       {error ? <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive"><CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>{error}</span></div> : null}
     </>
+  );
+}
+
+function AutoDetectProtocolsTooltip({
+  left,
+  t,
+  top
+}: {
+  left: number;
+  t: (value: string) => string;
+  top: number;
+}) {
+  return (
+    <div
+      className="fixed z-[120] w-[260px] rounded-md border border-border bg-popover p-2.5 text-left text-[11px] leading-4 text-popover-foreground shadow-card-elevated"
+      onMouseDown={(event) => event.stopPropagation()}
+      role="tooltip"
+      style={{ left, top }}
+    >
+      <div className="mb-1.5 font-semibold">{t("Auto detect protocols")}</div>
+      <div className="text-muted-foreground">{t("Auto detect protocols description")}</div>
+    </div>
   );
 }
 
@@ -2087,6 +2192,7 @@ function ProviderUsageSettings({
   const [testError, setTestError] = useState("");
   const [newApiUserId, setNewApiUserId] = useState("");
   const modeOptions = translateOptions(providerAccountModeOptions, t);
+  const globalBaseUrl = providerGlobalBaseUrlForProbe(draft.baseUrl, probe, draft.selectedProtocols);
   const showNewApiUserBalanceTemplate = probe?.detectedProvider === "new-api" ||
     draft.accountConnectorsText.includes("new-api-key-usage") ||
     draft.accountConnectorsText.includes("new-api-user-self");
@@ -2108,7 +2214,7 @@ function ProviderUsageSettings({
     }
     const safetyIssue = providerAccountConnectorApiKeySafetyIssue(connector, {
       apiKey: draft.apiKey,
-      baseUrl: (probe?.normalizedBaseUrl || draft.baseUrl).trim(),
+      baseUrl: globalBaseUrl,
       providerName: draft.name.trim(),
       providerPresetId: draft.presetId
     });
@@ -2143,7 +2249,7 @@ function ProviderUsageSettings({
     onChange({
       accountConnectorsText: providerAccountConnectorsTextWithNewApiUserBalanceTemplate(
         draft.accountConnectorsText,
-        probe?.normalizedBaseUrl || draft.baseUrl,
+        globalBaseUrl,
         newApiUserId
       )
     });
@@ -2755,60 +2861,330 @@ function ModelTagInput({
   );
 }
 
-function ModelDescriptionsEditor({
-  descriptions,
+const providerReasoningLevelOptions = [
+  { description: "Low", effort: "low", label: "Low" },
+  { description: "Medium", effort: "medium", label: "Medium" },
+  { description: "High", effort: "high", label: "High" },
+  { description: "Extra high", effort: "xhigh", label: "Extra high" },
+  { description: "Max", effort: "max", label: "Max" },
+  { description: "Ultra", effort: "ultra", label: "Ultra" }
+] as const;
+
+function ModelMetadataEditor({
+  defaults,
   displayNames,
+  metadata,
   models,
   onChange
 }: {
-  descriptions?: Record<string, string>;
+  defaults?: NonNullable<AddProviderDraft["catalogModelMetadata"]>;
   displayNames?: Record<string, string>;
+  metadata?: NonNullable<AddProviderDraft["modelMetadata"]>;
   models: string[];
-  onChange: (value: Record<string, string> | undefined) => void;
+  onChange: (value: AddProviderDraft["modelMetadata"]) => void;
 }) {
   const t = useAppText();
   const normalizedModels = mergeProviderModelLists(models);
+  const [expandedModels, setExpandedModels] = useState<Set<string>>(() => new Set());
   if (normalizedModels.length === 0) {
     return null;
   }
 
-  function updateDescription(model: string, value: string) {
-    const next: Record<string, string> = {};
-    for (const item of normalizedModels) {
-      const description = (item === model ? value : descriptions?.[item] ?? "").trim();
-      if (description) {
-        next[item] = description;
-      }
+  type Metadata = NonNullable<AddProviderDraft["modelMetadata"]>[string];
+  type CapabilityKey = keyof NonNullable<Metadata["capabilities"]>;
+  type PricingKey = keyof NonNullable<Metadata["pricing"]>;
+
+  function updateMetadata(model: string, updater: (current: Metadata) => Metadata) {
+    const next = { ...(metadata ?? {}) };
+    const updated = updater({ ...(next[model] ?? {}) });
+    if (Object.keys(updated).length > 0) {
+      next[model] = updated;
+    } else {
+      delete next[model];
     }
     onChange(Object.keys(next).length > 0 ? next : undefined);
+  }
+
+  function updateContextWindow(model: string, rawValue: string) {
+    updateMetadata(model, (current) => {
+      const next = { ...current };
+      const parsed = optionalPositiveInteger(rawValue);
+      if (parsed === undefined) {
+        delete next.contextWindow;
+        delete next.maxContextWindow;
+      } else {
+        next.contextWindow = parsed;
+        next.maxContextWindow = parsed;
+      }
+      return next;
+    });
+  }
+
+  function resetContextWindow(model: string) {
+    updateMetadata(model, (current) => {
+      const next = { ...current };
+      delete next.contextWindow;
+      delete next.maxContextWindow;
+      return next;
+    });
+  }
+
+  function updatePricing(model: string, key: PricingKey, rawValue: string) {
+    updateMetadata(model, (current) => {
+      const pricing = { ...(defaults?.[model]?.pricing ?? {}), ...(current.pricing ?? {}) };
+      const parsed = optionalNonNegativeNumber(rawValue);
+      if (parsed === undefined) delete pricing[key];
+      else pricing[key] = parsed;
+      if (key === "cacheWrite5mUsdPerMillionTokens") {
+        delete pricing.cacheWriteUsdPerMillionTokens;
+      }
+      const next = { ...current };
+      if (Object.keys(pricing).length > 0) next.pricing = pricing;
+      else delete next.pricing;
+      return next;
+    });
+  }
+
+  function resetPricing(model: string) {
+    updateMetadata(model, (current) => {
+      const next = { ...current };
+      delete next.pricing;
+      return next;
+    });
+  }
+
+  function updateReasoningLevel(model: string, effort: string, checked: boolean) {
+    updateMetadata(model, (current) => {
+      const selected = new Set(
+        (current.supportedReasoningLevels ?? defaults?.[model]?.supportedReasoningLevels ?? [])
+          .map((level) => level.effort.trim().toLowerCase())
+      );
+      if (checked) selected.add(effort);
+      else selected.delete(effort);
+      const supportedReasoningLevels = providerReasoningLevelOptions
+        .filter((option) => selected.has(option.effort))
+        .map(({ description, effort: optionEffort }) => ({ description, effort: optionEffort }));
+      const next: Metadata = {
+        ...current,
+        supportedReasoningLevels,
+        supportsReasoningSummaries: supportedReasoningLevels.length > 0
+      };
+      const defaultReasoningLevel = current.defaultReasoningLevel?.trim().toLowerCase();
+      if (defaultReasoningLevel && !selected.has(defaultReasoningLevel)) {
+        delete next.defaultReasoningLevel;
+      }
+      return next;
+    });
+  }
+
+  function resetReasoning(model: string) {
+    updateMetadata(model, (current) => {
+      const next = { ...current };
+      delete next.defaultReasoningLevel;
+      delete next.supportedReasoningLevels;
+      delete next.supportsReasoningSummaries;
+      return next;
+    });
+  }
+
+  function updateCapability(model: string, key: CapabilityKey, checked: boolean) {
+    updateMetadata(model, (current) => ({
+      ...current,
+      capabilities: { ...(current.capabilities ?? {}), [key]: checked }
+    }));
+  }
+
+  function resetCapability(model: string, key: CapabilityKey) {
+    updateMetadata(model, (current) => {
+      const capabilities = { ...(current.capabilities ?? {}) };
+      delete capabilities[key];
+      const next = { ...current };
+      if (Object.keys(capabilities).length > 0) next.capabilities = capabilities;
+      else delete next.capabilities;
+      return next;
+    });
+  }
+
+  function toggleExpanded(model: string) {
+    setExpandedModels((current) => {
+      const next = new Set(current);
+      if (next.has(model)) next.delete(model);
+      else next.add(model);
+      return next;
+    });
   }
 
   return (
     <div className="space-y-2 rounded-md border border-border bg-muted/20 p-2">
       <div className="flex min-w-0 items-center justify-between gap-2">
-        <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Model descriptions")}</span>
-        <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">{t("Used in Agent routing prompts")}</span>
+        <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Model settings")}</span>
+        <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">{t("Context, pricing, reasoning, web search, and image")}</span>
       </div>
-      <div className="grid grid-cols-1 gap-2">
+      <div className="space-y-2">
         {normalizedModels.map((model) => {
+          const modelMetadata = metadata?.[model];
+          const modelDefaults = defaults?.[model];
+          const effectiveContextWindow = modelMetadata?.contextWindow ?? modelMetadata?.maxContextWindow ??
+            modelDefaults?.contextWindow ?? modelDefaults?.maxContextWindow;
+          const effectivePricing = {
+            cacheReadUsdPerMillionTokens: modelMetadata?.pricing?.cacheReadUsdPerMillionTokens ?? modelDefaults?.pricing?.cacheReadUsdPerMillionTokens,
+            cacheWrite1hUsdPerMillionTokens: modelMetadata?.pricing?.cacheWrite1hUsdPerMillionTokens ?? modelDefaults?.pricing?.cacheWrite1hUsdPerMillionTokens,
+            cacheWrite5mUsdPerMillionTokens: modelMetadata?.pricing?.cacheWrite5mUsdPerMillionTokens ??
+              modelMetadata?.pricing?.cacheWriteUsdPerMillionTokens ??
+              modelDefaults?.pricing?.cacheWrite5mUsdPerMillionTokens ??
+              modelDefaults?.pricing?.cacheWriteUsdPerMillionTokens,
+            inputUsdPerMillionTokens: modelMetadata?.pricing?.inputUsdPerMillionTokens ?? modelDefaults?.pricing?.inputUsdPerMillionTokens,
+            outputUsdPerMillionTokens: modelMetadata?.pricing?.outputUsdPerMillionTokens ?? modelDefaults?.pricing?.outputUsdPerMillionTokens
+          };
+          const expanded = expandedModels.has(model);
           const label = displayNames?.[model]?.trim() || model;
+          const hasCustomDetails = Boolean(
+            modelMetadata?.contextWindow ||
+            modelMetadata?.maxContextWindow ||
+            modelMetadata?.pricing ||
+            modelMetadata?.capabilities ||
+            modelMetadata?.supportedReasoningLevels !== undefined ||
+            modelMetadata?.supportsReasoningSummaries !== undefined
+          );
+          const configuredReasoningLevels = new Set(
+            (modelMetadata?.supportedReasoningLevels ?? modelDefaults?.supportedReasoningLevels ?? [])
+              .map((level) => level.effort.trim().toLowerCase())
+          );
+          const reasoningConfigured = modelMetadata?.supportedReasoningLevels !== undefined ||
+            modelMetadata?.supportsReasoningSummaries !== undefined;
           return (
-            <div className="grid grid-cols-1 gap-1 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)] sm:items-start" key={model}>
-              <Label className="min-h-8 min-w-0 pt-1.5 text-[12px] font-medium text-foreground" title={model}>
-                <span className="block truncate">{label}</span>
-              </Label>
-              <Textarea
-                className="min-h-[58px] resize-y text-[12px]"
-                onChange={(event) => updateDescription(model, event.target.value)}
-                placeholder={t("Describe model strengths, tradeoffs, and best-fit tasks.")}
-                value={descriptions?.[model] ?? ""}
-              />
+            <div className="overflow-hidden rounded-md border border-border bg-background/70" key={model}>
+              <button
+                aria-expanded={expanded}
+                className="flex w-full min-w-0 items-center gap-2 px-2.5 py-2 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/25"
+                onClick={() => toggleExpanded(model)}
+                type="button"
+              >
+                <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90")} />
+                <span className="min-w-0 flex-1 truncate text-[12px] font-medium" title={model}>{label}</span>
+                {hasCustomDetails ? <Badge variant="secondary">{t("Custom")}</Badge> : null}
+                {!hasCustomDetails && modelDefaults ? <Badge variant="outline">{t("Preset")}</Badge> : null}
+              </button>
+              {expanded ? (
+                <div className="space-y-3 border-t border-border/60 p-3">
+                  <div className="space-y-2">
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <Label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Context window (tokens)")}</Label>
+                      {modelMetadata?.contextWindow !== undefined || modelMetadata?.maxContextWindow !== undefined ? (
+                        <Button className="h-6 px-2 text-[10px]" onClick={() => resetContextWindow(model)} type="button" variant="ghost">
+                          {t("Use preset")}
+                        </Button>
+                      ) : null}
+                    </div>
+                    <Input
+                      min={1}
+                      onChange={(event) => updateContextWindow(model, event.target.value)}
+                      placeholder={t("Detected automatically")}
+                      step={1}
+                      type="number"
+                      value={effectiveContextWindow ?? ""}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <Label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Pricing")}</Label>
+                      {modelMetadata?.pricing ? (
+                        <Button className="h-6 px-2 text-[10px]" onClick={() => resetPricing(model)} type="button" variant="ghost">
+                          {t("Use preset")}
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <ModelPriceInput label={`${t("Input")}(1M tokens/$)`} onChange={(value) => updatePricing(model, "inputUsdPerMillionTokens", value)} value={effectivePricing.inputUsdPerMillionTokens} />
+                      <ModelPriceInput label={`${t("Output")}(1M tokens/$)`} onChange={(value) => updatePricing(model, "outputUsdPerMillionTokens", value)} value={effectivePricing.outputUsdPerMillionTokens} />
+                      <ModelPriceInput label={`${t("Cache read")}(1M tokens/$)`} onChange={(value) => updatePricing(model, "cacheReadUsdPerMillionTokens", value)} value={effectivePricing.cacheReadUsdPerMillionTokens} />
+                      <ModelPriceInput label={`${t("Cache write 5m")}(1M tokens/$)`} onChange={(value) => updatePricing(model, "cacheWrite5mUsdPerMillionTokens", value)} value={effectivePricing.cacheWrite5mUsdPerMillionTokens} />
+                      <ModelPriceInput label={`${t("Cache write 1h")}(1M tokens/$)`} onChange={(value) => updatePricing(model, "cacheWrite1hUsdPerMillionTokens", value)} value={effectivePricing.cacheWrite1hUsdPerMillionTokens} />
+                    </div>
+                    <div className="text-[10px] leading-4 text-muted-foreground/75">{t("Input and output prices are both required to override catalog pricing.")}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <Label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Reasoning levels")}</Label>
+                      {reasoningConfigured ? (
+                        <Button className="h-6 px-2 text-[10px]" onClick={() => resetReasoning(model)} type="button" variant="ghost">
+                          {t("Use preset")}
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3">
+                      {providerReasoningLevelOptions.map((option) => (
+                        <Label className="flex min-w-0 items-center gap-2 text-[11px] font-normal" key={option.effort}>
+                          <Checkbox
+                            checked={configuredReasoningLevels.has(option.effort)}
+                            onCheckedChange={(checked) => updateReasoningLevel(model, option.effort, checked)}
+                          />
+                          <span className="truncate">{t(option.label)}</span>
+                        </Label>
+                      ))}
+                    </div>
+                    <div className="text-[10px] leading-4 text-muted-foreground/75">{t("Select every reasoning effort supported by this model.")}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <Label className="flex min-w-0 items-center gap-2 text-[12px] font-medium">
+                        <Checkbox
+                          checked={modelMetadata?.capabilities?.webSearch ?? modelDefaults?.capabilities?.webSearch ?? false}
+                          onCheckedChange={(checked) => updateCapability(model, "webSearch", checked)}
+                        />
+                        <span>{t("Web search")}</span>
+                      </Label>
+                      {modelMetadata?.capabilities?.webSearch !== undefined ? (
+                        <Button className="h-6 px-2 text-[10px]" onClick={() => resetCapability(model, "webSearch")} type="button" variant="ghost">
+                          {t("Use preset")}
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="text-[10px] leading-4 text-muted-foreground/75">{t("Declare whether the model provides native web search.")}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <Label className="flex min-w-0 items-center gap-2 text-[12px] font-medium">
+                        <Checkbox
+                          checked={modelMetadata?.capabilities?.imageInput ?? modelDefaults?.capabilities?.imageInput ?? false}
+                          onCheckedChange={(checked) => updateCapability(model, "imageInput", checked)}
+                        />
+                        <span>{t("Image")}</span>
+                      </Label>
+                      {modelMetadata?.capabilities?.imageInput !== undefined ? (
+                        <Button className="h-6 px-2 text-[10px]" onClick={() => resetCapability(model, "imageInput")} type="button" variant="ghost">
+                          {t("Use preset")}
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="text-[10px] leading-4 text-muted-foreground/75">{t("Declare whether the model accepts image input.")}</div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           );
         })}
       </div>
     </div>
   );
+}
+
+function ModelPriceInput({ label, onChange, value }: { label: string; onChange: (value: string) => void; value?: number }) {
+  return (
+    <Field label={label}>
+      <Input min={0} onChange={(event) => onChange(event.target.value)} placeholder="0" step="any" type="number" value={value ?? ""} />
+    </Field>
+  );
+}
+
+function optionalPositiveInteger(value: string): number | undefined {
+  const parsed = Number(value);
+  return value.trim() && Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : undefined;
+}
+
+function optionalNonNegativeNumber(value: string): number | undefined {
+  const parsed = Number(value);
+  return value.trim() && Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
 function ModelMultiSelect({
@@ -2831,6 +3207,8 @@ function ModelMultiSelect({
   const visibleModels = normalized
     ? models.filter((model) => model.toLowerCase().includes(normalized) || (displayNames?.[model] ?? "").toLowerCase().includes(normalized))
     : models;
+  const customModel = query.trim();
+  const canAddCustomModel = Boolean(customModel && visibleModels.length === 0);
 
   function toggleModel(model: string) {
     onSelectedChange(selected.includes(model) ? selected.filter((item) => item !== model) : [...selected, model]);
@@ -2840,12 +3218,32 @@ function ModelMultiSelect({
     onSelectedChange(Array.from(new Set([...selected, ...visibleModels])));
   }
 
+  function addCustomModel() {
+    if (!canAddCustomModel) {
+      return;
+    }
+    onSelectedChange(mergeProviderModelLists(selected, [customModel]));
+    onQueryChange("");
+  }
+
   return (
     <div className="rounded-md border border-input bg-card">
       <div className="flex flex-wrap items-center gap-2 border-b border-border p-2">
         <div className="relative min-w-[180px] flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input aria-label={t("Search models")} className="pl-8" onChange={(event) => onQueryChange(event.target.value)} placeholder={t("Search models")} value={query} />
+          <Input
+            aria-label={t("Search models")}
+            className="pl-8"
+            onChange={(event) => onQueryChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && canAddCustomModel) {
+                event.preventDefault();
+                addCustomModel();
+              }
+            }}
+            placeholder={t("Search models")}
+            value={query}
+          />
         </div>
         <Button disabled={visibleModels.length === 0} onClick={selectVisibleModels} size="sm" type="button" variant="outline">
           {t("All")}
@@ -2856,7 +3254,13 @@ function ModelMultiSelect({
       </div>
       <div className="max-h-[220px] overflow-auto p-2">
         {visibleModels.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-6 text-center text-[12px] text-muted-foreground">{t("No matching models")}</div>
+          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-6 text-center text-[12px] text-muted-foreground">
+            {canAddCustomModel ? (
+              <button className="font-medium text-foreground hover:underline" onClick={addCustomModel} type="button">
+                {t("Press Enter to add custom model")}: <span className="font-mono">{customModel}</span>
+              </button>
+            ) : t("No matching models")}
+          </div>
         ) : null}
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {visibleModels.map((model) => {

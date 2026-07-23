@@ -4,11 +4,14 @@ import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "@ccr/core/config/constants";
-import { estimateUsageCostUsd } from "@ccr/core/models/pricing-service";
+import { estimateUsageCostUsd, providerModelPricingForUsage } from "@ccr/core/models/pricing-service";
 import { createBetterSqliteDatabase, type BetterSqliteDatabase } from "@ccr/core/storage/sqlite-native";
 import { normalizeUsageInputTokens } from "@ccr/core/usage/normalization";
+import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
 import type {
+  AppConfig,
   GatewayProviderProtocol,
+  ProviderModelPricing,
   UsageComparisonRow,
   UsageStatsFilter,
   UsageSeriesPoint,
@@ -22,6 +25,8 @@ type SqlValue = bigint | Buffer | number | string | null;
 
 type UsageNumbers = {
   cacheReadTokens?: number;
+  cacheWrite1hTokens?: number;
+  cacheWrite5mTokens?: number;
   cacheWriteTokens?: number;
   inputIncludesCacheTokens?: boolean;
   inputTokens?: number;
@@ -29,23 +34,29 @@ type UsageNumbers = {
   totalTokens?: number;
 };
 
-type UsageEventInput = {
+export type UsageEventInput = {
   client?: string;
+  costSource?: string;
+  costUsd?: number;
   createdAt?: string;
   credentialId?: string;
   durationMs: number;
+  logicalModel?: string;
   method: string;
   model?: string;
+  modelIsRouteSelector?: boolean;
   path: string;
   provider?: string;
+  pricing?: ProviderModelPricing;
   requestId?: string;
   statusCode: number;
   usage?: UsageNumbers;
 };
 
-type UsageCaptureInput = {
+export type UsageCaptureInput = {
   bodyText: string;
   client?: string;
+  config?: Pick<AppConfig, "Providers" | "virtualModelProfiles">;
   durationMs: number;
   fallbackModel?: string;
   method: string;
@@ -62,6 +73,7 @@ type UsageStatsQueryOptions = {
 };
 
 type UsageStoreOptions = {
+  estimateCost?: typeof estimateUsageCostUsd;
   requestLogDbFile?: string;
 };
 
@@ -81,6 +93,7 @@ type StoredUsageEvent = {
   durationMs: number;
   id: number;
   inputTokens: number;
+  logicalModel: string;
   method: string;
   model: string;
   outputTokens: number;
@@ -112,11 +125,13 @@ const emptyTotals: UsageTotals = {
 
 export class UsageStore {
   private database?: SqlDatabase;
+  private readonly estimateCost: typeof estimateUsageCostUsd;
   private initPromise?: Promise<SqlDatabase>;
   private readonly requestLogDbFile?: string;
   private requestLogBackfillFailureLogged = false;
 
   constructor(private readonly dbFile: string, options: UsageStoreOptions = {}) {
+    this.estimateCost = options.estimateCost ?? estimateUsageCostUsd;
     this.requestLogDbFile = options.requestLogDbFile;
   }
 
@@ -126,21 +141,34 @@ export class UsageStore {
     const inputTokens = normalizeCount(usage.inputTokens);
     const outputTokens = normalizeCount(usage.outputTokens);
     const cacheReadTokens = normalizeCount(usage.cacheReadTokens);
+    const cacheWrite1hTokens = normalizeCount(usage.cacheWrite1hTokens);
+    const cacheWrite5mTokens = normalizeCount(usage.cacheWrite5mTokens);
     const cacheWriteTokens = normalizeCount(usage.cacheWriteTokens);
     const cacheTokens = cacheReadTokens + cacheWriteTokens;
     const totalTokens = normalizeCount(usage.totalTokens) || inputTokens + outputTokens + cacheTokens;
-    const route = splitRouteSelector(event.model);
+    const route = event.modelIsRouteSelector === false ? {} : splitRouteSelector(event.model);
     const model = normalizeLabel(route.model ?? event.model, "unknown");
     const provider = normalizeLabel(event.provider ?? route.provider, "unknown");
+    const logicalModel = normalizeLabel(event.logicalModel ?? event.model, model);
     const credentialId = normalizeLabel(event.credentialId, "");
-    const cost = await estimateUsageCostUsd({
-      cacheReadTokens,
-      cacheWriteTokens,
-      inputTokens,
-      model,
-      outputTokens,
-      provider
-    });
+    const explicitCost = normalizeOptionalCost(event.costUsd);
+    const estimatedCost = explicitCost === undefined
+      ? await this.estimateCost({
+          cacheReadTokens,
+          cacheWrite1hTokens,
+          cacheWrite5mTokens,
+          cacheWriteTokens,
+          inputTokens,
+          model,
+          outputTokens,
+          pricing: event.pricing,
+          provider
+        })
+      : undefined;
+    const costUsd = explicitCost ?? estimatedCost?.amountUsd;
+    const costSource = explicitCost === undefined
+      ? estimatedCost?.source ?? ""
+      : normalizeLabel(event.costSource, "gateway_billing");
 
     const statement = database.prepare(`
       INSERT INTO usage_events (
@@ -150,6 +178,7 @@ export class UsageStore {
         method,
         path,
         model,
+        logical_model,
         provider,
         credential_id,
         status_code,
@@ -161,7 +190,7 @@ export class UsageStore {
         total_tokens,
         cost_usd,
         cost_source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     statement.run(
@@ -171,6 +200,7 @@ export class UsageStore {
       event.method,
       event.path,
       model,
+      logicalModel,
       provider,
       credentialId,
       normalizeCount(event.statusCode),
@@ -180,10 +210,23 @@ export class UsageStore {
       cacheReadTokens,
       cacheWriteTokens,
       totalTokens,
-      cost?.amountUsd ?? null,
-      cost?.source ?? ""
+      costUsd ?? null,
+      costSource
     );
     usageEvents.emit("recorded");
+  }
+
+  async hasRequestId(requestId: string): Promise<boolean> {
+    const normalizedRequestId = requestId.trim();
+    if (!normalizedRequestId) {
+      return false;
+    }
+    const database = await this.getDatabase();
+    return queryRows(
+      database,
+      "SELECT 1 FROM usage_events WHERE request_id = ? LIMIT 1",
+      [normalizedRequestId]
+    ).length > 0;
   }
 
   async getStats(range: UsageStatsRange | null | undefined = "7d", filter: UsageStatsFilter | null | undefined = {}): Promise<UsageStatsSnapshot> {
@@ -235,6 +278,7 @@ export class UsageStore {
         method TEXT NOT NULL,
         path TEXT NOT NULL,
         model TEXT NOT NULL DEFAULT 'unknown',
+        logical_model TEXT NOT NULL DEFAULT '',
         provider TEXT NOT NULL DEFAULT 'unknown',
         credential_id TEXT NOT NULL DEFAULT '',
         status_code INTEGER NOT NULL DEFAULT 0,
@@ -250,6 +294,7 @@ export class UsageStore {
       CREATE INDEX IF NOT EXISTS usage_events_created_at_idx ON usage_events(created_at);
       CREATE INDEX IF NOT EXISTS usage_events_model_idx ON usage_events(model);
       CREATE INDEX IF NOT EXISTS usage_events_path_idx ON usage_events(path);
+      CREATE INDEX IF NOT EXISTS usage_events_request_id_idx ON usage_events(request_id);
     `);
     ensureUsageSchema(database);
 
@@ -295,6 +340,7 @@ export class UsageStore {
             method,
             path,
             model,
+            logical_model,
             provider,
             credential_id,
             status_code,
@@ -313,6 +359,7 @@ export class UsageStore {
             logs.client,
             logs.method,
             logs.path,
+            logs.model,
             logs.model,
             logs.provider,
             logs.credential_id,
@@ -374,15 +421,19 @@ function ensureUsageSchema(database: SqlDatabase): void {
   if (!columns.has("cost_source")) {
     database.exec("ALTER TABLE usage_events ADD COLUMN cost_source TEXT NOT NULL DEFAULT ''");
   }
+  if (!columns.has("logical_model")) {
+    database.exec("ALTER TABLE usage_events ADD COLUMN logical_model TEXT NOT NULL DEFAULT ''");
+    database.exec("UPDATE usage_events SET logical_model = model WHERE logical_model = ''");
+  }
   if (!columns.has("credential_id")) {
     database.exec("ALTER TABLE usage_events ADD COLUMN credential_id TEXT NOT NULL DEFAULT ''");
   }
-
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_client_idx ON usage_events(client)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_created_at_idx ON usage_events(created_at)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_credential_id_idx ON usage_events(credential_id)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_model_idx ON usage_events(model)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_path_idx ON usage_events(path)");
+  database.exec("CREATE INDEX IF NOT EXISTS usage_events_request_id_idx ON usage_events(request_id)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_created_filter_idx ON usage_events(created_at, provider, model, credential_id)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_provider_created_at_idx ON usage_events(provider, created_at)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_model_created_at_idx ON usage_events(model, created_at)");
@@ -420,25 +471,37 @@ export async function recordGatewayUsageCapture(input: UsageCaptureInput): Promi
   try {
     const headersUsage = extractUsageFromBillingHeaders(input.responseHeaders);
     const bodyUsage = extractUsageFromBody(input.bodyText);
-    const usage = normalizeUsageInputTokens(headersUsage ?? bodyUsage, {
+    const usage = normalizeUsageInputTokens(mergeUsageSnapshots(headersUsage, bodyUsage), {
       path: input.path,
       providerProtocol: input.providerProtocol,
       usageHint: bodyUsage
     });
+    const fallbackAttribution = resolveUsageModelAttribution(input.config, input.fallbackModel);
+    const responseAttribution = resolveUsageModelAttribution(
+      input.config,
+      bodyUsage?.model,
+      { physicalModel: true }
+    );
     const route = splitRouteSelector(input.fallbackModel);
     const provider =
       input.providerName ??
       readHeader(input.responseHeaders, "x-gateway-target-provider-name") ??
       readHeader(input.responseHeaders, "x-gateway-target-provider") ??
+      responseAttribution.provider ??
+      fallbackAttribution.provider ??
       route.provider;
+    const model = responseAttribution.model ?? fallbackAttribution.model ?? route.model ?? input.fallbackModel;
 
     await usageStore.record({
       durationMs: input.durationMs,
       method: input.method,
-      model: bodyUsage?.model ?? route.model ?? input.fallbackModel,
+      logicalModel: fallbackAttribution.logicalModel ?? input.fallbackModel,
+      model,
+      modelIsRouteSelector: false,
       path: input.path,
       client: input.client,
       provider,
+      pricing: providerModelPricingForUsage(input.config, provider, model),
       credentialId: readCredentialId(input.responseHeaders),
       requestId: input.requestId,
       statusCode: input.statusCode,
@@ -548,6 +611,7 @@ function toStoredUsageEvent(row: Record<string, SqlValue>): StoredUsageEvent {
     durationMs: normalizeCount(row.duration_ms),
     id: normalizeCount(row.id),
     inputTokens: normalizeCount(row.input_tokens),
+    logicalModel: normalizeLabel(String(row.logical_model ?? row.model ?? ""), "unknown"),
     method: String(row.method ?? ""),
     model: normalizeLabel(String(row.model ?? ""), "unknown"),
     outputTokens: normalizeCount(row.output_tokens),
@@ -730,6 +794,7 @@ function readRecentRequestRows(database: SqlDatabase, query: UsageWhereClause): 
         method,
         path,
         model,
+        logical_model,
         provider,
         credential_id,
         status_code,
@@ -926,6 +991,7 @@ function buildRecentRequestRows(events: StoredUsageEvent[]): UsageComparisonRow[
     credentialId: event.credentialId || undefined,
     key: String(event.id),
     label: event.model || "unknown",
+    logicalModel: event.logicalModel,
     maxShare: 0,
     model: event.model,
     provider: event.provider
@@ -991,15 +1057,20 @@ function extractUsageFromBillingHeaders(headers: Headers): UsageNumbers | undefi
   const inputTokens = readNumberHeader(headers, "x-gateway-billing-input-tokens");
   const outputTokens = readNumberHeader(headers, "x-gateway-billing-output-tokens");
   const cacheReadTokens = readNumberHeader(headers, "x-gateway-billing-cache-read-tokens");
-  const cacheWriteTokens = readNumberHeader(headers, "x-gateway-billing-cache-write-tokens");
+  const cacheWrite1hTokens = readNumberHeader(headers, "x-gateway-billing-cache-write-1h-tokens");
+  const cacheWrite5mTokens = readNumberHeader(headers, "x-gateway-billing-cache-write-5m-tokens");
+  const cacheWriteTokens = readNumberHeader(headers, "x-gateway-billing-cache-write-tokens") ??
+    sumOptionalNumbers(cacheWrite5mTokens, cacheWrite1hTokens);
   const totalTokens = readNumberHeader(headers, "x-gateway-billing-total-tokens");
 
-  if ([inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens].every((value) => value === undefined)) {
+  if ([inputTokens, outputTokens, cacheReadTokens, cacheWrite1hTokens, cacheWrite5mTokens, cacheWriteTokens, totalTokens].every((value) => value === undefined)) {
     return undefined;
   }
 
   return {
     cacheReadTokens,
+    cacheWrite1hTokens,
+    cacheWrite5mTokens,
     cacheWriteTokens,
     inputTokens,
     outputTokens,
@@ -1027,7 +1098,11 @@ function extractUsageFromBody(text: string): UsageSnapshot | undefined {
     }
   }
 
-  return snapshots.at(-1);
+  let merged: UsageSnapshot | undefined;
+  for (const snapshot of snapshots) {
+    merged = mergeUsageSnapshots(snapshot, merged);
+  }
+  return merged;
 }
 
 function parseStreamPayloads(text: string): unknown[] {
@@ -1052,10 +1127,13 @@ function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
   }
 
   const response = isRecord(payload.response) ? payload.response : payload;
+  const message = isRecord(payload.message) ? payload.message : undefined;
   const usage = isRecord(response.usage)
     ? response.usage
     : isRecord(payload.usage)
       ? payload.usage
+      : isRecord(message?.usage)
+        ? message.usage
       : undefined;
   const usageMetadata = isRecord(response.usageMetadata)
     ? response.usageMetadata
@@ -1091,6 +1169,9 @@ function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
     inputDetails?.cache_creation_tokens !== undefined ||
     usage.cached_tokens !== undefined ||
     usage.prompt_tokens !== undefined;
+  const cacheCreation = isRecord(usage.cache_creation) ? usage.cache_creation : undefined;
+  const cacheWrite5mTokens = asNumber(cacheCreation?.ephemeral_5m_input_tokens);
+  const cacheWrite1hTokens = asNumber(cacheCreation?.ephemeral_1h_input_tokens);
 
   return {
     cacheReadTokens:
@@ -1098,16 +1179,20 @@ function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
       asNumber(usage.cache_read_input_tokens) ??
       asNumber(usage.cached_tokens) ??
       asNumber(inputDetails?.cached_tokens),
+    cacheWrite1hTokens,
+    cacheWrite5mTokens,
     cacheWriteTokens:
       asNumber(usage.cache_write_tokens) ??
       asNumber(usage.cache_creation_tokens) ??
       asNumber(usage.cache_creation_input_tokens) ??
-      asNumber(inputDetails?.cache_creation_tokens),
+      asNumber(inputDetails?.cache_creation_tokens) ??
+      sumOptionalNumbers(cacheWrite5mTokens, cacheWrite1hTokens),
     inputIncludesCacheTokens: hasAnthropicCacheFields ? false : hasOpenAiCacheFields ? true : undefined,
     inputTokens: asNumber(usage.input_tokens) ?? asNumber(usage.prompt_tokens),
     model:
       asString(response.model) ??
       asString(payload.model) ??
+      asString(message?.model) ??
       asString(response.modelVersion) ??
       asString(payload.modelVersion),
     outputTokens: asNumber(usage.output_tokens) ?? asNumber(usage.completion_tokens),
@@ -1118,11 +1203,27 @@ function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
 function hasUsageNumbers(snapshot: UsageNumbers): boolean {
   return [
     snapshot.cacheReadTokens,
+    snapshot.cacheWrite1hTokens,
+    snapshot.cacheWrite5mTokens,
     snapshot.cacheWriteTokens,
     snapshot.inputTokens,
     snapshot.outputTokens,
     snapshot.totalTokens
   ].some((value) => value !== undefined);
+}
+
+function mergeUsageSnapshots(primary: UsageNumbers | undefined, fallback: UsageSnapshot | undefined): UsageSnapshot | undefined {
+  if (!primary) return fallback;
+  if (!fallback) return primary;
+  return {
+    ...fallback,
+    ...Object.fromEntries(Object.entries(primary).filter(([, value]) => value !== undefined))
+  };
+}
+
+function sumOptionalNumbers(...values: Array<number | undefined>): number | undefined {
+  const present = values.filter((value): value is number => value !== undefined);
+  return present.length > 0 ? present.reduce((total, value) => total + value, 0) : undefined;
 }
 
 function readHeader(headers: Headers, name: string): string | undefined {
@@ -1164,6 +1265,11 @@ function normalizeCount(value: unknown): number {
 function normalizeCost(value: unknown): number {
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function normalizeOptionalCost(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
 function asString(value: unknown): string | undefined {

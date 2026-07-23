@@ -1,6 +1,35 @@
 import {
-  SourceTab, useTrayText
+  SourceTab, useState, useTrayText
 } from "../shared";
+import { CircleHelp, Layers3 } from "lucide-react";
+
+function SourceTabIcon({ tab }: { tab: SourceTab }) {
+  const [failedIconUrl, setFailedIconUrl] = useState("");
+  const isAll = !tab.provider;
+  const showProviderIcon = Boolean(tab.iconUrl && tab.iconUrl !== failedIconUrl);
+
+  return (
+    <span
+      aria-hidden="true"
+      className="tray-source-icon flex h-4 w-4 shrink-0 items-center justify-center"
+      data-icon-kind={isAll ? "all" : showProviderIcon ? "provider" : "fallback"}
+    >
+      {isAll ? (
+        <Layers3 size={11} strokeWidth={2} />
+      ) : showProviderIcon ? (
+        <img
+          alt=""
+          className="h-3.5 w-3.5 rounded-[3px] object-contain"
+          src={tab.iconUrl}
+          onError={() => setFailedIconUrl(tab.iconUrl ?? "")}
+        />
+      ) : (
+        <CircleHelp size={11} strokeWidth={2} />
+      )}
+    </span>
+  );
+}
+
 export function SourceGrid({
   selectedProvider,
   tabs,
@@ -18,17 +47,16 @@ export function SourceGrid({
         const active = tab.provider === selectedProvider || (!tab.provider && !selectedProvider);
         return (
           <button
-            className={[
-              "min-w-0 truncate rounded-md border px-2 py-1 text-center text-[10px] font-semibold",
-              active
-                ? "border-teal-300/35 bg-teal-300/16 text-teal-50"
-                : "border-white/10 bg-white/[.04] text-slate-300 hover:border-white/16 hover:bg-white/[.07] hover:text-slate-50"
-            ].join(" ")}
+            aria-pressed={active}
+            className="tray-source-tab flex min-w-0 items-center justify-center gap-1 px-1.5 py-1.5 text-center text-[10px] font-semibold"
+            data-active={active}
             key={tab.id}
+            title={tab.provider ?? t(tab.label)}
             type="button"
             onClick={() => onSelect(tab.provider)}
           >
-            {t(tab.label)}
+            <SourceTabIcon tab={tab} />
+            <span className="min-w-0 truncate">{t(tab.label)}</span>
           </button>
         );
       })}

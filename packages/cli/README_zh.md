@@ -1,328 +1,184 @@
-<h1 align="center">Claude Code Router Desktop</h1>
+# Claude Code Router CLI
 
-<p align="center">
-  <a href="README.md"><img alt="English README" src="https://img.shields.io/badge/%F0%9F%87%AC%F0%9F%87%A7-English-000aff?style=flat" /></a>
-  <a href="https://discord.gg/rdftVMaUcS"><img alt="Discord" src="https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white" /></a>
-  <a href="https://x.com/musistudio2026"><img alt="X" src="https://img.shields.io/badge/X-@musistudio2026-000000?logo=x&logoColor=white" /></a>
-  <a href="https://github.com/musistudio/claude-code-router/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/musistudio/claude-code-router" /></a>
-  <a href="https://ccrdesk.top/"><img alt="文档" src="https://img.shields.io/badge/%E6%96%87%E6%A1%A3-ccrdesk.top-0ea5e9?style=flat" /></a>
-</p>
+[English](README.md) · [完整文档](https://ccrdesk.top/) · [GitHub](https://github.com/musistudio/claude-code-router)
 
-<p align="center">
-  <img src="blog/images/claude-code-router.png" width="720" alt="Claude Code Router Desktop 项目截图" />
-</p>
+`@musistudio/claude-code-router` 是 Claude Code Router 的 Node.js 发行版。它通过 `ccr` 命令提供浏览器管理界面、本地模型网关和 Agent 配置启动能力，不需要安装 Electron。
 
-Claude Code Router Desktop 是一个本地网关和桌面控制台，用来把 Claude Code、Codex、ZCode 以及兼容客户端的 Agent 请求路由到你真正想使用的模型服务。
+CLI 适合开发机和无桌面的服务器。如果你需要系统托盘、桌面通知、应用自动更新或桌面端专属的浏览器集成，请安装桌面应用。
 
-## 为什么使用 CCR
+## 环境要求与安装
 
-- 用一个本地入口连接多个 Agent 工具，不需要在每个客户端里重复配置 Provider。
-- 在不改变工作流的情况下混用不同 Provider。CCR 支持 OpenAI 兼容 API、Anthropic Messages、Gemini Generate Content、OpenRouter、DeepSeek、SiliconFlow、Moonshot、Kimi Code、Mistral、Z.AI、百炼以及自定义 Provider。
-- 通过 fallback 路由、API Key 轮换、用量统计和请求日志来控制成本和可靠性。
+- Node.js 22 或更高版本
+- 一个可用的上游模型供应商，或 CCR 支持导入的本机 Agent 登录态
+- 使用配置启动命令时，本机需要已经安装对应 Agent
 
-## 功能和特性
+全局安装：
 
-- **概览仪表盘**：查看系统状态、用量组件、账号余额、模型分布和分享卡片。
-- **Provider 管理**：添加预设或自定义端点，探测协议支持，检测模型连通性，管理凭据，并在可用时查看账号余额。
-- **路由规则**：配置条件路由、模型前缀规则、失败降级和请求改写。
-- **Agent配置**：为 Claude Code、Codex 和 ZCode 配置启动入口、模型、作用范围和多开 App 配置。
-- **网关兼容层**：通过本地 CCR 模型网关转换支持的客户端请求。
-- **代理模式**：通过本地代理捕获支持的 API 流量，可选系统代理和网络捕获。
-- **Fusion 组合模型**：把基础模型与视觉、联网搜索或 MCP 工具组合成新的可选模型。
+```sh
+npm install -g @musistudio/claude-code-router
+ccr --help
+```
 
-## 文档
+升级或卸载：
 
-完整文档见 [ccrdesk.top](https://ccrdesk.top/)。
+```sh
+npm install -g @musistudio/claude-code-router@latest
+npm uninstall -g @musistudio/claude-code-router
+```
 
-## 下载和安装
-
-1. 打开 [GitHub Releases 页面](https://github.com/musistudio/claude-code-router/releases)。
-2. 按系统下载对应安装包：
-   - macOS Apple 芯片：`Claude-Code-Router_<version>-mac-Apple-Silicon-arm64.dmg` 或 `.zip`
-   - macOS Intel 芯片：`Claude-Code-Router_<version>-mac-Intel-x64.dmg` 或 `.zip`
-   - Windows：`Claude Code Router_<version>.exe`
-   - Linux：`Claude Code Router_<version>.AppImage`
-3. 安装并启动 **Claude Code Router**。
-4. 首次启动后，CCR 会创建本地配置数据库：
-   - macOS/Linux：`~/.claude-code-router/config.sqlite`
-   - Windows：`%APPDATA%\Claude Code Router\config.sqlite`
-
-CCR 的运行配置存储在 SQLite 中。旧版 `config.json` 只会在没有 SQLite 配置时作为迁移来源读取一次。
-
-从 **服务** 页面启动后，CCR 默认监听 `http://localhost:8080`。**服务** 页面负责配置网关 `Host`、`Port`、代理模式、系统代理、网络捕获和 CA 证书状态。
+卸载 npm 包不会删除 CCR 的本地配置和数据库。
 
 ## 快速开始
 
-CCR 可以完全通过桌面 UI 完成配置。首次使用建议按下面顺序操作。
+启动后台服务并打开管理界面：
 
-### 1. 添加 Provider
+```sh
+ccr ui
+```
 
-打开 **供应商**，点击 **添加供应商**，选择内置预设或 **其他 / 自定义 API 端点**。按表单填写 Provider 名称、基础 URL、协议、API Key 和模型列表。可用时先运行协议探测和模型连通性检查，然后保存 Provider。
+然后按以下顺序配置：
 
-### 2. 设置路由
+1. 添加上游供应商和至少一个模型。
+2. 在 **API 密钥** 页面创建 CCR 客户端密钥。
+3. 如果默认供应商 / 模型不够用，再配置路由规则。
+4. 在 **服务** 页面确认网关已经运行。
+5. 把客户端指向界面显示的网关地址。网关默认是 `http://127.0.0.1:3456`，管理界面默认是 `http://127.0.0.1:3458`。
 
-打开 **路由**，添加条件规则，配置请求改写和失败降级。
+管理 Token 和 CCR 客户端 API Key 是两种不同凭据。管理 Token 保护浏览器 UI 和 RPC 接口，CCR 客户端 Key 用于验证发送到模型网关的请求。
 
-如果需要更细粒度控制，使用 **添加路由规则** 添加模型前缀、请求条件或规则级失败降级目标。
+## 服务命令
 
-### 3. 启动网关
+| 命令 | 行为 |
+| --- | --- |
+| `ccr start` | 在后台启动管理服务和网关，并打印带认证信息的管理 URL。 |
+| `ccr ui` | 复用或启动后台服务，然后打开管理界面。 |
+| `ccr stop` | 停止由 `ccr start` 或 `ccr ui` 启动的后台服务。 |
+| `ccr serve` | 在前台运行管理服务和网关；`ccr web` 是别名。 |
+| `ccr <配置>` | 按名称或 ID 打开一个已启用的 Agent 配置。 |
 
-打开 **服务**，点击 **启动**。页面显示运行中后，CCR 会在本机监听 `http://localhost:8080`。如果希望每次打开桌面应用时自动启动网关，可以启用自动启动。
+### `ccr start`
 
-### 4. 连接 Agent 工具
+```text
+ccr start [--host <host>] [--port <port>] [--open|--no-open] [--gateway|--no-gateway]
+```
 
-打开 **Agent配置**，选择要使用的客户端。配置 Claude Code、Codex 或 ZCode，选择目标模型和作用范围，然后应用配置。对于 App 入口，可以使用 **打开 Agent** 操作通过 CCR 打开目标应用。
+- `--host <host>`：管理服务监听地址，默认 `127.0.0.1`。
+- `--port <port>`：管理服务首选端口，默认 `3458`。
+- `--open` / `--no-open`：是否打开浏览器。
+- `--gateway`：明确要求启动模型网关；这是默认行为。
+- `--no-gateway`：只启动管理服务，不启动模型网关。
 
-### 5. 日常查看和调整
+### `ccr ui`
 
-到 **设置 → 日志与观测** 打开请求日志和 Agent 观测。使用 **日志** 确认 `request model`、`resolved provider`、`resolved model`、状态码、tokens、耗时和错误；使用托盘窗口快速查看 Token 和账号状态。
+```text
+ccr ui [--host <host>] [--port <port>] [--open|--no-open] [--gateway|--no-gateway]
+```
 
-## 致谢
+`ui` 默认会打开浏览器。在 SSH 或其他无桌面环境中使用 `--no-open`。
 
-对 Codex 的支持来自于 [musistudio/codexl](https://github.com/musistudio/codexl) 这个项目。
+### `ccr serve`
 
-## 支持与赞助
+```text
+ccr serve [--host <host>] [--port <port>] [--open|--no-open] [--gateway|--no-gateway]
+```
 
-<div align="center">
+`serve` 会留在当前终端并处理 `SIGINT` / `SIGTERM`，适合交给进程管理器托管。`ccr stop` 只管理后台服务；前台服务需要在终端或进程管理器中停止。
 
-<p>如果你觉得这个项目有帮助，欢迎赞助项目开发。非常感谢你的支持。</p>
+如果首选管理端口已被占用，CCR 会继续尝试后续端口并打印实际 URL。`start` 或 `ui` 复用已运行服务时，新传入的 Host、Port 和 `--no-gateway` 不会重配该进程；要修改这些选项，请先运行 `ccr stop`。
 
-<table>
-  <tr>
-    <td align="center" width="220">
-      <a href="https://ko-fi.com/F1F31GN2GM">
-        <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="通过 Ko-fi 赞助" />
-      </a>
-      <br />
-      <sub>通过 Ko-fi 单次赞助</sub>
-    </td>
-    <td align="center" width="220">
-      <a href="https://paypal.me/musistudio1999">
-        <img src="https://img.shields.io/badge/PayPal-Sponsor-003087?logo=paypal&logoColor=white" alt="通过 PayPal 赞助" />
-      </a>
-      <br />
-      <sub>国际赞助通道</sub>
-    </td>
-  </tr>
-</table>
+## Agent 配置启动
 
-<table>
-  <tr>
-    <td align="center" width="220">
-      <strong>支付宝</strong>
-      <br />
-      <img src="/blog/images/alipay.jpg" width="160" alt="支付宝收款码" />
-    </td>
-    <td align="center" width="220">
-      <strong>微信支付</strong>
-      <br />
-      <img src="/blog/images/wechat.jpg" width="160" alt="微信支付收款码" />
-    </td>
-  </tr>
-</table>
+先在 **Agent配置** 中创建并启用配置，然后按名称或 ID 启动：
 
-</div>
+```sh
+ccr "Codex - Work"
+ccr "Codex - Work" app
+ccr "Claude - Review" cli -- --model sonnet
+ccr profile-id -- --help
+```
 
-### 我们的赞助商
+完整语法：
 
-<div align="center">
+```text
+ccr <配置名称或 ID> [cli|app] [-- <Agent 参数>]
+```
 
-<p>非常感谢所有赞助商的慷慨支持。</p>
+- `--cli` 和 `--app` 也可以代替位置形式的入口类型。
+- Agent 自己的参数建议统一放到 `--` 后，避免被识别为 CCR 参数。
+- 省略入口类型时，Claude Code、Codex、Grok CLI、Kimi CLI 默认使用 CLI，ZCode 默认使用 App。
+- Grok 只支持 CLI，ZCode 只支持 App。Claude App 和 ZCode App 不接受额外 Agent 参数。
+- 启动桌面 App 时，本机必须已安装对应应用，并且当前环境必须有图形会话。
+- 大多数配置需要先启动 CCR 服务。Grok CLI 和 Kimi CLI 配置可以自动启动一个临时共享服务，并在最后一个受管会话退出后停止。
 
-<table width="100%">
-  <tr>
-    <td align="center" width="330">
-      <a href="https://www.bigmodel.cn/claude-code?ic=FPF9IVAGFJ">
-        <img src="/docs/public/provider-icons/zhipu-cn-general.png" width="42" height="42" alt="智谱图标" />
-        <br />
-        <strong>Z智谱</strong>
-      </a>
-    </td>
-    <td align="center" width="330">
-      <a href="https://aihubmix.com/">
-        <img src="https://www.google.com/s2/favicons?domain=aihubmix.com&amp;sz=128" width="42" height="42" alt="AIHubmix 图标" />
-        <br />
-        <strong>AIHubmix</strong>
-      </a>
-    </td>
-    <td align="center" width="330">
-      <a href="https://ai.burncloud.com">
-        <img src="https://www.burncloud.com/favicon.png" width="42" height="42" alt="BurnCloud 图标" />
-        <br />
-        <strong>BurnCloud</strong>
-      </a>
-    </td>
-    <td align="center" width="330">
-      <a href="https://share.302.ai/ZGVF9w">
-        <img src="https://www.google.com/s2/favicons?domain=302.ai&amp;sz=128" width="42" height="42" alt="302.AI 图标" />
-        <br />
-        <strong>302.AI</strong>
-      </a>
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="330">
-      <a href="https://runapi.co/register?aff=IX1t">
-        <img src="/docs/public/provider-icons/runapi.jpg" width="42" height="42" alt="RunAPI 图标" />
-        <br />
-        <strong>RunAPI</strong>
-      </a>
-    </td>
-    <td align="center" width="330">
-      <a href="https://teamorouter.com/">
-        <img src="/docs/public/provider-icons/teamorouter.png" width="42" height="42" alt="TeamoRouter 图标" />
-        <br />
-        <strong>TeamoRouter</strong>
-      </a>
-    </td>
-  </tr>
-</table>
+桌面应用会安装一个相关命令 `ccr-app`。桌面 Agent配置卡片复制出来的命令使用 `ccr-app`；本文介绍的 npm 包安装的是 `ccr`。
 
-<h4>社区赞助者</h4>
+## 配置与运行文件
 
-<table width="100%">
-  <tr>
-    <td align="center" width="220">@Simon Leischnig</td>
-    <td align="center" width="220"><a href="https://github.com/duanshuaimin">@duanshuaimin</a></td>
-    <td align="center" width="220"><a href="https://github.com/vrgitadmin">@vrgitadmin</a></td>
-    <td align="center" width="220">@*o</td>
-    <td align="center" width="220"><a href="https://github.com/ceilwoo">@ceilwoo</a></td>
-    <td align="center" width="220">@*说</td>
-  </tr>
-  <tr>
-    <td align="center" width="220">@*更</td>
-    <td align="center" width="220">@K*g</td>
-    <td align="center" width="220">@R*R</td>
-    <td align="center" width="220"><a href="https://github.com/bobleer">@bobleer</a></td>
-    <td align="center" width="220">@*苗</td>
-    <td align="center" width="220">@*划</td>
-  </tr>
-  <tr>
-    <td align="center" width="220"><a href="https://github.com/Clarence-pan">@Clarence-pan</a></td>
-    <td align="center" width="220"><a href="https://github.com/carter003">@carter003</a></td>
-    <td align="center" width="220">@S*r</td>
-    <td align="center" width="220">@*晖</td>
-    <td align="center" width="220">@*敏</td>
-    <td align="center" width="220">@Z*z</td>
-  </tr>
-  <tr>
-    <td align="center" width="220">@*然</td>
-    <td align="center" width="220"><a href="https://github.com/cluic">@cluic</a></td>
-    <td align="center" width="220">@*苗</td>
-    <td align="center" width="220"><a href="https://github.com/PromptExpert">@PromptExpert</a></td>
-    <td align="center" width="220">@*应</td>
-    <td align="center" width="220"><a href="https://github.com/yusnake">@yusnake</a></td>
-  </tr>
-  <tr>
-    <td align="center" width="220">@*飞</td>
-    <td align="center" width="220">@董*</td>
-    <td align="center" width="220">@*汀</td>
-    <td align="center" width="220">@*涯</td>
-    <td align="center" width="220">@*:-）</td>
-    <td align="center" width="220">@**磊</td>
-  </tr>
-  <tr>
-    <td align="center" width="220">@*琢</td>
-    <td align="center" width="220">@*成</td>
-    <td align="center" width="220">@Z*o</td>
-    <td align="center" width="220">@*琨</td>
-    <td align="center" width="220"><a href="https://github.com/congzhangzh">@congzhangzh</a></td>
-    <td align="center" width="220">@*_</td>
-  </tr>
-  <tr>
-    <td align="center" width="220">@Z*m</td>
-    <td align="center" width="220">@*鑫</td>
-    <td align="center" width="220">@c*y</td>
-    <td align="center" width="220">@*昕</td>
-    <td align="center" width="220"><a href="https://github.com/witsice">@witsice</a></td>
-    <td align="center" width="220">@b*g</td>
-  </tr>
-  <tr>
-    <td align="center" width="220">@*亿</td>
-    <td align="center" width="220">@*辉</td>
-    <td align="center" width="220">@JACK</td>
-    <td align="center" width="220">@*光</td>
-    <td align="center" width="220">@W*l</td>
-    <td align="center" width="220"><a href="https://github.com/kesku">@kesku</a></td>
-  </tr>
-  <tr>
-    <td align="center" width="220"><a href="https://github.com/biguncle">@biguncle</a></td>
-    <td align="center" width="220">@二吉吉</td>
-    <td align="center" width="220">@a*g</td>
-    <td align="center" width="220">@*林</td>
-    <td align="center" width="220">@*咸</td>
-    <td align="center" width="220">@*明</td>
-  </tr>
-  <tr>
-    <td align="center" width="220">@S*y</td>
-    <td align="center" width="220">@f*o</td>
-    <td align="center" width="220">@*智</td>
-    <td align="center" width="220">@F*t</td>
-    <td align="center" width="220">@r*c</td>
-    <td align="center" width="220"><a href="https://github.com/qierkang">@qierkang</a></td>
-  </tr>
-  <tr>
-    <td align="center" width="220">@*军</td>
-    <td align="center" width="220"><a href="https://github.com/snrise-z">@snrise-z</a></td>
-    <td align="center" width="220">@*王</td>
-    <td align="center" width="220"><a href="https://github.com/greatheart1000">@greatheart1000</a></td>
-    <td align="center" width="220">@*王</td>
-    <td align="center" width="220">@zcutlip</td>
-  </tr>
-  <tr>
-    <td align="center" width="220"><a href="https://github.com/Peng-YM">@Peng-YM</a></td>
-    <td align="center" width="220">@*更</td>
-    <td align="center" width="220">@*.</td>
-    <td align="center" width="220">@F*t</td>
-    <td align="center" width="220">@*政</td>
-    <td align="center" width="220">@*铭</td>
-  </tr>
-  <tr>
-    <td align="center" width="220">@*叶</td>
-    <td align="center" width="220">@七*o</td>
-    <td align="center" width="220">@*青</td>
-    <td align="center" width="220">@**晨</td>
-    <td align="center" width="220">@*远</td>
-    <td align="center" width="220">@*霄</td>
-  </tr>
-  <tr>
-    <td align="center" width="220">@**吉</td>
-    <td align="center" width="220">@**飞</td>
-    <td align="center" width="220">@**驰</td>
-    <td align="center" width="220">@x*g</td>
-    <td align="center" width="220">@**东</td>
-    <td align="center" width="220">@*落</td>
-  </tr>
-  <tr>
-    <td align="center" width="220">@哆*k</td>
-    <td align="center" width="220">@*涛</td>
-    <td align="center" width="220"><a href="https://github.com/WitMiao">@苗大</a></td>
-    <td align="center" width="220">@*呢</td>
-    <td align="center" width="220">@d*u</td>
-    <td align="center" width="220">@crizcraig</td>
-  </tr>
-  <tr>
-    <td align="center" width="220">s*s</td>
-    <td align="center" width="220">*火</td>
-    <td align="center" width="220">*勤</td>
-    <td align="center" width="220">**锟</td>
-    <td align="center" width="220">*涛</td>
-    <td align="center" width="220">**明</td>
-  </tr>
-  <tr>
-    <td align="center" width="220">*知</td>
-    <td align="center" width="220">*语</td>
-    <td align="center" width="220">*瓜</td>
-    <td align="center" width="220"></td>
-    <td align="center" width="220"></td>
-    <td align="center" width="220"></td>
-  </tr>
-</table>
+| 平台 | 配置目录 |
+| --- | --- |
+| macOS / Linux | `~/.claude-code-router` |
+| Windows | `%APPDATA%\claude-code-router` |
 
-<sub>如果你的名字被打码，请通过我的主页邮箱联系我更新为 GitHub 用户名。</sub>
+重要文件包括：
 
-</div>
+- `config.sqlite`：当前应用配置。
+- `app-data/`：API Key、用量、请求日志、证书等运行数据库和文件。
+- `service.json`：后台 CLI 服务的状态和私有 Token。
+- `gateway.config.json`：生成的网关运行配置。
+- `profiles/` 和 `bin/`：隔离的 Agent 配置和启动包装器。
+
+CCR 写入 SQLite 时不要直接编辑或复制活跃数据库。优先使用 UI 导出；要做文件级备份，请先停止 CCR。
+
+## 环境变量与安全
+
+| 变量 | 说明 |
+| --- | --- |
+| `CCR_WEB_HOST` | 省略 `--host` 时使用的管理服务监听地址。 |
+| `CCR_WEB_PORT` | 省略 `--port` 时使用的管理服务端口。 |
+| `CCR_WEB_AUTH_TOKEN` | 固定管理 UI / RPC 的认证 Token；不设置时每个进程会生成随机 Token。 |
+
+认证后的管理 URL 会在查询参数中包含 `ccr_web_token`。请把这个 URL 当作密码，不要复制到日志、工单或公开的 Shell 历史中。除非确实需要远程访问，否则监听地址应保持 `127.0.0.1`。远程访问时，应同时使用防火墙或私网，并在可信反向代理上启用 TLS。
+
+不要在未创建 CCR 客户端 API Key 的情况下暴露网关。上游供应商凭据保存在 CCR 本地数据目录中，因此也要保护该目录及其备份。
+
+## 常见问题
+
+### 找不到 `ccr` 命令
+
+确认 Node.js 不低于 22，并检查 npm 全局可执行目录是否在 `PATH`：
+
+```sh
+node --version
+npm prefix -g
+```
+
+如果 Shell 缓存了命令路径，安装后请打开一个新终端。
+
+### 管理 URL 的端口发生变化
+
+首选端口已被占用。请使用 CCR 打印的实际 URL，或停止占用端口的进程后重启 CCR。
+
+### UI 能打开，但网关不可用
+
+管理服务可以在没有可用网关时单独运行。请添加供应商和模型、创建客户端 API Key，然后从 **服务** 页面启动或重启网关。排查启动错误时，可以使用 `ccr serve` 查看前台输出。
+
+### 找不到 Agent 配置
+
+只有已启用的配置才能启动。名称匹配不区分大小写，也接受清理后的名称；如果多个名称产生歧义，必须使用配置 ID。生成的启动器缺失时，请重新保存配置。
+
+### 后台服务仍使用旧参数
+
+停止并重新创建服务：
+
+```sh
+ccr stop
+ccr start --host 127.0.0.1 --port 3458
+```
+
+## Docker
+
+仓库还提供面向模型网关和浏览器 UI 的 Docker 镜像。运行时镜像不会安装 npm 的 `ccr` 命令。请参阅 [Docker 部署文档](https://github.com/musistudio/claude-code-router/blob/main/docker/README.md)。
 
 ## 许可证
 
-本项目基于 [MIT License](LICENSE) 发布。
+[MIT](LICENSE)

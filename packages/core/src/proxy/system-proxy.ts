@@ -1,14 +1,17 @@
 import { execFile } from "node:child_process";
+import { Buffer } from "node:buffer";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { ProxySystemStatus } from "@ccr/core/contracts/app";
+import type { ProxyRuntimeConfig, ProxySystemStatus } from "@ccr/core/contracts/app";
 import { DATADIR } from "@ccr/core/config/constants";
 import { windowsSystemCommand } from "@ccr/core/platform/windows-system";
 
 export type UpstreamProxyServer = {
   host: string;
+  password?: string;
   port: number;
   protocol: "http";
+  username?: string;
 };
 
 export type UpstreamProxyConfig = {
@@ -261,6 +264,45 @@ export function formatUpstreamProxy(upstreamProxy: UpstreamProxyConfig | undefin
   return values.join(", ");
 }
 
+export function customUpstreamProxyFromConfig(upstream: ProxyRuntimeConfig["upstream"] | undefined): UpstreamProxyConfig | undefined {
+  if (upstream?.mode !== "custom") {
+    return undefined;
+  }
+  const host = normalizeCustomProxyServer(upstream.custom.server);
+  const port = upstream.custom.port;
+  if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
+    return undefined;
+  }
+
+  const server: UpstreamProxyServer = {
+    host,
+    password: upstream.custom.password,
+    port,
+    protocol: "http",
+    username: upstream.custom.username.trim()
+  };
+  return {
+    http: server,
+    https: server
+  };
+}
+
+export function upstreamProxyAuthorizationHeader(server: UpstreamProxyServer): string | undefined {
+  if (!server.username && !server.password) {
+    return undefined;
+  }
+  return `Basic ${Buffer.from(`${server.username ?? ""}:${server.password ?? ""}`).toString("base64")}`;
+}
+
+export function upstreamProxyUrl(server: UpstreamProxyServer): string {
+  const username = server.username ?? "";
+  const password = server.password ?? "";
+  const auth = username || password
+    ? `${encodeURIComponent(username)}:${encodeURIComponent(password)}@`
+    : "";
+  return `${server.protocol}://${auth}${formatProxyHost(server.host)}:${server.port}`;
+}
+
 export async function readCurrentSystemUpstreamProxy(managedEndpointUrl: string): Promise<UpstreamProxyConfig | undefined> {
   if (process.platform !== "darwin" && process.platform !== "win32") {
     return undefined;
@@ -284,6 +326,23 @@ function parseManagedEndpoint(endpoint: string): ManagedProxyEndpoint {
     port,
     url: `http://${formatProxyHost(parsed.hostname)}:${port}`
   };
+}
+
+function normalizeCustomProxyServer(server: string): string {
+  const trimmed = server.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`);
+    return parsed.hostname;
+  } catch {
+    return trimmed
+      .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
+      .replace(/\/.*$/, "")
+      .replace(/^\[(.*)]$/, "$1");
+  }
 }
 
 async function captureMacSystemProxySnapshot(managedEndpoint: ManagedProxyEndpoint): Promise<MacSystemProxySnapshot> {

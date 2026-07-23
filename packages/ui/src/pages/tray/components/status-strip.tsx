@@ -6,10 +6,10 @@ export function TrayStatusStrip({ totalTokens }: { totalTokens: number }) {
   const t = useTrayText();
 
   return (
-    <div className="mb-3 flex min-w-0 items-center justify-between gap-3 border-b border-white/10 pb-2">
+    <div className="tray-status-strip mb-3 flex min-w-0 items-center justify-between gap-3 border-b pb-2.5">
       <button
         aria-label={t("Open CCR")}
-        className="-ml-1 flex min-w-0 items-center gap-2 rounded-md px-1 py-0.5 text-left transition hover:bg-white/[.06] focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
+        className="tray-header-action -ml-1 flex min-w-0 items-center gap-2 rounded-[9px] px-1 py-0.5 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/35"
         title={t("Open CCR")}
         type="button"
         onClick={() => void window.ccr?.showMainWindow()}
@@ -22,7 +22,7 @@ export function TrayStatusStrip({ totalTokens }: { totalTokens: number }) {
       </button>
       <button
         aria-label={t("Quit")}
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[.04] text-slate-300 hover:border-white/16 hover:bg-white/[.08] hover:text-slate-50"
+        className="tray-icon-button flex h-7 w-7 shrink-0 items-center justify-center"
         title={t("Quit")}
         type="button"
         onClick={() => void window.ccr?.quitApp()}
@@ -37,7 +37,7 @@ function TrayWindowHeaderIcon() {
   return (
     <span
       aria-hidden="true"
-      className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md border border-white/15 bg-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.12)]"
+      className="tray-header-icon flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[8px] border"
     >
       <img alt="" className="h-[72%] w-[72%] object-contain" src={appLogoUrl} />
     </span>

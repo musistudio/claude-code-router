@@ -2,13 +2,17 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { createRoot } from "react-dom/client";
 import { LoaderCircle, Power, RefreshCw } from "lucide-react";
 import appLogoUrl from "@/assets/logo.png";
+import codexLogoUrl from "@/assets/agent-logos/codex.png";
 import trayCyanIconUrl from "@/assets/tray-cyan.png";
 import trayOrangeIconUrl from "@/assets/tray-orange.png";
 import trayVioletIconUrl from "@/assets/tray-violet.png";
 import { DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS } from "@ccr/core/contracts/app";
 import { formatLocalizedErrorMessage } from "@ccr/core/contracts/i18n";
+import { findProviderPreset, findProviderPresetByBaseUrl, providerPresets } from "@ccr/core/providers/presets";
+import { providerPresetIconUrls } from "../home/shared/options";
 import type {
   AppConfig,
+  GatewayProviderConfig,
   ProviderAccountMeter,
   ProviderAccountSnapshot,
   TrayBalanceProgressConfig,
@@ -37,6 +41,7 @@ export type SnapshotMap = Record<UsageStatsRange, UsageStatsSnapshot>;
 
 export type SourceTab = {
   id: string;
+  iconUrl?: string;
   label: string;
   provider?: string;
 };
@@ -138,6 +143,36 @@ export function useTrayText() {
   return useContext(TrayI18nContext);
 }
 
+export function applyTrayThemePreference(theme: AppConfig["theme"] | undefined): void {
+  const root = document.documentElement;
+  if (theme === "light" || theme === "dark") {
+    root.dataset.theme = theme;
+    return;
+  }
+  root.removeAttribute("data-theme");
+}
+
+export function useTrayThemePreference(): void {
+  useEffect(() => {
+    const syncTheme = () => {
+      if (!window.ccr) {
+        return;
+      }
+      void window.ccr.getConfig()
+        .then((config) => applyTrayThemePreference(config.theme))
+        .catch(() => undefined);
+    };
+
+    syncTheme();
+    const unsubscribeThemePreference = window.ccr?.onThemePreferenceChanged?.(applyTrayThemePreference);
+    window.addEventListener("focus", syncTheme);
+    return () => {
+      unsubscribeThemePreference?.();
+      window.removeEventListener("focus", syncTheme);
+    };
+  }, []);
+}
+
 export function useTrayErrorText() {
   const language = useResolvedTrayLanguage();
   return useMemo(() => (error: unknown) => formatLocalizedErrorMessage(language, error), [language]);
@@ -203,10 +238,18 @@ export function useResolvedTrayLanguage(): ResolvedLanguage {
   return languagePreference === "system" ? systemLanguage : languagePreference;
 }
 
-export function createSourceTabs(rows: UsageComparisonRow[], configuredProviders: string[]): SourceTab[] {
-  const providers = new Map<string, { index: number; score: number }>();
+export function createSourceTabs(rows: UsageComparisonRow[], configuredProviders: GatewayProviderConfig[]): SourceTab[] {
+  const providers = new Map<string, { iconUrl?: string; index: number; score: number }>();
   configuredProviders.forEach((provider, index) => {
-    providers.set(provider, { index, score: 0 });
+    const name = provider.name.trim();
+    if (!name) {
+      return;
+    }
+    providers.set(name, {
+      iconUrl: resolveTrayProviderIcon(provider),
+      index,
+      score: 0
+    });
   });
 
   for (const row of rows) {
@@ -214,8 +257,13 @@ export function createSourceTabs(rows: UsageComparisonRow[], configuredProviders
     if (!provider) {
       continue;
     }
-    const current = providers.get(provider) ?? { index: providers.size, score: 0 };
+    const current = providers.get(provider) ?? {
+      iconUrl: resolveTrayProviderIcon({ models: [], name: provider }),
+      index: providers.size,
+      score: 0
+    };
     providers.set(provider, {
+      iconUrl: current.iconUrl,
       index: current.index,
       score: current.score + row.totalTokens + row.requestCount
     });
@@ -224,8 +272,9 @@ export function createSourceTabs(rows: UsageComparisonRow[], configuredProviders
   const providerTabs = Array.from(providers.entries())
     .sort((a, b) => b[1].score - a[1].score || a[1].index - b[1].index)
     .slice(0, 7)
-    .map(([provider]) => ({
+    .map(([provider, metadata]) => ({
       id: `provider:${provider}`,
+      iconUrl: metadata.iconUrl,
       label: formatProviderName(provider),
       provider
     }));
@@ -237,6 +286,58 @@ export function createSourceTabs(rows: UsageComparisonRow[], configuredProviders
     },
     ...providerTabs
   ];
+}
+
+export function resolveTrayProviderIcon(provider: GatewayProviderConfig): string | undefined {
+  const explicitIcon = provider.icon?.trim();
+  if (explicitIcon) {
+    return explicitIcon;
+  }
+
+  const name = provider.name.trim();
+  const normalizedName = normalizeProviderIdentity(name);
+  const baseUrl = providerBaseUrl(provider);
+  if (normalizedName.includes("codex") || baseUrl.toLowerCase().includes("/codex")) {
+    return codexLogoUrl;
+  }
+
+  const preset = findProviderPreset(provider.id)
+    ?? (baseUrl ? findProviderPresetByBaseUrl(baseUrl) : undefined)
+    ?? providerPresets.find((candidate) => providerNameMatchesPreset(normalizedName, candidate.name, candidate.aliases));
+  if (preset) {
+    return providerPresetIconUrls[preset.id];
+  }
+
+  if (normalizedName.includes("智谱")) {
+    const presetId = normalizedName.includes("通用") || normalizedName.includes("general")
+      ? "zhipu-cn-general"
+      : "zhipu-cn-coding";
+    return providerPresetIconUrls[presetId];
+  }
+
+  return undefined;
+}
+
+function normalizeProviderIdentity(value: string): string {
+  return value.trim().toLocaleLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+}
+
+function providerNameMatchesPreset(normalizedName: string, presetName: string, aliases: string[] = []): boolean {
+  if (!normalizedName) {
+    return false;
+  }
+  const identities = [presetName, ...aliases]
+    .map(normalizeProviderIdentity)
+    .filter((identity) => identity.length >= 4)
+    .sort((a, b) => b.length - a.length);
+  return identities.some((identity) => normalizedName === identity || normalizedName.startsWith(`${identity} `));
+}
+
+function providerBaseUrl(provider: GatewayProviderConfig): string {
+  return provider.baseUrl?.trim()
+    || provider.baseurl?.trim()
+    || provider.api_base_url?.trim()
+    || "";
 }
 
 export function normalizeTrayWindowModules(value: AppConfig["trayWindowModules"] | undefined): TrayWindowModuleId[] {
@@ -609,7 +710,7 @@ export function formatUsdCost(value: number | undefined): string {
   return new Intl.NumberFormat(undefined, {
     currency: "USD",
     maximumFractionDigits: normalized >= 100 ? 0 : 2,
-    minimumFractionDigits: 2,
+    minimumFractionDigits: normalized >= 100 ? 0 : 2,
     style: "currency"
   }).format(normalized);
 }
@@ -787,7 +888,7 @@ export function accountStatusClass(status: ProviderAccountSnapshot["status"]): s
     return "bg-amber-300/15 text-amber-100";
   }
   if (status === "ok") {
-    return "bg-teal-300/15 text-teal-100";
+    return "bg-[#30d158]/15 text-[#b7f7c6]";
   }
   return "bg-slate-400/15 text-slate-200";
 }
@@ -799,7 +900,7 @@ export function accountProgressClass(status: ProviderAccountSnapshot["status"]):
   if (status === "warning") {
     return "bg-amber-300";
   }
-  return "bg-teal-300";
+  return "bg-[#30d158]";
 }
 
 export function accountProgressColor(status: ProviderAccountSnapshot["status"]): string {
@@ -809,7 +910,7 @@ export function accountProgressColor(status: ProviderAccountSnapshot["status"]):
   if (status === "warning") {
     return "rgb(252,211,77)";
   }
-  return "rgb(45,212,191)";
+  return "rgb(48,209,88)";
 }
 
 export function readLanguagePreference(): AppLanguagePreference {

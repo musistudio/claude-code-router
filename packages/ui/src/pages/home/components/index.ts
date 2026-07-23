@@ -1,13 +1,12 @@
 export { OnboardingView } from "./onboarding";
 export { LightToast } from "./feedback";
 export { AppDialogStack } from "./dialog-stack";
-export { MainLayout, OnboardingLayout } from "./layout";
+export { MainLayout, OnboardingLayout, UpdateEntryButton } from "./layout";
 export { AppSettingsDialog } from "./settings";
-export { UpdateDialog } from "./update";
+export { shouldCheckForUpdateOnOpen, UpdateDialog } from "./update";
 export { OverviewView, AgentAnalysisView } from "./dashboard";
 export { ApiKeysView, AddApiKeyDialog, EditApiKeyDialog } from "./api-keys";
-export { ServerView } from "./server";
-export { ProfileView, AddProfileForm, AddProfileDialog } from "./profiles";
+export { ProfileView, AddProfileForm, AddProfileDialog, DeleteProfileDialog } from "./profiles";
 export { NetworkingView, LogsView } from "./network-logs";
 export { ProvidersView, ModelsView, DeleteProviderDialog, ProviderDeepLinkDialog, AddProviderForm, AddProviderDialog } from "./providers";
 export { RoutingView, DeleteRoutingRuleDialog, AddRoutingRuleDialog } from "./routing";

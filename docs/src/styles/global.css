@@ -1306,6 +1306,12 @@ h1 {
   --provider-brand-3: #d9e3f1;
 }
 
+.doc-markdown a.provider-import-button.provider-nvidia {
+  --provider-brand: #101600;
+  --provider-brand-2: #76b900;
+  --provider-brand-3: #dfff9f;
+}
+
 .doc-markdown a.provider-import-button.provider-runapi {
   --provider-brand: #070707;
   --provider-brand-2: #747474;
@@ -1316,6 +1322,12 @@ h1 {
   --provider-brand: #0c0c0f;
   --provider-brand-2: #555b64;
   --provider-brand-3: #f4f4f5;
+}
+
+.doc-markdown a.provider-import-button.provider-unity2 {
+  --provider-brand: #050505;
+  --provider-brand-2: #7a7f85;
+  --provider-brand-3: #f4f5f6;
 }
 
 .doc-markdown a.provider-import-button.provider-code0 {

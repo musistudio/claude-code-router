@@ -9,12 +9,13 @@ import {
   Layers3,
   Network,
   Route,
-  Server,
   UserRound,
   type LucideIcon
 } from "lucide-react";
 import {
   BUILTIN_FUSION_TOOL_SERVER_NAME,
+  BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME,
+  BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME,
   BUILTIN_FUSION_VISION_TOOL_NAME,
   BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME,
   OVERVIEW_WIDGET_SIZE_VALUES
@@ -46,14 +47,18 @@ import bailianProviderIconUrl from "@/assets/provider-icons/bailian.ico";
 import claudeapiProviderIconUrl from "@/assets/provider-icons/claudeapi.png";
 import code0ProviderIconUrl from "@/assets/provider-icons/code0.png";
 import deepseekProviderIconUrl from "@/assets/provider-icons/deepseek.ico";
+import fennoProviderIconUrl from "@/assets/provider-icons/fenno.jpg";
 import geminiProviderIconUrl from "@/assets/provider-icons/gemini.svg";
 import mistralProviderIconUrl from "@/assets/provider-icons/mistral.webp";
 import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
+import nvidiaProviderIconUrl from "@/assets/provider-icons/nvidia.svg";
 import openaiProviderIconUrl from "@/assets/provider-icons/openai.png";
 import openrouterProviderIconUrl from "@/assets/provider-icons/openrouter.ico";
+import qiniuAiProviderIconUrl from "@/assets/provider-icons/qiniu-ai.png";
 import runapiProviderIconUrl from "@/assets/provider-icons/runapi.jpg";
 import siliconflowProviderIconUrl from "@/assets/provider-icons/siliconflow.png";
 import teamorouterProviderIconUrl from "@/assets/provider-icons/teamorouter.png";
+import unity2ProviderIconUrl from "@/assets/provider-icons/unity2.jpg";
 import zaiGlobalCodingProviderIconUrl from "@/assets/provider-icons/zai-global-coding.svg";
 import zaiGlobalGeneralProviderIconUrl from "@/assets/provider-icons/zai-global-general.svg";
 import zhipuCnCodingProviderIconUrl from "@/assets/provider-icons/zhipu-cn-coding.png";
@@ -108,6 +113,9 @@ export const agentFilterOptions: Array<{ label: string; value: AgentFilterValue 
   { label: "All agents", value: "all" },
   { label: "Claude Code", value: "claude-code" },
   { label: "Codex", value: "codex" },
+  { label: "Grok CLI", value: "grok" },
+  { label: "Kimi CLI", value: "kimi" },
+  { label: "OpenCode", value: "opencode" },
   { label: "ZCode", value: "zcode" },
   { label: "Claude Design", value: "claude-design" },
   { label: "Unknown", value: "unknown" }
@@ -116,6 +124,9 @@ export const agentFilterOptions: Array<{ label: string; value: AgentFilterValue 
 export const profileAgentOptions: Array<{ label: string; value: ProfileConfig["agent"] }> = [
   { label: "Claude Code", value: "claude-code" },
   { label: "Codex", value: "codex" },
+  { label: "Grok CLI", value: "grok" },
+  { label: "Kimi CLI", value: "kimi" },
+  { label: "OpenCode", value: "opencode" },
   { label: "ZCode", value: "zcode" }
 ];
 
@@ -183,7 +194,8 @@ export const apiKeyLimitMetricOptions: Array<{ label: string; value: ApiKeyLimit
 ];
 
 export const routerRuleTypeOptions: Array<{ label: string; value: RouterRuleType }> = [
-  { label: "Condition", value: "condition" }
+  { label: "Condition", value: "condition" },
+  { label: "Node.js script", value: "script" }
 ];
 
 export type RouterConditionSource = "request.header" | "request.body";
@@ -272,6 +284,16 @@ export const fusionToolOptions: Array<{ description: string; label: string; valu
     description: "Generic web search tool supporting hidden in-app browser search plus Brave, Bing, Google CSE, Serper, SerpAPI, Tavily, and Exa.",
     label: `${BUILTIN_FUSION_TOOL_SERVER_NAME} / ${BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME}`,
     value: BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME
+  },
+  {
+    description: "Generate and edit images with a media-capable provider model.",
+    label: `${BUILTIN_FUSION_TOOL_SERVER_NAME} / ${BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME}`,
+    value: BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME
+  },
+  {
+    description: "Generate and manage asynchronous videos with a media-capable provider model.",
+    label: `${BUILTIN_FUSION_TOOL_SERVER_NAME} / ${BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME}`,
+    value: BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME
   }
 ];
 
@@ -324,16 +346,20 @@ export const providerPresetIconUrls: Record<string, string> = {
   claudeapi: claudeapiProviderIconUrl,
   code0: code0ProviderIconUrl,
   deepseek: deepseekProviderIconUrl,
+  fenno: fennoProviderIconUrl,
   gemini: geminiProviderIconUrl,
   "kimi-coding": moonshotProviderIconUrl,
   mistral: mistralProviderIconUrl,
   moonshot: moonshotProviderIconUrl,
   "moonshot-global": moonshotProviderIconUrl,
+  nvidia: nvidiaProviderIconUrl,
   openai: openaiProviderIconUrl,
   openrouter: openrouterProviderIconUrl,
+  "qiniu-ai": qiniuAiProviderIconUrl,
   runapi: runapiProviderIconUrl,
   siliconflow: siliconflowProviderIconUrl,
   teamorouter: teamorouterProviderIconUrl,
+  unity2: unity2ProviderIconUrl,
   "zai-global-coding": zaiGlobalCodingProviderIconUrl,
   "zai-global-general": zaiGlobalGeneralProviderIconUrl,
   "zhipu-cn-coding": zhipuCnCodingProviderIconUrl,
@@ -358,7 +384,6 @@ export const navigation: Array<{ icon: LucideIcon; id: NavigationId }> = [
   { icon: Box, id: "models" },
   { icon: Activity, id: "observability" },
   { icon: Database, id: "logs" },
-  { icon: Server, id: "server" },
   { icon: Network, id: "networking" },
   { icon: Braces, id: "extensions" }
 ];

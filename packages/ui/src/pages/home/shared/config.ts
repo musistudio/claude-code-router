@@ -408,13 +408,10 @@ export function normalizeConfig(config: AppConfig): AppConfig {
       ...(config.gateway || {}),
       coreHost: fallbackConfig.gateway.coreHost
     },
+    mediaTools: normalizeMediaToolsConfig(config.mediaTools),
     launchAtLogin: Boolean(config.launchAtLogin),
     observability: normalizeObservabilityConfig(config.observability),
-    proxy: {
-      ...fallbackConfig.proxy,
-      ...(config.proxy || {}),
-      targets: Array.isArray(config.proxy?.targets) ? config.proxy.targets : fallbackConfig.proxy.targets
-    },
+    proxy: normalizeProxyConfig(config.proxy),
     profile: {
       ...fallbackConfig.profile,
       ...profileConfig,
@@ -473,7 +470,41 @@ export function normalizeObservabilityConfig(config: Partial<AppConfig["observab
     ...fallbackConfig.observability,
     ...(config || {}),
     agentAnalysis: Boolean(config?.agentAnalysis),
+    requestLogBodyCapture: config?.requestLogBodyCapture ?? fallbackConfig.observability.requestLogBodyCapture,
+    requestLogMaxBodyBytes: config?.requestLogMaxBodyBytes ?? fallbackConfig.observability.requestLogMaxBodyBytes,
+    requestLogSuccessSampleRate: config?.requestLogSuccessSampleRate ?? fallbackConfig.observability.requestLogSuccessSampleRate,
     requestLogs: Boolean(config?.requestLogs)
+  };
+}
+
+export function normalizeProxyConfig(config: Partial<AppConfig["proxy"]> | undefined): AppConfig["proxy"] {
+  return {
+    ...fallbackConfig.proxy,
+    ...(config || {}),
+    targets: Array.isArray(config?.targets) ? config.targets : fallbackConfig.proxy.targets,
+    upstream: normalizeProxyUpstreamConfig(config?.upstream)
+  };
+}
+
+export function normalizeProxyUpstreamConfig(config: Partial<AppConfig["proxy"]["upstream"]> | undefined): AppConfig["proxy"]["upstream"] {
+  const mode = config?.mode === "none" || config?.mode === "system" || config?.mode === "custom"
+    ? config.mode
+    : fallbackConfig.proxy.upstream.mode;
+  const port = typeof config?.custom?.port === "number" && Number.isFinite(config.custom.port)
+    ? Math.min(Math.max(Math.floor(config.custom.port), 1), 65535)
+    : fallbackConfig.proxy.upstream.custom.port;
+  return {
+    ...fallbackConfig.proxy.upstream,
+    ...(config || {}),
+    custom: {
+      ...fallbackConfig.proxy.upstream.custom,
+      ...(config?.custom || {}),
+      password: typeof config?.custom?.password === "string" ? config.custom.password : fallbackConfig.proxy.upstream.custom.password,
+      port,
+      server: typeof config?.custom?.server === "string" ? config.custom.server.trim() : fallbackConfig.proxy.upstream.custom.server,
+      username: typeof config?.custom?.username === "string" ? config.custom.username.trim() : fallbackConfig.proxy.upstream.custom.username
+    },
+    mode
   };
 }
 
@@ -501,5 +532,22 @@ export function normalizeToolHubConfig(config: Partial<AppConfig["toolHub"]> | u
     mcpServers: Array.isArray(config?.mcpServers) ? normalizeMcpServers(config.mcpServers) : fallbackConfig.toolHub.mcpServers,
     maxTools,
     requestTimeoutMs
+  };
+}
+
+export function normalizeMediaToolsConfig(config: Partial<AppConfig["mediaTools"]> | undefined): AppConfig["mediaTools"] {
+  const clampInteger = (value: unknown, fallback: number, min: number, max: number) =>
+    typeof value === "number" && Number.isFinite(value) ? Math.min(Math.max(Math.floor(value), min), max) : fallback;
+  return {
+    ...fallbackConfig.mediaTools,
+    ...(config || {}),
+    allowedInputRoots: Array.isArray(config?.allowedInputRoots)
+      ? config.allowedInputRoots.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).map((item) => item.trim())
+      : [],
+    artifactTtlHours: clampInteger(config?.artifactTtlHours, fallbackConfig.mediaTools.artifactTtlHours, 1, 720),
+    enabled: Boolean(config?.enabled),
+    jobTimeoutMs: clampInteger(config?.jobTimeoutMs, fallbackConfig.mediaTools.jobTimeoutMs, 30000, 3600000),
+    maxImageConcurrency: clampInteger(config?.maxImageConcurrency, fallbackConfig.mediaTools.maxImageConcurrency, 1, 8),
+    maxVideoConcurrency: clampInteger(config?.maxVideoConcurrency, fallbackConfig.mediaTools.maxVideoConcurrency, 1, 4)
   };
 }

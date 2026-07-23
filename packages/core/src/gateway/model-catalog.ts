@@ -57,7 +57,56 @@ export function findModelCatalogEntry(model: string): ModelCatalogEntry | undefi
     }
   }
 
-  return undefined;
+  return fallbackModelCatalogEntry(model);
+}
+
+function fallbackModelCatalogEntry(model: string): ModelCatalogEntry | undefined {
+  const modelName = modelCatalogLastSegmentKey(normalizeModelCatalogKey(model));
+  if (!/^gpt-5\.6(?:-(?:sol|terra|luna)(?:-\d{4}-\d{2}-\d{2})?)?$/.test(modelName)) {
+    return undefined;
+  }
+
+  return {
+    aliases: uniqueStrings([modelName, `openai/${modelName}`]),
+    capabilities: {
+      functionCalling: true,
+      imageInput: true,
+      lowReasoningEffort: true,
+      maxReasoningEffort: true,
+      noneReasoningEffort: true,
+      parallelFunctionCalling: true,
+      reasoning: true,
+      responseSchema: true,
+      structuredOutput: true,
+      supports1MContext: true,
+      toolCalling: true,
+      ultraReasoningEffort: !/^gpt-5\.6-luna(?:-|$)/.test(modelName),
+      vision: true,
+      webSearch: true,
+      xhighReasoningEffort: true
+    },
+    displayName: gpt56DisplayName(modelName),
+    family: "gpt",
+    id: `openai/${modelName}`,
+    limits: {
+      contextTokens: 1_050_000,
+      inputTokens: 1_050_000,
+      maxTokens: 128_000,
+      outputTokens: 128_000,
+      supports1MContext: true
+    },
+    modalities: {
+      input: ["image", "text"],
+      output: ["text"]
+    },
+    model: modelName,
+    providers: ["openai"]
+  };
+}
+
+function gpt56DisplayName(modelName: string): string {
+  const tier = modelName.match(/^gpt-5\.6-(sol|terra|luna)/)?.[1] ?? "sol";
+  return `GPT-5.6 ${tier.slice(0, 1).toUpperCase()}${tier.slice(1)}`;
 }
 
 export function modelCatalogMaxInputTokens(entry: ModelCatalogEntry | undefined): number {
