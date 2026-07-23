@@ -194,6 +194,34 @@ CCR stores runtime configuration in SQLite. Add extensions through the UI; the l
 }
 ```
 
+`coreGateway.config` is also the supported place for advanced core gateway options. CCR merges this object into the generated core gateway config when the gateway starts. Do not edit the generated `gateway.config.json` directly; it is rewritten by CCR and manual edits are lost on restart.
+
+For example, an extension or persisted plugin entry can tune upstream retry behavior without changing the generated file:
+
+```json
+{
+  "plugins": [
+    {
+      "id": "advanced-core-gateway",
+      "enabled": true,
+      "coreGateway": {
+        "config": {
+          "upstreamRetry": {
+            "enabled": true,
+            "maxAttempts": 2,
+            "baseDelayMs": 300,
+            "maxDelayMs": 1000,
+            "backoffMultiplier": 2,
+            "jitterMs": 200,
+            "retryStatusCodes": [429, 500, 502, 503, 504]
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
 Restart the gateway after saving the extension config. See [Config Database Location](/en/configuration/configuration-file/).
 
 The local directory picker recognizes entry metadata from:
