@@ -38,7 +38,7 @@ import { startVisiblePolling } from "./shared/polling";
 import {
   AppDialogStack, LightToast, MainLayout, OnboardingLayout, shouldCheckForUpdateOnOpen
 } from "./components/index";
-import { ROUTER_SCRIPT_API_VERSION } from "@ccr/core/contracts/app";
+import { hasAvailableGatewayModels, ROUTER_SCRIPT_API_VERSION } from "@ccr/core/contracts/app";
 
 type ProfileOpenDialogState = {
   busy?: "" | "cli" | "app";
@@ -733,8 +733,9 @@ function App() {
   const canSubmitProvider =
     Boolean(providerDraft.name.trim() && providerDraft.baseUrl.trim()) &&
     providerDialogModels.length > 0;
-  const canSubmitProfile = isProfileDraftSubmittable(profileDraft) && isProfileBotSelectionValid(profileDraft, draftConfig.botConfigs);
-  const canSubmitProfileEdit = profileEditIndex !== undefined && isProfileDraftSubmittable(profileEditDraft) && isProfileBotSelectionValid(profileEditDraft, draftConfig.botConfigs);
+  const profileRouteTargetReady = hasAvailableGatewayModels(draftConfig);
+  const canSubmitProfile = profileRouteTargetReady && isProfileDraftSubmittable(profileDraft) && isProfileBotSelectionValid(profileDraft, draftConfig.botConfigs);
+  const canSubmitProfileEdit = profileRouteTargetReady && profileEditIndex !== undefined && isProfileDraftSubmittable(profileEditDraft) && isProfileBotSelectionValid(profileEditDraft, draftConfig.botConfigs);
   const canSubmitApiKey = Boolean(apiKeyDraft.name.trim()) && (apiKeyDraft.expirationPreset !== "custom" || Boolean(apiKeyDraft.expiresAt.trim()));
   const canSubmitApiKeyEdit = apiKeyEditDraft.expirationPreset !== "custom" || Boolean(apiKeyEditDraft.expiresAt.trim());
   const canSubmitRoutingRule = isRoutingRuleDraftSubmittable(routingRuleDraft);
@@ -2526,6 +2527,11 @@ function App() {
     setProfileAddOpen(true);
   }
 
+  function openProviderSetupFromProfile() {
+    setProfileActionError("");
+    openAddProviderDialog();
+  }
+
   function openEditProfileDialog(index: number) {
     const profile = draftConfig.profile.profiles[index];
     if (!profile) {
@@ -2684,6 +2690,39 @@ function App() {
     }
   }
 
+  async function showProfileReadyDialog(profile: ProfileConfig) {
+    if (!profile.enabled) {
+      return;
+    }
+    const surfaces = profileOpenSurfaces(profile);
+    const mode: "choose" | "cli" = surfaces.includes("app") && surfaces.includes("cli")
+      ? "choose"
+      : surfaces[0] === "cli"
+        ? "cli"
+        : "choose";
+    if (!surfaces.includes("cli")) {
+      setProfileOpenDialog({ busy: "", mode, profile });
+      return;
+    }
+
+    const fallbackCommand = profileOpenCommandFallback(profile, "cli");
+    setProfileOpenDialog({ busy: "cli", command: fallbackCommand, mode, profile });
+    if (!window.ccr?.getProfileOpenCommand) {
+      setProfileOpenDialog((current) => current?.profile.id === profile.id ? { ...current, busy: "" } : current);
+      return;
+    }
+    try {
+      const result = await window.ccr.getProfileOpenCommand({ profileId: profile.id, surface: "cli" });
+      setProfileOpenDialog((current) => current?.profile.id === profile.id
+        ? { ...current, busy: "", command: result.command, error: "" }
+        : current);
+    } catch (error) {
+      setProfileOpenDialog((current) => current?.profile.id === profile.id
+        ? { ...current, busy: "", error: formatError(error) }
+        : current);
+    }
+  }
+
   async function openProfileApp(profile: ProfileConfig) {
     setProfileOpenDialog((current) => current?.profile.id === profile.id
       ? { ...current, busy: "app", error: "" }
@@ -2787,6 +2826,10 @@ function App() {
     if (profileSubmitBusy) {
       return false;
     }
+    if (!profileRouteTargetReady) {
+      setProfileActionError(t("Configure at least one enabled provider model before saving an agent profile."));
+      return false;
+    }
     if (!canSubmitProfile) {
       setProfileActionError(t("Profile name, required target settings, and environment variable keys are required."));
       return false;
@@ -2824,6 +2867,8 @@ function App() {
       if (activeView === "onboarding") {
         setOnboardingProfileConfirmed(true);
         setOnboardingStep("enter");
+      } else {
+        void showProfileReadyDialog(profile);
       }
       return true;
     } finally {
@@ -2831,24 +2876,28 @@ function App() {
     }
   }
 
-	  async function submitProfileEditDraft(): Promise<boolean> {
-	    if (profileSubmitBusy) {
-	      return false;
-	    }
-	    if (profileEditIndex === undefined) {
-	      return false;
-	    }
-	    if (!canSubmitProfileEdit) {
-	      setProfileActionError(t("Profile name, required target settings, and environment variable keys are required."));
-	      return false;
-	    }
-	    setProfileSubmitBusy("edit");
-	    const currentProfile = draftConfig.profile.profiles[profileEditIndex];
-	    if (!currentProfile) {
-	      setProfileSubmitBusy("");
-	      setProfileActionError(t("Profile no longer exists."));
-	      return false;
-	    }
+  async function submitProfileEditDraft(): Promise<boolean> {
+    if (profileSubmitBusy) {
+      return false;
+    }
+    if (profileEditIndex === undefined) {
+      return false;
+    }
+    if (!profileRouteTargetReady) {
+      setProfileActionError(t("Configure at least one enabled provider model before saving an agent profile."));
+      return false;
+    }
+    if (!canSubmitProfileEdit) {
+      setProfileActionError(t("Profile name, required target settings, and environment variable keys are required."));
+      return false;
+    }
+    setProfileSubmitBusy("edit");
+    const currentProfile = draftConfig.profile.profiles[profileEditIndex];
+    if (!currentProfile) {
+      setProfileSubmitBusy("");
+      setProfileActionError(t("Profile no longer exists."));
+      return false;
+    }
     const nextProfile = profileConfigFromDraft(profileEditDraft, draftConfig.profile.profiles, currentProfile, draftConfig.botConfigs);
     setProfileAgentTab(nextProfile.agent);
     const next = buildConfigUpdate((config) => {
@@ -2863,18 +2912,18 @@ function App() {
       };
     });
     setConfigDraft(next);
-	    try {
-	      if (!(await persistConfig(next, setProfileActionError))) {
-	        return false;
-	      }
-	      setProfileEditIndex(undefined);
-	      setProfileEditDraft(createProfileDraft());
-	      setProfileActionError("");
-	      return true;
-	    } finally {
-	      setProfileSubmitBusy("");
-	    }
-	  }
+    try {
+      if (!(await persistConfig(next, setProfileActionError))) {
+        return false;
+      }
+      setProfileEditIndex(undefined);
+      setProfileEditDraft(createProfileDraft());
+      setProfileActionError("");
+      return true;
+    } finally {
+      setProfileSubmitBusy("");
+    }
+  }
 
   function updateProfileItem(index: number, patch: Partial<ProfileConfig>) {
     updateConfig((next) => {
@@ -2931,6 +2980,7 @@ function App() {
                 onComplete: completeOnboarding,
                 onChangeProfile: updateProfileDraft,
                 onChangeProvider: updateProviderDraft,
+                onConfigureProvider: () => setOnboardingStep("provider"),
                 onSelectStep: setOnboardingStep,
                 onSubmitProfile: submitProfileDraft,
                 onSubmitProvider: submitProviderDraft,
@@ -3176,14 +3226,15 @@ function App() {
               draft: profileDraft,
               error: profileActionError,
               mode: "add",
-	              onChange: updateProfileDraft,
-	              onCreateBot: openBotSettingsWithAddDialog,
-	              onClose: () => setProfileAddOpen(false),
-	              providers: draftConfig.Providers,
-	              submitting: profileSubmitBusy === "add",
-	              virtualModelProfiles: draftConfig.virtualModelProfiles ?? [],
-	              onSubmit: submitProfileDraft
-	            } : undefined}
+              onChange: updateProfileDraft,
+              onConfigureProvider: openProviderSetupFromProfile,
+              onCreateBot: openBotSettingsWithAddDialog,
+              onClose: () => setProfileAddOpen(false),
+              providers: draftConfig.Providers,
+              submitting: profileSubmitBusy === "add",
+              virtualModelProfiles: draftConfig.virtualModelProfiles ?? [],
+              onSubmit: submitProfileDraft
+            } : undefined}
             profileDelete={profileDeleteItem ? {
               onClose: () => setProfileDeleteIndex(undefined),
               onConfirm: confirmProfileDelete,
@@ -3196,16 +3247,17 @@ function App() {
               error: profileActionError,
               mode: "edit",
               onChange: updateProfileEditDraft,
+              onConfigureProvider: openProviderSetupFromProfile,
               onCreateBot: openBotSettingsWithAddDialog,
               onClose: () => {
                 setProfileEditIndex(undefined);
                 setProfileActionError("");
-	              },
-	              providers: draftConfig.Providers,
-	              submitting: profileSubmitBusy === "edit",
-	              virtualModelProfiles: draftConfig.virtualModelProfiles ?? [],
-	              onSubmit: submitProfileEditDraft
-	            } : undefined}
+              },
+              providers: draftConfig.Providers,
+              submitting: profileSubmitBusy === "edit",
+              virtualModelProfiles: draftConfig.virtualModelProfiles ?? [],
+              onSubmit: submitProfileEditDraft
+            } : undefined}
             profileOpen={profileOpenDialog ? {
               appRunning: profileRuntimeStatus.profiles.some((entry) =>
                 entry.profileId === profileOpenDialog.profile.id && entry.surface === "app" && entry.state === "running"

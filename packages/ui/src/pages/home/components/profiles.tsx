@@ -4,9 +4,9 @@ import {
   cn, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
   DialogTitle, Field, GatewayProviderConfig, Info, Input, KeyValueRowsControl, LoaderCircle, motion,
   normalizeProfileScope, normalizeProfileSurface, Pencil, Plus, PopoverContent,
-  profileAgentLabel, profileAgentOptions, ProfileConfig, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
+  profileAgentLabel, profileAgentOptions, ProfileConfig, profileModelProviderOptions, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
   Play, Power, RefreshCw, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactDragEvent, type ReactNode, type VirtualModelProfileConfig,
-  copyTextToClipboard,
+  copyTextToClipboard, validateProfileEnvRows,
   useCallback, useEffect, useMemo, useRef, useState, X
 } from "../shared/index";
 import { ModelMultiSelector, ModelSelector } from "./model-selector";
@@ -625,13 +625,24 @@ function AgentSelectControl({
 
 export function AgentProfileContextPanel({
   agent,
+  availableModelCount,
+  onConfigureProvider,
   providerCount
 }: {
   agent: ProfileConfig["agent"];
+  availableModelCount?: number;
+  onConfigureProvider?: () => void;
   providerCount: number;
 }) {
   const t = useAppText();
   const guidance = agentProfileGuidance(agent);
+  const modelCount = availableModelCount ?? providerCount;
+  const ready = modelCount > 0;
+  const statusLabel = ready
+    ? `${modelCount} ${t(modelCount === 1 ? "model" : "models")}`
+    : providerCount > 0
+      ? t("No available models")
+      : t("No providers");
 
   return (
     <div className="sm:col-span-2 rounded-md border border-border bg-muted/20 px-3 py-2.5">
@@ -640,13 +651,22 @@ export function AgentProfileContextPanel({
           <div className="truncate text-[12px] font-semibold text-foreground">{t("Profile requirements")}</div>
           <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{t(guidance)}</p>
         </div>
-        <Badge className="shrink-0" variant={providerCount > 0 ? "secondary" : "warning"}>
-          {providerCount > 0 ? `${providerCount} ${t("providers")}` : t("No providers")}
+        <Badge className="shrink-0" variant={ready ? "secondary" : "warning"}>
+          {statusLabel}
         </Badge>
       </div>
-      {providerCount === 0 ? (
-        <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-2.5 py-1.5 text-[11px] leading-4 text-amber-700 dark:text-amber-300">
-          {t("A provider is required before profiles can route traffic.")}
+      {!ready ? (
+        <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-2.5 py-1.5 text-[11px] leading-4 text-amber-700 dark:text-amber-300">
+          <span className="min-w-0 flex-1">
+            {t(providerCount > 0
+              ? "Enable at least one provider model before saving this profile."
+              : "A provider is required before profiles can route traffic.")}
+          </span>
+          {onConfigureProvider ? (
+            <Button className="h-7 px-2" onClick={onConfigureProvider} size="sm" type="button" variant="outline">
+              {t("Configure provider")}
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -679,7 +699,9 @@ export function AddProfileForm({
   botConfigs,
   draft,
   error,
+  mode = "add",
   onChange,
+  onConfigureProvider,
   onCreateBot,
   providers,
   virtualModelProfiles = []
@@ -687,15 +709,35 @@ export function AddProfileForm({
   botConfigs: BotGatewaySavedConfig[];
   draft: AddProfileDraft;
   error: string;
+  mode?: "add" | "edit";
   onChange: (patch: Partial<AddProfileDraft>) => void;
+  onConfigureProvider?: () => void;
   onCreateBot: () => void;
   providers: GatewayProviderConfig[];
   virtualModelProfiles?: VirtualModelProfileConfig[];
 }) {
   const t = useAppText();
+  const [advancedOpen, setAdvancedOpen] = useState(mode === "edit");
   const [appPathDragActive, setAppPathDragActive] = useState(false);
   const appPathLabel = profileAppPathLabel(draft.agent);
   const showAppPathField = draft.surface !== "cli" && Boolean(appPathLabel);
+  const modelProviderOptions = useMemo(
+    () => profileModelProviderOptions(providers, virtualModelProfiles),
+    [providers, virtualModelProfiles]
+  );
+  const availableModelCount = modelProviderOptions.reduce((count, provider) => count + provider.models.length, 0);
+  const modelPlaceholder = firstProfileModelPlaceholder(modelProviderOptions);
+  const validation = profileDraftValidation(draft, botConfigs, availableModelCount);
+  const advancedIssueCount = [
+    validation.providerId,
+    validation.providerName,
+    validation.bot,
+    validation.handoff,
+    validation.env
+  ].filter(Boolean).length;
+  const advancedSummary = advancedIssueCount > 0
+    ? t("Advanced settings need attention")
+    : t("Paths, provider identity, bot, compact, and env");
   const handleAppPathDrop = useCallback((event: ReactDragEvent<HTMLElement>) => {
     if (!showAppPathField) {
       return;
@@ -749,8 +791,14 @@ export function AddProfileForm({
         </Field>
         <Field label={t("Profile name")}>
           <Input value={draft.name} onChange={(event) => onChange({ name: event.target.value })} />
+          {validation.name ? <ProfileFieldHint>{t(validation.name)}</ProfileFieldHint> : null}
         </Field>
-        <AgentProfileContextPanel agent={draft.agent} providerCount={providers.length} />
+        <AgentProfileContextPanel
+          agent={draft.agent}
+          availableModelCount={availableModelCount}
+          onConfigureProvider={onConfigureProvider}
+          providerCount={providers.length}
+        />
         <Field label={t("Effect scope")}>
           <SelectControl
             onChange={(scope) => onChange({ scope: normalizeProfileScope(scope) })}
@@ -787,20 +835,6 @@ export function AddProfileForm({
             value={draft.surface}
           />
         </Field>
-        {showAppPathField && appPathLabel ? (
-          <Field className="sm:col-span-2" label={t(appPathLabel)}>
-            <div className={cn(
-              "rounded-md border border-border bg-background p-1 transition-colors",
-              appPathDragActive ? "border-primary bg-primary/5" : "border-border"
-            )}>
-              <Input
-                placeholder={t("Drop the app here or paste the executable path")}
-                value={draft.appPath}
-                onChange={(event) => onChange({ appPath: event.target.value })}
-              />
-            </div>
-          </Field>
-        ) : null}
         {draft.agent === "claude-code" ? (
           <>
             <Field label={t("Model override")}>
@@ -825,7 +859,7 @@ export function AddProfileForm({
         ) : draft.agent === "grok" ? (
           <Field className="sm:col-span-2" label={t("Grok model")}>
             <ModelSelector
-              placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}
+              placeholder={modelPlaceholder}
               providers={providers}
               value={draft.model}
               virtualModelProfiles={virtualModelProfiles}
@@ -836,7 +870,7 @@ export function AddProfileForm({
           <>
             <Field className="sm:col-span-2" label={t("Default model")}>
               <ModelSelector
-                placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}
+                placeholder={modelPlaceholder}
                 providers={providers}
                 value={draft.model}
                 virtualModelProfiles={virtualModelProfiles}
@@ -847,6 +881,7 @@ export function AddProfileForm({
                   model
                 })}
               />
+              {validation.kimiModel ? <ProfileFieldHint>{t(validation.kimiModel)}</ProfileFieldHint> : null}
             </Field>
             <Field className="sm:col-span-2" label={t("Available models")}>
               <ModelMultiSelector
@@ -858,25 +893,14 @@ export function AddProfileForm({
                   model: availableModels.includes(draft.model) ? draft.model : availableModels[0] ?? ""
                 })}
               />
+              {validation.kimiAvailableModels ? <ProfileFieldHint>{t(validation.kimiAvailableModels)}</ProfileFieldHint> : null}
             </Field>
           </>
         ) : (
           <>
-            <Field label={t("Provider ID")}>
-              <Input value={draft.providerId} onChange={(event) => onChange({ providerId: event.target.value })} />
-            </Field>
-            <Field label={t("Provider name")}>
-              <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
-            </Field>
-            {draft.agent !== "zcode" && draft.agent !== "opencode" ? (
-              <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
-                <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
-                <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
-              </div>
-            ) : null}
             <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : "Codex model")}>
               <ModelSelector
-                placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}
+                placeholder={modelPlaceholder}
                 providers={providers}
                 value={draft.model}
                 virtualModelProfiles={virtualModelProfiles}
@@ -885,28 +909,101 @@ export function AddProfileForm({
             </Field>
           </>
         )}
-        {draft.agent === "claude-code" || draft.agent === "codex" ? (
-          <div className="sm:col-span-2">
-            <ManagedCompactSetting
-              agent={draft.agent}
-              checked={draft.managedCompact}
-              onChange={(managedCompact) => onChange({ managedCompact })}
-            />
-          </div>
-        ) : null}
-        {draft.surface !== "cli" ? (
-          <div className="sm:col-span-2">
-            <BotGatewaySelectForm botConfigs={botConfigs} draft={draft} onChange={onChange} onCreateBot={onCreateBot} />
-          </div>
-        ) : null}
-        <Field className="sm:col-span-2" label={t("Environment variables")}>
-          <KeyValueRowsControl
-            addLabel={t("Add env variable")}
-            rows={draft.envRows}
-            onChange={(envRows) => onChange({ envRows })}
-          />
-        </Field>
+        <div className="sm:col-span-2">
+          <button
+            className="flex min-h-9 w-full min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-left outline-none transition-colors hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring/25"
+            onClick={() => setAdvancedOpen((current) => !current)}
+            type="button"
+          >
+            <span className="min-w-0">
+              <span className="block truncate text-[12px] font-semibold text-foreground">{t("Advanced settings")}</span>
+              <span className={cn("mt-0.5 block truncate text-[11px]", advancedIssueCount > 0 ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground")}>
+                {advancedSummary}
+              </span>
+            </span>
+            <span className="flex shrink-0 items-center gap-2">
+              {advancedIssueCount > 0 ? <Badge variant="warning">{advancedIssueCount}</Badge> : null}
+              <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", advancedOpen && "rotate-180")} />
+            </span>
+          </button>
+          <AnimatePresence initial={false}>
+            {advancedOpen ? (
+              <motion.div
+                animate={{ height: "auto", opacity: 1 }}
+                className="overflow-hidden"
+                exit={{ height: 0, opacity: 0 }}
+                initial={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.16 }}
+              >
+                <div className="mt-3 grid grid-cols-1 gap-3 rounded-md border border-border bg-background/60 p-3 sm:grid-cols-2">
+                  {showAppPathField && appPathLabel ? (
+                    <Field className="sm:col-span-2" label={t(appPathLabel)}>
+                      <div className={cn(
+                        "rounded-md border border-border bg-background p-1 transition-colors",
+                        appPathDragActive ? "border-primary bg-primary/5" : "border-border"
+                      )}>
+                        <Input
+                          placeholder={t("Drop the app here or paste the executable path")}
+                          value={draft.appPath}
+                          onChange={(event) => onChange({ appPath: event.target.value })}
+                        />
+                      </div>
+                    </Field>
+                  ) : null}
+                  {draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" ? (
+                    <>
+                      <Field label={t("Provider ID")}>
+                        <Input value={draft.providerId} onChange={(event) => onChange({ providerId: event.target.value })} />
+                        {validation.providerId ? <ProfileFieldHint>{t(validation.providerId)}</ProfileFieldHint> : null}
+                      </Field>
+                      <Field label={t("Provider name")}>
+                        <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
+                        {validation.providerName ? <ProfileFieldHint>{t(validation.providerName)}</ProfileFieldHint> : null}
+                      </Field>
+                      {draft.agent !== "zcode" && draft.agent !== "opencode" ? (
+                        <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
+                          <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
+                          <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
+                  {draft.agent === "claude-code" || draft.agent === "codex" ? (
+                    <div className="sm:col-span-2">
+                      <ManagedCompactSetting
+                        agent={draft.agent}
+                        checked={draft.managedCompact}
+                        onChange={(managedCompact) => onChange({ managedCompact })}
+                      />
+                    </div>
+                  ) : null}
+                  {draft.surface !== "cli" ? (
+                    <div className="sm:col-span-2">
+                      <BotGatewaySelectForm botConfigs={botConfigs} draft={draft} onChange={onChange} onCreateBot={onCreateBot} />
+                      {validation.bot ? <ProfileFieldHint>{t(validation.bot)}</ProfileFieldHint> : null}
+                      {validation.handoff ? <ProfileFieldHint>{t(validation.handoff)}</ProfileFieldHint> : null}
+                    </div>
+                  ) : null}
+                  <Field className="sm:col-span-2" label={t("Environment variables")}>
+                    <KeyValueRowsControl
+                      addLabel={t("Add env variable")}
+                      rows={draft.envRows}
+                      onChange={(envRows) => onChange({ envRows })}
+                    />
+                    {validation.env ? <ProfileFieldHint>{t(validation.env)}</ProfileFieldHint> : null}
+                  </Field>
+                </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+        </div>
       </div>
+      {validation.models ? (
+        <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[12px] text-amber-700 dark:text-amber-300">
+          <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{t(validation.models)}</span>
+        </div>
+      ) : null}
       {error ? (
         <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
           {t(error)}
@@ -914,6 +1011,61 @@ export function AddProfileForm({
       ) : null}
     </>
   );
+}
+
+function ProfileFieldHint({ children }: { children: ReactNode }) {
+  return <div className="text-[11px] leading-4 text-amber-700 dark:text-amber-300">{children}</div>;
+}
+
+function firstProfileModelPlaceholder(providers: ReturnType<typeof profileModelProviderOptions>): string {
+  const provider = providers[0];
+  const model = provider?.models[0];
+  return provider && model ? `${provider.name}/${model}` : "";
+}
+
+function profileDraftValidation(
+  draft: AddProfileDraft,
+  botConfigs: BotGatewaySavedConfig[],
+  availableModelCount: number
+): Partial<Record<"bot" | "env" | "handoff" | "kimiAvailableModels" | "kimiModel" | "models" | "name" | "providerId" | "providerName", string>> {
+  const issues: Partial<Record<"bot" | "env" | "handoff" | "kimiAvailableModels" | "kimiModel" | "models" | "name" | "providerId" | "providerName", string>> = {};
+  if (!draft.name.trim()) {
+    issues.name = "Profile name is required.";
+  }
+  if (availableModelCount === 0) {
+    issues.models = "Configure at least one enabled provider model before saving an agent profile.";
+  }
+  if (draft.agent === "kimi") {
+    if (!draft.model.trim()) {
+      issues.kimiModel = "Default model is required.";
+    }
+    if (draft.availableModels.length === 0) {
+      issues.kimiAvailableModels = "Select at least one available model.";
+    }
+  }
+  if (draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi") {
+    if (!draft.providerId.trim()) {
+      issues.providerId = "Provider ID is required.";
+    }
+    if (!draft.providerName.trim()) {
+      issues.providerName = "Provider name is required.";
+    }
+  }
+  if (draft.surface !== "cli" && draft.botEnabled && !botConfigs.some((config) => config.id === draft.botConfigId.trim())) {
+    issues.bot = "Select an existing bot or turn Bot off.";
+  }
+  if (draft.surface !== "cli" && draft.botEnabled && draft.botHandoffEnabled && !profileNumberDraftValid(draft.botHandoffIdleSeconds, 30, 86_400)) {
+    issues.handoff = "Idle seconds must be between 30 and 86400.";
+  }
+  if (!validateProfileEnvRows(draft.envRows)) {
+    issues.env = "Environment variable rows need valid keys.";
+  }
+  return issues;
+}
+
+function profileNumberDraftValid(value: string, min: number, max: number): boolean {
+  const numeric = Number(value.trim());
+  return Number.isFinite(numeric) && numeric >= min && numeric <= max;
 }
 
 function profileAppPathLabel(agent: ProfileConfig["agent"]): "CLAUDE_APP_PATH" | "CHATGPT_APP_PATH" | "OPENCODE_APP_PATH" | undefined {
@@ -1285,6 +1437,7 @@ export function AddProfileDialog({
   error,
   mode = "add",
   onChange,
+  onConfigureProvider,
   onCreateBot,
   onClose,
   providers,
@@ -1298,6 +1451,7 @@ export function AddProfileDialog({
   error: string;
   mode?: "add" | "edit";
   onChange: (patch: Partial<AddProfileDraft>) => void;
+  onConfigureProvider?: () => void;
   onCreateBot: () => void;
   onClose: () => void;
   providers: GatewayProviderConfig[];
@@ -1308,7 +1462,7 @@ export function AddProfileDialog({
   const t = useAppText();
 
   return (
-	    <Dialog onOpenChange={(open) => !open && !submitting && onClose()} open>
+    <Dialog onOpenChange={(open) => !open && !submitting && onClose()} open>
       <DialogContent>
         <DialogHeader>
           <div>
@@ -1316,29 +1470,31 @@ export function AddProfileDialog({
           </div>
         </DialogHeader>
         <DialogBody>
-	          <AddProfileForm
-              botConfigs={botConfigs}
-              draft={draft}
-              error={error}
-              onChange={onChange}
-              onCreateBot={onCreateBot}
-              providers={providers}
-              virtualModelProfiles={virtualModelProfiles}
-            />
+          <AddProfileForm
+            botConfigs={botConfigs}
+            draft={draft}
+            error={error}
+            mode={mode}
+            onChange={onChange}
+            onConfigureProvider={onConfigureProvider}
+            onCreateBot={onCreateBot}
+            providers={providers}
+            virtualModelProfiles={virtualModelProfiles}
+          />
         </DialogBody>
         <DialogFooter>
           <div className="flex justify-end gap-2">
-	            <Button disabled={submitting} onClick={onClose} type="button" variant="outline">
-	              {t("Cancel")}
-	            </Button>
-	            <Button disabled={!canSubmit || submitting} onClick={() => void onSubmit()} type="button">
-		              {submitting || mode === "add" ? (
-		                <AnimatedIconSwap iconKey={submitting ? "submitting" : "add"}>
-		                  {submitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-		                </AnimatedIconSwap>
-		              ) : null}
-	              {mode === "edit" ? t("Save") : t("Add")}
-	            </Button>
+            <Button disabled={submitting} onClick={onClose} type="button" variant="outline">
+              {t("Cancel")}
+            </Button>
+            <Button disabled={!canSubmit || submitting} onClick={() => void onSubmit()} type="button">
+              {submitting || mode === "add" ? (
+                <AnimatedIconSwap iconKey={submitting ? "submitting" : "add"}>
+                  {submitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                </AnimatedIconSwap>
+              ) : null}
+              {mode === "edit" ? t("Save") : t("Add")}
+            </Button>
           </div>
         </DialogFooter>
       </DialogContent>

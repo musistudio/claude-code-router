@@ -88,12 +88,12 @@ test("ProfileView keeps launch actions directly accessible in an aligned action 
 
 test("AgentProfileContextPanel explains agent-specific requirements and provider availability", () => {
   const html = renderToStaticMarkup(
-    <AgentProfileContextPanel agent="codex" providerCount={1} />
+    <AgentProfileContextPanel agent="codex" availableModelCount={1} providerCount={1} />
   );
 
   assert.match(html, /Profile requirements/);
   assert.match(html, /Provider ID and Provider name identify the routed provider in Codex\./);
-  assert.match(html, /1 providers/);
+  assert.match(html, /1 model/);
 });
 
 test("detected CHATGPT_APP_PATH is used as the Codex profile default", () => {
