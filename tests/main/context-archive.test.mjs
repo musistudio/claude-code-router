@@ -6,6 +6,12 @@ import { Readable } from "node:stream";
 import test from "node:test";
 import { createDefaultAppConfig } from "../../packages/core/src/config/default-config.ts";
 import {
+  appendContextArchiveToolOutputsForTest,
+  contextArchiveFunctionCallsForTest,
+  parseContextArchiveToolResponseBodyForTest,
+  prepareContextArchiveToolContinuationRequestForTest
+} from "../../packages/core/src/gateway/service.ts";
+import {
   CONTEXT_ARCHIVE_MCP_PATH,
   ContextArchiveService,
   contextArchiveHandoffResponseStream,
@@ -203,6 +209,24 @@ test("managed compact profile enables archive only for that profile API key", as
   assert.equal(result.config.contextArchive.enabled, true);
   assert.equal(result.config.contextArchive.mcpEnabled, true);
   assert.match(result.diagnostic, /^compact-handoff:managed-session:1:arc_/);
+
+  const globallyEnabled = {
+    ...config,
+    contextArchive: {
+      ...config.contextArchive,
+      enabled: true
+    }
+  };
+  assert.equal(await prepareContextArchiveRequest({
+    ...input,
+    apiKey: { id: "profile:plain-profile" },
+    config: globallyEnabled
+  }), undefined);
+  assert.ok(await prepareContextArchiveRequest({
+    ...input,
+    config: globallyEnabled,
+    requestId: "managed-request-global"
+  }));
 });
 
 test("compact stores an immutable full request and appends one handoff task", async () => {
@@ -510,6 +534,126 @@ test("OpenAI Responses and Anthropic use protocol-native appended messages", asy
       assert.equal(prepared.system, scenario.body.system);
     }
   }
+});
+
+test("Anthropic compact continuation injects the archive tool for Claude Code", () => {
+  const config = testConfig();
+  const toolName = "mcp__ccr-context-archive__ccr_history_ask";
+  const handoff = [
+    "CCR ARCHIVED HISTORY ACCESS",
+    "Archive id: arc_anthropic_test",
+    "Archive session token: token_anthropic_test"
+  ].join("\n");
+  const result = prepareContextArchiveToolContinuationRequestForTest({
+    body: Buffer.from(JSON.stringify({
+      messages: [
+        { content: "Retained tail.", role: "user" },
+        { content: [{ text: handoff, type: "text" }], role: "user" }
+      ],
+      model: "claude-test",
+      system: "You are Claude Code.",
+      tool_choice: { type: "none" },
+      tools: [{ input_schema: { type: "object" }, name: "Read" }]
+    })),
+    config,
+    method: "POST",
+    path: "/v1/messages",
+    protocol: "anthropic_messages"
+  });
+
+  assert.ok(result);
+  assert.equal(result.archiveId, "arc_anthropic_test");
+  assert.equal(result.sessionToken, "token_anthropic_test");
+  assert.equal(result.toolName, toolName);
+  assert.deepEqual(result.acceptedToolNames.sort(), ["ccr_history_ask", toolName].sort());
+  const forwarded = JSON.parse(result.body.toString("utf8"));
+  assert.deepEqual(forwarded.tool_choice, { type: "auto" });
+  assert.ok(forwarded.tools.some((tool) => tool.name === "Read"));
+  assert.ok(forwarded.tools.some((tool) => tool.name === toolName));
+  assert.match(JSON.stringify(forwarded.system), /CCR context archive is available/);
+});
+
+test("Anthropic archive tool calls are converted into tool results for continuation", () => {
+  const toolName = "mcp__ccr-context-archive__ccr_history_ask";
+  const response = {
+    content: [
+      {
+        id: "toolu_json",
+        input: { archive_id: "arc_json", session_token: "token_json", task: "Find marker A." },
+        name: toolName,
+        type: "tool_use"
+      }
+    ],
+    role: "assistant",
+    type: "message"
+  };
+  const calls = contextArchiveFunctionCallsForTest(response, "anthropic_messages");
+  assert.deepEqual(calls, [{
+    arguments: JSON.stringify({ archive_id: "arc_json", session_token: "token_json", task: "Find marker A." }),
+    callId: "toolu_json",
+    name: toolName
+  }]);
+
+  const next = appendContextArchiveToolOutputsForTest(
+    Buffer.from(JSON.stringify({ messages: [{ content: "Need exact marker.", role: "user" }], model: "claude-test" })),
+    response,
+    [{ call_id: "toolu_json", output: JSON.stringify({ answer: "Marker A is SQLite." }), type: "function_call_output" }],
+    "anthropic_messages"
+  );
+  assert.ok(next);
+  const forwarded = JSON.parse(next.toString("utf8"));
+  assert.equal(forwarded.messages.at(-2).role, "assistant");
+  assert.deepEqual(forwarded.messages.at(-2).content, response.content);
+  assert.equal(forwarded.messages.at(-1).role, "user");
+  assert.deepEqual(forwarded.messages.at(-1).content, [{
+    content: JSON.stringify({ answer: "Marker A is SQLite." }),
+    tool_use_id: "toolu_json",
+    type: "tool_result"
+  }]);
+});
+
+test("Anthropic streaming archive tool calls are parsed from SSE deltas", () => {
+  const toolName = "mcp__ccr-context-archive__ccr_history_ask";
+  const raw = [
+    'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_sse","type":"message","role":"assistant","content":[]}}',
+    `event: content_block_start\ndata: ${JSON.stringify({
+      content_block: { id: "toolu_sse", input: {}, name: toolName, type: "tool_use" },
+      index: 0,
+      type: "content_block_start"
+    })}`,
+    'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"archive_id\\":\\"arc_sse\\","}}',
+    'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\\"session_token\\":\\"token_sse\\",\\"task\\":\\"Find SSE marker.\\"}"}}',
+    'event: content_block_stop\ndata: {"type":"content_block_stop","index":0}',
+    'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null}}',
+    'event: message_stop\ndata: {"type":"message_stop"}'
+  ].join("\n\n");
+  const parsed = parseContextArchiveToolResponseBodyForTest(Buffer.from(raw), "text/event-stream", "anthropic_messages");
+  assert.ok(parsed);
+  const calls = contextArchiveFunctionCallsForTest(parsed, "anthropic_messages");
+  assert.deepEqual(calls, [{
+    arguments: JSON.stringify({ archive_id: "arc_sse", session_token: "token_sse", task: "Find SSE marker." }),
+    callId: "toolu_sse",
+    name: toolName
+  }]);
+});
+
+test("Responses streaming archive tool calls are parsed from SSE deltas", () => {
+  const raw = [
+    'event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":0,"item":{"id":"fc_sse","call_id":"call_sse","type":"function_call","name":"ccr_history_ask","arguments":""}}',
+    'event: response.function_call_arguments.delta\ndata: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_sse","delta":"{\\"archive_id\\":\\"arc_sse\\","}',
+    'event: response.function_call_arguments.delta\ndata: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_sse","delta":"\\"session_token\\":\\"token_sse\\",\\"task\\":\\"Find Responses marker.\\"}"}',
+    'event: response.function_call_arguments.done\ndata: {"type":"response.function_call_arguments.done","output_index":0,"item_id":"fc_sse","arguments":"{\\"archive_id\\":\\"arc_sse\\",\\"session_token\\":\\"token_sse\\",\\"task\\":\\"Find Responses marker.\\"}"}',
+    'event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":0,"item":{"id":"fc_sse","call_id":"call_sse","type":"function_call","name":"ccr_history_ask","arguments":"{\\"archive_id\\":\\"arc_sse\\",\\"session_token\\":\\"token_sse\\",\\"task\\":\\"Find Responses marker.\\"}"}}',
+    'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_sse","status":"completed"}}'
+  ].join("\n\n");
+  const parsed = parseContextArchiveToolResponseBodyForTest(Buffer.from(raw), "text/event-stream", "openai_responses");
+  assert.ok(parsed);
+  const calls = contextArchiveFunctionCallsForTest(parsed, "openai_responses");
+  assert.deepEqual(calls, [{
+    arguments: JSON.stringify({ archive_id: "arc_sse", session_token: "token_sse", task: "Find Responses marker." }),
+    callId: "call_sse",
+    name: "ccr_history_ask"
+  }]);
 });
 
 test("compact handoff strips protocol-specific tool and schema constraints", async () => {

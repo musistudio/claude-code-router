@@ -42,8 +42,8 @@ function createRouterPlugin(options = {}) {
   });
 }
 
-function claudeCodeCompactSupported(config) {
-  const response = createClaudeCodeModelsResponseForTest(config);
+function claudeCodeCompactSupported(config, apiKey) {
+  const response = createClaudeCodeModelsResponseForTest(config, apiKey);
   return response.data[0]?.capabilities?.context_management?.compact_20260112?.supported;
 }
 
@@ -77,6 +77,35 @@ test("Claude Code model discovery exposes compact only when context archive MCP 
       mcpEnabled: true
     }
   }), true);
+
+  const profileConfig = {
+    ...baseConfig,
+    contextArchive: {
+      enabled: true,
+      mcpEnabled: true
+    },
+    profile: {
+      enabled: true,
+      profiles: [
+        {
+          agent: "claude-code",
+          enabled: true,
+          id: "plain-profile",
+          managedCompact: false,
+          name: "Plain Profile"
+        },
+        {
+          agent: "claude-code",
+          enabled: true,
+          id: "managed-profile",
+          managedCompact: true,
+          name: "Managed Profile"
+        }
+      ]
+    }
+  };
+  assert.equal(claudeCodeCompactSupported(profileConfig, { id: "profile:plain-profile" }), false);
+  assert.equal(claudeCodeCompactSupported(profileConfig, { id: "profile:managed-profile" }), true);
 });
 
 function createIssue1480UserConfig() {

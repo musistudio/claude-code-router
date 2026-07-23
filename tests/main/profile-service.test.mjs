@@ -126,9 +126,7 @@ test("profile service overwrites generated bin files without creating backups", 
   assert.equal(toolHubMcpServerEnv.TOOLHUB_OPENAI_API_KEY, "ccr-profile-test");
   assert.equal(toolHubMcpServerEnv.TOOLHUB_OPENAI_BASE_URL, `http://127.0.0.1:${config.gateway.port}/v1`);
   assert.equal(toolHubMcpServerEnv.TOOLHUB_OPENAI_MODEL, "Provider/model");
-  assert.equal(contextArchiveMcpServer.type, "http");
-  assert.equal(contextArchiveMcpServer.url, `http://127.0.0.1:${config.gateway.port}/__ccr/context-archive/mcp`);
-  assert.equal(contextArchiveMcpServer.headers.Authorization, "Bearer ccr-profile-test");
+  assert.equal(contextArchiveMcpServer, undefined);
   const backupEntries = readdirSync(binDir).filter((entry) =>
     (
       entry.startsWith(`ccr-claude-code-api-key-${profileId}`) ||
@@ -335,7 +333,7 @@ test("profile service injects Context Archive MCP for managed Codex profile", { 
   assert.match(content, /tool_timeout_sec = 60/);
 });
 
-test("profile service injects Context Archive MCP for Claude Code without ToolHub", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+test("profile service injects Context Archive MCP for managed Claude Code without ToolHub", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "context-archive-mcp-only";
   const config = createDefaultAppConfig({
     generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
@@ -368,6 +366,7 @@ test("profile service injects Context Archive MCP for Claude Code without ToolHu
       enabled: true,
       env: {},
       id: profileId,
+      managedCompact: true,
       model: "Provider/model",
       name: "Context Archive MCP Test",
       scope: "ccr",

@@ -370,7 +370,7 @@ export function contextArchiveConfigForProfile(
   if (profileManagedCompactEnabled(profile)) {
     return withManagedContextArchiveEnabled(config);
   }
-  return contextArchiveEnabled(config) ? config : undefined;
+  return undefined;
 }
 
 export function contextArchiveConfigForApiKey(
@@ -379,6 +379,9 @@ export function contextArchiveConfigForApiKey(
 ): AppConfig | undefined {
   if (apiKeyMatchesManagedCompactProfile(config, apiKey)) {
     return withManagedContextArchiveEnabled(config);
+  }
+  if (apiKeyMatchesProfile(config, apiKey)) {
+    return undefined;
   }
   return contextArchiveEnabled(config) ? config : undefined;
 }
@@ -402,12 +405,25 @@ function apiKeyMatchesManagedCompactProfile(
   apiKey: Pick<ApiKeyConfig, "id"> | undefined
 ): boolean {
   const id = apiKey?.id?.trim();
-  if (!id || config.profile.enabled === false) {
+  if (!id || config.profile?.enabled === false) {
     return false;
   }
-  return config.profile.profiles.some((profile) =>
+  const profiles = Array.isArray(config.profile?.profiles) ? config.profile.profiles : [];
+  return profiles.some((profile) =>
     profileManagedCompactEnabled(profile) && id === profileApiKeyId(profile)
   );
+}
+
+function apiKeyMatchesProfile(
+  config: AppConfig,
+  apiKey: Pick<ApiKeyConfig, "id"> | undefined
+): boolean {
+  const id = apiKey?.id?.trim();
+  if (!id || config.profile?.enabled === false) {
+    return false;
+  }
+  const profiles = Array.isArray(config.profile?.profiles) ? config.profile.profiles : [];
+  return profiles.some((profile) => id === profileApiKeyId(profile));
 }
 
 function profileApiKeyId(profile: Pick<ProfileConfig, "agent" | "id" | "name">): string {
