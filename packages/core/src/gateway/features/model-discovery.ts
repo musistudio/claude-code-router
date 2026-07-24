@@ -3,14 +3,18 @@
  */
 import type { IncomingHttpHeaders } from "node:http";
 import type { ApiKeyConfig, AppConfig, ProviderModelMetadata } from "@ccr/core/contracts/app";
-import { buildClaudeAppGatewayModelRoutes, resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
+import {
+  buildClaudeAppGatewayModelRoutes,
+  effectiveProviderModelContextWindow,
+  resolveClaudeAppGatewayRouteModel
+} from "@ccr/core/agents/claude-app/gateway-routes";
+import { claudeAppGatewayModelRouteOptions } from "@ccr/core/agents/claude-app/model-route-options";
 import { modelRegistryForConfig, normalizeRouteSelector } from "@ccr/core/routing/model-registry";
 import { findModelCatalogEntry, modelCatalogMaxInputTokens, modelCatalogMaxOutputTokens, readCatalogCapability, type ModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
 import { stringValue } from "@ccr/core/gateway/internal/value";
 import { fusionModelSelector } from "@ccr/core/mcp/fusion-config";
 import { readHeader } from "@ccr/core/gateway/http/io";
-import { claudeAppGatewayModelRouteOptions, claudeCodeOneMillionContextSuffix } from "@ccr/core/gateway/internal/shared";
-import type { ClaudeCodeDiscoverableModel } from "@ccr/core/gateway/internal/shared";
+import { claudeCodeOneMillionContextSuffix } from "@ccr/core/gateway/internal/shared";
 import { parseJsonObjectSafe, serializeJsonBodyWithModel } from "@ccr/core/gateway/http/body";
 import { uniqueStrings } from "@ccr/core/gateway/internal/collections";
 
@@ -73,7 +77,7 @@ export function prepareClaudeAppDiscoveredModelRequest(
   const routedModel = resolveClaudeAppGatewayRouteModel(
     normalizedModel,
     config,
-    claudeAppGatewayModelRouteOptions
+    claudeAppGatewayModelRouteOptions(config)
   );
   if (!routedModel || routedModel.toLowerCase() === normalizedModel.toLowerCase()) {
     return undefined;
@@ -121,12 +125,16 @@ function createClaudeAppGatewayModelsResponse(
   config: AppConfig,
   options: { claudeCode?: boolean } = {}
 ): Record<string, unknown> {
-  const routes = buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions);
+  const routes = buildClaudeAppGatewayModelRoutes(
+    config,
+    claudeAppGatewayModelRouteOptions(config)
+  );
   const data = routes.map((route) => {
     const catalogId = stripClaudeCodeOneMillionContextSuffix(route.targetModel);
     const catalogEntry = findModelCatalogEntry(catalogId);
     const modelMetadata = providerModelMetadataForSelector(config, catalogId);
-    const maxInputTokens = claudeGatewayModelContextWindow(catalogEntry, route.oneMillionContext, modelMetadata);
+    const providerContextWindow = effectiveProviderModelContextWindow(config, catalogId);
+    const maxInputTokens = claudeGatewayModelContextWindow(catalogEntry, route.oneMillionContext, providerContextWindow);
     const maxOutputTokens = modelCatalogMaxOutputTokens(catalogEntry);
     const exposeOneMillionContextVariant = options.claudeCode && route.oneMillionContext;
     return {
@@ -134,6 +142,7 @@ function createClaudeAppGatewayModelsResponse(
       capabilities: createClaudeCodeModelCapabilities(catalogEntry, {
         maxInputTokens,
         oneMillionContext: route.oneMillionContext,
+        supportsOneMillionContext: route.oneMillionContext,
         ...providerModelCapabilityOverrides(modelMetadata)
       }),
       created_at: "1970-01-01T00:00:00Z",
@@ -155,45 +164,11 @@ function createClaudeAppGatewayModelsResponse(
 }
 
 
-function createClaudeCodeModelsResponse(config: AppConfig): Record<string, unknown> {
-  const models = buildClaudeCodeDiscoverableModels(config);
-  const data = models.map((model) => {
-    const claudeId = claudeCodeDiscoveryModelId(model.id);
-    const catalogId = stripClaudeCodeOneMillionContextSuffix(model.id);
-    const catalogEntry = findModelCatalogEntry(catalogId);
-    const modelMetadata = providerModelMetadataForSelector(config, catalogId);
-    const maxInputTokens = claudeGatewayModelContextWindow(catalogEntry, model.oneMillionContext, modelMetadata);
-    const maxOutputTokens = modelCatalogMaxOutputTokens(catalogEntry);
-    return {
-      id: claudeId,
-      capabilities: createClaudeCodeModelCapabilities(catalogEntry, {
-        maxInputTokens,
-        oneMillionContext: model.oneMillionContext,
-        ...providerModelCapabilityOverrides(modelMetadata)
-      }),
-      created_at: "1970-01-01T00:00:00Z",
-      display_name: formatClaudeCodeModelDisplayName(claudeId, catalogEntry, model.oneMillionContext),
-      max_input_tokens: maxInputTokens,
-      max_tokens: maxOutputTokens,
-      type: "model"
-    };
-  });
-
-  return {
-    data,
-    first_id: data[0]?.id ?? null,
-    has_more: false,
-    last_id: data[data.length - 1]?.id ?? null
-  };
-}
-
-
 function claudeGatewayModelContextWindow(
   entry: ModelCatalogEntry | undefined,
   oneMillionContext: boolean,
-  metadata?: ProviderModelMetadata
+  providerContextWindow?: number
 ): number {
-  const providerContextWindow = effectiveProviderContextWindow(metadata);
   if (providerContextWindow) {
     return providerContextWindow;
   }
@@ -205,17 +180,10 @@ function claudeGatewayModelContextWindow(
 }
 
 
-function effectiveProviderContextWindow(metadata: ProviderModelMetadata | undefined): number | undefined {
-  const contextWindow = positiveInteger(metadata?.contextWindow) ?? positiveInteger(metadata?.maxContextWindow);
-  if (!contextWindow) {
-    return undefined;
-  }
-  const effectivePercent = percentage(metadata?.effectiveContextWindowPercent) ?? 100;
-  return Math.max(1, Math.floor((contextWindow * effectivePercent) / 100));
-}
-
-
-function providerModelMetadataForSelector(config: AppConfig, selector: string): ProviderModelMetadata | undefined {
+function providerModelMetadataForSelector(
+  config: AppConfig,
+  selector: string
+): ProviderModelMetadata | undefined {
   const resolved = modelRegistryForConfig(config).resolveProviderModel(selector);
   if (!resolved) {
     return undefined;
@@ -226,14 +194,9 @@ function providerModelMetadataForSelector(config: AppConfig, selector: string): 
     return direct;
   }
   const normalizedModel = resolved.model.toLowerCase();
-  return Object.entries(metadata).find(([model]) => model.trim().toLowerCase() === normalizedModel)?.[1];
-}
-
-
-function percentage(value: number | undefined): number | undefined {
-  return value !== undefined && Number.isFinite(value) && value > 0 && value <= 100
-    ? value
-    : undefined;
+  return Object.entries(metadata).find(
+    ([model]) => model.trim().toLowerCase() === normalizedModel
+  )?.[1];
 }
 
 
@@ -305,35 +268,6 @@ function gatewayModelOwner(id: string): string {
 }
 
 
-function buildClaudeCodeDiscoverableModels(config: AppConfig): ClaudeCodeDiscoverableModel[] {
-  const seen = new Set<string>();
-  const models: ClaudeCodeDiscoverableModel[] = [];
-
-  const pushModel = (id: string, oneMillionContext: boolean) => {
-    const normalized = id.trim();
-    if (!normalized) {
-      return;
-    }
-    const key = normalized.toLowerCase();
-    if (seen.has(key)) {
-      return;
-    }
-    seen.add(key);
-    models.push({ id: normalized, oneMillionContext });
-  };
-
-  for (const id of buildClaudeCodeDiscoverableModelIds(config)) {
-    pushModel(id, hasClaudeCodeOneMillionContextSuffix(id));
-    const baseId = stripClaudeCodeOneMillionContextSuffix(id);
-    if (!hasClaudeCodeOneMillionContextSuffix(id) && findModelCatalogEntry(baseId)?.limits?.supports1MContext) {
-      pushModel(claudeCodeOneMillionContextModelId(baseId), true);
-    }
-  }
-
-  return models;
-}
-
-
 function isVisibleVirtualModelProfile(profile: NonNullable<AppConfig["virtualModelProfiles"]>[number]): boolean {
   return profile.enabled !== false &&
     profile.materialization?.enabled !== false &&
@@ -373,7 +307,11 @@ export function resolveGatewayPublicModelId(model: string | undefined, config: A
     return undefined;
   }
   return resolveClaudeCodeDiscoveredModelId(normalized, config) ??
-    resolveClaudeAppGatewayRouteModel(normalized, config, claudeAppGatewayModelRouteOptions);
+    resolveClaudeAppGatewayRouteModel(
+      normalized,
+      config,
+      claudeAppGatewayModelRouteOptions(config)
+    );
 }
 
 
@@ -399,13 +337,10 @@ function isConfiguredGatewayModelSelector(model: string, config: AppConfig): boo
 }
 
 
-function claudeCodeDiscoveryModelId(value: string): string {
-  return value.toLowerCase().startsWith("claude-") ? value : `claude-${value}`;
-}
-
-
 function claudeCodeOneMillionContextModelId(id: string): string {
-  return hasClaudeCodeOneMillionContextSuffix(id) ? id : `${id}${claudeCodeOneMillionContextSuffix}`;
+  return hasClaudeCodeOneMillionContextSuffix(id)
+    ? id
+    : `${id}${claudeCodeOneMillionContextSuffix}`;
 }
 
 
@@ -419,27 +354,6 @@ function stripClaudeCodeOneMillionContextSuffix(id: string): string {
 }
 
 
-function formatClaudeCodeModelDisplayName(
-  id: string,
-  entry?: ModelCatalogEntry,
-  oneMillionContext = hasClaudeCodeOneMillionContextSuffix(id)
-): string {
-  if (entry?.displayName) {
-    return oneMillionContext ? `${entry.displayName} (1M context)` : entry.displayName;
-  }
-
-  const normalized = stripClaudeCodeOneMillionContextSuffix(id.replace(/^claude-/i, ""));
-  const model = normalized.includes("/") ? normalized.slice(normalized.lastIndexOf("/") + 1) : normalized;
-  const words = model
-    .split(/[-_]+/)
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part) => (/^\d+$/.test(part) ? part : part.slice(0, 1).toUpperCase() + part.slice(1)));
-  const displayName = ["Claude", ...words].filter(Boolean).join(" ");
-  return oneMillionContext ? `${displayName} (1M context)` : displayName;
-}
-
-
 function createClaudeCodeModelCapabilities(
   entry?: ModelCatalogEntry,
   options: {
@@ -448,6 +362,7 @@ function createClaudeCodeModelCapabilities(
     oneMillionContext?: boolean;
     reasoning?: boolean;
     reasoningLevels?: string[];
+    supportsOneMillionContext?: boolean;
   } = {}
 ): Record<string, unknown> {
   if (!entry) {
@@ -481,7 +396,8 @@ function createClaudeCodeModelCapabilities(
   const supportsAudioOutput = readCatalogCapability(capabilities, "audioOutput") || outputModalities.has("audio");
   const supportsVideoInput = readCatalogCapability(capabilities, "videoInput") || inputModalities.has("video");
   const maxInputTokens = options.maxInputTokens ?? modelCatalogMaxInputTokens(entry);
-  const supportsOneMillionContext = maxInputTokens >= 1_000_000 || Boolean(entry.limits?.supports1MContext);
+  const supportsOneMillionContext = options.supportsOneMillionContext ??
+    (maxInputTokens >= 1_000_000 || Boolean(entry.limits?.supports1MContext));
 
   return {
     audio_input: { supported: supportsAudioInput },
@@ -534,6 +450,7 @@ function createDefaultClaudeCodeModelCapabilities(
     oneMillionContext?: boolean;
     reasoning?: boolean;
     reasoningLevels?: string[];
+    supportsOneMillionContext?: boolean;
   } = {}
 ): Record<string, unknown> {
   const maxInputTokens = positiveInteger(options.maxInputTokens);
@@ -559,7 +476,7 @@ function createDefaultClaudeCodeModelCapabilities(
             max_input_tokens: maxInputTokens,
             one_million_context_variant: options.oneMillionContext === true,
             supported: true,
-            supports_1m_context: maxInputTokens >= 1_000_000
+            supports_1m_context: options.supportsOneMillionContext ?? maxInputTokens >= 1_000_000
           }
         }
       : {}),

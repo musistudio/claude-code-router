@@ -7,11 +7,10 @@ import { saveAppConfig } from "@ccr/core/config/config";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import {
   buildClaudeAppGatewayInferenceModels,
-  type ClaudeAppGatewayInferenceModel,
-  type ClaudeAppGatewayModelRouteOptions
+  type ClaudeAppGatewayInferenceModel
 } from "@ccr/core/agents/claude-app/gateway-routes";
+import { claudeAppGatewayModelRouteOptions } from "@ccr/core/agents/claude-app/model-route-options";
 import { NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, hasAvailableGatewayModels, type ApiKeyConfig, type AppConfig, type ClaudeAppGatewayApplyResult } from "@ccr/core/contracts/app";
-import { findModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
 
 const CLAUDE_APP_CONFIG_ID = "8f69f2f1-3275-4ad8-9317-4aa7e972f311";
 const CLAUDE_APP_CONFIG_NAME = "Claude Code Router";
@@ -19,11 +18,6 @@ const CLAUDE_APP_CONFIG_FILE = "claude_desktop_config.json";
 const CLAUDE_APP_CONFIG_LIBRARY_DIR = "configLibrary";
 const CLAUDE_APP_CONFIG_META_FILE = "_meta.json";
 const CLAUDE_APP_GATEWAY_BACKUP_FILE = path.join(CONFIGDIR, "claude-app-gateway-backup.json");
-const claudeAppGatewayModelRouteOptions: ClaudeAppGatewayModelRouteOptions = {
-  displayName: (model) => findModelCatalogEntry(model)?.displayName,
-  supportsOneMillionContext: (model) => Boolean(findModelCatalogEntry(model)?.limits?.supports1MContext)
-};
-
 type ClaudeAppGatewayConfig = {
   inferenceCredentialKind: "static";
   inferenceGatewayApiKey: string;
@@ -123,7 +117,10 @@ export function applyClaudeAppGatewayConfig(config: AppConfig, options: ClaudeAp
   const state = ensureClaudeAppGatewayState(config);
   const paths = getClaudeAppGatewayPaths(options.dataDir);
   const endpoint = gatewayEndpoint(state.config);
-  const models = buildClaudeAppGatewayInferenceModels(state.config, claudeAppGatewayModelRouteOptions);
+  const models = buildClaudeAppGatewayInferenceModels(
+    state.config,
+    claudeAppGatewayModelRouteOptions(state.config)
+  );
   const model = models[0]?.name ?? "";
   const modelsVersion = claudeAppGatewayModelsVersion(endpoint, models);
   const gatewayConfig: ClaudeAppGatewayConfig = {
