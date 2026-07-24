@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readlinkSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readlinkSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, availableGatewayModelIds, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "@ccr/core/contracts/app";
+import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, availableGatewayModelIds, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, isInheritedClaudeCodeProfile, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "@ccr/core/contracts/app";
 import { replacePersistedApiKeys } from "@ccr/core/config/api-key-store";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import {
@@ -21,6 +21,7 @@ import {
   writeOpenCodeGatewayConfig
 } from "@ccr/core/agents/opencode/profile-config";
 import { CONFIGDIR } from "@ccr/core/config/constants";
+import { resolveClaudeCodeLaunchConfigDir } from "@ccr/core/profiles/launch-core";
 import { resolveZcodeConfigFile, writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "@ccr/core/agents/zcode/profile-config";
 import { normalizeRouteSelector } from "@ccr/core/gateway/claude-code-router-plugin";
 import { findModelCatalogEntry, modelCatalogMaxInputTokens, readCatalogCapability, type ModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
@@ -50,6 +51,16 @@ const privateDirMode = 0o700;
 const privateExecutableMode = 0o700;
 const privateFileMode = 0o600;
 const publicExecutableMode = 0o755;
+const claudeCodeReservedWrapperEnv = new Set([
+  "CLAUDE_CONFIG_DIR",
+  "CLAUDE_CODE_HOST_AUTH_ENV_VAR",
+  "CCR_CLAUDE_CODE_AUTH_HELPER",
+  "CCR_CLAUDE_CODE_BIN",
+  "CCR_CLAUDE_CODE_CONFIG_MODE",
+  "CCR_CLAUDE_CODE_WRAPPER",
+  "CCR_REAL_CLAUDE_CODE_BIN",
+  "CODEXL_CLAUDE_CODE_BIN"
+]);
 let ownedGlobalProfileTakeovers: GlobalProfileTakeoverRecord[] | undefined;
 
 type GlobalProfileTakeoverRecord = {
@@ -75,7 +86,9 @@ export async function applyProfileConfig(
   const excludedAgents = new Set(options.excludeAgents ?? []);
   const allProfiles = profileEntries(config);
   const profiles = allProfiles.filter((profile) => !excludedAgents.has(profile.agent));
+  cleanupInactiveClaudeCodeLaunchArtifacts(allProfiles);
   cleanupInactiveOpenCodeWrappers(allProfiles);
+  cleanupManagedClaudeCodeToolHubArtifacts(allProfiles, { includeActive: false });
   await pruneInactiveProfileApiKeys(config, allProfiles);
   const result: ProfileApplyResult = {
     appliedAt,
@@ -98,21 +111,32 @@ export async function applyProfileConfig(
   if (!hasAvailableGatewayModels(config)) {
     const managedCleanupResult = cleanupManagedClaudeCodeToolHubArtifacts(profiles, { includeActive: true });
     result.clients = profiles.map((profile) => {
-      const cleanupResult = profile.agent === "claude-code"
+      const launchCleanupResult = isInheritedClaudeCodeProfile(profile)
+        ? cleanupClaudeCodeProfileLaunchArtifactsResult(profile)
+        : undefined;
+      const cleanupResult = profile.agent === "claude-code" && !isInheritedClaudeCodeProfile(profile)
         ? cleanupClaudeCodeToolHubArtifacts(profile)
         : { ok: true };
       const status = profile.enabled
         ? unavailableModelStatus(profile, profilePath(profile))
         : disabledProfileStatus(profile);
-      const cleanupMessage = [managedCleanupResult, cleanupResult]
+      const toolHubCleanupMessage = [managedCleanupResult, cleanupResult]
         .filter((item) => !item.ok)
         .map((item) => item.message)
         .filter(Boolean)
         .join("; ");
+      const cleanupMessage = [
+        launchCleanupResult?.message
+          ? `Failed to retire generated launch artifacts: ${launchCleanupResult.message}`
+          : "",
+        toolHubCleanupMessage
+          ? `Failed to clean stale ToolHub config: ${toolHubCleanupMessage}`
+          : ""
+      ].filter(Boolean).join(" ");
       return cleanupMessage
         ? {
             ...status,
-            message: `${status.message} Failed to clean stale ToolHub config: ${cleanupMessage}`
+            message: `${status.message} ${cleanupMessage}`
           }
         : status;
     });
@@ -122,9 +146,26 @@ export async function applyProfileConfig(
   }
 
   const profileApiKeys = await ensureProfileApiKeys(config, profiles);
+  const failedTakeoverClients = new Set(takeoverStatuses
+    .filter((status) => !status.ok)
+    .map((status) => status.client));
 
   for (const profile of profiles) {
     const token = profileApiKeys.get(profile.id) ?? fallbackClientToken;
+    if (isInheritedClaudeCodeProfile(profile) && failedTakeoverClients.has("claude-code")) {
+      const cleanupResult = cleanupClaudeCodeProfileLaunchArtifactsResult(profile);
+      const cleanupMessage = cleanupResult.message
+        ? ` Failed to retire generated launch artifacts: ${cleanupResult.message}`
+        : "";
+      result.clients.push({
+        client: "claude-code",
+        enabled: true,
+        message: `Inherited Claude Code configuration was not applied because the previous global configuration could not be restored.${cleanupMessage}`,
+        ok: false,
+        path: resolveUserPath(profile.settingsFile || "~/.claude/settings.json")
+      });
+      continue;
+    }
     result.clients.push(
       profile.agent === "claude-code"
         ? applyClaudeCodeProfile(config, profile, token, appliedAt)
@@ -150,12 +191,25 @@ function cleanupManagedClaudeCodeToolHubArtifacts(
   options: { includeActive: boolean }
 ): { changed?: boolean; message?: string; ok: boolean } {
   const activeToolHubFiles = new Set(profiles
-    .filter((profile) => profile.agent === "claude-code")
+    .filter((profile) => profile.agent === "claude-code" && profile.enabled)
     .map((profile) => normalizedFileKey(claudeCodeToolHubMcpConfigFile(profile))));
   const activeGeneratedSettingsFiles = new Set(profiles
-    .filter((profile) => profile.agent === "claude-code" && isGeneratedProfileScope(profile.scope))
+    .filter((profile) => profile.agent === "claude-code" && profile.enabled && isGeneratedProfileScope(profile.scope) && !isInheritedClaudeCodeProfile(profile))
     .map((profile) => normalizedFileKey(resolveClaudeCodeSettingsFile(profile))));
+  const inheritedGeneratedSettingsFiles = new Set(profiles
+    .filter(isInheritedClaudeCodeProfile)
+    .map((profile) => normalizedFileKey(resolveClaudeCodeSettingsFile(profile))));
+  const protectedInheritedSettingsFiles = new Set<string>();
   const errors: string[] = [];
+  let skipManagedSettingsCleanup = false;
+  for (const profile of profiles.filter(isInheritedClaudeCodeProfile)) {
+    try {
+      protectedInheritedSettingsFiles.add(normalizedFileKey(resolveUserPath(profile.settingsFile || "~/.claude/settings.json")));
+    } catch (error) {
+      skipManagedSettingsCleanup = true;
+      errors.push(`Could not safely resolve inherited settings file: ${formatError(error)}`);
+    }
+  }
   let changed = false;
 
   for (const file of managedClaudeCodeToolHubMcpConfigFiles()) {
@@ -170,14 +224,22 @@ function cleanupManagedClaudeCodeToolHubArtifacts(
     }
   }
 
-  for (const file of managedClaudeCodeSettingsFiles()) {
-    if (!options.includeActive && activeGeneratedSettingsFiles.has(normalizedFileKey(file))) {
-      continue;
-    }
-    try {
-      changed = cleanupClaudeCodeToolHubSettingsFile(file, { backup: false }).changed || changed;
-    } catch (error) {
-      errors.push(`${file}: ${formatError(error)}`);
+  if (!skipManagedSettingsCleanup) {
+    for (const file of managedClaudeCodeSettingsFiles()) {
+      const fileKey = normalizedFileKey(file);
+      if (protectedInheritedSettingsFiles.has(fileKey)) {
+        continue;
+      }
+      if (!options.includeActive && activeGeneratedSettingsFiles.has(fileKey)) {
+        continue;
+      }
+      try {
+        changed = inheritedGeneratedSettingsFiles.has(fileKey)
+          ? cleanupClaudeCodeManagedRoutingSettingsFile(file).changed || changed
+          : cleanupClaudeCodeToolHubSettingsFile(file, { backup: false }).changed || changed;
+      } catch (error) {
+        errors.push(`${file}: ${formatError(error)}`);
+      }
     }
   }
 
@@ -221,8 +283,37 @@ function managedClaudeCodeGeneratedFiles(fileName: string): string[] {
 }
 
 function normalizedFileKey(file: string): string {
-  const normalized = path.resolve(file);
+  const normalized = canonicalFilePath(file);
   return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+function isPathWithinDirectory(file: string, directory: string): boolean {
+  const relative = path.relative(normalizedFileKey(directory), normalizedFileKey(file));
+  return relative === "" || (
+    relative !== ".."
+    && !relative.startsWith(`..${path.sep}`)
+    && !path.isAbsolute(relative)
+  );
+}
+
+function canonicalFilePath(file: string): string {
+  let candidate = path.resolve(file);
+  const unresolvedSegments: string[] = [];
+  while (true) {
+    try {
+      return path.join(realpathSync.native(candidate), ...unresolvedSegments);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
+        throw error;
+      }
+      const parent = path.dirname(candidate);
+      if (parent === candidate) {
+        return path.join(candidate, ...unresolvedSegments);
+      }
+      unresolvedSegments.unshift(path.basename(candidate));
+      candidate = parent;
+    }
+  }
 }
 
 function cleanupClaudeCodeToolHubSettingsFile(file: string, options: { backup: boolean }): { changed: boolean } {
@@ -236,6 +327,38 @@ function cleanupClaudeCodeToolHubSettingsFile(file: string, options: { backup: b
     ? writeFileWithBackup(file, content, { mode: privateFileMode })
     : writeGeneratedFileIfChanged(file, content, { mode: privateFileMode });
   return { changed: writeResult.changed };
+}
+
+function cleanupClaudeCodeManagedRoutingSettingsFile(file: string): { changed: boolean } {
+  if (!existsSync(file)) {
+    return { changed: false };
+  }
+  const settings = readJsonObject(file);
+  const env = Object.fromEntries(stringRecord(settings.env));
+  let changed = deleteClaudeCodeToolHubEnv(env);
+  for (const key of [
+    "ANTHROPIC_API_BASE_URL",
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_SMALL_FAST_MODEL",
+    "CCR_CLAUDE_CODE_MODEL",
+    "CLAUDE_AGENT_API_BASE_URL",
+    "CODEXL_CLAUDE_CODE_MODEL"
+  ]) {
+    if (key in env) {
+      delete env[key];
+      changed = true;
+    }
+  }
+  if ("apiKeyHelper" in settings) {
+    delete settings.apiKeyHelper;
+    changed = true;
+  }
+  if (!changed) {
+    return { changed: false };
+  }
+  settings.env = env;
+  return writeGeneratedFileIfChanged(file, `${JSON.stringify(settings, null, 2)}\n`, { mode: privateFileMode });
 }
 
 function deleteClaudeCodeToolHubEnv(env: Record<string, unknown>): boolean {
@@ -284,6 +407,9 @@ export function applyProfileRuntimeConfig(config: AppConfig, profile: ProfileCon
 }
 
 function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
+  if (isInheritedClaudeCodeProfile(profile)) {
+    return applyInheritedClaudeCodeProfile(config, profile, token, appliedAt);
+  }
   const settingsFile = resolveClaudeCodeSettingsFile(profile);
   if (!profile.enabled) {
     return restoreDisabledGlobalProfile(profile, settingsFile, "Claude Code profile is disabled.", isManagedClaudeCodeSettingsContent);
@@ -347,6 +473,85 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
       client: "claude-code",
       enabled: true,
       message: formatError(error),
+      ok: false,
+      path: settingsFile
+    };
+  }
+}
+
+function applyInheritedClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
+  const settingsFile = resolveUserPath(profile.settingsFile || "~/.claude/settings.json");
+  if (!profile.enabled) {
+    return disabledStatus("claude-code", settingsFile, "Claude Code profile is disabled.");
+  }
+  if (path.basename(settingsFile) !== "settings.json") {
+    const cleanupResult = cleanupClaudeCodeProfileLaunchArtifactsResult(profile);
+    const cleanupMessage = cleanupResult.message
+      ? ` Failed to retire generated launch artifacts: ${cleanupResult.message}`
+      : "";
+    return {
+      client: "claude-code",
+      enabled: true,
+      message: `Choose a settings file named settings.json for inherited configuration.${cleanupMessage}`,
+      ok: false,
+      path: settingsFile
+    };
+  }
+  let settingsInsideManagedProfiles: boolean;
+  try {
+    settingsInsideManagedProfiles = isPathWithinDirectory(settingsFile, path.join(CONFIGDIR, "profiles"));
+  } catch (error) {
+    const cleanupResult = cleanupClaudeCodeProfileLaunchArtifactsResult(profile);
+    const cleanupMessage = cleanupResult.message
+      ? ` Failed to retire generated launch artifacts: ${cleanupResult.message}`
+      : "";
+    return {
+      client: "claude-code",
+      enabled: true,
+      message: `Could not safely resolve the inherited settings file: ${formatError(error)}.${cleanupMessage}`,
+      ok: false,
+      path: settingsFile
+    };
+  }
+  if (settingsInsideManagedProfiles) {
+    const cleanupResult = cleanupClaudeCodeProfileLaunchArtifactsResult(profile);
+    const cleanupMessage = cleanupResult.message
+      ? ` Failed to retire generated launch artifacts: ${cleanupResult.message}`
+      : "";
+    return {
+      client: "claude-code",
+      enabled: true,
+      message: `Choose a settings file outside CCR's managed profile directory for inherited configuration.${cleanupMessage}`,
+      ok: false,
+      path: settingsFile
+    };
+  }
+
+  try {
+    const toolHubMcpConfigResult = writeClaudeCodeToolHubMcpConfig(config, profile, token);
+    const helperResult = writeClaudeCodeApiKeyHelper(profile, token);
+    const wrapperResult = writeClaudeCodeWrapper(config, profile, helperResult.file, toolHubMcpConfigResult.file);
+    const changed = helperResult.changed || wrapperResult.changed || toolHubMcpConfigResult.changed;
+    return {
+      appliedAt,
+      backupFile: helperResult.backupFile ?? wrapperResult.backupFile,
+      client: "claude-code",
+      enabled: true,
+      message: changed
+        ? `Claude Code inherited configuration is available through CCR wrapper ${wrapperResult.file}.`
+        : "Claude Code inherited configuration already matches CCR.",
+      ok: true,
+      path: wrapperResult.file
+    };
+  } catch (error) {
+    const cleanupResult = cleanupClaudeCodeProfileLaunchArtifactsResult(profile);
+    const cleanupMessage = cleanupResult.message
+      ? ` Failed to retire generated launch artifacts: ${cleanupResult.message}`
+      : "";
+    return {
+      client: "claude-code",
+      enabled: true,
+      message: `${formatError(error)}${cleanupMessage}`,
       ok: false,
       path: settingsFile
     };
@@ -661,7 +866,9 @@ function randomBase64Url(byteLength: number): string {
 
 function profilePath(profile: ProfileConfig): string {
   return profile.agent === "claude-code"
-    ? resolveClaudeCodeSettingsFile(profile)
+    ? isInheritedClaudeCodeProfile(profile)
+      ? resolveUserPath(profile.settingsFile || "~/.claude/settings.json")
+      : resolveClaudeCodeSettingsFile(profile)
     : profile.agent === "grok"
       ? grokWrapperPath(profile)
       : profile.agent === "kimi"
@@ -965,15 +1172,17 @@ function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig,
   const realClaude = profile.env?.CCR_CLAUDE_CODE_BIN?.trim() || "claude";
   const surface = normalizeProfileSurface(profile.surface);
   const remoteEndpoint = `${gatewayEndpoint(config)}/__ccr/remote`;
-  const settingsDir = path.dirname(resolveClaudeCodeSettingsFile(profile));
+  const settingsDir = resolveClaudeCodeLaunchConfigDir(CONFIGDIR, profile);
   const envExports = Object.entries(profileEnv(profile))
-    .filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN")
+    .filter(([key]) => !claudeCodeReservedWrapperEnv.has(key.toUpperCase()))
     .map(([key, value]) => `export ${key}=${shellQuote(value)}`);
   const botEnvExports = shellBotGatewayEnvExports(config, profile);
   return [
     "#!/bin/sh",
+    "unset CLAUDE_CONFIG_DIR CLAUDE_CODE_HOST_AUTH_ENV_VAR CCR_CLAUDE_CODE_AUTH_HELPER CCR_CLAUDE_CODE_CONFIG_MODE",
     ...envExports,
     ...shellEnvExports(claudeCodeRuntimeEnv(config, profile, settingsDir)),
+    ...shellEnvExports(claudeCodeInheritedAuthEnv(profile, apiKeyHelperFile)),
     ...shellEnvExports(claudeCodeMcpConfigEnv(mcpConfigFile)),
     ...shellEnvExports(claudeCodeUtcTimezoneEnvOverride()),
     `: "\${CCR_PROFILE_SURFACE:=${surface}}"`,
@@ -997,15 +1206,20 @@ function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, r
   const realClaude = profile.env?.CCR_CLAUDE_CODE_BIN?.trim() || "claude";
   const surface = normalizeProfileSurface(profile.surface);
   const remoteEndpoint = `${gatewayEndpoint(config)}/__ccr/remote`;
-  const settingsDir = path.dirname(resolveClaudeCodeSettingsFile(profile));
+  const settingsDir = resolveClaudeCodeLaunchConfigDir(CONFIGDIR, profile);
   const envExports = Object.entries(profileEnv(profile))
-    .filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN")
+    .filter(([key]) => !claudeCodeReservedWrapperEnv.has(key.toUpperCase()))
     .map(([key, value]) => cmdSetLine(key, value));
   const botEnvExports = cmdBotGatewayEnvExports(config, profile);
   return [
     "@echo off",
+    cmdSetLine("CLAUDE_CONFIG_DIR", ""),
+    cmdSetLine("CLAUDE_CODE_HOST_AUTH_ENV_VAR", ""),
+    cmdSetLine("CCR_CLAUDE_CODE_AUTH_HELPER", ""),
+    cmdSetLine("CCR_CLAUDE_CODE_CONFIG_MODE", ""),
     ...envExports,
     ...cmdEnvExports(claudeCodeRuntimeEnv(config, profile, settingsDir)),
+    ...cmdEnvExports(claudeCodeInheritedAuthEnv(profile, apiKeyHelperFile)),
     ...cmdEnvExports(claudeCodeMcpConfigEnv(mcpConfigFile)),
     ...cmdEnvExports(claudeCodeUtcTimezoneEnvOverride()),
     `if not defined CCR_PROFILE_SURFACE ${cmdSetLine("CCR_PROFILE_SURFACE", surface)}`,
@@ -1671,14 +1885,16 @@ function writeCodexCliMiddleware(
   };
 }
 
-function claudeCodeRuntimeEnv(config: AppConfig, profile: ProfileConfig, settingsDir: string): Record<string, string> {
+function claudeCodeRuntimeEnv(config: AppConfig, profile: ProfileConfig, settingsDir: string | undefined): Record<string, string> {
   const endpoint = gatewayEndpoint(config);
   const env: Record<string, string> = {
     ANTHROPIC_API_BASE_URL: endpoint,
     ANTHROPIC_BASE_URL: endpoint,
-    CLAUDE_AGENT_API_BASE_URL: endpoint,
-    CLAUDE_CONFIG_DIR: settingsDir
+    CLAUDE_AGENT_API_BASE_URL: endpoint
   };
+  if (settingsDir) {
+    env.CLAUDE_CONFIG_DIR = settingsDir;
+  }
   const model = normalizeClientModel(profile.model);
   if (model) {
     env.ANTHROPIC_MODEL = model;
@@ -1690,6 +1906,16 @@ function claudeCodeRuntimeEnv(config: AppConfig, profile: ProfileConfig, setting
     env.ANTHROPIC_SMALL_FAST_MODEL = smallFastModel;
   }
   return env;
+}
+
+function claudeCodeInheritedAuthEnv(profile: ProfileConfig, apiKeyHelperFile: string): Record<string, string> {
+  if (!isInheritedClaudeCodeProfile(profile)) {
+    return {};
+  }
+  return {
+    CCR_CLAUDE_CODE_AUTH_HELPER: apiKeyHelperFile,
+    CCR_CLAUDE_CODE_CONFIG_MODE: "inherit"
+  };
 }
 
 function codexMiddlewareRuntimeFilename(): string {
@@ -2206,6 +2432,59 @@ function cleanupInactiveOpenCodeWrappers(profiles: ProfileConfig[]): number {
   return removed;
 }
 
+function cleanupInactiveClaudeCodeLaunchArtifacts(profiles: ProfileConfig[]): number {
+  const binDir = path.join(CONFIGDIR, "bin");
+  const activeFiles = new Set(profiles
+    .filter((profile) => profile.agent === "claude-code" && profile.enabled)
+    .flatMap((profile) => [claudeCodeApiKeyHelperFilename(profile), claudeCodeWrapperFilename(profile)]));
+  let entries: string[];
+  try {
+    entries = readdirSync(binDir);
+  } catch {
+    return 0;
+  }
+
+  let removed = 0;
+  for (const entry of entries) {
+    const managedLaunchArtifact = entry.startsWith("ccr-claude-code-api-key-") || entry.startsWith("ccr-claude-code-wrapper-");
+    if (!managedLaunchArtifact || activeFiles.has(entry) || generatedBinBackupBaseName(entry)) {
+      continue;
+    }
+    rmSync(path.join(binDir, entry), { force: true });
+    removed += 1;
+  }
+  return removed;
+}
+
+function cleanupClaudeCodeProfileLaunchArtifacts(profile: ProfileConfig): number {
+  return cleanupClaudeCodeProfileLaunchArtifactsResult(profile).removed;
+}
+
+function cleanupClaudeCodeProfileLaunchArtifactsResult(profile: ProfileConfig): { message?: string; removed: number } {
+  const files = [
+    path.join(CONFIGDIR, "bin", claudeCodeApiKeyHelperFilename(profile)),
+    path.join(CONFIGDIR, "bin", claudeCodeWrapperFilename(profile)),
+    claudeCodeToolHubMcpConfigFile(profile)
+  ];
+  const errors: string[] = [];
+  let removed = 0;
+  for (const file of files) {
+    if (!existsSync(file)) {
+      continue;
+    }
+    try {
+      rmSync(file, { force: true });
+      removed += 1;
+    } catch (error) {
+      errors.push(formatError(error));
+    }
+  }
+  return {
+    ...(errors.length > 0 ? { message: errors.join("; ") } : {}),
+    removed
+  };
+}
+
 function generatedBinBackupBaseName(entry: string): string | undefined {
   const backupMarker = ".ccr-backup-";
   const backupIndex = entry.indexOf(backupMarker);
@@ -2259,6 +2538,13 @@ function restoreDisabledGlobalProfile(
 
 function disabledProfileStatus(profile: ProfileConfig): ProfileClientApplyStatus {
   if (profile.agent === "claude-code") {
+    if (isInheritedClaudeCodeProfile(profile)) {
+      return disabledStatus(
+        "claude-code",
+        resolveUserPath(profile.settingsFile || "~/.claude/settings.json"),
+        "Claude Code profile is disabled."
+      );
+    }
     return restoreDisabledGlobalProfile(profile, resolveClaudeCodeSettingsFile(profile), "Claude Code profile is disabled.", isManagedClaudeCodeSettingsContent);
   }
   if (profile.agent === "zcode") {
@@ -2290,7 +2576,10 @@ function disabledProfileStatus(profile: ProfileConfig): ProfileClientApplyStatus
 
 export function restoreInactiveGlobalProfileConfigs(profiles: ProfileConfig[]): ProfileClientApplyStatus[] {
   const statuses: ProfileClientApplyStatus[] = [];
-  if (!profiles.some((profile) => profile.agent === "claude-code" && profile.enabled && isGlobalProfile(profile))) {
+  if (
+    !profiles.some(isInheritedClaudeCodeProfile) &&
+    !profiles.some((profile) => profile.agent === "claude-code" && profile.enabled && isGlobalProfile(profile))
+  ) {
     for (const file of uniqueResolvedPaths([
       "~/.claude/settings.json",
       ...profiles
