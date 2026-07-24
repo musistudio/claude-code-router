@@ -8,8 +8,11 @@ import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import {
   CLAUDE_CODE_MCP_CONFIG_ENV,
   CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV,
+  claudeCodeModelEnv,
   claudeCodeMcpConfigEnv,
-  claudeCodeUtcTimezoneEnvOverride
+  claudeCodeUtcTimezoneEnvOverride,
+  clearClaudeCodeManagedModelEnv,
+  isClaudeCodeManagedModelEnvKey
 } from "@ccr/core/agents/claude-code/environment";
 import { writeCodexCompatibleAppModelCatalog } from "@ccr/core/agents/codex/app-launch";
 import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-middleware-runtime";
@@ -315,21 +318,8 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
     env.CLAUDE_AGENT_API_BASE_URL = endpoint;
     delete env.ANTHROPIC_AUTH_TOKEN;
     delete env.ANTHROPIC_API_KEY;
-    if (profile.model.trim()) {
-      const model = normalizeClientModel(profile.model);
-      env.ANTHROPIC_MODEL = model;
-      env.CCR_CLAUDE_CODE_MODEL = model;
-      env.CODEXL_CLAUDE_CODE_MODEL = model;
-    } else {
-      delete env.ANTHROPIC_MODEL;
-      delete env.CCR_CLAUDE_CODE_MODEL;
-      delete env.CODEXL_CLAUDE_CODE_MODEL;
-    }
-    if (profile.smallFastModel?.trim()) {
-      env.ANTHROPIC_SMALL_FAST_MODEL = normalizeClientModel(profile.smallFastModel);
-    } else {
-      delete env.ANTHROPIC_SMALL_FAST_MODEL;
-    }
+    clearClaudeCodeManagedModelEnv(env);
+    Object.assign(env, claudeCodeModelEnv(profile));
     const toolHubMcpConfigResult = writeClaudeCodeToolHubMcpConfig(config, profile, token);
     Object.assign(env, claudeCodeMcpConfigEnv(toolHubMcpConfigResult.file), claudeCodeUtcTimezoneEnvOverride());
 
@@ -1054,7 +1044,7 @@ function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig,
   const remoteEndpoint = `${gatewayEndpoint(config)}/__ccr/remote`;
   const settingsDir = path.dirname(resolveClaudeCodeSettingsFile(profile));
   const envExports = Object.entries(profileEnv(profile))
-    .filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN")
+    .filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN" && !isClaudeCodeManagedModelEnvKey(key))
     .map(([key, value]) => `export ${key}=${shellQuote(value)}`);
   const botEnvExports = shellBotGatewayEnvExports(config, profile);
   return [
@@ -1086,7 +1076,7 @@ function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, r
   const remoteEndpoint = `${gatewayEndpoint(config)}/__ccr/remote`;
   const settingsDir = path.dirname(resolveClaudeCodeSettingsFile(profile));
   const envExports = Object.entries(profileEnv(profile))
-    .filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN")
+    .filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN" && !isClaudeCodeManagedModelEnvKey(key))
     .map(([key, value]) => cmdSetLine(key, value));
   const botEnvExports = cmdBotGatewayEnvExports(config, profile);
   return [
@@ -1768,16 +1758,7 @@ function claudeCodeRuntimeEnv(config: AppConfig, profile: ProfileConfig, setting
     CLAUDE_AGENT_API_BASE_URL: endpoint,
     CLAUDE_CONFIG_DIR: settingsDir
   };
-  const model = normalizeClientModel(profile.model);
-  if (model) {
-    env.ANTHROPIC_MODEL = model;
-    env.CCR_CLAUDE_CODE_MODEL = model;
-    env.CODEXL_CLAUDE_CODE_MODEL = model;
-  }
-  const smallFastModel = normalizeClientModel(profile.smallFastModel);
-  if (smallFastModel) {
-    env.ANTHROPIC_SMALL_FAST_MODEL = smallFastModel;
-  }
+  Object.assign(env, claudeCodeModelEnv(profile));
   return env;
 }
 

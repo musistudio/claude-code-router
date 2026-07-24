@@ -1287,9 +1287,13 @@ export type ProfileOpenSurface = "cli" | "app";
 
 export type ClaudeCodeProfileConfig = {
   enabled: boolean;
+  fableModel: string;
+  haikuModel: string;
   managedCompact: boolean;
   model: string;
+  opusModel: string;
   settingsFile: string;
+  sonnetModel: string;
   smallFastModel: string;
 };
 
@@ -1321,16 +1325,20 @@ export type ProfileConfig = {
   configFormat?: CodexProfileConfigFormat;
   enabled: boolean;
   env?: Record<string, string>;
+  fableModel?: string;
+  haikuModel?: string;
   id: string;
   managedCompact?: boolean;
   model: string;
   name: string;
+  opusModel?: string;
   providerId?: string;
   providerName?: string;
   remoteFrontendMode?: CodexRemoteFrontendMode;
   scope?: ProfileScope;
   showAllSessions?: boolean;
   settingsFile?: string;
+  sonnetModel?: string;
   smallFastModel?: string;
   surface?: ProfileSurface;
 };

@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ProfileConfig } from "@ccr/core/contracts/app.ts";
 import { AddProfileForm, DeleteProfileDialog, ProfileView } from "@ccr/ui/pages/home/components/profiles.tsx";
 import { AppI18nContext, appCopy } from "@ccr/ui/pages/home/shared/i18n.tsx";
-import { createProfileDraft, normalizeUnknownProfileItem, profileDraftWithDetectedAppPath, profileSummaryItems } from "@ccr/ui/pages/home/shared/profiles.ts";
+import { createProfileDraft, isProfileDraftSubmittable, normalizeUnknownProfileItem, profileDraftWithDetectedAppPath, profileSummaryItems } from "@ccr/ui/pages/home/shared/profiles.ts";
 import { appConfigFixture } from "../fixtures/index.ts";
 
 const profile: ProfileConfig = {
@@ -59,6 +59,37 @@ test("AddProfileForm does not show the profile requirements panel", () => {
   assert.match(html, /Effect scope/);
   assert.doesNotMatch(html, /Profile requirements/);
   assert.doesNotMatch(html, /Profile guidance/);
+});
+
+test("AddProfileForm marks required and optional fields", () => {
+  const config = appConfigFixture();
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={config.botConfigs}
+      draft={createProfileDraft("claude-code")}
+      error=""
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={config.Providers}
+      virtualModelProfiles={config.virtualModelProfiles}
+    />
+  );
+
+  assert.equal(html.match(/>Required<\/span>/g)?.length, 5);
+  assert.equal(html.match(/>Optional<\/span>/g)?.length, 4);
+  assert.match(html, /Default model/);
+  assert.match(html, /Default model is required\./);
+  assert.match(html, /Fable model/);
+  assert.match(html, /Opus model/);
+  assert.match(html, /Sonnet model/);
+  assert.match(html, /Haiku model/);
+});
+
+test("Claude Code profiles require a default model before submission", () => {
+  const draft = createProfileDraft("claude-code");
+
+  assert.equal(isProfileDraftSubmittable(draft), false);
+  assert.equal(isProfileDraftSubmittable({ ...draft, model: "anthropic/claude-sonnet-4-5" }), true);
 });
 
 test("AddProfileForm labels Kimi CLI model fields with Kimi-specific copy", () => {

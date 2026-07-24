@@ -38,7 +38,7 @@ This lets you create multiple configs for the same agent, such as "Claude Code -
 | Enabled | All | Disabled configs are not exposed as active launch entries and are not applied as effective startup configs. |
 | Effect scope | All | **Only opened from CCR** uses CCR-managed isolated config; **System default** writes the agent's default config. Only one enabled system-default config is allowed per agent. |
 | Entry mode | Claude Code, Codex, OpenCode, Grok CLI, Kimi CLI | `CLI & APP` exposes both CLI and App entry points; `CLI only` only generates a CLI command; `App only` only exposes the App entry point. Grok CLI and Kimi CLI are fixed to `CLI only`. |
-| Model | All | Default model for the opened agent, either a provider model or Fusion model. For Claude Code, leaving it empty keeps the Claude Code default. |
+| Model | All | Default model for the opened agent, either a provider model or Fusion model. Claude Code requires this value. |
 | Available models | Kimi CLI | Models exposed by Kimi's `/model` command. The default model is always included. |
 | Bot | App entry | Bot forwarding only works for App mode opened from CCR. CLI does not forward Bot messages yet. |
 | Environment variables | All | Extra environment variables injected into this config. Claude Code includes `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1` by default so gateway model discovery is enabled. |
@@ -49,8 +49,8 @@ This lets you create multiple configs for the same agent, such as "Claude Code -
 
 | Option | What it does |
 | --- | --- |
-| Model override | Writes `ANTHROPIC_MODEL` for Claude Code. Leave it empty to keep Claude Code's own default model. |
-| Small fast model | Writes `ANTHROPIC_SMALL_FAST_MODEL` for Claude Code lightweight tasks. Leave it empty to keep the Claude Code default. |
+| Default model | Required. Writes `ANTHROPIC_MODEL` for Claude Code. |
+| Fable / Opus / Sonnet / Haiku models | Writes Claude Code model aliases through `ANTHROPIC_DEFAULT_FABLE_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and `ANTHROPIC_DEFAULT_HAIKU_MODEL`. Leave any alias empty to keep the Claude Code default. Existing `smallFastModel` configs are migrated to the Haiku alias. |
 | Settings file | System-default mode uses the Claude Code default settings file; Only opened from CCR creates an isolated settings file under CCR's config directory, separated by Agent Profiles `id`. |
 | Environment variables | Merged into the Claude Code settings `env`. CCR also writes the gateway endpoint, API key helper, and launch wrapper. |
 | Bot | Applies only to the Claude App entry. Select a saved Bot, then choose message forwarding or handoff. |

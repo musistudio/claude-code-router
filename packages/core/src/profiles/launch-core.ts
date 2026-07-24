@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { AppConfig, ProfileConfig, ProfileOpenSurface } from "@ccr/core/contracts/app";
-import { claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
+import { claudeCodeModelEnv as claudeCodeProfileModelEnv, claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
 import { resolveOpenCodeConfigFile as resolveOpenCodeProfileConfigFile } from "@ccr/core/agents/opencode/profile-config";
 import { resolveZcodeConfigFile } from "@ccr/core/agents/zcode/profile-config";
 
@@ -267,7 +267,7 @@ function buildClaudeCodeLaunchPlan(
     env: {
       CLAUDE_CONFIG_DIR: path.dirname(settingsFile),
       CCR_PROFILE_SURFACE: surface,
-      ...claudeCodeModelEnv(profile),
+      ...claudeCodeProfileModelEnv(profile),
       ...claudeCodeUtcTimezoneEnvOverride()
     },
     profile,
@@ -324,35 +324,6 @@ function codexMiddlewareFilename(profile: ProfileConfig, providerId: string): st
 
 function normalizeProfileSurface(value: ProfileConfig["surface"]): "auto" | "cli" | "app" {
   return value === "cli" || value === "app" ? value : "auto";
-}
-
-function claudeCodeModelEnv(profile: ProfileConfig): Record<string, string> {
-  const env: Record<string, string> = {};
-  const model = normalizeClientModel(profile.model);
-  if (model) {
-    env.ANTHROPIC_MODEL = model;
-    env.CCR_CLAUDE_CODE_MODEL = model;
-    env.CODEXL_CLAUDE_CODE_MODEL = model;
-  }
-  const smallFastModel = normalizeClientModel(profile.smallFastModel);
-  if (smallFastModel) {
-    env.ANTHROPIC_SMALL_FAST_MODEL = smallFastModel;
-  }
-  return env;
-}
-
-function normalizeClientModel(value: string | undefined): string {
-  const trimmed = value?.trim() || "";
-  if (!trimmed) {
-    return "";
-  }
-  const commaIndex = trimmed.indexOf(",");
-  if (commaIndex > 0 && commaIndex < trimmed.length - 1) {
-    const provider = trimmed.slice(0, commaIndex).trim();
-    const model = trimmed.slice(commaIndex + 1).trim();
-    return provider && model ? `${provider}/${model}` : "";
-  }
-  return trimmed;
 }
 
 function isGeneratedProfileScope(value: ProfileConfig["scope"]): boolean {

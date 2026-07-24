@@ -190,11 +190,15 @@ test("profile service overwrites generated bin files without creating backups", 
       agent: "claude-code",
       enabled: true,
       env: {},
+      fableModel: "Provider/fable",
+      haikuModel: "Provider/haiku",
       id: profileId,
       model: "Provider/model",
       name: "Generated Bin Test",
+      opusModel: "Provider/opus",
       scope: "ccr",
       settingsFile: "~/.claude/settings.json",
+      sonnetModel: "Provider/sonnet",
       smallFastModel: "",
       surface: "auto"
     }
@@ -214,6 +218,14 @@ test("profile service overwrites generated bin files without creating backups", 
   assert.equal(toolHubMcpServerEnv.TOOLHUB_OPENAI_BASE_URL, `http://127.0.0.1:${config.gateway.port}/v1`);
   assert.equal(toolHubMcpServerEnv.TOOLHUB_OPENAI_MODEL, "Provider/model");
   assert.equal(contextArchiveMcpServer, undefined);
+  const settingsFile = path.join(CONFIGDIR, "profiles", profileId, "claude", "settings.json");
+  const settings = JSON.parse(readFileSync(settingsFile, "utf8"));
+  assert.equal(settings.env.ANTHROPIC_MODEL, "Provider/model");
+  assert.equal(settings.env.ANTHROPIC_DEFAULT_FABLE_MODEL, "Provider/fable");
+  assert.equal(settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL, "Provider/opus");
+  assert.equal(settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL, "Provider/sonnet");
+  assert.equal(settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL, "Provider/haiku");
+  assert.equal(settings.env.ANTHROPIC_SMALL_FAST_MODEL, undefined);
   const backupEntries = readdirSync(binDir).filter((entry) =>
     (
       entry.startsWith(`ccr-claude-code-api-key-${profileId}`) ||

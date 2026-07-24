@@ -2581,6 +2581,22 @@ function parseProfile(value: unknown): LoadedProfileConfig | undefined {
     if (model !== undefined) {
       profile.claudeCode.model = model;
     }
+    const fableModel = readString(claudeCode.fableModel) || readString(claudeCode.defaultFableModel);
+    if (fableModel !== undefined) {
+      profile.claudeCode.fableModel = fableModel;
+    }
+    const opusModel = readString(claudeCode.opusModel) || readString(claudeCode.defaultOpusModel);
+    if (opusModel !== undefined) {
+      profile.claudeCode.opusModel = opusModel;
+    }
+    const sonnetModel = readString(claudeCode.sonnetModel) || readString(claudeCode.defaultSonnetModel);
+    if (sonnetModel !== undefined) {
+      profile.claudeCode.sonnetModel = sonnetModel;
+    }
+    const haikuModel = readString(claudeCode.haikuModel) || readString(claudeCode.defaultHaikuModel) || readString(claudeCode.smallFastModel) || readString(claudeCode.smallModel);
+    if (haikuModel !== undefined) {
+      profile.claudeCode.haikuModel = haikuModel;
+    }
     const smallFastModel = readString(claudeCode.smallFastModel) || readString(claudeCode.smallModel);
     if (smallFastModel !== undefined) {
       profile.claudeCode.smallFastModel = smallFastModel;
@@ -2710,12 +2726,16 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
           ...(botGateway ? { botGateway } : {}),
           enabled,
           env: claudeCodeProfileEnv(env),
+          fableModel: readString(item.fableModel) || readString(item.defaultFableModel) || "",
+          haikuModel: readString(item.haikuModel) || readString(item.defaultHaikuModel) || readString(item.smallFastModel) || readString(item.smallModel) || "",
           id,
           ...(managedCompact !== undefined ? { managedCompact } : {}),
           model,
           name,
+          opusModel: readString(item.opusModel) || readString(item.defaultOpusModel) || "",
           scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
           settingsFile: readString(item.settingsFile) || readString(item.configFile) || "~/.claude/settings.json",
+          sonnetModel: readString(item.sonnetModel) || readString(item.defaultSonnetModel) || "",
           smallFastModel: readString(item.smallFastModel) || readString(item.smallModel) || "",
           surface
         };
@@ -2859,12 +2879,16 @@ function profileFromClaudeCodeConfig(config: ClaudeCodeProfileConfig): ProfileCo
     agent: "claude-code",
     enabled: config.enabled,
     env: claudeCodeProfileEnv(),
+    fableModel: config.fableModel,
+    haikuModel: config.haikuModel || config.smallFastModel,
     id: "default-claude-code",
     managedCompact: config.managedCompact,
     model: config.model,
     name: "Claude Code",
+    opusModel: config.opusModel,
     scope: "global",
     settingsFile: config.settingsFile,
+    sonnetModel: config.sonnetModel,
     smallFastModel: config.smallFastModel,
     surface: "auto"
   };

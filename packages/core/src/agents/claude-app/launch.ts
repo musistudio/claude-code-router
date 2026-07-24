@@ -5,7 +5,7 @@ import path from "node:path";
 import type { AppConfig, ProfileConfig } from "@ccr/core/contracts/app";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { prepareClaudeAppCdpUserDataDir, reserveClaudeAppCdpPort, scheduleClaudeAppDesignCdp } from "@ccr/core/agents/claude-app/cdp";
-import { claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
+import { claudeCodeModelEnv as claudeCodeProfileModelEnv, claudeCodeUtcTimezoneEnvOverride, isClaudeCodeManagedModelEnvKey } from "@ccr/core/agents/claude-code/environment";
 import { resolveClaudeCodeSettingsFile } from "@ccr/core/profiles/launch-core";
 import { normalizeWindowsDesktopAppCandidate, windowsDesktopAppCandidates } from "@ccr/core/platform/windows-app-discovery";
 
@@ -401,7 +401,7 @@ function hasElectronDesktopAppResources(executable: string): boolean {
 
 function profileEnv(profile: ProfileConfig): Record<string, string> {
   return Object.entries(profile.env ?? {}).reduce<Record<string, string>>((result, [key, value]) => {
-    if (isEnvName(key) && typeof value === "string") {
+    if (isEnvName(key) && typeof value === "string" && !isClaudeCodeManagedModelEnvKey(key)) {
       result[key] = value;
     }
     return result;
@@ -409,32 +409,7 @@ function profileEnv(profile: ProfileConfig): Record<string, string> {
 }
 
 function claudeCodeModelEnv(profile: ProfileConfig): Record<string, string> {
-  const env: Record<string, string> = {};
-  const model = normalizeClientModel(profile.model);
-  if (model) {
-    env.ANTHROPIC_MODEL = model;
-    env.CCR_CLAUDE_CODE_MODEL = model;
-    env.CODEXL_CLAUDE_CODE_MODEL = model;
-  }
-  const smallFastModel = normalizeClientModel(profile.smallFastModel);
-  if (smallFastModel) {
-    env.ANTHROPIC_SMALL_FAST_MODEL = smallFastModel;
-  }
-  return env;
-}
-
-function normalizeClientModel(value: string | undefined): string {
-  const trimmed = value?.trim() || "";
-  if (!trimmed) {
-    return "";
-  }
-  const commaIndex = trimmed.indexOf(",");
-  if (commaIndex > 0 && commaIndex < trimmed.length - 1) {
-    const provider = trimmed.slice(0, commaIndex).trim();
-    const model = trimmed.slice(commaIndex + 1).trim();
-    return provider && model ? `${provider}/${model}` : "";
-  }
-  return trimmed;
+  return claudeCodeProfileModelEnv(profile);
 }
 
 function isEnvName(value: string): boolean {

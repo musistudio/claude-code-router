@@ -754,14 +754,18 @@ export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code"
     ...createBotGatewayDraft(),
     configFile: defaultCodexConfigFile(agent),
     envRows: agent === "claude-code" ? keyValueRowsFromRecord(claudeCodeProfileEnv()) : [],
+    fableModel: "",
+    haikuModel: "",
     managedCompact: false,
     model: "",
     name: name ?? profileAgentLabel(agent),
+    opusModel: "",
     providerId: "claude-code-router",
     providerName: "Claude Code Router",
     scope: "ccr",
     settingsFile: "~/.claude/settings.json",
     showAllSessions: false,
+    sonnetModel: "",
     smallFastModel: "",
     surface
   };
@@ -792,10 +796,14 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
       botConfigId,
       botEnabled: surface !== "cli" && Boolean(selectedBot || profile.botGateway?.enabled),
       envRows: keyValueRowsFromRecord(claudeCodeProfileEnv(profile.env ?? {})),
+      fableModel: profile.fableModel ?? "",
+      haikuModel: profile.haikuModel ?? profile.smallFastModel ?? "",
       managedCompact: Boolean(profile.managedCompact),
       model: profile.model,
+      opusModel: profile.opusModel ?? "",
       scope: normalizeProfileFormScope(profile.scope),
       settingsFile: profile.settingsFile ?? "~/.claude/settings.json",
+      sonnetModel: profile.sonnetModel ?? "",
       smallFastModel: profile.smallFastModel ?? "",
       surface
     };
@@ -846,7 +854,7 @@ export function isProfileDraftSubmittable(draft: AddProfileDraft): boolean {
     return false;
   }
   if (draft.agent === "claude-code") {
-    return true;
+    return Boolean(draft.model.trim());
   }
   if (draft.agent === "grok") {
     return true;
@@ -901,16 +909,20 @@ export function profileConfigFromDraft(
     configFile: draft.configFile,
     enabled: existingProfile?.enabled ?? true,
     env: draft.agent === "claude-code" ? recordFromKeyValueRows(draft.envRows) : codexCompatibleProfileEnv(recordFromKeyValueRows(draft.envRows)),
+    fableModel: draft.fableModel,
+    haikuModel: draft.haikuModel,
     id,
     managedCompact: draft.managedCompact,
     model: draft.model,
     name: draft.name,
+    opusModel: draft.opusModel,
     providerId: draft.providerId,
     providerName: draft.providerName,
     scope: draft.scope,
     settingsFile: draft.settingsFile,
     showAllSessions: draft.agent === "zcode" || draft.agent === "opencode" ? false : draft.showAllSessions,
-    smallFastModel: draft.smallFastModel,
+    sonnetModel: draft.sonnetModel,
+    smallFastModel: draft.haikuModel || draft.smallFastModel,
     surface: draft.surface
   }, existingProfiles.length);
 }
@@ -1446,34 +1458,34 @@ export function profileSummaryItems(
     : profile.managedCompact
       ? [{ label: t("CCR managed compact"), value: t("Enabled") }]
       : [];
-  const smallFastModel = profile.smallFastModel?.trim() || "";
+  const displayProfileModel = (value: string) => profileModelDisplayValue(
+    value,
+    parseProfileModelValue(value, config.Providers, config.virtualModelProfiles ?? []),
+    config.Providers,
+    undefined,
+    config.virtualModelProfiles ?? []
+  );
   const modelValue = profile.model.trim()
-    ? profileModelDisplayValue(
-	      profile.model,
-	      parseProfileModelValue(profile.model, config.Providers, config.virtualModelProfiles ?? []),
-	      config.Providers,
-	      undefined,
-	      config.virtualModelProfiles ?? []
-	    )
+    ? displayProfileModel(profile.model)
     : profile.agent === "claude-code"
       ? t("Keep Claude Code default")
       : defaultProfileClientModel(config);
 
   if (profile.agent === "claude-code") {
+    const aliasItems = [
+      { label: "Fable model", value: profile.fableModel?.trim() || "" },
+      { label: "Opus model", value: profile.opusModel?.trim() || "" },
+      { label: "Sonnet model", value: profile.sonnetModel?.trim() || "" },
+      { label: "Haiku model", value: profile.haikuModel?.trim() || profile.smallFastModel?.trim() || "" }
+    ]
+      .filter((item) => item.value)
+      .map((item) => ({
+        label: t(item.label),
+        value: displayProfileModel(item.value)
+      }));
     return [
       { label: t("Model"), value: modelValue },
-      {
-        label: t("Small fast model"),
-        value: smallFastModel
-          ? profileModelDisplayValue(
-	            smallFastModel,
-	            parseProfileModelValue(smallFastModel, config.Providers, config.virtualModelProfiles ?? []),
-	            config.Providers,
-	            undefined,
-	            config.virtualModelProfiles ?? []
-	          )
-          : t("Keep Claude Code default")
-      },
+      ...aliasItems,
       ...managedCompactItems,
       ...botSummaryItems,
       ...appPathSummaryItems,
@@ -1527,12 +1539,16 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
       ...(botGateway ? { botGateway } : {}),
       enabled: profile.enabled,
       env: claudeCodeProfileEnv(env),
+      fableModel: stringValue(profile.fableModel) || "",
+      haikuModel: stringValue(profile.haikuModel) || stringValue(profile.smallFastModel) || "",
       id: profile.id || `profile-${index + 1}`,
       managedCompact: Boolean(profile.managedCompact),
       model,
       name,
+      opusModel: stringValue(profile.opusModel) || "",
       scope,
       settingsFile: profile.settingsFile?.trim() || "~/.claude/settings.json",
+      sonnetModel: stringValue(profile.sonnetModel) || "",
       smallFastModel: profile.smallFastModel?.trim() || "",
       surface
     };
@@ -1589,12 +1605,16 @@ export function legacyProfileItemsFromProfileConfig(profile: AppConfig["profile"
       agent: "claude-code",
       enabled: profile.claudeCode.enabled,
       env: claudeCodeProfileEnv(),
+      fableModel: profile.claudeCode.fableModel,
+      haikuModel: profile.claudeCode.haikuModel || profile.claudeCode.smallFastModel,
       id: "default-claude-code",
       managedCompact: profile.claudeCode.managedCompact,
       model: profile.claudeCode.model,
       name: "Claude Code",
+      opusModel: profile.claudeCode.opusModel,
       scope: "global",
       settingsFile: profile.claudeCode.settingsFile,
+      sonnetModel: profile.claudeCode.sonnetModel,
       smallFastModel: profile.claudeCode.smallFastModel,
       surface: "auto"
     }, 0),
@@ -1683,6 +1703,20 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
     configFile: typeof value.configFile === "string" ? value.configFile : undefined,
     enabled: typeof value.enabled === "boolean" ? value.enabled : true,
     env: isPlainRecord(value.env) ? stringRecordValue(value.env) : {},
+    fableModel: typeof value.fableModel === "string"
+      ? value.fableModel
+      : typeof value.defaultFableModel === "string"
+        ? value.defaultFableModel
+        : undefined,
+    haikuModel: typeof value.haikuModel === "string"
+      ? value.haikuModel
+      : typeof value.defaultHaikuModel === "string"
+        ? value.defaultHaikuModel
+        : typeof value.smallFastModel === "string"
+          ? value.smallFastModel
+          : typeof value.smallModel === "string"
+            ? value.smallModel
+            : undefined,
     id: typeof value.id === "string" && value.id.trim() ? value.id.trim() : `profile-${index + 1}`,
     managedCompact: typeof value.managedCompact === "boolean"
       ? value.managedCompact
@@ -1699,6 +1733,11 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
                 : undefined,
     model: typeof value.model === "string" ? value.model : "",
     name: typeof value.name === "string" ? value.name : profileAgentLabel(agent),
+    opusModel: typeof value.opusModel === "string"
+      ? value.opusModel
+      : typeof value.defaultOpusModel === "string"
+        ? value.defaultOpusModel
+        : undefined,
     providerId: typeof value.providerId === "string" ? value.providerId : undefined,
     providerName: typeof value.providerName === "string" ? value.providerName : undefined,
     scope: typeof value.scope === "string" ? normalizeProfileScope(value.scope) : "global",
@@ -1707,6 +1746,11 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
       ? value.showAllSessions
       : typeof value.show_all_sessions === "boolean"
         ? value.show_all_sessions
+        : undefined,
+    sonnetModel: typeof value.sonnetModel === "string"
+      ? value.sonnetModel
+      : typeof value.defaultSonnetModel === "string"
+        ? value.defaultSonnetModel
         : undefined,
     smallFastModel: typeof value.smallFastModel === "string" ? value.smallFastModel : undefined,
     surface: typeof value.surface === "string" ? normalizeProfileSurface(value.surface) : "auto"

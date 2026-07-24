@@ -18,10 +18,14 @@ import {
 const claudeProfile = {
   agent: "claude-code",
   enabled: true,
+  fableModel: "provider,fable",
+  haikuModel: "provider,haiku",
   id: "claude-main",
   model: "provider,model",
   name: "Claude Main",
+  opusModel: "provider,opus",
   scope: "ccr",
+  sonnetModel: "provider,sonnet",
   smallFastModel: "provider,small",
   surface: "auto"
 };
@@ -134,7 +138,11 @@ test("buildProfileLaunchPlan creates CCR-managed launcher paths", () => {
   assert.equal(claudePlan.env.ANTHROPIC_MODEL, "provider/model");
   assert.equal(claudePlan.env.CCR_CLAUDE_CODE_MODEL, "provider/model");
   assert.equal(claudePlan.env.CODEXL_CLAUDE_CODE_MODEL, "provider/model");
-  assert.equal(claudePlan.env.ANTHROPIC_SMALL_FAST_MODEL, "provider/small");
+  assert.equal(claudePlan.env.ANTHROPIC_DEFAULT_FABLE_MODEL, "provider/fable");
+  assert.equal(claudePlan.env.ANTHROPIC_DEFAULT_OPUS_MODEL, "provider/opus");
+  assert.equal(claudePlan.env.ANTHROPIC_DEFAULT_SONNET_MODEL, "provider/sonnet");
+  assert.equal(claudePlan.env.ANTHROPIC_DEFAULT_HAIKU_MODEL, "provider/haiku");
+  assert.equal(claudePlan.env.ANTHROPIC_SMALL_FAST_MODEL, undefined);
 
   assert.equal(grokPlan.surface, "cli");
   assert.deepEqual(grokPlan.args, ["--debug"]);
