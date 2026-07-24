@@ -6,7 +6,7 @@ import { type AppConfig, type ProfileClientKind, type RequestRouteTraceChange, t
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { applyAgentRequestEnrichers } from "@ccr/core/agents/request-enricher";
 import { buildClaudeAppGatewayModelRoutes, type ClaudeAppGatewayModelRoute, resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
-import { claudeAppGatewayModelRouteOptions } from "@ccr/core/gateway/internal/shared";
+import { claudeAppGatewayModelRouteOptions } from "@ccr/core/agents/claude-app/model-route-options";
 import { compileRouterConfig, type CompiledRouterConfig, type CompiledRouterRule } from "@ccr/core/routing/config-compiler";
 import type { RouteDecision, RouteDiagnostic, RouteModelRef, RouteRequest, RouteSource } from "@ccr/core/routing/contracts";
 import { ModelRegistry, normalizeRouteSelector } from "@ccr/core/routing/model-registry";
@@ -16,6 +16,7 @@ import { applyCompiledRouteRewrite, isBodyModelCompiledRewrite, type CompiledRou
 import { buildRouteScriptInput } from "@ccr/core/routing/route-script-context";
 import { normalizeRouteScriptResult } from "@ccr/core/routing/route-script-result";
 import type { RouteScriptRuntime } from "@ccr/core/routing/route-script-runtime";
+import { profileApiKeyId } from "@ccr/core/profiles/profile-api-key";
 
 export { normalizeRouteSelector } from "@ccr/core/routing/model-registry";
 
@@ -292,7 +293,7 @@ async function resolveConfiguredRouteDecision(
   const explicitModel = normalizeRouteSelector(requestedModel);
   const resolvedExplicitModel = compiled.modelRegistry.resolve(explicitModel) ?? compiled.modelRegistry.resolve(
     explicitModel
-      ? resolveClaudeAppGatewayRouteModel(explicitModel, config, claudeAppGatewayModelRouteOptions)
+      ? resolveClaudeAppGatewayRouteModel(explicitModel, config, claudeAppGatewayModelRouteOptions(config))
       : undefined
   );
   const explicitDecision: ConfiguredRouteDecision | undefined = resolvedExplicitModel
@@ -423,7 +424,11 @@ function resolveBuiltInClaudeCodeSubagentRouteDecision(
   }
   const target = normalizeRouteSelector(request.builtInSubagentModel);
   const discoveredTarget = target
-    ? resolveClaudeAppGatewayRouteModel(target, config, claudeAppGatewayModelRouteOptions)
+    ? resolveClaudeAppGatewayRouteModel(
+        target,
+        config,
+        claudeAppGatewayModelRouteOptions(config)
+      )
     : undefined;
   const configuredTarget = modelRegistry.resolve(discoveredTarget ?? target);
   if (!target || isSubagentModelPlaceholder(target) || !configuredTarget) {
@@ -484,7 +489,7 @@ function resolveConfiguredClaudeCodeModel(
 ): RouteModelRef | undefined {
   const target = normalizeRouteSelector(selector);
   const discoveredTarget = target
-    ? resolveClaudeAppGatewayRouteModel(target, config, claudeAppGatewayModelRouteOptions)
+    ? resolveClaudeAppGatewayRouteModel(target, config, claudeAppGatewayModelRouteOptions(config))
     : undefined;
   return modelRegistry.resolve(discoveredTarget ?? target);
 }
@@ -618,7 +623,7 @@ function resolveAuthenticatedProfile(
   return config.profile.profiles.find((profile) =>
     profile.enabled &&
     profile.agent === agent &&
-    profileApiKeyId(profile.id || profile.name || profile.agent) === authenticatedApiKeyId
+    profileApiKeyId(profile) === authenticatedApiKeyId
   );
 }
 
@@ -628,11 +633,6 @@ function resolveBuiltInAgentRouteTarget(
   agent: RouterBuiltInAgentRuleId
 ): string | undefined {
   return normalizeRouteSelector(resolveBuiltInAgentProfile(request, config, agent)?.model);
-}
-
-function profileApiKeyId(value: string): string {
-  const profileId = value.trim().replace(/[^a-zA-Z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
-  return `profile:${profileId || "profile"}`;
 }
 
 function builtInAgentUserAgentNeedle(agent: RouterBuiltInAgentRuleId): string {
@@ -872,7 +872,10 @@ function claudeCodeAgentToolInstructions(config: AppConfig): { prompt: string; t
 
 function configuredSubagentModelDescriptionRows(config: AppConfig): string[] {
   const routeByTarget = new Map<string, ClaudeAppGatewayModelRoute>();
-  for (const route of buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions)) {
+  for (const route of buildClaudeAppGatewayModelRoutes(
+    config,
+    claudeAppGatewayModelRouteOptions(config)
+  )) {
     const key = route.targetModel.toLowerCase();
     const current = routeByTarget.get(key);
     if (!current || (current.oneMillionContext && !route.oneMillionContext)) {

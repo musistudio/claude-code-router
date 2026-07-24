@@ -80,6 +80,18 @@ test("Codex runtime ignores middleware recursion and uses the bundled real CLI f
   assert.equal(result.stdout, "real-codex\n");
 });
 
+test("generated inherited authentication uses the safe command launcher", () => {
+  const runtime = codexCliMiddlewareRuntimeScript();
+  const start = runtime.indexOf("async function readClaudeCodeInheritedAuthToken()");
+  const end = runtime.indexOf("\nfunction claudeCodeCliWrapperArgs", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const helperRuntime = runtime.slice(start, end);
+
+  assert.match(helperRuntime, /spawnAgentCli\(/);
+  assert.doesNotMatch(helperRuntime, /execFile\(/);
+});
+
 test("Codex CLI middleware launches Windows cmd shims", { skip: process.platform !== "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-windows-cmd-"));
   const runtimeFile = writeRuntimeScript(dir);
@@ -135,6 +147,61 @@ test("Windows direct profile dispatch strips the profile command arguments", { s
 
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), ["--version"]);
+});
+
+test("Windows inherited authentication supports helper paths with shell metacharacters", { skip: process.platform !== "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-windows-auth-"));
+  const helperDir = path.join(dir, "helper path & value");
+  const configDir = path.join(dir, "settings path & value");
+  mkdirSync(helperDir, { recursive: true });
+  mkdirSync(configDir, { recursive: true });
+  const runtimeFile = writeRuntimeScript(dir);
+  const outputFile = path.join(dir, "fake-claude-output.json");
+  const fakeCliScript = path.join(dir, "fake-claude.js");
+  const fakeCli = path.join(dir, "fake-claude.cmd");
+  writeFileSync(fakeCliScript, [
+    "const fs = require('node:fs');",
+    "fs.writeFileSync(process.env.CCR_FAKE_CLAUDE_OUT, JSON.stringify({",
+    "  env: {",
+    "    ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN || '',",
+    "    CLAUDE_CODE_HOST_AUTH_ENV_VAR: process.env.CLAUDE_CODE_HOST_AUTH_ENV_VAR || '',",
+    "    CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR || ''",
+    "  }",
+    "}));",
+    ""
+  ].join("\n"));
+  writeFileSync(fakeCli, [
+    "@echo off",
+    `"${process.execPath}" "%~dp0fake-claude.js" %*`,
+    "exit /b %ERRORLEVEL%",
+    ""
+  ].join("\r\n"));
+  const helper = path.join(helperDir, "profile auth.cmd");
+  writeFileSync(helper, [
+    "@echo off",
+    "echo profile-token",
+    ""
+  ].join("\r\n"));
+
+  const result = spawnSync(process.execPath, [runtimeFile, "-p", "hi"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CLAUDE_CONFIG_DIR: configDir,
+      CCR_CLAUDE_CODE_AUTH_HELPER: helper,
+      CCR_CLAUDE_CODE_CONFIG_MODE: "inherit",
+      CCR_CLAUDE_CODE_WRAPPER: "1",
+      CCR_FAKE_CLAUDE_OUT: outputFile,
+      CCR_REAL_CLAUDE_CODE_BIN: fakeCli,
+      CCR_REMOTE_SYNC_ENABLED: "0"
+    }
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const observed = JSON.parse(readFileSync(outputFile, "utf8"));
+  assert.equal(observed.env.ANTHROPIC_AUTH_TOKEN, "profile-token");
+  assert.equal(observed.env.CLAUDE_CODE_HOST_AUTH_ENV_VAR, "ANTHROPIC_AUTH_TOKEN");
+  assert.equal(observed.env.CLAUDE_CONFIG_DIR, configDir);
 });
 
 test("Codex app-server uses a local non-OpenAI identity without credentials", { skip: process.platform === "win32" }, () => {
@@ -493,6 +560,238 @@ test("Claude Code wrapper does not duplicate an explicit MCP config argument", {
 
   const observed = JSON.parse(readFileSync(outputFile, "utf8"));
   assert.deepEqual(observed.argv, ["--mcp-config", explicitMcpConfigFile, "-p", "hi"]);
+});
+
+test("Claude Code wrapper injects the managed model policy", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-managed-settings-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const { fakeCli, outputFile } = writeFakeClaudeCli(dir);
+  const managedSettings = JSON.stringify({
+    availableModels: ["opus", "anthropic/claude-ccr-h736f6c"],
+    enforceAvailableModels: true
+  });
+
+  execFileSync(process.execPath, [runtimeFile, "-p", "hi"], {
+    env: {
+      ...process.env,
+      ANTHROPIC_MODEL: "",
+      CCR_CLAUDE_CODE_MANAGED_SETTINGS: managedSettings,
+      CCR_CLAUDE_CODE_MODEL: "",
+      CCR_CLAUDE_CODE_WRAPPER: "1",
+      CCR_FAKE_CLAUDE_OUT: outputFile,
+      CCR_REAL_CLAUDE_CODE_BIN: fakeCli,
+      CODEXL_CLAUDE_CODE_MODEL: "",
+      CCR_REMOTE_SYNC_ENABLED: "0"
+    },
+    stdio: "pipe"
+  });
+
+  const observed = JSON.parse(readFileSync(outputFile, "utf8"));
+  assert.deepEqual(observed.argv, ["--managed-settings", managedSettings, "-p", "hi"]);
+  assert.equal(observed.env.CCR_CLAUDE_CODE_MANAGED_SETTINGS, "");
+});
+
+test("Claude Code wrapper composes managed policy with both ordinary settings syntaxes", { skip: process.platform === "win32" }, () => {
+  for (const syntax of ["separate", "equals"]) {
+    const dir = mkdtempSync(path.join(os.tmpdir(), `ccr-runtime-managed-with-settings-${syntax}-`));
+    const runtimeFile = writeRuntimeScript(dir);
+    const { fakeCli, outputFile } = writeFakeClaudeCli(dir);
+    const managedSettings = JSON.stringify({
+      availableModels: ["opus", "anthropic/claude-ccr-h736f6c"],
+      enforceAvailableModels: true
+    });
+    const manualSettingsFile = path.join(dir, "manual-settings.json");
+    const explicitArgs = syntax === "separate"
+      ? ["--settings", manualSettingsFile, "-p", "hi"]
+      : [`--settings=${manualSettingsFile}`, "-p", "hi"];
+
+    execFileSync(process.execPath, [runtimeFile, ...explicitArgs], {
+      env: {
+        ...process.env,
+        ANTHROPIC_MODEL: "",
+        CCR_CLAUDE_CODE_MANAGED_SETTINGS: managedSettings,
+        CCR_CLAUDE_CODE_MODEL: "",
+        CCR_CLAUDE_CODE_WRAPPER: "1",
+        CCR_FAKE_CLAUDE_OUT: outputFile,
+        CCR_REAL_CLAUDE_CODE_BIN: fakeCli,
+        CODEXL_CLAUDE_CODE_MODEL: "",
+        CCR_REMOTE_SYNC_ENABLED: "0"
+      },
+      stdio: "pipe"
+    });
+
+    const observed = JSON.parse(readFileSync(outputFile, "utf8"));
+    assert.deepEqual(observed.argv, ["--managed-settings", managedSettings, ...explicitArgs]);
+  }
+});
+
+test("Claude Code wrapper rejects both explicit managed settings syntaxes", { skip: process.platform === "win32" }, () => {
+  for (const syntax of ["separate", "equals"]) {
+    const dir = mkdtempSync(path.join(os.tmpdir(), `ccr-runtime-managed-conflict-${syntax}-`));
+    const runtimeFile = writeRuntimeScript(dir);
+    const { fakeCli, outputFile } = writeFakeClaudeCli(dir);
+    const managedSettings = JSON.stringify({
+      availableModels: ["opus", "anthropic/claude-ccr-h736f6c"],
+      enforceAvailableModels: true
+    });
+    const explicitManagedSettings = JSON.stringify({ availableModels: ["fable"] });
+    const explicitArgs = syntax === "separate"
+      ? ["--managed-settings", explicitManagedSettings, "-p", "hi"]
+      : [`--managed-settings=${explicitManagedSettings}`, "-p", "hi"];
+
+    const result = spawnSync(process.execPath, [runtimeFile, ...explicitArgs], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ANTHROPIC_MODEL: "",
+        CCR_CLAUDE_CODE_MANAGED_SETTINGS: managedSettings,
+        CCR_CLAUDE_CODE_MODEL: "",
+        CCR_CLAUDE_CODE_WRAPPER: "1",
+        CCR_FAKE_CLAUDE_OUT: outputFile,
+        CCR_REAL_CLAUDE_CODE_BIN: fakeCli,
+        CODEXL_CLAUDE_CODE_MODEL: "",
+        CCR_REMOTE_SYNC_ENABLED: "0"
+      }
+    });
+
+    assert.notEqual(result.status, 0, `${syntax} syntax unexpectedly launched Claude Code`);
+    assert.equal(existsSync(outputFile), false, `${syntax} syntax reached the real CLI`);
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /profile[^\n]*--managed-settings|--managed-settings[^\n]*profile/i
+    );
+  }
+});
+
+test("Claude Code wrapper ignores managed-settings text in option values and after the delimiter", { skip: process.platform === "win32" }, () => {
+  for (const explicitArgs of [
+    ["-p", "--managed-settings"],
+    ["--", "--managed-settings"]
+  ]) {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-managed-literal-"));
+    const runtimeFile = writeRuntimeScript(dir);
+    const { fakeCli, outputFile } = writeFakeClaudeCli(dir);
+    const managedSettings = JSON.stringify({
+      availableModels: ["opus", "anthropic/claude-ccr-h736f6c"],
+      enforceAvailableModels: true
+    });
+
+    execFileSync(process.execPath, [runtimeFile, ...explicitArgs], {
+      env: {
+        ...process.env,
+        ANTHROPIC_MODEL: "",
+        CCR_CLAUDE_CODE_MANAGED_SETTINGS: managedSettings,
+        CCR_CLAUDE_CODE_MODEL: "",
+        CCR_CLAUDE_CODE_WRAPPER: "1",
+        CCR_FAKE_CLAUDE_OUT: outputFile,
+        CCR_REAL_CLAUDE_CODE_BIN: fakeCli,
+        CODEXL_CLAUDE_CODE_MODEL: "",
+        CCR_REMOTE_SYNC_ENABLED: "0"
+      },
+      stdio: "pipe"
+    });
+
+    const observed = JSON.parse(readFileSync(outputFile, "utf8"));
+    assert.deepEqual(observed.argv, ["--managed-settings", managedSettings, ...explicitArgs]);
+  }
+});
+
+test("Claude Code wrapper injects managed policy when diagnostic flags are literal values", { skip: process.platform === "win32" }, () => {
+  for (const explicitArgs of [
+    ["-p", "--help"],
+    ["--append-system-prompt", "--version", "-p", "hi"],
+    ["--model", "haiku", "--", "--help"]
+  ]) {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-managed-diagnostic-literal-"));
+    const runtimeFile = writeRuntimeScript(dir);
+    const { fakeCli, outputFile } = writeFakeClaudeCli(dir);
+    const managedSettings = JSON.stringify({
+      availableModels: ["opus", "fable"],
+      enforceAvailableModels: true
+    });
+
+    execFileSync(process.execPath, [runtimeFile, ...explicitArgs], {
+      env: {
+        ...process.env,
+        ANTHROPIC_MODEL: "",
+        CCR_CLAUDE_CODE_MANAGED_SETTINGS: managedSettings,
+        CCR_CLAUDE_CODE_MODEL: "",
+        CCR_CLAUDE_CODE_WRAPPER: "1",
+        CCR_FAKE_CLAUDE_OUT: outputFile,
+        CCR_REAL_CLAUDE_CODE_BIN: fakeCli,
+        CODEXL_CLAUDE_CODE_MODEL: "",
+        CCR_REMOTE_SYNC_ENABLED: "0"
+      },
+      stdio: "pipe"
+    });
+
+    const observed = JSON.parse(readFileSync(outputFile, "utf8"));
+    assert.deepEqual(observed.argv, ["--managed-settings", managedSettings, ...explicitArgs]);
+  }
+});
+
+test("inherited Claude Code wrapper authenticates from its generated helper", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-inherited-auth-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const { fakeCli, outputFile } = writeFakeClaudeCli(dir);
+  const helper = path.join(dir, "profile-auth-helper");
+  const settingsFile = path.join(dir, "manual-settings.json");
+  writeFileSync(helper, "#!/bin/sh\nprintf '%s\\n' 'profile-token'\n");
+  chmodSync(helper, 0o700);
+
+  execFileSync(process.execPath, [runtimeFile, "--settings", settingsFile, "-p", "hi"], {
+    env: {
+      ...process.env,
+      ANTHROPIC_API_KEY: "must-not-reach-child",
+      ANTHROPIC_AUTH_TOKEN: "ambient-token",
+      CLAUDE_CONFIG_DIR: dir,
+      CCR_CLAUDE_CODE_AUTH_HELPER: helper,
+      CCR_CLAUDE_CODE_CONFIG_MODE: "inherit",
+      CCR_CLAUDE_CODE_WRAPPER: "1",
+      CCR_FAKE_CLAUDE_OUT: outputFile,
+      CCR_REAL_CLAUDE_CODE_BIN: fakeCli,
+      CCR_REMOTE_SYNC_API_KEY: "must-not-reach-child",
+      CCR_REMOTE_SYNC_API_KEY_HELPER: "/tmp/must-not-reach-child",
+      CCR_REMOTE_SYNC_ENABLED: "0"
+    },
+    stdio: "pipe"
+  });
+
+  const observed = JSON.parse(readFileSync(outputFile, "utf8"));
+  assert.deepEqual(observed.argv, ["--settings", settingsFile, "-p", "hi"]);
+  assert.equal(observed.env.ANTHROPIC_AUTH_TOKEN, "profile-token");
+  assert.equal(observed.env.ANTHROPIC_API_KEY, "");
+  assert.equal(observed.env.CLAUDE_CODE_HOST_AUTH_ENV_VAR, "ANTHROPIC_AUTH_TOKEN");
+  assert.equal(observed.env.CLAUDE_CONFIG_DIR, dir);
+  assert.equal(observed.env.CCR_CLAUDE_CODE_AUTH_HELPER, "");
+  assert.equal(observed.env.CCR_REMOTE_SYNC_API_KEY, "");
+  assert.equal(observed.env.CCR_REMOTE_SYNC_API_KEY_HELPER, "");
+});
+
+test("inherited Claude Code wrapper rejects malformed helper output before launch", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-inherited-auth-invalid-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const { fakeCli, outputFile } = writeFakeClaudeCli(dir);
+  const helper = path.join(dir, "profile-auth-helper");
+  writeFileSync(helper, "#!/bin/sh\nprintf '%s\\n' 'first-token' 'second-token'\n");
+  chmodSync(helper, 0o700);
+
+  const result = spawnSync(process.execPath, [runtimeFile, "-p", "hi"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CCR_CLAUDE_CODE_AUTH_HELPER: helper,
+      CCR_CLAUDE_CODE_CONFIG_MODE: "inherit",
+      CCR_CLAUDE_CODE_WRAPPER: "1",
+      CCR_FAKE_CLAUDE_OUT: outputFile,
+      CCR_REAL_CLAUDE_CODE_BIN: fakeCli,
+      CCR_REMOTE_SYNC_ENABLED: "0"
+    }
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.equal(existsSync(outputFile), false);
+  assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /first-token|second-token/);
 });
 
 test("OpenCode bot worker keeps commands responsive while preserving per-conversation turn order", { skip: process.platform === "win32" }, async () => {
@@ -1051,9 +1350,17 @@ function writeFakeClaudeCli(dir) {
     "fs.writeFileSync(process.env.CCR_FAKE_CLAUDE_OUT, JSON.stringify({",
     "  argv: process.argv.slice(2),",
     "  env: {",
+    "    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',",
+    "    ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN || '',",
     "    ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || '',",
+    "    CLAUDE_CODE_HOST_AUTH_ENV_VAR: process.env.CLAUDE_CODE_HOST_AUTH_ENV_VAR || '',",
+    "    CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR || '',",
+    "    CCR_CLAUDE_CODE_AUTH_HELPER: process.env.CCR_CLAUDE_CODE_AUTH_HELPER || '',",
+    "    CCR_CLAUDE_CODE_MANAGED_SETTINGS: process.env.CCR_CLAUDE_CODE_MANAGED_SETTINGS || '',",
     "    CCR_CLAUDE_CODE_MODEL: process.env.CCR_CLAUDE_CODE_MODEL || '',",
-    "    CCR_CLAUDE_CODE_MCP_CONFIG: process.env.CCR_CLAUDE_CODE_MCP_CONFIG || ''",
+    "    CCR_CLAUDE_CODE_MCP_CONFIG: process.env.CCR_CLAUDE_CODE_MCP_CONFIG || '',",
+    "    CCR_REMOTE_SYNC_API_KEY: process.env.CCR_REMOTE_SYNC_API_KEY || '',",
+    "    CCR_REMOTE_SYNC_API_KEY_HELPER: process.env.CCR_REMOTE_SYNC_API_KEY_HELPER || ''",
     "  }",
     "}));",
     ""

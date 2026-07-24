@@ -1,11 +1,11 @@
 import {
   AddProfileDraft, AgentLogo, AnimatedIconSwap, AnimatedPopover, AnimatePresence, AppConfig, Badge, BotGatewaySavedConfig, botGatewaySavedConfigLabel, BotHandoffScanTarget, Button,
   Card, CardContent, CardHeader, CardTitle, Check, ChevronDown, CircleAlert, Copy,
-  cn, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
+  claudeConfigModeOptions, cn, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
   DialogTitle, Field, GatewayProviderConfig, Info, Input, KeyValueRowsControl, LoaderCircle, motion,
   normalizeProfileScope, normalizeProfileSurface, Pencil, Plus, PopoverContent,
   profileAgentLabel, profileAgentOptions, ProfileConfig, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
-  Play, Power, RefreshCw, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactDragEvent, type ReactNode, type VirtualModelProfileConfig,
+  Play, Power, RefreshCw, Select, SelectControl, Terminal, Textarea, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactDragEvent, type ReactNode, type VirtualModelProfileConfig,
   copyTextToClipboard,
   useCallback, useEffect, useMemo, useRef, useState, X
 } from "../shared/index";
@@ -597,6 +597,9 @@ export function AddProfileForm({
   const [appPathDragActive, setAppPathDragActive] = useState(false);
   const appPathLabel = profileAppPathLabel(draft.agent);
   const showAppPathField = draft.surface !== "cli" && Boolean(appPathLabel);
+  const showClaudeConfigField = draft.agent === "claude-code"
+    && draft.scope === "ccr"
+    && draft.surface === "cli";
   const handleAppPathDrop = useCallback((event: ReactDragEvent<HTMLElement>) => {
     if (!showAppPathField) {
       return;
@@ -653,7 +656,12 @@ export function AddProfileForm({
         </Field>
         <Field label={t("Effect scope")}>
           <SelectControl
-            onChange={(scope) => onChange({ scope: normalizeProfileScope(scope) })}
+            onChange={(scope) => {
+              const nextScope = normalizeProfileScope(scope);
+              onChange(draft.agent === "claude-code" && nextScope !== "ccr"
+                ? { allowedModels: "", claudeConfigMode: "isolated", scope: nextScope }
+                : { scope: nextScope });
+            }}
             options={translateOptions(
               draft.agent === "grok" || draft.agent === "kimi"
                 ? profileScopeOptions.filter((option) => option.value === "ccr")
@@ -663,12 +671,48 @@ export function AddProfileForm({
             value={draft.scope}
           />
         </Field>
+        {showClaudeConfigField ? (
+          <Field label={t("Claude configuration")}>
+            <SelectControl
+              onChange={(mode) => onChange(mode === "inherit"
+                ? { claudeConfigMode: "inherit", scope: "ccr", surface: "cli" }
+                : { claudeConfigMode: "isolated" })}
+              options={translateOptions(claudeConfigModeOptions, t)}
+              value={draft.claudeConfigMode}
+            />
+            <span className="block text-[11px] font-normal normal-case tracking-normal text-muted-foreground">
+              {t(draft.claudeConfigMode === "inherit"
+                ? "Uses your existing Claude configuration directory, including plugins, hooks, statusline, skills, agents, and sessions. CCR routing applies only to this CLI launch. After any managed System-default backup is restored, CCR does not read or modify the selected settings file during inherited applies. Changes made by the launched CLI remain shared."
+                : "Uses a separate Claude configuration managed by CCR.")}
+            </span>
+          </Field>
+        ) : null}
+        {showClaudeConfigField && draft.claudeConfigMode === "inherit" ? (
+          <Field className="sm:col-span-2" label={t("Existing Claude settings file")}>
+            <Input
+              placeholder="~/.claude/settings.json"
+              value={draft.settingsFile}
+              onChange={(event) => onChange({ settingsFile: event.target.value })}
+            />
+            <span className="block text-[11px] font-normal normal-case tracking-normal text-muted-foreground">
+              {t("CCR keeps native default paths for ~/.claude/settings.json. Custom selections must also be named settings.json and use the file's parent directory as CLAUDE_CONFIG_DIR. CCR does not read or modify the selected file during inherited applies.")}
+            </span>
+          </Field>
+        ) : null}
         <Field label={t("Entry mode")}>
           <SelectControl
             onChange={(surface) => {
               const nextSurface = normalizeProfileSurface(surface);
               onChange(nextSurface !== "cli"
-                ? { surface: nextSurface }
+                ? {
+                    ...(draft.agent === "claude-code"
+                      ? {
+                          ...(nextSurface === "app" ? { allowedModels: "" } : {}),
+                          claudeConfigMode: "isolated" as const
+                        }
+                      : {}),
+                    surface: nextSurface
+                  }
                 : {
                     botConfigId: "",
                     botConfigured: true,
@@ -703,6 +747,20 @@ export function AddProfileForm({
         ) : null}
         {draft.agent === "claude-code" ? (
           <>
+            {draft.scope === "ccr" && draft.surface !== "app" ? (
+              <Field className="sm:col-span-2" label={t("Allowed models")}>
+                <Textarea
+                  className="min-h-[88px] resize-y font-mono text-[12px]"
+                  onChange={(event) => onChange({ allowedModels: event.target.value })}
+                  placeholder={"opus\nfable\nopenai/model"}
+                  spellCheck={false}
+                  value={draft.allowedModels}
+                />
+                <span className="block text-[11px] font-normal normal-case tracking-normal text-muted-foreground">
+                  {t("Limits Claude Code's model picker to these entries. Separate entries with new lines or commas. Use native aliases such as opus or fable, or configured provider selectors such as openai/model. Leave empty to keep Claude Code's existing model availability.")}
+                </span>
+              </Field>
+            ) : null}
             <Field label={t("Model override")}>
               <ModelSelector
                 placeholder={t("Keep Claude Code default")}

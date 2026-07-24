@@ -1,3 +1,5 @@
+import { CLAUDE_CODE_MANAGED_SETTINGS_ENV as managedSettingsEnv } from "@ccr/core/agents/claude-code/environment";
+
 export function codexCliMiddlewareRuntimeScript(): string {
   return String.raw`#!/usr/bin/env node
 "use strict";
@@ -22,6 +24,7 @@ const CONFIG_DIR = resolveConfigDir();
 const LOG_PATH = process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG || "";
 const CLAUDE_CODE_MCP_CONFIG_ENV = "CCR_CLAUDE_CODE_MCP_CONFIG";
 const CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV = "CODEXL_CLAUDE_CODE_MCP_CONFIG";
+const CLAUDE_CODE_MANAGED_SETTINGS_ENV = "${managedSettingsEnv}";
 const CLAUDE_CODE_CHINA_TIME_ZONES = new Set([
   "asia/chongqing",
   "asia/chungking",
@@ -133,6 +136,24 @@ function directProfileDispatchArgs(args) {
 async function runClaudeCodeCliWrapper(args) {
   const realCli = expandHome(nonEmptyEnv("CCR_REAL_CLAUDE_CODE_BIN") || nonEmptyEnv("CCR_CLAUDE_CODE_BIN") || nonEmptyEnv("CODEXL_CLAUDE_CODE_BIN") || "claude");
   const realArgs = claudeCodeCliWrapperArgs(args);
+  const childEnv = {
+    ...withoutKeys(process.env, [
+      "CCR_CLAUDE_CODE_AUTH_HELPER",
+      "CCR_CLAUDE_CODE_CONFIG_MODE",
+      CLAUDE_CODE_MANAGED_SETTINGS_ENV,
+      "CCR_CLAUDE_CODE_WRAPPER",
+      "CCR_REAL_CLAUDE_CODE_BIN",
+      "CLAUDE_CODE_HOST_AUTH_ENV_VAR",
+      "CCR_REMOTE_SYNC_API_KEY",
+      "CCR_REMOTE_SYNC_API_KEY_HELPER"
+    ]),
+    ...claudeCodeUtcTimezoneEnvOverride()
+  };
+  if (process.env.CCR_CLAUDE_CODE_CONFIG_MODE === "inherit") {
+    childEnv.ANTHROPIC_AUTH_TOKEN = await readClaudeCodeInheritedAuthToken();
+    childEnv.CLAUDE_CODE_HOST_AUTH_ENV_VAR = "ANTHROPIC_AUTH_TOKEN";
+    delete childEnv.ANTHROPIC_API_KEY;
+  }
   log("claude_code_wrapper_start", { realCli, args, realArgs });
   const captureStdout = shouldCaptureClaudeCodeCliStdout(args);
   const remoteSync = createRemoteSyncClient({
@@ -143,10 +164,7 @@ async function runClaudeCodeCliWrapper(args) {
   });
   const injectRemoteStdin = boolEnv("CCR_REMOTE_SYNC_INJECT_STDIN");
   const child = spawnAgentCli(realCli, realArgs, {
-    env: {
-      ...withoutKeys(process.env, ["CCR_CLAUDE_CODE_WRAPPER", "CCR_REAL_CLAUDE_CODE_BIN"]),
-      ...claudeCodeUtcTimezoneEnvOverride()
-    },
+    env: childEnv,
     stdio: [injectRemoteStdin ? "pipe" : "inherit", captureStdout ? "pipe" : "inherit", "inherit"]
   });
   if (injectRemoteStdin && child.stdin) {
@@ -192,10 +210,79 @@ async function runClaudeCodeCliWrapper(args) {
   process.exitCode = code;
 }
 
+async function readClaudeCodeInheritedAuthToken() {
+  const helper = nonEmptyEnv("CCR_CLAUDE_CODE_AUTH_HELPER");
+  if (!helper) {
+    throw new Error("Inherited Claude Code configuration requires a generated authentication helper.");
+  }
+  return new Promise((resolve, reject) => {
+    let child;
+    let settled = false;
+    let stdout = "";
+    let stdoutBytes = 0;
+    let timeout;
+    const settle = (callback) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      callback();
+    };
+    const fail = (message) => settle(() => reject(new Error(message)));
+    try {
+      child = spawnAgentCli(expandHome(helper), [], {
+        stdio: ["ignore", "pipe", "ignore"],
+        windowsHide: true
+      });
+    } catch (error) {
+      fail("Failed to read inherited Claude Code profile authentication: " + formatError(error));
+      return;
+    }
+    timeout = setTimeout(() => {
+      child.kill();
+      fail("Inherited Claude Code profile authentication helper timed out.");
+    }, 3000);
+    child.on("error", (error) => {
+      fail("Failed to read inherited Claude Code profile authentication: " + formatError(error));
+    });
+    if (!child.stdout) {
+      child.kill();
+      fail("Inherited Claude Code profile authentication helper did not expose output.");
+      return;
+    }
+    child.stdout.on("data", (chunk) => {
+      const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+      stdoutBytes += value.length;
+      if (stdoutBytes > 4096) {
+        child.kill();
+        fail("Inherited Claude Code profile authentication helper exceeded its output limit.");
+        return;
+      }
+      stdout += value.toString("utf8");
+    });
+    child.on("close", (code) => {
+      if (code !== 0) {
+        fail("Inherited Claude Code profile authentication helper exited unsuccessfully.");
+        return;
+      }
+      const tokens = String(stdout || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      if (tokens.length === 0) {
+        fail("Inherited Claude Code profile authentication helper returned no token.");
+        return;
+      }
+      if (tokens.length !== 1) {
+        fail("Inherited Claude Code profile authentication helper returned malformed output.");
+        return;
+      }
+      settle(() => resolve(tokens[0]));
+    });
+  });
+}
+
 function claudeCodeCliWrapperArgs(args) {
   // Keep the profile model as an environment default. Promoting it to an
   // explicit startup argument can prevent /model from controlling the session.
-  return claudeCodeArgsWithMcpConfig(args, process.env);
+  const mcpArgs = claudeCodeArgsWithMcpConfig(args, process.env);
+  return claudeCodeArgsWithManagedSettings(mcpArgs, process.env);
 }
 
 function claudeCodeArgsWithMcpConfig(args, env) {
@@ -206,6 +293,18 @@ function claudeCodeArgsWithMcpConfig(args, env) {
   return ["--mcp-config", mcpConfig, ...args];
 }
 
+function claudeCodeArgsWithManagedSettings(args, env) {
+  const settings = nonEmptyEnvFrom(env, CLAUDE_CODE_MANAGED_SETTINGS_ENV);
+  if (!settings || claudeCodeArgsShouldSkipModelInjection(args)) {
+    return args;
+  }
+  if (claudeCodeArgsHaveManagedSettings(args)) {
+    throw new Error(
+      "This CCR Claude Code profile supplies --managed-settings for allowedModels. Remove the explicit --managed-settings option or launch Claude Code without this profile."
+    );
+  }
+  return ["--managed-settings", settings, ...args];
+}
 function claudeCodeArgsHaveMcpConfig(args) {
   for (const arg of args) {
     if (arg === "--mcp-config" || arg.startsWith("--mcp-config=")) {
@@ -215,8 +314,24 @@ function claudeCodeArgsHaveMcpConfig(args) {
   return false;
 }
 
+function claudeCodeArgsHaveManagedSettings(args) {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--") {
+      return false;
+    }
+    if (arg === "--managed-settings" || arg.startsWith("--managed-settings=")) {
+      return true;
+    }
+    if (claudeCodeOptionTakesValue(arg) && !arg.includes("=")) {
+      index += 1;
+    }
+  }
+  return false;
+}
+
 function claudeCodeArgsShouldSkipModelInjection(args) {
-  if (args.some((arg) => arg === "--help" || arg === "-h" || arg === "--version" || arg === "-v")) {
+  if (claudeCodeArgsHaveDiagnosticFlag(args)) {
     return true;
   }
   const command = firstClaudeCodePositionalArg(args);
@@ -232,6 +347,22 @@ function claudeCodeArgsShouldSkipModelInjection(args) {
     "upgrade",
     "version"
   ]).has(command.toLowerCase()));
+}
+
+function claudeCodeArgsHaveDiagnosticFlag(args) {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--") {
+      return false;
+    }
+    if (arg === "--help" || arg === "-h" || arg === "--version" || arg === "-v") {
+      return true;
+    }
+    if (claudeCodeOptionTakesValue(arg) && !arg.includes("=")) {
+      index += 1;
+    }
+  }
+  return false;
 }
 
 function firstClaudeCodePositionalArg(args) {
@@ -260,6 +391,7 @@ function claudeCodeOptionTakesValue(arg) {
     "--fallback-model",
     "--model",
     "--mcp-config",
+    "--managed-settings",
     "--output-format",
     "--permission-mode",
     "--resume",

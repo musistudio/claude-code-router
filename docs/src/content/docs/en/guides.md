@@ -59,13 +59,13 @@ Agent Config lets Claude Code, Codex, Grok CLI, ZCode, and other agents use CCR'
 
 General guidance:
 
-- During trial, prefer **Only opened from CCR** so only agents launched from CCR are affected.
+- During trial, prefer **Only opened from CCR** so routing and model overrides affect only agents launched from CCR. For Claude Code, keep **Isolated CCR configuration** unless you intentionally want to share an existing configuration directory.
 - After it is stable, consider **System default** if you want the agent's default config changed.
 - After applying, launch the agent from CCR's **Open Agent** action when possible.
 
 ### Claude Code
 
-In **Agent Config**, choose Claude Code, set the model, small fast model, and settings file, then click Apply. Open Claude Code from CCR and send one request to verify it in request logs.
+In **Agent Config**, choose Claude Code, set the model and small fast model, then choose a configuration mode. The default uses an isolated CCR-managed configuration. For a CLI-only profile scoped to **Only opened from CCR**, **Reuse existing Claude configuration** loads existing plugins, hooks, statusline, skills, agents, and sessions. The native default `~/.claude/settings.json` keeps native config resolution. A custom file must also be named `settings.json`; CCR uses its parent directory as `CLAUDE_CONFIG_DIR`. Routing, authentication, model, and environment overrides apply only to that launch. Open Claude Code from CCR and send one request to verify it in request logs.
 
 ### Codex
 

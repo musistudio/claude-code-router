@@ -17,6 +17,7 @@ import { gatewayService } from "@ccr/core/gateway/service";
 import { TOOL_HUB_MCP_RUNTIME_FILE_NAME, bundledToolHubMcpEntryPathCandidates } from "@ccr/core/mcp/toolhub-config";
 import { mediaToolsGatewayEndpoint } from "@ccr/core/mcp/grok-media-config";
 import { buildProfileLaunchPlan, findProfileForOpen, profileLaunchSpawnCommand, profileOpenCommand, profileOpenSurfaces, resolveClaudeCodeSettingsFile, resolveProfileOpenSurface } from "@ccr/core/profiles/launch-core";
+import { profileApiKeyId } from "@ccr/core/profiles/profile-api-key";
 import { applyProfileConfig, cleanupGeneratedBinBackups } from "@ccr/core/profiles/service";
 import { windowsEnvironmentChangedPowerShellLines, windowsSystemCommand } from "@ccr/core/platform/windows-system";
 
@@ -2073,10 +2074,6 @@ function findProfileApiKey(config: AppConfig, profile: ReturnType<typeof findPro
   const keyId = profileApiKeyId(profile);
   const key = config.APIKEYS.find((apiKey) => apiKey.id === keyId)?.key.trim();
   return key || config.APIKEYS.find((apiKey) => apiKey.key.trim())?.key.trim() || config.APIKEY.trim();
-}
-
-function profileApiKeyId(profile: ReturnType<typeof findProfileForOpen>): string {
-  return `profile:${sanitizeProfilePathSegment(profile.id || profile.name || profile.agent) || "profile"}`;
 }
 
 function sanitizeProfilePathSegment(value: string): string {

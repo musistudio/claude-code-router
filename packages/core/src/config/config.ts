@@ -6,7 +6,7 @@ import { CONFIG_FILE, GATEWAY_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CO
 import { normalizeCodexProviderAccountConfig } from "@ccr/core/agents/local-providers/codex";
 import { normalizeGrokProviderAccountConfig, normalizeGrokProviderMediaCapabilities } from "@ccr/core/agents/local-providers/grok";
 import { removeOpenCodeProviderAccountConfig } from "@ccr/core/agents/local-providers/opencode";
-import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, ROUTER_SCRIPT_API_VERSION, ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS, ROUTER_SCRIPT_MAX_TIMEOUT_MS, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "@ccr/core/contracts/app";
+import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, ROUTER_SCRIPT_API_VERSION, ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS, ROUTER_SCRIPT_MAX_TIMEOUT_MS, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent, normalizeClaudeCodeConfigModeValue } from "@ccr/core/contracts/app";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config";
 import { maxRequestLogBodyBytes } from "@ccr/core/observability/request-log-limits";
 import { findProviderPresetByBaseUrl, primaryProviderPresetEndpoint, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
@@ -1690,6 +1690,23 @@ function parseStringArray(value: unknown): string[] | undefined {
   return list.length ? list : undefined;
 }
 
+function parseCaseInsensitiveStringArray(value: unknown): string[] | undefined {
+  const list = parseStringArray(value);
+  if (!list) {
+    return undefined;
+  }
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of list) {
+    const key = item.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(item);
+    }
+  }
+  return result.length ? result : undefined;
+}
+
 function parseRouterRules(value: unknown): RouterRule[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
@@ -2573,7 +2590,7 @@ function parseProfile(value: unknown): LoadedProfileConfig | undefined {
     }
   }
 
-  const profiles = parseProfiles(value.profiles);
+  const profiles = parseProfileConfigs(value.profiles);
   if (profiles) {
     profile.profiles = profiles;
   } else {
@@ -2598,7 +2615,7 @@ function parseProfile(value: unknown): LoadedProfileConfig | undefined {
   return profile;
 }
 
-function parseProfiles(value: unknown): ProfileConfig[] | undefined {
+export function parseProfileConfigs(value: unknown): ProfileConfig[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
   }
@@ -2631,17 +2648,25 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
 
       if (agent === "claude-code") {
         const appPath = readProfileAppPath(item, agent);
+        const scope = parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global";
+        const claudeConfigMode = scope === "ccr" && surface === "cli"
+          ? normalizeClaudeCodeConfigModeValue(item.claudeConfigMode)
+          : "isolated";
         return {
           agent,
+          ...(scope === "ccr" && surface !== "app"
+            ? { allowedModels: parseCaseInsensitiveStringArray(item.allowedModels) }
+            : {}),
           ...(appPath ? { appPath } : {}),
           ...(botConfigId ? { botConfigId } : {}),
           ...(botGateway ? { botGateway } : {}),
+          claudeConfigMode,
           enabled,
           env: claudeCodeProfileEnv(env),
           id,
           model,
           name,
-          scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
+          scope,
           settingsFile: readString(item.settingsFile) || readString(item.configFile) || "~/.claude/settings.json",
           smallFastModel: readString(item.smallFastModel) || readString(item.smallModel) || "",
           surface
@@ -2773,6 +2798,7 @@ function normalizeCodexConfigFileForAgent(agent: ProfileConfig["agent"], value: 
 function profileFromClaudeCodeConfig(config: ClaudeCodeProfileConfig): ProfileConfig {
   return {
     agent: "claude-code",
+    claudeConfigMode: "isolated",
     enabled: config.enabled,
     env: claudeCodeProfileEnv(),
     id: "default-claude-code",
