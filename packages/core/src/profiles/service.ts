@@ -57,6 +57,15 @@ const privateDirMode = 0o700;
 const privateExecutableMode = 0o700;
 const privateFileMode = 0o600;
 const publicExecutableMode = 0o755;
+const claudeCodeGatewayEnvKeys = [
+  "ANTHROPIC_BASE_URL",
+  "ANTHROPIC_API_BASE_URL",
+  "CLAUDE_AGENT_API_BASE_URL"
+] as const;
+const claudeCodeRemovedAuthEnvKeys = [
+  "ANTHROPIC_AUTH_TOKEN",
+  "ANTHROPIC_API_KEY"
+] as const;
 let ownedGlobalProfileTakeovers: GlobalProfileTakeoverRecord[] | undefined;
 
 type CodexContextArchiveMcpConfig = {
@@ -305,13 +314,14 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
 
   try {
     const endpoint = gatewayEndpoint(config);
-    const settings = readJsonObject(settingsFile);
+    const settings = readClaudeCodeSettingsObject(settingsFile);
     const settingsEnv = withoutBotGatewayEnv(Object.fromEntries(stringRecord(settings.env)));
     delete settingsEnv[CLAUDE_CODE_MCP_CONFIG_ENV];
     delete settingsEnv[CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV];
+    const profileEnvValues = profileEnv(profile);
     const env = {
       ...settingsEnv,
-      ...profileEnv(profile)
+      ...profileEnvValues
     };
     env.ANTHROPIC_BASE_URL = endpoint;
     env.ANTHROPIC_API_BASE_URL = endpoint;
@@ -321,7 +331,9 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
     clearClaudeCodeManagedModelEnv(env);
     Object.assign(env, claudeCodeModelEnv(profile));
     const toolHubMcpConfigResult = writeClaudeCodeToolHubMcpConfig(config, profile, token);
-    Object.assign(env, claudeCodeMcpConfigEnv(toolHubMcpConfigResult.file), claudeCodeUtcTimezoneEnvOverride());
+    const mcpConfigEnv = claudeCodeMcpConfigEnv(toolHubMcpConfigResult.file);
+    const timezoneEnv = claudeCodeUtcTimezoneEnvOverride();
+    Object.assign(env, mcpConfigEnv, timezoneEnv);
 
     const helperResult = writeClaudeCodeApiKeyHelper(profile, token);
     const wrapperResult = writeClaudeCodeWrapper(config, profile, helperResult.file, toolHubMcpConfigResult.file);
@@ -330,7 +342,8 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
       apiKeyHelper: process.platform === "win32" ? `"${helperResult.file}"` : helperResult.file,
       env
     };
-    const writeResult = writeFileWithBackup(settingsFile, `${JSON.stringify(nextSettings, null, 2)}\n`, { mode: privateFileMode });
+    const managedEnvKeys = claudeCodeManagedSettingsEnvKeys(profileEnvValues, mcpConfigEnv, timezoneEnv);
+    const writeResult = writeClaudeCodeSettingsIfManagedChanged(settingsFile, settings, nextSettings, managedEnvKeys);
     const changed = writeResult.changed || helperResult.changed || wrapperResult.changed || toolHubMcpConfigResult.changed;
     return {
       appliedAt,
@@ -2194,6 +2207,85 @@ function readJsonObject(file: string): Record<string, unknown> {
   }
 }
 
+function readClaudeCodeSettingsObject(file: string): Record<string, unknown> {
+  if (!existsSync(file)) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as unknown;
+    if (isRecord(parsed)) {
+      return parsed;
+    }
+    throw new Error("root value is not an object");
+  } catch (error) {
+    throw new Error(`Claude Code settings file is not valid JSON: ${file}. ${formatError(error)}`);
+  }
+}
+
+function writeClaudeCodeSettingsIfManagedChanged(
+  file: string,
+  settings: Record<string, unknown>,
+  nextSettings: Record<string, unknown>,
+  managedEnvKeys: Set<string>
+): { backupFile?: string; changed: boolean } {
+  if (!claudeCodeSettingsManagedFieldsChanged(settings, nextSettings, managedEnvKeys)) {
+    chmodFileIfRequested(file, privateFileMode);
+    return { changed: false };
+  }
+  return writeFileWithBackup(file, `${JSON.stringify(nextSettings, null, 2)}\n`, { mode: privateFileMode });
+}
+
+function claudeCodeSettingsManagedFieldsChanged(
+  settings: Record<string, unknown>,
+  nextSettings: Record<string, unknown>,
+  managedEnvKeys: Set<string>
+): boolean {
+  if (settings.apiKeyHelper !== nextSettings.apiKeyHelper) {
+    return true;
+  }
+
+  const settingsEnv = isRecord(settings.env) ? settings.env : {};
+  const nextEnv = isRecord(nextSettings.env) ? nextSettings.env : {};
+  const envKeys = new Set(managedEnvKeys);
+  for (const key of [...Object.keys(settingsEnv), ...Object.keys(nextEnv)]) {
+    if (isManagedClaudeCodeSettingsEnvKey(key)) {
+      envKeys.add(key);
+    }
+  }
+
+  for (const key of envKeys) {
+    if (settingsEnv[key] !== nextEnv[key]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function claudeCodeManagedSettingsEnvKeys(
+  profileEnvValues: Record<string, string>,
+  mcpConfigEnv: Record<string, string>,
+  timezoneEnv: Record<string, string>
+): Set<string> {
+  return new Set([
+    ...claudeCodeGatewayEnvKeys,
+    ...claudeCodeRemovedAuthEnvKeys,
+    ...Object.keys(profileEnvValues),
+    ...Object.keys(mcpConfigEnv),
+    ...Object.keys(timezoneEnv),
+    CLAUDE_CODE_MCP_CONFIG_ENV,
+    CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV
+  ]);
+}
+
+function isManagedClaudeCodeSettingsEnvKey(key: string): boolean {
+  return (claudeCodeGatewayEnvKeys as readonly string[]).includes(key) ||
+    (claudeCodeRemovedAuthEnvKeys as readonly string[]).includes(key) ||
+    key === CLAUDE_CODE_MCP_CONFIG_ENV ||
+    key === CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV ||
+    isClaudeCodeManagedModelEnvKey(key) ||
+    isBotGatewayEnvKey(key);
+}
+
 function writeFileWithBackup(
   file: string,
   content: string,
@@ -2478,7 +2570,8 @@ function synchronizeGlobalProfileTakeovers(
   const previous = ownedGlobalProfileTakeovers ?? readGlobalProfileTakeoverMarker();
   const preserved = previous.filter((record) => excludedAgents.has(record.agent));
   const restorable = previous.filter((record) => !excludedAgents.has(record.agent));
-  if (ownedGlobalProfileTakeovers !== undefined && JSON.stringify(restorable) === JSON.stringify(next)) {
+  if (JSON.stringify(restorable) === JSON.stringify(next)) {
+    storeGlobalProfileTakeoverRecords(dedupeGlobalProfileTakeovers([...preserved, ...next]));
     return [];
   }
 
@@ -2486,13 +2579,21 @@ function synchronizeGlobalProfileTakeovers(
   const markerRecords = statuses.every((status) => status.ok)
     ? dedupeGlobalProfileTakeovers([...preserved, ...next])
     : dedupeGlobalProfileTakeovers([...preserved, ...restorable, ...next]);
-  if (markerRecords.length > 0) {
-    writeGlobalProfileTakeoverMarker(markerRecords);
+  storeGlobalProfileTakeoverRecords(markerRecords);
+  return statuses;
+}
+
+function storeGlobalProfileTakeoverRecords(records: GlobalProfileTakeoverRecord[]): void {
+  const previous = ownedGlobalProfileTakeovers;
+  ownedGlobalProfileTakeovers = records;
+  if (JSON.stringify(previous) === JSON.stringify(records)) {
+    return;
+  }
+  if (records.length > 0) {
+    writeGlobalProfileTakeoverMarker(records);
   } else {
     clearGlobalProfileTakeoverMarker();
   }
-  ownedGlobalProfileTakeovers = markerRecords;
-  return statuses;
 }
 
 function globalProfileTakeoverRecords(profiles: ProfileConfig[]): GlobalProfileTakeoverRecord[] {

@@ -80,6 +80,201 @@ test("profile service cleans stale generated bin backups only", () => {
   }
 });
 
+test("profile service preserves user statusLine when the active global Claude takeover marker is unchanged", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-claude-statusline-"));
+  const takeoverFile = path.join(CONFIGDIR, "global-profile-takeover.json");
+  try {
+    rmSync(takeoverFile, { force: true });
+    const settingsFile = path.join(root, ".claude", "settings.json");
+    mkdirSync(path.dirname(settingsFile), { recursive: true });
+    writeFileSync(`${settingsFile}.ccr-original`, `${JSON.stringify({
+      env: {
+        USER_VALUE: "kept"
+      },
+      theme: "dark"
+    }, null, 2)}\n`);
+    writeFileSync(settingsFile, `${JSON.stringify({
+      apiKeyHelper: "/tmp/ccr-claude-code-api-key-statusline-test",
+      currentOnly: "kept",
+      env: {
+        ANTHROPIC_API_BASE_URL: "http://127.0.0.1:3456",
+        ANTHROPIC_BASE_URL: "http://127.0.0.1:3456",
+        CLAUDE_AGENT_API_BASE_URL: "http://127.0.0.1:3456",
+        USER_VALUE: "kept"
+      },
+      statusLine: {
+        command: "ccstatusline",
+        type: "command"
+      }
+    }, null, 2)}\n`);
+
+    const profile = {
+      agent: "claude-code",
+      enabled: true,
+      env: {},
+      id: "default-claude-code",
+      model: "Provider/model",
+      name: "Claude Code",
+      scope: "global",
+      settingsFile,
+      smallFastModel: "",
+      surface: "auto"
+    };
+    writeFileSync(takeoverFile, `${JSON.stringify({
+      profiles: [{
+        agent: "claude-code",
+        id: profile.id,
+        name: profile.name,
+        settingsFile
+      }],
+      version: 1
+    }, null, 2)}\n`);
+
+    const config = createDefaultAppConfig({
+      generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
+    });
+    config.APIKEY = "ccr-profile-statusline-test";
+    config.APIKEYS = [{
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profile.id}`,
+      key: "ccr-profile-statusline-test",
+      name: "Profile: Claude Code"
+    }];
+    config.Providers = [{
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model"],
+      name: "Provider"
+    }];
+    config.profile.profiles = [profile];
+
+    const result = await applyProfileConfig(config);
+    assert.equal(result.clients.some((client) => client.client === "claude-code" && client.ok), true);
+    const current = JSON.parse(readFileSync(settingsFile, "utf8"));
+    assert.deepEqual(current.statusLine, {
+      command: "ccstatusline",
+      type: "command"
+    });
+    assert.equal(current.currentOnly, "kept");
+    assert.equal(current.theme, undefined);
+    assert.equal(current.env.USER_VALUE, "kept");
+    assert.equal(current.env.ANTHROPIC_MODEL, "Provider/model");
+  } finally {
+    restoreGlobalProfileConfigsOnExit([], { manageMarker: true });
+    rmSync(takeoverFile, { force: true });
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("profile service does not overwrite invalid global Claude settings JSON", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-claude-invalid-settings-"));
+  const takeoverFile = path.join(CONFIGDIR, "global-profile-takeover.json");
+  try {
+    rmSync(takeoverFile, { force: true });
+    const settingsFile = path.join(root, ".claude", "settings.json");
+    mkdirSync(path.dirname(settingsFile), { recursive: true });
+    const invalidContent = "{\n  \"statusLine\": {\n";
+    writeFileSync(settingsFile, invalidContent);
+
+    const profile = {
+      agent: "claude-code",
+      enabled: true,
+      env: {},
+      id: "invalid-claude-settings",
+      model: "Provider/model",
+      name: "Invalid Claude Settings",
+      scope: "global",
+      settingsFile,
+      smallFastModel: "",
+      surface: "auto"
+    };
+    const config = createDefaultAppConfig({
+      generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
+    });
+    config.APIKEY = "ccr-profile-invalid-settings-test";
+    config.APIKEYS = [{
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profile.id}`,
+      key: "ccr-profile-invalid-settings-test",
+      name: "Profile: Invalid Claude Settings"
+    }];
+    config.Providers = [{
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model"],
+      name: "Provider"
+    }];
+    config.profile.profiles = [profile];
+
+    const result = await applyProfileConfig(config);
+    const status = result.clients.find((client) => client.client === "claude-code");
+    assert.equal(status?.ok, false);
+    assert.match(status?.message ?? "", /not valid JSON/);
+    assert.equal(readFileSync(settingsFile, "utf8"), invalidContent);
+  } finally {
+    restoreGlobalProfileConfigsOnExit([], { manageMarker: true });
+    rmSync(takeoverFile, { force: true });
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("profile service does not rewrite Claude settings when only user-managed fields change", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-claude-user-fields-"));
+  const takeoverFile = path.join(CONFIGDIR, "global-profile-takeover.json");
+  try {
+    rmSync(takeoverFile, { force: true });
+    const settingsFile = path.join(root, ".claude", "settings.json");
+    const profile = {
+      agent: "claude-code",
+      enabled: true,
+      env: {},
+      id: "user-fields-claude-settings",
+      model: "Provider/model",
+      name: "User Fields Claude Settings",
+      scope: "global",
+      settingsFile,
+      smallFastModel: "",
+      surface: "auto"
+    };
+    const config = createDefaultAppConfig({
+      generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
+    });
+    config.APIKEY = "ccr-profile-user-fields-test";
+    config.APIKEYS = [{
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profile.id}`,
+      key: "ccr-profile-user-fields-test",
+      name: "Profile: User Fields Claude Settings"
+    }];
+    config.Providers = [{
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model"],
+      name: "Provider"
+    }];
+    config.profile.profiles = [profile];
+
+    const initialResult = await applyProfileConfig(config);
+    assert.equal(initialResult.clients.some((client) => client.client === "claude-code" && client.ok), true);
+    const settings = JSON.parse(readFileSync(settingsFile, "utf8"));
+    settings.disableAllHooks = true;
+    settings.statusLine = {
+      command: "ccstatusline",
+      type: "command"
+    };
+    const userEditedContent = JSON.stringify(settings);
+    writeFileSync(settingsFile, userEditedContent);
+
+    const secondResult = await applyProfileConfig(config);
+    assert.equal(secondResult.clients.some((client) => client.client === "claude-code" && client.ok), true);
+    assert.equal(readFileSync(settingsFile, "utf8"), userEditedContent);
+  } finally {
+    restoreGlobalProfileConfigsOnExit([], { manageMarker: true });
+    rmSync(takeoverFile, { force: true });
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
 test("profile service can exclude ZCode from automatic synchronization", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "ccr-zcode-auto-sync-"));
   try {
