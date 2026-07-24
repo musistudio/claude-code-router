@@ -24,6 +24,7 @@ export const PROXY_CA_CERT_DER_FILE = path.join(CERTDIR, "ca.cer");
 export const PROXY_CA_KEY_FILE = path.join(CERTDIR, "key.pem");
 export const GATEWAY_CONFIG_FILE = path.join(CONFIGDIR, "gateway.config.json");
 export const REQUEST_LOGS_DB_FILE = path.join(DATADIR, "request-logs.sqlite");
+export const CONTEXT_ARCHIVE_DB_FILE = path.join(DATADIR, "context-archive.sqlite");
 export const RAW_TRACE_SPOOL_DIR = path.join(DATADIR, "raw-trace-spool");
 export const USAGE_DB_FILE = path.join(DATADIR, "usage.sqlite");
 

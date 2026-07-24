@@ -4,12 +4,16 @@ import {
   cn, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
   DialogTitle, Field, GatewayProviderConfig, Info, Input, KeyValueRowsControl, LoaderCircle, motion,
   normalizeProfileScope, normalizeProfileSurface, Pencil, Plus, PopoverContent,
-  profileAgentLabel, profileAgentOptions, ProfileConfig, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
-  Play, Power, RefreshCw, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactDragEvent, type ReactNode, type VirtualModelProfileConfig,
-  copyTextToClipboard,
+  profileAgentLabel, profileAgentOptions, ProfileConfig, profileModelProviderOptions, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
+  Play, Power, RefreshCw, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, useLayoutEffect, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactDragEvent, type ReactNode, type VirtualModelProfileConfig,
+  copyTextToClipboard, validateProfileEnvRows,
   useCallback, useEffect, useMemo, useRef, useState, X
 } from "../shared/index";
+import { PopoverPortal } from "@/components/ui/popover";
+import { Tooltip } from "@/components/ui/tooltip";
 import { ModelMultiSelector, ModelSelector } from "./model-selector";
+
+const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 type ProfileActionBusy = {
   profileId: string;
@@ -55,9 +59,9 @@ export function ProfileView({
         <CardHeader>
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
-              <CardTitle>{t("Agent access")}</CardTitle>
+              <CardTitle>{t("Agent profiles")}</CardTitle>
               <p className="mt-1 text-[12px] text-muted-foreground">
-                {t("Choose where each agent uses CCR.")}
+                {t("Create profiles that tell each agent which model and entry mode to use.")}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -68,10 +72,10 @@ export function ProfileView({
             </div>
           </div>
         </CardHeader>
-        <CardContent className="min-h-0 flex-1 space-y-4 overflow-auto">
-          <div className="space-y-2">
+        <CardContent className="min-h-0 flex-1 overflow-auto">
+          <div className="grid gap-3 justify-start [grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),420px))]">
             {profiles.length === 0 ? (
-              <div className="flex h-32 items-center justify-center rounded-md border border-dashed border-border bg-muted/20 text-[12px] text-muted-foreground">
+              <div className="col-span-full flex h-32 items-center justify-center rounded-md border border-dashed border-border bg-muted/20 text-[12px] text-muted-foreground">
                 {t("No profiles configured")}
               </div>
             ) : null}
@@ -93,61 +97,74 @@ export function ProfileView({
               const profileActionDisabled = Boolean(profileActionBusy);
 
               return (
-                <div className="rounded-md border border-border bg-muted/20 p-3" key={profile.id}>
-                  <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
-                    <div className="flex min-w-0 flex-1 items-start gap-2">
+                <div
+                  className={cn(
+                    "flex min-h-[220px] min-w-0 flex-col rounded-md border border-border p-3 transition-colors",
+                    profile.enabled
+                      ? "bg-background hover:bg-muted/10"
+                      : "bg-muted/20"
+                  )}
+                  key={profile.id}
+                >
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
                       <AgentLogo agent={profile.agent} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                          <span className="min-w-0 max-w-[180px] truncate text-[13px] font-semibold sm:max-w-[260px] md:max-w-[320px]">{profile.name || t("Unnamed")}</span>
-                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                            {!profile.enabled ? <Badge variant="outline">{t("Disabled")}</Badge> : null}
-                            <Badge variant="secondary">{t(profileAgentLabel(profile.agent))}</Badge>
-                            <Badge variant={scope === "ccr" ? "success" : scope === "global" ? "warning" : "outline"}>
-                              {t(profileScopeLabel(scope))}
-                            </Badge>
-                            <Badge variant="outline">{t(profileSurfaceLabel(surface))}</Badge>
-                            {runtimeEntry?.botGateway ? (
-                              <Badge variant={runtimeEntry.botGateway.state === "connected" ? "success" : runtimeEntry.botGateway.lastError ? "warning" : "outline"}>
-                                {t("Bot")} · {t(runtimeEntry.botGateway.state === "connected" ? "Connected" : runtimeEntry.botGateway.state === "starting" ? "Starting" : runtimeEntry.botGateway.state)}
-                              </Badge>
-                            ) : null}
-                          </div>
-                        </div>
-                        <div className="mt-2 min-w-0 space-y-1.5">
-                          {summaryItems.map((item) => (
-                            <div className="grid min-w-0 grid-cols-[96px_minmax(0,1fr)] items-baseline gap-2 text-[12px] sm:grid-cols-[128px_minmax(0,1fr)]" key={item.label}>
-                              <div className="truncate text-muted-foreground">{item.label}</div>
-                              <div className="min-w-0 truncate font-medium text-foreground" title={item.value}>{item.value}</div>
-                            </div>
-                          ))}
-                          {runtimeEntry?.botGateway ? (
-                            <div className="grid min-w-0 grid-cols-[96px_minmax(0,1fr)] items-baseline gap-2 text-[12px] sm:grid-cols-[128px_minmax(0,1fr)]">
-                              <div className="truncate text-muted-foreground">{t("Bot activity")}</div>
-                              <div className="min-w-0 truncate font-medium text-foreground" title={runtimeEntry.botGateway.lastError || runtimeEntry.botGateway.lastEventAt || ""}>
-                                {runtimeEntry.botGateway.lastError
-                                  ? runtimeEntry.botGateway.lastError
-                                  : runtimeEntry.botGateway.lastEventAt
-                                    ? `${t("Last event")}: ${new Date(runtimeEntry.botGateway.lastEventAt).toLocaleString()}`
-                                    : t("Waiting for messages")}
-                                {runtimeEntry.botGateway.outboxCount > 0 ? ` · ${runtimeEntry.botGateway.outboxCount} ${t("pending")}` : ""}
-                              </div>
-                            </div>
-                          ) : null}
+                      <div className="min-w-0">
+                        <div className="truncate text-[13px] font-semibold">
+                          {profile.name || t("Unnamed")}
                         </div>
                       </div>
                     </div>
-                    <div
-                      aria-label={`${profile.name || t("Profile")} ${t("Profile actions")}`}
-                      className="ml-auto grid shrink-0 grid-cols-[54px_1px_28px_28px_1px_28px_28px] items-center gap-1.5"
-                      role="group"
-                    >
-                      <Toggle
-                        checked={profile.enabled}
-                        onChange={(enabled) => updateProfileItem(index, { enabled })}
-                        title={t(profile.enabled ? "Enabled" : "Disabled")}
-                      />
-                      <span aria-hidden="true" className="h-5 w-px bg-border/80" />
+                    <Toggle
+                      checked={profile.enabled}
+                      onChange={(enabled) =>
+                        updateProfileItem(index, { enabled })
+                      }
+                      title={t(profile.enabled ? "Enabled" : "Disabled")}
+                    />
+                  </div>
+                  <div className="mt-3 min-w-0 flex-1 space-y-1.5 border-t border-border/60 pt-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                      <Badge variant="secondary">{t(profileAgentLabel(profile.agent))}</Badge>
+                      <Badge variant={scope === "ccr" ? "success" : scope === "global" ? "warning" : "outline"}>
+                        {t(profileScopeLabel(scope))}
+                      </Badge>
+                      <Badge variant="outline">{t(profileSurfaceLabel(surface))}</Badge>
+                      {runtimeEntry?.botGateway ? (
+                        <Badge variant={runtimeEntry.botGateway.state === "connected" ? "success" : runtimeEntry.botGateway.lastError ? "warning" : "outline"}>
+                          {t("Bot")} · {t(runtimeEntry.botGateway.state === "connected" ? "Connected" : runtimeEntry.botGateway.state === "starting" ? "Starting" : runtimeEntry.botGateway.state)}
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                      {t("Configuration")}
+                    </div>
+                    {summaryItems.map((item) => (
+                      <div className="grid min-w-0 grid-cols-[92px_minmax(0,1fr)] items-baseline gap-2 text-[12px]" key={item.label}>
+                        <div className="truncate text-muted-foreground">{item.label}</div>
+                        <div className="min-w-0 truncate font-medium text-foreground" title={item.value}>{item.value}</div>
+                      </div>
+                    ))}
+                    {runtimeEntry?.botGateway ? (
+                      <div className="grid min-w-0 grid-cols-[92px_minmax(0,1fr)] items-baseline gap-2 text-[12px]">
+                        <div className="truncate text-muted-foreground">{t("Bot activity")}</div>
+                        <div className="min-w-0 truncate font-medium text-foreground" title={runtimeEntry.botGateway.lastError || runtimeEntry.botGateway.lastEventAt || ""}>
+                          {runtimeEntry.botGateway.lastError
+                            ? runtimeEntry.botGateway.lastError
+                            : runtimeEntry.botGateway.lastEventAt
+                              ? `${t("Last event")}: ${new Date(runtimeEntry.botGateway.lastEventAt).toLocaleString()}`
+                              : t("Waiting for messages")}
+                          {runtimeEntry.botGateway.outboxCount > 0 ? ` · ${runtimeEntry.botGateway.outboxCount} ${t("pending")}` : ""}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div
+                    aria-label={`${profile.name || t("Profile")} ${t("Profile actions")}`}
+                    className="mt-3 flex min-w-0 items-center justify-between gap-2 border-t border-border/60 pt-2"
+                    role="group"
+                  >
+                    <div className="flex min-w-0 items-center gap-1">
                       {showProfileLaunchActions && openSurfaces.includes("cli") ? (
                         <ProfileActionTooltip label={cliActionTooltip}>
                           <Button
@@ -158,31 +175,60 @@ export function ProfileView({
                             type="button"
                             variant="subtle"
                           >
-	                            <AnimatedIconSwap iconKey={cliBusy ? "busy" : "terminal"}>
-	                              {cliBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Terminal className="h-3.5 w-3.5" />}
-	                            </AnimatedIconSwap>
+                            <AnimatedIconSwap
+                              iconKey={cliBusy ? "busy" : "terminal"}
+                            >
+                              {cliBusy ? (
+                                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Terminal className="h-3.5 w-3.5" />
+                              )}
+                            </AnimatedIconSwap>
                           </Button>
                         </ProfileActionTooltip>
-                      ) : <span aria-hidden="true" className="h-7 w-7" />}
+                      ) : null}
                       {showProfileLaunchActions && openSurfaces.includes("app") ? (
                         <ProfileActionTooltip label={appActionTooltip}>
                           <Button
                             aria-label={`${appActionTooltip} ${profile.name || t("Profile")}`}
                             disabled={profileActionDisabled}
-                            onClick={() => appRunning ? stopProfileApp(index) : openProfileApp(index)}
+                            onClick={() =>
+                              appRunning
+                                ? stopProfileApp(index)
+                                : openProfileApp(index)
+                            }
                             size="iconSm"
                             type="button"
                             variant={appRunning ? "outline" : "subtle"}
                           >
-	                            <AnimatedIconSwap iconKey={appBusy ? "busy" : appRunning ? "stop" : "play"}>
-	                              {appBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : appRunning ? <Power className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-	                            </AnimatedIconSwap>
+                            <AnimatedIconSwap
+                              iconKey={
+                                appBusy ? "busy" : appRunning ? "stop" : "play"
+                              }
+                            >
+                              {appBusy ? (
+                                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                              ) : appRunning ? (
+                                <Power className="h-3.5 w-3.5" />
+                              ) : (
+                                <Play className="h-3.5 w-3.5" />
+                              )}
+                            </AnimatedIconSwap>
                           </Button>
                         </ProfileActionTooltip>
-                      ) : <span aria-hidden="true" className="h-7 w-7" />}
-                      <span aria-hidden="true" className="h-5 w-px bg-border/80" />
+                      ) : null}
+                    </div>
+                    <div className="ml-auto flex shrink-0 items-center gap-1">
                       <ProfileActionTooltip label={t("Edit")}>
-                        <Button aria-label={`${t("Edit")} ${profile.name || t("Profile")}`} onClick={() => editProfile(index)} size="iconSm" type="button" variant="ghost">
+                        <Button
+                          aria-label={`${t("Edit")} ${
+                            profile.name || t("Profile")
+                          }`}
+                          onClick={() => editProfile(index)}
+                          size="iconSm"
+                          type="button"
+                          variant="ghost"
+                        >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
                       </ProfileActionTooltip>
@@ -213,6 +259,42 @@ export function ProfileView({
         </CardContent>
       </Card>
     </motion.div>
+  );
+}
+
+function ManagedCompactSetting({
+  agent,
+  checked,
+  onChange
+}: {
+  agent: ProfileConfig["agent"];
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  const t = useAppText();
+  const title = t("CCR managed compact");
+
+  return (
+    <div className="rounded-md border border-border bg-muted/20 px-3 py-3">
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <AgentLogo agent={agent} className="h-6 w-6 rounded-[5px]" />
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-semibold">{title}</div>
+              <div className="mt-0.5 text-[12px] leading-5 text-muted-foreground">
+                {t("Use CCR context archive for this profile's auto compact requests.")}
+              </div>
+            </div>
+          </div>
+        </div>
+        <Toggle
+          checked={checked}
+          title={title}
+          onChange={onChange}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -388,15 +470,13 @@ function ProfileActionTooltip({
   label: string;
 }) {
   return (
-    <span className="group relative inline-flex shrink-0">
+    <Tooltip
+      content={<span className="block truncate whitespace-nowrap">{label}</span>}
+      contentClassName="max-w-[180px]"
+      side="top"
+    >
       {children}
-      <span
-        className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 max-w-[180px] -translate-x-1/2 rounded-md border border-border bg-popover px-2 py-1 text-[11px] font-medium leading-4 text-popover-foreground opacity-0 shadow-card transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
-        role="tooltip"
-      >
-        <span className="block truncate whitespace-nowrap">{label}</span>
-      </span>
-    </span>
+    </Tooltip>
   );
 }
 
@@ -485,7 +565,52 @@ function AgentSelectControl({
 }) {
   const t = useAppText();
   const [open, setOpen] = useState(false);
+  const [popoverLayout, setPopoverLayout] = useState<{
+    left: number;
+    maxHeight: number;
+    offset: number;
+    placement: "above" | "below";
+    width: number;
+  }>();
+  const panelRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+
+  useClientLayoutEffect(() => {
+    if (!open) {
+      setPopoverLayout(undefined);
+      return;
+    }
+
+    function updatePopoverLayout() {
+      const root = rootRef.current;
+      if (!root) {
+        return;
+      }
+      const anchor = root.getBoundingClientRect();
+      const margin = 12;
+      const gap = 6;
+      const viewportHeight = window.innerHeight;
+      const listHeight = profileAgentOptions.length * 36 + 8;
+      const below = Math.max(0, viewportHeight - anchor.bottom - margin - gap);
+      const above = Math.max(0, anchor.top - margin - gap);
+      const placement = below < listHeight && above > below ? "above" : "below";
+      setPopoverLayout({
+        left: Math.max(margin, Math.min(anchor.left, window.innerWidth - anchor.width - margin)),
+        maxHeight: Math.min(listHeight, Math.max(120, placement === "above" ? above : below)),
+        offset: placement === "above" ? viewportHeight - anchor.top + gap : anchor.bottom + gap,
+        placement,
+        width: anchor.width
+      });
+    }
+
+    updatePopoverLayout();
+    window.addEventListener("resize", updatePopoverLayout);
+    window.addEventListener("scroll", updatePopoverLayout, true);
+    return () => {
+      window.removeEventListener("resize", updatePopoverLayout);
+      window.removeEventListener("scroll", updatePopoverLayout, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -493,7 +618,8 @@ function AgentSelectControl({
     }
 
     const handlePointerDown = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !panelRef.current?.contains(target)) {
         setOpen(false);
       }
     };
@@ -535,43 +661,58 @@ function AgentSelectControl({
         <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
 
-      <AnimatePresence initial={false}>
-        {open ? (
-          <AnimatedPopover className="absolute left-0 right-0 top-full z-50 mt-1">
-            <PopoverContent
-              className="overflow-hidden p-1"
-              id="profile-agent-select-options"
-              role="listbox"
+      <PopoverPortal open={open && Boolean(popoverLayout)}>
+        <AnimatePresence initial={false}>
+          {open && popoverLayout ? (
+            <AnimatedPopover
+              className="fixed z-[140]"
+              placement={popoverLayout.placement}
+              style={{
+                left: `${popoverLayout.left}px`,
+                maxHeight: `${popoverLayout.maxHeight}px`,
+                width: `${popoverLayout.width}px`,
+                ...(popoverLayout.placement === "above"
+                  ? { bottom: `${popoverLayout.offset}px` }
+                  : { top: `${popoverLayout.offset}px` })
+              }}
             >
-              {profileAgentOptions.map((option) => {
-                const agent = option.value;
-                const selected = value === agent;
+              <PopoverContent
+                className="overflow-auto p-1"
+                id="profile-agent-select-options"
+                ref={panelRef}
+                role="listbox"
+                style={{ maxHeight: `${popoverLayout.maxHeight}px` }}
+              >
+                {profileAgentOptions.map((option) => {
+                  const agent = option.value;
+                  const selected = value === agent;
 
-                return (
-                  <button
-                    aria-selected={selected}
-                    className={cn(
-                      "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
-                      selected ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
-                    )}
-                    key={agent}
-                    onClick={() => {
-                      onChange(agent);
-                      setOpen(false);
-                    }}
-                    role="option"
-                    type="button"
-                  >
-                    <AgentLogo agent={agent} className="h-6 w-6 rounded-[5px]" />
-                    <span className="min-w-0 flex-1 truncate">{t(profileAgentLabel(agent))}</span>
-                    {selected ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
-                  </button>
-                );
-              })}
-            </PopoverContent>
-          </AnimatedPopover>
-        ) : null}
-      </AnimatePresence>
+                  return (
+                    <button
+                      aria-selected={selected}
+                      className={cn(
+                        "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
+                        selected ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+                      )}
+                      key={agent}
+                      onClick={() => {
+                        onChange(agent);
+                        setOpen(false);
+                      }}
+                      role="option"
+                      type="button"
+                    >
+                      <AgentLogo agent={agent} className="h-6 w-6 rounded-[5px]" />
+                      <span className="min-w-0 flex-1 truncate">{t(profileAgentLabel(agent))}</span>
+                      {selected ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+                    </button>
+                  );
+                })}
+              </PopoverContent>
+            </AnimatedPopover>
+          ) : null}
+        </AnimatePresence>
+      </PopoverPortal>
     </div>
   );
 }
@@ -580,6 +721,7 @@ export function AddProfileForm({
   botConfigs,
   draft,
   error,
+  mode = "add",
   onChange,
   onCreateBot,
   providers,
@@ -588,15 +730,34 @@ export function AddProfileForm({
   botConfigs: BotGatewaySavedConfig[];
   draft: AddProfileDraft;
   error: string;
+  mode?: "add" | "edit";
   onChange: (patch: Partial<AddProfileDraft>) => void;
   onCreateBot: () => void;
   providers: GatewayProviderConfig[];
   virtualModelProfiles?: VirtualModelProfileConfig[];
 }) {
   const t = useAppText();
+  const [advancedOpen, setAdvancedOpen] = useState(mode === "edit");
   const [appPathDragActive, setAppPathDragActive] = useState(false);
   const appPathLabel = profileAppPathLabel(draft.agent);
   const showAppPathField = draft.surface !== "cli" && Boolean(appPathLabel);
+  const modelProviderOptions = useMemo(
+    () => profileModelProviderOptions(providers, virtualModelProfiles),
+    [providers, virtualModelProfiles]
+  );
+  const availableModelCount = modelProviderOptions.reduce((count, provider) => count + provider.models.length, 0);
+  const modelPlaceholder = firstProfileModelPlaceholder(modelProviderOptions);
+  const validation = profileDraftValidation(draft, botConfigs, availableModelCount);
+  const advancedIssueCount = [
+    validation.providerId,
+    validation.providerName,
+    validation.bot,
+    validation.handoff,
+    validation.env
+  ].filter(Boolean).length;
+  const advancedSummary = advancedIssueCount > 0
+    ? t("Advanced settings need attention")
+    : t("Paths, provider identity, bot, compact, and env");
   const handleAppPathDrop = useCallback((event: ReactDragEvent<HTMLElement>) => {
     if (!showAppPathField) {
       return;
@@ -650,6 +811,7 @@ export function AddProfileForm({
         </Field>
         <Field label={t("Profile name")}>
           <Input value={draft.name} onChange={(event) => onChange({ name: event.target.value })} />
+          {validation.name ? <ProfileFieldHint>{t(validation.name)}</ProfileFieldHint> : null}
         </Field>
         <Field label={t("Effect scope")}>
           <SelectControl
@@ -687,20 +849,6 @@ export function AddProfileForm({
             value={draft.surface}
           />
         </Field>
-        {showAppPathField && appPathLabel ? (
-          <Field className="sm:col-span-2" label={t(appPathLabel)}>
-            <div className={cn(
-              "rounded-md border border-border bg-background p-1 transition-colors",
-              appPathDragActive ? "border-primary bg-primary/5" : "border-border"
-            )}>
-              <Input
-                placeholder={t("Drop the app here or paste the executable path")}
-                value={draft.appPath}
-                onChange={(event) => onChange({ appPath: event.target.value })}
-              />
-            </div>
-          </Field>
-        ) : null}
         {draft.agent === "claude-code" ? (
           <>
             <Field label={t("Model override")}>
@@ -725,7 +873,7 @@ export function AddProfileForm({
         ) : draft.agent === "grok" ? (
           <Field className="sm:col-span-2" label={t("Grok model")}>
             <ModelSelector
-              placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}
+              placeholder={modelPlaceholder}
               providers={providers}
               value={draft.model}
               virtualModelProfiles={virtualModelProfiles}
@@ -734,9 +882,9 @@ export function AddProfileForm({
           </Field>
         ) : draft.agent === "kimi" ? (
           <>
-            <Field className="sm:col-span-2" label={t("Default model")}>
+            <Field className="sm:col-span-2" label={t("Kimi model")}>
               <ModelSelector
-                placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}
+                placeholder={modelPlaceholder}
                 providers={providers}
                 value={draft.model}
                 virtualModelProfiles={virtualModelProfiles}
@@ -747,8 +895,9 @@ export function AddProfileForm({
                   model
                 })}
               />
+              {validation.kimiModel ? <ProfileFieldHint>{t(validation.kimiModel)}</ProfileFieldHint> : null}
             </Field>
-            <Field className="sm:col-span-2" label={t("Available models")}>
+            <Field className="sm:col-span-2" label={t("Allowed models")}>
               <ModelMultiSelector
                 providers={providers}
                 value={draft.availableModels}
@@ -758,25 +907,14 @@ export function AddProfileForm({
                   model: availableModels.includes(draft.model) ? draft.model : availableModels[0] ?? ""
                 })}
               />
+              {validation.kimiAvailableModels ? <ProfileFieldHint>{t(validation.kimiAvailableModels)}</ProfileFieldHint> : null}
             </Field>
           </>
         ) : (
           <>
-            <Field label={t("Provider ID")}>
-              <Input value={draft.providerId} onChange={(event) => onChange({ providerId: event.target.value })} />
-            </Field>
-            <Field label={t("Provider name")}>
-              <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
-            </Field>
-            {draft.agent !== "zcode" && draft.agent !== "opencode" ? (
-              <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
-                <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
-                <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
-              </div>
-            ) : null}
             <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : "Codex model")}>
               <ModelSelector
-                placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}
+                placeholder={modelPlaceholder}
                 providers={providers}
                 value={draft.model}
                 virtualModelProfiles={virtualModelProfiles}
@@ -785,19 +923,101 @@ export function AddProfileForm({
             </Field>
           </>
         )}
-        {draft.surface !== "cli" ? (
-          <div className="sm:col-span-2">
-            <BotGatewaySelectForm botConfigs={botConfigs} draft={draft} onChange={onChange} onCreateBot={onCreateBot} />
-          </div>
-        ) : null}
-        <Field className="sm:col-span-2" label={t("Environment variables")}>
-          <KeyValueRowsControl
-            addLabel={t("Add env variable")}
-            rows={draft.envRows}
-            onChange={(envRows) => onChange({ envRows })}
-          />
-        </Field>
+        <div className="sm:col-span-2">
+          <button
+            className="flex min-h-9 w-full min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-left outline-none transition-colors hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring/25"
+            onClick={() => setAdvancedOpen((current) => !current)}
+            type="button"
+          >
+            <span className="min-w-0">
+              <span className="block truncate text-[12px] font-semibold text-foreground">{t("Advanced settings")}</span>
+              <span className={cn("mt-0.5 block truncate text-[11px]", advancedIssueCount > 0 ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground")}>
+                {advancedSummary}
+              </span>
+            </span>
+            <span className="flex shrink-0 items-center gap-2">
+              {advancedIssueCount > 0 ? <Badge variant="warning">{advancedIssueCount}</Badge> : null}
+              <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", advancedOpen && "rotate-180")} />
+            </span>
+          </button>
+          <AnimatePresence initial={false}>
+            {advancedOpen ? (
+              <motion.div
+                animate={{ height: "auto", opacity: 1 }}
+                className="overflow-hidden"
+                exit={{ height: 0, opacity: 0 }}
+                initial={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.16 }}
+              >
+                <div className="mt-3 grid grid-cols-1 gap-3 rounded-md border border-border bg-background/60 p-3 sm:grid-cols-2">
+                  {showAppPathField && appPathLabel ? (
+                    <Field className="sm:col-span-2" label={t(appPathLabel)}>
+                      <div className={cn(
+                        "rounded-md border border-border bg-background p-1 transition-colors",
+                        appPathDragActive ? "border-primary bg-primary/5" : "border-border"
+                      )}>
+                        <Input
+                          placeholder={t("Drop the app here or paste the executable path")}
+                          value={draft.appPath}
+                          onChange={(event) => onChange({ appPath: event.target.value })}
+                        />
+                      </div>
+                    </Field>
+                  ) : null}
+                  {draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" ? (
+                    <>
+                      <Field label={t("Provider ID")}>
+                        <Input value={draft.providerId} onChange={(event) => onChange({ providerId: event.target.value })} />
+                        {validation.providerId ? <ProfileFieldHint>{t(validation.providerId)}</ProfileFieldHint> : null}
+                      </Field>
+                      <Field label={t("Provider name")}>
+                        <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
+                        {validation.providerName ? <ProfileFieldHint>{t(validation.providerName)}</ProfileFieldHint> : null}
+                      </Field>
+                      {draft.agent !== "zcode" && draft.agent !== "opencode" ? (
+                        <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
+                          <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
+                          <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
+                  {draft.agent === "claude-code" || draft.agent === "codex" ? (
+                    <div className="sm:col-span-2">
+                      <ManagedCompactSetting
+                        agent={draft.agent}
+                        checked={draft.managedCompact}
+                        onChange={(managedCompact) => onChange({ managedCompact })}
+                      />
+                    </div>
+                  ) : null}
+                  {draft.surface !== "cli" ? (
+                    <div className="sm:col-span-2">
+                      <BotGatewaySelectForm botConfigs={botConfigs} draft={draft} onChange={onChange} onCreateBot={onCreateBot} />
+                      {validation.bot ? <ProfileFieldHint>{t(validation.bot)}</ProfileFieldHint> : null}
+                      {validation.handoff ? <ProfileFieldHint>{t(validation.handoff)}</ProfileFieldHint> : null}
+                    </div>
+                  ) : null}
+                  <Field className="sm:col-span-2" label={t("Environment variables")}>
+                    <KeyValueRowsControl
+                      addLabel={t("Add env variable")}
+                      rows={draft.envRows}
+                      onChange={(envRows) => onChange({ envRows })}
+                    />
+                    {validation.env ? <ProfileFieldHint>{t(validation.env)}</ProfileFieldHint> : null}
+                  </Field>
+                </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+        </div>
       </div>
+      {validation.models ? (
+        <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[12px] text-amber-700 dark:text-amber-300">
+          <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{t(validation.models)}</span>
+        </div>
+      ) : null}
       {error ? (
         <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
           {t(error)}
@@ -805,6 +1025,61 @@ export function AddProfileForm({
       ) : null}
     </>
   );
+}
+
+function ProfileFieldHint({ children }: { children: ReactNode }) {
+  return <div className="text-[11px] leading-4 text-amber-700 dark:text-amber-300">{children}</div>;
+}
+
+function firstProfileModelPlaceholder(providers: ReturnType<typeof profileModelProviderOptions>): string {
+  const provider = providers[0];
+  const model = provider?.models[0];
+  return provider && model ? `${provider.name}/${model}` : "";
+}
+
+function profileDraftValidation(
+  draft: AddProfileDraft,
+  botConfigs: BotGatewaySavedConfig[],
+  availableModelCount: number
+): Partial<Record<"bot" | "env" | "handoff" | "kimiAvailableModels" | "kimiModel" | "models" | "name" | "providerId" | "providerName", string>> {
+  const issues: Partial<Record<"bot" | "env" | "handoff" | "kimiAvailableModels" | "kimiModel" | "models" | "name" | "providerId" | "providerName", string>> = {};
+  if (!draft.name.trim()) {
+    issues.name = "Profile name is required.";
+  }
+  if (availableModelCount === 0) {
+    issues.models = "Configure at least one enabled provider model before saving an agent profile.";
+  }
+  if (draft.agent === "kimi") {
+    if (!draft.model.trim()) {
+      issues.kimiModel = "Kimi model is required.";
+    }
+    if (draft.availableModels.length === 0) {
+      issues.kimiAvailableModels = "Select at least one allowed model.";
+    }
+  }
+  if (draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi") {
+    if (!draft.providerId.trim()) {
+      issues.providerId = "Provider ID is required.";
+    }
+    if (!draft.providerName.trim()) {
+      issues.providerName = "Provider name is required.";
+    }
+  }
+  if (draft.surface !== "cli" && draft.botEnabled && !botConfigs.some((config) => config.id === draft.botConfigId.trim())) {
+    issues.bot = "Select an existing bot or turn Bot off.";
+  }
+  if (draft.surface !== "cli" && draft.botEnabled && draft.botHandoffEnabled && !profileNumberDraftValid(draft.botHandoffIdleSeconds, 30, 86_400)) {
+    issues.handoff = "Idle seconds must be between 30 and 86400.";
+  }
+  if (!validateProfileEnvRows(draft.envRows)) {
+    issues.env = "Environment variable rows need valid keys.";
+  }
+  return issues;
+}
+
+function profileNumberDraftValid(value: string, min: number, max: number): boolean {
+  const numeric = Number(value.trim());
+  return Number.isFinite(numeric) && numeric >= min && numeric <= max;
 }
 
 function profileAppPathLabel(agent: ProfileConfig["agent"]): "CLAUDE_APP_PATH" | "CHATGPT_APP_PATH" | "OPENCODE_APP_PATH" | undefined {
@@ -991,19 +1266,22 @@ function BotGatewaySelectForm({
       <div className="flex min-w-0 items-center justify-between gap-3">
         <span className="flex min-w-0 items-center gap-1.5">
           <span className="text-[12px] font-medium">{t("Bot")}</span>
-          <button
-            aria-label={botScopeHint}
-            className="group relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
-            type="button"
+          <Tooltip
+            content={botScopeHint}
+            contentClassName="w-[260px] max-w-[calc(100vw-64px)] whitespace-normal px-2 py-1.5 text-left font-medium leading-4 sm:w-[280px]"
+            side="bottom"
           >
-            <Info
-              aria-hidden="true"
-              className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
-            />
-            <span className="pointer-events-none invisible absolute left-0 top-full z-[90] mt-1.5 w-[260px] max-w-[calc(100vw-64px)] whitespace-normal rounded-md border border-border bg-popover px-2 py-1.5 text-left text-[11px] font-medium leading-4 text-popover-foreground opacity-0 shadow-card transition-opacity group-hover:visible group-hover:opacity-100 group-focus:visible group-focus:opacity-100 sm:w-[280px]">
-              {botScopeHint}
-            </span>
-          </button>
+            <button
+              aria-label={botScopeHint}
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
+              type="button"
+            >
+              <Info
+                aria-hidden="true"
+                className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+              />
+            </button>
+          </Tooltip>
         </span>
         <Toggle checked={draft.botEnabled} onChange={updateEnabled} />
       </div>
@@ -1199,7 +1477,7 @@ export function AddProfileDialog({
   const t = useAppText();
 
   return (
-	    <Dialog onOpenChange={(open) => !open && !submitting && onClose()} open>
+    <Dialog onOpenChange={(open) => !open && !submitting && onClose()} open>
       <DialogContent>
         <DialogHeader>
           <div>
@@ -1207,21 +1485,30 @@ export function AddProfileDialog({
           </div>
         </DialogHeader>
         <DialogBody>
-	          <AddProfileForm botConfigs={botConfigs} draft={draft} error={error} onChange={onChange} onCreateBot={onCreateBot} providers={providers} virtualModelProfiles={virtualModelProfiles} />
+          <AddProfileForm
+            botConfigs={botConfigs}
+            draft={draft}
+            error={error}
+            mode={mode}
+            onChange={onChange}
+            onCreateBot={onCreateBot}
+            providers={providers}
+            virtualModelProfiles={virtualModelProfiles}
+          />
         </DialogBody>
         <DialogFooter>
           <div className="flex justify-end gap-2">
-	            <Button disabled={submitting} onClick={onClose} type="button" variant="outline">
-	              {t("Cancel")}
-	            </Button>
-	            <Button disabled={!canSubmit || submitting} onClick={() => void onSubmit()} type="button">
-		              {submitting || mode === "add" ? (
-		                <AnimatedIconSwap iconKey={submitting ? "submitting" : "add"}>
-		                  {submitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-		                </AnimatedIconSwap>
-		              ) : null}
-	              {mode === "edit" ? t("Save") : t("Add")}
-	            </Button>
+            <Button disabled={submitting} onClick={onClose} type="button" variant="outline">
+              {t("Cancel")}
+            </Button>
+            <Button disabled={!canSubmit || submitting} onClick={() => void onSubmit()} type="button">
+              {submitting || mode === "add" ? (
+                <AnimatedIconSwap iconKey={submitting ? "submitting" : "add"}>
+                  {submitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                </AnimatedIconSwap>
+              ) : null}
+              {mode === "edit" ? t("Save") : t("Add")}
+            </Button>
           </div>
         </DialogFooter>
       </DialogContent>

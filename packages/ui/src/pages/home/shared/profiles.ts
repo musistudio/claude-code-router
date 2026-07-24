@@ -380,6 +380,7 @@ import { isPlainRecord, normalizeProviderModelSelector, stringValue, uniqueStrin
 import { virtualModelProfileModelNames } from "./providers";
 import { endpointFromHostPort } from "./services";
 import { keyValueRowsFromRecord, recordFromKeyValueRows, stringRecordValue, validateProfileEnvRows } from "./virtual-models";
+import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { AddProfileDraft, BotGatewayConfigDraft } from "./types";
 
 export function gatewayEndpointFromConfig(config: AppConfig): string {
@@ -391,7 +392,8 @@ export function gatewayEndpointFromConfig(config: AppConfig): string {
 }
 
 export function defaultProfileClientModel(config: AppConfig): string {
-  const preferred = config.Providers.find((provider) => provider.name === config.preferredProvider) ?? config.Providers[0];
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const preferred = enabledProviders.find((provider) => provider.name === config.preferredProvider) ?? enabledProviders[0];
   if (preferred?.name && preferred.models[0]) {
     return `${preferred.name}/${preferred.models[0]}`;
   }
@@ -420,7 +422,7 @@ export function profileModelProviderOptions(
   virtualModelProfiles: VirtualModelProfileConfig[] = []
 ): ProfileModelProviderOption[] {
   const providerOptions = providers
-    .filter((provider) => provider.name?.trim() && Array.isArray(provider.models))
+    .filter((provider) => isGatewayProviderEnabled(provider) && provider.name?.trim() && Array.isArray(provider.models))
     .map((provider) => ({
       modelDisplayNames: profileModelDisplayNamesForModels(provider.modelDisplayNames, provider.models),
       models: uniqueStrings(provider.models.filter(Boolean)),
@@ -752,6 +754,7 @@ export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code"
     ...createBotGatewayDraft(),
     configFile: defaultCodexConfigFile(agent),
     envRows: agent === "claude-code" ? keyValueRowsFromRecord(claudeCodeProfileEnv()) : [],
+    managedCompact: false,
     model: "",
     name: name ?? profileAgentLabel(agent),
     providerId: "claude-code-router",
@@ -789,6 +792,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
       botConfigId,
       botEnabled: surface !== "cli" && Boolean(selectedBot || profile.botGateway?.enabled),
       envRows: keyValueRowsFromRecord(claudeCodeProfileEnv(profile.env ?? {})),
+      managedCompact: Boolean(profile.managedCompact),
       model: profile.model,
       scope: normalizeProfileFormScope(profile.scope),
       settingsFile: profile.settingsFile ?? "~/.claude/settings.json",
@@ -817,6 +821,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
     botEnabled: surface !== "cli" && Boolean(selectedBot || profile.botGateway?.enabled),
     configFile: profile.configFile ?? defaultCodexConfigFile(profile.agent),
     envRows: keyValueRowsFromRecord(codexCompatibleProfileEnv(profile.env ?? {})),
+    managedCompact: Boolean(profile.managedCompact),
     model: profile.model,
     providerId: profile.providerId ?? "claude-code-router",
     providerName: profile.providerName ?? "Claude Code Router",
@@ -897,6 +902,7 @@ export function profileConfigFromDraft(
     enabled: existingProfile?.enabled ?? true,
     env: draft.agent === "claude-code" ? recordFromKeyValueRows(draft.envRows) : codexCompatibleProfileEnv(recordFromKeyValueRows(draft.envRows)),
     id,
+    managedCompact: draft.managedCompact,
     model: draft.model,
     name: draft.name,
     providerId: draft.providerId,
@@ -1437,6 +1443,9 @@ export function profileSummaryItems(
     : surface !== "cli" && profile.botGateway
       ? [{ label: t("Bot"), value: t("Disabled") }]
       : [];
+  const managedCompactItems = profile.agent === "zcode"
+    ? []
+    : [{ label: t("CCR managed compact"), value: profile.managedCompact ? t("Enabled") : t("Disabled") }];
   const smallFastModel = profile.smallFastModel?.trim() || "";
   const modelValue = profile.model.trim()
     ? profileModelDisplayValue(
@@ -1465,6 +1474,7 @@ export function profileSummaryItems(
 	          )
           : t("Keep Claude Code default")
       },
+      ...managedCompactItems,
       ...botSummaryItems,
       ...appPathSummaryItems,
       ...envSummaryItems
@@ -1473,10 +1483,10 @@ export function profileSummaryItems(
 
   if (profile.agent === "grok" || profile.agent === "kimi") {
     return [
-      { label: t(profile.agent === "kimi" ? "Default model" : "Model"), value: modelValue },
+      { label: t(profile.agent === "kimi" ? "Kimi model" : "Model"), value: modelValue },
       ...(profile.agent === "kimi"
         ? [{
-            label: t("Available models"),
+            label: t("Allowed models"),
             value: String(uniqueStrings([profile.model, ...(profile.availableModels ?? [])].filter(Boolean)).length)
           }]
         : []),
@@ -1488,6 +1498,7 @@ export function profileSummaryItems(
     { label: t("Model"), value: modelValue },
     { label: t("Provider ID"), value: profile.providerId ?? "claude-code-router" },
     ...(profile.agent === "zcode" || profile.agent === "opencode" ? [] : [{ label: t("Show all sessions"), value: profile.showAllSessions ? t("Enabled") : t("Disabled") }]),
+    ...managedCompactItems,
     ...appPathSummaryItems,
     ...botSummaryItems,
     ...envSummaryItems
@@ -1517,6 +1528,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
       enabled: profile.enabled,
       env: claudeCodeProfileEnv(env),
       id: profile.id || `profile-${index + 1}`,
+      managedCompact: Boolean(profile.managedCompact),
       model,
       name,
       scope,
@@ -1551,6 +1563,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
     enabled: profile.enabled,
     env: codexCompatibleProfileEnv(env),
     id: profile.id || `profile-${index + 1}`,
+    managedCompact: Boolean(profile.managedCompact),
     model,
     name,
     providerId: profile.providerId?.trim() || "claude-code-router",
@@ -1577,6 +1590,7 @@ export function legacyProfileItemsFromProfileConfig(profile: AppConfig["profile"
       enabled: profile.claudeCode.enabled,
       env: claudeCodeProfileEnv(),
       id: "default-claude-code",
+      managedCompact: profile.claudeCode.managedCompact,
       model: profile.claudeCode.model,
       name: "Claude Code",
       scope: "global",
@@ -1594,6 +1608,7 @@ export function legacyProfileItemsFromProfileConfig(profile: AppConfig["profile"
       enabled: profile.codex.enabled,
       env: {},
       id: "default-codex",
+      managedCompact: profile.codex.managedCompact,
       model: profile.codex.model,
       name: "Codex",
       providerId: profile.codex.providerId,
@@ -1669,6 +1684,19 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
     enabled: typeof value.enabled === "boolean" ? value.enabled : true,
     env: isPlainRecord(value.env) ? stringRecordValue(value.env) : {},
     id: typeof value.id === "string" && value.id.trim() ? value.id.trim() : `profile-${index + 1}`,
+    managedCompact: typeof value.managedCompact === "boolean"
+      ? value.managedCompact
+      : typeof value.managed_compact === "boolean"
+        ? value.managed_compact
+        : typeof value.ccrManagedCompact === "boolean"
+          ? value.ccrManagedCompact
+          : typeof value.ccr_managed_compact === "boolean"
+            ? value.ccr_managed_compact
+            : typeof value.contextArchiveCompact === "boolean"
+              ? value.contextArchiveCompact
+              : typeof value.context_archive_compact === "boolean"
+                ? value.context_archive_compact
+                : undefined,
     model: typeof value.model === "string" ? value.model : "",
     name: typeof value.name === "string" ? value.name : profileAgentLabel(agent),
     providerId: typeof value.providerId === "string" ? value.providerId : undefined,

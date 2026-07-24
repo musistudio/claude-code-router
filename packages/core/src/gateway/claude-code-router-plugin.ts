@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
-import { type AppConfig, type ProfileClientKind, type RequestRouteTraceChange, type RouterBuiltInAgentRuleId, type RouterFallbackConfig, type RouterRule, type RouterRuleCondition } from "@ccr/core/contracts/app";
+import { isGatewayProviderEnabled, type AppConfig, type ProfileClientKind, type RequestRouteTraceChange, type RouterBuiltInAgentRuleId, type RouterFallbackConfig, type RouterRule, type RouterRuleCondition } from "@ccr/core/contracts/app";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { applyAgentRequestEnrichers } from "@ccr/core/agents/request-enricher";
 import { buildClaudeAppGatewayModelRoutes, type ClaudeAppGatewayModelRoute, resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
@@ -572,7 +572,8 @@ function resolveGrokProfileRouteTarget(config: AppConfig, profileModel: string |
   if (configured) {
     return configured;
   }
-  const preferred = config.Providers.find((provider) => provider.name === config.preferredProvider) ?? config.Providers[0];
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const preferred = enabledProviders.find((provider) => provider.name === config.preferredProvider) ?? enabledProviders[0];
   return preferred?.name && preferred.models[0]
     ? `${preferred.name}/${preferred.models[0]}`
     : undefined;
@@ -882,7 +883,7 @@ function configuredSubagentModelDescriptionRows(config: AppConfig): string[] {
   const candidates: Array<{ key: string; row: string; selector: string }> = [];
   for (const provider of config.Providers) {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       continue;
     }
     for (const rawModel of provider.models) {

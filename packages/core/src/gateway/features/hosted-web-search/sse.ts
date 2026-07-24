@@ -75,4 +75,3 @@ export function serializeSseEvent(event: ParsedSseEvent): string {
     `data: ${JSON.stringify(event.data)}`
   ].filter(Boolean).join("\n");
 }
-

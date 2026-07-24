@@ -8,9 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@ccr/ui/components/ui/
 import { Checkbox } from "@ccr/ui/components/ui/checkbox.tsx";
 import { Input } from "@ccr/ui/components/ui/input.tsx";
 import { Label } from "@ccr/ui/components/ui/label.tsx";
+import { PopoverPortal } from "@ccr/ui/components/ui/popover.tsx";
 import { Select } from "@ccr/ui/components/ui/select.tsx";
 import { Switch } from "@ccr/ui/components/ui/switch.tsx";
+import { Tabs, TabsList, TabsTrigger } from "@ccr/ui/components/ui/tabs.tsx";
 import { Textarea } from "@ccr/ui/components/ui/textarea.tsx";
+import { Tooltip, TooltipPortal } from "@ccr/ui/components/ui/tooltip.tsx";
 import { collapseSidebarToExpandInspectorMorph, playPauseMorph } from "@ccr/ui/lib/morph-icon.ts";
 
 test("Button renders default button semantics and variant classes", () => {
@@ -96,6 +99,50 @@ test("Switch renders accessible checked and disabled state", () => {
   assert.match(html, /aria-label="Enable provider"/);
   assert.match(html, /disabled=""/);
   assert.match(html, /translate-x-\[24px\]/);
+});
+
+test("Tabs render shadcn-style state and tab semantics", () => {
+  const html = renderToStaticMarkup(
+    <Tabs value="pool">
+      <TabsList aria-label="Credential method">
+        <TabsTrigger value="apiKey">API key</TabsTrigger>
+        <TabsTrigger value="pool">Credential pool</TabsTrigger>
+      </TabsList>
+    </Tabs>
+  );
+
+  assert.match(html, /role="tablist"/);
+  assert.equal((html.match(/role="tab"/g) ?? []).length, 2);
+  assert.match(html, /<button[^>]*data-state="active"[^>]*>Credential pool<\/button>/);
+  assert.match(html, /<button[^>]*aria-selected="true"[^>]*>Credential pool<\/button>/);
+  assert.match(html, /<button[^>]*data-state="inactive"[^>]*>API key<\/button>/);
+  assert.match(html, /<button[^>]*aria-selected="false"[^>]*>API key<\/button>/);
+});
+
+test("Tooltip renders only its trigger during server rendering", () => {
+  const html = renderToStaticMarkup(
+    <Tooltip content="Copy CLI command">
+      <button type="button">Copy</button>
+    </Tooltip>
+  );
+  const portalHtml = renderToStaticMarkup(
+    <TooltipPortal>Copy CLI command</TooltipPortal>
+  );
+
+  assert.match(html, /data-ui-tooltip-trigger/);
+  assert.match(html, /<button type="button">Copy<\/button>/);
+  assert.doesNotMatch(html, /role="tooltip"/);
+  assert.equal(portalHtml, "");
+});
+
+test("PopoverPortal renders outside the server tree", () => {
+  const html = renderToStaticMarkup(
+    <PopoverPortal>
+      <div role="listbox">Options</div>
+    </PopoverPortal>
+  );
+
+  assert.equal(html, "");
 });
 
 test("form primitives preserve native semantics, state, and caller styling", () => {

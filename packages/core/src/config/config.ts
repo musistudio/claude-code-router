@@ -18,6 +18,7 @@ import type {
   BotGatewaySavedConfig,
   ClaudeCodeProfileConfig,
   CodexProfileConfig,
+  ContextArchiveConfig,
   GatewayAgentConfig,
   GatewayMcpServerConfig,
   GatewayMcpServerTransport,
@@ -77,11 +78,12 @@ type LoadedBotGatewayConfig = Partial<Omit<BotGatewayRuntimeConfig, "handoff">> 
   handoff?: Partial<BotGatewayRuntimeConfig["handoff"]>;
 };
 
-type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway" | "gateway" | "mediaTools" | "observability" | "profile" | "proxy" | "toolHub">> & {
+type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway" | "contextArchive" | "gateway" | "mediaTools" | "observability" | "profile" | "proxy" | "toolHub">> & {
   Router?: Partial<RouterConfig>;
   agent?: Partial<GatewayAgentConfig>;
   botConfigs?: BotGatewaySavedConfig[];
   botGateway?: LoadedBotGatewayConfig;
+  contextArchive?: Partial<ContextArchiveConfig>;
   gateway?: Partial<AppConfig["gateway"]>;
   mediaTools?: Partial<MediaToolsConfig>;
   observability?: Partial<ObservabilityConfig>;
@@ -256,6 +258,17 @@ export async function loadAppConfig(): Promise<AppConfig> {
       },
       botConfigs: picked.botConfigs ?? DEFAULT_CONFIG.botConfigs,
       botGateway: completeBotGatewayConfig(picked.botGateway),
+      contextArchive: {
+        enabled: picked.contextArchive?.enabled ?? DEFAULT_CONFIG.contextArchive.enabled,
+        maxBytes: picked.contextArchive?.maxBytes ?? DEFAULT_CONFIG.contextArchive.maxBytes,
+        maxSnapshotBytes: picked.contextArchive?.maxSnapshotBytes ?? DEFAULT_CONFIG.contextArchive.maxSnapshotBytes,
+        maxSnapshots: picked.contextArchive?.maxSnapshots ?? DEFAULT_CONFIG.contextArchive.maxSnapshots,
+        mcpEnabled: picked.contextArchive?.mcpEnabled ?? DEFAULT_CONFIG.contextArchive.mcpEnabled,
+        replayTimeoutMs: picked.contextArchive?.replayTimeoutMs ?? DEFAULT_CONFIG.contextArchive.replayTimeoutMs,
+        retentionDays: picked.contextArchive?.retentionDays ?? DEFAULT_CONFIG.contextArchive.retentionDays,
+        storagePath: picked.contextArchive?.storagePath ?? DEFAULT_CONFIG.contextArchive.storagePath,
+        toolName: picked.contextArchive?.toolName ?? DEFAULT_CONFIG.contextArchive.toolName
+      },
       gateway: {
         ...DEFAULT_CONFIG.gateway,
         ...gatewayConfig,
@@ -698,6 +711,10 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   if (botConfigs) {
     config.botConfigs = botConfigs;
   }
+  const contextArchive = parseContextArchive((value as Record<string, unknown>).contextArchive ?? (value as Record<string, unknown>).context_archive);
+  if (contextArchive) {
+    config.contextArchive = contextArchive;
+  }
   if (typeof value.autoStart === "boolean") {
     config.autoStart = value.autoStart;
   }
@@ -788,6 +805,51 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   }
 
   return config;
+}
+
+function parseContextArchive(value: unknown): Partial<ContextArchiveConfig> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const contextArchive: Partial<ContextArchiveConfig> = {};
+  if (typeof value.enabled === "boolean") {
+    contextArchive.enabled = value.enabled;
+  }
+  const mcpEnabled = value.mcpEnabled ?? value.mcp_enabled;
+  if (typeof mcpEnabled === "boolean") {
+    contextArchive.mcpEnabled = mcpEnabled;
+  }
+  const maxBytes = readNumber(value.maxBytes ?? value.max_bytes);
+  if (maxBytes !== undefined) {
+    contextArchive.maxBytes = clampNumber(maxBytes, 1024 * 1024, 64 * 1024 * 1024 * 1024);
+  }
+  const maxSnapshotBytes = readNumber(value.maxSnapshotBytes ?? value.max_snapshot_bytes);
+  if (maxSnapshotBytes !== undefined) {
+    contextArchive.maxSnapshotBytes = clampNumber(maxSnapshotBytes, 64 * 1024, 1024 * 1024 * 1024);
+  }
+  const maxSnapshots = readNumber(value.maxSnapshots ?? value.max_snapshots);
+  if (maxSnapshots !== undefined) {
+    contextArchive.maxSnapshots = clampNumber(maxSnapshots, 1, 100000);
+  }
+  const replayTimeoutMs = readNumber(value.replayTimeoutMs ?? value.replay_timeout_ms);
+  if (replayTimeoutMs !== undefined) {
+    contextArchive.replayTimeoutMs = clampNumber(replayTimeoutMs, 1000, 600000);
+  }
+  const retentionDays = readNumber(value.retentionDays ?? value.retention_days);
+  if (retentionDays !== undefined) {
+    contextArchive.retentionDays = clampNumber(retentionDays, 1, 3650);
+  }
+  const storagePath = readString(value.storagePath ?? value.storage_path);
+  if (storagePath !== undefined) {
+    contextArchive.storagePath = storagePath;
+  }
+  const toolName = readString(value.toolName ?? value.tool_name);
+  if (toolName !== undefined) {
+    contextArchive.toolName = toolName;
+  }
+
+  return Object.keys(contextArchive).length ? contextArchive : undefined;
 }
 
 function removeVirtualModelToolLoopLimits(value: unknown): unknown {
@@ -1226,6 +1288,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         extraHeaders: item.extraHeaders,
         icon: readString(item.icon),
         id: readString(item.id),
+        enabled: item.enabled === false ? false : undefined,
         modelDescriptions,
         modelDisplayNames,
         modelMetadata,
@@ -2506,6 +2569,10 @@ function parseProfile(value: unknown): LoadedProfileConfig | undefined {
     if (typeof claudeCode.enabled === "boolean") {
       profile.claudeCode.enabled = claudeCode.enabled;
     }
+    const managedCompact = readManagedCompact(claudeCode);
+    if (managedCompact !== undefined) {
+      profile.claudeCode.managedCompact = managedCompact;
+    }
     const settingsFile = readString(claudeCode.settingsFile) || readString(claudeCode.configFile) || readString(claudeCode.path);
     if (settingsFile) {
       profile.claudeCode.settingsFile = settingsFile;
@@ -2525,6 +2592,10 @@ function parseProfile(value: unknown): LoadedProfileConfig | undefined {
     profile.codex = {};
     if (typeof codex.enabled === "boolean") {
       profile.codex.enabled = codex.enabled;
+    }
+    const managedCompact = readManagedCompact(codex);
+    if (managedCompact !== undefined) {
+      profile.codex.managedCompact = managedCompact;
     }
     if (typeof codex.cliMiddleware === "boolean") {
       profile.codex.cliMiddleware = codex.cliMiddleware;
@@ -2628,6 +2699,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         : "";
       const parsedBotGateway = parseBotGateway(item.botGateway ?? item.bot_gateway ?? item.bot);
       const botGateway = surface !== "cli" && parsedBotGateway ? completeBotGatewayConfig(parsedBotGateway) : undefined;
+      const managedCompact = readManagedCompact(item);
 
       if (agent === "claude-code") {
         const appPath = readProfileAppPath(item, agent);
@@ -2639,6 +2711,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
           enabled,
           env: claudeCodeProfileEnv(env),
           id,
+          ...(managedCompact !== undefined ? { managedCompact } : {}),
           model,
           name,
           scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
@@ -2676,6 +2749,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         enabled,
         env: codexCompatibleProfileEnv(env),
         id,
+        ...(managedCompact !== undefined ? { managedCompact } : {}),
         model,
         name,
         providerId: readString(item.providerId) || readString(item.provider) || "claude-code-router",
@@ -2735,6 +2809,16 @@ function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
   return undefined;
 }
 
+function readManagedCompact(value: Record<string, unknown>): boolean | undefined {
+  const candidate = value.managedCompact ??
+    value.managed_compact ??
+    value.ccrManagedCompact ??
+    value.ccr_managed_compact ??
+    value.contextArchiveCompact ??
+    value.context_archive_compact;
+  return typeof candidate === "boolean" ? candidate : undefined;
+}
+
 function defaultProfileAgentName(agent: ProfileConfig["agent"]): string {
   if (agent === "claude-code") {
     return "Claude Code";
@@ -2776,6 +2860,7 @@ function profileFromClaudeCodeConfig(config: ClaudeCodeProfileConfig): ProfileCo
     enabled: config.enabled,
     env: claudeCodeProfileEnv(),
     id: "default-claude-code",
+    managedCompact: config.managedCompact,
     model: config.model,
     name: "Claude Code",
     scope: "global",
@@ -2808,6 +2893,7 @@ function profileFromCodexConfig(config: CodexProfileConfig): ProfileConfig {
     enabled: config.enabled,
     env: {},
     id: "default-codex",
+    managedCompact: config.managedCompact,
     model: config.model,
     name: "Codex",
     providerId: config.providerId,

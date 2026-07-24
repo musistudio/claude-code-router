@@ -78,7 +78,7 @@ CCR supports OpenAI Chat / Responses, Anthropic Messages, Gemini Generate Conten
 1. **[Download Claude Code Router](https://github.com/musistudio/claude-code-router/releases)** for macOS, Windows, or Linux, then launch the app.
 2. Open **Providers → Add Provider**. Choose a built-in preset or a custom endpoint, enter the API key, select the protocol and models, then save.
 3. Open **Server** and click **Start**. The local model gateway listens on `http://127.0.0.1:3456` by default.
-4. Open **Agent Config**, choose Claude Code, Codex, Grok CLI, or ZCode, select a model, and apply the profile.
+4. Open **Agent Profiles**, choose Claude Code, Codex, Grok CLI, or ZCode, select a model, and apply the profile.
 5. Start using your agent. Open **Logs** to confirm the resolved provider, model, status, tokens, latency, and errors.
 
 Your agent is now connected to CCR. To add conditions, retries, request rewrites, or fallback models, open **Routing**.
@@ -104,7 +104,7 @@ npm install -g @musistudio/claude-code-router
 ccr ui
 ```
 
-Open `http://127.0.0.1:3458`, then follow the same **Providers → Server → Agent Config** flow above. The model gateway remains at `http://127.0.0.1:3456`. See the [CLI reference](https://ccrdesk.top/en/guides/cli/) for service modes, authentication, and profile commands.
+Open `http://127.0.0.1:3458`, then follow the same **Providers → Server → Agent Profiles** flow above. The model gateway remains at `http://127.0.0.1:3456`. See the [CLI reference](https://ccrdesk.top/en/guides/cli/) for service modes, authentication, and profile commands.
 
 ### Docker
 

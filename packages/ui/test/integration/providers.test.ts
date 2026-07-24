@@ -6,18 +6,21 @@ import { newApiKeyUsageAccountConfig } from "@ccr/core/providers/new-api.ts";
 import { geminiProviderPreset } from "@ccr/core/providers/presets/gemini/index.ts";
 import { moonshotGlobalProviderPreset } from "@ccr/core/providers/presets/moonshot/index.ts";
 import { qiniuAiProviderPreset } from "@ccr/core/providers/presets/qiniu-ai/index.ts";
-import { AddProviderDialog, ProvidersView } from "@ccr/ui/pages/home/components/providers.tsx";
+import { AddProviderDialog, AddProviderForm, ProvidersView, uniqueProviderProbeProtocolRows } from "@ccr/ui/pages/home/components/providers.tsx";
 import {
   applyProviderProbeResult,
   createProviderConfigFromDeepLink,
+  createProviderCredentialDraft,
   createProviderDraft,
   createProviderDraftFromProvider,
   createProviderInstallLinkFromDraft,
+  customProviderPresetId,
   FieldGroup,
   localAgentProviderIconUrls,
   providerCapabilitiesForProtocols,
   providerCapabilitiesForSave,
   providerCapabilityBaseUrlForProtocol,
+  providerConnectivityApiKeyFromDraft,
   providerDisplayIcon,
   providerAccountConnectorsTextWithNewApiUserBalanceTemplate,
   providerGlobalBaseUrlForProbe,
@@ -202,7 +205,7 @@ test("provider draft restores manual protocol detection mode", () => {
   assert.deepEqual(draft.selectedProtocols, ["openai_chat_completions"]);
 });
 
-test("manual provider protocol mode renders editable protocol choices without probe", () => {
+test("edit provider dialog keeps advanced settings collapsed by default", () => {
   const draft = {
     ...createProviderDraft([]),
     baseUrl: "https://local.example/v1",
@@ -225,14 +228,420 @@ test("manual provider protocol mode renders editable protocol choices without pr
     })
   );
 
-  assert.match(html, /Auto detect protocols/);
-  assert.match(html, /Auto detect protocols info/);
-  assert.ok(html.indexOf("Advanced settings") < html.indexOf("Auto detect protocols"));
-  assert.ok(html.indexOf("Auto detect protocols") < html.indexOf("Credential pool"));
+  assert.ok(html.indexOf("Credential pool") < html.indexOf("Advanced settings"));
+  assert.match(html, /lucide-chevron-right[\s\S]*?Advanced settings/);
+  assert.match(html, /<button[^>]*aria-expanded="false"[^>]*>[\s\S]*?lucide-chevron-right[\s\S]*?Advanced settings/);
   assert.doesNotMatch(html, /Detection mode/);
-  assert.match(html, /OpenAI Chat/);
-  assert.match(html, /Selected/);
+  assert.doesNotMatch(html, /Auto detect protocols/);
+  assert.doesNotMatch(html, /Auto detect protocols info/);
+  assert.doesNotMatch(html, /OpenAI Chat/);
+  assert.doesNotMatch(html, /Selected/);
   assert.doesNotMatch(html, /No protocol detection yet/);
+});
+
+test("edit provider dialog hides API endpoint input for preset providers", () => {
+  setProviderPresets([geminiProviderPreset]);
+  const endpoint = geminiProviderPreset.endpoints[0]?.baseUrl ?? "";
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-test",
+    baseUrl: endpoint,
+    modelsText: "gemini-1.5-pro",
+    name: "Google Gemini",
+    presetId: geminiProviderPreset.id
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderDialog, {
+      canSubmit: true,
+      draft,
+      error: "",
+      mode: "edit",
+      onChange: () => undefined,
+      onClose: () => undefined,
+      onSubmit: async () => true,
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /Google Gemini/);
+  assert.ok(endpoint);
+  assert.equal((html.match(new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? []).length, 2);
+  assert.doesNotMatch(html, /<label[^>]*>API endpoint<\/label>/);
+});
+
+test("edit provider dialog hides the setup progress overview", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-test",
+    baseUrl: "https://api.example/v1",
+    modelsText: "model-a\nmodel-b",
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderDialog, {
+      canSubmit: true,
+      draft,
+      error: "",
+      mode: "edit",
+      onChange: () => undefined,
+      onClose: () => undefined,
+      onSubmit: async () => true,
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /Edit Provider/);
+  assert.match(html, /Choose provider/);
+  assert.match(html, /Add credentials/);
+  assert.match(html, /Pick models/);
+  assert.match(html, /Verify connection/);
+  assert.match(html, />Save</);
+  assert.doesNotMatch(html, /aria-current="step"/);
+  assert.doesNotMatch(html, />Done</);
+  assert.doesNotMatch(html, />In progress</);
+  assert.doesNotMatch(html, />Pending</);
+});
+
+test("AddProviderDialog progressively reveals provider setup steps", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-test",
+    baseUrl: "https://api.example/v1",
+    modelsText: "test-model",
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderDialog, {
+      canSubmit: true,
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => undefined,
+      onCheck: async () => ({ failed: [], passed: [], results: [] }),
+      onClose: () => undefined,
+      onSubmit: async () => true,
+      probe: {
+        capabilities: [],
+        detectedProtocol: "openai_chat_completions" as const,
+        models: [],
+        normalizedBaseUrl: draft.baseUrl,
+        protocols: [{
+          endpoint: draft.baseUrl,
+          protocol: "openai_chat_completions" as const,
+          status: 200,
+          supported: true
+        }]
+      },
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /Choose provider/);
+  assert.match(html, /role="progressbar"/);
+  assert.match(html, /h-0\.5 bg-border/);
+  assert.match(html, /aria-valuenow="1"/);
+  assert.match(html, /items-center justify-center/);
+  assert.match(html, /sm:h-\[min\(760px,calc\(100dvh-3rem\)\)\]/);
+  assert.match(html, /sm:w-\[min\(1040px,calc\(100vw-3rem\)\)\]/);
+  assert.doesNotMatch(html, /max-w-\[760px\]/);
+  assert.doesNotMatch(html, /max-w-\[1040px\]/);
+  assert.match(html, />1 \/ 4</);
+  assert.match(html, />Next</);
+  assert.doesNotMatch(html, />Cancel<\/button>/);
+  assert.doesNotMatch(html, /Add credentials/);
+  assert.doesNotMatch(html, /Select models/);
+  assert.doesNotMatch(html, /Verify connection/);
+  assert.doesNotMatch(html, /type="password"/);
+  assert.doesNotMatch(html, /placeholder="Model name"/);
+  assert.doesNotMatch(html, /Protocols detected/);
+  assert.doesNotMatch(html, /Not verified yet/);
+});
+
+test("AddProviderDialog keeps Next available while provider probing runs", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    baseUrl: "https://api.example/v1",
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderDialog, {
+      canSubmit: false,
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => undefined,
+      onClose: () => undefined,
+      onSubmit: async () => true,
+      probeLoading: true,
+      providers: []
+    })
+  );
+  const nextButton = html.match(/<button[^>]*>Next<svg/)?.[0] ?? "";
+
+  assert.ok(nextButton);
+  assert.doesNotMatch(nextButton, /\sdisabled(?:=|\s|>)/);
+});
+
+test("AddProviderForm renders API key visibility toggle", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-test",
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      activeStep: "credentials",
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => undefined,
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /type="password"/);
+  assert.match(html, /aria-label="Show API key"/);
+  assert.match(html, /aria-pressed="false"/);
+});
+
+test("AddProviderForm shows preset endpoint under the selected provider name", () => {
+  setProviderPresets([geminiProviderPreset]);
+  const endpoint = geminiProviderPreset.endpoints[0]?.baseUrl ?? "";
+  const draft = {
+    ...createProviderDraft([]),
+    baseUrl: endpoint,
+    name: "Google Gemini",
+    presetId: geminiProviderPreset.id
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      activeStep: "provider",
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => undefined,
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /Google Gemini/);
+  assert.ok(endpoint);
+  assert.equal((html.match(new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? []).length, 2);
+});
+
+test("AddProviderForm lets users choose credential pool in credentials step", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    credentialMode: "pool" as const,
+    credentials: [{
+      ...createProviderCredentialDraft(0),
+      apiKey: "sk-pool",
+      name: "Primary pool key"
+    }],
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      activeStep: "credentials",
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => undefined,
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /role="tablist"/);
+  assert.match(html, /API key/);
+  assert.match(html, /Credential pool/);
+  assert.match(html, /Pool keys/);
+  assert.match(html, /Primary pool key/);
+  assert.match(html, /aria-selected="true"[^>]*>[\s\S]*Credential pool/);
+  assert.match(html, /data-state="active"[^>]*>[\s\S]*Credential pool/);
+  assert.match(html, /aria-selected="true" class="[^"]*border-primary\/65 bg-primary\/10 text-primary/);
+  assert.match(html, /aria-selected="true" class="[^"]*flex-col[^"]*items-start[^"]*whitespace-normal/);
+  assert.doesNotMatch(html, /bottom-2 left-0 top-2 w-0\.5/);
+  assert.doesNotMatch(html, /Show credential settings/);
+});
+
+test("AddProviderForm stacks connection statuses with protocol detection guidance", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-test",
+    baseUrl: "https://api.example/v1",
+    modelsText: "test-model",
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      activeStep: "verify",
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => undefined,
+      onCheck: async () => undefined,
+      probe: {
+        capabilities: [],
+        detectedProtocol: "openai_chat_completions" as const,
+        models: ["test-model"],
+        normalizedBaseUrl: draft.baseUrl,
+        protocols: [{
+          endpoint: draft.baseUrl,
+          protocol: "openai_chat_completions" as const,
+          status: 200,
+          supported: true
+        }]
+      },
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /Protocols detected/);
+  assert.match(html, /Compatible API protocols were found automatically\. You can turn off auto detection in Advanced settings and select protocols manually\./);
+  assert.match(html, /Not verified yet/);
+  assert.match(html, /Optional\. Check Connection sends a real model request and may consume provider credits\./);
+  assert.doesNotMatch(html, /Run Check Connection before relying on this provider\./);
+  assert.match(html, /Not verified yet[\s\S]*<button[^>]*>[\s\S]*Check Connection/);
+  assert.ok(html.indexOf("Protocols detected") < html.indexOf("Not verified yet"));
+  assert.match(html, /grid grid-cols-1 gap-2/);
+  assert.doesNotMatch(html, /grid grid-cols-1 gap-2 sm:grid-cols-2/);
+  assert.doesNotMatch(html, /Protocol detection checks compatibility; connection verification confirms a real model request succeeds\./);
+});
+
+test("AddProviderForm renders a two-column model picker", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    modelDisplayNames: {
+      "model-a": "Model A"
+    },
+    modelsText: "custom-model",
+    name: "Example",
+    presetId: customProviderPresetId,
+    selectedModels: ["model-a"]
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      activeStep: "models",
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => undefined,
+      probe: {
+        capabilities: [],
+        detectedProtocol: "openai_chat_completions" as const,
+        models: ["model-a", "model-b"],
+        normalizedBaseUrl: "https://api.example/v1",
+        protocols: []
+      },
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /Pick models/);
+  assert.match(html, /Provider models/);
+  assert.match(html, /Added models/);
+  assert.match(html, /Search provider models/);
+  assert.match(html, /Search added models/);
+  assert.match(html, /Custom model/);
+  assert.match(html, /Model A/);
+  assert.match(html, /model-b/);
+  assert.match(html, /custom-model/);
+  assert.match(html, /overflow-y-auto/);
+  assert.doesNotMatch(html, /overscroll-contain/);
+  assert.doesNotMatch(html, /placeholder="Custom model"/);
+  assert.doesNotMatch(html, /Select models/);
+});
+
+test("AddProviderForm keeps edit model lists scrollable without blocking dialog scroll chaining", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-test",
+    baseUrl: "https://api.example/v1",
+    modelsText: "model-a\nmodel-b",
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      draft,
+      error: "",
+      mode: "edit",
+      onChange: () => undefined,
+      probe: {
+        capabilities: [],
+        detectedProtocol: "openai_chat_completions" as const,
+        models: ["model-a", "model-b", "model-c"],
+        normalizedBaseUrl: "https://api.example/v1",
+        protocols: []
+      },
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /Pick models/);
+  assert.match(html, /Provider models/);
+  assert.match(html, /Added models/);
+  assert.match(html, /overflow-y-auto/);
+  assert.match(html, /lg:h-\[min\(500px,calc\(100dvh-300px\)\)\]/);
+  assert.doesNotMatch(html, /overscroll-contain/);
+});
+
+test("AddProviderForm shows skeleton rows while provider models load", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-test",
+    baseUrl: "https://api.example/v1",
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      activeStep: "models",
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => undefined,
+      probeLoading: true,
+      providers: []
+    })
+  );
+
+  assert.match(html, /aria-busy="true"/);
+  assert.match(html, /Loading provider models/);
+  assert.match(html, /provider-skeleton-shimmer/);
+  assert.doesNotMatch(html, /Custom model/);
+  assert.doesNotMatch(html, /No models added/);
+  assert.doesNotMatch(html, /No provider models/);
+});
+
+test("provider connectivity API key follows selected credential mode", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-single",
+    credentials: [{
+      ...createProviderCredentialDraft(0),
+      apiKey: "sk-pool",
+      name: "Pool key"
+    }]
+  };
+
+  assert.equal(providerConnectivityApiKeyFromDraft(draft), "sk-single");
+  assert.equal(providerConnectivityApiKeyFromDraft({ ...draft, credentialMode: "pool" }), "sk-pool");
 });
 
 test("provider probe keeps catalog model defaults separate from user overrides", () => {
@@ -264,60 +673,30 @@ test("provider probe keeps catalog model defaults separate from user overrides",
 });
 
 test("provider protocol details keep failed endpoint rows unavailable", () => {
-  const draft = {
-    ...createProviderDraft([]),
-    baseUrl: "https://api.example.com/v1",
-    name: "Example",
-    protocol: "openai_chat_completions" as const,
-    selectedProtocols: ["openai_chat_completions" as const]
-  };
-  const html = renderToStaticMarkup(
-    React.createElement(AddProviderDialog, {
-      canSubmit: true,
-      draft,
-      error: "",
-      mode: "edit",
-      onChange: () => undefined,
-      onClose: () => undefined,
-      onSubmit: async () => true,
-      probe: {
-        capabilities: [
-          {
-            baseUrl: "https://api.example.com/v1",
-            endpoint: "https://api.example.com/v1/chat/completions",
-            source: "detected" as const,
-            type: "openai_chat_completions" as const
-          }
-        ],
-        detectedProtocol: "openai_chat_completions" as const,
-        models: [],
-        normalizedBaseUrl: "https://api.example.com/v1",
-        protocols: [
-          {
-            baseUrl: "https://api.example.com",
-            endpoint: "https://api.example.com/chat/completions",
-            message: "HTTP 404",
-            protocol: "openai_chat_completions" as const,
-            status: 404,
-            supported: false
-          },
-          {
-            baseUrl: "https://api.example.com/v1",
-            endpoint: "https://api.example.com/v1/chat/completions",
-            message: "HTTP 400: model is required",
-            protocol: "openai_chat_completions" as const,
-            status: 400,
-            supported: true
-          }
-        ]
-      },
-      probeLoading: false,
-      providers: []
-    })
-  );
+  const rows = uniqueProviderProbeProtocolRows([
+    {
+      baseUrl: "https://api.example.com",
+      endpoint: "https://api.example.com/chat/completions",
+      message: "HTTP 404",
+      protocol: "openai_chat_completions" as const,
+      status: 404,
+      supported: false
+    },
+    {
+      baseUrl: "https://api.example.com/v1",
+      endpoint: "https://api.example.com/v1/chat/completions",
+      message: "HTTP 400: model is required",
+      protocol: "openai_chat_completions" as const,
+      status: 400,
+      supported: true
+    }
+  ]);
 
-  assert.match(html, /Unavailable/);
-  assert.match(html, /Available/);
+  assert.deepEqual(rows.map((item) => item.endpoint), [
+    "https://api.example.com/chat/completions",
+    "https://api.example.com/v1/chat/completions"
+  ]);
+  assert.deepEqual(rows.map((item) => item.supported), [false, true]);
 });
 
 test("provider probe result applies detected New API key quota account connector", () => {
@@ -656,12 +1035,57 @@ test("ProvidersView renders configured provider icons in the list", () => {
           }
         }
       ],
-      removeProvider: () => undefined
+      removeProvider: () => undefined,
+      setProviderEnabled: () => undefined
     })
   );
 
   assert.match(html, /Custom Provider/);
   assert.match(html, /src="https:\/\/custom\.example\/icon\.png"/);
+});
+
+test("ProvidersView puts provider enabled state in actions and hides disabled models", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(ProvidersView, {
+      accountSnapshots: [],
+      addProvider: () => undefined,
+      editProvider: () => undefined,
+      notify: () => undefined,
+      providers: [
+        {
+          index: 0,
+          provider: {
+            api_base_url: "https://ready.example/v1",
+            api_key: "sk-ready",
+            models: ["ready-model"],
+            name: "Ready Provider",
+            type: "openai_chat_completions"
+          }
+        },
+        {
+          index: 1,
+          provider: {
+            api_base_url: "https://empty.example/v1",
+            api_key: "sk-empty",
+            enabled: false,
+            models: ["disabled-model"],
+            name: "Disabled Provider",
+            type: "openai_chat_completions"
+          }
+        }
+      ],
+      removeProvider: () => undefined,
+      setProviderEnabled: () => undefined
+    })
+  );
+
+  assert.doesNotMatch(html, /Status/);
+  assert.match(html, /Endpoint/);
+  assert.match(html, /Account Usage/);
+  assert.doesNotMatch(html, /Usable/);
+  assert.match(html, /Disabled Provider/);
+  assert.match(html, /Enable provider Disabled Provider/);
+  assert.doesNotMatch(html, /disabled-model/);
 });
 
 test("New API user balance template adds configurable user self connector", () => {

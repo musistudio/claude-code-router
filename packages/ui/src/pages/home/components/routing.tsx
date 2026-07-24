@@ -10,6 +10,7 @@ import {
   RouteTargetControl, routingRuleRowMatchesQuery, Search, SelectControl, Toggle, translateOptions,
   Textarea, Trash2, uniqueStrings, useAppText, useContext, useMemo, useRef, useState, X
 } from "../shared/index";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   ROUTER_FALLBACK_MAX_RETRY_COUNT,
   ROUTER_SCRIPT_API_VERSION,
@@ -134,9 +135,13 @@ export function RoutingView({
                         {row.builtInAgent ? null : rowTarget}
                       </div>
                       <div className="flex min-w-0 items-center gap-2">
-                        <span
+                        <Tooltip
                           aria-label={toggleDisabledReason}
-                          className="group relative inline-flex rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                          className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                          content={toggleDisabledReason ?? ""}
+                          contentClassName="w-[240px] px-2.5 py-2 text-left font-medium leading-4"
+                          disabled={!toggleDisabledReason}
+                          side="left"
                           tabIndex={toggleDisabledReason ? 0 : undefined}
                         >
                           <Toggle
@@ -150,12 +155,7 @@ export function RoutingView({
                               }
                             }}
                           />
-                          {toggleDisabledReason ? (
-                            <span className="pointer-events-none absolute right-full top-1/2 z-[80] mr-2 hidden w-[240px] -translate-y-1/2 rounded-md border border-border bg-popover px-2.5 py-2 text-left text-[11px] font-medium leading-4 text-popover-foreground shadow-card group-hover:block group-focus:block group-focus-within:block">
-                              {toggleDisabledReason}
-                            </span>
-                          ) : null}
-                        </span>
+                        </Tooltip>
                       </div>
                       <div className="flex items-center justify-end gap-1">
                         {!row.builtInAgent ? (
@@ -208,10 +208,11 @@ function BuiltInRouteInfoIcon({ agent }: { agent: RouterBuiltInAgentRuleId }) {
   const docsUrl = builtInRouteDocsUrl(agent, copy === appCopy.zh ? "zh" : "en");
 
   return (
-    <span aria-label={description} className="group relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/30" tabIndex={0}>
-      <Info className="h-3.5 w-3.5" aria-hidden="true" />
-      <span className="absolute left-full top-1/2 z-[80] hidden w-[232px] -translate-y-1/2 pl-2 group-hover:block group-focus:block group-focus-within:block">
-        <span className="block rounded-md border border-border bg-popover px-2.5 py-2 text-left text-[11px] font-medium leading-4 text-popover-foreground shadow-card">
+    <Tooltip
+      aria-label={description}
+      className="h-5 w-5 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+      content={(
+        <>
           <span>{description}</span>
           <a
             className="ml-1 inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
@@ -226,9 +227,15 @@ function BuiltInRouteInfoIcon({ agent }: { agent: RouterBuiltInAgentRuleId }) {
             {t("Docs")}
             <ExternalLink className="h-3 w-3" />
           </a>
-        </span>
-      </span>
-    </span>
+        </>
+      )}
+      contentClassName="w-[232px] px-2.5 py-2 text-left font-medium leading-4"
+      interactive
+      side="right"
+      tabIndex={0}
+    >
+      <Info className="h-3.5 w-3.5" aria-hidden="true" />
+    </Tooltip>
   );
 }
 

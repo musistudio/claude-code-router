@@ -91,6 +91,17 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
       streamReplies: true,
       tenantId: "ccr"
     },
+    contextArchive: {
+      enabled: false,
+      maxBytes: 512 * 1024 * 1024,
+      maxSnapshotBytes: 32 * 1024 * 1024,
+      maxSnapshots: 200,
+      mcpEnabled: true,
+      replayTimeoutMs: 60000,
+      retentionDays: 30,
+      storagePath: "",
+      toolName: "ccr_history_ask"
+    },
     gateway: {
       coreHost,
       corePort: 3457,
@@ -120,6 +131,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
     profile: {
       claudeCode: {
         enabled: true,
+        managedCompact: false,
         model: "",
         settingsFile: "~/.claude/settings.json",
         smallFastModel: ""
@@ -131,6 +143,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
         configFormat: "separate_profile_files",
         configFile: "~/.codex/config.toml",
         enabled: true,
+        managedCompact: false,
         model: "",
         providerId: "claude-code-router",
         providerName: "Claude Code Router",
@@ -143,6 +156,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
           enabled: true,
           env: { ...CLAUDE_CODE_DEFAULT_ENV },
           id: "default-claude-code",
+          managedCompact: false,
           model: "",
           name: "Claude Code",
           scope: "global",
@@ -160,6 +174,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
           enabled: true,
           env: {},
           id: "default-codex",
+          managedCompact: false,
           model: "",
           name: "Codex",
           providerId: "claude-code-router",

@@ -41,7 +41,8 @@ class GatewayService {
     }),
     handleRawTraceSync: (request, response) => this.rawTraceSynchronizer.handle(request, response),
     handleBillingUsageSync: (request, response) => this.billingSynchronizer.handle(request, response),
-    proxyRequest: (request, response, path, apiKey) => this.proxyRequest(request, response, path, apiKey)
+    proxyRequest: (request, response, path, apiKey) => this.proxyRequest(request, response, path, apiKey),
+    replayContextArchive: (input) => this.requestPipeline.replayContextArchive(input)
   });
 
   private readonly requestPipeline = new GatewayRequestPipeline({

@@ -60,7 +60,7 @@ In CCR, LINE's auth type is labeled **Bot Token**, but you don't paste a Telegra
 4. Paste the token into **Channel Access Token**.
 5. Paste the secret into **Channel Secret**.
 6. Save the bot.
-7. Open **Agent Config** and edit the Agent Config you want to attach it to.
+7. Open **Agent Profiles** and edit the Agent Profiles you want to attach it to.
 8. Turn on **Bot** and select the bot.
 9. Optionally enable **Forward agent messages** or **Handoff**.
 10. Reopen the agent from CCR.

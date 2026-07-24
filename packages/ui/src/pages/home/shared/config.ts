@@ -402,6 +402,7 @@ export function normalizeConfig(config: AppConfig): AppConfig {
     },
     botConfigs: normalizeBotGatewaySavedConfigs(config.botConfigs),
     botGateway: normalizeBotGatewayRuntimeConfig(config.botGateway) ?? fallbackConfig.botGateway,
+    contextArchive: normalizeContextArchiveConfig(config.contextArchive),
     gateway: {
       ...fallbackConfig.gateway,
       ...(config.gateway || {}),
@@ -416,13 +417,15 @@ export function normalizeConfig(config: AppConfig): AppConfig {
       ...profileConfig,
       claudeCode: {
         ...fallbackConfig.profile.claudeCode,
-        ...(profileConfig.claudeCode || {})
+        ...(profileConfig.claudeCode || {}),
+        managedCompact: Boolean(profileConfig.claudeCode?.managedCompact)
       },
       codex: {
         ...fallbackConfig.profile.codex,
         ...(profileConfig.codex || {}),
         cliMiddleware: true,
         configFormat: normalizeCodexConfigFormat(profileConfig.codex?.configFormat),
+        managedCompact: Boolean(profileConfig.codex?.managedCompact),
         showAllSessions: Boolean(profileConfig.codex?.showAllSessions)
       },
       profiles
@@ -440,6 +443,26 @@ export function normalizeConfig(config: AppConfig): AppConfig {
     toolHub: normalizeToolHubConfig(config.toolHub),
     virtualModelProfiles: Array.isArray(config.virtualModelProfiles) ? config.virtualModelProfiles : []
   };
+}
+
+export function normalizeContextArchiveConfig(config: Partial<AppConfig["contextArchive"]> | undefined): AppConfig["contextArchive"] {
+  return {
+    enabled: Boolean(config?.enabled),
+    maxBytes: finiteNumber(config?.maxBytes, fallbackConfig.contextArchive.maxBytes),
+    maxSnapshotBytes: finiteNumber(config?.maxSnapshotBytes, fallbackConfig.contextArchive.maxSnapshotBytes),
+    maxSnapshots: finiteNumber(config?.maxSnapshots, fallbackConfig.contextArchive.maxSnapshots),
+    mcpEnabled: config?.mcpEnabled !== false,
+    replayTimeoutMs: finiteNumber(config?.replayTimeoutMs, fallbackConfig.contextArchive.replayTimeoutMs),
+    retentionDays: finiteNumber(config?.retentionDays, fallbackConfig.contextArchive.retentionDays),
+    storagePath: typeof config?.storagePath === "string" ? config.storagePath.trim() : "",
+    toolName: typeof config?.toolName === "string" && config.toolName.trim()
+      ? config.toolName.trim()
+      : fallbackConfig.contextArchive.toolName
+  };
+}
+
+function finiteNumber(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 export function normalizeObservabilityConfig(config: Partial<AppConfig["observability"]> | undefined): AppConfig["observability"] {

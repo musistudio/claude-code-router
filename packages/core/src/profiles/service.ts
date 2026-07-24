@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readlinkSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, availableGatewayModelIds, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "@ccr/core/contracts/app";
+import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, availableGatewayModelIds, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, isGatewayProviderEnabled, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "@ccr/core/contracts/app";
 import { replacePersistedApiKeys } from "@ccr/core/config/api-key-store";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import {
@@ -22,6 +22,7 @@ import {
 } from "@ccr/core/agents/opencode/profile-config";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { resolveZcodeConfigFile, writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "@ccr/core/agents/zcode/profile-config";
+import { CONTEXT_ARCHIVE_MCP_SERVER_NAME, contextArchiveConfigForProfile, contextArchiveMcpServer } from "@ccr/core/gateway/context-archive";
 import { normalizeRouteSelector } from "@ccr/core/gateway/claude-code-router-plugin";
 import { findModelCatalogEntry, modelCatalogMaxInputTokens, readCatalogCapability, type ModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
 import {
@@ -30,6 +31,7 @@ import {
   bundledToolHubMcpEntryPathCandidates,
   toolHubClaudeCodeMcpConfig,
   toolHubMcpRuntimeConfig,
+  type ClaudeCodeMcpServerConfig,
   type ToolHubMcpRuntimeConfig
 } from "@ccr/core/mcp/toolhub-config";
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
@@ -41,6 +43,8 @@ const managedProviderStart = "# BEGIN CCR managed Codex provider";
 const managedProviderEnd = "# END CCR managed Codex provider";
 const managedToolHubMcpStart = "# BEGIN CCR managed ToolHub MCP";
 const managedToolHubMcpEnd = "# END CCR managed ToolHub MCP";
+const managedContextArchiveMcpStart = "# BEGIN CCR managed Context Archive MCP";
+const managedContextArchiveMcpEnd = "# END CCR managed Context Archive MCP";
 const managedConfiguredModelPrefix = "# CCR configured model = ";
 const originalBackupSuffix = ".ccr-original";
 const originalMissingSuffix = ".ccr-original-missing";
@@ -51,6 +55,13 @@ const privateExecutableMode = 0o700;
 const privateFileMode = 0o600;
 const publicExecutableMode = 0o755;
 let ownedGlobalProfileTakeovers: GlobalProfileTakeoverRecord[] | undefined;
+
+type CodexContextArchiveMcpConfig = {
+  headers: Record<string, string>;
+  requestTimeoutMs: number;
+  startupTimeoutMs: number;
+  url: string;
+};
 
 type GlobalProfileTakeoverRecord = {
   agent: ProfileClientKind;
@@ -377,8 +388,12 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
     const appModelCatalogResult = writeCodexCompatibleAppModelCatalog(CONFIGDIR, { ...profile, model }, config);
     const showAllSessions = profile.agent === "zcode" ? false : Boolean(profile.showAllSessions);
     const toolHubMcpResult = writeCodexToolHubMcpRuntimeConfig(config, token);
+    const contextArchiveMcp = profile.agent === "codex"
+      ? codexContextArchiveMcpConfig(config, profile, token)
+      : undefined;
     const nextConfig = buildCodexConfigToml(source, {
       baseUrl: endpoint,
+      contextArchiveMcp,
       modelCatalogFile,
       configFormat,
       model,
@@ -414,6 +429,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
       modelCatalogFile ? `catalog ${modelCatalogFile}` : "",
       appModelCatalogResult.file ? `app catalog ${appModelCatalogResult.file}` : "",
       toolHubMcpResult.file ? `toolhub runtime ${toolHubMcpResult.file}` : "",
+      contextArchiveMcp ? "context archive MCP" : "",
       separateProfileResult?.file ? `profile ${separateProfileResult.file}` : "",
       middlewareResult?.file ? `middleware ${middlewareResult.file}` : ""
     ].filter(Boolean);
@@ -685,7 +701,7 @@ function claudeCodeToolHubMcpConfigFile(profile: ProfileConfig): string {
 function writeClaudeCodeToolHubMcpConfig(config: AppConfig, profile: ProfileConfig, token: string): { changed: boolean; file?: string } {
   const file = claudeCodeToolHubMcpConfigFile(profile);
   const entryPath = path.join(CONFIGDIR, "bin", TOOL_HUB_MCP_RUNTIME_FILE_NAME);
-  const mcpConfig = toolHubClaudeCodeMcpConfig(config, {
+  const toolHubMcpConfig = toolHubClaudeCodeMcpConfig(config, {
     entryPath,
     resolver: {
       apiKey: token,
@@ -693,6 +709,12 @@ function writeClaudeCodeToolHubMcpConfig(config: AppConfig, profile: ProfileConf
       model: toolHubResolverModel(config)
     }
   });
+  const contextArchiveMcpConfig = claudeCodeContextArchiveMcpConfig(config, profile, token);
+  const mcpServers = {
+    ...(toolHubMcpConfig?.mcpServers ?? {}),
+    ...(contextArchiveMcpConfig ? { [CONTEXT_ARCHIVE_MCP_SERVER_NAME]: contextArchiveMcpConfig } : {})
+  };
+  const mcpConfig = Object.keys(mcpServers).length > 0 ? { mcpServers } : undefined;
   if (!mcpConfig) {
     if (existsSync(file)) {
       rmSync(file, { force: true });
@@ -701,9 +723,50 @@ function writeClaudeCodeToolHubMcpConfig(config: AppConfig, profile: ProfileConf
     return { changed: false };
   }
 
-  const runtimeResult = ensureToolHubMcpRuntimeFile(entryPath);
+  const runtimeResult = toolHubMcpConfig ? ensureToolHubMcpRuntimeFile(entryPath) : { changed: false };
   const writeResult = writeGeneratedFileIfChanged(file, `${JSON.stringify(mcpConfig, null, 2)}\n`, { mode: privateFileMode });
   return { changed: runtimeResult.changed || writeResult.changed, file };
+}
+
+function claudeCodeContextArchiveMcpConfig(config: AppConfig, profile: ProfileConfig, token: string): ClaudeCodeMcpServerConfig | undefined {
+  const contextArchiveConfig = contextArchiveConfigForProfile(config, profile);
+  if (!contextArchiveConfig) {
+    return undefined;
+  }
+  const server = contextArchiveMcpServer(contextArchiveConfig, gatewayEndpoint(config), token);
+  if (!server || !("url" in server)) {
+    return undefined;
+  }
+  const headers = {
+    ...(server.headers ?? {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  };
+  return {
+    ...(Object.keys(headers).length > 0 ? { headers } : {}),
+    type: "http",
+    url: server.url
+  };
+}
+
+function codexContextArchiveMcpConfig(config: AppConfig, profile: ProfileConfig, token: string): CodexContextArchiveMcpConfig | undefined {
+  const contextArchiveConfig = contextArchiveConfigForProfile(config, profile);
+  if (!contextArchiveConfig) {
+    return undefined;
+  }
+  const server = contextArchiveMcpServer(contextArchiveConfig, gatewayEndpoint(config), token);
+  if (!server || !("url" in server)) {
+    return undefined;
+  }
+  const headers = {
+    ...(server.headers ?? {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  };
+  return {
+    headers,
+    requestTimeoutMs: server.requestTimeoutMs,
+    startupTimeoutMs: server.startupTimeoutMs,
+    url: server.url
+  };
 }
 
 function writeCodexToolHubMcpRuntimeConfig(config: AppConfig, token: string): { changed: boolean; file?: string; runtime?: ToolHubMcpRuntimeConfig } {
@@ -768,6 +831,7 @@ function buildCodexConfigToml(
   source: string,
   values: {
     baseUrl: string;
+    contextArchiveMcp?: CodexContextArchiveMcpConfig;
     modelCatalogFile: string;
     configFormat: "legacy" | "separate_profile_files";
     model: string;
@@ -784,10 +848,13 @@ function buildCodexConfigToml(
     managedProviderStart,
     managedProviderEnd,
     managedToolHubMcpStart,
-    managedToolHubMcpEnd
+    managedToolHubMcpEnd,
+    managedContextArchiveMcpStart,
+    managedContextArchiveMcpEnd
   ]);
   content = removeCodexProviderTable(content, values.providerId);
   content = removeCodexMcpServerTable(content, TOOL_HUB_MCP_SERVER_NAME);
+  content = removeCodexMcpServerTable(content, CONTEXT_ARCHIVE_MCP_SERVER_NAME);
   if (values.configFormat === "separate_profile_files") {
     content = removeCodexProfileTable(content, values.providerId);
   }
@@ -824,8 +891,9 @@ function buildCodexConfigToml(
     ""
   ].join("\n");
   const toolHubMcpBlock = buildCodexToolHubMcpBlock(values.toolHubMcp);
+  const contextArchiveMcpBlock = buildCodexContextArchiveMcpBlock(values.contextArchiveMcp);
 
-  return `${rootBlock}${trimLeadingBlankLines(cleanedRoot)}${restSource}${providerBlock}${toolHubMcpBlock}`.replace(/\n{4,}/g, "\n\n\n");
+  return `${rootBlock}${trimLeadingBlankLines(cleanedRoot)}${restSource}${providerBlock}${toolHubMcpBlock}${contextArchiveMcpBlock}`.replace(/\n{4,}/g, "\n\n\n");
 }
 
 function buildCodexToolHubMcpBlock(runtime: ToolHubMcpRuntimeConfig | undefined): string {
@@ -844,6 +912,25 @@ function buildCodexToolHubMcpBlock(runtime: ToolHubMcpRuntimeConfig | undefined)
     `[${serverTable}.env]`,
     ...Object.entries(runtime.env).map(([key, value]) => `${tomlKey(key)} = ${tomlString(value)}`),
     managedToolHubMcpEnd,
+    ""
+  ].join("\n");
+}
+
+function buildCodexContextArchiveMcpBlock(config: CodexContextArchiveMcpConfig | undefined): string {
+  if (!config) {
+    return "";
+  }
+
+  const serverTable = `mcp_servers.${tomlKey(CONTEXT_ARCHIVE_MCP_SERVER_NAME)}`;
+  return [
+    "",
+    managedContextArchiveMcpStart,
+    `[${serverTable}]`,
+    `url = ${tomlString(config.url)}`,
+    ...(Object.keys(config.headers).length > 0 ? [`http_headers = ${tomlInlineStringTable(config.headers)}`] : []),
+    `startup_timeout_sec = ${Math.max(1, Math.ceil(config.startupTimeoutMs / 1000))}`,
+    `tool_timeout_sec = ${Math.max(1, Math.ceil(config.requestTimeoutMs / 1000))}`,
+    managedContextArchiveMcpEnd,
     ""
   ].join("\n");
 }
@@ -1313,6 +1400,7 @@ function kimiProfileModelMetadata(config: AppConfig, selector: string): {
 } {
   const attribution = resolveUsageModelAttribution(config, selector);
   const provider = config.Providers.find((candidate) =>
+    isGatewayProviderEnabled(candidate) &&
     candidate.name.toLowerCase() === attribution.provider?.toLowerCase()
   );
   const model = attribution.model?.trim() || selector;
@@ -1337,6 +1425,7 @@ function kimiProfileModelMetadata(config: AppConfig, selector: string): {
   const reasoning = kimiProfileReasoningMetadata(metadata, catalogEntries[0]);
 
   const logicalProvider = config.Providers.find((candidate) =>
+    isGatewayProviderEnabled(candidate) &&
     selector.toLowerCase().startsWith(`${candidate.name}/`.toLowerCase())
   );
   if (!logicalProvider) {
@@ -2032,7 +2121,11 @@ function removeCodexMcpServerTable(source: string, serverName: string): string {
     `[mcp_servers.${serverName}]`,
     `[mcp_servers.${tomlQuotedKey(serverName)}]`,
     `[mcp_servers.${serverName}.env]`,
-    `[mcp_servers.${tomlQuotedKey(serverName)}.env]`
+    `[mcp_servers.${tomlQuotedKey(serverName)}.env]`,
+    `[mcp_servers.${serverName}.http_headers]`,
+    `[mcp_servers.${tomlQuotedKey(serverName)}.http_headers]`,
+    `[mcp_servers.${serverName}.env_http_headers]`,
+    `[mcp_servers.${tomlQuotedKey(serverName)}.env_http_headers]`
   ]);
   const kept: string[] = [];
   for (let index = 0; index < lines.length; index += 1) {
@@ -2817,7 +2910,8 @@ function gatewayEndpoint(config: AppConfig): string {
 }
 
 function defaultClientModel(config: AppConfig): string {
-  const preferred = config.Providers.find((provider) => provider.name === config.preferredProvider) ?? config.Providers[0];
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const preferred = enabledProviders.find((provider) => provider.name === config.preferredProvider) ?? enabledProviders[0];
   if (preferred?.name && preferred.models[0]) {
     return `${preferred.name}/${preferred.models[0]}`;
   }
@@ -2833,10 +2927,11 @@ function toolHubResolverModel(config: AppConfig): string {
     return model;
   }
   const baseUrl = normalizeUrlForMatch(config.toolHub.llm.baseUrl);
-  const provider = config.Providers.find((candidate) =>
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const provider = enabledProviders.find((candidate) =>
     candidate.models.includes(model) &&
     (!baseUrl || normalizeUrlForMatch(providerBaseUrl(candidate)) === baseUrl)
-  ) ?? config.Providers.find((candidate) => candidate.models.includes(model));
+  ) ?? enabledProviders.find((candidate) => candidate.models.includes(model));
   return provider?.name ? `${provider.name}/${model}` : model;
 }
 
@@ -2960,6 +3055,13 @@ function tomlString(value: string): string {
 
 function tomlStringArray(values: string[]): string {
   return `[${values.map((value) => tomlString(value)).join(", ")}]`;
+}
+
+function tomlInlineStringTable(values: Record<string, string>): string {
+  return `{ ${Object.entries(values)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${tomlKey(key)} = ${tomlString(value)}`)
+    .join(", ")} }`;
 }
 
 function tomlStringContent(value: string): string {

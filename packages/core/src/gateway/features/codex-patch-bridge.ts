@@ -11,6 +11,7 @@ import { codexPatchBridgeInstructionText, codexPatchBridgeShellToolGuidance, vir
 import { parseJsonObjectSafe, serializeJsonBody } from "@ccr/core/gateway/http/body";
 import { requestProtocolForPath } from "@ccr/core/routing/protocol-endpoints";
 import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
+import { hasCodexResponsesCompactionTrigger, isCodexResponsesCompactPath } from "@ccr/core/gateway/context-archive/protocol";
 
 
 export function prepareCodexApplyPatchBridgeRequest(input: {
@@ -26,6 +27,9 @@ export function prepareCodexApplyPatchBridgeRequest(input: {
   }
   const parsedBody = parseJsonObjectSafe(input.body);
   if (!parsedBody) {
+    return undefined;
+  }
+  if (isCodexResponsesCompactPath(input.path) || hasCodexResponsesCompactionTrigger(parsedBody)) {
     return undefined;
   }
   const model = input.routedModel || stringValue(parsedBody.model);

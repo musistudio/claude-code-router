@@ -3,9 +3,9 @@ import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ProfileConfig } from "@ccr/core/contracts/app.ts";
-import { DeleteProfileDialog, ProfileView } from "@ccr/ui/pages/home/components/profiles.tsx";
+import { AddProfileForm, DeleteProfileDialog, ProfileView } from "@ccr/ui/pages/home/components/profiles.tsx";
 import { AppI18nContext, appCopy } from "@ccr/ui/pages/home/shared/i18n.tsx";
-import { createProfileDraft, normalizeUnknownProfileItem, profileDraftWithDetectedAppPath } from "@ccr/ui/pages/home/shared/profiles.ts";
+import { createProfileDraft, normalizeUnknownProfileItem, profileDraftWithDetectedAppPath, profileSummaryItems } from "@ccr/ui/pages/home/shared/profiles.ts";
 import { appConfigFixture } from "../fixtures/index.ts";
 
 const profile: ProfileConfig = {
@@ -42,7 +42,46 @@ test("DeleteProfileDialog renders the Chinese confirmation copy", () => {
   assert.match(html, />删除<\/button>/);
 });
 
-test("ProfileView keeps launch actions directly accessible in an aligned action bar", () => {
+test("AddProfileForm does not show the profile requirements panel", () => {
+  const config = appConfigFixture();
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={config.botConfigs}
+      draft={createProfileDraft("claude-code")}
+      error=""
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={config.Providers}
+      virtualModelProfiles={config.virtualModelProfiles}
+    />
+  );
+
+  assert.match(html, /Effect scope/);
+  assert.doesNotMatch(html, /Profile requirements/);
+  assert.doesNotMatch(html, /Profile guidance/);
+});
+
+test("AddProfileForm labels Kimi CLI model fields with Kimi-specific copy", () => {
+  const config = appConfigFixture();
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={config.botConfigs}
+      draft={createProfileDraft("kimi")}
+      error=""
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={config.Providers}
+      virtualModelProfiles={config.virtualModelProfiles}
+    />
+  );
+
+  assert.match(html, /Kimi model/);
+  assert.match(html, /Allowed models/);
+  assert.doesNotMatch(html, /Default model/);
+  assert.doesNotMatch(html, /Available models/);
+});
+
+test("ProfileView renders agent profiles as compact cards with inline actions", () => {
   const config = appConfigFixture();
   config.profile.profiles = [
     {
@@ -52,7 +91,7 @@ test("ProfileView keeps launch actions directly accessible in an aligned action 
     },
     {
       agent: "zcode",
-      enabled: true,
+      enabled: false,
       id: "zcode-main",
       model: "openai/gpt-5.2",
       name: "ZCode Main",
@@ -77,10 +116,40 @@ test("ProfileView keeps launch actions directly accessible in an aligned action 
   );
 
   assert.equal(html.match(/aria-label="(?:Claude Code Main|ZCode Main) Profile actions"/g)?.length, 2);
+  assert.match(html, /grid-template-columns:repeat\(auto-fill,minmax\(min\(100%,320px\),420px\)\)/);
+  assert.match(html, /min-h-\[220px\]/);
+  assert.match(html, /class="flex min-w-0 items-center gap-2"/);
+  assert.match(html, /Configuration/);
+  assert.match(html, /class="mt-3 min-w-0 flex-1 space-y-1\.5 border-t border-border\/60 pt-2"><div class="flex min-w-0 flex-wrap items-center gap-1\.5"/);
+  assert.doesNotMatch(html, /class="mt-1 flex min-w-0 flex-wrap items-center gap-1\.5"/);
+  assert.match(html, /aria-label="Claude Code Main Profile actions" class="[^"]*border-t border-border\/60/);
+  assert.doesNotMatch(html, />Disabled<\/span>/);
+  assert.doesNotMatch(html, /aria-label="Claude Code Main Launch actions"/);
+  assert.doesNotMatch(html, /aria-label="Claude Code Main Management actions"/);
   assert.match(html, /aria-label="Copy CLI command Claude Code Main"/);
   assert.match(html, /aria-label="Start App Claude Code Main"/);
-  assert.match(html, /aria-label="Start App ZCode Main"/);
+  assert.match(html, /aria-label="Edit Claude Code Main"/);
+  assert.match(html, /aria-label="Remove profile"/);
+  assert.doesNotMatch(html, /aria-label="Start App ZCode Main"/);
   assert.doesNotMatch(html, /aria-label="Copy CLI command ZCode Main"/);
+});
+
+test("profileSummaryItems uses Kimi-specific model labels", () => {
+  const config = appConfigFixture();
+  const items = profileSummaryItems({
+    agent: "kimi",
+    availableModels: ["kimi/k2", "kimi/k3"],
+    enabled: true,
+    id: "kimi-main",
+    model: "kimi/k2",
+    name: "Kimi Main",
+    scope: "ccr",
+    surface: "cli"
+  }, config, (value) => value);
+
+  assert.equal(items[0]?.label, "Kimi model");
+  assert.equal(items[1]?.label, "Allowed models");
+  assert.equal(items[1]?.value, "2");
 });
 
 test("detected CHATGPT_APP_PATH is used as the Codex profile default", () => {

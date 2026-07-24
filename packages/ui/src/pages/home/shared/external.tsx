@@ -35,6 +35,8 @@ import {
   Copy,
   Database,
   Download,
+  Eye,
+  EyeOff,
   ExternalLink,
   FolderOpen,
   Gauge,
@@ -99,6 +101,7 @@ import { Label } from "@/components/ui/label";
 import { PopoverContent } from "@/components/ui/popover";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import appLogoUrl from "@/assets/logo.png";
@@ -555,14 +558,14 @@ export {
   sortableKeyboardCoordinates, useSortable, CSS, AnimatePresence, LayoutGroup, motion, useReducedMotion,
   Activity, ArrowDown, ArrowUp, Box, Boxes, Braces, Check, CheckCircle2,
   ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Copy, Database, Download, FolderOpen,
-  ExternalLink, Gauge, Globe, Info, KeyRound, Layers3, LoaderCircle, MoveRight, Network,
+  ExternalLink, Eye, EyeOff, Gauge, Globe, Info, KeyRound, Layers3, LoaderCircle, MoveRight, Network,
   Palette, PanelLeftClose, PanelLeftOpen, Pause, Pencil, Play, Plus,
   Power, QrCode, RefreshCw, Route, Search, Server, Settings, ShieldCheck,
   Terminal, Trash2, UserRound, X, Area, Bar, BarChart, CartesianGrid,
   Cell, ComposedChart, LabelList, Line, Pie, PieChart, Tooltip,
   XAxis, YAxis, Badge, Button, Card, CardContent, CardHeader,
   CardTitle, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogStackLayer,
-  DialogTitle, Input, Label, PopoverContent, Select, Switch, Textarea,
+  DialogTitle, Input, Label, PopoverContent, Select, Switch, Tabs, TabsContent, TabsList, TabsTrigger, Textarea,
   cn, appLogoUrl, claudeCodeLogoUrl, codexLogoUrl, onboardingMascotSpriteUrl, anthropicProviderIconUrl, bailianProviderIconUrl, deepseekProviderIconUrl,
   geminiProviderIconUrl, mistralProviderIconUrl, moonshotProviderIconUrl, openaiProviderIconUrl, openrouterProviderIconUrl, siliconflowProviderIconUrl, zaiGlobalCodingProviderIconUrl,
   zaiGlobalGeneralProviderIconUrl, zhipuCnCodingProviderIconUrl, zhipuCnGeneralProviderIconUrl, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, BUILTIN_FUSION_TOOL_SERVER_NAME,

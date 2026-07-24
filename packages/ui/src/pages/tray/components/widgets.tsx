@@ -2,6 +2,7 @@ import {
   buildChartGeometry, formatCompactNumber, formatPercent, rangeLabel, ranges, ReactNode,
   TrayComponentVariants, UsageComparisonRow, UsageStatsRange, UsageStatsSnapshot, UsageTotals, useTrayText
 } from "../shared";
+import { Tooltip } from "@/components/ui/tooltip";
 import { buildTokenActivity, type TokenActivityCell } from "../../../lib/usage-activity";
 export function RangeSwitch({ range, onChange }: { range: UsageStatsRange; onChange: (range: UsageStatsRange) => void }) {
   const t = useTrayText();
@@ -254,21 +255,25 @@ function TokenActivityGrid({
             </span>
           ))}
         {activity.cells.map((cell) => (
-          <span
+          <Tooltip
             aria-label={`${cell.dateLabel}: ${formatActivityTokenCount(cell.totalTokens)} ${t("tokens")}`}
-            className="group relative rounded-[3px]"
+            align={cell.weekIndex <= 1 ? "start" : cell.weekIndex >= activity.weekCount - 2 ? "end" : "center"}
+            className="rounded-[3px]"
+            content={(
+              <>
+                <span className="block font-bold">{cell.dateLabel}</span>
+                <span className="tray-activity-tooltip-detail mt-0.5 block font-medium">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
+              </>
+            )}
+            contentClassName="tray-activity-tooltip min-w-[96px] px-2 py-1.5 text-left text-[10px] font-normal"
             key={cell.dateKey}
+            side={cell.dayIndex <= 1 ? "bottom" : "top"}
             style={{
               backgroundColor: trayActivityColor(cell.intensity, cell.inObservedRange),
               gridColumn: cell.weekIndex + 2,
               gridRow: cell.dayIndex + 1
             }}
-          >
-            <span className={`tray-activity-tooltip pointer-events-none absolute z-30 hidden min-w-[96px] rounded-md border px-2 py-1.5 text-left text-[10px] group-hover:block ${trayActivityTooltipPositionClass(cell, activity.weekCount)}`}>
-              <span className="block font-bold">{cell.dateLabel}</span>
-              <span className="tray-activity-tooltip-detail mt-0.5 block font-medium">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
-            </span>
-          </span>
+          />
         ))}
         </div>
       </div>
@@ -278,17 +283,6 @@ function TokenActivityGrid({
 
 function formatActivityTokenCount(value: number): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Math.round(Math.max(0, value)));
-}
-
-function trayActivityTooltipPositionClass(cell: TokenActivityCell, weekCount: number): string {
-  const verticalClass = cell.dayIndex <= 1 ? "top-full mt-1" : "bottom-full mb-1";
-  if (cell.weekIndex <= 1) {
-    return `${verticalClass} left-0`;
-  }
-  if (cell.weekIndex >= weekCount - 2) {
-    return `${verticalClass} right-0`;
-  }
-  return `${verticalClass} left-1/2 -translate-x-1/2`;
 }
 
 function trayActivityColor(intensity: TokenActivityCell["intensity"], inRange: boolean): string {

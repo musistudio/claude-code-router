@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AppConfig, ProfileConfig } from "@ccr/core/contracts/app";
+import { isGatewayProviderEnabled, type AppConfig, type ProfileConfig } from "@ccr/core/contracts/app";
 import { normalizeRouteSelector } from "@ccr/core/gateway/claude-code-router-plugin";
 import { buildCodexModelCatalogIds } from "@ccr/core/agents/codex/model-catalog";
 
@@ -282,7 +282,8 @@ function gatewayEndpoint(config: AppConfig): string {
 }
 
 function defaultClientModel(config: AppConfig): string {
-  const preferred = config.Providers.find((provider) => provider.name === config.preferredProvider) ?? config.Providers[0];
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const preferred = enabledProviders.find((provider) => provider.name === config.preferredProvider) ?? enabledProviders[0];
   if (preferred?.name && preferred.models[0]) {
     return `${preferred.name}/${preferred.models[0]}`;
   }

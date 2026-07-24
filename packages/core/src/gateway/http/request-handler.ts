@@ -6,6 +6,12 @@ import { LEGACY_GROK_MEDIA_MCP_PATH, MEDIA_TOOLS_MCP_PATH } from "@ccr/core/mcp/
 import { BROWSER_AUTOMATION_MCP_PATH, browserAutomationMcpEnabled } from "@ccr/core/mcp/toolhub-config";
 import { pluginService } from "@ccr/core/plugins/service";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin";
+import {
+  contextArchiveConfigForApiKey,
+  handleContextArchiveMcpRequest,
+  isContextArchiveMcpPath,
+  type ContextArchiveReplayExecutor
+} from "@ccr/core/gateway/context-archive";
 import { ccrRemoteControlPathPrefix, ccrRemoteControlService } from "@ccr/core/gateway/remote-control-service";
 import { authorize, reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
 import { parseJsonObject, readRequestBody, sendJson } from "@ccr/core/gateway/http/io";
@@ -22,6 +28,7 @@ export type GatewayHttpRequestHandlerDependencies = {
   handleBillingUsageSync: (request: IncomingMessage, response: ServerResponse) => Promise<void>;
   handleRawTraceSync: (request: IncomingMessage, response: ServerResponse) => Promise<void>;
   proxyRequest: (request: IncomingMessage, response: ServerResponse, path: string, apiKey?: ApiKeyConfig) => Promise<void>;
+  replayContextArchive: ContextArchiveReplayExecutor;
 };
 
 export class GatewayHttpRequestHandler {
@@ -34,21 +41,22 @@ export class GatewayHttpRequestHandler {
   private handleBillingUsageSync(request: IncomingMessage, response: ServerResponse) { return this.dependencies.handleBillingUsageSync(request, response); }
   private handleRawTraceSync(request: IncomingMessage, response: ServerResponse) { return this.dependencies.handleRawTraceSync(request, response); }
   private proxyRequest(request: IncomingMessage, response: ServerResponse, path: string, apiKey?: ApiKeyConfig) { return this.dependencies.proxyRequest(request, response, path, apiKey); }
+  private replayContextArchive(input: Parameters<ContextArchiveReplayExecutor>[0]) { return this.dependencies.replayContextArchive(input); }
 
   async handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
       applyCors(response, this.config);
-  
+
       if (request.method === "OPTIONS") {
         response.writeHead(204);
         response.end();
         return;
       }
-  
+
       if (!this.config || !this.plugin) {
         sendJson(response, 503, { error: { message: "Gateway service is not configured." } });
         return;
       }
-  
+
       const requestUrl = new URL(request.url ?? "/", this.status.endpoint || "http://127.0.0.1");
       const path = requestUrl.pathname;
       if (path === billingUsageSyncPath) {
@@ -63,7 +71,7 @@ export class GatewayHttpRequestHandler {
         await this.handleRawTraceSync(request, response);
         return;
       }
-  
+
       if (path === ccrRemoteControlPathPrefix || path.startsWith(`${ccrRemoteControlPathPrefix}/`)) {
         const authorization = await authorize(request, response, this.config);
         if (!authorization.ok) {
@@ -79,7 +87,7 @@ export class GatewayHttpRequestHandler {
         });
         return;
       }
-  
+
       if (path === BROWSER_AUTOMATION_MCP_PATH || path === `${BROWSER_AUTOMATION_MCP_PATH}/`) {
         if (!browserAutomationMcpEnabled(this.config)) {
           sendJson(response, 404, {
@@ -105,6 +113,25 @@ export class GatewayHttpRequestHandler {
         return;
       }
 
+      if (isContextArchiveMcpPath(path)) {
+        const authorization = await authorize(request, response, this.config);
+        if (!authorization.ok) {
+          return;
+        }
+        const contextArchiveConfig = contextArchiveConfigForApiKey(this.config, authorization.apiKey);
+        if (!contextArchiveConfig) {
+          sendJson(response, 404, { error: { message: "CCR context archive MCP is disabled." } });
+          return;
+        }
+        await handleContextArchiveMcpRequest(
+          request,
+          response,
+          contextArchiveConfig,
+          (input) => this.replayContextArchive(input)
+        );
+        return;
+      }
+
       if ([MEDIA_TOOLS_MCP_PATH, LEGACY_GROK_MEDIA_MCP_PATH].some((mcpPath) => path === mcpPath || path === `${mcpPath}/`)) {
         if (!this.config.mediaTools.enabled) {
           sendJson(response, 404, { error: { message: "CCR Media Tools MCP is disabled." } });
@@ -120,7 +147,7 @@ export class GatewayHttpRequestHandler {
         handleMediaArtifactRequest(request, response, requestUrl);
         return;
       }
-  
+
       if (isNetworkCaptureMcpPath(path)) {
         if (!this.config.proxy.captureNetwork) {
           sendJson(response, 404, { error: { message: "Network capture MCP is disabled." } });
@@ -133,7 +160,7 @@ export class GatewayHttpRequestHandler {
         await handleNetworkCaptureMcpRequest(request, response);
         return;
       }
-  
+
       const pluginRoute = pluginService.matchGatewayRoute(request.method, path);
       if (pluginRoute) {
         if (pluginRoute.auth !== "none") {
@@ -145,12 +172,12 @@ export class GatewayHttpRequestHandler {
         await pluginService.handleGatewayRoute(pluginRoute, request, response);
         return;
       }
-  
+
       if (!shouldServeGatewayRequest(this.config, request)) {
         sendJson(response, 503, { error: { message: "Gateway runtime is disabled." } });
         return;
       }
-  
+
       if (path === "/health") {
         sendJson(response, 200, {
           core: this.status.coreEndpoint,
@@ -160,7 +187,7 @@ export class GatewayHttpRequestHandler {
         });
         return;
       }
-  
+
       if (path === "/") {
         sendJson(response, 200, {
           core: "next-ai-gateway",
@@ -171,12 +198,12 @@ export class GatewayHttpRequestHandler {
         });
         return;
       }
-  
+
       const authorization = await authorize(request, response, this.config);
       if (!authorization.ok) {
         return;
       }
-  
+
       if (request.method === "POST" && path === "/v1/messages/count_tokens") {
         const requestBody = await readRequestBody(request);
         const body = parseJsonObject(requestBody);
@@ -186,7 +213,7 @@ export class GatewayHttpRequestHandler {
         sendJson(response, 200, this.plugin.countTokens(body));
         return;
       }
-  
+
       await this.proxyRequest(request, response, path, authorization.apiKey);
     }
 }

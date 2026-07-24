@@ -419,6 +419,37 @@
       0 4px 12px rgba(0, 0, 0, 0.04);
   }
 
+  .provider-skeleton-shimmer {
+    background:
+      linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--muted-foreground) 10%, transparent) 0%,
+        color-mix(in srgb, var(--muted-foreground) 18%, transparent) 42%,
+        color-mix(in srgb, var(--foreground) 18%, transparent) 50%,
+        color-mix(in srgb, var(--muted-foreground) 18%, transparent) 58%,
+        color-mix(in srgb, var(--muted-foreground) 10%, transparent) 100%
+      );
+    background-size: 220% 100%;
+    animation: provider-skeleton-shimmer 1.35s ease-in-out infinite;
+  }
+
+  @keyframes provider-skeleton-shimmer {
+    0% {
+      background-position: 120% 0;
+    }
+
+    100% {
+      background-position: -120% 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .provider-skeleton-shimmer {
+      animation: none;
+      background-position: 0 0;
+    }
+  }
+
   .glass-surface {
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);

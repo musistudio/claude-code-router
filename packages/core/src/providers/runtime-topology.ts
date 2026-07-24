@@ -1,6 +1,7 @@
 /**
  * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
  */
+import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { AppConfig, GatewayProviderCapability, GatewayProviderCapabilityProtocol, GatewayProviderConfig, GatewayProviderProtocol, ProviderCredentialConfig } from "@ccr/core/contracts/app";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue } from "@ccr/core/providers/presets/index";
 import { normalizeProviderBaseUrl as normalizeProviderBaseUrlInput } from "@ccr/core/providers/url";
@@ -74,15 +75,21 @@ export function findProviderByPublicOrInternalName(config: AppConfig, name: stri
   const credentialInternalName = parseProviderCredentialInternalName(name);
   if (credentialInternalName) {
     const internalProviderId = credentialInternalName.providerId.toLowerCase();
-    return config.Providers.find((provider) =>
-      provider.name.trim().toLowerCase() === internalProviderId ||
-      providerRuntimeId(provider).toLowerCase() === internalProviderId
-    );
+    return config.Providers.find((provider) => {
+      if (!isGatewayProviderEnabled(provider)) {
+        return false;
+      }
+      return provider.name.trim().toLowerCase() === internalProviderId ||
+        providerRuntimeId(provider).toLowerCase() === internalProviderId;
+    });
   }
   return modelRegistryForConfig(config).findProvider(normalized);
 }
 
 export function activeProviderCredentials(provider: GatewayProviderConfig): ProviderCredentialConfig[] {
+  if (!isGatewayProviderEnabled(provider)) {
+    return [];
+  }
   return (provider.credentials ?? []).filter((credential) =>
     credential.enabled !== false &&
     Boolean(providerCredentialApiKey(credential))
@@ -95,6 +102,9 @@ export function providerCredentialPriority(credential: ProviderCredentialConfig,
 
 
 export function toCoreGatewayProviders(provider: GatewayProviderConfig): CoreGatewayProvider[] {
+  if (!isGatewayProviderEnabled(provider)) {
+    return [];
+  }
   const capabilities = normalizedProviderCapabilities(provider);
   if (capabilities.length === 0) {
     return toCoreGatewayProvidersForCapability(provider);

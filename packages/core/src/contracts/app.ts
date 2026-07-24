@@ -173,6 +173,7 @@ export type GatewayProviderConfig = {
   extraHeaders?: unknown;
   icon?: string;
   id?: string;
+  enabled?: boolean;
   modelDescriptions?: Record<string, string>;
   modelDisplayNames?: Record<string, string>;
   modelMetadata?: Record<string, ProviderModelMetadata>;
@@ -183,6 +184,10 @@ export type GatewayProviderConfig = {
   transformer?: unknown;
   type?: GatewayProviderProtocol | string;
 };
+
+export function isGatewayProviderEnabled(provider: Pick<GatewayProviderConfig, "enabled">): boolean {
+  return provider.enabled !== false;
+}
 
 export type ProviderReasoningLevel = {
   description: string;
@@ -819,6 +824,18 @@ export type ToolHubConfig = {
   requestTimeoutMs: number;
 };
 
+export type ContextArchiveConfig = {
+  enabled: boolean;
+  maxBytes: number;
+  maxSnapshotBytes: number;
+  maxSnapshots: number;
+  mcpEnabled: boolean;
+  replayTimeoutMs: number;
+  retentionDays: number;
+  storagePath: string;
+  toolName: string;
+};
+
 export type MediaToolsConfig = {
   allowedInputRoots: string[];
   artifactTtlHours: number;
@@ -993,7 +1010,7 @@ export function availableGatewayModelIds(config: Pick<AppConfig, "Providers" | "
 function availableGatewayBaseModelEntries(providers: GatewayProviderConfig[]): Array<{ modelName: string; providerName: string }> {
   return providers.flatMap((provider) => {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       return [];
     }
     return provider.models.flatMap((rawModel) => {
@@ -1270,6 +1287,7 @@ export type ProfileOpenSurface = "cli" | "app";
 
 export type ClaudeCodeProfileConfig = {
   enabled: boolean;
+  managedCompact: boolean;
   model: string;
   settingsFile: string;
   smallFastModel: string;
@@ -1282,6 +1300,7 @@ export type CodexProfileConfig = {
   configFormat: CodexProfileConfigFormat;
   configFile: string;
   enabled: boolean;
+  managedCompact: boolean;
   model: string;
   providerId: string;
   providerName: string;
@@ -1303,6 +1322,7 @@ export type ProfileConfig = {
   enabled: boolean;
   env?: Record<string, string>;
   id: string;
+  managedCompact?: boolean;
   model: string;
   name: string;
   providerId?: string;
@@ -1607,6 +1627,7 @@ export type AppConfig = {
   autoStart: boolean;
   botConfigs: BotGatewaySavedConfig[];
   botGateway: BotGatewayRuntimeConfig;
+  contextArchive: ContextArchiveConfig;
   gateway: GatewayRuntimeConfig;
   mediaTools: MediaToolsConfig;
   launchAtLogin: boolean;

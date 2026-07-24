@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { buildCodexModelCatalogIds } from "@ccr/core/agents/codex/model-catalog";
 import { parseJsoncRecord } from "@ccr/core/agents/local-providers/shared";
-import type { AppConfig, ProfileConfig } from "@ccr/core/contracts/app";
+import { isGatewayProviderEnabled, type AppConfig, type ProfileConfig } from "@ccr/core/contracts/app";
 
 export type OpenCodeProfileConfigWriteResult = {
   backupFile?: string;
@@ -201,7 +201,8 @@ function gatewayEndpoint(config: AppConfig): string {
 }
 
 function defaultClientModel(config: AppConfig): string {
-  const provider = config.Providers.find((item) => item.name === config.preferredProvider) ?? config.Providers[0];
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const provider = enabledProviders.find((item) => item.name === config.preferredProvider) ?? enabledProviders[0];
   const model = provider?.models[0] ?? "default";
   return provider?.name ? `${provider.name}/${model}` : model;
 }

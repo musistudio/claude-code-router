@@ -9,7 +9,7 @@ lead: Combine a base model with capability models or tools, turning a stable tex
 
 Fusion keeps the base model's reasoning, writing, and coding behavior, then adds the missing capability layer. When needed, CCR calls the vision, search, or MCP tool, organizes the result into context, and lets the base model produce the final answer.
 
-After saving, a Fusion model appears in routing and Agent Config like a normal model. Treat it as a reusable new model: upgrade a strong text model into a vision model, a stable coding model into a web-search model, or an Agent model into one that can call internal tools.
+After saving, a Fusion model appears in routing and Agent Profiles like a normal model. Treat it as a reusable new model: upgrade a strong text model into a vision model, a stable coding model into a web-search model, or an Agent model into one that can call internal tools.
 
 ## Capabilities
 

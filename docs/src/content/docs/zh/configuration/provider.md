@@ -33,7 +33,7 @@ Codex 导入会读取本机 Codex 登录文件和模型缓存。检测到 Codex 
 3. CCR 会创建 Codex OAuth provider plugin，并在需要时刷新访问凭据。
 4. 账号用量会读取 Codex 额度、余额和 token 统计接口。
 
-导入后可以直接在路由或 Agent配置中选择 `Codex API/模型名`。如果模型缓存较旧，可以先打开 Codex 让它刷新模型列表，再回到 CCR 重新导入或编辑模型。
+导入后可以直接在路由或 Agent 配置档案中选择 `Codex API/模型名`。如果模型缓存较旧，可以先打开 Codex 让它刷新模型列表，再回到 CCR 重新导入或编辑模型。
 
 ### ZCode
 

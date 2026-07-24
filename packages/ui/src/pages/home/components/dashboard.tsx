@@ -13,7 +13,7 @@ import {
   motion, normalizeAgentFilterValue, normalizeOverviewWidget, normalizeOverviewWidgets,
   OverviewMetricKind, overviewMetricOptions, overviewWidgetCollisionDetection, OverviewWidgetConfig, OverviewWidgetSize, overviewWidgetSizeOptions,
   OverviewWidgetType, OverviewWidgetVariant, Pencil, Pie, PieChart, Plus,
-  PointerSensor, primaryProviderAccountMeter, providerAccountMeterDetailValidityProgress, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass, isProviderAccountManualResetMeter,
+  PointerSensor, primaryProviderAccountMeter, providerAccountMeterDetailValidityProgress, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass, isGatewayProviderEnabled, isProviderAccountManualResetMeter,
   providerAccountSnapshotKey, providerAccountSnapshotLabel,
   ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ReactPointerEvent, rectSortingStrategy, RefreshCw, Select,
   SelectControl, SortableContext, sortableKeyboardCoordinates, systemStatusPointTooltip,
@@ -28,7 +28,7 @@ import {
   CalendarDays, ChartNoAxesCombined, ChartPie, CreditCard, GripHorizontal, Inbox, Layers3,
   Rocket, Server, UsersRound, WalletCards, Wifi
 } from "lucide-react";
-import { createPortal } from "react-dom";
+import { Tooltip as UiTooltip, TooltipPortal } from "@/components/ui/tooltip";
 
 type OverviewUsageFilters = {
   modelFilter: string;
@@ -39,6 +39,10 @@ type OverviewUsageFilters = {
 };
 
 const emptyOverviewProviders: GatewayProviderConfig[] = [];
+
+function chartTooltipPortal(): HTMLElement | null {
+  return typeof document === "undefined" ? null : document.body;
+}
 
 export function OverviewView({
   onWidgetsChange,
@@ -525,6 +529,9 @@ function OverviewDonutCenter({ label, value }: { label: string; value: string })
 function overviewProviderFilterOptions(providers: GatewayProviderConfig[], translate: (value: string) => string): Array<{ label: string; value: string }> {
   const providerNames = new Set<string>();
   for (const provider of providers) {
+    if (!isGatewayProviderEnabled(provider)) {
+      continue;
+    }
     const name = provider.name.trim();
     if (name) {
       providerNames.add(name);
@@ -543,6 +550,9 @@ function overviewModelFilterOptions(
 ): Array<{ label: string; value: string }> {
   const models = new Set<string>();
   for (const provider of providers) {
+    if (!isGatewayProviderEnabled(provider)) {
+      continue;
+    }
     if (providerFilter && provider.name !== providerFilter) {
       continue;
     }
@@ -561,6 +571,7 @@ function overviewModelFilterOptions(
 
 function overviewProviderHasModel(providers: GatewayProviderConfig[], providerName: string, modelName: string): boolean {
   return providers.some((provider) =>
+    isGatewayProviderEnabled(provider) &&
     provider.name === providerName &&
     provider.models.some((model) => model.trim() === modelName)
   );
@@ -1201,7 +1212,7 @@ function UsageTrendWidget({
               <XAxis axisLine={false} dataKey="label" hide={dimensions.height <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} />
               <YAxis axisLine={false} hide={dimensions.width <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} yAxisId="tokens" />
               <YAxis axisLine={false} hide orientation="right" yAxisId="requests" />
-              <Tooltip content={<UsageTooltip />} />
+              <Tooltip content={<UsageTooltip />} portal={chartTooltipPortal()} />
               {variant === "composed" ? (
                 <>
                   <Area dataKey="totalTokens" fill="#007aff" fillOpacity={0.12} name={t("Total tokens")} stroke="#007aff" strokeWidth={2.25} type="monotone" yAxisId="tokens" />
@@ -1378,21 +1389,25 @@ function OverviewActivityGrid({
               </span>
             )) : null}
             {activity.cells.map((cell) => (
-              <span
+              <UiTooltip
                 aria-label={`${cell.dateLabel}: ${formatActivityTokenCount(cell.totalTokens)} ${t("tokens")}`}
-                className="overview-activity-cell group relative aspect-square w-full rounded-[4px]"
+                align={cell.weekIndex <= 1 ? "start" : cell.weekIndex >= activity.weekCount - 2 ? "end" : "center"}
+                className="overview-activity-cell aspect-square w-full rounded-[4px]"
+                content={(
+                  <>
+                    <span className="block font-semibold">{cell.dateLabel}</span>
+                    <span className="mt-0.5 block text-muted-foreground">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
+                  </>
+                )}
+                contentClassName="min-w-[112px] border-border/70 px-2 py-1.5 text-left text-[11px] font-normal"
                 key={cell.dateKey}
+                side={cell.dayIndex <= 1 ? "bottom" : "top"}
                 style={{
                   backgroundColor: overviewActivityColor(cell.intensity, cell.inObservedRange),
                   gridColumn: cell.weekIndex + (showDayLabels ? 2 : 1),
                   gridRow: cell.dayIndex + 1
                 }}
-              >
-                <span className={`pointer-events-none absolute z-30 hidden min-w-[112px] rounded-md border border-border/70 bg-popover px-2 py-1.5 text-left text-[11px] text-popover-foreground shadow-card-elevated group-hover:block ${overviewActivityTooltipPositionClass(cell, activity.weekCount)}`}>
-                  <span className="block font-semibold">{cell.dateLabel}</span>
-                  <span className="mt-0.5 block text-muted-foreground">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
-                </span>
-              </span>
+              />
             ))}
           </div>
         </div>
@@ -1403,17 +1418,6 @@ function OverviewActivityGrid({
 
 function formatActivityTokenCount(value: number): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Math.round(Math.max(0, value)));
-}
-
-function overviewActivityTooltipPositionClass(cell: TokenActivityCell, weekCount: number): string {
-  const verticalClass = cell.dayIndex <= 1 ? "top-full mt-1" : "bottom-full mb-1";
-  if (cell.weekIndex <= 1) {
-    return `${verticalClass} left-0`;
-  }
-  if (cell.weekIndex >= weekCount - 2) {
-    return `${verticalClass} right-0`;
-  }
-  return `${verticalClass} left-1/2 -translate-x-1/2`;
 }
 
 function overviewActivityColor(intensity: TokenActivityCell["intensity"], inRange: boolean): string {
@@ -1466,7 +1470,7 @@ function TokenMixOverviewWidget({
               <ChartFrame fill>
                 {({ height, width }) => (
                   <PieChart height={height} width={width}>
-                    <Tooltip content={<TokenTooltip />} />
+                    <Tooltip content={<TokenTooltip />} portal={chartTooltipPortal()} />
                     <Pie
                       cx="50%"
                       cy="50%"
@@ -1496,7 +1500,7 @@ function TokenMixOverviewWidget({
                 <CartesianGrid stroke="var(--overview-chart-grid)" strokeDasharray="2 5" horizontal={false} />
                 <XAxis axisLine={false} hide={dimensions.height <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
                 <YAxis axisLine={false} dataKey="name" tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} type="category" width={dimensions.width <= 1 ? 42 : 52} />
-                <Tooltip content={<TokenTooltip />} />
+                <Tooltip content={<TokenTooltip />} portal={chartTooltipPortal()} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                   {tokenMix.map((item) => (
                     <Cell fill={item.color} key={item.name} />
@@ -1549,7 +1553,7 @@ function ModelDistributionOverviewWidget({
               <ChartFrame fill>
                 {({ height, width }) => (
                   <PieChart height={height} width={width}>
-                    <Tooltip content={<TokenTooltip />} />
+                    <Tooltip content={<TokenTooltip />} portal={chartTooltipPortal()} />
                     <Pie
                       cx="50%"
                       cy="50%"
@@ -1578,7 +1582,7 @@ function ModelDistributionOverviewWidget({
               <CartesianGrid stroke="var(--overview-chart-grid)" strokeDasharray="2 5" horizontal={false} />
                 <XAxis axisLine={false} hide={dimensions.height <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
                 <YAxis axisLine={false} dataKey="name" tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} type="category" width={dimensions.width <= 1 ? 58 : 88} />
-                <Tooltip content={<TokenTooltip />} />
+                <Tooltip content={<TokenTooltip />} portal={chartTooltipPortal()} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                   {modelRows.map((item) => (
                     <Cell fill={item.color} key={item.name} />
@@ -2243,10 +2247,9 @@ function SystemStatusBar({
                 />
               </span>
             ))}
-            {statusTooltip ? createPortal(
-              <span
-                className="pointer-events-none fixed z-[150] w-[190px] max-w-[calc(100vw-24px)] rounded-md border border-border/70 bg-popover px-3 py-2 text-left text-[11px] leading-4 text-popover-foreground shadow-card-elevated ring-1 ring-black/5"
-                role="tooltip"
+            {statusTooltip ? (
+              <TooltipPortal
+                className="w-[190px] max-w-[calc(100vw-24px)] px-3 py-2 text-left font-normal leading-4"
                 style={{ left: statusTooltip.left, top: statusTooltip.top }}
               >
                 <span
@@ -2276,8 +2279,7 @@ function SystemStatusBar({
                   <span className="text-muted-foreground">{t("Duration")}</span>
                   <span className="font-medium">{formatDuration(statusTooltip.segment.point.avgDurationMs)}</span>
                 </span>
-              </span>,
-              document.body
+              </TooltipPortal>
             ) : null}
           </div>
         </div>

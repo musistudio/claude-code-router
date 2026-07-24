@@ -195,4 +195,3 @@ docker compose config
 - [CLI Installation And Reference](../cli/)
 - [Server](../../configuration/server/)
 - [API Keys](../../configuration/api-keys/)
-

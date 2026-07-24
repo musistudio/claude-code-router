@@ -7,6 +7,7 @@ import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plu
 import { fetchUpstreamWithFallback } from "@ccr/core/gateway/upstream/executor.ts";
 import { RequestRouteTraceRecorder } from "@ccr/core/observability/route-trace.ts";
 import {
+  createClaudeCodeModelsResponseForTest,
   fallbackRetryDelayAfterNetworkErrorForTest,
   fallbackRetryDelayAfterStatusForTest,
   prepareGatewayUpstreamAttemptForTest
@@ -62,6 +63,72 @@ function createRouterPlugin(options = {}) {
     }
   };
 }
+
+function claudeCodeCompactSupported(config, apiKey) {
+  const response = createClaudeCodeModelsResponseForTest(config, apiKey);
+  return response.data[0]?.capabilities?.context_management?.compact_20260112?.supported;
+}
+
+test("Claude Code model discovery exposes compact only when context archive MCP is enabled", () => {
+  const baseConfig = {
+    Providers: [
+      {
+        models: ["custom-claude-compatible"],
+        name: "Provider",
+        type: "anthropic_messages"
+      }
+    ],
+    contextArchive: {
+      enabled: false,
+      mcpEnabled: true
+    }
+  };
+
+  assert.equal(claudeCodeCompactSupported(baseConfig), false);
+  assert.equal(claudeCodeCompactSupported({
+    ...baseConfig,
+    contextArchive: {
+      enabled: true,
+      mcpEnabled: false
+    }
+  }), false);
+  assert.equal(claudeCodeCompactSupported({
+    ...baseConfig,
+    contextArchive: {
+      enabled: true,
+      mcpEnabled: true
+    }
+  }), true);
+
+  const profileConfig = {
+    ...baseConfig,
+    contextArchive: {
+      enabled: true,
+      mcpEnabled: true
+    },
+    profile: {
+      enabled: true,
+      profiles: [
+        {
+          agent: "claude-code",
+          enabled: true,
+          id: "plain-profile",
+          managedCompact: false,
+          name: "Plain Profile"
+        },
+        {
+          agent: "claude-code",
+          enabled: true,
+          id: "managed-profile",
+          managedCompact: true,
+          name: "Managed Profile"
+        }
+      ]
+    }
+  };
+  assert.equal(claudeCodeCompactSupported(profileConfig, { id: "profile:plain-profile" }), false);
+  assert.equal(claudeCodeCompactSupported(profileConfig, { id: "profile:managed-profile" }), true);
+});
 
 test("fallback retry delay backs off retryable HTTP statuses", () => {
   assert.equal(fallbackRetryDelayAfterStatusForTest({ statusCode: 503 }), 1000);

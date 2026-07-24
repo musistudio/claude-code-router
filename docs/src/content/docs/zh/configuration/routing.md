@@ -39,7 +39,7 @@ Claude Code 的 Agent / Task / Workflow 可以派生新的模型请求。CCR 使
 
 1. 在 **供应商** 中添加可用模型，确认模型 ID 可以真实请求。
 2. 打开 **模型** 页面，为希望 Subagent 自动选择的模型填写 Description。说明要写清模型适合的任务、速度、成本和限制。
-3. 在 **Agent配置** 中启用 Claude Code 配置，并设置默认模型。Claude Code 未选择可识别模型时会使用它。
+3. 在 **Agent 配置档案** 中启用 Claude Code 配置，并设置默认模型。Claude Code 未选择可识别模型时会使用它。
 4. 在 **路由** 页面确认 **Claude Code** 内置路由已启用。
 5. 在 Claude Code 中使用 Agent、Task 或 Workflow。需要派生 Agent 时，Claude Code 会根据模型 Description 选择一个 CCR 模型并写入标签。
 

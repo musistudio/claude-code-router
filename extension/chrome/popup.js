@@ -1,5 +1,7 @@
 const importUrlInput = document.getElementById("import-url");
 const importButton = document.getElementById("import-button");
+const domainPreview = document.getElementById("domain-preview");
+const domainList = document.getElementById("domain-list");
 const statusElement = document.getElementById("status");
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -20,6 +22,7 @@ async function restoreLastImportUrl() {
 async function runImport() {
   const importUrl = normalizeImportUrl(importUrlInput.value);
   if (!importUrl) {
+    renderDomains([]);
     setStatus("Paste the import URL copied from CCR.", "error");
     return;
   }
@@ -33,6 +36,7 @@ async function runImport() {
     if (domains.length === 0) {
       throw new Error("CCR import job does not include any domains.");
     }
+    renderDomains(domains);
 
     await ensureHostPermissions(domains);
 
@@ -55,6 +59,18 @@ async function runImport() {
     setStatus(formatError(error), "error");
   } finally {
     importButton.disabled = false;
+  }
+}
+
+function renderDomains(domains) {
+  domainList.textContent = "";
+  domainPreview.hidden = domains.length === 0;
+  for (const domain of domains) {
+    const item = document.createElement("span");
+    item.className = "domain-pill";
+    item.textContent = domain;
+    item.title = domain;
+    domainList.appendChild(item);
   }
 }
 

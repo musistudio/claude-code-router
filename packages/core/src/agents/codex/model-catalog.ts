@@ -1,4 +1,4 @@
-import { BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME } from "@ccr/core/contracts/app";
+import { BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, ProviderModelMetadata, ProviderReasoningLevel, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
 import {
   findModelCatalogEntry,
@@ -63,7 +63,7 @@ export function buildCodexModelCatalogIds(config?: Partial<Pick<AppConfig, "Prov
   const baseEntries: Array<{ modelName: string; providerName: string }> = [];
   for (const provider of config?.Providers ?? []) {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       continue;
     }
     for (const rawModel of provider.models) {
@@ -476,7 +476,10 @@ function findConfiguredProvider(
   if (!normalized) {
     return undefined;
   }
-  return (config?.Providers ?? []).find((provider) => provider.name.trim().toLowerCase() === normalized);
+  return (config?.Providers ?? []).find((provider) =>
+    isGatewayProviderEnabled(provider) &&
+    provider.name.trim().toLowerCase() === normalized
+  );
 }
 
 function findConfiguredProviderForModel(
@@ -488,6 +491,7 @@ function findConfiguredProviderForModel(
     return undefined;
   }
   return (config?.Providers ?? []).find((provider) =>
+    isGatewayProviderEnabled(provider) &&
     provider.models.some((candidate) => candidate.trim().toLowerCase() === normalized)
   );
 }

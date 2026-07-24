@@ -1,0 +1,47 @@
+{
+  "byArm": {
+    "ccr_archive_replay": {
+      "correct": 75,
+      "total": 75,
+      "accuracy": 1
+    }
+  },
+  "byCategory": {
+    "exact_recall": {
+      "correct": 15,
+      "total": 15,
+      "accuracy": 1
+    },
+    "relational_state": {
+      "correct": 15,
+      "total": 15,
+      "accuracy": 1
+    },
+    "tool_history": {
+      "correct": 15,
+      "total": 15,
+      "accuracy": 1
+    },
+    "distractor_resolution": {
+      "correct": 15,
+      "total": 15,
+      "accuracy": 1
+    },
+    "task_continuation": {
+      "correct": 15,
+      "total": 15,
+      "accuracy": 1
+    }
+  },
+  "byFixture": {
+    "fixture-01": {
+      "correct": 75,
+      "total": 75,
+      "accuracy": 1
+    }
+  },
+  "costUsd": 0.575128,
+  "completedTrials": 1,
+  "totalInputTokens": 39433,
+  "totalOutputTokens": 7545
+}

@@ -387,6 +387,7 @@ import { findProviderPreset, findProviderPresetByBaseUrl, findProviderPresetById
 import { fusionModelProviderName } from "./profiles";
 import { normalizeRouterFallbackConfig } from "./routing";
 import { keyValueRowsFromRecord, recordFromKeyValueRows, validateKeyValueRows, virtualModelMatchSummary } from "./virtual-models";
+import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { AddProviderDraft, AddRoutingRuleDraft, ModelCatalogItem, ProviderCredentialDraft, ProviderProbeCandidate, ProviderProbeCandidateResult, ProviderUsageFieldTarget, RoutingRewriteDraftRow, RoutingRuleRow, ViewId } from "./types";
 
 export const localAgentProviderIconUrls: Record<LocalAgentProviderKind, string> = {
@@ -404,7 +405,7 @@ export function createModelCatalogItems(config: AppConfig): ModelCatalogItem[] {
   const rows: ModelCatalogItem[] = [];
   config.Providers.forEach((provider, providerIndex) => {
     const providerName = provider.name?.trim();
-    if (!providerName) {
+    if (!isGatewayProviderEnabled(provider) || !providerName) {
       return;
     }
     for (const model of mergeProviderModelLists(provider.models)) {
@@ -491,7 +492,7 @@ export function modelCatalogItemMatchesQuery(row: ModelCatalogItem, query: strin
 
 export function createRouteModelOptions(providers: GatewayProviderConfig[]): Array<{ label: string; value: string }> {
   return providers.flatMap((provider) => {
-    if (!provider.name || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !provider.name || !Array.isArray(provider.models)) {
       return [];
     }
     return provider.models
@@ -934,6 +935,7 @@ export function createProviderDraftFromDeepLinkPayload(
     baseUrl,
     capabilities: payload.capabilities ?? [],
     catalogModelMetadata: undefined,
+    credentialMode: "apiKey",
     credentials: [],
     icon: payload.icon?.trim() || "",
     modelDescriptions: modelDescriptionsForModels(payload.modelDescriptions, models),
@@ -1029,6 +1031,7 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
     baseUrl: "",
     capabilities: [],
     catalogModelMetadata: undefined,
+    credentialMode: "apiKey",
     credentials: [],
     icon: "",
     modelDescriptions: undefined,
@@ -1051,13 +1054,15 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
   const preset = findProviderPresetByBaseUrl(baseUrl);
   const accountDraft = createProviderAccountDraftFromConfig(provider.account);
   const protocol = toProviderProtocol(provider.type) ?? toProviderProtocol(provider.provider) ?? "openai_chat_completions";
+  const credentials = (provider.credentials ?? []).map(providerCredentialDraftFromConfig);
   return {
     ...accountDraft,
     apiKey: providerApiKey(provider),
     baseUrl,
     capabilities: provider.capabilities ?? [],
     catalogModelMetadata: undefined,
-    credentials: (provider.credentials ?? []).map(providerCredentialDraftFromConfig),
+    credentialMode: providerDraftHasReadyCredentialPool({ credentials }) ? "pool" : "apiKey",
+    credentials,
     icon: provider.icon ?? "",
     modelDescriptions: modelDescriptionsForModels(provider.modelDescriptions, provider.models),
     modelDisplayNames: modelDisplayNamesForModels(
@@ -1087,6 +1092,17 @@ export function createProviderCredentialDraft(index = 0): ProviderCredentialDraf
     priority: "",
     weight: ""
   };
+}
+
+export function providerDraftHasReadyCredentialPool(draft: Pick<AddProviderDraft, "credentials">): boolean {
+  return draft.credentials.some((credential) => credential.enabled && credential.apiKey.trim());
+}
+
+export function providerConnectivityApiKeyFromDraft(draft: Pick<AddProviderDraft, "apiKey" | "credentialMode" | "credentials">): string {
+  if (draft.credentialMode === "pool") {
+    return draft.credentials.find((credential) => credential.enabled && credential.apiKey.trim())?.apiKey.trim() ?? "";
+  }
+  return draft.apiKey.trim();
 }
 
 export function providerCredentialDraftFromConfig(credential: ProviderCredentialConfig, index: number): ProviderCredentialDraft {
@@ -1178,6 +1194,7 @@ export function providerCredentialDraftPatchFromJson(text: string): Partial<AddP
   }
 
   return {
+    credentialMode: "pool",
     credentials
   };
 }
@@ -1587,6 +1604,7 @@ export function createProviderInstallLinkFromDraft(draft: AddProviderDraft, prob
     : probe?.detectedProtocol ?? draft.protocol;
   const baseUrl = providerGlobalBaseUrlForProbe(draft.baseUrl, probe, selectedProtocols.length > 0 ? selectedProtocols : [protocol]);
   const models = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
+  const apiKey = providerConnectivityApiKeyFromDraft(draft);
   if (!providerName || !baseUrl) {
     return "Provider name and Base URL are required.";
   }
@@ -1594,7 +1612,7 @@ export function createProviderInstallLinkFromDraft(draft: AddProviderDraft, prob
     return "Select or enter at least one model.";
   }
   const keySafetyIssue = providerApiKeySafetyIssue({
-    apiKey: draft.apiKey,
+    apiKey,
     baseUrl,
     name: providerName,
     presetId: draft.presetId
@@ -1616,7 +1634,7 @@ export function createProviderInstallLinkFromDraft(draft: AddProviderDraft, prob
     return account;
   }
   const accountKeySafetyIssue = providerAccountApiKeySafetyIssue(account, {
-    apiKey: draft.apiKey,
+    apiKey,
     baseUrl,
     providerName,
     providerPresetId: draft.presetId
@@ -1766,8 +1784,9 @@ export function providerDraftSafetyIssue(draft: AddProviderDraft, baseUrl = draf
   if (!targetBaseUrl) {
     return undefined;
   }
+  const apiKey = providerConnectivityApiKeyFromDraft(draft);
   const issue = providerApiKeySafetyIssue({
-    apiKey: draft.apiKey,
+    apiKey,
     baseUrl: targetBaseUrl,
     name: draft.name,
     presetId: draft.presetId
@@ -1781,7 +1800,7 @@ export function providerDraftSafetyIssue(draft: AddProviderDraft, baseUrl = draf
     return undefined;
   }
   return providerAccountApiKeySafetyIssue(account, {
-    apiKey: draft.apiKey,
+    apiKey,
     baseUrl: targetBaseUrl,
     providerName: draft.name,
     providerPresetId: draft.presetId
@@ -2294,14 +2313,15 @@ export function providerMatchesQuery(provider: GatewayProviderConfig, query: str
   if (!query) {
     return true;
   }
+  const searchableModels = isGatewayProviderEnabled(provider) ? provider.models : [];
 
   return [
     provider.name,
     providerBaseUrl(provider),
     providerCapabilitiesSummary(provider),
     ...(provider.capabilities ?? []).map((capability) => capability.baseUrl),
-    ...provider.models,
-    ...provider.models.map((model) => providerModelDisplayName(provider, model))
+    ...searchableModels,
+    ...searchableModels.map((model) => providerModelDisplayName(provider, model))
   ]
     .filter(Boolean)
     .some((value) => value.toLowerCase().includes(query));

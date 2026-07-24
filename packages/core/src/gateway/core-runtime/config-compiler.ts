@@ -2,6 +2,7 @@
  * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
  */
 import { join as pathJoin } from "node:path";
+import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
 import { codexDefaultBaseUrl, kimiAccessTokenExpired, kimiIdentityHeaders, readClaudeCodeOauth, readCodexAuth, readGrokAuth, readKimiAuth, resolveGrokAuth, resolveKimiAuth } from "@ccr/core/agents/local-providers/service";
 import { grokAccessTokenExpired, grokClientVersion } from "@ccr/core/agents/local-providers/grok";
@@ -48,8 +49,9 @@ export async function compileCoreGatewayConfig(
     await withGrokOauthRuntimeDefaults(withClaudeCodeOauthRuntimeDefaults(withCodexOauthRuntimeDefaults(configuredProviderPlugins)))
   );
   const codexOauthProviderNames = codexOauthLocalProviderNames(providerPluginsWithRuntimeDefaults);
-  const providerPlugins = normalizeCoreProviderPluginNames(providerPluginsWithRuntimeDefaults, config.Providers);
-  const providerPluginsWithCapabilityAliases = withProviderCapabilityPluginAliases(providerPlugins, config.Providers);
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const providerPlugins = normalizeCoreProviderPluginNames(providerPluginsWithRuntimeDefaults, enabledProviders);
+  const providerPluginsWithCapabilityAliases = withProviderCapabilityPluginAliases(providerPlugins, enabledProviders);
   const virtualModelProfiles = coreGatewayVirtualModelProfiles(config);
   const coreEndpoint = endpoint(config.gateway.coreHost, config.gateway.corePort);
   const proxyPreloadFile = upstreamProxyUrl ? writeGatewayProxyPreloadFile(config, upstreamProxyUrl) : undefined;
@@ -70,7 +72,7 @@ export async function compileCoreGatewayConfig(
     }
   );
   const providers = [
-    ...config.Providers
+    ...enabledProviders
       .flatMap((provider) => toCoreGatewayProviders(withCodexOauthProviderBaseUrl(provider, codexOauthProviderNames)))
       .filter((provider): provider is CoreGatewayProvider => Boolean(provider)),
     ...builtinToolArtifacts.providers

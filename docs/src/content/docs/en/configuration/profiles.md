@@ -1,6 +1,6 @@
 ---
-title: Agent Config
-pageTitle: Agent Config
+title: Agent Profiles
+pageTitle: Agent Profiles
 eyebrow: Detailed Configuration
 lead: Create reusable launch configurations for Claude Code, Codex, Grok CLI, Kimi CLI, and ZCode, and open separate agent instances from different configs.
 ---
@@ -8,17 +8,17 @@ lead: Create reusable launch configurations for Claude Code, Codex, Grok CLI, Ki
 ## Configuration Flow
 
 1. Add at least one usable provider and model in **Provider Config**, or create the Fusion model you want to use.
-2. Open **Agent Config** and click **Add profile**.
+2. Open **Agent Profiles** and click **Add profile**.
 3. Choose the agent type, name the config, then choose the effect scope and entry mode.
 4. Select a model. The value is usually `Provider name/model name`, and Fusion models can be selected too.
 5. If the entry mode includes App, optionally bind a Bot and choose whether to forward agent messages or enable handoff.
-6. Save the config, then open it from the Agent Config card: the terminal button copies the CLI command, and the play button starts the App instance.
+6. Save the config, then open it from the Agent Profiles card: the terminal button copies the CLI command, and the play button starts the App instance.
 
 During trial, prefer **Only opened from CCR** and always open the agent from CCR. That keeps the config limited to CCR-launched instances and avoids changing the Claude Code, Codex, Grok CLI, Kimi CLI, or ZCode setup you open directly from the system.
 
 ## Multi-Instance Mechanism
 
-Every Agent Config has its own `id` and name. When CCR opens an agent, it finds the enabled config by name or `id`, then builds the launch plan for that config.
+Every Agent Profiles has its own `id` and name. When CCR opens an agent, it finds the enabled config by name or `id`, then builds the launch plan for that config.
 
 | Mechanism | Actual behavior |
 | --- | --- |
@@ -51,7 +51,7 @@ This lets you create multiple configs for the same agent, such as "Claude Code -
 | --- | --- |
 | Model override | Writes `ANTHROPIC_MODEL` for Claude Code. Leave it empty to keep Claude Code's own default model. |
 | Small fast model | Writes `ANTHROPIC_SMALL_FAST_MODEL` for Claude Code lightweight tasks. Leave it empty to keep the Claude Code default. |
-| Settings file | System-default mode uses the Claude Code default settings file; Only opened from CCR creates an isolated settings file under CCR's config directory, separated by Agent Config `id`. |
+| Settings file | System-default mode uses the Claude Code default settings file; Only opened from CCR creates an isolated settings file under CCR's config directory, separated by Agent Profiles `id`. |
 | Environment variables | Merged into the Claude Code settings `env`. CCR also writes the gateway endpoint, API key helper, and launch wrapper. |
 | Bot | Applies only to the Claude App entry. Select a saved Bot, then choose message forwarding or handoff. |
 
@@ -79,7 +79,7 @@ Claude App and Claude Code CLI use different model-list adapters:
 
 CCR keeps one OpenCode Bot worker next to the OpenCode App process. The worker stores a project and optional session for each Bot conversation. Send `/project list|current|use` to select an Agent project, then use `/session list|current|new|use|reset` to manage sessions inside that project. Selecting another project clears the previous session, and sessions from another project cannot be selected. Only these slash-command domains are intercepted; removed `/task` and legacy flat commands are not supported.
 
-The OpenCode CLI must be available as `opencode` in the CCR Desktop process environment. If it is installed elsewhere, set `CCR_OPENCODE_BIN` in the Agent Config environment variables. Bot sessions default to the filesystem root used by a fresh OpenCode Desktop workspace; set `CCR_OPENCODE_BOT_CWD` to the same project directory currently opened in OpenCode App when using another workspace. CCR passes that directory explicitly through `opencode run --dir`, so the resulting session appears under the matching App project. Permissions are not auto-approved by default; `CCR_OPENCODE_BOT_AUTO_APPROVE=true` enables OpenCode's dangerous `--auto` mode and should be used only in a trusted environment.
+The OpenCode CLI must be available as `opencode` in the CCR Desktop process environment. If it is installed elsewhere, set `CCR_OPENCODE_BIN` in the Agent Profiles environment variables. Bot sessions default to the filesystem root used by a fresh OpenCode Desktop workspace; set `CCR_OPENCODE_BOT_CWD` to the same project directory currently opened in OpenCode App when using another workspace. CCR passes that directory explicitly through `opencode run --dir`, so the resulting session appears under the matching App project. Permissions are not auto-approved by default; `CCR_OPENCODE_BOT_AUTO_APPROVE=true` enables OpenCode's dangerous `--auto` mode and should be used only in a trusted environment.
 
 ### Codex
 
@@ -134,7 +134,7 @@ ZCode supports App only, so its entry mode is fixed to `App only`. The `Show all
 
 Claude Code CLI config writes a settings file. With **Only opened from CCR**, CCR creates an isolated settings file under its own config directory and opens Claude Code through a separate launch wrapper.
 
-When opening Claude App from the desktop app, CCR also prepares a separate user-data directory for that config. Different Agent Config entries use different directories, so multiple Claude App instances can run at the same time.
+When opening Claude App from the desktop app, CCR also prepares a separate user-data directory for that config. Different Agent Profiles entries use different directories, so multiple Claude App instances can run at the same time.
 
 With a Bot bound, Claude App's companion worker exposes Projects/Sessions, streaming replies, attachments, Session usage, and native permission/Ask User requests to IM. The worker stops with the App.
 
@@ -162,13 +162,13 @@ Kimi CLI supports CLI only. CCR opens it through a profile-specific wrapper and 
 
 ### ZCode
 
-ZCode supports App only. CCR writes ZCode CLI config, v2 config, and model cache based on ZCode home or a custom config file, then starts the App with the current Agent Config's model, provider, and separate user-data directory.
+ZCode supports App only. CCR writes ZCode CLI config, v2 config, and model cache based on ZCode home or a custom config file, then starts the App with the current Agent Profiles's model, provider, and separate user-data directory.
 
 With a Bot bound, ZCode uses the Codex-compatible companion worker and native Session discovery. Closing ZCode App immediately takes the relay offline.
 
 ## Multi-Instance Suggestions
 
-1. Create one Agent Config for each agent instance that should run independently.
+1. Create one Agent Profiles for each agent instance that should run independently.
 2. While testing, prefer **Only opened from CCR** to avoid changing the system default agent.
 3. To keep desktop windows side by side, use `App only` or `CLI & APP`, then open the App from CCR.
-4. If the same config is already running, opening it again activates the existing window. Create another Agent Config when you need a second instance.
+4. If the same config is already running, opening it again activates the existing window. Create another Agent Profiles when you need a second instance.

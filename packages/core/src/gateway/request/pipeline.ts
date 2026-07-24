@@ -10,6 +10,22 @@ import {
 import { requestLogRequestedModel, requestLogResponseModel } from "@ccr/core/observability/request-log-model";
 import { recordGatewayUsageCapture, type UsageCaptureInput } from "@ccr/core/usage/store";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin";
+import {
+  codexCompactResponseStream,
+  contextArchiveHandoffResponseStream,
+  failContextArchiveRequest,
+  finalizeContextArchiveRequest,
+  prepareContextArchiveRequest,
+  type ContextArchiveRecord,
+  type ContextArchiveReplayInput,
+  type ContextArchiveReplayResult
+} from "@ccr/core/gateway/context-archive";
+import {
+  prepareCodexCompactCompatRequest,
+  prepareContextArchiveToolContinuationRequest,
+  resolveContextArchiveToolContinuation
+} from "@ccr/core/gateway/features/context-archive-continuation";
+import { isCodexResponsesCompactPath, type ContextArchiveResponseMode } from "@ccr/core/gateway/context-archive/protocol";
 import { adaptRouteRequestBody, restoreRouteRequestBody } from "@ccr/core/routing/protocol-adapter";
 import { reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
 import { recordProviderCredentialOutcome } from "@ccr/core/providers/credential-pool";
@@ -27,7 +43,7 @@ import { providerModelPricingForUsage } from "@ccr/core/models/pricing-service";
 import { clientClosedRequestStatusCode, clientDisconnectMessage, resolveStreamRequestLogOutcome, UpstreamRequestError } from "@ccr/core/gateway/internal/shared";
 import type { BrowserWebSearchMcpIntegration, BrowserWebSearchProtocolRecord, UpstreamFetchResult } from "@ccr/core/gateway/internal/shared";
 import { applyProviderCapabilityRouting, cancelResponseBody, destroyResponseStreams, fetchUpstreamWithFallback, mergeFallbackResponseHeaders, rewriteCapabilityResponseHeaders, uniqueStreams, upstreamResponseHeaders } from "@ccr/core/gateway/upstream/executor";
-import { shouldApplyGatewayRouting } from "@ccr/core/routing/protocol-endpoints";
+import { requestProtocolForPath, shouldApplyGatewayRouting } from "@ccr/core/routing/protocol-endpoints";
 import { createClaudeCodeWebSearchContinuationContext, createHostedWebSearchProtocolContext, hostedWebSearchProtocolResponseStream, hostedWebSearchUnavailableMessage, prepareClaudeCodeWebSearchContinuationRequestBody, prepareHostedWebSearchProtocolRequestBody, selectClaudeCodeWebSearchContinuationRecords, selectHostedWebSearchProtocolRecords } from "@ccr/core/gateway/features/hosted-web-search/index";
 
 export type GatewayRequestPipelineDependencies = {
@@ -74,7 +90,7 @@ export class GatewayRequestPipeline {
         sendJson(response, 503, { error: { message: "Gateway service is not configured." } });
         return;
       }
-  
+
       const method = request.method ?? "GET";
       const requestBody = await readRequestBody(request);
       const requestedModel = requestLogRequestedModel(requestBody, path);
@@ -198,7 +214,7 @@ export class GatewayRequestPipeline {
         }
         onClientDisconnect?.();
       };
-  
+
       response.once("finish", () => {
         responseCompleted = true;
         onResponseFinish?.();
@@ -211,7 +227,7 @@ export class GatewayRequestPipeline {
         // above already records the disconnect via writeStreamLog.
         handleClientDisconnect();
       });
-  
+
       const writeRequestLog = (
         statusCode: number,
         responseHeaders: Headers,
@@ -267,7 +283,7 @@ export class GatewayRequestPipeline {
           url: requestUrl
         });
       };
-  
+
       const shouldCaptureUsage = shouldCaptureGatewayUsage(method, path);
       if (shouldServeGatewayModelsResponse(method, path)) {
         const responseText = `${JSON.stringify(createGatewayModelsResponse(this.config, request.headers, apiKey))}\n`;
@@ -282,7 +298,7 @@ export class GatewayRequestPipeline {
         response.end(responseText);
         return;
       }
-  
+
       if (shouldApplyGatewayRouting(method, path)) {
         const routeAdaptationStartedAt = Date.now();
         const adaptation = adaptRouteRequestBody(path, takeJsonObject(bodyToForward ?? requestBody));
@@ -401,7 +417,7 @@ export class GatewayRequestPipeline {
         startedAtMs: capabilityRoutingStartedAt,
         target: routedModel ? { model: routedModel } : undefined
       });
-  
+
       const hostedWebSearchProtocolContext = createHostedWebSearchProtocolContext({
         body: bodyToForward,
         config: this.config,
@@ -411,7 +427,7 @@ export class GatewayRequestPipeline {
         routedModel,
         sinceMs: startedAt - 1_000
       });
-  
+
       if (hostedWebSearchProtocolContext) {
         const records = await selectHostedWebSearchProtocolRecords(
           hostedWebSearchProtocolContext,
@@ -456,7 +472,7 @@ export class GatewayRequestPipeline {
           return;
         }
       }
-  
+
       const claudeCodeWebSearchContinuationContext = !hostedWebSearchProtocolContext && this.browserWebSearchMcpIntegration
         ? createClaudeCodeWebSearchContinuationContext({
             body: bodyToForward,
@@ -496,14 +512,112 @@ export class GatewayRequestPipeline {
         }
       }
 
+      let upstreamPath = path;
+      const requestProtocol = requestProtocolForPath(path) ?? (isCodexResponsesCompactPath(path) ? "openai_responses" : undefined);
+      const contextArchiveToolContinuation = prepareContextArchiveToolContinuationRequest({
+        apiKey,
+        body: bodyToForward,
+        config: this.config,
+        method,
+        path,
+        protocol: requestProtocol
+      });
+      if (contextArchiveToolContinuation) {
+        bodyToForward = contextArchiveToolContinuation.body;
+        headers["content-type"] = "application/json";
+        headers["x-ccr-context-archive-tool"] = "available";
+        routeTrace?.capture({
+          changes: [
+            { operation: "replace", path: "/body", scope: "body" },
+            { after: headers["x-ccr-context-archive-tool"], operation: "add", path: "/headers/x-ccr-context-archive-tool", scope: "headers" },
+            { after: headers["content-type"], operation: "replace", path: "/headers/content-type", scope: "headers" }
+          ],
+          kind: "mutation",
+          name: "enrichment.context-archive-tool-continuation",
+          phase: "enrichment",
+          target: { protocol: contextArchiveToolContinuation.protocol }
+        });
+      }
+
+      let contextArchiveRecord: ContextArchiveRecord | undefined;
+      let contextArchiveResponseContentType: string | undefined;
+      let contextArchiveResponseMode: ContextArchiveResponseMode | undefined;
+      let codexCompactCompatResponseMode: ContextArchiveResponseMode | undefined;
+      const contextArchiveStartedAt = Date.now();
+      const contextArchivePreparation = await prepareContextArchiveRequest({
+        apiKey,
+        body: bodyToForward,
+        config: this.config,
+        headers,
+        method,
+        path,
+        protocol: requestProtocol,
+        requestId
+      });
+      const contextArchiveRequestConfig = contextArchivePreparation?.config ?? this.config;
+      if (contextArchivePreparation) {
+        bodyToForward = contextArchivePreparation.body;
+        contextArchiveRecord = contextArchivePreparation.record;
+        contextArchiveResponseContentType = contextArchivePreparation.responseContentType;
+        contextArchiveResponseMode = contextArchivePreparation.responseMode;
+        upstreamPath = contextArchivePreparation.upstreamPath ?? upstreamPath;
+        headers["content-type"] = "application/json";
+        headers["x-ccr-context-archive"] = sanitizeHeaderValue(contextArchivePreparation.diagnostic);
+        routeTrace?.capture({
+          changes: [
+            { operation: "replace", path: "/body", scope: "body" },
+            ...(contextArchivePreparation.upstreamPath ? [{ before: path, after: upstreamPath, operation: "replace" as const, path: "/url/path", scope: "url" as const }] : []),
+            { after: headers["x-ccr-context-archive"], operation: "add", path: "/headers/x-ccr-context-archive", scope: "headers" },
+            { after: headers["content-type"], operation: "replace", path: "/headers/content-type", scope: "headers" }
+          ],
+          durationMs: Date.now() - contextArchiveStartedAt,
+          kind: "mutation",
+          name: "enrichment.context-archive",
+          phase: "enrichment",
+          startedAtMs: contextArchiveStartedAt
+        });
+      }
+
+      const codexCompactCompatStartedAt = Date.now();
+      const codexCompactCompatPreparation = contextArchivePreparation
+        ? undefined
+        : prepareCodexCompactCompatRequest({
+            body: bodyToForward,
+            method,
+            path,
+            protocol: requestProtocol
+          });
+      if (codexCompactCompatPreparation) {
+        bodyToForward = codexCompactCompatPreparation.body;
+        contextArchiveResponseContentType = codexCompactCompatPreparation.responseContentType;
+        contextArchiveResponseMode = codexCompactCompatPreparation.responseMode;
+        codexCompactCompatResponseMode = codexCompactCompatPreparation.responseMode;
+        upstreamPath = codexCompactCompatPreparation.upstreamPath ?? upstreamPath;
+        headers["content-type"] = "application/json";
+        headers["x-ccr-codex-compact"] = sanitizeHeaderValue(codexCompactCompatPreparation.diagnostic);
+        routeTrace?.capture({
+          changes: [
+            { operation: "replace", path: "/body", scope: "body" },
+            ...(codexCompactCompatPreparation.upstreamPath ? [{ before: path, after: upstreamPath, operation: "replace" as const, path: "/url/path", scope: "url" as const }] : []),
+            { after: headers["x-ccr-codex-compact"], operation: "add", path: "/headers/x-ccr-codex-compact", scope: "headers" },
+            { after: headers["content-type"], operation: "replace", path: "/headers/content-type", scope: "headers" }
+          ],
+          durationMs: Date.now() - codexCompactCompatStartedAt,
+          kind: "mutation",
+          name: "compatibility.codex-compact",
+          phase: "compatibility",
+          startedAtMs: codexCompactCompatStartedAt
+        });
+      }
+
       const contentLengthHeader = headers["content-length"];
       delete headers["content-length"];
       const upstreamPreparationChanges: RequestRouteTraceChange[] = contentLengthHeader === undefined
         ? []
         : [{ before: contentLengthHeader, operation: "remove", path: "/headers/content-length", scope: "headers" }];
-      const upstreamUrl = new URL(request.url || "/", this.status.coreEndpoint).toString();
+      const upstreamUrl = new URL(upstreamPath, this.status.coreEndpoint).toString();
       let upstreamResult: UpstreamFetchResult;
-  
+
       try {
         upstreamResult = await fetchUpstreamWithFallback({
           body: bodyToForward,
@@ -511,7 +625,7 @@ export class GatewayRequestPipeline {
           fallback: routeFallback,
           headers,
           method,
-          path,
+          path: upstreamPath,
           preparationChanges: upstreamPreparationChanges,
           routedModel,
           coreAuthToken: this.coreAuthToken,
@@ -520,6 +634,7 @@ export class GatewayRequestPipeline {
           upstreamUrl
         });
       } catch (error) {
+        failContextArchiveRequest(contextArchiveRecord, contextArchiveRequestConfig);
         const failedAttempts = error instanceof UpstreamRequestError ? error.failedAttempts : [];
         const message = formatUpstreamErrorForLog(error, {
           attempts: Math.max(1, failedAttempts.length),
@@ -555,9 +670,26 @@ export class GatewayRequestPipeline {
         writeRequestLog(502, new Headers(), "", false, message);
         throw error;
       }
-  
+
       bodyToForward = upstreamResult.attempt.body ?? bodyToForward;
       routedModel = upstreamResult.attempt.model ?? routedModel;
+      if (contextArchiveToolContinuation && upstreamResult.response.ok) {
+        upstreamResult = await resolveContextArchiveToolContinuation({
+          context: contextArchiveToolContinuation,
+          coreAuthToken: this.coreAuthToken,
+          executor: (input: ContextArchiveReplayInput) => this.replayContextArchive(input),
+          fallback: routeFallback,
+          headers,
+          method,
+          path: upstreamPath,
+          routedModel,
+          signal: upstreamAbortController.signal,
+          upstreamResult,
+          upstreamUrl
+        });
+        bodyToForward = upstreamResult.attempt.body ?? bodyToForward;
+        routedModel = upstreamResult.attempt.model ?? routedModel;
+      }
       const responseHeaders = rewriteCapabilityResponseHeaders(
         // Copy into a mutable Headers instance: upstream fetch Response.headers
         // can be immutable (TypeError: immutable on .delete/.set), and
@@ -569,13 +701,33 @@ export class GatewayRequestPipeline {
         this.config
       );
       const upstreamResponse = upstreamResult.response;
+      if (upstreamResponse.ok) {
+        finalizeContextArchiveRequest(contextArchiveRecord, {
+          credentialChain: upstreamResult.attempt.credentialChain,
+          credentialIds: upstreamResult.attempt.credentialIds,
+          logicalProvider: upstreamResult.attempt.logicalProvider,
+          providerProtocol: upstreamResult.attempt.credentialProtocol,
+          routedModel
+        }, contextArchiveRequestConfig);
+      } else {
+        failContextArchiveRequest(contextArchiveRecord, contextArchiveRequestConfig);
+      }
       if (clientDisconnected || upstreamAbortController.signal.aborted) {
         await cancelResponseBody(upstreamResponse);
         writeRequestLog(clientClosedRequestStatusCode, responseHeaders, "", false, clientDisconnectMessage);
         return;
       }
-      if (codexApplyPatchBridgeActive) {
+      const appendContextArchiveFooter = Boolean(contextArchiveRecord && upstreamResponse.ok);
+      const transformCodexCompactResponse = Boolean(!contextArchiveRecord && codexCompactCompatResponseMode && upstreamResponse.ok);
+      const contextArchiveSourceContentType = responseHeaders.get("content-type") ?? undefined;
+      if (codexApplyPatchBridgeActive || appendContextArchiveFooter || transformCodexCompactResponse) {
         responseHeaders.delete("content-length");
+      }
+      if ((appendContextArchiveFooter || transformCodexCompactResponse) && contextArchiveResponseContentType) {
+        responseHeaders.set("content-type", contextArchiveResponseContentType);
+      }
+      if (contextArchiveToolContinuation?.executedCalls) {
+        responseHeaders.set("x-ccr-context-archive-tool-calls", String(contextArchiveToolContinuation.executedCalls));
       }
       const hostedWebSearchResponseContentType = responseHeaders.get("content-type")?.toLowerCase() ?? "";
       if (
@@ -615,12 +767,12 @@ export class GatewayRequestPipeline {
         response.end();
         return;
       }
-  
+
       const upstreamBody = Readable.fromWeb(upstreamResponse.body as unknown as import("node:stream/web").ReadableStream);
       const patchedResponseBody = codexApplyPatchBridgeActive
         ? codexApplyPatchBridgeResponseStream(upstreamBody, responseHeaders)
         : upstreamBody;
-      const responseBody = hostedWebSearchProtocolContext
+      const hostedWebSearchResponseBody = hostedWebSearchProtocolContext
         ? hostedWebSearchProtocolResponseStream(
             patchedResponseBody,
             responseHeaders,
@@ -628,7 +780,24 @@ export class GatewayRequestPipeline {
             this.browserWebSearchMcpIntegration
           )
         : patchedResponseBody;
-      const responseStreams = uniqueStreams([upstreamBody, patchedResponseBody, responseBody]);
+      const archiveResponseProtocol = requestProtocolForPath(upstreamPath) ?? requestProtocol ?? "anthropic_messages";
+      const responseBody = appendContextArchiveFooter && contextArchiveRecord
+        ? contextArchiveHandoffResponseStream(
+            hostedWebSearchResponseBody,
+            contextArchiveRecord,
+            archiveResponseProtocol,
+            contextArchiveSourceContentType,
+            contextArchiveResponseMode
+          )
+        : transformCodexCompactResponse && codexCompactCompatResponseMode
+          ? codexCompactResponseStream(
+              hostedWebSearchResponseBody,
+              archiveResponseProtocol,
+              contextArchiveSourceContentType,
+              codexCompactCompatResponseMode
+            )
+          : hostedWebSearchResponseBody;
+      const responseStreams = uniqueStreams([upstreamBody, patchedResponseBody, hostedWebSearchResponseBody, responseBody]);
       const sampler = createBodySampler();
       const sseErrorDetector = createSseErrorDetector(responseHeaders.get("content-type") ?? undefined);
       let streamDetectedError: string | undefined;
@@ -667,6 +836,7 @@ export class GatewayRequestPipeline {
         }
       };
       const onResponseStreamError = (error: Error) => {
+        failContextArchiveRequest(contextArchiveRecord, contextArchiveRequestConfig);
         streamDetectedError ??= sseErrorDetector.finish();
         writeStreamLog(clientDisconnected ? clientDisconnectMessage : formatUpstreamErrorForLog(error, {
           attempts: upstreamResult.failedAttempts.length + 1,
@@ -717,4 +887,47 @@ export class GatewayRequestPipeline {
       }
       responseBody.pipe(response);
     }
+
+  async replayContextArchive(input: ContextArchiveReplayInput): Promise<ContextArchiveReplayResult> {
+    const config = this.config;
+    if (!config || !this.coreAuthToken || !this.status.coreEndpoint) {
+      throw new Error("ARCHIVE_REPLAY_UNAVAILABLE: Gateway runtime is not ready.");
+    }
+    const route = input.snapshot.route;
+    if (!route) {
+      throw new Error(`ARCHIVE_ROUTE_UNAVAILABLE: Archive ${input.snapshot.archiveId} has no finalized route.`);
+    }
+
+    const headers: Record<string, string> = {
+      ...input.snapshot.replayHeaders,
+      "content-type": "application/json",
+      "x-ccr-context-archive-replay": input.snapshot.archiveId,
+      "x-client-request-id": randomUUID()
+    };
+    if (route.credentialChain?.length) {
+      headers["x-target-providers"] = route.credentialChain.join(",");
+    } else if (route.logicalProvider) {
+      headers["x-gateway-target-provider"] = route.logicalProvider;
+    }
+
+    const upstreamUrl = new URL(input.snapshot.path, this.status.coreEndpoint).toString();
+    const result = await fetchUpstreamWithFallback({
+      body: input.body,
+      config,
+      fallback: { mode: "off", models: [], retryCount: 1 },
+      headers,
+      method: input.snapshot.method,
+      path: input.snapshot.path,
+      routedModel: route.routedModel,
+      coreAuthToken: this.coreAuthToken,
+      signal: input.signal,
+      upstreamUrl
+    });
+    const responseHeaders = upstreamResponseHeaders(result);
+    return {
+      body: Buffer.from(await result.response.arrayBuffer()),
+      contentType: responseHeaders.get("content-type") ?? undefined,
+      statusCode: result.response.status
+    };
+  }
 }

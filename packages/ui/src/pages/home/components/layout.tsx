@@ -18,10 +18,40 @@ import { ModelsView, ProvidersView } from "./providers";
 import { RoutingView } from "./routing";
 import { VirtualModelsView } from "./virtual-models";
 
-type MainNavigationItem = {
+export type MainNavigationItem = {
   icon: LucideIcon;
   id: NavigationId;
 };
+
+export type SidebarNavigationGroup = {
+  id: "advanced" | "monitor" | "setup" | "workspace";
+  items: MainNavigationItem[];
+  label: string;
+};
+
+const sidebarNavigationGroupDefinitions: Array<{
+  id: SidebarNavigationGroup["id"];
+  itemIds: NavigationId[];
+  label: string;
+}> = [
+  { id: "workspace", itemIds: ["overview"], label: "Workspace" },
+  { id: "setup", itemIds: ["providers", "profile", "routing"], label: "Setup" },
+  { id: "monitor", itemIds: ["logs", "observability"], label: "Monitor" },
+  { id: "advanced", itemIds: ["virtual-models", "models", "api-keys", "extensions"], label: "Advanced" }
+];
+
+export function groupSidebarNavigation(visibleNavigation: MainNavigationItem[]): SidebarNavigationGroup[] {
+  const navigationById = new Map(visibleNavigation.map((item) => [item.id, item]));
+  return sidebarNavigationGroupDefinitions
+    .map((group) => ({
+      id: group.id,
+      items: group.itemIds
+        .map((id) => navigationById.get(id))
+        .filter((item): item is MainNavigationItem => Boolean(item)),
+      label: group.label
+    }))
+    .filter((group) => group.items.length > 0);
+}
 
 type MainViewProps = {
   apiKeys: ComponentProps<typeof ApiKeysView>;
@@ -116,6 +146,8 @@ export function MainLayout({
   const windowControlSafeAreaWidth = showUpdateButton
     ? (isMac ? 188 : 124)
     : (isMac ? 152 : 88);
+  const navigationGroups = groupSidebarNavigation(visibleNavigation);
+
   return (
     <>
       <div className={cn(
@@ -186,32 +218,25 @@ export function MainLayout({
               <div className="app-drag min-w-0 flex-1" />
             </div>
 
-            <nav className="flex min-h-0 flex-1 flex-col gap-1 px-2 py-3 max-[720px]:flex-none max-[720px]:flex-row max-[720px]:overflow-x-auto max-[720px]:py-2" aria-label={copy.sidebar.primaryNavigation}>
-              {visibleNavigation.map((item) => (
-                <Button
-                  className={cn(
-                    "flex h-9 min-w-0 items-center gap-2 rounded-md px-2 text-left text-[12px] font-medium text-muted-foreground transition-all duration-150 max-[720px]:min-w-[118px]",
-                    activeView === item.id
-                      ? "bg-card text-foreground shadow-[0_1px_3px_rgba(0,0,0,0.06)]"
-                      : "hover:bg-muted/80 hover:text-foreground"
-                  )}
-                  key={item.id}
-                  onClick={() => onSelectNavigationItem(item.id)}
-                  type="button"
-                  unstyled
-                >
-                  <motion.span
-                    className={cn(
-                      "flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors",
-                      activeView === item.id && "bg-primary/10 text-primary"
-                    )}
-                    layout="position"
-                    transition={shouldReduceMotion ? reducedMotionTransition : listSpringTransition}
-                  >
-                    <item.icon className="h-3.5 w-3.5" />
-                  </motion.span>
-                  <span className="min-w-0 flex-1 truncate">{copy.navigation[item.id]}</span>
-                </Button>
+            <nav className="flex min-h-0 flex-1 flex-col gap-4 px-2 py-3 max-[720px]:flex-none max-[720px]:flex-row max-[720px]:gap-1 max-[720px]:overflow-x-auto max-[720px]:py-2" aria-label={copy.sidebar.primaryNavigation}>
+              {navigationGroups.map((group) => (
+                <div className="grid min-w-0 gap-1 max-[720px]:contents" key={group.id}>
+                  <div className="px-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/65 max-[720px]:hidden">
+                    {copy.text[group.label] ?? group.label}
+                  </div>
+                  <div className="grid min-w-0 gap-1 max-[720px]:contents">
+                    {group.items.map((item) => (
+                      <SidebarNavigationButton
+                        active={activeView === item.id}
+                        item={item}
+                        key={item.id}
+                        label={copy.navigation[item.id]}
+                        onClick={() => onSelectNavigationItem(item.id)}
+                        shouldReduceMotion={shouldReduceMotion}
+                      />
+                    ))}
+                  </div>
+                </div>
               ))}
             </nav>
 
@@ -267,12 +292,51 @@ export function MainLayout({
             activeView={activeView}
             agentAnalysisEnabled={agentAnalysisEnabled}
             networkCaptureEnabled={networkCaptureEnabled}
-            requestLogsEnabled={requestLogsEnabled}
             viewProps={viewProps}
           />
         </div>
       </main>
     </>
+  );
+}
+
+function SidebarNavigationButton({
+  active,
+  item,
+  label,
+  onClick,
+  shouldReduceMotion
+}: {
+  active: boolean;
+  item: MainNavigationItem;
+  label: string;
+  onClick: () => void;
+  shouldReduceMotion: boolean | null;
+}) {
+  return (
+    <Button
+      className={cn(
+        "flex h-9 min-w-0 items-center gap-2 rounded-md px-2 text-left text-[12px] font-medium text-muted-foreground transition-all duration-150 max-[720px]:min-w-[118px]",
+        active
+          ? "bg-card text-foreground shadow-[0_1px_3px_rgba(0,0,0,0.06)]"
+          : "hover:bg-muted/80 hover:text-foreground"
+      )}
+      onClick={onClick}
+      type="button"
+      unstyled
+    >
+      <motion.span
+        className={cn(
+          "flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors",
+          active && "bg-primary/10 text-primary"
+        )}
+        layout="position"
+        transition={shouldReduceMotion ? reducedMotionTransition : listSpringTransition}
+      >
+        <item.icon className="h-3.5 w-3.5" />
+      </motion.span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+    </Button>
   );
 }
 
@@ -375,13 +439,11 @@ function MainViewSwitch({
   activeView,
   agentAnalysisEnabled,
   networkCaptureEnabled,
-  requestLogsEnabled,
   viewProps
 }: {
   activeView: ViewId;
   agentAnalysisEnabled: boolean;
   networkCaptureEnabled: boolean;
-  requestLogsEnabled: boolean;
   viewProps: MainViewProps;
 }) {
   return (
@@ -392,7 +454,7 @@ function MainViewSwitch({
         {activeView === "api-keys" ? <ApiKeysView {...viewProps.apiKeys} /> : null}
         {activeView === "profile" ? <ProfileView {...viewProps.profile} /> : null}
         {activeView === "networking" && networkCaptureEnabled ? <NetworkingView {...viewProps.networking} /> : null}
-        {activeView === "logs" && requestLogsEnabled ? <LogsView {...viewProps.logs} /> : null}
+        {activeView === "logs" ? <LogsView {...viewProps.logs} /> : null}
         {activeView === "providers" ? <ProvidersView {...viewProps.providers} /> : null}
         {activeView === "models" ? <ModelsView {...viewProps.models} /> : null}
         {activeView === "routing" ? <RoutingView {...viewProps.routing} /> : null}

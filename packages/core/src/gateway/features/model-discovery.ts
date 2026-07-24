@@ -2,6 +2,7 @@
  * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
  */
 import type { IncomingHttpHeaders } from "node:http";
+import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { ApiKeyConfig, AppConfig, ProviderModelMetadata } from "@ccr/core/contracts/app";
 import { buildClaudeAppGatewayModelRoutes, resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
 import { modelRegistryForConfig, normalizeRouteSelector } from "@ccr/core/routing/model-registry";
@@ -13,6 +14,7 @@ import { claudeAppGatewayModelRouteOptions, claudeCodeOneMillionContextSuffix } 
 import type { ClaudeCodeDiscoverableModel } from "@ccr/core/gateway/internal/shared";
 import { parseJsonObjectSafe, serializeJsonBodyWithModel } from "@ccr/core/gateway/http/body";
 import { uniqueStrings } from "@ccr/core/gateway/internal/collections";
+import { contextArchiveConfigForApiKey, contextArchiveMcpEnabled } from "@ccr/core/gateway/context-archive";
 
 
 export function shouldServeGatewayModelsResponse(method: string, path: string): boolean {
@@ -87,11 +89,13 @@ export function prepareClaudeAppDiscoveredModelRequest(
 
 
 export function createGatewayModelsResponse(config: AppConfig, headers: IncomingHttpHeaders, apiKey?: ApiKeyConfig): Record<string, unknown> {
+  const contextArchiveConfig = contextArchiveConfigForApiKey(config, apiKey);
+  const contextArchiveCompact = Boolean(contextArchiveConfig && contextArchiveMcpEnabled(contextArchiveConfig));
   if (isClaudeAppApiKey(apiKey)) {
-    return createClaudeAppGatewayModelsResponse(config);
+    return createClaudeAppGatewayModelsResponse(config, { contextArchiveCompact });
   }
   if (isClaudeCodeUserAgent(headers)) {
-    return createClaudeAppGatewayModelsResponse(config, { claudeCode: true });
+    return createClaudeAppGatewayModelsResponse(config, { claudeCode: true, contextArchiveCompact });
   }
   return createOpenAICompatibleGatewayModelsResponse(config);
 }
@@ -119,7 +123,7 @@ function createOpenAICompatibleGatewayModelsResponse(config: AppConfig): Record<
 
 function createClaudeAppGatewayModelsResponse(
   config: AppConfig,
-  options: { claudeCode?: boolean } = {}
+  options: { claudeCode?: boolean; contextArchiveCompact?: boolean } = {}
 ): Record<string, unknown> {
   const routes = buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions);
   const data = routes.map((route) => {
@@ -132,6 +136,7 @@ function createClaudeAppGatewayModelsResponse(
     return {
       id: exposeOneMillionContextVariant ? claudeCodeOneMillionContextModelId(route.id) : route.id,
       capabilities: createClaudeCodeModelCapabilities(catalogEntry, {
+        contextArchiveCompact: options.contextArchiveCompact,
         maxInputTokens,
         oneMillionContext: route.oneMillionContext,
         ...providerModelCapabilityOverrides(modelMetadata)
@@ -155,7 +160,7 @@ function createClaudeAppGatewayModelsResponse(
 }
 
 
-function createClaudeCodeModelsResponse(config: AppConfig): Record<string, unknown> {
+function createClaudeCodeModelsResponse(config: AppConfig, contextArchiveCompact = false): Record<string, unknown> {
   const models = buildClaudeCodeDiscoverableModels(config);
   const data = models.map((model) => {
     const claudeId = claudeCodeDiscoveryModelId(model.id);
@@ -167,6 +172,7 @@ function createClaudeCodeModelsResponse(config: AppConfig): Record<string, unkno
     return {
       id: claudeId,
       capabilities: createClaudeCodeModelCapabilities(catalogEntry, {
+        contextArchiveCompact,
         maxInputTokens,
         oneMillionContext: model.oneMillionContext,
         ...providerModelCapabilityOverrides(modelMetadata)
@@ -185,6 +191,11 @@ function createClaudeCodeModelsResponse(config: AppConfig): Record<string, unkno
     has_more: false,
     last_id: data[data.length - 1]?.id ?? null
   };
+}
+
+export function createClaudeCodeModelsResponseForTest(config: AppConfig, apiKey?: ApiKeyConfig): Record<string, unknown> {
+  const contextArchiveConfig = contextArchiveConfigForApiKey(config, apiKey);
+  return createClaudeCodeModelsResponse(config, Boolean(contextArchiveConfig && contextArchiveMcpEnabled(contextArchiveConfig)));
 }
 
 
@@ -253,7 +264,7 @@ function buildGatewayDiscoverableModelIds(config: AppConfig): string[] {
   const baseEntries: Array<{ modelName: string; providerName: string }> = [];
   for (const provider of config.Providers) {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       continue;
     }
     for (const rawModel of provider.models) {
@@ -390,6 +401,9 @@ function isConfiguredGatewayModelSelector(model: string, config: AppConfig): boo
   }
 
   for (const provider of config.Providers) {
+    if (!isGatewayProviderEnabled(provider)) {
+      continue;
+    }
     if (provider.models.some((candidate) => candidate.trim().toLowerCase() === normalized)) {
       return true;
     }
@@ -443,6 +457,7 @@ function formatClaudeCodeModelDisplayName(
 function createClaudeCodeModelCapabilities(
   entry?: ModelCatalogEntry,
   options: {
+    contextArchiveCompact?: boolean;
     imageInput?: boolean;
     maxInputTokens?: number;
     oneMillionContext?: boolean;
@@ -492,7 +507,7 @@ function createClaudeCodeModelCapabilities(
     context_management: {
       clear_thinking_20251015: { supported: supportsReasoning },
       clear_tool_uses_20250919: { supported: supportsToolUse },
-      compact_20260112: { supported: maxInputTokens > 0 },
+      compact_20260112: { supported: options.contextArchiveCompact === true && maxInputTokens > 0 },
       max_input_tokens: maxInputTokens,
       supported: maxInputTokens > 0
     },
@@ -529,6 +544,7 @@ function createClaudeCodeModelCapabilities(
 
 function createDefaultClaudeCodeModelCapabilities(
   options: {
+    contextArchiveCompact?: boolean;
     imageInput?: boolean;
     maxInputTokens?: number;
     oneMillionContext?: boolean;
@@ -549,7 +565,7 @@ function createDefaultClaudeCodeModelCapabilities(
     context_management: {
       clear_thinking_20251015: { supported: supportsReasoning },
       clear_tool_uses_20250919: { supported: true },
-      compact_20260112: { supported: true },
+      compact_20260112: { supported: options.contextArchiveCompact === true },
       ...(maxInputTokens ? { max_input_tokens: maxInputTokens } : {}),
       supported: true
     },

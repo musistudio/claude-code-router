@@ -1,0 +1,66 @@
+{
+  "byArm": {
+    "ccr_gateway_agent": {
+      "correct": 74,
+      "total": 75,
+      "accuracy": 0.9866666666666667
+    }
+  },
+  "byCategory": {
+    "exact_recall": {
+      "ccr_gateway_agent": {
+        "correct": 14,
+        "total": 15,
+        "accuracy": 0.9333333333333333
+      }
+    },
+    "relational_state": {
+      "ccr_gateway_agent": {
+        "correct": 15,
+        "total": 15,
+        "accuracy": 1
+      }
+    },
+    "tool_history": {
+      "ccr_gateway_agent": {
+        "correct": 15,
+        "total": 15,
+        "accuracy": 1
+      }
+    },
+    "distractor_resolution": {
+      "ccr_gateway_agent": {
+        "correct": 15,
+        "total": 15,
+        "accuracy": 1
+      }
+    },
+    "task_continuation": {
+      "ccr_gateway_agent": {
+        "correct": 15,
+        "total": 15,
+        "accuracy": 1
+      }
+    }
+  },
+  "completedTrials": 1,
+  "diagnosticStrictOriginal": {
+    "correct": 0,
+    "total": 75,
+    "accuracy": 0
+  },
+  "gatewayHistoryToolCalls": 1,
+  "perFixture": {
+    "fixture-01": {
+      "ccr_gateway_agent": {
+        "correct": 74,
+        "total": 75,
+        "accuracy": 0.9866666666666667
+      }
+    }
+  },
+  "usage": {
+    "totalInputTokens": 18610,
+    "totalOutputTokens": 5572
+  }
+}

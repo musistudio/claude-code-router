@@ -172,6 +172,10 @@ test("profile service overwrites generated bin files without creating backups", 
       }
     ]
   };
+  config.contextArchive = {
+    ...config.contextArchive,
+    enabled: true
+  };
   config.APIKEY = "ccr-profile-test";
   config.APIKEYS = [
     {
@@ -205,9 +209,11 @@ test("profile service overwrites generated bin files without creating backups", 
   const toolHubMcpConfigFile = path.join(CONFIGDIR, "profiles", profileId, "claude", "toolhub-mcp.json");
   const toolHubMcpConfig = JSON.parse(readFileSync(toolHubMcpConfigFile, "utf8"));
   const toolHubMcpServerEnv = toolHubMcpConfig.mcpServers["ccr-toolhub"].env;
+  const contextArchiveMcpServer = toolHubMcpConfig.mcpServers["ccr-context-archive"];
   assert.equal(toolHubMcpServerEnv.TOOLHUB_OPENAI_API_KEY, "ccr-profile-test");
   assert.equal(toolHubMcpServerEnv.TOOLHUB_OPENAI_BASE_URL, `http://127.0.0.1:${config.gateway.port}/v1`);
   assert.equal(toolHubMcpServerEnv.TOOLHUB_OPENAI_MODEL, "Provider/model");
+  assert.equal(contextArchiveMcpServer, undefined);
   const backupEntries = readdirSync(binDir).filter((entry) =>
     (
       entry.startsWith(`ccr-claude-code-api-key-${profileId}`) ||
@@ -439,6 +445,177 @@ test("profile service injects ToolHub MCP into Codex config", { skip: !process.e
   const explicitlyUpdatedSeparateProfile = readFileSync(separateProfileFile, "utf8");
   assert.match(explicitlyUpdatedSeparateProfile, /model = "Provider\/model-2"/);
   assert.match(explicitlyUpdatedSeparateProfile, /model_reasoning_effort = "ultra"/);
+});
+
+test("profile service injects Context Archive MCP for managed Claude Code profile", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "managed-compact-claude";
+  const config = createDefaultAppConfig({
+    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
+  });
+  config.Providers = [
+    {
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model"],
+      name: "Provider"
+    }
+  ];
+  config.preferredProvider = "Provider";
+  config.contextArchive = {
+    ...config.contextArchive,
+    enabled: false
+  };
+  config.APIKEY = "ccr-managed-claude-profile-test";
+  config.APIKEYS = [
+    {
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profileId}`,
+      key: "ccr-managed-claude-profile-test",
+      name: "Profile: Managed Compact Claude"
+    }
+  ];
+  config.profile.profiles = [
+    {
+      agent: "claude-code",
+      enabled: true,
+      env: {},
+      id: profileId,
+      managedCompact: true,
+      model: "Provider/model",
+      name: "Managed Compact Claude",
+      scope: "ccr",
+      settingsFile: "~/.claude/settings.json",
+      smallFastModel: "",
+      surface: "auto"
+    }
+  ];
+
+  const result = await applyProfileConfig(config);
+  assert.equal(result.clients.length, 1);
+  assert.equal(result.clients[0].ok, true);
+  const mcpConfigFile = path.join(CONFIGDIR, "profiles", profileId, "claude", "toolhub-mcp.json");
+  const mcpConfig = JSON.parse(readFileSync(mcpConfigFile, "utf8"));
+  assert.deepEqual(Object.keys(mcpConfig.mcpServers), ["ccr-context-archive"]);
+  assert.equal(mcpConfig.mcpServers["ccr-context-archive"].type, "http");
+  assert.equal(mcpConfig.mcpServers["ccr-context-archive"].url, `http://127.0.0.1:${config.gateway.port}/__ccr/context-archive/mcp`);
+  assert.equal(mcpConfig.mcpServers["ccr-context-archive"].headers.Authorization, "Bearer ccr-managed-claude-profile-test");
+});
+
+test("profile service injects Context Archive MCP for managed Codex profile", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "managed-compact-codex";
+  const config = createDefaultAppConfig({
+    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
+  });
+  config.Providers = [
+    {
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model"],
+      name: "Provider"
+    }
+  ];
+  config.preferredProvider = "Provider";
+  config.contextArchive = {
+    ...config.contextArchive,
+    enabled: false
+  };
+  config.APIKEY = "ccr-managed-codex-profile-test";
+  config.APIKEYS = [
+    {
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profileId}`,
+      key: "ccr-managed-codex-profile-test",
+      name: "Profile: Managed Compact Codex"
+    }
+  ];
+  config.profile.profiles = [
+    {
+      agent: "codex",
+      cliMiddleware: false,
+      codexCliPath: "",
+      codexHome: "",
+      configFile: "",
+      configFormat: "legacy",
+      enabled: true,
+      env: {},
+      id: profileId,
+      managedCompact: true,
+      model: "Provider/model",
+      name: "Managed Compact Codex",
+      providerId: "claude-code-router",
+      providerName: "Claude Code Router",
+      scope: "ccr",
+      showAllSessions: false,
+      surface: "auto"
+    }
+  ];
+
+  const result = await applyProfileConfig(config);
+  assert.equal(result.clients.length, 1);
+  assert.equal(result.clients[0].ok, true);
+
+  const configFile = path.join(CONFIGDIR, "profiles", profileId, "codex", "config.toml");
+  const content = readFileSync(configFile, "utf8");
+  assert.doesNotMatch(content, /# BEGIN CCR managed ToolHub MCP/);
+  assert.match(content, /# BEGIN CCR managed Context Archive MCP/);
+  assert.match(content, /\[mcp_servers\.ccr-context-archive\]/);
+  assert.match(content, new RegExp(`url = "http://127\\.0\\.0\\.1:${config.gateway.port}/__ccr/context-archive/mcp"`));
+  assert.match(content, /http_headers = \{ Authorization = "Bearer ccr-managed-codex-profile-test" \}/);
+  assert.match(content, /startup_timeout_sec = 10/);
+  assert.match(content, /tool_timeout_sec = 60/);
+});
+
+test("profile service injects Context Archive MCP for managed Claude Code without ToolHub", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "context-archive-mcp-only";
+  const config = createDefaultAppConfig({
+    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
+  });
+  config.Providers = [
+    {
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model"],
+      name: "Provider"
+    }
+  ];
+  config.preferredProvider = "Provider";
+  config.contextArchive = {
+    ...config.contextArchive,
+    enabled: true
+  };
+  config.APIKEY = "ccr-context-archive-profile-test";
+  config.APIKEYS = [
+    {
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profileId}`,
+      key: "ccr-context-archive-profile-test",
+      name: "Profile: Context Archive MCP Test"
+    }
+  ];
+  config.profile.profiles = [
+    {
+      agent: "claude-code",
+      enabled: true,
+      env: {},
+      id: profileId,
+      managedCompact: true,
+      model: "Provider/model",
+      name: "Context Archive MCP Test",
+      scope: "ccr",
+      settingsFile: "~/.claude/settings.json",
+      smallFastModel: "",
+      surface: "auto"
+    }
+  ];
+
+  const result = await applyProfileConfig(config);
+  assert.equal(result.clients.length, 1);
+  assert.equal(result.clients[0].ok, true);
+  const mcpConfigFile = path.join(CONFIGDIR, "profiles", profileId, "claude", "toolhub-mcp.json");
+  const mcpConfig = JSON.parse(readFileSync(mcpConfigFile, "utf8"));
+  assert.deepEqual(Object.keys(mcpConfig.mcpServers), ["ccr-context-archive"]);
+  assert.equal(mcpConfig.mcpServers["ccr-context-archive"].type, "http");
+  assert.equal(mcpConfig.mcpServers["ccr-context-archive"].headers.Authorization, "Bearer ccr-context-archive-profile-test");
 });
 
 test("profile service writes a Grok CLI wrapper that points model discovery and inference to CCR", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
