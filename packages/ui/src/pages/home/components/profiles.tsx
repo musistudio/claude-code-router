@@ -759,7 +759,7 @@ export function AddProfileForm({
   ].filter(Boolean).length;
   const advancedSummary = advancedIssueCount > 0
     ? t("Advanced settings need attention")
-    : t("Paths, provider identity, bot, compact, and env");
+    : t("Paths, bot, compact, and env");
   const handleAppPathDrop = useCallback((event: ReactDragEvent<HTMLElement>) => {
     if (!showAppPathField) {
       return;

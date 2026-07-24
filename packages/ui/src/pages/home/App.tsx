@@ -1259,8 +1259,7 @@ function App() {
   }
 
   useEffect(() => {
-    const providerFormVisible = providerAddOpen || (activeView === "onboarding" && onboardingStep === "provider");
-    if (!window.ccr || !providerFormVisible) {
+    if (!window.ccr || !providerAddOpen) {
       return;
     }
     if (providerDraft.protocolDetectionMode === "manual") {

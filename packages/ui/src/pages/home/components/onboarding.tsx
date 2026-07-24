@@ -1,12 +1,12 @@
 import {
   AddProfileDraft, AddProviderDraft, AppConfig, Button, Check, ChevronLeft,
-  ChevronRight, CircleAlert, cn, GatewayProviderProbeResult, GatewayStatus, Gauge, getNextOnboardingStep,
-  isOnboardingProfileReady, isOnboardingProviderReady, Layers3, LucideIcon, motion, motionEase,
-  LoaderCircle, onboardingMascotSpriteUrl, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder, ProviderConnectivityCheckReport, reducedMotionTransition, useAppText, useReducedMotion,
+  ChevronRight, cn, findProviderPreset, GatewayProviderProbeResult, GatewayStatus, Gauge, getNextOnboardingStep,
+  isOnboardingProfileReady, isOnboardingProviderReady, Layers3, LucideIcon, mergeProviderModelLists, motion, motionEase,
+  LoaderCircle, onboardingMascotSpriteUrl, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder, providerDraftHasReadyCredentialPool, ProviderConnectivityCheckReport, reducedMotionTransition, splitLines, useAppText, useEffect, useReducedMotion,
   useState,
   UserRound, X
 } from "../shared/index";
-import { AddProviderForm } from "./providers";
+import { AddProviderForm, providerSetupStepIds, type ProviderSetupStepId } from "./providers";
 import { AddProfileForm } from "./profiles";
 
 type OnboardingMascotTone = "cyan" | "orange" | "violet";
@@ -108,6 +108,7 @@ export function OnboardingView({
   const t = useAppText();
   const shouldReduceMotion = useReducedMotion();
   const [providerIconDetecting, setProviderIconDetecting] = useState(false);
+  const [providerSetupStep, setProviderSetupStep] = useState<ProviderSetupStepId>("provider");
   const providerReady = isOnboardingProviderReady(config);
   const profileReady = isOnboardingProfileReady(config, readiness);
   const serviceReady = gatewayStatus.state === "running";
@@ -116,25 +117,72 @@ export function OnboardingView({
   const activeDetails = onboardingStepDetails[activeStep];
   const previousStep = onboardingStepOrder[activeIndex - 1];
   const nextStep = getNextOnboardingStep(activeStep, config, readiness);
+  const localAgentProviderImport = providerDraft.providerPlugins.length > 0;
+  const providerIdentityReady = Boolean(findProviderPreset(providerDraft.presetId) || providerDraft.baseUrl.trim());
+  const providerCredentialReady = localAgentProviderImport || Boolean(
+    providerDraft.credentialMode === "pool"
+      ? providerDraftHasReadyCredentialPool(providerDraft)
+      : providerDraft.apiKey.trim()
+  );
+  const providerModelsReady = mergeProviderModelLists(providerDraft.selectedModels, splitLines(providerDraft.modelsText)).length > 0;
+  const providerSetupIndex = Math.max(0, providerSetupStepIds.indexOf(providerSetupStep));
+  const previousProviderSetupStep = activeStep === "provider" ? providerSetupStepIds[providerSetupIndex - 1] : undefined;
+  const nextProviderSetupStep = activeStep === "provider" ? providerSetupStepIds[providerSetupIndex + 1] : undefined;
   const providerSubmitLoading = activeStep === "provider" && (providerProbeLoading || providerConnectivityLoading || providerIconDetecting);
   const nextDisabled = activeStep === "provider"
-    ? providerSubmitLoading || !(providerReady || canSubmitProvider)
+    ? providerSubmitLoading || (nextProviderSetupStep
+      ? !isProviderSetupStepReady(providerSetupStep)
+      : !(providerReady || canSubmitProvider))
     : activeStep === "profile"
       ? !(profileReady || (providerReady && canSubmitProfile))
       : !routeReady;
-  const nextGuidance = onboardingNextGuidance({
-    activeStep,
-    canSubmitProfile,
-    canSubmitProvider,
-    profileReady,
-    providerReady,
-    providerSubmitLoading,
-    routeReady,
-    serviceReady
-  });
+
+  useEffect(() => {
+    if (activeStep !== "provider" || isProviderSetupStepUnlocked(providerSetupStep)) {
+      return;
+    }
+    setProviderSetupStep(getLatestUnlockedProviderSetupStep());
+  }, [activeStep, providerCredentialReady, providerIdentityReady, providerModelsReady, providerSetupStep]);
+
+  function isProviderSetupStepReady(step: ProviderSetupStepId): boolean {
+    switch (step) {
+      case "provider":
+        return providerIdentityReady;
+      case "credentials":
+        return providerCredentialReady;
+      case "models":
+        return providerModelsReady;
+      case "verify":
+        return true;
+    }
+  }
+
+  function isProviderSetupStepUnlocked(step: ProviderSetupStepId): boolean {
+    switch (step) {
+      case "provider":
+        return true;
+      case "credentials":
+        return providerIdentityReady;
+      case "models":
+        return providerIdentityReady && providerCredentialReady;
+      case "verify":
+        return providerIdentityReady && providerCredentialReady && providerModelsReady;
+    }
+  }
+
+  function getLatestUnlockedProviderSetupStep(): ProviderSetupStepId {
+    return [...providerSetupStepIds].reverse().find(isProviderSetupStepUnlocked) ?? "provider";
+  }
 
   function goToPreviousStep() {
+    if (activeStep === "provider" && previousProviderSetupStep) {
+      setProviderSetupStep(previousProviderSetupStep);
+      return;
+    }
     if (previousStep) {
+      if (previousStep === "provider") {
+        setProviderSetupStep(getLatestUnlockedProviderSetupStep());
+      }
       onSelectStep(previousStep);
     }
   }
@@ -149,6 +197,12 @@ export function OnboardingView({
 
     if (activeStep === "provider") {
       if (providerSubmitLoading) {
+        return;
+      }
+      if (nextProviderSetupStep) {
+        if (isProviderSetupStepReady(providerSetupStep)) {
+          setProviderSetupStep(nextProviderSetupStep);
+        }
         return;
       }
       if (canSubmitProvider) {
@@ -188,10 +242,10 @@ export function OnboardingView({
             style={{ transformPerspective: 900 }}
             transition={shouldReduceMotion ? reducedMotionTransition : { duration: 0.28, ease: motionEase }}
           >
-            <OnboardingProgress activeIndex={activeIndex} />
+            <OnboardingProgress activeStep={activeStep} providerSetupStep={providerSetupStep} />
             <div className="flex min-h-0 min-w-0 flex-1 flex-col p-4 sm:p-5">
               <div className="flex h-8 shrink-0 items-center">
-                {previousStep ? (
+                {previousStep || previousProviderSetupStep ? (
                   <Button
                     className="inline-flex h-8 items-center gap-1.5 rounded-md px-1 text-[13px] font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
                     onClick={goToPreviousStep}
@@ -210,13 +264,6 @@ export function OnboardingView({
                   <h2 className="text-[20px] font-semibold tracking-normal">{t(activeDetails.title)}</h2>
                   <p className="mt-1 text-[12px] leading-5 text-muted-foreground">{t(activeDetails.description)}</p>
                 </div>
-                <OnboardingReadinessChecklist
-                  activeStep={activeStep}
-                  profileReady={profileReady}
-                  providerReady={providerReady}
-                  routeReady={routeReady}
-                  serviceReady={serviceReady}
-                />
               </div>
 
               <div className="onboarding-step-panels mt-5 min-h-0 flex-1 overflow-hidden">
@@ -230,10 +277,16 @@ export function OnboardingView({
                       connectivityProbe={providerConnectivityProbe}
                       draft={providerDraft}
                       error={providerError}
+                      activeStep={providerSetupStep}
                       mode={providerReady ? "edit" : "add"}
                       onCheck={onCheckProvider}
                       onChange={onChangeProvider}
                       onIconDetectingChange={setProviderIconDetecting}
+                      onSelectStep={(step) => {
+                        if (isProviderSetupStepUnlocked(step)) {
+                          setProviderSetupStep(step);
+                        }
+                      }}
                       probe={providerProbe}
                       probeLoading={providerProbeLoading}
                       providerPlugins={config.providerPlugins ?? []}
@@ -284,15 +337,7 @@ export function OnboardingView({
                 </div>
               </div>
 
-              <div className="mt-5 flex shrink-0 items-center justify-between gap-3 border-t border-border/60 pt-4 max-[640px]:flex-col max-[640px]:items-stretch">
-                <div className="min-w-0 flex-1">
-                  {nextGuidance ? (
-                    <div className="flex min-w-0 items-start gap-2 rounded-md border border-border bg-muted/25 px-3 py-2 text-[12px] leading-5 text-muted-foreground">
-                      <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                      <span className="min-w-0">{t(nextGuidance)}</span>
-                    </div>
-                  ) : null}
-                </div>
+              <div className="mt-5 flex shrink-0 items-center justify-end gap-3 border-t border-border/60 pt-4 max-[640px]:items-stretch">
                 <Button disabled={nextDisabled} onClick={() => void goToNextStep()} type="button">
                   {providerSubmitLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : activeStep === "enter" ? <Check className="h-4 w-4" /> : null}
                   {providerSubmitLoading ? t("Loading") : activeStep === "enter" ? t("Let's start") : t("Next step")}
@@ -307,121 +352,42 @@ export function OnboardingView({
   );
 }
 
-function onboardingNextGuidance({
-  activeStep,
-  canSubmitProfile,
-  canSubmitProvider,
-  profileReady,
-  providerReady,
-  providerSubmitLoading,
-  routeReady,
-  serviceReady
-}: {
-  activeStep: OnboardingStepId;
-  canSubmitProfile: boolean;
-  canSubmitProvider: boolean;
-  profileReady: boolean;
-  providerReady: boolean;
-  providerSubmitLoading: boolean;
-  routeReady: boolean;
-  serviceReady: boolean;
-}): string {
-  if (providerSubmitLoading) {
-    return "CCR is checking this provider. Wait for the check to finish before continuing.";
-  }
-  if (activeStep === "provider") {
-    if (canSubmitProvider) {
-      return "Save this provider to continue.";
-    }
-    if (!providerReady) {
-      return "Choose a provider preset or endpoint, enter an API key, and add at least one model.";
-    }
-  }
-  if (activeStep === "profile") {
-    if (!providerReady) {
-      return "Configure a provider before creating an agent profile.";
-    }
-    if (canSubmitProfile) {
-      return "Save this agent profile to continue.";
-    }
-    if (!profileReady) {
-      return "Choose an agent, model, and required profile settings.";
-    }
-  }
-  if (activeStep === "enter") {
-    if (!routeReady) {
-      return "Finish the provider and agent profile steps before entering the app.";
-    }
-    if (!serviceReady) {
-      return "The gateway is configured. Start the service from the toolbar when you are ready to test traffic.";
-    }
-    return "Send a request from your agent, then confirm it appears in Logs.";
-  }
-  return "";
-}
+const onboardingProgressItems: Array<{ key: ProviderSetupStepId | "profile" | "enter"; label: string }> = [
+  { key: "provider", label: "Choose provider" },
+  { key: "credentials", label: "Add credentials" },
+  { key: "models", label: "Pick models" },
+  { key: "verify", label: "Verify connection" },
+  { key: "profile", label: "Connect agent" },
+  { key: "enter", label: "Let's start" }
+];
 
-function OnboardingReadinessChecklist({
+function OnboardingProgress({
   activeStep,
-  profileReady,
-  providerReady,
-  routeReady,
-  serviceReady
+  providerSetupStep
 }: {
   activeStep: OnboardingStepId;
-  profileReady: boolean;
-  providerReady: boolean;
-  routeReady: boolean;
-  serviceReady: boolean;
+  providerSetupStep: ProviderSetupStepId;
 }) {
   const t = useAppText();
-  const items = [
-    { active: activeStep === "provider", label: "Provider", ready: providerReady },
-    { active: activeStep === "profile", label: "Agent profile", ready: profileReady },
-    { active: activeStep === "enter", label: "Gateway service", ready: serviceReady },
-    { active: activeStep === "enter" && routeReady, label: "Ready to test", ready: routeReady }
-  ];
-
-  return (
-    <div className="mt-2 flex max-w-full flex-wrap items-center justify-center gap-1.5" aria-label={t("Setup readiness")}>
-      {items.map((item) => (
-        <span
-          className={cn(
-            "inline-flex h-6 max-w-full items-center gap-1.5 rounded-full border px-2 text-[11px] font-medium",
-            item.ready
-              ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
-              : item.active
-                ? "border-primary/25 bg-primary/10 text-primary"
-                : "border-border bg-muted/30 text-muted-foreground"
-          )}
-          key={item.label}
-        >
-          {item.ready ? <Check className="h-3 w-3 shrink-0" /> : <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70" />}
-          <span className="truncate">{t(item.label)}</span>
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function OnboardingProgress({ activeIndex }: { activeIndex: number }) {
-  const t = useAppText();
-  const stepCount = onboardingStepOrder.length;
+  const activeKey = activeStep === "provider" ? providerSetupStep : activeStep;
+  const activeIndex = Math.max(0, onboardingProgressItems.findIndex((item) => item.key === activeKey));
+  const stepCount = onboardingProgressItems.length;
   const progressWidth = `${((activeIndex + 1) / stepCount) * 100}%`;
 
   return (
     <div className="relative shrink-0 border-b border-border/60 bg-card/95" aria-label={`${t("Step")} ${activeIndex + 1} / ${stepCount}`}>
-      <div className="mx-auto flex h-11 max-w-[520px] items-center justify-center px-3 text-[13px] font-medium">
-        {onboardingStepOrder.map((step, index) => (
-          <div className="flex min-w-0 items-center" key={step}>
+      <div className="mx-auto flex h-11 max-w-[920px] items-center justify-start overflow-x-auto px-3 text-[12px] font-medium sm:justify-center">
+        {onboardingProgressItems.map((item, index) => (
+          <div className="flex shrink-0 items-center" key={item.key}>
             <span
               className={cn(
-                "max-w-[136px] truncate",
+                "max-w-[128px] truncate max-[560px]:max-w-[96px]",
                 index === activeIndex ? "text-foreground" : "text-muted-foreground"
               )}
             >
-              {t(onboardingStepDetails[step].title)}
+              {t(item.label)}
             </span>
-            {index < stepCount - 1 ? <ChevronRight className="mx-5 h-4 w-4 shrink-0 text-muted-foreground/70 max-[560px]:mx-2" /> : null}
+            {index < stepCount - 1 ? <ChevronRight className="mx-2.5 h-4 w-4 shrink-0 text-muted-foreground/70 max-[560px]:mx-1.5" /> : null}
           </div>
         ))}
       </div>

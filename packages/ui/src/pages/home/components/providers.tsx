@@ -1593,9 +1593,9 @@ function localAgentProviderAlreadyImported(
   });
 }
 
-type ProviderSetupStepId = "provider" | "credentials" | "models" | "verify";
+export type ProviderSetupStepId = "provider" | "credentials" | "models" | "verify";
 
-const providerSetupStepIds: ProviderSetupStepId[] = ["provider", "credentials", "models", "verify"];
+export const providerSetupStepIds: ProviderSetupStepId[] = ["provider", "credentials", "models", "verify"];
 
 function ProviderSetupProgress({
   activeStep,
