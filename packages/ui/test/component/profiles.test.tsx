@@ -116,7 +116,7 @@ test("ProfileView renders agent profiles as compact cards with inline actions", 
   );
 
   assert.equal(html.match(/aria-label="(?:Claude Code Main|ZCode Main) Profile actions"/g)?.length, 2);
-  assert.match(html, /grid-template-columns:repeat\(auto-fill,minmax\(min\(100%,320px\),420px\)\)/);
+  assert.match(html, /grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,420px\),1fr\)\)/);
   assert.match(html, /min-h-\[220px\]/);
   assert.match(html, /class="flex min-w-0 items-center gap-2"/);
   assert.match(html, /Configuration/);

@@ -72,8 +72,8 @@ export function ProfileView({
             </div>
           </div>
         </CardHeader>
-        <CardContent className="min-h-0 flex-1 overflow-auto">
-          <div className="grid gap-3 justify-start [grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),420px))]">
+        <CardContent className="min-h-0 flex-1 overflow-auto max-[720px]:p-3">
+          <div className="grid min-w-0 gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))] max-[720px]:gap-2.5">
             {profiles.length === 0 ? (
               <div className="col-span-full flex h-32 items-center justify-center rounded-md border border-dashed border-border bg-muted/20 text-[12px] text-muted-foreground">
                 {t("No profiles configured")}
