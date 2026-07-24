@@ -26,6 +26,7 @@ import { getProviderPresets } from "@ccr/core/providers/presets/index";
 import { checkGatewayProviderConnectivity, probeGatewayProvider, probeGatewayProviderCandidates } from "@ccr/core/providers/probe";
 import { applyProfileConfig } from "@ccr/core/profiles/service";
 import { desktopCliCommandName, getProfileOpenCommand, getProfileRuntimeStatus, openProfileFromCcr, stopProfileFromCcr } from "@ccr/core/profiles/launch-service";
+import { getPluginMarketplace } from "@ccr/core/plugins/marketplace";
 import { ensureProxyCertificateAuthority } from "@ccr/core/proxy/certificates";
 import { proxyService } from "@ccr/core/proxy/service";
 import { listMcpServerTools } from "@ccr/core/mcp/tool-discovery";
@@ -35,28 +36,11 @@ import { appUpdateService } from "./update-service";
 import { getUsageStats } from "@ccr/core/usage/store";
 import { applyNativeThemePreference } from "./native-theme";
 import windowsManager from "./windows";
-import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppCaptureElementPngRequest, AppCaptureElementPngResult, AppConfig, AppDataExportResult, AppImageExportTargetRequest, AppImageExportTargetResult, AppInfo, AppRenderHtmlPngRequest, AppRenderHtmlPngResult, AppSaveConfigOptions, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountResetRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, RouteScriptTestRequest, RouteScriptValidationRequest, UsageStatsFilter, UsageStatsRange } from "@ccr/core/contracts/app";
-
-const pluginMarketplace: PluginMarketplaceEntry[] = [
-  {
-    capabilities: ["Wrapper runtime", "Claude App proxy", "Claude Design", "Model routing"],
-    dependencies: [],
-    description: "Routes Claude App Design traffic through the local CCR wrapper backend with configurable model routing.",
-    id: "claude-design",
-    modulePath: path.join(__dirname, "..", "marketplace", "plugins", "claude-design-plugin.cjs"),
-    name: "Claude Design"
-  },
-  {
-    capabilities: ["Wrapper runtime", "Proxy mode", "Cursor", "Model routing", "OpenAI/Anthropic/Gemini forwarding"],
-    dependencies: [],
-    description: "Routes Cursor-compatible LLM traffic captured by proxy mode into the local CCR gateway.",
-    id: "cursor-proxy",
-    modulePath: path.join(__dirname, "..", "marketplace", "plugins", "cursor-proxy-plugin.cjs"),
-    name: "Cursor Proxy"
-  }
-];
+import { GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, type AgentAnalysisFilter, type AgentAnalysisTracePayloadRequest, type ApiKeyConfig, type AppCaptureElementPngRequest, type AppCaptureElementPngResult, type AppConfig, type AppDataExportResult, type AppImageExportTargetRequest, type AppImageExportTargetResult, type AppInfo, type AppRenderHtmlPngRequest, type AppRenderHtmlPngResult, type AppSaveConfigOptions, type BotGatewayQrLoginCancelRequest, type BotGatewayQrLoginStartRequest, type BotGatewayQrLoginWaitRequest, type BotGatewayQrWindowCloseRequest, type BotGatewayQrWindowOpenRequest, type GatewayPluginAppConfig, type GatewayPluginPermission, type GatewayPluginSurface, type GatewayProviderConnectivityCheckRequest, type GatewayProviderProbeCandidatesRequest, type GatewayProviderProbeRequest, type GatewayStatus, type LocalAgentProviderImportRequest, type PluginDependency, type PluginDirectorySelection, type ProfileApplyResult, type ProfileOpenRequest, type ProviderAccountResetRequest, type ProviderAccountSnapshotRequestOptions, type ProviderAccountTestRequest, type ProviderCatalogModelsRequest, type ProviderIconDetectionRequest, type ProviderManifestFetchRequest, type RequestLogListFilter, type RouteScriptTestRequest, type RouteScriptValidationRequest, type UsageStatsFilter, type UsageStatsRange } from "@ccr/core/contracts/app";
 const onboardingFinishedAtSettingKey = "onboardingFinishedAt";
 const imageExportTargets = new Map<string, string>();
+const gatewayPluginPermissionIdSet = new Set<string>(GATEWAY_PLUGIN_PERMISSION_IDS);
+const gatewayPluginSurfaceIdSet = new Set<string>(GATEWAY_PLUGIN_SURFACE_IDS);
 
 function applyAppThemePreference(theme: AppConfig["theme"]): void {
   applyNativeThemePreference(theme);
@@ -122,7 +106,7 @@ ipcMain.handle(IPC_CHANNELS.appGetGatewayStatus, () => gatewayService.getStatus(
 ipcMain.handle(IPC_CHANNELS.appGetProxyCertificateStatus, () => proxyService.getCertificateStatus());
 ipcMain.handle(IPC_CHANNELS.appGetProxyNetworkCaptures, () => proxyService.getNetworkCaptures());
 ipcMain.handle(IPC_CHANNELS.appGetProxyStatus, () => proxyService.getStatus());
-ipcMain.handle(IPC_CHANNELS.appGetPluginMarketplace, () => pluginMarketplace);
+ipcMain.handle(IPC_CHANNELS.appGetPluginMarketplace, () => getPluginMarketplace());
 ipcMain.handle(IPC_CHANNELS.appGetRequestLogDetail, (_event, request) => getRequestLogDetail(request));
 ipcMain.handle(IPC_CHANNELS.appGetRequestLogs, (_event, filter?: RequestLogListFilter) => getRequestLogs(filter));
 ipcMain.handle(IPC_CHANNELS.appGetUpdateStatus, () => appUpdateService.getStatus());
@@ -145,7 +129,18 @@ ipcMain.handle(IPC_CHANNELS.appListMcpServerTools, async (_event, serverName: st
 });
 ipcMain.handle(IPC_CHANNELS.appOpenBuiltInBrowser, async () => {
   const config = await loadAppConfig();
+  if (hasEnabledPluginApp(config, "agent-console")) {
+    await deepLinkService.openPluginApp("agent-console");
+    return;
+  }
   await builtInBrowserService.open(config);
+});
+ipcMain.handle(IPC_CHANNELS.appOpenPluginApp, async (_event, pluginId: string, appId?: string) => {
+  const normalizedPluginId = readString(pluginId);
+  if (!normalizedPluginId) {
+    throw new Error("Plugin id is required.");
+  }
+  await deepLinkService.openPluginApp(normalizedPluginId, readString(appId));
 });
 ipcMain.handle(IPC_CHANNELS.appCloseTray, () => {
   trayController.hidePopover();
@@ -991,13 +986,17 @@ function inspectPluginDirectory(directory: string): PluginDirectorySelection {
     "plugin";
   const name = readString(manifest?.name) || readString(packageJson?.displayName) || readString(packageJson?.name);
   const apps = readPluginApps(manifest, packageJson);
+  const permissions = readPluginPermissions(manifest, packageJson);
+  const surfaces = readPluginSurfaces(manifest, packageJson);
   return {
     ...(apps.length ? { apps } : {}),
     dependencies: readPluginDependencies(directory, manifest, packageJson),
     directory,
     id,
-    modulePath: resolvePluginDirectoryModule(directory, moduleValue),
-    ...(name ? { name } : {})
+    modulePath: resolvePluginDirectoryModule(directory, moduleValue, Boolean(manifest || packageJson)),
+    ...(name ? { name } : {}),
+    ...(permissions ? { permissions } : {}),
+    ...(surfaces ? { surfaces } : {})
   };
 }
 
@@ -1038,7 +1037,7 @@ function parsePluginAppItem(value: unknown): GatewayPluginAppConfig | undefined 
 
   const record = value as Record<string, unknown>;
   const name = readString(record.name) || readString(record.title);
-  const url = readString(record.url) || readString(record.href) || readString(record.target);
+  const url = normalizePluginAppUrl(readString(record.url) || readString(record.href) || readString(record.target));
   if (!name || !url) {
     return undefined;
   }
@@ -1052,6 +1051,287 @@ function parsePluginAppItem(value: unknown): GatewayPluginAppConfig | undefined 
     name,
     url
   };
+}
+
+function normalizePluginAppUrl(value: string | undefined): string {
+  const trimmed = value?.trim() || "";
+  if (!trimmed) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    return new URL(trimmed).toString();
+  }
+  if (trimmed.startsWith("//")) {
+    throw new Error("Plugin app URL cannot be protocol-relative.");
+  }
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+    throw new Error("Plugin app URL must be an http(s) URL or a CCR gateway path.");
+  }
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+}
+
+function readPluginPermissions(
+  manifest: Record<string, unknown> | undefined,
+  packageJson: Record<string, unknown> | undefined
+): GatewayPluginPermission[] | undefined {
+  const values = [
+    manifest?.permissions,
+    readRecord(manifest?.ccr)?.permissions,
+    readRecord(manifest?.ccrPlugin)?.permissions,
+    readRecord(packageJson?.ccr)?.permissions,
+    readRecord(packageJson?.ccrPlugin)?.permissions
+  ];
+  const parsedValues = values.map(parsePluginPermissions).filter((value): value is GatewayPluginPermission[] => Boolean(value));
+  return parsedValues.length > 0 ? uniquePluginPermissions(parsedValues.flat()) : undefined;
+}
+
+function parsePluginPermissions(value: unknown): GatewayPluginPermission[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const permissions: GatewayPluginPermission[] = [];
+  const seen = new Set<GatewayPluginPermission>();
+  const add = (rawValue: unknown): void => {
+    const permission = normalizePluginPermission(rawValue);
+    if (!permission || seen.has(permission)) {
+      return;
+    }
+    seen.add(permission);
+    permissions.push(permission);
+  };
+
+  if (typeof value === "string") {
+    add(value);
+  } else if (Array.isArray(value)) {
+    value.forEach(add);
+  } else {
+    const record = readRecord(value);
+    if (!record) {
+      return permissions;
+    }
+    for (const [key, enabled] of Object.entries(record)) {
+      if (enabled === false) {
+        continue;
+      }
+      if (isAllPluginPermissionsKey(key)) {
+        GATEWAY_PLUGIN_PERMISSION_IDS.forEach(add);
+      } else {
+        add(key);
+      }
+    }
+  }
+
+  return permissions;
+}
+
+function readPluginSurfaces(
+  manifest: Record<string, unknown> | undefined,
+  packageJson: Record<string, unknown> | undefined
+): PluginDirectorySelection["surfaces"] | undefined {
+  const values = [
+    manifest?.surfaces,
+    manifest?.surface,
+    readRecord(manifest?.ccr)?.surfaces,
+    readRecord(manifest?.ccr)?.surface,
+    readRecord(manifest?.ccrPlugin)?.surfaces,
+    readRecord(manifest?.ccrPlugin)?.surface,
+    readRecord(packageJson?.ccr)?.surfaces,
+    readRecord(packageJson?.ccr)?.surface,
+    readRecord(packageJson?.ccrPlugin)?.surfaces,
+    readRecord(packageJson?.ccrPlugin)?.surface
+  ];
+  const parsedValues = values.map(parsePluginSurfaces).filter((value): value is PluginDirectorySelection["surfaces"] => Boolean(value));
+  return parsedValues.length > 0 ? Object.assign({}, ...parsedValues) as PluginDirectorySelection["surfaces"] : undefined;
+}
+
+function parsePluginSurfaces(value: unknown): PluginDirectorySelection["surfaces"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const surfaces: PluginDirectorySelection["surfaces"] = {};
+  const setSurface = (rawValue: unknown, enabled = true): boolean => {
+    const surface = normalizePluginSurface(rawValue);
+    if (!surface) {
+      return false;
+    }
+    surfaces[surface] = enabled;
+    return true;
+  };
+
+  if (typeof value === "string") {
+    if (isAllPluginSurfacesKey(value)) {
+      GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+        surfaces[surface] = true;
+      });
+      return surfaces;
+    }
+    if (!setSurface(value)) {
+      return undefined;
+    }
+    GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+      surfaces[surface] ??= false;
+    });
+  } else if (Array.isArray(value)) {
+    let matched = false;
+    for (const item of value) {
+      if (typeof item === "string" && isAllPluginSurfacesKey(item)) {
+        GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+          surfaces[surface] = true;
+        });
+        matched = true;
+      } else {
+        matched = setSurface(item) || matched;
+      }
+    }
+    if (!matched) {
+      return undefined;
+    }
+    GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+      surfaces[surface] ??= false;
+    });
+  } else {
+    const record = readRecord(value);
+    if (!record) {
+      return undefined;
+    }
+    for (const [key, enabled] of Object.entries(record)) {
+      if (isAllPluginSurfacesKey(key)) {
+        GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+          surfaces[surface] = enabled !== false;
+        });
+      } else {
+        setSurface(key, enabled !== false);
+      }
+    }
+  }
+
+  return Object.keys(surfaces).length > 0 ? surfaces : undefined;
+}
+
+function normalizePluginPermission(value: unknown): GatewayPluginPermission | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const mapped = pluginPermissionAlias(normalized);
+  return gatewayPluginPermissionIdSet.has(mapped) ? mapped as GatewayPluginPermission : undefined;
+}
+
+function normalizePluginSurface(value: unknown): GatewayPluginSurface | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const mapped = pluginSurfaceAlias(normalized);
+  return gatewayPluginSurfaceIdSet.has(mapped) ? mapped as GatewayPluginSurface : undefined;
+}
+
+function pluginSurfaceAlias(value: string): string {
+  switch (value) {
+    case "app":
+    case "browser-app":
+    case "browser-apps":
+    case "ui":
+      return "apps";
+    case "gateway-route":
+    case "route":
+    case "routes":
+    case "gateway-routes":
+    case "proxy-route":
+    case "proxy":
+    case "proxy-routes":
+    case "http-backend":
+    case "http-backends":
+    case "backend":
+    case "backends":
+    case "core-gateway":
+    case "core-gateway-config":
+    case "fusion-profile":
+    case "fusion-profiles":
+    case "virtual-model":
+    case "virtual-models":
+    case "virtual-model-profile":
+    case "virtual-model-profiles":
+    case "request":
+    case "requests":
+      return "gateway";
+    case "core-provider-plugin":
+    case "provider-plugin":
+    case "provider-plugins":
+    case "provider-account":
+    case "provider-account-connector":
+    case "provider-account-connectors":
+    case "providers":
+      return "provider";
+    default:
+      return value;
+  }
+}
+
+function pluginPermissionAlias(value: string): string {
+  switch (value) {
+    case "code":
+    case "execute-code":
+    case "trusted":
+    case "trusted-code":
+      return "trusted-code";
+    case "app":
+    case "browser-app":
+    case "browser-apps":
+      return "apps";
+    case "gateway-route":
+    case "route":
+    case "routes":
+      return "gateway-routes";
+    case "proxy":
+    case "proxy-route":
+      return "proxy-routes";
+    case "backend":
+    case "backends":
+    case "http-backend":
+      return "http-backends";
+    case "provider-account":
+    case "provider-account-connector":
+      return "provider-account-connectors";
+    case "core-gateway":
+      return "core-gateway-config";
+    case "provider-plugin":
+    case "provider-plugins":
+    case "core-provider-plugin":
+      return "core-provider-plugins";
+    case "fusion-profile":
+    case "fusion-profiles":
+    case "virtual-model":
+    case "virtual-models":
+    case "virtual-model-profile":
+      return "virtual-model-profiles";
+    case "sqlite":
+    case "data-store":
+    case "store":
+      return "sqlite-store";
+    case "launcher":
+    case "mac-launcher":
+      return "system-launcher";
+    default:
+      return value;
+  }
+}
+
+function uniquePluginPermissions(values: GatewayPluginPermission[]): GatewayPluginPermission[] | undefined {
+  const unique = [...new Set(values)];
+  return unique;
+}
+
+function isAllPluginPermissionsKey(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "*" || normalized === "all";
+}
+
+function isAllPluginSurfacesKey(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "*" || normalized === "all";
 }
 
 function readPluginDependencies(
@@ -1127,10 +1407,12 @@ function parsePluginDependencyItem(value: unknown, directory: string): PluginDep
   const moduleValue = readString(record.module) || readString(record.path) || readString(record.modulePath);
   const modulePath = moduleValue ? resolveDependencyModulePath(directory, moduleValue) : undefined;
   const name = readString(record.name);
+  const permissions = parsePluginPermissions(record.permissions);
   return {
     id,
     ...(modulePath ? { modulePath } : {}),
-    ...(name ? { name } : {})
+    ...(name ? { name } : {}),
+    ...(permissions ? { permissions } : {})
   };
 }
 
@@ -1145,9 +1427,12 @@ function looksLikeDependencyModulePath(value: string): boolean {
   return value.startsWith(".") || value.startsWith("/") || value.startsWith("~");
 }
 
-function resolvePluginDirectoryModule(directory: string, moduleValue: string | undefined): string {
+function resolvePluginDirectoryModule(directory: string, moduleValue: string | undefined, hasManifest = false): string {
   if (moduleValue) {
     return path.isAbsolute(moduleValue) ? moduleValue : path.join(directory, moduleValue);
+  }
+  if (hasManifest) {
+    return "";
   }
 
   for (const filename of ["index.cjs", "index.mjs", "index.js", "plugin.cjs", "plugin.mjs", "plugin.js"]) {
@@ -1157,7 +1442,7 @@ function resolvePluginDirectoryModule(directory: string, moduleValue: string | u
     }
   }
 
-  return directory;
+  return "";
 }
 
 function readFirstJson(files: string[]): Record<string, unknown> | undefined {
@@ -1195,6 +1480,14 @@ function isFile(file: string): boolean {
   } catch {
     return false;
   }
+}
+
+function hasEnabledPluginApp(config: AppConfig, pluginId: string): boolean {
+  return config.plugins.some((plugin) =>
+    plugin.id === pluginId &&
+    plugin.enabled !== false &&
+    plugin.apps?.some((app) => typeof app.url === "string" && app.url.trim())
+  );
 }
 
 function formatError(error: unknown): string {

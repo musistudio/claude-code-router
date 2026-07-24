@@ -1,5 +1,5 @@
 import esbuild from "esbuild";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { builtinModules, createRequire } from "node:module";
 import path from "node:path";
@@ -9,6 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireFromHere = createRequire(import.meta.url);
 
 export const projectRoot = path.resolve(__dirname, "..");
+export const ccrExtensionsRoot = path.resolve(process.env.CCR_EXTENSIONS_DIR || path.join(projectRoot, "..", "ccr-extensions"));
 export const packagesRoot = path.join(projectRoot, "packages");
 export const cliRoot = path.join(packagesRoot, "cli");
 export const coreRoot = path.join(packagesRoot, "core");
@@ -51,6 +52,7 @@ export const cliMarketplacePluginsDir = path.join(cliDistDir, "marketplace", "pl
 export const coreMarketplacePluginsDir = path.join(coreDistDir, "marketplace", "plugins");
 export const electronMarketplacePluginsDir = path.join(electronDistDir, "marketplace", "plugins");
 export const marketplacePluginsDir = electronMarketplacePluginsDir;
+export const marketplacePluginsInputDir = path.join(ccrExtensionsRoot, "plugins");
 export const appAssetsInput = path.join(electronRoot, "assets");
 export const modelCatalogInput = path.join(coreRoot, "models.json");
 export const cliModelCatalogOutput = path.join(cliDistDir, "models.json");
@@ -148,14 +150,8 @@ export function copyBrowserRendererHtml() {
 
 export function copyMarketplacePlugins() {
   ensureDist();
-  for (const filename of ["claude-design-plugin.cjs", "cursor-proxy-plugin.cjs"]) {
-    const source = path.join(projectRoot, "examples", "plugins", filename);
-    if (existsSync(source)) {
-      cpSync(source, path.join(cliMarketplacePluginsDir, filename));
-      cpSync(source, path.join(coreMarketplacePluginsDir, filename));
-      cpSync(source, path.join(electronMarketplacePluginsDir, filename));
-    }
-  }
+  buildMarketplacePlugin("agent-console");
+  copyMarketplacePlugin("agent-console");
 }
 
 export function syncUiRendererToRuntimeDists() {
@@ -188,6 +184,47 @@ function copyRendererPageHtml(input, output, scriptName, options = {}) {
   }
 
   writeFileSync(output, html, "utf8");
+}
+
+function buildMarketplacePlugin(pluginId) {
+  const pluginRoot = path.join(marketplacePluginsInputDir, pluginId);
+  const packageJson = path.join(pluginRoot, "package.json");
+  if (!existsSync(packageJson)) {
+    return;
+  }
+
+  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+  const result = spawnSync(npmCommand, ["run", "build"], {
+    cwd: pluginRoot,
+    shell: false,
+    stdio: "inherit"
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(`Plugin ${pluginId} build failed with exit code ${result.status ?? "unknown"}.`);
+  }
+}
+
+function copyMarketplacePlugin(pluginId) {
+  const pluginRoot = path.join(marketplacePluginsInputDir, pluginId);
+  const outputRoots = [cliMarketplacePluginsDir, coreMarketplacePluginsDir, electronMarketplacePluginsDir];
+  const runtimeFiles = ["plugin.json", "index.cjs"];
+  const rendererInput = path.join(pluginRoot, "dist", "renderer");
+  for (const outputRoot of outputRoots) {
+    const outputDir = path.join(outputRoot, pluginId);
+    mkdirSync(outputDir, { recursive: true });
+    for (const fileName of runtimeFiles) {
+      const input = path.join(pluginRoot, fileName);
+      if (existsSync(input)) {
+        cpSync(input, path.join(outputDir, fileName));
+      }
+    }
+    if (existsSync(rendererInput)) {
+      cpSync(rendererInput, path.join(outputDir, "dist", "renderer"), { recursive: true });
+    }
+  }
 }
 
 function hasScriptTag(html, scriptTag) {

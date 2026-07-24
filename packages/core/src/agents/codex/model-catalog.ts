@@ -25,20 +25,27 @@ export type CodexModelCatalogItem = {
   availability_nux: null;
   base_instructions: string;
   context_window: number;
+  defaultReasoningEffort: string | null;
   default_reasoning_level: string | null;
+  default_reasoning_effort: string | null;
   default_reasoning_summary: string;
   description: string;
+  displayName: string;
   display_name: string;
   effective_context_window_percent: number;
   experimental_supported_tools: unknown[];
+  id: string;
   input_modalities: string[];
   max_context_window: number;
+  model: string;
   priority: number;
   service_tiers: unknown[];
   shell_type: string;
   slug: string;
   support_verbosity: boolean;
   supported_in_api: boolean;
+  supportedReasoningEfforts: Array<{ description: string; reasoningEffort: string; reasoning_effort: string }>;
+  supported_reasoning_efforts: string[];
   supported_reasoning_levels: Array<{ description: string; effort: string }>;
   supports_image_detail_original: boolean;
   supports_parallel_tool_calls: boolean;
@@ -126,20 +133,27 @@ function codexModelCatalogItem(
     availability_nux: null,
     base_instructions: "You are Codex, a coding agent.",
     context_window: contextWindow,
+    defaultReasoningEffort: profile.defaultReasoningLevel,
     default_reasoning_level: profile.defaultReasoningLevel,
+    default_reasoning_effort: profile.defaultReasoningLevel,
     default_reasoning_summary: profile.defaultReasoningSummary,
     description: `CCR gateway model ${model}`,
+    displayName: model,
     display_name: model,
     effective_context_window_percent: effectiveContextWindowPercent,
     experimental_supported_tools: [],
+    id: model,
     input_modalities: profile.inputModalities,
     max_context_window: maxContextWindow,
+    model,
     priority,
     service_tiers: profile.serviceTiers,
     shell_type: "shell_command",
     slug: model,
     support_verbosity: true,
     supported_in_api: true,
+    supportedReasoningEfforts: profile.supportedReasoningLevels.map(reasoningEffortOption),
+    supported_reasoning_efforts: profile.supportedReasoningLevels.map((level) => level.effort),
     supported_reasoning_levels: profile.supportedReasoningLevels,
     supports_image_detail_original: profile.supportsImageInput,
     supports_parallel_tool_calls: profile.supportsParallelToolCalls,
@@ -149,6 +163,14 @@ function codexModelCatalogItem(
     upgrade: null,
     visibility: "list",
     web_search_tool_type: profile.supportsSearchTool && profile.supportsImageInput ? "text_and_image" : "text"
+  };
+}
+
+function reasoningEffortOption(level: { description: string; effort: string }): { description: string; reasoningEffort: string; reasoning_effort: string } {
+  return {
+    description: level.description,
+    reasoningEffort: level.effort,
+    reasoning_effort: level.effort
   };
 }
 

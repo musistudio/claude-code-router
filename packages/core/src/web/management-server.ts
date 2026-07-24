@@ -22,6 +22,7 @@ import { getProviderPresets } from "@ccr/core/providers/presets/index";
 import { checkGatewayProviderConnectivity, probeGatewayProvider, probeGatewayProviderCandidates } from "@ccr/core/providers/probe";
 import { applyProfileConfig } from "@ccr/core/profiles/service";
 import { getProfileOpenCommand, getProfileRuntimeStatus, openProfileFromCcr, stopProfileFromCcr } from "@ccr/core/profiles/launch-service";
+import { getPluginMarketplace } from "@ccr/core/plugins/marketplace";
 import { ensureProxyCertificateAuthority } from "@ccr/core/proxy/certificates";
 import { proxyService } from "@ccr/core/proxy/service";
 import { listMcpServerTools } from "@ccr/core/mcp/tool-discovery";
@@ -44,6 +45,8 @@ import type {
   BotGatewayQrLoginWaitRequest,
   BotGatewayQrWindowOpenRequest,
   GatewayPluginAppConfig,
+  GatewayPluginPermission,
+  GatewayPluginSurface,
   GatewayProviderConnectivityCheckRequest,
   GatewayProviderProbeCandidatesRequest,
   GatewayProviderProbeRequest,
@@ -52,7 +55,6 @@ import type {
   LocalAgentProviderProbeRequest,
   PluginDependency,
   PluginDirectorySelection,
-  PluginMarketplaceEntry,
   ProfileApplyResult,
   ProfileOpenRequest,
   ProviderAccountResetRequest,
@@ -68,6 +70,10 @@ import type {
   UsageStatsFilter,
   UsageStatsRange
 } from "@ccr/core/contracts/app";
+import { GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS } from "@ccr/core/contracts/app";
+
+const gatewayPluginPermissionIdSet = new Set<string>(GATEWAY_PLUGIN_PERMISSION_IDS);
+const gatewayPluginSurfaceIdSet = new Set<string>(GATEWAY_PLUGIN_SURFACE_IDS);
 
 export type WebManagementServerOptions = {
   authToken?: string;
@@ -108,24 +114,6 @@ const homeHtmlFile = path.join(staticRoot, "pages", "home", "index.html");
 const rendererAssetsRoot = path.join(staticRoot, "assets");
 const webBridgeScriptTag = '    <script src="../../assets/web-client-bridge.js"></script>';
 
-const pluginMarketplace: PluginMarketplaceEntry[] = [
-  {
-    capabilities: ["Wrapper runtime", "Claude App proxy", "Claude Design", "Model routing"],
-    dependencies: [],
-    description: "Routes Claude App Design traffic through the local CCR wrapper backend with configurable model routing.",
-    id: "claude-design",
-    modulePath: path.join(__dirname, "..", "marketplace", "plugins", "claude-design-plugin.cjs"),
-    name: "Claude Design"
-  },
-  {
-    capabilities: ["Wrapper runtime", "Proxy mode", "Cursor", "Model routing", "OpenAI/Anthropic/Gemini forwarding"],
-    dependencies: [],
-    description: "Routes Cursor-compatible LLM traffic captured by proxy mode into the local CCR gateway.",
-    id: "cursor-proxy",
-    modulePath: path.join(__dirname, "..", "marketplace", "plugins", "cursor-proxy-plugin.cjs"),
-    name: "Cursor Proxy"
-  }
-];
 
 export async function startWebManagementServer(options: WebManagementServerOptions = {}): Promise<WebManagementServerRuntime> {
   const host = options.host?.trim() || readEnvString("CCR_WEB_HOST") || defaultWebHost;
@@ -292,7 +280,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
   }),
   getLocalAgentProviderCandidates: () => getLocalAgentProviderCandidates(),
   getOnboardingFinished: async () => Boolean(readString(await loadPersistedAppSetting(onboardingFinishedAtSettingKey)) || existsSync(ONBOARDING_FINISHED_FILE)),
-  getPluginMarketplace: () => pluginMarketplace,
+  getPluginMarketplace,
   getProfileOpenCommand: async (request) => getProfileOpenCommand(await loadAppConfig(), request as ProfileOpenRequest),
   getProfileRuntimeStatus: () => getProfileRuntimeStatus(),
   getProviderAccountSnapshots: (provider, options) => getProviderAccountSnapshots(provider as string | undefined, options as ProviderAccountSnapshotRequestOptions | undefined),
@@ -833,14 +821,277 @@ function inspectPluginDirectory(directory: string): PluginDirectorySelection {
     "plugin";
   const name = readString(manifest?.name) || readString(packageJsonManifest?.displayName) || readString(packageJsonManifest?.name);
   const apps = readPluginApps(manifest, packageJsonManifest);
+  const permissions = readPluginPermissions(manifest, packageJsonManifest);
+  const surfaces = readPluginSurfaces(manifest, packageJsonManifest);
   return {
     ...(apps.length ? { apps } : {}),
     dependencies: readPluginDependencies(directory, manifest, packageJsonManifest),
     directory,
     id,
-    modulePath: resolvePluginDirectoryModule(directory, moduleValue),
-    ...(name ? { name } : {})
+    modulePath: resolvePluginDirectoryModule(directory, moduleValue, Boolean(manifest || packageJsonManifest)),
+    ...(name ? { name } : {}),
+    ...(permissions ? { permissions } : {}),
+    ...(surfaces ? { surfaces } : {})
   };
+}
+
+function readPluginPermissions(
+  manifest: Record<string, unknown> | undefined,
+  packageJsonManifest: Record<string, unknown> | undefined
+): GatewayPluginPermission[] | undefined {
+  const values = [
+    manifest?.permissions,
+    readRecord(manifest?.ccr)?.permissions,
+    readRecord(manifest?.ccrPlugin)?.permissions,
+    readRecord(packageJsonManifest?.ccr)?.permissions,
+    readRecord(packageJsonManifest?.ccrPlugin)?.permissions
+  ];
+  const parsedValues = values.map(parsePluginPermissions).filter((value): value is GatewayPluginPermission[] => Boolean(value));
+  return parsedValues.length > 0 ? [...new Set(parsedValues.flat())] : undefined;
+}
+
+function parsePluginPermissions(value: unknown): GatewayPluginPermission[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const permissions: GatewayPluginPermission[] = [];
+  const seen = new Set<GatewayPluginPermission>();
+  const add = (rawValue: unknown): void => {
+    const permission = normalizePluginPermission(rawValue);
+    if (!permission || seen.has(permission)) {
+      return;
+    }
+    seen.add(permission);
+    permissions.push(permission);
+  };
+
+  if (typeof value === "string") {
+    add(value);
+  } else if (Array.isArray(value)) {
+    value.forEach(add);
+  } else {
+    const record = readRecord(value);
+    if (!record) {
+      return permissions;
+    }
+    for (const [key, enabled] of Object.entries(record)) {
+      if (enabled === false) {
+        continue;
+      }
+      if (isAllPluginPermissionsKey(key)) {
+        GATEWAY_PLUGIN_PERMISSION_IDS.forEach(add);
+      } else {
+        add(key);
+      }
+    }
+  }
+
+  return permissions;
+}
+
+function readPluginSurfaces(
+  manifest: Record<string, unknown> | undefined,
+  packageJsonManifest: Record<string, unknown> | undefined
+): PluginDirectorySelection["surfaces"] | undefined {
+  const values = [
+    manifest?.surfaces,
+    manifest?.surface,
+    readRecord(manifest?.ccr)?.surfaces,
+    readRecord(manifest?.ccr)?.surface,
+    readRecord(manifest?.ccrPlugin)?.surfaces,
+    readRecord(manifest?.ccrPlugin)?.surface,
+    readRecord(packageJsonManifest?.ccr)?.surfaces,
+    readRecord(packageJsonManifest?.ccr)?.surface,
+    readRecord(packageJsonManifest?.ccrPlugin)?.surfaces,
+    readRecord(packageJsonManifest?.ccrPlugin)?.surface
+  ];
+  const parsedValues = values.map(parsePluginSurfaces).filter((value): value is PluginDirectorySelection["surfaces"] => Boolean(value));
+  return parsedValues.length > 0 ? Object.assign({}, ...parsedValues) as PluginDirectorySelection["surfaces"] : undefined;
+}
+
+function parsePluginSurfaces(value: unknown): PluginDirectorySelection["surfaces"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const surfaces: PluginDirectorySelection["surfaces"] = {};
+  const setSurface = (rawValue: unknown, enabled = true): boolean => {
+    const surface = normalizePluginSurface(rawValue);
+    if (!surface) {
+      return false;
+    }
+    surfaces[surface] = enabled;
+    return true;
+  };
+
+  if (typeof value === "string") {
+    if (isAllPluginSurfacesKey(value)) {
+      GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+        surfaces[surface] = true;
+      });
+      return surfaces;
+    }
+    if (!setSurface(value)) {
+      return undefined;
+    }
+    GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+      surfaces[surface] ??= false;
+    });
+  } else if (Array.isArray(value)) {
+    let matched = false;
+    for (const item of value) {
+      if (typeof item === "string" && isAllPluginSurfacesKey(item)) {
+        GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+          surfaces[surface] = true;
+        });
+        matched = true;
+      } else {
+        matched = setSurface(item) || matched;
+      }
+    }
+    if (!matched) {
+      return undefined;
+    }
+    GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+      surfaces[surface] ??= false;
+    });
+  } else {
+    const record = readRecord(value);
+    if (!record) {
+      return undefined;
+    }
+    for (const [key, enabled] of Object.entries(record)) {
+      if (isAllPluginSurfacesKey(key)) {
+        GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+          surfaces[surface] = enabled !== false;
+        });
+      } else {
+        setSurface(key, enabled !== false);
+      }
+    }
+  }
+
+  return Object.keys(surfaces).length > 0 ? surfaces : undefined;
+}
+
+function normalizePluginPermission(value: unknown): GatewayPluginPermission | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const mapped = pluginPermissionAlias(normalized);
+  return gatewayPluginPermissionIdSet.has(mapped) ? mapped as GatewayPluginPermission : undefined;
+}
+
+function normalizePluginSurface(value: unknown): GatewayPluginSurface | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const mapped = pluginSurfaceAlias(normalized);
+  return gatewayPluginSurfaceIdSet.has(mapped) ? mapped as GatewayPluginSurface : undefined;
+}
+
+function pluginSurfaceAlias(value: string): string {
+  switch (value) {
+    case "app":
+    case "browser-app":
+    case "browser-apps":
+    case "ui":
+      return "apps";
+    case "gateway-route":
+    case "route":
+    case "routes":
+    case "gateway-routes":
+    case "proxy-route":
+    case "proxy":
+    case "proxy-routes":
+    case "http-backend":
+    case "http-backends":
+    case "backend":
+    case "backends":
+    case "core-gateway":
+    case "core-gateway-config":
+    case "fusion-profile":
+    case "fusion-profiles":
+    case "virtual-model":
+    case "virtual-models":
+    case "virtual-model-profile":
+    case "virtual-model-profiles":
+    case "request":
+    case "requests":
+      return "gateway";
+    case "core-provider-plugin":
+    case "provider-plugin":
+    case "provider-plugins":
+    case "provider-account":
+    case "provider-account-connector":
+    case "provider-account-connectors":
+    case "providers":
+      return "provider";
+    default:
+      return value;
+  }
+}
+
+function pluginPermissionAlias(value: string): string {
+  switch (value) {
+    case "code":
+    case "execute-code":
+    case "trusted":
+    case "trusted-code":
+      return "trusted-code";
+    case "app":
+    case "browser-app":
+    case "browser-apps":
+      return "apps";
+    case "gateway-route":
+    case "route":
+    case "routes":
+      return "gateway-routes";
+    case "proxy":
+    case "proxy-route":
+      return "proxy-routes";
+    case "backend":
+    case "backends":
+    case "http-backend":
+      return "http-backends";
+    case "provider-account":
+    case "provider-account-connector":
+      return "provider-account-connectors";
+    case "core-gateway":
+      return "core-gateway-config";
+    case "provider-plugin":
+    case "provider-plugins":
+    case "core-provider-plugin":
+      return "core-provider-plugins";
+    case "fusion-profile":
+    case "fusion-profiles":
+    case "virtual-model":
+    case "virtual-models":
+    case "virtual-model-profile":
+      return "virtual-model-profiles";
+    case "sqlite":
+    case "data-store":
+    case "store":
+      return "sqlite-store";
+    case "launcher":
+    case "mac-launcher":
+      return "system-launcher";
+    default:
+      return value;
+  }
+}
+
+function isAllPluginPermissionsKey(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "*" || normalized === "all";
+}
+
+function isAllPluginSurfacesKey(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "*" || normalized === "all";
 }
 
 function readPluginApps(
@@ -879,7 +1130,7 @@ function parsePluginAppItem(value: unknown): GatewayPluginAppConfig | undefined 
 
   const record = value as Record<string, unknown>;
   const name = readString(record.name) || readString(record.title);
-  const url = readString(record.url) || readString(record.href) || readString(record.target);
+  const url = normalizePluginAppUrl(readString(record.url) || readString(record.href) || readString(record.target));
   if (!name || !url) {
     return undefined;
   }
@@ -893,6 +1144,23 @@ function parsePluginAppItem(value: unknown): GatewayPluginAppConfig | undefined 
     name,
     url
   };
+}
+
+function normalizePluginAppUrl(value: string | undefined): string {
+  const trimmed = value?.trim() || "";
+  if (!trimmed) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    return new URL(trimmed).toString();
+  }
+  if (trimmed.startsWith("//")) {
+    throw new Error("Plugin app URL cannot be protocol-relative.");
+  }
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+    throw new Error("Plugin app URL must be an http(s) URL or a CCR gateway path.");
+  }
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 
 function readPluginDependencies(
@@ -982,9 +1250,12 @@ function looksLikeDependencyModulePath(value: string): boolean {
   return value.startsWith(".") || value.startsWith("/") || value.startsWith("~");
 }
 
-function resolvePluginDirectoryModule(directory: string, moduleValue: string | undefined): string {
+function resolvePluginDirectoryModule(directory: string, moduleValue: string | undefined, hasManifest = false): string {
   if (moduleValue) {
     return path.isAbsolute(moduleValue) ? moduleValue : path.join(directory, moduleValue);
+  }
+  if (hasManifest) {
+    return "";
   }
 
   for (const filename of ["index.cjs", "index.mjs", "index.js", "plugin.cjs", "plugin.mjs", "plugin.js"]) {
@@ -994,7 +1265,7 @@ function resolvePluginDirectoryModule(directory: string, moduleValue: string | u
     }
   }
 
-  return directory;
+  return "";
 }
 
 function readFirstJson(files: string[]): Record<string, unknown> | undefined {
@@ -1023,12 +1294,36 @@ function firstConfiguredBrowserAppUrl(config: AppConfig): string | undefined {
     if (plugin.enabled === false) {
       continue;
     }
-    const app = plugin.apps?.find((candidate) => readString(candidate.url));
+    const app = configuredBrowserAppsForPlugin(plugin.id, plugin.apps)?.find((candidate) => readString(candidate.url));
     if (app?.url) {
-      return app.url;
+      return resolveGatewayBrowserAppUrl(config, app.url);
     }
   }
   return undefined;
+}
+
+function configuredBrowserAppsForPlugin(_pluginId: string, apps: GatewayPluginAppConfig[] | undefined): GatewayPluginAppConfig[] {
+  if (apps?.length) {
+    return apps;
+  }
+  return [];
+}
+
+function resolveGatewayBrowserAppUrl(config: AppConfig, url: string): string {
+  const trimmed = url.trim();
+  if (/^https?:\/\//i.test(trimmed) || trimmed === "about:blank") {
+    return trimmed;
+  }
+  const path = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  const host = normalizeGatewayBrowserAppHost(config.gateway?.host || config.HOST || "127.0.0.1");
+  const port = config.gateway?.port || config.PORT || 3456;
+  return `http://${host}:${port}${path}`;
+}
+
+function normalizeGatewayBrowserAppHost(host: string): string {
+  if (!host || host === "0.0.0.0") return "127.0.0.1";
+  if (host === "::" || host === "[::]") return "[::1]";
+  return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }
 
 async function revealFile(file: string): Promise<void> {
@@ -1044,7 +1339,7 @@ async function revealFile(file: string): Promise<void> {
 }
 
 export function openSystemExternal(target: string): Promise<void> {
-  const url = normalizeExternalHttpTarget(target);
+  const url = normalizeExternalTarget(target);
   if (!url) {
     return Promise.resolve();
   }
@@ -1058,6 +1353,14 @@ export function openSystemExternal(target: string): Promise<void> {
 }
 
 export function normalizeExternalHttpTarget(target: unknown): string | undefined {
+  const url = normalizeExternalTarget(target);
+  if (!url?.startsWith("http://") && !url?.startsWith("https://")) {
+    return undefined;
+  }
+  return url;
+}
+
+function normalizeExternalTarget(target: unknown): string | undefined {
   const trimmed = typeof target === "string" ? target.trim() : "";
   if (!trimmed || trimmed === "about:blank") {
     return undefined;
@@ -1068,10 +1371,13 @@ export function normalizeExternalHttpTarget(target: unknown): string | undefined
   } catch {
     throw new Error("External URL must be a valid absolute URL.");
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("Only http and https URLs can be opened.");
+  if (url.protocol === "http:" || url.protocol === "https:") {
+    return url.toString();
   }
-  return url.toString();
+  if (url.protocol === "ccr:" && url.hostname.toLowerCase() === "plugin") {
+    return url.toString();
+  }
+  throw new Error("Only http, https, and CCR plugin URLs can be opened.");
 }
 
 function execDetached(command: string, args: string[]): Promise<void> {

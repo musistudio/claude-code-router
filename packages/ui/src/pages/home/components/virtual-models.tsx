@@ -7,7 +7,7 @@ import {
   fusionWebSearchProviderOptions, GatewayMcpServerConfig, GatewayMcpToolInfo, GatewayProviderConfig, Input, isBuiltInFusionToolName, isFusionImageGenerationToolName, isFusionVideoGenerationToolName, isFusionVisionToolName, isFusionWebSearchToolName, KeyValueRowsControl, LoaderCircle,
   mcpServerConfigFromDraft, mcpServerEndpointSummary, mcpServerTransportOptions,
   mcpStdioMessageModeOptions, motion, normalizeFusionToolName, Pencil,
-  PluginMarketplaceEntry, Plus, PopoverContent, RouteTargetControl, Search, selectedFusionToolNames,
+  PluginMarketplaceEntry, pluginSurfaceSummary, Plus, PopoverContent, RouteTargetControl, Search, selectedFusionToolNames,
   SelectControl, Toggle, Trash2, translateOptions, useAppErrorText, useAppText, useEffect, useLayoutEffect, useMemo,
   useRef, useState, validateMcpServerDraft, virtualModelBaseModelSummary, VirtualModelDraft, virtualModelMatchesQuery, virtualModelMatchSummary,
   type KeyValueDraftRow,
@@ -1225,7 +1225,9 @@ export function InstallExtensionDialog({
       dependencies: entry.dependencies,
       marketplaceId: entry.id,
       modulePath: entry.modulePath,
-      selectedName: entry.name
+      permissions: entry.permissions,
+      selectedName: entry.name,
+      surfaces: entry.surfaces
     });
   }
 
@@ -1260,6 +1262,10 @@ export function InstallExtensionDialog({
                     <span className="truncate font-semibold text-foreground">{entry.name}</span>
                     <span className="line-clamp-2 text-[11px] text-muted-foreground">{entry.description}</span>
                     <span className="truncate text-[10px] text-muted-foreground/80">{entry.capabilities.join(", ")}</span>
+                    <span className="truncate text-[10px] text-muted-foreground/80">{t("Surfaces")}: {pluginSurfaceSummary(entry.surfaces)}</span>
+                    {entry.permissions?.length ? (
+                      <span className="truncate text-[10px] text-muted-foreground/80">{t("Permissions")}: {entry.permissions.join(", ")}</span>
+                    ) : null}
                     {entry.dependencies.length > 0 ? (
                       <span className="truncate text-[10px] text-muted-foreground/80">{t("Dependencies")}: {formatPluginDependencies(entry.dependencies)}</span>
                     ) : null}

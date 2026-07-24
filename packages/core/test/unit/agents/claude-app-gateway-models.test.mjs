@@ -8,7 +8,8 @@ import {
 } from "@ccr/core/agents/claude-app/gateway-routes.ts";
 import {
   createGatewayModelsResponse,
-  prepareClaudeAppDiscoveredModelRequest
+  prepareClaudeAppDiscoveredModelRequest,
+  shouldServeGatewayModelsResponse
 } from "@ccr/core/gateway/features/model-discovery.ts";
 import { ModelRegistry } from "@ccr/core/routing/model-registry.ts";
 
@@ -55,6 +56,12 @@ function assertPublishedRoutesResolveUniquely(config) {
     assert.equal(registry.resolve(route.targetModel)?.canonicalSelector, route.targetModel);
   }
 }
+
+test("gateway model discovery supports the /models alias", () => {
+  assert.equal(shouldServeGatewayModelsResponse("GET", "/models"), true);
+  assert.equal(shouldServeGatewayModelsResponse("GET", "/v1/models"), true);
+  assert.equal(shouldServeGatewayModelsResponse("POST", "/models"), false);
+});
 
 test("issue 1535 Claude App discovery defaults to the first configured provider model", () => {
   const config = createConfig({

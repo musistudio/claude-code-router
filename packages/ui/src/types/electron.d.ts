@@ -123,6 +123,7 @@ declare global {
       openBuiltInBrowser: () => Promise<void>;
       openBotGatewayQrWindow: (request: BotGatewayQrWindowOpenRequest) => Promise<BotGatewayQrWindowOpenResult>;
       openExternal: (url: string) => Promise<void>;
+      openPluginApp?: (pluginId: string, appId?: string) => Promise<void>;
       openProfile: (request: ProfileOpenRequest) => Promise<ProfileOpenResult>;
       prepareImageExportTarget?: (request: AppImageExportTargetRequest) => Promise<AppImageExportTargetResult>;
       probeLocalAgentProvider?: (request: LocalAgentProviderProbeRequest) => Promise<LocalAgentProviderProbeResult>;

@@ -775,6 +775,94 @@ export type GatewayPluginAppConfig = {
   url: string;
 };
 
+export const CLAUDE_DESIGN_PLUGIN_ID = "claude-design";
+export const CLAUDE_SHIP_PLUGIN_ID = "claude-ship";
+export const DEFAULT_CLAUDE_DESIGN_APP: GatewayPluginAppConfig = {
+  description: "Open Claude Design in a dedicated CCR Electron window.",
+  icon: "palette",
+  id: "claude-design",
+  name: "Claude Design",
+  url: "https://claude-design-assets.pages.dev/design"
+};
+export const DEFAULT_CLAUDE_SHIP_APP: GatewayPluginAppConfig = {
+  description: "Open Claude Ship in a dedicated CCR Electron window.",
+  icon: "rocket",
+  id: "claude-ship",
+  name: "Claude Ship",
+  url: "https://claude.ai/claude-ship"
+};
+
+export const GATEWAY_PLUGIN_SURFACE_IDS = [
+  "apps",
+  "gateway",
+  "provider"
+] as const;
+
+export type GatewayPluginSurface = typeof GATEWAY_PLUGIN_SURFACE_IDS[number];
+
+export type GatewayPluginSurfacesConfig = Partial<Record<GatewayPluginSurface, boolean>>;
+
+export const GATEWAY_PLUGIN_PERMISSION_IDS = [
+  "trusted-code",
+  "apps",
+  "gateway-routes",
+  "proxy-routes",
+  "http-backends",
+  "provider-account-connectors",
+  "core-gateway-config",
+  "core-provider-plugins",
+  "virtual-model-profiles",
+  "sqlite-store",
+  "system-launcher"
+] as const;
+
+export type GatewayPluginPermission = typeof GATEWAY_PLUGIN_PERMISSION_IDS[number];
+
+export type KnownGatewayPluginDefaults = {
+  permissions: GatewayPluginPermission[];
+  surfaces: GatewayPluginSurfacesConfig;
+};
+
+export const KNOWN_GATEWAY_PLUGIN_DEFAULTS: Record<string, KnownGatewayPluginDefaults> = {
+  "agent-console": {
+    permissions: ["trusted-code", "apps", "gateway-routes", "system-launcher"],
+    surfaces: { apps: true, gateway: true, provider: false }
+  },
+  "claude-design": {
+    permissions: ["trusted-code", "apps", "gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
+    surfaces: { apps: true, gateway: true, provider: false }
+  },
+  "claude-ship": {
+    permissions: ["trusted-code", "apps", "gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
+    surfaces: { apps: true, gateway: true, provider: false }
+  },
+  "cursor-proxy": {
+    permissions: ["trusted-code", "gateway-routes", "proxy-routes", "http-backends"],
+    surfaces: { apps: false, gateway: true, provider: false }
+  }
+};
+
+export function knownGatewayPluginDefaultPermissions(id: string): GatewayPluginPermission[] | undefined {
+  const permissions = KNOWN_GATEWAY_PLUGIN_DEFAULTS[id.trim().toLowerCase()]?.permissions;
+  return permissions ? [...permissions] : undefined;
+}
+
+export function knownGatewayPluginDefaultSurfaces(id: string): GatewayPluginSurfacesConfig | undefined {
+  const surfaces = KNOWN_GATEWAY_PLUGIN_DEFAULTS[id.trim().toLowerCase()]?.surfaces;
+  return surfaces ? { ...surfaces } : undefined;
+}
+
+export function knownGatewayPluginDefaultApps(id: string): GatewayPluginAppConfig[] | undefined {
+  const pluginId = id.trim().toLowerCase();
+  if (pluginId === CLAUDE_DESIGN_PLUGIN_ID) {
+    return [{ ...DEFAULT_CLAUDE_DESIGN_APP }];
+  }
+  if (pluginId === CLAUDE_SHIP_PLUGIN_ID) {
+    return [{ ...DEFAULT_CLAUDE_SHIP_APP }];
+  }
+  return undefined;
+}
+
 export type GatewayMcpServerTransport = "stdio" | "streamable-http" | "sse";
 export type GatewayMcpStdioMessageMode = "content-length" | "newline-json";
 
@@ -1057,15 +1145,20 @@ export type GatewayPluginConfig = {
   enabled?: boolean;
   id: string;
   module?: string;
+  permissions?: GatewayPluginPermission[];
   proxy?: {
     routes?: GatewayPluginProxyRouteConfig[];
   };
+  surfaces?: GatewayPluginSurfacesConfig;
 };
 
 export type PluginDependency = {
   id: string;
+  integrity?: string;
   modulePath?: string;
   name?: string;
+  permissions?: GatewayPluginPermission[];
+  surfaces?: GatewayPluginSurfacesConfig;
 };
 
 export type PluginDirectorySelection = {
@@ -1075,6 +1168,8 @@ export type PluginDirectorySelection = {
   id: string;
   modulePath: string;
   name?: string;
+  permissions?: GatewayPluginPermission[];
+  surfaces?: GatewayPluginSurfacesConfig;
 };
 
 export type PluginMarketplaceEntry = {
@@ -1083,8 +1178,11 @@ export type PluginMarketplaceEntry = {
   dependencies: PluginDependency[];
   description: string;
   id: string;
+  integrity?: string;
   modulePath: string;
   name: string;
+  permissions?: GatewayPluginPermission[];
+  surfaces?: GatewayPluginSurfacesConfig;
 };
 
 export type ProxyRuntimeConfig = {

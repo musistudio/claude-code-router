@@ -191,7 +191,7 @@ export class GatewayHttpRequestHandler {
       if (path === "/") {
         sendJson(response, 200, {
           core: "next-ai-gateway",
-          endpoints: ["POST /mcp", "POST /v1/messages", "POST /v1/messages/count_tokens", "GET /v1/models"],
+          endpoints: ["POST /mcp", "POST /v1/messages", "POST /v1/messages/count_tokens", "GET /models", "GET /v1/models"],
           name: "claude-code-router",
           plugin: "claude-code-router",
           wrapperPlugins: this.config.plugins.filter((plugin) => plugin.enabled !== false).map((plugin) => plugin.id)

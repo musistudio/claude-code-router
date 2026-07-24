@@ -19,7 +19,7 @@ import { contextArchiveConfigForApiKey, contextArchiveMcpEnabled } from "@ccr/co
 
 export function shouldServeGatewayModelsResponse(method: string, path: string): boolean {
   return (method || "GET").toUpperCase() === "GET" &&
-    normalizeGatewayPathname(path) === "/v1/models";
+    ["/models", "/v1/models"].includes(normalizeGatewayPathname(path));
 }
 
 
