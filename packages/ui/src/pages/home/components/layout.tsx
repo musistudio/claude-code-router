@@ -290,6 +290,7 @@ export function MainLayout({
         >
           <MainViewSwitch
             activeView={activeView}
+            agentAnalysisEnabled={agentAnalysisEnabled}
             networkCaptureEnabled={networkCaptureEnabled}
             viewProps={viewProps}
           />
@@ -436,10 +437,12 @@ export function GatewayStartupErrorBanner({
 
 function MainViewSwitch({
   activeView,
+  agentAnalysisEnabled,
   networkCaptureEnabled,
   viewProps
 }: {
   activeView: ViewId;
+  agentAnalysisEnabled: boolean;
   networkCaptureEnabled: boolean;
   viewProps: MainViewProps;
 }) {
@@ -447,7 +450,7 @@ function MainViewSwitch({
     <AnimatePresence initial={false} mode="wait">
       <ViewMotionShell key={activeView} view={activeView}>
         {activeView === "overview" ? <OverviewView {...viewProps.overview} /> : null}
-        {activeView === "observability" ? <AgentAnalysisView {...viewProps.observability} /> : null}
+        {activeView === "observability" && agentAnalysisEnabled ? <AgentAnalysisView {...viewProps.observability} /> : null}
         {activeView === "api-keys" ? <ApiKeysView {...viewProps.apiKeys} /> : null}
         {activeView === "profile" ? <ProfileView {...viewProps.profile} /> : null}
         {activeView === "networking" && networkCaptureEnabled ? <NetworkingView {...viewProps.networking} /> : null}

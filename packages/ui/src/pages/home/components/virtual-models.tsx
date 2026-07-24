@@ -13,7 +13,10 @@ import {
   type KeyValueDraftRow,
   VirtualModelProfileConfig, virtualModelToolSummary, X
 } from "../shared/index";
+import { PopoverPortal } from "@/components/ui/popover";
 import { createGrokMediaModelOptions } from "@ccr/core/media/models";
+
+const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 const virtualModelTableGridClass = "grid-cols-[minmax(180px,0.9fr)_minmax(220px,1.1fr)_minmax(220px,1.1fr)_minmax(170px,0.85fr)_112px_96px]";
 const virtualModelTableMinWidthClass = "min-w-[1100px]";
@@ -946,6 +949,7 @@ function FusionToolSelectControl({
     placement: "above" | "below";
     width: number;
   }>();
+  const panelRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const normalizedValue = normalizeFusionToolName(value);
   const excludedValueSet = new Set((excludedValues ?? []).map(normalizeFusionToolName).filter(Boolean));
@@ -955,7 +959,7 @@ function FusionToolSelectControl({
     : mcpServers.find((server) => mcpToolStateByServer[server.name]?.tools?.some((tool) => tool.name === normalizedValue));
   const selectedLabel = selected ? t(selected.label) : (selectedServer && normalizedValue ? `${selectedServer.name} / ${normalizedValue}` : normalizedValue || t("Select tool"));
 
-  useLayoutEffect(() => {
+  useClientLayoutEffect(() => {
     if (!open) {
       setPopoverLayout(undefined);
       return;
@@ -1009,7 +1013,8 @@ function FusionToolSelectControl({
     }
 
     const handlePointerDown = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !panelRef.current?.contains(target)) {
         setOpen(false);
       }
     };
@@ -1044,149 +1049,150 @@ function FusionToolSelectControl({
             setOpen(true);
           }
         }}
-	        type="button"
-	      >
-	        <span className="min-w-0 flex-1 truncate">{selectedLabel}</span>
-	        <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
-	      </button>
+        type="button"
+      >
+        <span className="min-w-0 flex-1 truncate">{selectedLabel}</span>
+        <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
 
-      <AnimatePresence initial={false}>
-        {open ? (
-          <AnimatedPopover
-            className="fixed z-[70]"
-            placement={popoverLayout?.placement ?? "below"}
-            style={popoverLayout
-              ? {
+      <PopoverPortal open={open && Boolean(popoverLayout)}>
+        <AnimatePresence initial={false}>
+          {open && popoverLayout ? (
+            <AnimatedPopover
+              className="fixed z-[140]"
+              placement={popoverLayout.placement}
+              style={{
                 left: `${popoverLayout.left}px`,
                 width: `${popoverLayout.width}px`,
                 ...(popoverLayout.placement === "above"
                   ? { bottom: `${popoverLayout.offset}px` }
                   : { top: `${popoverLayout.offset}px` })
-              }
-              : undefined}
-          >
-            <PopoverContent
-              className="w-full overflow-y-auto p-1"
-              id="fusion-tool-select-options"
-              role="listbox"
-	              style={{ maxHeight: `${popoverLayout?.maxHeight ?? 360}px` }}
-	            >
-	              {fusionToolOptions.filter((option) => visibleFusionToolOption(option.value, normalizedValue, excludedValueSet)).map((option) => {
-	                const selectedOption = option.value === selected?.value;
-	                return (
-	                  <button
-                    aria-selected={selectedOption}
-                    className={cn(
-                      "flex min-h-[58px] w-full min-w-0 items-start gap-2 rounded-[5px] px-2 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
-                      selectedOption ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
-                    )}
-	                    key={option.value}
-	                    onClick={() => {
-	                      onChange(option.value);
-	                      setOpen(false);
-	                    }}
-                    role="option"
-                    type="button"
-                  >
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[12px] font-semibold">{t(option.label)}</span>
-                      <span className={cn("mt-0.5 block text-[11px] leading-4", selectedOption ? "text-primary/80" : "text-muted-foreground")}>
-                        {t(option.description)}
+              }}
+            >
+              <PopoverContent
+                className="w-full overflow-y-auto p-1"
+                id="fusion-tool-select-options"
+                ref={panelRef}
+                role="listbox"
+                style={{ maxHeight: `${popoverLayout.maxHeight}px` }}
+              >
+                {fusionToolOptions.filter((option) => visibleFusionToolOption(option.value, normalizedValue, excludedValueSet)).map((option) => {
+                  const selectedOption = option.value === selected?.value;
+                  return (
+                    <button
+                      aria-selected={selectedOption}
+                      className={cn(
+                        "flex min-h-[58px] w-full min-w-0 items-start gap-2 rounded-[5px] px-2 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
+                        selectedOption ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+                      )}
+                      key={option.value}
+                      onClick={() => {
+                        onChange(option.value);
+                        setOpen(false);
+                      }}
+                      role="option"
+                      type="button"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[12px] font-semibold">{t(option.label)}</span>
+                        <span className={cn("mt-0.5 block text-[11px] leading-4", selectedOption ? "text-primary/80" : "text-muted-foreground")}>
+                          {t(option.description)}
+                        </span>
                       </span>
-                    </span>
-                    {selectedOption ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : null}
-	                  </button>
-	                );
-	              })}
-	              {mcpServers.length > 0 ? <div className="my-1 border-t border-border/70" /> : null}
-	              {mcpServers.map((server) => {
-	                const state = mcpToolStateByServer[server.name];
-	                const tools = (state?.tools ?? []).filter((tool) => visibleFusionToolOption(tool.name, normalizedValue, excludedValueSet));
+                      {selectedOption ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : null}
+                    </button>
+                  );
+                })}
+                {mcpServers.length > 0 ? <div className="my-1 border-t border-border/70" /> : null}
+                {mcpServers.map((server) => {
+                  const state = mcpToolStateByServer[server.name];
+                  const tools = (state?.tools ?? []).filter((tool) => visibleFusionToolOption(tool.name, normalizedValue, excludedValueSet));
                   const discoveredTools = state?.tools ?? [];
-	                const serverSelected = selectedMcpServerName === server.name;
-	                return (
-	                  <div className="rounded-[5px] px-1 py-1" key={server.name}>
-	                    <div className="flex min-w-0 items-center gap-1.5 px-1 py-1 text-[11px] font-semibold text-foreground">
-	                      <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-	                      <span className="min-w-0 flex-1 truncate" title={server.name}>{server.name}</span>
-	                      <button
-	                        aria-label={`${t("Discover tools")} ${server.name}`}
-	                        className="rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
-	                        onClick={(event) => {
-	                          event.stopPropagation();
-	                          onDiscoverMcpTools(server, true);
-	                        }}
-	                        title={mcpServerEndpointSummary(server)}
-	                        type="button"
-	                      >
-	                        {state?.loading ? <LoaderCircle className="h-3 w-3 animate-spin" /> : t("Discover tools")}
-	                      </button>
-	                    </div>
-	                    <div className="ml-3 border-l border-border/70 pl-2">
-	                      {tools.map((tool) => {
-	                        const selectedTool = normalizedValue === tool.name && (serverSelected || !selectedMcpServerName);
-	                        return (
-	                          <button
-	                            aria-selected={selectedTool}
-	                            className={cn(
-	                              "flex min-h-[44px] w-full min-w-0 items-start gap-2 rounded-[5px] px-2 py-1.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
-	                              selectedTool ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
-	                            )}
-	                            key={`${server.name}:${tool.name}`}
-	                            onClick={() => {
-	                              onChange(tool.name, server);
-	                              setOpen(false);
-	                            }}
-	                            role="option"
-	                            type="button"
-	                          >
-	                            <span className="min-w-0 flex-1">
-	                              <span className="block truncate text-[12px] font-semibold">{tool.name}</span>
-	                              {tool.description ? (
-	                                <span className={cn("mt-0.5 line-clamp-2 text-[11px] leading-4", selectedTool ? "text-primary/80" : "text-muted-foreground")}>
-	                                  {tool.description}
-	                                </span>
-	                              ) : null}
-	                            </span>
-	                            {selectedTool ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : null}
-	                          </button>
-	                        );
-	                      })}
-	                      {state?.loading && tools.length === 0 ? (
-	                        <div className="flex items-center gap-2 px-2 py-2 text-[11px] text-muted-foreground">
-	                          <LoaderCircle className="h-3 w-3 animate-spin" />
-	                          <span>{t("Discover tools")}</span>
-	                        </div>
-	                      ) : null}
-	                      {!state?.loading && state?.tools && discoveredTools.length > 0 && tools.length === 0 && !state.error ? (
-	                        <div className="px-2 py-2 text-[11px] text-muted-foreground">{t("No tools available")}</div>
-	                      ) : null}
-	                      {!state?.loading && state?.tools && discoveredTools.length === 0 && !state.error ? (
-	                        <div className="px-2 py-2 text-[11px] text-muted-foreground">{t("No tools discovered")}</div>
-	                      ) : null}
-	                      {state?.error ? (
-	                        <div className="px-2 py-2 text-[11px] text-destructive" title={state.error}>{t("Tool discovery failed")}</div>
-	                      ) : null}
-	                    </div>
-	                  </div>
-	                );
-	              })}
-	              <div className="my-1 border-t border-border/70" />
-	              <button
-	                className="flex min-h-[36px] w-full min-w-0 items-center gap-2 rounded-[5px] px-2 py-2 text-left text-[12px] font-semibold text-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/25"
-	                onClick={() => {
-	                  setOpen(false);
-	                  onAddCustomMcpTool();
-	                }}
-	                type="button"
-	              >
-	                <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-	                <span className="min-w-0 truncate">{t("Add custom MCP")}</span>
-	              </button>
-	            </PopoverContent>
-          </AnimatedPopover>
-        ) : null}
-      </AnimatePresence>
+                  const serverSelected = selectedMcpServerName === server.name;
+                  return (
+                    <div className="rounded-[5px] px-1 py-1" key={server.name}>
+                      <div className="flex min-w-0 items-center gap-1.5 px-1 py-1 text-[11px] font-semibold text-foreground">
+                        <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1 truncate" title={server.name}>{server.name}</span>
+                        <button
+                          aria-label={`${t("Discover tools")} ${server.name}`}
+                          className="rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onDiscoverMcpTools(server, true);
+                          }}
+                          title={mcpServerEndpointSummary(server)}
+                          type="button"
+                        >
+                          {state?.loading ? <LoaderCircle className="h-3 w-3 animate-spin" /> : t("Discover tools")}
+                        </button>
+                      </div>
+                      <div className="ml-3 border-l border-border/70 pl-2">
+                        {tools.map((tool) => {
+                          const selectedTool = normalizedValue === tool.name && (serverSelected || !selectedMcpServerName);
+                          return (
+                            <button
+                              aria-selected={selectedTool}
+                              className={cn(
+                                "flex min-h-[44px] w-full min-w-0 items-start gap-2 rounded-[5px] px-2 py-1.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
+                                selectedTool ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+                              )}
+                              key={`${server.name}:${tool.name}`}
+                              onClick={() => {
+                                onChange(tool.name, server);
+                                setOpen(false);
+                              }}
+                              role="option"
+                              type="button"
+                            >
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-[12px] font-semibold">{tool.name}</span>
+                                {tool.description ? (
+                                  <span className={cn("mt-0.5 line-clamp-2 text-[11px] leading-4", selectedTool ? "text-primary/80" : "text-muted-foreground")}>
+                                    {tool.description}
+                                  </span>
+                                ) : null}
+                              </span>
+                              {selectedTool ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : null}
+                            </button>
+                          );
+                        })}
+                        {state?.loading && tools.length === 0 ? (
+                          <div className="flex items-center gap-2 px-2 py-2 text-[11px] text-muted-foreground">
+                            <LoaderCircle className="h-3 w-3 animate-spin" />
+                            <span>{t("Discover tools")}</span>
+                          </div>
+                        ) : null}
+                        {!state?.loading && state?.tools && discoveredTools.length > 0 && tools.length === 0 && !state.error ? (
+                          <div className="px-2 py-2 text-[11px] text-muted-foreground">{t("No tools available")}</div>
+                        ) : null}
+                        {!state?.loading && state?.tools && discoveredTools.length === 0 && !state.error ? (
+                          <div className="px-2 py-2 text-[11px] text-muted-foreground">{t("No tools discovered")}</div>
+                        ) : null}
+                        {state?.error ? (
+                          <div className="px-2 py-2 text-[11px] text-destructive" title={state.error}>{t("Tool discovery failed")}</div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="my-1 border-t border-border/70" />
+                <button
+                  className="flex min-h-[36px] w-full min-w-0 items-center gap-2 rounded-[5px] px-2 py-2 text-left text-[12px] font-semibold text-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/25"
+                  onClick={() => {
+                    setOpen(false);
+                    onAddCustomMcpTool();
+                  }}
+                  type="button"
+                >
+                  <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 truncate">{t("Add custom MCP")}</span>
+                </button>
+              </PopoverContent>
+            </AnimatedPopover>
+          ) : null}
+        </AnimatePresence>
+      </PopoverPortal>
     </div>
   );
 }

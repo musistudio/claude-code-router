@@ -25,11 +25,10 @@ import {
 import { buildTokenActivity, type TokenActivityCell } from "@/lib/usage-activity";
 import { ShareCardWidget } from "./share-cards";
 import {
-  Activity, CalendarDays, ChartNoAxesCombined, ChartPie, CreditCard, GripHorizontal, Inbox, Layers3,
+  CalendarDays, ChartNoAxesCombined, ChartPie, CreditCard, GripHorizontal, Inbox, Layers3,
   Rocket, Server, UsersRound, WalletCards, Wifi
 } from "lucide-react";
-import { createPortal } from "react-dom";
-import { MonitorDisabledView } from "./network-logs";
+import { Tooltip as UiTooltip, TooltipPortal } from "@/components/ui/tooltip";
 
 type OverviewUsageFilters = {
   modelFilter: string;
@@ -40,6 +39,10 @@ type OverviewUsageFilters = {
 };
 
 const emptyOverviewProviders: GatewayProviderConfig[] = [];
+
+function chartTooltipPortal(): HTMLElement | null {
+  return typeof document === "undefined" ? null : document.body;
+}
 
 export function OverviewView({
   onWidgetsChange,
@@ -1209,7 +1212,7 @@ function UsageTrendWidget({
               <XAxis axisLine={false} dataKey="label" hide={dimensions.height <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} />
               <YAxis axisLine={false} hide={dimensions.width <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} yAxisId="tokens" />
               <YAxis axisLine={false} hide orientation="right" yAxisId="requests" />
-              <Tooltip content={<UsageTooltip />} />
+              <Tooltip content={<UsageTooltip />} portal={chartTooltipPortal()} />
               {variant === "composed" ? (
                 <>
                   <Area dataKey="totalTokens" fill="#007aff" fillOpacity={0.12} name={t("Total tokens")} stroke="#007aff" strokeWidth={2.25} type="monotone" yAxisId="tokens" />
@@ -1386,21 +1389,25 @@ function OverviewActivityGrid({
               </span>
             )) : null}
             {activity.cells.map((cell) => (
-              <span
+              <UiTooltip
                 aria-label={`${cell.dateLabel}: ${formatActivityTokenCount(cell.totalTokens)} ${t("tokens")}`}
-                className="overview-activity-cell group relative aspect-square w-full rounded-[4px]"
+                align={cell.weekIndex <= 1 ? "start" : cell.weekIndex >= activity.weekCount - 2 ? "end" : "center"}
+                className="overview-activity-cell aspect-square w-full rounded-[4px]"
+                content={(
+                  <>
+                    <span className="block font-semibold">{cell.dateLabel}</span>
+                    <span className="mt-0.5 block text-muted-foreground">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
+                  </>
+                )}
+                contentClassName="min-w-[112px] border-border/70 px-2 py-1.5 text-left text-[11px] font-normal"
                 key={cell.dateKey}
+                side={cell.dayIndex <= 1 ? "bottom" : "top"}
                 style={{
                   backgroundColor: overviewActivityColor(cell.intensity, cell.inObservedRange),
                   gridColumn: cell.weekIndex + (showDayLabels ? 2 : 1),
                   gridRow: cell.dayIndex + 1
                 }}
-              >
-                <span className={`pointer-events-none absolute z-30 hidden min-w-[112px] rounded-md border border-border/70 bg-popover px-2 py-1.5 text-left text-[11px] text-popover-foreground shadow-card-elevated group-hover:block ${overviewActivityTooltipPositionClass(cell, activity.weekCount)}`}>
-                  <span className="block font-semibold">{cell.dateLabel}</span>
-                  <span className="mt-0.5 block text-muted-foreground">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
-                </span>
-              </span>
+              />
             ))}
           </div>
         </div>
@@ -1411,17 +1418,6 @@ function OverviewActivityGrid({
 
 function formatActivityTokenCount(value: number): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Math.round(Math.max(0, value)));
-}
-
-function overviewActivityTooltipPositionClass(cell: TokenActivityCell, weekCount: number): string {
-  const verticalClass = cell.dayIndex <= 1 ? "top-full mt-1" : "bottom-full mb-1";
-  if (cell.weekIndex <= 1) {
-    return `${verticalClass} left-0`;
-  }
-  if (cell.weekIndex >= weekCount - 2) {
-    return `${verticalClass} right-0`;
-  }
-  return `${verticalClass} left-1/2 -translate-x-1/2`;
 }
 
 function overviewActivityColor(intensity: TokenActivityCell["intensity"], inRange: boolean): string {
@@ -1474,7 +1470,7 @@ function TokenMixOverviewWidget({
               <ChartFrame fill>
                 {({ height, width }) => (
                   <PieChart height={height} width={width}>
-                    <Tooltip content={<TokenTooltip />} />
+                    <Tooltip content={<TokenTooltip />} portal={chartTooltipPortal()} />
                     <Pie
                       cx="50%"
                       cy="50%"
@@ -1504,7 +1500,7 @@ function TokenMixOverviewWidget({
                 <CartesianGrid stroke="var(--overview-chart-grid)" strokeDasharray="2 5" horizontal={false} />
                 <XAxis axisLine={false} hide={dimensions.height <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
                 <YAxis axisLine={false} dataKey="name" tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} type="category" width={dimensions.width <= 1 ? 42 : 52} />
-                <Tooltip content={<TokenTooltip />} />
+                <Tooltip content={<TokenTooltip />} portal={chartTooltipPortal()} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                   {tokenMix.map((item) => (
                     <Cell fill={item.color} key={item.name} />
@@ -1557,7 +1553,7 @@ function ModelDistributionOverviewWidget({
               <ChartFrame fill>
                 {({ height, width }) => (
                   <PieChart height={height} width={width}>
-                    <Tooltip content={<TokenTooltip />} />
+                    <Tooltip content={<TokenTooltip />} portal={chartTooltipPortal()} />
                     <Pie
                       cx="50%"
                       cy="50%"
@@ -1586,7 +1582,7 @@ function ModelDistributionOverviewWidget({
               <CartesianGrid stroke="var(--overview-chart-grid)" strokeDasharray="2 5" horizontal={false} />
                 <XAxis axisLine={false} hide={dimensions.height <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
                 <YAxis axisLine={false} dataKey="name" tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} type="category" width={dimensions.width <= 1 ? 58 : 88} />
-                <Tooltip content={<TokenTooltip />} />
+                <Tooltip content={<TokenTooltip />} portal={chartTooltipPortal()} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                   {modelRows.map((item) => (
                     <Cell fill={item.color} key={item.name} />
@@ -2251,10 +2247,9 @@ function SystemStatusBar({
                 />
               </span>
             ))}
-            {statusTooltip ? createPortal(
-              <span
-                className="pointer-events-none fixed z-[150] w-[190px] max-w-[calc(100vw-24px)] rounded-md border border-border/70 bg-popover px-3 py-2 text-left text-[11px] leading-4 text-popover-foreground shadow-card-elevated ring-1 ring-black/5"
-                role="tooltip"
+            {statusTooltip ? (
+              <TooltipPortal
+                className="w-[190px] max-w-[calc(100vw-24px)] px-3 py-2 text-left font-normal leading-4"
                 style={{ left: statusTooltip.left, top: statusTooltip.top }}
               >
                 <span
@@ -2284,8 +2279,7 @@ function SystemStatusBar({
                   <span className="text-muted-foreground">{t("Duration")}</span>
                   <span className="font-medium">{formatDuration(statusTooltip.segment.point.avgDurationMs)}</span>
                 </span>
-              </span>,
-              document.body
+              </TooltipPortal>
             ) : null}
           </div>
         </div>
@@ -3385,11 +3379,8 @@ function providerAccountShowExtraCount(dimensions: OverviewWidgetDimensions): bo
 
 export function AgentAnalysisView({
   agentFilter,
-  enabled = true,
   error,
   loading,
-  onEnable,
-  openRequestLog,
   range,
   refreshAnalysis,
   selectedSession,
@@ -3399,11 +3390,8 @@ export function AgentAnalysisView({
   snapshot
 }: {
   agentFilter: AgentFilterValue;
-  enabled?: boolean;
   error: string;
   loading: boolean;
-  onEnable?: () => void;
-  openRequestLog?: (request: { id: number; requestId: string }) => void;
   range: UsageStatsRange;
   refreshAnalysis: () => void;
   selectedSession?: AgentAnalysisSessionSelection;
@@ -3413,18 +3401,6 @@ export function AgentAnalysisView({
   snapshot: AgentAnalysisSnapshot;
 }) {
   const t = useAppText();
-
-  if (!enabled) {
-    return (
-      <MonitorDisabledView
-        actionLabel="Enable agent observability"
-        description="Agent observability records session metadata, routing decisions, tools, and errors for diagnosis."
-        icon={<Activity className="h-8 w-8" />}
-        onEnable={onEnable}
-        title="Agent observability is off"
-      />
-    );
-  }
 
   return (
     <motion.div
@@ -3481,71 +3457,18 @@ export function AgentAnalysisView({
         <AgentSessionDetailCard
           clearSession={() => setSelectedSession(undefined)}
           detail={snapshot.selectedSession}
-          onOpenRequestLog={openRequestLog}
           selectedSession={selectedSession}
         />
       ) : null}
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-auto pr-1">
-        <AgentAnalysisSummaryGrid snapshot={snapshot} />
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-          <AgentErrorsCard errors={snapshot.errors} />
-          <AgentRoutesCard routes={snapshot.routes} />
-          <AgentToolsCard tools={snapshot.tools} />
-          <AgentEndpointsCard endpoints={snapshot.endpoints} />
-          <AgentClientsCard clients={snapshot.clients} />
-          <AgentSubagentsCard subagents={snapshot.subagents} />
-        </div>
-        <AgentRecentRequestsCard onOpenRequestLog={openRequestLog} requests={snapshot.recentRequests} />
-        <section className="min-h-[360px]">
-          <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
-            <div className="text-[12px] font-semibold">{t("Sessions")}</div>
-            <Badge variant="outline">{snapshot.sessions.length}</Badge>
-          </div>
-          <AgentSessionsCard
-            onSelectSession={setSelectedSession}
-            selectedSession={selectedSession}
-            sessions={snapshot.sessions}
-          />
-        </section>
-      </div>
+      <section className="min-h-0 flex-1">
+        <AgentSessionsCard
+          onSelectSession={setSelectedSession}
+          selectedSession={selectedSession}
+          sessions={snapshot.sessions}
+        />
+      </section>
     </motion.div>
-  );
-}
-
-function AgentAnalysisSummaryGrid({ snapshot }: { snapshot: AgentAnalysisSnapshot }) {
-  const t = useAppText();
-  const totals = snapshot.totals;
-
-  return (
-    <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">
-      <AgentAnalysisMetricCard label={t("Requests")} value={formatCompactNumber(totals.requestCount)} />
-      <AgentAnalysisMetricCard label={t("Sessions")} value={formatCompactNumber(totals.sessionCount)} />
-      <AgentAnalysisMetricCard label={t("Success rate")} value={formatPercent(totals.successRate)} />
-      <AgentAnalysisMetricCard label={t("Errors")} tone={totals.errorCount > 0 ? "danger" : undefined} value={formatCompactNumber(totals.errorCount)} />
-      <AgentAnalysisMetricCard label={t("P95")} value={formatDuration(totals.p95DurationMs)} />
-      <AgentAnalysisMetricCard label={t("Tools")} value={formatCompactNumber(totals.toolCallCount)} />
-    </div>
-  );
-}
-
-function AgentAnalysisMetricCard({
-  label,
-  tone,
-  value
-}: {
-  label: string;
-  tone?: "danger";
-  value: string;
-}) {
-  return (
-    <div className={cn(
-      "min-w-0 rounded-md border border-border/70 bg-card/70 px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
-      tone === "danger" && "border-rose-200 bg-rose-50/70 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-200"
-    )}>
-      <div className="truncate text-[11px] text-muted-foreground">{label}</div>
-      <div className="mt-1 truncate font-mono text-[16px] font-semibold" title={value}>{value}</div>
-    </div>
   );
 }
 
@@ -3740,12 +3663,10 @@ function AgentErrorsCard({ errors }: { errors: AgentAnalysisSnapshot["errors"] }
 function AgentSessionDetailCard({
   clearSession,
   detail,
-  onOpenRequestLog,
   selectedSession
 }: {
   clearSession: () => void;
   detail?: AgentAnalysisSnapshot["selectedSession"];
-  onOpenRequestLog?: (request: { id: number; requestId: string }) => void;
   selectedSession?: AgentAnalysisSessionSelection;
 }) {
   const t = useAppText();
@@ -3775,7 +3696,7 @@ function AgentSessionDetailCard({
           <AnalysisEmptyState label={t("Loading session metrics")} />
         ) : (
           <div className="space-y-4">
-            <AgentTracePanel onOpenRequestLog={onOpenRequestLog} trace={detail.trace} />
+            <AgentTracePanel trace={detail.trace} />
 
             <div className="min-w-0">
               <div className="mb-2 flex items-center justify-between gap-2">
@@ -3785,7 +3706,7 @@ function AgentSessionDetailCard({
                 <AnalysisEmptyState label={t("No session requests")} />
               ) : (
                 <div className={cn("max-h-[260px]", agentListFrameClassName)}>
-                  <table className={cn("min-w-[1080px]", agentListTableClassName)}>
+                  <table className={cn("min-w-[980px]", agentListTableClassName)}>
                     <thead className={agentListHeadClassName}>
                       <tr>
                         <th className="px-3 py-2 font-semibold">{t("Time")}</th>
@@ -3795,7 +3716,6 @@ function AgentSessionDetailCard({
                         <th className="px-3 py-2 text-right font-semibold">{t("Tools")}</th>
                         <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
                         <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
-                        <th className={agentListActionHeadClassName}>{t("Action")}</th>
                       </tr>
                     </thead>
                     <tbody className={agentListBodyClassName}>
@@ -3808,9 +3728,6 @@ function AgentSessionDetailCard({
                           <td className="px-3 py-2 text-right" title={request.tools.join(", ")}>{formatCompactNumber(request.toolCallCount)}</td>
                           <td className="px-3 py-2 text-right">{formatCompactNumber(request.totalTokens)}</td>
                           <td className="px-3 py-2 text-right">{formatDuration(request.durationMs)}</td>
-                          <td className={agentListActionCellClassName}>
-                            <OpenRequestLogButton onOpen={onOpenRequestLog ? () => onOpenRequestLog({ id: request.id, requestId: request.requestId }) : undefined} />
-                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -3831,25 +3748,6 @@ const agentListFrameClassName = cn("overflow-auto", agentListSurfaceClassName);
 const agentListTableClassName = "w-full border-collapse text-left text-[11px]";
 const agentListHeadClassName = "sticky top-0 z-10 border-b border-border/70 bg-muted/80 text-muted-foreground backdrop-blur";
 const agentListBodyClassName = "divide-y divide-border/50";
-const agentListActionHeadClassName = "sticky right-0 z-20 border-l border-border/60 bg-muted/95 px-3 py-2 text-right font-semibold shadow-[-8px_0_14px_rgba(15,23,42,0.05)] backdrop-blur";
-const agentListActionCellClassName = "sticky right-0 z-10 border-l border-border/50 bg-card px-3 py-2 text-right shadow-[-8px_0_14px_rgba(15,23,42,0.04)]";
-
-function OpenRequestLogButton({ onOpen }: { onOpen?: () => void }) {
-  const t = useAppText();
-
-  return (
-    <Button
-      aria-label={t("Open request log")}
-      className="h-7 border-border bg-transparent px-2 text-[11px] shadow-none hover:bg-transparent active:bg-transparent"
-      disabled={!onOpen}
-      onClick={onOpen}
-      type="button"
-      variant="outline"
-    >
-      {t("Open log")}
-    </Button>
-  );
-}
 
 function agentListRowClassName({
   danger,
@@ -3868,13 +3766,7 @@ function agentListRowClassName({
 type AgentTraceDetail = NonNullable<AgentAnalysisSnapshot["selectedSession"]>["trace"];
 type TracePayloadPreviewValue = NonNullable<NonNullable<AgentAnalysisTraceRun["tool"]>["input"]>;
 
-function AgentTracePanel({
-  onOpenRequestLog,
-  trace
-}: {
-  onOpenRequestLog?: (request: { id: number; requestId: string }) => void;
-  trace: AgentTraceDetail;
-}) {
+function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
   const t = useAppText();
   const durationMs = Math.max(trace.durationMs, 1);
   const [selectedToolRun, setSelectedToolRun] = useState<AgentAnalysisTraceRun>();
@@ -3895,7 +3787,7 @@ function AgentTracePanel({
         <AnalysisEmptyState label={t("No trace runs")} />
       ) : (
         <div className={cn("max-h-[420px]", agentListFrameClassName)}>
-          <table className={cn("min-w-[1280px]", agentListTableClassName)}>
+          <table className={cn("min-w-[1180px]", agentListTableClassName)}>
             <thead className={agentListHeadClassName}>
               <tr>
                 <th className="px-3 py-2 font-semibold">{t("Run")}</th>
@@ -3906,7 +3798,6 @@ function AgentTracePanel({
                 <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Concurrency")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
-                <th className={agentListActionHeadClassName}>{t("Action")}</th>
               </tr>
             </thead>
             <tbody className={agentListBodyClassName}>
@@ -3945,11 +3836,6 @@ function AgentTracePanel({
                   <td className="px-3 py-2 text-right">{run.cacheReadTokens + run.cacheWriteTokens > 0 ? formatCompactNumber(run.cacheReadTokens + run.cacheWriteTokens) : "-"}</td>
                   <td className="px-3 py-2 text-right">{formatCompactNumber(run.concurrentRequests)}</td>
                   <td className="px-3 py-2 text-right">{formatDuration(run.durationMs)}</td>
-                  <td className={agentListActionCellClassName}>
-                    {run.requestLogId !== undefined && run.requestId ? (
-                      <OpenRequestLogButton onOpen={onOpenRequestLog ? () => onOpenRequestLog({ id: run.requestLogId!, requestId: run.requestId! }) : undefined} />
-                    ) : "-"}
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -4511,13 +4397,7 @@ function AgentSubagentsCard({ subagents }: { subagents: AgentAnalysisSnapshot["s
   );
 }
 
-function AgentRecentRequestsCard({
-  onOpenRequestLog,
-  requests
-}: {
-  onOpenRequestLog?: (request: { id: number; requestId: string }) => void;
-  requests: AgentAnalysisSnapshot["recentRequests"];
-}) {
+function AgentRecentRequestsCard({ requests }: { requests: AgentAnalysisSnapshot["recentRequests"] }) {
   const t = useAppText();
 
   return (
@@ -4531,7 +4411,7 @@ function AgentRecentRequestsCard({
           <AnalysisEmptyState label={t("No recent agent requests")} />
         ) : (
           <div className={cn("max-h-[360px]", agentListFrameClassName)}>
-            <table className={cn("min-w-[1340px]", agentListTableClassName)}>
+            <table className={cn("min-w-[1240px]", agentListTableClassName)}>
               <thead className={agentListHeadClassName}>
                 <tr>
                   <th className="px-3 py-2 font-semibold">{t("Time")}</th>
@@ -4546,7 +4426,6 @@ function AgentRecentRequestsCard({
                   <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
                   <th className="px-3 py-2 text-right font-semibold">{t("Concurrency")}</th>
                   <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
-                  <th className={agentListActionHeadClassName}>{t("Action")}</th>
                 </tr>
               </thead>
               <tbody className={agentListBodyClassName}>
@@ -4564,9 +4443,6 @@ function AgentRecentRequestsCard({
                     <td className="px-3 py-2 text-right">{formatCompactNumber(request.cacheReadTokens + request.cacheWriteTokens)}</td>
                     <td className="px-3 py-2 text-right">{formatCompactNumber(request.concurrentRequests)}</td>
                     <td className="px-3 py-2 text-right">{formatDuration(request.durationMs)}</td>
-                    <td className={agentListActionCellClassName}>
-                      <OpenRequestLogButton onOpen={onOpenRequestLog ? () => onOpenRequestLog({ id: request.id, requestId: request.requestId }) : undefined} />
-                    </td>
                   </tr>
                 ))}
               </tbody>

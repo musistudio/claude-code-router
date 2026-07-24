@@ -13,13 +13,15 @@ import {
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
   ProviderConnectivityCheckReport, providerCapabilityBaseUrlForProtocol, providerConnectivityApiKeyFromDraft, providerDeepLinkDisplayIcon, providerDraftHasReadyCredentialPool, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
   providerDisplayIcon, providerGlobalBaseUrlForProbe, providerModelDisplayName, providerModelDisplayTitle, providerProtocolOptions, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
-  resolveProviderDeepLinkPreset, ShieldCheck, splitLines, Switch, Textarea, Toggle, translatedProviderProtocolLabel, translateOptions,
+  resolveProviderDeepLinkPreset, ShieldCheck, splitLines, Switch, Tabs, TabsList, TabsTrigger, Textarea, Toggle, translatedProviderProtocolLabel, translateOptions,
   translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppErrorText, useAppText, useEffect, useLayoutEffect, useMemo,
   useRef, useState, X, isGatewayProviderEnabled, isPlainRecord
 } from "../shared/index";
+import { PopoverPortal } from "@/components/ui/popover";
+import { TooltipPortal } from "@/components/ui/tooltip";
 import { providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
-import { createPortal } from "react-dom";
 import type { LocalAgentProviderCandidate } from "@ccr/core/contracts/app";
+import type { ReactNode } from "react";
 
 const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
@@ -1110,7 +1112,7 @@ function ProviderPresetCombobox({
         <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
       </div>
 
-      {open && typeof document !== "undefined" ? createPortal(
+      <PopoverPortal open={open}>
         <AnimatedPopover
           className="fixed z-[140]"
           placement={popoverLayout?.placement ?? "below"}
@@ -1178,9 +1180,8 @@ function ProviderPresetCombobox({
               )}
             </div>
           </PopoverContent>
-        </AnimatedPopover>,
-        document.body
-      ) : null}
+        </AnimatedPopover>
+      </PopoverPortal>
     </div>
   );
 }
@@ -1769,7 +1770,7 @@ function ProviderConnectionStatusPanel({
   const protocolDescription = probeLoading
     ? "CCR is checking which API protocols this endpoint supports."
     : protocolDetected
-      ? "Compatible API protocols were found automatically."
+      ? "Compatible API protocols were found automatically. You can turn off auto detection in Advanced settings and select protocols manually."
       : "Choose a provider endpoint so CCR can detect compatible protocols.";
   const requestTitle = connectivityLoading
     ? "Checking connection"
@@ -1787,12 +1788,12 @@ function ProviderConnectionStatusPanel({
       : connectionVerified
         ? "A real model request succeeded with the selected provider settings."
         : hasConnectivityCheckInputs
-          ? "Run Check Connection before relying on this provider."
+          ? "Optional. Check Connection sends a real model request and may consume provider credits."
           : "API endpoint, API key, and at least one model are required before verification.";
 
   return (
     <div className={cn("rounded-md border border-border bg-muted/20 p-3", className)}>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2">
         <ProviderConnectionStatusRow
           description={t(protocolDescription)}
           loading={probeLoading}
@@ -1800,41 +1801,38 @@ function ProviderConnectionStatusPanel({
           title={t(protocolTitle)}
         />
         <ProviderConnectionStatusRow
+          action={onCheck && hasConnectivityCheckInputs ? (
+            <Button
+              className="h-8 px-2"
+              disabled={connectivityLoading || probeLoading}
+              onClick={() => void onCheck()}
+              type="button"
+              variant="outline"
+            >
+              <AnimatedIconSwap iconKey={connectivityLoading ? "checking" : "check"}>
+                {connectivityLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+              </AnimatedIconSwap>
+              {t("Check Connection")}
+            </Button>
+          ) : null}
           description={t(requestDescription)}
           loading={connectivityLoading}
           state={connectionVerified || localAgentImport ? "success" : hasConnectivityCheckInputs ? "warning" : "pending"}
           title={t(requestTitle)}
         />
       </div>
-      <div className="mt-3 flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
-        <p className="min-w-0 flex-1 text-[11px] leading-4 text-muted-foreground">
-          {t("Protocol detection checks compatibility; connection verification confirms a real model request succeeds.")}
-        </p>
-        {onCheck && hasConnectivityCheckInputs ? (
-          <Button
-            className="h-8 px-2"
-            disabled={connectivityLoading || probeLoading}
-            onClick={() => void onCheck()}
-            type="button"
-            variant="outline"
-          >
-            <AnimatedIconSwap iconKey={connectivityLoading ? "checking" : "check"}>
-              {connectivityLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
-            </AnimatedIconSwap>
-            {t("Check Connection")}
-          </Button>
-        ) : null}
-      </div>
     </div>
   );
 }
 
 function ProviderConnectionStatusRow({
+  action,
   description,
   loading,
   state,
   title
 }: {
+  action?: ReactNode;
   description: string;
   loading?: boolean;
   state: "pending" | "success" | "warning";
@@ -1855,10 +1853,11 @@ function ProviderConnectionStatusRow({
       )}>
         {loading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : state === "success" ? <Check className="h-3.5 w-3.5" /> : <Info className="h-3.5 w-3.5" />}
       </span>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <div className="truncate text-[12px] font-semibold text-foreground">{title}</div>
         <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{description}</div>
       </div>
+      {action ? <div className="ml-auto shrink-0 self-center">{action}</div> : null}
     </div>
   );
 }
@@ -1927,34 +1926,37 @@ function ProviderCredentialModeTabs({
   ];
 
   return (
-    <div
-      aria-label={t("Credential method")}
-      className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-2"
-      role="tablist"
+    <Tabs
+      onValueChange={(nextValue) => onChange(nextValue as AddProviderDraft["credentialMode"])}
+      value={value}
     >
-      {options.map((option) => {
-        const selected = value === option.value;
+      <TabsList
+        aria-label={t("Credential method")}
+        className="grid w-full grid-cols-1 gap-1 border border-border bg-muted/20 sm:grid-cols-2"
+      >
+        {options.map((option) => {
+          const selected = value === option.value;
 
-        return (
-          <button
-            aria-selected={selected}
-            className={cn(
-              "min-w-0 rounded-[5px] px-3 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
-              selected
-                ? "bg-background text-foreground shadow-card"
-                : "text-muted-foreground hover:bg-background/70 hover:text-foreground"
-            )}
-            key={option.value}
-            onClick={() => onChange(option.value)}
-            role="tab"
-            type="button"
-          >
-            <span className="block truncate text-[12px] font-semibold">{t(option.label)}</span>
-            <span className="mt-0.5 block truncate text-[11px] font-normal text-muted-foreground">{t(option.description)}</span>
-          </button>
-        );
-      })}
-    </div>
+          return (
+            <TabsTrigger
+              className={cn(
+                "relative flex min-h-[64px] min-w-0 flex-col items-start justify-center overflow-hidden whitespace-normal rounded-[5px] border px-3 py-2 text-left outline-none transition-[background-color,border-color,box-shadow,color] focus-visible:ring-2 focus-visible:ring-ring/25",
+                selected
+                  ? "border-primary/65 bg-primary/10 text-primary shadow-[0_1px_2px_rgba(15,118,110,0.16),inset_0_0_0_1px_rgba(20,184,166,0.28)]"
+                  : "border-transparent text-muted-foreground hover:border-border hover:bg-background/70 hover:text-foreground"
+              )}
+              key={option.value}
+              value={option.value}
+            >
+              <span className="block w-full text-[12px] font-semibold leading-4">{t(option.label)}</span>
+              <span className={cn("mt-0.5 block w-full text-[11px] font-normal leading-4", selected ? "text-primary/80" : "text-muted-foreground")}>
+                {t(option.description)}
+              </span>
+            </TabsTrigger>
+          );
+        })}
+      </TabsList>
+    </Tabs>
   );
 }
 
@@ -1964,6 +1966,7 @@ export function AddProviderForm({
   error,
   connectivityLoading = false,
   connectivityProbe,
+  hideSetupProgress = false,
   importProvider,
   mode,
   onCheck,
@@ -1980,6 +1983,7 @@ export function AddProviderForm({
   connectivityProbe?: GatewayProviderProbeResult;
   draft: AddProviderDraft;
   error: string;
+  hideSetupProgress?: boolean;
   importProvider?: ProviderDeepLinkPayload;
   mode: "add" | "edit";
   onCheck?: () => Promise<unknown>;
@@ -1992,7 +1996,7 @@ export function AddProviderForm({
   providers: GatewayProviderConfig[];
 }) {
   const t = useAppText();
-  const [advancedOpen, setAdvancedOpen] = useState(mode === "edit");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [iconDetecting, setIconDetecting] = useState(false);
   const [autoDetectInfoPosition, setAutoDetectInfoPosition] = useState<{ left: number; top: number }>();
   const [protocolProbeDetails, setProtocolProbeDetails] = useState<ProviderProtocolProbeDetailsState>();
@@ -2001,7 +2005,7 @@ export function AddProviderForm({
   const selectedPreset = findProviderPreset(draft.presetId);
   const customEndpoint = draft.presetId === customProviderPresetId;
   const importMode = Boolean(importProvider);
-  const showBaseUrl = customEndpoint || mode === "edit";
+  const showBaseUrl = customEndpoint;
   const selectedDisplayProtocols = uniqueProviderProtocols(draft.selectedProtocols);
   const detectedProtocol = selectedDisplayProtocols.length === 1
     ? selectedDisplayProtocols[0]
@@ -2227,7 +2231,7 @@ export function AddProviderForm({
   return (
     <>
       <div className={cn(activeStep ? "space-y-5" : "grid grid-cols-1 gap-4 sm:grid-cols-2")}>
-        {!activeStep ? (
+        {!activeStep && !hideSetupProgress ? (
           <ProviderSetupProgress
             className="sm:col-span-2"
             credentialReady={credentialReady}
@@ -2387,7 +2391,7 @@ export function AddProviderForm({
                 onClick={() => setAdvancedOpen((value) => !value)}
                 type="button"
               >
-                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", advancedOpen && "rotate-180")} />
+                <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", advancedOpen && "rotate-90")} />
                 <span>{t("Advanced settings")}</span>
               </button>
             </div>
@@ -2553,15 +2557,14 @@ function AutoDetectProtocolsTooltip({
   top: number;
 }) {
   return (
-    <div
-      className="fixed z-[120] w-[260px] rounded-md border border-border bg-popover p-2.5 text-left text-[11px] leading-4 text-popover-foreground shadow-card-elevated"
+    <TooltipPortal
+      className="w-[260px] p-2.5 text-left font-normal leading-4"
       onMouseDown={(event) => event.stopPropagation()}
-      role="tooltip"
       style={{ left, top }}
     >
       <div className="mb-1.5 font-semibold">{t("Auto detect protocols")}</div>
       <div className="text-muted-foreground">{t("Auto detect protocols description")}</div>
-    </div>
+    </TooltipPortal>
   );
 }
 
@@ -2572,7 +2575,7 @@ type ProviderProtocolProbeDetailsState = {
   top: number;
 };
 
-function uniqueProviderProbeProtocolRows(
+export function uniqueProviderProbeProtocolRows(
   protocols: GatewayProviderProbeResult["protocols"]
 ): GatewayProviderProbeResult["protocols"] {
   const rows = new Map<string, GatewayProviderProbeResult["protocols"][number]>();
@@ -2620,10 +2623,9 @@ function ProtocolProbeDetailsTooltip({
   const message = translateProbeProtocolMessage(item.message, t) || "-";
 
   return (
-    <div
-      className="fixed z-[120] w-[260px] rounded-md border border-border bg-popover p-2.5 text-left text-[11px] leading-4 text-popover-foreground shadow-card-elevated"
+    <TooltipPortal
+      className="w-[260px] p-2.5 text-left font-normal leading-4"
       onMouseDown={(event) => event.stopPropagation()}
-      role="tooltip"
       style={{ left, top }}
     >
       <div className="mb-1.5 font-semibold">{t("Protocol detection details")}</div>
@@ -2633,7 +2635,7 @@ function ProtocolProbeDetailsTooltip({
         <span className="text-muted-foreground">{t("Error message")}</span>
         <span className="min-w-0 break-words">{message}</span>
       </div>
-    </div>
+    </TooltipPortal>
   );
 }
 
@@ -3334,6 +3336,7 @@ export function AddProviderDialog({
               connectivityProbe={connectivityProbe}
               draft={draft}
               error={error}
+              hideSetupProgress={!wizardMode}
               importProvider={importProvider}
               mode={mode}
               onCheck={onCheck ? async () => openCheckConfirm() : undefined}
@@ -3687,7 +3690,7 @@ function ProviderModelPicker({
             </div>
           </div>
         ) : null}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {loading ? (
             <ProviderModelListSkeleton />
           ) : visibleCatalogModels.length === 0 ? (
@@ -3880,7 +3883,7 @@ function ProviderModelPicker({
             </div>
           </div>
         ) : null}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {loading ? (
             <ProviderModelListSkeleton compact />
           ) : (

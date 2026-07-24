@@ -712,9 +712,10 @@ function App() {
   const networkCaptureEnabled = draftConfig.proxy.enabled && draftConfig.proxy.captureNetwork;
   const visibleNavigation = useMemo(
     () => navigation.filter((item) =>
-      item.id !== "networking" || networkCaptureEnabled
+      (item.id !== "networking" || networkCaptureEnabled) &&
+      (item.id !== "observability" || agentAnalysisEnabled)
     ),
-    [networkCaptureEnabled]
+    [agentAnalysisEnabled, networkCaptureEnabled]
   );
   const autoSaveRequestId = useRef(0);
   const themePreferenceRequestId = useRef(0);
@@ -758,6 +759,12 @@ function App() {
       setActiveView("overview");
     }
   }, [activeView, networkCaptureEnabled]);
+
+  useEffect(() => {
+    if (activeView === "observability" && !agentAnalysisEnabled) {
+      setActiveView("overview");
+    }
+  }, [activeView, agentAnalysisEnabled]);
 
   useEffect(() => {
     if (activeView !== "onboarding" || !configLoaded || !onboardingStatusLoaded || !providerPresetsLoaded) {
@@ -2475,21 +2482,6 @@ function App() {
     }));
   }
 
-  function openRequestLogFromAnalysis(request: { id: number; requestId: string }) {
-    setFocusedRequestLogId(request.id);
-    setAgentAnalysisSession(undefined);
-    setRequestLogFilter((current) => ({
-      ...current,
-      credential: undefined,
-      model: undefined,
-      page: 1,
-      provider: undefined,
-      query: request.requestId,
-      status: "all"
-    }));
-    setActiveView("logs");
-  }
-
   function updateAgentAnalysisAgent(value: AgentFilterValue) {
     setAgentAnalysisAgent(value);
     setAgentAnalysisSession(undefined);
@@ -2530,11 +2522,6 @@ function App() {
     setProfileDraft(profileDraftWithDetectedAppPath(createProfileDraft(agent), appInfo.chatgptAppPath, appInfo.opencodeAppPath));
     setProfileActionError("");
     setProfileAddOpen(true);
-  }
-
-  function openProviderSetupFromProfile() {
-    setProfileActionError("");
-    openAddProviderDialog();
   }
 
   function openEditProfileDialog(index: number) {
@@ -2985,7 +2972,6 @@ function App() {
                 onComplete: completeOnboarding,
                 onChangeProfile: updateProfileDraft,
                 onChangeProvider: updateProviderDraft,
-                onConfigureProvider: () => setOnboardingStep("provider"),
                 onSelectStep: setOnboardingStep,
                 onSubmitProfile: submitProfileDraft,
                 onSubmitProvider: submitProviderDraft,
@@ -3068,11 +3054,8 @@ function App() {
                 },
                 observability: {
                   agentFilter: agentAnalysisAgent,
-                  enabled: agentAnalysisEnabled,
                   error: agentAnalysisError,
                   loading: agentAnalysisLoading,
-                  onEnable: () => changeObservabilityConfig({ agentAnalysis: true }),
-                  openRequestLog: openRequestLogFromAnalysis,
                   range: agentAnalysisRange,
                   refreshAnalysis: () => void refreshAgentAnalysis(),
                   selectedSession: agentAnalysisSession,
@@ -3239,7 +3222,6 @@ function App() {
               error: profileActionError,
               mode: "add",
               onChange: updateProfileDraft,
-              onConfigureProvider: openProviderSetupFromProfile,
               onCreateBot: openBotSettingsWithAddDialog,
               onClose: () => setProfileAddOpen(false),
               providers: draftConfig.Providers,
@@ -3259,7 +3241,6 @@ function App() {
               error: profileActionError,
               mode: "edit",
               onChange: updateProfileEditDraft,
-              onConfigureProvider: openProviderSetupFromProfile,
               onCreateBot: openBotSettingsWithAddDialog,
               onClose: () => {
                 setProfileEditIndex(undefined);

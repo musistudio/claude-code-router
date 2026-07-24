@@ -1483,10 +1483,10 @@ export function profileSummaryItems(
 
   if (profile.agent === "grok" || profile.agent === "kimi") {
     return [
-      { label: t(profile.agent === "kimi" ? "Default model" : "Model"), value: modelValue },
+      { label: t(profile.agent === "kimi" ? "Kimi model" : "Model"), value: modelValue },
       ...(profile.agent === "kimi"
         ? [{
-            label: t("Available models"),
+            label: t("Allowed models"),
             value: String(uniqueStrings([profile.model, ...(profile.availableModels ?? [])].filter(Boolean)).length)
           }]
         : []),

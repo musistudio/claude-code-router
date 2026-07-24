@@ -1,5 +1,4 @@
 import { memo } from "react";
-import { createPortal } from "react-dom";
 import { Maximize2, Route, X } from "lucide-react";
 import type { RequestRouteTrace, RequestRouteTraceChange, RequestRouteTraceHop } from "@ccr/core/contracts/app";
 import {
@@ -16,6 +15,7 @@ import {
   translateOptions, Trash2, useAppNumberLocale, useAppText, useCallback, useEffect, useMemo, useRef,
   useState
 } from "../shared/index";
+import { TooltipPortal } from "@/components/ui/tooltip";
 type NetworkRequestTab = "body" | "header" | "query" | "raw" | "summary";
 type NetworkResponseTab = "body" | "header" | "raw";
 
@@ -1445,10 +1445,9 @@ function LogModelTooltip({
         <MoveRight className="mx-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <span className="min-w-0 max-w-[45%] truncate">{responseModel}</span>
       </div>
-      {tooltip ? createPortal(
-        <div
-          className="pointer-events-none fixed z-[100] break-all rounded-md border border-border bg-popover px-2.5 py-1.5 font-mono text-[11px] font-medium text-popover-foreground shadow-card-elevated"
-          role="tooltip"
+      {tooltip ? (
+        <TooltipPortal
+          className="break-all px-2.5 py-1.5 font-mono"
           style={{
             left: tooltip.left,
             top: tooltip.top,
@@ -1457,8 +1456,7 @@ function LogModelTooltip({
           }}
         >
           {value}
-        </div>,
-        document.body
+        </TooltipPortal>
       ) : null}
     </>
   );

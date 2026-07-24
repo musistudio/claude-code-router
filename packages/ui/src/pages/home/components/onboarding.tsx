@@ -69,7 +69,6 @@ export function OnboardingView({
   onChangeProfile,
   onChangeProvider,
   onComplete,
-  onConfigureProvider,
   onSelectStep,
   onSubmitProfile,
   onSubmitProvider,
@@ -93,7 +92,6 @@ export function OnboardingView({
   onChangeProfile: (patch: Partial<AddProfileDraft>) => void;
   onChangeProvider: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
   onComplete: () => void | Promise<void>;
-  onConfigureProvider: () => void;
   onSelectStep: (step: OnboardingStepId) => void;
   onSubmitProfile: () => Promise<boolean>;
   onSubmitProvider: () => Promise<boolean>;
@@ -254,7 +252,6 @@ export function OnboardingView({
                       draft={profileDraft}
                       error={profileError}
                       onChange={onChangeProfile}
-                      onConfigureProvider={onConfigureProvider}
                       onCreateBot={() => undefined}
                       providers={config.Providers}
                       virtualModelProfiles={config.virtualModelProfiles ?? []}
