@@ -522,7 +522,7 @@ function ProfileAgentTabs({
   return (
     <div
       aria-label={t("Agent profiles")}
-      className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-5"
+      className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-6"
       role="tablist"
     >
       {profileAgentOptions.map((option) => {
@@ -794,7 +794,7 @@ export function AddProfileForm({
       >
         <Field label={t("Agent")} requirement="required" requirementLabel={requiredFieldLabel}>
           <AgentSelectControl
-            onChange={(agent) => onChange(agent === "grok" || agent === "kimi"
+            onChange={(agent) => onChange(agent === "grok" || agent === "kimi" || agent === "pi"
               ? {
                   agent,
                   availableModels: [],
@@ -819,7 +819,7 @@ export function AddProfileForm({
           <SelectControl
             onChange={(scope) => onChange({ scope: normalizeProfileScope(scope) })}
             options={translateOptions(
-              draft.agent === "grok" || draft.agent === "kimi"
+              draft.agent === "grok" || draft.agent === "kimi" || draft.agent === "pi"
                 ? profileScopeOptions.filter((option) => option.value === "ccr")
                 : profileScopeOptions,
               t
@@ -843,7 +843,7 @@ export function AddProfileForm({
             options={translateOptions(
               draft.agent === "zcode"
                 ? profileSurfaceOptions.filter((option) => option.value === "app")
-                : draft.agent === "grok" || draft.agent === "kimi"
+                : draft.agent === "grok" || draft.agent === "kimi" || draft.agent === "pi"
                   ? profileSurfaceOptions.filter((option) => option.value === "cli")
                 : profileSurfaceOptions,
               t
@@ -902,6 +902,16 @@ export function AddProfileForm({
           </>
         ) : draft.agent === "grok" ? (
           <Field className="sm:col-span-2" label={t("Grok model")} requirement="optional" requirementLabel={optionalFieldLabel}>
+            <ModelSelector
+              placeholder={modelPlaceholder}
+              providers={providers}
+              value={draft.model}
+              virtualModelProfiles={virtualModelProfiles}
+              onChange={(model) => onChange({ model })}
+            />
+          </Field>
+        ) : draft.agent === "pi" ? (
+          <Field className="sm:col-span-2" label={t("Pi model")} requirement="optional" requirementLabel={optionalFieldLabel}>
             <ModelSelector
               placeholder={modelPlaceholder}
               providers={providers}
@@ -994,7 +1004,7 @@ export function AddProfileForm({
                       </div>
                     </Field>
                   ) : null}
-                  {draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" ? (
+                  {draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" && draft.agent !== "pi" ? (
                     <>
                       <Field label={t("Provider ID")} requirement="required" requirementLabel={requiredFieldLabel}>
                         <Input value={draft.providerId} onChange={(event) => onChange({ providerId: event.target.value })} />
@@ -1090,7 +1100,7 @@ function profileDraftValidation(
       issues.kimiAvailableModels = "Select at least one allowed model.";
     }
   }
-  if (draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi") {
+  if (draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" && draft.agent !== "pi") {
     if (!draft.providerId.trim()) {
       issues.providerId = "Provider ID is required.";
     }

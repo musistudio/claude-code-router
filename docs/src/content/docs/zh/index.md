@@ -2,7 +2,7 @@
 title: Claude Code Router 文档
 pageTitle: 文档
 eyebrow: 产品文档
-lead: 用 CCR 把 Claude Code、Codex、Grok CLI、ZCode 和兼容 API 客户端接到你选择的模型供应商。第一次使用时，先完成一条成功路由请求，再深入路由、Fusion、Bot 和观测。
+lead: 用 CCR 把 Claude Code、Codex、Grok CLI、Kimi CLI、Pi、ZCode 和兼容 API 客户端接到你选择的模型供应商。第一次使用时，先完成一条成功路由请求，再深入路由、Fusion、Bot 和观测。
 ---
 
 ## 先完成第一条路由请求
@@ -11,7 +11,7 @@ lead: 用 CCR 把 Claude Code、Codex、Grok CLI、ZCode 和兼容 API 客户端
 
 1. 从[安装并启动 CCR](guides/install/)选择桌面版、npm CLI 或 Docker。
 2. 打开 **供应商**，添加预设供应商或自定义端点，填写 API Key，并至少选择一个模型。
-3. 打开 **Agent 配置档案**，为 Claude Code、Codex、Grok CLI 或 ZCode 选择默认模型和入口模式。
+3. 打开 **Agent 配置档案**，为 Claude Code、Codex、Grok CLI、Kimi CLI、Pi 或 ZCode 选择默认模型和入口模式。
 4. 启动本地网关服务，默认端点是 `http://127.0.0.1:3456`。
 5. 从你的 Agent 发送一次请求，然后在 **日志** 中确认最终供应商、模型、状态、Token 和错误。
 

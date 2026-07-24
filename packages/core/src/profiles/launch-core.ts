@@ -2,6 +2,7 @@ import path from "node:path";
 import type { AppConfig, ProfileConfig, ProfileOpenSurface } from "@ccr/core/contracts/app";
 import { claudeCodeModelEnv as claudeCodeProfileModelEnv, claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
 import { resolveOpenCodeConfigFile as resolveOpenCodeProfileConfigFile } from "@ccr/core/agents/opencode/profile-config";
+import { piWrapperFilename, resolvePiAgentDir, resolvePiSessionDir } from "@ccr/core/agents/pi/profile-config";
 import { resolveZcodeConfigFile } from "@ccr/core/agents/zcode/profile-config";
 
 export type ProfileLaunchPlan = {
@@ -50,7 +51,7 @@ export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[
   if (profile.agent === "zcode") {
     return ["app"];
   }
-  if (profile.agent === "grok" || profile.agent === "kimi") {
+  if (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi") {
     return ["cli"];
   }
   const surface = normalizeProfileSurface(profile.surface);
@@ -82,7 +83,7 @@ export function shouldAutoStartProfileGateway(
   profile: Pick<ProfileConfig, "agent">,
   surface: ProfileOpenSurface
 ): boolean {
-  return (profile.agent === "grok" || profile.agent === "kimi") && surface === "cli";
+  return (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi") && surface === "cli";
 }
 
 export function profileOpenCommand(
@@ -111,6 +112,9 @@ export function buildProfileLaunchPlan(
   }
   if (profile.agent === "kimi") {
     return buildKimiLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
+  }
+  if (profile.agent === "pi") {
+    return buildPiLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
   }
   if (profile.agent === "opencode") {
     return buildOpenCodeLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
@@ -176,6 +180,28 @@ function buildKimiLaunchPlan(
     command: path.join(configDir, "bin", kimiWrapperFilename(profile)),
     env: {
       CCR_PROFILE_SURFACE: "cli"
+    },
+    profile,
+    surface
+  };
+}
+
+function buildPiLaunchPlan(
+  configDir: string,
+  profile: ProfileConfig,
+  surface: ProfileOpenSurface,
+  extraArgs: string[]
+): ProfileLaunchPlan {
+  if (surface !== "cli") {
+    throw new Error("Pi profiles only support CLI opening.");
+  }
+  return {
+    args: extraArgs,
+    command: path.join(configDir, "bin", piWrapperFilename(profile)),
+    env: {
+      CCR_PROFILE_SURFACE: "cli",
+      PI_CODING_AGENT_DIR: resolvePiAgentDir(configDir, profile),
+      PI_CODING_AGENT_SESSION_DIR: resolvePiSessionDir(configDir, profile)
     },
     profile,
     surface
@@ -280,7 +306,7 @@ function isCodexCompatibleAgent(agent: ProfileConfig["agent"]): boolean {
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "~/.zcode/cli/config.json" : "~/.codex/config.toml";
+  return agent === "zcode" ? "~/.zcode/cli/config.json" : agent === "pi" ? "~/.pi/agent" : "~/.codex/config.toml";
 }
 
 function codexConfigSubdir(agent: ProfileConfig["agent"]): string {

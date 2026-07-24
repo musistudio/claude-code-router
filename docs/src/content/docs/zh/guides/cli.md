@@ -144,13 +144,13 @@ ccr profile-id -- --help
 
 - `--cli` 和 `--app` 可以替代位置形式的 `cli` / `app`。
 - Agent 自己的参数放到 `--` 后，避免与 CCR 选项或入口名冲突。
-- 省略入口时，Claude Code、Codex、Grok CLI 默认使用 CLI，ZCode 默认使用 App。
-- Grok 只支持 CLI，ZCode 只支持 App。
+- 省略入口时，Claude Code、Codex、Grok CLI、Kimi CLI、Pi 默认使用 CLI，ZCode 默认使用 App。
+- Grok CLI、Kimi CLI 和 Pi 只支持 CLI，ZCode 只支持 App。
 - Claude App 和 ZCode App 不支持额外 Agent 参数。
 - 启动 App 需要本机安装对应桌面应用，并且当前环境有图形会话。
 - 只有已启用的配置可以启动。名称产生歧义时使用配置 ID。
 
-大多数配置要求 CCR 网关已经运行。Grok CLI 是例外：如果服务不存在，它可以自动启动一个受管的临时共享服务，并在最后一个 Grok 会话退出后关闭。
+大多数配置要求 CCR 网关已经运行。Grok CLI、Kimi CLI 和 Pi 是例外：如果服务不存在，它们可以自动启动一个受管的临时共享服务，并在最后一个受管会话退出后关闭。
 
 ## 配置和数据位置
 

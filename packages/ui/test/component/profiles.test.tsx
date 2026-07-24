@@ -112,6 +112,28 @@ test("AddProfileForm labels Kimi CLI model fields with Kimi-specific copy", () =
   assert.doesNotMatch(html, /Available models/);
 });
 
+test("AddProfileForm treats Pi as a CCR-only CLI profile", () => {
+  const config = appConfigFixture();
+  const draft = createProfileDraft("pi");
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={config.botConfigs}
+      draft={draft}
+      error=""
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={config.Providers}
+      virtualModelProfiles={config.virtualModelProfiles}
+    />
+  );
+
+  assert.equal(isProfileDraftSubmittable(draft), true);
+  assert.match(html, /Pi model/);
+  assert.doesNotMatch(html, /Provider ID/);
+  assert.doesNotMatch(html, /Provider name/);
+  assert.doesNotMatch(html, /Allowed models/);
+});
+
 test("ProfileView renders agent profiles as compact cards with inline actions", () => {
   const config = appConfigFixture();
   config.profile.profiles = [
@@ -181,6 +203,21 @@ test("profileSummaryItems uses Kimi-specific model labels", () => {
   assert.equal(items[0]?.label, "Kimi model");
   assert.equal(items[1]?.label, "Allowed models");
   assert.equal(items[1]?.value, "2");
+});
+
+test("profileSummaryItems uses Pi-specific model labels", () => {
+  const config = appConfigFixture();
+  const items = profileSummaryItems({
+    agent: "pi",
+    enabled: true,
+    id: "pi-main",
+    model: "openai/gpt-5.2",
+    name: "Pi Main",
+    scope: "ccr",
+    surface: "cli"
+  }, config, (value) => value);
+
+  assert.equal(items[0]?.label, "Pi model");
 });
 
 test("profileSummaryItems omits disabled profile properties from cards", () => {

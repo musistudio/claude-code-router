@@ -118,13 +118,13 @@ ccr profile-id -- --help
 
 - `--cli` and `--app` are alternatives to the positional surface.
 - Put agent arguments after `--` to avoid ambiguity.
-- Claude Code, Codex, and Grok default to CLI; ZCode defaults to App.
-- Grok supports CLI only; ZCode supports App only.
+- Claude Code, Codex, Grok CLI, Kimi CLI, and Pi default to CLI; ZCode defaults to App.
+- Grok CLI, Kimi CLI, and Pi support CLI only; ZCode supports App only.
 - Claude App and ZCode App reject trailing agent arguments.
 - App launches require a locally installed application and graphical session.
 - Only enabled profiles are launchable. Use the profile ID when names are ambiguous.
 
-Most profiles require the CCR gateway to be running. Grok CLI can create a managed temporary shared service and stops it after the final managed Grok session exits.
+Most profiles require the CCR gateway to be running. Grok CLI, Kimi CLI, and Pi can create a managed temporary shared service and stop it after the final managed session exits.
 
 ## Configuration And Data
 

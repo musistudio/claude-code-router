@@ -55,7 +55,7 @@ CCR 提供三种发行方式：桌面应用、Node.js 22+ 的 npm CLI，以及 D
 
 ## 接入 Agent 配置档案
 
-Agent 配置档案让 Claude Code、Codex、Grok CLI、ZCode 等 Agent 使用 CCR 的供应商、路由和模型选择配置。
+Agent 配置档案让 Claude Code、Codex、Grok CLI、Kimi CLI、Pi、ZCode 等 Agent 使用 CCR 的供应商、路由和模型选择配置。
 
 通用建议：
 
@@ -75,13 +75,17 @@ Agent 配置档案让 Claude Code、Codex、Grok CLI、ZCode 等 Agent 使用 CC
 
 选择 Grok CLI 并设置默认模型，然后运行复制出的 `ccr-app <配置名称>` 命令。即使 CCR Desktop 网关尚未运行，该命令也会启动一个可共享的临时网关服务；并发 Grok 会话会共同保持服务运行，直到最后一个会话退出。CCR 会把 Grok 的模型发现和推理请求指向本地网关；进入 Grok 后可以用 `/model` 切换 CCR 模型。
 
+### Pi
+
+选择 Pi，可选设置默认模型，然后运行复制出的 `ccr-app <配置名称>` 命令。CCR 会在配置专属 `PI_CODING_AGENT_DIR` 下写入 `models.json`，把本地 CCR 网关注册为 OpenAI Responses 供应商，并使用匹配的 `--provider` 和 `--model` 参数启动 Pi。CCR Desktop 未运行时，该启动器也可以启动其他 CLI-only 配置共用的受管临时网关。
+
 ### ZCode
 
 ZCode 主要关注模型、供应商 ID、供应商名称，以及是否从 CCR 启动。它走 App surface，不需要 Codex CLI 的路径字段。
 
 ### 复用本机已登录的 Agent
 
-如果本机已经登录过 Claude Code、Codex、Grok CLI 或 ZCode，可以在 **供应商** 中导入为 **本机 Agent 供应商**，复用已有授权，不必额外申请 Key。
+如果本机已经登录过 Claude Code、Codex、Grok CLI、Kimi CLI 或 ZCode，可以在 **供应商** 中导入为 **本机 Agent 供应商**，复用已有授权，不必额外申请 Key。Pi 配置不会导入 Pi 登录态；它使用生成的 CCR 供应商配置和配置专属 CCR API Key。
 
 ## 日志&观测
 

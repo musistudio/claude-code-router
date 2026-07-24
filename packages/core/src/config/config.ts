@@ -2709,7 +2709,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       ]);
       const env = parseStringRecord(item.env) ?? {};
       const parsedSurface = parseProfileSurface(readString(item.surface) || readString(item.entry) || readString(item.frontend)) || "auto";
-      const surface = agent === "zcode" ? "app" : parsedSurface;
+      const surface = agent === "zcode" ? "app" : agent === "pi" ? "cli" : parsedSurface;
       const botConfigId = surface !== "cli"
         ? readString(item.botConfigId) || readString(item.bot_config_id) || readString(item.savedBotConfigId) || readString(item.saved_bot_config_id)
         : "";
@@ -2741,7 +2741,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         };
       }
 
-      if (agent === "grok" || agent === "kimi") {
+      if (agent === "grok" || agent === "kimi" || agent === "pi") {
         return {
           agent,
           ...(agent === "kimi" ? { availableModels } : {}),
@@ -2823,6 +2823,9 @@ function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
   if (normalized === "opencode" || normalized === "open-code" || normalized === "open code") {
     return "opencode";
   }
+  if (normalized === "pi" || normalized === "pi-agent" || normalized === "pi agent" || normalized === "pi-coding-agent" || normalized === "pi coding agent") {
+    return "pi";
+  }
   if (normalized === "zcode" || normalized === "z-code" || normalized === "z code") {
     return "zcode";
   }
@@ -2855,6 +2858,9 @@ function defaultProfileAgentName(agent: ProfileConfig["agent"]): string {
   if (agent === "opencode") {
     return "OpenCode";
   }
+  if (agent === "pi") {
+    return "Pi";
+  }
   return "Codex";
 }
 
@@ -2863,6 +2869,8 @@ function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
     ? "~/.zcode/cli/config.json"
     : agent === "opencode"
       ? "~/.config/opencode/opencode.jsonc"
+      : agent === "pi"
+        ? "~/.pi/agent"
       : "~/.codex/config.toml";
 }
 

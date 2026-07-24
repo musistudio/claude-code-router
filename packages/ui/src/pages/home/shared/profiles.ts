@@ -104,6 +104,7 @@ import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
 import codexLogoUrl from "@/assets/agent-logos/codex.png";
 import grokLogoUrl from "@/assets/agent-logos/grok.ico";
 import openCodeLogoUrl from "@/assets/agent-logos/opencode.ico";
+import piLogoUrl from "@/assets/agent-logos/pi.svg";
 import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
 import onboardingMascotSpriteUrl from "@/assets/onboarding/mascot-transition.svg";
 import anthropicProviderIconUrl from "@/assets/provider-icons/anthropic.png";
@@ -808,7 +809,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
       surface
     };
   }
-  if (profile.agent === "grok" || profile.agent === "kimi") {
+  if (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi") {
     return {
       ...createProfileDraft(profile.agent, profile.name),
       availableModels: profile.agent === "kimi"
@@ -857,6 +858,9 @@ export function isProfileDraftSubmittable(draft: AddProfileDraft): boolean {
     return Boolean(draft.model.trim());
   }
   if (draft.agent === "grok") {
+    return true;
+  }
+  if (draft.agent === "pi") {
     return true;
   }
   if (draft.agent === "kimi") {
@@ -1493,9 +1497,9 @@ export function profileSummaryItems(
     ];
   }
 
-  if (profile.agent === "grok" || profile.agent === "kimi") {
+  if (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi") {
     return [
-      { label: t(profile.agent === "kimi" ? "Kimi model" : "Model"), value: modelValue },
+      { label: t(profile.agent === "kimi" ? "Kimi model" : profile.agent === "pi" ? "Pi model" : "Model"), value: modelValue },
       ...(profile.agent === "kimi"
         ? [{
             label: t("Allowed models"),
@@ -1553,7 +1557,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
       surface
     };
   }
-  if (agent === "grok" || agent === "kimi") {
+  if (agent === "grok" || agent === "kimi" || agent === "pi") {
     return {
       agent,
       ...(agent === "kimi" ? { availableModels } : {}),
@@ -1652,6 +1656,8 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
         ? "kimi"
       : rawAgent === "opencode" || rawAgent === "open-code" || rawAgent === "open code"
         ? "opencode"
+      : rawAgent === "pi" || rawAgent === "pi-agent" || rawAgent === "pi agent" || rawAgent === "pi-coding-agent" || rawAgent === "pi coding agent"
+        ? "pi"
       : rawAgent === "zcode" || rawAgent === "z-code" || rawAgent === "z code"
         ? "zcode"
         : undefined;
@@ -1785,6 +1791,9 @@ export function profileAgentLabel(agent: ProfileConfig["agent"]): string {
   if (agent === "kimi") {
     return "Kimi CLI";
   }
+  if (agent === "pi") {
+    return "Pi";
+  }
   if (agent === "opencode") {
     return "OpenCode";
   }
@@ -1815,7 +1824,7 @@ export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[
   if (profile.agent === "zcode") {
     return ["app"];
   }
-  if (profile.agent === "grok" || profile.agent === "kimi") {
+  if (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi") {
     return ["cli"];
   }
   const surface = normalizeProfileSurface(profile.surface);
@@ -1852,6 +1861,9 @@ export function profileAgentLogoUrl(agent: ProfileConfig["agent"]): string {
   if (agent === "kimi") {
     return moonshotProviderIconUrl;
   }
+  if (agent === "pi") {
+    return piLogoUrl;
+  }
   if (agent === "opencode") {
     return openCodeLogoUrl;
   }
@@ -1863,11 +1875,11 @@ function normalizeCodexCompatibleAgent(agent: ProfileConfig["agent"]): "codex" |
 }
 
 function normalizeProfileAgent(agent: ProfileConfig["agent"]): ProfileConfig["agent"] {
-  return agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : agent === "grok" ? "grok" : agent === "kimi" ? "kimi" : agent === "codex" ? "codex" : "claude-code";
+  return agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : agent === "pi" ? "pi" : agent === "grok" ? "grok" : agent === "kimi" ? "kimi" : agent === "codex" ? "codex" : "claude-code";
 }
 
 function normalizeProfileSurfaceForAgent(agent: ProfileConfig["agent"], surface: unknown): ProfileSurface {
-  return agent === "zcode" ? "app" : agent === "grok" || agent === "kimi" ? "cli" : normalizeProfileSurface(surface);
+  return agent === "zcode" ? "app" : agent === "grok" || agent === "kimi" || agent === "pi" ? "cli" : normalizeProfileSurface(surface);
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
@@ -1875,6 +1887,8 @@ function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
     ? "~/.zcode/cli/config.json"
     : agent === "opencode"
       ? "~/.config/opencode/opencode.jsonc"
+      : agent === "pi"
+        ? "~/.pi/agent"
       : "~/.codex/config.toml";
 }
 

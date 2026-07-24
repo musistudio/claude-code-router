@@ -23,6 +23,12 @@ import {
   resolveOpenCodeConfigFile,
   writeOpenCodeGatewayConfig
 } from "@ccr/core/agents/opencode/profile-config";
+import {
+  piWrapperFilename,
+  resolvePiAgentDir,
+  resolvePiSessionDir,
+  writePiGatewayConfig
+} from "@ccr/core/agents/pi/profile-config";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { resolveZcodeConfigFile, writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "@ccr/core/agents/zcode/profile-config";
 import { CONTEXT_ARCHIVE_MCP_SERVER_NAME, contextArchiveConfigForProfile, contextArchiveMcpServer } from "@ccr/core/gateway/context-archive";
@@ -155,11 +161,13 @@ export async function applyProfileConfig(
           ? applyGrokProfile(config, profile, token, appliedAt)
           : profile.agent === "kimi"
             ? applyKimiProfile(config, profile, token, appliedAt)
-            : profile.agent === "opencode"
-              ? applyOpenCodeProfile(config, profile, token, appliedAt)
-              : profile.agent === "zcode"
-                ? applyZcodeProfile(config, profile, token, appliedAt)
-                : applyCodexProfile(config, profile, token, appliedAt)
+            : profile.agent === "pi"
+              ? applyPiProfile(config, profile, token, appliedAt)
+              : profile.agent === "opencode"
+                ? applyOpenCodeProfile(config, profile, token, appliedAt)
+                : profile.agent === "zcode"
+                  ? applyZcodeProfile(config, profile, token, appliedAt)
+                  : applyCodexProfile(config, profile, token, appliedAt)
     );
   }
   result.clients.push(...takeoverStatuses);
@@ -299,11 +307,13 @@ export function applyProfileRuntimeConfig(config: AppConfig, profile: ProfileCon
       ? applyGrokProfile(config, profile, token, appliedAt)
       : profile.agent === "kimi"
         ? applyKimiProfile(config, profile, token, appliedAt)
-        : profile.agent === "opencode"
-          ? applyOpenCodeProfile(config, profile, token, appliedAt)
-          : profile.agent === "zcode"
-            ? applyZcodeProfile(config, profile, token, appliedAt)
-            : applyCodexProfile(config, profile, token, appliedAt);
+        : profile.agent === "pi"
+          ? applyPiProfile(config, profile, token, appliedAt)
+          : profile.agent === "opencode"
+            ? applyOpenCodeProfile(config, profile, token, appliedAt)
+            : profile.agent === "zcode"
+              ? applyZcodeProfile(config, profile, token, appliedAt)
+              : applyCodexProfile(config, profile, token, appliedAt);
 }
 
 function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
@@ -519,6 +529,36 @@ function applyKimiProfile(config: AppConfig, profile: ProfileConfig, token: stri
   }
 }
 
+function applyPiProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
+  const wrapperFile = piWrapperPath(profile);
+  if (!profile.enabled) {
+    return disabledStatus("pi", wrapperFile, "Pi profile is disabled.");
+  }
+
+  try {
+    const model = normalizeClientModel(profile.model) || defaultClientModel(config);
+    const wrapperResult = writePiWrapper(config, profile, token, model);
+    return {
+      appliedAt,
+      client: "pi",
+      enabled: true,
+      message: wrapperResult.changed
+        ? `Pi is configured to use CCR (config ${wrapperResult.configFile}, wrapper ${wrapperResult.file}).`
+        : "Pi config already matches CCR.",
+      ok: true,
+      path: wrapperResult.configFile
+    };
+  } catch (error) {
+    return {
+      client: "pi",
+      enabled: true,
+      message: formatError(error),
+      ok: false,
+      path: wrapperFile
+    };
+  }
+}
+
 function applyOpenCodeProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
   const configFile = resolveOpenCodeConfigFile(CONFIGDIR, profile);
   const providerId = openCodeProviderId(profile);
@@ -685,9 +725,11 @@ function profilePath(profile: ProfileConfig): string {
       ? grokWrapperPath(profile)
       : profile.agent === "kimi"
         ? kimiWrapperPath(profile)
-        : profile.agent === "opencode"
-          ? resolveOpenCodeConfigFile(CONFIGDIR, profile)
-          : resolveCodexConfigFile(profile);
+        : profile.agent === "pi"
+          ? path.join(resolvePiAgentDir(CONFIGDIR, profile), "models.json")
+          : profile.agent === "opencode"
+            ? resolveOpenCodeConfigFile(CONFIGDIR, profile)
+            : resolveCodexConfigFile(profile);
 }
 
 function resolveClaudeCodeSettingsFile(profile: ProfileConfig): string {
@@ -1275,6 +1317,90 @@ function isKimiManagedEnvKey(key: string): boolean {
     key === "CCR_KIMI_SOURCE_HOME" ||
     key === "KIMI_CODE_HOME" ||
     kimiSingleModelEnvNames.some((name) => key === name) ||
+    key === "CCR_PROFILE_SURFACE";
+}
+
+function writePiWrapper(
+  config: AppConfig,
+  profile: ProfileConfig,
+  token: string,
+  defaultModel: string
+): { changed: boolean; configFile: string; file: string } {
+  const binDir = path.join(CONFIGDIR, "bin");
+  mkdirSync(binDir, { mode: privateDirMode, recursive: true });
+  const configResult = writePiGatewayConfig(CONFIGDIR, config, profile, token, defaultModel);
+  const file = piWrapperPath(profile);
+  const content = process.platform === "win32"
+    ? piWrapperCmdScript(config, profile, configResult)
+    : piWrapperShellScript(config, profile, configResult);
+  const writeResult = writeGeneratedFileIfChanged(file, content, { mode: privateExecutableMode });
+  return {
+    changed: configResult.changed || writeResult.changed,
+    configFile: configResult.file,
+    file
+  };
+}
+
+function piWrapperPath(profile: ProfileConfig): string {
+  return path.join(CONFIGDIR, "bin", piWrapperFilename(profile));
+}
+
+function piWrapperShellScript(
+  config: AppConfig,
+  profile: ProfileConfig,
+  piConfig: { model: string; profileHome: string; providerId: string; sessionDir: string }
+): string {
+  const realPi = profile.env?.CCR_PI_BIN?.trim() || profile.env?.PI_BIN?.trim() || "pi";
+  const envExports = Object.entries(profileEnv(profile))
+    .filter(([key]) => !isPiManagedEnvKey(key))
+    .map(([key, value]) => `export ${key}=${shellQuote(value)}`);
+  const noProxyHosts = grokGatewayNoProxyHosts(config);
+  return [
+    "#!/bin/sh",
+    ...envExports,
+    `if [ -n "\${NO_PROXY:-}" ]; then NO_PROXY="$NO_PROXY,${noProxyHosts}"; else NO_PROXY=${shellQuote(noProxyHosts)}; fi`,
+    `if [ -n "\${no_proxy:-}" ]; then no_proxy="$no_proxy,${noProxyHosts}"; else no_proxy=${shellQuote(noProxyHosts)}; fi`,
+    "export NO_PROXY no_proxy",
+    `export PI_CODING_AGENT_DIR=${shellQuote(piConfig.profileHome)}`,
+    `export PI_CODING_AGENT_SESSION_DIR=${shellQuote(piConfig.sessionDir)}`,
+    `export PI_SKIP_VERSION_CHECK=${shellQuote(profile.env?.PI_SKIP_VERSION_CHECK?.trim() || "1")}`,
+    "export CCR_PROFILE_SURFACE=cli",
+    `exec ${shellQuote(realPi)} --provider ${shellQuote(piConfig.providerId)} --model ${shellQuote(piConfig.model)} "$@"`,
+    ""
+  ].join("\n");
+}
+
+function piWrapperCmdScript(
+  config: AppConfig,
+  profile: ProfileConfig,
+  piConfig: { model: string; profileHome: string; providerId: string; sessionDir: string }
+): string {
+  const realPi = profile.env?.CCR_PI_BIN?.trim() || profile.env?.PI_BIN?.trim() || "pi";
+  const envExports = Object.entries(profileEnv(profile))
+    .filter(([key]) => !isPiManagedEnvKey(key))
+    .map(([key, value]) => cmdSetLine(key, value));
+  const noProxyHosts = grokGatewayNoProxyHosts(config);
+  return [
+    "@echo off",
+    ...envExports,
+    `set "NO_PROXY=%NO_PROXY%,${cmdValue(noProxyHosts)}"`,
+    `set "no_proxy=%no_proxy%,${cmdValue(noProxyHosts)}"`,
+    cmdSetLine("PI_CODING_AGENT_DIR", piConfig.profileHome),
+    cmdSetLine("PI_CODING_AGENT_SESSION_DIR", piConfig.sessionDir),
+    cmdSetLine("PI_SKIP_VERSION_CHECK", profile.env?.PI_SKIP_VERSION_CHECK?.trim() || "1"),
+    cmdSetLine("CCR_PROFILE_SURFACE", "cli"),
+    `${cmdQuote(realPi)} --provider ${cmdQuote(piConfig.providerId)} --model ${cmdQuote(piConfig.model)} %*`,
+    "exit /b %ERRORLEVEL%",
+    ""
+  ].join("\r\n");
+}
+
+function isPiManagedEnvKey(key: string): boolean {
+  return key === "CCR_PI_BIN" ||
+    key === "PI_BIN" ||
+    key === "PI_CODING_AGENT_DIR" ||
+    key === "PI_CODING_AGENT_SESSION_DIR" ||
+    key === "PI_SKIP_VERSION_CHECK" ||
     key === "CCR_PROFILE_SURFACE";
 }
 
@@ -2397,6 +2523,7 @@ function isManagedGeneratedBinFile(fileName: string): boolean {
     normalized.startsWith("ccr-claude-code-wrapper-") ||
     normalized.startsWith("ccr-grok-cli-wrapper-") ||
     normalized.startsWith("ccr-kimi-cli-wrapper-") ||
+    normalized.startsWith("ccr-pi-wrapper-") ||
     normalized.startsWith("ccr-opencode-wrapper-") ||
     normalized.startsWith("ccr-codex-cli-stdio-");
 }
@@ -2435,6 +2562,9 @@ function disabledProfileStatus(profile: ProfileConfig): ProfileClientApplyStatus
   }
   if (profile.agent === "kimi") {
     return disabledStatus("kimi", kimiWrapperPath(profile), "Kimi CLI profile is disabled.");
+  }
+  if (profile.agent === "pi") {
+    return disabledStatus("pi", piWrapperPath(profile), "Pi profile is disabled.");
   }
   if (profile.agent === "opencode") {
     const providerId = openCodeProviderId(profile);
@@ -2921,6 +3051,9 @@ function disabledProfileMessage(profile: ProfileConfig): string {
   if (profile.agent === "kimi") {
     return "Kimi CLI profile is disabled.";
   }
+  if (profile.agent === "pi") {
+    return "Pi profile is disabled.";
+  }
   if (profile.agent === "opencode") {
     return "OpenCode profile is disabled.";
   }
@@ -3081,11 +3214,14 @@ function codexCompatibleClientName(agent: ProfileConfig["agent"]): string {
   if (agent === "opencode") {
     return "OpenCode";
   }
+  if (agent === "pi") {
+    return "Pi";
+  }
   return agent === "zcode" ? "ZCode" : "Codex";
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "~/.zcode/cli/config.json" : "~/.codex/config.toml";
+  return agent === "zcode" ? "~/.zcode/cli/config.json" : agent === "pi" ? "~/.pi/agent" : "~/.codex/config.toml";
 }
 
 function codexConfigSubdir(agent: ProfileConfig["agent"]): string {

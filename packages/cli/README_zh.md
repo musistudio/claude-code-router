@@ -105,10 +105,10 @@ ccr <配置名称或 ID> [cli|app] [-- <Agent 参数>]
 
 - `--cli` 和 `--app` 也可以代替位置形式的入口类型。
 - Agent 自己的参数建议统一放到 `--` 后，避免被识别为 CCR 参数。
-- 省略入口类型时，Claude Code、Codex、Grok CLI、Kimi CLI 默认使用 CLI，ZCode 默认使用 App。
-- Grok 只支持 CLI，ZCode 只支持 App。Claude App 和 ZCode App 不接受额外 Agent 参数。
+- 省略入口类型时，Claude Code、Codex、Grok CLI、Kimi CLI、Pi 默认使用 CLI，ZCode 默认使用 App。
+- Grok CLI、Kimi CLI 和 Pi 只支持 CLI，ZCode 只支持 App。Claude App 和 ZCode App 不接受额外 Agent 参数。
 - 启动桌面 App 时，本机必须已安装对应应用，并且当前环境必须有图形会话。
-- 大多数配置需要先启动 CCR 服务。Grok CLI 和 Kimi CLI 配置可以自动启动一个临时共享服务，并在最后一个受管会话退出后停止。
+- 大多数配置需要先启动 CCR 服务。Grok CLI、Kimi CLI 和 Pi 配置可以自动启动一个临时共享服务，并在最后一个受管会话退出后停止。
 
 桌面应用会安装一个相关命令 `ccr-app`。桌面 Agent 配置档案卡片复制出来的命令使用 `ccr-app`；本文介绍的 npm 包安装的是 `ccr`。
 

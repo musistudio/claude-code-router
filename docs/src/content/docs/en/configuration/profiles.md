@@ -2,7 +2,7 @@
 title: Agent Profiles
 pageTitle: Agent Profiles
 eyebrow: Detailed Configuration
-lead: Create reusable launch configurations for Claude Code, Codex, Grok CLI, Kimi CLI, and ZCode, and open separate agent instances from different configs.
+lead: Create reusable launch configurations for Claude Code, Codex, Grok CLI, Kimi CLI, Pi, and ZCode, and open separate agent instances from different configs.
 ---
 
 ## Configuration Flow
@@ -14,7 +14,7 @@ lead: Create reusable launch configurations for Claude Code, Codex, Grok CLI, Ki
 5. If the entry mode includes App, optionally bind a Bot and choose whether to forward agent messages or enable handoff.
 6. Save the config, then open it from the Agent Profiles card: the terminal button copies the CLI command, and the play button starts the App instance.
 
-During trial, prefer **Only opened from CCR** and always open the agent from CCR. That keeps the config limited to CCR-launched instances and avoids changing the Claude Code, Codex, Grok CLI, Kimi CLI, or ZCode setup you open directly from the system.
+During trial, prefer **Only opened from CCR** and always open the agent from CCR. That keeps the config limited to CCR-launched instances and avoids changing the Claude Code, Codex, Grok CLI, Kimi CLI, Pi, or ZCode setup you open directly from the system.
 
 ## Multi-Instance Mechanism
 
@@ -22,8 +22,8 @@ Every Agent Profiles has its own `id` and name. When CCR opens an agent, it find
 
 | Mechanism | Actual behavior |
 | --- | --- |
-| Separate config files | With **Only opened from CCR**, Claude Code and Codex write CCR-managed config files in directories separated by config `id` |
-| Separate launchers | Claude Code, Grok CLI, and Kimi CLI use separate launch wrappers; Codex and ZCode use separate middleware launchers; filenames are also separated by config `id` or name |
+| Separate config files | With **Only opened from CCR**, Claude Code, Codex, OpenCode, Kimi CLI, and Pi write CCR-managed config or home files in directories separated by config `id` |
+| Separate launchers | Claude Code, Grok CLI, Kimi CLI, Pi, and OpenCode use separate launch wrappers; Codex and ZCode use separate middleware launchers; filenames are also separated by config `id` or name |
 | Separate app data directories | When opening App mode, Claude App, ChatGPT (the renamed Codex desktop app), and ZCode App use user-data directories separated by config `id` |
 | Runtime state | CCR tracks running app instances by entry mode and config `id`; reopening the same config activates the existing window, while a different config can open a separate instance |
 
@@ -33,11 +33,11 @@ This lets you create multiple configs for the same agent, such as "Claude Code -
 
 | Option | Applies to | Description |
 | --- | --- | --- |
-| Agent | All | Claude Code, Codex, OpenCode, Grok CLI, Kimi CLI, or ZCode. Grok CLI and Kimi CLI support CLI only; ZCode supports App only. |
+| Agent | All | Claude Code, Codex, OpenCode, Grok CLI, Kimi CLI, Pi, or ZCode. Grok CLI, Kimi CLI, and Pi support CLI only; ZCode supports App only. |
 | Config name | All | Identifies the config in CCR and can be used as the `ccr-app <config-name>` launch target. Names can contain spaces; copied commands are quoted automatically. |
 | Enabled | All | Disabled configs are not exposed as active launch entries and are not applied as effective startup configs. |
 | Effect scope | All | **Only opened from CCR** uses CCR-managed isolated config; **System default** writes the agent's default config. Only one enabled system-default config is allowed per agent. |
-| Entry mode | Claude Code, Codex, OpenCode, Grok CLI, Kimi CLI | `CLI & APP` exposes both CLI and App entry points; `CLI only` only generates a CLI command; `App only` only exposes the App entry point. Grok CLI and Kimi CLI are fixed to `CLI only`. |
+| Entry mode | Claude Code, Codex, OpenCode, Grok CLI, Kimi CLI, Pi | `CLI & APP` exposes both CLI and App entry points; `CLI only` only generates a CLI command; `App only` only exposes the App entry point. Grok CLI, Kimi CLI, and Pi are fixed to `CLI only`. |
 | Model | All | Default model for the opened agent, either a provider model or Fusion model. Claude Code requires this value. |
 | Available models | Kimi CLI | Models exposed by Kimi's `/model` command. The default model is always included. |
 | Bot | App entry | Bot forwarding only works for App mode opened from CCR. CLI does not forward Bot messages yet. |
@@ -107,6 +107,15 @@ The generated wrapper sets Grok's model base URL and model-list URL to CCR's `/v
 
 Kimi CLI profiles are fixed to **Only opened from CCR** and **CLI only**. Select one default model and one or more available models. The generated wrapper points `KIMI_CODE_HOME` at a profile-specific directory whose `config.toml` defines a private OpenAI-compatible CCR provider and a model entry for every selection. Kimi's `/model` command can therefore switch models without bypassing CCR. CCR preserves non-provider settings from the source config and reuses available sessions, skills, plugins, MCP configuration, and credentials without rewriting the original `~/.kimi-code/config.toml`. If CCR Desktop is not running, the launcher starts a shared temporary gateway and stops it after the last managed Kimi session exits.
 
+### Pi
+
+| Option | What it does |
+| --- | --- |
+| Pi model | Optional default model passed to Pi. If left empty, CCR uses the first available gateway model. |
+| Environment variables | Injected into the Pi wrapper. Use `CCR_PI_BIN` or `PI_BIN` when the real Pi executable is not available as `pi`. CCR manages `PI_CODING_AGENT_DIR`, `PI_CODING_AGENT_SESSION_DIR`, and `PI_SKIP_VERSION_CHECK`. |
+
+Pi profiles are fixed to **Only opened from CCR** and **CLI only**. CCR writes a profile-specific `models.json` under `PI_CODING_AGENT_DIR`, with a provider that uses the local CCR `/v1` gateway as an OpenAI Responses endpoint and the profile-specific CCR API key. The generated wrapper sets `PI_CODING_AGENT_DIR` and `PI_CODING_AGENT_SESSION_DIR`, then launches Pi with `--provider` and `--model` so requests stay routed through CCR. If CCR Desktop is not running, the launcher starts the same shared temporary gateway used by other CLI-only profiles.
+
 ### ZCode
 
 | Option | What it does |
@@ -159,6 +168,10 @@ Grok CLI supports CLI only. CCR opens it through a profile-specific wrapper that
 ### Kimi CLI
 
 Kimi CLI supports CLI only. CCR opens it through a profile-specific wrapper and generated Kimi home containing the selected default model plus every available model. All generated model entries use the CCR gateway and profile API key, so `/model` switches remain routed through CCR; the user's original Kimi configuration remains untouched.
+
+### Pi
+
+Pi supports CLI only. CCR opens it through a profile-specific wrapper, generated `PI_CODING_AGENT_DIR`, and generated `models.json`. The Pi provider uses CCR's OpenAI Responses gateway and the profile API key; the wrapper passes the selected provider and model to the real Pi executable without importing Pi login state.
 
 ### ZCode
 

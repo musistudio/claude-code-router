@@ -2,7 +2,7 @@
 title: Claude Code Router
 pageTitle: Documentation
 eyebrow: Product Documentation
-lead: Use CCR to connect Claude Code, Codex, Grok CLI, ZCode, and compatible API clients to the model providers you choose. If this is your first visit, get one routed request working before diving into routing, Fusion, Bots, and observability.
+lead: Use CCR to connect Claude Code, Codex, Grok CLI, Kimi CLI, Pi, ZCode, and compatible API clients to the model providers you choose. If this is your first visit, get one routed request working before diving into routing, Fusion, Bots, and observability.
 ---
 
 ## Get One Routed Request Working
@@ -11,7 +11,7 @@ Start with the shortest successful path:
 
 1. Choose desktop, npm CLI, or Docker from [Install and launch CCR](guides/install/).
 2. Open **Providers**, add a preset or custom endpoint, enter an API key, and select at least one model.
-3. Open **Agent Profiles**, choose the default model and entry mode for Claude Code, Codex, Grok CLI, or ZCode.
+3. Open **Agent Profiles**, choose the default model and entry mode for Claude Code, Codex, Grok CLI, Kimi CLI, Pi, or ZCode.
 4. Start the local gateway service. The default endpoint is `http://127.0.0.1:3456`.
 5. Send one request from your agent, then open **Logs** to confirm the resolved provider, model, status, tokens, and errors.
 

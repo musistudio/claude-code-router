@@ -58,6 +58,7 @@ test("profile service cleans stale generated bin backups only", () => {
       "ccr-claude-code-wrapper-default.ccr-original",
       "ccr-codex-cli-stdio-default.ccr-original-missing",
       "ccr-codex-cli-middleware.js.ccr-backup-2026-01-01T00-00-00-000Z",
+      "ccr-pi-wrapper-default.ccr-original",
       "toolhub-mcp.js.ccr-backup-2026-01-01T00-00-00-000Z"
     ];
     const keptFiles = [
@@ -1051,6 +1052,85 @@ test("profile service writes a multi-model Kimi CLI home that points inference t
   assert.match(legacyProfileConfigContent, /\[models\."DeepSeek\/deepseek-v4-flash"\]\nprovider = "claude-code-router"\nmodel = "DeepSeek\/deepseek-v4-flash"\nmax_context_size = 1050000\ncapabilities = \["tool_use", "thinking"\]/);
   assert.match(legacyProfileConfigContent, /\[models\."Zhipu Coding\/glm-5\.2"\]\nprovider = "claude-code-router"\nmodel = "Zhipu Coding\/glm-5\.2"\nmax_context_size = 1049000\ncapabilities = \["tool_use", "thinking"\]/);
   assert.match(legacyProfileConfigContent, /\[models\."Fusion\/catalog-context"\]\nprovider = "claude-code-router"\nmodel = "Fusion\/catalog-context"\nmax_context_size = 1050000\ncapabilities = \["tool_use", "image_in", "thinking"\]/);
+});
+
+test("profile service writes a Pi config and wrapper that points inference to CCR", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "pi-gateway-test";
+  const config = createDefaultAppConfig({
+    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
+  });
+  config.Providers = [
+    {
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model", "fast"],
+      name: "Provider",
+      type: "openai_responses"
+    }
+  ];
+  config.preferredProvider = "Provider";
+  config.APIKEY = "ccr-pi-profile-test";
+  config.APIKEYS = [
+    {
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profileId}`,
+      key: "ccr-pi-profile-test",
+      name: "Profile: Pi Gateway Test"
+    }
+  ];
+  config.profile.profiles = [
+    {
+      agent: "pi",
+      enabled: true,
+      env: {
+        CCR_PI_BIN: "/custom/bin/pi",
+        PI_CODING_AGENT_DIR: "/ignored/pi",
+        PI_CODING_AGENT_SESSION_DIR: "/ignored/pi/sessions",
+        PI_SKIP_VERSION_CHECK: "0",
+        USER_VALUE: "kept"
+      },
+      id: profileId,
+      model: "Provider/model",
+      name: "Pi Gateway Test",
+      providerId: "ccr-pi",
+      scope: "ccr",
+      surface: "cli"
+    }
+  ];
+
+  const result = await applyProfileConfig(config);
+  assert.equal(result.clients.length, 1);
+  assert.equal(result.clients[0].client, "pi");
+  assert.equal(result.clients[0].ok, true);
+
+  const commandExtension = process.platform === "win32" ? ".cmd" : "";
+  const wrapperFile = path.join(CONFIGDIR, "bin", `ccr-pi-wrapper-${profileId}${commandExtension}`);
+  const content = readFileSync(wrapperFile, "utf8");
+  const profilePiHome = path.join(CONFIGDIR, "profiles", profileId, "pi");
+  const profileConfigFile = path.join(profilePiHome, "models.json");
+  const piConfig = JSON.parse(readFileSync(profileConfigFile, "utf8"));
+  const provider = piConfig.providers["ccr-pi"];
+
+  assert.match(content, new RegExp(`PI_CODING_AGENT_DIR.*profiles.*${profileId}.*pi`));
+  assert.match(content, new RegExp(`PI_CODING_AGENT_SESSION_DIR.*profiles.*${profileId}.*pi.*sessions`));
+  assert.match(content, /PI_SKIP_VERSION_CHECK.*0/);
+  assert.match(content, /USER_VALUE.*kept/);
+  assert.match(content, /NO_PROXY.*127\.0\.0\.1,localhost,::1/);
+  assert.match(content, /\/custom\/bin\/pi/);
+  assert.match(content, /--provider .*ccr-pi/);
+  assert.match(content, /--model .*Provider\/model/);
+  assert.equal(content.includes("/ignored/pi"), false);
+  assert.equal(provider.api, "openai-responses");
+  assert.equal(provider.baseUrl, `http://127.0.0.1:${config.gateway.port}/v1`);
+  assert.equal(provider.apiKey, "ccr-pi-profile-test");
+  assert.equal(provider.authHeader, true);
+  assert.deepEqual(provider.headers, {
+    "x-ccr-client": "pi",
+    "x-ccr-profile": profileId
+  });
+  assert.ok(provider.models.some((model) => model.id === "Provider/model"));
+  assert.ok(provider.models.some((model) => model.id === "Provider/fast"));
+  assert.equal(existsSync(path.join(profilePiHome, "sessions")), true);
 });
 
 test("profile service writes an OpenCode CLI wrapper and shared CLI/App config", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {

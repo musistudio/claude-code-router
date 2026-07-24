@@ -116,6 +116,7 @@ export const agentFilterOptions: Array<{ label: string; value: AgentFilterValue 
   { label: "Grok CLI", value: "grok" },
   { label: "Kimi CLI", value: "kimi" },
   { label: "OpenCode", value: "opencode" },
+  { label: "Pi", value: "pi" },
   { label: "ZCode", value: "zcode" },
   { label: "Claude Design", value: "claude-design" },
   { label: "Unknown", value: "unknown" }
@@ -127,6 +128,7 @@ export const profileAgentOptions: Array<{ label: string; value: ProfileConfig["a
   { label: "Grok CLI", value: "grok" },
   { label: "Kimi CLI", value: "kimi" },
   { label: "OpenCode", value: "opencode" },
+  { label: "Pi", value: "pi" },
   { label: "ZCode", value: "zcode" }
 ];
 
