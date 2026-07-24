@@ -4,7 +4,7 @@ import {
   claudeDesignRouteRuleTypeLabel, claudeDesignRouteRuleTypeOptions, ClaudeDesignRoutingDraft, ClaudeDesignRoutingRuleDraft, createRouteModelOptions, Dialog,
   DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, ExtensionListItem,
   cn, extensionMatchesQuery, ExtensionSource, Field, GatewayProviderConfig, Input, isClaudeDesignStaticRuleType,
-  Label, motion, normalizeClaudeDesignRuleTypeChange, PluginSettingsDraft, Plus, RouteTargetControl,
+  Label, motion, normalizeClaudeDesignRuleTypeChange, Play, PluginSettingsDraft, Plus, RouteTargetControl,
   Search, SelectControl, Settings, TextAreaControl, Toggle, translateOptions,
   Trash2, useAppText, useMemo, useState, X
 } from "../shared/index";
@@ -12,12 +12,14 @@ export function ExtensionsView({
   configureExtension,
   config,
   installExtension,
+  openExtensionApp,
   removeExtension,
   setExtensionEnabled
 }: {
   configureExtension: (source: ExtensionSource, index: number) => void;
   config: AppConfig;
   installExtension: () => void;
+  openExtensionApp: (index: number, appId?: string) => void;
   removeExtension: (source: ExtensionSource, index: number, groupIndexes: number[]) => void;
   setExtensionEnabled: (source: ExtensionSource, index: number, enabled: boolean, groupIndexes: number[]) => void;
 }) {
@@ -68,7 +70,7 @@ export function ExtensionsView({
           {visibleExtensions.length > 0 ? (
             <div className="min-w-0">
               <div className="min-w-[720px]">
-                <div className="sticky top-0 z-10 grid h-10 grid-cols-[minmax(180px,0.95fr)_minmax(220px,1.15fr)_minmax(240px,1.2fr)_116px_84px] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                <div className="sticky top-0 z-10 grid h-10 grid-cols-[minmax(180px,0.95fr)_minmax(220px,1.15fr)_minmax(240px,1.2fr)_116px_116px] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   <div className="truncate">{t("Name")}</div>
                   <div className="truncate">{t("Path")}</div>
                   <div className="truncate">{t("Capability")}</div>
@@ -77,9 +79,11 @@ export function ExtensionsView({
                 </div>
                 <div className="divide-y divide-border/60">
                   <AnimatePresence initial={false}>
-                  {visibleExtensions.map((extension) => (
+                  {visibleExtensions.map((extension) => {
+                    const appId = extension.source === "plugins" ? openablePluginAppId(config, extension.index) : undefined;
+                    return (
                     <AnimatedListItem
-                      className="grid min-h-[58px] grid-cols-[minmax(180px,0.95fr)_minmax(220px,1.15fr)_minmax(240px,1.2fr)_116px_84px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
+                      className="grid min-h-[58px] grid-cols-[minmax(180px,0.95fr)_minmax(220px,1.15fr)_minmax(240px,1.2fr)_116px_116px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
                       key={`${extension.source}-${extension.index}`}
                     >
                       <div className="min-w-0">
@@ -97,6 +101,18 @@ export function ExtensionsView({
                         ) : null}
                       </div>
                       <div className="flex items-center justify-end gap-1">
+                        {appId ? (
+                          <Button
+                            aria-label={`${t("Open")} ${extension.name}`}
+                            onClick={() => openExtensionApp(extension.index, appId)}
+                            size="iconSm"
+                            title={t("Open plugin app")}
+                            type="button"
+                            variant="ghost"
+                          >
+                            <Play className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : null}
                         <Button
                           aria-label={`${t("Configure")} ${extension.name}`}
                           disabled={!extension.canConfigure}
@@ -113,7 +129,8 @@ export function ExtensionsView({
                         </Button>
                       </div>
                     </AnimatedListItem>
-                  ))}
+                    );
+                  })}
                   </AnimatePresence>
                 </div>
               </div>
@@ -123,6 +140,24 @@ export function ExtensionsView({
       </Card>
     </motion.div>
   );
+}
+
+function openablePluginAppId(config: AppConfig, index: number): string | undefined {
+  const plugin = config.plugins[index];
+  if (!plugin || plugin.enabled === false || plugin.surfaces?.apps === false) {
+    return undefined;
+  }
+  const configuredApp = plugin.apps?.find((app) => app.name?.trim() && app.url?.trim());
+  if (configuredApp) {
+    return configuredApp.id?.trim() || configuredApp.name.trim();
+  }
+  if (plugin.id === "claude-design") {
+    return "claude-design";
+  }
+  if (plugin.id === "claude-ship") {
+    return "claude-ship";
+  }
+  return undefined;
 }
 
 export function DeleteExtensionDialog({

@@ -23,7 +23,7 @@ import {
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
   OverviewWidgetConfig, parseProviderAccountDraft, pluginConfigPatchFromSettingsDraft,
   providerCredentialsFromDraft,
-  persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, PluginSettingsDraft, presetCapabilitiesFromDraft,
+  persistLanguagePreference, PluginInstallCandidate, PluginMarketplaceEntry, PluginRoutingConfigTarget, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
   providerBaseUrl, providerCapabilitiesForProtocols, providerCapabilitiesForSave, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerProtocolOptions, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
@@ -181,6 +181,10 @@ async function loadProviderAccountSnapshots(forceRefresh = false): Promise<Provi
 function extensionActionIndexes(index: number, groupIndexes?: number[]): number[] {
   const indexes = groupIndexes?.length ? groupIndexes : [index];
   return [...new Set(indexes.filter((item) => Number.isInteger(item) && item >= 0))];
+}
+
+function canInstallExtensionCandidate(candidate: PluginInstallCandidate): boolean {
+  return Boolean(candidate.id.trim() && (candidate.modulePath.trim() || (candidate.apps?.length ?? 0) > 0));
 }
 
 function App() {
@@ -745,10 +749,15 @@ function App() {
     [copy, virtualModelValidationError]
   );
   const canSubmitVirtualModel = !virtualModelValidationError;
-  const canInstallExtension = Boolean(
-    extensionInstallDraft.key.trim() &&
-    (extensionInstallDraft.modulePath.trim() || (extensionInstallDraft.apps?.length ?? 0) > 0)
-  );
+  const canInstallExtension = canInstallExtensionCandidate({
+    apps: extensionInstallDraft.apps,
+    dependencies: extensionInstallDraft.dependencies,
+    id: extensionInstallDraft.key,
+    modulePath: extensionInstallDraft.modulePath,
+    name: extensionInstallDraft.selectedName,
+    permissions: extensionInstallDraft.permissions,
+    surfaces: extensionInstallDraft.surfaces
+  });
   const onboardingReadiness = useMemo<OnboardingReadinessOptions>(() => ({
     profileConfirmed: onboardingProfileConfirmed,
     requireProfileConfirmation: activeView === "onboarding" && !onboardingFinished
@@ -1918,42 +1927,55 @@ function App() {
       if (!selection) {
         return;
       }
-      setExtensionInstallDraft((current) => ({
-        ...current,
+      const candidate = {
         apps: selection.apps,
         dependencies: selection.dependencies,
-        key: selection.id,
-        marketplaceId: "",
+        id: selection.id,
         modulePath: selection.modulePath,
+        name: selection.name || selection.id,
         permissions: selection.permissions,
-        selectedName: selection.name || selection.id,
         surfaces: selection.surfaces
+      };
+      setExtensionInstallDraft((current) => ({
+        ...current,
+        apps: candidate.apps,
+        dependencies: candidate.dependencies,
+        key: candidate.id,
+        marketplaceId: "",
+        modulePath: candidate.modulePath,
+        permissions: candidate.permissions,
+        selectedName: candidate.name,
+        surfaces: candidate.surfaces
       }));
-      setExtensionInstallError("");
-      setActionError("");
+      installExtensionCandidate(candidate);
     } catch (error) {
       setActionError(formatError(error));
     }
   }
 
   function submitExtensionInstallDraft() {
-    if (!canInstallExtension) {
+    installExtensionCandidate({
+      apps: extensionInstallDraft.apps,
+      dependencies: extensionInstallDraft.dependencies,
+      id: extensionInstallDraft.key,
+      modulePath: extensionInstallDraft.modulePath,
+      name: extensionInstallDraft.selectedName,
+      permissions: extensionInstallDraft.permissions,
+      surfaces: extensionInstallDraft.surfaces
+    });
+  }
+
+  function installExtensionCandidate(candidate: PluginInstallCandidate) {
+    if (!canInstallExtensionCandidate(candidate)) {
       return;
     }
 
-    const installPlan = resolvePluginInstallPlan(
-      {
-        apps: extensionInstallDraft.apps,
-        dependencies: extensionInstallDraft.dependencies,
-        id: extensionInstallDraft.key.trim(),
-        modulePath: extensionInstallDraft.modulePath.trim(),
-        name: extensionInstallDraft.selectedName,
-        permissions: extensionInstallDraft.permissions,
-        surfaces: extensionInstallDraft.surfaces
-      },
-      pluginMarketplace,
-      draftConfig.plugins ?? []
-    );
+    const normalizedCandidate = {
+      ...candidate,
+      id: candidate.id.trim(),
+      modulePath: candidate.modulePath.trim()
+    };
+    const installPlan = resolvePluginInstallPlan(normalizedCandidate, pluginMarketplace, draftConfig.plugins ?? []);
     if (installPlan.missing.length > 0) {
       setExtensionInstallError(`Missing plugin dependencies: ${installPlan.missing.join(", ")}`);
       return;
@@ -1978,6 +2000,28 @@ function App() {
     setExtensionInstallError("");
 
     setExtensionInstallOpen(false);
+  }
+
+  async function openExtensionApp(index: number, appId?: string) {
+    const plugin = draftConfig.plugins[index];
+    if (!plugin?.id) {
+      setActionError(t("Plugin app is not configured or enabled."));
+      return;
+    }
+    if (!window.ccr?.openPluginApp) {
+      setActionError(t("Plugin apps can be opened from the Electron app."));
+      return;
+    }
+
+    try {
+      if (!await persistConfig(draftConfig, setActionError)) {
+        return;
+      }
+      await window.ccr.openPluginApp(plugin.id, appId);
+      setActionError("");
+    } catch (error) {
+      setActionError(formatError(error));
+    }
   }
 
   function removeExtension(source: ExtensionSource, index: number, groupIndexes?: number[]) {
@@ -2965,6 +3009,7 @@ function App() {
                   configureExtension: openConfigureExtension,
                   config: draftConfig,
                   installExtension: openInstallExtensionDialog,
+                  openExtensionApp: (index, appId) => void openExtensionApp(index, appId),
                   removeExtension: (source, index, groupIndexes) => setExtensionDeleteTarget({ groupIndexes: extensionActionIndexes(index, groupIndexes), index, source }),
                   setExtensionEnabled
                 },

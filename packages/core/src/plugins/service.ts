@@ -200,8 +200,6 @@ class GatewayPluginService {
     await this.stop({ nextConfig: config });
     this.config = config;
     this.running = true;
-    let firstStartupError: unknown;
-    let loadedPluginCount = 0;
 
     for (const pluginConfig of config.plugins ?? []) {
       if (pluginConfig.enabled === false) {
@@ -211,17 +209,10 @@ class GatewayPluginService {
       this.resourceOwnerIds.add(pluginConfig.id);
       try {
         await this.loadConfiguredPlugin(pluginConfig);
-        loadedPluginCount += 1;
       } catch (error) {
         await this.rollbackConfiguredPluginLoad(pluginConfig.id, snapshot);
         console.warn(`[plugin:${pluginConfig.id}] Disabled after startup failure: ${formatError(error)}`);
-        firstStartupError ??= error;
       }
-    }
-
-    if (firstStartupError && loadedPluginCount === 0) {
-      await this.stop();
-      throw firstStartupError;
     }
   }
 
@@ -310,7 +301,16 @@ class GatewayPluginService {
     if (!this.config) {
       throw new Error("Gateway plugin service is not configured.");
     }
-    await route.handler(request, response, this.createRouteContext(route.pluginId));
+    try {
+      await route.handler(request, response, this.createRouteContext(route.pluginId));
+    } catch (error) {
+      console.warn(`[plugin:${route.pluginId}] Gateway route ${route.id} failed: ${formatError(error)}`);
+      if (!response.headersSent) {
+        sendJson(response, 500, { error: { message: formatError(error) } });
+      } else {
+        response.destroy(error instanceof Error ? error : new Error(String(error)));
+      }
+    }
   }
 
   resolveProxyRoute(targetUrl: URL): GatewayPluginProxyRouteMatch | undefined {

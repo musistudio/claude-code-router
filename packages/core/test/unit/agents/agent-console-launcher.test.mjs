@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import vm from "node:vm";
-import agentConsolePlugin from "../../../../../marketplace/plugins/agent-console/index.cjs";
+
+const require = createRequire(`${process.cwd()}/package.json`);
+const extensionsRoot = path.resolve(process.env.CCR_EXTENSIONS_DIR || path.join(process.cwd(), "..", "ccr-extensions"));
+const agentConsolePluginRoot = path.join(extensionsRoot, "plugins", "agent-console");
+const agentConsolePlugin = require(path.join(agentConsolePluginRoot, "index.cjs"));
 
 const DEFAULT_LAUNCHER_BUNDLE_ID = "com.claudecoderouter.plugin.agent-console.launcher";
 
@@ -246,7 +251,7 @@ test("Agent Console plugin bridge removes OpenCat provider support", async () =>
 });
 
 test("Agent Console React composer omits the floating status row", async () => {
-  const chatSource = readFileSync(path.resolve("marketplace/plugins/agent-console/src/renderer/pages/home/components/chat.tsx"), "utf8");
+  const chatSource = readFileSync(path.join(agentConsolePluginRoot, "src", "renderer", "pages", "home", "components", "chat.tsx"), "utf8");
   assert.doesNotMatch(chatSource, /chat-floating-status/);
   assert.doesNotMatch(chatSource, /chat\.statusReady/);
 
@@ -271,7 +276,7 @@ test("Agent Console React composer omits the floating status row", async () => {
 });
 
 test("Agent Console diff parts avoid duplicate paths and colorize unified diffs", () => {
-  const chatSource = readFileSync(path.resolve("marketplace/plugins/agent-console/src/renderer/pages/home/components/chat.tsx"), "utf8");
+  const chatSource = readFileSync(path.join(agentConsolePluginRoot, "src", "renderer", "pages", "home", "components", "chat.tsx"), "utf8");
 
   assert.match(chatSource, /function DiffContent/);
   assert.match(chatSource, /function getDiffPartTitle/);
@@ -285,9 +290,9 @@ test("Agent Console diff parts avoid duplicate paths and colorize unified diffs"
 });
 
 test("Agent Console context window indicator only uses runtime usage", () => {
-  const coreSource = readFileSync(path.resolve("marketplace/plugins/agent-console/src/renderer/pages/home/utils/core.ts"), "utf8");
-  const chatSource = readFileSync(path.resolve("marketplace/plugins/agent-console/src/renderer/pages/home/components/chat.tsx"), "utf8");
-  const docsSource = readFileSync(path.resolve("marketplace/plugins/agent-console/src/renderer/pages/home/plugins/docs/index.tsx"), "utf8");
+  const coreSource = readFileSync(path.join(agentConsolePluginRoot, "src", "renderer", "pages", "home", "utils", "core.ts"), "utf8");
+  const chatSource = readFileSync(path.join(agentConsolePluginRoot, "src", "renderer", "pages", "home", "components", "chat.tsx"), "utf8");
+  const docsSource = readFileSync(path.join(agentConsolePluginRoot, "src", "renderer", "pages", "home", "plugins", "docs", "index.tsx"), "utf8");
 
   assert.doesNotMatch(coreSource, /usedTokens = hasUsageTokens \? usageTokens : estimatedTokens/);
   assert.doesNotMatch(coreSource, /source: hasUsageTokens \? "actual" : "estimated"/);
@@ -299,7 +304,7 @@ test("Agent Console context window indicator only uses runtime usage", () => {
 });
 
 test("Agent Console native thread menu icons match the resolved theme", () => {
-  const layoutSource = readFileSync(path.resolve("marketplace/plugins/agent-console/src/renderer/pages/home/components/layout.tsx"), "utf8");
+  const layoutSource = readFileSync(path.join(agentConsolePluginRoot, "src", "renderer", "pages", "home", "components", "layout.tsx"), "utf8");
 
   assert.match(layoutSource, /function getNativeMenuIconStroke/);
   assert.match(layoutSource, /getComputedStyle\(root\)\.getPropertyValue\("--foreground"\)/);
@@ -310,7 +315,7 @@ test("Agent Console native thread menu icons match the resolved theme", () => {
 });
 
 test("Agent Console persists in-flight runs across renderer exits", () => {
-  const appSource = readFileSync(path.resolve("marketplace/plugins/agent-console/src/renderer/pages/home/App.tsx"), "utf8");
+  const appSource = readFileSync(path.join(agentConsolePluginRoot, "src", "renderer", "pages", "home", "App.tsx"), "utf8");
 
   assert.match(appSource, /agentConsole\.pendingRunSnapshots\.v1/);
   assert.match(appSource, /function savePendingRunSnapshots/);

@@ -771,12 +771,20 @@ export type GatewayPluginAppConfig = {
 };
 
 export const CLAUDE_DESIGN_PLUGIN_ID = "claude-design";
+export const CLAUDE_SHIP_PLUGIN_ID = "claude-ship";
 export const DEFAULT_CLAUDE_DESIGN_APP: GatewayPluginAppConfig = {
   description: "Open Claude Design in a dedicated CCR Electron window.",
   icon: "palette",
   id: "claude-design",
   name: "Claude Design",
-  url: "https://claude.ai/design"
+  url: "https://claude-design-assets.pages.dev/design"
+};
+export const DEFAULT_CLAUDE_SHIP_APP: GatewayPluginAppConfig = {
+  description: "Open Claude Ship in a dedicated CCR Electron window.",
+  icon: "rocket",
+  id: "claude-ship",
+  name: "Claude Ship",
+  url: "https://claude.ai/claude-ship"
 };
 
 export const GATEWAY_PLUGIN_SURFACE_IDS = [
@@ -819,6 +827,10 @@ export const KNOWN_GATEWAY_PLUGIN_DEFAULTS: Record<string, KnownGatewayPluginDef
     permissions: ["trusted-code", "apps", "gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
     surfaces: { apps: true, gateway: true, provider: false }
   },
+  "claude-ship": {
+    permissions: ["trusted-code", "apps", "gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
+    surfaces: { apps: true, gateway: true, provider: false }
+  },
   "cursor-proxy": {
     permissions: ["trusted-code", "gateway-routes", "proxy-routes", "http-backends"],
     surfaces: { apps: false, gateway: true, provider: false }
@@ -836,10 +848,14 @@ export function knownGatewayPluginDefaultSurfaces(id: string): GatewayPluginSurf
 }
 
 export function knownGatewayPluginDefaultApps(id: string): GatewayPluginAppConfig[] | undefined {
-  if (id.trim().toLowerCase() !== CLAUDE_DESIGN_PLUGIN_ID) {
-    return undefined;
+  const pluginId = id.trim().toLowerCase();
+  if (pluginId === CLAUDE_DESIGN_PLUGIN_ID) {
+    return [{ ...DEFAULT_CLAUDE_DESIGN_APP }];
   }
-  return [{ ...DEFAULT_CLAUDE_DESIGN_APP }];
+  if (pluginId === CLAUDE_SHIP_PLUGIN_ID) {
+    return [{ ...DEFAULT_CLAUDE_SHIP_APP }];
+  }
+  return undefined;
 }
 
 export type GatewayMcpServerTransport = "stdio" | "streamable-http" | "sse";

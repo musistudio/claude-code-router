@@ -27,10 +27,12 @@ test("plugin permissions gate dynamic gateway route registration", { skip: !proc
       ""
     ].join("\n"), "utf8");
 
-    await assert.rejects(
-      () => pluginService.start(configWithPlugin(dir, pluginFile, ["trusted-code"])),
+    const warnings = await startWithWarnings(configWithPlugin(dir, pluginFile, ["trusted-code"]));
+    assert.match(
+      warnings.join("\n"),
       /Plugin permission-test requires permission "gateway-routes" to register gateway routes\./
     );
+    assert.equal(pluginService.hasGatewayRoutes(), false);
     await pluginService.stop();
 
     await pluginService.start(configWithPlugin(dir, pluginFile, ["trusted-code", "gateway-routes"]));
@@ -62,10 +64,12 @@ test("plugins without permissions declarations are rejected", { skip: !process.e
       ""
     ].join("\n"), "utf8");
 
-    await assert.rejects(
-      () => pluginService.start(configWithPlugin(dir, pluginFile, undefined)),
+    const warnings = await startWithWarnings(configWithPlugin(dir, pluginFile, undefined));
+    assert.match(
+      warnings.join("\n"),
       /Plugin permission-test must explicitly declare permissions to load and execute plugin JavaScript\./
     );
+    assert.equal(pluginService.hasGatewayRoutes(), false);
   } finally {
     await pluginService.stop();
     rmSync(dir, { force: true, recursive: true });
@@ -75,18 +79,20 @@ test("plugins without permissions declarations are rejected", { skip: !process.e
 test("plugin permissions gate configured browser apps", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-plugin-static-permissions-"));
   try {
-    await assert.rejects(
-      () => pluginService.start({
-        ...baseConfig(dir),
-        plugins: [{
-          apps: [{ id: "app", name: "App", url: "/app" }],
-          enabled: true,
-          id: "static-app",
-          permissions: []
-        }]
-      }),
+    const warnings = await startWithWarnings({
+      ...baseConfig(dir),
+      plugins: [{
+        apps: [{ id: "app", name: "App", url: "/app" }],
+        enabled: true,
+        id: "static-app",
+        permissions: []
+      }]
+    });
+    assert.match(
+      warnings.join("\n"),
       /Plugin static-app requires permission "apps" to register configured browser apps\./
     );
+    assert.deepEqual(pluginService.getApps(), []);
   } finally {
     await pluginService.stop();
     rmSync(dir, { force: true, recursive: true });
@@ -146,19 +152,21 @@ test("app-only plugin surface can execute trusted JavaScript and register apps",
       ""
     ].join("\n"), "utf8");
 
-    await assert.rejects(
-      () => pluginService.start({
-        ...baseConfig(dir),
-        plugins: [{
-          enabled: true,
-          id: "app-only",
-          module: pluginFile,
-          permissions: ["apps"],
-          surfaces: { gateway: false, provider: false }
-        }]
-      }),
+    const warnings = await startWithWarnings({
+      ...baseConfig(dir),
+      plugins: [{
+        enabled: true,
+        id: "app-only",
+        module: pluginFile,
+        permissions: ["apps"],
+        surfaces: { gateway: false, provider: false }
+      }]
+    });
+    assert.match(
+      warnings.join("\n"),
       /Plugin app-only requires permission "trusted-code" to load and execute plugin JavaScript\./
     );
+    assert.deepEqual(pluginService.getApps(), []);
     await pluginService.stop();
 
     await pluginService.start({
@@ -201,10 +209,12 @@ test("plugin surfaces gate dynamic gateway registration", { skip: !process.env.C
       ""
     ].join("\n"), "utf8");
 
-    await assert.rejects(
-      () => pluginService.start(configWithPlugin(dir, pluginFile, ["trusted-code", "gateway-routes"], { surfaces: { gateway: false, provider: true } })),
+    const warnings = await startWithWarnings(configWithPlugin(dir, pluginFile, ["trusted-code", "gateway-routes"], { surfaces: { gateway: false, provider: true } }));
+    assert.match(
+      warnings.join("\n"),
       /Plugin permission-test has gateway surface disabled and cannot register gateway routes\./
     );
+    assert.equal(pluginService.hasGatewayRoutes(), false);
   } finally {
     await pluginService.stop();
     rmSync(dir, { force: true, recursive: true });
@@ -243,6 +253,18 @@ function configWithPlugin(dir, pluginFile, permissions, overrides = {}) {
     ...baseConfig(dir),
     plugins: [plugin]
   };
+}
+
+async function startWithWarnings(config) {
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.map(String).join(" "));
+  try {
+    await pluginService.start(config);
+  } finally {
+    console.warn = originalWarn;
+  }
+  return warnings;
 }
 
 function baseConfig(dir) {

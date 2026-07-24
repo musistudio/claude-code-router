@@ -11,7 +11,7 @@ type MarketplaceCache = {
   url: string;
 };
 
-const defaultMarketplaceUrl = "https://raw.githubusercontent.com/musistudio/claude-code-router/main/marketplace/plugins.json";
+const defaultMarketplaceUrl = "https://raw.githubusercontent.com/musistudio/ccr-extensions/main/marketplace/plugins.json";
 const marketplaceCacheDir = path.join(DATADIR, "plugin-marketplace");
 const marketplaceModuleCacheDir = path.join(marketplaceCacheDir, "modules");
 const marketplaceManifestCacheFile = path.join(marketplaceCacheDir, "plugins.json");

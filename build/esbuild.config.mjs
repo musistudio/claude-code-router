@@ -9,6 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireFromHere = createRequire(import.meta.url);
 
 export const projectRoot = path.resolve(__dirname, "..");
+export const ccrExtensionsRoot = path.resolve(process.env.CCR_EXTENSIONS_DIR || path.join(projectRoot, "..", "ccr-extensions"));
 export const packagesRoot = path.join(projectRoot, "packages");
 export const cliRoot = path.join(packagesRoot, "cli");
 export const coreRoot = path.join(packagesRoot, "core");
@@ -51,7 +52,7 @@ export const cliMarketplacePluginsDir = path.join(cliDistDir, "marketplace", "pl
 export const coreMarketplacePluginsDir = path.join(coreDistDir, "marketplace", "plugins");
 export const electronMarketplacePluginsDir = path.join(electronDistDir, "marketplace", "plugins");
 export const marketplacePluginsDir = electronMarketplacePluginsDir;
-export const marketplacePluginsInputDir = path.join(projectRoot, "marketplace", "plugins");
+export const marketplacePluginsInputDir = path.join(ccrExtensionsRoot, "plugins");
 export const appAssetsInput = path.join(electronRoot, "assets");
 export const modelCatalogInput = path.join(coreRoot, "models.json");
 export const cliModelCatalogOutput = path.join(cliDistDir, "models.json");

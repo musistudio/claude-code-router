@@ -135,6 +135,13 @@ ipcMain.handle(IPC_CHANNELS.appOpenBuiltInBrowser, async () => {
   }
   await builtInBrowserService.open(config);
 });
+ipcMain.handle(IPC_CHANNELS.appOpenPluginApp, async (_event, pluginId: string, appId?: string) => {
+  const normalizedPluginId = readString(pluginId);
+  if (!normalizedPluginId) {
+    throw new Error("Plugin id is required.");
+  }
+  await deepLinkService.openPluginApp(normalizedPluginId, readString(appId));
+});
 ipcMain.handle(IPC_CHANNELS.appCloseTray, () => {
   trayController.hidePopover();
 });
