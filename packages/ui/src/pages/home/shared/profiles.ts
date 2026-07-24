@@ -1440,12 +1440,12 @@ export function profileSummaryItems(
   const resolvedBotGateway = savedBot?.botGateway ?? profile.botGateway ?? config.botGateway;
   const botSummaryItems = surface !== "cli" && resolvedBotGateway?.enabled && resolvedBotGateway.platform !== "none"
     ? [{ label: t("Bot"), value: `${t("Enabled")} (${savedBot ? botGatewaySavedConfigLabel(savedBot, t) : t(botGatewayPlatformLabel(resolvedBotGateway.platform))})` }]
-    : surface !== "cli" && profile.botGateway
-      ? [{ label: t("Bot"), value: t("Disabled") }]
-      : [];
+    : [];
   const managedCompactItems = profile.agent === "zcode"
     ? []
-    : [{ label: t("CCR managed compact"), value: profile.managedCompact ? t("Enabled") : t("Disabled") }];
+    : profile.managedCompact
+      ? [{ label: t("CCR managed compact"), value: t("Enabled") }]
+      : [];
   const smallFastModel = profile.smallFastModel?.trim() || "";
   const modelValue = profile.model.trim()
     ? profileModelDisplayValue(
@@ -1497,7 +1497,7 @@ export function profileSummaryItems(
   return [
     { label: t("Model"), value: modelValue },
     { label: t("Provider ID"), value: profile.providerId ?? "claude-code-router" },
-    ...(profile.agent === "zcode" || profile.agent === "opencode" ? [] : [{ label: t("Show all sessions"), value: profile.showAllSessions ? t("Enabled") : t("Disabled") }]),
+    ...(profile.agent === "zcode" || profile.agent === "opencode" || !profile.showAllSessions ? [] : [{ label: t("Show all sessions"), value: t("Enabled") }]),
     ...managedCompactItems,
     ...appPathSummaryItems,
     ...botSummaryItems,

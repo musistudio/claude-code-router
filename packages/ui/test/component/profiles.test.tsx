@@ -152,6 +152,42 @@ test("profileSummaryItems uses Kimi-specific model labels", () => {
   assert.equal(items[1]?.value, "2");
 });
 
+test("profileSummaryItems omits disabled profile properties from cards", () => {
+  const config = appConfigFixture();
+  const disabledItems = profileSummaryItems({
+    agent: "codex",
+    botGateway: { enabled: false, platform: "slack" } as NonNullable<ProfileConfig["botGateway"]>,
+    enabled: true,
+    id: "codex-main",
+    managedCompact: false,
+    model: "openai/gpt-5.2",
+    name: "Codex Main",
+    providerId: "claude-code-router",
+    scope: "ccr",
+    showAllSessions: false,
+    surface: "auto"
+  }, config, (value) => value);
+
+  assert.deepEqual(disabledItems.map((item) => item.label), ["Model", "Provider ID"]);
+  assert.doesNotMatch(disabledItems.map((item) => item.value).join(" "), /Disabled/);
+
+  const enabledItems = profileSummaryItems({
+    agent: "codex",
+    enabled: true,
+    id: "codex-main",
+    managedCompact: true,
+    model: "openai/gpt-5.2",
+    name: "Codex Main",
+    providerId: "claude-code-router",
+    scope: "ccr",
+    showAllSessions: true,
+    surface: "auto"
+  }, config, (value) => value);
+
+  assert.match(enabledItems.map((item) => item.label).join(" "), /Show all sessions/);
+  assert.match(enabledItems.map((item) => item.label).join(" "), /CCR managed compact/);
+});
+
 test("detected CHATGPT_APP_PATH is used as the Codex profile default", () => {
   const detectedPath = "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT";
   const draft = profileDraftWithDetectedAppPath(createProfileDraft("codex"), `  ${detectedPath}  `);

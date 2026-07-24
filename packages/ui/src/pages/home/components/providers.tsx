@@ -24,6 +24,7 @@ import type { LocalAgentProviderCandidate } from "@ccr/core/contracts/app";
 import type { ReactNode } from "react";
 
 const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+const emptyProviderPlugins: unknown[] = [];
 
 export function ProvidersView({ accountSnapshots, addProvider, editProvider, notify, providers, removeProvider, setProviderEnabled }: {
   accountSnapshots: ProviderAccountSnapshot[];
@@ -1975,7 +1976,7 @@ export function AddProviderForm({
   onSelectStep,
   probe,
   probeLoading,
-  providerPlugins = [],
+  providerPlugins = emptyProviderPlugins,
   providers
 }: {
   activeStep?: ProviderSetupStepId;
@@ -2013,6 +2014,10 @@ export function AddProviderForm({
   const detectedBaseUrl = providerCapabilityBaseUrlForProtocol(draft.baseUrl, detectedProtocol, probe);
   const safetyIssue = providerDraftSafetyIssue(draft, detectedBaseUrl);
   const localAgentImport = draft.providerPlugins.length > 0;
+  const localAgentProviderPlugins = useMemo(
+    () => [...providerPlugins, ...draft.providerPlugins],
+    [draft.providerPlugins, providerPlugins]
+  );
   const manualProtocolDetection = draft.protocolDetectionMode === "manual";
   const providerPresetOptions = [
     { iconUrl: draft.icon, label: t("Other / custom API endpoint"), value: customProviderPresetId },
@@ -2265,7 +2270,7 @@ export function AddProviderForm({
                 <LocalAgentProviderImportPanel
                   mode={mode}
                   onChange={onChange}
-                  providerPlugins={[...providerPlugins, ...draft.providerPlugins]}
+                  providerPlugins={localAgentProviderPlugins}
                   providers={providers}
                 />
                 <div className="block min-w-0 space-y-1 sm:col-span-2">
@@ -3159,7 +3164,7 @@ export function AddProviderDialog({
   onSubmit,
   probe,
   probeLoading,
-  providerPlugins = [],
+  providerPlugins = emptyProviderPlugins,
   providers,
   submitLabel,
   title
