@@ -2,7 +2,7 @@
 title: Agent 配置档案
 pageTitle: Agent 配置档案
 eyebrow: 详细配置
-lead: 为 Claude Code、Codex、Grok CLI、Kimi CLI、ZCode 创建可复用的启动配置，并通过不同配置打开不同的 Agent 实例。
+lead: 为 Claude Code、Codex、Grok CLI、Kimi CLI、Pi、ZCode 创建可复用的启动配置，并通过不同配置打开不同的 Agent 实例。
 ---
 
 ## 配置流程
@@ -14,7 +14,7 @@ lead: 为 Claude Code、Codex、Grok CLI、Kimi CLI、ZCode 创建可复用的�
 5. 如果入口模式包含 App，可以绑定 Bot，并选择是否转发 Agent 消息或开启接力。
 6. 保存后，从 Agent 配置档案卡片打开：终端图标会复制 CLI 命令，播放图标会启动 App 实例。
 
-试用阶段建议选择 **仅从 CCR 打开时生效**，并且总是从 CCR 打开 Agent。这样配置只影响 CCR 启动的实例，不会改掉你系统里原本直接打开的 Claude Code、Codex、Grok CLI、Kimi CLI 或 ZCode。
+试用阶段建议选择 **仅从 CCR 打开时生效**，并且总是从 CCR 打开 Agent。这样配置只影响 CCR 启动的实例，不会改掉你系统里原本直接打开的 Claude Code、Codex、Grok CLI、Kimi CLI、Pi 或 ZCode。
 
 ## 多开机制
 
@@ -22,8 +22,8 @@ lead: 为 Claude Code、Codex、Grok CLI、Kimi CLI、ZCode 创建可复用的�
 
 | 机制 | 实际行为 |
 | --- | --- |
-| 独立配置文件 | 选择“仅从 CCR 打开时生效”时，Claude Code 和 Codex 会写入 CCR 管理的独立配置目录，路径按配置 `id` 区分 |
-| 独立启动器 | Claude Code、Grok CLI 和 Kimi CLI 使用独立启动包装器，Codex 和 ZCode 使用独立中间层启动器，文件名同样按配置 `id` 或名称区分 |
+| 独立配置文件 | 选择“仅从 CCR 打开时生效”时，Claude Code、Codex、OpenCode、Kimi CLI 和 Pi 会写入 CCR 管理的独立配置或 home 目录，路径按配置 `id` 区分 |
+| 独立启动器 | Claude Code、Grok CLI、Kimi CLI、Pi 和 OpenCode 使用独立启动包装器，Codex 和 ZCode 使用独立中间层启动器，文件名同样按配置 `id` 或名称区分 |
 | 独立 App 数据目录 | 从 App 打开时，Claude App、ChatGPT（Codex 桌面端的新名称）、ZCode App 都会使用按配置 `id` 区分的用户数据目录 |
 | 运行状态 | CCR 按打开入口和配置 `id` 记录运行中的 App 实例；同一个配置再次打开会激活已有窗口，不同配置可以打开不同实例 |
 
@@ -33,12 +33,12 @@ lead: 为 Claude Code、Codex、Grok CLI、Kimi CLI、ZCode 创建可复用的�
 
 | 选项 | 适用范围 | 说明 |
 | --- | --- | --- |
-| Agent | 全部 | 选择 Claude Code、Codex、OpenCode、Grok CLI、Kimi CLI 或 ZCode。Grok CLI 和 Kimi CLI 只支持 CLI，ZCode 只支持 App。 |
+| Agent | 全部 | 选择 Claude Code、Codex、OpenCode、Grok CLI、Kimi CLI、Pi 或 ZCode。Grok CLI、Kimi CLI 和 Pi 只支持 CLI，ZCode 只支持 App。 |
 | 配置名称 | 全部 | 用于在 CCR 中识别配置，也会作为 `ccr-app <配置名称>` 的打开目标。名称可以有空格，复制命令时 CCR 会自动加引号。 |
 | 启用开关 | 全部 | 关闭后该配置不会出现在打开入口中，也不会被应用为有效启动配置。 |
 | 作用范围 | 全部 | **仅从 CCR 打开时生效** 会使用 CCR 管理的独立配置；**系统默认** 会写入对应 Agent 的默认配置。同一个 Agent 同时只能有一个启用的系统默认配置。 |
-| 入口模式 | Claude Code、Codex、OpenCode、Grok CLI、Kimi CLI | `CLI & APP` 同时显示 CLI 和 App 打开入口；`CLI only` 只生成 CLI 命令；`App only` 只显示 App 打开入口。Grok CLI 和 Kimi CLI 固定为 `CLI only`。 |
-| 模型 | 全部 | 该 Agent 打开后的默认模型，可以选择普通供应商模型或 Fusion 模型。Claude Code 留空表示保留 Claude Code 默认模型。 |
+| 入口模式 | Claude Code、Codex、OpenCode、Grok CLI、Kimi CLI、Pi | `CLI & APP` 同时显示 CLI 和 App 打开入口；`CLI only` 只生成 CLI 命令；`App only` 只显示 App 打开入口。Grok CLI、Kimi CLI 和 Pi 固定为 `CLI only`。 |
+| 模型 | 全部 | 该 Agent 打开后的默认模型，可以选择普通供应商模型或 Fusion 模型。Claude Code 必须填写该值。 |
 | 可用模型 | Kimi CLI | Kimi `/model` 命令中可切换的模型；默认模型始终包含在内。 |
 | Bot | App 入口 | 只有从 CCR 打开的 App 模式会转发 Bot 消息。CLI 当前不转发 Bot 消息。 |
 | 环境变量 | 全部 | 为该配置注入额外环境变量。Claude Code 默认带 `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1`，用于启用网关模型发现。 |
@@ -49,8 +49,8 @@ lead: 为 Claude Code、Codex、Grok CLI、Kimi CLI、ZCode 创建可复用的�
 
 | 配置项 | 作用 |
 | --- | --- |
-| 模型覆盖 | 写入 Claude Code 使用的 `ANTHROPIC_MODEL`。留空时不覆盖 Claude Code 自己的默认模型。 |
-| 小模型 | 写入 `ANTHROPIC_SMALL_FAST_MODEL`，供 Claude Code 的轻量任务使用。留空时保留 Claude Code 默认值。 |
+| 默认模型 | 必填。写入 Claude Code 使用的 `ANTHROPIC_MODEL`。 |
+| Fable / Opus / Sonnet / Haiku 模型 | 通过 `ANTHROPIC_DEFAULT_FABLE_MODEL`、`ANTHROPIC_DEFAULT_OPUS_MODEL`、`ANTHROPIC_DEFAULT_SONNET_MODEL`、`ANTHROPIC_DEFAULT_HAIKU_MODEL` 写入 Claude Code 模型别名。任一别名留空时保留 Claude Code 默认值；旧的 `smallFastModel` 配置会迁移为 Haiku 别名。 |
 | 设置文件 | 系统默认模式使用 Claude Code 默认设置文件；仅从 CCR 打开时生效会在 CCR 配置目录下按 Agent 配置档案 `id` 生成独立设置文件。 |
 | 环境变量 | 会合并到 Claude Code 设置文件的 `env` 中。CCR 同时写入网关地址、API Key helper 和启动包装器。 |
 | Bot | 只在 Claude App 入口生效，可选择已保存 Bot，并配置转发 Agent 消息或接力。 |
@@ -107,6 +107,15 @@ Grok CLI 配置固定为 **仅从 CCR 打开时生效** 和 **CLI only**。保�
 
 Kimi CLI 配置固定为 **仅从 CCR 打开时生效** 和 **CLI only**。请选择一个默认模型以及一个或多个可用模型。生成的包装器会把 `KIMI_CODE_HOME` 指向配置专属目录，其中的 `config.toml` 定义私有的 OpenAI 兼容 CCR 供应商，并为每个选中模型生成模型项，因此可在 Kimi 内使用 `/model` 切换且不会绕过 CCR。CCR 会保留来源配置中的非供应商设置，并复用可用的会话、技能、插件、MCP 配置和凭据，不会改写原始 `~/.kimi-code/config.toml`。CCR Desktop 未运行时，启动器会创建共享的临时网关，并在最后一个受管 Kimi 会话退出后停止。
 
+### Pi
+
+| 配置项 | 作用 |
+| --- | --- |
+| Pi model | 可选的 Pi 默认模型；留空时 CCR 使用第一个可用网关模型。 |
+| 环境变量 | 注入 Pi 启动包装器。如果真实 Pi 可执行文件不在 `pi` 命令上，可设置 `CCR_PI_BIN` 或 `PI_BIN`。`PI_CODING_AGENT_DIR`、`PI_CODING_AGENT_SESSION_DIR` 和 `PI_SKIP_VERSION_CHECK` 由 CCR 管理。 |
+
+Pi 配置固定为 **仅从 CCR 打开时生效** 和 **CLI only**。CCR 会在配置专属 `PI_CODING_AGENT_DIR` 下写入 `models.json`，其中的供应商使用本地 CCR `/v1` 网关作为 OpenAI Responses 端点，并使用该配置专属 CCR API Key。生成的包装器会设置 `PI_CODING_AGENT_DIR` 和 `PI_CODING_AGENT_SESSION_DIR`，然后用 `--provider` 与 `--model` 启动 Pi，使请求继续经过 CCR。CCR Desktop 未运行时，该启动器会启动其他 CLI-only 配置共用的受管临时网关。
+
 ### ZCode
 
 | 配置项 | 作用 |
@@ -159,6 +168,10 @@ Grok CLI 只支持 CLI。CCR 通过配置专属包装器启动它，注入 CCR �
 ### Kimi CLI
 
 Kimi CLI 只支持 CLI。CCR 通过配置专属包装器和生成的 Kimi home 启动它，其中包含默认模型和所有选中的可用模型。每个模型项都使用 CCR 网关和配置专属 API Key，因此 `/model` 切换后仍经过 CCR；用户原有的 Kimi 配置不会被改写。
+
+### Pi
+
+Pi 只支持 CLI。CCR 通过配置专属包装器、生成的 `PI_CODING_AGENT_DIR` 和生成的 `models.json` 启动它。Pi 供应商使用 CCR 的 OpenAI Responses 网关和配置专属 API Key；包装器会把选中的 provider 和 model 传给真实 Pi 可执行文件，但不会导入 Pi 登录态。
 
 ### ZCode
 

@@ -131,9 +131,13 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
     profile: {
       claudeCode: {
         enabled: true,
+        fableModel: "",
+        haikuModel: "",
         managedCompact: false,
         model: "",
+        opusModel: "",
         settingsFile: "~/.claude/settings.json",
+        sonnetModel: "",
         smallFastModel: ""
       },
       codex: {
@@ -155,12 +159,16 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
           agent: "claude-code",
           enabled: true,
           env: { ...CLAUDE_CODE_DEFAULT_ENV },
+          fableModel: "",
+          haikuModel: "",
           id: "default-claude-code",
           managedCompact: false,
           model: "",
           name: "Claude Code",
+          opusModel: "",
           scope: "global",
           settingsFile: "~/.claude/settings.json",
+          sonnetModel: "",
           smallFastModel: "",
           surface: "auto"
         },

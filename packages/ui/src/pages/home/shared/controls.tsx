@@ -378,10 +378,34 @@ import { routeTargetOptions } from "./providers";
 import { createKeyValueDraftRow } from "./virtual-models";
 import type { KeyValueDraftRow } from "./types";
 
-export function Field({ children, className, label }: { children: React.ReactNode; className?: string; label: string }) {
+export function Field({
+  children,
+  className,
+  label,
+  requirement,
+  requirementLabel
+}: {
+  children: React.ReactNode;
+  className?: string;
+  label: string;
+  requirement?: "optional" | "required";
+  requirementLabel?: string;
+}) {
   return (
     <Label className={cn("block min-w-0 space-y-1", className)}>
-      <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+        {requirement ? (
+          <span className={cn(
+            "shrink-0 rounded border px-1 py-0 text-[9px] font-semibold uppercase leading-3 tracking-wide",
+            requirement === "required"
+              ? "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+              : "border-border bg-muted/35 text-muted-foreground"
+          )}>
+            {requirementLabel ?? (requirement === "required" ? "Required" : "Optional")}
+          </span>
+        ) : null}
+      </span>
       {children}
     </Label>
   );

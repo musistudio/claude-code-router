@@ -1278,7 +1278,7 @@ export const DEFAULT_TRAY_WIDGETS: TrayWidgetConfig[] = [
   { id: "model-share", type: "model-share", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.modelShare }
 ];
 
-export type ProfileClientKind = "claude-code" | "codex" | "grok" | "kimi" | "opencode" | "zcode";
+export type ProfileClientKind = "claude-code" | "codex" | "grok" | "kimi" | "opencode" | "pi" | "zcode";
 export type CodexProfileConfigFormat = "legacy" | "separate_profile_files";
 export type CodexRemoteFrontendMode = "app" | "cli" | "claude-code";
 export type ProfileScope = "ccr" | "global" | "custom";
@@ -1287,9 +1287,13 @@ export type ProfileOpenSurface = "cli" | "app";
 
 export type ClaudeCodeProfileConfig = {
   enabled: boolean;
+  fableModel: string;
+  haikuModel: string;
   managedCompact: boolean;
   model: string;
+  opusModel: string;
   settingsFile: string;
+  sonnetModel: string;
   smallFastModel: string;
 };
 
@@ -1321,16 +1325,20 @@ export type ProfileConfig = {
   configFormat?: CodexProfileConfigFormat;
   enabled: boolean;
   env?: Record<string, string>;
+  fableModel?: string;
+  haikuModel?: string;
   id: string;
   managedCompact?: boolean;
   model: string;
   name: string;
+  opusModel?: string;
   providerId?: string;
   providerName?: string;
   remoteFrontendMode?: CodexRemoteFrontendMode;
   scope?: ProfileScope;
   showAllSessions?: boolean;
   settingsFile?: string;
+  sonnetModel?: string;
   smallFastModel?: string;
   surface?: ProfileSurface;
 };
@@ -2059,7 +2067,7 @@ export type UsageStatsSnapshot = {
   totals: UsageTotals;
 };
 
-export type AgentKind = "claude-code" | "codex" | "grok" | "kimi" | "opencode" | "zcode" | "claude-design" | "unknown";
+export type AgentKind = "claude-code" | "codex" | "grok" | "kimi" | "opencode" | "pi" | "zcode" | "claude-design" | "unknown";
 
 export type AgentAnalysisFilter = {
   agent?: AgentKind | "all";

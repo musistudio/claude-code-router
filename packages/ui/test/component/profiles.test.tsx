@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ProfileConfig } from "@ccr/core/contracts/app.ts";
 import { AddProfileForm, DeleteProfileDialog, ProfileView } from "@ccr/ui/pages/home/components/profiles.tsx";
 import { AppI18nContext, appCopy } from "@ccr/ui/pages/home/shared/i18n.tsx";
-import { createProfileDraft, normalizeUnknownProfileItem, profileDraftWithDetectedAppPath, profileSummaryItems } from "@ccr/ui/pages/home/shared/profiles.ts";
+import { createProfileDraft, isProfileDraftSubmittable, normalizeUnknownProfileItem, profileDraftWithDetectedAppPath, profileSummaryItems } from "@ccr/ui/pages/home/shared/profiles.ts";
 import { appConfigFixture } from "../fixtures/index.ts";
 
 const profile: ProfileConfig = {
@@ -61,6 +61,37 @@ test("AddProfileForm does not show the profile requirements panel", () => {
   assert.doesNotMatch(html, /Profile guidance/);
 });
 
+test("AddProfileForm marks required and optional fields", () => {
+  const config = appConfigFixture();
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={config.botConfigs}
+      draft={createProfileDraft("claude-code")}
+      error=""
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={config.Providers}
+      virtualModelProfiles={config.virtualModelProfiles}
+    />
+  );
+
+  assert.equal(html.match(/>Required<\/span>/g)?.length, 5);
+  assert.equal(html.match(/>Optional<\/span>/g)?.length, 4);
+  assert.match(html, /Default model/);
+  assert.match(html, /Default model is required\./);
+  assert.match(html, /Fable model/);
+  assert.match(html, /Opus model/);
+  assert.match(html, /Sonnet model/);
+  assert.match(html, /Haiku model/);
+});
+
+test("Claude Code profiles require a default model before submission", () => {
+  const draft = createProfileDraft("claude-code");
+
+  assert.equal(isProfileDraftSubmittable(draft), false);
+  assert.equal(isProfileDraftSubmittable({ ...draft, model: "anthropic/claude-sonnet-4-5" }), true);
+});
+
 test("AddProfileForm labels Kimi CLI model fields with Kimi-specific copy", () => {
   const config = appConfigFixture();
   const html = renderToStaticMarkup(
@@ -79,6 +110,28 @@ test("AddProfileForm labels Kimi CLI model fields with Kimi-specific copy", () =
   assert.match(html, /Allowed models/);
   assert.doesNotMatch(html, /Default model/);
   assert.doesNotMatch(html, /Available models/);
+});
+
+test("AddProfileForm treats Pi as a CCR-only CLI profile", () => {
+  const config = appConfigFixture();
+  const draft = createProfileDraft("pi");
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={config.botConfigs}
+      draft={draft}
+      error=""
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={config.Providers}
+      virtualModelProfiles={config.virtualModelProfiles}
+    />
+  );
+
+  assert.equal(isProfileDraftSubmittable(draft), true);
+  assert.match(html, /Pi model/);
+  assert.doesNotMatch(html, /Provider ID/);
+  assert.doesNotMatch(html, /Provider name/);
+  assert.doesNotMatch(html, /Allowed models/);
 });
 
 test("ProfileView renders agent profiles as compact cards with inline actions", () => {
@@ -116,7 +169,7 @@ test("ProfileView renders agent profiles as compact cards with inline actions", 
   );
 
   assert.equal(html.match(/aria-label="(?:Claude Code Main|ZCode Main) Profile actions"/g)?.length, 2);
-  assert.match(html, /grid-template-columns:repeat\(auto-fill,minmax\(min\(100%,320px\),420px\)\)/);
+  assert.match(html, /grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,420px\),1fr\)\)/);
   assert.match(html, /min-h-\[220px\]/);
   assert.match(html, /class="flex min-w-0 items-center gap-2"/);
   assert.match(html, /Configuration/);
@@ -150,6 +203,57 @@ test("profileSummaryItems uses Kimi-specific model labels", () => {
   assert.equal(items[0]?.label, "Kimi model");
   assert.equal(items[1]?.label, "Allowed models");
   assert.equal(items[1]?.value, "2");
+});
+
+test("profileSummaryItems uses Pi-specific model labels", () => {
+  const config = appConfigFixture();
+  const items = profileSummaryItems({
+    agent: "pi",
+    enabled: true,
+    id: "pi-main",
+    model: "openai/gpt-5.2",
+    name: "Pi Main",
+    scope: "ccr",
+    surface: "cli"
+  }, config, (value) => value);
+
+  assert.equal(items[0]?.label, "Pi model");
+});
+
+test("profileSummaryItems omits disabled profile properties from cards", () => {
+  const config = appConfigFixture();
+  const disabledItems = profileSummaryItems({
+    agent: "codex",
+    botGateway: { enabled: false, platform: "slack" } as NonNullable<ProfileConfig["botGateway"]>,
+    enabled: true,
+    id: "codex-main",
+    managedCompact: false,
+    model: "openai/gpt-5.2",
+    name: "Codex Main",
+    providerId: "claude-code-router",
+    scope: "ccr",
+    showAllSessions: false,
+    surface: "auto"
+  }, config, (value) => value);
+
+  assert.deepEqual(disabledItems.map((item) => item.label), ["Model", "Provider ID"]);
+  assert.doesNotMatch(disabledItems.map((item) => item.value).join(" "), /Disabled/);
+
+  const enabledItems = profileSummaryItems({
+    agent: "codex",
+    enabled: true,
+    id: "codex-main",
+    managedCompact: true,
+    model: "openai/gpt-5.2",
+    name: "Codex Main",
+    providerId: "claude-code-router",
+    scope: "ccr",
+    showAllSessions: true,
+    surface: "auto"
+  }, config, (value) => value);
+
+  assert.match(enabledItems.map((item) => item.label).join(" "), /Show all sessions/);
+  assert.match(enabledItems.map((item) => item.label).join(" "), /CCR managed compact/);
 });
 
 test("detected CHATGPT_APP_PATH is used as the Codex profile default", () => {

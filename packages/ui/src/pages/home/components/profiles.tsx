@@ -72,8 +72,8 @@ export function ProfileView({
             </div>
           </div>
         </CardHeader>
-        <CardContent className="min-h-0 flex-1 overflow-auto">
-          <div className="grid gap-3 justify-start [grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),420px))]">
+        <CardContent className="min-h-0 flex-1 overflow-auto max-[720px]:p-3">
+          <div className="grid min-w-0 gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))] max-[720px]:gap-2.5">
             {profiles.length === 0 ? (
               <div className="col-span-full flex h-32 items-center justify-center rounded-md border border-dashed border-border bg-muted/20 text-[12px] text-muted-foreground">
                 {t("No profiles configured")}
@@ -522,7 +522,7 @@ function ProfileAgentTabs({
   return (
     <div
       aria-label={t("Agent profiles")}
-      className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-5"
+      className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-6"
       role="tablist"
     >
       {profileAgentOptions.map((option) => {
@@ -748,6 +748,8 @@ export function AddProfileForm({
   const availableModelCount = modelProviderOptions.reduce((count, provider) => count + provider.models.length, 0);
   const modelPlaceholder = firstProfileModelPlaceholder(modelProviderOptions);
   const validation = profileDraftValidation(draft, botConfigs, availableModelCount);
+  const optionalFieldLabel = t("Optional");
+  const requiredFieldLabel = t("Required");
   const advancedIssueCount = [
     validation.providerId,
     validation.providerName,
@@ -790,9 +792,9 @@ export function AddProfileForm({
         onDragOver={showAppPathField ? handleAppPathDragOver : undefined}
         onDrop={showAppPathField ? handleAppPathDrop : undefined}
       >
-        <Field label={t("Agent")}>
+        <Field label={t("Agent")} requirement="required" requirementLabel={requiredFieldLabel}>
           <AgentSelectControl
-            onChange={(agent) => onChange(agent === "grok" || agent === "kimi"
+            onChange={(agent) => onChange(agent === "grok" || agent === "kimi" || agent === "pi"
               ? {
                   agent,
                   availableModels: [],
@@ -809,15 +811,15 @@ export function AddProfileForm({
             value={draft.agent}
           />
         </Field>
-        <Field label={t("Profile name")}>
+        <Field label={t("Profile name")} requirement="required" requirementLabel={requiredFieldLabel}>
           <Input value={draft.name} onChange={(event) => onChange({ name: event.target.value })} />
           {validation.name ? <ProfileFieldHint>{t(validation.name)}</ProfileFieldHint> : null}
         </Field>
-        <Field label={t("Effect scope")}>
+        <Field label={t("Effect scope")} requirement="required" requirementLabel={requiredFieldLabel}>
           <SelectControl
             onChange={(scope) => onChange({ scope: normalizeProfileScope(scope) })}
             options={translateOptions(
-              draft.agent === "grok" || draft.agent === "kimi"
+              draft.agent === "grok" || draft.agent === "kimi" || draft.agent === "pi"
                 ? profileScopeOptions.filter((option) => option.value === "ccr")
                 : profileScopeOptions,
               t
@@ -825,7 +827,7 @@ export function AddProfileForm({
             value={draft.scope}
           />
         </Field>
-        <Field label={t("Entry mode")}>
+        <Field label={t("Entry mode")} requirement="required" requirementLabel={requiredFieldLabel}>
           <SelectControl
             onChange={(surface) => {
               const nextSurface = normalizeProfileSurface(surface);
@@ -841,7 +843,7 @@ export function AddProfileForm({
             options={translateOptions(
               draft.agent === "zcode"
                 ? profileSurfaceOptions.filter((option) => option.value === "app")
-                : draft.agent === "grok" || draft.agent === "kimi"
+                : draft.agent === "grok" || draft.agent === "kimi" || draft.agent === "pi"
                   ? profileSurfaceOptions.filter((option) => option.value === "cli")
                 : profileSurfaceOptions,
               t
@@ -851,27 +853,65 @@ export function AddProfileForm({
         </Field>
         {draft.agent === "claude-code" ? (
           <>
-            <Field label={t("Model override")}>
+            <Field label={t("Default model")} requirement="required" requirementLabel={requiredFieldLabel}>
               <ModelSelector
-                placeholder={t("Keep Claude Code default")}
+                placeholder={modelPlaceholder || t("Select default model")}
                 providers={providers}
                 value={draft.model}
                 virtualModelProfiles={virtualModelProfiles}
                 onChange={(model) => onChange({ model })}
               />
+              {validation.defaultModel ? <ProfileFieldHint>{t(validation.defaultModel)}</ProfileFieldHint> : null}
             </Field>
-            <Field label={t("Small fast model")}>
+            <Field label={t("Fable model")} requirement="optional" requirementLabel={optionalFieldLabel}>
               <ModelSelector
                 placeholder={t("Keep Claude Code default")}
                 providers={providers}
-                value={draft.smallFastModel}
+                value={draft.fableModel}
                 virtualModelProfiles={virtualModelProfiles}
-                onChange={(smallFastModel) => onChange({ smallFastModel })}
+                onChange={(fableModel) => onChange({ fableModel })}
+              />
+            </Field>
+            <Field label={t("Opus model")} requirement="optional" requirementLabel={optionalFieldLabel}>
+              <ModelSelector
+                placeholder={t("Keep Claude Code default")}
+                providers={providers}
+                value={draft.opusModel}
+                virtualModelProfiles={virtualModelProfiles}
+                onChange={(opusModel) => onChange({ opusModel })}
+              />
+            </Field>
+            <Field label={t("Sonnet model")} requirement="optional" requirementLabel={optionalFieldLabel}>
+              <ModelSelector
+                placeholder={t("Keep Claude Code default")}
+                providers={providers}
+                value={draft.sonnetModel}
+                virtualModelProfiles={virtualModelProfiles}
+                onChange={(sonnetModel) => onChange({ sonnetModel })}
+              />
+            </Field>
+            <Field label={t("Haiku model")} requirement="optional" requirementLabel={optionalFieldLabel}>
+              <ModelSelector
+                placeholder={t("Keep Claude Code default")}
+                providers={providers}
+                value={draft.haikuModel}
+                virtualModelProfiles={virtualModelProfiles}
+                onChange={(haikuModel) => onChange({ haikuModel, smallFastModel: haikuModel })}
               />
             </Field>
           </>
         ) : draft.agent === "grok" ? (
-          <Field className="sm:col-span-2" label={t("Grok model")}>
+          <Field className="sm:col-span-2" label={t("Grok model")} requirement="optional" requirementLabel={optionalFieldLabel}>
+            <ModelSelector
+              placeholder={modelPlaceholder}
+              providers={providers}
+              value={draft.model}
+              virtualModelProfiles={virtualModelProfiles}
+              onChange={(model) => onChange({ model })}
+            />
+          </Field>
+        ) : draft.agent === "pi" ? (
+          <Field className="sm:col-span-2" label={t("Pi model")} requirement="optional" requirementLabel={optionalFieldLabel}>
             <ModelSelector
               placeholder={modelPlaceholder}
               providers={providers}
@@ -882,7 +922,7 @@ export function AddProfileForm({
           </Field>
         ) : draft.agent === "kimi" ? (
           <>
-            <Field className="sm:col-span-2" label={t("Kimi model")}>
+            <Field className="sm:col-span-2" label={t("Kimi model")} requirement="required" requirementLabel={requiredFieldLabel}>
               <ModelSelector
                 placeholder={modelPlaceholder}
                 providers={providers}
@@ -897,7 +937,7 @@ export function AddProfileForm({
               />
               {validation.kimiModel ? <ProfileFieldHint>{t(validation.kimiModel)}</ProfileFieldHint> : null}
             </Field>
-            <Field className="sm:col-span-2" label={t("Allowed models")}>
+            <Field className="sm:col-span-2" label={t("Allowed models")} requirement="required" requirementLabel={requiredFieldLabel}>
               <ModelMultiSelector
                 providers={providers}
                 value={draft.availableModels}
@@ -912,7 +952,7 @@ export function AddProfileForm({
           </>
         ) : (
           <>
-            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : "Codex model")}>
+            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : "Codex model")} requirement="optional" requirementLabel={optionalFieldLabel}>
               <ModelSelector
                 placeholder={modelPlaceholder}
                 providers={providers}
@@ -951,7 +991,7 @@ export function AddProfileForm({
               >
                 <div className="mt-3 grid grid-cols-1 gap-3 rounded-md border border-border bg-background/60 p-3 sm:grid-cols-2">
                   {showAppPathField && appPathLabel ? (
-                    <Field className="sm:col-span-2" label={t(appPathLabel)}>
+                    <Field className="sm:col-span-2" label={t(appPathLabel)} requirement="optional" requirementLabel={optionalFieldLabel}>
                       <div className={cn(
                         "rounded-md border border-border bg-background p-1 transition-colors",
                         appPathDragActive ? "border-primary bg-primary/5" : "border-border"
@@ -964,13 +1004,13 @@ export function AddProfileForm({
                       </div>
                     </Field>
                   ) : null}
-                  {draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" ? (
+                  {draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" && draft.agent !== "pi" ? (
                     <>
-                      <Field label={t("Provider ID")}>
+                      <Field label={t("Provider ID")} requirement="required" requirementLabel={requiredFieldLabel}>
                         <Input value={draft.providerId} onChange={(event) => onChange({ providerId: event.target.value })} />
                         {validation.providerId ? <ProfileFieldHint>{t(validation.providerId)}</ProfileFieldHint> : null}
                       </Field>
-                      <Field label={t("Provider name")}>
+                      <Field label={t("Provider name")} requirement="required" requirementLabel={requiredFieldLabel}>
                         <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
                         {validation.providerName ? <ProfileFieldHint>{t(validation.providerName)}</ProfileFieldHint> : null}
                       </Field>
@@ -998,7 +1038,7 @@ export function AddProfileForm({
                       {validation.handoff ? <ProfileFieldHint>{t(validation.handoff)}</ProfileFieldHint> : null}
                     </div>
                   ) : null}
-                  <Field className="sm:col-span-2" label={t("Environment variables")}>
+                  <Field className="sm:col-span-2" label={t("Environment variables")} requirement="optional" requirementLabel={optionalFieldLabel}>
                     <KeyValueRowsControl
                       addLabel={t("Add env variable")}
                       rows={draft.envRows}
@@ -1041,13 +1081,16 @@ function profileDraftValidation(
   draft: AddProfileDraft,
   botConfigs: BotGatewaySavedConfig[],
   availableModelCount: number
-): Partial<Record<"bot" | "env" | "handoff" | "kimiAvailableModels" | "kimiModel" | "models" | "name" | "providerId" | "providerName", string>> {
-  const issues: Partial<Record<"bot" | "env" | "handoff" | "kimiAvailableModels" | "kimiModel" | "models" | "name" | "providerId" | "providerName", string>> = {};
+): Partial<Record<"bot" | "defaultModel" | "env" | "handoff" | "kimiAvailableModels" | "kimiModel" | "models" | "name" | "providerId" | "providerName", string>> {
+  const issues: Partial<Record<"bot" | "defaultModel" | "env" | "handoff" | "kimiAvailableModels" | "kimiModel" | "models" | "name" | "providerId" | "providerName", string>> = {};
   if (!draft.name.trim()) {
     issues.name = "Profile name is required.";
   }
   if (availableModelCount === 0) {
     issues.models = "Configure at least one enabled provider model before saving an agent profile.";
+  }
+  if (draft.agent === "claude-code" && !draft.model.trim()) {
+    issues.defaultModel = "Default model is required.";
   }
   if (draft.agent === "kimi") {
     if (!draft.model.trim()) {
@@ -1057,7 +1100,7 @@ function profileDraftValidation(
       issues.kimiAvailableModels = "Select at least one allowed model.";
     }
   }
-  if (draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi") {
+  if (draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" && draft.agent !== "pi") {
     if (!draft.providerId.trim()) {
       issues.providerId = "Provider ID is required.";
     }
@@ -1170,6 +1213,7 @@ function BotGatewaySelectForm({
 }) {
   const t = useAppText();
   const formatError = useAppErrorText();
+  const requiredFieldLabel = t("Required");
   const options = [
     { label: t("None"), value: "none" },
     ...botConfigs.map((config) => ({ label: botGatewaySavedConfigLabel(config, t), value: config.id })),
@@ -1287,7 +1331,7 @@ function BotGatewaySelectForm({
       </div>
       {draft.botEnabled ? (
         <div className="mt-3 space-y-3 border-t border-border/70 pt-3">
-          <Field label={t("Select bot")}>
+          <Field label={t("Select bot")} requirement="required" requirementLabel={requiredFieldLabel}>
             <SelectControl onChange={updateBot} options={options} value={selectedValue} />
           </Field>
           {selectedBot ? (
@@ -1303,7 +1347,7 @@ function BotGatewaySelectForm({
                 </div>
                 {draft.botHandoffEnabled ? (
                   <div className="mt-3 grid grid-cols-1 gap-3 border-t border-border/70 pt-3 sm:grid-cols-2">
-                    <Field label={t("Idle seconds")}>
+                    <Field label={t("Idle seconds")} requirement="required" requirementLabel={requiredFieldLabel}>
                       <Input
                         min={30}
                         max={86400}

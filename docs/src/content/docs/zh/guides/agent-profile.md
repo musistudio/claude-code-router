@@ -2,7 +2,7 @@
 title: 接入 Agent 配置档案
 pageTitle: 接入 Agent 配置档案
 eyebrow: 快速开始
-lead: 让 Claude Code、Codex、Grok CLI、Kimi CLI、ZCode 等 Agent 使用 CCR 的供应商、路由和模型选择配置。
+lead: 让 Claude Code、Codex、Grok CLI、Kimi CLI、Pi、ZCode 等 Agent 使用 CCR 的供应商、路由和模型选择配置。
 ---
 
 ## 通用建议
@@ -31,10 +31,14 @@ lead: 让 Claude Code、Codex、Grok CLI、Kimi CLI、ZCode 等 Agent 使用 CCR
 
 选择 Kimi CLI、设置默认模型和一个或多个可用 CCR 模型，然后运行复制出的 `ccr-app <配置名称>` 命令。CCR 会通过配置专属 `KIMI_CODE_HOME` 启动 Kimi，并在其中生成 `config.toml`，把所有选中模型注册到本地 CCR 网关。进入 Kimi 后可使用 `/model` 在这些模型之间切换。用户原有的 `~/.kimi-code/config.toml` 不会被改写；可用时，会继续复用来源 Kimi home 中的会话、技能、插件、MCP 配置和凭据。CCR Desktop 未运行时，该包装器同样可以启动受管的临时网关。
 
+## Pi
+
+选择 Pi，可选设置默认模型，然后运行复制出的 `ccr-app <配置名称>` 命令。CCR 会创建配置专属 `PI_CODING_AGENT_DIR`，写入使用 CCR 网关作为 OpenAI Responses 供应商的本地 `models.json`，并用生成的 provider 和 model 参数启动 Pi。这个配置路径不会导入 Pi 登录态；它使用 CCR 配置专属 API Key 和常规 CCR 路由。
+
 ## ZCode
 
 ZCode 主要关注模型、供应商 ID、供应商名称，以及是否从 CCR 启动。它走 App surface，不需要 Codex CLI 的路径字段。
 
 ## 复用本机已登录的 Agent
 
-如果本机已经登录过 Claude Code、Codex、Grok CLI、Kimi CLI 或 ZCode，可以在 **供应商** 中导入为 **本机 Agent 供应商**，复用已有授权，不必额外申请 Key。Kimi CLI 支持从 `~/.kimi-code/config.toml` 导入受管 OAuth 登录态和 API Key 供应商。
+如果本机已经登录过 Claude Code、Codex、Grok CLI、Kimi CLI 或 ZCode，可以在 **供应商** 中导入为 **本机 Agent 供应商**，复用已有授权，不必额外申请 Key。Kimi CLI 支持从 `~/.kimi-code/config.toml` 导入受管 OAuth 登录态和 API Key 供应商。Pi 配置不会导入 Pi 登录态；它使用生成的 CCR 供应商配置和配置专属 CCR API Key。

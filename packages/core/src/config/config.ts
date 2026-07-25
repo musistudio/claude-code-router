@@ -2581,6 +2581,22 @@ function parseProfile(value: unknown): LoadedProfileConfig | undefined {
     if (model !== undefined) {
       profile.claudeCode.model = model;
     }
+    const fableModel = readString(claudeCode.fableModel) || readString(claudeCode.defaultFableModel);
+    if (fableModel !== undefined) {
+      profile.claudeCode.fableModel = fableModel;
+    }
+    const opusModel = readString(claudeCode.opusModel) || readString(claudeCode.defaultOpusModel);
+    if (opusModel !== undefined) {
+      profile.claudeCode.opusModel = opusModel;
+    }
+    const sonnetModel = readString(claudeCode.sonnetModel) || readString(claudeCode.defaultSonnetModel);
+    if (sonnetModel !== undefined) {
+      profile.claudeCode.sonnetModel = sonnetModel;
+    }
+    const haikuModel = readString(claudeCode.haikuModel) || readString(claudeCode.defaultHaikuModel) || readString(claudeCode.smallFastModel) || readString(claudeCode.smallModel);
+    if (haikuModel !== undefined) {
+      profile.claudeCode.haikuModel = haikuModel;
+    }
     const smallFastModel = readString(claudeCode.smallFastModel) || readString(claudeCode.smallModel);
     if (smallFastModel !== undefined) {
       profile.claudeCode.smallFastModel = smallFastModel;
@@ -2693,7 +2709,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       ]);
       const env = parseStringRecord(item.env) ?? {};
       const parsedSurface = parseProfileSurface(readString(item.surface) || readString(item.entry) || readString(item.frontend)) || "auto";
-      const surface = agent === "zcode" ? "app" : parsedSurface;
+      const surface = agent === "zcode" ? "app" : agent === "pi" ? "cli" : parsedSurface;
       const botConfigId = surface !== "cli"
         ? readString(item.botConfigId) || readString(item.bot_config_id) || readString(item.savedBotConfigId) || readString(item.saved_bot_config_id)
         : "";
@@ -2710,18 +2726,22 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
           ...(botGateway ? { botGateway } : {}),
           enabled,
           env: claudeCodeProfileEnv(env),
+          fableModel: readString(item.fableModel) || readString(item.defaultFableModel) || "",
+          haikuModel: readString(item.haikuModel) || readString(item.defaultHaikuModel) || readString(item.smallFastModel) || readString(item.smallModel) || "",
           id,
           ...(managedCompact !== undefined ? { managedCompact } : {}),
           model,
           name,
+          opusModel: readString(item.opusModel) || readString(item.defaultOpusModel) || "",
           scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
           settingsFile: readString(item.settingsFile) || readString(item.configFile) || "~/.claude/settings.json",
+          sonnetModel: readString(item.sonnetModel) || readString(item.defaultSonnetModel) || "",
           smallFastModel: readString(item.smallFastModel) || readString(item.smallModel) || "",
           surface
         };
       }
 
-      if (agent === "grok" || agent === "kimi") {
+      if (agent === "grok" || agent === "kimi" || agent === "pi") {
         return {
           agent,
           ...(agent === "kimi" ? { availableModels } : {}),
@@ -2803,6 +2823,9 @@ function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
   if (normalized === "opencode" || normalized === "open-code" || normalized === "open code") {
     return "opencode";
   }
+  if (normalized === "pi" || normalized === "pi-agent" || normalized === "pi agent" || normalized === "pi-coding-agent" || normalized === "pi coding agent") {
+    return "pi";
+  }
   if (normalized === "zcode" || normalized === "z-code" || normalized === "z code") {
     return "zcode";
   }
@@ -2835,6 +2858,9 @@ function defaultProfileAgentName(agent: ProfileConfig["agent"]): string {
   if (agent === "opencode") {
     return "OpenCode";
   }
+  if (agent === "pi") {
+    return "Pi";
+  }
   return "Codex";
 }
 
@@ -2843,6 +2869,8 @@ function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
     ? "~/.zcode/cli/config.json"
     : agent === "opencode"
       ? "~/.config/opencode/opencode.jsonc"
+      : agent === "pi"
+        ? "~/.pi/agent"
       : "~/.codex/config.toml";
 }
 
@@ -2859,12 +2887,16 @@ function profileFromClaudeCodeConfig(config: ClaudeCodeProfileConfig): ProfileCo
     agent: "claude-code",
     enabled: config.enabled,
     env: claudeCodeProfileEnv(),
+    fableModel: config.fableModel,
+    haikuModel: config.haikuModel || config.smallFastModel,
     id: "default-claude-code",
     managedCompact: config.managedCompact,
     model: config.model,
     name: "Claude Code",
+    opusModel: config.opusModel,
     scope: "global",
     settingsFile: config.settingsFile,
+    sonnetModel: config.sonnetModel,
     smallFastModel: config.smallFastModel,
     surface: "auto"
   };

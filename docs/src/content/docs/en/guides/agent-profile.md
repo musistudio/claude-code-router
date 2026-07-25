@@ -2,7 +2,7 @@
 title: Connect Agent Profiles
 pageTitle: Connect Agent Profiles
 eyebrow: Quick Start
-lead: Let Claude Code, Codex, Grok CLI, Kimi CLI, ZCode, and other agents use CCR's providers, routing, and model selection.
+lead: Let Claude Code, Codex, Grok CLI, Kimi CLI, Pi, ZCode, and other agents use CCR's providers, routing, and model selection.
 ---
 
 ## General Guidance
@@ -31,10 +31,14 @@ Choose Grok CLI, select a model, and run the copied `ccr-app <profile-name>` com
 
 Choose Kimi CLI, select a default model and one or more available CCR models, then run the copied `ccr-app <profile-name>` command. CCR launches Kimi with a profile-specific `KIMI_CODE_HOME` whose generated `config.toml` registers every selected model against the local CCR gateway. Use `/model` inside Kimi to switch among them. The original `~/.kimi-code/config.toml` is not changed, while sessions, skills, plugins, MCP configuration, and credentials are reused from the source Kimi home when available. The wrapper can also start the same managed temporary gateway when CCR Desktop is not running.
 
+## Pi
+
+Choose Pi, optionally select a default model, and run the copied `ccr-app <profile-name>` command. CCR creates a profile-specific `PI_CODING_AGENT_DIR`, writes a local `models.json` using the CCR gateway as an OpenAI Responses provider, and launches Pi with the generated provider and model arguments. This profile path does not import Pi login state; it uses the CCR profile API key and normal CCR routing.
+
 ## ZCode
 
 ZCode mainly uses model, Provider ID, Provider Name, and whether it is launched from CCR. It uses the App surface and does not need Codex CLI path fields.
 
 ## Reuse A Locally Logged-In Agent
 
-If Claude Code, Codex, Grok CLI, Kimi CLI, or ZCode is already logged in on this machine, import it as a **Local Agent Provider** from **Providers** to reuse the existing authorization without applying for another key. Kimi CLI imports both managed OAuth logins and API-key providers from `~/.kimi-code/config.toml`.
+If Claude Code, Codex, Grok CLI, Kimi CLI, or ZCode is already logged in on this machine, import it as a **Local Agent Provider** from **Providers** to reuse the existing authorization without applying for another key. Kimi CLI imports both managed OAuth logins and API-key providers from `~/.kimi-code/config.toml`. Pi profiles do not import Pi login state; they use a generated CCR provider config and CCR profile API key.

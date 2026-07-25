@@ -36,7 +36,7 @@
 
 ### Manage every agent and provider from one place.
 
-Connect Claude Code, Codex, Grok CLI, ZCode, and compatible API clients to the providers you choose—then route, fail over, extend, and observe every request from one app.
+Connect Claude Code, Codex, Grok CLI, Kimi CLI, Pi, ZCode, and compatible API clients to the providers you choose—then route, fail over, extend, and observe every request from one app.
 
 <p>
   <a href="https://github.com/musistudio/claude-code-router/releases"><img alt="Download Desktop" src="https://img.shields.io/badge/Download-Desktop_App-2563EB?style=for-the-badge&logo=github&logoColor=white" /></a>
@@ -59,7 +59,7 @@ Connect Claude Code, Codex, Grok CLI, ZCode, and compatible API clients to the p
 
 ## Why use Claude Code Router?
 
-Claude Code Router (CCR) is a local model gateway and control plane for coding agents. It gives Claude Code, Codex, Grok CLI, ZCode, and compatible API clients **one stable local endpoint**, while you manage the providers, models, accounts, routing rules, and tools behind it from one place.
+Claude Code Router (CCR) is a local model gateway and control plane for coding agents. It gives Claude Code, Codex, Grok CLI, Kimi CLI, Pi, ZCode, and compatible API clients **one stable local endpoint**, while you manage the providers, models, accounts, routing rules, and tools behind it from one place.
 
 Use CCR to:
 
@@ -78,7 +78,7 @@ CCR supports OpenAI Chat / Responses, Anthropic Messages, Gemini Generate Conten
 1. **[Download Claude Code Router](https://github.com/musistudio/claude-code-router/releases)** for macOS, Windows, or Linux, then launch the app.
 2. Open **Providers → Add Provider**. Choose a built-in preset or a custom endpoint, enter the API key, select the protocol and models, then save.
 3. Open **Server** and click **Start**. The local model gateway listens on `http://127.0.0.1:3456` by default.
-4. Open **Agent Profiles**, choose Claude Code, Codex, Grok CLI, or ZCode, select a model, and apply the profile.
+4. Open **Agent Profiles**, choose Claude Code, Codex, Grok CLI, Kimi CLI, Pi, or ZCode, select a model, and apply the profile.
 5. Start using your agent. Open **Logs** to confirm the resolved provider, model, status, tokens, latency, and errors.
 
 Your agent is now connected to CCR. To add conditions, retries, request rewrites, or fallback models, open **Routing**.
@@ -117,7 +117,7 @@ Docker exposes the management UI and gateway routes through `http://127.0.0.1:34
 ## How it works
 
 ```text
-Claude Code · Codex · Grok CLI · ZCode · Compatible API clients
+Claude Code · Codex · Grok CLI · Kimi CLI · Pi · ZCode · Compatible API clients
                               │
                               ▼
                  Claude Code Router :3456
@@ -131,7 +131,7 @@ Claude Code · Codex · Grok CLI · ZCode · Compatible API clients
 
 | Area | Highlights |
 | --- | --- |
-| **Agents** | Profiles for Claude Code, Codex, Grok CLI, and ZCode; model overrides; scopes; environment settings; CLI and app launch entries; multi-instance workflows |
+| **Agents** | Profiles for Claude Code, Codex, Grok CLI, Kimi CLI, Pi, and ZCode; model overrides; scopes; environment settings; CLI and app launch entries; multi-instance workflows |
 | **Providers** | Presets and custom endpoints; protocol probing; model discovery; connectivity checks; local login import where supported; single keys and credential pools |
 | **Models & routing** | Searchable catalog; model descriptions for task selection; conditions on headers and bodies; prefixes; rewrites; retries; ordered fallbacks |
 | **Tools & extensions** | Fusion models; ToolHub; built-in browser automation; Chrome login-state import; wrapper and core gateway plugins; local routes and virtual models |

@@ -504,14 +504,18 @@ export type AddProfileDraft = {
   botPlatform: string;
   configFile: string;
   envRows: KeyValueDraftRow[];
+  fableModel: string;
+  haikuModel: string;
   managedCompact: boolean;
   model: string;
   name: string;
+  opusModel: string;
   providerId: string;
   providerName: string;
   scope: ProfileScope;
   settingsFile: string;
   showAllSessions: boolean;
+  sonnetModel: string;
   smallFastModel: string;
   surface: ProfileSurface;
 };

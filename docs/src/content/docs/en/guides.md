@@ -55,7 +55,7 @@ If you want the overview to show balance or remaining quota, open the provider's
 
 ## Connect Agent Profiles
 
-Agent Profiles lets Claude Code, Codex, Grok CLI, ZCode, and other agents use CCR's providers, routing, and model selection.
+Agent Profiles lets Claude Code, Codex, Grok CLI, Kimi CLI, Pi, ZCode, and other agents use CCR's providers, routing, and model selection.
 
 General guidance:
 
@@ -75,13 +75,17 @@ In **Agent Profiles**, choose Codex and confirm Provider ID, Provider Name, mode
 
 Choose Grok CLI and select a default model, then run the copied `ccr-app <profile-name>` command. The command starts a shared temporary gateway service when CCR Desktop is not already serving one; concurrent Grok sessions keep it alive until the last session exits. CCR points Grok model discovery and inference at the local gateway; use `/model` inside Grok to switch CCR models.
 
+### Pi
+
+Choose Pi and optionally select a default model, then run the copied `ccr-app <profile-name>` command. CCR writes a profile-specific `models.json` under `PI_CODING_AGENT_DIR`, registers the local CCR gateway as an OpenAI Responses provider, and launches Pi with the matching `--provider` and `--model` arguments. If CCR Desktop is not running, the launcher can start the same managed temporary gateway used by other CLI-only profiles.
+
 ### ZCode
 
 ZCode mainly uses model, Provider ID, Provider Name, and whether it is launched from CCR. It uses the App surface and does not need Codex CLI path fields.
 
 ### Reuse A Locally Logged-In Agent
 
-If Claude Code, Codex, Grok CLI, or ZCode is already logged in on this machine, import it as a **Local Agent Provider** from **Providers** to reuse the existing authorization without applying for another key.
+If Claude Code, Codex, Grok CLI, Kimi CLI, or ZCode is already logged in on this machine, import it as a **Local Agent Provider** from **Providers** to reuse the existing authorization without applying for another key. Pi profiles do not import Pi login state; they use a generated CCR provider config and CCR profile API key.
 
 ## Logs & Observability
 

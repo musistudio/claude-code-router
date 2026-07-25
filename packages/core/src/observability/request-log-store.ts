@@ -1608,6 +1608,14 @@ function inferAgentFromText(value: string, options: AgentTextSignalOptions = {})
     return "opencode";
   }
   if (
+    normalized === "pi" ||
+    normalized.includes("pi-coding-agent") ||
+    normalized.includes("pi coding agent") ||
+    normalized.includes("pi_coding_agent")
+  ) {
+    return "pi";
+  }
+  if (
     normalized.includes("xai-grok-cli") ||
     (allowStandaloneGrok && (
       normalized.includes("grok-cli") ||
@@ -1704,8 +1712,18 @@ function readAgentSessionHeader(headers: Record<string, string | string[]>, agen
     "x-z-code-session-id",
     "z-code-session-id"
   ];
+  const piHeaders = [
+    "x-pi-session-id",
+    "pi-session-id",
+    "x-pi-conversation-id",
+    "pi-conversation-id",
+    "x-pi-thread-id",
+    "pi-thread-id"
+  ];
   const orderedHeaders = agent === "zcode"
     ? [...zcodeHeaders, ...codexHeaders, ...commonHeaders, ...claudeCodeHeaders]
+    : agent === "pi"
+      ? [...piHeaders, ...commonHeaders, ...codexHeaders, ...claudeCodeHeaders]
     : agent === "codex"
     ? [...codexHeaders, ...commonHeaders, ...claudeCodeHeaders]
     : agent === "claude-code"
@@ -3051,11 +3069,11 @@ function normalizeAgentAnalysisRange(value: UsageStatsRange | undefined): UsageS
 }
 
 function normalizeAgentFilter(value: AgentAnalysisFilter["agent"] | undefined): AgentKind | "all" {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "opencode" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
 }
 
 function normalizeSessionAgentFilter(value: AgentAnalysisFilter["sessionAgent"] | undefined): AgentKind | undefined {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "opencode" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
 }
 
 function agentDisplayName(agent: AgentKind): string {
@@ -3076,6 +3094,9 @@ function agentDisplayName(agent: AgentKind): string {
   }
   if (agent === "opencode") {
     return "OpenCode";
+  }
+  if (agent === "pi") {
+    return "Pi";
   }
   if (agent === "zcode") {
     return "ZCode";
