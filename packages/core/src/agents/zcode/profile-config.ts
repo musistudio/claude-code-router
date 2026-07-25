@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { isGatewayProviderEnabled, type AppConfig, type ProfileConfig } from "@ccr/core/contracts/app";
 import { normalizeRouteSelector } from "@ccr/core/gateway/claude-code-router-plugin";
-import { buildCodexModelCatalogIds } from "@ccr/core/agents/codex/model-catalog";
+import { buildZcodeModelCatalog } from "@ccr/core/agents/zcode/model-catalog";
 
 export type ZcodeProfileConfigWriteResult = {
   backupFile?: string;
@@ -15,6 +15,7 @@ export type ZcodeProfileConfigWriteResult = {
 type ZcodeGatewayConfigValues = {
   baseUrl: string;
   model: string;
+  modelContextWindows: Record<string, number>;
   providerId: string;
   providerName: string;
   token: string;
@@ -25,6 +26,8 @@ const legacyZcodeTomlConfigFile = "~/.zcode/config.toml";
 const defaultZcodeConfigFile = "~/.zcode/cli/config.json";
 const originalBackupSuffix = ".ccr-original";
 const originalMissingSuffix = ".ccr-original-missing";
+const defaultZcodeContextWindow = 128_000;
+const defaultZcodeMaxOutputTokens = 8_192;
 
 export function resolveZcodeConfigFile(profile: Pick<ProfileConfig, "codexHome" | "configFile">): string {
   const configured = profile.configFile?.trim();
@@ -51,10 +54,15 @@ export function writeZcodeGatewayConfig(
   const file = resolveZcodeConfigFile(profile);
   const model = normalizeClientModel(profile.model) || defaultClientModel(config);
   const providerId = sanitizeZcodeProviderId(profile.providerId || "") || "claude-code-router";
+  const modelCatalog = buildZcodeModelCatalog(config, model);
   const values: ZcodeGatewayConfigValues = {
     baseUrl: gatewayEndpoint(config),
     model,
-    models: buildCodexModelCatalogIds(config, model),
+    modelContextWindows: Object.fromEntries(modelCatalog.models.map((item) => [
+      item.slug,
+      positiveNumber(item.context_window) ?? defaultZcodeContextWindow
+    ])),
+    models: modelCatalog.models.map((item) => item.slug),
     providerId,
     providerName: profile.providerName?.trim() || "Claude Code Router",
     token
@@ -117,7 +125,10 @@ function zcodeConfigProvider(values: ZcodeGatewayConfigValues): Record<string, u
       apiKeyRequired: true,
       baseURL: values.baseUrl
     },
-    models: Object.fromEntries(uniqueStrings(values.models).map((model) => [model, zcodeModelConfig(model)]))
+    models: Object.fromEntries(uniqueStrings(values.models).map((model) => [
+      model,
+      zcodeModelConfig(model, values.modelContextWindows[model])
+    ]))
   };
 }
 
@@ -145,13 +156,13 @@ function buildZcodeV2ModelCache(source: Record<string, unknown>, values: ZcodeGa
   };
 }
 
-function zcodeModelConfig(model: string): Record<string, unknown> {
+function zcodeModelConfig(model: string, contextWindow: number | undefined): Record<string, unknown> {
   return {
     id: model,
     name: model,
     limit: {
-      context: 128_000,
-      output: 8_192
+      context: contextWindow ?? defaultZcodeContextWindow,
+      output: defaultZcodeMaxOutputTokens
     },
     modalities: {
       input: ["text", "image"],
@@ -185,13 +196,16 @@ function zcodeV2ModelCacheProvider(
     apiKey: "__zcode_cached_api_key_present__",
     apiKeyRequired: true,
     defaultKind: "anthropic",
-    models: uniqueStrings(values.models).map((model) => zcodeV2ModelCacheModel(model)),
+    models: uniqueStrings(values.models).map((model) => zcodeV2ModelCacheModel(
+      model,
+      values.modelContextWindows[model]
+    )),
     createdAt: positiveNumber(previousProvider?.createdAt) ?? now,
     updatedAt: now
   };
 }
 
-function zcodeV2ModelCacheModel(model: string): Record<string, unknown> {
+function zcodeV2ModelCacheModel(model: string, contextWindow: number | undefined): Record<string, unknown> {
   return {
     id: model,
     name: model,
@@ -201,8 +215,8 @@ function zcodeV2ModelCacheModel(model: string): Record<string, unknown> {
       input: ["text", "image"],
       output: ["text"]
     },
-    contextWindow: 128_000,
-    maxOutputTokens: 8_192,
+    contextWindow: contextWindow ?? defaultZcodeContextWindow,
+    maxOutputTokens: defaultZcodeMaxOutputTokens,
     supportsStructuredOutput: true,
     supportsTools: true
   };

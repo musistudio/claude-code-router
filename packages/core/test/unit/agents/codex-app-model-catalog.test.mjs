@@ -173,6 +173,47 @@ test("ChatGPT model catalog write gives gateway GPT models reasoning effort fall
   }
 });
 
+test("ZCode app model catalog uses the public model context window", () => {
+  const configDir = mkdtempSync(path.join(os.tmpdir(), "ccr-zcode-app-catalog-"));
+  try {
+    const config = {
+      Providers: [{
+        api_base_url: "https://chatgpt.com/backend-api/codex",
+        modelMetadata: {
+          "gpt-5.6-sol": {
+            contextWindow: 272_000,
+            maxContextWindow: 272_000
+          }
+        },
+        models: ["gpt-5.6-sol"],
+        name: "Codex API",
+        type: "openai_responses"
+      }]
+    };
+    const profile = {
+      agent: "zcode",
+      codexHome: configDir,
+      enabled: true,
+      id: "zcode-main",
+      model: "Codex API/gpt-5.6-sol",
+      name: "ZCode Main",
+      providerId: "claude-code-router",
+      scope: "global",
+      surface: "app"
+    };
+
+    const result = writeCodexCompatibleAppModelCatalog(configDir, profile, config);
+    const catalog = JSON.parse(readFileSync(result.file, "utf8"));
+    const model = catalog.models.find((item) => item.slug === "Codex API/gpt-5.6-sol");
+
+    assert.equal(path.basename(result.file), "ccr-zcode-model-catalog.json");
+    assert.equal(model.context_window, 1_050_000);
+    assert.equal(model.max_context_window, 1_050_000);
+  } finally {
+    rmSync(configDir, { force: true, recursive: true });
+  }
+});
+
 test("ChatGPT desktop app path override discovers the renamed executable", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "ccr-chatgpt-app-"));
   const previous = process.env.CHATGPT_APP_PATH;
