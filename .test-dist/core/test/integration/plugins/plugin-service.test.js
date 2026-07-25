@@ -1133,14 +1133,14 @@ var require_util = __commonJS({
         }
         const port = url.port != null ? url.port : url.protocol === "https:" ? 443 : 80;
         let origin = url.origin != null ? url.origin : `${url.protocol || ""}//${url.hostname || ""}:${port}`;
-        let path13 = url.path != null ? url.path : `${url.pathname || ""}${url.search || ""}`;
+        let path14 = url.path != null ? url.path : `${url.pathname || ""}${url.search || ""}`;
         if (origin[origin.length - 1] === "/") {
           origin = origin.slice(0, origin.length - 1);
         }
-        if (path13 && path13[0] !== "/") {
-          path13 = `/${path13}`;
+        if (path14 && path14[0] !== "/") {
+          path14 = `/${path14}`;
         }
-        return new URL(`${origin}${path13}`);
+        return new URL(`${origin}${path14}`);
       }
       if (!isHttpOrHttpsPrefixed(url.origin || url.protocol)) {
         throw new InvalidArgumentError("Invalid URL protocol: the URL must start with `http:` or `https:`.");
@@ -1961,9 +1961,9 @@ var require_diagnostics = __commonJS({
         "undici:client:sendHeaders",
         (evt) => {
           const {
-            request: { method, path: path13, origin }
+            request: { method, path: path14, origin }
           } = evt;
-          debugLog("sending request to %s %s%s", method, origin, path13);
+          debugLog("sending request to %s %s%s", method, origin, path14);
         }
       );
     }
@@ -1981,14 +1981,14 @@ var require_diagnostics = __commonJS({
         "undici:request:headers",
         (evt) => {
           const {
-            request: { method, path: path13, origin },
+            request: { method, path: path14, origin },
             response: { statusCode }
           } = evt;
           debugLog(
             "received response to %s %s%s - HTTP %d",
             method,
             origin,
-            path13,
+            path14,
             statusCode
           );
         }
@@ -1997,23 +1997,23 @@ var require_diagnostics = __commonJS({
         "undici:request:trailers",
         (evt) => {
           const {
-            request: { method, path: path13, origin }
+            request: { method, path: path14, origin }
           } = evt;
-          debugLog("trailers received from %s %s%s", method, origin, path13);
+          debugLog("trailers received from %s %s%s", method, origin, path14);
         }
       );
       diagnosticsChannel.subscribe(
         "undici:request:error",
         (evt) => {
           const {
-            request: { method, path: path13, origin },
+            request: { method, path: path14, origin },
             error
           } = evt;
           debugLog(
             "request to %s %s%s errored - %s",
             method,
             origin,
-            path13,
+            path14,
             error.message
           );
         }
@@ -2128,7 +2128,7 @@ var require_request = __commonJS({
     var kHandler = /* @__PURE__ */ Symbol("handler");
     var Request = class {
       constructor(origin, {
-        path: path13,
+        path: path14,
         method,
         body,
         headers,
@@ -2145,11 +2145,11 @@ var require_request = __commonJS({
         maxRedirections,
         typeOfService
       }, handler) {
-        if (typeof path13 !== "string") {
+        if (typeof path14 !== "string") {
           throw new InvalidArgumentError("path must be a string");
-        } else if (path13[0] !== "/" && !(path13.startsWith("http://") || path13.startsWith("https://")) && method !== "CONNECT") {
+        } else if (path14[0] !== "/" && !(path14.startsWith("http://") || path14.startsWith("https://")) && method !== "CONNECT") {
           throw new InvalidArgumentError("path must be an absolute URL or start with a slash");
-        } else if (invalidPathRegex.test(path13)) {
+        } else if (invalidPathRegex.test(path14)) {
           throw new InvalidArgumentError("invalid request path");
         }
         if (typeof method !== "string") {
@@ -2224,7 +2224,7 @@ var require_request = __commonJS({
         this.completed = false;
         this.aborted = false;
         this.upgrade = upgrade || null;
-        this.path = query ? serializePathWithQuery(path13, query) : path13;
+        this.path = query ? serializePathWithQuery(path14, query) : path14;
         this.origin = origin;
         this.protocol = getProtocolFromUrlString(origin);
         this.idempotent = idempotent == null ? method === "HEAD" || method === "GET" : idempotent;
@@ -7399,7 +7399,7 @@ var require_client_h1 = __commonJS({
       return method !== "GET" && method !== "HEAD" && method !== "OPTIONS" && method !== "TRACE" && method !== "CONNECT";
     }
     function writeH1(client, request) {
-      const { method, path: path13, host, upgrade, blocking, reset } = request;
+      const { method, path: path14, host, upgrade, blocking, reset } = request;
       let { body, headers, contentLength } = request;
       const expectsPayload = method === "PUT" || method === "POST" || method === "PATCH" || method === "QUERY" || method === "PROPFIND" || method === "PROPPATCH";
       if (util.isFormDataLike(body)) {
@@ -7469,7 +7469,7 @@ var require_client_h1 = __commonJS({
       if (socket.setTypeOfService) {
         socket.setTypeOfService(request.typeOfService);
       }
-      let header = `${method} ${path13} HTTP/1.1\r
+      let header = `${method} ${path14} HTTP/1.1\r
 `;
       if (typeof host === "string") {
         header += `host: ${host}\r
@@ -8122,7 +8122,7 @@ var require_client_h2 = __commonJS({
     function writeH2(client, request) {
       const requestTimeout = request.bodyTimeout ?? client[kBodyTimeout];
       const session = client[kHTTP2Session];
-      const { method, path: path13, host, upgrade, expectContinue, signal, protocol, headers: reqHeaders } = request;
+      const { method, path: path14, host, upgrade, expectContinue, signal, protocol, headers: reqHeaders } = request;
       let { body } = request;
       if (upgrade != null && upgrade !== "websocket") {
         util.errorRequest(client, request, new InvalidArgumentError(`Custom upgrade "${upgrade}" not supported over HTTP/2`));
@@ -8190,7 +8190,7 @@ var require_client_h2 = __commonJS({
           }
           headers[HTTP2_HEADER_METHOD] = "CONNECT";
           headers[HTTP2_HEADER_PROTOCOL] = "websocket";
-          headers[HTTP2_HEADER_PATH] = path13;
+          headers[HTTP2_HEADER_PATH] = path14;
           if (protocol === "ws:" || protocol === "wss:") {
             headers[HTTP2_HEADER_SCHEME] = protocol === "ws:" ? "http" : "https";
           } else {
@@ -8231,7 +8231,7 @@ var require_client_h2 = __commonJS({
         stream.setTimeout(requestTimeout);
         return true;
       }
-      headers[HTTP2_HEADER_PATH] = path13;
+      headers[HTTP2_HEADER_PATH] = path14;
       headers[HTTP2_HEADER_SCHEME] = protocol === "http:" ? "http" : "https";
       const expectsPayload = method === "PUT" || method === "POST" || method === "PATCH";
       if (body && typeof body.read === "function") {
@@ -10574,10 +10574,10 @@ var require_proxy_agent = __commonJS({
         };
         const {
           origin,
-          path: path13 = "/",
+          path: path14 = "/",
           headers = {}
         } = opts;
-        opts.path = origin + path13;
+        opts.path = origin + path14;
         if (!("host" in headers) && !("Host" in headers)) {
           const { host } = new URL(origin);
           headers.host = host;
@@ -12641,20 +12641,20 @@ var require_mock_utils = __commonJS({
       }
       return normalizedQp;
     }
-    function safeUrl(path13) {
-      if (typeof path13 !== "string") {
-        return path13;
+    function safeUrl(path14) {
+      if (typeof path14 !== "string") {
+        return path14;
       }
-      const pathSegments = path13.split("?", 3);
+      const pathSegments = path14.split("?", 3);
       if (pathSegments.length !== 2) {
-        return path13;
+        return path14;
       }
       const qp = new URLSearchParams(pathSegments.pop());
       qp.sort();
       return [...pathSegments, qp.toString()].join("?");
     }
-    function matchKey(mockDispatch2, { path: path13, method, body, headers }) {
-      const pathMatch = matchValue(mockDispatch2.path, path13);
+    function matchKey(mockDispatch2, { path: path14, method, body, headers }) {
+      const pathMatch = matchValue(mockDispatch2.path, path14);
       const methodMatch = matchValue(mockDispatch2.method, method);
       const bodyMatch = typeof mockDispatch2.body !== "undefined" ? matchValue(mockDispatch2.body, body) : true;
       const headersMatch = matchHeaders(mockDispatch2, headers);
@@ -12679,8 +12679,8 @@ var require_mock_utils = __commonJS({
       const basePath = key.query ? serializePathWithQuery(key.path, key.query) : key.path;
       const resolvedPath = typeof basePath === "string" ? safeUrl(basePath) : basePath;
       const resolvedPathWithoutTrailingSlash = removeTrailingSlash(resolvedPath);
-      let matchedMockDispatches = mockDispatches.filter(({ consumed }) => !consumed).filter(({ path: path13, ignoreTrailingSlash }) => {
-        return ignoreTrailingSlash ? matchValue(removeTrailingSlash(safeUrl(path13)), resolvedPathWithoutTrailingSlash) : matchValue(safeUrl(path13), resolvedPath);
+      let matchedMockDispatches = mockDispatches.filter(({ consumed }) => !consumed).filter(({ path: path14, ignoreTrailingSlash }) => {
+        return ignoreTrailingSlash ? matchValue(removeTrailingSlash(safeUrl(path14)), resolvedPathWithoutTrailingSlash) : matchValue(safeUrl(path14), resolvedPath);
       });
       if (matchedMockDispatches.length === 0) {
         throw new MockNotMatchedError(`Mock dispatch not matched for path '${resolvedPath}'`);
@@ -12719,19 +12719,19 @@ var require_mock_utils = __commonJS({
         mockDispatches.splice(index, 1);
       }
     }
-    function removeTrailingSlash(path13) {
-      while (path13.endsWith("/")) {
-        path13 = path13.slice(0, -1);
+    function removeTrailingSlash(path14) {
+      while (path14.endsWith("/")) {
+        path14 = path14.slice(0, -1);
       }
-      if (path13.length === 0) {
-        path13 = "/";
+      if (path14.length === 0) {
+        path14 = "/";
       }
-      return path13;
+      return path14;
     }
     function buildKey(opts) {
-      const { path: path13, method, body, headers, query } = opts;
+      const { path: path14, method, body, headers, query } = opts;
       return {
-        path: path13,
+        path: path14,
         method,
         body,
         headers,
@@ -13421,10 +13421,10 @@ var require_pending_interceptors_formatter = __commonJS({
       }
       format(pendingInterceptors) {
         const withPrettyHeaders = pendingInterceptors.map(
-          ({ method, path: path13, data: { statusCode }, persist, times, timesInvoked, origin }) => ({
+          ({ method, path: path14, data: { statusCode }, persist, times, timesInvoked, origin }) => ({
             Method: method,
             Origin: origin,
-            Path: path13,
+            Path: path14,
             "Status code": statusCode,
             Persistent: persist ? PERSISTENT : NOT_PERSISTENT,
             Invocations: timesInvoked,
@@ -13506,9 +13506,9 @@ var require_mock_agent = __commonJS({
         const acceptNonStandardSearchParameters = this[kMockAgentAcceptsNonStandardSearchParameters];
         const dispatchOpts = { ...opts };
         if (acceptNonStandardSearchParameters && dispatchOpts.path) {
-          const [path13, searchParams] = dispatchOpts.path.split("?");
+          const [path14, searchParams] = dispatchOpts.path.split("?");
           const normalizedSearchParams = normalizeSearchParams(searchParams, acceptNonStandardSearchParameters);
-          dispatchOpts.path = `${path13}?${normalizedSearchParams}`;
+          dispatchOpts.path = `${path14}?${normalizedSearchParams}`;
         }
         return this[kAgent].dispatch(dispatchOpts, handler);
       }
@@ -13713,7 +13713,7 @@ var require_snapshot_recorder = __commonJS({
   "node_modules/undici/lib/mock/snapshot-recorder.js"(exports2, module2) {
     "use strict";
     var { writeFile, readFile, mkdir } = require("node:fs/promises");
-    var { dirname: dirname6, resolve } = require("node:path");
+    var { dirname: dirname7, resolve } = require("node:path");
     var { setTimeout: setTimeout2, clearTimeout: clearTimeout2 } = require("node:timers");
     var { InvalidArgumentError, UndiciError } = require_errors();
     var { hashId, isUrlExcludedFactory, normalizeHeaders, createHeaderFilters } = require_snapshot_utils();
@@ -13909,12 +13909,12 @@ var require_snapshot_recorder = __commonJS({
        * @return {Promise<void>} - Resolves when snapshots are loaded
        */
       async loadSnapshots(filePath) {
-        const path13 = filePath || this.#snapshotPath;
-        if (!path13) {
+        const path14 = filePath || this.#snapshotPath;
+        if (!path14) {
           throw new InvalidArgumentError("Snapshot path is required");
         }
         try {
-          const data = await readFile(resolve(path13), "utf8");
+          const data = await readFile(resolve(path14), "utf8");
           const parsed = JSON.parse(data);
           if (Array.isArray(parsed)) {
             this.#snapshots.clear();
@@ -13928,7 +13928,7 @@ var require_snapshot_recorder = __commonJS({
           if (error.code === "ENOENT") {
             this.#snapshots.clear();
           } else {
-            throw new UndiciError(`Failed to load snapshots from ${path13}`, { cause: error });
+            throw new UndiciError(`Failed to load snapshots from ${path14}`, { cause: error });
           }
         }
       }
@@ -13939,12 +13939,12 @@ var require_snapshot_recorder = __commonJS({
        * @returns {Promise<void>} - Resolves when snapshots are saved
        */
       async saveSnapshots(filePath) {
-        const path13 = filePath || this.#snapshotPath;
-        if (!path13) {
+        const path14 = filePath || this.#snapshotPath;
+        if (!path14) {
           throw new InvalidArgumentError("Snapshot path is required");
         }
-        const resolvedPath = resolve(path13);
-        await mkdir(dirname6(resolvedPath), { recursive: true });
+        const resolvedPath = resolve(path14);
+        await mkdir(dirname7(resolvedPath), { recursive: true });
         const data = Array.from(this.#snapshots.entries()).map(([hash, snapshot]) => ({
           hash,
           snapshot
@@ -14575,15 +14575,15 @@ var require_redirect_handler = __commonJS({
           return;
         }
         const { origin, pathname, search } = util.parseURL(new URL(this.location, this.opts.origin && new URL(this.opts.path, this.opts.origin)));
-        const path13 = search ? `${pathname}${search}` : pathname;
-        const redirectUrlString = `${origin}${path13}`;
+        const path14 = search ? `${pathname}${search}` : pathname;
+        const redirectUrlString = `${origin}${path14}`;
         for (const historyUrl of this.history) {
           if (historyUrl.toString() === redirectUrlString) {
             throw new InvalidArgumentError(`Redirect loop detected. Cannot redirect to ${origin}. This typically happens when using a Client or Pool with cross-origin redirects. Use an Agent for cross-origin redirects.`);
           }
         }
         this.opts.headers = cleanRequestHeaders(this.opts.headers, statusCode === 303, this.opts.origin !== origin);
-        this.opts.path = path13;
+        this.opts.path = path14;
         this.opts.origin = origin;
         this.opts.query = null;
       }
@@ -20793,11 +20793,11 @@ var require_fetch = __commonJS({
       function dispatch({ body }) {
         const url = requestCurrentURL(request);
         const agent = fetchParams.controller.dispatcher;
-        const path13 = url.pathname + url.search;
+        const path14 = url.pathname + url.search;
         const hasTrailingQuestionMark = url.search.length === 0 && url.href[url.href.length - url.hash.length - 1] === "?";
         return new Promise((resolve, reject) => agent.dispatch(
           {
-            path: hasTrailingQuestionMark ? `${path13}?` : path13,
+            path: hasTrailingQuestionMark ? `${path14}?` : path14,
             origin: url.origin,
             method: request.method,
             body: agent.isMockActive ? request.body && (request.body.source || request.body.stream) : body,
@@ -21744,9 +21744,9 @@ var require_util4 = __commonJS({
         }
       }
     }
-    function validateCookiePath(path13) {
-      for (let i = 0; i < path13.length; ++i) {
-        const code = path13.charCodeAt(i);
+    function validateCookiePath(path14) {
+      for (let i = 0; i < path14.length; ++i) {
+        const code = path14.charCodeAt(i);
         if (code < 32 || // exclude CTLs (0-31)
         code === 127 || // DEL
         code === 59) {
@@ -24945,11 +24945,11 @@ var require_undici = __commonJS({
           if (typeof opts.path !== "string") {
             throw new InvalidArgumentError("invalid opts.path");
           }
-          let path13 = opts.path;
+          let path14 = opts.path;
           if (!opts.path.startsWith("/")) {
-            path13 = `/${path13}`;
+            path14 = `/${path14}`;
           }
-          url = new URL(util.parseOrigin(url).origin + path13);
+          url = new URL(util.parseOrigin(url).origin + path14);
         } else {
           if (!opts) {
             opts = typeof url === "object" ? url : {};
@@ -25060,9 +25060,9 @@ ${captureLines}` : capture.stack;
 
 // packages/core/test/integration/plugins/plugin-service.test.mjs
 var import_strict = __toESM(require("node:assert/strict"), 1);
-var import_node_fs16 = require("node:fs");
-var import_node_os6 = require("node:os");
-var import_node_path22 = __toESM(require("node:path"), 1);
+var import_node_fs17 = require("node:fs");
+var import_node_os7 = require("node:os");
+var import_node_path24 = __toESM(require("node:path"), 1);
 var import_node_test = __toESM(require("node:test"), 1);
 
 // packages/core/src/contracts/app.ts
@@ -25092,6 +25092,9 @@ var GROK_MEDIA_FUSION_TOOL_NAMES = [
   GROK_MEDIA_JOB_CANCEL_TOOL_NAME,
   GROK_MEDIA_CAPABILITIES_TOOL_NAME
 ];
+function isGatewayProviderEnabled(provider) {
+  return provider.enabled !== false;
+}
 var ROUTER_SCRIPT_API_VERSION = 1;
 var ROUTER_SCRIPT_MAX_SOURCE_BYTES = 64 * 1024;
 var ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS = 2e3;
@@ -25134,7 +25137,7 @@ function availableGatewayModelIds(config) {
 function availableGatewayBaseModelEntries(providers) {
   return providers.flatMap((provider) => {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       return [];
     }
     return provider.models.flatMap((rawModel) => {
@@ -25340,6 +25343,17 @@ function createDefaultAppConfig(options) {
       streamReplies: true,
       tenantId: "ccr"
     },
+    contextArchive: {
+      enabled: false,
+      maxBytes: 512 * 1024 * 1024,
+      maxSnapshotBytes: 32 * 1024 * 1024,
+      maxSnapshots: 200,
+      mcpEnabled: true,
+      replayTimeoutMs: 6e4,
+      retentionDays: 30,
+      storagePath: "",
+      toolName: "ccr_history_ask"
+    },
     gateway: {
       coreHost,
       corePort: 3457,
@@ -25369,6 +25383,7 @@ function createDefaultAppConfig(options) {
     profile: {
       claudeCode: {
         enabled: true,
+        managedCompact: false,
         model: "",
         settingsFile: "~/.claude/settings.json",
         smallFastModel: ""
@@ -25380,6 +25395,7 @@ function createDefaultAppConfig(options) {
         configFormat: "separate_profile_files",
         configFile: "~/.codex/config.toml",
         enabled: true,
+        managedCompact: false,
         model: "",
         providerId: "claude-code-router",
         providerName: "Claude Code Router",
@@ -25392,6 +25408,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: { ...CLAUDE_CODE_DEFAULT_ENV },
           id: "default-claude-code",
+          managedCompact: false,
           model: "",
           name: "Claude Code",
           scope: "global",
@@ -25409,6 +25426,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: {},
           id: "default-codex",
+          managedCompact: false,
           model: "",
           name: "Codex",
           providerId: "claude-code-router",
@@ -25464,7 +25482,12 @@ function createDefaultAppConfig(options) {
 }
 
 // packages/core/src/gateway/core-runtime/config-compiler.ts
-var import_node_path21 = require("node:path");
+var import_node_path23 = require("node:path");
+
+// packages/core/src/agents/local-providers/claude-code.ts
+var import_node_child_process = require("node:child_process");
+var import_node_os = __toESM(require("node:os"));
+var import_node_path = __toESM(require("node:path"));
 
 // packages/core/src/agents/local-providers/shared.ts
 var import_node_fs = require("node:fs");
@@ -25478,6 +25501,23 @@ function modelDisplayNamesForModels(value, models) {
   const modelIds = new Set(models);
   const entries = Object.entries(value ?? {}).map(([rawModel, rawDisplayName]) => [rawModel.trim(), rawDisplayName.trim()]).filter(([model, displayName]) => model && displayName && model !== displayName && modelIds.has(model));
   return entries.length > 0 ? Object.fromEntries(entries) : void 0;
+}
+function findOauthTokenSet(value, depth = 0) {
+  if (!isRecord(value) || depth > 5) {
+    return void 0;
+  }
+  const accessToken = readString(value.accessToken) || readString(value.access_token) || readString(value.anthropicAccessToken);
+  const refreshToken = readString(value.refreshToken) || readString(value.refresh_token) || readString(value.anthropicRefreshToken);
+  if (accessToken || refreshToken) {
+    return { accessToken, refreshToken };
+  }
+  for (const child of Object.values(value)) {
+    const found = findOauthTokenSet(child, depth + 1);
+    if (found) {
+      return found;
+    }
+  }
+  return void 0;
 }
 function readJsonRecord(file) {
   if (!(0, import_node_fs.existsSync)(file)) {
@@ -25514,15 +25554,16 @@ function isRecord(value) {
 }
 
 // packages/core/src/agents/local-providers/claude-code.ts
-var percentLimitMapping = (id, label, path13, window) => ({
+var claudeCodeKeychainService = "Claude Code-credentials";
+var percentLimitMapping = (id, label, path14, window) => ({
   id,
   kind: "quota",
   label,
   limit: 100,
-  remaining: `100 - ${path13}.utilization`,
-  resetAt: `${path13}.resets_at`,
+  remaining: `100 - ${path14}.utilization`,
+  resetAt: `${path14}.resets_at`,
   unit: "%",
-  used: `${path13}.utilization`,
+  used: `${path14}.utilization`,
   window
 });
 var claudeCodeAccountMapping = {
@@ -25553,10 +25594,67 @@ var claudeCodeAccountMapping = {
     }
   ]
 };
+function readClaudeCodeOauth() {
+  const keychainOauth = readClaudeCodeKeychainOauth();
+  if (keychainOauth) {
+    return keychainOauth;
+  }
+  for (const sourceFile of claudeCredentialFiles()) {
+    const record = readJsonRecord(sourceFile);
+    if (!record) {
+      continue;
+    }
+    const credential = findOauthTokenSet(record);
+    return {
+      accessToken: credential?.accessToken,
+      refreshToken: credential?.refreshToken,
+      sourceFile
+    };
+  }
+  return void 0;
+}
+function claudeCredentialFiles() {
+  return uniqueStrings([
+    import_node_path.default.join(import_node_os.default.homedir(), ".claude", ".credentials.json"),
+    import_node_path.default.join(import_node_os.default.homedir(), ".claude", "credentials.json"),
+    import_node_path.default.join(import_node_os.default.homedir(), ".config", "claude", "credentials.json")
+  ]);
+}
+function readClaudeCodeKeychainOauth() {
+  const keychainRecord = readClaudeCodeKeychainRecord();
+  if (!keychainRecord) {
+    return void 0;
+  }
+  const credential = findOauthTokenSet(keychainRecord);
+  if (!credential) {
+    return void 0;
+  }
+  return {
+    accessToken: credential.accessToken,
+    refreshToken: credential.refreshToken,
+    sourceFile: `keychain:${claudeCodeKeychainService}`
+  };
+}
+function readClaudeCodeKeychainRecord() {
+  if (process.platform !== "darwin") {
+    return void 0;
+  }
+  try {
+    const output = (0, import_node_child_process.execFileSync)(
+      "security",
+      ["find-generic-password", "-s", claudeCodeKeychainService, "-w"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
+    );
+    const parsed = JSON.parse(output.trim());
+    return isRecord(parsed) ? parsed : void 0;
+  } catch {
+    return void 0;
+  }
+}
 
 // packages/core/src/agents/local-providers/codex.ts
-var import_node_os3 = __toESM(require("node:os"));
-var import_node_path9 = __toESM(require("node:path"));
+var import_node_os4 = __toESM(require("node:os"));
+var import_node_path10 = __toESM(require("node:path"));
 
 // packages/core/src/providers/url.ts
 function parseProviderBaseUrl(value) {
@@ -25731,17 +25829,17 @@ var import_node_fs6 = require("node:fs");
 
 // packages/core/src/config/app-config-store.ts
 var import_node_fs3 = require("node:fs");
-var import_node_path4 = require("node:path");
+var import_node_path5 = require("node:path");
 
 // packages/core/src/config/constants.ts
-var import_node_path3 = __toESM(require("node:path"));
+var import_node_path4 = __toESM(require("node:path"));
 
 // packages/core/src/runtime/app-paths.ts
-var import_node_os = __toESM(require("node:os"));
-var import_node_path = __toESM(require("node:path"));
+var import_node_os2 = __toESM(require("node:os"));
+var import_node_path2 = __toESM(require("node:path"));
 var APP_NAME = "Claude Code Router";
 var APP_STORAGE_NAME = "claude-code-router";
-var LEGACY_CONFIGDIR = import_node_path.default.join(import_node_os.default.homedir(), ".claude-code-router");
+var LEGACY_CONFIGDIR = import_node_path2.default.join(import_node_os2.default.homedir(), ".claude-code-router");
 var homeDirEnv = "CCR_INTERNAL_HOME_DIR";
 var appDataDirEnv = "CCR_INTERNAL_APP_DATA_DIR";
 var userDataDirEnv = "CCR_INTERNAL_USER_DATA_DIR";
@@ -25751,7 +25849,7 @@ function resolveRuntimeAppPath(name) {
     return configured;
   }
   if (name === "home") {
-    return import_node_os.default.homedir();
+    return import_node_os2.default.homedir();
   }
   if (name === "appData") {
     return fallbackAppDataDir();
@@ -25760,9 +25858,9 @@ function resolveRuntimeAppPath(name) {
 }
 function resolveRuntimeConfigDir() {
   if (process.platform === "win32") {
-    return import_node_path.default.join(resolveRuntimeAppPath("appData"), APP_STORAGE_NAME);
+    return import_node_path2.default.join(resolveRuntimeAppPath("appData"), APP_STORAGE_NAME);
   }
-  return import_node_path.default.join(resolveRuntimeAppPath("home"), `.${APP_STORAGE_NAME}`);
+  return import_node_path2.default.join(resolveRuntimeAppPath("home"), `.${APP_STORAGE_NAME}`);
 }
 function resolveRuntimeDataDir() {
   const configured = readConfiguredPath("userData");
@@ -25772,7 +25870,7 @@ function resolveRuntimeDataDir() {
   if (process.platform === "win32") {
     return resolveRuntimeConfigDir();
   }
-  return import_node_path.default.join(resolveRuntimeConfigDir(), "app-data");
+  return import_node_path2.default.join(resolveRuntimeConfigDir(), "app-data");
 }
 function readConfiguredPath(name) {
   const key = name === "home" ? homeDirEnv : name === "appData" ? appDataDirEnv : userDataDirEnv;
@@ -25781,9 +25879,9 @@ function readConfiguredPath(name) {
 }
 function fallbackAppDataDir() {
   if (process.platform === "win32") {
-    return process.env.APPDATA || process.env.LOCALAPPDATA || (process.env.USERPROFILE ? import_node_path.default.join(process.env.USERPROFILE, "AppData", "Roaming") : import_node_path.default.join(import_node_os.default.homedir(), "AppData", "Roaming"));
+    return process.env.APPDATA || process.env.LOCALAPPDATA || (process.env.USERPROFILE ? import_node_path2.default.join(process.env.USERPROFILE, "AppData", "Roaming") : import_node_path2.default.join(import_node_os2.default.homedir(), "AppData", "Roaming"));
   }
-  return process.env.XDG_CONFIG_HOME || import_node_path.default.join(import_node_os.default.homedir(), ".config");
+  return process.env.XDG_CONFIG_HOME || import_node_path2.default.join(import_node_os2.default.homedir(), ".config");
 }
 function fallbackUserDataDir() {
   return resolveRuntimeDataDir();
@@ -25791,7 +25889,7 @@ function fallbackUserDataDir() {
 
 // packages/core/src/storage/migration.ts
 var import_node_fs2 = require("node:fs");
-var import_node_path2 = __toESM(require("node:path"));
+var import_node_path3 = __toESM(require("node:path"));
 function copyMissingDirectoryContents(source, target, label) {
   if (!source || !target || sameFilesystemPath(source, target) || !(0, import_node_fs2.existsSync)(source)) {
     return;
@@ -25804,33 +25902,34 @@ function copyMissingDirectoryContents(source, target, label) {
   }
 }
 function sameFilesystemPath(left, right) {
-  return import_node_path2.default.resolve(left).toLowerCase() === import_node_path2.default.resolve(right).toLowerCase();
+  return import_node_path3.default.resolve(left).toLowerCase() === import_node_path3.default.resolve(right).toLowerCase();
 }
 function formatError(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
 // packages/core/src/config/constants.ts
-var LEGACY_CONFIG_FILE = import_node_path3.default.join(LEGACY_CONFIGDIR, "config.json");
+var LEGACY_CONFIG_FILE = import_node_path4.default.join(LEGACY_CONFIGDIR, "config.json");
 var CONFIGDIR = resolveRuntimeConfigDir();
-var LEGACY_WINDOWS_CONFIGDIR = import_node_path3.default.join(resolveRuntimeAppPath("appData"), APP_NAME);
-var LEGACY_WINDOWS_CONFIG_FILE = import_node_path3.default.join(LEGACY_WINDOWS_CONFIGDIR, "config.json");
-var CONFIG_FILE = import_node_path3.default.join(CONFIGDIR, "config.json");
-var ONBOARDING_FINISHED_FILE = import_node_path3.default.join(CONFIGDIR, ".onboard_finished");
+var LEGACY_WINDOWS_CONFIGDIR = import_node_path4.default.join(resolveRuntimeAppPath("appData"), APP_NAME);
+var LEGACY_WINDOWS_CONFIG_FILE = import_node_path4.default.join(LEGACY_WINDOWS_CONFIGDIR, "config.json");
+var CONFIG_FILE = import_node_path4.default.join(CONFIGDIR, "config.json");
+var ONBOARDING_FINISHED_FILE = import_node_path4.default.join(CONFIGDIR, ".onboard_finished");
 var DATADIR = resolveRuntimeDataDir();
-var APP_CONFIG_DB_FILE = import_node_path3.default.join(CONFIGDIR, "config.sqlite");
-var API_KEYS_DB_FILE = import_node_path3.default.join(DATADIR, "api-keys.sqlite");
-var LEGACY_APP_CONFIG_DB_FILES = process.platform === "win32" ? [import_node_path3.default.join(LEGACY_WINDOWS_CONFIGDIR, "config.sqlite")] : [];
-var LEGACY_API_KEYS_DB_FILES = process.platform === "win32" ? [import_node_path3.default.join(LEGACY_WINDOWS_CONFIGDIR, "api-keys.sqlite")] : [];
-var CERTDIR = import_node_path3.default.join(DATADIR, "certs");
-var PROVIDER_ICON_CACHE_DIR = import_node_path3.default.join(DATADIR, "provider-icons");
-var PROXY_CA_CERT_FILE = import_node_path3.default.join(CERTDIR, "ca.pem");
-var PROXY_CA_CERT_DER_FILE = import_node_path3.default.join(CERTDIR, "ca.cer");
-var PROXY_CA_KEY_FILE = import_node_path3.default.join(CERTDIR, "key.pem");
-var GATEWAY_CONFIG_FILE = import_node_path3.default.join(CONFIGDIR, "gateway.config.json");
-var REQUEST_LOGS_DB_FILE = import_node_path3.default.join(DATADIR, "request-logs.sqlite");
-var RAW_TRACE_SPOOL_DIR = import_node_path3.default.join(DATADIR, "raw-trace-spool");
-var USAGE_DB_FILE = import_node_path3.default.join(DATADIR, "usage.sqlite");
+var APP_CONFIG_DB_FILE = import_node_path4.default.join(CONFIGDIR, "config.sqlite");
+var API_KEYS_DB_FILE = import_node_path4.default.join(DATADIR, "api-keys.sqlite");
+var LEGACY_APP_CONFIG_DB_FILES = process.platform === "win32" ? [import_node_path4.default.join(LEGACY_WINDOWS_CONFIGDIR, "config.sqlite")] : [];
+var LEGACY_API_KEYS_DB_FILES = process.platform === "win32" ? [import_node_path4.default.join(LEGACY_WINDOWS_CONFIGDIR, "api-keys.sqlite")] : [];
+var CERTDIR = import_node_path4.default.join(DATADIR, "certs");
+var PROVIDER_ICON_CACHE_DIR = import_node_path4.default.join(DATADIR, "provider-icons");
+var PROXY_CA_CERT_FILE = import_node_path4.default.join(CERTDIR, "ca.pem");
+var PROXY_CA_CERT_DER_FILE = import_node_path4.default.join(CERTDIR, "ca.cer");
+var PROXY_CA_KEY_FILE = import_node_path4.default.join(CERTDIR, "key.pem");
+var GATEWAY_CONFIG_FILE = import_node_path4.default.join(CONFIGDIR, "gateway.config.json");
+var REQUEST_LOGS_DB_FILE = import_node_path4.default.join(DATADIR, "request-logs.sqlite");
+var CONTEXT_ARCHIVE_DB_FILE = import_node_path4.default.join(DATADIR, "context-archive.sqlite");
+var RAW_TRACE_SPOOL_DIR = import_node_path4.default.join(DATADIR, "raw-trace-spool");
+var USAGE_DB_FILE = import_node_path4.default.join(DATADIR, "usage.sqlite");
 if (process.platform === "win32") {
   copyMissingDirectoryContents(LEGACY_WINDOWS_CONFIGDIR, CONFIGDIR, "Windows app data directory");
 }
@@ -25903,7 +26002,7 @@ var AppConfigStore = class {
     return this.initPromise;
   }
   async open() {
-    const dbDir = (0, import_node_path4.dirname)(this.dbFile);
+    const dbDir = (0, import_node_path5.dirname)(this.dbFile);
     (0, import_node_fs3.mkdirSync)(dbDir, { mode: privateDirMode, recursive: true });
     securePathPermissions(dbDir, privateDirMode);
     const database = createBetterSqliteDatabase(this.dbFile);
@@ -25984,7 +26083,7 @@ function formatError2(error) {
 
 // packages/core/src/config/api-key-store.ts
 var import_node_fs4 = require("node:fs");
-var import_node_path5 = require("node:path");
+var import_node_path6 = require("node:path");
 var plainStorage = "plain";
 var privateDirMode2 = 448;
 var privateFileMode2 = 384;
@@ -26063,7 +26162,7 @@ var ApiKeyStore = class {
     return this.initPromise;
   }
   async open() {
-    const dbDir = (0, import_node_path5.dirname)(this.dbFile);
+    const dbDir = (0, import_node_path6.dirname)(this.dbFile);
     (0, import_node_fs4.mkdirSync)(dbDir, { mode: privateDirMode2, recursive: true });
     securePathPermissions2(dbDir, privateDirMode2);
     const database = createBetterSqliteDatabase(this.dbFile);
@@ -26262,8 +26361,8 @@ function isObject(value) {
 
 // packages/core/src/agents/local-providers/grok.ts
 var import_node_fs5 = require("node:fs");
-var import_node_os2 = __toESM(require("node:os"));
-var import_node_path6 = __toESM(require("node:path"));
+var import_node_os3 = __toESM(require("node:os"));
+var import_node_path7 = __toESM(require("node:path"));
 var grokDefaultBaseUrl = "https://cli-chat-proxy.grok.com/v1";
 var grokDefaultBillingEndpoint = "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
 var grokDefaultSubscriptionEndpoint = "https://cli-chat-proxy.grok.com/v1/user?include=subscription";
@@ -26567,7 +26666,7 @@ function grokClientVersion() {
   if (explicit) {
     return explicit;
   }
-  const payload = readJsonRecord(import_node_path6.default.join(grokStorageRoot(), "version.json"));
+  const payload = readJsonRecord(import_node_path7.default.join(grokStorageRoot(), "version.json"));
   return readString(payload?.version) || grokFallbackClientVersion;
 }
 async function refreshGrokAuth(auth) {
@@ -26660,8 +26759,8 @@ function grokCredentialFiles() {
   const explicitFile = process.env.GROK_AUTH_FILE?.trim();
   return uniqueStrings([
     explicitFile,
-    import_node_path6.default.join(grokStorageRoot(), "auth.json"),
-    import_node_path6.default.join(grokStorageRoot(), "credentials.json")
+    import_node_path7.default.join(grokStorageRoot(), "auth.json"),
+    import_node_path7.default.join(grokStorageRoot(), "credentials.json")
   ]);
 }
 function grokStorageRoot() {
@@ -26669,8 +26768,8 @@ function grokStorageRoot() {
   if (explicitRoot) {
     return explicitRoot;
   }
-  const homeDir = process.env.CCR_INTERNAL_HOME_DIR?.trim() || process.env.HOME?.trim() || process.env.USERPROFILE?.trim() || import_node_os2.default.homedir();
-  return import_node_path6.default.join(homeDir, ".grok");
+  const homeDir = process.env.CCR_INTERNAL_HOME_DIR?.trim() || process.env.HOME?.trim() || process.env.USERPROFILE?.trim() || import_node_os3.default.homedir();
+  return import_node_path7.default.join(homeDir, ".grok");
 }
 function grokBillingEndpoint() {
   return process.env.GROK_BILLING_ENDPOINT?.trim() || grokDefaultBillingEndpoint;
@@ -26935,6 +27034,22 @@ var geminiProviderPreset = {
     { flags: "i", source: "^AIza[a-z0-9_-]{20,}$" }
   ],
   websiteUrl: "https://gemini.google.com/"
+};
+
+// packages/core/src/providers/presets/infistar-ai/index.ts
+var infistarAiProviderPreset = {
+  account: defaultProviderAccountConfig,
+  aliases: ["infistar", "infistar ai", "\u65E0\u9650\u661F\u6CB3", "\u65E0\u9650\u661F\u6CB3ai", "\u65E0\u9650\u661F\u6CB3 ai"],
+  defaultModels: ["gpt-4o"],
+  endpoints: [
+    {
+      baseUrl: "https://infistar.ai/v1",
+      protocols: ["openai_chat_completions"]
+    }
+  ],
+  id: "infistar-ai",
+  name: "Infistar AI",
+  websiteUrl: "https://infistar.ai"
 };
 
 // packages/core/src/providers/presets/kimi-coding/index.ts
@@ -27684,6 +27799,7 @@ var providerPresets = [
   siliconFlowProviderPreset,
   qiniuAiProviderPreset,
   fennoProviderPreset,
+  infistarAiProviderPreset,
   runApiProviderPreset,
   teamoRouterProviderPreset,
   unity2ProviderPreset,
@@ -27847,6 +27963,17 @@ async function loadAppConfig() {
       },
       botConfigs: picked.botConfigs ?? DEFAULT_CONFIG.botConfigs,
       botGateway: completeBotGatewayConfig(picked.botGateway),
+      contextArchive: {
+        enabled: picked.contextArchive?.enabled ?? DEFAULT_CONFIG.contextArchive.enabled,
+        maxBytes: picked.contextArchive?.maxBytes ?? DEFAULT_CONFIG.contextArchive.maxBytes,
+        maxSnapshotBytes: picked.contextArchive?.maxSnapshotBytes ?? DEFAULT_CONFIG.contextArchive.maxSnapshotBytes,
+        maxSnapshots: picked.contextArchive?.maxSnapshots ?? DEFAULT_CONFIG.contextArchive.maxSnapshots,
+        mcpEnabled: picked.contextArchive?.mcpEnabled ?? DEFAULT_CONFIG.contextArchive.mcpEnabled,
+        replayTimeoutMs: picked.contextArchive?.replayTimeoutMs ?? DEFAULT_CONFIG.contextArchive.replayTimeoutMs,
+        retentionDays: picked.contextArchive?.retentionDays ?? DEFAULT_CONFIG.contextArchive.retentionDays,
+        storagePath: picked.contextArchive?.storagePath ?? DEFAULT_CONFIG.contextArchive.storagePath,
+        toolName: picked.contextArchive?.toolName ?? DEFAULT_CONFIG.contextArchive.toolName
+      },
       gateway: {
         ...DEFAULT_CONFIG.gateway,
         ...gatewayConfig,
@@ -28106,6 +28233,10 @@ function pickConfig(value) {
   if (botConfigs) {
     config.botConfigs = botConfigs;
   }
+  const contextArchive = parseContextArchive(value.contextArchive ?? value.context_archive);
+  if (contextArchive) {
+    config.contextArchive = contextArchive;
+  }
   if (typeof value.autoStart === "boolean") {
     config.autoStart = value.autoStart;
   }
@@ -28195,6 +28326,48 @@ function pickConfig(value) {
     config.overviewWidgets = overviewWidgets;
   }
   return config;
+}
+function parseContextArchive(value) {
+  if (!isObject2(value)) {
+    return void 0;
+  }
+  const contextArchive = {};
+  if (typeof value.enabled === "boolean") {
+    contextArchive.enabled = value.enabled;
+  }
+  const mcpEnabled = value.mcpEnabled ?? value.mcp_enabled;
+  if (typeof mcpEnabled === "boolean") {
+    contextArchive.mcpEnabled = mcpEnabled;
+  }
+  const maxBytes = readNumber(value.maxBytes ?? value.max_bytes);
+  if (maxBytes !== void 0) {
+    contextArchive.maxBytes = clampNumber(maxBytes, 1024 * 1024, 64 * 1024 * 1024 * 1024);
+  }
+  const maxSnapshotBytes = readNumber(value.maxSnapshotBytes ?? value.max_snapshot_bytes);
+  if (maxSnapshotBytes !== void 0) {
+    contextArchive.maxSnapshotBytes = clampNumber(maxSnapshotBytes, 64 * 1024, 1024 * 1024 * 1024);
+  }
+  const maxSnapshots = readNumber(value.maxSnapshots ?? value.max_snapshots);
+  if (maxSnapshots !== void 0) {
+    contextArchive.maxSnapshots = clampNumber(maxSnapshots, 1, 1e5);
+  }
+  const replayTimeoutMs = readNumber(value.replayTimeoutMs ?? value.replay_timeout_ms);
+  if (replayTimeoutMs !== void 0) {
+    contextArchive.replayTimeoutMs = clampNumber(replayTimeoutMs, 1e3, 6e5);
+  }
+  const retentionDays = readNumber(value.retentionDays ?? value.retention_days);
+  if (retentionDays !== void 0) {
+    contextArchive.retentionDays = clampNumber(retentionDays, 1, 3650);
+  }
+  const storagePath = readString4(value.storagePath ?? value.storage_path);
+  if (storagePath !== void 0) {
+    contextArchive.storagePath = storagePath;
+  }
+  const toolName = readString4(value.toolName ?? value.tool_name);
+  if (toolName !== void 0) {
+    contextArchive.toolName = toolName;
+  }
+  return Object.keys(contextArchive).length ? contextArchive : void 0;
 }
 function removeVirtualModelToolLoopLimits(value) {
   if (!isObject2(value) || !isObject2(value.execution) || !("maxTurns" in value.execution) && !("maxToolCalls" in value.execution)) {
@@ -28560,12 +28733,14 @@ function parseProviders(value) {
       extraHeaders: item.extraHeaders,
       icon: readString4(item.icon),
       id: readString4(item.id),
+      enabled: item.enabled === false ? false : void 0,
       modelDescriptions,
       modelDisplayNames,
       modelMetadata,
       models,
       name,
       provider: readString4(item.provider),
+      protocolDetectionMode: parseEnumValue(item.protocolDetectionMode, ["auto", "manual"], void 0),
       transformer: item.transformer,
       type: readString4(item.type)
     };
@@ -29477,7 +29652,7 @@ function parseProxyTargets(value) {
     if (!host) {
       return void 0;
     }
-    const paths = Array.isArray(item.paths) ? item.paths.map((path13) => readString4(path13)).filter((path13) => Boolean(path13)) : void 0;
+    const paths = Array.isArray(item.paths) ? item.paths.map((path14) => readString4(path14)).filter((path14) => Boolean(path14)) : void 0;
     return {
       host,
       paths: paths?.length ? paths : void 0
@@ -29546,7 +29721,7 @@ function parseGatewayPluginProxyRoutes(value) {
     if (!host || !upstream) {
       return void 0;
     }
-    const paths = Array.isArray(item.paths) ? item.paths.map((path13) => readString4(path13)).filter((path13) => Boolean(path13)) : void 0;
+    const paths = Array.isArray(item.paths) ? item.paths.map((path14) => readString4(path14)).filter((path14) => Boolean(path14)) : void 0;
     const headers = parseStringRecord(item.headers);
     const stripPathPrefix = typeof item.stripPathPrefix === "boolean" || typeof item.stripPathPrefix === "string" ? item.stripPathPrefix : void 0;
     const rewritePathPrefix = readString4(item.rewritePathPrefix);
@@ -29593,6 +29768,10 @@ function parseProfile(value) {
     if (typeof claudeCode.enabled === "boolean") {
       profile.claudeCode.enabled = claudeCode.enabled;
     }
+    const managedCompact = readManagedCompact(claudeCode);
+    if (managedCompact !== void 0) {
+      profile.claudeCode.managedCompact = managedCompact;
+    }
     const settingsFile = readString4(claudeCode.settingsFile) || readString4(claudeCode.configFile) || readString4(claudeCode.path);
     if (settingsFile) {
       profile.claudeCode.settingsFile = settingsFile;
@@ -29611,6 +29790,10 @@ function parseProfile(value) {
     profile.codex = {};
     if (typeof codex.enabled === "boolean") {
       profile.codex.enabled = codex.enabled;
+    }
+    const managedCompact = readManagedCompact(codex);
+    if (managedCompact !== void 0) {
+      profile.codex.managedCompact = managedCompact;
     }
     if (typeof codex.cliMiddleware === "boolean") {
       profile.codex.cliMiddleware = codex.cliMiddleware;
@@ -29703,6 +29886,7 @@ function parseProfiles(value) {
     const botConfigId = surface !== "cli" ? readString4(item.botConfigId) || readString4(item.bot_config_id) || readString4(item.savedBotConfigId) || readString4(item.saved_bot_config_id) : "";
     const parsedBotGateway = parseBotGateway(item.botGateway ?? item.bot_gateway ?? item.bot);
     const botGateway = surface !== "cli" && parsedBotGateway ? completeBotGatewayConfig(parsedBotGateway) : void 0;
+    const managedCompact = readManagedCompact(item);
     if (agent === "claude-code") {
       const appPath2 = readProfileAppPath(item, agent);
       return {
@@ -29713,6 +29897,7 @@ function parseProfiles(value) {
         enabled,
         env: claudeCodeProfileEnv(env),
         id,
+        ...managedCompact !== void 0 ? { managedCompact } : {},
         model,
         name,
         scope: parseProfileScope(readString4(item.scope) || readString4(item.applyScope) || readString4(item.effectScope)) || "global",
@@ -29748,6 +29933,7 @@ function parseProfiles(value) {
       enabled,
       env: codexCompatibleProfileEnv(env),
       id,
+      ...managedCompact !== void 0 ? { managedCompact } : {},
       model,
       name,
       providerId: readString4(item.providerId) || readString4(item.provider) || "claude-code-router",
@@ -29787,6 +29973,10 @@ function parseProfileAgent(value) {
   }
   return void 0;
 }
+function readManagedCompact(value) {
+  const candidate = value.managedCompact ?? value.managed_compact ?? value.ccrManagedCompact ?? value.ccr_managed_compact ?? value.contextArchiveCompact ?? value.context_archive_compact;
+  return typeof candidate === "boolean" ? candidate : void 0;
+}
 function defaultProfileAgentName(agent) {
   if (agent === "claude-code") {
     return "Claude Code";
@@ -29821,6 +30011,7 @@ function profileFromClaudeCodeConfig(config) {
     enabled: config.enabled,
     env: claudeCodeProfileEnv(),
     id: "default-claude-code",
+    managedCompact: config.managedCompact,
     model: config.model,
     name: "Claude Code",
     scope: "global",
@@ -29850,6 +30041,7 @@ function profileFromCodexConfig(config) {
     enabled: config.enabled,
     env: {},
     id: "default-codex",
+    managedCompact: config.managedCompact,
     model: config.model,
     name: "Codex",
     providerId: config.providerId,
@@ -30144,15 +30336,15 @@ function formatError4(error) {
 }
 
 // packages/core/src/proxy/system-proxy.ts
-var import_node_child_process = require("node:child_process");
+var import_node_child_process2 = require("node:child_process");
 var import_node_fs8 = require("node:fs");
-var import_node_path8 = __toESM(require("node:path"));
+var import_node_path9 = __toESM(require("node:path"));
 
 // packages/core/src/platform/windows-system.ts
 var import_node_fs7 = require("node:fs");
-var import_node_path7 = __toESM(require("node:path"));
+var import_node_path8 = __toESM(require("node:path"));
 function windowsSystemCommand(command) {
-  if (process.platform !== "win32" || import_node_path7.default.isAbsolute(command)) {
+  if (process.platform !== "win32" || import_node_path8.default.isAbsolute(command)) {
     return command;
   }
   const roots = [process.env.SystemRoot, process.env.windir].map((value) => value?.trim()).filter((value) => Boolean(value));
@@ -30160,13 +30352,13 @@ function windowsSystemCommand(command) {
   const candidates = roots.flatMap((root) => {
     if (normalized === "powershell.exe") {
       return [
-        import_node_path7.default.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
-        import_node_path7.default.join(root, "Sysnative", "WindowsPowerShell", "v1.0", "powershell.exe")
+        import_node_path8.default.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+        import_node_path8.default.join(root, "Sysnative", "WindowsPowerShell", "v1.0", "powershell.exe")
       ];
     }
     return [
-      import_node_path7.default.join(root, "System32", command),
-      import_node_path7.default.join(root, "Sysnative", command)
+      import_node_path8.default.join(root, "System32", command),
+      import_node_path8.default.join(root, "Sysnative", command)
     ];
   });
   return candidates.find((candidate) => (0, import_node_fs7.existsSync)(candidate)) ?? command;
@@ -30175,7 +30367,7 @@ function windowsSystemCommand(command) {
 // packages/core/src/proxy/system-proxy.ts
 var networkSetup = "/usr/sbin/networksetup";
 var windowsInternetSettingsKey = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
-var systemProxySnapshotFile = import_node_path8.default.join(DATADIR, "system-proxy-snapshot.json");
+var systemProxySnapshotFile = import_node_path9.default.join(DATADIR, "system-proxy-snapshot.json");
 var SystemProxyManager = class {
   snapshot;
   status = {
@@ -30817,7 +31009,7 @@ function readSetting(output, key) {
   return pattern.exec(output)?.[1]?.trim() ?? "";
 }
 function persistSnapshot(snapshot) {
-  (0, import_node_fs8.mkdirSync)(import_node_path8.default.dirname(systemProxySnapshotFile), { recursive: true });
+  (0, import_node_fs8.mkdirSync)(import_node_path9.default.dirname(systemProxySnapshotFile), { recursive: true });
   (0, import_node_fs8.writeFileSync)(systemProxySnapshotFile, `${JSON.stringify(snapshot, null, 2)}
 `, "utf8");
 }
@@ -30937,7 +31129,7 @@ function runNetworkSetup(args) {
 }
 function runCommand(file, args) {
   return new Promise((resolve, reject) => {
-    (0, import_node_child_process.execFile)(file, args, { windowsHide: process.platform === "win32" }, (error, stdout, stderr) => {
+    (0, import_node_child_process2.execFile)(file, args, { windowsHide: process.platform === "win32" }, (error, stdout, stderr) => {
       const message = stderr?.trim() || stdout?.trim();
       if (error) {
         reject(new Error(message || error.message));
@@ -31376,7 +31568,7 @@ var codexAccountTokenUsageMapping = {
   ]
 };
 function readCodexAuth() {
-  const sourceFile = import_node_path9.default.join(codexHomeDir(), ".codex", "auth.json");
+  const sourceFile = import_node_path10.default.join(codexHomeDir(), ".codex", "auth.json");
   const record = readJsonRecord(sourceFile);
   if (!record) {
     return void 0;
@@ -31468,7 +31660,7 @@ function providerApiKey2(provider) {
   return provider.api_key || provider.apiKey || provider.apikey || "";
 }
 function codexHomeDir() {
-  return process.env.CCR_INTERNAL_HOME_DIR?.trim() || process.env.HOME?.trim() || process.env.USERPROFILE?.trim() || import_node_os3.default.homedir();
+  return process.env.CCR_INTERNAL_HOME_DIR?.trim() || process.env.HOME?.trim() || process.env.USERPROFILE?.trim() || import_node_os4.default.homedir();
 }
 function readCodexIdTokenClaims(idToken) {
   const payload = readJwtPayload(idToken);
@@ -31494,11 +31686,11 @@ function readJwtPayload(jwt) {
 }
 
 // packages/core/src/agents/local-providers/kimi.ts
-var import_node_child_process2 = require("node:child_process");
+var import_node_child_process3 = require("node:child_process");
 var import_node_crypto2 = require("node:crypto");
 var import_node_fs9 = require("node:fs");
-var import_node_os4 = __toESM(require("node:os"));
-var import_node_path10 = __toESM(require("node:path"));
+var import_node_os5 = __toESM(require("node:os"));
+var import_node_path11 = __toESM(require("node:path"));
 var kimiDefaultBaseUrl = "https://api.kimi.com/coding/v1";
 var kimiPlatformBaseUrl = "https://api.moonshot.ai/v1";
 var kimiOauthHost = "https://auth.kimi.com";
@@ -31552,8 +31744,8 @@ function kimiIdentityHeaders() {
   const headers = {
     "User-Agent": `kimi-code-cli/${version}`,
     "X-Msh-Device-Model": kimiDeviceModel(),
-    "X-Msh-Device-Name": asciiHeader(import_node_os4.default.hostname()),
-    "X-Msh-Os-Version": asciiHeader(import_node_os4.default.release()),
+    "X-Msh-Device-Name": asciiHeader(import_node_os5.default.hostname()),
+    "X-Msh-Os-Version": asciiHeader(import_node_os5.default.release()),
     "X-Msh-Platform": "kimi_code_cli",
     "X-Msh-Version": version
   };
@@ -31890,14 +32082,14 @@ function findTomlSection(sections, pathValue) {
   return sections.find((section) => section.path.length === pathValue.length && section.path.every((part, index) => part === pathValue[index]));
 }
 function kimiConfigFile() {
-  return import_node_path10.default.join(kimiStorageRoot(), "config.toml");
+  return import_node_path11.default.join(kimiStorageRoot(), "config.toml");
 }
 function kimiCredentialFile(oauthKey) {
   const storageName = oauthKey === "kimi-code" || oauthKey === "oauth/kimi-code" ? "kimi-code" : oauthKey.startsWith("oauth/") ? oauthKey.slice("oauth/".length) : oauthKey;
   if (!storageName || storageName.includes("/") || storageName.startsWith(".")) {
-    return import_node_path10.default.join(kimiStorageRoot(), "credentials", "kimi-code.json");
+    return import_node_path11.default.join(kimiStorageRoot(), "credentials", "kimi-code.json");
   }
-  return import_node_path10.default.join(kimiStorageRoot(), "credentials", `${storageName}.json`);
+  return import_node_path11.default.join(kimiStorageRoot(), "credentials", `${storageName}.json`);
 }
 function kimiStorageRoot() {
   const explicit = process.env.KIMI_CODE_HOME?.trim();
@@ -31905,14 +32097,14 @@ function kimiStorageRoot() {
     return resolveUserPath(explicit);
   }
   const internalHome = process.env.CCR_INTERNAL_HOME_DIR?.trim();
-  return internalHome ? import_node_path10.default.join(internalHome, ".kimi-code") : import_node_path10.default.join(import_node_os4.default.homedir(), ".kimi-code");
+  return internalHome ? import_node_path11.default.join(internalHome, ".kimi-code") : import_node_path11.default.join(import_node_os5.default.homedir(), ".kimi-code");
 }
 function kimiCliVersion() {
   const explicit = process.env.KIMI_CODE_VERSION?.trim();
   if (explicit) return asciiHeader(explicit, "unknown");
   for (const command of kimiCliCandidates()) {
     try {
-      const value = (0, import_node_child_process2.execFileSync)(command, ["--version"], {
+      const value = (0, import_node_child_process3.execFileSync)(command, ["--version"], {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
         timeout: 2e3
@@ -31928,20 +32120,20 @@ function kimiCliCandidates() {
   const explicit = process.env.CCR_KIMI_BIN?.trim() || process.env.KIMI_BIN?.trim();
   return uniqueStrings([
     explicit,
-    import_node_path10.default.join(kimiStorageRoot(), "bin", process.platform === "win32" ? "kimi.exe" : "kimi"),
+    import_node_path11.default.join(kimiStorageRoot(), "bin", process.platform === "win32" ? "kimi.exe" : "kimi"),
     "kimi"
   ]);
 }
 function readOrCreateKimiDeviceId() {
   try {
-    const existing = (0, import_node_fs9.readFileSync)(import_node_path10.default.join(kimiStorageRoot(), "device_id"), "utf8").trim();
+    const existing = (0, import_node_fs9.readFileSync)(import_node_path11.default.join(kimiStorageRoot(), "device_id"), "utf8").trim();
     if (existing) return existing;
   } catch {
   }
   const deviceId = (0, import_node_crypto2.randomUUID)();
   try {
     (0, import_node_fs9.mkdirSync)(kimiStorageRoot(), { mode: 448, recursive: true });
-    (0, import_node_fs9.writeFileSync)(import_node_path10.default.join(kimiStorageRoot(), "device_id"), deviceId, { encoding: "utf8", mode: 384 });
+    (0, import_node_fs9.writeFileSync)(import_node_path11.default.join(kimiStorageRoot(), "device_id"), deviceId, { encoding: "utf8", mode: 384 });
   } catch {
   }
   return deviceId;
@@ -31949,19 +32141,19 @@ function readOrCreateKimiDeviceId() {
 function kimiDeviceModel() {
   if (process.platform === "darwin") {
     try {
-      const version = (0, import_node_child_process2.execFileSync)("/usr/bin/sw_vers", ["-productVersion"], {
+      const version = (0, import_node_child_process3.execFileSync)("/usr/bin/sw_vers", ["-productVersion"], {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
         timeout: 1e3
       }).trim();
-      return asciiHeader(`macOS ${version || import_node_os4.default.release()} ${import_node_os4.default.arch()}`);
+      return asciiHeader(`macOS ${version || import_node_os5.default.release()} ${import_node_os5.default.arch()}`);
     } catch {
     }
   }
   if (process.platform === "win32") {
-    return asciiHeader(`Windows ${import_node_os4.default.release()} ${import_node_os4.default.arch()}`);
+    return asciiHeader(`Windows ${import_node_os5.default.release()} ${import_node_os5.default.arch()}`);
   }
-  return asciiHeader(`${import_node_os4.default.type()} ${import_node_os4.default.release()} ${import_node_os4.default.arch()}`);
+  return asciiHeader(`${import_node_os5.default.type()} ${import_node_os5.default.release()} ${import_node_os5.default.arch()}`);
 }
 function asciiHeader(value, fallback = "unknown") {
   const cleaned = value.replace(/[^\x20-\x7e]/g, "").trim();
@@ -31975,9 +32167,9 @@ function sanitizeId(value) {
 }
 function resolveUserPath(value) {
   const trimmed = value.trim();
-  if (trimmed === "~") return import_node_os4.default.homedir();
-  if (trimmed.startsWith("~/") || trimmed.startsWith("~\\")) return import_node_path10.default.join(import_node_os4.default.homedir(), trimmed.slice(2));
-  return import_node_path10.default.resolve(trimmed);
+  if (trimmed === "~") return import_node_os5.default.homedir();
+  if (trimmed.startsWith("~/") || trimmed.startsWith("~\\")) return import_node_path11.default.join(import_node_os5.default.homedir(), trimmed.slice(2));
+  return import_node_path11.default.resolve(trimmed);
 }
 function stringValue(value) {
   return typeof value === "string" && value.trim() ? value.trim() : void 0;
@@ -32008,14 +32200,14 @@ function tokenRefreshErrorMessage2(payload, text) {
 // packages/core/src/plugins/service.ts
 var import_node_fs11 = require("node:fs");
 var import_node_module2 = require("node:module");
-var import_node_os5 = __toESM(require("node:os"));
-var import_node_path12 = __toESM(require("node:path"));
+var import_node_os6 = __toESM(require("node:os"));
+var import_node_path13 = __toESM(require("node:path"));
 var import_node_url = require("node:url");
 
 // packages/core/src/plugins/backend-service.ts
 var import_node_fs10 = require("node:fs");
 var import_node_http = __toESM(require("node:http"));
-var import_node_path11 = __toESM(require("node:path"));
+var import_node_path12 = __toESM(require("node:path"));
 var BackendService = class {
   backends = [];
   sqliteStores = [];
@@ -32056,8 +32248,8 @@ var BackendService = class {
   async openSqliteStore(ownerId, dataDir, options = {}) {
     (0, import_node_fs10.mkdirSync)(dataDir, { recursive: true });
     const filename = options.filename || `${sanitizeFileSegment(ownerId)}.sqlite`;
-    const dbFile = import_node_path11.default.isAbsolute(filename) ? filename : import_node_path11.default.join(dataDir, filename);
-    (0, import_node_fs10.mkdirSync)(import_node_path11.default.dirname(dbFile), { recursive: true });
+    const dbFile = import_node_path12.default.isAbsolute(filename) ? filename : import_node_path12.default.join(dataDir, filename);
+    (0, import_node_fs10.mkdirSync)(import_node_path12.default.dirname(dbFile), { recursive: true });
     const database = openSqliteDatabaseWithRecovery(ownerId, dbFile);
     const store = new SqliteStoreImpl(ownerId, dbFile, database);
     this.sqliteStores.push(store);
@@ -32307,8 +32499,8 @@ function formatError7(error) {
 // packages/core/src/plugins/service.ts
 var requireFromHere2 = (0, import_node_module2.createRequire)(__filename);
 var builtInMarketplacePluginModules = /* @__PURE__ */ new Map([
-  ["claude-design", import_node_path12.default.join(__dirname, "..", "marketplace", "plugins", "claude-design-plugin.cjs")],
-  ["cursor-proxy", import_node_path12.default.join(__dirname, "..", "marketplace", "plugins", "cursor-proxy-plugin.cjs")]
+  ["claude-design", import_node_path13.default.join(__dirname, "..", "marketplace", "plugins", "claude-design-plugin.cjs")],
+  ["cursor-proxy", import_node_path13.default.join(__dirname, "..", "marketplace", "plugins", "cursor-proxy-plugin.cjs")]
 ]);
 var GatewayPluginService = class {
   config;
@@ -32542,12 +32734,12 @@ var GatewayPluginService = class {
       ...route,
       host,
       id: route.id || `${pluginId}:proxy:${this.proxyRoutes.length + 1}`,
-      paths: route.paths?.map(normalizeRoutePath).filter((path13) => Boolean(path13)),
+      paths: route.paths?.map(normalizeRoutePath).filter((path14) => Boolean(path14)),
       pluginId
     });
   }
   createPluginContext(pluginConfig) {
-    const pluginDataDir = import_node_path12.default.join(DATADIR, "plugins", sanitizeFileSegment2(pluginConfig.id));
+    const pluginDataDir = import_node_path13.default.join(DATADIR, "plugins", sanitizeFileSegment2(pluginConfig.id));
     (0, import_node_fs11.mkdirSync)(pluginDataDir, { recursive: true });
     const logger = createPluginLogger(pluginConfig.id);
     return {
@@ -32585,7 +32777,7 @@ var GatewayPluginService = class {
     });
   }
   createRouteContext(pluginId) {
-    const pluginDataDir = import_node_path12.default.join(DATADIR, "plugins", sanitizeFileSegment2(pluginId));
+    const pluginDataDir = import_node_path13.default.join(DATADIR, "plugins", sanitizeFileSegment2(pluginId));
     const logger = createPluginLogger(pluginId);
     return {
       config: this.config ?? {},
@@ -32682,7 +32874,7 @@ function resolveLocalModulePath(value, label) {
     throw new Error(`${label} path is required.`);
   }
   const expanded = expandHome(trimmed);
-  if (import_node_path12.default.isAbsolute(expanded)) {
+  if (import_node_path13.default.isAbsolute(expanded)) {
     return expanded;
   }
   if (isProtocolSpecifier(expanded)) {
@@ -32691,14 +32883,14 @@ function resolveLocalModulePath(value, label) {
   if (!expanded.startsWith(".")) {
     throw new Error(`${label} must be an explicit local JavaScript path. Package specifiers are not loaded from configuration.`);
   }
-  const resolved = import_node_path12.default.resolve(CONFIGDIR, expanded);
+  const resolved = import_node_path13.default.resolve(CONFIGDIR, expanded);
   if (!isPathInside(resolved, CONFIGDIR)) {
     throw new Error(`${label} relative paths must stay inside the CCR config directory.`);
   }
   return resolved;
 }
 function assertJavaScriptModulePath(resolved, label) {
-  const extension = import_node_path12.default.extname(resolved).toLowerCase();
+  const extension = import_node_path13.default.extname(resolved).toLowerCase();
   if (![".cjs", ".js", ".mjs"].includes(extension)) {
     throw new Error(`${label} must resolve to a JavaScript module file.`);
   }
@@ -32707,8 +32899,8 @@ function isProtocolSpecifier(value) {
   return /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value);
 }
 function isPathInside(file, root) {
-  const relative = import_node_path12.default.relative(root, file);
-  return relative === "" || Boolean(relative) && !relative.startsWith("..") && !import_node_path12.default.isAbsolute(relative);
+  const relative = import_node_path13.default.relative(root, file);
+  return relative === "" || Boolean(relative) && !relative.startsWith("..") && !import_node_path13.default.isAbsolute(relative);
 }
 function normalizeLoadedPlugin(moduleValue) {
   const record = isRecord2(moduleValue) ? moduleValue : {};
@@ -32848,10 +33040,10 @@ function readBody(request) {
 }
 function expandHome(value) {
   if (value === "~") {
-    return import_node_os5.default.homedir();
+    return import_node_os6.default.homedir();
   }
   if (value.startsWith("~/")) {
-    return import_node_path12.default.join(import_node_os5.default.homedir(), value.slice(2));
+    return import_node_path13.default.join(import_node_os6.default.homedir(), value.slice(2));
   }
   return value;
 }
@@ -32926,7 +33118,9 @@ var ModelRegistry = class {
     if (!normalized) {
       return void 0;
     }
-    return this.config.Providers.find((provider) => providerAliases(provider).has(normalized));
+    return this.config.Providers.find(
+      (provider) => isGatewayProviderEnabled(provider) && providerAliases(provider).has(normalized)
+    );
   }
   resolveProviderModel(value) {
     const resolved = this.resolve(value);
@@ -32944,6 +33138,9 @@ var ModelRegistry = class {
     const normalized = caseInsensitive ? model.toLowerCase() : model;
     const matches = [];
     for (const provider of this.config.Providers) {
+      if (!isGatewayProviderEnabled(provider)) {
+        continue;
+      }
       for (const candidate of provider.models) {
         const configured = candidate.trim();
         const comparable = caseInsensitive ? configured.toLowerCase() : configured;
@@ -33074,10 +33271,10 @@ function numberValue2(value) {
 }
 
 // packages/core/src/mcp/fusion-config.ts
-var import_node_path15 = require("node:path");
+var import_node_path16 = require("node:path");
 
 // packages/core/src/mcp/toolhub-config.ts
-var import_node_path13 = require("node:path");
+var import_node_path14 = require("node:path");
 var TOOL_HUB_MCP_SERVER_NAME = "ccr-toolhub";
 var TOOL_HUB_MCP_RUNTIME_FILE_NAME = "toolhub-mcp.js";
 var BROWSER_AUTOMATION_MCP_SERVER_NAME = "ccr-browser-automation";
@@ -33130,7 +33327,7 @@ function toolHubMcpRuntimeConfig(config, backendServers, options = {}) {
     command: options.command ?? process.execPath,
     env: {
       ELECTRON_RUN_AS_NODE: "1",
-      TOOLHUB_CACHE_FILE: (0, import_node_path13.join)(CONFIGDIR, "toolhub-cache.json"),
+      TOOLHUB_CACHE_FILE: (0, import_node_path14.join)(CONFIGDIR, "toolhub-cache.json"),
       TOOLHUB_MAX_TOOLS: String(toolHub.maxTools ?? 10),
       TOOLHUB_MCP_SERVERS_JSON: JSON.stringify(normalizedBackendServers),
       TOOLHUB_OPENAI_API_KEY: options.resolver?.apiKey ?? toolHub.llm?.apiKey ?? "",
@@ -33146,7 +33343,7 @@ function toolHubRequestTimeoutMs(config, backendServers) {
   return Math.max(configuredTimeout, ...backendTimeouts);
 }
 function bundledToolHubMcpEntryPath() {
-  return (0, import_node_path13.join)(__dirname, TOOL_HUB_MCP_RUNTIME_FILE_NAME);
+  return (0, import_node_path14.join)(__dirname, TOOL_HUB_MCP_RUNTIME_FILE_NAME);
 }
 function isToolHubBackendServer(value) {
   return isRecord4(value) && stringValue3(value.name)?.toLowerCase() !== TOOL_HUB_MCP_SERVER_NAME;
@@ -33189,7 +33386,7 @@ var import_node_module3 = require("node:module");
 
 // packages/core/src/models/catalog-file.ts
 var import_node_fs12 = require("node:fs");
-var import_node_path14 = require("node:path");
+var import_node_path15 = require("node:path");
 function loadModelCatalogPayload() {
   const candidate = resolveModelCatalogPath();
   return candidate ? {
@@ -33204,13 +33401,13 @@ function modelCatalogPathCandidates() {
   return uniqueStrings3([
     process.env.CCR_MODEL_CATALOG_PATH?.trim() || "",
     process.env.CCR_MODELS_JSON_PATH?.trim() || "",
-    (0, import_node_path14.resolve)(process.cwd(), "models.json"),
-    (0, import_node_path14.resolve)(process.cwd(), "packages", "core", "models.json"),
-    (0, import_node_path14.resolve)(process.cwd(), "packages", "cli", "models.json"),
-    (0, import_node_path14.resolve)(__dirname, "..", "models.json"),
-    (0, import_node_path14.resolve)(__dirname, "..", "assets", "models.json"),
-    (0, import_node_path14.resolve)(__dirname, "..", "..", "models.json"),
-    (0, import_node_path14.resolve)(__dirname, "..", "..", "..", "models.json")
+    (0, import_node_path15.resolve)(process.cwd(), "models.json"),
+    (0, import_node_path15.resolve)(process.cwd(), "packages", "core", "models.json"),
+    (0, import_node_path15.resolve)(process.cwd(), "packages", "cli", "models.json"),
+    (0, import_node_path15.resolve)(__dirname, "..", "models.json"),
+    (0, import_node_path15.resolve)(__dirname, "..", "assets", "models.json"),
+    (0, import_node_path15.resolve)(__dirname, "..", "..", "models.json"),
+    (0, import_node_path15.resolve)(__dirname, "..", "..", "..", "models.json")
   ]);
 }
 function uniqueStrings3(values) {
@@ -33619,7 +33816,7 @@ function fusionBuiltinMcpServer({
   };
 }
 function bundledFusionBuiltinMcpEntryPath() {
-  return (0, import_node_path15.join)(__dirname, "fusion-vision-mcp.js");
+  return (0, import_node_path16.join)(__dirname, "fusion-vision-mcp.js");
 }
 function fusionToolFallbackMcpServer(profiles, existingServers) {
   const tools = fusionFallbackToolDefinitions(profiles, fusionToolNamesBackedByMcpServers(existingServers));
@@ -33642,7 +33839,7 @@ function fusionToolFallbackMcpServer(profiles, existingServers) {
   };
 }
 function bundledFusionToolFallbackMcpEntryPath() {
-  return (0, import_node_path15.join)(__dirname, "fusion-tool-fallback-mcp.js");
+  return (0, import_node_path16.join)(__dirname, "fusion-tool-fallback-mcp.js");
 }
 function toolHubMcpServer(config, backendServers) {
   const toolHub = config.toolHub;
@@ -34098,7 +34295,7 @@ function sanitizeMcpServerName(value) {
 }
 
 // packages/core/src/mcp/grok-media-config.ts
-var import_node_path16 = require("node:path");
+var import_node_path17 = require("node:path");
 
 // packages/core/src/media/models.ts
 var localAgentProviderApiKey2 = "ccr-local-agent-login";
@@ -34153,10 +34350,10 @@ function videoGenerationConstraints(protocol) {
   };
 }
 function createGrokMediaModelOptions(providers, kind) {
-  return providers.flatMap((provider) => grokMediaModelsForProvider(provider, kind).map((model) => ({
+  return providers.flatMap((provider) => isGatewayProviderEnabled(provider) ? grokMediaModelsForProvider(provider, kind).map((model) => ({
     label: `${provider.name}/${mediaModelDisplayName(model)}`,
     value: `${provider.name}/${model}`
-  })));
+  })) : []);
 }
 function defaultGrokMediaModelSelector(providers, kind) {
   return createGrokMediaModelOptions(providers, kind)[0]?.value;
@@ -34188,7 +34385,7 @@ function uniqueStrings6(values) {
 
 // packages/core/src/media/tools.ts
 function mediaToolBindingsForConfig(config) {
-  const providers = config.Providers ?? [];
+  const providers = (config.Providers ?? []).filter(isGatewayProviderEnabled);
   const bindings = [];
   const seen = /* @__PURE__ */ new Set();
   const add = (binding) => {
@@ -34329,7 +34526,7 @@ function mediaToolsMcpServer(config, options = {}) {
   };
 }
 function bundledMediaToolsMcpEntryPath() {
-  return (0, import_node_path16.join)(__dirname, "media-tools-proxy-mcp.js");
+  return (0, import_node_path17.join)(__dirname, "media-tools-proxy-mcp.js");
 }
 function firstConfiguredApiKey2(config) {
   return (Array.isArray(config.APIKEYS) ? config.APIKEYS : []).find((apiKey) => apiKey.key.trim())?.key.trim() || stringValue5(config.APIKEY);
@@ -35059,8 +35256,8 @@ function remoteAfterSeq(request) {
   const after = Number(url.searchParams.get("after") ?? readHeader(request.headers["last-event-id"]) ?? 0);
   return Number.isFinite(after) && after > 0 ? Math.floor(after) : 0;
 }
-function remotePathSegments(path13) {
-  const suffix = path13.slice(ccrRemoteControlPathPrefix.length).replace(/^\/+|\/+$/g, "");
+function remotePathSegments(path14) {
+  const suffix = path14.slice(ccrRemoteControlPathPrefix.length).replace(/^\/+|\/+$/g, "");
   if (!suffix) {
     return [];
   }
@@ -35096,6 +35293,855 @@ function formatError9(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
+// packages/core/src/gateway/context-archive.ts
+var import_node_crypto5 = require("node:crypto");
+
+// packages/core/src/gateway/context-archive/protocol.ts
+function parseArchiveBody(body) {
+  if (!body?.length) {
+    return void 0;
+  }
+  try {
+    const parsed = JSON.parse(body.toString("utf8"));
+    return isRecord7(parsed) ? parsed : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function appendArchiveTask(originalBody, protocol, task) {
+  return appendTask(originalBody, protocol, task, { compactHandoff: false, replayTask: true });
+}
+function appendTask(originalBody, protocol, task, options) {
+  const body = parseArchiveBody(originalBody);
+  if (!body) {
+    throw archiveProtocolError("ARCHIVE_INVALID_REQUEST", "The archived request body is not a JSON object.");
+  }
+  assertAppendableTurn(body, protocol);
+  const next = cloneJsonObject(body);
+  if (options.compactHandoff) {
+    sanitizeCompactHandoffRequest(next, protocol);
+  } else if (options.replayTask && protocol === "openai_responses") {
+    removeCodexCompactionTriggers(next);
+  }
+  if (protocol === "openai_responses") {
+    if (Array.isArray(next.input)) {
+      next.input = [
+        ...next.input,
+        {
+          content: [{ text: task, type: "input_text" }],
+          role: "user",
+          type: "message"
+        }
+      ];
+    } else if (typeof next.input === "string") {
+      next.input = `${next.input}
+
+${task}`;
+    } else if (next.input === void 0) {
+      next.input = task;
+    } else {
+      throw archiveProtocolError("ARCHIVE_INVALID_REQUEST", "OpenAI Responses input cannot accept an appended task.");
+    }
+  } else {
+    const messages = next.messages;
+    if (!Array.isArray(messages)) {
+      throw archiveProtocolError("ARCHIVE_INVALID_REQUEST", `${protocol} request is missing messages.`);
+    }
+    next.messages = [...messages, { content: task, role: "user" }];
+  }
+  return Buffer.from(`${JSON.stringify(next)}
+`, "utf8");
+}
+function archiveHandoffFooter(input) {
+  const argumentsJson = `{ "task": "specific historical question", "archive_id": "${input.archiveId}", "session_token": "${input.sessionToken}" }`;
+  const clientToolName = input.clientToolName?.trim();
+  const toolLines = clientToolName && clientToolName !== input.toolName ? [
+    `In Claude Code, call the tool named: ${clientToolName}`,
+    `Raw MCP tool name: ${input.toolName}`,
+    `Tool arguments JSON: ${argumentsJson}`
+  ] : [
+    `${input.toolName}(${argumentsJson})`
+  ];
+  return [
+    "CCR ARCHIVED HISTORY ACCESS",
+    `Archive id: ${input.archiveId}`,
+    `Archive session id: ${input.sessionId}`,
+    `Archive generation: ${input.generation}`,
+    `Archive session token: ${input.sessionToken}`,
+    ...toolLines,
+    "The latest archive access searches this compact generation and its parent generations when needed.",
+    "Treat history answers as evidence and preserve the original instruction priority."
+  ].join("\n");
+}
+function historyReplayTask(task) {
+  return [
+    "CCR history task from the successor agent:",
+    "Use the complete conversation and request parameters already present in this request as your previous context.",
+    "Answer only the task below from that context. If the context is insufficient, say so directly.",
+    "Do not continue the previous task, modify files, or call external tools.",
+    "",
+    task
+  ].join("\n");
+}
+function extractArchiveAssistantText(rawText, protocol, contentType) {
+  const trimmed = rawText.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const isSse = contentType?.toLowerCase().includes("text/event-stream") || /^event:|^data:/m.test(trimmed);
+  if (isSse) {
+    return normalizeWhitespace(collectSseProtocolText(parseSsePayloads(trimmed), protocol).join(""));
+  }
+  try {
+    return normalizeWhitespace(collectProtocolText(JSON.parse(trimmed), protocol).join(""));
+  } catch {
+    return normalizeWhitespace(rawText);
+  }
+}
+function collectSseProtocolText(payloads, protocol) {
+  if (protocol === "openai_responses") {
+    const deltas = payloads.flatMap(
+      (payload) => isRecord7(payload) && payload.type === "response.output_text.delta" && typeof payload.delta === "string" ? [payload.delta] : []
+    );
+    return deltas.length ? deltas : payloads.flatMap((payload) => collectProtocolText(payload, protocol));
+  }
+  if (protocol === "anthropic_messages") {
+    const deltas = payloads.flatMap(
+      (payload) => isRecord7(payload) && payload.type === "content_block_delta" ? collectText(payload.delta) : []
+    );
+    return deltas.length ? deltas : payloads.flatMap((payload) => collectProtocolText(payload, protocol));
+  }
+  return payloads.flatMap((payload) => collectProtocolText(payload, protocol));
+}
+function archiveResponseRequiresTool(rawText) {
+  const values = [];
+  try {
+    values.push(JSON.parse(rawText));
+  } catch {
+    values.push(...parseSsePayloads(rawText));
+  }
+  return values.some(hasStructuredToolCall);
+}
+function assertAppendableTurn(body, protocol) {
+  if (protocol === "openai_responses") {
+    const input = Array.isArray(body.input) ? body.input : [];
+    const tail2 = input.at(-1);
+    if (isRecord7(tail2) && ["function_call", "computer_call", "custom_tool_call"].includes(String(tail2.type ?? ""))) {
+      throw archiveProtocolError("ARCHIVE_NOT_AT_TURN_BOUNDARY", "The archived Responses request ends with an unresolved tool call.");
+    }
+    return;
+  }
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  const tail = messages.at(-1);
+  if (!isRecord7(tail) || String(tail.role ?? "") !== "assistant") {
+    return;
+  }
+  if (Array.isArray(tail.tool_calls) && tail.tool_calls.length > 0) {
+    throw archiveProtocolError("ARCHIVE_NOT_AT_TURN_BOUNDARY", "The archived chat request ends with an unresolved tool call.");
+  }
+  if (Array.isArray(tail.content) && tail.content.some((block) => isRecord7(block) && block.type === "tool_use")) {
+    throw archiveProtocolError("ARCHIVE_NOT_AT_TURN_BOUNDARY", "The archived Anthropic request ends with an unresolved tool call.");
+  }
+}
+function sanitizeCompactHandoffRequest(body, protocol) {
+  removeCompactSignals(body);
+  removeKeys(body, [
+    "response_format",
+    "responseFormat",
+    "stop",
+    "stop_sequences",
+    "stopSequences"
+  ]);
+  if (protocol === "openai_responses") {
+    removeKeys(body, [
+      "parallel_tool_calls",
+      "parallelToolCalls",
+      "tool_choice",
+      "toolChoice",
+      "tools"
+    ]);
+    normalizeOpenAiResponsesTextFormat(body);
+    raiseMinimumNumericField(body, ["max_output_tokens", "maxOutputTokens", "max_tokens", "maxTokens"], 2048);
+    return;
+  }
+  removeKeys(body, [
+    "function_call",
+    "functionCall",
+    "functions",
+    "parallel_tool_calls",
+    "parallelToolCalls",
+    "tool_choice",
+    "toolChoice",
+    "tools"
+  ]);
+  raiseMinimumNumericField(body, ["max_tokens", "maxTokens"], 2048);
+}
+function removeCompactSignals(body) {
+  removeCodexCompactionTriggers(body);
+  for (const key of ["context_management", "contextManagement"]) {
+    const management = isRecord7(body[key]) ? cloneJsonObject(body[key]) : void 0;
+    if (!management) {
+      continue;
+    }
+    const edits = Array.isArray(management.edits) ? management.edits.filter((edit) => !(isRecord7(edit) && isCompactType(edit.type))) : void 0;
+    if (edits !== void 0) {
+      if (edits.length > 0) {
+        management.edits = edits;
+      } else {
+        delete management.edits;
+      }
+    }
+    if (Object.keys(management).length > 0) {
+      body[key] = management;
+    } else {
+      delete body[key];
+    }
+  }
+  const metadata = isRecord7(body.metadata) ? cloneJsonObject(body.metadata) : void 0;
+  if (!metadata) {
+    return;
+  }
+  delete metadata.ccr_context_compact;
+  delete metadata.ccrContextCompact;
+  if (Object.keys(metadata).length > 0) {
+    body.metadata = metadata;
+  } else {
+    delete body.metadata;
+  }
+}
+function removeCodexCompactionTriggers(body) {
+  if (Array.isArray(body.input)) {
+    body.input = body.input.filter((item) => !(isRecord7(item) && item.type === "compaction_trigger"));
+  }
+}
+function normalizeOpenAiResponsesTextFormat(body) {
+  if (!isRecord7(body.text)) {
+    return;
+  }
+  const text = cloneJsonObject(body.text);
+  if (!isRecord7(text.format)) {
+    return;
+  }
+  const type = typeof text.format.type === "string" ? text.format.type.toLowerCase() : "";
+  if (!type || type === "text") {
+    return;
+  }
+  text.format = { type: "text" };
+  body.text = text;
+}
+function removeKeys(body, keys) {
+  for (const key of keys) {
+    delete body[key];
+  }
+}
+function raiseMinimumNumericField(body, keys, minimum) {
+  for (const key of keys) {
+    if (typeof body[key] === "number" && Number.isFinite(body[key]) && body[key] < minimum) {
+      body[key] = minimum;
+    }
+  }
+}
+function collectProtocolText(value, protocol) {
+  if (!isRecord7(value)) {
+    return [];
+  }
+  if (protocol === "openai_chat_completions") {
+    const choices = Array.isArray(value.choices) ? value.choices : [];
+    const text = choices.flatMap((choice) => isRecord7(choice) ? [...collectText(readPath(choice, ["message", "content"])), ...collectText(readPath(choice, ["delta", "content"]))] : []);
+    return text.length ? text : collectText(value);
+  }
+  if (protocol === "openai_responses") {
+    return collectText(value.output_text).concat(collectText(value.delta), collectText(value.output), collectText(value.item));
+  }
+  return collectText(value.content).concat(collectText(value.delta), collectText(value.message));
+}
+function collectText(value) {
+  if (typeof value === "string") {
+    return [value];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap(collectText);
+  }
+  if (!isRecord7(value)) {
+    return [];
+  }
+  const type = typeof value.type === "string" ? value.type : "";
+  const direct = typeof value.text === "string" && (!type || [
+    "content_block_delta",
+    "message",
+    "output_text",
+    "summary_text",
+    "text",
+    "text_delta",
+    "response.output_text.delta"
+  ].includes(type)) ? [value.text] : [];
+  const outputText = typeof value.output_text === "string" ? [value.output_text] : [];
+  const content = typeof value.content === "string" ? [value.content] : collectText(value.content);
+  return direct.concat(outputText, content, collectText(value.delta), collectText(value.message), collectText(value.output), collectText(value.response), collectText(value.item));
+}
+function parseSsePayloads(rawText) {
+  const payloads = [];
+  for (const event of rawText.split(/\r?\n\r?\n+/g)) {
+    const data = event.split(/\r?\n/g).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n").trim();
+    if (!data || data === "[DONE]") {
+      continue;
+    }
+    try {
+      payloads.push(JSON.parse(data));
+    } catch {
+    }
+  }
+  return payloads;
+}
+function hasStructuredToolCall(value) {
+  if (Array.isArray(value)) {
+    return value.some(hasStructuredToolCall);
+  }
+  if (!isRecord7(value)) {
+    return false;
+  }
+  if (Array.isArray(value.tool_calls) && value.tool_calls.length > 0) {
+    return true;
+  }
+  if (["tool_use", "function_call", "custom_tool_call", "computer_call"].includes(String(value.type ?? ""))) {
+    return true;
+  }
+  return Object.values(value).some(hasStructuredToolCall);
+}
+function readPath(value, path14) {
+  let current = value;
+  for (const part of path14) {
+    if (!isRecord7(current)) {
+      return void 0;
+    }
+    current = current[part];
+  }
+  return current;
+}
+function isCompactType(value) {
+  return typeof value === "string" && /^compact(?:_|$)/i.test(value.trim());
+}
+function cloneJsonObject(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+function normalizeWhitespace(value) {
+  return value.replace(/\r\n/g, "\n").replace(/[ \t]+\n/g, "\n").trim();
+}
+function archiveProtocolError(code, message) {
+  const error = new Error(`${code}: ${message}`);
+  error.name = "ContextArchiveError";
+  return error;
+}
+function isRecord7(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+// packages/core/src/gateway/context-archive/store.ts
+var import_node_fs13 = require("node:fs");
+var import_node_path18 = require("node:path");
+var ContextArchiveStore = class {
+  constructor(dbFile) {
+    this.dbFile = dbFile;
+    if (dbFile !== ":memory:") {
+      const directory = (0, import_node_path18.dirname)(dbFile);
+      (0, import_node_fs13.mkdirSync)(directory, { mode: 448, recursive: true });
+      securePath(directory, 448);
+    }
+    this.database = createBetterSqliteDatabase(dbFile);
+    this.database.pragma("journal_mode = WAL");
+    this.database.pragma("synchronous = NORMAL");
+    this.database.pragma("busy_timeout = 5000");
+    this.database.exec(`
+      CREATE TABLE IF NOT EXISTS archive_snapshots (
+        archive_id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        generation INTEGER NOT NULL,
+        parent_archive_id TEXT,
+        request_id TEXT NOT NULL UNIQUE,
+        protocol TEXT NOT NULL,
+        method TEXT NOT NULL,
+        path TEXT NOT NULL,
+        body BLOB NOT NULL,
+        body_sha256 TEXT NOT NULL,
+        replay_headers_json TEXT NOT NULL,
+        route_json TEXT,
+        token_hash TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER,
+        UNIQUE(session_id, generation)
+      );
+      CREATE INDEX IF NOT EXISTS archive_snapshots_session_generation
+        ON archive_snapshots(session_id, generation DESC);
+      CREATE INDEX IF NOT EXISTS archive_snapshots_expires_at
+        ON archive_snapshots(expires_at);
+    `);
+    this.secureFiles();
+  }
+  dbFile;
+  database;
+  create(input, retention) {
+    const transaction = this.database.transaction(() => {
+      const previous = this.database.prepare(`
+        SELECT archive_id, generation
+        FROM archive_snapshots
+        WHERE session_id = ?
+        ORDER BY generation DESC
+        LIMIT 1
+      `).get(input.sessionId);
+      const generation = Number(previous?.generation ?? 0) + 1;
+      const parentArchiveId = readString7(previous?.archive_id);
+      this.database.prepare(`
+        INSERT INTO archive_snapshots (
+          archive_id, session_id, generation, parent_archive_id, request_id,
+          protocol, method, path, body, body_sha256, replay_headers_json,
+          token_hash, status, created_at, expires_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+      `).run(
+        input.archiveId,
+        input.sessionId,
+        generation,
+        parentArchiveId ?? null,
+        input.requestId,
+        input.protocol,
+        input.method,
+        input.path,
+        input.body,
+        input.bodySha256,
+        JSON.stringify(input.replayHeaders),
+        input.tokenHash,
+        input.createdAt,
+        input.expiresAt ?? null
+      );
+      return { generation, parentArchiveId };
+    });
+    const lineage = transaction();
+    this.extendLineageExpiry(input.archiveId, input.expiresAt, retention);
+    this.prune(retention, input.archiveId);
+    this.secureFiles();
+    return {
+      ...input,
+      ...lineage,
+      status: "pending"
+    };
+  }
+  finalize(archiveId, route) {
+    this.database.prepare(`
+      UPDATE archive_snapshots
+      SET route_json = ?, status = 'ready'
+      WHERE archive_id = ? AND status = 'pending'
+    `).run(JSON.stringify(route), archiveId);
+    this.secureFiles();
+  }
+  fail(archiveId) {
+    this.database.prepare("UPDATE archive_snapshots SET status = 'failed' WHERE archive_id = ?").run(archiveId);
+  }
+  get(archiveId) {
+    const row = this.database.prepare(`
+      SELECT * FROM archive_snapshots WHERE archive_id = ? LIMIT 1
+    `).get(archiveId);
+    return row ? snapshotFromRow(row) : void 0;
+  }
+  lineage(archiveId, limit = 32) {
+    const snapshots = [];
+    const seen = /* @__PURE__ */ new Set();
+    let currentArchiveId = archiveId;
+    while (currentArchiveId && snapshots.length < Math.max(1, Math.floor(limit)) && !seen.has(currentArchiveId)) {
+      seen.add(currentArchiveId);
+      const snapshot = this.get(currentArchiveId);
+      if (!snapshot) {
+        break;
+      }
+      snapshots.push(snapshot);
+      currentArchiveId = snapshot.parentArchiveId;
+    }
+    return snapshots;
+  }
+  clear() {
+    this.database.prepare("DELETE FROM archive_snapshots").run();
+  }
+  close() {
+    this.database.close();
+  }
+  prune(retention, protectedArchiveId) {
+    const protectedIds = this.protectedLineageIds(protectedArchiveId, retention);
+    const now = Date.now();
+    const expiredRows = this.database.prepare(`
+      SELECT archive_id
+      FROM archive_snapshots
+      WHERE expires_at IS NOT NULL AND expires_at <= ?
+    `).all(now);
+    for (const row of expiredRows) {
+      if (!protectedIds.has(row.archive_id)) {
+        this.database.prepare("DELETE FROM archive_snapshots WHERE archive_id = ?").run(row.archive_id);
+      }
+    }
+    const maxSnapshots = Math.max(1, Math.floor(retention.maxSnapshots));
+    const snapshotRows = this.database.prepare(`
+      SELECT archive_id
+      FROM archive_snapshots
+      ORDER BY created_at DESC, rowid DESC
+    `).all();
+    for (let index = maxSnapshots; index < snapshotRows.length; index += 1) {
+      const archiveId = snapshotRows[index]?.archive_id;
+      if (archiveId && !protectedIds.has(archiveId)) {
+        this.database.prepare("DELETE FROM archive_snapshots WHERE archive_id = ?").run(archiveId);
+      }
+    }
+    const maxBytes = Math.max(1, Math.floor(retention.maxBytes));
+    const rows = this.database.prepare(`
+      SELECT archive_id, length(body) AS body_bytes
+      FROM archive_snapshots
+      ORDER BY created_at DESC, rowid DESC
+    `).all();
+    let retainedBytes = 0;
+    for (const row of rows) {
+      retainedBytes += Number(row.body_bytes ?? 0);
+      if (retainedBytes > maxBytes && !protectedIds.has(row.archive_id)) {
+        this.database.prepare("DELETE FROM archive_snapshots WHERE archive_id = ?").run(row.archive_id);
+      }
+    }
+  }
+  protectedLineageIds(archiveId, retention) {
+    return new Set(this.lineage(archiveId, Math.max(1, Math.floor(retention.maxSnapshots))).map((snapshot) => snapshot.archiveId));
+  }
+  extendLineageExpiry(archiveId, expiresAt, retention) {
+    if (expiresAt === void 0) {
+      return;
+    }
+    for (const snapshot of this.lineage(archiveId, Math.max(1, Math.floor(retention.maxSnapshots)))) {
+      this.database.prepare(`
+        UPDATE archive_snapshots
+        SET expires_at = ?
+        WHERE archive_id = ? AND (expires_at IS NULL OR expires_at < ?)
+      `).run(expiresAt, snapshot.archiveId, expiresAt);
+    }
+  }
+  secureFiles() {
+    if (this.dbFile === ":memory:") {
+      return;
+    }
+    securePath(this.dbFile, 384);
+    securePath(`${this.dbFile}-wal`, 384);
+    securePath(`${this.dbFile}-shm`, 384);
+  }
+};
+function snapshotFromRow(row) {
+  return {
+    archiveId: requiredString(row.archive_id),
+    body: Buffer.from(row.body),
+    bodySha256: requiredString(row.body_sha256),
+    createdAt: Number(row.created_at),
+    expiresAt: optionalNumber(row.expires_at),
+    generation: Number(row.generation),
+    method: requiredString(row.method),
+    parentArchiveId: readString7(row.parent_archive_id),
+    path: requiredString(row.path),
+    protocol: requiredString(row.protocol),
+    replayHeaders: parseRecord(row.replay_headers_json),
+    requestId: requiredString(row.request_id),
+    route: parseOptionalRoute(row.route_json),
+    sessionId: requiredString(row.session_id),
+    status: requiredString(row.status),
+    tokenHash: requiredString(row.token_hash)
+  };
+}
+function parseRecord(value) {
+  const parsed = JSON.parse(requiredString(value));
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {};
+  }
+  return Object.fromEntries(Object.entries(parsed).filter((entry) => typeof entry[1] === "string"));
+}
+function parseOptionalRoute(value) {
+  const text = readString7(value);
+  if (!text) {
+    return void 0;
+  }
+  const parsed = JSON.parse(text);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : void 0;
+}
+function requiredString(value) {
+  const text = readString7(value);
+  if (!text) {
+    throw new Error("Context archive database contains an invalid string value.");
+  }
+  return text;
+}
+function readString7(value) {
+  return typeof value === "string" && value ? value : void 0;
+}
+function optionalNumber(value) {
+  return value === null || value === void 0 ? void 0 : Number(value);
+}
+function securePath(file, mode) {
+  if (process.platform === "win32" || !(0, import_node_fs13.existsSync)(file)) {
+    return;
+  }
+  try {
+    (0, import_node_fs13.chmodSync)(file, mode);
+  } catch {
+  }
+}
+
+// packages/core/src/gateway/context-archive.ts
+var maxMcpRequestBytes = 2 * 1024 * 1024;
+var defaultToolName = "ccr_history_ask";
+var maxUpstreamErrorCharacters = 4e3;
+var maxLineageReplayDepth = 32;
+var CONTEXT_ARCHIVE_MCP_SERVER_NAME = "ccr-context-archive";
+var ContextArchiveService = class {
+  stores = /* @__PURE__ */ new Map();
+  clear(config) {
+    if (config) {
+      this.store(config).clear();
+      return;
+    }
+    for (const store of this.stores.values()) {
+      store.clear();
+    }
+  }
+  close() {
+    for (const store of this.stores.values()) {
+      store.close();
+    }
+    this.stores.clear();
+  }
+  createSnapshot(input) {
+    const maxSnapshotBytes = clampInteger(input.config.maxSnapshotBytes, 64 * 1024, 1024 * 1024 * 1024, 32 * 1024 * 1024);
+    if (input.body.byteLength > maxSnapshotBytes) {
+      throw contextArchiveError(
+        "ARCHIVE_SNAPSHOT_TOO_LARGE",
+        `Compact request is ${input.body.byteLength} bytes; the configured snapshot limit is ${maxSnapshotBytes} bytes.`
+      );
+    }
+    const archiveId = `arc_${(0, import_node_crypto5.randomBytes)(18).toString("base64url")}`;
+    const sessionToken = (0, import_node_crypto5.randomBytes)(32).toString("base64url");
+    const createdAt = Date.now();
+    const retentionDays = clampInteger(input.config.retentionDays, 1, 3650, 30);
+    const snapshot = this.store(input.config).create({
+      archiveId,
+      body: Buffer.from(input.body),
+      bodySha256: sha256(input.body),
+      createdAt,
+      expiresAt: createdAt + retentionDays * 24 * 60 * 60 * 1e3,
+      method: input.method,
+      path: input.path,
+      protocol: input.protocol,
+      replayHeaders: replaySafeHeaders(input.headers),
+      requestId: input.requestId,
+      sessionId: input.sessionId,
+      tokenHash: sha256(sessionToken)
+    }, {
+      maxBytes: clampInteger(input.config.maxBytes, 1024 * 1024, 64 * 1024 * 1024 * 1024, 512 * 1024 * 1024),
+      maxSnapshots: clampInteger(input.config.maxSnapshots, 1, 1e5, 200),
+      retentionDays
+    });
+    const footer = archiveHandoffFooter({
+      archiveId,
+      clientToolName: contextArchiveClaudeCodeToolName(input.config.toolName || defaultToolName),
+      generation: snapshot.generation,
+      sessionId: input.sessionId,
+      sessionToken,
+      toolName: input.config.toolName || defaultToolName
+    });
+    return {
+      record: {
+        archiveId,
+        footer,
+        generation: snapshot.generation,
+        sessionId: input.sessionId
+      },
+      sessionToken
+    };
+  }
+  finalize(record, route, config) {
+    if (!record) {
+      return;
+    }
+    this.store(config).finalize(record.archiveId, route);
+  }
+  fail(record, config) {
+    if (!record) {
+      return;
+    }
+    this.store(config).fail(record.archiveId);
+  }
+  getSnapshot(archiveId, config) {
+    return this.store(config).get(archiveId);
+  }
+  async ask(input, config, executor) {
+    const archiveId = input.archiveId.trim();
+    const sessionToken = input.sessionToken.trim();
+    const task = input.task.trim();
+    const toolName = config.toolName || defaultToolName;
+    if (!archiveId || !sessionToken || !task) {
+      throw contextArchiveError("ARCHIVE_INVALID_ARGUMENT", `${toolName} requires archive_id, session_token, and task.`);
+    }
+    const store = this.store(config);
+    const rootSnapshot = store.get(archiveId);
+    if (!rootSnapshot) {
+      throw contextArchiveError("ARCHIVE_NOT_FOUND", `Archive ${archiveId} does not exist or has expired.`);
+    }
+    if (rootSnapshot.expiresAt !== void 0 && rootSnapshot.expiresAt <= Date.now()) {
+      throw contextArchiveError("ARCHIVE_EXPIRED", `Archive ${archiveId} has expired.`);
+    }
+    if (rootSnapshot.status !== "ready") {
+      throw contextArchiveError("ARCHIVE_NOT_READY", `Archive ${archiveId} is ${rootSnapshot.status}.`);
+    }
+    if (!constantTimeEqual(rootSnapshot.tokenHash, sha256(sessionToken))) {
+      throw contextArchiveError("ARCHIVE_ACCESS_DENIED", "The archive session token is invalid.");
+    }
+    if (!executor) {
+      throw contextArchiveError("ARCHIVE_REPLAY_UNAVAILABLE", "The gateway replay executor is not available.");
+    }
+    const lineage = store.lineage(archiveId, maxLineageReplayDepth);
+    const searchedGenerations = [];
+    let lastInsufficientAnswer;
+    for (const snapshot of lineage) {
+      if (snapshot.expiresAt !== void 0 && snapshot.expiresAt <= Date.now()) {
+        continue;
+      }
+      if (snapshot.status !== "ready") {
+        continue;
+      }
+      const answer = await replayArchiveSnapshot(snapshot, task, config, executor);
+      searchedGenerations.push(snapshot.generation);
+      if (isInsufficientArchiveAnswer(answer) && snapshot.parentArchiveId) {
+        lastInsufficientAnswer = { answer, snapshot };
+        continue;
+      }
+      return {
+        answer,
+        archiveId,
+        generation: rootSnapshot.generation,
+        searchedGenerations,
+        sourceArchiveId: snapshot.archiveId,
+        sourceGeneration: snapshot.generation,
+        task
+      };
+    }
+    if (lastInsufficientAnswer) {
+      return {
+        answer: lastInsufficientAnswer.answer,
+        archiveId,
+        generation: rootSnapshot.generation,
+        searchedGenerations,
+        sourceArchiveId: lastInsufficientAnswer.snapshot.archiveId,
+        sourceGeneration: lastInsufficientAnswer.snapshot.generation,
+        task
+      };
+    }
+    throw contextArchiveError("ARCHIVE_NOT_READY", `Archive ${archiveId} has no ready lineage snapshots.`);
+  }
+  store(config) {
+    const dbFile = config.storagePath.trim() || CONTEXT_ARCHIVE_DB_FILE;
+    let store = this.stores.get(dbFile);
+    if (!store) {
+      store = new ContextArchiveStore(dbFile);
+      this.stores.set(dbFile, store);
+    }
+    return store;
+  }
+};
+var contextArchiveService = new ContextArchiveService();
+function contextArchiveClaudeCodeToolName(toolName) {
+  return `mcp__${CONTEXT_ARCHIVE_MCP_SERVER_NAME}__${toolName}`;
+}
+async function replayArchiveSnapshot(snapshot, task, config, executor) {
+  const replayBody = appendArchiveTask(snapshot.body, snapshot.protocol, historyReplayTask(task));
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(contextArchiveError("ARCHIVE_REPLAY_TIMEOUT", "The archived agent replay timed out.")),
+    clampInteger(config.replayTimeoutMs, 1e3, 6e5, 6e4)
+  );
+  let result;
+  try {
+    result = await executor({ body: replayBody, signal: controller.signal, snapshot });
+  } finally {
+    clearTimeout(timeout);
+  }
+  const rawText = Buffer.isBuffer(result.body) ? result.body.toString("utf8") : result.body;
+  if (result.statusCode < 200 || result.statusCode >= 300) {
+    throw contextArchiveError(
+      "ARCHIVE_UPSTREAM_ERROR",
+      `Archived agent returned HTTP ${result.statusCode}: ${rawText.slice(0, maxUpstreamErrorCharacters)}`
+    );
+  }
+  const answer = extractArchiveAssistantText(rawText, snapshot.protocol, result.contentType);
+  if (!answer && archiveResponseRequiresTool(rawText)) {
+    throw contextArchiveError(
+      "ARCHIVE_REPLAY_TOOL_REQUIRED",
+      "The archived agent requested a tool. Exact replay does not execute external client tools."
+    );
+  }
+  if (!answer) {
+    throw contextArchiveError("ARCHIVE_EMPTY_ANSWER", "The archived agent returned no textual answer.");
+  }
+  return answer;
+}
+function isInsufficientArchiveAnswer(answer) {
+  const normalized = answer.toLowerCase().replace(/\s+/g, " ").trim();
+  return [
+    "context is insufficient",
+    "insufficient context",
+    "not enough information",
+    "not enough context",
+    "does not contain",
+    "doesn't contain",
+    "cannot determine",
+    "can't determine",
+    "could not determine",
+    "unable to determine",
+    "unable to find",
+    "not mentioned",
+    "no relevant",
+    "unknown"
+  ].some((phrase) => normalized.includes(phrase));
+}
+function replaySafeHeaders(headers) {
+  const allowed = /* @__PURE__ */ new Set([
+    "anthropic-beta",
+    "anthropic-version",
+    "content-type",
+    "openai-beta",
+    "openai-organization",
+    "openai-project",
+    "user-agent",
+    "x-ccr-client",
+    "x-client-name"
+  ]);
+  const output = {};
+  for (const [name, value] of Object.entries(headers)) {
+    const normalized = name.toLowerCase();
+    if (!allowed.has(normalized) || value === void 0) {
+      continue;
+    }
+    output[normalized] = Array.isArray(value) ? value.join(",") : String(value);
+  }
+  output["content-type"] = "application/json";
+  return output;
+}
+function sha256(value) {
+  return (0, import_node_crypto5.createHash)("sha256").update(value).digest("base64url");
+}
+function constantTimeEqual(left, right) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && (0, import_node_crypto5.timingSafeEqual)(leftBuffer, rightBuffer);
+}
+function contextArchiveError(code, message) {
+  const error = new Error(`${code}: ${message}`);
+  error.name = "ContextArchiveError";
+  return error;
+}
+function clampInteger(value, minimum, maximum, fallback) {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(minimum, Math.min(maximum, Math.floor(value)));
+}
+
 // packages/core/src/gateway/features/model-discovery.ts
 function buildClaudeCodeDiscoverableModelIds(config) {
   return buildGatewayDiscoverableModelIds(config);
@@ -35104,7 +36150,7 @@ function buildGatewayDiscoverableModelIds(config) {
   const baseEntries = [];
   for (const provider of config.Providers) {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       continue;
     }
     for (const rawModel of provider.models) {
@@ -35183,6 +36229,9 @@ function isConfiguredGatewayModelSelector(model, config) {
     }
   }
   for (const provider of config.Providers) {
+    if (!isGatewayProviderEnabled(provider)) {
+      continue;
+    }
     if (provider.models.some((candidate) => candidate.trim().toLowerCase() === normalized)) {
       return true;
     }
@@ -35239,6 +36288,9 @@ function uniqueProviderProtocols(protocols) {
   return output;
 }
 function activeProviderCredentials(provider) {
+  if (!isGatewayProviderEnabled(provider)) {
+    return [];
+  }
   return (provider.credentials ?? []).filter(
     (credential) => credential.enabled !== false && Boolean(providerCredentialApiKey(credential))
   );
@@ -35247,6 +36299,9 @@ function providerCredentialPriority(credential, index) {
   return Number.isFinite(credential.priority) ? Number(credential.priority) : index + 1;
 }
 function toCoreGatewayProviders(provider) {
+  if (!isGatewayProviderEnabled(provider)) {
+    return [];
+  }
   const capabilities = normalizedProviderCapabilities(provider);
   if (capabilities.length === 0) {
     return toCoreGatewayProvidersForCapability(provider);
@@ -35367,6 +36422,13 @@ function providerCapabilityPriority(capability) {
 function providerCapabilityInternalName(provider, protocol) {
   return `${providerRuntimeId(provider)}::${protocol}`;
 }
+function providerCapabilityLegacyInternalName(providerName, protocol) {
+  return `${providerName}::${protocol}`;
+}
+function providerCapabilityNameMatches(provider, protocol, value) {
+  const normalized = value.trim().toLowerCase();
+  return providerCapabilityInternalName(provider, protocol).toLowerCase() === normalized || providerCapabilityLegacyInternalName(provider.name, protocol).toLowerCase() === normalized;
+}
 function providerCredentialInternalName(provider, protocol, credential) {
   return `${providerCapabilityInternalName(provider, protocol)}::cred:${providerCredentialSlug(providerCredentialRuntimeId(provider, credential))}`;
 }
@@ -35455,8 +36517,8 @@ function readBaseUrl(provider) {
 }
 
 // packages/core/src/observability/request-log-store.ts
-var import_node_fs14 = require("node:fs");
-var import_node_path19 = require("node:path");
+var import_node_fs15 = require("node:fs");
+var import_node_path21 = require("node:path");
 var import_node_string_decoder2 = require("node:string_decoder");
 
 // packages/core/src/models/pricing-service.ts
@@ -35581,11 +36643,11 @@ async function loadPriceCatalog() {
 }
 async function fetchLiteLlmPrices() {
   const payload = await fetchJson(liteLlmPricesUrl);
-  if (!isRecord7(payload)) {
+  if (!isRecord8(payload)) {
     return [];
   }
   return Object.entries(payload).map(([model, value]) => {
-    if (model === "sample_spec" || !isRecord7(value)) {
+    if (model === "sample_spec" || !isRecord8(value)) {
       return void 0;
     }
     const inputUsdPerToken = firstNumber(value, [
@@ -35615,23 +36677,23 @@ async function fetchLiteLlmPrices() {
       inputUsdPerToken,
       model,
       outputUsdPerToken,
-      provider: readString7(value.litellm_provider),
+      provider: readString8(value.litellm_provider),
       source: "litellm"
     });
   }).filter((price) => Boolean(price));
 }
 async function fetchModelsDevPrices() {
   const payload = await fetchJson(modelsDevPricesUrl);
-  if (!isRecord7(payload)) {
+  if (!isRecord8(payload)) {
     return [];
   }
   const prices = [];
   for (const [providerId, provider] of Object.entries(payload)) {
-    if (!isRecord7(provider) || !isRecord7(provider.models)) {
+    if (!isRecord8(provider) || !isRecord8(provider.models)) {
       continue;
     }
     for (const [modelKey, model] of Object.entries(provider.models)) {
-      if (!isRecord7(model) || !isRecord7(model.cost)) {
+      if (!isRecord8(model) || !isRecord8(model.cost)) {
         continue;
       }
       const cost = model.cost;
@@ -35641,7 +36703,7 @@ async function fetchModelsDevPrices() {
         cacheWrite1hUsdPerMillionTokens: readNumber2(cost.cache_write_1h),
         cacheWrite5mUsdPerMillionTokens: readNumber2(cost.cache_write_5m) ?? readNumber2(cost.cache_write),
         inputUsdPerMillionTokens: readNumber2(cost.input),
-        model: readString7(model.id) || modelKey,
+        model: readString8(model.id) || modelKey,
         outputUsdPerMillionTokens: readNumber2(cost.output),
         provider: providerId,
         source: "models.dev"
@@ -35655,11 +36717,11 @@ async function fetchModelsDevPrices() {
 }
 async function fetchOpenRouterPrices() {
   const payload = await fetchJson(openRouterModelsUrl);
-  if (!isRecord7(payload) || !Array.isArray(payload.data)) {
+  if (!isRecord8(payload) || !Array.isArray(payload.data)) {
     return [];
   }
   return payload.data.map((model) => {
-    if (!isRecord7(model) || !isRecord7(model.pricing)) {
+    if (!isRecord8(model) || !isRecord8(model.pricing)) {
       return void 0;
     }
     const pricing = model.pricing;
@@ -35669,7 +36731,7 @@ async function fetchOpenRouterPrices() {
       cacheWrite1hUsdPerToken: readNumber2(pricing.input_cache_write_1h),
       cacheWrite5mUsdPerToken: readNumber2(pricing.input_cache_write),
       inputUsdPerToken: readNumber2(pricing.prompt),
-      model: readString7(model.id) || readString7(model.canonical_slug),
+      model: readString8(model.id) || readString8(model.canonical_slug),
       outputUsdPerToken: readNumber2(pricing.completion),
       provider: "openrouter",
       source: "openrouter"
@@ -35811,7 +36873,7 @@ function readNumber2(value) {
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : void 0;
 }
-function readString7(value) {
+function readString8(value) {
   return typeof value === "string" && value.trim() ? value.trim() : void 0;
 }
 function normalizePrice(value) {
@@ -35834,7 +36896,7 @@ function lastPathSegment(value) {
 function unique(values) {
   return Array.from(new Set(values));
 }
-function isRecord7(value) {
+function isRecord8(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -35878,8 +36940,8 @@ function inputIncludesCacheTokensForProtocol(protocol) {
   }
   return void 0;
 }
-function inputIncludesCacheTokensForPath(path13) {
-  const normalized = path13?.toLowerCase() ?? "";
+function inputIncludesCacheTokensForPath(path14) {
+  const normalized = path14?.toLowerCase() ?? "";
   if (!normalized) {
     return void 0;
   }
@@ -35896,9 +36958,9 @@ function normalizeCount2(value) {
 }
 
 // packages/core/src/observability/request-log-runtime.ts
-var import_node_crypto5 = require("node:crypto");
+var import_node_crypto6 = require("node:crypto");
 var import_promises = require("node:fs/promises");
-var import_node_path18 = __toESM(require("node:path"));
+var import_node_path20 = __toESM(require("node:path"));
 var import_node_string_decoder = require("node:string_decoder");
 var import_node_worker_threads = require("node:worker_threads");
 
@@ -36089,8 +37151,8 @@ function approximateDecodedBytes(input, range) {
 }
 
 // packages/core/src/observability/request-log-admission-store.ts
-var import_node_fs13 = require("node:fs");
-var import_node_path17 = require("node:path");
+var import_node_fs14 = require("node:fs");
+var import_node_path19 = require("node:path");
 var runtimeLeaseMs = 3e4;
 var terminalAdmissionRetentionMs = 48 * 60 * 60 * 1e3;
 var requestLogsReconnectCooldownMs = 1e3;
@@ -36106,7 +37168,7 @@ var RequestLogAdmissionStore = class {
   runtimeId;
   upsertStatement;
   constructor(dbFile, requestLogsDbFile, runtimeId) {
-    (0, import_node_fs13.mkdirSync)((0, import_node_path17.dirname)(dbFile), { recursive: true });
+    (0, import_node_fs14.mkdirSync)((0, import_node_path19.dirname)(dbFile), { recursive: true });
     const database = createBetterSqliteDatabase(dbFile);
     try {
       database.pragma("journal_mode = WAL");
@@ -36305,7 +37367,7 @@ var RequestLogAdmissionStore = class {
     this.requestLogsReadStatement = void 0;
   }
   readCommittedRequestLogAdmission(requestId) {
-    if (!(0, import_node_fs13.existsSync)(this.requestLogsDbFile)) return { state: "missing" };
+    if (!(0, import_node_fs14.existsSync)(this.requestLogsDbFile)) return { state: "missing" };
     if (Date.now() < this.requestLogsUnavailableUntil) return { state: "unavailable" };
     try {
       if (!this.requestLogsDatabase) {
@@ -36514,7 +37576,7 @@ var RequestLogRuntime = class {
   queryWorkerReady;
   queue = [];
   revision = 0;
-  runtimeId = (0, import_node_crypto5.randomUUID)();
+  runtimeId = (0, import_node_crypto6.randomUUID)();
   writerRequests = /* @__PURE__ */ new Map();
   writerRestartCount = 0;
   writerWorker;
@@ -36546,7 +37608,7 @@ var RequestLogRuntime = class {
       queueMaxBytes: positiveInteger3(options.queueMaxBytes, defaultQueueMaxBytes),
       queueMaxItems: positiveInteger3(options.queueMaxItems, 2e3),
       rawTraceSpoolDir: options.rawTraceSpoolDir ?? RAW_TRACE_SPOOL_DIR,
-      workerFile: options.workerFile ?? import_node_path18.default.join(__dirname, "request-log-worker.js")
+      workerFile: options.workerFile ?? import_node_path20.default.join(__dirname, "request-log-worker.js")
     };
   }
   enqueueRecord(input) {
@@ -36570,7 +37632,7 @@ var RequestLogRuntime = class {
     const prepared = prepareRecordForQueue(input, pressure);
     const sizeBytes = estimateRecordBytes(prepared.input);
     const command = {
-      eventId: (0, import_node_crypto5.randomUUID)(),
+      eventId: (0, import_node_crypto6.randomUUID)(),
       input: prepared.input,
       kind: "record",
       sequence: ++this.nextSequence,
@@ -37106,8 +38168,8 @@ var RequestLogRuntime = class {
     for (const directory of directories) {
       try {
         const spoolDirectory = await (0, import_promises.realpath)(this.options.rawTraceSpoolDir);
-        const candidate = await (0, import_promises.realpath)(import_node_path18.default.resolve(directory));
-        if (candidate === spoolDirectory || !candidate.startsWith(`${spoolDirectory}${import_node_path18.default.sep}`)) {
+        const candidate = await (0, import_promises.realpath)(import_node_path20.default.resolve(directory));
+        if (candidate === spoolDirectory || !candidate.startsWith(`${spoolDirectory}${import_node_path20.default.sep}`)) {
           throw new Error(`Raw trace path is outside the configured spool directory: ${directory}`);
         }
         await (0, import_promises.rm)(candidate, { force: true, recursive: true });
@@ -37382,8 +38444,8 @@ async function withTimeout(promise, timeoutMs) {
 
 // packages/core/src/routing/protocol-adapter.ts
 var geminiGenerateContentPathPattern = /(\/v1(?:beta)?\/models\/)([^/:]+)(:(?:generatecontent|streamgeneratecontent))/i;
-function routeModelFromPath(path13) {
-  const match = geminiGenerateContentPathPattern.exec(path13);
+function routeModelFromPath(path14) {
+  const match = geminiGenerateContentPathPattern.exec(path14);
   geminiGenerateContentPathPattern.lastIndex = 0;
   if (!match?.[2]) {
     return void 0;
@@ -37396,8 +38458,8 @@ function routeModelFromPath(path13) {
 }
 
 // packages/core/src/observability/request-log-model.ts
-function requestLogRequestedModel(body, path13 = "") {
-  const pathModel = normalizeModel(routeModelFromPath(path13));
+function requestLogRequestedModel(body, path14 = "") {
+  const pathModel = normalizeModel(routeModelFromPath(path14));
   if (pathModel) {
     return pathModel;
   }
@@ -37424,11 +38486,11 @@ function requestLogResponseModel(text) {
   return model;
 }
 function modelFromPayload(payload) {
-  if (!isRecord8(payload)) {
+  if (!isRecord9(payload)) {
     return void 0;
   }
-  const response = isRecord8(payload.response) ? payload.response : void 0;
-  const message = isRecord8(payload.message) ? payload.message : void 0;
+  const response = isRecord9(payload.response) ? payload.response : void 0;
+  const message = isRecord9(payload.message) ? payload.message : void 0;
   return normalizeModel(response?.model) ?? normalizeModel(payload.model) ?? normalizeModel(message?.model) ?? normalizeModel(response?.modelVersion) ?? normalizeModel(payload.modelVersion) ?? normalizeModel(message?.modelVersion);
 }
 function parseJsonBody(text) {
@@ -37438,7 +38500,7 @@ function parseJsonBody(text) {
     return void 0;
   }
 }
-function isRecord8(value) {
+function isRecord9(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 function normalizeModel(value) {
@@ -37873,8 +38935,8 @@ var RequestLogStore = class {
       params.push(value);
     };
     const url = normalizeFilterValue(input.url);
-    const path13 = normalizeFilterValue(input.path) ?? pathFromUrl(url);
-    const usagePath = path13 ?? existingUsageContext.path;
+    const path14 = normalizeFilterValue(input.path) ?? pathFromUrl(url);
+    const usagePath = path14 ?? existingUsageContext.path;
     const modelFromTrace = normalizeFilterValue(input.model);
     const responseModelFromTrace = rawInput.responseBodyText === void 0 ? void 0 : requestLogResponseModel(rawInput.responseBodyText);
     const providerFromTrace = normalizeFilterValue(input.provider);
@@ -37887,7 +38949,7 @@ var RequestLogStore = class {
     const sseError = rawSseError;
     const mergedRequestHeaders = requestHeaders ? mergeRequestHeadersForRawTrace(readRequestHeadersForRequestId(database, requestId), requestHeaders) : void 0;
     pushValue("method", normalizeFilterValue(input.method));
-    pushValue("path", path13);
+    pushValue("path", path14);
     pushValue("url", url);
     pushValue("provider", providerFromTrace);
     pushValue("model", modelFromTrace);
@@ -37960,7 +39022,7 @@ var RequestLogStore = class {
     const hasStreamSignal = input.isStream !== void 0 || input.path !== void 0 || input.url !== void 0 || input.requestBodyText !== void 0 || input.requestHeaders !== void 0 || input.responseBodyContentType !== void 0 || input.responseHeaders !== void 0;
     if (hasStreamSignal) {
       pushValue("is_stream", inferRequestLogIsStream({
-        path: path13,
+        path: path14,
         requestBodyText: input.requestBodyText,
         requestHeaders: mergedRequestHeaders,
         responseBodyContentType: input.responseBodyContentType,
@@ -38004,8 +39066,8 @@ var RequestLogStore = class {
   async list(filter = {}) {
     const database = await this.getDatabase();
     this.pruneOldRequestLogs(database);
-    const pageSize = clampInteger(filter.pageSize, 1, 100, 25);
-    const page = clampInteger(filter.page, 1, Number.MAX_SAFE_INTEGER, 1);
+    const pageSize = clampInteger2(filter.pageSize, 1, 100, 25);
+    const page = clampInteger2(filter.page, 1, Number.MAX_SAFE_INTEGER, 1);
     const query = buildLogWhereClause(filter);
     const count = firstNumber2(queryRows3(database, `SELECT COUNT(*) AS total FROM request_logs ${query.where}`, query.params), "total");
     const totalPages = Math.max(1, Math.ceil(count / pageSize));
@@ -38230,7 +39292,7 @@ var RequestLogStore = class {
     return this.initPromise;
   }
   async open() {
-    (0, import_node_fs14.mkdirSync)((0, import_node_path19.dirname)(this.dbFile), { recursive: true });
+    (0, import_node_fs15.mkdirSync)((0, import_node_path21.dirname)(this.dbFile), { recursive: true });
     const database = createBetterSqliteDatabase(this.dbFile);
     configureSqliteDatabase3(database);
     database.exec(`
@@ -38403,7 +39465,7 @@ var RequestLogStore = class {
     if (!row) return void 0;
     database.prepare("DELETE FROM request_log_pending_updates WHERE request_id = ?").run(requestId);
     const parsed = parseJson(String(row.update_json ?? ""));
-    return isRecord9(parsed) ? parsed : void 0;
+    return isRecord10(parsed) ? parsed : void 0;
   }
 };
 var requestLogStore = new RequestLogStore(REQUEST_LOGS_DB_FILE);
@@ -38622,14 +39684,14 @@ function readFuzzySessionHeader(headers) {
   return void 0;
 }
 function extractSessionIdFromPayload(payload) {
-  if (!isRecord9(payload)) {
+  if (!isRecord10(payload)) {
     return void 0;
   }
   const direct = asString(payload.session_id) || asString(payload.sessionId) || asString(payload.conversation_id) || asString(payload.conversationId) || asString(payload.chat_id) || asString(payload.chatId) || asString(payload.thread_id) || asString(payload.threadId);
   if (direct) {
     return direct;
   }
-  const metadata = isRecord9(payload.metadata) ? payload.metadata : void 0;
+  const metadata = isRecord10(payload.metadata) ? payload.metadata : void 0;
   const metadataSession = asString(metadata?.session_id) || asString(metadata?.sessionId) || asString(metadata?.conversation_id) || asString(metadata?.conversationId) || asString(metadata?.chat_id) || asString(metadata?.chatId);
   if (metadataSession) {
     return metadataSession;
@@ -38653,7 +39715,7 @@ function findSessionIdInPayload(value, depth = 0) {
     }
     return void 0;
   }
-  if (!isRecord9(value)) {
+  if (!isRecord10(value)) {
     return void 0;
   }
   for (const [key, item] of Object.entries(value)) {
@@ -38680,10 +39742,10 @@ function isRequestScopedKey(key) {
   return key.includes("request") || key.includes("trace") || key.includes("span") || key.includes("message") || key.includes("event") || key.includes("parent");
 }
 function hasClaudeCodeSessionMetadata(payload) {
-  if (!isRecord9(payload)) {
+  if (!isRecord10(payload)) {
     return false;
   }
-  const metadata = isRecord9(payload.metadata) ? payload.metadata : void 0;
+  const metadata = isRecord10(payload.metadata) ? payload.metadata : void 0;
   return Boolean(asString(metadata?.user_id)?.includes("_session_"));
 }
 function extractSubagentModel(entry, requestPayloads, routeReason, routedModel) {
@@ -38731,11 +39793,11 @@ function collectToolCalls(value, calls) {
     }
     return;
   }
-  if (!isRecord9(value)) {
+  if (!isRecord10(value)) {
     return;
   }
   const type = asString(value.type);
-  const functionRecord = isRecord9(value.function) ? value.function : void 0;
+  const functionRecord = isRecord10(value.function) ? value.function : void 0;
   const functionArguments = functionRecord ? functionRecord.arguments ?? functionRecord.parameters ?? functionRecord.input : void 0;
   const name = asString(value.name) || asString(value.tool) || asString(value.tool_name) || asString(functionRecord?.name);
   const looksLikeToolCall = type === "tool_use" || type === "server_tool_use" || type === "mcp_tool_use" || type === "function_call" || type === "tool_call" || type === "tool_block_complete" || type === "tool_delta" || Boolean(functionRecord?.name);
@@ -38784,7 +39846,7 @@ function collectStreamedToolCallInput(value, state) {
     }
     return;
   }
-  if (!isRecord9(value)) {
+  if (!isRecord10(value)) {
     return;
   }
   collectAnthropicStreamToolInput(value, state);
@@ -38796,7 +39858,7 @@ function collectStreamedToolCallInput(value, state) {
 function collectAnthropicStreamToolInput(value, state) {
   const type = asString(value.type);
   const index = streamIndexKey(value.index);
-  if (type === "content_block_start" && index && isRecord9(value.content_block)) {
+  if (type === "content_block_start" && index && isRecord10(value.content_block)) {
     const block = value.content_block;
     const blockType = asString(block.type);
     if (blockType === "tool_use" || blockType === "server_tool_use" || blockType === "mcp_tool_use") {
@@ -38811,7 +39873,7 @@ function collectAnthropicStreamToolInput(value, state) {
     }
     return;
   }
-  if (type !== "content_block_delta" || !index || !isRecord9(value.delta)) {
+  if (type !== "content_block_delta" || !index || !isRecord10(value.delta)) {
     return;
   }
   const delta = value.delta;
@@ -38825,7 +39887,7 @@ function collectAnthropicStreamToolInput(value, state) {
   ensureStreamedToolCall(state, id).fragments.push(delta.partial_json);
 }
 function collectOpenAiStreamToolInput(value, state) {
-  const functionRecord = isRecord9(value.function) ? value.function : void 0;
+  const functionRecord = isRecord10(value.function) ? value.function : void 0;
   if (!functionRecord) {
     return;
   }
@@ -38897,7 +39959,7 @@ function collectToolResults(value, entry, results) {
     }
     return;
   }
-  if (!isRecord9(value)) {
+  if (!isRecord10(value)) {
     return;
   }
   const type = asString(value.type);
@@ -38991,11 +40053,11 @@ function collectToolCallPayloads(value, calls) {
     }
     return;
   }
-  if (!isRecord9(value)) {
+  if (!isRecord10(value)) {
     return;
   }
   const type = asString(value.type);
-  const functionRecord = isRecord9(value.function) ? value.function : void 0;
+  const functionRecord = isRecord10(value.function) ? value.function : void 0;
   const functionArguments = functionRecord ? functionRecord.arguments ?? functionRecord.parameters ?? functionRecord.input : void 0;
   const name = asString(value.name) || asString(value.tool) || asString(value.tool_name) || asString(functionRecord?.name);
   const looksLikeToolCall = type === "tool_use" || type === "server_tool_use" || type === "mcp_tool_use" || type === "function_call" || type === "tool_call" || type === "tool_block_complete" || type === "tool_delta" || Boolean(functionRecord?.name);
@@ -39027,7 +40089,7 @@ function collectToolResultPayloads(value, results) {
     }
     return;
   }
-  if (!isRecord9(value)) {
+  if (!isRecord10(value)) {
     return;
   }
   const type = asString(value.type);
@@ -40131,7 +41193,7 @@ function payloadHasStreamFlag(value, depth = 0) {
   if (Array.isArray(value)) {
     return value.some((item) => payloadHasStreamFlag(item, depth + 1));
   }
-  if (!isRecord9(value)) {
+  if (!isRecord10(value)) {
     return false;
   }
   if (value.stream === true || value.stream === "true") {
@@ -40286,7 +41348,7 @@ function readRequestRouteTrace(database, requestLogId) {
 function parseRequestRouteTrace(value) {
   if (typeof value !== "string" || !value.trim()) return void 0;
   const parsed = parseJson(value);
-  if (!isRecord9(parsed) || !Array.isArray(parsed.hops)) return void 0;
+  if (!isRecord10(parsed) || !Array.isArray(parsed.hops)) return void 0;
   return parsed;
 }
 function requestRouteHopFromRow(row) {
@@ -40298,16 +41360,16 @@ function requestRouteHopFromRow(row) {
   return {
     ...attempt > 0 ? { attempt } : {},
     changes: Array.isArray(changes) ? changes : [],
-    ...isRecord9(decision) && Object.keys(decision).length > 0 ? { decision } : {},
+    ...isRecord10(decision) && Object.keys(decision).length > 0 ? { decision } : {},
     durationMs: normalizeCount3(row.duration_ms),
     kind: requestRouteHopKind(row.kind),
     name: String(row.name ?? "route-hop"),
-    ...isRecord9(outcome) && Object.keys(outcome).length > 0 ? { outcome } : {},
+    ...isRecord10(outcome) && Object.keys(outcome).length > 0 ? { outcome } : {},
     phase: requestRouteTracePhase(row.phase),
     seq: normalizeCount3(row.seq),
     startedOffsetMs: normalizeCount3(row.started_offset_ms),
     status: requestRouteHopStatus(row.status),
-    ...isRecord9(target) && Object.keys(target).length > 0 ? { target } : {},
+    ...isRecord10(target) && Object.keys(target).length > 0 ? { target } : {},
     ...normalizeCount3(row.truncated) === 1 ? { truncated: true } : {}
   };
 }
@@ -40316,7 +41378,7 @@ function parseRouteTraceSnapshot(value) {
     return void 0;
   }
   const parsed = parseJson(value);
-  if (!isRecord9(parsed) || typeof parsed.method !== "string" || typeof parsed.url !== "string") {
+  if (!isRecord10(parsed) || typeof parsed.method !== "string" || typeof parsed.url !== "string") {
     return void 0;
   }
   return parsed;
@@ -40483,7 +41545,7 @@ function parseHeaderJson(value) {
   }
   try {
     const parsed = JSON.parse(value);
-    if (!isRecord9(parsed)) {
+    if (!isRecord10(parsed)) {
       return {};
     }
     const result = {};
@@ -40734,7 +41796,7 @@ function readRequestLogUsageContext(database, requestId) {
 }
 function parseStoredModelPricing(value) {
   const parsed = typeof value === "string" ? parseJson(value) : value;
-  if (!isRecord9(parsed)) {
+  if (!isRecord10(parsed)) {
     return void 0;
   }
   const pricing = {};
@@ -40817,7 +41879,7 @@ function batchNeedsUsagePricing(database, commands) {
       [requestId]
     )[0];
     const pending = parseJson(String(row?.update_json ?? ""));
-    if (isRecord9(pending) && rawTraceHasBillableUsage(pending)) {
+    if (isRecord10(pending) && rawTraceHasBillableUsage(pending)) {
       return true;
     }
   }
@@ -40996,8 +42058,8 @@ function isSseTerminalEvent(eventName, dataLines) {
     return true;
   }
   const payload = data ? parseJson(data) : void 0;
-  const payloadType = isRecord9(payload) ? asString(payload.type)?.toLowerCase() : void 0;
-  const response = isRecord9(payload) && isRecord9(payload.response) ? payload.response : void 0;
+  const payloadType = isRecord10(payload) ? asString(payload.type)?.toLowerCase() : void 0;
+  const response = isRecord10(payload) && isRecord10(payload.response) ? payload.response : void 0;
   const responseStatus = asString(response?.status)?.toLowerCase();
   return terminalSseEventNames.has(event) || Boolean(payloadType && terminalSseEventNames.has(payloadType)) || Boolean(responseStatus && terminalSseResponseStatuses.has(responseStatus));
 }
@@ -41011,7 +42073,7 @@ function detectSseEventError(eventName, dataLines) {
   if (event === "response.failed" || event === "response.error") {
     return formatSseErrorPayload(payload, event);
   }
-  if (isRecord9(payload)) {
+  if (isRecord10(payload)) {
     const payloadType = asString(payload.type)?.toLowerCase();
     if (payloadType === "error" || payloadType === "response.failed" || payloadType === "response.error") {
       return formatSseErrorPayload(payload, payloadType);
@@ -41019,7 +42081,7 @@ function detectSseEventError(eventName, dataLines) {
     if (payload.error !== void 0 && payload.error !== null) {
       return formatSseErrorPayload(payload, event || "SSE error");
     }
-    const response = isRecord9(payload.response) ? payload.response : void 0;
+    const response = isRecord10(payload.response) ? payload.response : void 0;
     const responseStatus = asString(response?.status)?.toLowerCase();
     if ((responseStatus === "failed" || responseStatus === "error") && response?.error !== void 0 && response.error !== null) {
       return formatSseErrorPayload(response, responseStatus);
@@ -41028,12 +42090,12 @@ function detectSseEventError(eventName, dataLines) {
   return void 0;
 }
 function formatSseErrorPayload(payload, fallback) {
-  if (isRecord9(payload)) {
-    const response = isRecord9(payload.response) ? payload.response : void 0;
+  if (isRecord10(payload)) {
+    const response = isRecord10(payload.response) ? payload.response : void 0;
     const error = payload.error ?? response?.error;
     const message = sseErrorMessage(error) ?? sseErrorMessage(payload);
     const type = sseErrorType(error) ?? sseErrorType(payload);
-    const code = isRecord9(error) ? asString(error.code) : void 0;
+    const code = isRecord10(error) ? asString(error.code) : void 0;
     const label = uniqueStrings8([type, code]).join(" ");
     if (message && label && message !== label) {
       return `${label}: ${message}`;
@@ -41054,13 +42116,13 @@ function sseErrorMessage(value) {
   if (typeof value === "string") {
     return normalizeFilterValue(value);
   }
-  if (!isRecord9(value)) {
+  if (!isRecord10(value)) {
     return void 0;
   }
   return asString(value.message) ?? asString(value.detail) ?? asString(value.reason) ?? asString(value.error_description) ?? asString(value.error);
 }
 function sseErrorType(value) {
-  if (!isRecord9(value)) {
+  if (!isRecord10(value)) {
     return void 0;
   }
   return asString(value.type) ?? asString(value.code) ?? asString(value.status);
@@ -41086,13 +42148,13 @@ function uniqueStrings8(values) {
   return result;
 }
 function extractUsageSnapshot(payload) {
-  if (!isRecord9(payload)) {
+  if (!isRecord10(payload)) {
     return void 0;
   }
-  const response = isRecord9(payload.response) ? payload.response : payload;
-  const message = isRecord9(payload.message) ? payload.message : void 0;
-  const usage = isRecord9(response.usage) ? response.usage : isRecord9(payload.usage) ? payload.usage : isRecord9(message?.usage) ? message.usage : void 0;
-  const usageMetadata = isRecord9(response.usageMetadata) ? response.usageMetadata : isRecord9(payload.usageMetadata) ? payload.usageMetadata : void 0;
+  const response = isRecord10(payload.response) ? payload.response : payload;
+  const message = isRecord10(payload.message) ? payload.message : void 0;
+  const usage = isRecord10(response.usage) ? response.usage : isRecord10(payload.usage) ? payload.usage : isRecord10(message?.usage) ? message.usage : void 0;
+  const usageMetadata = isRecord10(response.usageMetadata) ? response.usageMetadata : isRecord10(payload.usageMetadata) ? payload.usageMetadata : void 0;
   if (usageMetadata) {
     return {
       cacheReadTokens: asNumber(usageMetadata.cachedContentTokenCount),
@@ -41106,11 +42168,11 @@ function extractUsageSnapshot(payload) {
   if (!usage) {
     return void 0;
   }
-  const inputDetails = isRecord9(usage.input_tokens_details) ? usage.input_tokens_details : isRecord9(usage.prompt_tokens_details) ? usage.prompt_tokens_details : void 0;
-  const outputDetails = isRecord9(usage.output_tokens_details) ? usage.output_tokens_details : isRecord9(usage.completion_tokens_details) ? usage.completion_tokens_details : void 0;
+  const inputDetails = isRecord10(usage.input_tokens_details) ? usage.input_tokens_details : isRecord10(usage.prompt_tokens_details) ? usage.prompt_tokens_details : void 0;
+  const outputDetails = isRecord10(usage.output_tokens_details) ? usage.output_tokens_details : isRecord10(usage.completion_tokens_details) ? usage.completion_tokens_details : void 0;
   const hasAnthropicCacheFields = usage.cache_read_input_tokens !== void 0 || usage.cache_creation_input_tokens !== void 0;
   const hasOpenAiCacheFields = inputDetails?.cached_tokens !== void 0 || inputDetails?.cache_creation_tokens !== void 0 || usage.cached_tokens !== void 0 || usage.prompt_tokens !== void 0;
-  const cacheCreation = isRecord9(usage.cache_creation) ? usage.cache_creation : void 0;
+  const cacheCreation = isRecord10(usage.cache_creation) ? usage.cache_creation : void 0;
   const cacheWrite5mTokens = asNumber(cacheCreation?.ephemeral_5m_input_tokens);
   const cacheWrite1hTokens = asNumber(cacheCreation?.ephemeral_1h_input_tokens);
   return {
@@ -41208,13 +42270,13 @@ function asFloat(value) {
 function asString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : void 0;
 }
-function isRecord9(value) {
+function isRecord10(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function isSuccessStatus(statusCode, error) {
   return !error && statusCode >= 200 && statusCode < 400;
 }
-function clampInteger(value, min, max, fallback) {
+function clampInteger2(value, min, max, fallback) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
     return fallback;
@@ -41232,8 +42294,8 @@ function sum(items, read) {
 }
 
 // packages/core/src/gateway/core-runtime/supervisor.ts
-var import_node_fs15 = require("node:fs");
-var import_node_path20 = require("node:path");
+var import_node_fs16 = require("node:fs");
+var import_node_path22 = require("node:path");
 function resolveUndiciProxyAgentModule() {
   const bundled = resolveBundledUndiciProxyAgentModule();
   if (bundled) {
@@ -41248,16 +42310,16 @@ function resolveUndiciProxyAgentModule() {
 function resolveBundledUndiciProxyAgentModule() {
   const resourcesPath = process.resourcesPath;
   return [
-    (0, import_node_path20.join)(__dirname, "undici-proxy-agent.js"),
+    (0, import_node_path22.join)(__dirname, "undici-proxy-agent.js"),
     ...resourcesPath ? [
-      (0, import_node_path20.join)(resourcesPath, "app.asar", "dist", "main", "undici-proxy-agent.js"),
-      (0, import_node_path20.join)(resourcesPath, "app", "dist", "main", "undici-proxy-agent.js")
+      (0, import_node_path22.join)(resourcesPath, "app.asar", "dist", "main", "undici-proxy-agent.js"),
+      (0, import_node_path22.join)(resourcesPath, "app", "dist", "main", "undici-proxy-agent.js")
     ] : []
-  ].find((candidate) => (0, import_node_fs15.existsSync)(candidate));
+  ].find((candidate) => (0, import_node_fs16.existsSync)(candidate));
 }
 function writeGatewayProxyPreloadFile(config, upstreamProxyUrl2) {
-  const file = (0, import_node_path20.join)((0, import_node_path20.dirname)(config.gateway.generatedConfigFile), "gateway-proxy-preload.cjs");
-  (0, import_node_fs15.writeFileSync)(
+  const file = (0, import_node_path22.join)((0, import_node_path22.dirname)(config.gateway.generatedConfigFile), "gateway-proxy-preload.cjs");
+  (0, import_node_fs16.writeFileSync)(
     file,
     [
       '"use strict";',
@@ -41389,11 +42451,13 @@ async function compileCoreGatewayConfig(config, rawTraceSyncToken, billingUsageS
     ...(config.providerPlugins ?? []).filter(providerPluginEnabled),
     ...pluginService.getCoreProviderPlugins().filter(providerPluginEnabled)
   ]);
-  const providerPlugins = await withKimiOauthRuntimeDefaults(
-    await withGrokOauthRuntimeDefaults(withCodexOauthRuntimeDefaults(configuredProviderPlugins))
+  const providerPluginsWithRuntimeDefaults = await withKimiOauthRuntimeDefaults(
+    await withGrokOauthRuntimeDefaults(withClaudeCodeOauthRuntimeDefaults(withCodexOauthRuntimeDefaults(configuredProviderPlugins)))
   );
-  const providerPluginsWithCapabilityAliases = withProviderCapabilityPluginAliases(providerPlugins, config.Providers);
-  const codexOauthProviderNames = codexOauthLocalProviderNames(providerPlugins);
+  const codexOauthProviderNames = codexOauthLocalProviderNames(providerPluginsWithRuntimeDefaults);
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const providerPlugins = normalizeCoreProviderPluginNames(providerPluginsWithRuntimeDefaults, enabledProviders);
+  const providerPluginsWithCapabilityAliases = withProviderCapabilityPluginAliases(providerPlugins, enabledProviders);
   const virtualModelProfiles = coreGatewayVirtualModelProfiles(config);
   const coreEndpoint = endpoint(config.gateway.coreHost, config.gateway.corePort);
   const proxyPreloadFile = upstreamProxyUrl2 ? writeGatewayProxyPreloadFile(config, upstreamProxyUrl2) : void 0;
@@ -41412,7 +42476,7 @@ async function compileCoreGatewayConfig(config, rawTraceSyncToken, billingUsageS
     }
   );
   const providers = [
-    ...config.Providers.flatMap((provider) => toCoreGatewayProviders(withCodexOauthProviderBaseUrl(provider, codexOauthProviderNames))).filter((provider) => Boolean(provider)),
+    ...enabledProviders.flatMap((provider) => toCoreGatewayProviders(withCodexOauthProviderBaseUrl(provider, codexOauthProviderNames))).filter((provider) => Boolean(provider)),
     ...builtinToolArtifacts.providers
   ];
   const pluginAgentConfig = isRecord3(pluginCoreGatewayConfig.agent) ? pluginCoreGatewayConfig.agent : {};
@@ -41474,7 +42538,7 @@ async function compileCoreGatewayConfig(config, rawTraceSyncToken, billingUsageS
       {
         enabled: true,
         key: upstreamHeaderSanitizerPluginKey,
-        modulePath: (0, import_node_path21.join)(__dirname, "upstream-header-sanitizer.js")
+        modulePath: (0, import_node_path23.join)(__dirname, "upstream-header-sanitizer.js")
       }
     ],
     upstreamTimeoutMs: Number(config.API_TIMEOUT_MS) || 0,
@@ -41667,6 +42731,32 @@ function withCodexOauthRuntimeDefaults(providerPlugins) {
     return nextPlugin;
   });
 }
+function withClaudeCodeOauthRuntimeDefaults(providerPlugins) {
+  if (!providerPlugins.some(isLocalClaudeCodeOauthProviderPlugin)) {
+    return providerPlugins;
+  }
+  const oauth = readClaudeCodeOauth();
+  if (!oauth?.accessToken) {
+    return providerPlugins;
+  }
+  return providerPlugins.map((plugin) => {
+    if (!isLocalClaudeCodeOauthProviderPlugin(plugin)) {
+      return plugin;
+    }
+    const currentAuth = isRecord3(plugin.auth) ? plugin.auth : {};
+    const currentHeaders = isRecord3(currentAuth.headers) ? currentAuth.headers : {};
+    return {
+      ...plugin,
+      auth: {
+        ...currentAuth,
+        headers: {
+          ...currentHeaders,
+          authorization: `Bearer ${oauth.accessToken}`
+        }
+      }
+    };
+  });
+}
 async function withGrokOauthRuntimeDefaults(providerPlugins) {
   const grokAuth = await resolveGrokAuth().catch(() => readGrokAuth());
   if (!grokAuth?.accessToken || grokAccessTokenExpired(grokAuth)) {
@@ -41814,6 +42904,38 @@ function normalizeClaudeCodeOauthProviderPlugins(providerPlugins) {
     };
   });
 }
+function normalizeCoreProviderPluginNames(providerPlugins, providers) {
+  return providerPlugins.map((plugin) => {
+    if (!isRecord3(plugin)) {
+      return plugin;
+    }
+    const configuredName = stringValue2(plugin.providerName);
+    if (!configuredName) {
+      return plugin;
+    }
+    const providerName = compiledProviderNameForPlugin(configuredName, providers);
+    return providerName === configuredName ? plugin : { ...plugin, providerName };
+  });
+}
+function compiledProviderNameForPlugin(configuredName, providers) {
+  for (const provider of providers) {
+    const capabilities = normalizedProviderCapabilities(provider);
+    if (capabilities.length === 0) {
+      const protocol = normalizeProviderProtocol(provider.type) ?? normalizeProviderProtocol(provider.provider) ?? inferProtocol(provider);
+      const normalizedConfiguredName = configuredName.trim().toLowerCase();
+      if (providerRuntimeId(provider).toLowerCase() === normalizedConfiguredName || provider.name.trim().toLowerCase() === normalizedConfiguredName || providerCapabilityNameMatches(provider, protocol, configuredName)) {
+        return providerRuntimeId(provider);
+      }
+      continue;
+    }
+    for (const capability of capabilities) {
+      if (providerCapabilityNameMatches(provider, capability.type, configuredName)) {
+        return providerCapabilityInternalName(provider, capability.type);
+      }
+    }
+  }
+  return configuredName;
+}
 function configuredAnthropicBetaDefault(value) {
   if (typeof value === "string") {
     return value;
@@ -41957,14 +43079,14 @@ function attributionFromSelector(selector, logicalModel, assumeRouteSelector = t
 
 // packages/core/test/integration/plugins/plugin-service.test.mjs
 (0, import_node_test.default)("plugin service skips failed plugins and rolls back their registrations", async () => {
-  const dir = (0, import_node_fs16.mkdtempSync)(import_node_path22.default.join((0, import_node_os6.tmpdir)(), "ccr-plugin-service-test-"));
+  const dir = (0, import_node_fs17.mkdtempSync)(import_node_path24.default.join((0, import_node_os7.tmpdir)(), "ccr-plugin-service-test-"));
   const warnings = [];
   const originalWarn = console.warn;
   console.warn = (...args) => warnings.push(args.map(String).join(" "));
   try {
-    const brokenPlugin = import_node_path22.default.join(dir, "broken-plugin.cjs");
-    const goodPlugin = import_node_path22.default.join(dir, "good-plugin.cjs");
-    (0, import_node_fs16.writeFileSync)(brokenPlugin, `
+    const brokenPlugin = import_node_path24.default.join(dir, "broken-plugin.cjs");
+    const goodPlugin = import_node_path24.default.join(dir, "good-plugin.cjs");
+    (0, import_node_fs17.writeFileSync)(brokenPlugin, `
 module.exports = async function brokenPlugin(context) {
   context.registerApp({ id: "broken-context-app", name: "Broken context", url: "http://broken-context.local" });
   context.registerGatewayRoute({ id: "broken-context-route", path: "/broken-context", handler(_request, response) { response.end("broken"); } });
@@ -41974,7 +43096,7 @@ module.exports = async function brokenPlugin(context) {
   throw new Error("broken plugin setup failed");
 };
 `);
-    (0, import_node_fs16.writeFileSync)(goodPlugin, `
+    (0, import_node_fs17.writeFileSync)(goodPlugin, `
 module.exports = {
   setup(context) {
     context.registerCoreGatewayProviderPlugin({ key: "good-context-provider" });
@@ -42010,7 +43132,7 @@ module.exports = {
   }
 };
 `);
-    const config = createDefaultAppConfig({ generatedConfigFile: import_node_path22.default.join(dir, "gateway.json") });
+    const config = createDefaultAppConfig({ generatedConfigFile: import_node_path24.default.join(dir, "gateway.json") });
     config.Providers = [{
       apiKey: "good-key",
       baseUrl: "https://good-provider.example/v1",
@@ -42076,6 +43198,6 @@ module.exports = {
   } finally {
     console.warn = originalWarn;
     await pluginService.stop();
-    (0, import_node_fs16.rmSync)(dir, { force: true, recursive: true });
+    (0, import_node_fs17.rmSync)(dir, { force: true, recursive: true });
   }
 });

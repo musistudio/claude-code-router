@@ -1057,7 +1057,7 @@ var require_react_development = __commonJS({
           }
           return children;
         }
-        function createContext11(defaultValue) {
+        function createContext12(defaultValue) {
           var context = {
             $$typeof: REACT_CONTEXT_TYPE,
             // As a workaround to support multiple concurrent renderers, we categorize
@@ -1244,7 +1244,7 @@ var require_react_development = __commonJS({
           }
           return lazyType;
         }
-        function forwardRef13(render) {
+        function forwardRef15(render) {
           {
             if (render != null && render.$$typeof === REACT_MEMO_TYPE) {
               error("forwardRef requires a render function but received a `memo` component. Instead of forwardRef(memo(...)), use memo(forwardRef(...)).");
@@ -1343,7 +1343,7 @@ var require_react_development = __commonJS({
           }
           return dispatcher;
         }
-        function useContext13(Context) {
+        function useContext14(Context) {
           var dispatcher = resolveDispatcher();
           {
             if (Context._context !== void 0) {
@@ -1357,7 +1357,7 @@ var require_react_development = __commonJS({
           }
           return dispatcher.useContext(Context);
         }
-        function useState6(initialState) {
+        function useState7(initialState) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useState(initialState);
         }
@@ -1365,11 +1365,11 @@ var require_react_development = __commonJS({
           var dispatcher = resolveDispatcher();
           return dispatcher.useReducer(reducer, initialArg, init);
         }
-        function useRef8(initialValue) {
+        function useRef9(initialValue) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useRef(initialValue);
         }
-        function useEffect8(create, deps) {
+        function useEffect9(create, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useEffect(create, deps);
         }
@@ -1377,11 +1377,11 @@ var require_react_development = __commonJS({
           var dispatcher = resolveDispatcher();
           return dispatcher.useInsertionEffect(create, deps);
         }
-        function useLayoutEffect4(create, deps) {
+        function useLayoutEffect5(create, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useLayoutEffect(create, deps);
         }
-        function useCallback6(callback, deps) {
+        function useCallback7(callback, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useCallback(callback, deps);
         }
@@ -2138,29 +2138,29 @@ var require_react_development = __commonJS({
         exports2.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED = ReactSharedInternals;
         exports2.act = act;
         exports2.cloneElement = cloneElement$1;
-        exports2.createContext = createContext11;
+        exports2.createContext = createContext12;
         exports2.createElement = createElement$1;
         exports2.createFactory = createFactory;
         exports2.createRef = createRef;
-        exports2.forwardRef = forwardRef13;
+        exports2.forwardRef = forwardRef15;
         exports2.isValidElement = isValidElement2;
         exports2.lazy = lazy;
         exports2.memo = memo2;
         exports2.startTransition = startTransition;
         exports2.unstable_act = act;
-        exports2.useCallback = useCallback6;
-        exports2.useContext = useContext13;
+        exports2.useCallback = useCallback7;
+        exports2.useContext = useContext14;
         exports2.useDebugValue = useDebugValue;
         exports2.useDeferredValue = useDeferredValue;
-        exports2.useEffect = useEffect8;
+        exports2.useEffect = useEffect9;
         exports2.useId = useId4;
         exports2.useImperativeHandle = useImperativeHandle;
         exports2.useInsertionEffect = useInsertionEffect4;
-        exports2.useLayoutEffect = useLayoutEffect4;
+        exports2.useLayoutEffect = useLayoutEffect5;
         exports2.useMemo = useMemo11;
         exports2.useReducer = useReducer;
-        exports2.useRef = useRef8;
-        exports2.useState = useState6;
+        exports2.useRef = useRef9;
+        exports2.useState = useState7;
         exports2.useSyncExternalStore = useSyncExternalStore;
         exports2.useTransition = useTransition;
         exports2.version = ReactVersion;
@@ -5427,10 +5427,10 @@ var require_react_dom_server_legacy_node_development = __commonJS({
     if (process.env.NODE_ENV !== "production") {
       (function() {
         "use strict";
-        var React16 = require_react();
+        var React18 = require_react();
         var stream = require("stream");
         var ReactVersion = "18.3.1";
-        var ReactSharedInternals = React16.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React18.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         function warn(format) {
           {
             {
@@ -7336,7 +7336,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
         }
         function flattenOptionChildren(children) {
           var content = "";
-          React16.Children.forEach(children, function(child) {
+          React18.Children.forEach(children, function(child) {
             if (child == null) {
               return;
             }
@@ -9340,7 +9340,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
           }
           return readContext(context);
         }
-        function useContext13(context) {
+        function useContext14(context) {
           {
             currentHookNameInDev = "useContext";
           }
@@ -9350,7 +9350,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
         function basicStateReducer(state, action) {
           return typeof action === "function" ? action(state) : action;
         }
-        function useState6(initialState) {
+        function useState7(initialState) {
           {
             currentHookNameInDev = "useState";
           }
@@ -9440,7 +9440,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
           workInProgressHook.memoizedState = [nextValue, nextDeps];
           return nextValue;
         }
-        function useRef8(initialValue) {
+        function useRef9(initialValue) {
           currentlyRenderingComponent = resolveCurrentlyRenderingComponent();
           workInProgressHook = createWorkInProgressHook();
           var previousRef = workInProgressHook.memoizedState;
@@ -9457,7 +9457,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
             return previousRef;
           }
         }
-        function useLayoutEffect4(create, inputs) {
+        function useLayoutEffect5(create, inputs) {
           {
             currentHookNameInDev = "useLayoutEffect";
             error("useLayoutEffect does nothing on the server, because its effect cannot be encoded into the server renderer's output format. This will lead to a mismatch between the initial, non-hydrated UI and the intended UI. To avoid this, useLayoutEffect should only be used in components that render exclusively on the client. See https://reactjs.org/link/uselayouteffect-ssr for common fixes.");
@@ -9488,7 +9488,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
             }
           }
         }
-        function useCallback6(callback, deps) {
+        function useCallback7(callback, deps) {
           return useMemo11(function() {
             return callback;
           }, deps);
@@ -9528,14 +9528,14 @@ var require_react_dom_server_legacy_node_development = __commonJS({
         }
         var Dispatcher = {
           readContext: readContext$1,
-          useContext: useContext13,
+          useContext: useContext14,
           useMemo: useMemo11,
           useReducer,
-          useRef: useRef8,
-          useState: useState6,
+          useRef: useRef9,
+          useState: useState7,
           useInsertionEffect: noop2,
-          useLayoutEffect: useLayoutEffect4,
-          useCallback: useCallback6,
+          useLayoutEffect: useLayoutEffect5,
+          useCallback: useCallback7,
           // useImperativeHandle is not run in the server environment
           useImperativeHandle: noop2,
           // Effects are not run in the server environment.
@@ -10873,10 +10873,10 @@ var require_react_dom_server_node_development = __commonJS({
     if (process.env.NODE_ENV !== "production") {
       (function() {
         "use strict";
-        var React16 = require_react();
+        var React18 = require_react();
         var util = require("util");
         var ReactVersion = "18.3.1";
-        var ReactSharedInternals = React16.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React18.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         function warn(format) {
           {
             {
@@ -12879,7 +12879,7 @@ var require_react_dom_server_node_development = __commonJS({
         }
         function flattenOptionChildren(children) {
           var content = "";
-          React16.Children.forEach(children, function(child) {
+          React18.Children.forEach(children, function(child) {
             if (child == null) {
               return;
             }
@@ -14819,7 +14819,7 @@ var require_react_dom_server_node_development = __commonJS({
           }
           return readContext(context);
         }
-        function useContext13(context) {
+        function useContext14(context) {
           {
             currentHookNameInDev = "useContext";
           }
@@ -14829,7 +14829,7 @@ var require_react_dom_server_node_development = __commonJS({
         function basicStateReducer(state, action) {
           return typeof action === "function" ? action(state) : action;
         }
-        function useState6(initialState) {
+        function useState7(initialState) {
           {
             currentHookNameInDev = "useState";
           }
@@ -14919,7 +14919,7 @@ var require_react_dom_server_node_development = __commonJS({
           workInProgressHook.memoizedState = [nextValue, nextDeps];
           return nextValue;
         }
-        function useRef8(initialValue) {
+        function useRef9(initialValue) {
           currentlyRenderingComponent = resolveCurrentlyRenderingComponent();
           workInProgressHook = createWorkInProgressHook();
           var previousRef = workInProgressHook.memoizedState;
@@ -14936,7 +14936,7 @@ var require_react_dom_server_node_development = __commonJS({
             return previousRef;
           }
         }
-        function useLayoutEffect4(create, inputs) {
+        function useLayoutEffect5(create, inputs) {
           {
             currentHookNameInDev = "useLayoutEffect";
             error("useLayoutEffect does nothing on the server, because its effect cannot be encoded into the server renderer's output format. This will lead to a mismatch between the initial, non-hydrated UI and the intended UI. To avoid this, useLayoutEffect should only be used in components that render exclusively on the client. See https://reactjs.org/link/uselayouteffect-ssr for common fixes.");
@@ -14967,7 +14967,7 @@ var require_react_dom_server_node_development = __commonJS({
             }
           }
         }
-        function useCallback6(callback, deps) {
+        function useCallback7(callback, deps) {
           return useMemo11(function() {
             return callback;
           }, deps);
@@ -15007,14 +15007,14 @@ var require_react_dom_server_node_development = __commonJS({
         }
         var Dispatcher = {
           readContext: readContext$1,
-          useContext: useContext13,
+          useContext: useContext14,
           useMemo: useMemo11,
           useReducer,
-          useRef: useRef8,
-          useState: useState6,
+          useRef: useRef9,
+          useState: useState7,
           useInsertionEffect: noop2,
-          useLayoutEffect: useLayoutEffect4,
-          useCallback: useCallback6,
+          useLayoutEffect: useLayoutEffect5,
+          useCallback: useCallback7,
           // useImperativeHandle is not run in the server environment
           useImperativeHandle: noop2,
           // Effects are not run in the server environment.
@@ -23648,9 +23648,9 @@ var require_react_dom_development = __commonJS({
         if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ !== "undefined" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart === "function") {
           __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(new Error());
         }
-        var React16 = require_react();
+        var React18 = require_react();
         var Scheduler = require_scheduler();
-        var ReactSharedInternals = React16.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React18.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         var suppressWarning = false;
         function setSuppressWarning(newSuppressWarning) {
           {
@@ -25257,7 +25257,7 @@ var require_react_dom_development = __commonJS({
           {
             if (props.value == null) {
               if (typeof props.children === "object" && props.children !== null) {
-                React16.Children.forEach(props.children, function(child) {
+                React18.Children.forEach(props.children, function(child) {
                   if (child == null) {
                     return;
                   }
@@ -43874,7 +43874,7 @@ var require_react_dom_development = __commonJS({
           return root2;
         }
         var ReactVersion = "18.3.1";
-        function createPortal(children, containerInfo, implementation) {
+        function createPortal3(children, containerInfo, implementation) {
           var key = arguments.length > 3 && arguments[3] !== void 0 ? arguments[3] : null;
           {
             checkKeyStringCoercion(key);
@@ -44731,7 +44731,7 @@ var require_react_dom_development = __commonJS({
           if (!isValidContainer(container)) {
             throw new Error("Target container is not a DOM element.");
           }
-          return createPortal(children, container, null, key);
+          return createPortal3(children, container, null, key);
         }
         function renderSubtreeIntoContainer(parentComponent, element, containerNode, callback) {
           return unstable_renderSubtreeIntoContainer(parentComponent, element, containerNode, callback);
@@ -45320,8 +45320,8 @@ var require_accessibility_cjs_development = __commonJS({
     function _interopDefault(ex) {
       return ex && typeof ex === "object" && "default" in ex ? ex["default"] : ex;
     }
-    var React16 = require_react();
-    var React__default = _interopDefault(React16);
+    var React18 = require_react();
+    var React__default = _interopDefault(React18);
     var hiddenStyles = {
       display: "none"
     };
@@ -45364,8 +45364,8 @@ var require_accessibility_cjs_development = __commonJS({
       }, announcement);
     }
     function useAnnouncement() {
-      const [announcement, setAnnouncement] = React16.useState("");
-      const announce = React16.useCallback((value) => {
+      const [announcement, setAnnouncement] = React18.useState("");
+      const announce = React18.useCallback((value) => {
         if (value != null) {
           setAnnouncement(value);
         }
@@ -46454,15 +46454,15 @@ var require_core_cjs_development = __commonJS({
     function _interopDefault(ex) {
       return ex && typeof ex === "object" && "default" in ex ? ex["default"] : ex;
     }
-    var React16 = require_react();
-    var React__default = _interopDefault(React16);
+    var React18 = require_react();
+    var React__default = _interopDefault(React18);
     var reactDom = require_react_dom();
     var utilities = require_dist();
     var accessibility = require_dist2();
-    var DndMonitorContext = /* @__PURE__ */ React16.createContext(null);
+    var DndMonitorContext = /* @__PURE__ */ React18.createContext(null);
     function useDndMonitor(listener) {
-      const registerListener = React16.useContext(DndMonitorContext);
-      React16.useEffect(() => {
+      const registerListener = React18.useContext(DndMonitorContext);
+      React18.useEffect(() => {
         if (!registerListener) {
           throw new Error("useDndMonitor must be used within a children of <DndContext>");
         }
@@ -46471,12 +46471,12 @@ var require_core_cjs_development = __commonJS({
       }, [listener, registerListener]);
     }
     function useDndMonitorProvider() {
-      const [listeners] = React16.useState(() => /* @__PURE__ */ new Set());
-      const registerListener = React16.useCallback((listener) => {
+      const [listeners] = React18.useState(() => /* @__PURE__ */ new Set());
+      const registerListener = React18.useCallback((listener) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
       }, [listeners]);
-      const dispatch = React16.useCallback((_ref) => {
+      const dispatch = React18.useCallback((_ref) => {
         let {
           type,
           event
@@ -46537,11 +46537,11 @@ var require_core_cjs_development = __commonJS({
         announcement
       } = accessibility.useAnnouncement();
       const liveRegionId = utilities.useUniqueId("DndLiveRegion");
-      const [mounted, setMounted] = React16.useState(false);
-      React16.useEffect(() => {
+      const [mounted, setMounted] = React18.useState(false);
+      React18.useEffect(() => {
         setMounted(true);
       }, []);
-      useDndMonitor(React16.useMemo(() => ({
+      useDndMonitor(React18.useMemo(() => ({
         onDragStart(_ref2) {
           let {
             active
@@ -46619,7 +46619,7 @@ var require_core_cjs_development = __commonJS({
     function noop2() {
     }
     function useSensor3(sensor, options) {
-      return React16.useMemo(
+      return React18.useMemo(
         () => ({
           sensor,
           options: options != null ? options : {}
@@ -46632,7 +46632,7 @@ var require_core_cjs_development = __commonJS({
       for (var _len = arguments.length, sensors = new Array(_len), _key = 0; _key < _len; _key++) {
         sensors[_key] = arguments[_key];
       }
-      return React16.useMemo(
+      return React18.useMemo(
         () => [...sensors].filter((sensor) => sensor != null),
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [...sensors]
@@ -47923,15 +47923,15 @@ var require_core_cjs_development = __commonJS({
         disabled: !enabled
       });
       const [setAutoScrollInterval, clearAutoScrollInterval] = utilities.useInterval();
-      const scrollSpeed = React16.useRef({
+      const scrollSpeed = React18.useRef({
         x: 0,
         y: 0
       });
-      const scrollDirection = React16.useRef({
+      const scrollDirection = React18.useRef({
         x: 0,
         y: 0
       });
-      const rect = React16.useMemo(() => {
+      const rect = React18.useMemo(() => {
         switch (activator) {
           case exports2.AutoScrollActivator.Pointer:
             return pointerCoordinates ? {
@@ -47944,8 +47944,8 @@ var require_core_cjs_development = __commonJS({
             return draggingRect;
         }
       }, [activator, draggingRect, pointerCoordinates]);
-      const scrollContainerRef = React16.useRef(null);
-      const autoScroll = React16.useCallback(() => {
+      const scrollContainerRef = React18.useRef(null);
+      const autoScroll = React18.useCallback(() => {
         const scrollContainer = scrollContainerRef.current;
         if (!scrollContainer) {
           return;
@@ -47954,8 +47954,8 @@ var require_core_cjs_development = __commonJS({
         const scrollTop = scrollSpeed.current.y * scrollDirection.current.y;
         scrollContainer.scrollBy(scrollLeft, scrollTop);
       }, []);
-      const sortedScrollableAncestors = React16.useMemo(() => order === exports2.TraversalOrder.TreeOrder ? [...scrollableAncestors].reverse() : scrollableAncestors, [order, scrollableAncestors]);
-      React16.useEffect(
+      const sortedScrollableAncestors = React18.useMemo(() => order === exports2.TraversalOrder.TreeOrder ? [...scrollableAncestors].reverse() : scrollableAncestors, [order, scrollableAncestors]);
+      React18.useEffect(
         () => {
           if (!enabled || !scrollableAncestors.length || !rect) {
             clearAutoScrollInterval();
@@ -48068,7 +48068,7 @@ var require_core_cjs_development = __commonJS({
       }, [node, id3]);
     }
     function useCombineActivators(sensors, getSyntheticHandler) {
-      return React16.useMemo(() => sensors.reduce((accumulator, sensor) => {
+      return React18.useMemo(() => sensors.reduce((accumulator, sensor) => {
         const {
           sensor: Sensor
         } = sensor;
@@ -48094,16 +48094,16 @@ var require_core_cjs_development = __commonJS({
         dependencies,
         config
       } = _ref;
-      const [queue, setQueue] = React16.useState(null);
+      const [queue, setQueue] = React18.useState(null);
       const {
         frequency,
         measure,
         strategy
       } = config;
-      const containersRef = React16.useRef(containers);
+      const containersRef = React18.useRef(containers);
       const disabled = isDisabled();
       const disabledRef = utilities.useLatestValue(disabled);
-      const measureDroppableContainers = React16.useCallback(function(ids) {
+      const measureDroppableContainers = React18.useCallback(function(ids) {
         if (ids === void 0) {
           ids = [];
         }
@@ -48117,7 +48117,7 @@ var require_core_cjs_development = __commonJS({
           return value.concat(ids.filter((id3) => !value.includes(id3)));
         });
       }, [disabledRef]);
-      const timeoutId = React16.useRef(null);
+      const timeoutId = React18.useRef(null);
       const droppableRects = utilities.useLazyMemo((previousValue) => {
         if (disabled && !dragging) {
           return defaultValue;
@@ -48143,10 +48143,10 @@ var require_core_cjs_development = __commonJS({
         }
         return previousValue;
       }, [containers, queue, dragging, disabled, measure]);
-      React16.useEffect(() => {
+      React18.useEffect(() => {
         containersRef.current = containers;
       }, [containers]);
-      React16.useEffect(
+      React18.useEffect(
         () => {
           if (disabled) {
             return;
@@ -48156,7 +48156,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [dragging, disabled]
       );
-      React16.useEffect(
+      React18.useEffect(
         () => {
           if (queue && queue.length > 0) {
             setQueue(null);
@@ -48165,7 +48165,7 @@ var require_core_cjs_development = __commonJS({
         //eslint-disable-next-line react-hooks/exhaustive-deps
         [JSON.stringify(queue)]
       );
-      React16.useEffect(
+      React18.useEffect(
         () => {
           if (disabled || typeof frequency !== "number" || timeoutId.current !== null) {
             return;
@@ -48214,7 +48214,7 @@ var require_core_cjs_development = __commonJS({
         disabled
       } = _ref;
       const handleMutations = utilities.useEvent(callback);
-      const mutationObserver = React16.useMemo(() => {
+      const mutationObserver = React18.useMemo(() => {
         if (disabled || typeof window === "undefined" || typeof window.MutationObserver === "undefined") {
           return void 0;
         }
@@ -48223,7 +48223,7 @@ var require_core_cjs_development = __commonJS({
         } = window;
         return new MutationObserver(handleMutations);
       }, [handleMutations, disabled]);
-      React16.useEffect(() => {
+      React18.useEffect(() => {
         return () => mutationObserver == null ? void 0 : mutationObserver.disconnect();
       }, [mutationObserver]);
       return mutationObserver;
@@ -48234,7 +48234,7 @@ var require_core_cjs_development = __commonJS({
         disabled
       } = _ref;
       const handleResize = utilities.useEvent(callback);
-      const resizeObserver = React16.useMemo(
+      const resizeObserver = React18.useMemo(
         () => {
           if (disabled || typeof window === "undefined" || typeof window.ResizeObserver === "undefined") {
             return void 0;
@@ -48247,7 +48247,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [disabled]
       );
-      React16.useEffect(() => {
+      React18.useEffect(() => {
         return () => resizeObserver == null ? void 0 : resizeObserver.disconnect();
       }, [resizeObserver]);
       return resizeObserver;
@@ -48259,7 +48259,7 @@ var require_core_cjs_development = __commonJS({
       if (measure === void 0) {
         measure = defaultMeasure;
       }
-      const [rect, setRect] = React16.useState(null);
+      const [rect, setRect] = React18.useState(null);
       function measureRect() {
         setRect((currentRect) => {
           if (!element) {
@@ -48317,7 +48317,7 @@ var require_core_cjs_development = __commonJS({
     }
     var defaultValue$1 = [];
     function useScrollableAncestors(node) {
-      const previousNode = React16.useRef(node);
+      const previousNode = React18.useRef(node);
       const ancestors = utilities.useLazyMemo((previousValue) => {
         if (!node) {
           return defaultValue$1;
@@ -48327,15 +48327,15 @@ var require_core_cjs_development = __commonJS({
         }
         return getScrollableAncestors(node);
       }, [node]);
-      React16.useEffect(() => {
+      React18.useEffect(() => {
         previousNode.current = node;
       }, [node]);
       return ancestors;
     }
     function useScrollOffsets(elements) {
-      const [scrollCoordinates, setScrollCoordinates] = React16.useState(null);
-      const prevElements = React16.useRef(elements);
-      const handleScroll = React16.useCallback((event) => {
+      const [scrollCoordinates, setScrollCoordinates] = React18.useState(null);
+      const prevElements = React18.useRef(elements);
+      const handleScroll = React18.useCallback((event) => {
         const scrollingElement = getScrollableElement(event.target);
         if (!scrollingElement) {
           return;
@@ -48348,7 +48348,7 @@ var require_core_cjs_development = __commonJS({
           return new Map(scrollCoordinates2);
         });
       }, []);
-      React16.useEffect(() => {
+      React18.useEffect(() => {
         const previousElements = prevElements.current;
         if (elements !== previousElements) {
           cleanup(previousElements);
@@ -48376,7 +48376,7 @@ var require_core_cjs_development = __commonJS({
           });
         }
       }, [handleScroll, elements]);
-      return React16.useMemo(() => {
+      return React18.useMemo(() => {
         if (elements.length) {
           return scrollCoordinates ? Array.from(scrollCoordinates.values()).reduce((acc, coordinates) => utilities.add(acc, coordinates), defaultCoordinates) : getScrollOffsets(elements);
         }
@@ -48387,15 +48387,15 @@ var require_core_cjs_development = __commonJS({
       if (dependencies === void 0) {
         dependencies = [];
       }
-      const initialScrollOffsets = React16.useRef(null);
-      React16.useEffect(
+      const initialScrollOffsets = React18.useRef(null);
+      React18.useEffect(
         () => {
           initialScrollOffsets.current = null;
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
         dependencies
       );
-      React16.useEffect(() => {
+      React18.useEffect(() => {
         const hasScrollOffsets = scrollOffsets !== defaultCoordinates;
         if (hasScrollOffsets && !initialScrollOffsets.current) {
           initialScrollOffsets.current = scrollOffsets;
@@ -48407,7 +48407,7 @@ var require_core_cjs_development = __commonJS({
       return initialScrollOffsets.current ? utilities.subtract(scrollOffsets, initialScrollOffsets.current) : defaultCoordinates;
     }
     function useSensorSetup(sensors) {
-      React16.useEffect(
+      React18.useEffect(
         () => {
           if (!utilities.canUseDOM) {
             return;
@@ -48435,7 +48435,7 @@ var require_core_cjs_development = __commonJS({
       );
     }
     function useSyntheticListeners(listeners, id3) {
-      return React16.useMemo(() => {
+      return React18.useMemo(() => {
         return listeners.reduce((acc, _ref) => {
           let {
             eventName,
@@ -48449,7 +48449,7 @@ var require_core_cjs_development = __commonJS({
       }, [listeners, id3]);
     }
     function useWindowRect(element) {
-      return React16.useMemo(() => element ? getWindowClientRect(element) : null, [element]);
+      return React18.useMemo(() => element ? getWindowClientRect(element) : null, [element]);
     }
     var defaultValue$2 = [];
     function useRects(elements, measure) {
@@ -48458,7 +48458,7 @@ var require_core_cjs_development = __commonJS({
       }
       const [firstElement] = elements;
       const windowRect = useWindowRect(firstElement ? utilities.getWindow(firstElement) : null);
-      const [rects, setRects] = React16.useState(defaultValue$2);
+      const [rects, setRects] = React18.useState(defaultValue$2);
       function measureRects() {
         setRects(() => {
           if (!elements.length) {
@@ -48491,8 +48491,8 @@ var require_core_cjs_development = __commonJS({
       let {
         measure
       } = _ref;
-      const [rect, setRect] = React16.useState(null);
-      const handleResize = React16.useCallback((entries) => {
+      const [rect, setRect] = React18.useState(null);
+      const handleResize = React18.useCallback((entries) => {
         for (const {
           target
         } of entries) {
@@ -48512,7 +48512,7 @@ var require_core_cjs_development = __commonJS({
       const resizeObserver = useResizeObserver({
         callback: handleResize
       });
-      const handleNodeChange = React16.useCallback((element) => {
+      const handleNodeChange = React18.useCallback((element) => {
         const node = getMeasurableNode(element);
         resizeObserver == null ? void 0 : resizeObserver.disconnect();
         if (node) {
@@ -48521,7 +48521,7 @@ var require_core_cjs_development = __commonJS({
         setRect(node ? measure(node) : null);
       }, [measure, resizeObserver]);
       const [nodeRef, setRef2] = utilities.useNodeRef(handleNodeChange);
-      return React16.useMemo(() => ({
+      return React18.useMemo(() => ({
         nodeRef,
         rect,
         setRef: setRef2
@@ -48609,8 +48609,8 @@ var require_core_cjs_development = __commonJS({
       over: null,
       measureDroppableContainers: noop2
     };
-    var InternalContext = /* @__PURE__ */ React16.createContext(defaultInternalContext);
-    var PublicContext = /* @__PURE__ */ React16.createContext(defaultPublicContext);
+    var InternalContext = /* @__PURE__ */ React18.createContext(defaultInternalContext);
+    var PublicContext = /* @__PURE__ */ React18.createContext(defaultPublicContext);
     function getInitialState() {
       return {
         draggable: {
@@ -48744,10 +48744,10 @@ var require_core_cjs_development = __commonJS({
         active,
         activatorEvent,
         draggableNodes
-      } = React16.useContext(InternalContext);
+      } = React18.useContext(InternalContext);
       const previousActivatorEvent = utilities.usePrevious(activatorEvent);
       const previousActiveId = utilities.usePrevious(active == null ? void 0 : active.id);
-      React16.useEffect(() => {
+      React18.useEffect(() => {
         if (disabled) {
           return;
         }
@@ -48798,7 +48798,7 @@ var require_core_cjs_development = __commonJS({
       }, transform) : transform;
     }
     function useMeasuringConfiguration(config) {
-      return React16.useMemo(
+      return React18.useMemo(
         () => ({
           draggable: {
             ...defaultMeasuringConfiguration.draggable,
@@ -48824,7 +48824,7 @@ var require_core_cjs_development = __commonJS({
         initialRect,
         config = true
       } = _ref;
-      const initialized = React16.useRef(false);
+      const initialized = React18.useRef(false);
       const {
         x,
         y
@@ -48865,7 +48865,7 @@ var require_core_cjs_development = __commonJS({
         }
       }, [activeNode, x, y, initialRect, measure]);
     }
-    var ActiveDraggableContext = /* @__PURE__ */ React16.createContext({
+    var ActiveDraggableContext = /* @__PURE__ */ React18.createContext({
       ...defaultCoordinates,
       scaleX: 1,
       scaleY: 1
@@ -48876,7 +48876,7 @@ var require_core_cjs_development = __commonJS({
       Status2[Status2["Initializing"] = 1] = "Initializing";
       Status2[Status2["Initialized"] = 2] = "Initialized";
     })(Status || (Status = {}));
-    var DndContext3 = /* @__PURE__ */ React16.memo(function DndContext4(_ref) {
+    var DndContext3 = /* @__PURE__ */ React18.memo(function DndContext4(_ref) {
       var _sensorContext$curren, _dragOverlay$nodeRef$, _dragOverlay$rect, _over$rect;
       let {
         id: id3,
@@ -48889,10 +48889,10 @@ var require_core_cjs_development = __commonJS({
         modifiers,
         ...props
       } = _ref;
-      const store = React16.useReducer(reducer, void 0, getInitialState);
+      const store = React18.useReducer(reducer, void 0, getInitialState);
       const [state, dispatch] = store;
       const [dispatchMonitorEvent, registerMonitorListener] = useDndMonitorProvider();
-      const [status, setStatus] = React16.useState(Status.Uninitialized);
+      const [status, setStatus] = React18.useState(Status.Uninitialized);
       const isInitialized2 = status === Status.Initialized;
       const {
         draggable: {
@@ -48905,11 +48905,11 @@ var require_core_cjs_development = __commonJS({
         }
       } = state;
       const node = activeId != null ? draggableNodes.get(activeId) : null;
-      const activeRects = React16.useRef({
+      const activeRects = React18.useRef({
         initial: null,
         translated: null
       });
-      const active = React16.useMemo(() => {
+      const active = React18.useMemo(() => {
         var _node$data;
         return activeId != null ? {
           id: activeId,
@@ -48918,12 +48918,12 @@ var require_core_cjs_development = __commonJS({
           rect: activeRects
         } : null;
       }, [activeId, node]);
-      const activeRef = React16.useRef(null);
-      const [activeSensor, setActiveSensor] = React16.useState(null);
-      const [activatorEvent, setActivatorEvent] = React16.useState(null);
+      const activeRef = React18.useRef(null);
+      const [activeSensor, setActiveSensor] = React18.useState(null);
+      const [activatorEvent, setActivatorEvent] = React18.useState(null);
       const latestProps = utilities.useLatestValue(props, Object.values(props));
       const draggableDescribedById = utilities.useUniqueId("DndDescribedBy", id3);
-      const enabledDroppableContainers = React16.useMemo(() => droppableContainers.getEnabled(), [droppableContainers]);
+      const enabledDroppableContainers = React18.useMemo(() => droppableContainers.getEnabled(), [droppableContainers]);
       const measuringConfiguration = useMeasuringConfiguration(measuring);
       const {
         droppableRects,
@@ -48935,7 +48935,7 @@ var require_core_cjs_development = __commonJS({
         config: measuringConfiguration.droppable
       });
       const activeNode = useCachedNode(draggableNodes, activeId);
-      const activationCoordinates = React16.useMemo(() => activatorEvent ? utilities.getEventCoordinates(activatorEvent) : null, [activatorEvent]);
+      const activationCoordinates = React18.useMemo(() => activatorEvent ? utilities.getEventCoordinates(activatorEvent) : null, [activatorEvent]);
       const autoScrollOptions = getAutoScrollerOptions();
       const initialActiveNodeRect = useInitialRect(activeNode, measuringConfiguration.draggable.measure);
       useLayoutShiftScrollCompensation({
@@ -48946,7 +48946,7 @@ var require_core_cjs_development = __commonJS({
       });
       const activeNodeRect = useRect(activeNode, measuringConfiguration.draggable.measure, initialActiveNodeRect);
       const containerNodeRect = useRect(activeNode ? activeNode.parentElement : null);
-      const sensorContext = React16.useRef({
+      const sensorContext = React18.useRef({
         activatorEvent: null,
         active: null,
         activeNode,
@@ -49004,11 +49004,11 @@ var require_core_cjs_development = __commonJS({
         pointerCoordinates
       }) : null;
       const overId = getFirstCollision3(collisions, "id");
-      const [over, setOver] = React16.useState(null);
+      const [over, setOver] = React18.useState(null);
       const appliedTranslate = usesDragOverlay ? modifiedTranslate : utilities.add(modifiedTranslate, activeNodeScrollDelta);
       const transform = adjustScale(appliedTranslate, (_over$rect = over == null ? void 0 : over.rect) != null ? _over$rect : null, activeNodeRect);
-      const activeSensorRef = React16.useRef(null);
-      const instantiateSensor = React16.useCallback(
+      const activeSensorRef = React18.useRef(null);
+      const instantiateSensor = React18.useCallback(
         (event, _ref2) => {
           let {
             sensor: Sensor,
@@ -49166,7 +49166,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [draggableNodes]
       );
-      const bindActivatorToSensorInstantiator = React16.useCallback((handler, sensor) => {
+      const bindActivatorToSensorInstantiator = React18.useCallback((handler, sensor) => {
         return (event, active2) => {
           const nativeEvent = event.nativeEvent;
           const activeDraggableNode = draggableNodes.get(active2);
@@ -49198,7 +49198,7 @@ var require_core_cjs_development = __commonJS({
           setStatus(Status.Initialized);
         }
       }, [activeNodeRect, status]);
-      React16.useEffect(
+      React18.useEffect(
         () => {
           const {
             onDragMove
@@ -49233,7 +49233,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [scrollAdjustedTranslate.x, scrollAdjustedTranslate.y]
       );
-      React16.useEffect(
+      React18.useEffect(
         () => {
           const {
             active: active2,
@@ -49306,7 +49306,7 @@ var require_core_cjs_development = __commonJS({
         scrollableAncestors,
         scrollableAncestorRects
       });
-      const publicContext = React16.useMemo(() => {
+      const publicContext = React18.useMemo(() => {
         const context = {
           active,
           activeNode,
@@ -49328,7 +49328,7 @@ var require_core_cjs_development = __commonJS({
         };
         return context;
       }, [active, activeNode, activeNodeRect, activatorEvent, collisions, containerNodeRect, dragOverlay, draggableNodes, droppableContainers, droppableRects, over, measureDroppableContainers, scrollableAncestors, scrollableAncestorRects, measuringConfiguration, measuringScheduled, windowRect]);
-      const internalContext = React16.useMemo(() => {
+      const internalContext = React18.useMemo(() => {
         const context = {
           activatorEvent,
           activators,
@@ -49373,7 +49373,7 @@ var require_core_cjs_development = __commonJS({
         };
       }
     });
-    var NullContext = /* @__PURE__ */ React16.createContext(null);
+    var NullContext = /* @__PURE__ */ React18.createContext(null);
     var defaultRole = "button";
     var ID_PREFIX = "Draggable";
     function useDraggable(_ref) {
@@ -49392,14 +49392,14 @@ var require_core_cjs_development = __commonJS({
         ariaDescribedById,
         draggableNodes,
         over
-      } = React16.useContext(InternalContext);
+      } = React18.useContext(InternalContext);
       const {
         role = defaultRole,
         roleDescription = "draggable",
         tabIndex = 0
       } = attributes != null ? attributes : {};
       const isDragging2 = (active == null ? void 0 : active.id) === id3;
-      const transform = React16.useContext(isDragging2 ? ActiveDraggableContext : NullContext);
+      const transform = React18.useContext(isDragging2 ? ActiveDraggableContext : NullContext);
       const [node, setNodeRef] = utilities.useNodeRef();
       const [activatorNode, setActivatorNodeRef] = utilities.useNodeRef();
       const listeners = useSyntheticListeners(activators, id3);
@@ -49423,7 +49423,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [draggableNodes, id3]
       );
-      const memoizedAttributes = React16.useMemo(() => ({
+      const memoizedAttributes = React18.useMemo(() => ({
         role,
         tabIndex,
         "aria-disabled": disabled,
@@ -49446,7 +49446,7 @@ var require_core_cjs_development = __commonJS({
       };
     }
     function useDndContext() {
-      return React16.useContext(PublicContext);
+      return React18.useContext(PublicContext);
     }
     var ID_PREFIX$1 = "Droppable";
     var defaultResizeObserverConfig = {
@@ -49465,13 +49465,13 @@ var require_core_cjs_development = __commonJS({
         dispatch,
         over,
         measureDroppableContainers
-      } = React16.useContext(InternalContext);
-      const previous = React16.useRef({
+      } = React18.useContext(InternalContext);
+      const previous = React18.useRef({
         disabled
       });
-      const resizeObserverConnected = React16.useRef(false);
-      const rect = React16.useRef(null);
-      const callbackId = React16.useRef(null);
+      const resizeObserverConnected = React18.useRef(false);
+      const rect = React18.useRef(null);
+      const callbackId = React18.useRef(null);
       const {
         disabled: resizeObserverDisabled,
         updateMeasurementsFor,
@@ -49481,7 +49481,7 @@ var require_core_cjs_development = __commonJS({
         ...resizeObserverConfig
       };
       const ids = utilities.useLatestValue(updateMeasurementsFor != null ? updateMeasurementsFor : id3);
-      const handleResize = React16.useCallback(
+      const handleResize = React18.useCallback(
         () => {
           if (!resizeObserverConnected.current) {
             resizeObserverConnected.current = true;
@@ -49502,7 +49502,7 @@ var require_core_cjs_development = __commonJS({
         callback: handleResize,
         disabled: resizeObserverDisabled || !active
       });
-      const handleNodeChange = React16.useCallback((newElement, previousElement) => {
+      const handleNodeChange = React18.useCallback((newElement, previousElement) => {
         if (!resizeObserver) {
           return;
         }
@@ -49516,7 +49516,7 @@ var require_core_cjs_development = __commonJS({
       }, [resizeObserver]);
       const [nodeRef, setNodeRef] = utilities.useNodeRef(handleNodeChange);
       const dataRef = utilities.useLatestValue(data);
-      React16.useEffect(() => {
+      React18.useEffect(() => {
         if (!resizeObserver || !nodeRef.current) {
           return;
         }
@@ -49524,7 +49524,7 @@ var require_core_cjs_development = __commonJS({
         resizeObserverConnected.current = false;
         resizeObserver.observe(nodeRef.current);
       }, [nodeRef, resizeObserver]);
-      React16.useEffect(
+      React18.useEffect(
         () => {
           dispatch({
             type: Action.RegisterDroppable,
@@ -49546,7 +49546,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [id3]
       );
-      React16.useEffect(() => {
+      React18.useEffect(() => {
         if (disabled !== previous.current.disabled) {
           dispatch({
             type: Action.SetDroppableDisabled,
@@ -49571,8 +49571,8 @@ var require_core_cjs_development = __commonJS({
         animation,
         children
       } = _ref;
-      const [clonedChildren, setClonedChildren] = React16.useState(null);
-      const [element, setElement] = React16.useState(null);
+      const [clonedChildren, setClonedChildren] = React18.useState(null);
+      const [element, setElement] = React18.useState(null);
       const previousChildren = utilities.usePrevious(children);
       if (!children && !clonedChildren && previousChildren) {
         setClonedChildren(previousChildren);
@@ -49591,7 +49591,7 @@ var require_core_cjs_development = __commonJS({
           setClonedChildren(null);
         });
       }, [animation, clonedChildren, element]);
-      return React__default.createElement(React__default.Fragment, null, children, clonedChildren ? React16.cloneElement(clonedChildren, {
+      return React__default.createElement(React__default.Fragment, null, children, clonedChildren ? React18.cloneElement(clonedChildren, {
         ref: setElement
       }) : null);
     }
@@ -49619,7 +49619,7 @@ var require_core_cjs_development = __commonJS({
       const isKeyboardActivator = utilities.isKeyboardEvent(activatorEvent);
       return isKeyboardActivator ? "transform 250ms ease" : void 0;
     };
-    var PositionedOverlay = /* @__PURE__ */ React16.forwardRef((_ref, ref) => {
+    var PositionedOverlay = /* @__PURE__ */ React18.forwardRef((_ref, ref) => {
       let {
         as,
         activatorEvent,
@@ -49840,7 +49840,7 @@ var require_core_cjs_development = __commonJS({
     }
     var key = 0;
     function useKey(id3) {
-      return React16.useMemo(() => {
+      return React18.useMemo(() => {
         if (id3 == null) {
           return;
         }
@@ -49874,7 +49874,7 @@ var require_core_cjs_development = __commonJS({
         scrollableAncestorRects,
         windowRect
       } = useDndContext();
-      const transform = React16.useContext(ActiveDraggableContext);
+      const transform = React18.useContext(ActiveDraggableContext);
       const key2 = useKey(active == null ? void 0 : active.id);
       const modifiedTransform = applyModifiers(modifiers, {
         activatorEvent,
@@ -50135,8 +50135,8 @@ var require_sortable_cjs_development = __commonJS({
     function _interopDefault(ex) {
       return ex && typeof ex === "object" && "default" in ex ? ex["default"] : ex;
     }
-    var React16 = require_react();
-    var React__default = _interopDefault(React16);
+    var React18 = require_react();
+    var React__default = _interopDefault(React18);
     var core = require_dist3();
     var utilities = require_dist();
     function arrayMove2(array, from, to) {
@@ -50386,11 +50386,11 @@ var require_sortable_cjs_development = __commonJS({
       } = core.useDndContext();
       const containerId = utilities.useUniqueId(ID_PREFIX, id3);
       const useDragOverlay = Boolean(dragOverlay.rect !== null);
-      const items = React16.useMemo(() => userDefinedItems.map((item) => typeof item === "object" && "id" in item ? item.id : item), [userDefinedItems]);
+      const items = React18.useMemo(() => userDefinedItems.map((item) => typeof item === "object" && "id" in item ? item.id : item), [userDefinedItems]);
       const isDragging2 = active != null;
       const activeIndex = active ? items.indexOf(active.id) : -1;
       const overIndex = over ? items.indexOf(over.id) : -1;
-      const previousItemsRef = React16.useRef(items);
+      const previousItemsRef = React18.useRef(items);
       const itemsHaveChanged = !itemsEqual(items, previousItemsRef.current);
       const disableTransforms = overIndex !== -1 && activeIndex === -1 || itemsHaveChanged;
       const disabled = normalizeDisabled(disabledProp);
@@ -50399,10 +50399,10 @@ var require_sortable_cjs_development = __commonJS({
           measureDroppableContainers(items);
         }
       }, [itemsHaveChanged, items, isDragging2, measureDroppableContainers]);
-      React16.useEffect(() => {
+      React18.useEffect(() => {
         previousItemsRef.current = items;
       }, [items]);
-      const contextValue = React16.useMemo(
+      const contextValue = React18.useMemo(
         () => ({
           activeIndex,
           containerId,
@@ -50473,8 +50473,8 @@ var require_sortable_cjs_development = __commonJS({
         node,
         rect
       } = _ref;
-      const [derivedTransform, setDerivedtransform] = React16.useState(null);
-      const previousIndex = React16.useRef(index);
+      const [derivedTransform, setDerivedtransform] = React18.useState(null);
+      const previousIndex = React18.useRef(index);
       utilities.useIsomorphicLayoutEffect(() => {
         if (!disabled && index !== previousIndex.current && node.current) {
           const initial = rect.current;
@@ -50497,7 +50497,7 @@ var require_sortable_cjs_development = __commonJS({
           previousIndex.current = index;
         }
       }, [disabled, index, node, rect]);
-      React16.useEffect(() => {
+      React18.useEffect(() => {
         if (derivedTransform) {
           setDerivedtransform(null);
         }
@@ -50526,10 +50526,10 @@ var require_sortable_cjs_development = __commonJS({
         overIndex,
         useDragOverlay,
         strategy: globalStrategy
-      } = React16.useContext(Context);
+      } = React18.useContext(Context);
       const disabled = normalizeLocalDisabled(localDisabled, globalDisabled);
       const index = items.indexOf(id3);
-      const data = React16.useMemo(() => ({
+      const data = React18.useMemo(() => ({
         sortable: {
           containerId,
           index,
@@ -50537,7 +50537,7 @@ var require_sortable_cjs_development = __commonJS({
         },
         ...customData
       }), [containerId, customData, index, items]);
-      const itemsAfterCurrentSortable = React16.useMemo(() => items.slice(items.indexOf(id3)), [items, id3]);
+      const itemsAfterCurrentSortable = React18.useMemo(() => items.slice(items.indexOf(id3)), [items, id3]);
       const {
         rect,
         node,
@@ -50592,7 +50592,7 @@ var require_sortable_cjs_development = __commonJS({
         overIndex
       }) : index;
       const activeId = active == null ? void 0 : active.id;
-      const previous = React16.useRef({
+      const previous = React18.useRef({
         activeId,
         items,
         newIndex,
@@ -50619,7 +50619,7 @@ var require_sortable_cjs_development = __commonJS({
         node,
         rect
       });
-      React16.useEffect(() => {
+      React18.useEffect(() => {
         if (isSorting && previous.current.newIndex !== newIndex) {
           previous.current.newIndex = newIndex;
         }
@@ -50630,7 +50630,7 @@ var require_sortable_cjs_development = __commonJS({
           previous.current.items = items;
         }
       }, [isSorting, newIndex, containerId, items]);
-      React16.useEffect(() => {
+      React18.useEffect(() => {
         if (activeId === previous.current.activeId) {
           return;
         }
@@ -50872,7 +50872,7 @@ var require_react_jsx_runtime_development = __commonJS({
     if (process.env.NODE_ENV !== "production") {
       (function() {
         "use strict";
-        var React16 = require_react();
+        var React18 = require_react();
         var REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.element");
         var REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal");
         var REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment");
@@ -50898,7 +50898,7 @@ var require_react_jsx_runtime_development = __commonJS({
           }
           return null;
         }
-        var ReactSharedInternals = React16.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React18.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         function error(format) {
           {
             {
@@ -51748,11 +51748,11 @@ var require_react_jsx_runtime_development = __commonJS({
             return jsxWithValidation(type, props, key, false);
           }
         }
-        var jsx22 = jsxWithValidationDynamic;
-        var jsxs7 = jsxWithValidationStatic;
+        var jsx24 = jsxWithValidationDynamic;
+        var jsxs8 = jsxWithValidationStatic;
         exports2.Fragment = REACT_FRAGMENT_TYPE;
-        exports2.jsx = jsx22;
-        exports2.jsxs = jsxs7;
+        exports2.jsx = jsx24;
+        exports2.jsxs = jsxs8;
       })();
     }
   }
@@ -57337,7 +57337,7 @@ var require_lucide_react = __commonJS({
       ],
       ["path", { d: "m2 2 20 20", key: "1ooewy" }]
     ];
-    var EyeOff = createLucideIcon("eye-off", __iconNode$i0);
+    var EyeOff2 = createLucideIcon("eye-off", __iconNode$i0);
     var __iconNode$h$ = [
       [
         "path",
@@ -57348,7 +57348,7 @@ var require_lucide_react = __commonJS({
       ],
       ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
     ];
-    var Eye = createLucideIcon("eye", __iconNode$h$);
+    var Eye2 = createLucideIcon("eye", __iconNode$h$);
     var __iconNode$h_ = [
       ["path", { d: "M12 16h.01", key: "1drbdi" }],
       ["path", { d: "M16 16h.01", key: "1f9h7w" }],
@@ -69852,10 +69852,10 @@ var require_lucide_react = __commonJS({
       EvCharger,
       Expand,
       ExternalLink: ExternalLink3,
-      Eye,
+      Eye: Eye2,
       EyeClosed,
       EyeDashed,
-      EyeOff,
+      EyeOff: EyeOff2,
       Factory,
       Fan,
       FastForward,
@@ -72332,14 +72332,14 @@ var require_lucide_react = __commonJS({
     exports2.ExpandIcon = Expand;
     exports2.ExternalLink = ExternalLink3;
     exports2.ExternalLinkIcon = ExternalLink3;
-    exports2.Eye = Eye;
+    exports2.Eye = Eye2;
     exports2.EyeClosed = EyeClosed;
     exports2.EyeClosedIcon = EyeClosed;
     exports2.EyeDashed = EyeDashed;
     exports2.EyeDashedIcon = EyeDashed;
-    exports2.EyeIcon = Eye;
-    exports2.EyeOff = EyeOff;
-    exports2.EyeOffIcon = EyeOff;
+    exports2.EyeIcon = Eye2;
+    exports2.EyeOff = EyeOff2;
+    exports2.EyeOffIcon = EyeOff2;
     exports2.Factory = Factory;
     exports2.FactoryIcon = Factory;
     exports2.Fan = Fan;
@@ -73841,10 +73841,10 @@ var require_lucide_react = __commonJS({
     exports2.LucideEvCharger = EvCharger;
     exports2.LucideExpand = Expand;
     exports2.LucideExternalLink = ExternalLink3;
-    exports2.LucideEye = Eye;
+    exports2.LucideEye = Eye2;
     exports2.LucideEyeClosed = EyeClosed;
     exports2.LucideEyeDashed = EyeDashed;
-    exports2.LucideEyeOff = EyeOff;
+    exports2.LucideEyeOff = EyeOff2;
     exports2.LucideFactory = Factory;
     exports2.LucideFan = Fan;
     exports2.LucideFastForward = FastForward;
@@ -76962,7 +76962,7 @@ var require_lucide_react = __commonJS({
 // packages/ui/test/integration/providers.test.ts
 var import_strict = __toESM(require("node:assert/strict"));
 var import_node_test = __toESM(require("node:test"));
-var React15 = __toESM(require_react());
+var React17 = __toESM(require_react());
 var import_server = __toESM(require_server_node());
 
 // packages/core/src/providers/url.ts
@@ -77235,6 +77235,28 @@ var geminiProviderPreset = {
     { flags: "i", source: "^AIza[a-z0-9_-]{20,}$" }
   ],
   websiteUrl: "https://gemini.google.com/"
+};
+
+// packages/core/src/providers/presets/minimax/index.ts
+var minimaxChinaProviderPreset = {
+  account: standardProviderAccountConfig,
+  aliases: ["minimax", "minimaxi", "minimax china"],
+  defaultModels: ["MiniMax-M3"],
+  endpoints: [
+    {
+      baseUrl: "https://api.minimaxi.com/v1",
+      protocols: ["openai_chat_completions"],
+      websiteUrl: "https://platform.minimaxi.com/docs"
+    },
+    {
+      baseUrl: "https://api.minimaxi.com/anthropic/v1",
+      protocols: ["anthropic_messages"],
+      websiteUrl: "https://platform.minimaxi.com/docs"
+    }
+  ],
+  id: "minimax-cn",
+  name: "MiniMax (China)",
+  websiteUrl: "https://platform.minimaxi.com/docs"
 };
 
 // packages/core/src/providers/presets/moonshot/index.ts
@@ -89604,6 +89626,7 @@ Label.displayName = "Label";
 
 // packages/ui/src/components/ui/popover.tsx
 var React11 = __toESM(require_react());
+var import_react_dom = __toESM(require_react_dom());
 var import_jsx_runtime13 = __toESM(require_jsx_runtime());
 var PopoverContent = React11.forwardRef(
   ({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
@@ -89616,6 +89639,12 @@ var PopoverContent = React11.forwardRef(
   )
 );
 PopoverContent.displayName = "PopoverContent";
+function PopoverPortal({ children, open = true }) {
+  if (!open || typeof document === "undefined") {
+    return null;
+  }
+  return (0, import_react_dom.createPortal)(children, document.body);
+}
 
 // packages/ui/src/components/ui/select.tsx
 var React12 = __toESM(require_react());
@@ -89686,11 +89715,81 @@ var Switch = React13.forwardRef(
 );
 Switch.displayName = "Switch";
 
-// packages/ui/src/components/ui/textarea.tsx
+// packages/ui/src/components/ui/tabs.tsx
 var React14 = __toESM(require_react());
 var import_jsx_runtime16 = __toESM(require_jsx_runtime());
-var Textarea = React14.forwardRef(
+var TabsContext = React14.createContext(void 0);
+var Tabs = React14.forwardRef(
+  ({ children, className, onValueChange, value, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(TabsContext.Provider, { value: { onValueChange, value }, children: /* @__PURE__ */ (0, import_jsx_runtime16.jsx)("div", { className: cn("min-w-0", className), ref, ...props, children }) })
+);
+Tabs.displayName = "Tabs";
+var TabsList = React14.forwardRef(
   ({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(
+    "div",
+    {
+      className: cn(
+        "inline-flex min-w-0 items-center rounded-md bg-muted p-1 text-muted-foreground",
+        className
+      ),
+      ref,
+      role: "tablist",
+      ...props
+    }
+  )
+);
+TabsList.displayName = "TabsList";
+var TabsTrigger = React14.forwardRef(
+  ({ className, onClick, value, ...props }, ref) => {
+    const context = React14.useContext(TabsContext);
+    const selected = context?.value === value;
+    return /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(
+      "button",
+      {
+        "aria-selected": selected,
+        className: cn(
+          "inline-flex min-w-0 items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-[12px] font-medium outline-none transition-[background-color,border-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
+          className
+        ),
+        "data-state": selected ? "active" : "inactive",
+        onClick: (event) => {
+          onClick?.(event);
+          if (!event.defaultPrevented) {
+            context?.onValueChange?.(value);
+          }
+        },
+        ref,
+        role: "tab",
+        type: "button",
+        ...props
+      }
+    );
+  }
+);
+TabsTrigger.displayName = "TabsTrigger";
+var TabsContent = React14.forwardRef(
+  ({ className, value, ...props }, ref) => {
+    const context = React14.useContext(TabsContext);
+    const selected = context?.value === value;
+    return /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(
+      "div",
+      {
+        className: cn("min-w-0 outline-none", className),
+        "data-state": selected ? "active" : "inactive",
+        hidden: !selected,
+        ref,
+        role: "tabpanel",
+        ...props
+      }
+    );
+  }
+);
+TabsContent.displayName = "TabsContent";
+
+// packages/ui/src/components/ui/textarea.tsx
+var React15 = __toESM(require_react());
+var import_jsx_runtime17 = __toESM(require_jsx_runtime());
+var Textarea = React15.forwardRef(
+  ({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
     "textarea",
     {
       className: cn(
@@ -89755,6 +89854,9 @@ var BUILTIN_FUSION_VISION_TOOL_NAME = "vision_understand";
 var BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME = "web_search";
 var BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME = "image_generation";
 var BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME = "video_generation";
+function isGatewayProviderEnabled(provider) {
+  return provider.enabled !== false;
+}
 var ROUTER_SCRIPT_MAX_SOURCE_BYTES = 64 * 1024;
 var CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV = "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY";
 var CLAUDE_CODE_DEFAULT_ENV = {
@@ -89990,6 +90092,17 @@ function createDefaultAppConfig(options) {
       streamReplies: true,
       tenantId: "ccr"
     },
+    contextArchive: {
+      enabled: false,
+      maxBytes: 512 * 1024 * 1024,
+      maxSnapshotBytes: 32 * 1024 * 1024,
+      maxSnapshots: 200,
+      mcpEnabled: true,
+      replayTimeoutMs: 6e4,
+      retentionDays: 30,
+      storagePath: "",
+      toolName: "ccr_history_ask"
+    },
     gateway: {
       coreHost,
       corePort: 3457,
@@ -90019,6 +90132,7 @@ function createDefaultAppConfig(options) {
     profile: {
       claudeCode: {
         enabled: true,
+        managedCompact: false,
         model: "",
         settingsFile: "~/.claude/settings.json",
         smallFastModel: ""
@@ -90030,6 +90144,7 @@ function createDefaultAppConfig(options) {
         configFormat: "separate_profile_files",
         configFile: "~/.codex/config.toml",
         enabled: true,
+        managedCompact: false,
         model: "",
         providerId: "claude-code-router",
         providerName: "Claude Code Router",
@@ -90042,6 +90157,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: { ...CLAUDE_CODE_DEFAULT_ENV },
           id: "default-claude-code",
+          managedCompact: false,
           model: "",
           name: "Claude Code",
           scope: "global",
@@ -90059,6 +90175,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: {},
           id: "default-codex",
+          managedCompact: false,
           model: "",
           name: "Codex",
           providerId: "claude-code-router",
@@ -90502,7 +90619,7 @@ var appCopy = {
       networking: "Networking",
       observability: "Observability",
       overview: "Overview",
-      profile: "Agent Config",
+      profile: "Agent Profiles",
       providers: "Providers",
       models: "Models",
       routing: "Routing",
@@ -90610,6 +90727,9 @@ var appCopy = {
       "\u65F6\u95F4": "Time",
       "\u72B6\u6001": "Status",
       "\u6A21\u578B": "Model",
+      "CCR compact for Claude Code": "CCR compact for Claude Code",
+      "Use CCR context archive when Claude Code runs /compact.": "Use CCR context archive when Claude Code runs /compact.",
+      "Context archive and MCP access will be enabled for this compact mode.": "Context archive and MCP access will be enabled for this compact mode.",
       "Stream": "Stream",
       "Streaming": "Streaming",
       "Non-streaming": "Non-streaming",
@@ -90640,21 +90760,58 @@ var appCopy = {
       "\u51FA": "out",
       "No provider presets found": "No provider presets found",
       "After you enter the API endpoint and key, the system will automatically detect supported protocols and available models.": "After you enter the API endpoint and key, the system will automatically detect supported protocols and available models.",
+      "Advanced": "Advanced",
+      "Advanced settings": "Advanced settings",
+      "Advanced settings need attention": "Advanced settings need attention",
+      "Agent profile": "Agent profile",
       "Back": "Back",
+      "Auto detect protocols": "Auto detect protocols",
+      "Auto detect protocols description": "When enabled, CCR probes the endpoint while editing and uses the detected protocols and models to update this provider. Turn it off to keep manually selected protocols and custom model IDs unchanged.",
+      "Auto detect protocols info": "Auto detect protocols info",
       "Available models": "Available models",
+      "Available after saving": "Available after saving",
+      "Automatic": "Automatic",
+      "Add credentials": "Add credentials",
+      "Add the API key CCR will use for model requests.": "Add the API key CCR will use for model requests.",
+      "A real model request succeeded with the selected provider settings.": "A real model request succeeded with the selected provider settings.",
       "Check": "Check",
       "Check Connection": "Check Connection",
       "Check results": "Check results",
       "Checking connection": "Checking connection",
+      "Choose a provider preset or endpoint, enter an API key, and add at least one model.": "Choose a provider preset or endpoint, enter an API key, and add at least one model.",
+      "Choose a provider endpoint so CCR can detect compatible protocols.": "Choose a provider endpoint so CCR can detect compatible protocols.",
+      "Choose an agent, model, and required profile settings.": "Choose an agent, model, and required profile settings.",
+      "Choose how this provider authenticates model requests.": "Choose how this provider authenticates model requests.",
+      "Choose provider": "Choose provider",
+      "Choose the models that should be available through this provider.": "Choose the models that should be available through this provider.",
       "Click Check Connection to verify connectivity with a real model request.": "Click Check Connection to verify connectivity with a real model request.",
+      "Compatible API protocols were found automatically.": "Compatible API protocols were found automatically.",
+      "Compatible API protocols were found automatically. You can turn off auto detection in Advanced settings and select protocols manually.": "Compatible API protocols were found automatically. You can turn off auto detection in Advanced settings and select protocols manually.",
+      "Configure a provider before creating an agent profile.": "Configure a provider before creating an agent profile.",
+      "Configure at least one enabled provider model before saving an agent profile.": "Configure at least one enabled provider model before saving an agent profile.",
+      "Configuration": "Configuration",
+      "Credential method": "Credential method",
       "Connection verified": "Connection verified",
+      "CCR is checking which API protocols this endpoint supports.": "CCR is checking which API protocols this endpoint supports.",
+      "CCR is checking this provider. Wait for the check to finish before continuing.": "CCR is checking this provider. Wait for the check to finish before continuing.",
+      "CCR is sending a limited real model request.": "CCR is sending a limited real model request.",
+      "CCR management service is unavailable. Make sure the CCR app or ccr ui command is running, then retry.": "CCR management service is unavailable. Make sure the CCR app or ccr ui command is running, then retry.",
+      "Connect a provider in four small steps.": "Connect a provider in four small steps.",
+      "Create profiles that tell each agent which model and entry mode to use.": "Create profiles that tell each agent which model and entry mode to use.",
       "CCR scanned this computer for Claude Code, Codex, Grok CLI, OpenCode CLI, and ZCode login states. Click Import to add one as a gateway provider.": "CCR scanned this computer for Claude Code, Codex, Grok CLI, OpenCode CLI, and ZCode login states. Click Import to add one as a gateway provider.",
       "Detected": "Detected",
       "Detecting protocols": "Detecting protocols",
       "Enter API endpoint, API key, and at least one model to enable connectivity check.": "Enter API endpoint, API key, and at least one model to enable connectivity check.",
+      "Endpoint and identity": "Endpoint and identity",
+      "Finish the provider and agent profile steps before entering the app.": "Finish the provider and agent profile steps before entering the app.",
       "Generated output is limited to 1 token for connectivity checks.": "Generated output is limited to 1 token for connectivity checks.",
+      "Gateway service": "Gateway service",
+      "Grok CLI profiles use CCR scope and CLI entry mode.": "Grok CLI profiles use CCR scope and CLI entry mode.",
+      "Allowed models": "Allowed models",
       "Import local agent login": "Import local agent login",
       "Import local agent provider": "Import local agent provider",
+      "In progress": "In progress",
+      "Kimi profiles need a default model and an allowed model list.": "Kimi profiles need a default model and an allowed model list.",
       "ChatGPT login detected. Click Import to add it as a gateway provider.": "ChatGPT login detected. Click Import to add it as a gateway provider.",
       "Claude Code login detected. Click Import to add it as a gateway provider.": "Claude Code login detected. Click Import to add it as a gateway provider.",
       "Claude Code login was detected, but no usable access token was found.": "Claude Code login was detected, but no usable access token was found.",
@@ -90667,33 +90824,126 @@ var appCopy = {
       "Kimi CLI provider API key detected. Click Import to add it as a gateway provider.": "Kimi CLI provider API key detected. Click Import to add it as a gateway provider.",
       "Kimi CLI login was detected, but no usable OAuth token was found. Run /login in Kimi CLI, then rescan.": "Kimi CLI login was detected, but no usable OAuth token was found. Run /login in Kimi CLI, then rescan.",
       "Kimi CLI provider was detected, but no usable API key was found.": "Kimi CLI provider was detected, but no usable API key was found.",
+      "Kimi model": "Kimi model",
+      "Kimi model is required.": "Kimi model is required.",
       "OpenCode CLI credential was found, but no usable API key was detected.": "OpenCode CLI credential was found, but no usable API key was detected.",
       "OpenCode CLI login detected. Click Import to add it as a gateway provider.": "OpenCode CLI login detected. Click Import to add it as a gateway provider.",
       "OpenCode CLI public models detected. No login is required.": "OpenCode CLI public models detected. No login is required.",
       "CCR scanned this computer for local Claude Code, Codex, Grok CLI, Kimi CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.": "CCR scanned this computer for local Claude Code, Codex, Grok CLI, Kimi CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.",
       "Locked": "Locked",
+      "Manual": "Manual",
       "Local agent login will be connected after saving this provider.": "Local agent login will be connected after saving this provider.",
+      "Local login provider": "Local login provider",
+      "Launch actions": "Launch actions",
+      "Management actions": "Management actions",
       "Models to check": "Models to check",
+      "model": "model",
+      "models": "models",
+      "Model overrides are optional; empty fields keep Claude Code defaults.": "Model overrides are optional; empty fields keep Claude Code defaults.",
+      "Next": "Next",
+      "Next step": "Next step",
+      "Available model IDs": "Available model IDs",
+      "Added": "Added",
+      "Added models": "Added models",
+      "Add custom model": "Add custom model",
+      "Cancel custom model": "Cancel custom model",
+      "Click a model to edit settings": "Click a model to edit settings",
+      "Custom model": "Custom model",
+      "Loading provider models": "Loading provider models",
+      "Model already added": "Model already added",
+      "Models detected from this provider": "Models detected from this provider",
+      "No models added": "No models added",
+      "No provider models": "No provider models",
       "No available models": "No available models",
       "No local login state was found for this agent.": "No local login state was found for this agent.",
+      "No providers": "No providers",
       "Not found": "Not found",
+      "Not verified yet": "Not verified yet",
+      "Needs models": "Needs models",
+      "Needs protocol": "Needs protocol",
       "No unavailable models": "No unavailable models",
+      "OpenCode profiles can target CLI, APP, or both entry modes.": "OpenCode profiles can target CLI, APP, or both entry modes.",
+      "Optional health check": "Optional health check",
+      "Pick models": "Pick models",
+      "Pick a preset provider or use a custom compatible API endpoint.": "Pick a preset provider or use a custom compatible API endpoint.",
+      "Previous": "Previous",
+      "Previous step": "Previous step",
+      "Profile name is required.": "Profile name is required.",
+      "Provider setup": "Provider setup",
+      "Pool keys": "Pool keys",
+      "Provider ID and Provider name identify the routed provider in Codex.": "Provider ID and Provider name identify the routed provider in Codex.",
+      "Provider ID is required.": "Provider ID is required.",
+      "Provider name is required.": "Provider name is required.",
       "Protocols detected": "Protocols detected",
       "Ready": "Ready",
+      "Ready to test": "Ready to test",
+      "Run a real model request before relying on this provider.": "Run a real model request before relying on this provider.",
+      "Optional. Check Connection sends a real model request and may consume provider credits.": "Optional. Check Connection sends a real model request and may consume provider credits.",
       "Select at least one protocol.": "Select at least one protocol.",
+      "Select at least one available model.": "Select at least one available model.",
+      "Select at least one allowed model.": "Select at least one allowed model.",
+      "Select models": "Select models",
+      "Search added models": "Search added models",
+      "Search provider models": "Search provider models",
       "Service": "Service",
       "Service failed to start": "Service failed to start",
       "Scanning local agent logins": "Scanning local agent logins",
+      "Save this agent profile to continue.": "Save this agent profile to continue.",
+      "Save this provider to continue.": "Save this provider to continue.",
+      "Secret used for requests": "Secret used for requests",
+      "Send a request from your agent, then confirm it appears in Logs.": "Send a request from your agent, then confirm it appears in Logs.",
+      "Setup readiness": "Setup readiness",
+      "Show API key": "Show API key",
+      "Show models": "Show models",
+      "Hide API key": "Hide API key",
+      "Hide models": "Hide models",
+      "Use one key for every request.": "Use one key for every request.",
+      "Use multiple API keys with optional priorities, weights, and limits.": "Use multiple API keys with optional priorities, weights, and limits.",
+      "Use multiple keys with optional limits.": "Use multiple keys with optional limits.",
+      "Monitor": "Monitor",
+      "Setup": "Setup",
+      "Step": "Step",
       "Start": "Start",
       "Start check": "Start check",
       "Stop": "Stop",
+      "Workspace": "Workspace",
+      "The gateway is configured. Start the service from the toolbar when you are ready to test traffic.": "The gateway is configured. Start the service from the toolbar when you are ready to test traffic.",
+      "The imported local agent login is connected when this provider is saved.": "The imported local agent login is connected when this provider is saved.",
       "This check sends real model requests with your provider API key and may consume account balance.": "This check sends real model requests with your provider API key and may consume account balance.",
+      "Usable": "Usable",
+      "Verify connection": "Verify connection",
+      "Waiting for provider details": "Waiting for provider details",
+      "Waiting for required fields": "Waiting for required fields",
+      "API endpoint, API key, and at least one model are required before verification.": "API endpoint, API key, and at least one model are required before verification.",
+      "10 / page": "10 / page",
+      "25 / page": "25 / page",
+      "50 / page": "50 / page",
+      "100 / page": "100 / page",
+      "Clear filters": "Clear filters",
+      "Clear filters or broaden the search to find more request logs.": "Clear filters or broaden the search to find more request logs.",
+      "Default model is required.": "Default model is required.",
+      "Enable at least one provider model before saving this profile.": "Enable at least one provider model before saving this profile.",
+      "Enable request logs": "Enable request logs",
+      "Environment variable rows need valid keys.": "Environment variable rows need valid keys.",
+      "Idle seconds must be between 30 and 86400.": "Idle seconds must be between 30 and 86400.",
+      "No request logs match the current filters.": "No request logs match the current filters.",
+      "No request logs yet.": "No request logs yet.",
+      "Paths, provider identity, bot, compact, and env": "Paths, provider identity, bot, compact, and env",
+      "Request logs are off": "Request logs are off",
+      "Request logs record gateway requests and make payload inspection available.": "Request logs record gateway requests and make payload inspection available.",
+      "Select an existing bot or turn Bot off.": "Select an existing bot or turn Bot off.",
+      "Select a route node to inspect routing operations": "Select a route node to inspect routing operations",
+      "Select a route node to inspect its operations.": "Select a route node to inspect its operations.",
+      "Send a request through CCR, then refresh this page to inspect it.": "Send a request through CCR, then refresh this page to inspect it.",
+      "providers": "providers",
       "ZCode login detected. Click Import to add it as a gateway provider.": "ZCode login detected. Click Import to add it as a gateway provider.",
+      "ZCode profiles use APP entry mode.": "ZCode profiles use APP entry mode.",
       "ZCode login was detected, but its local credential is encrypted and cannot be imported automatically.": "ZCode login was detected, but its local credential is encrypted and cannot be imported automatically.",
       "ZCode login was detected, but no usable provider API key was found in ZCode config.": "ZCode login was detected, but no usable provider API key was found in ZCode config.",
       "ZCode provider API key detected in local ZCode config. Click Import to add it as a gateway provider.": "ZCode provider API key detected in local ZCode config. Click Import to add it as a gateway provider.",
       "Unavailable models": "Unavailable models",
       "Account Balance": "Account Balance",
+      "Account Usage": "Account Usage",
       "Account component": "Account component",
       "All accounts": "All accounts",
       "All credentials": "All credentials",
@@ -90888,7 +91138,7 @@ var appCopy = {
       networking: "\u7F51\u7EDC",
       observability: "\u89C2\u6D4B",
       overview: "\u6982\u89C8",
-      profile: "Agent\u914D\u7F6E",
+      profile: "Agent \u914D\u7F6E\u6863\u6848",
       providers: "\u4F9B\u5E94\u5546",
       models: "\u6A21\u578B",
       routing: "\u8DEF\u7531",
@@ -90993,10 +91243,15 @@ var appCopy = {
       "30d": "30 \u5929",
       "Agent": "Agent",
       "A provider is required before profiles can route traffic.": "\u9700\u8981\u5148\u914D\u7F6E\u4F9B\u5E94\u5546\uFF0C\u914D\u7F6E\u6863\u6848\u624D\u80FD\u8DEF\u7531\u8BF7\u6C42\u3002",
+      "A real model request succeeded with the selected provider settings.": "\u5DF2\u4F7F\u7528\u5F53\u524D\u4F9B\u5E94\u5546\u8BBE\u7F6E\u6210\u529F\u5B8C\u6210\u4E00\u6B21\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\u3002",
       "Add or verify a model provider.": "\u6DFB\u52A0\u6216\u786E\u8BA4\u6A21\u578B\u4F9B\u5E94\u5546\u3002",
+      "CCR compact for Claude Code": "Claude Code \u4F7F\u7528 CCR \u538B\u7F29",
+      "Use CCR context archive when Claude Code runs /compact.": "Claude Code \u6267\u884C /compact \u65F6\u6539\u7528 CCR \u4E0A\u4E0B\u6587\u5F52\u6863\u3002",
+      "Context archive and MCP access will be enabled for this compact mode.": "\u5C06\u4E3A\u6B64\u538B\u7F29\u6A21\u5F0F\u542F\u7528\u4E0A\u4E0B\u6587\u5F52\u6863\u548C MCP \u8BBF\u95EE\u3002",
       "Agent Analysis": "Agent \u5206\u6790",
       "Agent access": "Agent \u63A5\u5165",
       "Agent Mix": "Agent \u5206\u5E03",
+      "Agent profile": "Agent \u914D\u7F6E\u6863\u6848",
       "Agent profiles": "Agent \u914D\u7F6E\u6863\u6848",
       "All agents": "\u5168\u90E8 Agent",
       "All models": "\u5168\u90E8\u6A21\u578B",
@@ -91011,6 +91266,8 @@ var appCopy = {
       "Add API Key": "\u6DFB\u52A0 API \u5BC6\u94A5",
       "Add API key": "\u6DFB\u52A0 API \u5BC6\u94A5",
       "Add key": "\u6DFB\u52A0 Key",
+      "Add credentials": "\u6DFB\u52A0\u51ED\u636E",
+      "Add the API key CCR will use for model requests.": "\u586B\u5199 CCR \u53D1\u8D77\u6A21\u578B\u8BF7\u6C42\u65F6\u4F7F\u7528\u7684 API Key\u3002",
       "Add limit": "\u6DFB\u52A0\u9650\u5236",
       "Add parameter": "\u6DFB\u52A0\u53C2\u6570",
       "Add Profile": "\u6DFB\u52A0\u914D\u7F6E",
@@ -91022,13 +91279,20 @@ var appCopy = {
       "Add Routing Rule": "\u6DFB\u52A0\u8DEF\u7531\u89C4\u5219",
       "Add routing rule": "\u6DFB\u52A0\u8DEF\u7531\u89C4\u5219",
       "Advanced Settings...": "\u9AD8\u7EA7\u8BBE\u7F6E...",
+      "Advanced": "\u9AD8\u7EA7",
       "Advanced key options": "Key \u9AD8\u7EA7\u9009\u9879",
       "Advanced settings": "\u9AD8\u7EA7\u8BBE\u7F6E",
+      "Advanced settings need attention": "\u9AD8\u7EA7\u8BBE\u7F6E\u9700\u8981\u5904\u7406",
       "Always": "\u59CB\u7EC8",
       "Alias": "\u522B\u540D",
       "Alias is required.": "\u522B\u540D\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Applied": "\u5DF2\u5E94\u7528",
       "App only": "\u4EC5 App",
+      "API endpoint, API key, and at least one model are required before verification.": "\u9A8C\u8BC1\u524D\u9700\u8981 API \u5730\u5740\u3001API Key \u548C\u81F3\u5C11\u4E00\u4E2A\u6A21\u578B\u3002",
+      "10 / page": "10 / \u9875",
+      "25 / page": "25 / \u9875",
+      "50 / page": "50 / \u9875",
+      "100 / page": "100 / \u9875",
       "Args": "\u53C2\u6570",
       "API Keys": "API \u5BC6\u94A5",
       "API key included": "\u5DF2\u5305\u542B API \u5BC6\u94A5",
@@ -91096,6 +91360,10 @@ var appCopy = {
       "Robot Code": "Robot Code",
       "Optional": "\u53EF\u9009",
       "Auto": "\u81EA\u52A8",
+      "Auto detect protocols": "\u81EA\u52A8\u63A2\u6D4B\u534F\u8BAE",
+      "Auto detect protocols description": "\u5F00\u542F\u540E\uFF0CCCR \u4F1A\u5728\u7F16\u8F91\u65F6\u63A2\u6D4B\u63A5\u53E3\uFF0C\u5E76\u7528\u63A2\u6D4B\u5230\u7684\u534F\u8BAE\u548C\u6A21\u578B\u66F4\u65B0\u6B64\u4F9B\u5E94\u5546\u3002\u5173\u95ED\u540E\uFF0C\u624B\u52A8\u9009\u62E9\u7684\u534F\u8BAE\u548C\u81EA\u5B9A\u4E49\u6A21\u578B ID \u4F1A\u4FDD\u6301\u4E0D\u53D8\u3002",
+      "Auto detect protocols info": "\u81EA\u52A8\u63A2\u6D4B\u534F\u8BAE\u8BF4\u660E",
+      "Automatic": "\u81EA\u52A8",
       "Back": "\u8FD4\u56DE",
       "Backup": "\u5907\u4EFD",
       "Cache": "\u7F13\u5B58",
@@ -91113,8 +91381,13 @@ var appCopy = {
       "Capture network": "\u6355\u83B7\u7F51\u7EDC",
       "Connection verified": "\u8FDE\u901A\u6027\u5DF2\u9A8C\u8BC1",
       "Action": "\u64CD\u4F5C",
+      "Available after saving": "\u4FDD\u5B58\u540E\u53EF\u7528",
       "Check trust": "\u68C0\u67E5\u4FE1\u4EFB",
       "Choose where each agent uses CCR.": "\u9009\u62E9\u6BCF\u4E2A Agent \u5728\u54EA\u91CC\u4F7F\u7528 CCR\u3002",
+      "Choose provider": "\u9009\u62E9\u4F9B\u5E94\u5546",
+      "Choose a provider endpoint so CCR can detect compatible protocols.": "\u9009\u62E9\u4F9B\u5E94\u5546\u7AEF\u70B9\u540E\uFF0CCCR \u624D\u80FD\u63A2\u6D4B\u517C\u5BB9\u534F\u8BAE\u3002",
+      "Choose the models that should be available through this provider.": "\u9009\u62E9\u8FD9\u4E2A\u4F9B\u5E94\u5546\u5BF9\u5916\u53EF\u7528\u7684\u6A21\u578B\u3002",
+      "Connect a provider in four small steps.": "\u901A\u8FC7 4 \u4E2A\u5C0F\u6B65\u9AA4\u63A5\u5165\u4E00\u4E2A\u4F9B\u5E94\u5546\u3002",
       "Built-in": "\u5185\u7F6E",
       "Identifies the Claude Code user-agent to provide deep Claude Code integration.": "\u901A\u8FC7\u8BC6\u522B Claude Code \u7684 user-agent\uFF0C\u5B9E\u73B0\u5BF9 Claude Code \u7684\u6DF1\u5EA6\u9002\u914D\u3002",
       "Identifies the Codex user-agent to provide deep Codex integration.": "\u901A\u8FC7\u8BC6\u522B Codex \u7684 user-agent\uFF0C\u5B9E\u73B0\u5BF9 Codex \u7684\u6DF1\u5EA6\u9002\u914D\u3002",
@@ -91135,9 +91408,13 @@ var appCopy = {
       "Codex": "Codex",
       "Codex model": "Codex \u6A21\u578B",
       "Grok CLI": "Grok CLI",
+      "Grok CLI profiles use CCR scope and CLI entry mode.": "Grok CLI \u914D\u7F6E\u6863\u6848\u56FA\u5B9A\u4F7F\u7528 CCR \u4F5C\u7528\u8303\u56F4\u548C CLI \u5165\u53E3\u6A21\u5F0F\u3002",
       "Grok model": "Grok \u6A21\u578B",
       "Kimi CLI": "Kimi CLI",
+      "Kimi profiles need a default model and an allowed model list.": "Kimi \u914D\u7F6E\u6863\u6848\u9700\u8981\u4E00\u4E2A\u9ED8\u8BA4\u6A21\u578B\u548C\u53EF\u7528\u6A21\u578B\u5217\u8868\u3002",
       "Kimi model": "Kimi \u6A21\u578B",
+      "Kimi model is required.": "Kimi \u6A21\u578B\u4E0D\u80FD\u4E3A\u7A7A\u3002",
+      "Allowed models": "\u5141\u8BB8\u6A21\u578B",
       "OpenCode": "OpenCode",
       "OpenCode model": "OpenCode \u6A21\u578B",
       "CLI only": "\u4EC5 CLI",
@@ -91147,6 +91424,11 @@ var appCopy = {
       "Rule type": "\u89C4\u5219\u7C7B\u578B",
       "Node.js route script file": "Node.js \u8DEF\u7531\u811A\u672C\u6587\u4EF6",
       "Choose file": "\u9009\u62E9\u6587\u4EF6",
+      "Choose a provider preset or endpoint, enter an API key, and add at least one model.": "\u9009\u62E9\u4F9B\u5E94\u5546\u9884\u8BBE\u6216\u7AEF\u70B9\uFF0C\u586B\u5199 API Key\uFF0C\u5E76\u81F3\u5C11\u6DFB\u52A0\u4E00\u4E2A\u6A21\u578B\u3002",
+      "Choose an agent, model, and required profile settings.": "\u9009\u62E9 Agent\u3001\u6A21\u578B\u548C\u5FC5\u586B\u7684\u914D\u7F6E\u6863\u6848\u8BBE\u7F6E\u3002",
+      "Choose how this provider authenticates model requests.": "\u9009\u62E9\u8FD9\u4E2A\u4F9B\u5E94\u5546\u5982\u4F55\u8BA4\u8BC1\u6A21\u578B\u8BF7\u6C42\u3002",
+      "Compatible API protocols were found automatically.": "\u5DF2\u81EA\u52A8\u627E\u5230\u517C\u5BB9\u7684 API \u534F\u8BAE\u3002",
+      "Compatible API protocols were found automatically. You can turn off auto detection in Advanced settings and select protocols manually.": "\u5DF2\u81EA\u52A8\u627E\u5230\u517C\u5BB9\u7684 API \u534F\u8BAE\u3002\u4F60\u53EF\u4EE5\u5728\u9AD8\u7EA7\u8BBE\u7F6E\u4E2D\u5173\u95ED\u81EA\u52A8\u68C0\u6D4B\uFF0C\u5E76\u624B\u52A8\u9009\u62E9\u534F\u8BAE\u3002",
       "Timeout (ms)": "\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF09",
       "Test request JSON": "\u6D4B\u8BD5\u8BF7\u6C42 JSON",
       "Validate": "\u6821\u9A8C",
@@ -91165,6 +91447,8 @@ var appCopy = {
       "Claude Design model": "Claude Design \u6A21\u578B",
       "Claude Design routes": "Claude Design \u8DEF\u7531",
       "Configure": "\u914D\u7F6E",
+      "Configure a provider before creating an agent profile.": "\u8BF7\u5148\u914D\u7F6E\u4F9B\u5E94\u5546\uFF0C\u518D\u521B\u5EFA Agent \u914D\u7F6E\u6863\u6848\u3002",
+      "Configure at least one enabled provider model before saving an agent profile.": "\u8BF7\u5148\u914D\u7F6E\u81F3\u5C11\u4E00\u4E2A\u5DF2\u542F\u7528\u7684\u4F9B\u5E94\u5546\u6A21\u578B\uFF0C\u518D\u4FDD\u5B58 Agent \u914D\u7F6E\u6863\u6848\u3002",
       "Configure provider": "\u914D\u7F6E\u4F9B\u5E94\u5546",
       "Configure Extension": "\u914D\u7F6E\u6269\u5C55",
       "Configure extension": "\u914D\u7F6E\u6269\u5C55",
@@ -91172,9 +91456,13 @@ var appCopy = {
       "Configure plugin route": "\u914D\u7F6E\u63D2\u4EF6\u8DEF\u7531",
       "Configure Routing": "\u914D\u7F6E\u8DEF\u7531",
       "Configure multiple provider API keys for this supplier.": "\u4E3A\u8FD9\u4E2A\u4F9B\u5E94\u5546\u914D\u7F6E\u591A\u4E2A\u4E0A\u6E38 API Key\u3002",
+      "Configuration": "\u914D\u7F6E\u6458\u8981",
       "Copy": "\u590D\u5236",
+      "Clear filters": "\u6E05\u7A7A\u7B5B\u9009",
+      "Clear filters or broaden the search to find more request logs.": "\u8BF7\u6E05\u7A7A\u7B5B\u9009\u6216\u653E\u5BBD\u641C\u7D22\u6761\u4EF6\u6765\u67E5\u627E\u66F4\u591A\u8BF7\u6C42\u65E5\u5FD7\u3002",
       "Create integration": "\u521B\u5EFA\u96C6\u6210",
       "Credential": "\u51ED\u636E",
+      "Credential method": "\u51ED\u636E\u65B9\u5F0F",
       "Credential chain": "\u51ED\u636E\u94FE",
       "Credential pool": "\u51ED\u636E\u6C60",
       "Credential saturated": "\u51ED\u636E\u5DF2\u9971\u548C",
@@ -91185,6 +91473,7 @@ var appCopy = {
       "Cost": "\u6210\u672C",
       "Estimated cost": "\u4F30\u7B97\u6210\u672C",
       "Connect agent": "\u63A5\u5165 Agent",
+      "Create profiles that tell each agent which model and entry mode to use.": "\u521B\u5EFA\u914D\u7F6E\u6863\u6848\uFF0C\u6307\u5B9A\u6BCF\u4E2A Agent \u4F7F\u7528\u7684\u6A21\u578B\u548C\u5165\u53E3\u6A21\u5F0F\u3002",
       "Create a profile for your agent.": "\u4E3A\u4F60\u7684 Agent \u521B\u5EFA\u914D\u7F6E\u6863\u6848\u3002",
       "Cursor model": "Cursor \u6A21\u578B",
       "Cursor Proxy routes": "Cursor Proxy \u8DEF\u7531",
@@ -91206,11 +91495,17 @@ var appCopy = {
       "Default on failure": "\u9ED8\u8BA4\u5931\u8D25\u5904\u7406",
       "Description": "\u63CF\u8FF0",
       "CCR scanned this computer for Claude Code, Codex, Grok CLI, OpenCode CLI, and ZCode login states. Click Import to add one as a gateway provider.": "CCR \u5DF2\u626B\u63CF\u672C\u673A\u7684 Claude Code\u3001Codex\u3001Grok CLI\u3001OpenCode CLI \u548C ZCode \u767B\u5F55\u6001\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
+      "CCR is checking this provider. Wait for the check to finish before continuing.": "CCR \u6B63\u5728\u68C0\u67E5\u8FD9\u4E2A\u4F9B\u5E94\u5546\uFF0C\u8BF7\u7B49\u5F85\u68C0\u67E5\u7ED3\u675F\u540E\u518D\u7EE7\u7EED\u3002",
+      "CCR is checking which API protocols this endpoint supports.": "CCR \u6B63\u5728\u68C0\u67E5\u8FD9\u4E2A\u7AEF\u70B9\u652F\u6301\u54EA\u4E9B API \u534F\u8BAE\u3002",
+      "CCR is sending a limited real model request.": "CCR \u6B63\u5728\u53D1\u9001\u4E00\u6B21\u53D7\u9650\u7684\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\u3002",
+      "CCR management service is unavailable. Make sure the CCR app or ccr ui command is running, then retry.": "\u65E0\u6CD5\u8FDE\u63A5 CCR \u7BA1\u7406\u670D\u52A1\u3002\u8BF7\u786E\u8BA4 CCR App \u6216 ccr ui \u547D\u4EE4\u6B63\u5728\u8FD0\u884C\uFF0C\u7136\u540E\u91CD\u8BD5\u3002",
       "Detected": "\u5DF2\u68C0\u6D4B",
       "Detecting protocols": "\u6B63\u5728\u63A2\u6D4B\u534F\u8BAE",
       "Enter API endpoint, API key, and at least one model to enable connectivity check.": "\u586B\u5199 API \u5730\u5740\u3001API Key \u548C\u81F3\u5C11\u4E00\u4E2A\u6A21\u578B\u540E\uFF0C\u624D\u53EF\u68C0\u6D4B\u8FDE\u901A\u6027\u3002",
+      "Finish the provider and agent profile steps before entering the app.": "\u8BF7\u5148\u5B8C\u6210\u4F9B\u5E94\u5546\u548C Agent \u914D\u7F6E\u6863\u6848\u6B65\u9AA4\uFF0C\u518D\u8FDB\u5165\u5E94\u7528\u3002",
       "Import local agent login": "\u5BFC\u5165\u672C\u673A Agent \u767B\u5F55\u6001",
       "Import local agent provider": "\u5BFC\u5165\u672C\u673A Agent \u4F9B\u5E94\u5546",
+      "In progress": "\u8FDB\u884C\u4E2D",
       "ChatGPT login detected. Click Import to add it as a gateway provider.": "\u5DF2\u68C0\u6D4B\u5230 ChatGPT \u767B\u5F55\u6001\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
       "Claude Code login detected. Click Import to add it as a gateway provider.": "\u5DF2\u68C0\u6D4B\u5230 Claude Code \u767B\u5F55\u6001\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
       "Claude Code login was detected, but no usable access token was found.": "\u5DF2\u68C0\u6D4B\u5230 Claude Code \u767B\u5F55\u6001\uFF0C\u4F46\u6CA1\u6709\u627E\u5230\u53EF\u7528\u7684 access token\u3002",
@@ -91229,6 +91524,10 @@ var appCopy = {
       "CCR scanned this computer for local Claude Code, Codex, Grok CLI, Kimi CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.": "CCR \u5DF2\u626B\u63CF\u672C\u673A\u7684 Claude Code\u3001Codex\u3001Grok CLI\u3001Kimi CLI\u3001OpenCode CLI \u548C ZCode \u4F9B\u5E94\u5546\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
       "Locked": "\u5DF2\u52A0\u5BC6",
       "Local agent login will be connected after saving this provider.": "\u4FDD\u5B58\u8FD9\u4E2A\u4F9B\u5E94\u5546\u540E\u4F1A\u63A5\u5165\u672C\u673A Agent \u767B\u5F55\u6001\u3002",
+      "Local login provider": "\u672C\u673A\u767B\u5F55\u6001\u4F9B\u5E94\u5546",
+      "Launch actions": "\u542F\u52A8\u64CD\u4F5C",
+      "Management actions": "\u7BA1\u7406\u64CD\u4F5C",
+      "Model overrides are optional; empty fields keep Claude Code defaults.": "\u6A21\u578B\u8986\u76D6\u662F\u53EF\u9009\u9879\uFF1B\u7559\u7A7A\u4F1A\u4FDD\u7559 Claude Code \u9ED8\u8BA4\u8BBE\u7F6E\u3002",
       "Display name": "\u663E\u793A\u540D\u79F0",
       "Double click to copy": "\u53CC\u51FB\u590D\u5236",
       "Edit": "\u7F16\u8F91",
@@ -91242,10 +91541,15 @@ var appCopy = {
       "Edit rule": "\u7F16\u8F91\u89C4\u5219",
       "Effect scope": "\u4F5C\u7528\u8303\u56F4",
       "Enable": "\u542F\u7528",
+      "Enable at least one provider model before saving this profile.": "\u8BF7\u5148\u542F\u7528\u81F3\u5C11\u4E00\u4E2A\u4F9B\u5E94\u5546\u6A21\u578B\uFF0C\u518D\u4FDD\u5B58\u8FD9\u4E2A\u914D\u7F6E\u6863\u6848\u3002",
+      "Enable provider": "\u542F\u7528\u4F9B\u5E94\u5546",
+      "Enable request logs": "\u542F\u7528\u8BF7\u6C42\u65E5\u5FD7",
       "Enabled": "\u542F\u7528",
+      "Disable provider": "\u505C\u7528\u4F9B\u5E94\u5546",
       "Endpoint": "\u7AEF\u70B9",
       "Entry mode": "\u5165\u53E3\u6A21\u5F0F",
       "Environment variables": "\u73AF\u5883\u53D8\u91CF",
+      "Environment variable rows need valid keys.": "\u73AF\u5883\u53D8\u91CF\u884C\u9700\u8981\u586B\u5199\u6709\u6548\u7684 Key\u3002",
       "Endpoint Health": "\u7AEF\u70B9\u5065\u5EB7",
       "Endpoint information": "\u7AEF\u70B9\u4FE1\u606F",
       "HTTP status": "HTTP \u72B6\u6001\u7801",
@@ -91298,6 +91602,7 @@ var appCopy = {
       "Image content": "\u56FE\u50CF\u5185\u5BB9",
       "Images": "\u56FE\u50CF",
       "Idle seconds": "\u7A7A\u95F2\u79D2\u6570",
+      "Idle seconds must be between 30 and 86400.": "\u7A7A\u95F2\u79D2\u6570\u5FC5\u987B\u5728 30 \u5230 86400 \u4E4B\u95F4\u3002",
       "Input": "\u8F93\u5165",
       "Input tokens": "\u8F93\u5165\u4EE4\u724C",
       "Integration ID": "\u96C6\u6210 ID",
@@ -91342,6 +91647,7 @@ var appCopy = {
       "Method": "\u65B9\u6CD5",
       "Model": "\u6A21\u578B",
       "Default model": "\u9ED8\u8BA4\u6A21\u578B",
+      "Default model is required.": "\u9ED8\u8BA4\u6A21\u578B\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Model descriptions": "\u6A21\u578B\u63CF\u8FF0",
       "Model override": "\u6A21\u578B\u8986\u76D6",
       "Model routing": "\u6A21\u578B\u8DEF\u7531",
@@ -91362,6 +91668,8 @@ var appCopy = {
       "No provider usage yet": "\u6682\u65E0\u4F9B\u5E94\u5546\u7528\u91CF",
       "No provider yet": "\u8FD8\u6CA1\u6709\u4F9B\u5E94\u5546",
       "No requests captured yet": "\u6682\u65E0\u8BF7\u6C42\u8BB0\u5F55",
+      "No request logs match the current filters.": "\u6CA1\u6709\u7B26\u5408\u5F53\u524D\u7B5B\u9009\u6761\u4EF6\u7684\u8BF7\u6C42\u65E5\u5FD7\u3002",
+      "No request logs yet.": "\u8FD8\u6CA1\u6709\u8BF7\u6C42\u65E5\u5FD7\u3002",
       "No bots configured": "\u5C1A\u672A\u914D\u7F6E Bot",
       "No data": "\u65E0\u6570\u636E",
       "No route activity": "\u6682\u65E0\u8DEF\u7531\u6D3B\u52A8",
@@ -91414,6 +91722,7 @@ var appCopy = {
       "External core": "\u5916\u90E8 Core",
       "External provider link": "\u5916\u90E8\u4F9B\u5E94\u5546\u94FE\u63A5",
       "Provider": "\u4F9B\u5E94\u5546",
+      "Provider ID and Provider name identify the routed provider in Codex.": "Provider ID \u548C Provider name \u7528\u4E8E\u5728 Codex \u4E2D\u8BC6\u522B\u88AB\u8DEF\u7531\u7684\u4F9B\u5E94\u5546\u3002",
       "Provider Analysis": "\u4F9B\u5E94\u5546\u5206\u6790",
       "Provider credential JSON did not contain any API keys.": "\u4F9B\u5E94\u5546\u51ED\u636E JSON \u4E2D\u6CA1\u6709\u53EF\u7528 API Key\u3002",
       "Provider credential JSON is invalid.": "\u4F9B\u5E94\u5546\u51ED\u636E JSON \u65E0\u6548\u3002",
@@ -91425,9 +91734,11 @@ var appCopy = {
       "Provider credential rows require names.": "\u4F9B\u5E94\u5546\u51ED\u636E\u884C\u5FC5\u987B\u586B\u5199\u540D\u79F0\u3002",
       "Provider credential weight must be a positive number.": "\u4F9B\u5E94\u5546\u51ED\u636E\u6743\u91CD\u5FC5\u987B\u662F\u6B63\u6570\u3002",
       "Provider ID": "\u4F9B\u5E94\u5546 ID",
+      "Provider ID is required.": "\u4F9B\u5E94\u5546 ID \u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Provider link failed": "\u4F9B\u5E94\u5546\u94FE\u63A5\u5931\u8D25",
       "Provider middleware": "\u4F9B\u5E94\u5546\u4E2D\u95F4\u4EF6",
       "Provider name": "\u4F9B\u5E94\u5546\u540D\u79F0",
+      "Provider name is required.": "\u4F9B\u5E94\u5546\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Provider name and Base URL are required.": "\u4F9B\u5E94\u5546\u540D\u79F0\u548C\u57FA\u7840 URL \u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Provider name already exists.": "\u4F9B\u5E94\u5546\u540D\u79F0\u5DF2\u5B58\u5728\u3002",
       "Provider ready": "\u4F9B\u5E94\u5546\u5DF2\u5C31\u7EEA",
@@ -91446,6 +91757,7 @@ var appCopy = {
       "Profile": "\u914D\u7F6E",
       "Profile actions": "\u914D\u7F6E\u64CD\u4F5C",
       "Profile name": "\u914D\u7F6E\u6863\u6848\u540D\u79F0",
+      "Profile name is required.": "\u914D\u7F6E\u6863\u6848\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Profile name and required target settings are missing.": "\u8BF7\u586B\u5199\u914D\u7F6E\u6863\u6848\u540D\u79F0\u548C\u5FC5\u9700\u7684\u63A5\u5165\u76EE\u6807\u8BBE\u7F6E\u3002",
       "Profile name, required target settings, and environment variable keys are required.": "\u8BF7\u586B\u5199\u914D\u7F6E\u6863\u6848\u540D\u79F0\u3001\u5FC5\u9700\u7684\u63A5\u5165\u76EE\u6807\u8BBE\u7F6E\u548C\u73AF\u5883\u53D8\u91CF Key\u3002",
       "Profile no longer exists.": "\u914D\u7F6E\u6863\u6848\u5DF2\u4E0D\u5B58\u5728\u3002",
@@ -91471,6 +91783,8 @@ var appCopy = {
       "Request action": "\u8BF7\u6C42\u52A8\u4F5C",
       "Request ID": "\u8BF7\u6C42 ID",
       "Request logs database": "\u8BF7\u6C42\u65E5\u5FD7\u6570\u636E\u5E93",
+      "Request logs are off": "\u8BF7\u6C42\u65E5\u5FD7\u5DF2\u5173\u95ED",
+      "Request logs record gateway requests and make payload inspection available.": "\u8BF7\u6C42\u65E5\u5FD7\u4F1A\u8BB0\u5F55\u7F51\u5173\u8BF7\u6C42\uFF0C\u5E76\u652F\u6301\u67E5\u770B\u8BF7\u6C42/\u54CD\u5E94\u8F7D\u8377\u3002",
       "Request timeout ms": "\u8BF7\u6C42\u8D85\u65F6 ms",
       "Requests": "\u8BF7\u6C42",
       "Rewrite request parameters": "\u6539\u5199\u8BF7\u6C42\u53C2\u6570",
@@ -91490,6 +91804,7 @@ var appCopy = {
       "Retry": "\u7EE7\u7EED\u91CD\u8BD5",
       "Retry attempts": "\u91CD\u8BD5\u5C1D\u8BD5",
       "Weighted order": "\u6309\u6743\u91CD\u6392\u5E8F",
+      "Paths, provider identity, bot, compact, and env": "\u8DEF\u5F84\u3001\u4F9B\u5E94\u5546\u8EAB\u4EFD\u3001Bot\u3001\u538B\u7F29\u548C\u73AF\u5883\u53D8\u91CF",
       "Ready to route": "\u53EF\u4EE5\u5F00\u59CB\u8DEF\u7531",
       "Restart proxy": "\u91CD\u542F\u4EE3\u7406",
       "Route": "\u8DEF\u7531",
@@ -91501,6 +91816,8 @@ var appCopy = {
       "View route graph": "\u67E5\u770B\u8DEF\u7531\u94FE\u8DEF\u56FE",
       "Hover a node to inspect routing operations": "\u5C06\u9F20\u6807\u60AC\u505C\u5728\u8282\u70B9\u4E0A\u67E5\u770B\u8DEF\u7531\u64CD\u4F5C",
       "Hover over a route node to inspect its operations.": "\u5C06\u9F20\u6807\u60AC\u505C\u5728\u8DEF\u7531\u8282\u70B9\u4E0A\u67E5\u770B\u64CD\u4F5C\u8BE6\u60C5\u3002",
+      "Select a route node to inspect routing operations": "\u9009\u62E9\u8DEF\u7531\u8282\u70B9\u67E5\u770B\u8DEF\u7531\u64CD\u4F5C",
+      "Select a route node to inspect its operations.": "\u9009\u62E9\u8DEF\u7531\u8282\u70B9\u67E5\u770B\u64CD\u4F5C\u8BE6\u60C5\u3002",
       "Routing operations": "\u8DEF\u7531\u64CD\u4F5C",
       "No request fields changed": "\u6CA1\u6709\u8BF7\u6C42\u5B57\u6BB5\u53D8\u66F4",
       "Not recorded": "\u672A\u8BB0\u5F55",
@@ -91558,8 +91875,12 @@ var appCopy = {
       "Search request logs": "\u641C\u7D22\u8BF7\u6C42\u65E5\u5FD7",
       "Search routing rules": "\u641C\u7D22\u8DEF\u7531\u89C4\u5219",
       "Select account": "\u9009\u62E9\u8D26\u6237",
+      "Select an existing bot or turn Bot off.": "\u8BF7\u9009\u62E9\u5DF2\u6709 Bot\uFF0C\u6216\u5173\u95ED Bot\u3002",
+      "Select at least one available model.": "\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u53EF\u7528\u6A21\u578B\u3002",
+      "Select at least one allowed model.": "\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u5141\u8BB8\u6A21\u578B\u3002",
       "Select bot": "\u9009\u62E9 Bot",
       "Select data": "\u9009\u62E9\u6570\u636E",
+      "Send a request through CCR, then refresh this page to inspect it.": "\u901A\u8FC7 CCR \u53D1\u9001\u4E00\u6B21\u8BF7\u6C42\uFF0C\u7136\u540E\u5237\u65B0\u6B64\u9875\u9762\u67E5\u770B\u65E5\u5FD7\u3002",
       "Server": "\u670D\u52A1",
       "Startup timeout ms": "\u542F\u52A8\u8D85\u65F6 ms",
       "State directory": "\u72B6\u6001\u76EE\u5F55",
@@ -91920,6 +92241,7 @@ var appCopy = {
       "Browser apps JSON": "\u6D4F\u89C8\u5668 App JSON",
       "Account": "\u8D26\u6237",
       "Account Balance": "\u8D26\u6237\u4F59\u989D",
+      "Account Usage": "\u8D26\u6237\u7528\u91CF",
       "Account balance connectors": "\u8D26\u6237\u4F59\u989D\u8FDE\u63A5\u5668",
       "Add at least one account connector or disable account balance.": "\u8BF7\u81F3\u5C11\u6DFB\u52A0\u4E00\u4E2A\u8D26\u6237\u8FDE\u63A5\u5668\uFF0C\u6216\u5173\u95ED\u8D26\u6237\u4F59\u989D\u3002",
       "Balance": "\u4F59\u989D",
@@ -92031,11 +92353,20 @@ var appCopy = {
       "Invalid": "\u65E0\u6548",
       "Manual install": "\u624B\u52A8\u5B89\u88C5",
       "Manual install command": "\u624B\u52A8\u5B89\u88C5\u547D\u4EE4",
+      "Manual": "\u624B\u52A8",
       "Manifest URL": "Manifest URL",
       "Marketplace": "\u5E02\u573A",
+      "Added": "\u5DF2\u6DFB\u52A0",
+      "Added models": "\u5DF2\u6DFB\u52A0\u6A21\u578B",
+      "Add custom model": "\u6DFB\u52A0\u81EA\u5B9A\u4E49\u6A21\u578B",
+      "Cancel custom model": "\u53D6\u6D88\u81EA\u5B9A\u4E49\u6A21\u578B",
+      "Click a model to edit settings": "\u70B9\u51FB\u6A21\u578B\u7F16\u8F91\u8BBE\u7F6E",
+      "Custom model": "\u81EA\u5B9A\u4E49\u6A21\u578B",
+      "Model already added": "\u6A21\u578B\u5DF2\u6DFB\u52A0",
       "Model name": "\u6A21\u578B\u540D\u79F0",
       "Models are required. Ask the provider to include models=... in the link.": "\u9700\u8981\u6A21\u578B\u5217\u8868\u3002\u8BF7\u8BA9\u4F9B\u5E94\u5546\u5728\u94FE\u63A5\u4E2D\u52A0\u5165 models=...\u3002",
       "Models will be detected automatically.": "\u6A21\u578B\u4F1A\u81EA\u52A8\u63A2\u6D4B\u3002",
+      "Models detected from this provider": "\u4ECE\u8BE5\u4F9B\u5E94\u5546\u68C0\u6D4B\u5230\u7684\u6A21\u578B",
       "More": "\u66F4\u591A",
       "Provider models": "\u4F9B\u5E94\u5546\u6A21\u578B",
       "Runtime provider": "\u8FD0\u884C\u65F6\u4F9B\u5E94\u5546",
@@ -92067,11 +92398,15 @@ var appCopy = {
       "No matching routing rules": "\u6CA1\u6709\u5339\u914D\u7684\u8DEF\u7531\u89C4\u5219",
       "No account balance connectors configured": "\u672A\u914D\u7F6E\u8D26\u6237\u4F59\u989D\u8FDE\u63A5\u5668",
       "No available models": "\u6CA1\u6709\u53EF\u7528\u6A21\u578B",
+      "No models added": "\u672A\u6DFB\u52A0\u6A21\u578B",
+      "No provider models": "\u6CA1\u6709\u4F9B\u5E94\u5546\u6A21\u578B",
       "No protocol detection yet": "\u5C1A\u672A\u68C0\u6D4B\u534F\u8BAE",
       "No response fields": "\u6CA1\u6709\u54CD\u5E94\u5B57\u6BB5",
       "No unavailable models": "\u6CA1\u6709\u4E0D\u53EF\u7528\u6A21\u578B",
+      "Gateway service": "\u7F51\u5173\u670D\u52A1",
       "Name is required.": "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "No usage data available.": "\u6682\u65E0\u53EF\u7528\u91CF\u6570\u636E\u3002",
+      "Next": "\u4E0B\u4E00\u6B65",
       "OpenAI Chat": "OpenAI Chat",
       "OpenAI Responses": "OpenAI Responses",
       "Anthropic Messages": "Anthropic Messages",
@@ -92083,8 +92418,10 @@ var appCopy = {
       "Select or enter at least one model.": "\u8BF7\u9009\u62E9\u6216\u8F93\u5165\u81F3\u5C11\u4E00\u4E2A\u6A21\u578B\u3002",
       "Enter at least one model.": "\u8BF7\u8F93\u5165\u81F3\u5C11\u4E00\u4E2A\u6A21\u578B\u3002",
       "Generated output is limited to 1 token for connectivity checks.": "\u8FDE\u901A\u6027\u68C0\u6D4B\u4F1A\u628A\u751F\u6210\u8F93\u51FA\u9650\u5236\u4E3A 1 \u4E2A token\u3002",
+      "Endpoint and identity": "\u7AEF\u70B9\u4E0E\u540D\u79F0",
       "Check results": "\u68C0\u6D4B\u7ED3\u679C",
       "Models to check": "\u8981\u68C0\u6D4B\u7684\u6A21\u578B",
+      "Available model IDs": "\u53EF\u7528\u6A21\u578B ID",
       "Raw connector JSON": "\u539F\u59CB\u8FDE\u63A5\u5668 JSON",
       "Remote provider manifest": "\u8FDC\u7A0B\u4F9B\u5E94\u5546 Manifest",
       "Refresh interval ms": "\u5237\u65B0\u95F4\u9694\uFF08\u6BEB\u79D2\uFF09",
@@ -92125,24 +92462,63 @@ var appCopy = {
       "Switch to HTTP JSON request to configure method, URL, headers, body, and response fields.": "\u5207\u6362\u5230 HTTP JSON \u8BF7\u6C42\u5373\u53EF\u914D\u7F6E method\u3001URL\u3001header\u3001body \u548C\u54CD\u5E94\u5B57\u6BB5\u3002",
       "Test usage request": "\u6D4B\u8BD5\u7528\u91CF\u8BF7\u6C42",
       "This check sends real model requests with your provider API key and may consume account balance.": "\u672C\u6B21\u68C0\u6D4B\u4F1A\u4F7F\u7528\u4F60\u7684\u4F9B\u5E94\u5546 API Key \u53D1\u8D77\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\uFF0C\u53EF\u80FD\u6D88\u8017\u8D26\u6237\u4F59\u989D\u3002",
+      "The gateway is configured. Start the service from the toolbar when you are ready to test traffic.": "\u7F51\u5173\u5DF2\u7ECF\u914D\u7F6E\u597D\u3002\u51C6\u5907\u6D4B\u8BD5\u8BF7\u6C42\u65F6\uFF0C\u8BF7\u4ECE\u5DE5\u5177\u680F\u542F\u52A8\u670D\u52A1\u3002",
+      "The imported local agent login is connected when this provider is saved.": "\u5BFC\u5165\u7684\u672C\u673A Agent \u767B\u5F55\u6001\u4F1A\u5728\u4FDD\u5B58\u4F9B\u5E94\u5546\u540E\u63A5\u5165\u3002",
       "Unavailable models": "\u4E0D\u53EF\u7528\u6A21\u578B",
+      "Usable": "\u53EF\u7528",
+      "Verify connection": "\u9A8C\u8BC1\u8FDE\u901A\u6027",
+      "Waiting for provider details": "\u7B49\u5F85\u4F9B\u5E94\u5546\u4FE1\u606F",
+      "Waiting for required fields": "\u7B49\u5F85\u5FC5\u586B\u5B57\u6BB5",
       "No marketplace extensions": "\u5E02\u573A\u6682\u65E0\u6269\u5C55",
       "No fallback models configured": "\u672A\u914D\u7F6E\u56DE\u9000\u6A21\u578B",
       "No fallback targets configured": "\u672A\u914D\u7F6E\u5931\u8D25\u964D\u7EA7\u76EE\u6807",
       "No models configured": "\u672A\u914D\u7F6E\u6A21\u578B",
       "No local login state was found for this agent.": "\u672A\u627E\u5230\u8FD9\u4E2A Agent \u7684\u672C\u673A\u767B\u5F55\u6001\u3002",
+      "No providers": "\u65E0\u4F9B\u5E94\u5546",
       "No provider credentials configured": "\u672A\u914D\u7F6E\u4F9B\u5E94\u5546\u51ED\u636E",
       "No request rewrite": "\u4E0D\u6539\u5199\u8BF7\u6C42",
       "Not found": "\u672A\u627E\u5230",
+      "Not verified yet": "\u5C1A\u672A\u9A8C\u8BC1",
+      "Needs models": "\u7F3A\u5C11\u6A21\u578B",
+      "Needs protocol": "\u7F3A\u5C11\u534F\u8BAE",
+      "OpenCode profiles can target CLI, APP, or both entry modes.": "OpenCode \u914D\u7F6E\u6863\u6848\u53EF\u4EE5\u9009\u62E9 CLI\u3001APP \u6216\u4E24\u8005\u5165\u53E3\u6A21\u5F0F\u3002",
+      "Optional health check": "\u53EF\u9009\u5065\u5EB7\u68C0\u67E5",
       "Other / custom API endpoint": "\u5176\u4ED6 / \u81EA\u5B9A\u4E49 API \u5730\u5740",
       "Pending": "\u7B49\u5F85\u4E2D",
+      "Pick models": "\u9009\u62E9\u6A21\u578B",
+      "Pick a preset provider or use a custom compatible API endpoint.": "\u9009\u62E9\u4F9B\u5E94\u5546\u9884\u8BBE\uFF0C\u6216\u4F7F\u7528\u81EA\u5B9A\u4E49\u517C\u5BB9 API \u7AEF\u70B9\u3002",
       "Priority": "\u4F18\u5148\u7EA7",
       "Priority only": "\u4EC5\u6309\u4F18\u5148\u7EA7",
       "Priority spillover": "\u4F18\u5148\u7EA7\u6EA2\u51FA",
       "Ready": "\u53EF\u5BFC\u5165",
+      "Ready to test": "\u53EF\u6D4B\u8BD5",
+      "Pool keys": "\u6C60\u5185 Key",
+      "Run a real model request before relying on this provider.": "\u4F7F\u7528\u524D\u5EFA\u8BAE\u5148\u8FD0\u884C\u4E00\u6B21\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\u9A8C\u8BC1\u3002",
+      "Optional. Check Connection sends a real model request and may consume provider credits.": "\u53EF\u9009\u3002\u8FDE\u63A5\u68C0\u67E5\u4F1A\u53D1\u9001\u4E00\u6B21\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\uFF0C\u53EF\u80FD\u6D88\u8017\u4F9B\u5E94\u5546\u989D\u5EA6\u3002",
       "Scanning local agent logins": "\u6B63\u5728\u626B\u63CF\u672C\u673A Agent \u767B\u5F55\u6001",
+      "Save this agent profile to continue.": "\u4FDD\u5B58\u8FD9\u4E2A Agent \u914D\u7F6E\u6863\u6848\u540E\u7EE7\u7EED\u3002",
+      "Save this provider to continue.": "\u4FDD\u5B58\u8FD9\u4E2A\u4F9B\u5E94\u5546\u540E\u7EE7\u7EED\u3002",
+      "Secret used for requests": "\u8BF7\u6C42\u4F7F\u7528\u7684\u5BC6\u94A5",
+      "Send a request from your agent, then confirm it appears in Logs.": "\u4ECE Agent \u53D1\u9001\u4E00\u6B21\u8BF7\u6C42\uFF0C\u7136\u540E\u5230\u65E5\u5FD7\u91CC\u786E\u8BA4\u5B83\u5DF2\u7ECF\u51FA\u73B0\u3002",
+      "Setup readiness": "\u914D\u7F6E\u5C31\u7EEA\u72B6\u6001",
+      "Show API key": "\u663E\u793A API key",
+      "Show models": "\u663E\u793A\u6A21\u578B",
+      "Hide API key": "\u9690\u85CF API key",
+      "Hide models": "\u6536\u8D77\u6A21\u578B",
+      "Use one key for every request.": "\u6240\u6709\u8BF7\u6C42\u4F7F\u7528\u540C\u4E00\u4E2A Key\u3002",
+      "Use multiple API keys with optional priorities, weights, and limits.": "\u4F7F\u7528\u591A\u4E2A API Key\uFF0C\u5E76\u53EF\u8BBE\u7F6E\u4F18\u5148\u7EA7\u3001\u6743\u91CD\u548C\u9650\u989D\u3002",
+      "Use multiple keys with optional limits.": "\u4F7F\u7528\u591A\u4E2A Key\uFF0C\u53EF\u9009\u9650\u989D\u3002",
+      "Loading provider models": "\u6B63\u5728\u52A0\u8F7D\u4F9B\u5E94\u5546\u6A21\u578B",
+      "Select models": "\u9009\u62E9\u6A21\u578B",
+      "Search added models": "\u641C\u7D22\u5DF2\u6DFB\u52A0\u6A21\u578B",
+      "Search provider models": "\u641C\u7D22\u4F9B\u5E94\u5546\u6A21\u578B",
+      "Monitor": "\u76D1\u63A7",
+      "Setup": "\u8BBE\u7F6E\u6D41\u7A0B",
       "Select preset provider": "\u9009\u62E9 \u9884\u8BBE\u4F9B\u5E94\u5546",
+      "providers": "\u4F9B\u5E94\u5546",
+      "Workspace": "\u5DE5\u4F5C\u53F0",
       "ZCode login detected. Click Import to add it as a gateway provider.": "\u5DF2\u68C0\u6D4B\u5230 ZCode \u767B\u5F55\u6001\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
+      "ZCode profiles use APP entry mode.": "ZCode \u914D\u7F6E\u6863\u6848\u56FA\u5B9A\u4F7F\u7528 APP \u5165\u53E3\u6A21\u5F0F\u3002",
       "ZCode login was detected, but its local credential is encrypted and cannot be imported automatically.": "\u5DF2\u68C0\u6D4B\u5230 ZCode \u767B\u5F55\u6001\uFF0C\u4F46\u672C\u673A\u51ED\u636E\u5DF2\u52A0\u5BC6\uFF0C\u65E0\u6CD5\u81EA\u52A8\u5BFC\u5165\u3002",
       "ZCode login was detected, but no usable provider API key was found in ZCode config.": "\u5DF2\u68C0\u6D4B\u5230 ZCode \u767B\u5F55\u6001\uFF0C\u4F46 ZCode \u914D\u7F6E\u4E2D\u6CA1\u6709\u627E\u5230\u53EF\u7528\u7684\u4F9B\u5E94\u5546 API key\u3002",
       "ZCode provider API key detected in local ZCode config. Click Import to add it as a gateway provider.": "\u5DF2\u5728\u672C\u673A ZCode \u914D\u7F6E\u4E2D\u68C0\u6D4B\u5230\u4F9B\u5E94\u5546 API key\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
@@ -92178,7 +92554,9 @@ var appCopy = {
       "Pause network capture": "\u6682\u505C\u7F51\u7EDC\u6355\u83B7",
       "Pause service": "\u6682\u505C\u670D\u52A1",
       "Previous page": "\u4E0A\u4E00\u9875",
+      "Previous": "\u4E0A\u4E00\u6B65",
       "Previous step": "\u4E0A\u4E00\u6B65",
+      "Provider setup": "\u4F9B\u5E94\u5546\u8BBE\u7F6E",
       "Proxy not running": "\u4EE3\u7406\u672A\u8FD0\u884C",
       "Proxy status": "\u4EE3\u7406\u72B6\u6001",
       "Proxy CA certificate is trusted.": "Proxy CA \u8BC1\u4E66\u5DF2\u4FE1\u4EFB\u3002",
@@ -92283,6 +92661,7 @@ var appCopy = {
       "enabled": "\u5DF2\u542F\u7528",
       "header": "\u6807\u5934",
       "inactive": "\u672A\u542F\u7528",
+      "model": "\u6A21\u578B",
       "models": "\u6A21\u578B",
       "meters": "\u6307\u6807",
       "not running": "\u672A\u8FD0\u884C",
@@ -92331,13 +92710,13 @@ function translateOptions(options, t) {
 }
 
 // packages/ui/src/pages/home/shared/motion.tsx
-var import_jsx_runtime17 = __toESM(require_jsx_runtime());
+var import_jsx_runtime18 = __toESM(require_jsx_runtime());
 var reducedMotionTransition = { duration: 0.12, ease: "easeOut" };
 var listSpringTransition = { damping: 32, mass: 0.62, stiffness: 500, type: "spring" };
 var disclosureSpringTransition = { damping: 36, mass: 0.7, stiffness: 480, type: "spring" };
 function AnimatedListItem({ children, className, ...props }) {
   const shouldReduceMotion = useReducedMotion();
-  return /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
     motion.div,
     {
       animate: { opacity: 1, y: 0 },
@@ -92353,7 +92732,7 @@ function AnimatedListItem({ children, className, ...props }) {
 }
 function AnimatedDisclosure({ children, className }) {
   const shouldReduceMotion = useReducedMotion();
-  return /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
     motion.div,
     {
       animate: shouldReduceMotion ? { opacity: 1 } : { height: "auto", opacity: 1 },
@@ -92373,7 +92752,7 @@ function AnimatedPopover({
 }) {
   const shouldReduceMotion = useReducedMotion();
   const y = placement === "above" ? 4 : -4;
-  return /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
     motion.div,
     {
       animate: shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 },
@@ -92392,7 +92771,7 @@ function AnimatedIconSwap({
   iconKey
 }) {
   const shouldReduceMotion = useReducedMotion();
-  return /* @__PURE__ */ (0, import_jsx_runtime17.jsx)("span", { className: cn("inline-flex shrink-0 items-center justify-center", className), children: /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(AnimatePresence, { initial: false, mode: "wait", children: /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime18.jsx)("span", { className: cn("inline-flex shrink-0 items-center justify-center", className), children: /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(AnimatePresence, { initial: false, mode: "wait", children: /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
     motion.span,
     {
       animate: shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1 },
@@ -92543,6 +92922,12 @@ var code0_default = "../../code0-XF6QJ6WD.png";
 // packages/ui/src/assets/provider-icons/fenno.jpg
 var fenno_default = "../../fenno-XFKUO3XQ.jpg";
 
+// packages/ui/src/assets/provider-icons/infistar-ai.jpg
+var infistar_ai_default = "../../infistar-ai-QGWTTUZK.jpg";
+
+// packages/ui/src/assets/provider-icons/minimax.ico
+var minimax_default = "../../minimax-5TL6POE3.ico";
+
 // packages/ui/src/assets/provider-icons/nvidia.svg
 var nvidia_default = "../../nvidia-CCRWBFBH.svg";
 
@@ -92608,7 +92993,10 @@ var providerPresetIconUrls = {
   deepseek: deepseek_default,
   fenno: fenno_default,
   gemini: gemini_default,
+  "infistar-ai": infistar_ai_default,
   "kimi-coding": moonshot_default,
+  "minimax-cn": minimax_default,
+  "minimax-global": minimax_default,
   mistral: mistral_default,
   moonshot: moonshot_default,
   "moonshot-global": moonshot_default,
@@ -95051,7 +95439,7 @@ function getPresetById(id3) {
 }
 
 // packages/ui/node_modules/@musistudio/lucide-morph-react/dist/index.js
-var import_jsx_runtime18 = __toESM(require_jsx_runtime(), 1);
+var import_jsx_runtime19 = __toESM(require_jsx_runtime(), 1);
 
 // packages/ui/src/pages/home/shared/controls.tsx
 var import_lucide_react3 = __toESM(require_lucide_react());
@@ -95112,7 +95500,7 @@ var opencode_default = "../../opencode-CEWXDOQI.ico";
 var zcode_default = "../../zcode-Z7V7YY2Q.png";
 
 // packages/ui/src/pages/home/shared/services.tsx
-var import_jsx_runtime19 = __toESM(require_jsx_runtime());
+var import_jsx_runtime20 = __toESM(require_jsx_runtime());
 
 // packages/ui/src/pages/home/shared/extensions.ts
 function formatEditableJson(value) {
@@ -95195,6 +95583,10 @@ function isLocalGrokProvider(provider) {
   const name = provider.name?.toLowerCase() ?? "";
   return baseUrl.includes("cli-chat-proxy.grok.com") || name.includes("grok");
 }
+function providerPresetModelDisplayNames(preset) {
+  const entries = Object.entries(preset?.defaultModelDisplayNames ?? {}).map(([model, displayName]) => [model.trim(), displayName.trim()]).filter(([model, displayName]) => model && displayName && model !== displayName);
+  return entries.length > 0 ? Object.fromEntries(entries) : void 0;
+}
 function createProviderConfigFromDeepLink(payload, providers, probe) {
   const protocol = payload.protocol ?? probe?.detectedProtocol ?? "openai_chat_completions";
   const baseUrl = providerGlobalBaseUrlForProbe(payload.baseUrl, probe, [protocol]);
@@ -95257,6 +95649,7 @@ function createProviderDraft(providers) {
     baseUrl: "",
     capabilities: [],
     catalogModelMetadata: void 0,
+    credentialMode: "apiKey",
     credentials: [],
     icon: "",
     modelDescriptions: void 0,
@@ -95266,10 +95659,43 @@ function createProviderDraft(providers) {
     modelsText: "",
     name: uniqueProviderName(providers),
     presetId: "",
+    protocolDetectionMode: "auto",
     providerPlugins: [],
     protocol: "openai_chat_completions",
     selectedModels: [],
     selectedProtocols: []
+  };
+}
+function createProviderDraftFromProvider(provider) {
+  const baseUrl = providerBaseUrl(provider);
+  const preset = findProviderPresetByBaseUrl(baseUrl);
+  const accountDraft = createProviderAccountDraftFromConfig(provider.account);
+  const protocol = toProviderProtocol(provider.type) ?? toProviderProtocol(provider.provider) ?? "openai_chat_completions";
+  const credentials = (provider.credentials ?? []).map(providerCredentialDraftFromConfig);
+  return {
+    ...accountDraft,
+    apiKey: providerApiKey(provider),
+    baseUrl,
+    capabilities: provider.capabilities ?? [],
+    catalogModelMetadata: void 0,
+    credentialMode: providerDraftHasReadyCredentialPool({ credentials }) ? "pool" : "apiKey",
+    credentials,
+    icon: provider.icon ?? "",
+    modelDescriptions: modelDescriptionsForModels(provider.modelDescriptions, provider.models),
+    modelDisplayNames: modelDisplayNamesForModels(
+      mergeModelDisplayNames(providerPresetModelDisplayNames(preset), provider.modelDisplayNames),
+      provider.models
+    ),
+    modelMetadata: modelMetadataForModels(provider.modelMetadata, provider.models),
+    modelSearch: "",
+    modelsText: provider.models.join("\n"),
+    name: provider.name,
+    presetId: preset?.id ?? customProviderPresetId,
+    protocolDetectionMode: provider.protocolDetectionMode === "manual" ? "manual" : "auto",
+    providerPlugins: [],
+    protocol,
+    selectedModels: [],
+    selectedProtocols: selectedProviderProtocolsFromCapabilities(provider.capabilities, protocol)
   };
 }
 function createProviderCredentialDraft(index = 0) {
@@ -95281,6 +95707,26 @@ function createProviderCredentialDraft(index = 0) {
     name: `Key ${index + 1}`,
     priority: "",
     weight: ""
+  };
+}
+function providerDraftHasReadyCredentialPool(draft) {
+  return draft.credentials.some((credential) => credential.enabled && credential.apiKey.trim());
+}
+function providerConnectivityApiKeyFromDraft(draft) {
+  if (draft.credentialMode === "pool") {
+    return draft.credentials.find((credential) => credential.enabled && credential.apiKey.trim())?.apiKey.trim() ?? "";
+  }
+  return draft.apiKey.trim();
+}
+function providerCredentialDraftFromConfig(credential, index) {
+  return {
+    apiKey: credential.api_key || credential.apiKey || credential.apikey || "",
+    enabled: credential.enabled !== false,
+    id: credential.id ?? "",
+    limitsText: credential.limits ? JSON.stringify(credential.limits, null, 2) : "",
+    name: credential.name ?? credential.label ?? `Key ${index + 1}`,
+    priority: credential.priority !== void 0 ? String(credential.priority) : "",
+    weight: credential.weight !== void 0 ? String(credential.weight) : ""
   };
 }
 function providerCredentialDraftPatchFromJson(text) {
@@ -95300,6 +95746,7 @@ function providerCredentialDraftPatchFromJson(text) {
     return "Provider credential JSON did not contain any API keys.";
   }
   return {
+    credentialMode: "pool",
     credentials
   };
 }
@@ -95604,6 +96051,7 @@ function createProviderInstallLinkFromDraft(draft, probe) {
   const protocol = selectedProtocols.includes(draft.protocol) ? draft.protocol : selectedProtocols.length === 1 ? selectedProtocols[0] : probe?.detectedProtocol ?? draft.protocol;
   const baseUrl = providerGlobalBaseUrlForProbe(draft.baseUrl, probe, selectedProtocols.length > 0 ? selectedProtocols : [protocol]);
   const models = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
+  const apiKey = providerConnectivityApiKeyFromDraft(draft);
   if (!providerName || !baseUrl) {
     return "Provider name and Base URL are required.";
   }
@@ -95611,7 +96059,7 @@ function createProviderInstallLinkFromDraft(draft, probe) {
     return "Select or enter at least one model.";
   }
   const keySafetyIssue = providerApiKeySafetyIssue({
-    apiKey: draft.apiKey,
+    apiKey,
     baseUrl,
     name: providerName,
     presetId: draft.presetId
@@ -95632,7 +96080,7 @@ function createProviderInstallLinkFromDraft(draft, probe) {
     return account;
   }
   const accountKeySafetyIssue = providerAccountApiKeySafetyIssue(account, {
-    apiKey: draft.apiKey,
+    apiKey,
     baseUrl,
     providerName,
     providerPresetId: draft.presetId
@@ -95752,8 +96200,9 @@ function providerDraftSafetyIssue(draft, baseUrl = draft.baseUrl) {
   if (!targetBaseUrl) {
     return void 0;
   }
+  const apiKey = providerConnectivityApiKeyFromDraft(draft);
   const issue = providerApiKeySafetyIssue({
-    apiKey: draft.apiKey,
+    apiKey,
     baseUrl: targetBaseUrl,
     name: draft.name,
     presetId: draft.presetId
@@ -95766,7 +96215,7 @@ function providerDraftSafetyIssue(draft, baseUrl = draft.baseUrl) {
     return void 0;
   }
   return providerAccountApiKeySafetyIssue(account, {
-    apiKey: draft.apiKey,
+    apiKey,
     baseUrl: targetBaseUrl,
     providerName: draft.name,
     providerPresetId: draft.presetId
@@ -95811,6 +96260,10 @@ function providerSelectableProtocolsFromProbe(probe) {
     ...probe.protocols.filter((item) => item.supported).map((item) => item.protocol),
     ...(probe.capabilities ?? []).map((capability) => capability.type)
   ]);
+}
+function selectedProviderProtocolsFromCapabilities(capabilities, fallback) {
+  const selected = uniqueProviderProtocols((capabilities ?? []).map((capability) => capability.type));
+  return selected.length > 0 ? selected : [fallback];
 }
 function selectedProviderProtocolsForProbe(selectedProtocols, probe, fallback, presetId) {
   const selectable = providerSelectableProtocolsFromProbe(probe);
@@ -96054,9 +96507,6 @@ function mergeProviderModelLists(...groups) {
 function splitLines(value) {
   return value.split("\n").map((item) => item.trim()).filter(Boolean);
 }
-function splitModelTagInput(value) {
-  return value.split(/[\n,]+/).map((item) => item.trim()).filter(Boolean);
-}
 function providerBaseUrl(provider) {
   return provider.api_base_url || provider.baseurl || provider.baseUrl || "";
 }
@@ -96077,13 +96527,14 @@ function providerMatchesQuery(provider, query) {
   if (!query) {
     return true;
   }
+  const searchableModels = isGatewayProviderEnabled(provider) ? provider.models : [];
   return [
     provider.name,
     providerBaseUrl(provider),
     providerCapabilitiesSummary(provider),
     ...(provider.capabilities ?? []).map((capability) => capability.baseUrl),
-    ...provider.models,
-    ...provider.models.map((model) => providerModelDisplayName(provider, model))
+    ...searchableModels,
+    ...searchableModels.map((model) => providerModelDisplayName(provider, model))
   ].filter(Boolean).some((value) => value.toLowerCase().includes(query));
 }
 function uniqueProviderName(providers, baseName = "provider") {
@@ -96280,16 +96731,16 @@ var botGatewayPlatformSpecs = [
 var botGatewayPlatformOptions = botGatewayPlatformSpecs.map(({ label, value }) => ({ label, value }));
 
 // packages/ui/src/pages/home/shared/controls.tsx
-var import_jsx_runtime20 = __toESM(require_jsx_runtime());
+var import_jsx_runtime21 = __toESM(require_jsx_runtime());
 function Field({ children, className, label }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime20.jsxs)(Label, { className: cn("block min-w-0 space-y-1", className), children: [
-    /* @__PURE__ */ (0, import_jsx_runtime20.jsx)("span", { className: "block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: label }),
+  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Label, { className: cn("block min-w-0 space-y-1", className), children: [
+    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: label }),
     children
   ] });
 }
 function FieldGroup({ children, className, label }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime20.jsxs)("div", { className: cn("block min-w-0 space-y-1", className), children: [
-    /* @__PURE__ */ (0, import_jsx_runtime20.jsx)("span", { className: "block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: label }),
+  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: cn("block min-w-0 space-y-1", className), children: [
+    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: label }),
     children
   ] });
 }
@@ -96299,7 +96750,7 @@ function SelectControl({
   options,
   value
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(Select, { className, onValueChange: onChange, options, value });
+  return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Select, { className, onValueChange: onChange, options, value });
 }
 function KeyValueRowsControl({
   addLabel,
@@ -96319,8 +96770,8 @@ function KeyValueRowsControl({
   function removeRow(index) {
     onChange(visibleRows.filter((_, rowIndex) => rowIndex !== index));
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime20.jsx)("div", { className: "space-y-2", children: visibleRows.map((row, index) => /* @__PURE__ */ (0, import_jsx_runtime20.jsxs)("div", { className: "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_28px_28px] gap-2", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "space-y-2", children: visibleRows.map((row, index) => /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_28px_28px] gap-2", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
       Input,
       {
         "aria-label": t("Key"),
@@ -96329,7 +96780,7 @@ function KeyValueRowsControl({
         value: row.key
       }
     ),
-    /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
       Input,
       {
         "aria-label": t("Value"),
@@ -96338,7 +96789,7 @@ function KeyValueRowsControl({
         value: row.value
       }
     ),
-    /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
       Button,
       {
         "aria-label": addLabel,
@@ -96347,10 +96798,10 @@ function KeyValueRowsControl({
         title: addLabel,
         type: "button",
         variant: "outline",
-        children: /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(import_lucide_react3.Plus, { className: "h-3.5 w-3.5" })
+        children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react3.Plus, { className: "h-3.5 w-3.5" })
       }
     ),
-    /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
       Button,
       {
         "aria-label": t("Remove"),
@@ -96360,10 +96811,19 @@ function KeyValueRowsControl({
         title: t("Remove"),
         type: "button",
         variant: "ghost",
-        children: /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(import_lucide_react3.X, { className: "h-3.5 w-3.5" })
+        children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react3.X, { className: "h-3.5 w-3.5" })
       }
     )
   ] }, row.id)) });
+}
+function Toggle({
+  ariaLabel,
+  checked,
+  disabled = false,
+  onChange,
+  title
+}) {
+  return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Switch, { "aria-label": ariaLabel ?? title, checked, disabled, onCheckedChange: onChange, title });
 }
 
 // packages/ui/src/pages/home/shared/provider-accounts.ts
@@ -96431,9 +96891,39 @@ function formatProviderAccountNumber(value) {
   return new Intl.NumberFormat(void 0, { maximumFractionDigits: 6 }).format(value);
 }
 
+// packages/ui/src/components/ui/tooltip.tsx
+var React16 = __toESM(require_react());
+var import_react_dom2 = __toESM(require_react_dom());
+var import_jsx_runtime22 = __toESM(require_jsx_runtime());
+var TooltipPortal = React16.forwardRef(
+  ({ children, className, open = true, role = "tooltip", ...props }, ref) => {
+    if (!open || typeof document === "undefined") {
+      return null;
+    }
+    return (0, import_react_dom2.createPortal)(
+      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(
+        "div",
+        {
+          className: cn(
+            "pointer-events-none fixed z-[200] max-w-[min(260px,calc(100vw-24px))] rounded-md border border-border/70 bg-popover px-2 py-1 text-[11px] font-medium leading-4 text-popover-foreground shadow-card-elevated ring-1 ring-black/5",
+            className
+          ),
+          ref,
+          role,
+          ...props,
+          children
+        }
+      ),
+      document.body
+    );
+  }
+);
+TooltipPortal.displayName = "TooltipPortal";
+
 // packages/ui/src/pages/home/components/providers.tsx
-var import_jsx_runtime21 = __toESM(require_jsx_runtime());
-function ProvidersView({ accountSnapshots, addProvider, editProvider, notify, providers, removeProvider }) {
+var import_jsx_runtime23 = __toESM(require_jsx_runtime());
+var useClientLayoutEffect = typeof window === "undefined" ? import_react28.useEffect : import_react28.useLayoutEffect;
+function ProvidersView({ accountSnapshots, addProvider, editProvider, notify, providers, removeProvider, setProviderEnabled }) {
   const t = useAppText();
   const [query, setQuery] = (0, import_react28.useState)("");
   const [expandedProviders, setExpandedProviders] = (0, import_react28.useState)(() => /* @__PURE__ */ new Set());
@@ -96452,6 +96942,9 @@ function ProvidersView({ accountSnapshots, addProvider, editProvider, notify, pr
     return grouped;
   }, [accountSnapshots]);
   function toggleProvider(provider, index) {
+    if (!isGatewayProviderEnabled(provider)) {
+      return;
+    }
     const key = providerListItemKey(provider, index);
     setExpandedProviders((current) => {
       const next = new Set(current);
@@ -96467,18 +96960,32 @@ function ProvidersView({ accountSnapshots, addProvider, editProvider, notify, pr
     await copyTextToClipboard(model);
     notify(`${t("Copied")} ${model}`);
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+  function changeProviderEnabled(provider, index, enabled) {
+    if (!enabled) {
+      const key = providerListItemKey(provider, index);
+      setExpandedProviders((current) => {
+        if (!current.has(key)) {
+          return current;
+        }
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
+    setProviderEnabled(index, enabled);
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
     motion.div,
     {
       animate: { opacity: 1 },
       className: "flex h-full min-h-0 min-w-0 flex-col",
       initial: { opacity: 0 },
       transition: { duration: 0.15 },
-      children: /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Card, { className: "flex h-full min-h-0 min-w-0 flex-col", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(CardHeader, { className: "flex-row items-center gap-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "relative min-w-0 flex-1", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Search, { className: "pointer-events-none absolute left-2.5 top-1/2 z-[1] h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" }),
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+      children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Card, { className: "flex h-full min-h-0 min-w-0 flex-col", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(CardHeader, { className: "flex-row items-center gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "relative min-w-0 flex-1", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Search, { className: "pointer-events-none absolute left-2.5 top-1/2 z-[1] h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" }),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
               Input,
               {
                 "aria-label": t("Search providers"),
@@ -96489,168 +96996,318 @@ function ProvidersView({ accountSnapshots, addProvider, editProvider, notify, pr
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Button, { "aria-label": t("Add provider"), onClick: addProvider, title: t("Add provider"), type: "button", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Plus, { className: "h-4 w-4" }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Button, { "aria-label": t("Add provider"), onClick: addProvider, title: t("Add provider"), type: "button", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Plus, { className: "h-4 w-4" }),
             t("Add")
           ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(CardContent, { className: "min-h-0 flex-1 overflow-auto p-0", children: [
-          providers.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Layers3, { className: "mx-auto mb-2 h-7 w-7 text-muted-foreground/40" }),
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "text-[12px] text-muted-foreground", children: t("No providers configured") }),
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "mt-1 text-[11px] text-muted-foreground/60", children: t("Click Add to create one") })
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(CardContent, { className: "min-h-0 flex-1 overflow-auto p-0", children: [
+          providers.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Layers3, { className: "mx-auto mb-2 h-7 w-7 text-muted-foreground/40" }),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[12px] text-muted-foreground", children: t("No providers configured") }),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-1 text-[11px] text-muted-foreground/60", children: t("Click Add to create one") })
           ] }) : null,
-          providers.length > 0 && visibleProviders.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center text-[12px] text-muted-foreground", children: t("No matching providers") }) : null,
-          visibleProviders.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "min-w-[1080px]", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "sticky top-0 z-10 grid h-10 grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(160px,0.7fr)_minmax(150px,0.65fr)_80px_84px] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "truncate", children: t("Name") }),
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "truncate", children: t("Base URL") }),
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "truncate", children: t("Capability") }),
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "truncate", children: t("Account") }),
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "truncate", children: t("Models") }),
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { "aria-hidden": "true" })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "divide-y divide-border/60", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(AnimatePresence, { initial: false, children: visibleProviders.map(({ provider, index }) => {
+          providers.length > 0 && visibleProviders.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center text-[12px] text-muted-foreground", children: t("No matching providers") }) : null,
+          visibleProviders.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "grid gap-2 p-3 md:hidden", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatePresence, { initial: false, children: visibleProviders.map(({ provider, index }) => {
               const itemKey = providerListItemKey(provider, index);
-              const expanded = expandedProviders.has(itemKey);
+              const expanded = isGatewayProviderEnabled(provider) && expandedProviders.has(itemKey);
               const providerAccountSnapshots = accountSnapshotsByProvider.get(provider.name) ?? [];
-              const providerIconUrl = providerDisplayIcon(provider);
-              return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(AnimatedListItem, { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(
-                  "div",
-                  {
-                    className: "grid min-h-[58px] cursor-pointer grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(160px,0.7fr)_minmax(150px,0.65fr)_80px_84px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35",
-                    onClick: () => toggleProvider(provider, index),
-                    onKeyDown: (event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        toggleProvider(provider, index);
-                      }
-                    },
-                    role: "button",
-                    tabIndex: 0,
-                    children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex min-w-0 items-center gap-2", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+              return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                ProviderMobileCard,
+                {
+                  expanded,
+                  index,
+                  onCopyModel: copyModel,
+                  onEdit: editProvider,
+                  onRemove: removeProvider,
+                  onSetEnabled: (providerIndex, enabled) => changeProviderEnabled(provider, providerIndex, enabled),
+                  onToggle: toggleProvider,
+                  provider,
+                  snapshots: providerAccountSnapshots
+                },
+                itemKey
+              );
+            }) }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "hidden min-w-0 md:block", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-[1080px]", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "sticky top-0 z-10 grid h-10 grid-cols-[minmax(260px,1fr)_80px_minmax(150px,0.65fr)_minmax(260px,1fr)_132px] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate", children: t("Provider") }),
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate", children: t("Models") }),
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate", children: t("Account Usage") }),
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate", children: t("Endpoint") }),
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { "aria-hidden": "true" })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "divide-y divide-border/60", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatePresence, { initial: false, children: visibleProviders.map(({ provider, index }) => {
+                const itemKey = providerListItemKey(provider, index);
+                const providerEnabled = isGatewayProviderEnabled(provider);
+                const expanded = providerEnabled && expandedProviders.has(itemKey);
+                const providerAccountSnapshots = accountSnapshotsByProvider.get(provider.name) ?? [];
+                const providerIconUrl = providerDisplayIcon(provider);
+                return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(AnimatedListItem, { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+                    "div",
+                    {
+                      className: cn(
+                        "grid min-h-[58px] grid-cols-[minmax(260px,1fr)_80px_minmax(150px,0.65fr)_minmax(260px,1fr)_132px] items-center gap-3 px-4 py-2.5 transition-colors",
+                        providerEnabled ? "cursor-pointer hover:bg-muted/35" : "bg-muted/10 text-muted-foreground"
+                      ),
+                      onClick: () => toggleProvider(provider, index),
+                      onKeyDown: (event) => {
+                        if (providerEnabled && (event.key === "Enter" || event.key === " ")) {
+                          event.preventDefault();
+                          toggleProvider(provider, index);
+                        }
+                      },
+                      role: providerEnabled ? "button" : void 0,
+                      tabIndex: providerEnabled ? 0 : void 0,
+                      children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center gap-2", children: [
+                          providerEnabled ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                            "button",
+                            {
+                              "aria-expanded": expanded,
+                              "aria-label": `${expanded ? t("Collapse") : t("Expand")} ${provider.name || t("provider")} ${t("models")}`,
+                              className: "flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30",
+                              onClick: (event) => {
+                                event.stopPropagation();
+                                toggleProvider(provider, index);
+                              },
+                              title: expanded ? t("Collapse models") : t("Expand models"),
+                              type: "button",
+                              children: expanded ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ChevronDown, { className: "h-3.5 w-3.5" }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ChevronRight, { className: "h-3.5 w-3.5" })
+                            }
+                          ) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { "aria-hidden": "true", className: "h-6 w-6 shrink-0" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderPresetIcon, { className: "h-8 w-8 rounded-md", iconUrl: providerIconUrl }),
+                          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[12px] font-semibold text-foreground", children: provider.name || t("Unnamed") }),
+                            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-0.5 truncate text-[10px] text-muted-foreground", title: providerCapabilitiesSummary(provider, t), children: providerCapabilitiesSummary(provider, t) })
+                          ] })
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-w-0", children: providerEnabled ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
                           "button",
                           {
                             "aria-expanded": expanded,
-                            "aria-label": `${expanded ? t("Collapse") : t("Expand")} ${provider.name || t("provider")} ${t("models")}`,
-                            className: "flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30",
+                            className: "rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
                             onClick: (event) => {
                               event.stopPropagation();
                               toggleProvider(provider, index);
                             },
                             title: expanded ? t("Collapse models") : t("Expand models"),
                             type: "button",
-                            children: expanded ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.ChevronDown, { className: "h-3.5 w-3.5" }) : /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.ChevronRight, { className: "h-3.5 w-3.5" })
+                            children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant: provider.models.length > 0 ? "outline" : "warning", children: provider.models.length })
                           }
-                        ),
-                        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ProviderPresetIcon, { className: "h-8 w-8 rounded-md", iconUrl: providerIconUrl }),
-                        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "truncate text-[12px] font-semibold", children: provider.name || t("Unnamed") }) })
-                      ] }),
-                      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "min-w-0 truncate font-mono text-[11px] text-muted-foreground", title: providerBaseUrl(provider), children: providerBaseUrl(provider) || t("Not set") }),
-                      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "min-w-0 truncate text-[11px] text-muted-foreground", title: providerCapabilitiesSummary(provider, t), children: providerCapabilitiesSummary(provider, t) }),
-                      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ProviderAccountListCell, { provider, snapshots: providerAccountSnapshots }),
-                      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+                        ) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "text-[11px] text-muted-foreground", children: "-" }) }),
+                        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountListCell, { provider, snapshots: providerAccountSnapshots }),
+                        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-w-0 truncate font-mono text-[11px] text-muted-foreground", title: providerBaseUrl(provider), children: providerBaseUrl(provider) || t("Not set") }),
+                        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex items-center justify-end gap-2", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                            "div",
+                            {
+                              onClick: (event) => event.stopPropagation(),
+                              role: "presentation",
+                              children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                                Toggle,
+                                {
+                                  ariaLabel: `${t(providerEnabled ? "Disable provider" : "Enable provider")} ${provider.name || t("provider")}`,
+                                  checked: providerEnabled,
+                                  onChange: (enabled) => changeProviderEnabled(provider, index, enabled),
+                                  title: t(providerEnabled ? "Enabled" : "Disabled")
+                                }
+                              )
+                            }
+                          ),
+                          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                            Button,
+                            {
+                              "aria-label": `${t("Edit")} ${provider.name || t("provider")}`,
+                              onClick: (event) => {
+                                event.stopPropagation();
+                                editProvider(index);
+                              },
+                              size: "iconSm",
+                              title: t("Edit provider"),
+                              type: "button",
+                              variant: "ghost",
+                              children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Pencil, { className: "h-3.5 w-3.5" })
+                            }
+                          ),
+                          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                            Button,
+                            {
+                              "aria-label": `${t("Remove")} ${provider.name || t("provider")}`,
+                              onClick: (event) => {
+                                event.stopPropagation();
+                                removeProvider(index);
+                              },
+                              size: "iconSm",
+                              title: t("Remove provider"),
+                              type: "button",
+                              variant: "ghost",
+                              children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Trash2, { className: "h-3.5 w-3.5" })
+                            }
+                          )
+                        ] })
+                      ]
+                    }
+                  ),
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatePresence, { initial: false, children: providerEnabled && expanded ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatedDisclosure, { children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "border-t border-border/50 bg-muted/20 px-4 py-3", children: [
+                    provider.capabilities?.length ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mb-3 flex flex-wrap gap-2", children: provider.capabilities.map((capability) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant: "secondary", children: translatedProviderProtocolLabel(capability.type, t) }, `${capability.type}:${capability.baseUrl}`)) }) : null,
+                    provider.models.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "rounded-md border border-dashed border-border bg-background/60 px-3 py-4 text-center text-[12px] text-muted-foreground", children: t("No models configured") }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "flex flex-wrap gap-2", children: provider.models.map((model) => {
+                      const modelKey = `${itemKey}:${model}`;
+                      const displayName = providerModelDisplayName(provider, model);
+                      return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
                         "button",
                         {
-                          "aria-expanded": expanded,
-                          className: "rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
-                          onClick: (event) => {
-                            event.stopPropagation();
-                            toggleProvider(provider, index);
-                          },
-                          title: expanded ? t("Collapse models") : t("Expand models"),
+                          "aria-label": `${t("Double click to copy")} ${displayName}`,
+                          className: "inline-flex max-w-full items-center rounded-full border border-border bg-background px-2.5 py-1 text-[11px] leading-4 text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
+                          onDoubleClick: () => void copyModel(model),
+                          title: `${providerModelDisplayTitle(provider, model)} \xB7 ${t("Double click to copy")}`,
                           type: "button",
-                          children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Badge, { variant: provider.models.length > 0 ? "outline" : "warning", children: provider.models.length })
-                        }
-                      ) }),
-                      /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex items-center justify-end gap-1", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
-                          Button,
-                          {
-                            "aria-label": `${t("Edit")} ${provider.name || t("provider")}`,
-                            onClick: (event) => {
-                              event.stopPropagation();
-                              editProvider(index);
-                            },
-                            size: "iconSm",
-                            title: t("Edit provider"),
-                            type: "button",
-                            variant: "ghost",
-                            children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Pencil, { className: "h-3.5 w-3.5" })
-                          }
-                        ),
-                        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
-                          Button,
-                          {
-                            "aria-label": `${t("Remove")} ${provider.name || t("provider")}`,
-                            onClick: (event) => {
-                              event.stopPropagation();
-                              removeProvider(index);
-                            },
-                            size: "iconSm",
-                            title: t("Remove provider"),
-                            type: "button",
-                            variant: "ghost",
-                            children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Trash2, { className: "h-3.5 w-3.5" })
-                          }
-                        )
-                      ] })
-                    ]
-                  }
-                ),
-                /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(AnimatePresence, { initial: false, children: expanded ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(AnimatedDisclosure, { children: /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "border-t border-border/50 bg-muted/20 px-4 py-3", children: [
-                  provider.capabilities?.length ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "mb-3 flex flex-wrap gap-2", children: provider.capabilities.map((capability) => /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Badge, { variant: "secondary", children: translatedProviderProtocolLabel(capability.type, t) }, `${capability.type}:${capability.baseUrl}`)) }) : null,
-                  provider.models.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "rounded-md border border-dashed border-border bg-background/60 px-3 py-4 text-center text-[12px] text-muted-foreground", children: t("No models configured") }) : /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "flex flex-wrap gap-2", children: provider.models.map((model) => {
-                    const modelKey = `${itemKey}:${model}`;
-                    const displayName = providerModelDisplayName(provider, model);
-                    return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
-                      "button",
-                      {
-                        "aria-label": `${t("Double click to copy")} ${displayName}`,
-                        className: "inline-flex max-w-full items-center rounded-full border border-border bg-background px-2.5 py-1 text-[11px] leading-4 text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
-                        onDoubleClick: () => void copyModel(model),
-                        title: `${providerModelDisplayTitle(provider, model)} \xB7 ${t("Double click to copy")}`,
-                        type: "button",
-                        children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "min-w-0 truncate", children: displayName })
-                      },
-                      modelKey
-                    );
-                  }) })
-                ] }) }, "provider-models") : null })
-              ] }, itemKey);
-            }) }) })
-          ] }) }) : null
+                          children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 truncate", children: displayName })
+                        },
+                        modelKey
+                      );
+                    }) })
+                  ] }) }, "provider-models") : null })
+                ] }, itemKey);
+              }) }) })
+            ] }) })
+          ] }) : null
         ] })
       ] })
     }
   );
 }
+function ProviderMobileCard({
+  expanded,
+  index,
+  onCopyModel,
+  onEdit,
+  onRemove,
+  onSetEnabled,
+  onToggle,
+  provider,
+  snapshots
+}) {
+  const t = useAppText();
+  const providerIconUrl = providerDisplayIcon(provider);
+  const providerEnabled = isGatewayProviderEnabled(provider);
+  const models = providerEnabled ? provider.models : [];
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatedListItem, { children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("article", { className: cn("rounded-md border border-border p-3", providerEnabled ? "bg-background" : "bg-muted/10 text-muted-foreground"), children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-start gap-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderPresetIcon, { className: "h-9 w-9 rounded-md", iconUrl: providerIconUrl }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0 flex-1", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("h3", { className: "min-w-0 truncate text-[13px] font-semibold text-foreground", children: provider.name || t("Unnamed") }),
+          providerEnabled ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Badge, { variant: models.length > 0 ? "outline" : "warning", children: [
+            models.length,
+            " ",
+            t("models")
+          ] }) : null
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-1 truncate font-mono text-[11px] text-muted-foreground", title: providerBaseUrl(provider), children: providerBaseUrl(provider) || t("Not set") })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex shrink-0 items-center gap-1", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+          Toggle,
+          {
+            ariaLabel: `${t(providerEnabled ? "Disable provider" : "Enable provider")} ${provider.name || t("provider")}`,
+            checked: providerEnabled,
+            onChange: (enabled) => onSetEnabled(index, enabled),
+            title: t(providerEnabled ? "Enabled" : "Disabled")
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+          Button,
+          {
+            "aria-label": `${t("Edit")} ${provider.name || t("provider")}`,
+            onClick: () => onEdit(index),
+            size: "iconSm",
+            title: t("Edit provider"),
+            type: "button",
+            variant: "ghost",
+            children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Pencil, { className: "h-3.5 w-3.5" })
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+          Button,
+          {
+            "aria-label": `${t("Remove")} ${provider.name || t("provider")}`,
+            onClick: () => onRemove(index),
+            size: "iconSm",
+            title: t("Remove provider"),
+            type: "button",
+            variant: "ghost",
+            children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Trash2, { className: "h-3.5 w-3.5" })
+          }
+        )
+      ] })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("dl", { className: "mt-3 grid grid-cols-1 gap-2 text-[12px]", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "grid grid-cols-[88px_minmax(0,1fr)] gap-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("dt", { className: "truncate text-muted-foreground", children: t("Capability") }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("dd", { className: "min-w-0 truncate font-medium", title: providerCapabilitiesSummary(provider, t), children: providerCapabilitiesSummary(provider, t) })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "grid grid-cols-[88px_minmax(0,1fr)] gap-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("dt", { className: "truncate text-muted-foreground", children: t("Account Usage") }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("dd", { className: "min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountListCell, { provider, snapshots }) })
+      ] })
+    ] }),
+    providerEnabled ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+      "button",
+      {
+        "aria-expanded": expanded,
+        className: "mt-3 flex h-8 w-full items-center justify-between rounded-md border border-border bg-muted/20 px-2 text-[12px] font-medium text-muted-foreground",
+        onClick: () => onToggle(provider, index),
+        type: "button",
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: expanded ? t("Hide models") : t("Show models") }),
+          expanded ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ChevronDown, { className: "h-3.5 w-3.5" }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ChevronRight, { className: "h-3.5 w-3.5" })
+        ]
+      }
+    ) : null,
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatePresence, { initial: false, children: providerEnabled && expanded ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatedDisclosure, { children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-2 rounded-md border border-border bg-muted/20 p-2", children: models.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "px-2 py-3 text-center text-[12px] text-muted-foreground", children: t("No models configured") }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "flex flex-wrap gap-2", children: models.map((model) => {
+      const displayName = providerModelDisplayName(provider, model);
+      return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+        "button",
+        {
+          className: "inline-flex max-w-full items-center rounded-full border border-border bg-background px-2.5 py-1 text-[11px] leading-4 text-foreground",
+          onDoubleClick: () => void onCopyModel(model),
+          title: `${providerModelDisplayTitle(provider, model)} \xB7 ${t("Double click to copy")}`,
+          type: "button",
+          children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "truncate", children: displayName })
+        },
+        `${provider.name}:${model}`
+      );
+    }) }) }) }, "provider-mobile-models") : null })
+  ] }) });
+}
 function ProviderAccountListCell({ provider, snapshots }) {
   const t = useAppText();
+  if (!isGatewayProviderEnabled(provider)) {
+    return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-w-0 truncate text-[11px] text-muted-foreground", children: t("Disabled") });
+  }
   const sortedSnapshots = [...snapshots].sort(compareProviderAccountSnapshots);
   const snapshot = sortedSnapshots[0];
   const meter = snapshot ? primaryProviderAccountMeter(snapshot) : void 0;
   const fallbackText = snapshot ? snapshot.message ?? snapshot.errors?.[0]?.message : void 0;
   if (!provider.account?.enabled && snapshots.length === 0) {
-    return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "min-w-0 truncate text-[11px] text-muted-foreground", children: t("Disabled") });
+    return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-w-0 truncate text-[11px] text-muted-foreground", children: t("Disabled") });
   }
   if (!snapshot) {
-    return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "min-w-0 truncate text-[11px] text-muted-foreground", children: t("Pending") });
+    return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-w-0 truncate text-[11px] text-muted-foreground", children: t("Pending") });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "min-w-0", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex min-w-0 items-center gap-1.5 text-[11px]", children: [
-      meter ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "min-w-0 truncate text-[11px] font-medium", children: formatProviderAccountMeterValue(meter) }) : null,
-      sortedSnapshots.length > 1 ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("span", { className: "shrink-0 text-muted-foreground", children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center gap-1.5 text-[11px]", children: [
+      meter ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 truncate text-[11px] font-medium", children: formatProviderAccountMeterValue(meter) }) : null,
+      sortedSnapshots.length > 1 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("span", { className: "shrink-0 text-muted-foreground", children: [
         sortedSnapshots.length,
         " ",
         t("keys")
       ] }) : null
     ] }),
-    providerAccountSnapshotCredentialLabel(snapshot) ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "mt-0.5 truncate text-[10px] font-semibold text-muted-foreground", title: providerAccountSnapshotLabel(snapshot), children: providerAccountSnapshotCredentialLabel(snapshot) }) : null,
-    !meter && fallbackText ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "mt-0.5 truncate text-[10px] text-muted-foreground", children: t(fallbackText) }) : null
+    providerAccountSnapshotCredentialLabel(snapshot) ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-0.5 truncate text-[10px] font-semibold text-muted-foreground", title: providerAccountSnapshotLabel(snapshot), children: providerAccountSnapshotCredentialLabel(snapshot) }) : null,
+    !meter && fallbackText ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-0.5 truncate text-[10px] text-muted-foreground", children: t(fallbackText) }) : null
   ] });
 }
 function ProviderPresetCombobox({
@@ -96661,20 +97318,64 @@ function ProviderPresetCombobox({
   const t = useAppText();
   const [open, setOpen] = (0, import_react28.useState)(false);
   const [query, setQuery] = (0, import_react28.useState)("");
+  const [popoverLayout, setPopoverLayout] = (0, import_react28.useState)();
+  const panelRef = (0, import_react28.useRef)(null);
   const rootRef = (0, import_react28.useRef)(null);
   const inputRef = (0, import_react28.useRef)(null);
   const selected = options.find((option) => option.value === value) ?? options.find((option) => option.value === "");
   const normalizedQuery = query.trim().toLowerCase();
   const filteredOptions = normalizedQuery ? options.filter((option) => providerPresetOptionMatchesQuery(option, normalizedQuery)) : options;
   const selectedExternalUrl = providerPresetOptionPlatformUrl(selected);
-  const selectedDetail = providerPresetOptionDetail(selected, t);
+  const selectedEndpointUrl = selected?.preset ? primaryProviderPresetEndpoint2(selected.preset)?.baseUrl : void 0;
+  useClientLayoutEffect(() => {
+    if (!open) {
+      setPopoverLayout(void 0);
+      return;
+    }
+    function updatePopoverLayout() {
+      const root = rootRef.current;
+      if (!root) {
+        return;
+      }
+      const anchor = root.getBoundingClientRect();
+      const margin = 12;
+      const gap = 6;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const availableWidth = Math.max(220, viewportWidth - margin * 2);
+      const width = Math.min(Math.max(260, anchor.width), availableWidth);
+      const left = Math.min(Math.max(margin, anchor.left), viewportWidth - margin - width);
+      const below = Math.max(0, viewportHeight - anchor.bottom - margin - gap);
+      const above = Math.max(0, anchor.top - margin - gap);
+      const placement = below < 260 && above > below ? "above" : "below";
+      const availableHeight = Math.max(140, placement === "above" ? above : below);
+      const maxHeight = Math.min(328, availableHeight);
+      const listHeight = Math.max(96, Math.min(248, maxHeight - 44));
+      setPopoverLayout({
+        left,
+        listHeight,
+        maxHeight,
+        offset: placement === "above" ? viewportHeight - anchor.top + gap : anchor.bottom + gap,
+        placement,
+        width
+      });
+    }
+    updatePopoverLayout();
+    window.addEventListener("resize", updatePopoverLayout);
+    window.addEventListener("scroll", updatePopoverLayout, true);
+    return () => {
+      window.removeEventListener("resize", updatePopoverLayout);
+      window.removeEventListener("scroll", updatePopoverLayout, true);
+    };
+  }, [open]);
   (0, import_react28.useEffect)(() => {
     if (!open) {
       return;
     }
     const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 0);
     const handlePointerDown = (event) => {
-      if (!rootRef.current?.contains(event.target)) {
+      const target = event.target;
+      if (!rootRef.current?.contains(target) && !panelRef.current?.contains(target)) {
         setOpen(false);
       }
     };
@@ -96697,6 +97398,9 @@ function ProviderPresetCombobox({
     setOpen(false);
   }
   function toggleOpen() {
+    if (!open) {
+      setQuery("");
+    }
     setOpen((current) => !current);
   }
   function openSelectedExternalUrl() {
@@ -96705,15 +97409,15 @@ function ProviderPresetCombobox({
     }
     openExternalUrl(selectedExternalUrl);
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "relative min-w-0", ref: rootRef, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "relative min-w-0", ref: rootRef, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
       "div",
       {
         "aria-controls": "provider-preset-options",
         "aria-expanded": open,
         "aria-haspopup": "listbox",
         className: cn(
-          "flex min-h-[62px] w-full min-w-0 cursor-pointer items-center gap-3 rounded-md border border-border bg-background px-3 py-2.5 text-left outline-none transition-[background-color,border-color,box-shadow,color] hover:border-muted-foreground/45 hover:bg-muted/20 focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-ring/25",
+          "flex min-h-12 w-full min-w-0 cursor-pointer items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-left outline-none transition-[background-color,border-color,box-shadow,color] hover:border-muted-foreground/45 hover:bg-muted/20 focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-ring/25",
           open && "border-ring/35 bg-muted/30"
         ),
         onClick: toggleOpen,
@@ -96726,12 +97430,12 @@ function ProviderPresetCombobox({
         role: "button",
         tabIndex: 0,
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ProviderPresetIcon, { className: "h-10 w-10 rounded-md", iconUrl: selected?.iconUrl, preset: selected?.preset }),
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "min-w-0 flex-1", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "truncate text-[13px] font-semibold text-foreground", children: selected ? selected.label : t("Select preset provider") }),
-            selectedDetail ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "mt-0.5 truncate font-mono text-[11px] text-muted-foreground", title: selectedDetail, children: selectedDetail }) : null
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderPresetIcon, { className: "h-8 w-8 rounded-md", iconUrl: selected?.iconUrl, preset: selected?.preset }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0 flex-1", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[13px] font-semibold text-foreground", children: selected ? selected.label : t("Select preset provider") }),
+            selectedEndpointUrl ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-0.5 truncate font-mono text-[11px] text-muted-foreground", title: selectedEndpointUrl, children: selectedEndpointUrl }) : null
           ] }),
-          selectedExternalUrl ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+          selectedExternalUrl ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
             Button,
             {
               "aria-label": t("Open provider website"),
@@ -96749,59 +97453,82 @@ function ProviderPresetCombobox({
               title: t("Open provider website"),
               type: "button",
               variant: "ghost",
-              children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.ExternalLink, { className: "h-4 w-4" })
+              children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ExternalLink, { className: "h-4 w-4" })
             }
-          ) : null
+          ) : null,
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ChevronDown, { className: cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180") })
         ]
       }
     ),
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(AnimatePresence, { initial: false, children: open ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(AnimatedPopover, { className: "absolute left-0 right-0 top-full z-50 mt-1", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(PopoverContent, { className: "overflow-hidden p-1", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "relative mb-1", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Search, { className: "pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
-          Input,
-          {
-            "aria-label": t("Filter"),
-            className: "h-8 pl-8",
-            onChange: (event) => setQuery(event.target.value),
-            onKeyDown: (event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                const first = filteredOptions[0];
-                if (first) {
-                  chooseOption(first.value);
-                }
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(PopoverPortal, { open, children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+      AnimatedPopover,
+      {
+        className: "fixed z-[140]",
+        placement: popoverLayout?.placement ?? "below",
+        style: popoverLayout ? {
+          left: `${popoverLayout.left}px`,
+          maxHeight: `${popoverLayout.maxHeight}px`,
+          width: `${popoverLayout.width}px`,
+          ...popoverLayout.placement === "above" ? { bottom: `${popoverLayout.offset}px` } : { top: `${popoverLayout.offset}px` }
+        } : void 0,
+        children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(PopoverContent, { className: "w-full overflow-hidden p-1", ref: panelRef, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "relative mb-1", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Search, { className: "pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" }),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+              Input,
+              {
+                "aria-label": t("Filter"),
+                className: "h-8 pl-8",
+                onChange: (event) => setQuery(event.target.value),
+                onKeyDown: (event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    const first = filteredOptions[0];
+                    if (first) {
+                      chooseOption(first.value);
+                    }
+                  }
+                },
+                placeholder: t("Filter"),
+                ref: inputRef,
+                value: query
               }
-            },
-            placeholder: t("Filter"),
-            ref: inputRef,
-            value: query
-          }
-        )
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "max-h-[240px] overflow-auto", id: "provider-preset-options", role: "listbox", children: filteredOptions.length > 0 ? filteredOptions.map((option) => {
-        const selectedOption = option.value === value;
-        return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(
-          "button",
-          {
-            "aria-selected": selectedOption,
-            className: cn(
-              "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
-              selectedOption ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
-            ),
-            onClick: () => chooseOption(option.value),
-            role: "option",
-            type: "button",
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ProviderPresetIcon, { className: "h-5 w-5 rounded-[5px]", iconUrl: option.iconUrl, preset: option.preset }),
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "min-w-0 flex-1 truncate", children: option.label }),
-              selectedOption ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Check, { className: "h-3.5 w-3.5 shrink-0" }) : null
-            ]
-          },
-          option.value
-        );
-      }) : /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "px-2 py-5 text-center text-[12px] text-muted-foreground", children: t("No provider presets found") }) })
-    ] }) }) : null })
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+            "div",
+            {
+              className: "overflow-auto",
+              id: "provider-preset-options",
+              role: "listbox",
+              style: { maxHeight: `${popoverLayout?.listHeight ?? 240}px` },
+              children: filteredOptions.length > 0 ? filteredOptions.map((option) => {
+                const selectedOption = option.value === value;
+                return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+                  "button",
+                  {
+                    "aria-selected": selectedOption,
+                    className: cn(
+                      "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
+                      selectedOption ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+                    ),
+                    onClick: () => chooseOption(option.value),
+                    role: "option",
+                    type: "button",
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderPresetIcon, { className: "h-5 w-5 rounded-[5px]", iconUrl: option.iconUrl, preset: option.preset }),
+                      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 flex-1 truncate", children: option.label }),
+                      selectedOption ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Check, { className: "h-3.5 w-3.5 shrink-0" }) : null
+                    ]
+                  },
+                  option.value
+                );
+              }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "px-2 py-5 text-center text-[12px] text-muted-foreground", children: t("No provider presets found") })
+            }
+          )
+        ] })
+      }
+    ) })
   ] });
 }
 function ProviderPresetIcon({ className, iconUrl: explicitIconUrl, preset }) {
@@ -96813,7 +97540,7 @@ function ProviderPresetIcon({ className, iconUrl: explicitIconUrl, preset }) {
     setFailed(false);
   }, [preset?.id, resolvedIconUrl]);
   if (iconUrl) {
-    return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: cn("flex shrink-0 items-center justify-center overflow-hidden border border-border bg-background", className), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: cn("flex shrink-0 items-center justify-center overflow-hidden border border-border bg-background", className), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
       "img",
       {
         alt: "",
@@ -96824,7 +97551,7 @@ function ProviderPresetIcon({ className, iconUrl: explicitIconUrl, preset }) {
       }
     ) });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: cn("flex shrink-0 items-center justify-center border border-border bg-muted text-[10px] font-semibold text-muted-foreground", className), children: label || /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Globe, { className: "h-3.5 w-3.5" }) });
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: cn("flex shrink-0 items-center justify-center border border-border bg-muted text-[10px] font-semibold text-muted-foreground", className), children: label || /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Globe, { className: "h-3.5 w-3.5" }) });
 }
 function ProviderImportHeader({
   draft,
@@ -96842,13 +97569,13 @@ function ProviderImportHeader({
     }
     openExternalUrl(platformUrl);
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "sm:col-span-2 flex min-w-0 items-center gap-3 rounded-md border border-border bg-background px-3 py-2.5", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ProviderPresetIcon, { className: "h-10 w-10 rounded-md", iconUrl, preset }),
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "min-w-0 flex-1", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "truncate text-[13px] font-semibold text-foreground", children: displayName }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "mt-0.5 truncate font-mono text-[11px] text-muted-foreground", title: baseUrl, children: baseUrl })
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "sm:col-span-2 flex min-w-0 items-center gap-3 rounded-md border border-border bg-background px-3 py-2.5", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderPresetIcon, { className: "h-10 w-10 rounded-md", iconUrl, preset }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0 flex-1", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[13px] font-semibold text-foreground", children: displayName }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-0.5 truncate font-mono text-[11px] text-muted-foreground", title: baseUrl, children: baseUrl })
     ] }),
-    platformUrl ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+    platformUrl ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
       Button,
       {
         "aria-label": t("Open provider website"),
@@ -96857,7 +97584,7 @@ function ProviderImportHeader({
         title: t("Open provider website"),
         type: "button",
         variant: "ghost",
-        children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.ExternalLink, { className: "h-4 w-4" })
+        children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ExternalLink, { className: "h-4 w-4" })
       }
     ) : null
   ] });
@@ -96898,18 +97625,6 @@ function providerPresetOptionMatchesQuery(option, query) {
     ...preset?.endpoints.map((endpoint) => endpoint.baseUrl) ?? []
   ].filter(Boolean).join("\n").toLowerCase();
   return haystack.includes(query);
-}
-function providerPresetOptionDetail(option, t) {
-  if (!option) {
-    return "";
-  }
-  if (option.preset) {
-    return primaryProviderPresetEndpoint2(option.preset)?.baseUrl ?? option.preset.websiteUrl ?? "";
-  }
-  if (option.value === customProviderPresetId) {
-    return t("API endpoint");
-  }
-  return "";
 }
 function providerPresetOptionPlatformUrl(option) {
   if (!option?.preset) {
@@ -97013,6 +97728,7 @@ function LocalAgentProviderImportPanel({
         apiKey: result.provider.apiKey ?? "",
         baseUrl: result.provider.baseUrl,
         capabilities: result.provider.capabilities ?? [],
+        credentialMode: "apiKey",
         credentials: [],
         icon: result.provider.icon?.trim() || localAgentProviderIconUrls[candidate.kind] || "",
         modelDescriptions: result.provider.modelDescriptions,
@@ -97033,33 +97749,33 @@ function LocalAgentProviderImportPanel({
       setImportingId("");
     }
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "sm:col-span-2 rounded-md border border-border bg-muted/20 p-3", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "mb-2 flex min-w-0 items-center justify-between gap-2", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "min-w-0", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "truncate text-[12px] font-semibold text-foreground", children: t("Import local agent provider") }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "mt-0.5 text-[11px] leading-4 text-muted-foreground", children: t("CCR scanned this computer for local Claude Code, Codex, Grok CLI, Kimi CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.") })
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "sm:col-span-2 rounded-md border border-border bg-muted/20 p-3", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mb-2 flex min-w-0 items-center justify-between gap-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[12px] font-semibold text-foreground", children: t("Import local agent provider") }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-0.5 text-[11px] leading-4 text-muted-foreground", children: t("CCR scanned this computer for local Claude Code, Codex, Grok CLI, Kimi CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.") })
       ] }),
-      loading ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.LoaderCircle, { className: "h-4 w-4 shrink-0 animate-spin text-muted-foreground" }) : null
+      loading ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.LoaderCircle, { className: "h-4 w-4 shrink-0 animate-spin text-muted-foreground" }) : null
     ] }),
-    candidates.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "grid grid-cols-1 gap-2", children: candidates.map((candidate) => {
+    candidates.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "grid grid-cols-1 gap-2", children: candidates.map((candidate) => {
       const iconUrl = localAgentProviderIconUrls[candidate.kind];
       const importing = importingId === candidate.id;
-      return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(
+      return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
         "div",
         {
           className: "grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-border bg-background px-2.5 py-2",
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex min-w-0 items-center gap-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("img", { alt: "", className: "h-full w-full object-cover", draggable: false, src: iconUrl }) }),
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "min-w-0", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex min-w-0 items-center gap-2", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "min-w-0 truncate text-[12px] font-semibold", children: candidate.name }),
-                  /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Badge, { variant: candidate.importable ? "success" : candidate.status === "locked" ? "warning" : "outline", children: candidate.importable ? t("Ready") : candidate.status === "locked" ? t("Locked") : t("Not found") })
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("img", { alt: "", className: "h-full w-full object-cover", draggable: false, src: iconUrl }) }),
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center gap-2", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 truncate text-[12px] font-semibold", children: candidate.name }),
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant: candidate.importable ? "success" : candidate.status === "locked" ? "warning" : "outline", children: candidate.importable ? t("Ready") : candidate.status === "locked" ? t("Locked") : t("Not found") })
                 ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "mt-0.5 truncate text-[10px] text-muted-foreground", title: candidate.sourceFile || candidate.detail, children: candidate.detail ? t(candidate.detail) : candidate.sourceFile || t("No local login state was found for this agent.") })
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-0.5 truncate text-[10px] text-muted-foreground", title: candidate.sourceFile || candidate.detail, children: candidate.detail ? t(candidate.detail) : candidate.sourceFile || t("No local login state was found for this agent.") })
               ] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
               Button,
               {
                 className: "h-8 px-2",
@@ -97068,7 +97784,7 @@ function LocalAgentProviderImportPanel({
                 type: "button",
                 variant: candidate.importable ? "default" : "outline",
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(AnimatedIconSwap, { iconKey: importing ? "importing" : "import", children: importing ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3.5 w-3.5 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Plus, { className: "h-3.5 w-3.5" }) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatedIconSwap, { iconKey: importing ? "importing" : "import", children: importing ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3.5 w-3.5 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Plus, { className: "h-3.5 w-3.5" }) }),
                   t("Import")
                 ]
               }
@@ -97077,10 +97793,10 @@ function LocalAgentProviderImportPanel({
         },
         candidate.id
       );
-    }) }) : loading ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "rounded-md border border-dashed border-border bg-background px-3 py-4 text-center text-[12px] text-muted-foreground", children: t("Scanning local agent logins") }) : null,
-    error ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "mt-2 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.CircleAlert, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { children: t(error) })
+    }) }) : loading ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "rounded-md border border-dashed border-border bg-background px-3 py-4 text-center text-[12px] text-muted-foreground", children: t("Scanning local agent logins") }) : null,
+    error ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mt-2 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.CircleAlert, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: t(error) })
     ] }) : null
   ] });
 }
@@ -97120,54 +97836,346 @@ function localAgentProviderAlreadyImported(candidate, providers, providerPlugins
     return key.startsWith("ccr-local-agent-") && suffixes.some((suffix) => key.endsWith(suffix)) && localProviderNames.has(providerName.trim().toLowerCase());
   });
 }
+var providerSetupStepIds = ["provider", "credentials", "models", "verify"];
+function ProviderSetupProgress({
+  activeStep,
+  className,
+  credentialReady,
+  modelsReady,
+  onSelectStep,
+  providerReady,
+  variant = "block",
+  verified
+}) {
+  const t = useAppText();
+  const steps = [
+    { complete: providerReady, description: "Endpoint and identity", id: "provider", label: "Choose provider" },
+    { complete: credentialReady, description: "Secret used for requests", id: "credentials", label: "Add credentials" },
+    { complete: modelsReady, description: "Available model IDs", id: "models", label: "Pick models" },
+    { complete: verified, description: "Optional health check", id: "verify", label: "Verify connection" }
+  ];
+  const firstIncompleteIndex = steps.findIndex((step) => !step.complete);
+  const activeIndex = activeStep ? Math.max(0, steps.findIndex((step) => step.id === activeStep)) : Math.max(0, firstIncompleteIndex);
+  if (activeStep) {
+    const progressPercent = (activeIndex + 1) / steps.length * 100;
+    return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+      "div",
+      {
+        "aria-label": `${t("Step")} ${activeIndex + 1} / ${steps.length}`,
+        className: cn("min-w-0", variant === "divider" && "shrink-0", className),
+        role: "progressbar",
+        "aria-valuemin": 1,
+        "aria-valuemax": steps.length,
+        "aria-valuenow": activeIndex + 1,
+        children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: cn(
+          "overflow-hidden bg-muted",
+          variant === "divider" ? "h-0.5 bg-border" : "h-1.5 rounded-full"
+        ), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+          "div",
+          {
+            className: cn("h-full bg-primary transition-[width]", variant === "block" && "rounded-full"),
+            style: { width: `${progressPercent}%` }
+          }
+        ) })
+      }
+    );
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+    "div",
+    {
+      className: cn(
+        "grid grid-cols-1 gap-2 rounded-md border border-border/70 bg-muted/15 p-2 sm:grid-cols-4",
+        className
+      ),
+      children: steps.map((step, index) => {
+        const complete = step.complete;
+        const active = index === activeIndex;
+        const className2 = cn(
+          "flex min-h-11 min-w-0 items-center gap-2 rounded-[5px] border px-2 py-1.5 text-left",
+          onSelectStep && "transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25",
+          complete ? active ? "border-border bg-background text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.06)]" : "border-transparent bg-transparent text-foreground" : active ? "border-border bg-background text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.06)]" : "border-transparent bg-transparent text-muted-foreground"
+        );
+        const content = /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: cn(
+            "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold",
+            complete ? "border-primary/25 bg-primary/10 text-primary" : active ? "border-foreground/15 bg-foreground text-background" : "border-border bg-background text-muted-foreground"
+          ), children: complete ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Check, { className: "h-3.5 w-3.5" }) : index + 1 }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[12px] font-semibold", children: t(step.label) }),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[10.5px] leading-4 text-muted-foreground", children: complete ? t("Done") : active ? t("In progress") : t("Pending") })
+          ] })
+        ] });
+        return onSelectStep ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+          "button",
+          {
+            "aria-current": active ? "step" : void 0,
+            className: className2,
+            onClick: () => onSelectStep(step.id),
+            type: "button",
+            children: content
+          },
+          step.label
+        ) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { "aria-current": active ? "step" : void 0, className: className2, children: content }, step.label);
+      })
+    }
+  );
+}
+function ProviderFormStepHeader({
+  description,
+  index,
+  title
+}) {
+  const t = useAppText();
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "sm:col-span-2 flex min-w-0 items-start justify-between gap-3 pb-1", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0 space-y-1", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[14px] font-semibold text-foreground", children: title }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("p", { className: "max-w-[540px] text-[12px] leading-5 text-muted-foreground", children: description })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "shrink-0 rounded-full border border-border bg-muted/30 px-2 py-0.5 text-[11px] font-medium text-muted-foreground", children: [
+      index,
+      " / ",
+      providerSetupStepIds.length
+    ] })
+  ] });
+}
+function ProviderConnectionStatusPanel({
+  className,
+  connectivityLoading,
+  connectivityProbe,
+  hasConnectivityCheckInputs,
+  localAgentImport,
+  onCheck,
+  probe,
+  probeLoading
+}) {
+  const t = useAppText();
+  const protocolDetected = providerProbeHasSupportedProtocol(probe) || Boolean(probe?.detectedProtocol);
+  const connectionVerified = providerProbeHasSupportedProtocol(connectivityProbe);
+  const protocolTitle = probeLoading ? "Detecting protocols" : localAgentImport ? "Local login provider" : protocolDetected ? "Protocols detected" : "Waiting for provider details";
+  const protocolDescription = probeLoading ? "CCR is checking which API protocols this endpoint supports." : protocolDetected ? "Compatible API protocols were found automatically. You can turn off auto detection in Advanced settings and select protocols manually." : "Choose a provider endpoint so CCR can detect compatible protocols.";
+  const requestTitle = connectivityLoading ? "Checking connection" : localAgentImport ? "Available after saving" : connectionVerified ? "Connection verified" : hasConnectivityCheckInputs ? "Not verified yet" : "Waiting for required fields";
+  const requestDescription = connectivityLoading ? "CCR is sending a limited real model request." : localAgentImport ? "The imported local agent login is connected when this provider is saved." : connectionVerified ? "A real model request succeeded with the selected provider settings." : hasConnectivityCheckInputs ? "Optional. Check Connection sends a real model request and may consume provider credits." : "API endpoint, API key, and at least one model are required before verification.";
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: cn("rounded-md border border-border bg-muted/20 p-3", className), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "grid grid-cols-1 gap-2", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+      ProviderConnectionStatusRow,
+      {
+        description: t(protocolDescription),
+        loading: probeLoading,
+        state: protocolDetected || localAgentImport ? "success" : "pending",
+        title: t(protocolTitle)
+      }
+    ),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+      ProviderConnectionStatusRow,
+      {
+        action: onCheck && hasConnectivityCheckInputs ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+          Button,
+          {
+            className: "h-8 px-2",
+            disabled: connectivityLoading || probeLoading,
+            onClick: () => void onCheck(),
+            type: "button",
+            variant: "outline",
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatedIconSwap, { iconKey: connectivityLoading ? "checking" : "check", children: connectivityLoading ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3.5 w-3.5 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ShieldCheck, { className: "h-3.5 w-3.5" }) }),
+              t("Check Connection")
+            ]
+          }
+        ) : null,
+        description: t(requestDescription),
+        loading: connectivityLoading,
+        state: connectionVerified || localAgentImport ? "success" : hasConnectivityCheckInputs ? "warning" : "pending",
+        title: t(requestTitle)
+      }
+    )
+  ] }) });
+}
+function ProviderConnectionStatusRow({
+  action,
+  description,
+  loading,
+  state,
+  title
+}) {
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: cn(
+    "flex min-w-0 items-start gap-2 rounded-md border bg-background px-3 py-2",
+    state === "success" && "border-emerald-200",
+    state === "warning" && "border-amber-200",
+    state === "pending" && "border-border"
+  ), children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: cn(
+      "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full",
+      state === "success" && "bg-emerald-50 text-emerald-700",
+      state === "warning" && "bg-amber-50 text-amber-700",
+      state === "pending" && "bg-muted text-muted-foreground"
+    ), children: loading ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3.5 w-3.5 animate-spin" }) : state === "success" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Check, { className: "h-3.5 w-3.5" }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Info, { className: "h-3.5 w-3.5" }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0 flex-1", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[12px] font-semibold text-foreground", children: title }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-0.5 text-[11px] leading-4 text-muted-foreground", children: description })
+    ] }),
+    action ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "ml-auto shrink-0 self-center", children: action }) : null
+  ] });
+}
+function ProviderApiKeyInput({
+  onChange,
+  resetProbe,
+  value
+}) {
+  const t = useAppText();
+  const [visible, setVisible] = (0, import_react28.useState)(false);
+  const label = visible ? "Hide API key" : "Show API key";
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "relative min-w-0", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+      Input,
+      {
+        className: "pr-9",
+        type: visible ? "text" : "password",
+        value,
+        onChange: (event) => onChange(event.target.value, resetProbe)
+      }
+    ),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+      Button,
+      {
+        "aria-label": t(label),
+        "aria-pressed": visible,
+        className: "absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2",
+        onClick: () => setVisible((current) => !current),
+        onMouseDown: (event) => event.preventDefault(),
+        size: "iconSm",
+        title: t(label),
+        type: "button",
+        variant: "ghost",
+        children: visible ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.EyeOff, { className: "h-3.5 w-3.5" }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Eye, { className: "h-3.5 w-3.5" })
+      }
+    )
+  ] });
+}
+function ProviderCredentialModeTabs({
+  onChange,
+  value
+}) {
+  const t = useAppText();
+  const options = [
+    {
+      description: "Use one key for every request.",
+      label: "API key",
+      value: "apiKey"
+    },
+    {
+      description: "Use multiple keys with optional limits.",
+      label: "Credential pool",
+      value: "pool"
+    }
+  ];
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+    Tabs,
+    {
+      onValueChange: (nextValue) => onChange(nextValue),
+      value,
+      children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+        TabsList,
+        {
+          "aria-label": t("Credential method"),
+          className: "grid w-full grid-cols-1 gap-1 border border-border bg-muted/20 sm:grid-cols-2",
+          children: options.map((option) => {
+            const selected = value === option.value;
+            return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+              TabsTrigger,
+              {
+                className: cn(
+                  "relative flex min-h-[64px] min-w-0 flex-col items-start justify-center overflow-hidden whitespace-normal rounded-[5px] border px-3 py-2 text-left outline-none transition-[background-color,border-color,box-shadow,color] focus-visible:ring-2 focus-visible:ring-ring/25",
+                  selected ? "border-primary/65 bg-primary/10 text-primary shadow-[0_1px_2px_rgba(15,118,110,0.16),inset_0_0_0_1px_rgba(20,184,166,0.28)]" : "border-transparent text-muted-foreground hover:border-border hover:bg-background/70 hover:text-foreground"
+                ),
+                value: option.value,
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "block w-full text-[12px] font-semibold leading-4", children: t(option.label) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: cn("mt-0.5 block w-full text-[11px] font-normal leading-4", selected ? "text-primary/80" : "text-muted-foreground"), children: t(option.description) })
+                ]
+              },
+              option.value
+            );
+          })
+        }
+      )
+    }
+  );
+}
 function AddProviderForm({
+  activeStep,
   draft,
   error,
   connectivityLoading = false,
   connectivityProbe,
+  hideSetupProgress = false,
   importProvider,
   mode,
   onCheck,
   onChange,
   onIconDetectingChange,
+  onSelectStep,
   probe,
   probeLoading,
   providerPlugins = [],
   providers
 }) {
   const t = useAppText();
-  const [advancedOpen, setAdvancedOpen] = (0, import_react28.useState)(mode === "edit");
+  const [advancedOpen, setAdvancedOpen] = (0, import_react28.useState)(false);
   const [iconDetecting, setIconDetecting] = (0, import_react28.useState)(false);
+  const [autoDetectInfoPosition, setAutoDetectInfoPosition] = (0, import_react28.useState)();
   const [protocolProbeDetails, setProtocolProbeDetails] = (0, import_react28.useState)();
   const iconDetectionRequestRef = (0, import_react28.useRef)(0);
   const onChangeRef = (0, import_react28.useRef)(onChange);
-  const hasModelCatalog = Boolean(probe?.models.length);
   const selectedPreset = findProviderPreset(draft.presetId);
   const customEndpoint = draft.presetId === customProviderPresetId;
   const importMode = Boolean(importProvider);
-  const showBaseUrl = customEndpoint || mode === "edit";
+  const showBaseUrl = customEndpoint;
   const selectedDisplayProtocols = uniqueProviderProtocols(draft.selectedProtocols);
   const detectedProtocol = selectedDisplayProtocols.length === 1 ? selectedDisplayProtocols[0] : probe?.detectedProtocol ?? draft.protocol;
   const detectedBaseUrl = providerCapabilityBaseUrlForProtocol(draft.baseUrl, detectedProtocol, probe);
   const safetyIssue = providerDraftSafetyIssue(draft, detectedBaseUrl);
   const localAgentImport = draft.providerPlugins.length > 0;
+  const manualProtocolDetection = draft.protocolDetectionMode === "manual";
   const providerPresetOptions = [
     { iconUrl: draft.icon, label: t("Other / custom API endpoint"), value: customProviderPresetId },
-    { label: t("Select preset provider"), value: "" },
     ...getProviderPresets().map((preset) => ({ label: t(preset.name), preset, value: preset.id }))
   ];
-  const selectableProtocols = providerSelectableProtocolsFromProbe(probe);
+  const selectableProtocols = manualProtocolDetection ? providerProtocolOptions.map((option) => option.value) : providerSelectableProtocolsFromProbe(probe);
   const protocolProbeRows = (0, import_react28.useMemo)(() => uniqueProviderProbeProtocolRows(probe?.protocols ?? []), [probe]);
   const configuredModels = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
   const catalogModelIds = new Set(probe?.models ?? []);
+  const credentialApiKey = providerConnectivityApiKeyFromDraft(draft);
+  const credentialPoolReady = providerDraftHasReadyCredentialPool(draft);
   const hasConnectivityCheckInputs = Boolean(
-    draft.baseUrl.trim() && draft.apiKey.trim() && configuredModels.length > 0
+    draft.baseUrl.trim() && credentialApiKey && configuredModels.length > 0
   );
+  const providerIdentityReady = importMode || Boolean(selectedPreset || draft.baseUrl.trim());
+  const credentialReady = localAgentImport || Boolean(
+    draft.credentialMode === "pool" ? credentialPoolReady : draft.apiKey.trim()
+  );
+  const modelsReady = configuredModels.length > 0;
+  const connectionVerified = localAgentImport || providerProbeHasSupportedProtocol(connectivityProbe);
+  const showStep = (step) => !activeStep || activeStep === step;
   function updateConfiguredModels(models) {
     onChange({
       modelsText: models.filter((model) => !catalogModelIds.has(model)).join("\n"),
       selectedModels: models.filter((model) => catalogModelIds.has(model))
     });
+  }
+  function updateAutoProtocolDetection(enabled) {
+    onChange({
+      protocolDetectionMode: enabled ? "auto" : "manual",
+      selectedProtocols: !enabled && draft.selectedProtocols.length === 0 ? [draft.protocol] : draft.selectedProtocols
+    }, true);
+  }
+  function updateCredentialMode(credentialMode) {
+    if (credentialMode === draft.credentialMode) {
+      return;
+    }
+    onChange({
+      credentialMode,
+      ...credentialMode === "pool" && draft.credentials.length === 0 ? { credentials: [createProviderCredentialDraft(0)] } : {}
+    }, true);
   }
   (0, import_react28.useEffect)(() => {
     onChangeRef.current = onChange;
@@ -97176,10 +98184,13 @@ function AddProviderForm({
     setProtocolProbeDetails(void 0);
   }, [probe]);
   (0, import_react28.useEffect)(() => {
-    if (!protocolProbeDetails) {
+    if (!autoDetectInfoPosition && !protocolProbeDetails) {
       return;
     }
-    const close = () => setProtocolProbeDetails(void 0);
+    const close = () => {
+      setAutoDetectInfoPosition(void 0);
+      setProtocolProbeDetails(void 0);
+    };
     const closeOnEscape = (event) => {
       if (event.key === "Escape") {
         close();
@@ -97195,7 +98206,7 @@ function AddProviderForm({
       window.removeEventListener("resize", close);
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [protocolProbeDetails]);
+  }, [autoDetectInfoPosition, protocolProbeDetails]);
   (0, import_react28.useEffect)(() => {
     onIconDetectingChange?.(iconDetecting);
     return () => {
@@ -97289,211 +98300,342 @@ function AddProviderForm({
   function toggleProtocolProbeDetails(itemKey, item, button) {
     const rect = button.getBoundingClientRect();
     const position = providerProtocolProbeTooltipPosition(rect);
+    setAutoDetectInfoPosition(void 0);
     setProtocolProbeDetails((current) => current?.key === itemKey ? void 0 : {
       item,
       key: itemKey,
       ...position
     });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(import_jsx_runtime21.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "grid grid-cols-1 gap-3 sm:grid-cols-2", children: [
-      importProvider ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ProviderImportHeader, { draft, provider: importProvider, preset: selectedPreset }) : /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(import_jsx_runtime21.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
-          LocalAgentProviderImportPanel,
-          {
-            mode,
-            onChange,
-            providerPlugins: [...providerPlugins, ...draft.providerPlugins],
-            providers
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "block min-w-0 space-y-1 sm:col-span-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: t("Select preset provider") }),
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
-            ProviderPresetCombobox,
-            {
-              value: draft.presetId,
-              onChange: updatePreset,
-              options: providerPresetOptions
-            }
-          )
-        ] })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { className: "sm:col-span-2", label: t("Name"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Input, { value: draft.name, onChange: (event) => onChange({ name: event.target.value }) }) }),
-      showBaseUrl ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Field, { className: "sm:col-span-2", label: t("API endpoint"), children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Input, { value: draft.baseUrl, onChange: (event) => onChange({ baseUrl: event.target.value, icon: "" }, true) }),
-        customEndpoint ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex min-h-4 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground", children: [
-          iconDetecting ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3 w-3 shrink-0 animate-spin" }) : null,
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "min-w-0", children: iconDetecting ? t("Detecting icon") : t("Enter API endpoint, API key, and at least one model to enable connectivity check.") })
-        ] }) : null
-      ] }) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { className: "sm:col-span-2", label: t("API key"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Input, { type: "password", value: draft.apiKey, onChange: (event) => onChange({ apiKey: event.target.value }, true) }) }),
-      safetyIssue ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "sm:col-span-2 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] leading-5 text-amber-900 dark:text-amber-100", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.ShieldCheck, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { children: safetyIssue.message })
-      ] }) : null,
-      selectedPreset && !showBaseUrl && !importMode ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "sm:col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[12px] text-muted-foreground", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex min-w-0 items-center gap-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Globe, { className: "h-3.5 w-3.5 shrink-0" }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "min-w-0 truncate", title: detectedBaseUrl, children: detectedBaseUrl })
-      ] }) }) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(FieldGroup, { className: "sm:col-span-2", label: t("Models"), children: [
-        hasModelCatalog && probe ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
-          ModelMultiSelect,
-          {
-            displayNames: draft.modelDisplayNames,
-            models: mergeProviderModelLists(probe.models, splitLines(draft.modelsText)),
-            onQueryChange: (modelSearch) => onChange({ modelSearch }),
-            onSelectedChange: updateConfiguredModels,
-            query: draft.modelSearch,
-            selected: configuredModels
-          }
-        ) : /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
-          ModelTagInput,
-          {
-            ariaLabel: t("Models"),
-            displayNames: draft.modelDisplayNames,
-            onChange: (models) => onChange({ modelsText: models.join("\n") }, true),
-            placeholder: t("Model name"),
-            value: splitLines(draft.modelsText)
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
-          ModelMetadataEditor,
-          {
-            defaults: draft.catalogModelMetadata,
-            displayNames: draft.modelDisplayNames,
-            metadata: draft.modelMetadata,
-            models: configuredModels,
-            onChange: (modelMetadata) => onChange({ modelMetadata })
-          }
-        )
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "sm:col-span-2 flex min-w-0 flex-wrap items-center justify-between gap-2 text-[12px] text-muted-foreground", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "min-w-0 flex-1", children: connectivityLoading ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("span", { className: "inline-flex items-center gap-1.5", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3.5 w-3.5 animate-spin" }),
-          t("Checking connection")
-        ] }) : localAgentImport ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { children: t("Local agent login will be connected after saving this provider.") }) : providerProbeHasSupportedProtocol(connectivityProbe) ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("span", { className: "inline-flex items-center gap-1.5 text-foreground", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Check, { className: "h-3.5 w-3.5" }),
-          t("Connection verified")
-        ] }) : probeLoading ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("span", { className: "inline-flex items-center gap-1.5", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3.5 w-3.5 animate-spin" }),
-          t("Detecting protocols")
-        ] }) : providerProbeHasSupportedProtocol(probe) ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("span", { className: "inline-flex items-center gap-1.5 text-foreground", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Check, { className: "h-3.5 w-3.5" }),
-          t("Protocols detected")
-        ] }) : probe?.detectedProtocol ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("span", { className: "inline-flex items-center gap-1.5 text-foreground", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Check, { className: "h-3.5 w-3.5" }),
-          t("Detected")
-        ] }) : hasConnectivityCheckInputs ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { children: t("Click Check Connection to verify connectivity with a real model request.") }) : draft.baseUrl.trim() || draft.apiKey.trim() || splitLines(draft.modelsText).length > 0 || draft.selectedModels.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { children: t("Enter API endpoint, API key, and at least one model to enable connectivity check.") }) : null }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "flex shrink-0 flex-wrap justify-end gap-2", children: onCheck && hasConnectivityCheckInputs ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(
-          Button,
-          {
-            className: "h-8 px-2",
-            disabled: connectivityLoading || probeLoading,
-            onClick: () => void onCheck(),
-            type: "button",
-            variant: "outline",
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(AnimatedIconSwap, { iconKey: connectivityLoading ? "checking" : "check", children: connectivityLoading ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3.5 w-3.5 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.ShieldCheck, { className: "h-3.5 w-3.5" }) }),
-              t("Check Connection")
-            ]
-          }
-        ) : null })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "sm:col-span-2", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(
-        "button",
+  function toggleAutoDetectInfo(button) {
+    const rect = button.getBoundingClientRect();
+    const position = providerProtocolProbeTooltipPosition(rect);
+    setProtocolProbeDetails(void 0);
+    setAutoDetectInfoPosition(
+      (current) => current && current.left === position.left && current.top === position.top ? void 0 : position
+    );
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: cn(activeStep ? "space-y-5" : "grid grid-cols-1 gap-4 sm:grid-cols-2"), children: [
+      !activeStep && !hideSetupProgress ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+        ProviderSetupProgress,
         {
-          "aria-expanded": advancedOpen,
-          className: "inline-flex min-w-0 items-center gap-2 border-0 bg-transparent p-0 text-[12px] font-semibold text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25",
-          onClick: () => setAdvancedOpen((value) => !value),
-          type: "button",
-          children: [
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.ChevronDown, { className: cn("h-3.5 w-3.5 transition-transform", advancedOpen && "rotate-180") }),
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { children: t("Advanced settings") })
-          ]
+          className: "sm:col-span-2",
+          credentialReady,
+          modelsReady,
+          onSelectStep,
+          providerReady: providerIdentityReady,
+          verified: connectionVerified
         }
-      ) }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(AnimatePresence, { initial: false, children: advancedOpen ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(AnimatedDisclosure, { className: "sm:col-span-2", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "grid grid-cols-1 gap-3 rounded-md border border-border bg-muted/20 p-3 sm:grid-cols-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
-          ProviderCredentialSettings,
-          {
-            draft,
-            onChange
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
-          ProviderUsageSettings,
-          {
-            customEndpoint,
-            draft,
-            onChange,
-            probe
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { className: "sm:col-span-2", label: t("Protocol details"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "max-h-[128px] overflow-auto rounded-md border border-border bg-background p-2", children: protocolProbeRows.length ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "space-y-1.5", children: protocolProbeRows.map((item) => {
-          const available = item.supported;
-          const selectableProtocol = selectableProtocols.find((protocol) => protocol === item.protocol);
-          const selectable = item.supported && Boolean(selectableProtocol);
-          const checked = Boolean(selectableProtocol && draft.selectedProtocols.includes(selectableProtocol));
-          const itemKey = `${item.protocol}-${item.endpoint}`;
-          return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
-              Checkbox,
-              {
-                "aria-label": `${t("Add")} ${translatedProviderProtocolLabel(item.protocol, t)}`,
-                checked,
-                disabled: !selectable,
-                onCheckedChange: () => {
-                  if (!selectableProtocol) {
-                    return;
-                  }
-                  onChange({
-                    selectedProtocols: checked ? draft.selectedProtocols.filter((protocol) => protocol !== selectableProtocol) : uniqueProviderProtocols([...draft.selectedProtocols, selectableProtocol])
-                  });
+      ) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+        "div",
+        {
+          className: cn(
+            "min-w-0",
+            activeStep ? activeStep === "models" ? "mx-auto w-full max-w-[980px] space-y-4 py-1" : "mx-auto w-full max-w-[560px] space-y-4 py-1" : "grid grid-cols-1 gap-3 sm:col-span-2 sm:grid-cols-2"
+          ),
+          children: [
+            showStep("provider") ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                ProviderFormStepHeader,
+                {
+                  description: t("Pick a preset provider or use a custom compatible API endpoint."),
+                  index: 1,
+                  title: t("Choose provider")
                 }
-              }
-            ),
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "truncate font-medium", children: translatedProviderProtocolLabel(item.protocol, t) }),
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("span", { className: cn("inline-flex min-w-0 items-center justify-end gap-1.5", available ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground"), children: [
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "truncate", children: available ? t("Available") : t("Unavailable") }),
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+              ),
+              importProvider ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderImportHeader, { draft, provider: importProvider, preset: selectedPreset }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                  LocalAgentProviderImportPanel,
+                  {
+                    mode,
+                    onChange,
+                    providerPlugins: [...providerPlugins, ...draft.providerPlugins],
+                    providers
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "block min-w-0 space-y-1 sm:col-span-2", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: t("Select preset provider") }),
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                    ProviderPresetCombobox,
+                    {
+                      value: draft.presetId,
+                      onChange: updatePreset,
+                      options: providerPresetOptions
+                    }
+                  )
+                ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { className: "sm:col-span-2", label: t("Name"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Input, { value: draft.name, onChange: (event) => onChange({ name: event.target.value }) }) }),
+              showBaseUrl ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Field, { className: "sm:col-span-2", label: t("API endpoint"), children: [
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Input, { value: draft.baseUrl, onChange: (event) => onChange({ baseUrl: event.target.value, icon: "" }, true) }),
+                customEndpoint ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-h-4 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground", children: [
+                  iconDetecting ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3 w-3 shrink-0 animate-spin" }) : null,
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0", children: iconDetecting ? t("Detecting icon") : t("Enter API endpoint, API key, and at least one model to enable connectivity check.") })
+                ] }) : null
+              ] }) : null
+            ] }) : null,
+            showStep("credentials") ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                ProviderFormStepHeader,
+                {
+                  description: t("Choose how this provider authenticates model requests."),
+                  index: 2,
+                  title: t("Add credentials")
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "sm:col-span-2 space-y-4", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                  ProviderCredentialModeTabs,
+                  {
+                    value: draft.credentialMode,
+                    onChange: updateCredentialMode
+                  }
+                ),
+                draft.credentialMode === "apiKey" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "space-y-3", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("API key"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                    ProviderApiKeyInput,
+                    {
+                      value: draft.apiKey,
+                      onChange: (apiKey, resetProbe) => onChange({ apiKey }, resetProbe),
+                      resetProbe: true
+                    }
+                  ) }),
+                  safetyIssue ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] leading-5 text-amber-900 dark:text-amber-100", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ShieldCheck, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: safetyIssue.message })
+                  ] }) : null
+                ] }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "space-y-3", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                    ProviderCredentialSettings,
+                    {
+                      draft,
+                      onChange
+                    }
+                  ),
+                  safetyIssue ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] leading-5 text-amber-900 dark:text-amber-100", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ShieldCheck, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: safetyIssue.message })
+                  ] }) : null
+                ] })
+              ] })
+            ] }) : null,
+            showStep("models") ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                ProviderFormStepHeader,
+                {
+                  description: t("Choose the models that should be available through this provider."),
+                  index: 3,
+                  title: t("Pick models")
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "sm:col-span-2", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                ProviderModelPicker,
+                {
+                  catalogModels: probe?.models ?? [],
+                  defaults: draft.catalogModelMetadata,
+                  displayNames: draft.modelDisplayNames,
+                  loading: probeLoading,
+                  metadata: draft.modelMetadata,
+                  onMetadataChange: (modelMetadata) => onChange({ modelMetadata }),
+                  onQueryChange: (modelSearch) => onChange({ modelSearch }),
+                  onSelectedChange: updateConfiguredModels,
+                  query: draft.modelSearch,
+                  selected: configuredModels
+                }
+              ) })
+            ] }) : null,
+            showStep("verify") ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                ProviderFormStepHeader,
+                {
+                  description: t("Run a real model request before relying on this provider."),
+                  index: 4,
+                  title: t("Verify connection")
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                ProviderConnectionStatusPanel,
+                {
+                  className: "sm:col-span-2",
+                  connectivityLoading,
+                  connectivityProbe,
+                  hasConnectivityCheckInputs,
+                  localAgentImport,
+                  onCheck,
+                  probe,
+                  probeLoading
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "sm:col-span-2", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
                 "button",
                 {
-                  "aria-label": t("Protocol detection details"),
-                  "aria-pressed": protocolProbeDetails?.key === itemKey,
-                  className: cn(
-                    "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30",
-                    protocolProbeDetails?.key === itemKey && "bg-muted text-foreground"
-                  ),
-                  onClick: (event) => {
-                    event.stopPropagation();
-                    toggleProtocolProbeDetails(itemKey, item, event.currentTarget);
-                  },
-                  onMouseDown: (event) => event.stopPropagation(),
-                  title: t("Protocol detection details"),
+                  "aria-expanded": advancedOpen,
+                  className: "inline-flex min-w-0 items-center gap-2 border-0 bg-transparent p-0 text-[12px] font-semibold text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25",
+                  onClick: () => setAdvancedOpen((value) => !value),
                   type: "button",
-                  children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Info, { className: "h-3.5 w-3.5", "aria-hidden": "true" })
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ChevronRight, { className: cn("h-3.5 w-3.5 transition-transform", advancedOpen && "rotate-90") }),
+                    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: t("Advanced settings") })
+                  ]
                 }
-              )
-            ] })
-          ] }, itemKey);
-        }) }) : /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "text-[11px] text-muted-foreground", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { children: t("No protocol detection yet") }) }) }) })
-      ] }) }, "provider-advanced") : null }),
-      protocolProbeDetails ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
-        ProtocolProbeDetailsTooltip,
-        {
-          item: protocolProbeDetails.item,
-          left: protocolProbeDetails.left,
-          top: protocolProbeDetails.top,
-          t
+              ) }),
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatePresence, { initial: false, children: advancedOpen ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatedDisclosure, { className: "sm:col-span-2", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "grid grid-cols-1 gap-3 rounded-md border border-border bg-muted/20 p-3 sm:grid-cols-2", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "sm:col-span-2 flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-background px-3 py-2 text-[12px] font-semibold", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("span", { className: "flex min-w-0 items-center gap-1.5", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 truncate", children: t("Auto detect protocols") }),
+                    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                      "button",
+                      {
+                        "aria-label": t("Auto detect protocols info"),
+                        "aria-pressed": Boolean(autoDetectInfoPosition),
+                        className: cn(
+                          "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30",
+                          autoDetectInfoPosition && "bg-muted text-foreground"
+                        ),
+                        onClick: (event) => {
+                          event.stopPropagation();
+                          toggleAutoDetectInfo(event.currentTarget);
+                        },
+                        onMouseDown: (event) => event.stopPropagation(),
+                        title: t("Auto detect protocols info"),
+                        type: "button",
+                        children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Info, { className: "h-3.5 w-3.5", "aria-hidden": "true" })
+                      }
+                    )
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                    Switch,
+                    {
+                      "aria-label": t("Auto detect protocols"),
+                      checked: !manualProtocolDetection,
+                      onCheckedChange: updateAutoProtocolDetection
+                    }
+                  )
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                  ProviderUsageSettings,
+                  {
+                    customEndpoint,
+                    draft,
+                    onChange,
+                    probe
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { className: "sm:col-span-2", label: t("Protocol details"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "max-h-[128px] overflow-auto rounded-md border border-border bg-background p-2", children: manualProtocolDetection ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "space-y-1.5", children: providerProtocolOptions.map((option) => {
+                  const protocol = option.value;
+                  const checked = draft.selectedProtocols.includes(protocol);
+                  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                      Checkbox,
+                      {
+                        "aria-label": `${t("Add")} ${translatedProviderProtocolLabel(protocol, t)}`,
+                        checked,
+                        onCheckedChange: () => {
+                          onChange({
+                            selectedProtocols: checked ? draft.selectedProtocols.filter((selected) => selected !== protocol) : uniqueProviderProtocols([...draft.selectedProtocols, protocol])
+                          });
+                        }
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "truncate font-medium", children: translatedProviderProtocolLabel(protocol, t) }),
+                    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: cn("inline-flex min-w-0 items-center justify-end", checked ? "text-foreground" : "text-muted-foreground"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "truncate", children: checked ? t("Selected") : "" }) })
+                  ] }, protocol);
+                }) }) : protocolProbeRows.length ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "space-y-1.5", children: protocolProbeRows.map((item) => {
+                  const available = item.supported;
+                  const selectableProtocol = selectableProtocols.find((protocol) => protocol === item.protocol);
+                  const selectable = item.supported && Boolean(selectableProtocol);
+                  const checked = Boolean(selectableProtocol && draft.selectedProtocols.includes(selectableProtocol));
+                  const itemKey = `${item.protocol}-${item.endpoint}`;
+                  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                      Checkbox,
+                      {
+                        "aria-label": `${t("Add")} ${translatedProviderProtocolLabel(item.protocol, t)}`,
+                        checked,
+                        disabled: !selectable,
+                        onCheckedChange: () => {
+                          if (!selectableProtocol) {
+                            return;
+                          }
+                          onChange({
+                            selectedProtocols: checked ? draft.selectedProtocols.filter((protocol) => protocol !== selectableProtocol) : uniqueProviderProtocols([...draft.selectedProtocols, selectableProtocol])
+                          });
+                        }
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "truncate font-medium", children: translatedProviderProtocolLabel(item.protocol, t) }),
+                    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("span", { className: cn("inline-flex min-w-0 items-center justify-end gap-1.5", available ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground"), children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "truncate", children: available ? t("Available") : t("Unavailable") }),
+                      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                        "button",
+                        {
+                          "aria-label": t("Protocol detection details"),
+                          "aria-pressed": protocolProbeDetails?.key === itemKey,
+                          className: cn(
+                            "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30",
+                            protocolProbeDetails?.key === itemKey && "bg-muted text-foreground"
+                          ),
+                          onClick: (event) => {
+                            event.stopPropagation();
+                            toggleProtocolProbeDetails(itemKey, item, event.currentTarget);
+                          },
+                          onMouseDown: (event) => event.stopPropagation(),
+                          title: t("Protocol detection details"),
+                          type: "button",
+                          children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Info, { className: "h-3.5 w-3.5", "aria-hidden": "true" })
+                        }
+                      )
+                    ] })
+                  ] }, itemKey);
+                }) }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[11px] text-muted-foreground", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: t("No protocol detection yet") }) }) }) })
+              ] }) }, "provider-advanced") : null }),
+              protocolProbeDetails ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                ProtocolProbeDetailsTooltip,
+                {
+                  item: protocolProbeDetails.item,
+                  left: protocolProbeDetails.left,
+                  top: protocolProbeDetails.top,
+                  t
+                }
+              ) : null,
+              autoDetectInfoPosition ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                AutoDetectProtocolsTooltip,
+                {
+                  left: autoDetectInfoPosition.left,
+                  t,
+                  top: autoDetectInfoPosition.top
+                }
+              ) : null
+            ] }) : null
+          ]
         }
-      ) : null
+      )
     ] }),
-    error ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.CircleAlert, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { children: error })
+    error ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.CircleAlert, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: error })
     ] }) : null
   ] });
+}
+function AutoDetectProtocolsTooltip({
+  left,
+  t,
+  top
+}) {
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+    TooltipPortal,
+    {
+      className: "w-[260px] p-2.5 text-left font-normal leading-4",
+      onMouseDown: (event) => event.stopPropagation(),
+      style: { left, top },
+      children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mb-1.5 font-semibold", children: t("Auto detect protocols") }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-muted-foreground", children: t("Auto detect protocols description") })
+      ]
+    }
+  );
 }
 function uniqueProviderProbeProtocolRows(protocols) {
   const rows = /* @__PURE__ */ new Map();
@@ -97531,20 +98673,19 @@ function ProtocolProbeDetailsTooltip({
 }) {
   const status = item.status === void 0 ? "-" : `HTTP ${item.status}`;
   const message = translateProbeProtocolMessage(item.message, t) || "-";
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(
-    "div",
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+    TooltipPortal,
     {
-      className: "fixed z-[120] w-[260px] rounded-md border border-border bg-popover p-2.5 text-left text-[11px] leading-4 text-popover-foreground shadow-card-elevated",
+      className: "w-[260px] p-2.5 text-left font-normal leading-4",
       onMouseDown: (event) => event.stopPropagation(),
-      role: "tooltip",
       style: { left, top },
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "mb-1.5 font-semibold", children: t("Protocol detection details") }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "grid grid-cols-[76px_minmax(0,1fr)] gap-x-2 gap-y-1", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "text-muted-foreground", children: t("HTTP status") }),
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "min-w-0 truncate font-mono", children: status }),
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "text-muted-foreground", children: t("Error message") }),
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "min-w-0 break-words", children: message })
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mb-1.5 font-semibold", children: t("Protocol detection details") }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "grid grid-cols-[76px_minmax(0,1fr)] gap-x-2 gap-y-1", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "text-muted-foreground", children: t("HTTP status") }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 truncate font-mono", children: status }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "text-muted-foreground", children: t("Error message") }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 break-words", children: message })
         ] })
       ]
     }
@@ -97557,7 +98698,6 @@ function ProviderCredentialSettings({
   const t = useAppText();
   const formatError = useAppErrorText();
   const fileInputRef = (0, import_react28.useRef)(null);
-  const [expanded, setExpanded] = (0, import_react28.useState)(false);
   const [importError, setImportError] = (0, import_react28.useState)("");
   function addCredential() {
     onChange({
@@ -97565,7 +98705,7 @@ function ProviderCredentialSettings({
         ...draft.credentials,
         createProviderCredentialDraft(draft.credentials.length)
       ]
-    });
+    }, true);
     setImportError("");
   }
   function updateCredential(index, patch) {
@@ -97573,12 +98713,12 @@ function ProviderCredentialSettings({
       credentials: draft.credentials.map(
         (credential, credentialIndex) => credentialIndex === index ? { ...credential, ...patch } : credential
       )
-    });
+    }, true);
   }
   function removeCredential(index) {
     onChange({
       credentials: draft.credentials.filter((_, credentialIndex) => credentialIndex !== index)
-    });
+    }, true);
   }
   async function importCredentialFile(file) {
     if (!file) {
@@ -97591,7 +98731,7 @@ function ProviderCredentialSettings({
         setImportError(formatError(new Error(patch)));
         return;
       }
-      onChange(patch);
+      onChange(patch, true);
       setImportError("");
     } catch (error) {
       setImportError(formatError(error));
@@ -97601,27 +98741,14 @@ function ProviderCredentialSettings({
       }
     }
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "sm:col-span-2 space-y-3 rounded-md border border-border bg-background/60 p-3", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex min-w-0 flex-wrap items-center justify-between gap-3", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "min-w-0", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Label, { className: "text-[12px] font-semibold", children: t("Credential pool") }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "mt-0.5 text-[11px] leading-4 text-muted-foreground", children: t("Configure multiple provider API keys for this supplier.") })
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "space-y-3", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 flex-wrap items-center justify-between gap-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Label, { className: "text-[12px] font-semibold", children: t("Pool keys") }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-0.5 text-[11px] leading-4 text-muted-foreground", children: t("Use multiple API keys with optional priorities, weights, and limits.") })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Label, { className: "flex shrink-0 items-center gap-2 text-[12px] font-medium text-muted-foreground", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { children: t("Show credential settings") }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
-          Switch,
-          {
-            "aria-label": t("Show credential settings"),
-            checked: expanded,
-            onCheckedChange: setExpanded
-          }
-        )
-      ] })
-    ] }),
-    expanded ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(import_jsx_runtime21.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex min-w-0 flex-wrap justify-end gap-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex shrink-0 flex-wrap justify-end gap-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
           "input",
           {
             accept: ".json,application/json",
@@ -97631,29 +98758,29 @@ function ProviderCredentialSettings({
             type: "file"
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Button, { className: "h-8 px-2", onClick: () => fileInputRef.current?.click(), type: "button", variant: "outline", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Braces, { className: "h-3.5 w-3.5" }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Button, { className: "h-8 px-2", onClick: () => fileInputRef.current?.click(), type: "button", variant: "outline", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Braces, { className: "h-3.5 w-3.5" }),
           t("Import JSON")
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Button, { className: "h-8 px-2", onClick: addCredential, type: "button", variant: "outline", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Plus, { className: "h-3.5 w-3.5" }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Button, { className: "h-8 px-2", onClick: addCredential, type: "button", variant: "outline", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Plus, { className: "h-3.5 w-3.5" }),
           t("Add key")
         ] })
-      ] }),
-      draft.credentials.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "rounded-md border border-dashed border-border bg-muted/30 px-3 py-4 text-center text-[12px] text-muted-foreground", children: t("No provider credentials configured") }) : /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "space-y-2", children: draft.credentials.map((credential, index) => /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
-        ProviderCredentialRow,
-        {
-          credential,
-          index,
-          onChange: (patch) => updateCredential(index, patch),
-          onRemove: () => removeCredential(index)
-        },
-        `credential-${index}`
-      )) }),
-      importError ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.CircleAlert, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { children: t(importError) })
-      ] }) : null
+      ] })
+    ] }),
+    draft.credentials.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "rounded-md border border-dashed border-border bg-muted/30 px-3 py-4 text-center text-[12px] text-muted-foreground", children: t("No provider credentials configured") }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "space-y-2", children: draft.credentials.map((credential, index) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+      ProviderCredentialRow,
+      {
+        credential,
+        index,
+        onChange: (patch) => updateCredential(index, patch),
+        onRemove: () => removeCredential(index)
+      },
+      `credential-${index}`
+    )) }),
+    importError ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.CircleAlert, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: t(importError) })
     ] }) : null
   ] });
 }
@@ -97670,9 +98797,9 @@ function ProviderCredentialRow({
       credential.limitsText.trim() || credential.priority.trim() || credential.weight.trim()
     )
   );
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "rounded-md border border-border bg-muted/20 p-3", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "grid grid-cols-1 gap-3 sm:grid-cols-[auto_minmax(140px,0.75fr)_minmax(180px,1fr)_auto]", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "flex items-end pb-2", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "rounded-md border border-border bg-muted/20 p-3", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "grid grid-cols-1 gap-3 sm:grid-cols-[auto_minmax(140px,0.75fr)_minmax(180px,1fr)_auto]", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "flex items-end pb-2", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
         Checkbox,
         {
           "aria-label": `${t("Enable")} ${label}`,
@@ -97680,11 +98807,17 @@ function ProviderCredentialRow({
           onCheckedChange: (enabled) => onChange({ enabled })
         }
       ) }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { label: t("Name"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Input, { value: credential.name, onChange: (event) => onChange({ name: event.target.value }) }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { label: t("API key"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Input, { type: "password", value: credential.apiKey, onChange: (event) => onChange({ apiKey: event.target.value }) }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "flex items-end justify-end", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { "aria-label": `${t("Remove")} ${label}`, onClick: onRemove, size: "iconSm", title: t("Remove"), type: "button", variant: "ghost", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Trash2, { className: "h-3.5 w-3.5" }) }) })
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Name"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Input, { value: credential.name, onChange: (event) => onChange({ name: event.target.value }) }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("API key"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+        ProviderApiKeyInput,
+        {
+          value: credential.apiKey,
+          onChange: (apiKey) => onChange({ apiKey })
+        }
+      ) }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "flex items-end justify-end", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { "aria-label": `${t("Remove")} ${label}`, onClick: onRemove, size: "iconSm", title: t("Remove"), type: "button", variant: "ghost", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Trash2, { className: "h-3.5 w-3.5" }) }) })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
       Button,
       {
         "aria-expanded": advancedOpen,
@@ -97693,15 +98826,15 @@ function ProviderCredentialRow({
         type: "button",
         unstyled: true,
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "min-w-0 truncate", children: t("Advanced key options") }),
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.ChevronDown, { className: cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", advancedOpen && "rotate-180") })
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 truncate", children: t("Advanced key options") }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ChevronDown, { className: cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", advancedOpen && "rotate-180") })
         ]
       }
     ),
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(AnimatePresence, { initial: false, children: advancedOpen ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(AnimatedDisclosure, { children: /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "mt-3 grid grid-cols-1 gap-3 border-t border-border/60 pt-3 sm:grid-cols-2", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { label: t("Priority"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Input, { min: 1, placeholder: String(index + 1), type: "number", value: credential.priority, onChange: (event) => onChange({ priority: event.target.value }) }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { label: t("Weight"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Input, { min: 1, placeholder: "1", type: "number", value: credential.weight, onChange: (event) => onChange({ weight: event.target.value }) }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { className: "sm:col-span-2", label: t("Limits JSON"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatePresence, { initial: false, children: advancedOpen ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatedDisclosure, { children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mt-3 grid grid-cols-1 gap-3 border-t border-border/60 pt-3 sm:grid-cols-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Priority"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Input, { min: 1, placeholder: String(index + 1), type: "number", value: credential.priority, onChange: (event) => onChange({ priority: event.target.value }) }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Weight"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Input, { min: 1, placeholder: "1", type: "number", value: credential.weight, onChange: (event) => onChange({ weight: event.target.value }) }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { className: "sm:col-span-2", label: t("Limits JSON"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
         Textarea,
         {
           className: "min-h-[76px] font-mono text-[11px]",
@@ -97730,6 +98863,7 @@ function ProviderUsageSettings({
   const [newApiUserId, setNewApiUserId] = (0, import_react28.useState)("");
   const modeOptions = translateOptions(providerAccountModeOptions, t);
   const globalBaseUrl = providerGlobalBaseUrlForProbe(draft.baseUrl, probe, draft.selectedProtocols);
+  const usageApiKey = providerConnectivityApiKeyFromDraft(draft);
   const showNewApiUserBalanceTemplate = probe?.detectedProvider === "new-api" || draft.accountConnectorsText.includes("new-api-key-usage") || draft.accountConnectorsText.includes("new-api-user-self");
   (0, import_react28.useEffect)(() => {
     setTestResult(void 0);
@@ -97746,7 +98880,7 @@ function ProviderUsageSettings({
       return;
     }
     const safetyIssue = providerAccountConnectorApiKeySafetyIssue(connector, {
-      apiKey: draft.apiKey,
+      apiKey: usageApiKey,
       baseUrl: globalBaseUrl,
       providerName: draft.name.trim(),
       providerPresetId: draft.presetId
@@ -97759,7 +98893,7 @@ function ProviderUsageSettings({
     setTestError("");
     try {
       const result = await window.ccr.testProviderAccountConnector({
-        apiKey: draft.apiKey.trim(),
+        apiKey: usageApiKey,
         baseUrl: draft.baseUrl.trim(),
         connector,
         providerName: draft.name.trim()
@@ -97784,19 +98918,19 @@ function ProviderUsageSettings({
       )
     });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "sm:col-span-2 space-y-3 rounded-md border border-border bg-background/60 p-3", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "flex min-w-0 flex-wrap items-center justify-between gap-3", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Label, { className: "flex min-w-0 items-center gap-2 text-[12px] font-semibold", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "sm:col-span-2 space-y-3 rounded-md border border-border bg-background/60 p-3", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "flex min-w-0 flex-wrap items-center justify-between gap-3", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Label, { className: "flex min-w-0 items-center gap-2 text-[12px] font-semibold", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
         Checkbox,
         {
           checked: draft.accountEnabled,
           onCheckedChange: (checked) => onChange({ accountEnabled: checked })
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "min-w-0 truncate", children: t("Fetch usage") })
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 truncate", children: t("Fetch usage") })
     ] }) }),
-    draft.accountEnabled ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "grid grid-cols-1 gap-3 sm:grid-cols-2", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { label: t("Usage mode"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+    draft.accountEnabled ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "grid grid-cols-1 gap-3 sm:grid-cols-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Usage mode"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
         SelectControl,
         {
           onChange: (accountMode) => onChange({ accountMode }),
@@ -97804,7 +98938,7 @@ function ProviderUsageSettings({
           value: draft.accountMode
         }
       ) }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { label: t("Refresh interval ms"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Refresh interval ms"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
         Input,
         {
           min: 3e4,
@@ -97814,15 +98948,15 @@ function ProviderUsageSettings({
           onChange: (event) => onChange({ accountRefreshIntervalMs: event.target.value })
         }
       ) }),
-      draft.accountMode === "standard" ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "sm:col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px] leading-4 text-muted-foreground", children: [
+      draft.accountMode === "standard" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "sm:col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px] leading-4 text-muted-foreground", children: [
         t("Standard usage endpoint will try provider-hosted CCR account endpoints."),
-        customEndpoint ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("span", { children: [
+        customEndpoint ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("span", { children: [
           " ",
           t("Switch to HTTP JSON request to configure method, URL, headers, body, and response fields.")
         ] }) : null
       ] }) : null,
-      draft.accountMode === "http-json" ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "sm:col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { label: t("Method"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+      draft.accountMode === "http-json" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "sm:col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Method"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
           SelectControl,
           {
             onChange: (usageRequestMethod) => onChange({ usageRequestMethod }),
@@ -97830,7 +98964,7 @@ function ProviderUsageSettings({
             value: draft.usageRequestMethod
           }
         ) }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { label: t("Usage request URL"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Usage request URL"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
           Input,
           {
             placeholder: "https://api.vendor.com/account",
@@ -97838,7 +98972,7 @@ function ProviderUsageSettings({
             onChange: (event) => onChange({ usageRequestUrl: event.target.value })
           }
         ) }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { className: "sm:col-span-2", label: t("Headers"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { className: "sm:col-span-2", label: t("Headers"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
           KeyValueRowsControl,
           {
             addLabel: t("Add header"),
@@ -97846,7 +98980,7 @@ function ProviderUsageSettings({
             onChange: (usageRequestHeaders) => onChange({ usageRequestHeaders })
           }
         ) }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { className: "sm:col-span-2", label: t("Body"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { className: "sm:col-span-2", label: t("Body"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
           Textarea,
           {
             className: "min-h-[92px] font-mono text-[11px]",
@@ -97857,32 +98991,32 @@ function ProviderUsageSettings({
             onChange: (event) => onChange({ usageRequestBodyText: event.target.value })
           }
         ) }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { label: t("Balance remaining field"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Input, { placeholder: "$.balance.remaining", value: draft.usageBalanceRemainingPath, onChange: (event) => onChange({ usageBalanceRemainingPath: event.target.value }) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { label: t("Balance total field"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Input, { placeholder: "$.totalCredits", value: draft.usageBalanceLimitPath, onChange: (event) => onChange({ usageBalanceLimitPath: event.target.value }) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { label: t("Balance used field"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Input, { placeholder: "$.totalUsage", value: draft.usageBalanceUsedPath, onChange: (event) => onChange({ usageBalanceUsedPath: event.target.value }) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { label: t("Balance unit"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Input, { placeholder: "USD", value: draft.usageBalanceUnit, onChange: (event) => onChange({ usageBalanceUnit: event.target.value }) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { label: t("Subscription remaining field"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Input, { placeholder: "$.subscription.remaining", value: draft.usageSubscriptionRemainingPath, onChange: (event) => onChange({ usageSubscriptionRemainingPath: event.target.value }) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { label: t("Subscription limit field"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Input, { placeholder: "$.subscription.limit", value: draft.usageSubscriptionLimitPath, onChange: (event) => onChange({ usageSubscriptionLimitPath: event.target.value }) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { label: t("Subscription reset field"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Input, { placeholder: "$.subscription.resetAt", value: draft.usageSubscriptionResetPath, onChange: (event) => onChange({ usageSubscriptionResetPath: event.target.value }) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { label: t("Subscription unit"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Input, { placeholder: "tokens", value: draft.usageSubscriptionUnit, onChange: (event) => onChange({ usageSubscriptionUnit: event.target.value }) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { label: t("Status field"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Input, { placeholder: "$.status", value: draft.usageStatusPath, onChange: (event) => onChange({ usageStatusPath: event.target.value }) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { label: t("Message field"), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Input, { placeholder: "$.message", value: draft.usageMessagePath, onChange: (event) => onChange({ usageMessagePath: event.target.value }) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "sm:col-span-2 flex flex-wrap items-center gap-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Button, { disabled: testLoading, onClick: () => void testUsageRequest(), size: "sm", type: "button", variant: "outline", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(AnimatedIconSwap, { iconKey: testLoading ? "testing" : "check", children: testLoading ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3.5 w-3.5 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.ShieldCheck, { className: "h-3.5 w-3.5" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Balance remaining field"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Input, { placeholder: "$.balance.remaining", value: draft.usageBalanceRemainingPath, onChange: (event) => onChange({ usageBalanceRemainingPath: event.target.value }) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Balance total field"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Input, { placeholder: "$.totalCredits", value: draft.usageBalanceLimitPath, onChange: (event) => onChange({ usageBalanceLimitPath: event.target.value }) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Balance used field"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Input, { placeholder: "$.totalUsage", value: draft.usageBalanceUsedPath, onChange: (event) => onChange({ usageBalanceUsedPath: event.target.value }) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Balance unit"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Input, { placeholder: "USD", value: draft.usageBalanceUnit, onChange: (event) => onChange({ usageBalanceUnit: event.target.value }) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Subscription remaining field"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Input, { placeholder: "$.subscription.remaining", value: draft.usageSubscriptionRemainingPath, onChange: (event) => onChange({ usageSubscriptionRemainingPath: event.target.value }) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Subscription limit field"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Input, { placeholder: "$.subscription.limit", value: draft.usageSubscriptionLimitPath, onChange: (event) => onChange({ usageSubscriptionLimitPath: event.target.value }) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Subscription reset field"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Input, { placeholder: "$.subscription.resetAt", value: draft.usageSubscriptionResetPath, onChange: (event) => onChange({ usageSubscriptionResetPath: event.target.value }) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Subscription unit"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Input, { placeholder: "tokens", value: draft.usageSubscriptionUnit, onChange: (event) => onChange({ usageSubscriptionUnit: event.target.value }) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Status field"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Input, { placeholder: "$.status", value: draft.usageStatusPath, onChange: (event) => onChange({ usageStatusPath: event.target.value }) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Message field"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Input, { placeholder: "$.message", value: draft.usageMessagePath, onChange: (event) => onChange({ usageMessagePath: event.target.value }) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "sm:col-span-2 flex flex-wrap items-center gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Button, { disabled: testLoading, onClick: () => void testUsageRequest(), size: "sm", type: "button", variant: "outline", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatedIconSwap, { iconKey: testLoading ? "testing" : "check", children: testLoading ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3.5 w-3.5 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ShieldCheck, { className: "h-3.5 w-3.5" }) }),
             t("Test usage request")
           ] }),
-          testResult ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Badge, { variant: testResult.meters.length > 0 ? "success" : "outline", children: [
+          testResult ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Badge, { variant: testResult.meters.length > 0 ? "success" : "outline", children: [
             testResult.meters.length,
             " ",
             t("meters")
           ] }) : null
         ] }),
-        testResult ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ProviderUsageTestResultPanel, { result: testResult, onSelectPath: selectPath }) : null
+        testResult ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderUsageTestResultPanel, { result: testResult, onSelectPath: selectPath }) : null
       ] }) : null,
-      draft.accountMode === "raw" ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "sm:col-span-2 space-y-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Field, { label: t("Connectors JSON"), children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+      draft.accountMode === "raw" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "sm:col-span-2 space-y-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Field, { label: t("Connectors JSON"), children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
             Textarea,
             {
               className: "min-h-[180px] font-mono text-[11px]",
@@ -97890,9 +99024,9 @@ function ProviderUsageSettings({
               onChange: (event) => onChange({ accountConnectorsText: event.target.value })
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2 text-[11px] text-muted-foreground", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "min-w-0 truncate", children: t("Supports standard, http-json, plugin, and local-estimate connectors.") }),
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2 text-[11px] text-muted-foreground", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 truncate", children: t("Supports standard, http-json, plugin, and local-estimate connectors.") }),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
               "button",
               {
                 className: "shrink-0 text-primary hover:underline",
@@ -97903,10 +99037,10 @@ function ProviderUsageSettings({
             )
           ] })
         ] }),
-        showNewApiUserBalanceTemplate ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "grid grid-cols-1 items-end gap-2 rounded-md border border-border/60 bg-muted/20 p-2 sm:grid-cols-[minmax(0,1fr)_auto]", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "min-w-0 space-y-1", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Label, { className: "text-[11px] font-medium text-muted-foreground", children: t("New API user ID") }),
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+        showNewApiUserBalanceTemplate ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "grid grid-cols-1 items-end gap-2 rounded-md border border-border/60 bg-muted/20 p-2 sm:grid-cols-[minmax(0,1fr)_auto]", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0 space-y-1", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Label, { className: "text-[11px] font-medium text-muted-foreground", children: t("New API user ID") }),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
               Input,
               {
                 placeholder: "<user-id>",
@@ -97915,13 +99049,13 @@ function ProviderUsageSettings({
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { size: "sm", type: "button", variant: "outline", onClick: insertNewApiUserBalanceTemplate, children: t("Insert New API user balance") })
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { size: "sm", type: "button", variant: "outline", onClick: insertNewApiUserBalanceTemplate, children: t("Insert New API user balance") })
         ] }) : null
       ] }) : null
     ] }) : null,
-    testError ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.CircleAlert, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { children: t(testError) })
+    testError ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.CircleAlert, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: t(testError) })
     ] }) : null
   ] });
 }
@@ -97931,14 +99065,14 @@ function ProviderUsageTestResultPanel({
 }) {
   const t = useAppText();
   const visiblePaths = result.paths.slice(0, 120);
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "sm:col-span-2 rounded-md border border-border bg-muted/20", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2 border-b border-border px-3 py-2", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "min-w-0 truncate text-[12px] font-semibold", children: t("Response fields") }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Badge, { variant: "outline", children: result.paths.length })
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "sm:col-span-2 rounded-md border border-border bg-muted/20", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2 border-b border-border px-3 py-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-w-0 truncate text-[12px] font-semibold", children: t("Response fields") }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant: "outline", children: result.paths.length })
     ] }),
-    visiblePaths.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "px-3 py-6 text-center text-[12px] text-muted-foreground", children: t("No response fields") }) : /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "max-h-[260px] overflow-auto p-2", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "space-y-1.5", children: visiblePaths.map((item) => /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ProviderUsagePathRow, { item, onSelectPath }, item.path)) }),
-      result.paths.length > visiblePaths.length ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "px-1 py-2 text-[11px] text-muted-foreground", children: t("Showing first response fields only.") }) : null
+    visiblePaths.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "px-3 py-6 text-center text-[12px] text-muted-foreground", children: t("No response fields") }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "max-h-[260px] overflow-auto p-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "space-y-1.5", children: visiblePaths.map((item) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderUsagePathRow, { item, onSelectPath }, item.path)) }),
+      result.paths.length > visiblePaths.length ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "px-1 py-2 text-[11px] text-muted-foreground", children: t("Showing first response fields only.") }) : null
     ] })
   ] });
 }
@@ -97947,19 +99081,19 @@ function ProviderUsagePathRow({
   onSelectPath
 }) {
   const t = useAppText();
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "grid min-w-0 grid-cols-[minmax(180px,1fr)_minmax(120px,0.6fr)_auto] items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5 text-[11px]", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "min-w-0", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "truncate font-mono font-semibold", title: item.path, children: item.path }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "truncate text-muted-foreground", title: item.preview, children: item.preview })
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "grid min-w-0 grid-cols-[minmax(180px,1fr)_minmax(120px,0.6fr)_auto] items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5 text-[11px]", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate font-mono font-semibold", title: item.path, children: item.path }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-muted-foreground", title: item.preview, children: item.preview })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Badge, { className: "justify-self-start", variant: "outline", children: item.type }),
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex flex-wrap justify-end gap-1", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { className: "h-6 px-1.5 text-[10px]", onClick: () => onSelectPath("balance", item.path), type: "button", variant: "outline", children: t("Balance rem") }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { className: "h-6 px-1.5 text-[10px]", onClick: () => onSelectPath("balanceLimit", item.path), type: "button", variant: "outline", children: t("Balance total") }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { className: "h-6 px-1.5 text-[10px]", onClick: () => onSelectPath("balanceUsed", item.path), type: "button", variant: "outline", children: t("Balance used") }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { className: "h-6 px-1.5 text-[10px]", onClick: () => onSelectPath("subscriptionRemaining", item.path), type: "button", variant: "outline", children: t("Sub rem") }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { className: "h-6 px-1.5 text-[10px]", onClick: () => onSelectPath("subscriptionLimit", item.path), type: "button", variant: "outline", children: t("Sub limit") }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { className: "h-6 px-1.5 text-[10px]", onClick: () => onSelectPath("subscriptionReset", item.path), type: "button", variant: "outline", children: t("Reset") })
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { className: "justify-self-start", variant: "outline", children: item.type }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex flex-wrap justify-end gap-1", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { className: "h-6 px-1.5 text-[10px]", onClick: () => onSelectPath("balance", item.path), type: "button", variant: "outline", children: t("Balance rem") }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { className: "h-6 px-1.5 text-[10px]", onClick: () => onSelectPath("balanceLimit", item.path), type: "button", variant: "outline", children: t("Balance total") }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { className: "h-6 px-1.5 text-[10px]", onClick: () => onSelectPath("balanceUsed", item.path), type: "button", variant: "outline", children: t("Balance used") }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { className: "h-6 px-1.5 text-[10px]", onClick: () => onSelectPath("subscriptionRemaining", item.path), type: "button", variant: "outline", children: t("Sub rem") }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { className: "h-6 px-1.5 text-[10px]", onClick: () => onSelectPath("subscriptionLimit", item.path), type: "button", variant: "outline", children: t("Sub limit") }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { className: "h-6 px-1.5 text-[10px]", onClick: () => onSelectPath("subscriptionReset", item.path), type: "button", variant: "outline", children: t("Reset") })
     ] })
   ] });
 }
@@ -97989,9 +99123,66 @@ function AddProviderDialog({
   const [submitting, setSubmitting] = (0, import_react28.useState)(false);
   const [checkModelSelection, setCheckModelSelection] = (0, import_react28.useState)([]);
   const [checkResult, setCheckResult] = (0, import_react28.useState)();
+  const [activeStep, setActiveStep] = (0, import_react28.useState)("provider");
   const checkModels = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
   const submitLoading = probeLoading || connectivityLoading || iconDetecting || submitting;
   const submitDisabled = !canSubmit || submitLoading;
+  const wizardMode = mode === "add";
+  const selectedPreset = findProviderPreset(draft.presetId);
+  const localAgentImport = draft.providerPlugins.length > 0;
+  const providerIdentityReady = Boolean(importProvider) || Boolean(selectedPreset || draft.baseUrl.trim());
+  const credentialPoolReady = providerDraftHasReadyCredentialPool(draft);
+  const credentialReady = localAgentImport || Boolean(
+    draft.credentialMode === "pool" ? credentialPoolReady : draft.apiKey.trim()
+  );
+  const modelsReady = checkModels.length > 0;
+  const activeStepIndex = Math.max(0, providerSetupStepIds.indexOf(activeStep));
+  const previousStep = wizardMode ? providerSetupStepIds[activeStepIndex - 1] : void 0;
+  const nextStep = wizardMode ? providerSetupStepIds[activeStepIndex + 1] : void 0;
+  const nextDisabled = submitting || !providerDialogStepReady(activeStep);
+  const finalWizardSubmit = wizardMode && !nextStep && mode === "add";
+  (0, import_react28.useEffect)(() => {
+    if (!wizardMode || providerDialogStepUnlocked(activeStep)) {
+      return;
+    }
+    const latestUnlockedStep = [...providerSetupStepIds].reverse().find(providerDialogStepUnlocked) ?? "provider";
+    setActiveStep(latestUnlockedStep);
+  }, [activeStep, credentialReady, modelsReady, providerIdentityReady, wizardMode]);
+  function providerDialogStepReady(step) {
+    switch (step) {
+      case "provider":
+        return providerIdentityReady;
+      case "credentials":
+        return credentialReady;
+      case "models":
+        return modelsReady;
+      case "verify":
+        return true;
+    }
+  }
+  function providerDialogStepUnlocked(step) {
+    switch (step) {
+      case "provider":
+        return true;
+      case "credentials":
+        return providerIdentityReady;
+      case "models":
+        return providerIdentityReady && credentialReady;
+      case "verify":
+        return providerIdentityReady && credentialReady && modelsReady;
+    }
+  }
+  function selectSetupStep(step) {
+    if (providerDialogStepUnlocked(step)) {
+      setActiveStep(step);
+    }
+  }
+  function goToNextStep() {
+    if (!nextStep || nextDisabled) {
+      return;
+    }
+    setActiveStep(nextStep);
+  }
   function openCheckConfirm() {
     setCheckModelSelection(checkModels);
     setCheckResult(void 0);
@@ -98029,42 +99220,72 @@ function AddProviderDialog({
       throw error2;
     }
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(import_jsx_runtime21.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Dialog, { className: "items-start", onOpenChange: (open) => !open && !submitting && onClose(), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(DialogContent, { className: "mt-[clamp(8px,2dvh,20px)] h-[calc(100dvh-1.5rem-clamp(8px,2dvh,20px))] max-w-[820px] origin-top sm:mt-[clamp(8px,3dvh,28px)] sm:h-[min(860px,calc(100dvh-3rem-clamp(8px,3dvh,28px)))]", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(DialogHeader, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(DialogTitle, { children: title ?? (mode === "edit" ? t("Edit Provider") : t("Add Provider")) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { "aria-label": t("Close dialog"), disabled: submitting, onClick: onClose, size: "iconSm", title: t("Close"), type: "button", variant: "ghost", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.X, { className: "h-4 w-4" }) })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(DialogBody, { children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
-        AddProviderForm,
-        {
-          connectivityLoading,
-          connectivityProbe,
-          draft,
-          error,
-          importProvider,
-          mode,
-          onCheck: onCheck ? async () => openCheckConfirm() : void 0,
-          onChange,
-          onIconDetectingChange: setIconDetecting,
-          probe,
-          probeLoading,
-          providerPlugins,
-          providers
-        }
-      ) }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(DialogFooter, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { disabled: submitting, onClick: onClose, type: "button", variant: "outline", children: t("Cancel") }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Button, { disabled: submitDisabled, onClick: () => void submit(), type: "button", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(AnimatedIconSwap, { iconKey: submitLoading ? "loading" : mode, children: submitLoading ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.LoaderCircle, { className: "h-4 w-4 animate-spin" }) : mode === "edit" ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Check, { className: "h-4 w-4" }) : /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Plus, { className: "h-4 w-4" }) }),
-          submitLoading ? t("Loading") : submitLabel ?? (mode === "edit" ? t("Save") : t("Add"))
-        ] })
-      ] })
-    ] }) }),
-    checkConfirmOpen ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Dialog, { className: "z-[110]", onOpenChange: (open) => !open && !checkConfirmBusy && setCheckConfirmOpen(false), children: /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(DialogContent, { className: "max-w-[520px]", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(DialogHeader, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(DialogTitle, { children: t("Check Connection") }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Dialog, { onOpenChange: (open) => !open && !submitting && onClose(), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+      DialogContent,
+      {
+        className: cn(
+          "origin-center border-border/70 bg-background shadow-[0_18px_70px_rgba(15,23,42,0.16)]",
+          wizardMode ? "h-[calc(100dvh-1.5rem)] w-[calc(100vw-1.5rem)] max-h-none max-w-none sm:h-[min(760px,calc(100dvh-3rem))] sm:w-[min(1040px,calc(100vw-3rem))]" : "h-[calc(100dvh-1.5rem-clamp(8px,2dvh,20px))] max-w-[820px] sm:h-[min(860px,calc(100dvh-3rem-clamp(8px,3dvh,28px)))]"
+        ),
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(DialogHeader, { className: cn("h-11", wizardMode && "border-b-0"), children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(DialogTitle, { children: title ?? (mode === "edit" ? t("Edit Provider") : t("Add Provider")) }),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { "aria-label": t("Close dialog"), disabled: submitting, onClick: onClose, size: "iconSm", title: t("Close"), type: "button", variant: "ghost", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.X, { className: "h-4 w-4" }) })
+          ] }),
+          wizardMode ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+            ProviderSetupProgress,
+            {
+              activeStep,
+              className: "w-full",
+              credentialReady,
+              modelsReady,
+              providerReady: providerIdentityReady,
+              variant: "divider",
+              verified: localAgentImport || providerProbeHasSupportedProtocol(connectivityProbe)
+            }
+          ) : null,
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(DialogBody, { className: "bg-background px-5 py-4", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+            AddProviderForm,
+            {
+              activeStep: wizardMode ? activeStep : void 0,
+              connectivityLoading,
+              connectivityProbe,
+              draft,
+              error,
+              hideSetupProgress: !wizardMode,
+              importProvider,
+              mode,
+              onCheck: onCheck ? async () => openCheckConfirm() : void 0,
+              onChange,
+              onIconDetectingChange: setIconDetecting,
+              onSelectStep: wizardMode ? selectSetupStep : void 0,
+              probe,
+              probeLoading,
+              providerPlugins,
+              providers
+            }
+          ) }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(DialogFooter, { className: cn("px-5 py-3", wizardMode && previousStep && "justify-between"), children: [
+            wizardMode && previousStep ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Button, { disabled: submitting, onClick: () => setActiveStep(previousStep), type: "button", variant: "outline", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ChevronLeft, { className: "h-4 w-4" }),
+              t("Previous")
+            ] }) : null,
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "flex min-w-0 flex-wrap items-center justify-end gap-2", children: wizardMode && nextStep ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Button, { disabled: nextDisabled, onClick: goToNextStep, type: "button", children: [
+              t("Next"),
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ChevronRight, { className: "h-4 w-4" })
+            ] }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Button, { disabled: submitDisabled, onClick: () => void submit(), type: "button", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatedIconSwap, { iconKey: submitLoading ? "loading" : finalWizardSubmit ? "done" : mode, children: submitLoading ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.LoaderCircle, { className: "h-4 w-4 animate-spin" }) : mode === "edit" || finalWizardSubmit ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Check, { className: "h-4 w-4" }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Plus, { className: "h-4 w-4" }) }),
+              submitLoading ? t("Loading") : submitLabel ?? (finalWizardSubmit ? t("Done") : mode === "edit" ? t("Save") : t("Add"))
+            ] }) })
+          ] })
+        ]
+      }
+    ) }),
+    checkConfirmOpen ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Dialog, { className: "z-[110]", onOpenChange: (open) => !open && !checkConfirmBusy && setCheckConfirmOpen(false), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(DialogContent, { className: "max-w-[520px]", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(DialogHeader, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(DialogTitle, { children: t("Check Connection") }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
           Button,
           {
             "aria-label": t("Close dialog"),
@@ -98074,35 +99295,35 @@ function AddProviderDialog({
             title: t("Close"),
             type: "button",
             variant: "ghost",
-            children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.X, { className: "h-4 w-4" })
+            children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.X, { className: "h-4 w-4" })
           }
         )
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(DialogBody, { children: /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "space-y-3", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex items-start gap-2 text-[12px] font-medium text-amber-900 dark:text-amber-100", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.CircleAlert, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { children: t("This check sends real model requests with your provider API key and may consume account balance.") })
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(DialogBody, { children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "space-y-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex items-start gap-2 text-[12px] font-medium text-amber-900 dark:text-amber-100", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.CircleAlert, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: t("This check sends real model requests with your provider API key and may consume account balance.") })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "mt-2 text-[11px] leading-4 text-muted-foreground", children: t("Generated output is limited to 1 token for connectivity checks.") })
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-2 text-[11px] leading-4 text-muted-foreground", children: t("Generated output is limited to 1 token for connectivity checks.") })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "rounded-md border border-border bg-background p-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "min-w-0 truncate text-[12px] font-semibold", children: t("Models to check") }),
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex shrink-0 gap-1", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { className: "h-6 px-1.5 text-[10px]", disabled: checkConfirmBusy || connectivityLoading || checkModels.length === 0, onClick: () => {
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "rounded-md border border-border bg-background p-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-w-0 truncate text-[12px] font-semibold", children: t("Models to check") }),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex shrink-0 gap-1", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { className: "h-6 px-1.5 text-[10px]", disabled: checkConfirmBusy || connectivityLoading || checkModels.length === 0, onClick: () => {
                 setCheckModelSelection(checkModels);
                 setCheckResult(void 0);
               }, type: "button", variant: "outline", children: t("All") }),
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { className: "h-6 px-1.5 text-[10px]", disabled: checkConfirmBusy || connectivityLoading || checkModelSelection.length === 0, onClick: () => {
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { className: "h-6 px-1.5 text-[10px]", disabled: checkConfirmBusy || connectivityLoading || checkModelSelection.length === 0, onClick: () => {
                 setCheckModelSelection([]);
                 setCheckResult(void 0);
               }, type: "button", variant: "outline", children: t("Clear") })
             ] })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "max-h-[180px] overflow-auto", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "grid grid-cols-1 gap-2", children: checkModels.map((model) => {
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "max-h-[180px] overflow-auto", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "grid grid-cols-1 gap-2", children: checkModels.map((model) => {
             const checked = checkModelSelection.includes(model);
-            return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(
+            return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
               Label,
               {
                 className: cn(
@@ -98110,20 +99331,20 @@ function AddProviderDialog({
                   checked && "border-primary bg-accent"
                 ),
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Checkbox, { checked, disabled: checkConfirmBusy || connectivityLoading, onCheckedChange: () => toggleCheckModel(model) }),
-                  /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "min-w-0 flex-1 truncate font-mono text-[11px]", title: model, children: model })
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Checkbox, { checked, disabled: checkConfirmBusy || connectivityLoading, onCheckedChange: () => toggleCheckModel(model) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 flex-1 truncate font-mono text-[11px]", title: model, children: model })
                 ]
               },
               model
             );
           }) }) })
         ] }),
-        checkResult ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ProviderConnectivityResultPanel, { result: checkResult }) : null
+        checkResult ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderConnectivityResultPanel, { result: checkResult }) : null
       ] }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(DialogFooter, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { disabled: checkConfirmBusy, onClick: () => setCheckConfirmOpen(false), type: "button", variant: "outline", children: checkResult ? t("Close") : t("Cancel") }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Button, { disabled: checkConfirmBusy || connectivityLoading || checkModelSelection.length === 0, onClick: () => void confirmCheck(), type: "button", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(AnimatedIconSwap, { iconKey: checkConfirmBusy || connectivityLoading ? "checking" : "start", children: checkConfirmBusy || connectivityLoading ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.LoaderCircle, { className: "h-4 w-4 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.ShieldCheck, { className: "h-4 w-4" }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(DialogFooter, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { disabled: checkConfirmBusy, onClick: () => setCheckConfirmOpen(false), type: "button", variant: "outline", children: checkResult ? t("Close") : t("Cancel") }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Button, { disabled: checkConfirmBusy || connectivityLoading || checkModelSelection.length === 0, onClick: () => void confirmCheck(), type: "button", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatedIconSwap, { iconKey: checkConfirmBusy || connectivityLoading ? "checking" : "start", children: checkConfirmBusy || connectivityLoading ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.LoaderCircle, { className: "h-4 w-4 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ShieldCheck, { className: "h-4 w-4" }) }),
           t("Start check")
         ] })
       ] })
@@ -98132,24 +99353,24 @@ function AddProviderDialog({
 }
 function ProviderConnectivityResultPanel({ result }) {
   const t = useAppText();
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "rounded-md border border-border bg-muted/20", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2 border-b border-border px-3 py-2", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "min-w-0 truncate text-[12px] font-semibold", children: t("Check results") }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex shrink-0 gap-1", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Badge, { variant: result.passed.length > 0 ? "success" : "outline", children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "rounded-md border border-border bg-muted/20", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2 border-b border-border px-3 py-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-w-0 truncate text-[12px] font-semibold", children: t("Check results") }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex shrink-0 gap-1", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Badge, { variant: result.passed.length > 0 ? "success" : "outline", children: [
           result.passed.length,
           " ",
           t("Available")
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Badge, { variant: result.failed.length > 0 ? "warning" : "outline", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Badge, { variant: result.failed.length > 0 ? "warning" : "outline", children: [
           result.failed.length,
           " ",
           t("Unavailable")
         ] })
       ] })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "max-h-[220px] overflow-auto p-2", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "max-h-[220px] overflow-auto p-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
         ProviderConnectivityResultGroup,
         {
           emptyLabel: t("No available models"),
@@ -98158,7 +99379,7 @@ function ProviderConnectivityResultPanel({ result }) {
           variant: "success"
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
         ProviderConnectivityResultGroup,
         {
           className: "mt-2",
@@ -98179,75 +99400,19 @@ function ProviderConnectivityResultGroup({
   variant
 }) {
   const t = useAppText();
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "mb-1 min-w-0 text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "min-w-0 truncate", children: label }) }),
-    items.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "rounded-md border border-dashed border-border bg-background/70 px-2 py-2 text-center text-[11px] text-muted-foreground", children: emptyLabel }) : /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "space-y-1.5", children: items.map((item) => {
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mb-1 min-w-0 text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 truncate", children: label }) }),
+    items.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "rounded-md border border-dashed border-border bg-background/70 px-2 py-2 text-center text-[11px] text-muted-foreground", children: emptyLabel }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "space-y-1.5", children: items.map((item) => {
       const supportedProtocols = item.protocols.filter((protocol) => protocol.supported);
-      return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "min-w-0 rounded-md border border-border bg-background px-2 py-1.5 text-[11px]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "min-w-0 truncate font-mono font-semibold", title: item.model, children: item.model }),
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Badge, { variant, children: item.supported ? t("Available") : t("Unavailable") })
+      return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0 rounded-md border border-border bg-background px-2 py-1.5 text-[11px]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 truncate font-mono font-semibold", title: item.model, children: item.model }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant, children: item.supported ? t("Available") : t("Unavailable") })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "mt-1 truncate text-muted-foreground", title: translateProbeProtocolMessage(item.message, t), children: translateProbeProtocolMessage(item.message, t) }),
-        supportedProtocols.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "mt-1 flex flex-wrap gap-1", children: supportedProtocols.map((protocol) => /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Badge, { variant: "outline", children: translatedProviderProtocolLabel(protocol.protocol, t) }, `${item.model}:${protocol.protocol}:${protocol.endpoint}`)) }) : null
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-1 truncate text-muted-foreground", title: translateProbeProtocolMessage(item.message, t), children: translateProbeProtocolMessage(item.message, t) }),
+        supportedProtocols.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-1 flex flex-wrap gap-1", children: supportedProtocols.map((protocol) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant: "outline", children: translatedProviderProtocolLabel(protocol.protocol, t) }, `${item.model}:${protocol.protocol}:${protocol.endpoint}`)) }) : null
       ] }, item.model);
     }) })
-  ] });
-}
-function ModelTagInput({
-  ariaLabel,
-  displayNames,
-  onChange,
-  placeholder,
-  value
-}) {
-  const t = useAppText();
-  const [draft, setDraft] = (0, import_react28.useState)("");
-  const models = mergeProviderModelLists(value);
-  function addModels(rawValue = draft) {
-    const nextModels = splitModelTagInput(rawValue);
-    if (nextModels.length === 0) {
-      return;
-    }
-    onChange(mergeProviderModelLists(models, nextModels));
-    setDraft("");
-  }
-  function removeModel(model) {
-    onChange(models.filter((item) => item !== model));
-  }
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(import_jsx_runtime21.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
-      Input,
-      {
-        "aria-label": ariaLabel,
-        onChange: (event) => setDraft(event.target.value),
-        onKeyDown: (event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            addModels();
-          }
-        },
-        placeholder,
-        value: draft
-      }
-    ),
-    models.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "flex max-h-[120px] flex-wrap gap-1.5 overflow-auto", children: models.map((model) => {
-      const displayName = displayNames?.[model] ?? model;
-      return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Badge, { className: "max-w-full pr-1", variant: "secondary", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "min-w-0 max-w-[260px] truncate", title: displayName, children: displayName }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
-          "button",
-          {
-            "aria-label": `${t("Remove model")} ${displayName}`,
-            className: "inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25",
-            onClick: () => removeModel(model),
-            title: t("Remove model"),
-            type: "button",
-            children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.X, { className: "h-3 w-3" })
-          }
-        )
-      ] }, model);
-    }) }) : null
   ] });
 }
 var providerReasoningLevelOptions = [
@@ -98258,18 +99423,374 @@ var providerReasoningLevelOptions = [
   { description: "Max", effort: "max", label: "Max" },
   { description: "Ultra", effort: "ultra", label: "Ultra" }
 ];
-function ModelMetadataEditor({
+function ProviderModelPicker({
+  catalogModels,
   defaults,
   displayNames,
+  loading = false,
+  metadata,
+  onMetadataChange,
+  onQueryChange,
+  onSelectedChange,
+  query,
+  selected
+}) {
+  const t = useAppText();
+  const [addedQuery, setAddedQuery] = (0, import_react28.useState)("");
+  const [customModel, setCustomModel] = (0, import_react28.useState)("");
+  const [customModelEditing, setCustomModelEditing] = (0, import_react28.useState)(false);
+  const [customModelReturning, setCustomModelReturning] = (0, import_react28.useState)(false);
+  const [addedControlsWidth, setAddedControlsWidth] = (0, import_react28.useState)(136);
+  const addedControlsRef = (0, import_react28.useRef)(null);
+  const customModelInputRef = (0, import_react28.useRef)(null);
+  const catalog = mergeProviderModelLists(catalogModels);
+  const selectedModels = mergeProviderModelLists(selected);
+  const selectedModelSet = new Set(selectedModels);
+  const sourceQuery = query.trim().toLowerCase();
+  const targetQuery = addedQuery.trim().toLowerCase();
+  const visibleCatalogModels = sourceQuery ? catalog.filter((model) => providerModelMatchesSearch(model, sourceQuery, displayNames)) : catalog;
+  const visibleAddedModels = targetQuery ? selectedModels.filter((model) => providerModelMatchesSearch(model, targetQuery, displayNames)) : selectedModels;
+  const trimmedCustomModel = customModel.trim();
+  const customModelExists = selectedModels.some((model) => model.toLowerCase() === trimmedCustomModel.toLowerCase());
+  const canAddCustomModel = Boolean(trimmedCustomModel && !customModelExists);
+  const customModelButtonWidth = 136;
+  const customModelControlGap = 8;
+  const customModelEditorWidth = Math.max(customModelButtonWidth, addedControlsWidth);
+  const returningSearchWidth = Math.max(0, customModelEditorWidth - customModelButtonWidth - customModelControlGap);
+  function addCatalogModel(model) {
+    if (selectedModelSet.has(model)) {
+      return;
+    }
+    onSelectedChange(mergeProviderModelLists(selectedModels, [model]));
+  }
+  function addCustomModel() {
+    if (!canAddCustomModel) {
+      return;
+    }
+    onSelectedChange(mergeProviderModelLists(selectedModels, [trimmedCustomModel]));
+    setCustomModel("");
+    closeCustomModelEditor();
+  }
+  function cancelCustomModel() {
+    setCustomModel("");
+    closeCustomModelEditor();
+  }
+  function closeCustomModelEditor() {
+    setCustomModelReturning(true);
+    setCustomModelEditing(false);
+  }
+  function removeModel(model) {
+    onSelectedChange(selectedModels.filter((item) => item !== model));
+    if (!metadata?.[model]) {
+      return;
+    }
+    const nextMetadata = { ...metadata };
+    delete nextMetadata[model];
+    onMetadataChange(Object.keys(nextMetadata).length > 0 ? nextMetadata : void 0);
+  }
+  useClientLayoutEffect(() => {
+    const node = addedControlsRef.current;
+    if (!node) {
+      return;
+    }
+    const updateWidth = () => {
+      setAddedControlsWidth(Math.max(136, Math.round(node.getBoundingClientRect().width)));
+    };
+    updateWidth();
+    const observer2 = typeof ResizeObserver === "undefined" ? void 0 : new ResizeObserver(updateWidth);
+    observer2?.observe(node);
+    window.addEventListener("resize", updateWidth);
+    return () => {
+      observer2?.disconnect();
+      window.removeEventListener("resize", updateWidth);
+    };
+  }, [loading]);
+  (0, import_react28.useEffect)(() => {
+    if (!customModelEditing) {
+      return;
+    }
+    const focusTimer = window.setTimeout(() => customModelInputRef.current?.focus(), 140);
+    return () => window.clearTimeout(focusTimer);
+  }, [customModelEditing]);
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "grid grid-cols-1 gap-3 lg:h-[min(500px,calc(100dvh-300px))] lg:min-h-[360px] lg:grid-cols-[minmax(0,1fr)_34px_minmax(0,1fr)]", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("section", { className: "flex h-[360px] min-w-0 flex-col overflow-hidden rounded-md border border-border bg-card lg:h-full lg:min-h-0", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2 border-b border-border px-3 py-2.5", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[12px] font-semibold", children: t("Provider models") }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[11px] text-muted-foreground", children: t("Models detected from this provider") })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant: "outline", children: loading ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3 w-3 animate-spin" }) : catalog.length })
+      ] }),
+      !loading ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "border-b border-border p-2", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "relative", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Search, { className: "pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+          Input,
+          {
+            "aria-label": t("Search provider models"),
+            className: "pl-8",
+            onChange: (event) => onQueryChange(event.target.value),
+            placeholder: t("Search provider models"),
+            value: query
+          }
+        )
+      ] }) }) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-h-0 flex-1 overflow-y-auto p-2", children: loading ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderModelListSkeleton, {}) : visibleCatalogModels.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "rounded-md border border-dashed border-border bg-muted/20 px-3 py-8 text-center text-[12px] text-muted-foreground", children: catalog.length === 0 ? t("No provider models") : t("No matching models") }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "space-y-1.5", children: visibleCatalogModels.map((model) => {
+        const label = displayNames?.[model]?.trim() || model;
+        const added = selectedModelSet.has(model);
+        return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+          "button",
+          {
+            className: cn(
+              "flex min-h-10 w-full min-w-0 items-center gap-2 rounded-md border border-border bg-background px-2.5 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
+              added ? "text-muted-foreground" : "hover:bg-muted/50 hover:text-foreground"
+            ),
+            disabled: added,
+            onClick: () => addCatalogModel(model),
+            title: model,
+            type: "button",
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("span", { className: "min-w-0 flex-1", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "block truncate text-[12px] font-medium text-foreground", children: label }),
+                label !== model ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "block truncate font-mono text-[10px] text-muted-foreground", children: model }) : null
+              ] }),
+              added ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Badge, { variant: "secondary", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Check, { className: "h-3 w-3" }),
+                t("Added")
+              ] }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ChevronRight, { className: "h-3.5 w-3.5 shrink-0 text-muted-foreground" })
+            ]
+          },
+          model
+        );
+      }) }) })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "hidden min-h-0 items-center justify-center lg:flex", "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "flex h-8 w-8 items-center justify-center rounded-full border border-border bg-muted/30 text-muted-foreground shadow-sm", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ChevronRight, { className: "h-4 w-4" }) }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("section", { className: "flex h-[360px] min-w-0 flex-col overflow-hidden rounded-md border border-border bg-card lg:h-full lg:min-h-0", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2 border-b border-border px-3 py-2.5", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[12px] font-semibold", children: t("Added models") }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[11px] text-muted-foreground", children: t("Click a model to edit settings") })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant: selectedModels.length > 0 ? "secondary" : "outline", children: selectedModels.length })
+      ] }),
+      !loading ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "border-b border-border p-2", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "relative h-9 min-w-0", ref: addedControlsRef, children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatePresence, { initial: false, mode: "wait", children: customModelEditing ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+        motion.div,
+        {
+          animate: { opacity: 1, width: customModelEditorWidth },
+          className: "absolute inset-y-0 right-0 flex items-center gap-1 overflow-hidden rounded-md border border-input bg-background px-1 shadow-sm",
+          exit: { opacity: 0, width: customModelEditorWidth },
+          initial: { opacity: 0.92, width: customModelButtonWidth },
+          transition: {
+            opacity: { duration: 0.12 },
+            width: { duration: 0.34, ease: [0.22, 1, 0.36, 1] }
+          },
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+              Input,
+              {
+                "aria-label": t("Custom model"),
+                "aria-invalid": customModelExists && trimmedCustomModel ? true : void 0,
+                className: "h-7 min-w-0 flex-1 border-0 bg-transparent px-2 font-mono text-[12px] shadow-none focus-visible:ring-0",
+                onChange: (event) => setCustomModel(event.target.value),
+                onKeyDown: (event) => {
+                  if (event.key === "Enter" && canAddCustomModel) {
+                    event.preventDefault();
+                    addCustomModel();
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    cancelCustomModel();
+                  }
+                },
+                placeholder: customModelExists && trimmedCustomModel ? t("Model already added") : t("Custom model"),
+                ref: customModelInputRef,
+                title: customModelExists && trimmedCustomModel ? t("Model already added") : void 0,
+                value: customModel
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+              Button,
+              {
+                "aria-label": t("Cancel custom model"),
+                className: "h-7 w-7 shrink-0",
+                onClick: cancelCustomModel,
+                size: "iconSm",
+                title: t("Cancel custom model"),
+                type: "button",
+                variant: "ghost",
+                children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.X, { className: "h-3.5 w-3.5" })
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+              Button,
+              {
+                "aria-label": t("Add custom model"),
+                className: "h-7 w-7 shrink-0",
+                disabled: !canAddCustomModel,
+                onClick: addCustomModel,
+                size: "iconSm",
+                title: t("Add custom model"),
+                type: "button",
+                variant: "ghost",
+                children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Check, { className: "h-3.5 w-3.5" })
+              }
+            )
+          ]
+        },
+        "custom-model-input"
+      ) : customModelReturning ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+        motion.div,
+        {
+          animate: { opacity: 1 },
+          className: "absolute inset-y-0 left-0 flex items-center gap-2",
+          exit: { opacity: 0 },
+          initial: { opacity: 1 },
+          transition: { duration: 0.12 },
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+              motion.div,
+              {
+                animate: { width: returningSearchWidth },
+                className: "relative min-w-0 shrink-0 overflow-hidden",
+                initial: { width: 0 },
+                onAnimationComplete: () => setCustomModelReturning(false),
+                transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Search, { className: "pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                    Input,
+                    {
+                      "aria-label": t("Search added models"),
+                      className: "pl-8",
+                      onChange: (event) => setAddedQuery(event.target.value),
+                      placeholder: t("Search added models"),
+                      value: addedQuery
+                    }
+                  )
+                ]
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+              "button",
+              {
+                className: "inline-flex h-9 w-[136px] shrink-0 items-center justify-center gap-2 rounded-md border border-input bg-background px-3 text-[12px] font-medium text-foreground outline-none transition-colors hover:bg-muted/45 focus-visible:ring-2 focus-visible:ring-ring/25",
+                onClick: () => {
+                  setCustomModelReturning(false);
+                  setCustomModelEditing(true);
+                },
+                title: t("Custom model"),
+                type: "button",
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Plus, { className: "h-3.5 w-3.5" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "truncate", children: t("Custom model") })
+                ]
+              }
+            )
+          ]
+        },
+        "search-returning"
+      ) : /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+        motion.div,
+        {
+          animate: { opacity: 1 },
+          className: "absolute inset-0 flex min-w-0 items-center gap-2",
+          exit: { opacity: 0 },
+          initial: { opacity: 0 },
+          transition: { duration: 0.12 },
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "relative min-w-0 flex-1", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Search, { className: "pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" }),
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                Input,
+                {
+                  "aria-label": t("Search added models"),
+                  className: "pl-8",
+                  onChange: (event) => setAddedQuery(event.target.value),
+                  placeholder: t("Search added models"),
+                  value: addedQuery
+                }
+              )
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+              "button",
+              {
+                className: "inline-flex h-9 w-[136px] shrink-0 items-center justify-center gap-2 rounded-md border border-input bg-background px-3 text-[12px] font-medium text-foreground outline-none transition-colors hover:bg-muted/45 focus-visible:ring-2 focus-visible:ring-ring/25",
+                onClick: () => {
+                  setCustomModelReturning(false);
+                  setCustomModelEditing(true);
+                },
+                title: t("Custom model"),
+                type: "button",
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Plus, { className: "h-3.5 w-3.5" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "truncate", children: t("Custom model") })
+                ]
+              }
+            )
+          ]
+        },
+        "search-and-custom-button"
+      ) }) }) }) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-h-0 flex-1 overflow-y-auto p-2", children: loading ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderModelListSkeleton, { compact: true }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+        ModelMetadataEditor,
+        {
+          defaults,
+          displayNames,
+          emptyLabel: selectedModels.length === 0 ? t("No models added") : t("No matching models"),
+          header: false,
+          metadata,
+          models: visibleAddedModels,
+          onChange: onMetadataChange,
+          onRemoveModel: removeModel,
+          sourceModels: catalog
+        }
+      ) })
+    ] })
+  ] });
+}
+function ProviderModelListSkeleton({ compact = false }) {
+  const t = useAppText();
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { "aria-busy": "true", "aria-label": t("Loading provider models"), className: "space-y-1.5", children: Array.from({ length: 8 }).map((_, index) => /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+    "div",
+    {
+      className: "flex min-h-10 w-full min-w-0 items-center gap-2 rounded-md border border-border bg-background px-2.5 py-2",
+      children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0 flex-1 space-y-1.5", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: cn(
+            "provider-skeleton-shimmer h-3 rounded-full",
+            index % 3 === 0 ? "w-7/12" : index % 3 === 1 ? "w-9/12" : "w-5/12"
+          ) }),
+          !compact && index % 2 === 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "provider-skeleton-shimmer h-2 w-4/12 rounded-full" }) : null
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "provider-skeleton-shimmer h-4 w-4 shrink-0 rounded-full" })
+      ]
+    },
+    index
+  )) });
+}
+function providerModelMatchesSearch(model, normalizedQuery, displayNames) {
+  if (!normalizedQuery) {
+    return true;
+  }
+  return model.toLowerCase().includes(normalizedQuery) || (displayNames?.[model] ?? "").toLowerCase().includes(normalizedQuery);
+}
+function ModelMetadataEditor({
+  className,
+  defaults,
+  displayNames,
+  emptyLabel,
+  header = true,
   metadata,
   models,
-  onChange
+  onChange,
+  onRemoveModel,
+  sourceModels
 }) {
   const t = useAppText();
   const normalizedModels = mergeProviderModelLists(models);
+  const sourceModelSet = new Set(sourceModels ?? Object.keys(defaults ?? {}));
   const [expandedModels, setExpandedModels] = (0, import_react28.useState)(() => /* @__PURE__ */ new Set());
   if (normalizedModels.length === 0) {
-    return null;
+    return emptyLabel ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: cn("rounded-md border border-dashed border-border bg-muted/20 px-3 py-8 text-center text-[12px] text-muted-foreground", className), children: emptyLabel }) : null;
   }
   function updateMetadata(model, updater) {
     const next = { ...metadata ?? {} };
@@ -98378,12 +99899,12 @@ function ModelMetadataEditor({
       return next;
     });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "space-y-2 rounded-md border border-border bg-muted/20 p-2", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: t("Model settings") }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "shrink-0 text-[11px] leading-4 text-muted-foreground/75", children: t("Context, pricing, reasoning, web search, and image") })
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "space-y-2", children: normalizedModels.map((model) => {
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: cn("space-y-2", header && "rounded-md border border-border bg-muted/20 p-2", className), children: [
+    header ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: t("Model settings") }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "shrink-0 text-[11px] leading-4 text-muted-foreground/75", children: t("Context, pricing, reasoning, web search, and image") })
+    ] }) : null,
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "space-y-2", children: normalizedModels.map((model) => {
       const modelMetadata = metadata?.[model];
       const modelDefaults = defaults?.[model];
       const effectiveContextWindow = modelMetadata?.contextWindow ?? modelMetadata?.maxContextWindow ?? modelDefaults?.contextWindow ?? modelDefaults?.maxContextWindow;
@@ -98396,6 +99917,7 @@ function ModelMetadataEditor({
       };
       const expanded = expandedModels.has(model);
       const label = displayNames?.[model]?.trim() || model;
+      const fromSource = sourceModelSet.has(model) || Boolean(modelDefaults);
       const hasCustomDetails = Boolean(
         modelMetadata?.contextWindow || modelMetadata?.maxContextWindow || modelMetadata?.pricing || modelMetadata?.capabilities || modelMetadata?.supportedReasoningLevels !== void 0 || modelMetadata?.supportsReasoningSummaries !== void 0
       );
@@ -98403,29 +99925,49 @@ function ModelMetadataEditor({
         (modelMetadata?.supportedReasoningLevels ?? modelDefaults?.supportedReasoningLevels ?? []).map((level) => level.effort.trim().toLowerCase())
       );
       const reasoningConfigured = modelMetadata?.supportedReasoningLevels !== void 0 || modelMetadata?.supportsReasoningSummaries !== void 0;
-      return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "overflow-hidden rounded-md border border-border bg-background/70", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(
-          "button",
-          {
-            "aria-expanded": expanded,
-            className: "flex w-full min-w-0 items-center gap-2 px-2.5 py-2 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/25",
-            onClick: () => toggleExpanded(model),
-            type: "button",
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.ChevronRight, { className: cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90") }),
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "min-w-0 flex-1 truncate text-[12px] font-medium", title: model, children: label }),
-              hasCustomDetails ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Badge, { variant: "secondary", children: t("Custom") }) : null,
-              !hasCustomDetails && modelDefaults ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Badge, { variant: "outline", children: t("Preset") }) : null
-            ]
-          }
-        ),
-        expanded ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "space-y-3 border-t border-border/60 p-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "space-y-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Label, { className: "text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: t("Context window (tokens)") }),
-              modelMetadata?.contextWindow !== void 0 || modelMetadata?.maxContextWindow !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { className: "h-6 px-2 text-[10px]", onClick: () => resetContextWindow(model), type: "button", variant: "ghost", children: t("Use preset") }) : null
+      return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "overflow-hidden rounded-md border border-border bg-background/70", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+            "button",
+            {
+              "aria-expanded": expanded,
+              className: "flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/25",
+              onClick: () => toggleExpanded(model),
+              type: "button",
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ChevronRight, { className: cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90") }),
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 flex-1 truncate text-[12px] font-medium", title: model, children: label }),
+                !fromSource ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant: "secondary", children: t("Custom model") }) : null,
+                hasCustomDetails ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant: "secondary", children: t("Custom") }) : null,
+                !hasCustomDetails && fromSource ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant: "outline", children: t("Preset") }) : null
+              ]
+            }
+          ),
+          onRemoveModel ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+            Button,
+            {
+              "aria-label": `${t("Remove model")} ${label}`,
+              className: "mr-1 h-7 w-7 shrink-0 text-muted-foreground",
+              onClick: () => onRemoveModel(model),
+              size: "iconSm",
+              title: t("Remove model"),
+              type: "button",
+              variant: "ghost",
+              children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.X, { className: "h-3.5 w-3.5" })
+            }
+          ) : null
+        ] }),
+        expanded ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "space-y-3 border-t border-border/60 p-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: t("Model settings") }),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "shrink-0 text-[11px] leading-4 text-muted-foreground/75", children: t("Context, pricing, reasoning, web search, and image") })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "space-y-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Label, { className: "text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: t("Context window (tokens)") }),
+              modelMetadata?.contextWindow !== void 0 || modelMetadata?.maxContextWindow !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { className: "h-6 px-2 text-[10px]", onClick: () => resetContextWindow(model), type: "button", variant: "ghost", children: t("Use preset") }) : null
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
               Input,
               {
                 min: 1,
@@ -98437,68 +99979,68 @@ function ModelMetadataEditor({
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "space-y-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Label, { className: "text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: t("Pricing") }),
-              modelMetadata?.pricing ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { className: "h-6 px-2 text-[10px]", onClick: () => resetPricing(model), type: "button", variant: "ghost", children: t("Use preset") }) : null
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "space-y-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Label, { className: "text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: t("Pricing") }),
+              modelMetadata?.pricing ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { className: "h-6 px-2 text-[10px]", onClick: () => resetPricing(model), type: "button", variant: "ghost", children: t("Use preset") }) : null
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "grid grid-cols-1 gap-2 sm:grid-cols-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ModelPriceInput, { label: `${t("Input")}(1M tokens/$)`, onChange: (value) => updatePricing(model, "inputUsdPerMillionTokens", value), value: effectivePricing.inputUsdPerMillionTokens }),
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ModelPriceInput, { label: `${t("Output")}(1M tokens/$)`, onChange: (value) => updatePricing(model, "outputUsdPerMillionTokens", value), value: effectivePricing.outputUsdPerMillionTokens }),
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ModelPriceInput, { label: `${t("Cache read")}(1M tokens/$)`, onChange: (value) => updatePricing(model, "cacheReadUsdPerMillionTokens", value), value: effectivePricing.cacheReadUsdPerMillionTokens }),
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ModelPriceInput, { label: `${t("Cache write 5m")}(1M tokens/$)`, onChange: (value) => updatePricing(model, "cacheWrite5mUsdPerMillionTokens", value), value: effectivePricing.cacheWrite5mUsdPerMillionTokens }),
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ModelPriceInput, { label: `${t("Cache write 1h")}(1M tokens/$)`, onChange: (value) => updatePricing(model, "cacheWrite1hUsdPerMillionTokens", value), value: effectivePricing.cacheWrite1hUsdPerMillionTokens })
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "grid grid-cols-1 gap-2 sm:grid-cols-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ModelPriceInput, { label: `${t("Input")}(1M tokens/$)`, onChange: (value) => updatePricing(model, "inputUsdPerMillionTokens", value), value: effectivePricing.inputUsdPerMillionTokens }),
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ModelPriceInput, { label: `${t("Output")}(1M tokens/$)`, onChange: (value) => updatePricing(model, "outputUsdPerMillionTokens", value), value: effectivePricing.outputUsdPerMillionTokens }),
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ModelPriceInput, { label: `${t("Cache read")}(1M tokens/$)`, onChange: (value) => updatePricing(model, "cacheReadUsdPerMillionTokens", value), value: effectivePricing.cacheReadUsdPerMillionTokens }),
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ModelPriceInput, { label: `${t("Cache write 5m")}(1M tokens/$)`, onChange: (value) => updatePricing(model, "cacheWrite5mUsdPerMillionTokens", value), value: effectivePricing.cacheWrite5mUsdPerMillionTokens }),
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ModelPriceInput, { label: `${t("Cache write 1h")}(1M tokens/$)`, onChange: (value) => updatePricing(model, "cacheWrite1hUsdPerMillionTokens", value), value: effectivePricing.cacheWrite1hUsdPerMillionTokens })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "text-[10px] leading-4 text-muted-foreground/75", children: t("Input and output prices are both required to override catalog pricing.") })
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[10px] leading-4 text-muted-foreground/75", children: t("Input and output prices are both required to override catalog pricing.") })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "space-y-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Label, { className: "text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: t("Reasoning levels") }),
-              reasoningConfigured ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { className: "h-6 px-2 text-[10px]", onClick: () => resetReasoning(model), type: "button", variant: "ghost", children: t("Use preset") }) : null
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "space-y-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Label, { className: "text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: t("Reasoning levels") }),
+              reasoningConfigured ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { className: "h-6 px-2 text-[10px]", onClick: () => resetReasoning(model), type: "button", variant: "ghost", children: t("Use preset") }) : null
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3", children: providerReasoningLevelOptions.map((option) => /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Label, { className: "flex min-w-0 items-center gap-2 text-[11px] font-normal", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3", children: providerReasoningLevelOptions.map((option) => /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Label, { className: "flex min-w-0 items-center gap-2 text-[11px] font-normal", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
                 Checkbox,
                 {
                   checked: configuredReasoningLevels.has(option.effort),
                   onCheckedChange: (checked) => updateReasoningLevel(model, option.effort, checked)
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "truncate", children: t(option.label) })
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "truncate", children: t(option.label) })
             ] }, option.effort)) }),
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "text-[10px] leading-4 text-muted-foreground/75", children: t("Select every reasoning effort supported by this model.") })
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[10px] leading-4 text-muted-foreground/75", children: t("Select every reasoning effort supported by this model.") })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "space-y-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Label, { className: "flex min-w-0 items-center gap-2 text-[12px] font-medium", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "space-y-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Label, { className: "flex min-w-0 items-center gap-2 text-[12px] font-medium", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
                   Checkbox,
                   {
                     checked: modelMetadata?.capabilities?.webSearch ?? modelDefaults?.capabilities?.webSearch ?? false,
                     onCheckedChange: (checked) => updateCapability(model, "webSearch", checked)
                   }
                 ),
-                /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { children: t("Web search") })
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: t("Web search") })
               ] }),
-              modelMetadata?.capabilities?.webSearch !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { className: "h-6 px-2 text-[10px]", onClick: () => resetCapability(model, "webSearch"), type: "button", variant: "ghost", children: t("Use preset") }) : null
+              modelMetadata?.capabilities?.webSearch !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { className: "h-6 px-2 text-[10px]", onClick: () => resetCapability(model, "webSearch"), type: "button", variant: "ghost", children: t("Use preset") }) : null
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "text-[10px] leading-4 text-muted-foreground/75", children: t("Declare whether the model provides native web search.") })
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[10px] leading-4 text-muted-foreground/75", children: t("Declare whether the model provides native web search.") })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "space-y-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Label, { className: "flex min-w-0 items-center gap-2 text-[12px] font-medium", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "space-y-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Label, { className: "flex min-w-0 items-center gap-2 text-[12px] font-medium", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
                   Checkbox,
                   {
                     checked: modelMetadata?.capabilities?.imageInput ?? modelDefaults?.capabilities?.imageInput ?? false,
                     onCheckedChange: (checked) => updateCapability(model, "imageInput", checked)
                   }
                 ),
-                /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { children: t("Image") })
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: t("Image") })
               ] }),
-              modelMetadata?.capabilities?.imageInput !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { className: "h-6 px-2 text-[10px]", onClick: () => resetCapability(model, "imageInput"), type: "button", variant: "ghost", children: t("Use preset") }) : null
+              modelMetadata?.capabilities?.imageInput !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { className: "h-6 px-2 text-[10px]", onClick: () => resetCapability(model, "imageInput"), type: "button", variant: "ghost", children: t("Use preset") }) : null
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "text-[10px] leading-4 text-muted-foreground/75", children: t("Declare whether the model accepts image input.") })
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[10px] leading-4 text-muted-foreground/75", children: t("Declare whether the model accepts image input.") })
           ] })
         ] }) : null
       ] }, model);
@@ -98506,7 +100048,7 @@ function ModelMetadataEditor({
   ] });
 }
 function ModelPriceInput({ label, onChange, value }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Field, { label, children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Input, { min: 0, onChange: (event) => onChange(event.target.value), placeholder: "0", step: "any", type: "number", value: value ?? "" }) });
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label, children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Input, { min: 0, onChange: (event) => onChange(event.target.value), placeholder: "0", step: "any", type: "number", value: value ?? "" }) });
 }
 function optionalPositiveInteger(value) {
   const parsed = Number(value);
@@ -98515,84 +100057,6 @@ function optionalPositiveInteger(value) {
 function optionalNonNegativeNumber(value) {
   const parsed = Number(value);
   return value.trim() && Number.isFinite(parsed) && parsed >= 0 ? parsed : void 0;
-}
-function ModelMultiSelect({
-  displayNames,
-  models,
-  onQueryChange,
-  onSelectedChange,
-  query,
-  selected
-}) {
-  const t = useAppText();
-  const normalized = query.trim().toLowerCase();
-  const visibleModels = normalized ? models.filter((model) => model.toLowerCase().includes(normalized) || (displayNames?.[model] ?? "").toLowerCase().includes(normalized)) : models;
-  const customModel = query.trim();
-  const canAddCustomModel = Boolean(customModel && visibleModels.length === 0);
-  function toggleModel(model) {
-    onSelectedChange(selected.includes(model) ? selected.filter((item) => item !== model) : [...selected, model]);
-  }
-  function selectVisibleModels() {
-    onSelectedChange(Array.from(/* @__PURE__ */ new Set([...selected, ...visibleModels])));
-  }
-  function addCustomModel() {
-    if (!canAddCustomModel) {
-      return;
-    }
-    onSelectedChange(mergeProviderModelLists(selected, [customModel]));
-    onQueryChange("");
-  }
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "rounded-md border border-input bg-card", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex flex-wrap items-center gap-2 border-b border-border p-2", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "relative min-w-[180px] flex-1", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react2.Search, { className: "pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" }),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
-          Input,
-          {
-            "aria-label": t("Search models"),
-            className: "pl-8",
-            onChange: (event) => onQueryChange(event.target.value),
-            onKeyDown: (event) => {
-              if (event.key === "Enter" && canAddCustomModel) {
-                event.preventDefault();
-                addCustomModel();
-              }
-            },
-            placeholder: t("Search models"),
-            value: query
-          }
-        )
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { disabled: visibleModels.length === 0, onClick: selectVisibleModels, size: "sm", type: "button", variant: "outline", children: t("All") }),
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Button, { disabled: selected.length === 0, onClick: () => onSelectedChange([]), size: "sm", type: "button", variant: "outline", children: t("Clear") })
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "max-h-[220px] overflow-auto p-2", children: [
-      visibleModels.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "rounded-lg border border-dashed border-border bg-muted/30 px-3 py-6 text-center text-[12px] text-muted-foreground", children: canAddCustomModel ? /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("button", { className: "font-medium text-foreground hover:underline", onClick: addCustomModel, type: "button", children: [
-        t("Press Enter to add custom model"),
-        ": ",
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "font-mono", children: customModel })
-      ] }) : t("No matching models") }) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "grid grid-cols-1 gap-2 sm:grid-cols-2", children: visibleModels.map((model) => {
-        const checked = selected.includes(model);
-        const displayName = displayNames?.[model];
-        return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(
-          Label,
-          {
-            className: cn(
-              "flex h-8 min-w-0 cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2 text-left text-[12px] transition-colors hover:bg-muted",
-              checked && "border-primary bg-accent"
-            ),
-            title: displayName ?? model,
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Checkbox, { checked, onCheckedChange: () => toggleModel(model) }),
-              /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "min-w-0 flex-1 truncate", children: displayName ?? model })
-            ]
-          },
-          model
-        );
-      }) })
-    ] })
-  ] });
 }
 
 // packages/ui/test/fixtures/index.ts
@@ -98661,11 +100125,11 @@ function installBrowserGlobals() {
 installBrowserGlobals();
 (0, import_node_test.default)("composite field groups do not label their nested controls", () => {
   const html = (0, import_server.renderToStaticMarkup)(
-    React15.createElement(
+    React17.createElement(
       FieldGroup,
       { label: "Models" },
-      React15.createElement("input", { "aria-label": "Search models" }),
-      React15.createElement("button", { type: "button" }, "Model settings")
+      React17.createElement("input", { "aria-label": "Search models" }),
+      React17.createElement("button", { type: "button" }, "Model settings")
     )
   );
   import_strict.default.match(html, /^<div/);
@@ -98791,6 +100255,435 @@ installBrowserGlobals();
   });
   import_strict.default.deepEqual(next.selectedProtocols, ["gemini_generate_content"]);
 });
+(0, import_node_test.default)("provider draft restores manual protocol detection mode", () => {
+  const draft = createProviderDraftFromProvider({
+    api_base_url: "https://local.example/v1",
+    capabilities: [{
+      baseUrl: "https://local.example/v1",
+      source: "preset",
+      type: "openai_chat_completions"
+    }],
+    models: ["custom-model"],
+    name: "Local OpenAI",
+    protocolDetectionMode: "manual",
+    type: "openai_chat_completions"
+  });
+  import_strict.default.equal(draft.protocolDetectionMode, "manual");
+  import_strict.default.deepEqual(draft.selectedProtocols, ["openai_chat_completions"]);
+});
+(0, import_node_test.default)("edit provider dialog keeps advanced settings collapsed by default", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    baseUrl: "https://local.example/v1",
+    modelsText: "custom-model",
+    name: "Local OpenAI",
+    protocolDetectionMode: "manual",
+    selectedProtocols: ["openai_chat_completions"]
+  };
+  const html = (0, import_server.renderToStaticMarkup)(
+    React17.createElement(AddProviderDialog, {
+      canSubmit: true,
+      draft,
+      error: "",
+      mode: "edit",
+      onChange: () => void 0,
+      onClose: () => void 0,
+      onSubmit: async () => true,
+      probeLoading: false,
+      providers: []
+    })
+  );
+  import_strict.default.ok(html.indexOf("Credential pool") < html.indexOf("Advanced settings"));
+  import_strict.default.match(html, /lucide-chevron-right[\s\S]*?Advanced settings/);
+  import_strict.default.match(html, /<button[^>]*aria-expanded="false"[^>]*>[\s\S]*?lucide-chevron-right[\s\S]*?Advanced settings/);
+  import_strict.default.doesNotMatch(html, /Detection mode/);
+  import_strict.default.doesNotMatch(html, /Auto detect protocols/);
+  import_strict.default.doesNotMatch(html, /Auto detect protocols info/);
+  import_strict.default.doesNotMatch(html, /OpenAI Chat/);
+  import_strict.default.doesNotMatch(html, /Selected/);
+  import_strict.default.doesNotMatch(html, /No protocol detection yet/);
+});
+(0, import_node_test.default)("edit provider dialog hides API endpoint input for preset providers", () => {
+  setProviderPresets([geminiProviderPreset]);
+  const endpoint = geminiProviderPreset.endpoints[0]?.baseUrl ?? "";
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-test",
+    baseUrl: endpoint,
+    modelsText: "gemini-1.5-pro",
+    name: "Google Gemini",
+    presetId: geminiProviderPreset.id
+  };
+  const html = (0, import_server.renderToStaticMarkup)(
+    React17.createElement(AddProviderDialog, {
+      canSubmit: true,
+      draft,
+      error: "",
+      mode: "edit",
+      onChange: () => void 0,
+      onClose: () => void 0,
+      onSubmit: async () => true,
+      probeLoading: false,
+      providers: []
+    })
+  );
+  import_strict.default.match(html, /Google Gemini/);
+  import_strict.default.ok(endpoint);
+  import_strict.default.equal((html.match(new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? []).length, 2);
+  import_strict.default.doesNotMatch(html, /<label[^>]*>API endpoint<\/label>/);
+});
+(0, import_node_test.default)("edit provider dialog hides the setup progress overview", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-test",
+    baseUrl: "https://api.example/v1",
+    modelsText: "model-a\nmodel-b",
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const html = (0, import_server.renderToStaticMarkup)(
+    React17.createElement(AddProviderDialog, {
+      canSubmit: true,
+      draft,
+      error: "",
+      mode: "edit",
+      onChange: () => void 0,
+      onClose: () => void 0,
+      onSubmit: async () => true,
+      probeLoading: false,
+      providers: []
+    })
+  );
+  import_strict.default.match(html, /Edit Provider/);
+  import_strict.default.match(html, /Choose provider/);
+  import_strict.default.match(html, /Add credentials/);
+  import_strict.default.match(html, /Pick models/);
+  import_strict.default.match(html, /Verify connection/);
+  import_strict.default.match(html, />Save</);
+  import_strict.default.doesNotMatch(html, /aria-current="step"/);
+  import_strict.default.doesNotMatch(html, />Done</);
+  import_strict.default.doesNotMatch(html, />In progress</);
+  import_strict.default.doesNotMatch(html, />Pending</);
+});
+(0, import_node_test.default)("AddProviderDialog progressively reveals provider setup steps", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-test",
+    baseUrl: "https://api.example/v1",
+    modelsText: "test-model",
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const html = (0, import_server.renderToStaticMarkup)(
+    React17.createElement(AddProviderDialog, {
+      canSubmit: true,
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => void 0,
+      onCheck: async () => ({ failed: [], passed: [], results: [] }),
+      onClose: () => void 0,
+      onSubmit: async () => true,
+      probe: {
+        capabilities: [],
+        detectedProtocol: "openai_chat_completions",
+        models: [],
+        normalizedBaseUrl: draft.baseUrl,
+        protocols: [{
+          endpoint: draft.baseUrl,
+          protocol: "openai_chat_completions",
+          status: 200,
+          supported: true
+        }]
+      },
+      probeLoading: false,
+      providers: []
+    })
+  );
+  import_strict.default.match(html, /Choose provider/);
+  import_strict.default.match(html, /role="progressbar"/);
+  import_strict.default.match(html, /h-0\.5 bg-border/);
+  import_strict.default.match(html, /aria-valuenow="1"/);
+  import_strict.default.match(html, /items-center justify-center/);
+  import_strict.default.match(html, /sm:h-\[min\(760px,calc\(100dvh-3rem\)\)\]/);
+  import_strict.default.match(html, /sm:w-\[min\(1040px,calc\(100vw-3rem\)\)\]/);
+  import_strict.default.doesNotMatch(html, /max-w-\[760px\]/);
+  import_strict.default.doesNotMatch(html, /max-w-\[1040px\]/);
+  import_strict.default.match(html, />1 \/ 4</);
+  import_strict.default.match(html, />Next</);
+  import_strict.default.doesNotMatch(html, />Cancel<\/button>/);
+  import_strict.default.doesNotMatch(html, /Add credentials/);
+  import_strict.default.doesNotMatch(html, /Select models/);
+  import_strict.default.doesNotMatch(html, /Verify connection/);
+  import_strict.default.doesNotMatch(html, /type="password"/);
+  import_strict.default.doesNotMatch(html, /placeholder="Model name"/);
+  import_strict.default.doesNotMatch(html, /Protocols detected/);
+  import_strict.default.doesNotMatch(html, /Not verified yet/);
+});
+(0, import_node_test.default)("AddProviderDialog keeps Next available while provider probing runs", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    baseUrl: "https://api.example/v1",
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const html = (0, import_server.renderToStaticMarkup)(
+    React17.createElement(AddProviderDialog, {
+      canSubmit: false,
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => void 0,
+      onClose: () => void 0,
+      onSubmit: async () => true,
+      probeLoading: true,
+      providers: []
+    })
+  );
+  const nextButton = html.match(/<button[^>]*>Next<svg/)?.[0] ?? "";
+  import_strict.default.ok(nextButton);
+  import_strict.default.doesNotMatch(nextButton, /\sdisabled(?:=|\s|>)/);
+});
+(0, import_node_test.default)("AddProviderForm renders API key visibility toggle", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-test",
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const html = (0, import_server.renderToStaticMarkup)(
+    React17.createElement(AddProviderForm, {
+      activeStep: "credentials",
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => void 0,
+      probeLoading: false,
+      providers: []
+    })
+  );
+  import_strict.default.match(html, /type="password"/);
+  import_strict.default.match(html, /aria-label="Show API key"/);
+  import_strict.default.match(html, /aria-pressed="false"/);
+});
+(0, import_node_test.default)("AddProviderForm shows preset endpoint under the selected provider name", () => {
+  setProviderPresets([geminiProviderPreset]);
+  const endpoint = geminiProviderPreset.endpoints[0]?.baseUrl ?? "";
+  const draft = {
+    ...createProviderDraft([]),
+    baseUrl: endpoint,
+    name: "Google Gemini",
+    presetId: geminiProviderPreset.id
+  };
+  const html = (0, import_server.renderToStaticMarkup)(
+    React17.createElement(AddProviderForm, {
+      activeStep: "provider",
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => void 0,
+      probeLoading: false,
+      providers: []
+    })
+  );
+  import_strict.default.match(html, /Google Gemini/);
+  import_strict.default.ok(endpoint);
+  import_strict.default.equal((html.match(new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? []).length, 2);
+});
+(0, import_node_test.default)("AddProviderForm lets users choose credential pool in credentials step", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    credentialMode: "pool",
+    credentials: [{
+      ...createProviderCredentialDraft(0),
+      apiKey: "sk-pool",
+      name: "Primary pool key"
+    }],
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const html = (0, import_server.renderToStaticMarkup)(
+    React17.createElement(AddProviderForm, {
+      activeStep: "credentials",
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => void 0,
+      probeLoading: false,
+      providers: []
+    })
+  );
+  import_strict.default.match(html, /role="tablist"/);
+  import_strict.default.match(html, /API key/);
+  import_strict.default.match(html, /Credential pool/);
+  import_strict.default.match(html, /Pool keys/);
+  import_strict.default.match(html, /Primary pool key/);
+  import_strict.default.match(html, /aria-selected="true"[^>]*>[\s\S]*Credential pool/);
+  import_strict.default.match(html, /data-state="active"[^>]*>[\s\S]*Credential pool/);
+  import_strict.default.match(html, /aria-selected="true" class="[^"]*border-primary\/65 bg-primary\/10 text-primary/);
+  import_strict.default.match(html, /aria-selected="true" class="[^"]*flex-col[^"]*items-start[^"]*whitespace-normal/);
+  import_strict.default.doesNotMatch(html, /bottom-2 left-0 top-2 w-0\.5/);
+  import_strict.default.doesNotMatch(html, /Show credential settings/);
+});
+(0, import_node_test.default)("AddProviderForm stacks connection statuses with protocol detection guidance", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-test",
+    baseUrl: "https://api.example/v1",
+    modelsText: "test-model",
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const html = (0, import_server.renderToStaticMarkup)(
+    React17.createElement(AddProviderForm, {
+      activeStep: "verify",
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => void 0,
+      onCheck: async () => void 0,
+      probe: {
+        capabilities: [],
+        detectedProtocol: "openai_chat_completions",
+        models: ["test-model"],
+        normalizedBaseUrl: draft.baseUrl,
+        protocols: [{
+          endpoint: draft.baseUrl,
+          protocol: "openai_chat_completions",
+          status: 200,
+          supported: true
+        }]
+      },
+      probeLoading: false,
+      providers: []
+    })
+  );
+  import_strict.default.match(html, /Protocols detected/);
+  import_strict.default.match(html, /Compatible API protocols were found automatically\. You can turn off auto detection in Advanced settings and select protocols manually\./);
+  import_strict.default.match(html, /Not verified yet/);
+  import_strict.default.match(html, /Optional\. Check Connection sends a real model request and may consume provider credits\./);
+  import_strict.default.doesNotMatch(html, /Run Check Connection before relying on this provider\./);
+  import_strict.default.match(html, /Not verified yet[\s\S]*<button[^>]*>[\s\S]*Check Connection/);
+  import_strict.default.ok(html.indexOf("Protocols detected") < html.indexOf("Not verified yet"));
+  import_strict.default.match(html, /grid grid-cols-1 gap-2/);
+  import_strict.default.doesNotMatch(html, /grid grid-cols-1 gap-2 sm:grid-cols-2/);
+  import_strict.default.doesNotMatch(html, /Protocol detection checks compatibility; connection verification confirms a real model request succeeds\./);
+});
+(0, import_node_test.default)("AddProviderForm renders a two-column model picker", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    modelDisplayNames: {
+      "model-a": "Model A"
+    },
+    modelsText: "custom-model",
+    name: "Example",
+    presetId: customProviderPresetId,
+    selectedModels: ["model-a"]
+  };
+  const html = (0, import_server.renderToStaticMarkup)(
+    React17.createElement(AddProviderForm, {
+      activeStep: "models",
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => void 0,
+      probe: {
+        capabilities: [],
+        detectedProtocol: "openai_chat_completions",
+        models: ["model-a", "model-b"],
+        normalizedBaseUrl: "https://api.example/v1",
+        protocols: []
+      },
+      probeLoading: false,
+      providers: []
+    })
+  );
+  import_strict.default.match(html, /Pick models/);
+  import_strict.default.match(html, /Provider models/);
+  import_strict.default.match(html, /Added models/);
+  import_strict.default.match(html, /Search provider models/);
+  import_strict.default.match(html, /Search added models/);
+  import_strict.default.match(html, /Custom model/);
+  import_strict.default.match(html, /Model A/);
+  import_strict.default.match(html, /model-b/);
+  import_strict.default.match(html, /custom-model/);
+  import_strict.default.match(html, /overflow-y-auto/);
+  import_strict.default.doesNotMatch(html, /overscroll-contain/);
+  import_strict.default.doesNotMatch(html, /placeholder="Custom model"/);
+  import_strict.default.doesNotMatch(html, /Select models/);
+});
+(0, import_node_test.default)("AddProviderForm keeps edit model lists scrollable without blocking dialog scroll chaining", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-test",
+    baseUrl: "https://api.example/v1",
+    modelsText: "model-a\nmodel-b",
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const html = (0, import_server.renderToStaticMarkup)(
+    React17.createElement(AddProviderForm, {
+      draft,
+      error: "",
+      mode: "edit",
+      onChange: () => void 0,
+      probe: {
+        capabilities: [],
+        detectedProtocol: "openai_chat_completions",
+        models: ["model-a", "model-b", "model-c"],
+        normalizedBaseUrl: "https://api.example/v1",
+        protocols: []
+      },
+      probeLoading: false,
+      providers: []
+    })
+  );
+  import_strict.default.match(html, /Pick models/);
+  import_strict.default.match(html, /Provider models/);
+  import_strict.default.match(html, /Added models/);
+  import_strict.default.match(html, /overflow-y-auto/);
+  import_strict.default.match(html, /lg:h-\[min\(500px,calc\(100dvh-300px\)\)\]/);
+  import_strict.default.doesNotMatch(html, /overscroll-contain/);
+});
+(0, import_node_test.default)("AddProviderForm shows skeleton rows while provider models load", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-test",
+    baseUrl: "https://api.example/v1",
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const html = (0, import_server.renderToStaticMarkup)(
+    React17.createElement(AddProviderForm, {
+      activeStep: "models",
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => void 0,
+      probeLoading: true,
+      providers: []
+    })
+  );
+  import_strict.default.match(html, /aria-busy="true"/);
+  import_strict.default.match(html, /Loading provider models/);
+  import_strict.default.match(html, /provider-skeleton-shimmer/);
+  import_strict.default.doesNotMatch(html, /Custom model/);
+  import_strict.default.doesNotMatch(html, /No models added/);
+  import_strict.default.doesNotMatch(html, /No provider models/);
+});
+(0, import_node_test.default)("provider connectivity API key follows selected credential mode", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-single",
+    credentials: [{
+      ...createProviderCredentialDraft(0),
+      apiKey: "sk-pool",
+      name: "Pool key"
+    }]
+  };
+  import_strict.default.equal(providerConnectivityApiKeyFromDraft(draft), "sk-single");
+  import_strict.default.equal(providerConnectivityApiKeyFromDraft({ ...draft, credentialMode: "pool" }), "sk-pool");
+});
 (0, import_node_test.default)("provider probe keeps catalog model defaults separate from user overrides", () => {
   const draft = {
     ...createProviderDraft([]),
@@ -98817,59 +100710,29 @@ installBrowserGlobals();
   import_strict.default.equal(next.catalogModelMetadata?.["model-a"]?.capabilities?.imageInput, true);
 });
 (0, import_node_test.default)("provider protocol details keep failed endpoint rows unavailable", () => {
-  const draft = {
-    ...createProviderDraft([]),
-    baseUrl: "https://api.example.com/v1",
-    name: "Example",
-    protocol: "openai_chat_completions",
-    selectedProtocols: ["openai_chat_completions"]
-  };
-  const html = (0, import_server.renderToStaticMarkup)(
-    React15.createElement(AddProviderDialog, {
-      canSubmit: true,
-      draft,
-      error: "",
-      mode: "edit",
-      onChange: () => void 0,
-      onClose: () => void 0,
-      onSubmit: async () => true,
-      probe: {
-        capabilities: [
-          {
-            baseUrl: "https://api.example.com/v1",
-            endpoint: "https://api.example.com/v1/chat/completions",
-            source: "detected",
-            type: "openai_chat_completions"
-          }
-        ],
-        detectedProtocol: "openai_chat_completions",
-        models: [],
-        normalizedBaseUrl: "https://api.example.com/v1",
-        protocols: [
-          {
-            baseUrl: "https://api.example.com",
-            endpoint: "https://api.example.com/chat/completions",
-            message: "HTTP 404",
-            protocol: "openai_chat_completions",
-            status: 404,
-            supported: false
-          },
-          {
-            baseUrl: "https://api.example.com/v1",
-            endpoint: "https://api.example.com/v1/chat/completions",
-            message: "HTTP 400: model is required",
-            protocol: "openai_chat_completions",
-            status: 400,
-            supported: true
-          }
-        ]
-      },
-      probeLoading: false,
-      providers: []
-    })
-  );
-  import_strict.default.match(html, /Unavailable/);
-  import_strict.default.match(html, /Available/);
+  const rows = uniqueProviderProbeProtocolRows([
+    {
+      baseUrl: "https://api.example.com",
+      endpoint: "https://api.example.com/chat/completions",
+      message: "HTTP 404",
+      protocol: "openai_chat_completions",
+      status: 404,
+      supported: false
+    },
+    {
+      baseUrl: "https://api.example.com/v1",
+      endpoint: "https://api.example.com/v1/chat/completions",
+      message: "HTTP 400: model is required",
+      protocol: "openai_chat_completions",
+      status: 400,
+      supported: true
+    }
+  ]);
+  import_strict.default.deepEqual(rows.map((item) => item.endpoint), [
+    "https://api.example.com/chat/completions",
+    "https://api.example.com/v1/chat/completions"
+  ]);
+  import_strict.default.deepEqual(rows.map((item) => item.supported), [false, true]);
 });
 (0, import_node_test.default)("provider probe result applies detected New API key quota account connector", () => {
   const draft = {
@@ -99129,7 +100992,7 @@ installBrowserGlobals();
   ]);
 });
 (0, import_node_test.default)("provider display icon prefers custom icons and falls back to preset icons", () => {
-  setProviderPresets([geminiProviderPreset]);
+  setProviderPresets([geminiProviderPreset, minimaxChinaProviderPreset]);
   import_strict.default.equal(
     providerDisplayIcon({
       api_base_url: "https://custom.example/v1",
@@ -99151,6 +101014,15 @@ installBrowserGlobals();
   );
   import_strict.default.equal(
     providerDisplayIcon({
+      api_base_url: "https://api.minimaxi.com/v1",
+      models: [],
+      name: "MiniMax (China)",
+      type: "openai_chat_completions"
+    }),
+    providerPresetIconUrls["minimax-cn"]
+  );
+  import_strict.default.equal(
+    providerDisplayIcon({
       api_base_url: "https://cli-chat-proxy.grok.com/v1",
       api_key: "ccr-local-agent-login",
       icon: "/assets/grok-old.svg",
@@ -99164,7 +101036,7 @@ installBrowserGlobals();
 (0, import_node_test.default)("ProvidersView renders configured provider icons in the list", () => {
   const iconUrl = "https://custom.example/icon.png";
   const html = (0, import_server.renderToStaticMarkup)(
-    React15.createElement(ProvidersView, {
+    React17.createElement(ProvidersView, {
       accountSnapshots: [],
       addProvider: () => void 0,
       editProvider: () => void 0,
@@ -99181,11 +101053,54 @@ installBrowserGlobals();
           }
         }
       ],
-      removeProvider: () => void 0
+      removeProvider: () => void 0,
+      setProviderEnabled: () => void 0
     })
   );
   import_strict.default.match(html, /Custom Provider/);
   import_strict.default.match(html, /src="https:\/\/custom\.example\/icon\.png"/);
+});
+(0, import_node_test.default)("ProvidersView puts provider enabled state in actions and hides disabled models", () => {
+  const html = (0, import_server.renderToStaticMarkup)(
+    React17.createElement(ProvidersView, {
+      accountSnapshots: [],
+      addProvider: () => void 0,
+      editProvider: () => void 0,
+      notify: () => void 0,
+      providers: [
+        {
+          index: 0,
+          provider: {
+            api_base_url: "https://ready.example/v1",
+            api_key: "sk-ready",
+            models: ["ready-model"],
+            name: "Ready Provider",
+            type: "openai_chat_completions"
+          }
+        },
+        {
+          index: 1,
+          provider: {
+            api_base_url: "https://empty.example/v1",
+            api_key: "sk-empty",
+            enabled: false,
+            models: ["disabled-model"],
+            name: "Disabled Provider",
+            type: "openai_chat_completions"
+          }
+        }
+      ],
+      removeProvider: () => void 0,
+      setProviderEnabled: () => void 0
+    })
+  );
+  import_strict.default.doesNotMatch(html, /Status/);
+  import_strict.default.match(html, /Endpoint/);
+  import_strict.default.match(html, /Account Usage/);
+  import_strict.default.doesNotMatch(html, /Usable/);
+  import_strict.default.match(html, /Disabled Provider/);
+  import_strict.default.match(html, /Enable provider Disabled Provider/);
+  import_strict.default.doesNotMatch(html, /disabled-model/);
 });
 (0, import_node_test.default)("New API user balance template adds configurable user self connector", () => {
   const account = newApiKeyUsageAccountConfig("https://gateway.example/v1");

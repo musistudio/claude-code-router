@@ -669,10 +669,10 @@ function readPositiveNumber(value) {
   return Number.isFinite(number) && number > 0 ? Math.ceil(number) : void 0;
 }
 
-// packages/core/src/routing/model-registry.ts
-var import_node_crypto2 = require("node:crypto");
-
 // packages/core/src/contracts/app.ts
+function isGatewayProviderEnabled(provider) {
+  return provider.enabled !== false;
+}
 var ROUTER_SCRIPT_MAX_SOURCE_BYTES = 64 * 1024;
 var CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV = "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY";
 var CLAUDE_CODE_DEFAULT_ENV = {
@@ -711,7 +711,7 @@ function availableGatewayModelIds(config) {
 function availableGatewayBaseModelEntries(providers) {
   return providers.flatMap((provider) => {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       return [];
     }
     return provider.models.flatMap((rawModel) => {
@@ -771,6 +771,7 @@ var DEFAULT_TRAY_WIDGETS = [
 ];
 
 // packages/core/src/routing/model-registry.ts
+var import_node_crypto2 = require("node:crypto");
 var ModelRegistry = class {
   constructor(config) {
     this.config = config;
@@ -827,7 +828,9 @@ var ModelRegistry = class {
     if (!normalized) {
       return void 0;
     }
-    return this.config.Providers.find((provider) => providerAliases(provider).has(normalized));
+    return this.config.Providers.find(
+      (provider) => isGatewayProviderEnabled(provider) && providerAliases(provider).has(normalized)
+    );
   }
   resolveProviderModel(value) {
     const resolved = this.resolve(value);
@@ -845,6 +848,9 @@ var ModelRegistry = class {
     const normalized = caseInsensitive ? model.toLowerCase() : model;
     const matches = [];
     for (const provider of this.config.Providers) {
+      if (!isGatewayProviderEnabled(provider)) {
+        continue;
+      }
       for (const candidate of provider.models) {
         const configured = candidate.trim();
         const comparable = caseInsensitive ? configured.toLowerCase() : configured;
@@ -968,9 +974,12 @@ function findProviderByPublicOrInternalName(config, name) {
   const credentialInternalName = parseProviderCredentialInternalName(name);
   if (credentialInternalName) {
     const internalProviderId = credentialInternalName.providerId.toLowerCase();
-    return config.Providers.find(
-      (provider) => provider.name.trim().toLowerCase() === internalProviderId || providerRuntimeId(provider).toLowerCase() === internalProviderId
-    );
+    return config.Providers.find((provider) => {
+      if (!isGatewayProviderEnabled(provider)) {
+        return false;
+      }
+      return provider.name.trim().toLowerCase() === internalProviderId || providerRuntimeId(provider).toLowerCase() === internalProviderId;
+    });
   }
   return modelRegistryForConfig(config).findProvider(normalized);
 }

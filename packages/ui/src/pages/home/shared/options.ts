@@ -49,6 +49,8 @@ import code0ProviderIconUrl from "@/assets/provider-icons/code0.png";
 import deepseekProviderIconUrl from "@/assets/provider-icons/deepseek.ico";
 import fennoProviderIconUrl from "@/assets/provider-icons/fenno.jpg";
 import geminiProviderIconUrl from "@/assets/provider-icons/gemini.svg";
+import infistarAiProviderIconUrl from "@/assets/provider-icons/infistar-ai.jpg";
+import minimaxProviderIconUrl from "@/assets/provider-icons/minimax.ico";
 import mistralProviderIconUrl from "@/assets/provider-icons/mistral.webp";
 import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
 import nvidiaProviderIconUrl from "@/assets/provider-icons/nvidia.svg";
@@ -348,7 +350,10 @@ export const providerPresetIconUrls: Record<string, string> = {
   deepseek: deepseekProviderIconUrl,
   fenno: fennoProviderIconUrl,
   gemini: geminiProviderIconUrl,
+  "infistar-ai": infistarAiProviderIconUrl,
   "kimi-coding": moonshotProviderIconUrl,
+  "minimax-cn": minimaxProviderIconUrl,
+  "minimax-global": minimaxProviderIconUrl,
   mistral: mistralProviderIconUrl,
   moonshot: moonshotProviderIconUrl,
   "moonshot-global": moonshotProviderIconUrl,

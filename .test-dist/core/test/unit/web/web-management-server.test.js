@@ -1133,14 +1133,14 @@ var require_util = __commonJS({
         }
         const port = url.port != null ? url.port : url.protocol === "https:" ? 443 : 80;
         let origin = url.origin != null ? url.origin : `${url.protocol || ""}//${url.hostname || ""}:${port}`;
-        let path23 = url.path != null ? url.path : `${url.pathname || ""}${url.search || ""}`;
+        let path24 = url.path != null ? url.path : `${url.pathname || ""}${url.search || ""}`;
         if (origin[origin.length - 1] === "/") {
           origin = origin.slice(0, origin.length - 1);
         }
-        if (path23 && path23[0] !== "/") {
-          path23 = `/${path23}`;
+        if (path24 && path24[0] !== "/") {
+          path24 = `/${path24}`;
         }
-        return new URL(`${origin}${path23}`);
+        return new URL(`${origin}${path24}`);
       }
       if (!isHttpOrHttpsPrefixed(url.origin || url.protocol)) {
         throw new InvalidArgumentError("Invalid URL protocol: the URL must start with `http:` or `https:`.");
@@ -1961,9 +1961,9 @@ var require_diagnostics = __commonJS({
         "undici:client:sendHeaders",
         (evt) => {
           const {
-            request: { method, path: path23, origin }
+            request: { method, path: path24, origin }
           } = evt;
-          debugLog("sending request to %s %s%s", method, origin, path23);
+          debugLog("sending request to %s %s%s", method, origin, path24);
         }
       );
     }
@@ -1981,14 +1981,14 @@ var require_diagnostics = __commonJS({
         "undici:request:headers",
         (evt) => {
           const {
-            request: { method, path: path23, origin },
+            request: { method, path: path24, origin },
             response: { statusCode }
           } = evt;
           debugLog(
             "received response to %s %s%s - HTTP %d",
             method,
             origin,
-            path23,
+            path24,
             statusCode
           );
         }
@@ -1997,23 +1997,23 @@ var require_diagnostics = __commonJS({
         "undici:request:trailers",
         (evt) => {
           const {
-            request: { method, path: path23, origin }
+            request: { method, path: path24, origin }
           } = evt;
-          debugLog("trailers received from %s %s%s", method, origin, path23);
+          debugLog("trailers received from %s %s%s", method, origin, path24);
         }
       );
       diagnosticsChannel.subscribe(
         "undici:request:error",
         (evt) => {
           const {
-            request: { method, path: path23, origin },
+            request: { method, path: path24, origin },
             error
           } = evt;
           debugLog(
             "request to %s %s%s errored - %s",
             method,
             origin,
-            path23,
+            path24,
             error.message
           );
         }
@@ -2128,7 +2128,7 @@ var require_request = __commonJS({
     var kHandler = /* @__PURE__ */ Symbol("handler");
     var Request = class {
       constructor(origin, {
-        path: path23,
+        path: path24,
         method,
         body,
         headers,
@@ -2145,11 +2145,11 @@ var require_request = __commonJS({
         maxRedirections,
         typeOfService
       }, handler) {
-        if (typeof path23 !== "string") {
+        if (typeof path24 !== "string") {
           throw new InvalidArgumentError("path must be a string");
-        } else if (path23[0] !== "/" && !(path23.startsWith("http://") || path23.startsWith("https://")) && method !== "CONNECT") {
+        } else if (path24[0] !== "/" && !(path24.startsWith("http://") || path24.startsWith("https://")) && method !== "CONNECT") {
           throw new InvalidArgumentError("path must be an absolute URL or start with a slash");
-        } else if (invalidPathRegex.test(path23)) {
+        } else if (invalidPathRegex.test(path24)) {
           throw new InvalidArgumentError("invalid request path");
         }
         if (typeof method !== "string") {
@@ -2224,7 +2224,7 @@ var require_request = __commonJS({
         this.completed = false;
         this.aborted = false;
         this.upgrade = upgrade || null;
-        this.path = query ? serializePathWithQuery(path23, query) : path23;
+        this.path = query ? serializePathWithQuery(path24, query) : path24;
         this.origin = origin;
         this.protocol = getProtocolFromUrlString(origin);
         this.idempotent = idempotent == null ? method === "HEAD" || method === "GET" : idempotent;
@@ -4998,7 +4998,7 @@ var require_webidl = __commonJS({
 var require_util2 = __commonJS({
   "node_modules/undici/lib/web/fetch/util.js"(exports2, module2) {
     "use strict";
-    var { Transform: Transform3 } = require("node:stream");
+    var { Transform: Transform4 } = require("node:stream");
     var zlib = require("node:zlib");
     var { redirectStatusSet, referrerPolicyTokens, badPortsSet } = require_constants3();
     var { getGlobalOrigin } = require_global();
@@ -5589,7 +5589,7 @@ var require_util2 = __commonJS({
       contentRange += isomorphicEncode(`${fullLength}`);
       return contentRange;
     }
-    var InflateStream = class extends Transform3 {
+    var InflateStream = class extends Transform4 {
       #zlibOptions;
       /** @param {zlib.ZlibOptions} [zlibOptions] */
       constructor(zlibOptions) {
@@ -7399,7 +7399,7 @@ var require_client_h1 = __commonJS({
       return method !== "GET" && method !== "HEAD" && method !== "OPTIONS" && method !== "TRACE" && method !== "CONNECT";
     }
     function writeH1(client, request) {
-      const { method, path: path23, host, upgrade, blocking, reset } = request;
+      const { method, path: path24, host, upgrade, blocking, reset } = request;
       let { body, headers, contentLength } = request;
       const expectsPayload = method === "PUT" || method === "POST" || method === "PATCH" || method === "QUERY" || method === "PROPFIND" || method === "PROPPATCH";
       if (util.isFormDataLike(body)) {
@@ -7469,7 +7469,7 @@ var require_client_h1 = __commonJS({
       if (socket.setTypeOfService) {
         socket.setTypeOfService(request.typeOfService);
       }
-      let header = `${method} ${path23} HTTP/1.1\r
+      let header = `${method} ${path24} HTTP/1.1\r
 `;
       if (typeof host === "string") {
         header += `host: ${host}\r
@@ -8122,7 +8122,7 @@ var require_client_h2 = __commonJS({
     function writeH2(client, request) {
       const requestTimeout = request.bodyTimeout ?? client[kBodyTimeout];
       const session = client[kHTTP2Session];
-      const { method, path: path23, host, upgrade, expectContinue, signal, protocol, headers: reqHeaders } = request;
+      const { method, path: path24, host, upgrade, expectContinue, signal, protocol, headers: reqHeaders } = request;
       let { body } = request;
       if (upgrade != null && upgrade !== "websocket") {
         util.errorRequest(client, request, new InvalidArgumentError(`Custom upgrade "${upgrade}" not supported over HTTP/2`));
@@ -8190,7 +8190,7 @@ var require_client_h2 = __commonJS({
           }
           headers[HTTP2_HEADER_METHOD] = "CONNECT";
           headers[HTTP2_HEADER_PROTOCOL] = "websocket";
-          headers[HTTP2_HEADER_PATH] = path23;
+          headers[HTTP2_HEADER_PATH] = path24;
           if (protocol === "ws:" || protocol === "wss:") {
             headers[HTTP2_HEADER_SCHEME] = protocol === "ws:" ? "http" : "https";
           } else {
@@ -8231,7 +8231,7 @@ var require_client_h2 = __commonJS({
         stream.setTimeout(requestTimeout);
         return true;
       }
-      headers[HTTP2_HEADER_PATH] = path23;
+      headers[HTTP2_HEADER_PATH] = path24;
       headers[HTTP2_HEADER_SCHEME] = protocol === "http:" ? "http" : "https";
       const expectsPayload = method === "PUT" || method === "POST" || method === "PATCH";
       if (body && typeof body.read === "function") {
@@ -10574,10 +10574,10 @@ var require_proxy_agent = __commonJS({
         };
         const {
           origin,
-          path: path23 = "/",
+          path: path24 = "/",
           headers = {}
         } = opts;
-        opts.path = origin + path23;
+        opts.path = origin + path24;
         if (!("host" in headers) && !("Host" in headers)) {
           const { host } = new URL(origin);
           headers.host = host;
@@ -11285,7 +11285,7 @@ var require_readable = __commonJS({
   "node_modules/undici/lib/api/readable.js"(exports2, module2) {
     "use strict";
     var assert2 = require("node:assert");
-    var { Readable: Readable4 } = require("node:stream");
+    var { Readable: Readable5 } = require("node:stream");
     var { RequestAbortedError, NotSupportedError, InvalidArgumentError, AbortError } = require_errors();
     var util = require_util();
     var { ReadableStreamFrom } = require_util();
@@ -11299,7 +11299,7 @@ var require_readable = __commonJS({
     var kBytesRead = /* @__PURE__ */ Symbol("kBytesRead");
     var noop = () => {
     };
-    var BodyReadable = class extends Readable4 {
+    var BodyReadable = class extends Readable5 {
       /**
        * @param {object} opts
        * @param {(this: Readable, size: number) => void} opts.resume
@@ -11688,7 +11688,7 @@ var require_api_request = __commonJS({
     "use strict";
     var assert2 = require("node:assert");
     var { AsyncResource } = require("node:async_hooks");
-    var { Readable: Readable4 } = require_readable();
+    var { Readable: Readable5 } = require_readable();
     var { InvalidArgumentError, RequestAbortedError } = require_errors();
     var util = require_util();
     function noop() {
@@ -11769,7 +11769,7 @@ var require_api_request = __commonJS({
         const parsedHeaders = responseHeaders === "raw" ? util.parseHeaders(rawHeaders) : headers;
         const contentType = parsedHeaders["content-type"];
         const contentLength = parsedHeaders["content-length"];
-        const res = new Readable4({
+        const res = new Readable5({
           resume,
           abort,
           contentType,
@@ -12078,7 +12078,7 @@ var require_api_pipeline = __commonJS({
   "node_modules/undici/lib/api/api-pipeline.js"(exports2, module2) {
     "use strict";
     var {
-      Readable: Readable4,
+      Readable: Readable5,
       Duplex,
       PassThrough: PassThrough2
     } = require("node:stream");
@@ -12094,7 +12094,7 @@ var require_api_pipeline = __commonJS({
     function noop() {
     }
     var kResume = /* @__PURE__ */ Symbol("resume");
-    var PipelineRequest = class extends Readable4 {
+    var PipelineRequest = class extends Readable5 {
       constructor() {
         super({ autoDestroy: true });
         this[kResume] = null;
@@ -12111,7 +12111,7 @@ var require_api_pipeline = __commonJS({
         callback(err);
       }
     };
-    var PipelineResponse = class extends Readable4 {
+    var PipelineResponse = class extends Readable5 {
       constructor(resume) {
         super({ autoDestroy: true });
         this[kResume] = resume;
@@ -12641,20 +12641,20 @@ var require_mock_utils = __commonJS({
       }
       return normalizedQp;
     }
-    function safeUrl(path23) {
-      if (typeof path23 !== "string") {
-        return path23;
+    function safeUrl(path24) {
+      if (typeof path24 !== "string") {
+        return path24;
       }
-      const pathSegments = path23.split("?", 3);
+      const pathSegments = path24.split("?", 3);
       if (pathSegments.length !== 2) {
-        return path23;
+        return path24;
       }
       const qp = new URLSearchParams(pathSegments.pop());
       qp.sort();
       return [...pathSegments, qp.toString()].join("?");
     }
-    function matchKey(mockDispatch2, { path: path23, method, body, headers }) {
-      const pathMatch = matchValue(mockDispatch2.path, path23);
+    function matchKey(mockDispatch2, { path: path24, method, body, headers }) {
+      const pathMatch = matchValue(mockDispatch2.path, path24);
       const methodMatch = matchValue(mockDispatch2.method, method);
       const bodyMatch = typeof mockDispatch2.body !== "undefined" ? matchValue(mockDispatch2.body, body) : true;
       const headersMatch = matchHeaders(mockDispatch2, headers);
@@ -12679,8 +12679,8 @@ var require_mock_utils = __commonJS({
       const basePath = key.query ? serializePathWithQuery(key.path, key.query) : key.path;
       const resolvedPath = typeof basePath === "string" ? safeUrl(basePath) : basePath;
       const resolvedPathWithoutTrailingSlash = removeTrailingSlash(resolvedPath);
-      let matchedMockDispatches = mockDispatches.filter(({ consumed }) => !consumed).filter(({ path: path23, ignoreTrailingSlash }) => {
-        return ignoreTrailingSlash ? matchValue(removeTrailingSlash(safeUrl(path23)), resolvedPathWithoutTrailingSlash) : matchValue(safeUrl(path23), resolvedPath);
+      let matchedMockDispatches = mockDispatches.filter(({ consumed }) => !consumed).filter(({ path: path24, ignoreTrailingSlash }) => {
+        return ignoreTrailingSlash ? matchValue(removeTrailingSlash(safeUrl(path24)), resolvedPathWithoutTrailingSlash) : matchValue(safeUrl(path24), resolvedPath);
       });
       if (matchedMockDispatches.length === 0) {
         throw new MockNotMatchedError(`Mock dispatch not matched for path '${resolvedPath}'`);
@@ -12719,19 +12719,19 @@ var require_mock_utils = __commonJS({
         mockDispatches.splice(index, 1);
       }
     }
-    function removeTrailingSlash(path23) {
-      while (path23.endsWith("/")) {
-        path23 = path23.slice(0, -1);
+    function removeTrailingSlash(path24) {
+      while (path24.endsWith("/")) {
+        path24 = path24.slice(0, -1);
       }
-      if (path23.length === 0) {
-        path23 = "/";
+      if (path24.length === 0) {
+        path24 = "/";
       }
-      return path23;
+      return path24;
     }
     function buildKey(opts) {
-      const { path: path23, method, body, headers, query } = opts;
+      const { path: path24, method, body, headers, query } = opts;
       return {
-        path: path23,
+        path: path24,
         method,
         body,
         headers,
@@ -13401,13 +13401,13 @@ var require_mock_pool = __commonJS({
 var require_pending_interceptors_formatter = __commonJS({
   "node_modules/undici/lib/mock/pending-interceptors-formatter.js"(exports2, module2) {
     "use strict";
-    var { Transform: Transform3 } = require("node:stream");
+    var { Transform: Transform4 } = require("node:stream");
     var { Console } = require("node:console");
     var PERSISTENT = process.versions.icu ? "\u2705" : "Y ";
     var NOT_PERSISTENT = process.versions.icu ? "\u274C" : "N ";
     module2.exports = class PendingInterceptorsFormatter {
       constructor({ disableColors } = {}) {
-        this.transform = new Transform3({
+        this.transform = new Transform4({
           transform(chunk, _enc, cb) {
             cb(null, chunk);
           }
@@ -13421,10 +13421,10 @@ var require_pending_interceptors_formatter = __commonJS({
       }
       format(pendingInterceptors) {
         const withPrettyHeaders = pendingInterceptors.map(
-          ({ method, path: path23, data: { statusCode }, persist, times, timesInvoked, origin }) => ({
+          ({ method, path: path24, data: { statusCode }, persist, times, timesInvoked, origin }) => ({
             Method: method,
             Origin: origin,
-            Path: path23,
+            Path: path24,
             "Status code": statusCode,
             Persistent: persist ? PERSISTENT : NOT_PERSISTENT,
             Invocations: timesInvoked,
@@ -13506,9 +13506,9 @@ var require_mock_agent = __commonJS({
         const acceptNonStandardSearchParameters = this[kMockAgentAcceptsNonStandardSearchParameters];
         const dispatchOpts = { ...opts };
         if (acceptNonStandardSearchParameters && dispatchOpts.path) {
-          const [path23, searchParams] = dispatchOpts.path.split("?");
+          const [path24, searchParams] = dispatchOpts.path.split("?");
           const normalizedSearchParams = normalizeSearchParams(searchParams, acceptNonStandardSearchParameters);
-          dispatchOpts.path = `${path23}?${normalizedSearchParams}`;
+          dispatchOpts.path = `${path24}?${normalizedSearchParams}`;
         }
         return this[kAgent].dispatch(dispatchOpts, handler);
       }
@@ -13713,7 +13713,7 @@ var require_snapshot_recorder = __commonJS({
   "node_modules/undici/lib/mock/snapshot-recorder.js"(exports2, module2) {
     "use strict";
     var { writeFile: writeFile2, readFile: readFile2, mkdir: mkdir2 } = require("node:fs/promises");
-    var { dirname: dirname9, resolve } = require("node:path");
+    var { dirname: dirname10, resolve } = require("node:path");
     var { setTimeout: setTimeout2, clearTimeout: clearTimeout2 } = require("node:timers");
     var { InvalidArgumentError, UndiciError } = require_errors();
     var { hashId, isUrlExcludedFactory, normalizeHeaders, createHeaderFilters } = require_snapshot_utils();
@@ -13909,12 +13909,12 @@ var require_snapshot_recorder = __commonJS({
        * @return {Promise<void>} - Resolves when snapshots are loaded
        */
       async loadSnapshots(filePath) {
-        const path23 = filePath || this.#snapshotPath;
-        if (!path23) {
+        const path24 = filePath || this.#snapshotPath;
+        if (!path24) {
           throw new InvalidArgumentError("Snapshot path is required");
         }
         try {
-          const data = await readFile2(resolve(path23), "utf8");
+          const data = await readFile2(resolve(path24), "utf8");
           const parsed = JSON.parse(data);
           if (Array.isArray(parsed)) {
             this.#snapshots.clear();
@@ -13928,7 +13928,7 @@ var require_snapshot_recorder = __commonJS({
           if (error.code === "ENOENT") {
             this.#snapshots.clear();
           } else {
-            throw new UndiciError(`Failed to load snapshots from ${path23}`, { cause: error });
+            throw new UndiciError(`Failed to load snapshots from ${path24}`, { cause: error });
           }
         }
       }
@@ -13939,12 +13939,12 @@ var require_snapshot_recorder = __commonJS({
        * @returns {Promise<void>} - Resolves when snapshots are saved
        */
       async saveSnapshots(filePath) {
-        const path23 = filePath || this.#snapshotPath;
-        if (!path23) {
+        const path24 = filePath || this.#snapshotPath;
+        if (!path24) {
           throw new InvalidArgumentError("Snapshot path is required");
         }
-        const resolvedPath = resolve(path23);
-        await mkdir2(dirname9(resolvedPath), { recursive: true });
+        const resolvedPath = resolve(path24);
+        await mkdir2(dirname10(resolvedPath), { recursive: true });
         const data = Array.from(this.#snapshots.entries()).map(([hash, snapshot]) => ({
           hash,
           snapshot
@@ -14575,15 +14575,15 @@ var require_redirect_handler = __commonJS({
           return;
         }
         const { origin, pathname, search } = util.parseURL(new URL(this.location, this.opts.origin && new URL(this.opts.path, this.opts.origin)));
-        const path23 = search ? `${pathname}${search}` : pathname;
-        const redirectUrlString = `${origin}${path23}`;
+        const path24 = search ? `${pathname}${search}` : pathname;
+        const redirectUrlString = `${origin}${path24}`;
         for (const historyUrl of this.history) {
           if (historyUrl.toString() === redirectUrlString) {
             throw new InvalidArgumentError(`Redirect loop detected. Cannot redirect to ${origin}. This typically happens when using a Client or Pool with cross-origin redirects. Use an Agent for cross-origin redirects.`);
           }
         }
         this.opts.headers = cleanRequestHeaders(this.opts.headers, statusCode === 303, this.opts.origin !== origin);
-        this.opts.path = path23;
+        this.opts.path = path24;
         this.opts.origin = origin;
         this.opts.query = null;
       }
@@ -16711,7 +16711,7 @@ var require_cache2 = __commonJS({
   "node_modules/undici/lib/interceptor/cache.js"(exports2, module2) {
     "use strict";
     var assert2 = require("node:assert");
-    var { Readable: Readable4 } = require("node:stream");
+    var { Readable: Readable5 } = require("node:stream");
     var util = require_util();
     var CacheHandler = require_cache_handler();
     var MemoryCacheStore = require_memory_cache_store();
@@ -16800,7 +16800,7 @@ var require_cache2 = __commonJS({
       return dispatch(opts, new CacheHandler(globalOpts, cacheKey, handler));
     }
     function sendCachedValue(handler, opts, result, age, context, isStale2) {
-      const stream = util.isStream(result.body) ? result.body : Readable4.from(result.body ?? []);
+      const stream = util.isStream(result.body) ? result.body : Readable5.from(result.body ?? []);
       assert2(!stream.destroyed, "stream should not be destroyed");
       assert2(!stream.readableDidRead, "stream should not be readableDidRead");
       const controller = {
@@ -18546,7 +18546,7 @@ var require_response = __commonJS({
     var assert2 = require("node:assert");
     var { isomorphicEncode, serializeJavascriptValueToJSONString } = require_infra();
     var textEncoder = new TextEncoder("utf-8");
-    var Response = class _Response {
+    var Response2 = class _Response {
       /** @type {Headers} */
       #headers;
       #state;
@@ -18718,13 +18718,13 @@ var require_response = __commonJS({
         response.#state = newState;
       }
     };
-    var { getResponseHeaders, setResponseHeaders, getResponseState, setResponseState } = Response;
-    Reflect.deleteProperty(Response, "getResponseHeaders");
-    Reflect.deleteProperty(Response, "setResponseHeaders");
-    Reflect.deleteProperty(Response, "getResponseState");
-    Reflect.deleteProperty(Response, "setResponseState");
-    mixinBody(Response, getResponseState);
-    Object.defineProperties(Response.prototype, {
+    var { getResponseHeaders, setResponseHeaders, getResponseState, setResponseState } = Response2;
+    Reflect.deleteProperty(Response2, "getResponseHeaders");
+    Reflect.deleteProperty(Response2, "setResponseHeaders");
+    Reflect.deleteProperty(Response2, "getResponseState");
+    Reflect.deleteProperty(Response2, "setResponseState");
+    mixinBody(Response2, getResponseState);
+    Object.defineProperties(Response2.prototype, {
       type: kEnumerableProperty,
       url: kEnumerableProperty,
       status: kEnumerableProperty,
@@ -18740,7 +18740,7 @@ var require_response = __commonJS({
         configurable: true
       }
     });
-    Object.defineProperties(Response, {
+    Object.defineProperties(Response2, {
       json: kEnumerableProperty,
       redirect: kEnumerableProperty,
       error: kEnumerableProperty
@@ -18873,7 +18873,7 @@ var require_response = __commonJS({
       }
     }
     function fromInnerResponse(innerResponse, guard) {
-      const response = new Response(kConstruct);
+      const response = new Response2(kConstruct);
       setResponseState(response, innerResponse);
       const headers = new Headers2(kConstruct);
       setResponseHeaders(response, headers);
@@ -18927,14 +18927,14 @@ var require_response = __commonJS({
         converter: webidl.converters.HeadersInit
       }
     ]);
-    webidl.is.Response = webidl.util.MakeTypeAssertion(Response);
+    webidl.is.Response = webidl.util.MakeTypeAssertion(Response2);
     module2.exports = {
       isNetworkError,
       makeNetworkError,
       makeResponse,
       makeAppropriateNetworkError,
       filterResponse,
-      Response,
+      Response: Response2,
       cloneResponse,
       fromInnerResponse,
       getResponseState
@@ -19896,7 +19896,7 @@ var require_fetch = __commonJS({
       subresourceSet
     } = require_constants3();
     var EE = require("node:events");
-    var { Readable: Readable4, pipeline, finished, isErrored, isReadable } = require("node:stream");
+    var { Readable: Readable5, pipeline, finished, isErrored, isReadable } = require("node:stream");
     var { addAbortListener, bufferToLowerCasedHeaderName } = require_util();
     var { dataURLProcessor, serializeAMimeType, minimizeSupportedMimeType } = require_data_url();
     var { getGlobalDispatcher } = require_global2();
@@ -20793,11 +20793,11 @@ var require_fetch = __commonJS({
       function dispatch({ body }) {
         const url = requestCurrentURL(request);
         const agent = fetchParams.controller.dispatcher;
-        const path23 = url.pathname + url.search;
+        const path24 = url.pathname + url.search;
         const hasTrailingQuestionMark = url.search.length === 0 && url.href[url.href.length - url.hash.length - 1] === "?";
         return new Promise((resolve, reject) => agent.dispatch(
           {
-            path: hasTrailingQuestionMark ? `${path23}?` : path23,
+            path: hasTrailingQuestionMark ? `${path24}?` : path24,
             origin: url.origin,
             method: request.method,
             body: agent.isMockActive ? request.body && (request.body.source || request.body.stream) : body,
@@ -20839,7 +20839,7 @@ var require_fetch = __commonJS({
                 }
               }
               const location = headersList.get("location", true);
-              this.body = new Readable4({ read: resume });
+              this.body = new Readable5({ read: resume });
               const willFollow = location && request.redirect === "follow" && redirectStatusSet.has(status);
               const decoders = [];
               if (request.method !== "HEAD" && request.method !== "CONNECT" && !nullBodyStatus.includes(status) && !willFollow) {
@@ -21744,9 +21744,9 @@ var require_util4 = __commonJS({
         }
       }
     }
-    function validateCookiePath(path23) {
-      for (let i = 0; i < path23.length; ++i) {
-        const code = path23.charCodeAt(i);
+    function validateCookiePath(path24) {
+      for (let i = 0; i < path24.length; ++i) {
+        const code = path24.charCodeAt(i);
         if (code < 32 || // exclude CTLs (0-31)
         code === 127 || // DEL
         code === 59) {
@@ -24319,14 +24319,14 @@ var require_util6 = __commonJS({
 var require_eventsource_stream = __commonJS({
   "node_modules/undici/lib/web/eventsource/eventsource-stream.js"(exports2, module2) {
     "use strict";
-    var { Transform: Transform3 } = require("node:stream");
+    var { Transform: Transform4 } = require("node:stream");
     var { isASCIINumber, isValidLastEventId } = require_util6();
     var BOM = [239, 187, 191];
     var LF = 10;
     var CR = 13;
     var COLON = 58;
     var SPACE = 32;
-    var EventSourceStream = class extends Transform3 {
+    var EventSourceStream = class extends Transform4 {
       /**
        * @type {eventSourceSettings}
        */
@@ -24945,11 +24945,11 @@ var require_undici = __commonJS({
           if (typeof opts.path !== "string") {
             throw new InvalidArgumentError("invalid opts.path");
           }
-          let path23 = opts.path;
+          let path24 = opts.path;
           if (!opts.path.startsWith("/")) {
-            path23 = `/${path23}`;
+            path24 = `/${path24}`;
           }
-          url = new URL(util.parseOrigin(url).origin + path23);
+          url = new URL(util.parseOrigin(url).origin + path24);
         } else {
           if (!opts) {
             opts = typeof url === "object" ? url : {};
@@ -29464,9 +29464,9 @@ var require_sha256 = __commonJS({
     var forge2 = require_forge();
     require_md();
     require_util7();
-    var sha256 = module2.exports = forge2.sha256 = forge2.sha256 || {};
-    forge2.md.sha256 = forge2.md.algorithms.sha256 = sha256;
-    sha256.create = function() {
+    var sha2562 = module2.exports = forge2.sha256 = forge2.sha256 || {};
+    forge2.md.sha256 = forge2.md.algorithms.sha256 = sha2562;
+    sha2562.create = function() {
       if (!_initialized) {
         _init();
       }
@@ -42888,7 +42888,7 @@ var import_strict = __toESM(require("node:assert/strict"), 1);
 var import_node_test = __toESM(require("node:test"), 1);
 
 // packages/core/src/web/management-server.ts
-var import_node_path35 = __toESM(require("node:path"));
+var import_node_path37 = __toESM(require("node:path"));
 
 // packages/core/package.json
 var package_default = {
@@ -43018,6 +43018,7 @@ var PROXY_CA_CERT_DER_FILE = import_node_path3.default.join(CERTDIR, "ca.cer");
 var PROXY_CA_KEY_FILE = import_node_path3.default.join(CERTDIR, "key.pem");
 var GATEWAY_CONFIG_FILE = import_node_path3.default.join(CONFIGDIR, "gateway.config.json");
 var REQUEST_LOGS_DB_FILE = import_node_path3.default.join(DATADIR, "request-logs.sqlite");
+var CONTEXT_ARCHIVE_DB_FILE = import_node_path3.default.join(DATADIR, "context-archive.sqlite");
 var RAW_TRACE_SPOOL_DIR = import_node_path3.default.join(DATADIR, "raw-trace-spool");
 var USAGE_DB_FILE = import_node_path3.default.join(DATADIR, "usage.sqlite");
 if (process.platform === "win32") {
@@ -44706,6 +44707,23 @@ function modelDisplayNamesForModels(value, models) {
   const entries = Object.entries(value ?? {}).map(([rawModel, rawDisplayName]) => [rawModel.trim(), rawDisplayName.trim()]).filter(([model, displayName]) => model && displayName && model !== displayName && modelIds.has(model));
   return entries.length > 0 ? Object.fromEntries(entries) : void 0;
 }
+function findOauthTokenSet(value, depth = 0) {
+  if (!isRecord(value) || depth > 5) {
+    return void 0;
+  }
+  const accessToken = readString3(value.accessToken) || readString3(value.access_token) || readString3(value.anthropicAccessToken);
+  const refreshToken = readString3(value.refreshToken) || readString3(value.refresh_token) || readString3(value.anthropicRefreshToken);
+  if (accessToken || refreshToken) {
+    return { accessToken, refreshToken };
+  }
+  for (const child of Object.values(value)) {
+    const found = findOauthTokenSet(child, depth + 1);
+    if (found) {
+      return found;
+    }
+  }
+  return void 0;
+}
 function readJsonRecord(file) {
   if (!(0, import_node_fs6.existsSync)(file)) {
     return void 0;
@@ -45083,6 +45101,9 @@ var GROK_MEDIA_FUSION_TOOL_NAMES = [
   GROK_MEDIA_JOB_CANCEL_TOOL_NAME,
   GROK_MEDIA_CAPABILITIES_TOOL_NAME
 ];
+function isGatewayProviderEnabled(provider) {
+  return provider.enabled !== false;
+}
 var ROUTER_SCRIPT_API_VERSION = 1;
 var ROUTER_SCRIPT_MAX_SOURCE_BYTES = 64 * 1024;
 var ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS = 2e3;
@@ -45129,7 +45150,7 @@ function availableGatewayModelIds(config) {
 function availableGatewayBaseModelEntries(providers) {
   return providers.flatMap((provider) => {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       return [];
     }
     return provider.models.flatMap((rawModel) => {
@@ -45847,6 +45868,17 @@ function createDefaultAppConfig(options) {
       streamReplies: true,
       tenantId: "ccr"
     },
+    contextArchive: {
+      enabled: false,
+      maxBytes: 512 * 1024 * 1024,
+      maxSnapshotBytes: 32 * 1024 * 1024,
+      maxSnapshots: 200,
+      mcpEnabled: true,
+      replayTimeoutMs: 6e4,
+      retentionDays: 30,
+      storagePath: "",
+      toolName: "ccr_history_ask"
+    },
     gateway: {
       coreHost,
       corePort: 3457,
@@ -45876,6 +45908,7 @@ function createDefaultAppConfig(options) {
     profile: {
       claudeCode: {
         enabled: true,
+        managedCompact: false,
         model: "",
         settingsFile: "~/.claude/settings.json",
         smallFastModel: ""
@@ -45887,6 +45920,7 @@ function createDefaultAppConfig(options) {
         configFormat: "separate_profile_files",
         configFile: "~/.codex/config.toml",
         enabled: true,
+        managedCompact: false,
         model: "",
         providerId: "claude-code-router",
         providerName: "Claude Code Router",
@@ -45899,6 +45933,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: { ...CLAUDE_CODE_DEFAULT_ENV },
           id: "default-claude-code",
+          managedCompact: false,
           model: "",
           name: "Claude Code",
           scope: "global",
@@ -45916,6 +45951,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: {},
           id: "default-codex",
+          managedCompact: false,
           model: "",
           name: "Codex",
           providerId: "claude-code-router",
@@ -46130,6 +46166,22 @@ var geminiProviderPreset = {
     { flags: "i", source: "^AIza[a-z0-9_-]{20,}$" }
   ],
   websiteUrl: "https://gemini.google.com/"
+};
+
+// packages/core/src/providers/presets/infistar-ai/index.ts
+var infistarAiProviderPreset = {
+  account: defaultProviderAccountConfig,
+  aliases: ["infistar", "infistar ai", "\u65E0\u9650\u661F\u6CB3", "\u65E0\u9650\u661F\u6CB3ai", "\u65E0\u9650\u661F\u6CB3 ai"],
+  defaultModels: ["gpt-4o"],
+  endpoints: [
+    {
+      baseUrl: "https://infistar.ai/v1",
+      protocols: ["openai_chat_completions"]
+    }
+  ],
+  id: "infistar-ai",
+  name: "Infistar AI",
+  websiteUrl: "https://infistar.ai"
 };
 
 // packages/core/src/providers/presets/kimi-coding/index.ts
@@ -46879,6 +46931,7 @@ var providerPresets = [
   siliconFlowProviderPreset,
   qiniuAiProviderPreset,
   fennoProviderPreset,
+  infistarAiProviderPreset,
   runApiProviderPreset,
   teamoRouterProviderPreset,
   unity2ProviderPreset,
@@ -47042,6 +47095,17 @@ async function loadAppConfig() {
       },
       botConfigs: picked.botConfigs ?? DEFAULT_CONFIG.botConfigs,
       botGateway: completeBotGatewayConfig(picked.botGateway),
+      contextArchive: {
+        enabled: picked.contextArchive?.enabled ?? DEFAULT_CONFIG.contextArchive.enabled,
+        maxBytes: picked.contextArchive?.maxBytes ?? DEFAULT_CONFIG.contextArchive.maxBytes,
+        maxSnapshotBytes: picked.contextArchive?.maxSnapshotBytes ?? DEFAULT_CONFIG.contextArchive.maxSnapshotBytes,
+        maxSnapshots: picked.contextArchive?.maxSnapshots ?? DEFAULT_CONFIG.contextArchive.maxSnapshots,
+        mcpEnabled: picked.contextArchive?.mcpEnabled ?? DEFAULT_CONFIG.contextArchive.mcpEnabled,
+        replayTimeoutMs: picked.contextArchive?.replayTimeoutMs ?? DEFAULT_CONFIG.contextArchive.replayTimeoutMs,
+        retentionDays: picked.contextArchive?.retentionDays ?? DEFAULT_CONFIG.contextArchive.retentionDays,
+        storagePath: picked.contextArchive?.storagePath ?? DEFAULT_CONFIG.contextArchive.storagePath,
+        toolName: picked.contextArchive?.toolName ?? DEFAULT_CONFIG.contextArchive.toolName
+      },
       gateway: {
         ...DEFAULT_CONFIG.gateway,
         ...gatewayConfig,
@@ -47301,6 +47365,10 @@ function pickConfig(value) {
   if (botConfigs) {
     config.botConfigs = botConfigs;
   }
+  const contextArchive = parseContextArchive(value.contextArchive ?? value.context_archive);
+  if (contextArchive) {
+    config.contextArchive = contextArchive;
+  }
   if (typeof value.autoStart === "boolean") {
     config.autoStart = value.autoStart;
   }
@@ -47390,6 +47458,48 @@ function pickConfig(value) {
     config.overviewWidgets = overviewWidgets;
   }
   return config;
+}
+function parseContextArchive(value) {
+  if (!isObject3(value)) {
+    return void 0;
+  }
+  const contextArchive = {};
+  if (typeof value.enabled === "boolean") {
+    contextArchive.enabled = value.enabled;
+  }
+  const mcpEnabled = value.mcpEnabled ?? value.mcp_enabled;
+  if (typeof mcpEnabled === "boolean") {
+    contextArchive.mcpEnabled = mcpEnabled;
+  }
+  const maxBytes = readNumber(value.maxBytes ?? value.max_bytes);
+  if (maxBytes !== void 0) {
+    contextArchive.maxBytes = clampNumber(maxBytes, 1024 * 1024, 64 * 1024 * 1024 * 1024);
+  }
+  const maxSnapshotBytes = readNumber(value.maxSnapshotBytes ?? value.max_snapshot_bytes);
+  if (maxSnapshotBytes !== void 0) {
+    contextArchive.maxSnapshotBytes = clampNumber(maxSnapshotBytes, 64 * 1024, 1024 * 1024 * 1024);
+  }
+  const maxSnapshots = readNumber(value.maxSnapshots ?? value.max_snapshots);
+  if (maxSnapshots !== void 0) {
+    contextArchive.maxSnapshots = clampNumber(maxSnapshots, 1, 1e5);
+  }
+  const replayTimeoutMs = readNumber(value.replayTimeoutMs ?? value.replay_timeout_ms);
+  if (replayTimeoutMs !== void 0) {
+    contextArchive.replayTimeoutMs = clampNumber(replayTimeoutMs, 1e3, 6e5);
+  }
+  const retentionDays = readNumber(value.retentionDays ?? value.retention_days);
+  if (retentionDays !== void 0) {
+    contextArchive.retentionDays = clampNumber(retentionDays, 1, 3650);
+  }
+  const storagePath = readString4(value.storagePath ?? value.storage_path);
+  if (storagePath !== void 0) {
+    contextArchive.storagePath = storagePath;
+  }
+  const toolName = readString4(value.toolName ?? value.tool_name);
+  if (toolName !== void 0) {
+    contextArchive.toolName = toolName;
+  }
+  return Object.keys(contextArchive).length ? contextArchive : void 0;
 }
 function removeVirtualModelToolLoopLimits(value) {
   if (!isObject3(value) || !isObject3(value.execution) || !("maxTurns" in value.execution) && !("maxToolCalls" in value.execution)) {
@@ -47755,12 +47865,14 @@ function parseProviders(value) {
       extraHeaders: item.extraHeaders,
       icon: readString4(item.icon),
       id: readString4(item.id),
+      enabled: item.enabled === false ? false : void 0,
       modelDescriptions,
       modelDisplayNames,
       modelMetadata,
       models,
       name,
       provider: readString4(item.provider),
+      protocolDetectionMode: parseEnumValue(item.protocolDetectionMode, ["auto", "manual"], void 0),
       transformer: item.transformer,
       type: readString4(item.type)
     };
@@ -48522,7 +48634,7 @@ function parseMcpServers(value) {
     }
     const transport = parseMcpServerTransport(item.transport ?? item.type);
     const name = readString4(item.name) || (transport !== "stdio" ? readString4(item.url) : readString4(item.command)) || `mcp-${index + 1}`;
-    const protocolVersion3 = readString4(item.protocolVersion) || "2024-11-05";
+    const protocolVersion4 = readString4(item.protocolVersion) || "2024-11-05";
     const startupTimeoutMs = clampNumber(readNumber(item.startupTimeoutMs) ?? 6e5, 100, 6e5);
     const requestTimeoutMs = clampNumber(readNumber(item.requestTimeoutMs) ?? 3e4, 100, 6e5);
     if (transport !== "stdio") {
@@ -48535,7 +48647,7 @@ function parseMcpServers(value) {
         ...readString4(item.apiKeyEnv) ? { apiKeyEnv: readString4(item.apiKeyEnv) } : {},
         headers: parseStringRecord(item.headers) ?? {},
         name,
-        protocolVersion: protocolVersion3,
+        protocolVersion: protocolVersion4,
         requestTimeoutMs,
         startupTimeoutMs,
         transport,
@@ -48553,7 +48665,7 @@ function parseMcpServers(value) {
       ...readString4(item.cwd) ? { cwd: readString4(item.cwd) } : {},
       env: parseStringRecord(item.env) ?? {},
       name,
-      protocolVersion: protocolVersion3,
+      protocolVersion: protocolVersion4,
       requestTimeoutMs,
       startupTimeoutMs,
       stdioMessageMode,
@@ -48672,7 +48784,7 @@ function parseProxyTargets(value) {
     if (!host) {
       return void 0;
     }
-    const paths = Array.isArray(item.paths) ? item.paths.map((path23) => readString4(path23)).filter((path23) => Boolean(path23)) : void 0;
+    const paths = Array.isArray(item.paths) ? item.paths.map((path24) => readString4(path24)).filter((path24) => Boolean(path24)) : void 0;
     return {
       host,
       paths: paths?.length ? paths : void 0
@@ -48741,7 +48853,7 @@ function parseGatewayPluginProxyRoutes(value) {
     if (!host || !upstream) {
       return void 0;
     }
-    const paths = Array.isArray(item.paths) ? item.paths.map((path23) => readString4(path23)).filter((path23) => Boolean(path23)) : void 0;
+    const paths = Array.isArray(item.paths) ? item.paths.map((path24) => readString4(path24)).filter((path24) => Boolean(path24)) : void 0;
     const headers = parseStringRecord(item.headers);
     const stripPathPrefix = typeof item.stripPathPrefix === "boolean" || typeof item.stripPathPrefix === "string" ? item.stripPathPrefix : void 0;
     const rewritePathPrefix = readString4(item.rewritePathPrefix);
@@ -48788,6 +48900,10 @@ function parseProfile(value) {
     if (typeof claudeCode.enabled === "boolean") {
       profile.claudeCode.enabled = claudeCode.enabled;
     }
+    const managedCompact = readManagedCompact(claudeCode);
+    if (managedCompact !== void 0) {
+      profile.claudeCode.managedCompact = managedCompact;
+    }
     const settingsFile = readString4(claudeCode.settingsFile) || readString4(claudeCode.configFile) || readString4(claudeCode.path);
     if (settingsFile) {
       profile.claudeCode.settingsFile = settingsFile;
@@ -48806,6 +48922,10 @@ function parseProfile(value) {
     profile.codex = {};
     if (typeof codex.enabled === "boolean") {
       profile.codex.enabled = codex.enabled;
+    }
+    const managedCompact = readManagedCompact(codex);
+    if (managedCompact !== void 0) {
+      profile.codex.managedCompact = managedCompact;
     }
     if (typeof codex.cliMiddleware === "boolean") {
       profile.codex.cliMiddleware = codex.cliMiddleware;
@@ -48898,6 +49018,7 @@ function parseProfiles(value) {
     const botConfigId = surface !== "cli" ? readString4(item.botConfigId) || readString4(item.bot_config_id) || readString4(item.savedBotConfigId) || readString4(item.saved_bot_config_id) : "";
     const parsedBotGateway = parseBotGateway(item.botGateway ?? item.bot_gateway ?? item.bot);
     const botGateway = surface !== "cli" && parsedBotGateway ? completeBotGatewayConfig(parsedBotGateway) : void 0;
+    const managedCompact = readManagedCompact(item);
     if (agent === "claude-code") {
       const appPath2 = readProfileAppPath(item, agent);
       return {
@@ -48908,6 +49029,7 @@ function parseProfiles(value) {
         enabled,
         env: claudeCodeProfileEnv(env),
         id,
+        ...managedCompact !== void 0 ? { managedCompact } : {},
         model,
         name,
         scope: parseProfileScope(readString4(item.scope) || readString4(item.applyScope) || readString4(item.effectScope)) || "global",
@@ -48943,6 +49065,7 @@ function parseProfiles(value) {
       enabled,
       env: codexCompatibleProfileEnv(env),
       id,
+      ...managedCompact !== void 0 ? { managedCompact } : {},
       model,
       name,
       providerId: readString4(item.providerId) || readString4(item.provider) || "claude-code-router",
@@ -48982,6 +49105,10 @@ function parseProfileAgent(value) {
   }
   return void 0;
 }
+function readManagedCompact(value) {
+  const candidate = value.managedCompact ?? value.managed_compact ?? value.ccrManagedCompact ?? value.ccr_managed_compact ?? value.contextArchiveCompact ?? value.context_archive_compact;
+  return typeof candidate === "boolean" ? candidate : void 0;
+}
 function defaultProfileAgentName(agent) {
   if (agent === "claude-code") {
     return "Claude Code";
@@ -49016,6 +49143,7 @@ function profileFromClaudeCodeConfig(config) {
     enabled: config.enabled,
     env: claudeCodeProfileEnv(),
     id: "default-claude-code",
+    managedCompact: config.managedCompact,
     model: config.model,
     name: "Claude Code",
     scope: "global",
@@ -49045,6 +49173,7 @@ function profileFromCodexConfig(config) {
     enabled: config.enabled,
     env: {},
     id: "default-codex",
+    managedCompact: config.managedCompact,
     model: config.model,
     name: "Codex",
     providerId: config.providerId,
@@ -49396,7 +49525,9 @@ var ModelRegistry = class {
     if (!normalized) {
       return void 0;
     }
-    return this.config.Providers.find((provider) => providerAliases(provider).has(normalized));
+    return this.config.Providers.find(
+      (provider) => isGatewayProviderEnabled(provider) && providerAliases(provider).has(normalized)
+    );
   }
   resolveProviderModel(value) {
     const resolved = this.resolve(value);
@@ -49414,6 +49545,9 @@ var ModelRegistry = class {
     const normalized = caseInsensitive ? model.toLowerCase() : model;
     const matches = [];
     for (const provider of this.config.Providers) {
+      if (!isGatewayProviderEnabled(provider)) {
+        continue;
+      }
       for (const candidate of provider.models) {
         const configured = candidate.trim();
         const comparable = caseInsensitive ? configured.toLowerCase() : configured;
@@ -50214,10 +50348,10 @@ function videoGenerationConstraints(protocol) {
   };
 }
 function createGrokMediaModelOptions(providers, kind) {
-  return providers.flatMap((provider) => grokMediaModelsForProvider(provider, kind).map((model) => ({
+  return providers.flatMap((provider) => isGatewayProviderEnabled(provider) ? grokMediaModelsForProvider(provider, kind).map((model) => ({
     label: `${provider.name}/${mediaModelDisplayName(model)}`,
     value: `${provider.name}/${model}`
-  })));
+  })) : []);
 }
 function defaultGrokMediaModelSelector(providers, kind) {
   return createGrokMediaModelOptions(providers, kind)[0]?.value;
@@ -50249,7 +50383,7 @@ function uniqueStrings6(values) {
 
 // packages/core/src/media/tools.ts
 function mediaToolBindingsForConfig(config) {
-  const providers = config.Providers ?? [];
+  const providers = (config.Providers ?? []).filter(isGatewayProviderEnabled);
   const bindings = [];
   const seen = /* @__PURE__ */ new Set();
   const add = (binding) => {
@@ -50695,8 +50829,8 @@ function effectiveTargetProviderName(rewrites) {
   if (provider?.trim()) return provider.trim();
   return headers["x-target-providers"]?.split(",").map((item) => item.trim()).find(Boolean);
 }
-function readPathValue(value, path23) {
-  return path23.reduce((current, part) => {
+function readPathValue(value, path24) {
+  return path24.reduce((current, part) => {
     if (Array.isArray(current)) {
       const index = Number(part);
       return Number.isInteger(index) ? current[index] : void 0;
@@ -50729,12 +50863,12 @@ function applyBodyRewrite(body, rewrite) {
   }
   setPathValue(body, rewrite.path, array);
 }
-function setPathValue(target, path23, value) {
-  if (path23.length === 0) return;
+function setPathValue(target, path24, value) {
+  if (path24.length === 0) return;
   let current = target;
-  for (let index = 0; index < path23.length - 1; index += 1) {
-    const key = path23[index];
-    const nextKey = path23[index + 1];
+  for (let index = 0; index < path24.length - 1; index += 1) {
+    const key = path24[index];
+    const nextKey = path24[index + 1];
     if (Array.isArray(current)) {
       const arrayIndex = Number(key);
       if (!Number.isInteger(arrayIndex)) return;
@@ -50750,7 +50884,7 @@ function setPathValue(target, path23, value) {
     }
     current = current[key];
   }
-  const lastKey = path23[path23.length - 1];
+  const lastKey = path24[path24.length - 1];
   if (Array.isArray(current)) {
     const arrayIndex = Number(lastKey);
     if (Number.isInteger(arrayIndex)) current[arrayIndex] = value;
@@ -50758,10 +50892,10 @@ function setPathValue(target, path23, value) {
     current[lastKey] = value;
   }
 }
-function deletePathValue(target, path23) {
-  if (path23.length === 0) return;
-  const parent = readPathValue(target, path23.slice(0, -1));
-  const key = path23[path23.length - 1];
+function deletePathValue(target, path24) {
+  if (path24.length === 0) return;
+  const parent = readPathValue(target, path24.slice(0, -1));
+  const key = path24[path24.length - 1];
   if (Array.isArray(parent)) {
     const index = Number(key);
     if (Number.isInteger(index)) parent.splice(index, 1);
@@ -50805,13 +50939,13 @@ function comparableText(value) {
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }
-function createReportedRewriteChange(scope, path23, before, after) {
+function createReportedRewriteChange(scope, path24, before, after) {
   if (Object.is(before, after)) return void 0;
   return {
     ...after === void 0 ? {} : { after },
     ...before === void 0 ? {} : { before },
     operation: before === void 0 ? "add" : after === void 0 ? "remove" : "replace",
-    path: path23,
+    path: path24,
     scope
   };
 }
@@ -51631,7 +51765,8 @@ function resolveGrokProfileRouteTarget(config, profileModel) {
   if (configured) {
     return configured;
   }
-  const preferred = config.Providers.find((provider) => provider.name === config.preferredProvider) ?? config.Providers[0];
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const preferred = enabledProviders.find((provider) => provider.name === config.preferredProvider) ?? enabledProviders[0];
   return preferred?.name && preferred.models[0] ? `${preferred.name}/${preferred.models[0]}` : void 0;
 }
 var builtInAgentRuleIds = ["claude-code", "codex"];
@@ -51875,7 +52010,7 @@ function configuredSubagentModelDescriptionRows(config) {
   const candidates = [];
   for (const provider of config.Providers) {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       continue;
     }
     for (const rawModel of provider.models) {
@@ -52214,8 +52349,8 @@ function routerRuleConditionMatches(condition, request) {
   if (condition.operator === "<=") return actualText <= expectedText;
   return false;
 }
-function resolveRouterConditionValue(path23, request) {
-  const parts = path23.split(".").map((part) => part.trim()).filter(Boolean);
+function resolveRouterConditionValue(path24, request) {
+  const parts = path24.split(".").map((part) => part.trim()).filter(Boolean);
   if (parts.length === 0) {
     return void 0;
   }
@@ -52258,8 +52393,8 @@ function readRequestHeader(headers, name) {
   const matchedKey = Object.keys(headers).find((key) => key.toLowerCase() === normalized);
   return matchedKey ? readHeader2(headers[matchedKey]) : void 0;
 }
-function readPathValue2(value, path23) {
-  return path23.reduce((current, part) => {
+function readPathValue2(value, path24) {
+  return path24.reduce((current, part) => {
     if (Array.isArray(current)) {
       const index = Number(part);
       return Number.isInteger(index) ? current[index] : void 0;
@@ -52468,15 +52603,19 @@ var maxProviderIconBytes = 1024 * 1024;
 var maxManifestBytes = 128 * 1024;
 
 // packages/core/src/agents/local-providers/claude-code.ts
-var percentLimitMapping = (id, label, path23, window2) => ({
+var import_node_child_process3 = require("node:child_process");
+var import_node_os5 = __toESM(require("node:os"));
+var import_node_path14 = __toESM(require("node:path"));
+var claudeCodeKeychainService = "Claude Code-credentials";
+var percentLimitMapping = (id, label, path24, window2) => ({
   id,
   kind: "quota",
   label,
   limit: 100,
-  remaining: `100 - ${path23}.utilization`,
-  resetAt: `${path23}.resets_at`,
+  remaining: `100 - ${path24}.utilization`,
+  resetAt: `${path24}.resets_at`,
   unit: "%",
-  used: `${path23}.utilization`,
+  used: `${path24}.utilization`,
   window: window2
 });
 var claudeCodeAccountMapping = {
@@ -52507,13 +52646,70 @@ var claudeCodeAccountMapping = {
     }
   ]
 };
+function readClaudeCodeOauth() {
+  const keychainOauth = readClaudeCodeKeychainOauth();
+  if (keychainOauth) {
+    return keychainOauth;
+  }
+  for (const sourceFile of claudeCredentialFiles()) {
+    const record = readJsonRecord(sourceFile);
+    if (!record) {
+      continue;
+    }
+    const credential = findOauthTokenSet(record);
+    return {
+      accessToken: credential?.accessToken,
+      refreshToken: credential?.refreshToken,
+      sourceFile
+    };
+  }
+  return void 0;
+}
+function claudeCredentialFiles() {
+  return uniqueStrings([
+    import_node_path14.default.join(import_node_os5.default.homedir(), ".claude", ".credentials.json"),
+    import_node_path14.default.join(import_node_os5.default.homedir(), ".claude", "credentials.json"),
+    import_node_path14.default.join(import_node_os5.default.homedir(), ".config", "claude", "credentials.json")
+  ]);
+}
+function readClaudeCodeKeychainOauth() {
+  const keychainRecord = readClaudeCodeKeychainRecord();
+  if (!keychainRecord) {
+    return void 0;
+  }
+  const credential = findOauthTokenSet(keychainRecord);
+  if (!credential) {
+    return void 0;
+  }
+  return {
+    accessToken: credential.accessToken,
+    refreshToken: credential.refreshToken,
+    sourceFile: `keychain:${claudeCodeKeychainService}`
+  };
+}
+function readClaudeCodeKeychainRecord() {
+  if (process.platform !== "darwin") {
+    return void 0;
+  }
+  try {
+    const output = (0, import_node_child_process3.execFileSync)(
+      "security",
+      ["find-generic-password", "-s", claudeCodeKeychainService, "-w"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
+    );
+    const parsed = JSON.parse(output.trim());
+    return isRecord(parsed) ? parsed : void 0;
+  } catch {
+    return void 0;
+  }
+}
 
 // packages/core/src/agents/local-providers/kimi.ts
-var import_node_child_process3 = require("node:child_process");
+var import_node_child_process4 = require("node:child_process");
 var import_node_crypto3 = require("node:crypto");
 var import_node_fs10 = require("node:fs");
-var import_node_os5 = __toESM(require("node:os"));
-var import_node_path14 = __toESM(require("node:path"));
+var import_node_os6 = __toESM(require("node:os"));
+var import_node_path15 = __toESM(require("node:path"));
 var kimiDefaultBaseUrl = "https://api.kimi.com/coding/v1";
 var kimiPlatformBaseUrl = "https://api.moonshot.ai/v1";
 var kimiOauthHost = "https://auth.kimi.com";
@@ -52567,8 +52763,8 @@ function kimiIdentityHeaders() {
   const headers = {
     "User-Agent": `kimi-code-cli/${version}`,
     "X-Msh-Device-Model": kimiDeviceModel(),
-    "X-Msh-Device-Name": asciiHeader(import_node_os5.default.hostname()),
-    "X-Msh-Os-Version": asciiHeader(import_node_os5.default.release()),
+    "X-Msh-Device-Name": asciiHeader(import_node_os6.default.hostname()),
+    "X-Msh-Os-Version": asciiHeader(import_node_os6.default.release()),
     "X-Msh-Platform": "kimi_code_cli",
     "X-Msh-Version": version
   };
@@ -52905,14 +53101,14 @@ function findTomlSection(sections, pathValue) {
   return sections.find((section) => section.path.length === pathValue.length && section.path.every((part, index) => part === pathValue[index]));
 }
 function kimiConfigFile() {
-  return import_node_path14.default.join(kimiStorageRoot(), "config.toml");
+  return import_node_path15.default.join(kimiStorageRoot(), "config.toml");
 }
 function kimiCredentialFile(oauthKey) {
   const storageName = oauthKey === "kimi-code" || oauthKey === "oauth/kimi-code" ? "kimi-code" : oauthKey.startsWith("oauth/") ? oauthKey.slice("oauth/".length) : oauthKey;
   if (!storageName || storageName.includes("/") || storageName.startsWith(".")) {
-    return import_node_path14.default.join(kimiStorageRoot(), "credentials", "kimi-code.json");
+    return import_node_path15.default.join(kimiStorageRoot(), "credentials", "kimi-code.json");
   }
-  return import_node_path14.default.join(kimiStorageRoot(), "credentials", `${storageName}.json`);
+  return import_node_path15.default.join(kimiStorageRoot(), "credentials", `${storageName}.json`);
 }
 function kimiStorageRoot() {
   const explicit = process.env.KIMI_CODE_HOME?.trim();
@@ -52920,14 +53116,14 @@ function kimiStorageRoot() {
     return resolveUserPath(explicit);
   }
   const internalHome = process.env.CCR_INTERNAL_HOME_DIR?.trim();
-  return internalHome ? import_node_path14.default.join(internalHome, ".kimi-code") : import_node_path14.default.join(import_node_os5.default.homedir(), ".kimi-code");
+  return internalHome ? import_node_path15.default.join(internalHome, ".kimi-code") : import_node_path15.default.join(import_node_os6.default.homedir(), ".kimi-code");
 }
 function kimiCliVersion() {
   const explicit = process.env.KIMI_CODE_VERSION?.trim();
   if (explicit) return asciiHeader(explicit, "unknown");
   for (const command of kimiCliCandidates()) {
     try {
-      const value = (0, import_node_child_process3.execFileSync)(command, ["--version"], {
+      const value = (0, import_node_child_process4.execFileSync)(command, ["--version"], {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
         timeout: 2e3
@@ -52943,20 +53139,20 @@ function kimiCliCandidates() {
   const explicit = process.env.CCR_KIMI_BIN?.trim() || process.env.KIMI_BIN?.trim();
   return uniqueStrings([
     explicit,
-    import_node_path14.default.join(kimiStorageRoot(), "bin", process.platform === "win32" ? "kimi.exe" : "kimi"),
+    import_node_path15.default.join(kimiStorageRoot(), "bin", process.platform === "win32" ? "kimi.exe" : "kimi"),
     "kimi"
   ]);
 }
 function readOrCreateKimiDeviceId() {
   try {
-    const existing = (0, import_node_fs10.readFileSync)(import_node_path14.default.join(kimiStorageRoot(), "device_id"), "utf8").trim();
+    const existing = (0, import_node_fs10.readFileSync)(import_node_path15.default.join(kimiStorageRoot(), "device_id"), "utf8").trim();
     if (existing) return existing;
   } catch {
   }
   const deviceId = (0, import_node_crypto3.randomUUID)();
   try {
     (0, import_node_fs10.mkdirSync)(kimiStorageRoot(), { mode: 448, recursive: true });
-    (0, import_node_fs10.writeFileSync)(import_node_path14.default.join(kimiStorageRoot(), "device_id"), deviceId, { encoding: "utf8", mode: 384 });
+    (0, import_node_fs10.writeFileSync)(import_node_path15.default.join(kimiStorageRoot(), "device_id"), deviceId, { encoding: "utf8", mode: 384 });
   } catch {
   }
   return deviceId;
@@ -52964,19 +53160,19 @@ function readOrCreateKimiDeviceId() {
 function kimiDeviceModel() {
   if (process.platform === "darwin") {
     try {
-      const version = (0, import_node_child_process3.execFileSync)("/usr/bin/sw_vers", ["-productVersion"], {
+      const version = (0, import_node_child_process4.execFileSync)("/usr/bin/sw_vers", ["-productVersion"], {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
         timeout: 1e3
       }).trim();
-      return asciiHeader(`macOS ${version || import_node_os5.default.release()} ${import_node_os5.default.arch()}`);
+      return asciiHeader(`macOS ${version || import_node_os6.default.release()} ${import_node_os6.default.arch()}`);
     } catch {
     }
   }
   if (process.platform === "win32") {
-    return asciiHeader(`Windows ${import_node_os5.default.release()} ${import_node_os5.default.arch()}`);
+    return asciiHeader(`Windows ${import_node_os6.default.release()} ${import_node_os6.default.arch()}`);
   }
-  return asciiHeader(`${import_node_os5.default.type()} ${import_node_os5.default.release()} ${import_node_os5.default.arch()}`);
+  return asciiHeader(`${import_node_os6.default.type()} ${import_node_os6.default.release()} ${import_node_os6.default.arch()}`);
 }
 function asciiHeader(value, fallback = "unknown") {
   const cleaned = value.replace(/[^\x20-\x7e]/g, "").trim();
@@ -52990,9 +53186,9 @@ function sanitizeId(value) {
 }
 function resolveUserPath(value) {
   const trimmed = value.trim();
-  if (trimmed === "~") return import_node_os5.default.homedir();
-  if (trimmed.startsWith("~/") || trimmed.startsWith("~\\")) return import_node_path14.default.join(import_node_os5.default.homedir(), trimmed.slice(2));
-  return import_node_path14.default.resolve(trimmed);
+  if (trimmed === "~") return import_node_os6.default.homedir();
+  if (trimmed.startsWith("~/") || trimmed.startsWith("~\\")) return import_node_path15.default.join(import_node_os6.default.homedir(), trimmed.slice(2));
+  return import_node_path15.default.resolve(trimmed);
 }
 function stringValue3(value) {
   return typeof value === "string" && value.trim() ? value.trim() : void 0;
@@ -53026,10 +53222,1525 @@ var connectivityProbeCacheMs = 15 * 1e3;
 var failedProbeCacheMs = 10 * 1e3;
 
 // packages/core/src/profiles/service.ts
-var import_node_path16 = __toESM(require("node:path"));
+var import_node_path18 = __toESM(require("node:path"));
+
+// packages/core/src/gateway/context-archive.ts
+var import_node_crypto4 = require("node:crypto");
+var import_node_stream = require("node:stream");
+
+// packages/core/src/gateway/context-archive/protocol.ts
+var replayableArchiveProtocols = [
+  "anthropic_messages",
+  "openai_chat_completions",
+  "openai_responses"
+];
+function parseArchiveBody(body) {
+  if (!body?.length) {
+    return void 0;
+  }
+  try {
+    const parsed = JSON.parse(body.toString("utf8"));
+    return isRecord8(parsed) ? parsed : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function appendArchiveTask(originalBody, protocol, task) {
+  return appendTask(originalBody, protocol, task, { compactHandoff: false, replayTask: true });
+}
+function appendCompactHandoffTask(originalBody, protocol, task) {
+  return appendTask(originalBody, protocol, task, { compactHandoff: true, replayTask: false });
+}
+function appendTask(originalBody, protocol, task, options) {
+  const body = parseArchiveBody(originalBody);
+  if (!body) {
+    throw archiveProtocolError("ARCHIVE_INVALID_REQUEST", "The archived request body is not a JSON object.");
+  }
+  assertAppendableTurn(body, protocol);
+  const next = cloneJsonObject(body);
+  if (options.compactHandoff) {
+    sanitizeCompactHandoffRequest(next, protocol);
+  } else if (options.replayTask && protocol === "openai_responses") {
+    removeCodexCompactionTriggers(next);
+  }
+  if (protocol === "openai_responses") {
+    if (Array.isArray(next.input)) {
+      next.input = [
+        ...next.input,
+        {
+          content: [{ text: task, type: "input_text" }],
+          role: "user",
+          type: "message"
+        }
+      ];
+    } else if (typeof next.input === "string") {
+      next.input = `${next.input}
+
+${task}`;
+    } else if (next.input === void 0) {
+      next.input = task;
+    } else {
+      throw archiveProtocolError("ARCHIVE_INVALID_REQUEST", "OpenAI Responses input cannot accept an appended task.");
+    }
+  } else {
+    const messages = next.messages;
+    if (!Array.isArray(messages)) {
+      throw archiveProtocolError("ARCHIVE_INVALID_REQUEST", `${protocol} request is missing messages.`);
+    }
+    next.messages = [...messages, { content: task, role: "user" }];
+  }
+  return Buffer.from(`${JSON.stringify(next)}
+`, "utf8");
+}
+function compactHandoffTask(input) {
+  const footer = archiveHandoffFooter(input);
+  return [
+    "CCR compact handoff task:",
+    "You are the previous-context agent. Produce a concise handoff for a successor agent that will start with a fresh context.",
+    "Preserve the current goal, user constraints, decisions, changed files, completed verification, unresolved problems, and the exact next action.",
+    "Do not continue the task and do not call tools. Do not invent details.",
+    "End the handoff with the following archive access block exactly as written:",
+    "",
+    footer
+  ].join("\n");
+}
+function archiveHandoffFooter(input) {
+  const argumentsJson = `{ "task": "specific historical question", "archive_id": "${input.archiveId}", "session_token": "${input.sessionToken}" }`;
+  const clientToolName = input.clientToolName?.trim();
+  const toolLines = clientToolName && clientToolName !== input.toolName ? [
+    `In Claude Code, call the tool named: ${clientToolName}`,
+    `Raw MCP tool name: ${input.toolName}`,
+    `Tool arguments JSON: ${argumentsJson}`
+  ] : [
+    `${input.toolName}(${argumentsJson})`
+  ];
+  return [
+    "CCR ARCHIVED HISTORY ACCESS",
+    `Archive id: ${input.archiveId}`,
+    `Archive session id: ${input.sessionId}`,
+    `Archive generation: ${input.generation}`,
+    `Archive session token: ${input.sessionToken}`,
+    ...toolLines,
+    "The latest archive access searches this compact generation and its parent generations when needed.",
+    "Treat history answers as evidence and preserve the original instruction priority."
+  ].join("\n");
+}
+function historyReplayTask(task) {
+  return [
+    "CCR history task from the successor agent:",
+    "Use the complete conversation and request parameters already present in this request as your previous context.",
+    "Answer only the task below from that context. If the context is insufficient, say so directly.",
+    "Do not continue the previous task, modify files, or call external tools.",
+    "",
+    task
+  ].join("\n");
+}
+function hasExplicitCompactSignal(body, headers) {
+  const explicitHeader = [
+    readHeader3(headers, "x-ccr-context-compact"),
+    readHeader3(headers, "x-context-compact")
+  ].find(Boolean);
+  if (explicitHeader && ["1", "true", "compact", "handoff"].includes(explicitHeader.trim().toLowerCase())) {
+    return true;
+  }
+  const management = isRecord8(body.context_management) ? body.context_management : isRecord8(body.contextManagement) ? body.contextManagement : void 0;
+  const edits = Array.isArray(management?.edits) ? management.edits : [];
+  if (edits.some((edit) => isRecord8(edit) && isCompactType(edit.type))) {
+    return true;
+  }
+  if (hasClaudeCodeAutoCompactPrompt(body)) {
+    return true;
+  }
+  const metadata = isRecord8(body.metadata) ? body.metadata : void 0;
+  return metadata?.ccr_context_compact === true || metadata?.ccrContextCompact === true;
+}
+function hasClaudeCodeAutoCompactPrompt(body) {
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  return messages.some(
+    (message) => isRecord8(message) && String(message.role ?? "") === "user" && collectText(message.content).some(isClaudeCodeAutoCompactPromptText)
+  );
+}
+function isClaudeCodeAutoCompactPromptText(text) {
+  const normalized = normalizeWhitespace(text);
+  return normalized.includes("CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.") && normalized.includes("Your task is to create a detailed summary of the conversation so far") && normalized.includes("Your entire response must be plain text: an <analysis> block followed by a <summary> block.");
+}
+function isCodexResponsesCompactPath(path24) {
+  return /\/responses\/compact\/?$/i.test(path24.split("?")[0] ?? path24);
+}
+function codexResponsesPathForCompact(path24) {
+  if (!isCodexResponsesCompactPath(path24)) {
+    return void 0;
+  }
+  const pathname = path24.split("?")[0] ?? path24;
+  const replacement = pathname.replace(/\/compact\/?$/i, "");
+  return replacement || "/v1/responses";
+}
+function hasCodexResponsesCompactionTrigger(body) {
+  return Array.isArray(body.input) && body.input.some(
+    (item) => isRecord8(item) && item.type === "compaction_trigger"
+  );
+}
+function extractArchiveAssistantText(rawText, protocol, contentType) {
+  const trimmed = rawText.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const isSse = contentType?.toLowerCase().includes("text/event-stream") || /^event:|^data:/m.test(trimmed);
+  if (isSse) {
+    return normalizeWhitespace(collectSseProtocolText(parseSsePayloads(trimmed), protocol).join(""));
+  }
+  try {
+    return normalizeWhitespace(collectProtocolText(JSON.parse(trimmed), protocol).join(""));
+  } catch {
+    return normalizeWhitespace(rawText);
+  }
+}
+function collectSseProtocolText(payloads, protocol) {
+  if (protocol === "openai_responses") {
+    const deltas = payloads.flatMap(
+      (payload) => isRecord8(payload) && payload.type === "response.output_text.delta" && typeof payload.delta === "string" ? [payload.delta] : []
+    );
+    return deltas.length ? deltas : payloads.flatMap((payload) => collectProtocolText(payload, protocol));
+  }
+  if (protocol === "anthropic_messages") {
+    const deltas = payloads.flatMap(
+      (payload) => isRecord8(payload) && payload.type === "content_block_delta" ? collectText(payload.delta) : []
+    );
+    return deltas.length ? deltas : payloads.flatMap((payload) => collectProtocolText(payload, protocol));
+  }
+  return payloads.flatMap((payload) => collectProtocolText(payload, protocol));
+}
+function archiveResponseRequiresTool(rawText) {
+  const values = [];
+  try {
+    values.push(JSON.parse(rawText));
+  } catch {
+    values.push(...parseSsePayloads(rawText));
+  }
+  return values.some(hasStructuredToolCall);
+}
+function appendArchiveFooterToResponse(rawBody, protocol, contentType, footer) {
+  const rawText = rawBody.toString("utf8");
+  if (!footer.trim() || rawText.includes(footer)) {
+    return rawBody;
+  }
+  const normalizedType = contentType?.toLowerCase() ?? "";
+  if (normalizedType.includes("text/event-stream") || /^event:|^data:/m.test(rawText)) {
+    return Buffer.from(appendFooterToSse(rawText, protocol, footer), "utf8");
+  }
+  try {
+    const value = JSON.parse(rawText);
+    const transformed = appendFooterToJson(value, protocol, footer);
+    return transformed.changed ? Buffer.from(`${JSON.stringify(transformed.value)}
+`, "utf8") : rawBody;
+  } catch {
+    return rawBody;
+  }
+}
+function codexCompactArchiveResponseContentType(mode) {
+  if (mode === "codex_responses_compact_json") {
+    return "application/json; charset=utf-8";
+  }
+  if (mode === "codex_responses_compaction_sse") {
+    return "text/event-stream; charset=utf-8";
+  }
+  return void 0;
+}
+function renderCodexCompactArchiveResponse(rawBody, protocol, contentType, footer, mode) {
+  const rawText = rawBody.toString("utf8");
+  const handoff = ensureFooter(
+    extractArchiveAssistantText(rawText, protocol, contentType) || "Context compacted. Use the archive access block below to recover historical details.",
+    footer
+  );
+  const usage = extractOpenAiResponsesUsage(rawText, contentType);
+  const compactionItem = {
+    encrypted_content: handoff,
+    type: "compaction"
+  };
+  if (mode === "codex_responses_compaction_sse") {
+    const completed = {
+      response: {
+        id: "resp_ccr_context_archive",
+        usage: usage ?? {
+          input_tokens: 0,
+          input_tokens_details: null,
+          output_tokens: 0,
+          output_tokens_details: null,
+          total_tokens: 0
+        }
+      },
+      type: "response.completed"
+    };
+    return Buffer.from([
+      sseBlock("response.output_item.done", {
+        item: compactionItem,
+        type: "response.output_item.done"
+      }),
+      sseBlock("response.completed", completed)
+    ].join("\n\n") + "\n\n", "utf8");
+  }
+  return Buffer.from(`${JSON.stringify({
+    output: [compactionItem],
+    ...usage ? { usage } : {}
+  })}
+`, "utf8");
+}
+function assertAppendableTurn(body, protocol) {
+  if (protocol === "openai_responses") {
+    const input = Array.isArray(body.input) ? body.input : [];
+    const tail2 = input.at(-1);
+    if (isRecord8(tail2) && ["function_call", "computer_call", "custom_tool_call"].includes(String(tail2.type ?? ""))) {
+      throw archiveProtocolError("ARCHIVE_NOT_AT_TURN_BOUNDARY", "The archived Responses request ends with an unresolved tool call.");
+    }
+    return;
+  }
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  const tail = messages.at(-1);
+  if (!isRecord8(tail) || String(tail.role ?? "") !== "assistant") {
+    return;
+  }
+  if (Array.isArray(tail.tool_calls) && tail.tool_calls.length > 0) {
+    throw archiveProtocolError("ARCHIVE_NOT_AT_TURN_BOUNDARY", "The archived chat request ends with an unresolved tool call.");
+  }
+  if (Array.isArray(tail.content) && tail.content.some((block) => isRecord8(block) && block.type === "tool_use")) {
+    throw archiveProtocolError("ARCHIVE_NOT_AT_TURN_BOUNDARY", "The archived Anthropic request ends with an unresolved tool call.");
+  }
+}
+function sanitizeCompactHandoffRequest(body, protocol) {
+  removeCompactSignals(body);
+  removeKeys(body, [
+    "response_format",
+    "responseFormat",
+    "stop",
+    "stop_sequences",
+    "stopSequences"
+  ]);
+  if (protocol === "openai_responses") {
+    removeKeys(body, [
+      "parallel_tool_calls",
+      "parallelToolCalls",
+      "tool_choice",
+      "toolChoice",
+      "tools"
+    ]);
+    normalizeOpenAiResponsesTextFormat(body);
+    raiseMinimumNumericField(body, ["max_output_tokens", "maxOutputTokens", "max_tokens", "maxTokens"], 2048);
+    return;
+  }
+  removeKeys(body, [
+    "function_call",
+    "functionCall",
+    "functions",
+    "parallel_tool_calls",
+    "parallelToolCalls",
+    "tool_choice",
+    "toolChoice",
+    "tools"
+  ]);
+  raiseMinimumNumericField(body, ["max_tokens", "maxTokens"], 2048);
+}
+function removeCompactSignals(body) {
+  removeCodexCompactionTriggers(body);
+  for (const key of ["context_management", "contextManagement"]) {
+    const management = isRecord8(body[key]) ? cloneJsonObject(body[key]) : void 0;
+    if (!management) {
+      continue;
+    }
+    const edits = Array.isArray(management.edits) ? management.edits.filter((edit) => !(isRecord8(edit) && isCompactType(edit.type))) : void 0;
+    if (edits !== void 0) {
+      if (edits.length > 0) {
+        management.edits = edits;
+      } else {
+        delete management.edits;
+      }
+    }
+    if (Object.keys(management).length > 0) {
+      body[key] = management;
+    } else {
+      delete body[key];
+    }
+  }
+  const metadata = isRecord8(body.metadata) ? cloneJsonObject(body.metadata) : void 0;
+  if (!metadata) {
+    return;
+  }
+  delete metadata.ccr_context_compact;
+  delete metadata.ccrContextCompact;
+  if (Object.keys(metadata).length > 0) {
+    body.metadata = metadata;
+  } else {
+    delete body.metadata;
+  }
+}
+function removeCodexCompactionTriggers(body) {
+  if (Array.isArray(body.input)) {
+    body.input = body.input.filter((item) => !(isRecord8(item) && item.type === "compaction_trigger"));
+  }
+}
+function normalizeOpenAiResponsesTextFormat(body) {
+  if (!isRecord8(body.text)) {
+    return;
+  }
+  const text = cloneJsonObject(body.text);
+  if (!isRecord8(text.format)) {
+    return;
+  }
+  const type = typeof text.format.type === "string" ? text.format.type.toLowerCase() : "";
+  if (!type || type === "text") {
+    return;
+  }
+  text.format = { type: "text" };
+  body.text = text;
+}
+function removeKeys(body, keys) {
+  for (const key of keys) {
+    delete body[key];
+  }
+}
+function raiseMinimumNumericField(body, keys, minimum) {
+  for (const key of keys) {
+    if (typeof body[key] === "number" && Number.isFinite(body[key]) && body[key] < minimum) {
+      body[key] = minimum;
+    }
+  }
+}
+function appendFooterToJson(value, protocol, footer) {
+  if (!isRecord8(value)) {
+    return { changed: false, value };
+  }
+  const next = cloneJsonObject(value);
+  if (protocol === "anthropic_messages") {
+    const content2 = Array.isArray(next.content) ? next.content : [];
+    next.content = [...content2, { text: `
+
+${footer}`, type: "text" }];
+    return { changed: true, value: next };
+  }
+  if (protocol === "openai_chat_completions") {
+    const choices = Array.isArray(next.choices) ? next.choices : [];
+    const first = isRecord8(choices[0]) ? choices[0] : void 0;
+    const message2 = first && isRecord8(first.message) ? first.message : void 0;
+    if (!first || !message2) {
+      return { changed: false, value };
+    }
+    const current = message2.content;
+    message2.content = typeof current === "string" ? `${current}
+
+${footer}` : Array.isArray(current) ? [...current, { text: `
+
+${footer}`, type: "text" }] : footer;
+    first.message = message2;
+    choices[0] = first;
+    next.choices = choices;
+    return { changed: true, value: next };
+  }
+  const output = Array.isArray(next.output) ? next.output : [];
+  const messageIndex = output.findIndex((item) => isRecord8(item) && item.type === "message");
+  if (messageIndex < 0 || !isRecord8(output[messageIndex])) {
+    return { changed: false, value };
+  }
+  const message = output[messageIndex];
+  const content = Array.isArray(message.content) ? message.content : [];
+  message.content = [...content, { annotations: [], text: `
+
+${footer}`, type: "output_text" }];
+  output[messageIndex] = message;
+  next.output = output;
+  if (typeof next.output_text === "string") {
+    next.output_text = `${next.output_text}
+
+${footer}`;
+  }
+  return { changed: true, value: next };
+}
+function appendFooterToSse(rawText, protocol, footer) {
+  const blocks = rawText.split(/(\r?\n\r?\n)/g);
+  const eventBlocks = blocks.filter((_block, index) => index % 2 === 0);
+  if (protocol === "anthropic_messages") {
+    const indexes = eventBlocks.flatMap((block) => {
+      const data = parseSseBlockData(block);
+      return isRecord8(data) && typeof data.index === "number" ? [data.index] : [];
+    });
+    const index = (indexes.length ? Math.max(...indexes) : -1) + 1;
+    const injected2 = [
+      sseBlock("content_block_start", { content_block: { text: "", type: "text" }, index, type: "content_block_start" }),
+      sseBlock("content_block_delta", { delta: { text: `
+
+${footer}`, type: "text_delta" }, index, type: "content_block_delta" }),
+      sseBlock("content_block_stop", { index, type: "content_block_stop" })
+    ].join("\n\n");
+    return insertBeforeSseEvent(rawText, injected2, (data) => data.type === "message_delta" || data.type === "message_stop");
+  }
+  if (protocol === "openai_chat_completions") {
+    const template = eventBlocks.map(parseSseBlockData).find((data) => isRecord8(data) && Array.isArray(data.choices));
+    if (!isRecord8(template)) {
+      return rawText;
+    }
+    const injected2 = sseBlock(void 0, {
+      ...template,
+      choices: [{ delta: { content: `
+
+${footer}` }, finish_reason: null, index: 0 }]
+    });
+    return insertBeforeSseEvent(rawText, injected2, (data) => {
+      const choices = Array.isArray(data.choices) ? data.choices : [];
+      return choices.some((choice) => isRecord8(choice) && choice.finish_reason !== null && choice.finish_reason !== void 0);
+    }, true);
+  }
+  const events = eventBlocks.map(parseSseBlockData).filter(isRecord8);
+  const textEvent = [...events].reverse().find(
+    (event) => ["response.output_text.delta", "response.output_text.done"].includes(String(event.type ?? ""))
+  );
+  if (!textEvent) {
+    return rawText;
+  }
+  const injected = sseBlock("response.output_text.delta", {
+    content_index: Number(textEvent.content_index ?? 0),
+    delta: `
+
+${footer}`,
+    item_id: String(textEvent.item_id ?? ""),
+    output_index: Number(textEvent.output_index ?? 0),
+    type: "response.output_text.delta"
+  });
+  return insertBeforeSseEvent(
+    rawText,
+    injected,
+    (data) => data.type === "response.output_text.done" || data.type === "response.completed"
+  );
+}
+function insertBeforeSseEvent(rawText, injected, predicate, beforeDone = false) {
+  const blocks = rawText.split(/(\r?\n\r?\n)/g);
+  for (let index = 0; index < blocks.length; index += 2) {
+    const data = parseSseBlockData(blocks[index]);
+    if (isRecord8(data) && predicate(data)) {
+      blocks[index] = `${injected}
+
+${blocks[index]}`;
+      return blocks.join("");
+    }
+    if (beforeDone && blocks[index].includes("[DONE]")) {
+      blocks[index] = `${injected}
+
+${blocks[index]}`;
+      return blocks.join("");
+    }
+  }
+  return `${rawText.replace(/\s*$/g, "")}
+
+${injected}
+
+`;
+}
+function parseSseBlockData(block) {
+  const data = block.split(/\r?\n/g).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
+  if (!data || data === "[DONE]") {
+    return void 0;
+  }
+  try {
+    return JSON.parse(data);
+  } catch {
+    return void 0;
+  }
+}
+function sseBlock(event, data) {
+  return [event ? `event: ${event}` : void 0, `data: ${JSON.stringify(data)}`].filter(Boolean).join("\n");
+}
+function ensureFooter(text, footer) {
+  const normalizedText = text.trim();
+  const normalizedFooter = footer.trim();
+  if (!normalizedFooter || normalizedText.includes(normalizedFooter)) {
+    return normalizedText;
+  }
+  return `${normalizedText}
+
+${normalizedFooter}`;
+}
+function extractOpenAiResponsesUsage(rawText, contentType) {
+  const normalizedContentType = contentType?.toLowerCase() ?? "";
+  if (normalizedContentType.includes("text/event-stream")) {
+    for (const payload of parseSseJsonPayloads(rawText)) {
+      const response = isRecord8(payload.response) ? payload.response : void 0;
+      const usage = isRecord8(response?.usage) ? response.usage : void 0;
+      if (usage) {
+        return usage;
+      }
+    }
+    return void 0;
+  }
+  try {
+    const parsed = JSON.parse(rawText);
+    if (!isRecord8(parsed)) {
+      return void 0;
+    }
+    if (isRecord8(parsed.usage)) {
+      return parsed.usage;
+    }
+    const response = isRecord8(parsed.response) ? parsed.response : void 0;
+    return isRecord8(response?.usage) ? response.usage : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function parseSseJsonPayloads(text) {
+  const payloads = [];
+  let dataLines = [];
+  const flush = () => {
+    if (dataLines.length === 0) {
+      return;
+    }
+    const data = dataLines.join("\n").trim();
+    dataLines = [];
+    if (!data || data === "[DONE]") {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(data);
+      if (isRecord8(parsed)) {
+        payloads.push(parsed);
+      }
+    } catch {
+    }
+  };
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) {
+      flush();
+      continue;
+    }
+    if (line.startsWith("data:")) {
+      dataLines.push(line.slice("data:".length).trimStart());
+    }
+  }
+  flush();
+  return payloads;
+}
+function collectProtocolText(value, protocol) {
+  if (!isRecord8(value)) {
+    return [];
+  }
+  if (protocol === "openai_chat_completions") {
+    const choices = Array.isArray(value.choices) ? value.choices : [];
+    const text = choices.flatMap((choice) => isRecord8(choice) ? [...collectText(readPath(choice, ["message", "content"])), ...collectText(readPath(choice, ["delta", "content"]))] : []);
+    return text.length ? text : collectText(value);
+  }
+  if (protocol === "openai_responses") {
+    return collectText(value.output_text).concat(collectText(value.delta), collectText(value.output), collectText(value.item));
+  }
+  return collectText(value.content).concat(collectText(value.delta), collectText(value.message));
+}
+function collectText(value) {
+  if (typeof value === "string") {
+    return [value];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap(collectText);
+  }
+  if (!isRecord8(value)) {
+    return [];
+  }
+  const type = typeof value.type === "string" ? value.type : "";
+  const direct = typeof value.text === "string" && (!type || [
+    "content_block_delta",
+    "message",
+    "output_text",
+    "summary_text",
+    "text",
+    "text_delta",
+    "response.output_text.delta"
+  ].includes(type)) ? [value.text] : [];
+  const outputText = typeof value.output_text === "string" ? [value.output_text] : [];
+  const content = typeof value.content === "string" ? [value.content] : collectText(value.content);
+  return direct.concat(outputText, content, collectText(value.delta), collectText(value.message), collectText(value.output), collectText(value.response), collectText(value.item));
+}
+function parseSsePayloads(rawText) {
+  const payloads = [];
+  for (const event of rawText.split(/\r?\n\r?\n+/g)) {
+    const data = event.split(/\r?\n/g).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n").trim();
+    if (!data || data === "[DONE]") {
+      continue;
+    }
+    try {
+      payloads.push(JSON.parse(data));
+    } catch {
+    }
+  }
+  return payloads;
+}
+function hasStructuredToolCall(value) {
+  if (Array.isArray(value)) {
+    return value.some(hasStructuredToolCall);
+  }
+  if (!isRecord8(value)) {
+    return false;
+  }
+  if (Array.isArray(value.tool_calls) && value.tool_calls.length > 0) {
+    return true;
+  }
+  if (["tool_use", "function_call", "custom_tool_call", "computer_call"].includes(String(value.type ?? ""))) {
+    return true;
+  }
+  return Object.values(value).some(hasStructuredToolCall);
+}
+function readPath(value, path24) {
+  let current = value;
+  for (const part of path24) {
+    if (!isRecord8(current)) {
+      return void 0;
+    }
+    current = current[part];
+  }
+  return current;
+}
+function readHeader3(headers, name) {
+  const entry = Object.entries(headers).find(([key]) => key.toLowerCase() === name);
+  const value = entry?.[1];
+  return Array.isArray(value) ? value.join(",") : value;
+}
+function isCompactType(value) {
+  return typeof value === "string" && /^compact(?:_|$)/i.test(value.trim());
+}
+function cloneJsonObject(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+function normalizeWhitespace(value) {
+  return value.replace(/\r\n/g, "\n").replace(/[ \t]+\n/g, "\n").trim();
+}
+function archiveProtocolError(code, message) {
+  const error = new Error(`${code}: ${message}`);
+  error.name = "ContextArchiveError";
+  return error;
+}
+function isRecord8(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+// packages/core/src/gateway/context-archive/store.ts
+var import_node_fs11 = require("node:fs");
+var import_node_path16 = require("node:path");
+var ContextArchiveStore = class {
+  constructor(dbFile) {
+    this.dbFile = dbFile;
+    if (dbFile !== ":memory:") {
+      const directory = (0, import_node_path16.dirname)(dbFile);
+      (0, import_node_fs11.mkdirSync)(directory, { mode: 448, recursive: true });
+      securePath(directory, 448);
+    }
+    this.database = createBetterSqliteDatabase(dbFile);
+    this.database.pragma("journal_mode = WAL");
+    this.database.pragma("synchronous = NORMAL");
+    this.database.pragma("busy_timeout = 5000");
+    this.database.exec(`
+      CREATE TABLE IF NOT EXISTS archive_snapshots (
+        archive_id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        generation INTEGER NOT NULL,
+        parent_archive_id TEXT,
+        request_id TEXT NOT NULL UNIQUE,
+        protocol TEXT NOT NULL,
+        method TEXT NOT NULL,
+        path TEXT NOT NULL,
+        body BLOB NOT NULL,
+        body_sha256 TEXT NOT NULL,
+        replay_headers_json TEXT NOT NULL,
+        route_json TEXT,
+        token_hash TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER,
+        UNIQUE(session_id, generation)
+      );
+      CREATE INDEX IF NOT EXISTS archive_snapshots_session_generation
+        ON archive_snapshots(session_id, generation DESC);
+      CREATE INDEX IF NOT EXISTS archive_snapshots_expires_at
+        ON archive_snapshots(expires_at);
+    `);
+    this.secureFiles();
+  }
+  dbFile;
+  database;
+  create(input, retention) {
+    const transaction = this.database.transaction(() => {
+      const previous = this.database.prepare(`
+        SELECT archive_id, generation
+        FROM archive_snapshots
+        WHERE session_id = ?
+        ORDER BY generation DESC
+        LIMIT 1
+      `).get(input.sessionId);
+      const generation = Number(previous?.generation ?? 0) + 1;
+      const parentArchiveId = readString7(previous?.archive_id);
+      this.database.prepare(`
+        INSERT INTO archive_snapshots (
+          archive_id, session_id, generation, parent_archive_id, request_id,
+          protocol, method, path, body, body_sha256, replay_headers_json,
+          token_hash, status, created_at, expires_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+      `).run(
+        input.archiveId,
+        input.sessionId,
+        generation,
+        parentArchiveId ?? null,
+        input.requestId,
+        input.protocol,
+        input.method,
+        input.path,
+        input.body,
+        input.bodySha256,
+        JSON.stringify(input.replayHeaders),
+        input.tokenHash,
+        input.createdAt,
+        input.expiresAt ?? null
+      );
+      return { generation, parentArchiveId };
+    });
+    const lineage = transaction();
+    this.extendLineageExpiry(input.archiveId, input.expiresAt, retention);
+    this.prune(retention, input.archiveId);
+    this.secureFiles();
+    return {
+      ...input,
+      ...lineage,
+      status: "pending"
+    };
+  }
+  finalize(archiveId, route) {
+    this.database.prepare(`
+      UPDATE archive_snapshots
+      SET route_json = ?, status = 'ready'
+      WHERE archive_id = ? AND status = 'pending'
+    `).run(JSON.stringify(route), archiveId);
+    this.secureFiles();
+  }
+  fail(archiveId) {
+    this.database.prepare("UPDATE archive_snapshots SET status = 'failed' WHERE archive_id = ?").run(archiveId);
+  }
+  get(archiveId) {
+    const row = this.database.prepare(`
+      SELECT * FROM archive_snapshots WHERE archive_id = ? LIMIT 1
+    `).get(archiveId);
+    return row ? snapshotFromRow(row) : void 0;
+  }
+  lineage(archiveId, limit = 32) {
+    const snapshots = [];
+    const seen = /* @__PURE__ */ new Set();
+    let currentArchiveId = archiveId;
+    while (currentArchiveId && snapshots.length < Math.max(1, Math.floor(limit)) && !seen.has(currentArchiveId)) {
+      seen.add(currentArchiveId);
+      const snapshot = this.get(currentArchiveId);
+      if (!snapshot) {
+        break;
+      }
+      snapshots.push(snapshot);
+      currentArchiveId = snapshot.parentArchiveId;
+    }
+    return snapshots;
+  }
+  clear() {
+    this.database.prepare("DELETE FROM archive_snapshots").run();
+  }
+  close() {
+    this.database.close();
+  }
+  prune(retention, protectedArchiveId) {
+    const protectedIds = this.protectedLineageIds(protectedArchiveId, retention);
+    const now = Date.now();
+    const expiredRows = this.database.prepare(`
+      SELECT archive_id
+      FROM archive_snapshots
+      WHERE expires_at IS NOT NULL AND expires_at <= ?
+    `).all(now);
+    for (const row of expiredRows) {
+      if (!protectedIds.has(row.archive_id)) {
+        this.database.prepare("DELETE FROM archive_snapshots WHERE archive_id = ?").run(row.archive_id);
+      }
+    }
+    const maxSnapshots = Math.max(1, Math.floor(retention.maxSnapshots));
+    const snapshotRows = this.database.prepare(`
+      SELECT archive_id
+      FROM archive_snapshots
+      ORDER BY created_at DESC, rowid DESC
+    `).all();
+    for (let index = maxSnapshots; index < snapshotRows.length; index += 1) {
+      const archiveId = snapshotRows[index]?.archive_id;
+      if (archiveId && !protectedIds.has(archiveId)) {
+        this.database.prepare("DELETE FROM archive_snapshots WHERE archive_id = ?").run(archiveId);
+      }
+    }
+    const maxBytes = Math.max(1, Math.floor(retention.maxBytes));
+    const rows = this.database.prepare(`
+      SELECT archive_id, length(body) AS body_bytes
+      FROM archive_snapshots
+      ORDER BY created_at DESC, rowid DESC
+    `).all();
+    let retainedBytes = 0;
+    for (const row of rows) {
+      retainedBytes += Number(row.body_bytes ?? 0);
+      if (retainedBytes > maxBytes && !protectedIds.has(row.archive_id)) {
+        this.database.prepare("DELETE FROM archive_snapshots WHERE archive_id = ?").run(row.archive_id);
+      }
+    }
+  }
+  protectedLineageIds(archiveId, retention) {
+    return new Set(this.lineage(archiveId, Math.max(1, Math.floor(retention.maxSnapshots))).map((snapshot) => snapshot.archiveId));
+  }
+  extendLineageExpiry(archiveId, expiresAt, retention) {
+    if (expiresAt === void 0) {
+      return;
+    }
+    for (const snapshot of this.lineage(archiveId, Math.max(1, Math.floor(retention.maxSnapshots)))) {
+      this.database.prepare(`
+        UPDATE archive_snapshots
+        SET expires_at = ?
+        WHERE archive_id = ? AND (expires_at IS NULL OR expires_at < ?)
+      `).run(expiresAt, snapshot.archiveId, expiresAt);
+    }
+  }
+  secureFiles() {
+    if (this.dbFile === ":memory:") {
+      return;
+    }
+    securePath(this.dbFile, 384);
+    securePath(`${this.dbFile}-wal`, 384);
+    securePath(`${this.dbFile}-shm`, 384);
+  }
+};
+function snapshotFromRow(row) {
+  return {
+    archiveId: requiredString(row.archive_id),
+    body: Buffer.from(row.body),
+    bodySha256: requiredString(row.body_sha256),
+    createdAt: Number(row.created_at),
+    expiresAt: optionalNumber(row.expires_at),
+    generation: Number(row.generation),
+    method: requiredString(row.method),
+    parentArchiveId: readString7(row.parent_archive_id),
+    path: requiredString(row.path),
+    protocol: requiredString(row.protocol),
+    replayHeaders: parseRecord(row.replay_headers_json),
+    requestId: requiredString(row.request_id),
+    route: parseOptionalRoute(row.route_json),
+    sessionId: requiredString(row.session_id),
+    status: requiredString(row.status),
+    tokenHash: requiredString(row.token_hash)
+  };
+}
+function parseRecord(value) {
+  const parsed = JSON.parse(requiredString(value));
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {};
+  }
+  return Object.fromEntries(Object.entries(parsed).filter((entry) => typeof entry[1] === "string"));
+}
+function parseOptionalRoute(value) {
+  const text = readString7(value);
+  if (!text) {
+    return void 0;
+  }
+  const parsed = JSON.parse(text);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : void 0;
+}
+function requiredString(value) {
+  const text = readString7(value);
+  if (!text) {
+    throw new Error("Context archive database contains an invalid string value.");
+  }
+  return text;
+}
+function readString7(value) {
+  return typeof value === "string" && value ? value : void 0;
+}
+function optionalNumber(value) {
+  return value === null || value === void 0 ? void 0 : Number(value);
+}
+function securePath(file, mode) {
+  if (process.platform === "win32" || !(0, import_node_fs11.existsSync)(file)) {
+    return;
+  }
+  try {
+    (0, import_node_fs11.chmodSync)(file, mode);
+  } catch {
+  }
+}
+
+// packages/core/src/gateway/context-archive.ts
+var protocolVersion = "2024-11-05";
+var maxMcpRequestBytes = 2 * 1024 * 1024;
+var defaultToolName = "ccr_history_ask";
+var maxUpstreamErrorCharacters = 4e3;
+var maxLineageReplayDepth = 32;
+var CONTEXT_ARCHIVE_MCP_SERVER_NAME = "ccr-context-archive";
+var CONTEXT_ARCHIVE_MCP_PATH = "/__ccr/context-archive/mcp";
+var ContextArchiveService = class {
+  stores = /* @__PURE__ */ new Map();
+  clear(config) {
+    if (config) {
+      this.store(config).clear();
+      return;
+    }
+    for (const store of this.stores.values()) {
+      store.clear();
+    }
+  }
+  close() {
+    for (const store of this.stores.values()) {
+      store.close();
+    }
+    this.stores.clear();
+  }
+  createSnapshot(input) {
+    const maxSnapshotBytes = clampInteger(input.config.maxSnapshotBytes, 64 * 1024, 1024 * 1024 * 1024, 32 * 1024 * 1024);
+    if (input.body.byteLength > maxSnapshotBytes) {
+      throw contextArchiveError(
+        "ARCHIVE_SNAPSHOT_TOO_LARGE",
+        `Compact request is ${input.body.byteLength} bytes; the configured snapshot limit is ${maxSnapshotBytes} bytes.`
+      );
+    }
+    const archiveId = `arc_${(0, import_node_crypto4.randomBytes)(18).toString("base64url")}`;
+    const sessionToken = (0, import_node_crypto4.randomBytes)(32).toString("base64url");
+    const createdAt = Date.now();
+    const retentionDays = clampInteger(input.config.retentionDays, 1, 3650, 30);
+    const snapshot = this.store(input.config).create({
+      archiveId,
+      body: Buffer.from(input.body),
+      bodySha256: sha256(input.body),
+      createdAt,
+      expiresAt: createdAt + retentionDays * 24 * 60 * 60 * 1e3,
+      method: input.method,
+      path: input.path,
+      protocol: input.protocol,
+      replayHeaders: replaySafeHeaders(input.headers),
+      requestId: input.requestId,
+      sessionId: input.sessionId,
+      tokenHash: sha256(sessionToken)
+    }, {
+      maxBytes: clampInteger(input.config.maxBytes, 1024 * 1024, 64 * 1024 * 1024 * 1024, 512 * 1024 * 1024),
+      maxSnapshots: clampInteger(input.config.maxSnapshots, 1, 1e5, 200),
+      retentionDays
+    });
+    const footer = archiveHandoffFooter({
+      archiveId,
+      clientToolName: contextArchiveClaudeCodeToolName(input.config.toolName || defaultToolName),
+      generation: snapshot.generation,
+      sessionId: input.sessionId,
+      sessionToken,
+      toolName: input.config.toolName || defaultToolName
+    });
+    return {
+      record: {
+        archiveId,
+        footer,
+        generation: snapshot.generation,
+        sessionId: input.sessionId
+      },
+      sessionToken
+    };
+  }
+  finalize(record, route, config) {
+    if (!record) {
+      return;
+    }
+    this.store(config).finalize(record.archiveId, route);
+  }
+  fail(record, config) {
+    if (!record) {
+      return;
+    }
+    this.store(config).fail(record.archiveId);
+  }
+  getSnapshot(archiveId, config) {
+    return this.store(config).get(archiveId);
+  }
+  async ask(input, config, executor) {
+    const archiveId = input.archiveId.trim();
+    const sessionToken = input.sessionToken.trim();
+    const task = input.task.trim();
+    const toolName = config.toolName || defaultToolName;
+    if (!archiveId || !sessionToken || !task) {
+      throw contextArchiveError("ARCHIVE_INVALID_ARGUMENT", `${toolName} requires archive_id, session_token, and task.`);
+    }
+    const store = this.store(config);
+    const rootSnapshot = store.get(archiveId);
+    if (!rootSnapshot) {
+      throw contextArchiveError("ARCHIVE_NOT_FOUND", `Archive ${archiveId} does not exist or has expired.`);
+    }
+    if (rootSnapshot.expiresAt !== void 0 && rootSnapshot.expiresAt <= Date.now()) {
+      throw contextArchiveError("ARCHIVE_EXPIRED", `Archive ${archiveId} has expired.`);
+    }
+    if (rootSnapshot.status !== "ready") {
+      throw contextArchiveError("ARCHIVE_NOT_READY", `Archive ${archiveId} is ${rootSnapshot.status}.`);
+    }
+    if (!constantTimeEqual(rootSnapshot.tokenHash, sha256(sessionToken))) {
+      throw contextArchiveError("ARCHIVE_ACCESS_DENIED", "The archive session token is invalid.");
+    }
+    if (!executor) {
+      throw contextArchiveError("ARCHIVE_REPLAY_UNAVAILABLE", "The gateway replay executor is not available.");
+    }
+    const lineage = store.lineage(archiveId, maxLineageReplayDepth);
+    const searchedGenerations = [];
+    let lastInsufficientAnswer;
+    for (const snapshot of lineage) {
+      if (snapshot.expiresAt !== void 0 && snapshot.expiresAt <= Date.now()) {
+        continue;
+      }
+      if (snapshot.status !== "ready") {
+        continue;
+      }
+      const answer = await replayArchiveSnapshot(snapshot, task, config, executor);
+      searchedGenerations.push(snapshot.generation);
+      if (isInsufficientArchiveAnswer(answer) && snapshot.parentArchiveId) {
+        lastInsufficientAnswer = { answer, snapshot };
+        continue;
+      }
+      return {
+        answer,
+        archiveId,
+        generation: rootSnapshot.generation,
+        searchedGenerations,
+        sourceArchiveId: snapshot.archiveId,
+        sourceGeneration: snapshot.generation,
+        task
+      };
+    }
+    if (lastInsufficientAnswer) {
+      return {
+        answer: lastInsufficientAnswer.answer,
+        archiveId,
+        generation: rootSnapshot.generation,
+        searchedGenerations,
+        sourceArchiveId: lastInsufficientAnswer.snapshot.archiveId,
+        sourceGeneration: lastInsufficientAnswer.snapshot.generation,
+        task
+      };
+    }
+    throw contextArchiveError("ARCHIVE_NOT_READY", `Archive ${archiveId} has no ready lineage snapshots.`);
+  }
+  store(config) {
+    const dbFile = config.storagePath.trim() || CONTEXT_ARCHIVE_DB_FILE;
+    let store = this.stores.get(dbFile);
+    if (!store) {
+      store = new ContextArchiveStore(dbFile);
+      this.stores.set(dbFile, store);
+    }
+    return store;
+  }
+};
+var contextArchiveService = new ContextArchiveService();
+function contextArchiveClaudeCodeToolName(toolName) {
+  return `mcp__${CONTEXT_ARCHIVE_MCP_SERVER_NAME}__${toolName}`;
+}
+async function replayArchiveSnapshot(snapshot, task, config, executor) {
+  const replayBody = appendArchiveTask(snapshot.body, snapshot.protocol, historyReplayTask(task));
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(contextArchiveError("ARCHIVE_REPLAY_TIMEOUT", "The archived agent replay timed out.")),
+    clampInteger(config.replayTimeoutMs, 1e3, 6e5, 6e4)
+  );
+  let result;
+  try {
+    result = await executor({ body: replayBody, signal: controller.signal, snapshot });
+  } finally {
+    clearTimeout(timeout);
+  }
+  const rawText = Buffer.isBuffer(result.body) ? result.body.toString("utf8") : result.body;
+  if (result.statusCode < 200 || result.statusCode >= 300) {
+    throw contextArchiveError(
+      "ARCHIVE_UPSTREAM_ERROR",
+      `Archived agent returned HTTP ${result.statusCode}: ${rawText.slice(0, maxUpstreamErrorCharacters)}`
+    );
+  }
+  const answer = extractArchiveAssistantText(rawText, snapshot.protocol, result.contentType);
+  if (!answer && archiveResponseRequiresTool(rawText)) {
+    throw contextArchiveError(
+      "ARCHIVE_REPLAY_TOOL_REQUIRED",
+      "The archived agent requested a tool. Exact replay does not execute external client tools."
+    );
+  }
+  if (!answer) {
+    throw contextArchiveError("ARCHIVE_EMPTY_ANSWER", "The archived agent returned no textual answer.");
+  }
+  return answer;
+}
+function isInsufficientArchiveAnswer(answer) {
+  const normalized = answer.toLowerCase().replace(/\s+/g, " ").trim();
+  return [
+    "context is insufficient",
+    "insufficient context",
+    "not enough information",
+    "not enough context",
+    "does not contain",
+    "doesn't contain",
+    "cannot determine",
+    "can't determine",
+    "could not determine",
+    "unable to determine",
+    "unable to find",
+    "not mentioned",
+    "no relevant",
+    "unknown"
+  ].some((phrase) => normalized.includes(phrase));
+}
+function contextArchiveEnabled(config) {
+  return Boolean(config?.contextArchive?.enabled);
+}
+function contextArchiveMcpEnabled(config) {
+  return Boolean(config?.contextArchive?.enabled && config.contextArchive.mcpEnabled !== false);
+}
+function profileManagedCompactEnabled(profile) {
+  return Boolean(profile?.enabled && profile.managedCompact === true);
+}
+function contextArchiveConfigForApiKey(config, apiKey) {
+  if (apiKeyMatchesManagedCompactProfile(config, apiKey)) {
+    return withManagedContextArchiveEnabled(config);
+  }
+  if (apiKeyMatchesProfile(config, apiKey)) {
+    return void 0;
+  }
+  return contextArchiveEnabled(config) ? config : void 0;
+}
+function withManagedContextArchiveEnabled(config) {
+  if (config.contextArchive.enabled && config.contextArchive.mcpEnabled !== false) {
+    return config;
+  }
+  return {
+    ...config,
+    contextArchive: {
+      ...config.contextArchive,
+      enabled: true,
+      mcpEnabled: true
+    }
+  };
+}
+function apiKeyMatchesManagedCompactProfile(config, apiKey) {
+  const id = apiKey?.id?.trim();
+  if (!id || config.profile?.enabled === false) {
+    return false;
+  }
+  const profiles = Array.isArray(config.profile?.profiles) ? config.profile.profiles : [];
+  return profiles.some(
+    (profile) => profileManagedCompactEnabled(profile) && id === profileApiKeyId2(profile)
+  );
+}
+function apiKeyMatchesProfile(config, apiKey) {
+  const id = apiKey?.id?.trim();
+  if (!id || config.profile?.enabled === false) {
+    return false;
+  }
+  const profiles = Array.isArray(config.profile?.profiles) ? config.profile.profiles : [];
+  return profiles.some((profile) => id === profileApiKeyId2(profile));
+}
+function profileApiKeyId2(profile) {
+  return `profile:${sanitizeProfilePathSegment(profile.id || profile.name || profile.agent) || "profile"}`;
+}
+function sanitizeProfilePathSegment(value) {
+  return value.trim().replace(/[^a-zA-Z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function isContextArchiveMcpPath(path24) {
+  return path24 === CONTEXT_ARCHIVE_MCP_PATH || path24 === `${CONTEXT_ARCHIVE_MCP_PATH}/`;
+}
+async function prepareContextArchiveRequest(input) {
+  const config = contextArchiveConfigForApiKey(input.config, input.apiKey);
+  if (!config || input.method.toUpperCase() !== "POST") {
+    return void 0;
+  }
+  const protocol = input.protocol;
+  if (!protocol || !replayableArchiveProtocols.includes(protocol)) {
+    return void 0;
+  }
+  const parsedBody = parseArchiveBody(input.body);
+  if (!parsedBody) {
+    return void 0;
+  }
+  const upstreamPath = codexResponsesPathForCompact(input.path);
+  const responseMode = upstreamPath ? "codex_responses_compact_json" : protocol === "openai_responses" && hasCodexResponsesCompactionTrigger(parsedBody) ? "codex_responses_compaction_sse" : void 0;
+  if (!upstreamPath && !responseMode && !hasExplicitCompactSignal(parsedBody, input.headers)) {
+    return void 0;
+  }
+  const originalBody = Buffer.from(input.body ?? Buffer.alloc(0));
+  const sessionId = resolveArchiveSessionId(parsedBody, input.headers, input.requestId);
+  const created = contextArchiveService.createSnapshot({
+    body: originalBody,
+    config: config.contextArchive,
+    headers: input.headers,
+    method: input.method,
+    path: upstreamPath ?? input.path,
+    protocol,
+    requestId: input.requestId,
+    sessionId
+  });
+  try {
+    const task = compactHandoffTask({
+      archiveId: created.record.archiveId,
+      clientToolName: contextArchiveClaudeCodeToolName(config.contextArchive.toolName || defaultToolName),
+      generation: created.record.generation,
+      sessionId,
+      sessionToken: created.sessionToken,
+      toolName: config.contextArchive.toolName || defaultToolName
+    });
+    return {
+      body: appendCompactHandoffTask(originalBody, protocol, task),
+      config,
+      diagnostic: `compact-handoff:${sessionId}:${created.record.generation}:${created.record.archiveId}`,
+      record: created.record,
+      responseContentType: codexCompactArchiveResponseContentType(responseMode),
+      responseMode,
+      upstreamPath
+    };
+  } catch (error) {
+    contextArchiveService.fail(created.record, config.contextArchive);
+    throw error;
+  }
+}
+function finalizeContextArchiveRequest(record, route, config) {
+  if (!config?.contextArchive?.enabled) {
+    return;
+  }
+  contextArchiveService.finalize(record, route, config.contextArchive);
+}
+function failContextArchiveRequest(record, config) {
+  if (!config?.contextArchive?.enabled) {
+    return;
+  }
+  contextArchiveService.fail(record, config.contextArchive);
+}
+function contextArchiveHandoffResponseStream(input, record, protocol, contentType, responseMode = "default") {
+  const chunks = [];
+  return input.pipe(new import_node_stream.Transform({
+    transform(chunk, _encoding, callback) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      callback();
+    },
+    flush(callback) {
+      const rawBody = Buffer.concat(chunks);
+      try {
+        this.push(responseMode === "default" ? appendArchiveFooterToResponse(rawBody, protocol, contentType, record.footer) : renderCodexCompactArchiveResponse(rawBody, protocol, contentType, record.footer, responseMode));
+      } catch {
+        this.push(rawBody);
+      }
+      callback();
+    }
+  }));
+}
+function codexCompactResponseStream(input, protocol, contentType, responseMode) {
+  const chunks = [];
+  return input.pipe(new import_node_stream.Transform({
+    transform(chunk, _encoding, callback) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      callback();
+    },
+    flush(callback) {
+      const rawBody = Buffer.concat(chunks);
+      try {
+        this.push(renderCodexCompactArchiveResponse(rawBody, protocol, contentType, "", responseMode));
+      } catch {
+        this.push(rawBody);
+      }
+      callback();
+    }
+  }));
+}
+async function handleContextArchiveMcpRequest(request, response, config, executor) {
+  if (!contextArchiveMcpEnabled(config)) {
+    sendJson(response, 404, { error: { message: "CCR context archive MCP is disabled." } });
+    return;
+  }
+  if ((request.method || "GET").toUpperCase() !== "POST") {
+    response.setHeader("allow", "POST");
+    sendJson(response, 405, { error: { message: "Method not allowed." } });
+    return;
+  }
+  let payload;
+  try {
+    const body = await readBody(request, maxMcpRequestBytes);
+    payload = JSON.parse(body.toString("utf8"));
+  } catch (error) {
+    sendJson(response, 400, jsonRpcError(null, -32700, formatError8(error)));
+    return;
+  }
+  if (!payload || payload.jsonrpc !== "2.0" || !payload.method) {
+    sendJson(response, 400, jsonRpcError(payload?.id ?? null, -32600, "Invalid JSON-RPC request."));
+    return;
+  }
+  const id = payload.id ?? null;
+  try {
+    const result = await handleJsonRpc(payload, config, executor);
+    if (payload.id === void 0 && payload.method.startsWith("notifications/")) {
+      response.writeHead(202);
+      response.end();
+      return;
+    }
+    sendJson(response, 200, result ?? jsonRpcResult(id, {}));
+  } catch (error) {
+    sendJson(response, 200, jsonRpcError(id, -32e3, formatError8(error)));
+  }
+}
+async function handleJsonRpc(request, config, executor) {
+  const id = request.id ?? null;
+  switch (request.method) {
+    case "initialize":
+      return jsonRpcResult(id, {
+        capabilities: { tools: {} },
+        protocolVersion,
+        serverInfo: { name: CONTEXT_ARCHIVE_MCP_SERVER_NAME, version: package_default.version }
+      });
+    case "ping":
+      return jsonRpcResult(id, {});
+    case "notifications/initialized":
+    case "notifications/cancelled":
+      return void 0;
+    case "tools/list":
+      return jsonRpcResult(id, { tools: [historyAskTool(config.contextArchive)] });
+    case "tools/call":
+      return jsonRpcResult(id, await callHistoryTool(request.params, config, executor));
+    default:
+      return jsonRpcError(id, -32601, `Unknown method: ${request.method}`);
+  }
+}
+async function callHistoryTool(params, config, executor) {
+  const value = isRecord9(params) ? params : {};
+  const toolName = config.contextArchive.toolName || defaultToolName;
+  if (stringValue4(value.name) !== toolName) {
+    throw new Error(`Unknown context archive tool: ${stringValue4(value.name) ?? ""}`);
+  }
+  const args = isRecord9(value.arguments) ? value.arguments : {};
+  const output = await contextArchiveService.ask({
+    archiveId: stringValue4(args.archive_id ?? args.archiveId) ?? "",
+    sessionToken: stringValue4(args.session_token ?? args.sessionToken) ?? "",
+    task: stringValue4(args.task) ?? ""
+  }, config.contextArchive, executor);
+  return {
+    content: [{ text: JSON.stringify(output), type: "text" }],
+    isError: false,
+    structuredContent: output
+  };
+}
+function historyAskTool(config) {
+  return {
+    description: [
+      "Ask the archived pre-compaction agent lineage a natural-language history task.",
+      "CCR starts with the provided archive and automatically searches parent compact generations when the latest snapshot lacks the answer.",
+      "CCR loads immutable original requests and appends only this task before replaying the original model route.",
+      "Use archive_id and session_token exactly as provided by the latest compact handoff."
+    ].join(" "),
+    inputSchema: {
+      additionalProperties: false,
+      properties: {
+        archive_id: { description: "Exact immutable archive id from the handoff.", type: "string" },
+        session_token: { description: "Opaque access token from the same handoff.", type: "string" },
+        task: { description: "Natural-language task for the archived previous-context agent.", type: "string" }
+      },
+      required: ["archive_id", "session_token", "task"],
+      type: "object"
+    },
+    name: config.toolName || defaultToolName
+  };
+}
+function resolveArchiveSessionId(body, headers, requestId) {
+  const candidates = [
+    readHeader4(headers, "x-claude-code-session-id"),
+    readHeader4(headers, "x-claude-session-id"),
+    readHeader4(headers, "x-codex-session-id"),
+    readHeader4(headers, "x-openai-session-id"),
+    readHeader4(headers, "x-agent-session-id"),
+    readHeader4(headers, "x-session-id"),
+    stringValue4(isRecord9(body.metadata) ? body.metadata.session_id : void 0),
+    stringValue4(isRecord9(body.metadata) ? body.metadata.sessionId : void 0),
+    stringValue4(isRecord9(body.metadata) ? body.metadata.conversation_id : void 0),
+    stringValue4(body.conversation_id)
+  ];
+  const selected = candidates.find((value) => value?.trim());
+  return safeIdentifier(selected || `request-${requestId}`);
+}
+function replaySafeHeaders(headers) {
+  const allowed = /* @__PURE__ */ new Set([
+    "anthropic-beta",
+    "anthropic-version",
+    "content-type",
+    "openai-beta",
+    "openai-organization",
+    "openai-project",
+    "user-agent",
+    "x-ccr-client",
+    "x-client-name"
+  ]);
+  const output = {};
+  for (const [name, value] of Object.entries(headers)) {
+    const normalized = name.toLowerCase();
+    if (!allowed.has(normalized) || value === void 0) {
+      continue;
+    }
+    output[normalized] = Array.isArray(value) ? value.join(",") : String(value);
+  }
+  output["content-type"] = "application/json";
+  return output;
+}
+function safeIdentifier(value) {
+  const normalized = value.trim().replace(/[^a-zA-Z0-9._:-]+/g, "-").replace(/^-+|-+$/g, "");
+  return (normalized || "session").slice(0, 160);
+}
+function sha256(value) {
+  return (0, import_node_crypto4.createHash)("sha256").update(value).digest("base64url");
+}
+function constantTimeEqual(left, right) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && (0, import_node_crypto4.timingSafeEqual)(leftBuffer, rightBuffer);
+}
+function contextArchiveError(code, message) {
+  const error = new Error(`${code}: ${message}`);
+  error.name = "ContextArchiveError";
+  return error;
+}
+function clampInteger(value, minimum, maximum, fallback) {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(minimum, Math.min(maximum, Math.floor(value)));
+}
+function readHeader4(headers, name) {
+  const value = Object.entries(headers).find(([key]) => key.toLowerCase() === name)?.[1];
+  return Array.isArray(value) ? value.join(",") : value;
+}
+function stringValue4(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : void 0;
+}
+function isRecord9(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function formatError8(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+function jsonRpcResult(id, result) {
+  return { id, jsonrpc: "2.0", result };
+}
+function jsonRpcError(id, code, message) {
+  return { error: { code, message }, id, jsonrpc: "2.0" };
+}
+function sendJson(response, statusCode, value) {
+  const body = `${JSON.stringify(value)}
+`;
+  response.writeHead(statusCode, {
+    "cache-control": "no-store",
+    "content-length": Buffer.byteLength(body),
+    "content-type": "application/json; charset=utf-8"
+  });
+  response.end(body);
+}
+async function readBody(request, maxBytes) {
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += buffer.length;
+    if (total > maxBytes) {
+      throw new Error(`Request body exceeds ${maxBytes} bytes.`);
+    }
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks);
+}
 
 // packages/core/src/mcp/toolhub-config.ts
-var import_node_path15 = require("node:path");
+var import_node_path17 = require("node:path");
 var TOOL_HUB_MCP_SERVER_NAME = "ccr-toolhub";
 var TOOL_HUB_MCP_RUNTIME_FILE_NAME = "toolhub-mcp.js";
 var BROWSER_AUTOMATION_MCP_SERVER_NAME = "ccr-browser-automation";
@@ -53082,7 +54793,7 @@ function toolHubMcpRuntimeConfig(config, backendServers, options = {}) {
     command: options.command ?? process.execPath,
     env: {
       ELECTRON_RUN_AS_NODE: "1",
-      TOOLHUB_CACHE_FILE: (0, import_node_path15.join)(CONFIGDIR, "toolhub-cache.json"),
+      TOOLHUB_CACHE_FILE: (0, import_node_path17.join)(CONFIGDIR, "toolhub-cache.json"),
       TOOLHUB_MAX_TOOLS: String(toolHub.maxTools ?? 10),
       TOOLHUB_MCP_SERVERS_JSON: JSON.stringify(normalizedBackendServers),
       TOOLHUB_OPENAI_API_KEY: options.resolver?.apiKey ?? toolHub.llm?.apiKey ?? "",
@@ -53094,23 +54805,23 @@ function toolHubMcpRuntimeConfig(config, backendServers, options = {}) {
 }
 function toolHubRequestTimeoutMs(config, backendServers) {
   const configuredTimeout = positiveInteger2(config?.toolHub?.requestTimeoutMs, TOOL_HUB_DEFAULT_REQUEST_TIMEOUT_MS);
-  const backendTimeouts = (backendServers ?? toolHubBackendServers(config)).map((server) => isRecord8(server) ? positiveInteger2(server.requestTimeoutMs, 0) : 0);
+  const backendTimeouts = (backendServers ?? toolHubBackendServers(config)).map((server) => isRecord10(server) ? positiveInteger2(server.requestTimeoutMs, 0) : 0);
   return Math.max(configuredTimeout, ...backendTimeouts);
 }
 function bundledToolHubMcpEntryPath() {
-  return (0, import_node_path15.join)(__dirname, TOOL_HUB_MCP_RUNTIME_FILE_NAME);
+  return (0, import_node_path17.join)(__dirname, TOOL_HUB_MCP_RUNTIME_FILE_NAME);
 }
 function isToolHubBackendServer(value) {
-  return isRecord8(value) && stringValue4(value.name)?.toLowerCase() !== TOOL_HUB_MCP_SERVER_NAME;
+  return isRecord10(value) && stringValue5(value.name)?.toLowerCase() !== TOOL_HUB_MCP_SERVER_NAME;
 }
-function isRecord8(value) {
+function isRecord10(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-function stringValue4(value) {
+function stringValue5(value) {
   return typeof value === "string" && value.trim() ? value.trim() : void 0;
 }
 function firstConfiguredApiKey2(config) {
-  return (Array.isArray(config.APIKEYS) ? config.APIKEYS : []).find((apiKey) => apiKey.key.trim())?.key.trim() || stringValue4(config.APIKEY);
+  return (Array.isArray(config.APIKEYS) ? config.APIKEYS : []).find((apiKey) => apiKey.key.trim())?.key.trim() || stringValue5(config.APIKEY);
 }
 function positiveInteger2(value, fallback) {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
@@ -53120,13 +54831,13 @@ function gatewayEndpoint(config) {
 }
 function hasGatewayEndpoint2(config) {
   const gateway = config.gateway;
-  return Boolean(gateway && stringValue4(gateway.host) && Number.isFinite(gateway.port));
+  return Boolean(gateway && stringValue5(gateway.host) && Number.isFinite(gateway.port));
 }
 function formatHost2(host) {
   return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }
 function clientGatewayHost2(host) {
-  const value = stringValue4(host) ?? "127.0.0.1";
+  const value = stringValue5(host) ?? "127.0.0.1";
   if (value === "0.0.0.0") {
     return "127.0.0.1";
   }
@@ -53137,16 +54848,16 @@ function clientGatewayHost2(host) {
 }
 
 // packages/core/src/profiles/service.ts
-var globalProfileTakeoverFile = import_node_path16.default.join(CONFIGDIR, "global-profile-takeover.json");
+var globalProfileTakeoverFile = import_node_path18.default.join(CONFIGDIR, "global-profile-takeover.json");
 
 // packages/core/src/gateway/application/gateway-service.ts
-var import_node_crypto18 = require("node:crypto");
+var import_node_crypto19 = require("node:crypto");
 var import_node_http3 = require("node:http");
 
 // packages/core/src/plugins/backend-service.ts
-var import_node_fs11 = require("node:fs");
+var import_node_fs12 = require("node:fs");
 var import_node_http = __toESM(require("node:http"));
-var import_node_path17 = __toESM(require("node:path"));
+var import_node_path19 = __toESM(require("node:path"));
 var BackendService = class {
   backends = [];
   sqliteStores = [];
@@ -53154,7 +54865,7 @@ var BackendService = class {
     const server = import_node_http.default.createServer((request, response) => {
       void Promise.resolve(backend.handler(request, response)).catch((error) => {
         if (!response.headersSent) {
-          sendJson(response, 500, { error: { message: formatError8(error) } });
+          sendJson2(response, 500, { error: { message: formatError9(error) } });
         } else {
           response.destroy(error instanceof Error ? error : new Error(String(error)));
         }
@@ -53185,10 +54896,10 @@ var BackendService = class {
     };
   }
   async openSqliteStore(ownerId, dataDir, options = {}) {
-    (0, import_node_fs11.mkdirSync)(dataDir, { recursive: true });
+    (0, import_node_fs12.mkdirSync)(dataDir, { recursive: true });
     const filename = options.filename || `${sanitizeFileSegment(ownerId)}.sqlite`;
-    const dbFile = import_node_path17.default.isAbsolute(filename) ? filename : import_node_path17.default.join(dataDir, filename);
-    (0, import_node_fs11.mkdirSync)(import_node_path17.default.dirname(dbFile), { recursive: true });
+    const dbFile = import_node_path19.default.isAbsolute(filename) ? filename : import_node_path19.default.join(dataDir, filename);
+    (0, import_node_fs12.mkdirSync)(import_node_path19.default.dirname(dbFile), { recursive: true });
     const database = openSqliteDatabaseWithRecovery(ownerId, dbFile);
     const store = new SqliteStoreImpl(ownerId, dbFile, database);
     this.sqliteStores.push(store);
@@ -53208,7 +54919,7 @@ var BackendService = class {
       try {
         store.close();
       } catch (error) {
-        console.warn(`[backend:${ownerId}] SQLite store close failed: ${formatError8(error)}`);
+        console.warn(`[backend:${ownerId}] SQLite store close failed: ${formatError9(error)}`);
       }
     }
   }
@@ -53249,12 +54960,12 @@ function openSqliteDatabaseWithRecovery(ownerId, dbFile) {
       throw error;
     }
     const backupFile = nextCorruptSqliteBackupPath(dbFile);
-    if ((0, import_node_fs11.existsSync)(dbFile)) {
-      (0, import_node_fs11.copyFileSync)(dbFile, backupFile);
+    if ((0, import_node_fs12.existsSync)(dbFile)) {
+      (0, import_node_fs12.copyFileSync)(dbFile, backupFile);
     }
     removeSqliteDatabaseFiles(dbFile);
     console.warn(
-      `[backend:${ownerId}] SQLite store is corrupt and will be rebuilt: ${dbFile}. Corrupt copy saved to ${backupFile}. Error: ${formatError8(error)}`
+      `[backend:${ownerId}] SQLite store is corrupt and will be rebuilt: ${dbFile}. Corrupt copy saved to ${backupFile}. Error: ${formatError9(error)}`
     );
     return openBetterSqliteDatabase(dbFile);
   }
@@ -53380,29 +55091,29 @@ function assertSqliteDatabaseIntegrity(database) {
   }
 }
 function isSqliteOpenCorruptionError(error) {
-  const message = formatError8(error).toLowerCase();
+  const message = formatError9(error).toLowerCase();
   return message.includes("database disk image is malformed") || message.includes("integrity_check") || message.includes("file is not a database") || message.includes("not an sqlite database");
 }
 function nextCorruptSqliteBackupPath(dbFile) {
   const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
   const base = `${dbFile}.corrupt-${timestamp}`;
-  if (!(0, import_node_fs11.existsSync)(base)) {
+  if (!(0, import_node_fs12.existsSync)(base)) {
     return base;
   }
   for (let index = 1; index < 1e3; index += 1) {
     const candidate = `${base}-${index}`;
-    if (!(0, import_node_fs11.existsSync)(candidate)) {
+    if (!(0, import_node_fs12.existsSync)(candidate)) {
       return candidate;
     }
   }
   return `${base}-${process.pid}`;
 }
 function removeSqliteDatabaseFiles(dbFile) {
-  (0, import_node_fs11.rmSync)(dbFile, { force: true });
-  (0, import_node_fs11.rmSync)(`${dbFile}-wal`, { force: true });
-  (0, import_node_fs11.rmSync)(`${dbFile}-shm`, { force: true });
+  (0, import_node_fs12.rmSync)(dbFile, { force: true });
+  (0, import_node_fs12.rmSync)(`${dbFile}-wal`, { force: true });
+  (0, import_node_fs12.rmSync)(`${dbFile}-shm`, { force: true });
 }
-function sendJson(response, statusCode, body) {
+function sendJson2(response, statusCode, body) {
   response.writeHead(statusCode, { "content-type": "application/json" });
   response.end(`${JSON.stringify(body)}
 `);
@@ -53431,20 +55142,20 @@ function formatHost3(host) {
 function sanitizeFileSegment(value) {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "backend";
 }
-function formatError8(error) {
+function formatError9(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
 // packages/core/src/plugins/service.ts
-var import_node_fs12 = require("node:fs");
+var import_node_fs13 = require("node:fs");
 var import_node_module5 = require("node:module");
-var import_node_os6 = __toESM(require("node:os"));
-var import_node_path18 = __toESM(require("node:path"));
+var import_node_os7 = __toESM(require("node:os"));
+var import_node_path20 = __toESM(require("node:path"));
 var import_node_url = require("node:url");
 var requireFromHere5 = (0, import_node_module5.createRequire)(__filename);
 var builtInMarketplacePluginModules = /* @__PURE__ */ new Map([
-  ["claude-design", import_node_path18.default.join(__dirname, "..", "marketplace", "plugins", "claude-design-plugin.cjs")],
-  ["cursor-proxy", import_node_path18.default.join(__dirname, "..", "marketplace", "plugins", "cursor-proxy-plugin.cjs")]
+  ["claude-design", import_node_path20.default.join(__dirname, "..", "marketplace", "plugins", "claude-design-plugin.cjs")],
+  ["cursor-proxy", import_node_path20.default.join(__dirname, "..", "marketplace", "plugins", "cursor-proxy-plugin.cjs")]
 ]);
 var GatewayPluginService = class {
   config;
@@ -53472,7 +55183,7 @@ var GatewayPluginService = class {
         await this.loadConfiguredPlugin(pluginConfig);
       } catch (error) {
         await this.rollbackConfiguredPluginLoad(pluginConfig.id, snapshot);
-        console.warn(`[plugin:${pluginConfig.id}] Disabled after startup failure: ${formatError9(error)}`);
+        console.warn(`[plugin:${pluginConfig.id}] Disabled after startup failure: ${formatError10(error)}`);
       }
     }
   }
@@ -53483,7 +55194,7 @@ var GatewayPluginService = class {
       try {
         await stopHook();
       } catch (error) {
-        console.warn(`[plugin] Stop hook failed: ${formatError9(error)}`);
+        console.warn(`[plugin] Stop hook failed: ${formatError10(error)}`);
       }
     }
     const resourceOwnerIds = [...this.resourceOwnerIds].reverse();
@@ -53678,13 +55389,13 @@ var GatewayPluginService = class {
       ...route,
       host,
       id: route.id || `${pluginId}:proxy:${this.proxyRoutes.length + 1}`,
-      paths: route.paths?.map(normalizeRoutePath).filter((path23) => Boolean(path23)),
+      paths: route.paths?.map(normalizeRoutePath).filter((path24) => Boolean(path24)),
       pluginId
     });
   }
   createPluginContext(pluginConfig) {
-    const pluginDataDir = import_node_path18.default.join(DATADIR, "plugins", sanitizeFileSegment2(pluginConfig.id));
-    (0, import_node_fs12.mkdirSync)(pluginDataDir, { recursive: true });
+    const pluginDataDir = import_node_path20.default.join(DATADIR, "plugins", sanitizeFileSegment2(pluginConfig.id));
+    (0, import_node_fs13.mkdirSync)(pluginDataDir, { recursive: true });
     const logger = createPluginLogger(pluginConfig.id);
     return {
       config: this.config ?? {},
@@ -53721,7 +55432,7 @@ var GatewayPluginService = class {
     });
   }
   createRouteContext(pluginId) {
-    const pluginDataDir = import_node_path18.default.join(DATADIR, "plugins", sanitizeFileSegment2(pluginId));
+    const pluginDataDir = import_node_path20.default.join(DATADIR, "plugins", sanitizeFileSegment2(pluginId));
     const logger = createPluginLogger(pluginId);
     return {
       config: this.config ?? {},
@@ -53734,9 +55445,9 @@ var GatewayPluginService = class {
       pluginConfig: this.config?.plugins.find((plugin) => plugin.id === pluginId)?.config,
       pluginId,
       openSqliteStore: (options) => this.openSqliteStore(pluginId, pluginDataDir, options),
-      readBody,
+      readBody: readBody2,
       readJson,
-      sendJson: sendJson2
+      sendJson: sendJson3
     };
   }
   async registerHttpBackend(pluginId, pluginDataDir, logger, backend) {
@@ -53755,9 +55466,9 @@ var GatewayPluginService = class {
         pluginConfig: this.config?.plugins.find((plugin) => plugin.id === pluginId)?.config,
         pluginId,
         openSqliteStore: (options) => this.openSqliteStore(pluginId, pluginDataDir, options),
-        readBody,
+        readBody: readBody2,
         readJson,
-        sendJson: sendJson2
+        sendJson: sendJson3
       })
     });
   }
@@ -53792,13 +55503,13 @@ var GatewayPluginService = class {
       try {
         await stopHook();
       } catch (error) {
-        console.warn(`[plugin:${pluginId}] Rollback stop hook failed: ${formatError9(error)}`);
+        console.warn(`[plugin:${pluginId}] Rollback stop hook failed: ${formatError10(error)}`);
       }
     }
     try {
       await backendService.stopOwner(pluginId);
     } catch (error) {
-      console.warn(`[plugin:${pluginId}] Rollback resource cleanup failed: ${formatError9(error)}`);
+      console.warn(`[plugin:${pluginId}] Rollback resource cleanup failed: ${formatError10(error)}`);
     }
   }
 };
@@ -53818,7 +55529,7 @@ function resolveLocalModulePath2(value, label) {
     throw new Error(`${label} path is required.`);
   }
   const expanded = expandHome2(trimmed);
-  if (import_node_path18.default.isAbsolute(expanded)) {
+  if (import_node_path20.default.isAbsolute(expanded)) {
     return expanded;
   }
   if (isProtocolSpecifier2(expanded)) {
@@ -53827,14 +55538,14 @@ function resolveLocalModulePath2(value, label) {
   if (!expanded.startsWith(".")) {
     throw new Error(`${label} must be an explicit local JavaScript path. Package specifiers are not loaded from configuration.`);
   }
-  const resolved = import_node_path18.default.resolve(CONFIGDIR, expanded);
+  const resolved = import_node_path20.default.resolve(CONFIGDIR, expanded);
   if (!isPathInside2(resolved, CONFIGDIR)) {
     throw new Error(`${label} relative paths must stay inside the CCR config directory.`);
   }
   return resolved;
 }
 function assertJavaScriptModulePath2(resolved, label) {
-  const extension = import_node_path18.default.extname(resolved).toLowerCase();
+  const extension = import_node_path20.default.extname(resolved).toLowerCase();
   if (![".cjs", ".js", ".mjs"].includes(extension)) {
     throw new Error(`${label} must resolve to a JavaScript module file.`);
   }
@@ -53843,16 +55554,16 @@ function isProtocolSpecifier2(value) {
   return /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value);
 }
 function isPathInside2(file, root) {
-  const relative = import_node_path18.default.relative(root, file);
-  return relative === "" || Boolean(relative) && !relative.startsWith("..") && !import_node_path18.default.isAbsolute(relative);
+  const relative = import_node_path20.default.relative(root, file);
+  return relative === "" || Boolean(relative) && !relative.startsWith("..") && !import_node_path20.default.isAbsolute(relative);
 }
 function normalizeLoadedPlugin(moduleValue) {
-  const record = isRecord9(moduleValue) ? moduleValue : {};
+  const record = isRecord11(moduleValue) ? moduleValue : {};
   const candidate = record.default ?? record.plugin ?? moduleValue;
   if (typeof candidate === "function") {
     return { setup: candidate };
   }
-  if (isRecord9(candidate)) {
+  if (isRecord11(candidate)) {
     return candidate;
   }
   throw new Error("Plugin module must export a function, default plugin, or plugin object.");
@@ -53966,15 +55677,15 @@ function createPluginLogger(pluginId) {
     warn: (...args) => console.warn(prefix, ...args)
   };
 }
-function sendJson2(response, statusCode, body) {
+function sendJson3(response, statusCode, body) {
   response.writeHead(statusCode, { "content-type": "application/json" });
   response.end(`${JSON.stringify(body)}
 `);
 }
 function readJson(request) {
-  return readBody(request).then((body) => JSON.parse(body.toString("utf8") || "{}"));
+  return readBody2(request).then((body) => JSON.parse(body.toString("utf8") || "{}"));
 }
-function readBody(request) {
+function readBody2(request) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     request.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
@@ -53984,10 +55695,10 @@ function readBody(request) {
 }
 function expandHome2(value) {
   if (value === "~") {
-    return import_node_os6.default.homedir();
+    return import_node_os7.default.homedir();
   }
   if (value.startsWith("~/")) {
-    return import_node_path18.default.join(import_node_os6.default.homedir(), value.slice(2));
+    return import_node_path20.default.join(import_node_os7.default.homedir(), value.slice(2));
   }
   return value;
 }
@@ -53997,42 +55708,42 @@ function sanitizeFileSegment2(value) {
 function providerAccountConnectorKey(pluginId, connectorId) {
   return `${pluginId.trim()}:${connectorId.trim()}`;
 }
-function isRecord9(value) {
+function isRecord11(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-function formatError9(error) {
+function formatError10(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
 // packages/core/src/proxy/service.ts
-var import_node_child_process4 = require("node:child_process");
-var import_node_crypto5 = require("node:crypto");
-var import_node_fs14 = require("node:fs");
+var import_node_child_process5 = require("node:child_process");
+var import_node_crypto6 = require("node:crypto");
+var import_node_fs15 = require("node:fs");
 var import_node_http2 = __toESM(require("node:http"));
 var import_node_https = __toESM(require("node:https"));
 var import_node_net2 = __toESM(require("node:net"));
-var import_node_os8 = __toESM(require("node:os"));
-var import_node_path20 = __toESM(require("node:path"));
-var import_node_stream = require("node:stream");
+var import_node_os9 = __toESM(require("node:os"));
+var import_node_path22 = __toESM(require("node:path"));
+var import_node_stream2 = require("node:stream");
 var import_node_tls = __toESM(require("node:tls"));
 var import_node_url2 = require("node:url");
 var import_node_zlib = require("node:zlib");
 
 // packages/core/src/proxy/certificates.ts
-var import_node_fs13 = require("node:fs");
-var import_node_crypto4 = require("node:crypto");
+var import_node_fs14 = require("node:fs");
+var import_node_crypto5 = require("node:crypto");
 var import_node_net = __toESM(require("node:net"));
-var import_node_os7 = __toESM(require("node:os"));
-var import_node_path19 = __toESM(require("node:path"));
+var import_node_os8 = __toESM(require("node:os"));
+var import_node_path21 = __toESM(require("node:path"));
 var import_node_forge = __toESM(require_lib());
 var pki = import_node_forge.default.pki;
 var certificateDirectoryMode = 448;
 var certificateFileMode = 420;
 var privateKeyFileMode = 384;
 function ensureProxyCertificateAuthority() {
-  (0, import_node_fs13.mkdirSync)(CERTDIR, { mode: certificateDirectoryMode, recursive: true });
+  (0, import_node_fs14.mkdirSync)(CERTDIR, { mode: certificateDirectoryMode, recursive: true });
   securePathPermissions3(CERTDIR, certificateDirectoryMode);
-  if ((0, import_node_fs13.existsSync)(PROXY_CA_CERT_FILE) && (0, import_node_fs13.existsSync)(PROXY_CA_KEY_FILE)) {
+  if ((0, import_node_fs14.existsSync)(PROXY_CA_CERT_FILE) && (0, import_node_fs14.existsSync)(PROXY_CA_KEY_FILE)) {
     secureCertificateAuthorityFilePermissions();
     ensureProxyCertificateDerFile();
     return;
@@ -54045,7 +55756,7 @@ function ensureProxyCertificateAuthority() {
   cert.validity.notAfter = /* @__PURE__ */ new Date();
   cert.validity.notAfter.setFullYear(cert.validity.notAfter.getFullYear() + 20);
   const attrs = [
-    { name: "commonName", value: `Claude Code Router CA (${import_node_os7.default.hostname()})` },
+    { name: "commonName", value: `Claude Code Router CA (${import_node_os8.default.hostname()})` },
     { name: "countryName", value: "US" },
     { shortName: "ST", value: "California" },
     { name: "localityName", value: "San Francisco" },
@@ -54072,19 +55783,19 @@ function ensureProxyCertificateAuthority() {
     }
   ]);
   cert.sign(keys.privateKey, import_node_forge.default.md.sha256.create());
-  (0, import_node_fs13.writeFileSync)(PROXY_CA_CERT_FILE, pki.certificateToPem(cert), { encoding: "utf8", mode: certificateFileMode });
-  (0, import_node_fs13.writeFileSync)(PROXY_CA_KEY_FILE, pki.privateKeyToPem(keys.privateKey), { encoding: "utf8", mode: privateKeyFileMode });
+  (0, import_node_fs14.writeFileSync)(PROXY_CA_CERT_FILE, pki.certificateToPem(cert), { encoding: "utf8", mode: certificateFileMode });
+  (0, import_node_fs14.writeFileSync)(PROXY_CA_KEY_FILE, pki.privateKeyToPem(keys.privateKey), { encoding: "utf8", mode: privateKeyFileMode });
   secureCertificateAuthorityFilePermissions();
   ensureProxyCertificateDerFile();
 }
 function proxyCertificateAuthorityExists() {
-  return (0, import_node_fs13.existsSync)(PROXY_CA_CERT_FILE) && (0, import_node_fs13.existsSync)(PROXY_CA_KEY_FILE);
+  return (0, import_node_fs14.existsSync)(PROXY_CA_CERT_FILE) && (0, import_node_fs14.existsSync)(PROXY_CA_KEY_FILE);
 }
 function readProxyCertificateAuthority() {
   ensureProxyCertificateAuthority();
   return {
-    cert: pki.certificateFromPem((0, import_node_fs13.readFileSync)(PROXY_CA_CERT_FILE, "utf8")),
-    key: pki.privateKeyFromPem((0, import_node_fs13.readFileSync)(PROXY_CA_KEY_FILE, "utf8"))
+    cert: pki.certificateFromPem((0, import_node_fs14.readFileSync)(PROXY_CA_CERT_FILE, "utf8")),
+    key: pki.privateKeyFromPem((0, import_node_fs14.readFileSync)(PROXY_CA_KEY_FILE, "utf8"))
   };
 }
 function proxyCertificateAuthorityKeyMatches() {
@@ -54100,21 +55811,21 @@ function proxyCertificateAuthorityKeyMatches() {
   }
 }
 function readProxyCertificateFingerprintSha256() {
-  if (!(0, import_node_fs13.existsSync)(PROXY_CA_CERT_FILE)) {
+  if (!(0, import_node_fs14.existsSync)(PROXY_CA_CERT_FILE)) {
     return void 0;
   }
   try {
-    return fingerprintPem((0, import_node_fs13.readFileSync)(PROXY_CA_CERT_FILE, "utf8"), "sha256");
+    return fingerprintPem((0, import_node_fs14.readFileSync)(PROXY_CA_CERT_FILE, "utf8"), "sha256");
   } catch {
     return void 0;
   }
 }
 function readProxyCertificateFingerprintSha1() {
-  if (!(0, import_node_fs13.existsSync)(PROXY_CA_CERT_FILE)) {
+  if (!(0, import_node_fs14.existsSync)(PROXY_CA_CERT_FILE)) {
     return void 0;
   }
   try {
-    return fingerprintPem((0, import_node_fs13.readFileSync)(PROXY_CA_CERT_FILE, "utf8"), "sha1");
+    return fingerprintPem((0, import_node_fs14.readFileSync)(PROXY_CA_CERT_FILE, "utf8"), "sha1");
   } catch {
     return void 0;
   }
@@ -54171,17 +55882,17 @@ function createCertificateForHost(hostname, authority) {
   };
 }
 function proxyCaCertFile() {
-  return import_node_path19.default.normalize(PROXY_CA_CERT_FILE);
+  return import_node_path21.default.normalize(PROXY_CA_CERT_FILE);
 }
 function proxyCaCertInstallFile() {
-  return import_node_path19.default.normalize(ensureProxyCertificateDerFile() ? PROXY_CA_CERT_DER_FILE : PROXY_CA_CERT_FILE);
+  return import_node_path21.default.normalize(ensureProxyCertificateDerFile() ? PROXY_CA_CERT_DER_FILE : PROXY_CA_CERT_FILE);
 }
 function ensureProxyCertificateDerFile() {
-  if (!(0, import_node_fs13.existsSync)(PROXY_CA_CERT_FILE)) {
+  if (!(0, import_node_fs14.existsSync)(PROXY_CA_CERT_FILE)) {
     return false;
   }
   try {
-    writeProxyCertificateDerFile(pki.certificateFromPem((0, import_node_fs13.readFileSync)(PROXY_CA_CERT_FILE, "utf8")));
+    writeProxyCertificateDerFile(pki.certificateFromPem((0, import_node_fs14.readFileSync)(PROXY_CA_CERT_FILE, "utf8")));
     return true;
   } catch {
     return false;
@@ -54189,7 +55900,7 @@ function ensureProxyCertificateDerFile() {
 }
 function writeProxyCertificateDerFile(cert) {
   const der = import_node_forge.default.asn1.toDer(pki.certificateToAsn1(cert)).getBytes();
-  (0, import_node_fs13.writeFileSync)(PROXY_CA_CERT_DER_FILE, Buffer.from(der, "binary"), { mode: certificateFileMode });
+  (0, import_node_fs14.writeFileSync)(PROXY_CA_CERT_DER_FILE, Buffer.from(der, "binary"), { mode: certificateFileMode });
   securePathPermissions3(PROXY_CA_CERT_DER_FILE, certificateFileMode);
 }
 function secureCertificateAuthorityFilePermissions() {
@@ -54198,13 +55909,13 @@ function secureCertificateAuthorityFilePermissions() {
   securePathPermissions3(PROXY_CA_CERT_DER_FILE, certificateFileMode);
 }
 function securePathPermissions3(file, mode) {
-  if (process.platform === "win32" || !(0, import_node_fs13.existsSync)(file)) {
+  if (process.platform === "win32" || !(0, import_node_fs14.existsSync)(file)) {
     return;
   }
-  (0, import_node_fs13.chmodSync)(file, mode);
+  (0, import_node_fs14.chmodSync)(file, mode);
 }
 function createSerialNumber() {
-  const bytes = (0, import_node_crypto4.randomBytes)(16);
+  const bytes = (0, import_node_crypto5.randomBytes)(16);
   bytes[0] &= 127;
   if (bytes.every((byte) => byte === 0)) {
     bytes[15] = 1;
@@ -54216,7 +55927,7 @@ function fingerprintPem(pem, algorithm) {
     pem.replace(/-----BEGIN CERTIFICATE-----/g, "").replace(/-----END CERTIFICATE-----/g, "").replace(/\s+/g, ""),
     "base64"
   );
-  return (0, import_node_crypto4.createHash)(algorithm).update(der).digest("hex").match(/.{1,2}/g).join(":").toUpperCase();
+  return (0, import_node_crypto5.createHash)(algorithm).update(der).digest("hex").match(/.{1,2}/g).join(":").toUpperCase();
 }
 function subjectAltName(hostname) {
   return import_node_net.default.isIP(hostname) ? {
@@ -54293,7 +56004,7 @@ var ProxyService = class {
       this.authority = readProxyCertificateAuthority();
       this.server = import_node_http2.default.createServer((request, response) => {
         void this.handleProxyRequest(request, response, "http:").catch((error) => {
-          sendProxyError(response, 502, formatError10(error));
+          sendProxyError(response, 502, formatError11(error));
         });
       });
       this.server.on("connect", (request, clientSocket, head) => {
@@ -54317,7 +56028,7 @@ var ProxyService = class {
       await this.stop();
       this.status = {
         ...this.status,
-        lastError: formatError10(error),
+        lastError: formatError11(error),
         state: "error"
       };
       return this.getStatus();
@@ -54358,7 +56069,7 @@ var ProxyService = class {
       await this.stop();
       this.status = {
         ...this.status,
-        lastError: formatError10(error),
+        lastError: formatError11(error),
         state: "error"
       };
       return this.getStatus();
@@ -54447,9 +56158,9 @@ var ProxyService = class {
     } catch (error) {
       this.status = {
         ...this.status,
-        lastError: formatError10(error),
+        lastError: formatError11(error),
         systemProxy: {
-          lastError: formatError10(error),
+          lastError: formatError11(error),
           state: "error"
         }
       };
@@ -54518,13 +56229,13 @@ var ProxyService = class {
           terminalMessage = ` Opened Terminal installer: ${installerFile}`;
         } catch (terminalError) {
           await this.revealFile(PROXY_CA_CERT_FILE).catch(() => void 0);
-          terminalMessage = ` Could not open Terminal installer: ${formatError10(terminalError)}`;
+          terminalMessage = ` Could not open Terminal installer: ${formatError11(terminalError)}`;
         }
         const status3 = await this.getCertificateStatus();
         return {
           caCertFile: proxyCaCertFile(),
           manualCommand: macosManualCertificateInstallCommand(),
-          message: `macOS did not allow CCR to request administrator authorization: ${formatError10(error)}.${terminalMessage}`,
+          message: `macOS did not allow CCR to request administrator authorization: ${formatError11(error)}.${terminalMessage}`,
           ok: false,
           status: status3
         };
@@ -54545,7 +56256,7 @@ var ProxyService = class {
         return {
           caCertFile: proxyCaCertFile(),
           manualCommand: windowsManualCertificateInstallCommand(),
-          message: `Windows could not install the proxy CA certificate: ${formatError10(error)}`,
+          message: `Windows could not install the proxy CA certificate: ${formatError11(error)}`,
           ok: false,
           status: status3
         };
@@ -54618,7 +56329,7 @@ var ProxyService = class {
         }
         const loginKeychainMatch = await macosKeychainContainsCertificateFingerprint(
           base.caFingerprintSha256,
-          import_node_path20.default.join(import_node_os8.default.homedir(), "Library", "Keychains", "login.keychain-db")
+          import_node_path22.default.join(import_node_os9.default.homedir(), "Library", "Keychains", "login.keychain-db")
         );
         if (loginKeychainMatch) {
           return {
@@ -54640,7 +56351,7 @@ var ProxyService = class {
         return {
           ...base,
           canInstall: true,
-          message: `Proxy CA certificate is not trusted: ${formatError10(error)}`,
+          message: `Proxy CA certificate is not trusted: ${formatError11(error)}`,
           state: "untrusted",
           trusted: false
         };
@@ -54679,7 +56390,7 @@ var ProxyService = class {
         return {
           ...base,
           canInstall: true,
-          message: `Proxy CA certificate is not trusted: ${formatError10(error)}`,
+          message: `Proxy CA certificate is not trusted: ${formatError11(error)}`,
           state: "untrusted",
           trusted: false
         };
@@ -54748,7 +56459,7 @@ var ProxyService = class {
       },
       (request, response) => {
         void this.handleProxyRequest(request, response, "https:").catch((error) => {
-          sendProxyError(response, 502, formatError10(error));
+          sendProxyError(response, 502, formatError11(error));
         });
       }
     );
@@ -54769,7 +56480,7 @@ var ProxyService = class {
       sendProxyError(response, 503, "Proxy service is not configured.");
       return;
     }
-    const requestId = (0, import_node_crypto5.randomUUID)();
+    const requestId = (0, import_node_crypto6.randomUUID)();
     const targetUrl = resolveRequestUrl(request, defaultProtocol);
     const pluginRoute = pluginService.resolveProxyRoute(targetUrl);
     if (!pluginRoute && isCursorAgentProxyRequest(targetUrl)) {
@@ -54787,7 +56498,7 @@ var ProxyService = class {
       upstreamUrl
     }) : createNoopNetworkCapture();
     request.once("error", (error) => {
-      capture.fail(`Client request stream failed: ${formatError10(error)}`);
+      capture.fail(`Client request stream failed: ${formatError11(error)}`);
     });
     await forwardRequest({
       capture,
@@ -54971,19 +56682,19 @@ function forwardDirectRequest({
         });
         upstreamResponse.once("error", (error) => {
           if (!response.headersSent) {
-            const message = formatError10(error);
+            const message = formatError11(error);
             captureProxyError(capture, 502, message);
             sendProxyError(response, 502, message);
           } else {
             response.destroy(error);
           }
-          capture.fail(formatError10(error), response.statusCode || statusCode);
+          capture.fail(formatError11(error), response.statusCode || statusCode);
           resolve();
         });
       }
     );
     upstreamRequest.once("error", (error) => {
-      const message = `Proxy ${mode} request failed: ${formatError10(error)}`;
+      const message = `Proxy ${mode} request failed: ${formatError11(error)}`;
       if (!response.headersSent) {
         captureProxyError(capture, 502, message);
         sendProxyError(response, 502, message);
@@ -55037,19 +56748,19 @@ function forwardHttpRequestViaHttpProxy({
         });
         upstreamResponse.once("error", (error) => {
           if (!response.headersSent) {
-            const message = formatError10(error);
+            const message = formatError11(error);
             captureProxyError(capture, 502, message);
             sendProxyError(response, 502, message);
           } else {
             response.destroy(error);
           }
-          capture.fail(formatError10(error), response.statusCode || statusCode);
+          capture.fail(formatError11(error), response.statusCode || statusCode);
           resolve();
         });
       }
     );
     upstreamRequest.once("error", (error) => {
-      const message = `Proxy ${mode} HTTP request via upstream proxy ${formatUpstreamProxyServer(proxyServer)} to ${upstreamUrl.toString()} failed: ${formatError10(error)}`;
+      const message = `Proxy ${mode} HTTP request via upstream proxy ${formatUpstreamProxyServer(proxyServer)} to ${upstreamUrl.toString()} failed: ${formatError11(error)}`;
       if (!response.headersSent) {
         captureProxyError(capture, 502, message);
         sendProxyError(response, 502, message);
@@ -55136,20 +56847,20 @@ function forwardHttpsRequestViaHttpProxy({
           });
           upstreamResponse.once("error", (error) => {
             if (!response.headersSent) {
-              const message = formatError10(error);
+              const message = formatError11(error);
               captureProxyError(capture, 502, message);
               sendProxyError(response, 502, message);
             } else {
               response.destroy(error);
             }
-            capture.fail(formatError10(error), response.statusCode || statusCode);
+            capture.fail(formatError11(error), response.statusCode || statusCode);
             tunnelAgent.destroy();
             resolve();
           });
         }
       );
       upstreamRequest.once("error", (error) => {
-        const message = `Proxy ${mode} HTTPS request via upstream proxy ${formatUpstreamProxyServer(proxyServer)} to ${upstreamUrl.toString()} failed: ${formatError10(error)}`;
+        const message = `Proxy ${mode} HTTPS request via upstream proxy ${formatUpstreamProxyServer(proxyServer)} to ${upstreamUrl.toString()} failed: ${formatError11(error)}`;
         if (!response.headersSent) {
           captureProxyError(capture, 502, message);
           sendProxyError(response, 502, message);
@@ -55168,7 +56879,7 @@ function forwardHttpsRequestViaHttpProxy({
       pipeCapturedRequestBody(request, upstreamRequest, capture);
     });
     connectRequest.once("error", (error) => {
-      const message = `Upstream proxy ${formatUpstreamProxyServer(proxyServer)} connection to ${upstreamUrl.hostname}:${targetPort} failed: ${formatError10(error)}`;
+      const message = `Upstream proxy ${formatUpstreamProxyServer(proxyServer)} connection to ${upstreamUrl.hostname}:${targetPort} failed: ${formatError11(error)}`;
       if (!response.headersSent) {
         captureProxyError(capture, 502, message);
         sendProxyError(response, 502, message);
@@ -55187,10 +56898,10 @@ function forwardHttpsRequestViaHttpProxy({
   });
 }
 function pipeCapturedRequestBody(request, upstreamRequest, capture) {
-  const requestBody = new import_node_stream.PassThrough();
+  const requestBody = new import_node_stream2.PassThrough();
   requestBody.on("data", capture.appendRequestBody);
   requestBody.once("error", (error) => {
-    capture.fail(`Request body capture failed: ${formatError10(error)}`);
+    capture.fail(`Request body capture failed: ${formatError11(error)}`);
     upstreamRequest.destroy(error);
   });
   request.pipe(requestBody).pipe(upstreamRequest);
@@ -55211,11 +56922,11 @@ function createForwardHeaders(headers, upstreamUrl, routedToGateway, config, rou
   }
   const pluginRoute = route?.pluginRoute;
   if (pluginRoute) {
-    forwarded.host = pluginRoute.preserveHost ? route.targetUrl?.host ?? readHeader3(headers.host) ?? upstreamUrl.host : upstreamUrl.host;
+    forwarded.host = pluginRoute.preserveHost ? route.targetUrl?.host ?? readHeader5(headers.host) ?? upstreamUrl.host : upstreamUrl.host;
     forwarded["x-ccr-proxy-mode"] = "plugin";
     forwarded["x-ccr-plugin-id"] = pluginRoute.pluginId;
     forwarded["x-ccr-plugin-route-id"] = pluginRoute.id;
-    forwarded["x-ccr-original-host"] = readHeader3(headers.host) ?? "";
+    forwarded["x-ccr-original-host"] = readHeader5(headers.host) ?? "";
     forwarded["x-ccr-original-url"] = pluginRoute.targetUrl.toString();
     for (const [key, value] of Object.entries(pluginRoute.headers ?? {})) {
       forwarded[key.toLowerCase()] = value;
@@ -55223,7 +56934,7 @@ function createForwardHeaders(headers, upstreamUrl, routedToGateway, config, rou
   } else if (routedToGateway) {
     forwarded.host = upstreamUrl.host;
     forwarded["x-ccr-proxy-mode"] = "gateway";
-    forwarded["x-ccr-original-host"] = readHeader3(headers.host) ?? "";
+    forwarded["x-ccr-original-host"] = readHeader5(headers.host) ?? "";
     delete forwarded.authorization;
     delete forwarded["x-api-key"];
     const apiKey = primaryApiKey(config);
@@ -55298,7 +57009,7 @@ function resolveRequestUrl(request, defaultProtocol) {
   if (/^https?:\/\//i.test(rawUrl)) {
     return new URL(rawUrl);
   }
-  const host = readHeader3(request.headers.host);
+  const host = readHeader5(request.headers.host);
   if (!host) {
     throw new Error("Proxy request is missing Host header.");
   }
@@ -55442,7 +57153,7 @@ function withTimeout(promise, timeoutMs, timeoutValue) {
 }
 function execFilePromise(file, args) {
   return new Promise((resolve, reject) => {
-    (0, import_node_child_process4.execFile)(file, args, { windowsHide: process.platform === "win32" }, (error, stdout, stderr) => {
+    (0, import_node_child_process5.execFile)(file, args, { windowsHide: process.platform === "win32" }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error(stderr?.trim() || stdout?.trim() || error.message));
         return;
@@ -55453,7 +57164,7 @@ function execFilePromise(file, args) {
 }
 function execFileText(file, args) {
   return new Promise((resolve, reject) => {
-    (0, import_node_child_process4.execFile)(file, args, { maxBuffer: 8 * 1024 * 1024, windowsHide: process.platform === "win32" }, (error, stdout, stderr) => {
+    (0, import_node_child_process5.execFile)(file, args, { maxBuffer: 8 * 1024 * 1024, windowsHide: process.platform === "win32" }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error(stderr?.trim() || stdout?.trim() || error.message));
         return;
@@ -55506,10 +57217,10 @@ async function windowsCurrentUserRootContainsCertificateThumbprint(thumbprint) {
   }
 }
 async function openMacosTerminalCertificateInstaller() {
-  const installerFile = import_node_path20.default.join(import_node_os8.default.tmpdir(), `ccr-install-proxy-ca-${(0, import_node_crypto5.randomUUID)()}.command`);
-  (0, import_node_fs14.writeFileSync)(installerFile, `${macosTerminalCertificateInstallScript()}
+  const installerFile = import_node_path22.default.join(import_node_os9.default.tmpdir(), `ccr-install-proxy-ca-${(0, import_node_crypto6.randomUUID)()}.command`);
+  (0, import_node_fs15.writeFileSync)(installerFile, `${macosTerminalCertificateInstallScript()}
 `, "utf8");
-  (0, import_node_fs14.chmodSync)(installerFile, 448);
+  (0, import_node_fs15.chmodSync)(installerFile, 448);
   await execFilePromise("/usr/bin/open", [installerFile]);
   return installerFile;
 }
@@ -55522,7 +57233,7 @@ async function revealFileWithSystemCommand(file) {
     await execFilePromise("explorer.exe", ["/select,", file]);
     return;
   }
-  await execFilePromise("xdg-open", [(0, import_node_url2.pathToFileURL)(import_node_path20.default.dirname(file)).toString()]);
+  await execFilePromise("xdg-open", [(0, import_node_url2.pathToFileURL)(import_node_path22.default.dirname(file)).toString()]);
 }
 function macosTerminalCertificateInstallScript() {
   return [
@@ -55548,7 +57259,7 @@ function quoteShellArg(value) {
 function quoteWindowsCmdArg(value) {
   return `"${value.replace(/"/g, '""')}"`;
 }
-function readHeader3(value) {
+function readHeader5(value) {
   if (Array.isArray(value)) {
     return value[0]?.trim();
   }
@@ -55607,11 +57318,11 @@ function toProxyNetworkExchange(record) {
   };
 }
 function inferProxyClient(headers) {
-  const explicitClient = readHeader3(headers["x-ccr-client"]) ?? readHeader3(headers["x-client-name"]) ?? readHeader3(headers["x-forwarded-client-cert"]);
+  const explicitClient = readHeader5(headers["x-ccr-client"]) ?? readHeader5(headers["x-client-name"]) ?? readHeader5(headers["x-forwarded-client-cert"]);
   if (explicitClient) {
     return explicitClient;
   }
-  const userAgent = readHeader3(headers["user-agent"]);
+  const userAgent = readHeader5(headers["user-agent"]);
   if (!userAgent) {
     return "System";
   }
@@ -55664,7 +57375,7 @@ function createCapturedBody(sampler, headers) {
         body = decodeBodyEncoding(raw, contentEncoding);
         decodedFrom = contentEncoding;
       } catch (decodeError) {
-        error = `Failed to decode ${contentEncoding}: ${formatError10(decodeError)}`;
+        error = `Failed to decode ${contentEncoding}: ${formatError11(decodeError)}`;
       }
     }
   }
@@ -55764,34 +57475,34 @@ Connection: close\r
 ${body}`
   );
 }
-function formatError10(error) {
+function formatError11(error) {
   return error instanceof Error ? error.message : String(error);
 }
 function handleConnectError(request, socket, error) {
-  const message = formatError10(error);
+  const message = formatError11(error);
   console.warn(`[proxy] CONNECT ${request.url || "<unknown>"} failed: ${message}`);
   closeConnectSocket(socket, 502, message);
 }
 
 // packages/core/src/gateway/core-runtime/config-writer.ts
-var import_node_fs18 = require("node:fs");
-var import_node_path28 = require("node:path");
+var import_node_fs19 = require("node:fs");
+var import_node_path30 = require("node:path");
 
 // packages/core/src/gateway/core-runtime/config-compiler.ts
-var import_node_path27 = require("node:path");
+var import_node_path29 = require("node:path");
 
 // packages/core/src/gateway/internal/value.ts
-function isRecord10(value) {
+function isRecord12(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-function stringValue5(value) {
+function stringValue6(value) {
   return typeof value === "string" && value.trim() ? value.trim() : void 0;
 }
 function rawStringValue(value) {
   return typeof value === "string" ? value : void 0;
 }
 function stringListValue2(value) {
-  return Array.isArray(value) ? value.map((item) => stringValue5(item)).filter((item) => Boolean(item)) : [];
+  return Array.isArray(value) ? value.map((item) => stringValue6(item)).filter((item) => Boolean(item)) : [];
 }
 function numberValue4(value) {
   const number = Number(value);
@@ -55799,7 +57510,7 @@ function numberValue4(value) {
 }
 
 // packages/core/src/mcp/fusion-config.ts
-var import_node_path21 = require("node:path");
+var import_node_path23 = require("node:path");
 
 // packages/core/src/gateway/internal/collections.ts
 function clampNumber2(value, min, max) {
@@ -55826,11 +57537,11 @@ async function fusionBuiltinToolArtifacts(profiles, coreEndpoint, coreAuthToken,
   const toolServerKeys = /* @__PURE__ */ new Set();
   const entry = bundledFusionBuiltinMcpEntryPath();
   for (const [index, profile] of profiles.entries()) {
-    if (!isRecord10(profile) || profile.enabled === false) {
+    if (!isRecord12(profile) || profile.enabled === false) {
       continue;
     }
-    const metadata = isRecord10(profile.metadata) ? profile.metadata : void 0;
-    const profileId = stringValue5(profile.id) || stringValue5(profile.key) || `fusion-${index + 1}`;
+    const metadata = isRecord12(profile.metadata) ? profile.metadata : void 0;
+    const profileId = stringValue6(profile.id) || stringValue6(profile.key) || `fusion-${index + 1}`;
     const sanitizedProfileId = sanitizeMcpServerName(profileId);
     const visionConfig = readFusionVisionConfig(metadata?.fusionVision) ?? legacyFusionVisionConfig(profile);
     if (visionConfig?.toolName) {
@@ -55924,7 +57635,7 @@ function fusionBuiltinMcpServer({
   };
 }
 function bundledFusionBuiltinMcpEntryPath() {
-  return (0, import_node_path21.join)(__dirname, "fusion-vision-mcp.js");
+  return (0, import_node_path23.join)(__dirname, "fusion-vision-mcp.js");
 }
 function fusionToolFallbackMcpServer(profiles, existingServers) {
   const tools = fusionFallbackToolDefinitions(profiles, fusionToolNamesBackedByMcpServers(existingServers));
@@ -55947,7 +57658,7 @@ function fusionToolFallbackMcpServer(profiles, existingServers) {
   };
 }
 function bundledFusionToolFallbackMcpEntryPath() {
-  return (0, import_node_path21.join)(__dirname, "fusion-tool-fallback-mcp.js");
+  return (0, import_node_path23.join)(__dirname, "fusion-tool-fallback-mcp.js");
 }
 function toolHubMcpServer(config, backendServers) {
   const toolHub = config.toolHub;
@@ -55972,15 +57683,15 @@ function toolHubMcpServer(config, backendServers) {
 function fusionFallbackToolDefinitions(profiles, backedToolNames = /* @__PURE__ */ new Set()) {
   const byName = /* @__PURE__ */ new Map();
   for (const profile of profiles) {
-    if (!isRecord10(profile) || profile.enabled === false) {
+    if (!isRecord12(profile) || profile.enabled === false) {
       continue;
     }
     if (Array.isArray(profile.tools)) {
       for (const tool of profile.tools) {
-        if (!isRecord10(tool)) {
+        if (!isRecord12(tool)) {
           continue;
         }
-        const name = stringValue5(tool.name);
+        const name = stringValue6(tool.name);
         if (!name) {
           continue;
         }
@@ -55988,8 +57699,8 @@ function fusionFallbackToolDefinitions(profiles, backedToolNames = /* @__PURE__ 
           continue;
         }
         const existing = byName.get(name);
-        const description = stringValue5(tool.description);
-        const inputSchema = isRecord10(tool.inputSchema) ? tool.inputSchema : isRecord10(tool.input_schema) ? tool.input_schema : void 0;
+        const description = stringValue6(tool.description);
+        const inputSchema = isRecord12(tool.inputSchema) ? tool.inputSchema : isRecord12(tool.input_schema) ? tool.input_schema : void 0;
         const unavailableMessage = fusionFallbackToolUnavailableMessage(profile, name);
         if (existing) {
           if (!existing.description && description) {
@@ -56019,11 +57730,11 @@ function fusionFallbackToolDefinitions(profiles, backedToolNames = /* @__PURE__ 
   return [...byName.values()];
 }
 function fusionFallbackToolUnavailableMessage(profile, toolName) {
-  if (!isRecord10(profile)) {
+  if (!isRecord12(profile)) {
     return void 0;
   }
-  const metadata = isRecord10(profile.metadata) ? profile.metadata : void 0;
-  const fusionWebSearch = isRecord10(metadata?.fusionWebSearch) ? metadata.fusionWebSearch : void 0;
+  const metadata = isRecord12(profile.metadata) ? profile.metadata : void 0;
+  const fusionWebSearch = isRecord12(metadata?.fusionWebSearch) ? metadata.fusionWebSearch : void 0;
   const webSearchConfig = readFusionWebSearchConfig(fusionWebSearch);
   if (webSearchConfig?.provider !== "browser" || webSearchConfig.toolName !== toolName) {
     return void 0;
@@ -56038,8 +57749,8 @@ function browserWebSearchUnavailableMessage(toolName) {
   ].join(" ");
 }
 function browserWebSearchFallbackToolDefinition(profile, backedToolNames) {
-  const metadata = isRecord10(profile.metadata) ? profile.metadata : void 0;
-  const fusionWebSearch = isRecord10(metadata?.fusionWebSearch) ? metadata.fusionWebSearch : void 0;
+  const metadata = isRecord12(profile.metadata) ? profile.metadata : void 0;
+  const fusionWebSearch = isRecord12(metadata?.fusionWebSearch) ? metadata.fusionWebSearch : void 0;
   const webSearchConfig = readFusionWebSearchConfig(fusionWebSearch);
   if (webSearchConfig?.provider !== "browser" || !webSearchConfig.toolName || backedToolNames.has(webSearchConfig.toolName)) {
     return void 0;
@@ -56063,18 +57774,18 @@ function browserWebSearchFallbackToolDefinition(profile, backedToolNames) {
 function fusionToolNamesBackedByMcpServers(servers) {
   const names = /* @__PURE__ */ new Set();
   for (const server of servers) {
-    if (!isRecord10(server)) {
+    if (!isRecord12(server)) {
       continue;
     }
-    const serverName = stringValue5(server.name);
+    const serverName = stringValue6(server.name);
     if (serverName) {
       names.add(serverName);
       if (serverName === MEDIA_TOOLS_MCP_SERVER_NAME) {
         for (const toolName of GROK_MEDIA_FUSION_TOOL_NAMES) names.add(toolName);
       }
     }
-    const env = isRecord10(server.env) ? server.env : void 0;
-    const fusionToolName = stringValue5(env?.FUSION_TOOL_NAME);
+    const env = isRecord12(server.env) ? server.env : void 0;
+    const fusionToolName = stringValue6(env?.FUSION_TOOL_NAME);
     if (fusionToolName) {
       names.add(fusionToolName);
     }
@@ -56094,7 +57805,7 @@ function fusionToolIsBacked(name, backedToolNames) {
 }
 function uniqueMcpServerName(baseName, servers) {
   const used = new Set(
-    servers.map((server) => isRecord10(server) ? stringValue5(server.name)?.toLowerCase() : void 0).filter((name) => Boolean(name))
+    servers.map((server) => isRecord12(server) ? stringValue6(server.name)?.toLowerCase() : void 0).filter((name) => Boolean(name))
   );
   if (!used.has(baseName.toLowerCase())) {
     return baseName;
@@ -56108,12 +57819,12 @@ function uniqueMcpServerName(baseName, servers) {
 }
 function withFusionVirtualModelAliases(profiles) {
   return profiles.map((profile) => {
-    if (!isRecord10(profile)) {
+    if (!isRecord12(profile)) {
       return profile;
     }
-    const match = isRecord10(profile.match) ? profile.match : {};
+    const match = isRecord12(profile.match) ? profile.match : {};
     const exactAliases = stringListValue2(match.exactAliases);
-    const catalogNames = exactAliases.length > 0 ? exactAliases : [stringValue5(profile.key) || stringValue5(profile.displayName)].filter((value) => Boolean(value));
+    const catalogNames = exactAliases.length > 0 ? exactAliases : [stringValue6(profile.key) || stringValue6(profile.displayName)].filter((value) => Boolean(value));
     const fusionAliases = catalogNames.flatMap(fusionModelSelectors).filter(Boolean);
     if (fusionAliases.length === 0) {
       return profile;
@@ -56129,14 +57840,14 @@ function withFusionVirtualModelAliases(profiles) {
 }
 function withCodexCompatibleVirtualModelProfiles(profiles) {
   return profiles.map((profile) => {
-    if (!isRecord10(profile) || profile.enabled === false) {
+    if (!isRecord12(profile) || profile.enabled === false) {
       return profile;
     }
-    const materialization = isRecord10(profile.materialization) ? profile.materialization : {};
+    const materialization = isRecord12(profile.materialization) ? profile.materialization : {};
     if (materialization.enabled === false || materialization.includeInGatewayModels === false) {
       return profile;
     }
-    const execution = isRecord10(profile.execution) ? profile.execution : {};
+    const execution = isRecord12(profile.execution) ? profile.execution : {};
     if (execution.clientToolsPolicy === "allow") {
       return profile;
     }
@@ -56181,11 +57892,11 @@ function legacyFusionWebSearchConfig(profile) {
 }
 function legacyFusionBuiltinToolName(profile, baseToolName, executionFlag) {
   const tools = Array.isArray(profile.tools) ? profile.tools : [];
-  const toolName = tools.map((tool) => isRecord10(tool) ? stringValue5(tool.name) ?? "" : "").find((name) => fusionBuiltinToolNameMatches(name, baseToolName));
+  const toolName = tools.map((tool) => isRecord12(tool) ? stringValue6(tool.name) ?? "" : "").find((name) => fusionBuiltinToolNameMatches(name, baseToolName));
   if (toolName) {
     return toolName;
   }
-  const execution = isRecord10(profile.execution) ? profile.execution : {};
+  const execution = isRecord12(profile.execution) ? profile.execution : {};
   return execution[executionFlag] === true ? baseToolName : void 0;
 }
 function fusionBuiltinToolNameMatches(name, baseToolName) {
@@ -56198,20 +57909,20 @@ function fusionBuiltinToolNameMatches(name, baseToolName) {
   return coreGatewayWebSearchToolNameMatches(name);
 }
 function normalizeFusionWebSearchProfileToolName(profile) {
-  const metadata = isRecord10(profile.metadata) ? profile.metadata : void 0;
-  const fusionWebSearch = isRecord10(metadata?.fusionWebSearch) ? metadata.fusionWebSearch : void 0;
-  const configuredToolName = stringValue5(fusionWebSearch?.toolName);
+  const metadata = isRecord12(profile.metadata) ? profile.metadata : void 0;
+  const fusionWebSearch = isRecord12(metadata?.fusionWebSearch) ? metadata.fusionWebSearch : void 0;
+  const configuredToolName = stringValue6(fusionWebSearch?.toolName);
   const legacyToolName = configuredToolName ? void 0 : legacyFusionWebSearchConfig(profile)?.toolName;
   const toolName = configuredToolName || legacyToolName;
   if (!toolName) {
     return void 0;
   }
-  const nextToolName = coreGatewayCompatibleWebSearchToolName(toolName, stringValue5(profile.key) || stringValue5(profile.id));
+  const nextToolName = coreGatewayCompatibleWebSearchToolName(toolName, stringValue6(profile.key) || stringValue6(profile.id));
   if (nextToolName === toolName) {
     return void 0;
   }
   const tools = Array.isArray(profile.tools) ? profile.tools.map((tool) => {
-    if (!isRecord10(tool) || stringValue5(tool.name) !== toolName) {
+    if (!isRecord12(tool) || stringValue6(tool.name) !== toolName) {
       return tool;
     }
     return {
@@ -56234,13 +57945,13 @@ function normalizeFusionWebSearchProfileToolName(profile) {
   };
 }
 function withFusionWebSearchToolInstructions(profile) {
-  const metadata = isRecord10(profile.metadata) ? profile.metadata : void 0;
-  const fusionWebSearch = isRecord10(metadata?.fusionWebSearch) ? metadata.fusionWebSearch : void 0;
-  const toolName = stringValue5(fusionWebSearch?.toolName) || legacyFusionWebSearchConfig(profile)?.toolName;
+  const metadata = isRecord12(profile.metadata) ? profile.metadata : void 0;
+  const fusionWebSearch = isRecord12(metadata?.fusionWebSearch) ? metadata.fusionWebSearch : void 0;
+  const toolName = stringValue6(fusionWebSearch?.toolName) || legacyFusionWebSearchConfig(profile)?.toolName;
   if (!toolName) {
     return void 0;
   }
-  const execution = isRecord10(profile.execution) ? profile.execution : {};
+  const execution = isRecord12(profile.execution) ? profile.execution : {};
   if (execution.matchWebSearch !== true) {
     return void 0;
   }
@@ -56249,12 +57960,12 @@ function withFusionWebSearchToolInstructions(profile) {
     "Pass the user's search query in the prompt field.",
     "Do not use provider-native web search or claim that web search is unavailable unless this function tool returns an error."
   ].join(" ");
-  const instructions = isRecord10(profile.instructions) ? profile.instructions : {};
-  if ([instructions.prepend, instructions.append, instructions.replace].some((value) => stringValue5(value)?.includes(instruction))) {
+  const instructions = isRecord12(profile.instructions) ? profile.instructions : {};
+  if ([instructions.prepend, instructions.append, instructions.replace].some((value) => stringValue6(value)?.includes(instruction))) {
     return void 0;
   }
-  const replace = stringValue5(instructions.replace);
-  const append = stringValue5(instructions.append);
+  const replace = stringValue6(instructions.replace);
+  const append = stringValue6(instructions.append);
   return {
     ...profile,
     instructions: {
@@ -56294,19 +58005,19 @@ function truncateFusionToolName(value) {
   return `${value.slice(0, available).replace(/_+$/g, "")}${suffix}`;
 }
 function readFusionVisionConfig(value) {
-  if (!isRecord10(value)) {
+  if (!isRecord12(value)) {
     return void 0;
   }
-  const toolName = stringValue5(value.toolName);
+  const toolName = stringValue6(value.toolName);
   if (!toolName) {
     return void 0;
   }
   const config = {
     toolName,
-    apiKey: stringValue5(value.apiKey),
-    baseUrl: stringValue5(value.baseUrl),
-    model: stringValue5(value.model),
-    modelSelector: stringValue5(value.modelSelector)
+    apiKey: stringValue6(value.apiKey),
+    baseUrl: stringValue6(value.baseUrl),
+    model: stringValue6(value.model),
+    modelSelector: stringValue6(value.modelSelector)
   };
   const timeoutMs = numberValue4(value.timeoutMs);
   if (timeoutMs) {
@@ -56315,16 +58026,16 @@ function readFusionVisionConfig(value) {
   return config;
 }
 function readFusionWebSearchConfig(value) {
-  if (!isRecord10(value)) {
+  if (!isRecord12(value)) {
     return void 0;
   }
-  const toolName = stringValue5(value.toolName);
+  const toolName = stringValue6(value.toolName);
   if (!toolName) {
     return void 0;
   }
   const config = {
     toolName,
-    env: isRecord10(value.env) ? stringRecordFromUnknown(value.env) : void 0,
+    env: isRecord12(value.env) ? stringRecordFromUnknown(value.env) : void 0,
     provider: parseFusionWebSearchProvider(value.provider)
   };
   const resultCount = numberValue4(value.resultCount);
@@ -56381,7 +58092,7 @@ function normalizeGatewayModelSelector(value) {
   return parsed ? `${parsed.providerName}/${parsed.model}` : value.trim();
 }
 function parseFusionWebSearchProvider(value) {
-  const normalized = stringValue5(value)?.toLowerCase();
+  const normalized = stringValue6(value)?.toLowerCase();
   if (normalized === "brave" || normalized === "bing" || normalized === "google_cse" || normalized === "serper" || normalized === "serpapi" || normalized === "tavily" || normalized === "exa" || normalized === "browser") {
     return normalized;
   }
@@ -56391,7 +58102,7 @@ function stringRecordFromUnknown(value) {
   const result = {};
   for (const [key, rawValue] of Object.entries(value)) {
     const normalizedKey = key.trim();
-    const normalizedValue = stringValue5(rawValue);
+    const normalizedValue = stringValue6(rawValue);
     if (normalizedKey && normalizedValue) {
       result[normalizedKey] = normalizedValue;
     }
@@ -56403,7 +58114,7 @@ function sanitizeMcpServerName(value) {
 }
 
 // packages/core/src/gateway/remote-control-service.ts
-var import_node_crypto6 = require("node:crypto");
+var import_node_crypto7 = require("node:crypto");
 var ccrRemoteControlPathPrefix = "/__ccr/remote";
 var maxSessions = 100;
 var maxEventsPerSession = 2e3;
@@ -56481,8 +58192,8 @@ var CcrRemoteControlService = class {
     if (!body) {
       return;
     }
-    const id = sanitizeSessionId(readString7(body.id) || readString7(body.sessionId)) || (0, import_node_crypto6.randomUUID)();
-    const title = readString7(body.title) || readString7(body.name) || `CCR Remote ${id.slice(0, 8)}`;
+    const id = sanitizeSessionId(readString8(body.id) || readString8(body.sessionId)) || (0, import_node_crypto7.randomUUID)();
+    const title = readString8(body.title) || readString8(body.name) || `CCR Remote ${id.slice(0, 8)}`;
     const metadata = readRecord(body.metadata) ?? {};
     const session = this.ensureSession(id, title, metadata);
     this.appendEvent(session, {
@@ -56510,7 +58221,7 @@ var CcrRemoteControlService = class {
       if (!body) {
         return;
       }
-      const title = readString7(body.title) || readString7(body.name);
+      const title = readString8(body.title) || readString8(body.name);
       if (title) {
         session.title = title;
       }
@@ -56638,12 +58349,12 @@ var CcrRemoteControlService = class {
     if (!body) {
       return;
     }
-    const clientId = sanitizeSessionId(readString7(body.clientId) || readString7(body.id)) || (0, import_node_crypto6.randomUUID)();
+    const clientId = sanitizeSessionId(readString8(body.clientId) || readString8(body.id)) || (0, import_node_crypto7.randomUUID)();
     const presence = {
       lastSeenAt: (/* @__PURE__ */ new Date()).toISOString(),
       metadata: readRecord(body.metadata) ?? {},
-      name: readString7(body.name) || clientId,
-      role: readString7(body.role) || "client"
+      name: readString8(body.name) || clientId,
+      role: readString8(body.role) || "client"
     };
     session.presence[clientId] = presence;
     const event = this.appendEvent(session, {
@@ -56692,7 +58403,7 @@ var CcrRemoteControlService = class {
       createdAt: (/* @__PURE__ */ new Date()).toISOString(),
       ...dedupeKey ? { dedupeKey } : {},
       direction: input.direction ?? "local",
-      id: input.id || (0, import_node_crypto6.randomUUID)(),
+      id: input.id || (0, import_node_crypto7.randomUUID)(),
       payload: input.payload ?? {},
       ...input.role ? { role: input.role } : {},
       seq: ++session.lastSeq,
@@ -56740,7 +58451,7 @@ var CcrRemoteControlService = class {
     }, sseHeartbeatMs);
     const subscriber = {
       close: () => clearInterval(heartbeat),
-      id: (0, import_node_crypto6.randomUUID)(),
+      id: (0, import_node_crypto7.randomUUID)(),
       kind,
       response: context.response
     };
@@ -56827,14 +58538,14 @@ function normalizeEventInputs(body) {
   return rawEvents.filter((event) => typeof event === "object" && event !== null && !Array.isArray(event)).map((event) => {
     const payload = Object.prototype.hasOwnProperty.call(event, "payload") ? event.payload : Object.prototype.hasOwnProperty.call(event, "message") ? event.message : {};
     return {
-      dedupeKey: readString7(event.dedupeKey) || readString7(event.uuid) || readString7(event.requestId),
+      dedupeKey: readString8(event.dedupeKey) || readString8(event.uuid) || readString8(event.requestId),
       direction: readDirection(event.direction),
-      id: readString7(event.id),
+      id: readString8(event.id),
       payload,
-      role: readString7(event.role),
-      source: readString7(event.source),
-      text: readString7(event.text) || readString7(event.content),
-      type: readString7(event.type)
+      role: readString8(event.role),
+      source: readString8(event.source),
+      text: readString8(event.text) || readString8(event.content),
+      type: readString8(event.type)
     };
   });
 }
@@ -56849,15 +58560,15 @@ function writeSseEvent(response, event) {
 }
 function wantsSse(request) {
   const url = new URL(request.url || "/", "http://127.0.0.1");
-  return url.searchParams.get("stream") === "1" || url.searchParams.get("stream") === "true" || readHeader4(request.headers.accept)?.toLowerCase().includes("text/event-stream") === true;
+  return url.searchParams.get("stream") === "1" || url.searchParams.get("stream") === "true" || readHeader6(request.headers.accept)?.toLowerCase().includes("text/event-stream") === true;
 }
 function remoteAfterSeq(request) {
   const url = new URL(request.url || "/", "http://127.0.0.1");
-  const after = Number(url.searchParams.get("after") ?? readHeader4(request.headers["last-event-id"]) ?? 0);
+  const after = Number(url.searchParams.get("after") ?? readHeader6(request.headers["last-event-id"]) ?? 0);
   return Number.isFinite(after) && after > 0 ? Math.floor(after) : 0;
 }
-function remotePathSegments(path23) {
-  const suffix = path23.slice(ccrRemoteControlPathPrefix.length).replace(/^\/+|\/+$/g, "");
+function remotePathSegments(path24) {
+  const suffix = path24.slice(ccrRemoteControlPathPrefix.length).replace(/^\/+|\/+$/g, "");
   if (!suffix) {
     return [];
   }
@@ -56866,7 +58577,7 @@ function remotePathSegments(path23) {
 function readDirection(value) {
   return value === "inbound" || value === "local" || value === "remote" || value === "system" ? value : void 0;
 }
-function readHeader4(value) {
+function readHeader6(value) {
   if (Array.isArray(value)) {
     return value[0]?.trim();
   }
@@ -56875,7 +58586,7 @@ function readHeader4(value) {
 function readRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value : void 0;
 }
-function readString7(value) {
+function readString8(value) {
   return typeof value === "string" && value.trim() ? value.trim() : void 0;
 }
 function sanitizeSessionId(value) {
@@ -56890,19 +58601,19 @@ function trimArray(items, maxLength) {
 
 // packages/core/src/gateway/http/io.ts
 function inferGatewayClient(apiKey, headers) {
-  const explicit = readHeader5(headers["x-ccr-client"]) ?? readHeader5(headers["x-client-name"]) ?? readHeader5(headers["x-forwarded-client-cert"]);
+  const explicit = readHeader7(headers["x-ccr-client"]) ?? readHeader7(headers["x-client-name"]) ?? readHeader7(headers["x-forwarded-client-cert"]);
   if (explicit) {
     return explicit;
   }
   const apiKeyClient = apiKey?.name?.trim() || apiKey?.id?.trim();
   const userAgentClient = inferClientFromUserAgent(headers);
-  if (readHeader5(headers["x-ccr-proxy-mode"]) === "gateway") {
+  if (readHeader7(headers["x-ccr-proxy-mode"]) === "gateway") {
     return userAgentClient ?? apiKeyClient;
   }
   return apiKeyClient ?? userAgentClient;
 }
 function inferClientFromUserAgent(headers) {
-  const userAgent = readHeader5(headers["user-agent"]);
+  const userAgent = readHeader7(headers["user-agent"]);
   if (!userAgent) {
     return void 0;
   }
@@ -56934,7 +58645,7 @@ function inferClientFromUserAgent(headers) {
   return userAgent.split(/[ /]/)[0]?.trim() || void 0;
 }
 function readAuthToken(headers) {
-  const raw = readHeader5(headers.authorization) || readHeader5(headers["x-api-key"]);
+  const raw = readHeader7(headers.authorization) || readHeader7(headers["x-api-key"]);
   if (!raw) {
     return void 0;
   }
@@ -56988,7 +58699,7 @@ function filteredResponseHeaders(headers) {
   });
   return entries;
 }
-function formatError11(error) {
+function formatError12(error) {
   return error instanceof Error ? error.message : String(error);
 }
 function formatUpstreamErrorForLog(error, context) {
@@ -56998,7 +58709,7 @@ function formatUpstreamErrorForLog(error, context) {
   const code = firstErrorProperty(chain, "code");
   const errno = firstErrorProperty(chain, "errno");
   const syscall = firstErrorProperty(chain, "syscall");
-  const message = redactUpstreamCredentialValues(outer?.message || formatError11(error)) || "Unknown upstream error";
+  const message = redactUpstreamCredentialValues(outer?.message || formatError12(error)) || "Unknown upstream error";
   const causeMessage = redactUpstreamCredentialValues(cause?.message || "");
   const phase = inferUpstreamErrorPhase({
     code,
@@ -57099,7 +58810,7 @@ function parseJsonObject(buffer) {
   }
   throw new Error("Request body must be a JSON object.");
 }
-function readHeader5(value) {
+function readHeader7(value) {
   if (Array.isArray(value)) {
     return value[0]?.trim();
   }
@@ -57113,7 +58824,7 @@ function readRequestBody(request) {
     request.on("error", reject);
   });
 }
-function sendJson3(response, statusCode, payload) {
+function sendJson4(response, statusCode, payload) {
   response.writeHead(statusCode, { "content-type": "application/json" });
   response.end(`${JSON.stringify(payload)}
 `);
@@ -57202,15 +58913,15 @@ function serializeJsonBodyWithModel(body, model) {
 }
 
 // packages/core/src/gateway/features/model-discovery.ts
-function shouldServeGatewayModelsResponse(method, path23) {
-  return (method || "GET").toUpperCase() === "GET" && normalizeGatewayPathname(path23) === "/v1/models";
+function shouldServeGatewayModelsResponse(method, path24) {
+  return (method || "GET").toUpperCase() === "GET" && normalizeGatewayPathname(path24) === "/v1/models";
 }
-function prepareClaudeCodeDiscoveredModelRequest(config, headers, method, path23, body) {
-  if ((method || "GET").toUpperCase() !== "POST" || normalizeGatewayPathname(path23) !== "/v1/messages" || !isClaudeCodeUserAgent(headers)) {
+function prepareClaudeCodeDiscoveredModelRequest(config, headers, method, path24, body) {
+  if ((method || "GET").toUpperCase() !== "POST" || normalizeGatewayPathname(path24) !== "/v1/messages" || !isClaudeCodeUserAgent(headers)) {
     return void 0;
   }
   const parsedBody = parseJsonObjectSafe(body);
-  const model = stringValue5(parsedBody?.model);
+  const model = stringValue6(parsedBody?.model);
   const rewrittenModel = resolveClaudeCodeDiscoveredModelId(model, config);
   if (!parsedBody || !rewrittenModel || rewrittenModel === model) {
     return void 0;
@@ -57220,12 +58931,12 @@ function prepareClaudeCodeDiscoveredModelRequest(config, headers, method, path23
     diagnostic: `${model}->${rewrittenModel}`
   };
 }
-function prepareClaudeAppDiscoveredModelRequest(config, method, path23, body) {
-  if ((method || "GET").toUpperCase() !== "POST" || normalizeGatewayPathname(path23) !== "/v1/messages") {
+function prepareClaudeAppDiscoveredModelRequest(config, method, path24, body) {
+  if ((method || "GET").toUpperCase() !== "POST" || normalizeGatewayPathname(path24) !== "/v1/messages") {
     return void 0;
   }
   const parsedBody = parseJsonObjectSafe(body);
-  const model = stringValue5(parsedBody?.model);
+  const model = stringValue6(parsedBody?.model);
   const normalizedModel = normalizeRouteSelector(model);
   if (!parsedBody || !normalizedModel) {
     return void 0;
@@ -57245,11 +58956,13 @@ function prepareClaudeAppDiscoveredModelRequest(config, method, path23, body) {
   };
 }
 function createGatewayModelsResponse(config, headers, apiKey) {
+  const contextArchiveConfig = contextArchiveConfigForApiKey(config, apiKey);
+  const contextArchiveCompact = Boolean(contextArchiveConfig && contextArchiveMcpEnabled(contextArchiveConfig));
   if (isClaudeAppApiKey(apiKey)) {
-    return createClaudeAppGatewayModelsResponse(config);
+    return createClaudeAppGatewayModelsResponse(config, { contextArchiveCompact });
   }
   if (isClaudeCodeUserAgent(headers)) {
-    return createClaudeAppGatewayModelsResponse(config, { claudeCode: true });
+    return createClaudeAppGatewayModelsResponse(config, { claudeCode: true, contextArchiveCompact });
   }
   return createOpenAICompatibleGatewayModelsResponse(config);
 }
@@ -57282,6 +58995,7 @@ function createClaudeAppGatewayModelsResponse(config, options = {}) {
     return {
       id: exposeOneMillionContextVariant ? claudeCodeOneMillionContextModelId(route.id) : route.id,
       capabilities: createClaudeCodeModelCapabilities(catalogEntry, {
+        contextArchiveCompact: options.contextArchiveCompact,
         maxInputTokens,
         oneMillionContext: route.oneMillionContext,
         ...providerModelCapabilityOverrides(modelMetadata)
@@ -57345,7 +59059,7 @@ function buildGatewayDiscoverableModelIds(config) {
   const baseEntries = [];
   for (const provider of config.Providers) {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       continue;
     }
     for (const rawModel of provider.models) {
@@ -57428,6 +59142,9 @@ function isConfiguredGatewayModelSelector(model, config) {
     }
   }
   for (const provider of config.Providers) {
+    if (!isGatewayProviderEnabled(provider)) {
+      continue;
+    }
     if (provider.models.some((candidate) => candidate.trim().toLowerCase() === normalized)) {
       return true;
     }
@@ -57476,7 +59193,7 @@ function createClaudeCodeModelCapabilities(entry, options = {}) {
     context_management: {
       clear_thinking_20251015: { supported: supportsReasoning },
       clear_tool_uses_20250919: { supported: supportsToolUse },
-      compact_20260112: { supported: maxInputTokens > 0 },
+      compact_20260112: { supported: options.contextArchiveCompact === true && maxInputTokens > 0 },
       max_input_tokens: maxInputTokens,
       supported: maxInputTokens > 0
     },
@@ -57521,7 +59238,7 @@ function createDefaultClaudeCodeModelCapabilities(options = {}) {
     context_management: {
       clear_thinking_20251015: { supported: supportsReasoning },
       clear_tool_uses_20250919: { supported: true },
-      compact_20260112: { supported: true },
+      compact_20260112: { supported: options.contextArchiveCompact === true },
       ...maxInputTokens ? { max_input_tokens: maxInputTokens } : {},
       supported: true
     },
@@ -57571,12 +59288,12 @@ function providerModelCapabilityOverrides(metadata) {
   }
   return metadata?.supportsReasoningSummaries === void 0 ? imageOverride : { ...imageOverride, reasoning: metadata.supportsReasoningSummaries };
 }
-function normalizeGatewayPathname(path23) {
-  const normalized = path23.trim().replace(/\/+$/, "");
+function normalizeGatewayPathname(path24) {
+  const normalized = path24.trim().replace(/\/+$/, "");
   return normalized || "/";
 }
 function isClaudeCodeUserAgent(headers) {
-  const userAgent = readHeader5(headers["user-agent"]);
+  const userAgent = readHeader7(headers["user-agent"]);
   if (!userAgent) {
     return false;
   }
@@ -57641,13 +59358,19 @@ function findProviderByPublicOrInternalName(config, name) {
   const credentialInternalName = parseProviderCredentialInternalName(name);
   if (credentialInternalName) {
     const internalProviderId = credentialInternalName.providerId.toLowerCase();
-    return config.Providers.find(
-      (provider) => provider.name.trim().toLowerCase() === internalProviderId || providerRuntimeId(provider).toLowerCase() === internalProviderId
-    );
+    return config.Providers.find((provider) => {
+      if (!isGatewayProviderEnabled(provider)) {
+        return false;
+      }
+      return provider.name.trim().toLowerCase() === internalProviderId || providerRuntimeId(provider).toLowerCase() === internalProviderId;
+    });
   }
   return modelRegistryForConfig(config).findProvider(normalized);
 }
 function activeProviderCredentials(provider) {
+  if (!isGatewayProviderEnabled(provider)) {
+    return [];
+  }
   return (provider.credentials ?? []).filter(
     (credential) => credential.enabled !== false && Boolean(providerCredentialApiKey(credential))
   );
@@ -57656,6 +59379,9 @@ function providerCredentialPriority(credential, index) {
   return Number.isFinite(credential.priority) ? Number(credential.priority) : index + 1;
 }
 function toCoreGatewayProviders(provider) {
+  if (!isGatewayProviderEnabled(provider)) {
+    return [];
+  }
   const capabilities = normalizedProviderCapabilities(provider);
   if (capabilities.length === 0) {
     return toCoreGatewayProvidersForCapability(provider);
@@ -57939,13 +59665,13 @@ function readBaseUrl(provider) {
 }
 
 // packages/core/src/observability/raw-trace-sync.ts
-var import_node_crypto9 = require("node:crypto");
+var import_node_crypto10 = require("node:crypto");
 var import_promises2 = require("node:fs/promises");
-var import_node_path26 = require("node:path");
+var import_node_path28 = require("node:path");
 
 // packages/core/src/observability/request-log-store.ts
-var import_node_fs16 = require("node:fs");
-var import_node_path24 = require("node:path");
+var import_node_fs17 = require("node:fs");
+var import_node_path26 = require("node:path");
 var import_node_string_decoder2 = require("node:string_decoder");
 
 // packages/core/src/models/pricing-service.ts
@@ -57997,7 +59723,9 @@ function providerModelPricingForUsage(config, providerName, modelName) {
   if (!config || !normalizedProvider || !normalizedModel) {
     return void 0;
   }
-  const provider = config.Providers.find((candidate) => candidate.name?.trim().toLowerCase() === normalizedProvider);
+  const provider = config.Providers.find(
+    (candidate) => isGatewayProviderEnabled(candidate) && candidate.name?.trim().toLowerCase() === normalizedProvider
+  );
   if (!provider) {
     return void 0;
   }
@@ -58087,11 +59815,11 @@ async function loadPriceCatalog() {
 }
 async function fetchLiteLlmPrices() {
   const payload = await fetchJson(liteLlmPricesUrl);
-  if (!isRecord11(payload)) {
+  if (!isRecord13(payload)) {
     return [];
   }
   return Object.entries(payload).map(([model, value]) => {
-    if (model === "sample_spec" || !isRecord11(value)) {
+    if (model === "sample_spec" || !isRecord13(value)) {
       return void 0;
     }
     const inputUsdPerToken = firstNumber(value, [
@@ -58121,23 +59849,23 @@ async function fetchLiteLlmPrices() {
       inputUsdPerToken,
       model,
       outputUsdPerToken,
-      provider: readString8(value.litellm_provider),
+      provider: readString9(value.litellm_provider),
       source: "litellm"
     });
   }).filter((price) => Boolean(price));
 }
 async function fetchModelsDevPrices() {
   const payload = await fetchJson(modelsDevPricesUrl);
-  if (!isRecord11(payload)) {
+  if (!isRecord13(payload)) {
     return [];
   }
   const prices = [];
   for (const [providerId, provider] of Object.entries(payload)) {
-    if (!isRecord11(provider) || !isRecord11(provider.models)) {
+    if (!isRecord13(provider) || !isRecord13(provider.models)) {
       continue;
     }
     for (const [modelKey, model] of Object.entries(provider.models)) {
-      if (!isRecord11(model) || !isRecord11(model.cost)) {
+      if (!isRecord13(model) || !isRecord13(model.cost)) {
         continue;
       }
       const cost = model.cost;
@@ -58147,7 +59875,7 @@ async function fetchModelsDevPrices() {
         cacheWrite1hUsdPerMillionTokens: readNumber2(cost.cache_write_1h),
         cacheWrite5mUsdPerMillionTokens: readNumber2(cost.cache_write_5m) ?? readNumber2(cost.cache_write),
         inputUsdPerMillionTokens: readNumber2(cost.input),
-        model: readString8(model.id) || modelKey,
+        model: readString9(model.id) || modelKey,
         outputUsdPerMillionTokens: readNumber2(cost.output),
         provider: providerId,
         source: "models.dev"
@@ -58161,11 +59889,11 @@ async function fetchModelsDevPrices() {
 }
 async function fetchOpenRouterPrices() {
   const payload = await fetchJson(openRouterModelsUrl);
-  if (!isRecord11(payload) || !Array.isArray(payload.data)) {
+  if (!isRecord13(payload) || !Array.isArray(payload.data)) {
     return [];
   }
   return payload.data.map((model) => {
-    if (!isRecord11(model) || !isRecord11(model.pricing)) {
+    if (!isRecord13(model) || !isRecord13(model.pricing)) {
       return void 0;
     }
     const pricing = model.pricing;
@@ -58175,7 +59903,7 @@ async function fetchOpenRouterPrices() {
       cacheWrite1hUsdPerToken: readNumber2(pricing.input_cache_write_1h),
       cacheWrite5mUsdPerToken: readNumber2(pricing.input_cache_write),
       inputUsdPerToken: readNumber2(pricing.prompt),
-      model: readString8(model.id) || readString8(model.canonical_slug),
+      model: readString9(model.id) || readString9(model.canonical_slug),
       outputUsdPerToken: readNumber2(pricing.completion),
       provider: "openrouter",
       source: "openrouter"
@@ -58317,7 +60045,7 @@ function readNumber2(value) {
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : void 0;
 }
-function readString8(value) {
+function readString9(value) {
   return typeof value === "string" && value.trim() ? value.trim() : void 0;
 }
 function normalizePrice(value) {
@@ -58340,7 +60068,7 @@ function lastPathSegment(value) {
 function unique(values) {
   return Array.from(new Set(values));
 }
-function isRecord11(value) {
+function isRecord13(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -58384,8 +60112,8 @@ function inputIncludesCacheTokensForProtocol(protocol) {
   }
   return void 0;
 }
-function inputIncludesCacheTokensForPath(path23) {
-  const normalized = path23?.toLowerCase() ?? "";
+function inputIncludesCacheTokensForPath(path24) {
+  const normalized = path24?.toLowerCase() ?? "";
   if (!normalized) {
     return void 0;
   }
@@ -58402,9 +60130,9 @@ function normalizeCount2(value) {
 }
 
 // packages/core/src/observability/request-log-runtime.ts
-var import_node_crypto7 = require("node:crypto");
+var import_node_crypto8 = require("node:crypto");
 var import_promises = require("node:fs/promises");
-var import_node_path23 = __toESM(require("node:path"));
+var import_node_path25 = __toESM(require("node:path"));
 var import_node_string_decoder = require("node:string_decoder");
 var import_node_worker_threads = require("node:worker_threads");
 
@@ -58595,8 +60323,8 @@ function approximateDecodedBytes(input, range) {
 }
 
 // packages/core/src/observability/request-log-admission-store.ts
-var import_node_fs15 = require("node:fs");
-var import_node_path22 = require("node:path");
+var import_node_fs16 = require("node:fs");
+var import_node_path24 = require("node:path");
 var runtimeLeaseMs = 3e4;
 var terminalAdmissionRetentionMs = 48 * 60 * 60 * 1e3;
 var requestLogsReconnectCooldownMs = 1e3;
@@ -58612,7 +60340,7 @@ var RequestLogAdmissionStore = class {
   runtimeId;
   upsertStatement;
   constructor(dbFile, requestLogsDbFile, runtimeId) {
-    (0, import_node_fs15.mkdirSync)((0, import_node_path22.dirname)(dbFile), { recursive: true });
+    (0, import_node_fs16.mkdirSync)((0, import_node_path24.dirname)(dbFile), { recursive: true });
     const database = createBetterSqliteDatabase(dbFile);
     try {
       database.pragma("journal_mode = WAL");
@@ -58811,7 +60539,7 @@ var RequestLogAdmissionStore = class {
     this.requestLogsReadStatement = void 0;
   }
   readCommittedRequestLogAdmission(requestId) {
-    if (!(0, import_node_fs15.existsSync)(this.requestLogsDbFile)) return { state: "missing" };
+    if (!(0, import_node_fs16.existsSync)(this.requestLogsDbFile)) return { state: "missing" };
     if (Date.now() < this.requestLogsUnavailableUntil) return { state: "unavailable" };
     try {
       if (!this.requestLogsDatabase) {
@@ -58897,7 +60625,7 @@ function reconcileInterruptedAdmissions(database, requestLogsDbFile, runtimeId) 
       `).run(now, interruptedRuntimeId);
     }
   } catch (error) {
-    console.warn(`[request-log] Admission reconciliation deferred: ${formatError12(error)}`);
+    console.warn(`[request-log] Admission reconciliation deferred: ${formatError13(error)}`);
   } finally {
     if (attached) database.exec("DETACH DATABASE request_logs_db");
   }
@@ -58908,7 +60636,7 @@ function admissionFromRow(row) {
     accepted: state === "committed" || state === "pending",
     bodyCapturePolicy: normalizeBodyCapturePolicy(row.body_capture_policy),
     bodyCaptureMaxBytes: nonNegativeInteger(row.body_capture_max_bytes),
-    reason: stringValue6(row.reason),
+    reason: stringValue7(row.reason),
     recordedAt: nonNegativeInteger(row.recorded_at),
     state
   };
@@ -58930,14 +60658,14 @@ function nonNegativeInteger(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
 }
-function stringValue6(value) {
+function stringValue7(value) {
   return typeof value === "string" && value ? value : void 0;
 }
 function dateMs2(value) {
   const parsed = Date.parse(String(value ?? ""));
   return Number.isFinite(parsed) ? parsed : Date.now();
 }
-function formatError12(error) {
+function formatError13(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -59106,15 +60834,15 @@ function suppressRouteTraceHopBodyValues(hop) {
   };
 }
 function sanitizeReportedChange(change) {
-  const path23 = normalizePath(change.path);
-  const redacted = Boolean(change.redacted) || pathContainsSensitiveName(path23);
+  const path24 = normalizePath(change.path);
+  const redacted = Boolean(change.redacted) || pathContainsSensitiveName(path24);
   const before = change.before === void 0 || redacted ? void 0 : previewValue(change.scope === "url" ? sanitizeUrlValue(change.before) : change.before);
   const after = change.after === void 0 || redacted ? void 0 : previewValue(change.scope === "url" ? sanitizeUrlValue(change.after) : change.after);
   return {
     ...change.after === void 0 ? {} : { after: redacted ? redactedDisplayValue : after?.value },
     ...change.before === void 0 ? {} : { before: redacted ? redactedDisplayValue : before?.value },
     operation: change.operation,
-    path: path23,
+    path: path24,
     ...redacted ? { redacted: true } : {},
     scope: change.scope,
     ...change.truncated || before?.truncated || after?.truncated ? { truncated: true } : {}
@@ -59221,16 +60949,16 @@ function boundedPreview(value, budget, depth, seen, key) {
     seen.delete(value);
   }
 }
-function pathContainsSensitiveName(path23) {
-  return path23.split("/").filter(Boolean).map((part) => part.replaceAll("~1", "/").replaceAll("~0", "~")).some(isSensitiveName);
+function pathContainsSensitiveName(path24) {
+  return path24.split("/").filter(Boolean).map((part) => part.replaceAll("~1", "/").replaceAll("~0", "~")).some(isSensitiveName);
 }
 function isSensitiveName(value) {
   return sensitiveNames.test(value) || isSensitiveRequestLogHeaderName(value);
 }
 function normalizePath(value) {
-  const path23 = value.trim();
-  if (!path23) return "/";
-  const normalized = path23.startsWith("/") ? path23 : `/${path23}`;
+  const path24 = value.trim();
+  if (!path24) return "/";
+  const normalized = path24.startsWith("/") ? path24 : `/${path24}`;
   return normalized.length <= maxStringChars ? normalized : `${normalized.slice(0, maxStringChars)}\u2026`;
 }
 function jsonByteLength(value) {
@@ -59280,7 +61008,7 @@ var RequestLogRuntime = class {
   queryWorkerReady;
   queue = [];
   revision = 0;
-  runtimeId = (0, import_node_crypto7.randomUUID)();
+  runtimeId = (0, import_node_crypto8.randomUUID)();
   writerRequests = /* @__PURE__ */ new Map();
   writerRestartCount = 0;
   writerWorker;
@@ -59312,7 +61040,7 @@ var RequestLogRuntime = class {
       queueMaxBytes: positiveInteger4(options.queueMaxBytes, defaultQueueMaxBytes),
       queueMaxItems: positiveInteger4(options.queueMaxItems, 2e3),
       rawTraceSpoolDir: options.rawTraceSpoolDir ?? RAW_TRACE_SPOOL_DIR,
-      workerFile: options.workerFile ?? import_node_path23.default.join(__dirname, "request-log-worker.js")
+      workerFile: options.workerFile ?? import_node_path25.default.join(__dirname, "request-log-worker.js")
     };
   }
   enqueueRecord(input) {
@@ -59336,7 +61064,7 @@ var RequestLogRuntime = class {
     const prepared = prepareRecordForQueue(input, pressure);
     const sizeBytes = estimateRecordBytes(prepared.input);
     const command = {
-      eventId: (0, import_node_crypto7.randomUUID)(),
+      eventId: (0, import_node_crypto8.randomUUID)(),
       input: prepared.input,
       kind: "record",
       sequence: ++this.nextSequence,
@@ -59872,8 +61600,8 @@ var RequestLogRuntime = class {
     for (const directory of directories) {
       try {
         const spoolDirectory = await (0, import_promises.realpath)(this.options.rawTraceSpoolDir);
-        const candidate = await (0, import_promises.realpath)(import_node_path23.default.resolve(directory));
-        if (candidate === spoolDirectory || !candidate.startsWith(`${spoolDirectory}${import_node_path23.default.sep}`)) {
+        const candidate = await (0, import_promises.realpath)(import_node_path25.default.resolve(directory));
+        if (candidate === spoolDirectory || !candidate.startsWith(`${spoolDirectory}${import_node_path25.default.sep}`)) {
           throw new Error(`Raw trace path is outside the configured spool directory: ${directory}`);
         }
         await (0, import_promises.rm)(candidate, { force: true, recursive: true });
@@ -60148,8 +61876,8 @@ async function withTimeout2(promise, timeoutMs) {
 
 // packages/core/src/routing/protocol-adapter.ts
 var geminiGenerateContentPathPattern = /(\/v1(?:beta)?\/models\/)([^/:]+)(:(?:generatecontent|streamgeneratecontent))/i;
-function adaptRouteRequestBody(path23, body) {
-  const pathModel = routeModelFromPath(path23);
+function adaptRouteRequestBody(path24, body) {
+  const pathModel = routeModelFromPath(path24);
   return pathModel ? { body: { ...body, model: pathModel }, modelLocation: "path" } : { body, modelLocation: "body" };
 }
 function restoreRouteRequestBody(body, adaptation) {
@@ -60171,8 +61899,8 @@ function rewriteRouteModelInUrl(url, model) {
     (_match, prefix, _current, suffix) => `${prefix}${encodeURIComponent(model)}${suffix}`
   );
 }
-function routeModelFromPath(path23) {
-  const match = geminiGenerateContentPathPattern.exec(path23);
+function routeModelFromPath(path24) {
+  const match = geminiGenerateContentPathPattern.exec(path24);
   geminiGenerateContentPathPattern.lastIndex = 0;
   if (!match?.[2]) {
     return void 0;
@@ -60185,8 +61913,8 @@ function routeModelFromPath(path23) {
 }
 
 // packages/core/src/observability/request-log-model.ts
-function requestLogRequestedModel(body, path23 = "") {
-  const pathModel = normalizeModel(routeModelFromPath(path23));
+function requestLogRequestedModel(body, path24 = "") {
+  const pathModel = normalizeModel(routeModelFromPath(path24));
   if (pathModel) {
     return pathModel;
   }
@@ -60213,11 +61941,11 @@ function requestLogResponseModel(text) {
   return model;
 }
 function modelFromPayload(payload) {
-  if (!isRecord12(payload)) {
+  if (!isRecord14(payload)) {
     return void 0;
   }
-  const response = isRecord12(payload.response) ? payload.response : void 0;
-  const message = isRecord12(payload.message) ? payload.message : void 0;
+  const response = isRecord14(payload.response) ? payload.response : void 0;
+  const message = isRecord14(payload.message) ? payload.message : void 0;
   return normalizeModel(response?.model) ?? normalizeModel(payload.model) ?? normalizeModel(message?.model) ?? normalizeModel(response?.modelVersion) ?? normalizeModel(payload.modelVersion) ?? normalizeModel(message?.modelVersion);
 }
 function parseJsonBody(text) {
@@ -60227,7 +61955,7 @@ function parseJsonBody(text) {
     return void 0;
   }
 }
-function isRecord12(value) {
+function isRecord14(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 function normalizeModel(value) {
@@ -60662,8 +62390,8 @@ var RequestLogStore = class {
       params.push(value);
     };
     const url = normalizeFilterValue(input.url);
-    const path23 = normalizeFilterValue(input.path) ?? pathFromUrl(url);
-    const usagePath = path23 ?? existingUsageContext.path;
+    const path24 = normalizeFilterValue(input.path) ?? pathFromUrl(url);
+    const usagePath = path24 ?? existingUsageContext.path;
     const modelFromTrace = normalizeFilterValue(input.model);
     const responseModelFromTrace = rawInput.responseBodyText === void 0 ? void 0 : requestLogResponseModel(rawInput.responseBodyText);
     const providerFromTrace = normalizeFilterValue(input.provider);
@@ -60676,7 +62404,7 @@ var RequestLogStore = class {
     const sseError = rawSseError;
     const mergedRequestHeaders = requestHeaders2 ? mergeRequestHeadersForRawTrace(readRequestHeadersForRequestId(database, requestId), requestHeaders2) : void 0;
     pushValue("method", normalizeFilterValue(input.method));
-    pushValue("path", path23);
+    pushValue("path", path24);
     pushValue("url", url);
     pushValue("provider", providerFromTrace);
     pushValue("model", modelFromTrace);
@@ -60749,7 +62477,7 @@ var RequestLogStore = class {
     const hasStreamSignal = input.isStream !== void 0 || input.path !== void 0 || input.url !== void 0 || input.requestBodyText !== void 0 || input.requestHeaders !== void 0 || input.responseBodyContentType !== void 0 || input.responseHeaders !== void 0;
     if (hasStreamSignal) {
       pushValue("is_stream", inferRequestLogIsStream({
-        path: path23,
+        path: path24,
         requestBodyText: input.requestBodyText,
         requestHeaders: mergedRequestHeaders,
         responseBodyContentType: input.responseBodyContentType,
@@ -60793,8 +62521,8 @@ var RequestLogStore = class {
   async list(filter = {}) {
     const database = await this.getDatabase();
     this.pruneOldRequestLogs(database);
-    const pageSize = clampInteger(filter.pageSize, 1, 100, 25);
-    const page = clampInteger(filter.page, 1, Number.MAX_SAFE_INTEGER, 1);
+    const pageSize = clampInteger2(filter.pageSize, 1, 100, 25);
+    const page = clampInteger2(filter.page, 1, Number.MAX_SAFE_INTEGER, 1);
     const query = buildLogWhereClause(filter);
     const count = firstNumber2(queryRows3(database, `SELECT COUNT(*) AS total FROM request_logs ${query.where}`, query.params), "total");
     const totalPages = Math.max(1, Math.ceil(count / pageSize));
@@ -61019,7 +62747,7 @@ var RequestLogStore = class {
     return this.initPromise;
   }
   async open() {
-    (0, import_node_fs16.mkdirSync)((0, import_node_path24.dirname)(this.dbFile), { recursive: true });
+    (0, import_node_fs17.mkdirSync)((0, import_node_path26.dirname)(this.dbFile), { recursive: true });
     const database = createBetterSqliteDatabase(this.dbFile);
     configureSqliteDatabase3(database);
     database.exec(`
@@ -61192,7 +62920,7 @@ var RequestLogStore = class {
     if (!row) return void 0;
     database.prepare("DELETE FROM request_log_pending_updates WHERE request_id = ?").run(requestId);
     const parsed = parseJson(String(row.update_json ?? ""));
-    return isRecord13(parsed) ? parsed : void 0;
+    return isRecord15(parsed) ? parsed : void 0;
   }
 };
 var requestLogStore = new RequestLogStore(REQUEST_LOGS_DB_FILE);
@@ -61420,14 +63148,14 @@ function readFuzzySessionHeader(headers) {
   return void 0;
 }
 function extractSessionIdFromPayload(payload) {
-  if (!isRecord13(payload)) {
+  if (!isRecord15(payload)) {
     return void 0;
   }
   const direct = asString(payload.session_id) || asString(payload.sessionId) || asString(payload.conversation_id) || asString(payload.conversationId) || asString(payload.chat_id) || asString(payload.chatId) || asString(payload.thread_id) || asString(payload.threadId);
   if (direct) {
     return direct;
   }
-  const metadata = isRecord13(payload.metadata) ? payload.metadata : void 0;
+  const metadata = isRecord15(payload.metadata) ? payload.metadata : void 0;
   const metadataSession = asString(metadata?.session_id) || asString(metadata?.sessionId) || asString(metadata?.conversation_id) || asString(metadata?.conversationId) || asString(metadata?.chat_id) || asString(metadata?.chatId);
   if (metadataSession) {
     return metadataSession;
@@ -61451,7 +63179,7 @@ function findSessionIdInPayload(value, depth = 0) {
     }
     return void 0;
   }
-  if (!isRecord13(value)) {
+  if (!isRecord15(value)) {
     return void 0;
   }
   for (const [key, item] of Object.entries(value)) {
@@ -61478,10 +63206,10 @@ function isRequestScopedKey(key) {
   return key.includes("request") || key.includes("trace") || key.includes("span") || key.includes("message") || key.includes("event") || key.includes("parent");
 }
 function hasClaudeCodeSessionMetadata(payload) {
-  if (!isRecord13(payload)) {
+  if (!isRecord15(payload)) {
     return false;
   }
-  const metadata = isRecord13(payload.metadata) ? payload.metadata : void 0;
+  const metadata = isRecord15(payload.metadata) ? payload.metadata : void 0;
   return Boolean(asString(metadata?.user_id)?.includes("_session_"));
 }
 function extractSubagentModel(entry, requestPayloads, routeReason, routedModel) {
@@ -61529,11 +63257,11 @@ function collectToolCalls(value, calls) {
     }
     return;
   }
-  if (!isRecord13(value)) {
+  if (!isRecord15(value)) {
     return;
   }
   const type = asString(value.type);
-  const functionRecord = isRecord13(value.function) ? value.function : void 0;
+  const functionRecord = isRecord15(value.function) ? value.function : void 0;
   const functionArguments = functionRecord ? functionRecord.arguments ?? functionRecord.parameters ?? functionRecord.input : void 0;
   const name = asString(value.name) || asString(value.tool) || asString(value.tool_name) || asString(functionRecord?.name);
   const looksLikeToolCall = type === "tool_use" || type === "server_tool_use" || type === "mcp_tool_use" || type === "function_call" || type === "tool_call" || type === "tool_block_complete" || type === "tool_delta" || Boolean(functionRecord?.name);
@@ -61582,7 +63310,7 @@ function collectStreamedToolCallInput(value, state) {
     }
     return;
   }
-  if (!isRecord13(value)) {
+  if (!isRecord15(value)) {
     return;
   }
   collectAnthropicStreamToolInput(value, state);
@@ -61594,7 +63322,7 @@ function collectStreamedToolCallInput(value, state) {
 function collectAnthropicStreamToolInput(value, state) {
   const type = asString(value.type);
   const index = streamIndexKey(value.index);
-  if (type === "content_block_start" && index && isRecord13(value.content_block)) {
+  if (type === "content_block_start" && index && isRecord15(value.content_block)) {
     const block = value.content_block;
     const blockType = asString(block.type);
     if (blockType === "tool_use" || blockType === "server_tool_use" || blockType === "mcp_tool_use") {
@@ -61609,7 +63337,7 @@ function collectAnthropicStreamToolInput(value, state) {
     }
     return;
   }
-  if (type !== "content_block_delta" || !index || !isRecord13(value.delta)) {
+  if (type !== "content_block_delta" || !index || !isRecord15(value.delta)) {
     return;
   }
   const delta = value.delta;
@@ -61623,7 +63351,7 @@ function collectAnthropicStreamToolInput(value, state) {
   ensureStreamedToolCall(state, id).fragments.push(delta.partial_json);
 }
 function collectOpenAiStreamToolInput(value, state) {
-  const functionRecord = isRecord13(value.function) ? value.function : void 0;
+  const functionRecord = isRecord15(value.function) ? value.function : void 0;
   if (!functionRecord) {
     return;
   }
@@ -61695,7 +63423,7 @@ function collectToolResults(value, entry, results) {
     }
     return;
   }
-  if (!isRecord13(value)) {
+  if (!isRecord15(value)) {
     return;
   }
   const type = asString(value.type);
@@ -61789,11 +63517,11 @@ function collectToolCallPayloads(value, calls) {
     }
     return;
   }
-  if (!isRecord13(value)) {
+  if (!isRecord15(value)) {
     return;
   }
   const type = asString(value.type);
-  const functionRecord = isRecord13(value.function) ? value.function : void 0;
+  const functionRecord = isRecord15(value.function) ? value.function : void 0;
   const functionArguments = functionRecord ? functionRecord.arguments ?? functionRecord.parameters ?? functionRecord.input : void 0;
   const name = asString(value.name) || asString(value.tool) || asString(value.tool_name) || asString(functionRecord?.name);
   const looksLikeToolCall = type === "tool_use" || type === "server_tool_use" || type === "mcp_tool_use" || type === "function_call" || type === "tool_call" || type === "tool_block_complete" || type === "tool_delta" || Boolean(functionRecord?.name);
@@ -61825,7 +63553,7 @@ function collectToolResultPayloads(value, results) {
     }
     return;
   }
-  if (!isRecord13(value)) {
+  if (!isRecord15(value)) {
     return;
   }
   const type = asString(value.type);
@@ -62929,7 +64657,7 @@ function payloadHasStreamFlag(value, depth = 0) {
   if (Array.isArray(value)) {
     return value.some((item) => payloadHasStreamFlag(item, depth + 1));
   }
-  if (!isRecord13(value)) {
+  if (!isRecord15(value)) {
     return false;
   }
   if (value.stream === true || value.stream === "true") {
@@ -63084,7 +64812,7 @@ function readRequestRouteTrace(database, requestLogId) {
 function parseRequestRouteTrace(value) {
   if (typeof value !== "string" || !value.trim()) return void 0;
   const parsed = parseJson(value);
-  if (!isRecord13(parsed) || !Array.isArray(parsed.hops)) return void 0;
+  if (!isRecord15(parsed) || !Array.isArray(parsed.hops)) return void 0;
   return parsed;
 }
 function requestRouteHopFromRow(row) {
@@ -63096,16 +64824,16 @@ function requestRouteHopFromRow(row) {
   return {
     ...attempt > 0 ? { attempt } : {},
     changes: Array.isArray(changes) ? changes : [],
-    ...isRecord13(decision) && Object.keys(decision).length > 0 ? { decision } : {},
+    ...isRecord15(decision) && Object.keys(decision).length > 0 ? { decision } : {},
     durationMs: normalizeCount3(row.duration_ms),
     kind: requestRouteHopKind(row.kind),
     name: String(row.name ?? "route-hop"),
-    ...isRecord13(outcome) && Object.keys(outcome).length > 0 ? { outcome } : {},
+    ...isRecord15(outcome) && Object.keys(outcome).length > 0 ? { outcome } : {},
     phase: requestRouteTracePhase(row.phase),
     seq: normalizeCount3(row.seq),
     startedOffsetMs: normalizeCount3(row.started_offset_ms),
     status: requestRouteHopStatus(row.status),
-    ...isRecord13(target) && Object.keys(target).length > 0 ? { target } : {},
+    ...isRecord15(target) && Object.keys(target).length > 0 ? { target } : {},
     ...normalizeCount3(row.truncated) === 1 ? { truncated: true } : {}
   };
 }
@@ -63114,7 +64842,7 @@ function parseRouteTraceSnapshot(value) {
     return void 0;
   }
   const parsed = parseJson(value);
-  if (!isRecord13(parsed) || typeof parsed.method !== "string" || typeof parsed.url !== "string") {
+  if (!isRecord15(parsed) || typeof parsed.method !== "string" || typeof parsed.url !== "string") {
     return void 0;
   }
   return parsed;
@@ -63281,7 +65009,7 @@ function parseHeaderJson(value) {
   }
   try {
     const parsed = JSON.parse(value);
-    if (!isRecord13(parsed)) {
+    if (!isRecord15(parsed)) {
       return {};
     }
     const result = {};
@@ -63532,7 +65260,7 @@ function readRequestLogUsageContext(database, requestId) {
 }
 function parseStoredModelPricing(value) {
   const parsed = typeof value === "string" ? parseJson(value) : value;
-  if (!isRecord13(parsed)) {
+  if (!isRecord15(parsed)) {
     return void 0;
   }
   const pricing = {};
@@ -63615,7 +65343,7 @@ function batchNeedsUsagePricing(database, commands) {
       [requestId]
     )[0];
     const pending = parseJson(String(row?.update_json ?? ""));
-    if (isRecord13(pending) && rawTraceHasBillableUsage(pending)) {
+    if (isRecord15(pending) && rawTraceHasBillableUsage(pending)) {
       return true;
     }
   }
@@ -63794,8 +65522,8 @@ function isSseTerminalEvent(eventName, dataLines) {
     return true;
   }
   const payload = data ? parseJson(data) : void 0;
-  const payloadType = isRecord13(payload) ? asString(payload.type)?.toLowerCase() : void 0;
-  const response = isRecord13(payload) && isRecord13(payload.response) ? payload.response : void 0;
+  const payloadType = isRecord15(payload) ? asString(payload.type)?.toLowerCase() : void 0;
+  const response = isRecord15(payload) && isRecord15(payload.response) ? payload.response : void 0;
   const responseStatus = asString(response?.status)?.toLowerCase();
   return terminalSseEventNames.has(event) || Boolean(payloadType && terminalSseEventNames.has(payloadType)) || Boolean(responseStatus && terminalSseResponseStatuses.has(responseStatus));
 }
@@ -63809,7 +65537,7 @@ function detectSseEventError(eventName, dataLines) {
   if (event === "response.failed" || event === "response.error") {
     return formatSseErrorPayload(payload, event);
   }
-  if (isRecord13(payload)) {
+  if (isRecord15(payload)) {
     const payloadType = asString(payload.type)?.toLowerCase();
     if (payloadType === "error" || payloadType === "response.failed" || payloadType === "response.error") {
       return formatSseErrorPayload(payload, payloadType);
@@ -63817,7 +65545,7 @@ function detectSseEventError(eventName, dataLines) {
     if (payload.error !== void 0 && payload.error !== null) {
       return formatSseErrorPayload(payload, event || "SSE error");
     }
-    const response = isRecord13(payload.response) ? payload.response : void 0;
+    const response = isRecord15(payload.response) ? payload.response : void 0;
     const responseStatus = asString(response?.status)?.toLowerCase();
     if ((responseStatus === "failed" || responseStatus === "error") && response?.error !== void 0 && response.error !== null) {
       return formatSseErrorPayload(response, responseStatus);
@@ -63826,12 +65554,12 @@ function detectSseEventError(eventName, dataLines) {
   return void 0;
 }
 function formatSseErrorPayload(payload, fallback) {
-  if (isRecord13(payload)) {
-    const response = isRecord13(payload.response) ? payload.response : void 0;
+  if (isRecord15(payload)) {
+    const response = isRecord15(payload.response) ? payload.response : void 0;
     const error = payload.error ?? response?.error;
     const message = sseErrorMessage(error) ?? sseErrorMessage(payload);
     const type = sseErrorType(error) ?? sseErrorType(payload);
-    const code = isRecord13(error) ? asString(error.code) : void 0;
+    const code = isRecord15(error) ? asString(error.code) : void 0;
     const label = uniqueStrings8([type, code]).join(" ");
     if (message && label && message !== label) {
       return `${label}: ${message}`;
@@ -63852,13 +65580,13 @@ function sseErrorMessage(value) {
   if (typeof value === "string") {
     return normalizeFilterValue(value);
   }
-  if (!isRecord13(value)) {
+  if (!isRecord15(value)) {
     return void 0;
   }
   return asString(value.message) ?? asString(value.detail) ?? asString(value.reason) ?? asString(value.error_description) ?? asString(value.error);
 }
 function sseErrorType(value) {
-  if (!isRecord13(value)) {
+  if (!isRecord15(value)) {
     return void 0;
   }
   return asString(value.type) ?? asString(value.code) ?? asString(value.status);
@@ -63884,13 +65612,13 @@ function uniqueStrings8(values) {
   return result;
 }
 function extractUsageSnapshot(payload) {
-  if (!isRecord13(payload)) {
+  if (!isRecord15(payload)) {
     return void 0;
   }
-  const response = isRecord13(payload.response) ? payload.response : payload;
-  const message = isRecord13(payload.message) ? payload.message : void 0;
-  const usage = isRecord13(response.usage) ? response.usage : isRecord13(payload.usage) ? payload.usage : isRecord13(message?.usage) ? message.usage : void 0;
-  const usageMetadata = isRecord13(response.usageMetadata) ? response.usageMetadata : isRecord13(payload.usageMetadata) ? payload.usageMetadata : void 0;
+  const response = isRecord15(payload.response) ? payload.response : payload;
+  const message = isRecord15(payload.message) ? payload.message : void 0;
+  const usage = isRecord15(response.usage) ? response.usage : isRecord15(payload.usage) ? payload.usage : isRecord15(message?.usage) ? message.usage : void 0;
+  const usageMetadata = isRecord15(response.usageMetadata) ? response.usageMetadata : isRecord15(payload.usageMetadata) ? payload.usageMetadata : void 0;
   if (usageMetadata) {
     return {
       cacheReadTokens: asNumber(usageMetadata.cachedContentTokenCount),
@@ -63904,11 +65632,11 @@ function extractUsageSnapshot(payload) {
   if (!usage) {
     return void 0;
   }
-  const inputDetails = isRecord13(usage.input_tokens_details) ? usage.input_tokens_details : isRecord13(usage.prompt_tokens_details) ? usage.prompt_tokens_details : void 0;
-  const outputDetails = isRecord13(usage.output_tokens_details) ? usage.output_tokens_details : isRecord13(usage.completion_tokens_details) ? usage.completion_tokens_details : void 0;
+  const inputDetails = isRecord15(usage.input_tokens_details) ? usage.input_tokens_details : isRecord15(usage.prompt_tokens_details) ? usage.prompt_tokens_details : void 0;
+  const outputDetails = isRecord15(usage.output_tokens_details) ? usage.output_tokens_details : isRecord15(usage.completion_tokens_details) ? usage.completion_tokens_details : void 0;
   const hasAnthropicCacheFields = usage.cache_read_input_tokens !== void 0 || usage.cache_creation_input_tokens !== void 0;
   const hasOpenAiCacheFields = inputDetails?.cached_tokens !== void 0 || inputDetails?.cache_creation_tokens !== void 0 || usage.cached_tokens !== void 0 || usage.prompt_tokens !== void 0;
-  const cacheCreation = isRecord13(usage.cache_creation) ? usage.cache_creation : void 0;
+  const cacheCreation = isRecord15(usage.cache_creation) ? usage.cache_creation : void 0;
   const cacheWrite5mTokens = asNumber(cacheCreation?.ephemeral_5m_input_tokens);
   const cacheWrite1hTokens = asNumber(cacheCreation?.ephemeral_1h_input_tokens);
   return {
@@ -64006,13 +65734,13 @@ function asFloat(value) {
 function asString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : void 0;
 }
-function isRecord13(value) {
+function isRecord15(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function isSuccessStatus(statusCode, error) {
   return !error && statusCode >= 200 && statusCode < 400;
 }
-function clampInteger(value, min, max, fallback) {
+function clampInteger2(value, min, max, fallback) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
     return fallback;
@@ -64030,11 +65758,11 @@ function sum(items, read) {
 }
 
 // packages/core/src/gateway/core-runtime/supervisor.ts
-var import_node_child_process5 = require("node:child_process");
-var import_node_crypto8 = require("node:crypto");
-var import_node_os9 = require("node:os");
-var import_node_fs17 = require("node:fs");
-var import_node_path25 = require("node:path");
+var import_node_child_process6 = require("node:child_process");
+var import_node_crypto9 = require("node:crypto");
+var import_node_os10 = require("node:os");
+var import_node_fs18 = require("node:fs");
+var import_node_path27 = require("node:path");
 
 // packages/core/src/gateway/internal/clock.ts
 function delay(ms) {
@@ -64047,8 +65775,8 @@ function spawnGatewayProcess(config, upstreamProxyUrl2, runtimeId, coreAuthToken
   const proxyPreloadFile = upstreamProxyUrl2 ? writeGatewayProxyPreloadFile(config, upstreamProxyUrl2) : void 0;
   const env = createGatewayProcessEnv(config, upstreamProxyUrl2, runtimeId, coreAuthToken);
   const args = proxyPreloadFile ? ["--require", proxyPreloadFile, gatewayEntry] : [gatewayEntry];
-  return (0, import_node_child_process5.spawn)(process.execPath, args, {
-    cwd: (0, import_node_path25.dirname)(config.gateway.generatedConfigFile),
+  return (0, import_node_child_process6.spawn)(process.execPath, args, {
+    cwd: (0, import_node_path27.dirname)(config.gateway.generatedConfigFile),
     env,
     stdio: ["ignore", "pipe", "pipe"]
   });
@@ -64056,8 +65784,8 @@ function spawnGatewayProcess(config, upstreamProxyUrl2, runtimeId, coreAuthToken
 function resolveGatewayEntry() {
   const override = process.env[gatewayEntryOverrideEnv]?.trim();
   if (override) {
-    const entry = (0, import_node_path25.resolve)(override);
-    if (!(0, import_node_fs17.existsSync)(entry)) {
+    const entry = (0, import_node_path27.resolve)(override);
+    if (!(0, import_node_fs18.existsSync)(entry)) {
       throw new Error(`${gatewayEntryOverrideEnv} points to a missing gateway entry: ${entry}`);
     }
     return entry;
@@ -64077,12 +65805,12 @@ function resolveGatewayEntry() {
 function resolveBundledGatewayEntry() {
   const resourcesPath = process.resourcesPath;
   return [
-    (0, import_node_path25.join)(__dirname, "next-ai-gateway.js"),
+    (0, import_node_path27.join)(__dirname, "next-ai-gateway.js"),
     ...resourcesPath ? [
-      (0, import_node_path25.join)(resourcesPath, "app.asar", "dist", "main", "next-ai-gateway.js"),
-      (0, import_node_path25.join)(resourcesPath, "app", "dist", "main", "next-ai-gateway.js")
+      (0, import_node_path27.join)(resourcesPath, "app.asar", "dist", "main", "next-ai-gateway.js"),
+      (0, import_node_path27.join)(resourcesPath, "app", "dist", "main", "next-ai-gateway.js")
     ] : []
-  ].find((candidate) => (0, import_node_fs17.existsSync)(candidate));
+  ].find((candidate) => (0, import_node_fs18.existsSync)(candidate));
 }
 function resolveUndiciProxyAgentModule() {
   const bundled = resolveBundledUndiciProxyAgentModule();
@@ -64092,18 +65820,18 @@ function resolveUndiciProxyAgentModule() {
   try {
     return requireFromHere3.resolve("undici");
   } catch (error) {
-    throw new Error(`Unable to resolve undici ProxyAgent module for gateway proxy preload: ${formatError11(error)}`);
+    throw new Error(`Unable to resolve undici ProxyAgent module for gateway proxy preload: ${formatError12(error)}`);
   }
 }
 function resolveBundledUndiciProxyAgentModule() {
   const resourcesPath = process.resourcesPath;
   return [
-    (0, import_node_path25.join)(__dirname, "undici-proxy-agent.js"),
+    (0, import_node_path27.join)(__dirname, "undici-proxy-agent.js"),
     ...resourcesPath ? [
-      (0, import_node_path25.join)(resourcesPath, "app.asar", "dist", "main", "undici-proxy-agent.js"),
-      (0, import_node_path25.join)(resourcesPath, "app", "dist", "main", "undici-proxy-agent.js")
+      (0, import_node_path27.join)(resourcesPath, "app.asar", "dist", "main", "undici-proxy-agent.js"),
+      (0, import_node_path27.join)(resourcesPath, "app", "dist", "main", "undici-proxy-agent.js")
     ] : []
-  ].find((candidate) => (0, import_node_fs17.existsSync)(candidate));
+  ].find((candidate) => (0, import_node_fs18.existsSync)(candidate));
 }
 function createGatewayProcessEnv(config, upstreamProxyUrl2, runtimeId, coreAuthToken) {
   const env = {
@@ -64147,8 +65875,8 @@ function createGatewayProcessEnv(config, upstreamProxyUrl2, runtimeId, coreAuthT
   return env;
 }
 function writeGatewayProxyPreloadFile(config, upstreamProxyUrl2) {
-  const file = (0, import_node_path25.join)((0, import_node_path25.dirname)(config.gateway.generatedConfigFile), "gateway-proxy-preload.cjs");
-  (0, import_node_fs17.writeFileSync)(
+  const file = (0, import_node_path27.join)((0, import_node_path27.dirname)(config.gateway.generatedConfigFile), "gateway-proxy-preload.cjs");
+  (0, import_node_fs18.writeFileSync)(
     file,
     [
       '"use strict";',
@@ -64224,7 +65952,7 @@ function gatewayNetworkEndpoints(host, port) {
 function physicalLanAddresses() {
   const seen = /* @__PURE__ */ new Set();
   const result = [];
-  for (const [interfaceName, entries] of Object.entries((0, import_node_os9.networkInterfaces)())) {
+  for (const [interfaceName, entries] of Object.entries((0, import_node_os10.networkInterfaces)())) {
     if (!entries || isVirtualNetworkInterface(interfaceName)) {
       continue;
     }
@@ -64293,7 +66021,7 @@ function isVirtualNetworkInterface(interfaceName) {
 }
 async function stopPreviousManagedCoreGateway(config, coreEndpoint) {
   const marker = readManagedCoreGatewayMarker(config);
-  const markerRuntimeId = stringValue5(marker?.runtimeId);
+  const markerRuntimeId = stringValue6(marker?.runtimeId);
   const pid = numberValue4(marker?.pid);
   if (!markerRuntimeId || !pid) {
     return;
@@ -64325,12 +66053,12 @@ async function stopPreviousManagedCoreGateway(config, coreEndpoint) {
 }
 function readManagedCoreGatewayMarker(config) {
   const file = managedCoreGatewayMarkerPath(config);
-  if (!(0, import_node_fs17.existsSync)(file)) {
+  if (!(0, import_node_fs18.existsSync)(file)) {
     return void 0;
   }
   try {
-    const parsed = JSON.parse((0, import_node_fs17.readFileSync)(file, "utf8"));
-    return isRecord10(parsed) ? parsed : void 0;
+    const parsed = JSON.parse((0, import_node_fs18.readFileSync)(file, "utf8"));
+    return isRecord12(parsed) ? parsed : void 0;
   } catch {
     return void 0;
   }
@@ -64340,7 +66068,7 @@ function writeManagedCoreGatewayMarker(config, child, runtimeId) {
     return;
   }
   try {
-    (0, import_node_fs17.writeFileSync)(
+    (0, import_node_fs18.writeFileSync)(
       managedCoreGatewayMarkerPath(config),
       `${JSON.stringify(
         {
@@ -64357,7 +66085,7 @@ function writeManagedCoreGatewayMarker(config, child, runtimeId) {
       "utf8"
     );
   } catch (error) {
-    console.warn(`[gateway] Failed to write gateway runtime marker: ${formatError11(error)}`);
+    console.warn(`[gateway] Failed to write gateway runtime marker: ${formatError12(error)}`);
   }
 }
 function removeManagedCoreGatewayMarker(config) {
@@ -64365,13 +66093,13 @@ function removeManagedCoreGatewayMarker(config) {
     return;
   }
   try {
-    (0, import_node_fs17.rmSync)(managedCoreGatewayMarkerPath(config), { force: true });
+    (0, import_node_fs18.rmSync)(managedCoreGatewayMarkerPath(config), { force: true });
   } catch (error) {
-    console.warn(`[gateway] Failed to remove gateway runtime marker: ${formatError11(error)}`);
+    console.warn(`[gateway] Failed to remove gateway runtime marker: ${formatError12(error)}`);
   }
 }
 function managedCoreGatewayMarkerPath(config) {
-  return (0, import_node_path25.join)((0, import_node_path25.dirname)(config.gateway.generatedConfigFile), gatewayRuntimeMarkerFile);
+  return (0, import_node_path27.join)((0, import_node_path27.dirname)(config.gateway.generatedConfigFile), gatewayRuntimeMarkerFile);
 }
 async function waitForCoreGatewayStop(coreEndpoint) {
   for (let index = 0; index < 20; index += 1) {
@@ -64401,7 +66129,7 @@ function loopbackCoreHostError(host) {
   return normalized === "127.0.0.1" || normalized === "::1" ? void 0 : "Core gateway host must be 127.0.0.1 or ::1.";
 }
 function generateCoreGatewayAuthToken() {
-  return (0, import_node_crypto8.randomBytes)(32).toString("base64url");
+  return (0, import_node_crypto9.randomBytes)(32).toString("base64url");
 }
 async function isCoreGatewayHealthy(coreEndpoint) {
   const health = await readCoreGatewayHealth(coreEndpoint);
@@ -64420,12 +66148,12 @@ async function readCoreGatewayHealth(coreEndpoint) {
       return void 0;
     }
     const body = await response.json().catch(() => void 0);
-    if (!isRecord10(body)) {
+    if (!isRecord12(body)) {
       return void 0;
     }
     return {
-      runtimeId: stringValue5(body.runtimeId),
-      status: stringValue5(body.status)
+      runtimeId: stringValue6(body.runtimeId),
+      status: stringValue6(body.status)
     };
   } catch {
     return void 0;
@@ -64443,7 +66171,7 @@ function shouldServeGatewayRequest(config, request) {
   if (config.gateway.enabled) {
     return true;
   }
-  return config.proxy.enabled && config.proxy.mode === "gateway" && readHeader5(request.headers["x-ccr-proxy-mode"]) === "gateway";
+  return config.proxy.enabled && config.proxy.mode === "gateway" && readHeader7(request.headers["x-ccr-proxy-mode"]) === "gateway";
 }
 function applyCors(response, config) {
   const origin = config ? endpoint(config.gateway.host, config.gateway.port) : "*";
@@ -64479,7 +66207,7 @@ var RawTraceSynchronizer = class {
     this.dependencies = dependencies;
   }
   dependencies;
-  token = (0, import_node_crypto9.randomUUID)();
+  token = (0, import_node_crypto10.randomUUID)();
   deadLetterPruneDirty = false;
   deadLetterPrunePromise;
   inboxIndex;
@@ -64524,11 +66252,11 @@ var RawTraceSynchronizer = class {
   }
   async handle(request, response) {
     if (request.method !== "POST") {
-      sendJson3(response, 405, { error: { message: "Method not allowed." } });
+      sendJson4(response, 405, { error: { message: "Method not allowed." } });
       return;
     }
-    if (readHeader5(request.headers[rawTraceSyncHeader]) !== this.token) {
-      sendJson3(response, 401, { error: { message: "Unauthorized raw trace sync." } });
+    if (readHeader7(request.headers[rawTraceSyncHeader]) !== this.token) {
+      sendJson4(response, 401, { error: { message: "Unauthorized raw trace sync." } });
       return;
     }
     const manifest = parseJsonObject(await readRequestBody(request));
@@ -64536,11 +66264,11 @@ var RawTraceSynchronizer = class {
     const config = this.dependencies.getConfig();
     if (!config || !shouldRecordRequestLogs(config)) {
       await cleanupRawTraceBundle(manifest, spoolDirectory);
-      sendJson3(response, 202, { accepted: true, ok: true, reason: "disabled" });
+      sendJson4(response, 202, { accepted: true, ok: true, reason: "disabled" });
       return;
     }
     if (this.started && !this.storageReady) {
-      sendJson3(response, 503, { accepted: false, ok: false, reason: "initializing" });
+      sendJson4(response, 503, { accepted: false, ok: false, reason: "initializing" });
       return;
     }
     let stored;
@@ -64552,17 +66280,17 @@ var RawTraceSynchronizer = class {
         this.dependencies.measureDirectorySize
       );
     } catch (error) {
-      console.warn(`[gateway] Failed to durably accept raw trace bundle: ${formatError11(error)}`);
-      sendJson3(response, 503, { accepted: false, ok: false, reason: "spool_unavailable" });
+      console.warn(`[gateway] Failed to durably accept raw trace bundle: ${formatError12(error)}`);
+      sendJson4(response, 503, { accepted: false, ok: false, reason: "spool_unavailable" });
       return;
     }
     let deadLettered = false;
     try {
       deadLettered = await this.registerStoredBundle(stored);
     } catch (error) {
-      console.warn(`[gateway] Raw trace capacity enforcement deferred: ${formatError11(error)}`);
+      console.warn(`[gateway] Raw trace capacity enforcement deferred: ${formatError12(error)}`);
     }
-    sendJson3(response, 202, {
+    sendJson4(response, 202, {
       accepted: true,
       bundleId: stored.bundleId,
       ...deadLettered ? { deadLetter: true, reason: "inbox_capacity" } : {},
@@ -64571,7 +66299,7 @@ var RawTraceSynchronizer = class {
     });
     if (deadLettered) return;
     const task = this.processStoredBundle(stored).then(() => void 0, (error) => {
-      console.warn(`[gateway] Failed to apply durable raw trace ${stored.bundleId}: ${formatError11(error)}`);
+      console.warn(`[gateway] Failed to apply durable raw trace ${stored.bundleId}: ${formatError12(error)}`);
     }).finally(() => {
       this.processingTasks.delete(task);
     });
@@ -64608,7 +66336,7 @@ var RawTraceSynchronizer = class {
       this.storageReady = true;
       await this.replay();
     })().catch((error) => {
-      console.warn(`[gateway] Failed to initialize raw trace spool: ${formatError11(error)}`);
+      console.warn(`[gateway] Failed to initialize raw trace spool: ${formatError12(error)}`);
     }).finally(() => {
       if (this.startupPromise === startupPromise) this.startupPromise = void 0;
     });
@@ -64617,7 +66345,7 @@ var RawTraceSynchronizer = class {
   async replay() {
     if (this.replayPromise) return await this.replayPromise;
     const replayPromise = this.replayStoredBundles().catch((error) => {
-      console.warn(`[gateway] Failed to replay raw trace spool: ${formatError11(error)}`);
+      console.warn(`[gateway] Failed to replay raw trace spool: ${formatError12(error)}`);
     }).finally(() => {
       if (this.replayPromise === replayPromise) this.replayPromise = void 0;
     });
@@ -64663,7 +66391,7 @@ var RawTraceSynchronizer = class {
       try {
         if (await this.processStoredBundle(stored)) attempted += 1;
       } catch (error) {
-        console.warn(`[gateway] Failed to replay raw trace ${stored.bundleId}: ${formatError11(error)}`);
+        console.warn(`[gateway] Failed to replay raw trace ${stored.bundleId}: ${formatError12(error)}`);
       }
       if (Date.now() - replayStartedAt >= timeBudgetMs) break;
     }
@@ -64769,7 +66497,7 @@ var RawTraceSynchronizer = class {
         ...stored.delivery,
         attempts: stored.delivery.attempts + 1,
         lastAttemptAt: now,
-        lastError: formatError11(error)
+        lastError: formatError12(error)
       };
       this.retryStates.set(stored.bundleId, {
         nextAttemptAt: now + retryCooldownMs,
@@ -64816,7 +66544,7 @@ var RawTraceSynchronizer = class {
       const presentDirectories = /* @__PURE__ */ new Set();
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
-        const directory = (0, import_node_path26.join)(inboxDirectory, entry.name);
+        const directory = (0, import_node_path28.join)(inboxDirectory, entry.name);
         presentDirectories.add(directory);
         if (index.bundleIdsByDirectory.has(directory)) continue;
         const stored = await readStoredRawTraceBundle(
@@ -64860,7 +66588,7 @@ var RawTraceSynchronizer = class {
   }
   async reconcileStagingBundles() {
     for await (const directory of iterateRawTraceStagingDirectories(this.spoolDirectory())) {
-      if (!await pathExists((0, import_node_path26.join)(directory, rawTraceReadyFileName))) continue;
+      if (!await pathExists((0, import_node_path28.join)(directory, rawTraceReadyFileName))) continue;
       try {
         await publishStagedRawTraceBundle(
           directory,
@@ -64869,7 +66597,7 @@ var RawTraceSynchronizer = class {
           this.dependencies.measureDirectorySize
         );
       } catch (error) {
-        console.warn(`[gateway] Failed to publish recovered raw trace staging ${directory}: ${formatError11(error)}`);
+        console.warn(`[gateway] Failed to publish recovered raw trace staging ${directory}: ${formatError12(error)}`);
       }
     }
   }
@@ -64883,7 +66611,7 @@ var RawTraceSynchronizer = class {
         this.removeIndexedBundle(index, oldest);
         this.scheduleDeadLetterPrune();
       } catch (error) {
-        console.warn(`[gateway] Failed to dead-letter raw trace ${oldest.bundleId}: ${formatError11(error)}`);
+        console.warn(`[gateway] Failed to dead-letter raw trace ${oldest.bundleId}: ${formatError12(error)}`);
         return;
       }
     }
@@ -64909,8 +66637,8 @@ var RawTraceSynchronizer = class {
         this.sourceObservations.delete(directory);
         await this.registerStoredBundle(stored);
       } catch (error) {
-        console.warn(`[gateway] Failed to adopt raw trace spool ${directory}: ${formatError11(error)}`);
-        await this.observeIncompleteSource(directory, "source", formatError11(error), scanGeneration);
+        console.warn(`[gateway] Failed to adopt raw trace spool ${directory}: ${formatError12(error)}`);
+        await this.observeIncompleteSource(directory, "source", formatError12(error), scanGeneration);
         if (this.sourceObservations.size > this.storageLimits().inboxMaxBundles) {
           await this.expireIncompleteSources();
         }
@@ -64918,7 +66646,7 @@ var RawTraceSynchronizer = class {
     }
     for await (const directory of iterateRawTraceStagingDirectories(this.spoolDirectory())) {
       try {
-        if (await pathExists((0, import_node_path26.join)(directory, rawTraceReadyFileName))) {
+        if (await pathExists((0, import_node_path28.join)(directory, rawTraceReadyFileName))) {
           const stored = await publishStagedRawTraceBundle(
             directory,
             this.spoolDirectory(),
@@ -64931,8 +66659,8 @@ var RawTraceSynchronizer = class {
         }
         await this.observeIncompleteSource(directory, "staging", "incomplete_staging", scanGeneration);
       } catch (error) {
-        console.warn(`[gateway] Failed to recover raw trace staging ${directory}: ${formatError11(error)}`);
-        await this.observeIncompleteSource(directory, "staging", formatError11(error), scanGeneration);
+        console.warn(`[gateway] Failed to recover raw trace staging ${directory}: ${formatError12(error)}`);
+        await this.observeIncompleteSource(directory, "staging", formatError12(error), scanGeneration);
       }
     }
     for (const [directory, observation] of this.sourceObservations) {
@@ -65005,11 +66733,11 @@ var RawTraceSynchronizer = class {
             index.totalBytes += stored2.sizeBytes;
             continue;
           } catch (error) {
-            observation.lastError = formatError11(error);
+            observation.lastError = formatError12(error);
           }
         }
         const stored = {
-          bundleId: `incomplete-${(0, import_node_crypto9.createHash)("sha256").update(observation.directory).digest("hex")}`,
+          bundleId: `incomplete-${(0, import_node_crypto10.createHash)("sha256").update(observation.directory).digest("hex")}`,
           delivery: {
             acceptedAt: observation.firstSeenAt,
             attempts: 0,
@@ -65031,7 +66759,7 @@ var RawTraceSynchronizer = class {
           sourceBytes = Math.max(0, sourceBytes - observation.sizeBytes);
           this.scheduleDeadLetterPrune();
         } catch (error) {
-          console.warn(`[gateway] Failed to isolate incomplete raw trace ${observation.directory}: ${formatError11(error)}`);
+          console.warn(`[gateway] Failed to isolate incomplete raw trace ${observation.directory}: ${formatError12(error)}`);
         }
       }
     });
@@ -65066,7 +66794,7 @@ var RawTraceSynchronizer = class {
         this.lastDeadLetterPrunedAt = Date.now();
       }
     })().catch((error) => {
-      console.warn(`[gateway] Raw trace dead-letter pruning deferred: ${formatError11(error)}`);
+      console.warn(`[gateway] Raw trace dead-letter pruning deferred: ${formatError12(error)}`);
     }).finally(() => {
       this.deadLetterPrunePromise = void 0;
       if (this.deadLetterPruneDirty) this.scheduleDeadLetterPrune();
@@ -65098,19 +66826,19 @@ async function persistRawTraceBundle(manifest, spoolDirectory, syncPartFile, mea
   if (!sourceDirectory || parts.length === 0) {
     throw new Error("Raw trace manifest does not reference a valid spool bundle.");
   }
-  const resolvedSourceDirectory = (0, import_node_path26.resolve)(sourceDirectory);
+  const resolvedSourceDirectory = (0, import_node_path28.resolve)(sourceDirectory);
   for (const part of parts) {
-    const filePath = stringValue5(part.filePath);
-    if (filePath && (0, import_node_path26.resolve)((0, import_node_path26.dirname)(filePath)) !== resolvedSourceDirectory) {
+    const filePath = stringValue6(part.filePath);
+    if (filePath && (0, import_node_path28.resolve)((0, import_node_path28.dirname)(filePath)) !== resolvedSourceDirectory) {
       throw new Error("Raw trace manifest parts must belong to one spool bundle.");
     }
   }
-  const bundleId = stringValue5(manifest.requestId) ?? `legacy-${(0, import_node_crypto9.createHash)("sha256").update(resolvedSourceDirectory).digest("hex")}`;
+  const bundleId = stringValue6(manifest.requestId) ?? `legacy-${(0, import_node_crypto10.createHash)("sha256").update(resolvedSourceDirectory).digest("hex")}`;
   const inboxDirectory = rawTraceInboxDirectory(spoolDirectory);
   const stagingDirectory = rawTraceStagingDirectory(spoolDirectory);
-  const destinationDirectory = (0, import_node_path26.join)(
+  const destinationDirectory = (0, import_node_path28.join)(
     inboxDirectory,
-    (0, import_node_crypto9.createHash)("sha256").update(bundleId).digest("hex")
+    (0, import_node_crypto10.createHash)("sha256").update(bundleId).digest("hex")
   );
   await Promise.all([
     (0, import_promises2.mkdir)(inboxDirectory, { recursive: true }),
@@ -65122,18 +66850,18 @@ async function persistRawTraceBundle(manifest, spoolDirectory, syncPartFile, mea
       bundleId,
       measureDirectorySize
     );
-    if ((0, import_node_path26.resolve)(destinationDirectory) !== resolvedSourceDirectory) {
+    if ((0, import_node_path28.resolve)(destinationDirectory) !== resolvedSourceDirectory) {
       await (0, import_promises2.rm)(resolvedSourceDirectory, { force: true, recursive: true });
-      await syncDirectory((0, import_node_path26.dirname)(resolvedSourceDirectory));
+      await syncDirectory((0, import_node_path28.dirname)(resolvedSourceDirectory));
     }
     return existing;
   }
-  if ((0, import_node_path26.resolve)(destinationDirectory) === resolvedSourceDirectory) {
+  if ((0, import_node_path28.resolve)(destinationDirectory) === resolvedSourceDirectory) {
     return await readCompleteStoredRawTraceBundle(destinationDirectory, bundleId, measureDirectorySize);
   }
-  const stagedDirectory = (0, import_node_path26.join)(
+  const stagedDirectory = (0, import_node_path28.join)(
     stagingDirectory,
-    `${(0, import_node_crypto9.createHash)("sha256").update(bundleId).digest("hex")}-${(0, import_node_crypto9.randomUUID)()}`
+    `${(0, import_node_crypto10.createHash)("sha256").update(bundleId).digest("hex")}-${(0, import_node_crypto10.randomUUID)()}`
   );
   await writeDurableManifest(
     resolvedSourceDirectory,
@@ -65141,7 +66869,7 @@ async function persistRawTraceBundle(manifest, spoolDirectory, syncPartFile, mea
   );
   await (0, import_promises2.rename)(resolvedSourceDirectory, stagedDirectory);
   await Promise.all([
-    syncDirectory((0, import_node_path26.dirname)(resolvedSourceDirectory)),
+    syncDirectory((0, import_node_path28.dirname)(resolvedSourceDirectory)),
     syncDirectory(stagingDirectory)
   ]);
   try {
@@ -65157,7 +66885,7 @@ async function persistRawTraceBundle(manifest, spoolDirectory, syncPartFile, mea
     if (await pathExists(stagedDirectory) && !await pathExists(resolvedSourceDirectory)) {
       await (0, import_promises2.rename)(stagedDirectory, resolvedSourceDirectory).catch(() => void 0);
       await Promise.all([
-        syncDirectory((0, import_node_path26.dirname)(resolvedSourceDirectory)),
+        syncDirectory((0, import_node_path28.dirname)(resolvedSourceDirectory)),
         syncDirectory(stagingDirectory)
       ]).catch(() => void 0);
     }
@@ -65167,13 +66895,13 @@ async function persistRawTraceBundle(manifest, spoolDirectory, syncPartFile, mea
 async function publishStagedRawTraceBundle(stagedDirectory, spoolDirectory, syncPartFile, measureDirectorySize = directorySize, suppliedManifest, suppliedBundleId) {
   const manifest = suppliedManifest ?? await readManifestFile(stagedDirectory);
   if (!manifest) throw new Error("Raw trace staging entry has no valid manifest.");
-  const bundleId = suppliedBundleId ?? stringValue5(manifest.requestId);
+  const bundleId = suppliedBundleId ?? stringValue6(manifest.requestId);
   if (!bundleId) throw new Error("Raw trace staging entry has no request ID.");
   const inboxDirectory = rawTraceInboxDirectory(spoolDirectory);
   const stagingDirectory = rawTraceStagingDirectory(spoolDirectory);
-  const destinationDirectory = (0, import_node_path26.join)(
+  const destinationDirectory = (0, import_node_path28.join)(
     inboxDirectory,
-    (0, import_node_crypto9.createHash)("sha256").update(bundleId).digest("hex")
+    (0, import_node_crypto10.createHash)("sha256").update(bundleId).digest("hex")
   );
   await Promise.all([
     (0, import_promises2.mkdir)(inboxDirectory, { recursive: true }),
@@ -65185,7 +66913,7 @@ async function publishStagedRawTraceBundle(stagedDirectory, spoolDirectory, sync
       bundleId,
       measureDirectorySize
     );
-    if ((0, import_node_path26.resolve)(stagedDirectory) !== (0, import_node_path26.resolve)(destinationDirectory)) {
+    if ((0, import_node_path28.resolve)(stagedDirectory) !== (0, import_node_path28.resolve)(destinationDirectory)) {
       await (0, import_promises2.rm)(stagedDirectory, { force: true, recursive: true });
       await syncDirectory(stagingDirectory);
     }
@@ -65224,7 +66952,7 @@ async function publishStagedRawTraceBundle(stagedDirectory, spoolDirectory, sync
 }
 async function readCompleteStoredRawTraceBundle(directory, bundleId, measureDirectorySize) {
   const existingManifest = await readManifestFile(directory);
-  if (!existingManifest || !await pathExists((0, import_node_path26.join)(directory, rawTraceDeliveryFileName))) {
+  if (!existingManifest || !await pathExists((0, import_node_path28.join)(directory, rawTraceDeliveryFileName))) {
     throw new Error(`Durable raw trace inbox entry is incomplete for ${bundleId}.`);
   }
   const normalizedManifest = normalizeStoredRawTraceManifest(existingManifest, directory, bundleId);
@@ -65238,8 +66966,8 @@ async function readCompleteStoredRawTraceBundle(directory, bundleId, measureDire
 }
 function normalizeStoredRawTraceManifest(manifest, directory, bundleId) {
   const parts = rawTraceManifestParts(manifest).map((part) => {
-    const filePath = stringValue5(part.filePath);
-    return filePath ? { ...part, filePath: (0, import_node_path26.join)(directory, (0, import_node_path26.basename)(filePath)) } : part;
+    const filePath = stringValue6(part.filePath);
+    return filePath ? { ...part, filePath: (0, import_node_path28.join)(directory, (0, import_node_path28.basename)(filePath)) } : part;
   });
   return {
     ...manifest,
@@ -65254,8 +66982,8 @@ async function writeDurableDeliveryState(directory, delivery) {
   await writeDurableJsonFile(directory, rawTraceDeliveryFileName, delivery);
 }
 async function writeDurableJsonFile(directory, fileName, value) {
-  const filePath = (0, import_node_path26.join)(directory, fileName);
-  const temporaryPath = (0, import_node_path26.join)(directory, `.${fileName}-${(0, import_node_crypto9.randomUUID)()}.tmp`);
+  const filePath = (0, import_node_path28.join)(directory, fileName);
+  const temporaryPath = (0, import_node_path28.join)(directory, `.${fileName}-${(0, import_node_crypto10.randomUUID)()}.tmp`);
   await (0, import_promises2.writeFile)(temporaryPath, JSON.stringify(value));
   const temporaryFile = await (0, import_promises2.open)(temporaryPath, "r");
   try {
@@ -65268,9 +66996,9 @@ async function writeDurableJsonFile(directory, fileName, value) {
 }
 async function syncRawTracePartFiles(manifest, directory, syncPartFile) {
   for (const part of rawTraceManifestParts(manifest)) {
-    const filePath = stringValue5(part.filePath);
+    const filePath = stringValue6(part.filePath);
     if (!filePath) continue;
-    if ((0, import_node_path26.resolve)((0, import_node_path26.dirname)(filePath)) !== (0, import_node_path26.resolve)(directory)) {
+    if ((0, import_node_path28.resolve)((0, import_node_path28.dirname)(filePath)) !== (0, import_node_path28.resolve)(directory)) {
       throw new Error(`Raw trace part is outside its durable bundle: ${filePath}`);
     }
     const fileStat = await (0, import_promises2.stat)(filePath);
@@ -65292,21 +67020,21 @@ async function syncRawTracePartFiles(manifest, directory, syncPartFile) {
 }
 async function ensureRawTraceDeliveryState(directory, manifest) {
   const existing = await readRawTraceDeliveryState(directory, manifest);
-  if (await pathExists((0, import_node_path26.join)(directory, rawTraceDeliveryFileName))) return existing;
+  if (await pathExists((0, import_node_path28.join)(directory, rawTraceDeliveryFileName))) return existing;
   await writeDurableDeliveryState(directory, existing);
   return existing;
 }
 async function readRawTraceDeliveryState(directory, manifest) {
   try {
-    const parsed = JSON.parse(await (0, import_promises2.readFile)((0, import_node_path26.join)(directory, rawTraceDeliveryFileName), "utf8"));
-    if (isRecord10(parsed)) {
+    const parsed = JSON.parse(await (0, import_promises2.readFile)((0, import_node_path28.join)(directory, rawTraceDeliveryFileName), "utf8"));
+    if (isRecord12(parsed)) {
       return {
         acceptedAt: positiveTimestamp(parsed.acceptedAt) ?? manifestTimestamp(manifest) ?? Date.now(),
         attempts: Math.max(0, Math.floor(numberValue4(parsed.attempts) ?? 0)),
-        ...stringValue5(parsed.deadLetterReason) ? { deadLetterReason: stringValue5(parsed.deadLetterReason) } : {},
+        ...stringValue6(parsed.deadLetterReason) ? { deadLetterReason: stringValue6(parsed.deadLetterReason) } : {},
         ...positiveTimestamp(parsed.deadLetteredAt) ? { deadLetteredAt: positiveTimestamp(parsed.deadLetteredAt) } : {},
         ...positiveTimestamp(parsed.lastAttemptAt) ? { lastAttemptAt: positiveTimestamp(parsed.lastAttemptAt) } : {},
-        ...stringValue5(parsed.lastError) ? { lastError: stringValue5(parsed.lastError) } : {}
+        ...stringValue6(parsed.lastError) ? { lastError: stringValue6(parsed.lastError) } : {}
       };
     }
   } catch (error) {
@@ -65339,7 +67067,7 @@ async function* iterateRawTraceSourceDirectories(spoolDirectory) {
   }
   for await (const entry of directory) {
     if (entry.isDirectory() && entry.name !== rawTraceInboxDirectoryName && entry.name !== rawTraceDeadLetterDirectoryName && entry.name !== rawTraceStagingDirectoryName) {
-      yield (0, import_node_path26.join)(spoolDirectory, entry.name);
+      yield (0, import_node_path28.join)(spoolDirectory, entry.name);
     }
   }
 }
@@ -65353,7 +67081,7 @@ async function* iterateRawTraceStagingDirectories(spoolDirectory) {
     throw error;
   }
   for await (const entry of directory) {
-    if (entry.isDirectory()) yield (0, import_node_path26.join)(stagingDirectory, entry.name);
+    if (entry.isDirectory()) yield (0, import_node_path28.join)(stagingDirectory, entry.name);
   }
 }
 async function listStoredRawTraceBundles(spoolDirectory, measureDirectorySize) {
@@ -65368,7 +67096,7 @@ async function listStoredRawTraceBundles(spoolDirectory, measureDirectorySize) {
   const bundles = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const directory = (0, import_node_path26.join)(inboxDirectory, entry.name);
+    const directory = (0, import_node_path28.join)(inboxDirectory, entry.name);
     bundles.push(await readStoredRawTraceBundle(directory, entry.name, measureDirectorySize));
   }
   return bundles;
@@ -65377,7 +67105,7 @@ async function readStoredRawTraceBundle(directory, fallbackBundleId, measureDire
   const sizeBytes = await measureDirectorySize(directory).catch(() => defaultRawTraceInboxMaxBytes + 1);
   try {
     const manifest = await readManifestFile(directory) ?? { parts: [], requestId: fallbackBundleId };
-    const bundleId = stringValue5(manifest.requestId) ?? fallbackBundleId;
+    const bundleId = stringValue6(manifest.requestId) ?? fallbackBundleId;
     const normalizedManifest = normalizeStoredRawTraceManifest(manifest, directory, bundleId);
     return {
       bundleId,
@@ -65387,7 +67115,7 @@ async function readStoredRawTraceBundle(directory, fallbackBundleId, measureDire
       sizeBytes
     };
   } catch (error) {
-    const inspectionError = `Failed to inspect durable raw trace bundle: ${formatError11(error)}`;
+    const inspectionError = `Failed to inspect durable raw trace bundle: ${formatError12(error)}`;
     console.warn(`[gateway] ${inspectionError} (${directory})`);
     const fallbackManifest = { parts: [], requestId: fallbackBundleId };
     const delivery = await readRawTraceDeliveryState(directory, fallbackManifest).catch(async () => ({
@@ -65407,8 +67135,8 @@ async function readStoredRawTraceBundle(directory, fallbackBundleId, measureDire
 }
 async function readManifestFile(directory) {
   try {
-    const parsed = JSON.parse(await (0, import_promises2.readFile)((0, import_node_path26.join)(directory, "manifest.json"), "utf8"));
-    return isRecord10(parsed) ? parsed : void 0;
+    const parsed = JSON.parse(await (0, import_promises2.readFile)((0, import_node_path28.join)(directory, "manifest.json"), "utf8"));
+    return isRecord12(parsed) ? parsed : void 0;
   } catch (error) {
     if (nodeErrorCode(error) === "ENOENT" || error instanceof SyntaxError) return void 0;
     throw error;
@@ -65418,13 +67146,13 @@ async function cleanupStoredRawTraceBundle(directory) {
   await (0, import_promises2.rm)(directory, { force: true, recursive: true });
 }
 function rawTraceInboxDirectory(spoolDirectory) {
-  return (0, import_node_path26.join)(spoolDirectory, rawTraceInboxDirectoryName);
+  return (0, import_node_path28.join)(spoolDirectory, rawTraceInboxDirectoryName);
 }
 function rawTraceDeadLetterDirectory(spoolDirectory) {
-  return (0, import_node_path26.join)(spoolDirectory, rawTraceDeadLetterDirectoryName);
+  return (0, import_node_path28.join)(spoolDirectory, rawTraceDeadLetterDirectoryName);
 }
 function rawTraceStagingDirectory(spoolDirectory) {
-  return (0, import_node_path26.join)(spoolDirectory, rawTraceStagingDirectoryName);
+  return (0, import_node_path28.join)(spoolDirectory, rawTraceStagingDirectoryName);
 }
 async function moveRawTraceBundleToDeadLetter(stored, spoolDirectory, reason) {
   if (!await pathExists(stored.directory)) return;
@@ -65437,13 +67165,13 @@ async function moveRawTraceBundleToDeadLetter(stored, spoolDirectory, reason) {
     lastError: stored.delivery.lastError ?? reason
   };
   await writeDurableDeliveryState(stored.directory, stored.delivery).catch((error) => {
-    console.warn(`[gateway] Failed to persist raw trace dead-letter reason for ${stored.bundleId}: ${formatError11(error)}`);
+    console.warn(`[gateway] Failed to persist raw trace dead-letter reason for ${stored.bundleId}: ${formatError12(error)}`);
   });
-  const destination = (0, import_node_path26.join)(deadLetterDirectory, (0, import_node_path26.basename)(stored.directory));
+  const destination = (0, import_node_path28.join)(deadLetterDirectory, (0, import_node_path28.basename)(stored.directory));
   if (await pathExists(destination)) await (0, import_promises2.rm)(destination, { force: true, recursive: true });
   await (0, import_promises2.rename)(stored.directory, destination);
   await Promise.all([
-    syncDirectory((0, import_node_path26.dirname)(stored.directory)),
+    syncDirectory((0, import_node_path28.dirname)(stored.directory)),
     syncDirectory(deadLetterDirectory)
   ]);
 }
@@ -65460,7 +67188,7 @@ async function pruneRawTraceDeadLetters(spoolDirectory, limits) {
   const retained = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const bundleDirectory = (0, import_node_path26.join)(directory, entry.name);
+    const bundleDirectory = (0, import_node_path28.join)(directory, entry.name);
     let recordedAt = await (0, import_promises2.stat)(bundleDirectory).then((value) => value.mtimeMs).catch(() => 0);
     try {
       const manifest = await readManifestFile(bundleDirectory) ?? {};
@@ -65468,14 +67196,14 @@ async function pruneRawTraceDeadLetters(spoolDirectory, limits) {
       const deliveryRecordedAt = delivery.deadLetteredAt ?? delivery.acceptedAt;
       recordedAt = recordedAt > 0 ? Math.min(recordedAt, deliveryRecordedAt) : deliveryRecordedAt;
     } catch (error) {
-      console.warn(`[gateway] Failed to inspect raw trace dead letter ${bundleDirectory}: ${formatError11(error)}`);
+      console.warn(`[gateway] Failed to inspect raw trace dead letter ${bundleDirectory}: ${formatError12(error)}`);
     }
     if (recordedAt === 0 || now - recordedAt >= limits.deadLetterRetentionMs) {
       try {
         await (0, import_promises2.rm)(bundleDirectory, { force: true, recursive: true });
         continue;
       } catch (error) {
-        console.warn(`[gateway] Failed to expire raw trace dead letter ${bundleDirectory}: ${formatError11(error)}`);
+        console.warn(`[gateway] Failed to expire raw trace dead letter ${bundleDirectory}: ${formatError12(error)}`);
       }
     }
     retained.push({
@@ -65493,18 +67221,18 @@ async function pruneRawTraceDeadLetters(spoolDirectory, limits) {
       totalBundles -= 1;
       totalBytes = Math.max(0, totalBytes - entry.size);
     } catch (error) {
-      console.warn(`[gateway] Failed to prune raw trace dead letter ${entry.directory}: ${formatError11(error)}`);
+      console.warn(`[gateway] Failed to prune raw trace dead letter ${entry.directory}: ${formatError12(error)}`);
     }
   }
   await syncDirectory(directory).catch((error) => {
-    console.warn(`[gateway] Failed to sync raw trace dead-letter directory: ${formatError11(error)}`);
+    console.warn(`[gateway] Failed to sync raw trace dead-letter directory: ${formatError12(error)}`);
   });
 }
 async function directorySize(directory) {
   let total = 0;
   const entries = await (0, import_promises2.readdir)(directory, { withFileTypes: true });
   for (const entry of entries) {
-    const filePath = (0, import_node_path26.join)(directory, entry.name);
+    const filePath = (0, import_node_path28.join)(directory, entry.name);
     if (entry.isDirectory()) total += await directorySize(filePath);
     else if (entry.isFile()) total += (await (0, import_promises2.stat)(filePath)).size;
   }
@@ -65517,7 +67245,7 @@ async function rawTraceDirectorySnapshot(directory) {
   newestMtimeMs = directoryStat.mtimeMs;
   const entries = await (0, import_promises2.readdir)(directory, { withFileTypes: true });
   for (const entry of entries) {
-    const filePath = (0, import_node_path26.join)(directory, entry.name);
+    const filePath = (0, import_node_path28.join)(directory, entry.name);
     if (entry.isDirectory()) {
       const nested = await rawTraceDirectorySnapshot(filePath);
       newestMtimeMs = Math.max(newestMtimeMs, nested.newestMtimeMs);
@@ -65531,7 +67259,7 @@ async function rawTraceDirectorySnapshot(directory) {
   return { newestMtimeMs, sizeBytes };
 }
 function manifestTimestamp(manifest) {
-  const parsed = Date.parse(stringValue5(manifest.uploadedAt) ?? "");
+  const parsed = Date.parse(stringValue6(manifest.uploadedAt) ?? "");
   return Number.isFinite(parsed) ? parsed : void 0;
 }
 function positiveTimestamp(value) {
@@ -65539,7 +67267,7 @@ function positiveTimestamp(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : void 0;
 }
 function rawTraceManifestParts(manifest) {
-  return Array.isArray(manifest.parts) ? manifest.parts.filter((part) => isRecord10(part)) : [];
+  return Array.isArray(manifest.parts) ? manifest.parts.filter((part) => isRecord12(part)) : [];
 }
 async function pathExists(filePath) {
   try {
@@ -65623,9 +67351,9 @@ function rawTraceEnabledFromEnv() {
   return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 async function readRawTraceRequestLogBundle(manifest, spoolDirectory = RAW_TRACE_SPOOL_DIR) {
-  const requestId = stringValue5(manifest.turnKey) || stringValue5(manifest.requestId);
-  const bundleId = stringValue5(manifest.requestId);
-  const parts = Array.isArray(manifest.parts) ? manifest.parts.filter((part) => isRecord10(part)) : [];
+  const requestId = stringValue6(manifest.turnKey) || stringValue6(manifest.requestId);
+  const bundleId = stringValue6(manifest.requestId);
+  const parts = Array.isArray(manifest.parts) ? manifest.parts.filter((part) => isRecord12(part)) : [];
   if (!requestId || parts.length === 0) {
     return void 0;
   }
@@ -65645,8 +67373,8 @@ async function readRawTraceRequestLogBundle(manifest, spoolDirectory = RAW_TRACE
     readRawTracePart(parts, "upstream_response", spoolDirectory)
   ]);
   const upstreamResponseBody = upstreamResponseStream ?? fallbackResponseBody;
-  const target = isRecord10(manifest.target) ? manifest.target : {};
-  const rawUrl = stringValue5(upstreamRequestMetadata?.url);
+  const target = isRecord12(manifest.target) ? manifest.target : {};
+  const rawUrl = stringValue6(upstreamRequestMetadata?.url);
   const url = sanitizeUrlForLog(rawUrl);
   const attempt = positiveAttemptNumber(readUnknownHeader(
     clientRequestMetadata?.headers,
@@ -65660,12 +67388,12 @@ async function readRawTraceRequestLogBundle(manifest, spoolDirectory = RAW_TRACE
     },
     update: {
       ...attempt === void 0 ? {} : { attempt },
-      ...stringValue5(manifest.uploadedAt) ? { bundleCapturedAt: stringValue5(manifest.uploadedAt) } : {},
+      ...stringValue6(manifest.uploadedAt) ? { bundleCapturedAt: stringValue6(manifest.uploadedAt) } : {},
       ...bundleId ? { bundleId } : {},
-      method: stringValue5(upstreamRequestMetadata?.method) || "POST",
-      model: stringValue5(target.model),
+      method: stringValue6(upstreamRequestMetadata?.method) || "POST",
+      model: stringValue6(target.model),
       path: pathFromUrl2(url),
-      provider: stringValue5(target.providerName) || stringValue5(target.provider),
+      provider: stringValue6(target.providerName) || stringValue6(target.provider),
       requestBodyContentType: upstreamRequestBody?.contentType,
       requestBodySizeBytes: upstreamRequestBody?.sizeBytes,
       requestBodyTruncated: upstreamRequestBody?.truncated,
@@ -65682,7 +67410,7 @@ async function readRawTraceRequestLogBundle(manifest, spoolDirectory = RAW_TRACE
   };
 }
 function readUnknownHeader(headers, name) {
-  if (!isRecord10(headers)) return void 0;
+  if (!isRecord12(headers)) return void 0;
   const normalizedName = name.toLowerCase();
   for (const [key, value] of Object.entries(headers)) {
     if (key.toLowerCase() === normalizedName) return value;
@@ -65701,53 +67429,53 @@ async function readRawTraceJsonPart(parts, partType, spoolDirectory) {
   try {
     const text = await (0, import_promises2.readFile)(part.filePath, "utf8");
     const parsed = JSON.parse(text);
-    return isRecord10(parsed) ? parsed : void 0;
+    return isRecord12(parsed) ? parsed : void 0;
   } catch {
     return void 0;
   }
 }
 async function readRawTracePart(parts, partType, spoolDirectory) {
-  const part = parts.find((candidate) => stringValue5(candidate.partType) === partType);
-  const filePath = stringValue5(part?.filePath);
+  const part = parts.find((candidate) => stringValue6(candidate.partType) === partType);
+  const filePath = stringValue6(part?.filePath);
   if (!filePath || !isRawTraceSpoolFile(filePath, spoolDirectory)) {
     return void 0;
   }
   try {
     const storedBytes = (await (0, import_promises2.stat)(filePath)).size;
     return {
-      contentType: stringValue5(part?.contentType),
+      contentType: stringValue6(part?.contentType),
       filePath,
       sizeBytes: Math.max(storedBytes, numberValue4(part?.originalBytes) ?? 0),
       truncated: storedBytes < (numberValue4(part?.originalBytes) ?? storedBytes)
     };
   } catch (error) {
-    console.warn(`[gateway] Failed to read raw trace part ${partType}: ${formatError11(error)}`);
+    console.warn(`[gateway] Failed to read raw trace part ${partType}: ${formatError12(error)}`);
     return void 0;
   }
 }
 function rawTraceBundleDirectory(parts, spoolDirectory) {
-  const filePath = parts.map((part) => stringValue5(part.filePath)).find((value) => Boolean(value));
-  return filePath && isRawTraceSpoolFile(filePath, spoolDirectory) ? (0, import_node_path26.dirname)(filePath) : void 0;
+  const filePath = parts.map((part) => stringValue6(part.filePath)).find((value) => Boolean(value));
+  return filePath && isRawTraceSpoolFile(filePath, spoolDirectory) ? (0, import_node_path28.dirname)(filePath) : void 0;
 }
 async function cleanupRawTraceBundle(manifest, spoolDirectory = RAW_TRACE_SPOOL_DIR) {
-  const parts = Array.isArray(manifest.parts) ? manifest.parts.filter((part) => isRecord10(part)) : [];
-  const firstFilePath = parts.map((part) => stringValue5(part.filePath)).find((value) => Boolean(value));
+  const parts = Array.isArray(manifest.parts) ? manifest.parts.filter((part) => isRecord12(part)) : [];
+  const firstFilePath = parts.map((part) => stringValue6(part.filePath)).find((value) => Boolean(value));
   if (!firstFilePath || !isRawTraceSpoolFile(firstFilePath, spoolDirectory)) {
     return;
   }
   try {
-    await (0, import_promises2.rm)((0, import_node_path26.dirname)(firstFilePath), { force: true, recursive: true });
+    await (0, import_promises2.rm)((0, import_node_path28.dirname)(firstFilePath), { force: true, recursive: true });
   } catch (error) {
-    console.warn(`[gateway] Failed to clean raw trace bundle: ${formatError11(error)}`);
+    console.warn(`[gateway] Failed to clean raw trace bundle: ${formatError12(error)}`);
   }
 }
 function isRawTraceSpoolFile(filePath, spoolDirectory) {
-  const spoolDir = (0, import_node_path26.resolve)(spoolDirectory);
-  const resolvedFile = (0, import_node_path26.resolve)(filePath);
-  return (0, import_node_path26.dirname)(resolvedFile) !== spoolDir && resolvedFile.startsWith(`${spoolDir}${import_node_path26.sep}`);
+  const spoolDir = (0, import_node_path28.resolve)(spoolDirectory);
+  const resolvedFile = (0, import_node_path28.resolve)(filePath);
+  return (0, import_node_path28.dirname)(resolvedFile) !== spoolDir && resolvedFile.startsWith(`${spoolDir}${import_node_path28.sep}`);
 }
 function headerRecordFromUnknown(value) {
-  if (!isRecord10(value)) {
+  if (!isRecord12(value)) {
     return void 0;
   }
   const headers = {};
@@ -65825,8 +67553,8 @@ function createBodySampler() {
 
 // packages/core/src/providers/oauth-plugin.ts
 function isLocalClaudeCodeOauthProviderPlugin(value) {
-  if (!isRecord10(value)) return false;
-  const key = stringValue5(value.key)?.toLowerCase() ?? "";
+  if (!isRecord12(value)) return false;
+  const key = stringValue6(value.key)?.toLowerCase() ?? "";
   return key.startsWith("ccr-local-agent-") && key.includes("claude-code-oauth");
 }
 function mergeAnthropicBetaValues(...values) {
@@ -65859,18 +67587,20 @@ var unlimitedVirtualModelToolTurns = Number.MAX_SAFE_INTEGER;
 async function compileCoreGatewayConfig(config, rawTraceSyncToken, billingUsageSyncToken, coreAuthToken, browserWebSearchMcpIntegration, upstreamProxyUrl2) {
   const pluginCoreGatewayConfig = pluginService.getCoreGatewayConfig();
   const configuredGatewayPlugins = Array.isArray(pluginCoreGatewayConfig.plugins) ? pluginCoreGatewayConfig.plugins.filter(
-    (plugin) => !isRecord10(plugin) || stringValue5(plugin.key) !== upstreamHeaderSanitizerPluginKey
+    (plugin) => !isRecord12(plugin) || stringValue6(plugin.key) !== upstreamHeaderSanitizerPluginKey
   ) : [];
-  const pluginBillingConfig = isRecord10(pluginCoreGatewayConfig.billing) ? pluginCoreGatewayConfig.billing : {};
+  const pluginBillingConfig = isRecord12(pluginCoreGatewayConfig.billing) ? pluginCoreGatewayConfig.billing : {};
   const configuredProviderPlugins = normalizeClaudeCodeOauthProviderPlugins([
     ...(config.providerPlugins ?? []).filter(providerPluginEnabled),
     ...pluginService.getCoreProviderPlugins().filter(providerPluginEnabled)
   ]);
-  const providerPlugins = await withKimiOauthRuntimeDefaults(
-    await withGrokOauthRuntimeDefaults(withCodexOauthRuntimeDefaults(configuredProviderPlugins))
+  const providerPluginsWithRuntimeDefaults = await withKimiOauthRuntimeDefaults(
+    await withGrokOauthRuntimeDefaults(withClaudeCodeOauthRuntimeDefaults(withCodexOauthRuntimeDefaults(configuredProviderPlugins)))
   );
-  const providerPluginsWithCapabilityAliases = withProviderCapabilityPluginAliases(providerPlugins, config.Providers);
-  const codexOauthProviderNames = codexOauthLocalProviderNames(providerPlugins);
+  const codexOauthProviderNames = codexOauthLocalProviderNames(providerPluginsWithRuntimeDefaults);
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const providerPlugins = normalizeCoreProviderPluginNames(providerPluginsWithRuntimeDefaults, enabledProviders);
+  const providerPluginsWithCapabilityAliases = withProviderCapabilityPluginAliases(providerPlugins, enabledProviders);
   const virtualModelProfiles = coreGatewayVirtualModelProfiles(config);
   const coreEndpoint = endpoint(config.gateway.coreHost, config.gateway.corePort);
   const proxyPreloadFile = upstreamProxyUrl2 ? writeGatewayProxyPreloadFile(config, upstreamProxyUrl2) : void 0;
@@ -65889,10 +67619,10 @@ async function compileCoreGatewayConfig(config, rawTraceSyncToken, billingUsageS
     }
   );
   const providers = [
-    ...config.Providers.flatMap((provider) => toCoreGatewayProviders(withCodexOauthProviderBaseUrl(provider, codexOauthProviderNames))).filter((provider) => Boolean(provider)),
+    ...enabledProviders.flatMap((provider) => toCoreGatewayProviders(withCodexOauthProviderBaseUrl(provider, codexOauthProviderNames))).filter((provider) => Boolean(provider)),
     ...builtinToolArtifacts.providers
   ];
-  const pluginAgentConfig = isRecord10(pluginCoreGatewayConfig.agent) ? pluginCoreGatewayConfig.agent : {};
+  const pluginAgentConfig = isRecord12(pluginCoreGatewayConfig.agent) ? pluginCoreGatewayConfig.agent : {};
   const pluginMcpServers = Array.isArray(pluginAgentConfig.mcpServers) ? pluginAgentConfig.mcpServers : [];
   const externalMcpServers = [
     ...pluginMcpServers,
@@ -65951,7 +67681,7 @@ async function compileCoreGatewayConfig(config, rawTraceSyncToken, billingUsageS
       {
         enabled: true,
         key: upstreamHeaderSanitizerPluginKey,
-        modulePath: (0, import_node_path27.join)(__dirname, "upstream-header-sanitizer.js")
+        modulePath: (0, import_node_path29.join)(__dirname, "upstream-header-sanitizer.js")
       }
     ],
     upstreamTimeoutMs: Number(config.API_TIMEOUT_MS) || 0,
@@ -65968,14 +67698,14 @@ async function compileCoreGatewayConfig(config, rawTraceSyncToken, billingUsageS
 function withProviderCapabilityPluginAliases(providerPlugins, providers) {
   const aliases = [];
   const explicitlyBoundProviderNames = new Set(
-    providerPlugins.map((plugin) => isRecord10(plugin) ? stringValue5(plugin.providerName)?.toLowerCase() : void 0).filter((name) => Boolean(name))
+    providerPlugins.map((plugin) => isRecord12(plugin) ? stringValue6(plugin.providerName)?.toLowerCase() : void 0).filter((name) => Boolean(name))
   );
   for (const plugin of providerPlugins) {
-    if (!isRecord10(plugin)) {
+    if (!isRecord12(plugin)) {
       continue;
     }
-    const providerName = stringValue5(plugin.providerName);
-    const key = stringValue5(plugin.key);
+    const providerName = stringValue6(plugin.providerName);
+    const key = stringValue6(plugin.key);
     if (!providerName || !key) {
       continue;
     }
@@ -65998,7 +67728,7 @@ function withProviderCapabilityPluginAliases(providerPlugins, providers) {
   return [...providerPlugins, ...aliases];
 }
 function providerPluginEnabled(plugin) {
-  return !isRecord10(plugin) || plugin.enabled !== false;
+  return !isRecord12(plugin) || plugin.enabled !== false;
 }
 function normalizeCoreGatewayVirtualModelProfiles(profiles, config) {
   return profiles.map((profile) => normalizeCoreGatewayVirtualModelProfile(profile, config));
@@ -66019,7 +67749,7 @@ function coreGatewayVirtualModelProfiles(config) {
   )), config);
 }
 function normalizeUsageVirtualModelProfile(value) {
-  if (!isRecord10(value) || !isRecord10(value.match)) {
+  if (!isRecord12(value) || !isRecord12(value.match)) {
     return [];
   }
   const match = {
@@ -66037,12 +67767,12 @@ function normalizeUsageVirtualModelProfile(value) {
   }];
 }
 function normalizeCoreGatewayVirtualModelProfile(profile, config) {
-  if (!isRecord10(profile)) {
+  if (!isRecord12(profile)) {
     return profile;
   }
   let nextProfile;
-  const baseModel = isRecord10(profile.baseModel) ? profile.baseModel : void 0;
-  const fixedModel = stringValue5(baseModel?.fixedModel);
+  const baseModel = isRecord12(profile.baseModel) ? profile.baseModel : void 0;
+  const fixedModel = stringValue6(baseModel?.fixedModel);
   const rewrittenFixedModel = fixedModel ? rewriteModelSelectorForCoreGatewayProfile(fixedModel, config, "anthropic_messages") : void 0;
   if (baseModel && rewrittenFixedModel && rewrittenFixedModel !== fixedModel) {
     nextProfile = {
@@ -66054,11 +67784,11 @@ function normalizeCoreGatewayVirtualModelProfile(profile, config) {
     };
   }
   const sourceProfile = nextProfile ?? profile;
-  const metadata = isRecord10(sourceProfile.metadata) ? sourceProfile.metadata : void 0;
-  const fusionVision = isRecord10(metadata?.fusionVision) ? metadata.fusionVision : void 0;
-  const visionBaseUrl = stringValue5(fusionVision?.baseUrl);
-  const visionSelectorField = stringValue5(fusionVision?.modelSelector) ? "modelSelector" : stringValue5(fusionVision?.model) ? "model" : void 0;
-  const visionSelector = visionSelectorField ? stringValue5(fusionVision?.[visionSelectorField]) : void 0;
+  const metadata = isRecord12(sourceProfile.metadata) ? sourceProfile.metadata : void 0;
+  const fusionVision = isRecord12(metadata?.fusionVision) ? metadata.fusionVision : void 0;
+  const visionBaseUrl = stringValue6(fusionVision?.baseUrl);
+  const visionSelectorField = stringValue6(fusionVision?.modelSelector) ? "modelSelector" : stringValue6(fusionVision?.model) ? "model" : void 0;
+  const visionSelector = visionSelectorField ? stringValue6(fusionVision?.[visionSelectorField]) : void 0;
   const rewrittenVisionSelector = fusionVision && !visionBaseUrl && visionSelector ? rewriteModelSelectorForCoreGatewayProfile(visionSelector, config, "openai_chat_completions") : void 0;
   if (metadata && fusionVision && visionSelectorField && rewrittenVisionSelector && rewrittenVisionSelector !== visionSelector) {
     nextProfile = {
@@ -66073,8 +67803,8 @@ function normalizeCoreGatewayVirtualModelProfile(profile, config) {
     };
   }
   const profileAfterVision = nextProfile ?? profile;
-  const execution = isRecord10(profileAfterVision.execution) ? profileAfterVision.execution : {};
-  const profileWithoutToolLoopLimits = stringValue5(execution.mode) === "decorate_only" ? profileAfterVision : {
+  const execution = isRecord12(profileAfterVision.execution) ? profileAfterVision.execution : {};
+  const profileWithoutToolLoopLimits = stringValue6(execution.mode) === "decorate_only" ? profileAfterVision : {
     ...profileAfterVision,
     execution: {
       ...execution,
@@ -66131,8 +67861,8 @@ function withCodexOauthRuntimeDefaults(providerPlugins) {
       request: withCodexBackendRequestTransform(plugin.request)
     };
     if (codexAuth?.isFedrampAccount) {
-      const currentAuth = isRecord10(plugin.auth) ? plugin.auth : {};
-      const currentHeaders = isRecord10(currentAuth.headers) ? currentAuth.headers : {};
+      const currentAuth = isRecord12(plugin.auth) ? plugin.auth : {};
+      const currentHeaders = isRecord12(currentAuth.headers) ? currentAuth.headers : {};
       nextPlugin.auth = {
         ...currentAuth,
         headers: {
@@ -66144,6 +67874,32 @@ function withCodexOauthRuntimeDefaults(providerPlugins) {
     return nextPlugin;
   });
 }
+function withClaudeCodeOauthRuntimeDefaults(providerPlugins) {
+  if (!providerPlugins.some(isLocalClaudeCodeOauthProviderPlugin)) {
+    return providerPlugins;
+  }
+  const oauth = readClaudeCodeOauth();
+  if (!oauth?.accessToken) {
+    return providerPlugins;
+  }
+  return providerPlugins.map((plugin) => {
+    if (!isLocalClaudeCodeOauthProviderPlugin(plugin)) {
+      return plugin;
+    }
+    const currentAuth = isRecord12(plugin.auth) ? plugin.auth : {};
+    const currentHeaders = isRecord12(currentAuth.headers) ? currentAuth.headers : {};
+    return {
+      ...plugin,
+      auth: {
+        ...currentAuth,
+        headers: {
+          ...currentHeaders,
+          authorization: `Bearer ${oauth.accessToken}`
+        }
+      }
+    };
+  });
+}
 async function withGrokOauthRuntimeDefaults(providerPlugins) {
   const grokAuth = await resolveGrokAuth().catch(() => readGrokAuth());
   if (!grokAuth?.accessToken || grokAccessTokenExpired(grokAuth)) {
@@ -66153,10 +67909,10 @@ async function withGrokOauthRuntimeDefaults(providerPlugins) {
     if (!isLocalGrokOauthProviderPlugin(plugin)) {
       return plugin;
     }
-    const currentAuth = isRecord10(plugin.auth) ? plugin.auth : {};
-    const currentHeaders = isRecord10(currentAuth.headers) ? currentAuth.headers : {};
-    const currentRequest = isRecord10(plugin.request) ? plugin.request : {};
-    const currentRequestHeaders = isRecord10(currentRequest.headers) ? currentRequest.headers : {};
+    const currentAuth = isRecord12(plugin.auth) ? plugin.auth : {};
+    const currentHeaders = isRecord12(currentAuth.headers) ? currentAuth.headers : {};
+    const currentRequest = isRecord12(plugin.request) ? plugin.request : {};
+    const currentRequestHeaders = isRecord12(currentRequest.headers) ? currentRequest.headers : {};
     return {
       ...plugin,
       auth: {
@@ -66188,16 +67944,16 @@ async function withKimiOauthRuntimeDefaults(providerPlugins) {
     if (!isLocalKimiOauthProviderPlugin(plugin)) {
       return plugin;
     }
-    const oauth = isRecord10(plugin.kimiOauth) ? plugin.kimiOauth : {};
+    const oauth = isRecord12(plugin.kimiOauth) ? plugin.kimiOauth : {};
     const oauthReference = {
-      key: stringValue5(oauth.key),
-      oauthHost: stringValue5(oauth.oauthHost) ?? stringValue5(oauth.oauth_host)
+      key: stringValue6(oauth.key),
+      oauthHost: stringValue6(oauth.oauthHost) ?? stringValue6(oauth.oauth_host)
     };
     const kimiAuth = await resolveKimiAuth(oauthReference).catch(() => readKimiAuth(oauthReference));
-    const currentAuth = isRecord10(plugin.auth) ? plugin.auth : {};
-    const currentAuthHeaders = isRecord10(currentAuth.headers) ? currentAuth.headers : {};
-    const currentRequest = isRecord10(plugin.request) ? plugin.request : {};
-    const currentRequestHeaders = isRecord10(currentRequest.headers) ? currentRequest.headers : {};
+    const currentAuth = isRecord12(plugin.auth) ? plugin.auth : {};
+    const currentAuthHeaders = isRecord12(currentAuth.headers) ? currentAuth.headers : {};
+    const currentRequest = isRecord12(plugin.request) ? plugin.request : {};
+    const currentRequestHeaders = isRecord12(currentRequest.headers) ? currentRequest.headers : {};
     return {
       ...plugin,
       auth: {
@@ -66224,7 +67980,7 @@ function codexOauthLocalProviderNames(providerPlugins) {
     if (!isLocalCodexOauthProviderPlugin(plugin)) {
       continue;
     }
-    addProviderNameVariants(names, stringValue5(plugin.providerName));
+    addProviderNameVariants(names, stringValue6(plugin.providerName));
   }
   return names;
 }
@@ -66255,10 +68011,10 @@ function withCodexOauthProviderBaseUrl(provider, codexOauthProviderNames) {
   };
 }
 function isLocalCodexOauthProviderPlugin(value) {
-  if (!isRecord10(value) || !isRecord10(value.codexOauth)) {
+  if (!isRecord12(value) || !isRecord12(value.codexOauth)) {
     return false;
   }
-  const key = stringValue5(value.key)?.toLowerCase() ?? "";
+  const key = stringValue6(value.key)?.toLowerCase() ?? "";
   return key.startsWith("ccr-local-agent-") && key.includes("codex-oauth");
 }
 function normalizeClaudeCodeOauthProviderPlugins(providerPlugins) {
@@ -66266,8 +68022,8 @@ function normalizeClaudeCodeOauthProviderPlugins(providerPlugins) {
     if (!isLocalClaudeCodeOauthProviderPlugin(plugin)) {
       return plugin;
     }
-    const auth = isRecord10(plugin.auth) ? plugin.auth : {};
-    const headers = isRecord10(auth.headers) ? auth.headers : {};
+    const auth = isRecord12(plugin.auth) ? plugin.auth : {};
+    const headers = isRecord12(auth.headers) ? auth.headers : {};
     const configuredBeta = Object.entries(headers).find(([name]) => name.trim().toLowerCase() === claudeCodeOauthBetaHeader)?.[1];
     const defaultBeta = mergeAnthropicBetaValues(
       configuredAnthropicBetaDefault(configuredBeta),
@@ -66291,32 +68047,64 @@ function normalizeClaudeCodeOauthProviderPlugins(providerPlugins) {
     };
   });
 }
+function normalizeCoreProviderPluginNames(providerPlugins, providers) {
+  return providerPlugins.map((plugin) => {
+    if (!isRecord12(plugin)) {
+      return plugin;
+    }
+    const configuredName = stringValue6(plugin.providerName);
+    if (!configuredName) {
+      return plugin;
+    }
+    const providerName = compiledProviderNameForPlugin(configuredName, providers);
+    return providerName === configuredName ? plugin : { ...plugin, providerName };
+  });
+}
+function compiledProviderNameForPlugin(configuredName, providers) {
+  for (const provider of providers) {
+    const capabilities = normalizedProviderCapabilities(provider);
+    if (capabilities.length === 0) {
+      const protocol = normalizeProviderProtocol(provider.type) ?? normalizeProviderProtocol(provider.provider) ?? inferProtocol(provider);
+      const normalizedConfiguredName = configuredName.trim().toLowerCase();
+      if (providerRuntimeId(provider).toLowerCase() === normalizedConfiguredName || provider.name.trim().toLowerCase() === normalizedConfiguredName || providerCapabilityNameMatches(provider, protocol, configuredName)) {
+        return providerRuntimeId(provider);
+      }
+      continue;
+    }
+    for (const capability of capabilities) {
+      if (providerCapabilityNameMatches(provider, capability.type, configuredName)) {
+        return providerCapabilityInternalName(provider, capability.type);
+      }
+    }
+  }
+  return configuredName;
+}
 function configuredAnthropicBetaDefault(value) {
   if (typeof value === "string") {
     return value;
   }
-  if (!isRecord10(value)) {
+  if (!isRecord12(value)) {
     return void 0;
   }
-  return stringValue5(value.default);
+  return stringValue6(value.default);
 }
 function isLocalGrokOauthProviderPlugin(value) {
-  if (!isRecord10(value)) {
+  if (!isRecord12(value)) {
     return false;
   }
-  const key = stringValue5(value.key)?.toLowerCase() ?? "";
+  const key = stringValue6(value.key)?.toLowerCase() ?? "";
   return key.startsWith("ccr-local-agent-") && key.includes("grok-cli-oauth");
 }
 function isLocalKimiOauthProviderPlugin(value) {
-  if (!isRecord10(value)) {
+  if (!isRecord12(value)) {
     return false;
   }
-  const key = stringValue5(value.key)?.toLowerCase() ?? "";
+  const key = stringValue6(value.key)?.toLowerCase() ?? "";
   return key.startsWith("ccr-local-agent-") && key.includes("kimi-cli-oauth");
 }
 function withCodexBackendRequestTransform(request) {
-  const currentRequest = isRecord10(request) ? request : {};
-  const bodyRemove = Array.isArray(currentRequest.bodyRemove) ? currentRequest.bodyRemove.map((item) => stringValue5(item)).filter((item) => Boolean(item)) : [];
+  const currentRequest = isRecord12(request) ? request : {};
+  const bodyRemove = Array.isArray(currentRequest.bodyRemove) ? currentRequest.bodyRemove.map((item) => stringValue6(item)).filter((item) => Boolean(item)) : [];
   return {
     ...currentRequest,
     bodyRemove: uniqueStrings7([...bodyRemove, "max_output_tokens", "stop"])
@@ -66339,7 +68127,7 @@ function hasOwn(value, key) {
 // packages/core/src/gateway/core-runtime/config-writer.ts
 async function writeCoreGatewayConfig(config, rawTraceSyncToken, billingUsageSyncToken, coreAuthToken, browserWebSearchMcpIntegration, upstreamProxyUrl2) {
   assertLoopbackCoreHost(config.gateway.coreHost);
-  (0, import_node_fs18.mkdirSync)((0, import_node_path28.dirname)(config.gateway.generatedConfigFile), {
+  (0, import_node_fs19.mkdirSync)((0, import_node_path30.dirname)(config.gateway.generatedConfigFile), {
     mode: privateDirMode3,
     recursive: true
   });
@@ -66358,24 +68146,24 @@ async function writeCoreGatewayConfig(config, rawTraceSyncToken, billingUsageSyn
   );
 }
 function writePrivateTextFile(file, content) {
-  (0, import_node_fs18.writeFileSync)(file, content, { encoding: "utf8", mode: privateFileMode3 });
+  (0, import_node_fs19.writeFileSync)(file, content, { encoding: "utf8", mode: privateFileMode3 });
   if (process.platform !== "win32") {
     try {
-      (0, import_node_fs18.chmodSync)(file, privateFileMode3);
+      (0, import_node_fs19.chmodSync)(file, privateFileMode3);
     } catch {
     }
   }
 }
 
 // packages/core/src/usage/billing-sync.ts
-var import_node_crypto11 = require("node:crypto");
+var import_node_crypto12 = require("node:crypto");
 
 // packages/core/src/usage/store.ts
-var import_node_fs19 = require("node:fs");
+var import_node_fs20 = require("node:fs");
 var import_node_events2 = require("node:events");
-var import_node_crypto10 = require("node:crypto");
-var import_node_os10 = require("node:os");
-var import_node_path29 = require("node:path");
+var import_node_crypto11 = require("node:crypto");
+var import_node_os11 = require("node:os");
+var import_node_path31 = require("node:path");
 var usageEvents = new import_node_events2.EventEmitter();
 var usageStatsRanges = /* @__PURE__ */ new Set(["today", "24h", "7d", "30d"]);
 var emptyTotals = {
@@ -66519,7 +68307,7 @@ var UsageStore = class {
     return this.initPromise;
   }
   async open() {
-    (0, import_node_fs19.mkdirSync)((0, import_node_path29.dirname)(this.dbFile), { recursive: true });
+    (0, import_node_fs20.mkdirSync)((0, import_node_path31.dirname)(this.dbFile), { recursive: true });
     const database = createBetterSqliteDatabase(this.dbFile);
     configureSqliteDatabase4(database);
     database.exec(`
@@ -66555,7 +68343,7 @@ var UsageStore = class {
   }
   backfillFromRequestLogs(database, since) {
     const requestLogDbFile = this.requestLogDbFile;
-    if (!requestLogDbFile || !(0, import_node_fs19.existsSync)(requestLogDbFile)) {
+    if (!requestLogDbFile || !(0, import_node_fs20.existsSync)(requestLogDbFile)) {
       return;
     }
     let tempRequestLogDbFile;
@@ -66569,7 +68357,7 @@ var UsageStore = class {
       this.requestLogBackfillFailureLogged = false;
     } catch (error) {
       if (!this.requestLogBackfillFailureLogged) {
-        console.warn(`[usage] Failed to backfill usage from request logs: ${formatError13(error)}`);
+        console.warn(`[usage] Failed to backfill usage from request logs: ${formatError14(error)}`);
         this.requestLogBackfillFailureLogged = true;
       }
     } finally {
@@ -66692,7 +68480,7 @@ async function recordGatewayUsageCapture(input) {
       { physicalModel: true }
     );
     const route = splitRouteSelector2(input.fallbackModel);
-    const provider = input.providerName ?? readHeader6(input.responseHeaders, "x-gateway-target-provider-name") ?? readHeader6(input.responseHeaders, "x-gateway-target-provider") ?? responseAttribution.provider ?? fallbackAttribution.provider ?? route.provider;
+    const provider = input.providerName ?? readHeader8(input.responseHeaders, "x-gateway-target-provider-name") ?? readHeader8(input.responseHeaders, "x-gateway-target-provider") ?? responseAttribution.provider ?? fallbackAttribution.provider ?? route.provider;
     const model = responseAttribution.model ?? fallbackAttribution.model ?? route.model ?? input.fallbackModel;
     await usageStore.record({
       durationMs: input.durationMs,
@@ -66710,7 +68498,7 @@ async function recordGatewayUsageCapture(input) {
       usage
     });
   } catch (error) {
-    console.warn(`[usage] Failed to record usage: ${formatError13(error)}`);
+    console.warn(`[usage] Failed to record usage: ${formatError14(error)}`);
   }
 }
 function buildUsageWhereClause(since, filter, options = {}) {
@@ -66745,7 +68533,7 @@ function normalizeUsageRange(range) {
   return range && usageStatsRanges.has(range) ? range : "7d";
 }
 function normalizeUsageFilter(filter) {
-  if (!isRecord14(filter)) {
+  if (!isRecord16(filter)) {
     return {};
   }
   return {
@@ -66756,7 +68544,7 @@ function normalizeUsageFilter(filter) {
   };
 }
 function normalizeUsageQueryOptions(options) {
-  return isRecord14(options) && options.includeProxy === true ? { includeProxy: true } : {};
+  return isRecord16(options) && options.includeProxy === true ? { includeProxy: true } : {};
 }
 function configureSqliteDatabase4(database) {
   database.pragma("journal_mode = WAL");
@@ -66770,19 +68558,19 @@ function sqlString(value) {
   return `'${value.replace(/'/g, "''")}'`;
 }
 function copySqliteDatabaseToTemp(file) {
-  const target = (0, import_node_path29.join)((0, import_node_os10.tmpdir)(), `ccr-request-logs-${process.pid}-${Date.now()}-${(0, import_node_crypto10.randomBytes)(4).toString("hex")}.sqlite`);
-  (0, import_node_fs19.copyFileSync)(file, target);
+  const target = (0, import_node_path31.join)((0, import_node_os11.tmpdir)(), `ccr-request-logs-${process.pid}-${Date.now()}-${(0, import_node_crypto11.randomBytes)(4).toString("hex")}.sqlite`);
+  (0, import_node_fs20.copyFileSync)(file, target);
   for (const suffix of ["-wal", "-shm"]) {
     const source = `${file}${suffix}`;
-    if ((0, import_node_fs19.existsSync)(source)) {
-      (0, import_node_fs19.copyFileSync)(source, `${target}${suffix}`);
+    if ((0, import_node_fs20.existsSync)(source)) {
+      (0, import_node_fs20.copyFileSync)(source, `${target}${suffix}`);
     }
   }
   return target;
 }
 function cleanupSqliteTempCopy(file) {
   for (const item of [file, `${file}-wal`, `${file}-shm`]) {
-    (0, import_node_fs19.rmSync)(item, { force: true });
+    (0, import_node_fs20.rmSync)(item, { force: true });
   }
 }
 function toStoredUsageEvent(row) {
@@ -67145,13 +68933,13 @@ function parseStreamPayloads2(text) {
   return payloads;
 }
 function extractUsageSnapshot2(payload) {
-  if (!isRecord14(payload)) {
+  if (!isRecord16(payload)) {
     return void 0;
   }
-  const response = isRecord14(payload.response) ? payload.response : payload;
-  const message = isRecord14(payload.message) ? payload.message : void 0;
-  const usage = isRecord14(response.usage) ? response.usage : isRecord14(payload.usage) ? payload.usage : isRecord14(message?.usage) ? message.usage : void 0;
-  const usageMetadata = isRecord14(response.usageMetadata) ? response.usageMetadata : isRecord14(payload.usageMetadata) ? payload.usageMetadata : void 0;
+  const response = isRecord16(payload.response) ? payload.response : payload;
+  const message = isRecord16(payload.message) ? payload.message : void 0;
+  const usage = isRecord16(response.usage) ? response.usage : isRecord16(payload.usage) ? payload.usage : isRecord16(message?.usage) ? message.usage : void 0;
+  const usageMetadata = isRecord16(response.usageMetadata) ? response.usageMetadata : isRecord16(payload.usageMetadata) ? payload.usageMetadata : void 0;
   if (usageMetadata) {
     return {
       cacheReadTokens: asNumber2(usageMetadata.cachedContentTokenCount),
@@ -67165,10 +68953,10 @@ function extractUsageSnapshot2(payload) {
   if (!usage) {
     return void 0;
   }
-  const inputDetails = isRecord14(usage.input_tokens_details) ? usage.input_tokens_details : isRecord14(usage.prompt_tokens_details) ? usage.prompt_tokens_details : void 0;
+  const inputDetails = isRecord16(usage.input_tokens_details) ? usage.input_tokens_details : isRecord16(usage.prompt_tokens_details) ? usage.prompt_tokens_details : void 0;
   const hasAnthropicCacheFields = usage.cache_read_input_tokens !== void 0 || usage.cache_creation_input_tokens !== void 0;
   const hasOpenAiCacheFields = inputDetails?.cached_tokens !== void 0 || inputDetails?.cache_creation_tokens !== void 0 || usage.cached_tokens !== void 0 || usage.prompt_tokens !== void 0;
-  const cacheCreation = isRecord14(usage.cache_creation) ? usage.cache_creation : void 0;
+  const cacheCreation = isRecord16(usage.cache_creation) ? usage.cache_creation : void 0;
   const cacheWrite5mTokens = asNumber2(cacheCreation?.ephemeral_5m_input_tokens);
   const cacheWrite1hTokens = asNumber2(cacheCreation?.ephemeral_1h_input_tokens);
   return {
@@ -67206,12 +68994,12 @@ function sumOptionalNumbers2(...values) {
   const present = values.filter((value) => value !== void 0);
   return present.length > 0 ? present.reduce((total, value) => total + value, 0) : void 0;
 }
-function readHeader6(headers, name) {
+function readHeader8(headers, name) {
   const value = headers.get(name)?.trim();
   return value || void 0;
 }
 function readCredentialId(headers) {
-  return readHeader6(headers, "x-ccr-provider-credential-id") ?? parseCredentialChain2(readHeader6(headers, "x-ccr-provider-credential-chain"))[0];
+  return readHeader8(headers, "x-ccr-provider-credential-id") ?? parseCredentialChain2(readHeader8(headers, "x-ccr-provider-credential-chain"))[0];
 }
 function parseCredentialChain2(value) {
   const result = [];
@@ -67227,7 +69015,7 @@ function parseCredentialChain2(value) {
   return result;
 }
 function readNumberHeader(headers, name) {
-  return asNumber2(readHeader6(headers, name));
+  return asNumber2(readHeader8(headers, name));
 }
 function asNumber2(value) {
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
@@ -67247,7 +69035,7 @@ function normalizeOptionalCost(value) {
 function asString2(value) {
   return typeof value === "string" && value.trim() ? value.trim() : void 0;
 }
-function isRecord14(value) {
+function isRecord16(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function parseJson2(value) {
@@ -67329,7 +69117,7 @@ function ratio2(numerator, denominator) {
 function sum2(items, read) {
   return items.reduce((total, item) => total + read(item), 0);
 }
-function formatError13(error) {
+function formatError14(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -67347,7 +69135,7 @@ var modelGenerationAdapters = /* @__PURE__ */ new Set([
   "openai_responses"
 ]);
 var GatewayBillingSynchronizer = class {
-  token = (0, import_node_crypto11.randomUUID)();
+  token = (0, import_node_crypto12.randomUUID)();
   getConfig;
   getGlobalBillingConfig;
   inFlightEventIds = /* @__PURE__ */ new Map();
@@ -67360,40 +69148,40 @@ var GatewayBillingSynchronizer = class {
   }
   async handle(request, response) {
     if (request.method !== "POST") {
-      sendJson3(response, 405, { error: { message: "Method not allowed." } });
+      sendJson4(response, 405, { error: { message: "Method not allowed." } });
       return;
     }
-    if (readHeader5(request.headers[billingUsageSyncHeader]) !== this.token) {
-      sendJson3(response, 401, { error: { message: "Unauthorized billing usage sync." } });
+    if (readHeader7(request.headers[billingUsageSyncHeader]) !== this.token) {
+      sendJson4(response, 401, { error: { message: "Unauthorized billing usage sync." } });
       return;
     }
     let event;
     try {
       event = JSON.parse((await readRequestBody(request)).toString("utf8"));
     } catch {
-      sendJson3(response, 400, { error: { message: "Invalid billing event." } });
+      sendJson4(response, 400, { error: { message: "Invalid billing event." } });
       return;
     }
     const applied = await this.ingest(event);
-    sendJson3(response, 200, { applied, ok: true });
+    sendJson4(response, 200, { applied, ok: true });
   }
   async ingest(value) {
-    if (!isRecord10(value)) {
+    if (!isRecord12(value)) {
       return false;
     }
-    if (stringValue5(value.schema) !== fusionUsageEventSchema) {
+    if (stringValue6(value.schema) !== fusionUsageEventSchema) {
       return false;
     }
-    const eventId = stringValue5(value.eventId);
+    const eventId = stringValue6(value.eventId);
     if (!eventId) {
       return false;
     }
     if (this.seenEventIds.has(eventId)) {
       return true;
     }
-    const target = isRecord10(value.target) ? value.target : {};
-    const model = stringValue5(target.model);
-    const providerSelector = stringValue5(target.providerName) ?? stringValue5(target.provider);
+    const target = isRecord12(value.target) ? value.target : {};
+    const model = stringValue6(target.model);
+    const providerSelector = stringValue6(target.providerName) ?? stringValue6(target.provider);
     const config = this.getConfig();
     const configuredProvider = config && providerSelector ? findProviderByPublicOrInternalName(config, providerSelector) : void 0;
     const provider = configuredProvider?.name ?? providerSelector;
@@ -67401,8 +69189,8 @@ var GatewayBillingSynchronizer = class {
       new Headers({ "x-gateway-target-provider-name": providerSelector }),
       config
     ) : void 0;
-    const source = isRecord10(value.source) ? value.source : {};
-    const sourceAdapter = stringValue5(source.adapterKey);
+    const source = isRecord12(value.source) ? value.source : {};
+    const sourceAdapter = stringValue6(source.adapterKey);
     if (!model || !sourceAdapter || !modelGenerationAdapters.has(sourceAdapter)) {
       return false;
     }
@@ -67442,15 +69230,15 @@ var GatewayBillingSynchronizer = class {
     return true;
   }
   async recordInternalUsageEvent(event, eventId, model, provider, providerProtocol, providerBilling) {
-    const route = isRecord10(event.route) ? event.route : {};
-    const outcome = isRecord10(event.outcome) ? event.outcome : {};
-    const performance2 = isRecord10(event.performance) ? event.performance : {};
-    const billing = isRecord10(event.billing) ? event.billing : {};
-    const usage = isRecord10(billing.usage) ? billing.usage : {};
-    const cost = isRecord10(billing.cost) ? billing.cost : {};
-    const status = stringValue5(outcome.status);
+    const route = isRecord12(event.route) ? event.route : {};
+    const outcome = isRecord12(event.outcome) ? event.outcome : {};
+    const performance2 = isRecord12(event.performance) ? event.performance : {};
+    const billing = isRecord12(event.billing) ? event.billing : {};
+    const usage = isRecord12(billing.usage) ? billing.usage : {};
+    const cost = isRecord12(billing.cost) ? billing.cost : {};
+    const status = stringValue6(outcome.status);
     const statusCode = numberValue4(outcome.statusCode) ?? (status === "success" ? 200 : 502);
-    const path23 = pathFromUrl3(stringValue5(route.url));
+    const path24 = pathFromUrl3(stringValue6(route.url));
     const normalizedUsage = normalizeUsageInputTokens({
       cacheReadTokens: numberValue4(usage.cache_read_tokens),
       cacheWriteTokens: numberValue4(usage.cache_write_tokens),
@@ -67458,7 +69246,7 @@ var GatewayBillingSynchronizer = class {
       outputTokens: numberValue4(usage.output_tokens),
       totalTokens: numberValue4(usage.total_tokens)
     }, {
-      path: path23,
+      path: path24,
       providerProtocol
     });
     const reportedCost = finiteNumber(cost.total);
@@ -67473,14 +69261,14 @@ var GatewayBillingSynchronizer = class {
         providerProtocol,
         model
       ),
-      createdAt: stringValue5(event.emittedAt),
-      credentialId: stringValue5(targetCredentialId(event)),
+      createdAt: stringValue6(event.emittedAt),
+      credentialId: stringValue6(targetCredentialId(event)),
       durationMs: numberValue4(performance2.latency_ms) ?? 0,
       logicalModel: model,
-      method: stringValue5(route.method) ?? "POST",
+      method: stringValue6(route.method) ?? "POST",
       model,
       modelIsRouteSelector: false,
-      path: path23,
+      path: path24,
       provider,
       requestId: eventId,
       statusCode,
@@ -67500,8 +69288,8 @@ var GatewayBillingSynchronizer = class {
   }
 };
 function targetCredentialId(event) {
-  const target = isRecord10(event.target) ? event.target : {};
-  return stringValue5(target.credentialId);
+  const target = isRecord12(event.target) ? event.target : {};
+  return stringValue6(target.credentialId);
 }
 function finiteNumber(value) {
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
@@ -67530,7 +69318,7 @@ function hasConfiguredGlobalBillingEnvironmentRate(providerProtocol) {
   });
 }
 function hasConfiguredGlobalBillingRate(value, providerProtocol) {
-  if (!isRecord10(value) || !isRecord10(value.rates)) {
+  if (!isRecord12(value) || !isRecord12(value.rates)) {
     return false;
   }
   const provider = billingProviderForProtocol(providerProtocol);
@@ -67560,10 +69348,10 @@ function hasUsageTokens(usage) {
   );
 }
 function hasConfiguredBillingRate(value, model) {
-  if (!isRecord10(value)) {
+  if (!isRecord12(value)) {
     return false;
   }
-  const byModel = isRecord10(value.byModel) ? value.byModel : void 0;
+  const byModel = isRecord12(value.byModel) ? value.byModel : void 0;
   return [
     byModel?.[model],
     value[model],
@@ -67572,7 +69360,7 @@ function hasConfiguredBillingRate(value, model) {
   ].some(hasBillingRate);
 }
 function hasBillingRate(value) {
-  if (!isRecord10(value)) {
+  if (!isRecord12(value)) {
     return false;
   }
   return [
@@ -67583,11 +69371,11 @@ function hasBillingRate(value) {
   ].some((rate) => finiteNumber(rate) !== void 0) || hasBillingTiers(value.tiers);
 }
 function hasBillingTiers(value) {
-  if (!isRecord10(value)) {
+  if (!isRecord12(value)) {
     return false;
   }
   return [value.input, value.output, value.cacheRead, value.cacheWrite].some((tiers) => Array.isArray(tiers) && tiers.some(
-    (tier) => isRecord10(tier) && finiteNumber(tier.perMillionUsd) !== void 0
+    (tier) => isRecord12(tier) && finiteNumber(tier.perMillionUsd) !== void 0
   ));
 }
 function pathFromUrl3(value) {
@@ -67602,8 +69390,141 @@ function pathFromUrl3(value) {
 }
 
 // packages/core/src/gateway/request/pipeline.ts
-var import_node_crypto13 = require("node:crypto");
-var import_node_stream4 = require("node:stream");
+var import_node_crypto14 = require("node:crypto");
+var import_node_stream5 = require("node:stream");
+
+// packages/core/src/gateway/features/hosted-web-search/sse.ts
+function parseSseEvents(body) {
+  return body.split(/\r?\n\r?\n/g).filter((block) => block.trim()).map(parseSseEventBlock);
+}
+function parseSseEventBlock(raw) {
+  const lines = raw.split(/\r?\n/g);
+  const event = lines.filter((line) => line.startsWith("event:")).map((line) => line.slice(6).trim()).find(Boolean);
+  const data = lines.filter((line) => line.startsWith("data:")).map((line) => line.slice(5).replace(/^ /, "")).join("\n");
+  if (!data || data === "[DONE]") {
+    return { event, raw };
+  }
+  try {
+    return { data: JSON.parse(data), event, raw };
+  } catch {
+    return { event, raw };
+  }
+}
+function shiftSseContentBlockIndex(event, startIndex, delta) {
+  if (!isRecord12(event.data) || !Number.isFinite(event.data.index) || Number(event.data.index) < startIndex) {
+    return event;
+  }
+  return {
+    ...event,
+    data: {
+      ...event.data,
+      index: Number(event.data.index) + delta
+    }
+  };
+}
+function sseEventFromValue(data) {
+  return {
+    data,
+    event: stringValue6(data.type)
+  };
+}
+function serializeSseEvent(event) {
+  if (event.data === void 0) {
+    return event.raw ?? "";
+  }
+  const type = isRecord12(event.data) ? stringValue6(event.data.type) : void 0;
+  return [
+    event.event || type ? `event: ${event.event || type}` : void 0,
+    `data: ${JSON.stringify(event.data)}`
+  ].filter(Boolean).join("\n");
+}
+
+// packages/core/src/routing/execution-plan.ts
+function createRouteExecutionPlan(input) {
+  const primaryModel = normalizeRouteSelector(input.bodyModel) ?? normalizeRouteSelector(input.primaryModel);
+  if (input.fallback.mode === "off" || !input.hasRequestBody) {
+    return {
+      attempts: [routeAttempt(0, primaryModel, input.modelRegistry)],
+      fallback: input.fallback,
+      primaryModel
+    };
+  }
+  if (input.fallback.mode === "retry") {
+    const retryCount = clamp(input.fallback.retryCount, 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
+    return {
+      attempts: Array.from(
+        { length: retryCount + 1 },
+        (_unused, index) => routeAttempt(index, primaryModel, input.modelRegistry)
+      ),
+      fallback: input.fallback,
+      primaryModel
+    };
+  }
+  const models = uniqueStrings9([
+    primaryModel,
+    ...input.fallback.models.map((model) => normalizeRouteSelector(model))
+  ]);
+  return {
+    attempts: (models.length ? models : [void 0]).map((model, index) => routeAttempt(index, model, input.modelRegistry)),
+    fallback: input.fallback,
+    primaryModel
+  };
+}
+function routeAttempt(index, model, modelRegistry) {
+  const target = modelRegistry?.resolve(model);
+  return {
+    index,
+    model,
+    ...target ? { target } : {}
+  };
+}
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, Math.trunc(Number.isFinite(value) ? value : min)));
+}
+function uniqueStrings9(values) {
+  const seen = /* @__PURE__ */ new Set();
+  const output = [];
+  for (const value of values) {
+    const normalized = value?.trim();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    output.push(normalized);
+  }
+  return output;
+}
+
+// packages/core/src/routing/protocol-endpoints.ts
+function requestProtocolForPath(path24) {
+  const normalized = path24.toLowerCase();
+  if (normalized === "/v1/messages" || normalized === "/messages" || normalized.endsWith("/v1/messages")) {
+    return "anthropic_messages";
+  }
+  if (normalized === "/v1/chat/completions" || normalized === "/chat/completions" || normalized.endsWith("/chat/completions")) {
+    return "openai_chat_completions";
+  }
+  if (normalized === "/v1/responses" || normalized === "/responses" || normalized.endsWith("/responses")) {
+    return "openai_responses";
+  }
+  if (/\/v1(?:beta)?\/models\/[^/]+:(?:generatecontent|streamgeneratecontent)$/i.test(normalized)) {
+    return "gemini_generate_content";
+  }
+  if (/\/v1(?:beta)?\/interactions(?:\/[^/]+(?:\/cancel)?)?$/i.test(normalized)) {
+    return "gemini_interactions";
+  }
+  return void 0;
+}
+function shouldApplyGatewayRouting(method, path24) {
+  if (method.toUpperCase() !== "POST") {
+    return false;
+  }
+  const protocol = requestProtocolForPath(path24);
+  if (protocol === "gemini_interactions") {
+    return /\/v1(?:beta)?\/interactions$/i.test(path24);
+  }
+  return Boolean(protocol);
+}
 
 // packages/core/src/gateway/limits/window-limiter.ts
 var apiKeyLimitCounterRetentionWindows = 2;
@@ -67679,7 +69600,7 @@ function countImageInputs(value) {
   if (Array.isArray(value)) {
     return value.reduce((sum3, item) => sum3 + countImageInputs(item), 0);
   }
-  if (!isRecord10(value)) return 0;
+  if (!isRecord12(value)) return 0;
   const type = typeof value.type === "string" ? value.type.toLowerCase() : "";
   const isImage = type === "image" || type === "image_url" || type === "input_image" || value.image_url !== void 0 || value.input_image !== void 0;
   return (isImage ? 1 : 0) + Object.values(value).reduce((sum3, item) => sum3 + countImageInputs(item), 0);
@@ -67687,113 +69608,6 @@ function countImageInputs(value) {
 function readPositiveNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? Math.ceil(number) : void 0;
-}
-
-// packages/core/src/gateway/auth/api-key-authorizer.ts
-var persistedApiKeyCacheTtlMs = 1e3;
-var persistedApiKeyCache;
-async function authorize(request, response, config) {
-  let apiKeys = await configuredApiKeys(config);
-  if (apiKeys.length === 0) {
-    sendJson3(response, 403, {
-      error: {
-        message: "CCR API key is not initialized. Save a gateway API key or restart CCR to generate one."
-      }
-    });
-    return { ok: false };
-  }
-  const token = readAuthToken(request.headers) || readRemoteControlQueryAuthToken(request);
-  let apiKey = token ? apiKeys.find((item) => item.key === token) : void 0;
-  if (!apiKey && token) {
-    apiKeys = await configuredApiKeys(config, { refresh: true });
-    apiKey = apiKeys.find((item) => item.key === token);
-  }
-  if (apiKey) {
-    if (isApiKeyExpired(apiKey)) {
-      sendJson3(response, 401, { error: { message: "API key is expired." } });
-      return { ok: false };
-    }
-    return { ok: true, apiKey };
-  }
-  sendJson3(response, 401, { error: { message: token ? "Invalid API key." : "API key is missing." } });
-  return { ok: false };
-}
-function reserveApiKeyLimits(apiKey, request, response, requestBody) {
-  if (!apiKey?.limits) return true;
-  const usage = estimateLimitUsage(request.method ?? "GET", requestBody);
-  const rules = apiKeyLimitRules(apiKey, usage);
-  const now = Date.now();
-  const checks = rules.map((rule) => {
-    const windowStart = Math.floor(now / rule.windowMs) * rule.windowMs;
-    return {
-      counterKey: ["api-key", apiKey.id, rule.name, rule.metric, rule.windowMs, windowStart].join("|"),
-      rule,
-      windowStart
-    };
-  });
-  for (const check of checks) {
-    const counter = readWindowCounter(check.counterKey, check.windowStart, check.rule.windowMs, now);
-    if (counter.value + check.rule.requested > check.rule.limit) {
-      sendJson3(response, 429, {
-        error: {
-          code: "rate_limit_exceeded",
-          message: `API key ${check.rule.name} limit exceeded.`,
-          details: {
-            limit: check.rule.limit,
-            limit_name: check.rule.name,
-            metric: check.rule.metric,
-            requested: check.rule.requested,
-            used: counter.value,
-            window_ms: check.rule.windowMs
-          }
-        }
-      });
-      return false;
-    }
-  }
-  for (const check of checks) {
-    readWindowCounter(check.counterKey, check.windowStart, check.rule.windowMs, now).value += check.rule.requested;
-  }
-  return true;
-}
-async function configuredApiKeys(config, options = {}) {
-  const persistedApiKeys = await loadPersistedApiKeysCached(options);
-  const values = [
-    ...persistedApiKeys,
-    ...Array.isArray(config.APIKEYS) ? config.APIKEYS : [],
-    ...config.APIKEY ? [{ createdAt: (/* @__PURE__ */ new Date(0)).toISOString(), id: "legacy", key: config.APIKEY }] : []
-  ];
-  const seen = /* @__PURE__ */ new Set();
-  const result = [];
-  for (const value of values) {
-    const key = value?.key?.trim();
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    result.push({ ...value, key });
-  }
-  return result;
-}
-async function loadPersistedApiKeysCached(options = {}) {
-  const now = Date.now();
-  if (!options.refresh && persistedApiKeyCache && now - persistedApiKeyCache.loadedAt < persistedApiKeyCacheTtlMs) {
-    return persistedApiKeyCache.values;
-  }
-  try {
-    const values = await loadPersistedApiKeys();
-    persistedApiKeyCache = { loadedAt: now, values };
-    return values;
-  } catch (error) {
-    console.warn(`[gateway] Failed to load persisted API keys: ${formatError11(error)}`);
-    return [];
-  }
-}
-function isApiKeyExpired(apiKey) {
-  if (!apiKey.expiresAt) return false;
-  const expiresAt = Date.parse(apiKey.expiresAt);
-  return Number.isFinite(expiresAt) && expiresAt <= Date.now();
-}
-function apiKeyLimitRules(apiKey, usage) {
-  return limitRules(apiKey.limits, usage);
 }
 
 // packages/core/src/providers/credential-pool.ts
@@ -67861,630 +69675,6 @@ function clearProviderCredentialCooldown(provider, credential) {
 }
 function providerCredentialStateKey(provider, credential) {
   return `${provider.name}::${providerCredentialRuntimeId(provider, credential)}`;
-}
-
-// packages/core/src/gateway/features/codex-patch-bridge.ts
-var import_node_stream2 = require("node:stream");
-
-// packages/core/src/routing/protocol-endpoints.ts
-function requestProtocolForPath(path23) {
-  const normalized = path23.toLowerCase();
-  if (normalized === "/v1/messages" || normalized === "/messages" || normalized.endsWith("/v1/messages")) {
-    return "anthropic_messages";
-  }
-  if (normalized === "/v1/chat/completions" || normalized === "/chat/completions" || normalized.endsWith("/chat/completions")) {
-    return "openai_chat_completions";
-  }
-  if (normalized === "/v1/responses" || normalized === "/responses" || normalized.endsWith("/responses")) {
-    return "openai_responses";
-  }
-  if (/\/v1(?:beta)?\/models\/[^/]+:(?:generatecontent|streamgeneratecontent)$/i.test(normalized)) {
-    return "gemini_generate_content";
-  }
-  if (/\/v1(?:beta)?\/interactions(?:\/[^/]+(?:\/cancel)?)?$/i.test(normalized)) {
-    return "gemini_interactions";
-  }
-  return void 0;
-}
-function shouldApplyGatewayRouting(method, path23) {
-  if (method.toUpperCase() !== "POST") {
-    return false;
-  }
-  const protocol = requestProtocolForPath(path23);
-  if (protocol === "gemini_interactions") {
-    return /\/v1(?:beta)?\/interactions$/i.test(path23);
-  }
-  return Boolean(protocol);
-}
-
-// packages/core/src/gateway/features/codex-patch-bridge.ts
-function prepareCodexApplyPatchBridgeRequest(input) {
-  if (!codexApplyPatchBridgeEnabled(input.headers, input.method, input.path)) {
-    return void 0;
-  }
-  const parsedBody = parseJsonObjectSafe(input.body);
-  if (!parsedBody) {
-    return void 0;
-  }
-  const model = input.routedModel || stringValue5(parsedBody.model);
-  if (!codexPatchBridgeModelEligible(model, input.config)) {
-    return void 0;
-  }
-  const transformed = transformCodexApplyPatchBridgeRequestBody(parsedBody);
-  if (!transformed.changed) {
-    return void 0;
-  }
-  return {
-    body: serializeJsonBody(transformed.body),
-    diagnostic: `${model ?? "unknown"}:${transformed.changedParts.join(",")}`
-  };
-}
-function transformCodexApplyPatchBridgeRequestBody(body) {
-  const next = { ...body };
-  const changedParts = [];
-  const tools = transformCodexApplyPatchBridgeTools(body.tools);
-  if (tools.changed) {
-    next.tools = tools.value;
-    changedParts.push("tools");
-    const instructions = transformCodexApplyPatchBridgeInstructions(body.instructions);
-    if (instructions.changed) {
-      next.instructions = instructions.value;
-      changedParts.push("instructions");
-    }
-    const input = transformCodexApplyPatchBridgeInput(body.input);
-    if (input.changed) {
-      next.input = input.value;
-      changedParts.push("input");
-    }
-  }
-  return {
-    body: next,
-    changed: changedParts.length > 0,
-    changedParts
-  };
-}
-function transformCodexApplyPatchBridgeTools(value) {
-  if (!Array.isArray(value)) {
-    return { value, changed: false };
-  }
-  const hasApplyPatchTool = value.some((tool) => isRecord10(tool) && tool.type === "custom" && tool.name === "apply_patch");
-  if (!hasApplyPatchTool) {
-    return { value, changed: false };
-  }
-  let changed = false;
-  const tools = value.map((tool) => {
-    if (isRecord10(tool) && tool.type === "custom" && tool.name === "apply_patch") {
-      changed = true;
-      return virtualApplyPatchToolSpec();
-    }
-    const shellTool = transformCodexPatchBridgeShellTool(tool);
-    if (shellTool.changed) {
-      changed = true;
-      return shellTool.value;
-    }
-    return tool;
-  });
-  return { value: tools, changed };
-}
-function transformCodexApplyPatchBridgeInstructions(value) {
-  const text = rawStringValue(value);
-  if (text === void 0) {
-    return value === void 0 ? { value: codexPatchBridgeInstructionText, changed: true } : { value, changed: false };
-  }
-  if (text.includes(codexPatchBridgeInstructionText)) {
-    return { value, changed: false };
-  }
-  return {
-    value: `${text.trimEnd()}
-
-${codexPatchBridgeInstructionText}`,
-    changed: true
-  };
-}
-function transformCodexPatchBridgeShellTool(value) {
-  if (!isRecord10(value) || value.type !== "function") {
-    return { value, changed: false };
-  }
-  const name = stringValue5(value.name);
-  if (name !== "exec_command" && name !== "write_stdin") {
-    return { value, changed: false };
-  }
-  let changed = false;
-  const next = { ...value };
-  const description = rawStringValue(value.description) ?? "";
-  if (!description.includes(codexPatchBridgeShellToolGuidance)) {
-    next.description = description ? `${description} ${codexPatchBridgeShellToolGuidance}` : codexPatchBridgeShellToolGuidance;
-    changed = true;
-  }
-  if (name === "exec_command") {
-    const parameters = transformCodexPatchBridgeExecCommandParameters(value.parameters);
-    if (parameters.changed) {
-      next.parameters = parameters.value;
-      changed = true;
-    }
-  }
-  return { value: changed ? next : value, changed };
-}
-function transformCodexPatchBridgeExecCommandParameters(value) {
-  if (!isRecord10(value) || !isRecord10(value.properties) || !isRecord10(value.properties.cmd)) {
-    return { value, changed: false };
-  }
-  const cmd = value.properties.cmd;
-  const description = rawStringValue(cmd.description) ?? "";
-  if (description.includes(codexPatchBridgeShellToolGuidance)) {
-    return { value, changed: false };
-  }
-  return {
-    value: {
-      ...value,
-      properties: {
-        ...value.properties,
-        cmd: {
-          ...cmd,
-          description: description ? `${description} ${codexPatchBridgeShellToolGuidance}` : codexPatchBridgeShellToolGuidance
-        }
-      }
-    },
-    changed: true
-  };
-}
-function transformCodexApplyPatchBridgeInput(value) {
-  if (!Array.isArray(value)) {
-    return { value, changed: false };
-  }
-  const applyPatchCallIds = /* @__PURE__ */ new Set();
-  for (const item of value) {
-    if (isRecord10(item) && item.type === "custom_tool_call" && item.name === "apply_patch") {
-      const callId = stringValue5(item.call_id);
-      if (callId) {
-        applyPatchCallIds.add(callId);
-      }
-    }
-  }
-  let changed = false;
-  const items = value.map((item) => {
-    const transformed = transformCodexApplyPatchBridgeInputItem(item, applyPatchCallIds);
-    changed ||= transformed.changed;
-    return transformed.value;
-  });
-  return { value: items, changed };
-}
-function transformCodexApplyPatchBridgeInputItem(value, applyPatchCallIds) {
-  if (!isRecord10(value)) {
-    return { value, changed: false };
-  }
-  if (value.type === "custom_tool_call" && value.name === "apply_patch") {
-    const { input: patchInput, name: _name, type: _type, ...rest } = value;
-    return {
-      value: {
-        ...rest,
-        type: "function_call",
-        name: virtualApplyPatchToolName,
-        arguments: JSON.stringify({ patch: rawStringValue(patchInput) ?? "" })
-      },
-      changed: true
-    };
-  }
-  if (value.type === "custom_tool_call_output" && (applyPatchCallIds.has(stringValue5(value.call_id) ?? "") || value.name === "apply_patch")) {
-    const { name: _name, type: _type, ...rest } = value;
-    return {
-      value: {
-        ...rest,
-        type: "function_call_output"
-      },
-      changed: true
-    };
-  }
-  return { value, changed: false };
-}
-function virtualApplyPatchToolSpec() {
-  return {
-    type: "function",
-    name: virtualApplyPatchToolName,
-    description: [
-      "Edit files by returning exactly one complete apply_patch patch.",
-      "The patch field must be raw patch grammar text starting with *** Begin Patch and ending with *** End Patch.",
-      "Do not wrap the patch in JSON, markdown fences, shell commands, cat, sed, perl, or python.",
-      "The patch field must match this Lark grammar:",
-      virtualApplyPatchLarkGrammar
-    ].join("\n\n"),
-    strict: true,
-    parameters: {
-      type: "object",
-      additionalProperties: false,
-      required: ["patch"],
-      properties: {
-        patch: {
-          type: "string",
-          description: [
-            "Raw apply_patch grammar text matching this Lark grammar:",
-            virtualApplyPatchLarkGrammar
-          ].join("\n\n")
-        }
-      }
-    }
-  };
-}
-function codexApplyPatchBridgeEnabled(headers, method, path23) {
-  return (method || "GET").toUpperCase() === "POST" && requestProtocolForPath(path23) === "openai_responses" && isCodexUserAgent(headers);
-}
-function isCodexUserAgent(headers) {
-  return readHeader5(headers["user-agent"])?.toLowerCase().includes("codex") ?? false;
-}
-function codexPatchBridgeModelEligible(model, config) {
-  const modelName = modelNameForPatchBridge(model);
-  if (!modelName || modelName.toLowerCase().includes("gpt")) {
-    return false;
-  }
-  const baseModelName = modelNameForPatchBridge(resolveUsageModelAttribution(config, model).model);
-  return !baseModelName.toLowerCase().includes("gpt");
-}
-function modelNameForPatchBridge(model) {
-  const normalized = normalizeRouteSelector(model) ?? "";
-  const slashIndex = normalized.lastIndexOf("/");
-  return slashIndex >= 0 ? normalized.slice(slashIndex + 1) : normalized;
-}
-function codexApplyPatchBridgeResponseStream(input, headers) {
-  const contentType = headers.get("content-type")?.toLowerCase() ?? "";
-  if (contentType.includes("text/event-stream")) {
-    return input.pipe(new import_node_stream2.Transform({
-      transform(chunk, _encoding, callback) {
-        transformSseChunk(this, chunk);
-        callback();
-      },
-      flush(callback) {
-        flushSseTransform(this);
-        callback();
-      }
-    }));
-  }
-  if (contentType.includes("application/json")) {
-    const chunks = [];
-    return input.pipe(new import_node_stream2.Transform({
-      transform(chunk, _encoding, callback) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-        callback();
-      },
-      flush(callback) {
-        const raw = Buffer.concat(chunks).toString("utf8");
-        try {
-          const parsed = JSON.parse(raw);
-          const transformed = transformCodexApplyPatchBridgeResponseValue(parsed);
-          this.push(Buffer.from(`${JSON.stringify(transformed.value)}
-`, "utf8"));
-        } catch {
-          this.push(Buffer.from(raw, "utf8"));
-        }
-        callback();
-      }
-    }));
-  }
-  return input;
-}
-function transformCodexApplyPatchBridgeResponseValue(value) {
-  if (!isRecord10(value)) {
-    return { value, changed: false };
-  }
-  let changed = false;
-  const next = { ...value };
-  if (isRecord10(value.item)) {
-    const item2 = transformVirtualApplyPatchFunctionCall(value.item, value.type === "response.output_item.added");
-    if (item2.changed) {
-      next.item = item2.value;
-      changed = true;
-    }
-  }
-  if (Array.isArray(value.output)) {
-    const output = transformCodexApplyPatchBridgeResponseItems(value.output);
-    if (output.changed) {
-      next.output = output.value;
-      changed = true;
-    }
-  }
-  if (isRecord10(value.response) && Array.isArray(value.response.output)) {
-    const output = transformCodexApplyPatchBridgeResponseItems(value.response.output);
-    if (output.changed) {
-      next.response = {
-        ...value.response,
-        output: output.value
-      };
-      changed = true;
-    }
-  }
-  const item = transformVirtualApplyPatchFunctionCall(next, false);
-  if (item.changed) {
-    return item;
-  }
-  return { value: next, changed };
-}
-function transformCodexApplyPatchBridgeResponseItems(items) {
-  let changed = false;
-  const value = items.map((item) => {
-    const transformed = isRecord10(item) ? transformVirtualApplyPatchFunctionCall(item, false) : { value: item, changed: false };
-    changed ||= transformed.changed;
-    return transformed.value;
-  });
-  return { value, changed };
-}
-function transformVirtualApplyPatchFunctionCall(item, allowEmptyInput) {
-  if (item.type !== "function_call" || item.name !== virtualApplyPatchToolName) {
-    return { value: item, changed: false };
-  }
-  const patch = patchInputFromVirtualApplyPatchArguments(item.arguments);
-  if (patch === void 0 && !allowEmptyInput) {
-    return { value: item, changed: false };
-  }
-  const { arguments: _arguments, name: _name, type: _type, ...rest } = item;
-  return {
-    value: {
-      ...rest,
-      type: "custom_tool_call",
-      name: "apply_patch",
-      input: patch ?? ""
-    },
-    changed: true
-  };
-}
-function patchInputFromVirtualApplyPatchArguments(value) {
-  if (isRecord10(value)) {
-    return rawStringValue(value.patch);
-  }
-  const text = rawStringValue(value);
-  if (text === void 0) {
-    return void 0;
-  }
-  try {
-    const parsed = JSON.parse(text);
-    return isRecord10(parsed) ? rawStringValue(parsed.patch) : void 0;
-  } catch {
-    return void 0;
-  }
-}
-function transformSseChunk(stream, chunk) {
-  const state = stream;
-  state.__ccrCodexPatchBridgeSsePending = (state.__ccrCodexPatchBridgeSsePending ?? "") + chunk.toString();
-  while (state.__ccrCodexPatchBridgeSsePending) {
-    const match = /\r?\n\r?\n/.exec(state.__ccrCodexPatchBridgeSsePending);
-    if (!match || match.index === void 0) {
-      break;
-    }
-    const block = state.__ccrCodexPatchBridgeSsePending.slice(0, match.index);
-    const delimiter = match[0];
-    state.__ccrCodexPatchBridgeSsePending = state.__ccrCodexPatchBridgeSsePending.slice(match.index + delimiter.length);
-    stream.push(transformCodexApplyPatchBridgeSseEvent(block) + delimiter);
-  }
-}
-function flushSseTransform(stream) {
-  const state = stream;
-  if (state.__ccrCodexPatchBridgeSsePending) {
-    stream.push(transformCodexApplyPatchBridgeSseEvent(state.__ccrCodexPatchBridgeSsePending));
-    state.__ccrCodexPatchBridgeSsePending = "";
-  }
-}
-function transformCodexApplyPatchBridgeSseEvent(block) {
-  const lines = block.split(/\r?\n/g);
-  const data = lines.filter((line) => line.startsWith("data:")).map((line) => line.slice(5).replace(/^ /, "")).join("\n");
-  if (!data || data === "[DONE]") {
-    return block;
-  }
-  try {
-    const parsed = JSON.parse(data);
-    const transformed = transformCodexApplyPatchBridgeResponseValue(parsed);
-    if (!transformed.changed) {
-      return block;
-    }
-    const event = stringValue5(transformed.value.type) || stringValue5(parsed.type);
-    return [
-      event ? `event: ${event}` : void 0,
-      `data: ${JSON.stringify(transformed.value)}`
-    ].filter(Boolean).join("\n");
-  } catch {
-    return block;
-  }
-}
-
-// packages/core/src/gateway/features/cursor-compat.ts
-var warnedMissingCursorOpenAICompatContext = false;
-function prepareCursorOpenAICompatChatBody(config, client, method, path23, requestBody) {
-  if ((method || "GET").toUpperCase() !== "POST" || !isOpenAICompatChatCompletionsPath(path23) || client !== "Cursor") {
-    return void 0;
-  }
-  let body;
-  try {
-    body = takeJsonObject(requestBody);
-  } catch {
-    return void 0;
-  }
-  if (!isSimplifiedCursorOpenAICompatChat(body)) {
-    return void 0;
-  }
-  const context = readCursorOpenAICompatContext(config);
-  let changed = false;
-  if (context.systemPrompt) {
-    body.messages = [
-      { content: context.systemPrompt, role: "system" },
-      ...Array.isArray(body.messages) ? body.messages : []
-    ];
-    changed = true;
-  }
-  if (context.tools.length > 0) {
-    body.tools = context.tools;
-    changed = true;
-  }
-  if (context.toolChoice !== void 0 && context.tools.length > 0) {
-    body.tool_choice = context.toolChoice;
-    changed = true;
-  }
-  if (!changed) {
-    if (!warnedMissingCursorOpenAICompatContext) {
-      warnedMissingCursorOpenAICompatContext = true;
-      console.warn(
-        '[gateway] Cursor sent an OpenAI-compatible chat request with only user messages and no system/tools. Configure plugins[].id="cursor-proxy" config.systemPrompt/config.tools to inject fallback context, or route Cursor native Agent traffic through the proxy.'
-      );
-    }
-    return { diagnostic: "simplified-missing-context" };
-  }
-  return {
-    body: serializeJsonBody(body),
-    diagnostic: "fallback-injected"
-  };
-}
-function isOpenAICompatChatCompletionsPath(path23) {
-  return path23 === "/chat/completions" || path23 === "/v1/chat/completions" || path23.endsWith("/chat/completions");
-}
-function isSimplifiedCursorOpenAICompatChat(body) {
-  if (body.system !== void 0 || body.systemPrompt !== void 0 || body.instructions !== void 0) {
-    return false;
-  }
-  if (Array.isArray(body.tools) && body.tools.length > 0) {
-    return false;
-  }
-  if (!Array.isArray(body.messages) || body.messages.length === 0) {
-    return false;
-  }
-  return body.messages.every(
-    (message) => isRecord10(message) && stringValue5(message.role)?.toLowerCase() === "user"
-  );
-}
-function readCursorOpenAICompatContext(config) {
-  const plugin = config.plugins.find((item) => item.enabled !== false && item.id === "cursor-proxy");
-  const pluginConfig = isRecord10(plugin?.config) ? plugin.config : {};
-  return {
-    systemPrompt: stringValue5(pluginConfig.systemPrompt) || stringValue5(pluginConfig.openaiSystemPrompt) || stringValue5(pluginConfig.defaultSystemPrompt),
-    toolChoice: normalizeCursorToolChoice(
-      pluginConfig.toolChoice ?? pluginConfig.openaiToolChoice ?? pluginConfig.defaultToolChoice
-    ),
-    tools: normalizeCursorTools(pluginConfig.tools ?? pluginConfig.openaiTools ?? pluginConfig.defaultTools)
-  };
-}
-function normalizeCursorTools(value) {
-  if (Array.isArray(value)) {
-    return value.map(normalizeCursorTool).filter((tool) => Boolean(tool));
-  }
-  if (isRecord10(value)) {
-    if (Array.isArray(value.tools) || isRecord10(value.tools)) {
-      return normalizeCursorTools(value.tools);
-    }
-    return Object.entries(value).map(([name, item]) => normalizeCursorTool(isRecord10(item) ? { ...item, name: stringValue5(item.name) || name } : { description: stringValue5(item), name })).filter((tool) => Boolean(tool));
-  }
-  return [];
-}
-function normalizeCursorTool(value) {
-  if (!isRecord10(value)) {
-    return void 0;
-  }
-  const type = stringValue5(value.type);
-  if (type && type.toLowerCase().startsWith("web_search")) {
-    return { ...value, type };
-  }
-  const fn = isRecord10(value.function) ? value.function : value;
-  const name = stringValue5(fn.name) || stringValue5(value.name) || stringValue5(value.toolName) || stringValue5(value.functionName);
-  if (!name) {
-    return void 0;
-  }
-  return {
-    function: compactRecord({
-      description: stringValue5(fn.description) || stringValue5(value.description),
-      name,
-      parameters: normalizeCursorToolParameters(
-        fn.parameters ?? value.parameters ?? fn.input_schema ?? value.input_schema ?? fn.inputSchema ?? value.inputSchema ?? fn.schema ?? value.schema
-      )
-    }),
-    type: "function"
-  };
-}
-function normalizeCursorToolParameters(value) {
-  if (isRecord10(value)) {
-    return value;
-  }
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      if (isRecord10(parsed)) {
-        return parsed;
-      }
-    } catch {
-    }
-  }
-  return { properties: {}, type: "object" };
-}
-function normalizeCursorToolChoice(value) {
-  if (typeof value === "string" && value.trim()) {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === "auto" || normalized === "none" || normalized === "required") {
-      return normalized;
-    }
-    return { function: { name: value.trim() }, type: "function" };
-  }
-  if (!isRecord10(value)) {
-    return void 0;
-  }
-  const type = stringValue5(value.type);
-  if (type && ["auto", "none", "required"].includes(type.toLowerCase())) {
-    return type.toLowerCase();
-  }
-  const fn = isRecord10(value.function) ? value.function : value;
-  const name = stringValue5(fn.name) || stringValue5(value.name) || stringValue5(value.toolName);
-  return name ? { function: { name }, type: "function" } : void 0;
-}
-function compactRecord(value) {
-  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== void 0));
-}
-
-// packages/core/src/routing/execution-plan.ts
-function createRouteExecutionPlan(input) {
-  const primaryModel = normalizeRouteSelector(input.bodyModel) ?? normalizeRouteSelector(input.primaryModel);
-  if (input.fallback.mode === "off" || !input.hasRequestBody) {
-    return {
-      attempts: [routeAttempt(0, primaryModel, input.modelRegistry)],
-      fallback: input.fallback,
-      primaryModel
-    };
-  }
-  if (input.fallback.mode === "retry") {
-    const retryCount = clamp(input.fallback.retryCount, 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
-    return {
-      attempts: Array.from(
-        { length: retryCount + 1 },
-        (_unused, index) => routeAttempt(index, primaryModel, input.modelRegistry)
-      ),
-      fallback: input.fallback,
-      primaryModel
-    };
-  }
-  const models = uniqueStrings9([
-    primaryModel,
-    ...input.fallback.models.map((model) => normalizeRouteSelector(model))
-  ]);
-  return {
-    attempts: (models.length ? models : [void 0]).map((model, index) => routeAttempt(index, model, input.modelRegistry)),
-    fallback: input.fallback,
-    primaryModel
-  };
-}
-function routeAttempt(index, model, modelRegistry) {
-  const target = modelRegistry?.resolve(model);
-  return {
-    index,
-    model,
-    ...target ? { target } : {}
-  };
-}
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, Math.trunc(Number.isFinite(value) ? value : min)));
-}
-function uniqueStrings9(values) {
-  const seen = /* @__PURE__ */ new Set();
-  const output = [];
-  for (const value of values) {
-    const normalized = value?.trim();
-    if (!normalized || seen.has(normalized)) {
-      continue;
-    }
-    seen.add(normalized);
-    output.push(normalized);
-  }
-  return output;
 }
 
 // packages/core/src/routing/failure-classifier.ts
@@ -68593,7 +69783,7 @@ function rewriteBodyModelForProtocol(body, config, protocol) {
   if (!parsedBody) {
     return body;
   }
-  const model = stringValue5(parsedBody.model);
+  const model = stringValue6(parsedBody.model);
   const rewrittenModel = rewriteModelSelectorForProtocol(model, config, protocol);
   if (!rewrittenModel || rewrittenModel === model) {
     return body;
@@ -68602,7 +69792,7 @@ function rewriteBodyModelForProtocol(body, config, protocol) {
 }
 function clearTargetProviderHeadersForModelSelector(headers, config, body, routedModel) {
   const parsedBody = parseJsonObjectSafe(body);
-  const model = stringValue5(parsedBody?.model) || routedModel;
+  const model = stringValue6(parsedBody?.model) || routedModel;
   if (!resolveConfiguredProviderModelSelector(model, config)) {
     return;
   }
@@ -68790,7 +69980,7 @@ async function fetchUpstreamWithFallback(input) {
         response
       };
     } catch (error) {
-      const message = formatError11(error);
+      const message = formatError12(error);
       const delayMs = hasNextAttempt && !input.signal?.aborted ? retryDelayAfterNetworkError(failedAttempts.length) : 0;
       input.trace?.capture({
         attempt: attemptNumber,
@@ -68922,7 +70112,7 @@ function claudeCodeOauthPluginMatchesTarget(config, provider, protocol) {
     if (!isLocalClaudeCodeOauthProviderPlugin(plugin)) {
       return false;
     }
-    const providerName = stringValue5(plugin.providerName)?.toLowerCase();
+    const providerName = stringValue6(plugin.providerName)?.toLowerCase();
     return Boolean(providerName && targetNames.has(providerName));
   });
 }
@@ -68944,13 +70134,13 @@ function shouldPreserveCapabilityModelSelector(body, target) {
   if (target.source === "header" || target.protocol !== "gemini_interactions") {
     return false;
   }
-  return Boolean(parseProviderModelSelector(stringValue5(parseJsonObjectSafe(body)?.model)));
+  return Boolean(parseProviderModelSelector(stringValue6(parseJsonObjectSafe(body)?.model)));
 }
-function resolvePlannedProviderCredentialRoutingTarget(attempt, path23) {
+function resolvePlannedProviderCredentialRoutingTarget(attempt, path24) {
   if (attempt.target?.kind !== "provider") {
     return void 0;
   }
-  const clientProtocol = requestProtocolForPath(path23);
+  const clientProtocol = requestProtocolForPath(path24);
   const protocol = clientProtocol ? providerProtocolForClientProtocol(attempt.target.provider, clientProtocol) : void 0;
   if (!protocol) {
     return void 0;
@@ -68966,12 +70156,12 @@ function resolvePlannedProviderCredentialRoutingTarget(attempt, path23) {
 }
 function targetProviderHeaderValue(provider, protocol) {
   const capability = normalizedProviderCapabilities(provider).find((item) => item.type === protocol);
-  return capability ? providerCapabilityInternalName(provider, capability.type) : provider.name || providerRuntimeId(provider);
+  return capability ? providerCapabilityInternalName(provider, capability.type) : providerRuntimeId(provider);
 }
 function usageAwareOpenAiChatAttemptBody(input) {
   const clientProtocol = requestProtocolForPath(input.path);
   const parsedBody = parseJsonObjectSafe(input.body);
-  const modelSelector = resolveConfiguredProviderModelSelector(stringValue5(parsedBody?.model), input.config);
+  const modelSelector = resolveConfiguredProviderModelSelector(stringValue6(parsedBody?.model), input.config);
   const providerProtocol = input.target?.protocol ?? (modelSelector && clientProtocol ? providerProtocolForClientProtocol(modelSelector.provider, clientProtocol) : void 0);
   if (providerProtocol !== "openai_chat_completions" && providerProtocol !== "openai_responses") {
     return input.body;
@@ -68994,7 +70184,7 @@ function usageAwareOpenAiChatBody(body) {
   if (!parsedBody || parsedBody.stream !== true) {
     return body;
   }
-  const streamOptions = isRecord10(parsedBody.stream_options) ? parsedBody.stream_options : isRecord10(parsedBody.streamOptions) ? parsedBody.streamOptions : {};
+  const streamOptions = isRecord12(parsedBody.stream_options) ? parsedBody.stream_options : isRecord12(parsedBody.streamOptions) ? parsedBody.streamOptions : {};
   if (streamOptions.include_usage === true || streamOptions.includeUsage === true) {
     return body;
   }
@@ -69008,7 +70198,7 @@ function usageAwareOpenAiChatBody(body) {
 }
 function normalizeConfiguredProviderModelBody(body, config) {
   const parsedBody = parseJsonObjectSafe(body);
-  const model = stringValue5(parsedBody?.model);
+  const model = stringValue6(parsedBody?.model);
   const selector = resolveConfiguredProviderModelSelector(model, config);
   if (!parsedBody || !selector || selector.model === model) {
     return void 0;
@@ -69018,13 +70208,13 @@ function normalizeConfiguredProviderModelBody(body, config) {
     model: selector.model
   };
 }
-function resolveProviderCredentialRoutingTarget(config, headers, path23, body) {
-  const protocol = requestProtocolForPath(path23);
+function resolveProviderCredentialRoutingTarget(config, headers, path24, body) {
+  const protocol = requestProtocolForPath(path24);
   if (!protocol) {
     return void 0;
   }
   const parsedBody = parseJsonObjectSafe(body);
-  const bodyModel = stringValue5(parsedBody?.model);
+  const bodyModel = stringValue6(parsedBody?.model);
   const modelSelector = resolveConfiguredProviderModelSelector(bodyModel, config) ?? resolveUniqueConfiguredProviderModelSelector(bodyModel, config);
   if (modelSelector) {
     const provider2 = modelSelector.provider;
@@ -69124,11 +70314,11 @@ function sortProviderCredentialCandidates(candidates) {
   }
   return prioritySorted;
 }
-function buildUpstreamAttempts(config, fallback, method, path23, body, routedModel) {
+function buildUpstreamAttempts(config, fallback, method, path24, body, routedModel) {
   const parsedBody = parseJsonObjectSafe(body);
-  const modelInPath = requestProtocolForPath(path23) === "gemini_generate_content";
+  const modelInPath = requestProtocolForPath(path24) === "gemini_generate_content";
   const plan = createRouteExecutionPlan({
-    bodyModel: modelInPath ? void 0 : stringValue5(parsedBody?.model),
+    bodyModel: modelInPath ? void 0 : stringValue6(parsedBody?.model),
     fallback,
     hasRequestBody: shouldSendBody(method) && (fallback.mode !== "model-chain" || Boolean(parsedBody)),
     modelRegistry: modelRegistryForConfig(config),
@@ -69198,53 +70388,1183 @@ function formatFallbackDelays(failedAttempts) {
   return failedAttempts.map((attempt) => String(Math.max(0, attempt.delayMs ?? 0))).join(",");
 }
 
-// packages/core/src/gateway/features/hosted-web-search/evidence.ts
-var import_node_crypto12 = require("node:crypto");
-
-// packages/core/src/gateway/features/hosted-web-search/sse.ts
-function parseSseEventBlock(raw) {
-  const lines = raw.split(/\r?\n/g);
-  const event = lines.filter((line) => line.startsWith("event:")).map((line) => line.slice(6).trim()).find(Boolean);
-  const data = lines.filter((line) => line.startsWith("data:")).map((line) => line.slice(5).replace(/^ /, "")).join("\n");
-  if (!data || data === "[DONE]") {
-    return { event, raw };
+// packages/core/src/gateway/features/context-archive-continuation.ts
+var codexCompactCompatSummaryTask = [
+  "Create a compact continuation summary of the conversation so far.",
+  "Preserve the current goal, user requirements, decisions, important files, commands run, test results, open issues, and any exact identifiers needed later.",
+  "Do not continue the task and do not call tools. Return plain text only."
+].join("\n");
+function prepareCodexCompactCompatRequest(input) {
+  const protocol = input.protocol ?? (isCodexResponsesCompactPath(input.path) ? "openai_responses" : void 0);
+  if (input.method.toUpperCase() !== "POST" || protocol !== "openai_responses") {
+    return void 0;
   }
-  try {
-    return { data: JSON.parse(data), event, raw };
-  } catch {
-    return { event, raw };
+  const parsedBody = parseJsonObjectSafe(input.body);
+  if (!parsedBody) {
+    return void 0;
   }
-}
-function shiftSseContentBlockIndex(event, startIndex, delta) {
-  if (!isRecord10(event.data) || !Number.isFinite(event.data.index) || Number(event.data.index) < startIndex) {
-    return event;
+  const upstreamPath = codexResponsesPathForCompact(input.path);
+  const responseMode = upstreamPath ? "codex_responses_compact_json" : hasCodexResponsesCompactionTrigger(parsedBody) ? "codex_responses_compaction_sse" : void 0;
+  if (!responseMode) {
+    return void 0;
   }
   return {
-    ...event,
-    data: {
-      ...event.data,
-      index: Number(event.data.index) + delta
+    body: appendCompactHandoffTask(input.body ?? Buffer.alloc(0), protocol, codexCompactCompatSummaryTask),
+    diagnostic: upstreamPath ? "responses-compact" : "responses-compaction-trigger",
+    responseContentType: codexCompactArchiveResponseContentType(responseMode),
+    responseMode,
+    upstreamPath
+  };
+}
+function prepareContextArchiveToolContinuationRequest(input) {
+  if (input.method !== "POST" || input.protocol !== "openai_responses" && input.protocol !== "anthropic_messages") {
+    return void 0;
+  }
+  const config = contextArchiveConfigForApiKey(input.config, input.apiKey);
+  if (!config || !contextArchiveMcpEnabled(config)) {
+    return void 0;
+  }
+  const body = parseJsonObjectSafe(input.body);
+  if (!body) {
+    return void 0;
+  }
+  const archiveAccess = input.protocol === "anthropic_messages" ? anthropicMessagesContextArchiveAccess(body) : openAiResponsesContextArchiveAccess(body);
+  if (!archiveAccess) {
+    return void 0;
+  }
+  const rawToolName = config.contextArchive.toolName || "ccr_history_ask";
+  const toolName = input.protocol === "anthropic_messages" ? contextArchiveClaudeCodeToolName2(rawToolName) : rawToolName;
+  const acceptedToolNames = uniqueStrings7([toolName, rawToolName, contextArchiveClaudeCodeToolName2(rawToolName)]);
+  const next = input.protocol === "anthropic_messages" ? prepareAnthropicContextArchiveToolContinuationBody(body, toolName) : prepareOpenAiResponsesContextArchiveToolContinuationBody(body, toolName);
+  return {
+    acceptedToolNames,
+    archiveId: archiveAccess.archiveId,
+    body: serializeJsonBody(next),
+    config,
+    executedCalls: 0,
+    maxIterations: 4,
+    protocol: input.protocol,
+    sessionToken: archiveAccess.sessionToken,
+    toolName
+  };
+}
+async function resolveContextArchiveToolContinuation(input) {
+  let requestBody = input.context.body;
+  let result = input.upstreamResult;
+  for (let iteration = 0; iteration < input.context.maxIterations; iteration += 1) {
+    const responseHeaders = upstreamResponseHeaders(result);
+    const contentType = responseHeaders.get("content-type")?.toLowerCase() ?? "";
+    if (!contentType.includes("application/json") && !contentType.includes("text/event-stream")) {
+      return result;
+    }
+    const responseBody = Buffer.from(await result.response.arrayBuffer());
+    const parsedResponse = parseContextArchiveToolResponseBody(responseBody, contentType, input.context.protocol);
+    if (!parsedResponse) {
+      return withBufferedResponse(result, responseBody);
+    }
+    const calls = contextArchiveFunctionCalls(parsedResponse, input.context.protocol);
+    const archiveCalls = calls.filter((call) => input.context.acceptedToolNames.includes(call.name));
+    if (archiveCalls.length === 0) {
+      return withBufferedResponse(result, responseBody);
+    }
+    if (archiveCalls.length !== calls.length) {
+      return withBufferedResponse(result, responseBody);
+    }
+    const toolOutputs = [];
+    for (const call of archiveCalls) {
+      const output = await executeContextArchiveFunctionCall(input.context, call, input.executor);
+      toolOutputs.push({
+        call_id: call.callId,
+        output: JSON.stringify(output),
+        type: "function_call_output"
+      });
+      input.context.executedCalls += 1;
+    }
+    const nextBody = appendContextArchiveToolOutputs(requestBody, parsedResponse, toolOutputs, input.context.protocol);
+    if (!nextBody) {
+      return withBufferedResponse(result, responseBody);
+    }
+    requestBody = nextBody;
+    const headers = {
+      ...input.headers,
+      "content-type": "application/json",
+      "x-ccr-context-archive-tool": "continuation",
+      "x-ccr-context-archive-tool-calls": String(input.context.executedCalls)
+    };
+    delete headers["content-length"];
+    result = await fetchUpstreamWithFallback({
+      body: requestBody,
+      config: input.context.config,
+      fallback: input.fallback,
+      headers,
+      method: input.method,
+      path: input.path,
+      routedModel: input.routedModel,
+      coreAuthToken: input.coreAuthToken,
+      signal: input.signal,
+      upstreamUrl: input.upstreamUrl
+    });
+  }
+  return result;
+}
+function prepareOpenAiResponsesContextArchiveToolContinuationBody(body, toolName) {
+  return {
+    ...body,
+    instructions: appendStringInstruction(body.instructions, contextArchiveToolContinuationGuidance(toolName)),
+    tool_choice: contextArchiveOpenAiResponsesToolChoice(body.tool_choice),
+    tools: appendContextArchiveOpenAiResponsesTool(body.tools, toolName)
+  };
+}
+function prepareAnthropicContextArchiveToolContinuationBody(body, toolName) {
+  return {
+    ...body,
+    system: appendAnthropicSystemText(body.system, contextArchiveToolContinuationGuidance(toolName)),
+    tool_choice: contextArchiveAnthropicMessagesToolChoice(body.tool_choice),
+    tools: appendContextArchiveAnthropicMessagesTool(body.tools, toolName)
+  };
+}
+function withBufferedResponse(result, body) {
+  return {
+    ...result,
+    response: new Response(new Uint8Array(body), {
+      headers: new Headers(result.response.headers),
+      status: result.response.status,
+      statusText: result.response.statusText
+    })
+  };
+}
+async function executeContextArchiveFunctionCall(context, call, executor) {
+  const args = parseFunctionCallArguments(call.arguments);
+  const output = await contextArchiveService.ask({
+    archiveId: stringValue6(args.archive_id ?? args.archiveId) ?? context.archiveId,
+    sessionToken: stringValue6(args.session_token ?? args.sessionToken) ?? context.sessionToken,
+    task: stringValue6(args.task) ?? ""
+  }, context.config.contextArchive, executor);
+  return output;
+}
+function parseFunctionCallArguments(value) {
+  if (!value.trim()) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return isRecord12(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function parseContextArchiveToolResponseBody(responseBody, contentType, protocol) {
+  if (contentType.includes("application/json")) {
+    return parseJsonObjectSafe(responseBody);
+  }
+  if (!contentType.includes("text/event-stream")) {
+    return void 0;
+  }
+  const events = parseSseEvents(responseBody.toString("utf8"));
+  return protocol === "anthropic_messages" ? anthropicMessagesResponseFromSseEvents(events) : openAiResponsesResponseFromSseEvents(events);
+}
+function contextArchiveFunctionCalls(responseBody, protocol) {
+  return protocol === "anthropic_messages" ? anthropicMessagesFunctionCalls(responseBody) : openAiResponsesFunctionCalls(responseBody);
+}
+function appendContextArchiveToolOutputs(requestBody, responseBody, toolOutputs, protocol) {
+  return protocol === "anthropic_messages" ? appendAnthropicMessagesToolOutputs(requestBody, responseBody, toolOutputs) : appendOpenAiResponsesToolOutputs(requestBody, responseBody, toolOutputs);
+}
+function appendOpenAiResponsesToolOutputs(requestBody, responseBody, toolOutputs) {
+  const body = parseJsonObjectSafe(requestBody);
+  if (!body || toolOutputs.length === 0) {
+    return void 0;
+  }
+  const responseOutput = Array.isArray(responseBody.output) ? responseBody.output : [];
+  const input = Array.isArray(body.input) ? body.input : body.input === void 0 ? [] : [body.input];
+  return serializeJsonBody({
+    ...body,
+    input: [...input, ...responseOutput, ...toolOutputs]
+  });
+}
+function appendAnthropicMessagesToolOutputs(requestBody, responseBody, toolOutputs) {
+  const body = parseJsonObjectSafe(requestBody);
+  if (!body || toolOutputs.length === 0 || !Array.isArray(responseBody.content)) {
+    return void 0;
+  }
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  const toolResultContent = toolOutputs.flatMap((output) => {
+    const toolUseId = stringValue6(output.call_id);
+    if (!toolUseId) {
+      return [];
+    }
+    return [{
+      content: stringValue6(output.output) ?? JSON.stringify(output.output ?? {}),
+      tool_use_id: toolUseId,
+      type: "tool_result"
+    }];
+  });
+  if (toolResultContent.length === 0) {
+    return void 0;
+  }
+  return serializeJsonBody({
+    ...body,
+    messages: [
+      ...messages,
+      {
+        content: responseBody.content,
+        role: "assistant"
+      },
+      {
+        content: toolResultContent,
+        role: "user"
+      }
+    ]
+  });
+}
+function openAiResponsesFunctionCalls(responseBody) {
+  const output = Array.isArray(responseBody.output) ? responseBody.output : [];
+  return output.flatMap((item) => {
+    if (!isRecord12(item) || item.type !== "function_call") {
+      return [];
+    }
+    const name = stringValue6(item.name);
+    const callId = stringValue6(item.call_id) ?? stringValue6(item.id);
+    if (!name || !callId) {
+      return [];
+    }
+    return [{
+      arguments: typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments ?? {}),
+      callId,
+      name
+    }];
+  });
+}
+function anthropicMessagesFunctionCalls(responseBody) {
+  const content = Array.isArray(responseBody.content) ? responseBody.content : [];
+  return content.flatMap((item) => {
+    if (!isRecord12(item) || stringValue6(item.type) !== "tool_use") {
+      return [];
+    }
+    const name = stringValue6(item.name);
+    const callId = stringValue6(item.id);
+    if (!name || !callId) {
+      return [];
+    }
+    return [{
+      arguments: JSON.stringify(isRecord12(item.input) ? item.input : {}),
+      callId,
+      name
+    }];
+  });
+}
+function anthropicMessagesResponseFromSseEvents(events) {
+  let message;
+  const blocks = /* @__PURE__ */ new Map();
+  const inputJsonByIndex = /* @__PURE__ */ new Map();
+  for (const event of events) {
+    const data = isRecord12(event.data) ? event.data : void 0;
+    if (!data) {
+      continue;
+    }
+    const type = stringValue6(data.type);
+    if (type === "message_start" && isRecord12(data.message)) {
+      message = { ...data.message };
+      continue;
+    }
+    const index = numberValue4(data.index);
+    if (index === void 0) {
+      if (type === "message_delta" && isRecord12(data.delta)) {
+        message = {
+          ...message ?? { role: "assistant", type: "message" },
+          ...data.delta.stop_reason !== void 0 ? { stop_reason: data.delta.stop_reason } : {},
+          ...data.delta.stop_sequence !== void 0 ? { stop_sequence: data.delta.stop_sequence } : {}
+        };
+      }
+      continue;
+    }
+    if (type === "content_block_start" && isRecord12(data.content_block)) {
+      blocks.set(index, { ...data.content_block });
+      continue;
+    }
+    if (type !== "content_block_delta" || !isRecord12(data.delta)) {
+      continue;
+    }
+    const block = blocks.get(index);
+    if (!block) {
+      continue;
+    }
+    const deltaType = stringValue6(data.delta.type);
+    if (deltaType === "text_delta") {
+      block.text = `${stringValue6(block.text) ?? ""}${stringValue6(data.delta.text) ?? ""}`;
+    } else if (deltaType === "input_json_delta") {
+      inputJsonByIndex.set(index, `${inputJsonByIndex.get(index) ?? ""}${stringValue6(data.delta.partial_json) ?? ""}`);
+    }
+  }
+  if (!message && blocks.size === 0) {
+    return void 0;
+  }
+  const content = [...blocks.entries()].sort(([left], [right]) => left - right).map(([index, block]) => {
+    const inputJson = inputJsonByIndex.get(index);
+    if (stringValue6(block.type) === "tool_use" && inputJson !== void 0) {
+      return { ...block, input: parseFunctionCallArguments(inputJson) };
+    }
+    return block;
+  });
+  return {
+    ...message ?? { role: "assistant", type: "message" },
+    content
+  };
+}
+function openAiResponsesResponseFromSseEvents(events) {
+  let response;
+  const items = /* @__PURE__ */ new Map();
+  const itemIndexById = /* @__PURE__ */ new Map();
+  const argumentsByIndex = /* @__PURE__ */ new Map();
+  for (const event of events) {
+    const data = isRecord12(event.data) ? event.data : void 0;
+    if (!data) {
+      continue;
+    }
+    const type = stringValue6(data.type);
+    if (type === "response.completed" && isRecord12(data.response)) {
+      response = { ...data.response };
+      continue;
+    }
+    const item = isRecord12(data.item) ? data.item : void 0;
+    if (item && stringValue6(item.type) === "function_call") {
+      const index2 = numberValue4(data.output_index) ?? items.size;
+      items.set(index2, { ...item });
+      const itemId = stringValue6(item.id);
+      if (itemId) {
+        itemIndexById.set(itemId, index2);
+      }
+      const argumentsText = rawStringValue(item.arguments);
+      if (argumentsText !== void 0) {
+        argumentsByIndex.set(index2, argumentsText);
+      }
+      continue;
+    }
+    if (!type?.startsWith("response.function_call_arguments.")) {
+      continue;
+    }
+    const index = openAiResponsesSseFunctionCallIndex(data, itemIndexById);
+    if (index === void 0) {
+      continue;
+    }
+    if (type === "response.function_call_arguments.delta") {
+      argumentsByIndex.set(index, `${argumentsByIndex.get(index) ?? ""}${stringValue6(data.delta) ?? ""}`);
+    } else if (type === "response.function_call_arguments.done") {
+      const argumentsText = rawStringValue(data.arguments);
+      if (argumentsText !== void 0) {
+        argumentsByIndex.set(index, argumentsText);
+      }
+    }
+  }
+  if (!response && items.size === 0) {
+    return void 0;
+  }
+  const output = [...items.entries()].sort(([left], [right]) => left - right).map(([index, item]) => ({
+    ...item,
+    ...argumentsByIndex.has(index) ? { arguments: argumentsByIndex.get(index) } : {}
+  }));
+  return {
+    ...response ?? {},
+    output: output.length > 0 ? output : Array.isArray(response?.output) ? response.output : []
+  };
+}
+function openAiResponsesSseFunctionCallIndex(data, itemIndexById) {
+  const outputIndex = numberValue4(data.output_index);
+  if (outputIndex !== void 0) {
+    return outputIndex;
+  }
+  const itemId = stringValue6(data.item_id);
+  return itemId ? itemIndexById.get(itemId) : void 0;
+}
+function appendContextArchiveOpenAiResponsesTool(tools, toolName) {
+  const current = Array.isArray(tools) ? tools : [];
+  if (current.some((tool) => isRecord12(tool) && stringValue6(tool.name) === toolName)) {
+    return current;
+  }
+  return [...current, contextArchiveOpenAiResponsesTool(toolName)];
+}
+function appendContextArchiveAnthropicMessagesTool(tools, toolName) {
+  const current = Array.isArray(tools) ? tools : [];
+  if (current.some((tool) => isRecord12(tool) && stringValue6(tool.name) === toolName)) {
+    return current;
+  }
+  return [...current, contextArchiveAnthropicMessagesTool(toolName)];
+}
+function contextArchiveOpenAiResponsesTool(toolName) {
+  return {
+    type: "function",
+    name: toolName,
+    description: contextArchiveToolDescription(),
+    parameters: contextArchiveToolSchema()
+  };
+}
+function contextArchiveAnthropicMessagesTool(toolName) {
+  return {
+    name: toolName,
+    description: contextArchiveToolDescription(),
+    input_schema: contextArchiveToolSchema()
+  };
+}
+function contextArchiveToolDescription() {
+  return [
+    "Ask the archived pre-compaction agent lineage a natural-language history task.",
+    "Use this when the compact handoff says historical details are available in CCR archived history.",
+    "Pass archive_id and session_token exactly from the compact handoff.",
+    "For many related questions, include every question id and full question text in one task and ask for JSON evidence keyed by question id."
+  ].join(" ");
+}
+function contextArchiveToolSchema() {
+  return {
+    additionalProperties: false,
+    properties: {
+      archive_id: { description: "Exact immutable archive id from the handoff.", type: "string" },
+      session_token: { description: "Opaque access token from the same handoff.", type: "string" },
+      task: { description: "Natural-language task for the archived previous-context agent.", type: "string" }
+    },
+    required: ["archive_id", "session_token", "task"],
+    type: "object"
+  };
+}
+function contextArchiveToolContinuationGuidance(toolName) {
+  return [
+    "CCR context archive is available for this compacted continuation.",
+    `If the compact handoff indicates missing historical details are stored in archived history, use the ${toolName} tool when that history is needed.`,
+    "Use ordinary task judgment: answer directly when the compact handoff and retained tail are sufficient; call the history tool when exact pre-compaction details are needed."
+  ].join(" ");
+}
+function openAiResponsesContextArchiveAccess(body) {
+  const input = Array.isArray(body.input) ? body.input : [];
+  for (const item of input) {
+    if (!isRecord12(item) || item.type !== "compaction") {
+      continue;
+    }
+    const access = contextArchiveAccessFromText(rawStringValue(item.encrypted_content) ?? "");
+    if (access) {
+      return access;
+    }
+  }
+  return void 0;
+}
+function anthropicMessagesContextArchiveAccess(body) {
+  for (const text of anthropicMessagesContextArchiveTexts(body)) {
+    const access = contextArchiveAccessFromText(text);
+    if (access) {
+      return access;
+    }
+  }
+  return void 0;
+}
+function anthropicMessagesContextArchiveTexts(body) {
+  const texts = [...textPartsFromAnthropicContent(body.system)];
+  if (Array.isArray(body.messages)) {
+    for (const message of body.messages) {
+      if (isRecord12(message)) {
+        texts.push(...textPartsFromAnthropicContent(message.content));
+      }
+    }
+  }
+  return texts;
+}
+function contextArchiveAccessFromText(text) {
+  if (!text.includes("CCR ARCHIVED HISTORY ACCESS")) {
+    return void 0;
+  }
+  const archiveId = (/Archive id:\s*([A-Za-z0-9_-]+)/.exec(text) ?? [])[1];
+  const sessionToken = (/Archive session token:\s*([A-Za-z0-9_-]+)/.exec(text) ?? [])[1];
+  return archiveId && sessionToken ? { archiveId, sessionToken } : void 0;
+}
+function contextArchiveClaudeCodeToolName2(toolName) {
+  return `mcp__${CONTEXT_ARCHIVE_MCP_SERVER_NAME}__${toolName}`;
+}
+function contextArchiveOpenAiResponsesToolChoice(value) {
+  return stringValue6(value)?.toLowerCase() === "none" ? "auto" : value;
+}
+function contextArchiveAnthropicMessagesToolChoice(value) {
+  if (stringValue6(value)?.toLowerCase() === "none") {
+    return { type: "auto" };
+  }
+  if (isRecord12(value) && stringValue6(value.type)?.toLowerCase() === "none") {
+    return { ...value, type: "auto" };
+  }
+  return value;
+}
+function appendAnthropicSystemText(system, text) {
+  if (typeof system === "string" || system === void 0) {
+    return appendStringInstruction(system, text);
+  }
+  if (Array.isArray(system)) {
+    return [...system, { text, type: "text" }];
+  }
+  return system;
+}
+function appendStringInstruction(value, text) {
+  const current = rawStringValue(value);
+  return current ? `${current.trimEnd()}
+
+${text}` : text;
+}
+function textPartsFromAnthropicContent(content) {
+  if (typeof content === "string") {
+    return [content];
+  }
+  if (!Array.isArray(content)) {
+    return [];
+  }
+  return content.flatMap((part) => {
+    if (!isRecord12(part) || stringValue6(part.type) !== "text") {
+      return [];
+    }
+    const text = rawStringValue(part.text);
+    return text === void 0 ? [] : [text];
+  });
+}
+
+// packages/core/src/gateway/auth/api-key-authorizer.ts
+var persistedApiKeyCacheTtlMs = 1e3;
+var persistedApiKeyCache;
+async function authorize(request, response, config) {
+  let apiKeys = await configuredApiKeys(config);
+  if (apiKeys.length === 0) {
+    sendJson4(response, 403, {
+      error: {
+        message: "CCR API key is not initialized. Save a gateway API key or restart CCR to generate one."
+      }
+    });
+    return { ok: false };
+  }
+  const token = readAuthToken(request.headers) || readRemoteControlQueryAuthToken(request);
+  let apiKey = token ? apiKeys.find((item) => item.key === token) : void 0;
+  if (!apiKey && token) {
+    apiKeys = await configuredApiKeys(config, { refresh: true });
+    apiKey = apiKeys.find((item) => item.key === token);
+  }
+  if (apiKey) {
+    if (isApiKeyExpired(apiKey)) {
+      sendJson4(response, 401, { error: { message: "API key is expired." } });
+      return { ok: false };
+    }
+    return { ok: true, apiKey };
+  }
+  sendJson4(response, 401, { error: { message: token ? "Invalid API key." : "API key is missing." } });
+  return { ok: false };
+}
+function reserveApiKeyLimits(apiKey, request, response, requestBody) {
+  if (!apiKey?.limits) return true;
+  const usage = estimateLimitUsage(request.method ?? "GET", requestBody);
+  const rules = apiKeyLimitRules(apiKey, usage);
+  const now = Date.now();
+  const checks = rules.map((rule) => {
+    const windowStart = Math.floor(now / rule.windowMs) * rule.windowMs;
+    return {
+      counterKey: ["api-key", apiKey.id, rule.name, rule.metric, rule.windowMs, windowStart].join("|"),
+      rule,
+      windowStart
+    };
+  });
+  for (const check of checks) {
+    const counter = readWindowCounter(check.counterKey, check.windowStart, check.rule.windowMs, now);
+    if (counter.value + check.rule.requested > check.rule.limit) {
+      sendJson4(response, 429, {
+        error: {
+          code: "rate_limit_exceeded",
+          message: `API key ${check.rule.name} limit exceeded.`,
+          details: {
+            limit: check.rule.limit,
+            limit_name: check.rule.name,
+            metric: check.rule.metric,
+            requested: check.rule.requested,
+            used: counter.value,
+            window_ms: check.rule.windowMs
+          }
+        }
+      });
+      return false;
+    }
+  }
+  for (const check of checks) {
+    readWindowCounter(check.counterKey, check.windowStart, check.rule.windowMs, now).value += check.rule.requested;
+  }
+  return true;
+}
+async function configuredApiKeys(config, options = {}) {
+  const persistedApiKeys = await loadPersistedApiKeysCached(options);
+  const values = [
+    ...persistedApiKeys,
+    ...Array.isArray(config.APIKEYS) ? config.APIKEYS : [],
+    ...config.APIKEY ? [{ createdAt: (/* @__PURE__ */ new Date(0)).toISOString(), id: "legacy", key: config.APIKEY }] : []
+  ];
+  const seen = /* @__PURE__ */ new Set();
+  const result = [];
+  for (const value of values) {
+    const key = value?.key?.trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push({ ...value, key });
+  }
+  return result;
+}
+async function loadPersistedApiKeysCached(options = {}) {
+  const now = Date.now();
+  if (!options.refresh && persistedApiKeyCache && now - persistedApiKeyCache.loadedAt < persistedApiKeyCacheTtlMs) {
+    return persistedApiKeyCache.values;
+  }
+  try {
+    const values = await loadPersistedApiKeys();
+    persistedApiKeyCache = { loadedAt: now, values };
+    return values;
+  } catch (error) {
+    console.warn(`[gateway] Failed to load persisted API keys: ${formatError12(error)}`);
+    return [];
+  }
+}
+function isApiKeyExpired(apiKey) {
+  if (!apiKey.expiresAt) return false;
+  const expiresAt = Date.parse(apiKey.expiresAt);
+  return Number.isFinite(expiresAt) && expiresAt <= Date.now();
+}
+function apiKeyLimitRules(apiKey, usage) {
+  return limitRules(apiKey.limits, usage);
+}
+
+// packages/core/src/gateway/features/codex-patch-bridge.ts
+var import_node_stream3 = require("node:stream");
+function prepareCodexApplyPatchBridgeRequest(input) {
+  if (!codexApplyPatchBridgeEnabled(input.headers, input.method, input.path)) {
+    return void 0;
+  }
+  const parsedBody = parseJsonObjectSafe(input.body);
+  if (!parsedBody) {
+    return void 0;
+  }
+  if (isCodexResponsesCompactPath(input.path) || hasCodexResponsesCompactionTrigger(parsedBody)) {
+    return void 0;
+  }
+  const model = input.routedModel || stringValue6(parsedBody.model);
+  if (!codexPatchBridgeModelEligible(model, input.config)) {
+    return void 0;
+  }
+  const transformed = transformCodexApplyPatchBridgeRequestBody(parsedBody);
+  if (!transformed.changed) {
+    return void 0;
+  }
+  return {
+    body: serializeJsonBody(transformed.body),
+    diagnostic: `${model ?? "unknown"}:${transformed.changedParts.join(",")}`
+  };
+}
+function transformCodexApplyPatchBridgeRequestBody(body) {
+  const next = { ...body };
+  const changedParts = [];
+  const tools = transformCodexApplyPatchBridgeTools(body.tools);
+  if (tools.changed) {
+    next.tools = tools.value;
+    changedParts.push("tools");
+    const instructions = transformCodexApplyPatchBridgeInstructions(body.instructions);
+    if (instructions.changed) {
+      next.instructions = instructions.value;
+      changedParts.push("instructions");
+    }
+    const input = transformCodexApplyPatchBridgeInput(body.input);
+    if (input.changed) {
+      next.input = input.value;
+      changedParts.push("input");
+    }
+  }
+  return {
+    body: next,
+    changed: changedParts.length > 0,
+    changedParts
+  };
+}
+function transformCodexApplyPatchBridgeTools(value) {
+  if (!Array.isArray(value)) {
+    return { value, changed: false };
+  }
+  const hasApplyPatchTool = value.some((tool) => isRecord12(tool) && tool.type === "custom" && tool.name === "apply_patch");
+  if (!hasApplyPatchTool) {
+    return { value, changed: false };
+  }
+  let changed = false;
+  const tools = value.map((tool) => {
+    if (isRecord12(tool) && tool.type === "custom" && tool.name === "apply_patch") {
+      changed = true;
+      return virtualApplyPatchToolSpec();
+    }
+    const shellTool = transformCodexPatchBridgeShellTool(tool);
+    if (shellTool.changed) {
+      changed = true;
+      return shellTool.value;
+    }
+    return tool;
+  });
+  return { value: tools, changed };
+}
+function transformCodexApplyPatchBridgeInstructions(value) {
+  const text = rawStringValue(value);
+  if (text === void 0) {
+    return value === void 0 ? { value: codexPatchBridgeInstructionText, changed: true } : { value, changed: false };
+  }
+  if (text.includes(codexPatchBridgeInstructionText)) {
+    return { value, changed: false };
+  }
+  return {
+    value: `${text.trimEnd()}
+
+${codexPatchBridgeInstructionText}`,
+    changed: true
+  };
+}
+function transformCodexPatchBridgeShellTool(value) {
+  if (!isRecord12(value) || value.type !== "function") {
+    return { value, changed: false };
+  }
+  const name = stringValue6(value.name);
+  if (name !== "exec_command" && name !== "write_stdin") {
+    return { value, changed: false };
+  }
+  let changed = false;
+  const next = { ...value };
+  const description = rawStringValue(value.description) ?? "";
+  if (!description.includes(codexPatchBridgeShellToolGuidance)) {
+    next.description = description ? `${description} ${codexPatchBridgeShellToolGuidance}` : codexPatchBridgeShellToolGuidance;
+    changed = true;
+  }
+  if (name === "exec_command") {
+    const parameters = transformCodexPatchBridgeExecCommandParameters(value.parameters);
+    if (parameters.changed) {
+      next.parameters = parameters.value;
+      changed = true;
+    }
+  }
+  return { value: changed ? next : value, changed };
+}
+function transformCodexPatchBridgeExecCommandParameters(value) {
+  if (!isRecord12(value) || !isRecord12(value.properties) || !isRecord12(value.properties.cmd)) {
+    return { value, changed: false };
+  }
+  const cmd = value.properties.cmd;
+  const description = rawStringValue(cmd.description) ?? "";
+  if (description.includes(codexPatchBridgeShellToolGuidance)) {
+    return { value, changed: false };
+  }
+  return {
+    value: {
+      ...value,
+      properties: {
+        ...value.properties,
+        cmd: {
+          ...cmd,
+          description: description ? `${description} ${codexPatchBridgeShellToolGuidance}` : codexPatchBridgeShellToolGuidance
+        }
+      }
+    },
+    changed: true
+  };
+}
+function transformCodexApplyPatchBridgeInput(value) {
+  if (!Array.isArray(value)) {
+    return { value, changed: false };
+  }
+  const applyPatchCallIds = /* @__PURE__ */ new Set();
+  for (const item of value) {
+    if (isRecord12(item) && item.type === "custom_tool_call" && item.name === "apply_patch") {
+      const callId = stringValue6(item.call_id);
+      if (callId) {
+        applyPatchCallIds.add(callId);
+      }
+    }
+  }
+  let changed = false;
+  const items = value.map((item) => {
+    const transformed = transformCodexApplyPatchBridgeInputItem(item, applyPatchCallIds);
+    changed ||= transformed.changed;
+    return transformed.value;
+  });
+  return { value: items, changed };
+}
+function transformCodexApplyPatchBridgeInputItem(value, applyPatchCallIds) {
+  if (!isRecord12(value)) {
+    return { value, changed: false };
+  }
+  if (value.type === "custom_tool_call" && value.name === "apply_patch") {
+    const { input: patchInput, name: _name, type: _type, ...rest } = value;
+    return {
+      value: {
+        ...rest,
+        type: "function_call",
+        name: virtualApplyPatchToolName,
+        arguments: JSON.stringify({ patch: rawStringValue(patchInput) ?? "" })
+      },
+      changed: true
+    };
+  }
+  if (value.type === "custom_tool_call_output" && (applyPatchCallIds.has(stringValue6(value.call_id) ?? "") || value.name === "apply_patch")) {
+    const { name: _name, type: _type, ...rest } = value;
+    return {
+      value: {
+        ...rest,
+        type: "function_call_output"
+      },
+      changed: true
+    };
+  }
+  return { value, changed: false };
+}
+function virtualApplyPatchToolSpec() {
+  return {
+    type: "function",
+    name: virtualApplyPatchToolName,
+    description: [
+      "Edit files by returning exactly one complete apply_patch patch.",
+      "The patch field must be raw patch grammar text starting with *** Begin Patch and ending with *** End Patch.",
+      "Do not wrap the patch in JSON, markdown fences, shell commands, cat, sed, perl, or python.",
+      "The patch field must match this Lark grammar:",
+      virtualApplyPatchLarkGrammar
+    ].join("\n\n"),
+    strict: true,
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      required: ["patch"],
+      properties: {
+        patch: {
+          type: "string",
+          description: [
+            "Raw apply_patch grammar text matching this Lark grammar:",
+            virtualApplyPatchLarkGrammar
+          ].join("\n\n")
+        }
+      }
     }
   };
 }
-function sseEventFromValue(data) {
+function codexApplyPatchBridgeEnabled(headers, method, path24) {
+  return (method || "GET").toUpperCase() === "POST" && requestProtocolForPath(path24) === "openai_responses" && isCodexUserAgent(headers);
+}
+function isCodexUserAgent(headers) {
+  return readHeader7(headers["user-agent"])?.toLowerCase().includes("codex") ?? false;
+}
+function codexPatchBridgeModelEligible(model, config) {
+  const modelName = modelNameForPatchBridge(model);
+  if (!modelName || modelName.toLowerCase().includes("gpt")) {
+    return false;
+  }
+  const baseModelName = modelNameForPatchBridge(resolveUsageModelAttribution(config, model).model);
+  return !baseModelName.toLowerCase().includes("gpt");
+}
+function modelNameForPatchBridge(model) {
+  const normalized = normalizeRouteSelector(model) ?? "";
+  const slashIndex = normalized.lastIndexOf("/");
+  return slashIndex >= 0 ? normalized.slice(slashIndex + 1) : normalized;
+}
+function codexApplyPatchBridgeResponseStream(input, headers) {
+  const contentType = headers.get("content-type")?.toLowerCase() ?? "";
+  if (contentType.includes("text/event-stream")) {
+    return input.pipe(new import_node_stream3.Transform({
+      transform(chunk, _encoding, callback) {
+        transformSseChunk(this, chunk);
+        callback();
+      },
+      flush(callback) {
+        flushSseTransform(this);
+        callback();
+      }
+    }));
+  }
+  if (contentType.includes("application/json")) {
+    const chunks = [];
+    return input.pipe(new import_node_stream3.Transform({
+      transform(chunk, _encoding, callback) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        callback();
+      },
+      flush(callback) {
+        const raw = Buffer.concat(chunks).toString("utf8");
+        try {
+          const parsed = JSON.parse(raw);
+          const transformed = transformCodexApplyPatchBridgeResponseValue(parsed);
+          this.push(Buffer.from(`${JSON.stringify(transformed.value)}
+`, "utf8"));
+        } catch {
+          this.push(Buffer.from(raw, "utf8"));
+        }
+        callback();
+      }
+    }));
+  }
+  return input;
+}
+function transformCodexApplyPatchBridgeResponseValue(value) {
+  if (!isRecord12(value)) {
+    return { value, changed: false };
+  }
+  let changed = false;
+  const next = { ...value };
+  if (isRecord12(value.item)) {
+    const item2 = transformVirtualApplyPatchFunctionCall(value.item, value.type === "response.output_item.added");
+    if (item2.changed) {
+      next.item = item2.value;
+      changed = true;
+    }
+  }
+  if (Array.isArray(value.output)) {
+    const output = transformCodexApplyPatchBridgeResponseItems(value.output);
+    if (output.changed) {
+      next.output = output.value;
+      changed = true;
+    }
+  }
+  if (isRecord12(value.response) && Array.isArray(value.response.output)) {
+    const output = transformCodexApplyPatchBridgeResponseItems(value.response.output);
+    if (output.changed) {
+      next.response = {
+        ...value.response,
+        output: output.value
+      };
+      changed = true;
+    }
+  }
+  const item = transformVirtualApplyPatchFunctionCall(next, false);
+  if (item.changed) {
+    return item;
+  }
+  return { value: next, changed };
+}
+function transformCodexApplyPatchBridgeResponseItems(items) {
+  let changed = false;
+  const value = items.map((item) => {
+    const transformed = isRecord12(item) ? transformVirtualApplyPatchFunctionCall(item, false) : { value: item, changed: false };
+    changed ||= transformed.changed;
+    return transformed.value;
+  });
+  return { value, changed };
+}
+function transformVirtualApplyPatchFunctionCall(item, allowEmptyInput) {
+  if (item.type !== "function_call" || item.name !== virtualApplyPatchToolName) {
+    return { value: item, changed: false };
+  }
+  const patch = patchInputFromVirtualApplyPatchArguments(item.arguments);
+  if (patch === void 0 && !allowEmptyInput) {
+    return { value: item, changed: false };
+  }
+  const { arguments: _arguments, name: _name, type: _type, ...rest } = item;
   return {
-    data,
-    event: stringValue5(data.type)
+    value: {
+      ...rest,
+      type: "custom_tool_call",
+      name: "apply_patch",
+      input: patch ?? ""
+    },
+    changed: true
   };
 }
-function serializeSseEvent(event) {
-  if (event.data === void 0) {
-    return event.raw ?? "";
+function patchInputFromVirtualApplyPatchArguments(value) {
+  if (isRecord12(value)) {
+    return rawStringValue(value.patch);
   }
-  const type = isRecord10(event.data) ? stringValue5(event.data.type) : void 0;
-  return [
-    event.event || type ? `event: ${event.event || type}` : void 0,
-    `data: ${JSON.stringify(event.data)}`
-  ].filter(Boolean).join("\n");
+  const text = rawStringValue(value);
+  if (text === void 0) {
+    return void 0;
+  }
+  try {
+    const parsed = JSON.parse(text);
+    return isRecord12(parsed) ? rawStringValue(parsed.patch) : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function transformSseChunk(stream, chunk) {
+  const state = stream;
+  state.__ccrCodexPatchBridgeSsePending = (state.__ccrCodexPatchBridgeSsePending ?? "") + chunk.toString();
+  while (state.__ccrCodexPatchBridgeSsePending) {
+    const match = /\r?\n\r?\n/.exec(state.__ccrCodexPatchBridgeSsePending);
+    if (!match || match.index === void 0) {
+      break;
+    }
+    const block = state.__ccrCodexPatchBridgeSsePending.slice(0, match.index);
+    const delimiter = match[0];
+    state.__ccrCodexPatchBridgeSsePending = state.__ccrCodexPatchBridgeSsePending.slice(match.index + delimiter.length);
+    stream.push(transformCodexApplyPatchBridgeSseEvent(block) + delimiter);
+  }
+}
+function flushSseTransform(stream) {
+  const state = stream;
+  if (state.__ccrCodexPatchBridgeSsePending) {
+    stream.push(transformCodexApplyPatchBridgeSseEvent(state.__ccrCodexPatchBridgeSsePending));
+    state.__ccrCodexPatchBridgeSsePending = "";
+  }
+}
+function transformCodexApplyPatchBridgeSseEvent(block) {
+  const lines = block.split(/\r?\n/g);
+  const data = lines.filter((line) => line.startsWith("data:")).map((line) => line.slice(5).replace(/^ /, "")).join("\n");
+  if (!data || data === "[DONE]") {
+    return block;
+  }
+  try {
+    const parsed = JSON.parse(data);
+    const transformed = transformCodexApplyPatchBridgeResponseValue(parsed);
+    if (!transformed.changed) {
+      return block;
+    }
+    const event = stringValue6(transformed.value.type) || stringValue6(parsed.type);
+    return [
+      event ? `event: ${event}` : void 0,
+      `data: ${JSON.stringify(transformed.value)}`
+    ].filter(Boolean).join("\n");
+  } catch {
+    return block;
+  }
+}
+
+// packages/core/src/gateway/features/cursor-compat.ts
+var warnedMissingCursorOpenAICompatContext = false;
+function prepareCursorOpenAICompatChatBody(config, client, method, path24, requestBody) {
+  if ((method || "GET").toUpperCase() !== "POST" || !isOpenAICompatChatCompletionsPath(path24) || client !== "Cursor") {
+    return void 0;
+  }
+  let body;
+  try {
+    body = takeJsonObject(requestBody);
+  } catch {
+    return void 0;
+  }
+  if (!isSimplifiedCursorOpenAICompatChat(body)) {
+    return void 0;
+  }
+  const context = readCursorOpenAICompatContext(config);
+  let changed = false;
+  if (context.systemPrompt) {
+    body.messages = [
+      { content: context.systemPrompt, role: "system" },
+      ...Array.isArray(body.messages) ? body.messages : []
+    ];
+    changed = true;
+  }
+  if (context.tools.length > 0) {
+    body.tools = context.tools;
+    changed = true;
+  }
+  if (context.toolChoice !== void 0 && context.tools.length > 0) {
+    body.tool_choice = context.toolChoice;
+    changed = true;
+  }
+  if (!changed) {
+    if (!warnedMissingCursorOpenAICompatContext) {
+      warnedMissingCursorOpenAICompatContext = true;
+      console.warn(
+        '[gateway] Cursor sent an OpenAI-compatible chat request with only user messages and no system/tools. Configure plugins[].id="cursor-proxy" config.systemPrompt/config.tools to inject fallback context, or route Cursor native Agent traffic through the proxy.'
+      );
+    }
+    return { diagnostic: "simplified-missing-context" };
+  }
+  return {
+    body: serializeJsonBody(body),
+    diagnostic: "fallback-injected"
+  };
+}
+function isOpenAICompatChatCompletionsPath(path24) {
+  return path24 === "/chat/completions" || path24 === "/v1/chat/completions" || path24.endsWith("/chat/completions");
+}
+function isSimplifiedCursorOpenAICompatChat(body) {
+  if (body.system !== void 0 || body.systemPrompt !== void 0 || body.instructions !== void 0) {
+    return false;
+  }
+  if (Array.isArray(body.tools) && body.tools.length > 0) {
+    return false;
+  }
+  if (!Array.isArray(body.messages) || body.messages.length === 0) {
+    return false;
+  }
+  return body.messages.every(
+    (message) => isRecord12(message) && stringValue6(message.role)?.toLowerCase() === "user"
+  );
+}
+function readCursorOpenAICompatContext(config) {
+  const plugin = config.plugins.find((item) => item.enabled !== false && item.id === "cursor-proxy");
+  const pluginConfig = isRecord12(plugin?.config) ? plugin.config : {};
+  return {
+    systemPrompt: stringValue6(pluginConfig.systemPrompt) || stringValue6(pluginConfig.openaiSystemPrompt) || stringValue6(pluginConfig.defaultSystemPrompt),
+    toolChoice: normalizeCursorToolChoice(
+      pluginConfig.toolChoice ?? pluginConfig.openaiToolChoice ?? pluginConfig.defaultToolChoice
+    ),
+    tools: normalizeCursorTools(pluginConfig.tools ?? pluginConfig.openaiTools ?? pluginConfig.defaultTools)
+  };
+}
+function normalizeCursorTools(value) {
+  if (Array.isArray(value)) {
+    return value.map(normalizeCursorTool).filter((tool) => Boolean(tool));
+  }
+  if (isRecord12(value)) {
+    if (Array.isArray(value.tools) || isRecord12(value.tools)) {
+      return normalizeCursorTools(value.tools);
+    }
+    return Object.entries(value).map(([name, item]) => normalizeCursorTool(isRecord12(item) ? { ...item, name: stringValue6(item.name) || name } : { description: stringValue6(item), name })).filter((tool) => Boolean(tool));
+  }
+  return [];
+}
+function normalizeCursorTool(value) {
+  if (!isRecord12(value)) {
+    return void 0;
+  }
+  const type = stringValue6(value.type);
+  if (type && type.toLowerCase().startsWith("web_search")) {
+    return { ...value, type };
+  }
+  const fn = isRecord12(value.function) ? value.function : value;
+  const name = stringValue6(fn.name) || stringValue6(value.name) || stringValue6(value.toolName) || stringValue6(value.functionName);
+  if (!name) {
+    return void 0;
+  }
+  return {
+    function: compactRecord({
+      description: stringValue6(fn.description) || stringValue6(value.description),
+      name,
+      parameters: normalizeCursorToolParameters(
+        fn.parameters ?? value.parameters ?? fn.input_schema ?? value.input_schema ?? fn.inputSchema ?? value.inputSchema ?? fn.schema ?? value.schema
+      )
+    }),
+    type: "function"
+  };
+}
+function normalizeCursorToolParameters(value) {
+  if (isRecord12(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (isRecord12(parsed)) {
+        return parsed;
+      }
+    } catch {
+    }
+  }
+  return { properties: {}, type: "object" };
+}
+function normalizeCursorToolChoice(value) {
+  if (typeof value === "string" && value.trim()) {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "auto" || normalized === "none" || normalized === "required") {
+      return normalized;
+    }
+    return { function: { name: value.trim() }, type: "function" };
+  }
+  if (!isRecord12(value)) {
+    return void 0;
+  }
+  const type = stringValue6(value.type);
+  if (type && ["auto", "none", "required"].includes(type.toLowerCase())) {
+    return type.toLowerCase();
+  }
+  const fn = isRecord12(value.function) ? value.function : value;
+  const name = stringValue6(fn.name) || stringValue6(value.name) || stringValue6(value.toolName);
+  return name ? { function: { name }, type: "function" } : void 0;
+}
+function compactRecord(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== void 0));
 }
 
 // packages/core/src/gateway/features/hosted-web-search/evidence.ts
+var import_node_crypto13 = require("node:crypto");
 function queryMatchScore(queryHint, query) {
   if (!queryHint) {
     return 0;
@@ -69269,28 +71589,28 @@ function normalizeSearchComparisonText(value) {
 }
 function responseValueContainsAnthropicWebSearchBlocks(value) {
   return Array.isArray(value.content) && value.content.some((block) => {
-    const type = isRecord10(block) ? stringValue5(block.type) : void 0;
+    const type = isRecord12(block) ? stringValue6(block.type) : void 0;
     return type === "server_tool_use" || type === "web_search_tool_result";
   });
 }
 function responseValueContainsVisibleText(value) {
   return Array.isArray(value.content) && value.content.some((block) => {
-    if (!isRecord10(block) || stringValue5(block.type) !== "text") {
+    if (!isRecord12(block) || stringValue6(block.type) !== "text") {
       return false;
     }
-    return Boolean(stringValue5(block.text)?.trim());
+    return Boolean(stringValue6(block.text)?.trim());
   });
 }
 function responseValueContainsAnthropicClientToolUse(value) {
   return Array.isArray(value.content) && value.content.some((block) => {
-    return isRecord10(block) && stringValue5(block.type) === "tool_use";
+    return isRecord12(block) && stringValue6(block.type) === "tool_use";
   });
 }
 function leadingThinkingBlockCount(content) {
   let index = 0;
   while (index < content.length) {
     const block = content[index];
-    if (!isRecord10(block) || stringValue5(block.type) !== "thinking") {
+    if (!isRecord12(block) || stringValue6(block.type) !== "thinking") {
       break;
     }
     index += 1;
@@ -69304,7 +71624,7 @@ function webSearchProtocolInsertIndex(content, hasWebSearchBlocks) {
   }
   while (index < content.length) {
     const block = content[index];
-    const type = isRecord10(block) ? stringValue5(block.type) : void 0;
+    const type = isRecord12(block) ? stringValue6(block.type) : void 0;
     if (type !== "server_tool_use" && type !== "web_search_tool_result") {
       break;
     }
@@ -69313,52 +71633,52 @@ function webSearchProtocolInsertIndex(content, hasWebSearchBlocks) {
   return index;
 }
 function mergeAnthropicWebSearchUsage(usage, searchCount) {
-  const nextUsage = isRecord10(usage) ? { ...usage } : {};
-  const serverToolUse = isRecord10(nextUsage.server_tool_use) ? { ...nextUsage.server_tool_use } : {};
+  const nextUsage = isRecord12(usage) ? { ...usage } : {};
+  const serverToolUse = isRecord12(nextUsage.server_tool_use) ? { ...nextUsage.server_tool_use } : {};
   const webSearchRequests = Math.max(1, Math.trunc(searchCount));
   serverToolUse.web_search_requests = Math.max(numberValue4(serverToolUse.web_search_requests) ?? 0, webSearchRequests);
   nextUsage.server_tool_use = serverToolUse;
   return nextUsage;
 }
 function sseEventContainsAnthropicWebSearchBlock(event) {
-  const data = isRecord10(event.data) ? event.data : void 0;
-  const block = isRecord10(data?.content_block) ? data.content_block : void 0;
-  const type = stringValue5(block?.type) || stringValue5(data?.type);
+  const data = isRecord12(event.data) ? event.data : void 0;
+  const block = isRecord12(data?.content_block) ? data.content_block : void 0;
+  const type = stringValue6(block?.type) || stringValue6(data?.type);
   return type === "server_tool_use" || type === "web_search_tool_result";
 }
 function sseEventContainsVisibleText(event) {
-  const data = isRecord10(event.data) ? event.data : void 0;
+  const data = isRecord12(event.data) ? event.data : void 0;
   if (!data) {
     return false;
   }
-  const block = isRecord10(data.content_block) ? data.content_block : void 0;
-  if (stringValue5(data.type) === "content_block_start" && stringValue5(block?.type) === "text") {
-    return Boolean(stringValue5(block?.text)?.trim());
+  const block = isRecord12(data.content_block) ? data.content_block : void 0;
+  if (stringValue6(data.type) === "content_block_start" && stringValue6(block?.type) === "text") {
+    return Boolean(stringValue6(block?.text)?.trim());
   }
-  const delta = isRecord10(data.delta) ? data.delta : void 0;
-  return stringValue5(data.type) === "content_block_delta" && stringValue5(delta?.type) === "text_delta" && Boolean(stringValue5(delta?.text)?.trim());
+  const delta = isRecord12(data.delta) ? data.delta : void 0;
+  return stringValue6(data.type) === "content_block_delta" && stringValue6(delta?.type) === "text_delta" && Boolean(stringValue6(delta?.text)?.trim());
 }
 function sseEventContainsAnthropicClientToolUse(event) {
-  const data = isRecord10(event.data) ? event.data : void 0;
-  const block = isRecord10(data?.content_block) ? data.content_block : void 0;
-  return stringValue5(data?.type) === "content_block_start" && stringValue5(block?.type) === "tool_use";
+  const data = isRecord12(event.data) ? event.data : void 0;
+  const block = isRecord12(data?.content_block) ? data.content_block : void 0;
+  return stringValue6(data?.type) === "content_block_start" && stringValue6(block?.type) === "tool_use";
 }
 function anthropicSseTextBlockStartIndex(event) {
-  const data = isRecord10(event.data) ? event.data : void 0;
-  const block = isRecord10(data?.content_block) ? data.content_block : void 0;
-  if (stringValue5(data?.type) !== "content_block_start" || stringValue5(block?.type) !== "text") {
+  const data = isRecord12(event.data) ? event.data : void 0;
+  const block = isRecord12(data?.content_block) ? data.content_block : void 0;
+  if (stringValue6(data?.type) !== "content_block_start" || stringValue6(block?.type) !== "text") {
     return void 0;
   }
   const index = numberValue4(data?.index);
   return index === void 0 ? void 0 : index;
 }
 function sseEventIsAnthropicMessageEnd(event) {
-  const type = isRecord10(event.data) ? stringValue5(event.data.type) : void 0;
+  const type = isRecord12(event.data) ? stringValue6(event.data.type) : void 0;
   return type === "message_delta" || type === "message_stop";
 }
 function anthropicWebSearchSseEventsForBlock(block, index) {
-  if (stringValue5(block.type) === "text") {
-    const text = stringValue5(block.text) ?? "";
+  if (stringValue6(block.type) === "text") {
+    const text = stringValue6(block.text) ?? "";
     return [
       sseEventFromValue({
         content_block: { text: "", type: "text" },
@@ -69389,15 +71709,15 @@ function anthropicWebSearchSseEventsForBlock(block, index) {
   ];
 }
 function updateAnthropicWebSearchSseUsage(event, searchCount, didSynthesizeAnswer, hasClientToolUse) {
-  if (!isRecord10(event.data) || stringValue5(event.data.type) !== "message_delta") {
+  if (!isRecord12(event.data) || stringValue6(event.data.type) !== "message_delta") {
     return event;
   }
-  const delta = isRecord10(event.data.delta) ? { ...event.data.delta } : event.data.delta;
+  const delta = isRecord12(event.data.delta) ? { ...event.data.delta } : event.data.delta;
   const nextData = {
     ...event.data,
     usage: mergeAnthropicWebSearchUsage(event.data.usage, searchCount)
   };
-  if (isRecord10(delta) && shouldEndAnthropicHostedWebSearchTurn(delta.stop_reason, didSynthesizeAnswer, hasClientToolUse)) {
+  if (isRecord12(delta) && shouldEndAnthropicHostedWebSearchTurn(delta.stop_reason, didSynthesizeAnswer, hasClientToolUse)) {
     nextData.delta = { ...delta, stop_reason: "end_turn" };
   }
   return {
@@ -69409,7 +71729,7 @@ function shouldEndAnthropicHostedWebSearchTurn(stopReason, didSynthesizeAnswer, 
   if (hasClientToolUse) {
     return false;
   }
-  const normalized = stringValue5(stopReason);
+  const normalized = stringValue6(stopReason);
   return normalized === "tool_use" || didSynthesizeAnswer && normalized === "max_tokens";
 }
 function synthesizeWebSearchAnswer(records, queryHint) {
@@ -69677,7 +71997,7 @@ function anthropicWebSearchResultSnippet(result) {
   return parts.length > 0 ? parts.join("\n") : void 0;
 }
 function sanitizeAnthropicToolUseId(value) {
-  return value.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24) || (0, import_node_crypto12.randomBytes)(8).toString("hex");
+  return value.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24) || (0, import_node_crypto13.randomBytes)(8).toString("hex");
 }
 
 // packages/core/src/gateway/features/hosted-web-search/discovery.ts
@@ -69710,7 +72030,7 @@ function hasGeminiHostedWebSearchTool(tools) {
     return false;
   }
   return tools.some((tool) => {
-    if (!isRecord10(tool)) {
+    if (!isRecord12(tool)) {
       return false;
     }
     if (tool.google_search !== void 0 || tool.googleSearch !== void 0 || tool.google_search_retrieval !== void 0 || tool.googleSearchRetrieval !== void 0) {
@@ -69720,25 +72040,25 @@ function hasGeminiHostedWebSearchTool(tools) {
   });
 }
 function isAnthropicHostedWebSearchTool(tool) {
-  if (!isRecord10(tool)) {
+  if (!isRecord12(tool)) {
     return false;
   }
-  return anthropicHostedWebSearchType(stringValue5(tool.type));
+  return anthropicHostedWebSearchType(stringValue6(tool.type));
 }
 function isOpenAiHostedWebSearchTool(tool) {
-  if (!isRecord10(tool)) {
+  if (!isRecord12(tool)) {
     return false;
   }
-  return openAiHostedWebSearchType(stringValue5(tool.type));
+  return openAiHostedWebSearchType(stringValue6(tool.type));
 }
 function openAiToolChoiceNamesWebSearch(value) {
   if (typeof value === "string") {
     return openAiHostedWebSearchType(value);
   }
-  if (!isRecord10(value)) {
+  if (!isRecord12(value)) {
     return false;
   }
-  return openAiHostedWebSearchType(stringValue5(value.type));
+  return openAiHostedWebSearchType(stringValue6(value.type));
 }
 function anthropicHostedWebSearchType(value) {
   const normalized = normalizedToolProtocolName(value);
@@ -69755,8 +72075,8 @@ function readAnthropicWebSearchMaxUses(tools) {
   if (!Array.isArray(tools)) {
     return void 0;
   }
-  const tool = tools.find((item) => isRecord10(item) && stringValue5(item.type)?.toLowerCase() === "web_search_20250305");
-  return isRecord10(tool) ? numberValue4(tool.max_uses ?? tool.maxUses) : void 0;
+  const tool = tools.find((item) => isRecord12(item) && stringValue6(item.type)?.toLowerCase() === "web_search_20250305");
+  return isRecord12(tool) ? numberValue4(tool.max_uses ?? tool.maxUses) : void 0;
 }
 function readHostedWebSearchMaxUses(body, protocol) {
   if (protocol === "anthropic_messages") {
@@ -69764,7 +72084,7 @@ function readHostedWebSearchMaxUses(body, protocol) {
   }
   if (protocol === "openai_chat_completions" || protocol === "openai_responses") {
     const tool = Array.isArray(body.tools) ? body.tools.find(isOpenAiHostedWebSearchTool) : void 0;
-    return isRecord10(tool) ? numberValue4(tool.max_uses ?? tool.maxUses) : void 0;
+    return isRecord12(tool) ? numberValue4(tool.max_uses ?? tool.maxUses) : void 0;
   }
   return void 0;
 }
@@ -69785,10 +72105,10 @@ function extractHostedWebSearchQueryHint(body, protocol) {
 }
 function extractAnthropicWebSearchQueryHint(body) {
   const userTexts = Array.isArray(body.messages) ? body.messages.flatMap((message) => {
-    if (!isRecord10(message) || stringValue5(message.role) !== "user") {
+    if (!isRecord12(message) || stringValue6(message.role) !== "user") {
       return [];
     }
-    return textPartsFromAnthropicContent(message.content);
+    return textPartsFromAnthropicContent2(message.content);
   }) : [];
   return normalizedWebSearchQueryHintFromParts(userTexts);
 }
@@ -69850,38 +72170,38 @@ function isRuntimeContextText(value) {
   }
   return trimmed.includes("<workspace_roots>") || trimmed.includes("<permission_profile") || trimmed.includes("<filesystem>") || trimmed.includes("<current_date>") || trimmed.includes("<writable_roots>");
 }
-function textPartsFromAnthropicContent(content) {
+function textPartsFromAnthropicContent2(content) {
   if (typeof content === "string") {
     return [content];
   }
   if (!Array.isArray(content)) {
     return [];
   }
-  return content.flatMap((part) => isRecord10(part) && typeof part.text === "string" ? [part.text] : []);
+  return content.flatMap((part) => isRecord12(part) && typeof part.text === "string" ? [part.text] : []);
 }
 function claudeCodeWebSearchToolResultTexts(body) {
   if (!Array.isArray(body.messages)) {
     return [];
   }
   const lastMessage = body.messages.at(-1);
-  if (!isRecord10(lastMessage) || stringValue5(lastMessage.role) !== "user" || !Array.isArray(lastMessage.content)) {
+  if (!isRecord12(lastMessage) || stringValue6(lastMessage.role) !== "user" || !Array.isArray(lastMessage.content)) {
     return [];
   }
-  const latestToolResults = lastMessage.content.filter((part) => isRecord10(part) && stringValue5(part.type) === "tool_result");
+  const latestToolResults = lastMessage.content.filter((part) => isRecord12(part) && stringValue6(part.type) === "tool_result");
   if (latestToolResults.length === 0) {
     return [];
   }
   const webSearchToolUseIds = /* @__PURE__ */ new Set();
   for (let index = body.messages.length - 2; index >= 0; index -= 1) {
     const message = body.messages[index];
-    if (!isRecord10(message) || stringValue5(message.role) !== "assistant" || !Array.isArray(message.content)) {
+    if (!isRecord12(message) || stringValue6(message.role) !== "assistant" || !Array.isArray(message.content)) {
       continue;
     }
     for (const part of message.content) {
-      if (!isRecord10(part) || stringValue5(part.type) !== "tool_use" || stringValue5(part.name)?.toLowerCase() !== "websearch") {
+      if (!isRecord12(part) || stringValue6(part.type) !== "tool_use" || stringValue6(part.name)?.toLowerCase() !== "websearch") {
         continue;
       }
-      const id = stringValue5(part.id);
+      const id = stringValue6(part.id);
       if (id) {
         webSearchToolUseIds.add(id);
       }
@@ -69893,10 +72213,10 @@ function claudeCodeWebSearchToolResultTexts(body) {
   }
   const texts = [];
   for (const part of latestToolResults) {
-    if (!isRecord10(part)) {
+    if (!isRecord12(part)) {
       continue;
     }
-    const toolUseId = stringValue5(part.tool_use_id);
+    const toolUseId = stringValue6(part.tool_use_id);
     if (!toolUseId || !webSearchToolUseIds.has(toolUseId)) {
       continue;
     }
@@ -69915,12 +72235,12 @@ function anthropicToolResultContentText(content) {
     return "";
   }
   return content.flatMap((part) => {
-    if (!isRecord10(part)) {
+    if (!isRecord12(part)) {
       return [];
     }
-    const type = stringValue5(part.type);
+    const type = stringValue6(part.type);
     if (type === "text" || type === "input_text" || type === "output_text") {
-      const text = stringValue5(part.text);
+      const text = stringValue6(part.text);
       return text ? [text] : [];
     }
     return [];
@@ -69931,7 +72251,7 @@ function textPartsFromOpenAiChatMessages(messages) {
     return [];
   }
   return messages.flatMap((message) => {
-    if (!isRecord10(message) || stringValue5(message.role)?.toLowerCase() !== "user") {
+    if (!isRecord12(message) || stringValue6(message.role)?.toLowerCase() !== "user") {
       return [];
     }
     return textPartsFromOpenAiContent(message.content);
@@ -69945,12 +72265,12 @@ function textPartsFromOpenAiContent(content) {
     return [];
   }
   return content.flatMap((part) => {
-    if (!isRecord10(part)) {
+    if (!isRecord12(part)) {
       return [];
     }
-    const type = stringValue5(part.type);
+    const type = stringValue6(part.type);
     if (type === "text" || type === "input_text" || type === "output_text") {
-      return stringValue5(part.text) ? [stringValue5(part.text)] : [];
+      return stringValue6(part.text) ? [stringValue6(part.text)] : [];
     }
     return [];
   });
@@ -69963,10 +72283,10 @@ function textPartsFromOpenAiResponsesInput(input) {
     return [];
   }
   return input.flatMap((item) => {
-    if (!isRecord10(item)) {
+    if (!isRecord12(item)) {
       return [];
     }
-    const role = stringValue5(item.role)?.toLowerCase();
+    const role = stringValue6(item.role)?.toLowerCase();
     if (role && role !== "user") {
       return [];
     }
@@ -69978,15 +72298,15 @@ function textPartsFromGeminiContents(contents) {
     return [];
   }
   return contents.flatMap((content) => {
-    if (!isRecord10(content)) {
+    if (!isRecord12(content)) {
       return [];
     }
-    const role = stringValue5(content.role)?.toLowerCase();
+    const role = stringValue6(content.role)?.toLowerCase();
     if (role && role !== "user") {
       return [];
     }
     const parts = Array.isArray(content.parts) ? content.parts : [];
-    return parts.flatMap((part) => isRecord10(part) && typeof part.text === "string" ? [part.text] : []);
+    return parts.flatMap((part) => isRecord12(part) && typeof part.text === "string" ? [part.text] : []);
   });
 }
 function fusionWebSearchToolNameForRequest(config, model) {
@@ -70022,21 +72342,21 @@ function fusionWebSearchToolCandidates(config) {
   );
   const candidates = [];
   for (const profile of profiles) {
-    if (!isRecord10(profile) || profile.enabled === false) {
+    if (!isRecord12(profile) || profile.enabled === false) {
       continue;
     }
-    const metadata = isRecord10(profile.metadata) ? profile.metadata : void 0;
-    const fusionWebSearch = isRecord10(metadata?.fusionWebSearch) ? metadata.fusionWebSearch : void 0;
+    const metadata = isRecord12(profile.metadata) ? profile.metadata : void 0;
+    const fusionWebSearch = isRecord12(metadata?.fusionWebSearch) ? metadata.fusionWebSearch : void 0;
     const webSearchConfig = readFusionWebSearchConfig(fusionWebSearch);
     if (!webSearchConfig?.toolName) {
       continue;
     }
     const provider = webSearchConfig.provider ?? defaultFusionWebSearchProvider;
-    const match = isRecord10(profile.match) ? profile.match : void 0;
+    const match = isRecord12(profile.match) ? profile.match : void 0;
     const aliases = uniqueStrings7([
-      stringValue5(profile.id),
-      stringValue5(profile.key),
-      stringValue5(profile.displayName),
+      stringValue6(profile.id),
+      stringValue6(profile.key),
+      stringValue6(profile.displayName),
       ...stringListValue2(match?.exactAliases)
     ].filter((item) => Boolean(item)));
     candidates.push({
@@ -70107,7 +72427,7 @@ async function selectConfiguredWebSearchProtocolRecords(context, config) {
       toolName: context.toolName
     }];
   } catch (error) {
-    console.warn(`[gateway] Fusion web search provider ${candidate.provider} failed: ${formatError11(error)}`);
+    console.warn(`[gateway] Fusion web search provider ${candidate.provider} failed: ${formatError12(error)}`);
     return [];
   }
 }
@@ -70142,7 +72462,7 @@ async function searchBrave(input) {
     headers: { "x-subscription-token": apiKey },
     signal: AbortSignal.timeout(input.timeoutMs)
   });
-  const items = isRecord10(raw) && isRecord10(raw.web) && Array.isArray(raw.web.results) ? raw.web.results : [];
+  const items = isRecord12(raw) && isRecord12(raw.web) && Array.isArray(raw.web.results) ? raw.web.results : [];
   return items.map((item) => webSearchResult(item, "title", "url", "description")).filter(isWebSearchProviderResult);
 }
 async function searchBing(input) {
@@ -70159,7 +72479,7 @@ async function searchBing(input) {
     headers: { "ocp-apim-subscription-key": apiKey },
     signal: AbortSignal.timeout(input.timeoutMs)
   });
-  const items = isRecord10(raw) && isRecord10(raw.webPages) && Array.isArray(raw.webPages.value) ? raw.webPages.value : [];
+  const items = isRecord12(raw) && isRecord12(raw.webPages) && Array.isArray(raw.webPages.value) ? raw.webPages.value : [];
   return items.map((item) => webSearchResult(item, "name", "url", "snippet")).filter(isWebSearchProviderResult);
 }
 async function searchGoogleCse(input) {
@@ -70175,7 +72495,7 @@ async function searchGoogleCse(input) {
   url.searchParams.set("q", input.query);
   url.searchParams.set("num", String(Math.min(input.count, 10)));
   const raw = await fetchJson2(url.toString(), { signal: AbortSignal.timeout(input.timeoutMs) });
-  const items = isRecord10(raw) && Array.isArray(raw.items) ? raw.items : [];
+  const items = isRecord12(raw) && Array.isArray(raw.items) ? raw.items : [];
   return items.map((item) => webSearchResult(item, "title", "link", "snippet")).filter(isWebSearchProviderResult);
 }
 async function searchSerper(input) {
@@ -70193,7 +72513,7 @@ async function searchSerper(input) {
     method: "POST",
     signal: AbortSignal.timeout(input.timeoutMs)
   });
-  const items = isRecord10(raw) && Array.isArray(raw.organic) ? raw.organic : [];
+  const items = isRecord12(raw) && Array.isArray(raw.organic) ? raw.organic : [];
   return items.map((item) => webSearchResult(item, "title", "link", "snippet")).filter(isWebSearchProviderResult);
 }
 async function searchSerpApi(input) {
@@ -70208,7 +72528,7 @@ async function searchSerpApi(input) {
   url.searchParams.set("q", input.query);
   url.searchParams.set("num", String(input.count));
   const raw = await fetchJson2(url.toString(), { signal: AbortSignal.timeout(input.timeoutMs) });
-  const items = isRecord10(raw) && Array.isArray(raw.organic_results) ? raw.organic_results : [];
+  const items = isRecord12(raw) && Array.isArray(raw.organic_results) ? raw.organic_results : [];
   return items.map((item) => webSearchResult(item, "title", "link", "snippet")).filter(isWebSearchProviderResult);
 }
 async function searchTavily(input) {
@@ -70228,7 +72548,7 @@ async function searchTavily(input) {
     method: "POST",
     signal: AbortSignal.timeout(input.timeoutMs)
   });
-  const items = isRecord10(raw) && Array.isArray(raw.results) ? raw.results : [];
+  const items = isRecord12(raw) && Array.isArray(raw.results) ? raw.results : [];
   return items.map((item) => webSearchResult(item, "title", "url", "content")).filter(isWebSearchProviderResult);
 }
 async function searchExa(input) {
@@ -70249,7 +72569,7 @@ async function searchExa(input) {
     method: "POST",
     signal: AbortSignal.timeout(input.timeoutMs)
   });
-  const items = isRecord10(raw) && Array.isArray(raw.results) ? raw.results : [];
+  const items = isRecord12(raw) && Array.isArray(raw.results) ? raw.results : [];
   return items.map((item) => webSearchResult(item, "title", "url", "text")).filter(isWebSearchProviderResult);
 }
 async function fetchJson2(input, init) {
@@ -70263,15 +72583,15 @@ function searchEnv(input, key) {
   return input.env?.[key]?.trim() || process.env[key]?.trim() || void 0;
 }
 function webSearchResult(item, titleKey, urlKey, snippetKey) {
-  if (!isRecord10(item)) {
+  if (!isRecord12(item)) {
     return void 0;
   }
-  const title = stringValue5(item[titleKey]) || "";
-  const url = stringValue5(item[urlKey]) || "";
+  const title = stringValue6(item[titleKey]) || "";
+  const url = stringValue6(item[urlKey]) || "";
   if (!title && !url) {
     return void 0;
   }
-  const snippet = stringValue5(item[snippetKey]);
+  const snippet = stringValue6(item[snippetKey]);
   return {
     ...snippet ? { snippet } : {},
     title,
@@ -70336,7 +72656,7 @@ function createHostedWebSearchProtocolContext(input) {
   if (!body || !hasHostedWebSearchDeclaration(body, protocol)) {
     return void 0;
   }
-  const toolName = fusionWebSearchToolNameForRequest(input.config, stringValue5(body.model) || input.routedModel);
+  const toolName = fusionWebSearchToolNameForRequest(input.config, stringValue6(body.model) || input.routedModel);
   if (!toolName) {
     return void 0;
   }
@@ -70357,7 +72677,7 @@ function createClaudeCodeWebSearchContinuationContext(input) {
   if (!body || claudeCodeWebSearchToolResultTexts(body).length === 0) {
     return void 0;
   }
-  const toolName = fusionWebSearchToolNameForRequest(input.config, stringValue5(body.model) || input.routedModel);
+  const toolName = fusionWebSearchToolNameForRequest(input.config, stringValue6(body.model) || input.routedModel);
   if (!toolName) {
     return void 0;
   }
@@ -70400,7 +72720,7 @@ function prepareAnthropicWebSearchProtocolRequestBody(body, records, context) {
   }
   const next = applyAnthropicWebSearchSynthesisControls(stripAnthropicHostedWebSearchTools({
     ...parsed,
-    system: appendAnthropicSystemText(parsed.system, evidence)
+    system: appendAnthropicSystemText2(parsed.system, evidence)
   }));
   return serializeJsonBody(next);
 }
@@ -70420,13 +72740,13 @@ function prepareClaudeCodeWebSearchContinuationRequestBody(body, records, contex
   }
   const next = applyAnthropicWebSearchSynthesisControls(stripClaudeCodeWebSearchContinuationTools({
     ...parsed,
-    system: appendAnthropicSystemText(parsed.system, evidence)
+    system: appendAnthropicSystemText2(parsed.system, evidence)
   }));
   return serializeJsonBody(next);
 }
 function applyAnthropicWebSearchSynthesisControls(body) {
   const next = { ...body };
-  const outputConfig = isRecord10(next.output_config) ? { ...next.output_config } : {};
+  const outputConfig = isRecord12(next.output_config) ? { ...next.output_config } : {};
   outputConfig.effort = "low";
   next.output_config = outputConfig;
   delete next.thinking;
@@ -70443,7 +72763,7 @@ function prepareOpenAiChatHostedWebSearchRequestBody(body, evidence) {
 function prepareOpenAiResponsesHostedWebSearchRequestBody(body, evidence) {
   const next = stripOpenAiHostedWebSearchTools({
     ...body,
-    instructions: appendStringInstruction(body.instructions, evidence)
+    instructions: appendStringInstruction2(body.instructions, evidence)
   });
   return applyOpenAiHostedWebSearchSynthesisControls(next);
 }
@@ -70458,7 +72778,7 @@ function applyOpenAiHostedWebSearchSynthesisControls(body) {
   if (typeof next.reasoning_effort === "string") {
     next.reasoning_effort = "low";
   }
-  if (isRecord10(next.reasoning)) {
+  if (isRecord12(next.reasoning)) {
     next.reasoning = { ...next.reasoning, effort: "low" };
   }
   return next;
@@ -70477,8 +72797,8 @@ function stripAnthropicHostedWebSearchTools(body) {
   } else {
     delete next.tools;
   }
-  const toolChoice = isRecord10(next.tool_choice) ? next.tool_choice : void 0;
-  const toolChoiceName = stringValue5(toolChoice?.name);
+  const toolChoice = isRecord12(next.tool_choice) ? next.tool_choice : void 0;
+  const toolChoiceName = stringValue6(toolChoice?.name);
   if (tools.length === 0 || toolChoiceName === "web_search") {
     delete next.tool_choice;
   }
@@ -70538,7 +72858,7 @@ function stripGeminiHostedWebSearchTools(body) {
   return next;
 }
 function stripGeminiHostedWebSearchTool(tool) {
-  if (!isRecord10(tool)) {
+  if (!isRecord12(tool)) {
     return { changed: false, value: tool };
   }
   let changed = false;
@@ -70551,7 +72871,7 @@ function stripGeminiHostedWebSearchTool(tool) {
   }
   return Object.keys(next).length === 0 ? { changed, value: void 0 } : { changed, value: next };
 }
-function appendAnthropicSystemText(system, text) {
+function appendAnthropicSystemText2(system, text) {
   if (typeof system === "string") {
     return `${system.trimEnd()}
 
@@ -70567,7 +72887,7 @@ function appendOpenAiChatSystemText(messages, text) {
   const message = { content: text, role: "system" };
   return Array.isArray(messages) ? [message, ...messages] : [message];
 }
-function appendStringInstruction(value, text) {
+function appendStringInstruction2(value, text) {
   const existing = rawStringValue(value);
   return existing ? `${existing.trimEnd()}
 
@@ -70578,7 +72898,7 @@ function appendGeminiSystemInstruction(value, text) {
   if (typeof value === "string") {
     return { parts: [{ text: value }, part] };
   }
-  if (isRecord10(value)) {
+  if (isRecord12(value)) {
     const parts = Array.isArray(value.parts) ? value.parts : [];
     return {
       ...value,
@@ -70665,7 +72985,7 @@ function focusedWebSearchContent(content, queryHint) {
 }
 
 // packages/core/src/gateway/features/hosted-web-search/response-transform.ts
-var import_node_stream3 = require("node:stream");
+var import_node_stream4 = require("node:stream");
 function hostedWebSearchProtocolResponseStream(input, headers, context, integration) {
   const hasIntegration = integration?.recentBrowserWebSearchResults !== void 0 || integration?.runBrowserWebSearch !== void 0;
   if (!hasIntegration && !context.records?.length) {
@@ -70682,7 +73002,7 @@ function hostedWebSearchProtocolResponseStream(input, headers, context, integrat
     return input;
   }
   const chunks = [];
-  return input.pipe(new import_node_stream3.Transform({
+  return input.pipe(new import_node_stream4.Transform({
     transform(chunk, _encoding, callback) {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       callback();
@@ -70699,7 +73019,7 @@ function hostedWebSearchProtocolResponseStream(input, headers, context, integrat
         const transformed = transformHostedWebSearchProtocolResponseValue(parsed, records, context);
         this.push(transformed.changed ? JSON.stringify(transformed.value) : body);
       })().catch((error) => {
-        console.warn(`[gateway] Hosted web search protocol bridge failed: ${formatError11(error)}`);
+        console.warn(`[gateway] Hosted web search protocol bridge failed: ${formatError12(error)}`);
         this.push(body);
       }).finally(() => callback());
     }
@@ -70722,7 +73042,7 @@ function hostedWebSearchProtocolSseStream(input, context, integration) {
     records = await recordsPromise;
     passThrough = records.length === 0;
   }
-  return input.pipe(new import_node_stream3.Transform({
+  return input.pipe(new import_node_stream4.Transform({
     transform(chunk, _encoding, callback) {
       const text = chunk.toString();
       const rawText = pending + text;
@@ -70736,7 +73056,7 @@ function hostedWebSearchProtocolSseStream(input, context, integration) {
         drainHostedWebSearchSseBlocks(this, pending, state, records, context, false);
         pending = sseTrailingPartialBlock(pending);
       })().catch((error) => {
-        console.warn(`[gateway] Hosted web search protocol bridge failed: ${formatError11(error)}`);
+        console.warn(`[gateway] Hosted web search protocol bridge failed: ${formatError12(error)}`);
         this.push(rawText);
         pending = "";
         passThrough = true;
@@ -70754,7 +73074,7 @@ function hostedWebSearchProtocolSseStream(input, context, integration) {
         drainHostedWebSearchSseBlocks(this, pending, state, records, context, true);
         pending = "";
       })().catch((error) => {
-        console.warn(`[gateway] Hosted web search protocol bridge failed: ${formatError11(error)}`);
+        console.warn(`[gateway] Hosted web search protocol bridge failed: ${formatError12(error)}`);
         if (pending) {
           this.push(pending);
         }
@@ -70788,7 +73108,7 @@ function drainHostedWebSearchSseBlocks(stream, text, state, records, context, fl
 function writeHostedWebSearchSseEvent(stream, event, delimiter, state, records, context) {
   updateHostedWebSearchSseState(event, state, context.protocol);
   const isDone = sseEventIsDone(event);
-  const isOpenAiResponsesCompleted = context.protocol === "openai_responses" && isRecord10(event.data) && stringValue5(event.data.type) === "response.completed";
+  const isOpenAiResponsesCompleted = context.protocol === "openai_responses" && isRecord12(event.data) && stringValue6(event.data.type) === "response.completed";
   if ((isDone || isOpenAiResponsesCompleted) && !state.done) {
     writeHostedWebSearchSseFallback(stream, state, records, context);
   }
@@ -70802,7 +73122,7 @@ function updateHostedWebSearchSseState(event, state, protocol) {
   }
   if (protocol === "openai_responses") {
     state.visibleText ||= openAiResponsesSseContainsVisibleText([event]);
-    if (isRecord10(event.data)) {
+    if (isRecord12(event.data)) {
       const outputIndex = numberValue4(event.data.output_index);
       if (outputIndex !== void 0) {
         state.maxOutputIndex = Math.max(state.maxOutputIndex, outputIndex);
@@ -70873,7 +73193,7 @@ function anthropicHostedWebSearchProtocolSseStream(input, context, integration) 
     records = await recordsPromise;
     passThrough = records.length === 0;
   }
-  return input.pipe(new import_node_stream3.Transform({
+  return input.pipe(new import_node_stream4.Transform({
     transform(chunk, _encoding, callback) {
       const text = chunk.toString();
       const rawText = pending + text;
@@ -70887,7 +73207,7 @@ function anthropicHostedWebSearchProtocolSseStream(input, context, integration) 
         drainAnthropicHostedWebSearchSseBlocks(this, pending, state, records, context, false);
         pending = sseTrailingPartialBlock(pending);
       })().catch((error) => {
-        console.warn(`[gateway] Hosted web search protocol bridge failed: ${formatError11(error)}`);
+        console.warn(`[gateway] Hosted web search protocol bridge failed: ${formatError12(error)}`);
         this.push(rawText);
         pending = "";
         passThrough = true;
@@ -70905,7 +73225,7 @@ function anthropicHostedWebSearchProtocolSseStream(input, context, integration) 
         drainAnthropicHostedWebSearchSseBlocks(this, pending, state, records, context, true);
         pending = "";
       })().catch((error) => {
-        console.warn(`[gateway] Hosted web search protocol bridge failed: ${formatError11(error)}`);
+        console.warn(`[gateway] Hosted web search protocol bridge failed: ${formatError12(error)}`);
         if (pending) {
           this.push(pending);
         }
@@ -70978,7 +73298,7 @@ function writeAnthropicHostedWebSearchSseEvent(stream, event, delimiter, state, 
   stream.push(`${serializeSseEvent(nextEvent)}${delimiter}`);
 }
 function updateAnthropicHostedWebSearchSseState(event, state) {
-  if (isRecord10(event.data) && Number.isFinite(event.data.index)) {
+  if (isRecord12(event.data) && Number.isFinite(event.data.index)) {
     state.maxIndex = Math.max(state.maxIndex, Number(event.data.index));
   }
   state.hasWebSearchBlocks ||= sseEventContainsAnthropicWebSearchBlock(event);
@@ -71029,7 +73349,7 @@ function transformHostedWebSearchProtocolResponseValue(value, records, context) 
   return { changed: false, value };
 }
 function transformAnthropicWebSearchProtocolResponseValue(value, records, requestId, queryHint) {
-  if (!isRecord10(value) || !Array.isArray(value.content)) {
+  if (!isRecord12(value) || !Array.isArray(value.content)) {
     return { changed: false, value };
   }
   const hasWebSearchBlocks = responseValueContainsAnthropicWebSearchBlocks(value);
@@ -71061,7 +73381,7 @@ function transformAnthropicWebSearchProtocolResponseValue(value, records, reques
   };
 }
 function transformOpenAiChatHostedWebSearchResponseValue(value, records, queryHint) {
-  if (!isRecord10(value) || openAiChatResponseContainsVisibleText(value)) {
+  if (!isRecord12(value) || openAiChatResponseContainsVisibleText(value)) {
     return { changed: false, value };
   }
   const answer = synthesizeWebSearchAnswer(records, queryHint);
@@ -71069,17 +73389,17 @@ function transformOpenAiChatHostedWebSearchResponseValue(value, records, queryHi
     return { changed: false, value };
   }
   const choices = value.choices.map((choice, index) => {
-    if (!isRecord10(choice) || index !== 0) {
+    if (!isRecord12(choice) || index !== 0) {
       return choice;
     }
-    const message = isRecord10(choice.message) ? choice.message : {};
+    const message = isRecord12(choice.message) ? choice.message : {};
     return {
       ...choice,
-      finish_reason: stringValue5(choice.finish_reason) === "length" ? "stop" : choice.finish_reason,
+      finish_reason: stringValue6(choice.finish_reason) === "length" ? "stop" : choice.finish_reason,
       message: {
         ...message,
         content: answer,
-        role: stringValue5(message.role) || "assistant"
+        role: stringValue6(message.role) || "assistant"
       }
     };
   });
@@ -71092,11 +73412,11 @@ function transformOpenAiChatHostedWebSearchResponseValue(value, records, queryHi
   };
 }
 function transformOpenAiResponsesHostedWebSearchResponseValue(value, records, requestId, queryHint) {
-  if (!isRecord10(value)) {
+  if (!isRecord12(value)) {
     return { changed: false, value };
   }
   const output = Array.isArray(value.output) ? value.output : [];
-  const hasSearchCall = output.some((item) => isRecord10(item) && stringValue5(item.type) === "web_search_call");
+  const hasSearchCall = output.some((item) => isRecord12(item) && stringValue6(item.type) === "web_search_call");
   const answer = openAiResponsesValueContainsVisibleText(value) ? void 0 : synthesizeWebSearchAnswer(records, queryHint);
   const injected = [
     ...hasSearchCall ? [] : openAiResponsesWebSearchCallItems(records, requestId),
@@ -71109,7 +73429,7 @@ function transformOpenAiResponsesHostedWebSearchResponseValue(value, records, re
     ...value,
     output: [...injected, ...output]
   };
-  if (answer && stringValue5(next.status) === "incomplete") {
+  if (answer && stringValue6(next.status) === "incomplete") {
     next.status = "completed";
     delete next.incomplete_details;
   }
@@ -71123,7 +73443,7 @@ function transformGeminiHostedWebSearchResponseValue(value, records, queryHint) 
     const answer2 = synthesizeWebSearchAnswer(records, queryHint);
     return answer2 ? { changed: true, value: [...value, geminiAnswerCandidateChunk(answer2)] } : { changed: false, value };
   }
-  if (!isRecord10(value) || geminiResponseValueContainsVisibleText(value)) {
+  if (!isRecord12(value) || geminiResponseValueContainsVisibleText(value)) {
     return { changed: false, value };
   }
   const answer = synthesizeWebSearchAnswer(records, queryHint);
@@ -71131,14 +73451,14 @@ function transformGeminiHostedWebSearchResponseValue(value, records, queryHint) 
     return { changed: false, value };
   }
   const candidates = Array.isArray(value.candidates) ? value.candidates : [];
-  const nextCandidate = candidates.length > 0 && isRecord10(candidates[0]) ? {
+  const nextCandidate = candidates.length > 0 && isRecord12(candidates[0]) ? {
     ...candidates[0],
     content: {
-      ...isRecord10(candidates[0].content) ? candidates[0].content : {},
+      ...isRecord12(candidates[0].content) ? candidates[0].content : {},
       parts: [{ text: answer }],
       role: "model"
     },
-    finishReason: stringValue5(candidates[0].finishReason) === "MAX_TOKENS" ? "STOP" : candidates[0].finishReason
+    finishReason: stringValue6(candidates[0].finishReason) === "MAX_TOKENS" ? "STOP" : candidates[0].finishReason
   } : geminiAnswerCandidate(answer);
   return {
     changed: true,
@@ -71153,26 +73473,26 @@ function openAiChatResponseContainsVisibleText(value) {
     return false;
   }
   return value.choices.some((choice) => {
-    const message = isRecord10(choice) && isRecord10(choice.message) ? choice.message : void 0;
-    return Boolean(stringValue5(message?.content)?.trim());
+    const message = isRecord12(choice) && isRecord12(choice.message) ? choice.message : void 0;
+    return Boolean(stringValue6(message?.content)?.trim());
   });
 }
 function openAiChatSseContainsVisibleText(events) {
   return events.some((event) => {
-    const choices = isRecord10(event.data) && Array.isArray(event.data.choices) ? event.data.choices : [];
+    const choices = isRecord12(event.data) && Array.isArray(event.data.choices) ? event.data.choices : [];
     return choices.some((choice) => {
-      const delta = isRecord10(choice) && isRecord10(choice.delta) ? choice.delta : void 0;
-      return Boolean(stringValue5(delta?.content)?.trim());
+      const delta = isRecord12(choice) && isRecord12(choice.delta) ? choice.delta : void 0;
+      return Boolean(stringValue6(delta?.content)?.trim());
     });
   });
 }
 function updateOpenAiChatSseFinishReason(event) {
-  if (!isRecord10(event.data) || !Array.isArray(event.data.choices)) {
+  if (!isRecord12(event.data) || !Array.isArray(event.data.choices)) {
     return event;
   }
   let changed = false;
   const choices = event.data.choices.map((choice) => {
-    if (!isRecord10(choice) || stringValue5(choice.finish_reason) !== "length") {
+    if (!isRecord12(choice) || stringValue6(choice.finish_reason) !== "length") {
       return choice;
     }
     changed = true;
@@ -71184,13 +73504,13 @@ function openAiResponsesValueContainsVisibleText(value) {
   return Array.isArray(value.output) && value.output.some(openAiResponsesItemContainsVisibleText);
 }
 function openAiResponsesItemContainsVisibleText(item) {
-  if (!isRecord10(item)) {
+  if (!isRecord12(item)) {
     return false;
   }
-  if (stringValue5(item.type) === "message" && Array.isArray(item.content)) {
-    return item.content.some((part) => isRecord10(part) && Boolean(stringValue5(part.text)?.trim()));
+  if (stringValue6(item.type) === "message" && Array.isArray(item.content)) {
+    return item.content.some((part) => isRecord12(part) && Boolean(stringValue6(part.text)?.trim()));
   }
-  return Boolean(stringValue5(item.text)?.trim());
+  return Boolean(stringValue6(item.text)?.trim());
 }
 function openAiResponsesSseContainsVisibleText(events) {
   return Boolean(openAiResponsesSseVisibleText(events));
@@ -71200,20 +73520,20 @@ function openAiResponsesSseVisibleText(events) {
   let doneText = "";
   let itemText = "";
   for (const event of events) {
-    const data = isRecord10(event.data) ? event.data : void 0;
+    const data = isRecord12(event.data) ? event.data : void 0;
     if (!data) {
       continue;
     }
-    const type = stringValue5(data.type);
+    const type = stringValue6(data.type);
     if (type === "response.output_text.delta") {
-      deltaText += stringValue5(data.delta) ?? "";
+      deltaText += stringValue6(data.delta) ?? "";
       continue;
     }
     if (type === "response.output_text.done") {
-      doneText = stringValue5(data.text) ?? doneText;
+      doneText = stringValue6(data.text) ?? doneText;
       continue;
     }
-    const item = isRecord10(data.item) ? data.item : void 0;
+    const item = isRecord12(data.item) ? data.item : void 0;
     if (item && openAiResponsesItemContainsVisibleText(item)) {
       itemText = openAiResponsesItemText(item) ?? itemText;
     }
@@ -71221,14 +73541,14 @@ function openAiResponsesSseVisibleText(events) {
   return nonEmptyText(deltaText) ?? nonEmptyText(doneText) ?? nonEmptyText(itemText);
 }
 function openAiResponsesItemText(item) {
-  if (!isRecord10(item)) {
+  if (!isRecord12(item)) {
     return void 0;
   }
-  if (stringValue5(item.type) === "message" && Array.isArray(item.content)) {
-    const text = item.content.flatMap((part) => isRecord10(part) ? [stringValue5(part.text) ?? ""] : []).join("");
+  if (stringValue6(item.type) === "message" && Array.isArray(item.content)) {
+    const text = item.content.flatMap((part) => isRecord12(part) ? [stringValue6(part.text) ?? ""] : []).join("");
     return text.trim() ? text : void 0;
   }
-  return stringValue5(item.text);
+  return stringValue6(item.text);
 }
 function nonEmptyText(value) {
   return value && value.trim() ? value : void 0;
@@ -71309,11 +73629,11 @@ function openAiResponsesSseAnswerEvents(answer, requestId, outputIndex) {
   ];
 }
 function updateOpenAiResponsesCompletedStatus(event) {
-  if (!isRecord10(event.data) || stringValue5(event.data.type) !== "response.completed") {
+  if (!isRecord12(event.data) || stringValue6(event.data.type) !== "response.completed") {
     return event;
   }
-  const response = isRecord10(event.data.response) ? event.data.response : void 0;
-  if (!response || stringValue5(response.status) !== "incomplete") {
+  const response = isRecord12(event.data.response) ? event.data.response : void 0;
+  if (!response || stringValue6(response.status) !== "incomplete") {
     return event;
   }
   const nextResponse = { ...response, status: "completed" };
@@ -71330,15 +73650,15 @@ function geminiResponseValueContainsVisibleText(value) {
   return Array.isArray(value.candidates) && value.candidates.some(geminiCandidateContainsVisibleText);
 }
 function geminiResponseArrayContainsVisibleText(values) {
-  return values.some((value) => isRecord10(value) && geminiResponseValueContainsVisibleText(value));
+  return values.some((value) => isRecord12(value) && geminiResponseValueContainsVisibleText(value));
 }
 function geminiCandidateContainsVisibleText(candidate) {
-  const content = isRecord10(candidate) && isRecord10(candidate.content) ? candidate.content : void 0;
+  const content = isRecord12(candidate) && isRecord12(candidate.content) ? candidate.content : void 0;
   const parts = Array.isArray(content?.parts) ? content.parts : [];
-  return parts.some((part) => isRecord10(part) && Boolean(stringValue5(part.text)?.trim()));
+  return parts.some((part) => isRecord12(part) && Boolean(stringValue6(part.text)?.trim()));
 }
 function geminiSseContainsVisibleText(events) {
-  return events.some((event) => isRecord10(event.data) && geminiResponseValueContainsVisibleText(event.data));
+  return events.some((event) => isRecord12(event.data) && geminiResponseValueContainsVisibleText(event.data));
 }
 function geminiAnswerCandidate(answer) {
   return {
@@ -71360,7 +73680,7 @@ function sseEventIsDone(event) {
 }
 
 // packages/core/src/gateway/request/pipeline.ts
-function reportedRouteChange(scope, path23, before, after) {
+function reportedRouteChange(scope, path24, before, after) {
   if (Object.is(before, after)) {
     return void 0;
   }
@@ -71368,7 +73688,7 @@ function reportedRouteChange(scope, path23, before, after) {
     ...after === void 0 ? {} : { after },
     ...before === void 0 ? {} : { before },
     operation: before === void 0 ? "add" : after === void 0 ? "remove" : "replace",
-    path: path23,
+    path: path24,
     scope
   };
 }
@@ -71395,18 +73715,18 @@ var GatewayRequestPipeline = class {
   get status() {
     return this.dependencies.getStatus();
   }
-  async proxyRequest(request, response, path23, apiKey) {
+  async proxyRequest(request, response, path24, apiKey) {
     if (!this.config || !this.plugin) {
-      sendJson3(response, 503, { error: { message: "Gateway service is not configured." } });
+      sendJson4(response, 503, { error: { message: "Gateway service is not configured." } });
       return;
     }
     const method = request.method ?? "GET";
     const requestBody = await readRequestBody(request);
-    const requestedModel = requestLogRequestedModel(requestBody, path23);
+    const requestedModel = requestLogRequestedModel(requestBody, path24);
     const startedAt = Date.now();
     const startedAtIso = new Date(startedAt).toISOString();
-    const requestId = (0, import_node_crypto13.randomUUID)();
-    const requestUrl2 = new URL(request.url || path23, this.status.endpoint || "http://127.0.0.1").toString();
+    const requestId = (0, import_node_crypto14.randomUUID)();
+    const requestUrl2 = new URL(request.url || path24, this.status.endpoint || "http://127.0.0.1").toString();
     const routeTrace = shouldRecordRequestLogs(this.config) ? new RequestRouteTraceRecorder(startedAt) : void 0;
     routeTrace?.captureIngress();
     const headerNormalizationStartedAt = Date.now();
@@ -71442,7 +73762,7 @@ var GatewayRequestPipeline = class {
     });
     const client = inferGatewayClient(apiKey, request.headers);
     const cursorCompatStartedAt = Date.now();
-    const cursorCompatPreparation = prepareCursorOpenAICompatChatBody(this.config, client, method, path23, requestBody);
+    const cursorCompatPreparation = prepareCursorOpenAICompatChatBody(this.config, client, method, path24, requestBody);
     if (cursorCompatPreparation) {
       headers["x-ccr-cursor-openai-compat"] = sanitizeHeaderValue(cursorCompatPreparation.diagnostic);
     }
@@ -71464,7 +73784,7 @@ var GatewayRequestPipeline = class {
     let routedModel;
     let codexApplyPatchBridgeActive = false;
     const claudeModelRewriteStartedAt = Date.now();
-    const claudeModelRewrite = prepareClaudeCodeDiscoveredModelRequest(this.config, request.headers, method, path23, bodyToForward);
+    const claudeModelRewrite = prepareClaudeCodeDiscoveredModelRequest(this.config, request.headers, method, path24, bodyToForward);
     if (claudeModelRewrite) {
       headers["x-ccr-claude-model-discovery"] = sanitizeHeaderValue(claudeModelRewrite.diagnostic);
       bodyToForward = claudeModelRewrite.body;
@@ -71481,7 +73801,7 @@ var GatewayRequestPipeline = class {
       });
     }
     const claudeAppModelRewriteStartedAt = Date.now();
-    const claudeAppModelRewrite = prepareClaudeAppDiscoveredModelRequest(this.config, method, path23, bodyToForward);
+    const claudeAppModelRewrite = prepareClaudeAppDiscoveredModelRequest(this.config, method, path24, bodyToForward);
     if (claudeAppModelRewrite) {
       headers["x-ccr-claude-app-model-rewrite"] = sanitizeHeaderValue(claudeAppModelRewrite.diagnostic);
       bodyToForward = claudeAppModelRewrite.body;
@@ -71553,7 +73873,7 @@ var GatewayRequestPipeline = class {
         maxBodyBytes: config.observability.requestLogMaxBodyBytes,
         method,
         model: routedModel,
-        path: path23,
+        path: path24,
         providerName: resolveProviderLogName(responseHeaders2, config, routedModel),
         pricing: providerModelPricingForUsage(
           config,
@@ -71577,8 +73897,8 @@ var GatewayRequestPipeline = class {
         url: requestUrl2
       });
     };
-    const shouldCaptureUsage = shouldCaptureGatewayUsage(method, path23);
-    if (shouldServeGatewayModelsResponse(method, path23)) {
+    const shouldCaptureUsage = shouldCaptureGatewayUsage(method, path24);
+    if (shouldServeGatewayModelsResponse(method, path24)) {
       const responseText = `${JSON.stringify(createGatewayModelsResponse(this.config, request.headers, apiKey))}
 `;
       const modelHeaders = new Headers({
@@ -71592,9 +73912,9 @@ var GatewayRequestPipeline = class {
       response.end(responseText);
       return;
     }
-    if (shouldApplyGatewayRouting(method, path23)) {
+    if (shouldApplyGatewayRouting(method, path24)) {
       const routeAdaptationStartedAt = Date.now();
-      const adaptation = adaptRouteRequestBody(path23, takeJsonObject(bodyToForward ?? requestBody));
+      const adaptation = adaptRouteRequestBody(path24, takeJsonObject(bodyToForward ?? requestBody));
       if (adaptation.modelLocation === "path") {
         routeTrace?.capture({
           changes: [{ after: adaptation.body.model, operation: "add", path: "/body/model", scope: "body" }],
@@ -71611,7 +73931,7 @@ var GatewayRequestPipeline = class {
         headers,
         method,
         trace: routeTrace,
-        url: request.url ?? path23
+        url: request.url ?? path24
       });
       const serialized = serializeJsonBody(restoreRouteRequestBody(routed.body, adaptation));
       headers["content-type"] = "application/json";
@@ -71651,7 +73971,7 @@ var GatewayRequestPipeline = class {
       config: this.config,
       headers: request.headers,
       method,
-      path: path23,
+      path: path24,
       routedModel
     });
     if (codexApplyPatchBridgeRequest) {
@@ -71686,7 +74006,7 @@ var GatewayRequestPipeline = class {
       config: this.config,
       fallback: routeFallback,
       headers,
-      path: path23,
+      path: path24,
       routedModel
     });
     bodyToForward = providerCapabilityRouting.body;
@@ -71712,7 +74032,7 @@ var GatewayRequestPipeline = class {
       body: bodyToForward,
       config: this.config,
       method,
-      path: path23,
+      path: path24,
       requestId,
       routedModel,
       sinceMs: startedAt - 1e3
@@ -71723,7 +74043,7 @@ var GatewayRequestPipeline = class {
         this.browserWebSearchMcpIntegration,
         this.config
       ).catch((error) => {
-        console.warn(`[gateway] Failed to prefetch hosted web search results: ${formatError11(error)}`);
+        console.warn(`[gateway] Failed to prefetch hosted web search results: ${formatError12(error)}`);
         return [];
       });
       if (records.length > 0) {
@@ -71757,7 +74077,7 @@ var GatewayRequestPipeline = class {
         const responseHeaders2 = new Headers({ "content-type": "application/json; charset=utf-8" });
         const responseBody2 = JSON.stringify({ error: { message } });
         writeRequestLog(503, responseHeaders2, responseBody2, false, message);
-        sendJson3(response, 503, { error: { message } });
+        sendJson4(response, 503, { error: { message } });
         return;
       }
     }
@@ -71765,7 +74085,7 @@ var GatewayRequestPipeline = class {
       body: bodyToForward,
       config: this.config,
       method,
-      path: path23,
+      path: path24,
       routedModel,
       sinceMs: startedAt - 5 * 6e4
     }) : void 0;
@@ -71797,10 +74117,103 @@ var GatewayRequestPipeline = class {
         });
       }
     }
+    let upstreamPath = path24;
+    const requestProtocol = requestProtocolForPath(path24) ?? (isCodexResponsesCompactPath(path24) ? "openai_responses" : void 0);
+    const contextArchiveToolContinuation = prepareContextArchiveToolContinuationRequest({
+      apiKey,
+      body: bodyToForward,
+      config: this.config,
+      method,
+      path: path24,
+      protocol: requestProtocol
+    });
+    if (contextArchiveToolContinuation) {
+      bodyToForward = contextArchiveToolContinuation.body;
+      headers["content-type"] = "application/json";
+      headers["x-ccr-context-archive-tool"] = "available";
+      routeTrace?.capture({
+        changes: [
+          { operation: "replace", path: "/body", scope: "body" },
+          { after: headers["x-ccr-context-archive-tool"], operation: "add", path: "/headers/x-ccr-context-archive-tool", scope: "headers" },
+          { after: headers["content-type"], operation: "replace", path: "/headers/content-type", scope: "headers" }
+        ],
+        kind: "mutation",
+        name: "enrichment.context-archive-tool-continuation",
+        phase: "enrichment",
+        target: { protocol: contextArchiveToolContinuation.protocol }
+      });
+    }
+    let contextArchiveRecord;
+    let contextArchiveResponseContentType;
+    let contextArchiveResponseMode;
+    let codexCompactCompatResponseMode;
+    const contextArchiveStartedAt = Date.now();
+    const contextArchivePreparation = await prepareContextArchiveRequest({
+      apiKey,
+      body: bodyToForward,
+      config: this.config,
+      headers,
+      method,
+      path: path24,
+      protocol: requestProtocol,
+      requestId
+    });
+    const contextArchiveRequestConfig = contextArchivePreparation?.config ?? this.config;
+    if (contextArchivePreparation) {
+      bodyToForward = contextArchivePreparation.body;
+      contextArchiveRecord = contextArchivePreparation.record;
+      contextArchiveResponseContentType = contextArchivePreparation.responseContentType;
+      contextArchiveResponseMode = contextArchivePreparation.responseMode;
+      upstreamPath = contextArchivePreparation.upstreamPath ?? upstreamPath;
+      headers["content-type"] = "application/json";
+      headers["x-ccr-context-archive"] = sanitizeHeaderValue(contextArchivePreparation.diagnostic);
+      routeTrace?.capture({
+        changes: [
+          { operation: "replace", path: "/body", scope: "body" },
+          ...contextArchivePreparation.upstreamPath ? [{ before: path24, after: upstreamPath, operation: "replace", path: "/url/path", scope: "url" }] : [],
+          { after: headers["x-ccr-context-archive"], operation: "add", path: "/headers/x-ccr-context-archive", scope: "headers" },
+          { after: headers["content-type"], operation: "replace", path: "/headers/content-type", scope: "headers" }
+        ],
+        durationMs: Date.now() - contextArchiveStartedAt,
+        kind: "mutation",
+        name: "enrichment.context-archive",
+        phase: "enrichment",
+        startedAtMs: contextArchiveStartedAt
+      });
+    }
+    const codexCompactCompatStartedAt = Date.now();
+    const codexCompactCompatPreparation = contextArchivePreparation ? void 0 : prepareCodexCompactCompatRequest({
+      body: bodyToForward,
+      method,
+      path: path24,
+      protocol: requestProtocol
+    });
+    if (codexCompactCompatPreparation) {
+      bodyToForward = codexCompactCompatPreparation.body;
+      contextArchiveResponseContentType = codexCompactCompatPreparation.responseContentType;
+      contextArchiveResponseMode = codexCompactCompatPreparation.responseMode;
+      codexCompactCompatResponseMode = codexCompactCompatPreparation.responseMode;
+      upstreamPath = codexCompactCompatPreparation.upstreamPath ?? upstreamPath;
+      headers["content-type"] = "application/json";
+      headers["x-ccr-codex-compact"] = sanitizeHeaderValue(codexCompactCompatPreparation.diagnostic);
+      routeTrace?.capture({
+        changes: [
+          { operation: "replace", path: "/body", scope: "body" },
+          ...codexCompactCompatPreparation.upstreamPath ? [{ before: path24, after: upstreamPath, operation: "replace", path: "/url/path", scope: "url" }] : [],
+          { after: headers["x-ccr-codex-compact"], operation: "add", path: "/headers/x-ccr-codex-compact", scope: "headers" },
+          { after: headers["content-type"], operation: "replace", path: "/headers/content-type", scope: "headers" }
+        ],
+        durationMs: Date.now() - codexCompactCompatStartedAt,
+        kind: "mutation",
+        name: "compatibility.codex-compact",
+        phase: "compatibility",
+        startedAtMs: codexCompactCompatStartedAt
+      });
+    }
     const contentLengthHeader = headers["content-length"];
     delete headers["content-length"];
     const upstreamPreparationChanges = contentLengthHeader === void 0 ? [] : [{ before: contentLengthHeader, operation: "remove", path: "/headers/content-length", scope: "headers" }];
-    const upstreamUrl = new URL(request.url || "/", this.status.coreEndpoint).toString();
+    const upstreamUrl = new URL(upstreamPath, this.status.coreEndpoint).toString();
     let upstreamResult;
     try {
       upstreamResult = await fetchUpstreamWithFallback({
@@ -71809,7 +74222,7 @@ var GatewayRequestPipeline = class {
         fallback: routeFallback,
         headers,
         method,
-        path: path23,
+        path: upstreamPath,
         preparationChanges: upstreamPreparationChanges,
         routedModel,
         coreAuthToken: this.coreAuthToken,
@@ -71818,6 +74231,7 @@ var GatewayRequestPipeline = class {
         upstreamUrl
       });
     } catch (error) {
+      failContextArchiveRequest(contextArchiveRecord, contextArchiveRequestConfig);
       const failedAttempts = error instanceof UpstreamRequestError ? error.failedAttempts : [];
       const message = formatUpstreamErrorForLog(error, {
         attempts: Math.max(1, failedAttempts.length),
@@ -71842,7 +74256,7 @@ var GatewayRequestPipeline = class {
           durationMs: Date.now() - startedAt,
           fallbackModel: routedModel,
           method,
-          path: path23,
+          path: path24,
           providerName: resolveProviderLogName(new Headers(), this.config, routedModel),
           providerProtocol: resolveResponseProviderProtocol(new Headers(), this.config),
           requestId,
@@ -71855,6 +74269,23 @@ var GatewayRequestPipeline = class {
     }
     bodyToForward = upstreamResult.attempt.body ?? bodyToForward;
     routedModel = upstreamResult.attempt.model ?? routedModel;
+    if (contextArchiveToolContinuation && upstreamResult.response.ok) {
+      upstreamResult = await resolveContextArchiveToolContinuation({
+        context: contextArchiveToolContinuation,
+        coreAuthToken: this.coreAuthToken,
+        executor: (input) => this.replayContextArchive(input),
+        fallback: routeFallback,
+        headers,
+        method,
+        path: upstreamPath,
+        routedModel,
+        signal: upstreamAbortController.signal,
+        upstreamResult,
+        upstreamUrl
+      });
+      bodyToForward = upstreamResult.attempt.body ?? bodyToForward;
+      routedModel = upstreamResult.attempt.model ?? routedModel;
+    }
     const responseHeaders = rewriteCapabilityResponseHeaders(
       // Copy into a mutable Headers instance: upstream fetch Response.headers
       // can be immutable (TypeError: immutable on .delete/.set), and
@@ -71866,13 +74297,33 @@ var GatewayRequestPipeline = class {
       this.config
     );
     const upstreamResponse = upstreamResult.response;
+    if (upstreamResponse.ok) {
+      finalizeContextArchiveRequest(contextArchiveRecord, {
+        credentialChain: upstreamResult.attempt.credentialChain,
+        credentialIds: upstreamResult.attempt.credentialIds,
+        logicalProvider: upstreamResult.attempt.logicalProvider,
+        providerProtocol: upstreamResult.attempt.credentialProtocol,
+        routedModel
+      }, contextArchiveRequestConfig);
+    } else {
+      failContextArchiveRequest(contextArchiveRecord, contextArchiveRequestConfig);
+    }
     if (clientDisconnected || upstreamAbortController.signal.aborted) {
       await cancelResponseBody(upstreamResponse);
       writeRequestLog(clientClosedRequestStatusCode, responseHeaders, "", false, clientDisconnectMessage);
       return;
     }
-    if (codexApplyPatchBridgeActive) {
+    const appendContextArchiveFooter = Boolean(contextArchiveRecord && upstreamResponse.ok);
+    const transformCodexCompactResponse = Boolean(!contextArchiveRecord && codexCompactCompatResponseMode && upstreamResponse.ok);
+    const contextArchiveSourceContentType = responseHeaders.get("content-type") ?? void 0;
+    if (codexApplyPatchBridgeActive || appendContextArchiveFooter || transformCodexCompactResponse) {
       responseHeaders.delete("content-length");
+    }
+    if ((appendContextArchiveFooter || transformCodexCompactResponse) && contextArchiveResponseContentType) {
+      responseHeaders.set("content-type", contextArchiveResponseContentType);
+    }
+    if (contextArchiveToolContinuation?.executedCalls) {
+      responseHeaders.set("x-ccr-context-archive-tool-calls", String(contextArchiveToolContinuation.executedCalls));
     }
     const hostedWebSearchResponseContentType = responseHeaders.get("content-type")?.toLowerCase() ?? "";
     if (hostedWebSearchProtocolContext && (hostedWebSearchResponseContentType.includes("application/json") || hostedWebSearchResponseContentType.includes("text/event-stream")) && (hostedWebSearchProtocolContext.records?.length || this.browserWebSearchMcpIntegration?.recentBrowserWebSearchResults || this.browserWebSearchMcpIntegration?.runBrowserWebSearch)) {
@@ -71893,7 +74344,7 @@ var GatewayRequestPipeline = class {
           durationMs: Date.now() - startedAt,
           fallbackModel: routedModel,
           method,
-          path: path23,
+          path: path24,
           providerName: resolveProviderLogName(responseHeaders, this.config, routedModel),
           providerProtocol: resolveResponseProviderProtocol(responseHeaders, this.config),
           requestId,
@@ -71905,15 +74356,28 @@ var GatewayRequestPipeline = class {
       response.end();
       return;
     }
-    const upstreamBody = import_node_stream4.Readable.fromWeb(upstreamResponse.body);
+    const upstreamBody = import_node_stream5.Readable.fromWeb(upstreamResponse.body);
     const patchedResponseBody = codexApplyPatchBridgeActive ? codexApplyPatchBridgeResponseStream(upstreamBody, responseHeaders) : upstreamBody;
-    const responseBody = hostedWebSearchProtocolContext ? hostedWebSearchProtocolResponseStream(
+    const hostedWebSearchResponseBody = hostedWebSearchProtocolContext ? hostedWebSearchProtocolResponseStream(
       patchedResponseBody,
       responseHeaders,
       hostedWebSearchProtocolContext,
       this.browserWebSearchMcpIntegration
     ) : patchedResponseBody;
-    const responseStreams = uniqueStreams([upstreamBody, patchedResponseBody, responseBody]);
+    const archiveResponseProtocol = requestProtocolForPath(upstreamPath) ?? requestProtocol ?? "anthropic_messages";
+    const responseBody = appendContextArchiveFooter && contextArchiveRecord ? contextArchiveHandoffResponseStream(
+      hostedWebSearchResponseBody,
+      contextArchiveRecord,
+      archiveResponseProtocol,
+      contextArchiveSourceContentType,
+      contextArchiveResponseMode
+    ) : transformCodexCompactResponse && codexCompactCompatResponseMode ? codexCompactResponseStream(
+      hostedWebSearchResponseBody,
+      archiveResponseProtocol,
+      contextArchiveSourceContentType,
+      codexCompactCompatResponseMode
+    ) : hostedWebSearchResponseBody;
+    const responseStreams = uniqueStreams([upstreamBody, patchedResponseBody, hostedWebSearchResponseBody, responseBody]);
     const sampler = createBodySampler();
     const sseErrorDetector = createSseErrorDetector(responseHeaders.get("content-type") ?? void 0);
     let streamDetectedError;
@@ -71952,6 +74416,7 @@ var GatewayRequestPipeline = class {
       }
     };
     const onResponseStreamError = (error) => {
+      failContextArchiveRequest(contextArchiveRecord, contextArchiveRequestConfig);
       streamDetectedError ??= sseErrorDetector.finish();
       writeStreamLog(clientDisconnected ? clientDisconnectMessage : formatUpstreamErrorForLog(error, {
         attempts: upstreamResult.failedAttempts.length + 1,
@@ -71987,7 +74452,7 @@ var GatewayRequestPipeline = class {
           durationMs: Date.now() - startedAt,
           fallbackModel: routedModel,
           method,
-          path: path23,
+          path: path24,
           providerName: resolveProviderLogName(responseHeaders, this.config, routedModel),
           providerProtocol: resolveResponseProviderProtocol(responseHeaders, this.config),
           requestId,
@@ -72002,11 +74467,51 @@ var GatewayRequestPipeline = class {
     }
     responseBody.pipe(response);
   }
+  async replayContextArchive(input) {
+    const config = this.config;
+    if (!config || !this.coreAuthToken || !this.status.coreEndpoint) {
+      throw new Error("ARCHIVE_REPLAY_UNAVAILABLE: Gateway runtime is not ready.");
+    }
+    const route = input.snapshot.route;
+    if (!route) {
+      throw new Error(`ARCHIVE_ROUTE_UNAVAILABLE: Archive ${input.snapshot.archiveId} has no finalized route.`);
+    }
+    const headers = {
+      ...input.snapshot.replayHeaders,
+      "content-type": "application/json",
+      "x-ccr-context-archive-replay": input.snapshot.archiveId,
+      "x-client-request-id": (0, import_node_crypto14.randomUUID)()
+    };
+    if (route.credentialChain?.length) {
+      headers["x-target-providers"] = route.credentialChain.join(",");
+    } else if (route.logicalProvider) {
+      headers["x-gateway-target-provider"] = route.logicalProvider;
+    }
+    const upstreamUrl = new URL(input.snapshot.path, this.status.coreEndpoint).toString();
+    const result = await fetchUpstreamWithFallback({
+      body: input.body,
+      config,
+      fallback: { mode: "off", models: [], retryCount: 1 },
+      headers,
+      method: input.snapshot.method,
+      path: input.snapshot.path,
+      routedModel: route.routedModel,
+      coreAuthToken: this.coreAuthToken,
+      signal: input.signal,
+      upstreamUrl
+    });
+    const responseHeaders = upstreamResponseHeaders(result);
+    return {
+      body: Buffer.from(await result.response.arrayBuffer()),
+      contentType: responseHeaders.get("content-type") ?? void 0,
+      statusCode: result.response.status
+    };
+  }
 };
 
 // packages/core/src/mcp/network-capture-mcp.ts
-var protocolVersion = "2024-11-05";
-var maxMcpRequestBytes = 2 * 1024 * 1024;
+var protocolVersion2 = "2024-11-05";
+var maxMcpRequestBytes2 = 2 * 1024 * 1024;
 var networkCaptureTools = [
   {
     description: "Return CCR proxy capture status, proxy status, capture limits, and current capture count.",
@@ -72042,17 +74547,17 @@ var networkCaptureTools = [
     name: "network_capture_set_enabled"
   }
 ];
-function isNetworkCaptureMcpPath(path23) {
-  return path23 === "/mcp" || path23 === "/mcp/";
+function isNetworkCaptureMcpPath(path24) {
+  return path24 === "/mcp" || path24 === "/mcp/";
 }
 async function handleNetworkCaptureMcpRequest(request, response) {
-  response.setHeader("MCP-Protocol-Version", protocolVersion);
+  response.setHeader("MCP-Protocol-Version", protocolVersion2);
   if (!proxyService.isNetworkCaptureEnabled()) {
-    sendJson4(response, 404, { error: { message: "Network capture MCP is disabled." } });
+    sendJson5(response, 404, { error: { message: "Network capture MCP is disabled." } });
     return;
   }
   if (request.method === "GET") {
-    sendJson4(response, 200, {
+    sendJson5(response, 200, {
       name: "ccr-network-capture",
       protocol: "mcp",
       transport: "streamable-http",
@@ -72061,14 +74566,14 @@ async function handleNetworkCaptureMcpRequest(request, response) {
     return;
   }
   if (request.method !== "POST") {
-    sendJson4(response, 405, { error: { message: "MCP endpoint only supports GET and POST." } });
+    sendJson5(response, 405, { error: { message: "MCP endpoint only supports GET and POST." } });
     return;
   }
   let payload;
   try {
-    payload = JSON.parse((await readRequestBody2(request, maxMcpRequestBytes)).toString("utf8"));
+    payload = JSON.parse((await readRequestBody2(request, maxMcpRequestBytes2)).toString("utf8"));
   } catch (error) {
-    sendJson4(response, 400, jsonRpcError(null, -32700, `Invalid JSON-RPC request: ${formatError14(error)}`));
+    sendJson5(response, 400, jsonRpcError2(null, -32700, `Invalid JSON-RPC request: ${formatError15(error)}`));
     return;
   }
   const requests = Array.isArray(payload) ? payload : [payload];
@@ -72079,11 +74584,11 @@ async function handleNetworkCaptureMcpRequest(request, response) {
     response.end();
     return;
   }
-  sendJson4(response, 200, Array.isArray(payload) ? filtered : filtered[0]);
+  sendJson5(response, 200, Array.isArray(payload) ? filtered : filtered[0]);
 }
 async function handleJsonRpcRequest(payload) {
-  if (!isRecord15(payload)) {
-    return jsonRpcError(null, -32600, "JSON-RPC request must be an object.");
+  if (!isRecord17(payload)) {
+    return jsonRpcError2(null, -32600, "JSON-RPC request must be an object.");
   }
   const request = payload;
   const id = request.id ?? null;
@@ -72091,16 +74596,16 @@ async function handleJsonRpcRequest(payload) {
     return void 0;
   }
   if (request.jsonrpc !== "2.0" || !request.method) {
-    return jsonRpcError(id, -32600, "Invalid JSON-RPC 2.0 request.");
+    return jsonRpcError2(id, -32600, "Invalid JSON-RPC 2.0 request.");
   }
   try {
     switch (request.method) {
       case "initialize":
-        return jsonRpcResult(id, {
+        return jsonRpcResult2(id, {
           capabilities: {
             tools: {}
           },
-          protocolVersion,
+          protocolVersion: protocolVersion2,
           serverInfo: {
             name: "ccr-network-capture",
             title: "CCR Network Capture",
@@ -72108,16 +74613,16 @@ async function handleJsonRpcRequest(payload) {
           }
         });
       case "ping":
-        return jsonRpcResult(id, {});
+        return jsonRpcResult2(id, {});
       case "tools/list":
-        return jsonRpcResult(id, { tools: proxyService.isNetworkCaptureEnabled() ? networkCaptureTools : [] });
+        return jsonRpcResult2(id, { tools: proxyService.isNetworkCaptureEnabled() ? networkCaptureTools : [] });
       case "tools/call":
-        return jsonRpcResult(id, await callTool(request.params));
+        return jsonRpcResult2(id, await callTool(request.params));
       default:
-        return jsonRpcError(id, -32601, `Unsupported MCP method: ${request.method}`);
+        return jsonRpcError2(id, -32601, `Unsupported MCP method: ${request.method}`);
     }
   } catch (error) {
-    return jsonRpcError(id, -32603, formatError14(error));
+    return jsonRpcError2(id, -32603, formatError15(error));
   }
 }
 function appVersion() {
@@ -72127,10 +74632,10 @@ async function callTool(params) {
   if (!proxyService.isNetworkCaptureEnabled()) {
     throw new Error("Network capture MCP is disabled.");
   }
-  if (!isRecord15(params) || typeof params.name !== "string") {
+  if (!isRecord17(params) || typeof params.name !== "string") {
     throw new Error("tools/call params must include a tool name.");
   }
-  const args = isRecord15(params.arguments) ? params.arguments : {};
+  const args = isRecord17(params.arguments) ? params.arguments : {};
   switch (params.name) {
     case "network_capture_status":
       return toolResult(captureStatus());
@@ -72165,8 +74670,8 @@ function captureStatus() {
 }
 function listCaptures(args) {
   const snapshot = proxyService.getNetworkCaptures();
-  const query = readString9(args.query)?.trim().toLowerCase();
-  const limit = clampInteger2(readNumber3(args.limit) ?? 50, 1, Math.min(snapshot.maxEntries, 200));
+  const query = readString10(args.query)?.trim().toLowerCase();
+  const limit = clampInteger3(readNumber3(args.limit) ?? 50, 1, Math.min(snapshot.maxEntries, 200));
   const includeBodies = args.includeBodies === true;
   const items = snapshot.items.filter((item) => !query || captureMatchesQuery(item, query)).slice(0, limit).map((item) => includeBodies ? item : summarizeCapture(item));
   return {
@@ -72178,7 +74683,7 @@ function listCaptures(args) {
   };
 }
 function getCapture(args) {
-  const id = readString9(args.id);
+  const id = readString10(args.id);
   if (!id) {
     throw new Error("network_capture_get requires id.");
   }
@@ -72280,14 +74785,14 @@ function objectSchema2(properties, required = []) {
     type: "object"
   };
 }
-function jsonRpcResult(id, result) {
+function jsonRpcResult2(id, result) {
   return {
     id,
     jsonrpc: "2.0",
     result
   };
 }
-function jsonRpcError(id, code, message, data) {
+function jsonRpcError2(id, code, message, data) {
   return {
     error: {
       code,
@@ -72316,7 +74821,7 @@ function readRequestBody2(request, maxBytes) {
     request.on("error", reject);
   });
 }
-function sendJson4(response, statusCode, payload) {
+function sendJson5(response, statusCode, payload) {
   response.writeHead(statusCode, { "content-type": "application/json" });
   response.end(`${JSON.stringify(payload)}
 `);
@@ -72324,50 +74829,50 @@ function sendJson4(response, statusCode, payload) {
 function readNumber3(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : void 0;
 }
-function readString9(value) {
+function readString10(value) {
   return typeof value === "string" && value.trim() ? value : void 0;
 }
-function clampInteger2(value, minimum, maximum) {
+function clampInteger3(value, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, Math.trunc(value)));
 }
-function isRecord15(value) {
+function isRecord17(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-function formatError14(error) {
+function formatError15(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
 // packages/core/src/mcp/grok-media-mcp.ts
-var import_node_fs23 = require("node:fs");
-var import_node_path33 = __toESM(require("node:path"));
+var import_node_fs24 = require("node:fs");
+var import_node_path35 = __toESM(require("node:path"));
 
 // packages/core/src/media/service.ts
-var import_node_crypto16 = require("node:crypto");
-var import_node_fs22 = require("node:fs");
-var import_node_os12 = __toESM(require("node:os"));
-var import_node_path32 = __toESM(require("node:path"));
+var import_node_crypto17 = require("node:crypto");
+var import_node_fs23 = require("node:fs");
+var import_node_os13 = __toESM(require("node:os"));
+var import_node_path34 = __toESM(require("node:path"));
 
 // packages/core/src/media/executors.ts
-var import_node_crypto15 = require("node:crypto");
+var import_node_crypto16 = require("node:crypto");
 var import_promises3 = require("node:dns/promises");
-var import_node_fs21 = require("node:fs");
+var import_node_fs22 = require("node:fs");
 var import_node_net3 = require("node:net");
-var import_node_os11 = __toESM(require("node:os"));
-var import_node_path31 = __toESM(require("node:path"));
+var import_node_os12 = __toESM(require("node:os"));
+var import_node_path33 = __toESM(require("node:path"));
 var import_promises4 = require("node:timers/promises");
 
 // packages/core/src/media/storage.ts
-var import_node_crypto14 = require("node:crypto");
-var import_node_fs20 = require("node:fs");
-var import_node_path30 = __toESM(require("node:path"));
+var import_node_crypto15 = require("node:crypto");
+var import_node_fs21 = require("node:fs");
+var import_node_path32 = __toESM(require("node:path"));
 var privateDirectoryMode = 448;
 var privateFileMode4 = 384;
 var maxArtifactBytes = 250 * 1024 * 1024;
 var MediaJobStore = class {
   constructor(rootDir) {
     this.rootDir = rootDir;
-    (0, import_node_fs20.mkdirSync)(rootDir, { mode: privateDirectoryMode, recursive: true });
-    this.file = import_node_path30.default.join(rootDir, "jobs.json");
+    (0, import_node_fs21.mkdirSync)(rootDir, { mode: privateDirectoryMode, recursive: true });
+    this.file = import_node_path32.default.join(rootDir, "jobs.json");
     this.load();
   }
   rootDir;
@@ -72413,38 +74918,38 @@ var MediaJobStore = class {
     return deleted;
   }
   load() {
-    if (!(0, import_node_fs20.existsSync)(this.file)) return;
+    if (!(0, import_node_fs21.existsSync)(this.file)) return;
     try {
-      const parsed = JSON.parse((0, import_node_fs20.readFileSync)(this.file, "utf8"));
+      const parsed = JSON.parse((0, import_node_fs21.readFileSync)(this.file, "utf8"));
       if (!Array.isArray(parsed.jobs)) return;
       for (const job of parsed.jobs) {
         if (job && typeof job.id === "string") this.jobs.set(job.id, job);
       }
     } catch (error) {
-      console.warn(`[media-tools] Failed to load job store: ${formatError15(error)}`);
+      console.warn(`[media-tools] Failed to load job store: ${formatError16(error)}`);
     }
   }
   flush() {
-    (0, import_node_fs20.mkdirSync)(this.rootDir, { mode: privateDirectoryMode, recursive: true });
-    const temporary = `${this.file}.${process.pid}.${(0, import_node_crypto14.randomBytes)(4).toString("hex")}.tmp`;
-    (0, import_node_fs20.writeFileSync)(temporary, `${JSON.stringify({ jobs: this.list(), version: 1 }, null, 2)}
+    (0, import_node_fs21.mkdirSync)(this.rootDir, { mode: privateDirectoryMode, recursive: true });
+    const temporary = `${this.file}.${process.pid}.${(0, import_node_crypto15.randomBytes)(4).toString("hex")}.tmp`;
+    (0, import_node_fs21.writeFileSync)(temporary, `${JSON.stringify({ jobs: this.list(), version: 1 }, null, 2)}
 `, {
       encoding: "utf8",
       mode: privateFileMode4
     });
-    (0, import_node_fs20.renameSync)(temporary, this.file);
+    (0, import_node_fs21.renameSync)(temporary, this.file);
   }
 };
 var MediaArtifactStore = class {
   constructor(rootDir) {
     this.rootDir = rootDir;
-    this.artifactsDir = import_node_path30.default.join(rootDir, "artifacts");
-    (0, import_node_fs20.mkdirSync)(this.artifactsDir, { mode: privateDirectoryMode, recursive: true });
+    this.artifactsDir = import_node_path32.default.join(rootDir, "artifacts");
+    (0, import_node_fs21.mkdirSync)(this.artifactsDir, { mode: privateDirectoryMode, recursive: true });
   }
   rootDir;
   artifactsDir;
   importFile(source, options) {
-    const sourceStats = (0, import_node_fs20.statSync)(source);
+    const sourceStats = (0, import_node_fs21.statSync)(source);
     if (!sourceStats.isFile() || sourceStats.size === 0) {
       throw new Error("Generated media artifact is empty or not a regular file.");
     }
@@ -72452,11 +74957,11 @@ var MediaArtifactStore = class {
     const detected = detectMediaType(source);
     const mimeType = detected.mimeType;
     if (!mimeType) throw new Error("Generated file is not a supported image or video artifact.");
-    const id = (0, import_node_crypto14.randomUUID)();
+    const id = (0, import_node_crypto15.randomUUID)();
     const extension = extensionForMimeType(mimeType) ?? detected.extension;
     const fileName = fileNameWithExtension(options.fileName ?? `media-${id}${extension}`, extension);
-    const destination = import_node_path30.default.join(this.artifactsDir, `${id}${extension}`);
-    (0, import_node_fs20.copyFileSync)(source, destination);
+    const destination = import_node_path32.default.join(this.artifactsDir, `${id}${extension}`);
+    (0, import_node_fs21.copyFileSync)(source, destination);
     return this.describe(destination, id, fileName, mimeType, options.ttlHours);
   }
   writeBuffer(buffer, options) {
@@ -72464,22 +74969,22 @@ var MediaArtifactStore = class {
     if (buffer.byteLength > maxArtifactBytes) throw new Error("Generated media artifact exceeds the 250 MB limit.");
     const mimeType = detectMediaBufferType(buffer)?.mimeType;
     if (!mimeType) throw new Error("Generated response is not a supported image or video artifact.");
-    const id = (0, import_node_crypto14.randomUUID)();
+    const id = (0, import_node_crypto15.randomUUID)();
     const extension = extensionForMimeType(mimeType) ?? ".bin";
-    const destination = import_node_path30.default.join(this.artifactsDir, `${id}${extension}`);
-    (0, import_node_fs20.writeFileSync)(destination, buffer, { mode: privateFileMode4 });
+    const destination = import_node_path32.default.join(this.artifactsDir, `${id}${extension}`);
+    (0, import_node_fs21.writeFileSync)(destination, buffer, { mode: privateFileMode4 });
     return this.describe(destination, id, fileNameWithExtension(options.fileName ?? `media-${id}${extension}`, extension), mimeType, options.ttlHours);
   }
   delete(artifact) {
     if (!artifact) return;
-    const resolved = import_node_path30.default.resolve(artifact.localPath);
+    const resolved = import_node_path32.default.resolve(artifact.localPath);
     if (!isPathInside3(resolved, this.artifactsDir)) return;
-    (0, import_node_fs20.rmSync)(resolved, { force: true });
+    (0, import_node_fs21.rmSync)(resolved, { force: true });
   }
   describe(file, id, fileName, mimeType, ttlHours) {
-    const sizeBytes = (0, import_node_fs20.statSync)(file).size;
+    const sizeBytes = (0, import_node_fs21.statSync)(file).size;
     return {
-      accessToken: (0, import_node_crypto14.randomBytes)(24).toString("base64url"),
+      accessToken: (0, import_node_crypto15.randomBytes)(24).toString("base64url"),
       expiresAt: new Date(Date.now() + ttlHours * 60 * 60 * 1e3).toISOString(),
       fileName,
       id,
@@ -72492,23 +74997,23 @@ var MediaArtifactStore = class {
 };
 function detectMediaType(file) {
   const descriptor = Buffer.alloc(32);
-  const handle = (0, import_node_fs20.openSync)(file, "r");
-  const length = (0, import_node_fs20.readSync)(handle, descriptor, 0, descriptor.length, 0);
-  (0, import_node_fs20.closeSync)(handle);
-  return detectMediaBufferType(descriptor.subarray(0, length)) ?? { extension: import_node_path30.default.extname(file).toLowerCase() || ".bin" };
+  const handle = (0, import_node_fs21.openSync)(file, "r");
+  const length = (0, import_node_fs21.readSync)(handle, descriptor, 0, descriptor.length, 0);
+  (0, import_node_fs21.closeSync)(handle);
+  return detectMediaBufferType(descriptor.subarray(0, length)) ?? { extension: import_node_path32.default.extname(file).toLowerCase() || ".bin" };
 }
 function hashFile(file) {
-  const hash = (0, import_node_crypto14.createHash)("sha256");
+  const hash = (0, import_node_crypto15.createHash)("sha256");
   const buffer = Buffer.allocUnsafe(1024 * 1024);
-  const handle = (0, import_node_fs20.openSync)(file, "r");
+  const handle = (0, import_node_fs21.openSync)(file, "r");
   try {
     while (true) {
-      const length = (0, import_node_fs20.readSync)(handle, buffer, 0, buffer.length, null);
+      const length = (0, import_node_fs21.readSync)(handle, buffer, 0, buffer.length, null);
       if (!length) break;
       hash.update(buffer.subarray(0, length));
     }
   } finally {
-    (0, import_node_fs20.closeSync)(handle);
+    (0, import_node_fs21.closeSync)(handle);
   }
   return hash.digest("hex");
 }
@@ -72535,17 +75040,17 @@ function extensionForMimeType(mimeType) {
   }[mimeType];
 }
 function sanitizeFileName(value) {
-  return import_node_path30.default.basename(value).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 160) || "media.bin";
+  return import_node_path32.default.basename(value).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 160) || "media.bin";
 }
 function fileNameWithExtension(value, extension) {
   const sanitized = sanitizeFileName(value);
-  return import_node_path30.default.extname(sanitized) ? sanitized : `${sanitized}${extension}`;
+  return import_node_path32.default.extname(sanitized) ? sanitized : `${sanitized}${extension}`;
 }
 function isPathInside3(candidate, root) {
-  const relative = import_node_path30.default.relative(import_node_path30.default.resolve(root), candidate);
-  return relative === "" || !relative.startsWith("..") && !import_node_path30.default.isAbsolute(relative);
+  const relative = import_node_path32.default.relative(import_node_path32.default.resolve(root), candidate);
+  return relative === "" || !relative.startsWith("..") && !import_node_path32.default.isAbsolute(relative);
 }
-function formatError15(error) {
+function formatError16(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -72589,7 +75094,7 @@ var GatewayMediaExecutor = class {
       reference_images: request.images.length > 1 ? request.images.map((image) => ({ url: localImageDataUrl(image) })) : void 0,
       resolution: request.resolution
     }, context.signal, context.job.id);
-    const requestId = readString10(payload, "request_id", "id");
+    const requestId = readString11(payload, "request_id", "id");
     if (!requestId) throw mediaError("invalid_api_response", `${this.target.providerName} video API did not return a request id.`, false);
     context.onRemoteRequestId(requestId);
     return this.resumeVideo(requestId, context.signal);
@@ -72604,14 +75109,14 @@ var GatewayMediaExecutor = class {
         await (0, import_promises4.setTimeout)(2e3, void 0, { signal });
         continue;
       }
-      const status = readString10(payload, "status")?.toLowerCase();
+      const status = readString11(payload, "status")?.toLowerCase();
       if (status === "done" || status === "completed" || status === "succeeded") {
-        const url = readNestedString(payload, ["video", "url"]) ?? readString10(payload, "url");
+        const url = readNestedString(payload, ["video", "url"]) ?? readString11(payload, "url");
         if (!url) throw mediaError("invalid_api_response", `${this.target.providerName} video API completed without an artifact URL.`, false);
         return { fileName: `${requestId}.mp4`, remoteUrl: url, usage: readUsage(payload) };
       }
       if (status === "failed" || status === "expired" || status === "canceled" || status === "cancelled") {
-        const message = readNestedString(payload, ["error", "message"]) ?? readString10(payload, "message") ?? `Video generation ${status}.`;
+        const message = readNestedString(payload, ["error", "message"]) ?? readString11(payload, "message") ?? `Video generation ${status}.`;
         throw mediaError(`video_${status}`, message, status === "failed");
       }
       await (0, import_promises4.setTimeout)(2e3, void 0, { signal });
@@ -72641,8 +75146,8 @@ var GatewayMediaExecutor = class {
     const declaredLength = Number(response.headers.get("content-length") ?? 0);
     if (declaredLength > maxApiArtifactBytes) throw mediaError("artifact_too_large", "Generated artifact exceeds the 250 MB limit.", false);
     if (!response.body) throw mediaError("artifact_download_failed", "Generated artifact response has no body.", true);
-    const temporary = import_node_path31.default.join(import_node_os11.default.tmpdir(), `ccr-media-${(0, import_node_crypto15.randomUUID)()}.download`);
-    const file = (0, import_node_fs21.openSync)(temporary, "wx", 384);
+    const temporary = import_node_path33.default.join(import_node_os12.default.tmpdir(), `ccr-media-${(0, import_node_crypto16.randomUUID)()}.download`);
+    const file = (0, import_node_fs22.openSync)(temporary, "wx", 384);
     let size = 0;
     try {
       const reader = response.body.getReader();
@@ -72655,14 +75160,14 @@ var GatewayMediaExecutor = class {
           await reader.cancel();
           throw mediaError("artifact_too_large", "Generated artifact exceeds the 250 MB limit.", false);
         }
-        (0, import_node_fs21.writeSync)(file, buffer);
+        (0, import_node_fs22.writeSync)(file, buffer);
       }
     } catch (error) {
-      (0, import_node_fs21.closeSync)(file);
-      (0, import_node_fs21.rmSync)(temporary, { force: true });
+      (0, import_node_fs22.closeSync)(file);
+      (0, import_node_fs22.rmSync)(temporary, { force: true });
       throw error;
     }
-    (0, import_node_fs21.closeSync)(file);
+    (0, import_node_fs22.closeSync)(file);
     return {
       contentType: response.headers.get("content-type") ?? void 0,
       fileName: result.fileName,
@@ -72808,29 +75313,29 @@ async function readApiResponse(response) {
     payload = {};
   }
   if (!response.ok) {
-    const record = isRecord16(payload) ? payload : {};
+    const record = isRecord18(payload) ? payload : {};
     const message = sanitizeRemoteError(coreGatewayErrorMessage(record) ?? `Media gateway request failed with HTTP ${response.status}.`);
     throw mediaError(`gateway_http_${response.status}`, message, response.status === 408 || response.status === 429 || response.status >= 500);
   }
-  if (!isRecord16(payload)) throw mediaError("invalid_api_response", "Media gateway returned a non-object response.", false);
+  if (!isRecord18(payload)) throw mediaError("invalid_api_response", "Media gateway returned a non-object response.", false);
   return payload;
 }
 function parseImageResponse(payload) {
-  const first = Array.isArray(payload.data) && isRecord16(payload.data[0]) ? payload.data[0] : payload;
-  const url = readString10(first, "url");
+  const first = Array.isArray(payload.data) && isRecord18(payload.data[0]) ? payload.data[0] : payload;
+  const url = readString11(first, "url");
   if (url) return { fileName: "generated-image", remoteUrl: url, usage: readUsage(payload) };
-  const base64 = readString10(first, "b64_json");
+  const base64 = readString11(first, "b64_json");
   if (base64) {
-    const temporary = import_node_path31.default.join(import_node_os11.default.tmpdir(), `ccr-media-${(0, import_node_crypto15.randomUUID)()}.image`);
-    (0, import_node_fs21.writeFileSync)(temporary, Buffer.from(base64, "base64"), { mode: 384 });
-    return { contentType: readString10(first, "mime_type"), fileName: "generated-image", filePath: temporary, usage: readUsage(payload) };
+    const temporary = import_node_path33.default.join(import_node_os12.default.tmpdir(), `ccr-media-${(0, import_node_crypto16.randomUUID)()}.image`);
+    (0, import_node_fs22.writeFileSync)(temporary, Buffer.from(base64, "base64"), { mode: 384 });
+    return { contentType: readString11(first, "mime_type"), fileName: "generated-image", filePath: temporary, usage: readUsage(payload) };
   }
   throw mediaError("invalid_api_response", "Image API completed without an image URL or payload.", false);
 }
 function localImageDataUrl(file) {
   const type = detectMediaType(file).mimeType;
   if (!type?.startsWith("image/")) throw mediaError("invalid_input_media", `Input is not a supported image: ${file}`, false);
-  return `data:${type};base64,${(0, import_node_fs21.readFileSync)(file).toString("base64")}`;
+  return `data:${type};base64,${(0, import_node_fs22.readFileSync)(file).toString("base64")}`;
 }
 function isRetryableError(error) {
   return Boolean(error && typeof error === "object" && "retryable" in error && error.retryable === true);
@@ -72839,7 +75344,7 @@ function isExplicitlyNonRetryableError(error) {
   return Boolean(error && typeof error === "object" && "retryable" in error && error.retryable === false);
 }
 function readUsage(payload) {
-  const usage = isRecord16(payload.usage) ? payload.usage : void 0;
+  const usage = isRecord18(payload.usage) ? payload.usage : void 0;
   const costUsdTicks = usage?.cost_in_usd_ticks;
   return typeof costUsdTicks === "number" && Number.isFinite(costUsdTicks) ? { costUsdTicks } : void 0;
 }
@@ -72847,21 +75352,21 @@ function sanitizeRemoteError(value) {
   return value.replace(/Bearer\s+\S+/gi, "Bearer [redacted]").replace(/[A-Za-z0-9_-]{40,}/g, "[redacted]").trim().slice(0, 2e3);
 }
 function coreGatewayErrorMessage(payload) {
-  const error = isRecord16(payload.error) ? payload.error : void 0;
-  const fallback = readString10(error ?? payload, "message") ?? readString10(payload, "message");
-  const attempts = Array.isArray(error?.attempts) ? error.attempts.filter(isRecord16) : [];
+  const error = isRecord18(payload.error) ? payload.error : void 0;
+  const fallback = readString11(error ?? payload, "message") ?? readString11(payload, "message");
+  const attempts = Array.isArray(error?.attempts) ? error.attempts.filter(isRecord18) : [];
   const failures = attempts.map(formatGatewayAttempt).filter((value) => Boolean(value));
   if (!failures.length) return fallback;
   return [...new Set(failures)].slice(0, 3).join("; ");
 }
 function formatGatewayAttempt(attempt) {
-  const message = readString10(attempt, "message");
-  const details = isRecord16(attempt.details) ? attempt.details : void 0;
-  const detail = details ? readString10(details, "message", "error", "raw", "code") : void 0;
+  const message = readString11(attempt, "message");
+  const details = isRecord18(attempt.details) ? attempt.details : void 0;
+  const detail = details ? readString11(details, "message", "error", "raw", "code") : void 0;
   const core = message && detail && !message.includes(detail) ? `${message}: ${detail}` : message ?? detail;
   if (!core) return void 0;
-  const provider = readString10(attempt, "provider_name", "provider");
-  const stage = readString10(attempt, "stage");
+  const provider = readString11(attempt, "provider_name", "provider");
+  const stage = readString11(attempt, "stage");
   const status = typeof attempt.status === "number" && Number.isFinite(attempt.status) ? `HTTP ${attempt.status}` : void 0;
   const context = [provider, stage, status].filter(Boolean).join(", ");
   return context ? `${core} (${context})` : core;
@@ -72869,21 +75374,21 @@ function formatGatewayAttempt(attempt) {
 function stripUndefined(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== void 0));
 }
-function readString10(record, ...keys) {
+function readString11(record, ...keys) {
   for (const key of keys) if (typeof record[key] === "string" && record[key].trim()) return record[key].trim();
   return void 0;
 }
 function readNestedString(record, keys) {
   let value = record;
-  for (const key of keys) value = isRecord16(value) ? value[key] : void 0;
+  for (const key of keys) value = isRecord18(value) ? value[key] : void 0;
   return typeof value === "string" && value.trim() ? value.trim() : void 0;
 }
-function isRecord16(value) {
+function isRecord18(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 // packages/core/src/media/service.ts
-var mediaRoot = import_node_path32.default.join(CONFIGDIR, "grok-media");
+var mediaRoot = import_node_path34.default.join(CONFIGDIR, "grok-media");
 var maxInputBytes = 25 * 1024 * 1024;
 var jobRetentionDays = 30;
 var MediaService = class {
@@ -73056,7 +75561,7 @@ var MediaService = class {
   resolveArtifact(id, token) {
     const artifact = this.jobStore.list().map((job) => job.artifact).find((item) => item?.id === id);
     if (!artifact || !safeTokenEqual(artifact.accessToken, token)) return { artifact: void 0, state: "missing" };
-    if (Date.parse(artifact.expiresAt) <= Date.now() || !(0, import_node_fs22.existsSync)(artifact.localPath)) return { artifact, state: "expired" };
+    if (Date.parse(artifact.expiresAt) <= Date.now() || !(0, import_node_fs23.existsSync)(artifact.localPath)) return { artifact, state: "expired" };
     return { artifact, state: "ok" };
   }
   async submitAndWait(operation, request, modelSelector, idempotencyKey) {
@@ -73069,7 +75574,7 @@ var MediaService = class {
     this.requireEnabledConfig();
     const normalizedModelSelector = normalizeMediaModelSelector(this.requireConfig(), modelSelector, operation);
     resolveProviderMediaTarget(this.requireConfig(), normalizedModelSelector, operation);
-    const idempotencyKeyHash = idempotencyKey ? (0, import_node_crypto16.createHash)("sha256").update(`${normalizedModelSelector}
+    const idempotencyKeyHash = idempotencyKey ? (0, import_node_crypto17.createHash)("sha256").update(`${normalizedModelSelector}
 ${idempotencyKey}`).digest("hex") : void 0;
     if (idempotencyKeyHash) {
       const existing = this.jobStore.list().find((job2) => job2.operation === operation && job2.idempotencyKeyHash === idempotencyKeyHash);
@@ -73079,7 +75584,7 @@ ${idempotencyKey}`).digest("hex") : void 0;
     const job = {
       backend: "gateway-media-api",
       createdAt: now,
-      id: (0, import_node_crypto16.randomUUID)(),
+      id: (0, import_node_crypto17.randomUUID)(),
       ...idempotencyKeyHash ? { idempotencyKeyHash } : {},
       modelSelector: normalizedModelSelector,
       operation,
@@ -73173,7 +75678,7 @@ ${idempotencyKey}`).digest("hex") : void 0;
       try {
         return this.artifactStore.importFile(result.filePath, { contentType: result.contentType, fileName: result.fileName, ttlHours });
       } finally {
-        if (isPathInside4(result.filePath, import_node_os12.default.tmpdir())) (0, import_node_fs22.rmSync)(result.filePath, { force: true });
+        if (isPathInside4(result.filePath, import_node_os13.default.tmpdir())) (0, import_node_fs23.rmSync)(result.filePath, { force: true });
       }
     }
     const downloaded = await this.executor(modelSelector).download(result, signal);
@@ -73216,9 +75721,9 @@ ${idempotencyKey}`).digest("hex") : void 0;
     }
     const roots = mediaInputRoots(this.requireRuntimeConfig().allowedInputRoots);
     return raw.map((item) => {
-      const resolved = (0, import_node_fs22.realpathSync)(expandHome3(String(item).trim()));
+      const resolved = (0, import_node_fs23.realpathSync)(expandHome3(String(item).trim()));
       if (!roots.some((root) => isPathInside4(resolved, root))) throw new Error(`Input image is outside allowed roots: ${resolved}`);
-      const stats = (0, import_node_fs22.statSync)(resolved);
+      const stats = (0, import_node_fs23.statSync)(resolved);
       if (!stats.isFile() || stats.size <= 0 || stats.size > maxInputBytes) throw new Error(`Input image must be a non-empty regular file no larger than ${maxInputBytes} bytes.`);
       if (!detectMediaType(resolved).mimeType?.startsWith("image/")) throw new Error(`Unsupported input image format: ${resolved}`);
       return resolved;
@@ -73302,34 +75807,34 @@ function normalizeJobError(error, aborted) {
 function safeTokenEqual(expected, actual) {
   const left = Buffer.from(expected);
   const right = Buffer.from(actual);
-  return left.length === right.length && (0, import_node_crypto16.timingSafeEqual)(left, right);
+  return left.length === right.length && (0, import_node_crypto17.timingSafeEqual)(left, right);
 }
 function expandHome3(value) {
-  return value === "~" ? import_node_os12.default.homedir() : value.startsWith(`~${import_node_path32.default.sep}`) ? import_node_path32.default.join(import_node_os12.default.homedir(), value.slice(2)) : value;
+  return value === "~" ? import_node_os13.default.homedir() : value.startsWith(`~${import_node_path34.default.sep}`) ? import_node_path34.default.join(import_node_os13.default.homedir(), value.slice(2)) : value;
 }
 function isPathInside4(candidate, root) {
-  const relative = import_node_path32.default.relative(import_node_path32.default.resolve(root), import_node_path32.default.resolve(candidate));
-  return relative === "" || !relative.startsWith("..") && !import_node_path32.default.isAbsolute(relative);
+  const relative = import_node_path34.default.relative(import_node_path34.default.resolve(root), import_node_path34.default.resolve(candidate));
+  return relative === "" || !relative.startsWith("..") && !import_node_path34.default.isAbsolute(relative);
 }
 function mediaInputRoots(allowedInputRoots) {
   const workingDirectory = canonicalInputRoot(process.cwd());
-  const homeDirectory = canonicalInputRoot(import_node_os12.default.homedir());
+  const homeDirectory = canonicalInputRoot(import_node_os13.default.homedir());
   const roots = [
     ...isSafeImplicitWorkingDirectory(workingDirectory, homeDirectory) ? [workingDirectory] : [],
-    import_node_os12.default.tmpdir(),
+    import_node_os13.default.tmpdir(),
     CONFIGDIR,
     ...allowedInputRoots
   ].map(canonicalInputRoot);
   return [...new Set(roots)];
 }
 function canonicalInputRoot(value) {
-  const resolved = import_node_path32.default.resolve(expandHome3(value));
-  return (0, import_node_fs22.existsSync)(resolved) ? (0, import_node_fs22.realpathSync)(resolved) : resolved;
+  const resolved = import_node_path34.default.resolve(expandHome3(value));
+  return (0, import_node_fs23.existsSync)(resolved) ? (0, import_node_fs23.realpathSync)(resolved) : resolved;
 }
 function isSafeImplicitWorkingDirectory(workingDirectory, homeDirectory) {
-  const resolvedWorkingDirectory = import_node_path32.default.resolve(workingDirectory);
-  const resolvedHomeDirectory = import_node_path32.default.resolve(homeDirectory);
-  return resolvedWorkingDirectory !== import_node_path32.default.parse(resolvedWorkingDirectory).root && !isPathInside4(resolvedHomeDirectory, resolvedWorkingDirectory);
+  const resolvedWorkingDirectory = import_node_path34.default.resolve(workingDirectory);
+  const resolvedHomeDirectory = import_node_path34.default.resolve(homeDirectory);
+  return resolvedWorkingDirectory !== import_node_path34.default.parse(resolvedWorkingDirectory).root && !isPathInside4(resolvedHomeDirectory, resolvedWorkingDirectory);
 }
 function requiredModelSelector(value) {
   const selector = value?.trim();
@@ -73401,26 +75906,26 @@ function normalizeGatewayTransport(transport) {
 var mediaService = new MediaService();
 
 // packages/core/src/mcp/grok-media-mcp.ts
-var protocolVersion2 = "2024-11-05";
+var protocolVersion3 = "2024-11-05";
 async function handleMediaToolsMcpRequest(request, response, service = mediaService) {
-  response.setHeader("MCP-Protocol-Version", protocolVersion2);
+  response.setHeader("MCP-Protocol-Version", protocolVersion3);
   if (!service.enabled()) {
-    sendJson3(response, 404, { error: { message: "Media tools MCP is disabled." } });
+    sendJson4(response, 404, { error: { message: "Media tools MCP is disabled." } });
     return;
   }
   if (request.method === "GET") {
-    sendJson3(response, 200, { endpoint: MEDIA_TOOLS_MCP_PATH, name: MEDIA_TOOLS_MCP_SERVER_NAME, protocol: "mcp", transport: "streamable-http" });
+    sendJson4(response, 200, { endpoint: MEDIA_TOOLS_MCP_PATH, name: MEDIA_TOOLS_MCP_SERVER_NAME, protocol: "mcp", transport: "streamable-http" });
     return;
   }
   if (request.method !== "POST") {
-    sendJson3(response, 405, { error: { message: "MCP endpoint only supports GET and POST." } });
+    sendJson4(response, 405, { error: { message: "MCP endpoint only supports GET and POST." } });
     return;
   }
   let payload;
   try {
     payload = JSON.parse((await readRequestBody(request)).toString("utf8"));
   } catch (error) {
-    sendJson3(response, 400, jsonRpcError2(null, -32700, `Invalid JSON-RPC request: ${formatError16(error)}`));
+    sendJson4(response, 400, jsonRpcError3(null, -32700, `Invalid JSON-RPC request: ${formatError17(error)}`));
     return;
   }
   const requests = Array.isArray(payload) ? payload : [payload];
@@ -73431,11 +75936,11 @@ async function handleMediaToolsMcpRequest(request, response, service = mediaServ
     response.end();
     return;
   }
-  sendJson3(response, 200, Array.isArray(payload) ? filtered : filtered[0]);
+  sendJson4(response, 200, Array.isArray(payload) ? filtered : filtered[0]);
 }
 function handleMediaArtifactRequest(request, response, requestUrl2, service = mediaService) {
   if (request.method !== "GET" && request.method !== "HEAD") {
-    sendJson3(response, 405, { error: { message: "Artifact endpoint only supports GET and HEAD." } });
+    sendJson4(response, 405, { error: { message: "Artifact endpoint only supports GET and HEAD." } });
     return;
   }
   const prefix = requestUrl2.pathname.startsWith(MEDIA_ARTIFACT_PATH_PREFIX) ? MEDIA_ARTIFACT_PATH_PREFIX : LEGACY_GROK_MEDIA_ARTIFACT_PATH_PREFIX;
@@ -73443,15 +75948,15 @@ function handleMediaArtifactRequest(request, response, requestUrl2, service = me
   const token = requestUrl2.searchParams.get("token") ?? "";
   const result = service.resolveArtifact(id, token);
   if (result.state === "missing") {
-    sendJson3(response, 404, { error: { message: "Media artifact not found." } });
+    sendJson4(response, 404, { error: { message: "Media artifact not found." } });
     return;
   }
   if (result.state === "expired") {
-    sendJson3(response, 410, { error: { message: "Media artifact has expired." } });
+    sendJson4(response, 410, { error: { message: "Media artifact has expired." } });
     return;
   }
   const artifact = result.artifact;
-  const stats = (0, import_node_fs23.statSync)(artifact.localPath);
+  const stats = (0, import_node_fs24.statSync)(artifact.localPath);
   const range = parseRange(request.headers.range, stats.size);
   if (request.headers.range && !range) {
     response.setHeader("content-range", `bytes */${stats.size}`);
@@ -73465,7 +75970,7 @@ function handleMediaArtifactRequest(request, response, requestUrl2, service = me
     "content-security-policy",
     "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'"
   );
-  response.setHeader("content-disposition", `inline; filename="${import_node_path33.default.basename(artifact.fileName).replace(/["\\]/g, "_")}"`);
+  response.setHeader("content-disposition", `inline; filename="${import_node_path35.default.basename(artifact.fileName).replace(/["\\]/g, "_")}"`);
   response.setHeader("content-type", artifact.mimeType);
   response.setHeader("etag", `"${artifact.sha256}"`);
   response.setHeader("referrer-policy", "no-referrer");
@@ -73482,35 +75987,35 @@ function handleMediaArtifactRequest(request, response, requestUrl2, service = me
     response.end();
     return;
   }
-  const stream = (0, import_node_fs23.createReadStream)(artifact.localPath, range ?? void 0);
+  const stream = (0, import_node_fs24.createReadStream)(artifact.localPath, range ?? void 0);
   stream.once("error", () => response.destroy());
   stream.pipe(response);
 }
 async function handleJsonRpcRequest2(payload, service) {
-  if (!isRecord17(payload)) return jsonRpcError2(null, -32600, "JSON-RPC request must be an object.");
+  if (!isRecord19(payload)) return jsonRpcError3(null, -32600, "JSON-RPC request must be an object.");
   const request = payload;
   const id = request.id ?? null;
   if (request.id === void 0 && request.method?.startsWith("notifications/")) return void 0;
-  if (request.jsonrpc !== "2.0" || !request.method) return jsonRpcError2(id, -32600, "Invalid JSON-RPC 2.0 request.");
+  if (request.jsonrpc !== "2.0" || !request.method) return jsonRpcError3(id, -32600, "Invalid JSON-RPC 2.0 request.");
   try {
     if (request.method === "initialize") {
-      return jsonRpcResult2(id, {
+      return jsonRpcResult3(id, {
         capabilities: { tools: {} },
-        protocolVersion: protocolVersion2,
+        protocolVersion: protocolVersion3,
         serverInfo: { name: "ccr-media-tools", title: "CCR Media Tools", version: package_default.version }
       });
     }
-    if (request.method === "ping") return jsonRpcResult2(id, {});
-    if (request.method === "tools/list") return jsonRpcResult2(id, { tools: service.toolBindings().map(mediaMcpToolDefinition) });
-    if (request.method === "tools/call") return jsonRpcResult2(id, await callTool2(request.params, service));
-    return jsonRpcError2(id, -32601, `Unsupported MCP method: ${request.method}`);
+    if (request.method === "ping") return jsonRpcResult3(id, {});
+    if (request.method === "tools/list") return jsonRpcResult3(id, { tools: service.toolBindings().map(mediaMcpToolDefinition) });
+    if (request.method === "tools/call") return jsonRpcResult3(id, await callTool2(request.params, service));
+    return jsonRpcError3(id, -32601, `Unsupported MCP method: ${request.method}`);
   } catch (error) {
-    return jsonRpcError2(id, -32603, formatError16(error));
+    return jsonRpcError3(id, -32603, formatError17(error));
   }
 }
 async function callTool2(params, service) {
-  if (!isRecord17(params) || typeof params.name !== "string") throw new Error("tools/call params must include a tool name.");
-  const args = isRecord17(params.arguments) ? params.arguments : {};
+  if (!isRecord19(params) || typeof params.name !== "string") throw new Error("tools/call params must include a tool name.");
+  const args = isRecord19(params.arguments) ? params.arguments : {};
   const binding = service.bindingForTool(params.name);
   if (!binding) throw new Error(`Unknown media tool: ${params.name}`);
   let result;
@@ -73551,16 +76056,16 @@ function parseRange(value, size) {
   if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || start >= size) return void 0;
   return { end: Math.min(end, size - 1), start };
 }
-function jsonRpcResult2(id, result) {
+function jsonRpcResult3(id, result) {
   return { id, jsonrpc: "2.0", result };
 }
-function jsonRpcError2(id, code, message) {
+function jsonRpcError3(id, code, message) {
   return { error: { code, message }, id, jsonrpc: "2.0" };
 }
-function isRecord17(value) {
+function isRecord19(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-function formatError16(error) {
+function formatError17(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -73588,8 +76093,11 @@ var GatewayHttpRequestHandler = class {
   handleRawTraceSync(request, response) {
     return this.dependencies.handleRawTraceSync(request, response);
   }
-  proxyRequest(request, response, path23, apiKey) {
-    return this.dependencies.proxyRequest(request, response, path23, apiKey);
+  proxyRequest(request, response, path24, apiKey) {
+    return this.dependencies.proxyRequest(request, response, path24, apiKey);
+  }
+  replayContextArchive(input) {
+    return this.dependencies.replayContextArchive(input);
   }
   async handleRequest(request, response) {
     applyCors(response, this.config);
@@ -73599,41 +76107,41 @@ var GatewayHttpRequestHandler = class {
       return;
     }
     if (!this.config || !this.plugin) {
-      sendJson3(response, 503, { error: { message: "Gateway service is not configured." } });
+      sendJson4(response, 503, { error: { message: "Gateway service is not configured." } });
       return;
     }
     const requestUrl2 = new URL(request.url ?? "/", this.status.endpoint || "http://127.0.0.1");
-    const path23 = requestUrl2.pathname;
-    if (path23 === billingUsageSyncPath) {
+    const path24 = requestUrl2.pathname;
+    if (path24 === billingUsageSyncPath) {
       await this.handleBillingUsageSync(request, response);
       return;
     }
-    if (path23 === rawTraceSyncPath) {
+    if (path24 === rawTraceSyncPath) {
       if (!shouldRecordRequestLogs(this.config)) {
-        sendJson3(response, 202, { applied: false, disabled: true, ok: true });
+        sendJson4(response, 202, { applied: false, disabled: true, ok: true });
         return;
       }
       await this.handleRawTraceSync(request, response);
       return;
     }
-    if (path23 === ccrRemoteControlPathPrefix || path23.startsWith(`${ccrRemoteControlPathPrefix}/`)) {
+    if (path24 === ccrRemoteControlPathPrefix || path24.startsWith(`${ccrRemoteControlPathPrefix}/`)) {
       const authorization2 = await authorize(request, response, this.config);
       if (!authorization2.ok) {
         return;
       }
       await ccrRemoteControlService.handleRequest({
         endpoint: this.status.endpoint,
-        path: path23,
+        path: path24,
         readBody: readRequestBody,
         request,
         response,
-        sendJson: sendJson3
+        sendJson: sendJson4
       });
       return;
     }
-    if (path23 === BROWSER_AUTOMATION_MCP_PATH || path23 === `${BROWSER_AUTOMATION_MCP_PATH}/`) {
+    if (path24 === BROWSER_AUTOMATION_MCP_PATH || path24 === `${BROWSER_AUTOMATION_MCP_PATH}/`) {
       if (!browserAutomationMcpEnabled(this.config)) {
-        sendJson3(response, 404, {
+        sendJson4(response, 404, {
           error: {
             message: "CCR browser automation MCP is disabled."
           }
@@ -73645,7 +76153,7 @@ var GatewayHttpRequestHandler = class {
         return;
       }
       if (!this.browserAutomationMcpIntegration) {
-        sendJson3(response, 503, {
+        sendJson4(response, 503, {
           error: {
             message: "CCR browser automation MCP is only available in the Electron desktop app."
           }
@@ -73655,9 +76163,27 @@ var GatewayHttpRequestHandler = class {
       await this.browserAutomationMcpIntegration.handleBrowserAutomationMcpRequest(request, response);
       return;
     }
-    if ([MEDIA_TOOLS_MCP_PATH, LEGACY_GROK_MEDIA_MCP_PATH].some((mcpPath) => path23 === mcpPath || path23 === `${mcpPath}/`)) {
+    if (isContextArchiveMcpPath(path24)) {
+      const authorization2 = await authorize(request, response, this.config);
+      if (!authorization2.ok) {
+        return;
+      }
+      const contextArchiveConfig = contextArchiveConfigForApiKey(this.config, authorization2.apiKey);
+      if (!contextArchiveConfig) {
+        sendJson4(response, 404, { error: { message: "CCR context archive MCP is disabled." } });
+        return;
+      }
+      await handleContextArchiveMcpRequest(
+        request,
+        response,
+        contextArchiveConfig,
+        (input) => this.replayContextArchive(input)
+      );
+      return;
+    }
+    if ([MEDIA_TOOLS_MCP_PATH, LEGACY_GROK_MEDIA_MCP_PATH].some((mcpPath) => path24 === mcpPath || path24 === `${mcpPath}/`)) {
       if (!this.config.mediaTools.enabled) {
-        sendJson3(response, 404, { error: { message: "CCR Media Tools MCP is disabled." } });
+        sendJson4(response, 404, { error: { message: "CCR Media Tools MCP is disabled." } });
         return;
       }
       const authorization2 = await authorize(request, response, this.config);
@@ -73665,13 +76191,13 @@ var GatewayHttpRequestHandler = class {
       await handleMediaToolsMcpRequest(request, response);
       return;
     }
-    if (path23.startsWith(MEDIA_ARTIFACT_PATH_PREFIX) || path23.startsWith(LEGACY_GROK_MEDIA_ARTIFACT_PATH_PREFIX)) {
+    if (path24.startsWith(MEDIA_ARTIFACT_PATH_PREFIX) || path24.startsWith(LEGACY_GROK_MEDIA_ARTIFACT_PATH_PREFIX)) {
       handleMediaArtifactRequest(request, response, requestUrl2);
       return;
     }
-    if (isNetworkCaptureMcpPath(path23)) {
+    if (isNetworkCaptureMcpPath(path24)) {
       if (!this.config.proxy.captureNetwork) {
-        sendJson3(response, 404, { error: { message: "Network capture MCP is disabled." } });
+        sendJson4(response, 404, { error: { message: "Network capture MCP is disabled." } });
         return;
       }
       const authorization2 = await authorize(request, response, this.config);
@@ -73681,7 +76207,7 @@ var GatewayHttpRequestHandler = class {
       await handleNetworkCaptureMcpRequest(request, response);
       return;
     }
-    const pluginRoute = pluginService.matchGatewayRoute(request.method, path23);
+    const pluginRoute = pluginService.matchGatewayRoute(request.method, path24);
     if (pluginRoute) {
       if (pluginRoute.auth !== "none") {
         const authorization2 = await authorize(request, response, this.config);
@@ -73693,11 +76219,11 @@ var GatewayHttpRequestHandler = class {
       return;
     }
     if (!shouldServeGatewayRequest(this.config, request)) {
-      sendJson3(response, 503, { error: { message: "Gateway runtime is disabled." } });
+      sendJson4(response, 503, { error: { message: "Gateway runtime is disabled." } });
       return;
     }
-    if (path23 === "/health") {
-      sendJson3(response, 200, {
+    if (path24 === "/health") {
+      sendJson4(response, 200, {
         core: this.status.coreEndpoint,
         coreManagedExternally: this.status.coreManagedExternally || void 0,
         status: this.status.state,
@@ -73705,8 +76231,8 @@ var GatewayHttpRequestHandler = class {
       });
       return;
     }
-    if (path23 === "/") {
-      sendJson3(response, 200, {
+    if (path24 === "/") {
+      sendJson4(response, 200, {
         core: "next-ai-gateway",
         endpoints: ["POST /mcp", "POST /v1/messages", "POST /v1/messages/count_tokens", "GET /v1/models"],
         name: "claude-code-router",
@@ -73719,24 +76245,24 @@ var GatewayHttpRequestHandler = class {
     if (!authorization.ok) {
       return;
     }
-    if (request.method === "POST" && path23 === "/v1/messages/count_tokens") {
+    if (request.method === "POST" && path24 === "/v1/messages/count_tokens") {
       const requestBody = await readRequestBody(request);
       const body = parseJsonObject(requestBody);
       if (!reserveApiKeyLimits(authorization.apiKey, request, response, requestBody)) {
         return;
       }
-      sendJson3(response, 200, this.plugin.countTokens(body));
+      sendJson4(response, 200, this.plugin.countTokens(body));
       return;
     }
-    await this.proxyRequest(request, response, path23, authorization.apiKey);
+    await this.proxyRequest(request, response, path24, authorization.apiKey);
   }
 };
 
 // packages/core/src/routing/route-script-runtime.ts
-var import_node_crypto17 = require("node:crypto");
-var import_node_fs24 = require("node:fs");
-var import_node_os13 = __toESM(require("node:os"));
-var import_node_path34 = __toESM(require("node:path"));
+var import_node_crypto18 = require("node:crypto");
+var import_node_fs25 = require("node:fs");
+var import_node_os14 = __toESM(require("node:os"));
+var import_node_path36 = __toESM(require("node:path"));
 var import_node_worker_threads2 = require("node:worker_threads");
 var defaultWorkerCount = 2;
 var maxPendingRequests = 64;
@@ -73770,7 +76296,7 @@ var RouteScriptRuntime = class {
     try {
       resolved = await resolveRouteScript(script);
     } catch (error) {
-      return { diagnostics: [{ code: "script-source-invalid", message: formatError17(error) }], ok: false };
+      return { diagnostics: [{ code: "script-source-invalid", message: formatError18(error) }], ok: false };
     }
     const hash = routeScriptHash(resolved);
     const cached = this.validationCache.get(hash);
@@ -73792,7 +76318,7 @@ var RouteScriptRuntime = class {
       return result;
     } catch (error) {
       return {
-        diagnostics: [{ code: "script-runtime-error", message: formatError17(error) }],
+        diagnostics: [{ code: "script-runtime-error", message: formatError18(error) }],
         ok: false
       };
     }
@@ -73804,7 +76330,7 @@ var RouteScriptRuntime = class {
     try {
       resolved = await resolveRouteScript(script);
     } catch (error) {
-      return { durationMs: 0, error: formatError17(error), status: "error" };
+      return { durationMs: 0, error: formatError18(error), status: "error" };
     }
     const now = Date.now();
     const circuitKey = `${ruleId}\0${routeScriptHash(resolved)}`;
@@ -73836,7 +76362,7 @@ var RouteScriptRuntime = class {
       };
     } catch (error) {
       if (circuitBreakerEnabled) this.recordFailure(circuitKey, Date.now());
-      const message = formatError17(error);
+      const message = formatError18(error);
       return {
         durationMs: resolved.timeoutMs,
         error: message,
@@ -73869,12 +76395,12 @@ var RouteScriptRuntime = class {
 };
 function resolveRouteScriptWorkerFile() {
   const candidates = [
-    import_node_path34.default.join(__dirname, "route-script-worker.js"),
-    import_node_path34.default.join(__dirname, "runtime", "route-script-worker.js"),
-    import_node_path34.default.resolve(__dirname, "../../runtime/route-script-worker.js"),
-    import_node_path34.default.resolve(__dirname, "../../../runtime/route-script-worker.js")
+    import_node_path36.default.join(__dirname, "route-script-worker.js"),
+    import_node_path36.default.join(__dirname, "runtime", "route-script-worker.js"),
+    import_node_path36.default.resolve(__dirname, "../../runtime/route-script-worker.js"),
+    import_node_path36.default.resolve(__dirname, "../../../runtime/route-script-worker.js")
   ];
-  return candidates.find(import_node_fs24.existsSync) ?? candidates[0];
+  return candidates.find(import_node_fs25.existsSync) ?? candidates[0];
 }
 var RouteScriptWorkerSlot = class {
   constructor(workerFile) {
@@ -73993,7 +76519,7 @@ var RouteScriptWorkerSlot = class {
   }
 };
 function routeScriptHash(script) {
-  return (0, import_node_crypto17.createHash)("sha256").update(JSON.stringify({
+  return (0, import_node_crypto18.createHash)("sha256").update(JSON.stringify({
     source: script.source,
     timeoutMs: script.timeoutMs
   })).digest("hex");
@@ -74029,15 +76555,15 @@ async function resolveRouteScript(script) {
   const resolvedFile = resolveScriptFilePath(file);
   let stat2;
   try {
-    stat2 = await import_node_fs24.promises.stat(resolvedFile);
+    stat2 = await import_node_fs25.promises.stat(resolvedFile);
   } catch (error) {
-    throw new Error(`Unable to read route script file "${resolvedFile}": ${formatError17(error)}`);
+    throw new Error(`Unable to read route script file "${resolvedFile}": ${formatError18(error)}`);
   }
   if (!stat2.isFile()) throw new Error(`Route script path "${resolvedFile}" is not a file.`);
   if (stat2.size > ROUTER_SCRIPT_MAX_SOURCE_BYTES) {
     throw new Error(`Route script file exceeds ${ROUTER_SCRIPT_MAX_SOURCE_BYTES} bytes.`);
   }
-  const source = await import_node_fs24.promises.readFile(resolvedFile, "utf8");
+  const source = await import_node_fs25.promises.readFile(resolvedFile, "utf8");
   const bytes = Buffer.byteLength(source, "utf8");
   if (!source.trim() || bytes > ROUTER_SCRIPT_MAX_SOURCE_BYTES) {
     throw new Error(`Route script file must contain between 1 and ${ROUTER_SCRIPT_MAX_SOURCE_BYTES} bytes.`);
@@ -74046,13 +76572,13 @@ async function resolveRouteScript(script) {
 }
 function resolveScriptFilePath(file) {
   if (file.includes("\0")) throw new Error("Route script file path is invalid.");
-  if (file === "~") return import_node_path34.default.resolve(import_node_os13.default.homedir());
+  if (file === "~") return import_node_path36.default.resolve(import_node_os14.default.homedir());
   if (file.startsWith("~/") || file.startsWith("~\\")) {
-    return import_node_path34.default.resolve(import_node_os13.default.homedir(), file.slice(2));
+    return import_node_path36.default.resolve(import_node_os14.default.homedir(), file.slice(2));
   }
-  return import_node_path34.default.resolve(file);
+  return import_node_path36.default.resolve(file);
 }
-function formatError17(error) {
+function formatError18(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -74070,7 +76596,8 @@ var GatewayService = class {
     }),
     handleRawTraceSync: (request, response) => this.rawTraceSynchronizer.handle(request, response),
     handleBillingUsageSync: (request, response) => this.billingSynchronizer.handle(request, response),
-    proxyRequest: (request, response, path23, apiKey) => this.proxyRequest(request, response, path23, apiKey)
+    proxyRequest: (request, response, path24, apiKey) => this.proxyRequest(request, response, path24, apiKey),
+    replayContextArchive: (input) => this.requestPipeline.replayContextArchive(input)
   });
   requestPipeline = new GatewayRequestPipeline({
     getBrowserWebSearchMcpIntegration: () => this.browserWebSearchMcpIntegration,
@@ -74178,7 +76705,7 @@ var GatewayService = class {
         if (await isCoreGatewayHealthy(this.status.coreEndpoint)) {
           throw new Error(`Core gateway endpoint is already in use: ${this.status.coreEndpoint}`);
         }
-        const runtimeId = (0, import_node_crypto18.randomUUID)();
+        const runtimeId = (0, import_node_crypto19.randomUUID)();
         this.child = spawnGatewayProcess(config, upstreamProxyUrl2, runtimeId, coreAuthToken);
         this.coreAuthToken = coreAuthToken;
         const managedChild = this.child;
@@ -74201,7 +76728,7 @@ var GatewayService = class {
       await this.stop();
       this.status = {
         ...this.status,
-        lastError: formatError11(error),
+        lastError: formatError12(error),
         state: "error"
       };
       return this.status;
@@ -74228,10 +76755,10 @@ var GatewayService = class {
     await pluginService.stop();
     await backendService.stopAll();
     await this.browserWebSearchMcpIntegration?.stopBrowserWebSearchMcpServers().catch((error) => {
-      console.warn(`[gateway] Failed to stop browser web search MCP: ${formatError11(error)}`);
+      console.warn(`[gateway] Failed to stop browser web search MCP: ${formatError12(error)}`);
     });
     await this.browserAutomationMcpIntegration?.stopBrowserAutomationMcpServer().catch((error) => {
-      console.warn(`[gateway] Failed to stop browser automation MCP: ${formatError11(error)}`);
+      console.warn(`[gateway] Failed to stop browser automation MCP: ${formatError12(error)}`);
     });
     this.status = {
       ...this.status,
@@ -74332,13 +76859,13 @@ var GatewayService = class {
       if (proxyService.shouldHandleHttpRequest(request)) {
         void proxyService.handleHttpRequest(request, response).catch((error) => {
           response.writeHead(502, { "content-type": "application/json" });
-          response.end(JSON.stringify({ error: { message: formatError11(error) } }));
+          response.end(JSON.stringify({ error: { message: formatError12(error) } }));
         });
         return;
       }
       void this.handleRequest(request, response).catch((error) => {
         response.writeHead(502, { "content-type": "application/json" });
-        response.end(JSON.stringify({ error: { message: formatError11(error) } }));
+        response.end(JSON.stringify({ error: { message: formatError12(error) } }));
       });
     });
     await new Promise((resolve, reject) => {
@@ -74365,8 +76892,8 @@ var GatewayService = class {
   async handleRequest(request, response) {
     return this.requestHandler.handleRequest(request, response);
   }
-  async proxyRequest(request, response, path23, apiKey) {
-    return this.requestPipeline.proxyRequest(request, response, path23, apiKey);
+  async proxyRequest(request, response, path24, apiKey) {
+    return this.requestPipeline.proxyRequest(request, response, path24, apiKey);
   }
 };
 var gatewayService = new GatewayService();
@@ -74449,16 +76976,16 @@ var maxStaleAccountSnapshotMs = 2 * 60 * 1e3;
 
 // packages/core/src/web/management-server.ts
 var maxRpcBodyBytes = 8 * 1024 * 1024;
-var staticRoot = import_node_path35.default.resolve(__dirname, "..", "renderer");
-var homeHtmlFile = import_node_path35.default.join(staticRoot, "pages", "home", "index.html");
-var rendererAssetsRoot = import_node_path35.default.join(staticRoot, "assets");
+var staticRoot = import_node_path37.default.resolve(__dirname, "..", "renderer");
+var homeHtmlFile = import_node_path37.default.join(staticRoot, "pages", "home", "index.html");
+var rendererAssetsRoot = import_node_path37.default.join(staticRoot, "assets");
 var pluginMarketplace = [
   {
     capabilities: ["Wrapper runtime", "Claude App proxy", "Claude Design", "Model routing"],
     dependencies: [],
     description: "Routes Claude App Design traffic through the local CCR wrapper backend with configurable model routing.",
     id: "claude-design",
-    modulePath: import_node_path35.default.join(__dirname, "..", "marketplace", "plugins", "claude-design-plugin.cjs"),
+    modulePath: import_node_path37.default.join(__dirname, "..", "marketplace", "plugins", "claude-design-plugin.cjs"),
     name: "Claude Design"
   },
   {
@@ -74466,7 +76993,7 @@ var pluginMarketplace = [
     dependencies: [],
     description: "Routes Cursor-compatible LLM traffic captured by proxy mode into the local CCR gateway.",
     id: "cursor-proxy",
-    modulePath: import_node_path35.default.join(__dirname, "..", "marketplace", "plugins", "cursor-proxy-plugin.cjs"),
+    modulePath: import_node_path37.default.join(__dirname, "..", "marketplace", "plugins", "cursor-proxy-plugin.cjs"),
     name: "Cursor Proxy"
   }
 ];

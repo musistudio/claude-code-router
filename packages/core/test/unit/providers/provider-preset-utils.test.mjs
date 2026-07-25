@@ -15,6 +15,9 @@ import {
   fennoProviderPreset
 } from "@ccr/core/providers/presets/fenno/index.ts";
 import {
+  infistarAiProviderPreset
+} from "@ccr/core/providers/presets/infistar-ai/index.ts";
+import {
   moonshotChinaProviderPreset,
   moonshotGlobalProviderPreset
 } from "@ccr/core/providers/presets/moonshot/index.ts";
@@ -106,6 +109,16 @@ test("sponsor provider presets expose requested endpoints and protocols", () => 
   assert.equal(providerPresetMatchesBaseUrl(unity2ProviderPreset, "https://unity2.ai/v1/chat/completions"), true);
   assert.equal(providerPresetMatchesBaseUrl(unity2ProviderPreset, "https://api.unity2.ai/v1"), false);
   assert.deepEqual(unity2ProviderPreset.endpoints[0]?.protocols, [
+    "openai_chat_completions"
+  ]);
+
+  assert.equal(providerPresets.find((preset) => preset.id === "infistar-ai"), infistarAiProviderPreset);
+  assert.equal(infistarAiProviderPreset.name, "无限星河");
+  assert.equal(infistarAiProviderPreset.websiteUrl, "https://infistar.ai");
+  assert.deepEqual(infistarAiProviderPreset.defaultModels, ["gpt-4o"]);
+  assert.equal(providerPresetMatchesBaseUrl(infistarAiProviderPreset, "https://infistar.ai/v1/models"), true);
+  assert.equal(providerPresetMatchesBaseUrl(infistarAiProviderPreset, "https://api.infistar.ai/v1"), false);
+  assert.deepEqual(infistarAiProviderPreset.endpoints[0]?.protocols, [
     "openai_chat_completions"
   ]);
 });

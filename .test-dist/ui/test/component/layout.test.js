@@ -1057,7 +1057,7 @@ var require_react_development = __commonJS({
           }
           return children;
         }
-        function createContext11(defaultValue) {
+        function createContext12(defaultValue) {
           var context = {
             $$typeof: REACT_CONTEXT_TYPE,
             // As a workaround to support multiple concurrent renderers, we categorize
@@ -1244,7 +1244,7 @@ var require_react_development = __commonJS({
           }
           return lazyType;
         }
-        function forwardRef13(render) {
+        function forwardRef15(render) {
           {
             if (render != null && render.$$typeof === REACT_MEMO_TYPE) {
               error("forwardRef requires a render function but received a `memo` component. Instead of forwardRef(memo(...)), use memo(forwardRef(...)).");
@@ -1343,7 +1343,7 @@ var require_react_development = __commonJS({
           }
           return dispatcher;
         }
-        function useContext13(Context) {
+        function useContext14(Context) {
           var dispatcher = resolveDispatcher();
           {
             if (Context._context !== void 0) {
@@ -1357,7 +1357,7 @@ var require_react_development = __commonJS({
           }
           return dispatcher.useContext(Context);
         }
-        function useState6(initialState) {
+        function useState7(initialState) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useState(initialState);
         }
@@ -1365,11 +1365,11 @@ var require_react_development = __commonJS({
           var dispatcher = resolveDispatcher();
           return dispatcher.useReducer(reducer, initialArg, init);
         }
-        function useRef8(initialValue) {
+        function useRef9(initialValue) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useRef(initialValue);
         }
-        function useEffect8(create, deps) {
+        function useEffect9(create, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useEffect(create, deps);
         }
@@ -1377,15 +1377,15 @@ var require_react_development = __commonJS({
           var dispatcher = resolveDispatcher();
           return dispatcher.useInsertionEffect(create, deps);
         }
-        function useLayoutEffect4(create, deps) {
+        function useLayoutEffect5(create, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useLayoutEffect(create, deps);
         }
-        function useCallback6(callback, deps) {
+        function useCallback7(callback, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useCallback(callback, deps);
         }
-        function useMemo12(create, deps) {
+        function useMemo11(create, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useMemo(create, deps);
         }
@@ -2138,29 +2138,29 @@ var require_react_development = __commonJS({
         exports2.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED = ReactSharedInternals;
         exports2.act = act;
         exports2.cloneElement = cloneElement$1;
-        exports2.createContext = createContext11;
+        exports2.createContext = createContext12;
         exports2.createElement = createElement$1;
         exports2.createFactory = createFactory;
         exports2.createRef = createRef;
-        exports2.forwardRef = forwardRef13;
+        exports2.forwardRef = forwardRef15;
         exports2.isValidElement = isValidElement2;
         exports2.lazy = lazy;
         exports2.memo = memo3;
         exports2.startTransition = startTransition;
         exports2.unstable_act = act;
-        exports2.useCallback = useCallback6;
-        exports2.useContext = useContext13;
+        exports2.useCallback = useCallback7;
+        exports2.useContext = useContext14;
         exports2.useDebugValue = useDebugValue;
         exports2.useDeferredValue = useDeferredValue;
-        exports2.useEffect = useEffect8;
+        exports2.useEffect = useEffect9;
         exports2.useId = useId4;
         exports2.useImperativeHandle = useImperativeHandle;
         exports2.useInsertionEffect = useInsertionEffect4;
-        exports2.useLayoutEffect = useLayoutEffect4;
-        exports2.useMemo = useMemo12;
+        exports2.useLayoutEffect = useLayoutEffect5;
+        exports2.useMemo = useMemo11;
         exports2.useReducer = useReducer;
-        exports2.useRef = useRef8;
-        exports2.useState = useState6;
+        exports2.useRef = useRef9;
+        exports2.useState = useState7;
         exports2.useSyncExternalStore = useSyncExternalStore;
         exports2.useTransition = useTransition;
         exports2.version = ReactVersion;
@@ -5427,10 +5427,10 @@ var require_react_dom_server_legacy_node_development = __commonJS({
     if (process.env.NODE_ENV !== "production") {
       (function() {
         "use strict";
-        var React15 = require_react();
+        var React17 = require_react();
         var stream = require("stream");
         var ReactVersion = "18.3.1";
-        var ReactSharedInternals = React15.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React17.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         function warn(format) {
           {
             {
@@ -7336,7 +7336,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
         }
         function flattenOptionChildren(children) {
           var content = "";
-          React15.Children.forEach(children, function(child) {
+          React17.Children.forEach(children, function(child) {
             if (child == null) {
               return;
             }
@@ -9340,7 +9340,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
           }
           return readContext(context);
         }
-        function useContext13(context) {
+        function useContext14(context) {
           {
             currentHookNameInDev = "useContext";
           }
@@ -9350,7 +9350,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
         function basicStateReducer(state, action) {
           return typeof action === "function" ? action(state) : action;
         }
-        function useState6(initialState) {
+        function useState7(initialState) {
           {
             currentHookNameInDev = "useState";
           }
@@ -9415,7 +9415,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
             return [workInProgressHook.memoizedState, _dispatch];
           }
         }
-        function useMemo12(nextCreate, deps) {
+        function useMemo11(nextCreate, deps) {
           currentlyRenderingComponent = resolveCurrentlyRenderingComponent();
           workInProgressHook = createWorkInProgressHook();
           var nextDeps = deps === void 0 ? null : deps;
@@ -9440,7 +9440,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
           workInProgressHook.memoizedState = [nextValue, nextDeps];
           return nextValue;
         }
-        function useRef8(initialValue) {
+        function useRef9(initialValue) {
           currentlyRenderingComponent = resolveCurrentlyRenderingComponent();
           workInProgressHook = createWorkInProgressHook();
           var previousRef = workInProgressHook.memoizedState;
@@ -9457,7 +9457,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
             return previousRef;
           }
         }
-        function useLayoutEffect4(create, inputs) {
+        function useLayoutEffect5(create, inputs) {
           {
             currentHookNameInDev = "useLayoutEffect";
             error("useLayoutEffect does nothing on the server, because its effect cannot be encoded into the server renderer's output format. This will lead to a mismatch between the initial, non-hydrated UI and the intended UI. To avoid this, useLayoutEffect should only be used in components that render exclusively on the client. See https://reactjs.org/link/uselayouteffect-ssr for common fixes.");
@@ -9488,8 +9488,8 @@ var require_react_dom_server_legacy_node_development = __commonJS({
             }
           }
         }
-        function useCallback6(callback, deps) {
-          return useMemo12(function() {
+        function useCallback7(callback, deps) {
+          return useMemo11(function() {
             return callback;
           }, deps);
         }
@@ -9528,14 +9528,14 @@ var require_react_dom_server_legacy_node_development = __commonJS({
         }
         var Dispatcher = {
           readContext: readContext$1,
-          useContext: useContext13,
-          useMemo: useMemo12,
+          useContext: useContext14,
+          useMemo: useMemo11,
           useReducer,
-          useRef: useRef8,
-          useState: useState6,
+          useRef: useRef9,
+          useState: useState7,
           useInsertionEffect: noop2,
-          useLayoutEffect: useLayoutEffect4,
-          useCallback: useCallback6,
+          useLayoutEffect: useLayoutEffect5,
+          useCallback: useCallback7,
           // useImperativeHandle is not run in the server environment
           useImperativeHandle: noop2,
           // Effects are not run in the server environment.
@@ -10873,10 +10873,10 @@ var require_react_dom_server_node_development = __commonJS({
     if (process.env.NODE_ENV !== "production") {
       (function() {
         "use strict";
-        var React15 = require_react();
+        var React17 = require_react();
         var util = require("util");
         var ReactVersion = "18.3.1";
-        var ReactSharedInternals = React15.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React17.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         function warn(format) {
           {
             {
@@ -12879,7 +12879,7 @@ var require_react_dom_server_node_development = __commonJS({
         }
         function flattenOptionChildren(children) {
           var content = "";
-          React15.Children.forEach(children, function(child) {
+          React17.Children.forEach(children, function(child) {
             if (child == null) {
               return;
             }
@@ -14819,7 +14819,7 @@ var require_react_dom_server_node_development = __commonJS({
           }
           return readContext(context);
         }
-        function useContext13(context) {
+        function useContext14(context) {
           {
             currentHookNameInDev = "useContext";
           }
@@ -14829,7 +14829,7 @@ var require_react_dom_server_node_development = __commonJS({
         function basicStateReducer(state, action) {
           return typeof action === "function" ? action(state) : action;
         }
-        function useState6(initialState) {
+        function useState7(initialState) {
           {
             currentHookNameInDev = "useState";
           }
@@ -14894,7 +14894,7 @@ var require_react_dom_server_node_development = __commonJS({
             return [workInProgressHook.memoizedState, _dispatch];
           }
         }
-        function useMemo12(nextCreate, deps) {
+        function useMemo11(nextCreate, deps) {
           currentlyRenderingComponent = resolveCurrentlyRenderingComponent();
           workInProgressHook = createWorkInProgressHook();
           var nextDeps = deps === void 0 ? null : deps;
@@ -14919,7 +14919,7 @@ var require_react_dom_server_node_development = __commonJS({
           workInProgressHook.memoizedState = [nextValue, nextDeps];
           return nextValue;
         }
-        function useRef8(initialValue) {
+        function useRef9(initialValue) {
           currentlyRenderingComponent = resolveCurrentlyRenderingComponent();
           workInProgressHook = createWorkInProgressHook();
           var previousRef = workInProgressHook.memoizedState;
@@ -14936,7 +14936,7 @@ var require_react_dom_server_node_development = __commonJS({
             return previousRef;
           }
         }
-        function useLayoutEffect4(create, inputs) {
+        function useLayoutEffect5(create, inputs) {
           {
             currentHookNameInDev = "useLayoutEffect";
             error("useLayoutEffect does nothing on the server, because its effect cannot be encoded into the server renderer's output format. This will lead to a mismatch between the initial, non-hydrated UI and the intended UI. To avoid this, useLayoutEffect should only be used in components that render exclusively on the client. See https://reactjs.org/link/uselayouteffect-ssr for common fixes.");
@@ -14967,8 +14967,8 @@ var require_react_dom_server_node_development = __commonJS({
             }
           }
         }
-        function useCallback6(callback, deps) {
-          return useMemo12(function() {
+        function useCallback7(callback, deps) {
+          return useMemo11(function() {
             return callback;
           }, deps);
         }
@@ -15007,14 +15007,14 @@ var require_react_dom_server_node_development = __commonJS({
         }
         var Dispatcher = {
           readContext: readContext$1,
-          useContext: useContext13,
-          useMemo: useMemo12,
+          useContext: useContext14,
+          useMemo: useMemo11,
           useReducer,
-          useRef: useRef8,
-          useState: useState6,
+          useRef: useRef9,
+          useState: useState7,
           useInsertionEffect: noop2,
-          useLayoutEffect: useLayoutEffect4,
-          useCallback: useCallback6,
+          useLayoutEffect: useLayoutEffect5,
+          useCallback: useCallback7,
           // useImperativeHandle is not run in the server environment
           useImperativeHandle: noop2,
           // Effects are not run in the server environment.
@@ -16350,7 +16350,7 @@ var require_react_jsx_runtime_development = __commonJS({
     if (process.env.NODE_ENV !== "production") {
       (function() {
         "use strict";
-        var React15 = require_react();
+        var React17 = require_react();
         var REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.element");
         var REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal");
         var REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment");
@@ -16376,7 +16376,7 @@ var require_react_jsx_runtime_development = __commonJS({
           }
           return null;
         }
-        var ReactSharedInternals = React15.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React17.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         function error(format) {
           {
             {
@@ -17226,11 +17226,11 @@ var require_react_jsx_runtime_development = __commonJS({
             return jsxWithValidation(type, props, key, false);
           }
         }
-        var jsx35 = jsxWithValidationDynamic;
-        var jsxs19 = jsxWithValidationStatic;
+        var jsx37 = jsxWithValidationDynamic;
+        var jsxs20 = jsxWithValidationStatic;
         exports2.Fragment = REACT_FRAGMENT_TYPE;
-        exports2.jsx = jsx35;
-        exports2.jsxs = jsxs19;
+        exports2.jsx = jsx37;
+        exports2.jsxs = jsxs20;
       })();
     }
   }
@@ -24578,9 +24578,9 @@ var require_react_dom_development = __commonJS({
         if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ !== "undefined" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart === "function") {
           __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(new Error());
         }
-        var React15 = require_react();
+        var React17 = require_react();
         var Scheduler = require_scheduler();
-        var ReactSharedInternals = React15.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React17.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         var suppressWarning = false;
         function setSuppressWarning(newSuppressWarning) {
           {
@@ -26187,7 +26187,7 @@ var require_react_dom_development = __commonJS({
           {
             if (props.value == null) {
               if (typeof props.children === "object" && props.children !== null) {
-                React15.Children.forEach(props.children, function(child) {
+                React17.Children.forEach(props.children, function(child) {
                   if (child == null) {
                     return;
                   }
@@ -46250,8 +46250,8 @@ var require_accessibility_cjs_development = __commonJS({
     function _interopDefault(ex) {
       return ex && typeof ex === "object" && "default" in ex ? ex["default"] : ex;
     }
-    var React15 = require_react();
-    var React__default = _interopDefault(React15);
+    var React17 = require_react();
+    var React__default = _interopDefault(React17);
     var hiddenStyles = {
       display: "none"
     };
@@ -46294,8 +46294,8 @@ var require_accessibility_cjs_development = __commonJS({
       }, announcement);
     }
     function useAnnouncement() {
-      const [announcement, setAnnouncement] = React15.useState("");
-      const announce = React15.useCallback((value) => {
+      const [announcement, setAnnouncement] = React17.useState("");
+      const announce = React17.useCallback((value) => {
         if (value != null) {
           setAnnouncement(value);
         }
@@ -47384,15 +47384,15 @@ var require_core_cjs_development = __commonJS({
     function _interopDefault(ex) {
       return ex && typeof ex === "object" && "default" in ex ? ex["default"] : ex;
     }
-    var React15 = require_react();
-    var React__default = _interopDefault(React15);
+    var React17 = require_react();
+    var React__default = _interopDefault(React17);
     var reactDom = require_react_dom();
     var utilities = require_dist();
     var accessibility = require_dist2();
-    var DndMonitorContext = /* @__PURE__ */ React15.createContext(null);
+    var DndMonitorContext = /* @__PURE__ */ React17.createContext(null);
     function useDndMonitor(listener) {
-      const registerListener = React15.useContext(DndMonitorContext);
-      React15.useEffect(() => {
+      const registerListener = React17.useContext(DndMonitorContext);
+      React17.useEffect(() => {
         if (!registerListener) {
           throw new Error("useDndMonitor must be used within a children of <DndContext>");
         }
@@ -47401,12 +47401,12 @@ var require_core_cjs_development = __commonJS({
       }, [listener, registerListener]);
     }
     function useDndMonitorProvider() {
-      const [listeners] = React15.useState(() => /* @__PURE__ */ new Set());
-      const registerListener = React15.useCallback((listener) => {
+      const [listeners] = React17.useState(() => /* @__PURE__ */ new Set());
+      const registerListener = React17.useCallback((listener) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
       }, [listeners]);
-      const dispatch = React15.useCallback((_ref) => {
+      const dispatch = React17.useCallback((_ref) => {
         let {
           type,
           event
@@ -47467,11 +47467,11 @@ var require_core_cjs_development = __commonJS({
         announcement
       } = accessibility.useAnnouncement();
       const liveRegionId = utilities.useUniqueId("DndLiveRegion");
-      const [mounted, setMounted] = React15.useState(false);
-      React15.useEffect(() => {
+      const [mounted, setMounted] = React17.useState(false);
+      React17.useEffect(() => {
         setMounted(true);
       }, []);
-      useDndMonitor(React15.useMemo(() => ({
+      useDndMonitor(React17.useMemo(() => ({
         onDragStart(_ref2) {
           let {
             active
@@ -47549,7 +47549,7 @@ var require_core_cjs_development = __commonJS({
     function noop2() {
     }
     function useSensor3(sensor, options) {
-      return React15.useMemo(
+      return React17.useMemo(
         () => ({
           sensor,
           options: options != null ? options : {}
@@ -47562,7 +47562,7 @@ var require_core_cjs_development = __commonJS({
       for (var _len = arguments.length, sensors = new Array(_len), _key = 0; _key < _len; _key++) {
         sensors[_key] = arguments[_key];
       }
-      return React15.useMemo(
+      return React17.useMemo(
         () => [...sensors].filter((sensor) => sensor != null),
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [...sensors]
@@ -48853,15 +48853,15 @@ var require_core_cjs_development = __commonJS({
         disabled: !enabled
       });
       const [setAutoScrollInterval, clearAutoScrollInterval] = utilities.useInterval();
-      const scrollSpeed = React15.useRef({
+      const scrollSpeed = React17.useRef({
         x: 0,
         y: 0
       });
-      const scrollDirection = React15.useRef({
+      const scrollDirection = React17.useRef({
         x: 0,
         y: 0
       });
-      const rect = React15.useMemo(() => {
+      const rect = React17.useMemo(() => {
         switch (activator) {
           case exports2.AutoScrollActivator.Pointer:
             return pointerCoordinates ? {
@@ -48874,8 +48874,8 @@ var require_core_cjs_development = __commonJS({
             return draggingRect;
         }
       }, [activator, draggingRect, pointerCoordinates]);
-      const scrollContainerRef = React15.useRef(null);
-      const autoScroll = React15.useCallback(() => {
+      const scrollContainerRef = React17.useRef(null);
+      const autoScroll = React17.useCallback(() => {
         const scrollContainer = scrollContainerRef.current;
         if (!scrollContainer) {
           return;
@@ -48884,8 +48884,8 @@ var require_core_cjs_development = __commonJS({
         const scrollTop = scrollSpeed.current.y * scrollDirection.current.y;
         scrollContainer.scrollBy(scrollLeft, scrollTop);
       }, []);
-      const sortedScrollableAncestors = React15.useMemo(() => order === exports2.TraversalOrder.TreeOrder ? [...scrollableAncestors].reverse() : scrollableAncestors, [order, scrollableAncestors]);
-      React15.useEffect(
+      const sortedScrollableAncestors = React17.useMemo(() => order === exports2.TraversalOrder.TreeOrder ? [...scrollableAncestors].reverse() : scrollableAncestors, [order, scrollableAncestors]);
+      React17.useEffect(
         () => {
           if (!enabled || !scrollableAncestors.length || !rect) {
             clearAutoScrollInterval();
@@ -48998,7 +48998,7 @@ var require_core_cjs_development = __commonJS({
       }, [node, id3]);
     }
     function useCombineActivators(sensors, getSyntheticHandler) {
-      return React15.useMemo(() => sensors.reduce((accumulator, sensor) => {
+      return React17.useMemo(() => sensors.reduce((accumulator, sensor) => {
         const {
           sensor: Sensor
         } = sensor;
@@ -49024,16 +49024,16 @@ var require_core_cjs_development = __commonJS({
         dependencies,
         config
       } = _ref;
-      const [queue, setQueue] = React15.useState(null);
+      const [queue, setQueue] = React17.useState(null);
       const {
         frequency,
         measure,
         strategy
       } = config;
-      const containersRef = React15.useRef(containers);
+      const containersRef = React17.useRef(containers);
       const disabled = isDisabled();
       const disabledRef = utilities.useLatestValue(disabled);
-      const measureDroppableContainers = React15.useCallback(function(ids) {
+      const measureDroppableContainers = React17.useCallback(function(ids) {
         if (ids === void 0) {
           ids = [];
         }
@@ -49047,7 +49047,7 @@ var require_core_cjs_development = __commonJS({
           return value.concat(ids.filter((id3) => !value.includes(id3)));
         });
       }, [disabledRef]);
-      const timeoutId = React15.useRef(null);
+      const timeoutId = React17.useRef(null);
       const droppableRects = utilities.useLazyMemo((previousValue) => {
         if (disabled && !dragging) {
           return defaultValue;
@@ -49073,10 +49073,10 @@ var require_core_cjs_development = __commonJS({
         }
         return previousValue;
       }, [containers, queue, dragging, disabled, measure]);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         containersRef.current = containers;
       }, [containers]);
-      React15.useEffect(
+      React17.useEffect(
         () => {
           if (disabled) {
             return;
@@ -49086,7 +49086,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [dragging, disabled]
       );
-      React15.useEffect(
+      React17.useEffect(
         () => {
           if (queue && queue.length > 0) {
             setQueue(null);
@@ -49095,7 +49095,7 @@ var require_core_cjs_development = __commonJS({
         //eslint-disable-next-line react-hooks/exhaustive-deps
         [JSON.stringify(queue)]
       );
-      React15.useEffect(
+      React17.useEffect(
         () => {
           if (disabled || typeof frequency !== "number" || timeoutId.current !== null) {
             return;
@@ -49144,7 +49144,7 @@ var require_core_cjs_development = __commonJS({
         disabled
       } = _ref;
       const handleMutations = utilities.useEvent(callback);
-      const mutationObserver = React15.useMemo(() => {
+      const mutationObserver = React17.useMemo(() => {
         if (disabled || typeof window === "undefined" || typeof window.MutationObserver === "undefined") {
           return void 0;
         }
@@ -49153,7 +49153,7 @@ var require_core_cjs_development = __commonJS({
         } = window;
         return new MutationObserver(handleMutations);
       }, [handleMutations, disabled]);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         return () => mutationObserver == null ? void 0 : mutationObserver.disconnect();
       }, [mutationObserver]);
       return mutationObserver;
@@ -49164,7 +49164,7 @@ var require_core_cjs_development = __commonJS({
         disabled
       } = _ref;
       const handleResize = utilities.useEvent(callback);
-      const resizeObserver = React15.useMemo(
+      const resizeObserver = React17.useMemo(
         () => {
           if (disabled || typeof window === "undefined" || typeof window.ResizeObserver === "undefined") {
             return void 0;
@@ -49177,7 +49177,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [disabled]
       );
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         return () => resizeObserver == null ? void 0 : resizeObserver.disconnect();
       }, [resizeObserver]);
       return resizeObserver;
@@ -49189,7 +49189,7 @@ var require_core_cjs_development = __commonJS({
       if (measure === void 0) {
         measure = defaultMeasure;
       }
-      const [rect, setRect] = React15.useState(null);
+      const [rect, setRect] = React17.useState(null);
       function measureRect() {
         setRect((currentRect) => {
           if (!element) {
@@ -49247,7 +49247,7 @@ var require_core_cjs_development = __commonJS({
     }
     var defaultValue$1 = [];
     function useScrollableAncestors(node) {
-      const previousNode = React15.useRef(node);
+      const previousNode = React17.useRef(node);
       const ancestors = utilities.useLazyMemo((previousValue) => {
         if (!node) {
           return defaultValue$1;
@@ -49257,15 +49257,15 @@ var require_core_cjs_development = __commonJS({
         }
         return getScrollableAncestors(node);
       }, [node]);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         previousNode.current = node;
       }, [node]);
       return ancestors;
     }
     function useScrollOffsets(elements) {
-      const [scrollCoordinates, setScrollCoordinates] = React15.useState(null);
-      const prevElements = React15.useRef(elements);
-      const handleScroll = React15.useCallback((event) => {
+      const [scrollCoordinates, setScrollCoordinates] = React17.useState(null);
+      const prevElements = React17.useRef(elements);
+      const handleScroll = React17.useCallback((event) => {
         const scrollingElement = getScrollableElement(event.target);
         if (!scrollingElement) {
           return;
@@ -49278,7 +49278,7 @@ var require_core_cjs_development = __commonJS({
           return new Map(scrollCoordinates2);
         });
       }, []);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         const previousElements = prevElements.current;
         if (elements !== previousElements) {
           cleanup(previousElements);
@@ -49306,7 +49306,7 @@ var require_core_cjs_development = __commonJS({
           });
         }
       }, [handleScroll, elements]);
-      return React15.useMemo(() => {
+      return React17.useMemo(() => {
         if (elements.length) {
           return scrollCoordinates ? Array.from(scrollCoordinates.values()).reduce((acc, coordinates) => utilities.add(acc, coordinates), defaultCoordinates) : getScrollOffsets(elements);
         }
@@ -49317,15 +49317,15 @@ var require_core_cjs_development = __commonJS({
       if (dependencies === void 0) {
         dependencies = [];
       }
-      const initialScrollOffsets = React15.useRef(null);
-      React15.useEffect(
+      const initialScrollOffsets = React17.useRef(null);
+      React17.useEffect(
         () => {
           initialScrollOffsets.current = null;
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
         dependencies
       );
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         const hasScrollOffsets = scrollOffsets !== defaultCoordinates;
         if (hasScrollOffsets && !initialScrollOffsets.current) {
           initialScrollOffsets.current = scrollOffsets;
@@ -49337,7 +49337,7 @@ var require_core_cjs_development = __commonJS({
       return initialScrollOffsets.current ? utilities.subtract(scrollOffsets, initialScrollOffsets.current) : defaultCoordinates;
     }
     function useSensorSetup(sensors) {
-      React15.useEffect(
+      React17.useEffect(
         () => {
           if (!utilities.canUseDOM) {
             return;
@@ -49365,7 +49365,7 @@ var require_core_cjs_development = __commonJS({
       );
     }
     function useSyntheticListeners(listeners, id3) {
-      return React15.useMemo(() => {
+      return React17.useMemo(() => {
         return listeners.reduce((acc, _ref) => {
           let {
             eventName,
@@ -49379,7 +49379,7 @@ var require_core_cjs_development = __commonJS({
       }, [listeners, id3]);
     }
     function useWindowRect(element) {
-      return React15.useMemo(() => element ? getWindowClientRect(element) : null, [element]);
+      return React17.useMemo(() => element ? getWindowClientRect(element) : null, [element]);
     }
     var defaultValue$2 = [];
     function useRects(elements, measure) {
@@ -49388,7 +49388,7 @@ var require_core_cjs_development = __commonJS({
       }
       const [firstElement] = elements;
       const windowRect = useWindowRect(firstElement ? utilities.getWindow(firstElement) : null);
-      const [rects, setRects] = React15.useState(defaultValue$2);
+      const [rects, setRects] = React17.useState(defaultValue$2);
       function measureRects() {
         setRects(() => {
           if (!elements.length) {
@@ -49421,8 +49421,8 @@ var require_core_cjs_development = __commonJS({
       let {
         measure
       } = _ref;
-      const [rect, setRect] = React15.useState(null);
-      const handleResize = React15.useCallback((entries) => {
+      const [rect, setRect] = React17.useState(null);
+      const handleResize = React17.useCallback((entries) => {
         for (const {
           target
         } of entries) {
@@ -49442,7 +49442,7 @@ var require_core_cjs_development = __commonJS({
       const resizeObserver = useResizeObserver({
         callback: handleResize
       });
-      const handleNodeChange = React15.useCallback((element) => {
+      const handleNodeChange = React17.useCallback((element) => {
         const node = getMeasurableNode(element);
         resizeObserver == null ? void 0 : resizeObserver.disconnect();
         if (node) {
@@ -49451,7 +49451,7 @@ var require_core_cjs_development = __commonJS({
         setRect(node ? measure(node) : null);
       }, [measure, resizeObserver]);
       const [nodeRef, setRef2] = utilities.useNodeRef(handleNodeChange);
-      return React15.useMemo(() => ({
+      return React17.useMemo(() => ({
         nodeRef,
         rect,
         setRef: setRef2
@@ -49539,8 +49539,8 @@ var require_core_cjs_development = __commonJS({
       over: null,
       measureDroppableContainers: noop2
     };
-    var InternalContext = /* @__PURE__ */ React15.createContext(defaultInternalContext);
-    var PublicContext = /* @__PURE__ */ React15.createContext(defaultPublicContext);
+    var InternalContext = /* @__PURE__ */ React17.createContext(defaultInternalContext);
+    var PublicContext = /* @__PURE__ */ React17.createContext(defaultPublicContext);
     function getInitialState() {
       return {
         draggable: {
@@ -49674,10 +49674,10 @@ var require_core_cjs_development = __commonJS({
         active,
         activatorEvent,
         draggableNodes
-      } = React15.useContext(InternalContext);
+      } = React17.useContext(InternalContext);
       const previousActivatorEvent = utilities.usePrevious(activatorEvent);
       const previousActiveId = utilities.usePrevious(active == null ? void 0 : active.id);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         if (disabled) {
           return;
         }
@@ -49728,7 +49728,7 @@ var require_core_cjs_development = __commonJS({
       }, transform) : transform;
     }
     function useMeasuringConfiguration(config) {
-      return React15.useMemo(
+      return React17.useMemo(
         () => ({
           draggable: {
             ...defaultMeasuringConfiguration.draggable,
@@ -49754,7 +49754,7 @@ var require_core_cjs_development = __commonJS({
         initialRect,
         config = true
       } = _ref;
-      const initialized = React15.useRef(false);
+      const initialized = React17.useRef(false);
       const {
         x,
         y
@@ -49795,7 +49795,7 @@ var require_core_cjs_development = __commonJS({
         }
       }, [activeNode, x, y, initialRect, measure]);
     }
-    var ActiveDraggableContext = /* @__PURE__ */ React15.createContext({
+    var ActiveDraggableContext = /* @__PURE__ */ React17.createContext({
       ...defaultCoordinates,
       scaleX: 1,
       scaleY: 1
@@ -49806,7 +49806,7 @@ var require_core_cjs_development = __commonJS({
       Status2[Status2["Initializing"] = 1] = "Initializing";
       Status2[Status2["Initialized"] = 2] = "Initialized";
     })(Status || (Status = {}));
-    var DndContext3 = /* @__PURE__ */ React15.memo(function DndContext4(_ref) {
+    var DndContext3 = /* @__PURE__ */ React17.memo(function DndContext4(_ref) {
       var _sensorContext$curren, _dragOverlay$nodeRef$, _dragOverlay$rect, _over$rect;
       let {
         id: id3,
@@ -49819,10 +49819,10 @@ var require_core_cjs_development = __commonJS({
         modifiers,
         ...props
       } = _ref;
-      const store = React15.useReducer(reducer, void 0, getInitialState);
+      const store = React17.useReducer(reducer, void 0, getInitialState);
       const [state, dispatch] = store;
       const [dispatchMonitorEvent, registerMonitorListener] = useDndMonitorProvider();
-      const [status, setStatus] = React15.useState(Status.Uninitialized);
+      const [status, setStatus] = React17.useState(Status.Uninitialized);
       const isInitialized2 = status === Status.Initialized;
       const {
         draggable: {
@@ -49835,11 +49835,11 @@ var require_core_cjs_development = __commonJS({
         }
       } = state;
       const node = activeId != null ? draggableNodes.get(activeId) : null;
-      const activeRects = React15.useRef({
+      const activeRects = React17.useRef({
         initial: null,
         translated: null
       });
-      const active = React15.useMemo(() => {
+      const active = React17.useMemo(() => {
         var _node$data;
         return activeId != null ? {
           id: activeId,
@@ -49848,12 +49848,12 @@ var require_core_cjs_development = __commonJS({
           rect: activeRects
         } : null;
       }, [activeId, node]);
-      const activeRef = React15.useRef(null);
-      const [activeSensor, setActiveSensor] = React15.useState(null);
-      const [activatorEvent, setActivatorEvent] = React15.useState(null);
+      const activeRef = React17.useRef(null);
+      const [activeSensor, setActiveSensor] = React17.useState(null);
+      const [activatorEvent, setActivatorEvent] = React17.useState(null);
       const latestProps = utilities.useLatestValue(props, Object.values(props));
       const draggableDescribedById = utilities.useUniqueId("DndDescribedBy", id3);
-      const enabledDroppableContainers = React15.useMemo(() => droppableContainers.getEnabled(), [droppableContainers]);
+      const enabledDroppableContainers = React17.useMemo(() => droppableContainers.getEnabled(), [droppableContainers]);
       const measuringConfiguration = useMeasuringConfiguration(measuring);
       const {
         droppableRects,
@@ -49865,7 +49865,7 @@ var require_core_cjs_development = __commonJS({
         config: measuringConfiguration.droppable
       });
       const activeNode = useCachedNode(draggableNodes, activeId);
-      const activationCoordinates = React15.useMemo(() => activatorEvent ? utilities.getEventCoordinates(activatorEvent) : null, [activatorEvent]);
+      const activationCoordinates = React17.useMemo(() => activatorEvent ? utilities.getEventCoordinates(activatorEvent) : null, [activatorEvent]);
       const autoScrollOptions = getAutoScrollerOptions();
       const initialActiveNodeRect = useInitialRect(activeNode, measuringConfiguration.draggable.measure);
       useLayoutShiftScrollCompensation({
@@ -49876,7 +49876,7 @@ var require_core_cjs_development = __commonJS({
       });
       const activeNodeRect = useRect(activeNode, measuringConfiguration.draggable.measure, initialActiveNodeRect);
       const containerNodeRect = useRect(activeNode ? activeNode.parentElement : null);
-      const sensorContext = React15.useRef({
+      const sensorContext = React17.useRef({
         activatorEvent: null,
         active: null,
         activeNode,
@@ -49934,11 +49934,11 @@ var require_core_cjs_development = __commonJS({
         pointerCoordinates
       }) : null;
       const overId = getFirstCollision3(collisions, "id");
-      const [over, setOver] = React15.useState(null);
+      const [over, setOver] = React17.useState(null);
       const appliedTranslate = usesDragOverlay ? modifiedTranslate : utilities.add(modifiedTranslate, activeNodeScrollDelta);
       const transform = adjustScale(appliedTranslate, (_over$rect = over == null ? void 0 : over.rect) != null ? _over$rect : null, activeNodeRect);
-      const activeSensorRef = React15.useRef(null);
-      const instantiateSensor = React15.useCallback(
+      const activeSensorRef = React17.useRef(null);
+      const instantiateSensor = React17.useCallback(
         (event, _ref2) => {
           let {
             sensor: Sensor,
@@ -50096,7 +50096,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [draggableNodes]
       );
-      const bindActivatorToSensorInstantiator = React15.useCallback((handler, sensor) => {
+      const bindActivatorToSensorInstantiator = React17.useCallback((handler, sensor) => {
         return (event, active2) => {
           const nativeEvent = event.nativeEvent;
           const activeDraggableNode = draggableNodes.get(active2);
@@ -50128,7 +50128,7 @@ var require_core_cjs_development = __commonJS({
           setStatus(Status.Initialized);
         }
       }, [activeNodeRect, status]);
-      React15.useEffect(
+      React17.useEffect(
         () => {
           const {
             onDragMove
@@ -50163,7 +50163,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [scrollAdjustedTranslate.x, scrollAdjustedTranslate.y]
       );
-      React15.useEffect(
+      React17.useEffect(
         () => {
           const {
             active: active2,
@@ -50236,7 +50236,7 @@ var require_core_cjs_development = __commonJS({
         scrollableAncestors,
         scrollableAncestorRects
       });
-      const publicContext = React15.useMemo(() => {
+      const publicContext = React17.useMemo(() => {
         const context = {
           active,
           activeNode,
@@ -50258,7 +50258,7 @@ var require_core_cjs_development = __commonJS({
         };
         return context;
       }, [active, activeNode, activeNodeRect, activatorEvent, collisions, containerNodeRect, dragOverlay, draggableNodes, droppableContainers, droppableRects, over, measureDroppableContainers, scrollableAncestors, scrollableAncestorRects, measuringConfiguration, measuringScheduled, windowRect]);
-      const internalContext = React15.useMemo(() => {
+      const internalContext = React17.useMemo(() => {
         const context = {
           activatorEvent,
           activators,
@@ -50303,7 +50303,7 @@ var require_core_cjs_development = __commonJS({
         };
       }
     });
-    var NullContext = /* @__PURE__ */ React15.createContext(null);
+    var NullContext = /* @__PURE__ */ React17.createContext(null);
     var defaultRole = "button";
     var ID_PREFIX = "Draggable";
     function useDraggable(_ref) {
@@ -50322,14 +50322,14 @@ var require_core_cjs_development = __commonJS({
         ariaDescribedById,
         draggableNodes,
         over
-      } = React15.useContext(InternalContext);
+      } = React17.useContext(InternalContext);
       const {
         role = defaultRole,
         roleDescription = "draggable",
         tabIndex = 0
       } = attributes != null ? attributes : {};
       const isDragging2 = (active == null ? void 0 : active.id) === id3;
-      const transform = React15.useContext(isDragging2 ? ActiveDraggableContext : NullContext);
+      const transform = React17.useContext(isDragging2 ? ActiveDraggableContext : NullContext);
       const [node, setNodeRef] = utilities.useNodeRef();
       const [activatorNode, setActivatorNodeRef] = utilities.useNodeRef();
       const listeners = useSyntheticListeners(activators, id3);
@@ -50353,7 +50353,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [draggableNodes, id3]
       );
-      const memoizedAttributes = React15.useMemo(() => ({
+      const memoizedAttributes = React17.useMemo(() => ({
         role,
         tabIndex,
         "aria-disabled": disabled,
@@ -50376,7 +50376,7 @@ var require_core_cjs_development = __commonJS({
       };
     }
     function useDndContext() {
-      return React15.useContext(PublicContext);
+      return React17.useContext(PublicContext);
     }
     var ID_PREFIX$1 = "Droppable";
     var defaultResizeObserverConfig = {
@@ -50395,13 +50395,13 @@ var require_core_cjs_development = __commonJS({
         dispatch,
         over,
         measureDroppableContainers
-      } = React15.useContext(InternalContext);
-      const previous = React15.useRef({
+      } = React17.useContext(InternalContext);
+      const previous = React17.useRef({
         disabled
       });
-      const resizeObserverConnected = React15.useRef(false);
-      const rect = React15.useRef(null);
-      const callbackId = React15.useRef(null);
+      const resizeObserverConnected = React17.useRef(false);
+      const rect = React17.useRef(null);
+      const callbackId = React17.useRef(null);
       const {
         disabled: resizeObserverDisabled,
         updateMeasurementsFor,
@@ -50411,7 +50411,7 @@ var require_core_cjs_development = __commonJS({
         ...resizeObserverConfig
       };
       const ids = utilities.useLatestValue(updateMeasurementsFor != null ? updateMeasurementsFor : id3);
-      const handleResize = React15.useCallback(
+      const handleResize = React17.useCallback(
         () => {
           if (!resizeObserverConnected.current) {
             resizeObserverConnected.current = true;
@@ -50432,7 +50432,7 @@ var require_core_cjs_development = __commonJS({
         callback: handleResize,
         disabled: resizeObserverDisabled || !active
       });
-      const handleNodeChange = React15.useCallback((newElement, previousElement) => {
+      const handleNodeChange = React17.useCallback((newElement, previousElement) => {
         if (!resizeObserver) {
           return;
         }
@@ -50446,7 +50446,7 @@ var require_core_cjs_development = __commonJS({
       }, [resizeObserver]);
       const [nodeRef, setNodeRef] = utilities.useNodeRef(handleNodeChange);
       const dataRef = utilities.useLatestValue(data);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         if (!resizeObserver || !nodeRef.current) {
           return;
         }
@@ -50454,7 +50454,7 @@ var require_core_cjs_development = __commonJS({
         resizeObserverConnected.current = false;
         resizeObserver.observe(nodeRef.current);
       }, [nodeRef, resizeObserver]);
-      React15.useEffect(
+      React17.useEffect(
         () => {
           dispatch({
             type: Action.RegisterDroppable,
@@ -50476,7 +50476,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [id3]
       );
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         if (disabled !== previous.current.disabled) {
           dispatch({
             type: Action.SetDroppableDisabled,
@@ -50501,8 +50501,8 @@ var require_core_cjs_development = __commonJS({
         animation,
         children
       } = _ref;
-      const [clonedChildren, setClonedChildren] = React15.useState(null);
-      const [element, setElement] = React15.useState(null);
+      const [clonedChildren, setClonedChildren] = React17.useState(null);
+      const [element, setElement] = React17.useState(null);
       const previousChildren = utilities.usePrevious(children);
       if (!children && !clonedChildren && previousChildren) {
         setClonedChildren(previousChildren);
@@ -50521,7 +50521,7 @@ var require_core_cjs_development = __commonJS({
           setClonedChildren(null);
         });
       }, [animation, clonedChildren, element]);
-      return React__default.createElement(React__default.Fragment, null, children, clonedChildren ? React15.cloneElement(clonedChildren, {
+      return React__default.createElement(React__default.Fragment, null, children, clonedChildren ? React17.cloneElement(clonedChildren, {
         ref: setElement
       }) : null);
     }
@@ -50549,7 +50549,7 @@ var require_core_cjs_development = __commonJS({
       const isKeyboardActivator = utilities.isKeyboardEvent(activatorEvent);
       return isKeyboardActivator ? "transform 250ms ease" : void 0;
     };
-    var PositionedOverlay = /* @__PURE__ */ React15.forwardRef((_ref, ref) => {
+    var PositionedOverlay = /* @__PURE__ */ React17.forwardRef((_ref, ref) => {
       let {
         as,
         activatorEvent,
@@ -50770,7 +50770,7 @@ var require_core_cjs_development = __commonJS({
     }
     var key = 0;
     function useKey(id3) {
-      return React15.useMemo(() => {
+      return React17.useMemo(() => {
         if (id3 == null) {
           return;
         }
@@ -50804,7 +50804,7 @@ var require_core_cjs_development = __commonJS({
         scrollableAncestorRects,
         windowRect
       } = useDndContext();
-      const transform = React15.useContext(ActiveDraggableContext);
+      const transform = React17.useContext(ActiveDraggableContext);
       const key2 = useKey(active == null ? void 0 : active.id);
       const modifiedTransform = applyModifiers(modifiers, {
         activatorEvent,
@@ -51065,8 +51065,8 @@ var require_sortable_cjs_development = __commonJS({
     function _interopDefault(ex) {
       return ex && typeof ex === "object" && "default" in ex ? ex["default"] : ex;
     }
-    var React15 = require_react();
-    var React__default = _interopDefault(React15);
+    var React17 = require_react();
+    var React__default = _interopDefault(React17);
     var core = require_dist3();
     var utilities = require_dist();
     function arrayMove2(array, from, to) {
@@ -51316,11 +51316,11 @@ var require_sortable_cjs_development = __commonJS({
       } = core.useDndContext();
       const containerId = utilities.useUniqueId(ID_PREFIX, id3);
       const useDragOverlay = Boolean(dragOverlay.rect !== null);
-      const items = React15.useMemo(() => userDefinedItems.map((item) => typeof item === "object" && "id" in item ? item.id : item), [userDefinedItems]);
+      const items = React17.useMemo(() => userDefinedItems.map((item) => typeof item === "object" && "id" in item ? item.id : item), [userDefinedItems]);
       const isDragging2 = active != null;
       const activeIndex = active ? items.indexOf(active.id) : -1;
       const overIndex = over ? items.indexOf(over.id) : -1;
-      const previousItemsRef = React15.useRef(items);
+      const previousItemsRef = React17.useRef(items);
       const itemsHaveChanged = !itemsEqual(items, previousItemsRef.current);
       const disableTransforms = overIndex !== -1 && activeIndex === -1 || itemsHaveChanged;
       const disabled = normalizeDisabled(disabledProp);
@@ -51329,10 +51329,10 @@ var require_sortable_cjs_development = __commonJS({
           measureDroppableContainers(items);
         }
       }, [itemsHaveChanged, items, isDragging2, measureDroppableContainers]);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         previousItemsRef.current = items;
       }, [items]);
-      const contextValue = React15.useMemo(
+      const contextValue = React17.useMemo(
         () => ({
           activeIndex,
           containerId,
@@ -51403,8 +51403,8 @@ var require_sortable_cjs_development = __commonJS({
         node,
         rect
       } = _ref;
-      const [derivedTransform, setDerivedtransform] = React15.useState(null);
-      const previousIndex = React15.useRef(index);
+      const [derivedTransform, setDerivedtransform] = React17.useState(null);
+      const previousIndex = React17.useRef(index);
       utilities.useIsomorphicLayoutEffect(() => {
         if (!disabled && index !== previousIndex.current && node.current) {
           const initial = rect.current;
@@ -51427,7 +51427,7 @@ var require_sortable_cjs_development = __commonJS({
           previousIndex.current = index;
         }
       }, [disabled, index, node, rect]);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         if (derivedTransform) {
           setDerivedtransform(null);
         }
@@ -51456,10 +51456,10 @@ var require_sortable_cjs_development = __commonJS({
         overIndex,
         useDragOverlay,
         strategy: globalStrategy
-      } = React15.useContext(Context);
+      } = React17.useContext(Context);
       const disabled = normalizeLocalDisabled(localDisabled, globalDisabled);
       const index = items.indexOf(id3);
-      const data = React15.useMemo(() => ({
+      const data = React17.useMemo(() => ({
         sortable: {
           containerId,
           index,
@@ -51467,7 +51467,7 @@ var require_sortable_cjs_development = __commonJS({
         },
         ...customData
       }), [containerId, customData, index, items]);
-      const itemsAfterCurrentSortable = React15.useMemo(() => items.slice(items.indexOf(id3)), [items, id3]);
+      const itemsAfterCurrentSortable = React17.useMemo(() => items.slice(items.indexOf(id3)), [items, id3]);
       const {
         rect,
         node,
@@ -51522,7 +51522,7 @@ var require_sortable_cjs_development = __commonJS({
         overIndex
       }) : index;
       const activeId = active == null ? void 0 : active.id;
-      const previous = React15.useRef({
+      const previous = React17.useRef({
         activeId,
         items,
         newIndex,
@@ -51549,7 +51549,7 @@ var require_sortable_cjs_development = __commonJS({
         node,
         rect
       });
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         if (isSorting && previous.current.newIndex !== newIndex) {
           previous.current.newIndex = newIndex;
         }
@@ -51560,7 +51560,7 @@ var require_sortable_cjs_development = __commonJS({
           previous.current.items = items;
         }
       }, [isSorting, newIndex, containerId, items]);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         if (activeId === previous.current.activeId) {
           return;
         }
@@ -51912,7 +51912,7 @@ var require_lucide_react = __commonJS({
         }
       ]
     ];
-    var Activity2 = createLucideIcon("activity", __iconNode$r3);
+    var Activity3 = createLucideIcon("activity", __iconNode$r3);
     var __iconNode$r2 = [
       ["path", { d: "M10 13H6", key: "18d9xh" }],
       ["path", { d: "M10 15v-4a2 2 0 0 0-4 0v4", key: "ss28p3" }],
@@ -54064,7 +54064,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "m3.3 7 8.7 5 8.7-5", key: "g66t2b" }],
       ["path", { d: "M12 22V12", key: "d0xqtd" }]
     ];
-    var Box2 = createLucideIcon("box", __iconNode$nA);
+    var Box3 = createLucideIcon("box", __iconNode$nA);
     var __iconNode$nz = [
       [
         "path",
@@ -54097,7 +54097,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "m12 8 4.74-2.85", key: "3rx089" }],
       ["path", { d: "M12 13.5V8", key: "1io7kd" }]
     ];
-    var Boxes2 = createLucideIcon("boxes", __iconNode$nz);
+    var Boxes3 = createLucideIcon("boxes", __iconNode$nz);
     var __iconNode$ny = [
       [
         "path",
@@ -54111,7 +54111,7 @@ var require_lucide_react = __commonJS({
         }
       ]
     ];
-    var Braces2 = createLucideIcon("braces", __iconNode$ny);
+    var Braces3 = createLucideIcon("braces", __iconNode$ny);
     var __iconNode$nx = [
       ["path", { d: "M16 3h3a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1h-3", key: "1kt8lf" }],
       ["path", { d: "M8 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h3", key: "gduv9" }]
@@ -56696,7 +56696,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M3 5V19A9 3 0 0 0 21 19V5", key: "1wlel7" }],
       ["path", { d: "M3 12A9 3 0 0 0 21 12", key: "mv7ke4" }]
     ];
-    var Database2 = createLucideIcon("database", __iconNode$j2);
+    var Database3 = createLucideIcon("database", __iconNode$j2);
     var __iconNode$j1 = [
       ["path", { d: "m13 21-3-3 3-3", key: "s3o1nf" }],
       ["path", { d: "M20 18H10", key: "14r3mt" }],
@@ -57337,7 +57337,7 @@ var require_lucide_react = __commonJS({
       ],
       ["path", { d: "m2 2 20 20", key: "1ooewy" }]
     ];
-    var EyeOff = createLucideIcon("eye-off", __iconNode$i0);
+    var EyeOff2 = createLucideIcon("eye-off", __iconNode$i0);
     var __iconNode$h$ = [
       [
         "path",
@@ -57348,7 +57348,7 @@ var require_lucide_react = __commonJS({
       ],
       ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
     ];
-    var Eye = createLucideIcon("eye", __iconNode$h$);
+    var Eye2 = createLucideIcon("eye", __iconNode$h$);
     var __iconNode$h_ = [
       ["path", { d: "M12 16h.01", key: "1drbdi" }],
       ["path", { d: "M16 16h.01", key: "1f9h7w" }],
@@ -59130,7 +59130,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "m12 14 4-4", key: "9kzdfg" }],
       ["path", { d: "M3.34 19a10 10 0 1 1 17.32 0", key: "19p75a" }]
     ];
-    var Gauge2 = createLucideIcon("gauge", __iconNode$fP);
+    var Gauge3 = createLucideIcon("gauge", __iconNode$fP);
     var __iconNode$fO = [
       ["path", { d: "m14 13-8.381 8.38a1 1 0 0 1-3.001-3l8.384-8.381", key: "pgg06f" }],
       ["path", { d: "m16 16 6-6", key: "vzrcl6" }],
@@ -60495,7 +60495,7 @@ var require_lucide_react = __commonJS({
       ],
       ["circle", { cx: "16.5", cy: "7.5", r: ".5", fill: "currentColor", key: "w0ekpg" }]
     ];
-    var KeyRound2 = createLucideIcon("key-round", __iconNode$dR);
+    var KeyRound3 = createLucideIcon("key-round", __iconNode$dR);
     var __iconNode$dQ = [
       [
         "path",
@@ -62619,7 +62619,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3", key: "1jsf9p" }],
       ["path", { d: "M12 12V8", key: "2874zd" }]
     ];
-    var Network2 = createLucideIcon("network", __iconNode$ao);
+    var Network3 = createLucideIcon("network", __iconNode$ao);
     var __iconNode$an = [
       ["polygon", { points: "3 11 22 2 13 21 11 13 3 11", key: "1ltx0t" }]
     ];
@@ -64612,7 +64612,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15", key: "1d8sl" }],
       ["circle", { cx: "18", cy: "5", r: "3", key: "gq8acd" }]
     ];
-    var Route3 = createLucideIcon("route", __iconNode$7r);
+    var Route4 = createLucideIcon("route", __iconNode$7r);
     var __iconNode$7q = [
       ["rect", { width: "20", height: "8", x: "2", y: "14", rx: "2", key: "w68u3i" }],
       ["path", { d: "M6.01 18H6", key: "19vcac" }],
@@ -68358,7 +68358,7 @@ var require_lucide_react = __commonJS({
       ["circle", { cx: "12", cy: "8", r: "5", key: "1hypcn" }],
       ["path", { d: "M20 21a8 8 0 0 0-16 0", key: "rfgkzh" }]
     ];
-    var UserRound2 = createLucideIcon("user-round", __iconNode$1q);
+    var UserRound3 = createLucideIcon("user-round", __iconNode$1q);
     var __iconNode$1p = [
       ["circle", { cx: "10", cy: "7", r: "4", key: "e45bow" }],
       ["path", { d: "M10.3 15H7a4 4 0 0 0-4 4v2", key: "3bnktk" }],
@@ -69275,7 +69275,7 @@ var require_lucide_react = __commonJS({
       AArrowUp,
       ALargeSmall,
       Accessibility,
-      Activity: Activity2,
+      Activity: Activity3,
       Ad,
       AirVent,
       Airplay,
@@ -69498,9 +69498,9 @@ var require_lucide_react = __commonJS({
       BotOff,
       BottleWine,
       BowArrow,
-      Box: Box2,
-      Boxes: Boxes2,
-      Braces: Braces2,
+      Box: Box3,
+      Boxes: Boxes3,
+      Braces: Braces3,
       Brackets,
       Brain,
       BrainCircuit,
@@ -69785,7 +69785,7 @@ var require_lucide_react = __commonJS({
       Currency,
       Cylinder,
       Dam,
-      Database: Database2,
+      Database: Database3,
       DatabaseBackup,
       DatabaseSearch,
       DatabaseZap,
@@ -69852,10 +69852,10 @@ var require_lucide_react = __commonJS({
       EvCharger,
       Expand,
       ExternalLink: ExternalLink2,
-      Eye,
+      Eye: Eye2,
       EyeClosed,
       EyeDashed,
-      EyeOff,
+      EyeOff: EyeOff2,
       Factory,
       Fan,
       FastForward,
@@ -69995,7 +69995,7 @@ var require_lucide_react = __commonJS({
       Gamepad,
       Gamepad2,
       GamepadDirectional,
-      Gauge: Gauge2,
+      Gauge: Gauge3,
       Gavel,
       Gem,
       GeorgianLari,
@@ -70122,7 +70122,7 @@ var require_lucide_react = __commonJS({
       Kanban,
       Kayak,
       Key,
-      KeyRound: KeyRound2,
+      KeyRound: KeyRound3,
       KeySquare,
       Keyboard,
       KeyboardMusic,
@@ -70343,7 +70343,7 @@ var require_lucide_react = __commonJS({
       Navigation2,
       Navigation2Off,
       NavigationOff,
-      Network: Network2,
+      Network: Network3,
       Newspaper,
       Nfc,
       NonBinary,
@@ -70530,7 +70530,7 @@ var require_lucide_react = __commonJS({
       RotateCcwSquare,
       RotateCw,
       RotateCwSquare,
-      Route: Route3,
+      Route: Route4,
       RouteOff,
       Router,
       Rows2,
@@ -70908,7 +70908,7 @@ var require_lucide_react = __commonJS({
       UserMinus,
       UserPen,
       UserPlus,
-      UserRound: UserRound2,
+      UserRound: UserRound3,
       UserRoundArrowLeft,
       UserRoundCheck,
       UserRoundCog,
@@ -71016,8 +71016,8 @@ var require_lucide_react = __commonJS({
     exports2.ALargeSmallIcon = ALargeSmall;
     exports2.Accessibility = Accessibility;
     exports2.AccessibilityIcon = Accessibility;
-    exports2.Activity = Activity2;
-    exports2.ActivityIcon = Activity2;
+    exports2.Activity = Activity3;
+    exports2.ActivityIcon = Activity3;
     exports2.ActivitySquare = SquareActivity;
     exports2.ActivitySquareIcon = SquareActivity;
     exports2.Ad = Ad;
@@ -71560,14 +71560,14 @@ var require_lucide_react = __commonJS({
     exports2.BottleWineIcon = BottleWine;
     exports2.BowArrow = BowArrow;
     exports2.BowArrowIcon = BowArrow;
-    exports2.Box = Box2;
-    exports2.BoxIcon = Box2;
+    exports2.Box = Box3;
+    exports2.BoxIcon = Box3;
     exports2.BoxSelect = SquareDashed;
     exports2.BoxSelectIcon = SquareDashed;
-    exports2.Boxes = Boxes2;
-    exports2.BoxesIcon = Boxes2;
-    exports2.Braces = Braces2;
-    exports2.BracesIcon = Braces2;
+    exports2.Boxes = Boxes3;
+    exports2.BoxesIcon = Boxes3;
+    exports2.Braces = Braces3;
+    exports2.BracesIcon = Braces3;
     exports2.Brackets = Brackets;
     exports2.BracketsIcon = Brackets;
     exports2.Brain = Brain;
@@ -72174,18 +72174,18 @@ var require_lucide_react = __commonJS({
     exports2.CuboidIcon = Cuboid;
     exports2.CupSoda = CupSoda;
     exports2.CupSodaIcon = CupSoda;
-    exports2.CurlyBraces = Braces2;
-    exports2.CurlyBracesIcon = Braces2;
+    exports2.CurlyBraces = Braces3;
+    exports2.CurlyBracesIcon = Braces3;
     exports2.Currency = Currency;
     exports2.CurrencyIcon = Currency;
     exports2.Cylinder = Cylinder;
     exports2.CylinderIcon = Cylinder;
     exports2.Dam = Dam;
     exports2.DamIcon = Dam;
-    exports2.Database = Database2;
+    exports2.Database = Database3;
     exports2.DatabaseBackup = DatabaseBackup;
     exports2.DatabaseBackupIcon = DatabaseBackup;
-    exports2.DatabaseIcon = Database2;
+    exports2.DatabaseIcon = Database3;
     exports2.DatabaseSearch = DatabaseSearch;
     exports2.DatabaseSearchIcon = DatabaseSearch;
     exports2.DatabaseZap = DatabaseZap;
@@ -72332,14 +72332,14 @@ var require_lucide_react = __commonJS({
     exports2.ExpandIcon = Expand;
     exports2.ExternalLink = ExternalLink2;
     exports2.ExternalLinkIcon = ExternalLink2;
-    exports2.Eye = Eye;
+    exports2.Eye = Eye2;
     exports2.EyeClosed = EyeClosed;
     exports2.EyeClosedIcon = EyeClosed;
     exports2.EyeDashed = EyeDashed;
     exports2.EyeDashedIcon = EyeDashed;
-    exports2.EyeIcon = Eye;
-    exports2.EyeOff = EyeOff;
-    exports2.EyeOffIcon = EyeOff;
+    exports2.EyeIcon = Eye2;
+    exports2.EyeOff = EyeOff2;
+    exports2.EyeOffIcon = EyeOff2;
     exports2.Factory = Factory;
     exports2.FactoryIcon = Factory;
     exports2.Fan = Fan;
@@ -72698,10 +72698,10 @@ var require_lucide_react = __commonJS({
     exports2.GanttChartIcon = ChartNoAxesGantt;
     exports2.GanttChartSquare = SquareChartGantt;
     exports2.GanttChartSquareIcon = SquareChartGantt;
-    exports2.Gauge = Gauge2;
+    exports2.Gauge = Gauge3;
     exports2.GaugeCircle = CircleGauge;
     exports2.GaugeCircleIcon = CircleGauge;
-    exports2.GaugeIcon = Gauge2;
+    exports2.GaugeIcon = Gauge3;
     exports2.Gavel = Gavel;
     exports2.GavelIcon = Gavel;
     exports2.Gem = Gem;
@@ -72995,8 +72995,8 @@ var require_lucide_react = __commonJS({
     exports2.KayakIcon = Kayak;
     exports2.Key = Key;
     exports2.KeyIcon = Key;
-    exports2.KeyRound = KeyRound2;
-    exports2.KeyRoundIcon = KeyRound2;
+    exports2.KeyRound = KeyRound3;
+    exports2.KeyRoundIcon = KeyRound3;
     exports2.KeySquare = KeySquare;
     exports2.KeySquareIcon = KeySquare;
     exports2.Keyboard = Keyboard;
@@ -73183,7 +73183,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideAArrowUp = AArrowUp;
     exports2.LucideALargeSmall = ALargeSmall;
     exports2.LucideAccessibility = Accessibility;
-    exports2.LucideActivity = Activity2;
+    exports2.LucideActivity = Activity3;
     exports2.LucideActivitySquare = SquareActivity;
     exports2.LucideAd = Ad;
     exports2.LucideAirVent = AirVent;
@@ -73455,10 +73455,10 @@ var require_lucide_react = __commonJS({
     exports2.LucideBotOff = BotOff;
     exports2.LucideBottleWine = BottleWine;
     exports2.LucideBowArrow = BowArrow;
-    exports2.LucideBox = Box2;
+    exports2.LucideBox = Box3;
     exports2.LucideBoxSelect = SquareDashed;
-    exports2.LucideBoxes = Boxes2;
-    exports2.LucideBraces = Braces2;
+    exports2.LucideBoxes = Boxes3;
+    exports2.LucideBraces = Braces3;
     exports2.LucideBrackets = Brackets;
     exports2.LucideBrain = Brain;
     exports2.LucideBrainCircuit = BrainCircuit;
@@ -73762,11 +73762,11 @@ var require_lucide_react = __commonJS({
     exports2.LucideCrown = Crown;
     exports2.LucideCuboid = Cuboid;
     exports2.LucideCupSoda = CupSoda;
-    exports2.LucideCurlyBraces = Braces2;
+    exports2.LucideCurlyBraces = Braces3;
     exports2.LucideCurrency = Currency;
     exports2.LucideCylinder = Cylinder;
     exports2.LucideDam = Dam;
-    exports2.LucideDatabase = Database2;
+    exports2.LucideDatabase = Database3;
     exports2.LucideDatabaseBackup = DatabaseBackup;
     exports2.LucideDatabaseSearch = DatabaseSearch;
     exports2.LucideDatabaseZap = DatabaseZap;
@@ -73841,10 +73841,10 @@ var require_lucide_react = __commonJS({
     exports2.LucideEvCharger = EvCharger;
     exports2.LucideExpand = Expand;
     exports2.LucideExternalLink = ExternalLink2;
-    exports2.LucideEye = Eye;
+    exports2.LucideEye = Eye2;
     exports2.LucideEyeClosed = EyeClosed;
     exports2.LucideEyeDashed = EyeDashed;
-    exports2.LucideEyeOff = EyeOff;
+    exports2.LucideEyeOff = EyeOff2;
     exports2.LucideFactory = Factory;
     exports2.LucideFan = Fan;
     exports2.LucideFastForward = FastForward;
@@ -74024,7 +74024,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideGamepadDirectional = GamepadDirectional;
     exports2.LucideGanttChart = ChartNoAxesGantt;
     exports2.LucideGanttChartSquare = SquareChartGantt;
-    exports2.LucideGauge = Gauge2;
+    exports2.LucideGauge = Gauge3;
     exports2.LucideGaugeCircle = CircleGauge;
     exports2.LucideGavel = Gavel;
     exports2.LucideGem = Gem;
@@ -74172,7 +74172,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideKanbanSquareDashed = SquareDashedKanban;
     exports2.LucideKayak = Kayak;
     exports2.LucideKey = Key;
-    exports2.LucideKeyRound = KeyRound2;
+    exports2.LucideKeyRound = KeyRound3;
     exports2.LucideKeySquare = KeySquare;
     exports2.LucideKeyboard = Keyboard;
     exports2.LucideKeyboardMusic = KeyboardMusic;
@@ -74412,7 +74412,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideNavigation2 = Navigation2;
     exports2.LucideNavigation2Off = Navigation2Off;
     exports2.LucideNavigationOff = NavigationOff;
-    exports2.LucideNetwork = Network2;
+    exports2.LucideNetwork = Network3;
     exports2.LucideNewspaper = Newspaper;
     exports2.LucideNfc = Nfc;
     exports2.LucideNonBinary = NonBinary;
@@ -74631,7 +74631,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideRotateCcwSquare = RotateCcwSquare;
     exports2.LucideRotateCw = RotateCw;
     exports2.LucideRotateCwSquare = RotateCwSquare;
-    exports2.LucideRoute = Route3;
+    exports2.LucideRoute = Route4;
     exports2.LucideRouteOff = RouteOff;
     exports2.LucideRouter = Router;
     exports2.LucideRows = Rows2;
@@ -75036,7 +75036,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideUploadCloud = CloudUpload;
     exports2.LucideUsb = Usb;
     exports2.LucideUser = User;
-    exports2.LucideUser2 = UserRound2;
+    exports2.LucideUser2 = UserRound3;
     exports2.LucideUserCheck = UserCheck;
     exports2.LucideUserCheck2 = UserRoundCheck;
     exports2.LucideUserCircle = CircleUser;
@@ -75050,7 +75050,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideUserPen = UserPen;
     exports2.LucideUserPlus = UserPlus;
     exports2.LucideUserPlus2 = UserRoundPlus;
-    exports2.LucideUserRound = UserRound2;
+    exports2.LucideUserRound = UserRound3;
     exports2.LucideUserRoundArrowLeft = UserRoundArrowLeft;
     exports2.LucideUserRoundCheck = UserRoundCheck;
     exports2.LucideUserRoundCog = UserRoundCog;
@@ -75457,8 +75457,8 @@ var require_lucide_react = __commonJS({
     exports2.NavigationIcon = Navigation;
     exports2.NavigationOff = NavigationOff;
     exports2.NavigationOffIcon = NavigationOff;
-    exports2.Network = Network2;
-    exports2.NetworkIcon = Network2;
+    exports2.Network = Network3;
+    exports2.NetworkIcon = Network3;
     exports2.Newspaper = Newspaper;
     exports2.NewspaperIcon = Newspaper;
     exports2.Nfc = Nfc;
@@ -75893,8 +75893,8 @@ var require_lucide_react = __commonJS({
     exports2.RotateCwIcon = RotateCw;
     exports2.RotateCwSquare = RotateCwSquare;
     exports2.RotateCwSquareIcon = RotateCwSquare;
-    exports2.Route = Route3;
-    exports2.RouteIcon = Route3;
+    exports2.Route = Route4;
+    exports2.RouteIcon = Route4;
     exports2.RouteOff = RouteOff;
     exports2.RouteOffIcon = RouteOff;
     exports2.Router = Router;
@@ -76702,8 +76702,8 @@ var require_lucide_react = __commonJS({
     exports2.Usb = Usb;
     exports2.UsbIcon = Usb;
     exports2.User = User;
-    exports2.User2 = UserRound2;
-    exports2.User2Icon = UserRound2;
+    exports2.User2 = UserRound3;
+    exports2.User2Icon = UserRound3;
     exports2.UserCheck = UserCheck;
     exports2.UserCheck2 = UserRoundCheck;
     exports2.UserCheck2Icon = UserRoundCheck;
@@ -76731,14 +76731,14 @@ var require_lucide_react = __commonJS({
     exports2.UserPlus2 = UserRoundPlus;
     exports2.UserPlus2Icon = UserRoundPlus;
     exports2.UserPlusIcon = UserPlus;
-    exports2.UserRound = UserRound2;
+    exports2.UserRound = UserRound3;
     exports2.UserRoundArrowLeft = UserRoundArrowLeft;
     exports2.UserRoundArrowLeftIcon = UserRoundArrowLeft;
     exports2.UserRoundCheck = UserRoundCheck;
     exports2.UserRoundCheckIcon = UserRoundCheck;
     exports2.UserRoundCog = UserRoundCog;
     exports2.UserRoundCogIcon = UserRoundCog;
-    exports2.UserRoundIcon = UserRound2;
+    exports2.UserRoundIcon = UserRound3;
     exports2.UserRoundKey = UserRoundKey;
     exports2.UserRoundKeyIcon = UserRoundKey;
     exports2.UserRoundMinus = UserRoundMinus;
@@ -88119,7 +88119,7 @@ function useReducedMotion() {
 }
 
 // packages/ui/src/pages/home/shared/external.tsx
-var import_lucide_react2 = __toESM(require_lucide_react());
+var import_lucide_react3 = __toESM(require_lucide_react());
 
 // packages/ui/src/components/ui/badge.tsx
 var React4 = __toESM(require_react());
@@ -91646,6 +91646,7 @@ Label.displayName = "Label";
 
 // packages/ui/src/components/ui/popover.tsx
 var React11 = __toESM(require_react());
+var import_react_dom = __toESM(require_react_dom());
 var import_jsx_runtime14 = __toESM(require_jsx_runtime());
 var PopoverContent = React11.forwardRef(
   ({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(
@@ -91728,11 +91729,81 @@ var Switch = React13.forwardRef(
 );
 Switch.displayName = "Switch";
 
-// packages/ui/src/components/ui/textarea.tsx
+// packages/ui/src/components/ui/tabs.tsx
 var React14 = __toESM(require_react());
 var import_jsx_runtime17 = __toESM(require_jsx_runtime());
-var Textarea = React14.forwardRef(
+var TabsContext = React14.createContext(void 0);
+var Tabs = React14.forwardRef(
+  ({ children, className, onValueChange, value, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(TabsContext.Provider, { value: { onValueChange, value }, children: /* @__PURE__ */ (0, import_jsx_runtime17.jsx)("div", { className: cn("min-w-0", className), ref, ...props, children }) })
+);
+Tabs.displayName = "Tabs";
+var TabsList = React14.forwardRef(
   ({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
+    "div",
+    {
+      className: cn(
+        "inline-flex min-w-0 items-center rounded-md bg-muted p-1 text-muted-foreground",
+        className
+      ),
+      ref,
+      role: "tablist",
+      ...props
+    }
+  )
+);
+TabsList.displayName = "TabsList";
+var TabsTrigger = React14.forwardRef(
+  ({ className, onClick, value, ...props }, ref) => {
+    const context = React14.useContext(TabsContext);
+    const selected = context?.value === value;
+    return /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
+      "button",
+      {
+        "aria-selected": selected,
+        className: cn(
+          "inline-flex min-w-0 items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-[12px] font-medium outline-none transition-[background-color,border-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
+          className
+        ),
+        "data-state": selected ? "active" : "inactive",
+        onClick: (event) => {
+          onClick?.(event);
+          if (!event.defaultPrevented) {
+            context?.onValueChange?.(value);
+          }
+        },
+        ref,
+        role: "tab",
+        type: "button",
+        ...props
+      }
+    );
+  }
+);
+TabsTrigger.displayName = "TabsTrigger";
+var TabsContent = React14.forwardRef(
+  ({ className, value, ...props }, ref) => {
+    const context = React14.useContext(TabsContext);
+    const selected = context?.value === value;
+    return /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
+      "div",
+      {
+        className: cn("min-w-0 outline-none", className),
+        "data-state": selected ? "active" : "inactive",
+        hidden: !selected,
+        ref,
+        role: "tabpanel",
+        ...props
+      }
+    );
+  }
+);
+TabsContent.displayName = "TabsContent";
+
+// packages/ui/src/components/ui/textarea.tsx
+var React15 = __toESM(require_react());
+var import_jsx_runtime18 = __toESM(require_jsx_runtime());
+var Textarea = React15.forwardRef(
+  ({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
     "textarea",
     {
       className: cn(
@@ -91764,6 +91835,9 @@ var GROK_MEDIA_IMAGE_EDIT_TOOL_NAME = "grok_media_image_edit";
 var GROK_MEDIA_VIDEO_START_TOOL_NAME = "grok_media_video_start";
 var GROK_MEDIA_JOB_GET_TOOL_NAME = "grok_media_job_get";
 var GROK_MEDIA_JOB_CANCEL_TOOL_NAME = "grok_media_job_cancel";
+function isGatewayProviderEnabled(provider) {
+  return provider.enabled !== false;
+}
 var ROUTER_SCRIPT_MAX_SOURCE_BYTES = 64 * 1024;
 var CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV = "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY";
 var CLAUDE_CODE_DEFAULT_ENV = {
@@ -91916,6 +91990,17 @@ function createDefaultAppConfig(options) {
       streamReplies: true,
       tenantId: "ccr"
     },
+    contextArchive: {
+      enabled: false,
+      maxBytes: 512 * 1024 * 1024,
+      maxSnapshotBytes: 32 * 1024 * 1024,
+      maxSnapshots: 200,
+      mcpEnabled: true,
+      replayTimeoutMs: 6e4,
+      retentionDays: 30,
+      storagePath: "",
+      toolName: "ccr_history_ask"
+    },
     gateway: {
       coreHost,
       corePort: 3457,
@@ -91945,6 +92030,7 @@ function createDefaultAppConfig(options) {
     profile: {
       claudeCode: {
         enabled: true,
+        managedCompact: false,
         model: "",
         settingsFile: "~/.claude/settings.json",
         smallFastModel: ""
@@ -91956,6 +92042,7 @@ function createDefaultAppConfig(options) {
         configFormat: "separate_profile_files",
         configFile: "~/.codex/config.toml",
         enabled: true,
+        managedCompact: false,
         model: "",
         providerId: "claude-code-router",
         providerName: "Claude Code Router",
@@ -91968,6 +92055,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: { ...CLAUDE_CODE_DEFAULT_ENV },
           id: "default-claude-code",
+          managedCompact: false,
           model: "",
           name: "Claude Code",
           scope: "global",
@@ -91985,6 +92073,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: {},
           id: "default-codex",
+          managedCompact: false,
           model: "",
           name: "Codex",
           providerId: "claude-code-router",
@@ -92093,7 +92182,7 @@ var appCopy = {
       networking: "Networking",
       observability: "Observability",
       overview: "Overview",
-      profile: "Agent Config",
+      profile: "Agent Profiles",
       providers: "Providers",
       models: "Models",
       routing: "Routing",
@@ -92201,6 +92290,9 @@ var appCopy = {
       "\u65F6\u95F4": "Time",
       "\u72B6\u6001": "Status",
       "\u6A21\u578B": "Model",
+      "CCR compact for Claude Code": "CCR compact for Claude Code",
+      "Use CCR context archive when Claude Code runs /compact.": "Use CCR context archive when Claude Code runs /compact.",
+      "Context archive and MCP access will be enabled for this compact mode.": "Context archive and MCP access will be enabled for this compact mode.",
       "Stream": "Stream",
       "Streaming": "Streaming",
       "Non-streaming": "Non-streaming",
@@ -92231,21 +92323,58 @@ var appCopy = {
       "\u51FA": "out",
       "No provider presets found": "No provider presets found",
       "After you enter the API endpoint and key, the system will automatically detect supported protocols and available models.": "After you enter the API endpoint and key, the system will automatically detect supported protocols and available models.",
+      "Advanced": "Advanced",
+      "Advanced settings": "Advanced settings",
+      "Advanced settings need attention": "Advanced settings need attention",
+      "Agent profile": "Agent profile",
       "Back": "Back",
+      "Auto detect protocols": "Auto detect protocols",
+      "Auto detect protocols description": "When enabled, CCR probes the endpoint while editing and uses the detected protocols and models to update this provider. Turn it off to keep manually selected protocols and custom model IDs unchanged.",
+      "Auto detect protocols info": "Auto detect protocols info",
       "Available models": "Available models",
+      "Available after saving": "Available after saving",
+      "Automatic": "Automatic",
+      "Add credentials": "Add credentials",
+      "Add the API key CCR will use for model requests.": "Add the API key CCR will use for model requests.",
+      "A real model request succeeded with the selected provider settings.": "A real model request succeeded with the selected provider settings.",
       "Check": "Check",
       "Check Connection": "Check Connection",
       "Check results": "Check results",
       "Checking connection": "Checking connection",
+      "Choose a provider preset or endpoint, enter an API key, and add at least one model.": "Choose a provider preset or endpoint, enter an API key, and add at least one model.",
+      "Choose a provider endpoint so CCR can detect compatible protocols.": "Choose a provider endpoint so CCR can detect compatible protocols.",
+      "Choose an agent, model, and required profile settings.": "Choose an agent, model, and required profile settings.",
+      "Choose how this provider authenticates model requests.": "Choose how this provider authenticates model requests.",
+      "Choose provider": "Choose provider",
+      "Choose the models that should be available through this provider.": "Choose the models that should be available through this provider.",
       "Click Check Connection to verify connectivity with a real model request.": "Click Check Connection to verify connectivity with a real model request.",
+      "Compatible API protocols were found automatically.": "Compatible API protocols were found automatically.",
+      "Compatible API protocols were found automatically. You can turn off auto detection in Advanced settings and select protocols manually.": "Compatible API protocols were found automatically. You can turn off auto detection in Advanced settings and select protocols manually.",
+      "Configure a provider before creating an agent profile.": "Configure a provider before creating an agent profile.",
+      "Configure at least one enabled provider model before saving an agent profile.": "Configure at least one enabled provider model before saving an agent profile.",
+      "Configuration": "Configuration",
+      "Credential method": "Credential method",
       "Connection verified": "Connection verified",
+      "CCR is checking which API protocols this endpoint supports.": "CCR is checking which API protocols this endpoint supports.",
+      "CCR is checking this provider. Wait for the check to finish before continuing.": "CCR is checking this provider. Wait for the check to finish before continuing.",
+      "CCR is sending a limited real model request.": "CCR is sending a limited real model request.",
+      "CCR management service is unavailable. Make sure the CCR app or ccr ui command is running, then retry.": "CCR management service is unavailable. Make sure the CCR app or ccr ui command is running, then retry.",
+      "Connect a provider in four small steps.": "Connect a provider in four small steps.",
+      "Create profiles that tell each agent which model and entry mode to use.": "Create profiles that tell each agent which model and entry mode to use.",
       "CCR scanned this computer for Claude Code, Codex, Grok CLI, OpenCode CLI, and ZCode login states. Click Import to add one as a gateway provider.": "CCR scanned this computer for Claude Code, Codex, Grok CLI, OpenCode CLI, and ZCode login states. Click Import to add one as a gateway provider.",
       "Detected": "Detected",
       "Detecting protocols": "Detecting protocols",
       "Enter API endpoint, API key, and at least one model to enable connectivity check.": "Enter API endpoint, API key, and at least one model to enable connectivity check.",
+      "Endpoint and identity": "Endpoint and identity",
+      "Finish the provider and agent profile steps before entering the app.": "Finish the provider and agent profile steps before entering the app.",
       "Generated output is limited to 1 token for connectivity checks.": "Generated output is limited to 1 token for connectivity checks.",
+      "Gateway service": "Gateway service",
+      "Grok CLI profiles use CCR scope and CLI entry mode.": "Grok CLI profiles use CCR scope and CLI entry mode.",
+      "Allowed models": "Allowed models",
       "Import local agent login": "Import local agent login",
       "Import local agent provider": "Import local agent provider",
+      "In progress": "In progress",
+      "Kimi profiles need a default model and an allowed model list.": "Kimi profiles need a default model and an allowed model list.",
       "ChatGPT login detected. Click Import to add it as a gateway provider.": "ChatGPT login detected. Click Import to add it as a gateway provider.",
       "Claude Code login detected. Click Import to add it as a gateway provider.": "Claude Code login detected. Click Import to add it as a gateway provider.",
       "Claude Code login was detected, but no usable access token was found.": "Claude Code login was detected, but no usable access token was found.",
@@ -92258,33 +92387,126 @@ var appCopy = {
       "Kimi CLI provider API key detected. Click Import to add it as a gateway provider.": "Kimi CLI provider API key detected. Click Import to add it as a gateway provider.",
       "Kimi CLI login was detected, but no usable OAuth token was found. Run /login in Kimi CLI, then rescan.": "Kimi CLI login was detected, but no usable OAuth token was found. Run /login in Kimi CLI, then rescan.",
       "Kimi CLI provider was detected, but no usable API key was found.": "Kimi CLI provider was detected, but no usable API key was found.",
+      "Kimi model": "Kimi model",
+      "Kimi model is required.": "Kimi model is required.",
       "OpenCode CLI credential was found, but no usable API key was detected.": "OpenCode CLI credential was found, but no usable API key was detected.",
       "OpenCode CLI login detected. Click Import to add it as a gateway provider.": "OpenCode CLI login detected. Click Import to add it as a gateway provider.",
       "OpenCode CLI public models detected. No login is required.": "OpenCode CLI public models detected. No login is required.",
       "CCR scanned this computer for local Claude Code, Codex, Grok CLI, Kimi CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.": "CCR scanned this computer for local Claude Code, Codex, Grok CLI, Kimi CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.",
       "Locked": "Locked",
+      "Manual": "Manual",
       "Local agent login will be connected after saving this provider.": "Local agent login will be connected after saving this provider.",
+      "Local login provider": "Local login provider",
+      "Launch actions": "Launch actions",
+      "Management actions": "Management actions",
       "Models to check": "Models to check",
+      "model": "model",
+      "models": "models",
+      "Model overrides are optional; empty fields keep Claude Code defaults.": "Model overrides are optional; empty fields keep Claude Code defaults.",
+      "Next": "Next",
+      "Next step": "Next step",
+      "Available model IDs": "Available model IDs",
+      "Added": "Added",
+      "Added models": "Added models",
+      "Add custom model": "Add custom model",
+      "Cancel custom model": "Cancel custom model",
+      "Click a model to edit settings": "Click a model to edit settings",
+      "Custom model": "Custom model",
+      "Loading provider models": "Loading provider models",
+      "Model already added": "Model already added",
+      "Models detected from this provider": "Models detected from this provider",
+      "No models added": "No models added",
+      "No provider models": "No provider models",
       "No available models": "No available models",
       "No local login state was found for this agent.": "No local login state was found for this agent.",
+      "No providers": "No providers",
       "Not found": "Not found",
+      "Not verified yet": "Not verified yet",
+      "Needs models": "Needs models",
+      "Needs protocol": "Needs protocol",
       "No unavailable models": "No unavailable models",
+      "OpenCode profiles can target CLI, APP, or both entry modes.": "OpenCode profiles can target CLI, APP, or both entry modes.",
+      "Optional health check": "Optional health check",
+      "Pick models": "Pick models",
+      "Pick a preset provider or use a custom compatible API endpoint.": "Pick a preset provider or use a custom compatible API endpoint.",
+      "Previous": "Previous",
+      "Previous step": "Previous step",
+      "Profile name is required.": "Profile name is required.",
+      "Provider setup": "Provider setup",
+      "Pool keys": "Pool keys",
+      "Provider ID and Provider name identify the routed provider in Codex.": "Provider ID and Provider name identify the routed provider in Codex.",
+      "Provider ID is required.": "Provider ID is required.",
+      "Provider name is required.": "Provider name is required.",
       "Protocols detected": "Protocols detected",
       "Ready": "Ready",
+      "Ready to test": "Ready to test",
+      "Run a real model request before relying on this provider.": "Run a real model request before relying on this provider.",
+      "Optional. Check Connection sends a real model request and may consume provider credits.": "Optional. Check Connection sends a real model request and may consume provider credits.",
       "Select at least one protocol.": "Select at least one protocol.",
+      "Select at least one available model.": "Select at least one available model.",
+      "Select at least one allowed model.": "Select at least one allowed model.",
+      "Select models": "Select models",
+      "Search added models": "Search added models",
+      "Search provider models": "Search provider models",
       "Service": "Service",
       "Service failed to start": "Service failed to start",
       "Scanning local agent logins": "Scanning local agent logins",
+      "Save this agent profile to continue.": "Save this agent profile to continue.",
+      "Save this provider to continue.": "Save this provider to continue.",
+      "Secret used for requests": "Secret used for requests",
+      "Send a request from your agent, then confirm it appears in Logs.": "Send a request from your agent, then confirm it appears in Logs.",
+      "Setup readiness": "Setup readiness",
+      "Show API key": "Show API key",
+      "Show models": "Show models",
+      "Hide API key": "Hide API key",
+      "Hide models": "Hide models",
+      "Use one key for every request.": "Use one key for every request.",
+      "Use multiple API keys with optional priorities, weights, and limits.": "Use multiple API keys with optional priorities, weights, and limits.",
+      "Use multiple keys with optional limits.": "Use multiple keys with optional limits.",
+      "Monitor": "Monitor",
+      "Setup": "Setup",
+      "Step": "Step",
       "Start": "Start",
       "Start check": "Start check",
       "Stop": "Stop",
+      "Workspace": "Workspace",
+      "The gateway is configured. Start the service from the toolbar when you are ready to test traffic.": "The gateway is configured. Start the service from the toolbar when you are ready to test traffic.",
+      "The imported local agent login is connected when this provider is saved.": "The imported local agent login is connected when this provider is saved.",
       "This check sends real model requests with your provider API key and may consume account balance.": "This check sends real model requests with your provider API key and may consume account balance.",
+      "Usable": "Usable",
+      "Verify connection": "Verify connection",
+      "Waiting for provider details": "Waiting for provider details",
+      "Waiting for required fields": "Waiting for required fields",
+      "API endpoint, API key, and at least one model are required before verification.": "API endpoint, API key, and at least one model are required before verification.",
+      "10 / page": "10 / page",
+      "25 / page": "25 / page",
+      "50 / page": "50 / page",
+      "100 / page": "100 / page",
+      "Clear filters": "Clear filters",
+      "Clear filters or broaden the search to find more request logs.": "Clear filters or broaden the search to find more request logs.",
+      "Default model is required.": "Default model is required.",
+      "Enable at least one provider model before saving this profile.": "Enable at least one provider model before saving this profile.",
+      "Enable request logs": "Enable request logs",
+      "Environment variable rows need valid keys.": "Environment variable rows need valid keys.",
+      "Idle seconds must be between 30 and 86400.": "Idle seconds must be between 30 and 86400.",
+      "No request logs match the current filters.": "No request logs match the current filters.",
+      "No request logs yet.": "No request logs yet.",
+      "Paths, provider identity, bot, compact, and env": "Paths, provider identity, bot, compact, and env",
+      "Request logs are off": "Request logs are off",
+      "Request logs record gateway requests and make payload inspection available.": "Request logs record gateway requests and make payload inspection available.",
+      "Select an existing bot or turn Bot off.": "Select an existing bot or turn Bot off.",
+      "Select a route node to inspect routing operations": "Select a route node to inspect routing operations",
+      "Select a route node to inspect its operations.": "Select a route node to inspect its operations.",
+      "Send a request through CCR, then refresh this page to inspect it.": "Send a request through CCR, then refresh this page to inspect it.",
+      "providers": "providers",
       "ZCode login detected. Click Import to add it as a gateway provider.": "ZCode login detected. Click Import to add it as a gateway provider.",
+      "ZCode profiles use APP entry mode.": "ZCode profiles use APP entry mode.",
       "ZCode login was detected, but its local credential is encrypted and cannot be imported automatically.": "ZCode login was detected, but its local credential is encrypted and cannot be imported automatically.",
       "ZCode login was detected, but no usable provider API key was found in ZCode config.": "ZCode login was detected, but no usable provider API key was found in ZCode config.",
       "ZCode provider API key detected in local ZCode config. Click Import to add it as a gateway provider.": "ZCode provider API key detected in local ZCode config. Click Import to add it as a gateway provider.",
       "Unavailable models": "Unavailable models",
       "Account Balance": "Account Balance",
+      "Account Usage": "Account Usage",
       "Account component": "Account component",
       "All accounts": "All accounts",
       "All credentials": "All credentials",
@@ -92479,7 +92701,7 @@ var appCopy = {
       networking: "\u7F51\u7EDC",
       observability: "\u89C2\u6D4B",
       overview: "\u6982\u89C8",
-      profile: "Agent\u914D\u7F6E",
+      profile: "Agent \u914D\u7F6E\u6863\u6848",
       providers: "\u4F9B\u5E94\u5546",
       models: "\u6A21\u578B",
       routing: "\u8DEF\u7531",
@@ -92584,10 +92806,15 @@ var appCopy = {
       "30d": "30 \u5929",
       "Agent": "Agent",
       "A provider is required before profiles can route traffic.": "\u9700\u8981\u5148\u914D\u7F6E\u4F9B\u5E94\u5546\uFF0C\u914D\u7F6E\u6863\u6848\u624D\u80FD\u8DEF\u7531\u8BF7\u6C42\u3002",
+      "A real model request succeeded with the selected provider settings.": "\u5DF2\u4F7F\u7528\u5F53\u524D\u4F9B\u5E94\u5546\u8BBE\u7F6E\u6210\u529F\u5B8C\u6210\u4E00\u6B21\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\u3002",
       "Add or verify a model provider.": "\u6DFB\u52A0\u6216\u786E\u8BA4\u6A21\u578B\u4F9B\u5E94\u5546\u3002",
+      "CCR compact for Claude Code": "Claude Code \u4F7F\u7528 CCR \u538B\u7F29",
+      "Use CCR context archive when Claude Code runs /compact.": "Claude Code \u6267\u884C /compact \u65F6\u6539\u7528 CCR \u4E0A\u4E0B\u6587\u5F52\u6863\u3002",
+      "Context archive and MCP access will be enabled for this compact mode.": "\u5C06\u4E3A\u6B64\u538B\u7F29\u6A21\u5F0F\u542F\u7528\u4E0A\u4E0B\u6587\u5F52\u6863\u548C MCP \u8BBF\u95EE\u3002",
       "Agent Analysis": "Agent \u5206\u6790",
       "Agent access": "Agent \u63A5\u5165",
       "Agent Mix": "Agent \u5206\u5E03",
+      "Agent profile": "Agent \u914D\u7F6E\u6863\u6848",
       "Agent profiles": "Agent \u914D\u7F6E\u6863\u6848",
       "All agents": "\u5168\u90E8 Agent",
       "All models": "\u5168\u90E8\u6A21\u578B",
@@ -92602,6 +92829,8 @@ var appCopy = {
       "Add API Key": "\u6DFB\u52A0 API \u5BC6\u94A5",
       "Add API key": "\u6DFB\u52A0 API \u5BC6\u94A5",
       "Add key": "\u6DFB\u52A0 Key",
+      "Add credentials": "\u6DFB\u52A0\u51ED\u636E",
+      "Add the API key CCR will use for model requests.": "\u586B\u5199 CCR \u53D1\u8D77\u6A21\u578B\u8BF7\u6C42\u65F6\u4F7F\u7528\u7684 API Key\u3002",
       "Add limit": "\u6DFB\u52A0\u9650\u5236",
       "Add parameter": "\u6DFB\u52A0\u53C2\u6570",
       "Add Profile": "\u6DFB\u52A0\u914D\u7F6E",
@@ -92613,13 +92842,20 @@ var appCopy = {
       "Add Routing Rule": "\u6DFB\u52A0\u8DEF\u7531\u89C4\u5219",
       "Add routing rule": "\u6DFB\u52A0\u8DEF\u7531\u89C4\u5219",
       "Advanced Settings...": "\u9AD8\u7EA7\u8BBE\u7F6E...",
+      "Advanced": "\u9AD8\u7EA7",
       "Advanced key options": "Key \u9AD8\u7EA7\u9009\u9879",
       "Advanced settings": "\u9AD8\u7EA7\u8BBE\u7F6E",
+      "Advanced settings need attention": "\u9AD8\u7EA7\u8BBE\u7F6E\u9700\u8981\u5904\u7406",
       "Always": "\u59CB\u7EC8",
       "Alias": "\u522B\u540D",
       "Alias is required.": "\u522B\u540D\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Applied": "\u5DF2\u5E94\u7528",
       "App only": "\u4EC5 App",
+      "API endpoint, API key, and at least one model are required before verification.": "\u9A8C\u8BC1\u524D\u9700\u8981 API \u5730\u5740\u3001API Key \u548C\u81F3\u5C11\u4E00\u4E2A\u6A21\u578B\u3002",
+      "10 / page": "10 / \u9875",
+      "25 / page": "25 / \u9875",
+      "50 / page": "50 / \u9875",
+      "100 / page": "100 / \u9875",
       "Args": "\u53C2\u6570",
       "API Keys": "API \u5BC6\u94A5",
       "API key included": "\u5DF2\u5305\u542B API \u5BC6\u94A5",
@@ -92687,6 +92923,10 @@ var appCopy = {
       "Robot Code": "Robot Code",
       "Optional": "\u53EF\u9009",
       "Auto": "\u81EA\u52A8",
+      "Auto detect protocols": "\u81EA\u52A8\u63A2\u6D4B\u534F\u8BAE",
+      "Auto detect protocols description": "\u5F00\u542F\u540E\uFF0CCCR \u4F1A\u5728\u7F16\u8F91\u65F6\u63A2\u6D4B\u63A5\u53E3\uFF0C\u5E76\u7528\u63A2\u6D4B\u5230\u7684\u534F\u8BAE\u548C\u6A21\u578B\u66F4\u65B0\u6B64\u4F9B\u5E94\u5546\u3002\u5173\u95ED\u540E\uFF0C\u624B\u52A8\u9009\u62E9\u7684\u534F\u8BAE\u548C\u81EA\u5B9A\u4E49\u6A21\u578B ID \u4F1A\u4FDD\u6301\u4E0D\u53D8\u3002",
+      "Auto detect protocols info": "\u81EA\u52A8\u63A2\u6D4B\u534F\u8BAE\u8BF4\u660E",
+      "Automatic": "\u81EA\u52A8",
       "Back": "\u8FD4\u56DE",
       "Backup": "\u5907\u4EFD",
       "Cache": "\u7F13\u5B58",
@@ -92704,8 +92944,13 @@ var appCopy = {
       "Capture network": "\u6355\u83B7\u7F51\u7EDC",
       "Connection verified": "\u8FDE\u901A\u6027\u5DF2\u9A8C\u8BC1",
       "Action": "\u64CD\u4F5C",
+      "Available after saving": "\u4FDD\u5B58\u540E\u53EF\u7528",
       "Check trust": "\u68C0\u67E5\u4FE1\u4EFB",
       "Choose where each agent uses CCR.": "\u9009\u62E9\u6BCF\u4E2A Agent \u5728\u54EA\u91CC\u4F7F\u7528 CCR\u3002",
+      "Choose provider": "\u9009\u62E9\u4F9B\u5E94\u5546",
+      "Choose a provider endpoint so CCR can detect compatible protocols.": "\u9009\u62E9\u4F9B\u5E94\u5546\u7AEF\u70B9\u540E\uFF0CCCR \u624D\u80FD\u63A2\u6D4B\u517C\u5BB9\u534F\u8BAE\u3002",
+      "Choose the models that should be available through this provider.": "\u9009\u62E9\u8FD9\u4E2A\u4F9B\u5E94\u5546\u5BF9\u5916\u53EF\u7528\u7684\u6A21\u578B\u3002",
+      "Connect a provider in four small steps.": "\u901A\u8FC7 4 \u4E2A\u5C0F\u6B65\u9AA4\u63A5\u5165\u4E00\u4E2A\u4F9B\u5E94\u5546\u3002",
       "Built-in": "\u5185\u7F6E",
       "Identifies the Claude Code user-agent to provide deep Claude Code integration.": "\u901A\u8FC7\u8BC6\u522B Claude Code \u7684 user-agent\uFF0C\u5B9E\u73B0\u5BF9 Claude Code \u7684\u6DF1\u5EA6\u9002\u914D\u3002",
       "Identifies the Codex user-agent to provide deep Codex integration.": "\u901A\u8FC7\u8BC6\u522B Codex \u7684 user-agent\uFF0C\u5B9E\u73B0\u5BF9 Codex \u7684\u6DF1\u5EA6\u9002\u914D\u3002",
@@ -92726,9 +92971,13 @@ var appCopy = {
       "Codex": "Codex",
       "Codex model": "Codex \u6A21\u578B",
       "Grok CLI": "Grok CLI",
+      "Grok CLI profiles use CCR scope and CLI entry mode.": "Grok CLI \u914D\u7F6E\u6863\u6848\u56FA\u5B9A\u4F7F\u7528 CCR \u4F5C\u7528\u8303\u56F4\u548C CLI \u5165\u53E3\u6A21\u5F0F\u3002",
       "Grok model": "Grok \u6A21\u578B",
       "Kimi CLI": "Kimi CLI",
+      "Kimi profiles need a default model and an allowed model list.": "Kimi \u914D\u7F6E\u6863\u6848\u9700\u8981\u4E00\u4E2A\u9ED8\u8BA4\u6A21\u578B\u548C\u53EF\u7528\u6A21\u578B\u5217\u8868\u3002",
       "Kimi model": "Kimi \u6A21\u578B",
+      "Kimi model is required.": "Kimi \u6A21\u578B\u4E0D\u80FD\u4E3A\u7A7A\u3002",
+      "Allowed models": "\u5141\u8BB8\u6A21\u578B",
       "OpenCode": "OpenCode",
       "OpenCode model": "OpenCode \u6A21\u578B",
       "CLI only": "\u4EC5 CLI",
@@ -92738,6 +92987,11 @@ var appCopy = {
       "Rule type": "\u89C4\u5219\u7C7B\u578B",
       "Node.js route script file": "Node.js \u8DEF\u7531\u811A\u672C\u6587\u4EF6",
       "Choose file": "\u9009\u62E9\u6587\u4EF6",
+      "Choose a provider preset or endpoint, enter an API key, and add at least one model.": "\u9009\u62E9\u4F9B\u5E94\u5546\u9884\u8BBE\u6216\u7AEF\u70B9\uFF0C\u586B\u5199 API Key\uFF0C\u5E76\u81F3\u5C11\u6DFB\u52A0\u4E00\u4E2A\u6A21\u578B\u3002",
+      "Choose an agent, model, and required profile settings.": "\u9009\u62E9 Agent\u3001\u6A21\u578B\u548C\u5FC5\u586B\u7684\u914D\u7F6E\u6863\u6848\u8BBE\u7F6E\u3002",
+      "Choose how this provider authenticates model requests.": "\u9009\u62E9\u8FD9\u4E2A\u4F9B\u5E94\u5546\u5982\u4F55\u8BA4\u8BC1\u6A21\u578B\u8BF7\u6C42\u3002",
+      "Compatible API protocols were found automatically.": "\u5DF2\u81EA\u52A8\u627E\u5230\u517C\u5BB9\u7684 API \u534F\u8BAE\u3002",
+      "Compatible API protocols were found automatically. You can turn off auto detection in Advanced settings and select protocols manually.": "\u5DF2\u81EA\u52A8\u627E\u5230\u517C\u5BB9\u7684 API \u534F\u8BAE\u3002\u4F60\u53EF\u4EE5\u5728\u9AD8\u7EA7\u8BBE\u7F6E\u4E2D\u5173\u95ED\u81EA\u52A8\u68C0\u6D4B\uFF0C\u5E76\u624B\u52A8\u9009\u62E9\u534F\u8BAE\u3002",
       "Timeout (ms)": "\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF09",
       "Test request JSON": "\u6D4B\u8BD5\u8BF7\u6C42 JSON",
       "Validate": "\u6821\u9A8C",
@@ -92756,6 +93010,8 @@ var appCopy = {
       "Claude Design model": "Claude Design \u6A21\u578B",
       "Claude Design routes": "Claude Design \u8DEF\u7531",
       "Configure": "\u914D\u7F6E",
+      "Configure a provider before creating an agent profile.": "\u8BF7\u5148\u914D\u7F6E\u4F9B\u5E94\u5546\uFF0C\u518D\u521B\u5EFA Agent \u914D\u7F6E\u6863\u6848\u3002",
+      "Configure at least one enabled provider model before saving an agent profile.": "\u8BF7\u5148\u914D\u7F6E\u81F3\u5C11\u4E00\u4E2A\u5DF2\u542F\u7528\u7684\u4F9B\u5E94\u5546\u6A21\u578B\uFF0C\u518D\u4FDD\u5B58 Agent \u914D\u7F6E\u6863\u6848\u3002",
       "Configure provider": "\u914D\u7F6E\u4F9B\u5E94\u5546",
       "Configure Extension": "\u914D\u7F6E\u6269\u5C55",
       "Configure extension": "\u914D\u7F6E\u6269\u5C55",
@@ -92763,9 +93019,13 @@ var appCopy = {
       "Configure plugin route": "\u914D\u7F6E\u63D2\u4EF6\u8DEF\u7531",
       "Configure Routing": "\u914D\u7F6E\u8DEF\u7531",
       "Configure multiple provider API keys for this supplier.": "\u4E3A\u8FD9\u4E2A\u4F9B\u5E94\u5546\u914D\u7F6E\u591A\u4E2A\u4E0A\u6E38 API Key\u3002",
+      "Configuration": "\u914D\u7F6E\u6458\u8981",
       "Copy": "\u590D\u5236",
+      "Clear filters": "\u6E05\u7A7A\u7B5B\u9009",
+      "Clear filters or broaden the search to find more request logs.": "\u8BF7\u6E05\u7A7A\u7B5B\u9009\u6216\u653E\u5BBD\u641C\u7D22\u6761\u4EF6\u6765\u67E5\u627E\u66F4\u591A\u8BF7\u6C42\u65E5\u5FD7\u3002",
       "Create integration": "\u521B\u5EFA\u96C6\u6210",
       "Credential": "\u51ED\u636E",
+      "Credential method": "\u51ED\u636E\u65B9\u5F0F",
       "Credential chain": "\u51ED\u636E\u94FE",
       "Credential pool": "\u51ED\u636E\u6C60",
       "Credential saturated": "\u51ED\u636E\u5DF2\u9971\u548C",
@@ -92776,6 +93036,7 @@ var appCopy = {
       "Cost": "\u6210\u672C",
       "Estimated cost": "\u4F30\u7B97\u6210\u672C",
       "Connect agent": "\u63A5\u5165 Agent",
+      "Create profiles that tell each agent which model and entry mode to use.": "\u521B\u5EFA\u914D\u7F6E\u6863\u6848\uFF0C\u6307\u5B9A\u6BCF\u4E2A Agent \u4F7F\u7528\u7684\u6A21\u578B\u548C\u5165\u53E3\u6A21\u5F0F\u3002",
       "Create a profile for your agent.": "\u4E3A\u4F60\u7684 Agent \u521B\u5EFA\u914D\u7F6E\u6863\u6848\u3002",
       "Cursor model": "Cursor \u6A21\u578B",
       "Cursor Proxy routes": "Cursor Proxy \u8DEF\u7531",
@@ -92797,11 +93058,17 @@ var appCopy = {
       "Default on failure": "\u9ED8\u8BA4\u5931\u8D25\u5904\u7406",
       "Description": "\u63CF\u8FF0",
       "CCR scanned this computer for Claude Code, Codex, Grok CLI, OpenCode CLI, and ZCode login states. Click Import to add one as a gateway provider.": "CCR \u5DF2\u626B\u63CF\u672C\u673A\u7684 Claude Code\u3001Codex\u3001Grok CLI\u3001OpenCode CLI \u548C ZCode \u767B\u5F55\u6001\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
+      "CCR is checking this provider. Wait for the check to finish before continuing.": "CCR \u6B63\u5728\u68C0\u67E5\u8FD9\u4E2A\u4F9B\u5E94\u5546\uFF0C\u8BF7\u7B49\u5F85\u68C0\u67E5\u7ED3\u675F\u540E\u518D\u7EE7\u7EED\u3002",
+      "CCR is checking which API protocols this endpoint supports.": "CCR \u6B63\u5728\u68C0\u67E5\u8FD9\u4E2A\u7AEF\u70B9\u652F\u6301\u54EA\u4E9B API \u534F\u8BAE\u3002",
+      "CCR is sending a limited real model request.": "CCR \u6B63\u5728\u53D1\u9001\u4E00\u6B21\u53D7\u9650\u7684\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\u3002",
+      "CCR management service is unavailable. Make sure the CCR app or ccr ui command is running, then retry.": "\u65E0\u6CD5\u8FDE\u63A5 CCR \u7BA1\u7406\u670D\u52A1\u3002\u8BF7\u786E\u8BA4 CCR App \u6216 ccr ui \u547D\u4EE4\u6B63\u5728\u8FD0\u884C\uFF0C\u7136\u540E\u91CD\u8BD5\u3002",
       "Detected": "\u5DF2\u68C0\u6D4B",
       "Detecting protocols": "\u6B63\u5728\u63A2\u6D4B\u534F\u8BAE",
       "Enter API endpoint, API key, and at least one model to enable connectivity check.": "\u586B\u5199 API \u5730\u5740\u3001API Key \u548C\u81F3\u5C11\u4E00\u4E2A\u6A21\u578B\u540E\uFF0C\u624D\u53EF\u68C0\u6D4B\u8FDE\u901A\u6027\u3002",
+      "Finish the provider and agent profile steps before entering the app.": "\u8BF7\u5148\u5B8C\u6210\u4F9B\u5E94\u5546\u548C Agent \u914D\u7F6E\u6863\u6848\u6B65\u9AA4\uFF0C\u518D\u8FDB\u5165\u5E94\u7528\u3002",
       "Import local agent login": "\u5BFC\u5165\u672C\u673A Agent \u767B\u5F55\u6001",
       "Import local agent provider": "\u5BFC\u5165\u672C\u673A Agent \u4F9B\u5E94\u5546",
+      "In progress": "\u8FDB\u884C\u4E2D",
       "ChatGPT login detected. Click Import to add it as a gateway provider.": "\u5DF2\u68C0\u6D4B\u5230 ChatGPT \u767B\u5F55\u6001\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
       "Claude Code login detected. Click Import to add it as a gateway provider.": "\u5DF2\u68C0\u6D4B\u5230 Claude Code \u767B\u5F55\u6001\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
       "Claude Code login was detected, but no usable access token was found.": "\u5DF2\u68C0\u6D4B\u5230 Claude Code \u767B\u5F55\u6001\uFF0C\u4F46\u6CA1\u6709\u627E\u5230\u53EF\u7528\u7684 access token\u3002",
@@ -92820,6 +93087,10 @@ var appCopy = {
       "CCR scanned this computer for local Claude Code, Codex, Grok CLI, Kimi CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.": "CCR \u5DF2\u626B\u63CF\u672C\u673A\u7684 Claude Code\u3001Codex\u3001Grok CLI\u3001Kimi CLI\u3001OpenCode CLI \u548C ZCode \u4F9B\u5E94\u5546\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
       "Locked": "\u5DF2\u52A0\u5BC6",
       "Local agent login will be connected after saving this provider.": "\u4FDD\u5B58\u8FD9\u4E2A\u4F9B\u5E94\u5546\u540E\u4F1A\u63A5\u5165\u672C\u673A Agent \u767B\u5F55\u6001\u3002",
+      "Local login provider": "\u672C\u673A\u767B\u5F55\u6001\u4F9B\u5E94\u5546",
+      "Launch actions": "\u542F\u52A8\u64CD\u4F5C",
+      "Management actions": "\u7BA1\u7406\u64CD\u4F5C",
+      "Model overrides are optional; empty fields keep Claude Code defaults.": "\u6A21\u578B\u8986\u76D6\u662F\u53EF\u9009\u9879\uFF1B\u7559\u7A7A\u4F1A\u4FDD\u7559 Claude Code \u9ED8\u8BA4\u8BBE\u7F6E\u3002",
       "Display name": "\u663E\u793A\u540D\u79F0",
       "Double click to copy": "\u53CC\u51FB\u590D\u5236",
       "Edit": "\u7F16\u8F91",
@@ -92833,10 +93104,15 @@ var appCopy = {
       "Edit rule": "\u7F16\u8F91\u89C4\u5219",
       "Effect scope": "\u4F5C\u7528\u8303\u56F4",
       "Enable": "\u542F\u7528",
+      "Enable at least one provider model before saving this profile.": "\u8BF7\u5148\u542F\u7528\u81F3\u5C11\u4E00\u4E2A\u4F9B\u5E94\u5546\u6A21\u578B\uFF0C\u518D\u4FDD\u5B58\u8FD9\u4E2A\u914D\u7F6E\u6863\u6848\u3002",
+      "Enable provider": "\u542F\u7528\u4F9B\u5E94\u5546",
+      "Enable request logs": "\u542F\u7528\u8BF7\u6C42\u65E5\u5FD7",
       "Enabled": "\u542F\u7528",
+      "Disable provider": "\u505C\u7528\u4F9B\u5E94\u5546",
       "Endpoint": "\u7AEF\u70B9",
       "Entry mode": "\u5165\u53E3\u6A21\u5F0F",
       "Environment variables": "\u73AF\u5883\u53D8\u91CF",
+      "Environment variable rows need valid keys.": "\u73AF\u5883\u53D8\u91CF\u884C\u9700\u8981\u586B\u5199\u6709\u6548\u7684 Key\u3002",
       "Endpoint Health": "\u7AEF\u70B9\u5065\u5EB7",
       "Endpoint information": "\u7AEF\u70B9\u4FE1\u606F",
       "HTTP status": "HTTP \u72B6\u6001\u7801",
@@ -92889,6 +93165,7 @@ var appCopy = {
       "Image content": "\u56FE\u50CF\u5185\u5BB9",
       "Images": "\u56FE\u50CF",
       "Idle seconds": "\u7A7A\u95F2\u79D2\u6570",
+      "Idle seconds must be between 30 and 86400.": "\u7A7A\u95F2\u79D2\u6570\u5FC5\u987B\u5728 30 \u5230 86400 \u4E4B\u95F4\u3002",
       "Input": "\u8F93\u5165",
       "Input tokens": "\u8F93\u5165\u4EE4\u724C",
       "Integration ID": "\u96C6\u6210 ID",
@@ -92933,6 +93210,7 @@ var appCopy = {
       "Method": "\u65B9\u6CD5",
       "Model": "\u6A21\u578B",
       "Default model": "\u9ED8\u8BA4\u6A21\u578B",
+      "Default model is required.": "\u9ED8\u8BA4\u6A21\u578B\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Model descriptions": "\u6A21\u578B\u63CF\u8FF0",
       "Model override": "\u6A21\u578B\u8986\u76D6",
       "Model routing": "\u6A21\u578B\u8DEF\u7531",
@@ -92953,6 +93231,8 @@ var appCopy = {
       "No provider usage yet": "\u6682\u65E0\u4F9B\u5E94\u5546\u7528\u91CF",
       "No provider yet": "\u8FD8\u6CA1\u6709\u4F9B\u5E94\u5546",
       "No requests captured yet": "\u6682\u65E0\u8BF7\u6C42\u8BB0\u5F55",
+      "No request logs match the current filters.": "\u6CA1\u6709\u7B26\u5408\u5F53\u524D\u7B5B\u9009\u6761\u4EF6\u7684\u8BF7\u6C42\u65E5\u5FD7\u3002",
+      "No request logs yet.": "\u8FD8\u6CA1\u6709\u8BF7\u6C42\u65E5\u5FD7\u3002",
       "No bots configured": "\u5C1A\u672A\u914D\u7F6E Bot",
       "No data": "\u65E0\u6570\u636E",
       "No route activity": "\u6682\u65E0\u8DEF\u7531\u6D3B\u52A8",
@@ -93005,6 +93285,7 @@ var appCopy = {
       "External core": "\u5916\u90E8 Core",
       "External provider link": "\u5916\u90E8\u4F9B\u5E94\u5546\u94FE\u63A5",
       "Provider": "\u4F9B\u5E94\u5546",
+      "Provider ID and Provider name identify the routed provider in Codex.": "Provider ID \u548C Provider name \u7528\u4E8E\u5728 Codex \u4E2D\u8BC6\u522B\u88AB\u8DEF\u7531\u7684\u4F9B\u5E94\u5546\u3002",
       "Provider Analysis": "\u4F9B\u5E94\u5546\u5206\u6790",
       "Provider credential JSON did not contain any API keys.": "\u4F9B\u5E94\u5546\u51ED\u636E JSON \u4E2D\u6CA1\u6709\u53EF\u7528 API Key\u3002",
       "Provider credential JSON is invalid.": "\u4F9B\u5E94\u5546\u51ED\u636E JSON \u65E0\u6548\u3002",
@@ -93016,9 +93297,11 @@ var appCopy = {
       "Provider credential rows require names.": "\u4F9B\u5E94\u5546\u51ED\u636E\u884C\u5FC5\u987B\u586B\u5199\u540D\u79F0\u3002",
       "Provider credential weight must be a positive number.": "\u4F9B\u5E94\u5546\u51ED\u636E\u6743\u91CD\u5FC5\u987B\u662F\u6B63\u6570\u3002",
       "Provider ID": "\u4F9B\u5E94\u5546 ID",
+      "Provider ID is required.": "\u4F9B\u5E94\u5546 ID \u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Provider link failed": "\u4F9B\u5E94\u5546\u94FE\u63A5\u5931\u8D25",
       "Provider middleware": "\u4F9B\u5E94\u5546\u4E2D\u95F4\u4EF6",
       "Provider name": "\u4F9B\u5E94\u5546\u540D\u79F0",
+      "Provider name is required.": "\u4F9B\u5E94\u5546\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Provider name and Base URL are required.": "\u4F9B\u5E94\u5546\u540D\u79F0\u548C\u57FA\u7840 URL \u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Provider name already exists.": "\u4F9B\u5E94\u5546\u540D\u79F0\u5DF2\u5B58\u5728\u3002",
       "Provider ready": "\u4F9B\u5E94\u5546\u5DF2\u5C31\u7EEA",
@@ -93037,6 +93320,7 @@ var appCopy = {
       "Profile": "\u914D\u7F6E",
       "Profile actions": "\u914D\u7F6E\u64CD\u4F5C",
       "Profile name": "\u914D\u7F6E\u6863\u6848\u540D\u79F0",
+      "Profile name is required.": "\u914D\u7F6E\u6863\u6848\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Profile name and required target settings are missing.": "\u8BF7\u586B\u5199\u914D\u7F6E\u6863\u6848\u540D\u79F0\u548C\u5FC5\u9700\u7684\u63A5\u5165\u76EE\u6807\u8BBE\u7F6E\u3002",
       "Profile name, required target settings, and environment variable keys are required.": "\u8BF7\u586B\u5199\u914D\u7F6E\u6863\u6848\u540D\u79F0\u3001\u5FC5\u9700\u7684\u63A5\u5165\u76EE\u6807\u8BBE\u7F6E\u548C\u73AF\u5883\u53D8\u91CF Key\u3002",
       "Profile no longer exists.": "\u914D\u7F6E\u6863\u6848\u5DF2\u4E0D\u5B58\u5728\u3002",
@@ -93062,6 +93346,8 @@ var appCopy = {
       "Request action": "\u8BF7\u6C42\u52A8\u4F5C",
       "Request ID": "\u8BF7\u6C42 ID",
       "Request logs database": "\u8BF7\u6C42\u65E5\u5FD7\u6570\u636E\u5E93",
+      "Request logs are off": "\u8BF7\u6C42\u65E5\u5FD7\u5DF2\u5173\u95ED",
+      "Request logs record gateway requests and make payload inspection available.": "\u8BF7\u6C42\u65E5\u5FD7\u4F1A\u8BB0\u5F55\u7F51\u5173\u8BF7\u6C42\uFF0C\u5E76\u652F\u6301\u67E5\u770B\u8BF7\u6C42/\u54CD\u5E94\u8F7D\u8377\u3002",
       "Request timeout ms": "\u8BF7\u6C42\u8D85\u65F6 ms",
       "Requests": "\u8BF7\u6C42",
       "Rewrite request parameters": "\u6539\u5199\u8BF7\u6C42\u53C2\u6570",
@@ -93081,6 +93367,7 @@ var appCopy = {
       "Retry": "\u7EE7\u7EED\u91CD\u8BD5",
       "Retry attempts": "\u91CD\u8BD5\u5C1D\u8BD5",
       "Weighted order": "\u6309\u6743\u91CD\u6392\u5E8F",
+      "Paths, provider identity, bot, compact, and env": "\u8DEF\u5F84\u3001\u4F9B\u5E94\u5546\u8EAB\u4EFD\u3001Bot\u3001\u538B\u7F29\u548C\u73AF\u5883\u53D8\u91CF",
       "Ready to route": "\u53EF\u4EE5\u5F00\u59CB\u8DEF\u7531",
       "Restart proxy": "\u91CD\u542F\u4EE3\u7406",
       "Route": "\u8DEF\u7531",
@@ -93092,6 +93379,8 @@ var appCopy = {
       "View route graph": "\u67E5\u770B\u8DEF\u7531\u94FE\u8DEF\u56FE",
       "Hover a node to inspect routing operations": "\u5C06\u9F20\u6807\u60AC\u505C\u5728\u8282\u70B9\u4E0A\u67E5\u770B\u8DEF\u7531\u64CD\u4F5C",
       "Hover over a route node to inspect its operations.": "\u5C06\u9F20\u6807\u60AC\u505C\u5728\u8DEF\u7531\u8282\u70B9\u4E0A\u67E5\u770B\u64CD\u4F5C\u8BE6\u60C5\u3002",
+      "Select a route node to inspect routing operations": "\u9009\u62E9\u8DEF\u7531\u8282\u70B9\u67E5\u770B\u8DEF\u7531\u64CD\u4F5C",
+      "Select a route node to inspect its operations.": "\u9009\u62E9\u8DEF\u7531\u8282\u70B9\u67E5\u770B\u64CD\u4F5C\u8BE6\u60C5\u3002",
       "Routing operations": "\u8DEF\u7531\u64CD\u4F5C",
       "No request fields changed": "\u6CA1\u6709\u8BF7\u6C42\u5B57\u6BB5\u53D8\u66F4",
       "Not recorded": "\u672A\u8BB0\u5F55",
@@ -93149,8 +93438,12 @@ var appCopy = {
       "Search request logs": "\u641C\u7D22\u8BF7\u6C42\u65E5\u5FD7",
       "Search routing rules": "\u641C\u7D22\u8DEF\u7531\u89C4\u5219",
       "Select account": "\u9009\u62E9\u8D26\u6237",
+      "Select an existing bot or turn Bot off.": "\u8BF7\u9009\u62E9\u5DF2\u6709 Bot\uFF0C\u6216\u5173\u95ED Bot\u3002",
+      "Select at least one available model.": "\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u53EF\u7528\u6A21\u578B\u3002",
+      "Select at least one allowed model.": "\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u5141\u8BB8\u6A21\u578B\u3002",
       "Select bot": "\u9009\u62E9 Bot",
       "Select data": "\u9009\u62E9\u6570\u636E",
+      "Send a request through CCR, then refresh this page to inspect it.": "\u901A\u8FC7 CCR \u53D1\u9001\u4E00\u6B21\u8BF7\u6C42\uFF0C\u7136\u540E\u5237\u65B0\u6B64\u9875\u9762\u67E5\u770B\u65E5\u5FD7\u3002",
       "Server": "\u670D\u52A1",
       "Startup timeout ms": "\u542F\u52A8\u8D85\u65F6 ms",
       "State directory": "\u72B6\u6001\u76EE\u5F55",
@@ -93511,6 +93804,7 @@ var appCopy = {
       "Browser apps JSON": "\u6D4F\u89C8\u5668 App JSON",
       "Account": "\u8D26\u6237",
       "Account Balance": "\u8D26\u6237\u4F59\u989D",
+      "Account Usage": "\u8D26\u6237\u7528\u91CF",
       "Account balance connectors": "\u8D26\u6237\u4F59\u989D\u8FDE\u63A5\u5668",
       "Add at least one account connector or disable account balance.": "\u8BF7\u81F3\u5C11\u6DFB\u52A0\u4E00\u4E2A\u8D26\u6237\u8FDE\u63A5\u5668\uFF0C\u6216\u5173\u95ED\u8D26\u6237\u4F59\u989D\u3002",
       "Balance": "\u4F59\u989D",
@@ -93622,11 +93916,20 @@ var appCopy = {
       "Invalid": "\u65E0\u6548",
       "Manual install": "\u624B\u52A8\u5B89\u88C5",
       "Manual install command": "\u624B\u52A8\u5B89\u88C5\u547D\u4EE4",
+      "Manual": "\u624B\u52A8",
       "Manifest URL": "Manifest URL",
       "Marketplace": "\u5E02\u573A",
+      "Added": "\u5DF2\u6DFB\u52A0",
+      "Added models": "\u5DF2\u6DFB\u52A0\u6A21\u578B",
+      "Add custom model": "\u6DFB\u52A0\u81EA\u5B9A\u4E49\u6A21\u578B",
+      "Cancel custom model": "\u53D6\u6D88\u81EA\u5B9A\u4E49\u6A21\u578B",
+      "Click a model to edit settings": "\u70B9\u51FB\u6A21\u578B\u7F16\u8F91\u8BBE\u7F6E",
+      "Custom model": "\u81EA\u5B9A\u4E49\u6A21\u578B",
+      "Model already added": "\u6A21\u578B\u5DF2\u6DFB\u52A0",
       "Model name": "\u6A21\u578B\u540D\u79F0",
       "Models are required. Ask the provider to include models=... in the link.": "\u9700\u8981\u6A21\u578B\u5217\u8868\u3002\u8BF7\u8BA9\u4F9B\u5E94\u5546\u5728\u94FE\u63A5\u4E2D\u52A0\u5165 models=...\u3002",
       "Models will be detected automatically.": "\u6A21\u578B\u4F1A\u81EA\u52A8\u63A2\u6D4B\u3002",
+      "Models detected from this provider": "\u4ECE\u8BE5\u4F9B\u5E94\u5546\u68C0\u6D4B\u5230\u7684\u6A21\u578B",
       "More": "\u66F4\u591A",
       "Provider models": "\u4F9B\u5E94\u5546\u6A21\u578B",
       "Runtime provider": "\u8FD0\u884C\u65F6\u4F9B\u5E94\u5546",
@@ -93658,11 +93961,15 @@ var appCopy = {
       "No matching routing rules": "\u6CA1\u6709\u5339\u914D\u7684\u8DEF\u7531\u89C4\u5219",
       "No account balance connectors configured": "\u672A\u914D\u7F6E\u8D26\u6237\u4F59\u989D\u8FDE\u63A5\u5668",
       "No available models": "\u6CA1\u6709\u53EF\u7528\u6A21\u578B",
+      "No models added": "\u672A\u6DFB\u52A0\u6A21\u578B",
+      "No provider models": "\u6CA1\u6709\u4F9B\u5E94\u5546\u6A21\u578B",
       "No protocol detection yet": "\u5C1A\u672A\u68C0\u6D4B\u534F\u8BAE",
       "No response fields": "\u6CA1\u6709\u54CD\u5E94\u5B57\u6BB5",
       "No unavailable models": "\u6CA1\u6709\u4E0D\u53EF\u7528\u6A21\u578B",
+      "Gateway service": "\u7F51\u5173\u670D\u52A1",
       "Name is required.": "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "No usage data available.": "\u6682\u65E0\u53EF\u7528\u91CF\u6570\u636E\u3002",
+      "Next": "\u4E0B\u4E00\u6B65",
       "OpenAI Chat": "OpenAI Chat",
       "OpenAI Responses": "OpenAI Responses",
       "Anthropic Messages": "Anthropic Messages",
@@ -93674,8 +93981,10 @@ var appCopy = {
       "Select or enter at least one model.": "\u8BF7\u9009\u62E9\u6216\u8F93\u5165\u81F3\u5C11\u4E00\u4E2A\u6A21\u578B\u3002",
       "Enter at least one model.": "\u8BF7\u8F93\u5165\u81F3\u5C11\u4E00\u4E2A\u6A21\u578B\u3002",
       "Generated output is limited to 1 token for connectivity checks.": "\u8FDE\u901A\u6027\u68C0\u6D4B\u4F1A\u628A\u751F\u6210\u8F93\u51FA\u9650\u5236\u4E3A 1 \u4E2A token\u3002",
+      "Endpoint and identity": "\u7AEF\u70B9\u4E0E\u540D\u79F0",
       "Check results": "\u68C0\u6D4B\u7ED3\u679C",
       "Models to check": "\u8981\u68C0\u6D4B\u7684\u6A21\u578B",
+      "Available model IDs": "\u53EF\u7528\u6A21\u578B ID",
       "Raw connector JSON": "\u539F\u59CB\u8FDE\u63A5\u5668 JSON",
       "Remote provider manifest": "\u8FDC\u7A0B\u4F9B\u5E94\u5546 Manifest",
       "Refresh interval ms": "\u5237\u65B0\u95F4\u9694\uFF08\u6BEB\u79D2\uFF09",
@@ -93716,24 +94025,63 @@ var appCopy = {
       "Switch to HTTP JSON request to configure method, URL, headers, body, and response fields.": "\u5207\u6362\u5230 HTTP JSON \u8BF7\u6C42\u5373\u53EF\u914D\u7F6E method\u3001URL\u3001header\u3001body \u548C\u54CD\u5E94\u5B57\u6BB5\u3002",
       "Test usage request": "\u6D4B\u8BD5\u7528\u91CF\u8BF7\u6C42",
       "This check sends real model requests with your provider API key and may consume account balance.": "\u672C\u6B21\u68C0\u6D4B\u4F1A\u4F7F\u7528\u4F60\u7684\u4F9B\u5E94\u5546 API Key \u53D1\u8D77\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\uFF0C\u53EF\u80FD\u6D88\u8017\u8D26\u6237\u4F59\u989D\u3002",
+      "The gateway is configured. Start the service from the toolbar when you are ready to test traffic.": "\u7F51\u5173\u5DF2\u7ECF\u914D\u7F6E\u597D\u3002\u51C6\u5907\u6D4B\u8BD5\u8BF7\u6C42\u65F6\uFF0C\u8BF7\u4ECE\u5DE5\u5177\u680F\u542F\u52A8\u670D\u52A1\u3002",
+      "The imported local agent login is connected when this provider is saved.": "\u5BFC\u5165\u7684\u672C\u673A Agent \u767B\u5F55\u6001\u4F1A\u5728\u4FDD\u5B58\u4F9B\u5E94\u5546\u540E\u63A5\u5165\u3002",
       "Unavailable models": "\u4E0D\u53EF\u7528\u6A21\u578B",
+      "Usable": "\u53EF\u7528",
+      "Verify connection": "\u9A8C\u8BC1\u8FDE\u901A\u6027",
+      "Waiting for provider details": "\u7B49\u5F85\u4F9B\u5E94\u5546\u4FE1\u606F",
+      "Waiting for required fields": "\u7B49\u5F85\u5FC5\u586B\u5B57\u6BB5",
       "No marketplace extensions": "\u5E02\u573A\u6682\u65E0\u6269\u5C55",
       "No fallback models configured": "\u672A\u914D\u7F6E\u56DE\u9000\u6A21\u578B",
       "No fallback targets configured": "\u672A\u914D\u7F6E\u5931\u8D25\u964D\u7EA7\u76EE\u6807",
       "No models configured": "\u672A\u914D\u7F6E\u6A21\u578B",
       "No local login state was found for this agent.": "\u672A\u627E\u5230\u8FD9\u4E2A Agent \u7684\u672C\u673A\u767B\u5F55\u6001\u3002",
+      "No providers": "\u65E0\u4F9B\u5E94\u5546",
       "No provider credentials configured": "\u672A\u914D\u7F6E\u4F9B\u5E94\u5546\u51ED\u636E",
       "No request rewrite": "\u4E0D\u6539\u5199\u8BF7\u6C42",
       "Not found": "\u672A\u627E\u5230",
+      "Not verified yet": "\u5C1A\u672A\u9A8C\u8BC1",
+      "Needs models": "\u7F3A\u5C11\u6A21\u578B",
+      "Needs protocol": "\u7F3A\u5C11\u534F\u8BAE",
+      "OpenCode profiles can target CLI, APP, or both entry modes.": "OpenCode \u914D\u7F6E\u6863\u6848\u53EF\u4EE5\u9009\u62E9 CLI\u3001APP \u6216\u4E24\u8005\u5165\u53E3\u6A21\u5F0F\u3002",
+      "Optional health check": "\u53EF\u9009\u5065\u5EB7\u68C0\u67E5",
       "Other / custom API endpoint": "\u5176\u4ED6 / \u81EA\u5B9A\u4E49 API \u5730\u5740",
       "Pending": "\u7B49\u5F85\u4E2D",
+      "Pick models": "\u9009\u62E9\u6A21\u578B",
+      "Pick a preset provider or use a custom compatible API endpoint.": "\u9009\u62E9\u4F9B\u5E94\u5546\u9884\u8BBE\uFF0C\u6216\u4F7F\u7528\u81EA\u5B9A\u4E49\u517C\u5BB9 API \u7AEF\u70B9\u3002",
       "Priority": "\u4F18\u5148\u7EA7",
       "Priority only": "\u4EC5\u6309\u4F18\u5148\u7EA7",
       "Priority spillover": "\u4F18\u5148\u7EA7\u6EA2\u51FA",
       "Ready": "\u53EF\u5BFC\u5165",
+      "Ready to test": "\u53EF\u6D4B\u8BD5",
+      "Pool keys": "\u6C60\u5185 Key",
+      "Run a real model request before relying on this provider.": "\u4F7F\u7528\u524D\u5EFA\u8BAE\u5148\u8FD0\u884C\u4E00\u6B21\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\u9A8C\u8BC1\u3002",
+      "Optional. Check Connection sends a real model request and may consume provider credits.": "\u53EF\u9009\u3002\u8FDE\u63A5\u68C0\u67E5\u4F1A\u53D1\u9001\u4E00\u6B21\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\uFF0C\u53EF\u80FD\u6D88\u8017\u4F9B\u5E94\u5546\u989D\u5EA6\u3002",
       "Scanning local agent logins": "\u6B63\u5728\u626B\u63CF\u672C\u673A Agent \u767B\u5F55\u6001",
+      "Save this agent profile to continue.": "\u4FDD\u5B58\u8FD9\u4E2A Agent \u914D\u7F6E\u6863\u6848\u540E\u7EE7\u7EED\u3002",
+      "Save this provider to continue.": "\u4FDD\u5B58\u8FD9\u4E2A\u4F9B\u5E94\u5546\u540E\u7EE7\u7EED\u3002",
+      "Secret used for requests": "\u8BF7\u6C42\u4F7F\u7528\u7684\u5BC6\u94A5",
+      "Send a request from your agent, then confirm it appears in Logs.": "\u4ECE Agent \u53D1\u9001\u4E00\u6B21\u8BF7\u6C42\uFF0C\u7136\u540E\u5230\u65E5\u5FD7\u91CC\u786E\u8BA4\u5B83\u5DF2\u7ECF\u51FA\u73B0\u3002",
+      "Setup readiness": "\u914D\u7F6E\u5C31\u7EEA\u72B6\u6001",
+      "Show API key": "\u663E\u793A API key",
+      "Show models": "\u663E\u793A\u6A21\u578B",
+      "Hide API key": "\u9690\u85CF API key",
+      "Hide models": "\u6536\u8D77\u6A21\u578B",
+      "Use one key for every request.": "\u6240\u6709\u8BF7\u6C42\u4F7F\u7528\u540C\u4E00\u4E2A Key\u3002",
+      "Use multiple API keys with optional priorities, weights, and limits.": "\u4F7F\u7528\u591A\u4E2A API Key\uFF0C\u5E76\u53EF\u8BBE\u7F6E\u4F18\u5148\u7EA7\u3001\u6743\u91CD\u548C\u9650\u989D\u3002",
+      "Use multiple keys with optional limits.": "\u4F7F\u7528\u591A\u4E2A Key\uFF0C\u53EF\u9009\u9650\u989D\u3002",
+      "Loading provider models": "\u6B63\u5728\u52A0\u8F7D\u4F9B\u5E94\u5546\u6A21\u578B",
+      "Select models": "\u9009\u62E9\u6A21\u578B",
+      "Search added models": "\u641C\u7D22\u5DF2\u6DFB\u52A0\u6A21\u578B",
+      "Search provider models": "\u641C\u7D22\u4F9B\u5E94\u5546\u6A21\u578B",
+      "Monitor": "\u76D1\u63A7",
+      "Setup": "\u8BBE\u7F6E\u6D41\u7A0B",
       "Select preset provider": "\u9009\u62E9 \u9884\u8BBE\u4F9B\u5E94\u5546",
+      "providers": "\u4F9B\u5E94\u5546",
+      "Workspace": "\u5DE5\u4F5C\u53F0",
       "ZCode login detected. Click Import to add it as a gateway provider.": "\u5DF2\u68C0\u6D4B\u5230 ZCode \u767B\u5F55\u6001\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
+      "ZCode profiles use APP entry mode.": "ZCode \u914D\u7F6E\u6863\u6848\u56FA\u5B9A\u4F7F\u7528 APP \u5165\u53E3\u6A21\u5F0F\u3002",
       "ZCode login was detected, but its local credential is encrypted and cannot be imported automatically.": "\u5DF2\u68C0\u6D4B\u5230 ZCode \u767B\u5F55\u6001\uFF0C\u4F46\u672C\u673A\u51ED\u636E\u5DF2\u52A0\u5BC6\uFF0C\u65E0\u6CD5\u81EA\u52A8\u5BFC\u5165\u3002",
       "ZCode login was detected, but no usable provider API key was found in ZCode config.": "\u5DF2\u68C0\u6D4B\u5230 ZCode \u767B\u5F55\u6001\uFF0C\u4F46 ZCode \u914D\u7F6E\u4E2D\u6CA1\u6709\u627E\u5230\u53EF\u7528\u7684\u4F9B\u5E94\u5546 API key\u3002",
       "ZCode provider API key detected in local ZCode config. Click Import to add it as a gateway provider.": "\u5DF2\u5728\u672C\u673A ZCode \u914D\u7F6E\u4E2D\u68C0\u6D4B\u5230\u4F9B\u5E94\u5546 API key\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
@@ -93769,7 +94117,9 @@ var appCopy = {
       "Pause network capture": "\u6682\u505C\u7F51\u7EDC\u6355\u83B7",
       "Pause service": "\u6682\u505C\u670D\u52A1",
       "Previous page": "\u4E0A\u4E00\u9875",
+      "Previous": "\u4E0A\u4E00\u6B65",
       "Previous step": "\u4E0A\u4E00\u6B65",
+      "Provider setup": "\u4F9B\u5E94\u5546\u8BBE\u7F6E",
       "Proxy not running": "\u4EE3\u7406\u672A\u8FD0\u884C",
       "Proxy status": "\u4EE3\u7406\u72B6\u6001",
       "Proxy CA certificate is trusted.": "Proxy CA \u8BC1\u4E66\u5DF2\u4FE1\u4EFB\u3002",
@@ -93874,6 +94224,7 @@ var appCopy = {
       "enabled": "\u5DF2\u542F\u7528",
       "header": "\u6807\u5934",
       "inactive": "\u672A\u542F\u7528",
+      "model": "\u6A21\u578B",
       "models": "\u6A21\u578B",
       "meters": "\u6307\u6807",
       "not running": "\u672A\u8FD0\u884C",
@@ -93913,12 +94264,12 @@ function translateText(copy, value) {
 }
 
 // packages/ui/src/pages/home/shared/motion.tsx
-var import_jsx_runtime18 = __toESM(require_jsx_runtime());
+var import_jsx_runtime19 = __toESM(require_jsx_runtime());
 var reducedMotionTransition = { duration: 0.12, ease: "easeOut" };
 var listSpringTransition = { damping: 32, mass: 0.62, stiffness: 500, type: "spring" };
 function AnimatedListItem({ children, className, ...props }) {
   const shouldReduceMotion = useReducedMotion();
-  return /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(
     motion.div,
     {
       animate: { opacity: 1, y: 0 },
@@ -93938,7 +94289,7 @@ function AnimatedIconSwap({
   iconKey
 }) {
   const shouldReduceMotion = useReducedMotion();
-  return /* @__PURE__ */ (0, import_jsx_runtime18.jsx)("span", { className: cn("inline-flex shrink-0 items-center justify-center", className), children: /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(AnimatePresence, { initial: false, mode: "wait", children: /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime19.jsx)("span", { className: cn("inline-flex shrink-0 items-center justify-center", className), children: /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(AnimatePresence, { initial: false, mode: "wait", children: /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(
     motion.span,
     {
       animate: shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1 },
@@ -94125,6 +94476,7 @@ function formatUsdCost(value) {
 }
 
 // packages/ui/src/pages/home/shared/options.ts
+var import_lucide_react2 = __toESM(require_lucide_react());
 var overviewWidgetSizeOptions = [
   ...OVERVIEW_WIDGET_SIZE_VALUES.map((size) => ({ label: size, value: size }))
 ];
@@ -94175,6 +94527,19 @@ var fusionWebSearchEnvKeysByProvider = {
   tavily: ["TAVILY_API_KEY", "TAVILY_SEARCH_ENDPOINT"]
 };
 var mcpServerStartupTimeoutMs = 6e5;
+var navigation = [
+  { icon: import_lucide_react2.Gauge, id: "overview" },
+  { icon: import_lucide_react2.Layers3, id: "providers" },
+  { icon: import_lucide_react2.UserRound, id: "profile" },
+  { icon: import_lucide_react2.Route, id: "routing" },
+  { icon: import_lucide_react2.Boxes, id: "virtual-models" },
+  { icon: import_lucide_react2.KeyRound, id: "api-keys" },
+  { icon: import_lucide_react2.Box, id: "models" },
+  { icon: import_lucide_react2.Activity, id: "observability" },
+  { icon: import_lucide_react2.Database, id: "logs" },
+  { icon: import_lucide_react2.Network, id: "networking" },
+  { icon: import_lucide_react2.Braces, id: "extensions" }
+];
 
 // packages/ui/src/pages/home/shared/types.ts
 var import_core2 = __toESM(require_dist3());
@@ -94231,7 +94596,7 @@ function uniqueStrings(values) {
 }
 
 // packages/ui/src/pages/home/shared/services.tsx
-var import_jsx_runtime19 = __toESM(require_jsx_runtime());
+var import_jsx_runtime20 = __toESM(require_jsx_runtime());
 
 // packages/ui/src/pages/home/shared/extensions.ts
 function sanitizeConfigId(value) {
@@ -94272,10 +94637,10 @@ function providerSupportsMediaKind(provider, kind) {
   return isImportedGrokAgentProvider(provider) || (provider.capabilities ?? []).some((item) => capabilities.includes(item.type)) || (provider.models ?? []).some((model) => grokMediaModelKind(model) === kind);
 }
 function createGrokMediaModelOptions(providers, kind) {
-  return providers.flatMap((provider) => grokMediaModelsForProvider(provider, kind).map((model) => ({
+  return providers.flatMap((provider) => isGatewayProviderEnabled(provider) ? grokMediaModelsForProvider(provider, kind).map((model) => ({
     label: `${provider.name}/${mediaModelDisplayName(model)}`,
     value: `${provider.name}/${model}`
-  })));
+  })) : []);
 }
 function mediaModelDisplayName(model) {
   const id3 = model.split("/").pop() ?? model;
@@ -94617,7 +94982,7 @@ function stringRecordValue(value) {
 // packages/ui/src/pages/home/shared/providers.ts
 function createRouteModelOptions(providers) {
   return providers.flatMap((provider) => {
-    if (!provider.name || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !provider.name || !Array.isArray(provider.models)) {
       return [];
     }
     return provider.models.filter(Boolean).map((model) => ({
@@ -94779,10 +95144,10 @@ var botGatewayPlatformSpecs = [
 var botGatewayPlatformOptions = botGatewayPlatformSpecs.map(({ label, value }) => ({ label, value }));
 
 // packages/ui/src/pages/home/shared/controls.tsx
-var import_jsx_runtime20 = __toESM(require_jsx_runtime());
+var import_jsx_runtime21 = __toESM(require_jsx_runtime());
 function Field({ children, className, label }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime20.jsxs)(Label, { className: cn("block min-w-0 space-y-1", className), children: [
-    /* @__PURE__ */ (0, import_jsx_runtime20.jsx)("span", { className: "block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: label }),
+  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Label, { className: cn("block min-w-0 space-y-1", className), children: [
+    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: label }),
     children
   ] });
 }
@@ -94792,10 +95157,16 @@ function SelectControl({
   options,
   value
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(Select, { className, onValueChange: onChange, options, value });
+  return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Select, { className, onValueChange: onChange, options, value });
 }
-function Toggle({ checked, disabled = false, onChange, title }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(Switch, { checked, disabled, onCheckedChange: onChange, title });
+function Toggle({
+  ariaLabel,
+  checked,
+  disabled = false,
+  onChange,
+  title
+}) {
+  return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Switch, { "aria-label": ariaLabel ?? title, checked, disabled, onCheckedChange: onChange, title });
 }
 
 // packages/ui/src/pages/home/shared/logs.ts
@@ -95830,28 +96201,55 @@ function jsonChildPath(parentPath, key) {
 }
 
 // packages/ui/src/pages/home/components/api-keys.tsx
-var import_jsx_runtime21 = __toESM(require_jsx_runtime());
+var import_jsx_runtime22 = __toESM(require_jsx_runtime());
 
 // packages/ui/src/lib/usage-activity.ts
 var dayMs = 24 * 60 * 60 * 1e3;
 
 // packages/ui/src/pages/home/components/share-cards.tsx
-var import_jsx_runtime22 = __toESM(require_jsx_runtime());
+var import_jsx_runtime23 = __toESM(require_jsx_runtime());
+
+// packages/ui/src/components/ui/tooltip.tsx
+var React16 = __toESM(require_react());
+var import_react_dom2 = __toESM(require_react_dom());
+var import_jsx_runtime24 = __toESM(require_jsx_runtime());
+var TooltipPortal = React16.forwardRef(
+  ({ children, className, open = true, role = "tooltip", ...props }, ref) => {
+    if (!open || typeof document === "undefined") {
+      return null;
+    }
+    return (0, import_react_dom2.createPortal)(
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+        "div",
+        {
+          className: cn(
+            "pointer-events-none fixed z-[200] max-w-[min(260px,calc(100vw-24px))] rounded-md border border-border/70 bg-popover px-2 py-1 text-[11px] font-medium leading-4 text-popover-foreground shadow-card-elevated ring-1 ring-black/5",
+            className
+          ),
+          ref,
+          role,
+          ...props,
+          children
+        }
+      ),
+      document.body
+    );
+  }
+);
+TooltipPortal.displayName = "TooltipPortal";
 
 // packages/ui/src/pages/home/components/dashboard.tsx
-var import_react_dom = __toESM(require_react_dom());
-var import_jsx_runtime23 = __toESM(require_jsx_runtime());
+var import_jsx_runtime25 = __toESM(require_jsx_runtime());
 var agentListSurfaceClassName = "rounded-md border border-border/70 bg-card/70 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
 var agentListFrameClassName = cn("overflow-auto", agentListSurfaceClassName);
 
 // packages/ui/src/pages/home/components/extensions.tsx
-var import_jsx_runtime24 = __toESM(require_jsx_runtime());
+var import_jsx_runtime26 = __toESM(require_jsx_runtime());
 
 // packages/ui/src/pages/home/components/network-logs.tsx
 var import_react32 = __toESM(require_react());
-var import_react_dom2 = __toESM(require_react_dom());
-var import_lucide_react3 = __toESM(require_lucide_react());
-var import_jsx_runtime25 = __toESM(require_jsx_runtime());
+var import_lucide_react4 = __toESM(require_lucide_react());
+var import_jsx_runtime27 = __toESM(require_jsx_runtime());
 var logBodyViewCacheLimit = 12;
 var logJsonAutoExpandEntryLimit = 60;
 var logJsonContainerPreviewLimit = 80;
@@ -95872,8 +96270,8 @@ var LogRow = (0, import_react32.memo)(function LogRow2({
   const numberLocale = useAppNumberLocale();
   const createdAt = (0, import_react29.useMemo)(() => formatLogDateTime(item.createdAt), [item.createdAt]);
   const tokenSummary = (0, import_react29.useMemo)(() => formatLogTokenSummary(item, t, numberLocale), [item, numberLocale, t]);
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)(
       "button",
       {
         "aria-expanded": expanded,
@@ -95887,12 +96285,12 @@ var LogRow = (0, import_react32.memo)(function LogRow2({
         style: logTableGridStyle,
         type: "button",
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate px-3 font-mono text-[11px]", title: createdAt, children: createdAt }),
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-w-0 items-center gap-2 px-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.ChevronDown, { className: cn("h-3.5 w-3.5 shrink-0 transition-transform", expanded && "rotate-180") }),
-            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogStatusDot, { entry: item }),
-            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "network-row-secondary truncate", children: item.statusCode || "-" }),
-            item.retryAttempts.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "truncate px-3 font-mono text-[11px]", title: createdAt, children: createdAt }),
+          /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "flex min-w-0 items-center gap-2 px-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(import_lucide_react3.ChevronDown, { className: cn("h-3.5 w-3.5 shrink-0 transition-transform", expanded && "rotate-180") }),
+            /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogStatusDot, { entry: item }),
+            /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "network-row-secondary truncate", children: item.statusCode || "-" }),
+            item.retryAttempts.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)(
               "span",
               {
                 className: "network-service-paused shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold",
@@ -95904,15 +96302,15 @@ var LogRow = (0, import_react32.memo)(function LogRow2({
               }
             ) : null
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogStreamCell, { entry: item }),
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogModelRouteCell, { entry: item }),
-          hasCredentialInfo ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogCredentialCell, { entry: item }) : null,
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-row-secondary truncate px-2", title: tokenSummary, children: tokenSummary }),
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-row-secondary truncate px-2", children: formatDuration(item.durationMs) })
+          /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogStreamCell, { entry: item }),
+          /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogModelRouteCell, { entry: item }),
+          hasCredentialInfo ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogCredentialCell, { entry: item }) : null,
+          /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-row-secondary truncate px-2", title: tokenSummary, children: tokenSummary }),
+          /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-row-secondary truncate px-2", children: formatDuration(item.durationMs) })
         ]
       }
     ),
-    expanded ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogExpandedDetails, { detailError, detailLoading, entry: item }) : null
+    expanded ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogExpandedDetails, { detailError, detailLoading, entry: item }) : null
   ] });
 });
 function LogExpandedDetails({
@@ -95923,42 +96321,46 @@ function LogExpandedDetails({
   const t = useAppText();
   const numberLocale = useAppNumberLocale();
   const hasCredentialInfo = logHasCredentialInfo(entry);
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "network-detail border-b", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "network-detail-bar flex min-h-10 min-w-0 items-center gap-2 border-b px-3 py-1.5", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { className: cn(
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "network-detail border-b", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "network-detail-bar flex min-h-10 min-w-0 items-center gap-2 border-b px-3 py-1.5", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("span", { className: cn(
         "rounded-full px-3 py-1 text-[12px] font-bold uppercase",
         entry.ok ? "network-state-pill-completed" : "network-state-pill-error"
       ), children: [
         "HTTP ",
         entry.statusCode || "-"
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { className: "min-w-0 flex-1 truncate font-mono text-[12px] font-semibold", title: entry.url, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("span", { className: "min-w-0 flex-1 truncate font-mono text-[12px] font-semibold", title: entry.url, children: [
         entry.method,
         " ",
         entry.path
       ] })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: cn("network-body-meta grid grid-cols-2 gap-y-2 border-b px-3 py-2 text-[12px] sm:grid-cols-4", hasCredentialInfo ? "lg:grid-cols-12" : "lg:grid-cols-9"), children: [
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogMetric, { label: t("\u6301\u7EED\u65F6\u95F4"), value: formatDuration(entry.durationMs) }),
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogMetric, { label: t("Stream"), value: entry.isStream ? t("Streaming") : t("Non-streaming") }),
-      entry.credentialId ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogMetric, { label: t("Credential"), value: entry.credentialId }) : null,
-      entry.credentialChain.length ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogMetric, { label: t("Credential chain"), value: entry.credentialChain.join(" > ") }) : null,
-      hasCredentialInfo ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogMetric, { label: t("Credential saturated"), value: entry.credentialSaturated ? t("Yes") : t("No") }) : null,
-      entry.retryAttempts.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogMetric, { label: t("Retry attempts"), value: String(entry.retryAttempts.length) }) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogMetric, { label: t("\u8F93\u5165"), value: formatCompactNumber(entry.inputTokens, numberLocale) }),
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogMetric, { label: t("\u8F93\u51FA"), value: formatCompactNumber(entry.outputTokens, numberLocale) }),
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogMetric, { label: t("Thinking"), value: formatCompactNumber(entry.reasoningTokens, numberLocale) }),
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogMetric, { label: t("\u7F13\u5B58\u8BFB\u53D6"), value: formatCompactNumber(entry.cacheReadTokens, numberLocale) }),
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogMetric, { label: t("\u7F13\u5B58\u5199\u5165"), value: formatCompactNumber(entry.cacheWriteTokens, numberLocale) }),
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogMetric, { label: t("\u603B\u8BA1"), value: formatCompactNumber(entry.totalTokens, numberLocale) }),
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogMetric, { label: t("Cost"), value: formatUsdCost(entry.costUsd ?? 0) })
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: cn("network-body-meta grid grid-cols-2 gap-y-2 border-b px-3 py-2 text-[12px] sm:grid-cols-4", hasCredentialInfo ? "lg:grid-cols-12" : "lg:grid-cols-9"), children: [
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogMetric, { label: t("\u6301\u7EED\u65F6\u95F4"), value: formatDuration(entry.durationMs) }),
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogMetric, { label: t("Stream"), value: entry.isStream ? t("Streaming") : t("Non-streaming") }),
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogMetric, { label: t("Request ID"), value: entry.requestId || "-" }),
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogMetric, { label: t("Client"), value: entry.client || "-" }),
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogMetric, { label: t("Provider"), value: entry.provider || "-" }),
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogMetric, { label: t("Model"), value: entry.model || "-" }),
+      entry.credentialId ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogMetric, { label: t("Credential"), value: entry.credentialId }) : null,
+      entry.credentialChain.length ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogMetric, { label: t("Credential chain"), value: entry.credentialChain.join(" > ") }) : null,
+      hasCredentialInfo ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogMetric, { label: t("Credential saturated"), value: entry.credentialSaturated ? t("Yes") : t("No") }) : null,
+      entry.retryAttempts.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogMetric, { label: t("Retry attempts"), value: String(entry.retryAttempts.length) }) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogMetric, { label: t("\u8F93\u5165"), value: formatCompactNumber(entry.inputTokens, numberLocale) }),
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogMetric, { label: t("\u8F93\u51FA"), value: formatCompactNumber(entry.outputTokens, numberLocale) }),
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogMetric, { label: t("Thinking"), value: formatCompactNumber(entry.reasoningTokens, numberLocale) }),
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogMetric, { label: t("\u7F13\u5B58\u8BFB\u53D6"), value: formatCompactNumber(entry.cacheReadTokens, numberLocale) }),
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogMetric, { label: t("\u7F13\u5B58\u5199\u5165"), value: formatCompactNumber(entry.cacheWriteTokens, numberLocale) }),
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogMetric, { label: t("\u603B\u8BA1"), value: formatCompactNumber(entry.totalTokens, numberLocale) }),
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogMetric, { label: t("Cost"), value: formatUsdCost(entry.costUsd ?? 0) })
     ] }),
-    entry.retryAttempts.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogRetryAttempts, { attempts: entry.retryAttempts }) : null,
-    entry.routeTrace ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogRouteTrace, { trace: entry.routeTrace }) : null,
-    detailLoading || detailError ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: cn("border-b px-3 py-2 text-[12px] font-semibold", detailError ? "network-error-box" : "network-body-meta"), children: detailError || t("Loading full payload...") }) : null,
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "network-detail-panes grid h-[440px] min-h-0 grid-cols-1 lg:grid-cols-2", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogJsonPanel, { body: entry.requestBody, headerEmptyLabel: "No request headers", headers: entry.requestHeaders, title: t("\u8BF7\u6C42") }),
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+    entry.retryAttempts.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogRetryAttempts, { attempts: entry.retryAttempts }) : null,
+    entry.routeTrace ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogRouteTrace, { trace: entry.routeTrace }) : null,
+    detailLoading || detailError ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: cn("border-b px-3 py-2 text-[12px] font-semibold", detailError ? "network-error-box" : "network-body-meta"), children: detailError || t("Loading full payload...") }) : null,
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "network-detail-panes grid h-[440px] min-h-0 grid-cols-1 lg:grid-cols-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogJsonPanel, { body: entry.requestBody, headerEmptyLabel: "No request headers", headers: entry.requestHeaders, title: t("\u8BF7\u6C42") }),
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
         LogJsonPanel,
         {
           body: entry.responseBody,
@@ -95984,31 +96386,31 @@ function LogRouteTrace({ trace }) {
   const t = useAppText();
   const [dialogOpen, setDialogOpen] = (0, import_react29.useState)(false);
   const visibleHopCount = visibleRouteTraceHops(trace).length;
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "network-body-meta flex min-w-0 flex-wrap items-center justify-between gap-3 border-b px-3 py-2.5 text-[12px]", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "font-semibold", children: t("Route trace") }),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "network-muted mt-0.5 text-[11px]", children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)(import_jsx_runtime27.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "network-body-meta flex min-w-0 flex-wrap items-center justify-between gap-3 border-b px-3 py-2.5 text-[12px]", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "min-w-0", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "font-semibold", children: t("Route trace") }),
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "network-muted mt-0.5 text-[11px]", children: [
           visibleHopCount,
           " ",
           t("hops"),
           trace.truncated ? ` \xB7 ${t("truncated")}` : ""
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)(
         "button",
         {
           className: "network-control-button flex h-8 shrink-0 items-center gap-2 rounded-md border px-3 text-[11px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
           onClick: () => setDialogOpen(true),
           type: "button",
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react3.Route, { className: "h-3.5 w-3.5", "aria-hidden": "true" }),
+            /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(import_lucide_react4.Route, { className: "h-3.5 w-3.5", "aria-hidden": "true" }),
             t("View route graph")
           ]
         }
       )
     ] }),
-    dialogOpen ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogRouteTraceDialog, { onClose: () => setDialogOpen(false), trace }) : null
+    dialogOpen ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogRouteTraceDialog, { onClose: () => setDialogOpen(false), trace }) : null
   ] });
 }
 function LogRouteTraceDialog({
@@ -96027,23 +96429,23 @@ function LogRouteTraceDialog({
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [onClose]);
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Dialog, { className: "items-start", onOpenChange: (open) => !open && onClose(), open: true, children: /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(DialogContent, { className: "h-[calc(100dvh-1.5rem)] max-w-[1240px] origin-top sm:h-[min(820px,calc(100dvh-3rem))]", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(DialogHeader, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(DialogTitle, { children: t("Route graph") }),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "mt-0.5 flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-muted-foreground", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(Dialog, { className: "items-start", onOpenChange: (open) => !open && onClose(), open: true, children: /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)(DialogContent, { className: "h-[calc(100dvh-1.5rem)] max-w-[1240px] origin-top sm:h-[min(820px,calc(100dvh-3rem))]", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)(DialogHeader, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "min-w-0", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(DialogTitle, { children: t("Route graph") }),
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "mt-0.5 flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-muted-foreground", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("span", { children: [
             hops.length,
             " ",
             t("hops")
           ] }),
-          trace.truncated ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { "aria-hidden": "true", children: "\xB7" }),
-            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: t("truncated") })
+          trace.truncated ? /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)(import_jsx_runtime27.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { "aria-hidden": "true", children: "\xB7" }),
+            /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { children: t("truncated") })
           ] }) : null
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
         "button",
         {
           "aria-label": t("Close"),
@@ -96051,19 +96453,19 @@ function LogRouteTraceDialog({
           onClick: onClose,
           title: t("Close"),
           type: "button",
-          children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react3.X, { className: "h-3.5 w-3.5", "aria-hidden": "true" })
+          children: /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(import_lucide_react4.X, { className: "h-3.5 w-3.5", "aria-hidden": "true" })
         }
       )
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(DialogBody, { className: "flex min-h-0 flex-col overflow-hidden p-0", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "network-body-meta shrink-0 border-b px-4 py-3", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-muted text-[11px] font-semibold", children: t("Hover a node to inspect routing operations") }),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "mt-3 overflow-x-auto rounded-md border border-[color:var(--network-border)] bg-card/40", children: hops.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-muted flex min-h-40 items-center justify-center px-4 text-[12px]", children: t("No route activity") }) : /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "flex min-w-max items-center px-5 py-6", role: "list", "aria-label": t("Route graph"), children: hops.map((hop, index) => /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex items-center", role: "listitem", children: [
-          index > 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex w-12 shrink-0 items-center text-border", "aria-hidden": "true", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "h-px flex-1 bg-current" }),
-            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.ChevronRight, { className: "-ml-1 h-4 w-4" })
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)(DialogBody, { className: "flex min-h-0 flex-col overflow-hidden p-0", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "network-body-meta shrink-0 border-b px-4 py-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-muted text-[11px] font-semibold", children: t("Select a route node to inspect routing operations") }),
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "mt-3 overflow-x-auto rounded-md border border-[color:var(--network-border)] bg-card/40", children: hops.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-muted flex min-h-40 items-center justify-center px-4 text-[12px]", children: t("No route activity") }) : /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "flex min-w-max items-center px-5 py-6", role: "list", "aria-label": t("Route graph"), children: hops.map((hop, index) => /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "flex items-center", role: "listitem", children: [
+          index > 0 ? /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "flex w-12 shrink-0 items-center text-border", "aria-hidden": "true", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "h-px flex-1 bg-current" }),
+            /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(import_lucide_react3.ChevronRight, { className: "-ml-1 h-4 w-4" })
           ] }) : null,
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)(
             "button",
             {
               "aria-label": `${t("Route node")} ${index + 1}: ${routeHopDisplayName(hop.name, t)}`,
@@ -96071,32 +96473,33 @@ function LogRouteTraceDialog({
                 "flex h-[116px] w-[184px] shrink-0 flex-col rounded-md border border-border bg-card p-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/40",
                 activeHopSequence === hop.seq && "border-primary/60 bg-primary/5 ring-2 ring-primary/10"
               ),
+              onClick: () => setActiveHopSequence(hop.seq),
               onFocus: () => setActiveHopSequence(hop.seq),
               onMouseEnter: () => setActiveHopSequence(hop.seq),
               type: "button",
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { className: "flex min-w-0 items-center gap-2", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: cn(
+                /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("span", { className: "flex min-w-0 items-center gap-2", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: cn(
                     "h-2.5 w-2.5 shrink-0 rounded-full",
                     hop.status === "error" ? "network-dot-error" : hop.status === "noop" ? "network-service-muted" : "network-dot-completed"
                   ) }),
-                  /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { className: "network-muted truncate text-[10px] font-bold uppercase", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("span", { className: "network-muted truncate text-[10px] font-bold uppercase", children: [
                     "#",
                     index + 1
                   ] }),
-                  hop.attempt ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { className: "network-muted ml-auto shrink-0 text-[10px]", children: [
+                  hop.attempt ? /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("span", { className: "network-muted ml-auto shrink-0 text-[10px]", children: [
                     "A",
                     hop.attempt
                   ] }) : null
                 ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "mt-3 line-clamp-2 break-words text-[12px] font-bold leading-4", children: routeHopDisplayName(hop.name, t) }),
-                /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "network-muted mt-auto flex items-center justify-end text-[10px]", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: formatDuration(hop.durationMs) }) })
+                /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "mt-3 line-clamp-2 break-words text-[12px] font-bold leading-4", children: routeHopDisplayName(hop.name, t) }),
+                /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "network-muted mt-auto flex items-center justify-end text-[10px]", children: /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { children: formatDuration(hop.durationMs) }) })
               ]
             }
           )
         ] }, `${hop.seq}-${hop.name}`)) }) })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "min-h-0 flex-1 overflow-auto p-4", id: "route-hop-details", children: activeHop ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogRouteHopDetails, { hop: activeHop, index: activeHopIndex }) : /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-muted flex min-h-52 items-center justify-center rounded-md border border-dashed border-border px-4 text-center text-[12px]", children: t("Hover over a route node to inspect its operations.") }) })
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "min-h-0 flex-1 overflow-auto p-4", id: "route-hop-details", children: activeHop ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogRouteHopDetails, { hop: activeHop, index: activeHopIndex }) : /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-muted flex min-h-52 items-center justify-center rounded-md border border-dashed border-border px-4 text-center text-[12px]", children: t("Select a route node to inspect its operations.") }) })
     ] })
   ] }) });
 }
@@ -96105,39 +96508,39 @@ function LogRouteHopDetails({ hop, index }) {
   const target = routeHopTargetSummary(hop);
   const outcome = routeHopOutcomeSummary(hop);
   const explanation = [hop.decision?.source, hop.decision?.ruleName ?? hop.decision?.ruleId, hop.decision?.reason].filter(Boolean).join(" \xB7 ");
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-w-0 flex-wrap items-start justify-between gap-3 border-b border-border pb-3", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-w-0 flex-wrap items-center gap-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { className: "network-muted text-[10px] font-bold uppercase", children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "min-w-0", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "flex min-w-0 flex-wrap items-start justify-between gap-3 border-b border-border pb-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "min-w-0", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "flex min-w-0 flex-wrap items-center gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("span", { className: "network-muted text-[10px] font-bold uppercase", children: [
             t("Route node"),
             " #",
             index + 1
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground", children: t(hop.phase) }),
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: cn(
+          /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground", children: t(hop.phase) }),
+          /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: cn(
             "rounded px-1.5 py-0.5 text-[10px] font-bold uppercase",
             hop.status === "error" ? "network-state-pill-error" : hop.status === "noop" ? "network-service-muted" : "network-state-pill-completed"
           ), children: t(hop.status) }),
-          hop.attempt ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { className: "network-muted text-[10px]", children: [
+          hop.attempt ? /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("span", { className: "network-muted text-[10px]", children: [
             t("Attempt"),
             " #",
             hop.attempt
           ] }) : null
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "mt-1 break-words font-mono text-[13px] font-bold", children: hop.name })
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "mt-1 break-words font-mono text-[13px] font-bold", children: hop.name })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-muted shrink-0 text-right font-mono text-[10px]", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { children: formatDuration(hop.durationMs) }) })
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-muted shrink-0 text-right font-mono text-[10px]", children: /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { children: formatDuration(hop.durationMs) }) })
     ] }),
-    explanation || target || outcome ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "grid gap-2 border-b border-border py-3 text-[11px] md:grid-cols-3", children: [
-      explanation ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(RouteHopDetail, { label: t("Decision"), value: explanation }) : null,
-      target ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(RouteHopDetail, { label: t("Target"), mono: true, value: target }) : null,
-      outcome ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(RouteHopDetail, { danger: hop.status === "error", label: t("Result"), value: outcome }) : null
+    explanation || target || outcome ? /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "grid gap-2 border-b border-border py-3 text-[11px] md:grid-cols-3", children: [
+      explanation ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(RouteHopDetail, { label: t("Decision"), value: explanation }) : null,
+      target ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(RouteHopDetail, { label: t("Target"), mono: true, value: target }) : null,
+      outcome ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(RouteHopDetail, { danger: hop.status === "error", label: t("Result"), value: outcome }) : null
     ] }) : null,
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "pt-3", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "mb-2 text-[11px] font-semibold", children: t("Routing operations") }),
-      hop.changes.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "overflow-x-auto rounded border border-[color:var(--network-border)]", children: hop.changes.map((change, changeIndex) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogRouteChange, { change, index: changeIndex }, `${change.path}-${changeIndex}`)) }) : /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-muted rounded border border-dashed border-border px-3 py-4 text-[11px]", children: t("No request fields changed") }),
-      hop.truncated ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-service-paused mt-2 text-[10px]", children: t("This hop was truncated") }) : null
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "pt-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "mb-2 text-[11px] font-semibold", children: t("Routing operations") }),
+      hop.changes.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "overflow-x-auto rounded border border-[color:var(--network-border)]", children: hop.changes.map((change, changeIndex) => /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogRouteChange, { change, index: changeIndex }, `${change.path}-${changeIndex}`)) }) : /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-muted rounded border border-dashed border-border px-3 py-4 text-[11px]", children: t("No request fields changed") }),
+      hop.truncated ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-service-paused mt-2 text-[10px]", children: t("This hop was truncated") }) : null
     ] })
   ] });
 }
@@ -96147,9 +96550,9 @@ function RouteHopDetail({
   mono,
   value
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0 rounded-md bg-muted/50 px-3 py-2", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-muted text-[10px] font-semibold uppercase", children: label }),
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: cn("mt-1 break-words text-[11px]", mono && "font-mono", danger && "network-error-text"), children: value })
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "min-w-0 rounded-md bg-muted/50 px-3 py-2", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-muted text-[10px] font-semibold uppercase", children: label }),
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: cn("mt-1 break-words text-[11px]", mono && "font-mono", danger && "network-error-text"), children: value })
   ] });
 }
 function routeHopDisplayName(name, t) {
@@ -96185,15 +96588,15 @@ function routeHopDisplayName(name, t) {
 function LogRouteChange({ change, index }) {
   const t = useAppText();
   const displayPath = formatRouteTracePath(change);
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: cn(
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: cn(
     "grid min-w-[560px] grid-cols-[76px_minmax(160px,0.8fr)_minmax(0,1fr)_28px_minmax(0,1fr)] border-b last:border-b-0 text-[10px]",
     index % 2 === 0 ? "network-kv-row-even" : "network-kv-row-odd"
   ), children: [
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "border-r border-[color:var(--network-border)] px-2 py-1.5 font-bold uppercase", children: t(change.operation) }),
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "border-r border-[color:var(--network-border)] px-2 py-1.5 font-mono", title: displayPath, children: displayPath }),
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(RouteTraceChangeValue, { change, side: "before" }),
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-muted flex items-center justify-center border-r border-[color:var(--network-border)]", children: "\u2192" }),
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(RouteTraceChangeValue, { change, side: "after" })
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "border-r border-[color:var(--network-border)] px-2 py-1.5 font-bold uppercase", children: t(change.operation) }),
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "border-r border-[color:var(--network-border)] px-2 py-1.5 font-mono", title: displayPath, children: displayPath }),
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(RouteTraceChangeValue, { change, side: "before" }),
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-muted flex items-center justify-center border-r border-[color:var(--network-border)]", children: "\u2192" }),
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(RouteTraceChangeValue, { change, side: "after" })
   ] });
 }
 function RouteTraceChangeValue({
@@ -96205,7 +96608,7 @@ function RouteTraceChangeValue({
   const value = change[side];
   const isAbsentValue = side === "before" && change.operation === "add" || side === "after" && change.operation === "remove";
   const text = hasRecordedValue ? formatRouteTraceValue(value) : t(isAbsentValue ? "Not present" : "Not recorded");
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "max-h-24 overflow-auto whitespace-pre-wrap break-all border-r border-[color:var(--network-border)] px-2 py-1.5 font-mono last:border-r-0", title: text, children: text });
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "max-h-24 overflow-auto whitespace-pre-wrap break-all border-r border-[color:var(--network-border)] px-2 py-1.5 font-mono last:border-r-0", title: text, children: text });
 }
 function routeHopTargetSummary(hop) {
   const target = hop.target;
@@ -96239,19 +96642,19 @@ function formatRouteTraceValue(value) {
 }
 function LogRetryAttempts({ attempts }) {
   const t = useAppText();
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "network-body-meta border-b px-3 py-2 text-[12px]", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "mb-2 flex min-w-0 items-center justify-between gap-3", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "min-w-0 truncate font-semibold", children: t("Retry attempts") }),
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-muted shrink-0 font-mono text-[11px]", children: attempts.length })
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "network-body-meta border-b px-3 py-2 text-[12px]", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "mb-2 flex min-w-0 items-center justify-between gap-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "min-w-0 truncate font-semibold", children: t("Retry attempts") }),
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-muted shrink-0 font-mono text-[11px]", children: attempts.length })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "overflow-x-auto rounded border border-[color:var(--network-border)]", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "network-kv-header grid min-w-[520px] grid-cols-[96px_1fr_140px_120px] border-b text-[11px] font-bold", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "border-r border-[color:var(--network-border-strong)] px-3 py-2", children: t("Attempt") }),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "border-r border-[color:var(--network-border-strong)] px-3 py-2", children: t("Result") }),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "border-r border-[color:var(--network-border-strong)] px-3 py-2", children: t("Next retry wait") }),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "px-3 py-2", children: t("Type") })
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "overflow-x-auto rounded border border-[color:var(--network-border)]", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "network-kv-header grid min-w-[520px] grid-cols-[96px_1fr_140px_120px] border-b text-[11px] font-bold", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "border-r border-[color:var(--network-border-strong)] px-3 py-2", children: t("Attempt") }),
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "border-r border-[color:var(--network-border-strong)] px-3 py-2", children: t("Result") }),
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "border-r border-[color:var(--network-border-strong)] px-3 py-2", children: t("Next retry wait") }),
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "px-3 py-2", children: t("Type") })
       ] }),
-      attempts.map((attempt, index) => /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
+      attempts.map((attempt, index) => /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)(
         "div",
         {
           className: cn(
@@ -96259,13 +96662,13 @@ function LogRetryAttempts({ attempts }) {
             index % 2 === 0 ? "network-kv-row-even" : "network-kv-row-odd"
           ),
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "border-r border-[color:var(--network-border-strong)] px-3 py-2 font-mono", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "border-r border-[color:var(--network-border-strong)] px-3 py-2 font-mono", children: [
               "#",
               attempt.attempt
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "border-r border-[color:var(--network-border-strong)] px-3 py-2 font-mono", children: attempt.status ?? "-" }),
-            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "border-r border-[color:var(--network-border-strong)] px-3 py-2 font-mono", children: attempt.final ? "-" : formatDuration(attempt.delayMs) }),
-            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "px-3 py-2", children: attempt.final ? t("Final attempt") : t("Retry") })
+            /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "border-r border-[color:var(--network-border-strong)] px-3 py-2 font-mono", children: attempt.status ?? "-" }),
+            /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "border-r border-[color:var(--network-border-strong)] px-3 py-2 font-mono", children: attempt.final ? "-" : formatDuration(attempt.delayMs) }),
+            /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "px-3 py-2", children: attempt.final ? t("Final attempt") : t("Retry") })
           ]
         },
         `${attempt.attempt}-${attempt.final ? "final" : "retry"}`
@@ -96274,15 +96677,15 @@ function LogRetryAttempts({ attempts }) {
   ] });
 }
 function LogMetric({ label, value }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-muted truncate text-[11px]", children: label }),
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate font-mono text-[12px] font-semibold", children: value })
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "min-w-0", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-muted truncate text-[11px]", children: label }),
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "truncate font-mono text-[12px] font-semibold", children: value })
   ] });
 }
 function LogModelRouteCell({ entry }) {
   const requestModel = logRequestModel(entry);
   const responseModel = logResponseModel(entry);
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogModelTooltip, { requestModel, responseModel });
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogModelTooltip, { requestModel, responseModel });
 }
 function LogModelTooltip({
   requestModel,
@@ -96321,8 +96724,8 @@ function LogModelTooltip({
       width
     });
   };
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)(import_jsx_runtime27.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)(
       "div",
       {
         className: "flex min-w-0 items-center px-2",
@@ -96330,35 +96733,31 @@ function LogModelTooltip({
         onMouseLeave: () => setTooltip(void 0),
         ref: triggerRef,
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "min-w-0 max-w-[45%] truncate", children: requestModel }),
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.MoveRight, { className: "mx-1 h-3.5 w-3.5 shrink-0 text-muted-foreground", "aria-hidden": "true" }),
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "min-w-0 max-w-[45%] truncate", children: responseModel })
+          /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "min-w-0 max-w-[45%] truncate", children: requestModel }),
+          /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(import_lucide_react3.MoveRight, { className: "mx-1 h-3.5 w-3.5 shrink-0 text-muted-foreground", "aria-hidden": "true" }),
+          /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "min-w-0 max-w-[45%] truncate", children: responseModel })
         ]
       }
     ),
-    tooltip ? (0, import_react_dom2.createPortal)(
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
-        "div",
-        {
-          className: "pointer-events-none fixed z-[100] break-all rounded-md border border-border bg-popover px-2.5 py-1.5 font-mono text-[11px] font-medium text-popover-foreground shadow-card-elevated",
-          role: "tooltip",
-          style: {
-            left: tooltip.left,
-            top: tooltip.top,
-            transform: tooltip.placement === "above" ? "translateY(-100%)" : void 0,
-            width: tooltip.width
-          },
-          children: value
-        }
-      ),
-      document.body
+    tooltip ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
+      TooltipPortal,
+      {
+        className: "break-all px-2.5 py-1.5 font-mono",
+        style: {
+          left: tooltip.left,
+          top: tooltip.top,
+          transform: tooltip.placement === "above" ? "translateY(-100%)" : void 0,
+          width: tooltip.width
+        },
+        children: value
+      }
     ) : null
   ] });
 }
 function LogCredentialCell({ entry }) {
   const label = logCredentialCellLabel(entry);
   const title = entry.credentialChain.length ? entry.credentialChain.join(" > ") : label;
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-row-secondary truncate px-2", title, children: label });
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-row-secondary truncate px-2", title, children: label });
 }
 function logHasCredentialInfo(entry) {
   return Boolean(entry.credentialId || entry.credentialChain.length > 0 || entry.credentialSaturated);
@@ -96367,12 +96766,12 @@ function logCredentialCellLabel(entry) {
   return entry.credentialId || entry.credentialChain[0] || (entry.credentialSaturated ? "saturated" : "-");
 }
 function LogStatusDot({ entry }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: cn("h-3 w-3 shrink-0 rounded-full", entry.ok ? "network-dot-completed" : "network-dot-error") });
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: cn("h-3 w-3 shrink-0 rounded-full", entry.ok ? "network-dot-completed" : "network-dot-error") });
 }
 function LogStreamCell({ entry }) {
   const t = useAppText();
   const label = entry.isStream ? t("Streaming") : t("Non-streaming");
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-row-secondary truncate px-2", title: label, children: label });
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-row-secondary truncate px-2", title: label, children: label });
 }
 function LogJsonPanel({
   body,
@@ -96421,11 +96820,11 @@ function LogJsonPanel({
       return next;
     });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: cn("network-pane-split flex min-h-0 min-w-0 flex-col", className), children: [
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "network-pane-header flex h-10 min-w-0 shrink-0 items-center gap-3 border-b px-3", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "network-pane-title shrink-0 text-[14px] font-bold", children: title }),
-      subtitle ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "network-muted shrink-0 text-[12px] font-semibold", children: subtitle }) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-payload-tabs flex min-w-0 items-center rounded-md border p-0.5", children: ["body", "header"].map((tab) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: cn("network-pane-split flex min-h-0 min-w-0 flex-col", className), children: [
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "network-pane-header flex h-10 min-w-0 shrink-0 items-center gap-3 border-b px-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "network-pane-title shrink-0 text-[14px] font-bold", children: title }),
+      subtitle ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "network-muted shrink-0 text-[12px] font-semibold", children: subtitle }) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-payload-tabs flex min-w-0 items-center rounded-md border p-0.5", children: ["body", "header"].map((tab) => /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
         "button",
         {
           "aria-pressed": selectedTab === tab,
@@ -96440,8 +96839,8 @@ function LogJsonPanel({
         tab
       )) })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-pane-body flex min-h-0 flex-1 flex-col overflow-hidden", children: selectedTab === "body" ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-pane-body flex min-h-0 flex-1 flex-col overflow-hidden", children: selectedTab === "body" ? /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)(import_jsx_runtime27.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
         LogJsonBodyToolbar,
         {
           body,
@@ -96453,14 +96852,14 @@ function LogJsonPanel({
           title
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
         LogBodyViewer,
         {
           copyLabel: `${t("Copy")} ${title} ${t("body")}`,
           copyText: formatted,
           fullscreenLabel: t("Open fullscreen JSON viewer"),
           onFullscreen: () => setFullscreenOpen(true),
-          children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+          children: /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
             LogJsonBodyContent,
             {
               expandedJsonPaths,
@@ -96472,7 +96871,7 @@ function LogJsonPanel({
           )
         }
       ),
-      fullscreenOpen ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+      fullscreenOpen ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
         LogJsonFullscreenViewer,
         {
           body,
@@ -96493,7 +96892,7 @@ function LogJsonPanel({
           value: bodyView.json
         }
       ) : null
-    ] }) : /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "min-h-0 flex-1 overflow-auto", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(NetworkKeyValueTable, { emptyLabel: headerEmptyLabel, rows: headerRows }) }) })
+    ] }) : /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "min-h-0 flex-1 overflow-auto", children: /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(NetworkKeyValueTable, { emptyLabel: headerEmptyLabel, rows: headerRows }) }) })
   ] });
 }
 function LogJsonBodyToolbar({
@@ -96506,10 +96905,10 @@ function LogJsonBodyToolbar({
   title
 }) {
   const t = useAppText();
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "network-body-meta flex min-h-9 shrink-0 items-center gap-2 border-b px-3 py-1.5", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "relative min-w-[180px] flex-1", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.Search, { className: "network-search-icon pointer-events-none absolute left-2 top-1/2 z-[1] h-3 w-3 -translate-y-1/2" }),
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "network-body-meta flex min-h-9 shrink-0 items-center gap-2 border-b px-3 py-1.5", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "relative min-w-[180px] flex-1", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(import_lucide_react3.Search, { className: "network-search-icon pointer-events-none absolute left-2 top-1/2 z-[1] h-3 w-3 -translate-y-1/2" }),
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
         "input",
         {
           "aria-label": `${t("Filter")} ${title} JSON`,
@@ -96520,7 +96919,7 @@ function LogJsonBodyToolbar({
         }
       )
     ] }),
-    bodyView.json !== void 0 && query.trim() === "" ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+    bodyView.json !== void 0 && query.trim() === "" ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
       "button",
       {
         className: "network-tab shrink-0 border-0 bg-transparent p-0 text-[11px] font-semibold outline-none",
@@ -96529,8 +96928,8 @@ function LogJsonBodyToolbar({
         children: preferTextBody ? "JSON" : t("Show full content")
       }
     ) : null,
-    body?.contentType ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "network-muted hidden shrink-0 text-[11px] font-semibold sm:inline", children: body.contentType }) : null,
-    body?.truncated ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "network-service-paused rounded-full px-2 py-0.5 text-[11px] font-semibold", children: t("truncated") }) : null
+    body?.contentType ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "network-muted hidden shrink-0 text-[11px] font-semibold sm:inline", children: body.contentType }) : null,
+    body?.truncated ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "network-service-paused rounded-full px-2 py-0.5 text-[11px] font-semibold", children: t("truncated") }) : null
   ] });
 }
 function LogJsonBodyContent({
@@ -96540,7 +96939,7 @@ function LogJsonBodyContent({
   value,
   visible
 }) {
-  return showJsonTree ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogJsonTree, { expandedPaths: expandedJsonPaths, onToggle: onToggleJsonPath, value }) : /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("pre", { className: "network-code min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-3 pr-20 font-mono text-[11px] leading-5", children: visible });
+  return showJsonTree ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogJsonTree, { expandedPaths: expandedJsonPaths, onToggle: onToggleJsonPath, value }) : /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("pre", { className: "network-code min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-3 pr-20 font-mono text-[11px] leading-5", children: visible });
 }
 function LogJsonFullscreenViewer({
   body,
@@ -96561,18 +96960,18 @@ function LogJsonFullscreenViewer({
   visible
 }) {
   const t = useAppText();
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
     "div",
     {
       "aria-label": `${title} ${t("Fullscreen JSON viewer")}`,
       "aria-modal": "true",
       className: "network-json-fullscreen fixed inset-0 z-[100] flex min-h-0",
       role: "dialog",
-      children: /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "network-json-fullscreen-panel flex min-h-0 flex-1 flex-col overflow-hidden border", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "network-json-fullscreen-header flex h-12 min-w-0 shrink-0 items-center gap-3 border-b px-4", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "network-pane-title min-w-0 truncate text-[15px] font-bold", children: title }),
-          subtitle ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "network-muted shrink-0 text-[12px] font-semibold", children: subtitle }) : null,
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+      children: /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "network-json-fullscreen-panel flex min-h-0 flex-1 flex-col overflow-hidden border", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "network-json-fullscreen-header flex h-12 min-w-0 shrink-0 items-center gap-3 border-b px-4", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "network-pane-title min-w-0 truncate text-[15px] font-bold", children: title }),
+          subtitle ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "network-muted shrink-0 text-[12px] font-semibold", children: subtitle }) : null,
+          /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
             "button",
             {
               "aria-label": t("Close fullscreen JSON viewer"),
@@ -96580,11 +96979,11 @@ function LogJsonFullscreenViewer({
               onClick: onClose,
               title: t("Close"),
               type: "button",
-              children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react3.X, { className: "h-3.5 w-3.5" })
+              children: /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(import_lucide_react4.X, { className: "h-3.5 w-3.5" })
             }
           )
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
           LogJsonBodyToolbar,
           {
             body,
@@ -96596,7 +96995,7 @@ function LogJsonFullscreenViewer({
             title
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-json-fullscreen-body flex min-h-0 flex-1", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LogBodyViewer, { copyLabel, copyText, children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-json-fullscreen-body flex min-h-0 flex-1", children: /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(LogBodyViewer, { copyLabel, copyText, children: /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
           LogJsonBodyContent,
           {
             expandedJsonPaths,
@@ -96717,9 +97116,9 @@ function LogBodyViewer({
     await copyTextToClipboard(copyText);
     setCopied(true);
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "relative flex min-h-0 flex-1", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "absolute right-2 top-2 z-10 flex items-center gap-1", children: [
-      onFullscreen ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "relative flex min-h-0 flex-1", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "absolute right-2 top-2 z-10 flex items-center gap-1", children: [
+      onFullscreen ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
         "button",
         {
           "aria-label": fullscreenLabel ?? t("Open fullscreen JSON viewer"),
@@ -96727,10 +97126,10 @@ function LogBodyViewer({
           onClick: onFullscreen,
           title: fullscreenLabel ?? t("Open fullscreen JSON viewer"),
           type: "button",
-          children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react3.Maximize2, { className: "h-3.5 w-3.5" })
+          children: /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(import_lucide_react4.Maximize2, { className: "h-3.5 w-3.5" })
         }
       ) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
         "button",
         {
           "aria-label": copyLabel,
@@ -96741,7 +97140,7 @@ function LogBodyViewer({
           onClick: () => void copyBody(),
           title: copied ? t("Copied") : t("\u590D\u5236"),
           type: "button",
-          children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(AnimatedIconSwap, { iconKey: copied ? "copied" : "copy", children: copied ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.Check, { className: "h-3.5 w-3.5" }) : /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.Copy, { className: "h-3.5 w-3.5" }) })
+          children: /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(AnimatedIconSwap, { iconKey: copied ? "copied" : "copy", children: copied ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(import_lucide_react3.Check, { className: "h-3.5 w-3.5" }) : /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(import_lucide_react3.Copy, { className: "h-3.5 w-3.5" }) })
         }
       )
     ] }),
@@ -96753,7 +97152,7 @@ function LogJsonTree({
   onToggle,
   value
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-code min-h-0 flex-1 overflow-auto p-3 pr-20 font-mono text-[11px] leading-5", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(JsonTreeNode, { expandedPaths, onToggle, path: "$", value }) });
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-code min-h-0 flex-1 overflow-auto p-3 pr-20 font-mono text-[11px] leading-5", children: /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(JsonTreeNode, { expandedPaths, onToggle, path: "$", value }) });
 }
 function JsonTreeNode({
   depth = 0,
@@ -96767,10 +97166,10 @@ function JsonTreeNode({
 }) {
   const t = useAppText();
   if (!isJsonContainer(value)) {
-    return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0 whitespace-pre-wrap break-words", style: { paddingLeft: depth * 16 }, children: [
-      label !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(JsonTreeLabel, { kind: labelKind, label }) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(JsonPrimitiveValue, { value }),
-      trailingComma ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: "," }) : null
+    return /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "min-w-0 whitespace-pre-wrap break-words", style: { paddingLeft: depth * 16 }, children: [
+      label !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(JsonTreeLabel, { kind: labelKind, label }) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(JsonPrimitiveValue, { value }),
+      trailingComma ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { children: "," }) : null
     ] });
   }
   const expanded = expandedPaths.has(path);
@@ -96780,19 +97179,19 @@ function JsonTreeNode({
   const visibleEntries = expanded ? jsonContainerPreviewEntries(value) : [];
   const hasHiddenEntries = expanded && jsonContainerEntryCount(value, logJsonContainerPreviewLimit + 1) > visibleEntries.length;
   if (entryCount === 0) {
-    return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0 whitespace-pre-wrap break-words", style: { paddingLeft: depth * 16 }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "inline-block w-4" }),
-      label !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(JsonTreeLabel, { kind: labelKind, label }) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "min-w-0 whitespace-pre-wrap break-words", style: { paddingLeft: depth * 16 }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "inline-block w-4" }),
+      label !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(JsonTreeLabel, { kind: labelKind, label }) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("span", { children: [
         open,
         close
       ] }),
-      trailingComma ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: "," }) : null
+      trailingComma ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { children: "," }) : null
     ] });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0 whitespace-pre-wrap break-words", style: { paddingLeft: depth * 16 }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "min-w-0", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "min-w-0 whitespace-pre-wrap break-words", style: { paddingLeft: depth * 16 }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
         "button",
         {
           "aria-expanded": expanded,
@@ -96801,23 +97200,23 @@ function JsonTreeNode({
           onClick: () => onToggle(path),
           title: expanded ? t("Collapse") : t("Expand"),
           type: "button",
-          children: expanded ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.ChevronDown, { className: "h-3 w-3" }) : /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.ChevronRight, { className: "h-3 w-3" })
+          children: expanded ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(import_lucide_react3.ChevronDown, { className: "h-3 w-3" }) : /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(import_lucide_react3.ChevronRight, { className: "h-3 w-3" })
         }
       ),
-      label !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(JsonTreeLabel, { kind: labelKind, label }) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: open }),
-      !expanded ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { className: "network-muted", children: [
+      label !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(JsonTreeLabel, { kind: labelKind, label }) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { children: open }),
+      !expanded ? /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)(import_jsx_runtime27.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("span", { className: "network-muted", children: [
           " ",
           jsonContainerPreviewSummary(value),
           " "
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: close }),
-        trailingComma ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: "," }) : null
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { children: close }),
+        trailingComma ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { children: "," }) : null
       ] }) : null
     ] }),
-    expanded ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
-      visibleEntries.map(([key, childValue], index) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+    expanded ? /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)(import_jsx_runtime27.Fragment, { children: [
+      visibleEntries.map(([key, childValue], index) => /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
         JsonTreeNode,
         {
           depth: depth + 1,
@@ -96831,50 +97230,50 @@ function JsonTreeNode({
         },
         `${path}/${key}`
       )),
-      hasHiddenEntries ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "network-muted min-w-0 whitespace-pre-wrap break-words", style: { paddingLeft: (depth + 1) * 16 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "inline-block w-4" }),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: jsonContainerHiddenSummary(value, visibleEntries.length) })
+      hasHiddenEntries ? /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "network-muted min-w-0 whitespace-pre-wrap break-words", style: { paddingLeft: (depth + 1) * 16 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "inline-block w-4" }),
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { children: jsonContainerHiddenSummary(value, visibleEntries.length) })
       ] }) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0 whitespace-pre-wrap break-words", style: { paddingLeft: depth * 16 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "inline-block w-4" }),
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: close }),
-        trailingComma ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: "," }) : null
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "min-w-0 whitespace-pre-wrap break-words", style: { paddingLeft: depth * 16 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "inline-block w-4" }),
+        /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { children: close }),
+        trailingComma ? /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { children: "," }) : null
       ] })
     ] }) : null
   ] });
 }
 function JsonTreeLabel({ kind, label }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: kind === "index" ? "network-muted" : "text-[color:var(--network-accent)]", children: kind === "index" ? label : JSON.stringify(label) }),
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: ": " })
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)(import_jsx_runtime27.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: kind === "index" ? "network-muted" : "text-[color:var(--network-accent)]", children: kind === "index" ? label : JSON.stringify(label) }),
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { children: ": " })
   ] });
 }
 function JsonPrimitiveValue({ value }) {
   if (typeof value === "string") {
-    return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "text-emerald-600 dark:text-emerald-300", children: JSON.stringify(value) });
+    return /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "text-emerald-600 dark:text-emerald-300", children: JSON.stringify(value) });
   }
   if (typeof value === "number") {
-    return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "text-blue-600 dark:text-blue-300", children: String(value) });
+    return /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "text-blue-600 dark:text-blue-300", children: String(value) });
   }
   if (typeof value === "boolean") {
-    return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "text-purple-600 dark:text-purple-300", children: String(value) });
+    return /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "text-purple-600 dark:text-purple-300", children: String(value) });
   }
   if (value === null) {
-    return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "network-muted", children: "null" });
+    return /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { className: "network-muted", children: "null" });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: String(value) });
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("span", { children: String(value) });
 }
 function NetworkKeyValueTable({ emptyLabel = "No values", rows }) {
   const t = useAppText();
   if (rows.length === 0) {
-    return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-kv-empty px-4 py-10 text-center text-[12px] font-semibold", children: t(emptyLabel) });
+    return /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-kv-empty px-4 py-10 text-center text-[12px] font-semibold", children: t(emptyLabel) });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-[520px]", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "network-kv-header grid h-9 grid-cols-[minmax(180px,0.9fr)_minmax(280px,1.6fr)] items-center border-b text-[12px] font-bold", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-kv-key-head border-r px-3", children: t("Key") }),
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "px-3", children: t("Value") })
+  return /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "min-w-[520px]", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)("div", { className: "network-kv-header grid h-9 grid-cols-[minmax(180px,0.9fr)_minmax(280px,1.6fr)] items-center border-b text-[12px] font-bold", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-kv-key-head border-r px-3", children: t("Key") }),
+      /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "px-3", children: t("Value") })
     ] }),
-    rows.map(([key, value], index) => /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
+    rows.map(([key, value], index) => /* @__PURE__ */ (0, import_jsx_runtime27.jsxs)(
       "div",
       {
         className: cn(
@@ -96882,8 +97281,8 @@ function NetworkKeyValueTable({ emptyLabel = "No values", rows }) {
           index % 2 === 0 ? "network-kv-row-even" : "network-kv-row-odd"
         ),
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-kv-key min-w-0 px-3 py-2", children: key }),
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "network-kv-value min-w-0 whitespace-pre-wrap break-words px-3 py-2", children: value })
+          /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-kv-key min-w-0 px-3 py-2", children: key }),
+          /* @__PURE__ */ (0, import_jsx_runtime27.jsx)("div", { className: "network-kv-value min-w-0 whitespace-pre-wrap break-words px-3 py-2", children: value })
         ]
       },
       `${key}-${index}`
@@ -96892,22 +97291,22 @@ function NetworkKeyValueTable({ emptyLabel = "No values", rows }) {
 }
 
 // packages/ui/src/pages/home/components/providers.tsx
-var import_jsx_runtime26 = __toESM(require_jsx_runtime());
-
-// packages/ui/src/pages/home/components/model-selector.tsx
-var import_jsx_runtime27 = __toESM(require_jsx_runtime());
-
-// packages/ui/src/pages/home/components/profiles.tsx
 var import_jsx_runtime28 = __toESM(require_jsx_runtime());
 
-// packages/ui/src/pages/home/components/onboarding.tsx
+// packages/ui/src/pages/home/components/model-selector.tsx
 var import_jsx_runtime29 = __toESM(require_jsx_runtime());
 
-// packages/ui/src/pages/home/components/routing.tsx
+// packages/ui/src/pages/home/components/profiles.tsx
 var import_jsx_runtime30 = __toESM(require_jsx_runtime());
 
-// packages/ui/src/pages/home/components/virtual-models.tsx
+// packages/ui/src/pages/home/components/onboarding.tsx
 var import_jsx_runtime31 = __toESM(require_jsx_runtime());
+
+// packages/ui/src/pages/home/components/routing.tsx
+var import_jsx_runtime32 = __toESM(require_jsx_runtime());
+
+// packages/ui/src/pages/home/components/virtual-models.tsx
+var import_jsx_runtime33 = __toESM(require_jsx_runtime());
 var virtualModelTableGridClass = "grid-cols-[minmax(180px,0.9fr)_minmax(220px,1.1fr)_minmax(220px,1.1fr)_minmax(170px,0.85fr)_112px_96px]";
 var virtualModelTableMinWidthClass = "min-w-[1100px]";
 function VirtualModelsView({
@@ -96924,19 +97323,19 @@ function VirtualModelsView({
     () => profiles.map((profile, index) => ({ index, profile })).filter(({ profile }) => virtualModelMatchesQuery(profile, normalizedQuery)),
     [profiles, normalizedQuery]
   );
-  return /* @__PURE__ */ (0, import_jsx_runtime31.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime33.jsx)(
     motion.div,
     {
       animate: { opacity: 1 },
       className: "flex h-full min-h-0 min-w-0 flex-col gap-3",
       initial: { opacity: 0 },
       transition: { duration: 0.15 },
-      children: /* @__PURE__ */ (0, import_jsx_runtime31.jsxs)(Card, { className: "flex h-full min-h-0 min-w-0 flex-col", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime31.jsxs)(CardHeader, { className: "flex-row items-center gap-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime31.jsx)(CardTitle, { className: "min-w-0 shrink-0 truncate", children: t("Virtual Models") }),
-          /* @__PURE__ */ (0, import_jsx_runtime31.jsxs)("div", { className: "relative min-w-0 flex-1", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime31.jsx)(import_lucide_react2.Search, { className: "pointer-events-none absolute left-2.5 top-1/2 z-[1] h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" }),
-            /* @__PURE__ */ (0, import_jsx_runtime31.jsx)(
+      children: /* @__PURE__ */ (0, import_jsx_runtime33.jsxs)(Card, { className: "flex h-full min-h-0 min-w-0 flex-col", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime33.jsxs)(CardHeader, { className: "flex-row items-center gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime33.jsx)(CardTitle, { className: "min-w-0 shrink-0 truncate", children: t("Virtual Models") }),
+          /* @__PURE__ */ (0, import_jsx_runtime33.jsxs)("div", { className: "relative min-w-0 flex-1", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime33.jsx)(import_lucide_react3.Search, { className: "pointer-events-none absolute left-2.5 top-1/2 z-[1] h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" }),
+            /* @__PURE__ */ (0, import_jsx_runtime33.jsx)(
               Input,
               {
                 "aria-label": t("Search virtual models"),
@@ -96947,44 +97346,44 @@ function VirtualModelsView({
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime31.jsxs)(Button, { "aria-label": t("Add virtual model"), onClick: addVirtualModel, title: t("Add virtual model"), type: "button", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime31.jsx)(import_lucide_react2.Plus, { className: "h-4 w-4" }),
+          /* @__PURE__ */ (0, import_jsx_runtime33.jsxs)(Button, { "aria-label": t("Add virtual model"), onClick: addVirtualModel, title: t("Add virtual model"), type: "button", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime33.jsx)(import_lucide_react3.Plus, { className: "h-4 w-4" }),
             t("Add")
           ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime31.jsxs)(CardContent, { className: "min-h-0 flex-1 overflow-auto p-0", children: [
-          profiles.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime31.jsxs)("div", { className: "m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime31.jsx)(import_lucide_react2.Boxes, { className: "mx-auto mb-2 h-7 w-7 text-muted-foreground/40" }),
-            /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("div", { className: "text-[13px] font-semibold text-foreground", children: t("No virtual models configured") }),
-            /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("div", { className: "mx-auto mt-1 max-w-[480px] text-[12px] leading-5 text-muted-foreground", children: t("Fusion combines a model with another model or tools into a new model.") }),
-            /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("div", { className: "mt-2 font-mono text-[11px] text-muted-foreground/70", children: t("Fusion example") })
+        /* @__PURE__ */ (0, import_jsx_runtime33.jsxs)(CardContent, { className: "min-h-0 flex-1 overflow-auto p-0", children: [
+          profiles.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime33.jsxs)("div", { className: "m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime33.jsx)(import_lucide_react3.Boxes, { className: "mx-auto mb-2 h-7 w-7 text-muted-foreground/40" }),
+            /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { className: "text-[13px] font-semibold text-foreground", children: t("No virtual models configured") }),
+            /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { className: "mx-auto mt-1 max-w-[480px] text-[12px] leading-5 text-muted-foreground", children: t("Fusion combines a model with another model or tools into a new model.") }),
+            /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { className: "mt-2 font-mono text-[11px] text-muted-foreground/70", children: t("Fusion example") })
           ] }) : null,
-          profiles.length > 0 && visibleProfiles.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("div", { className: "m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center text-[12px] text-muted-foreground", children: t("No matching virtual models") }) : null,
-          visibleProfiles.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("div", { className: "min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime31.jsxs)("div", { className: cn("w-full", virtualModelTableMinWidthClass), children: [
-            /* @__PURE__ */ (0, import_jsx_runtime31.jsxs)("div", { className: cn("sticky top-0 z-10 grid h-10 items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground", virtualModelTableGridClass), children: [
-              /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("div", { className: "truncate", children: t("Name") }),
-              /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("div", { className: "truncate", children: t("New model") }),
-              /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("div", { className: "truncate", children: t("Base model") }),
-              /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("div", { className: "truncate", children: t("Tools") }),
-              /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("div", { className: "truncate", children: t("Status") }),
-              /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("div", { "aria-hidden": "true" })
+          profiles.length > 0 && visibleProfiles.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { className: "m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center text-[12px] text-muted-foreground", children: t("No matching virtual models") }) : null,
+          visibleProfiles.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { className: "min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime33.jsxs)("div", { className: cn("w-full", virtualModelTableMinWidthClass), children: [
+            /* @__PURE__ */ (0, import_jsx_runtime33.jsxs)("div", { className: cn("sticky top-0 z-10 grid h-10 items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground", virtualModelTableGridClass), children: [
+              /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { className: "truncate", children: t("Name") }),
+              /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { className: "truncate", children: t("New model") }),
+              /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { className: "truncate", children: t("Base model") }),
+              /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { className: "truncate", children: t("Tools") }),
+              /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { className: "truncate", children: t("Status") }),
+              /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { "aria-hidden": "true" })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("div", { className: "divide-y divide-border/60", children: /* @__PURE__ */ (0, import_jsx_runtime31.jsx)(AnimatePresence, { initial: false, children: visibleProfiles.map(({ index, profile }) => /* @__PURE__ */ (0, import_jsx_runtime31.jsxs)(
+            /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { className: "divide-y divide-border/60", children: /* @__PURE__ */ (0, import_jsx_runtime33.jsx)(AnimatePresence, { initial: false, children: visibleProfiles.map(({ index, profile }) => /* @__PURE__ */ (0, import_jsx_runtime33.jsxs)(
               AnimatedListItem,
               {
                 className: cn("grid min-h-[58px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35", virtualModelTableGridClass),
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime31.jsxs)("div", { className: "min-w-0", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("div", { className: "truncate text-[12px] font-semibold", title: profile.displayName || profile.key, children: profile.displayName || profile.key }),
-                    /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("div", { className: "truncate text-[11px] text-muted-foreground", title: profile.key, children: profile.key })
+                  /* @__PURE__ */ (0, import_jsx_runtime33.jsxs)("div", { className: "min-w-0", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { className: "truncate text-[12px] font-semibold", title: profile.displayName || profile.key, children: profile.displayName || profile.key }),
+                    /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { className: "truncate text-[11px] text-muted-foreground", title: profile.key, children: profile.key })
                   ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("div", { className: "min-w-0 truncate text-[11px] text-muted-foreground", title: virtualModelMatchSummary(profile), children: virtualModelMatchSummary(profile) }),
-                  /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("div", { className: "min-w-0 truncate text-[11px] text-muted-foreground", title: virtualModelBaseModelSummary(profile), children: virtualModelBaseModelSummary(profile) }),
-                  /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("div", { className: "min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("div", { className: "truncate text-[11px] text-muted-foreground", title: virtualModelToolSummary(profile), children: virtualModelToolSummary(profile) }) }),
-                  /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("div", { className: "flex min-w-0 items-center gap-2", children: /* @__PURE__ */ (0, import_jsx_runtime31.jsx)(Toggle, { checked: profile.enabled !== false, onChange: (enabled) => setVirtualModelEnabled(index, enabled) }) }),
-                  /* @__PURE__ */ (0, import_jsx_runtime31.jsxs)("div", { className: "flex items-center justify-end gap-1", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime31.jsx)(Button, { "aria-label": `${t("Edit virtual model")} ${profile.displayName || profile.key}`, onClick: () => editVirtualModel(index), size: "iconSm", title: t("Edit virtual model"), type: "button", variant: "ghost", children: /* @__PURE__ */ (0, import_jsx_runtime31.jsx)(import_lucide_react2.Pencil, { className: "h-3.5 w-3.5" }) }),
-                    /* @__PURE__ */ (0, import_jsx_runtime31.jsx)(Button, { "aria-label": `${t("Remove virtual model")} ${profile.displayName || profile.key}`, onClick: () => removeVirtualModel(index), size: "iconSm", title: t("Remove virtual model"), type: "button", variant: "ghost", children: /* @__PURE__ */ (0, import_jsx_runtime31.jsx)(import_lucide_react2.Trash2, { className: "h-3.5 w-3.5" }) })
+                  /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { className: "min-w-0 truncate text-[11px] text-muted-foreground", title: virtualModelMatchSummary(profile), children: virtualModelMatchSummary(profile) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { className: "min-w-0 truncate text-[11px] text-muted-foreground", title: virtualModelBaseModelSummary(profile), children: virtualModelBaseModelSummary(profile) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { className: "min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { className: "truncate text-[11px] text-muted-foreground", title: virtualModelToolSummary(profile), children: virtualModelToolSummary(profile) }) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { className: "flex min-w-0 items-center gap-2", children: /* @__PURE__ */ (0, import_jsx_runtime33.jsx)(Toggle, { checked: profile.enabled !== false, onChange: (enabled) => setVirtualModelEnabled(index, enabled) }) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime33.jsxs)("div", { className: "flex items-center justify-end gap-1", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime33.jsx)(Button, { "aria-label": `${t("Edit virtual model")} ${profile.displayName || profile.key}`, onClick: () => editVirtualModel(index), size: "iconSm", title: t("Edit virtual model"), type: "button", variant: "ghost", children: /* @__PURE__ */ (0, import_jsx_runtime33.jsx)(import_lucide_react3.Pencil, { className: "h-3.5 w-3.5" }) }),
+                    /* @__PURE__ */ (0, import_jsx_runtime33.jsx)(Button, { "aria-label": `${t("Remove virtual model")} ${profile.displayName || profile.key}`, onClick: () => removeVirtualModel(index), size: "iconSm", title: t("Remove virtual model"), type: "button", variant: "ghost", children: /* @__PURE__ */ (0, import_jsx_runtime33.jsx)(import_lucide_react3.Trash2, { className: "h-3.5 w-3.5" }) })
                   ] })
                 ]
               },
@@ -97011,8 +97410,8 @@ function MediaModelConfigurationPanel({
     }
     return values;
   }, [modelOptions, t, value]);
-  return /* @__PURE__ */ (0, import_jsx_runtime31.jsxs)("div", { className: "grid grid-cols-1 gap-2 rounded-md border border-border/70 bg-muted/25 p-3", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime31.jsx)(Field, { label: t(kind === "image" ? "Image model" : "Video model"), children: /* @__PURE__ */ (0, import_jsx_runtime31.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime33.jsxs)("div", { className: "grid grid-cols-1 gap-2 rounded-md border border-border/70 bg-muted/25 p-3", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime33.jsx)(Field, { label: t(kind === "image" ? "Image model" : "Video model"), children: /* @__PURE__ */ (0, import_jsx_runtime33.jsx)(
       SelectControl,
       {
         onChange: (model) => onChange(kind === "image" ? { imageGenerationModel: model } : { videoGenerationModel: model }),
@@ -97020,12 +97419,26 @@ function MediaModelConfigurationPanel({
         value
       }
     ) }),
-    /* @__PURE__ */ (0, import_jsx_runtime31.jsx)("p", { className: "text-[11px] leading-4 text-muted-foreground", children: t("CCR routes media through the selected ai-gateway provider. Imported Grok Agents reuse their existing login automatically.") })
+    /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("p", { className: "text-[11px] leading-4 text-muted-foreground", children: t("CCR routes media through the selected ai-gateway provider. Imported Grok Agents reuse their existing login automatically.") })
   ] });
 }
 
 // packages/ui/src/pages/home/components/layout.tsx
-var import_jsx_runtime32 = __toESM(require_jsx_runtime());
+var import_jsx_runtime34 = __toESM(require_jsx_runtime());
+var sidebarNavigationGroupDefinitions = [
+  { id: "workspace", itemIds: ["overview"], label: "Workspace" },
+  { id: "setup", itemIds: ["providers", "profile", "routing"], label: "Setup" },
+  { id: "monitor", itemIds: ["logs", "observability"], label: "Monitor" },
+  { id: "advanced", itemIds: ["virtual-models", "models", "api-keys", "extensions"], label: "Advanced" }
+];
+function groupSidebarNavigation(visibleNavigation) {
+  const navigationById = new Map(visibleNavigation.map((item) => [item.id, item]));
+  return sidebarNavigationGroupDefinitions.map((group) => ({
+    id: group.id,
+    items: group.itemIds.map((id3) => navigationById.get(id3)).filter((item) => Boolean(item)),
+    label: group.label
+  })).filter((group) => group.items.length > 0);
+}
 function UpdateEntryButton({
   actionBusy,
   copy,
@@ -97034,7 +97447,7 @@ function UpdateEntryButton({
 }) {
   const busy = actionBusy || status.state === "checking" || status.state === "downloading" || status.state === "installing";
   const label = status.state === "downloaded" ? copy.text["Update ready to install"] ?? "Update ready to install" : status.state === "downloading" ? copy.text["Downloading update"] ?? "Downloading update" : status.state === "checking" ? copy.text["Checking for updates"] ?? "Checking for updates" : status.state === "available" ? copy.text["Update available"] ?? "Update available" : copy.text["Online updates"] ?? "Online updates";
-  return /* @__PURE__ */ (0, import_jsx_runtime32.jsxs)(
+  return /* @__PURE__ */ (0, import_jsx_runtime34.jsxs)(
     Button,
     {
       "aria-label": label,
@@ -97045,8 +97458,8 @@ function UpdateEntryButton({
       type: "button",
       unstyled: true,
       children: [
-        busy ? /* @__PURE__ */ (0, import_jsx_runtime32.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3.5 w-3.5 animate-spin" }) : status.state === "downloaded" ? /* @__PURE__ */ (0, import_jsx_runtime32.jsx)(import_lucide_react2.Check, { className: "h-3.5 w-3.5" }) : /* @__PURE__ */ (0, import_jsx_runtime32.jsx)(import_lucide_react2.RefreshCw, { className: "h-3.5 w-3.5" }),
-        status.state === "available" ? /* @__PURE__ */ (0, import_jsx_runtime32.jsx)(
+        busy ? /* @__PURE__ */ (0, import_jsx_runtime34.jsx)(import_lucide_react3.LoaderCircle, { className: "h-3.5 w-3.5 animate-spin" }) : status.state === "downloaded" ? /* @__PURE__ */ (0, import_jsx_runtime34.jsx)(import_lucide_react3.Check, { className: "h-3.5 w-3.5" }) : /* @__PURE__ */ (0, import_jsx_runtime34.jsx)(import_lucide_react3.RefreshCw, { className: "h-3.5 w-3.5" }),
+        status.state === "available" ? /* @__PURE__ */ (0, import_jsx_runtime34.jsx)(
           "span",
           {
             "aria-hidden": "true",
@@ -97068,7 +97481,7 @@ function GatewayStartupErrorBanner({
   if (!detail) {
     return null;
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime32.jsxs)(
+  return /* @__PURE__ */ (0, import_jsx_runtime34.jsxs)(
     "div",
     {
       "aria-live": "assertive",
@@ -97078,12 +97491,12 @@ function GatewayStartupErrorBanner({
       ),
       role: "alert",
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime32.jsx)(import_lucide_react2.CircleAlert, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
-        /* @__PURE__ */ (0, import_jsx_runtime32.jsxs)("div", { className: "min-w-0 flex-1", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime32.jsx)("div", { className: "font-semibold", children: t("Service failed to start") }),
-          /* @__PURE__ */ (0, import_jsx_runtime32.jsx)("div", { className: "mt-0.5 whitespace-pre-wrap break-words", children: detail })
+        /* @__PURE__ */ (0, import_jsx_runtime34.jsx)(import_lucide_react3.CircleAlert, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
+        /* @__PURE__ */ (0, import_jsx_runtime34.jsxs)("div", { className: "min-w-0 flex-1", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime34.jsx)("div", { className: "font-semibold", children: t("Service failed to start") }),
+          /* @__PURE__ */ (0, import_jsx_runtime34.jsx)("div", { className: "mt-0.5 whitespace-pre-wrap break-words", children: detail })
         ] }),
-        onOpenServerSettings ? /* @__PURE__ */ (0, import_jsx_runtime32.jsxs)(
+        onOpenServerSettings ? /* @__PURE__ */ (0, import_jsx_runtime34.jsxs)(
           Button,
           {
             className: "shrink-0 border-destructive/30 bg-background/80 text-destructive hover:bg-destructive/10",
@@ -97092,7 +97505,7 @@ function GatewayStartupErrorBanner({
             type: "button",
             variant: "outline",
             children: [
-              /* @__PURE__ */ (0, import_jsx_runtime32.jsx)(import_lucide_react2.Settings, { className: "h-3.5 w-3.5" }),
+              /* @__PURE__ */ (0, import_jsx_runtime34.jsx)(import_lucide_react3.Settings, { className: "h-3.5 w-3.5" }),
               t("Server")
             ]
           }
@@ -97138,16 +97551,34 @@ function appConfigFixture() {
 }
 
 // packages/ui/src/pages/home/components/update.tsx
-var import_jsx_runtime33 = __toESM(require_jsx_runtime());
+var import_jsx_runtime35 = __toESM(require_jsx_runtime());
 function shouldCheckForUpdateOnOpen(status) {
   return status.state === "idle" || status.state === "not-available" || status.state === "error";
 }
 
 // packages/ui/test/component/layout.test.tsx
-var import_jsx_runtime34 = __toESM(require_jsx_runtime());
+var import_jsx_runtime36 = __toESM(require_jsx_runtime());
+(0, import_node_test.default)("sidebar navigation groups pages and hides networking from the sidebar", () => {
+  const groups = groupSidebarNavigation(navigation);
+  import_strict.default.deepEqual(groups.map((group) => group.label), ["Workspace", "Setup", "Monitor", "Advanced"]);
+  import_strict.default.deepEqual(groups.map((group) => group.items.map((item) => item.id)), [
+    ["overview"],
+    ["providers", "profile", "routing"],
+    ["logs", "observability"],
+    ["virtual-models", "models", "api-keys", "extensions"]
+  ]);
+  import_strict.default.equal(groups.some((group) => group.items.some((item) => item.id === "networking")), false);
+  const filteredGroups = groupSidebarNavigation(navigation.filter((item) => item.id !== "observability"));
+  import_strict.default.deepEqual(filteredGroups.map((group) => group.items.map((item) => item.id)), [
+    ["overview"],
+    ["providers", "profile", "routing"],
+    ["logs"],
+    ["virtual-models", "models", "api-keys", "extensions"]
+  ]);
+});
 (0, import_node_test.default)("GatewayStartupErrorBanner renders startup failure details", () => {
   const html = (0, import_server.renderToStaticMarkup)(
-    /* @__PURE__ */ (0, import_jsx_runtime34.jsx)(AppI18nContext.Provider, { value: appCopy.zh, children: /* @__PURE__ */ (0, import_jsx_runtime34.jsx)(GatewayStartupErrorBanner, { message: "\u6CA1\u6709\u53EF\u7528\u6A21\u578B\u3002\u8BF7\u5148\u914D\u7F6E\u4F9B\u5E94\u5546\u3002", onOpenServerSettings: () => void 0 }) })
+    /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(AppI18nContext.Provider, { value: appCopy.zh, children: /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(GatewayStartupErrorBanner, { message: "\u6CA1\u6709\u53EF\u7528\u6A21\u578B\u3002\u8BF7\u5148\u914D\u7F6E\u4F9B\u5E94\u5546\u3002", onOpenServerSettings: () => void 0 }) })
   );
   import_strict.default.match(html, /role="alert"/);
   import_strict.default.match(html, /aria-live="assertive"/);
@@ -97156,12 +97587,12 @@ var import_jsx_runtime34 = __toESM(require_jsx_runtime());
   import_strict.default.match(html, />服务<\/button>/);
 });
 (0, import_node_test.default)("GatewayStartupErrorBanner stays hidden without a failure message", () => {
-  const html = (0, import_server.renderToStaticMarkup)(/* @__PURE__ */ (0, import_jsx_runtime34.jsx)(GatewayStartupErrorBanner, { message: "" }));
+  const html = (0, import_server.renderToStaticMarkup)(/* @__PURE__ */ (0, import_jsx_runtime36.jsx)(GatewayStartupErrorBanner, { message: "" }));
   import_strict.default.equal(html, "");
 });
 (0, import_node_test.default)("Fusion page does not render a standalone Grok media panel", () => {
   const html = (0, import_server.renderToStaticMarkup)(
-    /* @__PURE__ */ (0, import_jsx_runtime34.jsx)(AppI18nContext.Provider, { value: appCopy.zh, children: /* @__PURE__ */ (0, import_jsx_runtime34.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(AppI18nContext.Provider, { value: appCopy.zh, children: /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(
       VirtualModelsView,
       {
         addVirtualModel: () => void 0,
@@ -97186,7 +97617,7 @@ var import_jsx_runtime34 = __toESM(require_jsx_runtime());
   }];
   const draft = createVirtualModelDraft(config);
   const html = (0, import_server.renderToStaticMarkup)(
-    /* @__PURE__ */ (0, import_jsx_runtime34.jsx)(AppI18nContext.Provider, { value: appCopy.zh, children: /* @__PURE__ */ (0, import_jsx_runtime34.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(AppI18nContext.Provider, { value: appCopy.zh, children: /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(
       MediaModelConfigurationPanel,
       {
         draft,
@@ -97205,7 +97636,7 @@ var import_jsx_runtime34 = __toESM(require_jsx_runtime());
 });
 (0, import_node_test.default)("UpdateEntryButton keeps update-center semantics when an update is available", () => {
   const html = (0, import_server.renderToStaticMarkup)(
-    /* @__PURE__ */ (0, import_jsx_runtime34.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(
       UpdateEntryButton,
       {
         actionBusy: false,

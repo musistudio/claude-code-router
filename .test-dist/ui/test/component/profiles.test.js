@@ -169,7 +169,7 @@ var require_react_production_min = __commonJS({
     var U = { current: null };
     var V = { transition: null };
     var W = { ReactCurrentDispatcher: U, ReactCurrentBatchConfig: V, ReactCurrentOwner: K };
-    function X2() {
+    function X3() {
       throw Error("act(...) is not supported in production builds of React.");
     }
     exports2.Children = { map: S, forEach: function(a, b, e) {
@@ -197,7 +197,7 @@ var require_react_production_min = __commonJS({
     exports2.StrictMode = q;
     exports2.Suspense = w;
     exports2.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED = W;
-    exports2.act = X2;
+    exports2.act = X3;
     exports2.cloneElement = function(a, b, e) {
       if (null === a || void 0 === a) throw Error("React.cloneElement(...): The argument must be a React element, but you passed " + a + ".");
       var d = C({}, a.props), c = a.key, k = a.ref, h = a._owner;
@@ -249,7 +249,7 @@ var require_react_production_min = __commonJS({
         V.transition = b;
       }
     };
-    exports2.unstable_act = X2;
+    exports2.unstable_act = X3;
     exports2.useCallback = function(a, b) {
       return U.current.useCallback(a, b);
     };
@@ -1057,7 +1057,7 @@ var require_react_development = __commonJS({
           }
           return children;
         }
-        function createContext11(defaultValue) {
+        function createContext12(defaultValue) {
           var context = {
             $$typeof: REACT_CONTEXT_TYPE,
             // As a workaround to support multiple concurrent renderers, we categorize
@@ -1244,7 +1244,7 @@ var require_react_development = __commonJS({
           }
           return lazyType;
         }
-        function forwardRef13(render) {
+        function forwardRef15(render) {
           {
             if (render != null && render.$$typeof === REACT_MEMO_TYPE) {
               error("forwardRef requires a render function but received a `memo` component. Instead of forwardRef(memo(...)), use memo(forwardRef(...)).");
@@ -1343,7 +1343,7 @@ var require_react_development = __commonJS({
           }
           return dispatcher;
         }
-        function useContext13(Context) {
+        function useContext14(Context) {
           var dispatcher = resolveDispatcher();
           {
             if (Context._context !== void 0) {
@@ -1357,7 +1357,7 @@ var require_react_development = __commonJS({
           }
           return dispatcher.useContext(Context);
         }
-        function useState6(initialState) {
+        function useState7(initialState) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useState(initialState);
         }
@@ -1365,11 +1365,11 @@ var require_react_development = __commonJS({
           var dispatcher = resolveDispatcher();
           return dispatcher.useReducer(reducer, initialArg, init);
         }
-        function useRef8(initialValue) {
+        function useRef9(initialValue) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useRef(initialValue);
         }
-        function useEffect8(create, deps) {
+        function useEffect9(create, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useEffect(create, deps);
         }
@@ -1377,15 +1377,15 @@ var require_react_development = __commonJS({
           var dispatcher = resolveDispatcher();
           return dispatcher.useInsertionEffect(create, deps);
         }
-        function useLayoutEffect4(create, deps) {
+        function useLayoutEffect5(create, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useLayoutEffect(create, deps);
         }
-        function useCallback6(callback, deps) {
+        function useCallback7(callback, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useCallback(callback, deps);
         }
-        function useMemo12(create, deps) {
+        function useMemo11(create, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useMemo(create, deps);
         }
@@ -2138,29 +2138,29 @@ var require_react_development = __commonJS({
         exports2.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED = ReactSharedInternals;
         exports2.act = act;
         exports2.cloneElement = cloneElement$1;
-        exports2.createContext = createContext11;
+        exports2.createContext = createContext12;
         exports2.createElement = createElement$1;
         exports2.createFactory = createFactory;
         exports2.createRef = createRef;
-        exports2.forwardRef = forwardRef13;
+        exports2.forwardRef = forwardRef15;
         exports2.isValidElement = isValidElement2;
         exports2.lazy = lazy;
         exports2.memo = memo2;
         exports2.startTransition = startTransition;
         exports2.unstable_act = act;
-        exports2.useCallback = useCallback6;
-        exports2.useContext = useContext13;
+        exports2.useCallback = useCallback7;
+        exports2.useContext = useContext14;
         exports2.useDebugValue = useDebugValue;
         exports2.useDeferredValue = useDeferredValue;
-        exports2.useEffect = useEffect8;
+        exports2.useEffect = useEffect9;
         exports2.useId = useId4;
         exports2.useImperativeHandle = useImperativeHandle;
         exports2.useInsertionEffect = useInsertionEffect4;
-        exports2.useLayoutEffect = useLayoutEffect4;
-        exports2.useMemo = useMemo12;
+        exports2.useLayoutEffect = useLayoutEffect5;
+        exports2.useMemo = useMemo11;
         exports2.useReducer = useReducer;
-        exports2.useRef = useRef8;
-        exports2.useState = useState6;
+        exports2.useRef = useRef9;
+        exports2.useState = useState7;
         exports2.useSyncExternalStore = useSyncExternalStore;
         exports2.useTransition = useTransition;
         exports2.version = ReactVersion;
@@ -3258,7 +3258,7 @@ var require_react_dom_server_legacy_node_production_min = __commonJS({
               b.blockedBoundary = h;
               b.blockedSegment = m2;
               try {
-                if (Jb(a, b, d), a.responseState.generateStaticMarkup || m2.lastPushedText && m2.textEmbedded && m2.chunks.push("<!-- -->"), m2.status = 1, X2(h, m2), 0 === h.pendingTasks) break a;
+                if (Jb(a, b, d), a.responseState.generateStaticMarkup || m2.lastPushedText && m2.textEmbedded && m2.chunks.push("<!-- -->"), m2.status = 1, X3(h, m2), 0 === h.pendingTasks) break a;
               } catch (l) {
                 m2.status = 4, h.forceClientRender = true, h.errorDigest = U(a, l);
               } finally {
@@ -3403,12 +3403,12 @@ var require_react_dom_server_legacy_node_production_min = __commonJS({
         return Nb(a2, b, c);
       }), d.fallbackAbortableTasks.clear(), b.allPendingTasks--, 0 === b.allPendingTasks && (a = b.onAllReady, a()));
     }
-    function X2(a, b) {
+    function X3(a, b) {
       if (0 === b.chunks.length && 1 === b.children.length && null === b.children[0].boundary) {
         var c = b.children[0];
         c.id = b.id;
         c.parentFlushed = true;
-        1 === c.status && X2(a, c);
+        1 === c.status && X3(a, c);
       } else a.completedSegments.push(b);
     }
     function Mb(a, b, c) {
@@ -3419,7 +3419,7 @@ var require_react_dom_server_legacy_node_production_min = __commonJS({
         }
         a.pendingRootTasks--;
         0 === a.pendingRootTasks && (a.onShellError = S, b = a.onShellReady, b());
-      } else b.pendingTasks--, b.forceClientRender || (0 === b.pendingTasks ? (c.parentFlushed && 1 === c.status && X2(b, c), b.parentFlushed && a.completedBoundaries.push(b), b.fallbackAbortableTasks.forEach(Lb, a), b.fallbackAbortableTasks.clear()) : c.parentFlushed && 1 === c.status && (X2(b, c), 1 === b.completedSegments.length && b.parentFlushed && a.partialBoundaries.push(b)));
+      } else b.pendingTasks--, b.forceClientRender || (0 === b.pendingTasks ? (c.parentFlushed && 1 === c.status && X3(b, c), b.parentFlushed && a.completedBoundaries.push(b), b.fallbackAbortableTasks.forEach(Lb, a), b.fallbackAbortableTasks.clear()) : c.parentFlushed && 1 === c.status && (X3(b, c), 1 === b.completedSegments.length && b.parentFlushed && a.partialBoundaries.push(b)));
       a.allPendingTasks--;
       0 === a.allPendingTasks && (a = a.onAllReady, a());
     }
@@ -4771,7 +4771,7 @@ var require_react_dom_server_node_production_min = __commonJS({
       console.error(a);
       return null;
     }
-    function X2() {
+    function X3() {
     }
     function Pc(a, b) {
       var c = a.pingedTasks;
@@ -5084,7 +5084,7 @@ var require_react_dom_server_node_production_min = __commonJS({
           a.completedRootSegment = c;
         }
         a.pendingRootTasks--;
-        0 === a.pendingRootTasks && (a.onShellError = X2, b = a.onShellReady, b());
+        0 === a.pendingRootTasks && (a.onShellError = X3, b = a.onShellReady, b());
       } else b.pendingTasks--, b.forceClientRender || (0 === b.pendingTasks ? (c.parentFlushed && 1 === c.status && Zc(b, c), b.parentFlushed && a.completedBoundaries.push(b), b.fallbackAbortableTasks.forEach(ad, a), b.fallbackAbortableTasks.clear()) : c.parentFlushed && 1 === c.status && (Zc(b, c), 1 === b.completedSegments.length && b.parentFlushed && a.partialBoundaries.push(b)));
       a.allPendingTasks--;
       0 === a.allPendingTasks && (a = a.onAllReady, a());
@@ -5390,10 +5390,10 @@ var require_react_dom_server_node_production_min = __commonJS({
         completedBoundaries: [],
         partialBoundaries: [],
         onError: void 0 === d ? Oc : d,
-        onAllReady: void 0 === h ? X2 : h,
-        onShellReady: void 0 === m2 ? X2 : m2,
-        onShellError: void 0 === n ? X2 : n,
-        onFatalError: X2
+        onAllReady: void 0 === h ? X3 : h,
+        onShellReady: void 0 === m2 ? X3 : m2,
+        onShellError: void 0 === n ? X3 : n,
+        onFatalError: X3
       };
       e = Sc(g, 0, null, e, false, false);
       e.parentFlushed = true;
@@ -5427,10 +5427,10 @@ var require_react_dom_server_legacy_node_development = __commonJS({
     if (process.env.NODE_ENV !== "production") {
       (function() {
         "use strict";
-        var React15 = require_react();
+        var React17 = require_react();
         var stream = require("stream");
         var ReactVersion = "18.3.1";
-        var ReactSharedInternals = React15.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React17.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         function warn(format) {
           {
             {
@@ -7336,7 +7336,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
         }
         function flattenOptionChildren(children) {
           var content = "";
-          React15.Children.forEach(children, function(child) {
+          React17.Children.forEach(children, function(child) {
             if (child == null) {
               return;
             }
@@ -9340,7 +9340,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
           }
           return readContext(context);
         }
-        function useContext13(context) {
+        function useContext14(context) {
           {
             currentHookNameInDev = "useContext";
           }
@@ -9350,7 +9350,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
         function basicStateReducer(state, action) {
           return typeof action === "function" ? action(state) : action;
         }
-        function useState6(initialState) {
+        function useState7(initialState) {
           {
             currentHookNameInDev = "useState";
           }
@@ -9415,7 +9415,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
             return [workInProgressHook.memoizedState, _dispatch];
           }
         }
-        function useMemo12(nextCreate, deps) {
+        function useMemo11(nextCreate, deps) {
           currentlyRenderingComponent = resolveCurrentlyRenderingComponent();
           workInProgressHook = createWorkInProgressHook();
           var nextDeps = deps === void 0 ? null : deps;
@@ -9440,7 +9440,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
           workInProgressHook.memoizedState = [nextValue, nextDeps];
           return nextValue;
         }
-        function useRef8(initialValue) {
+        function useRef9(initialValue) {
           currentlyRenderingComponent = resolveCurrentlyRenderingComponent();
           workInProgressHook = createWorkInProgressHook();
           var previousRef = workInProgressHook.memoizedState;
@@ -9457,7 +9457,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
             return previousRef;
           }
         }
-        function useLayoutEffect4(create, inputs) {
+        function useLayoutEffect5(create, inputs) {
           {
             currentHookNameInDev = "useLayoutEffect";
             error("useLayoutEffect does nothing on the server, because its effect cannot be encoded into the server renderer's output format. This will lead to a mismatch between the initial, non-hydrated UI and the intended UI. To avoid this, useLayoutEffect should only be used in components that render exclusively on the client. See https://reactjs.org/link/uselayouteffect-ssr for common fixes.");
@@ -9488,8 +9488,8 @@ var require_react_dom_server_legacy_node_development = __commonJS({
             }
           }
         }
-        function useCallback6(callback, deps) {
-          return useMemo12(function() {
+        function useCallback7(callback, deps) {
+          return useMemo11(function() {
             return callback;
           }, deps);
         }
@@ -9528,14 +9528,14 @@ var require_react_dom_server_legacy_node_development = __commonJS({
         }
         var Dispatcher = {
           readContext: readContext$1,
-          useContext: useContext13,
-          useMemo: useMemo12,
+          useContext: useContext14,
+          useMemo: useMemo11,
           useReducer,
-          useRef: useRef8,
-          useState: useState6,
+          useRef: useRef9,
+          useState: useState7,
           useInsertionEffect: noop2,
-          useLayoutEffect: useLayoutEffect4,
-          useCallback: useCallback6,
+          useLayoutEffect: useLayoutEffect5,
+          useCallback: useCallback7,
           // useImperativeHandle is not run in the server environment
           useImperativeHandle: noop2,
           // Effects are not run in the server environment.
@@ -10873,10 +10873,10 @@ var require_react_dom_server_node_development = __commonJS({
     if (process.env.NODE_ENV !== "production") {
       (function() {
         "use strict";
-        var React15 = require_react();
+        var React17 = require_react();
         var util = require("util");
         var ReactVersion = "18.3.1";
-        var ReactSharedInternals = React15.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React17.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         function warn(format) {
           {
             {
@@ -12879,7 +12879,7 @@ var require_react_dom_server_node_development = __commonJS({
         }
         function flattenOptionChildren(children) {
           var content = "";
-          React15.Children.forEach(children, function(child) {
+          React17.Children.forEach(children, function(child) {
             if (child == null) {
               return;
             }
@@ -14819,7 +14819,7 @@ var require_react_dom_server_node_development = __commonJS({
           }
           return readContext(context);
         }
-        function useContext13(context) {
+        function useContext14(context) {
           {
             currentHookNameInDev = "useContext";
           }
@@ -14829,7 +14829,7 @@ var require_react_dom_server_node_development = __commonJS({
         function basicStateReducer(state, action) {
           return typeof action === "function" ? action(state) : action;
         }
-        function useState6(initialState) {
+        function useState7(initialState) {
           {
             currentHookNameInDev = "useState";
           }
@@ -14894,7 +14894,7 @@ var require_react_dom_server_node_development = __commonJS({
             return [workInProgressHook.memoizedState, _dispatch];
           }
         }
-        function useMemo12(nextCreate, deps) {
+        function useMemo11(nextCreate, deps) {
           currentlyRenderingComponent = resolveCurrentlyRenderingComponent();
           workInProgressHook = createWorkInProgressHook();
           var nextDeps = deps === void 0 ? null : deps;
@@ -14919,7 +14919,7 @@ var require_react_dom_server_node_development = __commonJS({
           workInProgressHook.memoizedState = [nextValue, nextDeps];
           return nextValue;
         }
-        function useRef8(initialValue) {
+        function useRef9(initialValue) {
           currentlyRenderingComponent = resolveCurrentlyRenderingComponent();
           workInProgressHook = createWorkInProgressHook();
           var previousRef = workInProgressHook.memoizedState;
@@ -14936,7 +14936,7 @@ var require_react_dom_server_node_development = __commonJS({
             return previousRef;
           }
         }
-        function useLayoutEffect4(create, inputs) {
+        function useLayoutEffect5(create, inputs) {
           {
             currentHookNameInDev = "useLayoutEffect";
             error("useLayoutEffect does nothing on the server, because its effect cannot be encoded into the server renderer's output format. This will lead to a mismatch between the initial, non-hydrated UI and the intended UI. To avoid this, useLayoutEffect should only be used in components that render exclusively on the client. See https://reactjs.org/link/uselayouteffect-ssr for common fixes.");
@@ -14967,8 +14967,8 @@ var require_react_dom_server_node_development = __commonJS({
             }
           }
         }
-        function useCallback6(callback, deps) {
-          return useMemo12(function() {
+        function useCallback7(callback, deps) {
+          return useMemo11(function() {
             return callback;
           }, deps);
         }
@@ -15007,14 +15007,14 @@ var require_react_dom_server_node_development = __commonJS({
         }
         var Dispatcher = {
           readContext: readContext$1,
-          useContext: useContext13,
-          useMemo: useMemo12,
+          useContext: useContext14,
+          useMemo: useMemo11,
           useReducer,
-          useRef: useRef8,
-          useState: useState6,
+          useRef: useRef9,
+          useState: useState7,
           useInsertionEffect: noop2,
-          useLayoutEffect: useLayoutEffect4,
-          useCallback: useCallback6,
+          useLayoutEffect: useLayoutEffect5,
+          useCallback: useCallback7,
           // useImperativeHandle is not run in the server environment
           useImperativeHandle: noop2,
           // Effects are not run in the server environment.
@@ -21671,7 +21671,7 @@ var require_react_dom_production_min = __commonJS({
       if (5 === d || 6 === d) a = a.stateNode, b ? c.insertBefore(a, b) : c.appendChild(a);
       else if (4 !== d && (a = a.child, null !== a)) for (Wj(a, b, c), a = a.sibling; null !== a; ) Wj(a, b, c), a = a.sibling;
     }
-    var X2 = null;
+    var X3 = null;
     var Xj = false;
     function Yj(a, b, c) {
       for (c = c.child; null !== c; ) Zj(a, b, c), c = c.sibling;
@@ -21685,23 +21685,23 @@ var require_react_dom_production_min = __commonJS({
         case 5:
           U || Lj(c, b);
         case 6:
-          var d = X2, e = Xj;
-          X2 = null;
+          var d = X3, e = Xj;
+          X3 = null;
           Yj(a, b, c);
-          X2 = d;
+          X3 = d;
           Xj = e;
-          null !== X2 && (Xj ? (a = X2, c = c.stateNode, 8 === a.nodeType ? a.parentNode.removeChild(c) : a.removeChild(c)) : X2.removeChild(c.stateNode));
+          null !== X3 && (Xj ? (a = X3, c = c.stateNode, 8 === a.nodeType ? a.parentNode.removeChild(c) : a.removeChild(c)) : X3.removeChild(c.stateNode));
           break;
         case 18:
-          null !== X2 && (Xj ? (a = X2, c = c.stateNode, 8 === a.nodeType ? Kf(a.parentNode, c) : 1 === a.nodeType && Kf(a, c), bd(a)) : Kf(X2, c.stateNode));
+          null !== X3 && (Xj ? (a = X3, c = c.stateNode, 8 === a.nodeType ? Kf(a.parentNode, c) : 1 === a.nodeType && Kf(a, c), bd(a)) : Kf(X3, c.stateNode));
           break;
         case 4:
-          d = X2;
+          d = X3;
           e = Xj;
-          X2 = c.stateNode.containerInfo;
+          X3 = c.stateNode.containerInfo;
           Xj = true;
           Yj(a, b, c);
-          X2 = d;
+          X3 = d;
           Xj = e;
           break;
         case 0:
@@ -21758,23 +21758,23 @@ var require_react_dom_production_min = __commonJS({
           a: for (; null !== h; ) {
             switch (h.tag) {
               case 5:
-                X2 = h.stateNode;
+                X3 = h.stateNode;
                 Xj = false;
                 break a;
               case 3:
-                X2 = h.stateNode.containerInfo;
+                X3 = h.stateNode.containerInfo;
                 Xj = true;
                 break a;
               case 4:
-                X2 = h.stateNode.containerInfo;
+                X3 = h.stateNode.containerInfo;
                 Xj = true;
                 break a;
             }
             h = h.return;
           }
-          if (null === X2) throw Error(p(160));
+          if (null === X3) throw Error(p(160));
           Zj(f, g, e);
-          X2 = null;
+          X3 = null;
           Xj = false;
           var k = e.alternate;
           null !== k && (k.return = null);
@@ -23648,9 +23648,9 @@ var require_react_dom_development = __commonJS({
         if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ !== "undefined" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart === "function") {
           __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(new Error());
         }
-        var React15 = require_react();
+        var React17 = require_react();
         var Scheduler = require_scheduler();
-        var ReactSharedInternals = React15.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React17.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         var suppressWarning = false;
         function setSuppressWarning(newSuppressWarning) {
           {
@@ -25257,7 +25257,7 @@ var require_react_dom_development = __commonJS({
           {
             if (props.value == null) {
               if (typeof props.children === "object" && props.children !== null) {
-                React15.Children.forEach(props.children, function(child) {
+                React17.Children.forEach(props.children, function(child) {
                   if (child == null) {
                     return;
                   }
@@ -43874,7 +43874,7 @@ var require_react_dom_development = __commonJS({
           return root2;
         }
         var ReactVersion = "18.3.1";
-        function createPortal(children, containerInfo, implementation) {
+        function createPortal3(children, containerInfo, implementation) {
           var key = arguments.length > 3 && arguments[3] !== void 0 ? arguments[3] : null;
           {
             checkKeyStringCoercion(key);
@@ -44731,7 +44731,7 @@ var require_react_dom_development = __commonJS({
           if (!isValidContainer(container)) {
             throw new Error("Target container is not a DOM element.");
           }
-          return createPortal(children, container, null, key);
+          return createPortal3(children, container, null, key);
         }
         function renderSubtreeIntoContainer(parentComponent, element, containerNode, callback) {
           return unstable_renderSubtreeIntoContainer(parentComponent, element, containerNode, callback);
@@ -45320,8 +45320,8 @@ var require_accessibility_cjs_development = __commonJS({
     function _interopDefault(ex) {
       return ex && typeof ex === "object" && "default" in ex ? ex["default"] : ex;
     }
-    var React15 = require_react();
-    var React__default = _interopDefault(React15);
+    var React17 = require_react();
+    var React__default = _interopDefault(React17);
     var hiddenStyles = {
       display: "none"
     };
@@ -45364,8 +45364,8 @@ var require_accessibility_cjs_development = __commonJS({
       }, announcement);
     }
     function useAnnouncement() {
-      const [announcement, setAnnouncement] = React15.useState("");
-      const announce = React15.useCallback((value) => {
+      const [announcement, setAnnouncement] = React17.useState("");
+      const announce = React17.useCallback((value) => {
         if (value != null) {
           setAnnouncement(value);
         }
@@ -45619,7 +45619,7 @@ var require_core_cjs_production_min = __commonJS({
       const { top: n2, left: r3, bottom: o2, right: i2 } = t2(e2);
       k(e2) && (o2 <= 0 || i2 <= 0 || n2 >= window.innerHeight || r3 >= window.innerWidth) && e2.scrollIntoView({ block: "center", inline: "center" });
     }
-    var X2 = [["x", ["left", "right"], function(e2) {
+    var X3 = [["x", ["left", "right"], function(e2) {
       return e2.reduce((e3, t2) => e3 + K(t2), 0);
     }], ["y", ["top", "bottom"], function(e2) {
       return e2.reduce((e3, t2) => e3 + P(t2), 0);
@@ -45629,7 +45629,7 @@ var require_core_cjs_production_min = __commonJS({
         this.rect = void 0, this.width = void 0, this.height = void 0, this.top = void 0, this.bottom = void 0, this.right = void 0, this.left = void 0;
         const n2 = L(t2), r3 = q(n2);
         this.rect = { ...e2 }, this.width = e2.width, this.height = e2.height;
-        for (const [e3, t3, o2] of X2) for (const i2 of t3) Object.defineProperty(this, i2, { get: () => {
+        for (const [e3, t3, o2] of X3) for (const i2 of t3) Object.defineProperty(this, i2, { get: () => {
           const t4 = o2(n2);
           return this.rect[i2] + (r3[e3] - t4);
         }, enumerable: true });
@@ -46036,7 +46036,7 @@ var require_core_cjs_production_min = __commonJS({
             return null == (t3 = e4[n3]) ? void 0 : t3.call(e4, r3);
           });
         }, [e3]), n2];
-      })(), [P2, F2] = t.useState(Fe.Uninitialized), W2 = P2 === Fe.Initialized, { draggable: { active: j2, nodes: H2, translate: X3 }, droppable: { containers: V2 } } = M2, J2 = null != j2 ? H2.get(j2) : null, _2 = t.useRef({ initial: null, translated: null }), G2 = t.useMemo(() => {
+      })(), [P2, F2] = t.useState(Fe.Uninitialized), W2 = P2 === Fe.Initialized, { draggable: { active: j2, nodes: H2, translate: X4 }, droppable: { containers: V2 } } = M2, J2 = null != j2 ? H2.get(j2) : null, _2 = t.useRef({ initial: null, translated: null }), G2 = t.useMemo(() => {
         var e3;
         return null != j2 ? { id: j2, data: null != (e3 = null == J2 ? void 0 : J2.data) ? e3 : Me, rect: _2 } : null;
       }, [j2, J2]), Q2 = t.useRef(null), [Z2, $2] = t.useState(null), [ee2, te2] = t.useState(null), ne2 = o.useLatestValue(E2, Object.values(E2)), re2 = o.useUniqueId("DndDescribedBy", f2), oe2 = t.useMemo(() => V2.getEnabled(), [V2]), ie2 = t.useMemo(() => ({ draggable: { ...Ne.draggable, ...null == ae2 ? void 0 : ae2.draggable }, droppable: { ...Ne.droppable, ...null == ae2 ? void 0 : ae2.droppable }, dragOverlay: { ...Ne.dragOverlay, ...null == ae2 ? void 0 : ae2.dragOverlay } }), [null == (ae2 = x2) ? void 0 : ae2.draggable, null == ae2 ? void 0 : ae2.droppable, null == ae2 ? void 0 : ae2.dragOverlay]);
@@ -46082,7 +46082,7 @@ var require_core_cjs_production_min = __commonJS({
             p3(), h3.current = null;
           }, c3));
         }, [c3, v2, p3, ...i3]), { droppableRects: b3, measureDroppableContainers: p3, measuringScheduled: null != s3 };
-      })(oe2, { dragging: W2, dependencies: [X3.x, X3.y], config: ie2.droppable }), de2 = (function(e3, t2) {
+      })(oe2, { dragging: W2, dependencies: [X4.x, X4.y], config: ie2.droppable }), de2 = (function(e3, t2) {
         const n2 = null != t2 ? e3.get(t2) : void 0, r3 = n2 ? n2.node.current : null;
         return o.useLazyMemo((e4) => {
           var n3;
@@ -46141,7 +46141,7 @@ var require_core_cjs_production_min = __commonJS({
         return o.useIsomorphicLayoutEffect(() => {
           null == c3 || c3.disconnect(), l3(), e3.forEach((e4) => null == c3 ? void 0 : c3.observe(e4));
         }, [e3]), a2;
-      })(Ye2), Je2 = Be(w2, { transform: { x: X3.x - qe2.x, y: X3.y - qe2.y, scaleX: 1, scaleY: 1 }, activatorEvent: ee2, active: G2, activeNodeRect: pe2, containerNodeRect: ye2, draggingNodeRect: Ue2, over: Oe2.current.over, overlayNodeRect: Le2.rect, scrollableAncestors: Ye2, scrollableAncestorRects: Ve2, windowRect: Xe2 }), _e2 = ue2 ? o.add(ue2, X3) : null, Ge2 = (function(e3) {
+      })(Ye2), Je2 = Be(w2, { transform: { x: X4.x - qe2.x, y: X4.y - qe2.y, scaleX: 1, scaleY: 1 }, activatorEvent: ee2, active: G2, activeNodeRect: pe2, containerNodeRect: ye2, draggingNodeRect: Ue2, over: Oe2.current.over, overlayNodeRect: Le2.rect, scrollableAncestors: Ye2, scrollableAncestorRects: Ve2, windowRect: Xe2 }), _e2 = ue2 ? o.add(ue2, X4) : null, Ge2 = (function(e3) {
         const [n2, r3] = t.useState(null), i3 = t.useRef(e3), a2 = t.useCallback((e4) => {
           const t2 = T(e4.target);
           t2 && r3((e5) => e5 ? (e5.set(t2, I(t2)), new Map(e5)) : null);
@@ -46287,7 +46287,7 @@ var require_core_cjs_production_min = __commonJS({
             m4.current = { x: 0, y: 0 }, y2.current = { x: 0, y: 0 }, b3();
           } else b3();
         }, [n2, C2, i3, b3, s3, l3, JSON.stringify(x3), JSON.stringify(p3), h3, u2, E3, f3, JSON.stringify(g3)]);
-      })({ ...fe2, delta: X3, draggingRect: et2, pointerCoordinates: _e2, scrollableAncestors: Ye2, scrollableAncestorRects: Ve2 });
+      })({ ...fe2, delta: X4, draggingRect: et2, pointerCoordinates: _e2, scrollableAncestors: Ye2, scrollableAncestorRects: Ve2 });
       const ct = t.useMemo(() => ({ active: G2, activeNode: de2, activeNodeRect: pe2, activatorEvent: ee2, collisions: tt2, containerNodeRect: ye2, dragOverlay: Le2, draggableNodes: H2, droppableContainers: V2, droppableRects: se2, over: rt, measureDroppableContainers: le2, scrollableAncestors: Ye2, scrollableAncestorRects: Ve2, measuringConfiguration: ie2, measuringScheduled: ce2, windowRect: Xe2 }), [G2, de2, pe2, ee2, tt2, ye2, Le2, H2, V2, se2, rt, le2, Ye2, Ve2, ie2, ce2, Xe2]), dt = t.useMemo(() => ({ activatorEvent: ee2, activators: lt, active: G2, activeNodeRect: pe2, ariaDescribedById: { draggable: re2 }, dispatch: N2, draggableNodes: H2, over: rt, measureDroppableContainers: le2 }), [ee2, lt, G2, pe2, N2, re2, H2, rt, le2]);
       return n.createElement(a.Provider, { value: K2 }, n.createElement(ke.Provider, { value: dt }, n.createElement(Te.Provider, { value: ct }, n.createElement(ze.Provider, { value: it }, h2)), n.createElement(Ie, { disabled: false === (null == g2 ? void 0 : g2.restoreFocus) })), n.createElement(d, { ...g2, hiddenTextDescribedById: re2 }));
     }));
@@ -46454,15 +46454,15 @@ var require_core_cjs_development = __commonJS({
     function _interopDefault(ex) {
       return ex && typeof ex === "object" && "default" in ex ? ex["default"] : ex;
     }
-    var React15 = require_react();
-    var React__default = _interopDefault(React15);
+    var React17 = require_react();
+    var React__default = _interopDefault(React17);
     var reactDom = require_react_dom();
     var utilities = require_dist();
     var accessibility = require_dist2();
-    var DndMonitorContext = /* @__PURE__ */ React15.createContext(null);
+    var DndMonitorContext = /* @__PURE__ */ React17.createContext(null);
     function useDndMonitor(listener) {
-      const registerListener = React15.useContext(DndMonitorContext);
-      React15.useEffect(() => {
+      const registerListener = React17.useContext(DndMonitorContext);
+      React17.useEffect(() => {
         if (!registerListener) {
           throw new Error("useDndMonitor must be used within a children of <DndContext>");
         }
@@ -46471,12 +46471,12 @@ var require_core_cjs_development = __commonJS({
       }, [listener, registerListener]);
     }
     function useDndMonitorProvider() {
-      const [listeners] = React15.useState(() => /* @__PURE__ */ new Set());
-      const registerListener = React15.useCallback((listener) => {
+      const [listeners] = React17.useState(() => /* @__PURE__ */ new Set());
+      const registerListener = React17.useCallback((listener) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
       }, [listeners]);
-      const dispatch = React15.useCallback((_ref) => {
+      const dispatch = React17.useCallback((_ref) => {
         let {
           type,
           event
@@ -46537,11 +46537,11 @@ var require_core_cjs_development = __commonJS({
         announcement
       } = accessibility.useAnnouncement();
       const liveRegionId = utilities.useUniqueId("DndLiveRegion");
-      const [mounted, setMounted] = React15.useState(false);
-      React15.useEffect(() => {
+      const [mounted, setMounted] = React17.useState(false);
+      React17.useEffect(() => {
         setMounted(true);
       }, []);
-      useDndMonitor(React15.useMemo(() => ({
+      useDndMonitor(React17.useMemo(() => ({
         onDragStart(_ref2) {
           let {
             active
@@ -46619,7 +46619,7 @@ var require_core_cjs_development = __commonJS({
     function noop2() {
     }
     function useSensor3(sensor, options) {
-      return React15.useMemo(
+      return React17.useMemo(
         () => ({
           sensor,
           options: options != null ? options : {}
@@ -46632,7 +46632,7 @@ var require_core_cjs_development = __commonJS({
       for (var _len = arguments.length, sensors = new Array(_len), _key = 0; _key < _len; _key++) {
         sensors[_key] = arguments[_key];
       }
-      return React15.useMemo(
+      return React17.useMemo(
         () => [...sensors].filter((sensor) => sensor != null),
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [...sensors]
@@ -47923,15 +47923,15 @@ var require_core_cjs_development = __commonJS({
         disabled: !enabled
       });
       const [setAutoScrollInterval, clearAutoScrollInterval] = utilities.useInterval();
-      const scrollSpeed = React15.useRef({
+      const scrollSpeed = React17.useRef({
         x: 0,
         y: 0
       });
-      const scrollDirection = React15.useRef({
+      const scrollDirection = React17.useRef({
         x: 0,
         y: 0
       });
-      const rect = React15.useMemo(() => {
+      const rect = React17.useMemo(() => {
         switch (activator) {
           case exports2.AutoScrollActivator.Pointer:
             return pointerCoordinates ? {
@@ -47944,8 +47944,8 @@ var require_core_cjs_development = __commonJS({
             return draggingRect;
         }
       }, [activator, draggingRect, pointerCoordinates]);
-      const scrollContainerRef = React15.useRef(null);
-      const autoScroll = React15.useCallback(() => {
+      const scrollContainerRef = React17.useRef(null);
+      const autoScroll = React17.useCallback(() => {
         const scrollContainer = scrollContainerRef.current;
         if (!scrollContainer) {
           return;
@@ -47954,8 +47954,8 @@ var require_core_cjs_development = __commonJS({
         const scrollTop = scrollSpeed.current.y * scrollDirection.current.y;
         scrollContainer.scrollBy(scrollLeft, scrollTop);
       }, []);
-      const sortedScrollableAncestors = React15.useMemo(() => order === exports2.TraversalOrder.TreeOrder ? [...scrollableAncestors].reverse() : scrollableAncestors, [order, scrollableAncestors]);
-      React15.useEffect(
+      const sortedScrollableAncestors = React17.useMemo(() => order === exports2.TraversalOrder.TreeOrder ? [...scrollableAncestors].reverse() : scrollableAncestors, [order, scrollableAncestors]);
+      React17.useEffect(
         () => {
           if (!enabled || !scrollableAncestors.length || !rect) {
             clearAutoScrollInterval();
@@ -48068,7 +48068,7 @@ var require_core_cjs_development = __commonJS({
       }, [node, id3]);
     }
     function useCombineActivators(sensors, getSyntheticHandler) {
-      return React15.useMemo(() => sensors.reduce((accumulator, sensor) => {
+      return React17.useMemo(() => sensors.reduce((accumulator, sensor) => {
         const {
           sensor: Sensor
         } = sensor;
@@ -48094,16 +48094,16 @@ var require_core_cjs_development = __commonJS({
         dependencies,
         config
       } = _ref;
-      const [queue, setQueue] = React15.useState(null);
+      const [queue, setQueue] = React17.useState(null);
       const {
         frequency,
         measure,
         strategy
       } = config;
-      const containersRef = React15.useRef(containers);
+      const containersRef = React17.useRef(containers);
       const disabled = isDisabled();
       const disabledRef = utilities.useLatestValue(disabled);
-      const measureDroppableContainers = React15.useCallback(function(ids) {
+      const measureDroppableContainers = React17.useCallback(function(ids) {
         if (ids === void 0) {
           ids = [];
         }
@@ -48117,7 +48117,7 @@ var require_core_cjs_development = __commonJS({
           return value.concat(ids.filter((id3) => !value.includes(id3)));
         });
       }, [disabledRef]);
-      const timeoutId = React15.useRef(null);
+      const timeoutId = React17.useRef(null);
       const droppableRects = utilities.useLazyMemo((previousValue) => {
         if (disabled && !dragging) {
           return defaultValue;
@@ -48143,10 +48143,10 @@ var require_core_cjs_development = __commonJS({
         }
         return previousValue;
       }, [containers, queue, dragging, disabled, measure]);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         containersRef.current = containers;
       }, [containers]);
-      React15.useEffect(
+      React17.useEffect(
         () => {
           if (disabled) {
             return;
@@ -48156,7 +48156,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [dragging, disabled]
       );
-      React15.useEffect(
+      React17.useEffect(
         () => {
           if (queue && queue.length > 0) {
             setQueue(null);
@@ -48165,7 +48165,7 @@ var require_core_cjs_development = __commonJS({
         //eslint-disable-next-line react-hooks/exhaustive-deps
         [JSON.stringify(queue)]
       );
-      React15.useEffect(
+      React17.useEffect(
         () => {
           if (disabled || typeof frequency !== "number" || timeoutId.current !== null) {
             return;
@@ -48214,7 +48214,7 @@ var require_core_cjs_development = __commonJS({
         disabled
       } = _ref;
       const handleMutations = utilities.useEvent(callback);
-      const mutationObserver = React15.useMemo(() => {
+      const mutationObserver = React17.useMemo(() => {
         if (disabled || typeof window === "undefined" || typeof window.MutationObserver === "undefined") {
           return void 0;
         }
@@ -48223,7 +48223,7 @@ var require_core_cjs_development = __commonJS({
         } = window;
         return new MutationObserver(handleMutations);
       }, [handleMutations, disabled]);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         return () => mutationObserver == null ? void 0 : mutationObserver.disconnect();
       }, [mutationObserver]);
       return mutationObserver;
@@ -48234,7 +48234,7 @@ var require_core_cjs_development = __commonJS({
         disabled
       } = _ref;
       const handleResize = utilities.useEvent(callback);
-      const resizeObserver = React15.useMemo(
+      const resizeObserver = React17.useMemo(
         () => {
           if (disabled || typeof window === "undefined" || typeof window.ResizeObserver === "undefined") {
             return void 0;
@@ -48247,7 +48247,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [disabled]
       );
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         return () => resizeObserver == null ? void 0 : resizeObserver.disconnect();
       }, [resizeObserver]);
       return resizeObserver;
@@ -48259,7 +48259,7 @@ var require_core_cjs_development = __commonJS({
       if (measure === void 0) {
         measure = defaultMeasure;
       }
-      const [rect, setRect] = React15.useState(null);
+      const [rect, setRect] = React17.useState(null);
       function measureRect() {
         setRect((currentRect) => {
           if (!element) {
@@ -48317,7 +48317,7 @@ var require_core_cjs_development = __commonJS({
     }
     var defaultValue$1 = [];
     function useScrollableAncestors(node) {
-      const previousNode = React15.useRef(node);
+      const previousNode = React17.useRef(node);
       const ancestors = utilities.useLazyMemo((previousValue) => {
         if (!node) {
           return defaultValue$1;
@@ -48327,15 +48327,15 @@ var require_core_cjs_development = __commonJS({
         }
         return getScrollableAncestors(node);
       }, [node]);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         previousNode.current = node;
       }, [node]);
       return ancestors;
     }
     function useScrollOffsets(elements) {
-      const [scrollCoordinates, setScrollCoordinates] = React15.useState(null);
-      const prevElements = React15.useRef(elements);
-      const handleScroll = React15.useCallback((event) => {
+      const [scrollCoordinates, setScrollCoordinates] = React17.useState(null);
+      const prevElements = React17.useRef(elements);
+      const handleScroll = React17.useCallback((event) => {
         const scrollingElement = getScrollableElement(event.target);
         if (!scrollingElement) {
           return;
@@ -48348,7 +48348,7 @@ var require_core_cjs_development = __commonJS({
           return new Map(scrollCoordinates2);
         });
       }, []);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         const previousElements = prevElements.current;
         if (elements !== previousElements) {
           cleanup(previousElements);
@@ -48376,7 +48376,7 @@ var require_core_cjs_development = __commonJS({
           });
         }
       }, [handleScroll, elements]);
-      return React15.useMemo(() => {
+      return React17.useMemo(() => {
         if (elements.length) {
           return scrollCoordinates ? Array.from(scrollCoordinates.values()).reduce((acc, coordinates) => utilities.add(acc, coordinates), defaultCoordinates) : getScrollOffsets(elements);
         }
@@ -48387,15 +48387,15 @@ var require_core_cjs_development = __commonJS({
       if (dependencies === void 0) {
         dependencies = [];
       }
-      const initialScrollOffsets = React15.useRef(null);
-      React15.useEffect(
+      const initialScrollOffsets = React17.useRef(null);
+      React17.useEffect(
         () => {
           initialScrollOffsets.current = null;
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
         dependencies
       );
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         const hasScrollOffsets = scrollOffsets !== defaultCoordinates;
         if (hasScrollOffsets && !initialScrollOffsets.current) {
           initialScrollOffsets.current = scrollOffsets;
@@ -48407,7 +48407,7 @@ var require_core_cjs_development = __commonJS({
       return initialScrollOffsets.current ? utilities.subtract(scrollOffsets, initialScrollOffsets.current) : defaultCoordinates;
     }
     function useSensorSetup(sensors) {
-      React15.useEffect(
+      React17.useEffect(
         () => {
           if (!utilities.canUseDOM) {
             return;
@@ -48435,7 +48435,7 @@ var require_core_cjs_development = __commonJS({
       );
     }
     function useSyntheticListeners(listeners, id3) {
-      return React15.useMemo(() => {
+      return React17.useMemo(() => {
         return listeners.reduce((acc, _ref) => {
           let {
             eventName,
@@ -48449,7 +48449,7 @@ var require_core_cjs_development = __commonJS({
       }, [listeners, id3]);
     }
     function useWindowRect(element) {
-      return React15.useMemo(() => element ? getWindowClientRect(element) : null, [element]);
+      return React17.useMemo(() => element ? getWindowClientRect(element) : null, [element]);
     }
     var defaultValue$2 = [];
     function useRects(elements, measure) {
@@ -48458,7 +48458,7 @@ var require_core_cjs_development = __commonJS({
       }
       const [firstElement] = elements;
       const windowRect = useWindowRect(firstElement ? utilities.getWindow(firstElement) : null);
-      const [rects, setRects] = React15.useState(defaultValue$2);
+      const [rects, setRects] = React17.useState(defaultValue$2);
       function measureRects() {
         setRects(() => {
           if (!elements.length) {
@@ -48491,8 +48491,8 @@ var require_core_cjs_development = __commonJS({
       let {
         measure
       } = _ref;
-      const [rect, setRect] = React15.useState(null);
-      const handleResize = React15.useCallback((entries) => {
+      const [rect, setRect] = React17.useState(null);
+      const handleResize = React17.useCallback((entries) => {
         for (const {
           target
         } of entries) {
@@ -48512,7 +48512,7 @@ var require_core_cjs_development = __commonJS({
       const resizeObserver = useResizeObserver({
         callback: handleResize
       });
-      const handleNodeChange = React15.useCallback((element) => {
+      const handleNodeChange = React17.useCallback((element) => {
         const node = getMeasurableNode(element);
         resizeObserver == null ? void 0 : resizeObserver.disconnect();
         if (node) {
@@ -48521,7 +48521,7 @@ var require_core_cjs_development = __commonJS({
         setRect(node ? measure(node) : null);
       }, [measure, resizeObserver]);
       const [nodeRef, setRef2] = utilities.useNodeRef(handleNodeChange);
-      return React15.useMemo(() => ({
+      return React17.useMemo(() => ({
         nodeRef,
         rect,
         setRef: setRef2
@@ -48609,8 +48609,8 @@ var require_core_cjs_development = __commonJS({
       over: null,
       measureDroppableContainers: noop2
     };
-    var InternalContext = /* @__PURE__ */ React15.createContext(defaultInternalContext);
-    var PublicContext = /* @__PURE__ */ React15.createContext(defaultPublicContext);
+    var InternalContext = /* @__PURE__ */ React17.createContext(defaultInternalContext);
+    var PublicContext = /* @__PURE__ */ React17.createContext(defaultPublicContext);
     function getInitialState() {
       return {
         draggable: {
@@ -48744,10 +48744,10 @@ var require_core_cjs_development = __commonJS({
         active,
         activatorEvent,
         draggableNodes
-      } = React15.useContext(InternalContext);
+      } = React17.useContext(InternalContext);
       const previousActivatorEvent = utilities.usePrevious(activatorEvent);
       const previousActiveId = utilities.usePrevious(active == null ? void 0 : active.id);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         if (disabled) {
           return;
         }
@@ -48798,7 +48798,7 @@ var require_core_cjs_development = __commonJS({
       }, transform) : transform;
     }
     function useMeasuringConfiguration(config) {
-      return React15.useMemo(
+      return React17.useMemo(
         () => ({
           draggable: {
             ...defaultMeasuringConfiguration.draggable,
@@ -48824,7 +48824,7 @@ var require_core_cjs_development = __commonJS({
         initialRect,
         config = true
       } = _ref;
-      const initialized = React15.useRef(false);
+      const initialized = React17.useRef(false);
       const {
         x,
         y
@@ -48865,7 +48865,7 @@ var require_core_cjs_development = __commonJS({
         }
       }, [activeNode, x, y, initialRect, measure]);
     }
-    var ActiveDraggableContext = /* @__PURE__ */ React15.createContext({
+    var ActiveDraggableContext = /* @__PURE__ */ React17.createContext({
       ...defaultCoordinates,
       scaleX: 1,
       scaleY: 1
@@ -48876,7 +48876,7 @@ var require_core_cjs_development = __commonJS({
       Status2[Status2["Initializing"] = 1] = "Initializing";
       Status2[Status2["Initialized"] = 2] = "Initialized";
     })(Status || (Status = {}));
-    var DndContext3 = /* @__PURE__ */ React15.memo(function DndContext4(_ref) {
+    var DndContext3 = /* @__PURE__ */ React17.memo(function DndContext4(_ref) {
       var _sensorContext$curren, _dragOverlay$nodeRef$, _dragOverlay$rect, _over$rect;
       let {
         id: id3,
@@ -48889,10 +48889,10 @@ var require_core_cjs_development = __commonJS({
         modifiers,
         ...props
       } = _ref;
-      const store = React15.useReducer(reducer, void 0, getInitialState);
+      const store = React17.useReducer(reducer, void 0, getInitialState);
       const [state, dispatch] = store;
       const [dispatchMonitorEvent, registerMonitorListener] = useDndMonitorProvider();
-      const [status, setStatus] = React15.useState(Status.Uninitialized);
+      const [status, setStatus] = React17.useState(Status.Uninitialized);
       const isInitialized2 = status === Status.Initialized;
       const {
         draggable: {
@@ -48905,11 +48905,11 @@ var require_core_cjs_development = __commonJS({
         }
       } = state;
       const node = activeId != null ? draggableNodes.get(activeId) : null;
-      const activeRects = React15.useRef({
+      const activeRects = React17.useRef({
         initial: null,
         translated: null
       });
-      const active = React15.useMemo(() => {
+      const active = React17.useMemo(() => {
         var _node$data;
         return activeId != null ? {
           id: activeId,
@@ -48918,12 +48918,12 @@ var require_core_cjs_development = __commonJS({
           rect: activeRects
         } : null;
       }, [activeId, node]);
-      const activeRef = React15.useRef(null);
-      const [activeSensor, setActiveSensor] = React15.useState(null);
-      const [activatorEvent, setActivatorEvent] = React15.useState(null);
+      const activeRef = React17.useRef(null);
+      const [activeSensor, setActiveSensor] = React17.useState(null);
+      const [activatorEvent, setActivatorEvent] = React17.useState(null);
       const latestProps = utilities.useLatestValue(props, Object.values(props));
       const draggableDescribedById = utilities.useUniqueId("DndDescribedBy", id3);
-      const enabledDroppableContainers = React15.useMemo(() => droppableContainers.getEnabled(), [droppableContainers]);
+      const enabledDroppableContainers = React17.useMemo(() => droppableContainers.getEnabled(), [droppableContainers]);
       const measuringConfiguration = useMeasuringConfiguration(measuring);
       const {
         droppableRects,
@@ -48935,7 +48935,7 @@ var require_core_cjs_development = __commonJS({
         config: measuringConfiguration.droppable
       });
       const activeNode = useCachedNode(draggableNodes, activeId);
-      const activationCoordinates = React15.useMemo(() => activatorEvent ? utilities.getEventCoordinates(activatorEvent) : null, [activatorEvent]);
+      const activationCoordinates = React17.useMemo(() => activatorEvent ? utilities.getEventCoordinates(activatorEvent) : null, [activatorEvent]);
       const autoScrollOptions = getAutoScrollerOptions();
       const initialActiveNodeRect = useInitialRect(activeNode, measuringConfiguration.draggable.measure);
       useLayoutShiftScrollCompensation({
@@ -48946,7 +48946,7 @@ var require_core_cjs_development = __commonJS({
       });
       const activeNodeRect = useRect(activeNode, measuringConfiguration.draggable.measure, initialActiveNodeRect);
       const containerNodeRect = useRect(activeNode ? activeNode.parentElement : null);
-      const sensorContext = React15.useRef({
+      const sensorContext = React17.useRef({
         activatorEvent: null,
         active: null,
         activeNode,
@@ -49004,11 +49004,11 @@ var require_core_cjs_development = __commonJS({
         pointerCoordinates
       }) : null;
       const overId = getFirstCollision3(collisions, "id");
-      const [over, setOver] = React15.useState(null);
+      const [over, setOver] = React17.useState(null);
       const appliedTranslate = usesDragOverlay ? modifiedTranslate : utilities.add(modifiedTranslate, activeNodeScrollDelta);
       const transform = adjustScale(appliedTranslate, (_over$rect = over == null ? void 0 : over.rect) != null ? _over$rect : null, activeNodeRect);
-      const activeSensorRef = React15.useRef(null);
-      const instantiateSensor = React15.useCallback(
+      const activeSensorRef = React17.useRef(null);
+      const instantiateSensor = React17.useCallback(
         (event, _ref2) => {
           let {
             sensor: Sensor,
@@ -49166,7 +49166,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [draggableNodes]
       );
-      const bindActivatorToSensorInstantiator = React15.useCallback((handler, sensor) => {
+      const bindActivatorToSensorInstantiator = React17.useCallback((handler, sensor) => {
         return (event, active2) => {
           const nativeEvent = event.nativeEvent;
           const activeDraggableNode = draggableNodes.get(active2);
@@ -49198,7 +49198,7 @@ var require_core_cjs_development = __commonJS({
           setStatus(Status.Initialized);
         }
       }, [activeNodeRect, status]);
-      React15.useEffect(
+      React17.useEffect(
         () => {
           const {
             onDragMove
@@ -49233,7 +49233,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [scrollAdjustedTranslate.x, scrollAdjustedTranslate.y]
       );
-      React15.useEffect(
+      React17.useEffect(
         () => {
           const {
             active: active2,
@@ -49306,7 +49306,7 @@ var require_core_cjs_development = __commonJS({
         scrollableAncestors,
         scrollableAncestorRects
       });
-      const publicContext = React15.useMemo(() => {
+      const publicContext = React17.useMemo(() => {
         const context = {
           active,
           activeNode,
@@ -49328,7 +49328,7 @@ var require_core_cjs_development = __commonJS({
         };
         return context;
       }, [active, activeNode, activeNodeRect, activatorEvent, collisions, containerNodeRect, dragOverlay, draggableNodes, droppableContainers, droppableRects, over, measureDroppableContainers, scrollableAncestors, scrollableAncestorRects, measuringConfiguration, measuringScheduled, windowRect]);
-      const internalContext = React15.useMemo(() => {
+      const internalContext = React17.useMemo(() => {
         const context = {
           activatorEvent,
           activators,
@@ -49373,7 +49373,7 @@ var require_core_cjs_development = __commonJS({
         };
       }
     });
-    var NullContext = /* @__PURE__ */ React15.createContext(null);
+    var NullContext = /* @__PURE__ */ React17.createContext(null);
     var defaultRole = "button";
     var ID_PREFIX = "Draggable";
     function useDraggable(_ref) {
@@ -49392,14 +49392,14 @@ var require_core_cjs_development = __commonJS({
         ariaDescribedById,
         draggableNodes,
         over
-      } = React15.useContext(InternalContext);
+      } = React17.useContext(InternalContext);
       const {
         role = defaultRole,
         roleDescription = "draggable",
         tabIndex = 0
       } = attributes != null ? attributes : {};
       const isDragging2 = (active == null ? void 0 : active.id) === id3;
-      const transform = React15.useContext(isDragging2 ? ActiveDraggableContext : NullContext);
+      const transform = React17.useContext(isDragging2 ? ActiveDraggableContext : NullContext);
       const [node, setNodeRef] = utilities.useNodeRef();
       const [activatorNode, setActivatorNodeRef] = utilities.useNodeRef();
       const listeners = useSyntheticListeners(activators, id3);
@@ -49423,7 +49423,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [draggableNodes, id3]
       );
-      const memoizedAttributes = React15.useMemo(() => ({
+      const memoizedAttributes = React17.useMemo(() => ({
         role,
         tabIndex,
         "aria-disabled": disabled,
@@ -49446,7 +49446,7 @@ var require_core_cjs_development = __commonJS({
       };
     }
     function useDndContext() {
-      return React15.useContext(PublicContext);
+      return React17.useContext(PublicContext);
     }
     var ID_PREFIX$1 = "Droppable";
     var defaultResizeObserverConfig = {
@@ -49465,13 +49465,13 @@ var require_core_cjs_development = __commonJS({
         dispatch,
         over,
         measureDroppableContainers
-      } = React15.useContext(InternalContext);
-      const previous = React15.useRef({
+      } = React17.useContext(InternalContext);
+      const previous = React17.useRef({
         disabled
       });
-      const resizeObserverConnected = React15.useRef(false);
-      const rect = React15.useRef(null);
-      const callbackId = React15.useRef(null);
+      const resizeObserverConnected = React17.useRef(false);
+      const rect = React17.useRef(null);
+      const callbackId = React17.useRef(null);
       const {
         disabled: resizeObserverDisabled,
         updateMeasurementsFor,
@@ -49481,7 +49481,7 @@ var require_core_cjs_development = __commonJS({
         ...resizeObserverConfig
       };
       const ids = utilities.useLatestValue(updateMeasurementsFor != null ? updateMeasurementsFor : id3);
-      const handleResize = React15.useCallback(
+      const handleResize = React17.useCallback(
         () => {
           if (!resizeObserverConnected.current) {
             resizeObserverConnected.current = true;
@@ -49502,7 +49502,7 @@ var require_core_cjs_development = __commonJS({
         callback: handleResize,
         disabled: resizeObserverDisabled || !active
       });
-      const handleNodeChange = React15.useCallback((newElement, previousElement) => {
+      const handleNodeChange = React17.useCallback((newElement, previousElement) => {
         if (!resizeObserver) {
           return;
         }
@@ -49516,7 +49516,7 @@ var require_core_cjs_development = __commonJS({
       }, [resizeObserver]);
       const [nodeRef, setNodeRef] = utilities.useNodeRef(handleNodeChange);
       const dataRef = utilities.useLatestValue(data);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         if (!resizeObserver || !nodeRef.current) {
           return;
         }
@@ -49524,7 +49524,7 @@ var require_core_cjs_development = __commonJS({
         resizeObserverConnected.current = false;
         resizeObserver.observe(nodeRef.current);
       }, [nodeRef, resizeObserver]);
-      React15.useEffect(
+      React17.useEffect(
         () => {
           dispatch({
             type: Action.RegisterDroppable,
@@ -49546,7 +49546,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [id3]
       );
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         if (disabled !== previous.current.disabled) {
           dispatch({
             type: Action.SetDroppableDisabled,
@@ -49571,8 +49571,8 @@ var require_core_cjs_development = __commonJS({
         animation,
         children
       } = _ref;
-      const [clonedChildren, setClonedChildren] = React15.useState(null);
-      const [element, setElement] = React15.useState(null);
+      const [clonedChildren, setClonedChildren] = React17.useState(null);
+      const [element, setElement] = React17.useState(null);
       const previousChildren = utilities.usePrevious(children);
       if (!children && !clonedChildren && previousChildren) {
         setClonedChildren(previousChildren);
@@ -49591,7 +49591,7 @@ var require_core_cjs_development = __commonJS({
           setClonedChildren(null);
         });
       }, [animation, clonedChildren, element]);
-      return React__default.createElement(React__default.Fragment, null, children, clonedChildren ? React15.cloneElement(clonedChildren, {
+      return React__default.createElement(React__default.Fragment, null, children, clonedChildren ? React17.cloneElement(clonedChildren, {
         ref: setElement
       }) : null);
     }
@@ -49619,7 +49619,7 @@ var require_core_cjs_development = __commonJS({
       const isKeyboardActivator = utilities.isKeyboardEvent(activatorEvent);
       return isKeyboardActivator ? "transform 250ms ease" : void 0;
     };
-    var PositionedOverlay = /* @__PURE__ */ React15.forwardRef((_ref, ref) => {
+    var PositionedOverlay = /* @__PURE__ */ React17.forwardRef((_ref, ref) => {
       let {
         as,
         activatorEvent,
@@ -49840,7 +49840,7 @@ var require_core_cjs_development = __commonJS({
     }
     var key = 0;
     function useKey(id3) {
-      return React15.useMemo(() => {
+      return React17.useMemo(() => {
         if (id3 == null) {
           return;
         }
@@ -49874,7 +49874,7 @@ var require_core_cjs_development = __commonJS({
         scrollableAncestorRects,
         windowRect
       } = useDndContext();
-      const transform = React15.useContext(ActiveDraggableContext);
+      const transform = React17.useContext(ActiveDraggableContext);
       const key2 = useKey(active == null ? void 0 : active.id);
       const modifiedTransform = applyModifiers(modifiers, {
         activatorEvent,
@@ -50083,7 +50083,7 @@ var require_sortable_cjs_production_min = __commonJS({
       const { items: y, containerId: m2, activeIndex: w, disabled: C, disableTransforms: R, sortedRects: S, overIndex: D, useDragOverlay: O, strategy: N } = t.useContext(u), E = (function(e3, t2) {
         var r4, n2;
         return "boolean" == typeof e3 ? { draggable: e3, droppable: false } : { draggable: null != (r4 = null == e3 ? void 0 : e3.draggable) ? r4 : t2.draggable, droppable: null != (n2 = null == e3 ? void 0 : e3.droppable) ? n2 : t2.droppable };
-      })(a2, C), K = y.indexOf(c2), L = t.useMemo(() => ({ sortable: { containerId: m2, index: K, items: y }, ...d2 }), [m2, d2, K, y]), T = t.useMemo(() => y.slice(y.indexOf(c2)), [y, c2]), { rect: M, node: A, isOver: k, setNodeRef: X2 } = n.useDroppable({ id: c2, data: L, disabled: E.droppable, resizeObserverConfig: { updateMeasurementsFor: T, ...h2 } }), { active: Y, activatorEvent: j, activeNodeRect: q, attributes: z, setNodeRef: U, listeners: B, isDragging: F, over: P, setActivatorNodeRef: _, transform: G } = n.useDraggable({ id: c2, data: L, attributes: { ...x, ...i2 }, disabled: E.draggable }), H = o.useCombinedRefs(X2, U), J = Boolean(Y), Q = J && !R && s(w) && s(D), V = !O && F, W = V && Q ? G : null, Z = Q ? null != W ? W : (null != v2 ? v2 : N)({ rects: S, activeNodeRect: q, activeIndex: w, overIndex: D, index: K }) : null, $ = s(w) && s(D) ? l2({ id: c2, items: y, activeIndex: w, overIndex: D }) : K, ee = null == Y ? void 0 : Y.id, te = t.useRef({ activeId: ee, items: y, newIndex: $, containerId: m2 }), re = y !== te.current.items, ne = r3({ active: Y, containerId: m2, isDragging: F, isSorting: J, id: c2, index: K, items: y, newIndex: te.current.newIndex, previousItems: te.current.items, previousContainerId: te.current.containerId, transition: I2, wasDragging: null != te.current.activeId }), oe = (function(e3) {
+      })(a2, C), K = y.indexOf(c2), L = t.useMemo(() => ({ sortable: { containerId: m2, index: K, items: y }, ...d2 }), [m2, d2, K, y]), T = t.useMemo(() => y.slice(y.indexOf(c2)), [y, c2]), { rect: M, node: A, isOver: k, setNodeRef: X3 } = n.useDroppable({ id: c2, data: L, disabled: E.droppable, resizeObserverConfig: { updateMeasurementsFor: T, ...h2 } }), { active: Y, activatorEvent: j, activeNodeRect: q, attributes: z, setNodeRef: U, listeners: B, isDragging: F, over: P, setActivatorNodeRef: _, transform: G } = n.useDraggable({ id: c2, data: L, attributes: { ...x, ...i2 }, disabled: E.draggable }), H = o.useCombinedRefs(X3, U), J = Boolean(Y), Q = J && !R && s(w) && s(D), V = !O && F, W = V && Q ? G : null, Z = Q ? null != W ? W : (null != v2 ? v2 : N)({ rects: S, activeNodeRect: q, activeIndex: w, overIndex: D, index: K }) : null, $ = s(w) && s(D) ? l2({ id: c2, items: y, activeIndex: w, overIndex: D }) : K, ee = null == Y ? void 0 : Y.id, te = t.useRef({ activeId: ee, items: y, newIndex: $, containerId: m2 }), re = y !== te.current.items, ne = r3({ active: Y, containerId: m2, isDragging: F, isSorting: J, id: c2, index: K, items: y, newIndex: te.current.newIndex, previousItems: te.current.items, previousContainerId: te.current.containerId, transition: I2, wasDragging: null != te.current.activeId }), oe = (function(e3) {
         let { disabled: r4, index: i3, node: a3, rect: s2 } = e3;
         const [d3, l3] = t.useState(null), c3 = t.useRef(i3);
         return o.useIsomorphicLayoutEffect(() => {
@@ -50108,7 +50108,7 @@ var require_sortable_cjs_production_min = __commonJS({
           te.current.activeId = ee;
         }, 50);
         return () => clearTimeout(e3);
-      }, [ee]), { active: Y, activeIndex: w, attributes: z, data: L, rect: M, index: K, newIndex: $, items: y, isOver: k, isSorting: J, isDragging: F, listeners: B, node: A, overIndex: D, over: P, setNodeRef: H, setActivatorNodeRef: _, setDroppableNodeRef: X2, setDraggableNodeRef: U, transform: null != oe ? oe : Z, transition: oe || re && te.current.newIndex === K ? b : V && !o.isKeyboardEvent(j) || !I2 ? void 0 : J || ne ? o.CSS.Transition.toString({ ...I2, property: "transform" }) : void 0 };
+      }, [ee]), { active: Y, activeIndex: w, attributes: z, data: L, rect: M, index: K, newIndex: $, items: y, isOver: k, isSorting: J, isDragging: F, listeners: B, node: A, overIndex: D, over: P, setNodeRef: H, setActivatorNodeRef: _, setDroppableNodeRef: X3, setDraggableNodeRef: U, transform: null != oe ? oe : Z, transition: oe || re && te.current.newIndex === K ? b : V && !o.isKeyboardEvent(j) || !I2 ? void 0 : J || ne ? o.CSS.Transition.toString({ ...I2, property: "transform" }) : void 0 };
     }, exports2.verticalListSortingStrategy = (e2) => {
       var t2;
       let { activeIndex: r3, activeNodeRect: n2, index: o2, rects: i2, overIndex: a2 } = e2;
@@ -50135,8 +50135,8 @@ var require_sortable_cjs_development = __commonJS({
     function _interopDefault(ex) {
       return ex && typeof ex === "object" && "default" in ex ? ex["default"] : ex;
     }
-    var React15 = require_react();
-    var React__default = _interopDefault(React15);
+    var React17 = require_react();
+    var React__default = _interopDefault(React17);
     var core = require_dist3();
     var utilities = require_dist();
     function arrayMove2(array, from, to) {
@@ -50386,11 +50386,11 @@ var require_sortable_cjs_development = __commonJS({
       } = core.useDndContext();
       const containerId = utilities.useUniqueId(ID_PREFIX, id3);
       const useDragOverlay = Boolean(dragOverlay.rect !== null);
-      const items = React15.useMemo(() => userDefinedItems.map((item) => typeof item === "object" && "id" in item ? item.id : item), [userDefinedItems]);
+      const items = React17.useMemo(() => userDefinedItems.map((item) => typeof item === "object" && "id" in item ? item.id : item), [userDefinedItems]);
       const isDragging2 = active != null;
       const activeIndex = active ? items.indexOf(active.id) : -1;
       const overIndex = over ? items.indexOf(over.id) : -1;
-      const previousItemsRef = React15.useRef(items);
+      const previousItemsRef = React17.useRef(items);
       const itemsHaveChanged = !itemsEqual(items, previousItemsRef.current);
       const disableTransforms = overIndex !== -1 && activeIndex === -1 || itemsHaveChanged;
       const disabled = normalizeDisabled(disabledProp);
@@ -50399,10 +50399,10 @@ var require_sortable_cjs_development = __commonJS({
           measureDroppableContainers(items);
         }
       }, [itemsHaveChanged, items, isDragging2, measureDroppableContainers]);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         previousItemsRef.current = items;
       }, [items]);
-      const contextValue = React15.useMemo(
+      const contextValue = React17.useMemo(
         () => ({
           activeIndex,
           containerId,
@@ -50473,8 +50473,8 @@ var require_sortable_cjs_development = __commonJS({
         node,
         rect
       } = _ref;
-      const [derivedTransform, setDerivedtransform] = React15.useState(null);
-      const previousIndex = React15.useRef(index);
+      const [derivedTransform, setDerivedtransform] = React17.useState(null);
+      const previousIndex = React17.useRef(index);
       utilities.useIsomorphicLayoutEffect(() => {
         if (!disabled && index !== previousIndex.current && node.current) {
           const initial = rect.current;
@@ -50497,7 +50497,7 @@ var require_sortable_cjs_development = __commonJS({
           previousIndex.current = index;
         }
       }, [disabled, index, node, rect]);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         if (derivedTransform) {
           setDerivedtransform(null);
         }
@@ -50526,10 +50526,10 @@ var require_sortable_cjs_development = __commonJS({
         overIndex,
         useDragOverlay,
         strategy: globalStrategy
-      } = React15.useContext(Context);
+      } = React17.useContext(Context);
       const disabled = normalizeLocalDisabled(localDisabled, globalDisabled);
       const index = items.indexOf(id3);
-      const data = React15.useMemo(() => ({
+      const data = React17.useMemo(() => ({
         sortable: {
           containerId,
           index,
@@ -50537,7 +50537,7 @@ var require_sortable_cjs_development = __commonJS({
         },
         ...customData
       }), [containerId, customData, index, items]);
-      const itemsAfterCurrentSortable = React15.useMemo(() => items.slice(items.indexOf(id3)), [items, id3]);
+      const itemsAfterCurrentSortable = React17.useMemo(() => items.slice(items.indexOf(id3)), [items, id3]);
       const {
         rect,
         node,
@@ -50592,7 +50592,7 @@ var require_sortable_cjs_development = __commonJS({
         overIndex
       }) : index;
       const activeId = active == null ? void 0 : active.id;
-      const previous = React15.useRef({
+      const previous = React17.useRef({
         activeId,
         items,
         newIndex,
@@ -50619,7 +50619,7 @@ var require_sortable_cjs_development = __commonJS({
         node,
         rect
       });
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         if (isSorting && previous.current.newIndex !== newIndex) {
           previous.current.newIndex = newIndex;
         }
@@ -50630,7 +50630,7 @@ var require_sortable_cjs_development = __commonJS({
           previous.current.items = items;
         }
       }, [isSorting, newIndex, containerId, items]);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         if (activeId === previous.current.activeId) {
           return;
         }
@@ -50872,7 +50872,7 @@ var require_react_jsx_runtime_development = __commonJS({
     if (process.env.NODE_ENV !== "production") {
       (function() {
         "use strict";
-        var React15 = require_react();
+        var React17 = require_react();
         var REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.element");
         var REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal");
         var REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment");
@@ -50898,7 +50898,7 @@ var require_react_jsx_runtime_development = __commonJS({
           }
           return null;
         }
-        var ReactSharedInternals = React15.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React17.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         function error(format) {
           {
             {
@@ -51748,11 +51748,11 @@ var require_react_jsx_runtime_development = __commonJS({
             return jsxWithValidation(type, props, key, false);
           }
         }
-        var jsx24 = jsxWithValidationDynamic;
-        var jsxs8 = jsxWithValidationStatic;
+        var jsx26 = jsxWithValidationDynamic;
+        var jsxs9 = jsxWithValidationStatic;
         exports2.Fragment = REACT_FRAGMENT_TYPE;
-        exports2.jsx = jsx24;
-        exports2.jsxs = jsxs8;
+        exports2.jsx = jsx26;
+        exports2.jsxs = jsxs9;
       })();
     }
   }
@@ -51912,7 +51912,7 @@ var require_lucide_react = __commonJS({
         }
       ]
     ];
-    var Activity2 = createLucideIcon("activity", __iconNode$r3);
+    var Activity3 = createLucideIcon("activity", __iconNode$r3);
     var __iconNode$r2 = [
       ["path", { d: "M10 13H6", key: "18d9xh" }],
       ["path", { d: "M10 15v-4a2 2 0 0 0-4 0v4", key: "ss28p3" }],
@@ -52512,7 +52512,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M12 5v14", key: "s699le" }],
       ["path", { d: "m19 12-7 7-7-7", key: "1idqje" }]
     ];
-    var ArrowDown2 = createLucideIcon("arrow-down", __iconNode$p_);
+    var ArrowDown3 = createLucideIcon("arrow-down", __iconNode$p_);
     var __iconNode$pZ = [
       ["path", { d: "m3 16 4 4 4-4", key: "1co6wj" }],
       ["path", { d: "M7 20V4", key: "1yoxec" }],
@@ -52656,7 +52656,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "m5 12 7-7 7 7", key: "hav0vg" }],
       ["path", { d: "M12 19V5", key: "x0mq9r" }]
     ];
-    var ArrowUp2 = createLucideIcon("arrow-up", __iconNode$pE);
+    var ArrowUp3 = createLucideIcon("arrow-up", __iconNode$pE);
     var __iconNode$pD = [
       ["path", { d: "m4 6 3-3 3 3", key: "9aidw8" }],
       ["path", { d: "M7 17V3", key: "19qxw1" }],
@@ -54064,7 +54064,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "m3.3 7 8.7 5 8.7-5", key: "g66t2b" }],
       ["path", { d: "M12 22V12", key: "d0xqtd" }]
     ];
-    var Box2 = createLucideIcon("box", __iconNode$nA);
+    var Box3 = createLucideIcon("box", __iconNode$nA);
     var __iconNode$nz = [
       [
         "path",
@@ -54097,7 +54097,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "m12 8 4.74-2.85", key: "3rx089" }],
       ["path", { d: "M12 13.5V8", key: "1io7kd" }]
     ];
-    var Boxes2 = createLucideIcon("boxes", __iconNode$nz);
+    var Boxes3 = createLucideIcon("boxes", __iconNode$nz);
     var __iconNode$ny = [
       [
         "path",
@@ -54111,7 +54111,7 @@ var require_lucide_react = __commonJS({
         }
       ]
     ];
-    var Braces2 = createLucideIcon("braces", __iconNode$ny);
+    var Braces3 = createLucideIcon("braces", __iconNode$ny);
     var __iconNode$nx = [
       ["path", { d: "M16 3h3a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1h-3", key: "1kt8lf" }],
       ["path", { d: "M8 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h3", key: "gduv9" }]
@@ -55208,7 +55208,7 @@ var require_lucide_react = __commonJS({
     ];
     var CheckLine = createLucideIcon("check-line", __iconNode$l$);
     var __iconNode$l_ = [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]];
-    var Check3 = createLucideIcon("check", __iconNode$l_);
+    var Check4 = createLucideIcon("check", __iconNode$l_);
     var __iconNode$lZ = [
       [
         "path",
@@ -55315,7 +55315,7 @@ var require_lucide_react = __commonJS({
     ];
     var ChessQueen = createLucideIcon("chess-queen", __iconNode$lS);
     var __iconNode$lR = [["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]];
-    var ChevronDown2 = createLucideIcon("chevron-down", __iconNode$lR);
+    var ChevronDown3 = createLucideIcon("chevron-down", __iconNode$lR);
     var __iconNode$lQ = [
       ["path", { d: "m17 18-6-6 6-6", key: "1yerx2" }],
       ["path", { d: "M7 6v12", key: "1p53r6" }]
@@ -55327,9 +55327,9 @@ var require_lucide_react = __commonJS({
     ];
     var ChevronLast = createLucideIcon("chevron-last", __iconNode$lP);
     var __iconNode$lO = [["path", { d: "m15 18-6-6 6-6", key: "1wnfg3" }]];
-    var ChevronLeft2 = createLucideIcon("chevron-left", __iconNode$lO);
+    var ChevronLeft3 = createLucideIcon("chevron-left", __iconNode$lO);
     var __iconNode$lN = [["path", { d: "m9 18 6-6-6-6", key: "mthhwq" }]];
-    var ChevronRight2 = createLucideIcon("chevron-right", __iconNode$lN);
+    var ChevronRight3 = createLucideIcon("chevron-right", __iconNode$lN);
     var __iconNode$lM = [["path", { d: "m18 15-6-6-6 6", key: "153udz" }]];
     var ChevronUp = createLucideIcon("chevron-up", __iconNode$lM);
     var __iconNode$lL = [
@@ -55422,7 +55422,7 @@ var require_lucide_react = __commonJS({
       ["line", { x1: "12", x2: "12", y1: "8", y2: "12", key: "1pkeuh" }],
       ["line", { x1: "12", x2: "12.01", y1: "16", y2: "16", key: "4dfq90" }]
     ];
-    var CircleAlert2 = createLucideIcon("circle-alert", __iconNode$lz);
+    var CircleAlert3 = createLucideIcon("circle-alert", __iconNode$lz);
     var __iconNode$ly = [
       ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
       ["path", { d: "M12 8v8", key: "napkw2" }],
@@ -56478,7 +56478,7 @@ var require_lucide_react = __commonJS({
       ["rect", { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2", key: "17jyea" }],
       ["path", { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2", key: "zix9uf" }]
     ];
-    var Copy2 = createLucideIcon("copy", __iconNode$jt);
+    var Copy3 = createLucideIcon("copy", __iconNode$jt);
     var __iconNode$js = [
       ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
       ["path", { d: "M9.17 14.83a4 4 0 1 0 0-5.66", key: "1sveal" }]
@@ -56696,7 +56696,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M3 5V19A9 3 0 0 0 21 19V5", key: "1wlel7" }],
       ["path", { d: "M3 12A9 3 0 0 0 21 12", key: "mv7ke4" }]
     ];
-    var Database2 = createLucideIcon("database", __iconNode$j2);
+    var Database3 = createLucideIcon("database", __iconNode$j2);
     var __iconNode$j1 = [
       ["path", { d: "m13 21-3-3 3-3", key: "s3o1nf" }],
       ["path", { d: "M20 18H10", key: "14r3mt" }],
@@ -57286,7 +57286,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M10 14 21 3", key: "gplh6r" }],
       ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", key: "a6xqqp" }]
     ];
-    var ExternalLink2 = createLucideIcon("external-link", __iconNode$i3);
+    var ExternalLink3 = createLucideIcon("external-link", __iconNode$i3);
     var __iconNode$i2 = [
       ["path", { d: "m15 18-.722-3.25", key: "1j64jw" }],
       ["path", { d: "M2 8a10.645 10.645 0 0 0 20 0", key: "1e7gxb" }],
@@ -57337,7 +57337,7 @@ var require_lucide_react = __commonJS({
       ],
       ["path", { d: "m2 2 20 20", key: "1ooewy" }]
     ];
-    var EyeOff = createLucideIcon("eye-off", __iconNode$i0);
+    var EyeOff2 = createLucideIcon("eye-off", __iconNode$i0);
     var __iconNode$h$ = [
       [
         "path",
@@ -57348,7 +57348,7 @@ var require_lucide_react = __commonJS({
       ],
       ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
     ];
-    var Eye = createLucideIcon("eye", __iconNode$h$);
+    var Eye2 = createLucideIcon("eye", __iconNode$h$);
     var __iconNode$h_ = [
       ["path", { d: "M12 16h.01", key: "1drbdi" }],
       ["path", { d: "M16 16h.01", key: "1f9h7w" }],
@@ -58770,7 +58770,7 @@ var require_lucide_react = __commonJS({
         }
       ]
     ];
-    var FolderOpen2 = createLucideIcon("folder-open", __iconNode$gj);
+    var FolderOpen3 = createLucideIcon("folder-open", __iconNode$gj);
     var __iconNode$gi = [
       [
         "path",
@@ -59130,7 +59130,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "m12 14 4-4", key: "9kzdfg" }],
       ["path", { d: "M3.34 19a10 10 0 1 1 17.32 0", key: "19p75a" }]
     ];
-    var Gauge2 = createLucideIcon("gauge", __iconNode$fP);
+    var Gauge3 = createLucideIcon("gauge", __iconNode$fP);
     var __iconNode$fO = [
       ["path", { d: "m14 13-8.381 8.38a1 1 0 0 1-3.001-3l8.384-8.381", key: "pgg06f" }],
       ["path", { d: "m16 16 6-6", key: "vzrcl6" }],
@@ -59374,7 +59374,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20", key: "13o1zl" }],
       ["path", { d: "M2 12h20", key: "9i4pu4" }]
     ];
-    var Globe2 = createLucideIcon("globe", __iconNode$fm);
+    var Globe3 = createLucideIcon("globe", __iconNode$fm);
     var __iconNode$fl = [
       ["path", { d: "M12 13V2l8 4-8 4", key: "5wlwwj" }],
       ["path", { d: "M20.561 10.222a9 9 0 1 1-12.55-5.29", key: "1c0wjv" }],
@@ -60430,7 +60430,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M12 16v-4", key: "1dtifu" }],
       ["path", { d: "M12 8h.01", key: "e9boi3" }]
     ];
-    var Info2 = createLucideIcon("info", __iconNode$dZ);
+    var Info3 = createLucideIcon("info", __iconNode$dZ);
     var __iconNode$dY = [
       ["line", { x1: "19", x2: "10", y1: "4", y2: "4", key: "15jd3p" }],
       ["line", { x1: "14", x2: "5", y1: "20", y2: "20", key: "bu0au3" }],
@@ -60495,7 +60495,7 @@ var require_lucide_react = __commonJS({
       ],
       ["circle", { cx: "16.5", cy: "7.5", r: ".5", fill: "currentColor", key: "w0ekpg" }]
     ];
-    var KeyRound2 = createLucideIcon("key-round", __iconNode$dR);
+    var KeyRound3 = createLucideIcon("key-round", __iconNode$dR);
     var __iconNode$dQ = [
       [
         "path",
@@ -61190,7 +61190,7 @@ var require_lucide_react = __commonJS({
     ];
     var List = createLucideIcon("list", __iconNode$cL);
     var __iconNode$cK = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
-    var LoaderCircle2 = createLucideIcon("loader-circle", __iconNode$cK);
+    var LoaderCircle3 = createLucideIcon("loader-circle", __iconNode$cK);
     var __iconNode$cJ = [
       ["path", { d: "M22 12a1 1 0 0 1-10 0 1 1 0 0 0-10 0", key: "1lzz15" }],
       ["path", { d: "M7 20.7a1 1 0 1 1 5-8.7 1 1 0 1 0 5-8.6", key: "1gnrpi" }],
@@ -62542,7 +62542,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M18 8L22 12L18 16", key: "1r0oui" }],
       ["path", { d: "M2 12H22", key: "1m8cig" }]
     ];
-    var MoveRight2 = createLucideIcon("move-right", __iconNode$aB);
+    var MoveRight3 = createLucideIcon("move-right", __iconNode$aB);
     var __iconNode$aA = [
       ["path", { d: "M5 11V5H11", key: "3q78g9" }],
       ["path", { d: "M5 5L19 19", key: "5zm2fv" }]
@@ -62619,7 +62619,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3", key: "1jsf9p" }],
       ["path", { d: "M12 12V8", key: "2874zd" }]
     ];
-    var Network2 = createLucideIcon("network", __iconNode$ao);
+    var Network3 = createLucideIcon("network", __iconNode$ao);
     var __iconNode$an = [
       ["polygon", { points: "3 11 22 2 13 21 11 13 3 11", key: "1ltx0t" }]
     ];
@@ -63052,7 +63052,7 @@ var require_lucide_react = __commonJS({
       ["circle", { cx: "6.5", cy: "12.5", r: ".5", fill: "currentColor", key: "qy21gx" }],
       ["circle", { cx: "8.5", cy: "7.5", r: ".5", fill: "currentColor", key: "fotxhn" }]
     ];
-    var Palette2 = createLucideIcon("palette", __iconNode$9S);
+    var Palette3 = createLucideIcon("palette", __iconNode$9S);
     var __iconNode$9R = [
       ["path", { d: "M11.25 17.25h1.5L12 18z", key: "1wmwwj" }],
       ["path", { d: "m15 12 2 2", key: "k60wz4" }],
@@ -63098,7 +63098,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M9 3v18", key: "fh3hqa" }],
       ["path", { d: "m16 15-3-3 3-3", key: "14y99z" }]
     ];
-    var PanelLeftClose2 = createLucideIcon("panel-left-close", __iconNode$9M);
+    var PanelLeftClose3 = createLucideIcon("panel-left-close", __iconNode$9M);
     var __iconNode$9L = [
       ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }],
       ["path", { d: "M9 14v1", key: "askpd8" }],
@@ -63112,7 +63112,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M9 3v18", key: "fh3hqa" }],
       ["path", { d: "m14 9 3 3-3 3", key: "8010ee" }]
     ];
-    var PanelLeftOpen2 = createLucideIcon("panel-left-open", __iconNode$9K);
+    var PanelLeftOpen3 = createLucideIcon("panel-left-open", __iconNode$9K);
     var __iconNode$9J = [
       ["path", { d: "M15 10V9", key: "4dkmfx" }],
       ["path", { d: "M15 15v-1", key: "6a4afx" }],
@@ -63431,7 +63431,7 @@ var require_lucide_react = __commonJS({
       ],
       ["path", { d: "m15 5 4 4", key: "1mk7zo" }]
     ];
-    var Pencil2 = createLucideIcon("pencil", __iconNode$9f);
+    var Pencil3 = createLucideIcon("pencil", __iconNode$9f);
     var __iconNode$9e = [
       [
         "path",
@@ -63793,7 +63793,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M5 12h14", key: "1ays0h" }],
       ["path", { d: "M12 5v14", key: "s699le" }]
     ];
-    var Plus2 = createLucideIcon("plus", __iconNode$8I);
+    var Plus3 = createLucideIcon("plus", __iconNode$8I);
     var __iconNode$8H = [
       ["path", { d: "M3 2v1c0 1 2 1 2 2S3 6 3 7s2 1 2 2-2 1-2 2 2 1 2 2", key: "19w3oe" }],
       ["path", { d: "M18 6h.01", key: "1v4wsw" }],
@@ -63904,7 +63904,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M12 2v10", key: "mnfbl" }],
       ["path", { d: "M18.4 6.6a9 9 0 1 1-12.77.04", key: "obofu9" }]
     ];
-    var Power2 = createLucideIcon("power", __iconNode$8y);
+    var Power3 = createLucideIcon("power", __iconNode$8y);
     var __iconNode$8x = [
       ["path", { d: "M2 3h20", key: "91anmk" }],
       ["path", { d: "M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3", key: "2k9sn8" }],
@@ -63994,7 +63994,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M21 12v.01", key: "1lwtk9" }],
       ["path", { d: "M12 21v-1", key: "1880an" }]
     ];
-    var QrCode2 = createLucideIcon("qr-code", __iconNode$8p);
+    var QrCode3 = createLucideIcon("qr-code", __iconNode$8p);
     var __iconNode$8o = [
       [
         "path",
@@ -64374,7 +64374,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16", key: "3uifl3" }],
       ["path", { d: "M8 16H3v5", key: "1cv678" }]
     ];
-    var RefreshCw2 = createLucideIcon("refresh-cw", __iconNode$7R);
+    var RefreshCw3 = createLucideIcon("refresh-cw", __iconNode$7R);
     var __iconNode$7Q = [
       [
         "path",
@@ -64612,7 +64612,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15", key: "1d8sl" }],
       ["circle", { cx: "18", cy: "5", r: "3", key: "gq8acd" }]
     ];
-    var Route2 = createLucideIcon("route", __iconNode$7r);
+    var Route3 = createLucideIcon("route", __iconNode$7r);
     var __iconNode$7q = [
       ["rect", { width: "20", height: "8", x: "2", y: "14", rx: "2", key: "w68u3i" }],
       ["path", { d: "M6.01 18H6", key: "19vcac" }],
@@ -65073,7 +65073,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "m21 21-4.34-4.34", key: "14j7rj" }],
       ["circle", { cx: "11", cy: "11", r: "8", key: "4ej97u" }]
     ];
-    var Search2 = createLucideIcon("search", __iconNode$6J);
+    var Search3 = createLucideIcon("search", __iconNode$6J);
     var __iconNode$6I = [
       ["path", { d: "M16 5a4 3 0 0 0-8 0c0 4 8 3 8 7a4 3 0 0 1-8 0", key: "vqan6v" }],
       ["path", { d: "M8 19a4 3 0 0 0 8 0c0-4-8-3-8-7a4 3 0 0 1 8 0", key: "wdjd8o" }]
@@ -65182,14 +65182,14 @@ var require_lucide_react = __commonJS({
       ["line", { x1: "6", x2: "6.01", y1: "6", y2: "6", key: "16zg32" }],
       ["line", { x1: "6", x2: "6.01", y1: "18", y2: "18", key: "nzw8ys" }]
     ];
-    var Server2 = createLucideIcon("server", __iconNode$6z);
+    var Server3 = createLucideIcon("server", __iconNode$6z);
     var __iconNode$6y = [
       ["path", { d: "M14 17H5", key: "gfn3mx" }],
       ["path", { d: "M19 7h-9", key: "6i9tg" }],
       ["circle", { cx: "17", cy: "17", r: "3", key: "18b49y" }],
       ["circle", { cx: "7", cy: "7", r: "3", key: "dfmy0x" }]
     ];
-    var Settings2 = createLucideIcon("settings-2", __iconNode$6y);
+    var Settings22 = createLucideIcon("settings-2", __iconNode$6y);
     var __iconNode$6x = [
       [
         "path",
@@ -65288,7 +65288,7 @@ var require_lucide_react = __commonJS({
       ],
       ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
     ];
-    var ShieldCheck2 = createLucideIcon("shield-check", __iconNode$6o);
+    var ShieldCheck3 = createLucideIcon("shield-check", __iconNode$6o);
     var __iconNode$6n = [
       [
         "path",
@@ -67352,7 +67352,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M12 19h8", key: "baeox8" }],
       ["path", { d: "m4 17 6-6-6-6", key: "1yngyt" }]
     ];
-    var Terminal2 = createLucideIcon("terminal", __iconNode$35);
+    var Terminal3 = createLucideIcon("terminal", __iconNode$35);
     var __iconNode$34 = [
       [
         "path",
@@ -67855,7 +67855,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M3 6h18", key: "d0wm0j" }],
       ["path", { d: "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", key: "e791ji" }]
     ];
-    var Trash22 = createLucideIcon("trash-2", __iconNode$2h);
+    var Trash23 = createLucideIcon("trash-2", __iconNode$2h);
     var __iconNode$2g = [
       ["path", { d: "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", key: "miytrc" }],
       ["path", { d: "M3 6h18", key: "d0wm0j" }],
@@ -68358,7 +68358,7 @@ var require_lucide_react = __commonJS({
       ["circle", { cx: "12", cy: "8", r: "5", key: "1hypcn" }],
       ["path", { d: "M20 21a8 8 0 0 0-16 0", key: "rfgkzh" }]
     ];
-    var UserRound2 = createLucideIcon("user-round", __iconNode$1q);
+    var UserRound3 = createLucideIcon("user-round", __iconNode$1q);
     var __iconNode$1p = [
       ["circle", { cx: "10", cy: "7", r: "4", key: "e45bow" }],
       ["path", { d: "M10.3 15H7a4 4 0 0 0-4 4v2", key: "3bnktk" }],
@@ -69129,7 +69129,7 @@ var require_lucide_react = __commonJS({
       ["path", { d: "M18 6 6 18", key: "1bl5f8" }],
       ["path", { d: "m6 6 12 12", key: "d8bk6v" }]
     ];
-    var X2 = createLucideIcon("x", __iconNode$i);
+    var X3 = createLucideIcon("x", __iconNode$i);
     var __iconNode$h = [
       ["path", { d: "M18 4H6", key: "1hsngl" }],
       ["path", { d: "M18 8 6 20", key: "xspwia" }],
@@ -69275,7 +69275,7 @@ var require_lucide_react = __commonJS({
       AArrowUp,
       ALargeSmall,
       Accessibility,
-      Activity: Activity2,
+      Activity: Activity3,
       Ad,
       AirVent,
       Airplay,
@@ -69333,7 +69333,7 @@ var require_lucide_react = __commonJS({
       ArrowBigRightDash,
       ArrowBigUp,
       ArrowBigUpDash,
-      ArrowDown: ArrowDown2,
+      ArrowDown: ArrowDown3,
       ArrowDown01,
       ArrowDown10,
       ArrowDownAZ,
@@ -69354,7 +69354,7 @@ var require_lucide_react = __commonJS({
       ArrowRightFromLine,
       ArrowRightLeft,
       ArrowRightToLine,
-      ArrowUp: ArrowUp2,
+      ArrowUp: ArrowUp3,
       ArrowUp01,
       ArrowUp10,
       ArrowUpAZ,
@@ -69498,9 +69498,9 @@ var require_lucide_react = __commonJS({
       BotOff,
       BottleWine,
       BowArrow,
-      Box: Box2,
-      Boxes: Boxes2,
-      Braces: Braces2,
+      Box: Box3,
+      Boxes: Boxes3,
+      Braces: Braces3,
       Brackets,
       Brain,
       BrainCircuit,
@@ -69598,7 +69598,7 @@ var require_lucide_react = __commonJS({
       ChartPie,
       ChartScatter,
       ChartSpline,
-      Check: Check3,
+      Check: Check4,
       CheckCheck,
       CheckLine,
       ChefHat,
@@ -69609,11 +69609,11 @@ var require_lucide_react = __commonJS({
       ChessPawn,
       ChessQueen,
       ChessRook,
-      ChevronDown: ChevronDown2,
+      ChevronDown: ChevronDown3,
       ChevronFirst,
       ChevronLast,
-      ChevronLeft: ChevronLeft2,
-      ChevronRight: ChevronRight2,
+      ChevronLeft: ChevronLeft3,
+      ChevronRight: ChevronRight3,
       ChevronUp,
       ChevronsDown,
       ChevronsDownUp,
@@ -69628,7 +69628,7 @@ var require_lucide_react = __commonJS({
       Cigarette,
       CigaretteOff,
       Circle,
-      CircleAlert: CircleAlert2,
+      CircleAlert: CircleAlert3,
       CircleArrowDown,
       CircleArrowLeft,
       CircleArrowOutDownLeft,
@@ -69756,7 +69756,7 @@ var require_lucide_react = __commonJS({
       Contrast,
       Cookie,
       CookingPot,
-      Copy: Copy2,
+      Copy: Copy3,
       CopyCheck,
       CopyMinus,
       CopyPlus,
@@ -69785,7 +69785,7 @@ var require_lucide_react = __commonJS({
       Currency,
       Cylinder,
       Dam,
-      Database: Database2,
+      Database: Database3,
       DatabaseBackup,
       DatabaseSearch,
       DatabaseZap,
@@ -69851,11 +69851,11 @@ var require_lucide_react = __commonJS({
       Euro,
       EvCharger,
       Expand,
-      ExternalLink: ExternalLink2,
-      Eye,
+      ExternalLink: ExternalLink3,
+      Eye: Eye2,
       EyeClosed,
       EyeDashed,
-      EyeOff,
+      EyeOff: EyeOff2,
       Factory,
       Fan,
       FastForward,
@@ -69962,7 +69962,7 @@ var require_lucide_react = __commonJS({
       FolderKey,
       FolderLock,
       FolderMinus,
-      FolderOpen: FolderOpen2,
+      FolderOpen: FolderOpen3,
       FolderOpenDot,
       FolderOutput,
       FolderPen,
@@ -69995,7 +69995,7 @@ var require_lucide_react = __commonJS({
       Gamepad,
       Gamepad2,
       GamepadDirectional,
-      Gauge: Gauge2,
+      Gauge: Gauge3,
       Gavel,
       Gem,
       GeorgianLari,
@@ -70020,7 +70020,7 @@ var require_lucide_react = __commonJS({
       GitPullRequestDraft,
       GlassWater,
       Glasses,
-      Globe: Globe2,
+      Globe: Globe3,
       GlobeCheck,
       GlobeLock,
       GlobeOff,
@@ -70112,7 +70112,7 @@ var require_lucide_react = __commonJS({
       Inbox,
       IndianRupee,
       Infinity: Infinity2,
-      Info: Info2,
+      Info: Info3,
       InspectionPanel,
       Italic,
       IterationCcw,
@@ -70122,7 +70122,7 @@ var require_lucide_react = __commonJS({
       Kanban,
       Kayak,
       Key,
-      KeyRound: KeyRound2,
+      KeyRound: KeyRound3,
       KeySquare,
       Keyboard,
       KeyboardMusic,
@@ -70193,7 +70193,7 @@ var require_lucide_react = __commonJS({
       ListVideo,
       ListX,
       Loader,
-      LoaderCircle: LoaderCircle2,
+      LoaderCircle: LoaderCircle3,
       LoaderPinwheel,
       Locate,
       LocateFixed,
@@ -70330,7 +70330,7 @@ var require_lucide_react = __commonJS({
       MoveDownRight,
       MoveHorizontal,
       MoveLeft,
-      MoveRight: MoveRight2,
+      MoveRight: MoveRight3,
       MoveUp,
       MoveUpLeft,
       MoveUpRight,
@@ -70343,7 +70343,7 @@ var require_lucide_react = __commonJS({
       Navigation2,
       Navigation2Off,
       NavigationOff,
-      Network: Network2,
+      Network: Network3,
       Newspaper,
       Nfc,
       NonBinary,
@@ -70376,16 +70376,16 @@ var require_lucide_react = __commonJS({
       PaintRoller,
       Paintbrush,
       PaintbrushVertical,
-      Palette: Palette2,
+      Palette: Palette3,
       Panda,
       PanelBottom,
       PanelBottomClose,
       PanelBottomDashed,
       PanelBottomOpen,
       PanelLeft,
-      PanelLeftClose: PanelLeftClose2,
+      PanelLeftClose: PanelLeftClose3,
       PanelLeftDashed,
-      PanelLeftOpen: PanelLeftOpen2,
+      PanelLeftOpen: PanelLeftOpen3,
       PanelLeftRightDashed,
       PanelRight,
       PanelRightClose,
@@ -70411,7 +70411,7 @@ var require_lucide_react = __commonJS({
       PenLine,
       PenOff,
       PenTool,
-      Pencil: Pencil2,
+      Pencil: Pencil3,
       PencilLine,
       PencilOff,
       PencilRuler,
@@ -70450,7 +70450,7 @@ var require_lucide_react = __commonJS({
       Plug,
       Plug2,
       PlugZap,
-      Plus: Plus2,
+      Plus: Plus3,
       PocketKnife,
       Podcast,
       Podium,
@@ -70459,7 +70459,7 @@ var require_lucide_react = __commonJS({
       Popcorn,
       Popsicle,
       PoundSterling,
-      Power: Power2,
+      Power: Power3,
       PowerOff,
       Presentation,
       Printer,
@@ -70469,7 +70469,7 @@ var require_lucide_react = __commonJS({
       Proportions,
       Puzzle,
       Pyramid,
-      QrCode: QrCode2,
+      QrCode: QrCode3,
       Quote,
       Rabbit,
       Radar,
@@ -70504,7 +70504,7 @@ var require_lucide_react = __commonJS({
       RedoDot,
       RefreshCcw,
       RefreshCcwDot,
-      RefreshCw: RefreshCw2,
+      RefreshCw: RefreshCw3,
       RefreshCwOff,
       Refrigerator,
       Regex,
@@ -70530,7 +70530,7 @@ var require_lucide_react = __commonJS({
       RotateCcwSquare,
       RotateCw,
       RotateCwSquare,
-      Route: Route2,
+      Route: Route3,
       RouteOff,
       Router,
       Rows2,
@@ -70572,7 +70572,7 @@ var require_lucide_react = __commonJS({
       ScreenShareOff,
       Scroll,
       ScrollText,
-      Search: Search2,
+      Search: Search3,
       SearchAlert,
       SearchCheck,
       SearchCode,
@@ -70584,12 +70584,12 @@ var require_lucide_react = __commonJS({
       SendToBack,
       SeparatorHorizontal,
       SeparatorVertical,
-      Server: Server2,
+      Server: Server3,
       ServerCog,
       ServerCrash,
       ServerOff,
       Settings: Settings3,
-      Settings2,
+      Settings2: Settings22,
       Shapes,
       Share,
       Share2,
@@ -70599,7 +70599,7 @@ var require_lucide_react = __commonJS({
       Shield,
       ShieldAlert,
       ShieldBan,
-      ShieldCheck: ShieldCheck2,
+      ShieldCheck: ShieldCheck3,
       ShieldCog,
       ShieldCogCorner,
       ShieldEllipsis,
@@ -70809,7 +70809,7 @@ var require_lucide_react = __commonJS({
       Telescope,
       Tent,
       TentTree,
-      Terminal: Terminal2,
+      Terminal: Terminal3,
       TestTube,
       TestTubeDiagonal,
       TestTubes,
@@ -70862,7 +70862,7 @@ var require_lucide_react = __commonJS({
       TramFront,
       Transgender,
       Trash,
-      Trash2: Trash22,
+      Trash2: Trash23,
       TreeDeciduous,
       TreePalm,
       TreePine,
@@ -70908,7 +70908,7 @@ var require_lucide_react = __commonJS({
       UserMinus,
       UserPen,
       UserPlus,
-      UserRound: UserRound2,
+      UserRound: UserRound3,
       UserRoundArrowLeft,
       UserRoundCheck,
       UserRoundCog,
@@ -70988,7 +70988,7 @@ var require_lucide_react = __commonJS({
       Worm,
       Wrench,
       WrenchOff,
-      X: X2,
+      X: X3,
       XLineTop,
       Zap,
       ZapOff,
@@ -71016,8 +71016,8 @@ var require_lucide_react = __commonJS({
     exports2.ALargeSmallIcon = ALargeSmall;
     exports2.Accessibility = Accessibility;
     exports2.AccessibilityIcon = Accessibility;
-    exports2.Activity = Activity2;
-    exports2.ActivityIcon = Activity2;
+    exports2.Activity = Activity3;
+    exports2.ActivityIcon = Activity3;
     exports2.ActivitySquare = SquareActivity;
     exports2.ActivitySquareIcon = SquareActivity;
     exports2.Ad = Ad;
@@ -71046,8 +71046,8 @@ var require_lucide_react = __commonJS({
     exports2.AlarmSmokeIcon = AlarmSmoke;
     exports2.Album = Album;
     exports2.AlbumIcon = Album;
-    exports2.AlertCircle = CircleAlert2;
-    exports2.AlertCircleIcon = CircleAlert2;
+    exports2.AlertCircle = CircleAlert3;
+    exports2.AlertCircleIcon = CircleAlert3;
     exports2.AlertOctagon = OctagonAlert;
     exports2.AlertOctagonIcon = OctagonAlert;
     exports2.AlertTriangle = TriangleAlert;
@@ -71156,7 +71156,7 @@ var require_lucide_react = __commonJS({
     exports2.ArrowBigUpDash = ArrowBigUpDash;
     exports2.ArrowBigUpDashIcon = ArrowBigUpDash;
     exports2.ArrowBigUpIcon = ArrowBigUp;
-    exports2.ArrowDown = ArrowDown2;
+    exports2.ArrowDown = ArrowDown3;
     exports2.ArrowDown01 = ArrowDown01;
     exports2.ArrowDown01Icon = ArrowDown01;
     exports2.ArrowDown10 = ArrowDown10;
@@ -71169,7 +71169,7 @@ var require_lucide_react = __commonJS({
     exports2.ArrowDownCircleIcon = CircleArrowDown;
     exports2.ArrowDownFromLine = ArrowDownFromLine;
     exports2.ArrowDownFromLineIcon = ArrowDownFromLine;
-    exports2.ArrowDownIcon = ArrowDown2;
+    exports2.ArrowDownIcon = ArrowDown3;
     exports2.ArrowDownLeft = ArrowDownLeft;
     exports2.ArrowDownLeftFromCircle = CircleArrowOutDownLeft;
     exports2.ArrowDownLeftFromCircleIcon = CircleArrowOutDownLeft;
@@ -71226,7 +71226,7 @@ var require_lucide_react = __commonJS({
     exports2.ArrowRightSquareIcon = SquareArrowRight;
     exports2.ArrowRightToLine = ArrowRightToLine;
     exports2.ArrowRightToLineIcon = ArrowRightToLine;
-    exports2.ArrowUp = ArrowUp2;
+    exports2.ArrowUp = ArrowUp3;
     exports2.ArrowUp01 = ArrowUp01;
     exports2.ArrowUp01Icon = ArrowUp01;
     exports2.ArrowUp10 = ArrowUp10;
@@ -71243,7 +71243,7 @@ var require_lucide_react = __commonJS({
     exports2.ArrowUpFromDotIcon = ArrowUpFromDot;
     exports2.ArrowUpFromLine = ArrowUpFromLine;
     exports2.ArrowUpFromLineIcon = ArrowUpFromLine;
-    exports2.ArrowUpIcon = ArrowUp2;
+    exports2.ArrowUpIcon = ArrowUp3;
     exports2.ArrowUpLeft = ArrowUpLeft;
     exports2.ArrowUpLeftFromCircle = CircleArrowOutUpLeft;
     exports2.ArrowUpLeftFromCircleIcon = CircleArrowOutUpLeft;
@@ -71560,14 +71560,14 @@ var require_lucide_react = __commonJS({
     exports2.BottleWineIcon = BottleWine;
     exports2.BowArrow = BowArrow;
     exports2.BowArrowIcon = BowArrow;
-    exports2.Box = Box2;
-    exports2.BoxIcon = Box2;
+    exports2.Box = Box3;
+    exports2.BoxIcon = Box3;
     exports2.BoxSelect = SquareDashed;
     exports2.BoxSelectIcon = SquareDashed;
-    exports2.Boxes = Boxes2;
-    exports2.BoxesIcon = Boxes2;
-    exports2.Braces = Braces2;
-    exports2.BracesIcon = Braces2;
+    exports2.Boxes = Boxes3;
+    exports2.BoxesIcon = Boxes3;
+    exports2.Braces = Braces3;
+    exports2.BracesIcon = Braces3;
     exports2.Brackets = Brackets;
     exports2.BracketsIcon = Brackets;
     exports2.Brain = Brain;
@@ -71764,14 +71764,14 @@ var require_lucide_react = __commonJS({
     exports2.ChartScatterIcon = ChartScatter;
     exports2.ChartSpline = ChartSpline;
     exports2.ChartSplineIcon = ChartSpline;
-    exports2.Check = Check3;
+    exports2.Check = Check4;
     exports2.CheckCheck = CheckCheck;
     exports2.CheckCheckIcon = CheckCheck;
     exports2.CheckCircle = CircleCheckBig;
     exports2.CheckCircle2 = CircleCheck;
     exports2.CheckCircle2Icon = CircleCheck;
     exports2.CheckCircleIcon = CircleCheckBig;
-    exports2.CheckIcon = Check3;
+    exports2.CheckIcon = Check4;
     exports2.CheckLine = CheckLine;
     exports2.CheckLineIcon = CheckLine;
     exports2.CheckSquare = SquareCheckBig;
@@ -71794,26 +71794,26 @@ var require_lucide_react = __commonJS({
     exports2.ChessQueenIcon = ChessQueen;
     exports2.ChessRook = ChessRook;
     exports2.ChessRookIcon = ChessRook;
-    exports2.ChevronDown = ChevronDown2;
+    exports2.ChevronDown = ChevronDown3;
     exports2.ChevronDownCircle = CircleChevronDown;
     exports2.ChevronDownCircleIcon = CircleChevronDown;
-    exports2.ChevronDownIcon = ChevronDown2;
+    exports2.ChevronDownIcon = ChevronDown3;
     exports2.ChevronDownSquare = SquareChevronDown;
     exports2.ChevronDownSquareIcon = SquareChevronDown;
     exports2.ChevronFirst = ChevronFirst;
     exports2.ChevronFirstIcon = ChevronFirst;
     exports2.ChevronLast = ChevronLast;
     exports2.ChevronLastIcon = ChevronLast;
-    exports2.ChevronLeft = ChevronLeft2;
+    exports2.ChevronLeft = ChevronLeft3;
     exports2.ChevronLeftCircle = CircleChevronLeft;
     exports2.ChevronLeftCircleIcon = CircleChevronLeft;
-    exports2.ChevronLeftIcon = ChevronLeft2;
+    exports2.ChevronLeftIcon = ChevronLeft3;
     exports2.ChevronLeftSquare = SquareChevronLeft;
     exports2.ChevronLeftSquareIcon = SquareChevronLeft;
-    exports2.ChevronRight = ChevronRight2;
+    exports2.ChevronRight = ChevronRight3;
     exports2.ChevronRightCircle = CircleChevronRight;
     exports2.ChevronRightCircleIcon = CircleChevronRight;
-    exports2.ChevronRightIcon = ChevronRight2;
+    exports2.ChevronRightIcon = ChevronRight3;
     exports2.ChevronRightSquare = SquareChevronRight;
     exports2.ChevronRightSquareIcon = SquareChevronRight;
     exports2.ChevronUp = ChevronUp;
@@ -71847,8 +71847,8 @@ var require_lucide_react = __commonJS({
     exports2.CigaretteOff = CigaretteOff;
     exports2.CigaretteOffIcon = CigaretteOff;
     exports2.Circle = Circle;
-    exports2.CircleAlert = CircleAlert2;
-    exports2.CircleAlertIcon = CircleAlert2;
+    exports2.CircleAlert = CircleAlert3;
+    exports2.CircleAlertIcon = CircleAlert3;
     exports2.CircleArrowDown = CircleArrowDown;
     exports2.CircleArrowDownIcon = CircleArrowDown;
     exports2.CircleArrowLeft = CircleArrowLeft;
@@ -72122,10 +72122,10 @@ var require_lucide_react = __commonJS({
     exports2.CookieIcon = Cookie;
     exports2.CookingPot = CookingPot;
     exports2.CookingPotIcon = CookingPot;
-    exports2.Copy = Copy2;
+    exports2.Copy = Copy3;
     exports2.CopyCheck = CopyCheck;
     exports2.CopyCheckIcon = CopyCheck;
-    exports2.CopyIcon = Copy2;
+    exports2.CopyIcon = Copy3;
     exports2.CopyMinus = CopyMinus;
     exports2.CopyMinusIcon = CopyMinus;
     exports2.CopyPlus = CopyPlus;
@@ -72174,18 +72174,18 @@ var require_lucide_react = __commonJS({
     exports2.CuboidIcon = Cuboid;
     exports2.CupSoda = CupSoda;
     exports2.CupSodaIcon = CupSoda;
-    exports2.CurlyBraces = Braces2;
-    exports2.CurlyBracesIcon = Braces2;
+    exports2.CurlyBraces = Braces3;
+    exports2.CurlyBracesIcon = Braces3;
     exports2.Currency = Currency;
     exports2.CurrencyIcon = Currency;
     exports2.Cylinder = Cylinder;
     exports2.CylinderIcon = Cylinder;
     exports2.Dam = Dam;
     exports2.DamIcon = Dam;
-    exports2.Database = Database2;
+    exports2.Database = Database3;
     exports2.DatabaseBackup = DatabaseBackup;
     exports2.DatabaseBackupIcon = DatabaseBackup;
-    exports2.DatabaseIcon = Database2;
+    exports2.DatabaseIcon = Database3;
     exports2.DatabaseSearch = DatabaseSearch;
     exports2.DatabaseSearchIcon = DatabaseSearch;
     exports2.DatabaseZap = DatabaseZap;
@@ -72330,16 +72330,16 @@ var require_lucide_react = __commonJS({
     exports2.EvChargerIcon = EvCharger;
     exports2.Expand = Expand;
     exports2.ExpandIcon = Expand;
-    exports2.ExternalLink = ExternalLink2;
-    exports2.ExternalLinkIcon = ExternalLink2;
-    exports2.Eye = Eye;
+    exports2.ExternalLink = ExternalLink3;
+    exports2.ExternalLinkIcon = ExternalLink3;
+    exports2.Eye = Eye2;
     exports2.EyeClosed = EyeClosed;
     exports2.EyeClosedIcon = EyeClosed;
     exports2.EyeDashed = EyeDashed;
     exports2.EyeDashedIcon = EyeDashed;
-    exports2.EyeIcon = Eye;
-    exports2.EyeOff = EyeOff;
-    exports2.EyeOffIcon = EyeOff;
+    exports2.EyeIcon = Eye2;
+    exports2.EyeOff = EyeOff2;
+    exports2.EyeOffIcon = EyeOff2;
     exports2.Factory = Factory;
     exports2.FactoryIcon = Factory;
     exports2.Fan = Fan;
@@ -72620,10 +72620,10 @@ var require_lucide_react = __commonJS({
     exports2.FolderLockIcon = FolderLock;
     exports2.FolderMinus = FolderMinus;
     exports2.FolderMinusIcon = FolderMinus;
-    exports2.FolderOpen = FolderOpen2;
+    exports2.FolderOpen = FolderOpen3;
     exports2.FolderOpenDot = FolderOpenDot;
     exports2.FolderOpenDotIcon = FolderOpenDot;
-    exports2.FolderOpenIcon = FolderOpen2;
+    exports2.FolderOpenIcon = FolderOpen3;
     exports2.FolderOutput = FolderOutput;
     exports2.FolderOutputIcon = FolderOutput;
     exports2.FolderPen = FolderPen;
@@ -72698,10 +72698,10 @@ var require_lucide_react = __commonJS({
     exports2.GanttChartIcon = ChartNoAxesGantt;
     exports2.GanttChartSquare = SquareChartGantt;
     exports2.GanttChartSquareIcon = SquareChartGantt;
-    exports2.Gauge = Gauge2;
+    exports2.Gauge = Gauge3;
     exports2.GaugeCircle = CircleGauge;
     exports2.GaugeCircleIcon = CircleGauge;
-    exports2.GaugeIcon = Gauge2;
+    exports2.GaugeIcon = Gauge3;
     exports2.Gavel = Gavel;
     exports2.GavelIcon = Gavel;
     exports2.Gem = Gem;
@@ -72752,12 +72752,12 @@ var require_lucide_react = __commonJS({
     exports2.GlassWaterIcon = GlassWater;
     exports2.Glasses = Glasses;
     exports2.GlassesIcon = Glasses;
-    exports2.Globe = Globe2;
+    exports2.Globe = Globe3;
     exports2.Globe2 = Earth;
     exports2.Globe2Icon = Earth;
     exports2.GlobeCheck = GlobeCheck;
     exports2.GlobeCheckIcon = GlobeCheck;
-    exports2.GlobeIcon = Globe2;
+    exports2.GlobeIcon = Globe3;
     exports2.GlobeLock = GlobeLock;
     exports2.GlobeLockIcon = GlobeLock;
     exports2.GlobeOff = GlobeOff;
@@ -72969,8 +72969,8 @@ var require_lucide_react = __commonJS({
     exports2.IndianRupeeIcon = IndianRupee;
     exports2.Infinity = Infinity2;
     exports2.InfinityIcon = Infinity2;
-    exports2.Info = Info2;
-    exports2.InfoIcon = Info2;
+    exports2.Info = Info3;
+    exports2.InfoIcon = Info3;
     exports2.Inspect = SquareMousePointer;
     exports2.InspectIcon = SquareMousePointer;
     exports2.InspectionPanel = InspectionPanel;
@@ -72995,8 +72995,8 @@ var require_lucide_react = __commonJS({
     exports2.KayakIcon = Kayak;
     exports2.Key = Key;
     exports2.KeyIcon = Key;
-    exports2.KeyRound = KeyRound2;
-    exports2.KeyRoundIcon = KeyRound2;
+    exports2.KeyRound = KeyRound3;
+    exports2.KeyRoundIcon = KeyRound3;
     exports2.KeySquare = KeySquare;
     exports2.KeySquareIcon = KeySquare;
     exports2.Keyboard = Keyboard;
@@ -73148,10 +73148,10 @@ var require_lucide_react = __commonJS({
     exports2.ListX = ListX;
     exports2.ListXIcon = ListX;
     exports2.Loader = Loader;
-    exports2.Loader2 = LoaderCircle2;
-    exports2.Loader2Icon = LoaderCircle2;
-    exports2.LoaderCircle = LoaderCircle2;
-    exports2.LoaderCircleIcon = LoaderCircle2;
+    exports2.Loader2 = LoaderCircle3;
+    exports2.Loader2Icon = LoaderCircle3;
+    exports2.LoaderCircle = LoaderCircle3;
+    exports2.LoaderCircleIcon = LoaderCircle3;
     exports2.LoaderIcon = Loader;
     exports2.LoaderPinwheel = LoaderPinwheel;
     exports2.LoaderPinwheelIcon = LoaderPinwheel;
@@ -73183,7 +73183,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideAArrowUp = AArrowUp;
     exports2.LucideALargeSmall = ALargeSmall;
     exports2.LucideAccessibility = Accessibility;
-    exports2.LucideActivity = Activity2;
+    exports2.LucideActivity = Activity3;
     exports2.LucideActivitySquare = SquareActivity;
     exports2.LucideAd = Ad;
     exports2.LucideAirVent = AirVent;
@@ -73198,7 +73198,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideAlarmPlus = AlarmClockPlus;
     exports2.LucideAlarmSmoke = AlarmSmoke;
     exports2.LucideAlbum = Album;
-    exports2.LucideAlertCircle = CircleAlert2;
+    exports2.LucideAlertCircle = CircleAlert3;
     exports2.LucideAlertOctagon = OctagonAlert;
     exports2.LucideAlertTriangle = TriangleAlert;
     exports2.LucideAlignCenter = TextAlignCenter;
@@ -73253,7 +73253,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideArrowBigRightDash = ArrowBigRightDash;
     exports2.LucideArrowBigUp = ArrowBigUp;
     exports2.LucideArrowBigUpDash = ArrowBigUpDash;
-    exports2.LucideArrowDown = ArrowDown2;
+    exports2.LucideArrowDown = ArrowDown3;
     exports2.LucideArrowDown01 = ArrowDown01;
     exports2.LucideArrowDown10 = ArrowDown10;
     exports2.LucideArrowDownAZ = ArrowDownAZ;
@@ -73288,7 +73288,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideArrowRightLeft = ArrowRightLeft;
     exports2.LucideArrowRightSquare = SquareArrowRight;
     exports2.LucideArrowRightToLine = ArrowRightToLine;
-    exports2.LucideArrowUp = ArrowUp2;
+    exports2.LucideArrowUp = ArrowUp3;
     exports2.LucideArrowUp01 = ArrowUp01;
     exports2.LucideArrowUp10 = ArrowUp10;
     exports2.LucideArrowUpAZ = ArrowUpAZ;
@@ -73455,10 +73455,10 @@ var require_lucide_react = __commonJS({
     exports2.LucideBotOff = BotOff;
     exports2.LucideBottleWine = BottleWine;
     exports2.LucideBowArrow = BowArrow;
-    exports2.LucideBox = Box2;
+    exports2.LucideBox = Box3;
     exports2.LucideBoxSelect = SquareDashed;
-    exports2.LucideBoxes = Boxes2;
-    exports2.LucideBraces = Braces2;
+    exports2.LucideBoxes = Boxes3;
+    exports2.LucideBraces = Braces3;
     exports2.LucideBrackets = Brackets;
     exports2.LucideBrain = Brain;
     exports2.LucideBrainCircuit = BrainCircuit;
@@ -73557,7 +73557,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideChartPie = ChartPie;
     exports2.LucideChartScatter = ChartScatter;
     exports2.LucideChartSpline = ChartSpline;
-    exports2.LucideCheck = Check3;
+    exports2.LucideCheck = Check4;
     exports2.LucideCheckCheck = CheckCheck;
     exports2.LucideCheckCircle = CircleCheckBig;
     exports2.LucideCheckCircle2 = CircleCheck;
@@ -73572,15 +73572,15 @@ var require_lucide_react = __commonJS({
     exports2.LucideChessPawn = ChessPawn;
     exports2.LucideChessQueen = ChessQueen;
     exports2.LucideChessRook = ChessRook;
-    exports2.LucideChevronDown = ChevronDown2;
+    exports2.LucideChevronDown = ChevronDown3;
     exports2.LucideChevronDownCircle = CircleChevronDown;
     exports2.LucideChevronDownSquare = SquareChevronDown;
     exports2.LucideChevronFirst = ChevronFirst;
     exports2.LucideChevronLast = ChevronLast;
-    exports2.LucideChevronLeft = ChevronLeft2;
+    exports2.LucideChevronLeft = ChevronLeft3;
     exports2.LucideChevronLeftCircle = CircleChevronLeft;
     exports2.LucideChevronLeftSquare = SquareChevronLeft;
-    exports2.LucideChevronRight = ChevronRight2;
+    exports2.LucideChevronRight = ChevronRight3;
     exports2.LucideChevronRightCircle = CircleChevronRight;
     exports2.LucideChevronRightSquare = SquareChevronRight;
     exports2.LucideChevronUp = ChevronUp;
@@ -73599,7 +73599,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideCigarette = Cigarette;
     exports2.LucideCigaretteOff = CigaretteOff;
     exports2.LucideCircle = Circle;
-    exports2.LucideCircleAlert = CircleAlert2;
+    exports2.LucideCircleAlert = CircleAlert3;
     exports2.LucideCircleArrowDown = CircleArrowDown;
     exports2.LucideCircleArrowLeft = CircleArrowLeft;
     exports2.LucideCircleArrowOutDownLeft = CircleArrowOutDownLeft;
@@ -73736,7 +73736,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideContrast = Contrast;
     exports2.LucideCookie = Cookie;
     exports2.LucideCookingPot = CookingPot;
-    exports2.LucideCopy = Copy2;
+    exports2.LucideCopy = Copy3;
     exports2.LucideCopyCheck = CopyCheck;
     exports2.LucideCopyMinus = CopyMinus;
     exports2.LucideCopyPlus = CopyPlus;
@@ -73762,11 +73762,11 @@ var require_lucide_react = __commonJS({
     exports2.LucideCrown = Crown;
     exports2.LucideCuboid = Cuboid;
     exports2.LucideCupSoda = CupSoda;
-    exports2.LucideCurlyBraces = Braces2;
+    exports2.LucideCurlyBraces = Braces3;
     exports2.LucideCurrency = Currency;
     exports2.LucideCylinder = Cylinder;
     exports2.LucideDam = Dam;
-    exports2.LucideDatabase = Database2;
+    exports2.LucideDatabase = Database3;
     exports2.LucideDatabaseBackup = DatabaseBackup;
     exports2.LucideDatabaseSearch = DatabaseSearch;
     exports2.LucideDatabaseZap = DatabaseZap;
@@ -73840,11 +73840,11 @@ var require_lucide_react = __commonJS({
     exports2.LucideEuro = Euro;
     exports2.LucideEvCharger = EvCharger;
     exports2.LucideExpand = Expand;
-    exports2.LucideExternalLink = ExternalLink2;
-    exports2.LucideEye = Eye;
+    exports2.LucideExternalLink = ExternalLink3;
+    exports2.LucideEye = Eye2;
     exports2.LucideEyeClosed = EyeClosed;
     exports2.LucideEyeDashed = EyeDashed;
-    exports2.LucideEyeOff = EyeOff;
+    exports2.LucideEyeOff = EyeOff2;
     exports2.LucideFactory = Factory;
     exports2.LucideFan = Fan;
     exports2.LucideFastForward = FastForward;
@@ -73985,7 +73985,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideFolderKey = FolderKey;
     exports2.LucideFolderLock = FolderLock;
     exports2.LucideFolderMinus = FolderMinus;
-    exports2.LucideFolderOpen = FolderOpen2;
+    exports2.LucideFolderOpen = FolderOpen3;
     exports2.LucideFolderOpenDot = FolderOpenDot;
     exports2.LucideFolderOutput = FolderOutput;
     exports2.LucideFolderPen = FolderPen;
@@ -74024,7 +74024,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideGamepadDirectional = GamepadDirectional;
     exports2.LucideGanttChart = ChartNoAxesGantt;
     exports2.LucideGanttChartSquare = SquareChartGantt;
-    exports2.LucideGauge = Gauge2;
+    exports2.LucideGauge = Gauge3;
     exports2.LucideGaugeCircle = CircleGauge;
     exports2.LucideGavel = Gavel;
     exports2.LucideGem = Gem;
@@ -74051,7 +74051,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideGitPullRequestDraft = GitPullRequestDraft;
     exports2.LucideGlassWater = GlassWater;
     exports2.LucideGlasses = Glasses;
-    exports2.LucideGlobe = Globe2;
+    exports2.LucideGlobe = Globe3;
     exports2.LucideGlobe2 = Earth;
     exports2.LucideGlobeCheck = GlobeCheck;
     exports2.LucideGlobeLock = GlobeLock;
@@ -74159,7 +74159,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideIndentIncrease = ListIndentIncrease;
     exports2.LucideIndianRupee = IndianRupee;
     exports2.LucideInfinity = Infinity2;
-    exports2.LucideInfo = Info2;
+    exports2.LucideInfo = Info3;
     exports2.LucideInspect = SquareMousePointer;
     exports2.LucideInspectionPanel = InspectionPanel;
     exports2.LucideItalic = Italic;
@@ -74172,7 +74172,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideKanbanSquareDashed = SquareDashedKanban;
     exports2.LucideKayak = Kayak;
     exports2.LucideKey = Key;
-    exports2.LucideKeyRound = KeyRound2;
+    exports2.LucideKeyRound = KeyRound3;
     exports2.LucideKeySquare = KeySquare;
     exports2.LucideKeyboard = Keyboard;
     exports2.LucideKeyboardMusic = KeyboardMusic;
@@ -74249,8 +74249,8 @@ var require_lucide_react = __commonJS({
     exports2.LucideListVideo = ListVideo;
     exports2.LucideListX = ListX;
     exports2.LucideLoader = Loader;
-    exports2.LucideLoader2 = LoaderCircle2;
-    exports2.LucideLoaderCircle = LoaderCircle2;
+    exports2.LucideLoader2 = LoaderCircle3;
+    exports2.LucideLoaderCircle = LoaderCircle3;
     exports2.LucideLoaderPinwheel = LoaderPinwheel;
     exports2.LucideLocate = Locate;
     exports2.LucideLocateFixed = LocateFixed;
@@ -74399,7 +74399,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideMoveDownRight = MoveDownRight;
     exports2.LucideMoveHorizontal = MoveHorizontal;
     exports2.LucideMoveLeft = MoveLeft;
-    exports2.LucideMoveRight = MoveRight2;
+    exports2.LucideMoveRight = MoveRight3;
     exports2.LucideMoveUp = MoveUp;
     exports2.LucideMoveUpLeft = MoveUpLeft;
     exports2.LucideMoveUpRight = MoveUpRight;
@@ -74412,7 +74412,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideNavigation2 = Navigation2;
     exports2.LucideNavigation2Off = Navigation2Off;
     exports2.LucideNavigationOff = NavigationOff;
-    exports2.LucideNetwork = Network2;
+    exports2.LucideNetwork = Network3;
     exports2.LucideNewspaper = Newspaper;
     exports2.LucideNfc = Nfc;
     exports2.LucideNonBinary = NonBinary;
@@ -74447,7 +74447,7 @@ var require_lucide_react = __commonJS({
     exports2.LucidePaintbrush = Paintbrush;
     exports2.LucidePaintbrush2 = PaintbrushVertical;
     exports2.LucidePaintbrushVertical = PaintbrushVertical;
-    exports2.LucidePalette = Palette2;
+    exports2.LucidePalette = Palette3;
     exports2.LucidePalmtree = TreePalm;
     exports2.LucidePanda = Panda;
     exports2.LucidePanelBottom = PanelBottom;
@@ -74456,10 +74456,10 @@ var require_lucide_react = __commonJS({
     exports2.LucidePanelBottomInactive = PanelBottomDashed;
     exports2.LucidePanelBottomOpen = PanelBottomOpen;
     exports2.LucidePanelLeft = PanelLeft;
-    exports2.LucidePanelLeftClose = PanelLeftClose2;
+    exports2.LucidePanelLeftClose = PanelLeftClose3;
     exports2.LucidePanelLeftDashed = PanelLeftDashed;
     exports2.LucidePanelLeftInactive = PanelLeftDashed;
-    exports2.LucidePanelLeftOpen = PanelLeftOpen2;
+    exports2.LucidePanelLeftOpen = PanelLeftOpen3;
     exports2.LucidePanelLeftRightDashed = PanelLeftRightDashed;
     exports2.LucidePanelRight = PanelRight;
     exports2.LucidePanelRightClose = PanelRightClose;
@@ -74497,7 +74497,7 @@ var require_lucide_react = __commonJS({
     exports2.LucidePenOff = PenOff;
     exports2.LucidePenSquare = SquarePen;
     exports2.LucidePenTool = PenTool;
-    exports2.LucidePencil = Pencil2;
+    exports2.LucidePencil = Pencil3;
     exports2.LucidePencilLine = PencilLine;
     exports2.LucidePencilOff = PencilOff;
     exports2.LucidePencilRuler = PencilRuler;
@@ -74545,7 +74545,7 @@ var require_lucide_react = __commonJS({
     exports2.LucidePlug2 = Plug2;
     exports2.LucidePlugZap = PlugZap;
     exports2.LucidePlugZap2 = PlugZap;
-    exports2.LucidePlus = Plus2;
+    exports2.LucidePlus = Plus3;
     exports2.LucidePlusCircle = CirclePlus;
     exports2.LucidePlusSquare = SquarePlus;
     exports2.LucidePocketKnife = PocketKnife;
@@ -74556,7 +74556,7 @@ var require_lucide_react = __commonJS({
     exports2.LucidePopcorn = Popcorn;
     exports2.LucidePopsicle = Popsicle;
     exports2.LucidePoundSterling = PoundSterling;
-    exports2.LucidePower = Power2;
+    exports2.LucidePower = Power3;
     exports2.LucidePowerCircle = CirclePower;
     exports2.LucidePowerOff = PowerOff;
     exports2.LucidePowerSquare = SquarePower;
@@ -74569,7 +74569,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideProvider = LucideProvider;
     exports2.LucidePuzzle = Puzzle;
     exports2.LucidePyramid = Pyramid;
-    exports2.LucideQrCode = QrCode2;
+    exports2.LucideQrCode = QrCode3;
     exports2.LucideQuote = Quote;
     exports2.LucideRabbit = Rabbit;
     exports2.LucideRadar = Radar;
@@ -74604,7 +74604,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideRedoDot = RedoDot;
     exports2.LucideRefreshCcw = RefreshCcw;
     exports2.LucideRefreshCcwDot = RefreshCcwDot;
-    exports2.LucideRefreshCw = RefreshCw2;
+    exports2.LucideRefreshCw = RefreshCw3;
     exports2.LucideRefreshCwOff = RefreshCwOff;
     exports2.LucideRefrigerator = Refrigerator;
     exports2.LucideRegex = Regex;
@@ -74631,7 +74631,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideRotateCcwSquare = RotateCcwSquare;
     exports2.LucideRotateCw = RotateCw;
     exports2.LucideRotateCwSquare = RotateCwSquare;
-    exports2.LucideRoute = Route2;
+    exports2.LucideRoute = Route3;
     exports2.LucideRouteOff = RouteOff;
     exports2.LucideRouter = Router;
     exports2.LucideRows = Rows2;
@@ -74679,7 +74679,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideScreenShareOff = ScreenShareOff;
     exports2.LucideScroll = Scroll;
     exports2.LucideScrollText = ScrollText;
-    exports2.LucideSearch = Search2;
+    exports2.LucideSearch = Search3;
     exports2.LucideSearchAlert = SearchAlert;
     exports2.LucideSearchCheck = SearchCheck;
     exports2.LucideSearchCode = SearchCode;
@@ -74692,12 +74692,12 @@ var require_lucide_react = __commonJS({
     exports2.LucideSendToBack = SendToBack;
     exports2.LucideSeparatorHorizontal = SeparatorHorizontal;
     exports2.LucideSeparatorVertical = SeparatorVertical;
-    exports2.LucideServer = Server2;
+    exports2.LucideServer = Server3;
     exports2.LucideServerCog = ServerCog;
     exports2.LucideServerCrash = ServerCrash;
     exports2.LucideServerOff = ServerOff;
     exports2.LucideSettings = Settings3;
-    exports2.LucideSettings2 = Settings2;
+    exports2.LucideSettings2 = Settings22;
     exports2.LucideShapes = Shapes;
     exports2.LucideShare = Share;
     exports2.LucideShare2 = Share2;
@@ -74707,7 +74707,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideShield = Shield;
     exports2.LucideShieldAlert = ShieldAlert;
     exports2.LucideShieldBan = ShieldBan;
-    exports2.LucideShieldCheck = ShieldCheck2;
+    exports2.LucideShieldCheck = ShieldCheck3;
     exports2.LucideShieldClose = ShieldX;
     exports2.LucideShieldCog = ShieldCog;
     exports2.LucideShieldCogCorner = ShieldCogCorner;
@@ -74734,8 +74734,8 @@ var require_lucide_react = __commonJS({
     exports2.LucideShrub = Shrub;
     exports2.LucideShuffle = Shuffle;
     exports2.LucideSidebar = PanelLeft;
-    exports2.LucideSidebarClose = PanelLeftClose2;
-    exports2.LucideSidebarOpen = PanelLeftOpen2;
+    exports2.LucideSidebarClose = PanelLeftClose3;
+    exports2.LucideSidebarOpen = PanelLeftOpen3;
     exports2.LucideSigma = Sigma;
     exports2.LucideSigmaSquare = SquareSigma;
     exports2.LucideSignal = Signal;
@@ -74934,7 +74934,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideTelescope = Telescope;
     exports2.LucideTent = Tent;
     exports2.LucideTentTree = TentTree;
-    exports2.LucideTerminal = Terminal2;
+    exports2.LucideTerminal = Terminal3;
     exports2.LucideTerminalSquare = SquareTerminal;
     exports2.LucideTestTube = TestTube;
     exports2.LucideTestTube2 = TestTubeDiagonal;
@@ -74993,7 +74993,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideTramFront = TramFront;
     exports2.LucideTransgender = Transgender;
     exports2.LucideTrash = Trash;
-    exports2.LucideTrash2 = Trash22;
+    exports2.LucideTrash2 = Trash23;
     exports2.LucideTreeDeciduous = TreeDeciduous;
     exports2.LucideTreePalm = TreePalm;
     exports2.LucideTreePine = TreePine;
@@ -75036,7 +75036,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideUploadCloud = CloudUpload;
     exports2.LucideUsb = Usb;
     exports2.LucideUser = User;
-    exports2.LucideUser2 = UserRound2;
+    exports2.LucideUser2 = UserRound3;
     exports2.LucideUserCheck = UserCheck;
     exports2.LucideUserCheck2 = UserRoundCheck;
     exports2.LucideUserCircle = CircleUser;
@@ -75050,7 +75050,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideUserPen = UserPen;
     exports2.LucideUserPlus = UserPlus;
     exports2.LucideUserPlus2 = UserRoundPlus;
-    exports2.LucideUserRound = UserRound2;
+    exports2.LucideUserRound = UserRound3;
     exports2.LucideUserRoundArrowLeft = UserRoundArrowLeft;
     exports2.LucideUserRoundCheck = UserRoundCheck;
     exports2.LucideUserRoundCog = UserRoundCog;
@@ -75139,7 +75139,7 @@ var require_lucide_react = __commonJS({
     exports2.LucideWrapText = TextWrap;
     exports2.LucideWrench = Wrench;
     exports2.LucideWrenchOff = WrenchOff;
-    exports2.LucideX = X2;
+    exports2.LucideX = X3;
     exports2.LucideXCircle = CircleX;
     exports2.LucideXLineTop = XLineTop;
     exports2.LucideXOctagon = OctagonX;
@@ -75431,8 +75431,8 @@ var require_lucide_react = __commonJS({
     exports2.MoveIcon = Move;
     exports2.MoveLeft = MoveLeft;
     exports2.MoveLeftIcon = MoveLeft;
-    exports2.MoveRight = MoveRight2;
-    exports2.MoveRightIcon = MoveRight2;
+    exports2.MoveRight = MoveRight3;
+    exports2.MoveRightIcon = MoveRight3;
     exports2.MoveUp = MoveUp;
     exports2.MoveUpIcon = MoveUp;
     exports2.MoveUpLeft = MoveUpLeft;
@@ -75457,8 +75457,8 @@ var require_lucide_react = __commonJS({
     exports2.NavigationIcon = Navigation;
     exports2.NavigationOff = NavigationOff;
     exports2.NavigationOffIcon = NavigationOff;
-    exports2.Network = Network2;
-    exports2.NetworkIcon = Network2;
+    exports2.Network = Network3;
+    exports2.NetworkIcon = Network3;
     exports2.Newspaper = Newspaper;
     exports2.NewspaperIcon = Newspaper;
     exports2.Nfc = Nfc;
@@ -75527,8 +75527,8 @@ var require_lucide_react = __commonJS({
     exports2.PaintbrushIcon = Paintbrush;
     exports2.PaintbrushVertical = PaintbrushVertical;
     exports2.PaintbrushVerticalIcon = PaintbrushVertical;
-    exports2.Palette = Palette2;
-    exports2.PaletteIcon = Palette2;
+    exports2.Palette = Palette3;
+    exports2.PaletteIcon = Palette3;
     exports2.Palmtree = TreePalm;
     exports2.PalmtreeIcon = TreePalm;
     exports2.Panda = Panda;
@@ -75544,15 +75544,15 @@ var require_lucide_react = __commonJS({
     exports2.PanelBottomOpen = PanelBottomOpen;
     exports2.PanelBottomOpenIcon = PanelBottomOpen;
     exports2.PanelLeft = PanelLeft;
-    exports2.PanelLeftClose = PanelLeftClose2;
-    exports2.PanelLeftCloseIcon = PanelLeftClose2;
+    exports2.PanelLeftClose = PanelLeftClose3;
+    exports2.PanelLeftCloseIcon = PanelLeftClose3;
     exports2.PanelLeftDashed = PanelLeftDashed;
     exports2.PanelLeftDashedIcon = PanelLeftDashed;
     exports2.PanelLeftIcon = PanelLeft;
     exports2.PanelLeftInactive = PanelLeftDashed;
     exports2.PanelLeftInactiveIcon = PanelLeftDashed;
-    exports2.PanelLeftOpen = PanelLeftOpen2;
-    exports2.PanelLeftOpenIcon = PanelLeftOpen2;
+    exports2.PanelLeftOpen = PanelLeftOpen3;
+    exports2.PanelLeftOpenIcon = PanelLeftOpen3;
     exports2.PanelLeftRightDashed = PanelLeftRightDashed;
     exports2.PanelLeftRightDashedIcon = PanelLeftRightDashed;
     exports2.PanelRight = PanelRight;
@@ -75627,8 +75627,8 @@ var require_lucide_react = __commonJS({
     exports2.PenSquareIcon = SquarePen;
     exports2.PenTool = PenTool;
     exports2.PenToolIcon = PenTool;
-    exports2.Pencil = Pencil2;
-    exports2.PencilIcon = Pencil2;
+    exports2.Pencil = Pencil3;
+    exports2.PencilIcon = Pencil3;
     exports2.PencilLine = PencilLine;
     exports2.PencilLineIcon = PencilLine;
     exports2.PencilOff = PencilOff;
@@ -75723,10 +75723,10 @@ var require_lucide_react = __commonJS({
     exports2.PlugZap2 = PlugZap;
     exports2.PlugZap2Icon = PlugZap;
     exports2.PlugZapIcon = PlugZap;
-    exports2.Plus = Plus2;
+    exports2.Plus = Plus3;
     exports2.PlusCircle = CirclePlus;
     exports2.PlusCircleIcon = CirclePlus;
-    exports2.PlusIcon = Plus2;
+    exports2.PlusIcon = Plus3;
     exports2.PlusSquare = SquarePlus;
     exports2.PlusSquareIcon = SquarePlus;
     exports2.PocketKnife = PocketKnife;
@@ -75745,10 +75745,10 @@ var require_lucide_react = __commonJS({
     exports2.PopsicleIcon = Popsicle;
     exports2.PoundSterling = PoundSterling;
     exports2.PoundSterlingIcon = PoundSterling;
-    exports2.Power = Power2;
+    exports2.Power = Power3;
     exports2.PowerCircle = CirclePower;
     exports2.PowerCircleIcon = CirclePower;
-    exports2.PowerIcon = Power2;
+    exports2.PowerIcon = Power3;
     exports2.PowerOff = PowerOff;
     exports2.PowerOffIcon = PowerOff;
     exports2.PowerSquare = SquarePower;
@@ -75769,8 +75769,8 @@ var require_lucide_react = __commonJS({
     exports2.PuzzleIcon = Puzzle;
     exports2.Pyramid = Pyramid;
     exports2.PyramidIcon = Pyramid;
-    exports2.QrCode = QrCode2;
-    exports2.QrCodeIcon = QrCode2;
+    exports2.QrCode = QrCode3;
+    exports2.QrCodeIcon = QrCode3;
     exports2.Quote = Quote;
     exports2.QuoteIcon = Quote;
     exports2.Rabbit = Rabbit;
@@ -75839,8 +75839,8 @@ var require_lucide_react = __commonJS({
     exports2.RefreshCcwDot = RefreshCcwDot;
     exports2.RefreshCcwDotIcon = RefreshCcwDot;
     exports2.RefreshCcwIcon = RefreshCcw;
-    exports2.RefreshCw = RefreshCw2;
-    exports2.RefreshCwIcon = RefreshCw2;
+    exports2.RefreshCw = RefreshCw3;
+    exports2.RefreshCwIcon = RefreshCw3;
     exports2.RefreshCwOff = RefreshCwOff;
     exports2.RefreshCwOffIcon = RefreshCwOff;
     exports2.Refrigerator = Refrigerator;
@@ -75893,8 +75893,8 @@ var require_lucide_react = __commonJS({
     exports2.RotateCwIcon = RotateCw;
     exports2.RotateCwSquare = RotateCwSquare;
     exports2.RotateCwSquareIcon = RotateCwSquare;
-    exports2.Route = Route2;
-    exports2.RouteIcon = Route2;
+    exports2.Route = Route3;
+    exports2.RouteIcon = Route3;
     exports2.RouteOff = RouteOff;
     exports2.RouteOffIcon = RouteOff;
     exports2.Router = Router;
@@ -75989,14 +75989,14 @@ var require_lucide_react = __commonJS({
     exports2.ScrollIcon = Scroll;
     exports2.ScrollText = ScrollText;
     exports2.ScrollTextIcon = ScrollText;
-    exports2.Search = Search2;
+    exports2.Search = Search3;
     exports2.SearchAlert = SearchAlert;
     exports2.SearchAlertIcon = SearchAlert;
     exports2.SearchCheck = SearchCheck;
     exports2.SearchCheckIcon = SearchCheck;
     exports2.SearchCode = SearchCode;
     exports2.SearchCodeIcon = SearchCode;
-    exports2.SearchIcon = Search2;
+    exports2.SearchIcon = Search3;
     exports2.SearchSlash = SearchSlash;
     exports2.SearchSlashIcon = SearchSlash;
     exports2.SearchX = SearchX;
@@ -76015,17 +76015,17 @@ var require_lucide_react = __commonJS({
     exports2.SeparatorHorizontalIcon = SeparatorHorizontal;
     exports2.SeparatorVertical = SeparatorVertical;
     exports2.SeparatorVerticalIcon = SeparatorVertical;
-    exports2.Server = Server2;
+    exports2.Server = Server3;
     exports2.ServerCog = ServerCog;
     exports2.ServerCogIcon = ServerCog;
     exports2.ServerCrash = ServerCrash;
     exports2.ServerCrashIcon = ServerCrash;
-    exports2.ServerIcon = Server2;
+    exports2.ServerIcon = Server3;
     exports2.ServerOff = ServerOff;
     exports2.ServerOffIcon = ServerOff;
     exports2.Settings = Settings3;
-    exports2.Settings2 = Settings2;
-    exports2.Settings2Icon = Settings2;
+    exports2.Settings2 = Settings22;
+    exports2.Settings2Icon = Settings22;
     exports2.SettingsIcon = Settings3;
     exports2.Shapes = Shapes;
     exports2.ShapesIcon = Shapes;
@@ -76044,8 +76044,8 @@ var require_lucide_react = __commonJS({
     exports2.ShieldAlertIcon = ShieldAlert;
     exports2.ShieldBan = ShieldBan;
     exports2.ShieldBanIcon = ShieldBan;
-    exports2.ShieldCheck = ShieldCheck2;
-    exports2.ShieldCheckIcon = ShieldCheck2;
+    exports2.ShieldCheck = ShieldCheck3;
+    exports2.ShieldCheckIcon = ShieldCheck3;
     exports2.ShieldClose = ShieldX;
     exports2.ShieldCloseIcon = ShieldX;
     exports2.ShieldCog = ShieldCog;
@@ -76098,11 +76098,11 @@ var require_lucide_react = __commonJS({
     exports2.Shuffle = Shuffle;
     exports2.ShuffleIcon = Shuffle;
     exports2.Sidebar = PanelLeft;
-    exports2.SidebarClose = PanelLeftClose2;
-    exports2.SidebarCloseIcon = PanelLeftClose2;
+    exports2.SidebarClose = PanelLeftClose3;
+    exports2.SidebarCloseIcon = PanelLeftClose3;
     exports2.SidebarIcon = PanelLeft;
-    exports2.SidebarOpen = PanelLeftOpen2;
-    exports2.SidebarOpenIcon = PanelLeftOpen2;
+    exports2.SidebarOpen = PanelLeftOpen3;
+    exports2.SidebarOpenIcon = PanelLeftOpen3;
     exports2.Sigma = Sigma;
     exports2.SigmaIcon = Sigma;
     exports2.SigmaSquare = SquareSigma;
@@ -76499,8 +76499,8 @@ var require_lucide_react = __commonJS({
     exports2.TentIcon = Tent;
     exports2.TentTree = TentTree;
     exports2.TentTreeIcon = TentTree;
-    exports2.Terminal = Terminal2;
-    exports2.TerminalIcon = Terminal2;
+    exports2.Terminal = Terminal3;
+    exports2.TerminalIcon = Terminal3;
     exports2.TerminalSquare = SquareTerminal;
     exports2.TerminalSquareIcon = SquareTerminal;
     exports2.TestTube = TestTube;
@@ -76616,8 +76616,8 @@ var require_lucide_react = __commonJS({
     exports2.Transgender = Transgender;
     exports2.TransgenderIcon = Transgender;
     exports2.Trash = Trash;
-    exports2.Trash2 = Trash22;
-    exports2.Trash2Icon = Trash22;
+    exports2.Trash2 = Trash23;
+    exports2.Trash2Icon = Trash23;
     exports2.TrashIcon = Trash;
     exports2.TreeDeciduous = TreeDeciduous;
     exports2.TreeDeciduousIcon = TreeDeciduous;
@@ -76702,8 +76702,8 @@ var require_lucide_react = __commonJS({
     exports2.Usb = Usb;
     exports2.UsbIcon = Usb;
     exports2.User = User;
-    exports2.User2 = UserRound2;
-    exports2.User2Icon = UserRound2;
+    exports2.User2 = UserRound3;
+    exports2.User2Icon = UserRound3;
     exports2.UserCheck = UserCheck;
     exports2.UserCheck2 = UserRoundCheck;
     exports2.UserCheck2Icon = UserRoundCheck;
@@ -76731,14 +76731,14 @@ var require_lucide_react = __commonJS({
     exports2.UserPlus2 = UserRoundPlus;
     exports2.UserPlus2Icon = UserRoundPlus;
     exports2.UserPlusIcon = UserPlus;
-    exports2.UserRound = UserRound2;
+    exports2.UserRound = UserRound3;
     exports2.UserRoundArrowLeft = UserRoundArrowLeft;
     exports2.UserRoundArrowLeftIcon = UserRoundArrowLeft;
     exports2.UserRoundCheck = UserRoundCheck;
     exports2.UserRoundCheckIcon = UserRoundCheck;
     exports2.UserRoundCog = UserRoundCog;
     exports2.UserRoundCogIcon = UserRoundCog;
-    exports2.UserRoundIcon = UserRound2;
+    exports2.UserRoundIcon = UserRound3;
     exports2.UserRoundKey = UserRoundKey;
     exports2.UserRoundKeyIcon = UserRoundKey;
     exports2.UserRoundMinus = UserRoundMinus;
@@ -76909,10 +76909,10 @@ var require_lucide_react = __commonJS({
     exports2.WrenchIcon = Wrench;
     exports2.WrenchOff = WrenchOff;
     exports2.WrenchOffIcon = WrenchOff;
-    exports2.X = X2;
+    exports2.X = X3;
     exports2.XCircle = CircleX;
     exports2.XCircleIcon = CircleX;
-    exports2.XIcon = X2;
+    exports2.XIcon = X3;
     exports2.XLineTop = XLineTop;
     exports2.XLineTopIcon = XLineTop;
     exports2.XOctagon = OctagonX;
@@ -89244,6 +89244,7 @@ Label.displayName = "Label";
 
 // packages/ui/src/components/ui/popover.tsx
 var React11 = __toESM(require_react());
+var import_react_dom = __toESM(require_react_dom());
 var import_jsx_runtime13 = __toESM(require_jsx_runtime());
 var PopoverContent = React11.forwardRef(
   ({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
@@ -89256,6 +89257,12 @@ var PopoverContent = React11.forwardRef(
   )
 );
 PopoverContent.displayName = "PopoverContent";
+function PopoverPortal({ children, open = true }) {
+  if (!open || typeof document === "undefined") {
+    return null;
+  }
+  return (0, import_react_dom.createPortal)(children, document.body);
+}
 
 // packages/ui/src/components/ui/select.tsx
 var React12 = __toESM(require_react());
@@ -89326,11 +89333,81 @@ var Switch = React13.forwardRef(
 );
 Switch.displayName = "Switch";
 
-// packages/ui/src/components/ui/textarea.tsx
+// packages/ui/src/components/ui/tabs.tsx
 var React14 = __toESM(require_react());
 var import_jsx_runtime16 = __toESM(require_jsx_runtime());
-var Textarea = React14.forwardRef(
+var TabsContext = React14.createContext(void 0);
+var Tabs = React14.forwardRef(
+  ({ children, className, onValueChange, value, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(TabsContext.Provider, { value: { onValueChange, value }, children: /* @__PURE__ */ (0, import_jsx_runtime16.jsx)("div", { className: cn("min-w-0", className), ref, ...props, children }) })
+);
+Tabs.displayName = "Tabs";
+var TabsList = React14.forwardRef(
   ({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(
+    "div",
+    {
+      className: cn(
+        "inline-flex min-w-0 items-center rounded-md bg-muted p-1 text-muted-foreground",
+        className
+      ),
+      ref,
+      role: "tablist",
+      ...props
+    }
+  )
+);
+TabsList.displayName = "TabsList";
+var TabsTrigger = React14.forwardRef(
+  ({ className, onClick, value, ...props }, ref) => {
+    const context = React14.useContext(TabsContext);
+    const selected = context?.value === value;
+    return /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(
+      "button",
+      {
+        "aria-selected": selected,
+        className: cn(
+          "inline-flex min-w-0 items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-[12px] font-medium outline-none transition-[background-color,border-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
+          className
+        ),
+        "data-state": selected ? "active" : "inactive",
+        onClick: (event) => {
+          onClick?.(event);
+          if (!event.defaultPrevented) {
+            context?.onValueChange?.(value);
+          }
+        },
+        ref,
+        role: "tab",
+        type: "button",
+        ...props
+      }
+    );
+  }
+);
+TabsTrigger.displayName = "TabsTrigger";
+var TabsContent = React14.forwardRef(
+  ({ className, value, ...props }, ref) => {
+    const context = React14.useContext(TabsContext);
+    const selected = context?.value === value;
+    return /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(
+      "div",
+      {
+        className: cn("min-w-0 outline-none", className),
+        "data-state": selected ? "active" : "inactive",
+        hidden: !selected,
+        ref,
+        role: "tabpanel",
+        ...props
+      }
+    );
+  }
+);
+TabsContent.displayName = "TabsContent";
+
+// packages/ui/src/components/ui/textarea.tsx
+var React15 = __toESM(require_react());
+var import_jsx_runtime17 = __toESM(require_jsx_runtime());
+var Textarea = React15.forwardRef(
+  ({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
     "textarea",
     {
       className: cn(
@@ -89359,6 +89436,9 @@ var BUILTIN_FUSION_VISION_TOOL_NAME = "vision_understand";
 var BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME = "web_search";
 var BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME = "image_generation";
 var BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME = "video_generation";
+function isGatewayProviderEnabled(provider) {
+  return provider.enabled !== false;
+}
 var ROUTER_SCRIPT_MAX_SOURCE_BYTES = 64 * 1024;
 var CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV = "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY";
 var CLAUDE_CODE_DEFAULT_ENV = {
@@ -89514,6 +89594,17 @@ function createDefaultAppConfig(options) {
       streamReplies: true,
       tenantId: "ccr"
     },
+    contextArchive: {
+      enabled: false,
+      maxBytes: 512 * 1024 * 1024,
+      maxSnapshotBytes: 32 * 1024 * 1024,
+      maxSnapshots: 200,
+      mcpEnabled: true,
+      replayTimeoutMs: 6e4,
+      retentionDays: 30,
+      storagePath: "",
+      toolName: "ccr_history_ask"
+    },
     gateway: {
       coreHost,
       corePort: 3457,
@@ -89543,6 +89634,7 @@ function createDefaultAppConfig(options) {
     profile: {
       claudeCode: {
         enabled: true,
+        managedCompact: false,
         model: "",
         settingsFile: "~/.claude/settings.json",
         smallFastModel: ""
@@ -89554,6 +89646,7 @@ function createDefaultAppConfig(options) {
         configFormat: "separate_profile_files",
         configFile: "~/.codex/config.toml",
         enabled: true,
+        managedCompact: false,
         model: "",
         providerId: "claude-code-router",
         providerName: "Claude Code Router",
@@ -89566,6 +89659,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: { ...CLAUDE_CODE_DEFAULT_ENV },
           id: "default-claude-code",
+          managedCompact: false,
           model: "",
           name: "Claude Code",
           scope: "global",
@@ -89583,6 +89677,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: {},
           id: "default-codex",
+          managedCompact: false,
           model: "",
           name: "Codex",
           providerId: "claude-code-router",
@@ -89681,6 +89776,341 @@ var fallbackProxyNetworkSnapshot = {
 
 // packages/ui/src/pages/home/shared/i18n.tsx
 var import_react26 = __toESM(require_react());
+
+// packages/core/src/contracts/i18n.ts
+var zhExactErrorMessages = {
+  "Account endpoint returned a non-object payload.": "\u8D26\u6237\u7AEF\u70B9\u8FD4\u56DE\u7684\u5185\u5BB9\u4E0D\u662F\u5BF9\u8C61\u3002",
+  "Account endpoint returned malformed JSON.": "\u8D26\u6237\u7AEF\u70B9\u8FD4\u56DE\u4E86\u683C\u5F0F\u9519\u8BEF\u7684 JSON\u3002",
+  "Base URL is required.": "Base URL \u4E0D\u80FD\u4E3A\u7A7A\u3002",
+  "Browser controls are only available from the built-in browser window.": "\u6D4F\u89C8\u5668\u63A7\u5236\u4EC5\u53EF\u5728\u5185\u7F6E\u6D4F\u89C8\u5668\u7A97\u53E3\u4E2D\u4F7F\u7528\u3002",
+  "Bot Gateway QR start response missing qrCodeUrl.": "Bot Gateway \u626B\u7801\u767B\u5F55\u542F\u52A8\u54CD\u5E94\u7F3A\u5C11 qrCodeUrl\u3002",
+  "Bot Gateway QR start response missing sessionId.": "Bot Gateway \u626B\u7801\u767B\u5F55\u542F\u52A8\u54CD\u5E94\u7F3A\u5C11 sessionId\u3002",
+  "Bot Gateway SDK client does not expose request().": "Bot Gateway SDK client \u672A\u66B4\u9732 request()\u3002",
+  "CCR gateway did not start.": "CCR \u7F51\u5173\u672A\u80FD\u542F\u52A8\u3002",
+  "Claude App opening is available from the CCR desktop app.": "Claude App \u6253\u5F00\u529F\u80FD\u4EC5\u53EF\u5728 CCR \u684C\u9762\u7AEF\u4F7F\u7528\u3002",
+  "Claude Code access token was not found.": "\u672A\u627E\u5230 Claude Code access token\u3002",
+  "Codex login token was not found.": "\u672A\u627E\u5230 Codex \u767B\u5F55 token\u3002",
+  "CONNECT target is missing.": "\u7F3A\u5C11 CONNECT \u76EE\u6807\u3002",
+  "Core gateway auth token is not initialized.": "\u6838\u5FC3\u7F51\u5173\u8BA4\u8BC1 token \u5C1A\u672A\u521D\u59CB\u5316\u3002",
+  "Failed to start proxy mode.": "\u672A\u80FD\u542F\u52A8\u4EE3\u7406\u6A21\u5F0F\u3002",
+  "Gateway plugin service is not configured.": "\u7F51\u5173\u63D2\u4EF6\u670D\u52A1\u5C1A\u672A\u914D\u7F6E\u3002",
+  "Local agent account credential was not found. Sign in again, then re-import the local login provider.": "\u672A\u627E\u5230\u672C\u673A Agent \u8D26\u6237\u51ED\u636E\u3002\u8BF7\u91CD\u65B0\u767B\u5F55\uFF0C\u7136\u540E\u91CD\u65B0\u5BFC\u5165\u672C\u673A\u767B\u5F55\u4F9B\u5E94\u5546\u3002",
+  "Local agent login is not importable.": "\u672C\u673A Agent \u767B\u5F55\u6001\u4E0D\u53EF\u5BFC\u5165\u3002",
+  "Local agent provider was not found.": "\u672A\u627E\u5230\u672C\u673A Agent \u4F9B\u5E94\u5546\u3002",
+  "MCP server must be saved before tool discovery.": "\u9700\u8981\u5148\u4FDD\u5B58 MCP \u670D\u52A1\u5668\u540E\u624D\u80FD\u53D1\u73B0\u5DE5\u5177\u3002",
+  "MCP server name is required.": "MCP \u670D\u52A1\u5668\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002",
+  "Missing vision API key. Set VISION_API_KEY.": "\u7F3A\u5C11\u89C6\u89C9 API Key\u3002\u8BF7\u8BBE\u7F6E VISION_API_KEY\u3002",
+  "Model name is too long.": "\u6A21\u578B\u540D\u79F0\u8FC7\u957F\u3002",
+  "Network capture MCP is disabled.": "\u7F51\u7EDC\u6355\u83B7 MCP \u5DF2\u7981\u7528\u3002",
+  "No available models": "\u6CA1\u6709\u53EF\u7528\u6A21\u578B",
+  "No available models. Configure at least one provider with a model before starting CCR Gateway or opening an agent through CCR.": "\u6CA1\u6709\u53EF\u7528\u6A21\u578B\u3002\u8BF7\u5148\u914D\u7F6E\u81F3\u5C11\u4E00\u4E2A\u5305\u542B\u6A21\u578B\u7684\u4F9B\u5E94\u5546\uFF0C\u518D\u542F\u52A8 CCR \u7F51\u5173\u6216\u901A\u8FC7 CCR \u6253\u5F00 Agent\u3002",
+  "OpenCode CLI API key was not found.": "\u672A\u627E\u5230 OpenCode CLI API key\u3002",
+  "OpenCode CLI public models were not found.": "\u672A\u627E\u5230 OpenCode CLI \u516C\u5171\u6A21\u578B\u3002",
+  "No Bot Gateway conversationRef is available for inbound bot response.": "\u6CA1\u6709\u53EF\u7528\u4E8E\u5165\u7AD9 Bot \u54CD\u5E94\u7684 Bot Gateway conversationRef\u3002",
+  "No Bot Gateway conversationRef is configured and no inbound bot event context is available.": "\u672A\u914D\u7F6E Bot Gateway conversationRef\uFF0C\u4E14\u6CA1\u6709\u53EF\u7528\u7684\u5165\u7AD9 Bot \u4E8B\u4EF6\u4E0A\u4E0B\u6587\u3002",
+  "No endpoint candidates available.": "\u6CA1\u6709\u53EF\u7528\u7684\u7AEF\u70B9\u5019\u9009\u9879\u3002",
+  "No search provider configured. Set SEARCH_PROVIDER and its API key.": "\u672A\u914D\u7F6E\u641C\u7D22\u4F9B\u5E94\u5546\u3002\u8BF7\u8BBE\u7F6E SEARCH_PROVIDER \u53CA\u5176 API Key\u3002",
+  "No Wi-Fi/LAN targets found.": "\u672A\u627E\u5230 Wi-Fi/LAN \u76EE\u6807\u3002",
+  "Only http and https QR login URLs can be opened.": "\u53EA\u80FD\u6253\u5F00 http \u6216 https \u7684\u626B\u7801\u767B\u5F55 URL\u3002",
+  "Only http and https URLs can be opened.": "\u53EA\u80FD\u6253\u5F00 http \u6216 https URL\u3002",
+  "Plugin module must export a function, default plugin, or plugin object.": "\u63D2\u4EF6\u6A21\u5757\u5FC5\u987B\u5BFC\u51FA\u51FD\u6570\u3001\u9ED8\u8BA4\u63D2\u4EF6\u6216\u63D2\u4EF6\u5BF9\u8C61\u3002",
+  "Provider Base URL is invalid.": "\u4F9B\u5E94\u5546 Base URL \u65E0\u6548\u3002",
+  "Provider Base URL must use http or https.": "\u4F9B\u5E94\u5546 Base URL \u5FC5\u987B\u4F7F\u7528 http \u6216 https\u3002",
+  "Provider link is too long.": "\u4F9B\u5E94\u5546\u94FE\u63A5\u8FC7\u957F\u3002",
+  "Provider manifest must be a JSON object.": "\u4F9B\u5E94\u5546 manifest \u5FC5\u987B\u662F JSON \u5BF9\u8C61\u3002",
+  "Provider manifest URL cannot include credentials.": "\u4F9B\u5E94\u5546 manifest URL \u4E0D\u80FD\u5305\u542B\u51ED\u636E\u3002",
+  "Provider manifest URL is invalid.": "\u4F9B\u5E94\u5546 manifest URL \u65E0\u6548\u3002",
+  "Provider manifest URL must use https.": "\u4F9B\u5E94\u5546 manifest URL \u5FC5\u987B\u4F7F\u7528 https\u3002",
+  "Provider payload must be a JSON object.": "\u4F9B\u5E94\u5546\u8F7D\u8377\u5FC5\u987B\u662F JSON \u5BF9\u8C61\u3002",
+  "Proxy mode is not running.": "\u4EE3\u7406\u6A21\u5F0F\u672A\u8FD0\u884C\u3002",
+  "Proxy request is missing Host header.": "\u4EE3\u7406\u8BF7\u6C42\u7F3A\u5C11 Host \u5934\u3002",
+  "Proxy service failed to start.": "\u4EE3\u7406\u670D\u52A1\u672A\u80FD\u542F\u52A8\u3002",
+  "QR window sessionId is required.": "\u4E8C\u7EF4\u7801\u7A97\u53E3 sessionId \u4E0D\u80FD\u4E3A\u7A7A\u3002",
+  "Remote provider manifests cannot define sensitive Fetch usage headers.": "\u8FDC\u7A0B\u4F9B\u5E94\u5546 manifest \u4E0D\u80FD\u5B9A\u4E49\u654F\u611F\u7684 Fetch \u7528\u91CF\u8BF7\u6C42\u5934\u3002",
+  "Request body must be a JSON object.": "\u8BF7\u6C42\u4F53\u5FC5\u987B\u662F JSON \u5BF9\u8C61\u3002",
+  "Service did not start.": "\u670D\u52A1\u672A\u80FD\u542F\u52A8\u3002",
+  "Service paused.": "\u670D\u52A1\u5DF2\u6682\u505C\u3002",
+  "Service started.": "\u670D\u52A1\u5DF2\u542F\u52A8\u3002",
+  "Proxy is stopped.": "\u4EE3\u7406\u5DF2\u505C\u6B62\u3002",
+  "Proxy restarted.": "\u4EE3\u7406\u5DF2\u91CD\u542F\u3002",
+  "Too many models in provider link.": "\u4F9B\u5E94\u5546\u94FE\u63A5\u4E2D\u7684\u6A21\u578B\u6570\u91CF\u8FC7\u591A\u3002",
+  "tools/call params must include a tool name.": "tools/call \u53C2\u6570\u5FC5\u987B\u5305\u542B\u5DE5\u5177\u540D\u79F0\u3002",
+  "This app build does not expose API key persistence. Rebuild and restart the Electron app.": "\u5F53\u524D\u5E94\u7528\u6784\u5EFA\u672A\u66B4\u9732 API Key \u6301\u4E45\u5316\u80FD\u529B\u3002\u8BF7\u91CD\u65B0\u6784\u5EFA\u5E76\u91CD\u542F Electron App\u3002",
+  "Unable to load @the-next-ai/bot-gateway-sdk.": "\u65E0\u6CD5\u52A0\u8F7D @the-next-ai/bot-gateway-sdk\u3002",
+  "Unsupported CCR link target.": "\u4E0D\u652F\u6301\u7684 CCR \u94FE\u63A5\u76EE\u6807\u3002",
+  "Unsupported link protocol.": "\u4E0D\u652F\u6301\u7684\u94FE\u63A5\u534F\u8BAE\u3002",
+  "Unknown error": "\u672A\u77E5\u9519\u8BEF",
+  "ZCode profiles can only open the app; agent arguments are not supported.": "ZCode \u914D\u7F6E\u6863\u6848\u53EA\u80FD\u6253\u5F00 App\uFF0C\u4E0D\u652F\u6301 Agent \u53C2\u6570\u3002",
+  "ZCode provider API key was not found in ZCode config.": "\u672A\u5728 ZCode \u914D\u7F6E\u4E2D\u627E\u5230\u4F9B\u5E94\u5546 API Key\u3002"
+};
+var zhPatternErrorMessages = [
+  {
+    pattern: /^(.+ App) was not found\. Install \1 or set ([A-Z0-9_]+) to its executable, then try again\.$/,
+    translate: (appName, envKey) => `${appName} \u672A\u627E\u5230\u3002\u8BF7\u5B89\u88C5 ${appName}\uFF0C\u6216\u5C06 ${envKey} \u8BBE\u7F6E\u4E3A\u5B83\u7684\u53EF\u6267\u884C\u6587\u4EF6\u540E\u91CD\u8BD5\u3002`
+  },
+  {
+    pattern: /^Profile launcher was not found: (.+)\. Re-save the profile and try again\.$/,
+    translate: (command) => `\u672A\u627E\u5230\u914D\u7F6E\u6863\u6848\u542F\u52A8\u5668\uFF1A${command}\u3002\u8BF7\u91CD\u65B0\u4FDD\u5B58\u914D\u7F6E\u6863\u6848\u540E\u91CD\u8BD5\u3002`
+  },
+  {
+    pattern: /^Profile launcher was not found: (.+)\. Open CCR once or re-save the profile\.$/,
+    translate: (command) => `\u672A\u627E\u5230\u914D\u7F6E\u6863\u6848\u542F\u52A8\u5668\uFF1A${command}\u3002\u8BF7\u6253\u5F00\u4E00\u6B21 CCR\uFF0C\u6216\u91CD\u65B0\u4FDD\u5B58\u914D\u7F6E\u6863\u6848\u3002`
+  },
+  {
+    pattern: /^CCR CLI runtime was not found\. Rebuild or reinstall CCR and try again\.$/,
+    translate: () => "\u672A\u627E\u5230 CCR CLI \u8FD0\u884C\u65F6\u3002\u8BF7\u91CD\u65B0\u6784\u5EFA\u6216\u91CD\u65B0\u5B89\u88C5 CCR \u540E\u91CD\u8BD5\u3002"
+  },
+  {
+    pattern: /^CCR config was not found: (.+)$/,
+    translate: (file) => `\u672A\u627E\u5230 CCR \u914D\u7F6E\uFF1A${file}`
+  },
+  {
+    pattern: /^CCR config has no profiles: (.+)$/,
+    translate: (file) => `CCR \u914D\u7F6E\u4E2D\u6CA1\u6709\u914D\u7F6E\u6863\u6848\uFF1A${file}`
+  },
+  {
+    pattern: /^Profile "(.+)" is ambiguous\. Use the profile ID instead\.$/,
+    translate: (profile2) => `\u914D\u7F6E\u6863\u6848 "${profile2}" \u4E0D\u552F\u4E00\u3002\u8BF7\u6539\u7528\u914D\u7F6E\u6863\u6848 ID\u3002`
+  },
+  {
+    pattern: /^Profile "(.+)" was not found or is disabled\.$/,
+    translate: (profile2) => `\u914D\u7F6E\u6863\u6848 "${profile2}" \u672A\u627E\u5230\u6216\u5DF2\u7981\u7528\u3002`
+  },
+  {
+    pattern: /^(.+) does not support ([A-Z]+) opening\.$/,
+    translate: (profile2, surface) => `${profile2} \u4E0D\u652F\u6301\u4EE5 ${surface} \u65B9\u5F0F\u6253\u5F00\u3002`
+  },
+  {
+    pattern: /^(.+) does not support stopping ([A-Z]+) from CCR\.$/,
+    translate: (profile2, surface) => `${profile2} \u4E0D\u652F\u6301\u4ECE CCR \u505C\u6B62 ${surface}\u3002`
+  },
+  {
+    pattern: /^No CCR API key was found for profile "(.+)"\. Re-save the profile and try again\.$/,
+    translate: (profile2) => `\u672A\u627E\u5230\u914D\u7F6E\u6863\u6848 "${profile2}" \u7684 CCR API Key\u3002\u8BF7\u91CD\u65B0\u4FDD\u5B58\u914D\u7F6E\u6863\u6848\u540E\u91CD\u8BD5\u3002`
+  },
+  {
+    pattern: /^(.+ App) did not open a window for (.+)\. Command: (.+) User data: (.+)$/,
+    translate: (appName, profile2, command, userData) => `${appName} \u6CA1\u6709\u4E3A ${profile2} \u6253\u5F00\u7A97\u53E3\u3002\u547D\u4EE4\uFF1A${command} \u7528\u6237\u6570\u636E\uFF1A${userData}`
+  },
+  {
+    pattern: /^(.+ App) is already running with (.+)\.$/,
+    translate: (appName, profile2) => `${appName} \u5DF2\u4F7F\u7528 ${profile2} \u8FD0\u884C\u3002`
+  },
+  {
+    pattern: /^Opened (.+ App) with (.+)\.$/,
+    translate: (appName, profile2) => `\u5DF2\u4F7F\u7528 ${profile2} \u6253\u5F00 ${appName}\u3002`
+  },
+  {
+    pattern: /^Opened (.+)\.$/,
+    translate: (profile2) => `\u5DF2\u6253\u5F00 ${profile2}\u3002`
+  },
+  {
+    pattern: /^CCR gateway did not start for (.+)\.$/,
+    translate: (appName) => `${appName} \u7684 CCR \u7F51\u5173\u672A\u80FD\u542F\u52A8\u3002`
+  },
+  {
+    pattern: /^Core gateway endpoint is already in use: (.+)$/,
+    translate: (endpoint) => `\u6838\u5FC3\u7F51\u5173\u7AEF\u70B9\u5DF2\u88AB\u5360\u7528\uFF1A${endpoint}`
+  },
+  {
+    pattern: /^Proxy restarted, but system proxy switching failed: (.+)$/,
+    translate: (detail) => `\u4EE3\u7406\u5DF2\u91CD\u542F\uFF0C\u4F46\u7CFB\u7EDF\u4EE3\u7406\u5207\u6362\u5931\u8D25\uFF1A${translateErrorMessage("zh", detail)}`
+  },
+  {
+    pattern: /^Proxy mode is running at (.+), but HTTPS CONNECT is not available(.*)\.$/,
+    translate: (endpoint, detail) => `\u4EE3\u7406\u6A21\u5F0F\u6B63\u5728 ${endpoint} \u8FD0\u884C\uFF0C\u4F46 HTTPS CONNECT \u4E0D\u53EF\u7528${detail}\u3002`
+  },
+  {
+    pattern: /^Failed to start the dedicated proxy endpoint for the built-in browser\.$/,
+    translate: () => "\u672A\u80FD\u542F\u52A8\u5185\u7F6E\u6D4F\u89C8\u5668\u4E13\u7528\u4EE3\u7406\u7AEF\u70B9\u3002"
+  },
+  {
+    pattern: /^Account endpoint returned HTTP ([0-9]+)(?:: ([\s\S]+))?\.$/,
+    translate: (status, detail = "") => `\u8D26\u6237\u7AEF\u70B9\u8FD4\u56DE HTTP ${status}${detail ? `\uFF1A${detail}` : ""}\u3002`
+  },
+  {
+    pattern: /^Account endpoint returned non-JSON response(?: \((.+)\))?\.$/,
+    translate: (contentType = "") => `\u8D26\u6237\u7AEF\u70B9\u8FD4\u56DE\u4E86\u975E JSON \u54CD\u5E94${contentType ? `\uFF08${contentType}\uFF09` : ""}\u3002`
+  },
+  {
+    pattern: /^Account connectors JSON is invalid: ([\s\S]+)$/,
+    translate: (detail) => `\u8D26\u6237\u8FDE\u63A5\u5668 JSON \u65E0\u6548\uFF1A${detail}`
+  },
+  {
+    pattern: /^Usage request body JSON is invalid: ([\s\S]+)$/,
+    translate: (detail) => `\u7528\u91CF\u8BF7\u6C42\u4F53 JSON \u65E0\u6548\uFF1A${detail}`
+  },
+  {
+    pattern: /^Unsupported provider protocol: (.+)$/,
+    translate: (protocol) => `\u4E0D\u652F\u6301\u7684\u4F9B\u5E94\u5546\u534F\u8BAE\uFF1A${protocol}`
+  },
+  {
+    pattern: /^(.+) is too long\.$/,
+    translate: (label) => `${label} \u8FC7\u957F\u3002`
+  },
+  {
+    pattern: /^(.+) from a remote manifest must use https\.$/,
+    translate: (label) => `\u8FDC\u7A0B manifest \u4E2D\u7684 ${label} \u5FC5\u987B\u4F7F\u7528 https\u3002`
+  },
+  {
+    pattern: /^(.+) cannot include credentials\.$/,
+    translate: (label) => `${label} \u4E0D\u80FD\u5305\u542B\u51ED\u636E\u3002`
+  },
+  {
+    pattern: /^(.+) cannot target a local or internal host\.$/,
+    translate: (label) => `${label} \u4E0D\u80FD\u6307\u5411\u672C\u673A\u6216\u5185\u7F51\u4E3B\u673A\u3002`
+  },
+  {
+    pattern: /^(.+) is invalid\.$/,
+    translate: (label) => `${label} \u65E0\u6548\u3002`
+  },
+  {
+    pattern: /^Could not resolve host: (.+)$/,
+    translate: (hostname) => `\u65E0\u6CD5\u89E3\u6790\u4E3B\u673A\uFF1A${hostname}`
+  },
+  {
+    pattern: /^Remote manifest host resolved to a private or reserved address: (.+)$/,
+    translate: (address) => `\u8FDC\u7A0B manifest \u4E3B\u673A\u89E3\u6790\u5230\u4E86\u79C1\u6709\u6216\u4FDD\u7559\u5730\u5740\uFF1A${address}`
+  },
+  {
+    pattern: /^Invalid proxy endpoint: (.+)$/,
+    translate: (endpoint) => `\u4EE3\u7406\u7AEF\u70B9\u65E0\u6548\uFF1A${endpoint}`
+  },
+  {
+    pattern: /^Failed to start MITM server for (.+)$/,
+    translate: (hostname) => `\u672A\u80FD\u4E3A ${hostname} \u542F\u52A8 MITM \u670D\u52A1\u3002`
+  },
+  {
+    pattern: /^MCP tools discovery timed out after ([0-9]+) ms\.$/,
+    translate: (timeout) => `MCP \u5DE5\u5177\u53D1\u73B0\u8D85\u65F6\uFF08${timeout} ms\uFF09\u3002`
+  },
+  {
+    pattern: /^SSE MCP discovery failed with HTTP ([0-9]+)\.$/,
+    translate: (status) => `SSE MCP \u53D1\u73B0\u5931\u8D25\uFF0CHTTP ${status}\u3002`
+  },
+  {
+    pattern: /^MCP discovery request failed with HTTP ([0-9]+)(?:: ([\s\S]+))?$/,
+    translate: (status, detail = "") => `MCP \u53D1\u73B0\u8BF7\u6C42\u5931\u8D25\uFF0CHTTP ${status}${detail ? `\uFF1A${detail}` : ""}`
+  },
+  {
+    pattern: /^Unknown network capture tool: (.+)$/,
+    translate: (tool) => `\u672A\u77E5\u7684\u7F51\u7EDC\u6355\u83B7\u5DE5\u5177\uFF1A${tool}`
+  },
+  {
+    pattern: /^Network capture not found: (.+)$/,
+    translate: (id3) => `\u672A\u627E\u5230\u7F51\u7EDC\u6355\u83B7\uFF1A${id3}`
+  },
+  {
+    pattern: /^network_capture_get requires id\.$/,
+    translate: () => "network_capture_get \u9700\u8981 id\u3002"
+  },
+  {
+    pattern: /^network_capture_set_enabled requires boolean enabled\.$/,
+    translate: () => "network_capture_set_enabled \u9700\u8981\u5E03\u5C14\u503C enabled\u3002"
+  },
+  {
+    pattern: /^Unknown fusion tool: (.+)$/,
+    translate: (tool) => `\u672A\u77E5\u7684 Fusion \u5DE5\u5177\uFF1A${tool}`
+  },
+  {
+    pattern: /^(.+) requires prompt\.$/,
+    translate: (tool) => `${tool} \u9700\u8981 prompt\u3002`
+  },
+  {
+    pattern: /^(.+) requires imageUrl, imagePath, imageBase64, or images\.$/,
+    translate: (tool) => `${tool} \u9700\u8981 imageUrl\u3001imagePath\u3001imageBase64 \u6216 images\u3002`
+  },
+  {
+    pattern: /^Missing (.+)\. Set (.+)\.$/,
+    translate: (label, envKey) => `\u7F3A\u5C11 ${label}\u3002\u8BF7\u8BBE\u7F6E ${envKey}\u3002`
+  },
+  {
+    pattern: /^(Vision|Search) request failed \(([0-9]+)\): ([\s\S]+)$/,
+    translate: (kind, status, detail) => `${kind === "Vision" ? "\u89C6\u89C9" : "\u641C\u7D22"}\u8BF7\u6C42\u5931\u8D25\uFF08${status}\uFF09\uFF1A${detail}`
+  },
+  {
+    pattern: /^Invalid JSON from provider: ([\s\S]+)$/,
+    translate: (detail) => `\u4F9B\u5E94\u5546\u8FD4\u56DE\u4E86\u65E0\u6548 JSON\uFF1A${detail}`
+  },
+  {
+    pattern: /^Local image exceeds ([0-9]+) bytes: (.+)$/,
+    translate: (bytes, file) => `\u672C\u5730\u56FE\u7247\u8D85\u8FC7 ${bytes} \u5B57\u8282\uFF1A${file}`
+  },
+  {
+    pattern: /^Claude App CDP page target was not available on port ([0-9]+)(?:: ([\s\S]+))?\.$/,
+    translate: (port, detail = "") => `\u7AEF\u53E3 ${port} \u4E0A\u6CA1\u6709\u53EF\u7528\u7684 Claude App CDP \u9875\u9762\u76EE\u6807${detail ? `\uFF1A${detail}` : ""}\u3002`
+  },
+  {
+    pattern: /^CDP (.+) returned HTTP ([0-9]+)$/,
+    translate: (endpoint, status) => `CDP ${endpoint} \u8FD4\u56DE HTTP ${status}`
+  },
+  {
+    pattern: /^Timed out waiting for (?:ChatGPT|Codex App) response: (.+)$/,
+    translate: (requestId) => `\u7B49\u5F85 ChatGPT \u54CD\u5E94\u8D85\u65F6\uFF1A${requestId}`
+  },
+  {
+    pattern: /^No active turn for thread (.+)$/,
+    translate: (threadId) => `\u7EBF\u7A0B ${threadId} \u6CA1\u6709\u6D3B\u8DC3\u56DE\u5408\u3002`
+  },
+  {
+    pattern: /^thread not found: (.+)$/,
+    translate: (threadId) => `\u672A\u627E\u5230\u7EBF\u7A0B\uFF1A${threadId}`
+  },
+  {
+    pattern: /^Backend (.+) failed to start\.$/,
+    translate: (backend) => `\u540E\u7AEF ${backend} \u672A\u80FD\u542F\u52A8\u3002`
+  },
+  {
+    pattern: /^Plugin (.+) registered a gateway route without path or pathPrefix\.$/,
+    translate: (pluginId) => `\u63D2\u4EF6 ${pluginId} \u6CE8\u518C\u4E86\u7F3A\u5C11 path \u6216 pathPrefix \u7684\u7F51\u5173\u8DEF\u7531\u3002`
+  },
+  {
+    pattern: /^Plugin (.+) registered a proxy route without host\.$/,
+    translate: (pluginId) => `\u63D2\u4EF6 ${pluginId} \u6CE8\u518C\u4E86\u7F3A\u5C11 host \u7684\u4EE3\u7406\u8DEF\u7531\u3002`
+  },
+  {
+    pattern: /^Plugin (.+) registered an invalid provider account connector\.$/,
+    translate: (pluginId) => `\u63D2\u4EF6 ${pluginId} \u6CE8\u518C\u4E86\u65E0\u6548\u7684\u4F9B\u5E94\u5546\u8D26\u6237\u8FDE\u63A5\u5668\u3002`
+  },
+  {
+    pattern: /^HTTP ([0-9]+)$/,
+    translate: (status) => `HTTP ${status}`
+  }
+];
+function translateErrorMessage(language, message) {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    return message;
+  }
+  const invokingRemoteMethod = trimmed.match(/^Error invoking remote method '([^']+)': Error: ([\s\S]+)$/);
+  if (invokingRemoteMethod) {
+    return translateErrorMessage(language, invokingRemoteMethod[2]);
+  }
+  const invokingRemoteMethodWithoutError = trimmed.match(/^Error invoking remote method '([^']+)': ([\s\S]+)$/);
+  if (invokingRemoteMethodWithoutError) {
+    return translateErrorMessage(language, invokingRemoteMethodWithoutError[2]);
+  }
+  const withChecked = trimmed.match(/^([\s\S]*?)\s+Checked:\s+([\s\S]+)$/);
+  if (withChecked) {
+    return translateErrorMessage(language, withChecked[1]);
+  }
+  if (language !== "zh") {
+    return trimmed;
+  }
+  const exact = zhExactErrorMessages[trimmed];
+  if (exact) {
+    return exact;
+  }
+  for (const translator of zhPatternErrorMessages) {
+    const match = trimmed.match(translator.pattern);
+    if (match) {
+      return translator.translate(...match.slice(1));
+    }
+  }
+  return message;
+}
+
+// packages/ui/src/pages/home/shared/i18n.tsx
 var appCopy = {
   en: {
     navigation: {
@@ -89691,7 +90121,7 @@ var appCopy = {
       networking: "Networking",
       observability: "Observability",
       overview: "Overview",
-      profile: "Agent Config",
+      profile: "Agent Profiles",
       providers: "Providers",
       models: "Models",
       routing: "Routing",
@@ -89799,6 +90229,9 @@ var appCopy = {
       "\u65F6\u95F4": "Time",
       "\u72B6\u6001": "Status",
       "\u6A21\u578B": "Model",
+      "CCR compact for Claude Code": "CCR compact for Claude Code",
+      "Use CCR context archive when Claude Code runs /compact.": "Use CCR context archive when Claude Code runs /compact.",
+      "Context archive and MCP access will be enabled for this compact mode.": "Context archive and MCP access will be enabled for this compact mode.",
       "Stream": "Stream",
       "Streaming": "Streaming",
       "Non-streaming": "Non-streaming",
@@ -89829,21 +90262,58 @@ var appCopy = {
       "\u51FA": "out",
       "No provider presets found": "No provider presets found",
       "After you enter the API endpoint and key, the system will automatically detect supported protocols and available models.": "After you enter the API endpoint and key, the system will automatically detect supported protocols and available models.",
+      "Advanced": "Advanced",
+      "Advanced settings": "Advanced settings",
+      "Advanced settings need attention": "Advanced settings need attention",
+      "Agent profile": "Agent profile",
       "Back": "Back",
+      "Auto detect protocols": "Auto detect protocols",
+      "Auto detect protocols description": "When enabled, CCR probes the endpoint while editing and uses the detected protocols and models to update this provider. Turn it off to keep manually selected protocols and custom model IDs unchanged.",
+      "Auto detect protocols info": "Auto detect protocols info",
       "Available models": "Available models",
+      "Available after saving": "Available after saving",
+      "Automatic": "Automatic",
+      "Add credentials": "Add credentials",
+      "Add the API key CCR will use for model requests.": "Add the API key CCR will use for model requests.",
+      "A real model request succeeded with the selected provider settings.": "A real model request succeeded with the selected provider settings.",
       "Check": "Check",
       "Check Connection": "Check Connection",
       "Check results": "Check results",
       "Checking connection": "Checking connection",
+      "Choose a provider preset or endpoint, enter an API key, and add at least one model.": "Choose a provider preset or endpoint, enter an API key, and add at least one model.",
+      "Choose a provider endpoint so CCR can detect compatible protocols.": "Choose a provider endpoint so CCR can detect compatible protocols.",
+      "Choose an agent, model, and required profile settings.": "Choose an agent, model, and required profile settings.",
+      "Choose how this provider authenticates model requests.": "Choose how this provider authenticates model requests.",
+      "Choose provider": "Choose provider",
+      "Choose the models that should be available through this provider.": "Choose the models that should be available through this provider.",
       "Click Check Connection to verify connectivity with a real model request.": "Click Check Connection to verify connectivity with a real model request.",
+      "Compatible API protocols were found automatically.": "Compatible API protocols were found automatically.",
+      "Compatible API protocols were found automatically. You can turn off auto detection in Advanced settings and select protocols manually.": "Compatible API protocols were found automatically. You can turn off auto detection in Advanced settings and select protocols manually.",
+      "Configure a provider before creating an agent profile.": "Configure a provider before creating an agent profile.",
+      "Configure at least one enabled provider model before saving an agent profile.": "Configure at least one enabled provider model before saving an agent profile.",
+      "Configuration": "Configuration",
+      "Credential method": "Credential method",
       "Connection verified": "Connection verified",
+      "CCR is checking which API protocols this endpoint supports.": "CCR is checking which API protocols this endpoint supports.",
+      "CCR is checking this provider. Wait for the check to finish before continuing.": "CCR is checking this provider. Wait for the check to finish before continuing.",
+      "CCR is sending a limited real model request.": "CCR is sending a limited real model request.",
+      "CCR management service is unavailable. Make sure the CCR app or ccr ui command is running, then retry.": "CCR management service is unavailable. Make sure the CCR app or ccr ui command is running, then retry.",
+      "Connect a provider in four small steps.": "Connect a provider in four small steps.",
+      "Create profiles that tell each agent which model and entry mode to use.": "Create profiles that tell each agent which model and entry mode to use.",
       "CCR scanned this computer for Claude Code, Codex, Grok CLI, OpenCode CLI, and ZCode login states. Click Import to add one as a gateway provider.": "CCR scanned this computer for Claude Code, Codex, Grok CLI, OpenCode CLI, and ZCode login states. Click Import to add one as a gateway provider.",
       "Detected": "Detected",
       "Detecting protocols": "Detecting protocols",
       "Enter API endpoint, API key, and at least one model to enable connectivity check.": "Enter API endpoint, API key, and at least one model to enable connectivity check.",
+      "Endpoint and identity": "Endpoint and identity",
+      "Finish the provider and agent profile steps before entering the app.": "Finish the provider and agent profile steps before entering the app.",
       "Generated output is limited to 1 token for connectivity checks.": "Generated output is limited to 1 token for connectivity checks.",
+      "Gateway service": "Gateway service",
+      "Grok CLI profiles use CCR scope and CLI entry mode.": "Grok CLI profiles use CCR scope and CLI entry mode.",
+      "Allowed models": "Allowed models",
       "Import local agent login": "Import local agent login",
       "Import local agent provider": "Import local agent provider",
+      "In progress": "In progress",
+      "Kimi profiles need a default model and an allowed model list.": "Kimi profiles need a default model and an allowed model list.",
       "ChatGPT login detected. Click Import to add it as a gateway provider.": "ChatGPT login detected. Click Import to add it as a gateway provider.",
       "Claude Code login detected. Click Import to add it as a gateway provider.": "Claude Code login detected. Click Import to add it as a gateway provider.",
       "Claude Code login was detected, but no usable access token was found.": "Claude Code login was detected, but no usable access token was found.",
@@ -89856,33 +90326,126 @@ var appCopy = {
       "Kimi CLI provider API key detected. Click Import to add it as a gateway provider.": "Kimi CLI provider API key detected. Click Import to add it as a gateway provider.",
       "Kimi CLI login was detected, but no usable OAuth token was found. Run /login in Kimi CLI, then rescan.": "Kimi CLI login was detected, but no usable OAuth token was found. Run /login in Kimi CLI, then rescan.",
       "Kimi CLI provider was detected, but no usable API key was found.": "Kimi CLI provider was detected, but no usable API key was found.",
+      "Kimi model": "Kimi model",
+      "Kimi model is required.": "Kimi model is required.",
       "OpenCode CLI credential was found, but no usable API key was detected.": "OpenCode CLI credential was found, but no usable API key was detected.",
       "OpenCode CLI login detected. Click Import to add it as a gateway provider.": "OpenCode CLI login detected. Click Import to add it as a gateway provider.",
       "OpenCode CLI public models detected. No login is required.": "OpenCode CLI public models detected. No login is required.",
       "CCR scanned this computer for local Claude Code, Codex, Grok CLI, Kimi CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.": "CCR scanned this computer for local Claude Code, Codex, Grok CLI, Kimi CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.",
       "Locked": "Locked",
+      "Manual": "Manual",
       "Local agent login will be connected after saving this provider.": "Local agent login will be connected after saving this provider.",
+      "Local login provider": "Local login provider",
+      "Launch actions": "Launch actions",
+      "Management actions": "Management actions",
       "Models to check": "Models to check",
+      "model": "model",
+      "models": "models",
+      "Model overrides are optional; empty fields keep Claude Code defaults.": "Model overrides are optional; empty fields keep Claude Code defaults.",
+      "Next": "Next",
+      "Next step": "Next step",
+      "Available model IDs": "Available model IDs",
+      "Added": "Added",
+      "Added models": "Added models",
+      "Add custom model": "Add custom model",
+      "Cancel custom model": "Cancel custom model",
+      "Click a model to edit settings": "Click a model to edit settings",
+      "Custom model": "Custom model",
+      "Loading provider models": "Loading provider models",
+      "Model already added": "Model already added",
+      "Models detected from this provider": "Models detected from this provider",
+      "No models added": "No models added",
+      "No provider models": "No provider models",
       "No available models": "No available models",
       "No local login state was found for this agent.": "No local login state was found for this agent.",
+      "No providers": "No providers",
       "Not found": "Not found",
+      "Not verified yet": "Not verified yet",
+      "Needs models": "Needs models",
+      "Needs protocol": "Needs protocol",
       "No unavailable models": "No unavailable models",
+      "OpenCode profiles can target CLI, APP, or both entry modes.": "OpenCode profiles can target CLI, APP, or both entry modes.",
+      "Optional health check": "Optional health check",
+      "Pick models": "Pick models",
+      "Pick a preset provider or use a custom compatible API endpoint.": "Pick a preset provider or use a custom compatible API endpoint.",
+      "Previous": "Previous",
+      "Previous step": "Previous step",
+      "Profile name is required.": "Profile name is required.",
+      "Provider setup": "Provider setup",
+      "Pool keys": "Pool keys",
+      "Provider ID and Provider name identify the routed provider in Codex.": "Provider ID and Provider name identify the routed provider in Codex.",
+      "Provider ID is required.": "Provider ID is required.",
+      "Provider name is required.": "Provider name is required.",
       "Protocols detected": "Protocols detected",
       "Ready": "Ready",
+      "Ready to test": "Ready to test",
+      "Run a real model request before relying on this provider.": "Run a real model request before relying on this provider.",
+      "Optional. Check Connection sends a real model request and may consume provider credits.": "Optional. Check Connection sends a real model request and may consume provider credits.",
       "Select at least one protocol.": "Select at least one protocol.",
+      "Select at least one available model.": "Select at least one available model.",
+      "Select at least one allowed model.": "Select at least one allowed model.",
+      "Select models": "Select models",
+      "Search added models": "Search added models",
+      "Search provider models": "Search provider models",
       "Service": "Service",
       "Service failed to start": "Service failed to start",
       "Scanning local agent logins": "Scanning local agent logins",
+      "Save this agent profile to continue.": "Save this agent profile to continue.",
+      "Save this provider to continue.": "Save this provider to continue.",
+      "Secret used for requests": "Secret used for requests",
+      "Send a request from your agent, then confirm it appears in Logs.": "Send a request from your agent, then confirm it appears in Logs.",
+      "Setup readiness": "Setup readiness",
+      "Show API key": "Show API key",
+      "Show models": "Show models",
+      "Hide API key": "Hide API key",
+      "Hide models": "Hide models",
+      "Use one key for every request.": "Use one key for every request.",
+      "Use multiple API keys with optional priorities, weights, and limits.": "Use multiple API keys with optional priorities, weights, and limits.",
+      "Use multiple keys with optional limits.": "Use multiple keys with optional limits.",
+      "Monitor": "Monitor",
+      "Setup": "Setup",
+      "Step": "Step",
       "Start": "Start",
       "Start check": "Start check",
       "Stop": "Stop",
+      "Workspace": "Workspace",
+      "The gateway is configured. Start the service from the toolbar when you are ready to test traffic.": "The gateway is configured. Start the service from the toolbar when you are ready to test traffic.",
+      "The imported local agent login is connected when this provider is saved.": "The imported local agent login is connected when this provider is saved.",
       "This check sends real model requests with your provider API key and may consume account balance.": "This check sends real model requests with your provider API key and may consume account balance.",
+      "Usable": "Usable",
+      "Verify connection": "Verify connection",
+      "Waiting for provider details": "Waiting for provider details",
+      "Waiting for required fields": "Waiting for required fields",
+      "API endpoint, API key, and at least one model are required before verification.": "API endpoint, API key, and at least one model are required before verification.",
+      "10 / page": "10 / page",
+      "25 / page": "25 / page",
+      "50 / page": "50 / page",
+      "100 / page": "100 / page",
+      "Clear filters": "Clear filters",
+      "Clear filters or broaden the search to find more request logs.": "Clear filters or broaden the search to find more request logs.",
+      "Default model is required.": "Default model is required.",
+      "Enable at least one provider model before saving this profile.": "Enable at least one provider model before saving this profile.",
+      "Enable request logs": "Enable request logs",
+      "Environment variable rows need valid keys.": "Environment variable rows need valid keys.",
+      "Idle seconds must be between 30 and 86400.": "Idle seconds must be between 30 and 86400.",
+      "No request logs match the current filters.": "No request logs match the current filters.",
+      "No request logs yet.": "No request logs yet.",
+      "Paths, provider identity, bot, compact, and env": "Paths, provider identity, bot, compact, and env",
+      "Request logs are off": "Request logs are off",
+      "Request logs record gateway requests and make payload inspection available.": "Request logs record gateway requests and make payload inspection available.",
+      "Select an existing bot or turn Bot off.": "Select an existing bot or turn Bot off.",
+      "Select a route node to inspect routing operations": "Select a route node to inspect routing operations",
+      "Select a route node to inspect its operations.": "Select a route node to inspect its operations.",
+      "Send a request through CCR, then refresh this page to inspect it.": "Send a request through CCR, then refresh this page to inspect it.",
+      "providers": "providers",
       "ZCode login detected. Click Import to add it as a gateway provider.": "ZCode login detected. Click Import to add it as a gateway provider.",
+      "ZCode profiles use APP entry mode.": "ZCode profiles use APP entry mode.",
       "ZCode login was detected, but its local credential is encrypted and cannot be imported automatically.": "ZCode login was detected, but its local credential is encrypted and cannot be imported automatically.",
       "ZCode login was detected, but no usable provider API key was found in ZCode config.": "ZCode login was detected, but no usable provider API key was found in ZCode config.",
       "ZCode provider API key detected in local ZCode config. Click Import to add it as a gateway provider.": "ZCode provider API key detected in local ZCode config. Click Import to add it as a gateway provider.",
       "Unavailable models": "Unavailable models",
       "Account Balance": "Account Balance",
+      "Account Usage": "Account Usage",
       "Account component": "Account component",
       "All accounts": "All accounts",
       "All credentials": "All credentials",
@@ -90077,7 +90640,7 @@ var appCopy = {
       networking: "\u7F51\u7EDC",
       observability: "\u89C2\u6D4B",
       overview: "\u6982\u89C8",
-      profile: "Agent\u914D\u7F6E",
+      profile: "Agent \u914D\u7F6E\u6863\u6848",
       providers: "\u4F9B\u5E94\u5546",
       models: "\u6A21\u578B",
       routing: "\u8DEF\u7531",
@@ -90182,10 +90745,15 @@ var appCopy = {
       "30d": "30 \u5929",
       "Agent": "Agent",
       "A provider is required before profiles can route traffic.": "\u9700\u8981\u5148\u914D\u7F6E\u4F9B\u5E94\u5546\uFF0C\u914D\u7F6E\u6863\u6848\u624D\u80FD\u8DEF\u7531\u8BF7\u6C42\u3002",
+      "A real model request succeeded with the selected provider settings.": "\u5DF2\u4F7F\u7528\u5F53\u524D\u4F9B\u5E94\u5546\u8BBE\u7F6E\u6210\u529F\u5B8C\u6210\u4E00\u6B21\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\u3002",
       "Add or verify a model provider.": "\u6DFB\u52A0\u6216\u786E\u8BA4\u6A21\u578B\u4F9B\u5E94\u5546\u3002",
+      "CCR compact for Claude Code": "Claude Code \u4F7F\u7528 CCR \u538B\u7F29",
+      "Use CCR context archive when Claude Code runs /compact.": "Claude Code \u6267\u884C /compact \u65F6\u6539\u7528 CCR \u4E0A\u4E0B\u6587\u5F52\u6863\u3002",
+      "Context archive and MCP access will be enabled for this compact mode.": "\u5C06\u4E3A\u6B64\u538B\u7F29\u6A21\u5F0F\u542F\u7528\u4E0A\u4E0B\u6587\u5F52\u6863\u548C MCP \u8BBF\u95EE\u3002",
       "Agent Analysis": "Agent \u5206\u6790",
       "Agent access": "Agent \u63A5\u5165",
       "Agent Mix": "Agent \u5206\u5E03",
+      "Agent profile": "Agent \u914D\u7F6E\u6863\u6848",
       "Agent profiles": "Agent \u914D\u7F6E\u6863\u6848",
       "All agents": "\u5168\u90E8 Agent",
       "All models": "\u5168\u90E8\u6A21\u578B",
@@ -90200,6 +90768,8 @@ var appCopy = {
       "Add API Key": "\u6DFB\u52A0 API \u5BC6\u94A5",
       "Add API key": "\u6DFB\u52A0 API \u5BC6\u94A5",
       "Add key": "\u6DFB\u52A0 Key",
+      "Add credentials": "\u6DFB\u52A0\u51ED\u636E",
+      "Add the API key CCR will use for model requests.": "\u586B\u5199 CCR \u53D1\u8D77\u6A21\u578B\u8BF7\u6C42\u65F6\u4F7F\u7528\u7684 API Key\u3002",
       "Add limit": "\u6DFB\u52A0\u9650\u5236",
       "Add parameter": "\u6DFB\u52A0\u53C2\u6570",
       "Add Profile": "\u6DFB\u52A0\u914D\u7F6E",
@@ -90211,13 +90781,20 @@ var appCopy = {
       "Add Routing Rule": "\u6DFB\u52A0\u8DEF\u7531\u89C4\u5219",
       "Add routing rule": "\u6DFB\u52A0\u8DEF\u7531\u89C4\u5219",
       "Advanced Settings...": "\u9AD8\u7EA7\u8BBE\u7F6E...",
+      "Advanced": "\u9AD8\u7EA7",
       "Advanced key options": "Key \u9AD8\u7EA7\u9009\u9879",
       "Advanced settings": "\u9AD8\u7EA7\u8BBE\u7F6E",
+      "Advanced settings need attention": "\u9AD8\u7EA7\u8BBE\u7F6E\u9700\u8981\u5904\u7406",
       "Always": "\u59CB\u7EC8",
       "Alias": "\u522B\u540D",
       "Alias is required.": "\u522B\u540D\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Applied": "\u5DF2\u5E94\u7528",
       "App only": "\u4EC5 App",
+      "API endpoint, API key, and at least one model are required before verification.": "\u9A8C\u8BC1\u524D\u9700\u8981 API \u5730\u5740\u3001API Key \u548C\u81F3\u5C11\u4E00\u4E2A\u6A21\u578B\u3002",
+      "10 / page": "10 / \u9875",
+      "25 / page": "25 / \u9875",
+      "50 / page": "50 / \u9875",
+      "100 / page": "100 / \u9875",
       "Args": "\u53C2\u6570",
       "API Keys": "API \u5BC6\u94A5",
       "API key included": "\u5DF2\u5305\u542B API \u5BC6\u94A5",
@@ -90285,6 +90862,10 @@ var appCopy = {
       "Robot Code": "Robot Code",
       "Optional": "\u53EF\u9009",
       "Auto": "\u81EA\u52A8",
+      "Auto detect protocols": "\u81EA\u52A8\u63A2\u6D4B\u534F\u8BAE",
+      "Auto detect protocols description": "\u5F00\u542F\u540E\uFF0CCCR \u4F1A\u5728\u7F16\u8F91\u65F6\u63A2\u6D4B\u63A5\u53E3\uFF0C\u5E76\u7528\u63A2\u6D4B\u5230\u7684\u534F\u8BAE\u548C\u6A21\u578B\u66F4\u65B0\u6B64\u4F9B\u5E94\u5546\u3002\u5173\u95ED\u540E\uFF0C\u624B\u52A8\u9009\u62E9\u7684\u534F\u8BAE\u548C\u81EA\u5B9A\u4E49\u6A21\u578B ID \u4F1A\u4FDD\u6301\u4E0D\u53D8\u3002",
+      "Auto detect protocols info": "\u81EA\u52A8\u63A2\u6D4B\u534F\u8BAE\u8BF4\u660E",
+      "Automatic": "\u81EA\u52A8",
       "Back": "\u8FD4\u56DE",
       "Backup": "\u5907\u4EFD",
       "Cache": "\u7F13\u5B58",
@@ -90302,8 +90883,13 @@ var appCopy = {
       "Capture network": "\u6355\u83B7\u7F51\u7EDC",
       "Connection verified": "\u8FDE\u901A\u6027\u5DF2\u9A8C\u8BC1",
       "Action": "\u64CD\u4F5C",
+      "Available after saving": "\u4FDD\u5B58\u540E\u53EF\u7528",
       "Check trust": "\u68C0\u67E5\u4FE1\u4EFB",
       "Choose where each agent uses CCR.": "\u9009\u62E9\u6BCF\u4E2A Agent \u5728\u54EA\u91CC\u4F7F\u7528 CCR\u3002",
+      "Choose provider": "\u9009\u62E9\u4F9B\u5E94\u5546",
+      "Choose a provider endpoint so CCR can detect compatible protocols.": "\u9009\u62E9\u4F9B\u5E94\u5546\u7AEF\u70B9\u540E\uFF0CCCR \u624D\u80FD\u63A2\u6D4B\u517C\u5BB9\u534F\u8BAE\u3002",
+      "Choose the models that should be available through this provider.": "\u9009\u62E9\u8FD9\u4E2A\u4F9B\u5E94\u5546\u5BF9\u5916\u53EF\u7528\u7684\u6A21\u578B\u3002",
+      "Connect a provider in four small steps.": "\u901A\u8FC7 4 \u4E2A\u5C0F\u6B65\u9AA4\u63A5\u5165\u4E00\u4E2A\u4F9B\u5E94\u5546\u3002",
       "Built-in": "\u5185\u7F6E",
       "Identifies the Claude Code user-agent to provide deep Claude Code integration.": "\u901A\u8FC7\u8BC6\u522B Claude Code \u7684 user-agent\uFF0C\u5B9E\u73B0\u5BF9 Claude Code \u7684\u6DF1\u5EA6\u9002\u914D\u3002",
       "Identifies the Codex user-agent to provide deep Codex integration.": "\u901A\u8FC7\u8BC6\u522B Codex \u7684 user-agent\uFF0C\u5B9E\u73B0\u5BF9 Codex \u7684\u6DF1\u5EA6\u9002\u914D\u3002",
@@ -90324,9 +90910,13 @@ var appCopy = {
       "Codex": "Codex",
       "Codex model": "Codex \u6A21\u578B",
       "Grok CLI": "Grok CLI",
+      "Grok CLI profiles use CCR scope and CLI entry mode.": "Grok CLI \u914D\u7F6E\u6863\u6848\u56FA\u5B9A\u4F7F\u7528 CCR \u4F5C\u7528\u8303\u56F4\u548C CLI \u5165\u53E3\u6A21\u5F0F\u3002",
       "Grok model": "Grok \u6A21\u578B",
       "Kimi CLI": "Kimi CLI",
+      "Kimi profiles need a default model and an allowed model list.": "Kimi \u914D\u7F6E\u6863\u6848\u9700\u8981\u4E00\u4E2A\u9ED8\u8BA4\u6A21\u578B\u548C\u53EF\u7528\u6A21\u578B\u5217\u8868\u3002",
       "Kimi model": "Kimi \u6A21\u578B",
+      "Kimi model is required.": "Kimi \u6A21\u578B\u4E0D\u80FD\u4E3A\u7A7A\u3002",
+      "Allowed models": "\u5141\u8BB8\u6A21\u578B",
       "OpenCode": "OpenCode",
       "OpenCode model": "OpenCode \u6A21\u578B",
       "CLI only": "\u4EC5 CLI",
@@ -90336,6 +90926,11 @@ var appCopy = {
       "Rule type": "\u89C4\u5219\u7C7B\u578B",
       "Node.js route script file": "Node.js \u8DEF\u7531\u811A\u672C\u6587\u4EF6",
       "Choose file": "\u9009\u62E9\u6587\u4EF6",
+      "Choose a provider preset or endpoint, enter an API key, and add at least one model.": "\u9009\u62E9\u4F9B\u5E94\u5546\u9884\u8BBE\u6216\u7AEF\u70B9\uFF0C\u586B\u5199 API Key\uFF0C\u5E76\u81F3\u5C11\u6DFB\u52A0\u4E00\u4E2A\u6A21\u578B\u3002",
+      "Choose an agent, model, and required profile settings.": "\u9009\u62E9 Agent\u3001\u6A21\u578B\u548C\u5FC5\u586B\u7684\u914D\u7F6E\u6863\u6848\u8BBE\u7F6E\u3002",
+      "Choose how this provider authenticates model requests.": "\u9009\u62E9\u8FD9\u4E2A\u4F9B\u5E94\u5546\u5982\u4F55\u8BA4\u8BC1\u6A21\u578B\u8BF7\u6C42\u3002",
+      "Compatible API protocols were found automatically.": "\u5DF2\u81EA\u52A8\u627E\u5230\u517C\u5BB9\u7684 API \u534F\u8BAE\u3002",
+      "Compatible API protocols were found automatically. You can turn off auto detection in Advanced settings and select protocols manually.": "\u5DF2\u81EA\u52A8\u627E\u5230\u517C\u5BB9\u7684 API \u534F\u8BAE\u3002\u4F60\u53EF\u4EE5\u5728\u9AD8\u7EA7\u8BBE\u7F6E\u4E2D\u5173\u95ED\u81EA\u52A8\u68C0\u6D4B\uFF0C\u5E76\u624B\u52A8\u9009\u62E9\u534F\u8BAE\u3002",
       "Timeout (ms)": "\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF09",
       "Test request JSON": "\u6D4B\u8BD5\u8BF7\u6C42 JSON",
       "Validate": "\u6821\u9A8C",
@@ -90354,6 +90949,8 @@ var appCopy = {
       "Claude Design model": "Claude Design \u6A21\u578B",
       "Claude Design routes": "Claude Design \u8DEF\u7531",
       "Configure": "\u914D\u7F6E",
+      "Configure a provider before creating an agent profile.": "\u8BF7\u5148\u914D\u7F6E\u4F9B\u5E94\u5546\uFF0C\u518D\u521B\u5EFA Agent \u914D\u7F6E\u6863\u6848\u3002",
+      "Configure at least one enabled provider model before saving an agent profile.": "\u8BF7\u5148\u914D\u7F6E\u81F3\u5C11\u4E00\u4E2A\u5DF2\u542F\u7528\u7684\u4F9B\u5E94\u5546\u6A21\u578B\uFF0C\u518D\u4FDD\u5B58 Agent \u914D\u7F6E\u6863\u6848\u3002",
       "Configure provider": "\u914D\u7F6E\u4F9B\u5E94\u5546",
       "Configure Extension": "\u914D\u7F6E\u6269\u5C55",
       "Configure extension": "\u914D\u7F6E\u6269\u5C55",
@@ -90361,9 +90958,13 @@ var appCopy = {
       "Configure plugin route": "\u914D\u7F6E\u63D2\u4EF6\u8DEF\u7531",
       "Configure Routing": "\u914D\u7F6E\u8DEF\u7531",
       "Configure multiple provider API keys for this supplier.": "\u4E3A\u8FD9\u4E2A\u4F9B\u5E94\u5546\u914D\u7F6E\u591A\u4E2A\u4E0A\u6E38 API Key\u3002",
+      "Configuration": "\u914D\u7F6E\u6458\u8981",
       "Copy": "\u590D\u5236",
+      "Clear filters": "\u6E05\u7A7A\u7B5B\u9009",
+      "Clear filters or broaden the search to find more request logs.": "\u8BF7\u6E05\u7A7A\u7B5B\u9009\u6216\u653E\u5BBD\u641C\u7D22\u6761\u4EF6\u6765\u67E5\u627E\u66F4\u591A\u8BF7\u6C42\u65E5\u5FD7\u3002",
       "Create integration": "\u521B\u5EFA\u96C6\u6210",
       "Credential": "\u51ED\u636E",
+      "Credential method": "\u51ED\u636E\u65B9\u5F0F",
       "Credential chain": "\u51ED\u636E\u94FE",
       "Credential pool": "\u51ED\u636E\u6C60",
       "Credential saturated": "\u51ED\u636E\u5DF2\u9971\u548C",
@@ -90374,6 +90975,7 @@ var appCopy = {
       "Cost": "\u6210\u672C",
       "Estimated cost": "\u4F30\u7B97\u6210\u672C",
       "Connect agent": "\u63A5\u5165 Agent",
+      "Create profiles that tell each agent which model and entry mode to use.": "\u521B\u5EFA\u914D\u7F6E\u6863\u6848\uFF0C\u6307\u5B9A\u6BCF\u4E2A Agent \u4F7F\u7528\u7684\u6A21\u578B\u548C\u5165\u53E3\u6A21\u5F0F\u3002",
       "Create a profile for your agent.": "\u4E3A\u4F60\u7684 Agent \u521B\u5EFA\u914D\u7F6E\u6863\u6848\u3002",
       "Cursor model": "Cursor \u6A21\u578B",
       "Cursor Proxy routes": "Cursor Proxy \u8DEF\u7531",
@@ -90395,11 +90997,17 @@ var appCopy = {
       "Default on failure": "\u9ED8\u8BA4\u5931\u8D25\u5904\u7406",
       "Description": "\u63CF\u8FF0",
       "CCR scanned this computer for Claude Code, Codex, Grok CLI, OpenCode CLI, and ZCode login states. Click Import to add one as a gateway provider.": "CCR \u5DF2\u626B\u63CF\u672C\u673A\u7684 Claude Code\u3001Codex\u3001Grok CLI\u3001OpenCode CLI \u548C ZCode \u767B\u5F55\u6001\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
+      "CCR is checking this provider. Wait for the check to finish before continuing.": "CCR \u6B63\u5728\u68C0\u67E5\u8FD9\u4E2A\u4F9B\u5E94\u5546\uFF0C\u8BF7\u7B49\u5F85\u68C0\u67E5\u7ED3\u675F\u540E\u518D\u7EE7\u7EED\u3002",
+      "CCR is checking which API protocols this endpoint supports.": "CCR \u6B63\u5728\u68C0\u67E5\u8FD9\u4E2A\u7AEF\u70B9\u652F\u6301\u54EA\u4E9B API \u534F\u8BAE\u3002",
+      "CCR is sending a limited real model request.": "CCR \u6B63\u5728\u53D1\u9001\u4E00\u6B21\u53D7\u9650\u7684\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\u3002",
+      "CCR management service is unavailable. Make sure the CCR app or ccr ui command is running, then retry.": "\u65E0\u6CD5\u8FDE\u63A5 CCR \u7BA1\u7406\u670D\u52A1\u3002\u8BF7\u786E\u8BA4 CCR App \u6216 ccr ui \u547D\u4EE4\u6B63\u5728\u8FD0\u884C\uFF0C\u7136\u540E\u91CD\u8BD5\u3002",
       "Detected": "\u5DF2\u68C0\u6D4B",
       "Detecting protocols": "\u6B63\u5728\u63A2\u6D4B\u534F\u8BAE",
       "Enter API endpoint, API key, and at least one model to enable connectivity check.": "\u586B\u5199 API \u5730\u5740\u3001API Key \u548C\u81F3\u5C11\u4E00\u4E2A\u6A21\u578B\u540E\uFF0C\u624D\u53EF\u68C0\u6D4B\u8FDE\u901A\u6027\u3002",
+      "Finish the provider and agent profile steps before entering the app.": "\u8BF7\u5148\u5B8C\u6210\u4F9B\u5E94\u5546\u548C Agent \u914D\u7F6E\u6863\u6848\u6B65\u9AA4\uFF0C\u518D\u8FDB\u5165\u5E94\u7528\u3002",
       "Import local agent login": "\u5BFC\u5165\u672C\u673A Agent \u767B\u5F55\u6001",
       "Import local agent provider": "\u5BFC\u5165\u672C\u673A Agent \u4F9B\u5E94\u5546",
+      "In progress": "\u8FDB\u884C\u4E2D",
       "ChatGPT login detected. Click Import to add it as a gateway provider.": "\u5DF2\u68C0\u6D4B\u5230 ChatGPT \u767B\u5F55\u6001\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
       "Claude Code login detected. Click Import to add it as a gateway provider.": "\u5DF2\u68C0\u6D4B\u5230 Claude Code \u767B\u5F55\u6001\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
       "Claude Code login was detected, but no usable access token was found.": "\u5DF2\u68C0\u6D4B\u5230 Claude Code \u767B\u5F55\u6001\uFF0C\u4F46\u6CA1\u6709\u627E\u5230\u53EF\u7528\u7684 access token\u3002",
@@ -90418,6 +91026,10 @@ var appCopy = {
       "CCR scanned this computer for local Claude Code, Codex, Grok CLI, Kimi CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.": "CCR \u5DF2\u626B\u63CF\u672C\u673A\u7684 Claude Code\u3001Codex\u3001Grok CLI\u3001Kimi CLI\u3001OpenCode CLI \u548C ZCode \u4F9B\u5E94\u5546\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
       "Locked": "\u5DF2\u52A0\u5BC6",
       "Local agent login will be connected after saving this provider.": "\u4FDD\u5B58\u8FD9\u4E2A\u4F9B\u5E94\u5546\u540E\u4F1A\u63A5\u5165\u672C\u673A Agent \u767B\u5F55\u6001\u3002",
+      "Local login provider": "\u672C\u673A\u767B\u5F55\u6001\u4F9B\u5E94\u5546",
+      "Launch actions": "\u542F\u52A8\u64CD\u4F5C",
+      "Management actions": "\u7BA1\u7406\u64CD\u4F5C",
+      "Model overrides are optional; empty fields keep Claude Code defaults.": "\u6A21\u578B\u8986\u76D6\u662F\u53EF\u9009\u9879\uFF1B\u7559\u7A7A\u4F1A\u4FDD\u7559 Claude Code \u9ED8\u8BA4\u8BBE\u7F6E\u3002",
       "Display name": "\u663E\u793A\u540D\u79F0",
       "Double click to copy": "\u53CC\u51FB\u590D\u5236",
       "Edit": "\u7F16\u8F91",
@@ -90431,10 +91043,15 @@ var appCopy = {
       "Edit rule": "\u7F16\u8F91\u89C4\u5219",
       "Effect scope": "\u4F5C\u7528\u8303\u56F4",
       "Enable": "\u542F\u7528",
+      "Enable at least one provider model before saving this profile.": "\u8BF7\u5148\u542F\u7528\u81F3\u5C11\u4E00\u4E2A\u4F9B\u5E94\u5546\u6A21\u578B\uFF0C\u518D\u4FDD\u5B58\u8FD9\u4E2A\u914D\u7F6E\u6863\u6848\u3002",
+      "Enable provider": "\u542F\u7528\u4F9B\u5E94\u5546",
+      "Enable request logs": "\u542F\u7528\u8BF7\u6C42\u65E5\u5FD7",
       "Enabled": "\u542F\u7528",
+      "Disable provider": "\u505C\u7528\u4F9B\u5E94\u5546",
       "Endpoint": "\u7AEF\u70B9",
       "Entry mode": "\u5165\u53E3\u6A21\u5F0F",
       "Environment variables": "\u73AF\u5883\u53D8\u91CF",
+      "Environment variable rows need valid keys.": "\u73AF\u5883\u53D8\u91CF\u884C\u9700\u8981\u586B\u5199\u6709\u6548\u7684 Key\u3002",
       "Endpoint Health": "\u7AEF\u70B9\u5065\u5EB7",
       "Endpoint information": "\u7AEF\u70B9\u4FE1\u606F",
       "HTTP status": "HTTP \u72B6\u6001\u7801",
@@ -90487,6 +91104,7 @@ var appCopy = {
       "Image content": "\u56FE\u50CF\u5185\u5BB9",
       "Images": "\u56FE\u50CF",
       "Idle seconds": "\u7A7A\u95F2\u79D2\u6570",
+      "Idle seconds must be between 30 and 86400.": "\u7A7A\u95F2\u79D2\u6570\u5FC5\u987B\u5728 30 \u5230 86400 \u4E4B\u95F4\u3002",
       "Input": "\u8F93\u5165",
       "Input tokens": "\u8F93\u5165\u4EE4\u724C",
       "Integration ID": "\u96C6\u6210 ID",
@@ -90531,6 +91149,7 @@ var appCopy = {
       "Method": "\u65B9\u6CD5",
       "Model": "\u6A21\u578B",
       "Default model": "\u9ED8\u8BA4\u6A21\u578B",
+      "Default model is required.": "\u9ED8\u8BA4\u6A21\u578B\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Model descriptions": "\u6A21\u578B\u63CF\u8FF0",
       "Model override": "\u6A21\u578B\u8986\u76D6",
       "Model routing": "\u6A21\u578B\u8DEF\u7531",
@@ -90551,6 +91170,8 @@ var appCopy = {
       "No provider usage yet": "\u6682\u65E0\u4F9B\u5E94\u5546\u7528\u91CF",
       "No provider yet": "\u8FD8\u6CA1\u6709\u4F9B\u5E94\u5546",
       "No requests captured yet": "\u6682\u65E0\u8BF7\u6C42\u8BB0\u5F55",
+      "No request logs match the current filters.": "\u6CA1\u6709\u7B26\u5408\u5F53\u524D\u7B5B\u9009\u6761\u4EF6\u7684\u8BF7\u6C42\u65E5\u5FD7\u3002",
+      "No request logs yet.": "\u8FD8\u6CA1\u6709\u8BF7\u6C42\u65E5\u5FD7\u3002",
       "No bots configured": "\u5C1A\u672A\u914D\u7F6E Bot",
       "No data": "\u65E0\u6570\u636E",
       "No route activity": "\u6682\u65E0\u8DEF\u7531\u6D3B\u52A8",
@@ -90603,6 +91224,7 @@ var appCopy = {
       "External core": "\u5916\u90E8 Core",
       "External provider link": "\u5916\u90E8\u4F9B\u5E94\u5546\u94FE\u63A5",
       "Provider": "\u4F9B\u5E94\u5546",
+      "Provider ID and Provider name identify the routed provider in Codex.": "Provider ID \u548C Provider name \u7528\u4E8E\u5728 Codex \u4E2D\u8BC6\u522B\u88AB\u8DEF\u7531\u7684\u4F9B\u5E94\u5546\u3002",
       "Provider Analysis": "\u4F9B\u5E94\u5546\u5206\u6790",
       "Provider credential JSON did not contain any API keys.": "\u4F9B\u5E94\u5546\u51ED\u636E JSON \u4E2D\u6CA1\u6709\u53EF\u7528 API Key\u3002",
       "Provider credential JSON is invalid.": "\u4F9B\u5E94\u5546\u51ED\u636E JSON \u65E0\u6548\u3002",
@@ -90614,9 +91236,11 @@ var appCopy = {
       "Provider credential rows require names.": "\u4F9B\u5E94\u5546\u51ED\u636E\u884C\u5FC5\u987B\u586B\u5199\u540D\u79F0\u3002",
       "Provider credential weight must be a positive number.": "\u4F9B\u5E94\u5546\u51ED\u636E\u6743\u91CD\u5FC5\u987B\u662F\u6B63\u6570\u3002",
       "Provider ID": "\u4F9B\u5E94\u5546 ID",
+      "Provider ID is required.": "\u4F9B\u5E94\u5546 ID \u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Provider link failed": "\u4F9B\u5E94\u5546\u94FE\u63A5\u5931\u8D25",
       "Provider middleware": "\u4F9B\u5E94\u5546\u4E2D\u95F4\u4EF6",
       "Provider name": "\u4F9B\u5E94\u5546\u540D\u79F0",
+      "Provider name is required.": "\u4F9B\u5E94\u5546\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Provider name and Base URL are required.": "\u4F9B\u5E94\u5546\u540D\u79F0\u548C\u57FA\u7840 URL \u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Provider name already exists.": "\u4F9B\u5E94\u5546\u540D\u79F0\u5DF2\u5B58\u5728\u3002",
       "Provider ready": "\u4F9B\u5E94\u5546\u5DF2\u5C31\u7EEA",
@@ -90635,6 +91259,7 @@ var appCopy = {
       "Profile": "\u914D\u7F6E",
       "Profile actions": "\u914D\u7F6E\u64CD\u4F5C",
       "Profile name": "\u914D\u7F6E\u6863\u6848\u540D\u79F0",
+      "Profile name is required.": "\u914D\u7F6E\u6863\u6848\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Profile name and required target settings are missing.": "\u8BF7\u586B\u5199\u914D\u7F6E\u6863\u6848\u540D\u79F0\u548C\u5FC5\u9700\u7684\u63A5\u5165\u76EE\u6807\u8BBE\u7F6E\u3002",
       "Profile name, required target settings, and environment variable keys are required.": "\u8BF7\u586B\u5199\u914D\u7F6E\u6863\u6848\u540D\u79F0\u3001\u5FC5\u9700\u7684\u63A5\u5165\u76EE\u6807\u8BBE\u7F6E\u548C\u73AF\u5883\u53D8\u91CF Key\u3002",
       "Profile no longer exists.": "\u914D\u7F6E\u6863\u6848\u5DF2\u4E0D\u5B58\u5728\u3002",
@@ -90660,6 +91285,8 @@ var appCopy = {
       "Request action": "\u8BF7\u6C42\u52A8\u4F5C",
       "Request ID": "\u8BF7\u6C42 ID",
       "Request logs database": "\u8BF7\u6C42\u65E5\u5FD7\u6570\u636E\u5E93",
+      "Request logs are off": "\u8BF7\u6C42\u65E5\u5FD7\u5DF2\u5173\u95ED",
+      "Request logs record gateway requests and make payload inspection available.": "\u8BF7\u6C42\u65E5\u5FD7\u4F1A\u8BB0\u5F55\u7F51\u5173\u8BF7\u6C42\uFF0C\u5E76\u652F\u6301\u67E5\u770B\u8BF7\u6C42/\u54CD\u5E94\u8F7D\u8377\u3002",
       "Request timeout ms": "\u8BF7\u6C42\u8D85\u65F6 ms",
       "Requests": "\u8BF7\u6C42",
       "Rewrite request parameters": "\u6539\u5199\u8BF7\u6C42\u53C2\u6570",
@@ -90679,6 +91306,7 @@ var appCopy = {
       "Retry": "\u7EE7\u7EED\u91CD\u8BD5",
       "Retry attempts": "\u91CD\u8BD5\u5C1D\u8BD5",
       "Weighted order": "\u6309\u6743\u91CD\u6392\u5E8F",
+      "Paths, provider identity, bot, compact, and env": "\u8DEF\u5F84\u3001\u4F9B\u5E94\u5546\u8EAB\u4EFD\u3001Bot\u3001\u538B\u7F29\u548C\u73AF\u5883\u53D8\u91CF",
       "Ready to route": "\u53EF\u4EE5\u5F00\u59CB\u8DEF\u7531",
       "Restart proxy": "\u91CD\u542F\u4EE3\u7406",
       "Route": "\u8DEF\u7531",
@@ -90690,6 +91318,8 @@ var appCopy = {
       "View route graph": "\u67E5\u770B\u8DEF\u7531\u94FE\u8DEF\u56FE",
       "Hover a node to inspect routing operations": "\u5C06\u9F20\u6807\u60AC\u505C\u5728\u8282\u70B9\u4E0A\u67E5\u770B\u8DEF\u7531\u64CD\u4F5C",
       "Hover over a route node to inspect its operations.": "\u5C06\u9F20\u6807\u60AC\u505C\u5728\u8DEF\u7531\u8282\u70B9\u4E0A\u67E5\u770B\u64CD\u4F5C\u8BE6\u60C5\u3002",
+      "Select a route node to inspect routing operations": "\u9009\u62E9\u8DEF\u7531\u8282\u70B9\u67E5\u770B\u8DEF\u7531\u64CD\u4F5C",
+      "Select a route node to inspect its operations.": "\u9009\u62E9\u8DEF\u7531\u8282\u70B9\u67E5\u770B\u64CD\u4F5C\u8BE6\u60C5\u3002",
       "Routing operations": "\u8DEF\u7531\u64CD\u4F5C",
       "No request fields changed": "\u6CA1\u6709\u8BF7\u6C42\u5B57\u6BB5\u53D8\u66F4",
       "Not recorded": "\u672A\u8BB0\u5F55",
@@ -90747,8 +91377,12 @@ var appCopy = {
       "Search request logs": "\u641C\u7D22\u8BF7\u6C42\u65E5\u5FD7",
       "Search routing rules": "\u641C\u7D22\u8DEF\u7531\u89C4\u5219",
       "Select account": "\u9009\u62E9\u8D26\u6237",
+      "Select an existing bot or turn Bot off.": "\u8BF7\u9009\u62E9\u5DF2\u6709 Bot\uFF0C\u6216\u5173\u95ED Bot\u3002",
+      "Select at least one available model.": "\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u53EF\u7528\u6A21\u578B\u3002",
+      "Select at least one allowed model.": "\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u5141\u8BB8\u6A21\u578B\u3002",
       "Select bot": "\u9009\u62E9 Bot",
       "Select data": "\u9009\u62E9\u6570\u636E",
+      "Send a request through CCR, then refresh this page to inspect it.": "\u901A\u8FC7 CCR \u53D1\u9001\u4E00\u6B21\u8BF7\u6C42\uFF0C\u7136\u540E\u5237\u65B0\u6B64\u9875\u9762\u67E5\u770B\u65E5\u5FD7\u3002",
       "Server": "\u670D\u52A1",
       "Startup timeout ms": "\u542F\u52A8\u8D85\u65F6 ms",
       "State directory": "\u72B6\u6001\u76EE\u5F55",
@@ -91109,6 +91743,7 @@ var appCopy = {
       "Browser apps JSON": "\u6D4F\u89C8\u5668 App JSON",
       "Account": "\u8D26\u6237",
       "Account Balance": "\u8D26\u6237\u4F59\u989D",
+      "Account Usage": "\u8D26\u6237\u7528\u91CF",
       "Account balance connectors": "\u8D26\u6237\u4F59\u989D\u8FDE\u63A5\u5668",
       "Add at least one account connector or disable account balance.": "\u8BF7\u81F3\u5C11\u6DFB\u52A0\u4E00\u4E2A\u8D26\u6237\u8FDE\u63A5\u5668\uFF0C\u6216\u5173\u95ED\u8D26\u6237\u4F59\u989D\u3002",
       "Balance": "\u4F59\u989D",
@@ -91220,11 +91855,20 @@ var appCopy = {
       "Invalid": "\u65E0\u6548",
       "Manual install": "\u624B\u52A8\u5B89\u88C5",
       "Manual install command": "\u624B\u52A8\u5B89\u88C5\u547D\u4EE4",
+      "Manual": "\u624B\u52A8",
       "Manifest URL": "Manifest URL",
       "Marketplace": "\u5E02\u573A",
+      "Added": "\u5DF2\u6DFB\u52A0",
+      "Added models": "\u5DF2\u6DFB\u52A0\u6A21\u578B",
+      "Add custom model": "\u6DFB\u52A0\u81EA\u5B9A\u4E49\u6A21\u578B",
+      "Cancel custom model": "\u53D6\u6D88\u81EA\u5B9A\u4E49\u6A21\u578B",
+      "Click a model to edit settings": "\u70B9\u51FB\u6A21\u578B\u7F16\u8F91\u8BBE\u7F6E",
+      "Custom model": "\u81EA\u5B9A\u4E49\u6A21\u578B",
+      "Model already added": "\u6A21\u578B\u5DF2\u6DFB\u52A0",
       "Model name": "\u6A21\u578B\u540D\u79F0",
       "Models are required. Ask the provider to include models=... in the link.": "\u9700\u8981\u6A21\u578B\u5217\u8868\u3002\u8BF7\u8BA9\u4F9B\u5E94\u5546\u5728\u94FE\u63A5\u4E2D\u52A0\u5165 models=...\u3002",
       "Models will be detected automatically.": "\u6A21\u578B\u4F1A\u81EA\u52A8\u63A2\u6D4B\u3002",
+      "Models detected from this provider": "\u4ECE\u8BE5\u4F9B\u5E94\u5546\u68C0\u6D4B\u5230\u7684\u6A21\u578B",
       "More": "\u66F4\u591A",
       "Provider models": "\u4F9B\u5E94\u5546\u6A21\u578B",
       "Runtime provider": "\u8FD0\u884C\u65F6\u4F9B\u5E94\u5546",
@@ -91256,11 +91900,15 @@ var appCopy = {
       "No matching routing rules": "\u6CA1\u6709\u5339\u914D\u7684\u8DEF\u7531\u89C4\u5219",
       "No account balance connectors configured": "\u672A\u914D\u7F6E\u8D26\u6237\u4F59\u989D\u8FDE\u63A5\u5668",
       "No available models": "\u6CA1\u6709\u53EF\u7528\u6A21\u578B",
+      "No models added": "\u672A\u6DFB\u52A0\u6A21\u578B",
+      "No provider models": "\u6CA1\u6709\u4F9B\u5E94\u5546\u6A21\u578B",
       "No protocol detection yet": "\u5C1A\u672A\u68C0\u6D4B\u534F\u8BAE",
       "No response fields": "\u6CA1\u6709\u54CD\u5E94\u5B57\u6BB5",
       "No unavailable models": "\u6CA1\u6709\u4E0D\u53EF\u7528\u6A21\u578B",
+      "Gateway service": "\u7F51\u5173\u670D\u52A1",
       "Name is required.": "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "No usage data available.": "\u6682\u65E0\u53EF\u7528\u91CF\u6570\u636E\u3002",
+      "Next": "\u4E0B\u4E00\u6B65",
       "OpenAI Chat": "OpenAI Chat",
       "OpenAI Responses": "OpenAI Responses",
       "Anthropic Messages": "Anthropic Messages",
@@ -91272,8 +91920,10 @@ var appCopy = {
       "Select or enter at least one model.": "\u8BF7\u9009\u62E9\u6216\u8F93\u5165\u81F3\u5C11\u4E00\u4E2A\u6A21\u578B\u3002",
       "Enter at least one model.": "\u8BF7\u8F93\u5165\u81F3\u5C11\u4E00\u4E2A\u6A21\u578B\u3002",
       "Generated output is limited to 1 token for connectivity checks.": "\u8FDE\u901A\u6027\u68C0\u6D4B\u4F1A\u628A\u751F\u6210\u8F93\u51FA\u9650\u5236\u4E3A 1 \u4E2A token\u3002",
+      "Endpoint and identity": "\u7AEF\u70B9\u4E0E\u540D\u79F0",
       "Check results": "\u68C0\u6D4B\u7ED3\u679C",
       "Models to check": "\u8981\u68C0\u6D4B\u7684\u6A21\u578B",
+      "Available model IDs": "\u53EF\u7528\u6A21\u578B ID",
       "Raw connector JSON": "\u539F\u59CB\u8FDE\u63A5\u5668 JSON",
       "Remote provider manifest": "\u8FDC\u7A0B\u4F9B\u5E94\u5546 Manifest",
       "Refresh interval ms": "\u5237\u65B0\u95F4\u9694\uFF08\u6BEB\u79D2\uFF09",
@@ -91314,24 +91964,63 @@ var appCopy = {
       "Switch to HTTP JSON request to configure method, URL, headers, body, and response fields.": "\u5207\u6362\u5230 HTTP JSON \u8BF7\u6C42\u5373\u53EF\u914D\u7F6E method\u3001URL\u3001header\u3001body \u548C\u54CD\u5E94\u5B57\u6BB5\u3002",
       "Test usage request": "\u6D4B\u8BD5\u7528\u91CF\u8BF7\u6C42",
       "This check sends real model requests with your provider API key and may consume account balance.": "\u672C\u6B21\u68C0\u6D4B\u4F1A\u4F7F\u7528\u4F60\u7684\u4F9B\u5E94\u5546 API Key \u53D1\u8D77\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\uFF0C\u53EF\u80FD\u6D88\u8017\u8D26\u6237\u4F59\u989D\u3002",
+      "The gateway is configured. Start the service from the toolbar when you are ready to test traffic.": "\u7F51\u5173\u5DF2\u7ECF\u914D\u7F6E\u597D\u3002\u51C6\u5907\u6D4B\u8BD5\u8BF7\u6C42\u65F6\uFF0C\u8BF7\u4ECE\u5DE5\u5177\u680F\u542F\u52A8\u670D\u52A1\u3002",
+      "The imported local agent login is connected when this provider is saved.": "\u5BFC\u5165\u7684\u672C\u673A Agent \u767B\u5F55\u6001\u4F1A\u5728\u4FDD\u5B58\u4F9B\u5E94\u5546\u540E\u63A5\u5165\u3002",
       "Unavailable models": "\u4E0D\u53EF\u7528\u6A21\u578B",
+      "Usable": "\u53EF\u7528",
+      "Verify connection": "\u9A8C\u8BC1\u8FDE\u901A\u6027",
+      "Waiting for provider details": "\u7B49\u5F85\u4F9B\u5E94\u5546\u4FE1\u606F",
+      "Waiting for required fields": "\u7B49\u5F85\u5FC5\u586B\u5B57\u6BB5",
       "No marketplace extensions": "\u5E02\u573A\u6682\u65E0\u6269\u5C55",
       "No fallback models configured": "\u672A\u914D\u7F6E\u56DE\u9000\u6A21\u578B",
       "No fallback targets configured": "\u672A\u914D\u7F6E\u5931\u8D25\u964D\u7EA7\u76EE\u6807",
       "No models configured": "\u672A\u914D\u7F6E\u6A21\u578B",
       "No local login state was found for this agent.": "\u672A\u627E\u5230\u8FD9\u4E2A Agent \u7684\u672C\u673A\u767B\u5F55\u6001\u3002",
+      "No providers": "\u65E0\u4F9B\u5E94\u5546",
       "No provider credentials configured": "\u672A\u914D\u7F6E\u4F9B\u5E94\u5546\u51ED\u636E",
       "No request rewrite": "\u4E0D\u6539\u5199\u8BF7\u6C42",
       "Not found": "\u672A\u627E\u5230",
+      "Not verified yet": "\u5C1A\u672A\u9A8C\u8BC1",
+      "Needs models": "\u7F3A\u5C11\u6A21\u578B",
+      "Needs protocol": "\u7F3A\u5C11\u534F\u8BAE",
+      "OpenCode profiles can target CLI, APP, or both entry modes.": "OpenCode \u914D\u7F6E\u6863\u6848\u53EF\u4EE5\u9009\u62E9 CLI\u3001APP \u6216\u4E24\u8005\u5165\u53E3\u6A21\u5F0F\u3002",
+      "Optional health check": "\u53EF\u9009\u5065\u5EB7\u68C0\u67E5",
       "Other / custom API endpoint": "\u5176\u4ED6 / \u81EA\u5B9A\u4E49 API \u5730\u5740",
       "Pending": "\u7B49\u5F85\u4E2D",
+      "Pick models": "\u9009\u62E9\u6A21\u578B",
+      "Pick a preset provider or use a custom compatible API endpoint.": "\u9009\u62E9\u4F9B\u5E94\u5546\u9884\u8BBE\uFF0C\u6216\u4F7F\u7528\u81EA\u5B9A\u4E49\u517C\u5BB9 API \u7AEF\u70B9\u3002",
       "Priority": "\u4F18\u5148\u7EA7",
       "Priority only": "\u4EC5\u6309\u4F18\u5148\u7EA7",
       "Priority spillover": "\u4F18\u5148\u7EA7\u6EA2\u51FA",
       "Ready": "\u53EF\u5BFC\u5165",
+      "Ready to test": "\u53EF\u6D4B\u8BD5",
+      "Pool keys": "\u6C60\u5185 Key",
+      "Run a real model request before relying on this provider.": "\u4F7F\u7528\u524D\u5EFA\u8BAE\u5148\u8FD0\u884C\u4E00\u6B21\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\u9A8C\u8BC1\u3002",
+      "Optional. Check Connection sends a real model request and may consume provider credits.": "\u53EF\u9009\u3002\u8FDE\u63A5\u68C0\u67E5\u4F1A\u53D1\u9001\u4E00\u6B21\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\uFF0C\u53EF\u80FD\u6D88\u8017\u4F9B\u5E94\u5546\u989D\u5EA6\u3002",
       "Scanning local agent logins": "\u6B63\u5728\u626B\u63CF\u672C\u673A Agent \u767B\u5F55\u6001",
+      "Save this agent profile to continue.": "\u4FDD\u5B58\u8FD9\u4E2A Agent \u914D\u7F6E\u6863\u6848\u540E\u7EE7\u7EED\u3002",
+      "Save this provider to continue.": "\u4FDD\u5B58\u8FD9\u4E2A\u4F9B\u5E94\u5546\u540E\u7EE7\u7EED\u3002",
+      "Secret used for requests": "\u8BF7\u6C42\u4F7F\u7528\u7684\u5BC6\u94A5",
+      "Send a request from your agent, then confirm it appears in Logs.": "\u4ECE Agent \u53D1\u9001\u4E00\u6B21\u8BF7\u6C42\uFF0C\u7136\u540E\u5230\u65E5\u5FD7\u91CC\u786E\u8BA4\u5B83\u5DF2\u7ECF\u51FA\u73B0\u3002",
+      "Setup readiness": "\u914D\u7F6E\u5C31\u7EEA\u72B6\u6001",
+      "Show API key": "\u663E\u793A API key",
+      "Show models": "\u663E\u793A\u6A21\u578B",
+      "Hide API key": "\u9690\u85CF API key",
+      "Hide models": "\u6536\u8D77\u6A21\u578B",
+      "Use one key for every request.": "\u6240\u6709\u8BF7\u6C42\u4F7F\u7528\u540C\u4E00\u4E2A Key\u3002",
+      "Use multiple API keys with optional priorities, weights, and limits.": "\u4F7F\u7528\u591A\u4E2A API Key\uFF0C\u5E76\u53EF\u8BBE\u7F6E\u4F18\u5148\u7EA7\u3001\u6743\u91CD\u548C\u9650\u989D\u3002",
+      "Use multiple keys with optional limits.": "\u4F7F\u7528\u591A\u4E2A Key\uFF0C\u53EF\u9009\u9650\u989D\u3002",
+      "Loading provider models": "\u6B63\u5728\u52A0\u8F7D\u4F9B\u5E94\u5546\u6A21\u578B",
+      "Select models": "\u9009\u62E9\u6A21\u578B",
+      "Search added models": "\u641C\u7D22\u5DF2\u6DFB\u52A0\u6A21\u578B",
+      "Search provider models": "\u641C\u7D22\u4F9B\u5E94\u5546\u6A21\u578B",
+      "Monitor": "\u76D1\u63A7",
+      "Setup": "\u8BBE\u7F6E\u6D41\u7A0B",
       "Select preset provider": "\u9009\u62E9 \u9884\u8BBE\u4F9B\u5E94\u5546",
+      "providers": "\u4F9B\u5E94\u5546",
+      "Workspace": "\u5DE5\u4F5C\u53F0",
       "ZCode login detected. Click Import to add it as a gateway provider.": "\u5DF2\u68C0\u6D4B\u5230 ZCode \u767B\u5F55\u6001\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
+      "ZCode profiles use APP entry mode.": "ZCode \u914D\u7F6E\u6863\u6848\u56FA\u5B9A\u4F7F\u7528 APP \u5165\u53E3\u6A21\u5F0F\u3002",
       "ZCode login was detected, but its local credential is encrypted and cannot be imported automatically.": "\u5DF2\u68C0\u6D4B\u5230 ZCode \u767B\u5F55\u6001\uFF0C\u4F46\u672C\u673A\u51ED\u636E\u5DF2\u52A0\u5BC6\uFF0C\u65E0\u6CD5\u81EA\u52A8\u5BFC\u5165\u3002",
       "ZCode login was detected, but no usable provider API key was found in ZCode config.": "\u5DF2\u68C0\u6D4B\u5230 ZCode \u767B\u5F55\u6001\uFF0C\u4F46 ZCode \u914D\u7F6E\u4E2D\u6CA1\u6709\u627E\u5230\u53EF\u7528\u7684\u4F9B\u5E94\u5546 API key\u3002",
       "ZCode provider API key detected in local ZCode config. Click Import to add it as a gateway provider.": "\u5DF2\u5728\u672C\u673A ZCode \u914D\u7F6E\u4E2D\u68C0\u6D4B\u5230\u4F9B\u5E94\u5546 API key\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
@@ -91367,7 +92056,9 @@ var appCopy = {
       "Pause network capture": "\u6682\u505C\u7F51\u7EDC\u6355\u83B7",
       "Pause service": "\u6682\u505C\u670D\u52A1",
       "Previous page": "\u4E0A\u4E00\u9875",
+      "Previous": "\u4E0A\u4E00\u6B65",
       "Previous step": "\u4E0A\u4E00\u6B65",
+      "Provider setup": "\u4F9B\u5E94\u5546\u8BBE\u7F6E",
       "Proxy not running": "\u4EE3\u7406\u672A\u8FD0\u884C",
       "Proxy status": "\u4EE3\u7406\u72B6\u6001",
       "Proxy CA certificate is trusted.": "Proxy CA \u8BC1\u4E66\u5DF2\u4FE1\u4EFB\u3002",
@@ -91472,6 +92163,7 @@ var appCopy = {
       "enabled": "\u5DF2\u542F\u7528",
       "header": "\u6807\u5934",
       "inactive": "\u672A\u542F\u7528",
+      "model": "\u6A21\u578B",
       "models": "\u6A21\u578B",
       "meters": "\u6307\u6807",
       "not running": "\u672A\u8FD0\u884C",
@@ -91505,17 +92197,51 @@ function useAppText() {
 function translateText(copy, value) {
   return copy.text[value] ?? value;
 }
+function translateAppErrorMessage(copy, value) {
+  return translateErrorMessage(copy === appCopy.zh ? "zh" : "en", translateText(copy, value));
+}
+function formatAppError(copy, error) {
+  return translateAppErrorMessage(copy, error instanceof Error ? error.message : String(error));
+}
+function useAppErrorText() {
+  const copy = (0, import_react26.useContext)(AppI18nContext);
+  return (0, import_react26.useMemo)(() => (error) => formatAppError(copy, error), [copy]);
+}
+function translateOptions(options, t) {
+  return options.map((option) => ({ ...option, label: t(option.label) }));
+}
 
 // packages/ui/src/pages/home/shared/motion.tsx
-var import_jsx_runtime17 = __toESM(require_jsx_runtime());
+var import_jsx_runtime18 = __toESM(require_jsx_runtime());
 var reducedMotionTransition = { duration: 0.12, ease: "easeOut" };
+function AnimatedPopover({
+  children,
+  className,
+  placement = "below",
+  ...props
+}) {
+  const shouldReduceMotion = useReducedMotion();
+  const y = placement === "above" ? 4 : -4;
+  return /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
+    motion.div,
+    {
+      animate: shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 },
+      className,
+      exit: shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98, y },
+      initial: shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98, y },
+      transition: shouldReduceMotion ? reducedMotionTransition : { duration: 0.12, ease: "easeOut" },
+      ...props,
+      children
+    }
+  );
+}
 function AnimatedIconSwap({
   children,
   className,
   iconKey
 }) {
   const shouldReduceMotion = useReducedMotion();
-  return /* @__PURE__ */ (0, import_jsx_runtime17.jsx)("span", { className: cn("inline-flex shrink-0 items-center justify-center", className), children: /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(AnimatePresence, { initial: false, mode: "wait", children: /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime18.jsx)("span", { className: cn("inline-flex shrink-0 items-center justify-center", className), children: /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(AnimatePresence, { initial: false, mode: "wait", children: /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
     motion.span,
     {
       animate: shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1 },
@@ -91654,6 +92380,23 @@ function emptyUsageTotals() {
 // packages/ui/src/pages/home/shared/options.ts
 var overviewWidgetSizeOptions = [
   ...OVERVIEW_WIDGET_SIZE_VALUES.map((size) => ({ label: size, value: size }))
+];
+var profileAgentOptions = [
+  { label: "Claude Code", value: "claude-code" },
+  { label: "Codex", value: "codex" },
+  { label: "Grok CLI", value: "grok" },
+  { label: "Kimi CLI", value: "kimi" },
+  { label: "OpenCode", value: "opencode" },
+  { label: "ZCode", value: "zcode" }
+];
+var profileScopeOptions = [
+  { label: "Only opened from CCR", value: "ccr" },
+  { label: "System default", value: "global" }
+];
+var profileSurfaceOptions = [
+  { label: "CLI & APP", value: "auto" },
+  { label: "CLI only", value: "cli" },
+  { label: "App only", value: "app" }
 ];
 var fusionToolOptions = [
   {
@@ -94073,7 +94816,10 @@ function getPresetById(id3) {
 }
 
 // packages/ui/node_modules/@musistudio/lucide-morph-react/dist/index.js
-var import_jsx_runtime18 = __toESM(require_jsx_runtime(), 1);
+var import_jsx_runtime19 = __toESM(require_jsx_runtime(), 1);
+
+// packages/ui/src/pages/home/shared/controls.tsx
+var import_lucide_react3 = __toESM(require_lucide_react());
 
 // packages/ui/src/lib/morph-icon.ts
 function directMorphAsset(preset) {
@@ -94133,7 +94879,7 @@ var opencode_default = "../../opencode-CEWXDOQI.ico";
 var zcode_default = "../../zcode-Z7V7YY2Q.png";
 
 // packages/ui/src/pages/home/shared/services.tsx
-var import_jsx_runtime19 = __toESM(require_jsx_runtime());
+var import_jsx_runtime20 = __toESM(require_jsx_runtime());
 
 // packages/ui/src/pages/home/shared/virtual-models.ts
 function virtualModelMatchSummary(profile2) {
@@ -94156,6 +94902,15 @@ function createKeyValueDraftRow(key = "", value = "") {
 }
 function keyValueRowsFromRecord(value) {
   return Object.entries(value).map(([key, itemValue]) => createKeyValueDraftRow(key, itemValue));
+}
+function validateProfileEnvRows(rows) {
+  return rows.every((row) => {
+    const key = row.key.trim();
+    return (!row.value.trim() || Boolean(key)) && (!key || isProfileEnvName(key));
+  });
+}
+function isProfileEnvName(value) {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
 }
 function stringRecordValue(value) {
   const result = {};
@@ -94196,7 +94951,8 @@ function virtualModelRawCatalogNames(profile2) {
 
 // packages/ui/src/pages/home/shared/profiles.ts
 function defaultProfileClientModel(config) {
-  const preferred = config.Providers.find((provider) => provider.name === config.preferredProvider) ?? config.Providers[0];
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const preferred = enabledProviders.find((provider) => provider.name === config.preferredProvider) ?? enabledProviders[0];
   if (preferred?.name && preferred.models[0]) {
     return `${preferred.name}/${preferred.models[0]}`;
   }
@@ -94207,7 +94963,7 @@ function normalizeProfileClientModel(value) {
 }
 var fusionModelProviderName = "Fusion";
 function profileModelProviderOptions(providers, virtualModelProfiles = []) {
-  const providerOptions = providers.filter((provider) => provider.name?.trim() && Array.isArray(provider.models)).map((provider) => ({
+  const providerOptions = providers.filter((provider) => isGatewayProviderEnabled(provider) && provider.name?.trim() && Array.isArray(provider.models)).map((provider) => ({
     modelDisplayNames: profileModelDisplayNamesForModels(provider.modelDisplayNames, provider.models),
     models: uniqueStrings(provider.models.filter(Boolean)),
     name: provider.name.trim()
@@ -94247,6 +95003,22 @@ function profileModelDisplayValue(value, parsedValue, providers, placeholder, vi
   }
   const provider = profileModelProviderOptions(providers, virtualModelProfiles).find((item) => item.models.includes(normalized));
   return provider ? `${provider.name}/${profileModelOptionDisplayName(provider, normalized)}` : normalized;
+}
+function profileModelProviderMatchesQuery(provider, query) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  return provider.name.toLowerCase().includes(normalizedQuery) || provider.models.some(
+    (model) => model.toLowerCase().includes(normalizedQuery) || profileModelOptionDisplayName(provider, model).toLowerCase().includes(normalizedQuery)
+  );
+}
+function profileModelMatchesQuery(providerName, model, query, displayName) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  return providerName.toLowerCase().includes(normalizedQuery) || model.toLowerCase().includes(normalizedQuery) || (displayName ?? "").toLowerCase().includes(normalizedQuery);
 }
 function profileModelOptionDisplayName(provider, model) {
   return provider?.modelDisplayNames?.[model]?.trim() || model;
@@ -94461,6 +95233,7 @@ function createProfileDraft(agent = "claude-code", name) {
     ...createBotGatewayDraft(),
     configFile: defaultCodexConfigFile(agent),
     envRows: agent === "claude-code" ? keyValueRowsFromRecord(claudeCodeProfileEnv()) : [],
+    managedCompact: false,
     model: "",
     name: name ?? profileAgentLabel(agent),
     providerId: "claude-code-router",
@@ -94670,6 +95443,7 @@ function profileSummaryItems(profile2, config, t) {
   const savedBot = profile2.botConfigId ? config.botConfigs.find((item) => item.id === profile2.botConfigId) : void 0;
   const resolvedBotGateway = savedBot?.botGateway ?? profile2.botGateway ?? config.botGateway;
   const botSummaryItems = surface !== "cli" && resolvedBotGateway?.enabled && resolvedBotGateway.platform !== "none" ? [{ label: t("Bot"), value: `${t("Enabled")} (${savedBot ? botGatewaySavedConfigLabel(savedBot, t) : t(botGatewayPlatformLabel(resolvedBotGateway.platform))})` }] : surface !== "cli" && profile2.botGateway ? [{ label: t("Bot"), value: t("Disabled") }] : [];
+  const managedCompactItems = profile2.agent === "zcode" ? [] : [{ label: t("CCR managed compact"), value: profile2.managedCompact ? t("Enabled") : t("Disabled") }];
   const smallFastModel = profile2.smallFastModel?.trim() || "";
   const modelValue = profile2.model.trim() ? profileModelDisplayValue(
     profile2.model,
@@ -94691,6 +95465,7 @@ function profileSummaryItems(profile2, config, t) {
           config.virtualModelProfiles ?? []
         ) : t("Keep Claude Code default")
       },
+      ...managedCompactItems,
       ...botSummaryItems,
       ...appPathSummaryItems,
       ...envSummaryItems
@@ -94698,9 +95473,9 @@ function profileSummaryItems(profile2, config, t) {
   }
   if (profile2.agent === "grok" || profile2.agent === "kimi") {
     return [
-      { label: t(profile2.agent === "kimi" ? "Default model" : "Model"), value: modelValue },
+      { label: t(profile2.agent === "kimi" ? "Kimi model" : "Model"), value: modelValue },
       ...profile2.agent === "kimi" ? [{
-        label: t("Available models"),
+        label: t("Allowed models"),
         value: String(uniqueStrings([profile2.model, ...profile2.availableModels ?? []].filter(Boolean)).length)
       }] : [],
       ...envSummaryItems
@@ -94710,6 +95485,7 @@ function profileSummaryItems(profile2, config, t) {
     { label: t("Model"), value: modelValue },
     { label: t("Provider ID"), value: profile2.providerId ?? "claude-code-router" },
     ...profile2.agent === "zcode" || profile2.agent === "opencode" ? [] : [{ label: t("Show all sessions"), value: profile2.showAllSessions ? t("Enabled") : t("Disabled") }],
+    ...managedCompactItems,
     ...appPathSummaryItems,
     ...botSummaryItems,
     ...envSummaryItems
@@ -94738,6 +95514,7 @@ function normalizeProfileItem(profile2, index) {
       enabled: profile2.enabled,
       env: claudeCodeProfileEnv(env),
       id: profile2.id || `profile-${index + 1}`,
+      managedCompact: Boolean(profile2.managedCompact),
       model,
       name,
       scope,
@@ -94772,6 +95549,7 @@ function normalizeProfileItem(profile2, index) {
     enabled: profile2.enabled,
     env: codexCompatibleProfileEnv(env),
     id: profile2.id || `profile-${index + 1}`,
+    managedCompact: Boolean(profile2.managedCompact),
     model,
     name,
     providerId: profile2.providerId?.trim() || "claude-code-router",
@@ -94801,6 +95579,7 @@ function normalizeUnknownProfileItem(value, index) {
     enabled: typeof value.enabled === "boolean" ? value.enabled : true,
     env: isPlainRecord(value.env) ? stringRecordValue(value.env) : {},
     id: typeof value.id === "string" && value.id.trim() ? value.id.trim() : `profile-${index + 1}`,
+    managedCompact: typeof value.managedCompact === "boolean" ? value.managedCompact : typeof value.managed_compact === "boolean" ? value.managed_compact : typeof value.ccrManagedCompact === "boolean" ? value.ccrManagedCompact : typeof value.ccr_managed_compact === "boolean" ? value.ccr_managed_compact : typeof value.contextArchiveCompact === "boolean" ? value.contextArchiveCompact : typeof value.context_archive_compact === "boolean" ? value.context_archive_compact : void 0,
     model: typeof value.model === "string" ? value.model : "",
     name: typeof value.name === "string" ? value.name : profileAgentLabel(agent),
     providerId: typeof value.providerId === "string" ? value.providerId : void 0,
@@ -94903,27 +95682,663 @@ function normalizeCodexConfigFileForAgent(agent, value) {
 }
 
 // packages/ui/src/pages/home/shared/controls.tsx
-var import_jsx_runtime20 = __toESM(require_jsx_runtime());
+var import_jsx_runtime21 = __toESM(require_jsx_runtime());
+function Field({ children, className, label }) {
+  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Label, { className: cn("block min-w-0 space-y-1", className), children: [
+    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: label }),
+    children
+  ] });
+}
 function AgentLogo({ agent, className }) {
   const label = profileAgentLabel(agent);
-  return /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
     "span",
     {
       className: cn("flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[5px]", className),
       title: label,
-      children: /* @__PURE__ */ (0, import_jsx_runtime20.jsx)("img", { alt: `${label} icon`, className: "h-full w-full rounded-[inherit] object-cover", src: profileAgentLogoUrl(agent) })
+      children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("img", { alt: `${label} icon`, className: "h-full w-full rounded-[inherit] object-cover", src: profileAgentLogoUrl(agent) })
     }
   );
 }
-function Toggle({ checked, disabled = false, onChange, title }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(Switch, { checked, disabled, onCheckedChange: onChange, title });
+function SelectControl({
+  className,
+  onChange,
+  options,
+  value
+}) {
+  return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Select, { className, onValueChange: onChange, options, value });
+}
+function KeyValueRowsControl({
+  addLabel,
+  onChange,
+  rows
+}) {
+  const t = useAppText();
+  const visibleRows = rows.length > 0 ? rows : [createKeyValueDraftRow()];
+  function updateRow(index, patch) {
+    const nextRows = [...visibleRows];
+    nextRows[index] = { ...nextRows[index], ...patch };
+    onChange(nextRows);
+  }
+  function addRow() {
+    onChange([...visibleRows, createKeyValueDraftRow()]);
+  }
+  function removeRow(index) {
+    onChange(visibleRows.filter((_, rowIndex) => rowIndex !== index));
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "space-y-2", children: visibleRows.map((row, index) => /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_28px_28px] gap-2", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+      Input,
+      {
+        "aria-label": t("Key"),
+        onChange: (event) => updateRow(index, { key: event.target.value }),
+        placeholder: t("Key"),
+        value: row.key
+      }
+    ),
+    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+      Input,
+      {
+        "aria-label": t("Value"),
+        onChange: (event) => updateRow(index, { value: event.target.value }),
+        placeholder: t("Value"),
+        value: row.value
+      }
+    ),
+    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+      Button,
+      {
+        "aria-label": addLabel,
+        onClick: addRow,
+        size: "iconSm",
+        title: addLabel,
+        type: "button",
+        variant: "outline",
+        children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react3.Plus, { className: "h-3.5 w-3.5" })
+      }
+    ),
+    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+      Button,
+      {
+        "aria-label": t("Remove"),
+        disabled: visibleRows.length === 1 && !row.key.trim() && !row.value.trim(),
+        onClick: () => removeRow(index),
+        size: "iconSm",
+        title: t("Remove"),
+        type: "button",
+        variant: "ghost",
+        children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(import_lucide_react3.X, { className: "h-3.5 w-3.5" })
+      }
+    )
+  ] }, row.id)) });
+}
+function Toggle({
+  ariaLabel,
+  checked,
+  disabled = false,
+  onChange,
+  title
+}) {
+  return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Switch, { "aria-label": ariaLabel ?? title, checked, disabled, onCheckedChange: onChange, title });
+}
+
+// packages/ui/src/components/ui/tooltip.tsx
+var React16 = __toESM(require_react());
+var import_react_dom2 = __toESM(require_react_dom());
+var import_jsx_runtime22 = __toESM(require_jsx_runtime());
+var tooltipViewportMargin = 12;
+var tooltipDefaultSize = {
+  height: 32,
+  width: 180
+};
+var useClientLayoutEffect = typeof window === "undefined" ? React16.useEffect : React16.useLayoutEffect;
+var TooltipPortal = React16.forwardRef(
+  ({ children, className, open = true, role = "tooltip", ...props }, ref) => {
+    if (!open || typeof document === "undefined") {
+      return null;
+    }
+    return (0, import_react_dom2.createPortal)(
+      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(
+        "div",
+        {
+          className: cn(
+            "pointer-events-none fixed z-[200] max-w-[min(260px,calc(100vw-24px))] rounded-md border border-border/70 bg-popover px-2 py-1 text-[11px] font-medium leading-4 text-popover-foreground shadow-card-elevated ring-1 ring-black/5",
+            className
+          ),
+          ref,
+          role,
+          ...props,
+          children
+        }
+      ),
+      document.body
+    );
+  }
+);
+TooltipPortal.displayName = "TooltipPortal";
+function Tooltip({
+  align = "center",
+  children,
+  className,
+  content,
+  contentClassName,
+  disabled = false,
+  gap = 8,
+  interactive = false,
+  side = "top",
+  ...props
+}) {
+  const triggerRef = React16.useRef(null);
+  const contentRef = React16.useRef(null);
+  const closeTimerRef = React16.useRef(void 0);
+  const contentActiveRef = React16.useRef(false);
+  const triggerActiveRef = React16.useRef(false);
+  const [open, setOpen] = React16.useState(false);
+  const [position, setPosition] = React16.useState();
+  const updatePosition = React16.useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const trigger = triggerRef.current;
+    if (!trigger) {
+      return;
+    }
+    const triggerRect = trigger.getBoundingClientRect();
+    const contentRect = contentRef.current?.getBoundingClientRect();
+    const contentSize = contentRect ? { height: contentRect.height, width: contentRect.width } : tooltipDefaultSize;
+    setPosition(resolveTooltipPosition({
+      align,
+      contentHeight: contentSize.height,
+      contentWidth: contentSize.width,
+      gap,
+      side,
+      triggerRect
+    }));
+  }, [align, gap, side]);
+  const show = React16.useCallback(() => {
+    if (disabled) {
+      return;
+    }
+    if (closeTimerRef.current !== void 0) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = void 0;
+    }
+    setOpen(true);
+    updatePosition();
+  }, [disabled, updatePosition]);
+  const closeIfInactive = React16.useCallback(() => {
+    if (!interactive || !triggerActiveRef.current && !contentActiveRef.current) {
+      setOpen(false);
+    }
+  }, [interactive]);
+  const hide = React16.useCallback(() => {
+    if (!interactive || typeof window === "undefined") {
+      setOpen(false);
+      return;
+    }
+    if (closeTimerRef.current !== void 0) {
+      window.clearTimeout(closeTimerRef.current);
+    }
+    closeTimerRef.current = window.setTimeout(closeIfInactive, 80);
+  }, [closeIfInactive, interactive]);
+  const handleTriggerEnter = React16.useCallback(() => {
+    triggerActiveRef.current = true;
+    show();
+  }, [show]);
+  const handleTriggerLeave = React16.useCallback(() => {
+    triggerActiveRef.current = false;
+    hide();
+  }, [hide]);
+  const handleContentEnter = React16.useCallback(() => {
+    contentActiveRef.current = true;
+    show();
+  }, [show]);
+  const handleContentLeave = React16.useCallback(() => {
+    contentActiveRef.current = false;
+    hide();
+  }, [hide]);
+  useClientLayoutEffect(() => {
+    if (!open) {
+      return;
+    }
+    updatePosition();
+  }, [open, updatePosition, content]);
+  React16.useEffect(() => {
+    if (!open) {
+      return;
+    }
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open, updatePosition]);
+  React16.useEffect(() => () => {
+    if (closeTimerRef.current !== void 0) {
+      window.clearTimeout(closeTimerRef.current);
+    }
+  }, []);
+  return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)(
+    "span",
+    {
+      ...props,
+      className: cn("inline-flex shrink-0", className),
+      "data-ui-tooltip-trigger": "",
+      onBlur: handleTriggerLeave,
+      onFocus: handleTriggerEnter,
+      onMouseEnter: handleTriggerEnter,
+      onMouseLeave: handleTriggerLeave,
+      ref: triggerRef,
+      children: [
+        children,
+        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(
+          TooltipPortal,
+          {
+            className: cn(interactive && "pointer-events-auto", contentClassName),
+            onBlur: handleContentLeave,
+            onFocus: handleContentEnter,
+            onMouseEnter: handleContentEnter,
+            onMouseLeave: handleContentLeave,
+            open: open && Boolean(position),
+            ref: contentRef,
+            style: position ? { left: position.left, top: position.top } : void 0,
+            children: content
+          }
+        )
+      ]
+    }
+  );
+}
+function resolveTooltipPosition({
+  align,
+  contentHeight,
+  contentWidth,
+  gap,
+  side,
+  triggerRect
+}) {
+  const resolvedSide = resolveTooltipSide({
+    contentHeight,
+    contentWidth,
+    gap,
+    side,
+    triggerRect
+  });
+  let left = triggerRect.left;
+  let top = triggerRect.top;
+  if (resolvedSide === "top" || resolvedSide === "bottom") {
+    if (align === "start") {
+      left = triggerRect.left;
+    } else if (align === "end") {
+      left = triggerRect.right - contentWidth;
+    } else {
+      left = triggerRect.left + triggerRect.width / 2 - contentWidth / 2;
+    }
+    top = resolvedSide === "top" ? triggerRect.top - contentHeight - gap : triggerRect.bottom + gap;
+  } else {
+    if (align === "start") {
+      top = triggerRect.top;
+    } else if (align === "end") {
+      top = triggerRect.bottom - contentHeight;
+    } else {
+      top = triggerRect.top + triggerRect.height / 2 - contentHeight / 2;
+    }
+    left = resolvedSide === "left" ? triggerRect.left - contentWidth - gap : triggerRect.right + gap;
+  }
+  return {
+    left: clampTooltipCoordinate(left, contentWidth, window.innerWidth),
+    top: clampTooltipCoordinate(top, contentHeight, window.innerHeight)
+  };
+}
+function resolveTooltipSide({
+  contentHeight,
+  contentWidth,
+  gap,
+  side,
+  triggerRect
+}) {
+  if (side === "top" && triggerRect.top - contentHeight - gap < tooltipViewportMargin) {
+    return "bottom";
+  }
+  if (side === "bottom" && triggerRect.bottom + contentHeight + gap > window.innerHeight - tooltipViewportMargin) {
+    return "top";
+  }
+  if (side === "left" && triggerRect.left - contentWidth - gap < tooltipViewportMargin) {
+    return "right";
+  }
+  if (side === "right" && triggerRect.right + contentWidth + gap > window.innerWidth - tooltipViewportMargin) {
+    return "left";
+  }
+  return side;
+}
+function clampTooltipCoordinate(value, size, viewportSize) {
+  const max = Math.max(tooltipViewportMargin, viewportSize - size - tooltipViewportMargin);
+  return Math.min(Math.max(tooltipViewportMargin, value), max);
 }
 
 // packages/ui/src/pages/home/components/model-selector.tsx
-var import_jsx_runtime21 = __toESM(require_jsx_runtime());
+var import_jsx_runtime23 = __toESM(require_jsx_runtime());
+var useClientLayoutEffect2 = typeof window === "undefined" ? import_react28.useEffect : import_react28.useLayoutEffect;
+function ModelSelector({
+  onChange,
+  placeholder,
+  providers,
+  value,
+  virtualModelProfiles = []
+}) {
+  const t = useAppText();
+  const [open, setOpen] = (0, import_react28.useState)(false);
+  const [query, setQuery] = (0, import_react28.useState)("");
+  const [popoverLayout, setPopoverLayout] = (0, import_react28.useState)();
+  const parsedValue = (0, import_react28.useMemo)(() => parseProfileModelValue(value, providers, virtualModelProfiles), [providers, value, virtualModelProfiles]);
+  const providerOptions = (0, import_react28.useMemo)(() => profileModelProviderOptions(providers, virtualModelProfiles), [providers, virtualModelProfiles]);
+  const filteredProviders = (0, import_react28.useMemo)(
+    () => providerOptions.filter((provider) => profileModelProviderMatchesQuery(provider, query)),
+    [providerOptions, query]
+  );
+  const [activeProviderName, setActiveProviderName] = (0, import_react28.useState)("");
+  const panelRef = (0, import_react28.useRef)(null);
+  const rootRef = (0, import_react28.useRef)(null);
+  const activeProvider = filteredProviders.find((provider) => provider.name === activeProviderName) ?? filteredProviders.find((provider) => provider.name === parsedValue.provider) ?? filteredProviders[0];
+  const filteredModels = activeProvider ? activeProvider.models.filter((model) => profileModelMatchesQuery(activeProvider.name, model, query, profileModelOptionDisplayName(activeProvider, model))) : [];
+  const displayValue = profileModelDisplayValue(value, parsedValue, providers, placeholder, virtualModelProfiles);
+  useClientLayoutEffect2(() => {
+    if (!open) {
+      setPopoverLayout(void 0);
+      return;
+    }
+    function updatePopoverLayout() {
+      const root = rootRef.current;
+      if (!root) {
+        return;
+      }
+      const anchor = root.getBoundingClientRect();
+      const margin = 12;
+      const gap = 6;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const availableWidth = Math.max(240, viewportWidth - margin * 2);
+      const width = Math.min(560, availableWidth);
+      const left = Math.min(Math.max(margin, anchor.left), viewportWidth - margin - width);
+      const below = Math.max(0, viewportHeight - anchor.bottom - margin - gap);
+      const above = Math.max(0, anchor.top - margin - gap);
+      const placement = below < 240 && above > below ? "above" : "below";
+      const availableHeight = Math.max(144, placement === "above" ? above : below);
+      const maxHeight = Math.min(360, availableHeight);
+      const gridHeight = Math.max(128, Math.min(280, maxHeight - 58));
+      setPopoverLayout({
+        gridHeight,
+        left,
+        maxHeight,
+        offset: placement === "above" ? viewportHeight - anchor.top + gap : anchor.bottom + gap,
+        placement,
+        width
+      });
+    }
+    updatePopoverLayout();
+    window.addEventListener("resize", updatePopoverLayout);
+    window.addEventListener("scroll", updatePopoverLayout, true);
+    return () => {
+      window.removeEventListener("resize", updatePopoverLayout);
+      window.removeEventListener("scroll", updatePopoverLayout, true);
+    };
+  }, [open]);
+  (0, import_react28.useEffect)(() => {
+    if (!open) {
+      return;
+    }
+    function handlePointerDown(event) {
+      const target = event.target;
+      if (!rootRef.current?.contains(target) && !panelRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    }
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+  (0, import_react28.useEffect)(() => {
+    if (!open) {
+      return;
+    }
+    if (activeProviderName && filteredProviders.some((provider) => provider.name === activeProviderName)) {
+      return;
+    }
+    setActiveProviderName(parsedValue.provider || filteredProviders[0]?.name || "");
+  }, [activeProviderName, filteredProviders, open, parsedValue.provider]);
+  function chooseModel(providerName, model) {
+    onChange(`${providerName}/${model}`);
+    setOpen(false);
+    setQuery("");
+    setActiveProviderName(providerName);
+  }
+  function openSelector() {
+    setOpen(true);
+    setQuery("");
+    setActiveProviderName(parsedValue.provider || providerOptions[0]?.name || "");
+  }
+  function clearValue(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    onChange("");
+    setOpen(false);
+    setQuery("");
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "relative min-w-0", ref: rootRef, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+      "div",
+      {
+        className: cn(
+          "flex h-10 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-[12px] shadow-[inset_0_1px_1px_rgba(0,0,0,0.03)] outline-none transition-[background-color,border-color,box-shadow,color] hover:border-muted-foreground/45 focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-ring/25",
+          open && "border-ring/35 bg-muted/40",
+          !value.trim() && "text-muted-foreground"
+        ),
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+            "button",
+            {
+              "aria-expanded": open,
+              "aria-haspopup": "dialog",
+              className: "min-w-0 flex-1 truncate text-left outline-none",
+              onClick: openSelector,
+              type: "button",
+              children: displayValue
+            }
+          ),
+          value.trim() ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+            "button",
+            {
+              "aria-label": t("Clear"),
+              className: "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25",
+              onClick: clearValue,
+              title: t("Clear"),
+              type: "button",
+              children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.X, { className: "h-3.5 w-3.5" })
+            }
+          ) : null,
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+            "button",
+            {
+              "aria-label": open ? t("Collapse") : t("Expand"),
+              className: "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25",
+              onClick: openSelector,
+              title: open ? t("Collapse") : t("Expand"),
+              type: "button",
+              children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ChevronDown, { className: cn("h-3.5 w-3.5 transition-transform", open && "rotate-180") })
+            }
+          )
+        ]
+      }
+    ),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(PopoverPortal, { open: open && Boolean(popoverLayout), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatePresence, { initial: false, children: open && popoverLayout ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+      AnimatedPopover,
+      {
+        className: "fixed z-[140]",
+        placement: popoverLayout.placement,
+        style: {
+          left: `${popoverLayout.left}px`,
+          maxHeight: `${popoverLayout.maxHeight}px`,
+          width: `${popoverLayout.width}px`,
+          ...popoverLayout.placement === "above" ? { bottom: `${popoverLayout.offset}px` } : { top: `${popoverLayout.offset}px` }
+        },
+        children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(PopoverContent, { className: "w-full overflow-hidden p-2", ref: panelRef, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "relative", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Search, { className: "pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" }),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+              Input,
+              {
+                autoFocus: true,
+                "aria-label": t("Search models"),
+                className: "h-9 pl-8",
+                onChange: (event) => setQuery(event.target.value),
+                placeholder: t("Search providers or models"),
+                value: query
+              }
+            )
+          ] }),
+          providerOptions.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-2 rounded-md border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-[12px] text-muted-foreground", children: t("No models configured") }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+            "div",
+            {
+              className: "mt-2 grid grid-cols-[minmax(112px,0.38fr)_minmax(0,1fr)] overflow-hidden rounded-md border border-border",
+              style: { height: `${popoverLayout?.gridHeight ?? 220}px` },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0 overflow-auto border-r border-border bg-muted/30 p-1", children: [
+                  filteredProviders.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "px-2 py-6 text-center text-[11px] text-muted-foreground", children: t("No matching providers") }) : null,
+                  filteredProviders.map((provider) => {
+                    const active = provider.name === activeProvider?.name;
+                    return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+                      "button",
+                      {
+                        className: cn(
+                          "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] outline-none transition-colors hover:bg-background focus-visible:ring-2 focus-visible:ring-ring/25",
+                          active && "bg-background text-primary"
+                        ),
+                        onClick: () => setActiveProviderName(provider.name),
+                        type: "button",
+                        children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 flex-1 truncate", children: provider.name }),
+                          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { className: "shrink-0", variant: "outline", children: provider.models.length })
+                        ]
+                      },
+                      provider.name
+                    );
+                  })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0 overflow-auto bg-background p-1", children: [
+                  !activeProvider ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "px-2 py-10 text-center text-[12px] text-muted-foreground", children: t("No matching models") }) : null,
+                  activeProvider && filteredModels.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "px-2 py-10 text-center text-[12px] text-muted-foreground", children: t("No matching models") }) : null,
+                  activeProvider && filteredModels.map((model) => {
+                    const selected = parsedValue.provider === activeProvider.name && parsedValue.model === model;
+                    const displayName = profileModelOptionDisplayName(activeProvider, model);
+                    return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+                      "button",
+                      {
+                        className: cn(
+                          "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/25",
+                          selected && "bg-primary/10 text-primary"
+                        ),
+                        onClick: () => chooseModel(activeProvider.name, model),
+                        type: "button",
+                        children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 flex-1 truncate", title: displayName, children: displayName }),
+                          selected ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Check, { className: "h-3.5 w-3.5 shrink-0" }) : null
+                        ]
+                      },
+                      `${activeProvider.name}/${model}`
+                    );
+                  })
+                ] })
+              ]
+            }
+          )
+        ] })
+      }
+    ) : null }) })
+  ] });
+}
+function ModelMultiSelector({
+  onChange,
+  providers,
+  value,
+  virtualModelProfiles = []
+}) {
+  const t = useAppText();
+  const [query, setQuery] = (0, import_react28.useState)("");
+  const providerOptions = (0, import_react28.useMemo)(
+    () => profileModelProviderOptions(providers, virtualModelProfiles),
+    [providers, virtualModelProfiles]
+  );
+  const normalizedQuery = query.trim().toLowerCase();
+  const models = providerOptions.flatMap((provider) => provider.models.map((model) => ({
+    displayName: profileModelOptionDisplayName(provider, model),
+    provider: provider.name,
+    value: `${provider.name}/${model}`
+  }))).filter((model) => !normalizedQuery || model.provider.toLowerCase().includes(normalizedQuery) || model.value.toLowerCase().includes(normalizedQuery) || model.displayName.toLowerCase().includes(normalizedQuery));
+  const selected = new Set(value.map(normalizeProviderModelSelector).filter(Boolean));
+  function toggleModel(model) {
+    onChange(selected.has(model) ? value.filter((candidate) => normalizeProviderModelSelector(candidate) !== model) : [...value, model]);
+  }
+  function selectVisibleModels() {
+    onChange(Array.from(/* @__PURE__ */ new Set([...value.map(normalizeProviderModelSelector).filter(Boolean), ...models.map((model) => model.value)])));
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "rounded-md border border-input bg-card", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex flex-wrap items-center gap-2 border-b border-border p-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "relative min-w-[180px] flex-1", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Search, { className: "pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+          Input,
+          {
+            "aria-label": t("Search models"),
+            className: "pl-8",
+            onChange: (event) => setQuery(event.target.value),
+            placeholder: t("Search providers or models"),
+            value: query
+          }
+        )
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { disabled: models.length === 0, onClick: selectVisibleModels, size: "sm", type: "button", variant: "outline", children: t("All") }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { disabled: selected.size === 0, onClick: () => onChange([]), size: "sm", type: "button", variant: "outline", children: t("Clear") })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "max-h-[220px] overflow-auto p-2", children: [
+      models.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "rounded-lg border border-dashed border-border bg-muted/30 px-3 py-6 text-center text-[12px] text-muted-foreground", children: t(providerOptions.length === 0 ? "No models configured" : "No matching models") }) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "grid grid-cols-1 gap-2 sm:grid-cols-2", children: models.map((model) => {
+        const checked = selected.has(model.value);
+        return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+          Label,
+          {
+            className: cn(
+              "flex h-9 min-w-0 cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2 text-left text-[12px] transition-colors hover:bg-muted",
+              checked && "border-primary bg-accent"
+            ),
+            title: `${model.provider}/${model.displayName}`,
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Checkbox, { checked, onCheckedChange: () => toggleModel(model.value) }),
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("span", { className: "min-w-0 flex-1 truncate", children: [
+                model.provider,
+                " / ",
+                model.displayName
+              ] })
+            ]
+          },
+          model.value
+        );
+      }) })
+    ] })
+  ] });
+}
 
 // packages/ui/src/pages/home/components/profiles.tsx
-var import_jsx_runtime22 = __toESM(require_jsx_runtime());
+var import_jsx_runtime24 = __toESM(require_jsx_runtime());
+var useClientLayoutEffect3 = typeof window === "undefined" ? import_react28.useEffect : import_react28.useLayoutEffect;
 function ProfileView({
   addProfile,
   applyError,
@@ -94939,27 +96354,27 @@ function ProfileView({
 }) {
   const t = useAppText();
   const profiles = config.profile.profiles;
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
     motion.div,
     {
       animate: { opacity: 1 },
       className: "flex h-full min-h-0 min-w-0 flex-col",
       initial: { opacity: 0 },
       transition: { duration: 0.15 },
-      children: /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)(Card, { className: "flex h-full min-h-0 min-w-0 flex-col", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(CardHeader, { children: /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "flex min-w-0 flex-wrap items-center justify-between gap-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "min-w-0", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(CardTitle, { children: t("Agent access") }),
-            /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("p", { className: "mt-1 text-[12px] text-muted-foreground", children: t("Choose where each agent uses CCR.") })
+      children: /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(Card, { className: "flex h-full min-h-0 min-w-0 flex-col", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(CardHeader, { children: /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex min-w-0 flex-wrap items-center justify-between gap-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "min-w-0", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(CardTitle, { children: t("Agent profiles") }),
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("p", { className: "mt-1 text-[12px] text-muted-foreground", children: t("Create profiles that tell each agent which model and entry mode to use.") })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "flex shrink-0 items-center gap-2", children: /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)(Button, { onClick: () => addProfile(), size: "sm", type: "button", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_lucide_react2.Plus, { className: "h-3.5 w-3.5" }),
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "flex shrink-0 items-center gap-2", children: /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(Button, { onClick: () => addProfile(), size: "sm", type: "button", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react2.Plus, { className: "h-3.5 w-3.5" }),
             t("Add profile")
           ] }) })
         ] }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)(CardContent, { className: "min-h-0 flex-1 space-y-4 overflow-auto", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "space-y-2", children: [
-            profiles.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "flex h-32 items-center justify-center rounded-md border border-dashed border-border bg-muted/20 text-[12px] text-muted-foreground", children: t("No profiles configured") }) : null,
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(CardContent, { className: "min-h-0 flex-1 overflow-auto", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "grid gap-3 justify-start [grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),420px))]", children: [
+            profiles.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "col-span-full flex h-32 items-center justify-center rounded-md border border-dashed border-border bg-muted/20 text-[12px] text-muted-foreground", children: t("No profiles configured") }) : null,
             profiles.map((profile2, index) => {
               const scope = normalizeProfileScope(profile2.scope);
               const surface = profile2.agent === "zcode" ? "app" : normalizeProfileSurface(profile2.surface);
@@ -94976,104 +96391,161 @@ function ProfileView({
               const cliActionTooltip = `${t("Copy")} ${t("CLI command")}`;
               const showProfileLaunchActions = profile2.enabled;
               const profileActionDisabled = Boolean(profileActionBusy);
-              return /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "rounded-md border border-border bg-muted/20 p-3", children: /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "flex min-w-0 flex-wrap items-start justify-between gap-2", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "flex min-w-0 flex-1 items-start gap-2", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(AgentLogo, { agent: profile2.agent }),
-                  /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "min-w-0 flex-1", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "flex min-w-0 flex-wrap items-center gap-1.5", children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { className: "min-w-0 max-w-[180px] truncate text-[13px] font-semibold sm:max-w-[260px] md:max-w-[320px]", children: profile2.name || t("Unnamed") }),
-                      /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "flex min-w-0 flex-wrap items-center gap-1.5", children: [
-                        !profile2.enabled ? /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(Badge, { variant: "outline", children: t("Disabled") }) : null,
-                        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(Badge, { variant: "secondary", children: t(profileAgentLabel(profile2.agent)) }),
-                        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(Badge, { variant: scope === "ccr" ? "success" : scope === "global" ? "warning" : "outline", children: t(profileScopeLabel(scope)) }),
-                        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(Badge, { variant: "outline", children: t(profileSurfaceLabel(surface)) }),
-                        runtimeEntry?.botGateway ? /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)(Badge, { variant: runtimeEntry.botGateway.state === "connected" ? "success" : runtimeEntry.botGateway.lastError ? "warning" : "outline", children: [
-                          t("Bot"),
-                          " \xB7 ",
-                          t(runtimeEntry.botGateway.state === "connected" ? "Connected" : runtimeEntry.botGateway.state === "starting" ? "Starting" : runtimeEntry.botGateway.state)
-                        ] }) : null
-                      ] })
-                    ] }),
-                    /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "mt-2 min-w-0 space-y-1.5", children: [
-                      summaryItems.map((item) => /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "grid min-w-0 grid-cols-[96px_minmax(0,1fr)] items-baseline gap-2 text-[12px] sm:grid-cols-[128px_minmax(0,1fr)]", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "truncate text-muted-foreground", children: item.label }),
-                        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "min-w-0 truncate font-medium text-foreground", title: item.value, children: item.value })
-                      ] }, item.label)),
-                      runtimeEntry?.botGateway ? /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "grid min-w-0 grid-cols-[96px_minmax(0,1fr)] items-baseline gap-2 text-[12px] sm:grid-cols-[128px_minmax(0,1fr)]", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "truncate text-muted-foreground", children: t("Bot activity") }),
-                        /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "min-w-0 truncate font-medium text-foreground", title: runtimeEntry.botGateway.lastError || runtimeEntry.botGateway.lastEventAt || "", children: [
-                          runtimeEntry.botGateway.lastError ? runtimeEntry.botGateway.lastError : runtimeEntry.botGateway.lastEventAt ? `${t("Last event")}: ${new Date(runtimeEntry.botGateway.lastEventAt).toLocaleString()}` : t("Waiting for messages"),
-                          runtimeEntry.botGateway.outboxCount > 0 ? ` \xB7 ${runtimeEntry.botGateway.outboxCount} ${t("pending")}` : ""
-                        ] })
-                      ] }) : null
-                    ] })
-                  ] })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)(
-                  "div",
-                  {
-                    "aria-label": `${profile2.name || t("Profile")} ${t("Profile actions")}`,
-                    className: "ml-auto grid shrink-0 grid-cols-[54px_1px_28px_28px_1px_28px_28px] items-center gap-1.5",
-                    role: "group",
-                    children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(
+              return /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(
+                "div",
+                {
+                  className: cn(
+                    "flex min-h-[220px] min-w-0 flex-col rounded-md border border-border p-3 transition-colors",
+                    profile2.enabled ? "bg-background hover:bg-muted/10" : "bg-muted/20"
+                  ),
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex min-w-0 items-start justify-between gap-3", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex min-w-0 items-center gap-2", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(AgentLogo, { agent: profile2.agent }),
+                        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "truncate text-[13px] font-semibold", children: profile2.name || t("Unnamed") }) })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
                         Toggle,
                         {
                           checked: profile2.enabled,
                           onChange: (enabled) => updateProfileItem(index, { enabled }),
                           title: t(profile2.enabled ? "Enabled" : "Disabled")
                         }
-                      ),
-                      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { "aria-hidden": "true", className: "h-5 w-px bg-border/80" }),
-                      showProfileLaunchActions && openSurfaces.includes("cli") ? /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(ProfileActionTooltip, { label: cliActionTooltip, children: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(
-                        Button,
-                        {
-                          "aria-label": `${cliActionTooltip} ${profile2.name || t("Profile")}`,
-                          disabled: profileActionDisabled,
-                          onClick: () => copyProfileCliCommand(index),
-                          size: "iconSm",
-                          type: "button",
-                          variant: "subtle",
-                          children: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(AnimatedIconSwap, { iconKey: cliBusy ? "busy" : "terminal", children: cliBusy ? /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3.5 w-3.5 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_lucide_react2.Terminal, { className: "h-3.5 w-3.5" }) })
-                        }
-                      ) }) : /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { "aria-hidden": "true", className: "h-7 w-7" }),
-                      showProfileLaunchActions && openSurfaces.includes("app") ? /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(ProfileActionTooltip, { label: appActionTooltip, children: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(
-                        Button,
-                        {
-                          "aria-label": `${appActionTooltip} ${profile2.name || t("Profile")}`,
-                          disabled: profileActionDisabled,
-                          onClick: () => appRunning ? stopProfileApp(index) : openProfileApp(index),
-                          size: "iconSm",
-                          type: "button",
-                          variant: appRunning ? "outline" : "subtle",
-                          children: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(AnimatedIconSwap, { iconKey: appBusy ? "busy" : appRunning ? "stop" : "play", children: appBusy ? /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3.5 w-3.5 animate-spin" }) : appRunning ? /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_lucide_react2.Power, { className: "h-3.5 w-3.5" }) : /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_lucide_react2.Play, { className: "h-3.5 w-3.5" }) })
-                        }
-                      ) }) : /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { "aria-hidden": "true", className: "h-7 w-7" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { "aria-hidden": "true", className: "h-5 w-px bg-border/80" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(ProfileActionTooltip, { label: t("Edit"), children: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(Button, { "aria-label": `${t("Edit")} ${profile2.name || t("Profile")}`, onClick: () => editProfile(index), size: "iconSm", type: "button", variant: "ghost", children: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_lucide_react2.Pencil, { className: "h-3.5 w-3.5" }) }) }),
-                      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(ProfileActionTooltip, { label: t("Remove profile"), children: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(
-                        Button,
-                        {
-                          "aria-label": t("Remove profile"),
-                          className: "hover:bg-destructive/10 hover:text-destructive focus-visible:text-destructive",
-                          onClick: () => removeProfile(index),
-                          size: "iconSm",
-                          type: "button",
-                          variant: "ghost",
-                          children: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_lucide_react2.Trash2, { className: "h-3.5 w-3.5" })
-                        }
-                      ) })
-                    ]
-                  }
-                )
-              ] }) }, profile2.id);
+                      )
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "mt-3 min-w-0 flex-1 space-y-1.5 border-t border-border/60 pt-2", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex min-w-0 flex-wrap items-center gap-1.5", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Badge, { variant: "secondary", children: t(profileAgentLabel(profile2.agent)) }),
+                        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Badge, { variant: scope === "ccr" ? "success" : scope === "global" ? "warning" : "outline", children: t(profileScopeLabel(scope)) }),
+                        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Badge, { variant: "outline", children: t(profileSurfaceLabel(surface)) }),
+                        runtimeEntry?.botGateway ? /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(Badge, { variant: runtimeEntry.botGateway.state === "connected" ? "success" : runtimeEntry.botGateway.lastError ? "warning" : "outline", children: [
+                          t("Bot"),
+                          " \xB7 ",
+                          t(runtimeEntry.botGateway.state === "connected" ? "Connected" : runtimeEntry.botGateway.state === "starting" ? "Starting" : runtimeEntry.botGateway.state)
+                        ] }) : null
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70", children: t("Configuration") }),
+                      summaryItems.map((item) => /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "grid min-w-0 grid-cols-[92px_minmax(0,1fr)] items-baseline gap-2 text-[12px]", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "truncate text-muted-foreground", children: item.label }),
+                        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "min-w-0 truncate font-medium text-foreground", title: item.value, children: item.value })
+                      ] }, item.label)),
+                      runtimeEntry?.botGateway ? /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "grid min-w-0 grid-cols-[92px_minmax(0,1fr)] items-baseline gap-2 text-[12px]", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "truncate text-muted-foreground", children: t("Bot activity") }),
+                        /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "min-w-0 truncate font-medium text-foreground", title: runtimeEntry.botGateway.lastError || runtimeEntry.botGateway.lastEventAt || "", children: [
+                          runtimeEntry.botGateway.lastError ? runtimeEntry.botGateway.lastError : runtimeEntry.botGateway.lastEventAt ? `${t("Last event")}: ${new Date(runtimeEntry.botGateway.lastEventAt).toLocaleString()}` : t("Waiting for messages"),
+                          runtimeEntry.botGateway.outboxCount > 0 ? ` \xB7 ${runtimeEntry.botGateway.outboxCount} ${t("pending")}` : ""
+                        ] })
+                      ] }) : null
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(
+                      "div",
+                      {
+                        "aria-label": `${profile2.name || t("Profile")} ${t("Profile actions")}`,
+                        className: "mt-3 flex min-w-0 items-center justify-between gap-2 border-t border-border/60 pt-2",
+                        role: "group",
+                        children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex min-w-0 items-center gap-1", children: [
+                            showProfileLaunchActions && openSurfaces.includes("cli") ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(ProfileActionTooltip, { label: cliActionTooltip, children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+                              Button,
+                              {
+                                "aria-label": `${cliActionTooltip} ${profile2.name || t("Profile")}`,
+                                disabled: profileActionDisabled,
+                                onClick: () => copyProfileCliCommand(index),
+                                size: "iconSm",
+                                type: "button",
+                                variant: "subtle",
+                                children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+                                  AnimatedIconSwap,
+                                  {
+                                    iconKey: cliBusy ? "busy" : "terminal",
+                                    children: cliBusy ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3.5 w-3.5 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react2.Terminal, { className: "h-3.5 w-3.5" })
+                                  }
+                                )
+                              }
+                            ) }) : null,
+                            showProfileLaunchActions && openSurfaces.includes("app") ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(ProfileActionTooltip, { label: appActionTooltip, children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+                              Button,
+                              {
+                                "aria-label": `${appActionTooltip} ${profile2.name || t("Profile")}`,
+                                disabled: profileActionDisabled,
+                                onClick: () => appRunning ? stopProfileApp(index) : openProfileApp(index),
+                                size: "iconSm",
+                                type: "button",
+                                variant: appRunning ? "outline" : "subtle",
+                                children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+                                  AnimatedIconSwap,
+                                  {
+                                    iconKey: appBusy ? "busy" : appRunning ? "stop" : "play",
+                                    children: appBusy ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3.5 w-3.5 animate-spin" }) : appRunning ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react2.Power, { className: "h-3.5 w-3.5" }) : /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react2.Play, { className: "h-3.5 w-3.5" })
+                                  }
+                                )
+                              }
+                            ) }) : null
+                          ] }),
+                          /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "ml-auto flex shrink-0 items-center gap-1", children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(ProfileActionTooltip, { label: t("Edit"), children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+                              Button,
+                              {
+                                "aria-label": `${t("Edit")} ${profile2.name || t("Profile")}`,
+                                onClick: () => editProfile(index),
+                                size: "iconSm",
+                                type: "button",
+                                variant: "ghost",
+                                children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react2.Pencil, { className: "h-3.5 w-3.5" })
+                              }
+                            ) }),
+                            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(ProfileActionTooltip, { label: t("Remove profile"), children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+                              Button,
+                              {
+                                "aria-label": t("Remove profile"),
+                                className: "hover:bg-destructive/10 hover:text-destructive focus-visible:text-destructive",
+                                onClick: () => removeProfile(index),
+                                size: "iconSm",
+                                type: "button",
+                                variant: "ghost",
+                                children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react2.Trash2, { className: "h-3.5 w-3.5" })
+                              }
+                            ) })
+                          ] })
+                        ]
+                      }
+                    )
+                  ]
+                },
+                profile2.id
+              );
             })
           ] }),
-          applyError ? /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "whitespace-pre-wrap rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive", children: t(applyError) }) : null
+          applyError ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "whitespace-pre-wrap rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive", children: t(applyError) }) : null
         ] })
       ] })
     }
   );
+}
+function ManagedCompactSetting({
+  agent,
+  checked,
+  onChange
+}) {
+  const t = useAppText();
+  const title = t("CCR managed compact");
+  return /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "rounded-md border border-border bg-muted/20 px-3 py-3", children: /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex min-w-0 flex-wrap items-start justify-between gap-3", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "min-w-0 flex-1", children: /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex min-w-0 items-center gap-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(AgentLogo, { agent, className: "h-6 w-6 rounded-[5px]" }),
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "min-w-0", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "truncate text-[13px] font-semibold", children: title }),
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "mt-0.5 text-[12px] leading-5 text-muted-foreground", children: t("Use CCR context archive for this profile's auto compact requests.") })
+      ] })
+    ] }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+      Toggle,
+      {
+        checked,
+        title,
+        onChange
+      }
+    )
+  ] }) });
 }
 function DeleteProfileDialog({
   onClose,
@@ -95083,40 +96555,40 @@ function DeleteProfileDialog({
   const t = useAppText();
   const name = profile2.name || t("Unnamed");
   const agent = t(profileAgentLabel(profile2.agent));
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(Dialog, { onOpenChange: (open) => !open && onClose(), children: /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)(DialogContent, { className: "max-w-[520px]", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)(DialogHeader, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(DialogTitle, { children: t("Delete Profile") }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(Button, { "aria-label": t("Close dialog"), onClick: onClose, size: "iconSm", title: t("Close"), type: "button", variant: "ghost", children: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_lucide_react2.X, { className: "h-4 w-4" }) })
+  return /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Dialog, { onOpenChange: (open) => !open && onClose(), children: /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(DialogContent, { className: "max-w-[520px]", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(DialogHeader, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(DialogTitle, { children: t("Delete Profile") }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Button, { "aria-label": t("Close dialog"), onClick: onClose, size: "iconSm", title: t("Close"), type: "button", variant: "ghost", children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react2.X, { className: "h-4 w-4" }) })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(DialogBody, { children: /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "flex items-start gap-2 text-[12px] font-medium text-destructive", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_lucide_react2.CircleAlert, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { children: t("Delete this agent profile from the configuration?") })
+    /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(DialogBody, { children: /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex items-start gap-2 text-[12px] font-medium text-destructive", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react2.CircleAlert, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("span", { children: t("Delete this agent profile from the configuration?") })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "mt-2 space-y-1 text-[11px] text-muted-foreground", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "truncate", title: name, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("span", { className: "font-medium text-foreground", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "mt-2 space-y-1 text-[11px] text-muted-foreground", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "truncate", title: name, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("span", { className: "font-medium text-foreground", children: [
             t("Name"),
             ":"
           ] }),
           " ",
           name
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "truncate", title: agent, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("span", { className: "font-medium text-foreground", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "truncate", title: agent, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("span", { className: "font-medium text-foreground", children: [
             t("Agent"),
             ":"
           ] }),
           " ",
           agent
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { children: t("This action is applied immediately to the draft config and will auto-save with other changes.") })
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { children: t("This action is applied immediately to the draft config and will auto-save with other changes.") })
       ] })
     ] }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)(DialogFooter, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(Button, { autoFocus: true, onClick: onClose, type: "button", variant: "outline", children: t("Cancel") }),
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)(Button, { onClick: onConfirm, type: "button", variant: "destructive", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_lucide_react2.Trash2, { className: "h-4 w-4" }),
+    /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(DialogFooter, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Button, { autoFocus: true, onClick: onClose, type: "button", variant: "outline", children: t("Cancel") }),
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(Button, { onClick: onConfirm, type: "button", variant: "destructive", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react2.Trash2, { className: "h-4 w-4" }),
         t("Delete")
       ] })
     ] })
@@ -95126,17 +96598,789 @@ function ProfileActionTooltip({
   children,
   label
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("span", { className: "group relative inline-flex shrink-0", children: [
-    children,
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(
-      "span",
-      {
-        className: "pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 max-w-[180px] -translate-x-1/2 rounded-md border border-border bg-popover px-2 py-1 text-[11px] font-medium leading-4 text-popover-foreground opacity-0 shadow-card transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100",
-        role: "tooltip",
-        children: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { className: "block truncate whitespace-nowrap", children: label })
+  return /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+    Tooltip,
+    {
+      content: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("span", { className: "block truncate whitespace-nowrap", children: label }),
+      contentClassName: "max-w-[180px]",
+      side: "top",
+      children
+    }
+  );
+}
+function AgentSelectControl({
+  onChange,
+  value
+}) {
+  const t = useAppText();
+  const [open, setOpen] = (0, import_react28.useState)(false);
+  const [popoverLayout, setPopoverLayout] = (0, import_react28.useState)();
+  const panelRef = (0, import_react28.useRef)(null);
+  const rootRef = (0, import_react28.useRef)(null);
+  useClientLayoutEffect3(() => {
+    if (!open) {
+      setPopoverLayout(void 0);
+      return;
+    }
+    function updatePopoverLayout() {
+      const root = rootRef.current;
+      if (!root) {
+        return;
       }
-    )
+      const anchor = root.getBoundingClientRect();
+      const margin = 12;
+      const gap = 6;
+      const viewportHeight = window.innerHeight;
+      const listHeight = profileAgentOptions.length * 36 + 8;
+      const below = Math.max(0, viewportHeight - anchor.bottom - margin - gap);
+      const above = Math.max(0, anchor.top - margin - gap);
+      const placement = below < listHeight && above > below ? "above" : "below";
+      setPopoverLayout({
+        left: Math.max(margin, Math.min(anchor.left, window.innerWidth - anchor.width - margin)),
+        maxHeight: Math.min(listHeight, Math.max(120, placement === "above" ? above : below)),
+        offset: placement === "above" ? viewportHeight - anchor.top + gap : anchor.bottom + gap,
+        placement,
+        width: anchor.width
+      });
+    }
+    updatePopoverLayout();
+    window.addEventListener("resize", updatePopoverLayout);
+    window.addEventListener("scroll", updatePopoverLayout, true);
+    return () => {
+      window.removeEventListener("resize", updatePopoverLayout);
+      window.removeEventListener("scroll", updatePopoverLayout, true);
+    };
+  }, [open]);
+  (0, import_react28.useEffect)(() => {
+    if (!open) {
+      return;
+    }
+    const handlePointerDown = (event) => {
+      const target = event.target;
+      if (!rootRef.current?.contains(target) && !panelRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+  return /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "relative min-w-0", ref: rootRef, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(
+      "button",
+      {
+        "aria-controls": "profile-agent-select-options",
+        "aria-expanded": open,
+        "aria-haspopup": "listbox",
+        className: cn(
+          "flex h-8 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-[12px] font-medium shadow-[inset_0_1px_1px_rgba(0,0,0,0.03)] outline-none transition-[background-color,border-color,box-shadow,color] hover:border-muted-foreground/45 focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-ring/25",
+          open && "border-ring/35 bg-muted/40"
+        ),
+        onClick: () => setOpen((current) => !current),
+        onKeyDown: (event) => {
+          if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setOpen(true);
+          }
+        },
+        type: "button",
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(AgentLogo, { agent: value, className: "h-5 w-5 rounded-[5px]" }),
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("span", { className: "min-w-0 flex-1 truncate", children: t(profileAgentLabel(value)) }),
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react2.ChevronDown, { className: cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180") })
+        ]
+      }
+    ),
+    /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(PopoverPortal, { open: open && Boolean(popoverLayout), children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(AnimatePresence, { initial: false, children: open && popoverLayout ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+      AnimatedPopover,
+      {
+        className: "fixed z-[140]",
+        placement: popoverLayout.placement,
+        style: {
+          left: `${popoverLayout.left}px`,
+          maxHeight: `${popoverLayout.maxHeight}px`,
+          width: `${popoverLayout.width}px`,
+          ...popoverLayout.placement === "above" ? { bottom: `${popoverLayout.offset}px` } : { top: `${popoverLayout.offset}px` }
+        },
+        children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+          PopoverContent,
+          {
+            className: "overflow-auto p-1",
+            id: "profile-agent-select-options",
+            ref: panelRef,
+            role: "listbox",
+            style: { maxHeight: `${popoverLayout.maxHeight}px` },
+            children: profileAgentOptions.map((option) => {
+              const agent = option.value;
+              const selected = value === agent;
+              return /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(
+                "button",
+                {
+                  "aria-selected": selected,
+                  className: cn(
+                    "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
+                    selected ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+                  ),
+                  onClick: () => {
+                    onChange(agent);
+                    setOpen(false);
+                  },
+                  role: "option",
+                  type: "button",
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(AgentLogo, { agent, className: "h-6 w-6 rounded-[5px]" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("span", { className: "min-w-0 flex-1 truncate", children: t(profileAgentLabel(agent)) }),
+                    selected ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react2.Check, { className: "h-3.5 w-3.5 shrink-0" }) : null
+                  ]
+                },
+                agent
+              );
+            })
+          }
+        )
+      }
+    ) : null }) })
   ] });
+}
+function AddProfileForm({
+  botConfigs,
+  draft,
+  error,
+  mode = "add",
+  onChange,
+  onCreateBot,
+  providers,
+  virtualModelProfiles = []
+}) {
+  const t = useAppText();
+  const [advancedOpen, setAdvancedOpen] = (0, import_react28.useState)(mode === "edit");
+  const [appPathDragActive, setAppPathDragActive] = (0, import_react28.useState)(false);
+  const appPathLabel = profileAppPathLabel(draft.agent);
+  const showAppPathField = draft.surface !== "cli" && Boolean(appPathLabel);
+  const modelProviderOptions = (0, import_react28.useMemo)(
+    () => profileModelProviderOptions(providers, virtualModelProfiles),
+    [providers, virtualModelProfiles]
+  );
+  const availableModelCount = modelProviderOptions.reduce((count, provider) => count + provider.models.length, 0);
+  const modelPlaceholder = firstProfileModelPlaceholder(modelProviderOptions);
+  const validation = profileDraftValidation(draft, botConfigs, availableModelCount);
+  const advancedIssueCount = [
+    validation.providerId,
+    validation.providerName,
+    validation.bot,
+    validation.handoff,
+    validation.env
+  ].filter(Boolean).length;
+  const advancedSummary = advancedIssueCount > 0 ? t("Advanced settings need attention") : t("Paths, provider identity, bot, compact, and env");
+  const handleAppPathDrop = (0, import_react28.useCallback)((event) => {
+    if (!showAppPathField) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    setAppPathDragActive(false);
+    const appPath = appPathFromDropEvent(event);
+    if (appPath) {
+      onChange({ appPath });
+    }
+  }, [onChange, showAppPathField]);
+  const handleAppPathDragOver = (0, import_react28.useCallback)((event) => {
+    if (!showAppPathField) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setAppPathDragActive(true);
+  }, [showAppPathField]);
+  const handleAppPathDragLeave = (0, import_react28.useCallback)(() => {
+    setAppPathDragActive(false);
+  }, []);
+  return /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(import_jsx_runtime24.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(
+      "div",
+      {
+        className: "grid grid-cols-1 gap-3 sm:grid-cols-2",
+        onDragLeave: showAppPathField ? handleAppPathDragLeave : void 0,
+        onDragOver: showAppPathField ? handleAppPathDragOver : void 0,
+        onDrop: showAppPathField ? handleAppPathDrop : void 0,
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Field, { label: t("Agent"), children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+            AgentSelectControl,
+            {
+              onChange: (agent) => onChange(agent === "grok" || agent === "kimi" ? {
+                agent,
+                availableModels: [],
+                botConfigId: "",
+                botConfigured: true,
+                botEnabled: false,
+                model: "",
+                scope: "ccr",
+                surface: "cli"
+              } : agent === "zcode" ? { agent, surface: "app" } : { agent }),
+              value: draft.agent
+            }
+          ) }),
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(Field, { label: t("Profile name"), children: [
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Input, { value: draft.name, onChange: (event) => onChange({ name: event.target.value }) }),
+            validation.name ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(ProfileFieldHint, { children: t(validation.name) }) : null
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Field, { label: t("Effect scope"), children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+            SelectControl,
+            {
+              onChange: (scope) => onChange({ scope: normalizeProfileScope(scope) }),
+              options: translateOptions(
+                draft.agent === "grok" || draft.agent === "kimi" ? profileScopeOptions.filter((option) => option.value === "ccr") : profileScopeOptions,
+                t
+              ),
+              value: draft.scope
+            }
+          ) }),
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Field, { label: t("Entry mode"), children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+            SelectControl,
+            {
+              onChange: (surface) => {
+                const nextSurface = normalizeProfileSurface(surface);
+                onChange(nextSurface !== "cli" ? { surface: nextSurface } : {
+                  botConfigId: "",
+                  botConfigured: true,
+                  botEnabled: false,
+                  surface: nextSurface
+                });
+              },
+              options: translateOptions(
+                draft.agent === "zcode" ? profileSurfaceOptions.filter((option) => option.value === "app") : draft.agent === "grok" || draft.agent === "kimi" ? profileSurfaceOptions.filter((option) => option.value === "cli") : profileSurfaceOptions,
+                t
+              ),
+              value: draft.surface
+            }
+          ) }),
+          draft.agent === "claude-code" ? /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(import_jsx_runtime24.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Field, { label: t("Model override"), children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+              ModelSelector,
+              {
+                placeholder: t("Keep Claude Code default"),
+                providers,
+                value: draft.model,
+                virtualModelProfiles,
+                onChange: (model) => onChange({ model })
+              }
+            ) }),
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Field, { label: t("Small fast model"), children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+              ModelSelector,
+              {
+                placeholder: t("Keep Claude Code default"),
+                providers,
+                value: draft.smallFastModel,
+                virtualModelProfiles,
+                onChange: (smallFastModel) => onChange({ smallFastModel })
+              }
+            ) })
+          ] }) : draft.agent === "grok" ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Field, { className: "sm:col-span-2", label: t("Grok model"), children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+            ModelSelector,
+            {
+              placeholder: modelPlaceholder,
+              providers,
+              value: draft.model,
+              virtualModelProfiles,
+              onChange: (model) => onChange({ model })
+            }
+          ) }) : draft.agent === "kimi" ? /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(import_jsx_runtime24.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(Field, { className: "sm:col-span-2", label: t("Kimi model"), children: [
+              /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+                ModelSelector,
+                {
+                  placeholder: modelPlaceholder,
+                  providers,
+                  value: draft.model,
+                  virtualModelProfiles,
+                  onChange: (model) => onChange({
+                    availableModels: model && !draft.availableModels.includes(model) ? [model, ...draft.availableModels] : draft.availableModels,
+                    model
+                  })
+                }
+              ),
+              validation.kimiModel ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(ProfileFieldHint, { children: t(validation.kimiModel) }) : null
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(Field, { className: "sm:col-span-2", label: t("Allowed models"), children: [
+              /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+                ModelMultiSelector,
+                {
+                  providers,
+                  value: draft.availableModels,
+                  virtualModelProfiles,
+                  onChange: (availableModels) => onChange({
+                    availableModels,
+                    model: availableModels.includes(draft.model) ? draft.model : availableModels[0] ?? ""
+                  })
+                }
+              ),
+              validation.kimiAvailableModels ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(ProfileFieldHint, { children: t(validation.kimiAvailableModels) }) : null
+            ] })
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_jsx_runtime24.Fragment, { children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Field, { className: "sm:col-span-2", label: t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : "Codex model"), children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+            ModelSelector,
+            {
+              placeholder: modelPlaceholder,
+              providers,
+              value: draft.model,
+              virtualModelProfiles,
+              onChange: (model) => onChange({ model })
+            }
+          ) }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "sm:col-span-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(
+              "button",
+              {
+                className: "flex min-h-9 w-full min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-left outline-none transition-colors hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring/25",
+                onClick: () => setAdvancedOpen((current) => !current),
+                type: "button",
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("span", { className: "min-w-0", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("span", { className: "block truncate text-[12px] font-semibold text-foreground", children: t("Advanced settings") }),
+                    /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("span", { className: cn("mt-0.5 block truncate text-[11px]", advancedIssueCount > 0 ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground"), children: advancedSummary })
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("span", { className: "flex shrink-0 items-center gap-2", children: [
+                    advancedIssueCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Badge, { variant: "warning", children: advancedIssueCount }) : null,
+                    /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react2.ChevronDown, { className: cn("h-3.5 w-3.5 text-muted-foreground transition-transform", advancedOpen && "rotate-180") })
+                  ] })
+                ]
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(AnimatePresence, { initial: false, children: advancedOpen ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+              motion.div,
+              {
+                animate: { height: "auto", opacity: 1 },
+                className: "overflow-hidden",
+                exit: { height: 0, opacity: 0 },
+                initial: { height: 0, opacity: 0 },
+                transition: { duration: 0.16 },
+                children: /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "mt-3 grid grid-cols-1 gap-3 rounded-md border border-border bg-background/60 p-3 sm:grid-cols-2", children: [
+                  showAppPathField && appPathLabel ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Field, { className: "sm:col-span-2", label: t(appPathLabel), children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: cn(
+                    "rounded-md border border-border bg-background p-1 transition-colors",
+                    appPathDragActive ? "border-primary bg-primary/5" : "border-border"
+                  ), children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+                    Input,
+                    {
+                      placeholder: t("Drop the app here or paste the executable path"),
+                      value: draft.appPath,
+                      onChange: (event) => onChange({ appPath: event.target.value })
+                    }
+                  ) }) }) : null,
+                  draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" ? /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(import_jsx_runtime24.Fragment, { children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(Field, { label: t("Provider ID"), children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Input, { value: draft.providerId, onChange: (event) => onChange({ providerId: event.target.value }) }),
+                      validation.providerId ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(ProfileFieldHint, { children: t(validation.providerId) }) : null
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(Field, { label: t("Provider name"), children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Input, { value: draft.providerName, onChange: (event) => onChange({ providerName: event.target.value }) }),
+                      validation.providerName ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(ProfileFieldHint, { children: t(validation.providerName) }) : null
+                    ] }),
+                    draft.agent !== "zcode" && draft.agent !== "opencode" ? /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("span", { className: "text-[12px] font-medium", children: t("Show all sessions") }),
+                      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Toggle, { checked: draft.showAllSessions, onChange: (showAllSessions) => onChange({ showAllSessions }) })
+                    ] }) : null
+                  ] }) : null,
+                  draft.agent === "claude-code" || draft.agent === "codex" ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "sm:col-span-2", children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+                    ManagedCompactSetting,
+                    {
+                      agent: draft.agent,
+                      checked: draft.managedCompact,
+                      onChange: (managedCompact) => onChange({ managedCompact })
+                    }
+                  ) }) : null,
+                  draft.surface !== "cli" ? /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "sm:col-span-2", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(BotGatewaySelectForm, { botConfigs, draft, onChange, onCreateBot }),
+                    validation.bot ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(ProfileFieldHint, { children: t(validation.bot) }) : null,
+                    validation.handoff ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(ProfileFieldHint, { children: t(validation.handoff) }) : null
+                  ] }) : null,
+                  /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(Field, { className: "sm:col-span-2", label: t("Environment variables"), children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+                      KeyValueRowsControl,
+                      {
+                        addLabel: t("Add env variable"),
+                        rows: draft.envRows,
+                        onChange: (envRows) => onChange({ envRows })
+                      }
+                    ),
+                    validation.env ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(ProfileFieldHint, { children: t(validation.env) }) : null
+                  ] })
+                ] })
+              }
+            ) : null })
+          ] })
+        ]
+      }
+    ),
+    validation.models ? /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "mt-3 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[12px] text-amber-700 dark:text-amber-300", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react2.CircleAlert, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("span", { children: t(validation.models) })
+    ] }) : null,
+    error ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive", children: t(error) }) : null
+  ] });
+}
+function ProfileFieldHint({ children }) {
+  return /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "text-[11px] leading-4 text-amber-700 dark:text-amber-300", children });
+}
+function firstProfileModelPlaceholder(providers) {
+  const provider = providers[0];
+  const model = provider?.models[0];
+  return provider && model ? `${provider.name}/${model}` : "";
+}
+function profileDraftValidation(draft, botConfigs, availableModelCount) {
+  const issues = {};
+  if (!draft.name.trim()) {
+    issues.name = "Profile name is required.";
+  }
+  if (availableModelCount === 0) {
+    issues.models = "Configure at least one enabled provider model before saving an agent profile.";
+  }
+  if (draft.agent === "kimi") {
+    if (!draft.model.trim()) {
+      issues.kimiModel = "Kimi model is required.";
+    }
+    if (draft.availableModels.length === 0) {
+      issues.kimiAvailableModels = "Select at least one allowed model.";
+    }
+  }
+  if (draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi") {
+    if (!draft.providerId.trim()) {
+      issues.providerId = "Provider ID is required.";
+    }
+    if (!draft.providerName.trim()) {
+      issues.providerName = "Provider name is required.";
+    }
+  }
+  if (draft.surface !== "cli" && draft.botEnabled && !botConfigs.some((config) => config.id === draft.botConfigId.trim())) {
+    issues.bot = "Select an existing bot or turn Bot off.";
+  }
+  if (draft.surface !== "cli" && draft.botEnabled && draft.botHandoffEnabled && !profileNumberDraftValid(draft.botHandoffIdleSeconds, 30, 86400)) {
+    issues.handoff = "Idle seconds must be between 30 and 86400.";
+  }
+  if (!validateProfileEnvRows(draft.envRows)) {
+    issues.env = "Environment variable rows need valid keys.";
+  }
+  return issues;
+}
+function profileNumberDraftValid(value, min, max) {
+  const numeric = Number(value.trim());
+  return Number.isFinite(numeric) && numeric >= min && numeric <= max;
+}
+function profileAppPathLabel(agent) {
+  if (agent === "claude-code") {
+    return "CLAUDE_APP_PATH";
+  }
+  if (agent === "codex") {
+    return "CHATGPT_APP_PATH";
+  }
+  if (agent === "opencode") {
+    return "OPENCODE_APP_PATH";
+  }
+  return void 0;
+}
+function appPathFromDropEvent(event) {
+  for (const file of Array.from(event.dataTransfer.files ?? [])) {
+    const path = filePathFromDroppedFile(file);
+    if (path) {
+      return path;
+    }
+  }
+  return appPathFromDroppedText(
+    event.dataTransfer.getData("text/uri-list") || event.dataTransfer.getData("text/plain")
+  );
+}
+function filePathFromDroppedFile(file) {
+  try {
+    const bridgedPath = window.ccr?.getFilePath?.(file)?.trim();
+    if (bridgedPath) {
+      return bridgedPath;
+    }
+  } catch {
+  }
+  const legacyPath = file.path?.trim();
+  return legacyPath || "";
+}
+function appPathFromDroppedText(value) {
+  const line = value.split(/\r?\n/).map((item) => item.trim()).find((item) => item && !item.startsWith("#")) || "";
+  if (!line) {
+    return "";
+  }
+  if (!line.startsWith("file:")) {
+    return line;
+  }
+  try {
+    const pathname = decodeURIComponent(new URL(line).pathname);
+    return /^\/[A-Za-z]:\//.test(pathname) ? pathname.slice(1) : pathname;
+  } catch {
+    return "";
+  }
+}
+var ADD_BOT_SELECT_VALUE = "__add_bot__";
+var HANDOFF_TARGET_NONE_VALUE = "__ccr_handoff_target_none__";
+var emptyHandoffScanState = {
+  error: "",
+  loading: false,
+  results: []
+};
+function BotGatewaySelectForm({
+  botConfigs,
+  draft,
+  onChange,
+  onCreateBot
+}) {
+  const t = useAppText();
+  const formatError = useAppErrorText();
+  const options = [
+    { label: t("None"), value: "none" },
+    ...botConfigs.map((config) => ({ label: botGatewaySavedConfigLabel(config, t), value: config.id })),
+    { label: t("Add new bot"), value: ADD_BOT_SELECT_VALUE }
+  ];
+  const selectedValue = draft.botEnabled && draft.botConfigId ? draft.botConfigId : "none";
+  const selectedBot = draft.botEnabled ? botConfigs.find((config) => config.id === selectedValue) : void 0;
+  const [wifiScan, setWifiScan] = (0, import_react28.useState)(emptyHandoffScanState);
+  const [bluetoothScan, setBluetoothScan] = (0, import_react28.useState)(emptyHandoffScanState);
+  const autoHandoffScanRef = (0, import_react28.useRef)(false);
+  const scanHandoffTargets = (0, import_react28.useCallback)(async (kind) => {
+    const setScan = kind === "wifi" ? setWifiScan : setBluetoothScan;
+    const scanner = kind === "wifi" ? window.ccr?.scanBotHandoffWifiTargets : window.ccr?.scanBotHandoffBluetoothTargets;
+    if (!scanner) {
+      setScan({
+        error: t("Handoff target scan is available in the Electron app."),
+        loading: false,
+        results: []
+      });
+      return;
+    }
+    setScan({ ...emptyHandoffScanState, loading: true });
+    try {
+      const results = await scanner();
+      setScan({
+        error: "",
+        loading: false,
+        results
+      });
+    } catch (error) {
+      setScan({
+        error: formatError(error),
+        loading: false,
+        results: []
+      });
+    }
+  }, [formatError, t]);
+  (0, import_react28.useEffect)(() => {
+    if (!draft.botEnabled || !draft.botHandoffEnabled || !selectedBot) {
+      autoHandoffScanRef.current = false;
+      return;
+    }
+    if (autoHandoffScanRef.current) {
+      return;
+    }
+    autoHandoffScanRef.current = true;
+    void scanHandoffTargets("wifi");
+    void scanHandoffTargets("bluetooth");
+  }, [draft.botEnabled, draft.botHandoffEnabled, scanHandoffTargets, selectedBot]);
+  function updateEnabled(botEnabled) {
+    if (!botEnabled) {
+      onChange({ botConfigId: "", botConfigured: true, botEnabled: false });
+      return;
+    }
+    const nextBotConfigId = draft.botConfigId || botConfigs[0]?.id || "";
+    const nextBot = botConfigs.find((config) => config.id === nextBotConfigId);
+    onChange({
+      botConfigId: nextBotConfigId,
+      botConfigured: true,
+      botEnabled: true,
+      botForwardAllAgentMessages: nextBot ? nextBot.botGateway.forwardAllAgentMessages !== false : draft.botForwardAllAgentMessages
+    });
+  }
+  function updateBot(value) {
+    if (value === ADD_BOT_SELECT_VALUE) {
+      onCreateBot();
+      return;
+    }
+    if (value === "none") {
+      onChange({ botConfigId: "", botConfigured: true, botEnabled: false });
+      return;
+    }
+    const nextBot = botConfigs.find((config) => config.id === value);
+    onChange({
+      botConfigId: value,
+      botConfigured: true,
+      botEnabled: true,
+      botForwardAllAgentMessages: nextBot ? nextBot.botGateway.forwardAllAgentMessages !== false : draft.botForwardAllAgentMessages
+    });
+  }
+  const botScopeHint = t("Bot only forwards messages when opening the APP from CCR. CLI does not forward messages yet.");
+  return /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "rounded-md border border-border bg-muted/20 px-3 py-2", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("span", { className: "flex min-w-0 items-center gap-1.5", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("span", { className: "text-[12px] font-medium", children: t("Bot") }),
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+          Tooltip,
+          {
+            content: botScopeHint,
+            contentClassName: "w-[260px] max-w-[calc(100vw-64px)] whitespace-normal px-2 py-1.5 text-left font-medium leading-4 sm:w-[280px]",
+            side: "bottom",
+            children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+              "button",
+              {
+                "aria-label": botScopeHint,
+                className: "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25",
+                type: "button",
+                children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+                  import_lucide_react2.Info,
+                  {
+                    "aria-hidden": "true",
+                    className: "h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                  }
+                )
+              }
+            )
+          }
+        )
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Toggle, { checked: draft.botEnabled, onChange: updateEnabled })
+    ] }),
+    draft.botEnabled ? /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "mt-3 space-y-3 border-t border-border/70 pt-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Field, { label: t("Select bot"), children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(SelectControl, { onChange: updateBot, options, value: selectedValue }) }),
+      selectedBot ? /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(import_jsx_runtime24.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex items-center justify-between gap-3 rounded-md border border-border bg-background px-3 py-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("span", { className: "text-[12px] font-medium", children: t("Forward agent messages") }),
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Toggle, { checked: draft.botForwardAllAgentMessages, onChange: (botForwardAllAgentMessages) => onChange({ botForwardAllAgentMessages }) })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "rounded-md border border-border bg-background p-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-3", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("span", { className: "text-[12px] font-medium", children: t("Handoff") }),
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Toggle, { checked: draft.botHandoffEnabled, onChange: (botHandoffEnabled) => onChange({ botHandoffEnabled }) })
+          ] }),
+          draft.botHandoffEnabled ? /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "mt-3 grid grid-cols-1 gap-3 border-t border-border/70 pt-3 sm:grid-cols-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Field, { label: t("Idle seconds"), children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+              Input,
+              {
+                min: 30,
+                max: 86400,
+                type: "number",
+                value: draft.botHandoffIdleSeconds,
+                onChange: (event) => onChange({ botHandoffIdleSeconds: event.target.value })
+              }
+            ) }),
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+              HandoffTargetPicker,
+              {
+                label: t("Phone Wi-Fi target"),
+                scan: wifiScan,
+                selectedTarget: firstHandoffTarget(draft.botHandoffPhoneWifiTargets),
+                onRefresh: () => void scanHandoffTargets("wifi"),
+                onSelect: (botHandoffPhoneWifiTargets) => onChange({ botHandoffPhoneWifiTargets })
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+              HandoffTargetPicker,
+              {
+                className: "sm:col-span-2",
+                label: t("Phone Bluetooth target"),
+                scan: bluetoothScan,
+                selectedTarget: firstHandoffTarget(draft.botHandoffPhoneBluetoothTargets),
+                onRefresh: () => void scanHandoffTargets("bluetooth"),
+                onSelect: (botHandoffPhoneBluetoothTargets) => onChange({ botHandoffPhoneBluetoothTargets })
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "sm:col-span-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] leading-4 text-amber-700 dark:text-amber-300", children: t("Phone presence targets are experimental and do not affect runtime handoff yet. Handoff currently uses screen lock and idle time.") })
+          ] }) : null
+        ] })
+      ] }) : null
+    ] }) : null
+  ] });
+}
+function HandoffTargetPicker({
+  className,
+  label,
+  scan,
+  selectedTarget,
+  onRefresh,
+  onSelect
+}) {
+  const t = useAppText();
+  const options = selectedTarget && !scan.results.some((target) => handoffTargetMatchesSavedValue(target, selectedTarget)) ? [
+    {
+      detail: "",
+      id: `selected:${selectedTarget}`,
+      label: selectedTarget,
+      source: "selected",
+      target: selectedTarget
+    },
+    ...scan.results
+  ] : scan.results;
+  const placeholderText = scan.loading ? t("Scanning targets") : options.length > 0 ? t("Select a scanned target") : t("No targets found");
+  const selectedOption = options.find((target) => handoffTargetMatchesSavedValue(target, selectedTarget));
+  const selectValue = selectedTarget || HANDOFF_TARGET_NONE_VALUE;
+  const selectOptions = [
+    ...selectedTarget ? [{ label: t("None"), value: HANDOFF_TARGET_NONE_VALUE }] : [],
+    ...!selectedTarget ? [{ disabled: true, label: placeholderText, value: HANDOFF_TARGET_NONE_VALUE }] : [],
+    ...options.map((target) => ({
+      label: handoffTargetSelectionText(target),
+      value: handoffTargetSavedValue(target)
+    }))
+  ];
+  return /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: cn("min-w-0 space-y-1", className), children: [
+    /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("span", { className: "block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: label }),
+    /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex min-w-0 items-center gap-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+        Select,
+        {
+          className: "min-w-0 flex-1",
+          disabled: scan.loading || !selectedTarget && options.length === 0,
+          onValueChange: (value) => onSelect(value === HANDOFF_TARGET_NONE_VALUE ? "" : value),
+          options: selectOptions,
+          value: selectValue
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+        Button,
+        {
+          className: "h-8 w-8 border-0 bg-transparent p-0 shadow-none hover:bg-transparent",
+          "aria-label": t("Refresh targets"),
+          disabled: scan.loading,
+          onClick: onRefresh,
+          title: t("Refresh targets"),
+          type: "button",
+          unstyled: true,
+          children: /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(import_lucide_react2.RefreshCw, { className: cn("h-5 w-5 text-muted-foreground hover:text-foreground", scan.loading && "animate-spin") })
+        }
+      )
+    ] }),
+    selectedOption?.detail ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "truncate text-[11px] text-muted-foreground", title: selectedOption.detail, children: selectedOption.detail }) : null,
+    scan.error ? /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "break-words text-[11px] text-destructive", children: scan.error }) : null
+  ] });
+}
+function firstHandoffTarget(value) {
+  return value.split(/\r?\n/).map((item) => item.trim()).find(Boolean) ?? "";
+}
+function handoffTargetSelectionText(target) {
+  if (target.source !== "bluetooth") {
+    return target.label;
+  }
+  const label = target.label.trim();
+  const value = target.target.trim();
+  if (!label || !value || label === value || label.includes(value)) {
+    return label || value;
+  }
+  return `${label}(${value})`;
+}
+function handoffTargetSavedValue(target) {
+  if (target.source === "bluetooth") {
+    return handoffTargetSelectionText(target);
+  }
+  return target.target;
+}
+function handoffTargetMatchesSavedValue(target, savedValue) {
+  return target.target === savedValue || handoffTargetSavedValue(target) === savedValue;
 }
 
 // packages/ui/test/fixtures/index.ts
@@ -95175,7 +97419,7 @@ function appConfigFixture() {
 }
 
 // packages/ui/test/component/profiles.test.tsx
-var import_jsx_runtime23 = __toESM(require_jsx_runtime());
+var import_jsx_runtime25 = __toESM(require_jsx_runtime());
 var profile = {
   agent: "claude-code",
   enabled: true,
@@ -95185,7 +97429,7 @@ var profile = {
 };
 (0, import_node_test.default)("DeleteProfileDialog identifies the profile and requires an explicit confirmation", () => {
   const html = (0, import_server.renderToStaticMarkup)(
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(DeleteProfileDialog, { onClose: () => void 0, onConfirm: () => void 0, profile })
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(DeleteProfileDialog, { onClose: () => void 0, onConfirm: () => void 0, profile })
   );
   import_strict.default.match(html, /Delete Profile/);
   import_strict.default.match(html, /Delete this agent profile from the configuration\?/);
@@ -95196,14 +97440,55 @@ var profile = {
 });
 (0, import_node_test.default)("DeleteProfileDialog renders the Chinese confirmation copy", () => {
   const html = (0, import_server.renderToStaticMarkup)(
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AppI18nContext.Provider, { value: appCopy.zh, children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(DeleteProfileDialog, { onClose: () => void 0, onConfirm: () => void 0, profile }) })
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(AppI18nContext.Provider, { value: appCopy.zh, children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(DeleteProfileDialog, { onClose: () => void 0, onConfirm: () => void 0, profile }) })
   );
   import_strict.default.match(html, /删除 Agent 配置/);
   import_strict.default.match(html, /从配置中删除这个 Agent 配置档案？/);
   import_strict.default.match(html, />取消<\/button>/);
   import_strict.default.match(html, />删除<\/button>/);
 });
-(0, import_node_test.default)("ProfileView keeps launch actions directly accessible in an aligned action bar", () => {
+(0, import_node_test.default)("AddProfileForm does not show the profile requirements panel", () => {
+  const config = appConfigFixture();
+  const html = (0, import_server.renderToStaticMarkup)(
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+      AddProfileForm,
+      {
+        botConfigs: config.botConfigs,
+        draft: createProfileDraft("claude-code"),
+        error: "",
+        onChange: () => void 0,
+        onCreateBot: () => void 0,
+        providers: config.Providers,
+        virtualModelProfiles: config.virtualModelProfiles
+      }
+    )
+  );
+  import_strict.default.match(html, /Effect scope/);
+  import_strict.default.doesNotMatch(html, /Profile requirements/);
+  import_strict.default.doesNotMatch(html, /Profile guidance/);
+});
+(0, import_node_test.default)("AddProfileForm labels Kimi CLI model fields with Kimi-specific copy", () => {
+  const config = appConfigFixture();
+  const html = (0, import_server.renderToStaticMarkup)(
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+      AddProfileForm,
+      {
+        botConfigs: config.botConfigs,
+        draft: createProfileDraft("kimi"),
+        error: "",
+        onChange: () => void 0,
+        onCreateBot: () => void 0,
+        providers: config.Providers,
+        virtualModelProfiles: config.virtualModelProfiles
+      }
+    )
+  );
+  import_strict.default.match(html, /Kimi model/);
+  import_strict.default.match(html, /Allowed models/);
+  import_strict.default.doesNotMatch(html, /Default model/);
+  import_strict.default.doesNotMatch(html, /Available models/);
+});
+(0, import_node_test.default)("ProfileView renders agent profiles as compact cards with inline actions", () => {
   const config = appConfigFixture();
   config.profile.profiles = [
     {
@@ -95213,7 +97498,7 @@ var profile = {
     },
     {
       agent: "zcode",
-      enabled: true,
+      enabled: false,
       id: "zcode-main",
       model: "openai/gpt-5.2",
       name: "ZCode Main",
@@ -95222,7 +97507,7 @@ var profile = {
     }
   ];
   const html = (0, import_server.renderToStaticMarkup)(
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
       ProfileView,
       {
         addProfile: () => void 0,
@@ -95239,10 +97524,38 @@ var profile = {
     )
   );
   import_strict.default.equal(html.match(/aria-label="(?:Claude Code Main|ZCode Main) Profile actions"/g)?.length, 2);
+  import_strict.default.match(html, /grid-template-columns:repeat\(auto-fill,minmax\(min\(100%,320px\),420px\)\)/);
+  import_strict.default.match(html, /min-h-\[220px\]/);
+  import_strict.default.match(html, /class="flex min-w-0 items-center gap-2"/);
+  import_strict.default.match(html, /Configuration/);
+  import_strict.default.match(html, /class="mt-3 min-w-0 flex-1 space-y-1\.5 border-t border-border\/60 pt-2"><div class="flex min-w-0 flex-wrap items-center gap-1\.5"/);
+  import_strict.default.doesNotMatch(html, /class="mt-1 flex min-w-0 flex-wrap items-center gap-1\.5"/);
+  import_strict.default.match(html, /aria-label="Claude Code Main Profile actions" class="[^"]*border-t border-border\/60/);
+  import_strict.default.doesNotMatch(html, />Disabled<\/span>/);
+  import_strict.default.doesNotMatch(html, /aria-label="Claude Code Main Launch actions"/);
+  import_strict.default.doesNotMatch(html, /aria-label="Claude Code Main Management actions"/);
   import_strict.default.match(html, /aria-label="Copy CLI command Claude Code Main"/);
   import_strict.default.match(html, /aria-label="Start App Claude Code Main"/);
-  import_strict.default.match(html, /aria-label="Start App ZCode Main"/);
+  import_strict.default.match(html, /aria-label="Edit Claude Code Main"/);
+  import_strict.default.match(html, /aria-label="Remove profile"/);
+  import_strict.default.doesNotMatch(html, /aria-label="Start App ZCode Main"/);
   import_strict.default.doesNotMatch(html, /aria-label="Copy CLI command ZCode Main"/);
+});
+(0, import_node_test.default)("profileSummaryItems uses Kimi-specific model labels", () => {
+  const config = appConfigFixture();
+  const items = profileSummaryItems({
+    agent: "kimi",
+    availableModels: ["kimi/k2", "kimi/k3"],
+    enabled: true,
+    id: "kimi-main",
+    model: "kimi/k2",
+    name: "Kimi Main",
+    scope: "ccr",
+    surface: "cli"
+  }, config, (value) => value);
+  import_strict.default.equal(items[0]?.label, "Kimi model");
+  import_strict.default.equal(items[1]?.label, "Allowed models");
+  import_strict.default.equal(items[1]?.value, "2");
 });
 (0, import_node_test.default)("detected CHATGPT_APP_PATH is used as the Codex profile default", () => {
   const detectedPath = "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT";

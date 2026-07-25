@@ -13713,7 +13713,7 @@ var require_snapshot_recorder = __commonJS({
   "node_modules/undici/lib/mock/snapshot-recorder.js"(exports2, module2) {
     "use strict";
     var { writeFile, readFile, mkdir } = require("node:fs/promises");
-    var { dirname: dirname3, resolve } = require("node:path");
+    var { dirname: dirname4, resolve } = require("node:path");
     var { setTimeout: setTimeout2, clearTimeout: clearTimeout2 } = require("node:timers");
     var { InvalidArgumentError, UndiciError } = require_errors();
     var { hashId, isUrlExcludedFactory, normalizeHeaders, createHeaderFilters } = require_snapshot_utils();
@@ -13944,7 +13944,7 @@ var require_snapshot_recorder = __commonJS({
           throw new InvalidArgumentError("Snapshot path is required");
         }
         const resolvedPath = resolve(path14);
-        await mkdir(dirname3(resolvedPath), { recursive: true });
+        await mkdir(dirname4(resolvedPath), { recursive: true });
         const data = Array.from(this.#snapshots.entries()).map(([hash, snapshot]) => ({
           hash,
           snapshot
@@ -25061,14 +25061,17 @@ ${captureLines}` : capture.stack;
 // packages/core/test/integration/profiles/profile-service.test.mjs
 var import_strict = __toESM(require("node:assert/strict"), 1);
 var import_node_child_process2 = require("node:child_process");
-var import_node_fs13 = require("node:fs");
+var import_node_fs14 = require("node:fs");
 var import_node_os7 = __toESM(require("node:os"), 1);
-var import_node_path17 = __toESM(require("node:path"), 1);
+var import_node_path18 = __toESM(require("node:path"), 1);
 var import_node_test = __toESM(require("node:test"), 1);
 
 // packages/core/src/contracts/app.ts
 var BUILTIN_FUSION_VISION_TOOL_NAME = "vision_understand";
 var BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME = "web_search";
+function isGatewayProviderEnabled(provider) {
+  return provider.enabled !== false;
+}
 var ROUTER_SCRIPT_MAX_SOURCE_BYTES = 64 * 1024;
 var CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV = "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY";
 var CLAUDE_CODE_DEFAULT_ENV = {
@@ -25111,7 +25114,7 @@ function availableGatewayModelIds(config) {
 function availableGatewayBaseModelEntries(providers) {
   return providers.flatMap((provider) => {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       return [];
     }
     return provider.models.flatMap((rawModel) => {
@@ -25291,6 +25294,17 @@ function createDefaultAppConfig(options) {
       streamReplies: true,
       tenantId: "ccr"
     },
+    contextArchive: {
+      enabled: false,
+      maxBytes: 512 * 1024 * 1024,
+      maxSnapshotBytes: 32 * 1024 * 1024,
+      maxSnapshots: 200,
+      mcpEnabled: true,
+      replayTimeoutMs: 6e4,
+      retentionDays: 30,
+      storagePath: "",
+      toolName: "ccr_history_ask"
+    },
     gateway: {
       coreHost,
       corePort: 3457,
@@ -25320,6 +25334,7 @@ function createDefaultAppConfig(options) {
     profile: {
       claudeCode: {
         enabled: true,
+        managedCompact: false,
         model: "",
         settingsFile: "~/.claude/settings.json",
         smallFastModel: ""
@@ -25331,6 +25346,7 @@ function createDefaultAppConfig(options) {
         configFormat: "separate_profile_files",
         configFile: "~/.codex/config.toml",
         enabled: true,
+        managedCompact: false,
         model: "",
         providerId: "claude-code-router",
         providerName: "Claude Code Router",
@@ -25343,6 +25359,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: { ...CLAUDE_CODE_DEFAULT_ENV },
           id: "default-claude-code",
+          managedCompact: false,
           model: "",
           name: "Claude Code",
           scope: "global",
@@ -25360,6 +25377,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: {},
           id: "default-codex",
+          managedCompact: false,
           model: "",
           name: "Codex",
           providerId: "claude-code-router",
@@ -25510,6 +25528,7 @@ var PROXY_CA_CERT_DER_FILE = import_node_path3.default.join(CERTDIR, "ca.cer");
 var PROXY_CA_KEY_FILE = import_node_path3.default.join(CERTDIR, "key.pem");
 var GATEWAY_CONFIG_FILE = import_node_path3.default.join(CONFIGDIR, "gateway.config.json");
 var REQUEST_LOGS_DB_FILE = import_node_path3.default.join(DATADIR, "request-logs.sqlite");
+var CONTEXT_ARCHIVE_DB_FILE = import_node_path3.default.join(DATADIR, "context-archive.sqlite");
 var RAW_TRACE_SPOOL_DIR = import_node_path3.default.join(DATADIR, "raw-trace-spool");
 var USAGE_DB_FILE = import_node_path3.default.join(DATADIR, "usage.sqlite");
 if (process.platform === "win32") {
@@ -25517,10 +25536,10 @@ if (process.platform === "win32") {
 }
 
 // packages/core/src/profiles/service.ts
-var import_node_crypto2 = require("node:crypto");
-var import_node_fs12 = require("node:fs");
+var import_node_crypto3 = require("node:crypto");
+var import_node_fs13 = require("node:fs");
 var import_node_os6 = __toESM(require("node:os"));
-var import_node_path16 = __toESM(require("node:path"));
+var import_node_path17 = __toESM(require("node:path"));
 
 // packages/core/src/config/api-key-store.ts
 var import_node_fs2 = require("node:fs");
@@ -26935,6 +26954,22 @@ var geminiProviderPreset = {
   websiteUrl: "https://gemini.google.com/"
 };
 
+// packages/core/src/providers/presets/infistar-ai/index.ts
+var infistarAiProviderPreset = {
+  account: defaultProviderAccountConfig,
+  aliases: ["infistar", "infistar ai", "\u65E0\u9650\u661F\u6CB3", "\u65E0\u9650\u661F\u6CB3ai", "\u65E0\u9650\u661F\u6CB3 ai"],
+  defaultModels: ["gpt-4o"],
+  endpoints: [
+    {
+      baseUrl: "https://infistar.ai/v1",
+      protocols: ["openai_chat_completions"]
+    }
+  ],
+  id: "infistar-ai",
+  name: "Infistar AI",
+  websiteUrl: "https://infistar.ai"
+};
+
 // packages/core/src/providers/presets/kimi-coding/index.ts
 var kimiCodingProviderAccountConfig = {
   connectors: [
@@ -27681,6 +27716,7 @@ var providerPresets = [
   siliconFlowProviderPreset,
   qiniuAiProviderPreset,
   fennoProviderPreset,
+  infistarAiProviderPreset,
   runApiProviderPreset,
   teamoRouterProviderPreset,
   unity2ProviderPreset,
@@ -28669,7 +28705,9 @@ var ModelRegistry = class {
     if (!normalized) {
       return void 0;
     }
-    return this.config.Providers.find((provider) => providerAliases(provider).has(normalized));
+    return this.config.Providers.find(
+      (provider) => isGatewayProviderEnabled(provider) && providerAliases(provider).has(normalized)
+    );
   }
   resolveProviderModel(value) {
     const resolved = this.resolve(value);
@@ -28687,6 +28725,9 @@ var ModelRegistry = class {
     const normalized = caseInsensitive ? model.toLowerCase() : model;
     const matches = [];
     for (const provider of this.config.Providers) {
+      if (!isGatewayProviderEnabled(provider)) {
+        continue;
+      }
       for (const candidate of provider.models) {
         const configured = candidate.trim();
         const comparable = caseInsensitive ? configured.toLowerCase() : configured;
@@ -28912,7 +28953,7 @@ function buildCodexModelCatalogIds(config, selectedModel) {
   const baseEntries = [];
   for (const provider of config?.Providers ?? []) {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       continue;
     }
     for (const rawModel of provider.models) {
@@ -29202,7 +29243,9 @@ function findConfiguredProvider(config, providerName) {
   if (!normalized) {
     return void 0;
   }
-  return (config?.Providers ?? []).find((provider) => provider.name.trim().toLowerCase() === normalized);
+  return (config?.Providers ?? []).find(
+    (provider) => isGatewayProviderEnabled(provider) && provider.name.trim().toLowerCase() === normalized
+  );
 }
 function findConfiguredProviderForModel(config, model) {
   const normalized = model.trim().toLowerCase();
@@ -29210,7 +29253,7 @@ function findConfiguredProviderForModel(config, model) {
     return void 0;
   }
   return (config?.Providers ?? []).find(
-    (provider) => provider.models.some((candidate) => candidate.trim().toLowerCase() === normalized)
+    (provider) => isGatewayProviderEnabled(provider) && provider.models.some((candidate) => candidate.trim().toLowerCase() === normalized)
   );
 }
 function codexProviderProtocol(provider) {
@@ -29611,7 +29654,8 @@ function gatewayEndpoint(config) {
   return `http://${normalizedHost}:${config.gateway.port}`;
 }
 function defaultClientModel(config) {
-  const provider = config.Providers.find((item) => item.name === config.preferredProvider) ?? config.Providers[0];
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const provider = enabledProviders.find((item) => item.name === config.preferredProvider) ?? enabledProviders[0];
   const model = provider?.models[0] ?? "default";
   return provider?.name ? `${provider.name}/${model}` : model;
 }
@@ -29945,7 +29989,8 @@ function gatewayEndpoint2(config) {
   return `http://${formattedHost}:${config.gateway.port}`;
 }
 function defaultClientModel2(config) {
-  const preferred = config.Providers.find((provider) => provider.name === config.preferredProvider) ?? config.Providers[0];
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const preferred = enabledProviders.find((provider) => provider.name === config.preferredProvider) ?? enabledProviders[0];
   if (preferred?.name && preferred.models[0]) {
     return `${preferred.name}/${preferred.models[0]}`;
   }
@@ -37366,8 +37411,899 @@ main().catch((error) => {
 `;
 }
 
-// packages/core/src/mcp/toolhub-config.ts
+// packages/core/src/gateway/context-archive.ts
+var import_node_crypto2 = require("node:crypto");
+
+// packages/core/src/gateway/context-archive/protocol.ts
+function parseArchiveBody(body) {
+  if (!body?.length) {
+    return void 0;
+  }
+  try {
+    const parsed = JSON.parse(body.toString("utf8"));
+    return isRecord5(parsed) ? parsed : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function appendArchiveTask(originalBody, protocol, task) {
+  return appendTask(originalBody, protocol, task, { compactHandoff: false, replayTask: true });
+}
+function appendTask(originalBody, protocol, task, options) {
+  const body = parseArchiveBody(originalBody);
+  if (!body) {
+    throw archiveProtocolError("ARCHIVE_INVALID_REQUEST", "The archived request body is not a JSON object.");
+  }
+  assertAppendableTurn(body, protocol);
+  const next = cloneJsonObject(body);
+  if (options.compactHandoff) {
+    sanitizeCompactHandoffRequest(next, protocol);
+  } else if (options.replayTask && protocol === "openai_responses") {
+    removeCodexCompactionTriggers(next);
+  }
+  if (protocol === "openai_responses") {
+    if (Array.isArray(next.input)) {
+      next.input = [
+        ...next.input,
+        {
+          content: [{ text: task, type: "input_text" }],
+          role: "user",
+          type: "message"
+        }
+      ];
+    } else if (typeof next.input === "string") {
+      next.input = `${next.input}
+
+${task}`;
+    } else if (next.input === void 0) {
+      next.input = task;
+    } else {
+      throw archiveProtocolError("ARCHIVE_INVALID_REQUEST", "OpenAI Responses input cannot accept an appended task.");
+    }
+  } else {
+    const messages = next.messages;
+    if (!Array.isArray(messages)) {
+      throw archiveProtocolError("ARCHIVE_INVALID_REQUEST", `${protocol} request is missing messages.`);
+    }
+    next.messages = [...messages, { content: task, role: "user" }];
+  }
+  return Buffer.from(`${JSON.stringify(next)}
+`, "utf8");
+}
+function archiveHandoffFooter(input) {
+  const argumentsJson = `{ "task": "specific historical question", "archive_id": "${input.archiveId}", "session_token": "${input.sessionToken}" }`;
+  const clientToolName = input.clientToolName?.trim();
+  const toolLines = clientToolName && clientToolName !== input.toolName ? [
+    `In Claude Code, call the tool named: ${clientToolName}`,
+    `Raw MCP tool name: ${input.toolName}`,
+    `Tool arguments JSON: ${argumentsJson}`
+  ] : [
+    `${input.toolName}(${argumentsJson})`
+  ];
+  return [
+    "CCR ARCHIVED HISTORY ACCESS",
+    `Archive id: ${input.archiveId}`,
+    `Archive session id: ${input.sessionId}`,
+    `Archive generation: ${input.generation}`,
+    `Archive session token: ${input.sessionToken}`,
+    ...toolLines,
+    "The latest archive access searches this compact generation and its parent generations when needed.",
+    "Treat history answers as evidence and preserve the original instruction priority."
+  ].join("\n");
+}
+function historyReplayTask(task) {
+  return [
+    "CCR history task from the successor agent:",
+    "Use the complete conversation and request parameters already present in this request as your previous context.",
+    "Answer only the task below from that context. If the context is insufficient, say so directly.",
+    "Do not continue the previous task, modify files, or call external tools.",
+    "",
+    task
+  ].join("\n");
+}
+function extractArchiveAssistantText(rawText, protocol, contentType) {
+  const trimmed = rawText.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const isSse = contentType?.toLowerCase().includes("text/event-stream") || /^event:|^data:/m.test(trimmed);
+  if (isSse) {
+    return normalizeWhitespace(collectSseProtocolText(parseSsePayloads(trimmed), protocol).join(""));
+  }
+  try {
+    return normalizeWhitespace(collectProtocolText(JSON.parse(trimmed), protocol).join(""));
+  } catch {
+    return normalizeWhitespace(rawText);
+  }
+}
+function collectSseProtocolText(payloads, protocol) {
+  if (protocol === "openai_responses") {
+    const deltas = payloads.flatMap(
+      (payload) => isRecord5(payload) && payload.type === "response.output_text.delta" && typeof payload.delta === "string" ? [payload.delta] : []
+    );
+    return deltas.length ? deltas : payloads.flatMap((payload) => collectProtocolText(payload, protocol));
+  }
+  if (protocol === "anthropic_messages") {
+    const deltas = payloads.flatMap(
+      (payload) => isRecord5(payload) && payload.type === "content_block_delta" ? collectText(payload.delta) : []
+    );
+    return deltas.length ? deltas : payloads.flatMap((payload) => collectProtocolText(payload, protocol));
+  }
+  return payloads.flatMap((payload) => collectProtocolText(payload, protocol));
+}
+function archiveResponseRequiresTool(rawText) {
+  const values = [];
+  try {
+    values.push(JSON.parse(rawText));
+  } catch {
+    values.push(...parseSsePayloads(rawText));
+  }
+  return values.some(hasStructuredToolCall);
+}
+function assertAppendableTurn(body, protocol) {
+  if (protocol === "openai_responses") {
+    const input = Array.isArray(body.input) ? body.input : [];
+    const tail2 = input.at(-1);
+    if (isRecord5(tail2) && ["function_call", "computer_call", "custom_tool_call"].includes(String(tail2.type ?? ""))) {
+      throw archiveProtocolError("ARCHIVE_NOT_AT_TURN_BOUNDARY", "The archived Responses request ends with an unresolved tool call.");
+    }
+    return;
+  }
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  const tail = messages.at(-1);
+  if (!isRecord5(tail) || String(tail.role ?? "") !== "assistant") {
+    return;
+  }
+  if (Array.isArray(tail.tool_calls) && tail.tool_calls.length > 0) {
+    throw archiveProtocolError("ARCHIVE_NOT_AT_TURN_BOUNDARY", "The archived chat request ends with an unresolved tool call.");
+  }
+  if (Array.isArray(tail.content) && tail.content.some((block) => isRecord5(block) && block.type === "tool_use")) {
+    throw archiveProtocolError("ARCHIVE_NOT_AT_TURN_BOUNDARY", "The archived Anthropic request ends with an unresolved tool call.");
+  }
+}
+function sanitizeCompactHandoffRequest(body, protocol) {
+  removeCompactSignals(body);
+  removeKeys(body, [
+    "response_format",
+    "responseFormat",
+    "stop",
+    "stop_sequences",
+    "stopSequences"
+  ]);
+  if (protocol === "openai_responses") {
+    removeKeys(body, [
+      "parallel_tool_calls",
+      "parallelToolCalls",
+      "tool_choice",
+      "toolChoice",
+      "tools"
+    ]);
+    normalizeOpenAiResponsesTextFormat(body);
+    raiseMinimumNumericField(body, ["max_output_tokens", "maxOutputTokens", "max_tokens", "maxTokens"], 2048);
+    return;
+  }
+  removeKeys(body, [
+    "function_call",
+    "functionCall",
+    "functions",
+    "parallel_tool_calls",
+    "parallelToolCalls",
+    "tool_choice",
+    "toolChoice",
+    "tools"
+  ]);
+  raiseMinimumNumericField(body, ["max_tokens", "maxTokens"], 2048);
+}
+function removeCompactSignals(body) {
+  removeCodexCompactionTriggers(body);
+  for (const key of ["context_management", "contextManagement"]) {
+    const management = isRecord5(body[key]) ? cloneJsonObject(body[key]) : void 0;
+    if (!management) {
+      continue;
+    }
+    const edits = Array.isArray(management.edits) ? management.edits.filter((edit) => !(isRecord5(edit) && isCompactType(edit.type))) : void 0;
+    if (edits !== void 0) {
+      if (edits.length > 0) {
+        management.edits = edits;
+      } else {
+        delete management.edits;
+      }
+    }
+    if (Object.keys(management).length > 0) {
+      body[key] = management;
+    } else {
+      delete body[key];
+    }
+  }
+  const metadata = isRecord5(body.metadata) ? cloneJsonObject(body.metadata) : void 0;
+  if (!metadata) {
+    return;
+  }
+  delete metadata.ccr_context_compact;
+  delete metadata.ccrContextCompact;
+  if (Object.keys(metadata).length > 0) {
+    body.metadata = metadata;
+  } else {
+    delete body.metadata;
+  }
+}
+function removeCodexCompactionTriggers(body) {
+  if (Array.isArray(body.input)) {
+    body.input = body.input.filter((item) => !(isRecord5(item) && item.type === "compaction_trigger"));
+  }
+}
+function normalizeOpenAiResponsesTextFormat(body) {
+  if (!isRecord5(body.text)) {
+    return;
+  }
+  const text = cloneJsonObject(body.text);
+  if (!isRecord5(text.format)) {
+    return;
+  }
+  const type = typeof text.format.type === "string" ? text.format.type.toLowerCase() : "";
+  if (!type || type === "text") {
+    return;
+  }
+  text.format = { type: "text" };
+  body.text = text;
+}
+function removeKeys(body, keys) {
+  for (const key of keys) {
+    delete body[key];
+  }
+}
+function raiseMinimumNumericField(body, keys, minimum) {
+  for (const key of keys) {
+    if (typeof body[key] === "number" && Number.isFinite(body[key]) && body[key] < minimum) {
+      body[key] = minimum;
+    }
+  }
+}
+function collectProtocolText(value, protocol) {
+  if (!isRecord5(value)) {
+    return [];
+  }
+  if (protocol === "openai_chat_completions") {
+    const choices = Array.isArray(value.choices) ? value.choices : [];
+    const text = choices.flatMap((choice) => isRecord5(choice) ? [...collectText(readPath(choice, ["message", "content"])), ...collectText(readPath(choice, ["delta", "content"]))] : []);
+    return text.length ? text : collectText(value);
+  }
+  if (protocol === "openai_responses") {
+    return collectText(value.output_text).concat(collectText(value.delta), collectText(value.output), collectText(value.item));
+  }
+  return collectText(value.content).concat(collectText(value.delta), collectText(value.message));
+}
+function collectText(value) {
+  if (typeof value === "string") {
+    return [value];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap(collectText);
+  }
+  if (!isRecord5(value)) {
+    return [];
+  }
+  const type = typeof value.type === "string" ? value.type : "";
+  const direct = typeof value.text === "string" && (!type || [
+    "content_block_delta",
+    "message",
+    "output_text",
+    "summary_text",
+    "text",
+    "text_delta",
+    "response.output_text.delta"
+  ].includes(type)) ? [value.text] : [];
+  const outputText = typeof value.output_text === "string" ? [value.output_text] : [];
+  const content = typeof value.content === "string" ? [value.content] : collectText(value.content);
+  return direct.concat(outputText, content, collectText(value.delta), collectText(value.message), collectText(value.output), collectText(value.response), collectText(value.item));
+}
+function parseSsePayloads(rawText) {
+  const payloads = [];
+  for (const event of rawText.split(/\r?\n\r?\n+/g)) {
+    const data = event.split(/\r?\n/g).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n").trim();
+    if (!data || data === "[DONE]") {
+      continue;
+    }
+    try {
+      payloads.push(JSON.parse(data));
+    } catch {
+    }
+  }
+  return payloads;
+}
+function hasStructuredToolCall(value) {
+  if (Array.isArray(value)) {
+    return value.some(hasStructuredToolCall);
+  }
+  if (!isRecord5(value)) {
+    return false;
+  }
+  if (Array.isArray(value.tool_calls) && value.tool_calls.length > 0) {
+    return true;
+  }
+  if (["tool_use", "function_call", "custom_tool_call", "computer_call"].includes(String(value.type ?? ""))) {
+    return true;
+  }
+  return Object.values(value).some(hasStructuredToolCall);
+}
+function readPath(value, path14) {
+  let current = value;
+  for (const part of path14) {
+    if (!isRecord5(current)) {
+      return void 0;
+    }
+    current = current[part];
+  }
+  return current;
+}
+function isCompactType(value) {
+  return typeof value === "string" && /^compact(?:_|$)/i.test(value.trim());
+}
+function cloneJsonObject(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+function normalizeWhitespace(value) {
+  return value.replace(/\r\n/g, "\n").replace(/[ \t]+\n/g, "\n").trim();
+}
+function archiveProtocolError(code, message) {
+  const error = new Error(`${code}: ${message}`);
+  error.name = "ContextArchiveError";
+  return error;
+}
+function isRecord5(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+// packages/core/src/gateway/context-archive/store.ts
+var import_node_fs12 = require("node:fs");
 var import_node_path15 = require("node:path");
+var ContextArchiveStore = class {
+  constructor(dbFile) {
+    this.dbFile = dbFile;
+    if (dbFile !== ":memory:") {
+      const directory = (0, import_node_path15.dirname)(dbFile);
+      (0, import_node_fs12.mkdirSync)(directory, { mode: 448, recursive: true });
+      securePath(directory, 448);
+    }
+    this.database = createBetterSqliteDatabase(dbFile);
+    this.database.pragma("journal_mode = WAL");
+    this.database.pragma("synchronous = NORMAL");
+    this.database.pragma("busy_timeout = 5000");
+    this.database.exec(`
+      CREATE TABLE IF NOT EXISTS archive_snapshots (
+        archive_id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        generation INTEGER NOT NULL,
+        parent_archive_id TEXT,
+        request_id TEXT NOT NULL UNIQUE,
+        protocol TEXT NOT NULL,
+        method TEXT NOT NULL,
+        path TEXT NOT NULL,
+        body BLOB NOT NULL,
+        body_sha256 TEXT NOT NULL,
+        replay_headers_json TEXT NOT NULL,
+        route_json TEXT,
+        token_hash TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER,
+        UNIQUE(session_id, generation)
+      );
+      CREATE INDEX IF NOT EXISTS archive_snapshots_session_generation
+        ON archive_snapshots(session_id, generation DESC);
+      CREATE INDEX IF NOT EXISTS archive_snapshots_expires_at
+        ON archive_snapshots(expires_at);
+    `);
+    this.secureFiles();
+  }
+  dbFile;
+  database;
+  create(input, retention) {
+    const transaction = this.database.transaction(() => {
+      const previous = this.database.prepare(`
+        SELECT archive_id, generation
+        FROM archive_snapshots
+        WHERE session_id = ?
+        ORDER BY generation DESC
+        LIMIT 1
+      `).get(input.sessionId);
+      const generation = Number(previous?.generation ?? 0) + 1;
+      const parentArchiveId = readString4(previous?.archive_id);
+      this.database.prepare(`
+        INSERT INTO archive_snapshots (
+          archive_id, session_id, generation, parent_archive_id, request_id,
+          protocol, method, path, body, body_sha256, replay_headers_json,
+          token_hash, status, created_at, expires_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+      `).run(
+        input.archiveId,
+        input.sessionId,
+        generation,
+        parentArchiveId ?? null,
+        input.requestId,
+        input.protocol,
+        input.method,
+        input.path,
+        input.body,
+        input.bodySha256,
+        JSON.stringify(input.replayHeaders),
+        input.tokenHash,
+        input.createdAt,
+        input.expiresAt ?? null
+      );
+      return { generation, parentArchiveId };
+    });
+    const lineage = transaction();
+    this.extendLineageExpiry(input.archiveId, input.expiresAt, retention);
+    this.prune(retention, input.archiveId);
+    this.secureFiles();
+    return {
+      ...input,
+      ...lineage,
+      status: "pending"
+    };
+  }
+  finalize(archiveId, route) {
+    this.database.prepare(`
+      UPDATE archive_snapshots
+      SET route_json = ?, status = 'ready'
+      WHERE archive_id = ? AND status = 'pending'
+    `).run(JSON.stringify(route), archiveId);
+    this.secureFiles();
+  }
+  fail(archiveId) {
+    this.database.prepare("UPDATE archive_snapshots SET status = 'failed' WHERE archive_id = ?").run(archiveId);
+  }
+  get(archiveId) {
+    const row = this.database.prepare(`
+      SELECT * FROM archive_snapshots WHERE archive_id = ? LIMIT 1
+    `).get(archiveId);
+    return row ? snapshotFromRow(row) : void 0;
+  }
+  lineage(archiveId, limit = 32) {
+    const snapshots = [];
+    const seen = /* @__PURE__ */ new Set();
+    let currentArchiveId = archiveId;
+    while (currentArchiveId && snapshots.length < Math.max(1, Math.floor(limit)) && !seen.has(currentArchiveId)) {
+      seen.add(currentArchiveId);
+      const snapshot = this.get(currentArchiveId);
+      if (!snapshot) {
+        break;
+      }
+      snapshots.push(snapshot);
+      currentArchiveId = snapshot.parentArchiveId;
+    }
+    return snapshots;
+  }
+  clear() {
+    this.database.prepare("DELETE FROM archive_snapshots").run();
+  }
+  close() {
+    this.database.close();
+  }
+  prune(retention, protectedArchiveId) {
+    const protectedIds = this.protectedLineageIds(protectedArchiveId, retention);
+    const now = Date.now();
+    const expiredRows = this.database.prepare(`
+      SELECT archive_id
+      FROM archive_snapshots
+      WHERE expires_at IS NOT NULL AND expires_at <= ?
+    `).all(now);
+    for (const row of expiredRows) {
+      if (!protectedIds.has(row.archive_id)) {
+        this.database.prepare("DELETE FROM archive_snapshots WHERE archive_id = ?").run(row.archive_id);
+      }
+    }
+    const maxSnapshots = Math.max(1, Math.floor(retention.maxSnapshots));
+    const snapshotRows = this.database.prepare(`
+      SELECT archive_id
+      FROM archive_snapshots
+      ORDER BY created_at DESC, rowid DESC
+    `).all();
+    for (let index = maxSnapshots; index < snapshotRows.length; index += 1) {
+      const archiveId = snapshotRows[index]?.archive_id;
+      if (archiveId && !protectedIds.has(archiveId)) {
+        this.database.prepare("DELETE FROM archive_snapshots WHERE archive_id = ?").run(archiveId);
+      }
+    }
+    const maxBytes = Math.max(1, Math.floor(retention.maxBytes));
+    const rows = this.database.prepare(`
+      SELECT archive_id, length(body) AS body_bytes
+      FROM archive_snapshots
+      ORDER BY created_at DESC, rowid DESC
+    `).all();
+    let retainedBytes = 0;
+    for (const row of rows) {
+      retainedBytes += Number(row.body_bytes ?? 0);
+      if (retainedBytes > maxBytes && !protectedIds.has(row.archive_id)) {
+        this.database.prepare("DELETE FROM archive_snapshots WHERE archive_id = ?").run(row.archive_id);
+      }
+    }
+  }
+  protectedLineageIds(archiveId, retention) {
+    return new Set(this.lineage(archiveId, Math.max(1, Math.floor(retention.maxSnapshots))).map((snapshot) => snapshot.archiveId));
+  }
+  extendLineageExpiry(archiveId, expiresAt, retention) {
+    if (expiresAt === void 0) {
+      return;
+    }
+    for (const snapshot of this.lineage(archiveId, Math.max(1, Math.floor(retention.maxSnapshots)))) {
+      this.database.prepare(`
+        UPDATE archive_snapshots
+        SET expires_at = ?
+        WHERE archive_id = ? AND (expires_at IS NULL OR expires_at < ?)
+      `).run(expiresAt, snapshot.archiveId, expiresAt);
+    }
+  }
+  secureFiles() {
+    if (this.dbFile === ":memory:") {
+      return;
+    }
+    securePath(this.dbFile, 384);
+    securePath(`${this.dbFile}-wal`, 384);
+    securePath(`${this.dbFile}-shm`, 384);
+  }
+};
+function snapshotFromRow(row) {
+  return {
+    archiveId: requiredString(row.archive_id),
+    body: Buffer.from(row.body),
+    bodySha256: requiredString(row.body_sha256),
+    createdAt: Number(row.created_at),
+    expiresAt: optionalNumber(row.expires_at),
+    generation: Number(row.generation),
+    method: requiredString(row.method),
+    parentArchiveId: readString4(row.parent_archive_id),
+    path: requiredString(row.path),
+    protocol: requiredString(row.protocol),
+    replayHeaders: parseRecord(row.replay_headers_json),
+    requestId: requiredString(row.request_id),
+    route: parseOptionalRoute(row.route_json),
+    sessionId: requiredString(row.session_id),
+    status: requiredString(row.status),
+    tokenHash: requiredString(row.token_hash)
+  };
+}
+function parseRecord(value) {
+  const parsed = JSON.parse(requiredString(value));
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {};
+  }
+  return Object.fromEntries(Object.entries(parsed).filter((entry) => typeof entry[1] === "string"));
+}
+function parseOptionalRoute(value) {
+  const text = readString4(value);
+  if (!text) {
+    return void 0;
+  }
+  const parsed = JSON.parse(text);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : void 0;
+}
+function requiredString(value) {
+  const text = readString4(value);
+  if (!text) {
+    throw new Error("Context archive database contains an invalid string value.");
+  }
+  return text;
+}
+function readString4(value) {
+  return typeof value === "string" && value ? value : void 0;
+}
+function optionalNumber(value) {
+  return value === null || value === void 0 ? void 0 : Number(value);
+}
+function securePath(file, mode) {
+  if (process.platform === "win32" || !(0, import_node_fs12.existsSync)(file)) {
+    return;
+  }
+  try {
+    (0, import_node_fs12.chmodSync)(file, mode);
+  } catch {
+  }
+}
+
+// packages/core/src/gateway/context-archive.ts
+var protocolVersion = "2024-11-05";
+var maxMcpRequestBytes = 2 * 1024 * 1024;
+var defaultToolName = "ccr_history_ask";
+var maxUpstreamErrorCharacters = 4e3;
+var maxLineageReplayDepth = 32;
+var CONTEXT_ARCHIVE_MCP_SERVER_NAME = "ccr-context-archive";
+var CONTEXT_ARCHIVE_MCP_PATH = "/__ccr/context-archive/mcp";
+var ContextArchiveService = class {
+  stores = /* @__PURE__ */ new Map();
+  clear(config) {
+    if (config) {
+      this.store(config).clear();
+      return;
+    }
+    for (const store of this.stores.values()) {
+      store.clear();
+    }
+  }
+  close() {
+    for (const store of this.stores.values()) {
+      store.close();
+    }
+    this.stores.clear();
+  }
+  createSnapshot(input) {
+    const maxSnapshotBytes = clampInteger(input.config.maxSnapshotBytes, 64 * 1024, 1024 * 1024 * 1024, 32 * 1024 * 1024);
+    if (input.body.byteLength > maxSnapshotBytes) {
+      throw contextArchiveError(
+        "ARCHIVE_SNAPSHOT_TOO_LARGE",
+        `Compact request is ${input.body.byteLength} bytes; the configured snapshot limit is ${maxSnapshotBytes} bytes.`
+      );
+    }
+    const archiveId = `arc_${(0, import_node_crypto2.randomBytes)(18).toString("base64url")}`;
+    const sessionToken = (0, import_node_crypto2.randomBytes)(32).toString("base64url");
+    const createdAt = Date.now();
+    const retentionDays = clampInteger(input.config.retentionDays, 1, 3650, 30);
+    const snapshot = this.store(input.config).create({
+      archiveId,
+      body: Buffer.from(input.body),
+      bodySha256: sha256(input.body),
+      createdAt,
+      expiresAt: createdAt + retentionDays * 24 * 60 * 60 * 1e3,
+      method: input.method,
+      path: input.path,
+      protocol: input.protocol,
+      replayHeaders: replaySafeHeaders(input.headers),
+      requestId: input.requestId,
+      sessionId: input.sessionId,
+      tokenHash: sha256(sessionToken)
+    }, {
+      maxBytes: clampInteger(input.config.maxBytes, 1024 * 1024, 64 * 1024 * 1024 * 1024, 512 * 1024 * 1024),
+      maxSnapshots: clampInteger(input.config.maxSnapshots, 1, 1e5, 200),
+      retentionDays
+    });
+    const footer = archiveHandoffFooter({
+      archiveId,
+      clientToolName: contextArchiveClaudeCodeToolName(input.config.toolName || defaultToolName),
+      generation: snapshot.generation,
+      sessionId: input.sessionId,
+      sessionToken,
+      toolName: input.config.toolName || defaultToolName
+    });
+    return {
+      record: {
+        archiveId,
+        footer,
+        generation: snapshot.generation,
+        sessionId: input.sessionId
+      },
+      sessionToken
+    };
+  }
+  finalize(record, route, config) {
+    if (!record) {
+      return;
+    }
+    this.store(config).finalize(record.archiveId, route);
+  }
+  fail(record, config) {
+    if (!record) {
+      return;
+    }
+    this.store(config).fail(record.archiveId);
+  }
+  getSnapshot(archiveId, config) {
+    return this.store(config).get(archiveId);
+  }
+  async ask(input, config, executor) {
+    const archiveId = input.archiveId.trim();
+    const sessionToken = input.sessionToken.trim();
+    const task = input.task.trim();
+    const toolName = config.toolName || defaultToolName;
+    if (!archiveId || !sessionToken || !task) {
+      throw contextArchiveError("ARCHIVE_INVALID_ARGUMENT", `${toolName} requires archive_id, session_token, and task.`);
+    }
+    const store = this.store(config);
+    const rootSnapshot = store.get(archiveId);
+    if (!rootSnapshot) {
+      throw contextArchiveError("ARCHIVE_NOT_FOUND", `Archive ${archiveId} does not exist or has expired.`);
+    }
+    if (rootSnapshot.expiresAt !== void 0 && rootSnapshot.expiresAt <= Date.now()) {
+      throw contextArchiveError("ARCHIVE_EXPIRED", `Archive ${archiveId} has expired.`);
+    }
+    if (rootSnapshot.status !== "ready") {
+      throw contextArchiveError("ARCHIVE_NOT_READY", `Archive ${archiveId} is ${rootSnapshot.status}.`);
+    }
+    if (!constantTimeEqual(rootSnapshot.tokenHash, sha256(sessionToken))) {
+      throw contextArchiveError("ARCHIVE_ACCESS_DENIED", "The archive session token is invalid.");
+    }
+    if (!executor) {
+      throw contextArchiveError("ARCHIVE_REPLAY_UNAVAILABLE", "The gateway replay executor is not available.");
+    }
+    const lineage = store.lineage(archiveId, maxLineageReplayDepth);
+    const searchedGenerations = [];
+    let lastInsufficientAnswer;
+    for (const snapshot of lineage) {
+      if (snapshot.expiresAt !== void 0 && snapshot.expiresAt <= Date.now()) {
+        continue;
+      }
+      if (snapshot.status !== "ready") {
+        continue;
+      }
+      const answer = await replayArchiveSnapshot(snapshot, task, config, executor);
+      searchedGenerations.push(snapshot.generation);
+      if (isInsufficientArchiveAnswer(answer) && snapshot.parentArchiveId) {
+        lastInsufficientAnswer = { answer, snapshot };
+        continue;
+      }
+      return {
+        answer,
+        archiveId,
+        generation: rootSnapshot.generation,
+        searchedGenerations,
+        sourceArchiveId: snapshot.archiveId,
+        sourceGeneration: snapshot.generation,
+        task
+      };
+    }
+    if (lastInsufficientAnswer) {
+      return {
+        answer: lastInsufficientAnswer.answer,
+        archiveId,
+        generation: rootSnapshot.generation,
+        searchedGenerations,
+        sourceArchiveId: lastInsufficientAnswer.snapshot.archiveId,
+        sourceGeneration: lastInsufficientAnswer.snapshot.generation,
+        task
+      };
+    }
+    throw contextArchiveError("ARCHIVE_NOT_READY", `Archive ${archiveId} has no ready lineage snapshots.`);
+  }
+  store(config) {
+    const dbFile = config.storagePath.trim() || CONTEXT_ARCHIVE_DB_FILE;
+    let store = this.stores.get(dbFile);
+    if (!store) {
+      store = new ContextArchiveStore(dbFile);
+      this.stores.set(dbFile, store);
+    }
+    return store;
+  }
+};
+var contextArchiveService = new ContextArchiveService();
+function contextArchiveClaudeCodeToolName(toolName) {
+  return `mcp__${CONTEXT_ARCHIVE_MCP_SERVER_NAME}__${toolName}`;
+}
+async function replayArchiveSnapshot(snapshot, task, config, executor) {
+  const replayBody = appendArchiveTask(snapshot.body, snapshot.protocol, historyReplayTask(task));
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(contextArchiveError("ARCHIVE_REPLAY_TIMEOUT", "The archived agent replay timed out.")),
+    clampInteger(config.replayTimeoutMs, 1e3, 6e5, 6e4)
+  );
+  let result;
+  try {
+    result = await executor({ body: replayBody, signal: controller.signal, snapshot });
+  } finally {
+    clearTimeout(timeout);
+  }
+  const rawText = Buffer.isBuffer(result.body) ? result.body.toString("utf8") : result.body;
+  if (result.statusCode < 200 || result.statusCode >= 300) {
+    throw contextArchiveError(
+      "ARCHIVE_UPSTREAM_ERROR",
+      `Archived agent returned HTTP ${result.statusCode}: ${rawText.slice(0, maxUpstreamErrorCharacters)}`
+    );
+  }
+  const answer = extractArchiveAssistantText(rawText, snapshot.protocol, result.contentType);
+  if (!answer && archiveResponseRequiresTool(rawText)) {
+    throw contextArchiveError(
+      "ARCHIVE_REPLAY_TOOL_REQUIRED",
+      "The archived agent requested a tool. Exact replay does not execute external client tools."
+    );
+  }
+  if (!answer) {
+    throw contextArchiveError("ARCHIVE_EMPTY_ANSWER", "The archived agent returned no textual answer.");
+  }
+  return answer;
+}
+function isInsufficientArchiveAnswer(answer) {
+  const normalized = answer.toLowerCase().replace(/\s+/g, " ").trim();
+  return [
+    "context is insufficient",
+    "insufficient context",
+    "not enough information",
+    "not enough context",
+    "does not contain",
+    "doesn't contain",
+    "cannot determine",
+    "can't determine",
+    "could not determine",
+    "unable to determine",
+    "unable to find",
+    "not mentioned",
+    "no relevant",
+    "unknown"
+  ].some((phrase) => normalized.includes(phrase));
+}
+function contextArchiveMcpEnabled(config) {
+  return Boolean(config?.contextArchive?.enabled && config.contextArchive.mcpEnabled !== false);
+}
+function profileManagedCompactEnabled(profile) {
+  return Boolean(profile?.enabled && profile.managedCompact === true);
+}
+function contextArchiveConfigForProfile(config, profile) {
+  if (profileManagedCompactEnabled(profile)) {
+    return withManagedContextArchiveEnabled(config);
+  }
+  return void 0;
+}
+function withManagedContextArchiveEnabled(config) {
+  if (config.contextArchive.enabled && config.contextArchive.mcpEnabled !== false) {
+    return config;
+  }
+  return {
+    ...config,
+    contextArchive: {
+      ...config.contextArchive,
+      enabled: true,
+      mcpEnabled: true
+    }
+  };
+}
+function contextArchiveMcpServer(config, gatewayEndpoint5, apiKey) {
+  if (!contextArchiveMcpEnabled(config)) {
+    return void 0;
+  }
+  return {
+    apiKey,
+    headers: {},
+    name: CONTEXT_ARCHIVE_MCP_SERVER_NAME,
+    protocolVersion,
+    requestTimeoutMs: config.contextArchive.replayTimeoutMs,
+    startupTimeoutMs: 1e4,
+    transport: "streamable-http",
+    url: `${gatewayEndpoint5.replace(/\/+$/g, "")}${CONTEXT_ARCHIVE_MCP_PATH}`
+  };
+}
+function replaySafeHeaders(headers) {
+  const allowed = /* @__PURE__ */ new Set([
+    "anthropic-beta",
+    "anthropic-version",
+    "content-type",
+    "openai-beta",
+    "openai-organization",
+    "openai-project",
+    "user-agent",
+    "x-ccr-client",
+    "x-client-name"
+  ]);
+  const output = {};
+  for (const [name, value] of Object.entries(headers)) {
+    const normalized = name.toLowerCase();
+    if (!allowed.has(normalized) || value === void 0) {
+      continue;
+    }
+    output[normalized] = Array.isArray(value) ? value.join(",") : String(value);
+  }
+  output["content-type"] = "application/json";
+  return output;
+}
+function sha256(value) {
+  return (0, import_node_crypto2.createHash)("sha256").update(value).digest("base64url");
+}
+function constantTimeEqual(left, right) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && (0, import_node_crypto2.timingSafeEqual)(leftBuffer, rightBuffer);
+}
+function contextArchiveError(code, message) {
+  const error = new Error(`${code}: ${message}`);
+  error.name = "ContextArchiveError";
+  return error;
+}
+function clampInteger(value, minimum, maximum, fallback) {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(minimum, Math.min(maximum, Math.floor(value)));
+}
+
+// packages/core/src/mcp/toolhub-config.ts
+var import_node_path16 = require("node:path");
 var TOOL_HUB_MCP_SERVER_NAME = "ccr-toolhub";
 var TOOL_HUB_MCP_RUNTIME_FILE_NAME = "toolhub-mcp.js";
 var BROWSER_AUTOMATION_MCP_SERVER_NAME = "ccr-browser-automation";
@@ -37420,7 +38356,7 @@ function toolHubMcpRuntimeConfig(config, backendServers, options = {}) {
     command: options.command ?? process.execPath,
     env: {
       ELECTRON_RUN_AS_NODE: "1",
-      TOOLHUB_CACHE_FILE: (0, import_node_path15.join)(CONFIGDIR, "toolhub-cache.json"),
+      TOOLHUB_CACHE_FILE: (0, import_node_path16.join)(CONFIGDIR, "toolhub-cache.json"),
       TOOLHUB_MAX_TOOLS: String(toolHub.maxTools ?? 10),
       TOOLHUB_MCP_SERVERS_JSON: JSON.stringify(normalizedBackendServers),
       TOOLHUB_OPENAI_API_KEY: options.resolver?.apiKey ?? toolHub.llm?.apiKey ?? "",
@@ -37432,7 +38368,7 @@ function toolHubMcpRuntimeConfig(config, backendServers, options = {}) {
 }
 function toolHubRequestTimeoutMs(config, backendServers) {
   const configuredTimeout = positiveInteger2(config?.toolHub?.requestTimeoutMs, TOOL_HUB_DEFAULT_REQUEST_TIMEOUT_MS);
-  const backendTimeouts = (backendServers ?? toolHubBackendServers(config)).map((server) => isRecord5(server) ? positiveInteger2(server.requestTimeoutMs, 0) : 0);
+  const backendTimeouts = (backendServers ?? toolHubBackendServers(config)).map((server) => isRecord6(server) ? positiveInteger2(server.requestTimeoutMs, 0) : 0);
   return Math.max(configuredTimeout, ...backendTimeouts);
 }
 function toolHubClaudeCodeMcpConfig(config, options = {}) {
@@ -37450,29 +38386,29 @@ function toolHubClaudeCodeMcpConfig(config, options = {}) {
   return runtimeConfig ? { mcpServers: { [TOOL_HUB_MCP_SERVER_NAME]: runtimeConfig } } : void 0;
 }
 function bundledToolHubMcpEntryPath() {
-  return (0, import_node_path15.join)(__dirname, TOOL_HUB_MCP_RUNTIME_FILE_NAME);
+  return (0, import_node_path16.join)(__dirname, TOOL_HUB_MCP_RUNTIME_FILE_NAME);
 }
 function bundledToolHubMcpEntryPathCandidates() {
   const resourcesPath = process.resourcesPath;
   return uniqueStrings7([
     bundledToolHubMcpEntryPath(),
     ...resourcesPath ? [
-      (0, import_node_path15.join)(resourcesPath, "app.asar", "dist", "main", TOOL_HUB_MCP_RUNTIME_FILE_NAME),
-      (0, import_node_path15.join)(resourcesPath, "app", "dist", "main", TOOL_HUB_MCP_RUNTIME_FILE_NAME)
+      (0, import_node_path16.join)(resourcesPath, "app.asar", "dist", "main", TOOL_HUB_MCP_RUNTIME_FILE_NAME),
+      (0, import_node_path16.join)(resourcesPath, "app", "dist", "main", TOOL_HUB_MCP_RUNTIME_FILE_NAME)
     ] : [],
     // Core tests bundle runtime entry points here without producing any
     // packages/*/dist artifacts. Do not prefer test artifacts in normal runs.
-    ...process.env.NODE_TEST_CONTEXT ? [(0, import_node_path15.join)(process.cwd(), ".test-dist", "core", "runtime", TOOL_HUB_MCP_RUNTIME_FILE_NAME)] : [],
-    (0, import_node_path15.join)(process.cwd(), "packages", "electron", "dist", "main", TOOL_HUB_MCP_RUNTIME_FILE_NAME),
-    (0, import_node_path15.join)(process.cwd(), "packages", "cli", "dist", "main", TOOL_HUB_MCP_RUNTIME_FILE_NAME),
-    (0, import_node_path15.join)(process.cwd(), "packages", "core", "dist", "main", TOOL_HUB_MCP_RUNTIME_FILE_NAME),
-    (0, import_node_path15.join)(process.cwd(), "dist", "main", TOOL_HUB_MCP_RUNTIME_FILE_NAME)
+    ...process.env.NODE_TEST_CONTEXT ? [(0, import_node_path16.join)(process.cwd(), ".test-dist", "core", "runtime", TOOL_HUB_MCP_RUNTIME_FILE_NAME)] : [],
+    (0, import_node_path16.join)(process.cwd(), "packages", "electron", "dist", "main", TOOL_HUB_MCP_RUNTIME_FILE_NAME),
+    (0, import_node_path16.join)(process.cwd(), "packages", "cli", "dist", "main", TOOL_HUB_MCP_RUNTIME_FILE_NAME),
+    (0, import_node_path16.join)(process.cwd(), "packages", "core", "dist", "main", TOOL_HUB_MCP_RUNTIME_FILE_NAME),
+    (0, import_node_path16.join)(process.cwd(), "dist", "main", TOOL_HUB_MCP_RUNTIME_FILE_NAME)
   ]);
 }
 function isToolHubBackendServer(value) {
-  return isRecord5(value) && stringValue2(value.name)?.toLowerCase() !== TOOL_HUB_MCP_SERVER_NAME;
+  return isRecord6(value) && stringValue2(value.name)?.toLowerCase() !== TOOL_HUB_MCP_SERVER_NAME;
 }
-function isRecord5(value) {
+function isRecord6(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function stringValue2(value) {
@@ -37639,14 +38575,14 @@ function loadCatalogIndex() {
 }
 function buildCatalogIndex(payload, loadedFrom) {
   const providers = /* @__PURE__ */ new Map();
-  const models = isRecord6(payload) && Array.isArray(payload.models) ? payload.models : [];
+  const models = isRecord7(payload) && Array.isArray(payload.models) ? payload.models : [];
   for (const item of models) {
-    if (!isRecord6(item)) {
+    if (!isRecord7(item)) {
       continue;
     }
     const sourceRecords = Array.isArray(item.sourceRecords) ? item.sourceRecords : [];
     for (const sourceRecord of sourceRecords) {
-      if (!isRecord6(sourceRecord)) {
+      if (!isRecord7(sourceRecord)) {
         continue;
       }
       if (!catalogModelCanRouteText(item, sourceRecord)) {
@@ -37707,9 +38643,9 @@ function createMutableCatalogProviderEntry(provider) {
   };
 }
 function providerModelMetadataFromCatalog(modelEntry, sourceRecord, provider, model) {
-  const limits = isRecord6(modelEntry.limits) ? modelEntry.limits : {};
+  const limits = isRecord7(modelEntry.limits) ? modelEntry.limits : {};
   const contextWindow = maxPositiveInteger(limits.contextTokens, limits.inputTokens, limits.maxTokens);
-  const capabilities = isRecord6(modelEntry.capabilities) ? modelEntry.capabilities : {};
+  const capabilities = isRecord7(modelEntry.capabilities) ? modelEntry.capabilities : {};
   const imageInput = booleanValue(capabilities.imageInput);
   const webSearch = booleanValue(capabilities.webSearch);
   const supportedReasoningLevels = catalogReasoningLevels(sourceRecord, capabilities);
@@ -37730,11 +38666,11 @@ function providerModelMetadataFromCatalog(modelEntry, sourceRecord, provider, mo
   return Object.keys(metadata).length > 0 ? metadata : void 0;
 }
 function catalogReasoningLevels(sourceRecord, capabilities) {
-  const sourceMetadata = isRecord6(sourceRecord.metadata) ? sourceRecord.metadata : {};
+  const sourceMetadata = isRecord7(sourceRecord.metadata) ? sourceRecord.metadata : {};
   const reasoningOptions = Array.isArray(sourceMetadata.reasoningOptions) ? sourceMetadata.reasoningOptions : [];
   const allowed = /* @__PURE__ */ new Set(["low", "medium", "high", "xhigh", "max", "ultra"]);
   const efforts = uniqueStrings8(reasoningOptions.flatMap(
-    (option) => isRecord6(option) && stringValue3(option.type).toLowerCase() === "effort" ? stringListValue2(option.values).map((effort) => effort.toLowerCase()) : []
+    (option) => isRecord7(option) && stringValue3(option.type).toLowerCase() === "effort" ? stringListValue2(option.values).map((effort) => effort.toLowerCase()) : []
   )).filter((effort) => allowed.has(effort));
   const inferred = efforts.length > 0 ? efforts : [
     booleanValue(capabilities.lowReasoningEffort) ? "low" : "",
@@ -37751,8 +38687,8 @@ function reasoningEffortDescription(effort) {
   return effort.slice(0, 1).toUpperCase() + effort.slice(1);
 }
 function providerModelPricingFromCatalog(modelEntry, provider, model) {
-  const pricing = isRecord6(modelEntry.pricing) ? modelEntry.pricing : {};
-  const offers = Array.isArray(pricing.offers) ? pricing.offers.filter(isRecord6) : [];
+  const pricing = isRecord7(modelEntry.pricing) ? modelEntry.pricing : {};
+  const offers = Array.isArray(pricing.offers) ? pricing.offers.filter(isRecord7) : [];
   const normalizedProvider = normalizeProviderToken(provider);
   const normalizedModel = normalizeModelToken(model);
   const matchingOffers = offers.map((candidate, index) => ({
@@ -37779,8 +38715,8 @@ function providerModelPricingFromCatalog(modelEntry, provider, model) {
   return Object.keys(result).length > 0 ? result : void 0;
 }
 function providerModelPricingFromOffer(offer) {
-  const per1MTokens = isRecord6(offer.per1MTokens) ? offer.per1MTokens : {};
-  const extra = isRecord6(offer.extra) ? offer.extra : {};
+  const per1MTokens = isRecord7(offer.per1MTokens) ? offer.per1MTokens : {};
+  const extra = isRecord7(offer.extra) ? offer.extra : {};
   const sourceUnit = stringValue3(offer.sourceUnit);
   const cacheWriteLegacy = nonNegativeNumber(per1MTokens.cacheWrite);
   const cacheWrite5m = nonNegativeNumber(per1MTokens.cacheWrite5m) ?? cacheWriteLegacy;
@@ -37844,7 +38780,7 @@ function catalogModelCanRouteText(modelEntry, sourceRecord) {
   if (/embedding|image|audio|speech|transcription|moderation|rerank/.test(mode)) {
     return false;
   }
-  const modalities = isRecord6(modelEntry.modalities) ? modelEntry.modalities : void 0;
+  const modalities = isRecord7(modelEntry.modalities) ? modelEntry.modalities : void 0;
   const output = stringListValue2(modalities?.output).map((item) => item.toLowerCase());
   return output.length === 0 || output.includes("text");
 }
@@ -38035,7 +38971,7 @@ function addSetValue(values, value) {
     values.add(value);
   }
 }
-function isRecord6(value) {
+function isRecord7(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 function booleanValue(value) {
@@ -38072,10 +39008,12 @@ var managedProviderStart = "# BEGIN CCR managed Codex provider";
 var managedProviderEnd = "# END CCR managed Codex provider";
 var managedToolHubMcpStart = "# BEGIN CCR managed ToolHub MCP";
 var managedToolHubMcpEnd = "# END CCR managed ToolHub MCP";
+var managedContextArchiveMcpStart = "# BEGIN CCR managed Context Archive MCP";
+var managedContextArchiveMcpEnd = "# END CCR managed Context Archive MCP";
 var managedConfiguredModelPrefix = "# CCR configured model = ";
 var originalBackupSuffix3 = ".ccr-original";
 var originalMissingSuffix3 = ".ccr-original-missing";
-var globalProfileTakeoverFile = import_node_path16.default.join(CONFIGDIR, "global-profile-takeover.json");
+var globalProfileTakeoverFile = import_node_path17.default.join(CONFIGDIR, "global-profile-takeover.json");
 var fallbackClientToken = "ccr-local";
 var privateDirMode3 = 448;
 var privateExecutableMode = 448;
@@ -38143,7 +39081,7 @@ function cleanupManagedClaudeCodeToolHubArtifacts(profiles, options) {
       continue;
     }
     try {
-      (0, import_node_fs12.rmSync)(file, { force: true });
+      (0, import_node_fs13.rmSync)(file, { force: true });
       changed = true;
     } catch (error) {
       errors.push(`${file}: ${formatError3(error)}`);
@@ -38168,10 +39106,10 @@ function managedClaudeCodeSettingsFiles() {
   return managedClaudeCodeGeneratedFiles("settings.json");
 }
 function managedClaudeCodeGeneratedFiles(fileName) {
-  const profilesDir = import_node_path16.default.join(CONFIGDIR, "profiles");
+  const profilesDir = import_node_path17.default.join(CONFIGDIR, "profiles");
   let entries;
   try {
-    entries = (0, import_node_fs12.readdirSync)(profilesDir, { withFileTypes: true });
+    entries = (0, import_node_fs13.readdirSync)(profilesDir, { withFileTypes: true });
   } catch {
     return [];
   }
@@ -38180,12 +39118,12 @@ function managedClaudeCodeGeneratedFiles(fileName) {
     if (!entry.isDirectory()) {
       continue;
     }
-    const profileDir = import_node_path16.default.join(profilesDir, entry.name);
+    const profileDir = import_node_path17.default.join(profilesDir, entry.name);
     for (const file of [
-      import_node_path16.default.join(profileDir, "claude", fileName),
-      import_node_path16.default.join(profileDir, "custom", "claude", fileName)
+      import_node_path17.default.join(profileDir, "claude", fileName),
+      import_node_path17.default.join(profileDir, "custom", "claude", fileName)
     ]) {
-      if ((0, import_node_fs12.existsSync)(file)) {
+      if ((0, import_node_fs13.existsSync)(file)) {
         files.push(file);
       }
     }
@@ -38193,12 +39131,12 @@ function managedClaudeCodeGeneratedFiles(fileName) {
   return files;
 }
 function normalizedFileKey(file) {
-  const normalized = import_node_path16.default.resolve(file);
+  const normalized = import_node_path17.default.resolve(file);
   return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 function cleanupClaudeCodeToolHubSettingsFile(file, options) {
   const settings = readJsonObject2(file);
-  const env = isRecord7(settings.env) ? { ...settings.env } : {};
+  const env = isRecord8(settings.env) ? { ...settings.env } : {};
   if (!deleteClaudeCodeToolHubEnv(env)) {
     return { changed: false };
   }
@@ -38221,8 +39159,8 @@ function cleanupClaudeCodeToolHubArtifacts(profile) {
   try {
     let changed = false;
     const mcpConfigFile = claudeCodeToolHubMcpConfigFile(profile);
-    if ((0, import_node_fs12.existsSync)(mcpConfigFile)) {
-      (0, import_node_fs12.rmSync)(mcpConfigFile, { force: true });
+    if ((0, import_node_fs13.existsSync)(mcpConfigFile)) {
+      (0, import_node_fs13.rmSync)(mcpConfigFile, { force: true });
       changed = true;
     }
     changed = cleanupClaudeCodeToolHubSettingsFile(resolveClaudeCodeSettingsFile(profile), { backup: true }).changed || changed;
@@ -38316,15 +39254,17 @@ function applyCodexProfile(config, profile, token, appliedAt) {
     const providerId = sanitizeCodexProviderId(profile.providerId || "") || "claude-code-router";
     const providerName = profile.providerName?.trim() || "Claude Code Router";
     const model = normalizeClientModel3(profile.model) || defaultClientModel3(config);
-    const source = (0, import_node_fs12.existsSync)(configFile) ? (0, import_node_fs12.readFileSync)(configFile, "utf8") : "";
+    const source = (0, import_node_fs13.existsSync)(configFile) ? (0, import_node_fs13.readFileSync)(configFile, "utf8") : "";
     const configFormat = normalizeCodexConfigFormat(profile.configFormat);
     const modelCatalogFile = codexModelCatalogFile(configFile);
     const modelCatalogResult = writeFileWithBackup(modelCatalogFile, codexModelCatalogJson(config, model));
     const appModelCatalogResult = writeCodexCompatibleAppModelCatalog(CONFIGDIR, { ...profile, model }, config);
     const showAllSessions = profile.agent === "zcode" ? false : Boolean(profile.showAllSessions);
     const toolHubMcpResult = writeCodexToolHubMcpRuntimeConfig(config, token);
+    const contextArchiveMcp = profile.agent === "codex" ? codexContextArchiveMcpConfig(config, profile, token) : void 0;
     const nextConfig = buildCodexConfigToml(source, {
       baseUrl: endpoint,
+      contextArchiveMcp,
       modelCatalogFile,
       configFormat,
       model,
@@ -38353,6 +39293,7 @@ function applyCodexProfile(config, profile, token, appliedAt) {
       modelCatalogFile ? `catalog ${modelCatalogFile}` : "",
       appModelCatalogResult.file ? `app catalog ${appModelCatalogResult.file}` : "",
       toolHubMcpResult.file ? `toolhub runtime ${toolHubMcpResult.file}` : "",
+      contextArchiveMcp ? "context archive MCP" : "",
       separateProfileResult?.file ? `profile ${separateProfileResult.file}` : "",
       middlewareResult?.file ? `middleware ${middlewareResult.file}` : ""
     ].filter(Boolean);
@@ -38562,24 +39503,24 @@ function generateProfileApiKey() {
   return `ccr-profile-${randomBase64Url(24)}`;
 }
 function randomBase64Url(byteLength) {
-  return (0, import_node_crypto2.randomBytes)(byteLength).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  return (0, import_node_crypto3.randomBytes)(byteLength).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 function profilePath(profile) {
   return profile.agent === "claude-code" ? resolveClaudeCodeSettingsFile(profile) : profile.agent === "grok" ? grokWrapperPath(profile) : profile.agent === "kimi" ? kimiWrapperPath(profile) : profile.agent === "opencode" ? resolveOpenCodeConfigFile(CONFIGDIR, profile) : resolveCodexConfigFile2(profile);
 }
 function resolveClaudeCodeSettingsFile(profile) {
   if (isGeneratedProfileScope2(profile.scope)) {
-    return import_node_path16.default.join(ccrManagedProfileDir2(profile), "claude", "settings.json");
+    return import_node_path17.default.join(ccrManagedProfileDir2(profile), "claude", "settings.json");
   }
   return resolveUserPath5(profile.settingsFile || "~/.claude/settings.json");
 }
 function claudeCodeToolHubMcpConfigFile(profile) {
-  return import_node_path16.default.join(ccrManagedProfileDir2(profile), "claude", "toolhub-mcp.json");
+  return import_node_path17.default.join(ccrManagedProfileDir2(profile), "claude", "toolhub-mcp.json");
 }
 function writeClaudeCodeToolHubMcpConfig(config, profile, token) {
   const file = claudeCodeToolHubMcpConfigFile(profile);
-  const entryPath = import_node_path16.default.join(CONFIGDIR, "bin", TOOL_HUB_MCP_RUNTIME_FILE_NAME);
-  const mcpConfig = toolHubClaudeCodeMcpConfig(config, {
+  const entryPath = import_node_path17.default.join(CONFIGDIR, "bin", TOOL_HUB_MCP_RUNTIME_FILE_NAME);
+  const toolHubMcpConfig = toolHubClaudeCodeMcpConfig(config, {
     entryPath,
     resolver: {
       apiKey: token,
@@ -38587,20 +39528,65 @@ function writeClaudeCodeToolHubMcpConfig(config, profile, token) {
       model: toolHubResolverModel(config)
     }
   });
+  const contextArchiveMcpConfig = claudeCodeContextArchiveMcpConfig(config, profile, token);
+  const mcpServers = {
+    ...toolHubMcpConfig?.mcpServers ?? {},
+    ...contextArchiveMcpConfig ? { [CONTEXT_ARCHIVE_MCP_SERVER_NAME]: contextArchiveMcpConfig } : {}
+  };
+  const mcpConfig = Object.keys(mcpServers).length > 0 ? { mcpServers } : void 0;
   if (!mcpConfig) {
-    if ((0, import_node_fs12.existsSync)(file)) {
-      (0, import_node_fs12.rmSync)(file, { force: true });
+    if ((0, import_node_fs13.existsSync)(file)) {
+      (0, import_node_fs13.rmSync)(file, { force: true });
       return { changed: true };
     }
     return { changed: false };
   }
-  const runtimeResult = ensureToolHubMcpRuntimeFile(entryPath);
+  const runtimeResult = toolHubMcpConfig ? ensureToolHubMcpRuntimeFile(entryPath) : { changed: false };
   const writeResult = writeGeneratedFileIfChanged(file, `${JSON.stringify(mcpConfig, null, 2)}
 `, { mode: privateFileMode3 });
   return { changed: runtimeResult.changed || writeResult.changed, file };
 }
+function claudeCodeContextArchiveMcpConfig(config, profile, token) {
+  const contextArchiveConfig = contextArchiveConfigForProfile(config, profile);
+  if (!contextArchiveConfig) {
+    return void 0;
+  }
+  const server = contextArchiveMcpServer(contextArchiveConfig, gatewayEndpoint4(config), token);
+  if (!server || !("url" in server)) {
+    return void 0;
+  }
+  const headers = {
+    ...server.headers ?? {},
+    ...token ? { Authorization: `Bearer ${token}` } : {}
+  };
+  return {
+    ...Object.keys(headers).length > 0 ? { headers } : {},
+    type: "http",
+    url: server.url
+  };
+}
+function codexContextArchiveMcpConfig(config, profile, token) {
+  const contextArchiveConfig = contextArchiveConfigForProfile(config, profile);
+  if (!contextArchiveConfig) {
+    return void 0;
+  }
+  const server = contextArchiveMcpServer(contextArchiveConfig, gatewayEndpoint4(config), token);
+  if (!server || !("url" in server)) {
+    return void 0;
+  }
+  const headers = {
+    ...server.headers ?? {},
+    ...token ? { Authorization: `Bearer ${token}` } : {}
+  };
+  return {
+    headers,
+    requestTimeoutMs: server.requestTimeoutMs,
+    startupTimeoutMs: server.startupTimeoutMs,
+    url: server.url
+  };
+}
 function writeCodexToolHubMcpRuntimeConfig(config, token) {
-  const entryPath = import_node_path16.default.join(CONFIGDIR, "bin", TOOL_HUB_MCP_RUNTIME_FILE_NAME);
+  const entryPath = import_node_path17.default.join(CONFIGDIR, "bin", TOOL_HUB_MCP_RUNTIME_FILE_NAME);
   const runtime = toolHubMcpRuntimeConfig(config, void 0, {
     entryPath,
     resolver: {
@@ -38620,35 +39606,35 @@ function writeCodexToolHubMcpRuntimeConfig(config, token) {
   };
 }
 function ensureToolHubMcpRuntimeFile(file) {
-  const source = bundledToolHubMcpEntryPathCandidates().find((candidate) => (0, import_node_fs12.existsSync)(candidate));
+  const source = bundledToolHubMcpEntryPathCandidates().find((candidate) => (0, import_node_fs13.existsSync)(candidate));
   if (!source) {
     throw new Error(`ToolHub MCP runtime was not found. Rebuild or reinstall CCR and try again. Checked: ${bundledToolHubMcpEntryPathCandidates().join(", ")}`);
   }
-  return writeGeneratedFileIfChanged(file, (0, import_node_fs12.readFileSync)(source, "utf8"), { mode: publicExecutableMode });
+  return writeGeneratedFileIfChanged(file, (0, import_node_fs13.readFileSync)(source, "utf8"), { mode: publicExecutableMode });
 }
 function resolveCodexConfigFile2(profile) {
   if (profile.agent === "zcode") {
     return resolveZcodeConfigFile(profile);
   }
   if (isGeneratedProfileScope2(profile.scope)) {
-    return import_node_path16.default.join(ccrManagedProfileDir2(profile), codexConfigSubdir2(profile.agent), "config.toml");
+    return import_node_path17.default.join(ccrManagedProfileDir2(profile), codexConfigSubdir2(profile.agent), "config.toml");
   }
   const codexHome = profile.codexHome?.trim();
   if (codexHome) {
-    return import_node_path16.default.join(resolveUserPath5(codexHome), "config.toml");
+    return import_node_path17.default.join(resolveUserPath5(codexHome), "config.toml");
   }
   return resolveUserPath5(profile.configFile || defaultCodexConfigFile2(profile.agent));
 }
 function codexModelCatalogFile(configFile) {
-  return import_node_path16.default.join(import_node_path16.default.dirname(configFile), "ccr-model-catalog.json");
+  return import_node_path17.default.join(import_node_path17.default.dirname(configFile), "ccr-model-catalog.json");
 }
 function zcodeMiddlewareModelCatalogFile(configFile) {
-  return import_node_path16.default.join(import_node_path16.default.dirname(configFile), "ccr-zcode-middleware-model-catalog.json");
+  return import_node_path17.default.join(import_node_path17.default.dirname(configFile), "ccr-zcode-middleware-model-catalog.json");
 }
 function ccrManagedProfileDir2(profile) {
   const slug = sanitizeProfilePathSegment2(profile.id || profile.name || profile.agent);
-  const baseDir = import_node_path16.default.join(CONFIGDIR, "profiles", slug || "profile");
-  return profile.scope === "custom" ? import_node_path16.default.join(baseDir, "custom") : baseDir;
+  const baseDir = import_node_path17.default.join(CONFIGDIR, "profiles", slug || "profile");
+  return profile.scope === "custom" ? import_node_path17.default.join(baseDir, "custom") : baseDir;
 }
 function buildCodexConfigToml(source, values) {
   let content = removeManagedMarkerLines(source, [
@@ -38657,10 +39643,13 @@ function buildCodexConfigToml(source, values) {
     managedProviderStart,
     managedProviderEnd,
     managedToolHubMcpStart,
-    managedToolHubMcpEnd
+    managedToolHubMcpEnd,
+    managedContextArchiveMcpStart,
+    managedContextArchiveMcpEnd
   ]);
   content = removeCodexProviderTable(content, values.providerId);
   content = removeCodexMcpServerTable(content, TOOL_HUB_MCP_SERVER_NAME);
+  content = removeCodexMcpServerTable(content, CONTEXT_ARCHIVE_MCP_SERVER_NAME);
   if (values.configFormat === "separate_profile_files") {
     content = removeCodexProfileTable(content, values.providerId);
   }
@@ -38695,7 +39684,8 @@ function buildCodexConfigToml(source, values) {
     ""
   ].join("\n");
   const toolHubMcpBlock = buildCodexToolHubMcpBlock(values.toolHubMcp);
-  return `${rootBlock}${trimLeadingBlankLines(cleanedRoot)}${restSource}${providerBlock}${toolHubMcpBlock}`.replace(/\n{4,}/g, "\n\n\n");
+  const contextArchiveMcpBlock = buildCodexContextArchiveMcpBlock(values.contextArchiveMcp);
+  return `${rootBlock}${trimLeadingBlankLines(cleanedRoot)}${restSource}${providerBlock}${toolHubMcpBlock}${contextArchiveMcpBlock}`.replace(/\n{4,}/g, "\n\n\n");
 }
 function buildCodexToolHubMcpBlock(runtime) {
   if (!runtime) {
@@ -38715,12 +39705,29 @@ function buildCodexToolHubMcpBlock(runtime) {
     ""
   ].join("\n");
 }
+function buildCodexContextArchiveMcpBlock(config) {
+  if (!config) {
+    return "";
+  }
+  const serverTable = `mcp_servers.${tomlKey(CONTEXT_ARCHIVE_MCP_SERVER_NAME)}`;
+  return [
+    "",
+    managedContextArchiveMcpStart,
+    `[${serverTable}]`,
+    `url = ${tomlString(config.url)}`,
+    ...Object.keys(config.headers).length > 0 ? [`http_headers = ${tomlInlineStringTable(config.headers)}`] : [],
+    `startup_timeout_sec = ${Math.max(1, Math.ceil(config.startupTimeoutMs / 1e3))}`,
+    `tool_timeout_sec = ${Math.max(1, Math.ceil(config.requestTimeoutMs / 1e3))}`,
+    managedContextArchiveMcpEnd,
+    ""
+  ].join("\n");
+}
 function maybeWriteSeparateCodexProfileFile(configFile, source, values) {
   if (values.configFormat !== "separate_profile_files") {
     return void 0;
   }
-  const file = import_node_path16.default.join(import_node_path16.default.dirname(configFile), `${values.providerId}.config.toml`);
-  const previous = (0, import_node_fs12.existsSync)(file) ? (0, import_node_fs12.readFileSync)(file, "utf8") : legacyCodexProfileTableBody(source, values.providerId);
+  const file = import_node_path17.default.join(import_node_path17.default.dirname(configFile), `${values.providerId}.config.toml`);
+  const previous = (0, import_node_fs13.existsSync)(file) ? (0, import_node_fs13.readFileSync)(file, "utf8") : legacyCodexProfileTableBody(source, values.providerId);
   const next = buildSeparateCodexProfileToml(previous, values);
   const writeResult = writeFileWithBackup(file, next, { mode: privateFileMode3 });
   return {
@@ -38748,9 +39755,9 @@ function buildSeparateCodexProfileToml(source, values) {
   return ensureTrailingNewline(`${rootBlock}${trimLeadingBlankLines(cleanedRoot)}${restSource}`.replace(/\n{4,}/g, "\n\n\n"));
 }
 function writeClaudeCodeApiKeyHelper(profile, token) {
-  const binDir = import_node_path16.default.join(CONFIGDIR, "bin");
-  (0, import_node_fs12.mkdirSync)(binDir, { mode: privateDirMode3, recursive: true });
-  const file = import_node_path16.default.join(binDir, claudeCodeApiKeyHelperFilename(profile));
+  const binDir = import_node_path17.default.join(CONFIGDIR, "bin");
+  (0, import_node_fs13.mkdirSync)(binDir, { mode: privateDirMode3, recursive: true });
+  const file = import_node_path17.default.join(binDir, claudeCodeApiKeyHelperFilename(profile));
   const content = process.platform === "win32" ? claudeCodeApiKeyHelperCmdScript(token) : claudeCodeApiKeyHelperShellScript(token);
   const writeResult = writeGeneratedFileIfChanged(file, content, { mode: privateExecutableMode });
   return {
@@ -38777,11 +39784,11 @@ function claudeCodeApiKeyHelperCmdScript(token) {
   ].join("\r\n");
 }
 function writeClaudeCodeWrapper(config, profile, apiKeyHelperFile, mcpConfigFile) {
-  const binDir = import_node_path16.default.join(CONFIGDIR, "bin");
-  (0, import_node_fs12.mkdirSync)(binDir, { mode: privateDirMode3, recursive: true });
-  const runtimeFile = import_node_path16.default.join(binDir, codexMiddlewareRuntimeFilename());
+  const binDir = import_node_path17.default.join(CONFIGDIR, "bin");
+  (0, import_node_fs13.mkdirSync)(binDir, { mode: privateDirMode3, recursive: true });
+  const runtimeFile = import_node_path17.default.join(binDir, codexMiddlewareRuntimeFilename());
   const runtimeResult = writeGeneratedFileIfChanged(runtimeFile, codexCliMiddlewareRuntimeScript(), { mode: publicExecutableMode });
-  const file = import_node_path16.default.join(binDir, claudeCodeWrapperFilename(profile));
+  const file = import_node_path17.default.join(binDir, claudeCodeWrapperFilename(profile));
   const content = process.platform === "win32" ? claudeCodeWrapperCmdScript(config, profile, runtimeFile, apiKeyHelperFile, mcpConfigFile) : claudeCodeWrapperShellScript(config, profile, runtimeFile, apiKeyHelperFile, mcpConfigFile);
   const writeResult = writeGeneratedFileIfChanged(file, content, { mode: privateExecutableMode });
   return {
@@ -38797,7 +39804,7 @@ function claudeCodeWrapperShellScript(config, profile, runtimeFile, apiKeyHelper
   const realClaude = profile.env?.CCR_CLAUDE_CODE_BIN?.trim() || "claude";
   const surface = normalizeProfileSurface2(profile.surface);
   const remoteEndpoint = `${gatewayEndpoint4(config)}/__ccr/remote`;
-  const settingsDir = import_node_path16.default.dirname(resolveClaudeCodeSettingsFile(profile));
+  const settingsDir = import_node_path17.default.dirname(resolveClaudeCodeSettingsFile(profile));
   const envExports = Object.entries(profileEnv(profile)).filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN").map(([key, value]) => `export ${key}=${shellQuote(value)}`);
   const botEnvExports = shellBotGatewayEnvExports(config, profile);
   return [
@@ -38826,7 +39833,7 @@ function claudeCodeWrapperCmdScript(config, profile, runtimeFile, apiKeyHelperFi
   const realClaude = profile.env?.CCR_CLAUDE_CODE_BIN?.trim() || "claude";
   const surface = normalizeProfileSurface2(profile.surface);
   const remoteEndpoint = `${gatewayEndpoint4(config)}/__ccr/remote`;
-  const settingsDir = import_node_path16.default.dirname(resolveClaudeCodeSettingsFile(profile));
+  const settingsDir = import_node_path17.default.dirname(resolveClaudeCodeSettingsFile(profile));
   const envExports = Object.entries(profileEnv(profile)).filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN").map(([key, value]) => cmdSetLine(key, value));
   const botEnvExports = cmdBotGatewayEnvExports(config, profile);
   return [
@@ -38850,15 +39857,15 @@ function claudeCodeWrapperCmdScript(config, profile, runtimeFile, apiKeyHelperFi
   ].join("\r\n");
 }
 function writeOpenCodeWrapper(profile, configFile, inlineConfig) {
-  const binDir = import_node_path16.default.join(CONFIGDIR, "bin");
-  (0, import_node_fs12.mkdirSync)(binDir, { mode: privateDirMode3, recursive: true });
+  const binDir = import_node_path17.default.join(CONFIGDIR, "bin");
+  (0, import_node_fs13.mkdirSync)(binDir, { mode: privateDirMode3, recursive: true });
   const file = openCodeWrapperPath(profile);
   const content = process.platform === "win32" ? openCodeWrapperCmdScript(profile, configFile, inlineConfig) : openCodeWrapperShellScript(profile, configFile, inlineConfig);
   const writeResult = writeGeneratedFileIfChanged(file, content, { mode: privateExecutableMode });
   return { changed: writeResult.changed, file };
 }
 function openCodeWrapperPath(profile) {
-  return import_node_path16.default.join(CONFIGDIR, "bin", openCodeWrapperFilename(profile));
+  return import_node_path17.default.join(CONFIGDIR, "bin", openCodeWrapperFilename(profile));
 }
 function openCodeWrapperFilename(profile) {
   const slug = sanitizeProfilePathSegment2(profile.id || profile.name || profile.agent).toLowerCase() || "opencode";
@@ -38897,8 +39904,8 @@ function isOpenCodeManagedEnvKey(key) {
   return key === "CCR_OPENCODE_BIN" || key === "OPENCODE_BIN" || key === "OPENCODE_CLIENT" || key === "OPENCODE_CONFIG" || key === "OPENCODE_CONFIG_CONTENT" || key === "CCR_PROFILE_SURFACE";
 }
 function writeKimiWrapper(config, profile, token, model, models) {
-  const binDir = import_node_path16.default.join(CONFIGDIR, "bin");
-  (0, import_node_fs12.mkdirSync)(binDir, { mode: privateDirMode3, recursive: true });
+  const binDir = import_node_path17.default.join(CONFIGDIR, "bin");
+  (0, import_node_fs13.mkdirSync)(binDir, { mode: privateDirMode3, recursive: true });
   const profileHome = ensureKimiProfileHome(profile);
   const configResult = writeKimiProfileConfig(config, profile, token, model, models, profileHome);
   const file = kimiWrapperPath(profile);
@@ -38907,7 +39914,7 @@ function writeKimiWrapper(config, profile, token, model, models) {
   return { changed: configResult.changed || writeResult.changed, file };
 }
 function kimiWrapperPath(profile) {
-  return import_node_path16.default.join(CONFIGDIR, "bin", kimiWrapperFilename(profile));
+  return import_node_path17.default.join(CONFIGDIR, "bin", kimiWrapperFilename(profile));
 }
 function kimiWrapperFilename(profile) {
   const slug = sanitizeProfilePathSegment2(profile.id || profile.name || profile.agent).toLowerCase() || "kimi";
@@ -38972,10 +39979,10 @@ function kimiProfileModels(config, profile) {
   return uniqueOrderedStrings([defaultModel, ...available]);
 }
 function writeKimiProfileConfig(config, profile, token, defaultModel, models, profileHome) {
-  const sourceConfig = import_node_path16.default.join(resolveKimiSourceHome(profile), "config.toml");
-  const source = (0, import_node_fs12.existsSync)(sourceConfig) ? (0, import_node_fs12.readFileSync)(sourceConfig, "utf8") : "";
+  const sourceConfig = import_node_path17.default.join(resolveKimiSourceHome(profile), "config.toml");
+  const source = (0, import_node_fs13.existsSync)(sourceConfig) ? (0, import_node_fs13.readFileSync)(sourceConfig, "utf8") : "";
   const content = buildKimiProfileConfigToml(source, config, profile, token, defaultModel, models);
-  const file = import_node_path16.default.join(profileHome, "config.toml");
+  const file = import_node_path17.default.join(profileHome, "config.toml");
   const result = writeGeneratedFileIfChanged(file, content, { mode: privateFileMode3 });
   return { changed: result.changed, file };
 }
@@ -39061,7 +40068,7 @@ function kimiProfileCustomHeaderEntries(profile) {
 function kimiProfileModelMetadata(config, selector) {
   const attribution = resolveUsageModelAttribution(config, selector);
   const provider = config.Providers.find(
-    (candidate) => candidate.name.toLowerCase() === attribution.provider?.toLowerCase()
+    (candidate) => isGatewayProviderEnabled(candidate) && candidate.name.toLowerCase() === attribution.provider?.toLowerCase()
   );
   const model = attribution.model?.trim() || selector;
   const metadata = providerModelMetadataForKimi(provider, model);
@@ -39081,7 +40088,7 @@ function kimiProfileModelMetadata(config, selector) {
   const contextWindow = configuredContextWindow ?? (catalogContextWindow > 0 ? catalogContextWindow : 262144);
   const reasoning = kimiProfileReasoningMetadata(metadata, catalogEntries[0]);
   const logicalProvider = config.Providers.find(
-    (candidate) => selector.toLowerCase().startsWith(`${candidate.name}/`.toLowerCase())
+    (candidate) => isGatewayProviderEnabled(candidate) && selector.toLowerCase().startsWith(`${candidate.name}/`.toLowerCase())
   );
   if (!logicalProvider) {
     return { contextWindow, displayName: selector, ...reasoning };
@@ -39126,10 +40133,10 @@ function kimiPositiveInteger(value) {
 }
 function ensureKimiProfileHome(profile) {
   const slug = sanitizeProfilePathSegment2(profile.id || profile.name || profile.agent).toLowerCase() || "kimi";
-  const profileHome = import_node_path16.default.join(CONFIGDIR, "profiles", slug, "kimi");
+  const profileHome = import_node_path17.default.join(CONFIGDIR, "profiles", slug, "kimi");
   const sourceHome = resolveKimiSourceHome(profile);
-  (0, import_node_fs12.mkdirSync)(profileHome, { mode: privateDirMode3, recursive: true });
-  if (import_node_path16.default.resolve(sourceHome) === import_node_path16.default.resolve(profileHome)) {
+  (0, import_node_fs13.mkdirSync)(profileHome, { mode: privateDirMode3, recursive: true });
+  if (import_node_path17.default.resolve(sourceHome) === import_node_path17.default.resolve(profileHome)) {
     return profileHome;
   }
   for (const entry of [
@@ -39147,7 +40154,7 @@ function ensureKimiProfileHome(profile) {
     "user-history",
     "device_id"
   ]) {
-    linkProfileHomeEntry(import_node_path16.default.join(sourceHome, entry), import_node_path16.default.join(profileHome, entry));
+    linkProfileHomeEntry(import_node_path17.default.join(sourceHome, entry), import_node_path17.default.join(profileHome, entry));
   }
   return profileHome;
 }
@@ -39157,11 +40164,11 @@ function resolveKimiSourceHome(profile) {
     return resolveUserPath5(explicitRoot);
   }
   const internalHome = process.env.CCR_INTERNAL_HOME_DIR?.trim();
-  return internalHome ? import_node_path16.default.join(internalHome, ".kimi-code") : resolveUserPath5("~/.kimi-code");
+  return internalHome ? import_node_path17.default.join(internalHome, ".kimi-code") : resolveUserPath5("~/.kimi-code");
 }
 function writeGrokWrapper(config, profile, token, model) {
-  const binDir = import_node_path16.default.join(CONFIGDIR, "bin");
-  (0, import_node_fs12.mkdirSync)(binDir, { mode: privateDirMode3, recursive: true });
+  const binDir = import_node_path17.default.join(CONFIGDIR, "bin");
+  (0, import_node_fs13.mkdirSync)(binDir, { mode: privateDirMode3, recursive: true });
   const profileHome = ensureGrokProfileHome(profile);
   const file = grokWrapperPath(profile);
   const content = process.platform === "win32" ? grokWrapperCmdScript(config, profile, token, model, profileHome) : grokWrapperShellScript(config, profile, token, model, profileHome);
@@ -39172,7 +40179,7 @@ function writeGrokWrapper(config, profile, token, model) {
   };
 }
 function grokWrapperPath(profile) {
-  return import_node_path16.default.join(CONFIGDIR, "bin", grokWrapperFilename(profile));
+  return import_node_path17.default.join(CONFIGDIR, "bin", grokWrapperFilename(profile));
 }
 function grokWrapperFilename(profile) {
   const slug = sanitizeProfilePathSegment2(profile.id || profile.name || profile.agent).toLowerCase() || "grok";
@@ -39229,15 +40236,15 @@ function isGrokManagedEnvKey(key) {
 }
 function ensureGrokProfileHome(profile) {
   const slug = sanitizeProfilePathSegment2(profile.id || profile.name || profile.agent).toLowerCase() || "grok";
-  const profileHome = import_node_path16.default.join(CONFIGDIR, "profiles", slug, "grok");
+  const profileHome = import_node_path17.default.join(CONFIGDIR, "profiles", slug, "grok");
   const sourceHome = resolveGrokSourceHome(profile);
-  (0, import_node_fs12.mkdirSync)(profileHome, { mode: privateDirMode3, recursive: true });
-  if (import_node_path16.default.resolve(sourceHome) === import_node_path16.default.resolve(profileHome)) {
+  (0, import_node_fs13.mkdirSync)(profileHome, { mode: privateDirMode3, recursive: true });
+  if (import_node_path17.default.resolve(sourceHome) === import_node_path17.default.resolve(profileHome)) {
     return profileHome;
   }
   ensureGrokProfileConfigCopy(
-    import_node_path16.default.join(sourceHome, "config.toml"),
-    import_node_path16.default.join(profileHome, "config.toml")
+    import_node_path17.default.join(sourceHome, "config.toml"),
+    import_node_path17.default.join(profileHome, "config.toml")
   );
   for (const entry of [
     "agents",
@@ -39251,7 +40258,7 @@ function ensureGrokProfileHome(profile) {
     "upload_queue",
     "worktrees.db"
   ]) {
-    linkProfileHomeEntry(import_node_path16.default.join(sourceHome, entry), import_node_path16.default.join(profileHome, entry));
+    linkProfileHomeEntry(import_node_path17.default.join(sourceHome, entry), import_node_path17.default.join(profileHome, entry));
   }
   return profileHome;
 }
@@ -39261,69 +40268,69 @@ function resolveGrokSourceHome(profile) {
     return resolveUserPath5(explicitRoot);
   }
   const internalHome = process.env.CCR_INTERNAL_HOME_DIR?.trim();
-  return internalHome ? import_node_path16.default.join(internalHome, ".grok") : resolveUserPath5("~/.grok");
+  return internalHome ? import_node_path17.default.join(internalHome, ".grok") : resolveUserPath5("~/.grok");
 }
 function ensureGrokProfileConfigCopy(source, target) {
   let targetStat;
   try {
-    targetStat = (0, import_node_fs12.lstatSync)(target);
+    targetStat = (0, import_node_fs13.lstatSync)(target);
   } catch {
     targetStat = void 0;
   }
   if (targetStat?.isSymbolicLink()) {
     let content;
     try {
-      content = (0, import_node_fs12.readFileSync)(target);
+      content = (0, import_node_fs13.readFileSync)(target);
     } catch {
-      if ((0, import_node_fs12.existsSync)(source)) {
-        content = (0, import_node_fs12.readFileSync)(source);
+      if ((0, import_node_fs13.existsSync)(source)) {
+        content = (0, import_node_fs13.readFileSync)(source);
       }
     }
-    (0, import_node_fs12.rmSync)(target, { force: true });
+    (0, import_node_fs13.rmSync)(target, { force: true });
     if (content) {
-      (0, import_node_fs12.writeFileSync)(target, content, { mode: privateFileMode3 });
-      (0, import_node_fs12.chmodSync)(target, privateFileMode3);
+      (0, import_node_fs13.writeFileSync)(target, content, { mode: privateFileMode3 });
+      (0, import_node_fs13.chmodSync)(target, privateFileMode3);
     }
     return;
   }
-  if (targetStat || !(0, import_node_fs12.existsSync)(source)) {
+  if (targetStat || !(0, import_node_fs13.existsSync)(source)) {
     return;
   }
-  (0, import_node_fs12.copyFileSync)(source, target);
-  (0, import_node_fs12.chmodSync)(target, privateFileMode3);
+  (0, import_node_fs13.copyFileSync)(source, target);
+  (0, import_node_fs13.chmodSync)(target, privateFileMode3);
 }
 function linkProfileHomeEntry(source, target) {
-  if (!(0, import_node_fs12.existsSync)(source) || pathEntryExists(target)) {
+  if (!(0, import_node_fs13.existsSync)(source) || pathEntryExists(target)) {
     return;
   }
-  const sourceStat = (0, import_node_fs12.statSync)(source);
+  const sourceStat = (0, import_node_fs13.statSync)(source);
   try {
-    (0, import_node_fs12.symlinkSync)(source, target, sourceStat.isDirectory() && process.platform === "win32" ? "junction" : void 0);
+    (0, import_node_fs13.symlinkSync)(source, target, sourceStat.isDirectory() && process.platform === "win32" ? "junction" : void 0);
   } catch {
     if (sourceStat.isFile()) {
-      (0, import_node_fs12.copyFileSync)(source, target);
-      (0, import_node_fs12.chmodSync)(target, privateFileMode3);
+      (0, import_node_fs13.copyFileSync)(source, target);
+      (0, import_node_fs13.chmodSync)(target, privateFileMode3);
     }
   }
 }
 function pathEntryExists(file) {
   try {
-    const stat = (0, import_node_fs12.lstatSync)(file);
+    const stat = (0, import_node_fs13.lstatSync)(file);
     if (!stat.isSymbolicLink()) {
       return true;
     }
-    const target = (0, import_node_fs12.readlinkSync)(file);
+    const target = (0, import_node_fs13.readlinkSync)(file);
     return Boolean(target);
   } catch {
     return false;
   }
 }
 function writeCodexCliMiddleware(config, profile, values) {
-  const binDir = import_node_path16.default.join(CONFIGDIR, "bin");
-  (0, import_node_fs12.mkdirSync)(binDir, { mode: privateDirMode3, recursive: true });
-  const runtimeFile = import_node_path16.default.join(binDir, codexMiddlewareRuntimeFilename());
+  const binDir = import_node_path17.default.join(CONFIGDIR, "bin");
+  (0, import_node_fs13.mkdirSync)(binDir, { mode: privateDirMode3, recursive: true });
+  const runtimeFile = import_node_path17.default.join(binDir, codexMiddlewareRuntimeFilename());
   const runtimeResult = writeGeneratedFileIfChanged(runtimeFile, codexCliMiddlewareRuntimeScript(), { mode: publicExecutableMode });
-  const file = import_node_path16.default.join(binDir, codexMiddlewareFilename(profile, values.providerId));
+  const file = import_node_path17.default.join(binDir, codexMiddlewareFilename(profile, values.providerId));
   const content = process.platform === "win32" ? codexMiddlewareCmdScript(config, profile, values, runtimeFile) : codexMiddlewareShellScript(config, profile, values, runtimeFile);
   const writeResult = writeGeneratedFileIfChanged(file, content, { mode: privateExecutableMode });
   return {
@@ -39634,7 +40641,11 @@ function removeCodexMcpServerTable(source, serverName) {
     `[mcp_servers.${serverName}]`,
     `[mcp_servers.${tomlQuotedKey(serverName)}]`,
     `[mcp_servers.${serverName}.env]`,
-    `[mcp_servers.${tomlQuotedKey(serverName)}.env]`
+    `[mcp_servers.${tomlQuotedKey(serverName)}.env]`,
+    `[mcp_servers.${serverName}.http_headers]`,
+    `[mcp_servers.${tomlQuotedKey(serverName)}.http_headers]`,
+    `[mcp_servers.${serverName}.env_http_headers]`,
+    `[mcp_servers.${tomlQuotedKey(serverName)}.env_http_headers]`
   ]);
   const kept = [];
   for (let index = 0; index < lines.length; index += 1) {
@@ -39704,19 +40715,19 @@ function firstTomlTableIndex(source) {
   return match?.index ?? -1;
 }
 function readJsonObject2(file) {
-  if (!(0, import_node_fs12.existsSync)(file)) {
+  if (!(0, import_node_fs13.existsSync)(file)) {
     return {};
   }
   try {
-    const parsed = JSON.parse((0, import_node_fs12.readFileSync)(file, "utf8"));
-    return isRecord7(parsed) ? parsed : {};
+    const parsed = JSON.parse((0, import_node_fs13.readFileSync)(file, "utf8"));
+    return isRecord8(parsed) ? parsed : {};
   } catch {
     return {};
   }
 }
 function writeFileWithBackup(file, content, options = {}) {
-  (0, import_node_fs12.mkdirSync)(import_node_path16.default.dirname(file), { recursive: true });
-  const previous = (0, import_node_fs12.existsSync)(file) ? (0, import_node_fs12.readFileSync)(file, "utf8") : void 0;
+  (0, import_node_fs13.mkdirSync)(import_node_path17.default.dirname(file), { recursive: true });
+  const previous = (0, import_node_fs13.existsSync)(file) ? (0, import_node_fs13.readFileSync)(file, "utf8") : void 0;
   if (previous === content) {
     chmodFileIfRequested(file, options.mode);
     return { changed: false };
@@ -39724,29 +40735,29 @@ function writeFileWithBackup(file, content, options = {}) {
   ensureOriginalSnapshot3(file, previous, options.mode);
   const backupFile = previous === void 0 ? void 0 : backupFilePath3(file);
   if (backupFile) {
-    (0, import_node_fs12.copyFileSync)(file, backupFile);
+    (0, import_node_fs13.copyFileSync)(file, backupFile);
     chmodFileIfRequested(backupFile, options.mode);
   }
-  (0, import_node_fs12.writeFileSync)(file, content, options.mode === void 0 ? "utf8" : { encoding: "utf8", mode: options.mode });
+  (0, import_node_fs13.writeFileSync)(file, content, options.mode === void 0 ? "utf8" : { encoding: "utf8", mode: options.mode });
   chmodFileIfRequested(file, options.mode);
   return { backupFile, changed: true };
 }
 function writeGeneratedFileIfChanged(file, content, options = {}) {
-  (0, import_node_fs12.mkdirSync)(import_node_path16.default.dirname(file), { recursive: true });
-  const previous = (0, import_node_fs12.existsSync)(file) ? (0, import_node_fs12.readFileSync)(file, "utf8") : void 0;
+  (0, import_node_fs13.mkdirSync)(import_node_path17.default.dirname(file), { recursive: true });
+  const previous = (0, import_node_fs13.existsSync)(file) ? (0, import_node_fs13.readFileSync)(file, "utf8") : void 0;
   if (previous === content) {
     chmodFileIfRequested(file, options.mode);
     return { changed: false };
   }
-  (0, import_node_fs12.writeFileSync)(file, content, options.mode === void 0 ? "utf8" : { encoding: "utf8", mode: options.mode });
+  (0, import_node_fs13.writeFileSync)(file, content, options.mode === void 0 ? "utf8" : { encoding: "utf8", mode: options.mode });
   chmodFileIfRequested(file, options.mode);
   return { changed: true };
 }
 function cleanupGeneratedBinBackups(configDir = CONFIGDIR) {
-  const binDir = import_node_path16.default.join(configDir, "bin");
+  const binDir = import_node_path17.default.join(configDir, "bin");
   let entries;
   try {
-    entries = (0, import_node_fs12.readdirSync)(binDir);
+    entries = (0, import_node_fs13.readdirSync)(binDir);
   } catch {
     return 0;
   }
@@ -39757,7 +40768,7 @@ function cleanupGeneratedBinBackups(configDir = CONFIGDIR) {
       continue;
     }
     try {
-      (0, import_node_fs12.rmSync)(import_node_path16.default.join(binDir, entry), { force: true });
+      (0, import_node_fs13.rmSync)(import_node_path17.default.join(binDir, entry), { force: true });
       removed += 1;
     } catch {
     }
@@ -39765,11 +40776,11 @@ function cleanupGeneratedBinBackups(configDir = CONFIGDIR) {
   return removed;
 }
 function cleanupInactiveOpenCodeWrappers(profiles) {
-  const binDir = import_node_path16.default.join(CONFIGDIR, "bin");
+  const binDir = import_node_path17.default.join(CONFIGDIR, "bin");
   const activeFiles = new Set(profiles.filter((profile) => profile.agent === "opencode" && profile.enabled).map(openCodeWrapperFilename));
   let entries;
   try {
-    entries = (0, import_node_fs12.readdirSync)(binDir);
+    entries = (0, import_node_fs13.readdirSync)(binDir);
   } catch {
     return 0;
   }
@@ -39778,7 +40789,7 @@ function cleanupInactiveOpenCodeWrappers(profiles) {
     if (!entry.startsWith("ccr-opencode-wrapper-") || activeFiles.has(entry)) {
       continue;
     }
-    (0, import_node_fs12.rmSync)(import_node_path16.default.join(binDir, entry), { force: true });
+    (0, import_node_fs13.rmSync)(import_node_path17.default.join(binDir, entry), { force: true });
     removed += 1;
   }
   return removed;
@@ -39896,8 +40907,8 @@ function restoreInactiveGlobalProfileConfigs(profiles) {
       const storageRoot = zcodeHomeFromConfigFile(configFile);
       for (const file of [
         configFile,
-        import_node_path16.default.join(storageRoot, "v2", "config.json"),
-        import_node_path16.default.join(storageRoot, "v2", "bots-model-cache.v2.json")
+        import_node_path17.default.join(storageRoot, "v2", "config.json"),
+        import_node_path17.default.join(storageRoot, "v2", "bots-model-cache.v2.json")
       ]) {
         const restoreResult = restoreGlobalConfigFile(file, {
           isManagedContent: (content) => providerIds.some((providerId) => isManagedZcodeConfigContent(content, providerId)),
@@ -39914,7 +40925,7 @@ function restoreInactiveGlobalProfileConfigs(profiles) {
 function globalCodexConfigCandidate(profile) {
   const codexHome = profile.codexHome?.trim();
   if (codexHome) {
-    return import_node_path16.default.join(resolveUserPath5(codexHome), "config.toml");
+    return import_node_path17.default.join(resolveUserPath5(codexHome), "config.toml");
   }
   return profile.configFile || "~/.codex/config.toml";
 }
@@ -39986,27 +40997,27 @@ function dedupeGlobalProfileTakeovers(records) {
 }
 function readGlobalProfileTakeoverMarker() {
   try {
-    const parsed = JSON.parse((0, import_node_fs12.readFileSync)(globalProfileTakeoverFile, "utf8"));
+    const parsed = JSON.parse((0, import_node_fs13.readFileSync)(globalProfileTakeoverFile, "utf8"));
     if (!Array.isArray(parsed.profiles)) {
       return [];
     }
     return parsed.profiles.filter(
-      (value) => isRecord7(value) && (value.agent === "claude-code" || value.agent === "codex" || value.agent === "opencode" || value.agent === "zcode") && typeof value.id === "string" && typeof value.name === "string"
+      (value) => isRecord8(value) && (value.agent === "claude-code" || value.agent === "codex" || value.agent === "opencode" || value.agent === "zcode") && typeof value.id === "string" && typeof value.name === "string"
     );
   } catch {
     return [];
   }
 }
 function writeGlobalProfileTakeoverMarker(records) {
-  (0, import_node_fs12.mkdirSync)(import_node_path16.default.dirname(globalProfileTakeoverFile), { recursive: true });
-  (0, import_node_fs12.writeFileSync)(globalProfileTakeoverFile, `${JSON.stringify({ profiles: records, version: 1 }, null, 2)}
+  (0, import_node_fs13.mkdirSync)(import_node_path17.default.dirname(globalProfileTakeoverFile), { recursive: true });
+  (0, import_node_fs13.writeFileSync)(globalProfileTakeoverFile, `${JSON.stringify({ profiles: records, version: 1 }, null, 2)}
 `, {
     encoding: "utf8",
     mode: privateFileMode3
   });
 }
 function clearGlobalProfileTakeoverMarker() {
-  (0, import_node_fs12.rmSync)(globalProfileTakeoverFile, { force: true });
+  (0, import_node_fs13.rmSync)(globalProfileTakeoverFile, { force: true });
 }
 function inactiveGlobalCleanupStatus(client, file, restoreResult) {
   return {
@@ -40054,8 +41065,8 @@ function restoreDisabledZcodeProfile(profile, configFile) {
   const storageRoot = zcodeHomeFromConfigFile(configFile);
   const files = [
     configFile,
-    import_node_path16.default.join(storageRoot, "v2", "config.json"),
-    import_node_path16.default.join(storageRoot, "v2", "bots-model-cache.v2.json")
+    import_node_path17.default.join(storageRoot, "v2", "config.json"),
+    import_node_path17.default.join(storageRoot, "v2", "bots-model-cache.v2.json")
   ];
   const results = files.map(
     (file) => restoreGlobalConfigFile(file, {
@@ -40086,7 +41097,7 @@ function disabledRestoreStatus(client, file, disabledMessage, restoreResult, pro
   };
 }
 function restoreGlobalConfigFile(file, options) {
-  const current = (0, import_node_fs12.existsSync)(file) ? (0, import_node_fs12.readFileSync)(file, "utf8") : void 0;
+  const current = (0, import_node_fs13.existsSync)(file) ? (0, import_node_fs13.readFileSync)(file, "utf8") : void 0;
   const currentManaged = current !== void 0 && options.isManagedContent(current);
   if (current !== void 0 && !currentManaged) {
     return { changed: false, file, missingBackup: false, restored: false };
@@ -40098,15 +41109,15 @@ function restoreGlobalConfigFile(file, options) {
       return { changed: false, file, missingBackup: false, restored: true };
     }
     const backupFile = current === void 0 ? void 0 : backupCurrentConfigFile(file, options.mode);
-    (0, import_node_fs12.mkdirSync)(import_node_path16.default.dirname(file), { recursive: true });
-    (0, import_node_fs12.writeFileSync)(file, snapshot.content, options.mode === void 0 ? "utf8" : { encoding: "utf8", mode: options.mode });
+    (0, import_node_fs13.mkdirSync)(import_node_path17.default.dirname(file), { recursive: true });
+    (0, import_node_fs13.writeFileSync)(file, snapshot.content, options.mode === void 0 ? "utf8" : { encoding: "utf8", mode: options.mode });
     chmodFileIfRequested(file, options.mode);
     return { backupFile, changed: true, file, missingBackup: false, restored: true };
   }
-  if ((0, import_node_fs12.existsSync)(originalMissingFilePath(file))) {
+  if ((0, import_node_fs13.existsSync)(originalMissingFilePath(file))) {
     if (currentManaged) {
       const backupFile = backupCurrentConfigFile(file, options.mode);
-      (0, import_node_fs12.rmSync)(file, { force: true });
+      (0, import_node_fs13.rmSync)(file, { force: true });
       return { backupFile, changed: true, file, missingBackup: false, restored: true };
     }
     return { changed: false, file, missingBackup: false, restored: current === void 0 };
@@ -40120,10 +41131,10 @@ function restoreGlobalConfigFile(file, options) {
 }
 function originalSnapshotCandidate(file, isManagedContent) {
   for (const candidate of [...backupFiles(file).reverse(), originalBackupFilePath(file)]) {
-    if (!(0, import_node_fs12.existsSync)(candidate)) {
+    if (!(0, import_node_fs13.existsSync)(candidate)) {
       continue;
     }
-    const content = (0, import_node_fs12.readFileSync)(candidate, "utf8");
+    const content = (0, import_node_fs13.readFileSync)(candidate, "utf8");
     if (!isManagedContent(content)) {
       return { content, file: candidate };
     }
@@ -40132,15 +41143,15 @@ function originalSnapshotCandidate(file, isManagedContent) {
 }
 function backupCurrentConfigFile(file, mode) {
   const backupFile = backupFilePath3(file);
-  (0, import_node_fs12.copyFileSync)(file, backupFile);
+  (0, import_node_fs13.copyFileSync)(file, backupFile);
   chmodFileIfRequested(backupFile, mode);
   return backupFile;
 }
 function backupFiles(file) {
-  const dir = import_node_path16.default.dirname(file);
-  const prefix = `${import_node_path16.default.basename(file)}.ccr-backup-`;
+  const dir = import_node_path17.default.dirname(file);
+  const prefix = `${import_node_path17.default.basename(file)}.ccr-backup-`;
   try {
-    return (0, import_node_fs12.readdirSync)(dir).filter((entry) => entry.startsWith(prefix)).sort().map((entry) => import_node_path16.default.join(dir, entry));
+    return (0, import_node_fs13.readdirSync)(dir).filter((entry) => entry.startsWith(prefix)).sort().map((entry) => import_node_path17.default.join(dir, entry));
   } catch {
     return [];
   }
@@ -40148,15 +41159,15 @@ function backupFiles(file) {
 function ensureOriginalSnapshot3(file, previous, mode) {
   const originalBackup = originalBackupFilePath(file);
   const originalMissing = originalMissingFilePath(file);
-  if ((0, import_node_fs12.existsSync)(originalBackup) || (0, import_node_fs12.existsSync)(originalMissing)) {
+  if ((0, import_node_fs13.existsSync)(originalBackup) || (0, import_node_fs13.existsSync)(originalMissing)) {
     return;
   }
   if (previous === void 0) {
-    (0, import_node_fs12.writeFileSync)(originalMissing, "", "utf8");
+    (0, import_node_fs13.writeFileSync)(originalMissing, "", "utf8");
     chmodFileIfRequested(originalMissing, mode);
     return;
   }
-  (0, import_node_fs12.copyFileSync)(file, originalBackup);
+  (0, import_node_fs13.copyFileSync)(file, originalBackup);
   chmodFileIfRequested(originalBackup, mode);
 }
 function chmodFileIfRequested(file, mode) {
@@ -40164,7 +41175,7 @@ function chmodFileIfRequested(file, mode) {
     return;
   }
   try {
-    (0, import_node_fs12.chmodSync)(file, mode);
+    (0, import_node_fs13.chmodSync)(file, mode);
   } catch {
   }
 }
@@ -40208,7 +41219,7 @@ function isManagedClaudeCodeSettingsContent(content) {
   if (apiKeyHelper.includes("ccr-claude-code-api-key-")) {
     return true;
   }
-  const env = isRecord7(settings.env) ? settings.env : {};
+  const env = isRecord8(settings.env) ? settings.env : {};
   return typeof env.ANTHROPIC_BASE_URL === "string" && typeof env.ANTHROPIC_API_BASE_URL === "string" && typeof env.CLAUDE_AGENT_API_BASE_URL === "string";
 }
 function isManagedCodexConfigContent(content, providerId) {
@@ -40223,26 +41234,26 @@ function isManagedZcodeConfigContent(content, providerId) {
   if (!config) {
     return false;
   }
-  if (isRecord7(config.provider) && hasOwn(config.provider, providerId)) {
+  if (isRecord8(config.provider) && hasOwn(config.provider, providerId)) {
     return true;
   }
-  if (isRecord7(config.model) && typeof config.model.main === "string" && config.model.main.startsWith(`${providerId}/`)) {
+  if (isRecord8(config.model) && typeof config.model.main === "string" && config.model.main.startsWith(`${providerId}/`)) {
     return true;
   }
   for (const key of ["defaultModel", "lastUsed", "lastUsedModel"]) {
     const modelRef = config[key];
-    if (isRecord7(modelRef) && modelRef.providerId === providerId) {
+    if (isRecord8(modelRef) && modelRef.providerId === providerId) {
       return true;
     }
   }
   return Array.isArray(config.providers) && config.providers.some(
-    (provider) => isRecord7(provider) && provider.id === providerId
+    (provider) => isRecord8(provider) && provider.id === providerId
   );
 }
 function parseJsonContent(content) {
   try {
     const parsed = JSON.parse(content);
-    return isRecord7(parsed) ? parsed : void 0;
+    return isRecord8(parsed) ? parsed : void 0;
   } catch {
     return void 0;
   }
@@ -40253,7 +41264,8 @@ function gatewayEndpoint4(config) {
   return `http://${formattedHost}:${config.gateway.port}`;
 }
 function defaultClientModel3(config) {
-  const preferred = config.Providers.find((provider) => provider.name === config.preferredProvider) ?? config.Providers[0];
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const preferred = enabledProviders.find((provider) => provider.name === config.preferredProvider) ?? enabledProviders[0];
   if (preferred?.name && preferred.models[0]) {
     return `${preferred.name}/${preferred.models[0]}`;
   }
@@ -40268,9 +41280,10 @@ function toolHubResolverModel(config) {
     return model;
   }
   const baseUrl = normalizeUrlForMatch(config.toolHub.llm.baseUrl);
-  const provider = config.Providers.find(
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const provider = enabledProviders.find(
     (candidate) => candidate.models.includes(model) && (!baseUrl || normalizeUrlForMatch(providerBaseUrl3(candidate)) === baseUrl)
-  ) ?? config.Providers.find((candidate) => candidate.models.includes(model));
+  ) ?? enabledProviders.find((candidate) => candidate.models.includes(model));
   return provider?.name ? `${provider.name}/${model}` : model;
 }
 function providerBaseUrl3(provider) {
@@ -40288,9 +41301,9 @@ function resolveUserPath5(value) {
     return import_node_os6.default.homedir();
   }
   if (trimmed.startsWith("~/") || trimmed.startsWith("~\\")) {
-    return import_node_path16.default.join(import_node_os6.default.homedir(), trimmed.slice(2));
+    return import_node_path17.default.join(import_node_os6.default.homedir(), trimmed.slice(2));
   }
-  return import_node_path16.default.resolve(trimmed || ".");
+  return import_node_path17.default.resolve(trimmed || ".");
 }
 function sanitizeCodexProviderId(value) {
   return value.trim().replace(/[^a-zA-Z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
@@ -40338,7 +41351,7 @@ function defaultCodexCliCommand(agent) {
   return agent === "zcode" ? "zcode" : "codex";
 }
 function defaultCodexCompatibleHome(agent, configFile) {
-  return agent === "zcode" ? zcodeHomeFromConfigFile(configFile) : import_node_path16.default.dirname(configFile);
+  return agent === "zcode" ? zcodeHomeFromConfigFile(configFile) : import_node_path17.default.dirname(configFile);
 }
 function profileEnv(profile) {
   return stringRecord(profile.env).filter(([key]) => isEnvName(key)).reduce((result, [key, value]) => {
@@ -40350,7 +41363,7 @@ function profileEnv(profile) {
   }, {});
 }
 function stringRecord(value) {
-  if (!isRecord7(value)) {
+  if (!isRecord8(value)) {
     return [];
   }
   return Object.entries(value).map(([key, itemValue]) => [key.trim(), itemValue]).filter((entry) => Boolean(entry[0]) && typeof entry[1] === "string");
@@ -40369,6 +41382,9 @@ function tomlString(value) {
 }
 function tomlStringArray(values) {
   return `[${values.map((value) => tomlString(value)).join(", ")}]`;
+}
+function tomlInlineStringTable(values) {
+  return `{ ${Object.entries(values).sort(([left], [right]) => left.localeCompare(right)).map(([key, value]) => `${tomlKey(key)} = ${tomlString(value)}`).join(", ")} }`;
 }
 function shellQuote(value) {
   return `'${value.replace(/'/g, "'\\''")}'`;
@@ -40389,7 +41405,7 @@ function ensureTrailingNewline(value) {
   return value.endsWith("\n") ? value : `${value}
 `;
 }
-function isRecord7(value) {
+function isRecord8(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function hasOwn(value, key) {
@@ -40413,9 +41429,9 @@ function formatError3(error) {
     process.env.GROK_HOME = "/tmp/process-grok-home";
     process.env.GROK_STORAGE_DIR = "/tmp/process-grok-storage";
     process.env.GROK_CONFIG_DIR = "/tmp/process-grok-config";
-    import_strict.default.equal(resolveGrokSourceHome({ env: {} }), import_node_path17.default.resolve("/tmp/process-grok-home"));
-    import_strict.default.equal(resolveGrokSourceHome({ env: { GROK_HOME: "/tmp/profile-grok-home" } }), import_node_path17.default.resolve("/tmp/profile-grok-home"));
-    import_strict.default.equal(resolveGrokSourceHome({ env: { GROK_STORAGE_DIR: "/tmp/profile-grok-storage" } }), import_node_path17.default.resolve("/tmp/profile-grok-storage"));
+    import_strict.default.equal(resolveGrokSourceHome({ env: {} }), import_node_path18.default.resolve("/tmp/process-grok-home"));
+    import_strict.default.equal(resolveGrokSourceHome({ env: { GROK_HOME: "/tmp/profile-grok-home" } }), import_node_path18.default.resolve("/tmp/profile-grok-home"));
+    import_strict.default.equal(resolveGrokSourceHome({ env: { GROK_STORAGE_DIR: "/tmp/profile-grok-storage" } }), import_node_path18.default.resolve("/tmp/profile-grok-storage"));
   } finally {
     for (const [key, value] of Object.entries(previous)) {
       if (value === void 0) {
@@ -40430,9 +41446,9 @@ function formatError3(error) {
   const previous = process.env.KIMI_CODE_HOME;
   try {
     process.env.KIMI_CODE_HOME = "/tmp/process-kimi-home";
-    import_strict.default.equal(resolveKimiSourceHome({ env: {} }), import_node_path17.default.resolve("/tmp/process-kimi-home"));
-    import_strict.default.equal(resolveKimiSourceHome({ env: { KIMI_CODE_HOME: "/tmp/profile-kimi-home" } }), import_node_path17.default.resolve("/tmp/profile-kimi-home"));
-    import_strict.default.equal(resolveKimiSourceHome({ env: { CCR_KIMI_SOURCE_HOME: "/tmp/profile-kimi-source" } }), import_node_path17.default.resolve("/tmp/profile-kimi-source"));
+    import_strict.default.equal(resolveKimiSourceHome({ env: {} }), import_node_path18.default.resolve("/tmp/process-kimi-home"));
+    import_strict.default.equal(resolveKimiSourceHome({ env: { KIMI_CODE_HOME: "/tmp/profile-kimi-home" } }), import_node_path18.default.resolve("/tmp/profile-kimi-home"));
+    import_strict.default.equal(resolveKimiSourceHome({ env: { CCR_KIMI_SOURCE_HOME: "/tmp/profile-kimi-source" } }), import_node_path18.default.resolve("/tmp/profile-kimi-source"));
   } finally {
     if (previous === void 0) {
       delete process.env.KIMI_CODE_HOME;
@@ -40442,10 +41458,10 @@ function formatError3(error) {
   }
 });
 (0, import_node_test.default)("profile service cleans stale generated bin backups only", () => {
-  const configDir = (0, import_node_fs13.mkdtempSync)(import_node_path17.default.join(import_node_os7.default.tmpdir(), "ccr-generated-bin-cleanup-"));
+  const configDir = (0, import_node_fs14.mkdtempSync)(import_node_path18.default.join(import_node_os7.default.tmpdir(), "ccr-generated-bin-cleanup-"));
   try {
-    const binDir = import_node_path17.default.join(configDir, "bin");
-    (0, import_node_fs13.mkdirSync)(binDir, { recursive: true });
+    const binDir = import_node_path18.default.join(configDir, "bin");
+    (0, import_node_fs14.mkdirSync)(binDir, { recursive: true });
     const deletedFiles = [
       "ccr-claude-code-api-key-default.ccr-backup-2026-01-01T00-00-00-000Z",
       "ccr-claude-code-wrapper-default.ccr-original",
@@ -40458,32 +41474,32 @@ function formatError3(error) {
       "notes.txt"
     ];
     for (const file of [...deletedFiles, ...keptFiles]) {
-      (0, import_node_fs13.writeFileSync)(import_node_path17.default.join(binDir, file), "old");
+      (0, import_node_fs14.writeFileSync)(import_node_path18.default.join(binDir, file), "old");
     }
     import_strict.default.equal(cleanupGeneratedBinBackups(configDir), deletedFiles.length);
     for (const file of deletedFiles) {
-      import_strict.default.equal((0, import_node_fs13.existsSync)(import_node_path17.default.join(binDir, file)), false);
+      import_strict.default.equal((0, import_node_fs14.existsSync)(import_node_path18.default.join(binDir, file)), false);
     }
     for (const file of keptFiles) {
-      import_strict.default.equal((0, import_node_fs13.existsSync)(import_node_path17.default.join(binDir, file)), true);
+      import_strict.default.equal((0, import_node_fs14.existsSync)(import_node_path18.default.join(binDir, file)), true);
     }
   } finally {
-    (0, import_node_fs13.rmSync)(configDir, { force: true, recursive: true });
+    (0, import_node_fs14.rmSync)(configDir, { force: true, recursive: true });
   }
 });
 (0, import_node_test.default)("profile service can exclude ZCode from automatic synchronization", async () => {
-  const root = (0, import_node_fs13.mkdtempSync)(import_node_path17.default.join(import_node_os7.default.tmpdir(), "ccr-zcode-auto-sync-"));
+  const root = (0, import_node_fs14.mkdtempSync)(import_node_path18.default.join(import_node_os7.default.tmpdir(), "ccr-zcode-auto-sync-"));
   try {
-    const configFile = import_node_path17.default.join(root, ".zcode", "cli", "config.json");
+    const configFile = import_node_path18.default.join(root, ".zcode", "cli", "config.json");
     const original = `${JSON.stringify({
       model: { main: "builtin:zai/glm-5" },
       provider: { "builtin:zai": { name: "Z.AI" } }
     }, null, 2)}
 `;
-    (0, import_node_fs13.mkdirSync)(import_node_path17.default.dirname(configFile), { recursive: true });
-    (0, import_node_fs13.writeFileSync)(configFile, original);
+    (0, import_node_fs14.mkdirSync)(import_node_path18.default.dirname(configFile), { recursive: true });
+    (0, import_node_fs14.writeFileSync)(configFile, original);
     const config = createDefaultAppConfig({
-      generatedConfigFile: import_node_path17.default.join(CONFIGDIR, "gateway.config.json")
+      generatedConfigFile: import_node_path18.default.join(CONFIGDIR, "gateway.config.json")
     });
     config.profile.profiles = [
       {
@@ -40508,30 +41524,30 @@ function formatError3(error) {
     const result = await applyProfileConfig(config, { excludeAgents: ["zcode"] });
     import_strict.default.equal(result.enabled, false);
     import_strict.default.deepEqual(result.clients, []);
-    import_strict.default.equal((0, import_node_fs13.readFileSync)(configFile, "utf8"), original);
-    import_strict.default.equal((0, import_node_fs13.existsSync)(import_node_path17.default.join(root, ".zcode", "v2", "config.json")), false);
+    import_strict.default.equal((0, import_node_fs14.readFileSync)(configFile, "utf8"), original);
+    import_strict.default.equal((0, import_node_fs14.existsSync)(import_node_path18.default.join(root, ".zcode", "v2", "config.json")), false);
   } finally {
-    (0, import_node_fs13.rmSync)(root, { force: true, recursive: true });
+    (0, import_node_fs14.rmSync)(root, { force: true, recursive: true });
   }
 });
 (0, import_node_test.default)("profile service overwrites generated bin files without creating backups", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "generated-bin-test";
   const commandExtension = process.platform === "win32" ? ".cmd" : "";
-  const binDir = import_node_path17.default.join(CONFIGDIR, "bin");
-  (0, import_node_fs13.mkdirSync)(binDir, { recursive: true });
+  const binDir = import_node_path18.default.join(CONFIGDIR, "bin");
+  (0, import_node_fs14.mkdirSync)(binDir, { recursive: true });
   const generatedFiles = [
-    import_node_path17.default.join(binDir, `ccr-claude-code-api-key-${profileId}${commandExtension}`),
-    import_node_path17.default.join(binDir, `ccr-claude-code-wrapper-${profileId}${commandExtension}`),
-    import_node_path17.default.join(binDir, "ccr-codex-cli-middleware.js"),
-    import_node_path17.default.join(binDir, "toolhub-mcp.js")
+    import_node_path18.default.join(binDir, `ccr-claude-code-api-key-${profileId}${commandExtension}`),
+    import_node_path18.default.join(binDir, `ccr-claude-code-wrapper-${profileId}${commandExtension}`),
+    import_node_path18.default.join(binDir, "ccr-codex-cli-middleware.js"),
+    import_node_path18.default.join(binDir, "toolhub-mcp.js")
   ];
   for (const file of generatedFiles) {
-    (0, import_node_fs13.writeFileSync)(file, "old generated content\n");
-    (0, import_node_fs13.writeFileSync)(`${file}.ccr-backup-2026-01-01T00-00-00-000Z`, "old backup\n");
-    (0, import_node_fs13.writeFileSync)(`${file}.ccr-original`, "old original\n");
+    (0, import_node_fs14.writeFileSync)(file, "old generated content\n");
+    (0, import_node_fs14.writeFileSync)(`${file}.ccr-backup-2026-01-01T00-00-00-000Z`, "old backup\n");
+    (0, import_node_fs14.writeFileSync)(`${file}.ccr-original`, "old original\n");
   }
   const config = createDefaultAppConfig({
-    generatedConfigFile: import_node_path17.default.join(CONFIGDIR, "gateway.config.json")
+    generatedConfigFile: import_node_path18.default.join(CONFIGDIR, "gateway.config.json")
   });
   config.Providers = [
     {
@@ -40558,6 +41574,10 @@ function formatError3(error) {
         transport: "stdio"
       }
     ]
+  };
+  config.contextArchive = {
+    ...config.contextArchive,
+    enabled: true
   };
   config.APIKEY = "ccr-profile-test";
   config.APIKEYS = [
@@ -40586,32 +41606,34 @@ function formatError3(error) {
   import_strict.default.equal(result.clients.length, 1);
   import_strict.default.equal(result.clients[0].ok, true);
   for (const file of generatedFiles) {
-    import_strict.default.notEqual((0, import_node_fs13.readFileSync)(file, "utf8"), "old generated content\n");
+    import_strict.default.notEqual((0, import_node_fs14.readFileSync)(file, "utf8"), "old generated content\n");
   }
-  const toolHubMcpConfigFile = import_node_path17.default.join(CONFIGDIR, "profiles", profileId, "claude", "toolhub-mcp.json");
-  const toolHubMcpConfig = JSON.parse((0, import_node_fs13.readFileSync)(toolHubMcpConfigFile, "utf8"));
+  const toolHubMcpConfigFile = import_node_path18.default.join(CONFIGDIR, "profiles", profileId, "claude", "toolhub-mcp.json");
+  const toolHubMcpConfig = JSON.parse((0, import_node_fs14.readFileSync)(toolHubMcpConfigFile, "utf8"));
   const toolHubMcpServerEnv = toolHubMcpConfig.mcpServers["ccr-toolhub"].env;
+  const contextArchiveMcpServer2 = toolHubMcpConfig.mcpServers["ccr-context-archive"];
   import_strict.default.equal(toolHubMcpServerEnv.TOOLHUB_OPENAI_API_KEY, "ccr-profile-test");
   import_strict.default.equal(toolHubMcpServerEnv.TOOLHUB_OPENAI_BASE_URL, `http://127.0.0.1:${config.gateway.port}/v1`);
   import_strict.default.equal(toolHubMcpServerEnv.TOOLHUB_OPENAI_MODEL, "Provider/model");
-  const backupEntries = (0, import_node_fs13.readdirSync)(binDir).filter(
+  import_strict.default.equal(contextArchiveMcpServer2, void 0);
+  const backupEntries = (0, import_node_fs14.readdirSync)(binDir).filter(
     (entry) => (entry.startsWith(`ccr-claude-code-api-key-${profileId}`) || entry.startsWith(`ccr-claude-code-wrapper-${profileId}`) || entry.startsWith("ccr-codex-cli-middleware.js") || entry.startsWith("toolhub-mcp.js")) && entry.includes(".ccr-")
   );
   import_strict.default.deepEqual(backupEntries, []);
 });
 (0, import_node_test.default)("Codex profile launcher bypasses middleware for Browser and Computer Use helpers", { skip: process.platform === "win32" || !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
-  const root = (0, import_node_fs13.mkdtempSync)(import_node_path17.default.join(import_node_os7.default.tmpdir(), "ccr-browser-helper-bypass-"));
+  const root = (0, import_node_fs14.mkdtempSync)(import_node_path18.default.join(import_node_os7.default.tmpdir(), "ccr-browser-helper-bypass-"));
   const profileId = "browser-helper-bypass-test";
   try {
-    const fakeCodex = import_node_path17.default.join(root, "real-codex");
-    (0, import_node_fs13.writeFileSync)(fakeCodex, [
+    const fakeCodex = import_node_path18.default.join(root, "real-codex");
+    (0, import_node_fs14.writeFileSync)(fakeCodex, [
       "#!/bin/sh",
       `printf '%s|%s|%s|cli_path=%s\\n' "$1" "$2" "$3" "\${CODEX_CLI_PATH:-}"`,
       ""
     ].join("\n"));
-    (0, import_node_fs13.chmodSync)(fakeCodex, 448);
+    (0, import_node_fs14.chmodSync)(fakeCodex, 448);
     const config = createDefaultAppConfig({
-      generatedConfigFile: import_node_path17.default.join(CONFIGDIR, "gateway.config.json")
+      generatedConfigFile: import_node_path18.default.join(CONFIGDIR, "gateway.config.json")
     });
     config.APIKEY = "ccr-browser-helper-test";
     config.APIKEYS = [{
@@ -40646,8 +41668,8 @@ function formatError3(error) {
     }];
     const applied = await applyProfileConfig(config);
     import_strict.default.equal(applied.clients[0].ok, true);
-    const launcher = import_node_path17.default.join(CONFIGDIR, "bin", `ccr-codex-cli-stdio-${profileId}`);
-    const content = (0, import_node_fs13.readFileSync)(launcher, "utf8");
+    const launcher = import_node_path18.default.join(CONFIGDIR, "bin", `ccr-codex-cli-stdio-${profileId}`);
+    const content = (0, import_node_fs14.readFileSync)(launcher, "utf8");
     import_strict.default.ok(content.includes("CCR_BUNDLED_CODEX_CLI_PATH"));
     import_strict.default.ok(content.includes(`app-server' ] && [ "\${2:-}" = '--listen'`));
     const result = (0, import_node_child_process2.spawnSync)(launcher, ["app-server", "--listen", "stdio://"], {
@@ -40677,13 +41699,13 @@ function formatError3(error) {
     import_strict.default.equal(sandboxResult.status, 0, sandboxResult.stderr);
     import_strict.default.equal(sandboxResult.stdout, "sandbox|||cli_path=\n");
   } finally {
-    (0, import_node_fs13.rmSync)(root, { force: true, recursive: true });
+    (0, import_node_fs14.rmSync)(root, { force: true, recursive: true });
   }
 });
 (0, import_node_test.default)("profile service injects ToolHub MCP into Codex config", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "codex-toolhub-test";
   const config = createDefaultAppConfig({
-    generatedConfigFile: import_node_path17.default.join(CONFIGDIR, "gateway.config.json")
+    generatedConfigFile: import_node_path18.default.join(CONFIGDIR, "gateway.config.json")
   });
   config.Providers = [
     {
@@ -40743,19 +41765,19 @@ function formatError3(error) {
   const result = await applyProfileConfig(config);
   import_strict.default.equal(result.clients.length, 1);
   import_strict.default.equal(result.clients[0].ok, true);
-  const configFile = import_node_path17.default.join(CONFIGDIR, "profiles", profileId, "codex", "config.toml");
-  const content = (0, import_node_fs13.readFileSync)(configFile, "utf8");
+  const configFile = import_node_path18.default.join(CONFIGDIR, "profiles", profileId, "codex", "config.toml");
+  const content = (0, import_node_fs14.readFileSync)(configFile, "utf8");
   import_strict.default.match(content, /# BEGIN CCR managed ToolHub MCP/);
   import_strict.default.match(content, /# CCR configured model = "Provider\/model"/);
   import_strict.default.match(content, /\[mcp_servers\.ccr-toolhub\]/);
   import_strict.default.equal(content.includes(`command = ${JSON.stringify(process.execPath)}`), true);
-  import_strict.default.equal(content.includes(`args = [${JSON.stringify(import_node_path17.default.join(CONFIGDIR, "bin", "toolhub-mcp.js"))}]`), true);
+  import_strict.default.equal(content.includes(`args = [${JSON.stringify(import_node_path18.default.join(CONFIGDIR, "bin", "toolhub-mcp.js"))}]`), true);
   import_strict.default.match(content, /\[mcp_servers\.ccr-toolhub\.env\]/);
   import_strict.default.match(content, /TOOLHUB_OPENAI_API_KEY = "ccr-codex-profile-test"/);
   import_strict.default.match(content, new RegExp(`TOOLHUB_OPENAI_BASE_URL = "http://127\\.0\\.0\\.1:${config.gateway.port}/v1"`));
   import_strict.default.match(content, /TOOLHUB_OPENAI_MODEL = "Provider\/model"/);
-  const separateProfileFile = import_node_path17.default.join(import_node_path17.default.dirname(configFile), "claude-code-router.config.toml");
-  const initialSeparateProfile = (0, import_node_fs13.readFileSync)(separateProfileFile, "utf8");
+  const separateProfileFile = import_node_path18.default.join(import_node_path18.default.dirname(configFile), "claude-code-router.config.toml");
+  const initialSeparateProfile = (0, import_node_fs14.readFileSync)(separateProfileFile, "utf8");
   import_strict.default.equal(initialSeparateProfile.includes("model_reasoning_effort"), false);
   const codexEditedConfig = content.replace(
     'model = "Provider/model"',
@@ -40774,13 +41796,13 @@ function formatError3(error) {
       "# END CCR managed ToolHub MCP"
     ].join("\n")
   );
-  (0, import_node_fs13.writeFileSync)(configFile, codexEditedConfig);
-  (0, import_node_fs13.writeFileSync)(
+  (0, import_node_fs14.writeFileSync)(configFile, codexEditedConfig);
+  (0, import_node_fs14.writeFileSync)(
     separateProfileFile,
     initialSeparateProfile.replace('model = "Provider/model"', 'model = "User/selected-in-cli"').replace(/\s*$/, '\nmodel_reasoning_effort = "ultra"\n')
   );
   await applyProfileConfig(config);
-  const preservedConfig = (0, import_node_fs13.readFileSync)(configFile, "utf8");
+  const preservedConfig = (0, import_node_fs14.readFileSync)(configFile, "utf8");
   import_strict.default.match(preservedConfig, /model = "User\/selected-in-codex"/);
   import_strict.default.match(preservedConfig, /model_reasoning_effort = "max"/);
   import_strict.default.match(preservedConfig, /\[desktop\]\nfollowUpQueueMode = "steer"/);
@@ -40788,35 +41810,199 @@ function formatError3(error) {
   import_strict.default.match(preservedConfig, /\[features\]\njs_repl = true/);
   import_strict.default.equal((preservedConfig.match(/\[mcp_servers\.ccr-toolhub\]/g) ?? []).length, 1);
   import_strict.default.equal((preservedConfig.match(/# BEGIN CCR managed ToolHub MCP/g) ?? []).length, 1);
-  const preservedSeparateProfile = (0, import_node_fs13.readFileSync)(separateProfileFile, "utf8");
+  const preservedSeparateProfile = (0, import_node_fs14.readFileSync)(separateProfileFile, "utf8");
   import_strict.default.match(preservedSeparateProfile, /model = "User\/selected-in-cli"/);
   import_strict.default.match(preservedSeparateProfile, /model_reasoning_effort = "ultra"/);
   config.Providers[0].models.push("model-2");
   config.profile.profiles[0].model = "Provider/model-2";
   await applyProfileConfig(config);
-  const explicitlyUpdatedConfig = (0, import_node_fs13.readFileSync)(configFile, "utf8");
+  const explicitlyUpdatedConfig = (0, import_node_fs14.readFileSync)(configFile, "utf8");
   import_strict.default.match(explicitlyUpdatedConfig, /model = "Provider\/model-2"/);
   import_strict.default.match(explicitlyUpdatedConfig, /model_reasoning_effort = "max"/);
   import_strict.default.match(explicitlyUpdatedConfig, /\[desktop\]\nfollowUpQueueMode = "steer"/);
-  const explicitlyUpdatedSeparateProfile = (0, import_node_fs13.readFileSync)(separateProfileFile, "utf8");
+  const explicitlyUpdatedSeparateProfile = (0, import_node_fs14.readFileSync)(separateProfileFile, "utf8");
   import_strict.default.match(explicitlyUpdatedSeparateProfile, /model = "Provider\/model-2"/);
   import_strict.default.match(explicitlyUpdatedSeparateProfile, /model_reasoning_effort = "ultra"/);
 });
+(0, import_node_test.default)("profile service injects Context Archive MCP for managed Claude Code profile", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "managed-compact-claude";
+  const config = createDefaultAppConfig({
+    generatedConfigFile: import_node_path18.default.join(CONFIGDIR, "gateway.config.json")
+  });
+  config.Providers = [
+    {
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model"],
+      name: "Provider"
+    }
+  ];
+  config.preferredProvider = "Provider";
+  config.contextArchive = {
+    ...config.contextArchive,
+    enabled: false
+  };
+  config.APIKEY = "ccr-managed-claude-profile-test";
+  config.APIKEYS = [
+    {
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profileId}`,
+      key: "ccr-managed-claude-profile-test",
+      name: "Profile: Managed Compact Claude"
+    }
+  ];
+  config.profile.profiles = [
+    {
+      agent: "claude-code",
+      enabled: true,
+      env: {},
+      id: profileId,
+      managedCompact: true,
+      model: "Provider/model",
+      name: "Managed Compact Claude",
+      scope: "ccr",
+      settingsFile: "~/.claude/settings.json",
+      smallFastModel: "",
+      surface: "auto"
+    }
+  ];
+  const result = await applyProfileConfig(config);
+  import_strict.default.equal(result.clients.length, 1);
+  import_strict.default.equal(result.clients[0].ok, true);
+  const mcpConfigFile = import_node_path18.default.join(CONFIGDIR, "profiles", profileId, "claude", "toolhub-mcp.json");
+  const mcpConfig = JSON.parse((0, import_node_fs14.readFileSync)(mcpConfigFile, "utf8"));
+  import_strict.default.deepEqual(Object.keys(mcpConfig.mcpServers), ["ccr-context-archive"]);
+  import_strict.default.equal(mcpConfig.mcpServers["ccr-context-archive"].type, "http");
+  import_strict.default.equal(mcpConfig.mcpServers["ccr-context-archive"].url, `http://127.0.0.1:${config.gateway.port}/__ccr/context-archive/mcp`);
+  import_strict.default.equal(mcpConfig.mcpServers["ccr-context-archive"].headers.Authorization, "Bearer ccr-managed-claude-profile-test");
+});
+(0, import_node_test.default)("profile service injects Context Archive MCP for managed Codex profile", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "managed-compact-codex";
+  const config = createDefaultAppConfig({
+    generatedConfigFile: import_node_path18.default.join(CONFIGDIR, "gateway.config.json")
+  });
+  config.Providers = [
+    {
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model"],
+      name: "Provider"
+    }
+  ];
+  config.preferredProvider = "Provider";
+  config.contextArchive = {
+    ...config.contextArchive,
+    enabled: false
+  };
+  config.APIKEY = "ccr-managed-codex-profile-test";
+  config.APIKEYS = [
+    {
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profileId}`,
+      key: "ccr-managed-codex-profile-test",
+      name: "Profile: Managed Compact Codex"
+    }
+  ];
+  config.profile.profiles = [
+    {
+      agent: "codex",
+      cliMiddleware: false,
+      codexCliPath: "",
+      codexHome: "",
+      configFile: "",
+      configFormat: "legacy",
+      enabled: true,
+      env: {},
+      id: profileId,
+      managedCompact: true,
+      model: "Provider/model",
+      name: "Managed Compact Codex",
+      providerId: "claude-code-router",
+      providerName: "Claude Code Router",
+      scope: "ccr",
+      showAllSessions: false,
+      surface: "auto"
+    }
+  ];
+  const result = await applyProfileConfig(config);
+  import_strict.default.equal(result.clients.length, 1);
+  import_strict.default.equal(result.clients[0].ok, true);
+  const configFile = import_node_path18.default.join(CONFIGDIR, "profiles", profileId, "codex", "config.toml");
+  const content = (0, import_node_fs14.readFileSync)(configFile, "utf8");
+  import_strict.default.doesNotMatch(content, /# BEGIN CCR managed ToolHub MCP/);
+  import_strict.default.match(content, /# BEGIN CCR managed Context Archive MCP/);
+  import_strict.default.match(content, /\[mcp_servers\.ccr-context-archive\]/);
+  import_strict.default.match(content, new RegExp(`url = "http://127\\.0\\.0\\.1:${config.gateway.port}/__ccr/context-archive/mcp"`));
+  import_strict.default.match(content, /http_headers = \{ Authorization = "Bearer ccr-managed-codex-profile-test" \}/);
+  import_strict.default.match(content, /startup_timeout_sec = 10/);
+  import_strict.default.match(content, /tool_timeout_sec = 60/);
+});
+(0, import_node_test.default)("profile service injects Context Archive MCP for managed Claude Code without ToolHub", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "context-archive-mcp-only";
+  const config = createDefaultAppConfig({
+    generatedConfigFile: import_node_path18.default.join(CONFIGDIR, "gateway.config.json")
+  });
+  config.Providers = [
+    {
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model"],
+      name: "Provider"
+    }
+  ];
+  config.preferredProvider = "Provider";
+  config.contextArchive = {
+    ...config.contextArchive,
+    enabled: true
+  };
+  config.APIKEY = "ccr-context-archive-profile-test";
+  config.APIKEYS = [
+    {
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profileId}`,
+      key: "ccr-context-archive-profile-test",
+      name: "Profile: Context Archive MCP Test"
+    }
+  ];
+  config.profile.profiles = [
+    {
+      agent: "claude-code",
+      enabled: true,
+      env: {},
+      id: profileId,
+      managedCompact: true,
+      model: "Provider/model",
+      name: "Context Archive MCP Test",
+      scope: "ccr",
+      settingsFile: "~/.claude/settings.json",
+      smallFastModel: "",
+      surface: "auto"
+    }
+  ];
+  const result = await applyProfileConfig(config);
+  import_strict.default.equal(result.clients.length, 1);
+  import_strict.default.equal(result.clients[0].ok, true);
+  const mcpConfigFile = import_node_path18.default.join(CONFIGDIR, "profiles", profileId, "claude", "toolhub-mcp.json");
+  const mcpConfig = JSON.parse((0, import_node_fs14.readFileSync)(mcpConfigFile, "utf8"));
+  import_strict.default.deepEqual(Object.keys(mcpConfig.mcpServers), ["ccr-context-archive"]);
+  import_strict.default.equal(mcpConfig.mcpServers["ccr-context-archive"].type, "http");
+  import_strict.default.equal(mcpConfig.mcpServers["ccr-context-archive"].headers.Authorization, "Bearer ccr-context-archive-profile-test");
+});
 (0, import_node_test.default)("profile service writes a Grok CLI wrapper that points model discovery and inference to CCR", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "grok-gateway-test";
-  const sourceGrokHome = import_node_path17.default.join(process.env.HOME, ".grok");
-  (0, import_node_fs13.mkdirSync)(import_node_path17.default.join(sourceGrokHome, "sessions"), { recursive: true });
-  (0, import_node_fs13.mkdirSync)(import_node_path17.default.join(sourceGrokHome, "skills"), { recursive: true });
-  (0, import_node_fs13.writeFileSync)(import_node_path17.default.join(sourceGrokHome, "auth.json"), "oauth credentials must not be shared");
-  (0, import_node_fs13.writeFileSync)(import_node_path17.default.join(sourceGrokHome, "config.toml"), "[ui]\ncompact_mode = false\n");
-  const profileGrokHome = import_node_path17.default.join(CONFIGDIR, "profiles", profileId, "grok");
-  const profileGrokConfig = import_node_path17.default.join(profileGrokHome, "config.toml");
+  const sourceGrokHome = import_node_path18.default.join(process.env.HOME, ".grok");
+  (0, import_node_fs14.mkdirSync)(import_node_path18.default.join(sourceGrokHome, "sessions"), { recursive: true });
+  (0, import_node_fs14.mkdirSync)(import_node_path18.default.join(sourceGrokHome, "skills"), { recursive: true });
+  (0, import_node_fs14.writeFileSync)(import_node_path18.default.join(sourceGrokHome, "auth.json"), "oauth credentials must not be shared");
+  (0, import_node_fs14.writeFileSync)(import_node_path18.default.join(sourceGrokHome, "config.toml"), "[ui]\ncompact_mode = false\n");
+  const profileGrokHome = import_node_path18.default.join(CONFIGDIR, "profiles", profileId, "grok");
+  const profileGrokConfig = import_node_path18.default.join(profileGrokHome, "config.toml");
   if (process.platform !== "win32") {
-    (0, import_node_fs13.mkdirSync)(profileGrokHome, { recursive: true });
-    (0, import_node_fs13.symlinkSync)(import_node_path17.default.join(sourceGrokHome, "config.toml"), profileGrokConfig);
+    (0, import_node_fs14.mkdirSync)(profileGrokHome, { recursive: true });
+    (0, import_node_fs14.symlinkSync)(import_node_path18.default.join(sourceGrokHome, "config.toml"), profileGrokConfig);
   }
   const config = createDefaultAppConfig({
-    generatedConfigFile: import_node_path17.default.join(CONFIGDIR, "gateway.config.json")
+    generatedConfigFile: import_node_path18.default.join(CONFIGDIR, "gateway.config.json")
   });
   config.Providers = [
     {
@@ -40858,8 +42044,8 @@ function formatError3(error) {
   import_strict.default.equal(result.clients[0].client, "grok");
   import_strict.default.equal(result.clients[0].ok, true);
   const commandExtension = process.platform === "win32" ? ".cmd" : "";
-  const wrapperFile = import_node_path17.default.join(CONFIGDIR, "bin", `ccr-grok-cli-wrapper-${profileId}${commandExtension}`);
-  const content = (0, import_node_fs13.readFileSync)(wrapperFile, "utf8");
+  const wrapperFile = import_node_path18.default.join(CONFIGDIR, "bin", `ccr-grok-cli-wrapper-${profileId}${commandExtension}`);
+  const content = (0, import_node_fs14.readFileSync)(wrapperFile, "utf8");
   import_strict.default.match(content, new RegExp(`GROK_MODELS_BASE_URL.*http://127\\.0\\.0\\.1:${config.gateway.port}/v1`));
   import_strict.default.match(content, new RegExp(`GROK_MODELS_LIST_URL.*http://127\\.0\\.0\\.1:${config.gateway.port}/v1/models`));
   import_strict.default.match(content, /XAI_API_KEY.*ccr-grok-profile-test/);
@@ -40869,21 +42055,21 @@ function formatError3(error) {
   import_strict.default.match(content, /NO_PROXY.*127\.0\.0\.1,localhost,::1/);
   import_strict.default.match(content, /\/custom\/bin\/grok/);
   import_strict.default.equal(content.includes("https://ignored.example/v1"), false);
-  import_strict.default.equal((0, import_node_fs13.readFileSync)(profileGrokConfig, "utf8"), "[ui]\ncompact_mode = false\n");
-  import_strict.default.equal((0, import_node_fs13.lstatSync)(profileGrokConfig).isSymbolicLink(), false);
-  (0, import_node_fs13.writeFileSync)(profileGrokConfig, "[ui]\ncompact_mode = true\n");
-  import_strict.default.equal((0, import_node_fs13.readFileSync)(import_node_path17.default.join(sourceGrokHome, "config.toml"), "utf8"), "[ui]\ncompact_mode = false\n");
-  import_strict.default.equal((0, import_node_fs13.existsSync)(import_node_path17.default.join(profileGrokHome, "sessions")), true);
-  import_strict.default.equal((0, import_node_fs13.existsSync)(import_node_path17.default.join(profileGrokHome, "skills")), true);
-  import_strict.default.equal((0, import_node_fs13.existsSync)(import_node_path17.default.join(profileGrokHome, "auth.json")), false);
+  import_strict.default.equal((0, import_node_fs14.readFileSync)(profileGrokConfig, "utf8"), "[ui]\ncompact_mode = false\n");
+  import_strict.default.equal((0, import_node_fs14.lstatSync)(profileGrokConfig).isSymbolicLink(), false);
+  (0, import_node_fs14.writeFileSync)(profileGrokConfig, "[ui]\ncompact_mode = true\n");
+  import_strict.default.equal((0, import_node_fs14.readFileSync)(import_node_path18.default.join(sourceGrokHome, "config.toml"), "utf8"), "[ui]\ncompact_mode = false\n");
+  import_strict.default.equal((0, import_node_fs14.existsSync)(import_node_path18.default.join(profileGrokHome, "sessions")), true);
+  import_strict.default.equal((0, import_node_fs14.existsSync)(import_node_path18.default.join(profileGrokHome, "skills")), true);
+  import_strict.default.equal((0, import_node_fs14.existsSync)(import_node_path18.default.join(profileGrokHome, "auth.json")), false);
 });
 (0, import_node_test.default)("profile service writes a multi-model Kimi CLI home that points inference to CCR", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "kimi-gateway-test";
-  const sourceKimiHome = import_node_path17.default.join(process.env.CCR_INTERNAL_HOME_DIR, ".kimi-code");
-  const sourceKimiConfig = import_node_path17.default.join(sourceKimiHome, "config.toml");
-  (0, import_node_fs13.mkdirSync)(import_node_path17.default.join(sourceKimiHome, "sessions"), { recursive: true });
-  (0, import_node_fs13.mkdirSync)(import_node_path17.default.join(sourceKimiHome, "skills"), { recursive: true });
-  (0, import_node_fs13.writeFileSync)(sourceKimiConfig, [
+  const sourceKimiHome = import_node_path18.default.join(process.env.CCR_INTERNAL_HOME_DIR, ".kimi-code");
+  const sourceKimiConfig = import_node_path18.default.join(sourceKimiHome, "config.toml");
+  (0, import_node_fs14.mkdirSync)(import_node_path18.default.join(sourceKimiHome, "sessions"), { recursive: true });
+  (0, import_node_fs14.mkdirSync)(import_node_path18.default.join(sourceKimiHome, "skills"), { recursive: true });
+  (0, import_node_fs14.writeFileSync)(sourceKimiConfig, [
     'default_model = "original/model"',
     "telemetry = false",
     "",
@@ -40901,7 +42087,7 @@ function formatError3(error) {
     ""
   ].join("\n"));
   const config = createDefaultAppConfig({
-    generatedConfigFile: import_node_path17.default.join(CONFIGDIR, "gateway.config.json")
+    generatedConfigFile: import_node_path18.default.join(CONFIGDIR, "gateway.config.json")
   });
   config.Providers = [
     {
@@ -40979,10 +42165,10 @@ function formatError3(error) {
   import_strict.default.equal(result.clients[0].client, "kimi");
   import_strict.default.equal(result.clients[0].ok, true);
   const commandExtension = process.platform === "win32" ? ".cmd" : "";
-  const wrapperFile = import_node_path17.default.join(CONFIGDIR, "bin", `ccr-kimi-cli-wrapper-${profileId}${commandExtension}`);
-  const content = (0, import_node_fs13.readFileSync)(wrapperFile, "utf8");
-  const profileKimiHome = import_node_path17.default.join(CONFIGDIR, "profiles", profileId, "kimi");
-  const profileConfigContent = (0, import_node_fs13.readFileSync)(import_node_path17.default.join(profileKimiHome, "config.toml"), "utf8");
+  const wrapperFile = import_node_path18.default.join(CONFIGDIR, "bin", `ccr-kimi-cli-wrapper-${profileId}${commandExtension}`);
+  const content = (0, import_node_fs14.readFileSync)(wrapperFile, "utf8");
+  const profileKimiHome = import_node_path18.default.join(CONFIGDIR, "profiles", profileId, "kimi");
+  const profileConfigContent = (0, import_node_fs14.readFileSync)(import_node_path18.default.join(profileKimiHome, "config.toml"), "utf8");
   import_strict.default.match(content, new RegExp(`KIMI_CODE_HOME.*profiles.*${profileId}.*kimi`));
   import_strict.default.match(content, /KIMI_MODEL_NAME/);
   import_strict.default.match(content, /USER_VALUE.*kept/);
@@ -41003,14 +42189,14 @@ function formatError3(error) {
   import_strict.default.match(profileConfigContent, /telemetry = false/);
   import_strict.default.match(profileConfigContent, /\[thinking\]/);
   import_strict.default.equal(profileConfigContent.includes("original-key"), false);
-  import_strict.default.equal((0, import_node_fs13.readFileSync)(sourceKimiConfig, "utf8").includes("original-key"), true);
-  import_strict.default.equal((0, import_node_fs13.existsSync)(import_node_path17.default.join(profileKimiHome, "sessions")), true);
-  import_strict.default.equal((0, import_node_fs13.existsSync)(import_node_path17.default.join(profileKimiHome, "skills")), true);
+  import_strict.default.equal((0, import_node_fs14.readFileSync)(sourceKimiConfig, "utf8").includes("original-key"), true);
+  import_strict.default.equal((0, import_node_fs14.existsSync)(import_node_path18.default.join(profileKimiHome, "sessions")), true);
+  import_strict.default.equal((0, import_node_fs14.existsSync)(import_node_path18.default.join(profileKimiHome, "skills")), true);
   delete config.profile.profiles[0].availableModels;
   config.profile.profiles[0].model = "";
   const legacyResult = await applyProfileConfig(config);
   import_strict.default.equal(legacyResult.clients[0].ok, true);
-  const legacyProfileConfigContent = (0, import_node_fs13.readFileSync)(import_node_path17.default.join(profileKimiHome, "config.toml"), "utf8");
+  const legacyProfileConfigContent = (0, import_node_fs14.readFileSync)(import_node_path18.default.join(profileKimiHome, "config.toml"), "utf8");
   import_strict.default.match(legacyProfileConfigContent, /default_model = "Provider\/model"/);
   import_strict.default.match(legacyProfileConfigContent, /\[models\."Provider\/model"\]/);
   import_strict.default.match(legacyProfileConfigContent, /\[models\."Provider\/fast"\]/);
@@ -41025,7 +42211,7 @@ function formatError3(error) {
 (0, import_node_test.default)("profile service writes an OpenCode CLI wrapper and shared CLI/App config", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "opencode-gateway-test";
   const config = createDefaultAppConfig({
-    generatedConfigFile: import_node_path17.default.join(CONFIGDIR, "gateway.config.json")
+    generatedConfigFile: import_node_path18.default.join(CONFIGDIR, "gateway.config.json")
   });
   config.Providers = [
     {
@@ -41067,15 +42253,15 @@ function formatError3(error) {
   import_strict.default.equal(result.clients.length, 1);
   import_strict.default.equal(result.clients[0].client, "opencode");
   import_strict.default.equal(result.clients[0].ok, true);
-  const configFile = import_node_path17.default.join(CONFIGDIR, "profiles", profileId, "opencode", "opencode.jsonc");
-  const openCodeConfig = JSON.parse((0, import_node_fs13.readFileSync)(configFile, "utf8"));
+  const configFile = import_node_path18.default.join(CONFIGDIR, "profiles", profileId, "opencode", "opencode.jsonc");
+  const openCodeConfig = JSON.parse((0, import_node_fs14.readFileSync)(configFile, "utf8"));
   import_strict.default.equal(openCodeConfig.model, "claude-code-router/Provider/model");
   import_strict.default.equal(openCodeConfig.small_model, openCodeConfig.model);
   import_strict.default.equal(openCodeConfig.provider["claude-code-router"].options.apiKey, "ccr-opencode-profile-test");
   import_strict.default.equal(openCodeConfig.provider["claude-code-router"].options.baseURL, `http://127.0.0.1:${config.gateway.port}/v1`);
   const commandExtension = process.platform === "win32" ? ".cmd" : "";
-  const wrapperFile = import_node_path17.default.join(CONFIGDIR, "bin", `ccr-opencode-wrapper-${profileId}${commandExtension}`);
-  const wrapper = (0, import_node_fs13.readFileSync)(wrapperFile, "utf8");
+  const wrapperFile = import_node_path18.default.join(CONFIGDIR, "bin", `ccr-opencode-wrapper-${profileId}${commandExtension}`);
+  const wrapper = (0, import_node_fs14.readFileSync)(wrapperFile, "utf8");
   import_strict.default.match(wrapper, /OPENCODE_CONFIG/);
   import_strict.default.match(wrapper, /OPENCODE_CONFIG_CONTENT/);
   import_strict.default.match(wrapper, /USER_VALUE.*kept/);
@@ -41085,7 +42271,7 @@ function formatError3(error) {
 (0, import_node_test.default)("profile service removes disabled and deleted OpenCode wrappers and API keys", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "opencode-cleanup-test";
   const config = createDefaultAppConfig({
-    generatedConfigFile: import_node_path17.default.join(CONFIGDIR, "gateway.config.json")
+    generatedConfigFile: import_node_path18.default.join(CONFIGDIR, "gateway.config.json")
   });
   config.Providers = [
     {
@@ -41125,32 +42311,32 @@ function formatError3(error) {
   };
   config.profile.profiles = [profile];
   const commandExtension = process.platform === "win32" ? ".cmd" : "";
-  const wrapperFile = import_node_path17.default.join(CONFIGDIR, "bin", `ccr-opencode-wrapper-${profileId}${commandExtension}`);
+  const wrapperFile = import_node_path18.default.join(CONFIGDIR, "bin", `ccr-opencode-wrapper-${profileId}${commandExtension}`);
   await applyProfileConfig(config);
-  import_strict.default.equal((0, import_node_fs13.existsSync)(wrapperFile), true);
+  import_strict.default.equal((0, import_node_fs14.existsSync)(wrapperFile), true);
   profile.enabled = false;
   await applyProfileConfig(config);
-  import_strict.default.equal((0, import_node_fs13.existsSync)(wrapperFile), false);
+  import_strict.default.equal((0, import_node_fs14.existsSync)(wrapperFile), false);
   import_strict.default.deepEqual(config.APIKEYS.map((apiKey) => apiKey.id), ["general-key"]);
   profile.enabled = true;
   await applyProfileConfig(config);
-  import_strict.default.equal((0, import_node_fs13.existsSync)(wrapperFile), true);
+  import_strict.default.equal((0, import_node_fs14.existsSync)(wrapperFile), true);
   import_strict.default.ok(config.APIKEYS.some((apiKey) => apiKey.id === `profile:${profileId}`));
   config.profile.profiles = [];
   await applyProfileConfig(config);
-  import_strict.default.equal((0, import_node_fs13.existsSync)(wrapperFile), false);
+  import_strict.default.equal((0, import_node_fs14.existsSync)(wrapperFile), false);
   import_strict.default.deepEqual(config.APIKEYS.map((apiKey) => apiKey.id), ["general-key"]);
 });
 (0, import_node_test.default)("profile service clears stale Claude Code ToolHub artifacts when no gateway models are available", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "stale-toolhub-no-models";
-  const settingsFile = import_node_path17.default.join(CONFIGDIR, "profiles", profileId, "claude", "settings.json");
-  const toolHubMcpConfigFile = import_node_path17.default.join(CONFIGDIR, "profiles", profileId, "claude", "toolhub-mcp.json");
-  const staleSettingsFile = import_node_path17.default.join(CONFIGDIR, "profiles", "old-claude-code", "claude", "settings.json");
-  const staleToolHubMcpConfigFile = import_node_path17.default.join(CONFIGDIR, "profiles", "old-claude-code", "claude", "toolhub-mcp.json");
-  (0, import_node_fs13.mkdirSync)(import_node_path17.default.dirname(settingsFile), { recursive: true });
-  (0, import_node_fs13.mkdirSync)(import_node_path17.default.dirname(toolHubMcpConfigFile), { recursive: true });
-  (0, import_node_fs13.mkdirSync)(import_node_path17.default.dirname(staleSettingsFile), { recursive: true });
-  (0, import_node_fs13.writeFileSync)(settingsFile, `${JSON.stringify({
+  const settingsFile = import_node_path18.default.join(CONFIGDIR, "profiles", profileId, "claude", "settings.json");
+  const toolHubMcpConfigFile = import_node_path18.default.join(CONFIGDIR, "profiles", profileId, "claude", "toolhub-mcp.json");
+  const staleSettingsFile = import_node_path18.default.join(CONFIGDIR, "profiles", "old-claude-code", "claude", "settings.json");
+  const staleToolHubMcpConfigFile = import_node_path18.default.join(CONFIGDIR, "profiles", "old-claude-code", "claude", "toolhub-mcp.json");
+  (0, import_node_fs14.mkdirSync)(import_node_path18.default.dirname(settingsFile), { recursive: true });
+  (0, import_node_fs14.mkdirSync)(import_node_path18.default.dirname(toolHubMcpConfigFile), { recursive: true });
+  (0, import_node_fs14.mkdirSync)(import_node_path18.default.dirname(staleSettingsFile), { recursive: true });
+  (0, import_node_fs14.writeFileSync)(settingsFile, `${JSON.stringify({
     env: {
       CCR_CLAUDE_CODE_MCP_CONFIG: toolHubMcpConfigFile,
       CODEXL_CLAUDE_CODE_MCP_CONFIG: toolHubMcpConfigFile,
@@ -41160,10 +42346,10 @@ function formatError3(error) {
     theme: "dark"
   }, null, 2)}
 `);
-  (0, import_node_fs13.writeFileSync)(toolHubMcpConfigFile, `${JSON.stringify({
+  (0, import_node_fs14.writeFileSync)(toolHubMcpConfigFile, `${JSON.stringify({
     mcpServers: {
       "ccr-toolhub": {
-        args: [import_node_path17.default.join(CONFIGDIR, "bin", "toolhub-mcp.js")],
+        args: [import_node_path18.default.join(CONFIGDIR, "bin", "toolhub-mcp.js")],
         command: "node",
         env: {
           TOOLHUB_OPENAI_BASE_URL: "https://api.deepseek.com",
@@ -41173,7 +42359,7 @@ function formatError3(error) {
     }
   }, null, 2)}
 `);
-  (0, import_node_fs13.writeFileSync)(staleSettingsFile, `${JSON.stringify({
+  (0, import_node_fs14.writeFileSync)(staleSettingsFile, `${JSON.stringify({
     env: {
       CCR_CLAUDE_CODE_MCP_CONFIG: staleToolHubMcpConfigFile,
       ENABLE_TOOL_SEARCH: "true",
@@ -41181,9 +42367,9 @@ function formatError3(error) {
     }
   }, null, 2)}
 `);
-  (0, import_node_fs13.writeFileSync)(staleToolHubMcpConfigFile, "{}\n");
+  (0, import_node_fs14.writeFileSync)(staleToolHubMcpConfigFile, "{}\n");
   const config = createDefaultAppConfig({
-    generatedConfigFile: import_node_path17.default.join(CONFIGDIR, "gateway.config.json")
+    generatedConfigFile: import_node_path18.default.join(CONFIGDIR, "gateway.config.json")
   });
   config.Providers = [];
   config.virtualModelProfiles = [];
@@ -41204,14 +42390,14 @@ function formatError3(error) {
   const result = await applyProfileConfig(config);
   import_strict.default.equal(result.clients.length, 1);
   import_strict.default.equal(result.clients[0].ok, false);
-  import_strict.default.equal((0, import_node_fs13.existsSync)(toolHubMcpConfigFile), false);
-  import_strict.default.equal((0, import_node_fs13.existsSync)(staleToolHubMcpConfigFile), false);
-  const settings = JSON.parse((0, import_node_fs13.readFileSync)(settingsFile, "utf8"));
+  import_strict.default.equal((0, import_node_fs14.existsSync)(toolHubMcpConfigFile), false);
+  import_strict.default.equal((0, import_node_fs14.existsSync)(staleToolHubMcpConfigFile), false);
+  const settings = JSON.parse((0, import_node_fs14.readFileSync)(settingsFile, "utf8"));
   import_strict.default.deepEqual(settings.env, {
     ENABLE_TOOL_SEARCH: "true",
     USER_VALUE: "kept"
   });
-  const staleSettings = JSON.parse((0, import_node_fs13.readFileSync)(staleSettingsFile, "utf8"));
+  const staleSettings = JSON.parse((0, import_node_fs14.readFileSync)(staleSettingsFile, "utf8"));
   import_strict.default.deepEqual(staleSettings.env, {
     ENABLE_TOOL_SEARCH: "true",
     USER_VALUE: "old-kept"
@@ -41219,20 +42405,20 @@ function formatError3(error) {
 });
 (0, import_node_test.default)("profile service restores managed global Claude settings when only CCR-scoped Claude profiles are active", () => {
   const previousHome = process.env.HOME;
-  const home = (0, import_node_fs13.mkdtempSync)(import_node_path17.default.join(import_node_os7.default.tmpdir(), "ccr-profile-home-"));
+  const home = (0, import_node_fs14.mkdtempSync)(import_node_path18.default.join(import_node_os7.default.tmpdir(), "ccr-profile-home-"));
   process.env.HOME = home;
   try {
-    const settingsFile = import_node_path17.default.join(home, ".claude", "settings.json");
-    (0, import_node_fs13.mkdirSync)(import_node_path17.default.dirname(settingsFile), { recursive: true });
+    const settingsFile = import_node_path18.default.join(home, ".claude", "settings.json");
+    (0, import_node_fs14.mkdirSync)(import_node_path18.default.dirname(settingsFile), { recursive: true });
     const originalSettings = {
       env: {
         USER_VALUE: "kept"
       },
       theme: "dark"
     };
-    (0, import_node_fs13.writeFileSync)(`${settingsFile}.ccr-backup-2026-01-01T00-00-00-000Z`, `${JSON.stringify(originalSettings, null, 2)}
+    (0, import_node_fs14.writeFileSync)(`${settingsFile}.ccr-backup-2026-01-01T00-00-00-000Z`, `${JSON.stringify(originalSettings, null, 2)}
 `);
-    (0, import_node_fs13.writeFileSync)(settingsFile, `${JSON.stringify({
+    (0, import_node_fs14.writeFileSync)(settingsFile, `${JSON.stringify({
       apiKeyHelper: "/tmp/ccr-claude-code-api-key-claude-code",
       env: {
         ANTHROPIC_API_BASE_URL: "http://127.0.0.1:3456",
@@ -41256,7 +42442,7 @@ function formatError3(error) {
         surface: "auto"
       }
     ]);
-    const restored = JSON.parse((0, import_node_fs13.readFileSync)(settingsFile, "utf8"));
+    const restored = JSON.parse((0, import_node_fs14.readFileSync)(settingsFile, "utf8"));
     import_strict.default.equal(statuses.length, 1);
     import_strict.default.equal(statuses[0].client, "claude-code");
     import_strict.default.equal(statuses[0].ok, true);
@@ -41270,17 +42456,17 @@ function formatError3(error) {
     } else {
       process.env.HOME = previousHome;
     }
-    (0, import_node_fs13.rmSync)(home, { force: true, recursive: true });
+    (0, import_node_fs14.rmSync)(home, { force: true, recursive: true });
   }
 });
 (0, import_node_test.default)("profile service keeps managed global Claude settings when a global Claude profile is active", () => {
   const previousHome = process.env.HOME;
-  const home = (0, import_node_fs13.mkdtempSync)(import_node_path17.default.join(import_node_os7.default.tmpdir(), "ccr-profile-home-"));
+  const home = (0, import_node_fs14.mkdtempSync)(import_node_path18.default.join(import_node_os7.default.tmpdir(), "ccr-profile-home-"));
   process.env.HOME = home;
   try {
-    const settingsFile = import_node_path17.default.join(home, ".claude", "settings.json");
-    (0, import_node_fs13.mkdirSync)(import_node_path17.default.dirname(settingsFile), { recursive: true });
-    (0, import_node_fs13.writeFileSync)(settingsFile, `${JSON.stringify({
+    const settingsFile = import_node_path18.default.join(home, ".claude", "settings.json");
+    (0, import_node_fs14.mkdirSync)(import_node_path18.default.dirname(settingsFile), { recursive: true });
+    (0, import_node_fs14.writeFileSync)(settingsFile, `${JSON.stringify({
       apiKeyHelper: "/tmp/ccr-claude-code-api-key-claude-code",
       env: {
         ANTHROPIC_API_BASE_URL: "http://127.0.0.1:3456",
@@ -41304,7 +42490,7 @@ function formatError3(error) {
         surface: "auto"
       }
     ]);
-    const current = JSON.parse((0, import_node_fs13.readFileSync)(settingsFile, "utf8"));
+    const current = JSON.parse((0, import_node_fs14.readFileSync)(settingsFile, "utf8"));
     import_strict.default.equal(statuses.length, 0);
     import_strict.default.equal(current.env.ANTHROPIC_MODEL, "Fusion/GLM-5.2V");
   } finally {
@@ -41313,34 +42499,34 @@ function formatError3(error) {
     } else {
       process.env.HOME = previousHome;
     }
-    (0, import_node_fs13.rmSync)(home, { force: true, recursive: true });
+    (0, import_node_fs14.rmSync)(home, { force: true, recursive: true });
   }
 });
 (0, import_node_test.default)("profile service restores global agent configs on exit", () => {
-  const root = (0, import_node_fs13.mkdtempSync)(import_node_path17.default.join(import_node_os7.default.tmpdir(), "ccr-global-profile-exit-"));
+  const root = (0, import_node_fs14.mkdtempSync)(import_node_path18.default.join(import_node_os7.default.tmpdir(), "ccr-global-profile-exit-"));
   try {
-    const claudeFile = import_node_path17.default.join(root, "claude", "settings.json");
-    const codexFile = import_node_path17.default.join(root, "codex", "config.toml");
-    const openCodeFile = import_node_path17.default.join(root, "opencode", "opencode.jsonc");
-    const zcodeFile = import_node_path17.default.join(root, "zcode", "cli", "config.json");
-    const zcodeRoot = import_node_path17.default.dirname(import_node_path17.default.dirname(zcodeFile));
-    const zcodeV2File = import_node_path17.default.join(zcodeRoot, "v2", "config.json");
-    const zcodeCacheFile = import_node_path17.default.join(zcodeRoot, "v2", "bots-model-cache.v2.json");
+    const claudeFile = import_node_path18.default.join(root, "claude", "settings.json");
+    const codexFile = import_node_path18.default.join(root, "codex", "config.toml");
+    const openCodeFile = import_node_path18.default.join(root, "opencode", "opencode.jsonc");
+    const zcodeFile = import_node_path18.default.join(root, "zcode", "cli", "config.json");
+    const zcodeRoot = import_node_path18.default.dirname(import_node_path18.default.dirname(zcodeFile));
+    const zcodeV2File = import_node_path18.default.join(zcodeRoot, "v2", "config.json");
+    const zcodeCacheFile = import_node_path18.default.join(zcodeRoot, "v2", "bots-model-cache.v2.json");
     const files = [claudeFile, codexFile, openCodeFile, zcodeFile, zcodeV2File, zcodeCacheFile];
     const originals = new Map(files.map((file, index) => [file, `original-${index}
 `]));
     const latestSnapshots = new Map(files.map((file, index) => [file, `latest-${index}
 `]));
     for (const [file, original] of originals) {
-      (0, import_node_fs13.mkdirSync)(import_node_path17.default.dirname(file), { recursive: true });
+      (0, import_node_fs14.mkdirSync)(import_node_path18.default.dirname(file), { recursive: true });
       if (file === zcodeCacheFile) {
-        (0, import_node_fs13.writeFileSync)(`${file}.ccr-original-missing`, "");
+        (0, import_node_fs14.writeFileSync)(`${file}.ccr-original-missing`, "");
       } else {
-        (0, import_node_fs13.writeFileSync)(`${file}.ccr-original`, original);
+        (0, import_node_fs14.writeFileSync)(`${file}.ccr-original`, original);
       }
-      (0, import_node_fs13.writeFileSync)(`${file}.ccr-backup-2026-07-11T00-00-00-000Z`, latestSnapshots.get(file));
+      (0, import_node_fs14.writeFileSync)(`${file}.ccr-backup-2026-07-11T00-00-00-000Z`, latestSnapshots.get(file));
     }
-    (0, import_node_fs13.writeFileSync)(claudeFile, `${JSON.stringify({
+    (0, import_node_fs14.writeFileSync)(claudeFile, `${JSON.stringify({
       apiKeyHelper: "ccr-claude-code-api-key-test",
       env: {
         ANTHROPIC_API_BASE_URL: "http://127.0.0.1:3456",
@@ -41349,8 +42535,8 @@ function formatError3(error) {
       }
     })}
 `);
-    (0, import_node_fs13.writeFileSync)(codexFile, '# BEGIN CCR managed profile\nmodel = "test"\n# END CCR managed profile\n');
-    (0, import_node_fs13.writeFileSync)(openCodeFile, `${JSON.stringify({
+    (0, import_node_fs14.writeFileSync)(codexFile, '# BEGIN CCR managed profile\nmodel = "test"\n# END CCR managed profile\n');
+    (0, import_node_fs14.writeFileSync)(openCodeFile, `${JSON.stringify({
       model: "claude-code-router/test",
       provider: {
         "claude-code-router": {
@@ -41360,10 +42546,10 @@ function formatError3(error) {
     })}
 `);
     for (const file of [zcodeFile, zcodeV2File]) {
-      (0, import_node_fs13.writeFileSync)(file, `${JSON.stringify({ provider: { "claude-code-router": {} } })}
+      (0, import_node_fs14.writeFileSync)(file, `${JSON.stringify({ provider: { "claude-code-router": {} } })}
 `);
     }
-    (0, import_node_fs13.writeFileSync)(zcodeCacheFile, `${JSON.stringify({ providers: [{ id: "claude-code-router" }] })}
+    (0, import_node_fs14.writeFileSync)(zcodeCacheFile, `${JSON.stringify({ providers: [{ id: "claude-code-router" }] })}
 `);
     const statuses = restoreGlobalProfileConfigsOnExit([
       {
@@ -41418,18 +42604,18 @@ function formatError3(error) {
     import_strict.default.equal(statuses.length, 4);
     import_strict.default.equal(statuses.every((status) => status.ok), true);
     for (const [file, latest] of latestSnapshots) {
-      import_strict.default.equal((0, import_node_fs13.readFileSync)(file, "utf8"), latest);
+      import_strict.default.equal((0, import_node_fs14.readFileSync)(file, "utf8"), latest);
     }
-    (0, import_node_fs13.writeFileSync)(codexFile, '# BEGIN CCR managed profile\nmodel = "test"\n# END CCR managed profile\n');
-    (0, import_node_fs13.writeFileSync)(openCodeFile, `${JSON.stringify({
+    (0, import_node_fs14.writeFileSync)(codexFile, '# BEGIN CCR managed profile\nmodel = "test"\n# END CCR managed profile\n');
+    (0, import_node_fs14.writeFileSync)(openCodeFile, `${JSON.stringify({
       provider: { "claude-code-router": { options: { headers: { "x-ccr-client": "opencode" } } } }
     })}
 `);
     for (const file of [zcodeFile, zcodeV2File]) {
-      (0, import_node_fs13.writeFileSync)(file, `${JSON.stringify({ provider: { "claude-code-router": {} } })}
+      (0, import_node_fs14.writeFileSync)(file, `${JSON.stringify({ provider: { "claude-code-router": {} } })}
 `);
     }
-    (0, import_node_fs13.writeFileSync)(zcodeCacheFile, `${JSON.stringify({ providers: [{ id: "claude-code-router" }] })}
+    (0, import_node_fs14.writeFileSync)(zcodeCacheFile, `${JSON.stringify({ providers: [{ id: "claude-code-router" }] })}
 `);
     const inactiveStatuses = restoreInactiveGlobalProfileConfigs([
       {
@@ -41474,10 +42660,10 @@ function formatError3(error) {
     import_strict.default.equal(inactiveStatuses.filter((status) => status.client === "zcode").length, 3);
     for (const [file, latest] of latestSnapshots) {
       if (file !== claudeFile) {
-        import_strict.default.equal((0, import_node_fs13.readFileSync)(file, "utf8"), latest);
+        import_strict.default.equal((0, import_node_fs14.readFileSync)(file, "utf8"), latest);
       }
     }
   } finally {
-    (0, import_node_fs13.rmSync)(root, { force: true, recursive: true });
+    (0, import_node_fs14.rmSync)(root, { force: true, recursive: true });
   }
 });

@@ -285,6 +285,13 @@ Claude Code · Codex · Grok CLI · ZCode · 兼容 API 客户端
         <strong>Unity2.Ai</strong>
       </a>
     </td>
+    <td align="center" width="330">
+      <a href="https://infistar.ai">
+        <img src="/docs/public/provider-icons/infistar-ai.jpg" width="42" height="42" alt="无限星河图标" />
+        <br />
+        <strong>无限星河</strong>
+      </a>
+    </td>
   </tr>
 </table>
 

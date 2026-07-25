@@ -33,7 +33,7 @@ function buildTokenActivity(series, options = {}) {
   let observedStart;
   let observedEnd;
   for (const point of series) {
-    const date = startOfLocalDay(new Date(point.bucket));
+    const date = startOfLocalDay(parseActivityDate(point.bucket));
     if (!isFiniteDate(date)) {
       continue;
     }
@@ -93,6 +93,20 @@ function buildTokenActivity(series, options = {}) {
     totalTokens,
     weekCount
   };
+}
+function parseActivityDate(bucket) {
+  const dateOnly = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(bucket.trim());
+  if (!dateOnly) {
+    return new Date(bucket);
+  }
+  const year = Number(dateOnly[1]);
+  const month = Number(dateOnly[2]);
+  const day = Number(dateOnly[3]);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return new Date(Number.NaN);
+  }
+  return date;
 }
 function activityDateKey(date) {
   const year = date.getFullYear();
@@ -200,29 +214,44 @@ function positiveInteger(value) {
 
 // packages/ui/test/unit/usage-activity.test.mjs
 (0, import_node_test.default)("buildTokenActivity summarizes observed token days and streaks", () => {
-  const summary = buildTokenActivity(
-    [
-      { bucket: "2026-06-02", totalTokens: 10 },
-      { bucket: "2026-06-03", totalTokens: 30 },
-      { bucket: "2026-06-04", totalTokens: 60 },
-      { bucket: "2026-06-05", totalTokens: -20 },
-      { bucket: "not-a-date", totalTokens: 999 }
-    ],
-    { minWeeks: 2 }
-  );
-  import_strict.default.equal(summary.totalTokens, 100);
-  import_strict.default.equal(summary.activeDays, 3);
-  import_strict.default.equal(summary.dayCount, 4);
-  import_strict.default.equal(summary.longestStreak, 3);
-  import_strict.default.equal(summary.maxTokens, 60);
-  import_strict.default.equal(summary.weekCount, 2);
-  import_strict.default.equal(summary.cells.length, 14);
-  const cellsByDate = new Map(summary.cells.map((cell) => [cell.dateKey, cell]));
-  import_strict.default.equal(cellsByDate.get("2026-06-02")?.intensity, 1);
-  import_strict.default.equal(cellsByDate.get("2026-06-03")?.intensity, 3);
-  import_strict.default.equal(cellsByDate.get("2026-06-04")?.intensity, 4);
-  import_strict.default.equal(cellsByDate.get("2026-06-05")?.intensity, 0);
+  withTimezone("America/New_York", () => {
+    const summary = buildTokenActivity(
+      [
+        { bucket: "2026-06-02", totalTokens: 10 },
+        { bucket: "2026-06-03", totalTokens: 30 },
+        { bucket: "2026-06-04", totalTokens: 60 },
+        { bucket: "2026-06-05", totalTokens: -20 },
+        { bucket: "not-a-date", totalTokens: 999 }
+      ],
+      { minWeeks: 2 }
+    );
+    import_strict.default.equal(summary.totalTokens, 100);
+    import_strict.default.equal(summary.activeDays, 3);
+    import_strict.default.equal(summary.dayCount, 4);
+    import_strict.default.equal(summary.longestStreak, 3);
+    import_strict.default.equal(summary.maxTokens, 60);
+    import_strict.default.equal(summary.weekCount, 2);
+    import_strict.default.equal(summary.cells.length, 14);
+    const cellsByDate = new Map(summary.cells.map((cell) => [cell.dateKey, cell]));
+    import_strict.default.equal(cellsByDate.get("2026-06-02")?.intensity, 1);
+    import_strict.default.equal(cellsByDate.get("2026-06-03")?.intensity, 3);
+    import_strict.default.equal(cellsByDate.get("2026-06-04")?.intensity, 4);
+    import_strict.default.equal(cellsByDate.get("2026-06-05")?.intensity, 0);
+  });
 });
 (0, import_node_test.default)("activityDateKey formats local calendar dates", () => {
   import_strict.default.equal(activityDateKey(new Date(2026, 0, 5, 14, 30)), "2026-01-05");
 });
+function withTimezone(timezone, run) {
+  const previousTimezone = process.env.TZ;
+  process.env.TZ = timezone;
+  try {
+    run();
+  } finally {
+    if (previousTimezone === void 0) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = previousTimezone;
+    }
+  }
+}
