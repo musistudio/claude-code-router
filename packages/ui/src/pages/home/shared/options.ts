@@ -129,7 +129,8 @@ export const profileAgentOptions: Array<{ label: string; value: ProfileConfig["a
   { label: "Kimi CLI", value: "kimi" },
   { label: "OpenCode", value: "opencode" },
   { label: "Pi", value: "pi" },
-  { label: "ZCode", value: "zcode" }
+  { label: "ZCode", value: "zcode" },
+  { label: "Claude Design", value: "claude-design" }
 ];
 
 export const profileScopeOptions: Array<{ label: string; value: ProfileScope }> = [

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { migrateKnownGatewayPluginConfigsForTest } from "@ccr/core/config/config.ts";
+import { claudeDesignRuntimePluginConfig, migrateKnownGatewayPluginConfigsForTest, withClaudeDesignRuntimePluginConfig } from "@ccr/core/config/config.ts";
 
 test("legacy combined Claude Design plugin config migrates to split Design and Ship plugins", () => {
   const extensionsRoot = mkdtempSync(path.join(os.tmpdir(), "ccr-extensions-migration-"));
@@ -32,6 +32,7 @@ test("legacy combined Claude Design plugin config migrates to split Design and S
       ],
       config: {
         adminAuth: "gateway",
+        autoAnswerQuestions: true,
         host: "claude.ai"
       },
       enabled: true,
@@ -46,6 +47,10 @@ test("legacy combined Claude Design plugin config migrates to split Design and S
     assert.equal(result.plugins[0].module, path.join(extensionsRoot, "plugins", "claude-design", "index.cjs"));
     assert.deepEqual(result.plugins[0].apps?.map((app) => app.id), ["claude-design"]);
     assert.equal(result.plugins[0].apps?.[0]?.url, "https://claude-design-assets.pages.dev/design");
+    assert.deepEqual(result.plugins[0].config, {
+      adminAuth: "gateway",
+      host: "claude.ai"
+    });
     assert.equal(result.plugins[1].module, path.join(extensionsRoot, "plugins", "claude-ship", "index.cjs"));
     assert.equal(result.plugins[1].apps?.[0]?.url, "https://claude.ai/claude-ship");
     assert.deepEqual(result.plugins[1].config, {
@@ -112,6 +117,94 @@ test("legacy Claude Ship app URL migrates back to the local runtime host", () =>
     restoreEnv("CCR_EXTENSIONS_DIR", previousExtensionsDir);
     rmSync(extensionsRoot, { force: true, recursive: true });
   }
+});
+
+test("Claude Design runtime plugin config resolves from ccr-extensions without persisting", () => {
+  const extensionsRoot = mkdtempSync(path.join(os.tmpdir(), "ccr-extensions-runtime-"));
+  const previousExtensionsDir = process.env.CCR_EXTENSIONS_DIR;
+  try {
+    writePluginModule(extensionsRoot, "claude-design");
+    process.env.CCR_EXTENSIONS_DIR = extensionsRoot;
+
+    const plugin = claudeDesignRuntimePluginConfig();
+    assert.equal(plugin?.id, "claude-design");
+    assert.equal(plugin?.module, path.join(extensionsRoot, "plugins", "claude-design", "index.cjs"));
+    assert.deepEqual(plugin?.apps?.map((app) => app.id), ["claude-design"]);
+
+    const config = { plugins: [] };
+    const runtimeConfig = withClaudeDesignRuntimePluginConfig(config);
+    assert.deepEqual(config.plugins, []);
+    assert.equal(runtimeConfig.plugins.length, 1);
+    assert.equal(runtimeConfig.plugins[0].id, "claude-design");
+
+    const configured = { plugins: [{ enabled: true, id: "claude-design", module: "/custom/design.cjs" }] };
+    assert.equal(withClaudeDesignRuntimePluginConfig(configured), configured);
+  } finally {
+    restoreEnv("CCR_EXTENSIONS_DIR", previousExtensionsDir);
+    rmSync(extensionsRoot, { force: true, recursive: true });
+  }
+});
+
+test("Claude Design plugin config drops deprecated local frontend settings while preserving other settings", () => {
+  const result = migrateKnownGatewayPluginConfigsForTest([{
+    config: {
+      adminAuth: "gateway",
+      appMode: "local",
+      autoAnswerQuestions: true,
+      frontendAssetsOrigin: "https://custom.pages.dev",
+      frontendUrl: false,
+      host: "claude.ai"
+    },
+    enabled: true,
+    id: "claude-design",
+    module: "/custom/design.cjs"
+  }]);
+
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.plugins[0].config, {
+    adminAuth: "gateway",
+    frontendAssetsOrigin: "https://custom.pages.dev",
+    host: "claude.ai"
+  });
+});
+
+test("Claude Design plugin config removes empty config after dropping deprecated local frontend settings", () => {
+  const result = migrateKnownGatewayPluginConfigsForTest([{
+    config: {
+      autoAnswerQuestions: true,
+      savedHtmlPath: "/tmp/Claude Design.html",
+      useSavedHtml: true
+    },
+    enabled: true,
+    id: "claude-design",
+    module: "/custom/design.cjs"
+  }]);
+
+  assert.equal(result.changed, true);
+  assert.equal(Object.hasOwn(result.plugins[0], "config"), false);
+});
+
+test("Claude Ship plugin config drops deprecated local frontend settings while preserving other settings", () => {
+  const result = migrateKnownGatewayPluginConfigsForTest([{
+    config: {
+      adminAuth: "gateway",
+      autoAnswerQuestions: true,
+      claudeShipAssets: true,
+      host: "claude.ai",
+      shipAssetDir: "/Applications/Claude.app/Contents/Resources/ion-dist",
+      shipFrontendUrl: "https://custom.pages.dev/ship"
+    },
+    enabled: true,
+    id: "claude-ship",
+    module: "/custom/ship.cjs"
+  }]);
+
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.plugins[0].config, {
+    adminAuth: "gateway",
+    host: "claude.ai",
+    shipFrontendUrl: "https://custom.pages.dev/ship"
+  });
 });
 
 test("externalized plugin modules migrate from the old marketplace path to ccr-extensions", () => {

@@ -522,7 +522,7 @@ function ProfileAgentTabs({
   return (
     <div
       aria-label={t("Agent profiles")}
-      className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-6"
+      className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-7"
       role="tablist"
     >
       {profileAgentOptions.map((option) => {
@@ -748,6 +748,8 @@ export function AddProfileForm({
   const availableModelCount = modelProviderOptions.reduce((count, provider) => count + provider.models.length, 0);
   const modelPlaceholder = firstProfileModelPlaceholder(modelProviderOptions);
   const validation = profileDraftValidation(draft, botConfigs, availableModelCount);
+  const isClaudeDesignProfile = draft.agent === "claude-design";
+  const showAdvancedSettings = !isClaudeDesignProfile;
   const optionalFieldLabel = t("Optional");
   const requiredFieldLabel = t("Required");
   const advancedIssueCount = [
@@ -805,9 +807,21 @@ export function AddProfileForm({
                   scope: "ccr",
                   surface: "cli"
                 }
+              : agent === "claude-design"
+                ? {
+                    agent,
+                    availableModels: [],
+                    botConfigId: "",
+                    botConfigured: true,
+                    botEnabled: false,
+                    envRows: [],
+                    model: "",
+                    scope: "ccr",
+                    surface: "app"
+                  }
               : agent === "zcode"
-                ? { agent, surface: "app" }
-                : { agent })}
+                  ? { agent, surface: "app" }
+                  : { agent })}
             value={draft.agent}
           />
         </Field>
@@ -820,6 +834,7 @@ export function AddProfileForm({
             onChange={(scope) => onChange({ scope: normalizeProfileScope(scope) })}
             options={translateOptions(
               draft.agent === "grok" || draft.agent === "kimi" || draft.agent === "pi"
+                || draft.agent === "claude-design"
                 ? profileScopeOptions.filter((option) => option.value === "ccr")
                 : profileScopeOptions,
               t
@@ -841,11 +856,11 @@ export function AddProfileForm({
                   });
             }}
             options={translateOptions(
-              draft.agent === "zcode"
+              draft.agent === "zcode" || draft.agent === "claude-design"
                 ? profileSurfaceOptions.filter((option) => option.value === "app")
                 : draft.agent === "grok" || draft.agent === "kimi" || draft.agent === "pi"
-                  ? profileSurfaceOptions.filter((option) => option.value === "cli")
-                : profileSurfaceOptions,
+                    ? profileSurfaceOptions.filter((option) => option.value === "cli")
+                    : profileSurfaceOptions,
               t
             )}
             value={draft.surface}
@@ -950,7 +965,7 @@ export function AddProfileForm({
               {validation.kimiAvailableModels ? <ProfileFieldHint>{t(validation.kimiAvailableModels)}</ProfileFieldHint> : null}
             </Field>
           </>
-        ) : (
+        ) : draft.agent === "claude-design" ? null : (
           <>
             <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : "Codex model")} requirement="optional" requirementLabel={optionalFieldLabel}>
               <ModelSelector
@@ -963,94 +978,96 @@ export function AddProfileForm({
             </Field>
           </>
         )}
-        <div className="sm:col-span-2">
-          <button
-            className="flex min-h-9 w-full min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-left outline-none transition-colors hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring/25"
-            onClick={() => setAdvancedOpen((current) => !current)}
-            type="button"
-          >
-            <span className="min-w-0">
-              <span className="block truncate text-[12px] font-semibold text-foreground">{t("Advanced settings")}</span>
-              <span className={cn("mt-0.5 block truncate text-[11px]", advancedIssueCount > 0 ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground")}>
-                {advancedSummary}
+        {showAdvancedSettings ? (
+          <div className="sm:col-span-2">
+            <button
+              className="flex min-h-9 w-full min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-left outline-none transition-colors hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring/25"
+              onClick={() => setAdvancedOpen((current) => !current)}
+              type="button"
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-[12px] font-semibold text-foreground">{t("Advanced settings")}</span>
+                <span className={cn("mt-0.5 block truncate text-[11px]", advancedIssueCount > 0 ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground")}>
+                  {advancedSummary}
+                </span>
               </span>
-            </span>
-            <span className="flex shrink-0 items-center gap-2">
-              {advancedIssueCount > 0 ? <Badge variant="warning">{advancedIssueCount}</Badge> : null}
-              <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", advancedOpen && "rotate-180")} />
-            </span>
-          </button>
-          <AnimatePresence initial={false}>
-            {advancedOpen ? (
-              <motion.div
-                animate={{ height: "auto", opacity: 1 }}
-                className="overflow-hidden"
-                exit={{ height: 0, opacity: 0 }}
-                initial={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.16 }}
-              >
-                <div className="mt-3 grid grid-cols-1 gap-3 rounded-md border border-border bg-background/60 p-3 sm:grid-cols-2">
-                  {showAppPathField && appPathLabel ? (
-                    <Field className="sm:col-span-2" label={t(appPathLabel)} requirement="optional" requirementLabel={optionalFieldLabel}>
-                      <div className={cn(
-                        "rounded-md border border-border bg-background p-1 transition-colors",
-                        appPathDragActive ? "border-primary bg-primary/5" : "border-border"
-                      )}>
-                        <Input
-                          placeholder={t("Drop the app here or paste the executable path")}
-                          value={draft.appPath}
-                          onChange={(event) => onChange({ appPath: event.target.value })}
+              <span className="flex shrink-0 items-center gap-2">
+                {advancedIssueCount > 0 ? <Badge variant="warning">{advancedIssueCount}</Badge> : null}
+                <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", advancedOpen && "rotate-180")} />
+              </span>
+            </button>
+            <AnimatePresence initial={false}>
+              {advancedOpen ? (
+                <motion.div
+                  animate={{ height: "auto", opacity: 1 }}
+                  className="overflow-hidden"
+                  exit={{ height: 0, opacity: 0 }}
+                  initial={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.16 }}
+                >
+                  <div className="mt-3 grid grid-cols-1 gap-3 rounded-md border border-border bg-background/60 p-3 sm:grid-cols-2">
+                    {showAppPathField && appPathLabel ? (
+                      <Field className="sm:col-span-2" label={t(appPathLabel)} requirement="optional" requirementLabel={optionalFieldLabel}>
+                        <div className={cn(
+                          "rounded-md border border-border bg-background p-1 transition-colors",
+                          appPathDragActive ? "border-primary bg-primary/5" : "border-border"
+                        )}>
+                          <Input
+                            placeholder={t("Drop the app here or paste the executable path")}
+                            value={draft.appPath}
+                            onChange={(event) => onChange({ appPath: event.target.value })}
+                          />
+                        </div>
+                      </Field>
+                    ) : null}
+                    {draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" && draft.agent !== "pi" ? (
+                      <>
+                        <Field label={t("Provider ID")} requirement="required" requirementLabel={requiredFieldLabel}>
+                          <Input value={draft.providerId} onChange={(event) => onChange({ providerId: event.target.value })} />
+                          {validation.providerId ? <ProfileFieldHint>{t(validation.providerId)}</ProfileFieldHint> : null}
+                        </Field>
+                        <Field label={t("Provider name")} requirement="required" requirementLabel={requiredFieldLabel}>
+                          <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
+                          {validation.providerName ? <ProfileFieldHint>{t(validation.providerName)}</ProfileFieldHint> : null}
+                        </Field>
+                        {draft.agent !== "zcode" && draft.agent !== "opencode" ? (
+                          <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
+                            <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
+                            <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
+                          </div>
+                        ) : null}
+                      </>
+                    ) : null}
+                    {draft.agent === "claude-code" || draft.agent === "codex" ? (
+                      <div className="sm:col-span-2">
+                        <ManagedCompactSetting
+                          agent={draft.agent}
+                          checked={draft.managedCompact}
+                          onChange={(managedCompact) => onChange({ managedCompact })}
                         />
                       </div>
-                    </Field>
-                  ) : null}
-                  {draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" && draft.agent !== "pi" ? (
-                    <>
-                      <Field label={t("Provider ID")} requirement="required" requirementLabel={requiredFieldLabel}>
-                        <Input value={draft.providerId} onChange={(event) => onChange({ providerId: event.target.value })} />
-                        {validation.providerId ? <ProfileFieldHint>{t(validation.providerId)}</ProfileFieldHint> : null}
-                      </Field>
-                      <Field label={t("Provider name")} requirement="required" requirementLabel={requiredFieldLabel}>
-                        <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
-                        {validation.providerName ? <ProfileFieldHint>{t(validation.providerName)}</ProfileFieldHint> : null}
-                      </Field>
-                      {draft.agent !== "zcode" && draft.agent !== "opencode" ? (
-                        <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
-                          <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
-                          <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
-                        </div>
-                      ) : null}
-                    </>
-                  ) : null}
-                  {draft.agent === "claude-code" || draft.agent === "codex" ? (
-                    <div className="sm:col-span-2">
-                      <ManagedCompactSetting
-                        agent={draft.agent}
-                        checked={draft.managedCompact}
-                        onChange={(managedCompact) => onChange({ managedCompact })}
+                    ) : null}
+                    {draft.surface !== "cli" ? (
+                      <div className="sm:col-span-2">
+                        <BotGatewaySelectForm botConfigs={botConfigs} draft={draft} onChange={onChange} onCreateBot={onCreateBot} />
+                        {validation.bot ? <ProfileFieldHint>{t(validation.bot)}</ProfileFieldHint> : null}
+                        {validation.handoff ? <ProfileFieldHint>{t(validation.handoff)}</ProfileFieldHint> : null}
+                      </div>
+                    ) : null}
+                    <Field className="sm:col-span-2" label={t("Environment variables")} requirement="optional" requirementLabel={optionalFieldLabel}>
+                      <KeyValueRowsControl
+                        addLabel={t("Add env variable")}
+                        rows={draft.envRows}
+                        onChange={(envRows) => onChange({ envRows })}
                       />
-                    </div>
-                  ) : null}
-                  {draft.surface !== "cli" ? (
-                    <div className="sm:col-span-2">
-                      <BotGatewaySelectForm botConfigs={botConfigs} draft={draft} onChange={onChange} onCreateBot={onCreateBot} />
-                      {validation.bot ? <ProfileFieldHint>{t(validation.bot)}</ProfileFieldHint> : null}
-                      {validation.handoff ? <ProfileFieldHint>{t(validation.handoff)}</ProfileFieldHint> : null}
-                    </div>
-                  ) : null}
-                  <Field className="sm:col-span-2" label={t("Environment variables")} requirement="optional" requirementLabel={optionalFieldLabel}>
-                    <KeyValueRowsControl
-                      addLabel={t("Add env variable")}
-                      rows={draft.envRows}
-                      onChange={(envRows) => onChange({ envRows })}
-                    />
-                    {validation.env ? <ProfileFieldHint>{t(validation.env)}</ProfileFieldHint> : null}
-                  </Field>
-                </div>
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
-        </div>
+                      {validation.env ? <ProfileFieldHint>{t(validation.env)}</ProfileFieldHint> : null}
+                    </Field>
+                  </div>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+          </div>
+        ) : null}
       </div>
       {validation.models ? (
         <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[12px] text-amber-700 dark:text-amber-300">
@@ -1086,7 +1103,7 @@ function profileDraftValidation(
   if (!draft.name.trim()) {
     issues.name = "Profile name is required.";
   }
-  if (availableModelCount === 0) {
+  if (draft.agent !== "claude-design" && availableModelCount === 0) {
     issues.models = "Configure at least one enabled provider model before saving an agent profile.";
   }
   if (draft.agent === "claude-code" && !draft.model.trim()) {
@@ -1100,7 +1117,7 @@ function profileDraftValidation(
       issues.kimiAvailableModels = "Select at least one allowed model.";
     }
   }
-  if (draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" && draft.agent !== "pi") {
+  if (draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" && draft.agent !== "pi" && draft.agent !== "claude-design") {
     if (!draft.providerId.trim()) {
       issues.providerId = "Provider ID is required.";
     }

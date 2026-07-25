@@ -1133,14 +1133,14 @@ var require_util = __commonJS({
         }
         const port = url.port != null ? url.port : url.protocol === "https:" ? 443 : 80;
         let origin = url.origin != null ? url.origin : `${url.protocol || ""}//${url.hostname || ""}:${port}`;
-        let path8 = url.path != null ? url.path : `${url.pathname || ""}${url.search || ""}`;
+        let path9 = url.path != null ? url.path : `${url.pathname || ""}${url.search || ""}`;
         if (origin[origin.length - 1] === "/") {
           origin = origin.slice(0, origin.length - 1);
         }
-        if (path8 && path8[0] !== "/") {
-          path8 = `/${path8}`;
+        if (path9 && path9[0] !== "/") {
+          path9 = `/${path9}`;
         }
-        return new URL(`${origin}${path8}`);
+        return new URL(`${origin}${path9}`);
       }
       if (!isHttpOrHttpsPrefixed(url.origin || url.protocol)) {
         throw new InvalidArgumentError("Invalid URL protocol: the URL must start with `http:` or `https:`.");
@@ -1961,9 +1961,9 @@ var require_diagnostics = __commonJS({
         "undici:client:sendHeaders",
         (evt) => {
           const {
-            request: { method, path: path8, origin }
+            request: { method, path: path9, origin }
           } = evt;
-          debugLog("sending request to %s %s%s", method, origin, path8);
+          debugLog("sending request to %s %s%s", method, origin, path9);
         }
       );
     }
@@ -1981,14 +1981,14 @@ var require_diagnostics = __commonJS({
         "undici:request:headers",
         (evt) => {
           const {
-            request: { method, path: path8, origin },
+            request: { method, path: path9, origin },
             response: { statusCode }
           } = evt;
           debugLog(
             "received response to %s %s%s - HTTP %d",
             method,
             origin,
-            path8,
+            path9,
             statusCode
           );
         }
@@ -1997,23 +1997,23 @@ var require_diagnostics = __commonJS({
         "undici:request:trailers",
         (evt) => {
           const {
-            request: { method, path: path8, origin }
+            request: { method, path: path9, origin }
           } = evt;
-          debugLog("trailers received from %s %s%s", method, origin, path8);
+          debugLog("trailers received from %s %s%s", method, origin, path9);
         }
       );
       diagnosticsChannel.subscribe(
         "undici:request:error",
         (evt) => {
           const {
-            request: { method, path: path8, origin },
+            request: { method, path: path9, origin },
             error
           } = evt;
           debugLog(
             "request to %s %s%s errored - %s",
             method,
             origin,
-            path8,
+            path9,
             error.message
           );
         }
@@ -2128,7 +2128,7 @@ var require_request = __commonJS({
     var kHandler = /* @__PURE__ */ Symbol("handler");
     var Request = class {
       constructor(origin, {
-        path: path8,
+        path: path9,
         method,
         body,
         headers,
@@ -2145,11 +2145,11 @@ var require_request = __commonJS({
         maxRedirections,
         typeOfService
       }, handler) {
-        if (typeof path8 !== "string") {
+        if (typeof path9 !== "string") {
           throw new InvalidArgumentError("path must be a string");
-        } else if (path8[0] !== "/" && !(path8.startsWith("http://") || path8.startsWith("https://")) && method !== "CONNECT") {
+        } else if (path9[0] !== "/" && !(path9.startsWith("http://") || path9.startsWith("https://")) && method !== "CONNECT") {
           throw new InvalidArgumentError("path must be an absolute URL or start with a slash");
-        } else if (invalidPathRegex.test(path8)) {
+        } else if (invalidPathRegex.test(path9)) {
           throw new InvalidArgumentError("invalid request path");
         }
         if (typeof method !== "string") {
@@ -2224,7 +2224,7 @@ var require_request = __commonJS({
         this.completed = false;
         this.aborted = false;
         this.upgrade = upgrade || null;
-        this.path = query ? serializePathWithQuery(path8, query) : path8;
+        this.path = query ? serializePathWithQuery(path9, query) : path9;
         this.origin = origin;
         this.protocol = getProtocolFromUrlString(origin);
         this.idempotent = idempotent == null ? method === "HEAD" || method === "GET" : idempotent;
@@ -7399,7 +7399,7 @@ var require_client_h1 = __commonJS({
       return method !== "GET" && method !== "HEAD" && method !== "OPTIONS" && method !== "TRACE" && method !== "CONNECT";
     }
     function writeH1(client, request) {
-      const { method, path: path8, host, upgrade, blocking, reset } = request;
+      const { method, path: path9, host, upgrade, blocking, reset } = request;
       let { body, headers, contentLength } = request;
       const expectsPayload = method === "PUT" || method === "POST" || method === "PATCH" || method === "QUERY" || method === "PROPFIND" || method === "PROPPATCH";
       if (util.isFormDataLike(body)) {
@@ -7469,7 +7469,7 @@ var require_client_h1 = __commonJS({
       if (socket.setTypeOfService) {
         socket.setTypeOfService(request.typeOfService);
       }
-      let header = `${method} ${path8} HTTP/1.1\r
+      let header = `${method} ${path9} HTTP/1.1\r
 `;
       if (typeof host === "string") {
         header += `host: ${host}\r
@@ -8122,7 +8122,7 @@ var require_client_h2 = __commonJS({
     function writeH2(client, request) {
       const requestTimeout = request.bodyTimeout ?? client[kBodyTimeout];
       const session = client[kHTTP2Session];
-      const { method, path: path8, host, upgrade, expectContinue, signal, protocol, headers: reqHeaders } = request;
+      const { method, path: path9, host, upgrade, expectContinue, signal, protocol, headers: reqHeaders } = request;
       let { body } = request;
       if (upgrade != null && upgrade !== "websocket") {
         util.errorRequest(client, request, new InvalidArgumentError(`Custom upgrade "${upgrade}" not supported over HTTP/2`));
@@ -8190,7 +8190,7 @@ var require_client_h2 = __commonJS({
           }
           headers[HTTP2_HEADER_METHOD] = "CONNECT";
           headers[HTTP2_HEADER_PROTOCOL] = "websocket";
-          headers[HTTP2_HEADER_PATH] = path8;
+          headers[HTTP2_HEADER_PATH] = path9;
           if (protocol === "ws:" || protocol === "wss:") {
             headers[HTTP2_HEADER_SCHEME] = protocol === "ws:" ? "http" : "https";
           } else {
@@ -8231,7 +8231,7 @@ var require_client_h2 = __commonJS({
         stream.setTimeout(requestTimeout);
         return true;
       }
-      headers[HTTP2_HEADER_PATH] = path8;
+      headers[HTTP2_HEADER_PATH] = path9;
       headers[HTTP2_HEADER_SCHEME] = protocol === "http:" ? "http" : "https";
       const expectsPayload = method === "PUT" || method === "POST" || method === "PATCH";
       if (body && typeof body.read === "function") {
@@ -10574,10 +10574,10 @@ var require_proxy_agent = __commonJS({
         };
         const {
           origin,
-          path: path8 = "/",
+          path: path9 = "/",
           headers = {}
         } = opts;
-        opts.path = origin + path8;
+        opts.path = origin + path9;
         if (!("host" in headers) && !("Host" in headers)) {
           const { host } = new URL(origin);
           headers.host = host;
@@ -12641,20 +12641,20 @@ var require_mock_utils = __commonJS({
       }
       return normalizedQp;
     }
-    function safeUrl(path8) {
-      if (typeof path8 !== "string") {
-        return path8;
+    function safeUrl(path9) {
+      if (typeof path9 !== "string") {
+        return path9;
       }
-      const pathSegments = path8.split("?", 3);
+      const pathSegments = path9.split("?", 3);
       if (pathSegments.length !== 2) {
-        return path8;
+        return path9;
       }
       const qp = new URLSearchParams(pathSegments.pop());
       qp.sort();
       return [...pathSegments, qp.toString()].join("?");
     }
-    function matchKey(mockDispatch2, { path: path8, method, body, headers }) {
-      const pathMatch = matchValue(mockDispatch2.path, path8);
+    function matchKey(mockDispatch2, { path: path9, method, body, headers }) {
+      const pathMatch = matchValue(mockDispatch2.path, path9);
       const methodMatch = matchValue(mockDispatch2.method, method);
       const bodyMatch = typeof mockDispatch2.body !== "undefined" ? matchValue(mockDispatch2.body, body) : true;
       const headersMatch = matchHeaders(mockDispatch2, headers);
@@ -12679,8 +12679,8 @@ var require_mock_utils = __commonJS({
       const basePath = key.query ? serializePathWithQuery(key.path, key.query) : key.path;
       const resolvedPath = typeof basePath === "string" ? safeUrl(basePath) : basePath;
       const resolvedPathWithoutTrailingSlash = removeTrailingSlash(resolvedPath);
-      let matchedMockDispatches = mockDispatches.filter(({ consumed }) => !consumed).filter(({ path: path8, ignoreTrailingSlash }) => {
-        return ignoreTrailingSlash ? matchValue(removeTrailingSlash(safeUrl(path8)), resolvedPathWithoutTrailingSlash) : matchValue(safeUrl(path8), resolvedPath);
+      let matchedMockDispatches = mockDispatches.filter(({ consumed }) => !consumed).filter(({ path: path9, ignoreTrailingSlash }) => {
+        return ignoreTrailingSlash ? matchValue(removeTrailingSlash(safeUrl(path9)), resolvedPathWithoutTrailingSlash) : matchValue(safeUrl(path9), resolvedPath);
       });
       if (matchedMockDispatches.length === 0) {
         throw new MockNotMatchedError(`Mock dispatch not matched for path '${resolvedPath}'`);
@@ -12719,19 +12719,19 @@ var require_mock_utils = __commonJS({
         mockDispatches.splice(index, 1);
       }
     }
-    function removeTrailingSlash(path8) {
-      while (path8.endsWith("/")) {
-        path8 = path8.slice(0, -1);
+    function removeTrailingSlash(path9) {
+      while (path9.endsWith("/")) {
+        path9 = path9.slice(0, -1);
       }
-      if (path8.length === 0) {
-        path8 = "/";
+      if (path9.length === 0) {
+        path9 = "/";
       }
-      return path8;
+      return path9;
     }
     function buildKey(opts) {
-      const { path: path8, method, body, headers, query } = opts;
+      const { path: path9, method, body, headers, query } = opts;
       return {
-        path: path8,
+        path: path9,
         method,
         body,
         headers,
@@ -13421,10 +13421,10 @@ var require_pending_interceptors_formatter = __commonJS({
       }
       format(pendingInterceptors) {
         const withPrettyHeaders = pendingInterceptors.map(
-          ({ method, path: path8, data: { statusCode }, persist, times, timesInvoked, origin }) => ({
+          ({ method, path: path9, data: { statusCode }, persist, times, timesInvoked, origin }) => ({
             Method: method,
             Origin: origin,
-            Path: path8,
+            Path: path9,
             "Status code": statusCode,
             Persistent: persist ? PERSISTENT : NOT_PERSISTENT,
             Invocations: timesInvoked,
@@ -13506,9 +13506,9 @@ var require_mock_agent = __commonJS({
         const acceptNonStandardSearchParameters = this[kMockAgentAcceptsNonStandardSearchParameters];
         const dispatchOpts = { ...opts };
         if (acceptNonStandardSearchParameters && dispatchOpts.path) {
-          const [path8, searchParams] = dispatchOpts.path.split("?");
+          const [path9, searchParams] = dispatchOpts.path.split("?");
           const normalizedSearchParams = normalizeSearchParams(searchParams, acceptNonStandardSearchParameters);
-          dispatchOpts.path = `${path8}?${normalizedSearchParams}`;
+          dispatchOpts.path = `${path9}?${normalizedSearchParams}`;
         }
         return this[kAgent].dispatch(dispatchOpts, handler);
       }
@@ -13909,12 +13909,12 @@ var require_snapshot_recorder = __commonJS({
        * @return {Promise<void>} - Resolves when snapshots are loaded
        */
       async loadSnapshots(filePath) {
-        const path8 = filePath || this.#snapshotPath;
-        if (!path8) {
+        const path9 = filePath || this.#snapshotPath;
+        if (!path9) {
           throw new InvalidArgumentError("Snapshot path is required");
         }
         try {
-          const data = await readFile(resolve(path8), "utf8");
+          const data = await readFile(resolve(path9), "utf8");
           const parsed = JSON.parse(data);
           if (Array.isArray(parsed)) {
             this.#snapshots.clear();
@@ -13928,7 +13928,7 @@ var require_snapshot_recorder = __commonJS({
           if (error.code === "ENOENT") {
             this.#snapshots.clear();
           } else {
-            throw new UndiciError(`Failed to load snapshots from ${path8}`, { cause: error });
+            throw new UndiciError(`Failed to load snapshots from ${path9}`, { cause: error });
           }
         }
       }
@@ -13939,11 +13939,11 @@ var require_snapshot_recorder = __commonJS({
        * @returns {Promise<void>} - Resolves when snapshots are saved
        */
       async saveSnapshots(filePath) {
-        const path8 = filePath || this.#snapshotPath;
-        if (!path8) {
+        const path9 = filePath || this.#snapshotPath;
+        if (!path9) {
           throw new InvalidArgumentError("Snapshot path is required");
         }
-        const resolvedPath = resolve(path8);
+        const resolvedPath = resolve(path9);
         await mkdir(dirname5(resolvedPath), { recursive: true });
         const data = Array.from(this.#snapshots.entries()).map(([hash, snapshot]) => ({
           hash,
@@ -14575,15 +14575,15 @@ var require_redirect_handler = __commonJS({
           return;
         }
         const { origin, pathname, search } = util.parseURL(new URL(this.location, this.opts.origin && new URL(this.opts.path, this.opts.origin)));
-        const path8 = search ? `${pathname}${search}` : pathname;
-        const redirectUrlString = `${origin}${path8}`;
+        const path9 = search ? `${pathname}${search}` : pathname;
+        const redirectUrlString = `${origin}${path9}`;
         for (const historyUrl of this.history) {
           if (historyUrl.toString() === redirectUrlString) {
             throw new InvalidArgumentError(`Redirect loop detected. Cannot redirect to ${origin}. This typically happens when using a Client or Pool with cross-origin redirects. Use an Agent for cross-origin redirects.`);
           }
         }
         this.opts.headers = cleanRequestHeaders(this.opts.headers, statusCode === 303, this.opts.origin !== origin);
-        this.opts.path = path8;
+        this.opts.path = path9;
         this.opts.origin = origin;
         this.opts.query = null;
       }
@@ -20793,11 +20793,11 @@ var require_fetch = __commonJS({
       function dispatch({ body }) {
         const url = requestCurrentURL(request);
         const agent = fetchParams.controller.dispatcher;
-        const path8 = url.pathname + url.search;
+        const path9 = url.pathname + url.search;
         const hasTrailingQuestionMark = url.search.length === 0 && url.href[url.href.length - url.hash.length - 1] === "?";
         return new Promise((resolve, reject) => agent.dispatch(
           {
-            path: hasTrailingQuestionMark ? `${path8}?` : path8,
+            path: hasTrailingQuestionMark ? `${path9}?` : path9,
             origin: url.origin,
             method: request.method,
             body: agent.isMockActive ? request.body && (request.body.source || request.body.stream) : body,
@@ -21744,9 +21744,9 @@ var require_util4 = __commonJS({
         }
       }
     }
-    function validateCookiePath(path8) {
-      for (let i = 0; i < path8.length; ++i) {
-        const code = path8.charCodeAt(i);
+    function validateCookiePath(path9) {
+      for (let i = 0; i < path9.length; ++i) {
+        const code = path9.charCodeAt(i);
         if (code < 32 || // exclude CTLs (0-31)
         code === 127 || // DEL
         code === 59) {
@@ -24945,11 +24945,11 @@ var require_undici = __commonJS({
           if (typeof opts.path !== "string") {
             throw new InvalidArgumentError("invalid opts.path");
           }
-          let path8 = opts.path;
+          let path9 = opts.path;
           if (!opts.path.startsWith("/")) {
-            path8 = `/${path8}`;
+            path9 = `/${path9}`;
           }
-          url = new URL(util.parseOrigin(url).origin + path8);
+          url = new URL(util.parseOrigin(url).origin + path9);
         } else {
           if (!opts) {
             opts = typeof url === "object" ? url : {};
@@ -25060,7 +25060,7 @@ ${captureLines}` : capture.stack;
 
 // packages/core/src/observability/request-log-worker.ts
 var import_node_fs10 = require("node:fs");
-var import_node_path12 = require("node:path");
+var import_node_path13 = require("node:path");
 var import_node_string_decoder3 = require("node:string_decoder");
 var import_node_worker_threads2 = require("node:worker_threads");
 
@@ -25160,6 +25160,7 @@ var PROXY_CA_CERT_DER_FILE = import_node_path3.default.join(CERTDIR, "ca.cer");
 var PROXY_CA_KEY_FILE = import_node_path3.default.join(CERTDIR, "key.pem");
 var GATEWAY_CONFIG_FILE = import_node_path3.default.join(CONFIGDIR, "gateway.config.json");
 var REQUEST_LOGS_DB_FILE = import_node_path3.default.join(DATADIR, "request-logs.sqlite");
+var CONTEXT_ARCHIVE_DB_FILE = import_node_path3.default.join(DATADIR, "context-archive.sqlite");
 var RAW_TRACE_SPOOL_DIR = import_node_path3.default.join(DATADIR, "raw-trace-spool");
 var USAGE_DB_FILE = import_node_path3.default.join(DATADIR, "usage.sqlite");
 if (process.platform === "win32") {
@@ -25168,7 +25169,7 @@ if (process.platform === "win32") {
 
 // packages/core/src/observability/request-log-store.ts
 var import_node_fs9 = require("node:fs");
-var import_node_path11 = require("node:path");
+var import_node_path12 = require("node:path");
 var import_node_string_decoder2 = require("node:string_decoder");
 
 // packages/core/src/proxy/system-proxy-fetch.ts
@@ -25177,6 +25178,7 @@ var import_undici = __toESM(require_undici());
 // packages/core/src/config/config.ts
 var import_node_crypto = require("node:crypto");
 var import_node_fs5 = require("node:fs");
+var import_node_path7 = __toESM(require("node:path"));
 
 // packages/core/src/config/app-config-store.ts
 var import_node_fs2 = require("node:fs");
@@ -26087,6 +26089,76 @@ var ROUTER_SCRIPT_MAX_SOURCE_BYTES = 64 * 1024;
 var ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS = 2e3;
 var ROUTER_SCRIPT_MAX_TIMEOUT_MS = 3e4;
 var ROUTER_FALLBACK_MAX_RETRY_COUNT = 9999;
+var CLAUDE_DESIGN_PLUGIN_ID = "claude-design";
+var CLAUDE_SHIP_PLUGIN_ID = "claude-ship";
+var DEFAULT_CLAUDE_DESIGN_APP = {
+  description: "Open Claude Design in a dedicated CCR Electron window.",
+  icon: "palette",
+  id: "claude-design",
+  name: "Claude Design",
+  url: "https://claude-design-assets.pages.dev/design"
+};
+var DEFAULT_CLAUDE_SHIP_APP = {
+  description: "Open Claude Ship in a dedicated CCR Electron window.",
+  icon: "rocket",
+  id: "claude-ship",
+  name: "Claude Ship",
+  url: "https://claude.ai/claude-ship"
+};
+var GATEWAY_PLUGIN_SURFACE_IDS = [
+  "apps",
+  "gateway",
+  "provider"
+];
+var GATEWAY_PLUGIN_PERMISSION_IDS = [
+  "trusted-code",
+  "apps",
+  "gateway-routes",
+  "proxy-routes",
+  "http-backends",
+  "provider-account-connectors",
+  "core-gateway-config",
+  "core-provider-plugins",
+  "virtual-model-profiles",
+  "sqlite-store",
+  "system-launcher"
+];
+var KNOWN_GATEWAY_PLUGIN_DEFAULTS = {
+  "agent-console": {
+    permissions: ["trusted-code", "apps", "gateway-routes", "system-launcher"],
+    surfaces: { apps: true, gateway: true, provider: false }
+  },
+  "claude-design": {
+    permissions: ["trusted-code", "apps", "gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
+    surfaces: { apps: true, gateway: true, provider: false }
+  },
+  "claude-ship": {
+    permissions: ["trusted-code", "apps", "gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
+    surfaces: { apps: true, gateway: true, provider: false }
+  },
+  "cursor-proxy": {
+    permissions: ["trusted-code", "gateway-routes", "proxy-routes", "http-backends"],
+    surfaces: { apps: false, gateway: true, provider: false }
+  }
+};
+function knownGatewayPluginDefaultPermissions(id) {
+  const permissions = KNOWN_GATEWAY_PLUGIN_DEFAULTS[id.trim().toLowerCase()]?.permissions;
+  return permissions ? [...permissions] : void 0;
+}
+function knownGatewayPluginDefaultSurfaces(id) {
+  const surfaces = KNOWN_GATEWAY_PLUGIN_DEFAULTS[id.trim().toLowerCase()]?.surfaces;
+  return surfaces ? { ...surfaces } : void 0;
+}
+function knownGatewayPluginDefaultApps(id) {
+  const pluginId = id.trim().toLowerCase();
+  if (pluginId === CLAUDE_DESIGN_PLUGIN_ID) {
+    return [{ ...DEFAULT_CLAUDE_DESIGN_APP }];
+  }
+  if (pluginId === CLAUDE_SHIP_PLUGIN_ID) {
+    return [{ ...DEFAULT_CLAUDE_SHIP_APP }];
+  }
+  return void 0;
+}
 var CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV = "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY";
 var CLAUDE_CODE_DEFAULT_ENV = {
   [CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV]: "1"
@@ -26570,6 +26642,17 @@ function createDefaultAppConfig(options) {
       streamReplies: true,
       tenantId: "ccr"
     },
+    contextArchive: {
+      enabled: false,
+      maxBytes: 512 * 1024 * 1024,
+      maxSnapshotBytes: 32 * 1024 * 1024,
+      maxSnapshots: 200,
+      mcpEnabled: true,
+      replayTimeoutMs: 6e4,
+      retentionDays: 30,
+      storagePath: "",
+      toolName: "ccr_history_ask"
+    },
     gateway: {
       coreHost,
       corePort: 3457,
@@ -26599,8 +26682,13 @@ function createDefaultAppConfig(options) {
     profile: {
       claudeCode: {
         enabled: true,
+        fableModel: "",
+        haikuModel: "",
+        managedCompact: false,
         model: "",
+        opusModel: "",
         settingsFile: "~/.claude/settings.json",
+        sonnetModel: "",
         smallFastModel: ""
       },
       codex: {
@@ -26610,6 +26698,7 @@ function createDefaultAppConfig(options) {
         configFormat: "separate_profile_files",
         configFile: "~/.codex/config.toml",
         enabled: true,
+        managedCompact: false,
         model: "",
         providerId: "claude-code-router",
         providerName: "Claude Code Router",
@@ -26621,11 +26710,16 @@ function createDefaultAppConfig(options) {
           agent: "claude-code",
           enabled: true,
           env: { ...CLAUDE_CODE_DEFAULT_ENV },
+          fableModel: "",
+          haikuModel: "",
           id: "default-claude-code",
+          managedCompact: false,
           model: "",
           name: "Claude Code",
+          opusModel: "",
           scope: "global",
           settingsFile: "~/.claude/settings.json",
+          sonnetModel: "",
           smallFastModel: "",
           surface: "auto"
         },
@@ -26639,6 +26733,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: {},
           id: "default-codex",
+          managedCompact: false,
           model: "",
           name: "Codex",
           providerId: "claude-code-router",
@@ -27618,6 +27713,7 @@ var REMOVED_LEGACY_ROUTER_RULE_IDS = /* @__PURE__ */ new Set([
 ]);
 var INTERNAL_GATEWAY_CORE_HOST = "127.0.0.1";
 var GENERATED_GATEWAY_API_KEY_ID = "local-gateway";
+var GATEWAY_PLUGIN_PERMISSION_ID_SET = new Set(GATEWAY_PLUGIN_PERMISSION_IDS);
 var DEFAULT_CONFIG = createDefaultAppConfig({
   coreHost: INTERNAL_GATEWAY_CORE_HOST,
   generatedConfigFile: GATEWAY_CONFIG_FILE
@@ -27739,6 +27835,7 @@ async function loadAppConfig() {
     const persistedApiKeys = (await loadPersistedApiKeys()).filter((apiKey) => !isDefaultSeedApiKey(apiKey));
     const loadedApiKeys = uniqueApiKeyConfigs2([...persistedApiKeys, ...configFileApiKeys]);
     const apiKeys = ensureGatewayApiKeys(loadedApiKeys);
+    const pluginMigration = migrateKnownGatewayPluginConfigs(picked.plugins ?? DEFAULT_CONFIG.plugins);
     const config = withSingleEnabledGlobalProfiles({
       ...DEFAULT_CONFIG,
       ...picked,
@@ -27758,6 +27855,17 @@ async function loadAppConfig() {
       },
       botConfigs: picked.botConfigs ?? DEFAULT_CONFIG.botConfigs,
       botGateway: completeBotGatewayConfig(picked.botGateway),
+      contextArchive: {
+        enabled: picked.contextArchive?.enabled ?? DEFAULT_CONFIG.contextArchive.enabled,
+        maxBytes: picked.contextArchive?.maxBytes ?? DEFAULT_CONFIG.contextArchive.maxBytes,
+        maxSnapshotBytes: picked.contextArchive?.maxSnapshotBytes ?? DEFAULT_CONFIG.contextArchive.maxSnapshotBytes,
+        maxSnapshots: picked.contextArchive?.maxSnapshots ?? DEFAULT_CONFIG.contextArchive.maxSnapshots,
+        mcpEnabled: picked.contextArchive?.mcpEnabled ?? DEFAULT_CONFIG.contextArchive.mcpEnabled,
+        replayTimeoutMs: picked.contextArchive?.replayTimeoutMs ?? DEFAULT_CONFIG.contextArchive.replayTimeoutMs,
+        retentionDays: picked.contextArchive?.retentionDays ?? DEFAULT_CONFIG.contextArchive.retentionDays,
+        storagePath: picked.contextArchive?.storagePath ?? DEFAULT_CONFIG.contextArchive.storagePath,
+        toolName: picked.contextArchive?.toolName ?? DEFAULT_CONFIG.contextArchive.toolName
+      },
       gateway: {
         ...DEFAULT_CONFIG.gateway,
         ...gatewayConfig,
@@ -27776,6 +27884,7 @@ async function loadAppConfig() {
         ...DEFAULT_CONFIG.observability,
         ...picked.observability ?? {}
       },
+      plugins: pluginMigration.plugins,
       preferredProvider: picked.preferredProvider || providers[0]?.name || DEFAULT_CONFIG.preferredProvider,
       profile: {
         ...DEFAULT_CONFIG.profile,
@@ -27809,10 +27918,11 @@ async function loadAppConfig() {
     });
     const shouldPersistApiKeys = loadedApiKeys.length === 0 || hasConfigFileApiKeys(rawValue) || configFileApiKeys.length > 0;
     const shouldRepairProviderCapabilities = hasUnsupportedNvidiaCapabilities(value.Providers);
+    const shouldRepairKnownPlugins = pluginMigration.changed;
     if (shouldPersistApiKeys) {
       await replacePersistedApiKeys(apiKeys);
     }
-    if (loadedRawConfig.source !== "sqlite" || shouldPersistApiKeys || shouldRepairProviderCapabilities) {
+    if (loadedRawConfig.source !== "sqlite" || shouldPersistApiKeys || shouldRepairProviderCapabilities || shouldRepairKnownPlugins) {
       await writeSanitizedConfig(config);
     }
     return config;
@@ -28017,6 +28127,10 @@ function pickConfig(value) {
   if (botConfigs) {
     config.botConfigs = botConfigs;
   }
+  const contextArchive = parseContextArchive(value.contextArchive ?? value.context_archive);
+  if (contextArchive) {
+    config.contextArchive = contextArchive;
+  }
   if (typeof value.autoStart === "boolean") {
     config.autoStart = value.autoStart;
   }
@@ -28106,6 +28220,48 @@ function pickConfig(value) {
     config.overviewWidgets = overviewWidgets;
   }
   return config;
+}
+function parseContextArchive(value) {
+  if (!isObject2(value)) {
+    return void 0;
+  }
+  const contextArchive = {};
+  if (typeof value.enabled === "boolean") {
+    contextArchive.enabled = value.enabled;
+  }
+  const mcpEnabled = value.mcpEnabled ?? value.mcp_enabled;
+  if (typeof mcpEnabled === "boolean") {
+    contextArchive.mcpEnabled = mcpEnabled;
+  }
+  const maxBytes = readNumber(value.maxBytes ?? value.max_bytes);
+  if (maxBytes !== void 0) {
+    contextArchive.maxBytes = clampNumber(maxBytes, 1024 * 1024, 64 * 1024 * 1024 * 1024);
+  }
+  const maxSnapshotBytes = readNumber(value.maxSnapshotBytes ?? value.max_snapshot_bytes);
+  if (maxSnapshotBytes !== void 0) {
+    contextArchive.maxSnapshotBytes = clampNumber(maxSnapshotBytes, 64 * 1024, 1024 * 1024 * 1024);
+  }
+  const maxSnapshots = readNumber(value.maxSnapshots ?? value.max_snapshots);
+  if (maxSnapshots !== void 0) {
+    contextArchive.maxSnapshots = clampNumber(maxSnapshots, 1, 1e5);
+  }
+  const replayTimeoutMs = readNumber(value.replayTimeoutMs ?? value.replay_timeout_ms);
+  if (replayTimeoutMs !== void 0) {
+    contextArchive.replayTimeoutMs = clampNumber(replayTimeoutMs, 1e3, 6e5);
+  }
+  const retentionDays = readNumber(value.retentionDays ?? value.retention_days);
+  if (retentionDays !== void 0) {
+    contextArchive.retentionDays = clampNumber(retentionDays, 1, 3650);
+  }
+  const storagePath = readString4(value.storagePath ?? value.storage_path);
+  if (storagePath !== void 0) {
+    contextArchive.storagePath = storagePath;
+  }
+  const toolName = readString4(value.toolName ?? value.tool_name);
+  if (toolName !== void 0) {
+    contextArchive.toolName = toolName;
+  }
+  return Object.keys(contextArchive).length ? contextArchive : void 0;
 }
 function removeVirtualModelToolLoopLimits(value) {
   if (!isObject2(value) || !isObject2(value.execution) || !("maxTurns" in value.execution) && !("maxToolCalls" in value.execution)) {
@@ -28471,12 +28627,14 @@ function parseProviders(value) {
       extraHeaders: item.extraHeaders,
       icon: readString4(item.icon),
       id: readString4(item.id),
+      enabled: item.enabled === false ? false : void 0,
       modelDescriptions,
       modelDisplayNames,
       modelMetadata,
       models,
       name,
       provider: readString4(item.provider),
+      protocolDetectionMode: parseEnumValue(item.protocolDetectionMode, ["auto", "manual"], void 0),
       transformer: item.transformer,
       type: readString4(item.type)
     };
@@ -29388,7 +29546,7 @@ function parseProxyTargets(value) {
     if (!host) {
       return void 0;
     }
-    const paths = Array.isArray(item.paths) ? item.paths.map((path8) => readString4(path8)).filter((path8) => Boolean(path8)) : void 0;
+    const paths = Array.isArray(item.paths) ? item.paths.map((path9) => readString4(path9)).filter((path9) => Boolean(path9)) : void 0;
     return {
       host,
       paths: paths?.length ? paths : void 0
@@ -29409,6 +29567,11 @@ function parseGatewayPlugins(value) {
     const apps = parseGatewayPluginApps(item.apps);
     const proxyRoutes = parseGatewayPluginProxyRoutes(isObject2(item.proxy) ? item.proxy.routes : void 0);
     const coreGateway = parseGatewayPluginCoreGateway(item.coreGateway);
+    const rawSurfaces = item.surfaces ?? item.surface;
+    const parsedPermissions = parseGatewayPluginPermissions(item.permissions);
+    const parsedSurfaces = parseGatewayPluginSurfaces(rawSurfaces);
+    const permissions = item.permissions === void 0 ? knownGatewayPluginDefaultPermissions(id) : parsedPermissions;
+    const surfaces = rawSurfaces === void 0 ? knownGatewayPluginDefaultSurfaces(id) : parsedSurfaces;
     return {
       ...apps ? { apps } : {},
       ...item.config !== void 0 ? { config: item.config } : {},
@@ -29416,10 +29579,562 @@ function parseGatewayPlugins(value) {
       enabled: typeof item.enabled === "boolean" ? item.enabled : true,
       id,
       ...modulePath ? { module: modulePath } : {},
-      ...proxyRoutes ? { proxy: { routes: proxyRoutes } } : {}
+      ...permissions !== void 0 ? { permissions } : {},
+      ...proxyRoutes ? { proxy: { routes: proxyRoutes } } : {},
+      ...surfaces ? { surfaces } : {}
     };
   }).filter((item) => Boolean(item));
   return plugins.length ? plugins : void 0;
+}
+var CCR_EXTENSIONS_PLUGIN_IDS = /* @__PURE__ */ new Set(["agent-console", CLAUDE_DESIGN_PLUGIN_ID, CLAUDE_SHIP_PLUGIN_ID, "cursor-proxy"]);
+function migrateKnownGatewayPluginConfigs(plugins) {
+  const sourcePlugins = plugins ?? [];
+  let changed = false;
+  let hasClaudeShip = sourcePlugins.some((plugin) => plugin.id === CLAUDE_SHIP_PLUGIN_ID);
+  const migrated = [];
+  for (const sourcePlugin of sourcePlugins) {
+    const moduleMigration = migrateExternalizedPluginModuleConfig(sourcePlugin);
+    const plugin = moduleMigration.plugin;
+    changed = changed || moduleMigration.changed;
+    if (plugin.id === CLAUDE_SHIP_PLUGIN_ID) {
+      const shipMigration = migrateClaudeShipPluginConfig(plugin);
+      changed = changed || shipMigration.changed;
+      migrated.push(shipMigration.plugin);
+      continue;
+    }
+    if (plugin.id !== CLAUDE_DESIGN_PLUGIN_ID) {
+      migrated.push(plugin);
+      continue;
+    }
+    const designMigration = migrateClaudeDesignPluginConfig(plugin);
+    changed = changed || designMigration.changed;
+    migrated.push(designMigration.plugin);
+    if (!hasClaudeShip && shouldSplitClaudeShipPlugin(plugin)) {
+      const shipPlugin = migratedClaudeShipPluginConfig(plugin);
+      if (shipPlugin) {
+        migrated.push(shipPlugin);
+        hasClaudeShip = true;
+        changed = true;
+      }
+    }
+  }
+  return {
+    changed,
+    plugins: migrated
+  };
+}
+function migrateExternalizedPluginModuleConfig(plugin) {
+  const modulePath = migratedExternalizedPluginModulePath(plugin.id, plugin.module);
+  if (!modulePath || modulePath === plugin.module) {
+    return {
+      changed: false,
+      plugin
+    };
+  }
+  return {
+    changed: true,
+    plugin: {
+      ...plugin,
+      module: modulePath
+    }
+  };
+}
+function migrateClaudeDesignPluginConfig(plugin) {
+  let changed = false;
+  const nextPlugin = { ...plugin };
+  const config = removeDeprecatedClaudePluginConfig(plugin.config);
+  if (config.changed) {
+    changed = true;
+    if (config.config === void 0) {
+      delete nextPlugin.config;
+    } else {
+      nextPlugin.config = config.config;
+    }
+  }
+  const isLegacyModule = isLegacyClaudeDesignModule(plugin.module);
+  const modulePath = migratedClaudePluginModulePath(CLAUDE_DESIGN_PLUGIN_ID, plugin.module);
+  if (modulePath && modulePath !== plugin.module) {
+    nextPlugin.module = modulePath;
+    changed = true;
+  }
+  const hasMigratableApps = Boolean(plugin.apps?.some((app) => isClaudeShipApp(app) || isLegacyClaudeDesignAppUrl(app.url)));
+  if (isLegacyModule || hasMigratableApps) {
+    const apps = migrateClaudeDesignPluginApps(plugin.apps);
+    if (apps.changed) {
+      nextPlugin.apps = apps.apps;
+      changed = true;
+    }
+  }
+  return {
+    changed,
+    plugin: nextPlugin,
+    plugins: [nextPlugin]
+  };
+}
+var deprecatedClaudePluginConfigKeys = /* @__PURE__ */ new Set([
+  "appMode",
+  "autoAnswerQuestions",
+  "claudeAppAssetDir",
+  "claudeAppAssets",
+  "claudeAppIonDistDir",
+  "claudeAppPath",
+  "claudeShipAssetDir",
+  "claudeShipAssets",
+  "claudeShipIonDistDir",
+  "claudeShipLocalApp",
+  "designHtmlPath",
+  "htmlPath",
+  "localApp",
+  "localShell",
+  "onlineApp",
+  "savedHtmlPath",
+  "shipAssetDir",
+  "shipAssets",
+  "shipIonDistDir",
+  "shipLocalApp",
+  "useSavedHtml"
+]);
+var deprecatedClaudePluginFalseOnlyConfigKeys = /* @__PURE__ */ new Set([
+  "assetsOrigin",
+  "designAssetsOrigin",
+  "designFrontendAssetsOrigin",
+  "designFrontendOrigin",
+  "designFrontendUrl",
+  "designWebUrl",
+  "frontendAssetsOrigin",
+  "frontendOrigin",
+  "frontendUrl",
+  "shipAssetsOrigin",
+  "shipFrontendAssetsOrigin",
+  "shipFrontendOrigin",
+  "shipFrontendUrl",
+  "shipWebUrl",
+  "staticAssetsOrigin",
+  "webUrl"
+]);
+function removeDeprecatedClaudePluginConfig(config) {
+  if (!isObject2(config)) {
+    return {
+      changed: false,
+      ...config !== void 0 ? { config } : {}
+    };
+  }
+  const nextConfig = {};
+  let changed = false;
+  for (const [key, value] of Object.entries(config)) {
+    if (deprecatedClaudePluginConfigKeys.has(key) || value === false && deprecatedClaudePluginFalseOnlyConfigKeys.has(key)) {
+      changed = true;
+      continue;
+    }
+    nextConfig[key] = value;
+  }
+  if (!changed) {
+    return {
+      changed: false,
+      config
+    };
+  }
+  return {
+    changed: true,
+    ...Object.keys(nextConfig).length > 0 ? { config: nextConfig } : {}
+  };
+}
+function migrateClaudeDesignPluginApps(apps) {
+  const designDefaults = knownGatewayPluginDefaultApps(CLAUDE_DESIGN_PLUGIN_ID) ?? [];
+  if (!apps?.length) {
+    return {
+      apps: designDefaults,
+      changed: designDefaults.length > 0
+    };
+  }
+  let changed = false;
+  const designApps = apps.filter((app) => {
+    const isShip = isClaudeShipApp(app);
+    changed = changed || isShip;
+    return !isShip;
+  }).map((app) => {
+    if (!isLegacyClaudeDesignAppUrl(app.url)) {
+      return app;
+    }
+    const defaultApp = designDefaults.find((item) => item.id === (app.id || "claude-design")) ?? designDefaults[0];
+    if (!defaultApp) {
+      return app;
+    }
+    changed = true;
+    return {
+      ...app,
+      url: defaultApp.url
+    };
+  });
+  if (!designApps.length && designDefaults.length) {
+    return {
+      apps: designDefaults,
+      changed: true
+    };
+  }
+  return {
+    apps: designApps,
+    changed
+  };
+}
+function migrateClaudeShipPluginConfig(plugin) {
+  let changed = false;
+  const nextPlugin = { ...plugin };
+  const config = removeDeprecatedClaudePluginConfig(plugin.config);
+  if (config.changed) {
+    changed = true;
+    if (config.config === void 0) {
+      delete nextPlugin.config;
+    } else {
+      nextPlugin.config = config.config;
+    }
+  }
+  const apps = migrateClaudeShipPluginApps(plugin.apps);
+  if (apps.changed) {
+    changed = true;
+    nextPlugin.apps = apps.apps;
+  }
+  if (!changed) {
+    return {
+      changed: false,
+      plugin,
+      plugins: [plugin]
+    };
+  }
+  return {
+    changed: true,
+    plugin: nextPlugin,
+    plugins: [nextPlugin]
+  };
+}
+function migrateClaudeShipPluginApps(apps) {
+  const shipDefaults = knownGatewayPluginDefaultApps(CLAUDE_SHIP_PLUGIN_ID) ?? [];
+  if (!apps?.length) {
+    return {
+      apps: shipDefaults,
+      changed: shipDefaults.length > 0
+    };
+  }
+  let changed = false;
+  const migratedApps = apps.map((app) => {
+    if (!isLegacyClaudeShipAppUrl(app.url)) {
+      return app;
+    }
+    const defaultApp = shipDefaults.find((item) => item.id === (app.id || "claude-ship")) ?? shipDefaults[0];
+    if (!defaultApp) {
+      return app;
+    }
+    changed = true;
+    return {
+      ...app,
+      url: defaultApp.url
+    };
+  });
+  return {
+    apps: migratedApps,
+    changed
+  };
+}
+function migratedClaudeShipPluginConfig(source) {
+  const modulePath = isLegacyClaudeDesignModule(source.module) ? migratedClaudePluginModulePath(CLAUDE_SHIP_PLUGIN_ID, source.module) : resolveCcrExtensionsPluginModule(CLAUDE_SHIP_PLUGIN_ID, source.module);
+  if (!modulePath) {
+    return void 0;
+  }
+  const config = removeDeprecatedClaudePluginConfig(source.config);
+  return {
+    ...config.config !== void 0 ? { config: config.config } : {},
+    apps: knownGatewayPluginDefaultApps(CLAUDE_SHIP_PLUGIN_ID),
+    enabled: source.enabled,
+    id: CLAUDE_SHIP_PLUGIN_ID,
+    module: modulePath,
+    permissions: knownGatewayPluginDefaultPermissions(CLAUDE_SHIP_PLUGIN_ID),
+    surfaces: knownGatewayPluginDefaultSurfaces(CLAUDE_SHIP_PLUGIN_ID)
+  };
+}
+function shouldSplitClaudeShipPlugin(plugin) {
+  return isLegacyClaudeDesignModule(plugin.module) || Boolean(plugin.apps?.some(isClaudeShipApp));
+}
+function isClaudeShipApp(app) {
+  return [app.id, app.name, app.url].some((value) => typeof value === "string" && value.toLowerCase().includes("claude-ship"));
+}
+function isLegacyClaudeDesignAppUrl(value) {
+  try {
+    const url = new URL(value, "https://claude.ai");
+    const host = url.hostname.toLowerCase();
+    const pathname = url.pathname.replace(/\/$/, "");
+    if (host === "claude.ai") {
+      return pathname === "/design" || pathname === "/discover/design";
+    }
+    if (host === "claude-design-assets.pages.dev") {
+      return pathname === "/discover/design";
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+function isLegacyClaudeShipAppUrl(value) {
+  try {
+    const url = new URL(value, "https://claude.ai");
+    const host = url.hostname.toLowerCase();
+    const pathname = url.pathname.replace(/\/$/, "");
+    return host === "claude-design-assets.pages.dev" && pathname === "/claude-ship";
+  } catch {
+    return false;
+  }
+}
+function migratedClaudePluginModulePath(pluginId, previousModule) {
+  if (!isLegacyClaudeDesignModule(previousModule)) {
+    return previousModule || "";
+  }
+  return resolveCcrExtensionsPluginModule(pluginId, previousModule) || previousModule || "";
+}
+function migratedExternalizedPluginModulePath(pluginId, previousModule) {
+  if (!isLegacyExternalizedPluginModule(pluginId, previousModule)) {
+    return previousModule || "";
+  }
+  return resolveCcrExtensionsPluginModule(pluginId, previousModule) || previousModule || "";
+}
+function resolveCcrExtensionsPluginModule(pluginId, previousModule) {
+  for (const root of ccrExtensionsRootCandidates(previousModule)) {
+    const candidate = import_node_path7.default.join(root, "plugins", pluginId, "index.cjs");
+    if ((0, import_node_fs5.existsSync)(candidate)) {
+      return candidate;
+    }
+  }
+  return "";
+}
+function isLegacyClaudeDesignModule(modulePath) {
+  return isLegacyExternalizedPluginModule(CLAUDE_DESIGN_PLUGIN_ID, modulePath);
+}
+function isLegacyExternalizedPluginModule(pluginId, modulePath) {
+  if (!CCR_EXTENSIONS_PLUGIN_IDS.has(pluginId)) {
+    return false;
+  }
+  const normalized = modulePath?.replace(/\\/g, "/").toLowerCase() || "";
+  return normalized.includes(`/marketplace/plugins/${pluginId}/`) || normalized.includes(`/examples/plugins/${pluginId}/`) || normalized.endsWith(`/examples/plugins/${pluginId}-plugin.cjs`) || normalized.endsWith(`/examples/plugins/${pluginId}/index.cjs`);
+}
+function ccrExtensionsRootCandidates(previousModule) {
+  const candidates = [
+    process.env.CCR_EXTENSIONS_DIR,
+    ccrExtensionsRootFromLegacyModule(previousModule),
+    import_node_path7.default.resolve(process.cwd(), "..", "ccr-extensions"),
+    import_node_path7.default.resolve(process.cwd(), "ccr-extensions")
+  ];
+  return uniqueStrings2(candidates.filter((candidate) => Boolean(candidate?.trim())));
+}
+function ccrExtensionsRootFromLegacyModule(modulePath) {
+  if (!modulePath) {
+    return "";
+  }
+  const resolved = import_node_path7.default.resolve(modulePath);
+  const segments = resolved.split(import_node_path7.default.sep);
+  const index = segments.lastIndexOf("claude-code-router");
+  if (index <= 0) {
+    return "";
+  }
+  return import_node_path7.default.join(import_node_path7.default.sep, ...segments.slice(1, index), "ccr-extensions");
+}
+function parseGatewayPluginSurfaces(value) {
+  if (value === void 0) {
+    return void 0;
+  }
+  const surfaces = {};
+  const setSurface = (rawValue, enabled = true) => {
+    const surface = normalizeGatewayPluginSurface(rawValue);
+    if (!surface) {
+      return false;
+    }
+    surfaces[surface] = enabled;
+    return true;
+  };
+  if (typeof value === "string") {
+    if (isAllGatewayPluginSurfacesKey(value)) {
+      for (const surface of GATEWAY_PLUGIN_SURFACE_IDS) {
+        surfaces[surface] = true;
+      }
+      return surfaces;
+    }
+    if (!setSurface(value)) {
+      return void 0;
+    }
+    GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+      surfaces[surface] ??= false;
+    });
+  } else if (Array.isArray(value)) {
+    let matched = false;
+    for (const item of value) {
+      if (typeof item === "string" && isAllGatewayPluginSurfacesKey(item)) {
+        for (const surface of GATEWAY_PLUGIN_SURFACE_IDS) {
+          surfaces[surface] = true;
+        }
+        matched = true;
+      } else {
+        matched = setSurface(item) || matched;
+      }
+    }
+    if (!matched) {
+      return void 0;
+    }
+    GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+      surfaces[surface] ??= false;
+    });
+  } else if (isObject2(value)) {
+    for (const [key, enabled] of Object.entries(value)) {
+      if (isAllGatewayPluginSurfacesKey(key)) {
+        for (const surface of GATEWAY_PLUGIN_SURFACE_IDS) {
+          surfaces[surface] = enabled !== false;
+        }
+      } else {
+        setSurface(key, enabled !== false);
+      }
+    }
+  }
+  return Object.keys(surfaces).length > 0 ? surfaces : void 0;
+}
+function normalizeGatewayPluginSurface(value) {
+  if (typeof value !== "string") {
+    return void 0;
+  }
+  const normalized = gatewayPluginSurfaceAlias(value.trim().toLowerCase().replace(/[\s_]+/g, "-"));
+  return GATEWAY_PLUGIN_SURFACE_IDS.includes(normalized) ? normalized : void 0;
+}
+function gatewayPluginSurfaceAlias(value) {
+  switch (value) {
+    case "app":
+    case "browser-app":
+    case "browser-apps":
+    case "ui":
+      return "apps";
+    case "gateway-route":
+    case "route":
+    case "routes":
+    case "gateway-routes":
+    case "proxy-route":
+    case "proxy":
+    case "proxy-routes":
+    case "http-backend":
+    case "http-backends":
+    case "backend":
+    case "backends":
+    case "core-gateway":
+    case "core-gateway-config":
+    case "fusion-profile":
+    case "fusion-profiles":
+    case "virtual-model":
+    case "virtual-models":
+    case "virtual-model-profile":
+    case "virtual-model-profiles":
+    case "request":
+    case "requests":
+      return "gateway";
+    case "core-provider-plugin":
+    case "provider-plugin":
+    case "provider-plugins":
+    case "provider-account":
+    case "provider-account-connector":
+    case "provider-account-connectors":
+    case "providers":
+      return "provider";
+    default:
+      return value;
+  }
+}
+function isAllGatewayPluginSurfacesKey(value) {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "*" || normalized === "all";
+}
+function parseGatewayPluginPermissions(value) {
+  if (value === void 0) {
+    return void 0;
+  }
+  const permissions = [];
+  const seen = /* @__PURE__ */ new Set();
+  const add = (rawValue) => {
+    const permission = normalizeGatewayPluginPermission(rawValue);
+    if (!permission || seen.has(permission)) {
+      return;
+    }
+    seen.add(permission);
+    permissions.push(permission);
+  };
+  if (typeof value === "string") {
+    add(value);
+  } else if (Array.isArray(value)) {
+    value.forEach(add);
+  } else if (isObject2(value)) {
+    for (const [key, enabled] of Object.entries(value)) {
+      if (enabled === false) {
+        continue;
+      }
+      if (isAllGatewayPluginPermissionsKey(key)) {
+        GATEWAY_PLUGIN_PERMISSION_IDS.forEach(add);
+      } else {
+        add(key);
+      }
+    }
+  }
+  return permissions;
+}
+function normalizeGatewayPluginPermission(value) {
+  if (typeof value !== "string") {
+    return void 0;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const mapped = gatewayPluginPermissionAlias(normalized);
+  return GATEWAY_PLUGIN_PERMISSION_ID_SET.has(mapped) ? mapped : void 0;
+}
+function gatewayPluginPermissionAlias(value) {
+  switch (value) {
+    case "code":
+    case "execute-code":
+    case "trusted":
+    case "trusted-code":
+      return "trusted-code";
+    case "app":
+    case "browser-app":
+    case "browser-apps":
+      return "apps";
+    case "gateway-route":
+    case "route":
+    case "routes":
+      return "gateway-routes";
+    case "proxy":
+    case "proxy-route":
+      return "proxy-routes";
+    case "backend":
+    case "backends":
+    case "http-backend":
+      return "http-backends";
+    case "provider-account":
+    case "provider-account-connector":
+      return "provider-account-connectors";
+    case "core-gateway":
+      return "core-gateway-config";
+    case "provider-plugin":
+    case "provider-plugins":
+    case "core-provider-plugin":
+      return "core-provider-plugins";
+    case "fusion-profile":
+    case "fusion-profiles":
+    case "virtual-model":
+    case "virtual-models":
+    case "virtual-model-profile":
+      return "virtual-model-profiles";
+    case "sqlite":
+    case "data-store":
+    case "store":
+      return "sqlite-store";
+    case "launcher":
+    case "mac-launcher":
+      return "system-launcher";
+    default:
+      return value;
+  }
+}
+function isAllGatewayPluginPermissionsKey(value) {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "*" || normalized === "all";
 }
 function parseGatewayPluginApps(value) {
   if (!Array.isArray(value)) {
@@ -29457,7 +30172,7 @@ function parseGatewayPluginProxyRoutes(value) {
     if (!host || !upstream) {
       return void 0;
     }
-    const paths = Array.isArray(item.paths) ? item.paths.map((path8) => readString4(path8)).filter((path8) => Boolean(path8)) : void 0;
+    const paths = Array.isArray(item.paths) ? item.paths.map((path9) => readString4(path9)).filter((path9) => Boolean(path9)) : void 0;
     const headers = parseStringRecord(item.headers);
     const stripPathPrefix = typeof item.stripPathPrefix === "boolean" || typeof item.stripPathPrefix === "string" ? item.stripPathPrefix : void 0;
     const rewritePathPrefix = readString4(item.rewritePathPrefix);
@@ -29504,6 +30219,10 @@ function parseProfile(value) {
     if (typeof claudeCode.enabled === "boolean") {
       profile.claudeCode.enabled = claudeCode.enabled;
     }
+    const managedCompact = readManagedCompact(claudeCode);
+    if (managedCompact !== void 0) {
+      profile.claudeCode.managedCompact = managedCompact;
+    }
     const settingsFile = readString4(claudeCode.settingsFile) || readString4(claudeCode.configFile) || readString4(claudeCode.path);
     if (settingsFile) {
       profile.claudeCode.settingsFile = settingsFile;
@@ -29511,6 +30230,22 @@ function parseProfile(value) {
     const model = readString4(claudeCode.model);
     if (model !== void 0) {
       profile.claudeCode.model = model;
+    }
+    const fableModel = readString4(claudeCode.fableModel) || readString4(claudeCode.defaultFableModel);
+    if (fableModel !== void 0) {
+      profile.claudeCode.fableModel = fableModel;
+    }
+    const opusModel = readString4(claudeCode.opusModel) || readString4(claudeCode.defaultOpusModel);
+    if (opusModel !== void 0) {
+      profile.claudeCode.opusModel = opusModel;
+    }
+    const sonnetModel = readString4(claudeCode.sonnetModel) || readString4(claudeCode.defaultSonnetModel);
+    if (sonnetModel !== void 0) {
+      profile.claudeCode.sonnetModel = sonnetModel;
+    }
+    const haikuModel = readString4(claudeCode.haikuModel) || readString4(claudeCode.defaultHaikuModel) || readString4(claudeCode.smallFastModel) || readString4(claudeCode.smallModel);
+    if (haikuModel !== void 0) {
+      profile.claudeCode.haikuModel = haikuModel;
     }
     const smallFastModel = readString4(claudeCode.smallFastModel) || readString4(claudeCode.smallModel);
     if (smallFastModel !== void 0) {
@@ -29522,6 +30257,10 @@ function parseProfile(value) {
     profile.codex = {};
     if (typeof codex.enabled === "boolean") {
       profile.codex.enabled = codex.enabled;
+    }
+    const managedCompact = readManagedCompact(codex);
+    if (managedCompact !== void 0) {
+      profile.codex.managedCompact = managedCompact;
     }
     if (typeof codex.cliMiddleware === "boolean") {
       profile.codex.cliMiddleware = codex.cliMiddleware;
@@ -29610,10 +30349,11 @@ function parseProfiles(value) {
     ]);
     const env = parseStringRecord(item.env) ?? {};
     const parsedSurface = parseProfileSurface(readString4(item.surface) || readString4(item.entry) || readString4(item.frontend)) || "auto";
-    const surface = agent === "zcode" ? "app" : parsedSurface;
+    const surface = agent === "zcode" || agent === CLAUDE_DESIGN_PLUGIN_ID ? "app" : agent === "pi" ? "cli" : parsedSurface;
     const botConfigId = surface !== "cli" ? readString4(item.botConfigId) || readString4(item.bot_config_id) || readString4(item.savedBotConfigId) || readString4(item.saved_bot_config_id) : "";
     const parsedBotGateway = parseBotGateway(item.botGateway ?? item.bot_gateway ?? item.bot);
     const botGateway = surface !== "cli" && parsedBotGateway ? completeBotGatewayConfig(parsedBotGateway) : void 0;
+    const managedCompact = readManagedCompact(item);
     if (agent === "claude-code") {
       const appPath2 = readProfileAppPath(item, agent);
       return {
@@ -29623,16 +30363,21 @@ function parseProfiles(value) {
         ...botGateway ? { botGateway } : {},
         enabled,
         env: claudeCodeProfileEnv(env),
+        fableModel: readString4(item.fableModel) || readString4(item.defaultFableModel) || "",
+        haikuModel: readString4(item.haikuModel) || readString4(item.defaultHaikuModel) || readString4(item.smallFastModel) || readString4(item.smallModel) || "",
         id,
+        ...managedCompact !== void 0 ? { managedCompact } : {},
         model,
         name,
+        opusModel: readString4(item.opusModel) || readString4(item.defaultOpusModel) || "",
         scope: parseProfileScope(readString4(item.scope) || readString4(item.applyScope) || readString4(item.effectScope)) || "global",
         settingsFile: readString4(item.settingsFile) || readString4(item.configFile) || "~/.claude/settings.json",
+        sonnetModel: readString4(item.sonnetModel) || readString4(item.defaultSonnetModel) || "",
         smallFastModel: readString4(item.smallFastModel) || readString4(item.smallModel) || "",
         surface
       };
     }
-    if (agent === "grok" || agent === "kimi") {
+    if (agent === "grok" || agent === "kimi" || agent === "pi") {
       return {
         agent,
         ...agent === "kimi" ? { availableModels } : {},
@@ -29643,6 +30388,18 @@ function parseProfiles(value) {
         name,
         scope: "ccr",
         surface: "cli"
+      };
+    }
+    if (agent === CLAUDE_DESIGN_PLUGIN_ID) {
+      return {
+        agent,
+        enabled,
+        env: {},
+        id,
+        model: "",
+        name,
+        scope: "ccr",
+        surface: "app"
       };
     }
     const appPath = readProfileAppPath(item, agent);
@@ -29659,6 +30416,7 @@ function parseProfiles(value) {
       enabled,
       env: codexCompatibleProfileEnv(env),
       id,
+      ...managedCompact !== void 0 ? { managedCompact } : {},
       model,
       name,
       providerId: readString4(item.providerId) || readString4(item.provider) || "claude-code-router",
@@ -29693,10 +30451,20 @@ function parseProfileAgent(value) {
   if (normalized === "opencode" || normalized === "open-code" || normalized === "open code") {
     return "opencode";
   }
+  if (normalized === "pi" || normalized === "pi-agent" || normalized === "pi agent" || normalized === "pi-coding-agent" || normalized === "pi coding agent") {
+    return "pi";
+  }
   if (normalized === "zcode" || normalized === "z-code" || normalized === "z code") {
     return "zcode";
   }
+  if (normalized === "claude-design" || normalized === "claude design" || normalized === "design") {
+    return CLAUDE_DESIGN_PLUGIN_ID;
+  }
   return void 0;
+}
+function readManagedCompact(value) {
+  const candidate = value.managedCompact ?? value.managed_compact ?? value.ccrManagedCompact ?? value.ccr_managed_compact ?? value.contextArchiveCompact ?? value.context_archive_compact;
+  return typeof candidate === "boolean" ? candidate : void 0;
 }
 function defaultProfileAgentName(agent) {
   if (agent === "claude-code") {
@@ -29714,10 +30482,16 @@ function defaultProfileAgentName(agent) {
   if (agent === "opencode") {
     return "OpenCode";
   }
+  if (agent === "pi") {
+    return "Pi";
+  }
+  if (agent === CLAUDE_DESIGN_PLUGIN_ID) {
+    return "Claude Design";
+  }
   return "Codex";
 }
 function defaultCodexConfigFile(agent) {
-  return agent === "zcode" ? "~/.zcode/cli/config.json" : agent === "opencode" ? "~/.config/opencode/opencode.jsonc" : "~/.codex/config.toml";
+  return agent === "zcode" ? "~/.zcode/cli/config.json" : agent === "opencode" ? "~/.config/opencode/opencode.jsonc" : agent === "pi" ? "~/.pi/agent" : agent === CLAUDE_DESIGN_PLUGIN_ID ? "~/.claude-code-router/claude-design" : "~/.codex/config.toml";
 }
 function normalizeCodexConfigFileForAgent(agent, value) {
   const trimmed = value?.trim();
@@ -29731,11 +30505,16 @@ function profileFromClaudeCodeConfig(config) {
     agent: "claude-code",
     enabled: config.enabled,
     env: claudeCodeProfileEnv(),
+    fableModel: config.fableModel,
+    haikuModel: config.haikuModel || config.smallFastModel,
     id: "default-claude-code",
+    managedCompact: config.managedCompact,
     model: config.model,
     name: "Claude Code",
+    opusModel: config.opusModel,
     scope: "global",
     settingsFile: config.settingsFile,
+    sonnetModel: config.sonnetModel,
     smallFastModel: config.smallFastModel,
     surface: "auto"
   };
@@ -29761,6 +30540,7 @@ function profileFromCodexConfig(config) {
     enabled: config.enabled,
     env: {},
     id: "default-codex",
+    managedCompact: config.managedCompact,
     model: config.model,
     name: "Codex",
     providerId: config.providerId,
@@ -30057,13 +30837,13 @@ function formatError4(error) {
 // packages/core/src/proxy/system-proxy.ts
 var import_node_child_process = require("node:child_process");
 var import_node_fs7 = require("node:fs");
-var import_node_path8 = __toESM(require("node:path"));
+var import_node_path9 = __toESM(require("node:path"));
 
 // packages/core/src/platform/windows-system.ts
 var import_node_fs6 = require("node:fs");
-var import_node_path7 = __toESM(require("node:path"));
+var import_node_path8 = __toESM(require("node:path"));
 function windowsSystemCommand(command) {
-  if (process.platform !== "win32" || import_node_path7.default.isAbsolute(command)) {
+  if (process.platform !== "win32" || import_node_path8.default.isAbsolute(command)) {
     return command;
   }
   const roots = [process.env.SystemRoot, process.env.windir].map((value) => value?.trim()).filter((value) => Boolean(value));
@@ -30071,13 +30851,13 @@ function windowsSystemCommand(command) {
   const candidates = roots.flatMap((root) => {
     if (normalized === "powershell.exe") {
       return [
-        import_node_path7.default.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
-        import_node_path7.default.join(root, "Sysnative", "WindowsPowerShell", "v1.0", "powershell.exe")
+        import_node_path8.default.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+        import_node_path8.default.join(root, "Sysnative", "WindowsPowerShell", "v1.0", "powershell.exe")
       ];
     }
     return [
-      import_node_path7.default.join(root, "System32", command),
-      import_node_path7.default.join(root, "Sysnative", command)
+      import_node_path8.default.join(root, "System32", command),
+      import_node_path8.default.join(root, "Sysnative", command)
     ];
   });
   return candidates.find((candidate) => (0, import_node_fs6.existsSync)(candidate)) ?? command;
@@ -30086,7 +30866,7 @@ function windowsSystemCommand(command) {
 // packages/core/src/proxy/system-proxy.ts
 var networkSetup = "/usr/sbin/networksetup";
 var windowsInternetSettingsKey = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
-var systemProxySnapshotFile = import_node_path8.default.join(DATADIR, "system-proxy-snapshot.json");
+var systemProxySnapshotFile = import_node_path9.default.join(DATADIR, "system-proxy-snapshot.json");
 var SystemProxyManager = class {
   snapshot;
   status = {
@@ -30728,7 +31508,7 @@ function readSetting(output, key) {
   return pattern.exec(output)?.[1]?.trim() ?? "";
 }
 function persistSnapshot(snapshot) {
-  (0, import_node_fs7.mkdirSync)(import_node_path8.default.dirname(systemProxySnapshotFile), { recursive: true });
+  (0, import_node_fs7.mkdirSync)(import_node_path9.default.dirname(systemProxySnapshotFile), { recursive: true });
   (0, import_node_fs7.writeFileSync)(systemProxySnapshotFile, `${JSON.stringify(snapshot, null, 2)}
 `, "utf8");
 }
@@ -31515,8 +32295,8 @@ function inputIncludesCacheTokensForProtocol(protocol) {
   }
   return void 0;
 }
-function inputIncludesCacheTokensForPath(path8) {
-  const normalized = path8?.toLowerCase() ?? "";
+function inputIncludesCacheTokensForPath(path9) {
+  const normalized = path9?.toLowerCase() ?? "";
   if (!normalized) {
     return void 0;
   }
@@ -31535,7 +32315,7 @@ function normalizeCount2(value) {
 // packages/core/src/observability/request-log-runtime.ts
 var import_node_crypto2 = require("node:crypto");
 var import_promises = require("node:fs/promises");
-var import_node_path10 = __toESM(require("node:path"));
+var import_node_path11 = __toESM(require("node:path"));
 var import_node_string_decoder = require("node:string_decoder");
 var import_node_worker_threads = require("node:worker_threads");
 
@@ -31727,7 +32507,7 @@ function approximateDecodedBytes(input, range) {
 
 // packages/core/src/observability/request-log-admission-store.ts
 var import_node_fs8 = require("node:fs");
-var import_node_path9 = require("node:path");
+var import_node_path10 = require("node:path");
 var runtimeLeaseMs = 3e4;
 var terminalAdmissionRetentionMs = 48 * 60 * 60 * 1e3;
 var requestLogsReconnectCooldownMs = 1e3;
@@ -31743,7 +32523,7 @@ var RequestLogAdmissionStore = class {
   runtimeId;
   upsertStatement;
   constructor(dbFile, requestLogsDbFile, runtimeId) {
-    (0, import_node_fs8.mkdirSync)((0, import_node_path9.dirname)(dbFile), { recursive: true });
+    (0, import_node_fs8.mkdirSync)((0, import_node_path10.dirname)(dbFile), { recursive: true });
     const database = createBetterSqliteDatabase(dbFile);
     try {
       database.pragma("journal_mode = WAL");
@@ -32183,7 +32963,7 @@ var RequestLogRuntime = class {
       queueMaxBytes: positiveInteger(options.queueMaxBytes, defaultQueueMaxBytes),
       queueMaxItems: positiveInteger(options.queueMaxItems, 2e3),
       rawTraceSpoolDir: options.rawTraceSpoolDir ?? RAW_TRACE_SPOOL_DIR,
-      workerFile: options.workerFile ?? import_node_path10.default.join(__dirname, "request-log-worker.js")
+      workerFile: options.workerFile ?? import_node_path11.default.join(__dirname, "request-log-worker.js")
     };
   }
   enqueueRecord(input) {
@@ -32743,8 +33523,8 @@ var RequestLogRuntime = class {
     for (const directory of directories) {
       try {
         const spoolDirectory = await (0, import_promises.realpath)(this.options.rawTraceSpoolDir);
-        const candidate = await (0, import_promises.realpath)(import_node_path10.default.resolve(directory));
-        if (candidate === spoolDirectory || !candidate.startsWith(`${spoolDirectory}${import_node_path10.default.sep}`)) {
+        const candidate = await (0, import_promises.realpath)(import_node_path11.default.resolve(directory));
+        if (candidate === spoolDirectory || !candidate.startsWith(`${spoolDirectory}${import_node_path11.default.sep}`)) {
           throw new Error(`Raw trace path is outside the configured spool directory: ${directory}`);
         }
         await (0, import_promises.rm)(candidate, { force: true, recursive: true });
@@ -33019,8 +33799,8 @@ async function withTimeout(promise, timeoutMs) {
 
 // packages/core/src/routing/protocol-adapter.ts
 var geminiGenerateContentPathPattern = /(\/v1(?:beta)?\/models\/)([^/:]+)(:(?:generatecontent|streamgeneratecontent))/i;
-function routeModelFromPath(path8) {
-  const match = geminiGenerateContentPathPattern.exec(path8);
+function routeModelFromPath(path9) {
+  const match = geminiGenerateContentPathPattern.exec(path9);
   geminiGenerateContentPathPattern.lastIndex = 0;
   if (!match?.[2]) {
     return void 0;
@@ -33033,8 +33813,8 @@ function routeModelFromPath(path8) {
 }
 
 // packages/core/src/observability/request-log-model.ts
-function requestLogRequestedModel(body, path8 = "") {
-  const pathModel = normalizeModel(routeModelFromPath(path8));
+function requestLogRequestedModel(body, path9 = "") {
+  const pathModel = normalizeModel(routeModelFromPath(path9));
   if (pathModel) {
     return pathModel;
   }
@@ -33510,8 +34290,8 @@ var RequestLogStore = class {
       params.push(value);
     };
     const url = normalizeFilterValue(input.url);
-    const path8 = normalizeFilterValue(input.path) ?? pathFromUrl(url);
-    const usagePath = path8 ?? existingUsageContext.path;
+    const path9 = normalizeFilterValue(input.path) ?? pathFromUrl(url);
+    const usagePath = path9 ?? existingUsageContext.path;
     const modelFromTrace = normalizeFilterValue(input.model);
     const responseModelFromTrace = rawInput.responseBodyText === void 0 ? void 0 : requestLogResponseModel(rawInput.responseBodyText);
     const providerFromTrace = normalizeFilterValue(input.provider);
@@ -33524,7 +34304,7 @@ var RequestLogStore = class {
     const sseError = rawSseError;
     const mergedRequestHeaders = requestHeaders ? mergeRequestHeadersForRawTrace(readRequestHeadersForRequestId(database, requestId), requestHeaders) : void 0;
     pushValue("method", normalizeFilterValue(input.method));
-    pushValue("path", path8);
+    pushValue("path", path9);
     pushValue("url", url);
     pushValue("provider", providerFromTrace);
     pushValue("model", modelFromTrace);
@@ -33597,7 +34377,7 @@ var RequestLogStore = class {
     const hasStreamSignal = input.isStream !== void 0 || input.path !== void 0 || input.url !== void 0 || input.requestBodyText !== void 0 || input.requestHeaders !== void 0 || input.responseBodyContentType !== void 0 || input.responseHeaders !== void 0;
     if (hasStreamSignal) {
       pushValue("is_stream", inferRequestLogIsStream({
-        path: path8,
+        path: path9,
         requestBodyText: input.requestBodyText,
         requestHeaders: mergedRequestHeaders,
         responseBodyContentType: input.responseBodyContentType,
@@ -33867,7 +34647,7 @@ var RequestLogStore = class {
     return this.initPromise;
   }
   async open() {
-    (0, import_node_fs9.mkdirSync)((0, import_node_path11.dirname)(this.dbFile), { recursive: true });
+    (0, import_node_fs9.mkdirSync)((0, import_node_path12.dirname)(this.dbFile), { recursive: true });
     const database = createBetterSqliteDatabase(this.dbFile);
     configureSqliteDatabase3(database);
     database.exec(`
@@ -34169,6 +34949,9 @@ function inferAgentFromText(value, options = {}) {
   if (allowStandaloneOpenCode && (normalized.includes("opencode") || normalized.includes("open-code") || normalized.includes("open code") || /(^|[^a-z0-9])opencode([/_\s-]|$)/.test(normalized))) {
     return "opencode";
   }
+  if (normalized === "pi" || normalized.includes("pi-coding-agent") || normalized.includes("pi coding agent") || normalized.includes("pi_coding_agent")) {
+    return "pi";
+  }
   if (normalized.includes("xai-grok-cli") || allowStandaloneGrok && (normalized.includes("grok-cli") || normalized.includes("grok cli") || /(^|[^a-z0-9])grok([/_\s-]|$)/.test(normalized))) {
     return "grok";
   }
@@ -34236,7 +35019,15 @@ function readAgentSessionHeader(headers, agent) {
     "x-z-code-session-id",
     "z-code-session-id"
   ];
-  const orderedHeaders = agent === "zcode" ? [...zcodeHeaders, ...codexHeaders, ...commonHeaders, ...claudeCodeHeaders] : agent === "codex" ? [...codexHeaders, ...commonHeaders, ...claudeCodeHeaders] : agent === "claude-code" ? [...claudeCodeHeaders, ...commonHeaders, ...codexHeaders, ...zcodeHeaders] : [...claudeCodeHeaders, ...codexHeaders, ...zcodeHeaders, ...commonHeaders];
+  const piHeaders = [
+    "x-pi-session-id",
+    "pi-session-id",
+    "x-pi-conversation-id",
+    "pi-conversation-id",
+    "x-pi-thread-id",
+    "pi-thread-id"
+  ];
+  const orderedHeaders = agent === "zcode" ? [...zcodeHeaders, ...codexHeaders, ...commonHeaders, ...claudeCodeHeaders] : agent === "pi" ? [...piHeaders, ...commonHeaders, ...codexHeaders, ...claudeCodeHeaders] : agent === "codex" ? [...codexHeaders, ...commonHeaders, ...claudeCodeHeaders] : agent === "claude-code" ? [...claudeCodeHeaders, ...commonHeaders, ...codexHeaders, ...zcodeHeaders] : [...claudeCodeHeaders, ...codexHeaders, ...zcodeHeaders, ...commonHeaders];
   for (const name of orderedHeaders) {
     const value = readHeaderValue(headers, name);
     if (value) {
@@ -35302,10 +36093,10 @@ function normalizeAgentAnalysisRange(value) {
   return value === "today" || value === "24h" || value === "30d" ? value : "7d";
 }
 function normalizeAgentFilter(value) {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "opencode" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
 }
 function normalizeSessionAgentFilter(value) {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "opencode" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : void 0;
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : void 0;
 }
 function agentDisplayName(agent) {
   if (agent === "claude-code") {
@@ -35325,6 +36116,9 @@ function agentDisplayName(agent) {
   }
   if (agent === "opencode") {
     return "OpenCode";
+  }
+  if (agent === "pi") {
+    return "Pi";
   }
   if (agent === "zcode") {
     return "ZCode";
@@ -37081,8 +37875,8 @@ function skipJsonWhitespace(value, start) {
 }
 function verifiedRawTracePath(value) {
   const spoolDirectory = (0, import_node_fs10.realpathSync)(configuration.rawTraceSpoolDir ?? RAW_TRACE_SPOOL_DIR);
-  const candidate = (0, import_node_fs10.realpathSync)((0, import_node_path12.resolve)(value));
-  if (candidate === spoolDirectory || !candidate.startsWith(`${spoolDirectory}${import_node_path12.sep}`)) {
+  const candidate = (0, import_node_fs10.realpathSync)((0, import_node_path13.resolve)(value));
+  if (candidate === spoolDirectory || !candidate.startsWith(`${spoolDirectory}${import_node_path13.sep}`)) {
     throw new Error(`Raw trace path is outside the configured spool directory: ${value}`);
   }
   return candidate;

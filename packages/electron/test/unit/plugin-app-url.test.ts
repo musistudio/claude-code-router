@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isLegacyClaudeDesignUrl, pluginAppUrlForOpen } from "@ccr/electron/main/plugin-app-url.ts";
+import { CLAUDE_DESIGN_PLUGIN_ID } from "@ccr/core/contracts/app.ts";
+import { builtInPluginAppForOpen, isLegacyClaudeDesignUrl, pluginAppUrlForOpen } from "@ccr/electron/main/plugin-app-url.ts";
 
-const configWithoutSavedDesignHtml = {
+const configWithIgnoredSavedDesignHtml = {
   plugins: [
     {
       config: {
-        savedHtmlPath: false
+        savedHtmlPath: "/tmp/Claude Design.html",
+        useSavedHtml: true
       },
       enabled: true,
       id: "claude-design"
@@ -22,10 +24,10 @@ test("Claude Design app URLs classify only legacy Claude and old Cloudflare Desi
   assert.equal(isLegacyClaudeDesignUrl("https://example.com/discover/design"), false);
 });
 
-test("Claude Design app opening migrates the old Cloudflare Design URL to the current shell", () => {
+test("Claude Design app opening migrates legacy Design URLs to the Cloudflare Pages shell", () => {
   assert.equal(
     pluginAppUrlForOpen(
-      configWithoutSavedDesignHtml,
+      configWithIgnoredSavedDesignHtml,
       "claude-design",
       "https://claude-design-assets.pages.dev/discover/design"
     ),
@@ -36,7 +38,7 @@ test("Claude Design app opening migrates the old Cloudflare Design URL to the cu
 test("Claude Design app opening keeps current and non-Design app URLs unchanged", () => {
   assert.equal(
     pluginAppUrlForOpen(
-      configWithoutSavedDesignHtml,
+      configWithIgnoredSavedDesignHtml,
       "claude-design",
       "https://claude-design-assets.pages.dev/design"
     ),
@@ -44,10 +46,20 @@ test("Claude Design app opening keeps current and non-Design app URLs unchanged"
   );
   assert.equal(
     pluginAppUrlForOpen(
-      configWithoutSavedDesignHtml,
+      configWithIgnoredSavedDesignHtml,
       "claude-ship",
       "https://claude-design-assets.pages.dev/discover/design"
     ),
     "https://claude-design-assets.pages.dev/discover/design"
   );
+});
+
+test("Claude Design resolves to the built-in app without installed plugin config", () => {
+  const pluginApp = builtInPluginAppForOpen(CLAUDE_DESIGN_PLUGIN_ID);
+
+  assert.equal(pluginApp?.id, "claude-design");
+  assert.equal(pluginApp?.name, "Claude Design");
+  assert.equal(pluginApp?.url, "https://claude-design-assets.pages.dev/design");
+  assert.equal(builtInPluginAppForOpen("agent-console"), undefined);
+  assert.equal(builtInPluginAppForOpen(CLAUDE_DESIGN_PLUGIN_ID, "missing"), undefined);
 });

@@ -134,6 +134,35 @@ test("AddProfileForm treats Pi as a CCR-only CLI profile", () => {
   assert.doesNotMatch(html, /Allowed models/);
 });
 
+test("AddProfileForm treats Claude Design as a CCR-only App profile", () => {
+  const config = appConfigFixture();
+  const draft = createProfileDraft("claude-design");
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={config.botConfigs}
+      draft={draft}
+      error=""
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={[]}
+      virtualModelProfiles={[]}
+    />
+  );
+
+  assert.equal(draft.name, "Claude Design");
+  assert.equal(draft.scope, "ccr");
+  assert.equal(draft.surface, "app");
+  assert.equal(isProfileDraftSubmittable(draft), true);
+  assert.match(html, /Claude Design/);
+  assert.match(html, /App only/);
+  assert.doesNotMatch(html, /CLI only/);
+  assert.doesNotMatch(html, /Provider ID/);
+  assert.doesNotMatch(html, /Provider name/);
+  assert.doesNotMatch(html, /Environment variables/);
+  assert.doesNotMatch(html, /Advanced settings/);
+  assert.doesNotMatch(html, /Configure at least one enabled provider model/);
+});
+
 test("ProfileView renders agent profiles as compact cards with inline actions", () => {
   const config = appConfigFixture();
   config.profile.profiles = [

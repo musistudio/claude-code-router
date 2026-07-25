@@ -8,7 +8,7 @@ import { syncClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-
 import { gatewayService } from "@ccr/core/gateway/service";
 import { providerIdentitySafetyIssue } from "@ccr/core/providers/presets/index";
 import { loadClaudeDesignWindowCdpOptions } from "./claude-design-window";
-import { pluginAppUrlForOpen } from "./plugin-app-url";
+import { builtInPluginAppForOpen, pluginAppUrlForOpen } from "./plugin-app-url";
 import windowsManager from "./windows";
 
 type PluginDeepLinkRequest = {
@@ -347,10 +347,10 @@ function boundedPluginId(value: string | null | undefined, optional = false): st
   return normalized;
 }
 
-function resolvePluginApp(config: AppConfig, request: PluginDeepLinkRequest): GatewayPluginAppConfig | undefined {
+function resolvePluginApp(config: Pick<AppConfig, "plugins">, request: PluginDeepLinkRequest): GatewayPluginAppConfig | undefined {
   const plugin = config.plugins.find((candidate) => candidate.enabled !== false && candidate.id === request.pluginId);
   if (!plugin) {
-    return undefined;
+    return resolveKnownBuiltInPluginApp(request);
   }
 
   const apps = configuredPluginApps(plugin.id, plugin.apps);
@@ -362,6 +362,10 @@ function resolvePluginApp(config: AppConfig, request: PluginDeepLinkRequest): Ga
     return apps.find((app) => (app.id || app.name) === request.appId);
   }
   return apps[0];
+}
+
+function resolveKnownBuiltInPluginApp(request: PluginDeepLinkRequest): GatewayPluginAppConfig | undefined {
+  return builtInPluginAppForOpen(request.pluginId, request.appId);
 }
 
 function configuredPluginApps(pluginId: string, apps: GatewayPluginAppConfig[] | undefined): GatewayPluginAppConfig[] {

@@ -48,7 +48,7 @@ export function findProfileForOpen(config: Pick<AppConfig, "profile">, profileRe
 }
 
 export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[] {
-  if (profile.agent === "zcode") {
+  if (profile.agent === "zcode" || profile.agent === "claude-design") {
     return ["app"];
   }
   if (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi") {
@@ -76,7 +76,7 @@ export function resolveProfileOpenSurface(profile: ProfileConfig, surface?: Prof
 }
 
 export function defaultProfileOpenSurface(profile: Pick<ProfileConfig, "agent">): ProfileOpenSurface {
-  return profile.agent === "zcode" ? "app" : "cli";
+  return profile.agent === "zcode" || profile.agent === "claude-design" ? "app" : "cli";
 }
 
 export function shouldAutoStartProfileGateway(
@@ -107,6 +107,9 @@ export function buildProfileLaunchPlan(
   extraArgs: string[] = []
 ): ProfileLaunchPlan {
   const resolvedSurface = resolveProfileOpenSurface(profile, surface);
+  if (profile.agent === "claude-design") {
+    throw new Error("Claude Design profiles can only be opened from CCR Desktop.");
+  }
   if (profile.agent === "grok") {
     return buildGrokLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
   }
@@ -306,7 +309,13 @@ function isCodexCompatibleAgent(agent: ProfileConfig["agent"]): boolean {
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "~/.zcode/cli/config.json" : agent === "pi" ? "~/.pi/agent" : "~/.codex/config.toml";
+  return agent === "zcode"
+    ? "~/.zcode/cli/config.json"
+    : agent === "pi"
+      ? "~/.pi/agent"
+      : agent === "claude-design"
+        ? "~/.claude-code-router/claude-design"
+        : "~/.codex/config.toml";
 }
 
 function codexConfigSubdir(agent: ProfileConfig["agent"]): string {

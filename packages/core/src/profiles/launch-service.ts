@@ -115,6 +115,9 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
   await applyProfileConfig(config);
   const profile = findProfileForOpen(config, request.profileId);
   const surface = resolveProfileOpenSurface(profile, request.surface);
+  if (profile.agent === "claude-design") {
+    throw new Error("Claude Design profiles can only be opened from CCR Desktop.");
+  }
   if (profile.agent === "claude-code" && surface === "app") {
     return openClaudeAppProfile(config, profile);
   }

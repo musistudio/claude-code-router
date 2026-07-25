@@ -747,7 +747,7 @@ function createBotGatewayDraft(botGateway?: BotGatewayRuntimeConfig) {
 }
 
 export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code", name?: string): AddProfileDraft {
-  const surface = agent === "zcode" ? "app" : "cli";
+  const surface = agent === "zcode" || agent === "claude-design" ? "app" : "cli";
   return {
     agent,
     appPath: "",
@@ -821,6 +821,15 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
       surface: "cli"
     };
   }
+  if (profile.agent === "claude-design") {
+    return {
+      ...createProfileDraft("claude-design", profile.name),
+      envRows: [],
+      model: "",
+      scope: "ccr",
+      surface: "app"
+    };
+  }
   const surface = profile.agent === "zcode" ? "app" : normalizeProfileSurfaceForForm(profile.surface);
   return {
     ...createProfileDraft(profile.agent, profile.name),
@@ -861,6 +870,9 @@ export function isProfileDraftSubmittable(draft: AddProfileDraft): boolean {
     return true;
   }
   if (draft.agent === "pi") {
+    return true;
+  }
+  if (draft.agent === "claude-design") {
     return true;
   }
   if (draft.agent === "kimi") {
@@ -912,7 +924,11 @@ export function profileConfigFromDraft(
     ...botGateway,
     configFile: draft.configFile,
     enabled: existingProfile?.enabled ?? true,
-    env: draft.agent === "claude-code" ? recordFromKeyValueRows(draft.envRows) : codexCompatibleProfileEnv(recordFromKeyValueRows(draft.envRows)),
+    env: draft.agent === "claude-code"
+      ? recordFromKeyValueRows(draft.envRows)
+      : draft.agent === "claude-design"
+        ? {}
+        : codexCompatibleProfileEnv(recordFromKeyValueRows(draft.envRows)),
     fableModel: draft.fableModel,
     haikuModel: draft.haikuModel,
     id,
@@ -924,7 +940,7 @@ export function profileConfigFromDraft(
     providerName: draft.providerName,
     scope: draft.scope,
     settingsFile: draft.settingsFile,
-    showAllSessions: draft.agent === "zcode" || draft.agent === "opencode" ? false : draft.showAllSessions,
+    showAllSessions: draft.agent === "zcode" || draft.agent === "opencode" || draft.agent === "claude-design" ? false : draft.showAllSessions,
     sonnetModel: draft.sonnetModel,
     smallFastModel: draft.haikuModel || draft.smallFastModel,
     surface: draft.surface
@@ -1510,6 +1526,12 @@ export function profileSummaryItems(
     ];
   }
 
+  if (profile.agent === "claude-design") {
+    return [
+      { label: t("Entry mode"), value: t("App only") }
+    ];
+  }
+
   return [
     { label: t("Model"), value: modelValue },
     { label: t("Provider ID"), value: profile.providerId ?? "claude-code-router" },
@@ -1568,6 +1590,18 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
       name,
       scope: "ccr",
       surface: "cli"
+    };
+  }
+  if (agent === "claude-design") {
+    return {
+      agent,
+      enabled: profile.enabled,
+      env: {},
+      id: profile.id || `profile-${index + 1}`,
+      model: "",
+      name,
+      scope: "ccr",
+      surface: "app"
     };
   }
   return {
@@ -1660,6 +1694,8 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
         ? "pi"
       : rawAgent === "zcode" || rawAgent === "z-code" || rawAgent === "z code"
         ? "zcode"
+        : rawAgent === "claude-design" || rawAgent === "claude design" || rawAgent === "design"
+          ? "claude-design"
         : undefined;
   if (!agent) {
     return undefined;
@@ -1797,6 +1833,9 @@ export function profileAgentLabel(agent: ProfileConfig["agent"]): string {
   if (agent === "opencode") {
     return "OpenCode";
   }
+  if (agent === "claude-design") {
+    return "Claude Design";
+  }
   return "Codex";
 }
 
@@ -1821,7 +1860,7 @@ export function profileSurfaceLabel(surface: ProfileSurface): string {
 }
 
 export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[] {
-  if (profile.agent === "zcode") {
+  if (profile.agent === "zcode" || profile.agent === "claude-design") {
     return ["app"];
   }
   if (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi") {
@@ -1837,7 +1876,7 @@ export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[
   return ["cli", "app"];
 }
 
-export function profileOpenCommandFallback(profile: ProfileConfig, surface: ProfileOpenSurface = profile.agent === "zcode" ? "app" : "cli"): string {
+export function profileOpenCommandFallback(profile: ProfileConfig, surface: ProfileOpenSurface = profile.agent === "zcode" || profile.agent === "claude-design" ? "app" : "cli"): string {
   const profileRef = profile.name.trim() || profile.id;
   return ["ccr", shellCommandQuote(profileRef), ...(surface === "app" ? ["app"] : [])].join(" ");
 }
@@ -1850,6 +1889,9 @@ function shellCommandQuote(value: string): string {
 
 export function profileAgentLogoUrl(agent: ProfileConfig["agent"]): string {
   if (agent === "claude-code") {
+    return claudeCodeLogoUrl;
+  }
+  if (agent === "claude-design") {
     return claudeCodeLogoUrl;
   }
   if (agent === "zcode") {
@@ -1875,11 +1917,11 @@ function normalizeCodexCompatibleAgent(agent: ProfileConfig["agent"]): "codex" |
 }
 
 function normalizeProfileAgent(agent: ProfileConfig["agent"]): ProfileConfig["agent"] {
-  return agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : agent === "pi" ? "pi" : agent === "grok" ? "grok" : agent === "kimi" ? "kimi" : agent === "codex" ? "codex" : "claude-code";
+  return agent === "claude-design" ? "claude-design" : agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : agent === "pi" ? "pi" : agent === "grok" ? "grok" : agent === "kimi" ? "kimi" : agent === "codex" ? "codex" : "claude-code";
 }
 
 function normalizeProfileSurfaceForAgent(agent: ProfileConfig["agent"], surface: unknown): ProfileSurface {
-  return agent === "zcode" ? "app" : agent === "grok" || agent === "kimi" || agent === "pi" ? "cli" : normalizeProfileSurface(surface);
+  return agent === "zcode" || agent === "claude-design" ? "app" : agent === "grok" || agent === "kimi" || agent === "pi" ? "cli" : normalizeProfileSurface(surface);
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
@@ -1889,7 +1931,9 @@ function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
       ? "~/.config/opencode/opencode.jsonc"
       : agent === "pi"
         ? "~/.pi/agent"
-      : "~/.codex/config.toml";
+        : agent === "claude-design"
+          ? "~/.claude-code-router/claude-design"
+          : "~/.codex/config.toml";
 }
 
 function normalizeCodexConfigFileForAgent(agent: ProfileConfig["agent"], value: string | undefined): string {

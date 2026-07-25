@@ -2549,6 +2549,15 @@ function migrateExternalizedPluginModuleConfig(plugin: GatewayPluginConfig): { c
 function migrateClaudeDesignPluginConfig(plugin: GatewayPluginConfig): GatewayPluginMigrationResult & { plugin: GatewayPluginConfig } {
   let changed = false;
   const nextPlugin: GatewayPluginConfig = { ...plugin };
+  const config = removeDeprecatedClaudePluginConfig(plugin.config);
+  if (config.changed) {
+    changed = true;
+    if (config.config === undefined) {
+      delete nextPlugin.config;
+    } else {
+      nextPlugin.config = config.config;
+    }
+  }
   const isLegacyModule = isLegacyClaudeDesignModule(plugin.module);
   const modulePath = migratedClaudePluginModulePath(CLAUDE_DESIGN_PLUGIN_ID, plugin.module);
   if (modulePath && modulePath !== plugin.module) {
@@ -2569,6 +2578,77 @@ function migrateClaudeDesignPluginConfig(plugin: GatewayPluginConfig): GatewayPl
     changed,
     plugin: nextPlugin,
     plugins: [nextPlugin]
+  };
+}
+
+const deprecatedClaudePluginConfigKeys = new Set([
+  "appMode",
+  "autoAnswerQuestions",
+  "claudeAppAssetDir",
+  "claudeAppAssets",
+  "claudeAppIonDistDir",
+  "claudeAppPath",
+  "claudeShipAssetDir",
+  "claudeShipAssets",
+  "claudeShipIonDistDir",
+  "claudeShipLocalApp",
+  "designHtmlPath",
+  "htmlPath",
+  "localApp",
+  "localShell",
+  "onlineApp",
+  "savedHtmlPath",
+  "shipAssetDir",
+  "shipAssets",
+  "shipIonDistDir",
+  "shipLocalApp",
+  "useSavedHtml"
+]);
+
+const deprecatedClaudePluginFalseOnlyConfigKeys = new Set([
+  "assetsOrigin",
+  "designAssetsOrigin",
+  "designFrontendAssetsOrigin",
+  "designFrontendOrigin",
+  "designFrontendUrl",
+  "designWebUrl",
+  "frontendAssetsOrigin",
+  "frontendOrigin",
+  "frontendUrl",
+  "shipAssetsOrigin",
+  "shipFrontendAssetsOrigin",
+  "shipFrontendOrigin",
+  "shipFrontendUrl",
+  "shipWebUrl",
+  "staticAssetsOrigin",
+  "webUrl"
+]);
+
+function removeDeprecatedClaudePluginConfig(config: unknown): { changed: boolean; config?: unknown } {
+  if (!isObject(config)) {
+    return {
+      changed: false,
+      ...(config !== undefined ? { config } : {})
+    };
+  }
+  const nextConfig: Record<string, unknown> = {};
+  let changed = false;
+  for (const [key, value] of Object.entries(config)) {
+    if (deprecatedClaudePluginConfigKeys.has(key) || (value === false && deprecatedClaudePluginFalseOnlyConfigKeys.has(key))) {
+      changed = true;
+      continue;
+    }
+    nextConfig[key] = value;
+  }
+  if (!changed) {
+    return {
+      changed: false,
+      config
+    };
+  }
+  return {
+    changed: true,
+    ...(Object.keys(nextConfig).length > 0 ? { config: nextConfig } : {})
   };
 }
 
@@ -2617,18 +2697,29 @@ function migrateClaudeDesignPluginApps(apps: GatewayPluginAppConfig[] | undefine
 }
 
 function migrateClaudeShipPluginConfig(plugin: GatewayPluginConfig): GatewayPluginMigrationResult & { plugin: GatewayPluginConfig } {
+  let changed = false;
+  const nextPlugin: GatewayPluginConfig = { ...plugin };
+  const config = removeDeprecatedClaudePluginConfig(plugin.config);
+  if (config.changed) {
+    changed = true;
+    if (config.config === undefined) {
+      delete nextPlugin.config;
+    } else {
+      nextPlugin.config = config.config;
+    }
+  }
   const apps = migrateClaudeShipPluginApps(plugin.apps);
-  if (!apps.changed) {
+  if (apps.changed) {
+    changed = true;
+    nextPlugin.apps = apps.apps;
+  }
+  if (!changed) {
     return {
       changed: false,
       plugin,
       plugins: [plugin]
     };
   }
-  const nextPlugin = {
-    ...plugin,
-    apps: apps.apps
-  };
   return {
     changed: true,
     plugin: nextPlugin,
@@ -2673,14 +2764,44 @@ function migratedClaudeShipPluginConfig(source: GatewayPluginConfig): GatewayPlu
   if (!modulePath) {
     return undefined;
   }
+  const config = removeDeprecatedClaudePluginConfig(source.config);
   return {
-    ...(source.config !== undefined ? { config: source.config } : {}),
+    ...(config.config !== undefined ? { config: config.config } : {}),
     apps: knownGatewayPluginDefaultApps(CLAUDE_SHIP_PLUGIN_ID),
     enabled: source.enabled,
     id: CLAUDE_SHIP_PLUGIN_ID,
     module: modulePath,
     permissions: knownGatewayPluginDefaultPermissions(CLAUDE_SHIP_PLUGIN_ID),
     surfaces: knownGatewayPluginDefaultSurfaces(CLAUDE_SHIP_PLUGIN_ID)
+  };
+}
+
+export function claudeDesignRuntimePluginConfig(): GatewayPluginConfig | undefined {
+  const modulePath = resolveCcrExtensionsPluginModule(CLAUDE_DESIGN_PLUGIN_ID, undefined);
+  if (!modulePath) {
+    return undefined;
+  }
+  return {
+    apps: knownGatewayPluginDefaultApps(CLAUDE_DESIGN_PLUGIN_ID),
+    enabled: true,
+    id: CLAUDE_DESIGN_PLUGIN_ID,
+    module: modulePath,
+    permissions: knownGatewayPluginDefaultPermissions(CLAUDE_DESIGN_PLUGIN_ID),
+    surfaces: knownGatewayPluginDefaultSurfaces(CLAUDE_DESIGN_PLUGIN_ID)
+  };
+}
+
+export function withClaudeDesignRuntimePluginConfig(config: AppConfig): AppConfig {
+  if (config.plugins.some((plugin) => plugin.enabled !== false && plugin.id === CLAUDE_DESIGN_PLUGIN_ID)) {
+    return config;
+  }
+  const plugin = claudeDesignRuntimePluginConfig();
+  if (!plugin) {
+    throw new Error("Claude Design runtime module was not found. Set CCR_EXTENSIONS_DIR or keep ccr-extensions next to the CCR checkout.");
+  }
+  return {
+    ...config,
+    plugins: [...config.plugins, plugin]
   };
 }
 
@@ -3247,7 +3368,11 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       ]);
       const env = parseStringRecord(item.env) ?? {};
       const parsedSurface = parseProfileSurface(readString(item.surface) || readString(item.entry) || readString(item.frontend)) || "auto";
-      const surface = agent === "zcode" ? "app" : agent === "pi" ? "cli" : parsedSurface;
+      const surface = agent === "zcode" || agent === CLAUDE_DESIGN_PLUGIN_ID
+        ? "app"
+        : agent === "pi"
+          ? "cli"
+          : parsedSurface;
       const botConfigId = surface !== "cli"
         ? readString(item.botConfigId) || readString(item.bot_config_id) || readString(item.savedBotConfigId) || readString(item.saved_bot_config_id)
         : "";
@@ -3290,6 +3415,19 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
           name,
           scope: "ccr",
           surface: "cli"
+        };
+      }
+
+      if (agent === CLAUDE_DESIGN_PLUGIN_ID) {
+        return {
+          agent,
+          enabled,
+          env: {},
+          id,
+          model: "",
+          name,
+          scope: "ccr",
+          surface: "app"
         };
       }
 
@@ -3367,6 +3505,9 @@ function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
   if (normalized === "zcode" || normalized === "z-code" || normalized === "z code") {
     return "zcode";
   }
+  if (normalized === "claude-design" || normalized === "claude design" || normalized === "design") {
+    return CLAUDE_DESIGN_PLUGIN_ID;
+  }
   return undefined;
 }
 
@@ -3399,6 +3540,9 @@ function defaultProfileAgentName(agent: ProfileConfig["agent"]): string {
   if (agent === "pi") {
     return "Pi";
   }
+  if (agent === CLAUDE_DESIGN_PLUGIN_ID) {
+    return "Claude Design";
+  }
   return "Codex";
 }
 
@@ -3409,7 +3553,9 @@ function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
       ? "~/.config/opencode/opencode.jsonc"
       : agent === "pi"
         ? "~/.pi/agent"
-      : "~/.codex/config.toml";
+        : agent === CLAUDE_DESIGN_PLUGIN_ID
+          ? "~/.claude-code-router/claude-design"
+          : "~/.codex/config.toml";
 }
 
 function normalizeCodexConfigFileForAgent(agent: ProfileConfig["agent"], value: string | undefined): string {

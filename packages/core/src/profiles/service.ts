@@ -163,11 +163,13 @@ export async function applyProfileConfig(
             ? applyKimiProfile(config, profile, token, appliedAt)
             : profile.agent === "pi"
               ? applyPiProfile(config, profile, token, appliedAt)
-              : profile.agent === "opencode"
-                ? applyOpenCodeProfile(config, profile, token, appliedAt)
-                : profile.agent === "zcode"
-                  ? applyZcodeProfile(config, profile, token, appliedAt)
-                  : applyCodexProfile(config, profile, token, appliedAt)
+              : profile.agent === "claude-design"
+                ? applyClaudeDesignProfile(profile, appliedAt)
+                : profile.agent === "opencode"
+                  ? applyOpenCodeProfile(config, profile, token, appliedAt)
+                  : profile.agent === "zcode"
+                    ? applyZcodeProfile(config, profile, token, appliedAt)
+                    : applyCodexProfile(config, profile, token, appliedAt)
     );
   }
   result.clients.push(...takeoverStatuses);
@@ -309,11 +311,24 @@ export function applyProfileRuntimeConfig(config: AppConfig, profile: ProfileCon
         ? applyKimiProfile(config, profile, token, appliedAt)
         : profile.agent === "pi"
           ? applyPiProfile(config, profile, token, appliedAt)
-          : profile.agent === "opencode"
-            ? applyOpenCodeProfile(config, profile, token, appliedAt)
-            : profile.agent === "zcode"
-              ? applyZcodeProfile(config, profile, token, appliedAt)
-              : applyCodexProfile(config, profile, token, appliedAt);
+          : profile.agent === "claude-design"
+            ? applyClaudeDesignProfile(profile, appliedAt)
+            : profile.agent === "opencode"
+              ? applyOpenCodeProfile(config, profile, token, appliedAt)
+              : profile.agent === "zcode"
+                ? applyZcodeProfile(config, profile, token, appliedAt)
+                : applyCodexProfile(config, profile, token, appliedAt);
+}
+
+function applyClaudeDesignProfile(profile: ProfileConfig, appliedAt: string): ProfileClientApplyStatus {
+  return {
+    appliedAt,
+    client: "claude-design",
+    enabled: profile.enabled,
+    message: "Claude Design profile is managed by CCR Desktop.",
+    ok: true,
+    path: resolveUserPath(CONFIGDIR)
+  };
 }
 
 function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
@@ -727,7 +742,9 @@ function profilePath(profile: ProfileConfig): string {
         ? kimiWrapperPath(profile)
         : profile.agent === "pi"
           ? path.join(resolvePiAgentDir(CONFIGDIR, profile), "models.json")
-          : profile.agent === "opencode"
+          : profile.agent === "claude-design"
+            ? CONFIGDIR
+            : profile.agent === "opencode"
             ? resolveOpenCodeConfigFile(CONFIGDIR, profile)
             : resolveCodexConfigFile(profile);
 }
@@ -2566,6 +2583,9 @@ function disabledProfileStatus(profile: ProfileConfig): ProfileClientApplyStatus
   if (profile.agent === "pi") {
     return disabledStatus("pi", piWrapperPath(profile), "Pi profile is disabled.");
   }
+  if (profile.agent === "claude-design") {
+    return disabledStatus("claude-design", CONFIGDIR, "Claude Design profile is disabled.");
+  }
   if (profile.agent === "opencode") {
     const providerId = openCodeProviderId(profile);
     return restoreDisabledGlobalProfile(
@@ -3054,6 +3074,9 @@ function disabledProfileMessage(profile: ProfileConfig): string {
   if (profile.agent === "pi") {
     return "Pi profile is disabled.";
   }
+  if (profile.agent === "claude-design") {
+    return "Claude Design profile is disabled.";
+  }
   if (profile.agent === "opencode") {
     return "OpenCode profile is disabled.";
   }
@@ -3217,11 +3240,20 @@ function codexCompatibleClientName(agent: ProfileConfig["agent"]): string {
   if (agent === "pi") {
     return "Pi";
   }
+  if (agent === "claude-design") {
+    return "Claude Design";
+  }
   return agent === "zcode" ? "ZCode" : "Codex";
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "~/.zcode/cli/config.json" : agent === "pi" ? "~/.pi/agent" : "~/.codex/config.toml";
+  return agent === "zcode"
+    ? "~/.zcode/cli/config.json"
+    : agent === "pi"
+      ? "~/.pi/agent"
+      : agent === "claude-design"
+        ? "~/.claude-code-router/claude-design"
+        : "~/.codex/config.toml";
 }
 
 function codexConfigSubdir(agent: ProfileConfig["agent"]): string {
