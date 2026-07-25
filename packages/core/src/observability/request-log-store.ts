@@ -2882,13 +2882,8 @@ function buildAgentAnalysisTotals(requests: AnalyzedAgentRequest[]): AgentAnalys
   const cacheWriteTokens = sum(requests, (request) => request.cacheWriteTokens);
   const cacheTokens = cacheReadTokens;
   const costUsd = sum(requests, (request) => request.costUsd ?? 0);
-  const totalTokens = sum(requests, (request) => request.totalTokens || request.inputTokens + request.outputTokens + request.cacheReadTokens + request.cacheWriteTokens);
-  const promptTokens = sum(requests, (request) => {
-    const promptTokensFromTotal = request.totalTokens - request.outputTokens;
-    return promptTokensFromTotal > 0
-      ? Math.max(request.inputTokens, promptTokensFromTotal)
-      : request.inputTokens + request.cacheReadTokens + request.cacheWriteTokens;
-  });
+  const totalTokens = sum(requests, agentAnalysisTotalTokenCount);
+  const promptTokens = sum(requests, agentAnalysisPromptTokenCount);
   const successfulRequests = requests.filter((request) => request.ok).length;
   const sessionCount = new Set(requests.map((request) => `${request.agent}:${request.sessionId}`)).size;
   const durations = requests.map((request) => request.durationMs).sort((a, b) => a - b);
@@ -2915,6 +2910,19 @@ function buildAgentAnalysisTotals(requests: AnalyzedAgentRequest[]): AgentAnalys
     toolCallCount: sum(requests, (request) => request.toolCallCount),
     totalTokens
   };
+}
+
+function agentAnalysisPromptTokenCount(request: AnalyzedAgentRequest): number {
+  const cacheTokens = request.cacheReadTokens + request.cacheWriteTokens;
+  const promptTokensFromTotal = request.totalTokens - request.outputTokens;
+  return Math.max(request.inputTokens + cacheTokens, promptTokensFromTotal);
+}
+
+function agentAnalysisTotalTokenCount(request: AnalyzedAgentRequest): number {
+  return Math.max(
+    request.totalTokens,
+    request.inputTokens + request.outputTokens + request.cacheReadTokens + request.cacheWriteTokens
+  );
 }
 
 function buildStatusCodeCounts(requests: AnalyzedAgentRequest[]): Array<{ count: number; statusCode: number }> {

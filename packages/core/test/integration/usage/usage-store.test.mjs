@@ -149,6 +149,39 @@ test("UsageStore aggregates stats in SQLite without loading all events", async (
   }
 });
 
+test("UsageStore cache ratio denominator includes cache tokens when total tokens omit cache", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-cache-ratio-test-"));
+  try {
+    const store = new UsageStore(path.join(dir, "usage.sqlite"));
+
+    await store.record({
+      createdAt: new Date().toISOString(),
+      durationMs: 50,
+      method: "POST",
+      model: "glm-cache",
+      path: "/v1/messages",
+      provider: "zhipu",
+      requestId: "cache-ratio-total-omits-cache",
+      statusCode: 200,
+      usage: {
+        cacheReadTokens: 90,
+        inputTokens: 10,
+        outputTokens: 5,
+        totalTokens: 15
+      }
+    });
+
+    const stats = await store.getStats("30d");
+    assert.equal(stats.totals.totalTokens, 105);
+    assert.equal(stats.totals.cacheRatio, 0.9);
+    assert.equal(stats.models[0]?.cacheRatio, 0.9);
+    assert.equal(stats.recentRequests[0]?.totalTokens, 105);
+    assert.equal(stats.recentRequests[0]?.cacheRatio, 0.9);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("UsageStore excludes proxy rows by default and includes them on request", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-proxy-test-"));
   try {
