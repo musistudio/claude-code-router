@@ -4,6 +4,7 @@ import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { newApiKeyUsageAccountConfig } from "@ccr/core/providers/new-api.ts";
 import { geminiProviderPreset } from "@ccr/core/providers/presets/gemini/index.ts";
+import { minimaxChinaProviderPreset } from "@ccr/core/providers/presets/minimax/index.ts";
 import { moonshotGlobalProviderPreset } from "@ccr/core/providers/presets/moonshot/index.ts";
 import { qiniuAiProviderPreset } from "@ccr/core/providers/presets/qiniu-ai/index.ts";
 import { AddProviderDialog, AddProviderForm, ProvidersView, uniqueProviderProbeProtocolRows } from "@ccr/ui/pages/home/components/providers.tsx";
@@ -981,7 +982,7 @@ test("provider deep link config saves anthropic probe prefix as capability URL",
 });
 
 test("provider display icon prefers custom icons and falls back to preset icons", () => {
-  setProviderPresets([geminiProviderPreset]);
+  setProviderPresets([geminiProviderPreset, minimaxChinaProviderPreset]);
 
   assert.equal(
     providerDisplayIcon({
@@ -1001,6 +1002,15 @@ test("provider display icon prefers custom icons and falls back to preset icons"
       type: "gemini_generate_content"
     }),
     providerPresetIconUrls.gemini
+  );
+  assert.equal(
+    providerDisplayIcon({
+      api_base_url: "https://api.minimaxi.com/v1",
+      models: [],
+      name: "MiniMax (China)",
+      type: "openai_chat_completions"
+    }),
+    providerPresetIconUrls["minimax-cn"]
   );
   assert.equal(
     providerDisplayIcon({
