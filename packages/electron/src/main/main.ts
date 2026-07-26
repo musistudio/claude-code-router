@@ -1,10 +1,12 @@
 import { app, dialog } from "electron";
 import { mkdirSync } from "node:fs";
 import { installSocketTypeOfServiceCompat } from "@ccr/core/platform/socket-compat";
+import { markDesktopAppRuntime } from "@ccr/core/runtime/desktop-app";
 import { resolveRuntimeDataDir, setRuntimeAppPaths } from "@ccr/core/runtime/app-paths";
 import { copyMissingDirectoryContents, sameFilesystemPath } from "@ccr/core/storage/migration";
 
 installSocketTypeOfServiceCompat();
+markDesktopAppRuntime();
 
 const appDataPath = app.getPath("appData");
 const homePath = app.getPath("home");

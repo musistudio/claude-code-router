@@ -485,6 +485,7 @@ function getCliAppInfo(): AppInfo {
     configDir: CONFIGDIR,
     configFile: CONFIG_FILE,
     dataDir: DATADIR,
+    desktop: false,
     gatewayConfigFile: GATEWAY_CONFIG_FILE,
     launchAtLoginSupported: false,
     name: APP_NAME,

@@ -58,6 +58,7 @@ ipcMain.handle(IPC_CHANNELS.appGetInfo, () => {
     configDir: CONFIGDIR,
     configFile: CONFIG_FILE,
     dataDir: DATADIR,
+    desktop: true,
     gatewayConfigFile: GATEWAY_CONFIG_FILE,
     launchAtLoginSupported: isLaunchAtLoginSupported(),
     name: APP_NAME,
@@ -130,10 +131,6 @@ ipcMain.handle(IPC_CHANNELS.appListMcpServerTools, async (_event, serverName: st
 });
 ipcMain.handle(IPC_CHANNELS.appOpenBuiltInBrowser, async () => {
   const config = await loadAppConfig();
-  if (hasEnabledPluginApp(config, "agent-console")) {
-    await deepLinkService.openPluginApp("agent-console");
-    return;
-  }
   await builtInBrowserService.open(config);
 });
 ipcMain.handle(IPC_CHANNELS.appOpenPluginApp, async (_event, pluginId: string, appId?: string) => {
@@ -1494,14 +1491,6 @@ function isFile(file: string): boolean {
   } catch {
     return false;
   }
-}
-
-function hasEnabledPluginApp(config: AppConfig, pluginId: string): boolean {
-  return config.plugins.some((plugin) =>
-    plugin.id === pluginId &&
-    plugin.enabled !== false &&
-    plugin.apps?.some((app) => typeof app.url === "string" && app.url.trim())
-  );
 }
 
 function formatError(error: unknown): string {

@@ -5,6 +5,7 @@ export type AppInfo = {
   configDir: string;
   configFile: string;
   dataDir: string;
+  desktop: boolean;
   gatewayConfigFile: string;
   launchAtLoginSupported: boolean;
   requestLogsDbFile: string;
@@ -782,7 +783,7 @@ export const DEFAULT_CLAUDE_DESIGN_APP: GatewayPluginAppConfig = {
   icon: "palette",
   id: "claude-design",
   name: "Claude Design",
-  url: "https://claude-design-assets.pages.dev/design"
+  url: "https://claude-design.ccrdesk.top/design"
 };
 export const DEFAULT_CLAUDE_SHIP_APP: GatewayPluginAppConfig = {
   description: "Open Claude Ship in a dedicated CCR Electron window.",
@@ -824,10 +825,6 @@ export type KnownGatewayPluginDefaults = {
 };
 
 export const KNOWN_GATEWAY_PLUGIN_DEFAULTS: Record<string, KnownGatewayPluginDefaults> = {
-  "agent-console": {
-    permissions: ["trusted-code", "apps", "gateway-routes", "system-launcher"],
-    surfaces: { apps: true, gateway: true, provider: false }
-  },
   "claude-design": {
     permissions: ["trusted-code", "apps", "gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
     surfaces: { apps: true, gateway: true, provider: false }

@@ -24,7 +24,7 @@ import {
   OverviewWidgetConfig, parseProviderAccountDraft, pluginConfigPatchFromSettingsDraft,
   providerCredentialsFromDraft,
   persistLanguagePreference, PluginInstallCandidate, PluginMarketplaceEntry, PluginRoutingConfigTarget, PluginSettingsDraft, presetCapabilitiesFromDraft,
-  probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
+  probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileAgentOptionsForRuntime, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
   providerBaseUrl, providerCapabilitiesForProtocols, providerCapabilitiesForSave, providerConnectivityApiKeyFromDraft, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerProtocolOptions, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
@@ -219,6 +219,12 @@ function App() {
   const [profileActionBusy, setProfileActionBusy] = useState<ProfileActionBusy>();
   const [profileRuntimeStatus, setProfileRuntimeStatus] = useState<ProfileRuntimeStatus>({ profiles: [] });
   const [profileSubmitBusy, setProfileSubmitBusy] = useState<"" | "add" | "edit">("");
+  const availableProfileAgentOptions = useMemo(() => profileAgentOptionsForRuntime(appInfo.desktop), [appInfo.desktop]);
+  const defaultAvailableProfileAgent = availableProfileAgentOptions[0]?.value ?? "claude-code";
+  const isProfileAgentAvailable = useMemo(() => {
+    const availableAgents = new Set(availableProfileAgentOptions.map((option) => option.value));
+    return (agent: ProfileConfig["agent"]) => availableAgents.has(agent);
+  }, [availableProfileAgentOptions]);
   const [apiKeyAddOpen, setApiKeyAddOpen] = useState(false);
   const [apiKeyDraft, setApiKeyDraft] = useState<AddApiKeyDraft>(() => createApiKeyDraft());
   const [apiKeyEditDraft, setApiKeyEditDraft] = useState<AddApiKeyDraft>(() => createApiKeyDraft());
@@ -380,6 +386,18 @@ function App() {
     setProfileDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath, appInfo.opencodeAppPath));
     setProfileEditDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath, appInfo.opencodeAppPath));
   }, [appInfo.chatgptAppPath, appInfo.opencodeAppPath]);
+
+  useEffect(() => {
+    if (!isProfileAgentAvailable(profileAgentTab)) {
+      setProfileAgentTab(defaultAvailableProfileAgent);
+    }
+    setProfileDraft((current) => isProfileAgentAvailable(current.agent)
+      ? current
+      : createProfileDraft(defaultAvailableProfileAgent));
+    setProfileEditDraft((current) => isProfileAgentAvailable(current.agent)
+      ? current
+      : createProfileDraft(defaultAvailableProfileAgent));
+  }, [defaultAvailableProfileAgent, isProfileAgentAvailable, profileAgentTab]);
 
   useEffect(() => {
     if (!window.ccr) {
@@ -2563,8 +2581,9 @@ function App() {
   }
 
   function openAddProfileDialog(agent: ProfileConfig["agent"] = profileAgentTab) {
-    setProfileAgentTab(agent);
-    setProfileDraft(profileDraftWithDetectedAppPath(createProfileDraft(agent), appInfo.chatgptAppPath, appInfo.opencodeAppPath));
+    const resolvedAgent = isProfileAgentAvailable(agent) ? agent : defaultAvailableProfileAgent;
+    setProfileAgentTab(resolvedAgent);
+    setProfileDraft(profileDraftWithDetectedAppPath(createProfileDraft(resolvedAgent), appInfo.chatgptAppPath, appInfo.opencodeAppPath));
     setProfileActionError("");
     setProfileAddOpen(true);
   }
@@ -3008,6 +3027,7 @@ function App() {
               loaded={configLoaded && onboardingStatusLoaded && providerPresetsLoaded}
               onboarding={{
                 activeStep: onboardingStep,
+                agentOptions: availableProfileAgentOptions,
                 canSubmitProfile,
                 canSubmitProvider,
                 config: draftConfig,
@@ -3129,6 +3149,7 @@ function App() {
                 },
                 profile: {
                   addProfile: openAddProfileDialog,
+                  agentOptions: availableProfileAgentOptions,
                   applyError: profileActionError,
                   copyProfileCliCommand: (index) => void copyProfileCliCommand(index),
                   config: draftConfig,
@@ -3262,6 +3283,7 @@ function App() {
               onSubmit: submitPluginSettingsDraft
             } : undefined}
             profileAdd={profileAddOpen ? {
+              agentOptions: availableProfileAgentOptions,
               botConfigs: draftConfig.botConfigs,
               canSubmit: canSubmitProfile,
               draft: profileDraft,
@@ -3281,6 +3303,7 @@ function App() {
               profile: profileDeleteItem
             } : undefined}
             profileEdit={profileEditIndex !== undefined ? {
+              agentOptions: availableProfileAgentOptions,
               botConfigs: draftConfig.botConfigs,
               canSubmit: canSubmitProfileEdit,
               draft: profileEditDraft,

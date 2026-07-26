@@ -1,5 +1,5 @@
 import esbuild from "esbuild";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { builtinModules, createRequire } from "node:module";
 import path from "node:path";
@@ -9,7 +9,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireFromHere = createRequire(import.meta.url);
 
 export const projectRoot = path.resolve(__dirname, "..");
-export const ccrExtensionsRoot = path.resolve(process.env.CCR_EXTENSIONS_DIR || path.join(projectRoot, "..", "ccr-extensions"));
 export const packagesRoot = path.join(projectRoot, "packages");
 export const cliRoot = path.join(packagesRoot, "cli");
 export const coreRoot = path.join(packagesRoot, "core");
@@ -48,11 +47,9 @@ export const electronRendererOutDir = path.join(electronDistDir, "renderer");
 export const runtimeRendererOutDirs = [cliRendererOutDir, coreRendererOutDir, electronRendererOutDir];
 export const appAssetsDir = path.join(electronDistDir, "assets");
 export const rendererAssetsDir = path.join(rendererOutDir, "assets");
-export const cliMarketplacePluginsDir = path.join(cliDistDir, "marketplace", "plugins");
-export const coreMarketplacePluginsDir = path.join(coreDistDir, "marketplace", "plugins");
-export const electronMarketplacePluginsDir = path.join(electronDistDir, "marketplace", "plugins");
-export const marketplacePluginsDir = electronMarketplacePluginsDir;
-export const marketplacePluginsInputDir = path.join(ccrExtensionsRoot, "plugins");
+export const bundledClaudeRuntimePluginIds = ["claude-design", "claude-ship"];
+export const bundledClaudeRuntimePluginsInputDir = path.join(electronRoot, "bundled-plugins");
+export const electronBundledRuntimePluginsDir = path.join(electronDistDir, "bundled-plugins");
 export const appAssetsInput = path.join(electronRoot, "assets");
 export const modelCatalogInput = path.join(coreRoot, "models.json");
 export const cliModelCatalogOutput = path.join(cliDistDir, "models.json");
@@ -106,9 +103,7 @@ export function ensureDist() {
   mkdirSync(electronBotGatewaySdkDistDir, { recursive: true });
   mkdirSync(electronBotGatewaySdkBinDir, { recursive: true });
   mkdirSync(appAssetsDir, { recursive: true });
-  mkdirSync(cliMarketplacePluginsDir, { recursive: true });
-  mkdirSync(coreMarketplacePluginsDir, { recursive: true });
-  mkdirSync(electronMarketplacePluginsDir, { recursive: true });
+  mkdirSync(electronBundledRuntimePluginsDir, { recursive: true });
   mkdirSync(rendererAssetsDir, { recursive: true });
   for (const outputDir of runtimeRendererOutDirs) {
     mkdirSync(path.join(outputDir, "assets"), { recursive: true });
@@ -148,10 +143,11 @@ export function copyBrowserRendererHtml() {
   copyRendererPageHtml(browserRendererHtmlInput, browserRendererHtmlOutput, "browser.js");
 }
 
-export function copyMarketplacePlugins() {
+export function copyBundledClaudeRuntimePlugins() {
   ensureDist();
-  buildMarketplacePlugin("agent-console");
-  copyMarketplacePlugin("agent-console");
+  for (const pluginId of bundledClaudeRuntimePluginIds) {
+    copyBundledClaudeRuntimePlugin(pluginId);
+  }
 }
 
 export function syncUiRendererToRuntimeDists() {
@@ -186,43 +182,20 @@ function copyRendererPageHtml(input, output, scriptName, options = {}) {
   writeFileSync(output, html, "utf8");
 }
 
-function buildMarketplacePlugin(pluginId) {
-  const pluginRoot = path.join(marketplacePluginsInputDir, pluginId);
-  const packageJson = path.join(pluginRoot, "package.json");
-  if (!existsSync(packageJson)) {
-    return;
+function copyBundledClaudeRuntimePlugin(pluginId) {
+  const inputDir = path.join(bundledClaudeRuntimePluginsInputDir, pluginId);
+  const outputDir = path.join(electronBundledRuntimePluginsDir, pluginId);
+  const moduleInput = path.join(inputDir, "index.cjs");
+  if (!existsSync(moduleInput)) {
+    throw new Error(`Bundled Claude runtime plugin ${pluginId} is missing: ${moduleInput}`);
   }
 
-  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-  const result = spawnSync(npmCommand, ["run", "build"], {
-    cwd: pluginRoot,
-    shell: false,
-    stdio: "inherit"
-  });
-  if (result.error) {
-    throw result.error;
-  }
-  if (result.status !== 0) {
-    throw new Error(`Plugin ${pluginId} build failed with exit code ${result.status ?? "unknown"}.`);
-  }
-}
-
-function copyMarketplacePlugin(pluginId) {
-  const pluginRoot = path.join(marketplacePluginsInputDir, pluginId);
-  const outputRoots = [cliMarketplacePluginsDir, coreMarketplacePluginsDir, electronMarketplacePluginsDir];
-  const runtimeFiles = ["plugin.json", "index.cjs"];
-  const rendererInput = path.join(pluginRoot, "dist", "renderer");
-  for (const outputRoot of outputRoots) {
-    const outputDir = path.join(outputRoot, pluginId);
-    mkdirSync(outputDir, { recursive: true });
-    for (const fileName of runtimeFiles) {
-      const input = path.join(pluginRoot, fileName);
-      if (existsSync(input)) {
-        cpSync(input, path.join(outputDir, fileName));
-      }
-    }
-    if (existsSync(rendererInput)) {
-      cpSync(rendererInput, path.join(outputDir, "dist", "renderer"), { recursive: true });
+  rmSync(outputDir, { force: true, recursive: true });
+  mkdirSync(outputDir, { recursive: true });
+  for (const fileName of ["index.cjs", "plugin.json", "README.md"]) {
+    const input = path.join(inputDir, fileName);
+    if (existsSync(input)) {
+      cpSync(input, path.join(outputDir, fileName));
     }
   }
 }

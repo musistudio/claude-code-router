@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 import { pluginService } from "@ccr/core/plugins/service.ts";
+import { CCR_DESKTOP_APP_ENV } from "@ccr/core/runtime/desktop-app.ts";
 
 test("plugin permissions gate dynamic gateway route registration", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-plugin-permissions-"));
@@ -102,15 +103,59 @@ test("plugin permissions gate configured browser apps", { skip: !process.env.CCR
 test("known bundled plugins without persisted permissions receive scoped defaults", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-plugin-known-defaults-"));
   try {
-    const pluginFile = path.join(dir, "agent-console-plugin.cjs");
+    const pluginFile = path.join(dir, "claude-design-plugin.cjs");
     writeFileSync(pluginFile, [
       "\"use strict\";",
       "module.exports = {",
       "  setup(ctx) {",
       "    ctx.registerGatewayRoute({",
       "      auth: \"none\",",
-      "      id: \"agent-console-status\",",
-      "      path: \"/plugins/agent-console/__status\",",
+      "      id: \"claude-design-status\",",
+      "      path: \"/plugins/claude-design/__status\",",
+      "      handler(_request, response, helpers) {",
+      "        helpers.sendJson(response, 200, { ok: true });",
+      "      }",
+      "    });",
+      "  }",
+      "};",
+      ""
+    ].join("\n"), "utf8");
+
+    await withDesktopRuntime(async () => {
+      await pluginService.start({
+        ...baseConfig(dir),
+        plugins: [{
+          apps: [{ id: "claude-design", name: "Claude Design", url: "/plugins/claude-design/pages/home/" }],
+          enabled: true,
+          id: "claude-design",
+          module: pluginFile
+        }]
+      });
+    });
+
+    assert.deepEqual(pluginService.getApps().map((app) => app.id), ["claude-design"]);
+    assert.equal(pluginService.hasGatewayRoutes(), true);
+  } finally {
+    await pluginService.stop();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("Claude browser plugins are skipped outside CCR Desktop", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-plugin-desktop-only-"));
+  const previousDesktopApp = process.env[CCR_DESKTOP_APP_ENV];
+  try {
+    delete process.env[CCR_DESKTOP_APP_ENV];
+    const pluginFile = path.join(dir, "claude-design-plugin.cjs");
+    writeFileSync(pluginFile, [
+      "\"use strict\";",
+      "module.exports = {",
+      "  setup(ctx) {",
+      "    ctx.registerApp({ id: \"claude-design\", name: \"Claude Design\", url: \"/plugins/claude-design\" });",
+      "    ctx.registerGatewayRoute({",
+      "      auth: \"none\",",
+      "      id: \"claude-design-status\",",
+      "      path: \"/plugins/claude-design/__status\",",
       "      handler(_request, response, helpers) {",
       "        helpers.sendJson(response, 200, { ok: true });",
       "      }",
@@ -123,16 +168,17 @@ test("known bundled plugins without persisted permissions receive scoped default
     await pluginService.start({
       ...baseConfig(dir),
       plugins: [{
-        apps: [{ id: "agent-console", name: "Agent Console", url: "/plugins/agent-console/pages/home/" }],
         enabled: true,
-        id: "agent-console",
-        module: pluginFile
+        id: "claude-design",
+        module: pluginFile,
+        permissions: ["trusted-code", "apps", "gateway-routes"]
       }]
     });
 
-    assert.deepEqual(pluginService.getApps().map((app) => app.id), ["agent-console"]);
-    assert.equal(pluginService.hasGatewayRoutes(), true);
+    assert.deepEqual(pluginService.getApps(), []);
+    assert.equal(pluginService.hasGatewayRoutes(), false);
   } finally {
+    restoreEnv(CCR_DESKTOP_APP_ENV, previousDesktopApp);
     await pluginService.stop();
     rmSync(dir, { force: true, recursive: true });
   }
@@ -274,6 +320,24 @@ function baseConfig(dir) {
   config.gateway.enabled = false;
   config.plugins = [];
   return config;
+}
+
+async function withDesktopRuntime(run) {
+  const previousDesktopApp = process.env[CCR_DESKTOP_APP_ENV];
+  try {
+    process.env[CCR_DESKTOP_APP_ENV] = "1";
+    return await run();
+  } finally {
+    restoreEnv(CCR_DESKTOP_APP_ENV, previousDesktopApp);
+  }
+}
+
+function restoreEnv(key, value) {
+  if (value === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
 }
 
 function writeReloadPlugin(pluginFile, name, url) {

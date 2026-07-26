@@ -1,6 +1,7 @@
+import { withClaudeDesignRuntimePluginConfig } from "@ccr/core/config/config";
 import { CLAUDE_DESIGN_PLUGIN_ID, knownGatewayPluginDefaultApps, type AppConfig, type GatewayPluginAppConfig } from "@ccr/core/contracts/app";
 
-const DEFAULT_CLAUDE_DESIGN_FRONTEND_URL = "https://claude-design-assets.pages.dev/design";
+const DEFAULT_CLAUDE_DESIGN_FRONTEND_URL = "https://claude-design.ccrdesk.top/design";
 
 export function pluginAppUrlForOpen(_config: AppConfig, pluginId: string, appUrl: string): string {
   if (pluginId !== CLAUDE_DESIGN_PLUGIN_ID) {
@@ -24,6 +25,12 @@ export function builtInPluginAppForOpen(pluginId: string, appId?: string): Gatew
   return apps[0];
 }
 
+export function configForPluginAppOpen(config: AppConfig, pluginId: string): AppConfig {
+  return pluginId === CLAUDE_DESIGN_PLUGIN_ID
+    ? withClaudeDesignRuntimePluginConfig(config)
+    : config;
+}
+
 export function isLegacyClaudeDesignUrl(value: string): boolean {
   try {
     const url = new URL(value, "https://claude.ai");
@@ -31,9 +38,6 @@ export function isLegacyClaudeDesignUrl(value: string): boolean {
     const pathname = url.pathname.replace(/\/$/, "");
     if (host === "claude.ai") {
       return pathname === "/discover/design" || pathname === "/design";
-    }
-    if (host === "claude-design-assets.pages.dev") {
-      return pathname === "/discover/design";
     }
     return false;
   } catch {

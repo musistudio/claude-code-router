@@ -122,7 +122,9 @@ export const agentFilterOptions: Array<{ label: string; value: AgentFilterValue 
   { label: "Unknown", value: "unknown" }
 ];
 
-export const profileAgentOptions: Array<{ label: string; value: ProfileConfig["agent"] }> = [
+export type ProfileAgentOption = { label: string; value: ProfileConfig["agent"] };
+
+export const profileAgentOptions: ProfileAgentOption[] = [
   { label: "Claude Code", value: "claude-code" },
   { label: "Codex", value: "codex" },
   { label: "Grok CLI", value: "grok" },
@@ -132,6 +134,12 @@ export const profileAgentOptions: Array<{ label: string; value: ProfileConfig["a
   { label: "ZCode", value: "zcode" },
   { label: "Claude Design", value: "claude-design" }
 ];
+
+export function profileAgentOptionsForRuntime(desktop: boolean): ProfileAgentOption[] {
+  return desktop
+    ? profileAgentOptions
+    : profileAgentOptions.filter((option) => option.value !== "claude-design");
+}
 
 export const profileScopeOptions: Array<{ label: string; value: ProfileScope }> = [
   { label: "Only opened from CCR", value: "ccr" },

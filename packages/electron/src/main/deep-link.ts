@@ -8,7 +8,7 @@ import { syncClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-
 import { gatewayService } from "@ccr/core/gateway/service";
 import { providerIdentitySafetyIssue } from "@ccr/core/providers/presets/index";
 import { loadClaudeDesignWindowCdpOptions } from "./claude-design-window";
-import { builtInPluginAppForOpen, pluginAppUrlForOpen } from "./plugin-app-url";
+import { builtInPluginAppForOpen, configForPluginAppOpen, pluginAppUrlForOpen } from "./plugin-app-url";
 import windowsManager from "./windows";
 
 type PluginDeepLinkRequest = {
@@ -126,7 +126,7 @@ class DeepLinkService {
 
     try {
       const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(await loadAppConfig());
-      const config = syncedClaudeAppConfig.config;
+      const config = configForPluginAppOpen(syncedClaudeAppConfig.config, request.pluginId);
       const pluginApp = resolvePluginApp(config, request);
       if (!pluginApp) {
         throw new Error(`Plugin app is not configured or enabled: ${request.pluginId}`);

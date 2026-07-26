@@ -18,6 +18,7 @@ import { TOOL_HUB_MCP_RUNTIME_FILE_NAME, bundledToolHubMcpEntryPathCandidates } 
 import { mediaToolsGatewayEndpoint } from "@ccr/core/mcp/grok-media-config";
 import { buildProfileLaunchPlan, findProfileForOpen, profileLaunchSpawnCommand, profileOpenCommand, profileOpenSurfaces, resolveClaudeCodeSettingsFile, resolveProfileOpenSurface } from "@ccr/core/profiles/launch-core";
 import { applyProfileConfig, cleanupGeneratedBinBackups } from "@ccr/core/profiles/service";
+import { isDesktopAppRuntime } from "@ccr/core/runtime/desktop-app";
 import { windowsEnvironmentChangedPowerShellLines, windowsSystemCommand } from "@ccr/core/platform/windows-system";
 
 const ccrPathBlockStart = "# >>> Claude Code Router CLI >>>";
@@ -99,6 +100,9 @@ export async function getProfileOpenCommand(config: AppConfig, request: ProfileO
   await applyProfileConfig(config);
   const profile = findProfileForOpen(config, request.profileId);
   const surface = resolveProfileOpenSurface(profile, request.surface);
+  if (profile.agent === "claude-design" && !isDesktopAppRuntime()) {
+    throw new Error("Claude Design profiles can only be opened from CCR Desktop.");
+  }
   if (options.ensureLauncher) {
     ensureCcrCliLauncher(config);
   }

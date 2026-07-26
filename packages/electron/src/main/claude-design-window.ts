@@ -1,5 +1,6 @@
 import { gunzipSync } from "node:zlib";
 import type { Event as ElectronEvent, Session, WebContents } from "electron";
+import { loadPersistedApiKeys } from "@ccr/core/config/api-key-store";
 import {
   CLAUDE_DESIGN_PLUGIN_ID,
   CLAUDE_SHIP_PLUGIN_ID,
@@ -67,7 +68,7 @@ export async function loadClaudeDesignWindowCdpOptions(
   pluginId = CLAUDE_DESIGN_PLUGIN_ID
 ): Promise<ClaudeDesignWindowCdpOptions> {
   const statusUrl = new URL(claudePluginAdminPath(pluginId), gatewayOriginFromConfig(config));
-  const headers = gatewayAuthHeaders(config);
+  const headers = await gatewayAuthHeaders(config);
   const response = await fetch(statusUrl, {
     cache: "no-store",
     headers,
@@ -487,10 +488,33 @@ function gatewayOriginFromConfig(config: AppConfig): string {
   return `http://${host}:${port}`;
 }
 
-function gatewayAuthHeaders(config: AppConfig): Record<string, string> {
+async function gatewayAuthHeaders(config: AppConfig): Promise<Record<string, string>> {
+  const apiKey = gatewayAuthKeyFromConfig(config) || await persistedGatewayAuthKey();
+  return apiKey ? { authorization: `Bearer ${apiKey}` } : {};
+}
+
+function gatewayAuthKeyFromConfig(config: AppConfig): string {
+  return (Array.isArray(config.APIKEYS) ? config.APIKEYS : [])
+    .map((item) => item.key?.trim() || "")
+    .find(Boolean) || config.APIKEY?.trim() || "";
+}
+
+async function persistedGatewayAuthKey(): Promise<string> {
+  try {
+    return (await loadPersistedApiKeys())
+      .map((item) => item.key?.trim() || "")
+      .find(Boolean) || "";
+  } catch {
+    return "";
+  }
+}
+
+export function gatewayAuthHeadersForTest(config: AppConfig, persistedApiKeys: Array<{ key?: string }> = []): Record<string, string> {
   const apiKey = (Array.isArray(config.APIKEYS) ? config.APIKEYS : [])
     .map((item) => item.key?.trim() || "")
-    .find(Boolean) || config.APIKEY?.trim();
+    .find(Boolean) || config.APIKEY?.trim() || persistedApiKeys
+      .map((item) => item.key?.trim() || "")
+      .find(Boolean);
   return apiKey ? { authorization: `Bearer ${apiKey}` } : {};
 }
 

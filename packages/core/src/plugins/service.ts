@@ -16,12 +16,15 @@ import {
   type ProviderAccountMeter,
   type ProviderAccountPluginConnectorConfig,
   type ProviderAccountSnapshot,
+  CLAUDE_DESIGN_PLUGIN_ID,
+  CLAUDE_SHIP_PLUGIN_ID,
   GATEWAY_PLUGIN_PERMISSION_IDS,
   knownGatewayPluginDefaultPermissions,
   knownGatewayPluginDefaultSurfaces
 } from "@ccr/core/contracts/app";
 import { backendService, type RegisteredHttpBackend, type SqliteStore, type SqliteStoreOptions } from "@ccr/core/plugins/backend-service";
 import { CONFIGDIR, DATADIR } from "@ccr/core/config/constants";
+import { isDesktopAppRuntime } from "@ccr/core/runtime/desktop-app";
 
 type MaybePromise<T> = T | Promise<T>;
 type PluginLogger = {
@@ -203,6 +206,9 @@ class GatewayPluginService {
 
     for (const pluginConfig of config.plugins ?? []) {
       if (pluginConfig.enabled === false) {
+        continue;
+      }
+      if (!pluginAvailableInCurrentRuntime(pluginConfig)) {
         continue;
       }
       const snapshot = this.createStateSnapshot();
@@ -995,9 +1001,17 @@ function pluginRuntimeSurfacesEnabled(pluginConfig: Pick<GatewayPluginConfig, "i
     pluginSurfaceEnabled(pluginConfig, "provider");
 }
 
+function pluginAvailableInCurrentRuntime(pluginConfig: Pick<GatewayPluginConfig, "id">): boolean {
+  return !isDesktopOnlyClaudeBrowserPlugin(pluginConfig.id) || isDesktopAppRuntime();
+}
+
+function isDesktopOnlyClaudeBrowserPlugin(pluginId: string): boolean {
+  return pluginId === CLAUDE_DESIGN_PLUGIN_ID || pluginId === CLAUDE_SHIP_PLUGIN_ID;
+}
+
 function enabledPluginIds(config: AppConfig): Set<string> {
   return new Set((config.plugins ?? [])
-    .filter((plugin) => plugin.enabled !== false && pluginRuntimeSurfacesEnabled(plugin))
+    .filter((plugin) => plugin.enabled !== false && pluginAvailableInCurrentRuntime(plugin) && pluginRuntimeSurfacesEnabled(plugin))
     .map((plugin) => plugin.id));
 }
 

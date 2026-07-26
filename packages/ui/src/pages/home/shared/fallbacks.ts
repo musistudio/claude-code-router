@@ -15,6 +15,7 @@ export const fallbackInfo: AppInfo = {
   configDir: "Browser preview",
   configFile: "Browser preview",
   dataDir: "Browser preview",
+  desktop: false,
   gatewayConfigFile: "Browser preview",
   launchAtLoginSupported: /^Mac|^Win/i.test(navigator.platform),
   name: "Claude Code Router",

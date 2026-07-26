@@ -6,13 +6,14 @@ import {
   claudeDesignCdpFetchPatterns,
   claudeDesignCdpOptionsFromStatus,
   claudeDesignRedirectUrlForRequest,
-  claudePluginAdminPath
+  claudePluginAdminPath,
+  gatewayAuthHeadersForTest
 } from "@ccr/electron/main/claude-design-window.ts";
 
 test("Claude browser plugin status paths are selected per plugin", () => {
   assert.equal(claudePluginAdminPath("claude-design"), "/plugins/claude-design");
   assert.equal(claudePluginAdminPath("claude-ship"), "/plugins/claude-ship");
-  assert.throws(() => claudePluginAdminPath("agent-console"), /not supported/);
+  assert.throws(() => claudePluginAdminPath("unknown-plugin"), /not supported/);
 });
 
 test("Claude Design window CDP options are derived from plugin status", () => {
@@ -105,4 +106,15 @@ test("Claude Design window CDP reads binary post data entries before proxying to
   assert.deepEqual(request.headers, {
     "content-type": "application/connect+proto"
   });
+});
+
+test("Claude Design window status auth falls back to persisted gateway API keys", () => {
+  assert.deepEqual(
+    gatewayAuthHeadersForTest({ APIKEY: "", APIKEYS: [], plugins: [] } as any, [{ key: "persisted-key" }]),
+    { authorization: "Bearer persisted-key" }
+  );
+  assert.deepEqual(
+    gatewayAuthHeadersForTest({ APIKEY: "config-key", APIKEYS: [], plugins: [] } as any, [{ key: "persisted-key" }]),
+    { authorization: "Bearer config-key" }
+  );
 });

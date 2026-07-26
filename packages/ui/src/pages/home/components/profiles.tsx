@@ -4,7 +4,7 @@ import {
   cn, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
   DialogTitle, Field, GatewayProviderConfig, Info, Input, KeyValueRowsControl, LoaderCircle, motion,
   normalizeProfileScope, normalizeProfileSurface, Pencil, Plus, PopoverContent,
-  profileAgentLabel, profileAgentOptions, ProfileConfig, profileModelProviderOptions, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
+  profileAgentLabel, profileAgentOptions, ProfileConfig, type ProfileAgentOption, profileModelProviderOptions, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
   Play, Power, RefreshCw, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, useLayoutEffect, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactDragEvent, type ReactNode, type VirtualModelProfileConfig,
   copyTextToClipboard, validateProfileEnvRows,
   useCallback, useEffect, useMemo, useRef, useState, X
@@ -23,6 +23,7 @@ type ProfileActionBusy = {
 export function ProfileView({
   addProfile,
   applyError,
+  agentOptions = profileAgentOptions,
   copyProfileCliCommand,
   config,
   editProfile,
@@ -34,6 +35,7 @@ export function ProfileView({
   updateProfileItem
 }: {
   addProfile: (agent?: ProfileConfig["agent"]) => void;
+  agentOptions?: ProfileAgentOption[];
   applyError: string;
   copyProfileCliCommand: (index: number) => void;
   config: AppConfig;
@@ -47,6 +49,10 @@ export function ProfileView({
 }) {
   const t = useAppText();
   const profiles = config.profile.profiles;
+  const visibleAgentValues = new Set(agentOptions.map((option) => option.value));
+  const visibleProfiles = profiles
+    .map((profile, index) => ({ index, profile }))
+    .filter(({ profile }) => visibleAgentValues.has(profile.agent));
 
   return (
     <motion.div
@@ -74,12 +80,12 @@ export function ProfileView({
         </CardHeader>
         <CardContent className="min-h-0 flex-1 overflow-auto max-[720px]:p-3">
           <div className="grid min-w-0 gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))] max-[720px]:gap-2.5">
-            {profiles.length === 0 ? (
+            {visibleProfiles.length === 0 ? (
               <div className="col-span-full flex h-32 items-center justify-center rounded-md border border-dashed border-border bg-muted/20 text-[12px] text-muted-foreground">
                 {t("No profiles configured")}
               </div>
             ) : null}
-            {profiles.map((profile, index) => {
+            {visibleProfiles.map(({ profile, index }) => {
               const scope = normalizeProfileScope(profile.scope);
               const surface = profile.agent === "zcode" ? "app" : normalizeProfileSurface(profile.surface);
               const openSurfaces = profileOpenSurfaces(profile);
@@ -510,10 +516,12 @@ function ProfileCliCommandBlock({
 
 function ProfileAgentTabs({
   activeAgent,
+  agentOptions,
   profiles,
   setActiveAgent
 }: {
   activeAgent: ProfileConfig["agent"];
+  agentOptions: ProfileAgentOption[];
   profiles: ProfileConfig[];
   setActiveAgent: (agent: ProfileConfig["agent"]) => void;
 }) {
@@ -525,7 +533,7 @@ function ProfileAgentTabs({
       className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-7"
       role="tablist"
     >
-      {profileAgentOptions.map((option) => {
+      {agentOptions.map((option) => {
         const agent = option.value;
         const selected = activeAgent === agent;
         const count = profiles.filter((profile) => profile.agent === agent).length;
@@ -557,9 +565,11 @@ function ProfileAgentTabs({
 }
 
 function AgentSelectControl({
+  agentOptions,
   onChange,
   value
 }: {
+  agentOptions: ProfileAgentOption[];
   onChange: (agent: ProfileConfig["agent"]) => void;
   value: ProfileConfig["agent"];
 }) {
@@ -590,7 +600,7 @@ function AgentSelectControl({
       const margin = 12;
       const gap = 6;
       const viewportHeight = window.innerHeight;
-      const listHeight = profileAgentOptions.length * 36 + 8;
+      const listHeight = agentOptions.length * 36 + 8;
       const below = Math.max(0, viewportHeight - anchor.bottom - margin - gap);
       const above = Math.max(0, anchor.top - margin - gap);
       const placement = below < listHeight && above > below ? "above" : "below";
@@ -683,7 +693,7 @@ function AgentSelectControl({
                 role="listbox"
                 style={{ maxHeight: `${popoverLayout.maxHeight}px` }}
               >
-                {profileAgentOptions.map((option) => {
+                {agentOptions.map((option) => {
                   const agent = option.value;
                   const selected = value === agent;
 
@@ -718,6 +728,7 @@ function AgentSelectControl({
 }
 
 export function AddProfileForm({
+  agentOptions = profileAgentOptions,
   botConfigs,
   draft,
   error,
@@ -727,6 +738,7 @@ export function AddProfileForm({
   providers,
   virtualModelProfiles = []
 }: {
+  agentOptions?: ProfileAgentOption[];
   botConfigs: BotGatewaySavedConfig[];
   draft: AddProfileDraft;
   error: string;
@@ -796,6 +808,7 @@ export function AddProfileForm({
       >
         <Field label={t("Agent")} requirement="required" requirementLabel={requiredFieldLabel}>
           <AgentSelectControl
+            agentOptions={agentOptions}
             onChange={(agent) => onChange(agent === "grok" || agent === "kimi" || agent === "pi"
               ? {
                   agent,
@@ -1509,6 +1522,7 @@ function handoffTargetMatchesSavedValue(target: BotHandoffScanTarget, savedValue
 }
 
 export function AddProfileDialog({
+  agentOptions,
   botConfigs,
   canSubmit,
   draft,
@@ -1522,6 +1536,7 @@ export function AddProfileDialog({
   virtualModelProfiles = [],
   onSubmit
 }: {
+  agentOptions?: ProfileAgentOption[];
   botConfigs: BotGatewaySavedConfig[];
   canSubmit: boolean;
   draft: AddProfileDraft;
@@ -1547,6 +1562,7 @@ export function AddProfileDialog({
         </DialogHeader>
         <DialogBody>
           <AddProfileForm
+            agentOptions={agentOptions}
             botConfigs={botConfigs}
             draft={draft}
             error={error}

@@ -2,7 +2,7 @@ import {
   AddProfileDraft, AddProviderDraft, AppConfig, Button, Check, ChevronLeft,
   ChevronRight, cn, findProviderPreset, GatewayProviderProbeResult, GatewayStatus, Gauge, getNextOnboardingStep,
   isOnboardingProfileReady, isOnboardingProviderReady, Layers3, LucideIcon, mergeProviderModelLists, motion, motionEase,
-  LoaderCircle, onboardingMascotSpriteUrl, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder, providerDraftHasReadyCredentialPool, ProviderConnectivityCheckReport, reducedMotionTransition, splitLines, useAppText, useEffect, useReducedMotion,
+  LoaderCircle, onboardingMascotSpriteUrl, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder, type ProfileAgentOption, providerDraftHasReadyCredentialPool, ProviderConnectivityCheckReport, reducedMotionTransition, splitLines, useAppText, useEffect, useReducedMotion,
   useState,
   UserRound, X
 } from "../shared/index";
@@ -60,6 +60,7 @@ const onboardingMascotPalettes: Record<OnboardingMascotTone, { accent: string; g
 
 export function OnboardingView({
   activeStep,
+  agentOptions,
   canSubmitProfile,
   canSubmitProvider,
   config,
@@ -83,6 +84,7 @@ export function OnboardingView({
   readiness
 }: {
   activeStep: OnboardingStepId;
+  agentOptions: ProfileAgentOption[];
   canSubmitProfile: boolean;
   canSubmitProvider: boolean;
   config: AppConfig;
@@ -301,6 +303,7 @@ export function OnboardingView({
                 >
                   <div className="mx-auto w-full max-w-[720px]">
                     <AddProfileForm
+                      agentOptions={agentOptions}
                       botConfigs={[]}
                       draft={profileDraft}
                       error={profileError}
