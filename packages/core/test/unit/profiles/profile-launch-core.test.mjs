@@ -10,6 +10,7 @@ import {
   profileOpenSurfaces,
   resolveClaudeCodeSettingsFile,
   resolveCodexConfigFile,
+  resolveKiloConfigFile,
   resolveOpenCodeConfigFile,
   resolveProfileOpenSurface,
   shouldAutoStartProfileGateway
@@ -82,6 +83,17 @@ const openCodeProfile = {
   surface: "auto"
 };
 
+const kiloProfile = {
+  agent: "kilo",
+  enabled: true,
+  id: "kilo-main",
+  model: "provider,model",
+  name: "Kilo Main",
+  providerId: "claude-code-router",
+  scope: "ccr",
+  surface: "cli"
+};
+
 const claudeDesignProfile = {
   agent: "claude-design",
   enabled: true,
@@ -117,6 +129,7 @@ test("profile open surfaces enforce agent capabilities", () => {
   assert.deepEqual(profileOpenSurfaces(grokProfile), ["cli"]);
   assert.deepEqual(profileOpenSurfaces(kimiProfile), ["cli"]);
   assert.deepEqual(profileOpenSurfaces(piProfile), ["cli"]);
+  assert.deepEqual(profileOpenSurfaces(kiloProfile), ["cli"]);
   assert.deepEqual(profileOpenSurfaces(openCodeProfile), ["cli", "app"]);
   assert.deepEqual(profileOpenSurfaces(claudeDesignProfile), ["app"]);
   assert.equal(resolveProfileOpenSurface(codexProfile, "app"), "app");
@@ -124,6 +137,7 @@ test("profile open surfaces enforce agent capabilities", () => {
   assert.throws(() => resolveProfileOpenSurface(grokProfile, "app"), /does not support APP/);
   assert.throws(() => resolveProfileOpenSurface(kimiProfile, "app"), /does not support APP/);
   assert.throws(() => resolveProfileOpenSurface(piProfile, "app"), /does not support APP/);
+  assert.throws(() => resolveProfileOpenSurface(kiloProfile, "app"), /does not support APP/);
   assert.throws(() => resolveProfileOpenSurface(claudeDesignProfile, "cli"), /does not support CLI/);
 });
 
@@ -139,6 +153,7 @@ test("Grok and Kimi CLI start a temporary CCR gateway when none is already runni
   assert.equal(shouldAutoStartProfileGateway(grokProfile, "cli"), true);
   assert.equal(shouldAutoStartProfileGateway(kimiProfile, "cli"), true);
   assert.equal(shouldAutoStartProfileGateway(piProfile, "cli"), true);
+  assert.equal(shouldAutoStartProfileGateway(kiloProfile, "cli"), false);
   assert.equal(shouldAutoStartProfileGateway(codexProfile, "cli"), false);
   assert.equal(shouldAutoStartProfileGateway(claudeProfile, "app"), false);
   assert.equal(shouldAutoStartProfileGateway(claudeDesignProfile, "app"), false);
@@ -152,6 +167,7 @@ test("buildProfileLaunchPlan creates CCR-managed launcher paths", () => {
   const kimiPlan = buildProfileLaunchPlan(configDir, kimiProfile, "cli", ["--debug"]);
   const piPlan = buildProfileLaunchPlan(configDir, piProfile, "cli", ["--debug"]);
   const openCodePlan = buildProfileLaunchPlan(configDir, openCodeProfile, "cli", ["--debug"]);
+  const kiloPlan = buildProfileLaunchPlan(configDir, kiloProfile, "cli", ["--debug"]);
 
   assert.equal(codexPlan.surface, "app");
   assert.deepEqual(codexPlan.args, ["app"]);
@@ -195,6 +211,13 @@ test("buildProfileLaunchPlan creates CCR-managed launcher paths", () => {
   assert.match(openCodePlan.env.OPENCODE_CONFIG, /opencode[\\/]opencode\.jsonc$/);
   assert.throws(() => buildProfileLaunchPlan(configDir, openCodeProfile, "app"), /OpenCode App profiles/);
 
+  assert.equal(kiloPlan.surface, "cli");
+  assert.deepEqual(kiloPlan.args, ["--debug"]);
+  assert.equal(path.basename(kiloPlan.command), process.platform === "win32" ? "ccr-kilo-wrapper-kilo-main.cmd" : "ccr-kilo-wrapper-kilo-main");
+  assert.equal(kiloPlan.env.CCR_PROFILE_SURFACE, "cli");
+  assert.match(kiloPlan.env.KILO_CONFIG, /kilo[\\/]kilo\.jsonc$/);
+  assert.throws(() => buildProfileLaunchPlan(configDir, kiloProfile, "app"), /does not support APP/);
+
   assert.throws(() => buildProfileLaunchPlan(configDir, claudeProfile, "app"), /Claude App opening/);
   assert.throws(() => buildProfileLaunchPlan(configDir, claudeDesignProfile, "app"), /Claude Design profiles can only be opened from CCR Desktop/);
 });
@@ -220,6 +243,10 @@ test("profile config paths honor CCR, custom, and global scopes", () => {
   assert.equal(
     resolveOpenCodeConfigFile(configDir, openCodeProfile),
     path.join(configDir, "profiles", "opencode-main", "opencode", "opencode.jsonc")
+  );
+  assert.equal(
+    resolveKiloConfigFile(configDir, kiloProfile),
+    path.join(configDir, "profiles", "kilo-main", "kilo", "kilo.jsonc")
   );
 });
 

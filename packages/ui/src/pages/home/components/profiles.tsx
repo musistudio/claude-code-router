@@ -87,7 +87,7 @@ export function ProfileView({
             ) : null}
             {visibleProfiles.map(({ profile, index }) => {
               const scope = normalizeProfileScope(profile.scope);
-              const surface = profile.agent === "zcode" ? "app" : normalizeProfileSurface(profile.surface);
+              const surface = profile.agent === "zcode" || profile.agent === "claude-design" ? "app" : normalizeProfileSurface(profile.surface);
               const openSurfaces = profileOpenSurfaces(profile);
               const summaryItems = profileSummaryItems(profile, config, t);
               const cliBusy = profileActionBusy?.profileId === profile.id && profileActionBusy.surface === "cli";
@@ -820,6 +820,14 @@ export function AddProfileForm({
                   scope: "ccr",
                   surface: "cli"
                 }
+              : agent === "kilo"
+                ? {
+                    agent,
+                    botConfigId: "",
+                    botConfigured: true,
+                    botEnabled: false,
+                    surface: "cli"
+                  }
               : agent === "claude-design"
                 ? {
                     agent,
@@ -871,7 +879,7 @@ export function AddProfileForm({
             options={translateOptions(
               draft.agent === "zcode" || draft.agent === "claude-design"
                 ? profileSurfaceOptions.filter((option) => option.value === "app")
-                : draft.agent === "grok" || draft.agent === "kimi" || draft.agent === "pi"
+                : draft.agent === "grok" || draft.agent === "kimi" || draft.agent === "pi" || draft.agent === "kilo"
                     ? profileSurfaceOptions.filter((option) => option.value === "cli")
                     : profileSurfaceOptions,
               t
@@ -980,7 +988,7 @@ export function AddProfileForm({
           </>
         ) : draft.agent === "claude-design" ? null : (
           <>
-            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : "Codex model")} requirement="optional" requirementLabel={optionalFieldLabel}>
+            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : draft.agent === "kilo" ? "Kilo model" : "Codex model")} requirement="optional" requirementLabel={optionalFieldLabel}>
               <ModelSelector
                 placeholder={modelPlaceholder}
                 providers={providers}
@@ -1043,7 +1051,7 @@ export function AddProfileForm({
                           <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
                           {validation.providerName ? <ProfileFieldHint>{t(validation.providerName)}</ProfileFieldHint> : null}
                         </Field>
-                        {draft.agent !== "zcode" && draft.agent !== "opencode" ? (
+                        {draft.agent !== "zcode" && draft.agent !== "opencode" && draft.agent !== "kilo" ? (
                           <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
                             <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
                             <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />

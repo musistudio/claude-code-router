@@ -18,6 +18,12 @@ import { writeCodexCompatibleAppModelCatalog } from "@ccr/core/agents/codex/app-
 import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-middleware-runtime";
 import { codexModelCatalogJson } from "@ccr/core/agents/codex/model-catalog";
 import {
+  isManagedKiloConfigContent,
+  kiloProviderId,
+  resolveKiloConfigFile,
+  writeKiloGatewayConfig
+} from "@ccr/core/agents/kilo/profile-config";
+import {
   isManagedOpenCodeConfigContent,
   openCodeProviderId,
   resolveOpenCodeConfigFile,
@@ -105,6 +111,7 @@ export async function applyProfileConfig(
   const allProfiles = profileEntries(config);
   const profiles = allProfiles.filter((profile) => !excludedAgents.has(profile.agent));
   cleanupInactiveOpenCodeWrappers(allProfiles);
+  cleanupInactiveKiloWrappers(allProfiles);
   await pruneInactiveProfileApiKeys(config, allProfiles);
   const result: ProfileApplyResult = {
     appliedAt,
@@ -167,9 +174,11 @@ export async function applyProfileConfig(
                 ? applyClaudeDesignProfile(profile, appliedAt)
                 : profile.agent === "opencode"
                   ? applyOpenCodeProfile(config, profile, token, appliedAt)
-                  : profile.agent === "zcode"
-                    ? applyZcodeProfile(config, profile, token, appliedAt)
-                    : applyCodexProfile(config, profile, token, appliedAt)
+                  : profile.agent === "kilo"
+                ? applyKiloProfile(config, profile, token, appliedAt)
+              : profile.agent === "zcode"
+                ? applyZcodeProfile(config, profile, token, appliedAt)
+                  : applyCodexProfile(config, profile, token, appliedAt)
     );
   }
   result.clients.push(...takeoverStatuses);
@@ -315,9 +324,11 @@ export function applyProfileRuntimeConfig(config: AppConfig, profile: ProfileCon
             ? applyClaudeDesignProfile(profile, appliedAt)
             : profile.agent === "opencode"
               ? applyOpenCodeProfile(config, profile, token, appliedAt)
-              : profile.agent === "zcode"
+              : profile.agent === "kilo"
+                ? applyKiloProfile(config, profile, token, appliedAt)
+                : profile.agent === "zcode"
                 ? applyZcodeProfile(config, profile, token, appliedAt)
-                : applyCodexProfile(config, profile, token, appliedAt);
+                  : applyCodexProfile(config, profile, token, appliedAt);
 }
 
 function applyClaudeDesignProfile(profile: ProfileConfig, appliedAt: string): ProfileClientApplyStatus {
@@ -611,6 +622,43 @@ function applyOpenCodeProfile(config: AppConfig, profile: ProfileConfig, token: 
   }
 }
 
+function applyKiloProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
+  const configFile = resolveKiloConfigFile(CONFIGDIR, profile);
+  const providerId = kiloProviderId(profile);
+  if (!profile.enabled) {
+    return restoreDisabledGlobalProfile(
+      profile,
+      configFile,
+      "Kilo CLI profile is disabled.",
+      (content) => isManagedKiloConfigContent(content, providerId)
+    );
+  }
+
+  try {
+    const configResult = writeKiloGatewayConfig(CONFIGDIR, config, profile, token, { backup: true });
+    const wrapperResult = writeKiloWrapper(profile, configResult.file, configResult.inlineConfig);
+    return {
+      appliedAt,
+      backupFile: configResult.backupFile,
+      client: "kilo",
+      enabled: true,
+      message: configResult.changed || wrapperResult.changed
+        ? `Kilo CLI is configured to use CCR (config ${configResult.file}, wrapper ${wrapperResult.file}).`
+        : "Kilo CLI config already matches CCR.",
+      ok: true,
+      path: configResult.file
+    };
+  } catch (error) {
+    return {
+      client: "kilo",
+      enabled: true,
+      message: formatError(error),
+      ok: false,
+      path: configFile
+    };
+  }
+}
+
 function applyZcodeProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
   const configFile = resolveZcodeConfigFile(profile);
   if (!profile.enabled) {
@@ -745,8 +793,10 @@ function profilePath(profile: ProfileConfig): string {
           : profile.agent === "claude-design"
             ? CONFIGDIR
             : profile.agent === "opencode"
-            ? resolveOpenCodeConfigFile(CONFIGDIR, profile)
-            : resolveCodexConfigFile(profile);
+              ? resolveOpenCodeConfigFile(CONFIGDIR, profile)
+              : profile.agent === "kilo"
+                ? resolveKiloConfigFile(CONFIGDIR, profile)
+                : resolveCodexConfigFile(profile);
 }
 
 function resolveClaudeCodeSettingsFile(profile: ProfileConfig): string {
@@ -1239,6 +1289,75 @@ function isOpenCodeManagedEnvKey(key: string): boolean {
     key === "OPENCODE_CLIENT" ||
     key === "OPENCODE_CONFIG" ||
     key === "OPENCODE_CONFIG_CONTENT" ||
+    key === "CCR_PROFILE_SURFACE";
+}
+
+function writeKiloWrapper(
+  profile: ProfileConfig,
+  configFile: string,
+  inlineConfig: string
+): { changed: boolean; file: string } {
+  const binDir = path.join(CONFIGDIR, "bin");
+  mkdirSync(binDir, { mode: privateDirMode, recursive: true });
+  const file = kiloWrapperPath(profile);
+  const content = process.platform === "win32"
+    ? kiloWrapperCmdScript(profile, configFile, inlineConfig)
+    : kiloWrapperShellScript(profile, configFile, inlineConfig);
+  const writeResult = writeGeneratedFileIfChanged(file, content, { mode: privateExecutableMode });
+  return { changed: writeResult.changed, file };
+}
+
+function kiloWrapperPath(profile: ProfileConfig): string {
+  return path.join(CONFIGDIR, "bin", kiloWrapperFilename(profile));
+}
+
+function kiloWrapperFilename(profile: ProfileConfig): string {
+  const slug = sanitizeProfilePathSegment(profile.id || profile.name || profile.agent).toLowerCase() || "kilo";
+  return process.platform === "win32"
+    ? `ccr-kilo-wrapper-${slug}.cmd`
+    : `ccr-kilo-wrapper-${slug}`;
+}
+
+function kiloWrapperShellScript(profile: ProfileConfig, configFile: string, inlineConfig: string): string {
+  const realKilo = profile.env?.CCR_KILO_BIN?.trim() || profile.env?.KILO_BIN?.trim() || "kilo";
+  const envExports = Object.entries(profileEnv(profile))
+    .filter(([key]) => !isKiloManagedEnvKey(key))
+    .map(([key, value]) => `export ${key}=${shellQuote(value)}`);
+  return [
+    "#!/bin/sh",
+    ...envExports,
+    `export KILO_CONFIG=${shellQuote(configFile)}`,
+    `export KILO_CONFIG_CONTENT=${shellQuote(inlineConfig)}`,
+    "export CCR_PROFILE_SURFACE=cli",
+    `exec ${shellQuote(realKilo)} "$@"`,
+    ""
+  ].join("\n");
+}
+
+function kiloWrapperCmdScript(profile: ProfileConfig, configFile: string, inlineConfig: string): string {
+  const realKilo = profile.env?.CCR_KILO_BIN?.trim() || profile.env?.KILO_BIN?.trim() || "kilo";
+  const envExports = Object.entries(profileEnv(profile))
+    .filter(([key]) => !isKiloManagedEnvKey(key))
+    .map(([key, value]) => cmdSetLine(key, value));
+  return [
+    "@echo off",
+    ...envExports,
+    cmdSetLine("KILO_CONFIG", configFile),
+    cmdSetLine("KILO_CONFIG_CONTENT", inlineConfig),
+    cmdSetLine("CCR_PROFILE_SURFACE", "cli"),
+    `${cmdQuote(realKilo)} %*`,
+    "exit /b %ERRORLEVEL%",
+    ""
+  ].join("\r\n");
+}
+
+function isKiloManagedEnvKey(key: string): boolean {
+  return key === "CCR_KILO_BIN" ||
+    key === "KILO_BIN" ||
+    key === "KILO_CONFIG" ||
+    key === "KILO_CONFIG_CONTENT" ||
+    key === "KILO_CONFIG_DIR" ||
+    key === "KILO_PROVIDER" ||
     key === "CCR_PROFILE_SURFACE";
 }
 
@@ -2515,6 +2634,29 @@ function cleanupInactiveOpenCodeWrappers(profiles: ProfileConfig[]): number {
   return removed;
 }
 
+function cleanupInactiveKiloWrappers(profiles: ProfileConfig[]): number {
+  const binDir = path.join(CONFIGDIR, "bin");
+  const activeFiles = new Set(profiles
+    .filter((profile) => profile.agent === "kilo" && profile.enabled)
+    .map(kiloWrapperFilename));
+  let entries: string[];
+  try {
+    entries = readdirSync(binDir);
+  } catch {
+    return 0;
+  }
+
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.startsWith("ccr-kilo-wrapper-") || activeFiles.has(entry)) {
+      continue;
+    }
+    rmSync(path.join(binDir, entry), { force: true });
+    removed += 1;
+  }
+  return removed;
+}
+
 function generatedBinBackupBaseName(entry: string): string | undefined {
   const backupMarker = ".ccr-backup-";
   const backupIndex = entry.indexOf(backupMarker);
@@ -2542,6 +2684,7 @@ function isManagedGeneratedBinFile(fileName: string): boolean {
     normalized.startsWith("ccr-kimi-cli-wrapper-") ||
     normalized.startsWith("ccr-pi-wrapper-") ||
     normalized.startsWith("ccr-opencode-wrapper-") ||
+    normalized.startsWith("ccr-kilo-wrapper-") ||
     normalized.startsWith("ccr-codex-cli-stdio-");
 }
 
@@ -2593,6 +2736,15 @@ function disabledProfileStatus(profile: ProfileConfig): ProfileClientApplyStatus
       resolveOpenCodeConfigFile(CONFIGDIR, profile),
       "OpenCode profile is disabled.",
       (content) => isManagedOpenCodeConfigContent(content, providerId)
+    );
+  }
+  if (profile.agent === "kilo") {
+    const providerId = kiloProviderId(profile);
+    return restoreDisabledGlobalProfile(
+      profile,
+      resolveKiloConfigFile(CONFIGDIR, profile),
+      "Kilo CLI profile is disabled.",
+      (content) => isManagedKiloConfigContent(content, providerId)
     );
   }
   const providerId = sanitizeCodexProviderId(profile.providerId || "") || "claude-code-router";
@@ -2653,6 +2805,22 @@ export function restoreInactiveGlobalProfileConfigs(profiles: ProfileConfig[]): 
       }
     }
   }
+  const kiloProfiles = profiles.filter((profile) => profile.agent === "kilo");
+  if (kiloProfiles.length > 0 && !kiloProfiles.some((profile) => profile.enabled && isGlobalProfile(profile))) {
+    const providerIds = [...new Set([
+      "claude-code-router",
+      ...kiloProfiles.map(kiloProviderId)
+    ])];
+    for (const file of uniqueResolvedPaths(kiloProfiles.map(globalKiloConfigCandidate))) {
+      const restoreResult = restoreGlobalConfigFile(file, {
+        isManagedContent: (content) => providerIds.some((providerId) => isManagedKiloConfigContent(content, providerId)),
+        mode: privateFileMode
+      });
+      if (restoreResult.changed || restoreResult.missingBackup) {
+        statuses.push(inactiveGlobalCleanupStatus("kilo", file, restoreResult));
+      }
+    }
+  }
   const zcodeProfiles = profiles.filter((profile) => profile.agent === "zcode");
   if (zcodeProfiles.length > 0 && !zcodeProfiles.some((profile) => profile.enabled && isGlobalProfile(profile))) {
     const providerIds = [...new Set([
@@ -2692,6 +2860,10 @@ function globalCodexConfigCandidate(profile: ProfileConfig): string {
 
 function globalOpenCodeConfigCandidate(profile: ProfileConfig): string {
   return resolveOpenCodeConfigFile(CONFIGDIR, { ...profile, scope: "global" });
+}
+
+function globalKiloConfigCandidate(profile: ProfileConfig): string {
+  return resolveKiloConfigFile(CONFIGDIR, { ...profile, scope: "global" });
 }
 
 export function restoreGlobalProfileConfigsOnExit(
@@ -2791,7 +2963,7 @@ function readGlobalProfileTakeoverMarker(): GlobalProfileTakeoverRecord[] {
     }
     return parsed.profiles.filter((value): value is GlobalProfileTakeoverRecord =>
       isRecord(value) &&
-      (value.agent === "claude-code" || value.agent === "codex" || value.agent === "opencode" || value.agent === "zcode") &&
+      (value.agent === "claude-code" || value.agent === "codex" || value.agent === "opencode" || value.agent === "kilo" || value.agent === "zcode") &&
       typeof value.id === "string" &&
       typeof value.name === "string"
     );
@@ -3080,6 +3252,9 @@ function disabledProfileMessage(profile: ProfileConfig): string {
   if (profile.agent === "opencode") {
     return "OpenCode profile is disabled.";
   }
+  if (profile.agent === "kilo") {
+    return "Kilo CLI profile is disabled.";
+  }
   return `${codexCompatibleClientName(profile.agent)} profile is disabled.`;
 }
 
@@ -3237,6 +3412,9 @@ function codexCompatibleClientName(agent: ProfileConfig["agent"]): string {
   if (agent === "opencode") {
     return "OpenCode";
   }
+  if (agent === "kilo") {
+    return "Kilo CLI";
+  }
   if (agent === "pi") {
     return "Pi";
   }
@@ -3249,6 +3427,8 @@ function codexCompatibleClientName(agent: ProfileConfig["agent"]): string {
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
   return agent === "zcode"
     ? "~/.zcode/cli/config.json"
+    : agent === "kilo"
+      ? "~/.config/kilo/kilo.jsonc"
     : agent === "pi"
       ? "~/.pi/agent"
       : agent === "claude-design"

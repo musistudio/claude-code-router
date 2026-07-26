@@ -649,7 +649,7 @@ function sanitizeProfileConfigForDisk(profile: AppConfig["profile"]): AppConfig[
     ...profile,
     codex,
     profiles: profile.profiles.map((profileItem) => {
-      if (profileItem.agent !== "codex" && profileItem.agent !== "opencode" && profileItem.agent !== "zcode") {
+      if (profileItem.agent !== "codex" && profileItem.agent !== "opencode" && profileItem.agent !== "kilo" && profileItem.agent !== "zcode") {
         return profileItem;
       }
       const {
@@ -3403,7 +3403,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       const parsedSurface = parseProfileSurface(readString(item.surface) || readString(item.entry) || readString(item.frontend)) || "auto";
       const surface = agent === "zcode" || agent === CLAUDE_DESIGN_PLUGIN_ID
         ? "app"
-        : agent === "pi"
+        : agent === "pi" || agent === "kilo"
           ? "cli"
           : parsedSurface;
       const botConfigId = surface !== "cli"
@@ -3485,7 +3485,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         providerName: readString(item.providerName) || "Claude Code Router",
         remoteFrontendMode: parseCodexRemoteFrontendMode(readString(item.remoteFrontendMode) || readString(item.frontendMode) || readString(item.coreMode)) || "app",
         scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
-        showAllSessions: agent === "zcode" || agent === "opencode"
+        showAllSessions: agent === "zcode" || agent === "opencode" || agent === "kilo"
           ? false
           : typeof item.showAllSessions === "boolean"
             ? item.showAllSessions
@@ -3509,7 +3509,7 @@ function readProfileAppPath(item: Record<string, unknown>, agent: ProfileConfig[
         ? readString(item.chatgptAppPath) || readString(item.chatgpt_app_path) || readString(item.codexAppPath) || readString(item.codex_app_path)
         : agent === "opencode"
           ? readString(item.openCodeAppPath) || readString(item.opencodeAppPath) || readString(item.opencode_app_path)
-        : readString(item.zcodeAppPath) || readString(item.zcode_app_path));
+          : readString(item.zcodeAppPath) || readString(item.zcode_app_path));
 }
 
 function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
@@ -3531,6 +3531,9 @@ function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
   }
   if (normalized === "opencode" || normalized === "open-code" || normalized === "open code") {
     return "opencode";
+  }
+  if (normalized === "kilo" || normalized === "kilo-cli" || normalized === "kilo cli" || normalized === "kilocode" || normalized === "kilo-code" || normalized === "kilo code") {
+    return "kilo";
   }
   if (normalized === "pi" || normalized === "pi-agent" || normalized === "pi agent" || normalized === "pi-coding-agent" || normalized === "pi coding agent") {
     return "pi";
@@ -3570,6 +3573,9 @@ function defaultProfileAgentName(agent: ProfileConfig["agent"]): string {
   if (agent === "opencode") {
     return "OpenCode";
   }
+  if (agent === "kilo") {
+    return "Kilo CLI";
+  }
   if (agent === "pi") {
     return "Pi";
   }
@@ -3584,11 +3590,13 @@ function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
     ? "~/.zcode/cli/config.json"
     : agent === "opencode"
       ? "~/.config/opencode/opencode.jsonc"
-      : agent === "pi"
-        ? "~/.pi/agent"
-        : agent === CLAUDE_DESIGN_PLUGIN_ID
-          ? "~/.claude-code-router/claude-design"
-          : "~/.codex/config.toml";
+      : agent === "kilo"
+        ? "~/.config/kilo/kilo.jsonc"
+        : agent === "pi"
+          ? "~/.pi/agent"
+          : agent === CLAUDE_DESIGN_PLUGIN_ID
+            ? "~/.claude-code-router/claude-design"
+            : "~/.codex/config.toml";
 }
 
 function normalizeCodexConfigFileForAgent(agent: ProfileConfig["agent"], value: string | undefined): string {

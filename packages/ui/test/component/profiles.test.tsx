@@ -345,3 +345,26 @@ test("OpenCode profiles support local CLI and App configuration", () => {
   assert.equal(profile?.appPath, "/Applications/OpenCode.app");
   assert.equal(profile?.surface, "auto");
 });
+
+test("Kilo CLI profiles support local CLI configuration", () => {
+  const draft = createProfileDraft("kilo");
+  assert.equal(draft.name, "Kilo CLI");
+  assert.equal(draft.configFile, "~/.config/kilo/kilo.jsonc");
+  assert.equal(draft.surface, "cli");
+
+  const profile = normalizeUnknownProfileItem({
+    agent: "kilo-code",
+    enabled: true,
+    id: "kilo-work",
+    model: "Provider/model",
+    name: "Kilo Work",
+    providerId: "claude-code-router",
+    scope: "global",
+    showAllSessions: true,
+    surface: "app"
+  }, 0);
+  assert.equal(profile?.agent, "kilo");
+  assert.equal(profile?.scope, "global");
+  assert.equal(profile?.showAllSessions, false);
+  assert.equal(profile?.surface, "cli");
+});
