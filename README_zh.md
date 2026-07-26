@@ -116,11 +116,11 @@ CCR 支持 OpenAI Chat / Responses、Anthropic Messages、Gemini Generate Conten
       </a>
     </td>
     <td align="center" width="330">
-      <span>
+      <a href="https://github.com/earendil-works/pi">
         <img src="/packages/ui/src/assets/agent-logos/pi.svg" width="44" height="44" alt="Pi 图标" />
         <br />
         <strong>Pi (CLI)</strong>
-      </span>
+      </a>
     </td>
     <td align="center" width="330">
       <a href="https://zcode.z.ai/cn">
@@ -130,7 +130,7 @@ CCR 支持 OpenAI Chat / Responses、Anthropic Messages、Gemini Generate Conten
       </a>
     </td>
     <td align="center" width="330">
-      <a href="https://claude-design.ccrdesk.top/design">
+      <a href="https://www.anthropic.com/news/claude-design-anthropic-labs">
         <img src="/packages/ui/src/assets/agent-logos/claude-code.png" width="44" height="44" alt="Claude Design 图标" />
         <br />
         <strong>Claude Design (APP)</strong>
