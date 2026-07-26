@@ -1408,6 +1408,12 @@ h1 {
   --provider-brand-3: #b4fff4;
 }
 
+.doc-markdown a.provider-import-button.provider-infistar-ai {
+  --provider-brand: #111f8d;
+  --provider-brand-2: #1fb7ee;
+  --provider-brand-3: #9b18ff;
+}
+
 .doc-markdown > pre,
 .doc-markdown > .code-panel {
   margin: 22px 0 32px;

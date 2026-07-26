@@ -159,6 +159,7 @@ var PROXY_CA_CERT_DER_FILE = import_node_path3.default.join(CERTDIR, "ca.cer");
 var PROXY_CA_KEY_FILE = import_node_path3.default.join(CERTDIR, "key.pem");
 var GATEWAY_CONFIG_FILE = import_node_path3.default.join(CONFIGDIR, "gateway.config.json");
 var REQUEST_LOGS_DB_FILE = import_node_path3.default.join(DATADIR, "request-logs.sqlite");
+var CONTEXT_ARCHIVE_DB_FILE = import_node_path3.default.join(DATADIR, "context-archive.sqlite");
 var RAW_TRACE_SPOOL_DIR = import_node_path3.default.join(DATADIR, "raw-trace-spool");
 var USAGE_DB_FILE = import_node_path3.default.join(DATADIR, "usage.sqlite");
 if (process.platform === "win32") {

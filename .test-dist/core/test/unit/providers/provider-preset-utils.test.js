@@ -25162,6 +25162,7 @@ var PROXY_CA_CERT_DER_FILE = import_node_path3.default.join(CERTDIR, "ca.cer");
 var PROXY_CA_KEY_FILE = import_node_path3.default.join(CERTDIR, "key.pem");
 var GATEWAY_CONFIG_FILE = import_node_path3.default.join(CONFIGDIR, "gateway.config.json");
 var REQUEST_LOGS_DB_FILE = import_node_path3.default.join(DATADIR, "request-logs.sqlite");
+var CONTEXT_ARCHIVE_DB_FILE = import_node_path3.default.join(DATADIR, "context-archive.sqlite");
 var RAW_TRACE_SPOOL_DIR = import_node_path3.default.join(DATADIR, "raw-trace-spool");
 var USAGE_DB_FILE = import_node_path3.default.join(DATADIR, "usage.sqlite");
 if (process.platform === "win32") {
@@ -26598,6 +26599,17 @@ function createDefaultAppConfig(options) {
       streamReplies: true,
       tenantId: "ccr"
     },
+    contextArchive: {
+      enabled: false,
+      maxBytes: 512 * 1024 * 1024,
+      maxSnapshotBytes: 32 * 1024 * 1024,
+      maxSnapshots: 200,
+      mcpEnabled: true,
+      replayTimeoutMs: 6e4,
+      retentionDays: 30,
+      storagePath: "",
+      toolName: "ccr_history_ask"
+    },
     gateway: {
       coreHost,
       corePort: 3457,
@@ -26627,6 +26639,7 @@ function createDefaultAppConfig(options) {
     profile: {
       claudeCode: {
         enabled: true,
+        managedCompact: false,
         model: "",
         settingsFile: "~/.claude/settings.json",
         smallFastModel: ""
@@ -26638,6 +26651,7 @@ function createDefaultAppConfig(options) {
         configFormat: "separate_profile_files",
         configFile: "~/.codex/config.toml",
         enabled: true,
+        managedCompact: false,
         model: "",
         providerId: "claude-code-router",
         providerName: "Claude Code Router",
@@ -26650,6 +26664,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: { ...CLAUDE_CODE_DEFAULT_ENV },
           id: "default-claude-code",
+          managedCompact: false,
           model: "",
           name: "Claude Code",
           scope: "global",
@@ -26667,6 +26682,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: {},
           id: "default-codex",
+          managedCompact: false,
           model: "",
           name: "Codex",
           providerId: "claude-code-router",
@@ -26881,6 +26897,22 @@ var geminiProviderPreset = {
     { flags: "i", source: "^AIza[a-z0-9_-]{20,}$" }
   ],
   websiteUrl: "https://gemini.google.com/"
+};
+
+// packages/core/src/providers/presets/infistar-ai/index.ts
+var infistarAiProviderPreset = {
+  account: defaultProviderAccountConfig,
+  aliases: ["infistar", "infistar ai", "\u65E0\u9650\u661F\u6CB3", "\u65E0\u9650\u661F\u6CB3ai", "\u65E0\u9650\u661F\u6CB3 ai"],
+  defaultModels: ["gpt-4o"],
+  endpoints: [
+    {
+      baseUrl: "https://infistar.ai/v1",
+      protocols: ["openai_chat_completions"]
+    }
+  ],
+  id: "infistar-ai",
+  name: "Infistar AI",
+  websiteUrl: "https://infistar.ai"
 };
 
 // packages/core/src/providers/presets/kimi-coding/index.ts
@@ -27666,6 +27698,7 @@ var providerPresets = [
   siliconFlowProviderPreset,
   qiniuAiProviderPreset,
   fennoProviderPreset,
+  infistarAiProviderPreset,
   runApiProviderPreset,
   teamoRouterProviderPreset,
   unity2ProviderPreset,
@@ -27976,6 +28009,14 @@ var moonshotPresets = [moonshotChinaProviderPreset, moonshotGlobalProviderPreset
   import_strict.default.equal(providerPresetMatchesBaseUrl(unity2ProviderPreset, "https://unity2.ai/v1/chat/completions"), true);
   import_strict.default.equal(providerPresetMatchesBaseUrl(unity2ProviderPreset, "https://api.unity2.ai/v1"), false);
   import_strict.default.deepEqual(unity2ProviderPreset.endpoints[0]?.protocols, [
+    "openai_chat_completions"
+  ]);
+  import_strict.default.equal(providerPresets.find((preset) => preset.id === "infistar-ai"), infistarAiProviderPreset);
+  import_strict.default.equal(infistarAiProviderPreset.websiteUrl, "https://infistar.ai");
+  import_strict.default.deepEqual(infistarAiProviderPreset.defaultModels, ["gpt-4o"]);
+  import_strict.default.equal(providerPresetMatchesBaseUrl(infistarAiProviderPreset, "https://infistar.ai/v1/models"), true);
+  import_strict.default.equal(providerPresetMatchesBaseUrl(infistarAiProviderPreset, "https://api.infistar.ai/v1"), false);
+  import_strict.default.deepEqual(infistarAiProviderPreset.endpoints[0]?.protocols, [
     "openai_chat_completions"
   ]);
 });

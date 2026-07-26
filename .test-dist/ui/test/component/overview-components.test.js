@@ -1065,7 +1065,7 @@ var require_react_development = __commonJS({
           }
           return children;
         }
-        function createContext12(defaultValue) {
+        function createContext13(defaultValue) {
           var context = {
             $$typeof: REACT_CONTEXT_TYPE,
             // As a workaround to support multiple concurrent renderers, we categorize
@@ -1252,7 +1252,7 @@ var require_react_development = __commonJS({
           }
           return lazyType;
         }
-        function forwardRef13(render) {
+        function forwardRef15(render) {
           {
             if (render != null && render.$$typeof === REACT_MEMO_TYPE) {
               error("forwardRef requires a render function but received a `memo` component. Instead of forwardRef(memo(...)), use memo(forwardRef(...)).");
@@ -1351,7 +1351,7 @@ var require_react_development = __commonJS({
           }
           return dispatcher;
         }
-        function useContext14(Context) {
+        function useContext15(Context) {
           var dispatcher = resolveDispatcher();
           {
             if (Context._context !== void 0) {
@@ -1365,7 +1365,7 @@ var require_react_development = __commonJS({
           }
           return dispatcher.useContext(Context);
         }
-        function useState7(initialState) {
+        function useState8(initialState) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useState(initialState);
         }
@@ -1373,11 +1373,11 @@ var require_react_development = __commonJS({
           var dispatcher = resolveDispatcher();
           return dispatcher.useReducer(reducer, initialArg, init);
         }
-        function useRef10(initialValue) {
+        function useRef11(initialValue) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useRef(initialValue);
         }
-        function useEffect8(create, deps) {
+        function useEffect9(create, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useEffect(create, deps);
         }
@@ -1385,11 +1385,11 @@ var require_react_development = __commonJS({
           var dispatcher = resolveDispatcher();
           return dispatcher.useInsertionEffect(create, deps);
         }
-        function useLayoutEffect4(create, deps) {
+        function useLayoutEffect5(create, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useLayoutEffect(create, deps);
         }
-        function useCallback7(callback, deps) {
+        function useCallback8(callback, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useCallback(callback, deps);
         }
@@ -2146,29 +2146,29 @@ var require_react_development = __commonJS({
         exports2.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED = ReactSharedInternals;
         exports2.act = act;
         exports2.cloneElement = cloneElement$1;
-        exports2.createContext = createContext12;
+        exports2.createContext = createContext13;
         exports2.createElement = createElement$1;
         exports2.createFactory = createFactory;
         exports2.createRef = createRef;
-        exports2.forwardRef = forwardRef13;
+        exports2.forwardRef = forwardRef15;
         exports2.isValidElement = isValidElement2;
         exports2.lazy = lazy;
         exports2.memo = memo2;
         exports2.startTransition = startTransition;
         exports2.unstable_act = act;
-        exports2.useCallback = useCallback7;
-        exports2.useContext = useContext14;
+        exports2.useCallback = useCallback8;
+        exports2.useContext = useContext15;
         exports2.useDebugValue = useDebugValue;
         exports2.useDeferredValue = useDeferredValue;
-        exports2.useEffect = useEffect8;
+        exports2.useEffect = useEffect9;
         exports2.useId = useId4;
         exports2.useImperativeHandle = useImperativeHandle;
         exports2.useInsertionEffect = useInsertionEffect4;
-        exports2.useLayoutEffect = useLayoutEffect4;
+        exports2.useLayoutEffect = useLayoutEffect5;
         exports2.useMemo = useMemo12;
         exports2.useReducer = useReducer;
-        exports2.useRef = useRef10;
-        exports2.useState = useState7;
+        exports2.useRef = useRef11;
+        exports2.useState = useState8;
         exports2.useSyncExternalStore = useSyncExternalStore;
         exports2.useTransition = useTransition;
         exports2.version = ReactVersion;
@@ -5435,10 +5435,10 @@ var require_react_dom_server_legacy_node_development = __commonJS({
     if (process.env.NODE_ENV !== "production") {
       (function() {
         "use strict";
-        var React15 = require_react();
+        var React17 = require_react();
         var stream = require("stream");
         var ReactVersion = "18.3.1";
-        var ReactSharedInternals = React15.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React17.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         function warn(format) {
           {
             {
@@ -7344,7 +7344,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
         }
         function flattenOptionChildren(children) {
           var content = "";
-          React15.Children.forEach(children, function(child) {
+          React17.Children.forEach(children, function(child) {
             if (child == null) {
               return;
             }
@@ -9348,7 +9348,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
           }
           return readContext(context);
         }
-        function useContext14(context) {
+        function useContext15(context) {
           {
             currentHookNameInDev = "useContext";
           }
@@ -9358,7 +9358,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
         function basicStateReducer(state, action) {
           return typeof action === "function" ? action(state) : action;
         }
-        function useState7(initialState) {
+        function useState8(initialState) {
           {
             currentHookNameInDev = "useState";
           }
@@ -9448,7 +9448,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
           workInProgressHook.memoizedState = [nextValue, nextDeps];
           return nextValue;
         }
-        function useRef10(initialValue) {
+        function useRef11(initialValue) {
           currentlyRenderingComponent = resolveCurrentlyRenderingComponent();
           workInProgressHook = createWorkInProgressHook();
           var previousRef = workInProgressHook.memoizedState;
@@ -9465,7 +9465,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
             return previousRef;
           }
         }
-        function useLayoutEffect4(create, inputs) {
+        function useLayoutEffect5(create, inputs) {
           {
             currentHookNameInDev = "useLayoutEffect";
             error("useLayoutEffect does nothing on the server, because its effect cannot be encoded into the server renderer's output format. This will lead to a mismatch between the initial, non-hydrated UI and the intended UI. To avoid this, useLayoutEffect should only be used in components that render exclusively on the client. See https://reactjs.org/link/uselayouteffect-ssr for common fixes.");
@@ -9496,7 +9496,7 @@ var require_react_dom_server_legacy_node_development = __commonJS({
             }
           }
         }
-        function useCallback7(callback, deps) {
+        function useCallback8(callback, deps) {
           return useMemo12(function() {
             return callback;
           }, deps);
@@ -9536,14 +9536,14 @@ var require_react_dom_server_legacy_node_development = __commonJS({
         }
         var Dispatcher = {
           readContext: readContext$1,
-          useContext: useContext14,
+          useContext: useContext15,
           useMemo: useMemo12,
           useReducer,
-          useRef: useRef10,
-          useState: useState7,
+          useRef: useRef11,
+          useState: useState8,
           useInsertionEffect: noop3,
-          useLayoutEffect: useLayoutEffect4,
-          useCallback: useCallback7,
+          useLayoutEffect: useLayoutEffect5,
+          useCallback: useCallback8,
           // useImperativeHandle is not run in the server environment
           useImperativeHandle: noop3,
           // Effects are not run in the server environment.
@@ -10881,10 +10881,10 @@ var require_react_dom_server_node_development = __commonJS({
     if (process.env.NODE_ENV !== "production") {
       (function() {
         "use strict";
-        var React15 = require_react();
+        var React17 = require_react();
         var util = require("util");
         var ReactVersion = "18.3.1";
-        var ReactSharedInternals = React15.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React17.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         function warn(format) {
           {
             {
@@ -12887,7 +12887,7 @@ var require_react_dom_server_node_development = __commonJS({
         }
         function flattenOptionChildren(children) {
           var content = "";
-          React15.Children.forEach(children, function(child) {
+          React17.Children.forEach(children, function(child) {
             if (child == null) {
               return;
             }
@@ -14827,7 +14827,7 @@ var require_react_dom_server_node_development = __commonJS({
           }
           return readContext(context);
         }
-        function useContext14(context) {
+        function useContext15(context) {
           {
             currentHookNameInDev = "useContext";
           }
@@ -14837,7 +14837,7 @@ var require_react_dom_server_node_development = __commonJS({
         function basicStateReducer(state, action) {
           return typeof action === "function" ? action(state) : action;
         }
-        function useState7(initialState) {
+        function useState8(initialState) {
           {
             currentHookNameInDev = "useState";
           }
@@ -14927,7 +14927,7 @@ var require_react_dom_server_node_development = __commonJS({
           workInProgressHook.memoizedState = [nextValue, nextDeps];
           return nextValue;
         }
-        function useRef10(initialValue) {
+        function useRef11(initialValue) {
           currentlyRenderingComponent = resolveCurrentlyRenderingComponent();
           workInProgressHook = createWorkInProgressHook();
           var previousRef = workInProgressHook.memoizedState;
@@ -14944,7 +14944,7 @@ var require_react_dom_server_node_development = __commonJS({
             return previousRef;
           }
         }
-        function useLayoutEffect4(create, inputs) {
+        function useLayoutEffect5(create, inputs) {
           {
             currentHookNameInDev = "useLayoutEffect";
             error("useLayoutEffect does nothing on the server, because its effect cannot be encoded into the server renderer's output format. This will lead to a mismatch between the initial, non-hydrated UI and the intended UI. To avoid this, useLayoutEffect should only be used in components that render exclusively on the client. See https://reactjs.org/link/uselayouteffect-ssr for common fixes.");
@@ -14975,7 +14975,7 @@ var require_react_dom_server_node_development = __commonJS({
             }
           }
         }
-        function useCallback7(callback, deps) {
+        function useCallback8(callback, deps) {
           return useMemo12(function() {
             return callback;
           }, deps);
@@ -15015,14 +15015,14 @@ var require_react_dom_server_node_development = __commonJS({
         }
         var Dispatcher = {
           readContext: readContext$1,
-          useContext: useContext14,
+          useContext: useContext15,
           useMemo: useMemo12,
           useReducer,
-          useRef: useRef10,
-          useState: useState7,
+          useRef: useRef11,
+          useState: useState8,
           useInsertionEffect: noop3,
-          useLayoutEffect: useLayoutEffect4,
-          useCallback: useCallback7,
+          useLayoutEffect: useLayoutEffect5,
+          useCallback: useCallback8,
           // useImperativeHandle is not run in the server environment
           useImperativeHandle: noop3,
           // Effects are not run in the server environment.
@@ -23656,9 +23656,9 @@ var require_react_dom_development = __commonJS({
         if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ !== "undefined" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart === "function") {
           __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(new Error());
         }
-        var React15 = require_react();
+        var React17 = require_react();
         var Scheduler = require_scheduler();
-        var ReactSharedInternals = React15.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React17.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         var suppressWarning = false;
         function setSuppressWarning(newSuppressWarning) {
           {
@@ -25265,7 +25265,7 @@ var require_react_dom_development = __commonJS({
           {
             if (props.value == null) {
               if (typeof props.children === "object" && props.children !== null) {
-                React15.Children.forEach(props.children, function(child) {
+                React17.Children.forEach(props.children, function(child) {
                   if (child == null) {
                     return;
                   }
@@ -43882,7 +43882,7 @@ var require_react_dom_development = __commonJS({
           return root2;
         }
         var ReactVersion = "18.3.1";
-        function createPortal2(children, containerInfo, implementation) {
+        function createPortal3(children, containerInfo, implementation) {
           var key = arguments.length > 3 && arguments[3] !== void 0 ? arguments[3] : null;
           {
             checkKeyStringCoercion(key);
@@ -44739,7 +44739,7 @@ var require_react_dom_development = __commonJS({
           if (!isValidContainer(container)) {
             throw new Error("Target container is not a DOM element.");
           }
-          return createPortal2(children, container, null, key);
+          return createPortal3(children, container, null, key);
         }
         function renderSubtreeIntoContainer(parentComponent, element, containerNode, callback) {
           return unstable_renderSubtreeIntoContainer(parentComponent, element, containerNode, callback);
@@ -45328,8 +45328,8 @@ var require_accessibility_cjs_development = __commonJS({
     function _interopDefault(ex) {
       return ex && typeof ex === "object" && "default" in ex ? ex["default"] : ex;
     }
-    var React15 = require_react();
-    var React__default = _interopDefault(React15);
+    var React17 = require_react();
+    var React__default = _interopDefault(React17);
     var hiddenStyles = {
       display: "none"
     };
@@ -45372,8 +45372,8 @@ var require_accessibility_cjs_development = __commonJS({
       }, announcement);
     }
     function useAnnouncement() {
-      const [announcement, setAnnouncement] = React15.useState("");
-      const announce = React15.useCallback((value) => {
+      const [announcement, setAnnouncement] = React17.useState("");
+      const announce = React17.useCallback((value) => {
         if (value != null) {
           setAnnouncement(value);
         }
@@ -46462,15 +46462,15 @@ var require_core_cjs_development = __commonJS({
     function _interopDefault(ex) {
       return ex && typeof ex === "object" && "default" in ex ? ex["default"] : ex;
     }
-    var React15 = require_react();
-    var React__default = _interopDefault(React15);
+    var React17 = require_react();
+    var React__default = _interopDefault(React17);
     var reactDom = require_react_dom();
     var utilities = require_dist();
     var accessibility = require_dist2();
-    var DndMonitorContext = /* @__PURE__ */ React15.createContext(null);
+    var DndMonitorContext = /* @__PURE__ */ React17.createContext(null);
     function useDndMonitor(listener2) {
-      const registerListener = React15.useContext(DndMonitorContext);
-      React15.useEffect(() => {
+      const registerListener = React17.useContext(DndMonitorContext);
+      React17.useEffect(() => {
         if (!registerListener) {
           throw new Error("useDndMonitor must be used within a children of <DndContext>");
         }
@@ -46479,12 +46479,12 @@ var require_core_cjs_development = __commonJS({
       }, [listener2, registerListener]);
     }
     function useDndMonitorProvider() {
-      const [listeners] = React15.useState(() => /* @__PURE__ */ new Set());
-      const registerListener = React15.useCallback((listener2) => {
+      const [listeners] = React17.useState(() => /* @__PURE__ */ new Set());
+      const registerListener = React17.useCallback((listener2) => {
         listeners.add(listener2);
         return () => listeners.delete(listener2);
       }, [listeners]);
-      const dispatch = React15.useCallback((_ref) => {
+      const dispatch = React17.useCallback((_ref) => {
         let {
           type,
           event
@@ -46545,11 +46545,11 @@ var require_core_cjs_development = __commonJS({
         announcement
       } = accessibility.useAnnouncement();
       const liveRegionId = utilities.useUniqueId("DndLiveRegion");
-      const [mounted, setMounted] = React15.useState(false);
-      React15.useEffect(() => {
+      const [mounted, setMounted] = React17.useState(false);
+      React17.useEffect(() => {
         setMounted(true);
       }, []);
-      useDndMonitor(React15.useMemo(() => ({
+      useDndMonitor(React17.useMemo(() => ({
         onDragStart(_ref2) {
           let {
             active
@@ -46627,7 +46627,7 @@ var require_core_cjs_development = __commonJS({
     function noop3() {
     }
     function useSensor3(sensor, options) {
-      return React15.useMemo(
+      return React17.useMemo(
         () => ({
           sensor,
           options: options != null ? options : {}
@@ -46640,7 +46640,7 @@ var require_core_cjs_development = __commonJS({
       for (var _len = arguments.length, sensors = new Array(_len), _key = 0; _key < _len; _key++) {
         sensors[_key] = arguments[_key];
       }
-      return React15.useMemo(
+      return React17.useMemo(
         () => [...sensors].filter((sensor) => sensor != null),
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [...sensors]
@@ -47931,15 +47931,15 @@ var require_core_cjs_development = __commonJS({
         disabled: !enabled
       });
       const [setAutoScrollInterval, clearAutoScrollInterval] = utilities.useInterval();
-      const scrollSpeed = React15.useRef({
+      const scrollSpeed = React17.useRef({
         x: 0,
         y: 0
       });
-      const scrollDirection = React15.useRef({
+      const scrollDirection = React17.useRef({
         x: 0,
         y: 0
       });
-      const rect = React15.useMemo(() => {
+      const rect = React17.useMemo(() => {
         switch (activator) {
           case exports2.AutoScrollActivator.Pointer:
             return pointerCoordinates ? {
@@ -47952,8 +47952,8 @@ var require_core_cjs_development = __commonJS({
             return draggingRect;
         }
       }, [activator, draggingRect, pointerCoordinates]);
-      const scrollContainerRef = React15.useRef(null);
-      const autoScroll = React15.useCallback(() => {
+      const scrollContainerRef = React17.useRef(null);
+      const autoScroll = React17.useCallback(() => {
         const scrollContainer = scrollContainerRef.current;
         if (!scrollContainer) {
           return;
@@ -47962,8 +47962,8 @@ var require_core_cjs_development = __commonJS({
         const scrollTop = scrollSpeed.current.y * scrollDirection.current.y;
         scrollContainer.scrollBy(scrollLeft, scrollTop);
       }, []);
-      const sortedScrollableAncestors = React15.useMemo(() => order === exports2.TraversalOrder.TreeOrder ? [...scrollableAncestors].reverse() : scrollableAncestors, [order, scrollableAncestors]);
-      React15.useEffect(
+      const sortedScrollableAncestors = React17.useMemo(() => order === exports2.TraversalOrder.TreeOrder ? [...scrollableAncestors].reverse() : scrollableAncestors, [order, scrollableAncestors]);
+      React17.useEffect(
         () => {
           if (!enabled || !scrollableAncestors.length || !rect) {
             clearAutoScrollInterval();
@@ -48076,7 +48076,7 @@ var require_core_cjs_development = __commonJS({
       }, [node, id3]);
     }
     function useCombineActivators(sensors, getSyntheticHandler) {
-      return React15.useMemo(() => sensors.reduce((accumulator, sensor) => {
+      return React17.useMemo(() => sensors.reduce((accumulator, sensor) => {
         const {
           sensor: Sensor
         } = sensor;
@@ -48102,16 +48102,16 @@ var require_core_cjs_development = __commonJS({
         dependencies,
         config
       } = _ref;
-      const [queue, setQueue] = React15.useState(null);
+      const [queue, setQueue] = React17.useState(null);
       const {
         frequency,
         measure,
         strategy
       } = config;
-      const containersRef = React15.useRef(containers);
+      const containersRef = React17.useRef(containers);
       const disabled = isDisabled();
       const disabledRef = utilities.useLatestValue(disabled);
-      const measureDroppableContainers = React15.useCallback(function(ids) {
+      const measureDroppableContainers = React17.useCallback(function(ids) {
         if (ids === void 0) {
           ids = [];
         }
@@ -48125,7 +48125,7 @@ var require_core_cjs_development = __commonJS({
           return value.concat(ids.filter((id3) => !value.includes(id3)));
         });
       }, [disabledRef]);
-      const timeoutId = React15.useRef(null);
+      const timeoutId = React17.useRef(null);
       const droppableRects = utilities.useLazyMemo((previousValue) => {
         if (disabled && !dragging) {
           return defaultValue;
@@ -48151,10 +48151,10 @@ var require_core_cjs_development = __commonJS({
         }
         return previousValue;
       }, [containers, queue, dragging, disabled, measure]);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         containersRef.current = containers;
       }, [containers]);
-      React15.useEffect(
+      React17.useEffect(
         () => {
           if (disabled) {
             return;
@@ -48164,7 +48164,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [dragging, disabled]
       );
-      React15.useEffect(
+      React17.useEffect(
         () => {
           if (queue && queue.length > 0) {
             setQueue(null);
@@ -48173,7 +48173,7 @@ var require_core_cjs_development = __commonJS({
         //eslint-disable-next-line react-hooks/exhaustive-deps
         [JSON.stringify(queue)]
       );
-      React15.useEffect(
+      React17.useEffect(
         () => {
           if (disabled || typeof frequency !== "number" || timeoutId.current !== null) {
             return;
@@ -48222,7 +48222,7 @@ var require_core_cjs_development = __commonJS({
         disabled
       } = _ref;
       const handleMutations = utilities.useEvent(callback);
-      const mutationObserver = React15.useMemo(() => {
+      const mutationObserver = React17.useMemo(() => {
         if (disabled || typeof window === "undefined" || typeof window.MutationObserver === "undefined") {
           return void 0;
         }
@@ -48231,7 +48231,7 @@ var require_core_cjs_development = __commonJS({
         } = window;
         return new MutationObserver(handleMutations);
       }, [handleMutations, disabled]);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         return () => mutationObserver == null ? void 0 : mutationObserver.disconnect();
       }, [mutationObserver]);
       return mutationObserver;
@@ -48242,7 +48242,7 @@ var require_core_cjs_development = __commonJS({
         disabled
       } = _ref;
       const handleResize = utilities.useEvent(callback);
-      const resizeObserver = React15.useMemo(
+      const resizeObserver = React17.useMemo(
         () => {
           if (disabled || typeof window === "undefined" || typeof window.ResizeObserver === "undefined") {
             return void 0;
@@ -48255,7 +48255,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [disabled]
       );
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         return () => resizeObserver == null ? void 0 : resizeObserver.disconnect();
       }, [resizeObserver]);
       return resizeObserver;
@@ -48267,7 +48267,7 @@ var require_core_cjs_development = __commonJS({
       if (measure === void 0) {
         measure = defaultMeasure;
       }
-      const [rect, setRect] = React15.useState(null);
+      const [rect, setRect] = React17.useState(null);
       function measureRect() {
         setRect((currentRect) => {
           if (!element) {
@@ -48325,7 +48325,7 @@ var require_core_cjs_development = __commonJS({
     }
     var defaultValue$1 = [];
     function useScrollableAncestors(node) {
-      const previousNode = React15.useRef(node);
+      const previousNode = React17.useRef(node);
       const ancestors = utilities.useLazyMemo((previousValue) => {
         if (!node) {
           return defaultValue$1;
@@ -48335,15 +48335,15 @@ var require_core_cjs_development = __commonJS({
         }
         return getScrollableAncestors(node);
       }, [node]);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         previousNode.current = node;
       }, [node]);
       return ancestors;
     }
     function useScrollOffsets(elements) {
-      const [scrollCoordinates, setScrollCoordinates] = React15.useState(null);
-      const prevElements = React15.useRef(elements);
-      const handleScroll = React15.useCallback((event) => {
+      const [scrollCoordinates, setScrollCoordinates] = React17.useState(null);
+      const prevElements = React17.useRef(elements);
+      const handleScroll = React17.useCallback((event) => {
         const scrollingElement = getScrollableElement(event.target);
         if (!scrollingElement) {
           return;
@@ -48356,7 +48356,7 @@ var require_core_cjs_development = __commonJS({
           return new Map(scrollCoordinates2);
         });
       }, []);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         const previousElements = prevElements.current;
         if (elements !== previousElements) {
           cleanup(previousElements);
@@ -48384,7 +48384,7 @@ var require_core_cjs_development = __commonJS({
           });
         }
       }, [handleScroll, elements]);
-      return React15.useMemo(() => {
+      return React17.useMemo(() => {
         if (elements.length) {
           return scrollCoordinates ? Array.from(scrollCoordinates.values()).reduce((acc, coordinates) => utilities.add(acc, coordinates), defaultCoordinates) : getScrollOffsets(elements);
         }
@@ -48395,15 +48395,15 @@ var require_core_cjs_development = __commonJS({
       if (dependencies === void 0) {
         dependencies = [];
       }
-      const initialScrollOffsets = React15.useRef(null);
-      React15.useEffect(
+      const initialScrollOffsets = React17.useRef(null);
+      React17.useEffect(
         () => {
           initialScrollOffsets.current = null;
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
         dependencies
       );
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         const hasScrollOffsets = scrollOffsets !== defaultCoordinates;
         if (hasScrollOffsets && !initialScrollOffsets.current) {
           initialScrollOffsets.current = scrollOffsets;
@@ -48415,7 +48415,7 @@ var require_core_cjs_development = __commonJS({
       return initialScrollOffsets.current ? utilities.subtract(scrollOffsets, initialScrollOffsets.current) : defaultCoordinates;
     }
     function useSensorSetup(sensors) {
-      React15.useEffect(
+      React17.useEffect(
         () => {
           if (!utilities.canUseDOM) {
             return;
@@ -48443,7 +48443,7 @@ var require_core_cjs_development = __commonJS({
       );
     }
     function useSyntheticListeners(listeners, id3) {
-      return React15.useMemo(() => {
+      return React17.useMemo(() => {
         return listeners.reduce((acc, _ref) => {
           let {
             eventName,
@@ -48457,7 +48457,7 @@ var require_core_cjs_development = __commonJS({
       }, [listeners, id3]);
     }
     function useWindowRect(element) {
-      return React15.useMemo(() => element ? getWindowClientRect(element) : null, [element]);
+      return React17.useMemo(() => element ? getWindowClientRect(element) : null, [element]);
     }
     var defaultValue$2 = [];
     function useRects(elements, measure) {
@@ -48466,7 +48466,7 @@ var require_core_cjs_development = __commonJS({
       }
       const [firstElement] = elements;
       const windowRect = useWindowRect(firstElement ? utilities.getWindow(firstElement) : null);
-      const [rects, setRects] = React15.useState(defaultValue$2);
+      const [rects, setRects] = React17.useState(defaultValue$2);
       function measureRects() {
         setRects(() => {
           if (!elements.length) {
@@ -48499,8 +48499,8 @@ var require_core_cjs_development = __commonJS({
       let {
         measure
       } = _ref;
-      const [rect, setRect] = React15.useState(null);
-      const handleResize = React15.useCallback((entries) => {
+      const [rect, setRect] = React17.useState(null);
+      const handleResize = React17.useCallback((entries) => {
         for (const {
           target
         } of entries) {
@@ -48520,7 +48520,7 @@ var require_core_cjs_development = __commonJS({
       const resizeObserver = useResizeObserver({
         callback: handleResize
       });
-      const handleNodeChange = React15.useCallback((element) => {
+      const handleNodeChange = React17.useCallback((element) => {
         const node = getMeasurableNode(element);
         resizeObserver == null ? void 0 : resizeObserver.disconnect();
         if (node) {
@@ -48529,7 +48529,7 @@ var require_core_cjs_development = __commonJS({
         setRect(node ? measure(node) : null);
       }, [measure, resizeObserver]);
       const [nodeRef, setRef2] = utilities.useNodeRef(handleNodeChange);
-      return React15.useMemo(() => ({
+      return React17.useMemo(() => ({
         nodeRef,
         rect,
         setRef: setRef2
@@ -48617,8 +48617,8 @@ var require_core_cjs_development = __commonJS({
       over: null,
       measureDroppableContainers: noop3
     };
-    var InternalContext = /* @__PURE__ */ React15.createContext(defaultInternalContext);
-    var PublicContext = /* @__PURE__ */ React15.createContext(defaultPublicContext);
+    var InternalContext = /* @__PURE__ */ React17.createContext(defaultInternalContext);
+    var PublicContext = /* @__PURE__ */ React17.createContext(defaultPublicContext);
     function getInitialState() {
       return {
         draggable: {
@@ -48752,10 +48752,10 @@ var require_core_cjs_development = __commonJS({
         active,
         activatorEvent,
         draggableNodes
-      } = React15.useContext(InternalContext);
+      } = React17.useContext(InternalContext);
       const previousActivatorEvent = utilities.usePrevious(activatorEvent);
       const previousActiveId = utilities.usePrevious(active == null ? void 0 : active.id);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         if (disabled) {
           return;
         }
@@ -48806,7 +48806,7 @@ var require_core_cjs_development = __commonJS({
       }, transform) : transform;
     }
     function useMeasuringConfiguration(config) {
-      return React15.useMemo(
+      return React17.useMemo(
         () => ({
           draggable: {
             ...defaultMeasuringConfiguration.draggable,
@@ -48832,7 +48832,7 @@ var require_core_cjs_development = __commonJS({
         initialRect,
         config = true
       } = _ref;
-      const initialized = React15.useRef(false);
+      const initialized = React17.useRef(false);
       const {
         x,
         y
@@ -48873,7 +48873,7 @@ var require_core_cjs_development = __commonJS({
         }
       }, [activeNode, x, y, initialRect, measure]);
     }
-    var ActiveDraggableContext = /* @__PURE__ */ React15.createContext({
+    var ActiveDraggableContext = /* @__PURE__ */ React17.createContext({
       ...defaultCoordinates,
       scaleX: 1,
       scaleY: 1
@@ -48884,7 +48884,7 @@ var require_core_cjs_development = __commonJS({
       Status2[Status2["Initializing"] = 1] = "Initializing";
       Status2[Status2["Initialized"] = 2] = "Initialized";
     })(Status || (Status = {}));
-    var DndContext3 = /* @__PURE__ */ React15.memo(function DndContext4(_ref) {
+    var DndContext3 = /* @__PURE__ */ React17.memo(function DndContext4(_ref) {
       var _sensorContext$curren, _dragOverlay$nodeRef$, _dragOverlay$rect, _over$rect;
       let {
         id: id3,
@@ -48897,10 +48897,10 @@ var require_core_cjs_development = __commonJS({
         modifiers,
         ...props
       } = _ref;
-      const store = React15.useReducer(reducer, void 0, getInitialState);
+      const store = React17.useReducer(reducer, void 0, getInitialState);
       const [state, dispatch] = store;
       const [dispatchMonitorEvent, registerMonitorListener] = useDndMonitorProvider();
-      const [status, setStatus] = React15.useState(Status.Uninitialized);
+      const [status, setStatus] = React17.useState(Status.Uninitialized);
       const isInitialized2 = status === Status.Initialized;
       const {
         draggable: {
@@ -48913,11 +48913,11 @@ var require_core_cjs_development = __commonJS({
         }
       } = state;
       const node = activeId != null ? draggableNodes.get(activeId) : null;
-      const activeRects = React15.useRef({
+      const activeRects = React17.useRef({
         initial: null,
         translated: null
       });
-      const active = React15.useMemo(() => {
+      const active = React17.useMemo(() => {
         var _node$data;
         return activeId != null ? {
           id: activeId,
@@ -48926,12 +48926,12 @@ var require_core_cjs_development = __commonJS({
           rect: activeRects
         } : null;
       }, [activeId, node]);
-      const activeRef = React15.useRef(null);
-      const [activeSensor, setActiveSensor] = React15.useState(null);
-      const [activatorEvent, setActivatorEvent] = React15.useState(null);
+      const activeRef = React17.useRef(null);
+      const [activeSensor, setActiveSensor] = React17.useState(null);
+      const [activatorEvent, setActivatorEvent] = React17.useState(null);
       const latestProps = utilities.useLatestValue(props, Object.values(props));
       const draggableDescribedById = utilities.useUniqueId("DndDescribedBy", id3);
-      const enabledDroppableContainers = React15.useMemo(() => droppableContainers.getEnabled(), [droppableContainers]);
+      const enabledDroppableContainers = React17.useMemo(() => droppableContainers.getEnabled(), [droppableContainers]);
       const measuringConfiguration = useMeasuringConfiguration(measuring);
       const {
         droppableRects,
@@ -48943,7 +48943,7 @@ var require_core_cjs_development = __commonJS({
         config: measuringConfiguration.droppable
       });
       const activeNode = useCachedNode(draggableNodes, activeId);
-      const activationCoordinates = React15.useMemo(() => activatorEvent ? utilities.getEventCoordinates(activatorEvent) : null, [activatorEvent]);
+      const activationCoordinates = React17.useMemo(() => activatorEvent ? utilities.getEventCoordinates(activatorEvent) : null, [activatorEvent]);
       const autoScrollOptions = getAutoScrollerOptions();
       const initialActiveNodeRect = useInitialRect(activeNode, measuringConfiguration.draggable.measure);
       useLayoutShiftScrollCompensation({
@@ -48954,7 +48954,7 @@ var require_core_cjs_development = __commonJS({
       });
       const activeNodeRect = useRect(activeNode, measuringConfiguration.draggable.measure, initialActiveNodeRect);
       const containerNodeRect = useRect(activeNode ? activeNode.parentElement : null);
-      const sensorContext = React15.useRef({
+      const sensorContext = React17.useRef({
         activatorEvent: null,
         active: null,
         activeNode,
@@ -49012,11 +49012,11 @@ var require_core_cjs_development = __commonJS({
         pointerCoordinates
       }) : null;
       const overId = getFirstCollision3(collisions, "id");
-      const [over, setOver] = React15.useState(null);
+      const [over, setOver] = React17.useState(null);
       const appliedTranslate = usesDragOverlay ? modifiedTranslate : utilities.add(modifiedTranslate, activeNodeScrollDelta);
       const transform = adjustScale(appliedTranslate, (_over$rect = over == null ? void 0 : over.rect) != null ? _over$rect : null, activeNodeRect);
-      const activeSensorRef = React15.useRef(null);
-      const instantiateSensor = React15.useCallback(
+      const activeSensorRef = React17.useRef(null);
+      const instantiateSensor = React17.useCallback(
         (event, _ref2) => {
           let {
             sensor: Sensor,
@@ -49174,7 +49174,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [draggableNodes]
       );
-      const bindActivatorToSensorInstantiator = React15.useCallback((handler, sensor) => {
+      const bindActivatorToSensorInstantiator = React17.useCallback((handler, sensor) => {
         return (event, active2) => {
           const nativeEvent = event.nativeEvent;
           const activeDraggableNode = draggableNodes.get(active2);
@@ -49206,7 +49206,7 @@ var require_core_cjs_development = __commonJS({
           setStatus(Status.Initialized);
         }
       }, [activeNodeRect, status]);
-      React15.useEffect(
+      React17.useEffect(
         () => {
           const {
             onDragMove
@@ -49241,7 +49241,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [scrollAdjustedTranslate.x, scrollAdjustedTranslate.y]
       );
-      React15.useEffect(
+      React17.useEffect(
         () => {
           const {
             active: active2,
@@ -49314,7 +49314,7 @@ var require_core_cjs_development = __commonJS({
         scrollableAncestors,
         scrollableAncestorRects
       });
-      const publicContext = React15.useMemo(() => {
+      const publicContext = React17.useMemo(() => {
         const context = {
           active,
           activeNode,
@@ -49336,7 +49336,7 @@ var require_core_cjs_development = __commonJS({
         };
         return context;
       }, [active, activeNode, activeNodeRect, activatorEvent, collisions, containerNodeRect, dragOverlay, draggableNodes, droppableContainers, droppableRects, over, measureDroppableContainers, scrollableAncestors, scrollableAncestorRects, measuringConfiguration, measuringScheduled, windowRect]);
-      const internalContext = React15.useMemo(() => {
+      const internalContext = React17.useMemo(() => {
         const context = {
           activatorEvent,
           activators,
@@ -49381,7 +49381,7 @@ var require_core_cjs_development = __commonJS({
         };
       }
     });
-    var NullContext = /* @__PURE__ */ React15.createContext(null);
+    var NullContext = /* @__PURE__ */ React17.createContext(null);
     var defaultRole = "button";
     var ID_PREFIX = "Draggable";
     function useDraggable(_ref) {
@@ -49400,14 +49400,14 @@ var require_core_cjs_development = __commonJS({
         ariaDescribedById,
         draggableNodes,
         over
-      } = React15.useContext(InternalContext);
+      } = React17.useContext(InternalContext);
       const {
         role = defaultRole,
         roleDescription = "draggable",
         tabIndex = 0
       } = attributes != null ? attributes : {};
       const isDragging2 = (active == null ? void 0 : active.id) === id3;
-      const transform = React15.useContext(isDragging2 ? ActiveDraggableContext : NullContext);
+      const transform = React17.useContext(isDragging2 ? ActiveDraggableContext : NullContext);
       const [node, setNodeRef] = utilities.useNodeRef();
       const [activatorNode, setActivatorNodeRef] = utilities.useNodeRef();
       const listeners = useSyntheticListeners(activators, id3);
@@ -49431,7 +49431,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [draggableNodes, id3]
       );
-      const memoizedAttributes = React15.useMemo(() => ({
+      const memoizedAttributes = React17.useMemo(() => ({
         role,
         tabIndex,
         "aria-disabled": disabled,
@@ -49454,7 +49454,7 @@ var require_core_cjs_development = __commonJS({
       };
     }
     function useDndContext() {
-      return React15.useContext(PublicContext);
+      return React17.useContext(PublicContext);
     }
     var ID_PREFIX$1 = "Droppable";
     var defaultResizeObserverConfig = {
@@ -49473,13 +49473,13 @@ var require_core_cjs_development = __commonJS({
         dispatch,
         over,
         measureDroppableContainers
-      } = React15.useContext(InternalContext);
-      const previous = React15.useRef({
+      } = React17.useContext(InternalContext);
+      const previous = React17.useRef({
         disabled
       });
-      const resizeObserverConnected = React15.useRef(false);
-      const rect = React15.useRef(null);
-      const callbackId = React15.useRef(null);
+      const resizeObserverConnected = React17.useRef(false);
+      const rect = React17.useRef(null);
+      const callbackId = React17.useRef(null);
       const {
         disabled: resizeObserverDisabled,
         updateMeasurementsFor,
@@ -49489,7 +49489,7 @@ var require_core_cjs_development = __commonJS({
         ...resizeObserverConfig
       };
       const ids = utilities.useLatestValue(updateMeasurementsFor != null ? updateMeasurementsFor : id3);
-      const handleResize = React15.useCallback(
+      const handleResize = React17.useCallback(
         () => {
           if (!resizeObserverConnected.current) {
             resizeObserverConnected.current = true;
@@ -49510,7 +49510,7 @@ var require_core_cjs_development = __commonJS({
         callback: handleResize,
         disabled: resizeObserverDisabled || !active
       });
-      const handleNodeChange = React15.useCallback((newElement, previousElement) => {
+      const handleNodeChange = React17.useCallback((newElement, previousElement) => {
         if (!resizeObserver) {
           return;
         }
@@ -49524,7 +49524,7 @@ var require_core_cjs_development = __commonJS({
       }, [resizeObserver]);
       const [nodeRef, setNodeRef] = utilities.useNodeRef(handleNodeChange);
       const dataRef = utilities.useLatestValue(data);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         if (!resizeObserver || !nodeRef.current) {
           return;
         }
@@ -49532,7 +49532,7 @@ var require_core_cjs_development = __commonJS({
         resizeObserverConnected.current = false;
         resizeObserver.observe(nodeRef.current);
       }, [nodeRef, resizeObserver]);
-      React15.useEffect(
+      React17.useEffect(
         () => {
           dispatch({
             type: Action.RegisterDroppable,
@@ -49554,7 +49554,7 @@ var require_core_cjs_development = __commonJS({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [id3]
       );
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         if (disabled !== previous.current.disabled) {
           dispatch({
             type: Action.SetDroppableDisabled,
@@ -49579,8 +49579,8 @@ var require_core_cjs_development = __commonJS({
         animation,
         children
       } = _ref;
-      const [clonedChildren, setClonedChildren] = React15.useState(null);
-      const [element, setElement] = React15.useState(null);
+      const [clonedChildren, setClonedChildren] = React17.useState(null);
+      const [element, setElement] = React17.useState(null);
       const previousChildren = utilities.usePrevious(children);
       if (!children && !clonedChildren && previousChildren) {
         setClonedChildren(previousChildren);
@@ -49599,7 +49599,7 @@ var require_core_cjs_development = __commonJS({
           setClonedChildren(null);
         });
       }, [animation, clonedChildren, element]);
-      return React__default.createElement(React__default.Fragment, null, children, clonedChildren ? React15.cloneElement(clonedChildren, {
+      return React__default.createElement(React__default.Fragment, null, children, clonedChildren ? React17.cloneElement(clonedChildren, {
         ref: setElement
       }) : null);
     }
@@ -49627,7 +49627,7 @@ var require_core_cjs_development = __commonJS({
       const isKeyboardActivator = utilities.isKeyboardEvent(activatorEvent);
       return isKeyboardActivator ? "transform 250ms ease" : void 0;
     };
-    var PositionedOverlay = /* @__PURE__ */ React15.forwardRef((_ref, ref) => {
+    var PositionedOverlay = /* @__PURE__ */ React17.forwardRef((_ref, ref) => {
       let {
         as,
         activatorEvent,
@@ -49848,7 +49848,7 @@ var require_core_cjs_development = __commonJS({
     }
     var key = 0;
     function useKey(id3) {
-      return React15.useMemo(() => {
+      return React17.useMemo(() => {
         if (id3 == null) {
           return;
         }
@@ -49882,7 +49882,7 @@ var require_core_cjs_development = __commonJS({
         scrollableAncestorRects,
         windowRect
       } = useDndContext();
-      const transform = React15.useContext(ActiveDraggableContext);
+      const transform = React17.useContext(ActiveDraggableContext);
       const key2 = useKey(active == null ? void 0 : active.id);
       const modifiedTransform = applyModifiers(modifiers, {
         activatorEvent,
@@ -50143,8 +50143,8 @@ var require_sortable_cjs_development = __commonJS({
     function _interopDefault(ex) {
       return ex && typeof ex === "object" && "default" in ex ? ex["default"] : ex;
     }
-    var React15 = require_react();
-    var React__default = _interopDefault(React15);
+    var React17 = require_react();
+    var React__default = _interopDefault(React17);
     var core = require_dist3();
     var utilities = require_dist();
     function arrayMove2(array, from, to) {
@@ -50394,11 +50394,11 @@ var require_sortable_cjs_development = __commonJS({
       } = core.useDndContext();
       const containerId = utilities.useUniqueId(ID_PREFIX, id3);
       const useDragOverlay = Boolean(dragOverlay.rect !== null);
-      const items = React15.useMemo(() => userDefinedItems.map((item) => typeof item === "object" && "id" in item ? item.id : item), [userDefinedItems]);
+      const items = React17.useMemo(() => userDefinedItems.map((item) => typeof item === "object" && "id" in item ? item.id : item), [userDefinedItems]);
       const isDragging2 = active != null;
       const activeIndex = active ? items.indexOf(active.id) : -1;
       const overIndex = over ? items.indexOf(over.id) : -1;
-      const previousItemsRef = React15.useRef(items);
+      const previousItemsRef = React17.useRef(items);
       const itemsHaveChanged = !itemsEqual(items, previousItemsRef.current);
       const disableTransforms = overIndex !== -1 && activeIndex === -1 || itemsHaveChanged;
       const disabled = normalizeDisabled(disabledProp);
@@ -50407,10 +50407,10 @@ var require_sortable_cjs_development = __commonJS({
           measureDroppableContainers(items);
         }
       }, [itemsHaveChanged, items, isDragging2, measureDroppableContainers]);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         previousItemsRef.current = items;
       }, [items]);
-      const contextValue = React15.useMemo(
+      const contextValue = React17.useMemo(
         () => ({
           activeIndex,
           containerId,
@@ -50481,8 +50481,8 @@ var require_sortable_cjs_development = __commonJS({
         node,
         rect
       } = _ref;
-      const [derivedTransform, setDerivedtransform] = React15.useState(null);
-      const previousIndex = React15.useRef(index);
+      const [derivedTransform, setDerivedtransform] = React17.useState(null);
+      const previousIndex = React17.useRef(index);
       utilities.useIsomorphicLayoutEffect(() => {
         if (!disabled && index !== previousIndex.current && node.current) {
           const initial = rect.current;
@@ -50505,7 +50505,7 @@ var require_sortable_cjs_development = __commonJS({
           previousIndex.current = index;
         }
       }, [disabled, index, node, rect]);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         if (derivedTransform) {
           setDerivedtransform(null);
         }
@@ -50534,10 +50534,10 @@ var require_sortable_cjs_development = __commonJS({
         overIndex,
         useDragOverlay,
         strategy: globalStrategy
-      } = React15.useContext(Context);
+      } = React17.useContext(Context);
       const disabled = normalizeLocalDisabled(localDisabled, globalDisabled);
       const index = items.indexOf(id3);
-      const data = React15.useMemo(() => ({
+      const data = React17.useMemo(() => ({
         sortable: {
           containerId,
           index,
@@ -50545,7 +50545,7 @@ var require_sortable_cjs_development = __commonJS({
         },
         ...customData
       }), [containerId, customData, index, items]);
-      const itemsAfterCurrentSortable = React15.useMemo(() => items.slice(items.indexOf(id3)), [items, id3]);
+      const itemsAfterCurrentSortable = React17.useMemo(() => items.slice(items.indexOf(id3)), [items, id3]);
       const {
         rect,
         node,
@@ -50600,7 +50600,7 @@ var require_sortable_cjs_development = __commonJS({
         overIndex
       }) : index;
       const activeId = active == null ? void 0 : active.id;
-      const previous = React15.useRef({
+      const previous = React17.useRef({
         activeId,
         items,
         newIndex,
@@ -50627,7 +50627,7 @@ var require_sortable_cjs_development = __commonJS({
         node,
         rect
       });
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         if (isSorting && previous.current.newIndex !== newIndex) {
           previous.current.newIndex = newIndex;
         }
@@ -50638,7 +50638,7 @@ var require_sortable_cjs_development = __commonJS({
           previous.current.items = items;
         }
       }, [isSorting, newIndex, containerId, items]);
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         if (activeId === previous.current.activeId) {
           return;
         }
@@ -50880,7 +50880,7 @@ var require_react_jsx_runtime_development = __commonJS({
     if (process.env.NODE_ENV !== "production") {
       (function() {
         "use strict";
-        var React15 = require_react();
+        var React17 = require_react();
         var REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.element");
         var REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal");
         var REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment");
@@ -50906,7 +50906,7 @@ var require_react_jsx_runtime_development = __commonJS({
           }
           return null;
         }
-        var ReactSharedInternals = React15.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React17.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         function error(format) {
           {
             {
@@ -51756,11 +51756,11 @@ var require_react_jsx_runtime_development = __commonJS({
             return jsxWithValidation(type, props, key, false);
           }
         }
-        var jsx25 = jsxWithValidationDynamic;
-        var jsxs8 = jsxWithValidationStatic;
+        var jsx27 = jsxWithValidationDynamic;
+        var jsxs9 = jsxWithValidationStatic;
         exports2.Fragment = REACT_FRAGMENT_TYPE;
-        exports2.jsx = jsx25;
-        exports2.jsxs = jsxs8;
+        exports2.jsx = jsx27;
+        exports2.jsxs = jsxs9;
       })();
     }
   }
@@ -57345,7 +57345,7 @@ var require_lucide_react = __commonJS({
       ],
       ["path", { d: "m2 2 20 20", key: "1ooewy" }]
     ];
-    var EyeOff = createLucideIcon("eye-off", __iconNode$i0);
+    var EyeOff2 = createLucideIcon("eye-off", __iconNode$i0);
     var __iconNode$h$ = [
       [
         "path",
@@ -57356,7 +57356,7 @@ var require_lucide_react = __commonJS({
       ],
       ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
     ];
-    var Eye = createLucideIcon("eye", __iconNode$h$);
+    var Eye2 = createLucideIcon("eye", __iconNode$h$);
     var __iconNode$h_ = [
       ["path", { d: "M12 16h.01", key: "1drbdi" }],
       ["path", { d: "M16 16h.01", key: "1f9h7w" }],
@@ -69860,10 +69860,10 @@ var require_lucide_react = __commonJS({
       EvCharger,
       Expand,
       ExternalLink: ExternalLink2,
-      Eye,
+      Eye: Eye2,
       EyeClosed,
       EyeDashed,
-      EyeOff,
+      EyeOff: EyeOff2,
       Factory,
       Fan,
       FastForward,
@@ -72340,14 +72340,14 @@ var require_lucide_react = __commonJS({
     exports2.ExpandIcon = Expand;
     exports2.ExternalLink = ExternalLink2;
     exports2.ExternalLinkIcon = ExternalLink2;
-    exports2.Eye = Eye;
+    exports2.Eye = Eye2;
     exports2.EyeClosed = EyeClosed;
     exports2.EyeClosedIcon = EyeClosed;
     exports2.EyeDashed = EyeDashed;
     exports2.EyeDashedIcon = EyeDashed;
-    exports2.EyeIcon = Eye;
-    exports2.EyeOff = EyeOff;
-    exports2.EyeOffIcon = EyeOff;
+    exports2.EyeIcon = Eye2;
+    exports2.EyeOff = EyeOff2;
+    exports2.EyeOffIcon = EyeOff2;
     exports2.Factory = Factory;
     exports2.FactoryIcon = Factory;
     exports2.Fan = Fan;
@@ -73849,10 +73849,10 @@ var require_lucide_react = __commonJS({
     exports2.LucideEvCharger = EvCharger;
     exports2.LucideExpand = Expand;
     exports2.LucideExternalLink = ExternalLink2;
-    exports2.LucideEye = Eye;
+    exports2.LucideEye = Eye2;
     exports2.LucideEyeClosed = EyeClosed;
     exports2.LucideEyeDashed = EyeDashed;
-    exports2.LucideEyeOff = EyeOff;
+    exports2.LucideEyeOff = EyeOff2;
     exports2.LucideFactory = Factory;
     exports2.LucideFan = Fan;
     exports2.LucideFastForward = FastForward;
@@ -77415,7 +77415,7 @@ var require_Surface = __commonJS({
     });
     exports2.Surface = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _svgPropertiesAndEvents = require_svgPropertiesAndEvents();
     var _excluded = ["children", "width", "height", "viewBox", "className", "style", "title", "desc"];
@@ -77478,14 +77478,14 @@ var require_Surface = __commonJS({
         y: 0
       };
       var layerClass = (0, _clsx.clsx)("recharts-surface", className);
-      return /* @__PURE__ */ React15.createElement("svg", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(others), {
+      return /* @__PURE__ */ React17.createElement("svg", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(others), {
         className: layerClass,
         width,
         height,
         style,
         viewBox: "".concat(svgView.x, " ").concat(svgView.y, " ").concat(svgView.width, " ").concat(svgView.height),
         ref
-      }), /* @__PURE__ */ React15.createElement("title", null, title), /* @__PURE__ */ React15.createElement("desc", null, desc), children);
+      }), /* @__PURE__ */ React17.createElement("title", null, title), /* @__PURE__ */ React17.createElement("desc", null, desc), children);
     });
   }
 });
@@ -77498,7 +77498,7 @@ var require_Layer = __commonJS({
       value: true
     });
     exports2.Layer = void 0;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _clsx = require_clsx();
     var _svgPropertiesAndEvents = require_svgPropertiesAndEvents();
     var _excluded = ["children", "className"];
@@ -77543,13 +77543,13 @@ var require_Layer = __commonJS({
       }
       return t;
     }
-    var Layer = exports2.Layer = /* @__PURE__ */ React15.forwardRef((props, ref) => {
+    var Layer = exports2.Layer = /* @__PURE__ */ React17.forwardRef((props, ref) => {
       var {
         children,
         className
       } = props, others = _objectWithoutProperties(props, _excluded);
       var layerClass = (0, _clsx.clsx)("recharts-layer", className);
-      return /* @__PURE__ */ React15.createElement("g", _extends({
+      return /* @__PURE__ */ React17.createElement("g", _extends({
         className: layerClass
       }, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(others), {
         ref
@@ -81015,7 +81015,7 @@ var require_Symbols = __commonJS({
       value: true
     });
     exports2.Symbols = void 0;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _d3Shape = require_d3_shape();
     var _clsx = require_clsx();
     var _DataUtils = require_DataUtils();
@@ -81171,7 +81171,7 @@ var require_Symbols = __commonJS({
       } = props;
       var filteredProps = (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(props);
       if ((0, _DataUtils.isNumber)(cx) && (0, _DataUtils.isNumber)(cy) && (0, _DataUtils.isNumber)(size)) {
-        return /* @__PURE__ */ React15.createElement("path", _extends({}, filteredProps, {
+        return /* @__PURE__ */ React17.createElement("path", _extends({}, filteredProps, {
           className: (0, _clsx.clsx)("recharts-symbols", className),
           transform: "translate(".concat(cx, ", ").concat(cy, ")"),
           d: getPath()
@@ -81313,7 +81313,7 @@ var require_DefaultLegendContent = __commonJS({
       value: true
     });
     exports2.defaultLegendContentDefaultProps = exports2.DefaultLegendContent = void 0;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _clsx = require_clsx();
     var _Surface = require_Surface();
     var _Symbols = require_Symbols();
@@ -81410,7 +81410,7 @@ var require_DefaultLegendContent = __commonJS({
         return null;
       }
       if (preferredIcon === "plainline") {
-        return /* @__PURE__ */ React15.createElement("line", {
+        return /* @__PURE__ */ React17.createElement("line", {
           strokeWidth: 4,
           fill: "none",
           stroke: color2,
@@ -81423,7 +81423,7 @@ var require_DefaultLegendContent = __commonJS({
         });
       }
       if (preferredIcon === "line") {
-        return /* @__PURE__ */ React15.createElement("path", {
+        return /* @__PURE__ */ React17.createElement("path", {
           strokeWidth: 4,
           fill: "none",
           stroke: color2,
@@ -81432,19 +81432,19 @@ var require_DefaultLegendContent = __commonJS({
         });
       }
       if (preferredIcon === "rect") {
-        return /* @__PURE__ */ React15.createElement("path", {
+        return /* @__PURE__ */ React17.createElement("path", {
           stroke: "none",
           fill: color2,
           d: "M0,".concat(SIZE / 8, "h").concat(SIZE, "v").concat(SIZE * 3 / 4, "h").concat(-SIZE, "z"),
           className: "recharts-legend-icon"
         });
       }
-      if (/* @__PURE__ */ React15.isValidElement(data.legendIcon)) {
+      if (/* @__PURE__ */ React17.isValidElement(data.legendIcon)) {
         var iconProps = _objectSpread({}, data);
         delete iconProps.legendIcon;
-        return /* @__PURE__ */ React15.cloneElement(data.legendIcon, iconProps);
+        return /* @__PURE__ */ React17.cloneElement(data.legendIcon, iconProps);
       }
-      return /* @__PURE__ */ React15.createElement(_Symbols.Symbols, {
+      return /* @__PURE__ */ React17.createElement(_Symbols.Symbols, {
         fill: color2,
         cx: halfSize,
         cy: halfSize,
@@ -81491,21 +81491,21 @@ var require_DefaultLegendContent = __commonJS({
         var finalLabelStyle = typeof labelStyle === "object" ? _objectSpread({}, labelStyle) : {};
         finalLabelStyle.color = entry.inactive ? inactiveColor : finalLabelStyle.color || entry.color;
         var finalValue = finalFormatter ? finalFormatter(entry.value, entry, i) : entry.value;
-        return /* @__PURE__ */ React15.createElement("li", _extends({
+        return /* @__PURE__ */ React17.createElement("li", _extends({
           className,
           style: itemStyle,
           key: "legend-item-".concat(i)
-        }, (0, _types.adaptEventsOfChild)(props, entry, i)), /* @__PURE__ */ React15.createElement(_Surface.Surface, {
+        }, (0, _types.adaptEventsOfChild)(props, entry, i)), /* @__PURE__ */ React17.createElement(_Surface.Surface, {
           width: iconSize,
           height: iconSize,
           viewBox,
           style: svgStyle,
           "aria-label": "".concat(entry.value, " legend icon")
-        }, /* @__PURE__ */ React15.createElement(Icon, {
+        }, /* @__PURE__ */ React17.createElement(Icon, {
           data: entry,
           iconType,
           inactiveColor
-        })), /* @__PURE__ */ React15.createElement("span", {
+        })), /* @__PURE__ */ React17.createElement("span", {
           className: "recharts-legend-item-text",
           style: finalLabelStyle
         }, finalValue));
@@ -81526,10 +81526,10 @@ var require_DefaultLegendContent = __commonJS({
         margin: 0,
         textAlign: layout2 === "horizontal" ? align : "left"
       };
-      return /* @__PURE__ */ React15.createElement("ul", {
+      return /* @__PURE__ */ React17.createElement("ul", {
         className: "recharts-default-legend",
         style: finalStyle
-      }, /* @__PURE__ */ React15.createElement(Items, _extends({}, props, {
+      }, /* @__PURE__ */ React17.createElement(Items, _extends({}, props, {
         payload
       })));
     };
@@ -82266,18 +82266,18 @@ var require_getUniqPayload = __commonJS({
 var require_use_sync_external_store_shim_production = __commonJS({
   "node_modules/use-sync-external-store/cjs/use-sync-external-store-shim.production.js"(exports2) {
     "use strict";
-    var React15 = require_react();
+    var React17 = require_react();
     function is2(x, y) {
       return x === y && (0 !== x || 1 / x === 1 / y) || x !== x && y !== y;
     }
     var objectIs = "function" === typeof Object.is ? Object.is : is2;
-    var useState7 = React15.useState;
-    var useEffect8 = React15.useEffect;
-    var useLayoutEffect4 = React15.useLayoutEffect;
-    var useDebugValue = React15.useDebugValue;
+    var useState8 = React17.useState;
+    var useEffect9 = React17.useEffect;
+    var useLayoutEffect5 = React17.useLayoutEffect;
+    var useDebugValue = React17.useDebugValue;
     function useSyncExternalStore$2(subscribe, getSnapshot) {
-      var value = getSnapshot(), _useState = useState7({ inst: { value, getSnapshot } }), inst = _useState[0].inst, forceUpdate = _useState[1];
-      useLayoutEffect4(
+      var value = getSnapshot(), _useState = useState8({ inst: { value, getSnapshot } }), inst = _useState[0].inst, forceUpdate = _useState[1];
+      useLayoutEffect5(
         function() {
           inst.value = value;
           inst.getSnapshot = getSnapshot;
@@ -82285,7 +82285,7 @@ var require_use_sync_external_store_shim_production = __commonJS({
         },
         [subscribe, value, getSnapshot]
       );
-      useEffect8(
+      useEffect9(
         function() {
           checkIfSnapshotChanged(inst) && forceUpdate({ inst });
           return subscribe(function() {
@@ -82311,7 +82311,7 @@ var require_use_sync_external_store_shim_production = __commonJS({
       return getSnapshot();
     }
     var shim = "undefined" === typeof window || "undefined" === typeof window.document || "undefined" === typeof window.document.createElement ? useSyncExternalStore$1 : useSyncExternalStore$2;
-    exports2.useSyncExternalStore = void 0 !== React15.useSyncExternalStore ? React15.useSyncExternalStore : shim;
+    exports2.useSyncExternalStore = void 0 !== React17.useSyncExternalStore ? React17.useSyncExternalStore : shim;
   }
 });
 
@@ -82324,7 +82324,7 @@ var require_use_sync_external_store_shim_development = __commonJS({
         return x === y && (0 !== x || 1 / x === 1 / y) || x !== x && y !== y;
       }
       function useSyncExternalStore$2(subscribe, getSnapshot) {
-        didWarnOld18Alpha || void 0 === React15.startTransition || (didWarnOld18Alpha = true, console.error(
+        didWarnOld18Alpha || void 0 === React17.startTransition || (didWarnOld18Alpha = true, console.error(
           "You are using an outdated, pre-release alpha of React 18 that does not support useSyncExternalStore. The use-sync-external-store shim will not work correctly. Upgrade to a newer pre-release."
         ));
         var value = getSnapshot();
@@ -82334,11 +82334,11 @@ var require_use_sync_external_store_shim_development = __commonJS({
             "The result of getSnapshot should be cached to avoid an infinite loop"
           ), didWarnUncachedGetSnapshot = true);
         }
-        cachedValue = useState7({
+        cachedValue = useState8({
           inst: { value, getSnapshot }
         });
         var inst = cachedValue[0].inst, forceUpdate = cachedValue[1];
-        useLayoutEffect4(
+        useLayoutEffect5(
           function() {
             inst.value = value;
             inst.getSnapshot = getSnapshot;
@@ -82346,7 +82346,7 @@ var require_use_sync_external_store_shim_development = __commonJS({
           },
           [subscribe, value, getSnapshot]
         );
-        useEffect8(
+        useEffect9(
           function() {
             checkIfSnapshotChanged(inst) && forceUpdate({ inst });
             return subscribe(function() {
@@ -82372,8 +82372,8 @@ var require_use_sync_external_store_shim_development = __commonJS({
         return getSnapshot();
       }
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
-      var React15 = require_react(), objectIs = "function" === typeof Object.is ? Object.is : is2, useState7 = React15.useState, useEffect8 = React15.useEffect, useLayoutEffect4 = React15.useLayoutEffect, useDebugValue = React15.useDebugValue, didWarnOld18Alpha = false, didWarnUncachedGetSnapshot = false, shim = "undefined" === typeof window || "undefined" === typeof window.document || "undefined" === typeof window.document.createElement ? useSyncExternalStore$1 : useSyncExternalStore$2;
-      exports2.useSyncExternalStore = void 0 !== React15.useSyncExternalStore ? React15.useSyncExternalStore : shim;
+      var React17 = require_react(), objectIs = "function" === typeof Object.is ? Object.is : is2, useState8 = React17.useState, useEffect9 = React17.useEffect, useLayoutEffect5 = React17.useLayoutEffect, useDebugValue = React17.useDebugValue, didWarnOld18Alpha = false, didWarnUncachedGetSnapshot = false, shim = "undefined" === typeof window || "undefined" === typeof window.document || "undefined" === typeof window.document.createElement ? useSyncExternalStore$1 : useSyncExternalStore$2;
+      exports2.useSyncExternalStore = void 0 !== React17.useSyncExternalStore ? React17.useSyncExternalStore : shim;
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
     })();
   }
@@ -82395,19 +82395,19 @@ var require_shim = __commonJS({
 var require_with_selector_production = __commonJS({
   "node_modules/use-sync-external-store/cjs/use-sync-external-store-shim/with-selector.production.js"(exports2) {
     "use strict";
-    var React15 = require_react();
+    var React17 = require_react();
     var shim = require_shim();
     function is2(x, y) {
       return x === y && (0 !== x || 1 / x === 1 / y) || x !== x && y !== y;
     }
     var objectIs = "function" === typeof Object.is ? Object.is : is2;
     var useSyncExternalStore = shim.useSyncExternalStore;
-    var useRef10 = React15.useRef;
-    var useEffect8 = React15.useEffect;
-    var useMemo12 = React15.useMemo;
-    var useDebugValue = React15.useDebugValue;
+    var useRef11 = React17.useRef;
+    var useEffect9 = React17.useEffect;
+    var useMemo12 = React17.useMemo;
+    var useDebugValue = React17.useDebugValue;
     exports2.useSyncExternalStoreWithSelector = function(subscribe, getSnapshot, getServerSnapshot, selector, isEqual) {
-      var instRef = useRef10(null);
+      var instRef = useRef11(null);
       if (null === instRef.current) {
         var inst = { hasValue: false, value: null };
         instRef.current = inst;
@@ -82447,7 +82447,7 @@ var require_with_selector_production = __commonJS({
         [getSnapshot, getServerSnapshot, selector, isEqual]
       );
       var value = useSyncExternalStore(subscribe, instRef[0], instRef[1]);
-      useEffect8(
+      useEffect9(
         function() {
           inst.hasValue = true;
           inst.value = value;
@@ -82469,9 +82469,9 @@ var require_with_selector_development = __commonJS({
         return x === y && (0 !== x || 1 / x === 1 / y) || x !== x && y !== y;
       }
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
-      var React15 = require_react(), shim = require_shim(), objectIs = "function" === typeof Object.is ? Object.is : is2, useSyncExternalStore = shim.useSyncExternalStore, useRef10 = React15.useRef, useEffect8 = React15.useEffect, useMemo12 = React15.useMemo, useDebugValue = React15.useDebugValue;
+      var React17 = require_react(), shim = require_shim(), objectIs = "function" === typeof Object.is ? Object.is : is2, useSyncExternalStore = shim.useSyncExternalStore, useRef11 = React17.useRef, useEffect9 = React17.useEffect, useMemo12 = React17.useMemo, useDebugValue = React17.useDebugValue;
       exports2.useSyncExternalStoreWithSelector = function(subscribe, getSnapshot, getServerSnapshot, selector, isEqual) {
-        var instRef = useRef10(null);
+        var instRef = useRef11(null);
         if (null === instRef.current) {
           var inst = { hasValue: false, value: null };
           instRef.current = inst;
@@ -82512,7 +82512,7 @@ var require_with_selector_development = __commonJS({
           [getSnapshot, getServerSnapshot, selector, isEqual]
         );
         var value = useSyncExternalStore(subscribe, instRef[0], instRef[1]);
-        useEffect8(
+        useEffect9(
           function() {
             inst.hasValue = true;
             inst.value = value;
@@ -88285,7 +88285,7 @@ var require_PanoramaContext = __commonJS({
     });
     exports2.useIsPanorama = exports2.PanoramaContextProvider = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     function _interopRequireWildcard(e, t) {
       if ("function" == typeof WeakMap) var r2 = /* @__PURE__ */ new WeakMap(), n = /* @__PURE__ */ new WeakMap();
       return (_interopRequireWildcard = function _interopRequireWildcard2(e2, t2) {
@@ -88307,7 +88307,7 @@ var require_PanoramaContext = __commonJS({
       var {
         children
       } = _ref;
-      return /* @__PURE__ */ React15.createElement(PanoramaContext.Provider, {
+      return /* @__PURE__ */ React17.createElement(PanoramaContext.Provider, {
         value: true
       }, children);
     };
@@ -88605,7 +88605,7 @@ var require_ResponsiveContainer = __commonJS({
     exports2.useResponsiveContainerContext = exports2.ResponsiveContainer = void 0;
     var _clsx = require_clsx();
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _throttle = _interopRequireDefault(require_throttle2());
     var _DataUtils = require_DataUtils();
     var _LogUtils = require_LogUtils();
@@ -88692,7 +88692,7 @@ var require_ResponsiveContainer = __commonJS({
       if (!isAcceptableSize(size)) {
         return null;
       }
-      return /* @__PURE__ */ React15.createElement(ResponsiveContainerContext.Provider, {
+      return /* @__PURE__ */ React17.createElement(ResponsiveContainerContext.Provider, {
         value: size
       }, children);
     }
@@ -88788,7 +88788,7 @@ var require_ResponsiveContainer = __commonJS({
         maxHeight
       });
       (0, _LogUtils.warn)(calculatedWidth != null && calculatedWidth > 0 || calculatedHeight != null && calculatedHeight > 0, "The width(%s) and height(%s) of chart should be greater than 0,\n       please check the style of container, or the props width(%s) and height(%s),\n       or add a minWidth(%s) or minHeight(%s) or use aspect(%s) to control the\n       height and width.", calculatedWidth, calculatedHeight, width, height, minWidth, minHeight, aspect);
-      return /* @__PURE__ */ React15.createElement("div", {
+      return /* @__PURE__ */ React17.createElement("div", {
         id: id3 ? "".concat(id3) : void 0,
         className: (0, _clsx.clsx)("recharts-responsive-container", className),
         style: _objectSpread(_objectSpread({}, style), {}, {
@@ -88799,12 +88799,12 @@ var require_ResponsiveContainer = __commonJS({
           maxHeight
         }),
         ref: containerRef
-      }, /* @__PURE__ */ React15.createElement("div", {
+      }, /* @__PURE__ */ React17.createElement("div", {
         style: (0, _responsiveContainerUtils.getInnerDivStyle)({
           width,
           height
         })
-      }, /* @__PURE__ */ React15.createElement(ResponsiveContainerContextProvider, {
+      }, /* @__PURE__ */ React17.createElement(ResponsiveContainerContextProvider, {
         width: calculatedWidth,
         height: calculatedHeight
       }, children)));
@@ -88832,12 +88832,12 @@ var require_ResponsiveContainer = __commonJS({
         maxHeight: props.maxHeight
       });
       if ((0, _DataUtils.isNumber)(calculatedWidth) && (0, _DataUtils.isNumber)(calculatedHeight)) {
-        return /* @__PURE__ */ React15.createElement(ResponsiveContainerContextProvider, {
+        return /* @__PURE__ */ React17.createElement(ResponsiveContainerContextProvider, {
           width: calculatedWidth,
           height: calculatedHeight
         }, props.children);
       }
-      return /* @__PURE__ */ React15.createElement(SizeDetectorContainer, _extends({}, props, {
+      return /* @__PURE__ */ React17.createElement(SizeDetectorContainer, _extends({}, props, {
         width,
         height,
         ref
@@ -90980,18 +90980,18 @@ var require_legendSlice = __commonJS({
 var require_use_sync_external_store_with_selector_production = __commonJS({
   "node_modules/use-sync-external-store/cjs/use-sync-external-store-with-selector.production.js"(exports2) {
     "use strict";
-    var React15 = require_react();
+    var React17 = require_react();
     function is2(x, y) {
       return x === y && (0 !== x || 1 / x === 1 / y) || x !== x && y !== y;
     }
     var objectIs = "function" === typeof Object.is ? Object.is : is2;
-    var useSyncExternalStore = React15.useSyncExternalStore;
-    var useRef10 = React15.useRef;
-    var useEffect8 = React15.useEffect;
-    var useMemo12 = React15.useMemo;
-    var useDebugValue = React15.useDebugValue;
+    var useSyncExternalStore = React17.useSyncExternalStore;
+    var useRef11 = React17.useRef;
+    var useEffect9 = React17.useEffect;
+    var useMemo12 = React17.useMemo;
+    var useDebugValue = React17.useDebugValue;
     exports2.useSyncExternalStoreWithSelector = function(subscribe, getSnapshot, getServerSnapshot, selector, isEqual) {
-      var instRef = useRef10(null);
+      var instRef = useRef11(null);
       if (null === instRef.current) {
         var inst = { hasValue: false, value: null };
         instRef.current = inst;
@@ -91031,7 +91031,7 @@ var require_use_sync_external_store_with_selector_production = __commonJS({
         [getSnapshot, getServerSnapshot, selector, isEqual]
       );
       var value = useSyncExternalStore(subscribe, instRef[0], instRef[1]);
-      useEffect8(
+      useEffect9(
         function() {
           inst.hasValue = true;
           inst.value = value;
@@ -91053,9 +91053,9 @@ var require_use_sync_external_store_with_selector_development = __commonJS({
         return x === y && (0 !== x || 1 / x === 1 / y) || x !== x && y !== y;
       }
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
-      var React15 = require_react(), objectIs = "function" === typeof Object.is ? Object.is : is2, useSyncExternalStore = React15.useSyncExternalStore, useRef10 = React15.useRef, useEffect8 = React15.useEffect, useMemo12 = React15.useMemo, useDebugValue = React15.useDebugValue;
+      var React17 = require_react(), objectIs = "function" === typeof Object.is ? Object.is : is2, useSyncExternalStore = React17.useSyncExternalStore, useRef11 = React17.useRef, useEffect9 = React17.useEffect, useMemo12 = React17.useMemo, useDebugValue = React17.useDebugValue;
       exports2.useSyncExternalStoreWithSelector = function(subscribe, getSnapshot, getServerSnapshot, selector, isEqual) {
-        var instRef = useRef10(null);
+        var instRef = useRef11(null);
         if (null === instRef.current) {
           var inst = { hasValue: false, value: null };
           instRef.current = inst;
@@ -91096,7 +91096,7 @@ var require_use_sync_external_store_with_selector_development = __commonJS({
           [getSnapshot, getServerSnapshot, selector, isEqual]
         );
         var value = useSyncExternalStore(subscribe, instRef[0], instRef[1]);
-        useEffect8(
+        useEffect9(
           function() {
             inst.hasValue = true;
             inst.value = value;
@@ -91570,8 +91570,8 @@ var require_react_redux_development = __commonJS({
       useStore: () => useStore2
     });
     module2.exports = __toCommonJS2(src_exports);
-    var React15 = __toESM2(require_react());
-    var IS_REACT_19 = /* @__PURE__ */ React15.version.startsWith("19");
+    var React17 = __toESM2(require_react());
+    var IS_REACT_19 = /* @__PURE__ */ React17.version.startsWith("19");
     var REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for(
       IS_REACT_19 ? "react.transitional.element" : "react.element"
     );
@@ -91981,7 +91981,7 @@ var require_react_redux_development = __commonJS({
     var isDOM = /* @__PURE__ */ canUseDOM();
     var isRunningInReactNative = () => typeof navigator !== "undefined" && navigator.product === "ReactNative";
     var isReactNative = /* @__PURE__ */ isRunningInReactNative();
-    var getUseIsomorphicLayoutEffect = () => isDOM || isReactNative ? React15.useLayoutEffect : React15.useEffect;
+    var getUseIsomorphicLayoutEffect = () => isDOM || isReactNative ? React17.useLayoutEffect : React17.useEffect;
     var useIsomorphicLayoutEffect2 = /* @__PURE__ */ getUseIsomorphicLayoutEffect();
     function is2(x, y) {
       if (x === y) {
@@ -92091,17 +92091,17 @@ var require_react_redux_development = __commonJS({
       {}
     );
     function getContext() {
-      if (!React15.createContext) return {};
+      if (!React17.createContext) return {};
       const contextMap = gT[ContextKey] ??= /* @__PURE__ */ new Map();
-      let realContext = contextMap.get(React15.createContext);
+      let realContext = contextMap.get(React17.createContext);
       if (!realContext) {
-        realContext = React15.createContext(
+        realContext = React17.createContext(
           null
         );
         if (true) {
           realContext.displayName = "ReactRedux";
         }
-        contextMap.set(React15.createContext, realContext);
+        contextMap.set(React17.createContext, realContext);
       }
       return realContext;
     }
@@ -92185,7 +92185,7 @@ var require_react_redux_development = __commonJS({
       areStatePropsEqual = shallowEqual2,
       areMergedPropsEqual = shallowEqual2,
       // use React's forwardRef to expose a ref of the wrapped component
-      forwardRef: forwardRef13 = false,
+      forwardRef: forwardRef15 = false,
       // the context consumer to use
       context = ReactReduxContext2
     } = {}) {
@@ -92229,17 +92229,17 @@ var require_react_redux_development = __commonJS({
           areMergedPropsEqual
         };
         function ConnectFunction(props) {
-          const [propsContext, reactReduxForwardedRef, wrapperProps] = React15.useMemo(() => {
+          const [propsContext, reactReduxForwardedRef, wrapperProps] = React17.useMemo(() => {
             const { reactReduxForwardedRef: reactReduxForwardedRef2, ...wrapperProps2 } = props;
             return [props.context, reactReduxForwardedRef2, wrapperProps2];
           }, [props]);
-          const ContextToUse = React15.useMemo(() => {
+          const ContextToUse = React17.useMemo(() => {
             let ResultContext = Context;
             if (propsContext?.Consumer) {
               if (true) {
                 const isValid = /* @__PURE__ */ isContextConsumer(
                   // @ts-ignore
-                  /* @__PURE__ */ React15.createElement(propsContext.Consumer, null)
+                  /* @__PURE__ */ React17.createElement(propsContext.Consumer, null)
                 );
                 if (!isValid) {
                   throw new Error(
@@ -92251,7 +92251,7 @@ var require_react_redux_development = __commonJS({
             }
             return ResultContext;
           }, [propsContext, Context]);
-          const contextValue = React15.useContext(ContextToUse);
+          const contextValue = React17.useContext(ContextToUse);
           const didStoreComeFromProps = Boolean(props.store) && Boolean(props.store.getState) && Boolean(props.store.dispatch);
           const didStoreComeFromContext = Boolean(contextValue) && Boolean(contextValue.store);
           if (!didStoreComeFromProps && !didStoreComeFromContext) {
@@ -92261,10 +92261,10 @@ var require_react_redux_development = __commonJS({
           }
           const store = didStoreComeFromProps ? props.store : contextValue.store;
           const getServerState = didStoreComeFromContext ? contextValue.getServerState : store.getState;
-          const childPropsSelector = React15.useMemo(() => {
+          const childPropsSelector = React17.useMemo(() => {
             return finalPropsSelectorFactory(store.dispatch, selectorFactoryOptions);
           }, [store]);
-          const [subscription, notifyNestedSubs] = React15.useMemo(() => {
+          const [subscription, notifyNestedSubs] = React17.useMemo(() => {
             if (!shouldHandleStateChanges) return NO_SUBSCRIPTION_ARRAY;
             const subscription2 = createSubscription(
               store,
@@ -92273,7 +92273,7 @@ var require_react_redux_development = __commonJS({
             const notifyNestedSubs2 = subscription2.notifyNestedSubs.bind(subscription2);
             return [subscription2, notifyNestedSubs2];
           }, [store, didStoreComeFromProps, contextValue]);
-          const overriddenContextValue = React15.useMemo(() => {
+          const overriddenContextValue = React17.useMemo(() => {
             if (didStoreComeFromProps) {
               return contextValue;
             }
@@ -92282,12 +92282,12 @@ var require_react_redux_development = __commonJS({
               subscription
             };
           }, [didStoreComeFromProps, contextValue, subscription]);
-          const lastChildProps = React15.useRef(void 0);
-          const lastWrapperProps = React15.useRef(wrapperProps);
-          const childPropsFromStoreUpdate = React15.useRef(void 0);
-          const renderIsScheduled = React15.useRef(false);
-          const isMounted = React15.useRef(false);
-          const latestSubscriptionCallbackError = React15.useRef(
+          const lastChildProps = React17.useRef(void 0);
+          const lastWrapperProps = React17.useRef(wrapperProps);
+          const childPropsFromStoreUpdate = React17.useRef(void 0);
+          const renderIsScheduled = React17.useRef(false);
+          const isMounted = React17.useRef(false);
+          const latestSubscriptionCallbackError = React17.useRef(
             void 0
           );
           useIsomorphicLayoutEffect2(() => {
@@ -92296,7 +92296,7 @@ var require_react_redux_development = __commonJS({
               isMounted.current = false;
             };
           }, []);
-          const actualChildPropsSelector = React15.useMemo(() => {
+          const actualChildPropsSelector = React17.useMemo(() => {
             const selector = () => {
               if (childPropsFromStoreUpdate.current && wrapperProps === lastWrapperProps.current) {
                 return childPropsFromStoreUpdate.current;
@@ -92305,7 +92305,7 @@ var require_react_redux_development = __commonJS({
             };
             return selector;
           }, [store, wrapperProps]);
-          const subscribeForReact = React15.useMemo(() => {
+          const subscribeForReact = React17.useMemo(() => {
             const subscribe = (reactListener) => {
               if (!subscription) {
                 return () => {
@@ -92338,7 +92338,7 @@ var require_react_redux_development = __commonJS({
           ]);
           let actualChildProps;
           try {
-            actualChildProps = React15.useSyncExternalStore(
+            actualChildProps = React17.useSyncExternalStore(
               // TODO We're passing through a big wrapper that does a bunch of extra side effects besides subscribing
               subscribeForReact,
               // TODO This is incredibly hacky. We've already processed the store update and calculated new child props,
@@ -92362,10 +92362,10 @@ ${latestSubscriptionCallbackError.current.stack}
             childPropsFromStoreUpdate.current = void 0;
             lastChildProps.current = actualChildProps;
           });
-          const renderedWrappedComponent = React15.useMemo(() => {
+          const renderedWrappedComponent = React17.useMemo(() => {
             return (
               // @ts-ignore
-              /* @__PURE__ */ React15.createElement(
+              /* @__PURE__ */ React17.createElement(
                 WrappedComponent,
                 {
                   ...actualChildProps,
@@ -92374,22 +92374,22 @@ ${latestSubscriptionCallbackError.current.stack}
               )
             );
           }, [reactReduxForwardedRef, WrappedComponent, actualChildProps]);
-          const renderedChild = React15.useMemo(() => {
+          const renderedChild = React17.useMemo(() => {
             if (shouldHandleStateChanges) {
-              return /* @__PURE__ */ React15.createElement(ContextToUse.Provider, { value: overriddenContextValue }, renderedWrappedComponent);
+              return /* @__PURE__ */ React17.createElement(ContextToUse.Provider, { value: overriddenContextValue }, renderedWrappedComponent);
             }
             return renderedWrappedComponent;
           }, [ContextToUse, renderedWrappedComponent, overriddenContextValue]);
           return renderedChild;
         }
-        const _Connect = React15.memo(ConnectFunction);
+        const _Connect = React17.memo(ConnectFunction);
         const Connect = _Connect;
         Connect.WrappedComponent = WrappedComponent;
         Connect.displayName = ConnectFunction.displayName = displayName;
-        if (forwardRef13) {
-          const _forwarded = React15.forwardRef(
+        if (forwardRef15) {
+          const _forwarded = React17.forwardRef(
             function forwardConnectRef(props, ref) {
-              return /* @__PURE__ */ React15.createElement(Connect, { ...props, reactReduxForwardedRef: ref });
+              return /* @__PURE__ */ React17.createElement(Connect, { ...props, reactReduxForwardedRef: ref });
             }
           );
           const forwarded = _forwarded;
@@ -92405,7 +92405,7 @@ ${latestSubscriptionCallbackError.current.stack}
     var legacy_connect2 = _connect;
     function Provider2(providerProps) {
       const { children, context, serverState, store } = providerProps;
-      const contextValue = React15.useMemo(() => {
+      const contextValue = React17.useMemo(() => {
         const subscription = createSubscription(store);
         const baseContextValue = {
           store,
@@ -92422,7 +92422,7 @@ ${latestSubscriptionCallbackError.current.stack}
           });
         }
       }, [store, serverState]);
-      const previousState = React15.useMemo(() => store.getState(), [store]);
+      const previousState = React17.useMemo(() => store.getState(), [store]);
       useIsomorphicLayoutEffect2(() => {
         const { subscription } = contextValue;
         subscription.onStateChange = subscription.notifyNestedSubs;
@@ -92436,12 +92436,12 @@ ${latestSubscriptionCallbackError.current.stack}
         };
       }, [contextValue, previousState]);
       const Context = context || ReactReduxContext2;
-      return /* @__PURE__ */ React15.createElement(Context.Provider, { value: contextValue }, children);
+      return /* @__PURE__ */ React17.createElement(Context.Provider, { value: contextValue }, children);
     }
     var Provider_default = Provider2;
     function createReduxContextHook(context = ReactReduxContext2) {
       return function useReduxContext2() {
-        const contextValue = React15.useContext(context);
+        const contextValue = React17.useContext(context);
         if (!contextValue) {
           throw new Error(
             "could not find react-redux context value; please ensure the component is wrapped in a <Provider>"
@@ -92499,8 +92499,8 @@ ${latestSubscriptionCallbackError.current.stack}
         }
         const reduxContext = useReduxContext2();
         const { store, subscription, getServerState } = reduxContext;
-        const firstRun = React15.useRef(true);
-        const wrappedSelector = React15.useCallback(
+        const firstRun = React17.useRef(true);
+        const wrappedSelector = React17.useCallback(
           {
             [selector.name](state) {
               const selected = selector(state);
@@ -92565,7 +92565,7 @@ ${latestSubscriptionCallbackError.current.stack}
           wrappedSelector,
           equalityFn
         );
-        React15.useDebugValue(selectedState);
+        React17.useDebugValue(selectedState);
         return selectedState;
       };
       Object.assign(useSelector22, {
@@ -92660,7 +92660,7 @@ var require_Legend = __commonJS({
     });
     exports2.legendDefaultProps = exports2.Legend = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _reactDom = require_react_dom();
     var _legendPortalContext = require_legendPortalContext();
     var _DefaultLegendContent = require_DefaultLegendContent();
@@ -92763,13 +92763,13 @@ var require_Legend = __commonJS({
       var contentProps = _objectSpread(_objectSpread({}, otherProps), {}, {
         payload: finalPayload
       });
-      if (/* @__PURE__ */ React15.isValidElement(props.content)) {
-        return /* @__PURE__ */ React15.cloneElement(props.content, contentProps);
+      if (/* @__PURE__ */ React17.isValidElement(props.content)) {
+        return /* @__PURE__ */ React17.cloneElement(props.content, contentProps);
       }
       if (typeof props.content === "function") {
-        return /* @__PURE__ */ React15.createElement(props.content, contentProps);
+        return /* @__PURE__ */ React17.createElement(props.content, contentProps);
       }
-      return /* @__PURE__ */ React15.createElement(_DefaultLegendContent.DefaultLegendContent, contentProps);
+      return /* @__PURE__ */ React17.createElement(_DefaultLegendContent.DefaultLegendContent, contentProps);
     }
     function getDefaultPosition(style, props, margin, chartWidth, chartHeight, box) {
       var {
@@ -92875,19 +92875,19 @@ var require_Legend = __commonJS({
       if (legendPortal == null || contextPayload == null) {
         return null;
       }
-      var legendElement = /* @__PURE__ */ React15.createElement("div", {
+      var legendElement = /* @__PURE__ */ React17.createElement("div", {
         className: "recharts-legend-wrapper",
         style: outerStyle,
         ref: updateBoundingBox
-      }, /* @__PURE__ */ React15.createElement(LegendSettingsDispatcher, {
+      }, /* @__PURE__ */ React17.createElement(LegendSettingsDispatcher, {
         layout: props.layout,
         align: props.align,
         verticalAlign: props.verticalAlign,
         itemSorter: props.itemSorter
-      }), !portalFromProps && /* @__PURE__ */ React15.createElement(LegendSizeDispatcher, {
+      }), !portalFromProps && /* @__PURE__ */ React17.createElement(LegendSizeDispatcher, {
         width: lastBoundingBox.width,
         height: lastBoundingBox.height
-      }), /* @__PURE__ */ React15.createElement(LegendContent, _extends({}, props, widthOrHeight, {
+      }), /* @__PURE__ */ React17.createElement(LegendContent, _extends({}, props, widthOrHeight, {
         margin,
         chartWidth,
         chartHeight,
@@ -92895,7 +92895,7 @@ var require_Legend = __commonJS({
       })));
       return /* @__PURE__ */ (0, _reactDom.createPortal)(legendElement, legendPortal);
     }
-    var Legend = exports2.Legend = /* @__PURE__ */ React15.memo(LegendImpl, _propsAreEqual.propsAreEqual);
+    var Legend = exports2.Legend = /* @__PURE__ */ React17.memo(LegendImpl, _propsAreEqual.propsAreEqual);
     Legend.displayName = "Legend";
   }
 });
@@ -92908,7 +92908,7 @@ var require_DefaultTooltipContent = __commonJS({
       value: true
     });
     exports2.defaultDefaultTooltipContentProps = exports2.DefaultTooltipContent = void 0;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _sortBy = _interopRequireDefault(require_sortBy2());
     var _clsx = require_clsx();
     var _DataUtils = require_DataUtils();
@@ -93049,21 +93049,21 @@ var require_DefaultTooltipContent = __commonJS({
             var finalItemStyle = _objectSpread(_objectSpread({}, defaultDefaultTooltipContentProps.itemStyle), {}, {
               color: entry.color || defaultDefaultTooltipContentProps.itemStyle.color
             }, itemStyle);
-            return /* @__PURE__ */ React15.createElement("li", {
+            return /* @__PURE__ */ React17.createElement("li", {
               className: "recharts-tooltip-item",
               key: "tooltip-item-".concat(i),
               style: finalItemStyle
-            }, (0, _DataUtils.isNumOrStr)(finalName) ? /* @__PURE__ */ React15.createElement("span", {
+            }, (0, _DataUtils.isNumOrStr)(finalName) ? /* @__PURE__ */ React17.createElement("span", {
               className: "recharts-tooltip-item-name"
-            }, finalName) : null, (0, _DataUtils.isNumOrStr)(finalName) ? /* @__PURE__ */ React15.createElement("span", {
+            }, finalName) : null, (0, _DataUtils.isNumOrStr)(finalName) ? /* @__PURE__ */ React17.createElement("span", {
               className: "recharts-tooltip-item-separator"
-            }, separator) : null, /* @__PURE__ */ React15.createElement("span", {
+            }, separator) : null, /* @__PURE__ */ React17.createElement("span", {
               className: "recharts-tooltip-item-value"
-            }, finalValue), /* @__PURE__ */ React15.createElement("span", {
+            }, finalValue), /* @__PURE__ */ React17.createElement("span", {
               className: "recharts-tooltip-item-unit"
             }, entry.unit || ""));
           });
-          return /* @__PURE__ */ React15.createElement("ul", {
+          return /* @__PURE__ */ React17.createElement("ul", {
             className: "recharts-tooltip-item-list",
             style: listStyle
           }, items);
@@ -93085,13 +93085,13 @@ var require_DefaultTooltipContent = __commonJS({
         role: "status",
         "aria-live": "assertive"
       } : {};
-      return /* @__PURE__ */ React15.createElement("div", _extends({
+      return /* @__PURE__ */ React17.createElement("div", _extends({
         className: wrapperCN,
         style: finalStyle
-      }, accessibilityAttributes), /* @__PURE__ */ React15.createElement("p", {
+      }, accessibilityAttributes), /* @__PURE__ */ React17.createElement("p", {
         className: labelCN,
         style: finalLabelStyle
-      }, /* @__PURE__ */ React15.isValidElement(finalLabel) ? finalLabel : "".concat(finalLabel)), renderContent());
+      }, /* @__PURE__ */ React17.isValidElement(finalLabel) ? finalLabel : "".concat(finalLabel)), renderContent());
     };
     exports2.DefaultTooltipContent = DefaultTooltipContent;
   }
@@ -93297,7 +93297,7 @@ var require_TooltipBoundingBox = __commonJS({
       value: true
     });
     exports2.TooltipBoundingBox = void 0;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _translate = require_translate();
     var _usePrefersReducedMotion = require_usePrefersReducedMotion();
     function _interopRequireWildcard(e, t) {
@@ -93364,14 +93364,14 @@ var require_TooltipBoundingBox = __commonJS({
     function TooltipBoundingBoxImpl(props) {
       var _props$coordinate3, _props$coordinate4, _props$coordinate$x2, _props$coordinate5, _props$coordinate$y2, _props$coordinate6;
       var prefersReducedMotion2 = (0, _usePrefersReducedMotion.usePrefersReducedMotion)();
-      var [state, setState] = React15.useState(() => ({
+      var [state, setState] = React17.useState(() => ({
         dismissed: false,
         dismissedAtCoordinate: {
           x: 0,
           y: 0
         }
       }));
-      React15.useEffect(() => {
+      React17.useEffect(() => {
         var handleKeyDown = (event) => {
           if (event.key === "Escape") {
             var _props$coordinate$x, _props$coordinate, _props$coordinate$y, _props$coordinate2;
@@ -93428,7 +93428,7 @@ var require_TooltipBoundingBox = __commonJS({
       var outerStyle = _objectSpread(_objectSpread({}, positionStyle), {}, {
         visibility: !state.dismissed && props.active && props.hasPayload ? "visible" : "hidden"
       }, props.wrapperStyle);
-      return /* @__PURE__ */ React15.createElement("div", {
+      return /* @__PURE__ */ React17.createElement("div", {
         // @ts-expect-error typescript library does not recognize xmlns attribute, but it's required for an HTML chunk inside SVG.
         xmlns: "http://www.w3.org/1999/xhtml",
         tabIndex: -1,
@@ -93437,7 +93437,7 @@ var require_TooltipBoundingBox = __commonJS({
         ref: props.innerRef
       }, props.children);
     }
-    var TooltipBoundingBox = exports2.TooltipBoundingBox = /* @__PURE__ */ React15.memo(TooltipBoundingBoxImpl);
+    var TooltipBoundingBox = exports2.TooltipBoundingBox = /* @__PURE__ */ React17.memo(TooltipBoundingBoxImpl);
   }
 });
 
@@ -93466,7 +93466,7 @@ var require_Curve = __commonJS({
       value: true
     });
     exports2.getPath = exports2.defaultCurveProps = exports2.Curve = void 0;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _d3Shape = require_d3_shape();
     var _clsx = require_clsx();
     var _types = require_types();
@@ -93626,7 +93626,7 @@ var require_Curve = __commonJS({
         connectNulls: props.connectNulls
       };
       var realPath = points && points.length ? getPath(getPathInput) : path;
-      return /* @__PURE__ */ React15.createElement("path", _extends({}, (0, _svgPropertiesNoEvents.svgPropertiesNoEvents)(props), (0, _types.adaptEventHandlers)(props), {
+      return /* @__PURE__ */ React17.createElement("path", _extends({}, (0, _svgPropertiesNoEvents.svgPropertiesNoEvents)(props), (0, _types.adaptEventHandlers)(props), {
         className: (0, _clsx.clsx)("recharts-curve", className),
         d: realPath === null ? void 0 : realPath,
         ref: pathRef
@@ -93644,7 +93644,7 @@ var require_Cross = __commonJS({
       value: true
     });
     exports2.Cross = void 0;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _clsx = require_clsx();
     var _DataUtils = require_DataUtils();
     var _svgPropertiesAndEvents = require_svgPropertiesAndEvents();
@@ -93752,7 +93752,7 @@ var require_Cross = __commonJS({
       if (!(0, _DataUtils.isNumber)(x) || !(0, _DataUtils.isNumber)(y) || !(0, _DataUtils.isNumber)(width) || !(0, _DataUtils.isNumber)(height) || !(0, _DataUtils.isNumber)(top) || !(0, _DataUtils.isNumber)(left)) {
         return null;
       }
-      return /* @__PURE__ */ React15.createElement("path", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(props), {
+      return /* @__PURE__ */ React17.createElement("path", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(props), {
         className: (0, _clsx.clsx)("recharts-cross", className),
         d: getPath(x, y, width, height, top, left)
       }));
@@ -94392,7 +94392,7 @@ var require_Rectangle = __commonJS({
     });
     exports2.defaultRectangleProps = exports2.Rectangle = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _resolveDefaultProps = require_resolveDefaultProps();
     var _JavascriptAnimate = require_JavascriptAnimate();
@@ -94597,7 +94597,7 @@ var require_Rectangle = __commonJS({
         var _svgPropertiesAndEven = (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(props), {
           radius: _
         } = _svgPropertiesAndEven, otherPathProps = _objectWithoutProperties(_svgPropertiesAndEven, _excluded);
-        return /* @__PURE__ */ React15.createElement("path", _extends({}, otherPathProps, {
+        return /* @__PURE__ */ React17.createElement("path", _extends({}, otherPathProps, {
           x: (0, _round.round)(x),
           y: (0, _round.round)(y),
           width: (0, _round.round)(width),
@@ -94614,7 +94614,7 @@ var require_Rectangle = __commonJS({
       var from = "0px ".concat(totalLength === -1 ? 1 : totalLength, "px");
       var to = "".concat(totalLength, "px ").concat(totalLength, "px");
       var transition = (0, _util.getTransitionVal)(["strokeDasharray"], animationDuration, typeof animationEasing === "string" ? animationEasing : defaultRectangleProps.animationEasing);
-      return /* @__PURE__ */ React15.createElement(_JavascriptAnimate.JavascriptAnimate, {
+      return /* @__PURE__ */ React17.createElement(_JavascriptAnimate.JavascriptAnimate, {
         animationId,
         key: animationId,
         canBegin: totalLength > 0,
@@ -94651,7 +94651,7 @@ var require_Rectangle = __commonJS({
         var _svgPropertiesAndEven2 = (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(props), {
           radius: _2
         } = _svgPropertiesAndEven2, otherPathProps2 = _objectWithoutProperties(_svgPropertiesAndEven2, _excluded2);
-        return /* @__PURE__ */ React15.createElement("path", _extends({}, otherPathProps2, {
+        return /* @__PURE__ */ React17.createElement("path", _extends({}, otherPathProps2, {
           radius: typeof radius === "number" ? radius : void 0,
           className: layerClass,
           d: getRectanglePath(currX, currY, currWidth, currHeight, radius),
@@ -94895,7 +94895,7 @@ var require_Sector = __commonJS({
       value: true
     });
     exports2.defaultSectorProps = exports2.Sector = void 0;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _clsx = require_clsx();
     var _PolarUtils = require_PolarUtils();
     var _DataUtils = require_DataUtils();
@@ -95135,7 +95135,7 @@ var require_Sector = __commonJS({
           endAngle
         });
       }
-      return /* @__PURE__ */ React15.createElement("path", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(props), {
+      return /* @__PURE__ */ React17.createElement("path", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(props), {
         className: layerClass,
         d: path
       }));
@@ -108265,7 +108265,7 @@ var require_Cursor = __commonJS({
     exports2.Cursor = Cursor;
     exports2.CursorInternal = CursorInternal;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _types = require_types();
     var _Curve = require_Curve();
@@ -108415,9 +108415,9 @@ var require_Cursor = __commonJS({
         payloadIndex: activeTooltipIndex,
         className: (0, _clsx.clsx)("recharts-tooltip-cursor", extraClassName)
       });
-      return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex: (_props$zIndex = props.zIndex) !== null && _props$zIndex !== void 0 ? _props$zIndex : preferredZIndex
-      }, /* @__PURE__ */ React15.createElement(RenderCursor, {
+      }, /* @__PURE__ */ React17.createElement(RenderCursor, {
         cursor,
         cursorComp,
         cursorProps
@@ -108431,7 +108431,7 @@ var require_Cursor = __commonJS({
       if (tooltipAxisBandSize == null || offset == null || layout2 == null || chartName == null) {
         return null;
       }
-      return /* @__PURE__ */ React15.createElement(CursorInternal, _extends({}, props, {
+      return /* @__PURE__ */ React17.createElement(CursorInternal, _extends({}, props, {
         offset,
         layout: layout2,
         tooltipAxisBandSize,
@@ -109052,10 +109052,10 @@ var require_Tooltip = __commonJS({
     Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports2.Tooltip = Tooltip2;
+    exports2.Tooltip = Tooltip3;
     exports2.defaultTooltipProps = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _reactDom = require_react_dom();
     var _DefaultTooltipContent = require_DefaultTooltipContent();
     var _TooltipBoundingBox = require_TooltipBoundingBox();
@@ -109127,13 +109127,13 @@ var require_Tooltip = __commonJS({
       return entry.dataKey;
     }
     function renderContent(content, props) {
-      if (/* @__PURE__ */ React15.isValidElement(content)) {
-        return /* @__PURE__ */ React15.cloneElement(content, props);
+      if (/* @__PURE__ */ React17.isValidElement(content)) {
+        return /* @__PURE__ */ React17.cloneElement(content, props);
       }
       if (typeof content === "function") {
-        return /* @__PURE__ */ React15.createElement(content, props);
+        return /* @__PURE__ */ React17.createElement(content, props);
       }
-      return /* @__PURE__ */ React15.createElement(_DefaultTooltipContent.DefaultTooltipContent, props);
+      return /* @__PURE__ */ React17.createElement(_DefaultTooltipContent.DefaultTooltipContent, props);
     }
     var emptyPayload = [];
     var defaultTooltipProps = exports2.defaultTooltipProps = {
@@ -109162,7 +109162,7 @@ var require_Tooltip = __commonJS({
       useTranslate3d: false,
       wrapperStyle: {}
     };
-    function Tooltip2(outsideProps) {
+    function Tooltip3(outsideProps) {
       var _useAppSelector, _ref;
       var props = (0, _resolveDefaultProps.resolveDefaultProps)(outsideProps, defaultTooltipProps);
       var {
@@ -109233,7 +109233,7 @@ var require_Tooltip = __commonJS({
         coordinate,
         accessibilityLayer
       });
-      var tooltipElement = /* @__PURE__ */ React15.createElement(_TooltipBoundingBox.TooltipBoundingBox, {
+      var tooltipElement = /* @__PURE__ */ React17.createElement(_TooltipBoundingBox.TooltipBoundingBox, {
         allowEscapeViewBox,
         animationDuration,
         animationEasing,
@@ -109251,7 +109251,7 @@ var require_Tooltip = __commonJS({
         innerRef: updateBoundingBox,
         hasPortalFromProps: Boolean(portalFromProps)
       }, renderContent(content, tooltipContentProps));
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ (0, _reactDom.createPortal)(tooltipElement, tooltipPortal), finalIsActive && /* @__PURE__ */ React15.createElement(_Cursor.Cursor, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ (0, _reactDom.createPortal)(tooltipElement, tooltipPortal), finalIsActive && /* @__PURE__ */ React17.createElement(_Cursor.Cursor, {
         cursor,
         tooltipEventType,
         coordinate,
@@ -109656,7 +109656,7 @@ var require_Text = __commonJS({
     exports2.isValidTextAnchor = isValidTextAnchor;
     exports2.textDefaultProps = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _DataUtils = require_DataUtils();
     var _Global = require_Global();
@@ -109938,7 +109938,7 @@ var require_Text = __commonJS({
       if (transforms.length) {
         textProps.transform = transforms.join(" ");
       }
-      return /* @__PURE__ */ React15.createElement("text", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(textProps), {
+      return /* @__PURE__ */ React17.createElement("text", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(textProps), {
         ref,
         x,
         y,
@@ -109949,7 +109949,7 @@ var require_Text = __commonJS({
         var words = line.words.join(breakAll ? "" : " ");
         return (
           // duplicate words will cause duplicate keys which is why we add the array index here
-          /* @__PURE__ */ React15.createElement("tspan", {
+          /* @__PURE__ */ React17.createElement("tspan", {
             x,
             dy: index === 0 ? startDy : lineHeight,
             key: "".concat(words, "-").concat(index)
@@ -110191,7 +110191,7 @@ var require_Label = __commonJS({
     exports2.PolarLabelFromLabelProp = PolarLabelFromLabelProp;
     exports2.usePolarLabelContext = exports2.isLabelContentAFunction = exports2.defaultLabelProps = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _Text = require_Text();
     var _DataUtils = require_DataUtils();
@@ -110304,7 +110304,7 @@ var require_Label = __commonJS({
         width,
         height
       }), [x, y, upperWidth, lowerWidth, width, height]);
-      return /* @__PURE__ */ React15.createElement(CartesianLabelContext.Provider, {
+      return /* @__PURE__ */ React17.createElement(CartesianLabelContext.Provider, {
         value: viewBox
       }, children);
     };
@@ -110335,7 +110335,7 @@ var require_Label = __commonJS({
         endAngle,
         clockWise
       }), [cx, cy, innerRadius, outerRadius, startAngle, endAngle, clockWise]);
-      return /* @__PURE__ */ React15.createElement(PolarLabelContext.Provider, {
+      return /* @__PURE__ */ React17.createElement(PolarLabelContext.Provider, {
         value: viewBox
       }, children);
     };
@@ -110405,13 +110405,13 @@ var require_Label = __commonJS({
       var endPoint = (0, _PolarUtils.polarToCartesian)(cx, cy, radius, labelAngle + (direction ? 1 : -1) * 359);
       var path = "M".concat(startPoint.x, ",").concat(startPoint.y, "\n    A").concat(radius, ",").concat(radius, ",0,1,").concat(direction ? 0 : 1, ",\n    ").concat(endPoint.x, ",").concat(endPoint.y);
       var id3 = (0, _DataUtils.isNullish)(labelProps.id) ? (0, _DataUtils.uniqueId)("recharts-radial-line-") : labelProps.id;
-      return /* @__PURE__ */ React15.createElement("text", _extends({}, attrs, {
+      return /* @__PURE__ */ React17.createElement("text", _extends({}, attrs, {
         dominantBaseline: "central",
         className: (0, _clsx.clsx)("recharts-radial-bar-label", className)
-      }), /* @__PURE__ */ React15.createElement("defs", null, /* @__PURE__ */ React15.createElement("path", {
+      }), /* @__PURE__ */ React17.createElement("defs", null, /* @__PURE__ */ React17.createElement("path", {
         id: id3,
         d: path
-      })), /* @__PURE__ */ React15.createElement("textPath", {
+      })), /* @__PURE__ */ React17.createElement("textPath", {
         xlinkHref: "#".concat(id3)
       }, label));
     };
@@ -110576,9 +110576,9 @@ var require_Label = __commonJS({
           height: cartesianResult.height
         } : {});
       }
-      return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex: props.zIndex
-      }, /* @__PURE__ */ React15.createElement(_Text.Text, _extends({
+      }, /* @__PURE__ */ React17.createElement(_Text.Text, _extends({
         ref: labelRef,
         className: (0, _clsx.clsx)("recharts-label", className)
       }, attrs, positionAttrs, {
@@ -110600,12 +110600,12 @@ var require_Label = __commonJS({
         labelRef
       };
       if (label === true) {
-        return /* @__PURE__ */ React15.createElement(Label2, _extends({
+        return /* @__PURE__ */ React17.createElement(Label2, _extends({
           key: "label-implicit"
         }, commonProps));
       }
       if ((0, _DataUtils.isNumOrStr)(label)) {
-        return /* @__PURE__ */ React15.createElement(Label2, _extends({
+        return /* @__PURE__ */ React17.createElement(Label2, _extends({
           key: "label-implicit",
           value: label
         }, commonProps));
@@ -110616,19 +110616,19 @@ var require_Label = __commonJS({
             key: "label-implicit"
           }, commonProps));
         }
-        return /* @__PURE__ */ React15.createElement(Label2, _extends({
+        return /* @__PURE__ */ React17.createElement(Label2, _extends({
           key: "label-implicit",
           content: label
         }, commonProps));
       }
       if (isLabelContentAFunction(label)) {
-        return /* @__PURE__ */ React15.createElement(Label2, _extends({
+        return /* @__PURE__ */ React17.createElement(Label2, _extends({
           key: "label-implicit",
           content: label
         }, commonProps));
       }
       if (label && typeof label === "object") {
-        return /* @__PURE__ */ React15.createElement(Label2, _extends({}, label, {
+        return /* @__PURE__ */ React17.createElement(Label2, _extends({}, label, {
           key: "label-implicit"
         }, commonProps));
       }
@@ -110664,7 +110664,7 @@ var require_LabelList = __commonJS({
     exports2.LabelListFromLabelProp = LabelListFromLabelProp;
     exports2.PolarLabelListContextProvider = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _Label = require_Label();
     var _Layer = require_Layer();
     var _ChartUtils = require_ChartUtils();
@@ -110750,9 +110750,9 @@ var require_LabelList = __commonJS({
       if (!data || !data.length) {
         return null;
       }
-      return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex: zIndex !== null && zIndex !== void 0 ? zIndex : _DefaultZIndexes.DefaultZIndexes.label
-      }, /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      }, /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: "recharts-label-list"
       }, data.map((entry, index) => {
         var _restProps$fill;
@@ -110760,7 +110760,7 @@ var require_LabelList = __commonJS({
         var idProps = (0, _DataUtils.isNullish)(id3) ? {} : {
           id: "".concat(id3, "-").concat(index)
         };
-        return /* @__PURE__ */ React15.createElement(_Label.Label, _extends({
+        return /* @__PURE__ */ React17.createElement(_Label.Label, _extends({
           key: "label-".concat(index)
         }, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(entry), others, idProps, {
           /*
@@ -110788,18 +110788,18 @@ var require_LabelList = __commonJS({
         return null;
       }
       if (label === true) {
-        return /* @__PURE__ */ React15.createElement(LabelList2, {
+        return /* @__PURE__ */ React17.createElement(LabelList2, {
           key: "labelList-implicit"
         });
       }
-      if (/* @__PURE__ */ React15.isValidElement(label) || (0, _Label.isLabelContentAFunction)(label)) {
-        return /* @__PURE__ */ React15.createElement(LabelList2, {
+      if (/* @__PURE__ */ React17.isValidElement(label) || (0, _Label.isLabelContentAFunction)(label)) {
+        return /* @__PURE__ */ React17.createElement(LabelList2, {
           key: "labelList-implicit",
           content: label
         });
       }
       if (typeof label === "object") {
-        return /* @__PURE__ */ React15.createElement(LabelList2, _extends({
+        return /* @__PURE__ */ React17.createElement(LabelList2, _extends({
           key: "labelList-implicit"
         }, label, {
           type: String(label.type)
@@ -110819,7 +110819,7 @@ var require_Customized = __commonJS({
     });
     exports2.Customized = Customized;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _Layer = require_Layer();
     var _LogUtils = require_LogUtils();
     var _excluded = ["component"];
@@ -110867,7 +110867,7 @@ var require_Customized = __commonJS({
       } else {
         (0, _LogUtils.warn)(false, "Customized's props `component` must be React.element or Function, but got %s.", typeof component);
       }
-      return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: "recharts-customized-wrapper"
       }, child);
     }
@@ -110883,7 +110883,7 @@ var require_Polygon = __commonJS({
       value: true
     });
     exports2.Polygon = void 0;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _clsx = require_clsx();
     var _svgPropertiesAndEvents = require_svgPropertiesAndEvents();
     var _round = require_round();
@@ -110992,22 +110992,22 @@ var require_Polygon = __commonJS({
       if (baseLinePoints && baseLinePoints.length) {
         var hasStroke = others.stroke && others.stroke !== "none";
         var rangePath = getRanglePath(points, baseLinePoints, connectNulls);
-        return /* @__PURE__ */ React15.createElement("g", {
+        return /* @__PURE__ */ React17.createElement("g", {
           className: layerClass
-        }, /* @__PURE__ */ React15.createElement("path", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(others), {
+        }, /* @__PURE__ */ React17.createElement("path", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(others), {
           fill: rangePath.slice(-1) === "Z" ? others.fill : "none",
           stroke: "none",
           d: rangePath
-        })), hasStroke ? /* @__PURE__ */ React15.createElement("path", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(others), {
+        })), hasStroke ? /* @__PURE__ */ React17.createElement("path", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(others), {
           fill: "none",
           d: getSinglePolygonPath(points, connectNulls)
-        })) : null, hasStroke ? /* @__PURE__ */ React15.createElement("path", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(others), {
+        })) : null, hasStroke ? /* @__PURE__ */ React17.createElement("path", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(others), {
           fill: "none",
           d: getSinglePolygonPath(baseLinePoints, connectNulls)
         })) : null);
       }
       var singlePath = getSinglePolygonPath(points, connectNulls);
-      return /* @__PURE__ */ React15.createElement("path", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(others), {
+      return /* @__PURE__ */ React17.createElement("path", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(others), {
         fill: singlePath.slice(-1) === "Z" ? others.fill : "none",
         className: layerClass,
         d: singlePath
@@ -111025,7 +111025,7 @@ var require_Dot = __commonJS({
       value: true
     });
     exports2.Dot = void 0;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _clsx = require_clsx();
     var _types = require_types();
     var _svgPropertiesNoEvents = require_svgPropertiesNoEvents();
@@ -111062,7 +111062,7 @@ var require_Dot = __commonJS({
       } = props;
       var layerClass = (0, _clsx.clsx)("recharts-dot", className);
       if ((0, _DataUtils.isNumber)(cx) && (0, _DataUtils.isNumber)(cy) && (0, _DataUtils.isNumber)(r2)) {
-        return /* @__PURE__ */ React15.createElement("circle", _extends({}, (0, _svgPropertiesNoEvents.svgPropertiesNoEvents)(props), (0, _types.adaptEventHandlers)(props), {
+        return /* @__PURE__ */ React17.createElement("circle", _extends({}, (0, _svgPropertiesNoEvents.svgPropertiesNoEvents)(props), (0, _types.adaptEventHandlers)(props), {
           className: layerClass,
           cx,
           cy,
@@ -111234,7 +111234,7 @@ var require_PolarGrid = __commonJS({
     });
     exports2.defaultPolarGridProps = exports2.PolarGrid = void 0;
     var _clsx = require_clsx();
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _PolarUtils = require_PolarUtils();
     var _hooks = require_hooks();
     var _polarGridSelectors = require_polarGridSelectors();
@@ -111349,12 +111349,12 @@ var require_PolarGrid = __commonJS({
         return null;
       }
       var polarAnglesProps = _objectSpread({}, (0, _svgPropertiesNoEvents.svgPropertiesNoEvents)(props));
-      return /* @__PURE__ */ React15.createElement("g", {
+      return /* @__PURE__ */ React17.createElement("g", {
         className: "recharts-polar-grid-angle"
       }, polarAngles.map((entry) => {
         var start = (0, _PolarUtils.polarToCartesian)(cx, cy, innerRadius, entry);
         var end = (0, _PolarUtils.polarToCartesian)(cx, cy, outerRadius, entry);
-        return /* @__PURE__ */ React15.createElement("line", _extends({
+        return /* @__PURE__ */ React17.createElement("line", _extends({
           key: "line-".concat(entry)
         }, polarAnglesProps, {
           x1: start.x,
@@ -111373,7 +111373,7 @@ var require_PolarGrid = __commonJS({
       var concentricCircleProps = _objectSpread({}, (0, _svgPropertiesNoEvents.svgPropertiesNoEvents)(props));
       return (
         // @ts-expect-error wrong SVG element type
-        /* @__PURE__ */ React15.createElement("circle", _extends({}, concentricCircleProps, {
+        /* @__PURE__ */ React17.createElement("circle", _extends({}, concentricCircleProps, {
           className: (0, _clsx.clsx)("recharts-polar-grid-concentric-circle", props.className),
           cx,
           cy,
@@ -111386,7 +111386,7 @@ var require_PolarGrid = __commonJS({
         radius
       } = props;
       var concentricPolygonProps = _objectSpread({}, (0, _svgPropertiesNoEvents.svgPropertiesNoEvents)(props));
-      return /* @__PURE__ */ React15.createElement("path", _extends({}, concentricPolygonProps, {
+      return /* @__PURE__ */ React17.createElement("path", _extends({}, concentricPolygonProps, {
         className: (0, _clsx.clsx)("recharts-polar-grid-concentric-polygon", props.className),
         d: getPolygonPath(radius, props.cx, props.cy, props.polarAngles)
       }));
@@ -111401,23 +111401,23 @@ var require_PolarGrid = __commonJS({
       }
       var maxPolarRadius = Math.max(...polarRadius);
       var renderBackground = props.fill && props.fill !== "none";
-      return /* @__PURE__ */ React15.createElement("g", {
+      return /* @__PURE__ */ React17.createElement("g", {
         className: "recharts-polar-grid-concentric"
-      }, renderBackground && gridType === "circle" && /* @__PURE__ */ React15.createElement(ConcentricCircle, _extends({}, props, {
+      }, renderBackground && gridType === "circle" && /* @__PURE__ */ React17.createElement(ConcentricCircle, _extends({}, props, {
         radius: maxPolarRadius
-      })), renderBackground && gridType !== "circle" && /* @__PURE__ */ React15.createElement(ConcentricPolygon, _extends({}, props, {
+      })), renderBackground && gridType !== "circle" && /* @__PURE__ */ React17.createElement(ConcentricPolygon, _extends({}, props, {
         radius: maxPolarRadius
       })), polarRadius.map((entry, i) => {
         var key = i;
         if (gridType === "circle") {
-          return /* @__PURE__ */ React15.createElement(ConcentricCircle, _extends({
+          return /* @__PURE__ */ React17.createElement(ConcentricCircle, _extends({
             key
           }, props, {
             fill: "none",
             radius: entry
           }));
         }
-        return /* @__PURE__ */ React15.createElement(ConcentricPolygon, _extends({
+        return /* @__PURE__ */ React17.createElement(ConcentricPolygon, _extends({
           key
         }, props, {
           fill: "none",
@@ -111473,17 +111473,17 @@ var require_PolarGrid = __commonJS({
       if (outerRadius <= 0) {
         return null;
       }
-      return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex: props.zIndex
-      }, /* @__PURE__ */ React15.createElement("g", {
+      }, /* @__PURE__ */ React17.createElement("g", {
         className: "recharts-polar-grid"
-      }, /* @__PURE__ */ React15.createElement(ConcentricGridPath, _extends({
+      }, /* @__PURE__ */ React17.createElement(ConcentricGridPath, _extends({
         gridType,
         radialLines
       }, props, {
         polarAngles,
         polarRadius
-      })), /* @__PURE__ */ React15.createElement(PolarAngles, _extends({
+      })), /* @__PURE__ */ React17.createElement(PolarAngles, _extends({
         gridType,
         radialLines
       }, props, {
@@ -111655,7 +111655,7 @@ var require_PolarRadiusAxis = __commonJS({
     exports2.PolarRadiusAxis = PolarRadiusAxis;
     exports2.PolarRadiusAxisWrapper = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _maxBy = _interopRequireDefault(require_maxBy3());
     var _minBy = _interopRequireDefault(require_minBy3());
     var _clsx = require_clsx();
@@ -111840,18 +111840,18 @@ var require_PolarRadiusAxis = __commonJS({
         x2: point1.x,
         y2: point1.y
       });
-      return /* @__PURE__ */ React15.createElement("line", _extends({
+      return /* @__PURE__ */ React17.createElement("line", _extends({
         className: "recharts-polar-radius-axis-line"
       }, axisLineProps));
     };
     var renderTickItem = (option, tickProps, value) => {
       var tickItem;
-      if (/* @__PURE__ */ React15.isValidElement(option)) {
-        tickItem = /* @__PURE__ */ React15.cloneElement(option, tickProps);
+      if (/* @__PURE__ */ React17.isValidElement(option)) {
+        tickItem = /* @__PURE__ */ React17.cloneElement(option, tickProps);
       } else if (typeof option === "function") {
         tickItem = option(tickProps);
       } else {
-        tickItem = /* @__PURE__ */ React15.createElement(_Text.Text, _extends({}, tickProps, {
+        tickItem = /* @__PURE__ */ React17.createElement(_Text.Text, _extends({}, tickProps, {
           className: "recharts-polar-radius-axis-tick-value"
         }), value);
       }
@@ -111880,12 +111880,12 @@ var require_PolarRadiusAxis = __commonJS({
         }, coord), {}, {
           payload: entry
         });
-        return /* @__PURE__ */ React15.createElement(_Layer.Layer, _extends({
+        return /* @__PURE__ */ React17.createElement(_Layer.Layer, _extends({
           className: (0, _clsx.clsx)("recharts-polar-radius-axis-tick", (0, _getClassNameFromUnknown.getClassNameFromUnknown)(tick)),
           key: "tick-".concat(entry.coordinate)
         }, (0, _types.adaptEventsOfChild)(props, entry, i)), renderTickItem(tick, tickProps, tickFormatter ? tickFormatter(entry.value, i) : entry.value));
       });
-      return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: "recharts-polar-radius-axis-ticks"
       }, items);
     };
@@ -111906,11 +111906,11 @@ var require_PolarRadiusAxis = __commonJS({
         tick,
         axisLine
       } = props;
-      return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex: props.zIndex
-      }, /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      }, /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: (0, _clsx.clsx)("recharts-polar-radius-axis", AXIS_TYPE, props.className)
-      }, axisLine && renderAxisLine(props, ticks), tick && renderTicks(props, ticks), /* @__PURE__ */ React15.createElement(_Label.PolarLabelContextProvider, getViewBox(props.angle, props.cx, props.cy, ticks), /* @__PURE__ */ React15.createElement(_Label.PolarLabelFromLabelProp, {
+      }, axisLine && renderAxisLine(props, ticks), tick && renderTicks(props, ticks), /* @__PURE__ */ React17.createElement(_Label.PolarLabelContextProvider, getViewBox(props.angle, props.cx, props.cy, ticks), /* @__PURE__ */ React17.createElement(_Label.PolarLabelFromLabelProp, {
         label: props.label
       }), props.children)));
     };
@@ -111918,7 +111918,7 @@ var require_PolarRadiusAxis = __commonJS({
     function PolarRadiusAxis(outsideProps) {
       var _props$niceTicks;
       var props = (0, _resolveDefaultProps.resolveDefaultProps)(outsideProps, _defaultPolarRadiusAxisProps.defaultPolarRadiusAxisProps);
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(SetRadiusAxisSettings, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(SetRadiusAxisSettings, {
         domain: props.domain,
         id: props.radiusAxisId,
         scale: props.scale,
@@ -111935,7 +111935,7 @@ var require_PolarRadiusAxis = __commonJS({
         ticks: props.ticks,
         tickCount: props.tickCount,
         tick: props.tick
-      }), /* @__PURE__ */ React15.createElement(PolarRadiusAxisWrapper, props));
+      }), /* @__PURE__ */ React17.createElement(PolarRadiusAxisWrapper, props));
     }
     PolarRadiusAxis.displayName = "PolarRadiusAxis";
   }
@@ -111951,7 +111951,7 @@ var require_PolarAngleAxis = __commonJS({
     exports2.PolarAngleAxis = PolarAngleAxis;
     exports2.PolarAngleAxisWrapper = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _Layer = require_Layer();
     var _Dot = require_Dot();
@@ -112140,7 +112140,7 @@ var require_PolarAngleAxis = __commonJS({
         fill: "none"
       }, (0, _svgPropertiesNoEvents.svgPropertiesNoEvents)(axisLine));
       if (axisLineType === "circle") {
-        return /* @__PURE__ */ React15.createElement(_Dot.Dot, _extends({
+        return /* @__PURE__ */ React17.createElement(_Dot.Dot, _extends({
           className: "recharts-polar-angle-axis-line"
         }, axisLineProps, {
           cx,
@@ -112149,7 +112149,7 @@ var require_PolarAngleAxis = __commonJS({
         }));
       }
       var points = ticks.map((entry) => (0, _PolarUtils.polarToCartesian)(cx, cy, radius, entry.coordinate));
-      return /* @__PURE__ */ React15.createElement(_Polygon.Polygon, _extends({
+      return /* @__PURE__ */ React17.createElement(_Polygon.Polygon, _extends({
         className: "recharts-polar-angle-axis-line"
       }, axisLineProps, {
         points
@@ -112164,13 +112164,13 @@ var require_PolarAngleAxis = __commonJS({
       if (!tick) {
         return null;
       }
-      if (/* @__PURE__ */ React15.isValidElement(tick)) {
-        return /* @__PURE__ */ React15.cloneElement(tick, tickProps);
+      if (/* @__PURE__ */ React17.isValidElement(tick)) {
+        return /* @__PURE__ */ React17.cloneElement(tick, tickProps);
       }
       if (typeof tick === "function") {
         return tick(tickProps);
       }
-      return /* @__PURE__ */ React15.createElement(_Text.Text, _extends({}, tickProps, {
+      return /* @__PURE__ */ React17.createElement(_Text.Text, _extends({}, tickProps, {
         className: "recharts-polar-angle-axis-tick-value"
       }), value);
     };
@@ -112207,18 +112207,18 @@ var require_PolarAngleAxis = __commonJS({
           x: lineCoord.x2,
           y: lineCoord.y2
         });
-        return /* @__PURE__ */ React15.createElement(_Layer.Layer, _extends({
+        return /* @__PURE__ */ React17.createElement(_Layer.Layer, _extends({
           className: (0, _clsx.clsx)("recharts-polar-angle-axis-tick", (0, _getClassNameFromUnknown.getClassNameFromUnknown)(tick)),
           key: "tick-".concat(entry.coordinate)
-        }, (0, _types.adaptEventsOfChild)(props, entry, i)), tickLine && /* @__PURE__ */ React15.createElement("line", _extends({
+        }, (0, _types.adaptEventsOfChild)(props, entry, i)), tickLine && /* @__PURE__ */ React17.createElement("line", _extends({
           className: "recharts-polar-angle-axis-tick-line"
-        }, tickLineProps, lineCoord)), /* @__PURE__ */ React15.createElement(TickItemText, {
+        }, tickLineProps, lineCoord)), /* @__PURE__ */ React17.createElement(TickItemText, {
           tick,
           tickProps,
           value: tickFormatter ? tickFormatter(entry.value, i) : entry.value
         }));
       });
-      return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: "recharts-polar-angle-axis-ticks"
       }, items);
     };
@@ -112239,17 +112239,17 @@ var require_PolarAngleAxis = __commonJS({
         radius: viewBox.outerRadius,
         ticks
       });
-      return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex: props.zIndex
-      }, /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      }, /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: (0, _clsx.clsx)("recharts-polar-angle-axis", AXIS_TYPE, props.className)
-      }, /* @__PURE__ */ React15.createElement(AxisLine, props), /* @__PURE__ */ React15.createElement(Ticks, props)));
+      }, /* @__PURE__ */ React17.createElement(AxisLine, props), /* @__PURE__ */ React17.createElement(Ticks, props)));
     };
     exports2.PolarAngleAxisWrapper = PolarAngleAxisWrapper;
     function PolarAngleAxis(outsideProps) {
       var _props$niceTicks;
       var props = (0, _resolveDefaultProps.resolveDefaultProps)(outsideProps, _defaultPolarAngleAxisProps.defaultPolarAngleAxisProps);
-      return /* @__PURE__ */ React15.createElement(SetAngleAxisSettings, {
+      return /* @__PURE__ */ React17.createElement(SetAngleAxisSettings, {
         id: props.angleAxisId,
         scale: props.scale,
         type: props.type,
@@ -112266,7 +112266,7 @@ var require_PolarAngleAxis = __commonJS({
         ticks: props.ticks,
         tick: props.tick,
         domain: props.domain
-      }, /* @__PURE__ */ React15.createElement(PolarAngleAxisWrapper, props));
+      }, /* @__PURE__ */ React17.createElement(PolarAngleAxisWrapper, props));
     }
     PolarAngleAxis.displayName = "PolarAngleAxis";
   }
@@ -112712,7 +112712,7 @@ var require_Trapezoid = __commonJS({
     });
     exports2.defaultTrapezoidProps = exports2.Trapezoid = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _resolveDefaultProps = require_resolveDefaultProps();
     var _JavascriptAnimate = require_JavascriptAnimate();
@@ -112851,7 +112851,7 @@ var require_Trapezoid = __commonJS({
       }
       var layerClass = (0, _clsx.clsx)("recharts-trapezoid", className);
       if (!isUpdateAnimationActive) {
-        return /* @__PURE__ */ React15.createElement("g", null, /* @__PURE__ */ React15.createElement("path", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(trapezoidProps), {
+        return /* @__PURE__ */ React17.createElement("g", null, /* @__PURE__ */ React17.createElement("path", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(trapezoidProps), {
           className: layerClass,
           d: getTrapezoidPath(x, y, upperWidth, lowerWidth, height)
         })));
@@ -112864,7 +112864,7 @@ var require_Trapezoid = __commonJS({
       var from = "0px ".concat(totalLength === -1 ? 1 : totalLength, "px");
       var to = "".concat(totalLength, "px ").concat(totalLength, "px");
       var transition = (0, _util.getTransitionVal)(["strokeDasharray"], animationDuration, animationEasing);
-      return /* @__PURE__ */ React15.createElement(_JavascriptAnimate.JavascriptAnimate, {
+      return /* @__PURE__ */ React17.createElement(_JavascriptAnimate.JavascriptAnimate, {
         animationId,
         key: animationId,
         canBegin: totalLength > 0,
@@ -112891,7 +112891,7 @@ var require_Trapezoid = __commonJS({
         } : {
           strokeDasharray: from
         };
-        return /* @__PURE__ */ React15.createElement("path", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(trapezoidProps), {
+        return /* @__PURE__ */ React17.createElement("path", _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(trapezoidProps), {
           className: layerClass,
           d: getTrapezoidPath(currX, currY, currUpperWidth, currLowerWidth, currHeight),
           ref: pathRef,
@@ -112913,7 +112913,7 @@ var require_ActiveShapeUtils = __commonJS({
     exports2.Shape = Shape;
     exports2.getPropsFromShapeOption = getPropsFromShapeOption;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _isPlainObject = _interopRequireDefault(require_isPlainObject2());
     var _Rectangle = require_Rectangle();
     var _Trapezoid = require_Trapezoid();
@@ -113008,18 +113008,18 @@ var require_ActiveShapeUtils = __commonJS({
       } = _ref;
       switch (shapeType) {
         case "rectangle":
-          return /* @__PURE__ */ React15.createElement(_Rectangle.Rectangle, elementProps);
+          return /* @__PURE__ */ React17.createElement(_Rectangle.Rectangle, elementProps);
         case "trapezoid":
-          return /* @__PURE__ */ React15.createElement(_Trapezoid.Trapezoid, elementProps);
+          return /* @__PURE__ */ React17.createElement(_Trapezoid.Trapezoid, elementProps);
         case "sector":
-          return /* @__PURE__ */ React15.createElement(_Sector.Sector, elementProps);
+          return /* @__PURE__ */ React17.createElement(_Sector.Sector, elementProps);
         case "symbols":
           if (isSymbolsProps(shapeType, elementProps)) {
-            return /* @__PURE__ */ React15.createElement(_Symbols.Symbols, elementProps);
+            return /* @__PURE__ */ React17.createElement(_Symbols.Symbols, elementProps);
           }
           break;
         case "curve":
-          return /* @__PURE__ */ React15.createElement(_Curve.Curve, elementProps);
+          return /* @__PURE__ */ React17.createElement(_Curve.Curve, elementProps);
         default:
           return null;
       }
@@ -113044,23 +113044,23 @@ var require_ActiveShapeUtils = __commonJS({
         shape = option(props, props.index);
       } else if ((0, _isPlainObject.default)(option) && typeof option !== "boolean") {
         var nextProps = defaultPropTransformer(option, props);
-        shape = /* @__PURE__ */ React15.createElement(ShapeSelector, {
+        shape = /* @__PURE__ */ React17.createElement(ShapeSelector, {
           shapeType,
           elementProps: nextProps
         });
       } else {
         var elementProps = props;
-        shape = /* @__PURE__ */ React15.createElement(ShapeSelector, {
+        shape = /* @__PURE__ */ React17.createElement(ShapeSelector, {
           shapeType,
           elementProps
         });
       }
       if (props.isActive) {
-        return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+        return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
           className: activeClassName
         }, shape);
       }
-      return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: inActiveClassName
       }, shape);
     }
@@ -113247,7 +113247,7 @@ var require_useId = __commonJS({
       value: true
     });
     exports2.useIdFallback = exports2.useId = void 0;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _DataUtils = require_DataUtils();
     var _ref;
     function _interopRequireWildcard(e, t) {
@@ -113265,11 +113265,11 @@ var require_useId = __commonJS({
       })(e, t);
     }
     var useIdFallback = () => {
-      var [id3] = React15.useState(() => (0, _DataUtils.uniqueId)("uid-"));
+      var [id3] = React17.useState(() => (0, _DataUtils.uniqueId)("uid-"));
       return id3;
     };
     exports2.useIdFallback = useIdFallback;
-    var useId4 = exports2.useId = (_ref = React15["useId".toString()]) !== null && _ref !== void 0 ? _ref : useIdFallback;
+    var useId4 = exports2.useId = (_ref = React17["useId".toString()]) !== null && _ref !== void 0 ? _ref : useIdFallback;
   }
 });
 
@@ -113302,7 +113302,7 @@ var require_RegisterGraphicalItemId = __commonJS({
     exports2.RegisterGraphicalItemId = void 0;
     exports2.useGraphicalItemId = useGraphicalItemId;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _useUniqueId = require_useUniqueId();
     function _interopRequireWildcard(e, t) {
       if ("function" == typeof WeakMap) var r2 = /* @__PURE__ */ new WeakMap(), n = /* @__PURE__ */ new WeakMap();
@@ -113326,7 +113326,7 @@ var require_RegisterGraphicalItemId = __commonJS({
         children
       } = _ref;
       var resolvedId = (0, _useUniqueId.useUniqueId)("recharts-".concat(type), id3);
-      return /* @__PURE__ */ React15.createElement(GraphicalItemIdContext.Provider, {
+      return /* @__PURE__ */ React17.createElement(GraphicalItemIdContext.Provider, {
         value: resolvedId
       }, children(resolvedId));
     };
@@ -113506,7 +113506,7 @@ var require_Pie = __commonJS({
     exports2.computePieSectors = computePieSectors;
     exports2.defaultPieProps = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _get = _interopRequireDefault(require_get2());
     var _clsx = require_clsx();
     var _pieSelectors = require_pieSelectors();
@@ -113628,7 +113628,7 @@ var require_Pie = __commonJS({
       if (legendPayload == null) {
         return null;
       }
-      return /* @__PURE__ */ React15.createElement(_SetLegendPayload.SetPolarLegendPayload, {
+      return /* @__PURE__ */ React17.createElement(_SetLegendPayload.SetPolarLegendPayload, {
         legendPayload
       });
     }
@@ -113636,7 +113636,7 @@ var require_Pie = __commonJS({
       if (activeShape == null || typeof activeShape === "boolean" || typeof activeShape === "function") {
         return void 0;
       }
-      if (/* @__PURE__ */ React15.isValidElement(activeShape)) {
+      if (/* @__PURE__ */ React17.isValidElement(activeShape)) {
         var _activeShape$props;
         var _fill = (_activeShape$props = activeShape.props) === null || _activeShape$props === void 0 ? void 0 : _activeShape$props.fill;
         return typeof _fill === "string" ? _fill : void 0;
@@ -113646,7 +113646,7 @@ var require_Pie = __commonJS({
       } = activeShape;
       return typeof fill === "string" ? fill : void 0;
     }
-    var SetPieTooltipEntrySettings = /* @__PURE__ */ React15.memo((_ref) => {
+    var SetPieTooltipEntrySettings = /* @__PURE__ */ React17.memo((_ref) => {
       var {
         dataKey,
         nameKey,
@@ -113692,7 +113692,7 @@ var require_Pie = __commonJS({
           graphicalItemId: id3
         }
       };
-      return /* @__PURE__ */ React15.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
+      return /* @__PURE__ */ React17.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
         tooltipEntrySettings
       });
     });
@@ -113738,8 +113738,8 @@ var require_Pie = __commonJS({
       return sign * deltaAngle;
     };
     var renderLabelLineItem = (option, props) => {
-      if (/* @__PURE__ */ React15.isValidElement(option)) {
-        return /* @__PURE__ */ React15.cloneElement(option, props);
+      if (/* @__PURE__ */ React17.isValidElement(option)) {
+        return /* @__PURE__ */ React17.cloneElement(option, props);
       }
       if (typeof option === "function") {
         return option(props);
@@ -113748,24 +113748,24 @@ var require_Pie = __commonJS({
       var {
         key
       } = props, otherProps = _objectWithoutProperties(props, _excluded);
-      return /* @__PURE__ */ React15.createElement(_Curve.Curve, _extends({}, otherProps, {
+      return /* @__PURE__ */ React17.createElement(_Curve.Curve, _extends({}, otherProps, {
         type: "linear",
         className
       }));
     };
     var renderLabelItem = (option, props, value) => {
-      if (/* @__PURE__ */ React15.isValidElement(option)) {
-        return /* @__PURE__ */ React15.cloneElement(option, props);
+      if (/* @__PURE__ */ React17.isValidElement(option)) {
+        return /* @__PURE__ */ React17.cloneElement(option, props);
       }
       var label = value;
       if (typeof option === "function") {
         label = option(props);
-        if (/* @__PURE__ */ React15.isValidElement(label)) {
+        if (/* @__PURE__ */ React17.isValidElement(label)) {
           return label;
         }
       }
       var className = (0, _clsx.clsx)("recharts-pie-label-text", (0, _getClassNameFromUnknown.getClassNameFromUnknown)(option));
-      return /* @__PURE__ */ React15.createElement(_Text.Text, _extends({}, props, {
+      return /* @__PURE__ */ React17.createElement(_Text.Text, _extends({}, props, {
         alignmentBaseline: "middle",
         className
       }), label);
@@ -113808,12 +113808,12 @@ var require_Pie = __commonJS({
           points: [(0, _PolarUtils.polarToCartesian)(entry.cx, entry.cy, entry.outerRadius, midAngle), endPoint],
           key: "line"
         });
-        return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+        return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
           zIndex: _DefaultZIndexes.DefaultZIndexes.label,
           key: "label-".concat(entry.startAngle, "-").concat(entry.endAngle, "-").concat(entry.midAngle, "-").concat(i)
-        }, /* @__PURE__ */ React15.createElement(_Layer.Layer, null, labelLine && renderLabelLineItem(labelLine, lineProps), renderLabelItem(label, labelProps, (0, _ChartUtils.getValueByDataKey)(entry, dataKey))));
+        }, /* @__PURE__ */ React17.createElement(_Layer.Layer, null, labelLine && renderLabelLineItem(labelLine, lineProps), renderLabelItem(label, labelProps, (0, _ChartUtils.getValueByDataKey)(entry, dataKey))));
       });
-      return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: "recharts-pie-labels"
       }, labels);
     }
@@ -113827,11 +113827,11 @@ var require_Pie = __commonJS({
         label
       } = props;
       if (typeof label === "object" && label != null && "position" in label) {
-        return /* @__PURE__ */ React15.createElement(_LabelList.LabelListFromLabelProp, {
+        return /* @__PURE__ */ React17.createElement(_LabelList.LabelListFromLabelProp, {
           label
         });
       }
-      return /* @__PURE__ */ React15.createElement(PieLabels, {
+      return /* @__PURE__ */ React17.createElement(PieLabels, {
         sectors,
         props,
         showLabels
@@ -113860,7 +113860,7 @@ var require_Pie = __commonJS({
       if (sectors == null || sectors.length === 0) {
         return null;
       }
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, sectors.map((entry, i) => {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, sectors.map((entry, i) => {
         if ((entry === null || entry === void 0 ? void 0 : entry.startAngle) === 0 && (entry === null || entry === void 0 ? void 0 : entry.endAngle) === 0 && sectors.length !== 1) return null;
         var graphicalItemMatches = activeGraphicalItemId == null || activeGraphicalItemId === id3;
         var isActive = String(i) === activeIndex && (activeDataKey == null || allOtherPieProps.dataKey === activeDataKey) && graphicalItemMatches;
@@ -113872,7 +113872,7 @@ var require_Pie = __commonJS({
           [_Constants.DATA_ITEM_INDEX_ATTRIBUTE_NAME]: i,
           [_Constants.DATA_ITEM_GRAPHICAL_ITEM_ID_ATTRIBUTE_NAME]: id3
         });
-        return /* @__PURE__ */ React15.createElement(_Layer.Layer, _extends({
+        return /* @__PURE__ */ React17.createElement(_Layer.Layer, _extends({
           key: "sector-".concat(entry === null || entry === void 0 ? void 0 : entry.startAngle, "-").concat(entry === null || entry === void 0 ? void 0 : entry.endAngle, "-").concat(entry.midAngle, "-").concat(i),
           tabIndex: -1,
           className: "recharts-pie-sector"
@@ -113880,7 +113880,7 @@ var require_Pie = __commonJS({
           onMouseEnter: onMouseEnterFromContext(entry, i),
           onMouseLeave: onMouseLeaveFromContext(entry, i),
           onClick: onClickFromContext(entry, i)
-        }), /* @__PURE__ */ React15.createElement(_ActiveShapeUtils.Shape, _extends({
+        }), /* @__PURE__ */ React17.createElement(_ActiveShapeUtils.Shape, _extends({
           option: shape !== null && shape !== void 0 ? shape : sectorOptions,
           index: i,
           shapeType: "sector",
@@ -113999,7 +113999,7 @@ var require_Pie = __commonJS({
           fill: entry.fill
         }));
       }, [sectors, showLabels]);
-      return /* @__PURE__ */ React15.createElement(_LabelList.PolarLabelListContextProvider, {
+      return /* @__PURE__ */ React17.createElement(_LabelList.PolarLabelListContextProvider, {
         value: showLabels ? labelListEntries : void 0
       }, children);
     }
@@ -114035,10 +114035,10 @@ var require_Pie = __commonJS({
         }
         setIsAnimating(true);
       }, [onAnimationStart]);
-      return /* @__PURE__ */ React15.createElement(PieLabelListProvider, {
+      return /* @__PURE__ */ React17.createElement(PieLabelListProvider, {
         showLabels: !isAnimating,
         sectors
-      }, /* @__PURE__ */ React15.createElement(_JavascriptAnimate.JavascriptAnimate, {
+      }, /* @__PURE__ */ React17.createElement(_JavascriptAnimate.JavascriptAnimate, {
         animationId,
         begin: animationBegin,
         duration: animationDuration,
@@ -114078,7 +114078,7 @@ var require_Pie = __commonJS({
           }
         });
         previousSectorsRef.current = stepData;
-        return /* @__PURE__ */ React15.createElement(_Layer.Layer, null, /* @__PURE__ */ React15.createElement(PieSectors, {
+        return /* @__PURE__ */ React17.createElement(_Layer.Layer, null, /* @__PURE__ */ React17.createElement(PieSectors, {
           sectors: stepData,
           activeShape,
           inactiveShape,
@@ -114086,7 +114086,7 @@ var require_Pie = __commonJS({
           shape: props.shape,
           id: id3
         }));
-      }), /* @__PURE__ */ React15.createElement(PieLabelList, {
+      }), /* @__PURE__ */ React17.createElement(PieLabelList, {
         showLabels: !isAnimating,
         sectors,
         props
@@ -114131,14 +114131,14 @@ var require_Pie = __commonJS({
       var layerClass = (0, _clsx.clsx)("recharts-pie", className);
       if (hide || sectors == null) {
         previousSectorsRef.current = null;
-        return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+        return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
           tabIndex: rootTabIndex,
           className: layerClass
         });
       }
-      return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex: props.zIndex
-      }, /* @__PURE__ */ React15.createElement(SetPieTooltipEntrySettings, {
+      }, /* @__PURE__ */ React17.createElement(SetPieTooltipEntrySettings, {
         dataKey: props.dataKey,
         nameKey: props.nameKey,
         sectors,
@@ -114150,10 +114150,10 @@ var require_Pie = __commonJS({
         tooltipType: props.tooltipType,
         id: id3,
         activeShape: props.activeShape
-      }), /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      }), /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         tabIndex: rootTabIndex,
         className: layerClass
-      }, /* @__PURE__ */ React15.createElement(SectorsWithAnimation, {
+      }, /* @__PURE__ */ React17.createElement(SectorsWithAnimation, {
         props: _objectSpread(_objectSpread({}, propsWithoutId), {}, {
           sectors
         }),
@@ -114167,10 +114167,10 @@ var require_Pie = __commonJS({
         id: externalId
       } = props, propsWithoutId = _objectWithoutProperties(props, _excluded4);
       var presentationProps = (0, _svgPropertiesNoEvents.svgPropertiesNoEvents)(propsWithoutId);
-      return /* @__PURE__ */ React15.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
+      return /* @__PURE__ */ React17.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
         id: externalId,
         type: "pie"
-      }, (id3) => /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(_SetGraphicalItem.SetPolarGraphicalItem, {
+      }, (id3) => /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(_SetGraphicalItem.SetPolarGraphicalItem, {
         type: "pie",
         id: id3,
         data: propsWithoutId.data,
@@ -114194,9 +114194,9 @@ var require_Pie = __commonJS({
         cornerRadius: propsWithoutId.cornerRadius,
         presentationProps,
         maxRadius: props.maxRadius
-      }), /* @__PURE__ */ React15.createElement(SetPiePayloadLegend, _extends({}, propsWithoutId, {
+      }), /* @__PURE__ */ React17.createElement(SetPiePayloadLegend, _extends({}, propsWithoutId, {
         id: id3
-      })), /* @__PURE__ */ React15.createElement(PieImpl, _extends({}, propsWithoutId, {
+      })), /* @__PURE__ */ React17.createElement(PieImpl, _extends({}, propsWithoutId, {
         id: id3
       }))));
     }
@@ -114255,7 +114255,7 @@ var require_Dots = __commonJS({
     });
     exports2.Dots = Dots;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _Dot = require_Dot();
     var _Layer = require_Layer();
@@ -114359,7 +114359,7 @@ var require_Dots = __commonJS({
       var _ref2 = dotProps !== null && dotProps !== void 0 ? dotProps : {}, {
         points
       } = _ref2, props = _objectWithoutProperties(_ref2, _excluded);
-      return /* @__PURE__ */ React15.createElement(_Dot.Dot, _extends({}, props, {
+      return /* @__PURE__ */ React17.createElement(_Dot.Dot, _extends({}, props, {
         className: finalClassName
       }));
     }
@@ -114402,7 +114402,7 @@ var require_Dots = __commonJS({
           payload: entry.payload,
           points
         });
-        return /* @__PURE__ */ React15.createElement(DotItem, {
+        return /* @__PURE__ */ React17.createElement(DotItem, {
           key: "dot-".concat(i),
           option: dot,
           dotProps,
@@ -114413,9 +114413,9 @@ var require_Dots = __commonJS({
       if (needClip && clipPathId != null) {
         layerProps.clipPath = "url(#clipPath-".concat(clipDot ? "" : "dots-").concat(clipPathId, ")");
       }
-      return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex
-      }, /* @__PURE__ */ React15.createElement(_Layer.Layer, _extends({
+      }, /* @__PURE__ */ React17.createElement(_Layer.Layer, _extends({
         className
       }, layerProps), dots));
     }
@@ -114799,7 +114799,7 @@ var require_ActivePoints = __commonJS({
     });
     exports2.ActivePoints = ActivePoints;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _types = require_types();
     var _Dot = require_Dot();
     var _Layer = require_Layer();
@@ -114893,9 +114893,9 @@ var require_ActivePoints = __commonJS({
       } else if (typeof activeDot === "function") {
         dot = activeDot(dotProps);
       } else {
-        dot = /* @__PURE__ */ React15.createElement(_Dot.Dot, dotProps);
+        dot = /* @__PURE__ */ React17.createElement(_Dot.Dot, dotProps);
       }
-      return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: "recharts-active-dot",
         clipPath
       }, dot);
@@ -114918,9 +114918,9 @@ var require_ActivePoints = __commonJS({
       if ((0, _DataUtils.isNullish)(activePoint)) {
         return null;
       }
-      return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex
-      }, /* @__PURE__ */ React15.createElement(ActivePoint, {
+      }, /* @__PURE__ */ React17.createElement(ActivePoint, {
         point: activePoint,
         childIndex: Number(activeTooltipIndex),
         mainColor,
@@ -115077,7 +115077,7 @@ var require_Radar = __commonJS({
     exports2.computeRadarPoints = computeRadarPoints;
     exports2.defaultRadarProps = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _last = _interopRequireDefault(require_last3());
     var _clsx = require_clsx();
     var _DataUtils = require_DataUtils();
@@ -115206,7 +115206,7 @@ var require_Radar = __commonJS({
         payload: props
       }];
     };
-    var SetRadarTooltipEntrySettings = /* @__PURE__ */ React15.memo((_ref) => {
+    var SetRadarTooltipEntrySettings = /* @__PURE__ */ React17.memo((_ref) => {
       var {
         dataKey,
         stroke,
@@ -115242,7 +115242,7 @@ var require_Radar = __commonJS({
           graphicalItemId: id3
         }
       };
-      return /* @__PURE__ */ React15.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
+      return /* @__PURE__ */ React17.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
         tooltipEntrySettings
       });
     });
@@ -115259,7 +115259,7 @@ var require_Radar = __commonJS({
         id: id3
       } = props, propsWithoutId = _objectWithoutProperties(props, _excluded);
       var baseProps = (0, _svgPropertiesNoEvents.svgPropertiesNoEvents)(propsWithoutId);
-      return /* @__PURE__ */ React15.createElement(_Dots.Dots, {
+      return /* @__PURE__ */ React17.createElement(_Dots.Dots, {
         points,
         dot,
         className: "recharts-radar-dots",
@@ -115350,7 +115350,7 @@ var require_Radar = __commonJS({
           fill: void 0
         });
       });
-      return /* @__PURE__ */ React15.createElement(_LabelList.CartesianLabelListContextProvider, {
+      return /* @__PURE__ */ React17.createElement(_LabelList.CartesianLabelListContextProvider, {
         value: showLabels ? labelListEntries : void 0
       }, children);
     }
@@ -115385,8 +115385,8 @@ var require_Radar = __commonJS({
         }
       };
       var radar;
-      if (/* @__PURE__ */ React15.isValidElement(shape)) {
-        radar = /* @__PURE__ */ React15.cloneElement(shape, _objectSpread(_objectSpread({}, props), {}, {
+      if (/* @__PURE__ */ React17.isValidElement(shape)) {
+        radar = /* @__PURE__ */ React17.cloneElement(shape, _objectSpread(_objectSpread({}, props), {}, {
           points
         }));
       } else if (typeof shape === "function") {
@@ -115394,7 +115394,7 @@ var require_Radar = __commonJS({
           points
         }));
       } else {
-        radar = /* @__PURE__ */ React15.createElement(_Polygon.Polygon, _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(props), {
+        radar = /* @__PURE__ */ React17.createElement(_Polygon.Polygon, _extends({}, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(props), {
           onMouseEnter: handleMouseEnter,
           onMouseLeave: handleMouseLeave,
           points,
@@ -115402,9 +115402,9 @@ var require_Radar = __commonJS({
           connectNulls
         }));
       }
-      return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: "recharts-radar-polygon"
-      }, radar, /* @__PURE__ */ React15.createElement(RadarDotsWrapper, {
+      }, radar, /* @__PURE__ */ React17.createElement(RadarDotsWrapper, {
         props,
         points
       }));
@@ -115457,10 +115457,10 @@ var require_Radar = __commonJS({
         }
         setIsAnimating(true);
       }, [onAnimationStart]);
-      return /* @__PURE__ */ React15.createElement(RadarLabelListProvider, {
+      return /* @__PURE__ */ React17.createElement(RadarLabelListProvider, {
         showLabels,
         points
-      }, /* @__PURE__ */ React15.createElement(_JavascriptAnimate.JavascriptAnimate, {
+      }, /* @__PURE__ */ React17.createElement(_JavascriptAnimate.JavascriptAnimate, {
         animationId,
         begin: animationBegin,
         duration: animationDuration,
@@ -115476,19 +115476,19 @@ var require_Radar = __commonJS({
           previousPointsRef.current = stepData;
           previousBaseLinePointsRef.current = stepBaseLinePoints;
         }
-        return /* @__PURE__ */ React15.createElement(StaticPolygon, {
+        return /* @__PURE__ */ React17.createElement(StaticPolygon, {
           points: stepData,
           baseLinePoints: stepBaseLinePoints,
           props
         });
-      }), /* @__PURE__ */ React15.createElement(_LabelList.LabelListFromLabelProp, {
+      }), /* @__PURE__ */ React17.createElement(_LabelList.LabelListFromLabelProp, {
         label: props.label
       }), props.children);
     }
     function RenderPolygon(props) {
       var previousPointsRef = (0, _react.useRef)(void 0);
       var previousBaseLinePointsRef = (0, _react.useRef)(void 0);
-      return /* @__PURE__ */ React15.createElement(PolygonWithAnimation, {
+      return /* @__PURE__ */ React17.createElement(PolygonWithAnimation, {
         props,
         previousPointsRef,
         previousBaseLinePointsRef
@@ -115518,11 +115518,11 @@ var require_Radar = __commonJS({
         return null;
       }
       var layerClass = (0, _clsx.clsx)("recharts-radar", className);
-      return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex: props.zIndex
-      }, /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      }, /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: layerClass
-      }, /* @__PURE__ */ React15.createElement(RenderPolygon, props)), /* @__PURE__ */ React15.createElement(_ActivePoints.ActivePoints, {
+      }, /* @__PURE__ */ React17.createElement(RenderPolygon, props)), /* @__PURE__ */ React17.createElement(_ActivePoints.ActivePoints, {
         points,
         mainColor: getLegendItemColor(props.stroke, props.fill),
         itemDataKey: props.dataKey,
@@ -115535,7 +115535,7 @@ var require_Radar = __commonJS({
       if ((radarPoints === null || radarPoints === void 0 ? void 0 : radarPoints.points) == null) {
         return null;
       }
-      return /* @__PURE__ */ React15.createElement(RadarWithState, _extends({}, props, {
+      return /* @__PURE__ */ React17.createElement(RadarWithState, _extends({}, props, {
         points: radarPoints === null || radarPoints === void 0 ? void 0 : radarPoints.points,
         baseLinePoints: radarPoints === null || radarPoints === void 0 ? void 0 : radarPoints.baseLinePoints,
         isRange: radarPoints === null || radarPoints === void 0 ? void 0 : radarPoints.isRange
@@ -115543,10 +115543,10 @@ var require_Radar = __commonJS({
     }
     function Radar(outsideProps) {
       var props = (0, _resolveDefaultProps.resolveDefaultProps)(outsideProps, defaultRadarProps);
-      return /* @__PURE__ */ React15.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
+      return /* @__PURE__ */ React17.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
         id: props.id,
         type: "radar"
-      }, (id3) => /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(_SetGraphicalItem.SetPolarGraphicalItem, {
+      }, (id3) => /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(_SetGraphicalItem.SetPolarGraphicalItem, {
         type: "radar",
         id: id3,
         data: void 0,
@@ -115554,9 +115554,9 @@ var require_Radar = __commonJS({
         hide: props.hide,
         angleAxisId: props.angleAxisId,
         radiusAxisId: props.radiusAxisId
-      }), /* @__PURE__ */ React15.createElement(_SetLegendPayload.SetPolarLegendPayload, {
+      }), /* @__PURE__ */ React17.createElement(_SetLegendPayload.SetPolarLegendPayload, {
         legendPayload: computeLegendPayloadFromRadarSectors(props)
-      }), /* @__PURE__ */ React15.createElement(SetRadarTooltipEntrySettings, {
+      }), /* @__PURE__ */ React17.createElement(SetRadarTooltipEntrySettings, {
         dataKey: props.dataKey,
         stroke: props.stroke,
         strokeWidth: props.strokeWidth,
@@ -115565,7 +115565,7 @@ var require_Radar = __commonJS({
         hide: props.hide,
         tooltipType: props.tooltipType,
         id: id3
-      }), /* @__PURE__ */ React15.createElement(RadarImpl, _extends({}, props, {
+      }), /* @__PURE__ */ React17.createElement(RadarImpl, _extends({}, props, {
         id: id3
       }))));
     }
@@ -115582,7 +115582,7 @@ var require_RadialBarUtils = __commonJS({
     });
     exports2.RadialBarSector = RadialBarSector;
     exports2.parseCornerRadius = parseCornerRadius;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _ActiveShapeUtils = require_ActiveShapeUtils();
     function _interopRequireWildcard(e, t) {
       if ("function" == typeof WeakMap) var r2 = /* @__PURE__ */ new WeakMap(), n = /* @__PURE__ */ new WeakMap();
@@ -115614,7 +115614,7 @@ var require_RadialBarUtils = __commonJS({
       return cornerRadius;
     }
     function RadialBarSector(props) {
-      return /* @__PURE__ */ React15.createElement(_ActiveShapeUtils.Shape, _extends({
+      return /* @__PURE__ */ React17.createElement(_ActiveShapeUtils.Shape, _extends({
         shapeType: "sector"
       }, props));
     }
@@ -116113,7 +116113,7 @@ var require_RadialBar = __commonJS({
     exports2.computeRadialBarDataItems = computeRadialBarDataItems;
     exports2.defaultRadialBarProps = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _RadialBarUtils = require_RadialBarUtils();
     var _Layer = require_Layer();
@@ -116243,7 +116243,7 @@ var require_RadialBar = __commonJS({
         },
         fill: sector.fill
       }));
-      return /* @__PURE__ */ React15.createElement(_LabelList.PolarLabelListContextProvider, {
+      return /* @__PURE__ */ React17.createElement(_LabelList.PolarLabelListContextProvider, {
         value: showLabels ? labelListEntries : void 0
       }, children);
     }
@@ -116272,7 +116272,7 @@ var require_RadialBar = __commonJS({
       if (sectors == null) {
         return null;
       }
-      return /* @__PURE__ */ React15.createElement(RadialBarLabelListProvider, {
+      return /* @__PURE__ */ React17.createElement(RadialBarLabelListProvider, {
         showLabels,
         sectors
       }, sectors.map((entry, i) => {
@@ -116294,15 +116294,15 @@ var require_RadialBar = __commonJS({
           index: i
         });
         if (isActive) {
-          return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+          return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
             zIndex: _DefaultZIndexes.DefaultZIndexes.activeBar,
             key: "sector-".concat(entry.cx, "-").concat(entry.cy, "-").concat(entry.innerRadius, "-").concat(entry.outerRadius, "-").concat(entry.startAngle, "-").concat(entry.endAngle, "-").concat(i)
-          }, /* @__PURE__ */ React15.createElement(_RadialBarUtils.RadialBarSector, radialBarSectorProps));
+          }, /* @__PURE__ */ React17.createElement(_RadialBarUtils.RadialBarSector, radialBarSectorProps));
         }
-        return /* @__PURE__ */ React15.createElement(_RadialBarUtils.RadialBarSector, _extends({
+        return /* @__PURE__ */ React17.createElement(_RadialBarUtils.RadialBarSector, _extends({
           key: "sector-".concat(entry.cx, "-").concat(entry.cy, "-").concat(entry.innerRadius, "-").concat(entry.outerRadius, "-").concat(entry.startAngle, "-").concat(entry.endAngle, "-").concat(i)
         }, radialBarSectorProps));
-      }), /* @__PURE__ */ React15.createElement(_LabelList.LabelListFromLabelProp, {
+      }), /* @__PURE__ */ React17.createElement(_LabelList.LabelListFromLabelProp, {
         label: allOtherRadialBarProps.label
       }), allOtherRadialBarProps.children);
     }
@@ -116335,7 +116335,7 @@ var require_RadialBar = __commonJS({
         }
         setIsAnimating(true);
       }, [onAnimationStart]);
-      return /* @__PURE__ */ React15.createElement(_JavascriptAnimate.JavascriptAnimate, {
+      return /* @__PURE__ */ React17.createElement(_JavascriptAnimate.JavascriptAnimate, {
         animationId,
         begin: animationBegin,
         duration: animationDuration,
@@ -116364,7 +116364,7 @@ var require_RadialBar = __commonJS({
         if (t > 0) {
           previousSectorsRef.current = stepData !== null && stepData !== void 0 ? stepData : null;
         }
-        return /* @__PURE__ */ React15.createElement(RadialBarSectors, {
+        return /* @__PURE__ */ React17.createElement(RadialBarSectors, {
           sectors: stepData !== null && stepData !== void 0 ? stepData : STABLE_EMPTY_ARRAY,
           allOtherRadialBarProps: props,
           showLabels: !isAnimating
@@ -116373,18 +116373,18 @@ var require_RadialBar = __commonJS({
     }
     function RenderSectors(props) {
       var previousSectorsRef = (0, _react.useRef)(null);
-      return /* @__PURE__ */ React15.createElement(SectorsWithAnimation, {
+      return /* @__PURE__ */ React17.createElement(SectorsWithAnimation, {
         props,
         previousSectorsRef
       });
     }
     function SetRadialBarPayloadLegend(props) {
       var legendPayload = (0, _hooks.useAppSelector)((state) => (0, _radialBarSelectors.selectRadialBarLegendPayload)(state, props.legendType));
-      return /* @__PURE__ */ React15.createElement(_SetLegendPayload.SetPolarLegendPayload, {
+      return /* @__PURE__ */ React17.createElement(_SetLegendPayload.SetPolarLegendPayload, {
         legendPayload: legendPayload !== null && legendPayload !== void 0 ? legendPayload : []
       });
     }
-    var SetRadialBarTooltipEntrySettings = /* @__PURE__ */ React15.memo((_ref4) => {
+    var SetRadialBarTooltipEntrySettings = /* @__PURE__ */ React17.memo((_ref4) => {
       var {
         dataKey,
         sectors,
@@ -116415,7 +116415,7 @@ var require_RadialBar = __commonJS({
           // Why does RadialBar not support unit?
         }
       };
-      return /* @__PURE__ */ React15.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
+      return /* @__PURE__ */ React17.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
         tooltipEntrySettings
       });
     });
@@ -116428,7 +116428,7 @@ var require_RadialBar = __commonJS({
           cornerRadius
         } = this.props;
         var backgroundProps = (0, _svgPropertiesNoEvents.svgPropertiesNoEventsFromUnknown)(this.props.background);
-        return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+        return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
           zIndex: (0, _getZIndexFromUnknown.getZIndexFromUnknown)(this.props.background, _DefaultZIndexes.DefaultZIndexes.barBackground)
         }, sectors.map((entry, i) => {
           var {
@@ -116449,7 +116449,7 @@ var require_RadialBar = __commonJS({
             option: background,
             isActive: false
           });
-          return /* @__PURE__ */ React15.createElement(_RadialBarUtils.RadialBarSector, _extends({
+          return /* @__PURE__ */ React17.createElement(_RadialBarUtils.RadialBarSector, _extends({
             key: "background-".concat(rest.cx, "-").concat(rest.cy, "-").concat(rest.innerRadius, "-").concat(rest.outerRadius, "-").concat(rest.startAngle, "-").concat(rest.endAngle, "-").concat(i)
           }, props));
         }));
@@ -116465,21 +116465,21 @@ var require_RadialBar = __commonJS({
           return null;
         }
         var layerClass = (0, _clsx.clsx)("recharts-area", className);
-        return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+        return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
           zIndex: this.props.zIndex
-        }, /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+        }, /* @__PURE__ */ React17.createElement(_Layer.Layer, {
           className: layerClass
-        }, background && /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+        }, background && /* @__PURE__ */ React17.createElement(_Layer.Layer, {
           className: "recharts-radial-bar-background"
-        }, this.renderBackground(sectors)), /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+        }, this.renderBackground(sectors)), /* @__PURE__ */ React17.createElement(_Layer.Layer, {
           className: "recharts-radial-bar-sectors"
-        }, /* @__PURE__ */ React15.createElement(RenderSectors, this.props))));
+        }, /* @__PURE__ */ React17.createElement(RenderSectors, this.props))));
       }
     };
     function RadialBarImpl(props) {
       var _useAppSelector;
-      var cells = React15.useMemo(() => (0, _ReactUtils.findAllByType)(props.children, _Cell.Cell), [props.children]);
-      var radialBarSettings = React15.useMemo(() => ({
+      var cells = React17.useMemo(() => (0, _ReactUtils.findAllByType)(props.children, _Cell.Cell), [props.children]);
+      var radialBarSettings = React17.useMemo(() => ({
         data: void 0,
         hide: false,
         id: props.id,
@@ -116493,7 +116493,7 @@ var require_RadialBar = __commonJS({
         radiusAxisId: props.radiusAxisId
       }), [props.id, props.dataKey, props.minPointSize, props.stackId, props.maxBarSize, props.barSize, props.angleAxisId, props.radiusAxisId]);
       var sectors = (_useAppSelector = (0, _hooks.useAppSelector)((state) => (0, _radialBarSelectors.selectRadialBarSectors)(state, props.radiusAxisId, props.angleAxisId, radialBarSettings, cells))) !== null && _useAppSelector !== void 0 ? _useAppSelector : STABLE_EMPTY_ARRAY;
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(SetRadialBarTooltipEntrySettings, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(SetRadialBarTooltipEntrySettings, {
         dataKey: props.dataKey,
         sectors,
         stroke: props.stroke,
@@ -116503,7 +116503,7 @@ var require_RadialBar = __commonJS({
         fill: props.fill,
         tooltipType: props.tooltipType,
         id: props.id
-      }), /* @__PURE__ */ React15.createElement(RadialBarWithState, _extends({}, props, {
+      }), /* @__PURE__ */ React17.createElement(RadialBarWithState, _extends({}, props, {
         sectors
       })));
     }
@@ -116624,12 +116624,12 @@ var require_RadialBar = __commonJS({
     }
     function RadialBar(outsideProps) {
       var props = (0, _resolveDefaultProps.resolveDefaultProps)(outsideProps, defaultRadialBarProps);
-      return /* @__PURE__ */ React15.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
+      return /* @__PURE__ */ React17.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
         id: props.id,
         type: "radialBar"
       }, (id3) => {
         var _props$hide, _props$angleAxisId, _props$radiusAxisId;
-        return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(_SetGraphicalItem.SetPolarGraphicalItem, {
+        return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(_SetGraphicalItem.SetPolarGraphicalItem, {
           type: "radialBar",
           id: id3,
           data: void 0,
@@ -116641,7 +116641,7 @@ var require_RadialBar = __commonJS({
           barSize: props.barSize,
           minPointSize: props.minPointSize,
           maxBarSize: props.maxBarSize
-        }), /* @__PURE__ */ React15.createElement(SetRadialBarPayloadLegend, props), /* @__PURE__ */ React15.createElement(RadialBarImpl, _extends({}, props, {
+        }), /* @__PURE__ */ React17.createElement(SetRadialBarPayloadLegend, props), /* @__PURE__ */ React17.createElement(RadialBarImpl, _extends({}, props, {
           id: id3
         })));
       });
@@ -116842,7 +116842,7 @@ var require_Brush = __commonJS({
     exports2.Brush = Brush;
     exports2.defaultBrushProps = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _d3Scale = require_d3_scale();
     var _range = _interopRequireDefault(require_range2());
@@ -116934,21 +116934,21 @@ var require_Brush = __commonJS({
         stroke
       } = props;
       var lineY = Math.floor(y + height / 2) - 1;
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement("rect", {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement("rect", {
         x,
         y,
         width,
         height,
         fill: stroke,
         stroke: "none"
-      }), /* @__PURE__ */ React15.createElement("line", {
+      }), /* @__PURE__ */ React17.createElement("line", {
         x1: x + 1,
         y1: lineY,
         x2: x + width - 1,
         y2: lineY,
         fill: "none",
         stroke: "#fff"
-      }), /* @__PURE__ */ React15.createElement("line", {
+      }), /* @__PURE__ */ React17.createElement("line", {
         x1: x + 1,
         y1: lineY + 2,
         x2: x + width - 1,
@@ -116962,13 +116962,13 @@ var require_Brush = __commonJS({
         travellerProps,
         travellerType
       } = props;
-      if (/* @__PURE__ */ React15.isValidElement(travellerType)) {
-        return /* @__PURE__ */ React15.cloneElement(travellerType, travellerProps);
+      if (/* @__PURE__ */ React17.isValidElement(travellerType)) {
+        return /* @__PURE__ */ React17.cloneElement(travellerType, travellerProps);
       }
       if (typeof travellerType === "function") {
         return travellerType(travellerProps);
       }
-      return /* @__PURE__ */ React15.createElement(DefaultTraveller, travellerProps);
+      return /* @__PURE__ */ React17.createElement(DefaultTraveller, travellerProps);
     }
     function getNameFromUnknown(value) {
       if ((0, _DataUtils.isNotNil)(value) && typeof value === "object" && "name" in value && typeof value.name === "string") {
@@ -117013,7 +117013,7 @@ var require_Brush = __commonJS({
         height
       });
       var ariaLabelBrush = ariaLabel || getAriaLabel(data, startIndex, endIndex);
-      return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         tabIndex: 0,
         role: "slider",
         "aria-label": ariaLabelBrush,
@@ -117036,7 +117036,7 @@ var require_Brush = __commonJS({
         style: {
           cursor: "col-resize"
         }
-      }, /* @__PURE__ */ React15.createElement(Traveller, {
+      }, /* @__PURE__ */ React17.createElement(Traveller, {
         travellerType: traveller,
         travellerProps
       }));
@@ -117094,7 +117094,7 @@ var require_Brush = __commonJS({
         fill,
         stroke
       } = _ref3;
-      return /* @__PURE__ */ React15.createElement("rect", {
+      return /* @__PURE__ */ React17.createElement("rect", {
         stroke,
         fill,
         x,
@@ -117122,9 +117122,9 @@ var require_Brush = __commonJS({
         pointerEvents: "none",
         fill: stroke
       };
-      return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: "recharts-brush-texts"
-      }, /* @__PURE__ */ React15.createElement(_Text.Text, _extends({
+      }, /* @__PURE__ */ React17.createElement(_Text.Text, _extends({
         textAnchor: "end",
         verticalAnchor: "middle",
         x: Math.min(startX, endX) - offset,
@@ -117134,7 +117134,7 @@ var require_Brush = __commonJS({
         tickFormatter,
         dataKey,
         data
-      })), /* @__PURE__ */ React15.createElement(_Text.Text, _extends({
+      })), /* @__PURE__ */ React17.createElement(_Text.Text, _extends({
         textAnchor: "start",
         verticalAnchor: "middle",
         x: Math.max(startX, endX) + travellerWidth + offset,
@@ -117161,7 +117161,7 @@ var require_Brush = __commonJS({
       } = _ref5;
       var x = Math.min(startX, endX) + travellerWidth;
       var width = Math.max(Math.abs(endX - startX) - travellerWidth, 0);
-      return /* @__PURE__ */ React15.createElement("rect", {
+      return /* @__PURE__ */ React17.createElement("rect", {
         className: "recharts-brush-slide",
         onMouseEnter,
         onMouseLeave,
@@ -117189,7 +117189,7 @@ var require_Brush = __commonJS({
         children,
         padding
       } = _ref6;
-      var isPanoramic = React15.Children.count(children) === 1;
+      var isPanoramic = React17.Children.count(children) === 1;
       if (!isPanoramic) {
         return null;
       }
@@ -117197,7 +117197,7 @@ var require_Brush = __commonJS({
       if (!chartElement) {
         return null;
       }
-      return /* @__PURE__ */ React15.cloneElement(chartElement, {
+      return /* @__PURE__ */ React17.cloneElement(chartElement, {
         x,
         y,
         width,
@@ -117588,26 +117588,26 @@ var require_Brush = __commonJS({
         var layerClass = (0, _clsx.clsx)("recharts-brush", className);
         var style = (0, _CssPrefixUtils.generatePrefixStyle)("userSelect", "none");
         var calculatedY = y + (dy !== null && dy !== void 0 ? dy : 0);
-        return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+        return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
           className: layerClass,
           onMouseLeave: this.handleLeaveWrapper,
           onTouchMove: this.handleTouchMove,
           style
-        }, /* @__PURE__ */ React15.createElement(Background, {
+        }, /* @__PURE__ */ React17.createElement(Background, {
           x,
           y: calculatedY,
           width,
           height,
           fill,
           stroke
-        }), /* @__PURE__ */ React15.createElement(_PanoramaContext.PanoramaContextProvider, null, /* @__PURE__ */ React15.createElement(Panorama, {
+        }), /* @__PURE__ */ React17.createElement(_PanoramaContext.PanoramaContextProvider, null, /* @__PURE__ */ React17.createElement(Panorama, {
           x,
           y: calculatedY,
           width,
           height,
           data,
           padding
-        }, children)), /* @__PURE__ */ React15.createElement(Slide, {
+        }, children)), /* @__PURE__ */ React17.createElement(Slide, {
           y: calculatedY,
           height,
           stroke,
@@ -117618,7 +117618,7 @@ var require_Brush = __commonJS({
           onMouseLeave: this.handleLeaveSlideOrTraveller,
           onMouseDown: this.handleSlideDragStart,
           onTouchStart: this.handleSlideDragStart
-        }), /* @__PURE__ */ React15.createElement(TravellerLayer, {
+        }), /* @__PURE__ */ React17.createElement(TravellerLayer, {
           travellerX: startX,
           id: "startX",
           otherProps: _objectSpread(_objectSpread({}, this.props), {}, {
@@ -117639,7 +117639,7 @@ var require_Brush = __commonJS({
               isTravellerFocused: false
             });
           }
-        }), /* @__PURE__ */ React15.createElement(TravellerLayer, {
+        }), /* @__PURE__ */ React17.createElement(TravellerLayer, {
           travellerX: endX,
           id: "endX",
           otherProps: _objectSpread(_objectSpread({}, this.props), {}, {
@@ -117660,7 +117660,7 @@ var require_Brush = __commonJS({
               isTravellerFocused: false
             });
           }
-        }), (isTextActive || isSlideMoving || isTravellerMoving || isTravellerFocused || alwaysShowText) && /* @__PURE__ */ React15.createElement(BrushText, {
+        }), (isTextActive || isSlideMoving || isTravellerMoving || isTravellerFocused || alwaysShowText) && /* @__PURE__ */ React17.createElement(BrushText, {
           startIndex,
           endIndex,
           y: calculatedY,
@@ -117728,7 +117728,7 @@ var require_Brush = __commonJS({
         endIndex,
         onChange
       };
-      return /* @__PURE__ */ React15.createElement(BrushWithState, _extends({}, props, contextProperties, {
+      return /* @__PURE__ */ React17.createElement(BrushWithState, _extends({}, props, contextProperties, {
         startIndexControlledFromProps: startIndexFromProps !== null && startIndexFromProps !== void 0 ? startIndexFromProps : void 0,
         endIndexControlledFromProps: endIndexFromProps !== null && endIndexFromProps !== void 0 ? endIndexFromProps : void 0
       }));
@@ -117760,13 +117760,13 @@ var require_Brush = __commonJS({
     };
     function Brush(outsideProps) {
       var props = (0, _resolveDefaultProps.resolveDefaultProps)(outsideProps, defaultBrushProps);
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(BrushSettingsDispatcher, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(BrushSettingsDispatcher, {
         height: props.height,
         x: props.x,
         y: props.y,
         width: props.width,
         padding: props.padding
-      }), /* @__PURE__ */ React15.createElement(BrushInternal, props));
+      }), /* @__PURE__ */ React17.createElement(BrushInternal, props));
     }
     Brush.displayName = "Brush";
   }
@@ -117908,7 +117908,7 @@ var require_ClipPathProvider = __commonJS({
     });
     exports2.useClipPathId = exports2.ClipPathProvider = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _DataUtils = require_DataUtils();
     var _hooks = require_hooks2();
     function _interopRequireWildcard(e, t) {
@@ -117941,11 +117941,11 @@ var require_ClipPathProvider = __commonJS({
         width,
         height
       } = plotArea;
-      return /* @__PURE__ */ React15.createElement(ClipPathIdContext.Provider, {
+      return /* @__PURE__ */ React17.createElement(ClipPathIdContext.Provider, {
         value: clipPathId
-      }, /* @__PURE__ */ React15.createElement("defs", null, /* @__PURE__ */ React15.createElement("clipPath", {
+      }, /* @__PURE__ */ React17.createElement("defs", null, /* @__PURE__ */ React17.createElement("clipPath", {
         id: clipPathId
-      }, /* @__PURE__ */ React15.createElement("rect", {
+      }, /* @__PURE__ */ React17.createElement("rect", {
         x,
         y,
         height,
@@ -118045,7 +118045,7 @@ var require_ReferenceLine = __commonJS({
     exports2.ReferenceLine = ReferenceLine;
     exports2.referenceLineDefaultProps = exports2.getEndPoints = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _Layer = require_Layer();
     var _Label = require_Label();
@@ -118126,15 +118126,15 @@ var require_ReferenceLine = __commonJS({
     }
     var renderLine = (option, props) => {
       var line;
-      if (/* @__PURE__ */ React15.isValidElement(option)) {
-        line = /* @__PURE__ */ React15.cloneElement(option, props);
+      if (/* @__PURE__ */ React17.isValidElement(option)) {
+        line = /* @__PURE__ */ React17.cloneElement(option, props);
       } else if (typeof option === "function") {
         line = option(props);
       } else {
         if (!(0, _isWellBehavedNumber.isWellBehavedNumber)(props.x1) || !(0, _isWellBehavedNumber.isWellBehavedNumber)(props.y1) || !(0, _isWellBehavedNumber.isWellBehavedNumber)(props.x2) || !(0, _isWellBehavedNumber.isWellBehavedNumber)(props.y2)) {
           return null;
         }
-        line = /* @__PURE__ */ React15.createElement("line", _extends({}, props, {
+        line = /* @__PURE__ */ React17.createElement("line", _extends({}, props, {
           className: "recharts-reference-line-line"
         }));
       }
@@ -118283,14 +118283,14 @@ var require_ReferenceLine = __commonJS({
         x2,
         y2
       });
-      return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex: props.zIndex
-      }, /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      }, /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: (0, _clsx.clsx)("recharts-reference-line", className)
-      }, renderLine(shape, lineProps), /* @__PURE__ */ React15.createElement(_Label.CartesianLabelContextProvider, _extends({}, rect, {
+      }, renderLine(shape, lineProps), /* @__PURE__ */ React17.createElement(_Label.CartesianLabelContextProvider, _extends({}, rect, {
         lowerWidth: rect.width,
         upperWidth: rect.width
-      }), /* @__PURE__ */ React15.createElement(_Label.CartesianLabelFromLabelProp, {
+      }), /* @__PURE__ */ React17.createElement(_Label.CartesianLabelFromLabelProp, {
         label: props.label
       }), props.children)));
     }
@@ -118308,14 +118308,14 @@ var require_ReferenceLine = __commonJS({
     };
     function ReferenceLine(outsideProps) {
       var props = (0, _resolveDefaultProps.resolveDefaultProps)(outsideProps, referenceLineDefaultProps);
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(ReportReferenceLine, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(ReportReferenceLine, {
         yAxisId: props.yAxisId,
         xAxisId: props.xAxisId,
         ifOverflow: props.ifOverflow,
         x: props.x,
         y: props.y,
         segment: props.segment
-      }), /* @__PURE__ */ React15.createElement(ReferenceLineImpl, props));
+      }), /* @__PURE__ */ React17.createElement(ReferenceLineImpl, props));
     }
     ReferenceLine.displayName = "ReferenceLine";
   }
@@ -118331,7 +118331,7 @@ var require_ReferenceDot = __commonJS({
     exports2.ReferenceDot = ReferenceDot;
     exports2.referenceDotDefaultProps = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _Layer = require_Layer();
     var _Dot = require_Dot();
@@ -118444,12 +118444,12 @@ var require_ReferenceDot = __commonJS({
     }
     var renderDot = (option, props) => {
       var dot;
-      if (/* @__PURE__ */ React15.isValidElement(option)) {
-        dot = /* @__PURE__ */ React15.cloneElement(option, props);
+      if (/* @__PURE__ */ React17.isValidElement(option)) {
+        dot = /* @__PURE__ */ React17.cloneElement(option, props);
       } else if (typeof option === "function") {
         dot = option(props);
       } else {
-        dot = /* @__PURE__ */ React15.createElement(_Dot.Dot, _extends({}, props, {
+        dot = /* @__PURE__ */ React17.createElement(_Dot.Dot, _extends({}, props, {
           cx: props.cx,
           cy: props.cy,
           className: "recharts-reference-dot-dot"
@@ -118484,18 +118484,18 @@ var require_ReferenceDot = __commonJS({
         cx: cx !== null && cx !== void 0 ? cx : void 0,
         cy: cy !== null && cy !== void 0 ? cy : void 0
       });
-      return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex: props.zIndex
-      }, /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      }, /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: (0, _clsx.clsx)("recharts-reference-dot", className)
-      }, renderDot(shape, dotProps), /* @__PURE__ */ React15.createElement(_Label.CartesianLabelContextProvider, {
+      }, renderDot(shape, dotProps), /* @__PURE__ */ React17.createElement(_Label.CartesianLabelContextProvider, {
         x: cx - r2,
         y: cy - r2,
         width: 2 * r2,
         height: 2 * r2,
         upperWidth: 2 * r2,
         lowerWidth: 2 * r2
-      }, /* @__PURE__ */ React15.createElement(_Label.CartesianLabelFromLabelProp, {
+      }, /* @__PURE__ */ React17.createElement(_Label.CartesianLabelFromLabelProp, {
         label: props.label
       }), props.children)));
     }
@@ -118521,14 +118521,14 @@ var require_ReferenceDot = __commonJS({
         yAxisId,
         xAxisId
       } = props;
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(ReportReferenceDot, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(ReportReferenceDot, {
         y,
         x,
         r: r2,
         yAxisId,
         xAxisId,
         ifOverflow
-      }), /* @__PURE__ */ React15.createElement(ReferenceDotImpl, props));
+      }), /* @__PURE__ */ React17.createElement(ReferenceDotImpl, props));
     }
     ReferenceDot.displayName = "ReferenceDot";
   }
@@ -118544,7 +118544,7 @@ var require_ReferenceArea = __commonJS({
     exports2.ReferenceArea = ReferenceArea;
     exports2.referenceAreaDefaultProps = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _Layer = require_Layer();
     var _Label = require_Label();
@@ -118660,12 +118660,12 @@ var require_ReferenceArea = __commonJS({
     };
     var renderRect = (option, props) => {
       var rect;
-      if (/* @__PURE__ */ React15.isValidElement(option)) {
-        rect = /* @__PURE__ */ React15.cloneElement(option, props);
+      if (/* @__PURE__ */ React17.isValidElement(option)) {
+        rect = /* @__PURE__ */ React17.cloneElement(option, props);
       } else if (typeof option === "function") {
         rect = option(props);
       } else {
-        rect = /* @__PURE__ */ React15.createElement(_Rectangle.Rectangle, _extends({}, props, {
+        rect = /* @__PURE__ */ React17.createElement(_Rectangle.Rectangle, _extends({}, props, {
           className: "recharts-reference-area-rect"
         }));
       }
@@ -118712,16 +118712,16 @@ var require_ReferenceArea = __commonJS({
       }
       var isOverflowHidden = props.ifOverflow === "hidden";
       var clipPath = isOverflowHidden ? "url(#".concat(clipPathId, ")") : void 0;
-      return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex: props.zIndex
-      }, /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      }, /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: (0, _clsx.clsx)("recharts-reference-area", className)
       }, renderRect(shape, _objectSpread(_objectSpread({
         clipPath
-      }, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(props)), rect)), rect != null && /* @__PURE__ */ React15.createElement(_Label.CartesianLabelContextProvider, _extends({}, rect, {
+      }, (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(props)), rect)), rect != null && /* @__PURE__ */ React17.createElement(_Label.CartesianLabelContextProvider, _extends({}, rect, {
         lowerWidth: rect.width,
         upperWidth: rect.width
-      }), /* @__PURE__ */ React15.createElement(_Label.CartesianLabelFromLabelProp, {
+      }), /* @__PURE__ */ React17.createElement(_Label.CartesianLabelFromLabelProp, {
         label: props.label
       }), props.children)));
     }
@@ -118739,7 +118739,7 @@ var require_ReferenceArea = __commonJS({
     };
     function ReferenceArea(outsideProps) {
       var props = (0, _resolveDefaultProps.resolveDefaultProps)(outsideProps, referenceAreaDefaultProps);
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(ReportReferenceArea, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(ReportReferenceArea, {
         yAxisId: props.yAxisId,
         xAxisId: props.xAxisId,
         ifOverflow: props.ifOverflow,
@@ -118747,7 +118747,7 @@ var require_ReferenceArea = __commonJS({
         x2: props.x2,
         y1: props.y1,
         y2: props.y2
-      }), /* @__PURE__ */ React15.createElement(ReferenceAreaImpl, props));
+      }), /* @__PURE__ */ React17.createElement(ReferenceAreaImpl, props));
     }
     ReferenceArea.displayName = "ReferenceArea";
   }
@@ -119256,7 +119256,7 @@ var require_CartesianAxis = __commonJS({
     });
     exports2.defaultCartesianAxisProps = exports2.CartesianAxis = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _get = _interopRequireDefault(require_get2());
     var _clsx = require_clsx();
     var _Layer = require_Layer();
@@ -119417,7 +119417,7 @@ var require_CartesianAxis = __commonJS({
           y2: y + height
         });
       }
-      return /* @__PURE__ */ React15.createElement("line", _extends({}, props, {
+      return /* @__PURE__ */ React17.createElement("line", _extends({}, props, {
         className: (0, _clsx.clsx)("recharts-cartesian-axis-line", (0, _get.default)(axisLine, "className"))
       }));
     }
@@ -119498,8 +119498,8 @@ var require_CartesianAxis = __commonJS({
       } = props;
       var tickItem;
       var combinedClassName = (0, _clsx.clsx)(tickProps.className, "recharts-cartesian-axis-tick-value");
-      if (/* @__PURE__ */ React15.isValidElement(option)) {
-        tickItem = /* @__PURE__ */ React15.cloneElement(option, _objectSpread(_objectSpread({}, tickProps), {}, {
+      if (/* @__PURE__ */ React17.isValidElement(option)) {
+        tickItem = /* @__PURE__ */ React17.cloneElement(option, _objectSpread(_objectSpread({}, tickProps), {}, {
           className: combinedClassName
         }));
       } else if (typeof option === "function") {
@@ -119511,7 +119511,7 @@ var require_CartesianAxis = __commonJS({
         if (typeof option !== "boolean") {
           className = (0, _clsx.clsx)(className, (0, _getClassNameFromUnknown.getClassNameFromUnknown)(option));
         }
-        tickItem = /* @__PURE__ */ React15.createElement(_Text.Text, _extends({}, tickProps, {
+        tickItem = /* @__PURE__ */ React17.createElement(_Text.Text, _extends({}, tickProps, {
           className
         }), value);
       }
@@ -119595,10 +119595,10 @@ var require_CartesianAxis = __commonJS({
           entry,
           line: lineCoord
         } = _ref2;
-        return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+        return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
           className: "recharts-cartesian-axis-tick",
           key: "tick-".concat(entry.value, "-").concat(entry.coordinate, "-").concat(entry.tickCoord)
-        }, tickLine && /* @__PURE__ */ React15.createElement("line", _extends({}, tickLineProps, lineCoord, {
+        }, tickLine && /* @__PURE__ */ React17.createElement("line", _extends({}, tickLineProps, lineCoord, {
           className: (0, _clsx.clsx)("recharts-cartesian-axis-tick-line", (0, _get.default)(tickLine, "className"))
         })));
       });
@@ -119624,27 +119624,27 @@ var require_CartesianAxis = __commonJS({
           angle: (_ref4 = (_tickTextProps$angle = tickTextProps === null || tickTextProps === void 0 ? void 0 : tickTextProps.angle) !== null && _tickTextProps$angle !== void 0 ? _tickTextProps$angle : axisProps.angle) !== null && _ref4 !== void 0 ? _ref4 : 0
         });
         var finalTickProps = _objectSpread(_objectSpread({}, tickProps), customTickProps);
-        return /* @__PURE__ */ React15.createElement(_Layer.Layer, _extends({
+        return /* @__PURE__ */ React17.createElement(_Layer.Layer, _extends({
           className: "recharts-cartesian-axis-tick-label",
           key: "tick-label-".concat(entry.value, "-").concat(entry.coordinate, "-").concat(entry.tickCoord)
-        }, (0, _types.adaptEventsOfChild)(events, entry, i)), tick && /* @__PURE__ */ React15.createElement(TickItem, {
+        }, (0, _types.adaptEventsOfChild)(events, entry, i)), tick && /* @__PURE__ */ React17.createElement(TickItem, {
           option: tick,
           tickProps: finalTickProps,
           value: "".concat(typeof tickFormatter === "function" ? tickFormatter(entry.value, i) : entry.value).concat(unit || "")
         }));
       });
-      return /* @__PURE__ */ React15.createElement("g", {
+      return /* @__PURE__ */ React17.createElement("g", {
         className: "recharts-cartesian-axis-ticks recharts-".concat(axisType, "-ticks")
-      }, /* @__PURE__ */ React15.createElement(RenderedTicksReporter, {
+      }, /* @__PURE__ */ React17.createElement(RenderedTicksReporter, {
         ticks: finalTicks,
         axisId,
         axisType
-      }), tickLabels.length > 0 && /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      }), tickLabels.length > 0 && /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex: _DefaultZIndexes.DefaultZIndexes.label
-      }, /* @__PURE__ */ React15.createElement("g", {
+      }, /* @__PURE__ */ React17.createElement("g", {
         className: "recharts-cartesian-axis-tick-labels recharts-".concat(axisType, "-tick-labels"),
         ref
-      }, tickLabels)), tickLines.length > 0 && /* @__PURE__ */ React15.createElement("g", {
+      }, tickLabels)), tickLines.length > 0 && /* @__PURE__ */ React17.createElement("g", {
         className: "recharts-cartesian-axis-tick-lines recharts-".concat(axisType, "-tick-lines")
       }, tickLines));
     });
@@ -119696,11 +119696,11 @@ var require_CartesianAxis = __commonJS({
       if (width != null && width <= 0 || height != null && height <= 0) {
         return null;
       }
-      return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex: props.zIndex
-      }, /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      }, /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: (0, _clsx.clsx)("recharts-cartesian-axis", className)
-      }, /* @__PURE__ */ React15.createElement(AxisLine, {
+      }, /* @__PURE__ */ React17.createElement(AxisLine, {
         x: props.x,
         y: props.y,
         width,
@@ -119709,7 +119709,7 @@ var require_CartesianAxis = __commonJS({
         mirror: props.mirror,
         axisLine,
         otherSvgProps: (0, _svgPropertiesNoEvents.svgPropertiesNoEvents)(props)
-      }), /* @__PURE__ */ React15.createElement(Ticks, {
+      }), /* @__PURE__ */ React17.createElement(Ticks, {
         ref: layerRef,
         axisType,
         events: rest,
@@ -119733,21 +119733,21 @@ var require_CartesianAxis = __commonJS({
         x: props.x,
         y: props.y,
         axisId
-      }), /* @__PURE__ */ React15.createElement(_Label.CartesianLabelContextProvider, {
+      }), /* @__PURE__ */ React17.createElement(_Label.CartesianLabelContextProvider, {
         x: props.x,
         y: props.y,
         width: props.width,
         height: props.height,
         lowerWidth: props.width,
         upperWidth: props.width
-      }, /* @__PURE__ */ React15.createElement(_Label.CartesianLabelFromLabelProp, {
+      }, /* @__PURE__ */ React17.createElement(_Label.CartesianLabelFromLabelProp, {
         label: props.label,
         labelRef: props.labelRef
       }), props.children)));
     });
-    var CartesianAxis = exports2.CartesianAxis = /* @__PURE__ */ React15.forwardRef((outsideProps, ref) => {
+    var CartesianAxis = exports2.CartesianAxis = /* @__PURE__ */ React17.forwardRef((outsideProps, ref) => {
       var props = (0, _resolveDefaultProps.resolveDefaultProps)(outsideProps, defaultCartesianAxisProps);
-      return /* @__PURE__ */ React15.createElement(CartesianAxisComponent, _extends({}, props, {
+      return /* @__PURE__ */ React17.createElement(CartesianAxisComponent, _extends({}, props, {
         ref
       }));
     });
@@ -119764,7 +119764,7 @@ var require_CartesianGrid = __commonJS({
     });
     exports2.CartesianGrid = CartesianGrid2;
     exports2.defaultCartesianGridProps = void 0;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _LogUtils = require_LogUtils();
     var _DataUtils = require_DataUtils();
     var _ChartUtils = require_ChartUtils();
@@ -119877,7 +119877,7 @@ var require_CartesianGrid = __commonJS({
         height,
         ry
       } = props;
-      return /* @__PURE__ */ React15.createElement("rect", {
+      return /* @__PURE__ */ React17.createElement("rect", {
         x,
         y,
         ry,
@@ -119895,8 +119895,8 @@ var require_CartesianGrid = __commonJS({
         lineItemProps
       } = _ref;
       var lineItem;
-      if (/* @__PURE__ */ React15.isValidElement(option)) {
-        lineItem = /* @__PURE__ */ React15.cloneElement(option, lineItemProps);
+      if (/* @__PURE__ */ React17.isValidElement(option)) {
+        lineItem = /* @__PURE__ */ React17.cloneElement(option, lineItemProps);
       } else if (typeof option === "function") {
         lineItem = option(lineItemProps);
       } else {
@@ -119911,7 +119911,7 @@ var require_CartesianGrid = __commonJS({
         var _ref2 = (_svgPropertiesNoEvent = (0, _svgPropertiesNoEvents.svgPropertiesNoEvents)(others)) !== null && _svgPropertiesNoEvent !== void 0 ? _svgPropertiesNoEvent : {}, {
           offset: __
         } = _ref2, restOfFilteredProps = _objectWithoutProperties(_ref2, _excluded2);
-        lineItem = /* @__PURE__ */ React15.createElement("line", _extends({}, restOfFilteredProps, {
+        lineItem = /* @__PURE__ */ React17.createElement("line", _extends({}, restOfFilteredProps, {
           x1,
           y1,
           x2,
@@ -119945,13 +119945,13 @@ var require_CartesianGrid = __commonJS({
           key: "line-".concat(i),
           index: i
         });
-        return /* @__PURE__ */ React15.createElement(LineItem, {
+        return /* @__PURE__ */ React17.createElement(LineItem, {
           key: "line-".concat(i),
           option: horizontal,
           lineItemProps
         });
       });
-      return /* @__PURE__ */ React15.createElement("g", {
+      return /* @__PURE__ */ React17.createElement("g", {
         className: "recharts-cartesian-grid-horizontal"
       }, items);
     }
@@ -119978,13 +119978,13 @@ var require_CartesianGrid = __commonJS({
           key: "line-".concat(i),
           index: i
         });
-        return /* @__PURE__ */ React15.createElement(LineItem, {
+        return /* @__PURE__ */ React17.createElement(LineItem, {
           option: vertical,
           lineItemProps,
           key: "line-".concat(i)
         });
       });
-      return /* @__PURE__ */ React15.createElement("g", {
+      return /* @__PURE__ */ React17.createElement("g", {
         className: "recharts-cartesian-grid-vertical"
       }, items);
     }
@@ -120014,7 +120014,7 @@ var require_CartesianGrid = __commonJS({
           return null;
         }
         var colorIndex = i % horizontalFill.length;
-        return /* @__PURE__ */ React15.createElement("rect", {
+        return /* @__PURE__ */ React17.createElement("rect", {
           key: "react-".concat(i),
           y: entry,
           x,
@@ -120026,7 +120026,7 @@ var require_CartesianGrid = __commonJS({
           className: "recharts-cartesian-grid-bg"
         });
       });
-      return /* @__PURE__ */ React15.createElement("g", {
+      return /* @__PURE__ */ React17.createElement("g", {
         className: "recharts-cartesian-gridstripes-horizontal"
       }, items);
     }
@@ -120056,7 +120056,7 @@ var require_CartesianGrid = __commonJS({
           return null;
         }
         var colorIndex = i % verticalFill.length;
-        return /* @__PURE__ */ React15.createElement("rect", {
+        return /* @__PURE__ */ React17.createElement("rect", {
           key: "react-".concat(i),
           x: entry,
           y,
@@ -120068,7 +120068,7 @@ var require_CartesianGrid = __commonJS({
           className: "recharts-cartesian-grid-bg"
         });
       });
-      return /* @__PURE__ */ React15.createElement("g", {
+      return /* @__PURE__ */ React17.createElement("g", {
         className: "recharts-cartesian-gridstripes-vertical"
       }, items);
     }
@@ -120186,11 +120186,11 @@ var require_CartesianGrid = __commonJS({
           verticalPoints = _generatorResult;
         }
       }
-      return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex: propsIncludingDefaults.zIndex
-      }, /* @__PURE__ */ React15.createElement("g", {
+      }, /* @__PURE__ */ React17.createElement("g", {
         className: "recharts-cartesian-grid"
-      }, /* @__PURE__ */ React15.createElement(Background, {
+      }, /* @__PURE__ */ React17.createElement(Background, {
         fill: propsIncludingDefaults.fill,
         fillOpacity: propsIncludingDefaults.fillOpacity,
         x: propsIncludingDefaults.x,
@@ -120198,16 +120198,16 @@ var require_CartesianGrid = __commonJS({
         width: propsIncludingDefaults.width,
         height: propsIncludingDefaults.height,
         ry: propsIncludingDefaults.ry
-      }), /* @__PURE__ */ React15.createElement(HorizontalStripes, _extends({}, propsIncludingDefaults, {
+      }), /* @__PURE__ */ React17.createElement(HorizontalStripes, _extends({}, propsIncludingDefaults, {
         horizontalPoints
-      })), /* @__PURE__ */ React15.createElement(VerticalStripes, _extends({}, propsIncludingDefaults, {
+      })), /* @__PURE__ */ React17.createElement(VerticalStripes, _extends({}, propsIncludingDefaults, {
         verticalPoints
-      })), /* @__PURE__ */ React15.createElement(HorizontalGridLines, _extends({}, propsIncludingDefaults, {
+      })), /* @__PURE__ */ React17.createElement(HorizontalGridLines, _extends({}, propsIncludingDefaults, {
         offset,
         horizontalPoints,
         xAxis,
         yAxis
-      })), /* @__PURE__ */ React15.createElement(VerticalGridLines, _extends({}, propsIncludingDefaults, {
+      })), /* @__PURE__ */ React17.createElement(VerticalGridLines, _extends({}, propsIncludingDefaults, {
         offset,
         verticalPoints,
         xAxis,
@@ -120286,7 +120286,7 @@ var require_ErrorBarContext = __commonJS({
     exports2.SetErrorBarContext = SetErrorBarContext;
     exports2.useErrorBarContext = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _errorBarSlice = require_errorBarSlice();
     var _hooks = require_hooks();
     var _RegisterGraphicalItemId = require_RegisterGraphicalItemId();
@@ -120339,7 +120339,7 @@ var require_ErrorBarContext = __commonJS({
       var {
         children
       } = props, rest = _objectWithoutProperties(props, _excluded);
-      return /* @__PURE__ */ React15.createElement(ErrorBarContext.Provider, {
+      return /* @__PURE__ */ React17.createElement(ErrorBarContext.Provider, {
         value: rest
       }, children);
     }
@@ -120392,7 +120392,7 @@ var require_GraphicalItemClipPath = __commonJS({
     });
     exports2.GraphicalItemClipPath = GraphicalItemClipPath;
     exports2.useNeedsClip = useNeedsClip;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _hooks = require_hooks();
     var _axisSelectors = require_axisSelectors();
     var _hooks2 = require_hooks2();
@@ -120444,9 +120444,9 @@ var require_GraphicalItemClipPath = __commonJS({
         width,
         height
       } = plotArea;
-      return /* @__PURE__ */ React15.createElement("clipPath", {
+      return /* @__PURE__ */ React17.createElement("clipPath", {
         id: "clipPath-".concat(clipPathId)
-      }, /* @__PURE__ */ React15.createElement("rect", {
+      }, /* @__PURE__ */ React17.createElement("rect", {
         x: needClipX ? x : x - width / 2,
         y: needClipY ? y : y - height / 2,
         width: needClipX ? width : width * 2,
@@ -120571,7 +120571,7 @@ var require_Line = __commonJS({
     exports2.computeLinePoints = computeLinePoints;
     exports2.defaultLineProps = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _Layer = require_Layer();
     var _LabelList = require_LabelList();
@@ -120700,7 +120700,7 @@ var require_Line = __commonJS({
         payload: props
       }];
     };
-    var SetLineTooltipEntrySettings = /* @__PURE__ */ React15.memo((_ref) => {
+    var SetLineTooltipEntrySettings = /* @__PURE__ */ React17.memo((_ref) => {
       var {
         dataKey,
         data,
@@ -120730,7 +120730,7 @@ var require_Line = __commonJS({
           graphicalItemId: id3
         }
       };
-      return /* @__PURE__ */ React15.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
+      return /* @__PURE__ */ React17.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
         tooltipEntrySettings
       });
     });
@@ -120779,7 +120779,7 @@ var require_Line = __commonJS({
         id: id3
       } = props, propsWithoutId = _objectWithoutProperties(props, _excluded);
       var lineProps = (0, _svgPropertiesNoEvents.svgPropertiesNoEvents)(propsWithoutId);
-      return /* @__PURE__ */ React15.createElement(_Dots.Dots, {
+      return /* @__PURE__ */ React17.createElement(_Dots.Dots, {
         points,
         dot,
         className: "recharts-line-dots",
@@ -120820,7 +120820,7 @@ var require_Line = __commonJS({
           });
         });
       }, [points]);
-      return /* @__PURE__ */ React15.createElement(_LabelList.CartesianLabelListContextProvider, {
+      return /* @__PURE__ */ React17.createElement(_LabelList.CartesianLabelListContextProvider, {
         value: showLabels ? labelListEntries : void 0
       }, children);
     }
@@ -120849,12 +120849,12 @@ var require_Line = __commonJS({
         connectNulls,
         strokeDasharray: strokeDasharray !== null && strokeDasharray !== void 0 ? strokeDasharray : props.strokeDasharray
       });
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, (points === null || points === void 0 ? void 0 : points.length) > 1 && /* @__PURE__ */ React15.createElement(_ActiveShapeUtils.Shape, _extends({
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, (points === null || points === void 0 ? void 0 : points.length) > 1 && /* @__PURE__ */ React17.createElement(_ActiveShapeUtils.Shape, _extends({
         shapeType: "curve",
         option: shape
       }, curveProps, {
         pathRef
-      })), /* @__PURE__ */ React15.createElement(LineDotsWrapper, {
+      })), /* @__PURE__ */ React17.createElement(LineDotsWrapper, {
         points,
         clipPathId,
         props
@@ -120912,10 +120912,10 @@ var require_Line = __commonJS({
         animationIdRef.current = animationId;
       }
       var startingPoint = startingPointRef.current;
-      return /* @__PURE__ */ React15.createElement(LineLabelListProvider, {
+      return /* @__PURE__ */ React17.createElement(LineLabelListProvider, {
         points,
         showLabels
-      }, props.children, /* @__PURE__ */ React15.createElement(_JavascriptAnimate.JavascriptAnimate, {
+      }, props.children, /* @__PURE__ */ React17.createElement(_JavascriptAnimate.JavascriptAnimate, {
         animationId,
         begin: animationBegin,
         duration: animationDuration,
@@ -120965,7 +120965,7 @@ var require_Line = __commonJS({
             });
           });
           previousPointsRef.current = stepData;
-          return /* @__PURE__ */ React15.createElement(StaticCurve, {
+          return /* @__PURE__ */ React17.createElement(StaticCurve, {
             props,
             points: stepData,
             clipPathId,
@@ -120973,14 +120973,14 @@ var require_Line = __commonJS({
             strokeDasharray: currentStrokeDasharray
           });
         }
-        return /* @__PURE__ */ React15.createElement(StaticCurve, {
+        return /* @__PURE__ */ React17.createElement(StaticCurve, {
           props,
           points,
           clipPathId,
           pathRef,
           strokeDasharray: currentStrokeDasharray
         });
-      }), /* @__PURE__ */ React15.createElement(_LabelList.LabelListFromLabelProp, {
+      }), /* @__PURE__ */ React17.createElement(_LabelList.LabelListFromLabelProp, {
         label: props.label
       }));
     }
@@ -120992,7 +120992,7 @@ var require_Line = __commonJS({
       var previousPointsRef = (0, _react.useRef)(null);
       var longestAnimatedLengthRef = (0, _react.useRef)(0);
       var pathRef = (0, _react.useRef)(null);
-      return /* @__PURE__ */ React15.createElement(CurveWithAnimation, {
+      return /* @__PURE__ */ React17.createElement(CurveWithAnimation, {
         props,
         clipPathId,
         previousPointsRef,
@@ -121039,31 +121039,31 @@ var require_Line = __commonJS({
         var clipDot = (0, _ReactUtils.isClipDot)(dot);
         var dotSize = r2 * 2 + strokeWidth;
         var activePointsClipPath = needClip ? "url(#clipPath-".concat(clipDot ? "" : "dots-").concat(clipPathId, ")") : void 0;
-        return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+        return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
           zIndex
-        }, /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+        }, /* @__PURE__ */ React17.createElement(_Layer.Layer, {
           className: layerClass
-        }, needClip && /* @__PURE__ */ React15.createElement("defs", null, /* @__PURE__ */ React15.createElement(_GraphicalItemClipPath.GraphicalItemClipPath, {
+        }, needClip && /* @__PURE__ */ React17.createElement("defs", null, /* @__PURE__ */ React17.createElement(_GraphicalItemClipPath.GraphicalItemClipPath, {
           clipPathId,
           xAxisId,
           yAxisId
-        }), !clipDot && /* @__PURE__ */ React15.createElement("clipPath", {
+        }), !clipDot && /* @__PURE__ */ React17.createElement("clipPath", {
           id: "clipPath-dots-".concat(clipPathId)
-        }, /* @__PURE__ */ React15.createElement("rect", {
+        }, /* @__PURE__ */ React17.createElement("rect", {
           x: left - dotSize / 2,
           y: top - dotSize / 2,
           width: width + dotSize,
           height: height + dotSize
-        }))), /* @__PURE__ */ React15.createElement(_ErrorBarContext.SetErrorBarContext, {
+        }))), /* @__PURE__ */ React17.createElement(_ErrorBarContext.SetErrorBarContext, {
           xAxisId,
           yAxisId,
           data: points,
           dataPointFormatter: errorBarDataPointFormatter,
           errorBarOffset: 0
-        }, /* @__PURE__ */ React15.createElement(RenderCurve, {
+        }, /* @__PURE__ */ React17.createElement(RenderCurve, {
           props: this.props,
           clipPathId
-        }))), /* @__PURE__ */ React15.createElement(_ActivePoints.ActivePoints, {
+        }))), /* @__PURE__ */ React17.createElement(_ActivePoints.ActivePoints, {
           activeDot: this.props.activeDot,
           points,
           mainColor: this.props.stroke,
@@ -121125,7 +121125,7 @@ var require_Line = __commonJS({
         x: left,
         y: top
       } = plotArea;
-      return /* @__PURE__ */ React15.createElement(LineWithState, _extends({}, everythingElse, {
+      return /* @__PURE__ */ React17.createElement(LineWithState, _extends({}, everythingElse, {
         id: id3,
         connectNulls,
         dot,
@@ -121200,12 +121200,12 @@ var require_Line = __commonJS({
     function LineFn(outsideProps) {
       var props = (0, _resolveDefaultProps2.resolveDefaultProps)(outsideProps, defaultLineProps);
       var isPanorama = (0, _PanoramaContext.useIsPanorama)();
-      return /* @__PURE__ */ React15.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
+      return /* @__PURE__ */ React17.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
         id: props.id,
         type: "line"
-      }, (id3) => /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(_SetLegendPayload.SetLegendPayload, {
+      }, (id3) => /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(_SetLegendPayload.SetLegendPayload, {
         legendPayload: computeLegendPayloadFromAreaData(props)
-      }), /* @__PURE__ */ React15.createElement(SetLineTooltipEntrySettings, {
+      }), /* @__PURE__ */ React17.createElement(SetLineTooltipEntrySettings, {
         dataKey: props.dataKey,
         data: props.data,
         stroke: props.stroke,
@@ -121216,7 +121216,7 @@ var require_Line = __commonJS({
         unit: props.unit,
         tooltipType: props.tooltipType,
         id: id3
-      }), /* @__PURE__ */ React15.createElement(_SetGraphicalItem.SetCartesianGraphicalItem, {
+      }), /* @__PURE__ */ React17.createElement(_SetGraphicalItem.SetCartesianGraphicalItem, {
         type: "line",
         id: id3,
         data: props.data,
@@ -121226,11 +121226,11 @@ var require_Line = __commonJS({
         dataKey: props.dataKey,
         hide: props.hide,
         isPanorama
-      }), /* @__PURE__ */ React15.createElement(LineImpl, _extends({}, props, {
+      }), /* @__PURE__ */ React17.createElement(LineImpl, _extends({}, props, {
         id: id3
       }))));
     }
-    var Line2 = exports2.Line = /* @__PURE__ */ React15.memo(LineFn, _propsAreEqual.propsAreEqual);
+    var Line2 = exports2.Line = /* @__PURE__ */ React17.memo(LineFn, _propsAreEqual.propsAreEqual);
     Line2.displayName = "Line";
   }
 });
@@ -121366,7 +121366,7 @@ var require_Area = __commonJS({
     exports2.computeArea = computeArea;
     exports2.getBaseValue = exports2.defaultAreaProps = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _Curve = require_Curve();
     var _Layer = require_Layer();
@@ -121499,7 +121499,7 @@ var require_Area = __commonJS({
         payload: props
       }];
     };
-    var SetAreaTooltipEntrySettings = /* @__PURE__ */ React15.memo((_ref) => {
+    var SetAreaTooltipEntrySettings = /* @__PURE__ */ React17.memo((_ref) => {
       var {
         dataKey,
         data,
@@ -121529,7 +121529,7 @@ var require_Area = __commonJS({
           graphicalItemId: id3
         }
       };
-      return /* @__PURE__ */ React15.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
+      return /* @__PURE__ */ React17.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
         tooltipEntrySettings
       });
     });
@@ -121545,7 +121545,7 @@ var require_Area = __commonJS({
         dataKey
       } = props;
       var areaProps = (0, _svgPropertiesNoEvents.svgPropertiesNoEvents)(props);
-      return /* @__PURE__ */ React15.createElement(_Dots.Dots, {
+      return /* @__PURE__ */ React17.createElement(_Dots.Dots, {
         points,
         dot,
         className: "recharts-area-dots",
@@ -121580,7 +121580,7 @@ var require_Area = __commonJS({
           fill: void 0
         });
       });
-      return /* @__PURE__ */ React15.createElement(_LabelList.CartesianLabelListContextProvider, {
+      return /* @__PURE__ */ React17.createElement(_LabelList.CartesianLabelListContextProvider, {
         value: showLabels ? labelListEntries : void 0
       }, children);
     }
@@ -121604,9 +121604,9 @@ var require_Area = __commonJS({
       } = props, propsWithoutId = _objectWithoutProperties(props, _excluded);
       var allOtherProps = (0, _svgPropertiesNoEvents.svgPropertiesNoEvents)(propsWithoutId);
       var propsWithEvents = (0, _svgPropertiesAndEvents.svgPropertiesAndEvents)(propsWithoutId);
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, (points === null || points === void 0 ? void 0 : points.length) > 1 && /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, (points === null || points === void 0 ? void 0 : points.length) > 1 && /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         clipPath: needClip ? "url(#clipPath-".concat(clipPathId, ")") : void 0
-      }, /* @__PURE__ */ React15.createElement(_Curve.Curve, _extends({}, propsWithEvents, {
+      }, /* @__PURE__ */ React17.createElement(_Curve.Curve, _extends({}, propsWithEvents, {
         id: id3,
         points,
         connectNulls,
@@ -121615,21 +121615,21 @@ var require_Area = __commonJS({
         layout: layout2,
         stroke: "none",
         className: "recharts-area-area"
-      })), stroke !== "none" && /* @__PURE__ */ React15.createElement(_Curve.Curve, _extends({}, allOtherProps, {
+      })), stroke !== "none" && /* @__PURE__ */ React17.createElement(_Curve.Curve, _extends({}, allOtherProps, {
         className: "recharts-area-curve",
         layout: layout2,
         type,
         connectNulls,
         fill: "none",
         points
-      })), stroke !== "none" && isRange && Array.isArray(baseLine) && /* @__PURE__ */ React15.createElement(_Curve.Curve, _extends({}, allOtherProps, {
+      })), stroke !== "none" && isRange && Array.isArray(baseLine) && /* @__PURE__ */ React17.createElement(_Curve.Curve, _extends({}, allOtherProps, {
         className: "recharts-area-curve",
         layout: layout2,
         type,
         connectNulls,
         fill: "none",
         points: baseLine
-      }))), /* @__PURE__ */ React15.createElement(AreaDotsWrapper, {
+      }))), /* @__PURE__ */ React17.createElement(AreaDotsWrapper, {
         points,
         props: propsWithoutId,
         clipPathId
@@ -121656,7 +121656,7 @@ var require_Area = __commonJS({
         maxX = Math.max(...baseLine.map((entry) => entry.x || 0), maxX);
       }
       if ((0, _DataUtils.isNumber)(maxX)) {
-        return /* @__PURE__ */ React15.createElement("rect", {
+        return /* @__PURE__ */ React17.createElement("rect", {
           x: 0,
           y: startY < endY ? startY : startY - height,
           width: maxX + (strokeWidth ? parseInt("".concat(strokeWidth), 10) : 1),
@@ -121686,7 +121686,7 @@ var require_Area = __commonJS({
         maxY = Math.max(...baseLine.map((entry) => entry.y || 0), maxY);
       }
       if ((0, _DataUtils.isNumber)(maxY)) {
-        return /* @__PURE__ */ React15.createElement("rect", {
+        return /* @__PURE__ */ React17.createElement("rect", {
           x: startX < endX ? startX : startX - width,
           y: 0,
           width,
@@ -121704,14 +121704,14 @@ var require_Area = __commonJS({
         strokeWidth
       } = _ref7;
       if (layout2 === "vertical") {
-        return /* @__PURE__ */ React15.createElement(VerticalRect, {
+        return /* @__PURE__ */ React17.createElement(VerticalRect, {
           alpha: alpha2,
           points,
           baseLine,
           strokeWidth
         });
       }
-      return /* @__PURE__ */ React15.createElement(HorizontalRect, {
+      return /* @__PURE__ */ React17.createElement(HorizontalRect, {
         alpha: alpha2,
         points,
         baseLine,
@@ -121761,10 +121761,10 @@ var require_Area = __commonJS({
       }
       var prevPoints = previousPointsRef.current;
       var prevBaseLine = previousBaselineRef.current;
-      return /* @__PURE__ */ React15.createElement(AreaLabelListProvider, {
+      return /* @__PURE__ */ React17.createElement(AreaLabelListProvider, {
         showLabels,
         points
-      }, props.children, /* @__PURE__ */ React15.createElement(_JavascriptAnimate.JavascriptAnimate, {
+      }, props.children, /* @__PURE__ */ React17.createElement(_JavascriptAnimate.JavascriptAnimate, {
         animationId,
         begin: animationBegin,
         duration: animationDuration,
@@ -121818,7 +121818,7 @@ var require_Area = __commonJS({
             previousPointsRef.current = stepPoints;
             previousBaselineRef.current = stepBaseLine;
           }
-          return /* @__PURE__ */ React15.createElement(StaticArea, {
+          return /* @__PURE__ */ React17.createElement(StaticArea, {
             points: stepPoints,
             baseLine: stepBaseLine,
             needClip,
@@ -121830,24 +121830,24 @@ var require_Area = __commonJS({
           previousPointsRef.current = points;
           previousBaselineRef.current = baseLine;
         }
-        return /* @__PURE__ */ React15.createElement(_Layer.Layer, null, isAnimationActive && /* @__PURE__ */ React15.createElement("defs", null, /* @__PURE__ */ React15.createElement("clipPath", {
+        return /* @__PURE__ */ React17.createElement(_Layer.Layer, null, isAnimationActive && /* @__PURE__ */ React17.createElement("defs", null, /* @__PURE__ */ React17.createElement("clipPath", {
           id: "animationClipPath-".concat(clipPathId)
-        }, /* @__PURE__ */ React15.createElement(ClipRect, {
+        }, /* @__PURE__ */ React17.createElement(ClipRect, {
           alpha: t,
           points,
           baseLine,
           layout: layout2,
           strokeWidth: props.strokeWidth
-        }))), /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+        }))), /* @__PURE__ */ React17.createElement(_Layer.Layer, {
           clipPath: "url(#animationClipPath-".concat(clipPathId, ")")
-        }, /* @__PURE__ */ React15.createElement(StaticArea, {
+        }, /* @__PURE__ */ React17.createElement(StaticArea, {
           points,
           baseLine,
           needClip,
           clipPathId,
           props
         })));
-      }), /* @__PURE__ */ React15.createElement(_LabelList.LabelListFromLabelProp, {
+      }), /* @__PURE__ */ React17.createElement(_LabelList.LabelListFromLabelProp, {
         label: props.label
       }));
     }
@@ -121859,7 +121859,7 @@ var require_Area = __commonJS({
       } = _ref9;
       var previousPointsRef = (0, _react.useRef)(null);
       var previousBaselineRef = (0, _react.useRef)();
-      return /* @__PURE__ */ React15.createElement(AreaWithAnimation, {
+      return /* @__PURE__ */ React17.createElement(AreaWithAnimation, {
         needClip,
         clipPathId,
         props,
@@ -121897,32 +121897,32 @@ var require_Area = __commonJS({
         var clipDot = (0, _ReactUtils.isClipDot)(dot);
         var dotSize = r2 * 2 + strokeWidth;
         var activePointsClipPath = needClip ? "url(#clipPath-".concat(clipDot ? "" : "dots-").concat(clipPathId, ")") : void 0;
-        return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+        return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
           zIndex
-        }, /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+        }, /* @__PURE__ */ React17.createElement(_Layer.Layer, {
           className: layerClass
-        }, needClip && /* @__PURE__ */ React15.createElement("defs", null, /* @__PURE__ */ React15.createElement(_GraphicalItemClipPath.GraphicalItemClipPath, {
+        }, needClip && /* @__PURE__ */ React17.createElement("defs", null, /* @__PURE__ */ React17.createElement(_GraphicalItemClipPath.GraphicalItemClipPath, {
           clipPathId,
           xAxisId,
           yAxisId
-        }), !clipDot && /* @__PURE__ */ React15.createElement("clipPath", {
+        }), !clipDot && /* @__PURE__ */ React17.createElement("clipPath", {
           id: "clipPath-dots-".concat(clipPathId)
-        }, /* @__PURE__ */ React15.createElement("rect", {
+        }, /* @__PURE__ */ React17.createElement("rect", {
           x: left - dotSize / 2,
           y: top - dotSize / 2,
           width: width + dotSize,
           height: height + dotSize
-        }))), /* @__PURE__ */ React15.createElement(RenderArea, {
+        }))), /* @__PURE__ */ React17.createElement(RenderArea, {
           needClip,
           clipPathId,
           props: this.props
-        })), /* @__PURE__ */ React15.createElement(_ActivePoints.ActivePoints, {
+        })), /* @__PURE__ */ React17.createElement(_ActivePoints.ActivePoints, {
           points,
           mainColor: getLegendItemColor(this.props.stroke, this.props.fill),
           itemDataKey: this.props.dataKey,
           activeDot: this.props.activeDot,
           clipPath: activePointsClipPath
-        }), this.props.isRange && Array.isArray(baseLine) && /* @__PURE__ */ React15.createElement(_ActivePoints.ActivePoints, {
+        }), this.props.isRange && Array.isArray(baseLine) && /* @__PURE__ */ React17.createElement(_ActivePoints.ActivePoints, {
           points: baseLine,
           mainColor: getLegendItemColor(this.props.stroke, this.props.fill),
           itemDataKey: this.props.dataKey,
@@ -121996,7 +121996,7 @@ var require_Area = __commonJS({
       if (!points || !points.length) {
         return null;
       }
-      return /* @__PURE__ */ React15.createElement(AreaWithState, _extends({}, everythingElse, {
+      return /* @__PURE__ */ React17.createElement(AreaWithState, _extends({}, everythingElse, {
         activeDot,
         animationBegin,
         animationDuration,
@@ -122146,12 +122146,12 @@ var require_Area = __commonJS({
     function AreaFn(outsideProps) {
       var props = (0, _resolveDefaultProps.resolveDefaultProps)(outsideProps, defaultAreaProps);
       var isPanorama = (0, _PanoramaContext.useIsPanorama)();
-      return /* @__PURE__ */ React15.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
+      return /* @__PURE__ */ React17.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
         id: props.id,
         type: "area"
-      }, (id3) => /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(_SetLegendPayload.SetLegendPayload, {
+      }, (id3) => /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(_SetLegendPayload.SetLegendPayload, {
         legendPayload: computeLegendPayloadFromAreaData(props)
-      }), /* @__PURE__ */ React15.createElement(SetAreaTooltipEntrySettings, {
+      }), /* @__PURE__ */ React17.createElement(SetAreaTooltipEntrySettings, {
         dataKey: props.dataKey,
         data: props.data,
         stroke: props.stroke,
@@ -122162,7 +122162,7 @@ var require_Area = __commonJS({
         unit: props.unit,
         tooltipType: props.tooltipType,
         id: id3
-      }), /* @__PURE__ */ React15.createElement(_SetGraphicalItem.SetCartesianGraphicalItem, {
+      }), /* @__PURE__ */ React17.createElement(_SetGraphicalItem.SetCartesianGraphicalItem, {
         type: "area",
         id: id3,
         data: props.data,
@@ -122176,11 +122176,11 @@ var require_Area = __commonJS({
         baseValue: props.baseValue,
         isPanorama,
         connectNulls: props.connectNulls
-      }), /* @__PURE__ */ React15.createElement(AreaImpl, _extends({}, props, {
+      }), /* @__PURE__ */ React17.createElement(AreaImpl, _extends({}, props, {
         id: id3
       }))));
     }
-    var Area2 = exports2.Area = /* @__PURE__ */ React15.memo(AreaFn, _propsAreEqual.propsAreEqual);
+    var Area2 = exports2.Area = /* @__PURE__ */ React17.memo(AreaFn, _propsAreEqual.propsAreEqual);
     Area2.displayName = "Area";
   }
 });
@@ -122215,7 +122215,7 @@ var require_BarUtils = __commonJS({
     });
     exports2.BarRectangle = BarRectangle;
     exports2.minPointSizeCallback = void 0;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _tinyInvariant = _interopRequireDefault(require_tiny_invariant_cjs());
     var _ActiveShapeUtils = require_ActiveShapeUtils();
     var _DataUtils = require_DataUtils();
@@ -122246,7 +122246,7 @@ var require_BarUtils = __commonJS({
       }, _extends.apply(null, arguments);
     }
     function BarRectangle(props) {
-      return /* @__PURE__ */ React15.createElement(_ActiveShapeUtils.Shape, _extends({
+      return /* @__PURE__ */ React17.createElement(_ActiveShapeUtils.Shape, _extends({
         shapeType: "rectangle",
         activeClassName: "recharts-active-bar",
         inActiveClassName: "recharts-inactive-bar"
@@ -122509,7 +122509,7 @@ var require_BarStack = __commonJS({
     });
     exports2.useStackId = exports2.useBarStackClipPathUrl = exports2.defaultBarStackProps = exports2.BarStackClipLayer = exports2.BarStack = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _ChartUtils = require_ChartUtils();
     var _useUniqueId = require_useUniqueId();
     var _resolveDefaultProps = require_resolveDefaultProps();
@@ -122595,7 +122595,7 @@ var require_BarStack = __commonJS({
         index
       } = _ref, rest = _objectWithoutProperties(_ref, _excluded);
       var clipPathUrl = useBarStackClipPathUrl(index);
-      return /* @__PURE__ */ React15.createElement(_Layer.Layer, _extends({
+      return /* @__PURE__ */ React17.createElement(_Layer.Layer, _extends({
         className: "recharts-bar-stack-layer",
         clipPath: clipPathUrl
       }, rest));
@@ -122611,15 +122611,15 @@ var require_BarStack = __commonJS({
       if (positions == null || positions.length === 0) {
         return null;
       }
-      return /* @__PURE__ */ React15.createElement("defs", null, positions.map((pos, index) => {
+      return /* @__PURE__ */ React17.createElement("defs", null, positions.map((pos, index) => {
         if (pos == null) {
           return null;
         }
         var clipPathId = getClipPathId(stackId, index);
-        return /* @__PURE__ */ React15.createElement("clipPath", {
+        return /* @__PURE__ */ React17.createElement("clipPath", {
           key: clipPathId,
           id: clipPathId
-        }, /* @__PURE__ */ React15.createElement(_Rectangle.Rectangle, {
+        }, /* @__PURE__ */ React17.createElement(_Rectangle.Rectangle, {
           isAnimationActive: false,
           isUpdateAnimationActive: false,
           x: pos.x,
@@ -122640,14 +122640,14 @@ var require_BarStack = __commonJS({
         stackId: resolvedStackId,
         radius
       }), [resolvedStackId, radius]);
-      return /* @__PURE__ */ React15.createElement(BarStackContext.Provider, {
+      return /* @__PURE__ */ React17.createElement(BarStackContext.Provider, {
         value: context
-      }, /* @__PURE__ */ React15.createElement(BarStackClipPath, {
+      }, /* @__PURE__ */ React17.createElement(BarStackClipPath, {
         stackId: resolvedStackId,
         radius
       }), children);
     };
-    var BarStack = exports2.BarStack = /* @__PURE__ */ React15.memo(BarStackImpl, _propsAreEqual.propsAreEqual);
+    var BarStack = exports2.BarStack = /* @__PURE__ */ React17.memo(BarStackImpl, _propsAreEqual.propsAreEqual);
   }
 });
 
@@ -122662,7 +122662,7 @@ var require_Bar = __commonJS({
     exports2.computeBarRectangles = computeBarRectangles;
     exports2.defaultBarProps = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _Layer = require_Layer();
     var _Cell = require_Cell();
@@ -122793,7 +122793,7 @@ var require_Bar = __commonJS({
         payload: props
       }];
     };
-    var SetBarTooltipEntrySettings = /* @__PURE__ */ React15.memo((_ref) => {
+    var SetBarTooltipEntrySettings = /* @__PURE__ */ React17.memo((_ref) => {
       var {
         dataKey,
         stroke,
@@ -122822,7 +122822,7 @@ var require_Bar = __commonJS({
           graphicalItemId: id3
         }
       };
-      return /* @__PURE__ */ React15.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
+      return /* @__PURE__ */ React17.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
         tooltipEntrySettings
       });
     });
@@ -122846,7 +122846,7 @@ var require_Bar = __commonJS({
         return null;
       }
       var backgroundProps = (0, _svgPropertiesNoEvents.svgPropertiesNoEventsFromUnknown)(backgroundFromProps);
-      return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex: (0, _getZIndexFromUnknown.getZIndexFromUnknown)(backgroundFromProps, _DefaultZIndexes.DefaultZIndexes.barBackground)
       }, data.map((entry, i) => {
         var {
@@ -122874,7 +122874,7 @@ var require_Bar = __commonJS({
           index: i,
           className: "recharts-bar-background-rectangle"
         });
-        return /* @__PURE__ */ React15.createElement(_BarUtils.BarRectangle, _extends({
+        return /* @__PURE__ */ React17.createElement(_BarUtils.BarRectangle, _extends({
           key: "background-bar-".concat(i)
         }, barRectangleProps));
       }));
@@ -122902,7 +122902,7 @@ var require_Bar = __commonJS({
           fill: entry.fill
         });
       });
-      return /* @__PURE__ */ React15.createElement(_LabelList.CartesianLabelListContextProvider, {
+      return /* @__PURE__ */ React17.createElement(_LabelList.CartesianLabelListContextProvider, {
         value: showLabels ? labelListEntries : void 0
       }, children);
     }
@@ -122951,7 +122951,7 @@ var require_Bar = __commonJS({
       } else {
         option = shape;
       }
-      var content = /* @__PURE__ */ React15.createElement(_BarUtils.BarRectangle, _extends({}, baseProps, {
+      var content = /* @__PURE__ */ React17.createElement(_BarUtils.BarRectangle, _extends({}, baseProps, {
         name: String(baseProps.name)
       }, entry, {
         isActive: isVisuallyActive,
@@ -122961,9 +122961,9 @@ var require_Bar = __commonJS({
         onTransitionEnd: handleTransitionEnd
       }));
       if (shouldRenderInLayer) {
-        return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+        return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
           zIndex: _DefaultZIndexes.DefaultZIndexes.activeBar
-        }, /* @__PURE__ */ React15.createElement(_BarStack.BarStackClipLayer, {
+        }, /* @__PURE__ */ React17.createElement(_BarStack.BarStackClipLayer, {
           index: entry.originalDataIndex
         }, content));
       }
@@ -122977,7 +122977,7 @@ var require_Bar = __commonJS({
         index,
         dataKey
       } = props;
-      return /* @__PURE__ */ React15.createElement(_BarUtils.BarRectangle, _extends({}, baseProps, {
+      return /* @__PURE__ */ React17.createElement(_BarUtils.BarRectangle, _extends({}, baseProps, {
         name: String(baseProps.name)
       }, entry, {
         isActive: false,
@@ -123011,8 +123011,8 @@ var require_Bar = __commonJS({
       if (!data) {
         return null;
       }
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, data.map((entry, i) => {
-        return /* @__PURE__ */ React15.createElement(_BarStack.BarStackClipLayer, _extends({
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, data.map((entry, i) => {
+        return /* @__PURE__ */ React17.createElement(_BarStack.BarStackClipLayer, _extends({
           index: entry.originalDataIndex,
           key: "rectangle-".concat(entry === null || entry === void 0 ? void 0 : entry.x, "-").concat(entry === null || entry === void 0 ? void 0 : entry.y, "-").concat(entry === null || entry === void 0 ? void 0 : entry.value, "-").concat(i),
           className: "recharts-bar-rectangle"
@@ -123020,7 +123020,7 @@ var require_Bar = __commonJS({
           onMouseEnter: onMouseEnterFromContext(entry, i),
           onMouseLeave: onMouseLeaveFromContext(entry, i),
           onClick: onClickFromContext(entry, i)
-        }), activeBar ? /* @__PURE__ */ React15.createElement(BarRectangleWithActiveState, {
+        }), activeBar ? /* @__PURE__ */ React17.createElement(BarRectangleWithActiveState, {
           shape,
           activeBar,
           baseProps,
@@ -123037,7 +123037,7 @@ var require_Bar = __commonJS({
            * and can skip the tree reconciliation for its children too.
            * Because we can't call hooks conditionally, we need to have a separate component for that.
            */
-          /* @__PURE__ */ React15.createElement(BarRectangleNeverActive, {
+          /* @__PURE__ */ React17.createElement(BarRectangleNeverActive, {
             shape,
             baseProps,
             entry,
@@ -123078,10 +123078,10 @@ var require_Bar = __commonJS({
         }
         setIsAnimating(true);
       }, [onAnimationStart]);
-      return /* @__PURE__ */ React15.createElement(BarLabelListProvider, {
+      return /* @__PURE__ */ React17.createElement(BarLabelListProvider, {
         showLabels,
         rects: data
-      }, /* @__PURE__ */ React15.createElement(_JavascriptAnimate.JavascriptAnimate, {
+      }, /* @__PURE__ */ React17.createElement(_JavascriptAnimate.JavascriptAnimate, {
         animationId,
         begin: animationBegin,
         duration: animationDuration,
@@ -123122,17 +123122,17 @@ var require_Bar = __commonJS({
         if (stepData == null) {
           return null;
         }
-        return /* @__PURE__ */ React15.createElement(_Layer.Layer, null, /* @__PURE__ */ React15.createElement(BarRectangles, {
+        return /* @__PURE__ */ React17.createElement(_Layer.Layer, null, /* @__PURE__ */ React17.createElement(BarRectangles, {
           props,
           data: stepData
         }));
-      }), /* @__PURE__ */ React15.createElement(_LabelList.LabelListFromLabelProp, {
+      }), /* @__PURE__ */ React17.createElement(_LabelList.LabelListFromLabelProp, {
         label: props.label
       }), props.children);
     }
     function RenderRectangles(props) {
       var previousRectanglesRef = (0, _react.useRef)(null);
-      return /* @__PURE__ */ React15.createElement(RectanglesWithAnimation, {
+      return /* @__PURE__ */ React17.createElement(RectanglesWithAnimation, {
         previousRectanglesRef,
         props
       });
@@ -123166,22 +123166,22 @@ var require_Bar = __commonJS({
         }
         var layerClass = (0, _clsx.clsx)("recharts-bar", className);
         var clipPathId = id3;
-        return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+        return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
           className: layerClass,
           id: id3
-        }, needClip && /* @__PURE__ */ React15.createElement("defs", null, /* @__PURE__ */ React15.createElement(_GraphicalItemClipPath.GraphicalItemClipPath, {
+        }, needClip && /* @__PURE__ */ React17.createElement("defs", null, /* @__PURE__ */ React17.createElement(_GraphicalItemClipPath.GraphicalItemClipPath, {
           clipPathId,
           xAxisId,
           yAxisId
-        })), /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+        })), /* @__PURE__ */ React17.createElement(_Layer.Layer, {
           className: "recharts-bar-rectangles",
           clipPath: needClip ? "url(#clipPath-".concat(clipPathId, ")") : void 0
-        }, /* @__PURE__ */ React15.createElement(BarBackground, {
+        }, /* @__PURE__ */ React17.createElement(BarBackground, {
           data,
           dataKey,
           background,
           allOtherBarProps: this.props
-        }), /* @__PURE__ */ React15.createElement(RenderRectangles, this.props)));
+        }), /* @__PURE__ */ React17.createElement(RenderRectangles, this.props)));
       }
     };
     var defaultBarProps = exports2.defaultBarProps = {
@@ -123229,13 +123229,13 @@ var require_Bar = __commonJS({
       } else {
         errorBarOffset = layout2 === "vertical" ? firstDataPoint.height / 2 : firstDataPoint.width / 2;
       }
-      return /* @__PURE__ */ React15.createElement(_ErrorBarContext.SetErrorBarContext, {
+      return /* @__PURE__ */ React17.createElement(_ErrorBarContext.SetErrorBarContext, {
         xAxisId,
         yAxisId,
         data: rects,
         dataPointFormatter: errorBarDataPointFormatter,
         errorBarOffset
-      }, /* @__PURE__ */ React15.createElement(BarWithState, _extends({}, props, {
+      }, /* @__PURE__ */ React17.createElement(BarWithState, _extends({}, props, {
         layout: layout2,
         needClip,
         data: rects,
@@ -123377,12 +123377,12 @@ var require_Bar = __commonJS({
       var props = (0, _resolveDefaultProps.resolveDefaultProps)(outsideProps, defaultBarProps);
       var stackId = (0, _BarStack.useStackId)(props.stackId);
       var isPanorama = (0, _PanoramaContext.useIsPanorama)();
-      return /* @__PURE__ */ React15.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
+      return /* @__PURE__ */ React17.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
         id: props.id,
         type: "bar"
-      }, (id3) => /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(_SetLegendPayload.SetLegendPayload, {
+      }, (id3) => /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(_SetLegendPayload.SetLegendPayload, {
         legendPayload: computeLegendPayloadFromBarData(props)
-      }), /* @__PURE__ */ React15.createElement(SetBarTooltipEntrySettings, {
+      }), /* @__PURE__ */ React17.createElement(SetBarTooltipEntrySettings, {
         dataKey: props.dataKey,
         stroke: props.stroke,
         strokeWidth: props.strokeWidth,
@@ -123392,7 +123392,7 @@ var require_Bar = __commonJS({
         unit: props.unit,
         tooltipType: props.tooltipType,
         id: id3
-      }), /* @__PURE__ */ React15.createElement(_SetGraphicalItem.SetCartesianGraphicalItem, {
+      }), /* @__PURE__ */ React17.createElement(_SetGraphicalItem.SetCartesianGraphicalItem, {
         type: "bar",
         id: id3,
         data: void 0,
@@ -123407,13 +123407,13 @@ var require_Bar = __commonJS({
         maxBarSize: props.maxBarSize,
         isPanorama,
         hasCustomShape: props.shape != null
-      }), /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      }), /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex: props.zIndex
-      }, /* @__PURE__ */ React15.createElement(BarImpl, _extends({}, props, {
+      }, /* @__PURE__ */ React17.createElement(BarImpl, _extends({}, props, {
         id: id3
       })))));
     }
-    var Bar2 = exports2.Bar = /* @__PURE__ */ React15.memo(BarFn, _propsAreEqual.propsAreEqual);
+    var Bar2 = exports2.Bar = /* @__PURE__ */ React17.memo(BarFn, _propsAreEqual.propsAreEqual);
     Bar2.displayName = "Bar";
   }
 });
@@ -123426,7 +123426,7 @@ var require_ScatterUtils = __commonJS({
       value: true
     });
     exports2.ScatterSymbol = ScatterSymbol;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _Symbols = require_Symbols();
     var _ActiveShapeUtils = require_ActiveShapeUtils();
     var _Constants = require_Constants();
@@ -123478,15 +123478,15 @@ var require_ScatterUtils = __commonJS({
         isActive
       } = _ref, props = _objectWithoutProperties(_ref, _excluded);
       if (typeof option === "string") {
-        return /* @__PURE__ */ React15.createElement(_ActiveShapeUtils.Shape, _extends({
-          option: /* @__PURE__ */ React15.createElement(_Symbols.Symbols, _extends({
+        return /* @__PURE__ */ React17.createElement(_ActiveShapeUtils.Shape, _extends({
+          option: /* @__PURE__ */ React17.createElement(_Symbols.Symbols, _extends({
             type: option
           }, props)),
           isActive,
           shapeType: "symbols"
         }, props));
       }
-      return /* @__PURE__ */ React15.createElement(_ActiveShapeUtils.Shape, _extends({
+      return /* @__PURE__ */ React17.createElement(_ActiveShapeUtils.Shape, _extends({
         option,
         isActive,
         shapeType: "symbols"
@@ -123561,7 +123561,7 @@ var require_Scatter = __commonJS({
     exports2.computeScatterPoints = computeScatterPoints;
     exports2.defaultScatterProps = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _Layer = require_Layer();
     var _LabelList = require_LabelList();
@@ -123692,7 +123692,7 @@ var require_Scatter = __commonJS({
         payload: props
       }];
     };
-    var SetScatterTooltipEntrySettings = /* @__PURE__ */ React15.memo((_ref) => {
+    var SetScatterTooltipEntrySettings = /* @__PURE__ */ React17.memo((_ref) => {
       var {
         dataKey,
         points,
@@ -123725,7 +123725,7 @@ var require_Scatter = __commonJS({
           graphicalItemId: id3
         }
       };
-      return /* @__PURE__ */ React15.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
+      return /* @__PURE__ */ React17.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
         tooltipEntrySettings
       });
     });
@@ -123778,16 +123778,16 @@ var require_Scatter = __commonJS({
         // @ts-expect-error linePoints is used before it is assigned (???)
         points: linePoints
       });
-      if (/* @__PURE__ */ React15.isValidElement(line)) {
-        lineItem = /* @__PURE__ */ React15.cloneElement(line, lineProps);
+      if (/* @__PURE__ */ React17.isValidElement(line)) {
+        lineItem = /* @__PURE__ */ React17.cloneElement(line, lineProps);
       } else if (typeof line === "function") {
         lineItem = line(lineProps);
       } else {
-        lineItem = /* @__PURE__ */ React15.createElement(_Curve.Curve, _extends({}, lineProps, {
+        lineItem = /* @__PURE__ */ React17.createElement(_Curve.Curve, _extends({}, lineProps, {
           type: lineJointType
         }));
       }
-      return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: "recharts-scatter-line",
         key: "recharts-scatter-line"
       }, lineItem);
@@ -123832,7 +123832,7 @@ var require_Scatter = __commonJS({
           });
         });
       }, [chartViewBox, points]);
-      return /* @__PURE__ */ React15.createElement(_LabelList.CartesianLabelListContextProvider, {
+      return /* @__PURE__ */ React17.createElement(_LabelList.CartesianLabelListContextProvider, {
         value: showLabels ? labelListEntries : void 0
       }, children);
     }
@@ -123862,7 +123862,7 @@ var require_Scatter = __commonJS({
         return null;
       }
       var baseProps = (0, _svgPropertiesNoEvents.svgPropertiesNoEvents)(allOtherPropsWithoutId);
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(ScatterLine, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(ScatterLine, {
         points,
         props: allOtherPropsWithoutId
       }), points.map((entry, i) => {
@@ -123873,16 +123873,16 @@ var require_Scatter = __commonJS({
           index: i,
           [_Constants.DATA_ITEM_GRAPHICAL_ITEM_ID_ATTRIBUTE_NAME]: String(id3)
         });
-        return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+        return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
           key: "symbol-".concat(entry === null || entry === void 0 ? void 0 : entry.cx, "-").concat(entry === null || entry === void 0 ? void 0 : entry.cy, "-").concat(entry === null || entry === void 0 ? void 0 : entry.size, "-").concat(i),
           zIndex: isActive ? _DefaultZIndexes.DefaultZIndexes.activeDot : void 0
-        }, /* @__PURE__ */ React15.createElement(_Layer.Layer, _extends({
+        }, /* @__PURE__ */ React17.createElement(_Layer.Layer, _extends({
           className: "recharts-scatter-symbol"
         }, (0, _types.adaptEventsOfChild)(restOfAllOtherProps, entry, i), {
           onMouseEnter: onMouseEnterFromContext(entry, i),
           onMouseLeave: onMouseLeaveFromContext(entry, i),
           onClick: onClickFromContext(entry, i)
-        }), /* @__PURE__ */ React15.createElement(_ScatterUtils.ScatterSymbol, _extends({
+        }), /* @__PURE__ */ React17.createElement(_ScatterUtils.ScatterSymbol, _extends({
           option,
           isActive
         }, symbolProps))));
@@ -123910,10 +123910,10 @@ var require_Scatter = __commonJS({
         setIsAnimating(true);
       }, []);
       var showLabels = !isAnimating;
-      return /* @__PURE__ */ React15.createElement(ScatterLabelListProvider, {
+      return /* @__PURE__ */ React17.createElement(ScatterLabelListProvider, {
         showLabels,
         points
-      }, props.children, /* @__PURE__ */ React15.createElement(_JavascriptAnimate.JavascriptAnimate, {
+      }, props.children, /* @__PURE__ */ React17.createElement(_JavascriptAnimate.JavascriptAnimate, {
         animationId,
         begin: animationBegin,
         duration: animationDuration,
@@ -123939,12 +123939,12 @@ var require_Scatter = __commonJS({
         if (t > 0) {
           previousPointsRef.current = stepData;
         }
-        return /* @__PURE__ */ React15.createElement(_Layer.Layer, null, /* @__PURE__ */ React15.createElement(ScatterSymbols, {
+        return /* @__PURE__ */ React17.createElement(_Layer.Layer, null, /* @__PURE__ */ React17.createElement(ScatterSymbols, {
           points: stepData,
           allOtherScatterProps: props,
           showLabels
         }));
-      }), /* @__PURE__ */ React15.createElement(_LabelList.LabelListFromLabelProp, {
+      }), /* @__PURE__ */ React17.createElement(_LabelList.LabelListFromLabelProp, {
         label: props.label
       }));
     }
@@ -124067,25 +124067,25 @@ var require_Scatter = __commonJS({
       }
       var layerClass = (0, _clsx.clsx)("recharts-scatter", className);
       var clipPathId = id3;
-      return /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      return /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex: props.zIndex
-      }, /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      }, /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: layerClass,
         clipPath: needClip ? "url(#clipPath-".concat(clipPathId, ")") : void 0,
         id: id3
-      }, needClip && /* @__PURE__ */ React15.createElement("defs", null, /* @__PURE__ */ React15.createElement(_GraphicalItemClipPath.GraphicalItemClipPath, {
+      }, needClip && /* @__PURE__ */ React17.createElement("defs", null, /* @__PURE__ */ React17.createElement(_GraphicalItemClipPath.GraphicalItemClipPath, {
         clipPathId,
         xAxisId,
         yAxisId
-      })), /* @__PURE__ */ React15.createElement(_ErrorBarContext.SetErrorBarContext, {
+      })), /* @__PURE__ */ React17.createElement(_ErrorBarContext.SetErrorBarContext, {
         xAxisId,
         yAxisId,
         data: points,
         dataPointFormatter: errorBarDataPointFormatter,
         errorBarOffset: 0
-      }, /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      }, /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         key: "recharts-scatter-symbols"
-      }, /* @__PURE__ */ React15.createElement(SymbolsWithAnimation, {
+      }, /* @__PURE__ */ React17.createElement(SymbolsWithAnimation, {
         props,
         previousPointsRef
       })))));
@@ -124136,7 +124136,7 @@ var require_Scatter = __commonJS({
       if (points == null) {
         return null;
       }
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(SetScatterTooltipEntrySettings, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(SetScatterTooltipEntrySettings, {
         dataKey: props.dataKey,
         points,
         stroke: props.stroke,
@@ -124146,7 +124146,7 @@ var require_Scatter = __commonJS({
         hide: props.hide,
         tooltipType: props.tooltipType,
         id: props.id
-      }), /* @__PURE__ */ React15.createElement(ScatterWithId, _extends({}, everythingElse, {
+      }), /* @__PURE__ */ React17.createElement(ScatterWithId, _extends({}, everythingElse, {
         xAxisId,
         yAxisId,
         zAxisId,
@@ -124166,12 +124166,12 @@ var require_Scatter = __commonJS({
     function ScatterFn(outsideProps) {
       var props = (0, _resolveDefaultProps2.resolveDefaultProps)(outsideProps, defaultScatterProps);
       var isPanorama = (0, _PanoramaContext.useIsPanorama)();
-      return /* @__PURE__ */ React15.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
+      return /* @__PURE__ */ React17.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
         id: props.id,
         type: "scatter"
-      }, (id3) => /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(_SetLegendPayload.SetLegendPayload, {
+      }, (id3) => /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(_SetLegendPayload.SetLegendPayload, {
         legendPayload: computeLegendPayloadFromScatterProps(props)
-      }), /* @__PURE__ */ React15.createElement(_SetGraphicalItem.SetCartesianGraphicalItem, {
+      }), /* @__PURE__ */ React17.createElement(_SetGraphicalItem.SetCartesianGraphicalItem, {
         type: "scatter",
         id: id3,
         data: props.data,
@@ -124183,11 +124183,11 @@ var require_Scatter = __commonJS({
         name: props.name,
         tooltipType: props.tooltipType,
         isPanorama
-      }), /* @__PURE__ */ React15.createElement(ScatterImpl, _extends({}, props, {
+      }), /* @__PURE__ */ React17.createElement(ScatterImpl, _extends({}, props, {
         id: id3
       }))));
     }
-    var Scatter = exports2.Scatter = /* @__PURE__ */ React15.memo(ScatterFn, _propsAreEqual.propsAreEqual);
+    var Scatter = exports2.Scatter = /* @__PURE__ */ React17.memo(ScatterFn, _propsAreEqual.propsAreEqual);
     Scatter.displayName = "Scatter";
   }
 });
@@ -124262,7 +124262,7 @@ var require_XAxis = __commonJS({
     });
     exports2.xAxisDefaultProps = exports2.XAxis = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _CartesianAxis = require_CartesianAxis();
     var _hooks = require_hooks();
@@ -124420,7 +124420,7 @@ var require_XAxis = __commonJS({
         id: id3,
         scale: del2
       } = synchronizedSettings, restSynchronizedSettings = _objectWithoutProperties(synchronizedSettings, _excluded3);
-      return /* @__PURE__ */ React15.createElement(_CartesianAxis.CartesianAxis, _extends({}, allOtherProps, restSynchronizedSettings, {
+      return /* @__PURE__ */ React17.createElement(_CartesianAxis.CartesianAxis, _extends({}, allOtherProps, restSynchronizedSettings, {
         x: position.x,
         y: position.y,
         width: axisSize.width,
@@ -124459,7 +124459,7 @@ var require_XAxis = __commonJS({
     };
     var XAxisSettingsDispatcher = (outsideProps) => {
       var props = (0, _resolveDefaultProps.resolveDefaultProps)(outsideProps, xAxisDefaultProps);
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(SetXAxisSettings, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(SetXAxisSettings, {
         allowDataOverflow: props.allowDataOverflow,
         allowDecimals: props.allowDecimals,
         allowDuplicatedCategory: props.allowDuplicatedCategory,
@@ -124485,9 +124485,9 @@ var require_XAxis = __commonJS({
         type: props.type,
         unit: props.unit,
         niceTicks: props.niceTicks
-      }), /* @__PURE__ */ React15.createElement(XAxisImpl, props));
+      }), /* @__PURE__ */ React17.createElement(XAxisImpl, props));
     };
-    var XAxis2 = exports2.XAxis = /* @__PURE__ */ React15.memo(XAxisSettingsDispatcher, _axisPropsAreEqual.axisPropsAreEqual);
+    var XAxis2 = exports2.XAxis = /* @__PURE__ */ React17.memo(XAxisSettingsDispatcher, _axisPropsAreEqual.axisPropsAreEqual);
     XAxis2.displayName = "XAxis";
   }
 });
@@ -124501,7 +124501,7 @@ var require_YAxis = __commonJS({
     });
     exports2.yAxisDefaultProps = exports2.YAxis = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _CartesianAxis = require_CartesianAxis();
     var _cartesianAxisSlice = require_cartesianAxisSlice();
@@ -124692,7 +124692,7 @@ var require_YAxis = __commonJS({
         id: id3,
         scale: del2
       } = synchronizedSettings, restSynchronizedSettings = _objectWithoutProperties(synchronizedSettings, _excluded3);
-      return /* @__PURE__ */ React15.createElement(_CartesianAxis.CartesianAxis, _extends({}, allOtherProps, restSynchronizedSettings, {
+      return /* @__PURE__ */ React17.createElement(_CartesianAxis.CartesianAxis, _extends({}, allOtherProps, restSynchronizedSettings, {
         ref: cartesianAxisRef,
         labelRef,
         x: position.x,
@@ -124738,7 +124738,7 @@ var require_YAxis = __commonJS({
     };
     var YAxisSettingsDispatcher = (outsideProps) => {
       var props = (0, _resolveDefaultProps.resolveDefaultProps)(outsideProps, yAxisDefaultProps);
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(SetYAxisSettings, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(SetYAxisSettings, {
         interval: props.interval,
         id: props.yAxisId,
         scale: props.scale,
@@ -124764,9 +124764,9 @@ var require_YAxis = __commonJS({
         tick: props.tick,
         tickFormatter: props.tickFormatter,
         niceTicks: props.niceTicks
-      }), /* @__PURE__ */ React15.createElement(YAxisImpl, props));
+      }), /* @__PURE__ */ React17.createElement(YAxisImpl, props));
     };
-    var YAxis2 = exports2.YAxis = /* @__PURE__ */ React15.memo(YAxisSettingsDispatcher, _axisPropsAreEqual.axisPropsAreEqual);
+    var YAxis2 = exports2.YAxis = /* @__PURE__ */ React17.memo(YAxisSettingsDispatcher, _axisPropsAreEqual.axisPropsAreEqual);
     YAxis2.displayName = "YAxis";
   }
 });
@@ -124781,7 +124781,7 @@ var require_ZAxis = __commonJS({
     exports2.ZAxis = ZAxis;
     exports2.zAxisDefaultProps = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _cartesianAxisSlice = require_cartesianAxisSlice();
     var _hooks = require_hooks();
     var _axisSelectors = require_axisSelectors();
@@ -124832,7 +124832,7 @@ var require_ZAxis = __commonJS({
     };
     function ZAxis(outsideProps) {
       var props = (0, _resolveDefaultProps.resolveDefaultProps)(outsideProps, zAxisDefaultProps);
-      return /* @__PURE__ */ React15.createElement(SetZAxisSettings, {
+      return /* @__PURE__ */ React17.createElement(SetZAxisSettings, {
         domain: props.domain,
         id: props.zAxisId,
         dataKey: props.dataKey,
@@ -124955,7 +124955,7 @@ var require_ErrorBar = __commonJS({
     });
     exports2.ErrorBar = ErrorBar;
     exports2.errorBarDefaultProps = void 0;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _Layer = require_Layer();
     var _ErrorBarContext = require_ErrorBarContext();
     var _hooks = require_hooks2();
@@ -125154,14 +125154,14 @@ var require_ErrorBar = __commonJS({
         }
         var scaleDirection = direction === "x" ? "scaleX" : "scaleY";
         var transformOrigin = "".concat(x + offset, "px ").concat(y + offset, "px");
-        return /* @__PURE__ */ React15.createElement(_Layer.Layer, _extends({
+        return /* @__PURE__ */ React17.createElement(_Layer.Layer, _extends({
           className: "recharts-errorBar",
           key: "bar-".concat(x, "-").concat(y, "-").concat(value, "-").concat(dataIndex)
         }, svgProps), lineCoordinates.map((c, lineIndex) => {
           var lineStyle = isAnimationActive ? {
             transformOrigin
           } : void 0;
-          return /* @__PURE__ */ React15.createElement(_CSSTransitionAnimate.CSSTransitionAnimate, {
+          return /* @__PURE__ */ React17.createElement(_CSSTransitionAnimate.CSSTransitionAnimate, {
             animationId: "error-bar-".concat(direction, "_").concat(c.x1, "-").concat(c.x2, "-").concat(c.y1, "-").concat(c.y2),
             from: "".concat(scaleDirection, "(0)"),
             to: "".concat(scaleDirection, "(1)"),
@@ -125171,12 +125171,12 @@ var require_ErrorBar = __commonJS({
             isActive: isAnimationActive,
             duration: animationDuration,
             key: "errorbar-".concat(dataIndex, "-").concat(c.x1, "-").concat(c.y1, "-").concat(c.x2, "-").concat(c.y2, "-").concat(lineIndex)
-          }, (style) => /* @__PURE__ */ React15.createElement("line", _extends({}, c, {
+          }, (style) => /* @__PURE__ */ React17.createElement("line", _extends({}, c, {
             style: _objectSpread(_objectSpread({}, lineStyle), style)
           })));
         }));
       });
-      return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: "recharts-errorBars"
       }, errorBars);
     }
@@ -125212,12 +125212,12 @@ var require_ErrorBar = __commonJS({
         animationEasing,
         zIndex
       } = props;
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(_ErrorBarContext.ReportErrorBarSettings, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(_ErrorBarContext.ReportErrorBarSettings, {
         dataKey: props.dataKey,
         direction: realDirection
-      }), /* @__PURE__ */ React15.createElement(_ZIndexLayer.ZIndexLayer, {
+      }), /* @__PURE__ */ React17.createElement(_ZIndexLayer.ZIndexLayer, {
         zIndex
-      }, /* @__PURE__ */ React15.createElement(ErrorBarImpl, _extends({}, props, {
+      }, /* @__PURE__ */ React17.createElement(ErrorBarImpl, _extends({}, props, {
         direction: realDirection,
         width,
         isAnimationActive,
@@ -126114,7 +126114,7 @@ var require_RechartsStoreProvider = __commonJS({
     });
     exports2.RechartsStoreProvider = RechartsStoreProvider;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _reactRedux = require_cjs2();
     var _store = require_store();
     var _PanoramaContext = require_PanoramaContext();
@@ -126148,7 +126148,7 @@ var require_RechartsStoreProvider = __commonJS({
         storeRef.current = (0, _store.createRechartsStore)(preloadedState, reduxStoreName);
       }
       var nonNullContext = _RechartsReduxContext.RechartsReduxContext;
-      return /* @__PURE__ */ React15.createElement(_reactRedux.Provider, {
+      return /* @__PURE__ */ React17.createElement(_reactRedux.Provider, {
         context: nonNullContext,
         store: storeRef.current
       }, children);
@@ -126241,7 +126241,7 @@ var require_ZIndexPortal = __commonJS({
     });
     exports2.AllZIndexPortals = AllZIndexPortals;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _hooks = require_hooks();
     var _zIndexSlice = require_zIndexSlice();
     var _zIndexSelectors = require_zIndexSelectors();
@@ -126281,7 +126281,7 @@ var require_ZIndexPortal = __commonJS({
           }));
         };
       }, [dispatch, zIndex, isPanorama]);
-      return /* @__PURE__ */ React15.createElement("g", {
+      return /* @__PURE__ */ React17.createElement("g", {
         tabIndex: -1,
         ref,
         className: "recharts-zIndex-layer_".concat(zIndex)
@@ -126298,11 +126298,11 @@ var require_ZIndexPortal = __commonJS({
       }
       var allNegativeZIndexes = allRegisteredZIndexes.filter((zIndex) => zIndex < 0);
       var allPositiveZIndexes = allRegisteredZIndexes.filter((zIndex) => zIndex > 0);
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, allNegativeZIndexes.map((zIndex) => /* @__PURE__ */ React15.createElement(ZIndexSvgPortal, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, allNegativeZIndexes.map((zIndex) => /* @__PURE__ */ React17.createElement(ZIndexSvgPortal, {
         key: zIndex,
         zIndex,
         isPanorama
-      })), children, allPositiveZIndexes.map((zIndex) => /* @__PURE__ */ React15.createElement(ZIndexSvgPortal, {
+      })), children, allPositiveZIndexes.map((zIndex) => /* @__PURE__ */ React17.createElement(ZIndexSvgPortal, {
         key: zIndex,
         zIndex,
         isPanorama
@@ -126320,7 +126320,7 @@ var require_RootSurface = __commonJS({
     });
     exports2.RootSurface = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _chartLayoutContext = require_chartLayoutContext();
     var _accessibilityContext = require_accessibilityContext();
     var _PanoramaContext = require_PanoramaContext();
@@ -126411,7 +126411,7 @@ var require_RootSurface = __commonJS({
           role = hasAccessibilityLayer ? "application" : void 0;
         }
       }
-      return /* @__PURE__ */ React15.createElement(_Surface.Surface, _extends({}, otherAttributes, {
+      return /* @__PURE__ */ React17.createElement(_Surface.Surface, _extends({}, otherAttributes, {
         title,
         desc,
         role,
@@ -126436,7 +126436,7 @@ var require_RootSurface = __commonJS({
         y,
         x
       } = brushDimensions;
-      return /* @__PURE__ */ React15.createElement(_Surface.Surface, {
+      return /* @__PURE__ */ React17.createElement(_Surface.Surface, {
         width,
         height,
         x,
@@ -126449,13 +126449,13 @@ var require_RootSurface = __commonJS({
       } = _ref2, rest = _objectWithoutProperties(_ref2, _excluded);
       var isPanorama = (0, _PanoramaContext.useIsPanorama)();
       if (isPanorama) {
-        return /* @__PURE__ */ React15.createElement(BrushPanoramaSurface, null, /* @__PURE__ */ React15.createElement(_ZIndexPortal.AllZIndexPortals, {
+        return /* @__PURE__ */ React17.createElement(BrushPanoramaSurface, null, /* @__PURE__ */ React17.createElement(_ZIndexPortal.AllZIndexPortals, {
           isPanorama: true
         }, children));
       }
-      return /* @__PURE__ */ React15.createElement(MainChartSurface, _extends({
+      return /* @__PURE__ */ React17.createElement(MainChartSurface, _extends({
         ref
-      }, rest), /* @__PURE__ */ React15.createElement(_ZIndexPortal.AllZIndexPortals, {
+      }, rest), /* @__PURE__ */ React17.createElement(_ZIndexPortal.AllZIndexPortals, {
         isPanorama: false
       }, children));
     });
@@ -126503,7 +126503,7 @@ var require_RechartsWrapper = __commonJS({
     });
     exports2.RechartsWrapper = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _clsx = require_clsx();
     var _tooltipSlice = require_tooltipSlice();
     var _hooks = require_hooks();
@@ -126652,10 +126652,10 @@ var require_RechartsWrapper = __commonJS({
           }
         };
       }, [setContainerSize]);
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(_chartLayoutContext.ReportChartSize, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(_chartLayoutContext.ReportChartSize, {
         width: sizes.containerWidth,
         height: sizes.containerHeight
-      }), /* @__PURE__ */ React15.createElement("div", _extends({
+      }), /* @__PURE__ */ React17.createElement("div", _extends({
         ref: innerRef
       }, props)));
     });
@@ -126693,10 +126693,10 @@ var require_RechartsWrapper = __commonJS({
           setContainerSize(containerWidth, containerHeight);
         }
       }, [ref, setContainerSize]);
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(_chartLayoutContext.ReportChartSize, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(_chartLayoutContext.ReportChartSize, {
         width: sizes.containerWidth,
         height: sizes.containerHeight
-      }), /* @__PURE__ */ React15.createElement("div", _extends({
+      }), /* @__PURE__ */ React17.createElement("div", _extends({
         ref: innerRef
       }, props)));
     });
@@ -126705,10 +126705,10 @@ var require_RechartsWrapper = __commonJS({
         width,
         height
       } = props;
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(_chartLayoutContext.ReportChartSize, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(_chartLayoutContext.ReportChartSize, {
         width,
         height
-      }), /* @__PURE__ */ React15.createElement("div", _extends({
+      }), /* @__PURE__ */ React17.createElement("div", _extends({
         ref
       }, props)));
     });
@@ -126718,21 +126718,21 @@ var require_RechartsWrapper = __commonJS({
         height
       } = props;
       if (typeof width === "string" || typeof height === "string") {
-        return /* @__PURE__ */ React15.createElement(ReadSizeOnceDiv, _extends({}, props, {
+        return /* @__PURE__ */ React17.createElement(ReadSizeOnceDiv, _extends({}, props, {
           ref
         }));
       }
       if (typeof width === "number" && typeof height === "number") {
-        return /* @__PURE__ */ React15.createElement(StaticDiv, _extends({}, props, {
+        return /* @__PURE__ */ React17.createElement(StaticDiv, _extends({}, props, {
           width,
           height,
           ref
         }));
       }
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(_chartLayoutContext.ReportChartSize, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(_chartLayoutContext.ReportChartSize, {
         width,
         height
-      }), /* @__PURE__ */ React15.createElement("div", _extends({
+      }), /* @__PURE__ */ React17.createElement("div", _extends({
         ref
       }, props)));
     });
@@ -126862,11 +126862,11 @@ var require_RechartsWrapper = __commonJS({
         }));
       }, [dispatch, onTouchEnd]);
       var WrapperDiv = getWrapperDivComponent(responsive);
-      return /* @__PURE__ */ React15.createElement(_tooltipPortalContext.TooltipPortalContext.Provider, {
+      return /* @__PURE__ */ React17.createElement(_tooltipPortalContext.TooltipPortalContext.Provider, {
         value: tooltipPortal
-      }, /* @__PURE__ */ React15.createElement(_legendPortalContext.LegendPortalContext.Provider, {
+      }, /* @__PURE__ */ React17.createElement(_legendPortalContext.LegendPortalContext.Provider, {
         value: legendPortal
-      }, /* @__PURE__ */ React15.createElement(WrapperDiv, {
+      }, /* @__PURE__ */ React17.createElement(WrapperDiv, {
         width: width !== null && width !== void 0 ? width : style === null || style === void 0 ? void 0 : style.width,
         height: height !== null && height !== void 0 ? height : style === null || style === void 0 ? void 0 : style.height,
         className: (0, _clsx.clsx)("recharts-wrapper", className),
@@ -126891,7 +126891,7 @@ var require_RechartsWrapper = __commonJS({
         onTouchMove: myOnTouchMove,
         onTouchStart: myOnTouchStart,
         ref: innerRef
-      }, /* @__PURE__ */ React15.createElement(EventSynchronizer, null), children)));
+      }, /* @__PURE__ */ React17.createElement(EventSynchronizer, null), children)));
     });
   }
 });
@@ -126905,7 +126905,7 @@ var require_CategoricalChart = __commonJS({
     });
     exports2.CategoricalChart = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _RootSurface = require_RootSurface();
     var _RechartsWrapper = require_RechartsWrapper();
     var _ClipPathProvider = require_ClipPathProvider();
@@ -126958,16 +126958,16 @@ var require_CategoricalChart = __commonJS({
       } = props, others = _objectWithoutProperties(props, _excluded);
       var attrs = (0, _svgPropertiesNoEvents.svgPropertiesNoEvents)(others);
       if (compact) {
-        return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(_chartLayoutContext.ReportChartSize, {
+        return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(_chartLayoutContext.ReportChartSize, {
           width,
           height
-        }), /* @__PURE__ */ React15.createElement(_RootSurface.RootSurface, {
+        }), /* @__PURE__ */ React17.createElement(_RootSurface.RootSurface, {
           otherAttributes: attrs,
           title,
           desc
         }, children));
       }
-      return /* @__PURE__ */ React15.createElement(_RechartsWrapper.RechartsWrapper, {
+      return /* @__PURE__ */ React17.createElement(_RechartsWrapper.RechartsWrapper, {
         className,
         style,
         width,
@@ -126984,12 +126984,12 @@ var require_CategoricalChart = __commonJS({
         onTouchStart: props.onTouchStart,
         onTouchMove: props.onTouchMove,
         onTouchEnd: props.onTouchEnd
-      }, /* @__PURE__ */ React15.createElement(_RootSurface.RootSurface, {
+      }, /* @__PURE__ */ React17.createElement(_RootSurface.RootSurface, {
         otherAttributes: attrs,
         title,
         desc,
         ref
-      }, /* @__PURE__ */ React15.createElement(_ClipPathProvider.ClipPathProvider, null, children)));
+      }, /* @__PURE__ */ React17.createElement(_ClipPathProvider.ClipPathProvider, null, children)));
     });
   }
 });
@@ -127003,7 +127003,7 @@ var require_CartesianChart = __commonJS({
     });
     exports2.defaultCartesianChartProps = exports2.CartesianChart = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _RechartsStoreProvider = require_RechartsStoreProvider();
     var _chartDataContext = require_chartDataContext();
     var _ReportMainChartProps = require_ReportMainChartProps();
@@ -127107,20 +127107,20 @@ var require_CartesianChart = __commonJS({
         tooltipPayloadSearcher,
         eventEmitter: void 0
       };
-      return /* @__PURE__ */ React15.createElement(_RechartsStoreProvider.RechartsStoreProvider, {
+      return /* @__PURE__ */ React17.createElement(_RechartsStoreProvider.RechartsStoreProvider, {
         preloadedState: {
           options
         },
         reduxStoreName: (_categoricalChartProp = categoricalChartProps.id) !== null && _categoricalChartProp !== void 0 ? _categoricalChartProp : chartName
-      }, /* @__PURE__ */ React15.createElement(_chartDataContext.ChartDataContextProvider, {
+      }, /* @__PURE__ */ React17.createElement(_chartDataContext.ChartDataContextProvider, {
         chartData: categoricalChartProps.data
-      }), /* @__PURE__ */ React15.createElement(_ReportMainChartProps.ReportMainChartProps, {
+      }), /* @__PURE__ */ React17.createElement(_ReportMainChartProps.ReportMainChartProps, {
         layout: rootChartProps.layout,
         margin: rootChartProps.margin
-      }), /* @__PURE__ */ React15.createElement(_ReportEventSettings.ReportEventSettings, {
+      }), /* @__PURE__ */ React17.createElement(_ReportEventSettings.ReportEventSettings, {
         throttleDelay: rootChartProps.throttleDelay,
         throttledEvents: rootChartProps.throttledEvents
-      }), /* @__PURE__ */ React15.createElement(_ReportChartProps.ReportChartProps, {
+      }), /* @__PURE__ */ React17.createElement(_ReportChartProps.ReportChartProps, {
         baseValue: rootChartProps.baseValue,
         accessibilityLayer: rootChartProps.accessibilityLayer,
         barCategoryGap: rootChartProps.barCategoryGap,
@@ -127132,7 +127132,7 @@ var require_CartesianChart = __commonJS({
         syncMethod: rootChartProps.syncMethod,
         className: rootChartProps.className,
         reverseStackOrder: rootChartProps.reverseStackOrder
-      }), /* @__PURE__ */ React15.createElement(_CategoricalChart.CategoricalChart, _extends({}, rootChartProps, {
+      }), /* @__PURE__ */ React17.createElement(_CategoricalChart.CategoricalChart, _extends({}, rootChartProps, {
         ref
       })));
     });
@@ -127148,7 +127148,7 @@ var require_LineChart = __commonJS({
     });
     exports2.LineChart = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _optionsSlice = require_optionsSlice();
     var _CartesianChart = require_CartesianChart();
     function _interopRequireWildcard(e, t) {
@@ -127167,7 +127167,7 @@ var require_LineChart = __commonJS({
     }
     var allowedTooltipTypes = ["axis"];
     var LineChart = exports2.LineChart = /* @__PURE__ */ (0, _react.forwardRef)((props, ref) => {
-      return /* @__PURE__ */ React15.createElement(_CartesianChart.CartesianChart, {
+      return /* @__PURE__ */ React17.createElement(_CartesianChart.CartesianChart, {
         chartName: "LineChart",
         defaultTooltipEventType: "axis",
         validateTooltipEventTypes: allowedTooltipTypes,
@@ -127188,7 +127188,7 @@ var require_BarChart = __commonJS({
     });
     exports2.BarChart = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _optionsSlice = require_optionsSlice();
     var _CartesianChart = require_CartesianChart();
     function _interopRequireWildcard(e, t) {
@@ -127207,7 +127207,7 @@ var require_BarChart = __commonJS({
     }
     var allowedTooltipTypes = ["axis", "item"];
     var BarChart2 = exports2.BarChart = /* @__PURE__ */ (0, _react.forwardRef)((props, ref) => {
-      return /* @__PURE__ */ React15.createElement(_CartesianChart.CartesianChart, {
+      return /* @__PURE__ */ React17.createElement(_CartesianChart.CartesianChart, {
         chartName: "BarChart",
         defaultTooltipEventType: "axis",
         validateTooltipEventTypes: allowedTooltipTypes,
@@ -127249,7 +127249,7 @@ var require_PolarChart = __commonJS({
     });
     exports2.defaultPolarChartProps = exports2.PolarChart = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _RechartsStoreProvider = require_RechartsStoreProvider();
     var _chartDataContext = require_chartDataContext();
     var _ReportMainChartProps = require_ReportMainChartProps();
@@ -127379,20 +127379,20 @@ var require_PolarChart = __commonJS({
         tooltipPayloadSearcher,
         eventEmitter: void 0
       };
-      return /* @__PURE__ */ React15.createElement(_RechartsStoreProvider.RechartsStoreProvider, {
+      return /* @__PURE__ */ React17.createElement(_RechartsStoreProvider.RechartsStoreProvider, {
         preloadedState: {
           options
         },
         reduxStoreName: (_polarChartProps$id = polarChartProps.id) !== null && _polarChartProps$id !== void 0 ? _polarChartProps$id : chartName
-      }, /* @__PURE__ */ React15.createElement(_chartDataContext.ChartDataContextProvider, {
+      }, /* @__PURE__ */ React17.createElement(_chartDataContext.ChartDataContextProvider, {
         chartData: polarChartProps.data
-      }), /* @__PURE__ */ React15.createElement(_ReportMainChartProps.ReportMainChartProps, {
+      }), /* @__PURE__ */ React17.createElement(_ReportMainChartProps.ReportMainChartProps, {
         layout: layout2,
         margin: polarChartProps.margin
-      }), /* @__PURE__ */ React15.createElement(_ReportEventSettings.ReportEventSettings, {
+      }), /* @__PURE__ */ React17.createElement(_ReportEventSettings.ReportEventSettings, {
         throttleDelay: polarChartProps.throttleDelay,
         throttledEvents: polarChartProps.throttledEvents
-      }), /* @__PURE__ */ React15.createElement(_ReportChartProps.ReportChartProps, {
+      }), /* @__PURE__ */ React17.createElement(_ReportChartProps.ReportChartProps, {
         baseValue: void 0,
         accessibilityLayer: polarChartProps.accessibilityLayer,
         barCategoryGap: polarChartProps.barCategoryGap,
@@ -127404,14 +127404,14 @@ var require_PolarChart = __commonJS({
         syncMethod: polarChartProps.syncMethod,
         className: polarChartProps.className,
         reverseStackOrder: polarChartProps.reverseStackOrder
-      }), /* @__PURE__ */ React15.createElement(_ReportPolarOptions.ReportPolarOptions, {
+      }), /* @__PURE__ */ React17.createElement(_ReportPolarOptions.ReportPolarOptions, {
         cx: polarChartProps.cx,
         cy: polarChartProps.cy,
         startAngle: polarChartProps.startAngle,
         endAngle: polarChartProps.endAngle,
         innerRadius: polarChartProps.innerRadius,
         outerRadius: polarChartProps.outerRadius
-      }), /* @__PURE__ */ React15.createElement(_CategoricalChart.CategoricalChart, _extends({}, otherCategoricalProps, {
+      }), /* @__PURE__ */ React17.createElement(_CategoricalChart.CategoricalChart, _extends({}, otherCategoricalProps, {
         ref
       })));
     });
@@ -127427,7 +127427,7 @@ var require_PieChart = __commonJS({
     });
     exports2.defaultPieChartProps = exports2.PieChart = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _optionsSlice = require_optionsSlice();
     var _PolarChart = require_PolarChart();
     var _resolveDefaultProps = require_resolveDefaultProps();
@@ -127491,7 +127491,7 @@ var require_PieChart = __commonJS({
     });
     var PieChart2 = exports2.PieChart = /* @__PURE__ */ (0, _react.forwardRef)((props, ref) => {
       var propsWithDefaults = (0, _resolveDefaultProps.resolveDefaultProps)(props, defaultPieChartProps);
-      return /* @__PURE__ */ React15.createElement(_PolarChart.PolarChart, {
+      return /* @__PURE__ */ React17.createElement(_PolarChart.PolarChart, {
         chartName: "PieChart",
         defaultTooltipEventType: "item",
         validateTooltipEventTypes: allowedTooltipTypes,
@@ -127772,7 +127772,7 @@ var require_Treemap = __commonJS({
     exports2.Treemap = Treemap;
     exports2.treemapPayloadSearcher = exports2.defaultTreeMapProps = exports2.computeNode = exports2.addToTreemapNodeIndex = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _omit = _interopRequireDefault(require_omit2());
     var _get = _interopRequireDefault(require_get2());
     var _Layer = require_Layer();
@@ -128103,15 +128103,15 @@ var require_Treemap = __commonJS({
         onMouseLeave,
         onClick
       } = _ref2;
-      if (/* @__PURE__ */ React15.isValidElement(content)) {
-        return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      if (/* @__PURE__ */ React17.isValidElement(content)) {
+        return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
           onMouseEnter,
           onMouseLeave,
           onClick
-        }, /* @__PURE__ */ React15.cloneElement(content, nodeProps));
+        }, /* @__PURE__ */ React17.cloneElement(content, nodeProps));
       }
       if (typeof content === "function") {
-        return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+        return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
           onMouseEnter,
           onMouseLeave,
           onClick
@@ -128126,7 +128126,7 @@ var require_Treemap = __commonJS({
       } = nodeProps;
       var arrow = null;
       if (width > 10 && height > 10 && nodeProps.children && type === "nest") {
-        arrow = /* @__PURE__ */ React15.createElement(_Polygon.Polygon, {
+        arrow = /* @__PURE__ */ React17.createElement(_Polygon.Polygon, {
           points: [{
             x: x + 2,
             y: y + height / 2
@@ -128142,14 +128142,14 @@ var require_Treemap = __commonJS({
       var text = null;
       var nameSize = (0, _DOMUtils.getStringSize)(nodeProps.name);
       if (width > 20 && height > 20 && nameSize.width < width && nameSize.height < height) {
-        text = /* @__PURE__ */ React15.createElement("text", {
+        text = /* @__PURE__ */ React17.createElement("text", {
           x: x + 8,
           y: y + height / 2 + 7,
           fontSize: 14
         }, nodeProps.name);
       }
       var colors = colorPanel || _Constants.COLOR_PANEL;
-      return /* @__PURE__ */ React15.createElement("g", null, /* @__PURE__ */ React15.createElement(_Rectangle.Rectangle, _extends({
+      return /* @__PURE__ */ React17.createElement("g", null, /* @__PURE__ */ React17.createElement(_Rectangle.Rectangle, _extends({
         fill: nodeProps.depth < 2 ? colors[index % colors.length] : "rgba(255,255,255,0)",
         stroke: "#fff"
       }, (0, _omit.default)(nodeProps, ["children"]), {
@@ -128183,13 +128183,13 @@ var require_Treemap = __commonJS({
           activeGraphicalItemId: props.id
         }));
       };
-      return /* @__PURE__ */ React15.createElement(ContentItem, _extends({}, props, {
+      return /* @__PURE__ */ React17.createElement(ContentItem, _extends({}, props, {
         onMouseEnter,
         onMouseLeave,
         onClick
       }));
     }
-    var SetTreemapTooltipEntrySettings = /* @__PURE__ */ React15.memo((_ref3) => {
+    var SetTreemapTooltipEntrySettings = /* @__PURE__ */ React17.memo((_ref3) => {
       var {
         dataKey,
         nameKey,
@@ -128217,7 +128217,7 @@ var require_Treemap = __commonJS({
           graphicalItemId: id3
         }
       };
-      return /* @__PURE__ */ React15.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
+      return /* @__PURE__ */ React17.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
         tooltipEntrySettings
       });
     });
@@ -128287,7 +128287,7 @@ var require_Treemap = __commonJS({
           onAnimationStart();
         }
       }, [onAnimationStart]);
-      return /* @__PURE__ */ React15.createElement(_CSSTransitionAnimate.CSSTransitionAnimate, {
+      return /* @__PURE__ */ React17.createElement(_CSSTransitionAnimate.CSSTransitionAnimate, {
         animationId: "treemap-".concat(nodeProps.tooltipIndex),
         from: "translate(".concat(translateX, "px, ").concat(translateY, "px)"),
         to: "translate(0, 0)",
@@ -128298,14 +128298,14 @@ var require_Treemap = __commonJS({
         duration: animationDuration,
         onAnimationStart: handleAnimationStart,
         onAnimationEnd: handleAnimationEnd
-      }, (style) => /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      }, (style) => /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         onMouseEnter,
         onMouseLeave,
         onClick,
         style: _objectSpread(_objectSpread({}, style), {}, {
           transformOrigin: "".concat(x, " ").concat(y)
         })
-      }, /* @__PURE__ */ React15.createElement(ContentItemWithEvents, {
+      }, /* @__PURE__ */ React17.createElement(ContentItemWithEvents, {
         id: id3,
         content,
         dataKey,
@@ -128477,10 +128477,10 @@ var require_Treemap = __commonJS({
         if (!isCurrentRootChild.length && root.depth && type === "nest") {
           return null;
         }
-        return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+        return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
           key: "recharts-treemap-node-".concat(nodeProps.x, "-").concat(nodeProps.y, "-").concat(nodeProps.name),
           className: "recharts-treemap-depth-".concat(node.depth)
-        }, /* @__PURE__ */ React15.createElement(TreemapItem, {
+        }, /* @__PURE__ */ React17.createElement(TreemapItem, {
           isLeaf,
           content,
           nodeProps,
@@ -128506,7 +128506,7 @@ var require_Treemap = __commonJS({
         var {
           nestIndex
         } = this.state;
-        return /* @__PURE__ */ React15.createElement("div", {
+        return /* @__PURE__ */ React17.createElement("div", {
           className: "recharts-treemap-nest-index-wrapper",
           style: {
             marginTop: "8px",
@@ -128516,8 +128516,8 @@ var require_Treemap = __commonJS({
           var rawName = (0, _get.default)(item, nameKey, "root");
           var name = typeof rawName === "string" ? rawName : "root";
           var content;
-          if (/* @__PURE__ */ React15.isValidElement(nestIndexContent)) {
-            content = /* @__PURE__ */ React15.cloneElement(nestIndexContent, item, i);
+          if (/* @__PURE__ */ React17.isValidElement(nestIndexContent)) {
+            content = /* @__PURE__ */ React17.cloneElement(nestIndexContent, item, i);
           }
           if (typeof nestIndexContent === "function") {
             content = nestIndexContent(item, i);
@@ -128526,7 +128526,7 @@ var require_Treemap = __commonJS({
           }
           return (
             // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
-            /* @__PURE__ */ React15.createElement("div", {
+            /* @__PURE__ */ React17.createElement("div", {
               onClick: this.handleNestIndex.bind(this, item, i),
               key: "nest-index-".concat((0, _DataUtils.uniqueId)()),
               className: "recharts-treemap-nest-index-box",
@@ -128552,14 +128552,14 @@ var require_Treemap = __commonJS({
           type
         } = _this$props, others = _objectWithoutProperties(_this$props, _excluded);
         var attrs = (0, _svgPropertiesNoEvents.svgPropertiesNoEvents)(others);
-        return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(SetTreemapTooltipEntrySettings, {
+        return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(SetTreemapTooltipEntrySettings, {
           dataKey: this.props.dataKey,
           nameKey: this.props.nameKey,
           stroke: this.props.stroke,
           fill: this.props.fill,
           currentRoot: this.state.currentRoot,
           id: this.props.id
-        }), /* @__PURE__ */ React15.createElement(_Surface.Surface, _extends({}, attrs, {
+        }), /* @__PURE__ */ React17.createElement(_Surface.Surface, _extends({}, attrs, {
           width,
           height: type === "nest" ? height - 30 : height,
           onTouchMove: this.handleTouchMove
@@ -128577,10 +128577,10 @@ var require_Treemap = __commonJS({
       var {
         id: externalId
       } = props;
-      return /* @__PURE__ */ React15.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
+      return /* @__PURE__ */ React17.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
         id: externalId,
         type: "treemap"
-      }, (id3) => /* @__PURE__ */ React15.createElement(TreemapWithState, _extends({}, props, {
+      }, (id3) => /* @__PURE__ */ React17.createElement(TreemapWithState, _extends({}, props, {
         id: id3,
         width,
         height,
@@ -128599,17 +128599,17 @@ var require_Treemap = __commonJS({
         throttledEvents
       } = props;
       var [tooltipPortal, setTooltipPortal] = (0, _react.useState)(null);
-      return /* @__PURE__ */ React15.createElement(_RechartsStoreProvider.RechartsStoreProvider, {
+      return /* @__PURE__ */ React17.createElement(_RechartsStoreProvider.RechartsStoreProvider, {
         preloadedState: {
           options
         },
         reduxStoreName: (_props$className = props.className) !== null && _props$className !== void 0 ? _props$className : "Treemap"
-      }, /* @__PURE__ */ React15.createElement(_chartLayoutContext.ReportChartMargin, {
+      }, /* @__PURE__ */ React17.createElement(_chartLayoutContext.ReportChartMargin, {
         margin: defaultTreemapMargin
-      }), /* @__PURE__ */ React15.createElement(_ReportEventSettings.ReportEventSettings, {
+      }), /* @__PURE__ */ React17.createElement(_ReportEventSettings.ReportEventSettings, {
         throttleDelay,
         throttledEvents
-      }), /* @__PURE__ */ React15.createElement(_RechartsWrapper.RechartsWrapper, {
+      }), /* @__PURE__ */ React17.createElement(_RechartsWrapper.RechartsWrapper, {
         dispatchTouchEvents: false,
         className,
         style,
@@ -128632,9 +128632,9 @@ var require_Treemap = __commonJS({
         onTouchStart: void 0,
         onTouchMove: void 0,
         onTouchEnd: void 0
-      }, /* @__PURE__ */ React15.createElement(_tooltipPortalContext.TooltipPortalContext.Provider, {
+      }, /* @__PURE__ */ React17.createElement(_tooltipPortalContext.TooltipPortalContext.Provider, {
         value: tooltipPortal
-      }, /* @__PURE__ */ React15.createElement(TreemapDispatchInject, props))));
+      }, /* @__PURE__ */ React17.createElement(TreemapDispatchInject, props))));
     }
   }
 });
@@ -128675,7 +128675,7 @@ var require_Sankey = __commonJS({
     exports2.Sankey = Sankey;
     exports2.sankeyPayloadSearcher = exports2.sankeyDefaultProps = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _maxBy2 = _interopRequireDefault(require_maxBy3());
     var _sumBy = _interopRequireDefault(require_sumBy2());
     var _get = _interopRequireDefault(require_get2());
@@ -129175,7 +129175,7 @@ var require_Sankey = __commonJS({
       tooltipPayloadSearcher: sankeyPayloadSearcher,
       eventEmitter: void 0
     };
-    var SetSankeyTooltipEntrySettings = /* @__PURE__ */ React15.memo((_ref3) => {
+    var SetSankeyTooltipEntrySettings = /* @__PURE__ */ React17.memo((_ref3) => {
       var {
         dataKey,
         nameKey,
@@ -129203,13 +129203,13 @@ var require_Sankey = __commonJS({
           graphicalItemId: id3
         }
       };
-      return /* @__PURE__ */ React15.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
+      return /* @__PURE__ */ React17.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
         tooltipEntrySettings
       });
     });
     function renderLinkItem(option, props) {
-      if (/* @__PURE__ */ React15.isValidElement(option)) {
-        return /* @__PURE__ */ React15.cloneElement(option, props);
+      if (/* @__PURE__ */ React17.isValidElement(option)) {
+        return /* @__PURE__ */ React17.cloneElement(option, props);
       }
       if (typeof option === "function") {
         return option(props);
@@ -129223,7 +129223,7 @@ var require_Sankey = __commonJS({
         targetControlX,
         linkWidth
       } = props, others = _objectWithoutProperties(props, _excluded);
-      return /* @__PURE__ */ React15.createElement("path", _extends({
+      return /* @__PURE__ */ React17.createElement("path", _extends({
         className: "recharts-sankey-link",
         d: "\n          M".concat(sourceX, ",").concat(sourceY, "\n          C").concat(sourceControlX, ",").concat(sourceY, " ").concat(targetControlX, ",").concat(targetY, " ").concat(targetX, ",").concat(targetY, "\n        "),
         fill: "none",
@@ -129317,7 +129317,7 @@ var require_Sankey = __commonJS({
           _onClick(props, e);
         }
       };
-      return /* @__PURE__ */ React15.createElement(_Layer.Layer, events, renderLinkItem(linkContent, props));
+      return /* @__PURE__ */ React17.createElement(_Layer.Layer, events, renderLinkItem(linkContent, props));
     }
     function AllSankeyLinkElements(_ref6) {
       var {
@@ -129330,7 +129330,7 @@ var require_Sankey = __commonJS({
         onClick,
         dataKey
       } = _ref6;
-      return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: "recharts-sankey-links",
         key: "recharts-sankey-links"
       }, links.map((link, i) => {
@@ -129338,7 +129338,7 @@ var require_Sankey = __commonJS({
         if (linkProps == null) {
           return null;
         }
-        return /* @__PURE__ */ React15.createElement(SankeyLinkElement, {
+        return /* @__PURE__ */ React17.createElement(SankeyLinkElement, {
           graphicalItemId,
           key: "link-".concat(link.source, "-").concat(link.target, "-").concat(link.value),
           props: linkProps,
@@ -129352,15 +129352,15 @@ var require_Sankey = __commonJS({
       }));
     }
     function renderNodeItem(option, props) {
-      if (/* @__PURE__ */ React15.isValidElement(option)) {
-        return /* @__PURE__ */ React15.cloneElement(option, props);
+      if (/* @__PURE__ */ React17.isValidElement(option)) {
+        return /* @__PURE__ */ React17.cloneElement(option, props);
       }
       if (typeof option === "function") {
         return option(props);
       }
       return (
         // @ts-expect-error recharts radius is not compatible with SVG radius
-        /* @__PURE__ */ React15.createElement(_Rectangle.Rectangle, _extends({
+        /* @__PURE__ */ React17.createElement(_Rectangle.Rectangle, _extends({
           className: "recharts-sankey-node",
           fill: "#0088fe",
           fillOpacity: "0.8"
@@ -129429,7 +129429,7 @@ var require_Sankey = __commonJS({
           _onClick2(props, e);
         }
       };
-      return /* @__PURE__ */ React15.createElement(_Layer.Layer, events, renderNodeItem(nodeContent, props));
+      return /* @__PURE__ */ React17.createElement(_Layer.Layer, events, renderNodeItem(nodeContent, props));
     }
     function AllNodeElements(_ref9) {
       var {
@@ -129441,11 +129441,11 @@ var require_Sankey = __commonJS({
         onClick,
         dataKey
       } = _ref9;
-      return /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      return /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: "recharts-sankey-nodes",
         key: "recharts-sankey-nodes"
       }, modifiedNodes.map((modifiedNode, i) => {
-        return /* @__PURE__ */ React15.createElement(NodeElement, {
+        return /* @__PURE__ */ React17.createElement(NodeElement, {
           graphicalItemId,
           key: "node-".concat(modifiedNode.index, "-").concat(modifiedNode.x, "-").concat(modifiedNode.y),
           props: modifiedNode,
@@ -129576,15 +129576,15 @@ var require_Sankey = __commonJS({
       if (!(0, _isWellBehavedNumber.isPositiveNumber)(width) || !(0, _isWellBehavedNumber.isPositiveNumber)(height) || !data || !data.links || !data.nodes) {
         return null;
       }
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(_chartDataContext.SetComputedData, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(_chartDataContext.SetComputedData, {
         computedData: {
           links: modifiedLinks,
           nodes: modifiedNodes
         }
-      }), /* @__PURE__ */ React15.createElement(_Surface.Surface, _extends({}, attrs, {
+      }), /* @__PURE__ */ React17.createElement(_Surface.Surface, _extends({}, attrs, {
         width,
         height
-      }), children, /* @__PURE__ */ React15.createElement(AllSankeyLinkElements, {
+      }), children, /* @__PURE__ */ React17.createElement(AllSankeyLinkElements, {
         graphicalItemId: id3,
         links,
         modifiedLinks,
@@ -129593,7 +129593,7 @@ var require_Sankey = __commonJS({
         onMouseEnter: (linkProps, e) => handleMouseEnter(linkProps, "link", e),
         onMouseLeave: (linkProps, e) => handleMouseLeave(linkProps, "link", e),
         onClick: (linkProps, e) => handleClick(linkProps, "link", e)
-      }), /* @__PURE__ */ React15.createElement(AllNodeElements, {
+      }), /* @__PURE__ */ React17.createElement(AllNodeElements, {
         graphicalItemId: id3,
         modifiedNodes,
         nodeContent: node,
@@ -129615,20 +129615,20 @@ var require_Sankey = __commonJS({
         throttledEvents
       } = props;
       var [tooltipPortal, setTooltipPortal] = (0, _react.useState)(null);
-      return /* @__PURE__ */ React15.createElement(_RechartsStoreProvider.RechartsStoreProvider, {
+      return /* @__PURE__ */ React17.createElement(_RechartsStoreProvider.RechartsStoreProvider, {
         preloadedState: {
           options
         },
         reduxStoreName: className !== null && className !== void 0 ? className : "Sankey"
-      }, /* @__PURE__ */ React15.createElement(_chartLayoutContext.ReportChartSize, {
+      }, /* @__PURE__ */ React17.createElement(_chartLayoutContext.ReportChartSize, {
         width,
         height
-      }), /* @__PURE__ */ React15.createElement(_chartLayoutContext.ReportChartMargin, {
+      }), /* @__PURE__ */ React17.createElement(_chartLayoutContext.ReportChartMargin, {
         margin: props.margin
-      }), /* @__PURE__ */ React15.createElement(_ReportEventSettings.ReportEventSettings, {
+      }), /* @__PURE__ */ React17.createElement(_ReportEventSettings.ReportEventSettings, {
         throttleDelay,
         throttledEvents
-      }), /* @__PURE__ */ React15.createElement(_RechartsWrapper.RechartsWrapper, {
+      }), /* @__PURE__ */ React17.createElement(_RechartsWrapper.RechartsWrapper, {
         className,
         style,
         width,
@@ -129650,12 +129650,12 @@ var require_Sankey = __commonJS({
         onTouchStart: void 0,
         onTouchMove: void 0,
         onTouchEnd: void 0
-      }, /* @__PURE__ */ React15.createElement(_tooltipPortalContext.TooltipPortalContext.Provider, {
+      }, /* @__PURE__ */ React17.createElement(_tooltipPortalContext.TooltipPortalContext.Provider, {
         value: tooltipPortal
-      }, /* @__PURE__ */ React15.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
+      }, /* @__PURE__ */ React17.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
         id: externalId,
         type: "sankey"
-      }, (id3) => /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(SetSankeyTooltipEntrySettings, {
+      }, (id3) => /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(SetSankeyTooltipEntrySettings, {
         dataKey: props.dataKey,
         nameKey: props.nameKey,
         stroke: props.stroke,
@@ -129664,7 +129664,7 @@ var require_Sankey = __commonJS({
         name: props.name,
         data: props.data,
         id: id3
-      }), /* @__PURE__ */ React15.createElement(SankeyImpl, _extends({}, props, {
+      }), /* @__PURE__ */ React17.createElement(SankeyImpl, _extends({}, props, {
         id: id3
       })))))));
     }
@@ -129681,7 +129681,7 @@ var require_RadarChart = __commonJS({
     });
     exports2.defaultRadarChartProps = exports2.RadarChart = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _optionsSlice = require_optionsSlice();
     var _resolveDefaultProps = require_resolveDefaultProps();
     var _PolarChart = require_PolarChart();
@@ -129745,7 +129745,7 @@ var require_RadarChart = __commonJS({
     });
     var RadarChart = exports2.RadarChart = /* @__PURE__ */ (0, _react.forwardRef)((props, ref) => {
       var propsWithDefaults = (0, _resolveDefaultProps.resolveDefaultProps)(props, defaultRadarChartProps);
-      return /* @__PURE__ */ React15.createElement(_PolarChart.PolarChart, {
+      return /* @__PURE__ */ React17.createElement(_PolarChart.PolarChart, {
         chartName: "RadarChart",
         defaultTooltipEventType: "axis",
         validateTooltipEventTypes: allowedTooltipTypes,
@@ -129766,7 +129766,7 @@ var require_ScatterChart = __commonJS({
     });
     exports2.ScatterChart = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _optionsSlice = require_optionsSlice();
     var _CartesianChart = require_CartesianChart();
     function _interopRequireWildcard(e, t) {
@@ -129785,7 +129785,7 @@ var require_ScatterChart = __commonJS({
     }
     var allowedTooltipTypes = ["item"];
     var ScatterChart = exports2.ScatterChart = /* @__PURE__ */ (0, _react.forwardRef)((props, ref) => {
-      return /* @__PURE__ */ React15.createElement(_CartesianChart.CartesianChart, {
+      return /* @__PURE__ */ React17.createElement(_CartesianChart.CartesianChart, {
         chartName: "ScatterChart",
         defaultTooltipEventType: "item",
         validateTooltipEventTypes: allowedTooltipTypes,
@@ -129806,7 +129806,7 @@ var require_AreaChart = __commonJS({
     });
     exports2.AreaChart = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _optionsSlice = require_optionsSlice();
     var _CartesianChart = require_CartesianChart();
     function _interopRequireWildcard(e, t) {
@@ -129825,7 +129825,7 @@ var require_AreaChart = __commonJS({
     }
     var allowedTooltipTypes = ["axis"];
     var AreaChart = exports2.AreaChart = /* @__PURE__ */ (0, _react.forwardRef)((props, ref) => {
-      return /* @__PURE__ */ React15.createElement(_CartesianChart.CartesianChart, {
+      return /* @__PURE__ */ React17.createElement(_CartesianChart.CartesianChart, {
         chartName: "AreaChart",
         defaultTooltipEventType: "axis",
         validateTooltipEventTypes: allowedTooltipTypes,
@@ -129846,7 +129846,7 @@ var require_RadialBarChart = __commonJS({
     });
     exports2.defaultRadialBarChartProps = exports2.RadialBarChart = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _optionsSlice = require_optionsSlice();
     var _resolveDefaultProps = require_resolveDefaultProps();
     var _PolarChart = require_PolarChart();
@@ -129910,7 +129910,7 @@ var require_RadialBarChart = __commonJS({
     });
     var RadialBarChart = exports2.RadialBarChart = /* @__PURE__ */ (0, _react.forwardRef)((props, ref) => {
       var propsWithDefaults = (0, _resolveDefaultProps.resolveDefaultProps)(props, defaultRadialBarChartProps);
-      return /* @__PURE__ */ React15.createElement(_PolarChart.PolarChart, {
+      return /* @__PURE__ */ React17.createElement(_PolarChart.PolarChart, {
         chartName: "RadialBarChart",
         defaultTooltipEventType: "axis",
         validateTooltipEventTypes: allowedTooltipTypes,
@@ -129931,7 +129931,7 @@ var require_ComposedChart = __commonJS({
     });
     exports2.ComposedChart = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _optionsSlice = require_optionsSlice();
     var _CartesianChart = require_CartesianChart();
     function _interopRequireWildcard(e, t) {
@@ -129950,7 +129950,7 @@ var require_ComposedChart = __commonJS({
     }
     var allowedTooltipTypes = ["axis"];
     var ComposedChart2 = exports2.ComposedChart = /* @__PURE__ */ (0, _react.forwardRef)((props, ref) => {
-      return /* @__PURE__ */ React15.createElement(_CartesianChart.CartesianChart, {
+      return /* @__PURE__ */ React17.createElement(_CartesianChart.CartesianChart, {
         chartName: "ComposedChart",
         defaultTooltipEventType: "axis",
         validateTooltipEventTypes: allowedTooltipTypes,
@@ -129971,7 +129971,7 @@ var require_SunburstChart = __commonJS({
     });
     exports2.payloadSearcher = exports2.defaultSunburstChartProps = exports2.SunburstChart = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _d3Scale = require_d3_scale();
     var _clsx = require_clsx();
     var _get = _interopRequireDefault(require_get2());
@@ -130068,7 +130068,7 @@ var require_SunburstChart = __commonJS({
       var childDepths = node.children.map((d) => getMaxDepthOf(d));
       return 1 + Math.max(...childDepths);
     }
-    var SetSunburstTooltipEntrySettings = /* @__PURE__ */ React15.memo((_ref) => {
+    var SetSunburstTooltipEntrySettings = /* @__PURE__ */ React17.memo((_ref) => {
       var {
         dataKey,
         nameKey,
@@ -130097,7 +130097,7 @@ var require_SunburstChart = __commonJS({
           graphicalItemId: id3
         }
       };
-      return /* @__PURE__ */ React15.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
+      return /* @__PURE__ */ React17.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
         tooltipEntrySettings
       });
     });
@@ -130224,9 +130224,9 @@ var require_SunburstChart = __commonJS({
             y: textY
           } = (0, _PolarUtils.polarToCartesian)(0, 0, innerR + radius / 2, -(start + arcLength - arcLength / 2));
           currentAngle += arcLength;
-          sectors.push(/* @__PURE__ */ React15.createElement("g", {
+          sectors.push(/* @__PURE__ */ React17.createElement("g", {
             key: "sunburst-sector-".concat(d.name, "-").concat(i)
-          }, /* @__PURE__ */ React15.createElement(_Sector.Sector, {
+          }, /* @__PURE__ */ React17.createElement(_Sector.Sector, {
             onClick: () => handleClick(nodeWithIndex),
             onMouseEnter: (e) => handleMouseEnter(nodeWithIndex, e),
             onMouseLeave: (e) => handleMouseLeave(nodeWithIndex, e),
@@ -130239,7 +130239,7 @@ var require_SunburstChart = __commonJS({
             outerRadius: innerR + radius,
             cx,
             cy
-          }), /* @__PURE__ */ React15.createElement(_Text.Text, _extends({}, textOptions, {
+          }), /* @__PURE__ */ React17.createElement(_Text.Text, _extends({}, textOptions, {
             alignmentBaseline: "middle",
             textAnchor: "middle",
             x: textX + cx,
@@ -130268,12 +130268,12 @@ var require_SunburstChart = __commonJS({
         initialAngle: startAngle
       });
       var layerClass = (0, _clsx.clsx)("recharts-sunburst", className);
-      return /* @__PURE__ */ React15.createElement(_Surface.Surface, {
+      return /* @__PURE__ */ React17.createElement(_Surface.Surface, {
         width,
         height
-      }, /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      }, /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: layerClass
-      }, sectors), /* @__PURE__ */ React15.createElement(SetSunburstTooltipEntrySettings, {
+      }, sectors), /* @__PURE__ */ React17.createElement(SetSunburstTooltipEntrySettings, {
         dataKey,
         nameKey,
         data,
@@ -130296,20 +130296,20 @@ var require_SunburstChart = __commonJS({
         throttledEvents
       } = props;
       var [tooltipPortal, setTooltipPortal] = (0, _react.useState)(null);
-      return /* @__PURE__ */ React15.createElement(_RechartsStoreProvider.RechartsStoreProvider, {
+      return /* @__PURE__ */ React17.createElement(_RechartsStoreProvider.RechartsStoreProvider, {
         preloadedState,
         reduxStoreName: className !== null && className !== void 0 ? className : "SunburstChart"
-      }, /* @__PURE__ */ React15.createElement(_chartLayoutContext.ReportChartSize, {
+      }, /* @__PURE__ */ React17.createElement(_chartLayoutContext.ReportChartSize, {
         width,
         height
-      }), /* @__PURE__ */ React15.createElement(_chartLayoutContext.ReportChartMargin, {
+      }), /* @__PURE__ */ React17.createElement(_chartLayoutContext.ReportChartMargin, {
         margin: defaultSunburstMargin
-      }), /* @__PURE__ */ React15.createElement(_ReportEventSettings.ReportEventSettings, {
+      }), /* @__PURE__ */ React17.createElement(_ReportEventSettings.ReportEventSettings, {
         throttleDelay,
         throttledEvents
-      }), /* @__PURE__ */ React15.createElement(_tooltipPortalContext.TooltipPortalContext.Provider, {
+      }), /* @__PURE__ */ React17.createElement(_tooltipPortalContext.TooltipPortalContext.Provider, {
         value: tooltipPortal
-      }, /* @__PURE__ */ React15.createElement(_RechartsWrapper.RechartsWrapper, {
+      }, /* @__PURE__ */ React17.createElement(_RechartsWrapper.RechartsWrapper, {
         className,
         width,
         height,
@@ -130331,10 +130331,10 @@ var require_SunburstChart = __commonJS({
         onTouchStart: void 0,
         onTouchMove: void 0,
         onTouchEnd: void 0
-      }, /* @__PURE__ */ React15.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
+      }, /* @__PURE__ */ React17.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
         id: externalId,
         type: "sunburst"
-      }, (id3) => /* @__PURE__ */ React15.createElement(SunburstChartImpl, _extends({}, props, {
+      }, (id3) => /* @__PURE__ */ React17.createElement(SunburstChartImpl, _extends({}, props, {
         id: id3
       }))))));
     };
@@ -130350,7 +130350,7 @@ var require_FunnelUtils = __commonJS({
       value: true
     });
     exports2.FunnelTrapezoid = FunnelTrapezoid;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _ActiveShapeUtils = require_ActiveShapeUtils();
     function _interopRequireWildcard(e, t) {
       if ("function" == typeof WeakMap) var r2 = /* @__PURE__ */ new WeakMap(), n = /* @__PURE__ */ new WeakMap();
@@ -130376,7 +130376,7 @@ var require_FunnelUtils = __commonJS({
       }, _extends.apply(null, arguments);
     }
     function FunnelTrapezoid(props) {
-      return /* @__PURE__ */ React15.createElement(_ActiveShapeUtils.Shape, _extends({
+      return /* @__PURE__ */ React17.createElement(_ActiveShapeUtils.Shape, _extends({
         shapeType: "trapezoid"
       }, props));
     }
@@ -130491,7 +130491,7 @@ var require_Funnel = __commonJS({
     exports2.computeFunnelTrapezoids = computeFunnelTrapezoids;
     exports2.defaultFunnelProps = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _omit = _interopRequireDefault(require_omit2());
     var _clsx = require_clsx();
     var _selectors = require_selectors();
@@ -130599,7 +130599,7 @@ var require_Funnel = __commonJS({
       }
       return ("string" === r2 ? String : Number)(t);
     }
-    var SetFunnelTooltipEntrySettings = /* @__PURE__ */ React15.memo((_ref) => {
+    var SetFunnelTooltipEntrySettings = /* @__PURE__ */ React17.memo((_ref) => {
       var {
         dataKey,
         nameKey,
@@ -130634,7 +130634,7 @@ var require_Funnel = __commonJS({
           graphicalItemId: id3
         }
       };
-      return /* @__PURE__ */ React15.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
+      return /* @__PURE__ */ React17.createElement(_SetTooltipEntrySettings.SetTooltipEntrySettings, {
         tooltipEntrySettings
       });
     });
@@ -130659,7 +130659,7 @@ var require_Funnel = __commonJS({
           });
         });
       }, [showLabels, trapezoids]);
-      return /* @__PURE__ */ React15.createElement(_LabelList.CartesianLabelListContextProvider, {
+      return /* @__PURE__ */ React17.createElement(_LabelList.CartesianLabelListContextProvider, {
         value: labelListEntries
       }, children);
     }
@@ -130679,7 +130679,7 @@ var require_Funnel = __commonJS({
       var onMouseEnterFromContext = (0, _tooltipContext.useMouseEnterItemDispatch)(onMouseEnterFromProps, allOtherFunnelProps.dataKey, allOtherFunnelProps.id);
       var onMouseLeaveFromContext = (0, _tooltipContext.useMouseLeaveItemDispatch)(onMouseLeaveFromProps);
       var onClickFromContext = (0, _tooltipContext.useMouseClickItemDispatch)(onItemClickFromProps, allOtherFunnelProps.dataKey, allOtherFunnelProps.id);
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, trapezoids.map((entry, i) => {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, trapezoids.map((entry, i) => {
         var isActiveIndex = Boolean(activeShape) && activeItemIndex === String(i);
         var trapezoidOptions = isActiveIndex ? activeShape : shape;
         var _entry$option$isActiv = _objectSpread(_objectSpread({}, entry), {}, {
@@ -130689,14 +130689,14 @@ var require_Funnel = __commonJS({
         }), {
           id: id3
         } = _entry$option$isActiv, trapezoidProps = _objectWithoutProperties(_entry$option$isActiv, _excluded2);
-        return /* @__PURE__ */ React15.createElement(_Layer.Layer, _extends({
+        return /* @__PURE__ */ React17.createElement(_Layer.Layer, _extends({
           key: "trapezoid-".concat(entry === null || entry === void 0 ? void 0 : entry.x, "-").concat(entry === null || entry === void 0 ? void 0 : entry.y, "-").concat(entry === null || entry === void 0 ? void 0 : entry.name, "-").concat(entry === null || entry === void 0 ? void 0 : entry.value),
           className: "recharts-funnel-trapezoid"
         }, (0, _types.adaptEventsOfChild)(restOfAllOtherProps, entry, i), {
           onMouseEnter: onMouseEnterFromContext(entry, i),
           onMouseLeave: onMouseLeaveFromContext(entry, i),
           onClick: onClickFromContext(entry, i)
-        }), /* @__PURE__ */ React15.createElement(_FunnelUtils.FunnelTrapezoid, trapezoidProps));
+        }), /* @__PURE__ */ React17.createElement(_FunnelUtils.FunnelTrapezoid, trapezoidProps));
       }));
     }
     function TrapezoidsWithAnimation(_ref3) {
@@ -130729,10 +130729,10 @@ var require_Funnel = __commonJS({
         }
         setIsAnimating(true);
       }, [onAnimationStart]);
-      return /* @__PURE__ */ React15.createElement(FunnelLabelListProvider, {
+      return /* @__PURE__ */ React17.createElement(FunnelLabelListProvider, {
         showLabels,
         trapezoids
-      }, /* @__PURE__ */ React15.createElement(_JavascriptAnimate.JavascriptAnimate, {
+      }, /* @__PURE__ */ React17.createElement(_JavascriptAnimate.JavascriptAnimate, {
         animationId,
         begin: animationBegin,
         duration: animationDuration,
@@ -130764,17 +130764,17 @@ var require_Funnel = __commonJS({
         if (t > 0) {
           previousTrapezoidsRef.current = stepData;
         }
-        return /* @__PURE__ */ React15.createElement(_Layer.Layer, null, /* @__PURE__ */ React15.createElement(FunnelTrapezoids, {
+        return /* @__PURE__ */ React17.createElement(_Layer.Layer, null, /* @__PURE__ */ React17.createElement(FunnelTrapezoids, {
           trapezoids: stepData,
           allOtherFunnelProps: props
         }));
-      }), /* @__PURE__ */ React15.createElement(_LabelList.LabelListFromLabelProp, {
+      }), /* @__PURE__ */ React17.createElement(_LabelList.LabelListFromLabelProp, {
         label: props.label
       }), props.children);
     }
     function RenderTrapezoids(props) {
       var previousTrapezoidsRef = (0, _react.useRef)(void 0);
-      return /* @__PURE__ */ React15.createElement(TrapezoidsWithAnimation, {
+      return /* @__PURE__ */ React17.createElement(TrapezoidsWithAnimation, {
         props,
         previousTrapezoidsRef
       });
@@ -130845,7 +130845,7 @@ var require_Funnel = __commonJS({
         width
       } = plotArea;
       var layerClass = (0, _clsx.clsx)("recharts-trapezoids", props.className);
-      return /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement(SetFunnelTooltipEntrySettings, {
+      return /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(SetFunnelTooltipEntrySettings, {
         dataKey: props.dataKey,
         nameKey: props.nameKey,
         stroke: props.stroke,
@@ -130857,9 +130857,9 @@ var require_Funnel = __commonJS({
         data: props.data,
         trapezoids,
         id: id3
-      }), /* @__PURE__ */ React15.createElement(_Layer.Layer, {
+      }), /* @__PURE__ */ React17.createElement(_Layer.Layer, {
         className: layerClass
-      }, /* @__PURE__ */ React15.createElement(RenderTrapezoids, _extends({}, everythingElse, {
+      }, /* @__PURE__ */ React17.createElement(RenderTrapezoids, _extends({}, everythingElse, {
         id: id3,
         stroke,
         fill,
@@ -130997,10 +130997,10 @@ var require_Funnel = __commonJS({
       var _resolveDefaultProps = (0, _resolveDefaultProps2.resolveDefaultProps)(outsideProps, defaultFunnelProps), {
         id: externalId
       } = _resolveDefaultProps, props = _objectWithoutProperties(_resolveDefaultProps, _excluded4);
-      return /* @__PURE__ */ React15.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
+      return /* @__PURE__ */ React17.createElement(_RegisterGraphicalItemId.RegisterGraphicalItemId, {
         id: externalId,
         type: "funnel"
-      }, (id3) => /* @__PURE__ */ React15.createElement(FunnelImpl, _extends({}, props, {
+      }, (id3) => /* @__PURE__ */ React17.createElement(FunnelImpl, _extends({}, props, {
         id: id3
       })));
     }
@@ -131018,7 +131018,7 @@ var require_FunnelChart = __commonJS({
     });
     exports2.FunnelChart = void 0;
     var _react = _interopRequireWildcard(require_react());
-    var React15 = _react;
+    var React17 = _react;
     var _optionsSlice = require_optionsSlice();
     var _CartesianChart = require_CartesianChart();
     function _interopRequireWildcard(e, t) {
@@ -131037,7 +131037,7 @@ var require_FunnelChart = __commonJS({
     }
     var allowedTooltipTypes = ["item"];
     var FunnelChart = exports2.FunnelChart = /* @__PURE__ */ (0, _react.forwardRef)((props, ref) => {
-      return /* @__PURE__ */ React15.createElement(_CartesianChart.CartesianChart, {
+      return /* @__PURE__ */ React17.createElement(_CartesianChart.CartesianChart, {
         chartName: "FunnelChart",
         defaultTooltipEventType: "item",
         validateTooltipEventTypes: allowedTooltipTypes,
@@ -131058,7 +131058,7 @@ var require_createCartesianCharts = __commonJS({
     });
     exports2.createHorizontalChart = createHorizontalChart;
     exports2.createVerticalChart = createVerticalChart;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _AreaChart = require_AreaChart();
     var _BarChart = require_BarChart();
     var _LineChart = require_LineChart();
@@ -131127,19 +131127,19 @@ var require_createCartesianCharts = __commonJS({
       }, _extends.apply(null, arguments);
     }
     var createCartesianCharts = (layout2) => ({
-      AreaChart: (props) => /* @__PURE__ */ React15.createElement(_AreaChart.AreaChart, _extends({}, props, {
+      AreaChart: (props) => /* @__PURE__ */ React17.createElement(_AreaChart.AreaChart, _extends({}, props, {
         layout: layout2
       })),
-      BarChart: (props) => /* @__PURE__ */ React15.createElement(_BarChart.BarChart, _extends({}, props, {
+      BarChart: (props) => /* @__PURE__ */ React17.createElement(_BarChart.BarChart, _extends({}, props, {
         layout: layout2
       })),
-      LineChart: (props) => /* @__PURE__ */ React15.createElement(_LineChart.LineChart, _extends({}, props, {
+      LineChart: (props) => /* @__PURE__ */ React17.createElement(_LineChart.LineChart, _extends({}, props, {
         layout: layout2
       })),
-      ComposedChart: (props) => /* @__PURE__ */ React15.createElement(_ComposedChart.ComposedChart, _extends({}, props, {
+      ComposedChart: (props) => /* @__PURE__ */ React17.createElement(_ComposedChart.ComposedChart, _extends({}, props, {
         layout: layout2
       })),
-      ScatterChart: (props) => /* @__PURE__ */ React15.createElement(_ScatterChart.ScatterChart, _extends({}, props, {
+      ScatterChart: (props) => /* @__PURE__ */ React17.createElement(_ScatterChart.ScatterChart, _extends({}, props, {
         layout: layout2
       }))
     });
@@ -131151,7 +131151,7 @@ var require_createCartesianCharts = __commonJS({
     function createVerticalChart() {
       return function withComponents(components) {
         return _objectSpread(_objectSpread({}, createCartesianCharts("vertical")), {}, {
-          FunnelChart: (props) => /* @__PURE__ */ React15.createElement(_FunnelChart.FunnelChart, _extends({}, props, {
+          FunnelChart: (props) => /* @__PURE__ */ React17.createElement(_FunnelChart.FunnelChart, _extends({}, props, {
             layout: "vertical"
           }))
         }, components);
@@ -131169,7 +131169,7 @@ var require_createPolarCharts = __commonJS({
     });
     exports2.createCentricChart = createCentricChart;
     exports2.createRadialChart = createRadialChart;
-    var React15 = _interopRequireWildcard(require_react());
+    var React17 = _interopRequireWildcard(require_react());
     var _RadialBarChart = require_RadialBarChart();
     var _RadarChart = require_RadarChart();
     var _PieChart = require_PieChart();
@@ -131237,7 +131237,7 @@ var require_createPolarCharts = __commonJS({
     function createCentricChart() {
       return function withComponents(components) {
         return _objectSpread({
-          RadarChart: (props) => /* @__PURE__ */ React15.createElement(_RadarChart.RadarChart, _extends({}, props, {
+          RadarChart: (props) => /* @__PURE__ */ React17.createElement(_RadarChart.RadarChart, _extends({}, props, {
             layout: "centric"
           }))
         }, components);
@@ -131246,10 +131246,10 @@ var require_createPolarCharts = __commonJS({
     function createRadialChart() {
       return function withComponents(components) {
         return _objectSpread({
-          RadialBarChart: (props) => /* @__PURE__ */ React15.createElement(_RadialBarChart.RadialBarChart, _extends({}, props, {
+          RadialBarChart: (props) => /* @__PURE__ */ React17.createElement(_RadialBarChart.RadialBarChart, _extends({}, props, {
             layout: "radial"
           })),
-          PieChart: (props) => /* @__PURE__ */ React15.createElement(_PieChart.PieChart, _extends({}, props, {
+          PieChart: (props) => /* @__PURE__ */ React17.createElement(_PieChart.PieChart, _extends({}, props, {
             layout: "radial"
           }))
         }, components);
@@ -144208,6 +144208,7 @@ Label.displayName = "Label";
 
 // packages/ui/src/components/ui/popover.tsx
 var React11 = __toESM(require_react());
+var import_react_dom = __toESM(require_react_dom());
 var import_jsx_runtime14 = __toESM(require_jsx_runtime());
 var PopoverContent = React11.forwardRef(
   ({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime14.jsx)(
@@ -144290,11 +144291,81 @@ var Switch = React13.forwardRef(
 );
 Switch.displayName = "Switch";
 
-// packages/ui/src/components/ui/textarea.tsx
+// packages/ui/src/components/ui/tabs.tsx
 var React14 = __toESM(require_react());
 var import_jsx_runtime17 = __toESM(require_jsx_runtime());
-var Textarea = React14.forwardRef(
+var TabsContext = React14.createContext(void 0);
+var Tabs = React14.forwardRef(
+  ({ children, className, onValueChange, value, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(TabsContext.Provider, { value: { onValueChange, value }, children: /* @__PURE__ */ (0, import_jsx_runtime17.jsx)("div", { className: cn("min-w-0", className), ref, ...props, children }) })
+);
+Tabs.displayName = "Tabs";
+var TabsList = React14.forwardRef(
   ({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
+    "div",
+    {
+      className: cn(
+        "inline-flex min-w-0 items-center rounded-md bg-muted p-1 text-muted-foreground",
+        className
+      ),
+      ref,
+      role: "tablist",
+      ...props
+    }
+  )
+);
+TabsList.displayName = "TabsList";
+var TabsTrigger = React14.forwardRef(
+  ({ className, onClick, value, ...props }, ref) => {
+    const context = React14.useContext(TabsContext);
+    const selected = context?.value === value;
+    return /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
+      "button",
+      {
+        "aria-selected": selected,
+        className: cn(
+          "inline-flex min-w-0 items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-[12px] font-medium outline-none transition-[background-color,border-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
+          className
+        ),
+        "data-state": selected ? "active" : "inactive",
+        onClick: (event) => {
+          onClick?.(event);
+          if (!event.defaultPrevented) {
+            context?.onValueChange?.(value);
+          }
+        },
+        ref,
+        role: "tab",
+        type: "button",
+        ...props
+      }
+    );
+  }
+);
+TabsTrigger.displayName = "TabsTrigger";
+var TabsContent = React14.forwardRef(
+  ({ className, value, ...props }, ref) => {
+    const context = React14.useContext(TabsContext);
+    const selected = context?.value === value;
+    return /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
+      "div",
+      {
+        className: cn("min-w-0 outline-none", className),
+        "data-state": selected ? "active" : "inactive",
+        hidden: !selected,
+        ref,
+        role: "tabpanel",
+        ...props
+      }
+    );
+  }
+);
+TabsContent.displayName = "TabsContent";
+
+// packages/ui/src/components/ui/textarea.tsx
+var React15 = __toESM(require_react());
+var import_jsx_runtime18 = __toESM(require_jsx_runtime());
+var Textarea = React15.forwardRef(
+  ({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
     "textarea",
     {
       className: cn(
@@ -144317,6 +144388,9 @@ var BUILTIN_FUSION_VISION_TOOL_NAME = "vision_understand";
 var BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME = "web_search";
 var BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME = "image_generation";
 var BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME = "video_generation";
+function isGatewayProviderEnabled(provider) {
+  return provider.enabled !== false;
+}
 var ROUTER_SCRIPT_MAX_SOURCE_BYTES = 64 * 1024;
 var CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV = "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY";
 var CLAUDE_CODE_DEFAULT_ENV = {
@@ -144469,6 +144543,17 @@ function createDefaultAppConfig(options) {
       streamReplies: true,
       tenantId: "ccr"
     },
+    contextArchive: {
+      enabled: false,
+      maxBytes: 512 * 1024 * 1024,
+      maxSnapshotBytes: 32 * 1024 * 1024,
+      maxSnapshots: 200,
+      mcpEnabled: true,
+      replayTimeoutMs: 6e4,
+      retentionDays: 30,
+      storagePath: "",
+      toolName: "ccr_history_ask"
+    },
     gateway: {
       coreHost,
       corePort: 3457,
@@ -144498,6 +144583,7 @@ function createDefaultAppConfig(options) {
     profile: {
       claudeCode: {
         enabled: true,
+        managedCompact: false,
         model: "",
         settingsFile: "~/.claude/settings.json",
         smallFastModel: ""
@@ -144509,6 +144595,7 @@ function createDefaultAppConfig(options) {
         configFormat: "separate_profile_files",
         configFile: "~/.codex/config.toml",
         enabled: true,
+        managedCompact: false,
         model: "",
         providerId: "claude-code-router",
         providerName: "Claude Code Router",
@@ -144521,6 +144608,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: { ...CLAUDE_CODE_DEFAULT_ENV },
           id: "default-claude-code",
+          managedCompact: false,
           model: "",
           name: "Claude Code",
           scope: "global",
@@ -144538,6 +144626,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: {},
           id: "default-codex",
+          managedCompact: false,
           model: "",
           name: "Codex",
           providerId: "claude-code-router",
@@ -144646,7 +144735,7 @@ var appCopy = {
       networking: "Networking",
       observability: "Observability",
       overview: "Overview",
-      profile: "Agent Config",
+      profile: "Agent Profiles",
       providers: "Providers",
       models: "Models",
       routing: "Routing",
@@ -144754,6 +144843,9 @@ var appCopy = {
       "\u65F6\u95F4": "Time",
       "\u72B6\u6001": "Status",
       "\u6A21\u578B": "Model",
+      "CCR compact for Claude Code": "CCR compact for Claude Code",
+      "Use CCR context archive when Claude Code runs /compact.": "Use CCR context archive when Claude Code runs /compact.",
+      "Context archive and MCP access will be enabled for this compact mode.": "Context archive and MCP access will be enabled for this compact mode.",
       "Stream": "Stream",
       "Streaming": "Streaming",
       "Non-streaming": "Non-streaming",
@@ -144784,21 +144876,58 @@ var appCopy = {
       "\u51FA": "out",
       "No provider presets found": "No provider presets found",
       "After you enter the API endpoint and key, the system will automatically detect supported protocols and available models.": "After you enter the API endpoint and key, the system will automatically detect supported protocols and available models.",
+      "Advanced": "Advanced",
+      "Advanced settings": "Advanced settings",
+      "Advanced settings need attention": "Advanced settings need attention",
+      "Agent profile": "Agent profile",
       "Back": "Back",
+      "Auto detect protocols": "Auto detect protocols",
+      "Auto detect protocols description": "When enabled, CCR probes the endpoint while editing and uses the detected protocols and models to update this provider. Turn it off to keep manually selected protocols and custom model IDs unchanged.",
+      "Auto detect protocols info": "Auto detect protocols info",
       "Available models": "Available models",
+      "Available after saving": "Available after saving",
+      "Automatic": "Automatic",
+      "Add credentials": "Add credentials",
+      "Add the API key CCR will use for model requests.": "Add the API key CCR will use for model requests.",
+      "A real model request succeeded with the selected provider settings.": "A real model request succeeded with the selected provider settings.",
       "Check": "Check",
       "Check Connection": "Check Connection",
       "Check results": "Check results",
       "Checking connection": "Checking connection",
+      "Choose a provider preset or endpoint, enter an API key, and add at least one model.": "Choose a provider preset or endpoint, enter an API key, and add at least one model.",
+      "Choose a provider endpoint so CCR can detect compatible protocols.": "Choose a provider endpoint so CCR can detect compatible protocols.",
+      "Choose an agent, model, and required profile settings.": "Choose an agent, model, and required profile settings.",
+      "Choose how this provider authenticates model requests.": "Choose how this provider authenticates model requests.",
+      "Choose provider": "Choose provider",
+      "Choose the models that should be available through this provider.": "Choose the models that should be available through this provider.",
       "Click Check Connection to verify connectivity with a real model request.": "Click Check Connection to verify connectivity with a real model request.",
+      "Compatible API protocols were found automatically.": "Compatible API protocols were found automatically.",
+      "Compatible API protocols were found automatically. You can turn off auto detection in Advanced settings and select protocols manually.": "Compatible API protocols were found automatically. You can turn off auto detection in Advanced settings and select protocols manually.",
+      "Configure a provider before creating an agent profile.": "Configure a provider before creating an agent profile.",
+      "Configure at least one enabled provider model before saving an agent profile.": "Configure at least one enabled provider model before saving an agent profile.",
+      "Configuration": "Configuration",
+      "Credential method": "Credential method",
       "Connection verified": "Connection verified",
+      "CCR is checking which API protocols this endpoint supports.": "CCR is checking which API protocols this endpoint supports.",
+      "CCR is checking this provider. Wait for the check to finish before continuing.": "CCR is checking this provider. Wait for the check to finish before continuing.",
+      "CCR is sending a limited real model request.": "CCR is sending a limited real model request.",
+      "CCR management service is unavailable. Make sure the CCR app or ccr ui command is running, then retry.": "CCR management service is unavailable. Make sure the CCR app or ccr ui command is running, then retry.",
+      "Connect a provider in four small steps.": "Connect a provider in four small steps.",
+      "Create profiles that tell each agent which model and entry mode to use.": "Create profiles that tell each agent which model and entry mode to use.",
       "CCR scanned this computer for Claude Code, Codex, Grok CLI, OpenCode CLI, and ZCode login states. Click Import to add one as a gateway provider.": "CCR scanned this computer for Claude Code, Codex, Grok CLI, OpenCode CLI, and ZCode login states. Click Import to add one as a gateway provider.",
       "Detected": "Detected",
       "Detecting protocols": "Detecting protocols",
       "Enter API endpoint, API key, and at least one model to enable connectivity check.": "Enter API endpoint, API key, and at least one model to enable connectivity check.",
+      "Endpoint and identity": "Endpoint and identity",
+      "Finish the provider and agent profile steps before entering the app.": "Finish the provider and agent profile steps before entering the app.",
       "Generated output is limited to 1 token for connectivity checks.": "Generated output is limited to 1 token for connectivity checks.",
+      "Gateway service": "Gateway service",
+      "Grok CLI profiles use CCR scope and CLI entry mode.": "Grok CLI profiles use CCR scope and CLI entry mode.",
+      "Allowed models": "Allowed models",
       "Import local agent login": "Import local agent login",
       "Import local agent provider": "Import local agent provider",
+      "In progress": "In progress",
+      "Kimi profiles need a default model and an allowed model list.": "Kimi profiles need a default model and an allowed model list.",
       "ChatGPT login detected. Click Import to add it as a gateway provider.": "ChatGPT login detected. Click Import to add it as a gateway provider.",
       "Claude Code login detected. Click Import to add it as a gateway provider.": "Claude Code login detected. Click Import to add it as a gateway provider.",
       "Claude Code login was detected, but no usable access token was found.": "Claude Code login was detected, but no usable access token was found.",
@@ -144811,33 +144940,126 @@ var appCopy = {
       "Kimi CLI provider API key detected. Click Import to add it as a gateway provider.": "Kimi CLI provider API key detected. Click Import to add it as a gateway provider.",
       "Kimi CLI login was detected, but no usable OAuth token was found. Run /login in Kimi CLI, then rescan.": "Kimi CLI login was detected, but no usable OAuth token was found. Run /login in Kimi CLI, then rescan.",
       "Kimi CLI provider was detected, but no usable API key was found.": "Kimi CLI provider was detected, but no usable API key was found.",
+      "Kimi model": "Kimi model",
+      "Kimi model is required.": "Kimi model is required.",
       "OpenCode CLI credential was found, but no usable API key was detected.": "OpenCode CLI credential was found, but no usable API key was detected.",
       "OpenCode CLI login detected. Click Import to add it as a gateway provider.": "OpenCode CLI login detected. Click Import to add it as a gateway provider.",
       "OpenCode CLI public models detected. No login is required.": "OpenCode CLI public models detected. No login is required.",
       "CCR scanned this computer for local Claude Code, Codex, Grok CLI, Kimi CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.": "CCR scanned this computer for local Claude Code, Codex, Grok CLI, Kimi CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.",
       "Locked": "Locked",
+      "Manual": "Manual",
       "Local agent login will be connected after saving this provider.": "Local agent login will be connected after saving this provider.",
+      "Local login provider": "Local login provider",
+      "Launch actions": "Launch actions",
+      "Management actions": "Management actions",
       "Models to check": "Models to check",
+      "model": "model",
+      "models": "models",
+      "Model overrides are optional; empty fields keep Claude Code defaults.": "Model overrides are optional; empty fields keep Claude Code defaults.",
+      "Next": "Next",
+      "Next step": "Next step",
+      "Available model IDs": "Available model IDs",
+      "Added": "Added",
+      "Added models": "Added models",
+      "Add custom model": "Add custom model",
+      "Cancel custom model": "Cancel custom model",
+      "Click a model to edit settings": "Click a model to edit settings",
+      "Custom model": "Custom model",
+      "Loading provider models": "Loading provider models",
+      "Model already added": "Model already added",
+      "Models detected from this provider": "Models detected from this provider",
+      "No models added": "No models added",
+      "No provider models": "No provider models",
       "No available models": "No available models",
       "No local login state was found for this agent.": "No local login state was found for this agent.",
+      "No providers": "No providers",
       "Not found": "Not found",
+      "Not verified yet": "Not verified yet",
+      "Needs models": "Needs models",
+      "Needs protocol": "Needs protocol",
       "No unavailable models": "No unavailable models",
+      "OpenCode profiles can target CLI, APP, or both entry modes.": "OpenCode profiles can target CLI, APP, or both entry modes.",
+      "Optional health check": "Optional health check",
+      "Pick models": "Pick models",
+      "Pick a preset provider or use a custom compatible API endpoint.": "Pick a preset provider or use a custom compatible API endpoint.",
+      "Previous": "Previous",
+      "Previous step": "Previous step",
+      "Profile name is required.": "Profile name is required.",
+      "Provider setup": "Provider setup",
+      "Pool keys": "Pool keys",
+      "Provider ID and Provider name identify the routed provider in Codex.": "Provider ID and Provider name identify the routed provider in Codex.",
+      "Provider ID is required.": "Provider ID is required.",
+      "Provider name is required.": "Provider name is required.",
       "Protocols detected": "Protocols detected",
       "Ready": "Ready",
+      "Ready to test": "Ready to test",
+      "Run a real model request before relying on this provider.": "Run a real model request before relying on this provider.",
+      "Optional. Check Connection sends a real model request and may consume provider credits.": "Optional. Check Connection sends a real model request and may consume provider credits.",
       "Select at least one protocol.": "Select at least one protocol.",
+      "Select at least one available model.": "Select at least one available model.",
+      "Select at least one allowed model.": "Select at least one allowed model.",
+      "Select models": "Select models",
+      "Search added models": "Search added models",
+      "Search provider models": "Search provider models",
       "Service": "Service",
       "Service failed to start": "Service failed to start",
       "Scanning local agent logins": "Scanning local agent logins",
+      "Save this agent profile to continue.": "Save this agent profile to continue.",
+      "Save this provider to continue.": "Save this provider to continue.",
+      "Secret used for requests": "Secret used for requests",
+      "Send a request from your agent, then confirm it appears in Logs.": "Send a request from your agent, then confirm it appears in Logs.",
+      "Setup readiness": "Setup readiness",
+      "Show API key": "Show API key",
+      "Show models": "Show models",
+      "Hide API key": "Hide API key",
+      "Hide models": "Hide models",
+      "Use one key for every request.": "Use one key for every request.",
+      "Use multiple API keys with optional priorities, weights, and limits.": "Use multiple API keys with optional priorities, weights, and limits.",
+      "Use multiple keys with optional limits.": "Use multiple keys with optional limits.",
+      "Monitor": "Monitor",
+      "Setup": "Setup",
+      "Step": "Step",
       "Start": "Start",
       "Start check": "Start check",
       "Stop": "Stop",
+      "Workspace": "Workspace",
+      "The gateway is configured. Start the service from the toolbar when you are ready to test traffic.": "The gateway is configured. Start the service from the toolbar when you are ready to test traffic.",
+      "The imported local agent login is connected when this provider is saved.": "The imported local agent login is connected when this provider is saved.",
       "This check sends real model requests with your provider API key and may consume account balance.": "This check sends real model requests with your provider API key and may consume account balance.",
+      "Usable": "Usable",
+      "Verify connection": "Verify connection",
+      "Waiting for provider details": "Waiting for provider details",
+      "Waiting for required fields": "Waiting for required fields",
+      "API endpoint, API key, and at least one model are required before verification.": "API endpoint, API key, and at least one model are required before verification.",
+      "10 / page": "10 / page",
+      "25 / page": "25 / page",
+      "50 / page": "50 / page",
+      "100 / page": "100 / page",
+      "Clear filters": "Clear filters",
+      "Clear filters or broaden the search to find more request logs.": "Clear filters or broaden the search to find more request logs.",
+      "Default model is required.": "Default model is required.",
+      "Enable at least one provider model before saving this profile.": "Enable at least one provider model before saving this profile.",
+      "Enable request logs": "Enable request logs",
+      "Environment variable rows need valid keys.": "Environment variable rows need valid keys.",
+      "Idle seconds must be between 30 and 86400.": "Idle seconds must be between 30 and 86400.",
+      "No request logs match the current filters.": "No request logs match the current filters.",
+      "No request logs yet.": "No request logs yet.",
+      "Paths, provider identity, bot, compact, and env": "Paths, provider identity, bot, compact, and env",
+      "Request logs are off": "Request logs are off",
+      "Request logs record gateway requests and make payload inspection available.": "Request logs record gateway requests and make payload inspection available.",
+      "Select an existing bot or turn Bot off.": "Select an existing bot or turn Bot off.",
+      "Select a route node to inspect routing operations": "Select a route node to inspect routing operations",
+      "Select a route node to inspect its operations.": "Select a route node to inspect its operations.",
+      "Send a request through CCR, then refresh this page to inspect it.": "Send a request through CCR, then refresh this page to inspect it.",
+      "providers": "providers",
       "ZCode login detected. Click Import to add it as a gateway provider.": "ZCode login detected. Click Import to add it as a gateway provider.",
+      "ZCode profiles use APP entry mode.": "ZCode profiles use APP entry mode.",
       "ZCode login was detected, but its local credential is encrypted and cannot be imported automatically.": "ZCode login was detected, but its local credential is encrypted and cannot be imported automatically.",
       "ZCode login was detected, but no usable provider API key was found in ZCode config.": "ZCode login was detected, but no usable provider API key was found in ZCode config.",
       "ZCode provider API key detected in local ZCode config. Click Import to add it as a gateway provider.": "ZCode provider API key detected in local ZCode config. Click Import to add it as a gateway provider.",
       "Unavailable models": "Unavailable models",
       "Account Balance": "Account Balance",
+      "Account Usage": "Account Usage",
       "Account component": "Account component",
       "All accounts": "All accounts",
       "All credentials": "All credentials",
@@ -145032,7 +145254,7 @@ var appCopy = {
       networking: "\u7F51\u7EDC",
       observability: "\u89C2\u6D4B",
       overview: "\u6982\u89C8",
-      profile: "Agent\u914D\u7F6E",
+      profile: "Agent \u914D\u7F6E\u6863\u6848",
       providers: "\u4F9B\u5E94\u5546",
       models: "\u6A21\u578B",
       routing: "\u8DEF\u7531",
@@ -145137,10 +145359,15 @@ var appCopy = {
       "30d": "30 \u5929",
       "Agent": "Agent",
       "A provider is required before profiles can route traffic.": "\u9700\u8981\u5148\u914D\u7F6E\u4F9B\u5E94\u5546\uFF0C\u914D\u7F6E\u6863\u6848\u624D\u80FD\u8DEF\u7531\u8BF7\u6C42\u3002",
+      "A real model request succeeded with the selected provider settings.": "\u5DF2\u4F7F\u7528\u5F53\u524D\u4F9B\u5E94\u5546\u8BBE\u7F6E\u6210\u529F\u5B8C\u6210\u4E00\u6B21\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\u3002",
       "Add or verify a model provider.": "\u6DFB\u52A0\u6216\u786E\u8BA4\u6A21\u578B\u4F9B\u5E94\u5546\u3002",
+      "CCR compact for Claude Code": "Claude Code \u4F7F\u7528 CCR \u538B\u7F29",
+      "Use CCR context archive when Claude Code runs /compact.": "Claude Code \u6267\u884C /compact \u65F6\u6539\u7528 CCR \u4E0A\u4E0B\u6587\u5F52\u6863\u3002",
+      "Context archive and MCP access will be enabled for this compact mode.": "\u5C06\u4E3A\u6B64\u538B\u7F29\u6A21\u5F0F\u542F\u7528\u4E0A\u4E0B\u6587\u5F52\u6863\u548C MCP \u8BBF\u95EE\u3002",
       "Agent Analysis": "Agent \u5206\u6790",
       "Agent access": "Agent \u63A5\u5165",
       "Agent Mix": "Agent \u5206\u5E03",
+      "Agent profile": "Agent \u914D\u7F6E\u6863\u6848",
       "Agent profiles": "Agent \u914D\u7F6E\u6863\u6848",
       "All agents": "\u5168\u90E8 Agent",
       "All models": "\u5168\u90E8\u6A21\u578B",
@@ -145155,6 +145382,8 @@ var appCopy = {
       "Add API Key": "\u6DFB\u52A0 API \u5BC6\u94A5",
       "Add API key": "\u6DFB\u52A0 API \u5BC6\u94A5",
       "Add key": "\u6DFB\u52A0 Key",
+      "Add credentials": "\u6DFB\u52A0\u51ED\u636E",
+      "Add the API key CCR will use for model requests.": "\u586B\u5199 CCR \u53D1\u8D77\u6A21\u578B\u8BF7\u6C42\u65F6\u4F7F\u7528\u7684 API Key\u3002",
       "Add limit": "\u6DFB\u52A0\u9650\u5236",
       "Add parameter": "\u6DFB\u52A0\u53C2\u6570",
       "Add Profile": "\u6DFB\u52A0\u914D\u7F6E",
@@ -145166,13 +145395,20 @@ var appCopy = {
       "Add Routing Rule": "\u6DFB\u52A0\u8DEF\u7531\u89C4\u5219",
       "Add routing rule": "\u6DFB\u52A0\u8DEF\u7531\u89C4\u5219",
       "Advanced Settings...": "\u9AD8\u7EA7\u8BBE\u7F6E...",
+      "Advanced": "\u9AD8\u7EA7",
       "Advanced key options": "Key \u9AD8\u7EA7\u9009\u9879",
       "Advanced settings": "\u9AD8\u7EA7\u8BBE\u7F6E",
+      "Advanced settings need attention": "\u9AD8\u7EA7\u8BBE\u7F6E\u9700\u8981\u5904\u7406",
       "Always": "\u59CB\u7EC8",
       "Alias": "\u522B\u540D",
       "Alias is required.": "\u522B\u540D\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Applied": "\u5DF2\u5E94\u7528",
       "App only": "\u4EC5 App",
+      "API endpoint, API key, and at least one model are required before verification.": "\u9A8C\u8BC1\u524D\u9700\u8981 API \u5730\u5740\u3001API Key \u548C\u81F3\u5C11\u4E00\u4E2A\u6A21\u578B\u3002",
+      "10 / page": "10 / \u9875",
+      "25 / page": "25 / \u9875",
+      "50 / page": "50 / \u9875",
+      "100 / page": "100 / \u9875",
       "Args": "\u53C2\u6570",
       "API Keys": "API \u5BC6\u94A5",
       "API key included": "\u5DF2\u5305\u542B API \u5BC6\u94A5",
@@ -145240,6 +145476,10 @@ var appCopy = {
       "Robot Code": "Robot Code",
       "Optional": "\u53EF\u9009",
       "Auto": "\u81EA\u52A8",
+      "Auto detect protocols": "\u81EA\u52A8\u63A2\u6D4B\u534F\u8BAE",
+      "Auto detect protocols description": "\u5F00\u542F\u540E\uFF0CCCR \u4F1A\u5728\u7F16\u8F91\u65F6\u63A2\u6D4B\u63A5\u53E3\uFF0C\u5E76\u7528\u63A2\u6D4B\u5230\u7684\u534F\u8BAE\u548C\u6A21\u578B\u66F4\u65B0\u6B64\u4F9B\u5E94\u5546\u3002\u5173\u95ED\u540E\uFF0C\u624B\u52A8\u9009\u62E9\u7684\u534F\u8BAE\u548C\u81EA\u5B9A\u4E49\u6A21\u578B ID \u4F1A\u4FDD\u6301\u4E0D\u53D8\u3002",
+      "Auto detect protocols info": "\u81EA\u52A8\u63A2\u6D4B\u534F\u8BAE\u8BF4\u660E",
+      "Automatic": "\u81EA\u52A8",
       "Back": "\u8FD4\u56DE",
       "Backup": "\u5907\u4EFD",
       "Cache": "\u7F13\u5B58",
@@ -145257,8 +145497,13 @@ var appCopy = {
       "Capture network": "\u6355\u83B7\u7F51\u7EDC",
       "Connection verified": "\u8FDE\u901A\u6027\u5DF2\u9A8C\u8BC1",
       "Action": "\u64CD\u4F5C",
+      "Available after saving": "\u4FDD\u5B58\u540E\u53EF\u7528",
       "Check trust": "\u68C0\u67E5\u4FE1\u4EFB",
       "Choose where each agent uses CCR.": "\u9009\u62E9\u6BCF\u4E2A Agent \u5728\u54EA\u91CC\u4F7F\u7528 CCR\u3002",
+      "Choose provider": "\u9009\u62E9\u4F9B\u5E94\u5546",
+      "Choose a provider endpoint so CCR can detect compatible protocols.": "\u9009\u62E9\u4F9B\u5E94\u5546\u7AEF\u70B9\u540E\uFF0CCCR \u624D\u80FD\u63A2\u6D4B\u517C\u5BB9\u534F\u8BAE\u3002",
+      "Choose the models that should be available through this provider.": "\u9009\u62E9\u8FD9\u4E2A\u4F9B\u5E94\u5546\u5BF9\u5916\u53EF\u7528\u7684\u6A21\u578B\u3002",
+      "Connect a provider in four small steps.": "\u901A\u8FC7 4 \u4E2A\u5C0F\u6B65\u9AA4\u63A5\u5165\u4E00\u4E2A\u4F9B\u5E94\u5546\u3002",
       "Built-in": "\u5185\u7F6E",
       "Identifies the Claude Code user-agent to provide deep Claude Code integration.": "\u901A\u8FC7\u8BC6\u522B Claude Code \u7684 user-agent\uFF0C\u5B9E\u73B0\u5BF9 Claude Code \u7684\u6DF1\u5EA6\u9002\u914D\u3002",
       "Identifies the Codex user-agent to provide deep Codex integration.": "\u901A\u8FC7\u8BC6\u522B Codex \u7684 user-agent\uFF0C\u5B9E\u73B0\u5BF9 Codex \u7684\u6DF1\u5EA6\u9002\u914D\u3002",
@@ -145279,9 +145524,13 @@ var appCopy = {
       "Codex": "Codex",
       "Codex model": "Codex \u6A21\u578B",
       "Grok CLI": "Grok CLI",
+      "Grok CLI profiles use CCR scope and CLI entry mode.": "Grok CLI \u914D\u7F6E\u6863\u6848\u56FA\u5B9A\u4F7F\u7528 CCR \u4F5C\u7528\u8303\u56F4\u548C CLI \u5165\u53E3\u6A21\u5F0F\u3002",
       "Grok model": "Grok \u6A21\u578B",
       "Kimi CLI": "Kimi CLI",
+      "Kimi profiles need a default model and an allowed model list.": "Kimi \u914D\u7F6E\u6863\u6848\u9700\u8981\u4E00\u4E2A\u9ED8\u8BA4\u6A21\u578B\u548C\u53EF\u7528\u6A21\u578B\u5217\u8868\u3002",
       "Kimi model": "Kimi \u6A21\u578B",
+      "Kimi model is required.": "Kimi \u6A21\u578B\u4E0D\u80FD\u4E3A\u7A7A\u3002",
+      "Allowed models": "\u5141\u8BB8\u6A21\u578B",
       "OpenCode": "OpenCode",
       "OpenCode model": "OpenCode \u6A21\u578B",
       "CLI only": "\u4EC5 CLI",
@@ -145291,6 +145540,11 @@ var appCopy = {
       "Rule type": "\u89C4\u5219\u7C7B\u578B",
       "Node.js route script file": "Node.js \u8DEF\u7531\u811A\u672C\u6587\u4EF6",
       "Choose file": "\u9009\u62E9\u6587\u4EF6",
+      "Choose a provider preset or endpoint, enter an API key, and add at least one model.": "\u9009\u62E9\u4F9B\u5E94\u5546\u9884\u8BBE\u6216\u7AEF\u70B9\uFF0C\u586B\u5199 API Key\uFF0C\u5E76\u81F3\u5C11\u6DFB\u52A0\u4E00\u4E2A\u6A21\u578B\u3002",
+      "Choose an agent, model, and required profile settings.": "\u9009\u62E9 Agent\u3001\u6A21\u578B\u548C\u5FC5\u586B\u7684\u914D\u7F6E\u6863\u6848\u8BBE\u7F6E\u3002",
+      "Choose how this provider authenticates model requests.": "\u9009\u62E9\u8FD9\u4E2A\u4F9B\u5E94\u5546\u5982\u4F55\u8BA4\u8BC1\u6A21\u578B\u8BF7\u6C42\u3002",
+      "Compatible API protocols were found automatically.": "\u5DF2\u81EA\u52A8\u627E\u5230\u517C\u5BB9\u7684 API \u534F\u8BAE\u3002",
+      "Compatible API protocols were found automatically. You can turn off auto detection in Advanced settings and select protocols manually.": "\u5DF2\u81EA\u52A8\u627E\u5230\u517C\u5BB9\u7684 API \u534F\u8BAE\u3002\u4F60\u53EF\u4EE5\u5728\u9AD8\u7EA7\u8BBE\u7F6E\u4E2D\u5173\u95ED\u81EA\u52A8\u68C0\u6D4B\uFF0C\u5E76\u624B\u52A8\u9009\u62E9\u534F\u8BAE\u3002",
       "Timeout (ms)": "\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF09",
       "Test request JSON": "\u6D4B\u8BD5\u8BF7\u6C42 JSON",
       "Validate": "\u6821\u9A8C",
@@ -145309,6 +145563,8 @@ var appCopy = {
       "Claude Design model": "Claude Design \u6A21\u578B",
       "Claude Design routes": "Claude Design \u8DEF\u7531",
       "Configure": "\u914D\u7F6E",
+      "Configure a provider before creating an agent profile.": "\u8BF7\u5148\u914D\u7F6E\u4F9B\u5E94\u5546\uFF0C\u518D\u521B\u5EFA Agent \u914D\u7F6E\u6863\u6848\u3002",
+      "Configure at least one enabled provider model before saving an agent profile.": "\u8BF7\u5148\u914D\u7F6E\u81F3\u5C11\u4E00\u4E2A\u5DF2\u542F\u7528\u7684\u4F9B\u5E94\u5546\u6A21\u578B\uFF0C\u518D\u4FDD\u5B58 Agent \u914D\u7F6E\u6863\u6848\u3002",
       "Configure provider": "\u914D\u7F6E\u4F9B\u5E94\u5546",
       "Configure Extension": "\u914D\u7F6E\u6269\u5C55",
       "Configure extension": "\u914D\u7F6E\u6269\u5C55",
@@ -145316,9 +145572,13 @@ var appCopy = {
       "Configure plugin route": "\u914D\u7F6E\u63D2\u4EF6\u8DEF\u7531",
       "Configure Routing": "\u914D\u7F6E\u8DEF\u7531",
       "Configure multiple provider API keys for this supplier.": "\u4E3A\u8FD9\u4E2A\u4F9B\u5E94\u5546\u914D\u7F6E\u591A\u4E2A\u4E0A\u6E38 API Key\u3002",
+      "Configuration": "\u914D\u7F6E\u6458\u8981",
       "Copy": "\u590D\u5236",
+      "Clear filters": "\u6E05\u7A7A\u7B5B\u9009",
+      "Clear filters or broaden the search to find more request logs.": "\u8BF7\u6E05\u7A7A\u7B5B\u9009\u6216\u653E\u5BBD\u641C\u7D22\u6761\u4EF6\u6765\u67E5\u627E\u66F4\u591A\u8BF7\u6C42\u65E5\u5FD7\u3002",
       "Create integration": "\u521B\u5EFA\u96C6\u6210",
       "Credential": "\u51ED\u636E",
+      "Credential method": "\u51ED\u636E\u65B9\u5F0F",
       "Credential chain": "\u51ED\u636E\u94FE",
       "Credential pool": "\u51ED\u636E\u6C60",
       "Credential saturated": "\u51ED\u636E\u5DF2\u9971\u548C",
@@ -145329,6 +145589,7 @@ var appCopy = {
       "Cost": "\u6210\u672C",
       "Estimated cost": "\u4F30\u7B97\u6210\u672C",
       "Connect agent": "\u63A5\u5165 Agent",
+      "Create profiles that tell each agent which model and entry mode to use.": "\u521B\u5EFA\u914D\u7F6E\u6863\u6848\uFF0C\u6307\u5B9A\u6BCF\u4E2A Agent \u4F7F\u7528\u7684\u6A21\u578B\u548C\u5165\u53E3\u6A21\u5F0F\u3002",
       "Create a profile for your agent.": "\u4E3A\u4F60\u7684 Agent \u521B\u5EFA\u914D\u7F6E\u6863\u6848\u3002",
       "Cursor model": "Cursor \u6A21\u578B",
       "Cursor Proxy routes": "Cursor Proxy \u8DEF\u7531",
@@ -145350,11 +145611,17 @@ var appCopy = {
       "Default on failure": "\u9ED8\u8BA4\u5931\u8D25\u5904\u7406",
       "Description": "\u63CF\u8FF0",
       "CCR scanned this computer for Claude Code, Codex, Grok CLI, OpenCode CLI, and ZCode login states. Click Import to add one as a gateway provider.": "CCR \u5DF2\u626B\u63CF\u672C\u673A\u7684 Claude Code\u3001Codex\u3001Grok CLI\u3001OpenCode CLI \u548C ZCode \u767B\u5F55\u6001\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
+      "CCR is checking this provider. Wait for the check to finish before continuing.": "CCR \u6B63\u5728\u68C0\u67E5\u8FD9\u4E2A\u4F9B\u5E94\u5546\uFF0C\u8BF7\u7B49\u5F85\u68C0\u67E5\u7ED3\u675F\u540E\u518D\u7EE7\u7EED\u3002",
+      "CCR is checking which API protocols this endpoint supports.": "CCR \u6B63\u5728\u68C0\u67E5\u8FD9\u4E2A\u7AEF\u70B9\u652F\u6301\u54EA\u4E9B API \u534F\u8BAE\u3002",
+      "CCR is sending a limited real model request.": "CCR \u6B63\u5728\u53D1\u9001\u4E00\u6B21\u53D7\u9650\u7684\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\u3002",
+      "CCR management service is unavailable. Make sure the CCR app or ccr ui command is running, then retry.": "\u65E0\u6CD5\u8FDE\u63A5 CCR \u7BA1\u7406\u670D\u52A1\u3002\u8BF7\u786E\u8BA4 CCR App \u6216 ccr ui \u547D\u4EE4\u6B63\u5728\u8FD0\u884C\uFF0C\u7136\u540E\u91CD\u8BD5\u3002",
       "Detected": "\u5DF2\u68C0\u6D4B",
       "Detecting protocols": "\u6B63\u5728\u63A2\u6D4B\u534F\u8BAE",
       "Enter API endpoint, API key, and at least one model to enable connectivity check.": "\u586B\u5199 API \u5730\u5740\u3001API Key \u548C\u81F3\u5C11\u4E00\u4E2A\u6A21\u578B\u540E\uFF0C\u624D\u53EF\u68C0\u6D4B\u8FDE\u901A\u6027\u3002",
+      "Finish the provider and agent profile steps before entering the app.": "\u8BF7\u5148\u5B8C\u6210\u4F9B\u5E94\u5546\u548C Agent \u914D\u7F6E\u6863\u6848\u6B65\u9AA4\uFF0C\u518D\u8FDB\u5165\u5E94\u7528\u3002",
       "Import local agent login": "\u5BFC\u5165\u672C\u673A Agent \u767B\u5F55\u6001",
       "Import local agent provider": "\u5BFC\u5165\u672C\u673A Agent \u4F9B\u5E94\u5546",
+      "In progress": "\u8FDB\u884C\u4E2D",
       "ChatGPT login detected. Click Import to add it as a gateway provider.": "\u5DF2\u68C0\u6D4B\u5230 ChatGPT \u767B\u5F55\u6001\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
       "Claude Code login detected. Click Import to add it as a gateway provider.": "\u5DF2\u68C0\u6D4B\u5230 Claude Code \u767B\u5F55\u6001\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
       "Claude Code login was detected, but no usable access token was found.": "\u5DF2\u68C0\u6D4B\u5230 Claude Code \u767B\u5F55\u6001\uFF0C\u4F46\u6CA1\u6709\u627E\u5230\u53EF\u7528\u7684 access token\u3002",
@@ -145373,6 +145640,10 @@ var appCopy = {
       "CCR scanned this computer for local Claude Code, Codex, Grok CLI, Kimi CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.": "CCR \u5DF2\u626B\u63CF\u672C\u673A\u7684 Claude Code\u3001Codex\u3001Grok CLI\u3001Kimi CLI\u3001OpenCode CLI \u548C ZCode \u4F9B\u5E94\u5546\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
       "Locked": "\u5DF2\u52A0\u5BC6",
       "Local agent login will be connected after saving this provider.": "\u4FDD\u5B58\u8FD9\u4E2A\u4F9B\u5E94\u5546\u540E\u4F1A\u63A5\u5165\u672C\u673A Agent \u767B\u5F55\u6001\u3002",
+      "Local login provider": "\u672C\u673A\u767B\u5F55\u6001\u4F9B\u5E94\u5546",
+      "Launch actions": "\u542F\u52A8\u64CD\u4F5C",
+      "Management actions": "\u7BA1\u7406\u64CD\u4F5C",
+      "Model overrides are optional; empty fields keep Claude Code defaults.": "\u6A21\u578B\u8986\u76D6\u662F\u53EF\u9009\u9879\uFF1B\u7559\u7A7A\u4F1A\u4FDD\u7559 Claude Code \u9ED8\u8BA4\u8BBE\u7F6E\u3002",
       "Display name": "\u663E\u793A\u540D\u79F0",
       "Double click to copy": "\u53CC\u51FB\u590D\u5236",
       "Edit": "\u7F16\u8F91",
@@ -145386,10 +145657,15 @@ var appCopy = {
       "Edit rule": "\u7F16\u8F91\u89C4\u5219",
       "Effect scope": "\u4F5C\u7528\u8303\u56F4",
       "Enable": "\u542F\u7528",
+      "Enable at least one provider model before saving this profile.": "\u8BF7\u5148\u542F\u7528\u81F3\u5C11\u4E00\u4E2A\u4F9B\u5E94\u5546\u6A21\u578B\uFF0C\u518D\u4FDD\u5B58\u8FD9\u4E2A\u914D\u7F6E\u6863\u6848\u3002",
+      "Enable provider": "\u542F\u7528\u4F9B\u5E94\u5546",
+      "Enable request logs": "\u542F\u7528\u8BF7\u6C42\u65E5\u5FD7",
       "Enabled": "\u542F\u7528",
+      "Disable provider": "\u505C\u7528\u4F9B\u5E94\u5546",
       "Endpoint": "\u7AEF\u70B9",
       "Entry mode": "\u5165\u53E3\u6A21\u5F0F",
       "Environment variables": "\u73AF\u5883\u53D8\u91CF",
+      "Environment variable rows need valid keys.": "\u73AF\u5883\u53D8\u91CF\u884C\u9700\u8981\u586B\u5199\u6709\u6548\u7684 Key\u3002",
       "Endpoint Health": "\u7AEF\u70B9\u5065\u5EB7",
       "Endpoint information": "\u7AEF\u70B9\u4FE1\u606F",
       "HTTP status": "HTTP \u72B6\u6001\u7801",
@@ -145442,6 +145718,7 @@ var appCopy = {
       "Image content": "\u56FE\u50CF\u5185\u5BB9",
       "Images": "\u56FE\u50CF",
       "Idle seconds": "\u7A7A\u95F2\u79D2\u6570",
+      "Idle seconds must be between 30 and 86400.": "\u7A7A\u95F2\u79D2\u6570\u5FC5\u987B\u5728 30 \u5230 86400 \u4E4B\u95F4\u3002",
       "Input": "\u8F93\u5165",
       "Input tokens": "\u8F93\u5165\u4EE4\u724C",
       "Integration ID": "\u96C6\u6210 ID",
@@ -145486,6 +145763,7 @@ var appCopy = {
       "Method": "\u65B9\u6CD5",
       "Model": "\u6A21\u578B",
       "Default model": "\u9ED8\u8BA4\u6A21\u578B",
+      "Default model is required.": "\u9ED8\u8BA4\u6A21\u578B\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Model descriptions": "\u6A21\u578B\u63CF\u8FF0",
       "Model override": "\u6A21\u578B\u8986\u76D6",
       "Model routing": "\u6A21\u578B\u8DEF\u7531",
@@ -145506,6 +145784,8 @@ var appCopy = {
       "No provider usage yet": "\u6682\u65E0\u4F9B\u5E94\u5546\u7528\u91CF",
       "No provider yet": "\u8FD8\u6CA1\u6709\u4F9B\u5E94\u5546",
       "No requests captured yet": "\u6682\u65E0\u8BF7\u6C42\u8BB0\u5F55",
+      "No request logs match the current filters.": "\u6CA1\u6709\u7B26\u5408\u5F53\u524D\u7B5B\u9009\u6761\u4EF6\u7684\u8BF7\u6C42\u65E5\u5FD7\u3002",
+      "No request logs yet.": "\u8FD8\u6CA1\u6709\u8BF7\u6C42\u65E5\u5FD7\u3002",
       "No bots configured": "\u5C1A\u672A\u914D\u7F6E Bot",
       "No data": "\u65E0\u6570\u636E",
       "No route activity": "\u6682\u65E0\u8DEF\u7531\u6D3B\u52A8",
@@ -145558,6 +145838,7 @@ var appCopy = {
       "External core": "\u5916\u90E8 Core",
       "External provider link": "\u5916\u90E8\u4F9B\u5E94\u5546\u94FE\u63A5",
       "Provider": "\u4F9B\u5E94\u5546",
+      "Provider ID and Provider name identify the routed provider in Codex.": "Provider ID \u548C Provider name \u7528\u4E8E\u5728 Codex \u4E2D\u8BC6\u522B\u88AB\u8DEF\u7531\u7684\u4F9B\u5E94\u5546\u3002",
       "Provider Analysis": "\u4F9B\u5E94\u5546\u5206\u6790",
       "Provider credential JSON did not contain any API keys.": "\u4F9B\u5E94\u5546\u51ED\u636E JSON \u4E2D\u6CA1\u6709\u53EF\u7528 API Key\u3002",
       "Provider credential JSON is invalid.": "\u4F9B\u5E94\u5546\u51ED\u636E JSON \u65E0\u6548\u3002",
@@ -145569,9 +145850,11 @@ var appCopy = {
       "Provider credential rows require names.": "\u4F9B\u5E94\u5546\u51ED\u636E\u884C\u5FC5\u987B\u586B\u5199\u540D\u79F0\u3002",
       "Provider credential weight must be a positive number.": "\u4F9B\u5E94\u5546\u51ED\u636E\u6743\u91CD\u5FC5\u987B\u662F\u6B63\u6570\u3002",
       "Provider ID": "\u4F9B\u5E94\u5546 ID",
+      "Provider ID is required.": "\u4F9B\u5E94\u5546 ID \u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Provider link failed": "\u4F9B\u5E94\u5546\u94FE\u63A5\u5931\u8D25",
       "Provider middleware": "\u4F9B\u5E94\u5546\u4E2D\u95F4\u4EF6",
       "Provider name": "\u4F9B\u5E94\u5546\u540D\u79F0",
+      "Provider name is required.": "\u4F9B\u5E94\u5546\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Provider name and Base URL are required.": "\u4F9B\u5E94\u5546\u540D\u79F0\u548C\u57FA\u7840 URL \u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Provider name already exists.": "\u4F9B\u5E94\u5546\u540D\u79F0\u5DF2\u5B58\u5728\u3002",
       "Provider ready": "\u4F9B\u5E94\u5546\u5DF2\u5C31\u7EEA",
@@ -145590,6 +145873,7 @@ var appCopy = {
       "Profile": "\u914D\u7F6E",
       "Profile actions": "\u914D\u7F6E\u64CD\u4F5C",
       "Profile name": "\u914D\u7F6E\u6863\u6848\u540D\u79F0",
+      "Profile name is required.": "\u914D\u7F6E\u6863\u6848\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "Profile name and required target settings are missing.": "\u8BF7\u586B\u5199\u914D\u7F6E\u6863\u6848\u540D\u79F0\u548C\u5FC5\u9700\u7684\u63A5\u5165\u76EE\u6807\u8BBE\u7F6E\u3002",
       "Profile name, required target settings, and environment variable keys are required.": "\u8BF7\u586B\u5199\u914D\u7F6E\u6863\u6848\u540D\u79F0\u3001\u5FC5\u9700\u7684\u63A5\u5165\u76EE\u6807\u8BBE\u7F6E\u548C\u73AF\u5883\u53D8\u91CF Key\u3002",
       "Profile no longer exists.": "\u914D\u7F6E\u6863\u6848\u5DF2\u4E0D\u5B58\u5728\u3002",
@@ -145615,6 +145899,8 @@ var appCopy = {
       "Request action": "\u8BF7\u6C42\u52A8\u4F5C",
       "Request ID": "\u8BF7\u6C42 ID",
       "Request logs database": "\u8BF7\u6C42\u65E5\u5FD7\u6570\u636E\u5E93",
+      "Request logs are off": "\u8BF7\u6C42\u65E5\u5FD7\u5DF2\u5173\u95ED",
+      "Request logs record gateway requests and make payload inspection available.": "\u8BF7\u6C42\u65E5\u5FD7\u4F1A\u8BB0\u5F55\u7F51\u5173\u8BF7\u6C42\uFF0C\u5E76\u652F\u6301\u67E5\u770B\u8BF7\u6C42/\u54CD\u5E94\u8F7D\u8377\u3002",
       "Request timeout ms": "\u8BF7\u6C42\u8D85\u65F6 ms",
       "Requests": "\u8BF7\u6C42",
       "Rewrite request parameters": "\u6539\u5199\u8BF7\u6C42\u53C2\u6570",
@@ -145634,6 +145920,7 @@ var appCopy = {
       "Retry": "\u7EE7\u7EED\u91CD\u8BD5",
       "Retry attempts": "\u91CD\u8BD5\u5C1D\u8BD5",
       "Weighted order": "\u6309\u6743\u91CD\u6392\u5E8F",
+      "Paths, provider identity, bot, compact, and env": "\u8DEF\u5F84\u3001\u4F9B\u5E94\u5546\u8EAB\u4EFD\u3001Bot\u3001\u538B\u7F29\u548C\u73AF\u5883\u53D8\u91CF",
       "Ready to route": "\u53EF\u4EE5\u5F00\u59CB\u8DEF\u7531",
       "Restart proxy": "\u91CD\u542F\u4EE3\u7406",
       "Route": "\u8DEF\u7531",
@@ -145645,6 +145932,8 @@ var appCopy = {
       "View route graph": "\u67E5\u770B\u8DEF\u7531\u94FE\u8DEF\u56FE",
       "Hover a node to inspect routing operations": "\u5C06\u9F20\u6807\u60AC\u505C\u5728\u8282\u70B9\u4E0A\u67E5\u770B\u8DEF\u7531\u64CD\u4F5C",
       "Hover over a route node to inspect its operations.": "\u5C06\u9F20\u6807\u60AC\u505C\u5728\u8DEF\u7531\u8282\u70B9\u4E0A\u67E5\u770B\u64CD\u4F5C\u8BE6\u60C5\u3002",
+      "Select a route node to inspect routing operations": "\u9009\u62E9\u8DEF\u7531\u8282\u70B9\u67E5\u770B\u8DEF\u7531\u64CD\u4F5C",
+      "Select a route node to inspect its operations.": "\u9009\u62E9\u8DEF\u7531\u8282\u70B9\u67E5\u770B\u64CD\u4F5C\u8BE6\u60C5\u3002",
       "Routing operations": "\u8DEF\u7531\u64CD\u4F5C",
       "No request fields changed": "\u6CA1\u6709\u8BF7\u6C42\u5B57\u6BB5\u53D8\u66F4",
       "Not recorded": "\u672A\u8BB0\u5F55",
@@ -145702,8 +145991,12 @@ var appCopy = {
       "Search request logs": "\u641C\u7D22\u8BF7\u6C42\u65E5\u5FD7",
       "Search routing rules": "\u641C\u7D22\u8DEF\u7531\u89C4\u5219",
       "Select account": "\u9009\u62E9\u8D26\u6237",
+      "Select an existing bot or turn Bot off.": "\u8BF7\u9009\u62E9\u5DF2\u6709 Bot\uFF0C\u6216\u5173\u95ED Bot\u3002",
+      "Select at least one available model.": "\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u53EF\u7528\u6A21\u578B\u3002",
+      "Select at least one allowed model.": "\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u5141\u8BB8\u6A21\u578B\u3002",
       "Select bot": "\u9009\u62E9 Bot",
       "Select data": "\u9009\u62E9\u6570\u636E",
+      "Send a request through CCR, then refresh this page to inspect it.": "\u901A\u8FC7 CCR \u53D1\u9001\u4E00\u6B21\u8BF7\u6C42\uFF0C\u7136\u540E\u5237\u65B0\u6B64\u9875\u9762\u67E5\u770B\u65E5\u5FD7\u3002",
       "Server": "\u670D\u52A1",
       "Startup timeout ms": "\u542F\u52A8\u8D85\u65F6 ms",
       "State directory": "\u72B6\u6001\u76EE\u5F55",
@@ -146064,6 +146357,7 @@ var appCopy = {
       "Browser apps JSON": "\u6D4F\u89C8\u5668 App JSON",
       "Account": "\u8D26\u6237",
       "Account Balance": "\u8D26\u6237\u4F59\u989D",
+      "Account Usage": "\u8D26\u6237\u7528\u91CF",
       "Account balance connectors": "\u8D26\u6237\u4F59\u989D\u8FDE\u63A5\u5668",
       "Add at least one account connector or disable account balance.": "\u8BF7\u81F3\u5C11\u6DFB\u52A0\u4E00\u4E2A\u8D26\u6237\u8FDE\u63A5\u5668\uFF0C\u6216\u5173\u95ED\u8D26\u6237\u4F59\u989D\u3002",
       "Balance": "\u4F59\u989D",
@@ -146175,11 +146469,20 @@ var appCopy = {
       "Invalid": "\u65E0\u6548",
       "Manual install": "\u624B\u52A8\u5B89\u88C5",
       "Manual install command": "\u624B\u52A8\u5B89\u88C5\u547D\u4EE4",
+      "Manual": "\u624B\u52A8",
       "Manifest URL": "Manifest URL",
       "Marketplace": "\u5E02\u573A",
+      "Added": "\u5DF2\u6DFB\u52A0",
+      "Added models": "\u5DF2\u6DFB\u52A0\u6A21\u578B",
+      "Add custom model": "\u6DFB\u52A0\u81EA\u5B9A\u4E49\u6A21\u578B",
+      "Cancel custom model": "\u53D6\u6D88\u81EA\u5B9A\u4E49\u6A21\u578B",
+      "Click a model to edit settings": "\u70B9\u51FB\u6A21\u578B\u7F16\u8F91\u8BBE\u7F6E",
+      "Custom model": "\u81EA\u5B9A\u4E49\u6A21\u578B",
+      "Model already added": "\u6A21\u578B\u5DF2\u6DFB\u52A0",
       "Model name": "\u6A21\u578B\u540D\u79F0",
       "Models are required. Ask the provider to include models=... in the link.": "\u9700\u8981\u6A21\u578B\u5217\u8868\u3002\u8BF7\u8BA9\u4F9B\u5E94\u5546\u5728\u94FE\u63A5\u4E2D\u52A0\u5165 models=...\u3002",
       "Models will be detected automatically.": "\u6A21\u578B\u4F1A\u81EA\u52A8\u63A2\u6D4B\u3002",
+      "Models detected from this provider": "\u4ECE\u8BE5\u4F9B\u5E94\u5546\u68C0\u6D4B\u5230\u7684\u6A21\u578B",
       "More": "\u66F4\u591A",
       "Provider models": "\u4F9B\u5E94\u5546\u6A21\u578B",
       "Runtime provider": "\u8FD0\u884C\u65F6\u4F9B\u5E94\u5546",
@@ -146211,11 +146514,15 @@ var appCopy = {
       "No matching routing rules": "\u6CA1\u6709\u5339\u914D\u7684\u8DEF\u7531\u89C4\u5219",
       "No account balance connectors configured": "\u672A\u914D\u7F6E\u8D26\u6237\u4F59\u989D\u8FDE\u63A5\u5668",
       "No available models": "\u6CA1\u6709\u53EF\u7528\u6A21\u578B",
+      "No models added": "\u672A\u6DFB\u52A0\u6A21\u578B",
+      "No provider models": "\u6CA1\u6709\u4F9B\u5E94\u5546\u6A21\u578B",
       "No protocol detection yet": "\u5C1A\u672A\u68C0\u6D4B\u534F\u8BAE",
       "No response fields": "\u6CA1\u6709\u54CD\u5E94\u5B57\u6BB5",
       "No unavailable models": "\u6CA1\u6709\u4E0D\u53EF\u7528\u6A21\u578B",
+      "Gateway service": "\u7F51\u5173\u670D\u52A1",
       "Name is required.": "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002",
       "No usage data available.": "\u6682\u65E0\u53EF\u7528\u91CF\u6570\u636E\u3002",
+      "Next": "\u4E0B\u4E00\u6B65",
       "OpenAI Chat": "OpenAI Chat",
       "OpenAI Responses": "OpenAI Responses",
       "Anthropic Messages": "Anthropic Messages",
@@ -146227,8 +146534,10 @@ var appCopy = {
       "Select or enter at least one model.": "\u8BF7\u9009\u62E9\u6216\u8F93\u5165\u81F3\u5C11\u4E00\u4E2A\u6A21\u578B\u3002",
       "Enter at least one model.": "\u8BF7\u8F93\u5165\u81F3\u5C11\u4E00\u4E2A\u6A21\u578B\u3002",
       "Generated output is limited to 1 token for connectivity checks.": "\u8FDE\u901A\u6027\u68C0\u6D4B\u4F1A\u628A\u751F\u6210\u8F93\u51FA\u9650\u5236\u4E3A 1 \u4E2A token\u3002",
+      "Endpoint and identity": "\u7AEF\u70B9\u4E0E\u540D\u79F0",
       "Check results": "\u68C0\u6D4B\u7ED3\u679C",
       "Models to check": "\u8981\u68C0\u6D4B\u7684\u6A21\u578B",
+      "Available model IDs": "\u53EF\u7528\u6A21\u578B ID",
       "Raw connector JSON": "\u539F\u59CB\u8FDE\u63A5\u5668 JSON",
       "Remote provider manifest": "\u8FDC\u7A0B\u4F9B\u5E94\u5546 Manifest",
       "Refresh interval ms": "\u5237\u65B0\u95F4\u9694\uFF08\u6BEB\u79D2\uFF09",
@@ -146269,24 +146578,63 @@ var appCopy = {
       "Switch to HTTP JSON request to configure method, URL, headers, body, and response fields.": "\u5207\u6362\u5230 HTTP JSON \u8BF7\u6C42\u5373\u53EF\u914D\u7F6E method\u3001URL\u3001header\u3001body \u548C\u54CD\u5E94\u5B57\u6BB5\u3002",
       "Test usage request": "\u6D4B\u8BD5\u7528\u91CF\u8BF7\u6C42",
       "This check sends real model requests with your provider API key and may consume account balance.": "\u672C\u6B21\u68C0\u6D4B\u4F1A\u4F7F\u7528\u4F60\u7684\u4F9B\u5E94\u5546 API Key \u53D1\u8D77\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\uFF0C\u53EF\u80FD\u6D88\u8017\u8D26\u6237\u4F59\u989D\u3002",
+      "The gateway is configured. Start the service from the toolbar when you are ready to test traffic.": "\u7F51\u5173\u5DF2\u7ECF\u914D\u7F6E\u597D\u3002\u51C6\u5907\u6D4B\u8BD5\u8BF7\u6C42\u65F6\uFF0C\u8BF7\u4ECE\u5DE5\u5177\u680F\u542F\u52A8\u670D\u52A1\u3002",
+      "The imported local agent login is connected when this provider is saved.": "\u5BFC\u5165\u7684\u672C\u673A Agent \u767B\u5F55\u6001\u4F1A\u5728\u4FDD\u5B58\u4F9B\u5E94\u5546\u540E\u63A5\u5165\u3002",
       "Unavailable models": "\u4E0D\u53EF\u7528\u6A21\u578B",
+      "Usable": "\u53EF\u7528",
+      "Verify connection": "\u9A8C\u8BC1\u8FDE\u901A\u6027",
+      "Waiting for provider details": "\u7B49\u5F85\u4F9B\u5E94\u5546\u4FE1\u606F",
+      "Waiting for required fields": "\u7B49\u5F85\u5FC5\u586B\u5B57\u6BB5",
       "No marketplace extensions": "\u5E02\u573A\u6682\u65E0\u6269\u5C55",
       "No fallback models configured": "\u672A\u914D\u7F6E\u56DE\u9000\u6A21\u578B",
       "No fallback targets configured": "\u672A\u914D\u7F6E\u5931\u8D25\u964D\u7EA7\u76EE\u6807",
       "No models configured": "\u672A\u914D\u7F6E\u6A21\u578B",
       "No local login state was found for this agent.": "\u672A\u627E\u5230\u8FD9\u4E2A Agent \u7684\u672C\u673A\u767B\u5F55\u6001\u3002",
+      "No providers": "\u65E0\u4F9B\u5E94\u5546",
       "No provider credentials configured": "\u672A\u914D\u7F6E\u4F9B\u5E94\u5546\u51ED\u636E",
       "No request rewrite": "\u4E0D\u6539\u5199\u8BF7\u6C42",
       "Not found": "\u672A\u627E\u5230",
+      "Not verified yet": "\u5C1A\u672A\u9A8C\u8BC1",
+      "Needs models": "\u7F3A\u5C11\u6A21\u578B",
+      "Needs protocol": "\u7F3A\u5C11\u534F\u8BAE",
+      "OpenCode profiles can target CLI, APP, or both entry modes.": "OpenCode \u914D\u7F6E\u6863\u6848\u53EF\u4EE5\u9009\u62E9 CLI\u3001APP \u6216\u4E24\u8005\u5165\u53E3\u6A21\u5F0F\u3002",
+      "Optional health check": "\u53EF\u9009\u5065\u5EB7\u68C0\u67E5",
       "Other / custom API endpoint": "\u5176\u4ED6 / \u81EA\u5B9A\u4E49 API \u5730\u5740",
       "Pending": "\u7B49\u5F85\u4E2D",
+      "Pick models": "\u9009\u62E9\u6A21\u578B",
+      "Pick a preset provider or use a custom compatible API endpoint.": "\u9009\u62E9\u4F9B\u5E94\u5546\u9884\u8BBE\uFF0C\u6216\u4F7F\u7528\u81EA\u5B9A\u4E49\u517C\u5BB9 API \u7AEF\u70B9\u3002",
       "Priority": "\u4F18\u5148\u7EA7",
       "Priority only": "\u4EC5\u6309\u4F18\u5148\u7EA7",
       "Priority spillover": "\u4F18\u5148\u7EA7\u6EA2\u51FA",
       "Ready": "\u53EF\u5BFC\u5165",
+      "Ready to test": "\u53EF\u6D4B\u8BD5",
+      "Pool keys": "\u6C60\u5185 Key",
+      "Run a real model request before relying on this provider.": "\u4F7F\u7528\u524D\u5EFA\u8BAE\u5148\u8FD0\u884C\u4E00\u6B21\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\u9A8C\u8BC1\u3002",
+      "Optional. Check Connection sends a real model request and may consume provider credits.": "\u53EF\u9009\u3002\u8FDE\u63A5\u68C0\u67E5\u4F1A\u53D1\u9001\u4E00\u6B21\u771F\u5B9E\u6A21\u578B\u8BF7\u6C42\uFF0C\u53EF\u80FD\u6D88\u8017\u4F9B\u5E94\u5546\u989D\u5EA6\u3002",
       "Scanning local agent logins": "\u6B63\u5728\u626B\u63CF\u672C\u673A Agent \u767B\u5F55\u6001",
+      "Save this agent profile to continue.": "\u4FDD\u5B58\u8FD9\u4E2A Agent \u914D\u7F6E\u6863\u6848\u540E\u7EE7\u7EED\u3002",
+      "Save this provider to continue.": "\u4FDD\u5B58\u8FD9\u4E2A\u4F9B\u5E94\u5546\u540E\u7EE7\u7EED\u3002",
+      "Secret used for requests": "\u8BF7\u6C42\u4F7F\u7528\u7684\u5BC6\u94A5",
+      "Send a request from your agent, then confirm it appears in Logs.": "\u4ECE Agent \u53D1\u9001\u4E00\u6B21\u8BF7\u6C42\uFF0C\u7136\u540E\u5230\u65E5\u5FD7\u91CC\u786E\u8BA4\u5B83\u5DF2\u7ECF\u51FA\u73B0\u3002",
+      "Setup readiness": "\u914D\u7F6E\u5C31\u7EEA\u72B6\u6001",
+      "Show API key": "\u663E\u793A API key",
+      "Show models": "\u663E\u793A\u6A21\u578B",
+      "Hide API key": "\u9690\u85CF API key",
+      "Hide models": "\u6536\u8D77\u6A21\u578B",
+      "Use one key for every request.": "\u6240\u6709\u8BF7\u6C42\u4F7F\u7528\u540C\u4E00\u4E2A Key\u3002",
+      "Use multiple API keys with optional priorities, weights, and limits.": "\u4F7F\u7528\u591A\u4E2A API Key\uFF0C\u5E76\u53EF\u8BBE\u7F6E\u4F18\u5148\u7EA7\u3001\u6743\u91CD\u548C\u9650\u989D\u3002",
+      "Use multiple keys with optional limits.": "\u4F7F\u7528\u591A\u4E2A Key\uFF0C\u53EF\u9009\u9650\u989D\u3002",
+      "Loading provider models": "\u6B63\u5728\u52A0\u8F7D\u4F9B\u5E94\u5546\u6A21\u578B",
+      "Select models": "\u9009\u62E9\u6A21\u578B",
+      "Search added models": "\u641C\u7D22\u5DF2\u6DFB\u52A0\u6A21\u578B",
+      "Search provider models": "\u641C\u7D22\u4F9B\u5E94\u5546\u6A21\u578B",
+      "Monitor": "\u76D1\u63A7",
+      "Setup": "\u8BBE\u7F6E\u6D41\u7A0B",
       "Select preset provider": "\u9009\u62E9 \u9884\u8BBE\u4F9B\u5E94\u5546",
+      "providers": "\u4F9B\u5E94\u5546",
+      "Workspace": "\u5DE5\u4F5C\u53F0",
       "ZCode login detected. Click Import to add it as a gateway provider.": "\u5DF2\u68C0\u6D4B\u5230 ZCode \u767B\u5F55\u6001\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
+      "ZCode profiles use APP entry mode.": "ZCode \u914D\u7F6E\u6863\u6848\u56FA\u5B9A\u4F7F\u7528 APP \u5165\u53E3\u6A21\u5F0F\u3002",
       "ZCode login was detected, but its local credential is encrypted and cannot be imported automatically.": "\u5DF2\u68C0\u6D4B\u5230 ZCode \u767B\u5F55\u6001\uFF0C\u4F46\u672C\u673A\u51ED\u636E\u5DF2\u52A0\u5BC6\uFF0C\u65E0\u6CD5\u81EA\u52A8\u5BFC\u5165\u3002",
       "ZCode login was detected, but no usable provider API key was found in ZCode config.": "\u5DF2\u68C0\u6D4B\u5230 ZCode \u767B\u5F55\u6001\uFF0C\u4F46 ZCode \u914D\u7F6E\u4E2D\u6CA1\u6709\u627E\u5230\u53EF\u7528\u7684\u4F9B\u5E94\u5546 API key\u3002",
       "ZCode provider API key detected in local ZCode config. Click Import to add it as a gateway provider.": "\u5DF2\u5728\u672C\u673A ZCode \u914D\u7F6E\u4E2D\u68C0\u6D4B\u5230\u4F9B\u5E94\u5546 API key\u3002\u70B9\u51FB\u5BFC\u5165\u5373\u53EF\u6DFB\u52A0\u4E3A\u7F51\u5173\u4F9B\u5E94\u5546\u3002",
@@ -146322,7 +146670,9 @@ var appCopy = {
       "Pause network capture": "\u6682\u505C\u7F51\u7EDC\u6355\u83B7",
       "Pause service": "\u6682\u505C\u670D\u52A1",
       "Previous page": "\u4E0A\u4E00\u9875",
+      "Previous": "\u4E0A\u4E00\u6B65",
       "Previous step": "\u4E0A\u4E00\u6B65",
+      "Provider setup": "\u4F9B\u5E94\u5546\u8BBE\u7F6E",
       "Proxy not running": "\u4EE3\u7406\u672A\u8FD0\u884C",
       "Proxy status": "\u4EE3\u7406\u72B6\u6001",
       "Proxy CA certificate is trusted.": "Proxy CA \u8BC1\u4E66\u5DF2\u4FE1\u4EFB\u3002",
@@ -146427,6 +146777,7 @@ var appCopy = {
       "enabled": "\u5DF2\u542F\u7528",
       "header": "\u6807\u5934",
       "inactive": "\u672A\u542F\u7528",
+      "model": "\u6A21\u578B",
       "models": "\u6A21\u578B",
       "meters": "\u6307\u6807",
       "not running": "\u672A\u8FD0\u884C",
@@ -146465,12 +146816,12 @@ function translateOptions(options, t) {
 }
 
 // packages/ui/src/pages/home/shared/motion.tsx
-var import_jsx_runtime18 = __toESM(require_jsx_runtime());
+var import_jsx_runtime19 = __toESM(require_jsx_runtime());
 var reducedMotionTransition = { duration: 0.12, ease: "easeOut" };
 var disclosureSpringTransition = { damping: 36, mass: 0.7, stiffness: 480, type: "spring" };
 function AnimatedDisclosure({ children, className }) {
   const shouldReduceMotion = useReducedMotion();
-  return /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(
     motion.div,
     {
       animate: shouldReduceMotion ? { opacity: 1 } : { height: "auto", opacity: 1 },
@@ -146488,7 +146839,7 @@ function AnimatedIconSwap({
   iconKey
 }) {
   const shouldReduceMotion = useReducedMotion();
-  return /* @__PURE__ */ (0, import_jsx_runtime18.jsx)("span", { className: cn("inline-flex shrink-0 items-center justify-center", className), children: /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(AnimatePresence, { initial: false, mode: "wait", children: /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime19.jsx)("span", { className: cn("inline-flex shrink-0 items-center justify-center", className), children: /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(AnimatePresence, { initial: false, mode: "wait", children: /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(
     motion.span,
     {
       animate: shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1 },
@@ -149115,7 +149466,7 @@ function getPresetById(id3) {
 }
 
 // packages/ui/node_modules/@musistudio/lucide-morph-react/dist/index.js
-var import_jsx_runtime19 = __toESM(require_jsx_runtime(), 1);
+var import_jsx_runtime20 = __toESM(require_jsx_runtime(), 1);
 
 // packages/ui/src/lib/morph-icon.ts
 function directMorphAsset(preset) {
@@ -149313,7 +149664,7 @@ function overviewWidgetId(type, metric) {
 }
 
 // packages/ui/src/pages/home/shared/services.tsx
-var import_jsx_runtime20 = __toESM(require_jsx_runtime());
+var import_jsx_runtime21 = __toESM(require_jsx_runtime());
 
 // packages/ui/src/pages/home/shared/profiles.ts
 var botGatewayPlatformSpecs = [
@@ -149460,10 +149811,10 @@ var botGatewayPlatformSpecs = [
 var botGatewayPlatformOptions = botGatewayPlatformSpecs.map(({ label, value }) => ({ label, value }));
 
 // packages/ui/src/pages/home/shared/controls.tsx
-var import_jsx_runtime21 = __toESM(require_jsx_runtime());
+var import_jsx_runtime22 = __toESM(require_jsx_runtime());
 function Field({ children, className, label }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)(Label, { className: cn("block min-w-0 space-y-1", className), children: [
-    /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("span", { className: "block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: label }),
+  return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)(Label, { className: cn("block min-w-0 space-y-1", className), children: [
+    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { className: "block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground", children: label }),
     children
   ] });
 }
@@ -149473,7 +149824,7 @@ function SelectControl({
   options,
   value
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(Select, { className, onValueChange: onChange, options, value });
+  return /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(Select, { className, onValueChange: onChange, options, value });
 }
 function usageStatusTone(point) {
   if (point.requestCount <= 0) return "idle";
@@ -149680,7 +150031,7 @@ function buildTokenActivity(series, options = {}) {
   let observedStart;
   let observedEnd;
   for (const point of series) {
-    const date = startOfLocalDay(new Date(point.bucket));
+    const date = startOfLocalDay(parseActivityDate(point.bucket));
     if (!isFiniteDate(date)) {
       continue;
     }
@@ -149740,6 +150091,20 @@ function buildTokenActivity(series, options = {}) {
     totalTokens,
     weekCount
   };
+}
+function parseActivityDate(bucket) {
+  const dateOnly = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(bucket.trim());
+  if (!dateOnly) {
+    return new Date(bucket);
+  }
+  const year = Number(dateOnly[1]);
+  const month = Number(dateOnly[2]);
+  const day = Number(dateOnly[3]);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return new Date(Number.NaN);
+  }
+  return date;
 }
 function activityDateKey(date) {
   const year = date.getFullYear();
@@ -149846,7 +150211,7 @@ function positiveInteger3(value) {
 }
 
 // packages/ui/src/pages/home/components/share-cards.tsx
-var import_jsx_runtime22 = __toESM(require_jsx_runtime());
+var import_jsx_runtime23 = __toESM(require_jsx_runtime());
 var shareCardExportCssWidth = 540;
 var shareCardExportCssHeight = 675;
 var shareCardExportPixelWidth = 1080;
@@ -149920,13 +150285,13 @@ function ShareCardWidget({
   if (!definition) {
     return null;
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)(ShareCardShell, { fileName: definition.fileName, title: t(definition.title), children: [
-    type === "share-usage-wrapped" ? /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(UsageWrappedCard, { usageStats: usageStats2 }) : null,
-    type === "share-route-map" ? /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(RouteMapCard, { usageStats: usageStats2 }) : null,
-    type === "share-model-leaderboard" ? /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(ModelLeaderboardCard, { usageStats: usageStats2 }) : null,
-    type === "share-fuel-cockpit" ? /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(FuelCockpitCard, { providerAccounts }) : null,
-    type === "share-token-calendar" ? /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(TokenCalendarPosterCard, { usageStats: usageStats2 }) : null,
-    type === "share-spend-receipt" ? /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(SpendReceiptCard, { usageRange, usageStats: usageStats2 }) : null
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(ShareCardShell, { fileName: definition.fileName, title: t(definition.title), children: [
+    type === "share-usage-wrapped" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(UsageWrappedCard, { usageStats: usageStats2 }) : null,
+    type === "share-route-map" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(RouteMapCard, { usageStats: usageStats2 }) : null,
+    type === "share-model-leaderboard" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ModelLeaderboardCard, { usageStats: usageStats2 }) : null,
+    type === "share-fuel-cockpit" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(FuelCockpitCard, { providerAccounts }) : null,
+    type === "share-token-calendar" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(TokenCalendarPosterCard, { usageStats: usageStats2 }) : null,
+    type === "share-spend-receipt" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(SpendReceiptCard, { usageRange, usageStats: usageStats2 }) : null
   ] });
 }
 function shareCardDefinition(type) {
@@ -149984,12 +150349,12 @@ function ShareCardShell({
       setExporting(false);
     }
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("article", { className: "flex h-full min-h-0 min-w-0 flex-col space-y-2", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "min-w-0 truncate text-[12px] font-semibold text-muted-foreground", children: title }),
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "flex shrink-0 items-center gap-2", children: [
-        status === "error" ? /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { className: "text-[11px] font-medium text-destructive", children: t("Export failed") }) : null,
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("article", { className: "flex h-full min-h-0 min-w-0 flex-col space-y-2", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-w-0 truncate text-[12px] font-semibold text-muted-foreground", children: title }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex shrink-0 items-center gap-2", children: [
+        status === "error" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "text-[11px] font-medium text-destructive", children: t("Export failed") }) : null,
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
           Button,
           {
             "aria-label": status === "saving" ? t("Saving") : t("Save image"),
@@ -149999,13 +150364,13 @@ function ShareCardShell({
             type: "button",
             unstyled: true,
             onClick: () => void saveImage(),
-            children: status === "saving" ? /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3.5 w-3.5 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_lucide_react2.Download, { className: "h-3.5 w-3.5" })
+            children: status === "saving" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3.5 w-3.5 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Download, { className: "h-3.5 w-3.5" })
           }
         )
       ] })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "min-h-0 flex-1", ref: cardRef, children }),
-    exporting ? /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-h-0 flex-1", ref: cardRef, children }),
+    exporting ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
       "div",
       {
         "aria-hidden": "true",
@@ -150028,80 +150393,80 @@ function UsageWrappedCard({ usageStats: usageStats2 }) {
   const topProvider = usageStats2.providerModels[0];
   const bestDay = [...usageStats2.series].sort((a, b) => b.totalTokens - a.totalTokens)[0];
   const activity = buildTokenActivity(usageStats2.series, { maxWeeks: 12, minWeeks: 8 });
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)(SharePoster, { tone: "teal", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(SharePosterHeader, { title: t("AI Usage Wrapped"), tone: "teal" }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "mt-8", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "text-[60px] font-black leading-none tracking-normal text-teal-950", children: formatCompactNumber(totals.totalTokens) }),
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "mt-2 text-[17px] font-semibold text-teal-950/70", children: t("tokens routed through CCR") })
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(SharePoster, { tone: "teal", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(SharePosterHeader, { title: t("AI Usage Wrapped"), tone: "teal" }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mt-8", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[60px] font-black leading-none tracking-normal text-teal-950", children: formatCompactNumber(totals.totalTokens) }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-2 text-[17px] font-semibold text-teal-950/70", children: t("tokens routed through CCR") })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "mt-8 grid grid-cols-2 gap-3", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(PosterStat, { label: t("Requests"), value: formatCompactNumber(totals.requestCount) }),
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(PosterStat, { label: t("Estimated cost"), value: formatUsdCost(totals.costUsd) }),
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(PosterStat, { label: t("Cache ratio"), value: formatPercent(totals.cacheRatio) }),
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(PosterStat, { label: t("Longest streak"), value: `${formatCompactNumber(activity.longestStreak)} ${t(activity.longestStreak === 1 ? "day" : "days")}` })
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mt-8 grid grid-cols-2 gap-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(PosterStat, { label: t("Requests"), value: formatCompactNumber(totals.requestCount) }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(PosterStat, { label: t("Estimated cost"), value: formatUsdCost(totals.costUsd) }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(PosterStat, { label: t("Cache ratio"), value: formatPercent(totals.cacheRatio) }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(PosterStat, { label: t("Longest streak"), value: `${formatCompactNumber(activity.longestStreak)} ${t(activity.longestStreak === 1 ? "day" : "days")}` })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "mt-8 grid gap-3", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(PosterHighlight, { label: t("Top model"), value: topModel?.label ?? t("No model activity") }),
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(PosterHighlight, { label: t("Top provider"), value: topProvider?.provider || topProvider?.label || t("No provider activity") }),
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(PosterHighlight, { label: t("Peak day"), value: bestDay ? `${bestDay.label} / ${formatCompactNumber(bestDay.totalTokens)}` : "-" })
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mt-8 grid gap-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(PosterHighlight, { label: t("Top model"), value: topModel?.label ?? t("No model activity") }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(PosterHighlight, { label: t("Top provider"), value: topProvider?.provider || topProvider?.label || t("No provider activity") }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(PosterHighlight, { label: t("Peak day"), value: bestDay ? `${bestDay.label} / ${formatCompactNumber(bestDay.totalTokens)}` : "-" })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(SharePosterFooter, { tone: "teal" })
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(SharePosterFooter, { tone: "teal" })
   ] });
 }
 function RouteMapCard({ usageStats: usageStats2 }) {
   const t = useAppText();
   const routes = buildRouteRows(usageStats2, t);
   const total = routes.reduce((sum, row) => sum + row.value, 0) || 1;
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)(SharePoster, { tone: "indigo", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(SharePosterHeader, { title: t("CCR Route Map"), tone: "indigo" }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "mt-7 rounded-[22px] border border-indigo-200/80 bg-white/62 p-4 shadow-[0_16px_34px_rgba(79,70,229,0.10)]", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "grid grid-cols-[1fr_64px_1fr] items-center gap-3 text-center text-[10px] font-bold uppercase text-indigo-950/55", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { children: t("Client") }),
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { children: "CCR" }),
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { children: t("Model") })
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(SharePoster, { tone: "indigo", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(SharePosterHeader, { title: t("CCR Route Map"), tone: "indigo" }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mt-7 rounded-[22px] border border-indigo-200/80 bg-white/62 p-4 shadow-[0_16px_34px_rgba(79,70,229,0.10)]", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "grid grid-cols-[1fr_64px_1fr] items-center gap-3 text-center text-[10px] font-bold uppercase text-indigo-950/55", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: t("Client") }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: "CCR" }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: t("Model") })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "mt-4 space-y-3", children: routes.length > 0 ? routes.slice(0, 5).map((route, index) => {
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-4 space-y-3", children: routes.length > 0 ? routes.slice(0, 5).map((route, index) => {
         const share = Math.max(8, route.value / total * 100);
-        return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "grid grid-cols-[1fr_64px_1fr] items-center gap-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(RoutePill, { label: route.client }),
-          /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "relative flex h-9 items-center justify-center", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { className: "absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-indigo-200" }),
-            /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { className: "absolute left-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-indigo-500", style: { width: `${share}%` } }),
-            /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { className: "relative flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-black text-white shadow-[0_8px_18px_rgba(79,70,229,0.32)]", children: index + 1 })
+        return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "grid grid-cols-[1fr_64px_1fr] items-center gap-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(RoutePill, { label: route.client }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "relative flex h-9 items-center justify-center", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-indigo-200" }),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "absolute left-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-indigo-500", style: { width: `${share}%` } }),
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "relative flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-black text-white shadow-[0_8px_18px_rgba(79,70,229,0.32)]", children: index + 1 })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(RoutePill, { label: `${route.provider} / ${route.model}`, align: "right" })
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(RoutePill, { label: `${route.provider} / ${route.model}`, align: "right" })
         ] }, `${route.client}-${route.provider}-${route.model}-${index}`);
-      }) : /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "rounded-[18px] border border-dashed border-indigo-300 bg-indigo-50/60 px-4 py-12 text-center text-[14px] font-semibold text-indigo-950/55", children: t("No route activity") }) })
+      }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "rounded-[18px] border border-dashed border-indigo-300 bg-indigo-50/60 px-4 py-12 text-center text-[14px] font-semibold text-indigo-950/55", children: t("No route activity") }) })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "mt-6 grid grid-cols-3 gap-2", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(MiniRouteMetric, { label: t("Clients"), value: formatCompactNumber(uniqueCount(routes.map((row) => row.client))) }),
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(MiniRouteMetric, { label: t("Providers"), value: formatCompactNumber(uniqueCount(routes.map((row) => row.provider))) }),
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(MiniRouteMetric, { label: t("Models"), value: formatCompactNumber(uniqueCount(routes.map((row) => row.model))) })
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mt-6 grid grid-cols-3 gap-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(MiniRouteMetric, { label: t("Clients"), value: formatCompactNumber(uniqueCount(routes.map((row) => row.client))) }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(MiniRouteMetric, { label: t("Providers"), value: formatCompactNumber(uniqueCount(routes.map((row) => row.provider))) }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(MiniRouteMetric, { label: t("Models"), value: formatCompactNumber(uniqueCount(routes.map((row) => row.model))) })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(SharePosterFooter, { tone: "indigo" })
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(SharePosterFooter, { tone: "indigo" })
   ] });
 }
 function ModelLeaderboardCard({ usageStats: usageStats2 }) {
   const t = useAppText();
   const rows = usageStats2.models.filter((row) => row.totalTokens > 0).slice(0, 5);
   const max = Math.max(...rows.map((row) => row.totalTokens), 1);
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)(SharePoster, { tone: "blue", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(SharePosterHeader, { title: t("Model Leaderboard"), tone: "blue" }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "mt-7 space-y-3", children: rows.length > 0 ? rows.map((row, index) => /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "rounded-[20px] border border-blue-200/80 bg-white/66 p-3 shadow-[0_12px_28px_rgba(37,99,235,0.10)]", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "flex min-w-0 items-center gap-3", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { className: "flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-blue-600 text-[17px] font-black text-white", children: index + 1 }),
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "min-w-0 flex-1", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "truncate text-[15px] font-black text-blue-950", children: row.label }),
-          /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "mt-0.5 truncate text-[11px] font-semibold text-blue-950/55", children: row.provider ?? t("All providers") })
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(SharePoster, { tone: "blue", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(SharePosterHeader, { title: t("Model Leaderboard"), tone: "blue" }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-7 space-y-3", children: rows.length > 0 ? rows.map((row, index) => /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "rounded-[20px] border border-blue-200/80 bg-white/66 p-3 shadow-[0_12px_28px_rgba(37,99,235,0.10)]", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center gap-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-blue-600 text-[17px] font-black text-white", children: index + 1 }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0 flex-1", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[15px] font-black text-blue-950", children: row.label }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-0.5 truncate text-[11px] font-semibold text-blue-950/55", children: row.provider ?? t("All providers") })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "shrink-0 text-right", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "text-[16px] font-black text-blue-950", children: formatPercent(row.maxShare) }),
-          /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "text-[10px] font-semibold text-blue-950/52", children: formatCompactNumber(row.totalTokens) })
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "shrink-0 text-right", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[16px] font-black text-blue-950", children: formatPercent(row.maxShare) }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[10px] font-semibold text-blue-950/52", children: formatCompactNumber(row.totalTokens) })
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "mt-3 h-2 overflow-hidden rounded-full bg-blue-100", children: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "h-full rounded-full bg-blue-600", style: { width: `${Math.max(4, row.totalTokens / max * 100)}%` } }) })
-    ] }, row.key)) : /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(EmptyPosterState, { label: t("No model activity"), tone: "blue" }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(SharePosterFooter, { tone: "blue" })
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-3 h-2 overflow-hidden rounded-full bg-blue-100", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "h-full rounded-full bg-blue-600", style: { width: `${Math.max(4, row.totalTokens / max * 100)}%` } }) })
+    ] }, row.key)) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(EmptyPosterState, { label: t("No model activity"), tone: "blue" }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(SharePosterFooter, { tone: "blue" })
   ] });
 }
 function FuelCockpitCard({ providerAccounts }) {
@@ -150110,28 +150475,28 @@ function FuelCockpitCard({ providerAccounts }) {
     account,
     meter: fuelMeter(account)
   })).filter((row) => Boolean(row.meter)).slice(0, 3);
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)(SharePoster, { tone: "emerald", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(SharePosterHeader, { title: t("AI Fuel Cockpit"), tone: "emerald" }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "mt-7 grid gap-4", children: accountRows.length > 0 ? accountRows.map(({ account, meter }, index) => {
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(SharePoster, { tone: "emerald", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(SharePosterHeader, { title: t("AI Fuel Cockpit"), tone: "emerald" }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-7 grid gap-4", children: accountRows.length > 0 ? accountRows.map(({ account, meter }, index) => {
       const ratio = providerAccountMeterRemainingRatio(meter) ?? (meter.kind === "balance" ? 1 : 0);
-      return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "grid grid-cols-[112px_minmax(0,1fr)] items-center gap-4 rounded-[22px] border border-emerald-200/80 bg-white/66 p-4 shadow-[0_14px_30px_rgba(5,150,105,0.10)]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(CircularGauge, { color: index === 0 ? "#059669" : index === 1 ? "#2563eb" : "#d97706", ratio, value: formatPercent(ratio) }),
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "min-w-0", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "truncate text-[16px] font-black text-emerald-950", children: safeProviderName(account.provider, t) }),
-          /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "mt-1 truncate text-[12px] font-semibold text-emerald-950/58", children: formatProviderAccountMeterTitle(meter, t) }),
-          /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "mt-3 text-[26px] font-black leading-none text-emerald-950", children: formatProviderAccountMeterValue(meter) })
+      return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "grid grid-cols-[112px_minmax(0,1fr)] items-center gap-4 rounded-[22px] border border-emerald-200/80 bg-white/66 p-4 shadow-[0_14px_30px_rgba(5,150,105,0.10)]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(CircularGauge, { color: index === 0 ? "#059669" : index === 1 ? "#2563eb" : "#d97706", ratio, value: formatPercent(ratio) }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[16px] font-black text-emerald-950", children: safeProviderName(account.provider, t) }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-1 truncate text-[12px] font-semibold text-emerald-950/58", children: formatProviderAccountMeterTitle(meter, t) }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-3 text-[26px] font-black leading-none text-emerald-950", children: formatProviderAccountMeterValue(meter) })
         ] })
       ] }, providerAccountSnapshotKey(account));
-    }) : /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(EmptyPosterState, { label: t("No account balance connectors configured"), tone: "emerald" }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(SharePosterFooter, { tone: "emerald" })
+    }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(EmptyPosterState, { label: t("No account balance connectors configured"), tone: "emerald" }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(SharePosterFooter, { tone: "emerald" })
   ] });
 }
 function TokenCalendarPosterCard({ usageStats: usageStats2 }) {
   const t = useAppText();
   const activity = buildTokenActivity(usageStats2.series, { maxWeeks: 26, minWeeks: 18 });
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)(SharePoster, { tone: "rose", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(SharePosterHeader, { title: t("Token Calendar Poster"), tone: "rose" }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "mt-7 rounded-[22px] border border-rose-200/80 bg-white/66 p-4 shadow-[0_14px_30px_rgba(225,29,72,0.10)]", children: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(SharePoster, { tone: "rose", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(SharePosterHeader, { title: t("Token Calendar Poster"), tone: "rose" }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-7 rounded-[22px] border border-rose-200/80 bg-white/66 p-4 shadow-[0_14px_30px_rgba(225,29,72,0.10)]", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
       "div",
       {
         className: "grid",
@@ -150140,7 +150505,7 @@ function TokenCalendarPosterCard({ usageStats: usageStats2 }) {
           gridTemplateColumns: `repeat(${activity.weekCount}, minmax(0, 1fr))`,
           gridTemplateRows: "repeat(7, minmax(0, 1fr))"
         },
-        children: activity.cells.map((cell) => /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(
+        children: activity.cells.map((cell) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
           "span",
           {
             className: "aspect-square rounded-[5px]",
@@ -150154,14 +150519,14 @@ function TokenCalendarPosterCard({ usageStats: usageStats2 }) {
         ))
       }
     ) }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "mt-5 grid grid-cols-3 gap-2", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(PosterStat, { label: t("Longest streak"), value: `${formatCompactNumber(activity.longestStreak)}d` }),
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(PosterStat, { label: t("Avg / day"), value: formatCompactNumber(Math.round(activity.avgPerDay)) }),
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(PosterStat, { label: t("Total"), value: formatCompactNumber(activity.totalTokens) })
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mt-5 grid grid-cols-3 gap-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(PosterStat, { label: t("Longest streak"), value: `${formatCompactNumber(activity.longestStreak)}d` }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(PosterStat, { label: t("Avg / day"), value: formatCompactNumber(Math.round(activity.avgPerDay)) }),
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(PosterStat, { label: t("Total"), value: formatCompactNumber(activity.totalTokens) })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "mt-5 flex items-center gap-2 text-[12px] font-bold text-rose-950/62", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { children: t("Less") }),
-      [0, 1, 2, 3, 4].map((intensity) => /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mt-5 flex items-center gap-2 text-[12px] font-bold text-rose-950/62", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: t("Less") }),
+      [0, 1, 2, 3, 4].map((intensity) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
         "span",
         {
           className: "h-4 w-4 rounded-[5px]",
@@ -150169,9 +150534,9 @@ function TokenCalendarPosterCard({ usageStats: usageStats2 }) {
         },
         intensity
       )),
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { children: t("More") })
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: t("More") })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(SharePosterFooter, { tone: "rose" })
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(SharePosterFooter, { tone: "rose" })
   ] });
 }
 function SpendReceiptCard({
@@ -150189,23 +150554,23 @@ function SpendReceiptCard({
     { label: t("Average latency"), value: formatDuration(totals.avgDurationMs) },
     { label: t("Success rate"), value: formatPercent(totals.successRate) }
   ];
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)(SharePoster, { tone: "slate", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(SharePosterHeader, { title: t("Spend Receipt"), tone: "slate" }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "mt-7 rounded-[22px] border border-slate-300 bg-white/74 p-5 shadow-[0_16px_34px_rgba(71,85,105,0.12)]", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "border-b border-dashed border-slate-300 pb-4 text-center", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "text-[40px] font-black leading-none text-slate-950", children: formatUsdCost(totals.costUsd) }),
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "mt-2 text-[12px] font-bold uppercase text-slate-500", children: t("Estimated cost") })
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(SharePoster, { tone: "slate", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(SharePosterHeader, { title: t("Spend Receipt"), tone: "slate" }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mt-7 rounded-[22px] border border-slate-300 bg-white/74 p-5 shadow-[0_16px_34px_rgba(71,85,105,0.12)]", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "border-b border-dashed border-slate-300 pb-4 text-center", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[40px] font-black leading-none text-slate-950", children: formatUsdCost(totals.costUsd) }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-2 text-[12px] font-bold uppercase text-slate-500", children: t("Estimated cost") })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "mt-4 space-y-2 border-b border-dashed border-slate-300 pb-4", children: rows.map((row) => /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-4 text-[13px]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { className: "truncate font-semibold text-slate-500", children: row.label }),
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { className: "shrink-0 font-black text-slate-950", children: row.value })
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-4 space-y-2 border-b border-dashed border-slate-300 pb-4", children: rows.map((row) => /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-4 text-[13px]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "truncate font-semibold text-slate-500", children: row.label }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "shrink-0 font-black text-slate-950", children: row.value })
       ] }, row.label)) }),
-      /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "mt-4 flex items-center justify-between gap-4", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "text-[11px] font-bold uppercase text-slate-500", children: t("Total tokens") }),
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "text-[30px] font-black leading-none text-slate-950", children: formatCompactNumber(totals.totalTokens) })
+      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mt-4 flex items-center justify-between gap-4", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[11px] font-bold uppercase text-slate-500", children: t("Total tokens") }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[30px] font-black leading-none text-slate-950", children: formatCompactNumber(totals.totalTokens) })
       ] })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(SharePosterFooter, { tone: "slate" })
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(SharePosterFooter, { tone: "slate" })
   ] });
 }
 function SharePoster({
@@ -150213,15 +150578,15 @@ function SharePoster({
   tone
 }) {
   const theme = shareCardTones[tone];
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)(
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
     "div",
     {
       className: cn("relative h-full min-h-0 w-full overflow-hidden rounded-[28px] border p-6 shadow-card-elevated", theme.border, theme.text),
       style: { background: theme.background },
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { className: cn("absolute -right-16 -top-16 h-44 w-44 rounded-full blur-3xl", theme.glow) }),
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { className: cn("absolute -bottom-20 left-8 h-44 w-44 rounded-full blur-3xl", theme.glow) }),
-        /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "relative z-10 flex h-full min-h-0 flex-col", children })
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: cn("absolute -right-16 -top-16 h-44 w-44 rounded-full blur-3xl", theme.glow) }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: cn("absolute -bottom-20 left-8 h-44 w-44 rounded-full blur-3xl", theme.glow) }),
+        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "relative z-10 flex h-full min-h-0 flex-col", children })
       ]
     }
   );
@@ -150231,52 +150596,52 @@ function SharePosterHeader({
   tone
 }) {
   const theme = shareCardTones[tone];
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "flex min-w-0 items-start justify-between gap-3", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("h4", { className: "text-[30px] font-black leading-[1.02] tracking-normal", children: title }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border border-white/70 bg-white/58 shadow-[0_12px_28px_rgba(15,23,42,0.10)]", children: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { className: "text-[16px] font-black", style: { color: theme.accent }, children: "CCR" }) })
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-start justify-between gap-3", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("h4", { className: "text-[30px] font-black leading-[1.02] tracking-normal", children: title }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border border-white/70 bg-white/58 shadow-[0_12px_28px_rgba(15,23,42,0.10)]", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "text-[16px] font-black", style: { color: theme.accent }, children: "CCR" }) })
   ] });
 }
 function SharePosterFooter({ tone }) {
   const t = useAppText();
   const theme = shareCardTones[tone];
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: cn("mt-auto flex min-w-0 items-center justify-between gap-3 pt-5 text-[11px] font-black uppercase tracking-[0.12em]", theme.muted), children: [
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { children: t("Generated by CCR") }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { children: (/* @__PURE__ */ new Date()).getFullYear() })
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: cn("mt-auto flex min-w-0 items-center justify-between gap-3 pt-5 text-[11px] font-black uppercase tracking-[0.12em]", theme.muted), children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: t("Generated by CCR") }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: (/* @__PURE__ */ new Date()).getFullYear() })
   ] });
 }
 function PosterStat({ label, value }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "min-w-0 rounded-[18px] border border-white/70 bg-white/54 px-3 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "truncate text-[11px] font-bold text-slate-600", children: label }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "mt-1 truncate text-[22px] font-black leading-none text-slate-950", children: value })
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0 rounded-[18px] border border-white/70 bg-white/54 px-3 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[11px] font-bold text-slate-600", children: label }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-1 truncate text-[22px] font-black leading-none text-slate-950", children: value })
   ] });
 }
 function PosterHighlight({ label, value }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-3 rounded-[18px] border border-white/70 bg-white/48 px-4 py-3", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { className: "truncate text-[12px] font-bold text-slate-600", children: label }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { className: "min-w-0 truncate text-right text-[14px] font-black text-slate-950", children: value })
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-3 rounded-[18px] border border-white/70 bg-white/48 px-4 py-3", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "truncate text-[12px] font-bold text-slate-600", children: label }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 truncate text-right text-[14px] font-black text-slate-950", children: value })
   ] });
 }
 function EmptyPosterState({ label, tone }) {
   const theme = shareCardTones[tone];
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: cn("rounded-[22px] border border-dashed bg-white/52 px-4 py-16 text-center text-[14px] font-bold", theme.border, theme.muted), children: label });
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: cn("rounded-[22px] border border-dashed bg-white/52 px-4 py-16 text-center text-[14px] font-bold", theme.border, theme.muted), children: label });
 }
 function RoutePill({ align = "left", label }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: cn("min-w-0 rounded-[16px] border border-indigo-200 bg-white/72 px-3 py-2 shadow-[0_8px_18px_rgba(79,70,229,0.08)]", align === "right" && "text-right"), children: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "truncate text-[12px] font-black text-indigo-950", children: label }) });
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: cn("min-w-0 rounded-[16px] border border-indigo-200 bg-white/72 px-3 py-2 shadow-[0_8px_18px_rgba(79,70,229,0.08)]", align === "right" && "text-right"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[12px] font-black text-indigo-950", children: label }) });
 }
 function MiniRouteMetric({ label, value }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("div", { className: "rounded-[16px] border border-indigo-200/80 bg-white/58 px-3 py-2 text-center", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "text-[20px] font-black leading-none text-indigo-950", children: value }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("div", { className: "mt-1 truncate text-[10px] font-bold uppercase text-indigo-950/50", children: label })
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "rounded-[16px] border border-indigo-200/80 bg-white/58 px-3 py-2 text-center", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[20px] font-black leading-none text-indigo-950", children: value }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-1 truncate text-[10px] font-bold uppercase text-indigo-950/50", children: label })
   ] });
 }
 function CircularGauge({ color: color2, ratio, value }) {
   const radius = 41;
   const circumference = 2 * Math.PI * radius;
   const clamped = Math.max(0, Math.min(1, ratio));
-  return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("svg", { className: "h-[112px] w-[112px]", role: "img", viewBox: "0 0 112 112", "aria-label": value, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("circle", { cx: "56", cy: "56", fill: "rgba(255,255,255,.55)", r: "48" }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("circle", { cx: "56", cy: "56", fill: "none", r: radius, stroke: "rgba(15,23,42,.10)", strokeWidth: "10" }),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("svg", { className: "h-[112px] w-[112px]", role: "img", viewBox: "0 0 112 112", "aria-label": value, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("circle", { cx: "56", cy: "56", fill: "rgba(255,255,255,.55)", r: "48" }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("circle", { cx: "56", cy: "56", fill: "none", r: radius, stroke: "rgba(15,23,42,.10)", strokeWidth: "10" }),
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
       "circle",
       {
         cx: "56",
@@ -150291,7 +150656,7 @@ function CircularGauge({ color: color2, ratio, value }) {
         transform: "rotate(-90 56 56)"
       }
     ),
-    /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("text", { fill: "#064e3b", fontSize: "18", fontWeight: "900", textAnchor: "middle", x: "56", y: "61", children: value })
+    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("text", { fill: "#064e3b", fontSize: "18", fontWeight: "900", textAnchor: "middle", x: "56", y: "61", children: value })
   ] });
 }
 function buildRouteRows(usageStats2, translate) {
@@ -150518,9 +150883,248 @@ function canvasToBlob(canvas) {
 
 // packages/ui/src/pages/home/components/dashboard.tsx
 var import_lucide_react3 = __toESM(require_lucide_react());
-var import_react_dom = __toESM(require_react_dom());
-var import_jsx_runtime23 = __toESM(require_jsx_runtime());
+
+// packages/ui/src/components/ui/tooltip.tsx
+var React16 = __toESM(require_react());
+var import_react_dom2 = __toESM(require_react_dom());
+var import_jsx_runtime24 = __toESM(require_jsx_runtime());
+var tooltipViewportMargin = 12;
+var tooltipDefaultSize = {
+  height: 32,
+  width: 180
+};
+var useClientLayoutEffect = typeof window === "undefined" ? React16.useEffect : React16.useLayoutEffect;
+var TooltipPortal = React16.forwardRef(
+  ({ children, className, open = true, role = "tooltip", ...props }, ref) => {
+    if (!open || typeof document === "undefined") {
+      return null;
+    }
+    return (0, import_react_dom2.createPortal)(
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+        "div",
+        {
+          className: cn(
+            "pointer-events-none fixed z-[200] max-w-[min(260px,calc(100vw-24px))] rounded-md border border-border/70 bg-popover px-2 py-1 text-[11px] font-medium leading-4 text-popover-foreground shadow-card-elevated ring-1 ring-black/5",
+            className
+          ),
+          ref,
+          role,
+          ...props,
+          children
+        }
+      ),
+      document.body
+    );
+  }
+);
+TooltipPortal.displayName = "TooltipPortal";
+function Tooltip2({
+  align = "center",
+  children,
+  className,
+  content,
+  contentClassName,
+  disabled = false,
+  gap = 8,
+  interactive = false,
+  side = "top",
+  ...props
+}) {
+  const triggerRef = React16.useRef(null);
+  const contentRef = React16.useRef(null);
+  const closeTimerRef = React16.useRef(void 0);
+  const contentActiveRef = React16.useRef(false);
+  const triggerActiveRef = React16.useRef(false);
+  const [open, setOpen] = React16.useState(false);
+  const [position, setPosition] = React16.useState();
+  const updatePosition = React16.useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const trigger = triggerRef.current;
+    if (!trigger) {
+      return;
+    }
+    const triggerRect = trigger.getBoundingClientRect();
+    const contentRect = contentRef.current?.getBoundingClientRect();
+    const contentSize = contentRect ? { height: contentRect.height, width: contentRect.width } : tooltipDefaultSize;
+    setPosition(resolveTooltipPosition({
+      align,
+      contentHeight: contentSize.height,
+      contentWidth: contentSize.width,
+      gap,
+      side,
+      triggerRect
+    }));
+  }, [align, gap, side]);
+  const show = React16.useCallback(() => {
+    if (disabled) {
+      return;
+    }
+    if (closeTimerRef.current !== void 0) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = void 0;
+    }
+    setOpen(true);
+    updatePosition();
+  }, [disabled, updatePosition]);
+  const closeIfInactive = React16.useCallback(() => {
+    if (!interactive || !triggerActiveRef.current && !contentActiveRef.current) {
+      setOpen(false);
+    }
+  }, [interactive]);
+  const hide = React16.useCallback(() => {
+    if (!interactive || typeof window === "undefined") {
+      setOpen(false);
+      return;
+    }
+    if (closeTimerRef.current !== void 0) {
+      window.clearTimeout(closeTimerRef.current);
+    }
+    closeTimerRef.current = window.setTimeout(closeIfInactive, 80);
+  }, [closeIfInactive, interactive]);
+  const handleTriggerEnter = React16.useCallback(() => {
+    triggerActiveRef.current = true;
+    show();
+  }, [show]);
+  const handleTriggerLeave = React16.useCallback(() => {
+    triggerActiveRef.current = false;
+    hide();
+  }, [hide]);
+  const handleContentEnter = React16.useCallback(() => {
+    contentActiveRef.current = true;
+    show();
+  }, [show]);
+  const handleContentLeave = React16.useCallback(() => {
+    contentActiveRef.current = false;
+    hide();
+  }, [hide]);
+  useClientLayoutEffect(() => {
+    if (!open) {
+      return;
+    }
+    updatePosition();
+  }, [open, updatePosition, content]);
+  React16.useEffect(() => {
+    if (!open) {
+      return;
+    }
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open, updatePosition]);
+  React16.useEffect(() => () => {
+    if (closeTimerRef.current !== void 0) {
+      window.clearTimeout(closeTimerRef.current);
+    }
+  }, []);
+  return /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)(
+    "span",
+    {
+      ...props,
+      className: cn("inline-flex shrink-0", className),
+      "data-ui-tooltip-trigger": "",
+      onBlur: handleTriggerLeave,
+      onFocus: handleTriggerEnter,
+      onMouseEnter: handleTriggerEnter,
+      onMouseLeave: handleTriggerLeave,
+      ref: triggerRef,
+      children: [
+        children,
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+          TooltipPortal,
+          {
+            className: cn(interactive && "pointer-events-auto", contentClassName),
+            onBlur: handleContentLeave,
+            onFocus: handleContentEnter,
+            onMouseEnter: handleContentEnter,
+            onMouseLeave: handleContentLeave,
+            open: open && Boolean(position),
+            ref: contentRef,
+            style: position ? { left: position.left, top: position.top } : void 0,
+            children: content
+          }
+        )
+      ]
+    }
+  );
+}
+function resolveTooltipPosition({
+  align,
+  contentHeight,
+  contentWidth,
+  gap,
+  side,
+  triggerRect
+}) {
+  const resolvedSide = resolveTooltipSide({
+    contentHeight,
+    contentWidth,
+    gap,
+    side,
+    triggerRect
+  });
+  let left = triggerRect.left;
+  let top = triggerRect.top;
+  if (resolvedSide === "top" || resolvedSide === "bottom") {
+    if (align === "start") {
+      left = triggerRect.left;
+    } else if (align === "end") {
+      left = triggerRect.right - contentWidth;
+    } else {
+      left = triggerRect.left + triggerRect.width / 2 - contentWidth / 2;
+    }
+    top = resolvedSide === "top" ? triggerRect.top - contentHeight - gap : triggerRect.bottom + gap;
+  } else {
+    if (align === "start") {
+      top = triggerRect.top;
+    } else if (align === "end") {
+      top = triggerRect.bottom - contentHeight;
+    } else {
+      top = triggerRect.top + triggerRect.height / 2 - contentHeight / 2;
+    }
+    left = resolvedSide === "left" ? triggerRect.left - contentWidth - gap : triggerRect.right + gap;
+  }
+  return {
+    left: clampTooltipCoordinate(left, contentWidth, window.innerWidth),
+    top: clampTooltipCoordinate(top, contentHeight, window.innerHeight)
+  };
+}
+function resolveTooltipSide({
+  contentHeight,
+  contentWidth,
+  gap,
+  side,
+  triggerRect
+}) {
+  if (side === "top" && triggerRect.top - contentHeight - gap < tooltipViewportMargin) {
+    return "bottom";
+  }
+  if (side === "bottom" && triggerRect.bottom + contentHeight + gap > window.innerHeight - tooltipViewportMargin) {
+    return "top";
+  }
+  if (side === "left" && triggerRect.left - contentWidth - gap < tooltipViewportMargin) {
+    return "right";
+  }
+  if (side === "right" && triggerRect.right + contentWidth + gap > window.innerWidth - tooltipViewportMargin) {
+    return "left";
+  }
+  return side;
+}
+function clampTooltipCoordinate(value, size, viewportSize) {
+  const max = Math.max(tooltipViewportMargin, viewportSize - size - tooltipViewportMargin);
+  return Math.min(Math.max(tooltipViewportMargin, value), max);
+}
+
+// packages/ui/src/pages/home/components/dashboard.tsx
+var import_jsx_runtime25 = __toESM(require_jsx_runtime());
 var emptyOverviewProviders = [];
+function chartTooltipPortal() {
+  return typeof document === "undefined" ? null : document.body;
+}
 function OverviewView({
   onWidgetsChange,
   overviewWidgets,
@@ -150723,7 +151327,7 @@ function OverviewView({
     onWidgetsChange(DEFAULT_OVERVIEW_WIDGETS.map((widget) => ({ ...widget })));
     setSelectedWidgetId(void 0);
   }
-  const widgetGrid = /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+  const widgetGrid = /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
     import_core.DndContext,
     {
       collisionDetection: overviewWidgetCollisionDetection,
@@ -150734,8 +151338,8 @@ function OverviewView({
       onDragOver: previewWidgetSort,
       onDragStart: startWidgetSort,
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_sortable.SortableContext, { items: visibleWidgets.map((widget) => widget.id), strategy: import_sortable.rectSortingStrategy, children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(LayoutGroup, { children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("section", { className: "grid auto-rows-[132px] grid-cols-1 gap-4 sm:auto-rows-[140px] sm:grid-cols-2 xl:auto-rows-[148px] xl:grid-cols-4", "data-overview-widget-grid": true, children: [
-          visibleWidgets.map((widget) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(SortableOverviewWidget, { editing, widget, onSelect: () => setSelectedWidgetId(widget.id), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_sortable.SortableContext, { items: visibleWidgets.map((widget) => widget.id), strategy: import_sortable.rectSortingStrategy, children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(LayoutGroup, { children: /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("section", { className: "grid auto-rows-[132px] grid-cols-1 gap-4 sm:auto-rows-[140px] sm:grid-cols-2 xl:auto-rows-[148px] xl:grid-cols-4", "data-overview-widget-grid": true, children: [
+          visibleWidgets.map((widget) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(SortableOverviewWidget, { editing, widget, onSelect: () => setSelectedWidgetId(widget.id), children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
             OverviewWidgetFrame,
             {
               editing,
@@ -150743,7 +151347,7 @@ function OverviewView({
               widget,
               onResize: (size) => updateWidget(widget.id, { size }),
               onSelect: () => setSelectedWidgetId(widget.id),
-              children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+              children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
                 OverviewWidgetRenderer,
                 {
                   providerAccounts,
@@ -150756,9 +151360,9 @@ function OverviewView({
               )
             }
           ) }, widget.id)),
-          visibleWidgets.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewEmptyState, { className: "col-span-1 sm:col-span-2 xl:col-span-4", label: t("No widgets configured") }) : null
+          visibleWidgets.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewEmptyState, { className: "col-span-1 sm:col-span-2 xl:col-span-4", label: t("No widgets configured") }) : null
         ] }) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_core.DragOverlay, { adjustScale: false, children: activeWidget ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_core.DragOverlay, { adjustScale: false, children: activeWidget ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
           OverviewWidgetDragOverlay,
           {
             providerAccounts,
@@ -150772,7 +151376,7 @@ function OverviewView({
       ]
     }
   );
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
     motion.div,
     {
       animate: { opacity: 1 },
@@ -150782,10 +151386,10 @@ function OverviewView({
       ref: viewRef,
       transition: { duration: 0.15 },
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "overview-toolbar flex flex-wrap items-center justify-between gap-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 flex-wrap items-center gap-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewUsageRangeSelector, { range: usageRange, setRange: setUsageRange }),
-            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "overview-toolbar flex flex-wrap items-center justify-between gap-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-w-0 flex-wrap items-center gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewUsageRangeSelector, { range: usageRange, setRange: setUsageRange }),
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
               Select,
               {
                 "aria-label": t("Provider"),
@@ -150795,7 +151399,7 @@ function OverviewView({
                 value: providerFilter
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
               Select,
               {
                 "aria-label": t("Model"),
@@ -150806,12 +151410,12 @@ function OverviewView({
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex flex-wrap items-center gap-2", children: [
-            editing ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Button, { onClick: resetLayout, size: "sm", type: "button", variant: "outline", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.RefreshCw, { className: "h-3.5 w-3.5" }),
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex flex-wrap items-center gap-2", children: [
+            editing ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(Button, { onClick: resetLayout, size: "sm", type: "button", variant: "outline", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.RefreshCw, { className: "h-3.5 w-3.5" }),
               t("Reset layout")
             ] }) : null,
-            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
               Button,
               {
                 "aria-label": editing ? t("Done") : t("Edit widgets"),
@@ -150821,29 +151425,29 @@ function OverviewView({
                 type: "button",
                 variant: editing ? "default" : "outline",
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Pencil, { className: "h-3.5 w-3.5" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.Pencil, { className: "h-3.5 w-3.5" }),
                   editing ? t("Done") : null
                 ]
               }
             )
           ] })
         ] }),
-        editing ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-[220px_minmax(0,1fr)_260px]", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("aside", { className: "overview-editor-panel min-w-0 border p-3 xl:sticky xl:top-4 xl:self-start", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mb-3 flex items-center justify-between gap-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("h3", { className: "truncate text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground", children: t("Components") }),
-              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant: "outline", children: overviewWidgetTemplates().length })
+        editing ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-[220px_minmax(0,1fr)_260px]", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("aside", { className: "overview-editor-panel min-w-0 border p-3 xl:sticky xl:top-4 xl:self-start", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "mb-3 flex items-center justify-between gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("h3", { className: "truncate text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground", children: t("Components") }),
+              /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Badge, { variant: "outline", children: overviewWidgetTemplates().length })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewWidgetPalette, { onAdd: addWidget })
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewWidgetPalette, { onAdd: addWidget })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("main", { className: "min-w-0 space-y-3", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex items-center justify-between gap-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("h3", { className: "truncate text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground", children: t("Preview") }),
-              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant: "outline", children: visibleWidgets.length })
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("main", { className: "min-w-0 space-y-3", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex items-center justify-between gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("h3", { className: "truncate text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground", children: t("Preview") }),
+              /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Badge, { variant: "outline", children: visibleWidgets.length })
             ] }),
             widgetGrid
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("aside", { className: "overview-editor-panel min-w-0 border p-3 xl:sticky xl:top-4 xl:self-start", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("aside", { className: "overview-editor-panel min-w-0 border p-3 xl:sticky xl:top-4 xl:self-start", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
             OverviewWidgetProperties,
             {
               providerAccounts,
@@ -150869,7 +151473,7 @@ function OverviewUsageRangeSelector({
   setRange
 }) {
   const t = useAppText();
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { "aria-label": t("Usage over time"), className: "overview-segmented flex", role: "group", children: usageRangeOptions.map((option) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { "aria-label": t("Usage over time"), className: "overview-segmented flex", role: "group", children: usageRangeOptions.map((option) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
     Button,
     {
       "aria-pressed": range === option.value,
@@ -150892,12 +151496,12 @@ function OverviewCardHeading({
   tone = "blue",
   trailing
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(CardHeader, { className: "overview-card-header shrink-0 flex-row items-center justify-between gap-3", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center gap-2.5", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { "aria-hidden": "true", className: "overview-heading-icon", "data-tone": tone, children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Icon, { className: "h-3.5 w-3.5" }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(CardTitle, { children: title })
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(CardHeader, { className: "overview-card-header shrink-0 flex-row items-center justify-between gap-3", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-w-0 items-center gap-2.5", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { "aria-hidden": "true", className: "overview-heading-icon", "data-tone": tone, children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Icon, { className: "h-3.5 w-3.5" }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(CardTitle, { children: title })
     ] }),
-    trailing ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-w-0 shrink-0", children: trailing }) : null
+    trailing ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "min-w-0 shrink-0", children: trailing }) : null
   ] });
 }
 function OverviewEmptyState({
@@ -150905,30 +151509,33 @@ function OverviewEmptyState({
   compact = false,
   label
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: cn(
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: cn(
     "overview-empty-state overview-nested-surface flex min-h-0 flex-col items-center justify-center border border-dashed px-4 text-center text-muted-foreground",
     compact ? "py-7" : "py-10",
     className
   ), children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { "aria-hidden": "true", className: "overview-empty-state-icon", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react3.Inbox, { className: "h-4 w-4" }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "mt-2 text-[12px] font-medium", children: label })
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { "aria-hidden": "true", className: "overview-empty-state-icon", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react3.Inbox, { className: "h-4 w-4" }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "mt-2 text-[12px] font-medium", children: label })
   ] });
 }
 function OverviewChartLegend({ items }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "overview-chart-legend hidden items-center gap-3 md:flex", children: items.map((item) => /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("span", { className: "flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { "aria-hidden": "true", className: "h-1.5 w-1.5 rounded-full", style: { backgroundColor: item.color } }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "max-w-[96px] truncate", children: item.label })
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "overview-chart-legend hidden items-center gap-3 md:flex", children: items.map((item) => /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { className: "flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { "aria-hidden": "true", className: "h-1.5 w-1.5 rounded-full", style: { backgroundColor: item.color } }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "max-w-[96px] truncate", children: item.label })
   ] }, item.label)) });
 }
 function OverviewDonutCenter({ label, value }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "text-[17px] font-semibold tracking-[-0.025em] text-foreground", children: value }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "mt-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground", children: label })
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "text-[17px] font-semibold tracking-[-0.025em] text-foreground", children: value }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "mt-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground", children: label })
   ] });
 }
 function overviewProviderFilterOptions(providers, translate) {
   const providerNames = /* @__PURE__ */ new Set();
   for (const provider of providers) {
+    if (!isGatewayProviderEnabled(provider)) {
+      continue;
+    }
     const name = provider.name.trim();
     if (name) {
       providerNames.add(name);
@@ -150942,6 +151549,9 @@ function overviewProviderFilterOptions(providers, translate) {
 function overviewModelFilterOptions(providers, providerFilter, translate) {
   const models = /* @__PURE__ */ new Set();
   for (const provider of providers) {
+    if (!isGatewayProviderEnabled(provider)) {
+      continue;
+    }
     if (providerFilter && provider.name !== providerFilter) {
       continue;
     }
@@ -150959,7 +151569,7 @@ function overviewModelFilterOptions(providers, providerFilter, translate) {
 }
 function overviewProviderHasModel(providers, providerName, modelName) {
   return providers.some(
-    (provider) => provider.name === providerName && provider.models.some((model) => model.trim() === modelName)
+    (provider) => isGatewayProviderEnabled(provider) && provider.name === providerName && provider.models.some((model) => model.trim() === modelName)
   );
 }
 function isEditableKeyboardTarget(target) {
@@ -150976,7 +151586,7 @@ function OverviewWidgetPalette({
 }) {
   const t = useAppText();
   const templates = overviewWidgetTemplates();
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "grid grid-cols-1 gap-2", children: templates.map((template) => /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "grid grid-cols-1 gap-2", children: templates.map((template) => /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
     Button,
     {
       className: "overview-palette-item grid h-auto w-full grid-cols-[18px_minmax(0,1fr)] items-center gap-2 border px-2.5 py-2 text-left focus-visible:ring-2 focus-visible:ring-ring/25",
@@ -150984,10 +151594,10 @@ function OverviewWidgetPalette({
       type: "button",
       unstyled: true,
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Plus, { className: "h-3.5 w-3.5 text-muted-foreground" }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[12px] font-semibold text-foreground", children: t(overviewWidgetPaletteTitle(template)) }),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-0.5 truncate text-[10px] text-muted-foreground", children: t(overviewWidgetPaletteDescription(template)) })
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.Plus, { className: "h-3.5 w-3.5 text-muted-foreground" }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate text-[12px] font-semibold text-foreground", children: t(overviewWidgetPaletteTitle(template)) }),
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "mt-0.5 truncate text-[10px] text-muted-foreground", children: t(overviewWidgetPaletteDescription(template)) })
         ] })
       ]
     },
@@ -151009,7 +151619,7 @@ function OverviewWidgetProperties({
 }) {
   const t = useAppText();
   if (!widget) {
-    return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewEmptyState, { compact: true, label: t("No widget selected") });
+    return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewEmptyState, { compact: true, label: t("No widget selected") });
   }
   const category = overviewWidgetCategory(widget.type);
   const dataOptions = overviewWidgetDataOptions(widget, providerAccounts);
@@ -151032,17 +151642,17 @@ function OverviewWidgetProperties({
       onChangeShareData(value);
     }
   };
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "space-y-3", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("h3", { className: "truncate text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground", children: t("Component properties") }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-1 truncate text-[13px] font-semibold text-foreground", children: overviewWidgetTitle(widget, t) })
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "space-y-3", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("h3", { className: "truncate text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground", children: t("Component properties") }),
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "mt-1 truncate text-[13px] font-semibold text-foreground", children: overviewWidgetTitle(widget, t) })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Component category"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(SelectControl, { onChange: (value) => onChangeCategory(value), options: translateOptions(overviewWidgetCategoryOptions(), t), value: overviewWidgetCategory(widget.type) }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Data"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(SelectControl, { onChange: changeData, options: translateOptions(dataOptions, t), value: dataValue }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Widget size"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(SelectControl, { onChange: (value) => onChangeSize(value), options: translateOptions(sizeOptions, t), value: widget.size }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Field, { label: t("Style"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(SelectControl, { onChange: (value) => onChangeVariant(value), options: translateOptions(overviewWidgetVariantOptions2(widget.type), t), value: widget.variant }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Button, { className: "w-full justify-center", onClick: onRemove, size: "sm", type: "button", variant: "outline", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.Trash2, { className: "h-3.5 w-3.5" }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Field, { label: t("Component category"), children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(SelectControl, { onChange: (value) => onChangeCategory(value), options: translateOptions(overviewWidgetCategoryOptions(), t), value: overviewWidgetCategory(widget.type) }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Field, { label: t("Data"), children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(SelectControl, { onChange: changeData, options: translateOptions(dataOptions, t), value: dataValue }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Field, { label: t("Widget size"), children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(SelectControl, { onChange: (value) => onChangeSize(value), options: translateOptions(sizeOptions, t), value: widget.size }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Field, { label: t("Style"), children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(SelectControl, { onChange: (value) => onChangeVariant(value), options: translateOptions(overviewWidgetVariantOptions2(widget.type), t), value: widget.variant }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(Button, { className: "w-full justify-center", onClick: onRemove, size: "sm", type: "button", variant: "outline", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.Trash2, { className: "h-3.5 w-3.5" }),
       t("Remove widget")
     ] })
   ] });
@@ -151064,7 +151674,7 @@ function SortableOverviewWidget({
     disabled: !editing,
     id: widget.id
   });
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
     motion.div,
     {
       className: cn(
@@ -151095,7 +151705,7 @@ function OverviewWidgetDragOverlay({
   usageStats: usageStats2,
   widget
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: cn("pointer-events-none overflow-hidden opacity-95 shadow-2xl", overviewWidgetOverlaySizeClass(widget.size)), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: cn("pointer-events-none overflow-hidden opacity-95 shadow-2xl", overviewWidgetOverlaySizeClass(widget.size)), children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
     OverviewWidgetRenderer,
     {
       providerAccounts,
@@ -151163,7 +151773,7 @@ function OverviewWidgetFrame({
     window.addEventListener("pointerup", stop);
     window.addEventListener("pointercancel", stop);
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
     "div",
     {
       "aria-selected": editing ? selected : void 0,
@@ -151178,16 +151788,16 @@ function OverviewWidgetFrame({
       ref: frameRef,
       children: [
         children,
-        editing ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+        editing ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
             "span",
             {
               "aria-hidden": "true",
               className: cn("overview-widget-drag-handle", selected && "is-selected"),
-              children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react3.GripHorizontal, { className: "h-3.5 w-3.5" })
+              children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react3.GripHorizontal, { className: "h-3.5 w-3.5" })
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
             OverviewWidgetResizeHandle,
             {
               axis: "width",
@@ -151196,7 +151806,7 @@ function OverviewWidgetFrame({
               onPointerDown: (event) => startResize("width", event)
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
             OverviewWidgetResizeHandle,
             {
               axis: "height",
@@ -151205,7 +151815,7 @@ function OverviewWidgetFrame({
               onPointerDown: (event) => startResize("height", event)
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
             OverviewWidgetResizeHandle,
             {
               axis: "both",
@@ -151226,7 +151836,7 @@ function OverviewWidgetResizeHandle({
   onPointerDown
 }) {
   if (axis === "width") {
-    return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
       "button",
       {
         "aria-label": label,
@@ -151234,12 +151844,12 @@ function OverviewWidgetResizeHandle({
         onPointerDown,
         title: label,
         type: "button",
-        children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { "aria-hidden": "true", className: cn("absolute left-1/2 top-1/2 h-12 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/65 opacity-0 transition-opacity group-hover/overview-widget:opacity-100", selected && "opacity-100") })
+        children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { "aria-hidden": "true", className: cn("absolute left-1/2 top-1/2 h-12 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/65 opacity-0 transition-opacity group-hover/overview-widget:opacity-100", selected && "opacity-100") })
       }
     );
   }
   if (axis === "height") {
-    return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
       "button",
       {
         "aria-label": label,
@@ -151247,11 +151857,11 @@ function OverviewWidgetResizeHandle({
         onPointerDown,
         title: label,
         type: "button",
-        children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { "aria-hidden": "true", className: cn("absolute left-1/2 top-1/2 h-1 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/65 opacity-0 transition-opacity group-hover/overview-widget:opacity-100", selected && "opacity-100") })
+        children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { "aria-hidden": "true", className: cn("absolute left-1/2 top-1/2 h-1 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/65 opacity-0 transition-opacity group-hover/overview-widget:opacity-100", selected && "opacity-100") })
       }
     );
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
     "button",
     {
       "aria-label": label,
@@ -151262,7 +151872,7 @@ function OverviewWidgetResizeHandle({
       onPointerDown,
       title: label,
       type: "button",
-      children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { "aria-hidden": "true", className: "absolute bottom-1 right-1 h-2.5 w-2.5 rounded-br-[3px] border-b-2 border-r-2 border-primary/70" })
+      children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { "aria-hidden": "true", className: "absolute bottom-1 right-1 h-2.5 w-2.5 rounded-br-[3px] border-b-2 border-r-2 border-primary/70" })
     }
   );
 }
@@ -151321,27 +151931,27 @@ function OverviewWidgetRenderer({
   const dimensions = overviewWidgetDimensions(widget.size);
   let content;
   if (widget.type === "system-status") {
-    content = /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(SystemStatusBar, { usageRange, usageStats: usageStats2, variant: widget.variant === "compact" ? "compact" : "timeline" });
+    content = /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(SystemStatusBar, { usageRange, usageStats: usageStats2, variant: widget.variant === "compact" ? "compact" : "timeline" });
   } else if (widget.type === "account-balance") {
-    content = /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountsOverview, { accountProvider: widget.accountProvider, accounts: providerAccounts, dimensions, refreshing: providerAccountRefreshing, variant: overviewAccountVariant(widget.variant), onRefresh: refreshProviderAccounts });
+    content = /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ProviderAccountsOverview, { accountProvider: widget.accountProvider, accounts: providerAccounts, dimensions, refreshing: providerAccountRefreshing, variant: overviewAccountVariant(widget.variant), onRefresh: refreshProviderAccounts });
   } else if (widget.type === "metric") {
-    content = /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewMetricWidget, { metric: widget.metric ?? "requests", totals: usageStats2.totals, variant: overviewMetricVariant(widget.variant) });
+    content = /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewMetricWidget, { metric: widget.metric ?? "requests", totals: usageStats2.totals, variant: overviewMetricVariant(widget.variant) });
   } else if (widget.type === "usage-trend") {
-    content = /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(UsageTrendWidget, { dimensions, usageRange, usageStats: usageStats2, variant: overviewTrendVariant(widget.variant) });
+    content = /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(UsageTrendWidget, { dimensions, usageRange, usageStats: usageStats2, variant: overviewTrendVariant(widget.variant) });
   } else if (widget.type === "token-activity") {
-    content = /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(TokenActivityOverviewWidget, { dimensions, usageStats: usageStats2 });
+    content = /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(TokenActivityOverviewWidget, { dimensions, usageStats: usageStats2 });
   } else if (widget.type === "token-mix") {
-    content = /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(TokenMixOverviewWidget, { dimensions, totals: usageStats2.totals, variant: overviewTokenMixVariant(widget.variant) });
+    content = /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(TokenMixOverviewWidget, { dimensions, totals: usageStats2.totals, variant: overviewTokenMixVariant(widget.variant) });
   } else if (widget.type === "model-distribution") {
-    content = /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ModelDistributionOverviewWidget, { dimensions, rows: usageStats2.models, variant: overviewTokenMixVariant(widget.variant) });
+    content = /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ModelDistributionOverviewWidget, { dimensions, rows: usageStats2.models, variant: overviewTokenMixVariant(widget.variant) });
   } else if (widget.type === "client-analysis") {
-    content = /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewAnalysisWidget, { dimensions, kind: "client", rows: usageStats2.clientModels, variant: widget.variant === "compact" ? "compact" : "table" });
+    content = /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewAnalysisWidget, { dimensions, kind: "client", rows: usageStats2.clientModels, variant: widget.variant === "compact" ? "compact" : "table" });
   } else if (isShareOverviewWidgetType2(widget.type)) {
-    content = /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ShareCardWidget, { providerAccounts, type: widget.type, usageRange, usageStats: usageStats2 });
+    content = /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ShareCardWidget, { providerAccounts, type: widget.type, usageRange, usageStats: usageStats2 });
   } else {
-    content = /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewAnalysisWidget, { dimensions, kind: "provider", rows: usageStats2.providerModels, variant: widget.variant === "compact" ? "compact" : "table" });
+    content = /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewAnalysisWidget, { dimensions, kind: "provider", rows: usageStats2.providerModels, variant: widget.variant === "compact" ? "compact" : "table" });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "h-full min-h-0 min-w-0 overflow-hidden", children: content });
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "h-full min-h-0 min-w-0 overflow-hidden", children: content });
 }
 function OverviewMetricWidget({
   metric,
@@ -151352,54 +151962,54 @@ function OverviewMetricWidget({
   const item = overviewMetricDatum(metric, totals, t);
   const showsRatio = overviewMetricShowsRatio(metric);
   if (variant === "compact") {
-    return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Card, { className: "overview-card overview-metric-card flex h-full min-h-0 min-w-0 flex-col", "data-tone": item.tone, children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(CardContent, { className: "flex min-h-0 flex-1 items-center justify-between gap-3 p-3", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center gap-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { "aria-hidden": "true", className: "overview-metric-dot" }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-w-0 truncate text-[12px] font-medium text-muted-foreground", children: item.label })
+    return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Card, { className: "overview-card overview-metric-card flex h-full min-h-0 min-w-0 flex-col", "data-tone": item.tone, children: /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(CardContent, { className: "flex min-h-0 flex-1 items-center justify-between gap-3 p-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-w-0 items-center gap-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { "aria-hidden": "true", className: "overview-metric-dot" }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "min-w-0 truncate text-[12px] font-medium text-muted-foreground", children: item.label })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "shrink-0 text-[19px] font-semibold tracking-[-0.02em]", children: item.value })
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "shrink-0 text-[19px] font-semibold tracking-[-0.02em]", children: item.value })
     ] }) });
   }
   if (variant === "bar") {
-    return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Card, { className: "overview-card overview-metric-card flex h-full min-h-0 min-w-0 flex-col", "data-tone": item.tone, children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(CardContent, { className: "min-h-0 flex-1 p-3", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex items-end justify-between gap-3", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-w-0 truncate text-[12px] font-medium text-muted-foreground", children: item.label }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "shrink-0 text-[18px] font-semibold tracking-tight", children: item.value })
+    return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Card, { className: "overview-card overview-metric-card flex h-full min-h-0 min-w-0 flex-col", "data-tone": item.tone, children: /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(CardContent, { className: "min-h-0 flex-1 p-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex items-end justify-between gap-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "min-w-0 truncate text-[12px] font-medium text-muted-foreground", children: item.label }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "shrink-0 text-[18px] font-semibold tracking-tight", children: item.value })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "overview-metric-track mt-3", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "overview-metric-fill", style: { width: `${Math.max(3, Math.round(item.ratio * 100))}%` } }) })
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "overview-metric-track mt-3", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "overview-metric-fill", style: { width: `${Math.max(3, Math.round(item.ratio * 100))}%` } }) })
     ] }) });
   }
   if (variant === "ring") {
-    return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Card, { className: "overview-card overview-metric-card flex h-full min-h-0 min-w-0 flex-col", "data-tone": item.tone, children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(CardContent, { className: "grid min-h-0 flex-1 grid-cols-[58px_minmax(0,1fr)] items-center gap-3 p-3", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewRingMetric, { ratio: item.ratio, tone: item.tone }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[12px] font-medium text-muted-foreground", children: item.label }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[18px] font-semibold tracking-tight", children: item.value })
+    return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Card, { className: "overview-card overview-metric-card flex h-full min-h-0 min-w-0 flex-col", "data-tone": item.tone, children: /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(CardContent, { className: "grid min-h-0 flex-1 grid-cols-[58px_minmax(0,1fr)] items-center gap-3 p-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewRingMetric, { ratio: item.ratio, tone: item.tone }),
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate text-[12px] font-medium text-muted-foreground", children: item.label }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate text-[18px] font-semibold tracking-tight", children: item.value })
       ] })
     ] }) });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Card, { className: "overview-card overview-metric-card flex h-full min-h-0 min-w-0 flex-col", "data-tone": item.tone, children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(CardContent, { className: "relative flex min-h-0 flex-1 flex-col justify-between p-4", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex items-center justify-between gap-3", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { "aria-hidden": "true", className: "overview-metric-dot" }),
-      showsRatio ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("span", { className: "text-[10px] font-semibold text-muted-foreground", children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Card, { className: "overview-card overview-metric-card flex h-full min-h-0 min-w-0 flex-col", "data-tone": item.tone, children: /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(CardContent, { className: "relative flex min-h-0 flex-1 flex-col justify-between p-4", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex items-center justify-between gap-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { "aria-hidden": "true", className: "overview-metric-dot" }),
+      showsRatio ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { className: "text-[10px] font-semibold text-muted-foreground", children: [
         Math.round(Math.max(0, Math.min(1, item.ratio)) * 100),
         "%"
       ] }) : null
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[11px] font-medium text-muted-foreground", children: item.label }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-0.5 truncate text-[24px] font-semibold tracking-[-0.035em] text-foreground", children: item.value })
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate text-[11px] font-medium text-muted-foreground", children: item.label }),
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "mt-0.5 truncate text-[24px] font-semibold tracking-[-0.035em] text-foreground", children: item.value })
     ] }),
-    showsRatio ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "overview-metric-track", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "overview-metric-fill", style: { width: `${Math.max(3, Math.round(item.ratio * 100))}%` } }) }) : null
+    showsRatio ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "overview-metric-track", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "overview-metric-fill", style: { width: `${Math.max(3, Math.round(item.ratio * 100))}%` } }) }) : null
   ] }) });
 }
 function OverviewRingMetric({ ratio, tone }) {
   const radius = 17;
   const circumference = 2 * Math.PI * radius;
   const clamped = Math.max(0, Math.min(1, ratio));
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("svg", { "aria-hidden": "true", className: "h-[58px] w-[58px]", viewBox: "0 0 48 48", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("circle", { cx: "24", cy: "24", fill: "none", r: radius, stroke: "var(--muted)", strokeWidth: "6" }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("svg", { "aria-hidden": "true", className: "h-[58px] w-[58px]", viewBox: "0 0 48 48", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("circle", { cx: "24", cy: "24", fill: "none", r: radius, stroke: "var(--muted)", strokeWidth: "6" }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
       "circle",
       {
         cx: "24",
@@ -151446,30 +152056,30 @@ function UsageTrendWidget({
     { color: "#007aff", label: t("Total tokens") },
     { color: overviewCacheColor, label: t("Cache tokens") }
   ];
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Card, { className: "overview-card flex h-full min-h-0 min-w-0 flex-col", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewCardHeading, { icon: import_lucide_react3.ChartNoAxesCombined, title: t("Usage Trend"), trailing: dimensions.width >= 2 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewChartLegend, { items: legendItems }) : null }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(CardContent, { className: "min-h-0 flex-1", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ChartFrame, { fill: true, children: ({ height, width }) => /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_recharts.ComposedChart, { data: usageStats2.series, height, margin: chartMargin, width, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.CartesianGrid, { stroke: "var(--overview-chart-grid)", strokeDasharray: "2 5", vertical: false }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.XAxis, { axisLine: false, dataKey: "label", hide: dimensions.height <= 1, tick: { fill: "var(--muted-foreground)", fontSize: 11 }, tickLine: false }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.YAxis, { axisLine: false, hide: dimensions.width <= 1, tick: { fill: "var(--muted-foreground)", fontSize: 11 }, tickFormatter: formatAxisNumber, tickLine: false, yAxisId: "tokens" }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.YAxis, { axisLine: false, hide: true, orientation: "right", yAxisId: "requests" }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Tooltip, { content: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(UsageTooltip, {}) }),
-      variant === "composed" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Area, { dataKey: "totalTokens", fill: "#007aff", fillOpacity: 0.12, name: t("Total tokens"), stroke: "#007aff", strokeWidth: 2.25, type: "monotone", yAxisId: "tokens" }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Bar, { barSize: 12, dataKey: "requestCount", fill: "#34c759", name: t("Requests"), radius: [4, 4, 0, 0], yAxisId: "requests", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.LabelList, { content: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(RequestHealthBarLabel, {}), dataKey: "requestCount" }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Line, { dataKey: "cacheTokens", dot: false, name: t("Cache tokens"), stroke: overviewCacheColor, strokeWidth: 2, type: "monotone", yAxisId: "tokens" })
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(Card, { className: "overview-card flex h-full min-h-0 min-w-0 flex-col", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewCardHeading, { icon: import_lucide_react3.ChartNoAxesCombined, title: t("Usage Trend"), trailing: dimensions.width >= 2 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewChartLegend, { items: legendItems }) : null }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(CardContent, { className: "min-h-0 flex-1", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ChartFrame, { fill: true, children: ({ height, width }) => /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_recharts.ComposedChart, { data: usageStats2.series, height, margin: chartMargin, width, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.CartesianGrid, { stroke: "var(--overview-chart-grid)", strokeDasharray: "2 5", vertical: false }),
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.XAxis, { axisLine: false, dataKey: "label", hide: dimensions.height <= 1, tick: { fill: "var(--muted-foreground)", fontSize: 11 }, tickLine: false }),
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.YAxis, { axisLine: false, hide: dimensions.width <= 1, tick: { fill: "var(--muted-foreground)", fontSize: 11 }, tickFormatter: formatAxisNumber, tickLine: false, yAxisId: "tokens" }),
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.YAxis, { axisLine: false, hide: true, orientation: "right", yAxisId: "requests" }),
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Tooltip, { content: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(UsageTooltip, {}), portal: chartTooltipPortal() }),
+      variant === "composed" ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Area, { dataKey: "totalTokens", fill: "#007aff", fillOpacity: 0.12, name: t("Total tokens"), stroke: "#007aff", strokeWidth: 2.25, type: "monotone", yAxisId: "tokens" }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Bar, { barSize: 12, dataKey: "requestCount", fill: "#34c759", name: t("Requests"), radius: [4, 4, 0, 0], yAxisId: "requests", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.LabelList, { content: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(RequestHealthBarLabel, {}), dataKey: "requestCount" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Line, { dataKey: "cacheTokens", dot: false, name: t("Cache tokens"), stroke: overviewCacheColor, strokeWidth: 2, type: "monotone", yAxisId: "tokens" })
       ] }) : null,
-      variant === "area" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Area, { dataKey: "totalTokens", fill: "#007aff", fillOpacity: 0.14, name: t("Total tokens"), stroke: "#007aff", strokeWidth: 2.25, type: "monotone", yAxisId: "tokens" }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Area, { dataKey: "cacheTokens", fill: overviewCacheColor, fillOpacity: 0.12, name: t("Cache tokens"), stroke: overviewCacheColor, strokeWidth: 2, type: "monotone", yAxisId: "tokens" })
+      variant === "area" ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Area, { dataKey: "totalTokens", fill: "#007aff", fillOpacity: 0.14, name: t("Total tokens"), stroke: "#007aff", strokeWidth: 2.25, type: "monotone", yAxisId: "tokens" }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Area, { dataKey: "cacheTokens", fill: overviewCacheColor, fillOpacity: 0.12, name: t("Cache tokens"), stroke: overviewCacheColor, strokeWidth: 2, type: "monotone", yAxisId: "tokens" })
       ] }) : null,
-      variant === "line" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Line, { dataKey: "totalTokens", dot: false, name: t("Total tokens"), stroke: "#007aff", strokeWidth: 2.5, type: "monotone", yAxisId: "tokens" }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Line, { dataKey: "cacheTokens", dot: false, name: t("Cache tokens"), stroke: overviewCacheColor, strokeWidth: 2, type: "monotone", yAxisId: "tokens" })
+      variant === "line" ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Line, { dataKey: "totalTokens", dot: false, name: t("Total tokens"), stroke: "#007aff", strokeWidth: 2.5, type: "monotone", yAxisId: "tokens" }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Line, { dataKey: "cacheTokens", dot: false, name: t("Cache tokens"), stroke: overviewCacheColor, strokeWidth: 2, type: "monotone", yAxisId: "tokens" })
       ] }) : null,
-      variant === "bar" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Bar, { barSize: 14, dataKey: "totalTokens", fill: "#007aff", name: t("Total tokens"), radius: [4, 4, 0, 0], yAxisId: "tokens" }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Line, { dataKey: "requestCount", dot: false, name: t("Requests"), stroke: "#34c759", strokeWidth: 2, type: "monotone", yAxisId: "requests" })
+      variant === "bar" ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Bar, { barSize: 14, dataKey: "totalTokens", fill: "#007aff", name: t("Total tokens"), radius: [4, 4, 0, 0], yAxisId: "tokens" }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Line, { dataKey: "requestCount", dot: false, name: t("Requests"), stroke: "#34c759", strokeWidth: 2, type: "monotone", yAxisId: "requests" })
       ] }) : null
     ] }) }) })
   ] });
@@ -151486,19 +152096,19 @@ function TokenActivityOverviewWidget({
   });
   const showSummary = dimensions.height >= 2;
   const showLegend = dimensions.height >= 2 && dimensions.width >= 2;
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Card, { className: "overview-card flex h-full min-h-0 min-w-0 flex-col", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewCardHeading, { icon: import_lucide_react3.CalendarDays, title: t("Activity"), tone: "green", trailing: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant: "outline", children: t("Tokens") }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(CardContent, { className: "flex min-h-0 flex-1 flex-col overflow-visible p-3", children: [
-      showSummary ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: cn("overview-nested-surface mb-3 grid overflow-hidden border", dimensions.width >= 2 ? "grid-cols-4" : "grid-cols-2"), children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewActivityStat, { label: t("Longest streak"), value: formatCompactNumber(activity.longestStreak), unit: t(activity.longestStreak === 1 ? "day" : "days") }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewActivityStat, { label: t("Avg / day"), value: formatCompactNumber(Math.round(activity.avgPerDay)) }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewActivityStat, { label: t("Avg / week"), value: formatCompactNumber(Math.round(activity.avgPerWeek)) }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewActivityStat, { label: t("Total"), value: formatCompactNumber(activity.totalTokens) })
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(Card, { className: "overview-card flex h-full min-h-0 min-w-0 flex-col", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewCardHeading, { icon: import_lucide_react3.CalendarDays, title: t("Activity"), tone: "green", trailing: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Badge, { variant: "outline", children: t("Tokens") }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(CardContent, { className: "flex min-h-0 flex-1 flex-col overflow-visible p-3", children: [
+      showSummary ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: cn("overview-nested-surface mb-3 grid overflow-hidden border", dimensions.width >= 2 ? "grid-cols-4" : "grid-cols-2"), children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewActivityStat, { label: t("Longest streak"), value: formatCompactNumber(activity.longestStreak), unit: t(activity.longestStreak === 1 ? "day" : "days") }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewActivityStat, { label: t("Avg / day"), value: formatCompactNumber(Math.round(activity.avgPerDay)) }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewActivityStat, { label: t("Avg / week"), value: formatCompactNumber(Math.round(activity.avgPerWeek)) }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewActivityStat, { label: t("Total"), value: formatCompactNumber(activity.totalTokens) })
       ] }) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewActivityGrid, { activity, dimensions }),
-      showLegend ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mt-2 flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-muted-foreground", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: t("Less") }),
-        [0, 1, 2, 3, 4].map((intensity) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewActivityGrid, { activity, dimensions }),
+      showLegend ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "mt-2 flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-muted-foreground", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: t("Less") }),
+        [0, 1, 2, 3, 4].map((intensity) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
           "span",
           {
             "aria-hidden": "true",
@@ -151507,7 +152117,7 @@ function TokenActivityOverviewWidget({
           },
           intensity
         )),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: t("More") })
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: t("More") })
       ] }) : null
     ] })
   ] });
@@ -151529,11 +152139,11 @@ function OverviewActivityStat({
   unit,
   value
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "overview-activity-stat min-w-0 border-r border-border/60 bg-transparent px-3 py-2 last:border-r-0", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[11px] font-medium text-muted-foreground", children: label }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mt-0.5 flex min-w-0 items-baseline gap-1", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "truncate text-[17px] font-semibold tracking-tight text-foreground", children: value }),
-      unit ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "shrink-0 text-[11px] text-muted-foreground", children: unit }) : null
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "overview-activity-stat min-w-0 border-r border-border/60 bg-transparent px-3 py-2 last:border-r-0", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate text-[11px] font-medium text-muted-foreground", children: label }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "mt-0.5 flex min-w-0 items-baseline gap-1", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "truncate text-[17px] font-semibold tracking-tight text-foreground", children: value }),
+      unit ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "shrink-0 text-[11px] text-muted-foreground", children: unit }) : null
     ] })
   ] });
 }
@@ -151547,8 +152157,8 @@ function OverviewActivityGrid({
   const dayLabels = [t("M"), "", t("W"), "", t("F"), "", ""];
   const cellGap = dimensions.height <= 1 ? 2 : dimensions.width >= 3 ? 4 : 3;
   const labelColumnWidth = showDayLabels ? 20 : 0;
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-w-0 overflow-visible", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "w-full", children: [
-    showMonthLabels ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "min-w-0 overflow-visible", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "w-full", children: [
+    showMonthLabels ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
       "div",
       {
         className: "mb-1 grid text-[10px] font-medium text-muted-foreground",
@@ -151557,7 +152167,7 @@ function OverviewActivityGrid({
           gridTemplateColumns: `repeat(${activity.weekCount}, minmax(0, 1fr))`,
           marginLeft: `${labelColumnWidth ? labelColumnWidth + cellGap : 0}px`
         },
-        children: activity.months.map((month) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+        children: activity.months.map((month) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
           "span",
           {
             className: "truncate",
@@ -151568,7 +152178,7 @@ function OverviewActivityGrid({
         ))
       }
     ) : null,
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
       "div",
       {
         className: "grid min-h-[64px]",
@@ -151580,7 +152190,7 @@ function OverviewActivityGrid({
           gridTemplateRows: "repeat(7, auto)"
         },
         children: [
-          showDayLabels ? dayLabels.map((label, index) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+          showDayLabels ? dayLabels.map((label, index) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
             "span",
             {
               className: "self-center truncate text-[10px] font-medium leading-none text-muted-foreground",
@@ -151589,24 +152199,27 @@ function OverviewActivityGrid({
             },
             `${label}-${index}`
           )) : null,
-          activity.cells.map((cell) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
-            "span",
+          activity.cells.map((cell) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+            Tooltip2,
             {
               "aria-label": `${cell.dateLabel}: ${formatActivityTokenCount(cell.totalTokens)} ${t("tokens")}`,
-              className: "overview-activity-cell group relative aspect-square w-full rounded-[4px]",
-              style: {
-                backgroundColor: overviewActivityColor(cell.intensity, cell.inObservedRange),
-                gridColumn: cell.weekIndex + (showDayLabels ? 2 : 1),
-                gridRow: cell.dayIndex + 1
-              },
-              children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("span", { className: `pointer-events-none absolute z-30 hidden min-w-[112px] rounded-md border border-border/70 bg-popover px-2 py-1.5 text-left text-[11px] text-popover-foreground shadow-card-elevated group-hover:block ${overviewActivityTooltipPositionClass(cell, activity.weekCount)}`, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "block font-semibold", children: cell.dateLabel }),
-                /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("span", { className: "mt-0.5 block text-muted-foreground", children: [
+              align: cell.weekIndex <= 1 ? "start" : cell.weekIndex >= activity.weekCount - 2 ? "end" : "center",
+              className: "overview-activity-cell aspect-square w-full rounded-[4px]",
+              content: /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "block font-semibold", children: cell.dateLabel }),
+                /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { className: "mt-0.5 block text-muted-foreground", children: [
                   formatActivityTokenCount(cell.totalTokens),
                   " ",
                   t("tokens")
                 ] })
-              ] })
+              ] }),
+              contentClassName: "min-w-[112px] border-border/70 px-2 py-1.5 text-left text-[11px] font-normal",
+              side: cell.dayIndex <= 1 ? "bottom" : "top",
+              style: {
+                backgroundColor: overviewActivityColor(cell.intensity, cell.inObservedRange),
+                gridColumn: cell.weekIndex + (showDayLabels ? 2 : 1),
+                gridRow: cell.dayIndex + 1
+              }
             },
             cell.dateKey
           ))
@@ -151617,16 +152230,6 @@ function OverviewActivityGrid({
 }
 function formatActivityTokenCount(value) {
   return new Intl.NumberFormat(void 0, { maximumFractionDigits: 0 }).format(Math.round(Math.max(0, value)));
-}
-function overviewActivityTooltipPositionClass(cell, weekCount) {
-  const verticalClass = cell.dayIndex <= 1 ? "top-full mt-1" : "bottom-full mb-1";
-  if (cell.weekIndex <= 1) {
-    return `${verticalClass} left-0`;
-  }
-  if (cell.weekIndex >= weekCount - 2) {
-    return `${verticalClass} right-0`;
-  }
-  return `${verticalClass} left-1/2 -translate-x-1/2`;
 }
 function overviewActivityColor(intensity, inRange) {
   if (!inRange) return "rgba(0,122,255,.05)";
@@ -151650,18 +152253,18 @@ function TokenMixOverviewWidget({
   const total = tokenMix.reduce((sum, item) => sum + item.value, 0);
   const showLegend = dimensions.height >= 2 && dimensions.width >= 2;
   const chartMargin = dimensions.height <= 1 ? { bottom: 2, left: 0, right: 8, top: 2 } : { bottom: 8, left: 8, right: 12, top: 8 };
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Card, { className: "overview-card flex h-full min-h-0 min-w-0 flex-col", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewCardHeading, { icon: import_lucide_react3.ChartPie, title: t("Token Mix"), tone: "purple", trailing: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant: "outline", children: formatCompactNumber(totals.totalTokens) }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(CardContent, { className: "min-h-0 flex-1 overflow-hidden", children: [
-      variant === "stacked" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "space-y-3", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "flex h-3 overflow-hidden rounded-full bg-muted", children: tokenMix.map((item) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { style: { backgroundColor: item.color, width: `${total > 0 ? Math.max(2, item.value / total * 100) : 100 / tokenMix.length}%` } }, item.name)) }),
-        showLegend ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewTokenLegend, { rows: tokenMix }) : null
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(Card, { className: "overview-card flex h-full min-h-0 min-w-0 flex-col", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewCardHeading, { icon: import_lucide_react3.ChartPie, title: t("Token Mix"), tone: "purple", trailing: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Badge, { variant: "outline", children: formatCompactNumber(totals.totalTokens) }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(CardContent, { className: "min-h-0 flex-1 overflow-hidden", children: [
+      variant === "stacked" ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "space-y-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "flex h-3 overflow-hidden rounded-full bg-muted", children: tokenMix.map((item) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { style: { backgroundColor: item.color, width: `${total > 0 ? Math.max(2, item.value / total * 100) : 100 / tokenMix.length}%` } }, item.name)) }),
+        showLegend ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewTokenLegend, { rows: tokenMix }) : null
       ] }) : null,
-      variant === "donut" || variant === "pie" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: cn("grid h-full min-h-0 items-center gap-3", showLegend && "grid-cols-[minmax(96px,1fr)_minmax(0,1fr)]"), children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "relative h-full min-h-0", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ChartFrame, { fill: true, children: ({ height, width }) => /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_recharts.PieChart, { height, width, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Tooltip, { content: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(TokenTooltip, {}) }),
-            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+      variant === "donut" || variant === "pie" ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: cn("grid h-full min-h-0 items-center gap-3", showLegend && "grid-cols-[minmax(96px,1fr)_minmax(0,1fr)]"), children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "relative h-full min-h-0", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ChartFrame, { fill: true, children: ({ height, width }) => /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_recharts.PieChart, { height, width, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Tooltip, { content: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(TokenTooltip, {}), portal: chartTooltipPortal() }),
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
               import_recharts.Pie,
               {
                 cx: "50%",
@@ -151672,20 +152275,20 @@ function TokenMixOverviewWidget({
                 nameKey: "name",
                 outerRadius: Math.min(height, width) * 0.34,
                 paddingAngle: variant === "donut" ? 2 : 0,
-                children: tokenMix.map((item) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Cell, { fill: item.color }, item.name))
+                children: tokenMix.map((item) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Cell, { fill: item.color }, item.name))
               }
             )
           ] }) }),
-          variant === "donut" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewDonutCenter, { label: t("Tokens"), value: formatCompactNumber(total) }) : null
+          variant === "donut" ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewDonutCenter, { label: t("Tokens"), value: formatCompactNumber(total) }) : null
         ] }),
-        showLegend ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewTokenLegend, { rows: tokenMix }) : null
+        showLegend ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewTokenLegend, { rows: tokenMix }) : null
       ] }) : null,
-      variant === "bars" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ChartFrame, { fill: true, children: ({ height, width }) => /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_recharts.BarChart, { data: tokenMix, height, layout: "vertical", margin: chartMargin, width, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.CartesianGrid, { stroke: "var(--overview-chart-grid)", strokeDasharray: "2 5", horizontal: false }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.XAxis, { axisLine: false, hide: dimensions.height <= 1, tick: { fill: "var(--muted-foreground)", fontSize: 11 }, tickFormatter: formatAxisNumber, tickLine: false, type: "number" }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.YAxis, { axisLine: false, dataKey: "name", tick: { fill: "var(--muted-foreground)", fontSize: 11 }, tickLine: false, type: "category", width: dimensions.width <= 1 ? 42 : 52 }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Tooltip, { content: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(TokenTooltip, {}) }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Bar, { dataKey: "value", radius: [0, 4, 4, 0], children: tokenMix.map((item) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Cell, { fill: item.color }, item.name)) })
+      variant === "bars" ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ChartFrame, { fill: true, children: ({ height, width }) => /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_recharts.BarChart, { data: tokenMix, height, layout: "vertical", margin: chartMargin, width, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.CartesianGrid, { stroke: "var(--overview-chart-grid)", strokeDasharray: "2 5", horizontal: false }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.XAxis, { axisLine: false, hide: dimensions.height <= 1, tick: { fill: "var(--muted-foreground)", fontSize: 11 }, tickFormatter: formatAxisNumber, tickLine: false, type: "number" }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.YAxis, { axisLine: false, dataKey: "name", tick: { fill: "var(--muted-foreground)", fontSize: 11 }, tickLine: false, type: "category", width: dimensions.width <= 1 ? 42 : 52 }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Tooltip, { content: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(TokenTooltip, {}), portal: chartTooltipPortal() }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Bar, { dataKey: "value", radius: [0, 4, 4, 0], children: tokenMix.map((item) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Cell, { fill: item.color }, item.name)) })
       ] }) }) : null
     ] })
   ] });
@@ -151700,16 +152303,16 @@ function ModelDistributionOverviewWidget({
   const total = modelRows.reduce((sum, item) => sum + item.value, 0);
   const showLegend = dimensions.height >= 2 && dimensions.width >= 2;
   const chartMargin = dimensions.height <= 1 ? { bottom: 2, left: 0, right: 8, top: 2 } : { bottom: 8, left: 8, right: 12, top: 8 };
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Card, { className: "overview-card flex h-full min-h-0 min-w-0 flex-col", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewCardHeading, { icon: import_lucide_react3.Layers3, title: t("Model Distribution"), tone: "orange", trailing: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant: "outline", children: formatCompactNumber(total) }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(CardContent, { className: "min-h-0 flex-1 overflow-hidden", children: modelRows.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewEmptyState, { className: "h-full py-4", compact: true, label: t("No model activity") }) : variant === "stacked" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "space-y-3", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "flex h-3 overflow-hidden rounded-full bg-muted", children: modelRows.map((item) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { style: { backgroundColor: item.color, width: `${total > 0 ? Math.max(2, item.value / total * 100) : 100 / modelRows.length}%` } }, item.name)) }),
-      showLegend ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewTokenLegend, { rows: modelRows }) : null
-    ] }) : variant === "donut" || variant === "pie" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: cn("grid h-full min-h-0 items-center gap-3", showLegend && "grid-cols-[minmax(96px,1fr)_minmax(0,1fr)]"), children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "relative h-full min-h-0", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ChartFrame, { fill: true, children: ({ height, width }) => /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_recharts.PieChart, { height, width, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Tooltip, { content: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(TokenTooltip, {}) }),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(Card, { className: "overview-card flex h-full min-h-0 min-w-0 flex-col", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewCardHeading, { icon: import_lucide_react3.Layers3, title: t("Model Distribution"), tone: "orange", trailing: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Badge, { variant: "outline", children: formatCompactNumber(total) }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(CardContent, { className: "min-h-0 flex-1 overflow-hidden", children: modelRows.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewEmptyState, { className: "h-full py-4", compact: true, label: t("No model activity") }) : variant === "stacked" ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "space-y-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "flex h-3 overflow-hidden rounded-full bg-muted", children: modelRows.map((item) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { style: { backgroundColor: item.color, width: `${total > 0 ? Math.max(2, item.value / total * 100) : 100 / modelRows.length}%` } }, item.name)) }),
+      showLegend ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewTokenLegend, { rows: modelRows }) : null
+    ] }) : variant === "donut" || variant === "pie" ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: cn("grid h-full min-h-0 items-center gap-3", showLegend && "grid-cols-[minmax(96px,1fr)_minmax(0,1fr)]"), children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "relative h-full min-h-0", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ChartFrame, { fill: true, children: ({ height, width }) => /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_recharts.PieChart, { height, width, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Tooltip, { content: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(TokenTooltip, {}), portal: chartTooltipPortal() }),
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
             import_recharts.Pie,
             {
               cx: "50%",
@@ -151720,19 +152323,19 @@ function ModelDistributionOverviewWidget({
               nameKey: "name",
               outerRadius: Math.min(height, width) * 0.34,
               paddingAngle: variant === "donut" ? 2 : 0,
-              children: modelRows.map((item) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Cell, { fill: item.color }, item.name))
+              children: modelRows.map((item) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Cell, { fill: item.color }, item.name))
             }
           )
         ] }) }),
-        variant === "donut" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewDonutCenter, { label: t("Tokens"), value: formatCompactNumber(total) }) : null
+        variant === "donut" ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewDonutCenter, { label: t("Tokens"), value: formatCompactNumber(total) }) : null
       ] }),
-      showLegend ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewTokenLegend, { rows: modelRows }) : null
-    ] }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ChartFrame, { fill: true, children: ({ height, width }) => /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_recharts.BarChart, { data: modelRows, height, layout: "vertical", margin: chartMargin, width, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.CartesianGrid, { stroke: "var(--overview-chart-grid)", strokeDasharray: "2 5", horizontal: false }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.XAxis, { axisLine: false, hide: dimensions.height <= 1, tick: { fill: "var(--muted-foreground)", fontSize: 11 }, tickFormatter: formatAxisNumber, tickLine: false, type: "number" }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.YAxis, { axisLine: false, dataKey: "name", tick: { fill: "var(--muted-foreground)", fontSize: 11 }, tickLine: false, type: "category", width: dimensions.width <= 1 ? 58 : 88 }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Tooltip, { content: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(TokenTooltip, {}) }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Bar, { dataKey: "value", radius: [0, 4, 4, 0], children: modelRows.map((item) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_recharts.Cell, { fill: item.color }, item.name)) })
+      showLegend ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewTokenLegend, { rows: modelRows }) : null
+    ] }) : /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ChartFrame, { fill: true, children: ({ height, width }) => /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_recharts.BarChart, { data: modelRows, height, layout: "vertical", margin: chartMargin, width, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.CartesianGrid, { stroke: "var(--overview-chart-grid)", strokeDasharray: "2 5", horizontal: false }),
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.XAxis, { axisLine: false, hide: dimensions.height <= 1, tick: { fill: "var(--muted-foreground)", fontSize: 11 }, tickFormatter: formatAxisNumber, tickLine: false, type: "number" }),
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.YAxis, { axisLine: false, dataKey: "name", tick: { fill: "var(--muted-foreground)", fontSize: 11 }, tickLine: false, type: "category", width: dimensions.width <= 1 ? 58 : 88 }),
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Tooltip, { content: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(TokenTooltip, {}), portal: chartTooltipPortal() }),
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Bar, { dataKey: "value", radius: [0, 4, 4, 0], children: modelRows.map((item) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_recharts.Cell, { fill: item.color }, item.name)) })
     ] }) }) })
   ] });
 }
@@ -151755,10 +152358,10 @@ function overviewModelDistributionRows(rows, translate) {
   return topRows;
 }
 function OverviewTokenLegend({ rows }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "grid grid-cols-1 gap-1.5", children: rows.map((row) => /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "overview-legend-row flex min-w-0 items-center gap-2 rounded-[8px] px-2 py-1.5 text-[11px]", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "h-2 w-2 shrink-0 rounded-full", style: { backgroundColor: row.color } }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 flex-1 truncate text-muted-foreground", children: row.name }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "shrink-0 font-semibold", children: formatCompactNumber(row.value) })
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "grid grid-cols-1 gap-1.5", children: rows.map((row) => /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "overview-legend-row flex min-w-0 items-center gap-2 rounded-[8px] px-2 py-1.5 text-[11px]", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "h-2 w-2 shrink-0 rounded-full", style: { backgroundColor: row.color } }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "min-w-0 flex-1 truncate text-muted-foreground", children: row.name }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "shrink-0 font-semibold", children: formatCompactNumber(row.value) })
   ] }, row.name)) });
 }
 function OverviewAnalysisWidget({
@@ -151782,15 +152385,15 @@ function OverviewAnalysisWidget({
   const rowLimit = overviewAnalysisRowLimit(dimensions);
   const shouldUseCompact = variant === "compact" || dimensions.width <= 2 || dimensions.height <= 1;
   if (shouldUseCompact) {
-    return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Card, { className: "overview-card flex h-full min-h-0 min-w-0 flex-col", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewCardHeading, { icon: import_lucide_react3.UsersRound, title, tone: "slate", trailing: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant: "outline", children: rows.length }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(CardContent, { className: "min-h-0 flex-1 overflow-hidden", children: rows.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewEmptyState, { compact: true, label: emptyLabel }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "space-y-2", children: rows.slice(0, rowLimit).map((row) => /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "overview-nested-surface flex min-w-0 items-center justify-between gap-3 border px-3 py-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 truncate text-[12px] font-medium", children: row.label }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "shrink-0 text-[12px] font-semibold", children: formatCompactNumber(row.totalTokens) })
+    return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(Card, { className: "overview-card flex h-full min-h-0 min-w-0 flex-col", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewCardHeading, { icon: import_lucide_react3.UsersRound, title, tone: "slate", trailing: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Badge, { variant: "outline", children: rows.length }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(CardContent, { className: "min-h-0 flex-1 overflow-hidden", children: rows.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewEmptyState, { compact: true, label: emptyLabel }) : /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "space-y-2", children: rows.slice(0, rowLimit).map((row) => /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "overview-nested-surface flex min-w-0 items-center justify-between gap-3 border px-3 py-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "min-w-0 truncate text-[12px] font-medium", children: row.label }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "shrink-0 text-[12px] font-semibold", children: formatCompactNumber(row.totalTokens) })
       ] }, row.key)) }) })
     ] });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(UsageAnalysisCard, { columns, dimensions, emptyLabel, rows, title });
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(UsageAnalysisCard, { columns, dimensions, emptyLabel, rows, title });
 }
 function overviewAnalysisRowLimit(dimensions) {
   if (dimensions.height <= 1) return 2;
@@ -152208,41 +152811,41 @@ function SystemStatusBar({
     setStatusTooltip({ segment, ...resolveSystemStatusTooltipPosition(target.getBoundingClientRect()) });
   };
   if (variant === "compact") {
-    return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Card, { className: "overview-card flex h-full min-h-0 min-w-0 flex-col", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(CardContent, { className: "flex min-h-0 min-w-0 flex-1 items-center justify-between gap-3 p-4", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center gap-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "overview-status-icon flex h-5 w-5 shrink-0 items-center justify-center rounded-full", "data-tone": overallTone, children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(StatusIcon, { className: "h-3.5 w-3.5" }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[13px] font-semibold", children: t("API Service") }),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[11px] text-muted-foreground", children: rangeLabel2 })
+    return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Card, { className: "overview-card flex h-full min-h-0 min-w-0 flex-col", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(CardContent, { className: "flex min-h-0 min-w-0 flex-1 items-center justify-between gap-3 p-4", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-w-0 items-center gap-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "overview-status-icon flex h-5 w-5 shrink-0 items-center justify-center rounded-full", "data-tone": overallTone, children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(StatusIcon, { className: "h-3.5 w-3.5" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate text-[13px] font-semibold", children: t("API Service") }),
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate text-[11px] text-muted-foreground", children: rangeLabel2 })
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant: overallTone === "ok" ? "success" : overallTone === "warn" ? "warning" : overallTone === "error" ? "danger" : "outline", children: formatPercent(availability) })
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Badge, { variant: overallTone === "ok" ? "success" : overallTone === "warn" ? "warning" : overallTone === "error" ? "danger" : "outline", children: formatPercent(availability) })
     ] }) });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Card, { className: "overview-card flex h-full min-h-0 min-w-0 flex-col", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(Card, { className: "overview-card flex h-full min-h-0 min-w-0 flex-col", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
       OverviewCardHeading,
       {
         icon: import_lucide_react3.Server,
         title: t("System status"),
         tone: overallTone === "ok" ? "green" : overallTone === "warn" ? "orange" : overallTone === "error" ? "red" : "slate",
-        trailing: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "overview-date-pill block max-w-[320px] truncate", children: rangeLabel2 })
+        trailing: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "overview-date-pill block max-w-[320px] truncate", children: rangeLabel2 })
       }
     ),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(CardContent, { className: "min-h-0 flex-1 overflow-hidden p-3", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "space-y-2.5", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-3", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center gap-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "overview-status-icon flex h-4 w-4 shrink-0 items-center justify-center rounded-full", "data-tone": overallTone, children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(StatusIcon, { className: "h-3 w-3" }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "min-w-0 truncate text-[13px] font-semibold", children: t("API Service") })
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(CardContent, { className: "min-h-0 flex-1 overflow-hidden p-3", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "space-y-2.5", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-w-0 items-center justify-between gap-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-w-0 items-center gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "overview-status-icon flex h-4 w-4 shrink-0 items-center justify-center rounded-full", "data-tone": overallTone, children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(StatusIcon, { className: "h-3 w-3" }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "min-w-0 truncate text-[13px] font-semibold", children: t("API Service") })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Badge, { variant: overallTone === "ok" ? "success" : overallTone === "warn" ? "warning" : overallTone === "error" ? "danger" : "outline", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(Badge, { variant: overallTone === "ok" ? "success" : overallTone === "warn" ? "warning" : overallTone === "error" ? "danger" : "outline", children: [
           formatPercent(availability),
           " ",
           t("Availability")
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 gap-1", "aria-label": t("System status"), children: [
-        segments.map((segment, index) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-w-0 gap-1", "aria-label": t("System status"), children: [
+        segments.map((segment, index) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
           "span",
           {
             "aria-label": systemStatusPointTooltip(segment, t),
@@ -152252,7 +152855,7 @@ function SystemStatusBar({
             onMouseEnter: (event) => showStatusTooltip(segment, event.currentTarget),
             onMouseLeave: () => setStatusTooltip(void 0),
             tabIndex: 0,
-            children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+            children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
               "span",
               {
                 "aria-label": systemStatusPointTooltip(segment, t),
@@ -152263,46 +152866,42 @@ function SystemStatusBar({
           },
           `${segment.point.bucket}-${index}`
         )),
-        statusTooltip ? (0, import_react_dom.createPortal)(
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
-            "span",
-            {
-              className: "pointer-events-none fixed z-[150] w-[190px] max-w-[calc(100vw-24px)] rounded-md border border-border/70 bg-popover px-3 py-2 text-left text-[11px] leading-4 text-popover-foreground shadow-card-elevated ring-1 ring-black/5",
-              role: "tooltip",
-              style: { left: statusTooltip.left, top: statusTooltip.top },
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
-                  "span",
-                  {
-                    "aria-hidden": "true",
-                    className: cn(
-                      "absolute h-2 w-2 -translate-x-1/2 rotate-45 bg-popover",
-                      statusTooltip.placement === "above" ? "-bottom-1 border-b border-r border-border/70" : "-top-1 border-l border-t border-border/70"
-                    ),
-                    style: { left: statusTooltip.arrowLeft }
-                  }
-                ),
-                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "block font-semibold", children: statusTooltip.segment.dateLabel }),
-                /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("span", { className: "mt-1 flex justify-between gap-3", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "text-muted-foreground", children: t("Requests") }),
-                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "font-medium", children: formatCompactNumber(statusTooltip.segment.point.requestCount) })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("span", { className: "flex justify-between gap-3", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "text-muted-foreground", children: t("Success rate") }),
-                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "font-medium", children: formatPercent(statusTooltip.segment.point.successRate) })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("span", { className: "flex justify-between gap-3", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "text-muted-foreground", children: t("Failed requests") }),
-                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "font-medium", children: formatCompactNumber(statusTooltip.segment.point.errorCount) })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("span", { className: "flex justify-between gap-3", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "text-muted-foreground", children: t("Duration") }),
-                  /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "font-medium", children: formatDuration(statusTooltip.segment.point.avgDurationMs) })
-                ] })
-              ]
-            }
-          ),
-          document.body
+        statusTooltip ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
+          TooltipPortal,
+          {
+            className: "w-[190px] max-w-[calc(100vw-24px)] px-3 py-2 text-left font-normal leading-4",
+            style: { left: statusTooltip.left, top: statusTooltip.top },
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
+                "span",
+                {
+                  "aria-hidden": "true",
+                  className: cn(
+                    "absolute h-2 w-2 -translate-x-1/2 rotate-45 bg-popover",
+                    statusTooltip.placement === "above" ? "-bottom-1 border-b border-r border-border/70" : "-top-1 border-l border-t border-border/70"
+                  ),
+                  style: { left: statusTooltip.arrowLeft }
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "block font-semibold", children: statusTooltip.segment.dateLabel }),
+              /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { className: "mt-1 flex justify-between gap-3", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "text-muted-foreground", children: t("Requests") }),
+                /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "font-medium", children: formatCompactNumber(statusTooltip.segment.point.requestCount) })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { className: "flex justify-between gap-3", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "text-muted-foreground", children: t("Success rate") }),
+                /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "font-medium", children: formatPercent(statusTooltip.segment.point.successRate) })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { className: "flex justify-between gap-3", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "text-muted-foreground", children: t("Failed requests") }),
+                /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "font-medium", children: formatCompactNumber(statusTooltip.segment.point.errorCount) })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { className: "flex justify-between gap-3", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "text-muted-foreground", children: t("Duration") }),
+                /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "font-medium", children: formatDuration(statusTooltip.segment.point.avgDurationMs) })
+              ] })
+            ]
+          }
         ) : null
       ] })
     ] }) })
@@ -152322,48 +152921,48 @@ function ProviderAccountsOverview({
   const visibleAccounts = selectedAccountProvider ? sortedAccounts.filter((account) => providerAccountSelectionMatches(account, selectedAccountProvider)).slice(0, 1) : sortedAccounts.filter((account) => account.meters.length > 0 || account.status === "error");
   const isSingleAccount = visibleAccounts.length === 1;
   const showHeading = dimensions.height >= 2 && dimensions.width >= 2;
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Card, { className: "overview-card flex h-full min-h-0 min-w-0 flex-col", children: [
-    showHeading ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(Card, { className: "overview-card flex h-full min-h-0 min-w-0 flex-col", children: [
+    showHeading ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
       OverviewCardHeading,
       {
         icon: import_lucide_react3.WalletCards,
         title: t("Account Balance"),
         tone: "green",
-        trailing: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant: "outline", children: visibleAccounts.length })
+        trailing: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Badge, { variant: "outline", children: visibleAccounts.length })
       }
     ) : null,
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(CardContent, { className: cn("min-h-0 flex-1 overflow-hidden", providerAccountContentPaddingClass(dimensions)), children: visibleAccounts.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewEmptyState, { className: "h-full py-4", compact: true, label: t("No account balance connectors configured") }) : isSingleAccount ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountSinglePanel, { account: visibleAccounts[0], dimensions, refreshing, variant, onRefresh }) : variant === "compact" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions, visibleAccounts.length)), children: visibleAccounts.map((account) => {
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(CardContent, { className: cn("min-h-0 flex-1 overflow-hidden", providerAccountContentPaddingClass(dimensions)), children: visibleAccounts.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewEmptyState, { className: "h-full py-4", compact: true, label: t("No account balance connectors configured") }) : isSingleAccount ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ProviderAccountSinglePanel, { account: visibleAccounts[0], dimensions, refreshing, variant, onRefresh }) : variant === "compact" ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions, visibleAccounts.length)), children: visibleAccounts.map((account) => {
       const meter = primaryProviderAccountDisplayMeter(account);
-      return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "overview-nested-surface flex min-h-0 min-w-0 items-center justify-between gap-3 overflow-hidden border px-3 py-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[12px] font-semibold", children: providerAccountSnapshotLabel(account) }),
-          providerAccountShowSource(dimensions) && meter ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[11px] text-muted-foreground", children: t(meter.label) }) : null,
-          providerAccountShowRefreshTime(dimensions) ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[11px] text-muted-foreground", children: formatProviderAccountRefreshTime(account, t) }) : null
+      return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "overview-nested-surface flex min-h-0 min-w-0 items-center justify-between gap-3 overflow-hidden border px-3 py-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate text-[12px] font-semibold", children: providerAccountSnapshotLabel(account) }),
+          providerAccountShowSource(dimensions) && meter ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate text-[11px] text-muted-foreground", children: t(meter.label) }) : null,
+          providerAccountShowRefreshTime(dimensions) ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate text-[11px] text-muted-foreground", children: formatProviderAccountRefreshTime(account, t) }) : null
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex shrink-0 flex-col items-end gap-1 text-right", children: [
-          providerAccountShowRefresh(dimensions) ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountRefreshButton, { account, refreshing, onRefresh }) : null,
-          meter ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[12px] font-semibold", children: formatProviderAccountMeterValue(meter) }) : null
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex shrink-0 flex-col items-end gap-1 text-right", children: [
+          providerAccountShowRefresh(dimensions) ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ProviderAccountRefreshButton, { account, refreshing, onRefresh }) : null,
+          meter ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "text-[12px] font-semibold", children: formatProviderAccountMeterValue(meter) }) : null
         ] })
       ] }, providerAccountSnapshotKey(account));
-    }) }) : variant === "bars" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: cn("h-full min-h-0 overflow-y-auto pr-1", providerAccountStackClass(dimensions)), children: visibleAccounts.map((account) => {
+    }) }) : variant === "bars" ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: cn("h-full min-h-0 overflow-y-auto pr-1", providerAccountStackClass(dimensions)), children: visibleAccounts.map((account) => {
       const meter = primaryProviderAccountDisplayMeter(account);
       const progress2 = meter && isProviderAccountQuotaMeter(meter) ? providerAccountMeterProgress(meter) : void 0;
-      return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0 overflow-hidden", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-end justify-between gap-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[12px] font-semibold", children: providerAccountSnapshotLabel(account) }),
-            providerAccountShowSource(dimensions) && meter ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[11px] text-muted-foreground", children: t(meter.label) }) : null,
-            providerAccountShowRefreshTime(dimensions) ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[11px] text-muted-foreground", children: formatProviderAccountRefreshTime(account, t) }) : null
+      return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0 overflow-hidden", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-w-0 items-end justify-between gap-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate text-[12px] font-semibold", children: providerAccountSnapshotLabel(account) }),
+            providerAccountShowSource(dimensions) && meter ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate text-[11px] text-muted-foreground", children: t(meter.label) }) : null,
+            providerAccountShowRefreshTime(dimensions) ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate text-[11px] text-muted-foreground", children: formatProviderAccountRefreshTime(account, t) }) : null
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex shrink-0 items-center gap-2 text-[12px] font-semibold", children: [
-            meter ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: formatProviderAccountMeterValue(meter) }) : null,
-            providerAccountShowRefresh(dimensions) ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountRefreshButton, { account, refreshing, onRefresh }) : null
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex shrink-0 items-center gap-2 text-[12px] font-semibold", children: [
+            meter ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: formatProviderAccountMeterValue(meter) }) : null,
+            providerAccountShowRefresh(dimensions) ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ProviderAccountRefreshButton, { account, refreshing, onRefresh }) : null
           ] })
         ] }),
-        progress2 !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-1.5 h-2 overflow-hidden rounded-full bg-muted", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: cn("h-full rounded-full", providerAccountProgressClass(account.status)), style: { width: `${progress2}%` } }) }) : null
+        progress2 !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "mt-1.5 h-2 overflow-hidden rounded-full bg-muted", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: cn("h-full rounded-full", providerAccountProgressClass(account.status)), style: { width: `${progress2}%` } }) }) : null
       ] }, providerAccountSnapshotKey(account));
-    }) }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions, visibleAccounts.length)), children: visibleAccounts.map((account) => {
-      return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountSummaryCard, { account, dimensions, refreshing, variant, onRefresh }, providerAccountSnapshotKey(account));
+    }) }) : /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions, visibleAccounts.length)), children: visibleAccounts.map((account) => {
+      return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ProviderAccountSummaryCard, { account, dimensions, refreshing, variant, onRefresh }, providerAccountSnapshotKey(account));
     }) }) })
   ] });
 }
@@ -152379,21 +152978,21 @@ function ProviderAccountSinglePanel({
   const balanceMeter = primaryProviderAccountBalanceMeter(account);
   const meters = providerAccountMetersForDisplayOrdered(account, providerAccountMeterLimit(dimensions, true, variant));
   const showQuotaVisual = providerAccountUsesQuotaVisual(variant) && quotaMeters.length > 0;
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden", providerAccountStackClass(dimensions)), children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-start justify-between gap-3", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: cn("truncate font-semibold", dimensions.height <= 1 ? "text-[12px]" : "text-[13px]"), children: providerAccountSnapshotLabel(account) }),
-        providerAccountShowRefreshTime(dimensions) ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-0.5 truncate text-[11px] text-muted-foreground", children: formatProviderAccountRefreshTime(account, t) }) : null
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden", providerAccountStackClass(dimensions)), children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-w-0 items-start justify-between gap-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: cn("truncate font-semibold", dimensions.height <= 1 ? "text-[12px]" : "text-[13px]"), children: providerAccountSnapshotLabel(account) }),
+        providerAccountShowRefreshTime(dimensions) ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "mt-0.5 truncate text-[11px] text-muted-foreground", children: formatProviderAccountRefreshTime(account, t) }) : null
       ] }),
-      providerAccountShowRefresh(dimensions) ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountRefreshButton, { account, refreshing, onRefresh }) : null
+      providerAccountShowRefresh(dimensions) ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ProviderAccountRefreshButton, { account, refreshing, onRefresh }) : null
     ] }),
-    showQuotaVisual ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountQuotaVisual, { account, dimensions, meters: quotaMeters, variant }) : quotaMeters.length === 0 && balanceMeter ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountBalanceMetric, { dimensions, meter: balanceMeter }) : meters.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: cn("min-h-0 overflow-hidden", providerAccountStackClass(dimensions)), children: [
-      meters.map((meter) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountMeterLine, { account, dimensions, meter, single: true, onRefresh }, meter.id)),
-      providerAccountShowExtraCount(dimensions) && account.meters.length > meters.length ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "truncate text-[10px] text-muted-foreground", children: [
+    showQuotaVisual ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ProviderAccountQuotaVisual, { account, dimensions, meters: quotaMeters, variant }) : quotaMeters.length === 0 && balanceMeter ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ProviderAccountBalanceMetric, { dimensions, meter: balanceMeter }) : meters.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: cn("min-h-0 overflow-hidden", providerAccountStackClass(dimensions)), children: [
+      meters.map((meter) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ProviderAccountMeterLine, { account, dimensions, meter, single: true, onRefresh }, meter.id)),
+      providerAccountShowExtraCount(dimensions) && account.meters.length > meters.length ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "truncate text-[10px] text-muted-foreground", children: [
         "+",
         account.meters.length - meters.length
       ] }) : null
-    ] }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[12px] text-muted-foreground", children: account.message || account.errors?.[0]?.message || t("Unavailable") })
+    ] }) : /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate text-[12px] text-muted-foreground", children: account.message || account.errors?.[0]?.message || t("Unavailable") })
   ] });
 }
 function ProviderAccountSummaryCard({
@@ -152408,21 +153007,21 @@ function ProviderAccountSummaryCard({
   const balanceMeter = primaryProviderAccountBalanceMeter(account);
   const meters = providerAccountMetersForDisplayOrdered(account, providerAccountMeterLimit(dimensions, false, variant));
   const showQuotaVisual = providerAccountUsesQuotaVisual(variant) && quotaMeters.length > 0;
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: cn("overview-nested-surface min-h-0 min-w-0 overflow-hidden border", providerAccountCardPaddingClass(dimensions)), children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-start justify-between gap-3", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[13px] font-semibold", children: providerAccountSnapshotLabel(account) }),
-        providerAccountShowRefreshTime(dimensions) ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-0.5 truncate text-[11px] text-muted-foreground", children: formatProviderAccountRefreshTime(account, t) }) : null
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: cn("overview-nested-surface min-h-0 min-w-0 overflow-hidden border", providerAccountCardPaddingClass(dimensions)), children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-w-0 items-start justify-between gap-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate text-[13px] font-semibold", children: providerAccountSnapshotLabel(account) }),
+        providerAccountShowRefreshTime(dimensions) ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "mt-0.5 truncate text-[11px] text-muted-foreground", children: formatProviderAccountRefreshTime(account, t) }) : null
       ] }),
-      providerAccountShowRefresh(dimensions) ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountRefreshButton, { account, refreshing, onRefresh }) : null
+      providerAccountShowRefresh(dimensions) ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ProviderAccountRefreshButton, { account, refreshing, onRefresh }) : null
     ] }),
-    showQuotaVisual ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-2 min-h-0 overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountQuotaVisual, { account, dimensions, meters: quotaMeters, variant }) }) : quotaMeters.length === 0 && balanceMeter ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-2 min-h-0 overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountBalanceMetric, { dimensions, meter: balanceMeter, compact: true }) }) : meters.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: cn("mt-2 min-h-0 overflow-hidden", providerAccountStackClass(dimensions)), children: [
-      meters.map((meter) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountMeterLine, { account, dimensions, meter, onRefresh }, meter.id)),
-      providerAccountShowExtraCount(dimensions) && account.meters.length > meters.length ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "truncate text-[10px] text-muted-foreground", children: [
+    showQuotaVisual ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "mt-2 min-h-0 overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ProviderAccountQuotaVisual, { account, dimensions, meters: quotaMeters, variant }) }) : quotaMeters.length === 0 && balanceMeter ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "mt-2 min-h-0 overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ProviderAccountBalanceMetric, { dimensions, meter: balanceMeter, compact: true }) }) : meters.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: cn("mt-2 min-h-0 overflow-hidden", providerAccountStackClass(dimensions)), children: [
+      meters.map((meter) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ProviderAccountMeterLine, { account, dimensions, meter, onRefresh }, meter.id)),
+      providerAccountShowExtraCount(dimensions) && account.meters.length > meters.length ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "truncate text-[10px] text-muted-foreground", children: [
         "+",
         account.meters.length - meters.length
       ] }) : null
-    ] }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-2 truncate text-[12px] text-muted-foreground", children: account.message || account.errors?.[0]?.message || t("Unavailable") })
+    ] }) : /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "mt-2 truncate text-[12px] text-muted-foreground", children: account.message || account.errors?.[0]?.message || t("Unavailable") })
   ] });
 }
 function ProviderAccountRefreshButton({
@@ -152432,7 +153031,7 @@ function ProviderAccountRefreshButton({
 }) {
   const t = useAppText();
   const label = refreshing ? t("Refreshing account") : t("Refresh account");
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
     "button",
     {
       "aria-label": label,
@@ -152444,7 +153043,7 @@ function ProviderAccountRefreshButton({
         event.stopPropagation();
         void onRefresh?.();
       },
-      children: refreshing ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3.5 w-3.5 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.RefreshCw, { className: "h-3.5 w-3.5" })
+      children: refreshing ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.LoaderCircle, { className: "h-3.5 w-3.5 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.RefreshCw, { className: "h-3.5 w-3.5" })
     }
   );
 }
@@ -152480,15 +153079,15 @@ function ProviderAccountMeterLine({
   const detailsId = `provider-account-meter-${providerAccountSnapshotKey(account)}-${meter.id}-details`.replace(/[^a-zA-Z0-9_-]/g, "-");
   const titleClassName = cn("min-w-0 truncate font-medium text-muted-foreground", single && dimensions.height >= 2 ? "text-[13px]" : "text-[12px]");
   const valueClassName = cn("shrink-0 font-semibold tracking-tight", single && dimensions.height >= 2 ? "text-[18px]" : "text-[15px]");
-  const meterSummary = /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-center gap-1.5", children: [
-      canExpandDetails ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatedIconSwap, { className: "text-muted-foreground transition-colors group-hover:text-foreground", iconKey: detailsOpen, children: detailsOpen ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ChevronDown, { "aria-hidden": "true", className: "h-3.5 w-3.5" }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ChevronRight, { "aria-hidden": "true", className: "h-3.5 w-3.5" }) }) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: titleClassName, children: title })
+  const meterSummary = /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-w-0 items-center gap-1.5", children: [
+      canExpandDetails ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(AnimatedIconSwap, { className: "text-muted-foreground transition-colors group-hover:text-foreground", iconKey: detailsOpen, children: detailsOpen ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.ChevronDown, { "aria-hidden": "true", className: "h-3.5 w-3.5" }) : /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.ChevronRight, { "aria-hidden": "true", className: "h-3.5 w-3.5" }) }) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: titleClassName, children: title })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: valueClassName, children: formatProviderAccountMeterValue(meter) })
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: valueClassName, children: formatProviderAccountMeterValue(meter) })
   ] });
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0 overflow-hidden", children: [
-    canExpandDetails ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0 overflow-hidden", children: [
+    canExpandDetails ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
       "button",
       {
         "aria-controls": detailsId,
@@ -152499,10 +153098,10 @@ function ProviderAccountMeterLine({
         type: "button",
         children: meterSummary
       }
-    ) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "flex min-w-0 items-end justify-between gap-3", children: meterSummary }),
-    progress2 !== void 0 && providerAccountShowProgress(dimensions) ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: cn("mt-1.5 overflow-hidden rounded-full", single ? "bg-muted" : "bg-background", dimensions.height <= 1 ? "h-1.5" : "h-2"), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: cn("h-full rounded-full", providerAccountProgressClass(account.status)), style: { width: `${progress2}%` } }) }) : null,
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatePresence, { initial: false, children: canExpandDetails && detailsOpen ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatedDisclosure, { children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountMeterDetails, { account, detailsId, meter, onReset: setResetDialogDetail }) }) : null }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+    ) : /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "flex min-w-0 items-end justify-between gap-3", children: meterSummary }),
+    progress2 !== void 0 && providerAccountShowProgress(dimensions) ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: cn("mt-1.5 overflow-hidden rounded-full", single ? "bg-muted" : "bg-background", dimensions.height <= 1 ? "h-1.5" : "h-2"), children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: cn("h-full rounded-full", providerAccountProgressClass(account.status)), style: { width: `${progress2}%` } }) }) : null,
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(AnimatePresence, { initial: false, children: canExpandDetails && detailsOpen ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(AnimatedDisclosure, { children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ProviderAccountMeterDetails, { account, detailsId, meter, onReset: setResetDialogDetail }) }) : null }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
       CodexResetCreditDialog,
       {
         account,
@@ -152523,16 +153122,16 @@ function ProviderAccountMeterDetails({
 }) {
   const t = useAppText();
   const details = meter.details ?? [];
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-2 max-h-48 space-y-2 overflow-y-auto pr-1", id: detailsId, children: details.map((detail, index) => {
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "mt-2 max-h-48 space-y-2 overflow-y-auto pr-1", id: detailsId, children: details.map((detail, index) => {
     const detailProgress = providerAccountMeterDetailValidityProgress(detail);
     const label = providerAccountMeterDetailLabel(detail, index, t);
     const status = providerAccountMeterDetailStatusLabel(detail.status, t);
-    return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0 rounded-md border border-border/70 bg-background/70 px-2.5 py-2 text-[10px] leading-tight text-muted-foreground", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-0 items-start justify-between gap-3", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[11px] font-medium text-foreground/80", title: label, children: label }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex shrink-0 items-center gap-1.5", children: [
-          status ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "rounded-full bg-muted px-1.5 py-0.5 text-[9px] tracking-wide text-muted-foreground", children: status }) : null,
-          detail.redeemable ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0 rounded-md border border-border/70 bg-background/70 px-2.5 py-2 text-[10px] leading-tight text-muted-foreground", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-w-0 items-start justify-between gap-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate text-[11px] font-medium text-foreground/80", title: label, children: label }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex shrink-0 items-center gap-1.5", children: [
+          status ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "rounded-full bg-muted px-1.5 py-0.5 text-[9px] tracking-wide text-muted-foreground", children: status }) : null,
+          detail.redeemable ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
             Button,
             {
               "aria-label": `${t("Reset")} ${label}`,
@@ -152549,19 +153148,19 @@ function ProviderAccountMeterDetails({
           ) : null
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mt-1.5 flex min-w-0 items-center justify-between gap-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "truncate", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "mt-1.5 flex min-w-0 items-center justify-between gap-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "truncate", children: [
           t("Effective"),
           ": ",
           formatProviderAccountDetailDate(detail.effectiveAt)
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "truncate text-right", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "truncate text-right", children: [
           t("Expires"),
           ": ",
           formatProviderAccountDetailDate(detail.expiresAt)
         ] })
       ] }),
-      detailProgress !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: cn("h-full rounded-full", providerAccountProgressClass(account.status)), style: { width: `${detailProgress}%` } }) }) : null
+      detailProgress !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: cn("h-full rounded-full", providerAccountProgressClass(account.status)), style: { width: `${detailProgress}%` } }) }) : null
     ] }, detail.id ?? `${meter.id}-${index}`);
   }) });
 }
@@ -152673,9 +153272,9 @@ function CodexResetCreditDialog({
       setStatus("idle");
     }
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Dialog, { open, onOpenChange: (nextOpen) => {
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Dialog, { open, onOpenChange: (nextOpen) => {
     if (!nextOpen && status !== "resetting") onClose();
-  }, children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(DialogContent, { className: "max-w-[620px] overflow-hidden border-border/70 bg-background p-0 text-foreground shadow-[0_28px_90px_rgba(15,23,42,0.24)]", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+  }, children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(DialogContent, { className: "max-w-[620px] overflow-hidden border-border/70 bg-background p-0 text-foreground shadow-[0_28px_90px_rgba(15,23,42,0.24)]", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
     DialogBody,
     {
       className: "relative overflow-hidden p-0",
@@ -152690,8 +153289,8 @@ function CodexResetCreditDialog({
         }
       },
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "pointer-events-none absolute inset-x-0 top-0 h-56 bg-[radial-gradient(circle_at_20%_0%,rgba(16,185,129,0.12),transparent_42%),radial-gradient(circle_at_90%_15%,rgba(99,102,241,0.12),transparent_38%)]" }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "pointer-events-none absolute inset-x-0 top-0 h-56 bg-[radial-gradient(circle_at_20%_0%,rgba(16,185,129,0.12),transparent_42%),radial-gradient(circle_at_90%_15%,rgba(99,102,241,0.12),transparent_38%)]" }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
           Button,
           {
             "aria-label": t("Close"),
@@ -152702,20 +153301,20 @@ function CodexResetCreditDialog({
             title: t("Close"),
             type: "button",
             variant: "ghost",
-            children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.X, { className: "h-3.5 w-3.5" })
+            children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.X, { className: "h-3.5 w-3.5" })
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "relative z-10 px-6 pb-3 pt-6 sm:px-8", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react3.CreditCard, { className: "h-3.5 w-3.5" }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "relative z-10 px-6 pb-3 pt-6 sm:px-8", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react3.CreditCard, { className: "h-3.5 w-3.5" }),
             t("Manual reset credit")
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("h2", { className: "mt-1.5 text-[21px] font-semibold tracking-tight", children: t("Choose a reset card") }),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("p", { className: "mt-1 text-[12px] text-muted-foreground", children: t("Use the arrows to switch between available reset credits.") })
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("h2", { className: "mt-1.5 text-[21px] font-semibold tracking-tight", children: t("Choose a reset card") }),
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("p", { className: "mt-1 text-[12px] text-muted-foreground", children: t("Use the arrows to switch between available reset credits.") })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "relative z-10 px-3 pb-2 sm:px-5", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "grid grid-cols-[36px_minmax(0,440px)_36px] items-center justify-center gap-1 sm:grid-cols-[40px_minmax(0,440px)_40px] sm:gap-3", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "relative z-10 px-3 pb-2 sm:px-5", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "grid grid-cols-[36px_minmax(0,440px)_36px] items-center justify-center gap-1 sm:grid-cols-[40px_minmax(0,440px)_40px] sm:gap-3", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
               Button,
               {
                 "aria-label": t("Previous reset card"),
@@ -152726,15 +153325,15 @@ function CodexResetCreditDialog({
                 title: t("Previous reset card"),
                 type: "button",
                 variant: "ghost",
-                children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ChevronLeft, { className: "h-4 w-4" })
+                children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.ChevronLeft, { className: "h-4 w-4" })
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "relative min-w-0 pb-3 pt-2 [perspective:1200px]", children: [
-              cards.length > 1 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "absolute inset-x-5 bottom-0 top-5 rounded-[22px] border border-slate-700/40 bg-slate-900/45 opacity-35" }),
-                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "absolute inset-x-2.5 bottom-1.5 top-3.5 rounded-[22px] border border-slate-700/50 bg-slate-900/70 opacity-55" })
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "relative min-w-0 pb-3 pt-2 [perspective:1200px]", children: [
+              cards.length > 1 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "absolute inset-x-5 bottom-0 top-5 rounded-[22px] border border-slate-700/40 bg-slate-900/45 opacity-35" }),
+                /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "absolute inset-x-2.5 bottom-1.5 top-3.5 rounded-[22px] border border-slate-700/50 bg-slate-900/70 opacity-55" })
               ] }) : null,
-              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatePresence, { custom: direction, initial: false, mode: "wait", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+              /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(AnimatePresence, { custom: direction, initial: false, mode: "wait", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
                 motion.div,
                 {
                   animate: { opacity: 1, rotateY: 0, scale: 1, x: 0 },
@@ -152750,39 +153349,39 @@ function CodexResetCreditDialog({
                   },
                   transition: { duration: 0.24, ease: [0.22, 1, 0.36, 1] },
                   children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full border border-white/[0.07]" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "pointer-events-none absolute -right-8 -top-14 h-48 w-48 rounded-full border border-white/[0.06]" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "pointer-events-none absolute inset-0 opacity-[0.045] [background-image:repeating-linear-gradient(115deg,transparent_0,transparent_8px,#fff_9px,transparent_10px)]" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "relative flex h-full flex-col justify-between p-[clamp(12px,5.5%,26px)]", children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex items-start justify-between gap-4", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex items-center gap-2.5", children: [
-                          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white/10 shadow-inner", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("img", { alt: "Codex", className: "h-5 w-5 rounded-full", draggable: false, src: codex_default }) }),
-                          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { children: [
-                            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[11px] font-semibold uppercase tracking-[0.2em] text-white", children: "CODEX" }),
-                            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[8px] uppercase tracking-[0.16em] text-white/45", children: "RESET CREDIT" })
+                    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full border border-white/[0.07]" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "pointer-events-none absolute -right-8 -top-14 h-48 w-48 rounded-full border border-white/[0.06]" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "pointer-events-none absolute inset-0 opacity-[0.045] [background-image:repeating-linear-gradient(115deg,transparent_0,transparent_8px,#fff_9px,transparent_10px)]" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "relative flex h-full flex-col justify-between p-[clamp(12px,5.5%,26px)]", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex items-start justify-between gap-4", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex items-center gap-2.5", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white/10 shadow-inner", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("img", { alt: "Codex", className: "h-5 w-5 rounded-full", draggable: false, src: codex_default }) }),
+                          /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "text-[11px] font-semibold uppercase tracking-[0.2em] text-white", children: "CODEX" }),
+                            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "text-[8px] uppercase tracking-[0.16em] text-white/45", children: "RESET CREDIT" })
                           ] })
                         ] }),
-                        detailStatus ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-emerald-200", children: detailStatus }) : null
+                        detailStatus ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-emerald-200", children: detailStatus }) : null
                       ] }),
-                      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mb-3 flex items-center gap-3", children: [
-                          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "relative h-7 w-10 overflow-hidden rounded-md border border-amber-100/40 bg-gradient-to-br from-amber-100 via-yellow-400 to-amber-600 shadow-inner", children: [
-                            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "absolute inset-y-0 left-1/2 w-px bg-amber-900/30" }),
-                            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "absolute inset-x-0 top-1/2 h-px bg-amber-900/30" }),
-                            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "absolute inset-y-1 left-1/2 w-4 -translate-x-1/2 rounded border border-amber-900/25" })
+                      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "mb-3 flex items-center gap-3", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "relative h-7 w-10 overflow-hidden rounded-md border border-amber-100/40 bg-gradient-to-br from-amber-100 via-yellow-400 to-amber-600 shadow-inner", children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "absolute inset-y-0 left-1/2 w-px bg-amber-900/30" }),
+                            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "absolute inset-x-0 top-1/2 h-px bg-amber-900/30" }),
+                            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "absolute inset-y-1 left-1/2 w-4 -translate-x-1/2 rounded border border-amber-900/25" })
                           ] }),
-                          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react3.Wifi, { className: "h-6 w-6 rotate-90 text-white/50" })
+                          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react3.Wifi, { className: "h-6 w-6 rotate-90 text-white/50" })
                         ] }),
-                        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { "aria-label": `${t("Card number")}: ${activeDetail?.id ?? "-"}`, className: "flex min-h-10 flex-wrap content-center gap-x-3 gap-y-0.5 font-mono text-[clamp(14px,3.8vw,20px)] font-medium tracking-[0.1em] text-white", title: activeDetail?.id, children: formatCodexResetCardNumber(activeDetail?.id).map((group, index) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: group }, `${group}-${index}`)) })
+                        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { "aria-label": `${t("Card number")}: ${activeDetail?.id ?? "-"}`, className: "flex min-h-10 flex-wrap content-center gap-x-3 gap-y-0.5 font-mono text-[clamp(14px,3.8vw,20px)] font-medium tracking-[0.1em] text-white", title: activeDetail?.id, children: formatCodexResetCardNumber(activeDetail?.id).map((group, index) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: group }, `${group}-${index}`)) })
                       ] }),
-                      /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex items-end justify-between gap-4", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
-                          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[7px] font-medium uppercase tracking-[0.18em] text-white/40", children: t("Reset type") }),
-                          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-0.5 truncate text-[10px] font-semibold uppercase tracking-[0.13em] text-white/85", title: detailLabel || void 0, children: detailLabel || "-" })
+                      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex items-end justify-between gap-4", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "text-[7px] font-medium uppercase tracking-[0.18em] text-white/40", children: t("Reset type") }),
+                          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "mt-0.5 truncate text-[10px] font-semibold uppercase tracking-[0.13em] text-white/85", title: detailLabel || void 0, children: detailLabel || "-" })
                         ] }),
-                        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "shrink-0 text-right", children: [
-                          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[7px] font-medium uppercase tracking-[0.18em] text-white/40", children: t("Valid thru") }),
-                          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-0.5 font-mono text-[13px] font-semibold tracking-[0.12em]", children: formatCodexResetCardExpiry(activeDetail?.expiresAt) })
+                        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "shrink-0 text-right", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "text-[7px] font-medium uppercase tracking-[0.18em] text-white/40", children: t("Valid thru") }),
+                          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "mt-0.5 font-mono text-[13px] font-semibold tracking-[0.12em]", children: formatCodexResetCardExpiry(activeDetail?.expiresAt) })
                         ] })
                       ] })
                     ] })
@@ -152791,7 +153390,7 @@ function CodexResetCreditDialog({
                 activeDetail?.id ?? "empty-reset-card"
               ) })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
               Button,
               {
                 "aria-label": t("Next reset card"),
@@ -152802,11 +153401,11 @@ function CodexResetCreditDialog({
                 title: t("Next reset card"),
                 type: "button",
                 variant: "ghost",
-                children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.ChevronRight, { className: "h-4 w-4" })
+                children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.ChevronRight, { className: "h-4 w-4" })
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { "aria-label": `${t("Reset card")} ${activeIndex + 1} / ${Math.max(cards.length, 1)}`, className: "mt-1 flex h-5 items-center justify-center gap-1.5", children: cards.map((card, index) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { "aria-label": `${t("Reset card")} ${activeIndex + 1} / ${Math.max(cards.length, 1)}`, className: "mt-1 flex h-5 items-center justify-center gap-1.5", children: cards.map((card, index) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
             "button",
             {
               "aria-label": `${t("Reset card")} ${index + 1}`,
@@ -152818,19 +153417,19 @@ function CodexResetCreditDialog({
             card.id
           )) })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "relative z-10 border-t border-border/70 bg-muted/20 px-6 py-5 sm:px-8", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mb-4 flex min-w-0 items-center justify-between gap-4 text-[11px]", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-muted-foreground", children: t("Expires") }),
-              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-0.5 truncate font-medium text-foreground", children: formatProviderAccountDetailDate(activeDetail?.expiresAt) })
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "relative z-10 border-t border-border/70 bg-muted/20 px-6 py-5 sm:px-8", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "mb-4 flex min-w-0 items-center justify-between gap-4 text-[11px]", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "text-muted-foreground", children: t("Expires") }),
+              /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "mt-0.5 truncate font-medium text-foreground", children: formatProviderAccountDetailDate(activeDetail?.expiresAt) })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "shrink-0 rounded-full bg-muted px-2.5 py-1 text-[10px] font-medium text-muted-foreground", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "shrink-0 rounded-full bg-muted px-2.5 py-1 text-[10px] font-medium text-muted-foreground", children: [
               activeIndex + 1,
               " / ",
               Math.max(cards.length, 1)
             ] })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
             Button,
             {
               className: cn(
@@ -152841,21 +153440,21 @@ function CodexResetCreditDialog({
               onClick: () => void resetCredit(),
               type: "button",
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
+                /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(
                   motion.span,
                   {
                     animate: status === "resetting" ? { x: [-1, 1, -2, 2, 0], y: [0, -1, 1, -1, 0] } : {},
                     className: "relative z-10 flex items-center justify-center gap-2.5 text-[14px] font-bold uppercase tracking-[0.1em]",
                     transition: status === "resetting" ? { duration: 0.22, repeat: Infinity } : {},
                     children: [
-                      status === "idle" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react3.Rocket, { className: "h-5 w-5" }),
-                        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: t("Launch reset") })
+                      status === "idle" ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react3.Rocket, { className: "h-5 w-5" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: t("Launch reset") })
                       ] }) : null,
-                      status === "resetting" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("span", { className: "relative", children: [
-                          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react3.Rocket, { className: "h-5 w-5 fill-white" }),
-                          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                      status === "resetting" ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { className: "relative", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react3.Rocket, { className: "h-5 w-5 fill-white" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
                             motion.span,
                             {
                               animate: { height: [8, 15, 10], opacity: [0.55, 1, 0.65] },
@@ -152864,16 +153463,16 @@ function CodexResetCreditDialog({
                             }
                           )
                         ] }),
-                        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: t("Resetting") })
+                        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: t("Resetting") })
                       ] }) : null,
-                      status === "complete" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(import_lucide_react2.CheckCircle2, { className: "h-5 w-5" }),
-                        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { children: t("Reset complete") })
+                      status === "complete" ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(import_lucide_react2.CheckCircle2, { className: "h-5 w-5" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: t("Reset complete") })
                       ] }) : null
                     ]
                   }
                 ),
-                /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(AnimatePresence, { children: status === "resetting" ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(AnimatePresence, { children: status === "resetting" ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
                   motion.span,
                   {
                     animate: { opacity: [0.3, 0.7, 0.3], scaleX: [0.8, 1.25, 0.9] },
@@ -152886,7 +153485,7 @@ function CodexResetCreditDialog({
               ]
             }
           ),
-          error ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mt-3 rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-[11px] text-destructive", children: error }) : null
+          error ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "mt-3 rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-[11px] text-destructive", children: error }) : null
         ] })
       ]
     }
@@ -152919,9 +153518,9 @@ function ProviderAccountBalanceMetric({
 }) {
   const t = useAppText();
   const large = !compact && dimensions.height >= 2;
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-h-0 min-w-0 flex-col justify-center overflow-hidden", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: cn("truncate font-medium text-muted-foreground", large ? "text-[12px]" : "text-[11px]"), children: formatProviderAccountMeterTitle(meter, t) }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: cn("truncate font-semibold tracking-tight", large ? "text-[24px]" : "text-[18px]"), children: formatProviderAccountMeterValue(meter) })
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-h-0 min-w-0 flex-col justify-center overflow-hidden", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: cn("truncate font-medium text-muted-foreground", large ? "text-[12px]" : "text-[11px]"), children: formatProviderAccountMeterTitle(meter, t) }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: cn("truncate font-semibold tracking-tight", large ? "text-[24px]" : "text-[18px]"), children: formatProviderAccountMeterValue(meter) })
   ] });
 }
 function ProviderAccountQuotaVisual({
@@ -152937,12 +153536,12 @@ function ProviderAccountQuotaVisual({
   if (!primary) {
     return null;
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: cn("flex min-h-0 min-w-0 items-center overflow-hidden", showLabels ? "justify-center gap-4" : "justify-center"), children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountQuotaGauge, { account, dimensions, meters: displayMeters, variant }),
-    showLabels ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "min-w-0 space-y-2", children: displayMeters.slice(0, variant === "nested-rings" ? 2 : 1).map((meter) => {
-      return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "min-w-0", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[12px] font-medium text-muted-foreground", children: formatProviderAccountMeterTitle(meter, t) }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "truncate text-[17px] font-semibold tracking-tight", children: formatProviderAccountMeterValue(meter) })
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: cn("flex min-h-0 min-w-0 items-center overflow-hidden", showLabels ? "justify-center gap-4" : "justify-center"), children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ProviderAccountQuotaGauge, { account, dimensions, meters: displayMeters, variant }),
+    showLabels ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "min-w-0 space-y-2", children: displayMeters.slice(0, variant === "nested-rings" ? 2 : 1).map((meter) => {
+      return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "min-w-0", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate text-[12px] font-medium text-muted-foreground", children: formatProviderAccountMeterTitle(meter, t) }),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "truncate text-[17px] font-semibold tracking-tight", children: formatProviderAccountMeterValue(meter) })
       ] }, meter.id);
     }) }) : null
   ] });
@@ -152966,24 +153565,24 @@ function ProviderAccountQuotaGauge({
     const start = variant === "semicircle" ? 270 : 225;
     const end = variant === "semicircle" ? 450 : 495;
     const path = describeSvgArc(60, 66, 42, start, end);
-    return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("svg", { "aria-hidden": "true", className: sizeClass, viewBox: "0 0 120 120", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("path", { d: path, fill: "none", pathLength: 100, stroke: "var(--muted)", strokeLinecap: "round", strokeWidth: "11" }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("path", { d: path, fill: "none", pathLength: 100, stroke, strokeDasharray: `${Math.round(primaryRatio * 100)} 100`, strokeLinecap: "round", strokeWidth: "11" }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("text", { className: "fill-foreground text-[18px] font-semibold", dy: "0.35em", textAnchor: "middle", x: "60", y: "60", children: formatProviderAccountMeterValue(primary) })
+    return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("svg", { "aria-hidden": "true", className: sizeClass, viewBox: "0 0 120 120", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("path", { d: path, fill: "none", pathLength: 100, stroke: "var(--muted)", strokeLinecap: "round", strokeWidth: "11" }),
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("path", { d: path, fill: "none", pathLength: 100, stroke, strokeDasharray: `${Math.round(primaryRatio * 100)} 100`, strokeLinecap: "round", strokeWidth: "11" }),
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("text", { className: "fill-foreground text-[18px] font-semibold", dy: "0.35em", textAnchor: "middle", x: "60", y: "60", children: formatProviderAccountMeterValue(primary) })
     ] });
   }
   if (variant === "nested-rings" && secondary) {
-    return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("svg", { "aria-hidden": "true", className: sizeClass, viewBox: "0 0 120 120", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountQuotaCircle, { cx: 60, cy: 60, ratio: primaryRatio, radius: 44, stroke, strokeWidth: 9 }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountQuotaCircle, { cx: 60, cy: 60, ratio: secondaryRatio, radius: 30, stroke: secondaryStroke, strokeWidth: 9 }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("text", { className: "fill-foreground text-[17px] font-semibold", dy: "0.35em", textAnchor: "middle", x: "60", y: "55", children: formatProviderAccountMeterValue(primary) }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("text", { className: "fill-muted-foreground text-[10px] font-medium", dy: "0.35em", textAnchor: "middle", x: "60", y: "72", children: formatProviderAccountMeterValue(secondary) })
+    return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("svg", { "aria-hidden": "true", className: sizeClass, viewBox: "0 0 120 120", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ProviderAccountQuotaCircle, { cx: 60, cy: 60, ratio: primaryRatio, radius: 44, stroke, strokeWidth: 9 }),
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ProviderAccountQuotaCircle, { cx: 60, cy: 60, ratio: secondaryRatio, radius: 30, stroke: secondaryStroke, strokeWidth: 9 }),
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("text", { className: "fill-foreground text-[17px] font-semibold", dy: "0.35em", textAnchor: "middle", x: "60", y: "55", children: formatProviderAccountMeterValue(primary) }),
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("text", { className: "fill-muted-foreground text-[10px] font-medium", dy: "0.35em", textAnchor: "middle", x: "60", y: "72", children: formatProviderAccountMeterValue(secondary) })
     ] });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("svg", { "aria-hidden": "true", className: sizeClass, viewBox: "0 0 120 120", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(ProviderAccountQuotaCircle, { cx: 60, cy: 60, ratio: primaryRatio, radius: 40, stroke, strokeWidth: 10 }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("text", { className: "fill-foreground text-[20px] font-semibold", dy: "0.35em", textAnchor: "middle", x: "60", y: dimensions.height >= 2 ? "57" : "60", children: formatProviderAccountMeterValue(primary) }),
-    dimensions.height >= 2 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("text", { className: "fill-muted-foreground text-[10px] font-medium", dy: "0.35em", textAnchor: "middle", x: "60", y: "75", children: formatProviderAccountMeterTitle(primary, t) }) : null
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("svg", { "aria-hidden": "true", className: sizeClass, viewBox: "0 0 120 120", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(ProviderAccountQuotaCircle, { cx: 60, cy: 60, ratio: primaryRatio, radius: 40, stroke, strokeWidth: 10 }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("text", { className: "fill-foreground text-[20px] font-semibold", dy: "0.35em", textAnchor: "middle", x: "60", y: dimensions.height >= 2 ? "57" : "60", children: formatProviderAccountMeterValue(primary) }),
+    dimensions.height >= 2 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("text", { className: "fill-muted-foreground text-[10px] font-medium", dy: "0.35em", textAnchor: "middle", x: "60", y: "75", children: formatProviderAccountMeterTitle(primary, t) }) : null
   ] });
 }
 function ProviderAccountQuotaCircle({
@@ -152996,9 +153595,9 @@ function ProviderAccountQuotaCircle({
 }) {
   const circumference = 2 * Math.PI * radius;
   const clamped = Math.max(0, Math.min(1, ratio));
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("circle", { cx, cy, fill: "none", r: radius, stroke: "var(--muted)", strokeWidth }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("circle", { cx, cy, fill: "none", r: radius, stroke: "var(--muted)", strokeWidth }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
       "circle",
       {
         cx,
@@ -153186,28 +153785,28 @@ function UsageAnalysisCard({
   const showCost = dimensions.width >= 4;
   const showTokenBreakdown = dimensions.width >= 4 && dimensions.height >= 3;
   const showCacheRate = dimensions.width >= 4 && dimensions.height >= 3;
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(Card, { className: "overview-card flex h-full min-h-0 min-w-0 flex-col", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewCardHeading, { icon: import_lucide_react3.UsersRound, title, tone: "slate", trailing: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Badge, { variant: "outline", children: rows.length }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(CardContent, { className: "min-h-0 flex-1 overflow-hidden", children: rows.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(OverviewEmptyState, { compact: true, label: emptyLabel }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: cn("h-full overflow-hidden", agentListSurfaceClassName), children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("table", { className: cn("table-fixed", agentListTableClassName), children: [
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("thead", { className: "border-b border-border/70 bg-muted/80 text-muted-foreground", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("tr", { children: [
-        visibleColumns.map((column) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("th", { className: "px-3 py-2 font-semibold", children: column.label }, column.key)),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("th", { className: "px-3 py-2 text-right font-semibold", children: t("Tokens") }),
-        showCost ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("th", { className: "px-3 py-2 text-right font-semibold", children: t("Cost") }) : null,
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("th", { className: "px-3 py-2 text-right font-semibold", children: t("Requests") }),
-        showTokenBreakdown ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("th", { className: "px-3 py-2 text-right font-semibold", children: t("Input") }) : null,
-        showTokenBreakdown ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("th", { className: "px-3 py-2 text-right font-semibold", children: t("Output") }) : null,
-        showTokenBreakdown ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("th", { className: "px-3 py-2 text-right font-semibold", children: t("Cache") }) : null,
-        showCacheRate ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("th", { className: "px-3 py-2 text-right font-semibold", children: t("Cache rate") }) : null
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(Card, { className: "overview-card flex h-full min-h-0 min-w-0 flex-col", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewCardHeading, { icon: import_lucide_react3.UsersRound, title, tone: "slate", trailing: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(Badge, { variant: "outline", children: rows.length }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(CardContent, { className: "min-h-0 flex-1 overflow-hidden", children: rows.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(OverviewEmptyState, { compact: true, label: emptyLabel }) : /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: cn("h-full overflow-hidden", agentListSurfaceClassName), children: /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("table", { className: cn("table-fixed", agentListTableClassName), children: [
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("thead", { className: "border-b border-border/70 bg-muted/80 text-muted-foreground", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("tr", { children: [
+        visibleColumns.map((column) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("th", { className: "px-3 py-2 font-semibold", children: column.label }, column.key)),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("th", { className: "px-3 py-2 text-right font-semibold", children: t("Tokens") }),
+        showCost ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("th", { className: "px-3 py-2 text-right font-semibold", children: t("Cost") }) : null,
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("th", { className: "px-3 py-2 text-right font-semibold", children: t("Requests") }),
+        showTokenBreakdown ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("th", { className: "px-3 py-2 text-right font-semibold", children: t("Input") }) : null,
+        showTokenBreakdown ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("th", { className: "px-3 py-2 text-right font-semibold", children: t("Output") }) : null,
+        showTokenBreakdown ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("th", { className: "px-3 py-2 text-right font-semibold", children: t("Cache") }) : null,
+        showCacheRate ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("th", { className: "px-3 py-2 text-right font-semibold", children: t("Cache rate") }) : null
       ] }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("tbody", { className: agentListBodyClassName, children: visibleRows.map((row) => /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("tr", { className: agentListRowClassName(), children: [
-        visibleColumns.map((column) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("td", { className: "max-w-[180px] px-3 py-2 font-medium", children: /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "block truncate", title: row[column.key] || "-", children: row[column.key] || "-" }) }, column.key)),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("td", { className: "px-3 py-2 text-right font-semibold", children: formatCompactNumber(row.totalTokens) }),
-        showCost ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("td", { className: "px-3 py-2 text-right font-semibold", children: formatUsdCost(row.costUsd) }) : null,
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("td", { className: "px-3 py-2 text-right", children: formatCompactNumber(row.requestCount) }),
-        showTokenBreakdown ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("td", { className: "px-3 py-2 text-right", children: formatCompactNumber(row.inputTokens) }) : null,
-        showTokenBreakdown ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("td", { className: "px-3 py-2 text-right", children: formatCompactNumber(row.outputTokens) }) : null,
-        showTokenBreakdown ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("td", { className: "px-3 py-2 text-right", children: formatCompactNumber(row.cacheTokens) }) : null,
-        showCacheRate ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("td", { className: "px-3 py-2 text-right", children: formatPercent(row.cacheRatio) }) : null
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("tbody", { className: agentListBodyClassName, children: visibleRows.map((row) => /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("tr", { className: agentListRowClassName(), children: [
+        visibleColumns.map((column) => /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("td", { className: "max-w-[180px] px-3 py-2 font-medium", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "block truncate", title: row[column.key] || "-", children: row[column.key] || "-" }) }, column.key)),
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("td", { className: "px-3 py-2 text-right font-semibold", children: formatCompactNumber(row.totalTokens) }),
+        showCost ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("td", { className: "px-3 py-2 text-right font-semibold", children: formatUsdCost(row.costUsd) }) : null,
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("td", { className: "px-3 py-2 text-right", children: formatCompactNumber(row.requestCount) }),
+        showTokenBreakdown ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("td", { className: "px-3 py-2 text-right", children: formatCompactNumber(row.inputTokens) }) : null,
+        showTokenBreakdown ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("td", { className: "px-3 py-2 text-right", children: formatCompactNumber(row.outputTokens) }) : null,
+        showTokenBreakdown ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("td", { className: "px-3 py-2 text-right", children: formatCompactNumber(row.cacheTokens) }) : null,
+        showCacheRate ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("td", { className: "px-3 py-2 text-right", children: formatPercent(row.cacheRatio) }) : null
       ] }, row.key)) })
     ] }) }) })
   ] });
@@ -153221,7 +153820,7 @@ function RequestHealthBarLabel({ payload, value, width, x, y }) {
     return null;
   }
   const label = `${formatPercent(payload.successRate)} / ${formatCompactNumber(payload.errorCount)}`;
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(
     "text",
     {
       className: "fill-muted-foreground",
@@ -153244,28 +153843,28 @@ function UsageTooltip({
     return null;
   }
   const point = payload.find((item) => item.payload)?.payload;
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "overview-tooltip rounded-xl border px-3 py-2.5 text-[11px]", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mb-1 font-semibold", children: label }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "space-y-1", children: [
-      payload.map((item) => /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-[150px] items-center justify-between gap-4", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("span", { className: "flex items-center gap-1.5 text-muted-foreground", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "h-2 w-2 rounded-full", style: { backgroundColor: item.color || "#0f766e" } }),
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "overview-tooltip rounded-xl border px-3 py-2.5 text-[11px]", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "mb-1 font-semibold", children: label }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "space-y-1", children: [
+      payload.map((item) => /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-w-[150px] items-center justify-between gap-4", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { className: "flex items-center gap-1.5 text-muted-foreground", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "h-2 w-2 rounded-full", style: { backgroundColor: item.color || "#0f766e" } }),
           item.name
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "font-medium", children: formatCompactNumber(Number(item.value) || 0) })
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "font-medium", children: formatCompactNumber(Number(item.value) || 0) })
       ] }, item.name)),
-      point ? /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-[150px] items-center justify-between gap-4 border-t border-border/60 pt-1", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "text-muted-foreground", children: t("Success rate") }),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "font-medium", children: formatPercent(point.successRate) })
+      point ? /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-w-[150px] items-center justify-between gap-4 border-t border-border/60 pt-1", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "text-muted-foreground", children: t("Success rate") }),
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "font-medium", children: formatPercent(point.successRate) })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-[150px] items-center justify-between gap-4", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "text-muted-foreground", children: t("Failed requests") }),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "font-medium", children: formatCompactNumber(point.errorCount) })
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-w-[150px] items-center justify-between gap-4", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "text-muted-foreground", children: t("Failed requests") }),
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "font-medium", children: formatCompactNumber(point.errorCount) })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex min-w-[150px] items-center justify-between gap-4", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "text-muted-foreground", children: t("Cost") }),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "font-medium", children: formatUsdCost(point.costUsd) })
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex min-w-[150px] items-center justify-between gap-4", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "text-muted-foreground", children: t("Cost") }),
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "font-medium", children: formatUsdCost(point.costUsd) })
         ] })
       ] }) : null
     ] })
@@ -153297,7 +153896,7 @@ function ChartFrame({ children, fill = false }) {
     observer2.observe(container);
     return () => observer2.disconnect();
   }, []);
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: cn(fill ? "h-full min-h-[120px]" : "h-[260px]", "min-w-0"), ref: containerRef, children: size.height > 0 && size.width > 0 ? children(size) : null });
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: cn(fill ? "h-full min-h-[120px]" : "h-[260px]", "min-w-0"), ref: containerRef, children: size.height > 0 && size.width > 0 ? children(size) : null });
 }
 function TokenTooltip({
   active,
@@ -153308,9 +153907,9 @@ function TokenTooltip({
     return null;
   }
   const title = label || payload[0]?.name || "";
-  return /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "overview-tooltip rounded-xl border px-3 py-2.5 text-[11px]", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "font-semibold", children: title }),
-    /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "mt-1 text-muted-foreground", children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "overview-tooltip rounded-xl border px-3 py-2.5 text-[11px]", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "font-semibold", children: title }),
+    /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "mt-1 text-muted-foreground", children: [
       formatCompactNumber(Number(payload[0]?.value) || 0),
       " tokens"
     ] })
@@ -153502,7 +154101,7 @@ function accountSnapshots() {
 }
 
 // packages/ui/test/component/overview-components.test.tsx
-var import_jsx_runtime24 = __toESM(require_jsx_runtime());
+var import_jsx_runtime26 = __toESM(require_jsx_runtime());
 installBrowserGlobals();
 (0, import_node_test.default)("OverviewView renders every overview widget type", () => {
   const widgets = [
@@ -153525,7 +154124,7 @@ installBrowserGlobals();
     { enabled: true, id: "share-receipt", size: "1:4", type: "share-spend-receipt", variant: "card" }
   ];
   const html = (0, import_server.renderToStaticMarkup)(
-    /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(
       OverviewView,
       {
         overviewWidgets: widgets,
@@ -153573,7 +154172,7 @@ installBrowserGlobals();
 });
 (0, import_node_test.default)("overview metric cards only show progress for ratio-based data", () => {
   const renderMetric = (metric, variant) => (0, import_server.renderToStaticMarkup)(
-    /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(
       OverviewView,
       {
         overviewWidgets: [{ enabled: true, id: `metric-${metric}-${variant}`, metric, size: "1:1", type: "metric", variant }],
@@ -153591,7 +154190,7 @@ installBrowserGlobals();
 });
 (0, import_node_test.default)("OverviewView renders the empty widget layout state", () => {
   const html = (0, import_server.renderToStaticMarkup)(
-    /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(
       OverviewView,
       {
         overviewWidgets: [],
@@ -153676,7 +154275,7 @@ installBrowserGlobals();
     updatedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
   const html = (0, import_server.renderToStaticMarkup)(
-    /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(
       OverviewView,
       {
         overviewWidgets: [{ enabled: true, id: "account", size: "4:2", type: "account-balance", variant: "cards" }],
@@ -153730,7 +154329,7 @@ installBrowserGlobals();
     updatedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
   const html = (0, import_server.renderToStaticMarkup)(
-    /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(
       OverviewView,
       {
         overviewWidgets: [{ enabled: true, id: "account", size: "4:2", type: "account-balance", variant: "cards" }],

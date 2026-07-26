@@ -25329,6 +25329,7 @@ var PROXY_CA_CERT_DER_FILE = import_node_path3.default.join(CERTDIR, "ca.cer");
 var PROXY_CA_KEY_FILE = import_node_path3.default.join(CERTDIR, "key.pem");
 var GATEWAY_CONFIG_FILE = import_node_path3.default.join(CONFIGDIR, "gateway.config.json");
 var REQUEST_LOGS_DB_FILE = import_node_path3.default.join(DATADIR, "request-logs.sqlite");
+var CONTEXT_ARCHIVE_DB_FILE = import_node_path3.default.join(DATADIR, "context-archive.sqlite");
 var RAW_TRACE_SPOOL_DIR = import_node_path3.default.join(DATADIR, "raw-trace-spool");
 var USAGE_DB_FILE = import_node_path3.default.join(DATADIR, "usage.sqlite");
 if (process.platform === "win32") {
@@ -25860,6 +25861,17 @@ function createDefaultAppConfig(options) {
       streamReplies: true,
       tenantId: "ccr"
     },
+    contextArchive: {
+      enabled: false,
+      maxBytes: 512 * 1024 * 1024,
+      maxSnapshotBytes: 32 * 1024 * 1024,
+      maxSnapshots: 200,
+      mcpEnabled: true,
+      replayTimeoutMs: 6e4,
+      retentionDays: 30,
+      storagePath: "",
+      toolName: "ccr_history_ask"
+    },
     gateway: {
       coreHost,
       corePort: 3457,
@@ -25889,6 +25901,7 @@ function createDefaultAppConfig(options) {
     profile: {
       claudeCode: {
         enabled: true,
+        managedCompact: false,
         model: "",
         settingsFile: "~/.claude/settings.json",
         smallFastModel: ""
@@ -25900,6 +25913,7 @@ function createDefaultAppConfig(options) {
         configFormat: "separate_profile_files",
         configFile: "~/.codex/config.toml",
         enabled: true,
+        managedCompact: false,
         model: "",
         providerId: "claude-code-router",
         providerName: "Claude Code Router",
@@ -25912,6 +25926,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: { ...CLAUDE_CODE_DEFAULT_ENV },
           id: "default-claude-code",
+          managedCompact: false,
           model: "",
           name: "Claude Code",
           scope: "global",
@@ -25929,6 +25944,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: {},
           id: "default-codex",
+          managedCompact: false,
           model: "",
           name: "Codex",
           providerId: "claude-code-router",

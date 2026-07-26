@@ -240,6 +240,22 @@ var geminiProviderPreset = {
   websiteUrl: "https://gemini.google.com/"
 };
 
+// packages/core/src/providers/presets/infistar-ai/index.ts
+var infistarAiProviderPreset = {
+  account: defaultProviderAccountConfig,
+  aliases: ["infistar", "infistar ai", "\u65E0\u9650\u661F\u6CB3", "\u65E0\u9650\u661F\u6CB3ai", "\u65E0\u9650\u661F\u6CB3 ai"],
+  defaultModels: ["gpt-4o"],
+  endpoints: [
+    {
+      baseUrl: "https://infistar.ai/v1",
+      protocols: ["openai_chat_completions"]
+    }
+  ],
+  id: "infistar-ai",
+  name: "Infistar AI",
+  websiteUrl: "https://infistar.ai"
+};
+
 // packages/core/src/providers/presets/kimi-coding/index.ts
 var kimiCodingProviderAccountConfig = {
   connectors: [
@@ -986,6 +1002,7 @@ var providerPresets = [
   siliconFlowProviderPreset,
   qiniuAiProviderPreset,
   fennoProviderPreset,
+  infistarAiProviderPreset,
   runApiProviderPreset,
   teamoRouterProviderPreset,
   unity2ProviderPreset,

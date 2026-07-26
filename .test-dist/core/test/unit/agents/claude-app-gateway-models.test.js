@@ -27,6 +27,9 @@ var import_strict = __toESM(require("node:assert/strict"), 1);
 var import_node_test = __toESM(require("node:test"), 1);
 
 // packages/core/src/contracts/app.ts
+function isGatewayProviderEnabled(provider) {
+  return provider.enabled !== false;
+}
 var ROUTER_SCRIPT_MAX_SOURCE_BYTES = 64 * 1024;
 var CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV = "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY";
 var CLAUDE_CODE_DEFAULT_ENV = {
@@ -65,7 +68,7 @@ function availableGatewayModelIds(config) {
 function availableGatewayBaseModelEntries(providers) {
   return providers.flatMap((provider) => {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       return [];
     }
     return provider.models.flatMap((rawModel) => {
@@ -185,7 +188,9 @@ var ModelRegistry = class {
     if (!normalized) {
       return void 0;
     }
-    return this.config.Providers.find((provider) => providerAliases(provider).has(normalized));
+    return this.config.Providers.find(
+      (provider) => isGatewayProviderEnabled(provider) && providerAliases(provider).has(normalized)
+    );
   }
   resolveProviderModel(value) {
     const resolved = this.resolve(value);
@@ -203,6 +208,9 @@ var ModelRegistry = class {
     const normalized = caseInsensitive ? model.toLowerCase() : model;
     const matches = [];
     for (const provider of this.config.Providers) {
+      if (!isGatewayProviderEnabled(provider)) {
+        continue;
+      }
       for (const candidate of provider.models) {
         const configured = candidate.trim();
         const comparable = caseInsensitive ? configured.toLowerCase() : configured;
@@ -950,6 +958,7 @@ var PROXY_CA_CERT_DER_FILE = import_node_path4.default.join(CERTDIR, "ca.cer");
 var PROXY_CA_KEY_FILE = import_node_path4.default.join(CERTDIR, "key.pem");
 var GATEWAY_CONFIG_FILE = import_node_path4.default.join(CONFIGDIR, "gateway.config.json");
 var REQUEST_LOGS_DB_FILE = import_node_path4.default.join(DATADIR, "request-logs.sqlite");
+var CONTEXT_ARCHIVE_DB_FILE = import_node_path4.default.join(DATADIR, "context-archive.sqlite");
 var RAW_TRACE_SPOOL_DIR = import_node_path4.default.join(DATADIR, "raw-trace-spool");
 var USAGE_DB_FILE = import_node_path4.default.join(DATADIR, "usage.sqlite");
 if (process.platform === "win32") {
@@ -1567,6 +1576,935 @@ function serializeJsonBodyWithModel(body, model) {
   return serializeJsonBody({ ...body, model });
 }
 
+// packages/core/src/gateway/context-archive.ts
+var import_node_crypto3 = require("node:crypto");
+
+// packages/core/src/gateway/context-archive/protocol.ts
+function parseArchiveBody(body) {
+  if (!body?.length) {
+    return void 0;
+  }
+  try {
+    const parsed = JSON.parse(body.toString("utf8"));
+    return isRecord3(parsed) ? parsed : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function appendArchiveTask(originalBody, protocol, task) {
+  return appendTask(originalBody, protocol, task, { compactHandoff: false, replayTask: true });
+}
+function appendTask(originalBody, protocol, task, options) {
+  const body = parseArchiveBody(originalBody);
+  if (!body) {
+    throw archiveProtocolError("ARCHIVE_INVALID_REQUEST", "The archived request body is not a JSON object.");
+  }
+  assertAppendableTurn(body, protocol);
+  const next = cloneJsonObject(body);
+  if (options.compactHandoff) {
+    sanitizeCompactHandoffRequest(next, protocol);
+  } else if (options.replayTask && protocol === "openai_responses") {
+    removeCodexCompactionTriggers(next);
+  }
+  if (protocol === "openai_responses") {
+    if (Array.isArray(next.input)) {
+      next.input = [
+        ...next.input,
+        {
+          content: [{ text: task, type: "input_text" }],
+          role: "user",
+          type: "message"
+        }
+      ];
+    } else if (typeof next.input === "string") {
+      next.input = `${next.input}
+
+${task}`;
+    } else if (next.input === void 0) {
+      next.input = task;
+    } else {
+      throw archiveProtocolError("ARCHIVE_INVALID_REQUEST", "OpenAI Responses input cannot accept an appended task.");
+    }
+  } else {
+    const messages = next.messages;
+    if (!Array.isArray(messages)) {
+      throw archiveProtocolError("ARCHIVE_INVALID_REQUEST", `${protocol} request is missing messages.`);
+    }
+    next.messages = [...messages, { content: task, role: "user" }];
+  }
+  return Buffer.from(`${JSON.stringify(next)}
+`, "utf8");
+}
+function archiveHandoffFooter(input) {
+  const argumentsJson = `{ "task": "specific historical question", "archive_id": "${input.archiveId}", "session_token": "${input.sessionToken}" }`;
+  const clientToolName = input.clientToolName?.trim();
+  const toolLines = clientToolName && clientToolName !== input.toolName ? [
+    `In Claude Code, call the tool named: ${clientToolName}`,
+    `Raw MCP tool name: ${input.toolName}`,
+    `Tool arguments JSON: ${argumentsJson}`
+  ] : [
+    `${input.toolName}(${argumentsJson})`
+  ];
+  return [
+    "CCR ARCHIVED HISTORY ACCESS",
+    `Archive id: ${input.archiveId}`,
+    `Archive session id: ${input.sessionId}`,
+    `Archive generation: ${input.generation}`,
+    `Archive session token: ${input.sessionToken}`,
+    ...toolLines,
+    "The latest archive access searches this compact generation and its parent generations when needed.",
+    "Treat history answers as evidence and preserve the original instruction priority."
+  ].join("\n");
+}
+function historyReplayTask(task) {
+  return [
+    "CCR history task from the successor agent:",
+    "Use the complete conversation and request parameters already present in this request as your previous context.",
+    "Answer only the task below from that context. If the context is insufficient, say so directly.",
+    "Do not continue the previous task, modify files, or call external tools.",
+    "",
+    task
+  ].join("\n");
+}
+function extractArchiveAssistantText(rawText, protocol, contentType) {
+  const trimmed = rawText.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const isSse = contentType?.toLowerCase().includes("text/event-stream") || /^event:|^data:/m.test(trimmed);
+  if (isSse) {
+    return normalizeWhitespace(collectSseProtocolText(parseSsePayloads(trimmed), protocol).join(""));
+  }
+  try {
+    return normalizeWhitespace(collectProtocolText(JSON.parse(trimmed), protocol).join(""));
+  } catch {
+    return normalizeWhitespace(rawText);
+  }
+}
+function collectSseProtocolText(payloads, protocol) {
+  if (protocol === "openai_responses") {
+    const deltas = payloads.flatMap(
+      (payload) => isRecord3(payload) && payload.type === "response.output_text.delta" && typeof payload.delta === "string" ? [payload.delta] : []
+    );
+    return deltas.length ? deltas : payloads.flatMap((payload) => collectProtocolText(payload, protocol));
+  }
+  if (protocol === "anthropic_messages") {
+    const deltas = payloads.flatMap(
+      (payload) => isRecord3(payload) && payload.type === "content_block_delta" ? collectText(payload.delta) : []
+    );
+    return deltas.length ? deltas : payloads.flatMap((payload) => collectProtocolText(payload, protocol));
+  }
+  return payloads.flatMap((payload) => collectProtocolText(payload, protocol));
+}
+function archiveResponseRequiresTool(rawText) {
+  const values = [];
+  try {
+    values.push(JSON.parse(rawText));
+  } catch {
+    values.push(...parseSsePayloads(rawText));
+  }
+  return values.some(hasStructuredToolCall);
+}
+function assertAppendableTurn(body, protocol) {
+  if (protocol === "openai_responses") {
+    const input = Array.isArray(body.input) ? body.input : [];
+    const tail2 = input.at(-1);
+    if (isRecord3(tail2) && ["function_call", "computer_call", "custom_tool_call"].includes(String(tail2.type ?? ""))) {
+      throw archiveProtocolError("ARCHIVE_NOT_AT_TURN_BOUNDARY", "The archived Responses request ends with an unresolved tool call.");
+    }
+    return;
+  }
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  const tail = messages.at(-1);
+  if (!isRecord3(tail) || String(tail.role ?? "") !== "assistant") {
+    return;
+  }
+  if (Array.isArray(tail.tool_calls) && tail.tool_calls.length > 0) {
+    throw archiveProtocolError("ARCHIVE_NOT_AT_TURN_BOUNDARY", "The archived chat request ends with an unresolved tool call.");
+  }
+  if (Array.isArray(tail.content) && tail.content.some((block) => isRecord3(block) && block.type === "tool_use")) {
+    throw archiveProtocolError("ARCHIVE_NOT_AT_TURN_BOUNDARY", "The archived Anthropic request ends with an unresolved tool call.");
+  }
+}
+function sanitizeCompactHandoffRequest(body, protocol) {
+  removeCompactSignals(body);
+  removeKeys(body, [
+    "response_format",
+    "responseFormat",
+    "stop",
+    "stop_sequences",
+    "stopSequences"
+  ]);
+  if (protocol === "openai_responses") {
+    removeKeys(body, [
+      "parallel_tool_calls",
+      "parallelToolCalls",
+      "tool_choice",
+      "toolChoice",
+      "tools"
+    ]);
+    normalizeOpenAiResponsesTextFormat(body);
+    raiseMinimumNumericField(body, ["max_output_tokens", "maxOutputTokens", "max_tokens", "maxTokens"], 2048);
+    return;
+  }
+  removeKeys(body, [
+    "function_call",
+    "functionCall",
+    "functions",
+    "parallel_tool_calls",
+    "parallelToolCalls",
+    "tool_choice",
+    "toolChoice",
+    "tools"
+  ]);
+  raiseMinimumNumericField(body, ["max_tokens", "maxTokens"], 2048);
+}
+function removeCompactSignals(body) {
+  removeCodexCompactionTriggers(body);
+  for (const key of ["context_management", "contextManagement"]) {
+    const management = isRecord3(body[key]) ? cloneJsonObject(body[key]) : void 0;
+    if (!management) {
+      continue;
+    }
+    const edits = Array.isArray(management.edits) ? management.edits.filter((edit) => !(isRecord3(edit) && isCompactType(edit.type))) : void 0;
+    if (edits !== void 0) {
+      if (edits.length > 0) {
+        management.edits = edits;
+      } else {
+        delete management.edits;
+      }
+    }
+    if (Object.keys(management).length > 0) {
+      body[key] = management;
+    } else {
+      delete body[key];
+    }
+  }
+  const metadata = isRecord3(body.metadata) ? cloneJsonObject(body.metadata) : void 0;
+  if (!metadata) {
+    return;
+  }
+  delete metadata.ccr_context_compact;
+  delete metadata.ccrContextCompact;
+  if (Object.keys(metadata).length > 0) {
+    body.metadata = metadata;
+  } else {
+    delete body.metadata;
+  }
+}
+function removeCodexCompactionTriggers(body) {
+  if (Array.isArray(body.input)) {
+    body.input = body.input.filter((item) => !(isRecord3(item) && item.type === "compaction_trigger"));
+  }
+}
+function normalizeOpenAiResponsesTextFormat(body) {
+  if (!isRecord3(body.text)) {
+    return;
+  }
+  const text = cloneJsonObject(body.text);
+  if (!isRecord3(text.format)) {
+    return;
+  }
+  const type = typeof text.format.type === "string" ? text.format.type.toLowerCase() : "";
+  if (!type || type === "text") {
+    return;
+  }
+  text.format = { type: "text" };
+  body.text = text;
+}
+function removeKeys(body, keys) {
+  for (const key of keys) {
+    delete body[key];
+  }
+}
+function raiseMinimumNumericField(body, keys, minimum) {
+  for (const key of keys) {
+    if (typeof body[key] === "number" && Number.isFinite(body[key]) && body[key] < minimum) {
+      body[key] = minimum;
+    }
+  }
+}
+function collectProtocolText(value, protocol) {
+  if (!isRecord3(value)) {
+    return [];
+  }
+  if (protocol === "openai_chat_completions") {
+    const choices = Array.isArray(value.choices) ? value.choices : [];
+    const text = choices.flatMap((choice) => isRecord3(choice) ? [...collectText(readPath(choice, ["message", "content"])), ...collectText(readPath(choice, ["delta", "content"]))] : []);
+    return text.length ? text : collectText(value);
+  }
+  if (protocol === "openai_responses") {
+    return collectText(value.output_text).concat(collectText(value.delta), collectText(value.output), collectText(value.item));
+  }
+  return collectText(value.content).concat(collectText(value.delta), collectText(value.message));
+}
+function collectText(value) {
+  if (typeof value === "string") {
+    return [value];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap(collectText);
+  }
+  if (!isRecord3(value)) {
+    return [];
+  }
+  const type = typeof value.type === "string" ? value.type : "";
+  const direct = typeof value.text === "string" && (!type || [
+    "content_block_delta",
+    "message",
+    "output_text",
+    "summary_text",
+    "text",
+    "text_delta",
+    "response.output_text.delta"
+  ].includes(type)) ? [value.text] : [];
+  const outputText = typeof value.output_text === "string" ? [value.output_text] : [];
+  const content = typeof value.content === "string" ? [value.content] : collectText(value.content);
+  return direct.concat(outputText, content, collectText(value.delta), collectText(value.message), collectText(value.output), collectText(value.response), collectText(value.item));
+}
+function parseSsePayloads(rawText) {
+  const payloads = [];
+  for (const event of rawText.split(/\r?\n\r?\n+/g)) {
+    const data = event.split(/\r?\n/g).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n").trim();
+    if (!data || data === "[DONE]") {
+      continue;
+    }
+    try {
+      payloads.push(JSON.parse(data));
+    } catch {
+    }
+  }
+  return payloads;
+}
+function hasStructuredToolCall(value) {
+  if (Array.isArray(value)) {
+    return value.some(hasStructuredToolCall);
+  }
+  if (!isRecord3(value)) {
+    return false;
+  }
+  if (Array.isArray(value.tool_calls) && value.tool_calls.length > 0) {
+    return true;
+  }
+  if (["tool_use", "function_call", "custom_tool_call", "computer_call"].includes(String(value.type ?? ""))) {
+    return true;
+  }
+  return Object.values(value).some(hasStructuredToolCall);
+}
+function readPath(value, path4) {
+  let current = value;
+  for (const part of path4) {
+    if (!isRecord3(current)) {
+      return void 0;
+    }
+    current = current[part];
+  }
+  return current;
+}
+function isCompactType(value) {
+  return typeof value === "string" && /^compact(?:_|$)/i.test(value.trim());
+}
+function cloneJsonObject(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+function normalizeWhitespace(value) {
+  return value.replace(/\r\n/g, "\n").replace(/[ \t]+\n/g, "\n").trim();
+}
+function archiveProtocolError(code, message) {
+  const error = new Error(`${code}: ${message}`);
+  error.name = "ContextArchiveError";
+  return error;
+}
+function isRecord3(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+// packages/core/src/gateway/context-archive/store.ts
+var import_node_fs3 = require("node:fs");
+var import_node_path5 = require("node:path");
+
+// packages/core/src/storage/sqlite-native.ts
+var import_node_module2 = require("node:module");
+var import_better_sqlite3 = __toESM(require("better-sqlite3"));
+var requireFromHere2 = (0, import_node_module2.createRequire)(__filename);
+var resolvedNativeBinding;
+var nativeBindingResolved = false;
+function createBetterSqliteDatabase(filename, options = {}) {
+  const nativeBinding = resolveBetterSqliteNativeBinding();
+  return nativeBinding ? new import_better_sqlite3.default(filename, { ...options, nativeBinding }) : new import_better_sqlite3.default(filename, options);
+}
+function resolveBetterSqliteNativeBinding() {
+  if (nativeBindingResolved) {
+    return resolvedNativeBinding;
+  }
+  nativeBindingResolved = true;
+  try {
+    resolvedNativeBinding = requireFromHere2.resolve("better-sqlite3/build/Release/better_sqlite3.node");
+  } catch {
+    resolvedNativeBinding = void 0;
+  }
+  return resolvedNativeBinding;
+}
+
+// packages/core/src/gateway/context-archive/store.ts
+var ContextArchiveStore = class {
+  constructor(dbFile) {
+    this.dbFile = dbFile;
+    if (dbFile !== ":memory:") {
+      const directory = (0, import_node_path5.dirname)(dbFile);
+      (0, import_node_fs3.mkdirSync)(directory, { mode: 448, recursive: true });
+      securePath(directory, 448);
+    }
+    this.database = createBetterSqliteDatabase(dbFile);
+    this.database.pragma("journal_mode = WAL");
+    this.database.pragma("synchronous = NORMAL");
+    this.database.pragma("busy_timeout = 5000");
+    this.database.exec(`
+      CREATE TABLE IF NOT EXISTS archive_snapshots (
+        archive_id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        generation INTEGER NOT NULL,
+        parent_archive_id TEXT,
+        request_id TEXT NOT NULL UNIQUE,
+        protocol TEXT NOT NULL,
+        method TEXT NOT NULL,
+        path TEXT NOT NULL,
+        body BLOB NOT NULL,
+        body_sha256 TEXT NOT NULL,
+        replay_headers_json TEXT NOT NULL,
+        route_json TEXT,
+        token_hash TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER,
+        UNIQUE(session_id, generation)
+      );
+      CREATE INDEX IF NOT EXISTS archive_snapshots_session_generation
+        ON archive_snapshots(session_id, generation DESC);
+      CREATE INDEX IF NOT EXISTS archive_snapshots_expires_at
+        ON archive_snapshots(expires_at);
+    `);
+    this.secureFiles();
+  }
+  dbFile;
+  database;
+  create(input, retention) {
+    const transaction = this.database.transaction(() => {
+      const previous = this.database.prepare(`
+        SELECT archive_id, generation
+        FROM archive_snapshots
+        WHERE session_id = ?
+        ORDER BY generation DESC
+        LIMIT 1
+      `).get(input.sessionId);
+      const generation = Number(previous?.generation ?? 0) + 1;
+      const parentArchiveId = readString2(previous?.archive_id);
+      this.database.prepare(`
+        INSERT INTO archive_snapshots (
+          archive_id, session_id, generation, parent_archive_id, request_id,
+          protocol, method, path, body, body_sha256, replay_headers_json,
+          token_hash, status, created_at, expires_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+      `).run(
+        input.archiveId,
+        input.sessionId,
+        generation,
+        parentArchiveId ?? null,
+        input.requestId,
+        input.protocol,
+        input.method,
+        input.path,
+        input.body,
+        input.bodySha256,
+        JSON.stringify(input.replayHeaders),
+        input.tokenHash,
+        input.createdAt,
+        input.expiresAt ?? null
+      );
+      return { generation, parentArchiveId };
+    });
+    const lineage = transaction();
+    this.extendLineageExpiry(input.archiveId, input.expiresAt, retention);
+    this.prune(retention, input.archiveId);
+    this.secureFiles();
+    return {
+      ...input,
+      ...lineage,
+      status: "pending"
+    };
+  }
+  finalize(archiveId, route) {
+    this.database.prepare(`
+      UPDATE archive_snapshots
+      SET route_json = ?, status = 'ready'
+      WHERE archive_id = ? AND status = 'pending'
+    `).run(JSON.stringify(route), archiveId);
+    this.secureFiles();
+  }
+  fail(archiveId) {
+    this.database.prepare("UPDATE archive_snapshots SET status = 'failed' WHERE archive_id = ?").run(archiveId);
+  }
+  get(archiveId) {
+    const row = this.database.prepare(`
+      SELECT * FROM archive_snapshots WHERE archive_id = ? LIMIT 1
+    `).get(archiveId);
+    return row ? snapshotFromRow(row) : void 0;
+  }
+  lineage(archiveId, limit = 32) {
+    const snapshots = [];
+    const seen = /* @__PURE__ */ new Set();
+    let currentArchiveId = archiveId;
+    while (currentArchiveId && snapshots.length < Math.max(1, Math.floor(limit)) && !seen.has(currentArchiveId)) {
+      seen.add(currentArchiveId);
+      const snapshot = this.get(currentArchiveId);
+      if (!snapshot) {
+        break;
+      }
+      snapshots.push(snapshot);
+      currentArchiveId = snapshot.parentArchiveId;
+    }
+    return snapshots;
+  }
+  clear() {
+    this.database.prepare("DELETE FROM archive_snapshots").run();
+  }
+  close() {
+    this.database.close();
+  }
+  prune(retention, protectedArchiveId) {
+    const protectedIds = this.protectedLineageIds(protectedArchiveId, retention);
+    const now = Date.now();
+    const expiredRows = this.database.prepare(`
+      SELECT archive_id
+      FROM archive_snapshots
+      WHERE expires_at IS NOT NULL AND expires_at <= ?
+    `).all(now);
+    for (const row of expiredRows) {
+      if (!protectedIds.has(row.archive_id)) {
+        this.database.prepare("DELETE FROM archive_snapshots WHERE archive_id = ?").run(row.archive_id);
+      }
+    }
+    const maxSnapshots = Math.max(1, Math.floor(retention.maxSnapshots));
+    const snapshotRows = this.database.prepare(`
+      SELECT archive_id
+      FROM archive_snapshots
+      ORDER BY created_at DESC, rowid DESC
+    `).all();
+    for (let index = maxSnapshots; index < snapshotRows.length; index += 1) {
+      const archiveId = snapshotRows[index]?.archive_id;
+      if (archiveId && !protectedIds.has(archiveId)) {
+        this.database.prepare("DELETE FROM archive_snapshots WHERE archive_id = ?").run(archiveId);
+      }
+    }
+    const maxBytes = Math.max(1, Math.floor(retention.maxBytes));
+    const rows = this.database.prepare(`
+      SELECT archive_id, length(body) AS body_bytes
+      FROM archive_snapshots
+      ORDER BY created_at DESC, rowid DESC
+    `).all();
+    let retainedBytes = 0;
+    for (const row of rows) {
+      retainedBytes += Number(row.body_bytes ?? 0);
+      if (retainedBytes > maxBytes && !protectedIds.has(row.archive_id)) {
+        this.database.prepare("DELETE FROM archive_snapshots WHERE archive_id = ?").run(row.archive_id);
+      }
+    }
+  }
+  protectedLineageIds(archiveId, retention) {
+    return new Set(this.lineage(archiveId, Math.max(1, Math.floor(retention.maxSnapshots))).map((snapshot) => snapshot.archiveId));
+  }
+  extendLineageExpiry(archiveId, expiresAt, retention) {
+    if (expiresAt === void 0) {
+      return;
+    }
+    for (const snapshot of this.lineage(archiveId, Math.max(1, Math.floor(retention.maxSnapshots)))) {
+      this.database.prepare(`
+        UPDATE archive_snapshots
+        SET expires_at = ?
+        WHERE archive_id = ? AND (expires_at IS NULL OR expires_at < ?)
+      `).run(expiresAt, snapshot.archiveId, expiresAt);
+    }
+  }
+  secureFiles() {
+    if (this.dbFile === ":memory:") {
+      return;
+    }
+    securePath(this.dbFile, 384);
+    securePath(`${this.dbFile}-wal`, 384);
+    securePath(`${this.dbFile}-shm`, 384);
+  }
+};
+function snapshotFromRow(row) {
+  return {
+    archiveId: requiredString(row.archive_id),
+    body: Buffer.from(row.body),
+    bodySha256: requiredString(row.body_sha256),
+    createdAt: Number(row.created_at),
+    expiresAt: optionalNumber(row.expires_at),
+    generation: Number(row.generation),
+    method: requiredString(row.method),
+    parentArchiveId: readString2(row.parent_archive_id),
+    path: requiredString(row.path),
+    protocol: requiredString(row.protocol),
+    replayHeaders: parseRecord(row.replay_headers_json),
+    requestId: requiredString(row.request_id),
+    route: parseOptionalRoute(row.route_json),
+    sessionId: requiredString(row.session_id),
+    status: requiredString(row.status),
+    tokenHash: requiredString(row.token_hash)
+  };
+}
+function parseRecord(value) {
+  const parsed = JSON.parse(requiredString(value));
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {};
+  }
+  return Object.fromEntries(Object.entries(parsed).filter((entry) => typeof entry[1] === "string"));
+}
+function parseOptionalRoute(value) {
+  const text = readString2(value);
+  if (!text) {
+    return void 0;
+  }
+  const parsed = JSON.parse(text);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : void 0;
+}
+function requiredString(value) {
+  const text = readString2(value);
+  if (!text) {
+    throw new Error("Context archive database contains an invalid string value.");
+  }
+  return text;
+}
+function readString2(value) {
+  return typeof value === "string" && value ? value : void 0;
+}
+function optionalNumber(value) {
+  return value === null || value === void 0 ? void 0 : Number(value);
+}
+function securePath(file, mode) {
+  if (process.platform === "win32" || !(0, import_node_fs3.existsSync)(file)) {
+    return;
+  }
+  try {
+    (0, import_node_fs3.chmodSync)(file, mode);
+  } catch {
+  }
+}
+
+// packages/core/src/gateway/context-archive.ts
+var maxMcpRequestBytes = 2 * 1024 * 1024;
+var defaultToolName = "ccr_history_ask";
+var maxUpstreamErrorCharacters = 4e3;
+var maxLineageReplayDepth = 32;
+var CONTEXT_ARCHIVE_MCP_SERVER_NAME = "ccr-context-archive";
+var ContextArchiveService = class {
+  stores = /* @__PURE__ */ new Map();
+  clear(config) {
+    if (config) {
+      this.store(config).clear();
+      return;
+    }
+    for (const store of this.stores.values()) {
+      store.clear();
+    }
+  }
+  close() {
+    for (const store of this.stores.values()) {
+      store.close();
+    }
+    this.stores.clear();
+  }
+  createSnapshot(input) {
+    const maxSnapshotBytes = clampInteger(input.config.maxSnapshotBytes, 64 * 1024, 1024 * 1024 * 1024, 32 * 1024 * 1024);
+    if (input.body.byteLength > maxSnapshotBytes) {
+      throw contextArchiveError(
+        "ARCHIVE_SNAPSHOT_TOO_LARGE",
+        `Compact request is ${input.body.byteLength} bytes; the configured snapshot limit is ${maxSnapshotBytes} bytes.`
+      );
+    }
+    const archiveId = `arc_${(0, import_node_crypto3.randomBytes)(18).toString("base64url")}`;
+    const sessionToken = (0, import_node_crypto3.randomBytes)(32).toString("base64url");
+    const createdAt = Date.now();
+    const retentionDays = clampInteger(input.config.retentionDays, 1, 3650, 30);
+    const snapshot = this.store(input.config).create({
+      archiveId,
+      body: Buffer.from(input.body),
+      bodySha256: sha256(input.body),
+      createdAt,
+      expiresAt: createdAt + retentionDays * 24 * 60 * 60 * 1e3,
+      method: input.method,
+      path: input.path,
+      protocol: input.protocol,
+      replayHeaders: replaySafeHeaders(input.headers),
+      requestId: input.requestId,
+      sessionId: input.sessionId,
+      tokenHash: sha256(sessionToken)
+    }, {
+      maxBytes: clampInteger(input.config.maxBytes, 1024 * 1024, 64 * 1024 * 1024 * 1024, 512 * 1024 * 1024),
+      maxSnapshots: clampInteger(input.config.maxSnapshots, 1, 1e5, 200),
+      retentionDays
+    });
+    const footer = archiveHandoffFooter({
+      archiveId,
+      clientToolName: contextArchiveClaudeCodeToolName(input.config.toolName || defaultToolName),
+      generation: snapshot.generation,
+      sessionId: input.sessionId,
+      sessionToken,
+      toolName: input.config.toolName || defaultToolName
+    });
+    return {
+      record: {
+        archiveId,
+        footer,
+        generation: snapshot.generation,
+        sessionId: input.sessionId
+      },
+      sessionToken
+    };
+  }
+  finalize(record, route, config) {
+    if (!record) {
+      return;
+    }
+    this.store(config).finalize(record.archiveId, route);
+  }
+  fail(record, config) {
+    if (!record) {
+      return;
+    }
+    this.store(config).fail(record.archiveId);
+  }
+  getSnapshot(archiveId, config) {
+    return this.store(config).get(archiveId);
+  }
+  async ask(input, config, executor) {
+    const archiveId = input.archiveId.trim();
+    const sessionToken = input.sessionToken.trim();
+    const task = input.task.trim();
+    const toolName = config.toolName || defaultToolName;
+    if (!archiveId || !sessionToken || !task) {
+      throw contextArchiveError("ARCHIVE_INVALID_ARGUMENT", `${toolName} requires archive_id, session_token, and task.`);
+    }
+    const store = this.store(config);
+    const rootSnapshot = store.get(archiveId);
+    if (!rootSnapshot) {
+      throw contextArchiveError("ARCHIVE_NOT_FOUND", `Archive ${archiveId} does not exist or has expired.`);
+    }
+    if (rootSnapshot.expiresAt !== void 0 && rootSnapshot.expiresAt <= Date.now()) {
+      throw contextArchiveError("ARCHIVE_EXPIRED", `Archive ${archiveId} has expired.`);
+    }
+    if (rootSnapshot.status !== "ready") {
+      throw contextArchiveError("ARCHIVE_NOT_READY", `Archive ${archiveId} is ${rootSnapshot.status}.`);
+    }
+    if (!constantTimeEqual(rootSnapshot.tokenHash, sha256(sessionToken))) {
+      throw contextArchiveError("ARCHIVE_ACCESS_DENIED", "The archive session token is invalid.");
+    }
+    if (!executor) {
+      throw contextArchiveError("ARCHIVE_REPLAY_UNAVAILABLE", "The gateway replay executor is not available.");
+    }
+    const lineage = store.lineage(archiveId, maxLineageReplayDepth);
+    const searchedGenerations = [];
+    let lastInsufficientAnswer;
+    for (const snapshot of lineage) {
+      if (snapshot.expiresAt !== void 0 && snapshot.expiresAt <= Date.now()) {
+        continue;
+      }
+      if (snapshot.status !== "ready") {
+        continue;
+      }
+      const answer = await replayArchiveSnapshot(snapshot, task, config, executor);
+      searchedGenerations.push(snapshot.generation);
+      if (isInsufficientArchiveAnswer(answer) && snapshot.parentArchiveId) {
+        lastInsufficientAnswer = { answer, snapshot };
+        continue;
+      }
+      return {
+        answer,
+        archiveId,
+        generation: rootSnapshot.generation,
+        searchedGenerations,
+        sourceArchiveId: snapshot.archiveId,
+        sourceGeneration: snapshot.generation,
+        task
+      };
+    }
+    if (lastInsufficientAnswer) {
+      return {
+        answer: lastInsufficientAnswer.answer,
+        archiveId,
+        generation: rootSnapshot.generation,
+        searchedGenerations,
+        sourceArchiveId: lastInsufficientAnswer.snapshot.archiveId,
+        sourceGeneration: lastInsufficientAnswer.snapshot.generation,
+        task
+      };
+    }
+    throw contextArchiveError("ARCHIVE_NOT_READY", `Archive ${archiveId} has no ready lineage snapshots.`);
+  }
+  store(config) {
+    const dbFile = config.storagePath.trim() || CONTEXT_ARCHIVE_DB_FILE;
+    let store = this.stores.get(dbFile);
+    if (!store) {
+      store = new ContextArchiveStore(dbFile);
+      this.stores.set(dbFile, store);
+    }
+    return store;
+  }
+};
+var contextArchiveService = new ContextArchiveService();
+function contextArchiveClaudeCodeToolName(toolName) {
+  return `mcp__${CONTEXT_ARCHIVE_MCP_SERVER_NAME}__${toolName}`;
+}
+async function replayArchiveSnapshot(snapshot, task, config, executor) {
+  const replayBody = appendArchiveTask(snapshot.body, snapshot.protocol, historyReplayTask(task));
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(contextArchiveError("ARCHIVE_REPLAY_TIMEOUT", "The archived agent replay timed out.")),
+    clampInteger(config.replayTimeoutMs, 1e3, 6e5, 6e4)
+  );
+  let result;
+  try {
+    result = await executor({ body: replayBody, signal: controller.signal, snapshot });
+  } finally {
+    clearTimeout(timeout);
+  }
+  const rawText = Buffer.isBuffer(result.body) ? result.body.toString("utf8") : result.body;
+  if (result.statusCode < 200 || result.statusCode >= 300) {
+    throw contextArchiveError(
+      "ARCHIVE_UPSTREAM_ERROR",
+      `Archived agent returned HTTP ${result.statusCode}: ${rawText.slice(0, maxUpstreamErrorCharacters)}`
+    );
+  }
+  const answer = extractArchiveAssistantText(rawText, snapshot.protocol, result.contentType);
+  if (!answer && archiveResponseRequiresTool(rawText)) {
+    throw contextArchiveError(
+      "ARCHIVE_REPLAY_TOOL_REQUIRED",
+      "The archived agent requested a tool. Exact replay does not execute external client tools."
+    );
+  }
+  if (!answer) {
+    throw contextArchiveError("ARCHIVE_EMPTY_ANSWER", "The archived agent returned no textual answer.");
+  }
+  return answer;
+}
+function isInsufficientArchiveAnswer(answer) {
+  const normalized = answer.toLowerCase().replace(/\s+/g, " ").trim();
+  return [
+    "context is insufficient",
+    "insufficient context",
+    "not enough information",
+    "not enough context",
+    "does not contain",
+    "doesn't contain",
+    "cannot determine",
+    "can't determine",
+    "could not determine",
+    "unable to determine",
+    "unable to find",
+    "not mentioned",
+    "no relevant",
+    "unknown"
+  ].some((phrase) => normalized.includes(phrase));
+}
+function contextArchiveEnabled(config) {
+  return Boolean(config?.contextArchive?.enabled);
+}
+function contextArchiveMcpEnabled(config) {
+  return Boolean(config?.contextArchive?.enabled && config.contextArchive.mcpEnabled !== false);
+}
+function profileManagedCompactEnabled(profile) {
+  return Boolean(profile?.enabled && profile.managedCompact === true);
+}
+function contextArchiveConfigForApiKey(config, apiKey) {
+  if (apiKeyMatchesManagedCompactProfile(config, apiKey)) {
+    return withManagedContextArchiveEnabled(config);
+  }
+  if (apiKeyMatchesProfile(config, apiKey)) {
+    return void 0;
+  }
+  return contextArchiveEnabled(config) ? config : void 0;
+}
+function withManagedContextArchiveEnabled(config) {
+  if (config.contextArchive.enabled && config.contextArchive.mcpEnabled !== false) {
+    return config;
+  }
+  return {
+    ...config,
+    contextArchive: {
+      ...config.contextArchive,
+      enabled: true,
+      mcpEnabled: true
+    }
+  };
+}
+function apiKeyMatchesManagedCompactProfile(config, apiKey) {
+  const id = apiKey?.id?.trim();
+  if (!id || config.profile?.enabled === false) {
+    return false;
+  }
+  const profiles = Array.isArray(config.profile?.profiles) ? config.profile.profiles : [];
+  return profiles.some(
+    (profile) => profileManagedCompactEnabled(profile) && id === profileApiKeyId(profile)
+  );
+}
+function apiKeyMatchesProfile(config, apiKey) {
+  const id = apiKey?.id?.trim();
+  if (!id || config.profile?.enabled === false) {
+    return false;
+  }
+  const profiles = Array.isArray(config.profile?.profiles) ? config.profile.profiles : [];
+  return profiles.some((profile) => id === profileApiKeyId(profile));
+}
+function profileApiKeyId(profile) {
+  return `profile:${sanitizeProfilePathSegment(profile.id || profile.name || profile.agent) || "profile"}`;
+}
+function sanitizeProfilePathSegment(value) {
+  return value.trim().replace(/[^a-zA-Z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function replaySafeHeaders(headers) {
+  const allowed = /* @__PURE__ */ new Set([
+    "anthropic-beta",
+    "anthropic-version",
+    "content-type",
+    "openai-beta",
+    "openai-organization",
+    "openai-project",
+    "user-agent",
+    "x-ccr-client",
+    "x-client-name"
+  ]);
+  const output = {};
+  for (const [name, value] of Object.entries(headers)) {
+    const normalized = name.toLowerCase();
+    if (!allowed.has(normalized) || value === void 0) {
+      continue;
+    }
+    output[normalized] = Array.isArray(value) ? value.join(",") : String(value);
+  }
+  output["content-type"] = "application/json";
+  return output;
+}
+function sha256(value) {
+  return (0, import_node_crypto3.createHash)("sha256").update(value).digest("base64url");
+}
+function constantTimeEqual(left, right) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && (0, import_node_crypto3.timingSafeEqual)(leftBuffer, rightBuffer);
+}
+function contextArchiveError(code, message) {
+  const error = new Error(`${code}: ${message}`);
+  error.name = "ContextArchiveError";
+  return error;
+}
+function clampInteger(value, minimum, maximum, fallback) {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(minimum, Math.min(maximum, Math.floor(value)));
+}
+
 // packages/core/src/gateway/features/model-discovery.ts
 function prepareClaudeAppDiscoveredModelRequest(config, method, path4, body) {
   if ((method || "GET").toUpperCase() !== "POST" || normalizeGatewayPathname(path4) !== "/v1/messages") {
@@ -1593,11 +2531,13 @@ function prepareClaudeAppDiscoveredModelRequest(config, method, path4, body) {
   };
 }
 function createGatewayModelsResponse(config, headers, apiKey) {
+  const contextArchiveConfig = contextArchiveConfigForApiKey(config, apiKey);
+  const contextArchiveCompact = Boolean(contextArchiveConfig && contextArchiveMcpEnabled(contextArchiveConfig));
   if (isClaudeAppApiKey(apiKey)) {
-    return createClaudeAppGatewayModelsResponse(config);
+    return createClaudeAppGatewayModelsResponse(config, { contextArchiveCompact });
   }
   if (isClaudeCodeUserAgent(headers)) {
-    return createClaudeAppGatewayModelsResponse(config, { claudeCode: true });
+    return createClaudeAppGatewayModelsResponse(config, { claudeCode: true, contextArchiveCompact });
   }
   return createOpenAICompatibleGatewayModelsResponse(config);
 }
@@ -1630,6 +2570,7 @@ function createClaudeAppGatewayModelsResponse(config, options = {}) {
     return {
       id: exposeOneMillionContextVariant ? claudeCodeOneMillionContextModelId(route.id) : route.id,
       capabilities: createClaudeCodeModelCapabilities(catalogEntry, {
+        contextArchiveCompact: options.contextArchiveCompact,
         maxInputTokens,
         oneMillionContext: route.oneMillionContext,
         ...providerModelCapabilityOverrides(modelMetadata)
@@ -1690,7 +2631,7 @@ function buildGatewayDiscoverableModelIds(config) {
   const baseEntries = [];
   for (const provider of config.Providers) {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       continue;
     }
     for (const rawModel of provider.models) {
@@ -1779,7 +2720,7 @@ function createClaudeCodeModelCapabilities(entry, options = {}) {
     context_management: {
       clear_thinking_20251015: { supported: supportsReasoning },
       clear_tool_uses_20250919: { supported: supportsToolUse },
-      compact_20260112: { supported: maxInputTokens > 0 },
+      compact_20260112: { supported: options.contextArchiveCompact === true && maxInputTokens > 0 },
       max_input_tokens: maxInputTokens,
       supported: maxInputTokens > 0
     },
@@ -1824,7 +2765,7 @@ function createDefaultClaudeCodeModelCapabilities(options = {}) {
     context_management: {
       clear_thinking_20251015: { supported: supportsReasoning },
       clear_tool_uses_20250919: { supported: true },
-      compact_20260112: { supported: true },
+      compact_20260112: { supported: options.contextArchiveCompact === true },
       ...maxInputTokens ? { max_input_tokens: maxInputTokens } : {},
       supported: true
     },
@@ -1943,6 +2884,39 @@ function assertPublishedRoutesResolveUniquely(config) {
   import_strict.default.equal(response.first_id, routes[0].id);
   import_strict.default.equal(routes.some((route) => route.targetModel === "claude-sonnet-4-5"), false);
   assertPublishedRoutesResolveUniquely(config);
+});
+(0, import_node_test.default)("issue 1535 the discovered default is routable and the bare fallback resolves to a provider", () => {
+  const config = createConfig({
+    providers: [
+      { models: ["AED"], name: "provider-1" },
+      { models: ["claude-sonnet-4-5"], name: "provider-2" },
+      { models: ["deepseek-v4-flash"], name: "provider-3" }
+    ]
+  });
+  const response = createClaudeModelsResponse(config);
+  import_strict.default.equal(
+    response.data.some((model) => model.id === "claude-sonnet-4-5"),
+    false,
+    "the unroutable bare fallback must never be published by GET /v1/models"
+  );
+  import_strict.default.ok(response.first_id, "discovery must publish a routable default model");
+  const rewritten = prepareClaudeAppDiscoveredModelRequest(
+    config,
+    "POST",
+    "/v1/messages",
+    Buffer.from(JSON.stringify({ messages: [], model: response.first_id }))
+  );
+  import_strict.default.equal(
+    rewritten?.routedModel,
+    "provider-1/AED",
+    "the discovered default must round-trip to a provider-prefixed selector instead of model-chain fallback"
+  );
+  const registry = new ModelRegistry(config);
+  import_strict.default.equal(
+    registry.resolve("claude-sonnet-4-5")?.canonicalSelector,
+    "provider-2/claude-sonnet-4-5",
+    "a bare fallback model id must resolve to a provider rather than going unroutable"
+  );
 });
 (0, import_node_test.default)("issue 1535 Claude App discovery canonicalizes a uniquely configured bare profile model", () => {
   const config = createConfig({

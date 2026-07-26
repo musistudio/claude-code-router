@@ -25166,6 +25166,7 @@ var PROXY_CA_CERT_DER_FILE = import_node_path3.default.join(CERTDIR, "ca.cer");
 var PROXY_CA_KEY_FILE = import_node_path3.default.join(CERTDIR, "key.pem");
 var GATEWAY_CONFIG_FILE = import_node_path3.default.join(CONFIGDIR, "gateway.config.json");
 var REQUEST_LOGS_DB_FILE = import_node_path3.default.join(DATADIR, "request-logs.sqlite");
+var CONTEXT_ARCHIVE_DB_FILE = import_node_path3.default.join(DATADIR, "context-archive.sqlite");
 var RAW_TRACE_SPOOL_DIR = import_node_path3.default.join(DATADIR, "raw-trace-spool");
 var USAGE_DB_FILE = import_node_path3.default.join(DATADIR, "usage.sqlite");
 if (process.platform === "win32") {
@@ -26083,6 +26084,9 @@ var import_node_path6 = __toESM(require("node:path"));
 var GROK_API_MEDIA_BASE_URL = "https://api.x.ai/v1";
 var GROK_API_DEFAULT_IMAGE_MODEL = "grok-imagine-image-quality";
 var GROK_API_DEFAULT_VIDEO_MODEL = "grok-imagine-video";
+function isGatewayProviderEnabled(provider) {
+  return provider.enabled !== false;
+}
 var ROUTER_SCRIPT_API_VERSION = 1;
 var ROUTER_SCRIPT_MAX_SOURCE_BYTES = 64 * 1024;
 var ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS = 2e3;
@@ -26125,7 +26129,7 @@ function availableGatewayModelIds(config) {
 function availableGatewayBaseModelEntries(providers) {
   return providers.flatMap((provider) => {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       return [];
     }
     return provider.models.flatMap((rawModel) => {
@@ -26630,6 +26634,17 @@ function createDefaultAppConfig(options) {
       streamReplies: true,
       tenantId: "ccr"
     },
+    contextArchive: {
+      enabled: false,
+      maxBytes: 512 * 1024 * 1024,
+      maxSnapshotBytes: 32 * 1024 * 1024,
+      maxSnapshots: 200,
+      mcpEnabled: true,
+      replayTimeoutMs: 6e4,
+      retentionDays: 30,
+      storagePath: "",
+      toolName: "ccr_history_ask"
+    },
     gateway: {
       coreHost,
       corePort: 3457,
@@ -26659,6 +26674,7 @@ function createDefaultAppConfig(options) {
     profile: {
       claudeCode: {
         enabled: true,
+        managedCompact: false,
         model: "",
         settingsFile: "~/.claude/settings.json",
         smallFastModel: ""
@@ -26670,6 +26686,7 @@ function createDefaultAppConfig(options) {
         configFormat: "separate_profile_files",
         configFile: "~/.codex/config.toml",
         enabled: true,
+        managedCompact: false,
         model: "",
         providerId: "claude-code-router",
         providerName: "Claude Code Router",
@@ -26682,6 +26699,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: { ...CLAUDE_CODE_DEFAULT_ENV },
           id: "default-claude-code",
+          managedCompact: false,
           model: "",
           name: "Claude Code",
           scope: "global",
@@ -26699,6 +26717,7 @@ function createDefaultAppConfig(options) {
           enabled: true,
           env: {},
           id: "default-codex",
+          managedCompact: false,
           model: "",
           name: "Codex",
           providerId: "claude-code-router",
@@ -26913,6 +26932,22 @@ var geminiProviderPreset = {
     { flags: "i", source: "^AIza[a-z0-9_-]{20,}$" }
   ],
   websiteUrl: "https://gemini.google.com/"
+};
+
+// packages/core/src/providers/presets/infistar-ai/index.ts
+var infistarAiProviderPreset = {
+  account: defaultProviderAccountConfig,
+  aliases: ["infistar", "infistar ai", "\u65E0\u9650\u661F\u6CB3", "\u65E0\u9650\u661F\u6CB3ai", "\u65E0\u9650\u661F\u6CB3 ai"],
+  defaultModels: ["gpt-4o"],
+  endpoints: [
+    {
+      baseUrl: "https://infistar.ai/v1",
+      protocols: ["openai_chat_completions"]
+    }
+  ],
+  id: "infistar-ai",
+  name: "Infistar AI",
+  websiteUrl: "https://infistar.ai"
 };
 
 // packages/core/src/providers/presets/kimi-coding/index.ts
@@ -27658,6 +27693,7 @@ var providerPresets = [
   siliconFlowProviderPreset,
   qiniuAiProviderPreset,
   fennoProviderPreset,
+  infistarAiProviderPreset,
   runApiProviderPreset,
   teamoRouterProviderPreset,
   unity2ProviderPreset,
@@ -27818,6 +27854,17 @@ async function loadAppConfig() {
       },
       botConfigs: picked.botConfigs ?? DEFAULT_CONFIG.botConfigs,
       botGateway: completeBotGatewayConfig(picked.botGateway),
+      contextArchive: {
+        enabled: picked.contextArchive?.enabled ?? DEFAULT_CONFIG.contextArchive.enabled,
+        maxBytes: picked.contextArchive?.maxBytes ?? DEFAULT_CONFIG.contextArchive.maxBytes,
+        maxSnapshotBytes: picked.contextArchive?.maxSnapshotBytes ?? DEFAULT_CONFIG.contextArchive.maxSnapshotBytes,
+        maxSnapshots: picked.contextArchive?.maxSnapshots ?? DEFAULT_CONFIG.contextArchive.maxSnapshots,
+        mcpEnabled: picked.contextArchive?.mcpEnabled ?? DEFAULT_CONFIG.contextArchive.mcpEnabled,
+        replayTimeoutMs: picked.contextArchive?.replayTimeoutMs ?? DEFAULT_CONFIG.contextArchive.replayTimeoutMs,
+        retentionDays: picked.contextArchive?.retentionDays ?? DEFAULT_CONFIG.contextArchive.retentionDays,
+        storagePath: picked.contextArchive?.storagePath ?? DEFAULT_CONFIG.contextArchive.storagePath,
+        toolName: picked.contextArchive?.toolName ?? DEFAULT_CONFIG.contextArchive.toolName
+      },
       gateway: {
         ...DEFAULT_CONFIG.gateway,
         ...gatewayConfig,
@@ -28077,6 +28124,10 @@ function pickConfig(value) {
   if (botConfigs) {
     config.botConfigs = botConfigs;
   }
+  const contextArchive = parseContextArchive(value.contextArchive ?? value.context_archive);
+  if (contextArchive) {
+    config.contextArchive = contextArchive;
+  }
   if (typeof value.autoStart === "boolean") {
     config.autoStart = value.autoStart;
   }
@@ -28166,6 +28217,48 @@ function pickConfig(value) {
     config.overviewWidgets = overviewWidgets;
   }
   return config;
+}
+function parseContextArchive(value) {
+  if (!isObject2(value)) {
+    return void 0;
+  }
+  const contextArchive = {};
+  if (typeof value.enabled === "boolean") {
+    contextArchive.enabled = value.enabled;
+  }
+  const mcpEnabled = value.mcpEnabled ?? value.mcp_enabled;
+  if (typeof mcpEnabled === "boolean") {
+    contextArchive.mcpEnabled = mcpEnabled;
+  }
+  const maxBytes = readNumber(value.maxBytes ?? value.max_bytes);
+  if (maxBytes !== void 0) {
+    contextArchive.maxBytes = clampNumber(maxBytes, 1024 * 1024, 64 * 1024 * 1024 * 1024);
+  }
+  const maxSnapshotBytes = readNumber(value.maxSnapshotBytes ?? value.max_snapshot_bytes);
+  if (maxSnapshotBytes !== void 0) {
+    contextArchive.maxSnapshotBytes = clampNumber(maxSnapshotBytes, 64 * 1024, 1024 * 1024 * 1024);
+  }
+  const maxSnapshots = readNumber(value.maxSnapshots ?? value.max_snapshots);
+  if (maxSnapshots !== void 0) {
+    contextArchive.maxSnapshots = clampNumber(maxSnapshots, 1, 1e5);
+  }
+  const replayTimeoutMs = readNumber(value.replayTimeoutMs ?? value.replay_timeout_ms);
+  if (replayTimeoutMs !== void 0) {
+    contextArchive.replayTimeoutMs = clampNumber(replayTimeoutMs, 1e3, 6e5);
+  }
+  const retentionDays = readNumber(value.retentionDays ?? value.retention_days);
+  if (retentionDays !== void 0) {
+    contextArchive.retentionDays = clampNumber(retentionDays, 1, 3650);
+  }
+  const storagePath = readString4(value.storagePath ?? value.storage_path);
+  if (storagePath !== void 0) {
+    contextArchive.storagePath = storagePath;
+  }
+  const toolName = readString4(value.toolName ?? value.tool_name);
+  if (toolName !== void 0) {
+    contextArchive.toolName = toolName;
+  }
+  return Object.keys(contextArchive).length ? contextArchive : void 0;
 }
 function removeVirtualModelToolLoopLimits(value) {
   if (!isObject2(value) || !isObject2(value.execution) || !("maxTurns" in value.execution) && !("maxToolCalls" in value.execution)) {
@@ -28531,12 +28624,14 @@ function parseProviders(value) {
       extraHeaders: item.extraHeaders,
       icon: readString4(item.icon),
       id: readString4(item.id),
+      enabled: item.enabled === false ? false : void 0,
       modelDescriptions,
       modelDisplayNames,
       modelMetadata,
       models,
       name,
       provider: readString4(item.provider),
+      protocolDetectionMode: parseEnumValue(item.protocolDetectionMode, ["auto", "manual"], void 0),
       transformer: item.transformer,
       type: readString4(item.type)
     };
@@ -29564,6 +29659,10 @@ function parseProfile(value) {
     if (typeof claudeCode.enabled === "boolean") {
       profile.claudeCode.enabled = claudeCode.enabled;
     }
+    const managedCompact = readManagedCompact(claudeCode);
+    if (managedCompact !== void 0) {
+      profile.claudeCode.managedCompact = managedCompact;
+    }
     const settingsFile = readString4(claudeCode.settingsFile) || readString4(claudeCode.configFile) || readString4(claudeCode.path);
     if (settingsFile) {
       profile.claudeCode.settingsFile = settingsFile;
@@ -29582,6 +29681,10 @@ function parseProfile(value) {
     profile.codex = {};
     if (typeof codex.enabled === "boolean") {
       profile.codex.enabled = codex.enabled;
+    }
+    const managedCompact = readManagedCompact(codex);
+    if (managedCompact !== void 0) {
+      profile.codex.managedCompact = managedCompact;
     }
     if (typeof codex.cliMiddleware === "boolean") {
       profile.codex.cliMiddleware = codex.cliMiddleware;
@@ -29674,6 +29777,7 @@ function parseProfiles(value) {
     const botConfigId = surface !== "cli" ? readString4(item.botConfigId) || readString4(item.bot_config_id) || readString4(item.savedBotConfigId) || readString4(item.saved_bot_config_id) : "";
     const parsedBotGateway = parseBotGateway(item.botGateway ?? item.bot_gateway ?? item.bot);
     const botGateway = surface !== "cli" && parsedBotGateway ? completeBotGatewayConfig(parsedBotGateway) : void 0;
+    const managedCompact = readManagedCompact(item);
     if (agent === "claude-code") {
       const appPath2 = readProfileAppPath(item, agent);
       return {
@@ -29684,6 +29788,7 @@ function parseProfiles(value) {
         enabled,
         env: claudeCodeProfileEnv(env),
         id,
+        ...managedCompact !== void 0 ? { managedCompact } : {},
         model,
         name,
         scope: parseProfileScope(readString4(item.scope) || readString4(item.applyScope) || readString4(item.effectScope)) || "global",
@@ -29719,6 +29824,7 @@ function parseProfiles(value) {
       enabled,
       env: codexCompatibleProfileEnv(env),
       id,
+      ...managedCompact !== void 0 ? { managedCompact } : {},
       model,
       name,
       providerId: readString4(item.providerId) || readString4(item.provider) || "claude-code-router",
@@ -29758,6 +29864,10 @@ function parseProfileAgent(value) {
   }
   return void 0;
 }
+function readManagedCompact(value) {
+  const candidate = value.managedCompact ?? value.managed_compact ?? value.ccrManagedCompact ?? value.ccr_managed_compact ?? value.contextArchiveCompact ?? value.context_archive_compact;
+  return typeof candidate === "boolean" ? candidate : void 0;
+}
 function defaultProfileAgentName(agent) {
   if (agent === "claude-code") {
     return "Claude Code";
@@ -29792,6 +29902,7 @@ function profileFromClaudeCodeConfig(config) {
     enabled: config.enabled,
     env: claudeCodeProfileEnv(),
     id: "default-claude-code",
+    managedCompact: config.managedCompact,
     model: config.model,
     name: "Claude Code",
     scope: "global",
@@ -29821,6 +29932,7 @@ function profileFromCodexConfig(config) {
     enabled: config.enabled,
     env: {},
     id: "default-codex",
+    managedCompact: config.managedCompact,
     model: config.model,
     name: "Codex",
     providerId: config.providerId,
@@ -37542,7 +37654,9 @@ var ModelRegistry = class {
     if (!normalized) {
       return void 0;
     }
-    return this.config.Providers.find((provider) => providerAliases(provider).has(normalized));
+    return this.config.Providers.find(
+      (provider) => isGatewayProviderEnabled(provider) && providerAliases(provider).has(normalized)
+    );
   }
   resolveProviderModel(value) {
     const resolved = this.resolve(value);
@@ -37560,6 +37674,9 @@ var ModelRegistry = class {
     const normalized = caseInsensitive ? model.toLowerCase() : model;
     const matches = [];
     for (const provider of this.config.Providers) {
+      if (!isGatewayProviderEnabled(provider)) {
+        continue;
+      }
       for (const candidate of provider.models) {
         const configured = candidate.trim();
         const comparable = caseInsensitive ? configured.toLowerCase() : configured;
@@ -37683,9 +37800,12 @@ function findProviderByPublicOrInternalName(config, name) {
   const credentialInternalName = parseProviderCredentialInternalName(name);
   if (credentialInternalName) {
     const internalProviderId = credentialInternalName.providerId.toLowerCase();
-    return config.Providers.find(
-      (provider) => provider.name.trim().toLowerCase() === internalProviderId || providerRuntimeId(provider).toLowerCase() === internalProviderId
-    );
+    return config.Providers.find((provider) => {
+      if (!isGatewayProviderEnabled(provider)) {
+        return false;
+      }
+      return provider.name.trim().toLowerCase() === internalProviderId || providerRuntimeId(provider).toLowerCase() === internalProviderId;
+    });
   }
   return modelRegistryForConfig(config).findProvider(normalized);
 }

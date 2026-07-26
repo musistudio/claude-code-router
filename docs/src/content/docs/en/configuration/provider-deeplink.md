@@ -102,6 +102,10 @@ Choose a provider below to get started. CCR shows what will be added before savi
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/fenno.jpg" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">Fenno.ai</span><span class="provider-import-meta">Chat / Responses / Anthropic</span></span>
   </a>
+  <a class="provider-import-button provider-infistar-ai" href="ccr://provider?name=%E6%97%A0%E9%99%90%E6%98%9F%E6%B2%B3&amp;base_url=https%3A%2F%2Finfistar.ai%2Fv1&amp;protocol=openai_chat_completions&amp;models=gpt-4o&amp;source=https%3A%2F%2Finfistar.ai" aria-label="Import 无限星河 provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/infistar-ai.jpg" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">无限星河</span><span class="provider-import-meta">OpenAI compatible gateway</span></span>
+  </a>
 </div>
 
 ## Embeddable Button Component
