@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createGatewayPlugin,
+  rewriteUpstreamProviderUrl,
   sanitizeUpstreamProviderHeaders
 } from "@ccr/core/gateway/core-runtime/upstream-header-sanitizer.ts";
 
@@ -93,4 +94,78 @@ test("gateway sanitizer hook forwards client headers without overriding provider
     "x-custom-list": "one,two",
     "x-title": "Claude Code Router"
   });
+});
+
+test("upstream sanitizer rewrites Anthropic requests to the selected provider base URL", () => {
+  const hook = createGatewayPlugin().providerHooks[0];
+
+  const result = hook.transformRequest({
+    config: {
+      anthropicBaseUrl: "https://api.anthropic.com"
+    },
+    request: {
+      headers: {
+        "x-request-id": "request-1"
+      }
+    },
+    targetProviderConfig: {
+      baseurl: "http://127.0.0.1:4000",
+      name: "depu-messages::anthropic_messages",
+      type: "anthropic_messages"
+    },
+    upstreamRequest: {
+      body: { model: "GLM-5.2-NVFP4-Claude" },
+      headers: {
+        "content-type": "application/json"
+      },
+      url: "https://api.anthropic.com/v1/messages"
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.value.url, "http://127.0.0.1:4000/v1/messages");
+  assert.deepEqual(result.value.headers, {
+    "content-type": "application/json",
+    "x-request-id": "request-1"
+  });
+});
+
+test("Anthropic provider URL rewrite preserves target base path variants", () => {
+  assert.equal(
+    rewriteUpstreamProviderUrl(
+      "https://api.anthropic.com/v1/messages",
+      { baseurl: "http://127.0.0.1:4000/anthropic", type: "anthropic_messages" },
+      { anthropicBaseUrl: "https://api.anthropic.com" }
+    ),
+    "http://127.0.0.1:4000/anthropic/v1/messages"
+  );
+
+  assert.equal(
+    rewriteUpstreamProviderUrl(
+      "https://gateway.example/anthropic/v1/messages",
+      { baseurl: "http://127.0.0.1:4000/vendor/anthropic", type: "anthropic_messages" },
+      { anthropicBaseUrl: "https://gateway.example/anthropic" }
+    ),
+    "http://127.0.0.1:4000/vendor/anthropic/v1/messages"
+  );
+});
+
+test("provider URL rewrite ignores unrelated providers and upstream hosts", () => {
+  assert.equal(
+    rewriteUpstreamProviderUrl(
+      "https://api.openai.com/v1/responses",
+      { baseurl: "http://127.0.0.1:4000/v1", type: "openai_responses" },
+      { anthropicBaseUrl: "https://api.anthropic.com" }
+    ),
+    "https://api.openai.com/v1/responses"
+  );
+
+  assert.equal(
+    rewriteUpstreamProviderUrl(
+      "https://other.example/v1/messages",
+      { baseurl: "http://127.0.0.1:4000", type: "anthropic_messages" },
+      { anthropicBaseUrl: "https://api.anthropic.com" }
+    ),
+    "https://other.example/v1/messages"
+  );
 });
