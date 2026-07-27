@@ -188,6 +188,12 @@ test("ZCode app model catalog uses the public model context window", () => {
         models: ["gpt-5.6-sol"],
         name: "Codex API",
         type: "openai_responses"
+      }],
+      virtualModelProfiles: [{
+        baseModel: { fixedModel: "Codex API/gpt-5.6-sol", mode: "fixed" },
+        enabled: true,
+        match: { exactAliases: ["catalog-context"], prefixes: [], suffixes: [] },
+        materialization: { enabled: true, includeInGatewayModels: true }
       }]
     };
     const profile = {
@@ -204,9 +210,12 @@ test("ZCode app model catalog uses the public model context window", () => {
 
     const result = writeCodexCompatibleAppModelCatalog(configDir, profile, config);
     const catalog = JSON.parse(readFileSync(result.file, "utf8"));
+    const fusionModel = catalog.models.find((item) => item.slug === "Fusion/catalog-context");
     const model = catalog.models.find((item) => item.slug === "Codex API/gpt-5.6-sol");
 
     assert.equal(path.basename(result.file), "ccr-zcode-model-catalog.json");
+    assert.equal(fusionModel.context_window, 1_050_000);
+    assert.equal(fusionModel.max_context_window, 1_050_000);
     assert.equal(model.context_window, 1_050_000);
     assert.equal(model.max_context_window, 1_050_000);
   } finally {
