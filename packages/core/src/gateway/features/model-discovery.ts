@@ -117,6 +117,10 @@ function createOpenAICompatibleGatewayModelsResponse(config: AppConfig): Record<
 }
 
 
+// FIX: Return provider model name (route.targetModel) instead of hex route ID (route.id) to Claude Code.
+// When Claude Code uses hex route IDs like "anthropic/claude-ccr-h4e6562756c..." as body.model,
+// upstream providers don't recognize them and return 400 errors.
+// The hex route ID is only needed internally for CCR's routing, not for upstream API calls.
 function createClaudeAppGatewayModelsResponse(
   config: AppConfig,
   options: { claudeCode?: boolean } = {}
@@ -129,8 +133,13 @@ function createClaudeAppGatewayModelsResponse(
     const maxInputTokens = claudeGatewayModelContextWindow(catalogEntry, route.oneMillionContext, modelMetadata);
     const maxOutputTokens = modelCatalogMaxOutputTokens(catalogEntry);
     const exposeOneMillionContextVariant = options.claudeCode && route.oneMillionContext;
+    // Use targetModel (e.g., "NebulaCoder/nebulacoder-v8.0") as the ID, not the hex route ID.
+    // This ensures Claude Code sends recognizable model names to upstream providers.
+    const modelId = exposeOneMillionContextVariant
+      ? claudeCodeOneMillionContextModelId(route.targetModel)
+      : route.targetModel;
     return {
-      id: exposeOneMillionContextVariant ? claudeCodeOneMillionContextModelId(route.id) : route.id,
+      id: modelId,
       capabilities: createClaudeCodeModelCapabilities(catalogEntry, {
         maxInputTokens,
         oneMillionContext: route.oneMillionContext,
