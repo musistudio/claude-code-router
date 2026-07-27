@@ -986,11 +986,34 @@ function isProcessAlive(pid: number | undefined): boolean {
   }
 }
 
-function isProfileAppRunning(entry: Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "userDataDir">): boolean {
-  if (profileAppMainPid(entry)) {
+type ProfileAppRunningEntry = Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "userDataDir">;
+
+type ProfileAppProcessProbe = {
+  isProcessAlive: (pid: number | undefined) => boolean;
+  profileAppMainPid: (entry: ProfileAppRunningEntry) => number | undefined;
+};
+
+const defaultProfileAppProcessProbe: ProfileAppProcessProbe = {
+  isProcessAlive,
+  profileAppMainPid
+};
+
+function profileAppRunningWithProbe(entry: ProfileAppRunningEntry, probe: ProfileAppProcessProbe): boolean {
+  if (!entry.pidIsLauncher && probe.isProcessAlive(entry.pid)) {
     return true;
   }
-  return !entry.pidIsLauncher && isProcessAlive(entry.pid);
+  return Boolean(probe.profileAppMainPid(entry));
+}
+
+function isProfileAppRunning(entry: ProfileAppRunningEntry): boolean {
+  return profileAppRunningWithProbe(entry, defaultProfileAppProcessProbe);
+}
+
+export function isProfileAppRunningWithProbeForTest(
+  entry: ProfileAppRunningEntry,
+  probe: ProfileAppProcessProbe
+): boolean {
+  return profileAppRunningWithProbe(entry, probe);
 }
 
 function profileAppMainPid(entry: Pick<RunningProfileApp, "userDataDir">): number | undefined {
@@ -1136,10 +1159,7 @@ async function waitForProfileAppStart(entry: Pick<RunningProfileApp, "pid" | "pi
     if (entry.spawnError) {
       return false;
     }
-    if (profileAppMainPid(entry)) {
-      return true;
-    }
-    if (!entry.pidIsLauncher && isProcessAlive(entry.pid)) {
+    if (isProfileAppRunning(entry)) {
       return true;
     }
     if (process.platform !== "win32" && !entry.pidIsLauncher && !isProcessAlive(entry.pid)) {
@@ -1147,7 +1167,7 @@ async function waitForProfileAppStart(entry: Pick<RunningProfileApp, "pid" | "pi
     }
     await sleep(100);
   }
-  return !entry.spawnError && (Boolean(profileAppMainPid(entry)) || (!entry.pidIsLauncher && isProcessAlive(entry.pid)));
+  return !entry.spawnError && isProfileAppRunning(entry);
 }
 
 async function waitForStableProfileAppStart(
@@ -1161,7 +1181,7 @@ async function waitForStableProfileAppStart(
     if (entry.spawnError) {
       return false;
     }
-    const running = Boolean(profileAppMainPid(entry)) || (!entry.pidIsLauncher && isProcessAlive(entry.pid));
+    const running = isProfileAppRunning(entry);
     if (running) {
       runningSince ??= Date.now();
       if (Date.now() - runningSince >= stableMs) {
