@@ -15,7 +15,6 @@ import type {
   ProxyForwardMode,
   ProxyCertificateInstallResult,
   ProxyCertificateStatus,
-  ProxyMode,
   ProxyNetworkBody,
   ProxyNetworkExchange,
   ProxyNetworkSnapshot,

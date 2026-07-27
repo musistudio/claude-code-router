@@ -11,11 +11,11 @@ import { getSystemProxyUrlForProtocol } from "@ccr/core/proxy/system-proxy-fetch
 import { pluginService } from "@ccr/core/plugins/service";
 import { proxyService } from "@ccr/core/proxy/service";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin";
-import { writeCoreGatewayConfig } from "@ccr/core/gateway/core-runtime/config-writer";
+import { compileCoreGatewayConfig } from "@ccr/core/gateway/core-runtime/config-compiler";
 import { closeServer, formatError } from "@ccr/core/gateway/http/io";
 import { RawTraceSynchronizer } from "@ccr/core/observability/raw-trace-sync";
 import { GatewayBillingSynchronizer } from "@ccr/core/usage/billing-sync";
-import { assertLoopbackCoreHost, endpoint, gatewayNetworkEndpoints, generateCoreGatewayAuthToken, isCoreGatewayHealthy, loopbackCoreHostError, removeManagedCoreGatewayMarker, shouldRunGatewayRuntime, shouldRunUnifiedServer, spawnGatewayProcess, stopPreviousManagedCoreGateway, writeManagedCoreGatewayMarker } from "@ccr/core/gateway/core-runtime/supervisor";
+import { assertLoopbackCoreHost, endpoint, gatewayNetworkEndpoints, generateCoreGatewayAuthToken, isCoreGatewayHealthy, loopbackCoreHostError, removeManagedCoreGatewayMarker, shouldRunGatewayRuntime, shouldRunUnifiedServer, spawnGatewayProcess, stopPreviousManagedCoreGateway, waitForManagedCoreGatewayReady, writeManagedCoreGatewayMarker } from "@ccr/core/gateway/core-runtime/supervisor";
 import { coreGatewayAuthHeader } from "@ccr/core/gateway/internal/shared";
 import type { BrowserAutomationMcpIntegration, BrowserWebSearchMcpIntegration, GatewayStopOptions } from "@ccr/core/gateway/internal/shared";
 import { GatewayRequestPipeline } from "@ccr/core/gateway/request/pipeline";
@@ -71,7 +71,6 @@ class GatewayService {
   private status: GatewayStatus = {
     coreEndpoint: "",
     endpoint: "",
-    generatedConfigFile: "",
     networkEndpoints: [],
     state: "stopped"
   };
@@ -105,7 +104,6 @@ class GatewayService {
     this.status = {
       coreEndpoint: endpoint(config.gateway.coreHost, config.gateway.corePort),
       endpoint: endpoint(config.gateway.host, config.gateway.port),
-      generatedConfigFile: config.gateway.generatedConfigFile,
       networkEndpoints: gatewayNetworkEndpoints(config.gateway.host, config.gateway.port),
       state: "starting"
     };
@@ -146,7 +144,7 @@ class GatewayService {
       if (shouldRunGateway) {
         await proxyService.refreshUpstreamProxyFromCurrentSystem();
         const upstreamProxyUrl = proxyService.getUpstreamProxyUrl("https") ?? await getSystemProxyUrlForProtocol("https", config);
-        await writeCoreGatewayConfig(
+        const coreGatewayConfig = await compileCoreGatewayConfig(
           config,
           this.rawTraceSynchronizer.token,
           this.billingSynchronizer.token,
@@ -154,20 +152,32 @@ class GatewayService {
           this.browserWebSearchMcpIntegration,
           upstreamProxyUrl
         );
-        await stopPreviousManagedCoreGateway(config, this.status.coreEndpoint);
+        await stopPreviousManagedCoreGateway(this.status.coreEndpoint);
         if (await isCoreGatewayHealthy(this.status.coreEndpoint)) {
           throw new Error(`Core gateway endpoint is already in use: ${this.status.coreEndpoint}`);
         }
         const runtimeId = randomUUID();
-        this.child = spawnGatewayProcess(config, upstreamProxyUrl, runtimeId, coreAuthToken);
+        const spawnedGateway = spawnGatewayProcess(config, coreGatewayConfig, upstreamProxyUrl, runtimeId, coreAuthToken);
+        this.child = spawnedGateway.child;
         this.coreAuthToken = coreAuthToken;
         const managedChild = this.child;
-        writeManagedCoreGatewayMarker(config, this.child, runtimeId);
+        let markerWritePromise: Promise<void> | undefined;
+        let startupFailure: Error | undefined;
         this.child.stdout?.on("data", (chunk) => console.info(`[gateway] ${chunk.toString().trimEnd()}`));
         this.child.stderr?.on("data", (chunk) => console.warn(`[gateway] ${chunk.toString().trimEnd()}`));
-        this.child.on("exit", (code, signal) => {
-          void this.handleCoreGatewayExit(managedChild, code, signal);
+        this.child.once("error", (error) => {
+          startupFailure ??= new Error(`Core gateway failed to start: ${formatError(error)}`);
+          void this.handleCoreGatewayTermination(managedChild, markerWritePromise, startupFailure.message);
         });
+        this.child.once("exit", (code, signal) => {
+          startupFailure ??= new Error(coreGatewayExitMessage(code, signal));
+          void this.handleCoreGatewayTermination(managedChild, markerWritePromise, startupFailure.message);
+        });
+        markerWritePromise = writeManagedCoreGatewayMarker(managedChild, runtimeId);
+        await Promise.all([markerWritePromise, spawnedGateway.configAccepted]);
+        assertManagedGatewayStartupContinues(managedChild, startupFailure);
+        await waitForManagedCoreGatewayReady(this.status.coreEndpoint, runtimeId, managedChild);
+        assertManagedGatewayStartupContinues(managedChild, startupFailure);
       }
 
       this.status = {
@@ -191,13 +201,14 @@ class GatewayService {
 
   async stop(options: GatewayStopOptions = {}): Promise<GatewayStatus> {
     const child = this.child;
-    const config = this.config;
     this.child = undefined;
     this.coreAuthToken = "";
     if (child && !child.killed) {
       child.kill();
     }
-    removeManagedCoreGatewayMarker(config);
+    if (child) {
+      await removeManagedCoreGatewayMarkerBestEffort();
+    }
 
     const server = this.server;
     this.server = undefined;
@@ -255,7 +266,6 @@ class GatewayService {
       ...this.status,
       coreEndpoint: endpoint(config.gateway.coreHost, config.gateway.corePort),
       endpoint: endpoint(config.gateway.host, config.gateway.port),
-      generatedConfigFile: config.gateway.generatedConfigFile,
       networkEndpoints: gatewayNetworkEndpoints(config.gateway.host, config.gateway.port)
     };
   }
@@ -344,15 +354,22 @@ class GatewayService {
     });
   }
 
-  private async handleCoreGatewayExit(child: ChildProcess, code: number | null, signal: NodeJS.Signals | null): Promise<void> {
+  private async handleCoreGatewayTermination(
+    child: ChildProcess,
+    markerWritePromise: Promise<void> | undefined,
+    message: string
+  ): Promise<void> {
+    await markerWritePromise?.catch(() => undefined);
     if (this.child !== child || this.status.state === "stopped") {
       return;
     }
-    removeManagedCoreGatewayMarker(this.config);
+    this.child = undefined;
+    this.coreAuthToken = "";
+    await removeManagedCoreGatewayMarkerBestEffort();
     this.status = {
       ...this.status,
       coreManagedExternally: undefined,
-      lastError: `Core gateway exited with ${signal ?? code ?? "unknown status"}`,
+      lastError: message,
       pid: undefined,
       state: "error"
     };
@@ -366,6 +383,22 @@ class GatewayService {
     return this.requestPipeline.proxyRequest(request, response, path, apiKey);
   }
 
+}
+
+function coreGatewayExitMessage(code: number | null, signal: NodeJS.Signals | null): string {
+  return `Core gateway exited with ${signal ?? code ?? "unknown status"}`;
+}
+
+function assertManagedGatewayStartupContinues(child: ChildProcess, startupFailure: Error | undefined): void {
+  if (startupFailure || child.exitCode !== null || child.signalCode !== null || child.killed) {
+    throw startupFailure ?? new Error(coreGatewayExitMessage(child.exitCode, child.signalCode));
+  }
+}
+
+async function removeManagedCoreGatewayMarkerBestEffort(): Promise<void> {
+  await removeManagedCoreGatewayMarker().catch((error) => {
+    console.warn(`[gateway] Failed to remove gateway runtime marker: ${formatError(error)}`);
+  });
 }
 
 

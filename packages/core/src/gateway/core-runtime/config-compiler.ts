@@ -1,7 +1,6 @@
 /**
  * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
  */
-import { join as pathJoin } from "node:path";
 import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
 import { codexDefaultBaseUrl, kimiAccessTokenExpired, kimiIdentityHeaders, readClaudeCodeOauth, readCodexAuth, readGrokAuth, readKimiAuth, resolveGrokAuth, resolveKimiAuth } from "@ccr/core/agents/local-providers/service";
@@ -14,7 +13,7 @@ import { mediaToolsMcpServer } from "@ccr/core/mcp/grok-media-config";
 import { resolveGatewayPublicModelId } from "@ccr/core/gateway/features/model-discovery";
 import { activeProviderCredentials, inferProtocol, normalizedProviderCapabilities, normalizeProviderProtocol, providerCapabilityForClientProtocol, providerCapabilityInternalName, providerCapabilityNameMatches, providerCredentialInternalName, providerProtocolForClientProtocol, sortProviderCredentialsForConfig, toCoreGatewayProviders } from "@ccr/core/providers/runtime-topology";
 import { buildRawTraceConfig } from "@ccr/core/observability/raw-trace-sync";
-import { endpoint, resolveUndiciProxyAgentModule, writeGatewayProxyPreloadFile } from "@ccr/core/gateway/core-runtime/supervisor";
+import { endpoint, resolveUndiciProxyAgentModule, resolveUpstreamHeaderSanitizerEntry, writeGatewayProxyPreloadFile } from "@ccr/core/gateway/core-runtime/supervisor";
 import { billingUsageSyncHeader, billingUsageSyncPath, claudeCodeOauthBetaHeader, claudeCodeOauthRequiredBeta, coreGatewayAuthHeader, coreGatewayAuthTokenEnv } from "@ccr/core/gateway/internal/shared";
 import type { BrowserWebSearchMcpIntegration, CoreGatewayProvider } from "@ccr/core/gateway/internal/shared";
 import { uniqueStrings } from "@ccr/core/gateway/internal/collections";
@@ -54,7 +53,7 @@ export async function compileCoreGatewayConfig(
   const providerPluginsWithCapabilityAliases = withProviderCapabilityPluginAliases(providerPlugins, enabledProviders);
   const virtualModelProfiles = coreGatewayVirtualModelProfiles(config);
   const coreEndpoint = endpoint(config.gateway.coreHost, config.gateway.corePort);
-  const proxyPreloadFile = upstreamProxyUrl ? writeGatewayProxyPreloadFile(config, upstreamProxyUrl) : undefined;
+  const proxyPreloadFile = upstreamProxyUrl ? writeGatewayProxyPreloadFile() : undefined;
   const proxyEnv = upstreamProxyUrl
     ? { CCR_UPSTREAM_PROXY_URL: upstreamProxyUrl, CCR_UNDICI_MODULE: resolveUndiciProxyAgentModule() }
     : undefined;
@@ -136,7 +135,7 @@ export async function compileCoreGatewayConfig(
       {
         enabled: true,
         key: upstreamHeaderSanitizerPluginKey,
-        modulePath: pathJoin(__dirname, "upstream-header-sanitizer.js")
+        modulePath: resolveUpstreamHeaderSanitizerEntry()
       }
     ],
     upstreamTimeoutMs: Number(config.API_TIMEOUT_MS) || 0,
@@ -150,7 +149,6 @@ export async function compileCoreGatewayConfig(
     virtualModelProfiles
   };
 }
-
 
 function withProviderCapabilityPluginAliases(
   providerPlugins: unknown[],

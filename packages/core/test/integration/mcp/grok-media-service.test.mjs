@@ -141,7 +141,7 @@ test("OpenAI video bindings expose the exact cross-protocol parameter subset", (
 
 test("an imported Grok Agent supplies OAuth-backed Grok API media models without an API key", async (t) => {
   const root = mkdtempSync(path.join(os.tmpdir(), "ccr-grok-agent-media-"));
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const config = createDefaultAppConfig();
   config.mediaTools.enabled = true;
   config.Providers = [normalizeGrokProviderMediaCapabilities({
     apiKey: "ccr-local-agent-login",
@@ -363,7 +363,7 @@ test("provider video jobs return immediately and finish through asynchronous pol
 });
 
 function mediaConfig(baseUrlValue) {
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const config = createDefaultAppConfig();
   config.mediaTools = {
     ...config.mediaTools,
     artifactTtlHours: 1,

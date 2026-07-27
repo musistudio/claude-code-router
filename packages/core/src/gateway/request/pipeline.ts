@@ -37,7 +37,6 @@ import { createGatewayModelsResponse, prepareClaudeAppDiscoveredModelRequest, pr
 import { resolveProviderLogName, resolveResponseProviderProtocol, sanitizeHeaderValue } from "@ccr/core/providers/runtime-topology";
 import { createBodySampler, requestLogSampled, shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
 import { RequestRouteTraceRecorder } from "@ccr/core/observability/route-trace";
-import { endpoint } from "@ccr/core/gateway/core-runtime/supervisor";
 import { coreGatewayUsageAttributionConfig } from "@ccr/core/gateway/core-runtime/config-compiler";
 import { providerModelPricingForUsage } from "@ccr/core/models/pricing-service";
 import { clientClosedRequestStatusCode, clientDisconnectMessage, resolveStreamRequestLogOutcome, UpstreamRequestError } from "@ccr/core/gateway/internal/shared";

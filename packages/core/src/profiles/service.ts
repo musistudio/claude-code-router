@@ -3,7 +3,7 @@ import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readlinkSync
 import os from "node:os";
 import path from "node:path";
 import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, availableGatewayModelIds, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, isGatewayProviderEnabled, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "@ccr/core/contracts/app";
-import { replacePersistedApiKeys } from "@ccr/core/config/api-key-store";
+import { replacePersistedApiKeys } from "@ccr/core/config/config-repository";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import {
   CLAUDE_CODE_MCP_CONFIG_ENV,
@@ -32,7 +32,6 @@ import {
 import {
   piWrapperFilename,
   resolvePiAgentDir,
-  resolvePiSessionDir,
   writePiGatewayConfig
 } from "@ccr/core/agents/pi/profile-config";
 import { CONFIGDIR } from "@ccr/core/config/constants";
@@ -3233,31 +3232,6 @@ function unavailableModelStatus(profile: ProfileConfig, file: string): ProfileCl
   };
 }
 
-function disabledProfileMessage(profile: ProfileConfig): string {
-  if (profile.agent === "claude-code") {
-    return "Claude Code profile is disabled.";
-  }
-  if (profile.agent === "grok") {
-    return "Grok CLI profile is disabled.";
-  }
-  if (profile.agent === "kimi") {
-    return "Kimi CLI profile is disabled.";
-  }
-  if (profile.agent === "pi") {
-    return "Pi profile is disabled.";
-  }
-  if (profile.agent === "claude-design") {
-    return "Claude Design profile is disabled.";
-  }
-  if (profile.agent === "opencode") {
-    return "OpenCode profile is disabled.";
-  }
-  if (profile.agent === "kilo") {
-    return "Kilo CLI profile is disabled.";
-  }
-  return `${codexCompatibleClientName(profile.agent)} profile is disabled.`;
-}
-
 function isGlobalProfile(profile: ProfileConfig): boolean {
   return normalizeProfileScope(profile.scope) === "global";
 }
@@ -3492,10 +3466,6 @@ function tomlInlineStringTable(values: Record<string, string>): string {
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([key, value]) => `${tomlKey(key)} = ${tomlString(value)}`)
     .join(", ")} }`;
-}
-
-function tomlStringContent(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r");
 }
 
 function shellQuote(value: string): string {

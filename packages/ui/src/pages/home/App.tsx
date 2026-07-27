@@ -7,7 +7,7 @@ import {
   createApiKeyList, createClaudeDesignRoutingDraft, createClaudeDesignRoutingRuleDraft, createCursorProxyRoutingDraft, createCursorProxyRoutingRuleDraft, createEmptyAgentAnalysis,
   copyTextToClipboard, createEmptyRequestLogPage, createEmptyUsageStats, createExtensionInstallDraft, createGeneratedApiKey, createPluginSettingsDraft, createProfileDraft,
   createProfileDraftFromProfile, createProviderDraft, createProviderDraftFromDeepLinkPayload, createProviderDraftFromProvider, createRoutingRuleDraft, createRoutingRuleDraftFromRule,
-  createVirtualModelDraft, createVirtualModelDraftFromProfile, customProviderPresetId, DEFAULT_TRAY_WIDGETS, detectSystemLanguage, detectSystemTheme,
+  createVirtualModelDraft, createVirtualModelDraftFromProfile, DEFAULT_TRAY_WIDGETS, detectSystemLanguage, detectSystemTheme,
   enforceSingleEnabledGlobalProfilePerAgent,
   ExtensionConfigTarget, ExtensionDeleteTarget, ExtensionInstallDraft, ExtensionSource, fallbackAgentAnalysis, fallbackConfig,
   fallbackGatewayStatus, fallbackInfo, fallbackProxyNetworkSnapshot, fallbackProxyStatus, fallbackRequestLogPage,
@@ -19,8 +19,8 @@ import {
   isTraySupportedPlatform,
   LayoutGroup, mergeModelDisplayNames, mergeModelMetadata, mergeProviderModelLists, modelDescriptionsForModels, modelDisplayNamesForModels, modelMetadataForModels,
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets, normalizeProxyConfig,
-  normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterBuiltInRules, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
-  normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
+  normalizeProfileItem, normalizeProviderBaseUrl, normalizeRouterBuiltInRules, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
+  normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
   OverviewWidgetConfig, parseProviderAccountDraft, pluginConfigPatchFromSettingsDraft,
   providerCredentialsFromDraft,
   persistLanguagePreference, PluginInstallCandidate, PluginMarketplaceEntry, PluginRoutingConfigTarget, PluginSettingsDraft, presetCapabilitiesFromDraft,
@@ -206,8 +206,8 @@ function App() {
   const [updateDialogStatus, setUpdateDialogStatus] = useState<AppUpdateStatus>(fallbackUpdateStatus);
   const [gatewayActionBusy, setGatewayActionBusy] = useState(false);
   const [gatewayActionTargetActive, setGatewayActionTargetActive] = useState<boolean>();
-  const [actionMessage, setActionMessage] = useState("");
-  const [actionError, setActionError] = useState("");
+  const [, setActionMessage] = useState("");
+  const [, setActionError] = useState("");
   const [profileActionError, setProfileActionError] = useState("");
   const [profileAddOpen, setProfileAddOpen] = useState(false);
   const [profileAgentTab, setProfileAgentTab] = useState<ProfileConfig["agent"]>("claude-code");
@@ -2130,21 +2130,6 @@ function App() {
     setPluginSettingsError("");
   }
 
-  function openConfigurePluginRouting(index: number) {
-    const item = draftConfig.plugins[index];
-    if (!item) {
-      return;
-    }
-    if (isClaudeDesignPluginConfig(item)) {
-      setClaudeDesignRoutingDraft(createClaudeDesignRoutingDraft(item.config));
-    } else if (isCursorProxyPluginConfig(item)) {
-      setCursorProxyRoutingDraft(createCursorProxyRoutingDraft(item.config));
-    } else {
-      return;
-    }
-    setPluginRoutingConfigTarget({ index });
-  }
-
   function updateClaudeDesignRoutingDraft(patch: Partial<ClaudeDesignRoutingDraft>) {
     setClaudeDesignRoutingDraft((current) => ({ ...current, ...patch }));
   }
@@ -2602,24 +2587,6 @@ function App() {
     setProfileActionError("");
   }
 
-  function openProfileDialog(index: number) {
-    const profile = draftConfig.profile.profiles[index];
-    if (!profile?.enabled) {
-      return;
-    }
-    setProfileActionError("");
-    const surfaces = profileOpenSurfaces(profile);
-    if (surfaces.length > 1) {
-      void showProfileCliCommand(profile, "choose");
-      return;
-    }
-    if (surfaces[0] === "app") {
-      void openProfileApp(profile);
-      return;
-    }
-    void showProfileCliCommand(profile);
-  }
-
   async function copyProfileCliCommand(index: number) {
     const profile = draftConfig.profile.profiles[index];
     if (!profile?.enabled || !profileOpenSurfaces(profile).includes("cli") || profileActionBusy) {
@@ -2718,31 +2685,6 @@ function App() {
       setProfileActionBusy((current) =>
         current?.profileId === profile.id && current.surface === "app" ? undefined : current
       );
-    }
-  }
-
-  async function showProfileCliCommand(profile: ProfileConfig, mode: "choose" | "cli" = "cli") {
-    const fallbackCommand = profileOpenCommandFallback(profile, "cli");
-    setProfileOpenDialog({ busy: "cli", command: fallbackCommand, mode, profile });
-    if (!(await persistConfig(draftConfig, setProfileActionError))) {
-      setProfileOpenDialog((current) => current?.profile.id === profile.id
-        ? { ...current, busy: "", error: profileActionError || t("Failed to save profile before opening.") }
-        : current);
-      return;
-    }
-    if (!window.ccr?.getProfileOpenCommand) {
-      setProfileOpenDialog((current) => current?.profile.id === profile.id ? { ...current, busy: "" } : current);
-      return;
-    }
-    try {
-      const result = await window.ccr.getProfileOpenCommand({ profileId: profile.id, surface: "cli" });
-      setProfileOpenDialog((current) => current?.profile.id === profile.id
-        ? { ...current, busy: "", command: result.command, error: "" }
-        : current);
-    } catch (error) {
-      setProfileOpenDialog((current) => current?.profile.id === profile.id
-        ? { ...current, busy: "", error: formatError(error) }
-        : current);
     }
   }
 

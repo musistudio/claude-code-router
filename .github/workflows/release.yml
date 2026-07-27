@@ -13,8 +13,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  model-catalog:
+    name: Update model catalog
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Update models.json
+        run: npm run models:update
+
+      - name: Upload model catalog
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-model-catalog
+          path: packages/core/models.json
+          if-no-files-found: error
+          retention-days: 1
+
   macos:
     name: macOS (${{ matrix.display_name }})
+    needs: model-catalog
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -44,6 +69,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Download updated model catalog
+        uses: actions/download-artifact@v4
+        with:
+          name: release-model-catalog
+          path: packages/core
 
       - name: Verify tag version
         shell: bash
@@ -155,6 +186,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Download updated model catalog
+        uses: actions/download-artifact@v4
+        with:
+          name: release-model-catalog
+          path: packages/core
+
       - name: Verify tag version
         shell: bash
         run: |
@@ -188,6 +225,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Download updated model catalog
+        uses: actions/download-artifact@v4
+        with:
+          name: release-model-catalog
+          path: packages/core
 
       - name: Verify tag version
         shell: bash

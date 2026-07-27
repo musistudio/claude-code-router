@@ -5,7 +5,7 @@ import { compileCoreGatewayConfig } from "@ccr/core/gateway/core-runtime/config-
 import { rawTraceSyncHeader, rawTraceSyncPath } from "@ccr/core/gateway/internal/shared.ts";
 
 test("core gateway disables the full-trace billing webhook without disabling raw-trace observability", async () => {
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-generated-config.json" });
+  const config = createDefaultAppConfig();
   config.gateway.host = "0.0.0.0";
   config.gateway.port = 4567;
   config.observability.requestLogs = true;
@@ -44,7 +44,7 @@ test("core gateway disables the full-trace billing webhook without disabling raw
 });
 
 test("Codex OAuth providers remove unsupported Responses request fields", async () => {
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-generated-config.json" });
+  const config = createDefaultAppConfig();
   config.providerPlugins = [{
     codexOauth: {},
     enabled: true,

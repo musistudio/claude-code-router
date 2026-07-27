@@ -9,7 +9,7 @@ import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 test("Pi profile config writes a CCR OpenAI Responses provider", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "ccr-pi-profile-"));
   try {
-    const config = createDefaultAppConfig({ generatedConfigFile: path.join(root, "gateway.config.json") });
+    const config = createDefaultAppConfig();
     config.gateway.host = "0.0.0.0";
     config.gateway.port = 3459;
     config.Providers = [

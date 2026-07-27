@@ -7,7 +7,7 @@ import { prepareGatewayUpstreamAttemptForTest } from "@ccr/core/gateway/upstream
 
 test("provider plugins use compiled runtime and capability identities", async () => {
   const unchangedPlugin = { key: "unscoped-plugin" };
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-provider-plugin-runtime-identity.json" });
+  const config = createDefaultAppConfig();
   config.providerPlugins = [
     {
       key: "single-protocol-plugin",
@@ -64,7 +64,7 @@ test("provider plugins use compiled runtime and capability identities", async ()
 });
 
 test("Codex OAuth plugins retain the default base URL after runtime identity normalization", async () => {
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-codex-oauth-runtime-identity.json" });
+  const config = createDefaultAppConfig();
   config.providerPlugins = [
     {
       codexOauth: {},

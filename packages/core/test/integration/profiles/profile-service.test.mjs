@@ -131,9 +131,7 @@ test("profile service preserves user statusLine when the active global Claude ta
       version: 1
     }, null, 2)}\n`);
 
-    const config = createDefaultAppConfig({
-      generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
-    });
+    const config = createDefaultAppConfig();
     config.APIKEY = "ccr-profile-statusline-test";
     config.APIKEYS = [{
       createdAt: "2026-01-01T00:00:00.000Z",
@@ -189,9 +187,7 @@ test("profile service does not overwrite invalid global Claude settings JSON", {
       smallFastModel: "",
       surface: "auto"
     };
-    const config = createDefaultAppConfig({
-      generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
-    });
+    const config = createDefaultAppConfig();
     config.APIKEY = "ccr-profile-invalid-settings-test";
     config.APIKEYS = [{
       createdAt: "2026-01-01T00:00:00.000Z",
@@ -237,9 +233,7 @@ test("profile service does not rewrite Claude settings when only user-managed fi
       smallFastModel: "",
       surface: "auto"
     };
-    const config = createDefaultAppConfig({
-      generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
-    });
+    const config = createDefaultAppConfig();
     config.APIKEY = "ccr-profile-user-fields-test";
     config.APIKEYS = [{
       createdAt: "2026-01-01T00:00:00.000Z",
@@ -287,9 +281,7 @@ test("profile service can exclude ZCode from automatic synchronization", async (
     mkdirSync(path.dirname(configFile), { recursive: true });
     writeFileSync(configFile, original);
 
-    const config = createDefaultAppConfig({
-      generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
-    });
+    const config = createDefaultAppConfig();
     config.profile.profiles = [
       {
         agent: "zcode",
@@ -339,9 +331,7 @@ test("profile service overwrites generated bin files without creating backups", 
     writeFileSync(`${file}.ccr-original`, "old original\n");
   }
 
-  const config = createDefaultAppConfig({
-    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
-  });
+  const config = createDefaultAppConfig();
   config.Providers = [
     {
       api_base_url: "https://example.test/v1",
@@ -445,9 +435,7 @@ test("Codex profile launcher bypasses middleware for Browser and Computer Use he
     ].join("\n"));
     chmodSync(fakeCodex, 0o700);
 
-    const config = createDefaultAppConfig({
-      generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
-    });
+    const config = createDefaultAppConfig();
     config.APIKEY = "ccr-browser-helper-test";
     config.APIKEYS = [{
       createdAt: "2026-01-01T00:00:00.000Z",
@@ -521,9 +509,7 @@ test("Codex profile launcher bypasses middleware for Browser and Computer Use he
 
 test("profile service injects ToolHub MCP into Codex config", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "codex-toolhub-test";
-  const config = createDefaultAppConfig({
-    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
-  });
+  const config = createDefaultAppConfig();
   config.Providers = [
     {
       api_base_url: "https://example.test/v1",
@@ -657,9 +643,7 @@ test("profile service injects ToolHub MCP into Codex config", { skip: !process.e
 
 test("profile service injects Context Archive MCP for managed Claude Code profile", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "managed-compact-claude";
-  const config = createDefaultAppConfig({
-    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
-  });
+  const config = createDefaultAppConfig();
   config.Providers = [
     {
       api_base_url: "https://example.test/v1",
@@ -711,9 +695,7 @@ test("profile service injects Context Archive MCP for managed Claude Code profil
 
 test("profile service injects Context Archive MCP for managed Codex profile", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "managed-compact-codex";
-  const config = createDefaultAppConfig({
-    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
-  });
+  const config = createDefaultAppConfig();
   config.Providers = [
     {
       api_base_url: "https://example.test/v1",
@@ -775,9 +757,7 @@ test("profile service injects Context Archive MCP for managed Codex profile", { 
 
 test("profile service injects Context Archive MCP for managed Claude Code without ToolHub", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "context-archive-mcp-only";
-  const config = createDefaultAppConfig({
-    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
-  });
+  const config = createDefaultAppConfig();
   config.Providers = [
     {
       api_base_url: "https://example.test/v1",
@@ -839,9 +819,7 @@ test("profile service writes a Grok CLI wrapper that points model discovery and 
     mkdirSync(profileGrokHome, { recursive: true });
     symlinkSync(path.join(sourceGrokHome, "config.toml"), profileGrokConfig);
   }
-  const config = createDefaultAppConfig({
-    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
-  });
+  const config = createDefaultAppConfig();
   config.Providers = [
     {
       api_base_url: "https://example.test/v1",
@@ -928,9 +906,7 @@ test("profile service writes a multi-model Kimi CLI home that points inference t
     "enabled = false",
     ""
   ].join("\n"));
-  const config = createDefaultAppConfig({
-    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
-  });
+  const config = createDefaultAppConfig();
   config.Providers = [
     {
       api_base_url: "https://example.test/v1",
@@ -1056,9 +1032,7 @@ test("profile service writes a multi-model Kimi CLI home that points inference t
 
 test("profile service writes a Pi config and wrapper that points inference to CCR", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "pi-gateway-test";
-  const config = createDefaultAppConfig({
-    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
-  });
+  const config = createDefaultAppConfig();
   config.Providers = [
     {
       api_base_url: "https://example.test/v1",
@@ -1135,9 +1109,7 @@ test("profile service writes a Pi config and wrapper that points inference to CC
 
 test("profile service writes an OpenCode CLI wrapper and shared CLI/App config", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "opencode-gateway-test";
-  const config = createDefaultAppConfig({
-    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
-  });
+  const config = createDefaultAppConfig();
   config.Providers = [
     {
       api_base_url: "https://example.test/v1",
@@ -1199,9 +1171,7 @@ test("profile service writes an OpenCode CLI wrapper and shared CLI/App config",
 
 test("profile service removes disabled and deleted OpenCode wrappers and API keys", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "opencode-cleanup-test";
-  const config = createDefaultAppConfig({
-    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
-  });
+  const config = createDefaultAppConfig();
   config.Providers = [
     {
       api_base_url: "https://example.test/v1",
@@ -1300,9 +1270,7 @@ test("profile service clears stale Claude Code ToolHub artifacts when no gateway
   }, null, 2)}\n`);
   writeFileSync(staleToolHubMcpConfigFile, "{}\n");
 
-  const config = createDefaultAppConfig({
-    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
-  });
+  const config = createDefaultAppConfig();
   config.Providers = [];
   config.virtualModelProfiles = [];
   config.profile.profiles = [

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { deflateSync, inflateSync } from "node:zlib";
-import { loadPersistedAppSetting, replacePersistedAppSetting } from "@ccr/core/config/app-config-store";
+import { loadOnboardingFinished, markOnboardingFinished } from "@ccr/core/config/onboarding-state";
 import { builtInBrowserService } from "./built-in-browser";
 import { scanBotHandoffBluetoothTargets, scanBotHandoffWifiTargets } from "@ccr/core/agents/bot-gateway/handoff-scan-service";
 import { cancelBotGatewayQrLogin, startBotGatewayQrLogin, waitBotGatewayQrLogin } from "@ccr/core/agents/bot-gateway/qr-login-service";
@@ -12,7 +12,21 @@ import { syncClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-
 import { findInstalledCodexAppExecutable } from "@ccr/core/agents/codex/app-launch";
 import { findInstalledOpenCodeAppExecutable } from "@ccr/core/agents/opencode/app-launch";
 import { loadAppConfig, saveApiKeysConfig, saveAppConfig, saveAppThemePreference, withClaudeDesignRuntimePluginConfig } from "@ccr/core/config/config";
-import { API_KEYS_DB_FILE, APP_CONFIG_DB_FILE, APP_NAME, CONFIGDIR, CONFIG_FILE, DATADIR, GATEWAY_CONFIG_FILE, IPC_CHANNELS, LEGACY_CONFIG_FILE, ONBOARDING_FINISHED_FILE, PROXY_CA_CERT_FILE, REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "@ccr/core/config/constants";
+import {
+  APP_CONFIG_DB_FILE,
+  APP_NAME,
+  CONFIGDIR,
+  DATADIR,
+  IPC_CHANNELS,
+  LEGACY_ACTIVE_CONFIG_FILE,
+  LEGACY_APP_CONFIG_DB_FILES,
+  LEGACY_API_KEYS_DB_FILES,
+  LEGACY_CONFIG_FILE,
+  LEGACY_WINDOWS_CONFIG_FILE,
+  PROXY_CA_CERT_FILE,
+  REQUEST_LOGS_DB_FILE,
+  USAGE_DB_FILE
+} from "@ccr/core/config/constants";
 import { deepLinkService } from "./deep-link";
 import { gatewayService } from "@ccr/core/gateway/service";
 import { shouldRestartGatewayForRuntimeConfigChange } from "@ccr/core/gateway/runtime-change";
@@ -38,7 +52,6 @@ import { getUsageStats } from "@ccr/core/usage/store";
 import { applyNativeThemePreference } from "./native-theme";
 import windowsManager from "./windows";
 import { CLAUDE_DESIGN_PLUGIN_ID, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, type AgentAnalysisFilter, type AgentAnalysisTracePayloadRequest, type ApiKeyConfig, type AppCaptureElementPngRequest, type AppCaptureElementPngResult, type AppConfig, type AppDataExportResult, type AppImageExportTargetRequest, type AppImageExportTargetResult, type AppInfo, type AppRenderHtmlPngRequest, type AppRenderHtmlPngResult, type AppSaveConfigOptions, type BotGatewayQrLoginCancelRequest, type BotGatewayQrLoginStartRequest, type BotGatewayQrLoginWaitRequest, type BotGatewayQrWindowCloseRequest, type BotGatewayQrWindowOpenRequest, type GatewayPluginAppConfig, type GatewayPluginPermission, type GatewayPluginSurface, type GatewayProviderConnectivityCheckRequest, type GatewayProviderProbeCandidatesRequest, type GatewayProviderProbeRequest, type GatewayStatus, type LocalAgentProviderImportRequest, type PluginDependency, type PluginDirectorySelection, type ProfileApplyResult, type ProfileOpenRequest, type ProfileOpenResult, type ProviderAccountResetRequest, type ProviderAccountSnapshotRequestOptions, type ProviderAccountTestRequest, type ProviderCatalogModelsRequest, type ProviderIconDetectionRequest, type ProviderManifestFetchRequest, type RequestLogListFilter, type RouteScriptTestRequest, type RouteScriptValidationRequest, type UsageStatsFilter, type UsageStatsRange } from "@ccr/core/contracts/app";
-const onboardingFinishedAtSettingKey = "onboardingFinishedAt";
 const imageExportTargets = new Map<string, string>();
 const gatewayPluginPermissionIdSet = new Set<string>(GATEWAY_PLUGIN_PERMISSION_IDS);
 const gatewayPluginSurfaceIdSet = new Set<string>(GATEWAY_PLUGIN_SURFACE_IDS);
@@ -52,14 +65,11 @@ ipcMain.handle(IPC_CHANNELS.appGetInfo, () => {
   const chatgptAppPath = findInstalledCodexAppExecutable().executable;
   const opencodeAppPath = findInstalledOpenCodeAppExecutable().executable;
   return {
-    appConfigDbFile: APP_CONFIG_DB_FILE,
-    apiKeysDbFile: API_KEYS_DB_FILE,
     ...(chatgptAppPath ? { chatgptAppPath } : {}),
+    configDbFile: APP_CONFIG_DB_FILE,
     configDir: CONFIGDIR,
-    configFile: CONFIG_FILE,
     dataDir: DATADIR,
     desktop: true,
-    gatewayConfigFile: GATEWAY_CONFIG_FILE,
     launchAtLoginSupported: isLaunchAtLoginSupported(),
     name: APP_NAME,
     ...(opencodeAppPath ? { opencodeAppPath } : {}),
@@ -84,10 +94,7 @@ ipcMain.handle(IPC_CHANNELS.appRenderHtmlPng, async (event, request: AppRenderHt
 });
 
 ipcMain.handle(IPC_CHANNELS.appGetConfig, () => loadAppConfig());
-ipcMain.handle(IPC_CHANNELS.appGetOnboardingFinished, async () => {
-  const persisted = await loadPersistedAppSetting(onboardingFinishedAtSettingKey);
-  return Boolean(readString(persisted) || existsSync(ONBOARDING_FINISHED_FILE));
-});
+ipcMain.handle(IPC_CHANNELS.appGetOnboardingFinished, () => loadOnboardingFinished());
 ipcMain.handle(IPC_CHANNELS.appGetPendingProviderDeepLinks, () => deepLinkService.consumePendingProviderRequests());
 ipcMain.handle(IPC_CHANNELS.appGetLocalAgentProviderCandidates, () => getLocalAgentProviderCandidates());
 ipcMain.handle(IPC_CHANNELS.appGetProfileOpenCommand, async (_event, request: ProfileOpenRequest) => {
@@ -331,7 +338,8 @@ ipcMain.handle(IPC_CHANNELS.appSaveApiKeys, async (_event, apiKeys: ApiKeyConfig
   return nextConfig;
 });
 ipcMain.handle(IPC_CHANNELS.appSetOnboardingFinished, async () => {
-  await replacePersistedAppSetting(onboardingFinishedAtSettingKey, new Date().toISOString());
+  await markOnboardingFinished();
+  windowsManager.setOnboardingFinished(true);
   windowsManager.resizeMainWindowToScreenSize();
   return true;
 });
@@ -402,10 +410,7 @@ async function exportAppData(window: BrowserWindow | null): Promise<AppDataExpor
 
   assertExportTargetIsNotInternalDataFile(result.filePath);
   const config = await loadAppConfig();
-  const onboardingFinished = Boolean(
-    readString(await loadPersistedAppSetting(onboardingFinishedAtSettingKey)) ||
-    existsSync(ONBOARDING_FINISHED_FILE)
-  );
+  const onboardingFinished = await loadOnboardingFinished();
   const payload = {
     app: {
       name: APP_NAME,
@@ -933,7 +938,8 @@ function readDataExportFiles(): Array<{ base64: string; name: string; path: stri
 function dataExportCandidateFiles(): string[] {
   return uniqueStrings([
     ...sqliteDataFiles(APP_CONFIG_DB_FILE),
-    ...sqliteDataFiles(API_KEYS_DB_FILE),
+    ...LEGACY_APP_CONFIG_DB_FILES.flatMap(sqliteDataFiles),
+    ...LEGACY_API_KEYS_DB_FILES.flatMap(sqliteDataFiles),
     ...sqliteDataFiles(REQUEST_LOGS_DB_FILE),
     ...sqliteDataFiles(USAGE_DB_FILE)
   ]);
@@ -946,12 +952,9 @@ function sqliteDataFiles(file: string): string[] {
 function assertExportTargetIsNotInternalDataFile(file: string): void {
   const target = path.resolve(file);
   const reserved = new Set([
-    CONFIG_FILE,
+    LEGACY_ACTIVE_CONFIG_FILE,
+    LEGACY_WINDOWS_CONFIG_FILE,
     LEGACY_CONFIG_FILE,
-    APP_CONFIG_DB_FILE,
-    API_KEYS_DB_FILE,
-    REQUEST_LOGS_DB_FILE,
-    USAGE_DB_FILE,
     ...dataExportCandidateFiles()
   ].map((item) => path.resolve(item)));
   if (reserved.has(target)) {

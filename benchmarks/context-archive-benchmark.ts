@@ -310,9 +310,7 @@ function buildScenario(strategy: StrategyId, corpus: Corpus, iteration: number):
 }
 
 function benchmarkConfig(): AppConfig {
-  const config = createDefaultAppConfig({
-    generatedConfigFile: "/tmp/ccr-context-archive-benchmark-gateway.json"
-  });
+  const config = createDefaultAppConfig();
   return {
     ...config,
     APIKEY: "benchmark-key",

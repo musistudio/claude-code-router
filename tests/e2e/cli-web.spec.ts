@@ -79,7 +79,7 @@ test("handles authenticated web RPC requests", async ({ request }) => {
   expect(payload.ok).toBe(true);
   expect(payload.value.name).toBe("Claude Code Router");
   expect(payload.value.configDir).toContain(current.testHome);
-  expect(payload.value.appConfigDbFile).toContain("config.sqlite");
+  expect(payload.value.configDbFile).toContain("config.sqlite");
   expect(payload.value.usageDbFile).toContain("usage.sqlite");
 });
 

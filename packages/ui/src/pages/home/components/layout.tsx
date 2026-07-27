@@ -112,7 +112,6 @@ export function MainLayout({
   updateActionBusy,
   updateStatus,
   viewProps,
-  requestLogsEnabled,
   visibleNavigation
 }: {
   activeView: ViewId;

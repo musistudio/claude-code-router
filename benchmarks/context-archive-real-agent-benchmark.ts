@@ -664,9 +664,7 @@ function normalizeMatchText(value: string): string {
 }
 
 function benchmarkConfig(): AppConfig {
-  const config = createDefaultAppConfig({
-    generatedConfigFile: "/tmp/ccr-context-archive-real-agent-benchmark.json"
-  });
+  const config = createDefaultAppConfig();
   return {
     ...config,
     APIKEY: "benchmark-key",

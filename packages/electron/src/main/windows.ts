@@ -1,8 +1,8 @@
 import { app, BrowserWindow, screen, shell } from "electron";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { APP_NAME, IPC_CHANNELS, ONBOARDING_FINISHED_FILE } from "@ccr/core/config/constants";
+import { APP_NAME, IPC_CHANNELS } from "@ccr/core/config/constants";
 import { configureClaudeDesignWindowCdp, type ClaudeDesignWindowCdpOptions } from "./claude-design-window";
 
 type WindowName = "main" | string;
@@ -42,7 +42,12 @@ const pluginAppScreenshotCaptures = new WeakSet<object>();
 const pluginAppScriptRuns = new WeakSet<object>();
 
 class WindowsManager {
+  private onboardingFinished = false;
   private windows = new Map<WindowName, BrowserWindow>();
+
+  setOnboardingFinished(finished: boolean): void {
+    this.onboardingFinished = finished;
+  }
 
   createMainWindow(): BrowserWindow {
     const existing = this.getWindow("main");
@@ -51,7 +56,7 @@ class WindowsManager {
       return existing;
     }
 
-    const bounds = getMainWindowInitialBounds();
+    const bounds = getMainWindowInitialBounds(this.onboardingFinished);
 
     const window = new BrowserWindow({
       ...bounds,
@@ -296,10 +301,10 @@ function fitWindowSize(preferred: number, minimum: number, available: number): n
   return Math.max(minimum, Math.min(preferred, available > 0 ? available : preferred));
 }
 
-function getMainWindowInitialBounds(): WindowBounds {
+function getMainWindowInitialBounds(onboardingFinished: boolean): WindowBounds {
   const { height: availableHeight, width: availableWidth } = screen.getPrimaryDisplay().workAreaSize;
 
-  if (existsSync(ONBOARDING_FINISHED_FILE)) {
+  if (onboardingFinished) {
     return getMainWindowScreenBounds();
   }
 

@@ -11,7 +11,7 @@ import {
 } from "@ccr/core/agents/kilo/profile-config.ts";
 
 function testConfig(root) {
-  const config = createDefaultAppConfig({ generatedConfigFile: path.join(root, "gateway.config.json") });
+  const config = createDefaultAppConfig();
   config.Providers = [{ api_base_url: "https://example.test/v1", api_key: "provider-key", models: ["model-a", "model-b"], name: "Provider" }];
   config.preferredProvider = "Provider";
   config.gateway.host = "127.0.0.1";

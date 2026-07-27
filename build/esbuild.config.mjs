@@ -226,6 +226,7 @@ export function createMainBuildOptions({ mode = "production", plugins = [] } = {
       path.join(electronSourceRoot, "main", "main.ts"),
       path.join(electronSourceRoot, "main", "browser-preload.ts"),
       gatewayRuntimeInput,
+      path.join(coreSourceRoot, "gateway", "core-runtime", "gateway-bootstrap.ts"),
       path.join(coreSourceRoot, "mcp", "browser-web-search-proxy-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts"),
@@ -258,6 +259,7 @@ export function createCliBuildOptions({ mode = "production", plugins = [] } = {}
     entryNames: "[name]",
     entryPoints: [
       path.join(cliSourceRoot, "cli.ts"),
+      path.join(coreSourceRoot, "gateway", "core-runtime", "gateway-bootstrap.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "media-tools-proxy-mcp.ts"),
@@ -286,6 +288,7 @@ export function createCoreServerBuildOptions({ mode = "production", plugins = []
     entryNames: "[name]",
     entryPoints: [
       path.join(coreSourceRoot, "entrypoints", "server.ts"),
+      path.join(coreSourceRoot, "gateway", "core-runtime", "gateway-bootstrap.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "media-tools-proxy-mcp.ts"),

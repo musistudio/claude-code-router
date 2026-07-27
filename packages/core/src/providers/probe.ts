@@ -1217,7 +1217,7 @@ function protocolHints(value: string): GatewayProviderCapabilityProtocol[] {
 function isProtocolSupported(
   status: number | undefined,
   message: string,
-  protocol?: GatewayProviderCapabilityProtocol
+  _protocol?: GatewayProviderCapabilityProtocol
 ): boolean {
   if (status === undefined) {
     return false;

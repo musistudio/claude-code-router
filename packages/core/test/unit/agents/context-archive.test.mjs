@@ -22,9 +22,7 @@ import {
 } from "@ccr/core/gateway/context-archive.ts";
 
 function testConfig(overrides = {}) {
-  const config = createDefaultAppConfig({
-    generatedConfigFile: "/tmp/ccr-context-archive-test-gateway.json"
-  });
+  const config = createDefaultAppConfig();
   return {
     ...config,
     APIKEY: "local-test-key",

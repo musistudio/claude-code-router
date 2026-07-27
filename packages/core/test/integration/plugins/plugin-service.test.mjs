@@ -64,7 +64,7 @@ module.exports = {
 };
 `);
 
-    const config = createDefaultAppConfig({ generatedConfigFile: path.join(dir, "gateway.json") });
+    const config = createDefaultAppConfig();
     config.Providers = [{
       apiKey: "good-key",
       baseUrl: "https://good-provider.example/v1",
@@ -154,7 +154,7 @@ module.exports = {
 };
 `);
 
-    const config = createDefaultAppConfig({ generatedConfigFile: path.join(dir, "gateway.json") });
+    const config = createDefaultAppConfig();
     config.gateway.enabled = false;
     config.plugins = [{
       id: "broken",
@@ -200,7 +200,7 @@ module.exports = {
 };
 `);
 
-    const config = createDefaultAppConfig({ generatedConfigFile: path.join(dir, "gateway.json") });
+    const config = createDefaultAppConfig();
     config.gateway.enabled = false;
     config.plugins = [{
       id: "route-plugin",

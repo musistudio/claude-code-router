@@ -10,13 +10,10 @@ import type {
 import { createDefaultAppConfig } from "@ccr/core/config/default-config";
 
 export const fallbackInfo: AppInfo = {
-  appConfigDbFile: "Browser preview",
-  apiKeysDbFile: "Browser preview",
+  configDbFile: "Browser preview",
   configDir: "Browser preview",
-  configFile: "Browser preview",
   dataDir: "Browser preview",
   desktop: false,
-  gatewayConfigFile: "Browser preview",
   launchAtLoginSupported: /^Mac|^Win/i.test(navigator.platform),
   name: "Claude Code Router",
   platform: navigator.platform,
@@ -34,14 +31,11 @@ export const fallbackUpdateStatus: AppUpdateStatus = {
   supported: false
 };
 
-export const fallbackConfig: AppConfig = createDefaultAppConfig({
-  generatedConfigFile: "Browser preview"
-});
+export const fallbackConfig: AppConfig = createDefaultAppConfig({});
 
 export const fallbackGatewayStatus: GatewayStatus = {
   coreEndpoint: "http://127.0.0.1:3457",
   endpoint: "http://127.0.0.1:3456",
-  generatedConfigFile: "Browser preview",
   networkEndpoints: [],
   state: "stopped"
 };

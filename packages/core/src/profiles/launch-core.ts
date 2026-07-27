@@ -444,19 +444,3 @@ function windowsCommandQuote(value: string): string {
 function isWindowsCommandScript(command: string): boolean {
   return process.platform === "win32" && /\.(?:bat|cmd)$/i.test(path.basename(command));
 }
-
-function windowsCommandScriptInvocation(command: string, args: string[]): string {
-  return [
-    "call",
-    windowsCommandInvocationArg(command),
-    ...args.map(windowsCommandInvocationArg)
-  ].join(" ");
-}
-
-function windowsCommandInvocationArg(value: string): string {
-  const normalized = value.replace(/\r?\n/g, " ");
-  if (!normalized) {
-    return "\"\"";
-  }
-  return `"${normalized.replace(/[\^"%&|<>()]/g, "^$&")}"`;
-}

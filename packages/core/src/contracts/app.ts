@@ -1,12 +1,9 @@
 export type AppInfo = {
-  appConfigDbFile: string;
-  apiKeysDbFile: string;
   chatgptAppPath?: string;
+  configDbFile: string;
   configDir: string;
-  configFile: string;
   dataDir: string;
   desktop: boolean;
-  gatewayConfigFile: string;
   launchAtLoginSupported: boolean;
   requestLogsDbFile: string;
   name: string;
@@ -729,7 +726,6 @@ export type GatewayRuntimeConfig = {
   coreHost: string;
   corePort: number;
   enabled: boolean;
-  generatedConfigFile: string;
   host: string;
   port: number;
 };
@@ -1778,7 +1774,6 @@ export type GatewayStatus = {
   coreEndpoint: string;
   coreManagedExternally?: boolean;
   endpoint: string;
-  generatedConfigFile: string;
   lastError?: string;
   lastStartedAt?: string;
   networkEndpoints: GatewayNetworkEndpoint[];
