@@ -295,6 +295,14 @@ async function resolveConfiguredRouteDecision(
       ? resolveClaudeAppGatewayRouteModel(explicitModel, config, claudeAppGatewayModelRouteOptions)
       : undefined
   );
+
+  // FIX: Replace hex-encoded body.model with decoded canonical selector so router rules can match human-readable model names.
+  // Without this, rules like `body.model contains "sonnet"` never match because body.model is hex like
+  // "anthropic/claude-ccr-h4f70656e436f64652f646565707365656b2d76342d666c617368".
+  if (resolvedExplicitModel) {
+    request.body.model = resolvedExplicitModel.canonicalSelector;
+  }
+
   const explicitDecision: ConfiguredRouteDecision | undefined = resolvedExplicitModel
     ? {
         fallback: compiled.fallback,
