@@ -222,6 +222,17 @@ docker compose up -d --build
 
 Docker exposes the management UI and gateway routes through `http://127.0.0.1:3458` by default. Read the [Docker deployment guide](https://ccrdesk.top/en/guides/docker/) before exposing CCR remotely.
 
+## Build desktop apps
+
+Install Node.js 22+, then run `npm ci`.
+
+| Target | Command | Output |
+| --- | --- | --- |
+| macOS local DMG/ZIP | `npm run build:app:mac` | `release-local/` |
+| Windows local NSIS installer | `npm run build:app:win` | `release-local/` |
+
+Windows app packaging must run on Windows x64 because `better-sqlite3` ships a native Electron module. The release workflow builds macOS on macOS runners and Windows on `windows-latest` when a `v*` tag is pushed.
+
 ## How it works
 
 ```text
