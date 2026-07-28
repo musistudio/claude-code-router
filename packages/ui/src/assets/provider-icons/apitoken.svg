@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="apiToken.sale">
+  <defs>
+    <linearGradient id="a" x1="10" y1="54" x2="54" y2="10" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0746ff"/>
+      <stop offset="1" stop-color="#09b8ff"/>
+    </linearGradient>
+  </defs>
+  <path fill="#071c52" d="M29 2h6l2 8 7-5 4 4-4 7 8 2v6l-7 2 7 5v5l-8 2 4 7-4 4-7-4-2 8h-6l-2-8-7 4-4-4 4-7-8-2v-5l7-5-7-2v-6l8-2-4-7 4-4 7 5z"/>
+  <path fill="url(#a)" d="M29 8h6l2 9 8-3 4 5-6 7 9 3v6l-9 3 6 7-4 5-8-3-2 9h-6l-2-9-8 3-4-5 6-7-9-3v-6l9-3-6-7 4-5 8 3z"/>
+  <path fill="#fff" d="m32 19 4 5 7 1-2 7 2 7-7 1-4 5-4-5-7-1 2-7-2-7 7-1z"/>
+  <path fill="#2d74ff" d="M7 7h3v4h4v3h-4v4H7v-4H3v-3h4zm47 39h3v4h4v3h-4v4h-3v-4h-4v-3h4z"/>
+</svg>

@@ -3,6 +3,7 @@ import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { newApiKeyUsageAccountConfig } from "@ccr/core/providers/new-api.ts";
+import { apiTokenProviderPreset } from "@ccr/core/providers/presets/apitoken/index.ts";
 import { geminiProviderPreset } from "@ccr/core/providers/presets/gemini/index.ts";
 import { minimaxChinaProviderPreset } from "@ccr/core/providers/presets/minimax/index.ts";
 import { moonshotGlobalProviderPreset } from "@ccr/core/providers/presets/moonshot/index.ts";
@@ -982,8 +983,17 @@ test("provider deep link config saves anthropic probe prefix as capability URL",
 });
 
 test("provider display icon prefers custom icons and falls back to preset icons", () => {
-  setProviderPresets([geminiProviderPreset, minimaxChinaProviderPreset]);
+  setProviderPresets([apiTokenProviderPreset, geminiProviderPreset, minimaxChinaProviderPreset]);
 
+  assert.equal(
+    providerDisplayIcon({
+      api_base_url: "https://api.apitoken.sale/v1",
+      models: [],
+      name: "apiToken.sale",
+      type: "anthropic_messages"
+    }),
+    providerPresetIconUrls.apitoken
+  );
   assert.equal(
     providerDisplayIcon({
       api_base_url: "https://custom.example/v1",

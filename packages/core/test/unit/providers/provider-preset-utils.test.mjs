@@ -4,6 +4,9 @@ import {
   normalizeProviderPresetCapabilitiesForTest
 } from "@ccr/core/config/config.ts";
 import {
+  apiTokenProviderPreset
+} from "@ccr/core/providers/presets/apitoken/index.ts";
+import {
   findProviderPresetByBaseUrlInList,
   findProviderPresetByIdentityInList,
   providerApiKeySafetyIssueInList,
@@ -70,6 +73,21 @@ test("provider preset matching accepts endpoint subpaths but rejects different h
   assert.equal(providerPresetMatchesBaseUrl(openRouterPreset, "https://openrouter.ai/api"), true);
   assert.equal(providerPresetMatchesBaseUrl(openAiPreset, "https://proxy.example.com/v1"), false);
   assert.equal(findProviderPresetByBaseUrlInList(presets, "api.anthropic.com/v1/messages")?.id, "anthropic");
+});
+
+test("apiToken.sale preset is reachable by identity and normalized Anthropic endpoint", () => {
+  assert.equal(providerPresets.find((preset) => preset.id === "apitoken"), apiTokenProviderPreset);
+  assert.equal(findProviderPresetByBaseUrlInList(providerPresets, "https://api.apitoken.sale"), apiTokenProviderPreset);
+  assert.equal(findProviderPresetByBaseUrlInList(providerPresets, "https://api.apitoken.sale/"), apiTokenProviderPreset);
+  assert.equal(findProviderPresetByBaseUrlInList(providerPresets, "https://api.apitoken.sale/v1"), apiTokenProviderPreset);
+  assert.deepEqual(apiTokenProviderPreset.endpoints[0]?.protocols, ["anthropic_messages"]);
+  assert.deepEqual(apiTokenProviderPreset.defaultModels, [
+    "claude-opus-4-8",
+    "claude-opus-4-7",
+    "claude-sonnet-5",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5"
+  ]);
 });
 
 test("provider identity lookup normalizes aliases and punctuation", () => {

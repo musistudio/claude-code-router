@@ -18,6 +18,10 @@ Choose a provider below to get started. CCR shows what will be added before savi
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/anthropic.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">Anthropic</span><span class="provider-import-meta">Anthropic Messages</span></span>
   </a>
+  <a class="provider-import-button provider-apitoken" href="ccr://provider?name=apiToken.sale&amp;base_url=https%3A%2F%2Fapi.apitoken.sale&amp;protocol=anthropic_messages&amp;models=claude-opus-4-8%2Cclaude-opus-4-7%2Cclaude-sonnet-5%2Cclaude-sonnet-4-6%2Cclaude-haiku-4-5&amp;source=https%3A%2F%2Fapitoken.sale" aria-label="Import apiToken.sale provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/apitoken.svg" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">apiToken.sale</span><span class="provider-import-meta">Anthropic-compatible API</span></span>
+  </a>
   <a class="provider-import-button provider-gemini" href="ccr://provider?name=Google+Gemini&amp;base_url=https%3A%2F%2Fgenerativelanguage.googleapis.com&amp;protocol=gemini_generate_content&amp;models=gemini-3.5-flash%2Cgemini-3.1-pro-preview%2Cgemini-3-flash-preview" aria-label="Import Google Gemini provider">
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/gemini.svg" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">Google Gemini</span><span class="provider-import-meta">Gemini Generate Content</span></span>

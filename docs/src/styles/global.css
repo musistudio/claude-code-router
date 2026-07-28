@@ -1294,6 +1294,12 @@ h1 {
   --provider-brand-3: #ffd1bf;
 }
 
+.doc-markdown a.provider-import-button.provider-apitoken {
+  --provider-brand: #071c52;
+  --provider-brand-2: #0958ff;
+  --provider-brand-3: #8de7ff;
+}
+
 .doc-markdown a.provider-import-button.provider-gemini {
   --provider-brand: #1a73e8;
   --provider-brand-2: #a142f4;
