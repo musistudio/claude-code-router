@@ -988,10 +988,17 @@ export class AnthropicTransformer implements Transformer {
           }),
         });
       }
-      if (choice.message.content) {
+      // Reasoning models (GLM, DeepSeek, Qwen) may put all output in
+      // reasoning_content with content="" (especially when max_tokens is
+      // consumed by thinking). Fall back so the Anthropic response always
+      // has at least one text block.
+      const msgText = choice.message.content
+        || (choice.message as any)?.reasoning_content
+        || "";
+      if (msgText) {
         content.push({
           type: "text",
-          text: choice.message.content,
+          text: msgText,
         });
       }
       if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
