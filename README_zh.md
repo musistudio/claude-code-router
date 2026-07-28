@@ -390,7 +390,7 @@ Claude Code · Claude Design · Codex · Grok CLI · Kimi CLI · Kilo Code · Op
       </a>
     </td>
     <td align="center" width="330">
-      <a href="https://infistar.ai">
+      <a href="https://infistar.ai/register?aff=CCRCCR&ref_source=link">
         <img src="/docs/public/provider-icons/infistar-ai.jpg" width="42" height="42" alt="无限星河图标" />
         <br />
         <strong>无限星河</strong>
