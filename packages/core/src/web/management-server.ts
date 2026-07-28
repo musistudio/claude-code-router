@@ -205,10 +205,6 @@ async function handleRpcRequest(request: IncomingMessage, response: ServerRespon
     sendJson(response, 415, { error: { message: "RPC requests must use application/json." }, ok: false });
     return;
   }
-  if (!isAllowedWebRequestOrigin(request, security)) {
-    sendJson(response, 403, { error: { message: "Forbidden RPC origin." }, ok: false });
-    return;
-  }
   if (!hasValidWebAuthToken(request, security)) {
     sendJson(response, 401, { error: { message: "CCR web authentication token is missing or invalid." }, ok: false });
     return;
@@ -600,32 +596,6 @@ function urlWithWebAuthToken(value: string, authToken: string): string {
 function isAllowedWebRequestHost(request: IncomingMessage, security: WebManagementSecurityContext): boolean {
   const hostname = requestHostname(request);
   return Boolean(hostname && isAllowedWebHostname(hostname, security));
-}
-
-function isAllowedWebRequestOrigin(request: IncomingMessage, security: WebManagementSecurityContext): boolean {
-  const origin = readHeaderValue(request.headers.origin);
-  if (origin && !isAllowedWebOriginValue(origin, security)) {
-    return false;
-  }
-
-  const referer = readHeaderValue(request.headers.referer);
-  if (!origin && referer && !isAllowedWebOriginValue(referer, security)) {
-    return false;
-  }
-
-  return true;
-}
-
-function isAllowedWebOriginValue(value: string, security: WebManagementSecurityContext): boolean {
-  try {
-    const url = new URL(value);
-    const port = url.port ? Number(url.port) : url.protocol === "http:" ? 80 : url.protocol === "https:" ? 443 : undefined;
-    return url.protocol === "http:" &&
-      port === security.port &&
-      isAllowedWebHostname(normalizeHostname(url.hostname), security);
-  } catch {
-    return false;
-  }
 }
 
 function isAllowedWebHostname(hostname: string, security: WebManagementSecurityContext): boolean {
