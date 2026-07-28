@@ -28,6 +28,25 @@ test("provider model catalog maps preset aliases to models.json defaults", () =>
   assert.equal(metadata?.capabilities?.imageInput, true);
 });
 
+test("provider model catalog exposes current MiniMax model metadata", () => {
+  const catalog = getProviderCatalogModels({ providerPresetId: "minimax-global" });
+  const m3 = catalog.modelMetadata?.["MiniMax-M3"];
+  const m27 = catalog.modelMetadata?.["MiniMax-M2.7"];
+
+  assert.ok(catalog.models.includes("MiniMax-M3"));
+  assert.ok(catalog.models.includes("MiniMax-M2.7"));
+  assert.equal(m3?.contextWindow, 1_000_000);
+  assert.equal(m3?.capabilities?.imageInput, true);
+  assert.equal(m3?.pricing?.inputUsdPerMillionTokens, 0.6);
+  assert.equal(m3?.pricing?.outputUsdPerMillionTokens, 2.4);
+  assert.equal(m3?.pricing?.cacheReadUsdPerMillionTokens, 0.12);
+  assert.equal(m27?.contextWindow, 204_800);
+  assert.equal(m27?.pricing?.inputUsdPerMillionTokens, 0.3);
+  assert.equal(m27?.pricing?.outputUsdPerMillionTokens, 1.2);
+  assert.equal(m27?.pricing?.cacheReadUsdPerMillionTokens, 0.06);
+  assert.equal(m27?.pricing?.cacheWrite5mUsdPerMillionTokens, 0.375);
+});
+
 test("provider model catalog exposes reasoning, web search, and image presets", () => {
   const catalog = getProviderCatalogModels({ providerPresetId: "openai" });
   const metadata = catalog.modelMetadata?.["gpt-5"];
