@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { AppConfig, ProfileConfig, ProfileOpenSurface } from "@ccr/core/contracts/app";
 import { claudeCodeModelEnv as claudeCodeProfileModelEnv, claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
+import { resolveKiloConfigFile as resolveKiloProfileConfigFile } from "@ccr/core/agents/kilo/profile-config";
 import { resolveOpenCodeConfigFile as resolveOpenCodeProfileConfigFile } from "@ccr/core/agents/opencode/profile-config";
 import { piWrapperFilename, resolvePiAgentDir, resolvePiSessionDir } from "@ccr/core/agents/pi/profile-config";
 import { resolveZcodeConfigFile } from "@ccr/core/agents/zcode/profile-config";
@@ -51,7 +52,7 @@ export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[
   if (profile.agent === "zcode" || profile.agent === "claude-design") {
     return ["app"];
   }
-  if (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi") {
+  if (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi" || profile.agent === "kilo") {
     return ["cli"];
   }
   const surface = normalizeProfileSurface(profile.surface);
@@ -122,6 +123,9 @@ export function buildProfileLaunchPlan(
   if (profile.agent === "opencode") {
     return buildOpenCodeLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
   }
+  if (profile.agent === "kilo") {
+    return buildKiloLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
+  }
   if (isCodexCompatibleAgent(profile.agent)) {
     return buildCodexLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
   }
@@ -143,6 +147,27 @@ function buildOpenCodeLaunchPlan(
     env: {
       CCR_PROFILE_SURFACE: "cli",
       OPENCODE_CONFIG: resolveOpenCodeProfileConfigFile(configDir, profile)
+    },
+    profile,
+    surface
+  };
+}
+
+function buildKiloLaunchPlan(
+  configDir: string,
+  profile: ProfileConfig,
+  surface: ProfileOpenSurface,
+  extraArgs: string[]
+): ProfileLaunchPlan {
+  if (surface !== "cli") {
+    throw new Error("Kilo CLI profiles only support CLI opening.");
+  }
+  return {
+    args: extraArgs,
+    command: path.join(configDir, "bin", kiloWrapperFilename(profile)),
+    env: {
+      CCR_PROFILE_SURFACE: "cli",
+      KILO_CONFIG: resolveKiloProfileConfigFile(configDir, profile)
     },
     profile,
     surface
@@ -260,6 +285,10 @@ export function resolveOpenCodeConfigFile(configDir: string, profile: ProfileCon
   return resolveOpenCodeProfileConfigFile(configDir, profile);
 }
 
+export function resolveKiloConfigFile(configDir: string, profile: ProfileConfig): string {
+  return resolveKiloProfileConfigFile(configDir, profile);
+}
+
 function buildCodexLaunchPlan(
   configDir: string,
   profile: ProfileConfig,
@@ -350,6 +379,13 @@ function openCodeWrapperFilename(profile: ProfileConfig): string {
     : `ccr-opencode-wrapper-${slug}`;
 }
 
+function kiloWrapperFilename(profile: ProfileConfig): string {
+  const slug = sanitizePathSegment(profile.id || profile.name || profile.agent) || "kilo";
+  return process.platform === "win32"
+    ? `ccr-kilo-wrapper-${slug}.cmd`
+    : `ccr-kilo-wrapper-${slug}`;
+}
+
 function codexMiddlewareFilename(profile: ProfileConfig, providerId: string): string {
   const slug = sanitizeCodexProviderId(profile.id || profile.name || providerId) || "codex";
   return process.platform === "win32"
@@ -407,20 +443,4 @@ function windowsCommandQuote(value: string): string {
 
 function isWindowsCommandScript(command: string): boolean {
   return process.platform === "win32" && /\.(?:bat|cmd)$/i.test(path.basename(command));
-}
-
-function windowsCommandScriptInvocation(command: string, args: string[]): string {
-  return [
-    "call",
-    windowsCommandInvocationArg(command),
-    ...args.map(windowsCommandInvocationArg)
-  ].join(" ");
-}
-
-function windowsCommandInvocationArg(value: string): string {
-  const normalized = value.replace(/\r?\n/g, " ");
-  if (!normalized) {
-    return "\"\"";
-  }
-  return `"${normalized.replace(/[\^"%&|<>()]/g, "^$&")}"`;
 }

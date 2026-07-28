@@ -20,10 +20,9 @@ export const DEFAULT_PROXY_TARGETS: ProxyRouteTarget[] = [
 
 export type DefaultAppConfigOptions = {
   coreHost?: string;
-  generatedConfigFile: string;
 };
 
-export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppConfig {
+export function createDefaultAppConfig(options: DefaultAppConfigOptions = {}): AppConfig {
   const coreHost = options.coreHost ?? "127.0.0.1";
   return {
     APIKEY: "",
@@ -106,7 +105,6 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
       coreHost,
       corePort: 3457,
       enabled: true,
-      generatedConfigFile: options.generatedConfigFile,
       host: "127.0.0.1",
       port: 3456
     },

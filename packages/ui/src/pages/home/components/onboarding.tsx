@@ -37,27 +37,6 @@ const onboardingStepDetails: Record<OnboardingStepId, {
   }
 };
 
-const onboardingMascotPalettes: Record<OnboardingMascotTone, { accent: string; glow: string; main: string; shadow: string }> = {
-  cyan: {
-    accent: "#8CF7FF",
-    glow: "rgba(34, 211, 238, 0.22)",
-    main: "#22D3EE",
-    shadow: "rgba(8, 145, 178, 0.22)"
-  },
-  orange: {
-    accent: "#FFD166",
-    glow: "rgba(249, 115, 22, 0.2)",
-    main: "#F97316",
-    shadow: "rgba(194, 65, 12, 0.22)"
-  },
-  violet: {
-    accent: "#C084FC",
-    glow: "rgba(139, 92, 246, 0.2)",
-    main: "#8B5CF6",
-    shadow: "rgba(109, 40, 217, 0.22)"
-  }
-};
-
 export function OnboardingView({
   activeStep,
   agentOptions,

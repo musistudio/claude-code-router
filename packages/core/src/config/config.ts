@@ -1,13 +1,19 @@
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { loadPersistedAppConfig, replacePersistedAppConfig } from "@ccr/core/config/app-config-store";
-import { loadPersistedApiKeys, replacePersistedApiKeys } from "@ccr/core/config/api-key-store";
-import { CONFIG_FILE, GATEWAY_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE } from "@ccr/core/config/constants";
+import {
+  archiveLegacyJsonConfigFiles,
+  loadPersistedApiKeys,
+  loadPersistedAppConfig,
+  replacePersistedApiKeys,
+  replacePersistedAppConfig,
+  replacePersistedConfigSnapshot
+} from "@ccr/core/config/config-repository";
+import { LEGACY_ACTIVE_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE } from "@ccr/core/config/constants";
 import { normalizeCodexProviderAccountConfig } from "@ccr/core/agents/local-providers/codex";
 import { normalizeGrokProviderAccountConfig, normalizeGrokProviderMediaCapabilities } from "@ccr/core/agents/local-providers/grok";
 import { removeOpenCodeProviderAccountConfig } from "@ccr/core/agents/local-providers/opencode";
-import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, CLAUDE_DESIGN_PLUGIN_ID, CLAUDE_SHIP_PLUGIN_ID, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, ROUTER_SCRIPT_API_VERSION, ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS, ROUTER_SCRIPT_MAX_TIMEOUT_MS, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent, knownGatewayPluginDefaultApps, knownGatewayPluginDefaultPermissions, knownGatewayPluginDefaultSurfaces } from "@ccr/core/contracts/app";
+import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, CLAUDE_DESIGN_PLUGIN_ID, CLAUDE_SHIP_PLUGIN_ID, DEFAULT_TRAY_COMPONENT_VARIANTS, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, ROUTER_SCRIPT_API_VERSION, ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS, ROUTER_SCRIPT_MAX_TIMEOUT_MS, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent, knownGatewayPluginDefaultApps, knownGatewayPluginDefaultPermissions, knownGatewayPluginDefaultSurfaces } from "@ccr/core/contracts/app";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config";
 import { maxRequestLogBodyBytes } from "@ccr/core/observability/request-log-limits";
 import { findProviderPresetByBaseUrl, primaryProviderPresetEndpoint, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
@@ -32,7 +38,6 @@ import type {
   GatewayProviderCapability,
   GatewayProviderCapabilityProtocol,
   GatewayProviderConfig,
-  GatewayProviderProtocol,
   MediaToolsConfig,
   ObservabilityConfig,
   OverviewMetricKind,
@@ -99,7 +104,13 @@ type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway"
 export type RawAppConfigSource = "default" | "legacy-json" | "sqlite";
 
 type RawAppConfigLoadResult = {
+  legacyJsonFile?: string;
   source: RawAppConfigSource;
+  value: Partial<AppConfig>;
+};
+
+type LegacyJsonConfigLoadResult = {
+  file: string;
   value: Partial<AppConfig>;
 };
 
@@ -115,8 +126,7 @@ const GENERATED_GATEWAY_API_KEY_ID = "local-gateway";
 const GATEWAY_PLUGIN_PERMISSION_ID_SET = new Set<string>(GATEWAY_PLUGIN_PERMISSION_IDS);
 
 const DEFAULT_CONFIG: AppConfig = createDefaultAppConfig({
-  coreHost: INTERNAL_GATEWAY_CORE_HOST,
-  generatedConfigFile: GATEWAY_CONFIG_FILE
+  coreHost: INTERNAL_GATEWAY_CORE_HOST
 });
 
 function completeBotGatewayConfig(config: LoadedBotGatewayConfig | undefined): BotGatewayRuntimeConfig {
@@ -280,7 +290,6 @@ export async function loadAppConfig(): Promise<AppConfig> {
         ...gatewayConfig,
         coreHost: INTERNAL_GATEWAY_CORE_HOST,
         corePort,
-        generatedConfigFile: GATEWAY_CONFIG_FILE,
         host: gatewayConfig.host ?? host,
         port: gatewayConfig.port ?? port
       },
@@ -329,11 +338,13 @@ export async function loadAppConfig(): Promise<AppConfig> {
     const shouldPersistApiKeys = loadedApiKeys.length === 0 || hasConfigFileApiKeys(rawValue) || configFileApiKeys.length > 0;
     const shouldRepairProviderCapabilities = hasUnsupportedNvidiaCapabilities(value.Providers);
     const shouldRepairKnownPlugins = pluginMigration.changed;
-    if (shouldPersistApiKeys) {
-      await replacePersistedApiKeys(apiKeys);
-    }
     if (loadedRawConfig.source !== "sqlite" || shouldPersistApiKeys || shouldRepairProviderCapabilities || shouldRepairKnownPlugins) {
-      await writeSanitizedConfig(config);
+      await replacePersistedConfigSnapshot(sanitizeConfigForDisk(config), apiKeys);
+    }
+    if (loadedRawConfig.source === "legacy-json" && loadedRawConfig.legacyJsonFile) {
+      await archiveLegacyJsonConfigFiles([loadedRawConfig.legacyJsonFile]).catch((archiveError) => {
+        console.warn(`[config] Failed to archive legacy JSON config: ${formatError(archiveError)}`);
+      });
     }
     return config;
   } catch (error) {
@@ -381,14 +392,13 @@ async function saveAppConfigNow(config: AppConfig): Promise<AppConfig> {
   assertProviderApiKeysAreSafe(normalizedConfig);
   const apiKeys = ensureGatewayApiKeys(normalizeApiKeys(normalizedConfig.APIKEYS, normalizedConfig.APIKEY).filter((apiKey) => !isDefaultSeedApiKey(apiKey)));
   const pluginMigration = migrateKnownGatewayPluginConfigs(normalizedConfig.plugins);
-  await replacePersistedApiKeys(apiKeys);
-  await writeSanitizedConfig({
+  await replacePersistedConfigSnapshot(sanitizeConfigForDisk({
     ...normalizedConfig,
     theme: appThemePreferenceOverride ?? normalizedConfig.theme,
     APIKEY: apiKeys[0]?.key ?? "",
     APIKEYS: apiKeys,
     plugins: pluginMigration.plugins
-  });
+  }), apiKeys);
   return loadAppConfig();
 }
 
@@ -593,8 +603,9 @@ async function loadRawAppConfig(): Promise<RawAppConfigLoadResult> {
   const legacyConfig = readLegacyJsonConfig();
   if (legacyConfig) {
     return {
+      legacyJsonFile: legacyConfig.file,
       source: "legacy-json",
-      value: legacyConfig
+      value: legacyConfig.value
     };
   }
 
@@ -604,8 +615,8 @@ async function loadRawAppConfig(): Promise<RawAppConfigLoadResult> {
   };
 }
 
-function readLegacyJsonConfig(): Partial<AppConfig> | undefined {
-  const files = uniqueStrings([CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE, LEGACY_CONFIG_FILE]);
+function readLegacyJsonConfig(): LegacyJsonConfigLoadResult | undefined {
+  const files = uniqueStrings([LEGACY_ACTIVE_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE, LEGACY_CONFIG_FILE]);
   for (const file of files) {
     if (!existsSync(file)) {
       continue;
@@ -613,7 +624,10 @@ function readLegacyJsonConfig(): Partial<AppConfig> | undefined {
     try {
       const parsed = JSON.parse(readFileSync(file, "utf8")) as unknown;
       if (isObject(parsed)) {
-        return parsed as Partial<AppConfig>;
+        return {
+          file,
+          value: parsed as Partial<AppConfig>
+        };
       }
       console.warn(`[config] Ignoring legacy config with non-object root: ${file}`);
     } catch (error) {
@@ -649,7 +663,7 @@ function sanitizeProfileConfigForDisk(profile: AppConfig["profile"]): AppConfig[
     ...profile,
     codex,
     profiles: profile.profiles.map((profileItem) => {
-      if (profileItem.agent !== "codex" && profileItem.agent !== "opencode" && profileItem.agent !== "zcode") {
+      if (profileItem.agent !== "codex" && profileItem.agent !== "opencode" && profileItem.agent !== "kilo" && profileItem.agent !== "zcode") {
         return profileItem;
       }
       const {
@@ -1379,6 +1393,7 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
   const contextWindow = readPositiveInteger(value.contextWindow ?? value.context_window);
   const effectiveContextWindowPercent = readPercentage(value.effectiveContextWindowPercent ?? value.effective_context_window_percent);
   const maxContextWindow = readPositiveInteger(value.maxContextWindow ?? value.max_context_window);
+  const maxOutputTokens = readPositiveInteger(value.maxOutputTokens ?? value.max_output_tokens ?? value.outputTokens ?? value.output_tokens);
   const pricing = parseProviderModelPricing(value.pricing);
   const metadata: ProviderModelMetadata = {
     ...(Array.isArray(value.additionalSpeedTiers) ? { additionalSpeedTiers: value.additionalSpeedTiers } : {}),
@@ -1393,6 +1408,7 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
     ...(readString(value.default_reasoning_summary) ? { defaultReasoningSummary: readString(value.default_reasoning_summary) } : {}),
     ...(effectiveContextWindowPercent ? { effectiveContextWindowPercent } : {}),
     ...(maxContextWindow ? { maxContextWindow } : {}),
+    ...(maxOutputTokens ? { maxOutputTokens } : {}),
     ...(pricing ? { pricing } : {}),
     ...(Array.isArray(value.serviceTiers) ? { serviceTiers: value.serviceTiers } : {}),
     ...(Array.isArray(value.service_tiers) ? { serviceTiers: value.service_tiers } : {}),
@@ -3403,7 +3419,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       const parsedSurface = parseProfileSurface(readString(item.surface) || readString(item.entry) || readString(item.frontend)) || "auto";
       const surface = agent === "zcode" || agent === CLAUDE_DESIGN_PLUGIN_ID
         ? "app"
-        : agent === "pi"
+        : agent === "pi" || agent === "kilo"
           ? "cli"
           : parsedSurface;
       const botConfigId = surface !== "cli"
@@ -3485,7 +3501,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         providerName: readString(item.providerName) || "Claude Code Router",
         remoteFrontendMode: parseCodexRemoteFrontendMode(readString(item.remoteFrontendMode) || readString(item.frontendMode) || readString(item.coreMode)) || "app",
         scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
-        showAllSessions: agent === "zcode" || agent === "opencode"
+        showAllSessions: agent === "zcode" || agent === "opencode" || agent === "kilo"
           ? false
           : typeof item.showAllSessions === "boolean"
             ? item.showAllSessions
@@ -3509,7 +3525,7 @@ function readProfileAppPath(item: Record<string, unknown>, agent: ProfileConfig[
         ? readString(item.chatgptAppPath) || readString(item.chatgpt_app_path) || readString(item.codexAppPath) || readString(item.codex_app_path)
         : agent === "opencode"
           ? readString(item.openCodeAppPath) || readString(item.opencodeAppPath) || readString(item.opencode_app_path)
-        : readString(item.zcodeAppPath) || readString(item.zcode_app_path));
+          : readString(item.zcodeAppPath) || readString(item.zcode_app_path));
 }
 
 function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
@@ -3531,6 +3547,9 @@ function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
   }
   if (normalized === "opencode" || normalized === "open-code" || normalized === "open code") {
     return "opencode";
+  }
+  if (normalized === "kilo" || normalized === "kilo-cli" || normalized === "kilo cli" || normalized === "kilocode" || normalized === "kilo-code" || normalized === "kilo code") {
+    return "kilo";
   }
   if (normalized === "pi" || normalized === "pi-agent" || normalized === "pi agent" || normalized === "pi-coding-agent" || normalized === "pi coding agent") {
     return "pi";
@@ -3570,6 +3589,9 @@ function defaultProfileAgentName(agent: ProfileConfig["agent"]): string {
   if (agent === "opencode") {
     return "OpenCode";
   }
+  if (agent === "kilo") {
+    return "Kilo CLI";
+  }
   if (agent === "pi") {
     return "Pi";
   }
@@ -3584,11 +3606,13 @@ function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
     ? "~/.zcode/cli/config.json"
     : agent === "opencode"
       ? "~/.config/opencode/opencode.jsonc"
-      : agent === "pi"
-        ? "~/.pi/agent"
-        : agent === CLAUDE_DESIGN_PLUGIN_ID
-          ? "~/.claude-code-router/claude-design"
-          : "~/.codex/config.toml";
+      : agent === "kilo"
+        ? "~/.config/kilo/kilo.jsonc"
+        : agent === "pi"
+          ? "~/.pi/agent"
+          : agent === CLAUDE_DESIGN_PLUGIN_ID
+            ? "~/.claude-code-router/claude-design"
+            : "~/.codex/config.toml";
 }
 
 function normalizeCodexConfigFileForAgent(agent: ProfileConfig["agent"], value: string | undefined): string {

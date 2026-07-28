@@ -1275,19 +1275,6 @@ function openExternalUrl(url: string) {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
-function providerBaseOrigin(value: string): string | undefined {
-  const url = normalizedHttpUrl(value);
-  if (!url) {
-    return undefined;
-  }
-
-  try {
-    return new URL(url).origin;
-  } catch {
-    return undefined;
-  }
-}
-
 function normalizedHttpUrl(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   if (!trimmed) {
@@ -1724,8 +1711,6 @@ function ProviderFormStepHeader({
   index: number;
   title: string;
 }) {
-  const t = useAppText();
-
   return (
     <div className="sm:col-span-2 flex min-w-0 items-start justify-between gap-3 pb-1">
       <div className="min-w-0 space-y-1">

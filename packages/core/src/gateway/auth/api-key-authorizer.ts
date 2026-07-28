@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ApiKeyConfig, AppConfig } from "@ccr/core/contracts/app";
-import { loadPersistedApiKeys } from "@ccr/core/config/api-key-store";
+import { loadPersistedApiKeys } from "@ccr/core/config/config-repository";
 import { formatError, readAuthToken, readRemoteControlQueryAuthToken, sendJson } from "@ccr/core/gateway/http/io";
 import { estimateLimitUsage, limitRules, readWindowCounter } from "@ccr/core/gateway/limits/window-limiter";
 import type { ApiKeyAuthorizationResult, ApiKeyLimitRule, ApiKeyLimitUsage } from "@ccr/core/gateway/internal/shared";

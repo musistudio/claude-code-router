@@ -30,6 +30,7 @@ export const CCR_CLI_COMPANION_RUNTIME_FILE_NAMES = [
   "browser-web-search-proxy-mcp.js",
   "fusion-tool-fallback-mcp.js",
   "fusion-vision-mcp.js",
+  "gateway-bootstrap.js",
   "media-tools-proxy-mcp.js",
   "next-ai-gateway.js",
   "request-log-worker.js",
@@ -1137,20 +1138,6 @@ function sendProfileProcessSignal(pid: number | undefined, signal: NodeJS.Signal
   } catch {
     // The app process may have already exited.
   }
-}
-
-async function waitForProcessExit(pid: number | undefined, timeoutMs: number): Promise<boolean> {
-  if (!pid) {
-    return true;
-  }
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    if (!isProcessAlive(pid)) {
-      return true;
-    }
-    await sleep(100);
-  }
-  return !isProcessAlive(pid);
 }
 
 async function waitForProfileAppStart(entry: Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "spawnError" | "userDataDir">, timeoutMs: number): Promise<boolean> {

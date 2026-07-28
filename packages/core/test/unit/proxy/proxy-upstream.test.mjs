@@ -9,7 +9,7 @@ import {
 } from "@ccr/core/proxy/system-proxy.ts";
 
 test("custom upstream proxy config creates authenticated proxy URLs", () => {
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const config = createDefaultAppConfig();
   config.proxy.upstream = {
     custom: {
       password: "pa:ss",
@@ -33,7 +33,7 @@ test("custom upstream proxy config creates authenticated proxy URLs", () => {
 });
 
 test("none and incomplete custom upstream proxy configs do not create proxy servers", () => {
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const config = createDefaultAppConfig();
   config.proxy.upstream = {
     ...config.proxy.upstream,
     mode: "none"

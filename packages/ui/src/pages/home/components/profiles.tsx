@@ -87,7 +87,7 @@ export function ProfileView({
             ) : null}
             {visibleProfiles.map(({ profile, index }) => {
               const scope = normalizeProfileScope(profile.scope);
-              const surface = profile.agent === "zcode" ? "app" : normalizeProfileSurface(profile.surface);
+              const surface = profile.agent === "zcode" || profile.agent === "claude-design" ? "app" : normalizeProfileSurface(profile.surface);
               const openSurfaces = profileOpenSurfaces(profile);
               const summaryItems = profileSummaryItems(profile, config, t);
               const cliBusy = profileActionBusy?.profileId === profile.id && profileActionBusy.surface === "cli";
@@ -514,56 +514,6 @@ function ProfileCliCommandBlock({
   );
 }
 
-function ProfileAgentTabs({
-  activeAgent,
-  agentOptions,
-  profiles,
-  setActiveAgent
-}: {
-  activeAgent: ProfileConfig["agent"];
-  agentOptions: ProfileAgentOption[];
-  profiles: ProfileConfig[];
-  setActiveAgent: (agent: ProfileConfig["agent"]) => void;
-}) {
-  const t = useAppText();
-
-  return (
-    <div
-      aria-label={t("Agent profiles")}
-      className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-7"
-      role="tablist"
-    >
-      {agentOptions.map((option) => {
-        const agent = option.value;
-        const selected = activeAgent === agent;
-        const count = profiles.filter((profile) => profile.agent === agent).length;
-
-        return (
-          <button
-            aria-selected={selected}
-            className={cn(
-              "flex h-11 min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
-              selected
-                ? "bg-background text-foreground shadow-card"
-                : "text-muted-foreground hover:bg-background/70 hover:text-foreground"
-            )}
-            key={agent}
-            onClick={() => setActiveAgent(agent)}
-            role="tab"
-            type="button"
-          >
-            <AgentLogo agent={agent} className="h-6 w-6 rounded-[5px]" />
-            <span className="min-w-0 flex-1 truncate">{t(profileAgentLabel(agent))}</span>
-            <Badge className="shrink-0" variant={selected ? "secondary" : "outline"}>
-              {count}
-            </Badge>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function AgentSelectControl({
   agentOptions,
   onChange,
@@ -820,6 +770,14 @@ export function AddProfileForm({
                   scope: "ccr",
                   surface: "cli"
                 }
+              : agent === "kilo"
+                ? {
+                    agent,
+                    botConfigId: "",
+                    botConfigured: true,
+                    botEnabled: false,
+                    surface: "cli"
+                  }
               : agent === "claude-design"
                 ? {
                     agent,
@@ -871,7 +829,7 @@ export function AddProfileForm({
             options={translateOptions(
               draft.agent === "zcode" || draft.agent === "claude-design"
                 ? profileSurfaceOptions.filter((option) => option.value === "app")
-                : draft.agent === "grok" || draft.agent === "kimi" || draft.agent === "pi"
+                : draft.agent === "grok" || draft.agent === "kimi" || draft.agent === "pi" || draft.agent === "kilo"
                     ? profileSurfaceOptions.filter((option) => option.value === "cli")
                     : profileSurfaceOptions,
               t
@@ -980,7 +938,7 @@ export function AddProfileForm({
           </>
         ) : draft.agent === "claude-design" ? null : (
           <>
-            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : "Codex model")} requirement="optional" requirementLabel={optionalFieldLabel}>
+            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : draft.agent === "kilo" ? "Kilo model" : "Codex model")} requirement="optional" requirementLabel={optionalFieldLabel}>
               <ModelSelector
                 placeholder={modelPlaceholder}
                 providers={providers}
@@ -1043,7 +1001,7 @@ export function AddProfileForm({
                           <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
                           {validation.providerName ? <ProfileFieldHint>{t(validation.providerName)}</ProfileFieldHint> : null}
                         </Field>
-                        {draft.agent !== "zcode" && draft.agent !== "opencode" ? (
+                        {draft.agent !== "zcode" && draft.agent !== "opencode" && draft.agent !== "kilo" ? (
                           <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
                             <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
                             <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />

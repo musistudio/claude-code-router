@@ -129,7 +129,6 @@ export type CoreGatewayHealth = {
 
 
 export type ManagedGatewayRuntimeMarker = {
-  generatedConfigFile?: unknown;
   gatewayEntry?: unknown;
   pid?: unknown;
   runtimeId?: unknown;

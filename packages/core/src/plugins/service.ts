@@ -195,14 +195,12 @@ class GatewayPluginService {
   private proxyRoutes: RegisteredProxyRoute[] = [];
   private providerAccountConnectors = new Map<string, GatewayPluginProviderAccountConnector>();
   private resourceOwnerIds = new Set<string>();
-  private running = false;
   private stopHooks: StopHook[] = [];
   private virtualModelProfiles: unknown[] = [];
 
   async start(config: AppConfig): Promise<void> {
     await this.stop({ nextConfig: config });
     this.config = config;
-    this.running = true;
 
     for (const pluginConfig of config.plugins ?? []) {
       if (pluginConfig.enabled === false) {
@@ -248,7 +246,6 @@ class GatewayPluginService {
     this.gatewayRoutes = [];
     this.proxyRoutes = [];
     this.providerAccountConnectors.clear();
-    this.running = false;
     this.virtualModelProfiles = [];
   }
 

@@ -6,14 +6,27 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import packageJson from "../../package.json";
-import { loadPersistedAppSetting, replacePersistedAppSetting } from "@ccr/core/config/app-config-store";
+import { loadOnboardingFinished, markOnboardingFinished } from "@ccr/core/config/onboarding-state";
 import { scanBotHandoffBluetoothTargets, scanBotHandoffWifiTargets } from "@ccr/core/agents/bot-gateway/handoff-scan-service";
 import { cancelBotGatewayQrLogin, startBotGatewayQrLogin, waitBotGatewayQrLogin } from "@ccr/core/agents/bot-gateway/qr-login-service";
 import { syncClaudeAppGatewayConfig, restoreClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
 import { findInstalledCodexAppExecutable } from "@ccr/core/agents/codex/app-launch";
 import { findInstalledOpenCodeAppExecutable } from "@ccr/core/agents/opencode/app-launch";
 import { loadAppConfig, saveApiKeysConfig, saveAppConfig } from "@ccr/core/config/config";
-import { API_KEYS_DB_FILE, APP_CONFIG_DB_FILE, APP_NAME, CONFIGDIR, CONFIG_FILE, DATADIR, GATEWAY_CONFIG_FILE, LEGACY_CONFIG_FILE, ONBOARDING_FINISHED_FILE, PROXY_CA_CERT_FILE, REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "@ccr/core/config/constants";
+import {
+  APP_CONFIG_DB_FILE,
+  APP_NAME,
+  CONFIGDIR,
+  DATADIR,
+  LEGACY_ACTIVE_CONFIG_FILE,
+  LEGACY_APP_CONFIG_DB_FILES,
+  LEGACY_API_KEYS_DB_FILES,
+  LEGACY_CONFIG_FILE,
+  LEGACY_WINDOWS_CONFIG_FILE,
+  PROXY_CA_CERT_FILE,
+  REQUEST_LOGS_DB_FILE,
+  USAGE_DB_FILE
+} from "@ccr/core/config/constants";
 import { detectProviderIcon } from "@ccr/core/providers/icons";
 import { fetchProviderManifest } from "@ccr/core/providers/manifest-service";
 import { getLocalAgentProviderCandidates, importLocalAgentProvider, probeLocalAgentProvider } from "@ccr/core/agents/local-providers/service";
@@ -27,6 +40,7 @@ import { ensureProxyCertificateAuthority } from "@ccr/core/proxy/certificates";
 import { proxyService } from "@ccr/core/proxy/service";
 import { listMcpServerTools } from "@ccr/core/mcp/tool-discovery";
 import { closeRequestLogRuntime, getAgentAnalysis, getAgentTracePayload, getRequestLogDetail, getRequestLogs } from "@ccr/core/observability/request-log-store";
+import { shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
 import { getUsageStats } from "@ccr/core/usage/store";
 import { gatewayService } from "@ccr/core/gateway/service";
 import { shouldRestartGatewayForRuntimeConfigChange } from "@ccr/core/gateway/runtime-change";
@@ -105,7 +119,6 @@ type WebManagementSecurityContext = {
 
 const defaultWebHost = "127.0.0.1";
 const defaultWebPort = 3458;
-const onboardingFinishedAtSettingKey = "onboardingFinishedAt";
 const maxRpcBodyBytes = 8 * 1024 * 1024;
 const webAuthHeader = "x-ccr-web-auth";
 const webAuthQueryParam = "ccr_web_token";
@@ -192,10 +205,6 @@ async function handleRpcRequest(request: IncomingMessage, response: ServerRespon
     sendJson(response, 415, { error: { message: "RPC requests must use application/json." }, ok: false });
     return;
   }
-  if (!isAllowedWebRequestOrigin(request, security)) {
-    sendJson(response, 403, { error: { message: "Forbidden RPC origin." }, ok: false });
-    return;
-  }
   if (!hasValidWebAuthToken(request, security)) {
     sendJson(response, 401, { error: { message: "CCR web authentication token is missing or invalid." }, ok: false });
     return;
@@ -260,7 +269,17 @@ const rpcHandlers: Record<string, RpcHandler> = {
   },
   applyProfile: async () => applyProfileConfig(await loadAppConfig()),
   cancelBotGatewayQrLogin: (request) => cancelBotGatewayQrLogin(request as BotGatewayQrLoginCancelRequest),
-  checkProviderConnectivity: (request) => checkGatewayProviderConnectivity(request as GatewayProviderConnectivityCheckRequest),
+  checkProviderConnectivity: async (request) => {
+    const config = await loadAppConfig();
+    return checkGatewayProviderConnectivity(request as GatewayProviderConnectivityCheckRequest, {
+      requestLog: {
+        bodyCapturePolicy: config.observability.requestLogBodyCapture,
+        enabled: shouldRecordRequestLogs(config),
+        maxBodyBytes: config.observability.requestLogMaxBodyBytes,
+        successSampleRate: config.observability.requestLogSuccessSampleRate
+      }
+    });
+  },
   clearProxyNetworkCaptures: () => proxyService.clearNetworkCaptures(),
   closeBotGatewayQrWindow: (_request) => ({ closed: false }),
   detectProviderIcon: (request) => detectProviderIcon(request as ProviderIconDetectionRequest),
@@ -279,7 +298,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
       serviceToken === process.env.CCR_SERVICE_INSTANCE_TOKEN
   }),
   getLocalAgentProviderCandidates: () => getLocalAgentProviderCandidates(),
-  getOnboardingFinished: async () => Boolean(readString(await loadPersistedAppSetting(onboardingFinishedAtSettingKey)) || existsSync(ONBOARDING_FINISHED_FILE)),
+  getOnboardingFinished: () => loadOnboardingFinished(),
   getPluginMarketplace,
   getProfileOpenCommand: async (request) => getProfileOpenCommand(await loadAppConfig(), request as ProfileOpenRequest),
   getProfileRuntimeStatus: () => getProfileRuntimeStatus(),
@@ -396,7 +415,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
   scanBotHandoffWifiTargets: () => scanBotHandoffWifiTargets(),
   selectPluginDirectory: (directory) => inspectPluginDirectory(readRequiredString(directory, "Plugin directory path is required.")),
   setOnboardingFinished: async () => {
-    await replacePersistedAppSetting(onboardingFinishedAtSettingKey, new Date().toISOString());
+    await markOnboardingFinished();
     return true;
   },
   setProxyNetworkCaptureEnabled: (enabled) => proxyService.setNetworkCaptureEnabled(Boolean(enabled)),
@@ -479,14 +498,11 @@ function getCliAppInfo(): AppInfo {
   const chatgptAppPath = findInstalledCodexAppExecutable().executable;
   const opencodeAppPath = findInstalledOpenCodeAppExecutable().executable;
   return {
-    appConfigDbFile: APP_CONFIG_DB_FILE,
-    apiKeysDbFile: API_KEYS_DB_FILE,
     ...(chatgptAppPath ? { chatgptAppPath } : {}),
+    configDbFile: APP_CONFIG_DB_FILE,
     configDir: CONFIGDIR,
-    configFile: CONFIG_FILE,
     dataDir: DATADIR,
     desktop: false,
-    gatewayConfigFile: GATEWAY_CONFIG_FILE,
     launchAtLoginSupported: false,
     name: APP_NAME,
     ...(opencodeAppPath ? { opencodeAppPath } : {}),
@@ -580,32 +596,6 @@ function urlWithWebAuthToken(value: string, authToken: string): string {
 function isAllowedWebRequestHost(request: IncomingMessage, security: WebManagementSecurityContext): boolean {
   const hostname = requestHostname(request);
   return Boolean(hostname && isAllowedWebHostname(hostname, security));
-}
-
-function isAllowedWebRequestOrigin(request: IncomingMessage, security: WebManagementSecurityContext): boolean {
-  const origin = readHeaderValue(request.headers.origin);
-  if (origin && !isAllowedWebOriginValue(origin, security)) {
-    return false;
-  }
-
-  const referer = readHeaderValue(request.headers.referer);
-  if (!origin && referer && !isAllowedWebOriginValue(referer, security)) {
-    return false;
-  }
-
-  return true;
-}
-
-function isAllowedWebOriginValue(value: string, security: WebManagementSecurityContext): boolean {
-  try {
-    const url = new URL(value);
-    const port = url.port ? Number(url.port) : url.protocol === "http:" ? 80 : url.protocol === "https:" ? 443 : undefined;
-    return url.protocol === "http:" &&
-      port === security.port &&
-      isAllowedWebHostname(normalizeHostname(url.hostname), security);
-  } catch {
-    return false;
-  }
 }
 
 function isAllowedWebHostname(hostname: string, security: WebManagementSecurityContext): boolean {
@@ -729,7 +719,7 @@ async function exportAppData(): Promise<AppDataExportResult> {
       version: packageJson.version
     },
     appState: {
-      onboardingFinished: Boolean(readString(await loadPersistedAppSetting(onboardingFinishedAtSettingKey)) || existsSync(ONBOARDING_FINISHED_FILE))
+      onboardingFinished: await loadOnboardingFinished()
     },
     config: await loadAppConfig(),
     exportedAt,
@@ -775,7 +765,8 @@ function readDataExportFiles(): Array<{ base64: string; name: string; path: stri
 function dataExportCandidateFiles(): string[] {
   return uniqueStrings([
     ...sqliteDataFiles(APP_CONFIG_DB_FILE),
-    ...sqliteDataFiles(API_KEYS_DB_FILE),
+    ...LEGACY_APP_CONFIG_DB_FILES.flatMap(sqliteDataFiles),
+    ...LEGACY_API_KEYS_DB_FILES.flatMap(sqliteDataFiles),
     ...sqliteDataFiles(REQUEST_LOGS_DB_FILE),
     ...sqliteDataFiles(USAGE_DB_FILE)
   ]);
@@ -788,12 +779,9 @@ function sqliteDataFiles(file: string): string[] {
 function assertExportTargetIsNotInternalDataFile(file: string): void {
   const target = path.resolve(file);
   const reserved = new Set([
-    CONFIG_FILE,
+    LEGACY_ACTIVE_CONFIG_FILE,
+    LEGACY_WINDOWS_CONFIG_FILE,
     LEGACY_CONFIG_FILE,
-    APP_CONFIG_DB_FILE,
-    API_KEYS_DB_FILE,
-    REQUEST_LOGS_DB_FILE,
-    USAGE_DB_FILE,
     ...dataExportCandidateFiles()
   ].map((item) => path.resolve(item)));
   if (reserved.has(target)) {

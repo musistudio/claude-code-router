@@ -259,6 +259,7 @@ function providerModelMetadataFromCatalog(
 ): ProviderModelMetadata | undefined {
   const limits = isRecord(modelEntry.limits) ? modelEntry.limits : {};
   const contextWindow = maxPositiveInteger(limits.contextTokens, limits.inputTokens, limits.maxTokens);
+  const maxOutputTokens = maxPositiveInteger(limits.outputTokens, limits.maxTokens);
   const capabilities = isRecord(modelEntry.capabilities) ? modelEntry.capabilities : {};
   const imageInput = booleanValue(capabilities.imageInput);
   const webSearch = booleanValue(capabilities.webSearch);
@@ -275,6 +276,7 @@ function providerModelMetadataFromCatalog(
         }
       : {}),
     ...(contextWindow ? { contextWindow, maxContextWindow: contextWindow } : {}),
+    ...(maxOutputTokens ? { maxOutputTokens } : {}),
     ...(pricing ? { pricing } : {}),
     ...(supportedReasoningLevels.length > 0 ? { supportedReasoningLevels } : {}),
     ...(supportsReasoningSummaries !== undefined ? { supportsReasoningSummaries } : {})

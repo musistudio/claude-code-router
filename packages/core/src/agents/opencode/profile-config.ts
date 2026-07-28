@@ -1,9 +1,12 @@
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildCodexModelCatalogIds } from "@ccr/core/agents/codex/model-catalog";
+import { buildCodexModelCatalog, type CodexModelCatalogItem } from "@ccr/core/agents/codex/model-catalog";
 import { parseJsoncRecord } from "@ccr/core/agents/local-providers/shared";
-import { isGatewayProviderEnabled, type AppConfig, type ProfileConfig } from "@ccr/core/contracts/app";
+import { isGatewayProviderEnabled, type AppConfig, type GatewayProviderConfig, type ProfileConfig, type ProviderModelMetadata } from "@ccr/core/contracts/app";
+import { findModelCatalogEntry, type ModelCatalogEntry, modelCatalogMaxInputTokens, modelCatalogMaxOutputTokens } from "@ccr/core/gateway/model-catalog";
+import { modelRegistryForConfig } from "@ccr/core/routing/model-registry";
+import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
 
 export type OpenCodeProfileConfigWriteResult = {
   backupFile?: string;
@@ -14,6 +17,15 @@ export type OpenCodeProfileConfigWriteResult = {
 
 const originalBackupSuffix = ".ccr-original";
 const originalMissingSuffix = ".ccr-original-missing";
+const defaultOpenCodeContextWindow = 128_000;
+const defaultOpenCodeMaxOutputTokens = 8_192;
+
+type OpenCodeModelResolutionConfig = Pick<AppConfig, "Providers" | "virtualModelProfiles">;
+
+type OpenCodeResolvedModelMetadata = {
+  catalogEntry?: ModelCatalogEntry;
+  providerMetadata?: ProviderModelMetadata;
+};
 
 export function resolveOpenCodeConfigFile(configDir: string, profile: ProfileConfig): string {
   if (profile.scope === "ccr" || profile.scope === "custom") {
@@ -85,13 +97,13 @@ function openCodeGatewayOverrides(config: AppConfig, profile: ProfileConfig, tok
   const providerName = profile.providerName?.trim() || "Claude Code Router";
   const model = normalizeClientModel(profile.model) || defaultClientModel(config);
   const modelRef = `${providerId}/${model}`;
-  const models = buildCodexModelCatalogIds(config, model);
+  const models = openCodeModelConfigs(config, model);
   return {
     $schema: "https://opencode.ai/config.json",
     model: modelRef,
     provider: {
       [providerId]: {
-        models: Object.fromEntries(uniqueStrings(models).map((modelId) => [modelId, { name: modelId }])),
+        models,
         name: providerName,
         npm: "@ai-sdk/openai-compatible",
         options: {
@@ -106,6 +118,87 @@ function openCodeGatewayOverrides(config: AppConfig, profile: ProfileConfig, tok
     },
     small_model: modelRef
   };
+}
+
+function openCodeModelConfigs(config: AppConfig, selectedModel: string): Record<string, unknown> {
+  const catalog = buildCodexModelCatalog(config, selectedModel);
+  const resolutionConfig: OpenCodeModelResolutionConfig = {
+    Providers: config.Providers ?? [],
+    virtualModelProfiles: config.virtualModelProfiles ?? []
+  };
+  return Object.fromEntries(catalog.models.map((item) => [
+    item.slug,
+    openCodeModelConfig(item, resolutionConfig)
+  ]));
+}
+
+function openCodeModelConfig(item: CodexModelCatalogItem, config: OpenCodeModelResolutionConfig): Record<string, unknown> {
+  const resolved = openCodeResolvedModelMetadata(config, item.slug);
+  const contextWindow = Math.max(
+    item.context_window,
+    modelCatalogMaxInputTokens(resolved.catalogEntry)
+  );
+  const maxOutputTokens = positiveNumber(resolved.providerMetadata?.maxOutputTokens)
+    ?? modelCatalogMaxOutputTokens(resolved.catalogEntry);
+  return {
+    name: item.slug,
+    limit: {
+      context: positiveNumber(contextWindow) ?? defaultOpenCodeContextWindow,
+      output: positiveNumber(maxOutputTokens) ?? defaultOpenCodeMaxOutputTokens
+    },
+    modalities: {
+      input: openCodeInputModalities(item.input_modalities),
+      output: ["text"]
+    }
+  };
+}
+
+function openCodeResolvedModelMetadata(
+  config: OpenCodeModelResolutionConfig | undefined,
+  model: string
+): OpenCodeResolvedModelMetadata {
+  if (!config) {
+    return { catalogEntry: findModelCatalogEntry(model) };
+  }
+
+  const registry = modelRegistryForConfig(config);
+  const attribution = resolveUsageModelAttribution(config, model);
+  const physicalModel = attribution.model?.trim();
+  const physicalProvider = registry.findProvider(attribution.provider);
+  if (physicalProvider && physicalModel) {
+    return {
+      catalogEntry: findModelCatalogEntry(`${physicalProvider.name}/${physicalModel}`),
+      providerMetadata: providerModelMetadataFor(physicalProvider, physicalModel)
+    };
+  }
+
+  if (registry.resolve(model)?.kind === "gateway") {
+    return {};
+  }
+
+  return { catalogEntry: findModelCatalogEntry(physicalModel || model) };
+}
+
+function providerModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {
+  const metadata = provider.modelMetadata ?? {};
+  const direct = metadata[model];
+  if (direct) {
+    return direct;
+  }
+  const normalized = model.trim().toLowerCase();
+  const match = Object.entries(metadata).find(([candidate]) => candidate.trim().toLowerCase() === normalized);
+  return match?.[1];
+}
+
+function openCodeInputModalities(values: string[]): string[] {
+  const normalized = new Set<string>(["text"]);
+  for (const value of values) {
+    const modality = value.trim().toLowerCase();
+    if (modality) {
+      normalized.add(modality);
+    }
+  }
+  return [...normalized];
 }
 
 function readJsoncObject(file: string): Record<string, unknown> {
@@ -221,6 +314,12 @@ function normalizeClientModel(value: string | undefined): string {
   return trimmed;
 }
 
+function positiveNumber(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isFinite(value) && value > 0
+    ? Math.trunc(value)
+    : undefined;
+}
+
 function openCodeXdgRoot(environmentName: "XDG_CONFIG_HOME", fallback: string): string {
   const internalHome = process.env.CCR_INTERNAL_HOME_DIR?.trim();
   if (internalHome) {
@@ -247,10 +346,6 @@ function sanitizeProviderId(value: string): string {
 
 function sanitizePathSegment(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
-}
-
-function uniqueStrings(values: string[]): string[] {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -16,7 +16,7 @@ import { ccrRemoteControlPathPrefix, ccrRemoteControlService } from "@ccr/core/g
 import { authorize, reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
 import { parseJsonObject, readRequestBody, sendJson } from "@ccr/core/gateway/http/io";
 import { shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
-import { applyCors, endpoint, shouldServeGatewayRequest } from "@ccr/core/gateway/core-runtime/supervisor";
+import { applyCors, shouldServeGatewayRequest } from "@ccr/core/gateway/core-runtime/supervisor";
 import { billingUsageSyncPath, rawTraceSyncPath } from "@ccr/core/gateway/internal/shared";
 import type { BrowserAutomationMcpIntegration } from "@ccr/core/gateway/internal/shared";
 

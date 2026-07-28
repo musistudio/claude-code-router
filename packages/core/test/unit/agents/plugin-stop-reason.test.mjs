@@ -46,9 +46,7 @@ test("gateway restart reports disabled reason to removed plugin stop hooks", { s
 });
 
 function configWithPlugin(dir, pluginFile, enabled) {
-  const config = createDefaultAppConfig({
-    generatedConfigFile: path.join(dir, "gateway.config.json")
-  });
+  const config = createDefaultAppConfig();
   config.gateway.enabled = false;
   config.plugins = [{
     enabled,

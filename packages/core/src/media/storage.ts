@@ -93,7 +93,7 @@ export class MediaJobStore {
 export class MediaArtifactStore {
   readonly artifactsDir: string;
 
-  constructor(private readonly rootDir: string) {
+  constructor(rootDir: string) {
     this.artifactsDir = path.join(rootDir, "artifacts");
     mkdirSync(this.artifactsDir, { mode: privateDirectoryMode, recursive: true });
   }

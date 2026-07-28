@@ -1,6 +1,6 @@
 import { gunzipSync } from "node:zlib";
 import type { Event as ElectronEvent, Session, WebContents } from "electron";
-import { loadPersistedApiKeys } from "@ccr/core/config/api-key-store";
+import { loadPersistedApiKeys } from "@ccr/core/config/config-repository";
 import {
   CLAUDE_DESIGN_PLUGIN_ID,
   CLAUDE_SHIP_PLUGIN_ID,

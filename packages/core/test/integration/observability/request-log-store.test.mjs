@@ -1335,6 +1335,41 @@ test("RequestLogStore identifies OpenCode from its explicit client header", asyn
   }
 });
 
+test("RequestLogStore identifies Kilo CLI from its explicit client header", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-kilo-agent-test-"));
+  try {
+    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const startedAt = new Date().toISOString();
+    await store.record({
+      completedAt: startedAt,
+      durationMs: 25,
+      method: "POST",
+      path: "/v1/chat/completions",
+      providerName: "test-provider",
+      providerProtocol: "openai_chat_completions",
+      requestBody: Buffer.from(JSON.stringify({ messages: [{ content: "hello", role: "user" }], model: "Provider/model" }), "utf8"),
+      requestHeaders: {
+        "content-type": "application/json",
+        "user-agent": "generic-openai-client/1.0",
+        "x-ccr-client": "kilo"
+      },
+      requestId: "kilo-agent-request",
+      responseBodyText: JSON.stringify({ choices: [], model: "Provider/model" }),
+      responseHeaders: { "content-type": "application/json" },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/chat/completions"
+    });
+
+    const analysis = await store.analyze({ agent: "kilo", range: "30d" });
+    assert.equal(analysis.scannedRequestCount, 1);
+    assert.equal(analysis.agents[0]?.agent, "kilo");
+    assert.equal(analysis.agents[0]?.label, "Kilo CLI");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("RequestLogStore does not identify an unknown client as OpenCode from its model name", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-opencode-model-test-"));
   try {

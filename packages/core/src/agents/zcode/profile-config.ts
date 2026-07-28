@@ -23,7 +23,6 @@ type ZcodeGatewayConfigValues = {
 };
 
 const legacyZcodeTomlConfigFile = "~/.zcode/config.toml";
-const defaultZcodeConfigFile = "~/.zcode/cli/config.json";
 const originalBackupSuffix = ".ccr-original";
 const originalMissingSuffix = ".ccr-original-missing";
 const defaultZcodeContextWindow = 128_000;

@@ -888,100 +888,6 @@ function buildBuckets(
   });
 }
 
-function buildModelRows(events: StoredUsageEvent[]): UsageComparisonRow[] {
-  const grouped = new Map<string, StoredUsageEvent[]>();
-  for (const event of events) {
-    const key = `${event.provider}::${event.model}`;
-    const bucket = grouped.get(key) ?? [];
-    bucket.push(event);
-    grouped.set(key, bucket);
-  }
-
-  const rows = Array.from(grouped.entries())
-    .map(([key, groupedEvents]) => {
-      const latest = groupedEvents.at(-1);
-      return {
-        ...buildTotals(groupedEvents),
-        caption: latest?.provider || "unknown",
-        credentialId: latest?.credentialId || undefined,
-        key,
-        label: latest?.model || "unknown",
-        maxShare: 0,
-        model: latest?.model,
-        provider: latest?.provider
-      };
-    })
-    .sort((a, b) => b.totalTokens - a.totalTokens || b.requestCount - a.requestCount)
-    .slice(0, 8);
-
-  return applyMaxShare(rows, (row) => row.totalTokens || row.requestCount);
-}
-
-function buildClientModelRows(events: StoredUsageEvent[]): UsageComparisonRow[] {
-  const grouped = new Map<string, StoredUsageEvent[]>();
-  for (const event of events) {
-    const key = `${event.client}::${event.provider}::${event.credentialId}::${event.model}`;
-    const bucket = grouped.get(key) ?? [];
-    bucket.push(event);
-    grouped.set(key, bucket);
-  }
-
-  const rows = Array.from(grouped.entries())
-    .map(([key, groupedEvents]) => {
-      const latest = groupedEvents.at(-1);
-      const model = latest?.model || "unknown";
-      const provider = latest?.provider || "unknown";
-      const credentialId = latest?.credentialId || "";
-      return {
-        ...buildTotals(groupedEvents),
-        caption: credentialId ? `${provider} / ${credentialId} / ${model}` : `${provider} / ${model}`,
-        client: latest?.client,
-        credentialId: credentialId || undefined,
-        key,
-        label: latest?.client || "unknown",
-        maxShare: 0,
-        model,
-        provider
-      };
-    })
-    .sort(compareUsageRows)
-    .slice(0, 25);
-
-  return applyMaxShare(rows, (row) => row.totalTokens || row.requestCount);
-}
-
-function buildProviderModelRows(events: StoredUsageEvent[]): UsageComparisonRow[] {
-  const grouped = new Map<string, StoredUsageEvent[]>();
-  for (const event of events) {
-    const key = `${event.provider}::${event.credentialId}::${event.model}`;
-    const bucket = grouped.get(key) ?? [];
-    bucket.push(event);
-    grouped.set(key, bucket);
-  }
-
-  const rows = Array.from(grouped.entries())
-    .map(([key, groupedEvents]) => {
-      const latest = groupedEvents.at(-1);
-      const model = latest?.model || "unknown";
-      const provider = latest?.provider || "unknown";
-      const credentialId = latest?.credentialId || "";
-      return {
-        ...buildTotals(groupedEvents),
-        caption: credentialId ? `${credentialId} / ${model}` : model,
-        credentialId: credentialId || undefined,
-        key,
-        label: provider,
-        maxShare: 0,
-        model,
-        provider
-      };
-    })
-    .sort(compareUsageRows)
-    .slice(0, 25);
-
-  return applyMaxShare(rows, (row) => row.totalTokens || row.requestCount);
-}
-
 function buildRecentRequestRows(events: StoredUsageEvent[]): UsageComparisonRow[] {
   const recent = events.slice(-10).reverse();
   const rows = recent.map((event) => ({
@@ -998,10 +904,6 @@ function buildRecentRequestRows(events: StoredUsageEvent[]): UsageComparisonRow[
   }));
 
   return applyMaxShare(rows, (row) => row.totalTokens || row.avgDurationMs || 1);
-}
-
-function compareUsageRows(a: UsageComparisonRow, b: UsageComparisonRow): number {
-  return b.totalTokens - a.totalTokens || b.requestCount - a.requestCount || a.label.localeCompare(b.label);
 }
 
 function applyMaxShare<T extends UsageComparisonRow>(

@@ -8,11 +8,12 @@ import { copyMissingDirectoryContents, sameFilesystemPath } from "@ccr/core/stor
 installSocketTypeOfServiceCompat();
 markDesktopAppRuntime();
 
-const appDataPath = app.getPath("appData");
-const homePath = app.getPath("home");
+const appDataPath = readConfiguredRuntimePath("CCR_INTERNAL_APP_DATA_DIR") ?? app.getPath("appData");
+const homePath = readConfiguredRuntimePath("CCR_INTERNAL_HOME_DIR") ?? app.getPath("home");
 setRuntimeAppPaths({
   appData: appDataPath,
-  home: homePath
+  home: homePath,
+  userData: readConfiguredRuntimePath("CCR_INTERNAL_USER_DATA_DIR")
 });
 const userDataPath = configureRuntimeUserDataPath(app.getPath("userData"));
 setRuntimeAppPaths({
@@ -52,6 +53,11 @@ function reportFatalStartupError(error: unknown): void {
   }
 
   app.exit(1);
+}
+
+function readConfiguredRuntimePath(key: string): string | undefined {
+  const value = process.env[key]?.trim();
+  return value || undefined;
 }
 
 function configureRuntimeUserDataPath(currentUserDataPath: string): string {

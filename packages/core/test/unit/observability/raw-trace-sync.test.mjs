@@ -875,7 +875,7 @@ test("fallback raw bundles keep unique bundle ids while sharing the logical requ
 });
 
 function createConfig() {
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-generated-config.json" });
+  const config = createDefaultAppConfig();
   config.observability.requestLogs = true;
   config.observability.requestLogBodyCapture = "all";
   config.observability.requestLogSuccessSampleRate = 1;

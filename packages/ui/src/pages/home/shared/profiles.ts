@@ -1,381 +1,32 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import {
-  closestCenter,
-  DndContext,
-  DragOverlay,
-  getFirstCollision,
-  KeyboardSensor,
-  MeasuringStrategy,
-  pointerWithin,
-  PointerSensor,
-  rectIntersection,
-  useSensor,
-  useSensors,
-  type CollisionDetection,
-  type DragEndEvent,
-  type DragOverEvent,
-  type DragStartEvent
-} from "@dnd-kit/core";
-import { arrayMove, rectSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
-import {
-  Activity,
-  ArrowDown,
-  ArrowUp,
-  Box,
-  Boxes,
-  Braces,
-  Check,
-  CheckCircle2,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  CircleAlert,
-  Copy,
-  Database,
-  ExternalLink,
-  FolderOpen,
-  Gauge,
-  Globe,
-  Info,
-  KeyRound,
-  Layers3,
-  LoaderCircle,
-  MoveRight,
-  Network,
-  Palette,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Pause,
-  Pencil,
-  Play,
-  Plus,
-  Power,
-  QrCode,
-  RefreshCw,
-  Route,
-  Search,
-  Server,
-  Settings,
-  ShieldCheck,
-  Terminal,
-  Trash2,
-  UserRound,
-  X,
-  type LucideIcon
-} from "lucide-react";
-import {
-  Area,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ComposedChart,
-  LabelList,
-  Line,
-  Pie,
-  PieChart,
-  Tooltip,
-  XAxis,
-  YAxis
-} from "recharts";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { PopoverContent } from "@/components/ui/popover";
-import { Select } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
-import appLogoUrl from "@/assets/logo.png";
 import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
 import codexLogoUrl from "@/assets/agent-logos/codex.png";
 import grokLogoUrl from "@/assets/agent-logos/grok.ico";
+import kiloLogoUrl from "@/assets/agent-logos/kilo.svg";
 import openCodeLogoUrl from "@/assets/agent-logos/opencode.ico";
 import piLogoUrl from "@/assets/agent-logos/pi.svg";
 import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
-import onboardingMascotSpriteUrl from "@/assets/onboarding/mascot-transition.svg";
-import anthropicProviderIconUrl from "@/assets/provider-icons/anthropic.png";
-import bailianProviderIconUrl from "@/assets/provider-icons/bailian.ico";
-import deepseekProviderIconUrl from "@/assets/provider-icons/deepseek.ico";
-import geminiProviderIconUrl from "@/assets/provider-icons/gemini.svg";
-import mistralProviderIconUrl from "@/assets/provider-icons/mistral.webp";
 import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
-import openaiProviderIconUrl from "@/assets/provider-icons/openai.png";
-import openrouterProviderIconUrl from "@/assets/provider-icons/openrouter.ico";
-import siliconflowProviderIconUrl from "@/assets/provider-icons/siliconflow.png";
-import zaiGlobalCodingProviderIconUrl from "@/assets/provider-icons/zai-global-coding.svg";
-import zaiGlobalGeneralProviderIconUrl from "@/assets/provider-icons/zai-global-general.svg";
-import zhipuCnCodingProviderIconUrl from "@/assets/provider-icons/zhipu-cn-coding.png";
-import zhipuCnGeneralProviderIconUrl from "@/assets/provider-icons/zhipu-cn-general.png";
-import trayCyanIconUrl from "@/assets/tray-cyan.png";
-import trayOrangeIconUrl from "@/assets/tray-orange.png";
-import trayVioletIconUrl from "@/assets/tray-violet.png";
 import {
-  BUILTIN_FUSION_TOOL_SERVER_NAME,
-  BUILTIN_FUSION_VISION_TOOL_NAME,
-  BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME,
   CLAUDE_CODE_DEFAULT_ENV,
   CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV,
-  DEFAULT_OVERVIEW_WIDGETS,
-  DEFAULT_TRAY_COMPONENT_VARIANTS,
-  DEFAULT_TRAY_WIDGETS,
-  DEFAULT_TRAY_WINDOW_MODULES,
   enforceSingleEnabledGlobalProfilePerAgent,
-  normalizeProfileScopeValue,
-  OVERVIEW_WIDGET_SIZE_VALUES,
-  TRAY_SINGLETON_WIDGET_TYPES,
-  TRAY_TOP_WIDGET_TYPES,
-  TRAY_WINDOW_MODULE_IDS
+  normalizeProfileScopeValue
 } from "@ccr/core/contracts/app";
 import type {
-  AgentAnalysisFilter,
-  AgentAnalysisSessionSelection,
-  AgentAnalysisSnapshot,
-  AgentKind,
   AppConfig,
-  AppInfo,
-  AppUpdateStatus,
-  ApiKeyConfig,
-  ApiKeyLimitConfig,
-  BotGatewayQrLoginCancelRequest,
-  BotGatewayQrLoginCancelResult,
-  BotGatewayQrLoginStartRequest,
-  BotGatewayQrLoginStartResult,
-  BotGatewayQrLoginWaitRequest,
-  BotGatewayQrLoginWaitResult,
-  BotGatewayQrWindowOpenResult,
   BotGatewayRuntimeConfig,
   BotGatewaySavedConfig,
-  BotHandoffScanTarget,
   GatewayProviderConfig,
-  GatewayProviderCapability,
-  GatewayPluginAppConfig,
-  GatewayProviderConnectivityCheckModelResult,
-  GatewayProviderConnectivityCheckReport,
-  GatewayProviderProbeCandidate,
-  GatewayProviderProbeCandidateResult,
-  GatewayProviderProbeResult,
-  GatewayProviderProtocol,
-  GatewayMcpServerConfig,
-  GatewayMcpServerTransport,
-  GatewayMcpStdioMessageMode,
-  GatewayMcpToolInfo,
-  GatewayStatus,
-  OverviewMetricKind,
-  OverviewWidgetConfig,
-  OverviewWidgetSize,
-  OverviewWidgetType,
-  OverviewWidgetVariant,
-  PluginDependency,
-  PluginDirectorySelection,
-  PluginMarketplaceEntry,
-  ProviderAccountConfig,
-  ProviderAccountConnectorConfig,
-  ProviderAccountHttpJsonConnectorConfig,
-  ProviderAccountMeter,
-  ProviderAccountStandardConnectorConfig,
-  ProviderAccountSnapshot,
-  ProviderAccountTestPath,
-  ProviderAccountTestResult,
-  ProviderCredentialConfig,
-  ProviderDeepLinkPayload,
-  ProviderDeepLinkRequest,
   ProfileConfig,
   ProfileOpenSurface,
   CodexProfileConfigFormat,
   ProfileScope,
   ProfileSurface,
-  ProxyCertificateInstallResult,
-  ProxyCertificateStatus,
-  ProxyNetworkBody,
-  ProxyNetworkExchange,
-  ProxyNetworkSnapshot,
-  ProxyStatus,
-  RequestLogBody,
-  RequestLogEntry,
-  RequestLogListFilter,
-  RequestLogPage,
-  RequestLogStatusFilter,
-  RouterConfig,
-  RouterFallbackConfig,
-  RouterFallbackMode,
-  RouterRule,
-  RouterRuleCondition,
-  RouterRuleOperator,
-  RouterRuleRewrite,
-  RouterRuleRewriteOperation,
-  RouterRuleType,
-  TrayBalanceProgressConfig,
-  TrayComponentVariants,
-  TrayWidgetConfig,
-  TrayWidgetType,
-  TrayWidgetVariant,
-  TrayWindowModuleId,
-  UsageComparisonRow,
-  UsageSeriesPoint,
-  UsageStatsFilter,
-  UsageStatsRange,
-  UsageStatsSnapshot,
-  UsageTotals,
-  VirtualModelBaseModelMode,
-  VirtualModelExecutionMode,
-  VirtualModelFusionCustomToolConfig,
-  VirtualModelFusionVisionConfig,
-  VirtualModelFusionWebSearchConfig,
-  VirtualModelFusionWebSearchProvider,
-  VirtualModelProfileConfig,
-  VirtualModelToolVisibility
+  VirtualModelProfileConfig
 } from "@ccr/core/contracts/app";
 import {
-  customProviderPresetId,
-  defaultProviderAccountConfig,
-  standardProviderAccountConfig,
-  type ProviderIdentitySafetyIssue,
-  type ProviderPreset,
-  type ProviderPresetEndpoint
-} from "@ccr/core/providers/presets/types";
-import {
-  findProviderPresetByBaseUrlInList,
-  findProviderPresetInList,
-  primaryProviderPresetEndpoint as primaryProviderPresetEndpointFromPreset,
-  providerApiKeySafetyIssueInList,
-  providerEndpointCanReceiveProviderApiKeyInList,
-  providerIdentitySafetyIssueInList
-} from "@ccr/core/providers/presets/utils";
-import { normalizeProviderBaseUrl, providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
-import {
-  fallbackConfig,
-  fallbackGatewayStatus,
-  fallbackInfo,
-  fallbackProxyCertificateStatus,
-  fallbackProxyNetworkSnapshot,
-  fallbackProxyStatus,
-  fallbackUpdateStatus
+  fallbackConfig
 } from "./fallbacks";
-import {
-  AppI18nContext,
-  appCopy,
-  languagePreferenceStorageKey,
-  translateOptions,
-  translateText,
-  useAppText,
-  type AppCopy
-} from "./i18n";
-import {
-  AnimatedDisclosure,
-  AnimatedFieldSlot,
-  AnimatedListItem,
-  disclosureSpringTransition,
-  listSpringTransition,
-  motionEase,
-  pageSpringTransition,
-  reducedMotionTransition,
-  ViewMotionShell
-} from "./motion";
-import {
-  clientInitial,
-  formatBytes,
-  formatDuration,
-  formatHeaderName,
-  formatNetworkDateTime,
-  formatNetworkHeaders,
-  formatNetworkRequestRaw,
-  formatNetworkResponseRaw,
-  formatNetworkTime,
-  networkCodeLabel,
-  networkExchangeMatchesQuery,
-  networkHeaderRows,
-  networkLifecycleLabel,
-  networkQueryRows,
-  networkRowId,
-  networkStatusLabel,
-  networkStatusVariant,
-  networkSummaryRows
-} from "./network";
-import {
-  agentKindLabel,
-  compactId,
-  compactUserAgent,
-  createEmptyAgentAnalysis,
-  createEmptyAgentConcurrencySeries,
-  createEmptyRequestLogPage,
-  createEmptyUsageSeries,
-  createEmptyUsageStats,
-  emptyUsageTotals,
-  formatAxisNumber,
-  formatCompactNumber,
-  formatPercent,
-  formatStatusCodeCounts,
-  formatToolCounts,
-  formatUsdCost,
-  logSelectOptions,
-  normalizeAgentFilterValue
-} from "./usage";
-import {
-  agentAnalysisRangeOptions,
-  agentFilterOptions,
-  apiKeyExpirationOptions,
-  apiKeyLimitMetricOptions,
-  claudeDesignRouteRuleTypeOptions,
-  customFusionToolName,
-  defaultFusionWebSearchProvider,
-  fusionToolOptions,
-  fusionWebSearchEnvKeysByProvider,
-  fusionWebSearchProviderOptions,
-  getDefaultOnboardingStep,
-  getNextOnboardingStep,
-  isOnboardingProfileReady,
-  isOnboardingProviderReady,
-  legacyRouterRuleTypes,
-  legacyUnimcpPackageName,
-  legacyUnimcpServerName,
-  limitWindowOptions,
-  mcpServerStartupTimeoutMs,
-  mcpServerTransportOptions,
-  mcpStdioMessageModeOptions,
-  navigation,
-  onboardingStepOrder,
-  overviewMetricOptions,
-  overviewWidgetSizeOptions,
-  profileAgentOptions,
-  profileScopeOptions,
-  profileSurfaceOptions,
-  providerAccountModeOptions,
-  providerPresetIconUrls,
-  providerProtocolOptions,
-  providerUsageMethodOptions,
-  requestLogPageSizeOptions,
-  requestLogStatusOptions,
-  removedLegacyRouterRuleIds,
-  routerConditionSourceOptions,
-  routerFallbackModeOptions,
-  routerRewriteOperationOptions,
-  routerRuleOperatorOptions,
-  routerRuleTypeOptions,
-  trayMascotIconUrls,
-  usageRangeOptions,
-  virtualModelBaseModeOptions,
-  virtualModelClientToolsPolicyOptions,
-  virtualModelExecutionModeOptions,
-  virtualModelMatchModeOptions,
-  virtualModelToolVisibilityOptions
-} from "./options";
-import type { AgentFilterValue, RouterConditionSource } from "./options";
-import type { MotionSafeDivAttributes } from "./motion";
-
 
 import { isPlainRecord, normalizeProviderModelSelector, stringValue, uniqueStrings } from "./common";
 import { virtualModelProfileModelNames } from "./providers";
@@ -777,7 +428,11 @@ export function profileDraftWithDetectedAppPath(
   chatgptAppPath?: string,
   opencodeAppPath?: string
 ): AddProfileDraft {
-  const detectedPath = (draft.agent === "codex" ? chatgptAppPath : draft.agent === "opencode" ? opencodeAppPath : "")?.trim() || "";
+  const detectedPath = (draft.agent === "codex"
+    ? chatgptAppPath
+    : draft.agent === "opencode"
+      ? opencodeAppPath
+      : "")?.trim() || "";
   if (draft.appPath.trim() || !detectedPath) {
     return draft;
   }
@@ -844,7 +499,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
     providerId: profile.providerId ?? "claude-code-router",
     providerName: profile.providerName ?? "Claude Code Router",
     scope: normalizeProfileFormScope(profile.scope),
-    showAllSessions: profile.agent === "zcode" || profile.agent === "opencode" ? false : Boolean(profile.showAllSessions),
+    showAllSessions: profile.agent === "zcode" || profile.agent === "opencode" || profile.agent === "kilo" ? false : Boolean(profile.showAllSessions),
     surface
   };
 }
@@ -940,7 +595,7 @@ export function profileConfigFromDraft(
     providerName: draft.providerName,
     scope: draft.scope,
     settingsFile: draft.settingsFile,
-    showAllSessions: draft.agent === "zcode" || draft.agent === "opencode" || draft.agent === "claude-design" ? false : draft.showAllSessions,
+    showAllSessions: draft.agent === "zcode" || draft.agent === "opencode" || draft.agent === "kilo" || draft.agent === "claude-design" ? false : draft.showAllSessions,
     sonnetModel: draft.sonnetModel,
     smallFastModel: draft.haikuModel || draft.smallFastModel,
     surface: draft.surface
@@ -1533,9 +1188,9 @@ export function profileSummaryItems(
   }
 
   return [
-    { label: t("Model"), value: modelValue },
+    { label: t(profile.agent === "kilo" ? "Kilo model" : "Model"), value: modelValue },
     { label: t("Provider ID"), value: profile.providerId ?? "claude-code-router" },
-    ...(profile.agent === "zcode" || profile.agent === "opencode" || !profile.showAllSessions ? [] : [{ label: t("Show all sessions"), value: t("Enabled") }]),
+    ...(profile.agent === "zcode" || profile.agent === "opencode" || profile.agent === "kilo" || !profile.showAllSessions ? [] : [{ label: t("Show all sessions"), value: t("Enabled") }]),
     ...managedCompactItems,
     ...appPathSummaryItems,
     ...botSummaryItems,
@@ -1623,7 +1278,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
     providerId: profile.providerId?.trim() || "claude-code-router",
     providerName: profile.providerName?.trim() || "Claude Code Router",
     scope,
-    showAllSessions: agent === "zcode" || agent === "opencode" ? false : Boolean(profile.showAllSessions),
+    showAllSessions: agent === "zcode" || agent === "opencode" || agent === "kilo" ? false : Boolean(profile.showAllSessions),
     surface
   };
 }
@@ -1690,45 +1345,21 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
         ? "kimi"
       : rawAgent === "opencode" || rawAgent === "open-code" || rawAgent === "open code"
         ? "opencode"
+      : rawAgent === "kilo" || rawAgent === "kilo-cli" || rawAgent === "kilo cli" || rawAgent === "kilocode" || rawAgent === "kilo-code" || rawAgent === "kilo code"
+        ? "kilo"
       : rawAgent === "pi" || rawAgent === "pi-agent" || rawAgent === "pi agent" || rawAgent === "pi-coding-agent" || rawAgent === "pi coding agent"
         ? "pi"
-      : rawAgent === "zcode" || rawAgent === "z-code" || rawAgent === "z code"
-        ? "zcode"
+        : rawAgent === "zcode" || rawAgent === "z-code" || rawAgent === "z code"
+          ? "zcode"
         : rawAgent === "claude-design" || rawAgent === "claude design" || rawAgent === "design"
           ? "claude-design"
-        : undefined;
+          : undefined;
   if (!agent) {
     return undefined;
   }
   return normalizeProfileItem({
     agent,
-    appPath: typeof value.appPath === "string"
-      ? value.appPath
-      : typeof value.app_path === "string"
-        ? value.app_path
-        : typeof value.appExecutablePath === "string"
-          ? value.appExecutablePath
-          : typeof value.app_executable_path === "string"
-            ? value.app_executable_path
-            : agent === "claude-code" && typeof value.claudeAppPath === "string"
-              ? value.claudeAppPath
-              : agent === "claude-code" && typeof value.claude_app_path === "string"
-                ? value.claude_app_path
-                : agent === "codex" && typeof value.chatgptAppPath === "string"
-                  ? value.chatgptAppPath
-                  : agent === "codex" && typeof value.chatgpt_app_path === "string"
-                    ? value.chatgpt_app_path
-                    : agent === "codex" && typeof value.codexAppPath === "string"
-                      ? value.codexAppPath
-                      : agent === "codex" && typeof value.codex_app_path === "string"
-                        ? value.codex_app_path
-                        : agent === "opencode" && typeof value.openCodeAppPath === "string"
-                          ? value.openCodeAppPath
-                          : agent === "opencode" && typeof value.opencodeAppPath === "string"
-                            ? value.opencodeAppPath
-                            : agent === "opencode" && typeof value.opencode_app_path === "string"
-                              ? value.opencode_app_path
-                        : undefined,
+    appPath: readUnknownProfileAppPath(value, agent),
     availableModels: Array.isArray(value.availableModels)
       ? value.availableModels.filter((model): model is string => typeof model === "string")
       : Array.isArray(value.available_models)
@@ -1799,6 +1430,33 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
   }, index);
 }
 
+function readUnknownProfileAppPath(value: Record<string, unknown>, agent: ProfileConfig["agent"]): string | undefined {
+  const generic = readUnknownString(value, "appPath", "app_path", "appExecutablePath", "app_executable_path");
+  if (generic) {
+    return generic;
+  }
+  if (agent === "claude-code") {
+    return readUnknownString(value, "claudeAppPath", "claude_app_path");
+  }
+  if (agent === "codex") {
+    return readUnknownString(value, "chatgptAppPath", "chatgpt_app_path", "codexAppPath", "codex_app_path");
+  }
+  if (agent === "opencode") {
+    return readUnknownString(value, "openCodeAppPath", "opencodeAppPath", "opencode_app_path");
+  }
+  return undefined;
+}
+
+function readUnknownString(value: Record<string, unknown>, ...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const candidate = value[key];
+    if (typeof candidate === "string") {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
 export function uniqueProfileId(existingProfiles: ProfileConfig[], value: string): string {
   const base = value.toLowerCase().replace(/[^a-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "") || "profile";
   const existingIds = new Set(existingProfiles.map((profile) => profile.id));
@@ -1826,6 +1484,9 @@ export function profileAgentLabel(agent: ProfileConfig["agent"]): string {
   }
   if (agent === "kimi") {
     return "Kimi CLI";
+  }
+  if (agent === "kilo") {
+    return "Kilo CLI";
   }
   if (agent === "pi") {
     return "Pi";
@@ -1863,7 +1524,7 @@ export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[
   if (profile.agent === "zcode" || profile.agent === "claude-design") {
     return ["app"];
   }
-  if (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi") {
+  if (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi" || profile.agent === "kilo") {
     return ["cli"];
   }
   const surface = normalizeProfileSurface(profile.surface);
@@ -1909,19 +1570,22 @@ export function profileAgentLogoUrl(agent: ProfileConfig["agent"]): string {
   if (agent === "opencode") {
     return openCodeLogoUrl;
   }
+  if (agent === "kilo") {
+    return kiloLogoUrl;
+  }
   return codexLogoUrl;
 }
 
-function normalizeCodexCompatibleAgent(agent: ProfileConfig["agent"]): "codex" | "opencode" | "zcode" {
-  return agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : "codex";
+function normalizeCodexCompatibleAgent(agent: ProfileConfig["agent"]): "codex" | "kilo" | "opencode" | "zcode" {
+  return agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : agent === "kilo" ? "kilo" : "codex";
 }
 
 function normalizeProfileAgent(agent: ProfileConfig["agent"]): ProfileConfig["agent"] {
-  return agent === "claude-design" ? "claude-design" : agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : agent === "pi" ? "pi" : agent === "grok" ? "grok" : agent === "kimi" ? "kimi" : agent === "codex" ? "codex" : "claude-code";
+  return agent === "claude-design" ? "claude-design" : agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : agent === "kilo" ? "kilo" : agent === "pi" ? "pi" : agent === "grok" ? "grok" : agent === "kimi" ? "kimi" : agent === "codex" ? "codex" : "claude-code";
 }
 
 function normalizeProfileSurfaceForAgent(agent: ProfileConfig["agent"], surface: unknown): ProfileSurface {
-  return agent === "zcode" || agent === "claude-design" ? "app" : agent === "grok" || agent === "kimi" || agent === "pi" ? "cli" : normalizeProfileSurface(surface);
+  return agent === "zcode" || agent === "claude-design" ? "app" : agent === "grok" || agent === "kimi" || agent === "pi" || agent === "kilo" ? "cli" : normalizeProfileSurface(surface);
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
@@ -1929,11 +1593,13 @@ function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
     ? "~/.zcode/cli/config.json"
     : agent === "opencode"
       ? "~/.config/opencode/opencode.jsonc"
-      : agent === "pi"
-        ? "~/.pi/agent"
-        : agent === "claude-design"
-          ? "~/.claude-code-router/claude-design"
-          : "~/.codex/config.toml";
+      : agent === "kilo"
+        ? "~/.config/kilo/kilo.jsonc"
+        : agent === "pi"
+          ? "~/.pi/agent"
+          : agent === "claude-design"
+            ? "~/.claude-code-router/claude-design"
+            : "~/.codex/config.toml";
 }
 
 function normalizeCodexConfigFileForAgent(agent: ProfileConfig["agent"], value: string | undefined): string {

@@ -314,9 +314,7 @@ async function startWithWarnings(config) {
 }
 
 function baseConfig(dir) {
-  const config = createDefaultAppConfig({
-    generatedConfigFile: path.join(dir, "gateway.config.json")
-  });
+  const config = createDefaultAppConfig();
   config.gateway.enabled = false;
   config.plugins = [];
   return config;

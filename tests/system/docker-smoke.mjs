@@ -157,6 +157,12 @@ try {
   assert.equal(runningGatewayHealth.status, 200);
   assert.equal((await runningGatewayHealth.json()).status, "running");
 
+  const configStorage = dockerConfigStorage(containerId);
+  assert.equal(configStorage.configDatabase, true);
+  assert.equal(configStorage.legacyConfigJson, false);
+  assert.equal(configStorage.gatewayConfigJson, false);
+  assert.equal(configStorage.gatewayRuntimeJson, false);
+
   console.log(`Docker smoke test passed for ${imageName} on ${baseUrl}`);
 } finally {
   if (containerStarted) {
@@ -171,7 +177,6 @@ function seedLegacyDockerConfig(volume) {
   const script = `
 const fs = require("node:fs");
 const path = require("node:path");
-const Database = require("better-sqlite3");
 const configDir = "/data/.claude-code-router";
 const config = {
   HOST: "0.0.0.0",
@@ -189,10 +194,6 @@ const config = {
 fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
 fs.mkdirSync(path.join(configDir, "app-data"), { recursive: true, mode: 0o700 });
 fs.writeFileSync(path.join(configDir, "config.json"), JSON.stringify(config, null, 2) + "\\n", { mode: 0o600 });
-const db = new Database(path.join(configDir, "config.sqlite"));
-db.exec("create table app_config (key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at TEXT NOT NULL)");
-db.prepare("insert into app_config (key, value_json, updated_at) values (?, ?, ?)").run("default", JSON.stringify(config), new Date().toISOString());
-db.close();
 `;
   run("docker", ["run", "--rm", "-v", `${volume}:/data`, "--entrypoint", "node", imageName, "-e", script]);
 }
@@ -211,6 +212,21 @@ async function rpc(baseUrl, method, authToken, args = []) {
 function dockerPorts(containerId) {
   const raw = run("docker", ["inspect", "--format", "{{json .NetworkSettings.Ports}}", containerId]);
   return JSON.parse(raw);
+}
+
+function dockerConfigStorage(containerId) {
+  const script = `
+const fs = require("node:fs");
+const path = require("node:path");
+const configDir = "/data/.claude-code-router";
+process.stdout.write(JSON.stringify({
+  configDatabase: fs.existsSync(path.join(configDir, "config.sqlite")),
+  gatewayConfigJson: fs.existsSync(path.join(configDir, "gateway.config.json")),
+  gatewayRuntimeJson: fs.existsSync(path.join(configDir, "gateway-runtime.json")),
+  legacyConfigJson: fs.existsSync(path.join(configDir, "config.json"))
+}));
+`;
+  return JSON.parse(run("docker", ["exec", containerId, "node", "-e", script]));
 }
 
 async function waitFor(check, label) {

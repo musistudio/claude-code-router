@@ -62,7 +62,7 @@ test("Core gateway config replaces imported Claude Code OAuth token with live ma
         access_token: "keychain-runtime-token",
         refresh_token: "keychain-refresh-token"
       }, async () => {
-        const config = createDefaultAppConfig({ generatedConfigFile: path.join(home, "config.json") });
+        const config = createDefaultAppConfig();
         config.providerPlugins = [
           {
             auth: {

@@ -6,9 +6,12 @@ import test from "node:test";
 const projectRoot = process.cwd();
 const packageNames = ["cli", "core", "electron", "ui"];
 
-test("legacy Electron process test suites have been removed", () => {
-  assert.equal(existsSync(path.join(projectRoot, "tests", "main")), false);
-  assert.equal(existsSync(path.join(projectRoot, "tests", "renderer")), false);
+test("legacy Electron process test suites contain no source files", () => {
+  for (const directoryName of ["main", "renderer"]) {
+    const directory = path.join(projectRoot, "tests", directoryName);
+    const files = existsSync(directory) ? sourceFiles(directory) : [];
+    assert.deepEqual(files, [], `${directoryName} must not contain legacy test sources`);
+  }
 });
 
 test("every workspace package owns a test command and test directory", () => {

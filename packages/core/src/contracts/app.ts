@@ -1,12 +1,9 @@
 export type AppInfo = {
-  appConfigDbFile: string;
-  apiKeysDbFile: string;
   chatgptAppPath?: string;
+  configDbFile: string;
   configDir: string;
-  configFile: string;
   dataDir: string;
   desktop: boolean;
-  gatewayConfigFile: string;
   launchAtLoginSupported: boolean;
   requestLogsDbFile: string;
   name: string;
@@ -218,6 +215,7 @@ export type ProviderModelMetadata = {
   defaultReasoningSummary?: string;
   effectiveContextWindowPercent?: number;
   maxContextWindow?: number;
+  maxOutputTokens?: number;
   pricing?: ProviderModelPricing;
   serviceTiers?: unknown[];
   supportedReasoningLevels?: ProviderReasoningLevel[];
@@ -729,7 +727,6 @@ export type GatewayRuntimeConfig = {
   coreHost: string;
   corePort: number;
   enabled: boolean;
-  generatedConfigFile: string;
   host: string;
   port: number;
 };
@@ -1373,7 +1370,7 @@ export const DEFAULT_TRAY_WIDGETS: TrayWidgetConfig[] = [
   { id: "model-share", type: "model-share", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.modelShare }
 ];
 
-export type ProfileClientKind = "claude-code" | "codex" | "grok" | "kimi" | "opencode" | "pi" | "zcode" | "claude-design";
+export type ProfileClientKind = "claude-code" | "codex" | "grok" | "kimi" | "kilo" | "opencode" | "pi" | "zcode" | "claude-design";
 export type CodexProfileConfigFormat = "legacy" | "separate_profile_files";
 export type CodexRemoteFrontendMode = "app" | "cli" | "claude-code";
 export type ProfileScope = "ccr" | "global" | "custom";
@@ -1778,7 +1775,6 @@ export type GatewayStatus = {
   coreEndpoint: string;
   coreManagedExternally?: boolean;
   endpoint: string;
-  generatedConfigFile: string;
   lastError?: string;
   lastStartedAt?: string;
   networkEndpoints: GatewayNetworkEndpoint[];
@@ -2162,7 +2158,7 @@ export type UsageStatsSnapshot = {
   totals: UsageTotals;
 };
 
-export type AgentKind = "claude-code" | "codex" | "grok" | "kimi" | "opencode" | "pi" | "zcode" | "claude-design" | "unknown";
+export type AgentKind = "claude-code" | "codex" | "grok" | "kimi" | "kilo" | "opencode" | "pi" | "zcode" | "claude-design" | "unknown";
 
 export type AgentAnalysisFilter = {
   agent?: AgentKind | "all";

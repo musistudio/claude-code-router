@@ -260,6 +260,7 @@ type AgentLogDetails = {
 type AgentTextSignalOptions = {
   allowStandaloneCodex?: boolean;
   allowStandaloneGrok?: boolean;
+  allowStandaloneKilo?: boolean;
   allowStandaloneKimi?: boolean;
   allowStandaloneOpenCode?: boolean;
 };
@@ -1537,6 +1538,7 @@ function inferAgentKind(
   const bodyAgent = inferAgentFromText(haystack, {
     allowStandaloneCodex: false,
     allowStandaloneGrok: false,
+    allowStandaloneKilo: false,
     allowStandaloneKimi: false,
     allowStandaloneOpenCode: false
   });
@@ -1584,6 +1586,7 @@ function inferAgentFromText(value: string, options: AgentTextSignalOptions = {})
   const normalized = value.toLowerCase();
   const allowStandaloneCodex = options.allowStandaloneCodex ?? true;
   const allowStandaloneGrok = options.allowStandaloneGrok ?? true;
+  const allowStandaloneKilo = options.allowStandaloneKilo ?? true;
   const allowStandaloneKimi = options.allowStandaloneKimi ?? true;
   const allowStandaloneOpenCode = options.allowStandaloneOpenCode ?? true;
   if (normalized.includes("claude design") || normalized.includes("claude-design") || normalized.includes("claude.ai/design")) {
@@ -1635,6 +1638,18 @@ function inferAgentFromText(value: string, options: AgentTextSignalOptions = {})
     ))
   ) {
     return "kimi";
+  }
+  if (
+    normalized.includes("kilo-code-cli") ||
+    normalized.includes("kilo_code_cli") ||
+    normalized.includes("kilocode") ||
+    (allowStandaloneKilo && (
+      normalized.includes("kilo-cli") ||
+      normalized.includes("kilo cli") ||
+      /(^|[^a-z0-9])kilo([/_\s-]|$)/.test(normalized)
+    ))
+  ) {
+    return "kilo";
   }
   if (
     normalized.includes("openai-codex") ||
@@ -3077,11 +3092,11 @@ function normalizeAgentAnalysisRange(value: UsageStatsRange | undefined): UsageS
 }
 
 function normalizeAgentFilter(value: AgentAnalysisFilter["agent"] | undefined): AgentKind | "all" {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
 }
 
 function normalizeSessionAgentFilter(value: AgentAnalysisFilter["sessionAgent"] | undefined): AgentKind | undefined {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
 }
 
 function agentDisplayName(agent: AgentKind): string {
@@ -3099,6 +3114,9 @@ function agentDisplayName(agent: AgentKind): string {
   }
   if (agent === "kimi") {
     return "Kimi CLI";
+  }
+  if (agent === "kilo") {
+    return "Kilo CLI";
   }
   if (agent === "opencode") {
     return "OpenCode";
