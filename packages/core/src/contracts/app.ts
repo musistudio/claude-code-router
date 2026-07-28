@@ -215,6 +215,7 @@ export type ProviderModelMetadata = {
   defaultReasoningSummary?: string;
   effectiveContextWindowPercent?: number;
   maxContextWindow?: number;
+  maxOutputTokens?: number;
   pricing?: ProviderModelPricing;
   serviceTiers?: unknown[];
   supportedReasoningLevels?: ProviderReasoningLevel[];

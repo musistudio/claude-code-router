@@ -645,6 +645,7 @@ function normalizeDeepLinkModelMetadata(value: unknown): ProviderModelMetadata |
   const contextWindow = positiveInteger(value.contextWindow ?? value.context_window);
   const effectiveContextWindowPercent = percentage(value.effectiveContextWindowPercent ?? value.effective_context_window_percent);
   const maxContextWindow = positiveInteger(value.maxContextWindow ?? value.max_context_window);
+  const maxOutputTokens = positiveInteger(value.maxOutputTokens ?? value.max_output_tokens ?? value.outputTokens ?? value.output_tokens);
   const pricing = normalizeDeepLinkModelPricing(value.pricing);
   const defaultReasoningLevelValue = value.defaultReasoningLevel ?? value.default_reasoning_level;
   const defaultReasoningLevel = defaultReasoningLevelValue === null
@@ -662,6 +663,7 @@ function normalizeDeepLinkModelMetadata(value: unknown): ProviderModelMetadata |
     ...(defaultReasoningSummary ? { defaultReasoningSummary } : {}),
     ...(effectiveContextWindowPercent ? { effectiveContextWindowPercent } : {}),
     ...(maxContextWindow ? { maxContextWindow } : {}),
+    ...(maxOutputTokens ? { maxOutputTokens } : {}),
     ...(pricing ? { pricing } : {}),
     ...(Array.isArray(value.serviceTiers) ? { serviceTiers: value.serviceTiers } : {}),
     ...(Array.isArray(value.service_tiers) ? { serviceTiers: value.service_tiers } : {}),
