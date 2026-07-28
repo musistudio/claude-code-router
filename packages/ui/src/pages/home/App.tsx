@@ -34,7 +34,7 @@ import {
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
   VirtualModelDraft, virtualModelProfileFromDraft, virtualModelProfilesUseMediaTools
 } from "./shared/index";
-import { startVisiblePolling } from "./shared/polling";
+import { preserveEqualPollingSnapshot, startVisiblePolling } from "./shared/polling";
 import {
   AppDialogStack, LightToast, MainLayout, OnboardingLayout, shouldCheckForUpdateOnOpen
 } from "./components/index";
@@ -366,10 +366,20 @@ function App() {
     void window.ccr.getPluginMarketplace().then(setPluginMarketplace).catch(() => setPluginMarketplace([]));
     const unsubscribeOpenSettings = window.ccr.onOpenSettingsRequest(openSettingsDialog);
     const unsubscribeOpenUpdate = window.ccr.onOpenUpdateRequest(openUpdateDialog);
-    const refreshRuntimeStatus = () => {
-      void window.ccr?.getGatewayStatus().then(setGatewayStatus);
-      void window.ccr?.getProxyStatus().then(setProxyStatus);
-      void refreshProfileRuntimeStatus();
+    const refreshRuntimeStatus = async () => {
+      const ccr = window.ccr;
+      if (!ccr) {
+        return;
+      }
+      await Promise.allSettled([
+        ccr.getGatewayStatus().then((next) => {
+          setGatewayStatus((current) => preserveEqualPollingSnapshot(current, next));
+        }),
+        ccr.getProxyStatus().then((next) => {
+          setProxyStatus((current) => preserveEqualPollingSnapshot(current, next));
+        }),
+        refreshProfileRuntimeStatus()
+      ]);
     };
     const stopPolling = startVisiblePolling(refreshRuntimeStatus, 2000);
     return () => {
@@ -2774,13 +2784,14 @@ function App() {
 
   async function refreshProfileRuntimeStatus(): Promise<void> {
     if (!window.ccr?.getProfileRuntimeStatus) {
-      setProfileRuntimeStatus({ profiles: [] });
+      setProfileRuntimeStatus((current) => preserveEqualPollingSnapshot(current, { profiles: [] }));
       return;
     }
     try {
-      setProfileRuntimeStatus(await window.ccr.getProfileRuntimeStatus());
+      const next = await window.ccr.getProfileRuntimeStatus();
+      setProfileRuntimeStatus((current) => preserveEqualPollingSnapshot(current, next));
     } catch {
-      setProfileRuntimeStatus({ profiles: [] });
+      setProfileRuntimeStatus((current) => preserveEqualPollingSnapshot(current, { profiles: [] }));
     }
   }
 

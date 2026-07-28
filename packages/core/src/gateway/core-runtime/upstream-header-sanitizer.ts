@@ -39,6 +39,12 @@ const clientAuthHeaderNames = new Set([
   "x-api-key"
 ]);
 
+const proxyMetadataHeaderNames = new Set([
+  "forwarded",
+  "via",
+  "x-real-ip"
+]);
+
 const transportHeaderNames = new Set([
   "connection",
   "content-encoding",
@@ -72,7 +78,8 @@ export function sanitizeUpstreamProviderHeaders(headers: Record<string, string>)
 /**
  * Restores client headers after the core protocol adapter has rebuilt the
  * provider request. Provider-generated auth and content headers win on name
- * collisions, while transport and CCR-owned headers never cross the boundary.
+ * collisions, while transport, proxy metadata and CCR-owned headers never
+ * cross the boundary.
  */
 export function mergeUpstreamProviderHeaders(
   requestHeaders: Record<string, string | string[] | undefined> | undefined,
@@ -96,6 +103,8 @@ export function mergeUpstreamProviderHeaders(
       ccrAuthHeaderNames.has(normalized) ||
       ccrRoutingHeaderNames.has(normalized) ||
       clientAuthHeaderNames.has(normalized) ||
+      proxyMetadataHeaderNames.has(normalized) ||
+      normalized.startsWith("x-forwarded-") ||
       connectionHeaders.has(normalized)
     ) {
       continue;

@@ -169,3 +169,38 @@ test("provider URL rewrite ignores unrelated providers and upstream hosts", () =
     "https://other.example/v1/messages"
   );
 });
+
+test("gateway sanitizer hook does not forward reverse proxy metadata to providers", async () => {
+  const [hook] = createGatewayPlugin().providerHooks;
+  const upstreamRequest = {
+    body: { model: "provider-model" },
+    headers: {
+      "content-type": "application/json"
+    },
+    method: "POST",
+    url: "https://provider.example/v1/messages"
+  };
+
+  const result = await hook.transformRequest({
+    request: {
+      headers: {
+        forwarded: "for=192.0.2.10;proto=http;host=ccr.example",
+        via: "1.1 ccr",
+        "x-forwarded-client-cert": "proxy-certificate",
+        "x-forwarded-for": "192.0.2.10",
+        "x-forwarded-host": "ccr.example",
+        "x-forwarded-port": "80",
+        "x-forwarded-proto": "http",
+        "x-real-ip": "192.0.2.10",
+        "x-custom-provider-header": "custom-value"
+      }
+    },
+    upstreamRequest
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.value.headers, {
+    "content-type": "application/json",
+    "x-custom-provider-header": "custom-value"
+  });
+});
