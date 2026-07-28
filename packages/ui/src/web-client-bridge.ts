@@ -109,6 +109,17 @@ const webClientBridge: CcrApi = {
   applyProfile: () => rpc("applyProfile") as ReturnType<CcrApi["applyProfile"]>,
   cancelBotGatewayQrLogin: (request) => rpc("cancelBotGatewayQrLogin", [request]) as ReturnType<CcrApi["cancelBotGatewayQrLogin"]>,
   checkProviderConnectivity: (request) => rpc("checkProviderConnectivity", [request]) as ReturnType<CcrApi["checkProviderConnectivity"]>,
+  cloudSyncDisable: () => rpc("cloudSyncDisable") as ReturnType<CcrApi["cloudSyncDisable"]>,
+  cloudSyncGenerateKeyFile: (file) => rpc("cloudSyncGenerateKeyFile", [file]) as ReturnType<CcrApi["cloudSyncGenerateKeyFile"]>,
+  cloudSyncGetStatus: () => rpc("cloudSyncGetStatus") as ReturnType<CcrApi["cloudSyncGetStatus"]>,
+  cloudSyncLogin: async () => {
+    const login = await rpc("cloudSyncLogin") as Awaited<ReturnType<CcrApi["cloudSyncLogin"]>>;
+    window.open(login.loginUrl, "_blank", "noopener,noreferrer");
+    return login;
+  },
+  cloudSyncPull: (request) => rpc("cloudSyncPull", [request]) as ReturnType<CcrApi["cloudSyncPull"]>,
+  cloudSyncPush: (request) => rpc("cloudSyncPush", [request]) as ReturnType<CcrApi["cloudSyncPush"]>,
+  cloudSyncSetup: (request) => rpc("cloudSyncSetup", [request]) as ReturnType<CcrApi["cloudSyncSetup"]>,
   clearProxyNetworkCaptures: () => rpc("clearProxyNetworkCaptures") as ReturnType<CcrApi["clearProxyNetworkCaptures"]>,
   closeBotGatewayQrWindow: (request) => rpc("closeBotGatewayQrWindow", [request]) as ReturnType<CcrApi["closeBotGatewayQrWindow"]>,
   closeTray: () => Promise.resolve(),

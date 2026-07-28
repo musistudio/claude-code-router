@@ -1,5 +1,6 @@
-import type {
-  AppConfig
+import {
+  CLOUD_SYNC_DEFAULT_BASE_URL,
+  type AppConfig
 } from "@ccr/core/contracts/app";
 import {
   fallbackConfig
@@ -35,6 +36,7 @@ export function normalizeConfig(config: AppConfig): AppConfig {
     },
     botConfigs: normalizeBotGatewaySavedConfigs(config.botConfigs),
     botGateway: normalizeBotGatewayRuntimeConfig(config.botGateway) ?? fallbackConfig.botGateway,
+    cloudSync: normalizeCloudSyncConfig(config.cloudSync),
     contextArchive: normalizeContextArchiveConfig(config.contextArchive),
     gateway: {
       ...fallbackConfig.gateway,
@@ -76,6 +78,44 @@ export function normalizeConfig(config: AppConfig): AppConfig {
     toolHub: normalizeToolHubConfig(config.toolHub),
     virtualModelProfiles: Array.isArray(config.virtualModelProfiles) ? config.virtualModelProfiles : []
   };
+}
+
+export function normalizeCloudSyncConfig(config: Partial<AppConfig["cloudSync"]> | undefined): AppConfig["cloudSync"] {
+  const lastRevision = typeof config?.lastRevision === "number" && Number.isFinite(config.lastRevision)
+    ? Math.max(0, Math.floor(config.lastRevision))
+    : fallbackConfig.cloudSync.lastRevision;
+  return {
+    ...fallbackConfig.cloudSync,
+    ...(config || {}),
+    accessToken: typeof config?.accessToken === "string" ? config.accessToken : undefined,
+    baseUrl: CLOUD_SYNC_DEFAULT_BASE_URL,
+    deviceId: typeof config?.deviceId === "string" ? config.deviceId.trim() || undefined : undefined,
+    deviceName: typeof config?.deviceName === "string" ? config.deviceName.trim() : fallbackConfig.cloudSync.deviceName,
+    enabled: Boolean(config?.enabled),
+    keyId: typeof config?.keyId === "string" ? config.keyId.trim() || undefined : undefined,
+    keyMode: config?.keyMode === "password" || config?.keyMode === "key-file" ? config.keyMode : undefined,
+    keySalt: typeof config?.keySalt === "string" ? config.keySalt.trim() || undefined : undefined,
+    lastRevision,
+    lastSyncedSnapshot: isCloudSyncSnapshotLike(config?.lastSyncedSnapshot) ? config.lastSyncedSnapshot : undefined,
+    lastSyncAt: typeof config?.lastSyncAt === "string" ? config.lastSyncAt.trim() || undefined : undefined,
+    lastSyncError: typeof config?.lastSyncError === "string" ? config.lastSyncError.trim() || undefined : undefined,
+    namespace: typeof config?.namespace === "string" && config.namespace.trim() ? config.namespace.trim() : fallbackConfig.cloudSync.namespace,
+    refreshToken: typeof config?.refreshToken === "string" ? config.refreshToken : undefined,
+    refreshTokenExpiresAt: typeof config?.refreshTokenExpiresAt === "string" ? config.refreshTokenExpiresAt.trim() || undefined : undefined,
+    snapshotHash: typeof config?.snapshotHash === "string" ? config.snapshotHash.trim() || undefined : undefined,
+    userAvatarUrl: typeof config?.userAvatarUrl === "string" ? config.userAvatarUrl.trim() || undefined : undefined,
+    userEmail: typeof config?.userEmail === "string" ? config.userEmail.trim() || undefined : undefined,
+    userId: typeof config?.userId === "string" ? config.userId.trim() || undefined : undefined,
+    userLogin: typeof config?.userLogin === "string" ? config.userLogin.trim() || undefined : undefined,
+    userName: typeof config?.userName === "string" ? config.userName.trim() || undefined : undefined
+  };
+}
+
+function isCloudSyncSnapshotLike(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value)) &&
+    (value as Record<string, unknown>).kind === "claude-code-router-cloud-sync-snapshot" &&
+    (value as Record<string, unknown>).version === 1 &&
+    Boolean((value as Record<string, unknown>).config && typeof (value as Record<string, unknown>).config === "object" && !Array.isArray((value as Record<string, unknown>).config));
 }
 
 export function normalizeContextArchiveConfig(config: Partial<AppConfig["contextArchive"]> | undefined): AppConfig["contextArchive"] {

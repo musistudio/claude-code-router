@@ -13,7 +13,7 @@ import { LEGACY_ACTIVE_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FI
 import { normalizeCodexProviderAccountConfig } from "@ccr/core/agents/local-providers/codex";
 import { normalizeGrokProviderAccountConfig, normalizeGrokProviderMediaCapabilities } from "@ccr/core/agents/local-providers/grok";
 import { removeOpenCodeProviderAccountConfig } from "@ccr/core/agents/local-providers/opencode";
-import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, CLAUDE_DESIGN_PLUGIN_ID, CLAUDE_SHIP_PLUGIN_ID, DEFAULT_TRAY_COMPONENT_VARIANTS, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, ROUTER_SCRIPT_API_VERSION, ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS, ROUTER_SCRIPT_MAX_TIMEOUT_MS, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent, knownGatewayPluginDefaultApps, knownGatewayPluginDefaultPermissions, knownGatewayPluginDefaultSurfaces } from "@ccr/core/contracts/app";
+import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, CLAUDE_DESIGN_PLUGIN_ID, CLAUDE_SHIP_PLUGIN_ID, CLOUD_SYNC_DEFAULT_BASE_URL, DEFAULT_TRAY_COMPONENT_VARIANTS, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, ROUTER_SCRIPT_API_VERSION, ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS, ROUTER_SCRIPT_MAX_TIMEOUT_MS, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent, knownGatewayPluginDefaultApps, knownGatewayPluginDefaultPermissions, knownGatewayPluginDefaultSurfaces } from "@ccr/core/contracts/app";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config";
 import { maxRequestLogBodyBytes } from "@ccr/core/observability/request-log-limits";
 import { findProviderPresetByBaseUrl, primaryProviderPresetEndpoint, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
@@ -25,6 +25,7 @@ import type {
   BotGatewayRuntimeConfig,
   BotGatewaySavedConfig,
   ClaudeCodeProfileConfig,
+  CloudSyncConfig,
   CodexProfileConfig,
   ContextArchiveConfig,
   GatewayAgentConfig,
@@ -87,11 +88,12 @@ type LoadedBotGatewayConfig = Partial<Omit<BotGatewayRuntimeConfig, "handoff">> 
   handoff?: Partial<BotGatewayRuntimeConfig["handoff"]>;
 };
 
-type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway" | "contextArchive" | "gateway" | "mediaTools" | "observability" | "profile" | "proxy" | "toolHub">> & {
+type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway" | "cloudSync" | "contextArchive" | "gateway" | "mediaTools" | "observability" | "profile" | "proxy" | "toolHub">> & {
   Router?: Partial<RouterConfig>;
   agent?: Partial<GatewayAgentConfig>;
   botConfigs?: BotGatewaySavedConfig[];
   botGateway?: LoadedBotGatewayConfig;
+  cloudSync?: Partial<CloudSyncConfig>;
   contextArchive?: Partial<ContextArchiveConfig>;
   gateway?: Partial<AppConfig["gateway"]>;
   mediaTools?: Partial<MediaToolsConfig>;
@@ -143,6 +145,62 @@ function completeBotGatewayConfig(config: LoadedBotGatewayConfig | undefined): B
     integrationConfig: websocketBotGatewayIntegrationConfig(platform, config?.integrationConfig ?? DEFAULT_CONFIG.botGateway.integrationConfig),
     platform
   };
+}
+
+function completeCloudSyncConfig(config: Partial<CloudSyncConfig> | undefined): CloudSyncConfig {
+  const baseUrl = normalizeCloudSyncBaseUrl(config?.baseUrl);
+  const namespace = normalizeCloudSyncNamespace(config?.namespace);
+  const configuredLastRevision = config?.lastRevision;
+  const lastRevision = Number.isInteger(configuredLastRevision) && configuredLastRevision !== undefined && configuredLastRevision >= 0
+    ? configuredLastRevision
+    : DEFAULT_CONFIG.cloudSync.lastRevision;
+  const keyMode = config?.keyMode === "key-file" || config?.keyMode === "password"
+    ? config.keyMode
+    : undefined;
+
+  return {
+    baseUrl,
+    deviceId: nonEmptyString(config?.deviceId),
+    deviceName: nonEmptyString(config?.deviceName) || DEFAULT_CONFIG.cloudSync.deviceName,
+    enabled: Boolean(config?.enabled && baseUrl),
+    keyId: nonEmptyString(config?.keyId),
+    keyMode,
+    keySalt: nonEmptyString(config?.keySalt),
+    lastRevision,
+    lastSyncedSnapshot: isCloudSyncSnapshotLike(config?.lastSyncedSnapshot) ? config.lastSyncedSnapshot : undefined,
+    lastSyncAt: nonEmptyString(config?.lastSyncAt),
+    lastSyncError: nonEmptyString(config?.lastSyncError),
+    namespace,
+    accessToken: nonEmptyString(config?.accessToken),
+    refreshToken: nonEmptyString(config?.refreshToken),
+    refreshTokenExpiresAt: nonEmptyString(config?.refreshTokenExpiresAt),
+    snapshotHash: nonEmptyString(config?.snapshotHash),
+    userAvatarUrl: nonEmptyString(config?.userAvatarUrl),
+    userEmail: nonEmptyString(config?.userEmail),
+    userId: nonEmptyString(config?.userId),
+    userLogin: nonEmptyString(config?.userLogin),
+    userName: nonEmptyString(config?.userName)
+  };
+}
+
+function normalizeCloudSyncBaseUrl(_value: unknown): string {
+  return CLOUD_SYNC_DEFAULT_BASE_URL;
+}
+
+function normalizeCloudSyncNamespace(value: unknown): string {
+  const raw = nonEmptyString(value) || DEFAULT_CONFIG.cloudSync.namespace;
+  return /^[a-zA-Z0-9._-]{1,64}$/.test(raw) ? raw : DEFAULT_CONFIG.cloudSync.namespace;
+}
+
+function isCloudSyncSnapshotLike(value: unknown): value is Record<string, unknown> {
+  return isObject(value) &&
+    value.kind === "claude-code-router-cloud-sync-snapshot" &&
+    value.version === 1 &&
+    isObject(value.config);
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function normalizeBotGatewayPlatform(value: unknown): string {
@@ -274,6 +332,7 @@ export async function loadAppConfig(): Promise<AppConfig> {
       },
       botConfigs: picked.botConfigs ?? DEFAULT_CONFIG.botConfigs,
       botGateway: completeBotGatewayConfig(picked.botGateway),
+      cloudSync: completeCloudSyncConfig(picked.cloudSync),
       contextArchive: {
         enabled: picked.contextArchive?.enabled ?? DEFAULT_CONFIG.contextArchive.enabled,
         maxBytes: picked.contextArchive?.maxBytes ?? DEFAULT_CONFIG.contextArchive.maxBytes,
@@ -731,6 +790,10 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   if (botGateway) {
     config.botGateway = botGateway;
   }
+  const cloudSync = parseCloudSync((value as Record<string, unknown>).cloudSync ?? (value as Record<string, unknown>).cloud_sync);
+  if (cloudSync) {
+    config.cloudSync = cloudSync;
+  }
   const botConfigs = parseBotGatewaySavedConfigs((value as Record<string, unknown>).botConfigs ?? (value as Record<string, unknown>).bot_configs);
   if (botConfigs) {
     config.botConfigs = botConfigs;
@@ -829,6 +892,99 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   }
 
   return config;
+}
+
+function parseCloudSync(value: unknown): Partial<CloudSyncConfig> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const cloudSync: Partial<CloudSyncConfig> = {};
+  if (typeof value.enabled === "boolean") {
+    cloudSync.enabled = value.enabled;
+  }
+  const baseUrl = readString(value.baseUrl ?? value.base_url);
+  if (baseUrl !== undefined) {
+    cloudSync.baseUrl = baseUrl;
+  }
+  const namespace = readString(value.namespace);
+  if (namespace !== undefined) {
+    cloudSync.namespace = namespace;
+  }
+  const deviceId = readString(value.deviceId ?? value.device_id);
+  if (deviceId !== undefined) {
+    cloudSync.deviceId = deviceId;
+  }
+  const deviceName = readString(value.deviceName ?? value.device_name);
+  if (deviceName !== undefined) {
+    cloudSync.deviceName = deviceName;
+  }
+  const keyId = readString(value.keyId ?? value.key_id);
+  if (keyId !== undefined) {
+    cloudSync.keyId = keyId;
+  }
+  const keySalt = readString(value.keySalt ?? value.key_salt);
+  if (keySalt !== undefined) {
+    cloudSync.keySalt = keySalt;
+  }
+  const keyMode = readString(value.keyMode ?? value.key_mode);
+  if (keyMode === "password" || keyMode === "key-file") {
+    cloudSync.keyMode = keyMode;
+  }
+  const accessToken = readString(value.accessToken ?? value.access_token);
+  if (accessToken !== undefined) {
+    cloudSync.accessToken = accessToken;
+  }
+  const refreshToken = readString(value.refreshToken ?? value.refresh_token);
+  if (refreshToken !== undefined) {
+    cloudSync.refreshToken = refreshToken;
+  }
+  const refreshTokenExpiresAt = readString(value.refreshTokenExpiresAt ?? value.refresh_token_expires_at);
+  if (refreshTokenExpiresAt !== undefined) {
+    cloudSync.refreshTokenExpiresAt = refreshTokenExpiresAt;
+  }
+  const snapshotHash = readString(value.snapshotHash ?? value.snapshot_hash);
+  if (snapshotHash !== undefined) {
+    cloudSync.snapshotHash = snapshotHash;
+  }
+  const userId = readString(value.userId ?? value.user_id);
+  if (userId !== undefined) {
+    cloudSync.userId = userId;
+  }
+  const userLogin = readString(value.userLogin ?? value.user_login ?? value.githubLogin ?? value.github_login);
+  if (userLogin !== undefined) {
+    cloudSync.userLogin = userLogin;
+  }
+  const userName = readString(value.userName ?? value.user_name ?? value.githubName ?? value.github_name);
+  if (userName !== undefined) {
+    cloudSync.userName = userName;
+  }
+  const userAvatarUrl = readString(value.userAvatarUrl ?? value.user_avatar_url ?? value.avatarUrl ?? value.avatar_url);
+  if (userAvatarUrl !== undefined) {
+    cloudSync.userAvatarUrl = userAvatarUrl;
+  }
+  const userEmail = readString(value.userEmail ?? value.user_email ?? value.email);
+  if (userEmail !== undefined) {
+    cloudSync.userEmail = userEmail;
+  }
+  const lastRevision = readNumber(value.lastRevision ?? value.last_revision);
+  if (lastRevision !== undefined) {
+    cloudSync.lastRevision = Math.max(0, Math.floor(lastRevision));
+  }
+  const lastSyncedSnapshot = value.lastSyncedSnapshot ?? value.last_synced_snapshot;
+  if (isCloudSyncSnapshotLike(lastSyncedSnapshot)) {
+    cloudSync.lastSyncedSnapshot = lastSyncedSnapshot;
+  }
+  const lastSyncAt = readString(value.lastSyncAt ?? value.last_sync_at);
+  if (lastSyncAt !== undefined) {
+    cloudSync.lastSyncAt = lastSyncAt;
+  }
+  const lastSyncError = readString(value.lastSyncError ?? value.last_sync_error);
+  if (lastSyncError !== undefined) {
+    cloudSync.lastSyncError = lastSyncError;
+  }
+
+  return cloudSync;
 }
 
 function parseContextArchive(value: unknown): Partial<ContextArchiveConfig> | undefined {

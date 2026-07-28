@@ -915,6 +915,11 @@ function App() {
     setThemePreference(normalized.theme || "system");
   }
 
+  function restoreOnboardingCloudConfig(config: AppConfig) {
+    syncConfigState(config);
+    setOnboardingProfileConfirmed(true);
+  }
+
   function showToast(message: string) {
     if (toastTimer.current !== undefined) {
       window.clearTimeout(toastTimer.current);
@@ -2990,6 +2995,8 @@ function App() {
                 onComplete: completeOnboarding,
                 onChangeProfile: updateProfileDraft,
                 onChangeProvider: updateProviderDraft,
+                onCloudConfigRestore: restoreOnboardingCloudConfig,
+                onCloudToast: showToast,
                 onSelectStep: setOnboardingStep,
                 onSubmitProfile: submitProfileDraft,
                 onSubmitProvider: submitProviderDraft,
@@ -3354,6 +3361,7 @@ function App() {
               languagePreference,
               launchAtLogin: Boolean(draftConfig.launchAtLogin),
               onChangeBotConfigs: changeBotConfigs,
+              onCloudSyncConfigChange: syncConfigState,
               onChangeLaunchAtLogin: changeLaunchAtLogin,
               onChangeLanguage: changeLanguagePreference,
               onChangeObservability: changeObservabilityConfig,
@@ -3364,6 +3372,7 @@ function App() {
               onChangeTrayIcon: changeTrayIconPreference,
               onChangeTrayWidgets: changeTrayWidgets,
               onClose: () => setSettingsOpen(false),
+              onToast: showToast,
               observability: draftConfig.observability,
               profiles: draftConfig.profile.profiles,
               proxy: draftConfig.proxy,

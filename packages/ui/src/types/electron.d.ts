@@ -29,6 +29,13 @@ import type {
   BotGatewayQrWindowOpenResult,
   BotHandoffScanTarget,
   ClaudeAppGatewayApplyResult,
+  CloudSyncOperationResult,
+  CloudSyncKeyFileResult,
+  CloudSyncLoginResult,
+  CloudSyncPullRequest,
+  CloudSyncPushRequest,
+  CloudSyncSetupRequest,
+  CloudSyncStatus,
   GatewayMcpToolInfo,
   GatewayProviderConnectivityCheckReport,
   GatewayProviderConnectivityCheckRequest,
@@ -89,6 +96,13 @@ declare global {
       cancelBotGatewayQrLogin: (request: BotGatewayQrLoginCancelRequest) => Promise<BotGatewayQrLoginCancelResult>;
       captureElementPng?: (request: AppCaptureElementPngRequest) => Promise<AppCaptureElementPngResult>;
       checkProviderConnectivity: (request: GatewayProviderConnectivityCheckRequest) => Promise<GatewayProviderConnectivityCheckReport>;
+      cloudSyncDisable: () => Promise<CloudSyncOperationResult>;
+      cloudSyncGenerateKeyFile: (file?: string) => Promise<CloudSyncKeyFileResult>;
+      cloudSyncGetStatus: () => Promise<CloudSyncStatus>;
+      cloudSyncLogin: () => Promise<CloudSyncLoginResult>;
+      cloudSyncPull: (request?: CloudSyncPullRequest) => Promise<CloudSyncOperationResult>;
+      cloudSyncPush: (request?: CloudSyncPushRequest) => Promise<CloudSyncOperationResult>;
+      cloudSyncSetup: (request: CloudSyncSetupRequest) => Promise<CloudSyncOperationResult>;
       closeBotGatewayQrWindow: (request: BotGatewayQrWindowCloseRequest) => Promise<BotGatewayQrWindowCloseResult>;
       clearProxyNetworkCaptures: () => Promise<ProxyNetworkSnapshot>;
       closeTray: () => Promise<void>;
@@ -157,6 +171,7 @@ declare global {
       validateRouteScript: (request: RouteScriptValidationRequest) => Promise<RouteScriptValidationResult>;
       waitBotGatewayQrLogin: (request: BotGatewayQrLoginWaitRequest) => Promise<BotGatewayQrLoginWaitResult>;
       onBeforeQuit: (callback: () => void) => () => void;
+      onCloudSyncAuthChanged?: (callback: () => void) => () => void;
       onOpenSettingsRequest: (callback: () => void) => () => void;
       onOpenUpdateRequest: (callback: () => void) => () => void;
       onProviderDeepLink: (callback: (request: ProviderDeepLinkRequest) => void) => () => void;

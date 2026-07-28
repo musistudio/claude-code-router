@@ -1,5 +1,6 @@
 import {
   CLAUDE_CODE_DEFAULT_ENV,
+  CLOUD_SYNC_DEFAULT_BASE_URL,
   DEFAULT_OVERVIEW_WIDGETS,
   DEFAULT_TRAY_COMPONENT_VARIANTS,
   DEFAULT_TRAY_WIDGETS,
@@ -89,6 +90,13 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions = {}): A
       stateDir: "",
       streamReplies: true,
       tenantId: "ccr"
+    },
+    cloudSync: {
+      baseUrl: CLOUD_SYNC_DEFAULT_BASE_URL,
+      deviceName: "",
+      enabled: false,
+      lastRevision: 0,
+      namespace: "ccr"
     },
     contextArchive: {
       enabled: false,

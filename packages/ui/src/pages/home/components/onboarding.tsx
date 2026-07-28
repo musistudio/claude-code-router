@@ -1,9 +1,9 @@
 import {
-  AddProfileDraft, AddProviderDraft, AppConfig, Button, Check, ChevronLeft,
-  ChevronRight, cn, findProviderPreset, GatewayProviderProbeResult, GatewayStatus, Gauge, getNextOnboardingStep,
-  isOnboardingProfileReady, isOnboardingProviderReady, Layers3, LucideIcon, mergeProviderModelLists, motion, motionEase,
-  LoaderCircle, onboardingMascotSpriteUrl, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder, type ProfileAgentOption, providerDraftHasReadyCredentialPool, ProviderConnectivityCheckReport, reducedMotionTransition, splitLines, useAppText, useEffect, useReducedMotion,
-  useState,
+  AddProfileDraft, AddProviderDraft, AppConfig, ArrowDown, Button, Check, ChevronLeft,
+  ChevronRight, CircleAlert, CloudSyncOperationResult, CloudSyncStatus, cn, Field, findProviderPreset, GatewayProviderProbeResult, GatewayStatus, Gauge, getDefaultOnboardingStep, getNextOnboardingStep,
+  Globe, Input, isOnboardingProfileReady, isOnboardingProviderReady, KeyRound, Layers3, LucideIcon, mergeProviderModelLists, motion, motionEase,
+  LoaderCircle, onboardingMascotSpriteUrl, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder, type ProfileAgentOption, providerDraftHasReadyCredentialPool, ProviderConnectivityCheckReport, reducedMotionTransition, splitLines, Tabs, TabsContent, TabsList, TabsTrigger, useAppErrorText, useAppText, useEffect, useReducedMotion,
+  useRef, useState,
   UserRound, X
 } from "../shared/index";
 import { AddProviderForm, providerSetupStepIds, type ProviderSetupStepId } from "./providers";
@@ -48,6 +48,8 @@ export function OnboardingView({
   onCheckProvider,
   onChangeProfile,
   onChangeProvider,
+  onCloudConfigRestore,
+  onCloudToast,
   onComplete,
   onSelectStep,
   onSubmitProfile,
@@ -72,6 +74,8 @@ export function OnboardingView({
   onCheckProvider: () => Promise<ProviderConnectivityCheckReport>;
   onChangeProfile: (patch: Partial<AddProfileDraft>) => void;
   onChangeProvider: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
+  onCloudConfigRestore?: (config: AppConfig) => void;
+  onCloudToast?: (message: string) => void;
   onComplete: () => void | Promise<void>;
   onSelectStep: (step: OnboardingStepId) => void;
   onSubmitProfile: () => Promise<boolean>;
@@ -247,6 +251,18 @@ export function OnboardingView({
                 </div>
               </div>
 
+              <OnboardingCloudRestorePanel
+                config={config}
+                onConfigRestore={(restoredConfig) => {
+                  onCloudConfigRestore?.(restoredConfig);
+                  onSelectStep(getDefaultOnboardingStep(restoredConfig, {
+                    ...readiness,
+                    profileConfirmed: true
+                  }));
+                }}
+                onToast={onCloudToast}
+              />
+
               <div className="onboarding-step-panels mt-5 min-h-0 flex-1 overflow-hidden">
                 <div
                   aria-hidden={activeStep !== "provider"}
@@ -334,6 +350,274 @@ export function OnboardingView({
   );
 }
 
+function OnboardingCloudRestorePanel({
+  config,
+  onConfigRestore,
+  onToast
+}: {
+  config: AppConfig;
+  onConfigRestore?: (config: AppConfig) => void;
+  onToast?: (message: string) => void;
+}) {
+  const t = useAppText();
+  const formatError = useAppErrorText();
+  const [open, setOpen] = useState(Boolean(config.cloudSync?.accessToken || config.cloudSync?.refreshToken));
+  const [keyMode, setKeyMode] = useState<"key-file" | "password">(config.cloudSync?.keyMode ?? "key-file");
+  const [password, setPassword] = useState("");
+  const [keyFilePath, setKeyFilePath] = useState("");
+  const [status, setStatus] = useState<CloudSyncStatus>();
+  const [busy, setBusy] = useState<"" | "login" | "restore" | "status">("");
+  const [error, setError] = useState("");
+  const keyFileInputRef = useRef<HTMLInputElement>(null);
+  const effectiveStatus = status ?? onboardingCloudStatusFromConfig(config);
+  const authenticated = effectiveStatus.authenticated;
+  const restoreReady = keyMode === "key-file" ? Boolean(keyFilePath.trim()) : Boolean(password);
+
+  useEffect(() => {
+    setStatus(onboardingCloudStatusFromConfig(config));
+    setKeyMode(config.cloudSync?.keyMode ?? "key-file");
+  }, [
+    config.cloudSync?.accessToken,
+    config.cloudSync?.deviceId,
+    config.cloudSync?.enabled,
+    config.cloudSync?.keyId,
+    config.cloudSync?.keyMode,
+    config.cloudSync?.lastRevision,
+    config.cloudSync?.lastSyncAt,
+    config.cloudSync?.refreshToken,
+    config.cloudSync?.userAvatarUrl,
+    config.cloudSync?.userEmail,
+    config.cloudSync?.userId,
+    config.cloudSync?.userLogin,
+    config.cloudSync?.userName
+  ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.ccr?.cloudSyncGetStatus) {
+      return;
+    }
+    setBusy((current) => current || "status");
+    void window.ccr.cloudSyncGetStatus()
+      .then((nextStatus) => {
+        setStatus(nextStatus);
+        if (nextStatus.authenticated) {
+          setOpen(true);
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setBusy((current) => current === "status" ? "" : current));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.ccr?.onCloudSyncAuthChanged) {
+      return undefined;
+    }
+    return window.ccr.onCloudSyncAuthChanged(() => {
+      void refreshCloudSyncAfterAuth();
+    });
+  }, []);
+
+  function keyInput() {
+    return keyMode === "key-file"
+      ? { keyFilePath: keyFilePath.trim(), restoreOnly: true }
+      : { password, restoreOnly: true };
+  }
+
+  function applyStatusResult(result: CloudSyncOperationResult) {
+    setStatus(result.status);
+    const authExpired = Boolean(result.authExpired);
+    if (authExpired) {
+      setError(t(result.message));
+      return;
+    }
+    if (result.snapshotApplied && result.config) {
+      onConfigRestore?.(result.config);
+      onToast?.(t("Cloud configuration restored. Review it before entering CCR."));
+      setPassword("");
+      setError("");
+      return;
+    }
+    setError(t(result.message));
+  }
+
+  async function refreshCloudSyncAfterAuth() {
+    if (typeof window === "undefined" || !window.ccr) {
+      return;
+    }
+    try {
+      const nextStatus = await window.ccr.cloudSyncGetStatus();
+      setStatus(nextStatus);
+      setOpen(true);
+      setError("");
+      onToast?.(t("Cloud login completed. Choose the encryption method used by your cloud snapshot."));
+    } catch (authError) {
+      setError(formatError(authError));
+    }
+  }
+
+  async function pollCloudSyncAuthCompletion(deadline = Date.now() + 2 * 60 * 1000) {
+    if (typeof window === "undefined" || !window.ccr) {
+      return;
+    }
+    try {
+      const nextStatus = await window.ccr.cloudSyncGetStatus();
+      if (nextStatus.authenticated) {
+        setStatus(nextStatus);
+        setOpen(true);
+        setError("");
+        onToast?.(t("Cloud login completed. Choose the encryption method used by your cloud snapshot."));
+        return;
+      }
+    } catch {
+      // Continue polling until the browser login finishes or the deadline expires.
+    }
+    if (Date.now() < deadline) {
+      window.setTimeout(() => void pollCloudSyncAuthCompletion(deadline), 2000);
+    }
+  }
+
+  async function runCloudLogin() {
+    if (typeof window === "undefined" || !window.ccr?.cloudSyncLogin) {
+      setError(t("Cloud sync login is only available in the desktop app."));
+      return;
+    }
+    setBusy("login");
+    setError("");
+    try {
+      const login = await window.ccr.cloudSyncLogin();
+      setStatus(login.status);
+      setOpen(true);
+      onToast?.(t("Complete login in the browser, then return to CCR."));
+      void pollCloudSyncAuthCompletion();
+    } catch (loginError) {
+      setError(formatError(loginError));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function restoreFromCloud() {
+    if (typeof window === "undefined" || !window.ccr?.cloudSyncSetup) {
+      setError(t("Cloud sync is only available in the Electron app."));
+      return;
+    }
+    setBusy("restore");
+    setError("");
+    try {
+      applyStatusResult(await window.ccr.cloudSyncSetup(keyInput()));
+    } catch (restoreError) {
+      setError(formatError(restoreError));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <section className="mx-auto mt-4 grid w-full max-w-[780px] gap-3 rounded-md border border-border bg-background/75 p-3 text-left">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-[13px] font-semibold text-foreground">{t("Restore from cloud")}</h3>
+          <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
+            {t("Use an encrypted cloud snapshot instead of setting up providers manually.")}
+          </p>
+          {authenticated ? (
+            <div className="mt-1 truncate text-[11px] text-muted-foreground">
+              {t("Signed in as")} {onboardingCloudAccountName(effectiveStatus)}
+            </div>
+          ) : null}
+        </div>
+        <Button disabled={Boolean(busy)} onClick={() => authenticated ? setOpen((value) => !value) : void runCloudLogin()} size="sm" type="button" variant={authenticated ? "outline" : "default"}>
+          {busy === "login" || busy === "status" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
+          {authenticated ? t(open ? "Hide restore options" : "Restore from cloud") : t("Sign in with GitHub")}
+        </Button>
+      </div>
+
+      {open && authenticated ? (
+        <div className="grid grid-cols-1 gap-3 border-t border-border/60 pt-3">
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+            <div className="flex items-start gap-2">
+              <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>{t("Use the same password or key file that encrypted your cloud snapshot. Losing it makes cloud data unrecoverable.")}</div>
+            </div>
+          </div>
+
+          <Tabs
+            className="grid grid-cols-1 gap-3"
+            onValueChange={(value) => setKeyMode(value === "password" ? "password" : "key-file")}
+            value={keyMode}
+          >
+            <TabsList aria-label={t("Encryption method")} className="w-fit border border-border bg-muted/20">
+              <TabsTrigger className="gap-2" value="key-file">
+                <KeyRound className="h-4 w-4" />
+                {t("Key file")}
+              </TabsTrigger>
+              <TabsTrigger className="gap-2" value="password">
+                <KeyRound className="h-4 w-4" />
+                {t("Password")}
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent className="grid grid-cols-1 gap-3" value="key-file">
+              <Field label={t("Key file path")}>
+                <Input value={keyFilePath} onChange={(event) => setKeyFilePath(event.target.value)} placeholder={t("Choose an E2EE key file")} />
+              </Field>
+              <input
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  const filePath = file && window.ccr?.getFilePath ? window.ccr.getFilePath(file) : "";
+                  if (filePath) {
+                    setKeyFilePath(filePath);
+                  }
+                  if (keyFileInputRef.current) {
+                    keyFileInputRef.current.value = "";
+                  }
+                }}
+                ref={keyFileInputRef}
+                type="file"
+              />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Button onClick={() => keyFileInputRef.current?.click()} size="sm" type="button" variant="outline">
+                  <KeyRound className="h-4 w-4" />
+                  {t("Choose key file")}
+                </Button>
+                <Button disabled={Boolean(busy) || !restoreReady} onClick={() => void restoreFromCloud()} size="sm" type="button">
+                  {busy === "restore" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ArrowDown className="h-4 w-4" />}
+                  {t("Pull cloud config")}
+                </Button>
+              </div>
+            </TabsContent>
+
+            <TabsContent className="grid grid-cols-1 gap-3" value="password">
+              <Field label={t("Encryption password")}>
+                <Input
+                  autoComplete="current-password"
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder={t("Required unless you use a key file")}
+                  type="password"
+                  value={password}
+                />
+              </Field>
+              <div className="flex justify-end">
+                <Button disabled={Boolean(busy) || !restoreReady} onClick={() => void restoreFromCloud()} size="sm" type="button">
+                  {busy === "restore" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ArrowDown className="h-4 w-4" />}
+                  {t("Pull cloud config")}
+                </Button>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </div>
+      ) : null}
+
+      {error ? (
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[11px] text-destructive">
+          {error}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 const onboardingProgressItems: Array<{ key: ProviderSetupStepId | "profile" | "enter"; label: string }> = [
   { key: "provider", label: "Choose provider" },
   { key: "credentials", label: "Add credentials" },
@@ -403,6 +687,47 @@ function OnboardingDetailRow({ label, value }: { label: string; value: string })
       <span className="min-w-0 max-w-[68%] truncate text-right font-mono text-[12px] text-muted-foreground" title={value}>{value}</span>
     </div>
   );
+}
+
+function onboardingCloudStatusFromConfig(config: AppConfig): CloudSyncStatus {
+  const cloudSync = config.cloudSync ?? {
+    baseUrl: "",
+    deviceName: "",
+    enabled: false,
+    lastRevision: 0,
+    namespace: "ccr"
+  };
+  return {
+    authenticated: Boolean(cloudSync.accessToken || cloudSync.refreshToken),
+    baseUrl: cloudSync.baseUrl,
+    configured: Boolean(cloudSync.baseUrl && cloudSync.keyId && cloudSync.keySalt),
+    deviceId: cloudSync.deviceId,
+    deviceName: cloudSync.deviceName,
+    enabled: cloudSync.enabled,
+    keyId: cloudSync.keyId,
+    keyMode: cloudSync.keyMode,
+    lastRevision: cloudSync.lastRevision,
+    lastSyncAt: cloudSync.lastSyncAt,
+    lastSyncError: cloudSync.lastSyncError,
+    namespace: cloudSync.namespace,
+    snapshotHash: cloudSync.snapshotHash,
+    unlocked: false,
+    userAvatarUrl: cloudSync.userAvatarUrl,
+    userEmail: cloudSync.userEmail,
+    userId: cloudSync.userId,
+    userLogin: cloudSync.userLogin,
+    userName: cloudSync.userName
+  };
+}
+
+function onboardingCloudAccountName(status: CloudSyncStatus): string {
+  if (status.userName && status.userLogin) {
+    return `${status.userName} @${status.userLogin}`;
+  }
+  if (status.userLogin) {
+    return `@${status.userLogin}`;
+  }
+  return status.userName || status.userEmail || status.userId || "";
 }
 
 function OnboardingMascotSprite({ activeStep }: { activeStep: OnboardingStepId }) {

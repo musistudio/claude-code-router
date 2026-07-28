@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell, type OpenDialogOptions, type Rectangle, type SaveDialogOptions } from "electron";
 import { randomUUID } from "node:crypto";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { deflateSync, inflateSync } from "node:zlib";
@@ -11,6 +12,7 @@ import { closeBotGatewayQrWindow, openBotGatewayQrWindow } from "./bot-gateway-q
 import { syncClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
 import { findInstalledCodexAppExecutable } from "@ccr/core/agents/codex/app-launch";
 import { findInstalledOpenCodeAppExecutable } from "@ccr/core/agents/opencode/app-launch";
+import { applyCloudSyncAuthTokens, autoPushCloudSyncConfig, createCloudSyncKeyFile, disableCloudSyncConfig, ensureCloudSyncUserProfile, getCloudSyncStatus, pullCloudSyncConfig, pushCloudSyncConfig, refreshCloudSyncUserProfile, setupCloudSyncConfig, startCloudSyncLogin } from "@ccr/core/cloud-sync/service";
 import { loadAppConfig, saveApiKeysConfig, saveAppConfig, saveAppThemePreference, withClaudeDesignRuntimePluginConfig } from "@ccr/core/config/config";
 import {
   APP_CONFIG_DB_FILE,
@@ -51,7 +53,7 @@ import { appUpdateService } from "./update-service";
 import { getUsageStats } from "@ccr/core/usage/store";
 import { applyNativeThemePreference } from "./native-theme";
 import windowsManager from "./windows";
-import { CLAUDE_DESIGN_PLUGIN_ID, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, type AgentAnalysisFilter, type AgentAnalysisTracePayloadRequest, type ApiKeyConfig, type AppCaptureElementPngRequest, type AppCaptureElementPngResult, type AppConfig, type AppDataExportResult, type AppImageExportTargetRequest, type AppImageExportTargetResult, type AppInfo, type AppRenderHtmlPngRequest, type AppRenderHtmlPngResult, type AppSaveConfigOptions, type BotGatewayQrLoginCancelRequest, type BotGatewayQrLoginStartRequest, type BotGatewayQrLoginWaitRequest, type BotGatewayQrWindowCloseRequest, type BotGatewayQrWindowOpenRequest, type GatewayPluginAppConfig, type GatewayPluginPermission, type GatewayPluginSurface, type GatewayProviderConnectivityCheckRequest, type GatewayProviderProbeCandidatesRequest, type GatewayProviderProbeRequest, type GatewayStatus, type LocalAgentProviderImportRequest, type PluginDependency, type PluginDirectorySelection, type ProfileApplyResult, type ProfileOpenRequest, type ProfileOpenResult, type ProviderAccountResetRequest, type ProviderAccountSnapshotRequestOptions, type ProviderAccountTestRequest, type ProviderCatalogModelsRequest, type ProviderIconDetectionRequest, type ProviderManifestFetchRequest, type RequestLogListFilter, type RouteScriptTestRequest, type RouteScriptValidationRequest, type UsageStatsFilter, type UsageStatsRange } from "@ccr/core/contracts/app";
+import { CLAUDE_DESIGN_PLUGIN_ID, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, type AgentAnalysisFilter, type AgentAnalysisTracePayloadRequest, type ApiKeyConfig, type AppCaptureElementPngRequest, type AppCaptureElementPngResult, type AppConfig, type AppDataExportResult, type AppImageExportTargetRequest, type AppImageExportTargetResult, type AppInfo, type AppRenderHtmlPngRequest, type AppRenderHtmlPngResult, type AppSaveConfigOptions, type BotGatewayQrLoginCancelRequest, type BotGatewayQrLoginStartRequest, type BotGatewayQrLoginWaitRequest, type BotGatewayQrWindowCloseRequest, type BotGatewayQrWindowOpenRequest, type CloudSyncKeyFileResult, type CloudSyncLoginResult, type CloudSyncOperationResult, type CloudSyncPullRequest, type CloudSyncPushRequest, type CloudSyncSetupRequest, type GatewayPluginAppConfig, type GatewayPluginPermission, type GatewayPluginSurface, type GatewayProviderConnectivityCheckRequest, type GatewayProviderProbeCandidatesRequest, type GatewayProviderProbeRequest, type GatewayStatus, type LocalAgentProviderImportRequest, type PluginDependency, type PluginDirectorySelection, type ProfileApplyResult, type ProfileOpenRequest, type ProfileOpenResult, type ProviderAccountResetRequest, type ProviderAccountSnapshotRequestOptions, type ProviderAccountTestRequest, type ProviderCatalogModelsRequest, type ProviderIconDetectionRequest, type ProviderManifestFetchRequest, type RequestLogListFilter, type RouteScriptTestRequest, type RouteScriptValidationRequest, type UsageStatsFilter, type UsageStatsRange } from "@ccr/core/contracts/app";
 const imageExportTargets = new Map<string, string>();
 const gatewayPluginPermissionIdSet = new Set<string>(GATEWAY_PLUGIN_PERMISSION_IDS);
 const gatewayPluginSurfaceIdSet = new Set<string>(GATEWAY_PLUGIN_SURFACE_IDS);
@@ -94,6 +96,52 @@ ipcMain.handle(IPC_CHANNELS.appRenderHtmlPng, async (event, request: AppRenderHt
 });
 
 ipcMain.handle(IPC_CHANNELS.appGetConfig, () => loadAppConfig());
+ipcMain.handle(IPC_CHANNELS.appCloudSyncGetStatus, async () => {
+  const savedConfig = await saveAppConfig(await ensureCloudSyncUserProfile(await loadAppConfig()));
+  return getCloudSyncStatus(savedConfig);
+});
+ipcMain.handle(IPC_CHANNELS.appCloudSyncLogin, async (): Promise<CloudSyncLoginResult> => {
+  const callback = await startCloudSyncDesktopAuthCallback();
+  const login = startCloudSyncLogin(await loadAppConfig(), { callbackUrl: callback.url });
+  const savedConfig = login.config ? await saveAppConfig(login.config) : await loadAppConfig();
+  await shell.openExternal(login.loginUrl);
+  return {
+    ...login,
+    config: savedConfig,
+    status: getCloudSyncStatus(savedConfig)
+  };
+});
+ipcMain.handle(IPC_CHANNELS.appCloudSyncGenerateKeyFile, async (event, file?: string): Promise<CloudSyncKeyFileResult> => {
+  const requestedFile = typeof file === "string" ? file.trim() : "";
+  if (requestedFile) {
+    return createCloudSyncKeyFile(requestedFile);
+  }
+  const window = BrowserWindow.fromWebContents(event.sender);
+  const result = window
+    ? await dialog.showSaveDialog(window, cloudSyncKeyFileSaveDialogOptions())
+    : await dialog.showSaveDialog(cloudSyncKeyFileSaveDialogOptions());
+  if (result.canceled || !result.filePath) {
+    return { canceled: true };
+  }
+  return createCloudSyncKeyFile(result.filePath);
+});
+ipcMain.handle(IPC_CHANNELS.appCloudSyncSetup, async (_event, request: CloudSyncSetupRequest) => {
+  return persistCloudSyncOperation(await setupCloudSyncConfig(await loadAppConfig(), request));
+});
+ipcMain.handle(IPC_CHANNELS.appCloudSyncPush, async (_event, request?: CloudSyncPushRequest) => {
+  return persistCloudSyncOperation(await pushCloudSyncConfig(await loadAppConfig(), request));
+});
+ipcMain.handle(IPC_CHANNELS.appCloudSyncPull, async (_event, request?: CloudSyncPullRequest) => {
+  return persistCloudSyncOperation(await pullCloudSyncConfig(await loadAppConfig(), request));
+});
+ipcMain.handle(IPC_CHANNELS.appCloudSyncDisable, async () => {
+  const savedConfig = await saveAppConfig(disableCloudSyncConfig(await loadAppConfig()));
+  return {
+    config: savedConfig,
+    message: "Cloud sync is disabled on this device.",
+    status: getCloudSyncStatus(savedConfig)
+  } satisfies CloudSyncOperationResult;
+});
 ipcMain.handle(IPC_CHANNELS.appGetOnboardingFinished, () => loadOnboardingFinished());
 ipcMain.handle(IPC_CHANNELS.appGetPendingProviderDeepLinks, () => deepLinkService.consumePendingProviderRequests());
 ipcMain.handle(IPC_CHANNELS.appGetLocalAgentProviderCandidates, () => getLocalAgentProviderCandidates());
@@ -321,6 +369,10 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, opt
   await builtInBrowserService.syncProxy(savedConfig);
   await trayController.refreshIconFromConfig(savedConfig);
   invalidateProviderAccountSnapshotCache();
+  const cloudSyncedConfig = await autoPushCloudSyncConfig(savedConfig);
+  if (cloudSyncedConfig !== savedConfig) {
+    savedConfig = await saveAppConfig(cloudSyncedConfig);
+  }
   return savedConfig;
 });
 ipcMain.handle(IPC_CHANNELS.appSetThemePreference, async (_event, theme: unknown) => {
@@ -382,6 +434,119 @@ ipcMain.handle(IPC_CHANNELS.appRestartProxy, async () => {
   await builtInBrowserService.syncProxy(config);
   return proxyService.getStatus();
 });
+
+async function persistCloudSyncOperation(result: CloudSyncOperationResult): Promise<CloudSyncOperationResult> {
+  if (!result.config) {
+    return result;
+  }
+  const savedConfig = await saveAppConfig(result.config);
+  await gatewayService.updateConfig(savedConfig);
+  await applyProfileIfServiceRunning(savedConfig, gatewayService.getStatus());
+  await builtInBrowserService.syncProxy(savedConfig);
+  await trayController.refreshIconFromConfig(savedConfig);
+  invalidateProviderAccountSnapshotCache();
+  return {
+    ...result,
+    config: savedConfig,
+    status: getCloudSyncStatus(savedConfig)
+  };
+}
+
+async function startCloudSyncDesktopAuthCallback(): Promise<{ url: string }> {
+  const session = randomUUID();
+  const server = createServer((request, response) => {
+    void handleCloudSyncDesktopAuthCallback(request, response, server, session).catch((error) => {
+      sendCloudSyncDesktopAuthHtml(response, 500, "Cloud sync login failed", formatError(error));
+      closeCloudSyncDesktopAuthServer(server);
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+  setTimeout(() => closeCloudSyncDesktopAuthServer(server), 10 * 60 * 1000).unref();
+  const address = server.address();
+  if (!address || typeof address !== "object") {
+    closeCloudSyncDesktopAuthServer(server);
+    throw new Error("Failed to start cloud sync login callback server.");
+  }
+  const url = new URL(`http://127.0.0.1:${address.port}/cloud-sync/auth/callback`);
+  url.searchParams.set("session", session);
+  return { url: url.toString() };
+}
+
+async function handleCloudSyncDesktopAuthCallback(
+  request: IncomingMessage,
+  response: ServerResponse,
+  server: Server,
+  session: string
+): Promise<void> {
+  const url = new URL(request.url || "/", "http://127.0.0.1");
+  if (url.pathname !== "/cloud-sync/auth/callback") {
+    sendCloudSyncDesktopAuthHtml(response, 404, "Cloud sync login failed", "Unknown callback path.");
+    return;
+  }
+  if (url.searchParams.get("session") !== session) {
+    sendCloudSyncDesktopAuthHtml(response, 401, "Cloud sync login failed", "Invalid or expired login session.");
+    return;
+  }
+
+  const authenticatedConfig = applyCloudSyncAuthTokens(await loadAppConfig(), {
+    accessToken: requiredCloudSyncCallbackParam(url, "access_token"),
+    refreshToken: requiredCloudSyncCallbackParam(url, "refresh_token"),
+    refreshTokenExpiresAt: optionalCloudSyncCallbackParam(url, "refresh_token_expires_at"),
+    userId: optionalCloudSyncCallbackParam(url, "user_id")
+  });
+  const savedConfig = await saveAppConfig(await refreshCloudSyncUserProfile(authenticatedConfig));
+  windowsManager.showMainWindow();
+  windowsManager.broadcast(IPC_CHANNELS.appCloudSyncAuthChanged);
+  await trayController.refreshIconFromConfig(savedConfig);
+  sendCloudSyncDesktopAuthHtml(response, 200, "Cloud sync login complete", "You can return to CCR and choose an end-to-end encryption method.");
+  closeCloudSyncDesktopAuthServer(server);
+}
+
+function closeCloudSyncDesktopAuthServer(server: Server): void {
+  if (server.listening) {
+    server.close();
+  }
+}
+
+function requiredCloudSyncCallbackParam(url: URL, key: string): string {
+  const value = optionalCloudSyncCallbackParam(url, key);
+  if (!value) {
+    throw new Error(`Cloud sync callback is missing ${key}.`);
+  }
+  return value;
+}
+
+function optionalCloudSyncCallbackParam(url: URL, key: string): string | undefined {
+  const value = url.searchParams.get(key)?.trim();
+  return value || undefined;
+}
+
+function sendCloudSyncDesktopAuthHtml(response: ServerResponse, status: number, title: string, message: string): void {
+  const body = Buffer.from([
+    "<!doctype html>",
+    "<html>",
+    "<head><meta charset=\"utf-8\"><meta name=\"referrer\" content=\"no-referrer\"><title>CCR Cloud Sync</title></head>",
+    "<body style=\"font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 32px; line-height: 1.5;\">",
+    "<script>try{history.replaceState(null,'','/cloud-sync/auth/complete')}catch{}</script>",
+    `<h1>${escapeHtml(title)}</h1>`,
+    `<p>${escapeHtml(message)}</p>`,
+    "</body>",
+    "</html>"
+  ].join(""), "utf8");
+  response.writeHead(status, {
+    "cache-control": "no-store",
+    "content-length": body.length,
+    "content-type": "text/html; charset=utf-8",
+    "x-content-type-options": "nosniff"
+  });
+  response.end(body);
+}
 
 async function applyProfileIfServiceRunning(config: AppConfig, status: GatewayStatus): Promise<void> {
   if (status.state !== "running") {
@@ -542,6 +707,18 @@ function dataExportSaveDialogOptions(exportedAt: string): SaveDialogOptions {
       { extensions: ["json"], name: "CCR data export" }
     ],
     title: "Export CCR data"
+  };
+}
+
+function cloudSyncKeyFileSaveDialogOptions(): SaveDialogOptions {
+  return {
+    buttonLabel: "Generate key file",
+    defaultPath: path.join(app.getPath("documents"), "ccr-cloud-sync-key.json"),
+    filters: [
+      { extensions: ["json"], name: "JSON key file" },
+      { extensions: ["*"], name: "All files" }
+    ],
+    title: "Generate cloud sync key file"
   };
 }
 
@@ -964,6 +1141,15 @@ function assertExportTargetIsNotInternalDataFile(file: string): void {
 
 function fileSafeTimestamp(value: string): string {
   return value.replace(/[:.]/g, "-");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function uniqueStrings(values: string[]): string[] {

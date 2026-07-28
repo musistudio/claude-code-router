@@ -30,6 +30,13 @@ import type {
   BotGatewayQrWindowOpenResult,
   BotHandoffScanTarget,
   ClaudeAppGatewayApplyResult,
+  CloudSyncOperationResult,
+  CloudSyncKeyFileResult,
+  CloudSyncLoginResult,
+  CloudSyncPullRequest,
+  CloudSyncPushRequest,
+  CloudSyncSetupRequest,
+  CloudSyncStatus,
   GatewayMcpToolInfo,
   GatewayProviderConnectivityCheckReport,
   GatewayProviderConnectivityCheckRequest,
@@ -102,6 +109,13 @@ contextBridge.exposeInMainWorld("ccr", {
   cancelBotGatewayQrLogin: (request: BotGatewayQrLoginCancelRequest) => invoke(IPC_CHANNELS.appBotGatewayQrLoginCancel, request) as Promise<BotGatewayQrLoginCancelResult>,
   captureElementPng: (request: AppCaptureElementPngRequest) => invoke(IPC_CHANNELS.appCaptureElementPng, request) as Promise<AppCaptureElementPngResult>,
   checkProviderConnectivity: (request: GatewayProviderConnectivityCheckRequest) => invoke(IPC_CHANNELS.appCheckProviderConnectivity, request) as Promise<GatewayProviderConnectivityCheckReport>,
+  cloudSyncDisable: () => invoke(IPC_CHANNELS.appCloudSyncDisable) as Promise<CloudSyncOperationResult>,
+  cloudSyncGenerateKeyFile: (file?: string) => invoke(IPC_CHANNELS.appCloudSyncGenerateKeyFile, file) as Promise<CloudSyncKeyFileResult>,
+  cloudSyncGetStatus: () => invoke(IPC_CHANNELS.appCloudSyncGetStatus) as Promise<CloudSyncStatus>,
+  cloudSyncLogin: () => invoke(IPC_CHANNELS.appCloudSyncLogin) as Promise<CloudSyncLoginResult>,
+  cloudSyncPull: (request?: CloudSyncPullRequest) => invoke(IPC_CHANNELS.appCloudSyncPull, request) as Promise<CloudSyncOperationResult>,
+  cloudSyncPush: (request?: CloudSyncPushRequest) => invoke(IPC_CHANNELS.appCloudSyncPush, request) as Promise<CloudSyncOperationResult>,
+  cloudSyncSetup: (request: CloudSyncSetupRequest) => invoke(IPC_CHANNELS.appCloudSyncSetup, request) as Promise<CloudSyncOperationResult>,
   closeBotGatewayQrWindow: (request: BotGatewayQrWindowCloseRequest) => invoke(IPC_CHANNELS.appBotGatewayQrWindowClose, request) as Promise<BotGatewayQrWindowCloseResult>,
   clearProxyNetworkCaptures: () => invoke(IPC_CHANNELS.appClearProxyNetworkCaptures) as Promise<ProxyNetworkSnapshot>,
   closeTray: () => invoke(IPC_CHANNELS.appCloseTray) as Promise<void>,
@@ -173,6 +187,11 @@ contextBridge.exposeInMainWorld("ccr", {
     const handler = () => callback();
     ipcRenderer.on(IPC_CHANNELS.appBeforeQuit, handler);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.appBeforeQuit, handler);
+  },
+  onCloudSyncAuthChanged: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on(IPC_CHANNELS.appCloudSyncAuthChanged, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.appCloudSyncAuthChanged, handler);
   },
   onProviderDeepLink: (callback: (request: ProviderDeepLinkRequest) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, request: ProviderDeepLinkRequest) => callback(request);

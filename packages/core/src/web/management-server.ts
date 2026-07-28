@@ -12,6 +12,7 @@ import { cancelBotGatewayQrLogin, startBotGatewayQrLogin, waitBotGatewayQrLogin 
 import { syncClaudeAppGatewayConfig, restoreClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
 import { findInstalledCodexAppExecutable } from "@ccr/core/agents/codex/app-launch";
 import { findInstalledOpenCodeAppExecutable } from "@ccr/core/agents/opencode/app-launch";
+import { applyCloudSyncAuthTokens, autoPushCloudSyncConfig, createCloudSyncKeyFile, disableCloudSyncConfig, ensureCloudSyncUserProfile, getCloudSyncStatus, pullCloudSyncConfig, pushCloudSyncConfig, refreshCloudSyncUserProfile, setupCloudSyncConfig, startCloudSyncLogin } from "@ccr/core/cloud-sync/service";
 import { loadAppConfig, saveApiKeysConfig, saveAppConfig } from "@ccr/core/config/config";
 import {
   APP_CONFIG_DB_FILE,
@@ -57,6 +58,12 @@ import type {
   BotGatewayQrLoginStartRequest,
   BotGatewayQrLoginWaitRequest,
   BotGatewayQrWindowOpenRequest,
+  CloudSyncOperationResult,
+  CloudSyncKeyFileResult,
+  CloudSyncLoginResult,
+  CloudSyncPullRequest,
+  CloudSyncPushRequest,
+  CloudSyncSetupRequest,
   GatewayPluginAppConfig,
   GatewayPluginPermission,
   GatewayPluginSurface,
@@ -125,6 +132,9 @@ const staticRoot = path.resolve(__dirname, "..", "renderer");
 const homeHtmlFile = path.join(staticRoot, "pages", "home", "index.html");
 const rendererAssetsRoot = path.join(staticRoot, "assets");
 const webBridgeScriptTag = '    <script src="../../assets/web-client-bridge.js"></script>';
+const cloudSyncAuthCallbackPath = "/api/cloud-sync/auth/callback";
+const cloudSyncAuthSessionParam = "session";
+const cloudSyncAuthSessions = new Set<string>();
 
 
 export async function startWebManagementServer(options: WebManagementServerOptions = {}): Promise<WebManagementServerRuntime> {
@@ -176,6 +186,10 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
   }
 
   const url = requestUrl(request);
+  if (url.pathname === cloudSyncAuthCallbackPath) {
+    await handleCloudSyncAuthCallbackRequest(request, response);
+    return;
+  }
   if (url.pathname === "/api/ccr/rpc") {
     await handleRpcRequest(request, response, security);
     return;
@@ -222,6 +236,18 @@ async function handleRpcRequest(request: IncomingMessage, response: ServerRespon
   }
 
   const method = typeof payload.method === "string" ? payload.method.trim() : "";
+  if (method === "cloudSyncLogin") {
+    try {
+      sendJson(response, 200, {
+        ok: true,
+        value: await handleCloudSyncLoginRpc(request)
+      });
+    } catch (error) {
+      sendJson(response, 500, { error: { message: formatError(error) }, ok: false });
+    }
+    return;
+  }
+
   const handler = rpcHandlers[method];
   if (!method || !handler) {
     sendJson(response, 404, { error: { message: `Unknown CCR web RPC method: ${method || "(empty)"}` }, ok: false });
@@ -233,6 +259,48 @@ async function handleRpcRequest(request: IncomingMessage, response: ServerRespon
     sendJson(response, 200, { ok: true, value });
   } catch (error) {
     sendJson(response, 500, { error: { message: formatError(error) }, ok: false });
+  }
+}
+
+async function handleCloudSyncLoginRpc(
+  request: IncomingMessage
+): Promise<CloudSyncLoginResult> {
+  const session = randomBytes(24).toString("base64url");
+  cloudSyncAuthSessions.add(session);
+  setTimeout(() => cloudSyncAuthSessions.delete(session), 10 * 60 * 1000).unref();
+
+  const login = startCloudSyncLogin(await loadAppConfig(), {
+    callbackUrl: cloudSyncCallbackUrl(request, session)
+  });
+  const savedConfig = login.config ? await saveAppConfig(login.config) : await loadAppConfig();
+  return {
+    ...login,
+    config: savedConfig,
+    status: getCloudSyncStatus(savedConfig)
+  };
+}
+
+async function handleCloudSyncAuthCallbackRequest(
+  request: IncomingMessage,
+  response: ServerResponse
+): Promise<void> {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    sendText(response, 405, "Method not allowed");
+    return;
+  }
+
+  const url = requestUrl(request);
+  const session = url.searchParams.get(cloudSyncAuthSessionParam)?.trim();
+  if (!session || !cloudSyncAuthSessions.delete(session)) {
+    sendText(response, 401, "Invalid or expired cloud sync login session");
+    return;
+  }
+
+  try {
+    await saveAppConfig(await refreshCloudSyncUserProfile(applyCloudSyncAuthTokens(await loadAppConfig(), cloudSyncAuthTokensFromUrl(url))));
+    sendHtml(response, 200, cloudSyncAuthSuccessHtml(), request.method === "HEAD");
+  } catch (error) {
+    sendHtml(response, 500, cloudSyncAuthFailureHtml(formatError(error)), request.method === "HEAD");
   }
 }
 
@@ -273,6 +341,28 @@ const rpcHandlers: Record<string, RpcHandler> = {
   applyProfile: async () => applyProfileConfig(await loadAppConfig()),
   cancelBotGatewayQrLogin: (request) => cancelBotGatewayQrLogin(request as BotGatewayQrLoginCancelRequest),
   checkProviderConnectivity: (request) => checkGatewayProviderConnectivity(request as GatewayProviderConnectivityCheckRequest),
+  cloudSyncDisable: async () => {
+    const savedConfig = await saveAppConfig(disableCloudSyncConfig(await loadAppConfig()));
+    return {
+      config: savedConfig,
+      message: "Cloud sync is disabled on this device.",
+      status: getCloudSyncStatus(savedConfig)
+    } satisfies CloudSyncOperationResult;
+  },
+  cloudSyncGenerateKeyFile: (file): CloudSyncKeyFileResult => {
+    const keyFilePath = typeof file === "string" ? file.trim() : "";
+    if (!keyFilePath) {
+      throw new Error("Enter a key file path before generating a cloud sync key file.");
+    }
+    return createCloudSyncKeyFile(keyFilePath);
+  },
+  cloudSyncGetStatus: async () => {
+    const savedConfig = await saveAppConfig(await ensureCloudSyncUserProfile(await loadAppConfig()));
+    return getCloudSyncStatus(savedConfig);
+  },
+  cloudSyncPull: async (request) => persistCloudSyncOperation(await pullCloudSyncConfig(await loadAppConfig(), request as CloudSyncPullRequest | undefined)),
+  cloudSyncPush: async (request) => persistCloudSyncOperation(await pushCloudSyncConfig(await loadAppConfig(), request as CloudSyncPushRequest | undefined)),
+  cloudSyncSetup: async (request) => persistCloudSyncOperation(await setupCloudSyncConfig(await loadAppConfig(), request as CloudSyncSetupRequest)),
   clearProxyNetworkCaptures: () => proxyService.clearNetworkCaptures(),
   closeBotGatewayQrWindow: (_request) => ({ closed: false }),
   detectProviderIcon: (request) => detectProviderIcon(request as ProviderIconDetectionRequest),
@@ -402,6 +492,10 @@ const rpcHandlers: Record<string, RpcHandler> = {
       await applyProfileIfServiceRunning(savedConfig, runtimeStatus);
     }
     invalidateProviderAccountSnapshotCache();
+    const cloudSyncedConfig = await autoPushCloudSyncConfig(savedConfig);
+    if (cloudSyncedConfig !== savedConfig) {
+      savedConfig = await saveAppConfig(cloudSyncedConfig);
+    }
     return savedConfig;
   },
   scanBotHandoffBluetoothTargets: () => scanBotHandoffBluetoothTargets(),
@@ -432,6 +526,21 @@ const rpcHandlers: Record<string, RpcHandler> = {
   },
   waitBotGatewayQrLogin: (request) => waitBotGatewayQrLogin(request as BotGatewayQrLoginWaitRequest)
 };
+
+async function persistCloudSyncOperation(result: CloudSyncOperationResult): Promise<CloudSyncOperationResult> {
+  if (!result.config) {
+    return result;
+  }
+  const savedConfig = await saveAppConfig(result.config);
+  await gatewayService.updateConfig(savedConfig);
+  await applyProfileIfServiceRunning(savedConfig, gatewayService.getStatus());
+  invalidateProviderAccountSnapshotCache();
+  return {
+    ...result,
+    config: savedConfig,
+    status: getCloudSyncStatus(savedConfig)
+  };
+}
 
 async function startConfiguredServices(reason: string): Promise<void> {
   try {
@@ -516,6 +625,77 @@ function sendHomeHtml(response: ServerResponse, headOnly: boolean): void {
     html = html.replace('    <script type="module" src="../../assets/main.js"></script>', `${webBridgeScriptTag}\n    <script type="module" src="../../assets/main.js"></script>`);
   }
   sendBuffer(response, 200, Buffer.from(html, "utf8"), "text/html; charset=utf-8", headOnly);
+}
+
+function sendHtml(response: ServerResponse, status: number, html: string, headOnly: boolean): void {
+  sendBuffer(response, status, Buffer.from(html, "utf8"), "text/html; charset=utf-8", headOnly);
+}
+
+function cloudSyncCallbackUrl(request: IncomingMessage, session: string): string {
+  const publicBaseUrl = readEnvString("CCR_PUBLIC_BASE_URL");
+  const url = publicBaseUrl
+    ? new URL(cloudSyncAuthCallbackPath, `${publicBaseUrl.replace(/\/+$/, "")}/`)
+    : requestUrl(request);
+  url.pathname = cloudSyncAuthCallbackPath;
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set(cloudSyncAuthSessionParam, session);
+  return url.toString();
+}
+
+function cloudSyncAuthTokensFromUrl(url: URL): {
+  accessToken: string;
+  refreshToken: string;
+  refreshTokenExpiresAt?: string;
+  userId?: string;
+} {
+  return {
+    accessToken: requiredQueryParam(url, "access_token"),
+    refreshToken: requiredQueryParam(url, "refresh_token"),
+    refreshTokenExpiresAt: optionalQueryParam(url, "refresh_token_expires_at"),
+    userId: optionalQueryParam(url, "user_id")
+  };
+}
+
+function requiredQueryParam(url: URL, key: string): string {
+  const value = optionalQueryParam(url, key);
+  if (!value) {
+    throw new Error(`Cloud sync callback is missing ${key}.`);
+  }
+  return value;
+}
+
+function optionalQueryParam(url: URL, key: string): string | undefined {
+  const value = url.searchParams.get(key)?.trim();
+  return value || undefined;
+}
+
+function cloudSyncAuthSuccessHtml(): string {
+  return [
+    "<!doctype html>",
+    "<html>",
+    "<head><meta charset=\"utf-8\"><meta name=\"referrer\" content=\"no-referrer\"><title>CCR Cloud Sync</title></head>",
+    "<body style=\"font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 32px; line-height: 1.5;\">",
+    "<script>try{history.replaceState(null,'','/api/cloud-sync/auth/complete')}catch{}</script>",
+    "<h1>Cloud sync login complete</h1>",
+    "<p>You can return to CCR and choose an end-to-end encryption method.</p>",
+    "</body>",
+    "</html>"
+  ].join("");
+}
+
+function cloudSyncAuthFailureHtml(message: string): string {
+  return [
+    "<!doctype html>",
+    "<html>",
+    "<head><meta charset=\"utf-8\"><meta name=\"referrer\" content=\"no-referrer\"><title>CCR Cloud Sync</title></head>",
+    "<body style=\"font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 32px; line-height: 1.5;\">",
+    "<script>try{history.replaceState(null,'','/api/cloud-sync/auth/complete')}catch{}</script>",
+    "<h1>Cloud sync login failed</h1>",
+    `<p>${escapeHtml(message)}</p>`,
+    "</body>",
+    "</html>"
+  ].join("");
 }
 
 function sendStaticFile(response: ServerResponse, root: string, relativePath: string, headOnly: boolean): void {
@@ -1477,6 +1657,15 @@ function uniqueStrings(values: string[]): string[] {
 
 function fileSafeTimestamp(value: string): string {
   return value.replace(/[:.]/g, "-");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function formatListenHost(host: string): string {

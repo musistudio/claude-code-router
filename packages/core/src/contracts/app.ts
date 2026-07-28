@@ -19,6 +19,96 @@ export type AppDataExportResult = {
   file?: string;
 };
 
+export const CLOUD_SYNC_DEFAULT_BASE_URL = "http://127.0.0.1:3000";
+
+export type CloudSyncConfig = {
+  accessToken?: string;
+  baseUrl: string;
+  deviceId?: string;
+  deviceName: string;
+  enabled: boolean;
+  keyId?: string;
+  keyMode?: "key-file" | "password";
+  keySalt?: string;
+  lastRevision: number;
+  lastSyncedSnapshot?: unknown;
+  lastSyncAt?: string;
+  lastSyncError?: string;
+  namespace: string;
+  refreshToken?: string;
+  refreshTokenExpiresAt?: string;
+  snapshotHash?: string;
+  userAvatarUrl?: string;
+  userEmail?: string;
+  userId?: string;
+  userLogin?: string;
+  userName?: string;
+};
+
+export type CloudSyncKeyInput = {
+  keyFilePath?: string;
+  password?: string;
+};
+
+export type CloudSyncSetupRequest = CloudSyncKeyInput & {
+  restoreOnly?: boolean;
+};
+
+export type CloudSyncLoginResult = {
+  config?: AppConfig;
+  loginUrl: string;
+  message: string;
+  status: CloudSyncStatus;
+};
+
+export type CloudSyncPushRequest = CloudSyncKeyInput & {
+  force?: boolean;
+};
+
+export type CloudSyncPullRequest = CloudSyncKeyInput & {
+  apply?: boolean;
+};
+
+export type CloudSyncStatus = {
+  authenticated: boolean;
+  baseUrl: string;
+  configured: boolean;
+  deviceId?: string;
+  deviceName: string;
+  enabled: boolean;
+  keyId?: string;
+  keyMode?: "key-file" | "password";
+  lastRevision: number;
+  lastSyncAt?: string;
+  lastSyncError?: string;
+  namespace: string;
+  snapshotHash?: string;
+  unlocked: boolean;
+  userAvatarUrl?: string;
+  userEmail?: string;
+  userId?: string;
+  userLogin?: string;
+  userName?: string;
+};
+
+export type CloudSyncKeyFileResult = {
+  canceled: boolean;
+  file?: string;
+};
+
+export type CloudSyncOperationResult = {
+  authExpired?: boolean;
+  config?: AppConfig;
+  conflict?: boolean;
+  message: string;
+  mergeApplied?: boolean;
+  mergeConflicts?: string[];
+  remoteRevision?: number;
+  snapshotApplied?: boolean;
+  snapshotPushed?: boolean;
+  status: CloudSyncStatus;
+};
+
 export type AppCaptureElementPngRequest = {
   borderRadius?: number;
   exportId?: string;
@@ -1726,6 +1816,7 @@ export type AppConfig = {
   autoStart: boolean;
   botConfigs: BotGatewaySavedConfig[];
   botGateway: BotGatewayRuntimeConfig;
+  cloudSync: CloudSyncConfig;
   contextArchive: ContextArchiveConfig;
   gateway: GatewayRuntimeConfig;
   mediaTools: MediaToolsConfig;

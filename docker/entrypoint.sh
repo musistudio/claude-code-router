@@ -167,6 +167,15 @@ server {
     proxy_pass http://${CCR_WEB_HOST}:${CCR_WEB_PORT};
   }
 
+  location ^~ /api/cloud-sync/auth/ {
+    proxy_http_version 1.1;
+    proxy_set_header Host ${CCR_WEB_HOST}:${CCR_WEB_PORT};
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host \$host;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_pass http://${CCR_WEB_HOST}:${CCR_WEB_PORT};
+  }
+
   location = /health {
     proxy_http_version 1.1;
     proxy_set_header Host ${CCR_GATEWAY_HOST}:${CCR_GATEWAY_PORT};
@@ -195,6 +204,46 @@ server {
   }
 }
 EOF
+
+if [ "${CCR_DOCKER_CLOUD_SYNC_PROXY:-1}" != "0" ]; then
+  node - <<'NODE' &
+const net = require("node:net");
+
+const listenHost = process.env.CCR_DOCKER_CLOUD_SYNC_PROXY_LISTEN_HOST || "127.0.0.1";
+const listenPort = Number(process.env.CCR_DOCKER_CLOUD_SYNC_PROXY_LISTEN_PORT || "3000");
+const targetHost = process.env.CCR_DOCKER_CLOUD_SYNC_PROXY_TARGET_HOST || "host.docker.internal";
+const targetPort = Number(process.env.CCR_DOCKER_CLOUD_SYNC_PROXY_TARGET_PORT || "3000");
+
+function startProxy() {
+  const server = net.createServer((client) => {
+    const upstream = net.connect(targetPort, targetHost);
+    client.on("error", () => undefined);
+    upstream.on("error", () => client.destroy());
+    client.pipe(upstream);
+    upstream.pipe(client);
+  });
+
+  server.on("error", (error) => {
+    if (error && error.code !== "EADDRINUSE") {
+      console.error(`CCR cloud sync Docker proxy failed: ${error.message}`);
+    }
+    process.exit(0);
+  });
+  server.listen(listenPort, listenHost, () => {
+    console.log(`CCR cloud sync Docker proxy listening at ${listenHost}:${listenPort} -> ${targetHost}:${targetPort}`);
+  });
+}
+
+const probe = net.connect({ host: listenHost, port: listenPort });
+probe.setTimeout(1000);
+probe.once("connect", () => process.exit(0));
+probe.once("timeout", () => {
+  probe.destroy();
+  startProxy();
+});
+probe.once("error", () => startProxy());
+NODE
+fi
 
 if [ "$#" -gt 0 ]; then
   exec "$@"

@@ -1,5 +1,5 @@
 import {
-  Activity, AppConfig, AppCopy, AppInfo, AppLanguagePreference, Boxes, BotGatewayConfigDraft, botGatewayAuthSpecsForPlatform,
+  Activity, AnimatedDisclosure, AnimatePresence, AppConfig, AppCopy, AppInfo, AppLanguagePreference, ArrowDown, ArrowUp, Boxes, BotGatewayConfigDraft, botGatewayAuthSpecsForPlatform,
   botGatewayDefaultAuthType, botGatewayFieldsForAuth, botGatewayPickAuthFields, botGatewayPlatformLabel, botGatewayPlatformOptions,
   botGatewaySavedConfigFromDraft, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitResult, BotGatewayQrWindowOpenResult, BotGatewaySavedConfig, Button,
   CircleAlert, closestCenter, cn, CSS, Database, Dialog, DialogBody, DialogContent,
@@ -7,8 +7,9 @@ import {
   Globe,
   createBotGatewayConfigDraft, createMcpServerDraft, createMcpServerDraftFromConfig, createMcpServerDraftFromUnknown, DndContext, DragEndEvent, GatewayMcpServerConfig, GatewayProviderConfig, Input, isBotGatewayConfigDraftSubmittable, KeyboardSensor, KeyRound, KeyValueRowsControl, languageDisplayName, Layers3, LoaderCircle,
   mcpServerConfigFromDraft, mcpServerEndpointSummary, mcpServerTransportOptions, mcpStdioMessageModeOptions, McpServerDraft, normalizeBotGatewayAuthType, normalizeBotGatewayPlatform, normalizeProviderModelSelector, normalizeProxyUpstreamConfig, normalizeToolHubConfig, numberValue, Palette, Pencil, Plus, ProfileConfig, profileAgentLabel,
-  PanelLeftOpen, Power, ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ResolvedLanguage, ResolvedTheme, Select, SelectControl,
+  CloudSyncOperationResult, CloudSyncStatus, PanelLeftOpen, Power, ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ResolvedLanguage, ResolvedTheme, Select, SelectControl,
   PointerSensor, rectSortingStrategy, Settings, SettingsPageId, SortableContext, sortableKeyboardCoordinates, themeDisplayName,
+  Tabs, TabsContent, TabsList, TabsTrigger,
   translateOptions, TrayBalanceProgressConfig, TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant,
   appLogoUrl, trayMascotIconUrls, arrayMove, defaultTrayWidgetVariant, isTraySingletonWidgetType, normalizeTrayWidget, normalizeTrayWidgets, Switch, Textarea, Trash2, trayWidgetVariantOptions, useAppText, useEffect, useMemo, useRef, useSensor, useSensors, useSortable, useState, validateMcpServerDraft,
   X
@@ -27,6 +28,7 @@ export function AppSettingsDialog({
   languagePreference,
   launchAtLogin,
   onChangeBotConfigs,
+  onCloudSyncConfigChange,
   onChangeLaunchAtLogin,
   onChangeObservability,
   onChangeProxy,
@@ -37,6 +39,7 @@ export function AppSettingsDialog({
   onChangeTrayIcon,
   onChangeTrayWidgets,
   onClose,
+  onToast,
   observability,
   profiles,
   proxy,
@@ -61,6 +64,7 @@ export function AppSettingsDialog({
   languagePreference: AppLanguagePreference;
   launchAtLogin: boolean;
   onChangeBotConfigs: (configs: BotGatewaySavedConfig[]) => void;
+  onCloudSyncConfigChange: (config: AppConfig) => void;
   onChangeLaunchAtLogin: (checked: boolean) => void;
   onChangeObservability: (patch: Partial<AppConfig["observability"]>) => void;
   onChangeProxy: (patch: Partial<AppConfig["proxy"]>) => void;
@@ -71,6 +75,7 @@ export function AppSettingsDialog({
   onChangeTrayIcon: (value: string) => void;
   onChangeTrayWidgets: (widgets: TrayWidgetConfig[]) => void;
   onClose: () => void;
+  onToast: (message: string) => void;
   observability: AppConfig["observability"];
   profiles: ProfileConfig[];
   proxy: AppConfig["proxy"];
@@ -117,6 +122,16 @@ export function AppSettingsDialog({
               systemLanguage={systemLanguage}
               systemTheme={systemTheme}
               themePreference={themePreference}
+            />
+          );
+        }
+        if (activePage === "cloud") {
+          return (
+            <CloudSyncSettingsPage
+              config={config}
+              copy={copy}
+              onConfigChange={onCloudSyncConfigChange}
+              onToast={onToast}
             />
           );
         }
@@ -217,6 +232,13 @@ function SettingsLayout({
               icon={Settings}
               label={copy.settings.general}
               onClick={() => setActivePage("general")}
+            />
+            <SettingsPageButton
+              active={visiblePage === "cloud"}
+              className="mt-1"
+              icon={Database}
+              label={copy.text["Cloud Sync"] ?? "Cloud Sync"}
+              onClick={() => setActivePage("cloud")}
             />
             <SettingsPageButton
               active={visiblePage === "observability"}
@@ -337,6 +359,510 @@ function AppearanceSettingsPage({
       </div>
     </div>
   );
+}
+
+function CloudSyncSettingsPage({
+  config,
+  copy,
+  onConfigChange,
+  onToast
+}: {
+  config: AppConfig;
+  copy: AppCopy;
+  onConfigChange: (config: AppConfig) => void;
+  onToast: (message: string) => void;
+}) {
+  const t = (value: string) => copy.text[value] ?? value;
+  const [keyMode, setKeyMode] = useState<"key-file" | "password">(config.cloudSync.keyMode ?? "password");
+  const [password, setPassword] = useState("");
+  const [keyFilePath, setKeyFilePath] = useState("");
+  const [status, setStatus] = useState<CloudSyncStatus>();
+  const [busy, setBusy] = useState<"" | "setup" | "push" | "pull" | "disable" | "logout" | "status" | "login" | "key-file">("");
+  const [syncPanelOpen, setSyncPanelOpen] = useState(Boolean(config.cloudSync.enabled));
+  const [encryptionSettingsOpen, setEncryptionSettingsOpen] = useState(!config.cloudSync.keyId);
+  const [mergeConflicts, setMergeConflicts] = useState<string[]>([]);
+  const [error, setError] = useState("");
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState("");
+  const keyFileInputRef = useRef<HTMLInputElement>(null);
+  const effectiveStatus = status ?? cloudSyncStatusFromConfig(config);
+  const authenticated = effectiveStatus.authenticated;
+  const syncControlsVisible = effectiveStatus.enabled || syncPanelOpen;
+  const setupReady = keyMode === "key-file" ? Boolean(keyFilePath.trim()) : Boolean(password);
+  const avatarUrl = effectiveStatus.userAvatarUrl && effectiveStatus.userAvatarUrl !== failedAvatarUrl
+    ? effectiveStatus.userAvatarUrl
+    : "";
+
+  useEffect(() => {
+    setKeyMode(config.cloudSync.keyMode ?? "password");
+    setStatus(cloudSyncStatusFromConfig(config));
+  }, [
+    config.cloudSync.deviceId,
+    config.cloudSync.enabled,
+    config.cloudSync.keyId,
+    config.cloudSync.keyMode,
+    config.cloudSync.lastRevision,
+    config.cloudSync.lastSyncAt,
+    config.cloudSync.lastSyncError,
+    config.cloudSync.refreshToken,
+    config.cloudSync.userAvatarUrl,
+    config.cloudSync.userEmail,
+    config.cloudSync.userId,
+    config.cloudSync.userLogin,
+    config.cloudSync.userName
+  ]);
+
+  useEffect(() => {
+    if (config.cloudSync.enabled) {
+      setSyncPanelOpen(true);
+    }
+  }, [config.cloudSync.enabled]);
+
+  useEffect(() => {
+    if (!window.ccr?.cloudSyncGetStatus) {
+      return;
+    }
+    setBusy((current) => current || "status");
+    void window.ccr.cloudSyncGetStatus()
+      .then(setStatus)
+      .catch(() => undefined)
+      .finally(() => setBusy((current) => current === "status" ? "" : current));
+  }, []);
+
+  useEffect(() => {
+    if (!window.ccr?.onCloudSyncAuthChanged) {
+      return undefined;
+    }
+    return window.ccr.onCloudSyncAuthChanged(() => {
+      void refreshCloudSyncAfterAuth();
+    });
+  }, []);
+
+  function keyInput() {
+    return keyMode === "key-file"
+      ? { keyFilePath: keyFilePath.trim() }
+      : { password };
+  }
+
+  function applyCloudResult(result: CloudSyncOperationResult | { config?: AppConfig; message: string; status: CloudSyncStatus }) {
+    if (result.config) {
+      onConfigChange(result.config);
+    }
+    setStatus(result.status);
+    const authExpired = "authExpired" in result && result.authExpired;
+    if (!authExpired && result.message) {
+      onToast(t(result.message));
+    }
+    setMergeConflicts("mergeApplied" in result && result.mergeApplied ? result.mergeConflicts ?? [] : []);
+    setError(authExpired ? t(result.message) : "");
+    setPassword("");
+  }
+
+  async function refreshCloudSyncAfterAuth() {
+    if (!window.ccr) {
+      return;
+    }
+    try {
+      const [nextConfig, nextStatus] = await Promise.all([
+        window.ccr.getConfig(),
+        window.ccr.cloudSyncGetStatus()
+      ]);
+      onConfigChange(nextConfig);
+      setStatus(nextStatus);
+      setSyncPanelOpen(true);
+      setEncryptionSettingsOpen(!nextStatus.configured);
+      onToast(t("Cloud login completed. Choose an encryption method to enable sync."));
+      setError("");
+    } catch (authError) {
+      setError(formatAppError(copy, authError));
+    }
+  }
+
+  async function pollCloudSyncAuthCompletion(deadline = Date.now() + 2 * 60 * 1000) {
+    if (!window.ccr) {
+      return;
+    }
+    try {
+      const [nextConfig, nextStatus] = await Promise.all([
+        window.ccr.getConfig(),
+        window.ccr.cloudSyncGetStatus()
+      ]);
+      if (nextStatus.authenticated) {
+        onConfigChange(nextConfig);
+        setStatus(nextStatus);
+        setSyncPanelOpen(true);
+        setEncryptionSettingsOpen(!nextStatus.configured);
+        onToast(t("Cloud login completed. Choose an encryption method to enable sync."));
+        setError("");
+        return;
+      }
+    } catch {
+      // Keep polling until the browser login either completes or the window expires.
+    }
+    if (Date.now() < deadline) {
+      window.setTimeout(() => void pollCloudSyncAuthCompletion(deadline), 2000);
+    }
+  }
+
+  async function runCloudLogin() {
+    if (!window.ccr?.cloudSyncLogin) {
+      setError(t("Cloud sync login is only available in the desktop app."));
+      return;
+    }
+    setBusy("login");
+    setError("");
+    setMergeConflicts([]);
+    try {
+      applyCloudResult(await window.ccr.cloudSyncLogin());
+      onToast(t("Complete login in the browser, then return to CCR."));
+      void pollCloudSyncAuthCompletion();
+    } catch (loginError) {
+      setError(formatAppError(copy, loginError));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function generateKeyFile() {
+    if (!window.ccr?.cloudSyncGenerateKeyFile) {
+      setError(t("Cloud sync key file generation is only available in the desktop app."));
+      return;
+    }
+    setBusy("key-file");
+    setError("");
+    try {
+      const result = await window.ccr.cloudSyncGenerateKeyFile(keyFilePath.trim() || undefined);
+      if (!result.canceled && result.file) {
+        setKeyMode("key-file");
+        setKeyFilePath(result.file);
+        onToast(t("Key file generated. Keep it safe; losing it can make cloud data unrecoverable."));
+      }
+    } catch (keyFileError) {
+      setError(formatAppError(copy, keyFileError));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function runCloudAction(action: "setup" | "push" | "pull" | "disable" | "logout") {
+    if (!window.ccr) {
+      setError(t("Cloud sync is only available in the Electron app."));
+      return;
+    }
+    setBusy(action);
+    setError("");
+    setMergeConflicts([]);
+    try {
+      if (action === "setup") {
+        const result = await window.ccr.cloudSyncSetup(keyInput());
+        applyCloudResult(result);
+        const authExpired = "authExpired" in result && result.authExpired;
+        setSyncPanelOpen(!authExpired);
+        setEncryptionSettingsOpen(authExpired || !result.status.configured);
+      } else if (action === "push") {
+        applyCloudResult(await window.ccr.cloudSyncPush(keyInput()));
+      } else if (action === "pull") {
+        applyCloudResult(await window.ccr.cloudSyncPull(keyInput()));
+      } else if (action === "disable" || action === "logout") {
+        applyCloudResult(await window.ccr.cloudSyncDisable());
+        setSyncPanelOpen(false);
+        setEncryptionSettingsOpen(false);
+      }
+    } catch (cloudError) {
+      setError(formatAppError(copy, cloudError));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function toggleCloudSyncPanel(checked: boolean) {
+    if (checked) {
+      setSyncPanelOpen(true);
+      setEncryptionSettingsOpen(!effectiveStatus.configured);
+      setError("");
+      return;
+    }
+
+    if (effectiveStatus.enabled) {
+      void runCloudAction("disable");
+      return;
+    }
+
+    setSyncPanelOpen(false);
+    setEncryptionSettingsOpen(false);
+    setError("");
+    setMergeConflicts([]);
+  }
+
+  return (
+    <div className={cn(settingsPageContentWidthClassName, "grid grid-cols-1 gap-5")}>
+      {!authenticated ? (
+        <>
+          <div className="flex justify-start">
+            <Button disabled={Boolean(busy)} onClick={() => void runCloudLogin()} size="sm" type="button">
+              {busy === "login" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
+              {t("Sign in with GitHub")}
+            </Button>
+          </div>
+          {error ? (
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[11px] text-destructive">
+              {error}
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="text-[15px] font-semibold text-foreground">{t("Cloud Sync")}</h3>
+              <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
+                {t("Sync providers, agent profiles, routing rules, plugins, ToolHub, and related user configuration as encrypted snapshots.")}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2 pt-0.5">
+              <Switch
+                aria-label={t("Cloud Sync")}
+                checked={syncControlsVisible}
+                disabled={Boolean(busy)}
+                onCheckedChange={toggleCloudSyncPanel}
+              />
+              {syncControlsVisible ? (
+                <Button
+                  aria-expanded={encryptionSettingsOpen}
+                  aria-label={t("Encryption method")}
+                  disabled={Boolean(busy)}
+                  onClick={() => setEncryptionSettingsOpen((open) => !open)}
+                  size="iconSm"
+                  title={t("Encryption method")}
+                  type="button"
+                  variant={encryptionSettingsOpen ? "default" : "outline"}
+                >
+                  <Settings className="h-4 w-4" />
+                </Button>
+              ) : null}
+            </div>
+          </div>
+
+          <AnimatePresence initial={false}>
+            {syncControlsVisible && encryptionSettingsOpen ? (
+              <AnimatedDisclosure key="cloud-sync-encryption-settings">
+                <section className="grid grid-cols-1 gap-3 rounded-md border border-border bg-background p-3">
+                  {!effectiveStatus.configured ? (
+                    <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-[12px] leading-5 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+                      <div className="flex items-start gap-2">
+                        <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                        <div>
+                          <div className="font-semibold">{t("End-to-end encryption is required before cloud sync can be enabled.")}</div>
+                          <div>{t("Your password or key file is never uploaded. If you forget the password or lose the key file, cloud data cannot be decrypted and may be permanently lost.")}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <Tabs
+                    className="grid grid-cols-1 gap-3"
+                    onValueChange={(value) => setKeyMode(value === "key-file" ? "key-file" : "password")}
+                    value={keyMode}
+                  >
+                    <TabsList aria-label={t("Encryption method")} className="w-fit border border-border bg-muted/20">
+                      <TabsTrigger className="gap-2" value="password">
+                        <KeyRound className="h-4 w-4" />
+                        {t("Password")}
+                      </TabsTrigger>
+                      <TabsTrigger className="gap-2" value="key-file">
+                        <KeyRound className="h-4 w-4" />
+                        {t("Key file")}
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="password">
+                      <Field label={t("Encryption password")}>
+                        <Input
+                          autoComplete="new-password"
+                          type="password"
+                          value={password}
+                          onChange={(event) => setPassword(event.target.value)}
+                          placeholder={t("Required unless you use a key file")}
+                        />
+                      </Field>
+                    </TabsContent>
+
+                    <TabsContent className="grid grid-cols-1 gap-3" value="key-file">
+                      <Field label={t("Key file path")}>
+                        <Input value={keyFilePath} onChange={(event) => setKeyFilePath(event.target.value)} placeholder={t("Choose an E2EE key file")} />
+                      </Field>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          className="hidden"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            const filePath = file && window.ccr?.getFilePath ? window.ccr.getFilePath(file) : "";
+                            if (filePath) {
+                              setKeyFilePath(filePath);
+                            }
+                            if (keyFileInputRef.current) {
+                              keyFileInputRef.current.value = "";
+                            }
+                          }}
+                          ref={keyFileInputRef}
+                          type="file"
+                        />
+                        <Button onClick={() => keyFileInputRef.current?.click()} size="sm" type="button" variant="outline">
+                          <KeyRound className="h-4 w-4" />
+                          {t("Choose key file")}
+                        </Button>
+                        <Button disabled={Boolean(busy)} onClick={() => void generateKeyFile()} size="sm" type="button" variant="outline">
+                          {busy === "key-file" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                          {t("Generate key file")}
+                        </Button>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+
+                  <div className="flex justify-end">
+                    <Button
+                      disabled={Boolean(busy) || !setupReady}
+                      onClick={() => void runCloudAction("setup")}
+                      size="sm"
+                      type="button"
+                    >
+                      {busy === "setup" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                      {effectiveStatus.enabled ? t("Update setup") : t("Enable sync")}
+                    </Button>
+                  </div>
+                </section>
+              </AnimatedDisclosure>
+            ) : null}
+          </AnimatePresence>
+
+          <section className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-card/70 px-3 py-3">
+            <div className="flex min-w-0 items-center gap-3">
+              {avatarUrl ? (
+                <img
+                  alt=""
+                  className="h-10 w-10 shrink-0 rounded-full border border-border bg-muted object-cover"
+                  onError={() => setFailedAvatarUrl(avatarUrl)}
+                  referrerPolicy="no-referrer"
+                  src={avatarUrl}
+                />
+              ) : (
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-[13px] font-semibold text-muted-foreground">
+                  {cloudSyncAccountInitial(effectiveStatus)}
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="truncate text-[13px] font-semibold text-foreground">{cloudSyncAccountName(effectiveStatus, t)}</div>
+                <div className="truncate text-[11px] text-muted-foreground">{cloudSyncAccountDetail(effectiveStatus)}</div>
+              </div>
+            </div>
+            <Button disabled={Boolean(busy)} onClick={() => void runCloudAction("logout")} size="sm" type="button" variant="outline">
+              {busy === "logout" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+              {t("Sign out")}
+            </Button>
+          </section>
+
+          {syncControlsVisible ? (
+            <>
+              <section className="grid grid-cols-1 gap-3 rounded-md border border-border bg-muted/20 p-3">
+                <div className="grid grid-cols-1 gap-2 text-[12px] sm:grid-cols-2">
+                  <CloudSyncStatusRow label={t("State")} value={effectiveStatus.enabled ? t("Enabled") : t("Disabled")} />
+                  <CloudSyncStatusRow label={t("Unlocked")} value={effectiveStatus.unlocked ? t("Yes") : t("No")} />
+                  <CloudSyncStatusRow label={t("Revision")} value={String(effectiveStatus.lastRevision)} />
+                  <CloudSyncStatusRow label={t("Key mode")} value={effectiveStatus.keyMode ? t(effectiveStatus.keyMode === "key-file" ? "Key file" : "Password") : t("Not set")} />
+                  <CloudSyncStatusRow label={t("Device ID")} value={effectiveStatus.deviceId || t("Not registered")} />
+                  <CloudSyncStatusRow label={t("Last sync")} value={effectiveStatus.lastSyncAt || t("Never")} />
+                </div>
+                {effectiveStatus.lastSyncError ? (
+                  <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[11px] text-destructive">
+                    {effectiveStatus.lastSyncError}
+                  </div>
+                ) : null}
+                {mergeConflicts.length > 0 ? (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+                    <div className="font-medium">{t("Local values were kept for these conflict paths:")}</div>
+                    <div className="mt-1 break-all font-mono">{mergeConflicts.join(", ")}</div>
+                  </div>
+                ) : null}
+                {error ? (
+                  <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[11px] text-destructive">
+                    {error}
+                  </div>
+                ) : null}
+              </section>
+
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button disabled={Boolean(busy) || !effectiveStatus.enabled} onClick={() => void runCloudAction("push")} size="sm" type="button" variant="outline">
+                  {busy === "push" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
+                  {t("Push")}
+                </Button>
+                <Button disabled={Boolean(busy) || !effectiveStatus.enabled} onClick={() => void runCloudAction("pull")} size="sm" type="button" variant="outline">
+                  {busy === "pull" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ArrowDown className="h-4 w-4" />}
+                  {t("Pull")}
+                </Button>
+              </div>
+            </>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+function CloudSyncStatusRow({
+  label,
+  value
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="grid min-w-0 gap-1 rounded-md bg-background/70 px-2 py-2 sm:grid-cols-[110px_minmax(0,1fr)] sm:items-center">
+      <div className="text-[11px] font-medium text-muted-foreground">{label}</div>
+      <div className="min-w-0 break-all text-[11px] text-foreground">{value}</div>
+    </div>
+  );
+}
+
+function cloudSyncStatusFromConfig(config: AppConfig): CloudSyncStatus {
+  return {
+    authenticated: Boolean(config.cloudSync.accessToken || config.cloudSync.refreshToken),
+    baseUrl: config.cloudSync.baseUrl,
+    configured: Boolean(config.cloudSync.baseUrl && config.cloudSync.keyId && config.cloudSync.keySalt),
+    deviceId: config.cloudSync.deviceId,
+    deviceName: config.cloudSync.deviceName,
+    enabled: config.cloudSync.enabled,
+    keyId: config.cloudSync.keyId,
+    keyMode: config.cloudSync.keyMode,
+    lastRevision: config.cloudSync.lastRevision,
+    lastSyncAt: config.cloudSync.lastSyncAt,
+    lastSyncError: config.cloudSync.lastSyncError,
+    namespace: config.cloudSync.namespace,
+    snapshotHash: config.cloudSync.snapshotHash,
+    unlocked: false,
+    userAvatarUrl: config.cloudSync.userAvatarUrl,
+    userEmail: config.cloudSync.userEmail,
+    userId: config.cloudSync.userId,
+    userLogin: config.cloudSync.userLogin,
+    userName: config.cloudSync.userName
+  };
+}
+
+function cloudSyncAccountName(status: CloudSyncStatus, t: (value: string) => string): string {
+  if (status.userName && status.userLogin) {
+    return `${status.userName} @${status.userLogin}`;
+  }
+  if (status.userLogin) {
+    return `@${status.userLogin}`;
+  }
+  return status.userName || status.userEmail || status.userId || t("Cloud account");
+}
+
+function cloudSyncAccountDetail(status: CloudSyncStatus): string {
+  return status.userEmail || status.userId || "";
+}
+
+function cloudSyncAccountInitial(status: CloudSyncStatus): string {
+  const value = status.userName || status.userLogin || status.userEmail || status.userId || "C";
+  return value.trim().slice(0, 1).toUpperCase();
 }
 
 function GeneralSettingsPage({

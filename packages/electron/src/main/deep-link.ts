@@ -1,9 +1,10 @@
 import { app, dialog } from "electron";
 import path from "node:path";
 import { appDeepLinkProtocol, createProviderDeepLinkRequest as createSharedProviderDeepLinkRequest, isAppDeepLinkUrl } from "@ccr/core/contracts/deep-link";
+import { applyCloudSyncAuthTokens, refreshCloudSyncUserProfile } from "@ccr/core/cloud-sync/service";
 import { CLAUDE_DESIGN_PLUGIN_ID, CLAUDE_SHIP_PLUGIN_ID, knownGatewayPluginDefaultApps, type AppConfig, type GatewayPluginAppConfig, type ProviderDeepLinkRequest } from "@ccr/core/contracts/app";
 import { IPC_CHANNELS } from "@ccr/core/config/constants";
-import { loadAppConfig } from "@ccr/core/config/config";
+import { loadAppConfig, saveAppConfig } from "@ccr/core/config/config";
 import { syncClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
 import { gatewayService } from "@ccr/core/gateway/service";
 import { providerIdentitySafetyIssue } from "@ccr/core/providers/presets/index";
@@ -15,6 +16,13 @@ type PluginDeepLinkRequest = {
   appId?: string;
   pluginId: string;
   rawUrl: string;
+};
+
+type CloudSyncAuthDeepLink = {
+  accessToken: string;
+  refreshToken: string;
+  refreshTokenExpiresAt?: string;
+  userId?: string;
 };
 
 const pluginAppExistingGatewayProbeTimeoutMs = 2_000;
@@ -77,6 +85,12 @@ class DeepLinkService {
       return;
     }
 
+    const cloudSyncAuth = parseCloudSyncAuthDeepLink(url);
+    if (cloudSyncAuth) {
+      void this.handleCloudSyncAuth(cloudSyncAuth);
+      return;
+    }
+
     const request = createProviderDeepLinkRequest(url);
     this.pendingProviderRequests.push(request);
     if (this.pendingProviderRequests.length > 20) {
@@ -114,6 +128,27 @@ class DeepLinkService {
     this.pendingPluginRequests = [];
     for (const request of requests) {
       void this.openPluginRequest(request);
+    }
+  }
+
+  private async handleCloudSyncAuth(input: CloudSyncAuthDeepLink): Promise<void> {
+    try {
+      const savedConfig = await saveAppConfig(await refreshCloudSyncUserProfile(applyCloudSyncAuthTokens(await loadAppConfig(), input)));
+      logDeepLinkDiagnostic(`[deep-link] Cloud sync login completed for user ${savedConfig.cloudSync.userId || "<unknown>"}`);
+      if (app.isReady()) {
+        windowsManager.showMainWindow();
+        windowsManager.broadcast(IPC_CHANNELS.appCloudSyncAuthChanged);
+      }
+    } catch (error) {
+      const detail = formatError(error);
+      console.error(`[deep-link] Failed to store cloud sync auth tokens: ${detail}`);
+      if (app.isReady()) {
+        try {
+          dialog.showErrorBox("Cloud sync login failed", detail);
+        } catch {
+          // The console error above remains available when the dialog API is unavailable.
+        }
+      }
     }
   }
 
@@ -331,6 +366,49 @@ function parsePluginDeepLinkRequest(rawUrl: string): PluginDeepLinkRequest | und
     pluginId,
     rawUrl
   };
+}
+
+function parseCloudSyncAuthDeepLink(rawUrl: string): CloudSyncAuthDeepLink | undefined {
+  const url = new URL(rawUrl.trim());
+  if (url.protocol !== `${appDeepLinkProtocol}:`) {
+    return undefined;
+  }
+
+  const host = url.hostname.toLowerCase();
+  const pathSegments = url.pathname.split("/").filter(Boolean).map((segment) => decodeURIComponent(segment).toLowerCase());
+  const cloudSyncTarget = host === "cloud-sync" && pathSegments[0] === "auth" ||
+    host === "auth" && pathSegments[0] === "cloud-sync" ||
+    pathSegments[0] === "cloud-sync" && pathSegments[1] === "auth";
+  if (!cloudSyncTarget) {
+    return undefined;
+  }
+
+  const params = new URLSearchParams(url.search);
+  if (url.hash.length > 1) {
+    for (const [key, value] of new URLSearchParams(url.hash.slice(1))) {
+      params.set(key, value);
+    }
+  }
+
+  return {
+    accessToken: requiredDeepLinkParam(params, "access_token"),
+    refreshToken: requiredDeepLinkParam(params, "refresh_token"),
+    refreshTokenExpiresAt: optionalDeepLinkParam(params, "refresh_token_expires_at"),
+    userId: optionalDeepLinkParam(params, "user_id")
+  };
+}
+
+function requiredDeepLinkParam(params: URLSearchParams, key: string): string {
+  const value = optionalDeepLinkParam(params, key);
+  if (!value) {
+    throw new Error(`Cloud sync auth link is missing ${key}.`);
+  }
+  return value;
+}
+
+function optionalDeepLinkParam(params: URLSearchParams, key: string): string | undefined {
+  const value = params.get(key)?.trim();
+  return value || undefined;
 }
 
 function boundedPluginId(value: string | null | undefined, optional = false): string {
