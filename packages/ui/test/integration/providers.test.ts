@@ -22,6 +22,7 @@ import {
   providerCapabilitiesForSave,
   providerCapabilityBaseUrlForProtocol,
   providerConnectivityApiKeyFromDraft,
+  providerConnectivityProviderPlugins,
   providerDisplayIcon,
   providerAccountConnectorsTextWithNewApiUserBalanceTemplate,
   providerGlobalBaseUrlForProbe,
@@ -29,6 +30,7 @@ import {
   providerProtocolOptions,
   providerProbeCandidates,
   providerSelectableProtocolsFromProbe,
+  removeLocalAgentProviderPluginsForProvider,
   setProviderPresets
 } from "@ccr/ui/pages/home/shared/index.tsx";
 import { installBrowserGlobals } from "../fixtures/index.ts";
@@ -643,6 +645,72 @@ test("provider connectivity API key follows selected credential mode", () => {
 
   assert.equal(providerConnectivityApiKeyFromDraft(draft), "sk-single");
   assert.equal(providerConnectivityApiKeyFromDraft({ ...draft, credentialMode: "pool" }), "sk-pool");
+});
+
+test("provider connectivity includes saved Codex OAuth plugins while editing", () => {
+  const provider = {
+    api_base_url: "https://chatgpt.com/backend-api/codex",
+    api_key: "ccr-local-agent-login",
+    id: "codex-api",
+    models: ["gpt-5.5"],
+    name: "Codex API",
+    type: "openai_responses" as const
+  };
+  const draft = {
+    ...createProviderDraftFromProvider(provider),
+    name: "Renamed Codex API"
+  };
+  const displayPlugin = {
+    codexOauth: { refreshToken: "refresh-display" },
+    key: "ccr-local-agent-codex-api-codex-oauth",
+    providerName: "Codex API"
+  };
+  const runtimePlugin = {
+    codexOauth: { refreshToken: "refresh-runtime" },
+    key: "ccr-local-agent-codex-api-codex-oauth-internal",
+    providerName: "codex-api::openai_responses"
+  };
+  const disabledRuntimePlugin = {
+    codexOauth: { refreshToken: "refresh-disabled" },
+    enabled: false,
+    key: "ccr-local-agent-codex-api-codex-oauth-disabled",
+    providerName: "codex-api::openai_responses"
+  };
+  const otherPlugin = {
+    codexOauth: { refreshToken: "refresh-other" },
+    key: "ccr-local-agent-other-codex-oauth",
+    providerName: "Other Codex API"
+  };
+
+  assert.deepEqual(
+    providerConnectivityProviderPlugins(draft, [displayPlugin, runtimePlugin, disabledRuntimePlugin, otherPlugin], provider),
+    [displayPlugin, runtimePlugin]
+  );
+  assert.deepEqual(
+    providerConnectivityProviderPlugins({ ...draft, providerPlugins: [otherPlugin] }, [displayPlugin, runtimePlugin], provider),
+    [otherPlugin]
+  );
+  assert.deepEqual(
+    removeLocalAgentProviderPluginsForProvider([displayPlugin, runtimePlugin, otherPlugin], provider),
+    [otherPlugin]
+  );
+
+  const poolProvider = {
+    ...provider,
+    api_key: "",
+    credentials: [{
+      api_key: "ccr-local-agent-login",
+      enabled: true,
+      id: "login",
+      name: "Login"
+    }]
+  };
+  const poolDraft = createProviderDraftFromProvider(poolProvider);
+  assert.equal(poolDraft.credentialMode, "pool");
+  assert.deepEqual(
+    providerConnectivityProviderPlugins(poolDraft, [displayPlugin, runtimePlugin, otherPlugin], poolProvider),
+    [displayPlugin, runtimePlugin]
+  );
 });
 
 test("provider probe keeps catalog model defaults separate from user overrides", () => {

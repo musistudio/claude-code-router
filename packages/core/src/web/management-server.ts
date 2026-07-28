@@ -40,6 +40,7 @@ import { ensureProxyCertificateAuthority } from "@ccr/core/proxy/certificates";
 import { proxyService } from "@ccr/core/proxy/service";
 import { listMcpServerTools } from "@ccr/core/mcp/tool-discovery";
 import { closeRequestLogRuntime, getAgentAnalysis, getAgentTracePayload, getRequestLogDetail, getRequestLogs } from "@ccr/core/observability/request-log-store";
+import { shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
 import { getUsageStats } from "@ccr/core/usage/store";
 import { gatewayService } from "@ccr/core/gateway/service";
 import { shouldRestartGatewayForRuntimeConfigChange } from "@ccr/core/gateway/runtime-change";
@@ -272,7 +273,17 @@ const rpcHandlers: Record<string, RpcHandler> = {
   },
   applyProfile: async () => applyProfileConfig(await loadAppConfig()),
   cancelBotGatewayQrLogin: (request) => cancelBotGatewayQrLogin(request as BotGatewayQrLoginCancelRequest),
-  checkProviderConnectivity: (request) => checkGatewayProviderConnectivity(request as GatewayProviderConnectivityCheckRequest),
+  checkProviderConnectivity: async (request) => {
+    const config = await loadAppConfig();
+    return checkGatewayProviderConnectivity(request as GatewayProviderConnectivityCheckRequest, {
+      requestLog: {
+        bodyCapturePolicy: config.observability.requestLogBodyCapture,
+        enabled: shouldRecordRequestLogs(config),
+        maxBodyBytes: config.observability.requestLogMaxBodyBytes,
+        successSampleRate: config.observability.requestLogSuccessSampleRate
+      }
+    });
+  },
   clearProxyNetworkCaptures: () => proxyService.clearNetworkCaptures(),
   closeBotGatewayQrWindow: (_request) => ({ closed: false }),
   detectProviderIcon: (request) => detectProviderIcon(request as ProviderIconDetectionRequest),

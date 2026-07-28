@@ -26,9 +26,9 @@ import {
   persistLanguagePreference, PluginInstallCandidate, PluginMarketplaceEntry, PluginRoutingConfigTarget, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileAgentOptionsForRuntime, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
-  providerBaseUrl, providerCapabilitiesForProtocols, providerCapabilitiesForSave, providerConnectivityApiKeyFromDraft, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerProtocolOptions, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
+  providerBaseUrl, providerCapabilitiesForProtocols, providerCapabilitiesForSave, providerConnectivityApiKeyFromDraft, providerConnectivityProviderPlugins, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerProtocolOptions, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
-  ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, RouterRule, SettingsPageId,
+  ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, removeLocalAgentProviderPluginsForProvider, RouterRule, SettingsPageId,
   routingRewriteFromDraftRow, setProviderPresets, splitLines, translateAppErrorMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
   uniqueProviderProtocols, uniqueRoutingRuleId, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
@@ -126,41 +126,6 @@ function mergeProviderPlugins(current: unknown[] | undefined, additions: unknown
 
 function providerPluginKey(value: unknown): string | undefined {
   return isPlainRecord(value) && typeof value.key === "string" && value.key.trim() ? value.key.trim() : undefined;
-}
-
-function removeLocalAgentProviderPluginsForProvider(
-  current: unknown[] | undefined,
-  provider: GatewayProviderConfig | undefined
-): unknown[] | undefined {
-  if (!provider || providerApiKeyValue(provider) !== localAgentProviderApiKey) {
-    return current;
-  }
-
-  const providerNames = new Set([
-    provider.name,
-    provider.type ? `${provider.name}::${provider.type}` : ""
-  ].map((value) => value.trim().toLowerCase()).filter(Boolean));
-  return (current ?? []).filter((plugin) => !localAgentProviderPluginMatchesProvider(plugin, providerNames));
-}
-
-function localAgentProviderPluginMatchesProvider(plugin: unknown, providerNames: Set<string>): boolean {
-  if (!isPlainRecord(plugin)) {
-    return false;
-  }
-  const key = typeof plugin.key === "string" ? plugin.key.trim().toLowerCase() : "";
-  if (!key.startsWith("ccr-local-agent-")) {
-    return false;
-  }
-  const pluginProviderName = typeof plugin.providerName === "string"
-    ? plugin.providerName
-    : typeof plugin.provider === "string"
-      ? plugin.provider
-      : "";
-  return providerNames.has(pluginProviderName.trim().toLowerCase());
-}
-
-function providerApiKeyValue(provider: GatewayProviderConfig): string {
-  return provider.api_key || provider.apiKey || provider.apikey || "";
 }
 
 function providerNameSlug(value: string): string {
@@ -1439,6 +1404,8 @@ function App() {
     const apiKey = providerConnectivityApiKeyFromDraft(providerDraft);
     const models = mergeProviderModelLists(modelsToCheck ?? mergeProviderModelLists(providerDraft.selectedModels, splitLines(providerDraft.modelsText)));
     const protocols = providerDraft.selectedProtocols.length > 0 ? providerDraft.selectedProtocols : [providerDraft.protocol];
+    const existingProvider = providerEditIndex === undefined ? undefined : draftConfig.Providers[providerEditIndex];
+    const providerPlugins = providerConnectivityProviderPlugins(providerDraft, draftConfig.providerPlugins, existingProvider);
     const candidates = providerProbeCandidates(providerDraft)
       .map((candidate) => ({
         ...candidate,
@@ -1477,7 +1444,7 @@ function App() {
         candidates,
         forceRefresh: true,
         models,
-        providerPlugins: providerDraft.providerPlugins,
+        providerPlugins,
         protocols
       });
       if (providerConnectivityRequestId.current !== requestId) {

@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import {
   newApiKeyUsageFallbackMessageForTest,
@@ -270,6 +273,452 @@ test("connectivity probe applies provider plugin auth for local agent imports", 
   assert.equal(report.results[0]?.supported, true);
 });
 
+test("connectivity probe applies provider plugin request transforms", async (t) => {
+  const previousFetch = globalThis.fetch;
+  let called = false;
+
+  globalThis.fetch = async (input, init) => {
+    called = true;
+    const url = new URL(String(input));
+    const headers = new Headers(init?.headers);
+    const body = JSON.parse(String(init?.body ?? "{}"));
+
+    assert.equal(url.origin, "http://127.0.0.1:49124");
+    assert.equal(url.pathname, "/v1/responses");
+    assert.equal(url.searchParams.get("probe_model"), "probe-model");
+    assert.equal(headers.get("x-probe-model"), "probe-model");
+    assert.equal(body.model, "probe-model");
+    assert.equal(body.max_output_tokens, undefined);
+
+    return new Response(JSON.stringify({ id: "ok" }), {
+      headers: { "content-type": "application/json" },
+      status: 200
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+
+  const report = await checkGatewayProviderConnectivity({
+    apiKey: "sk-test",
+    candidates: [{
+      baseUrl: "http://127.0.0.1:49124/v1",
+      name: "Local Agent",
+      protocols: ["openai_responses"],
+      source: "custom"
+    }],
+    forceRefresh: true,
+    models: ["probe-model"],
+    providerPlugins: [{
+      request: {
+        bodyRemove: ["max_output_tokens"],
+        headers: {
+          "x-probe-model": "{{ model }}"
+        },
+        query: {
+          probe_model: "{{ request.body.model }}"
+        }
+      }
+    }],
+    protocols: ["openai_responses"]
+  });
+
+  assert.equal(called, true);
+  assert.equal(report.passed.length, 1);
+  assert.equal(report.failed.length, 0);
+});
+
+test("connectivity probe refreshes Codex OAuth plugin auth", async (t) => {
+  const previousFetch = globalThis.fetch;
+  const accessToken = jwt({
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct-refreshed"
+    },
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    scope: "api.connectors.read api.connectors.invoke"
+  });
+  const calls = [];
+
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    const headers = new Headers(init?.headers);
+    calls.push({
+      authorization: headers.get("authorization"),
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      chatgptAccountId: headers.get("chatgpt-account-id"),
+      method: init?.method,
+      pathname: url.pathname,
+      url: url.toString()
+    });
+
+    if (url.toString() === "http://127.0.0.1:49122/oauth/token") {
+      return new Response(JSON.stringify({
+        access_token: accessToken,
+        refresh_token: "refresh-next"
+      }), {
+        headers: { "content-type": "application/json" },
+        status: 200
+      });
+    }
+
+    if (url.origin === "http://127.0.0.1:49122" && url.pathname === "/codex/responses") {
+      const ok =
+        headers.get("authorization") === `Bearer ${accessToken}` &&
+        headers.get("chatgpt-account-id") === "acct-refreshed";
+      return new Response(JSON.stringify(ok ? { id: "ok" } : { error: { message: "Unauthorized" } }), {
+        headers: { "content-type": "application/json" },
+        status: ok ? 200 : 401
+      });
+    }
+
+    return new Response(JSON.stringify({ error: { message: "Unexpected request" } }), {
+      headers: { "content-type": "application/json" },
+      status: 404
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+
+  const report = await checkGatewayProviderConnectivity({
+    apiKey: "ccr-local-agent-login",
+    candidates: [{
+      baseUrl: "http://127.0.0.1:49122/codex",
+      name: "Codex API",
+      protocols: ["openai_responses"],
+      source: "custom"
+    }],
+    forceRefresh: true,
+    models: ["gpt-5-codex"],
+    providerPlugins: [{
+      codexOauth: {
+        refreshToken: "refresh-current",
+        tokenEndpoint: "http://127.0.0.1:49122/oauth/token"
+      },
+      key: "ccr-local-agent-codex-api-codex-oauth",
+      providerName: "Codex API"
+    }],
+    protocols: ["openai_responses"]
+  });
+
+  assert.equal(report.passed.length, 1);
+  assert.equal(report.failed.length, 0);
+  assert.deepEqual(calls.map((call) => call.pathname), ["/oauth/token", "/codex/responses"]);
+  assert.deepEqual(calls[0]?.body, {
+    client_id: "app_EMoamEEZ73f0CkXaXp7hrann",
+    grant_type: "refresh_token",
+    refresh_token: "refresh-current",
+    scope: "openid profile email offline_access api.connectors.read api.connectors.invoke"
+  });
+  assert.equal(calls[1]?.authorization, `Bearer ${accessToken}`);
+  assert.equal(calls[1]?.chatgptAccountId, "acct-refreshed");
+});
+
+test("connectivity probe applies Codex request defaults for OAuth plugins", async (t) => {
+  const previousFetch = globalThis.fetch;
+  const accessToken = jwt({
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct-codex-defaults"
+    },
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    scope: "api.connectors.read api.connectors.invoke"
+  });
+  let requestBody;
+
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    const headers = new Headers(init?.headers);
+    requestBody = init?.body ? JSON.parse(String(init.body)) : undefined;
+
+    if (url.toString() === "https://chatgpt.com/backend-api/codex/responses") {
+      const ok =
+        headers.get("authorization") === `Bearer ${accessToken}` &&
+        headers.get("chatgpt-account-id") === "acct-codex-defaults" &&
+        requestBody?.max_output_tokens === undefined;
+      return new Response(JSON.stringify(ok ? { id: "ok" } : { error: { message: "Bad request" } }), {
+        headers: { "content-type": "application/json" },
+        status: ok ? 200 : 400
+      });
+    }
+
+    return new Response(JSON.stringify({ error: { message: "Unexpected request" } }), {
+      headers: { "content-type": "application/json" },
+      status: 404
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+
+  const report = await checkGatewayProviderConnectivity({
+    apiKey: "ccr-local-agent-login",
+    candidates: [{
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      name: "Codex API",
+      protocols: ["openai_responses"],
+      source: "custom"
+    }],
+    forceRefresh: true,
+    models: ["gpt-5-codex"],
+    providerPlugins: [{
+      codexOauth: {
+        accessToken
+      },
+      key: "ccr-local-agent-codex-api-codex-oauth",
+      providerName: "Codex API"
+    }],
+    protocols: ["openai_responses"]
+  });
+
+  assert.equal(report.passed.length, 1);
+  assert.equal(report.failed.length, 0);
+  assert.equal(requestBody?.model, "gpt-5-codex");
+  assert.equal(requestBody?.max_output_tokens, undefined);
+});
+
+test("connectivity probe prefers live Codex auth over saved OAuth plugin tokens", async (t) => {
+  useTemporaryCodexHome(t, "ccr-codex-probe-live-over-plugin-");
+  const previousFetch = globalThis.fetch;
+  const savedToken = jwt({
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct-saved-plugin"
+    },
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    scope: "api.connectors.read api.connectors.invoke"
+  });
+  const liveToken = jwt({
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct-live-token"
+    },
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    scope: "api.connectors.read api.connectors.invoke"
+  });
+  const calls = [];
+
+  fs.mkdirSync(path.join(process.env.CCR_INTERNAL_HOME_DIR, ".codex"), { recursive: true });
+  fs.writeFileSync(path.join(process.env.CCR_INTERNAL_HOME_DIR, ".codex", "auth.json"), JSON.stringify({
+    tokens: {
+      access_token: liveToken,
+      account_id: "acct-live-file",
+      refresh_token: "refresh-live"
+    }
+  }));
+
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    const headers = new Headers(init?.headers);
+    calls.push({
+      authorization: headers.get("authorization"),
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      chatgptAccountId: headers.get("chatgpt-account-id"),
+      pathname: url.pathname,
+      url: url.toString()
+    });
+
+    if (url.toString() === "https://chatgpt.com/backend-api/codex/responses") {
+      const ok =
+        headers.get("authorization") === `Bearer ${liveToken}` &&
+        headers.get("chatgpt-account-id") === "acct-live-file";
+      return new Response(JSON.stringify(ok ? { id: "ok" } : { error: { message: "Unauthorized" } }), {
+        headers: { "content-type": "application/json" },
+        status: ok ? 200 : 401
+      });
+    }
+
+    return new Response(JSON.stringify({ error: { message: "Unexpected request" } }), {
+      headers: { "content-type": "application/json" },
+      status: 404
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+
+  const report = await checkGatewayProviderConnectivity({
+    apiKey: "ccr-local-agent-login",
+    candidates: [{
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      name: "Codex API",
+      protocols: ["openai_responses"],
+      source: "custom"
+    }],
+    forceRefresh: true,
+    models: ["gpt-5-codex"],
+    providerPlugins: [{
+      codexOauth: {
+        accessToken: savedToken,
+        accountId: "acct-saved-plugin"
+      },
+      key: "ccr-local-agent-codex-api-codex-oauth",
+      providerName: "Codex API"
+    }],
+    protocols: ["openai_responses"]
+  });
+
+  assert.equal(report.passed.length, 1);
+  assert.equal(report.failed.length, 0);
+  assert.deepEqual(calls.map((call) => call.pathname), ["/backend-api/codex/responses"]);
+  assert.equal(calls[0]?.authorization, `Bearer ${liveToken}`);
+  assert.equal(calls[0]?.chatgptAccountId, "acct-live-file");
+  assert.equal(calls[0]?.body?.max_output_tokens, undefined);
+});
+
+test("connectivity probe shares concurrent Codex OAuth refreshes", async (t) => {
+  const previousFetch = globalThis.fetch;
+  const accessToken = jwt({
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct-shared-refresh"
+    },
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    scope: "api.connectors.read api.connectors.invoke"
+  });
+  let refreshCalls = 0;
+  let responseCalls = 0;
+
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    const headers = new Headers(init?.headers);
+
+    if (url.toString() === "http://127.0.0.1:49125/oauth/token") {
+      refreshCalls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      return new Response(JSON.stringify({
+        access_token: accessToken,
+        refresh_token: "refresh-shared-next"
+      }), {
+        headers: { "content-type": "application/json" },
+        status: 200
+      });
+    }
+
+    if (url.origin === "http://127.0.0.1:49125" && url.pathname === "/codex/responses") {
+      responseCalls += 1;
+      const ok =
+        headers.get("authorization") === `Bearer ${accessToken}` &&
+        headers.get("chatgpt-account-id") === "acct-shared-refresh";
+      return new Response(JSON.stringify(ok ? { id: "ok" } : { error: { message: "Unauthorized" } }), {
+        headers: { "content-type": "application/json" },
+        status: ok ? 200 : 401
+      });
+    }
+
+    return new Response(JSON.stringify({ error: { message: "Unexpected request" } }), {
+      headers: { "content-type": "application/json" },
+      status: 404
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+
+  const report = await checkGatewayProviderConnectivity({
+    apiKey: "ccr-local-agent-login",
+    candidates: [{
+      baseUrl: "http://127.0.0.1:49125/codex",
+      name: "Codex API",
+      protocols: ["openai_responses"],
+      source: "custom"
+    }],
+    forceRefresh: true,
+    models: ["gpt-5-a", "gpt-5-b"],
+    providerPlugins: [{
+      codexOauth: {
+        refreshToken: "refresh-shared-current",
+        tokenEndpoint: "http://127.0.0.1:49125/oauth/token"
+      },
+      key: "ccr-local-agent-codex-api-codex-oauth",
+      providerName: "Codex API"
+    }],
+    protocols: ["openai_responses"]
+  });
+
+  assert.equal(refreshCalls, 1);
+  assert.equal(responseCalls, 2);
+  assert.equal(report.passed.length, 2);
+  assert.equal(report.failed.length, 0);
+});
+
+test("connectivity probe recovers Codex OAuth auth when saved plugin is missing", async (t) => {
+  useTemporaryCodexHome(t, "ccr-codex-probe-live-auth-");
+  const previousFetch = globalThis.fetch;
+  const accessToken = jwt({
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct-live-probe"
+    },
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    scope: "api.connectors.read api.connectors.invoke"
+  });
+  const calls = [];
+
+  fs.mkdirSync(path.join(process.env.CCR_INTERNAL_HOME_DIR, ".codex"), { recursive: true });
+  fs.writeFileSync(path.join(process.env.CCR_INTERNAL_HOME_DIR, ".codex", "auth.json"), JSON.stringify({
+    tokens: {
+      refresh_token: "refresh-live"
+    }
+  }));
+
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    const headers = new Headers(init?.headers);
+    calls.push({
+      authorization: headers.get("authorization"),
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      chatgptAccountId: headers.get("chatgpt-account-id"),
+      pathname: url.pathname,
+      url: url.toString()
+    });
+
+    if (url.toString() === "https://auth.openai.com/oauth/token") {
+      return new Response(JSON.stringify({
+        access_token: accessToken
+      }), {
+        headers: { "content-type": "application/json" },
+        status: 200
+      });
+    }
+
+    if (url.toString() === "https://chatgpt.com/backend-api/codex/responses") {
+      const ok =
+        headers.get("authorization") === `Bearer ${accessToken}` &&
+        headers.get("chatgpt-account-id") === "acct-live-probe";
+      return new Response(JSON.stringify(ok ? { id: "ok" } : { error: { message: "Unauthorized" } }), {
+        headers: { "content-type": "application/json" },
+        status: ok ? 200 : 401
+      });
+    }
+
+    return new Response(JSON.stringify({ error: { message: "Unexpected request" } }), {
+      headers: { "content-type": "application/json" },
+      status: 404
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+
+  const report = await checkGatewayProviderConnectivity({
+    apiKey: "ccr-local-agent-login",
+    candidates: [{
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      name: "Codex API",
+      protocols: ["openai_responses"],
+      source: "custom"
+    }],
+    forceRefresh: true,
+    models: ["gpt-5.5"],
+    providerPlugins: [],
+    protocols: ["openai_responses"]
+  });
+
+  assert.equal(report.passed.length, 1);
+  assert.equal(report.failed.length, 0);
+  assert.deepEqual(calls.map((call) => call.pathname), ["/oauth/token", "/backend-api/codex/responses"]);
+  assert.equal(calls[0]?.body?.refresh_token, "refresh-live");
+  assert.equal(calls[1]?.authorization, `Bearer ${accessToken}`);
+  assert.equal(calls[1]?.chatgptAccountId, "acct-live-probe");
+  assert.equal(calls[1]?.body?.max_output_tokens, undefined);
+});
+
 test("New API response headers enable key quota account connector", () => {
   assert.equal(detectedProviderFromHeaders({ "X-New-Api-Version": "0.8.0" }), "new-api");
   assert.equal(detectedProviderFromHeaders({ "x-oneapi-request-id": "req-1" }), "new-api");
@@ -330,3 +779,29 @@ test("New API user self parser returns user balance", () => {
     used: 250
   }]);
 });
+
+function jwt(payload) {
+  return [
+    base64url({ alg: "none", typ: "JWT" }),
+    base64url(payload),
+    ""
+  ].join(".");
+}
+
+function base64url(value) {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+function useTemporaryCodexHome(t, prefix) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const previousHome = process.env.CCR_INTERNAL_HOME_DIR;
+  process.env.CCR_INTERNAL_HOME_DIR = home;
+  t.after(() => {
+    if (previousHome === undefined) {
+      delete process.env.CCR_INTERNAL_HOME_DIR;
+    } else {
+      process.env.CCR_INTERNAL_HOME_DIR = previousHome;
+    }
+  });
+  return home;
+}
