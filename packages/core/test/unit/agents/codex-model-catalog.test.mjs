@@ -314,6 +314,37 @@ test("codex catalog uses provider model metadata for reasoning effort and speed 
   assert.equal(model.supports_reasoning_summaries, true);
 });
 
+test("codex catalog caps persisted local Codex GPT-5 context metadata", () => {
+  const cases = [
+    ["gpt-5-codex", 256000],
+    ["gpt-5.5", 256000],
+    ["gpt-5.6-sol", 368000]
+  ];
+
+  for (const [modelName, expectedContextWindow] of cases) {
+    const model = catalogModelFor({
+      Providers: [
+        {
+          api_base_url: "https://chatgpt.com/backend-api/codex",
+          api_key: "ccr-local-agent-login",
+          modelMetadata: {
+            [modelName]: {
+              contextWindow: 272000,
+              maxContextWindow: 300000
+            }
+          },
+          models: [modelName],
+          name: "Codex API",
+          type: "openai_responses"
+        }
+      ]
+    }, `Codex API/${modelName}`);
+
+    assert.equal(model.context_window, expectedContextWindow);
+    assert.equal(model.max_context_window, expectedContextWindow);
+  }
+});
+
 test("codex catalog falls back to local Codex model cache metadata", () => {
   const previousCcrHome = process.env.CCR_INTERNAL_HOME_DIR;
   const previousHome = process.env.HOME;
@@ -355,10 +386,10 @@ test("codex catalog falls back to local Codex model cache metadata", () => {
     }, "Codex API/gpt-5-codex");
 
     assert.deepEqual(model.additional_speed_tiers, [{ id: "fast", label: "Fast" }]);
-    assert.equal(model.context_window, 272000);
+    assert.equal(model.context_window, 256000);
     assert.equal(model.default_reasoning_level, "high");
     assert.equal(model.effective_context_window_percent, 92);
-    assert.equal(model.max_context_window, 300000);
+    assert.equal(model.max_context_window, 256000);
     assert.deepEqual(model.service_tiers, [{ id: "auto" }]);
     assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), ["low", "high"]);
   } finally {

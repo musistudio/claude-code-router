@@ -6,7 +6,7 @@ import {
   readCatalogCapability,
   type ModelCatalogEntry
 } from "@ccr/core/gateway/model-catalog";
-import { codexDefaultBaseUrl, readCodexLocalModelCatalog } from "@ccr/core/agents/local-providers/codex";
+import { codexDefaultBaseUrl, codexImportedModelContextWindow, readCodexLocalModelCatalog } from "@ccr/core/agents/local-providers/codex";
 import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared";
 import { normalizeProviderBaseUrl } from "@ccr/core/providers/url";
 import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
@@ -211,7 +211,7 @@ function codexModelCapabilityProfile(
       : findConfiguredProviderForModel(config, attribution.model ?? model);
   const providerModel = attribution.model ?? selector?.model ?? model;
   const providerModelMetadata = provider
-    ? providerModelMetadataFor(provider, providerModel) ?? localCodexModelMetadataFor(provider, providerModel)
+    ? codexProviderModelMetadataFor(provider, providerModel)
     : undefined;
   const physicalModelSelector = provider ? `${provider.name}/${providerModel}` : providerModel;
   const catalogEntry = findModelCatalogEntry(physicalModelSelector);
@@ -279,6 +279,22 @@ function providerModelMetadataFor(provider: GatewayProviderConfig, model: string
   const normalized = model.trim().toLowerCase();
   const match = Object.entries(metadata).find(([candidate]) => candidate.trim().toLowerCase() === normalized);
   return match?.[1];
+}
+
+function codexProviderModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {
+  const metadata = providerModelMetadataFor(provider, model) ?? localCodexModelMetadataFor(provider, model);
+  if (!isLocalCodexProvider(provider)) {
+    return metadata;
+  }
+  const contextWindow = codexImportedModelContextWindow(model);
+  if (!contextWindow) {
+    return metadata;
+  }
+  return {
+    ...(metadata ?? {}),
+    contextWindow,
+    maxContextWindow: contextWindow
+  };
 }
 
 function localCodexModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {
