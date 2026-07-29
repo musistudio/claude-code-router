@@ -4,6 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-middleware-runtime.ts";
 
 test("generated Codex CLI middleware runtime is valid JavaScript", () => {
@@ -11,6 +12,18 @@ test("generated Codex CLI middleware runtime is valid JavaScript", () => {
   const file = path.join(dir, "ccr-codex-cli-middleware.js");
   writeFileSync(file, codexCliMiddlewareRuntimeScript());
   execFileSync(process.execPath, ["--check", file], { stdio: "pipe" });
+});
+
+test("generated Codex CLI middleware converts Windows SDK paths before URL scheme detection", () => {
+  const fn = evaluateRuntimeFunction("botGatewaySdkImportSpecifier");
+  const windowsPath = "C:\\Users\\macao\\AppData\\Local\\Programs\\Claude Code Router\\resources\\app.asar\\dist\\main\\bot-gateway-sdk\\dist\\index.js";
+
+  assert.equal(
+    fn(windowsPath),
+    "file:///C:/Users/macao/AppData/Local/Programs/Claude%20Code%20Router/resources/app.asar/dist/main/bot-gateway-sdk/dist/index.js"
+  );
+  assert.equal(fn("file:///tmp/sdk/index.js"), "file:///tmp/sdk/index.js");
+  assert.equal(fn("@the-next-ai/bot-gateway-sdk"), "@the-next-ai/bot-gateway-sdk");
 });
 
 test("Codex app-server uses ChatGPT's bundled Node as a signed supervisor", { skip: process.platform !== "darwin" }, () => {
@@ -1040,6 +1053,33 @@ function writeRuntimeScript(dir) {
   writeFileSync(file, codexCliMiddlewareRuntimeScript());
   chmodSync(file, 0o700);
   return file;
+}
+
+function evaluateRuntimeFunction(name) {
+  const source = extractRuntimeFunctionSource(codexCliMiddlewareRuntimeScript(), name);
+  return Function("path", "pathToFileURL", `${source}; return ${name};`)(path, pathToFileURL);
+}
+
+function extractRuntimeFunctionSource(source, name) {
+  const start = source.indexOf(`function ${name}(`);
+  assert.notEqual(start, -1);
+  const openBrace = source.indexOf("{", start);
+  assert.notEqual(openBrace, -1);
+
+  let depth = 0;
+  for (let index = openBrace; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(start, index + 1);
+      }
+    }
+  }
+
+  throw new Error(`Unable to extract runtime function ${name}.`);
 }
 
 function writeFakeClaudeCli(dir) {

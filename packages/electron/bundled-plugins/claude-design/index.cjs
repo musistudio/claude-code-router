@@ -9960,7 +9960,30 @@ function serveProjectFileResponse(runtime, projectId, row, filePath) {
     const previewHtml = injectOmelettePreviewScripts(dependencySafeHtml, headers["x-ccr-preview-version"], previewPollUrl(projectId, filePath));
     return textResponse(200, previewHtml, headers);
   }
-  return binaryResponse(200, body, headers);
+  return binaryResponse(200, patchClaudeDesignProjectFileBody(body, filePath, contentType), headers);
+}
+
+function patchClaudeDesignProjectFileBody(body, filePath, contentType) {
+  if (!isDeckStageProjectScript(filePath, contentType)) {
+    return body;
+  }
+  const source = body.toString("utf8");
+  const patched = patchDeckStageThumbnailCloneVisibility(source);
+  return patched === source ? body : Buffer.from(patched, "utf8");
+}
+
+function isDeckStageProjectScript(filePath, contentType) {
+  return /(?:^|\/)deck-stage\.js$/i.test(String(filePath || "")) &&
+    (headerIncludes(contentType, "javascript") || headerIncludes(contentType, "text/plain") || !contentType);
+}
+
+function patchDeckStageThumbnailCloneVisibility(source) {
+  const current = "box-sizing:border-box;overflow:hidden;visibility:visible;opacity:1;";
+  const fixed = "box-sizing:border-box;overflow:hidden;display:block!important;visibility:visible!important;opacity:1!important;";
+  if (source.includes(fixed)) {
+    return source;
+  }
+  return source.replace(current, fixed);
 }
 
 function isHtmlProjectFile(filePath, contentType) {
@@ -15013,6 +15036,418 @@ try {
       var frameIds = typeof WeakMap === 'function' ? new WeakMap() : null;
       var nextFrameId = 1;
       var blankPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
+      function dataUrlToBytes(dataUrl) {
+        try {
+          var base64 = String(dataUrl || blankPng).split(',', 2)[1] || '';
+          var raw = atob(base64);
+          var bytes = new Uint8Array(raw.length);
+          for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+          return bytes;
+        } catch (e) {
+          return new Uint8Array(0);
+        }
+      }
+      function nativeImageFromDataUrl(dataUrl) {
+        var url = dataUrl || blankPng;
+        return {
+          toDataURL: function() { return url; },
+          toPNG: function() { return dataUrlToBytes(url); }
+        };
+      }
+      function serializableCaptureRect(rect) {
+        return {
+          height: Number(rect && rect.height) || 0,
+          width: Number(rect && rect.width) || 0,
+          x: Number(rect && rect.x) || 0,
+          y: Number(rect && rect.y) || 0
+        };
+      }
+      function isCapturedPngDataUrl(value) {
+        return typeof value === 'string' && /^data:image\\/png;base64,/i.test(value) && value !== blankPng;
+      }
+      function numericRectValue(rect, key, fallback) {
+        var value = rect && Number(rect[key]);
+        return Number.isFinite(value) && value > 0 ? value : fallback;
+      }
+      function waitForFramePaint(win) {
+        return new Promise(function(resolve) {
+          try {
+            var raf = win && win.requestAnimationFrame ? win.requestAnimationFrame.bind(win) : root.requestAnimationFrame && root.requestAnimationFrame.bind(root);
+            if (!raf) {
+              setTimeout(resolve, 0);
+              return;
+            }
+            raf(function() { raf(function() { resolve(); }); });
+          } catch (e) {
+            setTimeout(resolve, 0);
+          }
+        });
+      }
+      function frameCaptureViewport(frame, win, doc, rect) {
+        var rootElement = doc && doc.documentElement;
+        var body = doc && doc.body;
+        var frameRect;
+        try { frameRect = frame.getBoundingClientRect(); } catch (e) { frameRect = null; }
+        var viewportWidth = Math.max(
+          1,
+          Math.round(
+            Number(win && win.innerWidth) ||
+            Number(rootElement && rootElement.clientWidth) ||
+            Number(body && body.clientWidth) ||
+            Number(frame && frame.clientWidth) ||
+            Number(frameRect && frameRect.width) ||
+            1280
+          )
+        );
+        var viewportHeight = Math.max(
+          1,
+          Math.round(
+            Number(win && win.innerHeight) ||
+            Number(rootElement && rootElement.clientHeight) ||
+            Number(body && body.clientHeight) ||
+            Number(frame && frame.clientHeight) ||
+            Number(frameRect && frameRect.height) ||
+            720
+          )
+        );
+        var pageWidth = Math.max(
+          viewportWidth,
+          Math.round(Number(rootElement && rootElement.scrollWidth) || 0),
+          Math.round(Number(body && body.scrollWidth) || 0)
+        );
+        var pageHeight = Math.max(
+          viewportHeight,
+          Math.round(Number(rootElement && rootElement.scrollHeight) || 0),
+          Math.round(Number(body && body.scrollHeight) || 0)
+        );
+        var x = Math.max(0, Math.round(Number(rect && rect.x) || 0));
+        var y = Math.max(0, Math.round(Number(rect && rect.y) || 0));
+        var width = Math.max(1, Math.round(numericRectValue(rect, 'width', viewportWidth - x)));
+        var height = Math.max(1, Math.round(numericRectValue(rect, 'height', viewportHeight - y)));
+        return {
+          height: Math.min(height, Math.max(1, pageHeight - y)),
+          pageHeight: pageHeight,
+          pageWidth: pageWidth,
+          width: Math.min(width, Math.max(1, pageWidth - x)),
+          x: x,
+          y: y
+        };
+      }
+      function prepareCaptureClone(doc, size) {
+        var clone = doc.documentElement.cloneNode(true);
+        clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+        try {
+          var scripts = clone.querySelectorAll('script');
+          for (var i = 0; i < scripts.length; i++) scripts[i].remove();
+        } catch (e) {}
+        var head = clone.querySelector('head');
+        if (!head) {
+          head = doc.createElement('head');
+          clone.insertBefore(head, clone.firstChild);
+        }
+        var base = doc.createElement('base');
+        base.setAttribute('href', doc.baseURI || doc.location && doc.location.href || '');
+        head.insertBefore(base, head.firstChild);
+        var style = doc.createElement('style');
+        style.textContent = 'html,body{margin:0!important;width:' + size.pageWidth + 'px!important;min-width:' + size.pageWidth + 'px!important;height:' + size.pageHeight + 'px!important;min-height:' + size.pageHeight + 'px!important;overflow:hidden!important;}*{animation:none!important;transition:none!important;}';
+        head.appendChild(style);
+        return clone;
+      }
+      function capturedStyleSheetText(sheet) {
+        try {
+          var rules = sheet && sheet.cssRules;
+          if (!rules) return '';
+          var text = '';
+          for (var i = 0; i < rules.length; i++) {
+            text += rules[i].cssText + '\\n';
+          }
+          return text;
+        } catch (e) {
+          return '';
+        }
+      }
+      function capturedShadowStyleText(shadowRoot) {
+        var text = '';
+        try {
+          var sheets = shadowRoot && shadowRoot.adoptedStyleSheets || [];
+          for (var i = 0; i < sheets.length; i++) {
+            text += capturedStyleSheetText(sheets[i]);
+          }
+        } catch (e) {}
+        return text
+          .replace(/:host\\(([^)]*)\\)/g, '[data-ccr-shadow-host]$1')
+          .replace(/:host\\b/g, '[data-ccr-shadow-host]');
+      }
+      function appendCapturedShadowStyle(shadowRoot, cloneHost, doc) {
+        var text = capturedShadowStyleText(shadowRoot);
+        if (!text) return;
+        var style = doc.createElement('style');
+        style.setAttribute('data-ccr-captured-shadow-styles', 'true');
+        style.textContent = text;
+        cloneHost.appendChild(style);
+      }
+      function inlineOpenShadowRoots(sourceNode, cloneNode, doc) {
+        if (!sourceNode || !cloneNode) return;
+        if (sourceNode.nodeType === 1 && sourceNode.shadowRoot) {
+          while (cloneNode.firstChild) cloneNode.removeChild(cloneNode.firstChild);
+          try { cloneNode.setAttribute('data-ccr-shadow-host', 'true'); } catch (e) {}
+          appendCapturedShadowStyle(sourceNode.shadowRoot, cloneNode, doc);
+          var shadowChildren = Array.prototype.slice.call(sourceNode.shadowRoot.childNodes || []);
+          var shadowClones = [];
+          for (var i = 0; i < shadowChildren.length; i++) {
+            var shadowClone = shadowChildren[i].cloneNode(true);
+            shadowClones.push(shadowClone);
+            cloneNode.appendChild(shadowClone);
+          }
+          for (var j = 0; j < shadowChildren.length; j++) {
+            inlineOpenShadowRoots(shadowChildren[j], shadowClones[j], doc);
+          }
+          return;
+        }
+        var sourceChildren = Array.prototype.slice.call(sourceNode.childNodes || []);
+        var cloneChildren = Array.prototype.slice.call(cloneNode.childNodes || []);
+        var count = Math.min(sourceChildren.length, cloneChildren.length);
+        for (var k = 0; k < count; k++) {
+          inlineOpenShadowRoots(sourceChildren[k], cloneChildren[k], doc);
+        }
+      }
+      function captureFrameDataUrl(frame, rect) {
+        return captureFrameDataUrlFromParent(frame, rect).then(function(dataUrl) {
+          if (isCapturedPngDataUrl(dataUrl)) return dataUrl;
+          return captureFrameDataUrlViaEval(frame, rect).then(function(evalDataUrl) {
+            return isCapturedPngDataUrl(evalDataUrl) ? evalDataUrl : dataUrl;
+          }, function() {
+            return dataUrl;
+          });
+        }, function() {
+          return captureFrameDataUrlViaEval(frame, rect);
+        });
+      }
+      function captureFrameDataUrlViaEval(frame, rect) {
+        var code = '(' + captureCurrentDocumentDataUrl.toString() + ')(' +
+          JSON.stringify(serializableCaptureRect(rect || {})) + ',' +
+          JSON.stringify(blankPng) +
+          ')';
+        return postEval(frame, code, 5000);
+      }
+      function captureFrameDataUrlFromParent(frame, rect) {
+        return new Promise(function(resolve) {
+          try {
+            var win = frameSource(frame);
+            var doc = win && win.document;
+            if (!doc || !doc.documentElement) {
+              resolve(blankPng);
+              return;
+            }
+            var size = frameCaptureViewport(frame, win, doc, rect || {});
+            var clone = prepareCaptureClone(doc, size);
+            inlineOpenShadowRoots(doc.documentElement, clone, doc);
+            var serialized = new XMLSerializer().serializeToString(clone);
+            var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + size.width + '" height="' + size.height + '" viewBox="0 0 ' + size.width + ' ' + size.height + '"><foreignObject x="' + (-size.x) + '" y="' + (-size.y) + '" width="' + size.pageWidth + '" height="' + size.pageHeight + '">' + serialized + '</foreignObject></svg>';
+            var image = new Image();
+            var settled = false;
+            function finish(value) {
+              if (settled) return;
+              settled = true;
+              resolve(value || blankPng);
+            }
+            var timer = setTimeout(function() { finish(blankPng); }, 3000);
+            image.onload = function() {
+              clearTimeout(timer);
+              try {
+                var scale = Math.max(1, Math.min(2, Number(root.devicePixelRatio) || 1));
+                var maxPixels = 2000000;
+                while (size.width * size.height * scale * scale > maxPixels && scale > 1) {
+                  scale = Math.max(1, scale / 2);
+                }
+                var canvas = document.createElement('canvas');
+                canvas.width = Math.max(1, Math.round(size.width * scale));
+                canvas.height = Math.max(1, Math.round(size.height * scale));
+                var ctx = canvas.getContext('2d');
+                if (!ctx) {
+                  finish(blankPng);
+                  return;
+                }
+                ctx.scale(scale, scale);
+                ctx.drawImage(image, 0, 0);
+                finish(canvas.toDataURL('image/png'));
+              } catch (e) {
+                finish(blankPng);
+              }
+            };
+            image.onerror = function() {
+              clearTimeout(timer);
+              finish(blankPng);
+            };
+            image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+          } catch (e) {
+            resolve(blankPng);
+          }
+        });
+      }
+      function captureCurrentDocumentDataUrl(rect, fallbackPng) {
+        return new Promise(function(resolve) {
+          try {
+            function cssTextFromStyleSheet(sheet) {
+              try {
+                var rules = sheet && sheet.cssRules;
+                if (!rules) return '';
+                var text = '';
+                for (var i = 0; i < rules.length; i++) {
+                  text += rules[i].cssText + '\\n';
+                }
+                return text;
+              } catch (e) {
+                return '';
+              }
+            }
+            function shadowStyleText(shadowRoot) {
+              var text = '';
+              try {
+                var sheets = shadowRoot && shadowRoot.adoptedStyleSheets || [];
+                for (var i = 0; i < sheets.length; i++) {
+                  text += cssTextFromStyleSheet(sheets[i]);
+                }
+              } catch (e) {}
+              return text
+                .replace(/:host\\(([^)]*)\\)/g, '[data-ccr-shadow-host]$1')
+                .replace(/:host\\b/g, '[data-ccr-shadow-host]');
+            }
+            function appendShadowStyle(shadowRoot, cloneHost) {
+              var text = shadowStyleText(shadowRoot);
+              if (!text) return;
+              var style = doc.createElement('style');
+              style.setAttribute('data-ccr-captured-shadow-styles', 'true');
+              style.textContent = text;
+              cloneHost.appendChild(style);
+            }
+            function inlineShadows(sourceNode, cloneNode) {
+              if (!sourceNode || !cloneNode) return;
+              if (sourceNode.nodeType === 1 && sourceNode.shadowRoot) {
+                while (cloneNode.firstChild) cloneNode.removeChild(cloneNode.firstChild);
+                try { cloneNode.setAttribute('data-ccr-shadow-host', 'true'); } catch (e) {}
+                appendShadowStyle(sourceNode.shadowRoot, cloneNode);
+                var shadowChildren = Array.prototype.slice.call(sourceNode.shadowRoot.childNodes || []);
+                var shadowClones = [];
+                for (var i = 0; i < shadowChildren.length; i++) {
+                  var shadowClone = shadowChildren[i].cloneNode(true);
+                  shadowClones.push(shadowClone);
+                  cloneNode.appendChild(shadowClone);
+                }
+                for (var j = 0; j < shadowChildren.length; j++) {
+                  inlineShadows(shadowChildren[j], shadowClones[j]);
+                }
+                return;
+              }
+              var sourceChildren = Array.prototype.slice.call(sourceNode.childNodes || []);
+              var cloneChildren = Array.prototype.slice.call(cloneNode.childNodes || []);
+              var count = Math.min(sourceChildren.length, cloneChildren.length);
+              for (var k = 0; k < count; k++) {
+                inlineShadows(sourceChildren[k], cloneChildren[k]);
+              }
+            }
+            var doc = document;
+            var rootElement = doc && doc.documentElement;
+            var body = doc && doc.body;
+            if (!rootElement) {
+              resolve(fallbackPng);
+              return;
+            }
+            var viewportWidth = Math.max(
+              1,
+              Math.round(
+                Number(window.innerWidth) ||
+                Number(rootElement.clientWidth) ||
+                Number(body && body.clientWidth) ||
+                1280
+              )
+            );
+            var viewportHeight = Math.max(
+              1,
+              Math.round(
+                Number(window.innerHeight) ||
+                Number(rootElement.clientHeight) ||
+                Number(body && body.clientHeight) ||
+                720
+              )
+            );
+            var pageWidth = Math.max(
+              viewportWidth,
+              Math.round(Number(rootElement.scrollWidth) || 0),
+              Math.round(Number(body && body.scrollWidth) || 0)
+            );
+            var pageHeight = Math.max(
+              viewportHeight,
+              Math.round(Number(rootElement.scrollHeight) || 0),
+              Math.round(Number(body && body.scrollHeight) || 0)
+            );
+            var x = Math.max(0, Math.round(Number(rect && rect.x) || 0));
+            var y = Math.max(0, Math.round(Number(rect && rect.y) || 0));
+            var width = Math.max(1, Math.round(Number(rect && rect.width) > 0 ? Number(rect.width) : viewportWidth - x));
+            var height = Math.max(1, Math.round(Number(rect && rect.height) > 0 ? Number(rect.height) : viewportHeight - y));
+            width = Math.min(width, Math.max(1, pageWidth - x));
+            height = Math.min(height, Math.max(1, pageHeight - y));
+            var clone = rootElement.cloneNode(true);
+            clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+            try {
+              var scripts = clone.querySelectorAll('script');
+              for (var i = 0; i < scripts.length; i++) scripts[i].remove();
+            } catch (e) {}
+            var head = clone.querySelector('head');
+            if (!head) {
+              head = doc.createElement('head');
+              clone.insertBefore(head, clone.firstChild);
+            }
+            var base = doc.createElement('base');
+            base.setAttribute('href', doc.baseURI || location.href || '');
+            head.insertBefore(base, head.firstChild);
+            var style = doc.createElement('style');
+            style.textContent = 'html,body{margin:0!important;width:' + pageWidth + 'px!important;min-width:' + pageWidth + 'px!important;height:' + pageHeight + 'px!important;min-height:' + pageHeight + 'px!important;overflow:hidden!important;}*{animation:none!important;transition:none!important;}';
+            head.appendChild(style);
+            inlineShadows(rootElement, clone);
+            var serialized = new XMLSerializer().serializeToString(clone);
+            var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '"><foreignObject x="' + (-x) + '" y="' + (-y) + '" width="' + pageWidth + '" height="' + pageHeight + '">' + serialized + '</foreignObject></svg>';
+            var image = new Image();
+            var settled = false;
+            function finish(value) {
+              if (settled) return;
+              settled = true;
+              resolve(value || fallbackPng);
+            }
+            var timer = setTimeout(function() { finish(fallbackPng); }, 3000);
+            image.onload = function() {
+              clearTimeout(timer);
+              try {
+                var scale = Math.max(1, Math.min(2, Number(window.devicePixelRatio) || 1));
+                var maxPixels = 2000000;
+                while (width * height * scale * scale > maxPixels && scale > 1) {
+                  scale = Math.max(1, scale / 2);
+                }
+                var canvas = doc.createElement('canvas');
+                canvas.width = Math.max(1, Math.round(width * scale));
+                canvas.height = Math.max(1, Math.round(height * scale));
+                var ctx = canvas.getContext('2d');
+                if (!ctx) {
+                  finish(fallbackPng);
+                  return;
+                }
+                ctx.scale(scale, scale);
+                ctx.drawImage(image, 0, 0);
+                finish(canvas.toDataURL('image/png'));
+              } catch (e) {
+                finish(fallbackPng);
+              }
+            };
+            image.onerror = function() {
+              clearTimeout(timer);
+              finish(fallbackPng);
+            };
+            image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+          } catch (e) {
+            resolve(fallbackPng);
+          }
+        });
+      }
       function isFrame(node) {
         if (!node || node.nodeType !== 1) return false;
         var tag = String(node.tagName || '').toLowerCase();
@@ -15281,17 +15716,12 @@ try {
           };
         }
         if (typeof proto.capturePage !== 'function') {
-          proto.capturePage = function() {
-            return Promise.resolve({
-              toDataURL: function() { return blankPng; },
-              toPNG: function() {
-                try {
-                  var raw = atob(blankPng.split(',')[1]);
-                  var bytes = new Uint8Array(raw.length);
-                  for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-                  return bytes;
-                } catch (e) { return new Uint8Array(0); }
-              }
+          proto.capturePage = function(rect) {
+            var frame = this;
+            return waitForFramePaint(frameSource(frame)).then(function() {
+              return captureFrameDataUrl(frame, rect);
+            }).then(nativeImageFromDataUrl, function() {
+              return nativeImageFromDataUrl(blankPng);
             });
           };
         }
