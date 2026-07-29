@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import type {
@@ -21,7 +22,23 @@ import {
 } from "@ccr/core/agents/local-providers/shared";
 
 const claudeDefaultModels = ["claude-sonnet-5"];
-const claudeCodeKeychainService = "Claude Code-credentials";
+const claudeCodeKeychainServiceBase = "Claude Code-credentials";
+const claudeCodeKeychainAccountPattern = /^[a-zA-Z0-9._-]+$/;
+const claudeCodeKeychainServicePattern = /^Claude Code(?:-[a-z]+-oauth)?-credentials(?:-[0-9a-f]{8})?$/;
+// `security` exit code for errSecItemNotFound.
+const keychainItemNotFoundStatus = 44;
+
+type ClaudeCodeKeychainCandidate = { account?: string; service: string };
+
+export type ClaudeCodeLoginScan = {
+  /** Reads that failed, with the `security` stderr that explains why. */
+  errors: string[];
+  /** Locations that parsed successfully. */
+  inspected: string[];
+  oauth?: OAuthTokenSet;
+  /** Locations that parsed but carry no OAuth token. */
+  tokenless: string[];
+};
 
 const percentLimitMapping = (id: string, label: string, path: string, window: string) => ({
   id,
@@ -65,7 +82,8 @@ const claudeCodeAccountMapping: ProviderAccountMappingConfig = {
 };
 
 export function claudeCodeCandidate(): LocalAgentProviderCandidate {
-  const oauth = readClaudeCodeOauth();
+  const scan = scanClaudeCodeLogin();
+  const oauth = scan.oauth;
   if (oauth?.accessToken) {
     return {
       detail: "Claude Code login detected. Click Import to add it as a gateway provider.",
@@ -92,7 +110,34 @@ export function claudeCodeCandidate(): LocalAgentProviderCandidate {
       status: "locked"
     };
   }
+  const detail = claudeCodeScanDiagnostic(scan);
+  if (detail) {
+    return {
+      detail,
+      id: "claude-code-api",
+      importable: false,
+      kind: "claude-code",
+      models: claudeDefaultModels,
+      name: "Claude Code API",
+      protocol: "anthropic_messages",
+      sourceFile: scan.inspected[0],
+      status: "locked"
+    };
+  }
   return missingCandidate("claude-code", "claude-code-api", "Claude Code API", "anthropic_messages", claudeDefaultModels);
+}
+
+// Distinguishes "found login state but no token" and "could not read the store"
+// from "no login at all", so the Add Provider list can say why an import is
+// unavailable instead of silently omitting the candidate.
+function claudeCodeScanDiagnostic(scan: ClaudeCodeLoginScan): string | undefined {
+  if (scan.tokenless.length > 0) {
+    return `Claude Code login state was found but contains no OAuth token (${scan.tokenless.join("; ")}). Run \`claude /login\`, then retry.`;
+  }
+  if (scan.errors.length > 0) {
+    return `Claude Code login state could not be read: ${scan.errors.join("; ")}`;
+  }
+  return undefined;
 }
 
 export function importClaudeCodeProvider(candidate: LocalAgentProviderCandidate, providerNames: string[]): LocalAgentProviderImportResult {
@@ -139,9 +184,15 @@ function claudeCodeProviderAccountConfig(): ProviderAccountConfig {
 }
 
 export function readClaudeCodeOauth(): OAuthTokenSet | undefined {
-  const keychainOauth = readClaudeCodeKeychainOauth();
+  return scanClaudeCodeLogin().oauth;
+}
+
+export function scanClaudeCodeLogin(): ClaudeCodeLoginScan {
+  const scan: ClaudeCodeLoginScan = { errors: [], inspected: [], tokenless: [] };
+  const keychainOauth = scanClaudeCodeKeychain(scan);
   if (keychainOauth) {
-    return keychainOauth;
+    scan.oauth = keychainOauth;
+    return scan;
   }
 
   for (const sourceFile of claudeCredentialFiles()) {
@@ -149,58 +200,232 @@ export function readClaudeCodeOauth(): OAuthTokenSet | undefined {
     if (!record) {
       continue;
     }
-    const credential = findOauthTokenSet(record);
-    return {
-      accessToken: credential?.accessToken,
-      refreshToken: credential?.refreshToken,
+    scan.inspected.push(sourceFile);
+    const credential = findOauthTokenSet(record.claudeAiOauth) ?? findOauthTokenSet(record);
+    if (!credential?.accessToken && !credential?.refreshToken) {
+      scan.tokenless.push(`${sourceFile} (keys: ${Object.keys(record).join(", ")})`);
+      continue;
+    }
+    scan.oauth = {
+      accessToken: credential.accessToken,
+      refreshToken: credential.refreshToken,
       sourceFile
     };
+    return scan;
   }
 
-  return undefined;
+  return scan;
 }
 
 function claudeCredentialFiles(): string[] {
   return uniqueStrings([
+    path.join(claudeCodeStorageDir(), ".credentials.json"),
     path.join(os.homedir(), ".claude", ".credentials.json"),
     path.join(os.homedir(), ".claude", "credentials.json"),
     path.join(os.homedir(), ".config", "claude", "credentials.json")
   ]);
 }
 
-// Newer macOS builds of the Claude Code CLI store credentials in the
-// Keychain instead of ~/.claude/.credentials.json. Reading it triggers the
-// standard macOS keychain access prompt (Allow / Always Allow); the user
-// declining or the item not existing both surface as a non-zero exit here.
-function readClaudeCodeKeychainOauth(): OAuthTokenSet | undefined {
-  const keychainRecord = readClaudeCodeKeychainRecord();
-  if (!keychainRecord) {
-    return undefined;
-  }
-  const credential = findOauthTokenSet(keychainRecord);
-  if (!credential) {
-    return undefined;
-  }
-  return {
-    accessToken: credential.accessToken,
-    refreshToken: credential.refreshToken,
-    sourceFile: `keychain:${claudeCodeKeychainService}`
-  };
+// Claude Code's plaintext fallback lives in its secure-storage config dir,
+// which CLAUDE_SECURESTORAGE_CONFIG_DIR / CLAUDE_CONFIG_DIR can relocate.
+function claudeCodeStorageDir(): string {
+  const secureStorageDir = process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
+  const dir = secureStorageDir !== undefined
+    ? secureStorageDir || path.join(os.homedir(), ".claude")
+    : process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
+  return dir.normalize("NFC");
 }
 
-function readClaudeCodeKeychainRecord(): Record<string, unknown> | undefined {
+// Claude Code >= 2.1 derives the keychain service name from its config dir:
+//   `Claude Code${oauthSuffix}-credentials${configSuffix}`
+// `configSuffix` is empty for a default config dir and
+// `-${sha256(NFC(configDir)).slice(0, 8)}` once CLAUDE_CONFIG_DIR or
+// CLAUDE_SECURESTORAGE_CONFIG_DIR is set. Verified against 2.1.220.
+function claudeCodeExpectedKeychainServices(): string[] {
+  const secureStorageDir = process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
+  const usesDefaultDir = secureStorageDir !== undefined ? !secureStorageDir : !process.env.CLAUDE_CONFIG_DIR;
+  const configSuffix = usesDefaultDir
+    ? ""
+    : `-${createHash("sha256").update(claudeCodeStorageDir()).digest("hex").slice(0, 8)}`;
+  const oauthSuffix = process.env.CLAUDE_CODE_CUSTOM_OAUTH_URL ? "-custom-oauth" : "";
+  return uniqueStrings([`Claude Code${oauthSuffix}-credentials${configSuffix}`, claudeCodeKeychainServiceBase]);
+}
+
+// Claude Code writes the item under the current `$USER`; a login from an older
+// build (or one that could not resolve a username) sits under a different
+// account on the *same* service name, so the account has to be explicit.
+function claudeCodeKeychainAccount(): string {
+  let user: string | undefined;
+  try {
+    user = process.env.USER || os.userInfo().username;
+  } catch {
+    user = undefined;
+  }
+  return user && claudeCodeKeychainAccountPattern.test(user) ? user : "claude-code-user";
+}
+
+// Newer macOS builds of the Claude Code CLI store credentials in the Keychain
+// instead of ~/.claude/.credentials.json. Reading one triggers the standard
+// macOS keychain access prompt (Allow / Always Allow); the user declining or
+// the item not existing both surface as a non-zero exit here.
+function scanClaudeCodeKeychain(scan: ClaudeCodeLoginScan): OAuthTokenSet | undefined {
   if (process.platform !== "darwin") {
     return undefined;
   }
+  const expectedServices = claudeCodeExpectedKeychainServices();
+  const account = claudeCodeKeychainAccount();
+  // Ordered by cost: the enumeration tier shells out to `security dump-keychain`,
+  // so it is only built once the expected item fails to produce a token.
+  const tiers: Array<() => ClaudeCodeKeychainCandidate[]> = [
+    () => expectedServices.map(service => ({ account, service })),
+    // An item written under a different account, or under a config dir this
+    // process cannot reconstruct, only turns up by enumeration.
+    discoverClaudeCodeKeychainItems,
+    // Pre-2.1 lookup: no `-a`, so the Keychain picks an arbitrary account when
+    // several items share the service name.
+    () => expectedServices.map(service => ({ service }))
+  ];
+
+  const attempted = new Set<string>();
+  const servicesRead = new Set<string>();
+  let nestedMatch: OAuthTokenSet | undefined;
+  for (const buildTier of tiers) {
+    for (const candidate of buildTier()) {
+      const key = `${candidate.service}\u0000${candidate.account ?? ""}`;
+      // An accountless read of a service already read by account returns one of
+      // those same items, so it would only duplicate the diagnostics.
+      if (attempted.has(key) || (candidate.account === undefined && servicesRead.has(candidate.service))) {
+        continue;
+      }
+      attempted.add(key);
+      const label = candidate.account === undefined ? candidate.service : `${candidate.service} (${candidate.account})`;
+      const record = readClaudeCodeKeychainRecord(candidate, scan, label);
+      if (!record) {
+        continue;
+      }
+      servicesRead.add(candidate.service);
+      scan.inspected.push(`keychain:${label}`);
+      // Only `claudeAiOauth` is an Anthropic API credential. A recursive search
+      // over the whole record also matches the per-plugin tokens under
+      // `mcpOAuth`, which import cleanly and then 401 on every request.
+      const claudeAiOauth = findOauthTokenSet(record.claudeAiOauth);
+      if (claudeAiOauth?.accessToken || claudeAiOauth?.refreshToken) {
+        return {
+          accessToken: claudeAiOauth.accessToken,
+          refreshToken: claudeAiOauth.refreshToken,
+          sourceFile: `keychain:${label}`
+        };
+      }
+      const nested = findOauthTokenSet(record);
+      if (nested?.accessToken || nested?.refreshToken) {
+        nestedMatch ??= {
+          accessToken: nested.accessToken,
+          refreshToken: nested.refreshToken,
+          sourceFile: `keychain:${label}`
+        };
+        continue;
+      }
+      scan.tokenless.push(`keychain:${label} (keys: ${Object.keys(record).join(", ")})`);
+    }
+  }
+  // Every tier is exhausted before falling back to a nested match, so an
+  // explicit `claudeAiOauth` on any item always wins.
+  return nestedMatch;
+}
+
+// `security dump-keychain` without `-d` prints item *metadata* only: it never
+// decrypts a password and never prompts. Finds login items this environment
+// cannot name, newest-modified first.
+function discoverClaudeCodeKeychainItems(): ClaudeCodeKeychainCandidate[] {
+  let dump: string;
   try {
-    const output = execFileSync(
-      "security",
-      ["find-generic-password", "-s", claudeCodeKeychainService, "-w"],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
-    );
-    const parsed = JSON.parse(output.trim()) as unknown;
-    return isRecord(parsed) ? parsed : undefined;
+    dump = execFileSync("security", ["dump-keychain"], {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "ignore"]
+    });
   } catch {
+    return [];
+  }
+  const found: Array<ClaudeCodeKeychainCandidate & { modified: string }> = [];
+  let account: string | undefined;
+  let modified = "";
+  let service: string | undefined;
+  const flush = () => {
+    if (service && claudeCodeKeychainServicePattern.test(service)) {
+      found.push({ account, modified, service });
+    }
+    account = undefined;
+    modified = "";
+    service = undefined;
+  };
+  for (const line of dump.split("\n")) {
+    if (line.startsWith("keychain:")) {
+      flush();
+      continue;
+    }
+    const serviceMatch = /^\s*"svce"<blob>="(.*)"$/.exec(line);
+    if (serviceMatch) {
+      service = serviceMatch[1];
+      continue;
+    }
+    const accountMatch = /^\s*"acct"<blob>="(.*)"$/.exec(line);
+    if (accountMatch) {
+      account = accountMatch[1];
+      continue;
+    }
+    const modifiedMatch = /^\s*"mdat"<timedate>=.*"(\d{14})Z/.exec(line);
+    if (modifiedMatch) {
+      modified = modifiedMatch[1];
+    }
+  }
+  flush();
+  return found
+    .sort((left, right) => right.modified.localeCompare(left.modified))
+    .map(({ account: itemAccount, service: itemService }) => ({ account: itemAccount, service: itemService }));
+}
+
+function readClaudeCodeKeychainRecord(
+  candidate: ClaudeCodeKeychainCandidate,
+  scan: ClaudeCodeLoginScan,
+  label: string
+): Record<string, unknown> | undefined {
+  const args = ["find-generic-password", "-s", candidate.service, "-w"];
+  if (candidate.account !== undefined) {
+    args.splice(1, 0, "-a", candidate.account);
+  }
+  try {
+    const output = execFileSync("security", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    const parsed = JSON.parse(output.trim()) as unknown;
+    if (isRecord(parsed)) {
+      return parsed;
+    }
+    scan.errors.push(`keychain:${label}: item is not a JSON object`);
+    return undefined;
+  } catch (error) {
+    const message = keychainErrorMessage(error);
+    // errSecItemNotFound is the ordinary "no such login" answer, not a fault:
+    // recording it would turn a logged-out machine into a `locked` candidate.
+    if (message !== undefined) {
+      scan.errors.push(`keychain:${label}: ${message}`);
+    }
     return undefined;
   }
+}
+
+// Returns undefined when the item simply does not exist.
+function keychainErrorMessage(error: unknown): string | undefined {
+  if (error instanceof SyntaxError) {
+    return `item is not valid JSON (${error.message})`;
+  }
+  const failure = error as { status?: number; stderr?: Buffer | string } | undefined;
+  if (failure?.status === keychainItemNotFoundStatus) {
+    return undefined;
+  }
+  const stderr = typeof failure?.stderr === "string" ? failure.stderr : failure?.stderr?.toString("utf8");
+  const message = stderr?.trim().replace(/\s*\n\s*/g, "; ");
+  if (message) {
+    return /could not be found/i.test(message) ? undefined : message;
+  }
+  return failure?.status === undefined ? String(error) : `security exited ${failure.status}`;
 }
