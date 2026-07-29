@@ -1,1 +1,996 @@
-YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éí×m4í:-jZ.¶›­–)Ş³Rò¢ ¢¢W‡G&7FVBg&öÒvFWv’÷6W'f–6RçG2â¶VWF†—2ÖöGVÆRfö7W6VBöâ—G2æÖVBvFWv’&÷VæF'’à¢¢ğ¦–×÷'B²&VF&ÆRÒg&öÒ&æöFS§7G&VÒ#°¦–×÷'BG—R²6öæf–rÂvFWv•&÷f–FW$6öæf–rÂvFWv•&÷f–FW%&÷Fö6öÂÂ&÷f–FW$7&VFVçF–Ä6öæf–rÂ&WVW7E&÷WFUG&6T6†ævRÂ&÷WFW$fÆÆ&6´6öæf–rÒg&öÒ$67"ö6÷&Rö6öçG&7G2ö#°¦–×÷'B²fWF6…v—F…7—7FVÕ&÷‡’Òg&öÒ$67"ö6÷&R÷&÷‡’÷7—7FVÒ×&÷‡’ÖfWF6‚#°¦–×÷'B²7&VFU&÷WFTW†V7WF–öåÆâÒg&öÒ$67"ö6÷&R÷&÷WF–æröW†V7WF–öâ×Æâ#°¦–×÷'B²&Ww&—FU&÷WFTÖöFVÄ–åW&ÂÒg&öÒ$67"ö6÷&R÷&÷WF–ær÷&÷Fö6öÂÖFFW"#°¦–×÷'B²ÖöFVÅ&Vv—7G'”f÷$6öæf–rÂæ÷&ÖÆ—¦U&÷WFU6VÆV7F÷"Â'6U&÷f–FW$ÖöFVÅ6VÆV7F÷"Â&÷f–FW%'VçF–ÖT–BÒg&öÒ$67"ö6÷&R÷&÷WF–æröÖöFVÂ×&Vv—7G'’#°¦–×÷'B²&WVW7E&÷Fö6öÄf÷%F‚Òg&öÒ$67"ö6÷&R÷&÷WF–ær÷&÷Fö6öÂÖVæGö–çG2#°¦–×÷'B²&W6öÇfT6öæf–wW&VE&÷f–FW$ÖöFVÅ6VÆV7F÷"Â&W6öÇfUVæ—VT6öæf–wW&VE&÷f–FW$ÖöFVÅ6VÆV7F÷"Òg&öÒ$67"ö6÷&R÷&÷WF–æröÖöFVÂ×&W6öÇWF–öâ#°¦–×÷'B²W7F–ÖFTÆ–Ö—EW6vRÒg&öÒ$67"ö6÷&RövFWv’öÆ–Ö—G2÷v–æF÷rÖÆ–Ö—FW"#°¦–×÷'B²&÷f–FW$7&VFVçF–ÄÆ–Ö—E7FFRÂ&VE&÷f–FW$7&VFVçF–Ä6ööÆF÷vâÂ&V6÷&E&÷f–FW$7&VFVçF–Ä÷WF6öÖRÒg&öÒ$67"ö6÷&R÷&÷f–FW'2ö7&VFVçF–Â×ööÂ#°¦–×÷'B²—5&V6÷&BÂ7G&–æufÇVRÒg&öÒ$67"ö6÷&RövFWv’ö–çFW&æÂ÷fÇVR#°¦–×÷'B²—4Æö6Ä6ÆVFT6öFTöWF…&÷f–FW%ÇVv–âÂÖW&vTçF‡&÷–4&WFfÇVW2Òg&öÒ$67"ö6÷&R÷&÷f–FW'2ööWF‚×ÇVv–â#°¦–×÷'B²&÷'E6–væÄÖW76vRÂf÷&ÖDW'&÷"ÂöÖ—DÆö6Äö'6W'f&–Æ—G”†VFW'2Â6†÷VÆE6VæD&öG’Âv—F„6÷&TvFWv”WF„†VFW"Òg&öÒ$67"ö6÷&RövFWv’ö‡GGö–ò#°¦–×÷'B²'6T§6öäö&¦V7E6fRÂ&VÆV6T§6öäö&¦V7BÂ6W&–Æ—¦T§6öä&öG’Â6W&–Æ—¦T§6öä&öG•v—F„ÖöFVÂÒg&öÒ$67"ö6÷&RövFWv’ö‡GGö&öG’#°¦–×÷'B²&W6öÇfTvFWv•V&Æ–4ÖöFVÄ–BÒg&öÒ$67"ö6÷&RövFWv’öfVGW&W2öÖöFVÂÖF—66÷fW'’#°¦–×÷'B²7F—fU&÷f–FW$7&VFVçF–Ç2Âf–æE&÷f–FW$'•V&Æ–4÷$–çFW&æÄæÖRÂf–æE&÷f–FW$7&VFVçF–Ä'•6ÇVrÂæ÷&ÖÆ—¦VE&÷f–FW$6&–Æ—F–W2Â'6U&÷f–FW$7&VFVçF–Ä–çFW&æÄæÖRÂ&÷f–FW$6&–Æ—G”f÷$6Æ–VçE&÷Fö6öÂÂ&÷f–FW$6&–Æ—G”–çFW&æÄæÖRÂ&÷f–FW$6&–Æ—G”æÖTÖF6†W2Â&÷f–FW$7&VFVçF–Ä–çFW&æÄæÖRÂ&÷f–FW$7&VFVçF–Å&–÷&—G’Â&÷f–FW$7&VFVçF–Å'VçF–ÖT–BÂ&÷f–FW$7&VFVçF–Å6ÇVrÂ&÷f–FW%&÷Fö6öÄf÷$6Æ–VçE&÷Fö6öÂÂ6æ—F—¦T†VFW%fÇVRÒg&öÒ$67"ö6÷&R÷&÷f–FW'2÷'VçF–ÖR×F÷öÆöw’#°¦–×÷'B²FVÆ’Òg&öÒ$67"ö6÷&RövFWv’ö–çFW&æÂö6Æö6²#°¦–×÷'B²&WG'”FVÆ”gFW$æWGv÷&´W'&÷"Â&WG'”FVÆ”gFW%7FGW2Â6†÷VÆDfÆÆ&6´gFW%7FGW2Òg&öÒ$67"ö6÷&RövFWv’÷W7G&VÒ÷&WG'’×öÆ–7’#°¦–×÷'B²6ÆVFT6öFTöWF„&WF†VFW"Â6ÆVFT6öFTöWF…&WV—&VD&WFÂW7G&VÕ&WVW7DW'&÷"Òg&öÒ$67"ö6÷&RövFWv’ö–çFW&æÂ÷6†&VB#°¦–×÷'BG—R²”¶W”Æ–Ö—EW6vRÂ&÷f–FW$7&VFVçF–Å&÷WF–æuF&vWBÂW7G&VÔGFV×BÂW7G&VÔf–ÆVDGFV×BÂW7G&VÔfWF6…&W7VÇBÒg&öÒ$67"ö6÷&RövFWv’ö–çFW&æÂ÷6†&VB#°¦–×÷'BG—R²&÷WFUG&6Tö'6W'fW"Òg&öÒ$67"ö6÷&Röö'6W'f&–Æ—G’÷&÷WFR×G&6R#° ¦6öç7B&÷f–FW$7&VFVçF–Å7–ÆÆ÷fW%F‡&W6†öÆBÒãƒ°  ¦W‡÷'BgVæ7F–öâÇ•&÷f–FW$6&–Æ—G•&÷WF–ær†–çWC¢°¢&öG“ó¢'VffW#°¢6öæf–s¢6öæf–s°¢fÆÆ&6³¢&÷WFW$fÆÆ&6´6öæf–s°¢†VFW'3¢&V6÷&CÇ7G&–ærÂ7G&–æsã°¢Fƒ¢7G&–æs°¢&÷WFVDÖöFVÃó¢7G&–æs°§Ò“¢²&öG“ó¢'VffW#²fÆÆ&6³¢&÷WFW$fÆÆ&6´6öæf–s²&÷WFVDÖöFVÃó¢7G&–ærÒ°¢6öç7B&÷Fö6öÂÒ&WVW7E&÷Fö6öÄf÷%F‚†–çWBçF‚“°¢–b‚&÷Fö6öÂ’°¢&WGW&â°¢&öG“¢–çWBæ&öG’À¢fÆÆ&6³¢–çWBæfÆÆ&6²À¢&÷WFVDÖöFVÃ¢–çWBç&÷WFVDÖöFVÀ¢Ó°¢Ğ ¢&Ww&—FU&÷f–FW$†VFW"†–çWBæ†VFW'2Â'‚×F&vWB×&÷f–FW""Â–çWBæ6öæf–rÂ&÷Fö6öÂ“°¢&Ww&—FU&÷f–FW$Æ—7D†VFW"†–çWBæ†VFW'2Â'‚×F&vWB×&÷f–FW'2"Â–çWBæ6öæf–rÂ&÷Fö6öÂ“°¢&Ww&—FU&÷f–FW$†VFW"†–çWBæ†VFW'2Â'‚ÖvFWv’×F&vWB×&÷f–FW""Â–çWBæ6öæf–rÂ&÷Fö6öÂ“° ¢6öç7B&÷WFVDÖöFVÂÒ&Ww&—FTÖöFVÅ6VÆV7F÷$f÷%&÷Fö6öÂ†–çWBç&÷WFVDÖöFVÂÂ–çWBæ6öæf–rÂ&÷Fö6öÂ“°¢6öç7BfÆÆ&6²Ò&Ww&—FTfÆÆ&6´f÷%&÷Fö6öÂ†–çWBæfÆÆ&6²Â–çWBæ6öæf–rÂ&÷Fö6öÂ“°¢6öç7B&öG’Ò&Ww&—FT&öG”ÖöFVÄf÷%&÷Fö6öÂ†–çWBæ&öG’Â–çWBæ6öæf–rÂ&÷Fö6öÂ“°¢6ÆV%F&vWE&÷f–FW$†VFW'4f÷$ÖöFVÅ6VÆV7F÷"†–çWBæ†VFW'2Â–çWBæ6öæf–rÂ&öG’Â&÷WFVDÖöFVÂ“° ¢&WGW&â°¢&öG’À¢fÆÆ&6²À¢&÷WFVDÖöFVÀ¢Ó°§Ğ  ¦W‡÷'BgVæ7F–öâ&W&TvFWv•W7G&VÔGFV×Df÷%FW7B†–çWC¢°¢&öG“¢&V6÷&CÇ7G&–ærÂVæ¶æ÷vãã°¢6öæf–s¢6öæf–s°¢fÆÆ&6³ó¢&÷WFW$fÆÆ&6´6öæf–s°¢†VFW'3¢&V6÷&CÇ7G&–ærÂ7G&–æsã°¢ÖWF†öC¢7G&–æs°¢Fƒ¢7G&–æs°¢&÷WFVDÖöFVÃó¢7G&–æs°§Ò“¢°¢&öG“ó¢&V6÷&CÇ7G&–ærÂVæ¶æ÷vãã°¢7&VFVçF–Ä6†–ãó¢7G&–æuµÓ°¢7&VFVçF–Ä–G3ó¢7G&–æuµÓ°¢7&VFVçF–Å&÷Fö6öÃó¢vFWv•&÷f–FW%&÷Fö6öÃ°¢fÆÆ&6³¢&÷WFW$fÆÆ&6´6öæf–s°¢†VFW'3ó¢&V6÷&CÇ7G&–ærÂ7G&–æsã°¢Æöv–6Å&÷f–FW#ó¢7G&–æs°¢ÖöFVÃó¢7G&–æs°¢&÷WFVDÖöFVÃó¢7G&–æs°§Ò°¢6öç7B†VFW'2Ò²ââæ–çWBæ†VFW'2Ó°¢6öç7B&÷f–FW$6&–Æ—G•&÷WF–ærÒÇ•&÷f–FW$6&–Æ—G•&÷WF–ær‡°¢&öG“¢6W&–Æ—¦T§6öä&öG’†–çWBæ&öG’’À¢6öæf–s¢–çWBæ6öæf–rÀ¢fÆÆ&6³¢–çWBæfÆÆ&6²óò–çWBæ6öæf–rå&÷WFW"æfÆÆ&6²À¢†VFW'2À¢Fƒ¢–çWBçF‚À¢&÷WFVDÖöFVÃ¢–çWBç&÷WFVDÖöFVÀ¢Ò“°¢6öç7BGFV×BÒ&W&UW7G&VÔ7&VFVçF–ÄGFV×B‡°¢GFV×C¢°¢&öG“¢&÷f–FW$6&–Æ—G•&÷WF–æræ&öG’À¢–æFWƒ¢À¢ÖöFVÃ¢æ÷&ÖÆ—¦U&÷WFU6VÆV7F÷"‡&÷f–FW$6&–Æ—G•&÷WF–ærç&÷WFVDÖöFVÂ¢ÒÀ¢6öæf–s¢–çWBæ6öæf–rÀ¢†VFW'2À¢ÖWF†öC¢–çWBæÖWF†öBÀ¢Fƒ¢–çWBçF€¢Ò“°¢&WGW&â°¢&öG“¢'6T§6öäö&¦V7E6fR†GFV×Bæ&öG’’À¢7&VFVçF–Ä6†–ã¢GFV×Bæ7&VFVçF–Ä6†–âÀ¢7&VFVçF–Ä–G3¢GFV×Bæ7&VFVçF–Ä–G2À¢7&VFVçF–Å&÷Fö6öÃ¢GFV×Bæ7&VFVçF–Å&÷Fö6öÂÀ¢fÆÆ&6³¢&÷f–FW$6&–Æ—G•&÷WF–æræfÆÆ&6²À¢†VFW'3¢GFV×Bæ†VFW'2À¢Æöv–6Å&÷f–FW#¢GFV×BæÆöv–6Å&÷f–FW"À¢ÖöFVÃ¢GFV×BæÖöFVÂÀ¢&÷WFVDÖöFVÃ¢&÷f–FW$6&–Æ—G•&÷WF–ærç&÷WFVDÖöFVÀ¢Ó°§Ğ  ¦gVæ7F–öâ&Ww&—FU&÷f–FW$†VFW"€¢†VFW'3¢&V6÷&CÇ7G&–ærÂ7G&–æsâÀ¢†VFW$æÖS¢7G&–ærÀ¢6öæf–s¢6öæf–rÀ¢&÷Fö6öÃ¢vFWv•&÷f–FW%&÷Fö6öÀ¢“¢fö–B°¢6öç7BfÇVRÒ†VFW'5¶†VFW$æÖUÓ°¢–b‚fÇVR’°¢&WGW&ã°¢Ğ¢†VFW'5¶†VFW$æÖUÒÒ&Ww&—FU&÷f–FW%6VÆV7F÷$f÷%&÷Fö6öÂ‡fÇVRÂ6öæf–rÂ&÷Fö6öÂ“°§Ğ  ¦gVæ7F–öâ&Ww&—FU&÷f–FW$Æ—7D†VFW"€¢†VFW'3¢&V6÷&CÇ7G&–ærÂ7G&–æsâÀ¢†VFW$æÖS¢7G&–ærÀ¢6öæf–s¢6öæf–rÀ¢&÷Fö6öÃ¢vFWv•&÷f–FW%&÷Fö6öÀ¢“¢fö–B°¢6öç7BfÇVRÒ†VFW'5¶†VFW$æÖUÓ°¢–b‚fÇVR’°¢&WGW&ã°¢Ğ¢†VFW'5¶†VFW$æÖUÒÒfÇVP¢ç7Æ—B‚"Â"¢æÖ‚†—FVÒ’Óâ&Ww&—FU&÷f–FW%6VÆV7F÷$f÷%&÷Fö6öÂ†—FVÒçG&–Ò‚’Â6öæf–rÂ&÷Fö6öÂ’¢æf–ÇFW"„&ööÆVâ¢æ¦ö–â‚"Â"“°§Ğ  ¦gVæ7F–öâ&Ww&—FU&÷f–FW%6VÆV7F÷$f÷%&÷Fö6öÂ‡fÇVS¢7G&–ærÂ6öæf–s¢6öæf–rÂ&÷Fö6öÃ¢vFWv•&÷f–FW%&÷Fö6öÂ“¢7G&–ær°¢6öç7B&÷f–FW"Òf–æE&÷f–FW$'•V&Æ–4÷$–çFW&æÄæÖR†6öæf–rÂfÇVR“°¢6öç7B6&–Æ—G’Ò&÷f–FW"ò&÷f–FW$6&–Æ—G”f÷$6Æ–VçE&÷Fö6öÂ‡&÷f–FW"Â&÷Fö6öÂ’¢VæFVf–æVC°¢&WGW&â&÷f–FW"bb6&–Æ—G’ò&÷f–FW$6&–Æ—G”–çFW&æÄæÖR‡&÷f–FW"Â6&–Æ—G’çG—R’¢fÇVS°§Ğ  ¦gVæ7F–öâ&Ww&—FTfÆÆ&6´f÷%&÷Fö6öÂ†fÆÆ&6³¢&÷WFW$fÆÆ&6´6öæf–rÂ6öæf–s¢6öæf–rÂ&÷Fö6öÃ¢vFWv•&÷f–FW%&÷Fö6öÂ“¢&÷WFW$fÆÆ&6´6öæf–r°¢6öç7BÖöFVÇ2ÒfÆÆ&6²æÖöFVÇ2æÖ‚†ÖöFVÂ’Óâ&Ww&—FTÖöFVÅ6VÆV7F÷$f÷%&÷Fö6öÂ†ÖöFVÂÂ6öæf–rÂ&÷Fö6öÂ’óòÖöFVÂ“°¢&WGW&âÖöFVÇ2æWfW'’‚†ÖöFVÂÂ–æFW‚’ÓâÖöFVÂÓÓÒfÆÆ&6²æÖöFVÇ5¶–æFW…Ò¢òfÆÆ&6°¢¢°¢ââæfÆÆ&6²À¢ÖöFVÇ0¢Ó°§Ğ  ¦gVæ7F–öâ&Ww&—FT&öG”ÖöFVÄf÷%&÷Fö6öÂ†&öG“¢'VffW"ÂVæFVf–æVBÂ6öæf–s¢6öæf–rÂ&÷Fö6öÃ¢vFWv•&÷f–FW%&÷Fö6öÂ“¢'VffW"ÂVæFVf–æVB°¢6öç7B'6VD&öG’Ò'6T§6öäö&¦V7E6fR†&öG’“°¢–b‚'6VD&öG’’°¢&WGW&â&öG“°¢Ğ¢6öç7BÖöFVÂÒ7G&–æufÇVR‡'6VD&öG’æÖöFVÂ“°¢6öç7B&Ww&—GFVäÖöFVÂÒ&Ww&—FTÖöFVÅ6VÆV7F÷$f÷%&÷Fö6öÂ†ÖöFVÂÂ6öæf–rÂ&÷Fö6öÂ“°¢–b‚&Ww&—GFVäÖöFVÂÇÂ&Ww&—GFVäÖöFVÂÓÓÒÖöFVÂ’°¢&WGW&â&öG“°¢Ğ¢&WGW&â6W&–Æ—¦T§6öä&öG’‡²ââç'6VD&öG’ÂÖöFVÃ¢&Ww&—GFVäÖöFVÂÒ“°§Ğ  ¦gVæ7F–öâ6ÆV%F&vWE&÷f–FW$†VFW'4f÷$ÖöFVÅ6VÆV7F÷"€¢†VFW'3¢&V6÷&CÇ7G&–ærÂ7G&–æsâÀ¢6öæf–s¢6öæf–rÀ¢&öG“¢'VffW"ÂVæFVf–æVBÀ¢&÷WFVDÖöFVÃ¢7G&–ærÂVæFVf–æV@¢“¢fö–B°¢6öç7B'6VD&öG’Ò'6T§6öäö&¦V7E6fR†&öG’“°¢6öç7BÖöFVÂÒ7G&–æufÇVR‡'6VD&öG“òæÖöFVÂ’ÇÂ&÷WFVDÖöFVÃ°¢–b‚&W6öÇfT6öæf–wW&VE&÷f–FW$ÖöFVÅ6VÆV7F÷"†ÖöFVÂÂ6öæf–r’’°¢&WGW&ã°¢Ğ ¢FVÆWFR†VFW'5²'‚×F&vWB×&÷f–FW"%Ó°¢FVÆWFR†VFW'5²'‚×F&vWB×&÷f–FW'2%Ó°¢FVÆWFR†VFW'5²'‚ÖvFWv’×F&vWB×&÷f–FW"%Ó°§Ğ  ¦gVæ7F–öâ&Ww&—FTÖöFVÅ6VÆV7F÷$f÷%&÷Fö6öÂ€¢ÖöFVÃ¢7G&–ærÂVæFVf–æVBÀ¢6öæf–s¢6öæf–rÀ¢&÷Fö6öÃ¢vFWv•&÷f–FW%&÷Fö6öÀ¢“¢7G&–ærÂVæFVf–æVB°¢6öç7Bæ÷&ÖÆ—¦VBÒæ÷&ÖÆ—¦U&÷WFU6VÆV7F÷"†ÖöFVÂ“°¢–b‚æ÷&ÖÆ—¦VB’°¢&WGW&âÖöFVÃ°¢Ğ¢6öç7BV&Æ–4ÖöFVÂÒ&W6öÇfTvFWv•V&Æ–4ÖöFVÄ–B†æ÷&ÖÆ—¦VBÂ6öæf–r’óòæ÷&ÖÆ—¦VC°¢6öç7B6VÆV7F÷"Ğ¢&W6öÇfT6öæf–wW&VE&÷f–FW$ÖöFVÅ6VÆV7F÷"‡V&Æ–4ÖöFVÂÂ6öæf–r’óğ¢&W6öÇfUVæ—VT6öæf–wW&VE&÷f–FW$ÖöFVÅ6VÆV7F÷"‡V&Æ–4ÖöFVÂÂ6öæf–r“°¢6öç7B6&–Æ—G’Ò6VÆV7F÷"ò&÷f–FW$6&–Æ—G”f÷$6Æ–VçE&÷Fö6öÂ‡6VÆV7F÷"ç&÷f–FW"Â&÷Fö6öÂ’¢VæFVf–æVC°¢&WGW&â6VÆV7F÷"bb6&–Æ—G¢òG·&÷f–FW$6&–Æ—G”–çFW&æÄæÖR‡6VÆV7F÷"ç&÷f–FW"Â6&–Æ—G’çG—R—ÒòG·6VÆV7F÷"æÖöFVÇÖ ¢¢V&Æ–4ÖöFVÃ°§Ğ  ¦W‡÷'BgVæ7F–öâ&Ww&—FT6&–Æ—G•&W7öç6T†VFW'2††VFW'3¢†VFW'2Â6öæf–s¢6öæf–r“¢†VFW'2°¢6öç7B&÷f–FW$æÖRÒ†VFW'2ævWB‚'‚ÖvFWv’×F&vWB×&÷f–FW"ÖæÖR"“òçG&–Ò‚“°¢–b‚&÷f–FW$æÖR’°¢&WGW&â†VFW'3°¢Ğ¢6öç7B7&VFVçF–Ä–çFW&æÄæÖRÒ'6U&÷f–FW$7&VFVçF–Ä–çFW&æÄæÖR‡&÷f–FW$æÖR“°¢–b†7&VFVçF–Ä–çFW&æÄæÖR’°¢6öç7B&÷f–FW"Òf–æE&÷f–FW$'•V&Æ–4÷$–çFW&æÄæÖR†6öæf–rÂ7&VFVçF–Ä–çFW&æÄæÖRç&÷f–FW$–B“°¢–b‚&÷f–FW"’°¢&WGW&â†VFW'3°¢Ğ¢6öç7B7&VFVçF–ÂÒf–æE&÷f–FW$7&VFVçF–Ä'•6ÇVr‡&÷f–FW"Â7&VFVçF–Ä–çFW&æÄæÖRæ7&VFVçF–Å6ÇVr“°¢6öç7B&Ww&—GFVâÒæWr†VFW'2††VFW'2“°¢&Ww&—GFVâç6WB‚'‚ÖvFWv’×F&vWB×&÷f–FW"ÖæÖR"Â&÷f–FW%'VçF–ÖT–B‡&÷f–FW"’“°¢&Ww&—GFVâç6WB‚'‚Ö67"×&÷f–FW"×&÷Fö6öÂ"Â7&VFVçF–Ä–çFW&æÄæÖRç&÷Fö6öÂ“°¢&Ww&—GFVâç6WB‚'‚Ö67"×&÷f–FW"Ö7&VFVçF–Â×&÷f–FW""Â&÷f–FW%'VçF–ÖT–B‡&÷f–FW"’“°¢&Ww&—GFVâç6WB‚'‚Ö67"×&÷f–FW"Ö7&VFVçF–ÂÖ–B"Â&÷f–FW$7&VFVçF–Å6ÇVr†7&VFVçF–Âò&÷f–FW$7&VFVçF–Å'VçF–ÖT–B‡&÷f–FW"Â7&VFVçF–Â’¢7&VFVçF–Ä–çFW&æÄæÖRæ7&VFVçF–Å6ÇVr’“°¢&WGW&â&Ww&—GFVã°¢Ğ¢6öç7B&÷f–FW"Òf–æE&÷f–FW$'•V&Æ–4÷$–çFW&æÄæÖR†6öæf–rÂ&÷f–FW$æÖR“°¢–b‚&÷f–FW"’°¢&WGW&â†VFW'3°¢Ğ¢6öç7B6&–Æ—G’Òæ÷&ÖÆ—¦VE&÷f–FW$6&–Æ—F–W2‡&÷f–FW"’æf–æB‚†—FVÒ’Óà¢&÷f–FW$6&–Æ—G”æÖTÖF6†W2‡&÷f–FW"Â—FVÒçG—RÂ&÷f–FW$æÖR¢“°¢6öç7B&Ww&—GFVâÒæWr†VFW'2††VFW'2“°¢&Ww&—GFVâç6WB‚'‚ÖvFWv’×F&vWB×&÷f–FW"ÖæÖR"Â&÷f–FW%'VçF–ÖT–B‡&÷f–FW"’“°¢–b†6&–Æ—G’’°¢&Ww&—GFVâç6WB‚'‚Ö67"×&÷f–FW"×&÷Fö6öÂ"Â6&–Æ—G’çG—R“°¢Ğ¢&WGW&â&Ww&—GFVã°§Ğ  ¦W‡÷'B7–æ2gVæ7F–öâfWF6…W7G&VÕv—F„fÆÆ&6²†–çWC¢°¢&öG“ó¢'VffW#°¢6öæf–s¢6öæf–s°¢6÷&TWF…Fö¶Vã¢7G&–æs°¢fÆÆ&6³¢&÷WFW$fÆÆ&6´6öæf–s°¢†VFW'3¢&V6÷&CÇ7G&–ærÂ7G&–æsã°¢ÖWF†öC¢7G&–æs°¢Fƒ¢7G&–æs°¢&W&F–öä6†ævW3ó¢&VFöæÇ’&WVW7E&÷WFUG&6T6†ævUµÓ°¢&÷WFVDÖöFVÃó¢7G&–æs°¢6–væÃó¢&÷'E6–væÃ°¢G&6Só¢&÷WFUG&6Tö'6W'fW#°¢W7G&VÕW&Ã¢7G&–æs°§Ò“¢&öÖ—6SÅW7G&VÔfWF6…&W7VÇCâ°¢6öç7BfÆÆ&6´ÖöFRÒ–çWBæfÆÆ&6²æÖöFS°¢6öç7BGFV×G2Ò'V–ÆEW7G&VÔGFV×G2€¢–çWBæ6öæf–rÀ¢–çWBæfÆÆ&6²À¢–çWBæÖWF†öBÀ¢–çWBçF‚À¢–çWBæ&öG’À¢–çWBç&÷WFVDÖöFVÀ¢“°¢6öç7Bf–ÆVDGFV×G3¢W7G&VÔf–ÆVDGFV×EµÒÒµÓ°¢–çWBçG&6Sòæ6GW&R‡°¢FV6—6–öã¢²&V6öã¢fÆÆ&6³¢G¶fÆÆ&6´ÖöFWÖÂ6÷W&6S¢&W†V7WF–öâ×Æâ"ÒÀ¢¶–æC¢&FV6—6–öâ"À¢æÖS¢&fÆÆ&6²æW†V7WF–öâ×Æâ"À¢†6S¢'Æææ–ær"À¢F&vWC¢GFV×G5³ÓòæÖöFVÂò²ÖöFVÃ¢GFV×G5³ÒæÖöFVÂÒ¢VæFVf–æV@¢Ò“° ¢f÷"†ÆWB–æFW‚Ò²–æFW‚ÂGFV×G2æÆVæwFƒ²–æFW‚³Ò’°¢–b†–çWBç6–væÃòæ&÷'FVB’°¢F‡&÷ræWrW7G&VÕ&WVW7DW'&÷"†&÷'E6–væÄÖW76vR†–çWBç6–væÂ’Â°¢f–ÆVDGFV×G0¢Ò“°¢Ğ ¢6öç7BGFV×DçVÖ&W"Ò–æFW‚²°¢6öç7BGFV×E&W&F–öå7F'FVDBÒFFRææ÷r‚“°¢6öç7BGFV×BÒ&W&UW7G&VÔ7&VFVçF–ÄGFV×B‡°¢GFV×C¢GFV×G5¶–æFW…ÒÀ¢6öæf–s¢–çWBæ6öæf–rÀ¢†VFW'3¢–çWBæ†VFW'2À¢ÖWF†öC¢–çWBæÖWF†öBÀ¢Fƒ¢–çWBçF€¢Ò“°¢6öç7B†4æW‡DGFV×BÒ–æFW‚ÂGFV×G2æÆVæwF‚Ò°¢6öç7BGFV×EW&ÂÒ&Ww&—FU&÷WFTÖöFVÄ–åW&Â†–çWBçW7G&VÕW&ÂÂGFV×BæÖöFVÂ“°¢6öç7BGFV×D†VFW'2Ò°¢ââçv—F„6÷&TvFWv”WF„†VFW"€¢öÖ—DÆö6Äö'6W'f&–Æ—G”†VFW'2†GFV×Bæ†VFW'2óò–çWBæ†VFW'2’À¢–çWBæ6÷&TWF…Fö¶Và¢’À¢òò6÷&R&rG&6W2W6RVæ—VR&WVW7B–Bf÷"WfW'’fÆÆ&6²GFV×BÀ¢òòv†–ÆRGW&ä¶W’–FVçF–f–W2F†R÷WFW"vFWv’&WVW7Bâ¶VW&÷F‚æBÖ&°¢òòF†RGFV×B6òöæÇ’F†Rf–æÂ&W7öç6RÖ’&Vf–æRF†R7F÷&VB÷WF6öÖRà¢'‚Ö67"×&÷WFRÖGFV×B#¢7G&–ær†GFV×DçVÖ&W"¢Ó°¢6öç7BGFV×E&÷f–FW"ÒGFV×BæÆöv–6Å&÷f–FW"óò€¢GFV×BçF&vWCòæ¶–æBÓÓÒ'&÷f–FW""òGFV×BçF&vWBç&÷f–FW"ææÖR¢VæFVf–æV@¢“°¢6öç7BGFV×E7F'FVDBÒFFRææ÷r‚“°¢–çWBçG&6Sòæ6GW&R‡°¢GFV×C¢GFV×DçVÖ&W"À¢6†ævW3¢°¢âââ†–æFW‚ÓÓÒò–çWBç&W&F–öä6†ævW2óòµÒ¢µÒ’À¢âââ†GFV×BæÖöFVÂbbGFV×BæÖöFVÂÓÒ–çWBç&÷WFVDÖöFVÀ¢ò·°¢âââ†–çWBç&÷WFVDÖöFVÂÓÓÒVæFVf–æVBò·Ò¢²&Vf÷&S¢–çWBç&÷WFVDÖöFVÂÒ’À¢gFW#¢GFV×BæÖöFVÂÀ¢÷W&F–öã¢–çWBç&÷WFVDÖöFVÂÓÓÒVæFVf–æVBò&FB"26öç7B¢'&WÆ6R"26öç7BÀ¢Fƒ¢"ö&öG’öÖöFVÂ"À¢66÷S¢&&öG’"26öç7@¢ÕĞ¢¢µÒ’À¢âââ†GFV×EW&ÂÓÒ–çWBçW7G&VÕW&À¢ò·²gFW#¢GFV×EW&ÂÂ&Vf÷&S¢–çWBçW7G&VÕW&ÂÂ÷W&F–öã¢'&WÆ6R"26öç7BÂFƒ¢"÷W&Â"Â66÷S¢'W&Â"26öç7BÕĞ¢¢µÒ¢ÒÀ¢GW&F–öä×3¢GFV×E7F'FVDBÒGFV×E&W&F–öå7F'FVDBÀ¢¶–æC¢&GFV×B"À¢æÖS¢'W7G&VÒæGFV×Bç&W&R"À¢†6S¢&GFV×B"À¢7F'FVDD×3¢GFV×E&W&F–öå7F'FVDBÀ¢F&vWC¢°¢âââ†GFV×Bæ7&VFVçF–Ä–G3òå³Òò²7&VFVçF–Ä–C¢GFV×Bæ7&VFVçF–Ä–G5³ÒÒ¢·Ò’À¢âââ†GFV×Bæ7&VFVçF–Ä–G3òæÆVæwF‚ò²7&VFVçF–Ä6æF–FFW3¢GFV×Bæ7&VFVçF–Ä–G2Ò¢·Ò’À¢âââ†GFV×BæÖöFVÂò²ÖöFVÃ¢GFV×BæÖöFVÂÒ¢·Ò’À¢âââ†GFV×Bæ7&VFVçF–Å&÷Fö6öÂò²&÷Fö6öÃ¢GFV×Bæ7&VFVçF–Å&÷Fö6öÂÒ¢·Ò’À¢âââ†GFV×E&÷f–FW"ò²&÷f–FW#¢GFV×E&÷f–FW"Ò¢·Ò¢Ğ¢Ò“° ¢&VÆV6T§6öäö&¦V7B†GFV×Bæ&öG’“°¢&VÆV6T§6öäö&¦V7B†GFV×G5¶–æFW…Òæ&öG’“°¢&VÆV6T§6öäö&¦V7B†–çWBæ&öG’“° ¢G'’°¢6öç7B&W7öç6RÒv—BfWF6…v—F…7—7FVÕ&÷‡’†GFV×EW&ÂÂ°¢&öG“¢6†÷VÆE6VæD&öG’†–çWBæÖWF†öB’òGFV×Bæ&öG“òçFõ7G&–ær‚'WFc‚"’¢VæFVf–æVBÀ¢†VFW'3¢GFV×D†VFW'2À¢ÖWF†öC¢–çWBæÖWF†öBÀ¢6–væÃ¢–çWBç6–væÀ¢Ò“° ¢–b††4æW‡DGFV×Bbb6†÷VÆDfÆÆ&6´gFW%7FGW2‡&W7öç6Rç7FGW2ÂfÆÆ&6´ÖöFR’’°¢6öç7BFVÆ”×2Ò&WG'”FVÆ”gFW%7FGW2‡&W7öç6Ræ†VFW'2Âf–ÆVDGFV×G2æÆVæwF‚“°¢–çWBçG&6Sòæ6GW&R‡°¢GFV×C¢GFV×DçVÖ&W"À¢GW&F–öä×3¢FFRææ÷r‚’ÒGFV×E7F'FVDBÀ¢¶–æC¢&÷WF6öÖR"À¢æÖS¢'W7G&VÒæGFV×Bæ÷WF6öÖR"À¢÷WF6öÖS¢°¢fÆÆ&6µ&V6öã¢‡GG¢G·&W7öç6Rç7FGW7ÖÀ¢&WG'”FVÆ”×3¢FVÆ”×2À¢7FGW46öFS¢&W7öç6Rç7FGW0¢ÒÀ¢†6S¢&÷WF6öÖR"À¢7F'FVDD×3¢GF]´Ó»h‘éì¶»§q«^uÍÑÉ¥¹œø°(€½¹™¥œèÁÁ½¹™¥œ°(€Ñ…É•ĞèAÉ½Ù¥‘•ÉÉ•‘•¹Ñ¥…±I½ÕÑ¥¹Q…É•Ğ(¤èI•½ÉñÍÑÉ¥¹œ°ÍÑÉ¥¹œøì(€¥˜€ (€€€Ñ…É•Ğ¹ÁÉ½Ñ½½°€„ôô€‰…¹Ñ¡É½Á¥}µ•ÍÍ…•Ìˆñğ(€€€€…±…Õ‘•½‘•=…ÕÑ¡A±Õ¥¹5…Ñ¡•ÍQ…É•Ğ¡½¹™¥œ°Ñ…É•Ğ¹ÁÉ½Ù¥‘•È°Ñ…É•Ğ¹ÁÉ½Ñ½½°¤(€€¤ì(€€€É•ÑÕÉ¸¡•…‘•ÉÌì(€ô((€½¹ÍĞ•á¥ÍÑ¥¹¹ÑÉä€ô=‰©•Ğ¹•¹ÑÉ¥•Ì¡¡•…‘•ÉÌ¤(€€€€¹™¥¹ ¡m¹…µ•t¤€ôø¹…µ”¹ÑÉ¥´ ¤¹Ñ½1½İ•É…Í” ¤€ôôô±…Õ‘•½‘•=…ÕÑ¡	•Ñ…!•…‘•È¤ì(€½¹ÍĞµ•É•€ôµ•É•¹Ñ¡É½Á¥	•Ñ…Y…±Õ•Ì¡•á¥ÍÑ¥¹¹ÑÉäü¹lÅt°±…Õ‘•½‘•=…ÕÑ¡I•ÅÕ¥É•‘	•Ñ„¤ì(€¥˜€¡•á¥ÍÑ¥¹¹ÑÉäü¹lÁt€ôôô±…Õ‘•½‘•=…ÕÑ¡	•Ñ…!•…‘•È€˜˜•á¥ÍÑ¥¹¹ÑÉålÅt€ôôôµ•É•¤ì(€€€É•ÑÕÉ¸¡•…‘•ÉÌì(€ô((€½¹ÍĞ¹•áĞ€ô=‰©•Ğ¹™É½µ¹ÑÉ¥•Ì (€€€=‰©•Ğ¹•¹ÑÉ¥•Ì¡¡•…‘•ÉÌ¤¹™¥±Ñ•È ¡m¹…µ•t¤€ôø¹…µ”¹ÑÉ¥´ ¤¹Ñ½1½İ•É…Í” ¤€„ôô±…Õ‘•½‘•=…ÕÑ¡	•Ñ…!•…‘•È¤(€€¤ì(€¹•áÑm±…Õ‘•½‘•=…ÕÑ¡	•Ñ…!•…‘•Ét€ôµ•É•ì(€É•ÑÕÉ¸¹•áĞì)ô(()™Õ¹Ñ¥½¸±…Õ‘•½‘•=…ÕÑ¡A±Õ¥¹5…Ñ¡•ÍQ…É•Ğ (€½¹™¥œèÁÁ½¹™¥œ°(€ÁÉ½Ù¥‘•Èè…Ñ•İ…åAÉ½Ù¥‘•É½¹™¥œ°(€ÁÉ½Ñ½½°è…Ñ•İ…åAÉ½Ù¥‘•ÉAÉ½Ñ½½°(¤è‰½½±•…¸ì(€½¹ÍĞÑ…É•Ñ9…µ•Ì€ô¹•ÜM•Ğ¡l(€€€ÁÉ½Ù¥‘•È¹¹…µ”°(€€€ÁÉ½Ù¥‘•ÉIÕ¹Ñ¥µ•%¡ÁÉ½Ù¥‘•È¤°(€€€ÁÉ½Ù¥‘•É…Á…‰¥±¥Ñå%¹Ñ•É¹…±9…µ”¡ÁÉ½Ù¥‘•È°ÁÉ½Ñ½½°¤(€t¹µ…À ¡¹…µ”¤€ôø¹…µ”¹ÑÉ¥´ ¤¹Ñ½1½İ•É…Í” ¤¤¤ì(€É•ÑÕÉ¸€¡½¹™¥œ¹ÁÉ½Ù¥‘•ÉA±Õ¥¹Ì€üümt¤¹Í½µ” ¡Á±Õ¥¸¤€ôøì(€€€¥˜€ …¥Í1½…±±…Õ‘•½‘•=…ÕÑ¡AÉ½Ù¥‘•ÉA±Õ¥¸¡Á±Õ¥¸¤¤ì(€€€€€É•ÑÕÉ¸™…±Í”ì(€€€ô(€€€½¹ÍĞÁÉ½Ù¥‘•É9…µ”€ôÍÑÉ¥¹Y…±Õ”¡Á±Õ¥¸¹ÁÉ½Ù¥‘•É9…µ”¤ü¹Ñ½1½İ•É…Í” ¤ì(€€€É•ÑÕÉ¸	½½±•…¸¡ÁÉ½Ù¥‘•É9…µ”€˜˜Ñ…É•Ñ9…µ•Ì¹¡…Ì¡ÁÉ½Ù¥‘•É9…µ”¤¤ì(€ô¤ì)ô(()™Õ¹Ñ¥½¸Ñ…É•ÑAÉ½Ù¥‘•É…±±‰…­!•…‘•ÉÌ (€¡•…‘•ÉÌèI•½ÉñÍÑÉ¥¹œ°ÍÑÉ¥¹œø°(€ÁÉ½Ù¥‘•Èè…Ñ•İ…åAÉ½Ù¥‘•É½¹™¥œ°(€ÁÉ½Ñ½½°è…Ñ•İ…åAÉ½Ù¥‘•ÉAÉ½Ñ½½°(¤èI•½ÉñÍÑÉ¥¹œ°ÍÑÉ¥¹œøì(€½¹ÍĞ¹•áĞ€ôì€¸¸¹¡•…‘•ÉÌôì(€¹•áÑl‰àµÑ…É•ĞµÁÉ½Ù¥‘•È‰t€ôÑ…É•ÑAÉ½Ù¥‘•É!•…‘•ÉY…±Õ”¡ÁÉ½Ù¥‘•È°ÁÉ½Ñ½½°¤ì(€‘•±•Ñ”¹•áÑl‰àµÑ…É•ĞµÁÉ½Ù¥‘•ÉÌ‰tì(€‘•±•Ñ”¹•áÑl‰àµ…Ñ•İ…äµÑ…É•ĞµÁÉ½Ù¥‘•È‰tì(€É•ÑÕÉ¸¹•áĞì)ô(()™Õ¹Ñ¥½¸±•…ÉQ…É•ÑAÉ½Ù¥‘•É!•…‘•ÉÌ¡¡•…‘•ÉÌèI•½ÉñÍÑÉ¥¹œ°ÍÑÉ¥¹œø¤èI•½ÉñÍÑÉ¥¹œ°ÍÑÉ¥¹œøì(€½¹ÍĞ¹•áĞ€ôì€¸¸¹¡•…‘•ÉÌôì(€‘•±•Ñ”¹•áÑl‰àµÑ…É•ĞµÁÉ½Ù¥‘•È‰tì(€‘•±•Ñ”¹•áÑl‰àµÑ…É•ĞµÁÉ½Ù¥‘•ÉÌ‰tì(€‘•±•Ñ”¹•áÑl‰àµ…Ñ•İ…äµÑ…É•ĞµÁÉ½Ù¥‘•È‰tì(€É•ÑÕÉ¸¹•áĞì)ô(()™Õ¹Ñ¥½¸Í¡½Õ±‘AÉ•Í•ÉÙ•…Á…‰¥±¥Ñå5½‘•±M•±•Ñ½È¡‰½‘äè	Õ™™•ÈğÕ¹‘•™¥¹•°Ñ…É•ĞèAÉ½Ù¥‘•ÉÉ•‘•¹Ñ¥…±I½ÕÑ¥¹Q…É•Ğ¤è‰½½±•…¸ì(€¥˜€¡Ñ…É•Ğ¹Í½ÕÉ”€ôôô€‰¡•…‘•ÈˆñğÑ…É•Ğ¹ÁÉ½Ñ½½°€„ôô€‰•µ¥¹¥}¥¹Ñ•É…Ñ¥½¹Ìˆ¤ì(€€€É•ÑÕÉ¸™…±Í”ì(€ô(€É•ÑÕÉ¸	½½±•…¸¡Á…ÉÍ•AÉ½Ù¥‘•É5½‘•±M•±•Ñ½È¡ÍÑÉ¥¹Y…±Õ”¡Á…ÉÍ•)Í½¹=‰©•ÑM…™”¡‰½‘ä¤ü¹µ½‘•°¤¤¤ì)ô(()™Õ¹Ñ¥½¸É•Í½±Ù•A±…¹¹•‘AÉ½Ù¥‘•ÉÉ•‘•¹Ñ¥…±I½ÕÑ¥¹Q…É•Ğ (€…ÑÑ•µÁĞèUÁÍÑÉ•…µÑÑ•µÁĞ°(€Á…Ñ èÍÑÉ¥¹œ(¤èAÉ½Ù¥‘•ÉÉ•‘•¹Ñ¥…±I½ÕÑ¥¹Q…É•ĞğÕ¹‘•™¥¹•ì(€¥˜€¡…ÑÑ•µÁĞ¹Ñ…É•Ğü¹­¥¹€„ôô€‰ÁÉ½Ù¥‘•Èˆ¤ì(€€€É•ÑÕÉ¸Õ¹‘•™¥¹•ì(€ô(€½¹ÍĞ±¥•¹ÑAÉ½Ñ½½°€ôÉ•ÅÕ•ÍÑAÉ½Ñ½½±½ÉA…Ñ ¡Á…Ñ ¤ì(€½¹ÍĞÁÉ½Ñ½½°€ô±¥•¹ÑAÉ½Ñ½½°(€€€€üÁÉ½Ù¥‘•ÉAÉ½Ñ½½±½É±¥•¹ÑAÉ½Ñ½½°¡…ÑÑ•µÁĞ¹Ñ…É•Ğ¹ÁÉ½Ù¥‘•È°±¥•¹ÑAÉ½Ñ½½°¤(€€€€èÕ¹‘•™¥¹•ì(€¥˜€ …ÁÉ½Ñ½½°¤ì(€€€É•ÑÕÉ¸Õ¹‘•™¥¹•ì(€ô(€½¹ÍĞÁ…ÉÍ•‘	½‘ä€ôÁ…ÉÍ•)Í½¹=‰©•ÑM…™”¡…ÑÑ•µÁĞ¹‰½‘ä¤ì(€É•ÑÕÉ¸ì(€€€‰½‘äèÁ…ÉÍ•‘	½‘ä€˜˜±¥•¹ÑAÉ½Ñ½½°€„ôô€‰•µ¥¹¥}•¹•É…Ñ•}½¹Ñ•¹Ğˆ(€€€€€€üÍ•É¥…±¥é•)Í½¹	½‘å]¥Ñ¡5½‘•°¡Á…ÉÍ•‘	½‘ä°…ÑÑ•µÁĞ¹Ñ…É•Ğ¹µ½‘•°¤(€€€€€€è…ÑÑ•µÁĞ¹‰½‘ä°(€€€µ½‘•°è…ÑÑ•µÁĞ¹Ñ…É•Ğ¹µ½‘•°°(€€€ÁÉ½Ù¥‘•Èè…ÑÑ•µÁĞ¹Ñ…É•Ğ¹ÁÉ½Ù¥‘•È°(€€€ÁÉ½Ñ½½°°(€€€Í½ÕÉ”è€‰Á±…¸ˆ(€ôì)ô(()™Õ¹Ñ¥½¸Ñ…É•ÑAÉ½Ù¥‘•É!•…‘•ÉY…±Õ”¡ÁÉ½Ù¥‘•Èè…Ñ•İ…åAÉ½Ù¥‘•É½¹™¥œ°ÁÉ½Ñ½½°è…Ñ•İ…åAÉ½Ù¥‘•ÉAÉ½Ñ½½°¤èÍÑÉ¥¹œì(€½¹ÍĞ…Á…‰¥±¥Ñä€ô¹½Éµ…±¥é•‘AÉ½Ù¥‘•É…Á…‰¥±¥Ñ¥•Ì¡ÁÉ½Ù¥‘•È¤¹™¥¹ ¡¥Ñ•´¤€ôø¥Ñ•´¹ÑåÁ”€ôôôÁÉ½Ñ½½°¤ì(€É•ÑÕÉ¸…Á…‰¥±¥Ñä€üÁÉ½Ù¥‘•É…Á…‰¥±¥Ñå%¹Ñ•É¹…±9…µ”¡ÁÉ½Ù¥‘•È°…Á…‰¥±¥Ñä¹ÑåÁ”¤€èÁÉ½Ù¥‘•ÉIÕ¹Ñ¥µ•%¡ÁÉ½Ù¥‘•È¤ì)ô(()™Õ¹Ñ¥½¸ÕÍ…•İ…É•=Á•¹¥¡…ÑÑÑ•µÁÑ	½‘ä¡¥¹ÁÕĞèì(€‰½‘äè	Õ™™•ÈğÕ¹‘•™¥¹•ì(€½¹™¥œèÁÁ½¹™¥œì(€Á…Ñ èÍÑÉ¥¹œì(€Ñ…É•ĞüèìÁÉ½Ñ½½°è…Ñ•İ…åAÉ½Ù¥‘•ÉAÉ½Ñ½½°ôì)ô¤è	Õ™™•ÈğÕ¹‘•™¥¹•ì(€½¹ÍĞ±¥•¹ÑAÉ½Ñ½½°€ôÉ•ÅÕ•ÍÑAÉ½Ñ½½±½ÉA…Ñ ¡¥¹ÁÕĞ¹Á…Ñ ¤ì(€½¹ÍĞÁ…ÉÍ•‘	½‘ä€ôÁ…ÉÍ•)Í½¹=‰©•ÑM…™”¡¥¹ÁÕĞ¹‰½‘ä¤ì(€½¹ÍĞµ½‘•±M•±•Ñ½È€ôÉ•Í½±Ù•½¹™¥ÕÉ•‘AÉ½Ù¥‘•É5½‘•±M•±•Ñ½È¡ÍÑÉ¥¹Y…±Õ”¡Á…ÉÍ•‘	½‘äü¹µ½‘•°¤°¥¹ÁÕĞ¹½¹™¥œ¤ì(€½¹ÍĞÁÉ½Ù¥‘•ÉAÉ½Ñ½½°€ô¥¹ÁÕĞ¹Ñ…É•Ğü¹ÁÉ½Ñ½½°€üü€ (€€€µ½‘•±M•±•Ñ½È€˜˜±¥•¹ÑAÉ½Ñ½½°(€€€€€€üÁÉ½Ù¥‘•ÉAÉ½Ñ½½±½É±¥•¹ÑAÉ½Ñ½½°¡µ½‘•±M•±•Ñ½È¹ÁÉ½Ù¥‘•È°±¥•¹ÑAÉ½Ñ½½°¤(€€€€€€èÕ¹‘•™¥¹•(€€¤ì(€¥˜€¡ÁÉ½Ù¥‘•ÉAÉ½Ñ½½°€„ôô€‰½Á•¹…¥}¡…Ñ}½µÁ±•Ñ¥½¹Ìˆ€˜˜ÁÉ½Ù¥‘•ÉAÉ½Ñ½½°€„ôô€‰½Á•¹…¥}É•ÍÁ½¹Í•Ìˆ¤ì(€€€É•ÑÕÉ¸¥¹ÁÕĞ¹‰½‘äì(€ô(€½¹ÍĞÍ…¹¥Ñ¥é•‘	½‘ä€ôÍÑÉ¥ÁU¹ÍÕÁÁ½ÉÑ•‘=Á•¹¥I•ÅÕ•ÍÑA…É…µ•Ñ•ÉÌ¡¥¹ÁÕĞ¹‰½‘ä¤ì(€É•ÑÕÉ¸ÁÉ½Ù¥‘•ÉAÉ½Ñ½½°€ôôô€‰½Á•¹…¥}¡…Ñ}½µÁ±•Ñ¥½¹Ìˆ(€€€€üÕÍ…•İ…É•=Á•¹¥¡…Ñ	½‘ä¡Í…¹¥Ñ¥é•‘	½‘ä¤(€€€€èÍ…¹¥Ñ¥é•‘	½‘äì)ô(()™Õ¹Ñ¥½¸ÍÑÉ¥ÁU¹ÍÕÁÁ½ÉÑ•‘=Á•¹¥I•ÅÕ•ÍÑA…É…µ•Ñ•ÉÌ¡‰½‘äè	Õ™™•ÈğÕ¹‘•™¥¹•¤è	Õ™™•ÈğÕ¹‘•™¥¹•ì(€½¹ÍĞÁ…ÉÍ•‘	½‘ä€ôÁ…ÉÍ•)Í½¹=‰©•ÑM…™”¡‰½‘ä¤ì(€¥˜€ …Á…ÉÍ•‘	½‘äñğ€ „ ‰Ñ¡¥¹­¥¹œˆ¥¸Á…ÉÍ•‘	½‘ä¤€˜˜€„ ‰É•…Í½¹¥¹}ÍÁ±¥Ğˆ¥¸Á…ÉÍ•‘	½‘ä¤¤¤ì(€€€É•ÑÕÉ¸‰½‘äì(€ô(€½¹ÍĞ¹•áĞ€ôì€¸¸¹Á…ÉÍ•‘	½‘äôì(€‘•±•Ñ”¹•áĞ¹Ñ¡¥¹­¥¹œì(€‘•±•Ñ”¹•áĞ¹É•…Í½¹¥¹}ÍÁ±¥Ğì(€É•ÑÕÉ¸Í•É¥…±¥é•)Í½¹	½‘ä¡¹•áĞ¤ì)ô(()™Õ¹Ñ¥½¸ÕÍ…•İ…É•=Á•¹¥¡…Ñ	½‘ä¡‰½‘äè	Õ™™•ÈğÕ¹‘•™¥¹•¤è	Õ™™•ÈğÕ¹‘•™¥¹•ì(€½¹ÍĞÁ…ÉÍ•‘	½‘ä€ôÁ…ÉÍ•)Í½¹=‰©•ÑM…™”¡‰½‘ä¤ì(€¥˜€ …Á…ÉÍ•‘	½‘äñğÁ…ÉÍ•‘	½‘ä¹ÍÑÉ•…´€„ôôÑÉÕ”¤ì(€€€É•ÑÕÉ¸‰½‘äì(€ô(€½¹ÍĞÍÑÉ•…µ=ÁÑ¥½¹Ì€ô¥ÍI•½É¡Á…ÉÍ•‘	½‘ä¹ÍÑÉ•…µ}½ÁÑ¥½¹Ì¤(€€€€üÁ…ÉÍ•‘	½‘ä¹ÍÑÉ•…µ}½ÁÑ¥½¹Ì(€€€€è¥ÍI•½É¡Á…ÉÍ•‘	½‘ä¹ÍÑÉ•…µ=ÁÑ¥½¹Ì¤(€€€€€€üÁ…ÉÍ•‘	½‘ä¹ÍÑÉ•…µ=ÁÑ¥½¹Ì(€€€€€€èíôì(€¥˜€¡ÍÑÉ•…µ=ÁÑ¥½¹Ì¹¥¹±Õ‘•}ÕÍ…”€ôôôÑÉÕ”ñğÍÑÉ•…µ=ÁÑ¥½¹Ì¹¥¹±Õ‘•UÍ…”€ôôôÑÉÕ”¤ì(€€€É•ÑÕÉ¸‰½‘äì(€ô(€É•ÑÕÉ¸Í•É¥…±¥é•)Í½¹	½‘ä¡ì(€€€€¸¸¹Á…ÉÍ•‘	½‘ä°(€€€ÍÑÉ•…µ}½ÁÑ¥½¹Ìèì(€€€€€€¸¸¹ÍÑÉ•…µ=ÁÑ¥½¹Ì°(€€€€€¥¹±Õ‘•}ÕÍ…”èÑÉÕ”(€€€ô(€ô¤ì)ô(()™Õ¹Ñ¥½¸¹½Éµ…±¥é•½¹™¥ÕÉ•‘AÉ½Ù¥‘•É5½‘•±	½‘ä (€‰½‘äè	Õ™™•ÈğÕ¹‘•™¥¹•°(€½¹™¥œèÁÁ½¹™¥œ(¤èì‰½‘äè	Õ™™•Èìµ½‘•°èÍÑÉ¥¹œôğÕ¹‘•™¥¹•ì(€½¹ÍĞÁ…ÉÍ•‘	½‘ä€ôÁ…ÉÍ•)Í½¹=‰©•ÑM…™”¡‰½‘ä¤ì(€½¹ÍĞµ½‘•°€ôÍÑÉ¥¹Y…±Õ”¡Á…ÉÍ•‘	½‘äü¹µ½‘•°¤ì(€½¹ÍĞÍ•±•Ñ½È€ôÉ•Í½±Ù•½¹™¥ÕÉ•‘AÉ½Ù¥‘•É5½‘•±M•±•Ñ½È¡µ½‘•°°½¹™¥œ¤ì(€¥˜€ …Á…ÉÍ•‘	½‘äñğ€…Í•±•Ñ½ÈñğÍ•±•Ñ½È¹µ½‘•°€ôôôµ½‘•°¤ì(€€€É•ÑÕÉ¸Õ¹‘•™¥¹•ì(€ô(€É•ÑÕÉ¸ì(€€€‰½‘äèÍ•É¥…±¥é•)Í½¹	½‘å]¥Ñ¡5½‘•°¡Á…ÉÍ•‘	½‘ä°Í•±•Ñ½È¹µ½‘•°¤°(€€€µ½‘•°èÍ•±•Ñ½È¹µ½‘•°(€ôì)ô(((()™Õ¹Ñ¥½¸É•Í½±Ù•AÉ½Ù¥‘•ÉÉ•‘•¹Ñ¥…±I½ÕÑ¥¹Q…É•Ğ (€½¹™¥œèÁÁ½¹™¥œ°(€¡•…‘•ÉÌèI•½ÉñÍÑÉ¥¹œ°ÍÑÉ¥¹œø°(€Á…Ñ èÍÑÉ¥¹œ°(€‰½‘äè	Õ™™•ÈğÕ¹‘•™¥¹•(¤èAÉ½Ù¥‘•ÉÉ•‘•¹Ñ¥…±I½ÕÑ¥¹Q…É•ĞğÕ¹‘•™¥¹•ì(€½¹ÍĞÁÉ½Ñ½½°€ôÉ•ÅÕ•ÍÑAÉ½Ñ½½±½ÉA…Ñ ¡Á…Ñ ¤ì(€¥˜€ …ÁÉ½Ñ½½°¤ì(€€€É•ÑÕÉ¸Õ¹‘•™¥¹•ì(€ô((€½¹ÍĞÁ…ÉÍ•‘	½‘ä€ôÁ…ÉÍ•)Í½¹=‰©•ÑM…™”¡‰½‘ä¤ì(€½¹ÍĞ‰½‘å5½‘•°€ôÍÑÉ¥¹Y…±Õ”¡Á…ÉÍ•‘	½‘äü¹µ½‘•°¤ì(€½¹ÍĞµ½‘•±M•±•Ñ½È€ôÉ•Í½±Ù•½¹™¥ÕÉ•‘AÉ½Ù¥‘•É5½‘•±M•±•Ñ½È¡‰½‘å5½‘•°°½¹™¥œ¤€üü(€€€É•Í½±Ù•U¹¥ÅÕ•½¹™¥ÕÉ•‘AÉ½Ù¥‘•É5½‘•±M•±•Ñ½È¡‰½‘å5½‘•°°½¹™¥œ¤ì(€¥˜€¡µ½‘•±M•±•Ñ½È¤ì(€€€½¹ÍĞÁÉ½Ù¥‘•È€ôµ½‘•±M•±•Ñ½È¹ÁÉ½Ù¥‘•Èì(€€€½¹ÍĞÁÉ½Ù¥‘•ÉAÉ½Ñ½½°€ôÁÉ½Ù¥‘•È€üÁÉ½Ù¥‘•ÉAÉ½Ñ½½±½É±¥•¹ÑAÉ½Ñ½½°¡ÁÉ½Ù¥‘•È°ÁÉ½Ñ½½°¤€èÕ¹‘•™¥¹•ì(€€€¥˜€¡ÁÉ½Ù¥‘•È€˜˜ÁÉ½Ù¥‘•ÉAÉ½Ñ½½°¤ì(€€€€€É•ÑÕÉ¸ì(€€€€€€€‰½‘äèÁ…ÉÍ•‘	½‘ä€üÍ•É¥…±¥é•)Í½¹	½‘å]¥Ñ¡5½‘•°¡Á…ÉÍ•‘	½‘ä°µ½‘•±M•±•Ñ½È¹µ½‘•°¤€è‰½‘ä°(€€€€€€€µ½‘•°èµ½‘•±M•±•Ñ½È¹µ½‘•°°(€€€€€€€ÁÉ½Ù¥‘•È°(€€€€€€€ÁÉ½Ñ½½°èÁÉ½Ù¥‘•ÉAÉ½Ñ½½°°(€€€€€€€Í½ÕÉ”è€‰µ½‘•°ˆ(€€€€€ôì(€€€ô(€ô((€½¹ÍĞÑ…É•ÑAÉ½Ù¥‘•É9…µ”€ô™¥ÉÍÑQ…É•ÑAÉ½Ù¥‘•É!•…‘•È¡¡•…‘•ÉÌ¤ì(€¥˜€ …Ñ…É•ÑAÉ½Ù¥‘•É9…µ”¤ì(€€€É•ÑÕÉ¸Õ¹‘•™¥¹•ì(€ô((€½¹ÍĞÁÉ½Ù¥‘•È€ô™¥¹‘AÉ½Ù¥‘•É	åAÕ‰±¥=É%¹Ñ•É¹…±9…µ”¡½¹™¥œ°Ñ…É•ÑAÉ½Ù¥‘•É9…µ”¤ì(€¥˜€ …ÁÉ½Ù¥‘•È¤ì(€€€É•ÑÕÉ¸Õ¹‘•™¥¹•ì(€ô(€½¹ÍĞÁÉ½Ù¥‘•ÉAÉ½Ñ½½°€ôÁÉ½Ù¥‘•ÉAÉ½Ñ½½±½É±¥•¹ÑAÉ½Ñ½½°¡ÁÉ½Ù¥‘•È°ÁÉ½Ñ½½°¤ì(€¥˜€ …ÁÉ½Ù¥‘•ÉAÉ½Ñ½½°¤ì(€€€É•ÑÕÉ¸Õ¹‘•™¥¹•ì(€ô(€½¹ÍĞÁÉ½Ù¥‘•É5½‘•°€ôÉ•Í½±Ù•5½‘•±½ÉAÉ½Ù¥‘•È¡‰½‘å5½‘•°°ÁÉ½Ù¥‘•È¤ì((€É•ÑÕÉ¸ì(€€€‰½‘äèÁ…ÉÍ•‘	½‘ä€˜˜ÁÉ½Ù¥‘•É5½‘•°€˜˜ÁÉ½Ù¥‘•É5½‘•°€„ôô‰½‘å5½‘•°(€€€€€€üÍ•É¥…±¥é•)Í½¹	½‘å]¥Ñ¡5½‘•°¡Á…ÉÍ•‘	½‘ä°ÁÉ½Ù¥‘•É5½‘•°¤(€€€€€€è‰½‘ä°(€€€µ½‘•°èÁÉ½Ù¥‘•É5½‘•°€üü‰½‘å5½‘•°°(€€€ÁÉ½Ù¥‘•È°(€€€ÁÉ½Ñ½½°èÁÉ½Ù¥‘•ÉAÉ½Ñ½½°°(€€€Í½ÕÉ”è€‰¡•…‘•Èˆ(€ôì)ô(()™Õ¹Ñ¥½¸É•Í½±Ù•5½‘•±½ÉAÉ½Ù¥‘•È (€Ù…±Õ”èÍÑÉ¥¹œğÕ¹‘•™¥¹•°(€ÁÉ½Ù¥‘•Èè…Ñ•İ…åAÉ½Ù¥‘•É½¹™¥œ(¤èÍÑÉ¥¹œğÕ¹‘•™¥¹•ì(€½¹ÍĞ¹½Éµ…±¥é•€ô¹½Éµ…±¥é•I½ÕÑ•M•±•Ñ½È¡Ù…±Õ”¤ì(€¥˜€ …¹½Éµ…±¥é•¤ì(€€€É•ÑÕÉ¸Õ¹‘•™¥¹•ì(€ô(€¥˜€¡ÁÉ½Ù¥‘•É!…Í5½‘•°¡ÁÉ½Ù¥‘•È°¹½Éµ…±¥é•¤¤ì(€€€É•ÑÕÉ¸¹½Éµ…±¥é•ì(€ô(€½¹ÍĞÁ…ÉÍ•€ôÁ…ÉÍ•AÉ½Ù¥‘•É5½‘•±M•±•Ñ½È¡¹½Éµ…±¥é•¤ì(€É•ÑÕÉ¸Á…ÉÍ•€˜˜ÁÉ½Ù¥‘•É!…Í5½‘•°¡ÁÉ½Ù¥‘•È°Á…ÉÍ•¹µ½‘•°¤€üÁ…ÉÍ•¹µ½‘•°€èÕ¹‘•™¥¹•ì)ô(()™Õ¹Ñ¥½¸ÁÉ½Ù¥‘•É!…Í5½‘•°¡ÁÉ½Ù¥‘•Èè…Ñ•İ…åAÉ½Ù¥‘•É½¹™¥œ°µ½‘•°èÍÑÉ¥¹œ¤è‰½½±•…¸ì(€½¹ÍĞ¹½Éµ…±¥é•€ôµ½‘•°¹ÑÉ¥´ ¤¹Ñ½1½İ•É…Í” ¤ì(€É•ÑÕÉ¸	½½±•…¸¡¹½Éµ…±¥é•¤€˜˜ÁÉ½Ù¥‘•È¹µ½‘•±Ì¹Í½µ” ¡…¹‘¥‘…Ñ”¤€ôø…¹‘¥‘…Ñ”¹ÑÉ¥´ ¤¹Ñ½1½İ•É…Í” ¤€ôôô¹½Éµ…±¥é•¤ì)ô(()™Õ¹Ñ¥½¸™¥ÉÍÑQ…É•ÑAÉ½Ù¥‘•É!•…‘•È¡¡•…‘•ÉÌèI•½ÉñÍÑÉ¥¹œ°ÍÑÉ¥¹œø¤èÍÑÉ¥¹œğÕ¹‘•™¥¹•ì(€½¹ÍĞÁÉ½Ù¥‘•È€ô¡•…‘•ÉÍl‰àµÑ…É•ĞµÁÉ½Ù¥‘•È‰tñğ¡•…‘•ÉÍl‰àµ…Ñ•İ…äµÑ…É•ĞµÁÉ½Ù¥‘•È‰tì(€¥˜€¡ÁÉ½Ù¥‘•Èü¹ÑÉ¥´ ¤¤ì(€€€É•ÑÕÉ¸ÁÉ½Ù¥‘•È¹ÑÉ¥´ ¤ì(€ô(€½¹ÍĞÁÉ½Ù¥‘•ÉÌ€ô¡•…‘•ÉÍl‰àµÑ…É•ĞµÁÉ½Ù¥‘•ÉÌ‰tì(€É•ÑÕÉ¸ÁÉ½Ù¥‘•ÉÌ(€€€€ü¹ÍÁ±¥Ğ ˆ°ˆ¤(€€€€¹µ…À ¡¥Ñ•´¤€ôø¥Ñ•´¹ÑÉ¥´ ¤¤(€€€€¹™¥¹¡	½½±•…¸¤ì)ô(()™Õ¹Ñ¥½¸Í•±•ÑAÉ½Ù¥‘•ÉÉ•‘•¹Ñ¥…±Ì (€ÁÉ½Ù¥‘•Èè…Ñ•İ…åAÉ½Ù¥‘•É½¹™¥œ°(€ÁÉ½Ñ½½°è…Ñ•İ…åAÉ½Ù¥‘•ÉAÉ½Ñ½½°°(€É•‘•¹Ñ¥…±ÌèAÉ½Ù¥‘•ÉÉ•‘•¹Ñ¥…±½¹™¥mt°(€ÕÍ…”èÁ¥-•å1¥µ¥ÑUÍ…”(¤èìÉ•‘•¹Ñ¥…±ÌèÉÉ…äñìÉ•‘•¹Ñ¥…°èAÉ½Ù¥‘•ÉÉ•‘•¹Ñ¥…±½¹™¥œìÉ•‘•¹Ñ¥…±%èÍÑÉ¥¹œì¥¹Ñ•É¹…±9…µ”èÍÑÉ¥¹œôøìÍ…ÑÕÉ…Ñ•è‰½½±•…¸ôì(€½¹ÍĞ…¹‘¥‘…Ñ•Ì€ôÉ•‘•¹Ñ¥…±Ì¹µ…À ¡É•‘•¹Ñ¥…°°¥¹‘•à¤€ôøì(€€€½¹ÍĞÁÉ½Ù¥‘•É%¹‘•à€ôÁÉ½Ù¥‘•È¹É•‘•¹Ñ¥…±Ìü¹¥¹‘•á=˜¡É•‘•¹Ñ¥…°¤€üü¥¹‘•àì(€€€½¹ÍĞ±¥µ¥ÑMÑ…Ñ”€ôÁÉ½Ù¥‘•ÉÉ•‘•¹Ñ¥…±1¥µ¥ÑMÑ…Ñ”¡ÁÉ½Ù¥‘•È°É•‘•¹Ñ¥…°°ÕÍ…”¤ì(€€€½¹ÍĞ½½±‘½İ¸€ôÉ•…‘AÉ½Ù¥‘•ÉÉ•‘•¹Ñ¥…±½½±‘½İ¸¡ÁÉ½Ù¥‘•È°É•‘•¹Ñ¥…°¤ì(€€€É•ÑÕÉ¸ì(€€€€€½½±‘½İ¸°(€€€€€É•‘•¹Ñ¥…°°(€€€€€É•‘•¹Ñ¥…±%èÁÉ½Ù¥‘•ÉÉ•‘•¹Ñ¥…±M±Õœ¡ÁÉ½Ù¥‘•ÉÉ•‘•¹Ñ¥…±IÕ¹Ñ¥µ•%¡ÁÉ½Ù¥‘•È°É•‘•¹Ñ¥…°°ÁÉ½Ù¥‘•É%¹‘•à¤¤°(€€€€€¥¹‘•àèÁÉ½Ù¥‘•É%¹‘•à°(€€€€€¥¹Ñ•É¹…±9…µ”èÁÉ½Ù¥‘•ÉÉ•‘•¹Ñ¥…±%¹Ñ•É¹…±9…µ”¡ÁÉ½Ù¥‘•È°ÁÉ½Ñ½½°°É•‘•¹Ñ¥…°¤°(€€€€€±¥µ¥ÑMÑ…Ñ”°(€€€€€ÁÉ¥½É¥ÑäèÁÉ½Ù¥‘•ÉÉ•‘•¹Ñ¥…±AÉ¥½É¥Ñä¡É•‘•¹Ñ¥…°°ÁÉ½Ù¥‘•É%¹‘•à¤°(€€€€€İ•¥¡Ğè5…Ñ ¹µ…à Ä°É•‘•¹Ñ¥…°¹İ•¥¡Ğ€üü€Ä¤(€€€ôì(€ô¤ì(€½¹ÍĞ…Ù…¥±…‰±”€ô…¹‘¥‘…Ñ•Ì¹™¥±Ñ•È ¡…¹‘¥‘…Ñ”¤€ôø€……¹‘¥‘…Ñ”¹½½±‘½İ¸€˜˜€……¹‘¥‘…Ñ”¹±¥µ¥ÑMÑ…Ñ”¹‰±½­•¤ì(€½¹ÍĞÍ½ÉÑ•€ôÍ½ÉÑAÉ½Ù¥‘•ÉÉ•‘•¹Ñ¥…±…¹‘¥‘…Ñ•Ì¡…Ù…¥±…‰±”¹±•¹Ñ €ø€À€ü…Ù…¥±…‰±”€è…¹‘¥‘…Ñ•Ì¤ì(€É•ÑÕÉ¸ì(€€€É•‘•¹Ñ¥…±ÌèÍ½ÉÑ•¹µ…À ¡…¹‘¥‘…Ñ”¤€ôø€¡ì(€€€€€É•‘•¹Ñ¥…°è…¹‘¥‘…Ñ”¹É•‘•¹Ñ¥…°°(€€€€€É•‘•¹Ñ¥…±%è…¹‘¥‘…Ñ”¹É•‘•¹Ñ¥…±%°(€€€€€¥¹Ñ•É¹…±9…µ”è…¹‘¥‘…Ñ”¹¥¹Ñ•É¹…±9…µ”(€€€ô¤¤°(€€€Í…ÑÕÉ…Ñ•è…Ù…¥±…‰±”¹±•¹Ñ €ôôô€À€˜˜…¹‘¥‘…Ñ•Ì¹±•¹Ñ €ø€À(€ôì)ô(()™Õ¹Ñ¥½¸Í½ÉÑAÉ½Ù¥‘•ÉÉ•‘•¹Ñ¥…±…¹‘¥‘…Ñ•ÌñP•áÑ•¹‘Ìì(€¥¹‘•àè¹Õµ‰•Èì(€±¥µ¥ÑMÑ…Ñ”èìÕÑ¥±¥é…Ñ¥½¸è¹Õµ‰•Èôì(€ÁÉ¥½É¥Ñäè¹Õµ‰•Èì(€İ•¥¡Ğè¹Õµ‰•Èì)ôø¡…¹‘¥‘…Ñ•ÌèQmt¤èQmtì(€½¹ÍĞÁÉ¥½É¥ÑåM½ÉÑ•€ôl¸¸¹…¹‘¥‘…Ñ•Ít¹Í½ÉĞ ¡±•™Ğ°É¥¡Ğ¤€ôø(€€€±•™Ğ¹ÁÉ¥½É¥Ñä€´É¥¡Ğ¹ÁÉ¥½É¥Ñäñğ(€€€±•™Ğ¹±¥µ¥ÑMÑ…Ñ”¹ÕÑ¥±¥é…Ñ¥½¸€´É¥¡Ğ¹±¥µ¥ÑMÑ…Ñ”¹ÕÑ¥±¥é…Ñ¥½¸ñğ(€€€É¥¡Ğ¹İ•¥¡Ğ€´±•™Ğ¹İ•¥¡Ğñğ(€€€±•™Ğ¹¥¹‘•à€´É¥¡Ğ¹¥¹‘•à(€€¤ì(€½¹ÍĞÁÉ¥µ…ÉåAÉ¥½É¥Ñä€ôÁÉ¥½É¥ÑåM½ÉÑ•‘lÁtü¹ÁÉ¥½É¥Ñäì(€½¹ÍĞÁÉ¥µ…Éå…¹‘¥‘…Ñ•Ì€ôÁÉ¥½É¥ÑåM½ÉÑ•¹™¥±Ñ•È ¡…¹‘¥‘…Ñ”¤€ôø…¹‘¥‘…Ñ”¹ÁÉ¥½É¥Ñä€ôôôÁÉ¥µ…ÉåAÉ¥½É¥Ñä¤ì(€½¹ÍĞÍ¡½Õ±‘MÁ¥±±=Ù•È€ôÁÉ¥µ…Éå…¹‘¥‘…Ñ•Ì¹±•¹Ñ €ø€À€˜˜(€€€ÁÉ¥µ…Éå…¹‘¥‘…Ñ•Ì¹•Ù•Éä ¡…¹‘¥‘…Ñ”¤€ôø…¹‘¥‘…Ñ”¹±¥µ¥ÑMÑ…Ñ”¹ÕÑ¥±¥é…Ñ¥½¸€øôÁÉ½Ù¥‘•ÉÉ•‘•¹Ñ¥…±MÁ¥±±½Ù•ÉQ¡É•Í¡½±¤ì((€¥˜€¡Í¡½Õ±‘MÁ¥±±=Ù•È¤ì(€€€É•ÑÕÉ¸ÁÉ¥½É¥ÑåM½ÉÑ•¹Í½ÉĞ ¡±•™Ğ°É¥¡Ğ¤€ôø(€€€€€±•™Ğ¹±¥µ¥ÑMÑ…Ñ”¹ÕÑ¥±¥é…Ñ¥½¸€´É¥¡Ğ¹±¥µ¥ÑMÑ…Ñ”¹ÕÑ¥±¥é…Ñ¥½¸ñğ(€€€€€±•™Ğ¹ÁÉ¥½É¥Ñä€´É¥¡Ğ¹ÁÉ¥½É¥Ñäñğ(€€€€€É¥¡Ğ¹İ•¥¡Ğ€´±•™Ğ¹İ•¥¡Ğñğ(€€€€€±•™Ğ¹¥¹‘•à€´É¥¡Ğ¹¥¹‘•à(€€€€¤ì(€ô((€É•ÑÕÉ¸ÁÉ¥½É¥ÑåM½ÉÑ•ì)ô(()™Õ¹Ñ¥½¸‰Õ¥±‘UÁÍÑÉ•…µÑÑ•µÁÑÌ (€½¹™¥œèÁÁ½¹™¥œ°(€™…±±‰…¬èI½ÕÑ•É…±±‰…­½¹™¥œ°(€µ•Ñ¡½èÍÑÉ¥¹œ°(€Á…Ñ èÍÑÉ¥¹œ°(€‰½‘äè	Õ™™•ÈğÕ¹‘•™¥¹•°(€É½ÕÑ•‘5½‘•°èÍÑÉ¥¹œğÕ¹‘•™¥¹•(¤èUÁÍÑÉ•…µÑÑ•µÁÑmtì(€½¹ÍĞÁ…ÉÍ•‘	½‘ä€ôÁ…ÉÍ•)Í½¹=‰©•ÑM…™”¡‰½‘ä¤ì(€½¹ÍĞµ½‘•±%¹A…Ñ €ôÉ•ÅÕ•ÍÑAÉ½Ñ½½±½ÉA…Ñ ¡Á…Ñ ¤€ôôô€‰•µ¥¹¥}•¹•É…Ñ•}½¹Ñ•¹Ğˆì(€½¹ÍĞÁ±…¸€ôÉ•…Ñ•I½ÕÑ•á•ÕÑ¥½¹A±…¸¡ì(€€€‰½‘å5½‘•°èµ½‘•±%¹A…Ñ €üÕ¹‘•™¥¹•€èÍÑÉ¥¹Y…±Õ”¡Á…ÉÍ•‘	½‘äü¹µ½‘•°¤°(€€€™…±±‰…¬°(€€€¡…ÍI•ÅÕ•ÍÑ	½‘äèÍ¡½Õ±‘M•¹‘	½‘ä¡µ•Ñ¡½¤€˜˜€¡™…±±‰…¬¹µ½‘”€„ôô€‰µ½‘•°µ¡…¥¸ˆñğ	½½±•…¸¡Á…ÉÍ•‘	½‘ä¤¤°(€€€µ½‘•±I•¥ÍÑÉäèµ½‘•±I•¥ÍÑÉå½É½¹™¥œ¡½¹™¥œ¤°(€€€ÁÉ¥µ…Éå5½‘•°èÉ½ÕÑ•‘5½‘•°(€ô¤ì(€É•ÑÕÉ¸Á±…¸¹…ÑÑ•µÁÑÌ¹µ…À ¡…ÑÑ•µÁĞ¤€ôø€¡ì(€€€‰½‘äèÁ…ÉÍ•‘	½‘ä€˜˜€…µ½‘•±%¹A…Ñ €˜˜™…±±‰…¬¹µ½‘”€ôôô€‰µ½‘•°µ¡…¥¸ˆ€˜˜…ÑÑ•µÁĞ¹µ½‘•°(€€€€€€üÍ•É¥…±¥é•)Í½¹	½‘å]¥Ñ¡5½‘•°¡Á…ÉÍ•‘	½‘ä°…ÑÑ•µÁĞ¹µ½‘•°¤(€€€€€€è‰½‘ä°(€€€¥¹‘•àè…ÑÑ•µÁĞ¹¥¹‘•à°(€€€µ½‘•°è…ÑÑ•µÁĞ¹µ½‘•°°(€€€Ñ…É•Ğè…ÑÑ•µÁĞ¹Ñ…É•Ğ(€ô¤¤ì)ô(()…Íå¹Œ™Õ¹Ñ¥½¸‘É…¥¹I•ÍÁ½¹Í•	½‘ä¡É•ÍÁ½¹Í”èI•ÍÁ½¹Í”¤èAÉ½µ¥Í”ñÙ½¥øì(€ÑÉäì(€€€…İ…¥ĞÉ•ÍÁ½¹Í”¹…ÉÉ…å	Õ™™•È ¤ì(€ô…Ñ ì(€€€€¼¼Q¡”™…¥±•…ÑÑ•µÁĞ¥Ì…±É•…‘ä‰•¥¹œÍ­¥ÁÁ•ì‰½‘ä‘É…¥¸•ÉÉ½ÉÌÍ¡½Õ±¹½Ğ‰±½¬Ñ¡”¹•áĞ…ÑÑ•µÁĞ¸(€ô)ô(()•áÁ½ÉĞ…Íå¹Œ™Õ¹Ñ¥½¸…¹•±I•ÍÁ½¹Í•	½‘ä¡É•ÍÁ½¹Í”èI•ÍÁ½¹Í”¤èAÉ½µ¥Í”ñÙ½¥øì(€ÑÉäì(€€€…İ…¥ĞÉ•ÍÁ½¹Í”¹‰½‘äü¹…¹•° ¤ì(€ô…Ñ ì(€€€€¼¼Q¡”±¥•¹Ğ…±É•…‘ä‘¥Í½¹¹•Ñ•ì‰•ÍĞµ•™™½ÉĞÕÁÍÑÉ•…´±•…¹ÕÀµÕÍĞ¹½Ğµ…Í¬Ñ¡…Ğ•áÁ•Ñ•Á…Ñ ¸(€ô)ô(()•áÁ½ÉĞ™Õ¹Ñ¥½¸Õ¹¥ÅÕ•MÑÉ•…µÌ¡ÍÑÉ•…µÌèI•…‘…‰±•mt¤èI•…‘…‰±•mtì(€É•ÑÕÉ¸l¸¸¹¹•ÜM•Ğ¡ÍÑÉ•…µÌ¥tì)ô(()•áÁ½ÉĞ™Õ¹Ñ¥½¸‘•ÍÑÉ½åI•ÍÁ½¹Í•MÑÉ•…µÌ¡ÍÑÉ•…µÌèI•…‘…‰±•mt¤èÙ½¥ì(€™½È€¡½¹ÍĞÍÑÉ•…´½˜ÍÑÉ•…µÌ¤ì(€€€¥˜€ …ÍÑÉ•…´¹‘•ÍÑÉ½å•¤ì(€€€€€€¼¼‘½İ¹ÍÑÉ•…´±¥•¹Ğ±½Í”¥Ì…¸•áÁ•Ñ•…‰½ÉĞÁ…Ñ ¸•ÍÑÉ½å¥¹œİ¥Ñ (€€€€€€¼¼…¸ÉÉ½Èİ½Õ±•µ¥Ğ…¹½Ñ¡•È•ÉÉ½È•Ù•¹Ğ½¸I•…‘…‰±”½QÉ…¹Í™½É´ÍÑ…•Ì°(€€€€€€¼¼…¹¥¹Ñ•Éµ•‘¥…Ñ”ÍÑ…•Ìµ…ä¹½Ğ‰”Ñ¡”™¥¹…°É•ÍÁ½¹Í•	½‘ä±¥ÍÑ•¹•È¸(€€€€€ÍÑÉ•…´¹‘•ÍÑÉ½ä ¤ì(€€€ô(€ô)ô(()•áÁ½ÉĞ™Õ¹Ñ¥½¸µ•É•…±±‰…­I•ÍÁ½¹Í•!•…‘•ÉÌ¡¡•…‘•ÉÌè!•…‘•ÉÌ°É•ÍÕ±ĞèUÁÍÑÉ•…µ•Ñ¡I•ÍÕ±Ğ¤è!•…‘•ÉÌì(€½¹ÍĞÉ•‘•¹Ñ¥…±%‘Ì€ôÉ•ÍÕ±Ğ¹…ÑÑ•µÁĞ¹É•‘•¹Ñ¥…±%‘Ì€üümtì(€½¹ÍĞÉ•‘•¹Ñ¥…±M…ÑÕÉ…Ñ•€ôÉ•ÍÕ±Ğ¹…ÑÑ•µÁĞ¹¡•…‘•ÉÌü¹l‰àµÈµÁÉ½Ù¥‘•ÈµÉ•‘•¹Ñ¥…°µÍ…ÑÕÉ…Ñ•‰t€ôôô€‰ÑÉÕ”ˆì(€¥˜€¡É•ÍÕ±Ğ¹™…¥±•‘ÑÑ•µÁÑÌ¹±•¹Ñ €ôôô€À€˜˜É•‘•¹Ñ¥…±%‘Ì¹±•¹Ñ €ôôô€À€˜˜€…É•‘•¹Ñ¥…±M…ÑÕÉ…Ñ•¤ì(€€€É•ÑÕÉ¸¡•…‘•ÉÌì(€ô((€½¹ÍĞµ•É•€ô¹•Ü!•…‘•ÉÌ¡¡•…‘•ÉÌ¤ì(€¥˜€¡É•ÍÕ±Ğ¹™…¥±•‘ÑÑ•µÁÑÌ¹±•¹Ñ €ø€À¤ì(€€€µ•É•¹Í•Ğ ‰àµÈµ™…±±‰…¬µ…ÑÑ•µÁÑÌˆ°MÑÉ¥¹œ¡É•ÍÕ±Ğ¹™…¥±•‘ÑÑ•µÁÑÌ¹±•¹Ñ €¬€Ä¤¤ì(€€€µ•É•¹Í•Ğ ‰àµÈµ™…±±‰…¬µ™…¥±ÕÉ•Ìˆ°™½Éµ…Ñ…±±‰…­…¥±ÕÉ•Ì¡É•ÍÕ±Ğ¹™…¥±•‘ÑÑ•µÁÑÌ¤¤ì(€€€¥˜€¡É•ÍÕ±Ğ¹™…¥±•‘ÑÑ•µÁÑÌ¹Í½µ” ¡…ÑÑ•µÁĞ¤€ôø€¡…ÑÑ•µÁĞ¹‘•±…å5Ì€üü€À¤€ø€À¤¤ì(€€€€€µ•É•¹Í•Ğ ‰àµÈµ™…±±‰…¬µ‘•±…åÌµµÌˆ°™½Éµ…Ñ…±±‰…­•±…åÌ¡É•ÍÕ±Ğ¹™…¥±•‘ÑÑ•µÁÑÌ¤¤ì(€€€ô(€€€¥˜€¡É•ÍÕ±Ğ¹…ÑÑ•µÁĞ¹µ½‘•°¤ì(€€€€€µ•É•¹Í•Ğ ‰àµÈµ™…±±‰…¬µµ½‘•°ˆ°Í…¹¥Ñ¥é•!•…‘•ÉY…±Õ”¡É•ÍÕ±Ğ¹…ÑÑ•µÁĞ¹µ½‘•°¤¤ì(€€€ô(€ô(€¥˜€¡É•‘•¹Ñ¥…±%‘Ì¹±•¹Ñ ¤ì(€€€µ•É•¹Í•Ğ ‰àµÈµÁÉ½Ù¥‘•ÈµÉ•‘•¹Ñ¥…°µ¡…¥¸ˆ°É•‘•¹Ñ¥…±%‘Ì¹©½¥¸ ˆ°ˆ¤¤ì(€ô(€¥˜€¡É•‘•¹Ñ¥…±M…ÑÕÉ…Ñ•¤ì(€€€µ•É•¹Í•Ğ ‰àµÈµÁÉ½Ù¥‘•ÈµÉ•‘•¹Ñ¥…°µÍ…ÑÕÉ…Ñ•ˆ°€‰ÑÉÕ”ˆ¤ì(€ô(€É•ÑÕÉ¸µ•É•ì)ô(()•áÁ½ÉĞ™Õ¹Ñ¥½¸ÕÁÍÑÉ•…µI•ÍÁ½¹Í•!•…‘•ÉÌ¡É•ÍÕ±ĞèUÁÍÑÉ•…µ•Ñ¡I•ÍÕ±Ğ¤è!•…‘•ÉÌì(€É•ÑÕÉ¸É•ÍÕ±Ğ¹É•ÍÁ½¹Í”¹¡•…‘•ÉÌì)ô(()™Õ¹Ñ¥½¸™½Éµ…Ñ…±±‰…­…¥±ÕÉ•Ì¡™…¥±•‘ÑÑ•µÁÑÌèUÁÍÑÉ•…µ…¥±•‘ÑÑ•µÁÑmt¤èÍÑÉ¥¹œì(€É•ÑÕÉ¸™…¥±•‘ÑÑ•µÁÑÌ(€€€€¹µ…À ¡…ÑÑ•µÁĞ¤€ôø…ÑÑ•µÁĞ¹ÍÑ…ÑÕÍ½‘”€üMÑÉ¥¹œ¡…ÑÑ•µÁĞ¹ÍÑ…ÑÕÍ½‘”¤€è…ÑÑ•µÁĞ¹•ÉÉ½È€ü€‰¹•Ñİ½É¬ˆ€è€‰™…¥±•ˆ¤(€€€€¹©½¥¸ ˆ°ˆ¤ì)ô(()™Õ¹Ñ¥½¸™½Éµ…Ñ…±±‰…­•±…åÌ¡™…¥±•‘ÑÑ•µÁÑÌèUÁÍÑÉ•…µ…¥±•‘ÑÑ•µÁÑmt¤èÍÑÉ¥¹œì(€É•ÑÕÉ¸™…¥±•‘ÑÑ•µÁÑÌ(€€€€¹µ…À ¡…ÑÑ•µÁĞ¤€ôøMÑÉ¥¹œ¡5…Ñ ¹µ…à À°…ÑÑ•µÁĞ¹‘•±…å5Ì€üü€À¤¤¤(€€€€¹©½¥¸ ˆ°ˆ¤ì)ô(
+/**
+ * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
+ */
+import { Readable } from "node:stream";
+import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, ProviderCredentialConfig, RequestRouteTraceChange, RouterFallbackConfig } from "@ccr/core/contracts/app";
+import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
+import { createRouteExecutionPlan } from "@ccr/core/routing/execution-plan";
+import { rewriteRouteModelInUrl } from "@ccr/core/routing/protocol-adapter";
+import { modelRegistryForConfig, normalizeRouteSelector, parseProviderModelSelector, providerRuntimeId } from "@ccr/core/routing/model-registry";
+import { requestProtocolForPath } from "@ccr/core/routing/protocol-endpoints";
+import { resolveConfiguredProviderModelSelector, resolveUniqueConfiguredProviderModelSelector } from "@ccr/core/routing/model-resolution";
+import { estimateLimitUsage } from "@ccr/core/gateway/limits/window-limiter";
+import { providerCredentialLimitState, readProviderCredentialCooldown, recordProviderCredentialOutcome } from "@ccr/core/providers/credential-pool";
+import { isRecord, stringValue } from "@ccr/core/gateway/internal/value";
+import { isLocalClaudeCodeOauthProviderPlugin, mergeAnthropicBetaValues } from "@ccr/core/providers/oauth-plugin";
+import { abortSignalMessage, formatError, omitLocalObservabilityHeaders, shouldSendBody, withCoreGatewayAuthHeader } from "@ccr/core/gateway/http/io";
+import { parseJsonObjectSafe, releaseJsonObject, serializeJsonBody, serializeJsonBodyWithModel } from "@ccr/core/gateway/http/body";
+import { resolveGatewayPublicModelId } from "@ccr/core/gateway/features/model-discovery";
+import { activeProviderCredentials, findProviderByPublicOrInternalName, findProviderCredentialBySlug, normalizedProviderCapabilities, parseProviderCredentialInternalName, providerCapabilityForClientProtocol, providerCapabilityInternalName, providerCapabilityNameMatches, providerCredentialInternalName, providerCredentialPriority, providerCredentialRuntimeId, providerCredentialSlug, providerProtocolForClientProtocol, sanitizeHeaderValue } from "@ccr/core/providers/runtime-topology";
+import { delay } from "@ccr/core/gateway/internal/clock";
+import { retryDelayAfterNetworkError, retryDelayAfterStatus, shouldFallbackAfterStatus } from "@ccr/core/gateway/upstream/retry-policy";
+import { claudeCodeOauthBetaHeader, claudeCodeOauthRequiredBeta, UpstreamRequestError } from "@ccr/core/gateway/internal/shared";
+import type { ApiKeyLimitUsage, ProviderCredentialRoutingTarget, UpstreamAttempt, UpstreamFailedAttempt, UpstreamFetchResult } from "@ccr/core/gateway/internal/shared";
+import type { RouteTraceObserver } from "@ccr/core/observability/route-trace";
+
+const providerCredentialSpilloverThreshold = 0.8;
+
+
+export function applyProviderCapabilityRouting(input: {
+  body?: Buffer;
+  config: AppConfig;
+  fallback: RouterFallbackConfig;
+  headers: Record<string, string>;
+  path: string;
+  routedModel?: string;
+}): { body?: Buffer; fallback: RouterFallbackConfig; routedModel?: string } {
+  const protocol = requestProtocolForPath(input.path);
+  if (!protocol) {
+    return {
+      body: input.body,
+      fallback: input.fallback,
+      routedModel: input.routedModel
+    };
+  }
+
+  rewriteProviderHeader(input.headers, "x-target-provider", input.config, protocol);
+  rewriteProviderListHeader(input.headers, "x-target-providers", input.config, protocol);
+  rewriteProviderHeader(input.headers, "x-gateway-target-provider", input.config, protocol);
+
+  const routedModel = rewriteModelSelectorForProtocol(input.routedModel, input.config, protocol);
+  const fallback = rewriteFallbackForProtocol(input.fallback, input.config, protocol);
+  const body = rewriteBodyModelForProtocol(input.body, input.config, protocol);
+  clearTargetProviderHeadersForModelSelector(input.headers, input.config, body, routedModel);
+
+  return {
+    body,
+    fallback,
+    routedModel
+  };
+}
+
+
+export function prepareGatewayUpstreamAttemptForTest(input: {
+  body: Record<string, unknown>;
+  config: AppConfig;
+  fallback?: RouterFallbackConfig;
+  headers: Record<string, string>;
+  method: string;
+  path: string;
+  routedModel?: string;
+}): {
+  body?: Record<string, unknown>;
+  credentialChain?: string[];
+  credentialIds?: string[];
+  credentialProtocol?: GatewayProviderProtocol;
+  fallback: RouterFallbackConfig;
+  headers?: Record<string, string>;
+  logicalProvider?: string;
+  model?: string;
+  routedModel?: string;
+} {
+  const headers = { ...input.headers };
+  const providerCapabilityRouting = applyProviderCapabilityRouting({
+    body: serializeJsonBody(input.body),
+    config: input.config,
+    fallback: input.fallback ?? input.config.Router.fallback,
+    headers,
+    path: input.path,
+    routedModel: input.routedModel
+  });
+  const attempt = prepareUpstreamCredentialAttempt({
+    attempt: {
+      body: providerCapabilityRouting.body,
+      index: 0,
+      model: normalizeRouteSelector(providerCapabilityRouting.routedModel)
+    },
+    config: input.config,
+    headers,
+    method: input.method,
+    path: input.path
+  });
+  return {
+    body: parseJsonObjectSafe(attempt.body),
+    credentialChain: attempt.credentialChain,
+    credentialIds: attempt.credentialIds,
+    credentialProtocol: attempt.credentialProtocol,
+    fallback: providerCapabilityRouting.fallback,
+    headers: attempt.headers,
+    logicalProvider: attempt.logicalProvider,
+    model: attempt.model,
+    routedModel: providerCapabilityRouting.routedModel
+  };
+}
+
+
+function rewriteProviderHeader(
+  headers: Record<string, string>,
+  headerName: string,
+  config: AppConfig,
+  protocol: GatewayProviderProtocol
+): void {
+  const value = headers[headerName];
+  if (!value) {
+    return;
+  }
+  headers[headerName] = rewriteProviderSelectorForProtocol(value, config, protocol);
+}
+
+
+function rewriteProviderListHeader(
+  headers: Record<string, string>,
+  headerName: string,
+  config: AppConfig,
+  protocol: GatewayProviderProtocol
+): void {
+  const value = headers[headerName];
+  if (!value) {
+    return;
+  }
+  headers[headerName] = value
+    .split(",")
+    .map((item) => rewriteProviderSelectorForProtocol(item.trim(), config, protocol))
+    .filter(Boolean)
+    .join(",");
+}
+
+
+function rewriteProviderSelectorForProtocol(value: string, config: AppConfig, protocol: GatewayProviderProtocol): string {
+  const provider = findProviderByPublicOrInternalName(config, value);
+  const capability = provider ? providerCapabilityForClientProtocol(provider, protocol) : undefined;
+  return provider && capability ? providerCapabilityInternalName(provider, capability.type) : value;
+}
+
+
+function rewriteFallbackForProtocol(fallback: RouterFallbackConfig, config: AppConfig, protocol: GatewayProviderProtocol): RouterFallbackConfig {
+  const models = fallback.models.map((model) => rewriteModelSelectorForProtocol(model, config, protocol) ?? model);
+  return models.every((model, index) => model === fallback.models[index])
+    ? fallback
+    : {
+        ...fallback,
+        models
+      };
+}
+
+
+function rewriteBodyModelForProtocol(body: Buffer | undefined, config: AppConfig, protocol: GatewayProviderProtocol): Buffer | undefined {
+  const parsedBody = parseJsonObjectSafe(body);
+  if (!parsedBody) {
+    return body;
+  }
+  const model = stringValue(parsedBody.model);
+  const rewrittenModel = rewriteModelSelectorForProtocol(model, config, protocol);
+  if (!rewrittenModel || rewrittenModel === model) {
+    return body;
+  }
+  return serializeJsonBody({ ...parsedBody, model: rewrittenModel });
+}
+
+
+function clearTargetProviderHeadersForModelSelector(
+  headers: Record<string, string>,
+  config: AppConfig,
+  body: Buffer | undefined,
+  routedModel: string | undefined
+): void {
+  const parsedBody = parseJsonObjectSafe(body);
+  const model = stringValue(parsedBody?.model) || routedModel;
+  if (!resolveConfiguredProviderModelSelector(model, config)) {
+    return;
+  }
+
+  delete headers["x-target-provider"];
+  delete headers["x-target-providers"];
+  delete headers["x-gateway-target-provider"];
+}
+
+
+function rewriteModelSelectorForProtocol(
+  model: string | undefined,
+  config: AppConfig,
+  protocol: GatewayProviderProtocol
+): string | undefined {
+  const normalized = normalizeRouteSelector(model);
+  if (!normalized) {
+    return model;
+  }
+  const publicModel = resolveGatewayPublicModelId(normalized, config) ?? normalized;
+  const selector =
+    resolveConfiguredProviderModelSelector(publicModel, config) ??
+    resolveUniqueConfiguredProviderModelSelector(publicModel, config);
+  const capability = selector ? providerCapabilityForClientProtocol(selector.provider, protocol) : undefined;
+  return selector && capability
+    ? `${providerCapabilityInternalName(selector.provider, capability.type)}/${selector.model}`
+    : publicModel;
+}
+
+
+export function rewriteCapabilityResponseHeaders(headers: Headers, config: AppConfig): Headers {
+  const providerName = headers.get("x-gateway-target-provider-name")?.trim();
+  if (!providerName) {
+    return headers;
+  }
+  const credentialInternalName = parseProviderCredentialInternalName(providerName);
+  if (credentialInternalName) {
+    const provider = findProviderByPublicOrInternalName(config, credentialInternalName.providerId);
+    if (!provider) {
+      return headers;
+    }
+    const credential = findProviderCredentialBySlug(provider, credentialInternalName.credentialSlug);
+    const rewritten = new Headers(headers);
+    rewritten.set("x-gateway-target-provider-name", providerRuntimeId(provider));
+    rewritten.set("x-ccr-provider-protocol", credentialInternalName.protocol);
+    rewritten.set("x-ccr-provider-credential-provider", providerRuntimeId(provider));
+    rewritten.set("x-ccr-provider-credential-id", providerCredentialSlug(credential ? providerCredentialRuntimeId(provider, credential) : credentialInternalName.credentialSlug));
+    return rewritten;
+  }
+  const provider = findProviderByPublicOrInternalName(config, providerName);
+  if (!provider) {
+    return headers;
+  }
+  const capability = normalizedProviderCapabilities(provider).find((item) =>
+    providerCapabilityNameMatches(provider, item.type, providerName)
+  );
+  const rewritten = new Headers(headers);
+  rewritten.set("x-gateway-target-provider-name", providerRuntimeId(provider));
+  if (capability) {
+    rewritten.set("x-ccr-provider-protocol", capability.type);
+  }
+  return rewritten;
+}
+
+
+export async function fetchUpstreamWithFallback(input: {
+  body?: Buffer;
+  config: AppConfig;
+  coreAuthToken: string;
+  fallback: RouterFallbackConfig;
+  headers: Record<string, string>;
+  method: string;
+  path: string;
+  preparationChanges?: readonly RequestRouteTraceChange[];
+  routedModel?: string;
+  signal?: AbortSignal;
+  trace?: RouteTraceObserver;
+  upstreamUrl: string;
+}): Promise<UpstreamFetchResult> {
+  const fallbackMode = input.fallback.mode;
+  const attempts = buildUpstreamAttempts(
+    input.config,
+    input.fallback,
+    input.method,
+    input.path,
+    input.body,
+    input.routedModel
+  );
+  const failedAttempts: UpstreamFailedAttempt[] = [];
+  input.trace?.capture({
+    decision: { reason: `fallback:${fallbackMode}`, source: "execution-plan" },
+    kind: "decision",
+    name: "fallback.execution-plan",
+    phase: "planning",
+    target: attempts[0]?.model ? { model: attempts[0].model } : undefined
+  });
+
+  for (let index = 0; index < attempts.length; index += 1) {
+    if (input.signal?.aborted) {
+      throw new UpstreamRequestError(abortSignalMessage(input.signal), {
+        failedAttempts
+      });
+    }
+
+    const attemptNumber = index + 1;
+    const attemptPreparationStartedAt = Date.now();
+    const attempt = prepareUpstreamCredentialAttempt({
+      attempt: attempts[index],
+      config: input.config,
+      headers: input.headers,
+      method: input.method,
+      path: input.path
+    });
+    const hasNextAttempt = index < attempts.length - 1;
+    const attemptUrl = rewriteRouteModelInUrl(input.upstreamUrl, attempt.model);
+    const attemptHeaders = {
+      ...withCoreGatewayAuthHeader(
+        omitLocalObservabilityHeaders(attempt.headers ?? input.headers),
+        input.coreAuthToken
+      ),
+      // Core raw traces use a unique request id for every fallback attempt,
+      // while turnKey identifies the outer gateway request. Keep both and mark
+      // the attempt so only the final response may refine the stored outcome.
+      "x-ccr-route-attempt": String(attemptNumber)
+    };
+    const attemptProvider = attempt.logicalProvider ?? (
+      attempt.target?.kind === "provider" ? attempt.target.provider.name : undefined
+    );
+    const attemptStartedAt = Date.now();
+    input.trace?.capture({
+      attempt: attemptNumber,
+      changes: [
+        ...(index === 0 ? input.preparationChanges ?? [] : []),
+        ...(attempt.model && attempt.model !== input.routedModel
+          ? [{
+              ...(input.routedModel === undefined ? {} : { before: input.routedModel }),
+              after: attempt.model,
+              operation: input.routedModel === undefined ? "add" as const : "replace" as const,
+              path: "/body/model",
+              scope: "body" as const
+            }]
+          : []),
+        ...(attemptUrl !== input.upstreamUrl
+          ? [{ after: attemptUrl, before: input.upstreamUrl, operation: "replace" as const, path: "/url", scope: "url" as const }]
+          : [])
+      ],
+      durationMs: attemptStartedAt - attemptPreparationStartedAt,
+      kind: "attempt",
+      name: "upstream.attempt.prepare",
+      phase: "attempt",
+      startedAtMs: attemptPreparationStartedAt,
+      target: {
+        ...(attempt.credentialIds?.[0] ? { credentialId: attempt.credentialIds[0] } : {}),
+        ...(attempt.credentialIds?.length ? { credentialCandidates: attempt.credentialIds } : {}),
+        ...(attempt.model ? { model: attempt.model } : {}),
+        ...(attempt.credentialProtocol ? { protocol: attempt.credentialProtocol } : {}),
+        ...(attemptProvider ? { provider: attemptProvider } : {})
+      }
+    });
+
+    releaseJsonObject(attempt.body);
+    releaseJsonObject(attempts[index].body);
+    releaseJsonObject(input.body);
+
+    try {
+      const response = await fetchWithSystemProxy(attemptUrl, {
+        body: shouldSendBody(input.method) ? attempt.body?.toString("utf8") : undefined,
+        headers: attemptHeaders,
+        method: input.method,
+        signal: input.signal
+      });
+
+      if (hasNextAttempt && shouldFallbackAfterStatus(response.status, fallbackMode)) {
+        const delayMs = retryDelayAfterStatus(response.headers, failedAttempts.length);
+        input.trace?.capture({
+          attempt: attemptNumber,
+          durationMs: Date.now() - attemptStartedAt,
+          kind: "outcome",
+          name: "upstream.attempt.outcome",
+          outcome: {
+            fallbackReason: `http:${response.status}`,
+            retryDelayMs: delayMs,
+            statusCode: response.status
+          },
+          phase: "outcome",
+          startedAtMs: attemptStartedAt,
+          status: "error",
+          target: {
+            ...(attempt.model ? { model: attempt.model } : {}),
+            ...(attemptProvider ? { provider: attemptProvider } : {})
+          }
+        });
+        failedAttempts.push({
+          credentialChain: attempt.credentialChain,
+          credentialIds: attempt.credentialIds,
+          delayMs,
+          model: attempt.model,
+          statusCode: response.status
+        });
+        recordProviderCredentialOutcome(input.config, input.method, attempt, response.status, response.headers);
+        await drainResponseBody(response);
+        if (delayMs > 0) {
+          await delay(delayMs, input.signal);
+        }
+        continue;
+      }
+
+      input.trace?.capture({
+        attempt: attemptNumber,
+        durationMs: Date.now() - attemptStartedAt,
+        kind: "outcome",
+        name: "upstream.attempt.outcome",
+        outcome: { statusCode: response.status },
+        phase: "outcome",
+        startedAtMs: attemptStartedAt,
+        status: response.ok ? "ok" : "error",
+        target: {
+          ...(attempt.model ? { model: attempt.model } : {}),
+          ...(attemptProvider ? { provider: attemptProvider } : {})
+        }
+      });
+
+      return {
+        attempt,
+        failedAttempts,
+        response
+      };
+    } catch (error) {
+      const message = formatError(error);
+      const delayMs = hasNextAttempt && !input.signal?.aborted
+        ? retryDelayAfterNetworkError(failedAttempts.length)
+        : 0;
+      input.trace?.capture({
+        attempt: attemptNumber,
+        durationMs: Date.now() - attemptStartedAt,
+        kind: "outcome",
+        name: "upstream.attempt.outcome",
+        outcome: {
+          error: message,
+          ...(hasNextAttempt ? { fallbackReason: "network-error", retryDelayMs: delayMs } : {})
+        },
+        phase: "outcome",
+        startedAtMs: attemptStartedAt,
+        status: "error",
+        target: {
+          ...(attempt.model ? { model: attempt.model } : {}),
+          ...(attemptProvider ? { provider: attemptProvider } : {})
+        }
+      });
+      failedAttempts.push({
+        credentialChain: attempt.credentialChain,
+        credentialIds: attempt.credentialIds,
+        delayMs,
+        error: message,
+        model: attempt.model
+      });
+      if (input.signal?.aborted) {
+        throw new UpstreamRequestError(abortSignalMessage(input.signal), {
+          attempt,
+          cause: error,
+          failedAttempts
+        });
+      }
+      if (hasNextAttempt) {
+        if (delayMs > 0) {
+          await delay(delayMs, input.signal);
+        }
+        continue;
+      }
+      throw new UpstreamRequestError(message, {
+        attempt,
+        cause: error,
+        failedAttempts
+      });
+    }
+  }
+
+  throw new UpstreamRequestError("Gateway request failed before reaching an upstream provider.", {
+    failedAttempts
+  });
+}
+
+
+function prepareUpstreamCredentialAttempt(input: {
+  attempt: UpstreamAttempt;
+  config: AppConfig;
+  headers: Record<string, string>;
+  method: string;
+  path: string;
+}): UpstreamAttempt {
+  const normalizedBody = normalizeConfiguredProviderModelBody(input.attempt.body, input.config);
+  const target = resolvePlannedProviderCredentialRoutingTarget(input.attempt, input.path) ??
+    resolveProviderCredentialRoutingTarget(input.config, input.headers, input.path, input.attempt.body);
+  const attemptBody = (body: Buffer | undefined) => usageAwareOpenAiChatAttemptBody({
+    body,
+    config: input.config,
+    path: input.path,
+    target
+  });
+  if (!target) {
+    const body = normalizedBody?.body ?? input.attempt.body;
+    return {
+      ...input.attempt,
+      body: attemptBody(body),
+      headers: input.headers
+    };
+  }
+
+  const attemptHeaders = withClaudeCodeOauthBetaHeader(input.headers, input.config, target);
+
+  const credentials = activeProviderCredentials(target.provider);
+  if (credentials.length === 0) {
+    const preserveModelSelector = shouldPreserveCapabilityModelSelector(input.attempt.body, target);
+    return {
+      ...input.attempt,
+      body: attemptBody(preserveModelSelector ? input.attempt.body : target.body ?? normalizedBody?.body ?? input.attempt.body),
+      headers: preserveModelSelector
+        ? clearTargetProviderHeaders(attemptHeaders)
+        : targetProviderFallbackHeaders(attemptHeaders, target.provider, target.protocol)
+    };
+  }
+
+  const usage = estimateLimitUsage(input.method, input.attempt.body ?? Buffer.alloc(0));
+  const selection = selectProviderCredentials(target.provider, target.protocol, credentials, usage);
+  if (selection.credentials.length === 0) {
+    const preserveModelSelector = shouldPreserveCapabilityModelSelector(input.attempt.body, target);
+    return {
+      ...input.attempt,
+      body: attemptBody(preserveModelSelector ? input.attempt.body : target.body ?? normalizedBody?.body ?? input.attempt.body),
+      headers: preserveModelSelector
+        ? clearTargetProviderHeaders(attemptHeaders)
+        : targetProviderFallbackHeaders(attemptHeaders, target.provider, target.protocol)
+    };
+  }
+
+  const headers: Record<string, string> = {
+    ...attemptHeaders,
+    "x-target-providers": selection.credentials.map((candidate) => candidate.internalName).join(","),
+    "x-ccr-logical-provider": providerRuntimeId(target.provider),
+    "x-ccr-provider-credential-chain": selection.credentials.map((candidate) => candidate.credentialId).join(",")
+  };
+  delete headers["x-target-provider"];
+  if (selection.saturated) {
+    headers["x-ccr-provider-credential-saturated"] = "true";
+  }
+
+  return {
+    ...input.attempt,
+    body: attemptBody(target.body ?? normalizedBody?.body ?? input.attempt.body),
+    credentialChain: selection.credentials.map((candidate) => candidate.internalName),
+    credentialIds: selection.credentials.map((candidate) => candidate.credentialId),
+    credentialProtocol: target.protocol,
+    headers,
+    logicalProvider: target.provider.name
+  };
+}
+
+
+function withClaudeCodeOauthBetaHeader(
+  headers: Record<string, string>,
+  config: AppConfig,
+  target: ProviderCredentialRoutingTarget
+): Record<string, string> {
+  if (
+    target.protocol !== "anthropic_messages" ||
+    !claudeCodeOauthPluginMatchesTarget(config, target.provider, target.protocol)
+  ) {
+    return headers;
+  }
+
+  const existingEntry = Object.entries(headers)
+    .find(([name]) => name.trim().toLowerCase() === claudeCodeOauthBetaHeader);
+  const merged = mergeAnthropicBetaValues(existingEntry?.[1], claudeCodeOauthRequiredBeta);
+  if (existingEntry?.[0] === claudeCodeOauthBetaHeader && existingEntry[1] === merged) {
+    return headers;
+  }
+
+  const next = Object.fromEntries(
+    Object.entries(headers).filter(([name]) => name.trim().toLowerCase() !== claudeCodeOauthBetaHeader)
+  );
+  next[claudeCodeOauthBetaHeader] = merged;
+  return next;
+}
+
+
+function claudeCodeOauthPluginMatchesTarget(
+  config: AppConfig,
+  provider: GatewayProviderConfig,
+  protocol: GatewayProviderProtocol
+): boolean {
+  const targetNames = new Set([
+    provider.name,
+    providerRuntimeId(provider),
+    providerCapabilityInternalName(provider, protocol)
+  ].map((name) => name.trim().toLowerCase()));
+  return (config.providerPlugins ?? []).some((plugin) => {
+    if (!isLocalClaudeCodeOauthProviderPlugin(plugin)) {
+      return false;
+    }
+    const providerName = stringValue(plugin.providerName)?.toLowerCase();
+    return Boolean(providerName && targetNames.has(providerName));
+  });
+}
+
+
+function targetProviderFallbackHeaders(
+  headers: Record<string, string>,
+  provider: GatewayProviderConfig,
+  protocol: GatewayProviderProtocol
+): Record<string, string> {
+  const next = { ...headers };
+  next["x-target-provider"] = targetProviderHeaderValue(provider, protocol);
+  delete next["x-target-providers"];
+  delete next["x-gateway-target-provider"];
+  return next;
+}
+
+
+function clearTargetProviderHeaders(headers: Record<string, string>): Record<string, string> {
+  const next = { ...headers };
+  delete next["x-target-provider"];
+  delete next["x-target-providers"];
+  delete next["x-gateway-target-provider"];
+  return next;
+}
+
+
+function shouldPreserveCapabilityModelSelector(body: Buffer | undefined, target: ProviderCredentialRoutingTarget): boolean {
+  if (target.source === "header" || target.protocol !== "gemini_interactions") {
+    return false;
+  }
+  return Boolean(parseProviderModelSelector(stringValue(parseJsonObjectSafe(body)?.model)));
+}
+
+
+function resolvePlannedProviderCredentialRoutingTarget(
+  attempt: UpstreamAttempt,
+  path: string
+): ProviderCredentialRoutingTarget | undefined {
+  if (attempt.target?.kind !== "provider") {
+    return undefined;
+  }
+  const clientProtocol = requestProtocolForPath(path);
+  const protocol = clientProtocol
+    ? providerProtocolForClientProtocol(attempt.target.provider, clientProtocol)
+    : undefined;
+  if (!protocol) {
+    return undefined;
+  }
+  const parsedBody = parseJsonObjectSafe(attempt.body);
+  return {
+    body: parsedBody && clientProtocol !== "gemini_generate_content"
+      ? serializeJsonBodyWithModel(parsedBody, attempt.target.model)
+      : attempt.body,
+    model: attempt.target.model,
+    provider: attempt.target.provider,
+    protocol,
+    source: "plan"
+  };
+}
+
+
+function targetProviderHeaderValue(provider: GatewayProviderConfig, protocol: GatewayProviderProtocol): string {
+  const capability = normalizedProviderCapabilities(provider).find((item) => item.type === protocol);
+  return capability ? providerCapabilityInternalName(provider, capability.type) : providerRuntimeId(provider);
+}
+
+
+function usageAwareOpenAiChatAttemptBody(input: {
+  body: Buffer | undefined;
+  config: AppConfig;
+  path: string;
+  target?: { protocol: GatewayProviderProtocol };
+}): Buffer | undefined {
+  const clientProtocol = requestProtocolForPath(input.path);
+  const parsedBody = parseJsonObjectSafe(input.body);
+  const modelSelector = resolveConfiguredProviderModelSelector(stringValue(parsedBody?.model), input.config);
+  const providerProtocol = input.target?.protocol ?? (
+    modelSelector && clientProtocol
+      ? providerProtocolForClientProtocol(modelSelector.provider, clientProtocol)
+      : undefined
+  );
+  if (providerProtocol !== "openai_chat_completions" && providerProtocol !== "openai_responses") {
+    return input.body;
+  }
+  const sanitizedBody = stripUnsupportedOpenAiRequestParameters(input.body);
+  return providerProtocol === "openai_chat_completions"
+    ? usageAwareOpenAiChatBody(sanitizedBody)
+    : sanitizedBody;
+}
+
+
+function stripUnsupportedOpenAiRequestParameters(body: Buffer | undefined): Buffer | undefined {
+  const parsedBody = parseJsonObjectSafe(body);
+  if (!parsedBody || (!("thinking" in parsedBody) && !("reasoning_split" in parsedBody))) {
+    return body;
+  }
+  const next = { ...parsedBody };
+  delete next.thinking;
+  delete next.reasoning_split;
+  return serializeJsonBody(next);
+}
+
+
+function usageAwareOpenAiChatBody(body: Buffer | undefined): Buffer | undefined {
+  const parsedBody = parseJsonObjectSafe(body);
+  if (!parsedBody || parsedBody.stream !== true) {
+    return body;
+  }
+  const streamOptions = isRecord(parsedBody.stream_options)
+    ? parsedBody.stream_options
+    : isRecord(parsedBody.streamOptions)
+      ? parsedBody.streamOptions
+      : {};
+  if (streamOptions.include_usage === true || streamOptions.includeUsage === true) {
+    return body;
+  }
+  return serializeJsonBody({
+    ...parsedBody,
+    stream_options: {
+      ...streamOptions,
+      include_usage: true
+    }
+  });
+}
+
+
+function normalizeConfiguredProviderModelBody(
+  body: Buffer | undefined,
+  config: AppConfig
+): { body: Buffer; model: string } | undefined {
+  const parsedBody = parseJsonObjectSafe(body);
+  const model = stringValue(parsedBody?.model);
+  const selector = resolveConfiguredProviderModelSelector(model, config);
+  if (!parsedBody || !selector || selector.model === model) {
+    return undefined;
+  }
+  return {
+    body: serializeJsonBodyWithModel(parsedBody, selector.model),
+    model: selector.model
+  };
+}
+
+
+
+
+function resolveProviderCredentialRoutingTarget(
+  config: AppConfig,
+  headers: Record<string, string>,
+  path: string,
+  body: Buffer | undefined
+): ProviderCredentialRoutingTarget | undefined {
+  const protocol = requestProtocolForPath(path);
+  if (!protocol) {
+    return undefined;
+  }
+
+  const parsedBody = parseJsonObjectSafe(body);
+  const bodyModel = stringValue(parsedBody?.model);
+  const modelSelector = resolveConfiguredProviderModelSelector(bodyModel, config) ??
+    resolveUniqueConfiguredProviderModelSelector(bodyModel, config);
+  if (modelSelector) {
+    const provider = modelSelector.provider;
+    const providerProtocol = provider ? providerProtocolForClientProtocol(provider, protocol) : undefined;
+    if (provider && providerProtocol) {
+      return {
+        body: parsedBody ? serializeJsonBodyWithModel(parsedBody, modelSelector.model) : body,
+        model: modelSelector.model,
+        provider,
+        protocol: providerProtocol,
+        source: "model"
+      };
+    }
+  }
+
+  const targetProviderName = firstTargetProviderHeader(headers);
+  if (!targetProviderName) {
+    return undefined;
+  }
+
+  const provider = findProviderByPublicOrInternalName(config, targetProviderName);
+  if (!provider) {
+    return undefined;
+  }
+  const providerProtocol = providerProtocolForClientProtocol(provider, protocol);
+  if (!providerProtocol) {
+    return undefined;
+  }
+  const providerModel = resolveModelForProvider(bodyModel, provider);
+
+  return {
+    body: parsedBody && providerModel && providerModel !== bodyModel
+      ? serializeJsonBodyWithModel(parsedBody, providerModel)
+      : body,
+    model: providerModel ?? bodyModel,
+    provider,
+    protocol: providerProtocol,
+    source: "header"
+  };
+}
+
+
+function resolveModelForProvider(
+  value: string | undefined,
+  provider: GatewayProviderConfig
+): string | undefined {
+  const normalized = normalizeRouteSelector(value);
+  if (!normalized) {
+    return undefined;
+  }
+  if (providerHasModel(provider, normalized)) {
+    return normalized;
+  }
+  const parsed = parseProviderModelSelector(normalized);
+  return parsed && providerHasModel(provider, parsed.model) ? parsed.model : undefined;
+}
+
+
+function providerHasModel(provider: GatewayProviderConfig, model: string): boolean {
+  const normalized = model.trim().toLowerCase();
+  return Boolean(normalized) && provider.models.some((candidate) => candidate.trim().toLowerCase() === normalized);
+}
+
+
+function firstTargetProviderHeader(headers: Record<string, string>): string | undefined {
+  const provider = headers["x-target-provider"] || headers["x-gateway-target-provider"];
+  if (provider?.trim()) {
+    return provider.trim();
+  }
+  const providers = headers["x-target-providers"];
+  return providers
+    ?.split(",")
+    .map((item) => item.trim())
+    .find(Boolean);
+}
+
+
+function selectProviderCredentials(
+  provider: GatewayProviderConfig,
+  protocol: GatewayProviderProtocol,
+  credentials: ProviderCredentialConfig[],
+  usage: ApiKeyLimitUsage
+): { credentials: Array<{ credential: ProviderCredentialConfig; credentialId: string; internalName: string }>; saturated: boolean } {
+  const candidates = credentials.map((credential, index) => {
+    const providerIndex = provider.credentials?.indexOf(credential) ?? index;
+    const limitState = providerCredentialLimitState(provider, credential, usage);
+    const cooldown = readProviderCredentialCooldown(provider, credential);
+    return {
+      cooldown,
+      credential,
+      credentialId: providerCredentialSlug(providerCredentialRuntimeId(provider, credential, providerIndex)),
+      index: providerIndex,
+      internalName: providerCredentialInternalName(provider, protocol, credential),
+      limitState,
+      priority: providerCredentialPriority(credential, providerIndex),
+      weight: Math.max(1, credential.weight ?? 1)
+    };
+  });
+  const available = candidates.filter((candidate) => !candidate.cooldown && !candidate.limitState.blocked);
+  const sorted = sortProviderCredentialCandidates(available.length > 0 ? available : candidates);
+  return {
+    credentials: sorted.map((candidate) => ({
+      credential: candidate.credential,
+      credentialId: candidate.credentialId,
+      internalName: candidate.internalName
+    })),
+    saturated: available.length === 0 && candidates.length > 0
+  };
+}
+
+
+function sortProviderCredentialCandidates<T extends {
+  index: number;
+  limitState: { utilization: number };
+  priority: number;
+  weight: number;
+}>(candidates: T[]): T[] {
+  const prioritySorted = [...candidates].sort((left, right) =>
+    left.priority - right.priority ||
+    left.limitState.utilization - right.limitState.utilization ||
+    right.weight - left.weight ||
+    left.index - right.index
+  );
+  const primaryPriority = prioritySorted[0]?.priority;
+  const primaryCandidates = prioritySorted.filter((candidate) => candidate.priority === primaryPriority);
+  const shouldSpillOver = primaryCandidates.length > 0 &&
+    primaryCandidates.every((candidate) => candidate.limitState.utilization >= providerCredentialSpilloverThreshold);
+
+  if (shouldSpillOver) {
+    return prioritySorted.sort((left, right) =>
+      left.limitState.utilization - right.limitState.utilization ||
+      left.priority - right.priority ||
+      right.weight - left.weight ||
+      left.index - right.index
+    );
+  }
+
+  return prioritySorted;
+}
+
+
+function buildUpstreamAttempts(
+  config: AppConfig,
+  fallback: RouterFallbackConfig,
+  method: string,
+  path: string,
+  body: Buffer | undefined,
+  routedModel: string | undefined
+): UpstreamAttempt[] {
+  const parsedBody = parseJsonObjectSafe(body);
+  const modelInPath = requestProtocolForPath(path) === "gemini_generate_content";
+  const plan = createRouteExecutionPlan({
+    bodyModel: modelInPath ? undefined : stringValue(parsedBody?.model),
+    fallback,
+    hasRequestBody: shouldSendBody(method) && (fallback.mode !== "model-chain" || Boolean(parsedBody)),
+    modelRegistry: modelRegistryForConfig(config),
+    primaryModel: routedModel
+  });
+  return plan.attempts.map((attempt) => ({
+    body: parsedBody && !modelInPath && fallback.mode === "model-chain" && attempt.model
+      ? serializeJsonBodyWithModel(parsedBody, attempt.model)
+      : body,
+    index: attempt.index,
+    model: attempt.model,
+    target: attempt.target
+  }));
+}
+
+
+async function drainResponseBody(response: Response): Promise<void> {
+  try {
+    await response.arrayBuffer();
+  } catch {
+    // The failed attempt is already being skipped; body drain errors should not block the next attempt.
+  }
+}
+
+
+export async function cancelResponseBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The client already disconnected; best-effort upstream cleanup must not mask that expected path.
+  }
+}
+
+
+export function uniqueStreams(streams: Readable[]): Readable[] {
+  return [...new Set(streams)];
+}
+
+
+export function destroyResponseStreams(streams: Readable[]): void {
+  for (const stream of streams) {
+    if (!stream.destroyed) {
+      // A downstream client close is an expected abort path. Destroying with
+      // an Error would emit another error event on Readable/Transform stages,
+      // and intermediate stages may not be the final responseBody listener.
+      stream.destroy();
+    }
+  }
+}
+
+
+export function mergeFallbackResponseHeaders(headers: Headers, result: UpstreamFetchResult): Headers {
+  const credentialIds = result.attempt.credentialIds ?? [];
+  const credentialSaturated = result.attempt.headers?.["x-ccr-provider-credential-saturated"] === "true";
+  if (result.failedAttempts.length === 0 && credentialIds.length === 0 && !credentialSaturated) {
+    return headers;
+  }
+
+  const merged = new Headers(headers);
+  if (result.failedAttempts.length > 0) {
+    merged.set("x-ccr-fallback-attempts", String(result.failedAttempts.length + 1));
+    merged.set("x-ccr-fallback-failures", formatFallbackFailures(result.failedAttempts));
+    if (result.failedAttempts.some((attempt) => (attempt.delayMs ?? 0) > 0)) {
+      merged.set("x-ccr-fallback-delays-ms", formatFallbackDelays(result.failedAttempts));
+    }
+    if (result.attempt.model) {
+      merged.set("x-ccr-fallback-model", sanitizeHeaderValue(result.attempt.model));
+    }
+  }
+  if (credentialIds.length) {
+    merged.set("x-ccr-provider-credential-chain", credentialIds.join(","));
+  }
+  if (credentialSaturated) {
+    merged.set("x-ccr-provider-credential-saturated", "true");
+  }
+  return merged;
+}
+
+
+export function upstreamResponseHeaders(result: UpstreamFetchResult): Headers {
+  return result.response.headers;
+}
+
+
+function formatFallbackFailures(failedAttempts: UpstreamFailedAttempt[]): string {
+  return failedAttempts
+    .map((attempt) => attempt.statusCode ? String(attempt.statusCode) : attempt.error ? "network" : "failed")
+    .join(",");
+}
+
+
+function formatFallbackDelays(failedAttempts: UpstreamFailedAttempt[]): string {
+  return failedAttempts
+    .map((attempt) => String(Math.max(0, attempt.delayMs ?? 0)))
+    .join(",");
+}
