@@ -39,9 +39,57 @@ lead: 为 Claude Code、Codex、Grok CLI、Kimi CLI、Pi、ZCode 创建可复用
 | 作用范围 | 全部 | **仅从 CCR 打开时生效** 会使用 CCR 管理的独立配置；**系统默认** 会写入对应 Agent 的默认配置。同一个 Agent 同时只能有一个启用的系统默认配置。 |
 | 入口模式 | Claude Code、Codex、OpenCode、Grok CLI、Kimi CLI、Pi | `CLI & APP` 同时显示 CLI 和 App 打开入口；`CLI only` 只生成 CLI 命令；`App only` 只显示 App 打开入口。Grok CLI、Kimi CLI 和 Pi 固定为 `CLI only`。 |
 | 模型 | 全部 | 该 Agent 打开后的默认模型，可以选择普通供应商模型或 Fusion 模型。Claude Code 必须填写该值。 |
+| 配置专属 API Key | 全部 | CCR 会为每个启用的配置生成独立网关 API Key。通过该配置启动的请求会携带内部 key id，因此路由可以匹配 `request.auth.apiKeyId` 或 `request.auth.profileId`，不需要暴露原始密钥。 |
+| 配置级路由 | 全部 | 可选的配置专属路由规则。配置级规则在全局路由规则之前执行，只作用于使用该配置 API Key 鉴权的请求。 |
 | 可用模型 | Kimi CLI | Kimi `/model` 命令中可切换的模型；默认模型始终包含在内。 |
 | Bot | App 入口 | 只有从 CCR 打开的 App 模式会转发 Bot 消息。CLI 当前不转发 Bot 消息。 |
 | 环境变量 | 全部 | 为该配置注入额外环境变量。Claude Code 默认带 `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1`，用于启用网关模型发现。 |
+
+## 配置级路由
+
+每个 Agent 配置档案都可以带自己的路由策略：
+
+| 配置项 | 行为 |
+| --- | --- |
+| 启用配置级路由 | 打开该配置的私有规则列表。关闭后配置仍可使用，但不会执行私有规则。 |
+| 使用增强路由 | 仅 Claude Code 和 Codex 显示。它是配置档案级别的内置 Claude Code / Codex 路由增强开关，独立于私有规则列表，因此每个配置档案都可以单独开启或关闭内置路由。 |
+| 配置级路由规则 | 使用条件规则。规则可以匹配 `request.header`、`request.body` 或 `request.auth`，并改写请求模型或其他字段。Node.js 脚本规则只在全局路由页支持。 |
+
+配置级规则会先于全局路由页规则执行。它们只看到自己的配置 API Key 发来的流量，因此两个配置即使用同一个客户端模型名，也可以走不同分流。例如，“Claude Code - 工作”可以把带图片的请求发到 Fusion 视觉模型，而“Claude Code - 低成本”可以把同样形态的请求发到更便宜的供应商。
+
+手写配置时，路由策略保存在 profile 的 `routing` 字段：
+
+```json
+{
+  "id": "claude-work",
+  "agent": "claude-code",
+  "model": "Anthropic/claude-sonnet",
+  "routing": {
+    "enabled": true,
+    "enhancedRoute": true,
+    "rules": [
+      {
+        "id": "work-images",
+        "name": "Work images",
+        "enabled": true,
+        "type": "condition",
+        "condition": {
+          "left": "request.body.messages",
+          "operator": "contains-deep",
+          "right": "image"
+        },
+        "rewrites": [
+          {
+            "op": "set",
+            "key": "request.body.model",
+            "value": "Fusion/vision"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
 
 ## 各 Agent 的配置项
 

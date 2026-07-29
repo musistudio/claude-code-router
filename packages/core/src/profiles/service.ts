@@ -1,8 +1,7 @@
-import { randomBytes } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readlinkSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, availableGatewayModelIds, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, isGatewayProviderEnabled, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "@ccr/core/contracts/app";
+import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, availableGatewayModelIds, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, isGatewayProviderEnabled, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "@ccr/core/contracts/app";
 import { replacePersistedApiKeys } from "@ccr/core/config/config-repository";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import {
@@ -35,6 +34,7 @@ import {
   writePiGatewayConfig
 } from "@ccr/core/agents/pi/profile-config";
 import { CONFIGDIR } from "@ccr/core/config/constants";
+import { pruneInactiveProfileApiKeysFromList, syncProfileApiKeys } from "@ccr/core/profiles/api-key";
 import { resolveZcodeConfigFile, writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "@ccr/core/agents/zcode/profile-config";
 import { CONTEXT_ARCHIVE_MCP_SERVER_NAME, contextArchiveConfigForProfile, contextArchiveMcpServer } from "@ccr/core/gateway/context-archive";
 import { normalizeRouteSelector } from "@ccr/core/gateway/claude-code-router-plugin";
@@ -708,76 +708,25 @@ function profileEntries(config: AppConfig): ProfileConfig[] {
 }
 
 async function ensureProfileApiKeys(config: AppConfig, profiles: ProfileConfig[]): Promise<Map<string, string>> {
-  const apiKeys = [...(Array.isArray(config.APIKEYS) ? config.APIKEYS : [])];
-  const byId = new Map(apiKeys.map((apiKey, index) => [apiKey.id || `key-${index + 1}`, { apiKey, index }]));
-  const tokens = new Map<string, string>();
-  let changed = false;
-
-  for (const profile of profiles.filter((candidate) => candidate.enabled)) {
-    const id = profileApiKeyId(profile);
-    const name = profileApiKeyName(profile);
-    const existing = byId.get(id);
-    if (existing?.apiKey.key.trim()) {
-      tokens.set(profile.id, existing.apiKey.key.trim());
-      if (existing.apiKey.name !== name) {
-        apiKeys[existing.index] = {
-          ...existing.apiKey,
-          name
-        };
-        changed = true;
-      }
-      continue;
-    }
-
-    const apiKey: ApiKeyConfig = {
-      createdAt: new Date().toISOString(),
-      id,
-      key: generateProfileApiKey(),
-      name
-    };
-    apiKeys.push(apiKey);
-    byId.set(id, { apiKey, index: apiKeys.length - 1 });
-    tokens.set(profile.id, apiKey.key);
-    changed = true;
-  }
-
-  if (changed) {
-    config.APIKEYS = await replacePersistedApiKeys(apiKeys);
+  const result = syncProfileApiKeys(Array.isArray(config.APIKEYS) ? config.APIKEYS : [], profiles);
+  if (result.changed) {
+    config.APIKEYS = await replacePersistedApiKeys(result.apiKeys);
     config.APIKEY = config.APIKEYS[0]?.key ?? "";
   }
 
-  return tokens;
+  return result.tokens;
 }
 
 async function pruneInactiveProfileApiKeys(config: AppConfig, profiles: ProfileConfig[]): Promise<void> {
-  const activeIds = new Set(profiles
-    .filter((profile) => profile.enabled)
-    .map(profileApiKeyId));
-  const current = Array.isArray(config.APIKEYS) ? config.APIKEYS : [];
-  const retained = current.filter((apiKey) =>
-    !apiKey.id.startsWith("profile:") || activeIds.has(apiKey.id)
+  const result = pruneInactiveProfileApiKeysFromList(
+    Array.isArray(config.APIKEYS) ? config.APIKEYS : [],
+    profiles
   );
-  if (retained.length === current.length) {
+  if (!result.changed) {
     return;
   }
-  config.APIKEYS = await replacePersistedApiKeys(retained);
+  config.APIKEYS = await replacePersistedApiKeys(result.apiKeys);
   config.APIKEY = config.APIKEYS[0]?.key ?? "";
-}
-
-function profileApiKeyId(profile: ProfileConfig): string {
-  return `profile:${sanitizeProfilePathSegment(profile.id || profile.name || profile.agent) || "profile"}`;
-}
-
-function profileApiKeyName(profile: ProfileConfig): string {
-  return `Profile: ${profile.name?.trim() || profile.id || profile.agent}`;
-}
-
-function generateProfileApiKey(): string {
-  return `ccr-profile-${randomBase64Url(24)}`;
-}
-
-function randomBase64Url(byteLength: number): string {
-  return randomBytes(byteLength).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 function profilePath(profile: ProfileConfig): string {

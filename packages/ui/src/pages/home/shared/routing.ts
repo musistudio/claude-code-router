@@ -6,9 +6,7 @@ import {
 } from "@ccr/core/contracts/app";
 import type {
   AppConfig,
-  ProfileConfig,
   RouteScriptSampleRequest,
-  RouterBuiltInAgentRuleId,
   RouterBuiltInRulesConfig,
   RouterConfig,
   RouterFallbackConfig,
@@ -559,95 +557,19 @@ export function claudeDesignRoutingConfigFromDraft(draft: ClaudeDesignRoutingDra
 }
 
 export function buildRoutingRuleRows(config: AppConfig): RoutingRuleRow[] {
-  return [
-    ...buildBuiltInAgentRoutingRows(config),
-    ...config.Router.rules.map((rule, index): RoutingRuleRow => ({
-      condition: formatRouterRuleCondition(rule),
-      enabled: rule.enabled,
-      index,
-      key: `router-${rule.id}-${index}`,
-      name: rule.name || "Unnamed",
-      readonly: false,
-      ruleCount: config.Router.rules.length,
-      ruleId: rule.id,
-      sourceLabel: "Router",
-      target: formatRouterRuleTarget(rule),
-      typeLabel: routerRuleTypeLabel(rule.type)
-    }))
-  ];
-}
-
-export function buildBuiltInAgentRoutingRows(config: AppConfig): RoutingRuleRow[] {
-  return routerBuiltInAgentRuleIds.map((agent): RoutingRuleRow => {
-    const target = routerBuiltInAgentRouteTarget(config, agent);
-    const toggleDisabledReason = routerBuiltInAgentRuleDisabledReason(config, agent);
-    return {
-      builtInAgent: agent,
-      condition: `request.header.user-agent contains ${routerBuiltInAgentUserAgentNeedle(agent)}`,
-      enabled: routerBuiltInAgentRuleIsActive(config, agent),
-      key: `builtin-agent-${agent}`,
-      name: routerBuiltInAgentRuleName(agent),
-      readonly: false,
-      ruleCount: config.Router.rules.length,
-      ruleId: `builtin-agent-${agent}`,
-      sourceLabel: "Built-in",
-      target: target ? `set request.body.model = ${target}` : "Profile model unset",
-      toggleDisabled: Boolean(toggleDisabledReason),
-      toggleDisabledReason,
-      typeLabel: "Condition"
-    };
-  });
-}
-
-const routerBuiltInAgentRuleIds: RouterBuiltInAgentRuleId[] = ["claude-code", "codex"];
-
-export function routerBuiltInAgentRuleIsActive(config: AppConfig, agent: RouterBuiltInAgentRuleId): boolean {
-  return routerBuiltInAgentRulePreferenceEnabled(config, agent) &&
-    Boolean(routerBuiltInAgentProfile(config, agent)) &&
-    Boolean(routerBuiltInAgentRouteTarget(config, agent));
-}
-
-export function routerBuiltInAgentRulePreferenceEnabled(config: AppConfig, agent: RouterBuiltInAgentRuleId): boolean {
-  return config.Router.builtInRules?.[agent]?.enabled !== false;
-}
-
-export function routerBuiltInAgentProfile(config: AppConfig, agent: RouterBuiltInAgentRuleId): ProfileConfig | undefined {
-  if (config.profile.enabled === false) {
-    return undefined;
-  }
-  return config.profile.profiles.find((profile) =>
-    profile.enabled &&
-    profile.agent === agent &&
-    Boolean(profile.model.trim())
-  );
-}
-
-export function routerBuiltInAgentRouteTarget(config: AppConfig, agent: RouterBuiltInAgentRuleId): string {
-  return routerBuiltInAgentProfile(config, agent)?.model.trim() || "";
-}
-
-export function routerBuiltInAgentRuleDisabledReason(config: AppConfig, agent: RouterBuiltInAgentRuleId): string | undefined {
-  if (config.profile.enabled === false) {
-    return "Agent profiles are disabled.";
-  }
-  const agentName = routerBuiltInAgentRuleName(agent);
-  const enabledProfile = config.profile.profiles.find((profile) => profile.enabled && profile.agent === agent);
-  if (!enabledProfile) {
-    return `Enable a ${agentName} profile before enabling this built-in route.`;
-  }
-  const profile = routerBuiltInAgentProfile(config, agent);
-  if (!profile) {
-    return `Set a model on the ${agentName} profile before enabling this built-in route.`;
-  }
-  return undefined;
-}
-
-export function routerBuiltInAgentRuleName(agent: RouterBuiltInAgentRuleId): string {
-  return agent === "claude-code" ? "Claude Code" : "Codex";
-}
-
-export function routerBuiltInAgentUserAgentNeedle(agent: RouterBuiltInAgentRuleId): string {
-  return agent === "claude-code" ? "claude" : "codex";
+  return config.Router.rules.map((rule, index): RoutingRuleRow => ({
+    condition: formatRouterRuleCondition(rule),
+    enabled: rule.enabled,
+    index,
+    key: `router-${rule.id}-${index}`,
+    name: rule.name || "Unnamed",
+    readonly: false,
+    ruleCount: config.Router.rules.length,
+    ruleId: rule.id,
+    sourceLabel: "Router",
+    target: formatRouterRuleTarget(rule),
+    typeLabel: routerRuleTypeLabel(rule.type)
+  }));
 }
 
 export function buildPluginRoutingRows(plugin: AppConfig["plugins"][number], pluginIndex: number): RoutingRuleRow[] {

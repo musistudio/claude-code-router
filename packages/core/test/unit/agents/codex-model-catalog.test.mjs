@@ -460,7 +460,7 @@ test("codex catalog keeps freeform apply_patch when provider advertises Response
   assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
-test("codex catalog enables apply_patch bridge for non-GPT models when Codex built-in route enables it", () => {
+test("codex catalog enables apply_patch bridge for non-GPT models with legacy global Codex route enabled", () => {
   const model = catalogModelFor({
     Providers: [
       { name: "openrouter", type: "openai_chat_completions", models: ["google/gemini-2.5-pro"] }
@@ -478,7 +478,7 @@ test("codex catalog enables apply_patch bridge for non-GPT models when Codex bui
   assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
-test("codex catalog automatically enables apply_patch bridge for non-GPT models when the Codex built-in route is off", () => {
+test("codex catalog keeps apply_patch bridge for non-GPT models with legacy global Codex route disabled", () => {
   const model = catalogModelFor({
     Providers: [
       { name: "openrouter", type: "openai_chat_completions", models: ["google/gemini-2.5-pro"] }

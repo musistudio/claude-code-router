@@ -688,6 +688,12 @@ export type RouterConfig = {
   rules: RouterRule[];
 };
 
+export type ProfileRoutingConfig = {
+  enabled: boolean;
+  enhancedRoute: boolean;
+  rules: RouterRule[];
+};
+
 export type RouteScriptDiagnostic = {
   code: string;
   column?: number;
@@ -1427,6 +1433,7 @@ export type ProfileConfig = {
   providerId?: string;
   providerName?: string;
   remoteFrontendMode?: CodexRemoteFrontendMode;
+  routing?: ProfileRoutingConfig;
   scope?: ProfileScope;
   showAllSessions?: boolean;
   settingsFile?: string;

@@ -4,9 +4,9 @@ import {
   CardHeader, Check, CircleAlert, clampNumber, cn, createRouteModelOptions, createRoutingRewriteDraftRow,
   Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle,
   disclosureSpringTransition, Field, formatRouterRuleCondition, formatRouterRuleTarget, GatewayProviderConfig, Input,
-  AppI18nContext, appCopy, ExternalLink, FolderOpen, Info, motion, normalizeRouteScriptSampleRequest, normalizeRouterFallbackConfig, Pencil, Plus, Route, RouterFallbackConfig,
-  RouterBuiltInAgentRuleId, RouterFallbackMode, routerConditionSourceOptions, routerFallbackModeOptions, RouterRule, routerRewriteOperationOptions, routerRuleOperatorOptions,
-  RouterBuiltInAgentRuleConfig, routerRuleTypeOptions,
+  AppI18nContext, appCopy, ExternalLink, FolderOpen, motion, normalizeRouteScriptSampleRequest, normalizeRouterFallbackConfig, Pencil, Plus, Route, RouterFallbackConfig,
+  RouterFallbackMode, routerConditionSourceOptions, routerFallbackModeOptions, RouterRule, routerRewriteOperationOptions, routerRuleOperatorOptions,
+  routerRuleTypeOptions,
   RouteTargetControl, routingRuleRowMatchesQuery, Search, SelectControl, Toggle, translateOptions,
   Textarea, Trash2, uniqueStrings, useAppText, useContext, useMemo, useRef, useState, X
 } from "../shared/index";
@@ -23,7 +23,6 @@ export function RoutingView({
   moveRule,
   providers,
   removeRule,
-  updateBuiltInRule,
   updateFallback,
   updateRule
 }: {
@@ -33,7 +32,6 @@ export function RoutingView({
   moveRule: (index: number, direction: -1 | 1) => void;
   providers: GatewayProviderConfig[];
   removeRule: (index: number) => void;
-  updateBuiltInRule: (agent: RouterBuiltInAgentRuleId, patch: Partial<RouterBuiltInAgentRuleConfig>) => void;
   updateFallback: (fallback: RouterFallbackConfig) => void;
   updateRule: (index: number, patch: Partial<RouterRule>) => void;
 }) {
@@ -103,7 +101,7 @@ export function RoutingView({
                 <div className="divide-y divide-border/60">
                   <AnimatePresence initial={false}>
                   {visibleRules.map((row) => {
-                    const rowSourceLabel = row.builtInAgent ? t(row.sourceLabel) : row.sourceLabel;
+                    const rowSourceLabel = row.sourceLabel;
                     const rowTarget = row.target === "Profile model unset" ? t(row.target) : row.target;
                     const toggleDisabledReason = row.toggleDisabledReason ? t(row.toggleDisabledReason) : undefined;
                     return (
@@ -114,25 +112,22 @@ export function RoutingView({
                       <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-2">
                           <div className="truncate text-[12px] font-semibold">{row.name || t("Unnamed")}</div>
-                          {row.builtInAgent ? <BuiltInRouteInfoIcon agent={row.builtInAgent} /> : null}
-                          {row.builtInAgent ? <Badge variant="outline">{t("Built-in")}</Badge> : row.readonly ? <Badge variant="outline">{t("Plugin")}</Badge> : null}
+                          {row.readonly ? <Badge variant="outline">{t("Plugin")}</Badge> : null}
                         </div>
                         <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground" title={`${rowSourceLabel}: ${row.ruleId}`}>
                           {rowSourceLabel}: {row.ruleId}
                         </div>
                       </div>
                       <div className="min-w-0">
-                        {!row.builtInAgent ? (
-                          <div className="flex min-w-0 items-center gap-2">
-                            <Badge variant="outline">{t(row.typeLabel)}</Badge>
-                            <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground" title={row.condition}>
-                              {row.condition}
-                            </span>
-                          </div>
-                        ) : null}
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Badge variant="outline">{t(row.typeLabel)}</Badge>
+                          <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground" title={row.condition}>
+                            {row.condition}
+                          </span>
+                        </div>
                       </div>
-                      <div className="min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={row.builtInAgent ? undefined : rowTarget}>
-                        {row.builtInAgent ? null : rowTarget}
+                      <div className="min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={rowTarget}>
+                        {rowTarget}
                       </div>
                       <div className="flex min-w-0 items-center gap-2">
                         <Tooltip
@@ -148,9 +143,7 @@ export function RoutingView({
                             checked={row.enabled}
                             disabled={row.readonly || row.toggleDisabled}
                             onChange={(enabled) => {
-                              if (row.builtInAgent) {
-                                updateBuiltInRule(row.builtInAgent, { enabled });
-                              } else if (row.index !== undefined) {
+                              if (row.index !== undefined) {
                                 updateRule(row.index, { enabled });
                               }
                             }}
@@ -158,34 +151,30 @@ export function RoutingView({
                         </Tooltip>
                       </div>
                       <div className="flex items-center justify-end gap-1">
-                        {!row.builtInAgent ? (
-                          <>
-                            <Button aria-label={`${t("Move")} ${row.name || t("rule")} ${t("up")}`} disabled={row.readonly || row.index === undefined || row.index === 0} onClick={() => row.index !== undefined && moveRule(row.index, -1)} size="iconSm" title={t("Move up")} type="button" variant="ghost">
-                              <ArrowUp className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button aria-label={`${t("Move")} ${row.name || t("rule")} ${t("down")}`} disabled={row.readonly || row.index === undefined || row.index === row.ruleCount - 1} onClick={() => row.index !== undefined && moveRule(row.index, 1)} size="iconSm" title={t("Move down")} type="button" variant="ghost">
-                              <ArrowDown className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              aria-label={`${t("Edit")} ${row.name || t("rule")}`}
-                              disabled={row.readonly || row.index === undefined}
-                              onClick={() => {
-                                if (row.index !== undefined) {
-                                  editRule(row.index);
-                                }
-                              }}
-                              size="iconSm"
-                              title={t("Edit rule")}
-                              type="button"
-                              variant="ghost"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button aria-label={`${t("Remove")} ${row.name || t("rule")}`} disabled={row.readonly || row.index === undefined} onClick={() => row.index !== undefined && removeRule(row.index)} size="iconSm" title={t("Remove rule")} type="button" variant="ghost">
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </>
-                        ) : null}
+                        <Button aria-label={`${t("Move")} ${row.name || t("rule")} ${t("up")}`} disabled={row.readonly || row.index === undefined || row.index === 0} onClick={() => row.index !== undefined && moveRule(row.index, -1)} size="iconSm" title={t("Move up")} type="button" variant="ghost">
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button aria-label={`${t("Move")} ${row.name || t("rule")} ${t("down")}`} disabled={row.readonly || row.index === undefined || row.index === row.ruleCount - 1} onClick={() => row.index !== undefined && moveRule(row.index, 1)} size="iconSm" title={t("Move down")} type="button" variant="ghost">
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          aria-label={`${t("Edit")} ${row.name || t("rule")}`}
+                          disabled={row.readonly || row.index === undefined}
+                          onClick={() => {
+                            if (row.index !== undefined) {
+                              editRule(row.index);
+                            }
+                          }}
+                          size="iconSm"
+                          title={t("Edit rule")}
+                          type="button"
+                          variant="ghost"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button aria-label={`${t("Remove")} ${row.name || t("rule")}`} disabled={row.readonly || row.index === undefined} onClick={() => row.index !== undefined && removeRule(row.index)} size="iconSm" title={t("Remove rule")} type="button" variant="ghost">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                       </AnimatedListItem>
                     );
@@ -201,56 +190,6 @@ export function RoutingView({
   );
 }
 
-function BuiltInRouteInfoIcon({ agent }: { agent: RouterBuiltInAgentRuleId }) {
-  const t = useAppText();
-  const copy = useContext(AppI18nContext);
-  const description = builtInRouteDescription(agent, t);
-  const docsUrl = builtInRouteDocsUrl(agent, copy === appCopy.zh ? "zh" : "en");
-
-  return (
-    <Tooltip
-      aria-label={description}
-      className="h-5 w-5 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-      content={(
-        <>
-          <span>{description}</span>
-          <a
-            className="ml-1 inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-            href={docsUrl}
-            onClick={(event) => {
-              event.preventDefault();
-              openExternalUrl(docsUrl);
-            }}
-            rel="noreferrer"
-            target="_blank"
-          >
-            {t("Docs")}
-            <ExternalLink className="h-3 w-3" />
-          </a>
-        </>
-      )}
-      contentClassName="w-[232px] px-2.5 py-2 text-left font-medium leading-4"
-      interactive
-      side="right"
-      tabIndex={0}
-    >
-      <Info className="h-3.5 w-3.5" aria-hidden="true" />
-    </Tooltip>
-  );
-}
-
-function builtInRouteDescription(agent: RouterBuiltInAgentRuleId, t: (value: string) => string): string {
-  return agent === "claude-code"
-    ? t("Identifies the Claude Code user-agent to provide deep Claude Code integration.")
-    : t("Identifies the Codex user-agent to provide deep Codex integration.");
-}
-
-function builtInRouteDocsUrl(agent: RouterBuiltInAgentRuleId, language: "en" | "zh"): string {
-  const path = language === "zh" ? "/configuration/routing" : "/en/configuration/routing";
-  const hash = agent === "claude-code" ? "claude-code" : "codex";
-  return `https://ccrdesk.top${path}#${hash}`;
-}
-
 function openExternalUrl(url: string) {
   if (window.ccr?.openExternal) {
     void window.ccr.openExternal(url).catch(() => undefined);
@@ -259,7 +198,7 @@ function openExternalUrl(url: string) {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
-function RouterFallbackControl({
+export function RouterFallbackControl({
   className,
   fallback,
   label,
@@ -433,6 +372,7 @@ export function DeleteRoutingRuleDialog({
 }
 
 export function AddRoutingRuleDialog({
+  allowedRuleTypes,
   canSubmit,
   draft,
   mode,
@@ -441,6 +381,7 @@ export function AddRoutingRuleDialog({
   onSubmit,
   providers
 }: {
+  allowedRuleTypes?: Array<AddRoutingRuleDraft["type"]>;
   canSubmit: boolean;
   draft: AddRoutingRuleDraft;
   mode: "add" | "edit";
@@ -453,7 +394,12 @@ export function AddRoutingRuleDialog({
   const copy = useContext(AppI18nContext);
   const conditionSourceOptions = translateOptions(routerConditionSourceOptions, t);
   const rewriteOperationOptions = translateOptions(routerRewriteOperationOptions, t);
-  const ruleTypeOptions = translateOptions(routerRuleTypeOptions, t);
+  const ruleTypeOptions = translateOptions(
+    allowedRuleTypes?.length
+      ? routerRuleTypeOptions.filter((option) => allowedRuleTypes.includes(option.value))
+      : routerRuleTypeOptions,
+    t
+  );
   const [scriptBusy, setScriptBusy] = useState<"submit" | "test" | "validate">();
   const [scriptMessage, setScriptMessage] = useState<{ ok: boolean; text: string }>();
   const scriptFileInputRef = useRef<HTMLInputElement>(null);
@@ -563,7 +509,7 @@ export function AddRoutingRuleDialog({
             <Field className="sm:col-span-2" label={t("Name")}>
               <Input value={draft.name} onChange={(event) => onChange({ name: event.target.value })} />
             </Field>
-            <Field className="sm:col-span-2" label={t("Rule type")}>
+            {ruleTypeOptions.length > 1 ? <Field className="sm:col-span-2" label={t("Rule type")}>
               <SelectControl
                 onChange={(type) => onChange({
                   type: type as AddRoutingRuleDraft["type"],
@@ -578,7 +524,7 @@ export function AddRoutingRuleDialog({
                 options={ruleTypeOptions}
                 value={draft.type}
               />
-            </Field>
+            </Field> : null}
             {draft.type === "condition" ? <Field className="sm:col-span-2" label={t("Condition")}>
               <div className="rounded-md border border-border bg-muted/20 p-2">
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-[160px_minmax(0,1fr)_112px_minmax(0,1fr)]">
@@ -590,7 +536,7 @@ export function AddRoutingRuleDialog({
                   <Input
                     className="font-mono text-[12px]"
                     onChange={(event) => onChange({ conditionField: event.target.value })}
-                    placeholder={draft.conditionSource.endsWith(".header") ? "x-api-key" : "model"}
+                    placeholder={draft.conditionSource === "request.auth" ? "profileId" : draft.conditionSource.endsWith(".header") ? "x-api-key" : "model"}
                     value={draft.conditionField}
                   />
                   <SelectControl

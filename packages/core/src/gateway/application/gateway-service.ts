@@ -26,7 +26,34 @@ import { compileRouterConfig } from "@ccr/core/routing/config-compiler";
 import { normalizeRouteScriptResult, scriptResultPreview } from "@ccr/core/routing/route-script-result";
 import { mediaService } from "@ccr/core/media/service";
 import { mediaToolsGatewayEndpoint } from "@ccr/core/mcp/grok-media-config";
+import { profileApiKeyId } from "@ccr/core/profiles/api-key";
 
+type RouteScriptTestHeaders = Record<string, string | string[] | undefined>;
+
+function routeScriptTestProfileId(
+  config: AppConfig,
+  headers: RouteScriptTestHeaders
+): string | undefined {
+  if (config.profile?.enabled === false) {
+    return undefined;
+  }
+  const apiKeyId = readRouteScriptTestHeader(headers, "x-auth-api-key-id")?.trim();
+  if (!apiKeyId) {
+    return undefined;
+  }
+  return config.profile?.profiles.find((profile) =>
+    profile.enabled && profileApiKeyId(profile) === apiKeyId
+  )?.id;
+}
+
+function readRouteScriptTestHeader(
+  headers: RouteScriptTestHeaders,
+  name: string
+): string | undefined {
+  const normalized = name.toLowerCase();
+  const entry = Object.entries(headers).find(([key]) => key.toLowerCase() === normalized)?.[1];
+  return Array.isArray(entry) ? entry[0] : entry;
+}
 
 class GatewayService {
   private readonly requestHandler = new GatewayHttpRequestHandler({
@@ -299,7 +326,9 @@ class GatewayService {
       tokenCount: request.request.tokenCount ?? 0,
       url: request.request.url ?? "/v1/messages"
     };
-    const context = buildRouteScriptInput(routeRequest);
+    const context = buildRouteScriptInput(routeRequest, {
+      profileId: routeScriptTestProfileId(config, routeRequest.headers)
+    });
     const execution = await this.routeScriptRuntime.execute(rule.id, request.script, context, {
       circuitBreaker: false
     });

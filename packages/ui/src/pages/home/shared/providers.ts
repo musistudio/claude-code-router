@@ -5,6 +5,7 @@ import openCodeLogoUrl from "@/assets/agent-logos/opencode.ico";
 import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
 import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
 import {
+  ROUTER_SCRIPT_API_VERSION,
   ROUTER_SCRIPT_MAX_TIMEOUT_MS
 } from "@ccr/core/contracts/app";
 import type {
@@ -418,6 +419,40 @@ export function routingRewriteFromDraftRow(row: RoutingRewriteDraftRow): RouterR
     ...(row.operation === "array-replace" ? { match: row.match.trim() } : {}),
     ...(row.operation !== "delete" ? { value } : {})
   };
+}
+
+export function routingRuleFromDraft(
+  draft: AddRoutingRuleDraft,
+  existingRules: RouterRule[],
+  existingRule?: RouterRule
+): RouterRule {
+  const commonRule = {
+    enabled: draft.enabled,
+    fallback: normalizeRouterFallbackConfig(draft.fallback),
+    id: existingRule?.id ?? uniqueRoutingRuleId(existingRules),
+    name: draft.name.trim()
+  };
+  return draft.type === "script"
+    ? {
+        ...commonRule,
+        script: {
+          apiVersion: ROUTER_SCRIPT_API_VERSION,
+          file: draft.scriptFile.trim(),
+          language: "javascript" as const,
+          timeoutMs: Number(draft.scriptTimeoutMs)
+        },
+        type: "script"
+      }
+    : {
+        ...commonRule,
+        condition: {
+          left: buildRouterConditionPath(draft.conditionSource, draft.conditionField),
+          operator: draft.conditionOperator,
+          right: draft.conditionRight.trim()
+        },
+        rewrites: draft.rewrites.map(routingRewriteFromDraftRow),
+        type: "condition"
+      };
 }
 
 function normalizeRouterModelRewrite(rewrite: RouterRuleRewrite): RouterRuleRewrite {

@@ -53,6 +53,7 @@ import type {
   ProviderModelPricing,
   ProviderReasoningLevel,
   ProfileConfig,
+  ProfileRoutingConfig,
   ProfileRuntimeConfig,
   ProxyRouteTarget,
   ProxyRuntimeConfig,
@@ -3428,6 +3429,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       const parsedBotGateway = parseBotGateway(item.botGateway ?? item.bot_gateway ?? item.bot);
       const botGateway = surface !== "cli" && parsedBotGateway ? completeBotGatewayConfig(parsedBotGateway) : undefined;
       const managedCompact = readManagedCompact(item);
+      const routing = parseProfileRouting(item.routing ?? item.route, agent);
 
       if (agent === "claude-code") {
         const appPath = readProfileAppPath(item, agent);
@@ -3445,6 +3447,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
           model,
           name,
           opusModel: readString(item.opusModel) || readString(item.defaultOpusModel) || "",
+          ...(routing ? { routing } : {}),
           scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
           settingsFile: readString(item.settingsFile) || readString(item.configFile) || "~/.claude/settings.json",
           sonnetModel: readString(item.sonnetModel) || readString(item.defaultSonnetModel) || "",
@@ -3462,6 +3465,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
           id,
           model,
           name,
+          ...(routing ? { routing } : {}),
           scope: "ccr",
           surface: "cli"
         };
@@ -3475,6 +3479,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
           id,
           model: "",
           name,
+          ...(routing ? { routing } : {}),
           scope: "ccr",
           surface: "app"
         };
@@ -3500,6 +3505,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         providerId: readString(item.providerId) || readString(item.provider) || "claude-code-router",
         providerName: readString(item.providerName) || "Claude Code Router",
         remoteFrontendMode: parseCodexRemoteFrontendMode(readString(item.remoteFrontendMode) || readString(item.frontendMode) || readString(item.coreMode)) || "app",
+        ...(routing ? { routing } : {}),
         scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
         showAllSessions: agent === "zcode" || agent === "opencode" || agent === "kilo"
           ? false
@@ -3512,6 +3518,44 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       };
     })
     .filter((item): item is ProfileConfig => Boolean(item));
+}
+
+function parseProfileRouting(value: unknown, _agent: ProfileConfig["agent"]): ProfileRoutingConfig | undefined {
+  if (value === false) {
+    return {
+      enabled: false,
+      enhancedRoute: true,
+      rules: []
+    };
+  }
+  if (value === true) {
+    return {
+      enabled: true,
+      enhancedRoute: true,
+      rules: []
+    };
+  }
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const enhancedRoute = readBoolean(
+    value.enhancedRoute ??
+    value.useEnhancedRoute ??
+    value.builtInRoute ??
+    value.builtinRoute ??
+    value.useBuiltInRoute ??
+    value.use_builtin_route
+  );
+  return {
+    enabled: readBoolean(value.enabled) ?? true,
+    enhancedRoute: enhancedRoute ?? true,
+    rules: parseRouterRules(value.rules) ?? []
+  };
+}
+
+function readBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function readProfileAppPath(item: Record<string, unknown>, agent: ProfileConfig["agent"]): string | undefined {

@@ -27,8 +27,8 @@ import type {
   ProfileConfig,
   ProfileScope,
   ProfileSurface,
-  RouterBuiltInAgentRuleId,
   RouterFallbackConfig,
+  RouterRule,
   RouterRuleOperator,
   RouterRuleRewriteOperation,
   RouterRuleType,
@@ -184,6 +184,9 @@ export type AddProfileDraft = {
   opusModel: string;
   providerId: string;
   providerName: string;
+  routingEnabled: boolean;
+  routingEnhancedRoute: boolean;
+  routingRules: RouterRule[];
   scope: ProfileScope;
   settingsFile: string;
   showAllSessions: boolean;
@@ -427,7 +430,6 @@ export type PluginSettingsDraft = {
 };
 
 export type RoutingRuleRow = {
-  builtInAgent?: RouterBuiltInAgentRuleId;
   condition: string;
   enabled: boolean;
   index?: number;
