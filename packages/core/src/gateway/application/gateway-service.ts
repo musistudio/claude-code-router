@@ -15,7 +15,7 @@ import { compileCoreGatewayConfig } from "@ccr/core/gateway/core-runtime/config-
 import { closeServer, formatError } from "@ccr/core/gateway/http/io";
 import { RawTraceSynchronizer } from "@ccr/core/observability/raw-trace-sync";
 import { GatewayBillingSynchronizer } from "@ccr/core/usage/billing-sync";
-import { assertLoopbackCoreHost, endpoint, gatewayNetworkEndpoints, generateCoreGatewayAuthToken, isCoreGatewayHealthy, loopbackCoreHostError, removeManagedCoreGatewayMarker, shouldRunGatewayRuntime, shouldRunUnifiedServer, spawnGatewayProcess, stopPreviousManagedCoreGateway, waitForManagedCoreGatewayReady, writeManagedCoreGatewayMarker } from "@ccr/core/gateway/core-runtime/supervisor";
+import { assertLoopbackCoreHost, endpoint, formatCoreGatewayChildExit, gatewayNetworkEndpoints, generateCoreGatewayAuthToken, isCoreGatewayHealthy, loopbackCoreHostError, removeManagedCoreGatewayMarker, shouldRunGatewayRuntime, shouldRunUnifiedServer, spawnGatewayProcess, stopPreviousManagedCoreGateway, waitForManagedCoreGatewayReady, writeManagedCoreGatewayMarker } from "@ccr/core/gateway/core-runtime/supervisor";
 import { coreGatewayAuthHeader } from "@ccr/core/gateway/internal/shared";
 import type { BrowserAutomationMcpIntegration, BrowserWebSearchMcpIntegration, GatewayStopOptions } from "@ccr/core/gateway/internal/shared";
 import { GatewayRequestPipeline } from "@ccr/core/gateway/request/pipeline";
@@ -197,7 +197,7 @@ class GatewayService {
           void this.handleCoreGatewayTermination(managedChild, markerWritePromise, startupFailure.message);
         });
         this.child.once("exit", (code, signal) => {
-          startupFailure ??= new Error(coreGatewayExitMessage(code, signal));
+          startupFailure ??= new Error(formatCoreGatewayChildExit(managedChild, code, signal));
           void this.handleCoreGatewayTermination(managedChild, markerWritePromise, startupFailure.message);
         });
         markerWritePromise = writeManagedCoreGatewayMarker(managedChild, runtimeId);
@@ -414,13 +414,9 @@ class GatewayService {
 
 }
 
-function coreGatewayExitMessage(code: number | null, signal: NodeJS.Signals | null): string {
-  return `Core gateway exited with ${signal ?? code ?? "unknown status"}`;
-}
-
 function assertManagedGatewayStartupContinues(child: ChildProcess, startupFailure: Error | undefined): void {
   if (startupFailure || child.exitCode !== null || child.signalCode !== null || child.killed) {
-    throw startupFailure ?? new Error(coreGatewayExitMessage(child.exitCode, child.signalCode));
+    throw startupFailure ?? new Error(formatCoreGatewayChildExit(child));
   }
 }
 
