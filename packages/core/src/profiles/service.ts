@@ -704,7 +704,11 @@ function applyZcodeProfile(config: AppConfig, profile: ProfileConfig, token: str
 }
 
 function profileEntries(config: AppConfig): ProfileConfig[] {
-  return enforceSingleEnabledGlobalProfilePerAgent(config.profile.profiles);
+  const profiles = enforceSingleEnabledGlobalProfilePerAgent(config.profile.profiles);
+  if (config.profile.enabled !== false) {
+    return profiles;
+  }
+  return profiles.map((profile) => profile.enabled ? { ...profile, enabled: false } : profile);
 }
 
 async function ensureProfileApiKeys(config: AppConfig, profiles: ProfileConfig[]): Promise<Map<string, string>> {
@@ -2490,6 +2494,7 @@ function claudeCodeManagedSettingsEnvKeys(
 function isManagedClaudeCodeSettingsEnvKey(key: string): boolean {
   return (claudeCodeGatewayEnvKeys as readonly string[]).includes(key) ||
     (claudeCodeRemovedAuthEnvKeys as readonly string[]).includes(key) ||
+    key === CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV ||
     key === CLAUDE_CODE_MCP_CONFIG_ENV ||
     key === CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV ||
     isClaudeCodeManagedModelEnvKey(key) ||
@@ -3190,6 +3195,9 @@ function isManagedClaudeCodeSettingsContent(content: string): boolean {
   if (!settings) {
     return false;
   }
+  if (!isPureManagedClaudeCodeSettings(settings)) {
+    return false;
+  }
   const apiKeyHelper = typeof settings.apiKeyHelper === "string" ? settings.apiKeyHelper : "";
   if (apiKeyHelper.includes("ccr-claude-code-api-key-")) {
     return true;
@@ -3198,6 +3206,23 @@ function isManagedClaudeCodeSettingsContent(content: string): boolean {
   return typeof env.ANTHROPIC_BASE_URL === "string" &&
     typeof env.ANTHROPIC_API_BASE_URL === "string" &&
     typeof env.CLAUDE_AGENT_API_BASE_URL === "string";
+}
+
+function isPureManagedClaudeCodeSettings(settings: Record<string, unknown>): boolean {
+  const rootKeys = Object.keys(settings);
+  if (rootKeys.some((key) => key !== "apiKeyHelper" && key !== "env")) {
+    return false;
+  }
+  if ("apiKeyHelper" in settings && typeof settings.apiKeyHelper !== "string") {
+    return false;
+  }
+  if (!("env" in settings)) {
+    return true;
+  }
+  if (!isRecord(settings.env)) {
+    return false;
+  }
+  return Object.keys(settings.env).every((key) => isManagedClaudeCodeSettingsEnvKey(key));
 }
 
 function isManagedCodexConfigContent(content: string, providerId: string): boolean {

@@ -13,7 +13,7 @@ import { LEGACY_ACTIVE_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FI
 import { normalizeCodexProviderAccountConfig } from "@ccr/core/agents/local-providers/codex";
 import { normalizeGrokProviderAccountConfig, normalizeGrokProviderMediaCapabilities } from "@ccr/core/agents/local-providers/grok";
 import { removeOpenCodeProviderAccountConfig } from "@ccr/core/agents/local-providers/opencode";
-import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, CLAUDE_DESIGN_PLUGIN_ID, CLAUDE_SHIP_PLUGIN_ID, DEFAULT_TRAY_COMPONENT_VARIANTS, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, ROUTER_SCRIPT_API_VERSION, ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS, ROUTER_SCRIPT_MAX_TIMEOUT_MS, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent, knownGatewayPluginDefaultApps, knownGatewayPluginDefaultPermissions, knownGatewayPluginDefaultSurfaces } from "@ccr/core/contracts/app";
+import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, CLAUDE_DESIGN_PLUGIN_ID, CLAUDE_SHIP_PLUGIN_ID, DEFAULT_TRAY_COMPONENT_VARIANTS, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, ROUTER_SCRIPT_API_VERSION, ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS, ROUTER_SCRIPT_MAX_TIMEOUT_MS, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent, isEnabledGlobalProfile, knownGatewayPluginDefaultApps, knownGatewayPluginDefaultPermissions, knownGatewayPluginDefaultSurfaces } from "@ccr/core/contracts/app";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config";
 import { maxRequestLogBodyBytes } from "@ccr/core/observability/request-log-limits";
 import { findProviderPresetByBaseUrl, primaryProviderPresetEndpoint, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
@@ -420,13 +420,83 @@ function enqueueAppConfigWrite<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 function withSingleEnabledGlobalProfiles(config: AppConfig): AppConfig {
+  const profiles = enforceSingleEnabledGlobalProfilePerAgent(config.profile.profiles);
   return {
     ...config,
     Providers: config.Providers.map(normalizeProviderPresetCapabilities),
-    profile: {
+    profile: synchronizeLegacyProfileConfig({
       ...config.profile,
-      profiles: enforceSingleEnabledGlobalProfilePerAgent(config.profile.profiles)
-    }
+      profiles
+    })
+  };
+}
+
+function synchronizeLegacyProfileConfig(profile: AppConfig["profile"]): AppConfig["profile"] {
+  const profiles = enforceSingleEnabledGlobalProfilePerAgent(profile.profiles);
+  const profileEnabled = profile.enabled !== false && profiles.some((item) => item.enabled);
+  const claudeCodeProfile = profileEnabled ? activeGlobalProfile(profiles, "claude-code") : undefined;
+  const codexProfile = profileEnabled ? activeGlobalProfile(profiles, "codex") : undefined;
+
+  return {
+    ...profile,
+    enabled: profileEnabled,
+    claudeCode: synchronizeLegacyClaudeCodeProfile(profile.claudeCode, claudeCodeProfile),
+    codex: synchronizeLegacyCodexProfile(profile.codex, codexProfile),
+    profiles
+  };
+}
+
+function activeGlobalProfile(profiles: ProfileConfig[], agent: ProfileConfig["agent"]): ProfileConfig | undefined {
+  return profiles.find((profile) => profile.agent === agent && isEnabledGlobalProfile(profile));
+}
+
+function synchronizeLegacyClaudeCodeProfile(
+  legacy: ClaudeCodeProfileConfig,
+  profile: ProfileConfig | undefined
+): ClaudeCodeProfileConfig {
+  if (!profile) {
+    return {
+      ...legacy,
+      enabled: false
+    };
+  }
+  return {
+    ...legacy,
+    enabled: true,
+    fableModel: profile.fableModel ?? legacy.fableModel,
+    haikuModel: profile.haikuModel ?? legacy.haikuModel,
+    managedCompact: profile.managedCompact ?? legacy.managedCompact,
+    model: profile.model,
+    opusModel: profile.opusModel ?? legacy.opusModel,
+    settingsFile: profile.settingsFile ?? legacy.settingsFile,
+    sonnetModel: profile.sonnetModel ?? legacy.sonnetModel,
+    smallFastModel: profile.smallFastModel ?? legacy.smallFastModel
+  };
+}
+
+function synchronizeLegacyCodexProfile(
+  legacy: CodexProfileConfig,
+  profile: ProfileConfig | undefined
+): CodexProfileConfig {
+  if (!profile) {
+    return {
+      ...legacy,
+      enabled: false
+    };
+  }
+  return {
+    ...legacy,
+    cliMiddleware: profile.cliMiddleware ?? legacy.cliMiddleware,
+    codexCliPath: profile.codexCliPath ?? legacy.codexCliPath,
+    codexHome: profile.codexHome ?? legacy.codexHome,
+    configFormat: profile.configFormat ?? legacy.configFormat,
+    configFile: profile.configFile ?? legacy.configFile,
+    enabled: true,
+    managedCompact: profile.managedCompact ?? legacy.managedCompact,
+    model: profile.model,
+    providerId: profile.providerId ?? legacy.providerId,
+    providerName: profile.providerName ?? legacy.providerName,
+    showAllSessions: profile.showAllSessions ?? legacy.showAllSessions
   };
 }
 
@@ -657,13 +727,14 @@ function sanitizeConfigForDisk(config: AppConfig): AppConfig {
 }
 
 function sanitizeProfileConfigForDisk(profile: AppConfig["profile"]): AppConfig["profile"] {
-  const { remoteFrontendMode: _remoteFrontendMode, ...codex } = profile.codex as AppConfig["profile"]["codex"] & {
+  const synchronizedProfile = synchronizeLegacyProfileConfig(profile);
+  const { remoteFrontendMode: _remoteFrontendMode, ...codex } = synchronizedProfile.codex as AppConfig["profile"]["codex"] & {
     remoteFrontendMode?: unknown;
   };
   return {
-    ...profile,
+    ...synchronizedProfile,
     codex,
-    profiles: profile.profiles.map((profileItem) => {
+    profiles: synchronizedProfile.profiles.map((profileItem) => {
       if (profileItem.agent !== "codex" && profileItem.agent !== "opencode" && profileItem.agent !== "kilo" && profileItem.agent !== "zcode") {
         return profileItem;
       }
@@ -3486,6 +3557,13 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       }
 
       const appPath = readProfileAppPath(item, agent);
+      const showAllSessions = agent === "zcode" || agent === "opencode" || agent === "kilo"
+        ? false
+        : typeof item.showAllSessions === "boolean"
+          ? item.showAllSessions
+          : typeof item.show_all_sessions === "boolean"
+            ? item.show_all_sessions
+            : undefined;
       return {
         agent,
         ...(appPath ? { appPath } : {}),
@@ -3507,13 +3585,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         remoteFrontendMode: parseCodexRemoteFrontendMode(readString(item.remoteFrontendMode) || readString(item.frontendMode) || readString(item.coreMode)) || "app",
         ...(routing ? { routing } : {}),
         scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
-        showAllSessions: agent === "zcode" || agent === "opencode" || agent === "kilo"
-          ? false
-          : typeof item.showAllSessions === "boolean"
-            ? item.showAllSessions
-            : typeof item.show_all_sessions === "boolean"
-              ? item.show_all_sessions
-              : false,
+        ...(showAllSessions !== undefined ? { showAllSessions } : {}),
         surface
       };
     })
