@@ -184,6 +184,78 @@ test("Claude Code local provider ignores mcpOAuth plugin tokens in favour of cla
   });
 });
 
+// Regression for the review on #1604: an mcpOAuth-only record must yield no
+// token at all, not a plugin token demoted to a fallback.
+test("Claude Code local provider does not import an mcpOAuth-only keychain token", { skip: process.platform === "win32" }, async () => {
+  await withClaudeCodeHome(async () => {
+    await withPlatform("darwin", async () => {
+      await withFakeSecurityKeychain([
+        {
+          account: keychainAccount,
+          modified: "20260729042837",
+          record: {
+            mcpOAuth: {
+              "plugin:github|1": {
+                accessToken: "mcp-plugin-token",
+                refreshToken: "mcp-plugin-refresh"
+              }
+            }
+          },
+          service: "Claude Code-credentials"
+        }
+      ], async () => {
+        const candidate = claudeCodeCandidate();
+
+        assert.equal(candidate.status, "locked");
+        assert.equal(candidate.importable, false);
+        assert.match(candidate.detail, /no OAuth token/);
+        assert.match(candidate.detail, /mcpOAuth/);
+        assert.throws(
+          () => importClaudeCodeProvider(candidate, []),
+          /Claude Code access token was not found/
+        );
+      });
+    });
+  });
+});
+
+// An mcpOAuth-only keychain record must not short-circuit the file fallback.
+test("Claude Code local provider prefers file credentials over an mcpOAuth-only keychain token", { skip: process.platform === "win32" }, async () => {
+  await withClaudeCodeHome(async (home) => {
+    await withPlatform("darwin", async () => {
+      await withFakeSecurityKeychain([
+        {
+          account: keychainAccount,
+          modified: "20260729042837",
+          record: {
+            mcpOAuth: {
+              "plugin:github|1": {
+                accessToken: "mcp-plugin-token",
+                refreshToken: "mcp-plugin-refresh"
+              }
+            }
+          },
+          service: "Claude Code-credentials"
+        }
+      ], async () => {
+        const credentialFile = writeClaudeCredentials(home, {
+          accessToken: "file-access-token",
+          refreshToken: "file-refresh-token"
+        });
+
+        const candidate = claudeCodeCandidate();
+
+        assert.equal(candidate.status, "available");
+        assert.equal(candidate.importable, true);
+        assert.equal(candidate.sourceFile, credentialFile);
+
+        const result = importClaudeCodeProvider(candidate, []);
+        assert.equal(result.providerPlugins[0].auth.headers.authorization, "Bearer file-access-token");
+      });
+    });
+  });
+});
+
 // With CLAUDE_CONFIG_DIR set, Claude Code appends the first 8 hex of
 // sha256(NFC(configDir)) to the service name.
 test("Claude Code local provider reads the config-dir-suffixed keychain service", { skip: process.platform === "win32" }, async () => {

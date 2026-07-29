@@ -130,8 +130,11 @@ export function cloneProviderAccountConfig(account: ProviderAccountConfig | unde
   return account ? JSON.parse(JSON.stringify(account)) as ProviderAccountConfig : undefined;
 }
 
-export function findOauthTokenSet(value: unknown, depth = 0): { accessToken?: string; refreshToken?: string } | undefined {
-  if (!isRecord(value) || depth > 5) {
+// Reads the token fields on `value` itself, never descending into children.
+// Callers that know their record shape use this to avoid matching an unrelated
+// nested credential -- see the mcpOAuth note in claude-code.ts.
+export function readOauthTokenSetFields(value: unknown): { accessToken?: string; refreshToken?: string } | undefined {
+  if (!isRecord(value)) {
     return undefined;
   }
   const accessToken =
@@ -142,8 +145,16 @@ export function findOauthTokenSet(value: unknown, depth = 0): { accessToken?: st
     readString(value.refreshToken) ||
     readString(value.refresh_token) ||
     readString(value.anthropicRefreshToken);
-  if (accessToken || refreshToken) {
-    return { accessToken, refreshToken };
+  return accessToken || refreshToken ? { accessToken, refreshToken } : undefined;
+}
+
+export function findOauthTokenSet(value: unknown, depth = 0): { accessToken?: string; refreshToken?: string } | undefined {
+  if (!isRecord(value) || depth > 5) {
+    return undefined;
+  }
+  const direct = readOauthTokenSetFields(value);
+  if (direct) {
+    return direct;
   }
   for (const child of Object.values(value)) {
     const found = findOauthTokenSet(child, depth + 1);

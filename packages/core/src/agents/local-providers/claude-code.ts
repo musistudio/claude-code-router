@@ -10,12 +10,12 @@ import type {
 } from "@ccr/core/contracts/app";
 import {
   bearerAuthPlugin,
-  findOauthTokenSet,
   isRecord,
   missingCandidate,
   providerInternalNamePlaceholder,
   providerPayload,
   readJsonRecord,
+  readOauthTokenSetFields,
   uniqueProviderName,
   uniqueStrings,
   type OAuthTokenSet
@@ -201,7 +201,9 @@ export function scanClaudeCodeLogin(): ClaudeCodeLoginScan {
       continue;
     }
     scan.inspected.push(sourceFile);
-    const credential = findOauthTokenSet(record.claudeAiOauth) ?? findOauthTokenSet(record);
+    // Root-level fields only, same reasoning as the keychain path below: Claude
+    // Code writes this file with the identical record shape, mcpOAuth included.
+    const credential = readOauthTokenSetFields(record.claudeAiOauth) ?? readOauthTokenSetFields(record);
     if (!credential?.accessToken && !credential?.refreshToken) {
       scan.tokenless.push(`${sourceFile} (keys: ${Object.keys(record).join(", ")})`);
       continue;
@@ -288,7 +290,7 @@ function scanClaudeCodeKeychain(scan: ClaudeCodeLoginScan): OAuthTokenSet | unde
 
   const attempted = new Set<string>();
   const servicesRead = new Set<string>();
-  let nestedMatch: OAuthTokenSet | undefined;
+  let legacyRootMatch: OAuthTokenSet | undefined;
   for (const buildTier of tiers) {
     for (const candidate of buildTier()) {
       const key = `${candidate.service}\u0000${candidate.account ?? ""}`;
@@ -305,22 +307,26 @@ function scanClaudeCodeKeychain(scan: ClaudeCodeLoginScan): OAuthTokenSet | unde
       }
       servicesRead.add(candidate.service);
       scan.inspected.push(`keychain:${label}`);
-      // Only `claudeAiOauth` is an Anthropic API credential. A recursive search
-      // over the whole record also matches the per-plugin tokens under
-      // `mcpOAuth`, which import cleanly and then 401 on every request.
-      const claudeAiOauth = findOauthTokenSet(record.claudeAiOauth);
-      if (claudeAiOauth?.accessToken || claudeAiOauth?.refreshToken) {
+      // Only `claudeAiOauth` is an Anthropic API credential. Both reads are
+      // root-level: a recursive search would descend into `mcpOAuth`, whose
+      // per-plugin records also carry `accessToken`, and that token imports
+      // cleanly as a provider and then 401s on every request. Restricting to
+      // root-level fields excludes *any* nested container, so a future sibling
+      // key cannot reintroduce the hole.
+      const claudeAiOauth = readOauthTokenSetFields(record.claudeAiOauth);
+      if (claudeAiOauth) {
         return {
           accessToken: claudeAiOauth.accessToken,
           refreshToken: claudeAiOauth.refreshToken,
           sourceFile: `keychain:${label}`
         };
       }
-      const nested = findOauthTokenSet(record);
-      if (nested?.accessToken || nested?.refreshToken) {
-        nestedMatch ??= {
-          accessToken: nested.accessToken,
-          refreshToken: nested.refreshToken,
+      // Pre-`claudeAiOauth` layout, where the tokens sat at the record root.
+      const legacyRoot = readOauthTokenSetFields(record);
+      if (legacyRoot) {
+        legacyRootMatch ??= {
+          accessToken: legacyRoot.accessToken,
+          refreshToken: legacyRoot.refreshToken,
           sourceFile: `keychain:${label}`
         };
         continue;
@@ -328,9 +334,9 @@ function scanClaudeCodeKeychain(scan: ClaudeCodeLoginScan): OAuthTokenSet | unde
       scan.tokenless.push(`keychain:${label} (keys: ${Object.keys(record).join(", ")})`);
     }
   }
-  // Every tier is exhausted before falling back to a nested match, so an
+  // Every tier is exhausted before falling back to a root-level match, so an
   // explicit `claudeAiOauth` on any item always wins.
-  return nestedMatch;
+  return legacyRootMatch;
 }
 
 // `security dump-keychain` without `-d` prints item *metadata* only: it never
