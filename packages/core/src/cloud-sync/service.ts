@@ -4,6 +4,9 @@ import { hostname } from "node:os";
 import { dirname } from "node:path";
 import type {
   AppConfig,
+  CloudSyncConflictField,
+  CloudSyncConflictFieldResolution,
+  CloudSyncConflictResolution,
   CloudSyncKeyFileResult,
   CloudSyncConfig,
   CloudSyncKeyInput,
@@ -11,6 +14,7 @@ import type {
   CloudSyncOperationResult,
   CloudSyncPullRequest,
   CloudSyncPushRequest,
+  CloudSyncResolveConflictRequest,
   CloudSyncSetupRequest,
   CloudSyncStatus
 } from "@ccr/core/contracts/app";
@@ -66,6 +70,7 @@ type CloudTokenResponse = {
   refreshToken?: string;
   refreshTokenExpiresAt?: string;
   tokenType?: string;
+  user?: CloudUserResponse;
 };
 
 type CloudTokenRefreshPatch = {
@@ -104,18 +109,42 @@ type CloudDocument = {
   namespace: string;
   revision: number;
   snapshotHash?: string | null;
+  snapshotRevision?: number | null;
   updatedAt?: string | null;
+};
+
+type CloudOperation = {
+  baseRevision?: number;
+  clientOperationId?: string;
+  encryptedPayload?: EncryptedPayload | null;
+  id?: string;
+  revision?: number;
+};
+
+type CloudPullPagination = {
+  excludeOperationId?: string | null;
+  hasMore?: boolean;
+  limit?: number;
+  nextRevision?: number | null;
 };
 
 type CloudPullResponse = {
   document: CloudDocument;
-  operations?: unknown[];
+  operations?: CloudOperation[];
+  pagination?: CloudPullPagination;
 };
 
 type CloudPushResponse = {
+  accepted?: boolean;
   conflict?: boolean;
   document?: CloudDocument;
+  idempotent?: boolean;
   mergeRequired?: boolean;
+  missingOperations?: CloudOperation[];
+  missingOperationsExcludeOperationId?: string;
+  missingOperationsHasMore?: boolean;
+  nextMissingRevision?: number | null;
+  operation?: CloudOperation;
   snapshotAccepted?: boolean;
   snapshotRejectedReason?: string;
 };
@@ -126,8 +155,30 @@ type CloudRequestOptions = {
 };
 
 type CloudSyncMergeResult = {
+  conflictFields: CloudSyncConflictField[];
   conflicts: string[];
   snapshot: CloudSyncSnapshot;
+};
+
+type CloudSyncConflictPreference = NonNullable<CloudSyncResolveConflictRequest["preference"]>;
+type CloudSyncConflictResultMap = Map<
+  string,
+  unknown | typeof missingCloudSyncMergeValue
+>;
+
+type CloudSyncSnapshotOperation = {
+  kind: "replace-cloud-sync-snapshot";
+  snapshot: CloudSyncSnapshot;
+  snapshotHash: string;
+  snapshotVersion: number;
+  updatedAt: string;
+  version: 2;
+};
+
+type CloudOperationCollection = {
+  config: AppConfig;
+  document?: CloudDocument;
+  operations: CloudOperation[];
 };
 
 type CloudSyncPushOptions = {
@@ -140,6 +191,21 @@ type CloudSyncLoginOptions = {
   callbackUrl?: string;
 };
 
+type PendingCloudSyncAuth = {
+  expiresAt: number;
+  verifier: string;
+};
+
+type PendingCloudSyncConflict = {
+  baseSnapshot?: CloudSyncSnapshot;
+  descriptor: CloudSyncConflictResolution;
+  identity: string;
+  keyMaterial: CloudSyncKeyMaterial;
+  localSnapshot: CloudSyncSnapshot;
+  remoteSnapshot: CloudSyncSnapshot;
+  remoteSnapshotHash?: string;
+};
+
 const cloudSyncSnapshotKind = "claude-code-router-cloud-sync-snapshot";
 const defaultCloudSyncNamespace = "ccr";
 const keyFileKind = "claude-code-router-cloud-sync-key";
@@ -149,8 +215,13 @@ const privateFileMode = 0o600;
 const privateDirMode = 0o700;
 const missingCloudSyncMergeValue = Symbol("missing-cloud-sync-merge-value");
 const cloudSyncAuthExpiredMessage = "Cloud sync login expired. Sign in again.";
+const cloudSyncAuthAttemptMs = 10 * 60 * 1000;
+const cloudSyncConflictResolutionMs = 30 * 60 * 1000;
 
 const cloudSyncKeyCache = new Map<string, Buffer>();
+const pendingCloudSyncAuth = new Map<string, PendingCloudSyncAuth>();
+const pendingCloudSyncConflicts = new Map<string, PendingCloudSyncConflict>();
+const pendingCloudSyncConflictIds = new Map<string, string>();
 const cloudTokenRefreshInFlight = new Map<string, Promise<CloudTokenRefreshPatch>>();
 const cloudTokenRefreshRecent = new Map<string, { expiresAt: number; patch: CloudTokenRefreshPatch }>();
 const cloudTokenRefreshRecentMs = 30 * 60 * 1000;
@@ -175,6 +246,7 @@ class CloudSyncRefreshTokenExpiredError extends Error {
 export function getCloudSyncStatus(config: AppConfig): CloudSyncStatus {
   const cloudSync = normalizedCloudSyncConfig(config.cloudSync);
   const unlocked = Boolean(cloudSync.keyId && cloudSyncKeyCache.has(cloudSync.keyId));
+  const pendingConflict = pendingCloudSyncConflictForConfig(config)?.descriptor;
 
   return {
     authenticated: Boolean(cloudSync.accessToken || cloudSync.refreshToken),
@@ -189,6 +261,7 @@ export function getCloudSyncStatus(config: AppConfig): CloudSyncStatus {
     lastSyncAt: cloudSync.lastSyncAt,
     lastSyncError: cloudSync.lastSyncError,
     namespace: cloudSync.namespace,
+    pendingConflict,
     snapshotHash: cloudSync.snapshotHash,
     unlocked,
     userAvatarUrl: cloudSync.userAvatarUrl,
@@ -200,6 +273,7 @@ export function getCloudSyncStatus(config: AppConfig): CloudSyncStatus {
 }
 
 export function disableCloudSyncConfig(config: AppConfig): AppConfig {
+  clearPendingCloudSyncConflict(config);
   if (config.cloudSync.keyId) {
     cloudSyncKeyCache.delete(config.cloudSync.keyId);
   }
@@ -230,6 +304,55 @@ export function startCloudSyncLogin(config: AppConfig, options: CloudSyncLoginOp
     message: "Open the browser to complete cloud sync login.",
     status: getCloudSyncStatus(nextConfig)
   };
+}
+
+export async function completeCloudSyncLogin(config: AppConfig, rawCallbackUrl: string): Promise<AppConfig> {
+  const callbackUrl = new URL(requiredString(rawCallbackUrl, "Cloud sync callback URL"));
+  const code = requiredString(callbackUrl.searchParams.get("code"), "Cloud sync handoff code");
+  const handoffExpiresAt = optionalString(callbackUrl.searchParams.get("expires_at"));
+  if (handoffExpiresAt) {
+    const expiresAt = Date.parse(handoffExpiresAt);
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      throw new Error("Cloud sync login handoff expired. Sign in again.");
+    }
+  }
+
+  const callbackKey = cloudSyncAuthCallbackKey(callbackUrl);
+  const pending = pendingCloudSyncAuth.get(callbackKey);
+  pendingCloudSyncAuth.delete(callbackKey);
+  if (!pending || pending.expiresAt <= Date.now()) {
+    throw new Error("Cloud sync login session is invalid or expired. Sign in again.");
+  }
+
+  const cloudSync = normalizedCloudSyncConfig(config.cloudSync);
+  const response = await fetch(cloudSyncUrl(cloudSync.baseUrl, "/auth/handoff"), {
+    body: JSON.stringify({
+      code,
+      codeVerifier: pending.verifier
+    }),
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    },
+    method: "POST"
+  });
+  const data = await readCloudResponse(response);
+  if (!response.ok) {
+    throw new Error(`Cloud login handoff failed (${response.status}): ${cloudErrorMessage(data)}`);
+  }
+
+  const tokenResponse = data as CloudTokenResponse;
+  const user = tokenResponse.user;
+  return applyCloudSyncAuthTokens(config, {
+    accessToken: requiredString(tokenResponse.accessToken, "Cloud access token"),
+    refreshToken: requiredString(tokenResponse.refreshToken, "Cloud refresh token"),
+    refreshTokenExpiresAt: optionalString(tokenResponse.refreshTokenExpiresAt),
+    userAvatarUrl: optionalString(user?.avatarUrl),
+    userEmail: optionalString(user?.email),
+    userId: optionalString(user?.id),
+    userLogin: optionalString(user?.githubLogin),
+    userName: optionalString(user?.githubName)
+  });
 }
 
 export function applyCloudSyncAuthTokens(config: AppConfig, input: CloudSyncAuthTokenInput): AppConfig {
@@ -349,7 +472,13 @@ async function setupCloudSyncConfigInternal(
     }
   };
 
-  const remote = await pullCloudDocument(nextConfig, 0);
+  let remote = await pullCloudDocument(nextConfig, 0);
+  if (
+    remote.data.document.encryptedSnapshot &&
+    remote.data.document.snapshotRevision === null
+  ) {
+    remote = await pullAllCloudDocuments(remote.config, 0);
+  }
   nextConfig = remote.config;
   if (remote.data.document.revision > 0) {
     const encryptedSnapshot = remote.data.document.encryptedSnapshot;
@@ -370,7 +499,11 @@ async function setupCloudSyncConfigInternal(
         keySalt: keyMaterial.keySalt
       }
     };
-    const snapshot = decryptSnapshot(encryptedSnapshot, keyMaterial);
+    const snapshot = resolveCloudDocumentSnapshot(
+      remote.data.document,
+      remote.data.operations ?? [],
+      keyMaterial
+    ).snapshot;
     nextConfig = applyCloudSyncSnapshot(nextConfig, snapshot);
     nextConfig = withCloudSyncSuccess(nextConfig, {
       lastRevision: remote.data.document.revision,
@@ -432,13 +565,206 @@ export async function pullCloudSyncConfig(
   return withCloudSyncOperationAuthHandling(() => pullCloudSyncConfigInternal(config, request));
 }
 
+export async function resolveCloudSyncConflict(
+  config: AppConfig,
+  request: CloudSyncResolveConflictRequest
+): Promise<CloudSyncOperationResult> {
+  return withCloudSyncOperationAuthHandling(
+    () => resolveCloudSyncConflictInternal(config, request)
+  );
+}
+
+async function resolveCloudSyncConflictInternal(
+  config: AppConfig,
+  request: CloudSyncResolveConflictRequest
+): Promise<CloudSyncOperationResult> {
+  const conflictId = requiredString(request.conflictId, "Cloud sync conflict ID");
+  const pending = pendingCloudSyncConflictById(conflictId);
+  if (!pending || pending.identity !== cloudSyncConflictIdentity(config)) {
+    throw new Error("Cloud sync conflict expired or is no longer available. Sync again to refresh it.");
+  }
+  const conflictResults = cloudSyncConflictResultsFromRequest(request, pending.descriptor);
+  const preference = request.preference ?? "local";
+  if (
+    request.preference !== undefined &&
+    request.preference !== "local" &&
+    request.preference !== "remote"
+  ) {
+    throw new Error("Cloud sync conflict preference must be local or remote.");
+  }
+  if (!conflictResults && request.preference === undefined) {
+    throw new Error("Cloud sync conflict preference or reviewed resolutions are required.");
+  }
+  const currentSnapshot = createCloudSyncSnapshot(config);
+  if (!sameCloudSyncValue(currentSnapshot.config, pending.localSnapshot.config)) {
+    removePendingCloudSyncConflict(conflictId);
+    return cloudSyncConflictResult(
+      config,
+      "Local configuration changed after the conflict was detected. Sync again before choosing a version.",
+      pending.descriptor.remoteRevision,
+      pending.descriptor.paths
+    );
+  }
+  const latestRemote = await pullCloudDocument(config, pending.descriptor.remoteRevision);
+  if (latestRemote.data.document.revision !== pending.descriptor.remoteRevision) {
+    removePendingCloudSyncConflict(conflictId);
+    return pullCloudSyncConfigInternal(latestRemote.config);
+  }
+  config = latestRemote.config;
+
+  const merge = pending.baseSnapshot
+    ? mergeCloudSyncSnapshots(
+      pending.baseSnapshot,
+      pending.localSnapshot,
+      pending.remoteSnapshot,
+      preference,
+      conflictResults
+    )
+    : resolveCloudSyncConflictWithoutBase(pending, preference, conflictResults);
+  let mergedConfig = applyCloudSyncSnapshot(config, merge.snapshot);
+  mergedConfig = {
+    ...mergedConfig,
+    cloudSync: {
+      ...normalizedCloudSyncConfig(mergedConfig.cloudSync),
+      lastRevision: pending.descriptor.remoteRevision,
+      lastSyncError: undefined,
+      lastSyncedSnapshot: cloneJson(pending.remoteSnapshot),
+      snapshotHash: pending.remoteSnapshotHash || snapshotHash(pending.remoteSnapshot)
+    }
+  };
+
+  if (sameCloudSyncValue(merge.snapshot.config, pending.remoteSnapshot.config)) {
+    removePendingCloudSyncConflict(conflictId);
+    mergedConfig = withCloudSyncSuccess(mergedConfig, {
+      lastRevision: pending.descriptor.remoteRevision,
+      snapshotHash: pending.remoteSnapshotHash || snapshotHash(pending.remoteSnapshot)
+    }, pending.remoteSnapshot);
+    return {
+      config: mergedConfig,
+      conflict: true,
+      mergeApplied: true,
+      mergeConflicts: pending.descriptor.paths,
+      message: conflictResults
+        ? "Cloud conflict was resolved using the reviewed values."
+        : "Cloud conflict was resolved using cloud values.",
+      remoteRevision: pending.descriptor.remoteRevision,
+      snapshotApplied: true,
+      snapshotPushed: false,
+      status: getCloudSyncStatus(mergedConfig)
+    };
+  }
+
+  const pushed = await pushCloudSyncConfigInternal(mergedConfig, {}, {
+    keyMaterial: pending.keyMaterial
+  });
+  if (pushed.conflictResolution || !pushed.snapshotPushed) {
+    return pushed;
+  }
+  return {
+    ...pushed,
+    conflict: true,
+    mergeApplied: true,
+    mergeConflicts: pending.descriptor.paths,
+    message: conflictResults
+      ? "Cloud conflict was resolved using the reviewed values and the merged snapshot was pushed."
+      : preference === "local"
+      ? "Cloud conflict was resolved using local values and the merged snapshot was pushed."
+      : "Cloud conflict was resolved using cloud values and independent local changes were pushed.",
+    snapshotApplied: true
+  };
+}
+
+function cloudSyncConflictResultsFromRequest(
+  request: CloudSyncResolveConflictRequest,
+  descriptor: CloudSyncConflictResolution
+): CloudSyncConflictResultMap | undefined {
+  if (request.resolutions === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(request.resolutions)) {
+    throw new Error("Cloud sync conflict resolutions must be an array.");
+  }
+
+  const expectedPaths = new Set(descriptor.fields.map((field) => field.path));
+  const results: CloudSyncConflictResultMap = new Map();
+  for (const item of request.resolutions as CloudSyncConflictFieldResolution[]) {
+    if (!isObject(item)) {
+      throw new Error("Each cloud sync conflict resolution must be an object.");
+    }
+    const path = requiredString(item.path, "Cloud sync conflict path");
+    if (!expectedPaths.has(path)) {
+      throw new Error(`Cloud sync conflict path is no longer available: ${path}`);
+    }
+    if (results.has(path)) {
+      throw new Error(`Cloud sync conflict path was resolved more than once: ${path}`);
+    }
+    if (!isObject(item.result) || typeof item.result.exists !== "boolean") {
+      throw new Error(`Cloud sync conflict result is invalid for ${path}.`);
+    }
+    if (!item.result.exists) {
+      results.set(path, missingCloudSyncMergeValue);
+      continue;
+    }
+    if (!Object.hasOwn(item.result, "value")) {
+      throw new Error(`Cloud sync conflict result value is required for ${path}.`);
+    }
+    const serialized = JSON.stringify(item.result.value);
+    if (serialized === undefined) {
+      throw new Error(`Cloud sync conflict result must be valid JSON for ${path}.`);
+    }
+    results.set(path, JSON.parse(serialized));
+  }
+
+  const unresolvedPaths = [...expectedPaths].filter((path) => !results.has(path));
+  if (unresolvedPaths.length > 0 || results.size !== expectedPaths.size) {
+    throw new Error(
+      `Resolve every cloud sync conflict field before applying: ${unresolvedPaths.join(", ")}`
+    );
+  }
+  return results;
+}
+
+function resolveCloudSyncConflictWithoutBase(
+  pending: PendingCloudSyncConflict,
+  preference: CloudSyncConflictPreference,
+  conflictResults?: CloudSyncConflictResultMap
+): CloudSyncMergeResult {
+  const preferredSnapshot = preference === "local"
+    ? pending.localSnapshot
+    : pending.remoteSnapshot;
+  const resolvedConfig = conflictResults?.has("config")
+    ? conflictResults.get("config")
+    : preferredSnapshot.config;
+  if (isMissingCloudSyncMergeValue(resolvedConfig) || !isObject(resolvedConfig)) {
+    throw new Error("The reviewed cloud sync result must contain a configuration object.");
+  }
+  return {
+    conflictFields: pending.descriptor.fields,
+    conflicts: pending.descriptor.paths,
+    snapshot: {
+      ...cloneJson(preferredSnapshot),
+      config: cloneJson(resolvedConfig) as CloudSyncSnapshotConfig,
+      exportedAt: new Date().toISOString()
+    }
+  };
+}
+
 async function pullCloudSyncConfigInternal(
   config: AppConfig,
   request: CloudSyncPullRequest = {}
 ): Promise<CloudSyncOperationResult> {
   const readyConfig = requireCloudSyncEnabled(config);
   const keyMaterial = resolveCloudSyncKey(readyConfig.cloudSync, request, { allowCreateSalt: false });
-  const remote = await pullCloudDocument(readyConfig, 0);
+  const baseSnapshot = cloudSyncSnapshotFromUnknown(readyConfig.cloudSync.lastSyncedSnapshot);
+  let remote = baseSnapshot
+    ? await pullAllCloudDocuments(readyConfig, readyConfig.cloudSync.lastRevision)
+    : await pullCloudDocument(readyConfig, readyConfig.cloudSync.lastRevision);
+  if (
+    remote.data.document.encryptedSnapshot &&
+    remote.data.document.snapshotRevision === null
+  ) {
+    remote = await pullAllCloudDocuments(remote.config, 0);
+  }
   let nextConfig = remote.config;
   const document = remote.data.document;
 
@@ -456,20 +782,82 @@ async function pullCloudSyncConfigInternal(
     };
   }
 
-  const snapshot = decryptSnapshot(document.encryptedSnapshot, keyMaterial);
+  const remoteMerge = resolveCloudDocumentSnapshot(
+    document,
+    remote.data.operations ?? [],
+    keyMaterial
+  );
+  const remoteSnapshot = remoteMerge.snapshot;
+  let appliedSnapshot = remoteSnapshot;
+  let localMerge: CloudSyncMergeResult | undefined;
+  let localSnapshot: CloudSyncSnapshot | undefined;
   if (request.apply !== false) {
-    nextConfig = applyCloudSyncSnapshot(nextConfig, snapshot);
+    localSnapshot = createCloudSyncSnapshot(nextConfig);
+    if (!baseSnapshot && !sameCloudSyncValue(localSnapshot.config, remoteSnapshot.config)) {
+      return cloudSyncResolutionRequiredResult({
+        config: nextConfig,
+        keyMaterial,
+        localSnapshot,
+        paths: ["config"],
+        remoteRevision: document.revision,
+        remoteSnapshot,
+        remoteSnapshotHash: document.snapshotHash || snapshotHash(remoteSnapshot)
+      });
+    }
+    if (
+      baseSnapshot &&
+      !sameCloudSyncValue(localSnapshot.config, baseSnapshot.config) &&
+      !sameCloudSyncValue(remoteSnapshot.config, baseSnapshot.config)
+    ) {
+      localMerge = mergeCloudSyncSnapshots(baseSnapshot, localSnapshot, remoteSnapshot);
+      appliedSnapshot = localMerge.snapshot;
+    }
+  }
+  const mergeConflicts = uniqueStrings([
+    ...remoteMerge.conflicts,
+    ...(localMerge?.conflicts ?? [])
+  ]);
+  if (
+    request.apply !== false &&
+    baseSnapshot &&
+    localSnapshot &&
+    mergeConflicts.length > 0
+  ) {
+    return cloudSyncResolutionRequiredResult({
+      baseSnapshot,
+      config: nextConfig,
+      keyMaterial,
+      localSnapshot,
+      paths: mergeConflicts,
+      remoteRevision: document.revision,
+      remoteSnapshot,
+      remoteSnapshotHash: document.snapshotHash || snapshotHash(remoteSnapshot)
+    });
+  }
+  if (request.apply !== false) {
+    nextConfig = applyCloudSyncSnapshot(nextConfig, appliedSnapshot);
   }
   nextConfig = withCloudSyncSuccess(nextConfig, {
     lastRevision: document.revision,
-    snapshotHash: document.snapshotHash || snapshotHash(snapshot)
-  }, snapshot);
+    snapshotHash: remoteMerge.appliedOperationCount > 0
+      ? snapshotHash(remoteSnapshot)
+      : document.snapshotHash || snapshotHash(remoteSnapshot)
+  }, remoteSnapshot);
+
+  const mergeApplied = request.apply !== false &&
+    Boolean(localMerge || remoteMerge.appliedOperationCount > 0);
 
   return {
     config: nextConfig,
     message: request.apply === false
       ? "Cloud encrypted snapshot was decrypted successfully."
-      : "Cloud encrypted snapshot was pulled and applied.",
+      : mergeApplied
+        ? mergeConflicts.length > 0
+          ? `Cloud changes were pulled and merged. Local values were kept for ${mergeConflicts.length} conflicting path(s).`
+          : "Cloud changes were pulled and merged."
+        : "Cloud encrypted snapshot was pulled and applied.",
+    mergeApplied,
+    mergeConflicts,
     remoteRevision: document.revision,
     snapshotApplied: request.apply !== false,
     status: getCloudSyncStatus(nextConfig)
@@ -479,6 +867,9 @@ async function pullCloudSyncConfigInternal(
 export async function autoPushCloudSyncConfig(config: AppConfig): Promise<AppConfig> {
   const cloudSync = normalizedCloudSyncConfig(config.cloudSync);
   if (!cloudSync.enabled || !cloudSync.keyId || !cloudSyncKeyCache.has(cloudSync.keyId)) {
+    return config;
+  }
+  if (pendingCloudSyncConflictForConfig(config)) {
     return config;
   }
 
@@ -548,15 +939,28 @@ export function applyCloudSyncSnapshot(config: AppConfig, snapshot: CloudSyncSna
 function mergeCloudSyncSnapshots(
   base: CloudSyncSnapshot,
   local: CloudSyncSnapshot,
-  remote: CloudSyncSnapshot
+  remote: CloudSyncSnapshot,
+  conflictPreference: CloudSyncConflictPreference = "local",
+  conflictResults?: CloudSyncConflictResultMap
 ): CloudSyncMergeResult {
   const conflicts: string[] = [];
-  const mergedConfig = mergeCloudSyncValue(base.config, local.config, remote.config, "config", conflicts);
+  const conflictFields: CloudSyncConflictField[] = [];
+  const mergedConfig = mergeCloudSyncValue(
+    base.config,
+    local.config,
+    remote.config,
+    "config",
+    conflicts,
+    conflictPreference,
+    conflictFields,
+    conflictResults
+  );
   if (isMissingCloudSyncMergeValue(mergedConfig) || !isObject(mergedConfig)) {
     throw new Error("Cloud sync merge produced an invalid snapshot.");
   }
 
   return {
+    conflictFields,
     conflicts,
     snapshot: {
       config: mergedConfig as CloudSyncSnapshotConfig,
@@ -567,12 +971,152 @@ function mergeCloudSyncSnapshots(
   };
 }
 
+function mergeCloudOperationSnapshots(
+  documentSnapshot: CloudSyncSnapshot,
+  snapshotRevision: number | null | undefined,
+  operations: CloudOperation[],
+  keyMaterial: CloudSyncKeyMaterial
+): CloudSyncMergeResult & { appliedOperationCount: number } {
+  let snapshot = documentSnapshot;
+  let appliedOperationCount = 0;
+  const orderedOperations = [...operations]
+    .sort((left, right) => (left.revision ?? 0) - (right.revision ?? 0))
+    .map((operation) => ({
+      operation,
+      snapshot: decryptCloudOperationSnapshot(operation, keyMaterial)
+    }));
+  const inferredSnapshotRevision = orderedOperations.reduce<number | undefined>(
+    (latest, item) => {
+      if (
+        item.snapshot &&
+        typeof item.operation.revision === "number" &&
+        sameCloudSyncValue(item.snapshot.config, documentSnapshot.config)
+      ) {
+        return Math.max(latest ?? 0, item.operation.revision);
+      }
+      return latest;
+    },
+    undefined
+  );
+  const representedRevision = typeof snapshotRevision === "number"
+    ? snapshotRevision
+    : inferredSnapshotRevision;
+
+  for (const item of orderedOperations) {
+    if (
+      representedRevision !== undefined &&
+      typeof item.operation.revision === "number" &&
+      item.operation.revision <= representedRevision
+    ) {
+      continue;
+    }
+    const operationSnapshot = item.snapshot;
+    if (
+      !operationSnapshot ||
+      typeof item.operation.revision !== "number" ||
+      item.operation.baseRevision !== item.operation.revision - 1
+    ) {
+      continue;
+    }
+    if (!sameCloudSyncValue(snapshot.config, operationSnapshot.config)) {
+      appliedOperationCount += 1;
+    }
+    snapshot = operationSnapshot;
+  }
+
+  return {
+    appliedOperationCount,
+    conflictFields: [],
+    conflicts: [],
+    snapshot
+  };
+}
+
+function resolveCloudDocumentSnapshot(
+  document: CloudDocument,
+  operations: CloudOperation[],
+  keyMaterial: CloudSyncKeyMaterial
+): CloudSyncMergeResult & { appliedOperationCount: number } {
+  if (document.snapshotRevision === null) {
+    return {
+      appliedOperationCount: 0,
+      conflictFields: [],
+      conflicts: [],
+      snapshot: replayCloudOperationLog(operations, keyMaterial)
+    };
+  }
+  if (!document.encryptedSnapshot) {
+    throw new Error("Cloud sync document does not contain an encrypted snapshot.");
+  }
+  return mergeCloudOperationSnapshots(
+    decryptSnapshot(document.encryptedSnapshot, keyMaterial),
+    document.snapshotRevision,
+    operations,
+    keyMaterial
+  );
+}
+
+function replayCloudOperationLog(
+  operations: CloudOperation[],
+  keyMaterial: CloudSyncKeyMaterial
+): CloudSyncSnapshot {
+  let snapshot: CloudSyncSnapshot | undefined;
+  let unsupportedAcceptedOperation = false;
+
+  for (const operation of [...operations].sort(
+    (left, right) => (left.revision ?? 0) - (right.revision ?? 0)
+  )) {
+    if (
+      typeof operation.revision !== "number" ||
+      operation.baseRevision !== operation.revision - 1
+    ) {
+      continue;
+    }
+    const operationSnapshot = decryptCloudOperationSnapshot(operation, keyMaterial);
+    if (operationSnapshot) {
+      snapshot = operationSnapshot;
+      unsupportedAcceptedOperation = false;
+    } else if (snapshot) {
+      unsupportedAcceptedOperation = true;
+    }
+  }
+
+  if (!snapshot || unsupportedAcceptedOperation) {
+    throw new Error(
+      "Cloud sync legacy snapshot cannot be restored because its operation log does not contain a complete supported snapshot."
+    );
+  }
+  return snapshot;
+}
+
+function decryptCloudOperationSnapshot(
+  operation: CloudOperation,
+  keyMaterial: CloudSyncKeyMaterial
+): CloudSyncSnapshot | undefined {
+  if (!operation.encryptedPayload) {
+    return undefined;
+  }
+  const payload = decryptJson(operation.encryptedPayload, keyMaterial);
+  if (
+    !isObject(payload) ||
+    payload.kind !== "replace-cloud-sync-snapshot" ||
+    payload.version !== 2 ||
+    !isCloudSyncSnapshot(payload.snapshot)
+  ) {
+    return undefined;
+  }
+  return payload.snapshot;
+}
+
 function mergeCloudSyncValue(
   base: unknown,
   local: unknown,
   remote: unknown,
   path: string,
-  conflicts: string[]
+  conflicts: string[],
+  conflictPreference: CloudSyncConflictPreference,
+  conflictFields: CloudSyncConflictField[],
+  conflictResults?: CloudSyncConflictResultMap
 ): unknown | typeof missingCloudSyncMergeValue {
   if (sameCloudSyncValue(local, remote)) {
     return cloneCloudSyncMergeValue(local);
@@ -599,14 +1143,24 @@ function mergeCloudSyncValue(
       local,
       remote,
       path,
-      conflicts
+      conflicts,
+      conflictPreference,
+      conflictFields,
+      conflictResults
     );
     if (identifiedMerge) {
       return identifiedMerge;
     }
 
-    conflicts.push(path);
-    return cloneJson(local);
+    return resolveCloudSyncMergeConflict({
+      conflictFields,
+      conflictPreference,
+      conflictResults,
+      conflicts,
+      local,
+      path,
+      remote
+    });
   }
 
   if (isObject(local) && isObject(remote) && (isObject(base) || isMissingCloudSyncMergeValue(base))) {
@@ -615,12 +1169,22 @@ function mergeCloudSyncValue(
       local,
       remote,
       path,
-      conflicts
+      conflicts,
+      conflictPreference,
+      conflictFields,
+      conflictResults
     );
   }
 
-  conflicts.push(path);
-  return cloneCloudSyncMergeValue(local);
+  return resolveCloudSyncMergeConflict({
+    conflictFields,
+    conflictPreference,
+    conflictResults,
+    conflicts,
+    local,
+    path,
+    remote
+  });
 }
 
 function mergeCloudSyncObject(
@@ -628,7 +1192,10 @@ function mergeCloudSyncObject(
   local: Record<string, unknown>,
   remote: Record<string, unknown>,
   path: string,
-  conflicts: string[]
+  conflicts: string[],
+  conflictPreference: CloudSyncConflictPreference,
+  conflictFields: CloudSyncConflictField[],
+  conflictResults?: CloudSyncConflictResultMap
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   const keys = new Set([
@@ -643,7 +1210,10 @@ function mergeCloudSyncObject(
       Object.hasOwn(local, key) ? local[key] : missingCloudSyncMergeValue,
       Object.hasOwn(remote, key) ? remote[key] : missingCloudSyncMergeValue,
       `${path}.${key}`,
-      conflicts
+      conflicts,
+      conflictPreference,
+      conflictFields,
+      conflictResults
     );
     if (!isMissingCloudSyncMergeValue(merged) && merged !== undefined) {
       result[key] = merged;
@@ -653,12 +1223,46 @@ function mergeCloudSyncObject(
   return result;
 }
 
+function resolveCloudSyncMergeConflict({
+  conflictFields,
+  conflictPreference,
+  conflictResults,
+  conflicts,
+  local,
+  path,
+  remote
+}: {
+  conflictFields: CloudSyncConflictField[];
+  conflictPreference: CloudSyncConflictPreference;
+  conflictResults?: CloudSyncConflictResultMap;
+  conflicts: string[];
+  local: unknown;
+  path: string;
+  remote: unknown;
+}): unknown | typeof missingCloudSyncMergeValue {
+  conflicts.push(path);
+  if (!conflictFields.some((field) => field.path === path)) {
+    conflictFields.push({
+      local: cloudSyncConflictValue(local),
+      path,
+      remote: cloudSyncConflictValue(remote)
+    });
+  }
+  if (conflictResults?.has(path)) {
+    return cloneCloudSyncMergeValue(conflictResults.get(path));
+  }
+  return cloneCloudSyncMergeValue(conflictPreference === "local" ? local : remote);
+}
+
 function mergeIdentifiedCloudSyncArray(
   base: unknown[],
   local: unknown[],
   remote: unknown[],
   path: string,
-  conflicts: string[]
+  conflicts: string[],
+  conflictPreference: CloudSyncConflictPreference,
+  conflictFields: CloudSyncConflictField[],
+  conflictResults?: CloudSyncConflictResultMap
 ): unknown[] | undefined {
   const baseMap = toIdentifiedCloudSyncMap(base, path);
   const localMap = toIdentifiedCloudSyncMap(local, path);
@@ -679,7 +1283,10 @@ function mergeIdentifiedCloudSyncArray(
       localMap.has(key) ? localMap.get(key) : missingCloudSyncMergeValue,
       remoteMap.has(key) ? remoteMap.get(key) : missingCloudSyncMergeValue,
       `${path}[${key}]`,
-      conflicts
+      conflicts,
+      conflictPreference,
+      conflictFields,
+      conflictResults
     );
     if (!isMissingCloudSyncMergeValue(merged) && merged !== undefined) {
       result.push(merged);
@@ -694,6 +1301,13 @@ function mergePrimitiveCloudSyncArray(base: unknown[], local: unknown[], remote:
   const localMap = toPrimitiveCloudSyncMap(local);
   const remoteMap = toPrimitiveCloudSyncMap(remote);
   if (!baseMap || !localMap || !remoteMap) {
+    return undefined;
+  }
+  const baseKeys = [...baseMap.keys()];
+  if (
+    primitiveCloudSyncArrayReordered(baseKeys, [...localMap.keys()]) ||
+    primitiveCloudSyncArrayReordered(baseKeys, [...remoteMap.keys()])
+  ) {
     return undefined;
   }
 
@@ -716,6 +1330,14 @@ function mergePrimitiveCloudSyncArray(base: unknown[], local: unknown[], remote:
     }
   }
   return result;
+}
+
+function primitiveCloudSyncArrayReordered(baseKeys: string[], nextKeys: string[]): boolean {
+  const baseSet = new Set(baseKeys);
+  const nextSet = new Set(nextKeys);
+  const sharedBaseOrder = baseKeys.filter((key) => nextSet.has(key));
+  const sharedNextOrder = nextKeys.filter((key) => baseSet.has(key));
+  return !sameCloudSyncValue(sharedBaseOrder, sharedNextOrder);
 }
 
 function toIdentifiedCloudSyncMap(items: unknown[], path: string): Map<string, unknown> | undefined {
@@ -792,6 +1414,12 @@ function cloneCloudSyncMergeValue(value: unknown): unknown | typeof missingCloud
   return isMissingCloudSyncMergeValue(value) ? missingCloudSyncMergeValue : cloneJson(value);
 }
 
+function cloudSyncConflictValue(value: unknown): CloudSyncConflictField["local"] {
+  return isMissingCloudSyncMergeValue(value)
+    ? { exists: false }
+    : { exists: true, value: cloneJson(value) };
+}
+
 function uniqueStrings(values: string[]): string[] {
   return [...new Set(values)];
 }
@@ -832,6 +1460,30 @@ export function decryptCloudSyncSnapshotForTest(
   });
   const keyMaterial = resolveCloudSyncKey(cloudSync, { password }, { allowCreateSalt: false });
   return decryptSnapshot(encrypted, keyMaterial);
+}
+
+export function encryptCloudSyncOperationForTest(
+  snapshot: CloudSyncSnapshot,
+  password: string,
+  keySalt: string
+): EncryptedPayload {
+  const cloudSync = normalizedCloudSyncConfig({
+    baseUrl: "http://localhost:3000",
+    deviceName: "test",
+    enabled: true,
+    keySalt,
+    lastRevision: 0,
+    namespace: "ccr"
+  });
+  const keyMaterial = resolveCloudSyncKey(cloudSync, { password }, { allowCreateSalt: false });
+  return encryptJson({
+    kind: "replace-cloud-sync-snapshot",
+    snapshot,
+    snapshotHash: snapshotHash(snapshot),
+    snapshotVersion: snapshot.version,
+    updatedAt: snapshot.exportedAt,
+    version: 2
+  } satisfies CloudSyncSnapshotOperation, keyMaterial);
 }
 
 export function mergeCloudSyncSnapshotsForTest(
@@ -877,10 +1529,12 @@ async function pushCloudSyncConfigInternal(
   const encryptedSnapshot = encryptJson(snapshot, keyMaterial);
   const encryptedOperation = encryptJson({
     kind: "replace-cloud-sync-snapshot",
+    snapshot,
     snapshotHash: snapshotHash(snapshot),
     snapshotVersion: snapshot.version,
-    updatedAt: snapshot.exportedAt
-  }, keyMaterial);
+    updatedAt: snapshot.exportedAt,
+    version: 2
+  } satisfies CloudSyncSnapshotOperation, keyMaterial);
   const response = await cloudRequest<CloudPushResponse>(readyConfig, "/sync/push", {
     body: {
       baseRevision,
@@ -896,11 +1550,20 @@ async function pushCloudSyncConfigInternal(
 
   const document = response.data.document;
   const remoteRevision = document?.revision ?? baseRevision;
-  if (response.data.conflict || response.data.mergeRequired || response.data.snapshotRejectedReason) {
+  if (
+    response.data.conflict ||
+    response.data.mergeRequired ||
+    response.data.snapshotAccepted === false ||
+    response.data.snapshotRejectedReason
+  ) {
     if (!request.force && options.mergeOnConflict !== false) {
       return mergeAndPushCloudSyncConflict({
         keyMaterial,
         localSnapshot: snapshot,
+        missingOperations: response.data.missingOperations ?? [],
+        missingOperationsExcludeOperationId: response.data.missingOperationsExcludeOperationId,
+        missingOperationsHasMore: response.data.missingOperationsHasMore === true,
+        nextMissingRevision: response.data.nextMissingRevision,
         remoteDocument: document,
         remoteRevision,
         responseConfig: response.config
@@ -925,6 +1588,9 @@ async function pushCloudSyncConfigInternal(
       status: getCloudSyncStatus(nextConfig)
     };
   }
+  if (response.data.accepted === false) {
+    throw new Error("Cloud sync server did not accept the encrypted operation.");
+  }
 
   const nextConfig = withCloudSyncSuccess(response.config, {
     lastRevision: remoteRevision,
@@ -945,16 +1611,46 @@ async function pushCloudSyncConfigInternal(
 async function mergeAndPushCloudSyncConflict({
   keyMaterial,
   localSnapshot,
+  missingOperations,
+  missingOperationsExcludeOperationId,
+  missingOperationsHasMore,
+  nextMissingRevision,
   remoteDocument,
   remoteRevision,
   responseConfig
 }: {
   keyMaterial: CloudSyncKeyMaterial;
   localSnapshot: CloudSyncSnapshot;
+  missingOperations: CloudOperation[];
+  missingOperationsExcludeOperationId?: string;
+  missingOperationsHasMore: boolean;
+  nextMissingRevision?: number | null;
   remoteDocument?: CloudDocument;
   remoteRevision: number;
   responseConfig: AppConfig;
 }): Promise<CloudSyncOperationResult> {
+  let operationCollection: CloudOperationCollection;
+  if (remoteDocument?.encryptedSnapshot && remoteDocument.snapshotRevision === null) {
+    const fullHistory = await pullAllCloudDocuments(responseConfig, 0);
+    operationCollection = {
+      config: fullHistory.config,
+      document: fullHistory.data.document,
+      operations: fullHistory.data.operations ?? []
+    };
+  } else {
+    operationCollection = await continueCloudOperationPages({
+      config: responseConfig,
+      document: remoteDocument,
+      excludeOperationId: missingOperationsExcludeOperationId,
+      hasMore: missingOperationsHasMore,
+      nextRevision: nextMissingRevision,
+      operations: missingOperations
+    });
+  }
+  responseConfig = operationCollection.config;
+  remoteDocument = operationCollection.document;
+  remoteRevision = remoteDocument?.revision ?? remoteRevision;
+
   if (!remoteDocument?.encryptedSnapshot) {
     return cloudSyncConflictResult(
       responseConfig,
@@ -964,17 +1660,16 @@ async function mergeAndPushCloudSyncConflict({
   }
 
   const baseSnapshot = cloudSyncSnapshotFromUnknown(responseConfig.cloudSync.lastSyncedSnapshot);
-  if (!baseSnapshot) {
-    return cloudSyncConflictResult(
-      responseConfig,
-      "Cloud has a newer encrypted snapshot, but this device has no merge base yet. Back up local config before pulling remote changes, or force push to replace cloud data.",
-      remoteRevision
-    );
-  }
-
   let remoteSnapshot: CloudSyncSnapshot;
+  let remoteMergeConflicts: string[] = [];
   try {
-    remoteSnapshot = decryptSnapshot(remoteDocument.encryptedSnapshot, keyMaterial);
+    const remoteMerge = resolveCloudDocumentSnapshot(
+      remoteDocument,
+      operationCollection.operations,
+      keyMaterial
+    );
+    remoteSnapshot = remoteMerge.snapshot;
+    remoteMergeConflicts = remoteMerge.conflicts;
   } catch (error) {
     return cloudSyncConflictResult(
       responseConfig,
@@ -982,8 +1677,35 @@ async function mergeAndPushCloudSyncConflict({
       remoteRevision
     );
   }
+  if (!baseSnapshot) {
+    return cloudSyncResolutionRequiredResult({
+      config: responseConfig,
+      keyMaterial,
+      localSnapshot,
+      paths: ["config"],
+      remoteRevision,
+      remoteSnapshot,
+      remoteSnapshotHash: remoteDocument.snapshotHash || snapshotHash(remoteSnapshot)
+    });
+  }
 
   const merge = mergeCloudSyncSnapshots(baseSnapshot, localSnapshot, remoteSnapshot);
+  const mergeConflicts = uniqueStrings([
+    ...remoteMergeConflicts,
+    ...merge.conflicts
+  ]);
+  if (mergeConflicts.length > 0) {
+    return cloudSyncResolutionRequiredResult({
+      baseSnapshot,
+      config: responseConfig,
+      keyMaterial,
+      localSnapshot,
+      paths: mergeConflicts,
+      remoteRevision,
+      remoteSnapshot,
+      remoteSnapshotHash: remoteDocument.snapshotHash || snapshotHash(remoteSnapshot)
+    });
+  }
   let mergedConfig = applyCloudSyncSnapshot(responseConfig, merge.snapshot);
   mergedConfig = {
     ...mergedConfig,
@@ -1005,13 +1727,164 @@ async function mergeAndPushCloudSyncConflict({
     ...pushed,
     conflict: true,
     mergeApplied: pushed.snapshotPushed === true,
-    mergeConflicts: merge.conflicts,
+    mergeConflicts,
     message: pushed.snapshotPushed
-      ? merge.conflicts.length > 0
-        ? `Cloud sync conflict was automatically merged and pushed. Local values were kept for ${merge.conflicts.length} conflicting path(s).`
-        : "Cloud sync conflict was automatically merged and pushed."
+      ? "Cloud sync conflict was automatically merged and pushed."
       : pushed.message
   };
+}
+
+function cloudSyncResolutionRequiredResult({
+  baseSnapshot,
+  config,
+  keyMaterial,
+  localSnapshot,
+  paths,
+  remoteRevision,
+  remoteSnapshot,
+  remoteSnapshotHash
+}: {
+  baseSnapshot?: CloudSyncSnapshot;
+  config: AppConfig;
+  keyMaterial: CloudSyncKeyMaterial;
+  localSnapshot: CloudSyncSnapshot;
+  paths: string[];
+  remoteRevision: number;
+  remoteSnapshot: CloudSyncSnapshot;
+  remoteSnapshotHash?: string;
+}): CloudSyncOperationResult {
+  const identity = cloudSyncConflictIdentity(config);
+  const previousId = pendingCloudSyncConflictIds.get(identity);
+  if (previousId) {
+    removePendingCloudSyncConflict(previousId);
+  }
+
+  const id = randomUUID();
+  const expiresAt = Date.now() + cloudSyncConflictResolutionMs;
+  const normalizedPaths = uniqueStrings(paths);
+  const descriptor: CloudSyncConflictResolution = {
+    expiresAt: new Date(expiresAt).toISOString(),
+    fields: describeCloudSyncConflictFields(
+      baseSnapshot,
+      localSnapshot,
+      remoteSnapshot,
+      normalizedPaths
+    ),
+    id,
+    paths: normalizedPaths,
+    remoteRevision
+  };
+  const pending: PendingCloudSyncConflict = {
+    baseSnapshot: baseSnapshot ? cloneJson(baseSnapshot) : undefined,
+    descriptor,
+    identity,
+    keyMaterial,
+    localSnapshot: cloneJson(localSnapshot),
+    remoteSnapshot: cloneJson(remoteSnapshot),
+    remoteSnapshotHash
+  };
+  pendingCloudSyncConflicts.set(id, pending);
+  pendingCloudSyncConflictIds.set(identity, id);
+  setTimeout(() => {
+    if (pendingCloudSyncConflicts.get(id) === pending) {
+      removePendingCloudSyncConflict(id);
+    }
+  }, cloudSyncConflictResolutionMs).unref();
+
+  const message = "Cloud sync found conflicting changes that require your confirmation.";
+  const nextConfig = {
+    ...config,
+    cloudSync: {
+      ...normalizedCloudSyncConfig(config.cloudSync),
+      lastSyncError: message
+    }
+  };
+  return {
+    config: nextConfig,
+    conflict: true,
+    conflictResolution: descriptor,
+    mergeApplied: false,
+    mergeConflicts: descriptor.paths,
+    message,
+    remoteRevision,
+    snapshotApplied: false,
+    snapshotPushed: false,
+    status: getCloudSyncStatus(nextConfig)
+  };
+}
+
+function describeCloudSyncConflictFields(
+  baseSnapshot: CloudSyncSnapshot | undefined,
+  localSnapshot: CloudSyncSnapshot,
+  remoteSnapshot: CloudSyncSnapshot,
+  paths: string[]
+): CloudSyncConflictField[] {
+  if (!baseSnapshot) {
+    if (paths.length !== 1 || paths[0] !== "config") {
+      throw new Error("Cloud sync cannot describe a conflict without a shared base snapshot.");
+    }
+    return [{
+      local: cloudSyncConflictValue(localSnapshot.config),
+      path: "config",
+      remote: cloudSyncConflictValue(remoteSnapshot.config)
+    }];
+  }
+
+  const byPath = new Map(
+    mergeCloudSyncSnapshots(baseSnapshot, localSnapshot, remoteSnapshot)
+      .conflictFields
+      .map((field) => [field.path, field])
+  );
+  return paths.map((path) => {
+    const field = byPath.get(path);
+    if (!field) {
+      throw new Error(`Cloud sync could not describe conflicting path: ${path}`);
+    }
+    return field;
+  });
+}
+
+function pendingCloudSyncConflictForConfig(config: AppConfig): PendingCloudSyncConflict | undefined {
+  const id = pendingCloudSyncConflictIds.get(cloudSyncConflictIdentity(config));
+  return id ? pendingCloudSyncConflictById(id) : undefined;
+}
+
+function pendingCloudSyncConflictById(id: string): PendingCloudSyncConflict | undefined {
+  const pending = pendingCloudSyncConflicts.get(id);
+  if (!pending) {
+    return undefined;
+  }
+  if (Date.parse(pending.descriptor.expiresAt) <= Date.now()) {
+    removePendingCloudSyncConflict(id);
+    return undefined;
+  }
+  return pending;
+}
+
+function clearPendingCloudSyncConflict(config: AppConfig): void {
+  const id = pendingCloudSyncConflictIds.get(cloudSyncConflictIdentity(config));
+  if (id) {
+    removePendingCloudSyncConflict(id);
+  }
+}
+
+function removePendingCloudSyncConflict(id: string): void {
+  const pending = pendingCloudSyncConflicts.get(id);
+  pendingCloudSyncConflicts.delete(id);
+  if (pending && pendingCloudSyncConflictIds.get(pending.identity) === id) {
+    pendingCloudSyncConflictIds.delete(pending.identity);
+  }
+}
+
+function cloudSyncConflictIdentity(config: AppConfig): string {
+  const cloudSync = normalizedCloudSyncConfig(config.cloudSync);
+  return [
+    cloudSync.baseUrl,
+    cloudSync.namespace,
+    cloudSync.userId || "",
+    cloudSync.deviceId || "",
+    cloudSync.keyId || ""
+  ].join("\u0000");
 }
 
 function cloudSyncConflictResult(
@@ -1075,12 +1948,100 @@ function cloudSyncLoggedOutConfig(config: AppConfig): AppConfig {
   };
 }
 
-async function pullCloudDocument(config: AppConfig, sinceRevision: number): Promise<{ config: AppConfig; data: CloudPullResponse }> {
+async function pullAllCloudDocuments(
+  config: AppConfig,
+  sinceRevision: number,
+  excludeOperationId?: string
+): Promise<{ config: AppConfig; data: CloudPullResponse }> {
+  const firstPage = await pullCloudDocument(config, sinceRevision, {
+    excludeOperationId
+  });
+  const collection = await continueCloudOperationPages({
+    config: firstPage.config,
+    document: firstPage.data.document,
+    excludeOperationId,
+    hasMore: firstPage.data.pagination?.hasMore === true,
+    nextRevision: firstPage.data.pagination?.nextRevision,
+    operations: firstPage.data.operations ?? []
+  });
+  return {
+    config: collection.config,
+    data: {
+      document: collection.document ?? firstPage.data.document,
+      operations: collection.operations,
+      pagination: {
+        excludeOperationId: excludeOperationId ?? null,
+        hasMore: false,
+        limit: firstPage.data.pagination?.limit ?? 100,
+        nextRevision: null
+      }
+    }
+  };
+}
+
+async function continueCloudOperationPages({
+  config,
+  document,
+  excludeOperationId,
+  hasMore,
+  nextRevision,
+  operations
+}: {
+  config: AppConfig;
+  document?: CloudDocument;
+  excludeOperationId?: string;
+  hasMore: boolean;
+  nextRevision?: number | null;
+  operations: CloudOperation[];
+}): Promise<CloudOperationCollection> {
+  let nextConfig = config;
+  let nextDocument = document;
+  let cursor = nextRevision;
+  let more = hasMore;
+  const collected = [...operations];
+  const seenCursors = new Set<number>();
+
+  while (more) {
+    if (
+      typeof cursor !== "number" ||
+      !Number.isInteger(cursor) ||
+      cursor < 0 ||
+      seenCursors.has(cursor)
+    ) {
+      throw new Error("Cloud sync operation pagination did not provide a valid next revision.");
+    }
+    seenCursors.add(cursor);
+    const page = await pullCloudDocument(nextConfig, cursor, {
+      excludeOperationId
+    });
+    nextConfig = page.config;
+    nextDocument = page.data.document;
+    collected.push(...(page.data.operations ?? []));
+    more = page.data.pagination?.hasMore === true;
+    cursor = page.data.pagination?.nextRevision;
+  }
+
+  return {
+    config: nextConfig,
+    document: nextDocument,
+    operations: collected
+  };
+}
+
+async function pullCloudDocument(
+  config: AppConfig,
+  sinceRevision: number,
+  options: { excludeOperationId?: string; limit?: number } = {}
+): Promise<{ config: AppConfig; data: CloudPullResponse }> {
   const cloudSync = normalizedCloudSyncConfig(config.cloudSync);
   const search = new URLSearchParams({
+    limit: String(options.limit ?? 100),
     namespace: cloudSync.namespace,
     sinceRevision: String(Math.max(0, Math.floor(sinceRevision)))
   });
+  if (options.excludeOperationId) {
+    search.set("excludeOperationId", options.excludeOperationId);
+  }
   return cloudRequest<CloudPullResponse>(config, `/sync/pull?${search.toString()}`);
 }
 
@@ -1375,6 +2336,14 @@ function encryptJson(value: unknown, keyMaterial: CloudSyncKeyMaterial): Encrypt
 }
 
 function decryptSnapshot(encrypted: EncryptedPayload, keyMaterial: CloudSyncKeyMaterial): CloudSyncSnapshot {
+  const parsed = decryptJson(encrypted, keyMaterial);
+  if (!isCloudSyncSnapshot(parsed)) {
+    throw new Error("Remote cloud sync snapshot has an unsupported format.");
+  }
+  return parsed;
+}
+
+function decryptJson(encrypted: EncryptedPayload, keyMaterial: CloudSyncKeyMaterial): unknown {
   if (encrypted.algorithm !== "aes-256-gcm") {
     throw new Error(`Unsupported cloud sync encryption algorithm: ${encrypted.algorithm}`);
   }
@@ -1390,11 +2359,7 @@ function decryptSnapshot(encrypted: EncryptedPayload, keyMaterial: CloudSyncKeyM
     decipher.update(ciphertext),
     decipher.final()
   ]).toString("utf8");
-  const parsed = JSON.parse(plaintext) as unknown;
-  if (!isCloudSyncSnapshot(parsed)) {
-    throw new Error("Remote cloud sync snapshot has an unsupported format.");
-  }
-  return parsed;
+  return JSON.parse(plaintext) as unknown;
 }
 
 function keySaltFromEncryptedPayload(encrypted: EncryptedPayload): string {
@@ -1433,6 +2398,7 @@ function withCloudSyncSuccess(
   patch: Pick<CloudSyncConfig, "lastRevision"> & Partial<Pick<CloudSyncConfig, "snapshotHash">>,
   syncedSnapshot?: CloudSyncSnapshot
 ): AppConfig {
+  clearPendingCloudSyncConflict(config);
   return {
     ...config,
     cloudSync: {
@@ -1518,9 +2484,35 @@ function cloudSyncLoginUrl(callbackUrl: string | undefined): string {
   const url = new URL(cloudSyncUrl(CLOUD_SYNC_DEFAULT_BASE_URL, "/auth/github/login"));
   const normalizedCallbackUrl = optionalString(callbackUrl);
   if (normalizedCallbackUrl) {
+    const verifier = randomBytes(64).toString("base64url");
+    const challenge = createHash("sha256").update(verifier).digest("base64url");
+    const callbackKey = cloudSyncAuthCallbackKey(new URL(normalizedCallbackUrl));
+    const pending = {
+      expiresAt: Date.now() + cloudSyncAuthAttemptMs,
+      verifier
+    };
+    pendingCloudSyncAuth.set(callbackKey, pending);
+    setTimeout(() => {
+      if (pendingCloudSyncAuth.get(callbackKey) === pending) {
+        pendingCloudSyncAuth.delete(callbackKey);
+      }
+    }, cloudSyncAuthAttemptMs).unref();
     url.searchParams.set("redirect_uri", normalizedCallbackUrl);
+    url.searchParams.set("code_challenge", challenge);
+    url.searchParams.set("code_challenge_method", "S256");
   }
   return url.toString();
+}
+
+function cloudSyncAuthCallbackKey(callbackUrl: URL): string {
+  const session = optionalString(callbackUrl.searchParams.get("session"));
+  if (session) {
+    return `session:${session}`;
+  }
+  const normalized = new URL(callbackUrl);
+  normalized.searchParams.delete("code");
+  normalized.searchParams.delete("expires_at");
+  return normalized.toString();
 }
 
 function deviceOperationPrefix(config: AppConfig): string {

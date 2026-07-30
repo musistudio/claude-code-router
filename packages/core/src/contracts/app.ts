@@ -69,6 +69,36 @@ export type CloudSyncPullRequest = CloudSyncKeyInput & {
   apply?: boolean;
 };
 
+export type CloudSyncConflictValue = {
+  exists: boolean;
+  value?: unknown;
+};
+
+export type CloudSyncConflictField = {
+  local: CloudSyncConflictValue;
+  path: string;
+  remote: CloudSyncConflictValue;
+};
+
+export type CloudSyncConflictResolution = {
+  expiresAt: string;
+  fields: CloudSyncConflictField[];
+  id: string;
+  paths: string[];
+  remoteRevision: number;
+};
+
+export type CloudSyncConflictFieldResolution = {
+  path: string;
+  result: CloudSyncConflictValue;
+};
+
+export type CloudSyncResolveConflictRequest = {
+  conflictId: string;
+  preference?: "local" | "remote";
+  resolutions?: CloudSyncConflictFieldResolution[];
+};
+
 export type CloudSyncStatus = {
   authenticated: boolean;
   baseUrl: string;
@@ -82,6 +112,7 @@ export type CloudSyncStatus = {
   lastSyncAt?: string;
   lastSyncError?: string;
   namespace: string;
+  pendingConflict?: CloudSyncConflictResolution;
   snapshotHash?: string;
   unlocked: boolean;
   userAvatarUrl?: string;
@@ -100,6 +131,7 @@ export type CloudSyncOperationResult = {
   authExpired?: boolean;
   config?: AppConfig;
   conflict?: boolean;
+  conflictResolution?: CloudSyncConflictResolution;
   message: string;
   mergeApplied?: boolean;
   mergeConflicts?: string[];

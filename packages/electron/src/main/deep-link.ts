@@ -1,7 +1,7 @@
 import { app, dialog } from "electron";
 import path from "node:path";
 import { appDeepLinkProtocol, createProviderDeepLinkRequest as createSharedProviderDeepLinkRequest, isAppDeepLinkUrl } from "@ccr/core/contracts/deep-link";
-import { applyCloudSyncAuthTokens, refreshCloudSyncUserProfile } from "@ccr/core/cloud-sync/service";
+import { completeCloudSyncLogin } from "@ccr/core/cloud-sync/service";
 import { CLAUDE_DESIGN_PLUGIN_ID, CLAUDE_SHIP_PLUGIN_ID, knownGatewayPluginDefaultApps, type AppConfig, type GatewayPluginAppConfig, type ProviderDeepLinkRequest } from "@ccr/core/contracts/app";
 import { IPC_CHANNELS } from "@ccr/core/config/constants";
 import { loadAppConfig, saveAppConfig } from "@ccr/core/config/config";
@@ -19,10 +19,7 @@ type PluginDeepLinkRequest = {
 };
 
 type CloudSyncAuthDeepLink = {
-  accessToken: string;
-  refreshToken: string;
-  refreshTokenExpiresAt?: string;
-  userId?: string;
+  rawUrl: string;
 };
 
 const pluginAppExistingGatewayProbeTimeoutMs = 2_000;
@@ -133,7 +130,7 @@ class DeepLinkService {
 
   private async handleCloudSyncAuth(input: CloudSyncAuthDeepLink): Promise<void> {
     try {
-      const savedConfig = await saveAppConfig(await refreshCloudSyncUserProfile(applyCloudSyncAuthTokens(await loadAppConfig(), input)));
+      const savedConfig = await saveAppConfig(await completeCloudSyncLogin(await loadAppConfig(), input.rawUrl));
       logDeepLinkDiagnostic(`[deep-link] Cloud sync login completed for user ${savedConfig.cloudSync.userId || "<unknown>"}`);
       if (app.isReady()) {
         windowsManager.showMainWindow();
@@ -377,25 +374,14 @@ function parseCloudSyncAuthDeepLink(rawUrl: string): CloudSyncAuthDeepLink | und
   const host = url.hostname.toLowerCase();
   const pathSegments = url.pathname.split("/").filter(Boolean).map((segment) => decodeURIComponent(segment).toLowerCase());
   const cloudSyncTarget = host === "cloud-sync" && pathSegments[0] === "auth" ||
-    host === "auth" && pathSegments[0] === "cloud-sync" ||
+    host === "auth" && (pathSegments[0] === "callback" || pathSegments[0] === "cloud-sync") ||
     pathSegments[0] === "cloud-sync" && pathSegments[1] === "auth";
   if (!cloudSyncTarget) {
     return undefined;
   }
 
-  const params = new URLSearchParams(url.search);
-  if (url.hash.length > 1) {
-    for (const [key, value] of new URLSearchParams(url.hash.slice(1))) {
-      params.set(key, value);
-    }
-  }
-
-  return {
-    accessToken: requiredDeepLinkParam(params, "access_token"),
-    refreshToken: requiredDeepLinkParam(params, "refresh_token"),
-    refreshTokenExpiresAt: optionalDeepLinkParam(params, "refresh_token_expires_at"),
-    userId: optionalDeepLinkParam(params, "user_id")
-  };
+  requiredDeepLinkParam(url.searchParams, "code");
+  return { rawUrl: url.toString() };
 }
 
 function requiredDeepLinkParam(params: URLSearchParams, key: string): string {

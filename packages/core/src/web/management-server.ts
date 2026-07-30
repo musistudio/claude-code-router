@@ -12,7 +12,7 @@ import { cancelBotGatewayQrLogin, startBotGatewayQrLogin, waitBotGatewayQrLogin 
 import { syncClaudeAppGatewayConfig, restoreClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
 import { findInstalledCodexAppExecutable } from "@ccr/core/agents/codex/app-launch";
 import { findInstalledOpenCodeAppExecutable } from "@ccr/core/agents/opencode/app-launch";
-import { applyCloudSyncAuthTokens, autoPushCloudSyncConfig, createCloudSyncKeyFile, disableCloudSyncConfig, ensureCloudSyncUserProfile, getCloudSyncStatus, pullCloudSyncConfig, pushCloudSyncConfig, refreshCloudSyncUserProfile, setupCloudSyncConfig, startCloudSyncLogin } from "@ccr/core/cloud-sync/service";
+import { autoPushCloudSyncConfig, completeCloudSyncLogin, createCloudSyncKeyFile, disableCloudSyncConfig, ensureCloudSyncUserProfile, getCloudSyncStatus, pullCloudSyncConfig, pushCloudSyncConfig, resolveCloudSyncConflict, setupCloudSyncConfig, startCloudSyncLogin } from "@ccr/core/cloud-sync/service";
 import { loadAppConfig, saveApiKeysConfig, saveAppConfig } from "@ccr/core/config/config";
 import {
   APP_CONFIG_DB_FILE,
@@ -63,6 +63,7 @@ import type {
   CloudSyncLoginResult,
   CloudSyncPullRequest,
   CloudSyncPushRequest,
+  CloudSyncResolveConflictRequest,
   CloudSyncSetupRequest,
   GatewayPluginAppConfig,
   GatewayPluginPermission,
@@ -297,7 +298,7 @@ async function handleCloudSyncAuthCallbackRequest(
   }
 
   try {
-    await saveAppConfig(await refreshCloudSyncUserProfile(applyCloudSyncAuthTokens(await loadAppConfig(), cloudSyncAuthTokensFromUrl(url))));
+    await saveAppConfig(await completeCloudSyncLogin(await loadAppConfig(), url.toString()));
     sendHtml(response, 200, cloudSyncAuthSuccessHtml(), request.method === "HEAD");
   } catch (error) {
     sendHtml(response, 500, cloudSyncAuthFailureHtml(formatError(error)), request.method === "HEAD");
@@ -362,6 +363,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
   },
   cloudSyncPull: async (request) => persistCloudSyncOperation(await pullCloudSyncConfig(await loadAppConfig(), request as CloudSyncPullRequest | undefined)),
   cloudSyncPush: async (request) => persistCloudSyncOperation(await pushCloudSyncConfig(await loadAppConfig(), request as CloudSyncPushRequest | undefined)),
+  cloudSyncResolveConflict: async (request) => persistCloudSyncOperation(await resolveCloudSyncConflict(await loadAppConfig(), request as CloudSyncResolveConflictRequest)),
   cloudSyncSetup: async (request) => persistCloudSyncOperation(await setupCloudSyncConfig(await loadAppConfig(), request as CloudSyncSetupRequest)),
   clearProxyNetworkCaptures: () => proxyService.clearNetworkCaptures(),
   closeBotGatewayQrWindow: (_request) => ({ closed: false }),
@@ -641,33 +643,6 @@ function cloudSyncCallbackUrl(request: IncomingMessage, session: string): string
   url.hash = "";
   url.searchParams.set(cloudSyncAuthSessionParam, session);
   return url.toString();
-}
-
-function cloudSyncAuthTokensFromUrl(url: URL): {
-  accessToken: string;
-  refreshToken: string;
-  refreshTokenExpiresAt?: string;
-  userId?: string;
-} {
-  return {
-    accessToken: requiredQueryParam(url, "access_token"),
-    refreshToken: requiredQueryParam(url, "refresh_token"),
-    refreshTokenExpiresAt: optionalQueryParam(url, "refresh_token_expires_at"),
-    userId: optionalQueryParam(url, "user_id")
-  };
-}
-
-function requiredQueryParam(url: URL, key: string): string {
-  const value = optionalQueryParam(url, key);
-  if (!value) {
-    throw new Error(`Cloud sync callback is missing ${key}.`);
-  }
-  return value;
-}
-
-function optionalQueryParam(url: URL, key: string): string | undefined {
-  const value = url.searchParams.get(key)?.trim();
-  return value || undefined;
 }
 
 function cloudSyncAuthSuccessHtml(): string {

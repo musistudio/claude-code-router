@@ -119,6 +119,7 @@ const webClientBridge: CcrApi = {
   },
   cloudSyncPull: (request) => rpc("cloudSyncPull", [request]) as ReturnType<CcrApi["cloudSyncPull"]>,
   cloudSyncPush: (request) => rpc("cloudSyncPush", [request]) as ReturnType<CcrApi["cloudSyncPush"]>,
+  cloudSyncResolveConflict: (request) => rpc("cloudSyncResolveConflict", [request]) as ReturnType<CcrApi["cloudSyncResolveConflict"]>,
   cloudSyncSetup: (request) => rpc("cloudSyncSetup", [request]) as ReturnType<CcrApi["cloudSyncSetup"]>,
   clearProxyNetworkCaptures: () => rpc("clearProxyNetworkCaptures") as ReturnType<CcrApi["clearProxyNetworkCaptures"]>,
   closeBotGatewayQrWindow: (request) => rpc("closeBotGatewayQrWindow", [request]) as ReturnType<CcrApi["closeBotGatewayQrWindow"]>,

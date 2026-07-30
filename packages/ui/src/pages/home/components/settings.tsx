@@ -361,6 +361,36 @@ function AppearanceSettingsPage({
   );
 }
 
+type CloudSyncConflictDescriptor = NonNullable<CloudSyncStatus["pendingConflict"]>;
+type CloudSyncConflictField = CloudSyncConflictDescriptor["fields"][number];
+type CloudSyncConflictValue = CloudSyncConflictField["local"];
+type CloudSyncConflictDraft = {
+  exists: boolean;
+  path: string;
+  source: "local" | "manual" | "remote";
+  text: string;
+};
+
+function formatCloudSyncConflictJson(value: CloudSyncConflictValue): string {
+  if (!value.exists) {
+    return "";
+  }
+  return JSON.stringify(value.value, null, 2) ?? "null";
+}
+
+function cloudSyncConflictDraft(
+  field: CloudSyncConflictField,
+  source: "local" | "remote"
+): CloudSyncConflictDraft {
+  const value = field[source];
+  return {
+    exists: value.exists,
+    path: field.path,
+    source,
+    text: formatCloudSyncConflictJson(value)
+  };
+}
+
 function CloudSyncSettingsPage({
   config,
   copy,
@@ -377,10 +407,14 @@ function CloudSyncSettingsPage({
   const [password, setPassword] = useState("");
   const [keyFilePath, setKeyFilePath] = useState("");
   const [status, setStatus] = useState<CloudSyncStatus>();
-  const [busy, setBusy] = useState<"" | "setup" | "push" | "pull" | "disable" | "logout" | "status" | "login" | "key-file">("");
+  const [busy, setBusy] = useState<"" | "setup" | "push" | "pull" | "disable" | "logout" | "status" | "login" | "key-file" | "resolve">("");
   const [syncPanelOpen, setSyncPanelOpen] = useState(Boolean(config.cloudSync.enabled));
   const [encryptionSettingsOpen, setEncryptionSettingsOpen] = useState(!config.cloudSync.keyId);
   const [mergeConflicts, setMergeConflicts] = useState<string[]>([]);
+  const [pendingConflict, setPendingConflict] = useState<CloudSyncStatus["pendingConflict"]>();
+  const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
+  const [conflictDraftError, setConflictDraftError] = useState("");
+  const [conflictDrafts, setConflictDrafts] = useState<CloudSyncConflictDraft[]>([]);
   const [error, setError] = useState("");
   const [failedAvatarUrl, setFailedAvatarUrl] = useState("");
   const keyFileInputRef = useRef<HTMLInputElement>(null);
@@ -423,10 +457,21 @@ function CloudSyncSettingsPage({
     }
     setBusy((current) => current || "status");
     void window.ccr.cloudSyncGetStatus()
-      .then(setStatus)
+      .then((nextStatus) => {
+        setStatus(nextStatus);
+        setPendingConflict(nextStatus.pendingConflict);
+        setConflictDialogOpen(Boolean(nextStatus.pendingConflict));
+      })
       .catch(() => undefined)
       .finally(() => setBusy((current) => current === "status" ? "" : current));
   }, []);
+
+  useEffect(() => {
+    setConflictDraftError("");
+    setConflictDrafts(
+      pendingConflict?.fields.map((field) => cloudSyncConflictDraft(field, "local")) ?? []
+    );
+  }, [pendingConflict?.id]);
 
   useEffect(() => {
     if (!window.ccr?.onCloudSyncAuthChanged) {
@@ -448,11 +493,16 @@ function CloudSyncSettingsPage({
       onConfigChange(result.config);
     }
     setStatus(result.status);
+    const nextConflict = "conflictResolution" in result
+      ? result.conflictResolution ?? result.status.pendingConflict
+      : result.status.pendingConflict;
+    setPendingConflict(nextConflict);
+    setConflictDialogOpen(Boolean(nextConflict));
     const authExpired = "authExpired" in result && result.authExpired;
     if (!authExpired && result.message) {
       onToast(t(result.message));
     }
-    setMergeConflicts("mergeApplied" in result && result.mergeApplied ? result.mergeConflicts ?? [] : []);
+    setMergeConflicts("mergeConflicts" in result ? result.mergeConflicts ?? [] : []);
     setError(authExpired ? t(result.message) : "");
     setPassword("");
   }
@@ -468,6 +518,8 @@ function CloudSyncSettingsPage({
       ]);
       onConfigChange(nextConfig);
       setStatus(nextStatus);
+      setPendingConflict(nextStatus.pendingConflict);
+      setConflictDialogOpen(Boolean(nextStatus.pendingConflict));
       setSyncPanelOpen(true);
       setEncryptionSettingsOpen(!nextStatus.configured);
       onToast(t("Cloud login completed. Choose an encryption method to enable sync."));
@@ -489,6 +541,8 @@ function CloudSyncSettingsPage({
       if (nextStatus.authenticated) {
         onConfigChange(nextConfig);
         setStatus(nextStatus);
+        setPendingConflict(nextStatus.pendingConflict);
+        setConflictDialogOpen(Boolean(nextStatus.pendingConflict));
         setSyncPanelOpen(true);
         setEncryptionSettingsOpen(!nextStatus.configured);
         onToast(t("Cloud login completed. Choose an encryption method to enable sync."));
@@ -569,6 +623,94 @@ function CloudSyncSettingsPage({
       }
     } catch (cloudError) {
       setError(formatAppError(copy, cloudError));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function chooseCloudConflictSide(path: string, source: "local" | "remote") {
+    const field = pendingConflict?.fields.find((item) => item.path === path);
+    if (!field) {
+      return;
+    }
+    setConflictDrafts((current) => current.map((draft) =>
+      draft.path === path ? cloudSyncConflictDraft(field, source) : draft
+    ));
+    setConflictDraftError("");
+  }
+
+  function chooseAllCloudConflictSides(source: "local" | "remote") {
+    if (!pendingConflict) {
+      return;
+    }
+    setConflictDrafts(
+      pendingConflict.fields.map((field) => cloudSyncConflictDraft(field, source))
+    );
+    setConflictDraftError("");
+  }
+
+  function updateCloudConflictDraft(
+    path: string,
+    patch: Partial<Pick<CloudSyncConflictDraft, "exists" | "source" | "text">>
+  ) {
+    setConflictDrafts((current) => current.map((draft) =>
+      draft.path === path ? { ...draft, ...patch } : draft
+    ));
+    setConflictDraftError("");
+  }
+
+  async function resolveCloudConflict() {
+    if (!window.ccr?.cloudSyncResolveConflict || !pendingConflict) {
+      return;
+    }
+    const resolutions: Array<{ path: string; result: CloudSyncConflictValue }> = [];
+    for (const field of pendingConflict.fields) {
+      const draft = conflictDrafts.find((item) => item.path === field.path);
+      if (!draft) {
+        setConflictDraftError(t("Resolve every conflicting field before applying."));
+        return;
+      }
+      if (!draft.exists) {
+        resolutions.push({
+          path: field.path,
+          result: { exists: false }
+        });
+        continue;
+      }
+      try {
+        resolutions.push({
+          path: field.path,
+          result: {
+            exists: true,
+            value: JSON.parse(draft.text)
+          }
+        });
+      } catch {
+        setConflictDraftError(
+          t("The final result for {path} must be valid JSON.").replace("{path}", field.path)
+        );
+        return;
+      }
+    }
+
+    setBusy("resolve");
+    setError("");
+    setConflictDraftError("");
+    try {
+      applyCloudResult(await window.ccr.cloudSyncResolveConflict({
+        conflictId: pendingConflict.id,
+        resolutions
+      }));
+    } catch (resolveError) {
+      setError(formatAppError(copy, resolveError));
+      try {
+        const nextStatus = await window.ccr.cloudSyncGetStatus();
+        setStatus(nextStatus);
+        setPendingConflict(nextStatus.pendingConflict);
+        setConflictDialogOpen(Boolean(nextStatus.pendingConflict));
+      } catch {
+        // Keep the original resolution error visible.
+      }
     } finally {
       setBusy("");
     }
@@ -771,14 +913,22 @@ function CloudSyncSettingsPage({
                   <CloudSyncStatusRow label={t("Device ID")} value={effectiveStatus.deviceId || t("Not registered")} />
                   <CloudSyncStatusRow label={t("Last sync")} value={effectiveStatus.lastSyncAt || t("Never")} />
                 </div>
-                {effectiveStatus.lastSyncError ? (
+                {effectiveStatus.lastSyncError && !pendingConflict ? (
                   <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[11px] text-destructive">
                     {effectiveStatus.lastSyncError}
                   </div>
                 ) : null}
-                {mergeConflicts.length > 0 ? (
+                {pendingConflict ? (
                   <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
-                    <div className="font-medium">{t("Local values were kept for these conflict paths:")}</div>
+                    <div className="font-medium">{t("Cloud sync is paused because conflicting changes require confirmation.")}</div>
+                    <div className="mt-1 break-all font-mono">{pendingConflict.paths.join(", ")}</div>
+                    <Button className="mt-2" disabled={Boolean(busy)} onClick={() => setConflictDialogOpen(true)} size="sm" type="button" variant="outline">
+                      {t("Review conflict")}
+                    </Button>
+                  </div>
+                ) : mergeConflicts.length > 0 ? (
+                  <div className="rounded-md border border-border bg-background px-3 py-2 text-[11px] leading-5 text-muted-foreground">
+                    <div className="font-medium text-foreground">{t("Resolved conflict paths:")}</div>
                     <div className="mt-1 break-all font-mono">{mergeConflicts.join(", ")}</div>
                   </div>
                 ) : null}
@@ -790,11 +940,11 @@ function CloudSyncSettingsPage({
               </section>
 
               <div className="flex flex-wrap justify-end gap-2">
-                <Button disabled={Boolean(busy) || !effectiveStatus.enabled} onClick={() => void runCloudAction("push")} size="sm" type="button" variant="outline">
+                <Button disabled={Boolean(busy) || !effectiveStatus.enabled || Boolean(pendingConflict)} onClick={() => void runCloudAction("push")} size="sm" type="button" variant="outline">
                   {busy === "push" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
                   {t("Push")}
                 </Button>
-                <Button disabled={Boolean(busy) || !effectiveStatus.enabled} onClick={() => void runCloudAction("pull")} size="sm" type="button" variant="outline">
+                <Button disabled={Boolean(busy) || !effectiveStatus.enabled || Boolean(pendingConflict)} onClick={() => void runCloudAction("pull")} size="sm" type="button" variant="outline">
                   {busy === "pull" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ArrowDown className="h-4 w-4" />}
                   {t("Pull")}
                 </Button>
@@ -803,6 +953,169 @@ function CloudSyncSettingsPage({
           ) : null}
         </>
       )}
+      <Dialog onOpenChange={setConflictDialogOpen} open={Boolean(pendingConflict) && conflictDialogOpen}>
+        <DialogContent className="h-[min(780px,calc(100dvh-2rem))] max-w-[1180px]">
+          <DialogHeader>
+            <DialogTitle>{t("Resolve cloud sync conflict")}</DialogTitle>
+            <Button
+              aria-label={copy.settings.close}
+              disabled={busy === "resolve"}
+              onClick={() => setConflictDialogOpen(false)}
+              size="iconSm"
+              title={copy.settings.close}
+              type="button"
+              variant="ghost"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </DialogHeader>
+          <DialogBody className="grid min-h-0 grid-cols-1 content-start gap-4 overflow-auto">
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2.5 text-[12px] leading-5 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+              <div className="flex items-start gap-2">
+                <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <div className="font-semibold">{t("The same configuration fields changed locally and in the cloud.")}</div>
+                  <div>{t("Review the left and right values, then confirm or edit the final JSON result in the middle. Independent changes from both sides will still be preserved.")}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-[11px] text-muted-foreground">
+                {t("Each final result is JSON. Strings must remain quoted.")}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  disabled={busy === "resolve"}
+                  onClick={() => chooseAllCloudConflictSides("local")}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  {t("Use all local values")}
+                </Button>
+                <Button
+                  disabled={busy === "resolve"}
+                  onClick={() => chooseAllCloudConflictSides("remote")}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  {t("Use all cloud values")}
+                </Button>
+              </div>
+            </div>
+
+            {pendingConflict?.fields.map((field) => {
+              const draft = conflictDrafts.find((item) => item.path === field.path) ??
+                cloudSyncConflictDraft(field, "local");
+              const sourceLabel = draft.source === "local"
+                ? t("Local")
+                : draft.source === "remote"
+                  ? t("Cloud")
+                  : t("Manual");
+              return (
+                <section className="grid gap-3 rounded-lg border border-border bg-muted/10 p-3" key={field.path}>
+                  <div className="break-all font-mono text-[12px] font-semibold text-foreground">{field.path}</div>
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                    <div className="grid min-w-0 content-start gap-2 rounded-md border border-red-200 bg-red-50/60 p-2.5 dark:border-red-950 dark:bg-red-950/20">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-[11px] font-semibold text-red-800 dark:text-red-200">{t("Local value")}</div>
+                        <Button
+                          aria-label={`${t("Use local value")}: ${field.path}`}
+                          disabled={busy === "resolve"}
+                          onClick={() => chooseCloudConflictSide(field.path, "local")}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          {t("Use local")}
+                        </Button>
+                      </div>
+                      <pre className="max-h-64 min-h-32 overflow-auto whitespace-pre-wrap break-all rounded border border-red-200/80 bg-background/80 p-2 font-mono text-[11px] leading-5 text-foreground dark:border-red-950">
+                        {field.local.exists ? formatCloudSyncConflictJson(field.local) : t("Field does not exist")}
+                      </pre>
+                    </div>
+
+                    <div className="grid min-w-0 content-start gap-2 rounded-md border-2 border-primary/40 bg-primary/[0.04] p-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="text-[11px] font-semibold text-foreground">{t("Final result")}</div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {t("Source")}: {sourceLabel}
+                          </div>
+                        </div>
+                        <Button
+                          disabled={busy === "resolve"}
+                          onClick={() => updateCloudConflictDraft(field.path, draft.exists
+                            ? { exists: false, source: "manual" }
+                            : { exists: true, source: "manual", text: draft.text || "null" })}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          {draft.exists ? t("Remove field") : t("Keep field")}
+                        </Button>
+                      </div>
+                      {draft.exists ? (
+                        <Textarea
+                          aria-label={`${t("Final result")}: ${field.path}`}
+                          className="min-h-32 resize-y bg-background font-mono text-[11px] leading-5"
+                          disabled={busy === "resolve"}
+                          onChange={(event) => updateCloudConflictDraft(field.path, {
+                            source: "manual",
+                            text: event.target.value
+                          })}
+                          spellCheck={false}
+                          value={draft.text}
+                        />
+                      ) : (
+                        <div className="flex min-h-32 items-center justify-center rounded border border-dashed border-border bg-background/70 p-3 text-[11px] text-muted-foreground">
+                          {t("This field will be removed from the merged configuration.")}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid min-w-0 content-start gap-2 rounded-md border border-emerald-200 bg-emerald-50/60 p-2.5 dark:border-emerald-950 dark:bg-emerald-950/20">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-200">{t("Cloud value")}</div>
+                        <Button
+                          aria-label={`${t("Use cloud value")}: ${field.path}`}
+                          disabled={busy === "resolve"}
+                          onClick={() => chooseCloudConflictSide(field.path, "remote")}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          {t("Use cloud")}
+                        </Button>
+                      </div>
+                      <pre className="max-h-64 min-h-32 overflow-auto whitespace-pre-wrap break-all rounded border border-emerald-200/80 bg-background/80 p-2 font-mono text-[11px] leading-5 text-foreground dark:border-emerald-950">
+                        {field.remote.exists ? formatCloudSyncConflictJson(field.remote) : t("Field does not exist")}
+                      </pre>
+                    </div>
+                  </div>
+                </section>
+              );
+            })}
+
+            {conflictDraftError || error ? (
+              <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[11px] text-destructive">
+                {conflictDraftError || error}
+              </div>
+            ) : null}
+          </DialogBody>
+          <DialogFooter>
+            <Button disabled={busy === "resolve"} onClick={() => setConflictDialogOpen(false)} type="button" variant="outline">
+              {t("Decide later")}
+            </Button>
+            <Button disabled={busy === "resolve"} onClick={() => void resolveCloudConflict()} type="button">
+              {busy === "resolve" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+              {t("Apply resolution")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

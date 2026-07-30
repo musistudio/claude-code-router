@@ -34,6 +34,7 @@ import type {
   CloudSyncLoginResult,
   CloudSyncPullRequest,
   CloudSyncPushRequest,
+  CloudSyncResolveConflictRequest,
   CloudSyncSetupRequest,
   CloudSyncStatus,
   GatewayMcpToolInfo,
@@ -102,6 +103,7 @@ declare global {
       cloudSyncLogin: () => Promise<CloudSyncLoginResult>;
       cloudSyncPull: (request?: CloudSyncPullRequest) => Promise<CloudSyncOperationResult>;
       cloudSyncPush: (request?: CloudSyncPushRequest) => Promise<CloudSyncOperationResult>;
+      cloudSyncResolveConflict: (request: CloudSyncResolveConflictRequest) => Promise<CloudSyncOperationResult>;
       cloudSyncSetup: (request: CloudSyncSetupRequest) => Promise<CloudSyncOperationResult>;
       closeBotGatewayQrWindow: (request: BotGatewayQrWindowCloseRequest) => Promise<BotGatewayQrWindowCloseResult>;
       clearProxyNetworkCaptures: () => Promise<ProxyNetworkSnapshot>;

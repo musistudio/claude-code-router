@@ -12,7 +12,7 @@ import { closeBotGatewayQrWindow, openBotGatewayQrWindow } from "./bot-gateway-q
 import { syncClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
 import { findInstalledCodexAppExecutable } from "@ccr/core/agents/codex/app-launch";
 import { findInstalledOpenCodeAppExecutable } from "@ccr/core/agents/opencode/app-launch";
-import { applyCloudSyncAuthTokens, autoPushCloudSyncConfig, createCloudSyncKeyFile, disableCloudSyncConfig, ensureCloudSyncUserProfile, getCloudSyncStatus, pullCloudSyncConfig, pushCloudSyncConfig, refreshCloudSyncUserProfile, setupCloudSyncConfig, startCloudSyncLogin } from "@ccr/core/cloud-sync/service";
+import { autoPushCloudSyncConfig, completeCloudSyncLogin, createCloudSyncKeyFile, disableCloudSyncConfig, ensureCloudSyncUserProfile, getCloudSyncStatus, pullCloudSyncConfig, pushCloudSyncConfig, resolveCloudSyncConflict, setupCloudSyncConfig, startCloudSyncLogin } from "@ccr/core/cloud-sync/service";
 import { loadAppConfig, saveApiKeysConfig, saveAppConfig, saveAppThemePreference, withClaudeDesignRuntimePluginConfig } from "@ccr/core/config/config";
 import {
   APP_CONFIG_DB_FILE,
@@ -53,7 +53,7 @@ import { appUpdateService } from "./update-service";
 import { getUsageStats } from "@ccr/core/usage/store";
 import { applyNativeThemePreference } from "./native-theme";
 import windowsManager from "./windows";
-import { CLAUDE_DESIGN_PLUGIN_ID, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, type AgentAnalysisFilter, type AgentAnalysisTracePayloadRequest, type ApiKeyConfig, type AppCaptureElementPngRequest, type AppCaptureElementPngResult, type AppConfig, type AppDataExportResult, type AppImageExportTargetRequest, type AppImageExportTargetResult, type AppInfo, type AppRenderHtmlPngRequest, type AppRenderHtmlPngResult, type AppSaveConfigOptions, type BotGatewayQrLoginCancelRequest, type BotGatewayQrLoginStartRequest, type BotGatewayQrLoginWaitRequest, type BotGatewayQrWindowCloseRequest, type BotGatewayQrWindowOpenRequest, type CloudSyncKeyFileResult, type CloudSyncLoginResult, type CloudSyncOperationResult, type CloudSyncPullRequest, type CloudSyncPushRequest, type CloudSyncSetupRequest, type GatewayPluginAppConfig, type GatewayPluginPermission, type GatewayPluginSurface, type GatewayProviderConnectivityCheckRequest, type GatewayProviderProbeCandidatesRequest, type GatewayProviderProbeRequest, type GatewayStatus, type LocalAgentProviderImportRequest, type PluginDependency, type PluginDirectorySelection, type ProfileApplyResult, type ProfileOpenRequest, type ProfileOpenResult, type ProviderAccountResetRequest, type ProviderAccountSnapshotRequestOptions, type ProviderAccountTestRequest, type ProviderCatalogModelsRequest, type ProviderIconDetectionRequest, type ProviderManifestFetchRequest, type RequestLogListFilter, type RouteScriptTestRequest, type RouteScriptValidationRequest, type UsageStatsFilter, type UsageStatsRange } from "@ccr/core/contracts/app";
+import { CLAUDE_DESIGN_PLUGIN_ID, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, type AgentAnalysisFilter, type AgentAnalysisTracePayloadRequest, type ApiKeyConfig, type AppCaptureElementPngRequest, type AppCaptureElementPngResult, type AppConfig, type AppDataExportResult, type AppImageExportTargetRequest, type AppImageExportTargetResult, type AppInfo, type AppRenderHtmlPngRequest, type AppRenderHtmlPngResult, type AppSaveConfigOptions, type BotGatewayQrLoginCancelRequest, type BotGatewayQrLoginStartRequest, type BotGatewayQrLoginWaitRequest, type BotGatewayQrWindowCloseRequest, type BotGatewayQrWindowOpenRequest, type CloudSyncKeyFileResult, type CloudSyncLoginResult, type CloudSyncOperationResult, type CloudSyncPullRequest, type CloudSyncPushRequest, type CloudSyncResolveConflictRequest, type CloudSyncSetupRequest, type GatewayPluginAppConfig, type GatewayPluginPermission, type GatewayPluginSurface, type GatewayProviderConnectivityCheckRequest, type GatewayProviderProbeCandidatesRequest, type GatewayProviderProbeRequest, type GatewayStatus, type LocalAgentProviderImportRequest, type PluginDependency, type PluginDirectorySelection, type ProfileApplyResult, type ProfileOpenRequest, type ProfileOpenResult, type ProviderAccountResetRequest, type ProviderAccountSnapshotRequestOptions, type ProviderAccountTestRequest, type ProviderCatalogModelsRequest, type ProviderIconDetectionRequest, type ProviderManifestFetchRequest, type RequestLogListFilter, type RouteScriptTestRequest, type RouteScriptValidationRequest, type UsageStatsFilter, type UsageStatsRange } from "@ccr/core/contracts/app";
 const imageExportTargets = new Map<string, string>();
 const gatewayPluginPermissionIdSet = new Set<string>(GATEWAY_PLUGIN_PERMISSION_IDS);
 const gatewayPluginSurfaceIdSet = new Set<string>(GATEWAY_PLUGIN_SURFACE_IDS);
@@ -133,6 +133,9 @@ ipcMain.handle(IPC_CHANNELS.appCloudSyncPush, async (_event, request?: CloudSync
 });
 ipcMain.handle(IPC_CHANNELS.appCloudSyncPull, async (_event, request?: CloudSyncPullRequest) => {
   return persistCloudSyncOperation(await pullCloudSyncConfig(await loadAppConfig(), request));
+});
+ipcMain.handle(IPC_CHANNELS.appCloudSyncResolveConflict, async (_event, request: CloudSyncResolveConflictRequest) => {
+  return persistCloudSyncOperation(await resolveCloudSyncConflict(await loadAppConfig(), request));
 });
 ipcMain.handle(IPC_CHANNELS.appCloudSyncDisable, async () => {
   const savedConfig = await saveAppConfig(disableCloudSyncConfig(await loadAppConfig()));
@@ -494,13 +497,8 @@ async function handleCloudSyncDesktopAuthCallback(
     return;
   }
 
-  const authenticatedConfig = applyCloudSyncAuthTokens(await loadAppConfig(), {
-    accessToken: requiredCloudSyncCallbackParam(url, "access_token"),
-    refreshToken: requiredCloudSyncCallbackParam(url, "refresh_token"),
-    refreshTokenExpiresAt: optionalCloudSyncCallbackParam(url, "refresh_token_expires_at"),
-    userId: optionalCloudSyncCallbackParam(url, "user_id")
-  });
-  const savedConfig = await saveAppConfig(await refreshCloudSyncUserProfile(authenticatedConfig));
+  requiredCloudSyncCallbackParam(url, "code");
+  const savedConfig = await saveAppConfig(await completeCloudSyncLogin(await loadAppConfig(), url.toString()));
   windowsManager.showMainWindow();
   windowsManager.broadcast(IPC_CHANNELS.appCloudSyncAuthChanged);
   await trayController.refreshIconFromConfig(savedConfig);

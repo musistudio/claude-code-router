@@ -8,6 +8,7 @@ export const IPC_CHANNELS = {
   appCloudSyncLogin: "ccr:app:cloud-sync-login",
   appCloudSyncPull: "ccr:app:cloud-sync-pull",
   appCloudSyncPush: "ccr:app:cloud-sync-push",
+  appCloudSyncResolveConflict: "ccr:app:cloud-sync-resolve-conflict",
   appCloudSyncSetup: "ccr:app:cloud-sync-setup",
   appCloseTray: "ccr:app:close-tray",
   appDetectProviderIcon: "ccr:app:detect-provider-icon",
