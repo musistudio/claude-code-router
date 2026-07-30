@@ -132,6 +132,46 @@ test("router config compilation filters invalid global fallback models", () => {
   assert.equal(compiled.diagnostics[0].code, "fallback-model-not-configured");
 });
 
+test("router config compilation reports profile route fallback model diagnostics with profile context", () => {
+  const config = routingConfig({
+    profile: {
+      enabled: true,
+      profiles: [{
+        agent: "claude-code",
+        enabled: true,
+        id: "profile-a",
+        model: "Primary/alpha",
+        name: "Profile A",
+        routing: {
+          enabled: true,
+          enhancedRoute: true,
+          rules: [{
+            condition: { left: "request.header.x-task", operator: "==", right: "heavy" },
+            enabled: true,
+            fallback: {
+              mode: "model-chain",
+              models: ["Primary/missing"],
+              retryCount: 1
+            },
+            id: "profile-fallback",
+            name: "Profile fallback",
+            rewrites: [{ key: "request.body.model", operation: "set", value: "Primary/alpha" }],
+            type: "condition"
+          }]
+        },
+        scope: "ccr"
+      }]
+    }
+  });
+
+  const compiled = compileRouterConfig(config);
+  const diagnostic = compiled.profileRoutings[0].rules[0].diagnostics[0];
+
+  assert.equal(diagnostic.code, "fallback-model-not-configured");
+  assert.equal(diagnostic.message, 'Profile "Profile A" route "Profile fallback" references unconfigured fallback model "Primary/missing".');
+  assert.equal(diagnostic.source, "profile");
+});
+
 test("router config compilation rejects conflicting provider and model targets", () => {
   const config = routingConfig();
   config.Router.rules = [{

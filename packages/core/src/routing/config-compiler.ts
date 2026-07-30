@@ -92,6 +92,7 @@ function compileProfileRoutings(
       const rules = (routing?.rules ?? []).map((rule) => compileRouterRule(rule, modelRegistry, options, {
         allowScript: false,
         label: `Profile "${profile.name}" route "${rule.name}"`,
+        profile,
         source: "profile"
       }));
       return {
@@ -121,7 +122,7 @@ function compileRouterRule(
   rule: RouterRule,
   modelRegistry: ModelRegistry,
   options: CompileRouterConfigOptions,
-  diagnostic: { allowScript?: boolean; label: string; source: "profile" | "rule" }
+  diagnostic: { allowScript?: boolean; label: string; profile?: ProfileConfig; source: "profile" | "rule" }
 ): CompiledRouterRule {
   const rewriteResults = routerRuleRewrites(rule).map(compileConfiguredRouteRewrite);
   const rewrites = rewriteResults.flatMap((result) => result.rewrite ? [result.rewrite] : []);
@@ -168,7 +169,7 @@ function compileRouterRule(
       }
     }
   }
-  diagnostics.push(...fallbackModelDiagnostics(rule.fallback, modelRegistry, diagnostic.source, rule));
+  diagnostics.push(...fallbackModelDiagnostics(rule.fallback, modelRegistry, diagnostic.source, rule, diagnostic.profile));
   return {
     active: (rule.type === "script" ? Boolean(rule.script) : rewrites.length > 0) && diagnostics.length === 0,
     diagnostics,
