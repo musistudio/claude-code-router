@@ -987,6 +987,10 @@ test("RequestLogStore analyzes agent sessions and exposes trace payloads", async
     assert.equal(selected.selectedSession?.trace.toolRunCount, 1);
     assert.equal(selected.selectedSession?.trace.llmRunCount, 1);
     assert.equal(selected.selectedSession?.trace.runs.some((run) => run.toolName === "read_file"), true);
+    assert.equal(
+      selected.selectedSession?.trace.runs.find((run) => run.id === selected.selectedSession?.trace.rootRunId)?.status,
+      "success"
+    );
 
     const inputPayload = await store.getTracePayload({
       callId: "call-read",
@@ -1005,6 +1009,88 @@ test("RequestLogStore analyzes agent sessions and exposes trace payloads", async
     assert.equal(resultPayload.found, true);
     assert.equal(resultPayload.kind, "json");
     assert.match(resultPayload.content, /files/);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore distinguishes partial session failures from failed sessions", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-agent-status-test-"));
+  try {
+    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const baseTime = Date.now() - 5000;
+
+    async function recordAgentRequest({ offsetMs, requestId, sessionId, statusCode }) {
+      const startedAtMs = baseTime + offsetMs;
+      await store.record({
+        completedAt: new Date(startedAtMs + 100).toISOString(),
+        durationMs: 100,
+        ...(statusCode >= 400 ? { error: "upstream request failed" } : {}),
+        method: "POST",
+        path: "/v1/chat/completions",
+        providerName: "test-provider",
+        providerProtocol: "openai_chat_completions",
+        requestBody: Buffer.from(JSON.stringify({
+          messages: [{ content: "continue task", role: "user" }],
+          model: "gpt-test",
+          session_id: sessionId
+        }), "utf8"),
+        requestHeaders: {
+          "content-type": "application/json",
+          "user-agent": "openai-codex test",
+          "x-codex-session-id": sessionId
+        },
+        requestId,
+        responseBodyText: JSON.stringify({ model: "gpt-test" }),
+        responseHeaders: { "content-type": "application/json" },
+        startedAt: new Date(startedAtMs).toISOString(),
+        statusCode,
+        url: "http://127.0.0.1:3456/v1/chat/completions"
+      });
+    }
+
+    await recordAgentRequest({
+      offsetMs: 0,
+      requestId: "mixed-failed",
+      sessionId: "session-mixed",
+      statusCode: 502
+    });
+    await recordAgentRequest({
+      offsetMs: 1000,
+      requestId: "mixed-recovered",
+      sessionId: "session-mixed",
+      statusCode: 200
+    });
+    await recordAgentRequest({
+      offsetMs: 2000,
+      requestId: "failed-only",
+      sessionId: "session-failed",
+      statusCode: 502
+    });
+
+    const mixed = await store.analyze({
+      range: "30d",
+      sessionAgent: "codex",
+      sessionId: "session-mixed"
+    });
+    const mixedTrace = mixed.selectedSession?.trace;
+    assert.equal(
+      mixedTrace?.runs.find((run) => run.id === mixedTrace.rootRunId)?.status,
+      "partial"
+    );
+    assert.equal(mixedTrace?.runs.some((run) => run.kind === "llm" && run.status === "error"), true);
+    assert.equal(mixedTrace?.runs.some((run) => run.kind === "llm" && run.status === "success"), true);
+
+    const failed = await store.analyze({
+      range: "30d",
+      sessionAgent: "codex",
+      sessionId: "session-failed"
+    });
+    const failedTrace = failed.selectedSession?.trace;
+    assert.equal(
+      failedTrace?.runs.find((run) => run.id === failedTrace.rootRunId)?.status,
+      "error"
+    );
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }

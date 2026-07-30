@@ -2280,7 +2280,7 @@ export type AgentAnalysisSubagentRow = {
 
 export type AgentAnalysisTraceRunKind = "agent" | "llm" | "route" | "subagent" | "tool";
 
-export type AgentAnalysisTraceRunStatus = "error" | "success";
+export type AgentAnalysisTraceRunStatus = "error" | "partial" | "success";
 
 export type AgentAnalysisTracePayloadPreview = {
   kind: "empty" | "json" | "text";

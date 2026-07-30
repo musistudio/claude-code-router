@@ -2579,7 +2579,11 @@ function buildAgentTrace(requests: AnalyzedAgentRequest[]): AgentAnalysisTrace {
       outputTokens: totals.outputTokens,
       sessionId,
       startedAt: isoFromMs(startMs),
-      status: totals.errorCount > 0 ? "error" : "success",
+      status: totals.errorCount === 0
+        ? "success"
+        : totals.errorCount === totals.requestCount
+          ? "error"
+          : "partial",
       totalTokens: totals.totalTokens
     }
   ];
