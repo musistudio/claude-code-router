@@ -101,7 +101,31 @@ test("AgentAnalysisView keeps session headings horizontal and shows cache rate a
       endpoints: [],
       errors: [],
       models: [],
-      requests: [],
+      requests: [{
+        agent: session.agent,
+        cacheReadTokens: 300,
+        cacheWriteTokens: 100,
+        client: session.client,
+        concurrentRequests: 1,
+        costUsd: 0.25,
+        createdAt: session.startedAt,
+        durationMs: 420,
+        id: 42,
+        inputTokens: 500,
+        method: "POST",
+        model: "claude-sonnet-4",
+        ok: true,
+        outputTokens: 100,
+        path: "/v1/messages",
+        provider: "anthropic",
+        requestId: "request-with-cost",
+        routeReason: "default",
+        sessionId: session.id,
+        statusCode: 200,
+        toolCallCount: 1,
+        tools: ["Read"],
+        totalTokens: 1000
+      }],
       routes: [],
       session,
       statusCodes: [],
@@ -123,6 +147,7 @@ test("AgentAnalysisView keeps session headings horizontal and shows cache rate a
           cacheReadTokens: session.cacheReadTokens,
           cacheWriteTokens: session.cacheWriteTokens,
           concurrentRequests: session.maxConcurrentRequests,
+          costUsd: 0.75,
           depth: 0,
           durationMs: session.durationMs,
           endedAt: session.lastSeenAt,
@@ -168,6 +193,8 @@ test("AgentAnalysisView keeps session headings horizontal and shows cache rate a
   assert.match(html, /38%/);
   assert.match(html, /成本/);
   assert.match(html, /\$1\.25/);
+  assert.match(html, /\$0\.25/);
+  assert.match(html, /\$0\.75/);
   assert.match(html, /部分失败/);
   assert.match(html, /border-amber-200/);
   assert.match(html, /min-w-\[64px\]/);

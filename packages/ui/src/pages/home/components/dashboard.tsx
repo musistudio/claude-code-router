@@ -3517,7 +3517,7 @@ function AgentSessionDetailCard({
                 <AnalysisEmptyState label={t("No session requests")} />
               ) : (
                 <div className={cn("max-h-[260px]", agentListFrameClassName)}>
-                  <table className={cn("min-w-[980px]", agentListTableClassName)}>
+                  <table className={cn("min-w-[1060px]", agentListTableClassName)}>
                     <thead className={agentListHeadClassName}>
                       <tr>
                         <th className="px-3 py-2 font-semibold">{t("Time")}</th>
@@ -3526,6 +3526,7 @@ function AgentSessionDetailCard({
                         <th className="px-3 py-2 font-semibold">{t("Model")}</th>
                         <th className="px-3 py-2 text-right font-semibold">{t("Tools")}</th>
                         <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
+                        <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th>
                         <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
                       </tr>
                     </thead>
@@ -3538,6 +3539,7 @@ function AgentSessionDetailCard({
                           <td className="max-w-[300px] px-3 py-2" title={`${request.provider}/${request.model}`}>{request.provider}/{request.model}</td>
                           <td className="px-3 py-2 text-right" title={request.tools.join(", ")}>{formatCompactNumber(request.toolCallCount)}</td>
                           <td className="px-3 py-2 text-right">{formatCompactNumber(request.totalTokens)}</td>
+                          <td className="px-3 py-2 text-right">{formatUsdCost(request.costUsd ?? 0)}</td>
                           <td className="px-3 py-2 text-right">{formatDuration(request.durationMs)}</td>
                         </tr>
                       ))}
@@ -3601,7 +3603,7 @@ function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
         <AnalysisEmptyState label={t("No trace runs")} />
       ) : (
         <div className={cn("max-h-[420px]", agentListFrameClassName)}>
-          <table className={cn("min-w-[1180px]", agentListTableClassName)}>
+          <table className={cn("min-w-[1260px]", agentListTableClassName)}>
             <thead className={agentListHeadClassName}>
               <tr>
                 <th className="px-3 py-2 font-semibold">{t("Run")}</th>
@@ -3610,6 +3612,7 @@ function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
                 <th className="px-3 py-2 font-semibold">{t("Target")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Concurrency")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
               </tr>
@@ -3651,6 +3654,7 @@ function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
                   </td>
                   <td className="px-3 py-2 text-right">{run.totalTokens > 0 ? formatCompactNumber(run.totalTokens) : "-"}</td>
                   <td className="px-3 py-2 text-right">{run.cacheReadTokens + run.cacheWriteTokens > 0 ? formatCompactNumber(run.cacheReadTokens + run.cacheWriteTokens) : "-"}</td>
+                  <td className="px-3 py-2 text-right">{run.costUsd !== undefined ? formatUsdCost(run.costUsd) : "-"}</td>
                   <td className="px-3 py-2 text-right">{formatCompactNumber(run.concurrentRequests)}</td>
                   <td className="px-3 py-2 text-right">{formatDuration(run.durationMs)}</td>
                 </tr>

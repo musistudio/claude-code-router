@@ -126,6 +126,11 @@ test("RequestLogStore applies persisted custom model pricing to raw trace usage 
     );
     record.model = "custom-model";
     record.providerName = "custom-provider";
+    record.requestHeaders = {
+      "content-type": "application/json",
+      "user-agent": "openai-codex test",
+      "x-codex-session-id": "custom-pricing-session"
+    };
     record.pricing = {
       inputUsdPerMillionTokens: 2,
       outputUsdPerMillionTokens: 8
@@ -141,6 +146,19 @@ test("RequestLogStore applies persisted custom model pricing to raw trace usage 
     let page = await store.list({ pageSize: 10 });
     let detail = await store.getDetail({ id: page.items[0].id });
     assert.equal(detail.costUsd, 6);
+    let analysis = await store.analyze({
+      range: "30d",
+      sessionAgent: "codex",
+      sessionId: "custom-pricing-session"
+    });
+    assert.equal(
+      analysis.selectedSession?.trace.runs.find((run) => run.id === analysis.selectedSession?.trace.rootRunId)?.costUsd,
+      6
+    );
+    assert.equal(
+      analysis.selectedSession?.trace.runs.find((run) => run.kind === "llm")?.costUsd,
+      6
+    );
 
     assert.equal(await store.updateFromRawTrace({
       model: "custom-model",
@@ -151,6 +169,15 @@ test("RequestLogStore applies persisted custom model pricing to raw trace usage 
     page = await store.list({ pageSize: 10 });
     detail = await store.getDetail({ id: page.items[0].id });
     assert.equal(detail.costUsd, 12);
+    analysis = await store.analyze({
+      range: "30d",
+      sessionAgent: "codex",
+      sessionId: "custom-pricing-session"
+    });
+    assert.equal(
+      analysis.selectedSession?.trace.runs.find((run) => run.kind === "llm")?.costUsd,
+      12
+    );
   } finally {
     await store.close();
     rmSync(dir, { force: true, recursive: true });

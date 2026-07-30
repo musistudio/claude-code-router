@@ -2318,6 +2318,7 @@ export type AgentAnalysisTraceRun = {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   concurrentRequests: number;
+  costUsd?: number;
   depth: number;
   durationMs: number;
   endedAt: string;
