@@ -387,7 +387,7 @@ export async function fetchUpstreamWithFallback(input: {
         recordProviderCredentialOutcome(input.config, input.method, attempt, response.status, response.headers);
         await drainResponseBody(response);
         if (delayMs > 0) {
-          await delay(delayMs);
+          await delay(delayMs, input.signal);
         }
         continue;
       }
@@ -450,7 +450,7 @@ export async function fetchUpstreamWithFallback(input: {
       }
       if (hasNextAttempt) {
         if (delayMs > 0) {
-          await delay(delayMs);
+          await delay(delayMs, input.signal);
         }
         continue;
       }
