@@ -12,8 +12,8 @@ import { closeBotGatewayQrWindow, openBotGatewayQrWindow } from "./bot-gateway-q
 import { syncClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
 import { findInstalledCodexAppExecutable } from "@ccr/core/agents/codex/app-launch";
 import { findInstalledOpenCodeAppExecutable } from "@ccr/core/agents/opencode/app-launch";
-import { autoPushCloudSyncConfig, completeCloudSyncLogin, createCloudSyncKeyFile, disableCloudSyncConfig, ensureCloudSyncUserProfile, getCloudSyncStatus, pullCloudSyncConfig, pushCloudSyncConfig, resolveCloudSyncConflict, setupCloudSyncConfig, startCloudSyncLogin } from "@ccr/core/cloud-sync/service";
-import { loadAppConfig, saveApiKeysConfig, saveAppConfig, saveAppThemePreference, withClaudeDesignRuntimePluginConfig } from "@ccr/core/config/config";
+import { autoPullCloudSyncConfig, autoPushCloudSyncConfig, completeCloudSyncLogin, createCloudSyncKeyFile, disableCloudSyncConfig, ensureCloudSyncUserProfile, getCloudSyncStatus, logoutCloudSyncConfig, pullCloudSyncConfig, pushCloudSyncConfig, resolveCloudSyncConflict, rotateCloudSyncKey, setupCloudSyncConfig, startCloudSyncLogin } from "@ccr/core/cloud-sync/service";
+import { loadAppConfig, saveApiKeysConfig, saveAppConfig, saveAppThemePreference, updateAppConfig, withClaudeDesignRuntimePluginConfig } from "@ccr/core/config/config";
 import {
   APP_CONFIG_DB_FILE,
   APP_NAME,
@@ -53,10 +53,13 @@ import { appUpdateService } from "./update-service";
 import { getUsageStats } from "@ccr/core/usage/store";
 import { applyNativeThemePreference } from "./native-theme";
 import windowsManager from "./windows";
-import { CLAUDE_DESIGN_PLUGIN_ID, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, type AgentAnalysisFilter, type AgentAnalysisTracePayloadRequest, type ApiKeyConfig, type AppCaptureElementPngRequest, type AppCaptureElementPngResult, type AppConfig, type AppDataExportResult, type AppImageExportTargetRequest, type AppImageExportTargetResult, type AppInfo, type AppRenderHtmlPngRequest, type AppRenderHtmlPngResult, type AppSaveConfigOptions, type BotGatewayQrLoginCancelRequest, type BotGatewayQrLoginStartRequest, type BotGatewayQrLoginWaitRequest, type BotGatewayQrWindowCloseRequest, type BotGatewayQrWindowOpenRequest, type CloudSyncKeyFileResult, type CloudSyncLoginResult, type CloudSyncOperationResult, type CloudSyncPullRequest, type CloudSyncPushRequest, type CloudSyncResolveConflictRequest, type CloudSyncSetupRequest, type GatewayPluginAppConfig, type GatewayPluginPermission, type GatewayPluginSurface, type GatewayProviderConnectivityCheckRequest, type GatewayProviderProbeCandidatesRequest, type GatewayProviderProbeRequest, type GatewayStatus, type LocalAgentProviderImportRequest, type PluginDependency, type PluginDirectorySelection, type ProfileApplyResult, type ProfileOpenRequest, type ProfileOpenResult, type ProviderAccountResetRequest, type ProviderAccountSnapshotRequestOptions, type ProviderAccountTestRequest, type ProviderCatalogModelsRequest, type ProviderIconDetectionRequest, type ProviderManifestFetchRequest, type RequestLogListFilter, type RouteScriptTestRequest, type RouteScriptValidationRequest, type UsageStatsFilter, type UsageStatsRange } from "@ccr/core/contracts/app";
+import { CLAUDE_DESIGN_PLUGIN_ID, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, type AgentAnalysisFilter, type AgentAnalysisTracePayloadRequest, type ApiKeyConfig, type AppCaptureElementPngRequest, type AppCaptureElementPngResult, type AppConfig, type AppDataExportResult, type AppImageExportTargetRequest, type AppImageExportTargetResult, type AppInfo, type AppRenderHtmlPngRequest, type AppRenderHtmlPngResult, type AppSaveConfigOptions, type BotGatewayQrLoginCancelRequest, type BotGatewayQrLoginStartRequest, type BotGatewayQrLoginWaitRequest, type BotGatewayQrWindowCloseRequest, type BotGatewayQrWindowOpenRequest, type CloudSyncKeyFileResult, type CloudSyncLoginResult, type CloudSyncOperationResult, type CloudSyncPullRequest, type CloudSyncPushRequest, type CloudSyncResolveConflictRequest, type CloudSyncRotateKeyRequest, type CloudSyncSetupRequest, type GatewayPluginAppConfig, type GatewayPluginPermission, type GatewayPluginSurface, type GatewayProviderConnectivityCheckRequest, type GatewayProviderProbeCandidatesRequest, type GatewayProviderProbeRequest, type GatewayStatus, type LocalAgentProviderImportRequest, type PluginDependency, type PluginDirectorySelection, type ProfileApplyResult, type ProfileOpenRequest, type ProfileOpenResult, type ProviderAccountResetRequest, type ProviderAccountSnapshotRequestOptions, type ProviderAccountTestRequest, type ProviderCatalogModelsRequest, type ProviderIconDetectionRequest, type ProviderManifestFetchRequest, type RequestLogListFilter, type RouteScriptTestRequest, type RouteScriptValidationRequest, type UsageStatsFilter, type UsageStatsRange } from "@ccr/core/contracts/app";
 const imageExportTargets = new Map<string, string>();
 const gatewayPluginPermissionIdSet = new Set<string>(GATEWAY_PLUGIN_PERMISSION_IDS);
 const gatewayPluginSurfaceIdSet = new Set<string>(GATEWAY_PLUGIN_SURFACE_IDS);
+const cloudSyncBackgroundPullIntervalMs = 5 * 60 * 1000;
+let cloudSyncRuntimeRetryRequired = false;
+let cloudSyncRuntimeRetryPreviousConfig: AppConfig | undefined;
 
 function applyAppThemePreference(theme: AppConfig["theme"]): void {
   applyNativeThemePreference(theme);
@@ -97,13 +100,19 @@ ipcMain.handle(IPC_CHANNELS.appRenderHtmlPng, async (event, request: AppRenderHt
 
 ipcMain.handle(IPC_CHANNELS.appGetConfig, () => loadAppConfig());
 ipcMain.handle(IPC_CHANNELS.appCloudSyncGetStatus, async () => {
-  const savedConfig = await saveAppConfig(await ensureCloudSyncUserProfile(await loadAppConfig()));
+  const savedConfig = await updateAppConfig(ensureCloudSyncUserProfile);
   return getCloudSyncStatus(savedConfig);
 });
 ipcMain.handle(IPC_CHANNELS.appCloudSyncLogin, async (): Promise<CloudSyncLoginResult> => {
   const callback = await startCloudSyncDesktopAuthCallback();
-  const login = startCloudSyncLogin(await loadAppConfig(), { callbackUrl: callback.url });
-  const savedConfig = login.config ? await saveAppConfig(login.config) : await loadAppConfig();
+  let login: CloudSyncLoginResult | undefined;
+  const savedConfig = await updateAppConfig((config) => {
+    login = startCloudSyncLogin(config, { callbackUrl: callback.url });
+    return login.config ?? config;
+  });
+  if (!login) {
+    throw new Error("Failed to initialize cloud sync login.");
+  }
   await shell.openExternal(login.loginUrl);
   return {
     ...login,
@@ -126,22 +135,33 @@ ipcMain.handle(IPC_CHANNELS.appCloudSyncGenerateKeyFile, async (event, file?: st
   return createCloudSyncKeyFile(result.filePath);
 });
 ipcMain.handle(IPC_CHANNELS.appCloudSyncSetup, async (_event, request: CloudSyncSetupRequest) => {
-  return persistCloudSyncOperation(await setupCloudSyncConfig(await loadAppConfig(), request));
+  return persistCloudSyncOperation((config) => setupCloudSyncConfig(config, request));
 });
 ipcMain.handle(IPC_CHANNELS.appCloudSyncPush, async (_event, request?: CloudSyncPushRequest) => {
-  return persistCloudSyncOperation(await pushCloudSyncConfig(await loadAppConfig(), request));
+  return persistCloudSyncOperation((config) => pushCloudSyncConfig(config, request));
 });
 ipcMain.handle(IPC_CHANNELS.appCloudSyncPull, async (_event, request?: CloudSyncPullRequest) => {
-  return persistCloudSyncOperation(await pullCloudSyncConfig(await loadAppConfig(), request));
+  return persistCloudSyncOperation((config) => pullCloudSyncConfig(config, request));
 });
 ipcMain.handle(IPC_CHANNELS.appCloudSyncResolveConflict, async (_event, request: CloudSyncResolveConflictRequest) => {
-  return persistCloudSyncOperation(await resolveCloudSyncConflict(await loadAppConfig(), request));
+  return persistCloudSyncOperation((config) => resolveCloudSyncConflict(config, request));
+});
+ipcMain.handle(IPC_CHANNELS.appCloudSyncRotateKey, async (_event, request: CloudSyncRotateKeyRequest) => {
+  return persistCloudSyncOperation((config) => rotateCloudSyncKey(config, request));
 });
 ipcMain.handle(IPC_CHANNELS.appCloudSyncDisable, async () => {
-  const savedConfig = await saveAppConfig(disableCloudSyncConfig(await loadAppConfig()));
+  const savedConfig = await updateAppConfig(disableCloudSyncConfig);
   return {
     config: savedConfig,
     message: "Cloud sync is disabled on this device.",
+    status: getCloudSyncStatus(savedConfig)
+  } satisfies CloudSyncOperationResult;
+});
+ipcMain.handle(IPC_CHANNELS.appCloudSyncLogout, async () => {
+  const savedConfig = await updateAppConfig(logoutCloudSyncConfig);
+  return {
+    config: savedConfig,
+    message: "Signed out of cloud sync on this device.",
     status: getCloudSyncStatus(savedConfig)
   } satisfies CloudSyncOperationResult;
 });
@@ -372,19 +392,22 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, opt
   await builtInBrowserService.syncProxy(savedConfig);
   await trayController.refreshIconFromConfig(savedConfig);
   invalidateProviderAccountSnapshotCache();
-  const cloudSyncedConfig = await autoPushCloudSyncConfig(savedConfig);
-  if (cloudSyncedConfig !== savedConfig) {
-    savedConfig = await saveAppConfig(cloudSyncedConfig);
-  }
+  const beforeCloudSyncConfig = savedConfig;
+  savedConfig = await updateAppConfig(autoPushCloudSyncConfig);
+  savedConfig = await applyCloudSyncRuntimeChanges(beforeCloudSyncConfig, savedConfig, options);
   return savedConfig;
 });
 ipcMain.handle(IPC_CHANNELS.appSetThemePreference, async (_event, theme: unknown) => {
-  const savedTheme = await saveAppThemePreference(theme);
-  applyAppThemePreference(savedTheme);
-  return savedTheme;
+  await saveAppThemePreference(theme);
+  const beforeCloudSyncConfig = await loadAppConfig();
+  let savedConfig = await updateAppConfig(autoPushCloudSyncConfig);
+  applyAppThemePreference(savedConfig.theme);
+  savedConfig = await applyCloudSyncRuntimeChanges(beforeCloudSyncConfig, savedConfig);
+  return savedConfig.theme;
 });
 ipcMain.handle(IPC_CHANNELS.appSaveApiKeys, async (_event, apiKeys: ApiKeyConfig[]) => {
-  const savedConfig = await saveApiKeysConfig(apiKeys);
+  let savedConfig = await saveApiKeysConfig(apiKeys);
+  savedConfig = await updateAppConfig(autoPushCloudSyncConfig);
   const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(savedConfig);
   const nextConfig = syncedClaudeAppConfig.config;
   await gatewayService.updateConfig(nextConfig);
@@ -438,29 +461,114 @@ ipcMain.handle(IPC_CHANNELS.appRestartProxy, async () => {
   return proxyService.getStatus();
 });
 
-async function persistCloudSyncOperation(result: CloudSyncOperationResult): Promise<CloudSyncOperationResult> {
-  if (!result.config) {
-    return result;
+async function persistCloudSyncOperation(
+  operation: (config: AppConfig) => Promise<CloudSyncOperationResult>
+): Promise<CloudSyncOperationResult> {
+  let result: CloudSyncOperationResult | undefined;
+  let previousConfig: AppConfig | undefined;
+  const savedConfig = await updateAppConfig(async (config) => {
+    previousConfig = config;
+    result = await operation(config);
+    return result.config ?? config;
+  });
+  if (!result) {
+    throw new Error("Cloud sync operation did not produce a result.");
   }
-  const savedConfig = await saveAppConfig(result.config);
-  await gatewayService.updateConfig(savedConfig);
-  await applyProfileIfServiceRunning(savedConfig, gatewayService.getStatus());
-  await builtInBrowserService.syncProxy(savedConfig);
-  await trayController.refreshIconFromConfig(savedConfig);
-  invalidateProviderAccountSnapshotCache();
+  const runtimeConfig = await applyCloudSyncRuntimeChanges(previousConfig ?? savedConfig, savedConfig);
   return {
     ...result,
-    config: savedConfig,
-    status: getCloudSyncStatus(savedConfig)
+    config: runtimeConfig,
+    status: getCloudSyncStatus(runtimeConfig)
   };
 }
+
+async function runBackgroundCloudSyncPull(): Promise<void> {
+  let changed = false;
+  let previousConfig: AppConfig | undefined;
+  const savedConfig = await updateAppConfig(async (config) => {
+    previousConfig = config;
+    const nextConfig = await autoPullCloudSyncConfig(config);
+    changed = nextConfig !== config;
+    return nextConfig;
+  });
+  if (!changed && !cloudSyncRuntimeRetryRequired) {
+    return;
+  }
+  try {
+    const runtimeConfig = await applyCloudSyncRuntimeChanges(previousConfig ?? savedConfig, savedConfig);
+    if (changed) {
+      windowsManager.broadcast(IPC_CHANNELS.appCloudSyncChanged, runtimeConfig);
+    }
+  } catch (error) {
+    if (changed) {
+      windowsManager.broadcast(IPC_CHANNELS.appCloudSyncChanged, savedConfig);
+    }
+    throw error;
+  }
+}
+
+async function applyCloudSyncRuntimeChanges(
+  previousConfig: AppConfig,
+  savedConfig: AppConfig,
+  options?: AppSaveConfigOptions
+): Promise<AppConfig> {
+  if (
+    !appConfigChangedOutsideCloudSync(previousConfig, savedConfig) &&
+    !cloudSyncRuntimeRetryRequired
+  ) {
+    return savedConfig;
+  }
+  try {
+    const runtimePreviousConfig = cloudSyncRuntimeRetryPreviousConfig ?? previousConfig;
+    const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(savedConfig);
+    const runtimeConfig = syncedClaudeAppConfig.config;
+    applyAppThemePreference(runtimeConfig.theme);
+    let runtimeStatus = gatewayService.getStatus();
+    if (
+      syncedClaudeAppConfig.configChanged ||
+      shouldRestartGatewayForRuntimeConfigChange(runtimePreviousConfig, runtimeConfig)
+    ) {
+      runtimeStatus = await gatewayService.start(runtimeConfig);
+    } else {
+      await gatewayService.updateConfig(runtimeConfig);
+    }
+    if (options?.applyProfile !== false) {
+      await applyProfileIfServiceRunning(runtimeConfig, runtimeStatus);
+    }
+    await builtInBrowserService.syncProxy(runtimeConfig);
+    await trayController.refreshIconFromConfig(runtimeConfig);
+    invalidateProviderAccountSnapshotCache();
+    cloudSyncRuntimeRetryRequired = false;
+    cloudSyncRuntimeRetryPreviousConfig = undefined;
+    return runtimeConfig;
+  } catch (error) {
+    cloudSyncRuntimeRetryRequired = true;
+    cloudSyncRuntimeRetryPreviousConfig ??= previousConfig;
+    throw error;
+  }
+}
+
+function appConfigChangedOutsideCloudSync(previousConfig: AppConfig, nextConfig: AppConfig): boolean {
+  return JSON.stringify({ ...previousConfig, cloudSync: undefined }) !==
+    JSON.stringify({ ...nextConfig, cloudSync: undefined });
+}
+
+setTimeout(() => {
+  void runBackgroundCloudSyncPull().catch((error) => {
+    console.warn(`[cloud-sync] Background pull failed: ${formatError(error)}`);
+  });
+}, 30_000).unref();
+setInterval(() => {
+  void runBackgroundCloudSyncPull().catch((error) => {
+    console.warn(`[cloud-sync] Background pull failed: ${formatError(error)}`);
+  });
+}, cloudSyncBackgroundPullIntervalMs).unref();
 
 async function startCloudSyncDesktopAuthCallback(): Promise<{ url: string }> {
   const session = randomUUID();
   const server = createServer((request, response) => {
     void handleCloudSyncDesktopAuthCallback(request, response, server, session).catch((error) => {
       sendCloudSyncDesktopAuthHtml(response, 500, "Cloud sync login failed", formatError(error));
-      closeCloudSyncDesktopAuthServer(server);
     });
   });
   await new Promise<void>((resolve, reject) => {
@@ -498,7 +606,7 @@ async function handleCloudSyncDesktopAuthCallback(
   }
 
   requiredCloudSyncCallbackParam(url, "code");
-  const savedConfig = await saveAppConfig(await completeCloudSyncLogin(await loadAppConfig(), url.toString()));
+  const savedConfig = await updateAppConfig((config) => completeCloudSyncLogin(config, url.toString()));
   windowsManager.showMainWindow();
   windowsManager.broadcast(IPC_CHANNELS.appCloudSyncAuthChanged);
   await trayController.refreshIconFromConfig(savedConfig);

@@ -117,9 +117,11 @@ const webClientBridge: CcrApi = {
     window.open(login.loginUrl, "_blank", "noopener,noreferrer");
     return login;
   },
+  cloudSyncLogout: () => rpc("cloudSyncLogout") as ReturnType<CcrApi["cloudSyncLogout"]>,
   cloudSyncPull: (request) => rpc("cloudSyncPull", [request]) as ReturnType<CcrApi["cloudSyncPull"]>,
   cloudSyncPush: (request) => rpc("cloudSyncPush", [request]) as ReturnType<CcrApi["cloudSyncPush"]>,
   cloudSyncResolveConflict: (request) => rpc("cloudSyncResolveConflict", [request]) as ReturnType<CcrApi["cloudSyncResolveConflict"]>,
+  cloudSyncRotateKey: (request) => rpc("cloudSyncRotateKey", [request]) as ReturnType<CcrApi["cloudSyncRotateKey"]>,
   cloudSyncSetup: (request) => rpc("cloudSyncSetup", [request]) as ReturnType<CcrApi["cloudSyncSetup"]>,
   clearProxyNetworkCaptures: () => rpc("clearProxyNetworkCaptures") as ReturnType<CcrApi["clearProxyNetworkCaptures"]>,
   closeBotGatewayQrWindow: (request) => rpc("closeBotGatewayQrWindow", [request]) as ReturnType<CcrApi["closeBotGatewayQrWindow"]>,

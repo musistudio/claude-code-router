@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { EventEmitter } from "node:events";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "@ccr/core/config/constants";
@@ -102,6 +102,10 @@ type StoredUsageEvent = {
   requestId: string;
   statusCode: number;
   totalTokens: number;
+};
+
+export type CloudSyncUsageEvent = Omit<StoredUsageEvent, "id"> & {
+  id: string;
 };
 
 type UsageSnapshot = UsageNumbers & {
@@ -229,6 +233,131 @@ export class UsageStore {
     ).length > 0;
   }
 
+  async exportCloudSyncEvents(limit = 5_000): Promise<CloudSyncUsageEvent[]> {
+    const database = await this.getDatabase();
+    const rows = queryRows(
+      database,
+      `
+        SELECT
+          id,
+          sync_id,
+          created_at,
+          request_id,
+          client,
+          method,
+          path,
+          model,
+          logical_model,
+          provider,
+          credential_id,
+          status_code,
+          duration_ms,
+          input_tokens,
+          output_tokens,
+          cache_read_tokens,
+          cache_write_tokens,
+          total_tokens,
+          cost_usd,
+          cost_source
+        FROM usage_events
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+      `,
+      [Math.max(1, Math.min(Math.floor(limit), 20_000))]
+    ).reverse();
+    const assignSyncId = database.prepare(
+      "UPDATE OR IGNORE usage_events SET sync_id = ? WHERE id = ? AND sync_id = ''"
+    );
+    const events = new Map<string, CloudSyncUsageEvent>();
+    for (const row of rows) {
+      const stored = toStoredUsageEvent(row);
+      const id = normalizeCloudSyncUsageEventId(row.sync_id) || cloudSyncUsageEventId(stored);
+      assignSyncId.run(id, stored.id);
+      const { id: _localId, ...event } = stored;
+      events.set(id, { ...event, id });
+    }
+    return [...events.values()];
+  }
+
+  async importCloudSyncEvents(events: CloudSyncUsageEvent[]): Promise<number> {
+    const database = await this.getDatabase();
+    const findBySyncId = database.prepare("SELECT id FROM usage_events WHERE sync_id = ? LIMIT 1");
+    const findByRequestId = database.prepare("SELECT id FROM usage_events WHERE request_id = ? LIMIT 1");
+    const findByFallback = database.prepare(`
+      SELECT id
+      FROM usage_events
+      WHERE created_at = ? AND path = ? AND model = ? AND provider = ?
+      LIMIT 1
+    `);
+    const assignSyncId = database.prepare(
+      "UPDATE OR IGNORE usage_events SET sync_id = ? WHERE id = ? AND sync_id = ''"
+    );
+    const insert = database.prepare(`
+      INSERT OR IGNORE INTO usage_events (
+        sync_id,
+        created_at,
+        request_id,
+        client,
+        method,
+        path,
+        model,
+        logical_model,
+        provider,
+        credential_id,
+        status_code,
+        duration_ms,
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        cache_write_tokens,
+        total_tokens,
+        cost_usd,
+        cost_source
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    let imported = 0;
+    for (const value of events.slice(0, 20_000)) {
+      const event = normalizeCloudSyncUsageEvent(value);
+      if (!event || findBySyncId.get(event.id)) {
+        continue;
+      }
+      const existing = event.requestId
+        ? findByRequestId.get(event.requestId)
+        : findByFallback.get(event.createdAt, event.path, event.model, event.provider);
+      const existingId = normalizeCount((existing as Record<string, SqlValue> | undefined)?.id);
+      if (existingId > 0) {
+        assignSyncId.run(event.id, existingId);
+        continue;
+      }
+      const result = insert.run(
+        event.id,
+        event.createdAt,
+        event.requestId,
+        event.client,
+        event.method,
+        event.path,
+        event.model,
+        event.logicalModel,
+        event.provider,
+        event.credentialId,
+        event.statusCode,
+        event.durationMs,
+        event.inputTokens,
+        event.outputTokens,
+        event.cacheReadTokens,
+        event.cacheWriteTokens,
+        event.totalTokens,
+        event.costUsd,
+        event.costSource
+      );
+      imported += Number(result.changes ?? 0);
+    }
+    if (imported > 0) {
+      usageEvents.emit("recorded");
+    }
+    return imported;
+  }
+
   async getStats(range: UsageStatsRange | null | undefined = "7d", filter: UsageStatsFilter | null | undefined = {}): Promise<UsageStatsSnapshot> {
     const database = await this.getDatabase();
     const now = new Date();
@@ -272,6 +401,7 @@ export class UsageStore {
     database.exec(`
       CREATE TABLE IF NOT EXISTS usage_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sync_id TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL,
         request_id TEXT NOT NULL DEFAULT '',
         client TEXT NOT NULL DEFAULT 'unknown',
@@ -428,12 +558,16 @@ function ensureUsageSchema(database: SqlDatabase): void {
   if (!columns.has("credential_id")) {
     database.exec("ALTER TABLE usage_events ADD COLUMN credential_id TEXT NOT NULL DEFAULT ''");
   }
+  if (!columns.has("sync_id")) {
+    database.exec("ALTER TABLE usage_events ADD COLUMN sync_id TEXT NOT NULL DEFAULT ''");
+  }
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_client_idx ON usage_events(client)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_created_at_idx ON usage_events(created_at)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_credential_id_idx ON usage_events(credential_id)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_model_idx ON usage_events(model)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_path_idx ON usage_events(path)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_request_id_idx ON usage_events(request_id)");
+  database.exec("CREATE UNIQUE INDEX IF NOT EXISTS usage_events_sync_id_idx ON usage_events(sync_id) WHERE sync_id <> ''");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_created_filter_idx ON usage_events(created_at, provider, model, credential_id)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_provider_created_at_idx ON usage_events(provider, created_at)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_model_created_at_idx ON usage_events(model, created_at)");
@@ -447,6 +581,14 @@ export async function getUsageStats(range?: UsageStatsRange | null, filter?: Usa
     console.warn(`[usage] Failed to read usage stats: ${formatError(error)}`);
     return emptySnapshot(normalizeUsageRange(range));
   }
+}
+
+export function exportCloudSyncUsageEvents(): Promise<CloudSyncUsageEvent[]> {
+  return usageStore.exportCloudSyncEvents();
+}
+
+export function importCloudSyncUsageEvents(events: CloudSyncUsageEvent[]): Promise<number> {
+  return usageStore.importCloudSyncEvents(events);
 }
 
 export async function getTodayUsageTotals(filter?: UsageStatsFilter | null, options?: UsageStatsQueryOptions | null): Promise<UsageTotals> {
@@ -1176,6 +1318,67 @@ function normalizeCost(value: unknown): number {
 function normalizeOptionalCost(value: unknown): number | undefined {
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function normalizeCloudSyncUsageEventId(value: unknown): string | undefined {
+  const id = asString(value);
+  return id && /^[a-zA-Z0-9_-]{32,64}$/.test(id) ? id : undefined;
+}
+
+function normalizeCloudSyncUsageEvent(value: unknown): CloudSyncUsageEvent | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const id = normalizeCloudSyncUsageEventId(value.id);
+  const createdAt = asString(value.createdAt);
+  const method = asString(value.method);
+  if (!id || !createdAt || !method || !Number.isFinite(Date.parse(createdAt))) {
+    return undefined;
+  }
+  return {
+    cacheReadTokens: normalizeCount(value.cacheReadTokens),
+    cacheWriteTokens: normalizeCount(value.cacheWriteTokens),
+    client: normalizeLabel(asString(value.client), "unknown"),
+    costSource: asString(value.costSource) ?? "",
+    costUsd: normalizeOptionalCost(value.costUsd) ?? 0,
+    createdAt,
+    credentialId: asString(value.credentialId) ?? "",
+    durationMs: normalizeCount(value.durationMs),
+    id,
+    inputTokens: normalizeCount(value.inputTokens),
+    logicalModel: normalizeLabel(asString(value.logicalModel), "unknown"),
+    method,
+    model: normalizeLabel(asString(value.model), "unknown"),
+    outputTokens: normalizeCount(value.outputTokens),
+    path: normalizeLabel(asString(value.path), "/"),
+    provider: normalizeLabel(asString(value.provider), "unknown"),
+    requestId: asString(value.requestId) ?? "",
+    statusCode: normalizeCount(value.statusCode),
+    totalTokens: normalizeCount(value.totalTokens)
+  };
+}
+
+function cloudSyncUsageEventId(event: StoredUsageEvent): string {
+  return createHash("sha256").update(JSON.stringify([
+    event.createdAt,
+    event.requestId,
+    event.client,
+    event.method,
+    event.path,
+    event.model,
+    event.logicalModel,
+    event.provider,
+    event.credentialId,
+    event.statusCode,
+    event.durationMs,
+    event.inputTokens,
+    event.outputTokens,
+    event.cacheReadTokens,
+    event.cacheWriteTokens,
+    event.totalTokens,
+    event.costUsd,
+    event.costSource
+  ])).digest("base64url");
 }
 
 function asString(value: unknown): string | undefined {

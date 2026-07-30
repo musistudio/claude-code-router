@@ -1,6 +1,7 @@
 import {
   CLAUDE_CODE_DEFAULT_ENV,
   CLOUD_SYNC_DEFAULT_BASE_URL,
+  DEFAULT_CLOUD_SYNC_SCOPES,
   DEFAULT_OVERVIEW_WIDGETS,
   DEFAULT_TRAY_COMPONENT_VARIANTS,
   DEFAULT_TRAY_WIDGETS,
@@ -96,7 +97,8 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions = {}): A
       deviceName: "",
       enabled: false,
       lastRevision: 0,
-      namespace: "ccr"
+      namespace: "ccr",
+      scopes: [...DEFAULT_CLOUD_SYNC_SCOPES]
     },
     contextArchive: {
       enabled: false,
@@ -125,6 +127,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions = {}): A
       maxVideoConcurrency: 1
     },
     launchAtLogin: false,
+    language: "system",
     observability: {
       agentAnalysis: false,
       requestLogBodyCapture: "all",

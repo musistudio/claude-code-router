@@ -1,7 +1,7 @@
 import {
-  AddProfileDraft, AddProviderDraft, AppConfig, ArrowDown, Button, Check, ChevronLeft,
-  ChevronRight, CircleAlert, CloudSyncOperationResult, CloudSyncStatus, cn, Field, findProviderPreset, GatewayProviderProbeResult, GatewayStatus, Gauge, getDefaultOnboardingStep, getNextOnboardingStep,
-  Globe, Input, isOnboardingProfileReady, isOnboardingProviderReady, KeyRound, Layers3, LucideIcon, mergeProviderModelLists, motion, motionEase,
+  AddProfileDraft, AddProviderDraft, AppConfig, ArrowDown, Button, Check, Checkbox, ChevronLeft,
+  ChevronRight, CircleAlert, cloudSyncScopeOptions, CloudSyncOperationResult, CloudSyncScope, CloudSyncStatus, CLOUD_SYNC_SCOPE_IDS, cn, DEFAULT_CLOUD_SYNC_SCOPES, Field, findProviderPreset, GatewayProviderProbeResult, GatewayStatus, Gauge, getDefaultOnboardingStep, getNextOnboardingStep,
+  Globe, Input, isOnboardingProfileReady, isOnboardingProviderReady, KeyRound, Layers3, LucideIcon, mergeProviderModelLists, motion, motionEase, normalizeCloudSyncScopeSelection,
   LoaderCircle, onboardingMascotSpriteUrl, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder, type ProfileAgentOption, providerDraftHasReadyCredentialPool, ProviderConnectivityCheckReport, reducedMotionTransition, splitLines, Tabs, TabsContent, TabsList, TabsTrigger, useAppErrorText, useAppText, useEffect, useReducedMotion,
   useRef, useState,
   UserRound, X
@@ -365,17 +365,22 @@ function OnboardingCloudRestorePanel({
   const [keyMode, setKeyMode] = useState<"key-file" | "password">(config.cloudSync?.keyMode ?? "key-file");
   const [password, setPassword] = useState("");
   const [keyFilePath, setKeyFilePath] = useState("");
+  const [syncScopes, setSyncScopes] = useState<CloudSyncScope[]>(
+    normalizeCloudSyncScopeSelection(config.cloudSync?.scopes)
+  );
   const [status, setStatus] = useState<CloudSyncStatus>();
   const [busy, setBusy] = useState<"" | "login" | "restore" | "status">("");
   const [error, setError] = useState("");
   const keyFileInputRef = useRef<HTMLInputElement>(null);
   const effectiveStatus = status ?? onboardingCloudStatusFromConfig(config);
   const authenticated = effectiveStatus.authenticated;
-  const restoreReady = keyMode === "key-file" ? Boolean(keyFilePath.trim()) : Boolean(password);
+  const keyReady = keyMode === "key-file" ? Boolean(keyFilePath.trim()) : Boolean(password);
+  const restoreReady = keyReady && syncScopes.length > 0;
 
   useEffect(() => {
     setStatus(onboardingCloudStatusFromConfig(config));
     setKeyMode(config.cloudSync?.keyMode ?? "key-file");
+    setSyncScopes(normalizeCloudSyncScopeSelection(config.cloudSync?.scopes));
   }, [
     config.cloudSync?.accessToken,
     config.cloudSync?.deviceId,
@@ -385,6 +390,7 @@ function OnboardingCloudRestorePanel({
     config.cloudSync?.lastRevision,
     config.cloudSync?.lastSyncAt,
     config.cloudSync?.refreshToken,
+    config.cloudSync?.scopes?.join("|"),
     config.cloudSync?.userAvatarUrl,
     config.cloudSync?.userEmail,
     config.cloudSync?.userId,
@@ -419,12 +425,13 @@ function OnboardingCloudRestorePanel({
 
   function keyInput() {
     return keyMode === "key-file"
-      ? { keyFilePath: keyFilePath.trim(), restoreOnly: true }
-      : { password, restoreOnly: true };
+      ? { keyFilePath: keyFilePath.trim(), restoreOnly: true, scopes: syncScopes }
+      : { password, restoreOnly: true, scopes: syncScopes };
   }
 
   function applyStatusResult(result: CloudSyncOperationResult) {
     setStatus(result.status);
+    setSyncScopes(normalizeCloudSyncScopeSelection(result.status.scopes));
     const authExpired = Boolean(result.authExpired);
     if (authExpired) {
       setError(t(result.message));
@@ -539,6 +546,78 @@ function OnboardingCloudRestorePanel({
               <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
               <div>{t("Use the same password or key file that encrypted your cloud snapshot. Losing it makes cloud data unrecoverable.")}</div>
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 rounded-md border border-border bg-muted/15 p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <div className="text-[12px] font-semibold text-foreground">{t("Sync range")}</div>
+                <div className="mt-0.5 text-[11px] leading-5 text-muted-foreground">
+                  {t("Choose what this device restores and continues to sync. All items are selected by default.")}
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  disabled={Boolean(busy) || syncScopes.length === CLOUD_SYNC_SCOPE_IDS.length}
+                  onClick={() => setSyncScopes([...DEFAULT_CLOUD_SYNC_SCOPES])}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  {t("Select all")}
+                </Button>
+                <Button
+                  disabled={Boolean(busy) || syncScopes.length === 0}
+                  onClick={() => setSyncScopes([])}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  {t("Clear all")}
+                </Button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {cloudSyncScopeOptions.map((option) => {
+                const checked = syncScopes.includes(option.id);
+                return (
+                  <label
+                    className={cn(
+                      "flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 transition-colors",
+                      checked ? "border-primary/40 bg-primary/5" : "border-border bg-background"
+                    )}
+                    key={option.id}
+                  >
+                    <Checkbox
+                      checked={checked}
+                      disabled={Boolean(busy)}
+                      onCheckedChange={(nextChecked) => {
+                        setSyncScopes((current) => {
+                          const selected = new Set(current);
+                          if (nextChecked) {
+                            selected.add(option.id);
+                          } else {
+                            selected.delete(option.id);
+                          }
+                          return CLOUD_SYNC_SCOPE_IDS.filter((id) => selected.has(id));
+                        });
+                      }}
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-[12px] font-medium text-foreground">{t(option.label)}</span>
+                      {option.description ? (
+                        <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">
+                          {t(option.description)}
+                        </span>
+                      ) : null}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+            {syncScopes.length === 0 ? (
+              <div className="text-[11px] text-destructive">{t("Select at least one sync item.")}</div>
+            ) : null}
           </div>
 
           <Tabs
@@ -710,6 +789,7 @@ function onboardingCloudStatusFromConfig(config: AppConfig): CloudSyncStatus {
     lastSyncAt: cloudSync.lastSyncAt,
     lastSyncError: cloudSync.lastSyncError,
     namespace: cloudSync.namespace,
+    scopes: normalizeCloudSyncScopeSelection(cloudSync.scopes),
     snapshotHash: cloudSync.snapshotHash,
     unlocked: false,
     userAvatarUrl: cloudSync.userAvatarUrl,

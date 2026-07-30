@@ -143,6 +143,7 @@ Most installations should change only `CCR_WEB_AUTH_TOKEN`, `CCR_PUBLIC_BASE_URL
 | Variable | Default | Description |
 | --- | --- | --- |
 | `CCR_WEB_AUTH_TOKEN` | Random per start | Management UI/RPC token. |
+| `CCR_CLOUD_SYNC_BASE_URL` | `http://127.0.0.1:3000` | Cloud-sync service URL. Remote URLs must use HTTPS; path prefixes are supported. |
 | `CCR_PUBLIC_BASE_URL` | `http://127.0.0.1:3458` | Exact public URL written to CCR configuration. |
 | `CCR_PUBLIC_HOST` | `127.0.0.1` | Used only to derive the public URL when the full URL is unset. |
 | `CCR_PUBLIC_PORT` | `3458` | Used only to derive the public URL when the full URL is unset. |

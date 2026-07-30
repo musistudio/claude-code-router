@@ -208,6 +208,7 @@ docker compose logs --tail=200 ccr
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `CCR_WEB_AUTH_TOKEN` | 每次启动随机生成 | 管理 UI / RPC Token。持久或远程部署应设置固定强值。 |
+| `CCR_CLOUD_SYNC_BASE_URL` | `http://127.0.0.1:3000` | 云同步服务地址。远程地址必须使用 HTTPS，并支持路径前缀。 |
 | `CCR_PUBLIC_BASE_URL` | `http://127.0.0.1:3458` | 写入 CCR 配置的完整公开地址；设置后优先于 Public Host / Port。 |
 | `CCR_PUBLIC_HOST` | `127.0.0.1` | 仅在没有完整公开 URL 时用于拼接公开地址，不会改变 Docker 端口绑定。 |
 | `CCR_PUBLIC_PORT` | `3458` | 仅在没有完整公开 URL 时用于拼接公开地址。 |

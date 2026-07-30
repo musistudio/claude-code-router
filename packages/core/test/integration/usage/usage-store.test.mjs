@@ -35,6 +35,50 @@ const fusionUsageConfig = {
   ]
 };
 
+test("usage records export and import idempotently for cloud sync", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-cloud-sync-test-"));
+  try {
+    const source = new UsageStore(path.join(dir, "source.sqlite"), {
+      estimateCost: async () => undefined
+    });
+    await source.record({
+      client: "claude-code",
+      createdAt: new Date().toISOString(),
+      durationMs: 125,
+      method: "POST",
+      model: "Example/model-a",
+      path: "/v1/messages",
+      provider: "Example",
+      requestId: "cloud-sync-usage-request",
+      statusCode: 200,
+      usage: {
+        inputTokens: 20,
+        outputTokens: 5,
+        totalTokens: 25
+      }
+    });
+
+    const exported = await source.exportCloudSyncEvents();
+    assert.equal(exported.length, 1);
+    assert.match(exported[0].id, /^[a-zA-Z0-9_-]{32,64}$/);
+
+    const target = new UsageStore(path.join(dir, "target.sqlite"), {
+      estimateCost: async () => undefined
+    });
+    assert.equal(await target.importCloudSyncEvents(exported), 1);
+    assert.equal(await target.importCloudSyncEvents(exported), 0);
+    const stats = await target.getStats("today", { includeProxy: true });
+    assert.equal(stats.totals.requestCount, 1);
+    assert.equal(stats.totals.totalTokens, 25);
+    assert.equal(
+      (await target.exportCloudSyncEvents())[0]?.requestId,
+      "cloud-sync-usage-request"
+    );
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("Fusion usage attribution resolves fixed aliases to their upstream model", () => {
   assert.deepEqual(resolveUsageModelAttribution(fusionUsageConfig, "Fusion/kimisearch"), {
     logicalModel: "Fusion/kimisearch",

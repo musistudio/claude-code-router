@@ -20,6 +20,21 @@ export type AppDataExportResult = {
 };
 
 export const CLOUD_SYNC_DEFAULT_BASE_URL = "http://127.0.0.1:3000";
+export const CLOUD_SYNC_SCOPE_IDS = [
+  "providers",
+  "agent-profiles",
+  "usage",
+  "fusion",
+  "api-keys",
+  "extensions",
+  "bot",
+  "toolhub",
+  "appearance",
+  "tray",
+  "overview"
+] as const;
+export type CloudSyncScope = (typeof CLOUD_SYNC_SCOPE_IDS)[number];
+export const DEFAULT_CLOUD_SYNC_SCOPES: CloudSyncScope[] = [...CLOUD_SYNC_SCOPE_IDS];
 
 export type CloudSyncConfig = {
   accessToken?: string;
@@ -27,6 +42,7 @@ export type CloudSyncConfig = {
   deviceId?: string;
   deviceName: string;
   enabled: boolean;
+  keyFilePath?: string;
   keyId?: string;
   keyMode?: "key-file" | "password";
   keySalt?: string;
@@ -37,6 +53,7 @@ export type CloudSyncConfig = {
   namespace: string;
   refreshToken?: string;
   refreshTokenExpiresAt?: string;
+  scopes?: CloudSyncScope[];
   snapshotHash?: string;
   userAvatarUrl?: string;
   userEmail?: string;
@@ -52,6 +69,7 @@ export type CloudSyncKeyInput = {
 
 export type CloudSyncSetupRequest = CloudSyncKeyInput & {
   restoreOnly?: boolean;
+  scopes?: CloudSyncScope[];
 };
 
 export type CloudSyncLoginResult = {
@@ -64,6 +82,8 @@ export type CloudSyncLoginResult = {
 export type CloudSyncPushRequest = CloudSyncKeyInput & {
   force?: boolean;
 };
+
+export type CloudSyncRotateKeyRequest = CloudSyncKeyInput;
 
 export type CloudSyncPullRequest = CloudSyncKeyInput & {
   apply?: boolean;
@@ -78,6 +98,7 @@ export type CloudSyncConflictField = {
   local: CloudSyncConflictValue;
   path: string;
   remote: CloudSyncConflictValue;
+  sensitive?: boolean;
 };
 
 export type CloudSyncConflictResolution = {
@@ -90,7 +111,8 @@ export type CloudSyncConflictResolution = {
 
 export type CloudSyncConflictFieldResolution = {
   path: string;
-  result: CloudSyncConflictValue;
+  result?: CloudSyncConflictValue;
+  source?: "local" | "remote";
 };
 
 export type CloudSyncResolveConflictRequest = {
@@ -113,6 +135,7 @@ export type CloudSyncStatus = {
   lastSyncError?: string;
   namespace: string;
   pendingConflict?: CloudSyncConflictResolution;
+  scopes: CloudSyncScope[];
   snapshotHash?: string;
   unlocked: boolean;
   userAvatarUrl?: string;
@@ -132,6 +155,7 @@ export type CloudSyncOperationResult = {
   config?: AppConfig;
   conflict?: boolean;
   conflictResolution?: CloudSyncConflictResolution;
+  keyRotationRequired?: boolean;
   message: string;
   mergeApplied?: boolean;
   mergeConflicts?: string[];
@@ -1861,6 +1885,7 @@ export type AppConfig = {
   gateway: GatewayRuntimeConfig;
   mediaTools: MediaToolsConfig;
   launchAtLogin: boolean;
+  language: "system" | "en" | "zh";
   observability: ObservabilityConfig;
   preferredProvider: string;
   plugins: GatewayPluginConfig[];

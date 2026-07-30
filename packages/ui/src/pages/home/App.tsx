@@ -261,6 +261,7 @@ function App() {
   const [providerAccountSnapshots, setProviderAccountSnapshots] = useState<ProviderAccountSnapshot[]>([]);
   const [providerAccountRefreshing, setProviderAccountRefreshing] = useState(false);
   const updateActionBusyRef = useRef(false);
+  const cloudSyncUiStateRef = useRef({ dirty: false, savedConfig: fallbackConfig });
   const resolvedLanguage = languagePreference === "system" ? systemLanguage : languagePreference;
   const copy = appCopy[resolvedLanguage];
   const t = useMemo(() => (value: string) => translateText(copy, value), [copy]);
@@ -352,6 +353,36 @@ function App() {
       unsubscribeOpenUpdate();
     };
   }, []);
+
+  useEffect(() => {
+    const ccr = window.ccr;
+    if (!ccr) {
+      return;
+    }
+
+    const applySyncedConfig = (config: AppConfig) => {
+      const current = cloudSyncUiStateRef.current;
+      if (JSON.stringify(normalizeConfig(config)) === JSON.stringify(current.savedConfig)) {
+        return;
+      }
+      if (current.dirty) {
+        setActionError(t("Cloud sync received changes while local edits were pending. Reload the latest configuration before editing again."));
+        return;
+      }
+      syncConfigState(config);
+      setActionError("");
+    };
+
+    if (ccr.onCloudSyncChanged) {
+      return ccr.onCloudSyncChanged(applySyncedConfig);
+    }
+
+    return startVisiblePolling(() => {
+      void ccr.getConfig().then(applySyncedConfig).catch(() => {
+        // Web clients pick up background cloud changes on the next successful poll.
+      });
+    }, 30_000, { immediate: false });
+  }, [t]);
 
   useEffect(() => {
     if (!appInfo.chatgptAppPath && !appInfo.opencodeAppPath) {
@@ -673,6 +704,7 @@ function App() {
   }, [activeView, draftConfig.proxy.captureNetwork]);
 
   const dirty = draftConfig !== savedConfig;
+  cloudSyncUiStateRef.current = { dirty, savedConfig };
   const apiKeys = useMemo(() => createApiKeyList(draftConfig), [draftConfig.APIKEY, draftConfig.APIKEYS]);
   const apiKeyEditItem = apiKeyEditIndex === undefined ? undefined : apiKeys.find((apiKey) => apiKey.index === apiKeyEditIndex);
   const profileDeleteItem = profileDeleteIndex === undefined ? undefined : draftConfig.profile.profiles[profileDeleteIndex];
@@ -874,8 +906,11 @@ function App() {
 
   function syncConfigState(config: AppConfig) {
     const normalized = normalizeConfig(config);
+    const language = normalizeLanguagePreference(normalized.language);
     setSavedConfig(normalized);
     setDraftConfig(normalized);
+    setLanguagePreference(language);
+    persistLanguagePreference(language);
     setThemePreference(normalized.theme || "system");
   }
 
@@ -2373,6 +2408,10 @@ function App() {
     const language = normalizeLanguagePreference(value);
     setLanguagePreference(language);
     persistLanguagePreference(language);
+    updateConfig((config) => ({
+      ...config,
+      language
+    }));
   }
 
   async function completeOnboarding() {

@@ -139,6 +139,8 @@ Important paths include `config.sqlite`, `app-data/`, `service.json`, `gateway.c
 
 `CCR_WEB_HOST` and `CCR_WEB_PORT` provide defaults when command-line listener options are omitted. Set `CCR_WEB_AUTH_TOKEN` to keep a stable management UI/RPC token; otherwise a random token is generated for the process. The authenticated management URL contains `ccr_web_token`; treat the full URL as a password.
 
+`CCR_CLOUD_SYNC_BASE_URL` selects the cloud-sync service before sign-in. Remote services must use HTTPS; plain HTTP is accepted only for `localhost` and loopback addresses. A path prefix is supported, for example `https://sync.example.com/ccr`.
+
 Keep the listener on `127.0.0.1` unless remote access is intentional. A remote deployment should use a strong fixed token, firewall/private network controls, and TLS at a trusted reverse proxy. Create separate CCR client API keys for gateway access and protect the data directory because it contains upstream credentials.
 
 ## Process Supervisors

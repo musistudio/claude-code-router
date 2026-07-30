@@ -15,10 +15,21 @@ import type {
   CloudSyncPullRequest,
   CloudSyncPushRequest,
   CloudSyncResolveConflictRequest,
+  CloudSyncRotateKeyRequest,
+  CloudSyncScope,
   CloudSyncSetupRequest,
   CloudSyncStatus
 } from "@ccr/core/contracts/app";
-import { CLOUD_SYNC_DEFAULT_BASE_URL } from "@ccr/core/contracts/app";
+import {
+  CLOUD_SYNC_DEFAULT_BASE_URL,
+  CLOUD_SYNC_SCOPE_IDS,
+  DEFAULT_CLOUD_SYNC_SCOPES
+} from "@ccr/core/contracts/app";
+import {
+  exportCloudSyncUsageEvents,
+  importCloudSyncUsageEvents,
+  type CloudSyncUsageEvent
+} from "@ccr/core/usage/store";
 
 type CloudSyncKeyMaterial = {
   key: Buffer;
@@ -27,27 +38,41 @@ type CloudSyncKeyMaterial = {
   keySalt: string;
 };
 
-type CloudSyncSnapshotConfig = Pick<
+type CloudSyncSnapshotConfig = Partial<Pick<
   AppConfig,
+  | "APIKEY"
+  | "APIKEYS"
   | "Providers"
   | "Router"
   | "agent"
   | "botConfigs"
   | "botGateway"
+  | "language"
   | "mediaTools"
+  | "observability"
+  | "overviewWidgets"
   | "plugins"
   | "preferredProvider"
   | "profile"
   | "providerPlugins"
+  | "theme"
   | "toolHub"
+  | "trayComponentVariants"
+  | "trayIcon"
+  | "trayProgressTargetTokens"
+  | "trayWidgets"
+  | "trayWindowModules"
   | "virtualModelProfiles"
->;
+>> & {
+  trayBalanceProgress?: AppConfig["trayBalanceProgress"] | null;
+};
 
 type CloudSyncSnapshot = {
   config: CloudSyncSnapshotConfig;
   exportedAt: string;
   kind: "claude-code-router-cloud-sync-snapshot";
-  version: 1;
+  usageEvents?: CloudSyncUsageEvent[];
+  version: 1 | 2 | 3;
 };
 
 type EncryptedPayload = {
@@ -63,6 +88,12 @@ type EncryptedPayload = {
   };
   nonce: string;
   tag: string;
+};
+
+type StoredCloudSyncSnapshot = {
+  encrypted: EncryptedPayload;
+  kind: "claude-code-router-cloud-sync-baseline";
+  version: 1;
 };
 
 type CloudTokenResponse = {
@@ -182,6 +213,8 @@ type CloudOperationCollection = {
 };
 
 type CloudSyncPushOptions = {
+  baseSnapshot?: CloudSyncSnapshot;
+  forceEncryptionRewrite?: boolean;
   keyMaterial?: CloudSyncKeyMaterial;
   mergeOnConflict?: boolean;
   setupMessage?: boolean;
@@ -199,6 +232,7 @@ type PendingCloudSyncAuth = {
 type PendingCloudSyncConflict = {
   baseSnapshot?: CloudSyncSnapshot;
   descriptor: CloudSyncConflictResolution;
+  fields: CloudSyncConflictField[];
   identity: string;
   keyMaterial: CloudSyncKeyMaterial;
   localSnapshot: CloudSyncSnapshot;
@@ -207,6 +241,7 @@ type PendingCloudSyncConflict = {
 };
 
 const cloudSyncSnapshotKind = "claude-code-router-cloud-sync-snapshot";
+const storedCloudSyncSnapshotKind = "claude-code-router-cloud-sync-baseline";
 const defaultCloudSyncNamespace = "ccr";
 const keyFileKind = "claude-code-router-cloud-sync-key";
 const keyFileVersion = 1;
@@ -217,6 +252,12 @@ const missingCloudSyncMergeValue = Symbol("missing-cloud-sync-merge-value");
 const cloudSyncAuthExpiredMessage = "Cloud sync login expired. Sign in again.";
 const cloudSyncAuthAttemptMs = 10 * 60 * 1000;
 const cloudSyncConflictResolutionMs = 30 * 60 * 1000;
+const cloudSyncRequestTimeoutMs = 30_000;
+const cloudSyncResponseMaxBytes = 8 * 1024 * 1024;
+const cloudSyncPaginationMaxMs = 60_000;
+const cloudSyncPaginationMaxPages = 100;
+const cloudSyncPaginationMaxOperations = 10_000;
+const cloudSyncPaginationMaxBytes = 32 * 1024 * 1024;
 
 const cloudSyncKeyCache = new Map<string, Buffer>();
 const pendingCloudSyncAuth = new Map<string, PendingCloudSyncAuth>();
@@ -224,7 +265,8 @@ const pendingCloudSyncConflicts = new Map<string, PendingCloudSyncConflict>();
 const pendingCloudSyncConflictIds = new Map<string, string>();
 const cloudTokenRefreshInFlight = new Map<string, Promise<CloudTokenRefreshPatch>>();
 const cloudTokenRefreshRecent = new Map<string, { expiresAt: number; patch: CloudTokenRefreshPatch }>();
-const cloudTokenRefreshRecentMs = 30 * 60 * 1000;
+const cloudTokenRefreshGeneration = new Map<string, number>();
+const cloudTokenRefreshRecentMs = 60 * 1000;
 
 class CloudSyncAuthExpiredError extends Error {
   readonly config: AppConfig;
@@ -240,6 +282,16 @@ class CloudSyncRefreshTokenExpiredError extends Error {
   constructor(message = cloudSyncAuthExpiredMessage) {
     super(message);
     this.name = "CloudSyncRefreshTokenExpiredError";
+  }
+}
+
+class CloudSyncRemoteKeyChangedError extends Error {
+  readonly config: AppConfig;
+
+  constructor(config: AppConfig) {
+    super("The cloud sync encryption key changed on another device. Unlock sync with the new password or key file.");
+    this.name = "CloudSyncRemoteKeyChangedError";
+    this.config = config;
   }
 }
 
@@ -262,6 +314,7 @@ export function getCloudSyncStatus(config: AppConfig): CloudSyncStatus {
     lastSyncError: cloudSync.lastSyncError,
     namespace: cloudSync.namespace,
     pendingConflict,
+    scopes: [...cloudSync.scopes],
     snapshotHash: cloudSync.snapshotHash,
     unlocked,
     userAvatarUrl: cloudSync.userAvatarUrl,
@@ -282,16 +335,28 @@ export function disableCloudSyncConfig(config: AppConfig): AppConfig {
     ...config,
     cloudSync: {
       ...normalizedCloudSyncConfig(config.cloudSync),
-      accessToken: undefined,
       enabled: false,
-      lastSyncError: undefined,
-      refreshToken: undefined,
-      refreshTokenExpiresAt: undefined,
-      userAvatarUrl: undefined,
-      userEmail: undefined,
-      userId: undefined,
-      userLogin: undefined,
-      userName: undefined
+      lastSyncError: undefined
+    }
+  };
+}
+
+export function logoutCloudSyncConfig(config: AppConfig): AppConfig {
+  clearPendingCloudSyncConflict(config);
+  forgetCloudTokenRefreshState(config.cloudSync);
+  if (config.cloudSync.keyId) {
+    cloudSyncKeyCache.delete(config.cloudSync.keyId);
+  }
+  const cloudSync = normalizedCloudSyncConfig(config.cloudSync);
+  return {
+    ...config,
+    cloudSync: {
+      baseUrl: cloudSync.baseUrl,
+      deviceName: cloudSync.deviceName,
+      enabled: false,
+      lastRevision: 0,
+      namespace: cloudSync.namespace,
+      scopes: [...cloudSync.scopes]
     }
   };
 }
@@ -300,7 +365,7 @@ export function startCloudSyncLogin(config: AppConfig, options: CloudSyncLoginOp
   const nextConfig = prepareCloudSyncAuthConfig(config);
   return {
     config: nextConfig,
-    loginUrl: cloudSyncLoginUrl(options.callbackUrl),
+    loginUrl: cloudSyncLoginUrl(nextConfig.cloudSync.baseUrl, options.callbackUrl),
     message: "Open the browser to complete cloud sync login.",
     status: getCloudSyncStatus(nextConfig)
   };
@@ -319,13 +384,13 @@ export async function completeCloudSyncLogin(config: AppConfig, rawCallbackUrl: 
 
   const callbackKey = cloudSyncAuthCallbackKey(callbackUrl);
   const pending = pendingCloudSyncAuth.get(callbackKey);
-  pendingCloudSyncAuth.delete(callbackKey);
   if (!pending || pending.expiresAt <= Date.now()) {
+    pendingCloudSyncAuth.delete(callbackKey);
     throw new Error("Cloud sync login session is invalid or expired. Sign in again.");
   }
 
   const cloudSync = normalizedCloudSyncConfig(config.cloudSync);
-  const response = await fetch(cloudSyncUrl(cloudSync.baseUrl, "/auth/handoff"), {
+  const response = await cloudFetch(cloudSyncUrl(cloudSync.baseUrl, "/auth/handoff"), {
     body: JSON.stringify({
       code,
       codeVerifier: pending.verifier
@@ -338,33 +403,53 @@ export async function completeCloudSyncLogin(config: AppConfig, rawCallbackUrl: 
   });
   const data = await readCloudResponse(response);
   if (!response.ok) {
+    if ([400, 401, 403, 404, 410, 422].includes(response.status)) {
+      pendingCloudSyncAuth.delete(callbackKey);
+    }
     throw new Error(`Cloud login handoff failed (${response.status}): ${cloudErrorMessage(data)}`);
   }
 
   const tokenResponse = data as CloudTokenResponse;
   const user = tokenResponse.user;
-  return applyCloudSyncAuthTokens(config, {
+  const authenticatedConfig = applyCloudSyncAuthTokens(config, {
     accessToken: requiredString(tokenResponse.accessToken, "Cloud access token"),
     refreshToken: requiredString(tokenResponse.refreshToken, "Cloud refresh token"),
     refreshTokenExpiresAt: optionalString(tokenResponse.refreshTokenExpiresAt),
     userAvatarUrl: optionalString(user?.avatarUrl),
     userEmail: optionalString(user?.email),
-    userId: optionalString(user?.id),
+    userId: requiredString(user?.id, "Cloud user ID"),
     userLogin: optionalString(user?.githubLogin),
     userName: optionalString(user?.githubName)
   });
+  pendingCloudSyncAuth.delete(callbackKey);
+  return authenticatedConfig;
 }
 
 export function applyCloudSyncAuthTokens(config: AppConfig, input: CloudSyncAuthTokenInput): AppConfig {
   const accessToken = requiredString(input.accessToken, "Cloud access token");
   const refreshToken = requiredString(input.refreshToken, "Cloud refresh token");
-  const cloudSync = normalizedCloudSyncConfig(config.cloudSync);
+  const currentCloudSync = normalizedCloudSyncConfig(config.cloudSync);
+  const nextUserId = optionalString(input.userId);
+  const hasExistingSyncGeneration = Boolean(
+    currentCloudSync.accessToken ||
+    currentCloudSync.refreshToken ||
+    currentCloudSync.deviceId ||
+    currentCloudSync.keyId ||
+    currentCloudSync.lastRevision > 0
+  );
+  const accountChanged = hasExistingSyncGeneration && (
+    !currentCloudSync.userId ||
+    !nextUserId ||
+    currentCloudSync.userId !== nextUserId
+  );
+  const cloudSync = accountChanged
+    ? normalizedCloudSyncConfig(logoutCloudSyncConfig(config).cloudSync)
+    : currentCloudSync;
   return {
     ...config,
     cloudSync: {
       ...cloudSync,
       accessToken,
-      baseUrl: CLOUD_SYNC_DEFAULT_BASE_URL,
       deviceName: cloudSync.deviceName || defaultDeviceName(),
       lastSyncError: undefined,
       refreshToken,
@@ -382,16 +467,10 @@ export async function refreshCloudSyncUserProfile(config: AppConfig): Promise<Ap
 export async function ensureCloudSyncUserProfile(config: AppConfig): Promise<AppConfig> {
   const cloudSync = normalizedCloudSyncConfig(config.cloudSync);
   if (!cloudSync.accessToken && !cloudSync.refreshToken) {
-    return {
-      ...config,
-      cloudSync
-    };
+    return config;
   }
-  if (cloudSync.userAvatarUrl || cloudSync.userEmail || cloudSync.userLogin || cloudSync.userName) {
-    return {
-      ...config,
-      cloudSync
-    };
+  if (cloudSync.userId && cloudSync.userLogin) {
+    return config;
   }
 
   try {
@@ -415,6 +494,9 @@ export async function ensureCloudSyncUserProfile(config: AppConfig): Promise<App
 
 export function createCloudSyncKeyFile(file: string): CloudSyncKeyFileResult {
   const keyFilePath = requiredString(file, "Cloud sync key file path");
+  if (existsSync(keyFilePath)) {
+    throw new Error("Cloud sync key file already exists. Choose a new path to avoid losing an existing encryption key.");
+  }
   writeCloudSyncKeyFile(keyFilePath);
   return {
     canceled: false,
@@ -433,7 +515,7 @@ async function setupCloudSyncConfigInternal(
   config: AppConfig,
   request: CloudSyncSetupRequest
 ): Promise<CloudSyncOperationResult> {
-  const baseUrl = CLOUD_SYNC_DEFAULT_BASE_URL;
+  const baseUrl = normalizedCloudSyncConfig(config.cloudSync).baseUrl;
   const accessToken = requiredString(config.cloudSync.accessToken, "Cloud access token");
   const refreshToken = optionalString(config.cloudSync.refreshToken);
   const deviceName = optionalString(config.cloudSync.deviceName) || defaultDeviceName();
@@ -449,7 +531,8 @@ async function setupCloudSyncConfigInternal(
       lastSyncError: undefined,
       namespace: existingCloudSync.namespace || defaultCloudSyncNamespace,
       refreshToken,
-      refreshTokenExpiresAt: optionalString(existingCloudSync.refreshTokenExpiresAt)
+      refreshTokenExpiresAt: optionalString(existingCloudSync.refreshTokenExpiresAt),
+      scopes: normalizeCloudSyncScopes(request.scopes ?? existingCloudSync.scopes)
     }
   };
   let nextConfig: AppConfig = preparedConfig;
@@ -472,43 +555,45 @@ async function setupCloudSyncConfigInternal(
     }
   };
 
-  let remote = await pullCloudDocument(nextConfig, 0);
-  if (
-    remote.data.document.encryptedSnapshot &&
-    remote.data.document.snapshotRevision === null
-  ) {
-    remote = await pullAllCloudDocuments(remote.config, 0);
-  }
+  const remote = await pullAllCloudDocuments(nextConfig, 0);
   nextConfig = remote.config;
+  validateCloudDocument(remote.data.document, nextConfig.cloudSync, 0);
   if (remote.data.document.revision > 0) {
-    const encryptedSnapshot = remote.data.document.encryptedSnapshot;
-    if (!encryptedSnapshot) {
+    const encryptedPayload = latestCloudSyncEncryptedPayload(
+      remote.data.document,
+      remote.data.operations ?? []
+    );
+    if (!encryptedPayload) {
       throw new Error("Cloud sync is configured, but the remote document has no decryptable snapshot.");
     }
-    const keySalt = nextConfig.cloudSync.keySalt || keySaltFromEncryptedPayload(encryptedSnapshot);
-    const keyMaterial = resolveCloudSyncKey({
-      ...nextConfig.cloudSync,
-      keySalt
-    }, request, { allowCreateSalt: false });
+    const previousKeyId = nextConfig.cloudSync.keyId;
+    const remoteKeyConfig = cloudSyncConfigForEncryptedPayload(nextConfig.cloudSync, encryptedPayload);
+    const keyMaterial = resolveCloudSyncKey(remoteKeyConfig, request, { allowCreateSalt: false });
     nextConfig = {
       ...nextConfig,
       cloudSync: {
         ...nextConfig.cloudSync,
         keyId: keyMaterial.keyId,
+        keyFilePath: keyMaterial.keyMode === "key-file"
+          ? request.keyFilePath || nextConfig.cloudSync.keyFilePath
+          : undefined,
         keyMode: keyMaterial.keyMode,
         keySalt: keyMaterial.keySalt
       }
     };
+    if (previousKeyId && previousKeyId !== keyMaterial.keyId) {
+      cloudSyncKeyCache.delete(previousKeyId);
+    }
     const snapshot = resolveCloudDocumentSnapshot(
       remote.data.document,
       remote.data.operations ?? [],
       keyMaterial
     ).snapshot;
-    nextConfig = applyCloudSyncSnapshot(nextConfig, snapshot);
+    nextConfig = await applyCloudSyncSnapshotState(nextConfig, snapshot);
     nextConfig = withCloudSyncSuccess(nextConfig, {
       lastRevision: remote.data.document.revision,
-      snapshotHash: remote.data.document.snapshotHash || snapshotHash(snapshot)
-    }, snapshot);
+      snapshotHash: snapshotHash(snapshot)
+    }, snapshot, keyMaterial);
     return {
       config: nextConfig,
       message: "Cloud sync is enabled and the remote encrypted snapshot was restored on this device.",
@@ -526,7 +611,7 @@ async function setupCloudSyncConfigInternal(
         enabled: false,
         lastRevision: remote.data.document.revision,
         lastSyncError: "Cloud sync has no remote snapshot yet.",
-        snapshotHash: remote.data.document.snapshotHash || undefined
+        snapshotHash: undefined
       }
     };
     return {
@@ -544,6 +629,9 @@ async function setupCloudSyncConfigInternal(
     cloudSync: {
       ...nextConfig.cloudSync,
       keyId: keyMaterial.keyId,
+      keyFilePath: keyMaterial.keyMode === "key-file"
+        ? request.keyFilePath || nextConfig.cloudSync.keyFilePath
+        : undefined,
       keyMode: keyMaterial.keyMode,
       keySalt: keyMaterial.keySalt
     }
@@ -574,6 +662,72 @@ export async function resolveCloudSyncConflict(
   );
 }
 
+export async function rotateCloudSyncKey(
+  config: AppConfig,
+  request: CloudSyncRotateKeyRequest
+): Promise<CloudSyncOperationResult> {
+  return withCloudSyncOperationAuthHandling(async () => {
+    const readyConfig = requireCloudSyncEnabled(config);
+    const previousKeyId = requiredString(readyConfig.cloudSync.keyId, "Current cloud sync key ID");
+    const pulled = await pullCloudSyncConfigInternal(readyConfig);
+    if (!pulled.config || pulled.conflict || pulled.conflictResolution || pulled.keyRotationRequired) {
+      return pulled;
+    }
+
+    const latestConfig = pulled.config;
+    const previousKeyMaterial = resolveCloudSyncKey(
+      latestConfig.cloudSync,
+      {},
+      { allowCreateSalt: false }
+    );
+    const previousBaseSnapshot = cloudSyncSnapshotFromUnknown(
+      latestConfig.cloudSync.lastSyncedSnapshot,
+      previousKeyMaterial
+    );
+    const nextKeyMaterial = resolveCloudSyncKey({
+      ...latestConfig.cloudSync,
+      keyFilePath: undefined,
+      keyId: undefined,
+      keySalt: undefined
+    }, request, { allowCreateSalt: true });
+    const rotatedConfig: AppConfig = {
+      ...latestConfig,
+      cloudSync: {
+        ...latestConfig.cloudSync,
+        keyFilePath: nextKeyMaterial.keyMode === "key-file" ? request.keyFilePath : undefined,
+        keyId: nextKeyMaterial.keyId,
+        keyMode: nextKeyMaterial.keyMode,
+        keySalt: nextKeyMaterial.keySalt,
+        lastSyncedSnapshot: previousBaseSnapshot
+          ? storedCloudSyncSnapshot(previousBaseSnapshot, nextKeyMaterial)
+          : undefined
+      }
+    };
+    const pushed = await pushCloudSyncConfigInternal(rotatedConfig, {}, {
+      baseSnapshot: previousBaseSnapshot,
+      forceEncryptionRewrite: true,
+      keyMaterial: nextKeyMaterial,
+      mergeOnConflict: false
+    });
+    if (!pushed.snapshotPushed) {
+      cloudSyncKeyCache.delete(nextKeyMaterial.keyId);
+      return {
+        ...pushed,
+        config: latestConfig,
+        message: "Cloud changed while the encryption key was being rotated. Pull the latest changes and retry.",
+        status: getCloudSyncStatus(latestConfig)
+      };
+    }
+    if (previousKeyId !== nextKeyMaterial.keyId) {
+      cloudSyncKeyCache.delete(previousKeyId);
+    }
+    return {
+      ...pushed,
+      message: "Cloud sync encryption key was rotated. Other devices must unlock with the new password or key file."
+    };
+  });
+}
+
 async function resolveCloudSyncConflictInternal(
   config: AppConfig,
   request: CloudSyncResolveConflictRequest
@@ -583,7 +737,11 @@ async function resolveCloudSyncConflictInternal(
   if (!pending || pending.identity !== cloudSyncConflictIdentity(config)) {
     throw new Error("Cloud sync conflict expired or is no longer available. Sync again to refresh it.");
   }
-  const conflictResults = cloudSyncConflictResultsFromRequest(request, pending.descriptor);
+  const conflictResults = cloudSyncConflictResultsFromRequest(
+    request,
+    pending.descriptor,
+    pending.fields
+  );
   const preference = request.preference ?? "local";
   if (
     request.preference !== undefined &&
@@ -595,8 +753,8 @@ async function resolveCloudSyncConflictInternal(
   if (!conflictResults && request.preference === undefined) {
     throw new Error("Cloud sync conflict preference or reviewed resolutions are required.");
   }
-  const currentSnapshot = createCloudSyncSnapshot(config);
-  if (!sameCloudSyncValue(currentSnapshot.config, pending.localSnapshot.config)) {
+  const currentSnapshot = await createCurrentCloudSyncSnapshot(config, pending.baseSnapshot);
+  if (!sameCloudSyncSnapshotContent(currentSnapshot, pending.localSnapshot)) {
     removePendingCloudSyncConflict(conflictId);
     return cloudSyncConflictResult(
       config,
@@ -621,24 +779,24 @@ async function resolveCloudSyncConflictInternal(
       conflictResults
     )
     : resolveCloudSyncConflictWithoutBase(pending, preference, conflictResults);
-  let mergedConfig = applyCloudSyncSnapshot(config, merge.snapshot);
+  let mergedConfig = await applyCloudSyncSnapshotState(config, merge.snapshot);
   mergedConfig = {
     ...mergedConfig,
     cloudSync: {
       ...normalizedCloudSyncConfig(mergedConfig.cloudSync),
       lastRevision: pending.descriptor.remoteRevision,
       lastSyncError: undefined,
-      lastSyncedSnapshot: cloneJson(pending.remoteSnapshot),
+      lastSyncedSnapshot: storedCloudSyncSnapshot(pending.remoteSnapshot, pending.keyMaterial),
       snapshotHash: pending.remoteSnapshotHash || snapshotHash(pending.remoteSnapshot)
     }
   };
 
-  if (sameCloudSyncValue(merge.snapshot.config, pending.remoteSnapshot.config)) {
+  if (sameCloudSyncSnapshotContent(merge.snapshot, pending.remoteSnapshot)) {
     removePendingCloudSyncConflict(conflictId);
     mergedConfig = withCloudSyncSuccess(mergedConfig, {
       lastRevision: pending.descriptor.remoteRevision,
       snapshotHash: pending.remoteSnapshotHash || snapshotHash(pending.remoteSnapshot)
-    }, pending.remoteSnapshot);
+    }, pending.remoteSnapshot, pending.keyMaterial);
     return {
       config: mergedConfig,
       conflict: true,
@@ -676,7 +834,8 @@ async function resolveCloudSyncConflictInternal(
 
 function cloudSyncConflictResultsFromRequest(
   request: CloudSyncResolveConflictRequest,
-  descriptor: CloudSyncConflictResolution
+  descriptor: CloudSyncConflictResolution,
+  fields: CloudSyncConflictField[]
 ): CloudSyncConflictResultMap | undefined {
   if (request.resolutions === undefined) {
     return undefined;
@@ -697,6 +856,18 @@ function cloudSyncConflictResultsFromRequest(
     }
     if (results.has(path)) {
       throw new Error(`Cloud sync conflict path was resolved more than once: ${path}`);
+    }
+    if (item.source === "local" || item.source === "remote") {
+      const field = fields.find((candidate) => candidate.path === path);
+      if (!field) {
+        throw new Error(`Cloud sync conflict path is no longer available: ${path}`);
+      }
+      const selected = field[item.source];
+      results.set(
+        path,
+        selected.exists ? cloneJson(selected.value) : missingCloudSyncMergeValue
+      );
+      continue;
     }
     if (!isObject(item.result) || typeof item.result.exists !== "boolean") {
       throw new Error(`Cloud sync conflict result is invalid for ${path}.`);
@@ -754,24 +925,26 @@ async function pullCloudSyncConfigInternal(
   request: CloudSyncPullRequest = {}
 ): Promise<CloudSyncOperationResult> {
   const readyConfig = requireCloudSyncEnabled(config);
-  const keyMaterial = resolveCloudSyncKey(readyConfig.cloudSync, request, { allowCreateSalt: false });
-  const baseSnapshot = cloudSyncSnapshotFromUnknown(readyConfig.cloudSync.lastSyncedSnapshot);
-  let remote = baseSnapshot
-    ? await pullAllCloudDocuments(readyConfig, readyConfig.cloudSync.lastRevision)
-    : await pullCloudDocument(readyConfig, readyConfig.cloudSync.lastRevision);
+  const storedBaseSnapshot = readyConfig.cloudSync.lastSyncedSnapshot;
+  const cachedBaseKeyMaterial = cloudSyncBaselineKeyMaterial(
+    storedBaseSnapshot,
+    readyConfig.cloudSync
+  );
+  let remote = await pullAllCloudDocuments(readyConfig, readyConfig.cloudSync.lastRevision);
   if (
-    remote.data.document.encryptedSnapshot &&
+    remote.data.document.revision > 0 &&
     remote.data.document.snapshotRevision === null
   ) {
     remote = await pullAllCloudDocuments(remote.config, 0);
   }
   let nextConfig = remote.config;
   const document = remote.data.document;
+  validateCloudDocument(document, nextConfig.cloudSync, readyConfig.cloudSync.lastRevision);
 
-  if (!document.encryptedSnapshot || document.revision === 0) {
+  if (document.revision === 0) {
     nextConfig = withCloudSyncSuccess(nextConfig, {
       lastRevision: document.revision,
-      snapshotHash: document.snapshotHash || undefined
+      snapshotHash: undefined
     });
     return {
       config: nextConfig,
@@ -781,19 +954,120 @@ async function pullCloudSyncConfigInternal(
       status: getCloudSyncStatus(nextConfig)
     };
   }
+  const encryptedPayload = latestCloudSyncEncryptedPayload(
+    document,
+    remote.data.operations ?? []
+  );
+  if (!encryptedPayload) {
+    throw new Error("Cloud sync returned a non-empty document without an encrypted snapshot.");
+  }
+  const remoteKeyConfig = cloudSyncConfigForEncryptedPayload(nextConfig.cloudSync, encryptedPayload);
+  const remoteKeyChanged = Boolean(
+    readyConfig.cloudSync.keyId &&
+    remoteKeyConfig.keyId !== readyConfig.cloudSync.keyId
+  );
+  if (
+    remoteKeyChanged &&
+    !optionalString(request.password) &&
+    !optionalString(request.keyFilePath)
+  ) {
+    throw new CloudSyncRemoteKeyChangedError(cloudSyncRemoteKeyChangedConfig(nextConfig, remoteKeyConfig));
+  }
+  const keyMaterial = resolveCloudSyncKey(remoteKeyConfig, request, { allowCreateSalt: false });
+  nextConfig = {
+    ...nextConfig,
+    cloudSync: {
+      ...nextConfig.cloudSync,
+      keyFilePath: keyMaterial.keyMode === "key-file" ? request.keyFilePath : undefined,
+      keyId: keyMaterial.keyId,
+      keyMode: keyMaterial.keyMode,
+      keySalt: keyMaterial.keySalt
+    }
+  };
+  let baseSnapshot: CloudSyncSnapshot | undefined;
+  try {
+    baseSnapshot = cloudSyncSnapshotFromUnknown(
+      storedBaseSnapshot,
+      cachedBaseKeyMaterial ?? keyMaterial
+    );
+  } catch (error) {
+    if (
+      !isStoredCloudSyncSnapshot(storedBaseSnapshot) ||
+      storedBaseSnapshot.encrypted.keyId === keyMaterial.keyId
+    ) {
+      throw error;
+    }
+    // A rotated remote key may be available after the process that held the old
+    // in-memory key has restarted. Falling back to a full-config review is safer
+    // than blocking forever or treating an unreadable baseline as synchronized.
+    baseSnapshot = undefined;
+  }
 
+  const currentSnapshot = baseSnapshot
+    ? await createCurrentCloudSyncSnapshot(nextConfig, baseSnapshot)
+    : undefined;
   const remoteMerge = resolveCloudDocumentSnapshot(
     document,
     remote.data.operations ?? [],
     keyMaterial
   );
   const remoteSnapshot = remoteMerge.snapshot;
+  if (
+    baseSnapshot &&
+    document.revision === readyConfig.cloudSync.lastRevision &&
+    !sameCloudSyncSnapshotContent(remoteSnapshot, baseSnapshot)
+  ) {
+    throw new Error(
+      `Cloud sync rejected different remote content for unchanged revision ${document.revision}.`
+    );
+  }
+  if (
+    !remoteKeyChanged &&
+    baseSnapshot &&
+    document.revision === readyConfig.cloudSync.lastRevision &&
+    (remote.data.operations?.length ?? 0) === 0 &&
+    currentSnapshot &&
+    sameCloudSyncSnapshotContent(currentSnapshot, baseSnapshot)
+  ) {
+    const verifiedSnapshotHash = snapshotHash(remoteSnapshot);
+    const baselineNeedsEncryption = !isStoredCloudSyncSnapshot(storedBaseSnapshot);
+    const verifiedConfig = (
+      baselineNeedsEncryption ||
+      nextConfig.cloudSync.lastSyncError ||
+      nextConfig.cloudSync.snapshotHash !== verifiedSnapshotHash
+    )
+      ? {
+        ...nextConfig,
+        cloudSync: {
+          ...nextConfig.cloudSync,
+          lastSyncError: undefined,
+          lastSyncedSnapshot: baselineNeedsEncryption
+            ? storedCloudSyncSnapshot(baseSnapshot, keyMaterial)
+            : nextConfig.cloudSync.lastSyncedSnapshot,
+          snapshotHash: verifiedSnapshotHash
+        }
+      }
+      : nextConfig;
+    const unchangedConfig = sameCloudSyncValue(verifiedConfig, config) ? config : verifiedConfig;
+    return {
+      config: unchangedConfig,
+      message: "Cloud sync is already up to date.",
+      mergeApplied: false,
+      mergeConflicts: [],
+      remoteRevision: document.revision,
+      snapshotApplied: false,
+      status: getCloudSyncStatus(unchangedConfig)
+    };
+  }
+  if (cachedBaseKeyMaterial && cachedBaseKeyMaterial.keyId !== keyMaterial.keyId) {
+    cloudSyncKeyCache.delete(cachedBaseKeyMaterial.keyId);
+  }
   let appliedSnapshot = remoteSnapshot;
   let localMerge: CloudSyncMergeResult | undefined;
   let localSnapshot: CloudSyncSnapshot | undefined;
   if (request.apply !== false) {
-    localSnapshot = createCloudSyncSnapshot(nextConfig);
-    if (!baseSnapshot && !sameCloudSyncValue(localSnapshot.config, remoteSnapshot.config)) {
+    localSnapshot = currentSnapshot ?? await createCurrentCloudSyncSnapshot(nextConfig);
+    if (!baseSnapshot && !sameCloudSyncSnapshotContent(localSnapshot, remoteSnapshot)) {
       return cloudSyncResolutionRequiredResult({
         config: nextConfig,
         keyMaterial,
@@ -801,16 +1075,23 @@ async function pullCloudSyncConfigInternal(
         paths: ["config"],
         remoteRevision: document.revision,
         remoteSnapshot,
-        remoteSnapshotHash: document.snapshotHash || snapshotHash(remoteSnapshot)
+        remoteSnapshotHash: snapshotHash(remoteSnapshot)
       });
     }
-    if (
-      baseSnapshot &&
-      !sameCloudSyncValue(localSnapshot.config, baseSnapshot.config) &&
-      !sameCloudSyncValue(remoteSnapshot.config, baseSnapshot.config)
-    ) {
-      localMerge = mergeCloudSyncSnapshots(baseSnapshot, localSnapshot, remoteSnapshot);
-      appliedSnapshot = localMerge.snapshot;
+    if (baseSnapshot) {
+      const localChanged = !sameCloudSyncSnapshotContent(localSnapshot, baseSnapshot);
+      const remoteChanged = !sameCloudSyncSnapshotContent(remoteSnapshot, baseSnapshot);
+      if (localChanged && remoteChanged) {
+        localMerge = mergeCloudSyncSnapshots(baseSnapshot, localSnapshot, remoteSnapshot);
+        appliedSnapshot = localMerge.snapshot;
+      } else if (localChanged) {
+        localMerge = {
+          conflictFields: [],
+          conflicts: [],
+          snapshot: localSnapshot
+        };
+        appliedSnapshot = localSnapshot;
+      }
     }
   }
   const mergeConflicts = uniqueStrings([
@@ -831,21 +1112,39 @@ async function pullCloudSyncConfigInternal(
       paths: mergeConflicts,
       remoteRevision: document.revision,
       remoteSnapshot,
-      remoteSnapshotHash: document.snapshotHash || snapshotHash(remoteSnapshot)
+      remoteSnapshotHash: snapshotHash(remoteSnapshot)
     });
   }
   if (request.apply !== false) {
-    nextConfig = applyCloudSyncSnapshot(nextConfig, appliedSnapshot);
+    nextConfig = await applyCloudSyncSnapshotState(nextConfig, appliedSnapshot);
   }
-  nextConfig = withCloudSyncSuccess(nextConfig, {
-    lastRevision: document.revision,
-    snapshotHash: remoteMerge.appliedOperationCount > 0
-      ? snapshotHash(remoteSnapshot)
-      : document.snapshotHash || snapshotHash(remoteSnapshot)
-  }, remoteSnapshot);
+  const remoteSnapshotHash = snapshotHash(remoteSnapshot);
+  if (request.apply === false) {
+    nextConfig = withCloudSyncProbeSuccess(nextConfig);
+  } else {
+    nextConfig = withCloudSyncSuccess(nextConfig, {
+      lastRevision: document.revision,
+      snapshotHash: remoteSnapshotHash
+    }, remoteSnapshot, keyMaterial);
+  }
 
   const mergeApplied = request.apply !== false &&
     Boolean(localMerge || remoteMerge.appliedOperationCount > 0);
+  if (request.apply !== false && localMerge) {
+    const pushed = await pushCloudSyncConfigInternal(nextConfig, {
+      keyFilePath: request.keyFilePath,
+      password: request.password
+    }, {});
+    return {
+      ...pushed,
+      mergeApplied: pushed.mergeApplied ?? true,
+      mergeConflicts: pushed.mergeConflicts ?? [],
+      message: pushed.snapshotPushed
+        ? "Cloud changes were pulled, merged with local changes, and pushed."
+        : pushed.message,
+      snapshotApplied: true
+    };
+  }
 
   return {
     config: nextConfig,
@@ -866,8 +1165,20 @@ async function pullCloudSyncConfigInternal(
 
 export async function autoPushCloudSyncConfig(config: AppConfig): Promise<AppConfig> {
   const cloudSync = normalizedCloudSyncConfig(config.cloudSync);
-  if (!cloudSync.enabled || !cloudSync.keyId || !cloudSyncKeyCache.has(cloudSync.keyId)) {
+  if (!cloudSync.enabled || !cloudSync.keyId) {
     return config;
+  }
+  if (!cloudSyncKeyCache.has(cloudSync.keyId) && !cloudSync.keyFilePath) {
+    const message = "Cloud sync is locked. Unlock it with the encryption password before automatic sync can continue.";
+    return cloudSync.lastSyncError === message
+      ? config
+      : {
+        ...config,
+        cloudSync: {
+          ...cloudSync,
+          lastSyncError: message
+        }
+      };
   }
   if (pendingCloudSyncConflictForConfig(config)) {
     return config;
@@ -890,50 +1201,419 @@ export async function autoPushCloudSyncConfig(config: AppConfig): Promise<AppCon
   }
 }
 
-export function createCloudSyncSnapshot(config: AppConfig, exportedAt = new Date().toISOString()): CloudSyncSnapshot {
+export async function autoPullCloudSyncConfig(config: AppConfig): Promise<AppConfig> {
+  const cloudSync = normalizedCloudSyncConfig(config.cloudSync);
+  if (!cloudSync.enabled || !cloudSync.keyId) {
+    return config;
+  }
+  if (!cloudSyncKeyCache.has(cloudSync.keyId) && !cloudSync.keyFilePath) {
+    return config;
+  }
+  if (pendingCloudSyncConflictForConfig(config)) {
+    return config;
+  }
+
+  try {
+    const result = await pullCloudSyncConfig(config);
+    return result.config ?? config;
+  } catch (error) {
+    if (isCloudSyncAuthExpiredError(error)) {
+      return error.config;
+    }
+    const message = formatError(error);
+    return cloudSync.lastSyncError === message
+      ? config
+      : {
+        ...config,
+        cloudSync: {
+          ...cloudSync,
+          lastSyncError: message
+        }
+      };
+  }
+}
+
+type CreateCloudSyncSnapshotOptions = {
+  baseSnapshot?: CloudSyncSnapshot;
+  usageEvents?: CloudSyncUsageEvent[];
+};
+
+export function createCloudSyncSnapshot(
+  config: AppConfig,
+  exportedAt = new Date().toISOString(),
+  options: CreateCloudSyncSnapshotOptions = {}
+): CloudSyncSnapshot {
+  const scopes = normalizeCloudSyncScopes(config.cloudSync.scopes);
+  const baseConfig = options.baseSnapshot?.config
+    ? cloneJson(options.baseSnapshot.config)
+    : {};
   return {
     config: {
-      Providers: cloneJson(config.Providers),
-      Router: cloneJson(config.Router),
-      agent: cloneJson(config.agent),
-      botConfigs: cloneJson(config.botConfigs),
-      botGateway: cloneJson(config.botGateway),
-      mediaTools: cloneJson(config.mediaTools),
-      plugins: cloneJson(config.plugins),
-      preferredProvider: config.preferredProvider,
-      profile: cloneJson(config.profile),
-      providerPlugins: cloneJson(config.providerPlugins ?? []),
-      toolHub: cloneJson(config.toolHub),
-      virtualModelProfiles: cloneJson(config.virtualModelProfiles ?? [])
+      ...baseConfig,
+      ...createPortableCloudSyncSnapshotConfig(config, scopes)
     },
     exportedAt,
     kind: cloudSyncSnapshotKind,
-    version: 1
+    ...(scopes.includes("usage")
+      ? { usageEvents: cloneJson(options.usageEvents ?? options.baseSnapshot?.usageEvents ?? []) }
+      : options.baseSnapshot?.usageEvents
+        ? { usageEvents: cloneJson(options.baseSnapshot.usageEvents) }
+        : {}),
+    version: 3
   };
 }
 
 export function applyCloudSyncSnapshot(config: AppConfig, snapshot: CloudSyncSnapshot): AppConfig {
-  if (snapshot.kind !== cloudSyncSnapshotKind || snapshot.version !== 1 || !isObject(snapshot.config)) {
+  if (
+    snapshot.kind !== cloudSyncSnapshotKind ||
+    (snapshot.version !== 1 && snapshot.version !== 2 && snapshot.version !== 3) ||
+    !isObject(snapshot.config)
+  ) {
     throw new Error("Cloud snapshot has an unsupported format.");
   }
 
-  return {
+  const scopes = new Set(normalizeCloudSyncScopes(config.cloudSync.scopes));
+  const has = <K extends keyof CloudSyncSnapshotConfig>(scope: CloudSyncScope, key: K): boolean =>
+    scopes.has(scope) && Object.hasOwn(snapshot.config, key);
+  const appliedConfig: AppConfig = {
     ...config,
-    Providers: cloneJson(snapshot.config.Providers ?? config.Providers),
-    Router: cloneJson(snapshot.config.Router ?? config.Router),
-    agent: cloneJson(snapshot.config.agent ?? config.agent),
-    botConfigs: cloneJson(snapshot.config.botConfigs ?? config.botConfigs),
-    botGateway: cloneJson(snapshot.config.botGateway ?? config.botGateway),
-    mediaTools: cloneJson(snapshot.config.mediaTools ?? config.mediaTools),
-    plugins: cloneJson(snapshot.config.plugins ?? config.plugins),
-    preferredProvider: typeof snapshot.config.preferredProvider === "string"
+    APIKEY: has("api-keys", "APIKEY") && typeof snapshot.config.APIKEY === "string"
+      ? snapshot.config.APIKEY
+      : config.APIKEY,
+    APIKEYS: has("api-keys", "APIKEYS")
+      ? cloneJson(snapshot.config.APIKEYS ?? [])
+      : config.APIKEYS,
+    Providers: has("providers", "Providers") ? cloneJson(snapshot.config.Providers ?? []) : config.Providers,
+    Router: has("providers", "Router") ? cloneJson(snapshot.config.Router ?? config.Router) : config.Router,
+    agent: has("toolhub", "agent") ? cloneJson(snapshot.config.agent ?? config.agent) : config.agent,
+    botConfigs: has("bot", "botConfigs") ? cloneJson(snapshot.config.botConfigs ?? []) : config.botConfigs,
+    botGateway: has("bot", "botGateway") ? cloneJson(snapshot.config.botGateway ?? config.botGateway) : config.botGateway,
+    mediaTools: has("fusion", "mediaTools") ? cloneJson(snapshot.config.mediaTools ?? config.mediaTools) : config.mediaTools,
+    language: has("appearance", "language") && (
+      snapshot.config.language === "system" ||
+      snapshot.config.language === "en" ||
+      snapshot.config.language === "zh"
+    )
+      ? snapshot.config.language
+      : config.language,
+    observability: has("usage", "observability")
+      ? cloneJson(snapshot.config.observability ?? config.observability)
+      : config.observability,
+    overviewWidgets: has("overview", "overviewWidgets")
+      ? cloneJson(snapshot.config.overviewWidgets ?? [])
+      : config.overviewWidgets,
+    plugins: has("extensions", "plugins") ? cloneJson(snapshot.config.plugins ?? []) : config.plugins,
+    preferredProvider: has("providers", "preferredProvider") && typeof snapshot.config.preferredProvider === "string"
       ? snapshot.config.preferredProvider
       : config.preferredProvider,
-    profile: cloneJson(snapshot.config.profile ?? config.profile),
-    providerPlugins: cloneJson(snapshot.config.providerPlugins ?? config.providerPlugins ?? []),
-    toolHub: cloneJson(snapshot.config.toolHub ?? config.toolHub),
-    virtualModelProfiles: cloneJson(snapshot.config.virtualModelProfiles ?? config.virtualModelProfiles ?? [])
+    profile: has("agent-profiles", "profile") ? cloneJson(snapshot.config.profile ?? config.profile) : config.profile,
+    providerPlugins: has("providers", "providerPlugins")
+      ? cloneJson(snapshot.config.providerPlugins ?? [])
+      : config.providerPlugins,
+    theme: has("appearance", "theme") && (
+      snapshot.config.theme === "system" ||
+      snapshot.config.theme === "light" ||
+      snapshot.config.theme === "dark"
+    )
+      ? snapshot.config.theme
+      : config.theme,
+    toolHub: has("toolhub", "toolHub") ? cloneJson(snapshot.config.toolHub ?? config.toolHub) : config.toolHub,
+    trayBalanceProgress: has("tray", "trayBalanceProgress")
+      ? snapshot.config.trayBalanceProgress
+        ? cloneJson(snapshot.config.trayBalanceProgress)
+        : undefined
+      : config.trayBalanceProgress,
+    trayComponentVariants: has("tray", "trayComponentVariants")
+      ? cloneJson(snapshot.config.trayComponentVariants ?? config.trayComponentVariants)
+      : config.trayComponentVariants,
+    trayIcon: has("tray", "trayIcon") ? cloneJson(snapshot.config.trayIcon ?? config.trayIcon) : config.trayIcon,
+    trayProgressTargetTokens: has("tray", "trayProgressTargetTokens")
+      ? snapshot.config.trayProgressTargetTokens ?? config.trayProgressTargetTokens
+      : config.trayProgressTargetTokens,
+    trayWidgets: has("tray", "trayWidgets") ? cloneJson(snapshot.config.trayWidgets ?? []) : config.trayWidgets,
+    trayWindowModules: has("tray", "trayWindowModules")
+      ? cloneJson(snapshot.config.trayWindowModules ?? [])
+      : config.trayWindowModules,
+    virtualModelProfiles: has("fusion", "virtualModelProfiles")
+      ? cloneJson(snapshot.config.virtualModelProfiles ?? [])
+      : config.virtualModelProfiles
   };
+  return restoreCloudSyncDeviceLocalFields(config, appliedConfig);
+}
+
+async function createCurrentCloudSyncSnapshot(
+  config: AppConfig,
+  baseSnapshot?: CloudSyncSnapshot
+): Promise<CloudSyncSnapshot> {
+  const scopes = normalizeCloudSyncScopes(config.cloudSync.scopes);
+  const usageEvents = scopes.includes("usage")
+    ? await exportCloudSyncUsageEvents()
+    : undefined;
+  return createCloudSyncSnapshot(config, new Date().toISOString(), {
+    baseSnapshot,
+    usageEvents
+  });
+}
+
+async function applyCloudSyncSnapshotState(
+  config: AppConfig,
+  snapshot: CloudSyncSnapshot
+): Promise<AppConfig> {
+  const applied = applyCloudSyncSnapshot(config, snapshot);
+  if (
+    normalizeCloudSyncScopes(config.cloudSync.scopes).includes("usage") &&
+    Array.isArray(snapshot.usageEvents)
+  ) {
+    await importCloudSyncUsageEvents(snapshot.usageEvents);
+  }
+  return applied;
+}
+
+function createPortableCloudSyncSnapshotConfig(
+  config: AppConfig,
+  scopes: CloudSyncScope[]
+): CloudSyncSnapshotConfig {
+  const selected = new Set(scopes);
+  const snapshot: CloudSyncSnapshotConfig = {};
+  if (selected.has("providers")) {
+    Object.assign(snapshot, {
+      Providers: cloneJson(config.Providers),
+      Router: cloneJson(config.Router),
+      preferredProvider: config.preferredProvider,
+      providerPlugins: cloneJson(config.providerPlugins ?? [])
+    });
+  }
+  if (selected.has("agent-profiles")) {
+    snapshot.profile = cloneJson(config.profile);
+  }
+  if (selected.has("usage")) {
+    snapshot.observability = cloneJson(config.observability);
+  }
+  if (selected.has("fusion")) {
+    snapshot.mediaTools = cloneJson(config.mediaTools);
+    snapshot.virtualModelProfiles = cloneJson(config.virtualModelProfiles ?? []);
+  }
+  if (selected.has("api-keys")) {
+    snapshot.APIKEY = config.APIKEY;
+    snapshot.APIKEYS = cloneJson(config.APIKEYS);
+  }
+  if (selected.has("extensions")) {
+    snapshot.plugins = cloneJson(config.plugins);
+  }
+  if (selected.has("bot")) {
+    snapshot.botConfigs = cloneJson(config.botConfigs);
+    snapshot.botGateway = cloneJson(config.botGateway);
+  }
+  if (selected.has("toolhub")) {
+    snapshot.agent = cloneJson(config.agent);
+    snapshot.toolHub = cloneJson(config.toolHub);
+  }
+  if (selected.has("appearance")) {
+    snapshot.language = config.language;
+    snapshot.theme = config.theme;
+  }
+  if (selected.has("tray")) {
+    snapshot.trayBalanceProgress = config.trayBalanceProgress
+      ? cloneJson(config.trayBalanceProgress)
+      : null;
+    snapshot.trayComponentVariants = cloneJson(config.trayComponentVariants);
+    snapshot.trayIcon = config.trayIcon;
+    snapshot.trayProgressTargetTokens = config.trayProgressTargetTokens;
+    snapshot.trayWidgets = cloneJson(config.trayWidgets);
+    snapshot.trayWindowModules = cloneJson(config.trayWindowModules);
+  }
+  if (selected.has("overview")) {
+    snapshot.overviewWidgets = cloneJson(config.overviewWidgets);
+  }
+
+  stripDeviceLocalMcpFields(snapshot.agent?.mcpServers);
+  stripDeviceLocalMcpFields(snapshot.toolHub?.mcpServers);
+  stripDeviceLocalBotGatewayFields(snapshot.botGateway);
+  for (const botConfig of snapshot.botConfigs ?? []) {
+    stripDeviceLocalBotGatewayFields(botConfig.botGateway);
+  }
+  if (snapshot.mediaTools) {
+    deleteObjectKeys(snapshot.mediaTools, ["allowedInputRoots"]);
+  }
+  for (const plugin of snapshot.plugins ?? []) {
+    deleteObjectKeys(plugin, ["module"]);
+  }
+  if (snapshot.profile) {
+    deleteObjectKeys(snapshot.profile.claudeCode, ["settingsFile"]);
+    deleteObjectKeys(snapshot.profile.codex, ["codexCliPath", "codexHome", "configFile"]);
+    for (const profile of snapshot.profile.profiles ?? []) {
+      deleteObjectKeys(profile, [
+        "appPath",
+        "codexCliPath",
+        "codexHome",
+        "configFile",
+        "env",
+        "settingsFile"
+      ]);
+      if (profile.botGateway) {
+        stripDeviceLocalBotGatewayFields(profile.botGateway);
+      }
+    }
+  }
+  return snapshot;
+}
+
+function restoreCloudSyncDeviceLocalFields(local: AppConfig, applied: AppConfig): AppConfig {
+  const newBotGatewayDefaults = cloudSyncNewBotGatewayDeviceDefaults(local.botGateway);
+  restoreMcpDeviceLocalFields(local.agent?.mcpServers, applied.agent?.mcpServers);
+  restoreMcpDeviceLocalFields(local.toolHub?.mcpServers, applied.toolHub?.mcpServers);
+  restoreObjectKeys(applied.botGateway, local.botGateway, cloudSyncBotGatewayDeviceLocalKeys);
+  const localBotConfigById = new Map(
+    local.botConfigs.map((item) => [item.id, item] as const)
+  );
+  for (const target of applied.botConfigs) {
+    const source = localBotConfigById.get(target.id);
+    restoreObjectKeys(
+      target.botGateway,
+      source?.botGateway ?? newBotGatewayDefaults,
+      cloudSyncBotGatewayDeviceLocalKeys
+    );
+  }
+  restoreObjectKeys(applied.mediaTools, local.mediaTools, ["allowedInputRoots"]);
+  restoreMatchedArrayFields(
+    applied.plugins,
+    local.plugins,
+    (item) => optionalString(item.id),
+    (target, source) => restoreObjectKeys(target, source, ["module"])
+  );
+  restoreObjectKeys(applied.profile.claudeCode, local.profile.claudeCode, ["settingsFile"]);
+  restoreObjectKeys(applied.profile.codex, local.profile.codex, ["codexCliPath", "codexHome", "configFile"]);
+  restoreMatchedArrayFields(
+    applied.profile.profiles,
+    local.profile.profiles,
+    (item) => optionalString(item.id),
+    (target, source) => {
+      restoreObjectKeys(target, source, [
+        "appPath",
+        "codexCliPath",
+        "codexHome",
+        "configFile",
+        "env",
+        "settingsFile"
+      ]);
+      if (target.botGateway) {
+        restoreObjectKeys(
+          target.botGateway,
+          source.botGateway ?? newBotGatewayDefaults,
+          cloudSyncBotGatewayDeviceLocalKeys
+        );
+      }
+    }
+  );
+  const localProfileIds = new Set(local.profile.profiles.map((item) => item.id));
+  for (const target of applied.profile.profiles) {
+    if (target.botGateway && !localProfileIds.has(target.id)) {
+      restoreObjectKeys(target.botGateway, newBotGatewayDefaults, cloudSyncBotGatewayDeviceLocalKeys);
+    }
+  }
+  return applied;
+}
+
+const cloudSyncBotGatewayDeviceLocalKeys = [
+  "autoStartIntegration",
+  "conversationRef",
+  "credentials",
+  "cwd",
+  "enabled",
+  "integrationConfig",
+  "integrationId",
+  "sourceDir",
+  "stateDir",
+  "tenantId"
+];
+
+function cloudSyncNewBotGatewayDeviceDefaults(local: AppConfig["botGateway"]): object {
+  return {
+    autoStartIntegration: false,
+    credentials: {},
+    cwd: local.cwd,
+    enabled: false,
+    integrationConfig: {},
+    integrationId: "",
+    sourceDir: local.sourceDir,
+    stateDir: local.stateDir,
+    tenantId: ""
+  };
+}
+
+function stripDeviceLocalMcpFields(servers: AppConfig["agent"]["mcpServers"] | undefined): void {
+  for (const server of servers ?? []) {
+    if (server.transport === "stdio") {
+      deleteObjectKeys(server, ["cwd", "env"]);
+    }
+  }
+}
+
+function stripDeviceLocalBotGatewayFields(value: AppConfig["botGateway"] | undefined): void {
+  if (value) {
+    deleteObjectKeys(value, cloudSyncBotGatewayDeviceLocalKeys);
+  }
+}
+
+function restoreMcpDeviceLocalFields(
+  localServers: AppConfig["agent"]["mcpServers"] | undefined,
+  targetServers: AppConfig["agent"]["mcpServers"] | undefined
+): void {
+  const localNames = new Set((localServers ?? []).map((item) => item.name));
+  restoreMatchedArrayFields(
+    targetServers ?? [],
+    localServers ?? [],
+    (item) => optionalString(item.name),
+    (target, source) => {
+      if (target.transport === "stdio" && source.transport === "stdio") {
+        restoreObjectKeys(target, source, ["cwd", "env"]);
+      }
+    }
+  );
+  for (const target of targetServers ?? []) {
+    if (target.transport === "stdio" && !localNames.has(target.name)) {
+      target.env = {};
+    }
+  }
+}
+
+function restoreMatchedArrayFields<T>(
+  targets: T[],
+  sources: T[],
+  identity: (item: T) => string | undefined,
+  restore: (target: T, source: T) => void
+): void {
+  const sourceById = new Map(
+    sources
+      .map((item) => [identity(item), item] as const)
+      .filter((item): item is readonly [string, T] => Boolean(item[0]))
+  );
+  for (const target of targets) {
+    const id = identity(target);
+    const source = id ? sourceById.get(id) : undefined;
+    if (source) {
+      restore(target, source);
+    }
+  }
+}
+
+function deleteObjectKeys(value: object, keys: string[]): void {
+  const record = value as Record<string, unknown>;
+  for (const key of keys) {
+    delete record[key];
+  }
+}
+
+function restoreObjectKeys(target: object, source: object, keys: string[]): void {
+  const targetRecord = target as Record<string, unknown>;
+  const sourceRecord = source as Record<string, unknown>;
+  for (const key of keys) {
+    if (Object.hasOwn(sourceRecord, key)) {
+      targetRecord[key] = cloneJson(sourceRecord[key]);
+    } else {
+      delete targetRecord[key];
+    }
+  }
 }
 
 function mergeCloudSyncSnapshots(
@@ -958,6 +1638,30 @@ function mergeCloudSyncSnapshots(
   if (isMissingCloudSyncMergeValue(mergedConfig) || !isObject(mergedConfig)) {
     throw new Error("Cloud sync merge produced an invalid snapshot.");
   }
+  const hasUsageEvents = Array.isArray(base.usageEvents) ||
+    Array.isArray(local.usageEvents) ||
+    Array.isArray(remote.usageEvents);
+  const mergedUsageEvents = hasUsageEvents
+    ? mergeCloudSyncValue(
+      base.usageEvents ?? [],
+      local.usageEvents ?? [],
+      remote.usageEvents ?? [],
+      "usageEvents",
+      conflicts,
+      conflictPreference,
+      conflictFields,
+      conflictResults
+    )
+    : undefined;
+  if (
+    hasUsageEvents &&
+    (
+      isMissingCloudSyncMergeValue(mergedUsageEvents) ||
+      !Array.isArray(mergedUsageEvents)
+    )
+  ) {
+    throw new Error("Cloud sync merge produced invalid usage statistics.");
+  }
 
   return {
     conflictFields,
@@ -966,7 +1670,10 @@ function mergeCloudSyncSnapshots(
       config: mergedConfig as CloudSyncSnapshotConfig,
       exportedAt: new Date().toISOString(),
       kind: cloudSyncSnapshotKind,
-      version: 1
+      ...(hasUsageEvents
+        ? { usageEvents: mergedUsageEvents as CloudSyncUsageEvent[] }
+        : {}),
+      version: 3
     }
   };
 }
@@ -979,8 +1686,17 @@ function mergeCloudOperationSnapshots(
 ): CloudSyncMergeResult & { appliedOperationCount: number } {
   let snapshot = documentSnapshot;
   let appliedOperationCount = 0;
-  const orderedOperations = [...operations]
+  const relevantOperations = [...operations]
     .sort((left, right) => (left.revision ?? 0) - (right.revision ?? 0))
+    .filter((operation) => (
+      typeof operation.revision === "number" &&
+      operation.baseRevision === operation.revision - 1 &&
+      (
+        typeof snapshotRevision !== "number" ||
+        operation.revision > snapshotRevision
+      )
+    ));
+  const orderedOperations = relevantOperations
     .map((operation) => ({
       operation,
       snapshot: decryptCloudOperationSnapshot(operation, keyMaterial)
@@ -990,7 +1706,7 @@ function mergeCloudOperationSnapshots(
       if (
         item.snapshot &&
         typeof item.operation.revision === "number" &&
-        sameCloudSyncValue(item.snapshot.config, documentSnapshot.config)
+        sameCloudSyncSnapshotContent(item.snapshot, documentSnapshot)
       ) {
         return Math.max(latest ?? 0, item.operation.revision);
       }
@@ -1011,14 +1727,12 @@ function mergeCloudOperationSnapshots(
       continue;
     }
     const operationSnapshot = item.snapshot;
-    if (
-      !operationSnapshot ||
-      typeof item.operation.revision !== "number" ||
-      item.operation.baseRevision !== item.operation.revision - 1
-    ) {
-      continue;
+    if (!operationSnapshot) {
+      throw new Error(
+        `Cloud sync operation at revision ${item.operation.revision} uses an unsupported format. Update CCR before syncing again.`
+      );
     }
-    if (!sameCloudSyncValue(snapshot.config, operationSnapshot.config)) {
+    if (!sameCloudSyncSnapshotContent(snapshot, operationSnapshot)) {
       appliedOperationCount += 1;
     }
     snapshot = operationSnapshot;
@@ -1271,9 +1985,26 @@ function mergeIdentifiedCloudSyncArray(
     return undefined;
   }
 
+  const baseKeys = [...baseMap.keys()];
+  const localKeys = [...localMap.keys()];
+  const remoteKeys = [...remoteMap.keys()];
+  const localReordered = primitiveCloudSyncArrayReordered(baseKeys, localKeys);
+  const remoteReordered = primitiveCloudSyncArrayReordered(baseKeys, remoteKeys);
+  if (
+    localReordered &&
+    remoteReordered &&
+    !sameCloudSyncValue(
+      localKeys.filter((key) => remoteMap.has(key)),
+      remoteKeys.filter((key) => localMap.has(key))
+    )
+  ) {
+    return undefined;
+  }
+  const primaryKeys = remoteReordered && !localReordered ? remoteKeys : localKeys;
+  const secondaryKeys = primaryKeys === localKeys ? remoteKeys : localKeys;
   const keys = uniqueStrings([
-    ...localMap.keys(),
-    ...remoteMap.keys(),
+    ...primaryKeys,
+    ...secondaryKeys,
     ...baseMap.keys()
   ]);
   const result: unknown[] = [];
@@ -1383,6 +2114,7 @@ function cloudSyncArrayIdentity(path: string, value: unknown): string | undefine
     providerPlugins: ["id", "name", "provider"],
     routes: ["id", "name"],
     rules: ["id", "name"],
+    usageEvents: ["id"],
     virtualModelProfiles: ["id", "name", "key", "model"]
   };
   const candidates = candidatesBySegment[segment];
@@ -1408,6 +2140,14 @@ function sameCloudSyncValue(left: unknown, right: unknown): boolean {
     return isMissingCloudSyncMergeValue(left) && isMissingCloudSyncMergeValue(right);
   }
   return stableStringify(left) === stableStringify(right);
+}
+
+function sameCloudSyncSnapshotContent(
+  left: CloudSyncSnapshot,
+  right: CloudSyncSnapshot
+): boolean {
+  return sameCloudSyncValue(left.config, right.config) &&
+    sameCloudSyncValue(left.usageEvents ?? [], right.usageEvents ?? []);
 }
 
 function cloneCloudSyncMergeValue(value: unknown): unknown | typeof missingCloudSyncMergeValue {
@@ -1510,6 +2250,7 @@ async function pushCloudSyncConfigInternal(
       ...readyConfig,
       cloudSync: {
         ...readyConfig.cloudSync,
+        keyFilePath: keyMaterial.keyMode === "key-file" ? request.keyFilePath : undefined,
         keyId: keyMaterial.keyId,
         keyMode: keyMaterial.keyMode,
         keySalt: keyMaterial.keySalt
@@ -1525,7 +2266,39 @@ async function pushCloudSyncConfigInternal(
     keyMaterial = options.keyMaterial ?? keyMaterial;
   }
 
-  const snapshot = createCloudSyncSnapshot(readyConfig);
+  const lastSyncedSnapshot = options.baseSnapshot ??
+    cloudSyncSnapshotFromUnknown(readyConfig.cloudSync.lastSyncedSnapshot, keyMaterial);
+  const snapshot = await createCurrentCloudSyncSnapshot(readyConfig, lastSyncedSnapshot);
+  if (
+    !request.force &&
+    !options.forceEncryptionRewrite &&
+    lastSyncedSnapshot &&
+    lastSyncedSnapshot.version === snapshot.version &&
+    sameCloudSyncSnapshotContent(lastSyncedSnapshot, snapshot)
+  ) {
+    const baselineNeedsEncryption = !isStoredCloudSyncSnapshot(
+      readyConfig.cloudSync.lastSyncedSnapshot
+    );
+    const nextConfig = readyConfig.cloudSync.lastSyncError || baselineNeedsEncryption
+      ? {
+        ...readyConfig,
+        cloudSync: {
+          ...readyConfig.cloudSync,
+          lastSyncError: undefined,
+          lastSyncedSnapshot: baselineNeedsEncryption
+            ? storedCloudSyncSnapshot(lastSyncedSnapshot, keyMaterial)
+            : readyConfig.cloudSync.lastSyncedSnapshot
+        }
+      }
+      : readyConfig;
+    return {
+      config: nextConfig,
+      message: "Cloud sync is already up to date.",
+      remoteRevision: readyConfig.cloudSync.lastRevision,
+      snapshotPushed: false,
+      status: getCloudSyncStatus(nextConfig)
+    };
+  }
   const encryptedSnapshot = encryptJson(snapshot, keyMaterial);
   const encryptedOperation = encryptJson({
     kind: "replace-cloud-sync-snapshot",
@@ -1591,11 +2364,18 @@ async function pushCloudSyncConfigInternal(
   if (response.data.accepted === false) {
     throw new Error("Cloud sync server did not accept the encrypted operation.");
   }
+  if (!document) {
+    throw new Error("Cloud sync server accepted the operation without returning a document.");
+  }
+  validateCloudDocument(document, response.config.cloudSync, baseRevision);
+  if (document.revision <= baseRevision) {
+    throw new Error("Cloud sync server accepted the operation without advancing the document revision.");
+  }
 
   const nextConfig = withCloudSyncSuccess(response.config, {
     lastRevision: remoteRevision,
-    snapshotHash: document?.snapshotHash || snapshotHash(snapshot)
-  }, snapshot);
+    snapshotHash: snapshotHash(snapshot)
+  }, snapshot, keyMaterial);
 
   return {
     config: nextConfig,
@@ -1651,7 +2431,15 @@ async function mergeAndPushCloudSyncConflict({
   remoteDocument = operationCollection.document;
   remoteRevision = remoteDocument?.revision ?? remoteRevision;
 
-  if (!remoteDocument?.encryptedSnapshot) {
+  if (!remoteDocument) {
+    return cloudSyncConflictResult(
+      responseConfig,
+      "Cloud has a newer encrypted snapshot, but it could not be loaded for automatic merge.",
+      remoteRevision
+    );
+  }
+  validateCloudDocument(remoteDocument, responseConfig.cloudSync, 0);
+  if (!latestCloudSyncEncryptedPayload(remoteDocument, operationCollection.operations)) {
     return cloudSyncConflictResult(
       responseConfig,
       "Cloud has a newer encrypted snapshot, but it could not be loaded for automatic merge.",
@@ -1659,7 +2447,10 @@ async function mergeAndPushCloudSyncConflict({
     );
   }
 
-  const baseSnapshot = cloudSyncSnapshotFromUnknown(responseConfig.cloudSync.lastSyncedSnapshot);
+  const baseSnapshot = cloudSyncSnapshotFromUnknown(
+    responseConfig.cloudSync.lastSyncedSnapshot,
+    keyMaterial
+  );
   let remoteSnapshot: CloudSyncSnapshot;
   let remoteMergeConflicts: string[] = [];
   try {
@@ -1685,7 +2476,7 @@ async function mergeAndPushCloudSyncConflict({
       paths: ["config"],
       remoteRevision,
       remoteSnapshot,
-      remoteSnapshotHash: remoteDocument.snapshotHash || snapshotHash(remoteSnapshot)
+      remoteSnapshotHash: snapshotHash(remoteSnapshot)
     });
   }
 
@@ -1703,18 +2494,18 @@ async function mergeAndPushCloudSyncConflict({
       paths: mergeConflicts,
       remoteRevision,
       remoteSnapshot,
-      remoteSnapshotHash: remoteDocument.snapshotHash || snapshotHash(remoteSnapshot)
+      remoteSnapshotHash: snapshotHash(remoteSnapshot)
     });
   }
-  let mergedConfig = applyCloudSyncSnapshot(responseConfig, merge.snapshot);
+  let mergedConfig = await applyCloudSyncSnapshotState(responseConfig, merge.snapshot);
   mergedConfig = {
     ...mergedConfig,
     cloudSync: {
       ...normalizedCloudSyncConfig(mergedConfig.cloudSync),
       lastRevision: remoteDocument.revision,
       lastSyncError: undefined,
-      lastSyncedSnapshot: cloneJson(remoteSnapshot),
-      snapshotHash: remoteDocument.snapshotHash || snapshotHash(remoteSnapshot)
+      lastSyncedSnapshot: storedCloudSyncSnapshot(remoteSnapshot, keyMaterial),
+      snapshotHash: snapshotHash(remoteSnapshot)
     }
   };
 
@@ -1762,14 +2553,15 @@ function cloudSyncResolutionRequiredResult({
   const id = randomUUID();
   const expiresAt = Date.now() + cloudSyncConflictResolutionMs;
   const normalizedPaths = uniqueStrings(paths);
+  const fields = describeCloudSyncConflictFields(
+    baseSnapshot,
+    localSnapshot,
+    remoteSnapshot,
+    normalizedPaths
+  );
   const descriptor: CloudSyncConflictResolution = {
     expiresAt: new Date(expiresAt).toISOString(),
-    fields: describeCloudSyncConflictFields(
-      baseSnapshot,
-      localSnapshot,
-      remoteSnapshot,
-      normalizedPaths
-    ),
+    fields: fields.map(redactCloudSyncConflictField),
     id,
     paths: normalizedPaths,
     remoteRevision
@@ -1777,6 +2569,7 @@ function cloudSyncResolutionRequiredResult({
   const pending: PendingCloudSyncConflict = {
     baseSnapshot: baseSnapshot ? cloneJson(baseSnapshot) : undefined,
     descriptor,
+    fields,
     identity,
     keyMaterial,
     localSnapshot: cloneJson(localSnapshot),
@@ -1842,6 +2635,46 @@ function describeCloudSyncConflictFields(
     }
     return field;
   });
+}
+
+function redactCloudSyncConflictField(field: CloudSyncConflictField): CloudSyncConflictField {
+  if (
+    !cloudSyncConflictPathIsSensitive(field.path) &&
+    !cloudSyncConflictValueContainsSensitiveData(field.local.value) &&
+    !cloudSyncConflictValueContainsSensitiveData(field.remote.value)
+  ) {
+    return field;
+  }
+  return {
+    local: { exists: field.local.exists },
+    path: field.path,
+    remote: { exists: field.remote.exists },
+    sensitive: true
+  };
+}
+
+function cloudSyncConflictPathIsSensitive(path: string): boolean {
+  return path.split(/[.[\]]+/).some(cloudSyncSensitiveFieldName);
+}
+
+function cloudSyncConflictValueContainsSensitiveData(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some(cloudSyncConflictValueContainsSensitiveData);
+  }
+  if (!isObject(value)) {
+    return false;
+  }
+  return Object.entries(value).some(([key, nestedValue]) => (
+    cloudSyncSensitiveFieldName(key) ||
+    cloudSyncConflictValueContainsSensitiveData(nestedValue)
+  ));
+}
+
+function cloudSyncSensitiveFieldName(name: string): boolean {
+  const normalized = name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+  return /^(?:apikeys?|authorization|credentials?|headers?|passwords?|secrets?)$/.test(normalized) ||
+    /^(?:access|auth|bearer|id|refresh|session)?tokens?$/.test(normalized) ||
+    /^(?:access|api|client|private|secret|session)(?:key|secret)$/.test(normalized);
 }
 
 function pendingCloudSyncConflictForConfig(config: AppConfig): PendingCloudSyncConflict | undefined {
@@ -1919,17 +2752,27 @@ async function withCloudSyncOperationAuthHandling(
   try {
     return await operation();
   } catch (error) {
-    if (!isCloudSyncAuthExpiredError(error)) {
-      throw error;
+    if (isCloudSyncRemoteKeyChangedError(error)) {
+      return {
+        config: error.config,
+        keyRotationRequired: true,
+        message: error.message,
+        snapshotApplied: false,
+        snapshotPushed: false,
+        status: getCloudSyncStatus(error.config)
+      };
     }
-    return {
-      authExpired: true,
-      config: error.config,
-      message: error.message,
-      snapshotApplied: false,
-      snapshotPushed: false,
-      status: getCloudSyncStatus(error.config)
-    };
+    if (isCloudSyncAuthExpiredError(error)) {
+      return {
+        authExpired: true,
+        config: error.config,
+        message: error.message,
+        snapshotApplied: false,
+        snapshotPushed: false,
+        status: getCloudSyncStatus(error.config)
+      };
+    }
+    throw error;
   }
 }
 
@@ -1937,13 +2780,21 @@ function isCloudSyncAuthExpiredError(error: unknown): error is CloudSyncAuthExpi
   return error instanceof CloudSyncAuthExpiredError;
 }
 
+function isCloudSyncRemoteKeyChangedError(error: unknown): error is CloudSyncRemoteKeyChangedError {
+  return error instanceof CloudSyncRemoteKeyChangedError;
+}
+
 function cloudSyncLoggedOutConfig(config: AppConfig): AppConfig {
+  forgetCloudTokenRefreshState(config.cloudSync);
   const nextConfig = disableCloudSyncConfig(config);
   return {
     ...nextConfig,
     cloudSync: {
       ...normalizedCloudSyncConfig(nextConfig.cloudSync),
-      lastSyncError: cloudSyncAuthExpiredMessage
+      accessToken: undefined,
+      lastSyncError: cloudSyncAuthExpiredMessage,
+      refreshToken: undefined,
+      refreshTokenExpiresAt: undefined
     }
   };
 }
@@ -1998,10 +2849,17 @@ async function continueCloudOperationPages({
   let nextDocument = document;
   let cursor = nextRevision;
   let more = hasMore;
-  const collected = [...operations];
+  const collected = cloudSyncOperationsFromUnknown(operations);
   const seenCursors = new Set<number>();
+  const startedAt = Date.now();
+  let pageCount = 1;
+  let collectedBytes = cloudSyncOperationCollectionBytes(collected);
+  assertCloudSyncOperationCollectionLimits(pageCount, collected.length, collectedBytes, startedAt);
 
   while (more) {
+    if (Date.now() - startedAt >= cloudSyncPaginationMaxMs) {
+      throw new Error("Cloud sync operation pagination exceeded the time limit.");
+    }
     if (
       typeof cursor !== "number" ||
       !Number.isInteger(cursor) ||
@@ -2016,9 +2874,16 @@ async function continueCloudOperationPages({
     });
     nextConfig = page.config;
     nextDocument = page.data.document;
-    collected.push(...(page.data.operations ?? []));
+    const pageOperations = cloudSyncOperationsFromUnknown(page.data.operations);
+    collected.push(...pageOperations);
+    pageCount += 1;
+    collectedBytes += cloudSyncOperationCollectionBytes(pageOperations);
+    assertCloudSyncOperationCollectionLimits(pageCount, collected.length, collectedBytes, startedAt);
     more = page.data.pagination?.hasMore === true;
     cursor = page.data.pagination?.nextRevision;
+  }
+  if (nextDocument) {
+    validateCloudOperations(collected, nextDocument);
   }
 
   return {
@@ -2026,6 +2891,40 @@ async function continueCloudOperationPages({
     document: nextDocument,
     operations: collected
   };
+}
+
+function cloudSyncOperationsFromUnknown(value: unknown): CloudOperation[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value) || value.some((operation) => !isObject(operation))) {
+    throw new Error("Cloud sync response contains an invalid operation list.");
+  }
+  return value as CloudOperation[];
+}
+
+function cloudSyncOperationCollectionBytes(operations: CloudOperation[]): number {
+  return Buffer.byteLength(JSON.stringify(operations), "utf8");
+}
+
+function assertCloudSyncOperationCollectionLimits(
+  pageCount: number,
+  operationCount: number,
+  byteCount: number,
+  startedAt: number
+): void {
+  if (pageCount > cloudSyncPaginationMaxPages) {
+    throw new Error("Cloud sync operation pagination exceeded the page limit.");
+  }
+  if (operationCount > cloudSyncPaginationMaxOperations) {
+    throw new Error("Cloud sync operation pagination exceeded the operation limit.");
+  }
+  if (byteCount > cloudSyncPaginationMaxBytes) {
+    throw new Error("Cloud sync operation pagination exceeded the size limit.");
+  }
+  if (Date.now() - startedAt > cloudSyncPaginationMaxMs) {
+    throw new Error("Cloud sync operation pagination exceeded the time limit.");
+  }
 }
 
 async function pullCloudDocument(
@@ -2053,7 +2952,7 @@ async function cloudRequest<T>(
 ): Promise<{ config: AppConfig; data: T }> {
   const cloudSync = normalizedCloudSyncConfig(config.cloudSync);
   const url = cloudSyncUrl(cloudSync.baseUrl, path);
-  const response = await fetch(url, {
+  const response = await cloudFetch(url, {
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     headers: {
       Accept: "application/json",
@@ -2099,28 +2998,32 @@ async function cloudTokenRefreshPatch(
   cloudSync: CloudSyncConfig,
   refreshToken: string
 ): Promise<CloudTokenRefreshPatch> {
-  const recent = cloudTokenRefreshRecent.get(refreshToken);
+  const refreshCacheKey = `${normalizeBaseUrl(cloudSync.baseUrl)}\n${refreshToken}`;
+  const recent = cloudTokenRefreshRecent.get(refreshCacheKey);
   if (recent) {
     if (recent.expiresAt > Date.now()) {
       return recent.patch;
     }
-    cloudTokenRefreshRecent.delete(refreshToken);
+    cloudTokenRefreshRecent.delete(refreshCacheKey);
   }
 
-  const inFlight = cloudTokenRefreshInFlight.get(refreshToken);
+  const inFlight = cloudTokenRefreshInFlight.get(refreshCacheKey);
   if (inFlight) {
     return inFlight;
   }
 
+  const generation = cloudTokenRefreshGeneration.get(refreshCacheKey) ?? 0;
   const refresh = fetchCloudTokenRefreshPatch(cloudSync, refreshToken)
     .then((patch) => {
-      rememberCloudTokenRefreshPatch(refreshToken, patch);
+      if ((cloudTokenRefreshGeneration.get(refreshCacheKey) ?? 0) === generation) {
+        rememberCloudTokenRefreshPatch(refreshCacheKey, patch);
+      }
       return patch;
     })
     .finally(() => {
-      cloudTokenRefreshInFlight.delete(refreshToken);
+      cloudTokenRefreshInFlight.delete(refreshCacheKey);
     });
-  cloudTokenRefreshInFlight.set(refreshToken, refresh);
+  cloudTokenRefreshInFlight.set(refreshCacheKey, refresh);
   return refresh;
 }
 
@@ -2128,7 +3031,7 @@ async function fetchCloudTokenRefreshPatch(
   cloudSync: CloudSyncConfig,
   refreshToken: string
 ): Promise<CloudTokenRefreshPatch> {
-  const response = await fetch(cloudSyncUrl(cloudSync.baseUrl, "/auth/refresh"), {
+  const response = await cloudFetch(cloudSyncUrl(cloudSync.baseUrl, "/auth/refresh"), {
     body: JSON.stringify({ refreshToken }),
     headers: {
       Accept: "application/json",
@@ -2155,15 +3058,43 @@ async function fetchCloudTokenRefreshPatch(
   };
 }
 
-function rememberCloudTokenRefreshPatch(refreshToken: string, patch: CloudTokenRefreshPatch): void {
+function rememberCloudTokenRefreshPatch(refreshCacheKey: string, patch: CloudTokenRefreshPatch): void {
   const entry = {
     expiresAt: Date.now() + cloudTokenRefreshRecentMs,
     patch
   };
-  cloudTokenRefreshRecent.set(refreshToken, entry);
-  if (patch.refreshToken !== refreshToken) {
-    cloudTokenRefreshRecent.set(patch.refreshToken, entry);
+  cloudTokenRefreshRecent.set(refreshCacheKey, entry);
+  setTimeout(() => {
+    if (cloudTokenRefreshRecent.get(refreshCacheKey) === entry) {
+      cloudTokenRefreshRecent.delete(refreshCacheKey);
+    }
+  }, cloudTokenRefreshRecentMs).unref();
+}
+
+function forgetCloudTokenRefreshState(cloudSync: CloudSyncConfig): void {
+  const cachePrefix = `${normalizeBaseUrl(cloudSync.baseUrl)}\n`;
+  const refreshToken = optionalString(cloudSync.refreshToken);
+  const keys = new Set([
+    ...[...cloudTokenRefreshRecent.keys()].filter((key) => key.startsWith(cachePrefix)),
+    ...[...cloudTokenRefreshInFlight.keys()].filter((key) => key.startsWith(cachePrefix)),
+    ...[...cloudTokenRefreshGeneration.keys()].filter((key) => key.startsWith(cachePrefix)),
+    ...(refreshToken ? [`${cachePrefix}${refreshToken}`] : [])
+  ]);
+  for (const refreshCacheKey of keys) {
+    cloudTokenRefreshRecent.delete(refreshCacheKey);
+    cloudTokenRefreshInFlight.delete(refreshCacheKey);
+    invalidateCloudTokenRefreshGeneration(refreshCacheKey);
   }
+}
+
+function invalidateCloudTokenRefreshGeneration(refreshCacheKey: string): void {
+  const generation = (cloudTokenRefreshGeneration.get(refreshCacheKey) ?? 0) + 1;
+  cloudTokenRefreshGeneration.set(refreshCacheKey, generation);
+  setTimeout(() => {
+    if (cloudTokenRefreshGeneration.get(refreshCacheKey) === generation) {
+      cloudTokenRefreshGeneration.delete(refreshCacheKey);
+    }
+  }, cloudTokenRefreshRecentMs).unref();
 }
 
 function applyCloudTokenRefreshPatch(config: AppConfig, patch: CloudTokenRefreshPatch): AppConfig {
@@ -2180,7 +3111,35 @@ function applyCloudTokenRefreshPatch(config: AppConfig, patch: CloudTokenRefresh
 }
 
 async function readCloudResponse(response: Response): Promise<unknown> {
-  const text = await response.text();
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > cloudSyncResponseMaxBytes) {
+    throw new Error("Cloud sync response is too large.");
+  }
+  if (!response.body) {
+    return {};
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const item = await reader.read();
+    if (item.done) {
+      break;
+    }
+    totalBytes += item.value.byteLength;
+    if (totalBytes > cloudSyncResponseMaxBytes) {
+      await reader.cancel();
+      throw new Error("Cloud sync response is too large.");
+    }
+    chunks.push(item.value);
+  }
+  const body = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const text = new TextDecoder().decode(body);
   if (!text) {
     return {};
   }
@@ -2244,8 +3203,13 @@ function resolveCloudSyncKey(
     };
   }
 
-  const secret = readSecretInput(input);
-  const keyMode: CloudSyncConfig["keyMode"] = input.keyFilePath ? "key-file" : "password";
+  const effectiveInput = input.password || input.keyFilePath
+    ? input
+    : cloudSync.keyFilePath
+      ? { keyFilePath: cloudSync.keyFilePath }
+      : input;
+  const secret = readSecretInput(effectiveInput);
+  const keyMode: CloudSyncConfig["keyMode"] = effectiveInput.keyFilePath ? "key-file" : "password";
   const keySalt = cloudSync.keySalt || (options.allowCreateSalt ? randomBase64(16) : "");
   if (!keySalt) {
     throw new Error("Cloud sync key salt is missing. Run cloud sync setup again.");
@@ -2303,10 +3267,18 @@ function readCloudSyncKeyFile(file: string): Buffer {
 function writeCloudSyncKeyFile(file: string): void {
   const key = randomBytes(32).toString("base64");
   mkdirSync(dirname(file), { mode: privateDirMode, recursive: true });
-  writeFileSync(file, `${JSON.stringify({ kind: keyFileKind, key, version: keyFileVersion }, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: privateFileMode
-  });
+  try {
+    writeFileSync(file, `${JSON.stringify({ kind: keyFileKind, key, version: keyFileVersion }, null, 2)}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: privateFileMode
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw new Error("Cloud sync key file already exists. Choose a new path to avoid losing an existing encryption key.");
+    }
+    throw error;
+  }
   chmodSync(file, privateFileMode);
 }
 
@@ -2370,15 +3342,238 @@ function keySaltFromEncryptedPayload(encrypted: EncryptedPayload): string {
   return keySalt;
 }
 
+function latestCloudSyncEncryptedPayload(
+  document: CloudDocument,
+  operations: CloudOperation[]
+): EncryptedPayload | undefined {
+  const snapshotRevision = typeof document.snapshotRevision === "number"
+    ? document.snapshotRevision
+    : -1;
+  const operationPayload = [...operations]
+    .filter((operation) => (
+      typeof operation.revision === "number" &&
+      operation.revision > snapshotRevision &&
+      isEncryptedPayload(operation.encryptedPayload)
+    ))
+    .sort((left, right) => (right.revision ?? 0) - (left.revision ?? 0))[0]
+    ?.encryptedPayload;
+  if (isEncryptedPayload(operationPayload)) {
+    return operationPayload;
+  }
+  return isEncryptedPayload(document.encryptedSnapshot)
+    ? document.encryptedSnapshot
+    : undefined;
+}
+
+function cloudSyncConfigForEncryptedPayload(
+  cloudSync: CloudSyncConfig,
+  encrypted: EncryptedPayload
+): CloudSyncConfig {
+  const keyId = requiredString(encrypted.keyId, "Remote cloud sync key ID");
+  const keySalt = keySaltFromEncryptedPayload(encrypted);
+  return {
+    ...normalizedCloudSyncConfig(cloudSync),
+    keyId,
+    keySalt
+  };
+}
+
+function cachedCloudSyncKeyMaterial(cloudSync: CloudSyncConfig): CloudSyncKeyMaterial | undefined {
+  const normalized = normalizedCloudSyncConfig(cloudSync);
+  if (!normalized.keyId || !normalized.keySalt) {
+    return undefined;
+  }
+  const key = cloudSyncKeyCache.get(normalized.keyId);
+  if (!key) {
+    return undefined;
+  }
+  return {
+    key,
+    keyId: normalized.keyId,
+    keyMode: normalized.keyMode ?? "password",
+    keySalt: normalized.keySalt
+  };
+}
+
+function cloudSyncRemoteKeyChangedConfig(
+  config: AppConfig,
+  remoteKeyConfig: CloudSyncConfig
+): AppConfig {
+  return {
+    ...config,
+    cloudSync: {
+      ...normalizedCloudSyncConfig(config.cloudSync),
+      keyFilePath: undefined,
+      keyId: remoteKeyConfig.keyId,
+      keySalt: remoteKeyConfig.keySalt,
+      lastSyncError: "The cloud sync encryption key changed on another device. Unlock sync with the new password or key file."
+    }
+  };
+}
+
+function cloudSyncBaselineKeyMaterial(
+  value: unknown,
+  cloudSync: CloudSyncConfig
+): CloudSyncKeyMaterial | undefined {
+  if (!isStoredCloudSyncSnapshot(value)) {
+    return cachedCloudSyncKeyMaterial(cloudSync);
+  }
+  const key = cloudSyncKeyCache.get(value.encrypted.keyId);
+  if (!key) {
+    return undefined;
+  }
+  return {
+    key,
+    keyId: value.encrypted.keyId,
+    keyMode: cloudSync.keyMode ?? "password",
+    keySalt: keySaltFromEncryptedPayload(value.encrypted)
+  };
+}
+
+function validateCloudDocument(
+  document: CloudDocument,
+  cloudSync: CloudSyncConfig,
+  minimumRevision: number
+): void {
+  if (!isObject(document)) {
+    throw new Error("Cloud sync response does not contain a valid document.");
+  }
+  if (!Number.isInteger(document.revision) || document.revision < 0) {
+    throw new Error("Cloud sync document revision is invalid.");
+  }
+  if (document.revision < minimumRevision) {
+    throw new Error(
+      `Cloud sync rejected a remote rollback from revision ${minimumRevision} to ${document.revision}.`
+    );
+  }
+  if (document.namespace !== normalizedCloudSyncConfig(cloudSync).namespace) {
+    throw new Error("Cloud sync document namespace does not match the requested namespace.");
+  }
+  if (
+    document.snapshotRevision !== null &&
+    document.snapshotRevision !== undefined &&
+    (
+      !Number.isInteger(document.snapshotRevision) ||
+      document.snapshotRevision < 0 ||
+      document.snapshotRevision > document.revision
+    )
+  ) {
+    throw new Error("Cloud sync document snapshot revision is invalid.");
+  }
+  if (
+    document.encryptedSnapshot !== undefined &&
+    document.encryptedSnapshot !== null &&
+    !isEncryptedPayload(document.encryptedSnapshot)
+  ) {
+    throw new Error("Cloud sync document contains an invalid encrypted snapshot.");
+  }
+}
+
+function validateCloudOperations(
+  operations: CloudOperation[],
+  document: CloudDocument
+): void {
+  const seenRevisions = new Set<number>();
+  for (const operation of operations) {
+    if (
+      !Number.isInteger(operation.revision) ||
+      (operation.revision ?? 0) <= 0 ||
+      (operation.revision ?? 0) > document.revision ||
+      seenRevisions.has(operation.revision as number)
+    ) {
+      throw new Error("Cloud sync response contains an invalid or duplicate operation revision.");
+    }
+    seenRevisions.add(operation.revision as number);
+    if (
+      operation.baseRevision !== undefined &&
+      (
+        !Number.isInteger(operation.baseRevision) ||
+        operation.baseRevision < 0 ||
+        operation.baseRevision >= (operation.revision as number)
+      )
+    ) {
+      throw new Error("Cloud sync response contains an invalid operation base revision.");
+    }
+    if (
+      operation.encryptedPayload !== undefined &&
+      operation.encryptedPayload !== null &&
+      !isEncryptedPayload(operation.encryptedPayload)
+    ) {
+      throw new Error("Cloud sync response contains an invalid encrypted operation.");
+    }
+  }
+}
+
+function isEncryptedPayload(value: unknown): value is EncryptedPayload {
+  return isObject(value) &&
+    value.algorithm === "aes-256-gcm" &&
+    value.encoding === "base64" &&
+    typeof value.ciphertext === "string" &&
+    value.ciphertext.length > 0 &&
+    isCanonicalBase64(value.ciphertext) &&
+    typeof value.keyId === "string" &&
+    /^ccr-e2ee-v1-[a-zA-Z0-9_-]{32}$/.test(value.keyId) &&
+    isObject(value.metadata) &&
+    value.metadata.kdf === "pbkdf2-sha256" &&
+    value.metadata.kdfIterations === keyDerivationIterations &&
+    typeof value.metadata.keySalt === "string" &&
+    isCanonicalBase64(value.metadata.keySalt, 16) &&
+    typeof value.nonce === "string" &&
+    isCanonicalBase64(value.nonce, 12) &&
+    typeof value.tag === "string" &&
+    isCanonicalBase64(value.tag, 16);
+}
+
+function isCanonicalBase64(value: string, byteLength?: number): boolean {
+  if (!/^(?:[a-zA-Z0-9+/]{4})*(?:[a-zA-Z0-9+/]{2}==|[a-zA-Z0-9+/]{3}=)?$/.test(value)) {
+    return false;
+  }
+  const decoded = Buffer.from(value, "base64");
+  return decoded.toString("base64") === value &&
+    (byteLength === undefined || decoded.length === byteLength);
+}
+
 function isCloudSyncSnapshot(value: unknown): value is CloudSyncSnapshot {
   return isObject(value) &&
     value.kind === cloudSyncSnapshotKind &&
-    value.version === 1 &&
-    isObject(value.config);
+    (value.version === 1 || value.version === 2 || value.version === 3) &&
+    isObject(value.config) &&
+    (value.usageEvents === undefined || Array.isArray(value.usageEvents));
 }
 
-function cloudSyncSnapshotFromUnknown(value: unknown): CloudSyncSnapshot | undefined {
-  return isCloudSyncSnapshot(value) ? cloneJson(value) : undefined;
+function storedCloudSyncSnapshot(
+  snapshot: CloudSyncSnapshot,
+  keyMaterial: CloudSyncKeyMaterial
+): StoredCloudSyncSnapshot {
+  return {
+    encrypted: encryptJson(snapshot, keyMaterial),
+    kind: storedCloudSyncSnapshotKind,
+    version: 1
+  };
+}
+
+function isStoredCloudSyncSnapshot(value: unknown): value is StoredCloudSyncSnapshot {
+  return isObject(value) &&
+    value.kind === storedCloudSyncSnapshotKind &&
+    value.version === 1 &&
+    isEncryptedPayload(value.encrypted);
+}
+
+function isCloudSyncBaselineValue(value: unknown): boolean {
+  return isCloudSyncSnapshot(value) || isStoredCloudSyncSnapshot(value);
+}
+
+function cloudSyncSnapshotFromUnknown(
+  value: unknown,
+  keyMaterial?: CloudSyncKeyMaterial
+): CloudSyncSnapshot | undefined {
+  if (isCloudSyncSnapshot(value)) {
+    return cloneJson(value);
+  }
+  if (!keyMaterial || !isStoredCloudSyncSnapshot(value)) {
+    return undefined;
+  }
+  return decryptSnapshot(value.encrypted, keyMaterial);
 }
 
 function isMissingCloudSyncMergeValue(value: unknown): value is typeof missingCloudSyncMergeValue {
@@ -2386,7 +3581,29 @@ function isMissingCloudSyncMergeValue(value: unknown): value is typeof missingCl
 }
 
 function snapshotHash(snapshot: CloudSyncSnapshot): string {
-  return createHash("sha256").update(stableStringify(snapshot)).digest("base64url");
+  return createHash("sha256").update(stableStringify({
+    config: snapshot.config,
+    kind: snapshot.kind,
+    usageEvents: snapshot.usageEvents ?? [],
+    version: snapshot.version
+  })).digest("base64url");
+}
+
+async function cloudFetch(input: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: AbortSignal.timeout(cloudSyncRequestTimeoutMs)
+    });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.name === "AbortError" || error.name === "TimeoutError")
+    ) {
+      throw new Error(`Cloud sync request timed out after ${cloudSyncRequestTimeoutMs / 1000} seconds.`);
+    }
+    throw error;
+  }
 }
 
 function cloudSyncKeyId(key: Buffer, salt: Buffer): string {
@@ -2396,7 +3613,8 @@ function cloudSyncKeyId(key: Buffer, salt: Buffer): string {
 function withCloudSyncSuccess(
   config: AppConfig,
   patch: Pick<CloudSyncConfig, "lastRevision"> & Partial<Pick<CloudSyncConfig, "snapshotHash">>,
-  syncedSnapshot?: CloudSyncSnapshot
+  syncedSnapshot?: CloudSyncSnapshot,
+  keyMaterial?: CloudSyncKeyMaterial
 ): AppConfig {
   clearPendingCloudSyncConflict(config);
   return {
@@ -2404,10 +3622,25 @@ function withCloudSyncSuccess(
     cloudSync: {
       ...normalizedCloudSyncConfig(config.cloudSync),
       lastRevision: patch.lastRevision,
-      lastSyncedSnapshot: syncedSnapshot ? cloneJson(syncedSnapshot) : normalizedCloudSyncConfig(config.cloudSync).lastSyncedSnapshot,
+      lastSyncedSnapshot: syncedSnapshot
+        ? keyMaterial
+          ? storedCloudSyncSnapshot(syncedSnapshot, keyMaterial)
+          : cloneJson(syncedSnapshot)
+        : normalizedCloudSyncConfig(config.cloudSync).lastSyncedSnapshot,
       lastSyncAt: new Date().toISOString(),
       lastSyncError: undefined,
       snapshotHash: patch.snapshotHash
+    }
+  };
+}
+
+function withCloudSyncProbeSuccess(config: AppConfig): AppConfig {
+  return {
+    ...config,
+    cloudSync: {
+      ...normalizedCloudSyncConfig(config.cloudSync),
+      lastSyncAt: new Date().toISOString(),
+      lastSyncError: undefined
     }
   };
 }
@@ -2445,30 +3678,44 @@ function prepareCloudSyncAuthConfig(config: AppConfig): AppConfig {
     ...config,
     cloudSync: {
       ...normalizedCloudSyncConfig(config.cloudSync),
-      baseUrl: CLOUD_SYNC_DEFAULT_BASE_URL,
       deviceName: normalizedCloudSyncConfig(config.cloudSync).deviceName || defaultDeviceName(),
       lastSyncError: undefined
     }
   };
 }
 
-function normalizedCloudSyncConfig(config: CloudSyncConfig): CloudSyncConfig {
+function normalizedCloudSyncConfig(
+  config: CloudSyncConfig
+): CloudSyncConfig & { scopes: CloudSyncScope[] } {
   return {
     ...config,
-    baseUrl: CLOUD_SYNC_DEFAULT_BASE_URL,
+    baseUrl: normalizeBaseUrl(config.baseUrl || CLOUD_SYNC_DEFAULT_BASE_URL),
     deviceName: optionalString(config.deviceName) || defaultDeviceName(),
     enabled: Boolean(config.enabled),
     lastRevision: Number.isInteger(config.lastRevision) && config.lastRevision >= 0 ? config.lastRevision : 0,
-    lastSyncedSnapshot: cloudSyncSnapshotFromUnknown(config.lastSyncedSnapshot),
-    namespace: optionalString(config.namespace) || defaultCloudSyncNamespace
+    lastSyncedSnapshot: isCloudSyncBaselineValue(config.lastSyncedSnapshot)
+      ? cloneJson(config.lastSyncedSnapshot)
+      : undefined,
+    namespace: optionalString(config.namespace) || defaultCloudSyncNamespace,
+    scopes: normalizeCloudSyncScopes(config.scopes)
   };
+}
+
+function normalizeCloudSyncScopes(value: unknown): CloudSyncScope[] {
+  if (!Array.isArray(value)) {
+    return [...DEFAULT_CLOUD_SYNC_SCOPES];
+  }
+  const allowed = new Set<unknown>(CLOUD_SYNC_SCOPE_IDS);
+  return [...new Set(value.filter((item): item is CloudSyncScope => allowed.has(item)))];
 }
 
 function normalizeBaseUrl(value: string | undefined): string {
   const raw = requiredString(value, "Cloud sync server URL");
   const url = new URL(raw);
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("Cloud sync server URL must use http or https.");
+  const loopbackHttp = url.protocol === "http:" &&
+    (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1");
+  if (url.protocol !== "https:" && !loopbackHttp) {
+    throw new Error("Cloud sync server URL must use HTTPS unless it targets the local machine.");
   }
   url.pathname = url.pathname.replace(/\/+$/, "");
   url.search = "";
@@ -2477,11 +3724,11 @@ function normalizeBaseUrl(value: string | undefined): string {
 }
 
 function cloudSyncUrl(baseUrl: string, path: string): string {
-  return new URL(path, `${normalizeBaseUrl(baseUrl)}/`).toString();
+  return new URL(path.replace(/^\/+/, ""), `${normalizeBaseUrl(baseUrl)}/`).toString();
 }
 
-function cloudSyncLoginUrl(callbackUrl: string | undefined): string {
-  const url = new URL(cloudSyncUrl(CLOUD_SYNC_DEFAULT_BASE_URL, "/auth/github/login"));
+function cloudSyncLoginUrl(baseUrl: string, callbackUrl: string | undefined): string {
+  const url = new URL(cloudSyncUrl(baseUrl, "/auth/github/login"));
   const normalizedCallbackUrl = optionalString(callbackUrl);
   if (normalizedCallbackUrl) {
     const verifier = randomBytes(64).toString("base64url");

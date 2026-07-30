@@ -181,6 +181,7 @@ ccr profile-id -- --help
 | `CCR_WEB_HOST` | 省略 `--host` 时使用的管理服务监听地址。 |
 | `CCR_WEB_PORT` | 省略 `--port` 时使用的管理服务端口。 |
 | `CCR_WEB_AUTH_TOKEN` | 固定管理 UI / RPC Token；不设置时进程会生成随机 Token。 |
+| `CCR_CLOUD_SYNC_BASE_URL` | 登录前指定云同步服务地址；远程地址必须使用 HTTPS，本机回环地址可使用 HTTP，并支持路径前缀。 |
 
 监听到 `0.0.0.0` 会让管理界面进入局域网或外部网络。只有在确实需要时才这样配置，并同时使用固定强 Token、主机防火墙或私网，以及可信反向代理提供的 TLS。
 

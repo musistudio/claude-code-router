@@ -35,6 +35,7 @@ import type {
   CloudSyncPullRequest,
   CloudSyncPushRequest,
   CloudSyncResolveConflictRequest,
+  CloudSyncRotateKeyRequest,
   CloudSyncSetupRequest,
   CloudSyncStatus,
   GatewayMcpToolInfo,
@@ -101,9 +102,11 @@ declare global {
       cloudSyncGenerateKeyFile: (file?: string) => Promise<CloudSyncKeyFileResult>;
       cloudSyncGetStatus: () => Promise<CloudSyncStatus>;
       cloudSyncLogin: () => Promise<CloudSyncLoginResult>;
+      cloudSyncLogout: () => Promise<CloudSyncOperationResult>;
       cloudSyncPull: (request?: CloudSyncPullRequest) => Promise<CloudSyncOperationResult>;
       cloudSyncPush: (request?: CloudSyncPushRequest) => Promise<CloudSyncOperationResult>;
       cloudSyncResolveConflict: (request: CloudSyncResolveConflictRequest) => Promise<CloudSyncOperationResult>;
+      cloudSyncRotateKey: (request: CloudSyncRotateKeyRequest) => Promise<CloudSyncOperationResult>;
       cloudSyncSetup: (request: CloudSyncSetupRequest) => Promise<CloudSyncOperationResult>;
       closeBotGatewayQrWindow: (request: BotGatewayQrWindowCloseRequest) => Promise<BotGatewayQrWindowCloseResult>;
       clearProxyNetworkCaptures: () => Promise<ProxyNetworkSnapshot>;
@@ -174,6 +177,7 @@ declare global {
       waitBotGatewayQrLogin: (request: BotGatewayQrLoginWaitRequest) => Promise<BotGatewayQrLoginWaitResult>;
       onBeforeQuit: (callback: () => void) => () => void;
       onCloudSyncAuthChanged?: (callback: () => void) => () => void;
+      onCloudSyncChanged?: (callback: (config: AppConfig) => void) => () => void;
       onOpenSettingsRequest: (callback: () => void) => () => void;
       onOpenUpdateRequest: (callback: () => void) => () => void;
       onProviderDeepLink: (callback: (request: ProviderDeepLinkRequest) => void) => () => void;

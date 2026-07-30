@@ -1,13 +1,13 @@
 import {
   Activity, AnimatedDisclosure, AnimatePresence, AppConfig, AppCopy, AppInfo, AppLanguagePreference, ArrowDown, ArrowUp, Boxes, BotGatewayConfigDraft, botGatewayAuthSpecsForPlatform,
   botGatewayDefaultAuthType, botGatewayFieldsForAuth, botGatewayPickAuthFields, botGatewayPlatformLabel, botGatewayPlatformOptions,
-  botGatewaySavedConfigFromDraft, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitResult, BotGatewayQrWindowOpenResult, BotGatewaySavedConfig, Button,
+  botGatewaySavedConfigFromDraft, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitResult, BotGatewayQrWindowOpenResult, BotGatewaySavedConfig, Button, Checkbox,
   CircleAlert, closestCenter, cn, CSS, Database, Dialog, DialogBody, DialogContent,
   DialogFooter, DialogHeader, DialogTitle, endpointFromHostPort, Field, formatAppError, formatProviderAccountMeterValue, formatSystemOption, Gauge,
   Globe,
   createBotGatewayConfigDraft, createMcpServerDraft, createMcpServerDraftFromConfig, createMcpServerDraftFromUnknown, DndContext, DragEndEvent, GatewayMcpServerConfig, GatewayProviderConfig, Input, isBotGatewayConfigDraftSubmittable, KeyboardSensor, KeyRound, KeyValueRowsControl, languageDisplayName, Layers3, LoaderCircle,
   mcpServerConfigFromDraft, mcpServerEndpointSummary, mcpServerTransportOptions, mcpStdioMessageModeOptions, McpServerDraft, normalizeBotGatewayAuthType, normalizeBotGatewayPlatform, normalizeProviderModelSelector, normalizeProxyUpstreamConfig, normalizeToolHubConfig, numberValue, Palette, Pencil, Plus, ProfileConfig, profileAgentLabel,
-  CloudSyncOperationResult, CloudSyncStatus, PanelLeftOpen, Power, ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ResolvedLanguage, ResolvedTheme, Select, SelectControl,
+  cloudSyncScopeOptions, CloudSyncOperationResult, CloudSyncScope, CloudSyncStatus, CLOUD_SYNC_SCOPE_IDS, DEFAULT_CLOUD_SYNC_SCOPES, normalizeCloudSyncScopeSelection, PanelLeftOpen, Power, ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ResolvedLanguage, ResolvedTheme, Select, SelectControl,
   PointerSensor, rectSortingStrategy, Settings, SettingsPageId, SortableContext, sortableKeyboardCoordinates, themeDisplayName,
   Tabs, TabsContent, TabsList, TabsTrigger,
   translateOptions, TrayBalanceProgressConfig, TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant,
@@ -367,6 +367,7 @@ type CloudSyncConflictValue = CloudSyncConflictField["local"];
 type CloudSyncConflictDraft = {
   exists: boolean;
   path: string;
+  sensitive: boolean;
   source: "local" | "manual" | "remote";
   text: string;
 };
@@ -386,8 +387,9 @@ function cloudSyncConflictDraft(
   return {
     exists: value.exists,
     path: field.path,
+    sensitive: Boolean(field.sensitive),
     source,
-    text: formatCloudSyncConflictJson(value)
+    text: field.sensitive ? "" : formatCloudSyncConflictJson(value)
   };
 }
 
@@ -406,6 +408,9 @@ function CloudSyncSettingsPage({
   const [keyMode, setKeyMode] = useState<"key-file" | "password">(config.cloudSync.keyMode ?? "password");
   const [password, setPassword] = useState("");
   const [keyFilePath, setKeyFilePath] = useState("");
+  const [syncScopes, setSyncScopes] = useState<CloudSyncScope[]>(
+    normalizeCloudSyncScopeSelection(config.cloudSync.scopes)
+  );
   const [status, setStatus] = useState<CloudSyncStatus>();
   const [busy, setBusy] = useState<"" | "setup" | "push" | "pull" | "disable" | "logout" | "status" | "login" | "key-file" | "resolve">("");
   const [syncPanelOpen, setSyncPanelOpen] = useState(Boolean(config.cloudSync.enabled));
@@ -421,14 +426,23 @@ function CloudSyncSettingsPage({
   const effectiveStatus = status ?? cloudSyncStatusFromConfig(config);
   const authenticated = effectiveStatus.authenticated;
   const syncControlsVisible = effectiveStatus.enabled || syncPanelOpen;
-  const setupReady = keyMode === "key-file" ? Boolean(keyFilePath.trim()) : Boolean(password);
+  const keyReady = keyMode === "key-file" ? Boolean(keyFilePath.trim()) : Boolean(password);
+  const setupReady = keyReady && (effectiveStatus.enabled || syncScopes.length > 0);
   const avatarUrl = effectiveStatus.userAvatarUrl && effectiveStatus.userAvatarUrl !== failedAvatarUrl
     ? effectiveStatus.userAvatarUrl
     : "";
 
   useEffect(() => {
     setKeyMode(config.cloudSync.keyMode ?? "password");
+    setSyncScopes(normalizeCloudSyncScopeSelection(config.cloudSync.scopes));
     setStatus(cloudSyncStatusFromConfig(config));
+    void window.ccr?.cloudSyncGetStatus?.()
+      .then((nextStatus) => {
+        setStatus(nextStatus);
+        setPendingConflict(nextStatus.pendingConflict);
+        setConflictDialogOpen(Boolean(nextStatus.pendingConflict));
+      })
+      .catch(() => undefined);
   }, [
     config.cloudSync.deviceId,
     config.cloudSync.enabled,
@@ -438,6 +452,7 @@ function CloudSyncSettingsPage({
     config.cloudSync.lastSyncAt,
     config.cloudSync.lastSyncError,
     config.cloudSync.refreshToken,
+    config.cloudSync.scopes?.join("|"),
     config.cloudSync.userAvatarUrl,
     config.cloudSync.userEmail,
     config.cloudSync.userId,
@@ -493,6 +508,7 @@ function CloudSyncSettingsPage({
       onConfigChange(result.config);
     }
     setStatus(result.status);
+    setSyncScopes(normalizeCloudSyncScopeSelection(result.status.scopes));
     const nextConflict = "conflictResolution" in result
       ? result.conflictResolution ?? result.status.pendingConflict
       : result.status.pendingConflict;
@@ -607,7 +623,11 @@ function CloudSyncSettingsPage({
     setMergeConflicts([]);
     try {
       if (action === "setup") {
-        const result = await window.ccr.cloudSyncSetup(keyInput());
+        const result = effectiveStatus.enabled && effectiveStatus.configured
+          ? effectiveStatus.unlocked
+            ? await window.ccr.cloudSyncRotateKey(keyInput())
+            : await window.ccr.cloudSyncPull(keyInput())
+          : await window.ccr.cloudSyncSetup({ ...keyInput(), scopes: syncScopes });
         applyCloudResult(result);
         const authExpired = "authExpired" in result && result.authExpired;
         setSyncPanelOpen(!authExpired);
@@ -616,8 +636,12 @@ function CloudSyncSettingsPage({
         applyCloudResult(await window.ccr.cloudSyncPush(keyInput()));
       } else if (action === "pull") {
         applyCloudResult(await window.ccr.cloudSyncPull(keyInput()));
-      } else if (action === "disable" || action === "logout") {
+      } else if (action === "disable") {
         applyCloudResult(await window.ccr.cloudSyncDisable());
+        setSyncPanelOpen(false);
+        setEncryptionSettingsOpen(false);
+      } else if (action === "logout") {
+        applyCloudResult(await window.ccr.cloudSyncLogout());
         setSyncPanelOpen(false);
         setEncryptionSettingsOpen(false);
       }
@@ -663,12 +687,23 @@ function CloudSyncSettingsPage({
     if (!window.ccr?.cloudSyncResolveConflict || !pendingConflict) {
       return;
     }
-    const resolutions: Array<{ path: string; result: CloudSyncConflictValue }> = [];
+    const resolutions: Array<{
+      path: string;
+      result?: CloudSyncConflictValue;
+      source?: "local" | "remote";
+    }> = [];
     for (const field of pendingConflict.fields) {
       const draft = conflictDrafts.find((item) => item.path === field.path);
       if (!draft) {
         setConflictDraftError(t("Resolve every conflicting field before applying."));
         return;
+      }
+      if (draft.source === "local" || draft.source === "remote") {
+        resolutions.push({
+          path: field.path,
+          source: draft.source
+        });
+        continue;
       }
       if (!draft.exists) {
         resolutions.push({
@@ -719,7 +754,7 @@ function CloudSyncSettingsPage({
   function toggleCloudSyncPanel(checked: boolean) {
     if (checked) {
       setSyncPanelOpen(true);
-      setEncryptionSettingsOpen(!effectiveStatus.configured);
+      setEncryptionSettingsOpen(!effectiveStatus.enabled || !effectiveStatus.configured);
       setError("");
       return;
     }
@@ -800,6 +835,80 @@ function CloudSyncSettingsPage({
                     </div>
                   ) : null}
 
+                  {!effectiveStatus.enabled ? (
+                    <div className="grid grid-cols-1 gap-2 rounded-md border border-border bg-muted/15 p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <div className="text-[12px] font-semibold text-foreground">{t("Sync range")}</div>
+                          <div className="mt-0.5 text-[11px] leading-5 text-muted-foreground">
+                            {t("Choose what this device syncs. All items are selected by default.")}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            disabled={Boolean(busy) || syncScopes.length === CLOUD_SYNC_SCOPE_IDS.length}
+                            onClick={() => setSyncScopes([...DEFAULT_CLOUD_SYNC_SCOPES])}
+                            size="sm"
+                            type="button"
+                            variant="ghost"
+                          >
+                            {t("Select all")}
+                          </Button>
+                          <Button
+                            disabled={Boolean(busy) || syncScopes.length === 0}
+                            onClick={() => setSyncScopes([])}
+                            size="sm"
+                            type="button"
+                            variant="ghost"
+                          >
+                            {t("Clear all")}
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {cloudSyncScopeOptions.map((option) => {
+                          const checked = syncScopes.includes(option.id);
+                          return (
+                            <label
+                              className={cn(
+                                "flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 transition-colors",
+                                checked ? "border-primary/40 bg-primary/5" : "border-border bg-background"
+                              )}
+                              key={option.id}
+                            >
+                              <Checkbox
+                                checked={checked}
+                                disabled={Boolean(busy)}
+                                onCheckedChange={(nextChecked) => {
+                                  setSyncScopes((current) => {
+                                    const selected = new Set(current);
+                                    if (nextChecked) {
+                                      selected.add(option.id);
+                                    } else {
+                                      selected.delete(option.id);
+                                    }
+                                    return CLOUD_SYNC_SCOPE_IDS.filter((id) => selected.has(id));
+                                  });
+                                }}
+                              />
+                              <span className="min-w-0">
+                                <span className="block text-[12px] font-medium text-foreground">{t(option.label)}</span>
+                                {option.description ? (
+                                  <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">
+                                    {t(option.description)}
+                                  </span>
+                                ) : null}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {syncScopes.length === 0 ? (
+                        <div className="text-[11px] text-destructive">{t("Select at least one sync item.")}</div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   <Tabs
                     className="grid grid-cols-1 gap-3"
                     onValueChange={(value) => setKeyMode(value === "key-file" ? "key-file" : "password")}
@@ -868,7 +977,11 @@ function CloudSyncSettingsPage({
                       type="button"
                     >
                       {busy === "setup" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
-                      {effectiveStatus.enabled ? t("Update setup") : t("Enable sync")}
+                      {effectiveStatus.enabled && effectiveStatus.configured
+                        ? effectiveStatus.unlocked
+                          ? t("Rotate encryption key")
+                          : t("Unlock sync")
+                        : t("Enable sync")}
                     </Button>
                   </div>
                 </section>
@@ -1033,7 +1146,11 @@ function CloudSyncSettingsPage({
                         </Button>
                       </div>
                       <pre className="max-h-64 min-h-32 overflow-auto whitespace-pre-wrap break-all rounded border border-red-200/80 bg-background/80 p-2 font-mono text-[11px] leading-5 text-foreground dark:border-red-950">
-                        {field.local.exists ? formatCloudSyncConflictJson(field.local) : t("Field does not exist")}
+                        {field.sensitive
+                          ? t("Sensitive value hidden")
+                          : field.local.exists
+                            ? formatCloudSyncConflictJson(field.local)
+                            : t("Field does not exist")}
                       </pre>
                     </div>
 
@@ -1046,7 +1163,7 @@ function CloudSyncSettingsPage({
                           </div>
                         </div>
                         <Button
-                          disabled={busy === "resolve"}
+                          disabled={busy === "resolve" || draft.sensitive}
                           onClick={() => updateCloudConflictDraft(field.path, draft.exists
                             ? { exists: false, source: "manual" }
                             : { exists: true, source: "manual", text: draft.text || "null" })}
@@ -1061,7 +1178,7 @@ function CloudSyncSettingsPage({
                         <Textarea
                           aria-label={`${t("Final result")}: ${field.path}`}
                           className="min-h-32 resize-y bg-background font-mono text-[11px] leading-5"
-                          disabled={busy === "resolve"}
+                          disabled={busy === "resolve" || draft.sensitive}
                           onChange={(event) => updateCloudConflictDraft(field.path, {
                             source: "manual",
                             text: event.target.value
@@ -1091,7 +1208,11 @@ function CloudSyncSettingsPage({
                         </Button>
                       </div>
                       <pre className="max-h-64 min-h-32 overflow-auto whitespace-pre-wrap break-all rounded border border-emerald-200/80 bg-background/80 p-2 font-mono text-[11px] leading-5 text-foreground dark:border-emerald-950">
-                        {field.remote.exists ? formatCloudSyncConflictJson(field.remote) : t("Field does not exist")}
+                        {field.sensitive
+                          ? t("Sensitive value hidden")
+                          : field.remote.exists
+                            ? formatCloudSyncConflictJson(field.remote)
+                            : t("Field does not exist")}
                       </pre>
                     </div>
                   </div>
@@ -1149,6 +1270,7 @@ function cloudSyncStatusFromConfig(config: AppConfig): CloudSyncStatus {
     lastSyncAt: config.cloudSync.lastSyncAt,
     lastSyncError: config.cloudSync.lastSyncError,
     namespace: config.cloudSync.namespace,
+    scopes: normalizeCloudSyncScopeSelection(config.cloudSync.scopes),
     snapshotHash: config.cloudSync.snapshotHash,
     unlocked: false,
     userAvatarUrl: config.cloudSync.userAvatarUrl,

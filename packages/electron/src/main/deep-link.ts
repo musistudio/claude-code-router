@@ -4,7 +4,7 @@ import { appDeepLinkProtocol, createProviderDeepLinkRequest as createSharedProvi
 import { completeCloudSyncLogin } from "@ccr/core/cloud-sync/service";
 import { CLAUDE_DESIGN_PLUGIN_ID, CLAUDE_SHIP_PLUGIN_ID, knownGatewayPluginDefaultApps, type AppConfig, type GatewayPluginAppConfig, type ProviderDeepLinkRequest } from "@ccr/core/contracts/app";
 import { IPC_CHANNELS } from "@ccr/core/config/constants";
-import { loadAppConfig, saveAppConfig } from "@ccr/core/config/config";
+import { loadAppConfig, updateAppConfig } from "@ccr/core/config/config";
 import { syncClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
 import { gatewayService } from "@ccr/core/gateway/service";
 import { providerIdentitySafetyIssue } from "@ccr/core/providers/presets/index";
@@ -82,7 +82,21 @@ class DeepLinkService {
       return;
     }
 
-    const cloudSyncAuth = parseCloudSyncAuthDeepLink(url);
+    let cloudSyncAuth: CloudSyncAuthDeepLink | undefined;
+    try {
+      cloudSyncAuth = parseCloudSyncAuthDeepLink(url);
+    } catch (error) {
+      const detail = formatError(error);
+      console.error(`[deep-link] Invalid cloud sync link: ${detail}`);
+      if (app.isReady()) {
+        try {
+          dialog.showErrorBox("Invalid cloud sync link", detail);
+        } catch {
+          // The console error above remains available when the dialog API is unavailable.
+        }
+      }
+      return;
+    }
     if (cloudSyncAuth) {
       void this.handleCloudSyncAuth(cloudSyncAuth);
       return;
@@ -130,7 +144,7 @@ class DeepLinkService {
 
   private async handleCloudSyncAuth(input: CloudSyncAuthDeepLink): Promise<void> {
     try {
-      const savedConfig = await saveAppConfig(await completeCloudSyncLogin(await loadAppConfig(), input.rawUrl));
+      const savedConfig = await updateAppConfig((config) => completeCloudSyncLogin(config, input.rawUrl));
       logDeepLinkDiagnostic(`[deep-link] Cloud sync login completed for user ${savedConfig.cloudSync.userId || "<unknown>"}`);
       if (app.isReady()) {
         windowsManager.showMainWindow();

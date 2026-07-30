@@ -1,13 +1,15 @@
 import {
-  CLOUD_SYNC_DEFAULT_BASE_URL,
-  type AppConfig
+  CLOUD_SYNC_SCOPE_IDS,
+  DEFAULT_CLOUD_SYNC_SCOPES,
+  type AppConfig,
+  type CloudSyncScope
 } from "@ccr/core/contracts/app";
 import {
   fallbackConfig
 } from "./fallbacks";
 
 import { normalizeApiKeys } from "./api-keys";
-import { normalizeOverviewWidgets, normalizeThemePreference, normalizeTrayBalanceProgressConfig, normalizeTrayComponentVariants, normalizeTrayIconPreference, normalizeTrayProgressTargetTokens, normalizeTrayWidgets, normalizeTrayWindowModules } from "./common";
+import { normalizeLanguagePreference, normalizeOverviewWidgets, normalizeThemePreference, normalizeTrayBalanceProgressConfig, normalizeTrayComponentVariants, normalizeTrayIconPreference, normalizeTrayProgressTargetTokens, normalizeTrayWidgets, normalizeTrayWindowModules } from "./common";
 import { legacyProfileItemsFromProfileConfig, normalizeBotGatewayRuntimeConfig, normalizeBotGatewaySavedConfigs, normalizeCodexConfigFormat, normalizeProfileItems } from "./profiles";
 import { normalizeRouterConfig } from "./routing";
 import { normalizeMcpServers } from "./virtual-models";
@@ -45,6 +47,7 @@ export function normalizeConfig(config: AppConfig): AppConfig {
     },
     mediaTools: normalizeMediaToolsConfig(config.mediaTools),
     launchAtLogin: Boolean(config.launchAtLogin),
+    language: normalizeLanguagePreference(config.language),
     observability: normalizeObservabilityConfig(config.observability),
     proxy: normalizeProxyConfig(config.proxy),
     profile: {
@@ -88,10 +91,13 @@ export function normalizeCloudSyncConfig(config: Partial<AppConfig["cloudSync"]>
     ...fallbackConfig.cloudSync,
     ...(config || {}),
     accessToken: typeof config?.accessToken === "string" ? config.accessToken : undefined,
-    baseUrl: CLOUD_SYNC_DEFAULT_BASE_URL,
+    baseUrl: typeof config?.baseUrl === "string" && config.baseUrl.trim()
+      ? config.baseUrl.trim()
+      : fallbackConfig.cloudSync.baseUrl,
     deviceId: typeof config?.deviceId === "string" ? config.deviceId.trim() || undefined : undefined,
     deviceName: typeof config?.deviceName === "string" ? config.deviceName.trim() : fallbackConfig.cloudSync.deviceName,
     enabled: Boolean(config?.enabled),
+    keyFilePath: typeof config?.keyFilePath === "string" ? config.keyFilePath.trim() || undefined : undefined,
     keyId: typeof config?.keyId === "string" ? config.keyId.trim() || undefined : undefined,
     keyMode: config?.keyMode === "password" || config?.keyMode === "key-file" ? config.keyMode : undefined,
     keySalt: typeof config?.keySalt === "string" ? config.keySalt.trim() || undefined : undefined,
@@ -102,6 +108,7 @@ export function normalizeCloudSyncConfig(config: Partial<AppConfig["cloudSync"]>
     namespace: typeof config?.namespace === "string" && config.namespace.trim() ? config.namespace.trim() : fallbackConfig.cloudSync.namespace,
     refreshToken: typeof config?.refreshToken === "string" ? config.refreshToken : undefined,
     refreshTokenExpiresAt: typeof config?.refreshTokenExpiresAt === "string" ? config.refreshTokenExpiresAt.trim() || undefined : undefined,
+    scopes: normalizeCloudSyncScopes(config?.scopes),
     snapshotHash: typeof config?.snapshotHash === "string" ? config.snapshotHash.trim() || undefined : undefined,
     userAvatarUrl: typeof config?.userAvatarUrl === "string" ? config.userAvatarUrl.trim() || undefined : undefined,
     userEmail: typeof config?.userEmail === "string" ? config.userEmail.trim() || undefined : undefined,
@@ -111,10 +118,22 @@ export function normalizeCloudSyncConfig(config: Partial<AppConfig["cloudSync"]>
   };
 }
 
+function normalizeCloudSyncScopes(value: unknown): CloudSyncScope[] {
+  if (!Array.isArray(value)) {
+    return [...DEFAULT_CLOUD_SYNC_SCOPES];
+  }
+  const allowed = new Set<unknown>(CLOUD_SYNC_SCOPE_IDS);
+  return [...new Set(value.filter((item): item is CloudSyncScope => allowed.has(item)))];
+}
+
 function isCloudSyncSnapshotLike(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value)) &&
     (value as Record<string, unknown>).kind === "claude-code-router-cloud-sync-snapshot" &&
-    (value as Record<string, unknown>).version === 1 &&
+    (
+      (value as Record<string, unknown>).version === 1 ||
+      (value as Record<string, unknown>).version === 2 ||
+      (value as Record<string, unknown>).version === 3
+    ) &&
     Boolean((value as Record<string, unknown>).config && typeof (value as Record<string, unknown>).config === "object" && !Array.isArray((value as Record<string, unknown>).config));
 }
 

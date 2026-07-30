@@ -13,7 +13,7 @@ import { LEGACY_ACTIVE_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FI
 import { normalizeCodexProviderAccountConfig } from "@ccr/core/agents/local-providers/codex";
 import { normalizeGrokProviderAccountConfig, normalizeGrokProviderMediaCapabilities } from "@ccr/core/agents/local-providers/grok";
 import { removeOpenCodeProviderAccountConfig } from "@ccr/core/agents/local-providers/opencode";
-import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, CLAUDE_DESIGN_PLUGIN_ID, CLAUDE_SHIP_PLUGIN_ID, CLOUD_SYNC_DEFAULT_BASE_URL, DEFAULT_TRAY_COMPONENT_VARIANTS, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, ROUTER_SCRIPT_API_VERSION, ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS, ROUTER_SCRIPT_MAX_TIMEOUT_MS, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent, isEnabledGlobalProfile, knownGatewayPluginDefaultApps, knownGatewayPluginDefaultPermissions, knownGatewayPluginDefaultSurfaces } from "@ccr/core/contracts/app";
+import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, CLAUDE_DESIGN_PLUGIN_ID, CLAUDE_SHIP_PLUGIN_ID, CLOUD_SYNC_DEFAULT_BASE_URL, CLOUD_SYNC_SCOPE_IDS, DEFAULT_CLOUD_SYNC_SCOPES, DEFAULT_TRAY_COMPONENT_VARIANTS, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, ROUTER_SCRIPT_API_VERSION, ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS, ROUTER_SCRIPT_MAX_TIMEOUT_MS, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent, isEnabledGlobalProfile, knownGatewayPluginDefaultApps, knownGatewayPluginDefaultPermissions, knownGatewayPluginDefaultSurfaces } from "@ccr/core/contracts/app";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config";
 import { maxRequestLogBodyBytes } from "@ccr/core/observability/request-log-limits";
 import { findProviderPresetByBaseUrl, primaryProviderPresetEndpoint, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
@@ -26,6 +26,7 @@ import type {
   BotGatewaySavedConfig,
   ClaudeCodeProfileConfig,
   CloudSyncConfig,
+  CloudSyncScope,
   CodexProfileConfig,
   ContextArchiveConfig,
   GatewayAgentConfig,
@@ -164,6 +165,7 @@ function completeCloudSyncConfig(config: Partial<CloudSyncConfig> | undefined): 
     deviceId: nonEmptyString(config?.deviceId),
     deviceName: nonEmptyString(config?.deviceName) || DEFAULT_CONFIG.cloudSync.deviceName,
     enabled: Boolean(config?.enabled && baseUrl),
+    keyFilePath: nonEmptyString(config?.keyFilePath),
     keyId: nonEmptyString(config?.keyId),
     keyMode,
     keySalt: nonEmptyString(config?.keySalt),
@@ -175,6 +177,7 @@ function completeCloudSyncConfig(config: Partial<CloudSyncConfig> | undefined): 
     accessToken: nonEmptyString(config?.accessToken),
     refreshToken: nonEmptyString(config?.refreshToken),
     refreshTokenExpiresAt: nonEmptyString(config?.refreshTokenExpiresAt),
+    scopes: normalizeCloudSyncScopes(config?.scopes),
     snapshotHash: nonEmptyString(config?.snapshotHash),
     userAvatarUrl: nonEmptyString(config?.userAvatarUrl),
     userEmail: nonEmptyString(config?.userEmail),
@@ -184,8 +187,24 @@ function completeCloudSyncConfig(config: Partial<CloudSyncConfig> | undefined): 
   };
 }
 
-function normalizeCloudSyncBaseUrl(_value: unknown): string {
-  return CLOUD_SYNC_DEFAULT_BASE_URL;
+function normalizeCloudSyncBaseUrl(value: unknown): string {
+  const raw = nonEmptyString(process.env.CCR_CLOUD_SYNC_BASE_URL) ||
+    nonEmptyString(value) ||
+    CLOUD_SYNC_DEFAULT_BASE_URL;
+  try {
+    const url = new URL(raw);
+    const loopbackHttp = url.protocol === "http:" &&
+      (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1");
+    if (url.protocol !== "https:" && !loopbackHttp) {
+      return CLOUD_SYNC_DEFAULT_BASE_URL;
+    }
+    url.pathname = url.pathname.replace(/\/+$/, "");
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return CLOUD_SYNC_DEFAULT_BASE_URL;
+  }
 }
 
 function normalizeCloudSyncNamespace(value: unknown): string {
@@ -193,11 +212,28 @@ function normalizeCloudSyncNamespace(value: unknown): string {
   return /^[a-zA-Z0-9._-]{1,64}$/.test(raw) ? raw : DEFAULT_CONFIG.cloudSync.namespace;
 }
 
+function normalizeCloudSyncScopes(value: unknown): CloudSyncScope[] {
+  if (!Array.isArray(value)) {
+    return [...DEFAULT_CLOUD_SYNC_SCOPES];
+  }
+  const allowed = new Set<unknown>(CLOUD_SYNC_SCOPE_IDS);
+  return [...new Set(value.filter((item): item is CloudSyncScope => allowed.has(item)))];
+}
+
 function isCloudSyncSnapshotLike(value: unknown): value is Record<string, unknown> {
-  return isObject(value) &&
+  if (!isObject(value)) {
+    return false;
+  }
+  if (
     value.kind === "claude-code-router-cloud-sync-snapshot" &&
+    (value.version === 1 || value.version === 2 || value.version === 3) &&
+    isObject(value.config)
+  ) {
+    return true;
+  }
+  return value.kind === "claude-code-router-cloud-sync-baseline" &&
     value.version === 1 &&
-    isObject(value.config);
+    isObject(value.encrypted);
 }
 
 function nonEmptyString(value: unknown): string | undefined {
@@ -431,7 +467,32 @@ let appConfigWriteQueue: Promise<void> = Promise.resolve();
 let appThemePreferenceOverride: AppConfig["theme"] | undefined;
 
 export async function saveAppConfig(config: AppConfig): Promise<AppConfig> {
-  return enqueueAppConfigWrite(() => saveAppConfigNow(config));
+  return enqueueAppConfigWrite(async () => {
+    const current = await loadAppConfig();
+    if (
+      (config.cloudSync.enabled || current.cloudSync.enabled) &&
+      (
+        config.cloudSync.lastRevision !== current.cloudSync.lastRevision ||
+        config.cloudSync.snapshotHash !== current.cloudSync.snapshotHash
+      )
+    ) {
+      throw new Error("Configuration changed during cloud sync. Reload the latest configuration and apply your changes again.");
+    }
+    return saveAppConfigNow({
+      ...config,
+      cloudSync: current.cloudSync
+    });
+  });
+}
+
+export async function updateAppConfig(
+  update: (current: AppConfig) => AppConfig | Promise<AppConfig>
+): Promise<AppConfig> {
+  return enqueueAppConfigWrite(async () => {
+    const current = await loadAppConfig();
+    const next = await update(current);
+    return next === current ? current : saveAppConfigNow(next, { authoritativeTheme: true });
+  });
 }
 
 export async function saveAppThemePreference(theme: unknown): Promise<AppConfig["theme"]> {
@@ -447,18 +508,27 @@ export async function saveAppThemePreference(theme: unknown): Promise<AppConfig[
   });
 }
 
-async function saveAppConfigNow(config: AppConfig): Promise<AppConfig> {
+async function saveAppConfigNow(
+  config: AppConfig,
+  options: { authoritativeTheme?: boolean } = {}
+): Promise<AppConfig> {
   const normalizedConfig = withSingleEnabledGlobalProfiles(config);
   assertProviderApiKeysAreSafe(normalizedConfig);
   const apiKeys = ensureGatewayApiKeys(normalizeApiKeys(normalizedConfig.APIKEYS, normalizedConfig.APIKEY).filter((apiKey) => !isDefaultSeedApiKey(apiKey)));
   const pluginMigration = migrateKnownGatewayPluginConfigs(normalizedConfig.plugins);
+  const persistedTheme = options.authoritativeTheme
+    ? normalizedConfig.theme
+    : appThemePreferenceOverride ?? normalizedConfig.theme;
   await replacePersistedConfigSnapshot(sanitizeConfigForDisk({
     ...normalizedConfig,
-    theme: appThemePreferenceOverride ?? normalizedConfig.theme,
+    theme: persistedTheme,
     APIKEY: apiKeys[0]?.key ?? "",
     APIKEYS: apiKeys,
     plugins: pluginMigration.plugins
   }), apiKeys);
+  if (options.authoritativeTheme) {
+    appThemePreferenceOverride = persistedTheme;
+  }
   return loadAppConfig();
 }
 
@@ -929,6 +999,9 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   if (value.theme === "system" || value.theme === "light" || value.theme === "dark") {
     config.theme = value.theme;
   }
+  if (value.language === "system" || value.language === "en" || value.language === "zh") {
+    config.language = value.language;
+  }
   const trayIcon = parseTrayIconPreference((value as Record<string, unknown>).trayIcon);
   if (trayIcon) {
     config.trayIcon = trayIcon;
@@ -995,6 +1068,10 @@ function parseCloudSync(value: unknown): Partial<CloudSyncConfig> | undefined {
   if (keyId !== undefined) {
     cloudSync.keyId = keyId;
   }
+  const keyFilePath = readString(value.keyFilePath ?? value.key_file_path);
+  if (keyFilePath !== undefined) {
+    cloudSync.keyFilePath = keyFilePath;
+  }
   const keySalt = readString(value.keySalt ?? value.key_salt);
   if (keySalt !== undefined) {
     cloudSync.keySalt = keySalt;
@@ -1014,6 +1091,9 @@ function parseCloudSync(value: unknown): Partial<CloudSyncConfig> | undefined {
   const refreshTokenExpiresAt = readString(value.refreshTokenExpiresAt ?? value.refresh_token_expires_at);
   if (refreshTokenExpiresAt !== undefined) {
     cloudSync.refreshTokenExpiresAt = refreshTokenExpiresAt;
+  }
+  if (Array.isArray(value.scopes ?? value.sync_scopes)) {
+    cloudSync.scopes = normalizeCloudSyncScopes(value.scopes ?? value.sync_scopes);
   }
   const snapshotHash = readString(value.snapshotHash ?? value.snapshot_hash);
   if (snapshotHash !== undefined) {

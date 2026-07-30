@@ -12,8 +12,8 @@ import { cancelBotGatewayQrLogin, startBotGatewayQrLogin, waitBotGatewayQrLogin 
 import { syncClaudeAppGatewayConfig, restoreClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
 import { findInstalledCodexAppExecutable } from "@ccr/core/agents/codex/app-launch";
 import { findInstalledOpenCodeAppExecutable } from "@ccr/core/agents/opencode/app-launch";
-import { autoPushCloudSyncConfig, completeCloudSyncLogin, createCloudSyncKeyFile, disableCloudSyncConfig, ensureCloudSyncUserProfile, getCloudSyncStatus, pullCloudSyncConfig, pushCloudSyncConfig, resolveCloudSyncConflict, setupCloudSyncConfig, startCloudSyncLogin } from "@ccr/core/cloud-sync/service";
-import { loadAppConfig, saveApiKeysConfig, saveAppConfig } from "@ccr/core/config/config";
+import { autoPullCloudSyncConfig, autoPushCloudSyncConfig, completeCloudSyncLogin, createCloudSyncKeyFile, disableCloudSyncConfig, ensureCloudSyncUserProfile, getCloudSyncStatus, logoutCloudSyncConfig, pullCloudSyncConfig, pushCloudSyncConfig, resolveCloudSyncConflict, rotateCloudSyncKey, setupCloudSyncConfig, startCloudSyncLogin } from "@ccr/core/cloud-sync/service";
+import { loadAppConfig, saveApiKeysConfig, saveAppConfig, updateAppConfig } from "@ccr/core/config/config";
 import {
   APP_CONFIG_DB_FILE,
   APP_NAME,
@@ -65,6 +65,7 @@ import type {
   CloudSyncPullRequest,
   CloudSyncPushRequest,
   CloudSyncResolveConflictRequest,
+  CloudSyncRotateKeyRequest,
   CloudSyncSetupRequest,
   GatewayPluginAppConfig,
   GatewayPluginPermission,
@@ -137,6 +138,9 @@ const webBridgeScriptTag = '    <script src="../../assets/web-client-bridge.js">
 const cloudSyncAuthCallbackPath = "/api/cloud-sync/auth/callback";
 const cloudSyncAuthSessionParam = "session";
 const cloudSyncAuthSessions = new Set<string>();
+const cloudSyncBackgroundPullIntervalMs = 5 * 60 * 1000;
+let cloudSyncRuntimeRetryRequired = false;
+let cloudSyncRuntimeRetryPreviousConfig: AppConfig | undefined;
 
 
 export async function startWebManagementServer(options: WebManagementServerOptions = {}): Promise<WebManagementServerRuntime> {
@@ -169,9 +173,23 @@ export async function startWebManagementServer(options: WebManagementServerOptio
       console.warn(`[web] Failed to open ${url}: ${formatError(error)}`);
     });
   }
+  const cloudSyncBackgroundPullTimeout = setTimeout(() => {
+    void runBackgroundCloudSyncPull().catch((error) => {
+      console.warn(`[cloud-sync] Background pull failed: ${formatError(error)}`);
+    });
+  }, 30_000);
+  cloudSyncBackgroundPullTimeout.unref();
+  const cloudSyncBackgroundPullInterval = setInterval(() => {
+    void runBackgroundCloudSyncPull().catch((error) => {
+      console.warn(`[cloud-sync] Background pull failed: ${formatError(error)}`);
+    });
+  }, cloudSyncBackgroundPullIntervalMs);
+  cloudSyncBackgroundPullInterval.unref();
 
   return {
     close: async () => {
+      clearTimeout(cloudSyncBackgroundPullTimeout);
+      clearInterval(cloudSyncBackgroundPullInterval);
       await closeServer(server);
       await stopConfiguredServices();
       await closeRequestLogRuntime();
@@ -267,10 +285,16 @@ async function handleCloudSyncLoginRpc(
   cloudSyncAuthSessions.add(session);
   setTimeout(() => cloudSyncAuthSessions.delete(session), 10 * 60 * 1000).unref();
 
-  const login = startCloudSyncLogin(await loadAppConfig(), {
-    callbackUrl: cloudSyncCallbackUrl(request, session)
+  let login: CloudSyncLoginResult | undefined;
+  const savedConfig = await updateAppConfig((config) => {
+    login = startCloudSyncLogin(config, {
+      callbackUrl: cloudSyncCallbackUrl(request, session)
+    });
+    return login.config ?? config;
   });
-  const savedConfig = login.config ? await saveAppConfig(login.config) : await loadAppConfig();
+  if (!login) {
+    throw new Error("Failed to initialize cloud sync login.");
+  }
   return {
     ...login,
     config: savedConfig,
@@ -282,23 +306,24 @@ async function handleCloudSyncAuthCallbackRequest(
   request: IncomingMessage,
   response: ServerResponse
 ): Promise<void> {
-  if (request.method !== "GET" && request.method !== "HEAD") {
+  if (request.method !== "GET") {
     sendText(response, 405, "Method not allowed");
     return;
   }
 
   const url = requestUrl(request);
   const session = url.searchParams.get(cloudSyncAuthSessionParam)?.trim();
-  if (!session || !cloudSyncAuthSessions.delete(session)) {
+  if (!session || !cloudSyncAuthSessions.has(session)) {
     sendText(response, 401, "Invalid or expired cloud sync login session");
     return;
   }
 
   try {
-    await saveAppConfig(await completeCloudSyncLogin(await loadAppConfig(), url.toString()));
-    sendHtml(response, 200, cloudSyncAuthSuccessHtml(), request.method === "HEAD");
+    await updateAppConfig((config) => completeCloudSyncLogin(config, url.toString()));
+    cloudSyncAuthSessions.delete(session);
+    sendHtml(response, 200, cloudSyncAuthSuccessHtml(), false);
   } catch (error) {
-    sendHtml(response, 500, cloudSyncAuthFailureHtml(formatError(error)), request.method === "HEAD");
+    sendHtml(response, 500, cloudSyncAuthFailureHtml(formatError(error)), false);
   }
 }
 
@@ -350,7 +375,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
     });
   },
   cloudSyncDisable: async () => {
-    const savedConfig = await saveAppConfig(disableCloudSyncConfig(await loadAppConfig()));
+    const savedConfig = await updateAppConfig(disableCloudSyncConfig);
     return {
       config: savedConfig,
       message: "Cloud sync is disabled on this device.",
@@ -365,13 +390,22 @@ const rpcHandlers: Record<string, RpcHandler> = {
     return createCloudSyncKeyFile(keyFilePath);
   },
   cloudSyncGetStatus: async () => {
-    const savedConfig = await saveAppConfig(await ensureCloudSyncUserProfile(await loadAppConfig()));
+    const savedConfig = await updateAppConfig(ensureCloudSyncUserProfile);
     return getCloudSyncStatus(savedConfig);
   },
-  cloudSyncPull: async (request) => persistCloudSyncOperation(await pullCloudSyncConfig(await loadAppConfig(), request as CloudSyncPullRequest | undefined)),
-  cloudSyncPush: async (request) => persistCloudSyncOperation(await pushCloudSyncConfig(await loadAppConfig(), request as CloudSyncPushRequest | undefined)),
-  cloudSyncResolveConflict: async (request) => persistCloudSyncOperation(await resolveCloudSyncConflict(await loadAppConfig(), request as CloudSyncResolveConflictRequest)),
-  cloudSyncSetup: async (request) => persistCloudSyncOperation(await setupCloudSyncConfig(await loadAppConfig(), request as CloudSyncSetupRequest)),
+  cloudSyncLogout: async () => {
+    const savedConfig = await updateAppConfig(logoutCloudSyncConfig);
+    return {
+      config: savedConfig,
+      message: "Signed out of cloud sync on this device.",
+      status: getCloudSyncStatus(savedConfig)
+    } satisfies CloudSyncOperationResult;
+  },
+  cloudSyncPull: async (request) => persistCloudSyncOperation((config) => pullCloudSyncConfig(config, request as CloudSyncPullRequest | undefined)),
+  cloudSyncPush: async (request) => persistCloudSyncOperation((config) => pushCloudSyncConfig(config, request as CloudSyncPushRequest | undefined)),
+  cloudSyncResolveConflict: async (request) => persistCloudSyncOperation((config) => resolveCloudSyncConflict(config, request as CloudSyncResolveConflictRequest)),
+  cloudSyncRotateKey: async (request) => persistCloudSyncOperation((config) => rotateCloudSyncKey(config, request as CloudSyncRotateKeyRequest)),
+  cloudSyncSetup: async (request) => persistCloudSyncOperation((config) => setupCloudSyncConfig(config, request as CloudSyncSetupRequest)),
   clearProxyNetworkCaptures: () => proxyService.clearNetworkCaptures(),
   closeBotGatewayQrWindow: (_request) => ({ closed: false }),
   detectProviderIcon: (request) => detectProviderIcon(request as ProviderIconDetectionRequest),
@@ -471,7 +505,8 @@ const rpcHandlers: Record<string, RpcHandler> = {
   },
   resetCodexRateLimitCredit: (request) => resetCodexRateLimitCredit(request as ProviderAccountResetRequest),
   saveApiKeys: async (apiKeys) => {
-    const savedConfig = await saveApiKeysConfig(apiKeys as ApiKeyConfig[]);
+    let savedConfig = await saveApiKeysConfig(apiKeys as ApiKeyConfig[]);
+    savedConfig = await updateAppConfig(autoPushCloudSyncConfig);
     const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(savedConfig);
     const nextConfig = syncedClaudeAppConfig.config;
     await gatewayService.updateConfig(nextConfig);
@@ -501,10 +536,13 @@ const rpcHandlers: Record<string, RpcHandler> = {
       await applyProfileIfServiceRunning(savedConfig, runtimeStatus);
     }
     invalidateProviderAccountSnapshotCache();
-    const cloudSyncedConfig = await autoPushCloudSyncConfig(savedConfig);
-    if (cloudSyncedConfig !== savedConfig) {
-      savedConfig = await saveAppConfig(cloudSyncedConfig);
-    }
+    const beforeCloudSyncConfig = savedConfig;
+    savedConfig = await updateAppConfig(autoPushCloudSyncConfig);
+    savedConfig = await applyCloudSyncRuntimeChanges(
+      beforeCloudSyncConfig,
+      savedConfig,
+      options as AppSaveConfigOptions | undefined
+    );
     return savedConfig;
   },
   scanBotHandoffBluetoothTargets: () => scanBotHandoffBluetoothTargets(),
@@ -536,19 +574,83 @@ const rpcHandlers: Record<string, RpcHandler> = {
   waitBotGatewayQrLogin: (request) => waitBotGatewayQrLogin(request as BotGatewayQrLoginWaitRequest)
 };
 
-async function persistCloudSyncOperation(result: CloudSyncOperationResult): Promise<CloudSyncOperationResult> {
-  if (!result.config) {
-    return result;
+async function persistCloudSyncOperation(
+  operation: (config: AppConfig) => Promise<CloudSyncOperationResult>
+): Promise<CloudSyncOperationResult> {
+  let result: CloudSyncOperationResult | undefined;
+  let previousConfig: AppConfig | undefined;
+  const savedConfig = await updateAppConfig(async (config) => {
+    previousConfig = config;
+    result = await operation(config);
+    return result.config ?? config;
+  });
+  if (!result) {
+    throw new Error("Cloud sync operation did not produce a result.");
   }
-  const savedConfig = await saveAppConfig(result.config);
-  await gatewayService.updateConfig(savedConfig);
-  await applyProfileIfServiceRunning(savedConfig, gatewayService.getStatus());
-  invalidateProviderAccountSnapshotCache();
+  const runtimeConfig = await applyCloudSyncRuntimeChanges(previousConfig ?? savedConfig, savedConfig);
   return {
     ...result,
-    config: savedConfig,
-    status: getCloudSyncStatus(savedConfig)
+    config: runtimeConfig,
+    status: getCloudSyncStatus(runtimeConfig)
   };
+}
+
+async function runBackgroundCloudSyncPull(): Promise<void> {
+  let changed = false;
+  let previousConfig: AppConfig | undefined;
+  const savedConfig = await updateAppConfig(async (config) => {
+    previousConfig = config;
+    const nextConfig = await autoPullCloudSyncConfig(config);
+    changed = nextConfig !== config;
+    return nextConfig;
+  });
+  if (!changed && !cloudSyncRuntimeRetryRequired) {
+    return;
+  }
+  await applyCloudSyncRuntimeChanges(previousConfig ?? savedConfig, savedConfig);
+}
+
+async function applyCloudSyncRuntimeChanges(
+  previousConfig: AppConfig,
+  savedConfig: AppConfig,
+  options?: AppSaveConfigOptions
+): Promise<AppConfig> {
+  if (
+    !appConfigChangedOutsideCloudSync(previousConfig, savedConfig) &&
+    !cloudSyncRuntimeRetryRequired
+  ) {
+    return savedConfig;
+  }
+  try {
+    const runtimePreviousConfig = cloudSyncRuntimeRetryPreviousConfig ?? previousConfig;
+    const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(savedConfig);
+    const runtimeConfig = syncedClaudeAppConfig.config;
+    let runtimeStatus = gatewayService.getStatus();
+    if (
+      syncedClaudeAppConfig.configChanged ||
+      shouldRestartGatewayForRuntimeConfigChange(runtimePreviousConfig, runtimeConfig)
+    ) {
+      runtimeStatus = await gatewayService.start(runtimeConfig);
+    } else {
+      await gatewayService.updateConfig(runtimeConfig);
+    }
+    if (options?.applyProfile !== false) {
+      await applyProfileIfServiceRunning(runtimeConfig, runtimeStatus);
+    }
+    invalidateProviderAccountSnapshotCache();
+    cloudSyncRuntimeRetryRequired = false;
+    cloudSyncRuntimeRetryPreviousConfig = undefined;
+    return runtimeConfig;
+  } catch (error) {
+    cloudSyncRuntimeRetryRequired = true;
+    cloudSyncRuntimeRetryPreviousConfig ??= previousConfig;
+    throw error;
+  }
+}
+
+function appConfigChangedOutsideCloudSync(previousConfig: AppConfig, nextConfig: AppConfig): boolean {
+  return JSON.stringify({ ...previousConfig, cloudSync: undefined }) !==
+    JSON.stringify({ ...nextConfig, cloudSync: undefined });
 }
 
 async function startConfiguredServices(reason: string): Promise<void> {
