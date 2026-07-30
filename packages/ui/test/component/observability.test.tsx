@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { AgentAnalysisSessionRow, AgentAnalysisTraceRun, RequestLogPage } from "@ccr/core/contracts/app.ts";
+import type { AgentAnalysisSessionRow, AgentAnalysisTraceRun, RequestLogEntry, RequestLogPage } from "@ccr/core/contracts/app.ts";
 import { AgentAnalysisView } from "@ccr/ui/pages/home/components/dashboard.tsx";
 import { LogsView } from "@ccr/ui/pages/home/components/network-logs.tsx";
 import { AppI18nContext, appCopy } from "@ccr/ui/pages/home/shared/i18n.tsx";
@@ -20,6 +20,39 @@ const emptyLogPage: RequestLogPage = {
   pageSize: 25,
   total: 0,
   totalPages: 1
+};
+
+const sampleRequestLogEntry: RequestLogEntry = {
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+  client: "claude-code",
+  costUsd: 0.01,
+  createdAt: "2026-07-23T00:00:00.000Z",
+  credentialChain: [],
+  credentialSaturated: false,
+  durationMs: 120,
+  id: 1,
+  inputTokens: 100,
+  isStream: true,
+  method: "POST",
+  model: "claude-sonnet-4",
+  ok: true,
+  outputTokens: 50,
+  path: "/v1/messages",
+  provider: "anthropic",
+  reasoningTokens: 0,
+  requestBody: { encoding: "utf8", sizeBytes: 2, text: "{}", truncated: false },
+  requestHeaders: {},
+  requestId: "req-token-copy",
+  routeAttemptCount: 1,
+  routeHopCount: 1,
+  routeTraceTruncated: false,
+  retryAttempts: [],
+  responseBody: { encoding: "utf8", sizeBytes: 2, text: "{}", truncated: false },
+  responseHeaders: {},
+  statusCode: 200,
+  totalTokens: 150,
+  url: "/v1/messages"
 };
 
 test("LogsView keeps disabled request logs discoverable with an enable action", () => {
@@ -60,6 +93,24 @@ test("LogsView explains filtered empty results and translates page sizes", () =>
   assert.match(html, /Clear filters/);
   assert.match(html, /25 \/ page/);
   assert.doesNotMatch(html, /\/ 页/);
+});
+
+test("LogsView keeps Chinese token column copy as Token", () => {
+  const html = renderToStaticMarkup(
+    <AppI18nContext.Provider value={appCopy.zh}>
+      <LogsView
+        error=""
+        filter={{ page: 1, pageSize: 25, status: "all" }}
+        loading={false}
+        page={{ ...emptyLogPage, items: [sampleRequestLogEntry], total: 1 }}
+        refreshLogs={() => undefined}
+        updateFilter={() => undefined}
+      />
+    </AppI18nContext.Provider>
+  );
+
+  assert.match(html, /Token/);
+  assert.doesNotMatch(html, /令牌/);
 });
 
 test("AgentAnalysisView keeps session headings horizontal and shows cache rate and cost", () => {
@@ -192,6 +243,8 @@ test("AgentAnalysisView keeps session headings horizontal and shows cache rate a
   assert.match(html, /缓存率/);
   assert.match(html, /38%/);
   assert.match(html, /成本/);
+  assert.match(html, /Token/);
+  assert.doesNotMatch(html, /令牌/);
   assert.match(html, /\$1\.25/);
   assert.match(html, /\$0\.25/);
   assert.match(html, /\$0\.75/);

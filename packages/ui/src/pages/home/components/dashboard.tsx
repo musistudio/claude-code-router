@@ -3525,7 +3525,7 @@ function AgentSessionDetailCard({
                         <th className="px-3 py-2 font-semibold">{t("Route")}</th>
                         <th className="px-3 py-2 font-semibold">{t("Model")}</th>
                         <th className="px-3 py-2 text-right font-semibold">{t("Tools")}</th>
-                        <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
+                        <th className="px-3 py-2 text-right font-semibold">{t("Token")}</th>
                         <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th>
                         <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
                       </tr>
@@ -3610,7 +3610,7 @@ function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
                 <th className="px-3 py-2 font-semibold">{t("Timeline")}</th>
                 <th className="px-3 py-2 font-semibold">{t("Status")}</th>
                 <th className="px-3 py-2 font-semibold">{t("Target")}</th>
-                <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Token")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Concurrency")}</th>
@@ -4171,7 +4171,7 @@ function UsageAnalysisCard({
                   {visibleColumns.map((column) => (
                     <th className="px-3 py-2 font-semibold" key={column.key}>{column.label}</th>
                   ))}
-                  <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
+                  <th className="px-3 py-2 text-right font-semibold">{t("Token")}</th>
                   {showCost ? <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th> : null}
                   <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
                   {showTokenBreakdown ? <th className="px-3 py-2 text-right font-semibold">{t("Input")}</th> : null}

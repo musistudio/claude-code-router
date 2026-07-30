@@ -782,7 +782,7 @@ function logTableColumnLabel(columnId: LogTableColumnId, t: (value: string) => s
     case "credential":
       return t("Credential");
     case "tokens":
-      return t("令牌");
+      return t("Token");
     case "duration":
       return t("持续时间");
   }
@@ -849,7 +849,7 @@ function LogMobileCard({
               </div>
             </div>
             <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
-              <LogCompactMetric label={t("令牌")} value={tokenSummary} />
+              <LogCompactMetric label={t("Token")} value={tokenSummary} />
               <LogCompactMetric label={t("持续时间")} value={formatDuration(item.durationMs)} />
               {hasCredentialInfo ? <LogCompactMetric label={t("Credential")} value={logCredentialCellLabel(item)} /> : null}
               <LogCompactMetric label={t("Provider")} value={item.provider || "-"} />
