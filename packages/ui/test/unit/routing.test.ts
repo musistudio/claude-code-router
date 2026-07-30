@@ -1,13 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  buildBuiltInAgentRoutingRows,
+  buildRoutingRuleRows,
   normalizeRouteScriptSampleRequest,
-  normalizeRouterRules,
-  routerBuiltInAgentProfile,
-  routerBuiltInAgentRouteTarget,
-  routerBuiltInAgentRuleDisabledReason,
-  routerBuiltInAgentRuleIsActive
+  normalizeRouterRules
 } from "@ccr/ui/pages/home/shared/routing.ts";
 import {
   createRoutingRuleDraft,
@@ -16,63 +12,28 @@ import {
 } from "@ccr/ui/pages/home/shared/providers.ts";
 import { appConfigFixture } from "../fixtures/index.ts";
 
-test("Codex built-in route accepts a later enabled profile with a configured model", () => {
+test("global routing rows omit Claude Code and Codex built-in profile routes", () => {
   const config = appConfigFixture();
   config.profile.profiles = [
     {
-      agent: "codex",
+      agent: "claude-code",
       enabled: true,
-      id: "codex",
-      model: "",
-      name: "Codex",
+      id: "claude",
+      model: "Provider/claude-sonnet",
+      name: "Claude",
       scope: "ccr"
     },
     {
       agent: "codex",
       enabled: true,
-      id: "bs-2",
+      id: "codex",
       model: "uuroute/gpt-5.5",
-      name: "BS",
-      scope: "ccr"
-    }
-  ];
-
-  assert.equal(routerBuiltInAgentProfile(config, "codex")?.id, "bs-2");
-  assert.equal(routerBuiltInAgentRouteTarget(config, "codex"), "uuroute/gpt-5.5");
-  assert.equal(routerBuiltInAgentRuleDisabledReason(config, "codex"), undefined);
-  assert.equal(routerBuiltInAgentRuleIsActive(config, "codex"), true);
-  assert.equal(
-    buildBuiltInAgentRoutingRows(config).find((row) => row.builtInAgent === "codex")?.target,
-    "set request.body.model = uuroute/gpt-5.5"
-  );
-});
-
-test("Codex built-in route asks for a model only when every enabled Codex profile is unset", () => {
-  const config = appConfigFixture();
-  config.profile.profiles = [
-    {
-      agent: "codex",
-      enabled: true,
-      id: "codex",
-      model: "  ",
       name: "Codex",
       scope: "ccr"
-    },
-    {
-      agent: "codex",
-      enabled: true,
-      id: "bs-2",
-      model: "",
-      name: "BS",
-      scope: "ccr"
     }
   ];
 
-  assert.equal(
-    routerBuiltInAgentRuleDisabledReason(config, "codex"),
-    "Set a model on the Codex profile before enabling this built-in route."
-  );
-  assert.equal(routerBuiltInAgentRuleIsActive(config, "codex"), false);
+  assert.deepEqual(buildRoutingRuleRows(config), []);
 });
 
 test("routing UI preserves the Node.js script file and timeout", () => {

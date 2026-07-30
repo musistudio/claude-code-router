@@ -1,7 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import type {
   BotGatewayQrLoginCancelRequest,
@@ -12,6 +11,7 @@ import type {
   BotGatewayQrLoginWaitResult,
   BotGatewayRuntimeConfig
 } from "@ccr/core/contracts/app";
+import { botGatewaySdkImportSpecifier } from "./sdk-import";
 
 type BotGatewayClientWithRequest = {
   close?: () => Promise<void> | void;
@@ -274,17 +274,6 @@ function resolveBundledBotGatewaySdkModule(): string {
       : [])
   ];
   return candidates.find((candidate) => existsSync(candidate)) ?? "";
-}
-
-function botGatewaySdkImportSpecifier(value: string): string {
-  const trimmed = value.trim();
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
-    return trimmed;
-  }
-  if (path.isAbsolute(trimmed)) {
-    return pathToFileURL(trimmed).href;
-  }
-  return trimmed;
 }
 
 async function resolveWeixinQrIntegrationId(

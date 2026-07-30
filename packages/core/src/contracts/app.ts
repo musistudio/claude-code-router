@@ -337,6 +337,7 @@ export type ProviderModelMetadata = {
   defaultReasoningSummary?: string;
   effectiveContextWindowPercent?: number;
   maxContextWindow?: number;
+  maxOutputTokens?: number;
   pricing?: ProviderModelPricing;
   serviceTiers?: unknown[];
   supportedReasoningLevels?: ProviderReasoningLevel[];
@@ -806,6 +807,12 @@ export type RouterBuiltInRulesConfig = Record<RouterBuiltInAgentRuleId, RouterBu
 export type RouterConfig = {
   builtInRules: RouterBuiltInRulesConfig;
   fallback: RouterFallbackConfig;
+  rules: RouterRule[];
+};
+
+export type ProfileRoutingConfig = {
+  enabled: boolean;
+  enhancedRoute: boolean;
   rules: RouterRule[];
 };
 
@@ -1548,6 +1555,7 @@ export type ProfileConfig = {
   providerId?: string;
   providerName?: string;
   remoteFrontendMode?: CodexRemoteFrontendMode;
+  routing?: ProfileRoutingConfig;
   scope?: ProfileScope;
   showAllSessions?: boolean;
   settingsFile?: string;
@@ -2395,7 +2403,7 @@ export type AgentAnalysisSubagentRow = {
 
 export type AgentAnalysisTraceRunKind = "agent" | "llm" | "route" | "subagent" | "tool";
 
-export type AgentAnalysisTraceRunStatus = "error" | "success";
+export type AgentAnalysisTraceRunStatus = "error" | "partial" | "success";
 
 export type AgentAnalysisTracePayloadPreview = {
   kind: "empty" | "json" | "text";
@@ -2433,6 +2441,7 @@ export type AgentAnalysisTraceRun = {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   concurrentRequests: number;
+  costUsd?: number;
   depth: number;
   durationMs: number;
   endedAt: string;

@@ -174,7 +174,7 @@ test("Codex compact compat rewrites compaction trigger without context archive",
   assert.doesNotMatch(transformed, /CCR ARCHIVED HISTORY ACCESS/);
 });
 
-test("Codex patch bridge automatically rewrites non-GPT models when the built-in route is disabled", () => {
+test("Codex patch bridge rewrites non-GPT models with legacy global Codex route disabled", () => {
   const result = prepareCodexApplyPatchBridgeRequest({
     body: Buffer.from(JSON.stringify({
       model: "openrouter/google/gemini-2.5-pro",

@@ -3,7 +3,7 @@
  */
 import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
-import { codexDefaultBaseUrl, kimiAccessTokenExpired, kimiIdentityHeaders, readClaudeCodeOauth, readCodexAuth, readGrokAuth, readKimiAuth, resolveGrokAuth, resolveKimiAuth } from "@ccr/core/agents/local-providers/service";
+import { codexDefaultBaseUrl, kimiAccessTokenExpired, kimiIdentityHeaders, localAgentProviderApiKey, readClaudeCodeOauth, readCodexAuth, readGrokAuth, readKimiAuth, resolveGrokAuth, resolveKimiAuth } from "@ccr/core/agents/local-providers/service";
 import { grokAccessTokenExpired, grokClientVersion } from "@ccr/core/agents/local-providers/grok";
 import { pluginService } from "@ccr/core/plugins/service";
 import { normalizeRouteSelector, providerRuntimeId } from "@ccr/core/routing/model-registry";
@@ -40,12 +40,18 @@ export async function compileCoreGatewayConfig(
       )
     : [];
   const pluginBillingConfig = isRecord(pluginCoreGatewayConfig.billing) ? pluginCoreGatewayConfig.billing : {};
-  const configuredProviderPlugins = normalizeClaudeCodeOauthProviderPlugins([
-    ...(config.providerPlugins ?? []).filter(providerPluginEnabled),
-    ...pluginService.getCoreProviderPlugins().filter(providerPluginEnabled)
+  const allConfiguredProviderPlugins = normalizeClaudeCodeOauthProviderPlugins([
+    ...(config.providerPlugins ?? []),
+    ...pluginService.getCoreProviderPlugins()
   ]);
+  const configuredProviderPlugins = allConfiguredProviderPlugins.filter(providerPluginEnabled);
+  const configuredProviderPluginsWithLocalCodexFallbacks = withMissingCodexOauthProviderPlugins(
+    configuredProviderPlugins,
+    allConfiguredProviderPlugins,
+    config.Providers.filter(isGatewayProviderEnabled)
+  );
   const providerPluginsWithRuntimeDefaults = await withKimiOauthRuntimeDefaults(
-    await withGrokOauthRuntimeDefaults(withClaudeCodeOauthRuntimeDefaults(withCodexOauthRuntimeDefaults(configuredProviderPlugins)))
+    await withGrokOauthRuntimeDefaults(withClaudeCodeOauthRuntimeDefaults(withCodexOauthRuntimeDefaults(configuredProviderPluginsWithLocalCodexFallbacks)))
   );
   const codexOauthProviderNames = codexOauthLocalProviderNames(providerPluginsWithRuntimeDefaults);
   const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
@@ -194,6 +200,88 @@ function withProviderCapabilityPluginAliases(
 
 function providerPluginEnabled(plugin: unknown): boolean {
   return !isRecord(plugin) || plugin.enabled !== false;
+}
+
+
+function withMissingCodexOauthProviderPlugins(
+  providerPlugins: unknown[],
+  explicitProviderPlugins: unknown[],
+  providers: GatewayProviderConfig[]
+): unknown[] {
+  const codexAuth = readCodexAuth();
+  if (!codexAuth?.accessToken && !codexAuth?.refreshToken) {
+    return providerPlugins;
+  }
+
+  const codexOauthProviderNames = codexOauthLocalProviderNames(explicitProviderPlugins);
+  const additions: unknown[] = [];
+  for (const provider of providers) {
+    if (!isLocalCodexOauthProvider(provider)) {
+      continue;
+    }
+    const runtimeName = providerRuntimeId(provider);
+    const capabilityName = providerCapabilityInternalName(provider, "openai_responses");
+    if (
+      codexOauthProviderNames.has(provider.name) ||
+      codexOauthProviderNames.has(runtimeName) ||
+      codexOauthProviderNames.has(capabilityName)
+    ) {
+      continue;
+    }
+
+    const keyPrefix = `ccr-local-agent-${providerNameSlug(runtimeName)}`;
+    additions.push({
+      codexOauth: {
+        accessToken: codexAuth.accessToken,
+        ...(codexAuth.accountId ? { accountId: codexAuth.accountId } : {}),
+        refreshIfMissingAccessToken: true,
+        refreshToken: codexAuth.refreshToken,
+        required: true
+      },
+      key: `${keyPrefix}-codex-oauth-recovered`,
+      providerName: provider.name
+    });
+  }
+
+  return additions.length > 0 ? [...providerPlugins, ...additions] : providerPlugins;
+}
+
+function isLocalCodexOauthProvider(provider: GatewayProviderConfig): boolean {
+  const protocol =
+    normalizeProviderProtocol(provider.type) ??
+    normalizeProviderProtocol(provider.provider) ??
+    inferProtocol(provider);
+  return protocol === "openai_responses" &&
+    providerApiKeyValue(provider) === localAgentProviderApiKey &&
+    normalizeCodexProviderBaseUrl(providerBaseUrlValue(provider)) === normalizeCodexProviderBaseUrl(codexDefaultBaseUrl);
+}
+
+function providerApiKeyValue(provider: GatewayProviderConfig): string {
+  return provider.api_key || provider.apiKey || provider.apikey || "";
+}
+
+function providerBaseUrlValue(provider: GatewayProviderConfig): string {
+  return provider.api_base_url || provider.baseurl || provider.baseUrl || "";
+}
+
+function normalizeCodexProviderBaseUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    url.search = "";
+    url.pathname = url.pathname.replace(/\/+$/g, "");
+    return url.toString().replace(/\/+$/g, "");
+  } catch {
+    return value.trim().replace(/\/+$/g, "");
+  }
+}
+
+function providerNameSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "provider";
 }
 
 
@@ -513,14 +601,19 @@ function withCodexOauthProviderBaseUrl(
   provider: GatewayProviderConfig,
   codexOauthProviderNames: Set<string>
 ): GatewayProviderConfig {
-  if (!codexOauthProviderNames.has(provider.name)) {
-    return provider;
-  }
-
   const protocol =
     normalizeProviderProtocol(provider.type) ??
     normalizeProviderProtocol(provider.provider) ??
     inferProtocol(provider);
+  const names = [
+    provider.name,
+    providerRuntimeId(provider),
+    providerCapabilityInternalName(provider, "openai_responses")
+  ];
+  if (!names.some((name) => codexOauthProviderNames.has(name))) {
+    return provider;
+  }
+
   if (protocol !== "openai_responses") {
     return provider;
   }

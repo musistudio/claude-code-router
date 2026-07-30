@@ -222,6 +222,17 @@ docker compose up -d --build
 
 Docker 默认通过 `http://127.0.0.1:3458` 提供管理界面与网关路由。远程暴露 CCR 前，请先阅读 [Docker 部署指南](https://ccrdesk.top/guides/docker/)。
 
+## 构建桌面应用
+
+先安装 Node.js 22+，然后执行 `npm ci`。
+
+| 目标 | 命令 | 产物目录 |
+| --- | --- | --- |
+| macOS 本地 DMG/ZIP | `npm run build:app:mac` | `release-local/` |
+| Windows 本地 NSIS 安装包 | `npm run build:app:win` | `release-local/` |
+
+Windows App 打包必须在 Windows x64 上运行，因为 `better-sqlite3` 包含 Electron 原生模块，不能从 macOS 或 Linux 交叉编译。推送 `v*` tag 时，release workflow 会分别在 macOS runner 和 `windows-latest` 上构建 macOS 与 Windows 产物。
+
 ## 工作方式
 
 ```text
@@ -390,7 +401,7 @@ Claude Code · Claude Design · Codex · Grok CLI · Kimi CLI · Kilo Code · Op
       </a>
     </td>
     <td align="center" width="330">
-      <a href="https://infistar.ai">
+      <a href="https://infistar.ai/register?aff=CCRCCR&ref_source=link">
         <img src="/docs/public/provider-icons/infistar-ai.jpg" width="42" height="42" alt="无限星河图标" />
         <br />
         <strong>无限星河</strong>

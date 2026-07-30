@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ProfileConfig } from "@ccr/core/contracts/app.ts";
 import { AddProfileForm, DeleteProfileDialog, ProfileView } from "@ccr/ui/pages/home/components/profiles.tsx";
 import { AppI18nContext, appCopy } from "@ccr/ui/pages/home/shared/i18n.tsx";
-import { createProfileDraft, isProfileDraftSubmittable, normalizeUnknownProfileItem, profileDraftWithDetectedAppPath, profileSummaryItems } from "@ccr/ui/pages/home/shared/profiles.ts";
+import { createProfileDraft, createProfileDraftFromProfile, isProfileDraftSubmittable, normalizeUnknownProfileItem, profileConfigFromDraft, profileDraftWithDetectedAppPath, profileSummaryItems } from "@ccr/ui/pages/home/shared/profiles.ts";
 import { appConfigFixture } from "../fixtures/index.ts";
 
 const profile: ProfileConfig = {
@@ -59,6 +59,91 @@ test("AddProfileForm does not show the profile requirements panel", () => {
   assert.match(html, /Effect scope/);
   assert.doesNotMatch(html, /Profile requirements/);
   assert.doesNotMatch(html, /Profile guidance/);
+});
+
+test("AddProfileForm keeps profile routing inside Advanced settings", () => {
+  const config = appConfigFixture();
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={config.botConfigs}
+      draft={createProfileDraft("claude-code")}
+      error=""
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={config.Providers}
+      virtualModelProfiles={config.virtualModelProfiles}
+    />
+  );
+
+  assert.match(html, /Advanced settings/);
+  assert.doesNotMatch(html, /Profile routing/);
+  assert.doesNotMatch(html, /Routing disabled/);
+  assert.doesNotMatch(html, /Enhanced route/);
+});
+
+test("AddProfileForm shows profile-level enhanced route controls when private routing is disabled", () => {
+  const config = appConfigFixture();
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={config.botConfigs}
+      draft={createProfileDraft("claude-code")}
+      error=""
+      mode="edit"
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={config.Providers}
+      virtualModelProfiles={config.virtualModelProfiles}
+    />
+  );
+  const advancedSettingsIndex = html.indexOf("Advanced settings");
+  const profileRoutingIndex = html.indexOf("Profile routing");
+
+  assert.ok(advancedSettingsIndex >= 0);
+  assert.ok(profileRoutingIndex > advancedSettingsIndex);
+  assert.doesNotMatch(html, /Routing disabled/);
+  assert.match(html, /Enhanced route/);
+  assert.match(html, /CCR built-in Claude Code routing optimizes requests to third-party models for this profile\./);
+});
+
+test("AddProfileForm shows private profile routes when profile routing is enabled", () => {
+  const config = appConfigFixture();
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={config.botConfigs}
+      draft={{ ...createProfileDraft("claude-code"), routingEnabled: true }}
+      error=""
+      mode="edit"
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={config.Providers}
+      virtualModelProfiles={config.virtualModelProfiles}
+    />
+  );
+
+  assert.match(html, /Profile routing/);
+  assert.match(html, /Enhanced route/);
+  assert.match(html, /Profile routes/);
+  assert.match(html, /CCR built-in Claude Code routing optimizes requests to third-party models for this profile\./);
+  assert.match(html, /data-ui-tooltip-trigger/);
+});
+
+test("AddProfileForm uses Codex-specific enhanced route info for Codex profiles", () => {
+  const config = appConfigFixture();
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={config.botConfigs}
+      draft={{ ...createProfileDraft("codex"), routingEnabled: true }}
+      error=""
+      mode="edit"
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={config.Providers}
+      virtualModelProfiles={config.virtualModelProfiles}
+    />
+  );
+
+  assert.match(html, /Enhanced route/);
+  assert.match(html, /CCR built-in Codex routing optimizes requests to third-party models for this profile\./);
 });
 
 test("AddProfileForm marks required and optional fields", () => {
@@ -285,6 +370,29 @@ test("profileSummaryItems omits disabled profile properties from cards", () => {
   assert.match(enabledItems.map((item) => item.label).join(" "), /CCR managed compact/);
 });
 
+test("profileSummaryItems shows disabled profile enhanced route without private routing status", () => {
+  const config = appConfigFixture();
+  const items = profileSummaryItems({
+    agent: "claude-code",
+    enabled: true,
+    id: "claude-main",
+    model: "openai/gpt-5.2",
+    name: "Claude Main",
+    routing: {
+      enabled: false,
+      enhancedRoute: false,
+      rules: []
+    },
+    scope: "ccr",
+    surface: "cli"
+  }, config, (value) => value);
+  const text = items.map((item) => `${item.label} ${item.value}`).join(" ");
+
+  assert.doesNotMatch(text, /Routing disabled/);
+  assert.match(text, /Enhanced route off/);
+  assert.match(items.map((item) => item.label).join(" "), /Routing/);
+});
+
 test("detected CHATGPT_APP_PATH is used as the Codex profile default", () => {
   const detectedPath = "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT";
   const draft = profileDraftWithDetectedAppPath(createProfileDraft("codex"), `  ${detectedPath}  `);
@@ -323,6 +431,74 @@ test("persisted Grok profiles are normalized to the supported launch scope", () 
   assert.equal(profile?.agent, "grok");
   assert.equal(profile?.scope, "ccr");
   assert.equal(profile?.surface, "cli");
+});
+
+test("profile routing survives profile draft round trip", () => {
+  const profile = normalizeUnknownProfileItem({
+    agent: "claude-code",
+    enabled: true,
+    id: "claude-work",
+    model: "Provider/sonnet",
+    name: "Claude Work",
+    routing: {
+      enabled: true,
+      enhancedRoute: false,
+      rules: [{
+        condition: { left: "request.auth.profileId", operator: "==", right: "claude-work" },
+        enabled: true,
+        id: "auth-profile",
+        name: "Auth profile",
+        rewrites: [{ key: "request.body.model", operation: "set", value: "Provider/opus" }],
+        type: "condition"
+      }]
+    },
+    scope: "ccr",
+    surface: "cli"
+  }, 0);
+
+  assert.equal(profile?.routing?.enhancedRoute, false);
+  assert.equal(profile?.routing?.rules[0]?.id, "auth-profile");
+
+  const draft = createProfileDraftFromProfile(profile);
+  const saved = profileConfigFromDraft(draft, [profile], profile);
+
+  assert.equal(saved.routing?.enabled, true);
+  assert.equal(saved.routing?.enhancedRoute, false);
+  assert.equal(saved.routing?.rules[0]?.condition?.left, "request.auth.profileId");
+});
+
+test("disabled private profile routing persists the profile enhanced route switch", () => {
+  const draft = {
+    ...createProfileDraft("claude-code"),
+    model: "Provider/sonnet",
+    routingEnabled: false,
+    routingEnhancedRoute: false
+  };
+  const saved = profileConfigFromDraft(draft, [], undefined);
+
+  assert.equal(saved.routing?.enabled, false);
+  assert.equal(saved.routing?.enhancedRoute, false);
+  assert.deepEqual(saved.routing?.rules, []);
+});
+
+test("disabled profile routing preserves existing private rules without enabling them", () => {
+  const draft = {
+    ...createProfileDraft("claude-code"),
+    model: "Provider/sonnet",
+    routingEnabled: false,
+    routingRules: [{
+      condition: { left: "request.header.x-task", operator: "==", right: "heavy" },
+      enabled: true,
+      id: "heavy",
+      name: "Heavy",
+      rewrites: [{ key: "request.body.model", operation: "set", value: "Provider/opus" }],
+      type: "condition"
+    }]
+  };
+  const saved = profileConfigFromDraft(draft, [], undefined);
+
+  assert.equal(saved.routing?.enabled, false);
+  assert.equal(saved.routing?.rules[0]?.id, "heavy");
 });
 
 test("OpenCode profiles support local CLI and App configuration", () => {

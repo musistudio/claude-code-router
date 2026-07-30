@@ -7,6 +7,8 @@ lead: Choose the model for a request, then automatically retry or switch to fall
 
 ## Built-In Routing
 
+Claude Code and Codex built-in routes are controlled per Agent Profile through **Use enhanced route**. They do not appear in the global Routing page rule list.
+
 ### Claude Code
 
 The built-in Claude Code route detects requests from Claude Code and routes main requests to the Claude Code Agent Profiles model when the client has not selected a recognized model.
@@ -40,7 +42,7 @@ Recommended setup:
 1. Add usable models under **Providers**, and verify that the model IDs can be requested.
 2. Open **Models** and fill Description for the models you want Subagents to choose automatically. Describe task fit, speed, cost, and limits.
 3. Enable a Claude Code config under **Agent Profiles**, and choose the default model. Claude Code uses it when the client has not selected a recognized model.
-4. Confirm that the built-in **Claude Code** route is enabled on the **Routing** page.
+4. In **Agent Profiles**, keep **Use enhanced route** enabled for that Claude Code profile.
 5. Use Agent, Task, or Workflow in Claude Code. When Claude Code spawns an agent, it can choose a CCR model from the descriptions and write the tag.
 
 Write descriptions around tasks instead of only naming the provider. For example:
@@ -59,13 +61,15 @@ CCR automatically adapts Codex's `apply_patch` file-editing tool for third-party
 
 Technically, this is a tool protocol bridge. Native Codex `apply_patch` is a custom/freeform tool whose input is raw patch text, while many OpenAI-compatible third-party models handle ordinary function tools more reliably. CCR rewrites `apply_patch` into an upstream-visible `virtual_apply_patch` function tool and injects the full `apply_patch.lark` grammar into the tool description, requiring the model to put the patch in the `patch` field.
 
-When the model returns `virtual_apply_patch`, CCR rewrites it back to Codex's expected shape: `custom_tool_call` with `name = apply_patch` and `input = raw patch text`. CCR does not edit files directly; Codex still executes the resulting patch. This adaptation is enabled automatically for non-GPT models and is independent of the built-in **Codex** routing switch. GPT-named models, including Fusion models whose resolved base model is GPT, keep using Codex's native freeform `apply_patch` path.
+When the model returns `virtual_apply_patch`, CCR rewrites it back to Codex's expected shape: `custom_tool_call` with `name = apply_patch` and `input = raw patch text`. CCR does not edit files directly; Codex still executes the resulting patch. This adaptation is enabled automatically for non-GPT models and is independent of the profile-level **Use enhanced route** switch. GPT-named models, including Fusion models whose resolved base model is GPT, keep using Codex's native freeform `apply_patch` path.
 
 ## Custom Routing
 
 Custom routes are configured in the Routing page rule list. The top **Search routing rules** field filters by rule name, condition, request action, and related row text; the top-right **Add** button opens the **Add Routing Rule** dialog. The table shows each rule under **Name**, **Condition**, **Request action**, **Status**, and **Action**.
 
 Custom rules match in list order, and the first enabled matching rule rewrites the request. Use the move up and move down buttons to adjust priority. Use the edit button to open **Edit Routing Rule**, and the delete button to open a confirmation dialog. Turning off the **Status** toggle keeps the rule in the list but removes it from matching.
+
+Agent Profiles can also define private routing rules. Profile rules use the same rule shape, but CCR evaluates them before the global list and only for requests authenticated with that profile's generated API key. Inside rule conditions and scripts, use `request.auth.apiKeyId` or `request.auth.profileId` when a policy must explicitly match the caller profile.
 
 ### Add Or Edit A Rule
 
@@ -74,7 +78,7 @@ The dialog fields map directly to the saved rule:
 | UI field | How to fill it | Saved meaning |
 | --- | --- | --- |
 | **Name** | Enter a recognizable rule name. This field is required. | Shown in the **Name** column and included in search. |
-| **Condition** | Choose `request.header` or `request.body`, then fill in field, operator, and value. | Builds `condition.left`, `condition.operator`, and `condition.right`. |
+| **Condition** | Choose `request.header`, `request.body`, or `request.auth`, then fill in field, operator, and value. | Builds `condition.left`, `condition.operator`, and `condition.right`. |
 | **Rewrite request parameters** | Keep at least one rewrite row. Each row chooses an operation, target key, and required value fields. | Builds `rewrites`, applied when the rule matches. |
 | **Enabled** | Turn the rule on or off. | Controls `enabled`; disabled rules do not match. |
 | **On failure** | Configure fallback behavior for this rule. | Overrides **Default on failure** when this rule matches. |
@@ -126,6 +130,7 @@ Each execution receives its own read-only `input` object:
 | `input.tokenCount` | `number` | CCR's estimated input token count, or `0` when unavailable. |
 | `input.sessionId` | `string \| undefined` | Session ID when CCR can resolve it. |
 | `input.apiKeyId` | `string \| undefined` | CCR API-key identifier from `x-auth-api-key-id`; this is not the raw key. |
+| `input.profileId` | `string \| undefined` | The authenticated Agent Profile's configured `id`, such as `claude-work`. |
 | `input.builtInSubagentModel` | `string \| undefined` | Built-in subagent model when CCR can identify it. |
 | `input.summary.lastUserText` | `string` | Text from the last user message, limited to 16 KiB characters. |
 | `input.summary.systemText` | `string` | Text from the system content, limited to 8 KiB characters. |
@@ -419,8 +424,11 @@ The **Condition** area has four controls: source, field, operator, and value.
 | --- | --- | --- |
 | `request.header` | `user-agent`, `x-api-key`, `x-client-name` | `request.header.user-agent` |
 | `request.body` | `model`, `messages`, `messages.0.role`, `tools` | `request.body.model` |
+| `request.auth` | `apiKeyId`, `profileId` | `request.auth.profileId` |
 
 Header names are case-insensitive. Body fields use dot-path lookup, and numeric segments address array indexes; for example, `messages.0.role` reads the first message role. For nested arrays such as `messages` or `tools`, `contains deep` is usually more robust than a fixed index.
+
+`request.auth.apiKeyId` is CCR's internal authenticated key id, not the raw API key. Agent Profile keys use the `profile:<sanitized-profile-id>` form, while `request.auth.profileId` exposes the authenticated profile's configured `id`. This makes it possible to route one profile differently from another without matching a secret value.
 
 The value field is parsed as a common literal when possible: `true`, `false`, `null`, numbers, JSON objects, and JSON arrays compare as their corresponding types. Other input is treated as a string. To force a value to stay string-like, wrap it as `"123"` or `'123'`.
 
@@ -461,6 +469,7 @@ When a rule matches, its **On failure** setting is used. Requests that do not ma
 | Goal | Condition source | Field | Operator | Value | Rewrite request parameters |
 | --- | --- | --- | --- | --- | --- |
 | Route by client header | `request.header` | `x-client-name` | `==` | `claude-code` | **Set** `request.body.model = provider/model` |
+| Route one profile | `request.auth` | `profileId` | `==` | `claude-work` | **Set** `request.body.model = provider/model` |
 | Route by original model prefix | `request.body` | `model` | `starts with` | `claude-` | **Set** `request.body.model = provider/model` |
 | Route message content to a vision model | `request.body` | `messages` | `contains deep` | `image` | **Set** `request.body.model = vision-provider/model` |
 | Remove a debug header | `request.header` | `x-debug-route` | `==` | `1` | **Delete** `request.header.x-debug-route` |
@@ -471,7 +480,7 @@ After saving, the rule appears in the list. Use request logs, especially `reques
 
 Fallback is the failure strategy after a model or upstream request fails. Routing picks the first model; Fallback decides whether CCR should keep trying after the current target fails.
 
-The **Default on failure** control at the top of the Routing page is the global Fallback. Each rule also has **On failure**. When a rule matches, its rule-level Fallback overrides the global Fallback.
+The **Default on failure** control at the top of the Routing page is the global Fallback. Each rule also has **On failure**. When a rule matches, its rule-level Fallback overrides the global Fallback. Agent Profile routing does not define a separate profile-level fallback.
 
 ## Fallback Modes
 

@@ -3517,7 +3517,7 @@ function AgentSessionDetailCard({
                 <AnalysisEmptyState label={t("No session requests")} />
               ) : (
                 <div className={cn("max-h-[260px]", agentListFrameClassName)}>
-                  <table className={cn("min-w-[980px]", agentListTableClassName)}>
+                  <table className={cn("min-w-[1060px]", agentListTableClassName)}>
                     <thead className={agentListHeadClassName}>
                       <tr>
                         <th className="px-3 py-2 font-semibold">{t("Time")}</th>
@@ -3525,7 +3525,8 @@ function AgentSessionDetailCard({
                         <th className="px-3 py-2 font-semibold">{t("Route")}</th>
                         <th className="px-3 py-2 font-semibold">{t("Model")}</th>
                         <th className="px-3 py-2 text-right font-semibold">{t("Tools")}</th>
-                        <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
+                        <th className="px-3 py-2 text-right font-semibold">{t("Token")}</th>
+                        <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th>
                         <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
                       </tr>
                     </thead>
@@ -3538,6 +3539,7 @@ function AgentSessionDetailCard({
                           <td className="max-w-[300px] px-3 py-2" title={`${request.provider}/${request.model}`}>{request.provider}/{request.model}</td>
                           <td className="px-3 py-2 text-right" title={request.tools.join(", ")}>{formatCompactNumber(request.toolCallCount)}</td>
                           <td className="px-3 py-2 text-right">{formatCompactNumber(request.totalTokens)}</td>
+                          <td className="px-3 py-2 text-right">{formatUsdCost(request.costUsd ?? 0)}</td>
                           <td className="px-3 py-2 text-right">{formatDuration(request.durationMs)}</td>
                         </tr>
                       ))}
@@ -3557,19 +3559,22 @@ function AgentSessionDetailCard({
 const agentListSurfaceClassName = "rounded-md border border-border/70 bg-card/70 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
 const agentListFrameClassName = cn("overflow-auto", agentListSurfaceClassName);
 const agentListTableClassName = "w-full border-collapse text-left text-[11px]";
-const agentListHeadClassName = "sticky top-0 z-10 border-b border-border/70 bg-muted/80 text-muted-foreground backdrop-blur";
+const agentListHeadClassName = "sticky top-0 z-10 border-b border-border/70 bg-muted/80 text-muted-foreground backdrop-blur [&_th]:min-w-[64px] [&_th]:whitespace-nowrap";
 const agentListBodyClassName = "divide-y divide-border/50";
 
 function agentListRowClassName({
   danger,
-  selected
+  selected,
+  warning
 }: {
   danger?: boolean;
   selected?: boolean;
+  warning?: boolean;
 } = {}) {
   return cn(
     "bg-card/40 transition-colors hover:bg-muted/30",
     danger && "bg-rose-500/5 hover:bg-rose-500/10",
+    warning && "bg-amber-500/5 hover:bg-amber-500/10",
     selected && "bg-teal-500/10 shadow-[inset_2px_0_0_rgba(20,184,166,0.7)] hover:bg-teal-500/15"
   );
 }
@@ -3598,22 +3603,26 @@ function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
         <AnalysisEmptyState label={t("No trace runs")} />
       ) : (
         <div className={cn("max-h-[420px]", agentListFrameClassName)}>
-          <table className={cn("min-w-[1180px]", agentListTableClassName)}>
+          <table className={cn("min-w-[1260px]", agentListTableClassName)}>
             <thead className={agentListHeadClassName}>
               <tr>
                 <th className="px-3 py-2 font-semibold">{t("Run")}</th>
                 <th className="px-3 py-2 font-semibold">{t("Timeline")}</th>
                 <th className="px-3 py-2 font-semibold">{t("Status")}</th>
                 <th className="px-3 py-2 font-semibold">{t("Target")}</th>
-                <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Token")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Concurrency")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
               </tr>
             </thead>
             <tbody className={agentListBodyClassName}>
               {trace.runs.map((run) => (
-                <tr className={agentListRowClassName({ danger: run.status === "error" })} key={run.id}>
+                <tr className={agentListRowClassName({
+                  danger: run.status === "error",
+                  warning: run.status === "partial"
+                })} key={run.id}>
                   <td className="max-w-[360px] px-3 py-2">
                     <div className="flex min-w-0 items-center gap-2" style={{ paddingLeft: `${Math.min(run.depth, 8) * 16}px` }}>
                       <span className={cn("h-2 w-2 shrink-0 rounded-full", traceRunDotClass(run))} />
@@ -3636,8 +3645,8 @@ function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
                     </div>
                   </td>
                   <td className="px-3 py-2">
-                    <Badge className={cn("border", run.status === "error" ? "border-rose-200 bg-rose-50 text-rose-700" : "border-emerald-200 bg-emerald-50 text-emerald-700")} variant="outline">
-                      {t(run.status === "error" ? "Error" : "Success")}
+                    <Badge className={cn("border", traceRunStatusBadgeClass(run.status))} variant="outline">
+                      {t(traceRunStatusLabel(run.status))}
                     </Badge>
                   </td>
                   <td className="max-w-[260px] px-3 py-2" title={traceRunTarget(run)}>
@@ -3645,6 +3654,7 @@ function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
                   </td>
                   <td className="px-3 py-2 text-right">{run.totalTokens > 0 ? formatCompactNumber(run.totalTokens) : "-"}</td>
                   <td className="px-3 py-2 text-right">{run.cacheReadTokens + run.cacheWriteTokens > 0 ? formatCompactNumber(run.cacheReadTokens + run.cacheWriteTokens) : "-"}</td>
+                  <td className="px-3 py-2 text-right">{run.costUsd !== undefined ? formatUsdCost(run.costUsd) : "-"}</td>
                   <td className="px-3 py-2 text-right">{formatCompactNumber(run.concurrentRequests)}</td>
                   <td className="px-3 py-2 text-right">{formatDuration(run.durationMs)}</td>
                 </tr>
@@ -4000,6 +4010,7 @@ function traceRunBarStyle(run: AgentAnalysisTraceRun, traceDurationMs: number): 
 
 function traceRunDotClass(run: AgentAnalysisTraceRun): string {
   if (run.status === "error") return "bg-rose-500";
+  if (run.status === "partial") return "bg-amber-500";
   if (run.kind === "agent") return "bg-teal-500";
   if (run.kind === "route") return "bg-cyan-500";
   if (run.kind === "subagent") return "bg-amber-500";
@@ -4009,11 +4020,24 @@ function traceRunDotClass(run: AgentAnalysisTraceRun): string {
 
 function traceRunBarClass(run: AgentAnalysisTraceRun): string {
   if (run.status === "error") return "bg-rose-500";
+  if (run.status === "partial") return "bg-amber-500";
   if (run.kind === "agent") return "bg-teal-500";
   if (run.kind === "route") return "bg-cyan-500";
   if (run.kind === "subagent") return "bg-amber-500";
   if (run.kind === "tool") return "bg-emerald-500";
   return "bg-blue-500";
+}
+
+function traceRunStatusBadgeClass(status: AgentAnalysisTraceRun["status"]): string {
+  if (status === "error") return "border-rose-200 bg-rose-50 text-rose-700";
+  if (status === "partial") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-emerald-200 bg-emerald-50 text-emerald-700";
+}
+
+function traceRunStatusLabel(status: AgentAnalysisTraceRun["status"]): string {
+  if (status === "error") return "Error";
+  if (status === "partial") return "Partial failure";
+  return "Success";
 }
 
 function formatRouteReason(value: string | undefined): string {
@@ -4041,7 +4065,7 @@ function AgentSessionsCard({
         <AnalysisEmptyState label={t("No session activity")} />
       ) : (
         <div className={cn("h-full", agentListFrameClassName)}>
-          <table className={cn("min-w-[1260px]", agentListTableClassName)}>
+          <table className={cn("min-w-[1420px]", agentListTableClassName)}>
             <thead className={agentListHeadClassName}>
               <tr>
                 <th className="px-3 py-2 font-semibold">{t("Session")}</th>
@@ -4054,6 +4078,8 @@ function AgentSessionsCard({
                 <th className="px-3 py-2 text-right font-semibold">{t("Tools")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Subagents")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Errors")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Cache rate")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th>
                 <th className="px-3 py-2 font-semibold">{t("Models")}</th>
                 <th className="px-3 py-2 font-semibold">{t("Providers")}</th>
                 <th className="px-3 py-2 font-semibold">{t("UA")}</th>
@@ -4077,6 +4103,8 @@ function AgentSessionsCard({
                     <td className="px-3 py-2 text-right">{formatCompactNumber(session.toolCallCount)}</td>
                     <td className="px-3 py-2 text-right">{formatCompactNumber(session.subagentCallCount)}</td>
                     <td className="px-3 py-2 text-right">{formatCompactNumber(session.errorCount)}</td>
+                    <td className="px-3 py-2 text-right">{formatPercent(session.cacheRatio)}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{formatUsdCost(session.costUsd)}</td>
                     <td className="max-w-[240px] px-3 py-2" title={session.models.join(", ")}>{session.models.join(", ") || "-"}</td>
                     <td className="max-w-[220px] px-3 py-2" title={session.providers.join(", ")}>{session.providers.join(", ") || "-"}</td>
                     <td className="max-w-[220px] px-3 py-2 font-mono" title={session.userAgent}>{compactUserAgent(session.userAgent)}</td>
@@ -4143,7 +4171,7 @@ function UsageAnalysisCard({
                   {visibleColumns.map((column) => (
                     <th className="px-3 py-2 font-semibold" key={column.key}>{column.label}</th>
                   ))}
-                  <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
+                  <th className="px-3 py-2 text-right font-semibold">{t("Token")}</th>
                   {showCost ? <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th> : null}
                   <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
                   {showTokenBreakdown ? <th className="px-3 py-2 text-right font-semibold">{t("Input")}</th> : null}

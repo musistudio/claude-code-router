@@ -4,7 +4,9 @@ import { chmodSync, existsSync, lstatSync, mkdtempSync, mkdirSync, readdirSync, 
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { loadAppConfig } from "@ccr/core/config/config.ts";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
+import { replacePersistedAppConfig } from "@ccr/core/config/config-repository.ts";
 import { CONFIGDIR } from "@ccr/core/config/constants.ts";
 import { applyProfileConfig, cleanupGeneratedBinBackups, resolveGrokSourceHome, resolveKimiSourceHome, restoreInactiveGlobalProfileConfigs, restoreGlobalProfileConfigsOnExit } from "@ccr/core/profiles/service.ts";
 
@@ -212,6 +214,150 @@ test("profile service does not overwrite invalid global Claude settings JSON", {
     restoreGlobalProfileConfigsOnExit([], { manageMarker: true });
     rmSync(takeoverFile, { force: true });
     rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("profile service honors the top-level profile disabled flag", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-claude-profile-disabled-"));
+  try {
+    const settingsFile = path.join(root, ".claude", "settings.json");
+    mkdirSync(path.dirname(settingsFile), { recursive: true });
+    writeFileSync(settingsFile, `${JSON.stringify({
+      env: {
+        USER_VALUE: "kept"
+      },
+      permissions: {
+        allow: ["Bash(echo:*)"]
+      }
+    }, null, 2)}\n`);
+
+    const profile = {
+      agent: "claude-code",
+      enabled: true,
+      env: {},
+      id: "top-level-disabled-claude-settings",
+      model: "Provider/model",
+      name: "Top Level Disabled Claude Settings",
+      scope: "global",
+      settingsFile,
+      smallFastModel: "",
+      surface: "auto"
+    };
+    const config = createDefaultAppConfig();
+    config.APIKEY = "ccr-profile-disabled-test";
+    config.APIKEYS = [{
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profile.id}`,
+      key: "ccr-profile-disabled-test",
+      name: "Profile: Top Level Disabled Claude Settings"
+    }];
+    config.Providers = [{
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model"],
+      name: "Provider"
+    }];
+    config.profile.enabled = false;
+    config.profile.profiles = [profile];
+
+    const result = await applyProfileConfig(config);
+    const status = result.clients.find((client) => client.client === "claude-code");
+    assert.equal(result.enabled, false);
+    assert.equal(status?.enabled, false);
+    assert.equal(status?.ok, true);
+    const current = JSON.parse(readFileSync(settingsFile, "utf8"));
+    assert.equal(current.apiKeyHelper, undefined);
+    assert.deepEqual(current.env, {
+      USER_VALUE: "kept"
+    });
+    assert.deepEqual(current.permissions, {
+      allow: ["Bash(echo:*)"]
+    });
+  } finally {
+    restoreGlobalProfileConfigsOnExit([], { manageMarker: true });
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("profile service does not rewrite user Claude settings for stale legacy profile flags without profiles", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "ccr-stale-legacy-profile-home-"));
+  const previousHome = process.env.HOME;
+  const takeoverFile = path.join(CONFIGDIR, "global-profile-takeover.json");
+  try {
+    process.env.HOME = home;
+    assert.equal(os.homedir(), home);
+    const settingsFile = path.join(home, ".claude", "settings.json");
+    mkdirSync(path.dirname(settingsFile), { recursive: true });
+    const originalSettings = `${JSON.stringify({
+      env: {
+        USER_VALUE: "original"
+      },
+      theme: "dark"
+    }, null, 2)}\n`;
+    const backupSettings = `${JSON.stringify({
+      env: {
+        USER_VALUE: "backup"
+      },
+      outputStyle: "backup"
+    }, null, 2)}\n`;
+    const userSettings = `${JSON.stringify({
+      apiKeyHelper: "/home/user/.claude-code-router/bin/ccr-claude-code-api-key-claude-code",
+      env: {
+        ANTHROPIC_API_BASE_URL: "http://127.0.0.1:3456",
+        ANTHROPIC_BASE_URL: "http://127.0.0.1:3456",
+        CLAUDE_AGENT_API_BASE_URL: "http://127.0.0.1:3456",
+        USER_VALUE: "kept"
+      },
+      model: "user-model",
+      outputStyle: "concise",
+      permissions: {
+        allow: ["Bash(echo:*)"]
+      }
+    }, null, 2)}\n`;
+    writeFileSync(`${settingsFile}.ccr-original`, originalSettings);
+    writeFileSync(`${settingsFile}.ccr-backup-2026-07-28T16-26-39-119Z`, backupSettings);
+    writeFileSync(settingsFile, userSettings);
+    writeFileSync(takeoverFile, `${JSON.stringify({
+      profiles: [{
+        agent: "claude-code",
+        id: "default-claude-code",
+        name: "Claude Code",
+        settingsFile: "~/.claude/settings.json"
+      }],
+      version: 1
+    }, null, 2)}\n`);
+    const backupNames = readdirSync(path.dirname(settingsFile)).filter((name) => name.startsWith("settings.json.ccr-backup-")).sort();
+
+    const staleLegacyConfig = createDefaultAppConfig();
+    staleLegacyConfig.profile.enabled = true;
+    staleLegacyConfig.profile.claudeCode.enabled = true;
+    staleLegacyConfig.profile.claudeCode.settingsFile = "~/.claude/settings.json";
+    staleLegacyConfig.profile.codex.enabled = true;
+    staleLegacyConfig.profile.profiles = [];
+    await replacePersistedAppConfig(staleLegacyConfig);
+
+    const loadedConfig = await loadAppConfig();
+    assert.equal(loadedConfig.profile.enabled, false);
+    assert.equal(loadedConfig.profile.claudeCode.enabled, false);
+    assert.equal(loadedConfig.profile.codex.enabled, false);
+    assert.deepEqual(loadedConfig.profile.profiles, []);
+
+    const result = await applyProfileConfig(loadedConfig);
+    assert.equal(result.enabled, false);
+    assert.equal(readFileSync(settingsFile, "utf8"), userSettings);
+    assert.deepEqual(
+      readdirSync(path.dirname(settingsFile)).filter((name) => name.startsWith("settings.json.ccr-backup-")).sort(),
+      backupNames
+    );
+  } finally {
+    restoreGlobalProfileConfigsOnExit([], { manageMarker: true });
+    rmSync(takeoverFile, { force: true });
+    rmSync(home, { force: true, recursive: true });
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
   }
 });
 

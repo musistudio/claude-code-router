@@ -15,7 +15,7 @@ import { compileCoreGatewayConfig } from "@ccr/core/gateway/core-runtime/config-
 import { closeServer, formatError } from "@ccr/core/gateway/http/io";
 import { RawTraceSynchronizer } from "@ccr/core/observability/raw-trace-sync";
 import { GatewayBillingSynchronizer } from "@ccr/core/usage/billing-sync";
-import { assertLoopbackCoreHost, endpoint, gatewayNetworkEndpoints, generateCoreGatewayAuthToken, isCoreGatewayHealthy, loopbackCoreHostError, removeManagedCoreGatewayMarker, shouldRunGatewayRuntime, shouldRunUnifiedServer, spawnGatewayProcess, stopPreviousManagedCoreGateway, waitForManagedCoreGatewayReady, writeManagedCoreGatewayMarker } from "@ccr/core/gateway/core-runtime/supervisor";
+import { assertLoopbackCoreHost, endpoint, formatCoreGatewayChildExit, gatewayNetworkEndpoints, generateCoreGatewayAuthToken, isCoreGatewayHealthy, loopbackCoreHostError, removeManagedCoreGatewayMarker, shouldRunGatewayRuntime, shouldRunUnifiedServer, spawnGatewayProcess, stopPreviousManagedCoreGateway, waitForManagedCoreGatewayReady, writeManagedCoreGatewayMarker } from "@ccr/core/gateway/core-runtime/supervisor";
 import { coreGatewayAuthHeader } from "@ccr/core/gateway/internal/shared";
 import type { BrowserAutomationMcpIntegration, BrowserWebSearchMcpIntegration, GatewayStopOptions } from "@ccr/core/gateway/internal/shared";
 import { GatewayRequestPipeline } from "@ccr/core/gateway/request/pipeline";
@@ -26,7 +26,34 @@ import { compileRouterConfig } from "@ccr/core/routing/config-compiler";
 import { normalizeRouteScriptResult, scriptResultPreview } from "@ccr/core/routing/route-script-result";
 import { mediaService } from "@ccr/core/media/service";
 import { mediaToolsGatewayEndpoint } from "@ccr/core/mcp/grok-media-config";
+import { profileApiKeyId } from "@ccr/core/profiles/api-key";
 
+type RouteScriptTestHeaders = Record<string, string | string[] | undefined>;
+
+function routeScriptTestProfileId(
+  config: AppConfig,
+  headers: RouteScriptTestHeaders
+): string | undefined {
+  if (config.profile?.enabled === false) {
+    return undefined;
+  }
+  const apiKeyId = readRouteScriptTestHeader(headers, "x-auth-api-key-id")?.trim();
+  if (!apiKeyId) {
+    return undefined;
+  }
+  return config.profile?.profiles.find((profile) =>
+    profile.enabled && profileApiKeyId(profile) === apiKeyId
+  )?.id;
+}
+
+function readRouteScriptTestHeader(
+  headers: RouteScriptTestHeaders,
+  name: string
+): string | undefined {
+  const normalized = name.toLowerCase();
+  const entry = Object.entries(headers).find(([key]) => key.toLowerCase() === normalized)?.[1];
+  return Array.isArray(entry) ? entry[0] : entry;
+}
 
 class GatewayService {
   private readonly requestHandler = new GatewayHttpRequestHandler({
@@ -170,7 +197,7 @@ class GatewayService {
           void this.handleCoreGatewayTermination(managedChild, markerWritePromise, startupFailure.message);
         });
         this.child.once("exit", (code, signal) => {
-          startupFailure ??= new Error(coreGatewayExitMessage(code, signal));
+          startupFailure ??= new Error(formatCoreGatewayChildExit(managedChild, code, signal));
           void this.handleCoreGatewayTermination(managedChild, markerWritePromise, startupFailure.message);
         });
         markerWritePromise = writeManagedCoreGatewayMarker(managedChild, runtimeId);
@@ -299,7 +326,9 @@ class GatewayService {
       tokenCount: request.request.tokenCount ?? 0,
       url: request.request.url ?? "/v1/messages"
     };
-    const context = buildRouteScriptInput(routeRequest);
+    const context = buildRouteScriptInput(routeRequest, {
+      profileId: routeScriptTestProfileId(config, routeRequest.headers)
+    });
     const execution = await this.routeScriptRuntime.execute(rule.id, request.script, context, {
       circuitBreaker: false
     });
@@ -385,13 +414,9 @@ class GatewayService {
 
 }
 
-function coreGatewayExitMessage(code: number | null, signal: NodeJS.Signals | null): string {
-  return `Core gateway exited with ${signal ?? code ?? "unknown status"}`;
-}
-
 function assertManagedGatewayStartupContinues(child: ChildProcess, startupFailure: Error | undefined): void {
   if (startupFailure || child.exitCode !== null || child.signalCode !== null || child.killed) {
-    throw startupFailure ?? new Error(coreGatewayExitMessage(child.exitCode, child.signalCode));
+    throw startupFailure ?? new Error(formatCoreGatewayChildExit(child));
   }
 }
 

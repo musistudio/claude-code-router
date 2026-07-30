@@ -104,5 +104,5 @@ test("Onboarding profile step does not prompt to save before continuing", () => 
   assert.doesNotMatch(html, /Save this agent profile to continue/);
   assert.doesNotMatch(html, /Choose an agent, model, and required profile settings/);
   assert.doesNotMatch(html, /provider identity/);
-  assert.match(html, /Paths, bot, compact, and env/);
+  assert.match(html, /Paths, routing, bot, compact, and env/);
 });

@@ -41,6 +41,7 @@ test("parseProviderDeepLinkPayload reads payload JSON, models, descriptions, dis
       "model-a": {
         capabilities: { image_input: true, web_search: true },
         context_window: 128000,
+        max_output_tokens: 64000,
         pricing: {
           cache_write_1h_usd_per_million_tokens: 6,
           cache_write_5m_usd_per_million_tokens: 3.75,
@@ -80,6 +81,7 @@ test("parseProviderDeepLinkPayload reads payload JSON, models, descriptions, dis
     "model-a": {
       capabilities: { imageInput: true, webSearch: true },
       contextWindow: 128000,
+      maxOutputTokens: 64000,
       pricing: {
         cacheWrite1hUsdPerMillionTokens: 6,
         cacheWrite5mUsdPerMillionTokens: 3.75,

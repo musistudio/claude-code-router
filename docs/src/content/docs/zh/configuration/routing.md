@@ -7,6 +7,8 @@ lead: 设置请求如何选择模型，并在失败时通过 Fallback 自动重�
 
 ## 内置路由
 
+Claude Code 和 Codex 内置路由通过 Agent 配置档案里的 **使用增强路由** 单独控制，不会出现在全局路由页的规则列表中。
+
 ### Claude Code
 
 Claude Code 内置路由的作用是识别 Claude Code 发来的请求，并在客户端没有选择可识别模型时，把主请求路由到 Claude Code Agent 配置中的模型。
@@ -40,7 +42,7 @@ Claude Code 的 Agent / Task / Workflow 可以派生新的模型请求。CCR 使
 1. 在 **供应商** 中添加可用模型，确认模型 ID 可以真实请求。
 2. 打开 **模型** 页面，为希望 Subagent 自动选择的模型填写 Description。说明要写清模型适合的任务、速度、成本和限制。
 3. 在 **Agent 配置档案** 中启用 Claude Code 配置，并设置默认模型。Claude Code 未选择可识别模型时会使用它。
-4. 在 **路由** 页面确认 **Claude Code** 内置路由已启用。
+4. 在 **Agent 配置档案** 中保持该 Claude Code 配置的 **使用增强路由** 开启。
 5. 在 Claude Code 中使用 Agent、Task 或 Workflow。需要派生 Agent 时，Claude Code 会根据模型 Description 选择一个 CCR 模型并写入标签。
 
 Description 建议写成任务导向，而不是只写模型厂商名。例如：
@@ -59,13 +61,15 @@ CCR 会自动为第三方或非 GPT 模型适配 Codex 的 `apply_patch` 文件�
 
 技术原理是做一次工具协议桥接：Codex 原生的 `apply_patch` 是 custom/freeform 工具，入参是原始 patch 文本；很多 OpenAI-compatible 三方模型更擅长普通 function tool。CCR 会在上游请求中把 `apply_patch` 转成 `virtual_apply_patch` function tool，并在工具说明里注入完整的 `apply_patch.lark` 语法，要求模型把 patch 写入 `patch` 字段。
 
-模型返回 `virtual_apply_patch` 后，CCR 会把它转换回 Codex 期望的 `custom_tool_call`：`name = apply_patch`，`input = 原始 patch 文本`。CCR 不直接修改文件，真正执行 patch 的仍然是 Codex 客户端。这个适配会对非 GPT 模型自动启用，不受 **Codex** 内置路由开关影响；GPT 命名模型以及实际基模为 GPT 的 Fusion 模型继续使用 Codex 原生 freeform `apply_patch` 路径。
+模型返回 `virtual_apply_patch` 后，CCR 会把它转换回 Codex 期望的 `custom_tool_call`：`name = apply_patch`，`input = 原始 patch 文本`。CCR 不直接修改文件，真正执行 patch 的仍然是 Codex 客户端。这个适配会对非 GPT 模型自动启用，不受配置档案级 **使用增强路由** 开关影响；GPT 命名模型以及实际基模为 GPT 的 Fusion 模型继续使用 Codex 原生 freeform `apply_patch` 路径。
 
 ## 自定义路由
 
 自定义路由在路由页的规则列表中配置。页面顶部的 **搜索路由规则** 可以按名称、条件、请求动作等文本过滤列表；右上角 **添加** 按钮打开 **添加路由规则** 弹窗。规则表格按 **名称**、**条件**、**请求动作**、**状态**、**操作** 展示每条规则。
 
 自定义规则按列表顺序匹配，第一条命中的启用规则会改写请求。表格右侧的上移、下移按钮用来调整优先级，编辑按钮打开 **编辑路由规则**，删除按钮会先弹出确认框。**状态** 列的开关关闭后，规则保留在列表里，但不会参与匹配。
+
+Agent 配置档案也可以定义私有路由规则。配置级规则使用同一套规则结构，但 CCR 会先于全局规则列表执行它们，并且只对使用该配置生成的 API Key 鉴权的请求生效。需要显式匹配调用方配置时，可以在规则条件或脚本中使用 `request.auth.apiKeyId` 或 `request.auth.profileId`。
 
 ### 添加或编辑规则
 
@@ -74,7 +78,7 @@ CCR 会自动为第三方或非 GPT 模型适配 Codex 的 `apply_patch` 文件�
 | UI 字段 | 填写方式 | 保存后的含义 |
 | --- | --- | --- |
 | **名称** | 填一个便于识别的规则名。该字段不能为空。 | 显示在列表 **名称** 列，也参与搜索。 |
-| **条件** | 选择 `request.header` 或 `request.body`，填写字段名、操作符和值。 | 生成 `condition.left`、`condition.operator` 和 `condition.right`。 |
+| **条件** | 选择 `request.header`、`request.body` 或 `request.auth`，填写字段名、操作符和值。 | 生成 `condition.left`、`condition.operator` 和 `condition.right`。 |
 | **改写请求参数** | 至少保留一行 rewrite。每行选择操作、目标 key 和需要的值。 | 生成 `rewrites`，规则命中后按行改写请求。 |
 | **启用** | 打开或关闭规则。 | 控制 `enabled`，关闭时不会匹配。 |
 | **失败时** | 配置这条规则自己的 Fallback。 | 规则命中后覆盖页面顶部的 **默认失败处理**。 |
@@ -126,6 +130,7 @@ return {
 | `input.tokenCount` | `number` | CCR 估算的输入 Token 数；无法估算时为 `0`。 |
 | `input.sessionId` | `string \| undefined` | CCR 能解析到的会话 ID。 |
 | `input.apiKeyId` | `string \| undefined` | `x-auth-api-key-id` Header 中的 CCR API Key 标识，不是原始密钥。 |
+| `input.profileId` | `string \| undefined` | 已鉴权 Agent 配置档案中配置的 `id`，例如 `claude-work`。 |
 | `input.builtInSubagentModel` | `string \| undefined` | CCR 能识别到的内置子代理模型。 |
 | `input.summary.lastUserText` | `string` | 最后一条用户消息的文本，最多 16 KiB 字符。 |
 | `input.summary.systemText` | `string` | System 内容的文本，最多 8 KiB 字符。 |
@@ -419,8 +424,11 @@ Worker 隔离不是操作系统级安全沙箱。`api.fetch`、`api.fs` 和 `api
 | --- | --- | --- |
 | `request.header` | `user-agent`、`x-api-key`、`x-client-name` | `request.header.user-agent` |
 | `request.body` | `model`、`messages`、`messages.0.role`、`tools` | `request.body.model` |
+| `request.auth` | `apiKeyId`、`profileId` | `request.auth.profileId` |
 
 Header 名不区分大小写。Body 字段按点号路径读取，数字片段表示数组下标；例如 `messages.0.role` 读取第一条 message 的 role。对于 messages、tools 这类嵌套数组，通常用 `contains deep` 比固定下标更稳。
+
+`request.auth.apiKeyId` 是 CCR 的内部鉴权 key id，不是原始 API Key。Agent 配置档案生成的 key 使用 `profile:<sanitized-profile-id>` 形式，而 `request.auth.profileId` 会暴露已鉴权配置档案中配置的原始 `id`。这样可以按配置分流，而不需要匹配密钥值。
 
 值输入框会按常见字面量解析：`true`、`false`、`null`、数字、JSON 对象或数组会按对应类型比较；其他内容按字符串处理。需要强制作为字符串时，可以写成 `"123"` 或 `'123'`。
 
@@ -461,6 +469,7 @@ Rewrite 的值也会按字面量解析，所以 `0.2` 会变成数字，`true` �
 | 目标 | 条件来源 | 字段 | 操作符 | 值 | 改写请求参数 |
 | --- | --- | --- | --- | --- | --- |
 | 按客户端 Header 分流 | `request.header` | `x-client-name` | `==` | `claude-code` | **设置** `request.body.model = 供应商/模型` |
+| 按单个配置分流 | `request.auth` | `profileId` | `==` | `claude-work` | **设置** `request.body.model = 供应商/模型` |
 | 按原始模型前缀分流 | `request.body` | `model` | `starts with` | `claude-` | **设置** `request.body.model = 供应商/模型` |
 | 按消息内容分流到视觉模型 | `request.body` | `messages` | `contains deep` | `image` | **设置** `request.body.model = 视觉供应商/模型` |
 | 删除调试 Header | `request.header` | `x-debug-route` | `==` | `1` | **删除** `request.header.x-debug-route` |
@@ -471,7 +480,7 @@ Rewrite 的值也会按字面量解析，所以 `0.2` 会变成数字，`true` �
 
 Fallback 处理请求失败后的降级。第一次选模型由路由完成；当前模型或上游失败时，Fallback 决定是否继续尝试。
 
-路由页面顶部的 **默认失败处理** 是全局 Fallback。每条路由规则里的 **失败时** 是规则级 Fallback：当某条规则命中时，规则级配置会覆盖全局配置。
+路由页面顶部的 **默认失败处理** 是全局 Fallback。每条路由规则里的 **失败时** 是规则级 Fallback：当某条规则命中时，规则级配置会覆盖全局配置。Agent 配置档案的配置级路由不再定义单独的配置级 Fallback。
 
 ## Fallback 模式
 

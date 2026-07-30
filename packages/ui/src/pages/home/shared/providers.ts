@@ -5,6 +5,7 @@ import openCodeLogoUrl from "@/assets/agent-logos/opencode.ico";
 import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
 import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
 import {
+  ROUTER_SCRIPT_API_VERSION,
   ROUTER_SCRIPT_MAX_TIMEOUT_MS
 } from "@ccr/core/contracts/app";
 import type {
@@ -420,6 +421,40 @@ export function routingRewriteFromDraftRow(row: RoutingRewriteDraftRow): RouterR
   };
 }
 
+export function routingRuleFromDraft(
+  draft: AddRoutingRuleDraft,
+  existingRules: RouterRule[],
+  existingRule?: RouterRule
+): RouterRule {
+  const commonRule = {
+    enabled: draft.enabled,
+    fallback: normalizeRouterFallbackConfig(draft.fallback),
+    id: existingRule?.id ?? uniqueRoutingRuleId(existingRules),
+    name: draft.name.trim()
+  };
+  return draft.type === "script"
+    ? {
+        ...commonRule,
+        script: {
+          apiVersion: ROUTER_SCRIPT_API_VERSION,
+          file: draft.scriptFile.trim(),
+          language: "javascript" as const,
+          timeoutMs: Number(draft.scriptTimeoutMs)
+        },
+        type: "script"
+      }
+    : {
+        ...commonRule,
+        condition: {
+          left: buildRouterConditionPath(draft.conditionSource, draft.conditionField),
+          operator: draft.conditionOperator,
+          right: draft.conditionRight.trim()
+        },
+        rewrites: draft.rewrites.map(routingRewriteFromDraftRow),
+        type: "condition"
+      };
+}
+
 function normalizeRouterModelRewrite(rewrite: RouterRuleRewrite): RouterRuleRewrite {
   return isModelRewriteKey(rewrite.key) && rewrite.value
     ? { ...rewrite, value: normalizeProviderModelSelector(rewrite.value) }
@@ -749,6 +784,113 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
     selectedModels: [],
     selectedProtocols: selectedProviderProtocolsFromCapabilities(provider.capabilities, protocol)
   };
+}
+
+export function providerConnectivityProviderPlugins(
+  draft: AddProviderDraft,
+  providerPlugins: unknown[] | undefined,
+  existingProvider?: GatewayProviderConfig
+): unknown[] {
+  if (draft.providerPlugins.length > 0) {
+    return draft.providerPlugins.filter(providerPluginEnabled);
+  }
+  if (providerConnectivityApiKeyFromDraft(draft) !== localAgentProviderApiKeyValue) {
+    return [];
+  }
+
+  const names = localAgentProviderPluginNamesForDraft(draft, existingProvider);
+  return (providerPlugins ?? []).filter((plugin) =>
+    providerPluginEnabled(plugin) &&
+    localAgentProviderPluginMatchesNames(plugin, names)
+  );
+}
+
+export function removeLocalAgentProviderPluginsForProvider(
+  current: unknown[] | undefined,
+  provider: GatewayProviderConfig | undefined
+): unknown[] | undefined {
+  if (!provider || providerApiKey(provider) !== localAgentProviderApiKeyValue) {
+    return current;
+  }
+
+  const names = localAgentProviderPluginNamesForProvider(provider);
+  return (current ?? []).filter((plugin) => !localAgentProviderPluginMatchesNames(plugin, names));
+}
+
+function localAgentProviderPluginNamesForDraft(
+  draft: AddProviderDraft,
+  existingProvider: GatewayProviderConfig | undefined
+): Set<string> {
+  const existingProviderIdOrName = existingProvider?.id || existingProvider?.name;
+  return providerPluginMatchNames([
+    draft.name,
+    existingProvider?.name,
+    existingProvider?.id,
+    existingProviderIdOrName ? providerNameSlug(existingProviderIdOrName) : undefined
+  ], draft.protocol);
+}
+
+function localAgentProviderPluginNamesForProvider(provider: GatewayProviderConfig): Set<string> {
+  const protocol = toProviderProtocol(provider.type) ?? toProviderProtocol(provider.provider);
+  const providerIdOrName = provider.id || provider.name;
+  return providerPluginMatchNames([
+    provider.name,
+    provider.id,
+    providerIdOrName ? providerNameSlug(providerIdOrName) : undefined
+  ], protocol);
+}
+
+function providerPluginMatchNames(
+  names: Array<string | undefined>,
+  protocol: GatewayProviderProtocol | undefined
+): Set<string> {
+  const values = new Set<string>();
+  for (const name of names) {
+    const normalized = normalizeProviderPluginName(name);
+    if (!normalized) {
+      continue;
+    }
+    values.add(normalized);
+    if (protocol) {
+      values.add(normalizeProviderPluginName(`${normalized}::${protocol}`) || "");
+    }
+  }
+  values.delete("");
+  return values;
+}
+
+function localAgentProviderPluginMatchesNames(plugin: unknown, names: Set<string>): boolean {
+  if (!isPlainRecord(plugin)) {
+    return false;
+  }
+  const key = typeof plugin.key === "string" ? plugin.key.trim().toLowerCase() : "";
+  if (!key.startsWith("ccr-local-agent-")) {
+    return false;
+  }
+  const pluginProviderName = typeof plugin.providerName === "string"
+    ? plugin.providerName
+    : typeof plugin.provider === "string"
+      ? plugin.provider
+      : "";
+  const normalizedProviderName = normalizeProviderPluginName(pluginProviderName);
+  return Boolean(normalizedProviderName && names.has(normalizedProviderName));
+}
+
+function providerPluginEnabled(plugin: unknown): boolean {
+  return !isPlainRecord(plugin) || plugin.enabled !== false;
+}
+
+function normalizeProviderPluginName(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.toLowerCase() : undefined;
+}
+
+export function providerNameSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "provider";
 }
 
 export function createProviderCredentialDraft(index = 0): ProviderCredentialDraft {

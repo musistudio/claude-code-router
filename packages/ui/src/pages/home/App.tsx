@@ -2,7 +2,6 @@ import {
   AddApiKeyDraft, AddProfileDraft, AddProviderDraft, AddRoutingRuleDraft, AgentAnalysisSessionSelection, AgentAnalysisSnapshot, AgentFilterValue,
   ApiKeyConfig, AppConfig, appCopy, AppI18nContext, AppInfo, AppSaveConfigOptions, AppUpdateStatus,
   AppLanguagePreference, applyProviderProbeResult, AppToast, BotGatewaySavedConfig, buildExtensionList, claudeDesignRoutingConfigFromDraft,
-  buildRouterConditionPath,
   ClaudeDesignRoutingDraft, ClaudeDesignRoutingRuleDraft, cloneConfig, createApiKeyDraft, createApiKeyEditDraft,
   createApiKeyList, createClaudeDesignRoutingDraft, createClaudeDesignRoutingRuleDraft, createCursorProxyRoutingDraft, createCursorProxyRoutingRuleDraft, createEmptyAgentAnalysis,
   copyTextToClipboard, createEmptyRequestLogPage, createEmptyUsageStats, createExtensionInstallDraft, createGeneratedApiKey, createPluginSettingsDraft, createProfileDraft,
@@ -19,18 +18,18 @@ import {
   isTraySupportedPlatform,
   LayoutGroup, mergeModelDisplayNames, mergeModelMetadata, mergeProviderModelLists, modelDescriptionsForModels, modelDisplayNamesForModels, modelMetadataForModels,
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets, normalizeProxyConfig,
-  normalizeProfileItem, normalizeProviderBaseUrl, normalizeRouterBuiltInRules, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
+  normalizeProfileItem, normalizeProviderBaseUrl, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
   OverviewWidgetConfig, parseProviderAccountDraft, pluginConfigPatchFromSettingsDraft,
   providerCredentialsFromDraft,
   persistLanguagePreference, PluginInstallCandidate, PluginMarketplaceEntry, PluginRoutingConfigTarget, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileAgentOptionsForRuntime, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
-  providerBaseUrl, providerCapabilitiesForProtocols, providerCapabilitiesForSave, providerConnectivityApiKeyFromDraft, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerProtocolOptions, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
+  providerBaseUrl, providerCapabilitiesForProtocols, providerCapabilitiesForSave, providerConnectivityApiKeyFromDraft, providerConnectivityProviderPlugins, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerProtocolOptions, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
-  ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, RouterRule, SettingsPageId,
-  routingRewriteFromDraftRow, setProviderPresets, splitLines, translateAppErrorMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
-  uniqueProviderProtocols, uniqueRoutingRuleId, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
+  ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, removeLocalAgentProviderPluginsForProvider, RouterRule, routingRuleFromDraft, SettingsPageId,
+  setProviderPresets, splitLines, translateAppErrorMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
+  uniqueProviderProtocols, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
   VirtualModelDraft, virtualModelProfileFromDraft, virtualModelProfilesUseMediaTools
 } from "./shared/index";
@@ -38,7 +37,7 @@ import { preserveEqualPollingSnapshot, startVisiblePolling } from "./shared/poll
 import {
   AppDialogStack, LightToast, MainLayout, OnboardingLayout, shouldCheckForUpdateOnOpen
 } from "./components/index";
-import { hasAvailableGatewayModels, ROUTER_SCRIPT_API_VERSION } from "@ccr/core/contracts/app";
+import { hasAvailableGatewayModels } from "@ccr/core/contracts/app";
 
 type ProfileOpenDialogState = {
   busy?: "" | "cli" | "app";
@@ -126,41 +125,6 @@ function mergeProviderPlugins(current: unknown[] | undefined, additions: unknown
 
 function providerPluginKey(value: unknown): string | undefined {
   return isPlainRecord(value) && typeof value.key === "string" && value.key.trim() ? value.key.trim() : undefined;
-}
-
-function removeLocalAgentProviderPluginsForProvider(
-  current: unknown[] | undefined,
-  provider: GatewayProviderConfig | undefined
-): unknown[] | undefined {
-  if (!provider || providerApiKeyValue(provider) !== localAgentProviderApiKey) {
-    return current;
-  }
-
-  const providerNames = new Set([
-    provider.name,
-    provider.type ? `${provider.name}::${provider.type}` : ""
-  ].map((value) => value.trim().toLowerCase()).filter(Boolean));
-  return (current ?? []).filter((plugin) => !localAgentProviderPluginMatchesProvider(plugin, providerNames));
-}
-
-function localAgentProviderPluginMatchesProvider(plugin: unknown, providerNames: Set<string>): boolean {
-  if (!isPlainRecord(plugin)) {
-    return false;
-  }
-  const key = typeof plugin.key === "string" ? plugin.key.trim().toLowerCase() : "";
-  if (!key.startsWith("ccr-local-agent-")) {
-    return false;
-  }
-  const pluginProviderName = typeof plugin.providerName === "string"
-    ? plugin.providerName
-    : typeof plugin.provider === "string"
-      ? plugin.provider
-      : "";
-  return providerNames.has(pluginProviderName.trim().toLowerCase());
-}
-
-function providerApiKeyValue(provider: GatewayProviderConfig): string {
-  return provider.api_key || provider.apiKey || provider.apikey || "";
 }
 
 function providerNameSlug(value: string): string {
@@ -1444,6 +1408,8 @@ function App() {
     const apiKey = providerConnectivityApiKeyFromDraft(providerDraft);
     const models = mergeProviderModelLists(modelsToCheck ?? mergeProviderModelLists(providerDraft.selectedModels, splitLines(providerDraft.modelsText)));
     const protocols = providerDraft.selectedProtocols.length > 0 ? providerDraft.selectedProtocols : [providerDraft.protocol];
+    const existingProvider = providerEditIndex === undefined ? undefined : draftConfig.Providers[providerEditIndex];
+    const providerPlugins = providerConnectivityProviderPlugins(providerDraft, draftConfig.providerPlugins, existingProvider);
     const candidates = providerProbeCandidates(providerDraft)
       .map((candidate) => ({
         ...candidate,
@@ -1482,7 +1448,7 @@ function App() {
         candidates,
         forceRefresh: true,
         models,
-        providerPlugins: providerDraft.providerPlugins,
+        providerPlugins,
         protocols
       });
       if (providerConnectivityRequestId.current !== requestId) {
@@ -1787,43 +1753,17 @@ function App() {
       return;
     }
 
-    const rewrites = routingRuleDraft.rewrites.map(routingRewriteFromDraftRow);
-    const commonRule = {
-      enabled: routingRuleDraft.enabled,
-      fallback: normalizeRouterFallbackConfig(routingRuleDraft.fallback),
-      id: uniqueRoutingRuleId(draftConfig.Router.rules),
-      name: routingRuleDraft.name.trim()
-    };
-    const rule: RouterRule = routingRuleDraft.type === "script"
-      ? {
-          ...commonRule,
-          script: {
-            apiVersion: ROUTER_SCRIPT_API_VERSION,
-            file: routingRuleDraft.scriptFile.trim(),
-            language: "javascript",
-            timeoutMs: Number(routingRuleDraft.scriptTimeoutMs)
-          },
-          type: "script"
-        }
-      : {
-          ...commonRule,
-          condition: {
-            left: buildRouterConditionPath(routingRuleDraft.conditionSource, routingRuleDraft.conditionField),
-            operator: routingRuleDraft.conditionOperator,
-            right: routingRuleDraft.conditionRight.trim()
-          },
-          rewrites,
-          type: "condition"
-        };
+    const rule = routingRuleFromDraft(
+      routingRuleDraft,
+      draftConfig.Router.rules,
+      routingEditIndex === undefined ? undefined : draftConfig.Router.rules[routingEditIndex]
+    );
 
     updateConfig((config) => {
       if (routingEditIndex === undefined) {
         config.Router.rules = [...config.Router.rules, rule];
       } else {
-        config.Router.rules[routingEditIndex] = {
-          ...rule,
-          id: config.Router.rules[routingEditIndex]?.id ?? rule.id
-        };
+        config.Router.rules[routingEditIndex] = rule;
       }
       return config;
     });
@@ -3137,21 +3077,6 @@ function App() {
                   moveRule: moveRoutingRule,
                   providers: draftConfig.Providers,
                   removeRule: setRoutingDeleteIndex,
-                  updateBuiltInRule: (agent, patch) => updateConfig((config) => {
-                    config.Router.builtInRules = normalizeRouterBuiltInRules(config.Router.builtInRules);
-                    if (agent === "claude-code") {
-                      config.Router.builtInRules["claude-code"] = {
-                        ...config.Router.builtInRules["claude-code"],
-                        ...patch
-                      };
-                    } else {
-                      config.Router.builtInRules.codex = {
-                        ...config.Router.builtInRules.codex,
-                        ...patch
-                      };
-                    }
-                    return config;
-                  }),
                   updateFallback: (fallback) => updateConfig((config) => {
                     config.Router.fallback = normalizeRouterFallbackConfig(fallback);
                     return config;

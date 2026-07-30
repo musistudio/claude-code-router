@@ -205,9 +205,7 @@ jobs:
       - name: Build and publish Windows artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          npm run build:assets
-          npx electron-builder --win --publish always
+        run: npm run build:app:win:release -- --publish always
 
   linux:
     name: Linux

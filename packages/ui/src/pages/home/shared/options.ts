@@ -213,11 +213,12 @@ export const routerRuleTypeOptions: Array<{ label: string; value: RouterRuleType
   { label: "Node.js script", value: "script" }
 ];
 
-export type RouterConditionSource = "request.header" | "request.body";
+export type RouterConditionSource = "request.header" | "request.body" | "request.auth";
 
 export const routerConditionSourceOptions: Array<{ label: string; value: RouterConditionSource }> = [
   { label: "request.header", value: "request.header" },
-  { label: "request.body", value: "request.body" }
+  { label: "request.body", value: "request.body" },
+  { label: "request.auth", value: "request.auth" }
 ];
 
 export const routerRuleOperatorOptions: Array<{ label: string; value: RouterRuleOperator }> = [

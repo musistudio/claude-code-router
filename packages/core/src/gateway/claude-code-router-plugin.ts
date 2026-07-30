@@ -2,12 +2,12 @@ import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
-import { isGatewayProviderEnabled, type AppConfig, type ProfileClientKind, type RequestRouteTraceChange, type RouterBuiltInAgentRuleId, type RouterFallbackConfig, type RouterRule, type RouterRuleCondition } from "@ccr/core/contracts/app";
+import { isGatewayProviderEnabled, type AppConfig, type ProfileClientKind, type ProfileConfig, type RequestRouteTraceChange, type RouterBuiltInAgentRuleId, type RouterFallbackConfig, type RouterRule, type RouterRuleCondition } from "@ccr/core/contracts/app";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { applyAgentRequestEnrichers } from "@ccr/core/agents/request-enricher";
 import { buildClaudeAppGatewayModelRoutes, type ClaudeAppGatewayModelRoute, resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
 import { claudeAppGatewayModelRouteOptions } from "@ccr/core/gateway/internal/shared";
-import { compileRouterConfig, type CompiledRouterConfig, type CompiledRouterRule } from "@ccr/core/routing/config-compiler";
+import { compileRouterConfig, type CompiledProfileRoutingConfig, type CompiledRouterConfig, type CompiledRouterRule } from "@ccr/core/routing/config-compiler";
 import type { RouteDecision, RouteDiagnostic, RouteModelRef, RouteRequest, RouteSource } from "@ccr/core/routing/contracts";
 import { ModelRegistry, normalizeRouteSelector } from "@ccr/core/routing/model-registry";
 import { RoutePolicyEngine, type RoutePolicy } from "@ccr/core/routing/policy-engine";
@@ -16,6 +16,7 @@ import { applyCompiledRouteRewrite, isBodyModelCompiledRewrite, type CompiledRou
 import { buildRouteScriptInput } from "@ccr/core/routing/route-script-context";
 import { normalizeRouteScriptResult } from "@ccr/core/routing/route-script-result";
 import type { RouteScriptRuntime } from "@ccr/core/routing/route-script-runtime";
+import { profileApiKeyId } from "@ccr/core/profiles/api-key";
 
 export { normalizeRouteSelector } from "@ccr/core/routing/model-registry";
 
@@ -281,6 +282,11 @@ type RouteResolutionRuntime = {
   trace?: RouteTraceObserver;
 };
 
+type RouteAuthContext = {
+  apiKeyId?: string;
+  profileId?: string;
+};
+
 async function resolveConfiguredRouteDecision(
   request: MutableRequestLike,
   config: AppConfig,
@@ -290,6 +296,10 @@ async function resolveConfiguredRouteDecision(
 ): Promise<ResolvedConfiguredRouteDecision> {
   const requestedModel = readString(request.body.model);
   const explicitModel = normalizeRouteSelector(requestedModel);
+  const authenticatedProfile = resolveAuthenticatedAnyProfile(request, config);
+  const auth = routeAuthContext(request, authenticatedProfile);
+  const profileRouting = authenticatedProfile ? compiled.profileRoutings.find((entry) => entry.profile.id === authenticatedProfile.id && entry.active) : undefined;
+  const defaultFallback = compiled.fallback;
   const resolvedExplicitModel = compiled.modelRegistry.resolve(explicitModel) ?? compiled.modelRegistry.resolve(
     explicitModel
       ? resolveClaudeAppGatewayRouteModel(explicitModel, config, claudeAppGatewayModelRouteOptions)
@@ -297,19 +307,19 @@ async function resolveConfiguredRouteDecision(
   );
   const explicitDecision: ConfiguredRouteDecision | undefined = resolvedExplicitModel
     ? {
-        fallback: compiled.fallback,
+        fallback: defaultFallback,
         model: resolvedExplicitModel,
         reason: "default",
         rewrites: [],
         source: "default"
       }
     : undefined;
-  const builtInDecision = resolveBuiltInAgentRouteDecision(request, config, compiled.modelRegistry, compiled.fallback);
+  const builtInDecision = resolveBuiltInAgentRouteDecision(request, config, compiled.modelRegistry, defaultFallback);
   const subagentEnvDecision = resolveBuiltInClaudeCodeSubagentEnvRouteDecision(
     request,
     config,
     compiled.modelRegistry,
-    compiled.fallback
+    defaultFallback
   );
   const clientModelDecision = explicitDecision && explicitClientModelCanOverrideBuiltInClaudeCodeRoute(
     request,
@@ -320,11 +330,31 @@ async function resolveConfiguredRouteDecision(
     ? explicitDecision
     : undefined;
   const ruleBaseDecision = subagentEnvDecision ?? clientModelDecision ?? builtInDecision;
+  const profilePolicies: Array<RoutePolicy<MutableRequestLike, ConfiguredRouteDecision>> = profileRouting
+    ? profileRouting.rules.map((rule): RoutePolicy<MutableRequestLike, ConfiguredRouteDecision> => ({
+        evaluate: async (context) => {
+          const policyId = profileRulePolicyId(profileRouting, rule);
+          const decision = await resolveRouterRule(rule, context, compiled, runtime, {
+            auth,
+            defaultFallback,
+            policyId,
+            source: "profile"
+          });
+          if (!decision || decision.rewrites.some(isBodyModelCompiledRewrite)) {
+            return decision;
+          }
+          return ruleBaseDecision
+            ? mergeConfiguredRouteDecisions(ruleBaseDecision, decision)
+            : decision;
+        },
+        id: profileRulePolicyId(profileRouting, rule)
+      }))
+    : [];
   const policies: Array<RoutePolicy<MutableRequestLike, ConfiguredRouteDecision>> = [
     {
       evaluate: () => customModel
         ? {
-            fallback: compiled.fallback,
+            fallback: defaultFallback,
             model: customModel,
             reason: "custom-router",
             rewrites: [],
@@ -338,13 +368,19 @@ async function resolveConfiguredRouteDecision(
         context,
         config,
         compiled.modelRegistry,
-        compiled.fallback
+        defaultFallback
       ),
       id: "builtin-agent-claude-code-subagent"
     },
+    ...profilePolicies,
     ...compiled.rules.map((rule): RoutePolicy<MutableRequestLike, ConfiguredRouteDecision> => ({
       evaluate: async (context) => {
-        const decision = await resolveRouterRule(rule, context, compiled, runtime);
+        const decision = await resolveRouterRule(rule, context, compiled, runtime, {
+          auth,
+          defaultFallback,
+          policyId: `rule:${rule.rule.id}`,
+          source: "rule"
+        });
         if (!decision || decision.rewrites.some(isBodyModelCompiledRewrite)) {
           return decision;
         }
@@ -368,7 +404,7 @@ async function resolveConfiguredRouteDecision(
     },
     {
       evaluate: () => ({
-        fallback: compiled.fallback,
+        fallback: defaultFallback,
         model: undefined,
         reason: "default",
         rewrites: [],
@@ -379,9 +415,7 @@ async function resolveConfiguredRouteDecision(
   ];
   const match = await new RoutePolicyEngine(policies).evaluate(request);
   if (match) {
-    const compiledRule = match.policyId.startsWith("rule:")
-      ? compiled.rules.find((rule) => `rule:${rule.rule.id}` === match.policyId)
-      : undefined;
+    const compiledRule = findMatchedCompiledRule(match.policyId, compiled);
     return {
       ...match.decision,
       policyId: match.policyId,
@@ -389,13 +423,36 @@ async function resolveConfiguredRouteDecision(
     };
   }
   return {
-    fallback: compiled.fallback,
+    fallback: defaultFallback,
     model: resolvedExplicitModel,
     policyId: "default",
     reason: "default",
     rewrites: [],
     source: "default"
   };
+}
+
+function profileRulePolicyId(
+  profileRouting: CompiledProfileRoutingConfig,
+  rule: CompiledRouterRule
+): string {
+  return `profile:${profileRouting.profile.id}:rule:${rule.rule.id}`;
+}
+
+function findMatchedCompiledRule(
+  policyId: string,
+  compiled: CompiledRouterConfig
+): CompiledRouterRule | undefined {
+  if (policyId.startsWith("rule:")) {
+    return compiled.rules.find((rule) => `rule:${rule.rule.id}` === policyId);
+  }
+  for (const profileRouting of compiled.profileRoutings) {
+    const matched = profileRouting.rules.find((rule) => profileRulePolicyId(profileRouting, rule) === policyId);
+    if (matched) {
+      return matched;
+    }
+  }
+  return undefined;
 }
 
 function mergeConfiguredRouteDecisions(
@@ -586,10 +643,11 @@ function builtInAgentRouteMatches(
   config: AppConfig,
   agent: RouterBuiltInAgentRuleId
 ): boolean {
-  if (config.Router.builtInRules?.[agent]?.enabled === false) {
+  const profile = resolveBuiltInAgentProfile(request, config, agent);
+  if (!profile) {
     return false;
   }
-  if (!resolveBuiltInAgentProfile(request, config, agent)) {
+  if (profile.routing?.enhancedRoute === false) {
     return false;
   }
   const userAgent = readRequestHeader(request.headers, "user-agent")?.toLowerCase() ?? "";
@@ -609,6 +667,14 @@ function resolveAuthenticatedProfile(
   config: AppConfig,
   agent: ProfileClientKind
 ) {
+  const profile = resolveAuthenticatedAnyProfile(request, config);
+  return profile?.agent === agent ? profile : undefined;
+}
+
+function resolveAuthenticatedAnyProfile(
+  request: MutableRequestLike,
+  config: AppConfig
+) {
   if (config.profile.enabled === false) {
     return undefined;
   }
@@ -618,9 +684,19 @@ function resolveAuthenticatedProfile(
   }
   return config.profile.profiles.find((profile) =>
     profile.enabled &&
-    profile.agent === agent &&
     profileApiKeyId(profile.id || profile.name || profile.agent) === authenticatedApiKeyId
   );
+}
+
+function routeAuthContext(
+  request: MutableRequestLike,
+  profile: ProfileConfig | undefined
+): RouteAuthContext {
+  const apiKeyId = readRequestHeader(request.headers, "x-auth-api-key-id")?.trim();
+  return {
+    ...(apiKeyId ? { apiKeyId } : {}),
+    ...(profile?.id ? { profileId: profile.id } : {})
+  };
 }
 
 function resolveBuiltInAgentRouteTarget(
@@ -629,11 +705,6 @@ function resolveBuiltInAgentRouteTarget(
   agent: RouterBuiltInAgentRuleId
 ): string | undefined {
   return normalizeRouteSelector(resolveBuiltInAgentProfile(request, config, agent)?.model);
-}
-
-function profileApiKeyId(value: string): string {
-  const profileId = value.trim().replace(/[^a-zA-Z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
-  return `profile:${profileId || "profile"}`;
 }
 
 function builtInAgentUserAgentNeedle(agent: RouterBuiltInAgentRuleId): string {
@@ -1104,13 +1175,19 @@ async function resolveRouterRule(
   compiledRule: CompiledRouterRule,
   request: MutableRequestLike,
   compiled: CompiledRouterConfig,
-  runtime: RouteResolutionRuntime
+  runtime: RouteResolutionRuntime,
+  options: {
+    auth: RouteAuthContext;
+    defaultFallback: RouterFallbackConfig;
+    policyId: string;
+    source: "profile" | "rule";
+  }
 ): Promise<ConfiguredRouteDecision | undefined> {
   if (!compiledRule.active) {
     return undefined;
   }
   const rule = compiledRule.rule;
-  const fallback = rule.fallback ?? compiled.fallback;
+  const fallback = rule.fallback ?? options.defaultFallback;
 
   const rewrites = compiledRule.rewrites;
 
@@ -1120,11 +1197,11 @@ async function resolveRouterRule(
         code: "script-runtime-error",
         message: `Router script "${rule.name}" runtime is unavailable.`,
         ruleId: rule.id,
-        source: "rule"
+        source: options.source
       });
       return undefined;
     }
-    const context = buildRouteScriptInput(request);
+    const context = buildRouteScriptInput(request, { profileId: options.auth.profileId });
     const startedAtMs = Date.now();
     const execution = await runtime.scriptRuntime.execute(rule.id, rule.script, context);
     if (execution.status !== "ok") {
@@ -1133,11 +1210,11 @@ async function resolveRouterRule(
         code: timeout ? "script-timeout" : "script-runtime-error",
         message: `Router script "${rule.name}" ${timeout ? "timed out" : "failed"}: ${execution.error ?? execution.status}`,
         ruleId: rule.id,
-        source: "rule"
+        source: options.source
       };
       runtime.runtimeDiagnostics.push(diagnostic);
       runtime.trace?.capture({
-        decision: { diagnostics: [diagnostic], policyId: `rule:${rule.id}`, ruleId: rule.id, ruleName: rule.name, source: "rule" },
+        decision: { diagnostics: [diagnostic], policyId: options.policyId, ruleId: rule.id, ruleName: rule.name, source: options.source },
         durationMs: execution.durationMs,
         kind: "decision",
         name: `customer.script:${rule.id}`,
@@ -1150,19 +1227,20 @@ async function resolveRouterRule(
     }
     const normalized = normalizeRouteScriptResult({
       compiledRule,
-      defaultFallback: compiled.fallback,
+      defaultFallback: options.defaultFallback,
       modelRegistry: compiled.modelRegistry,
+      source: options.source,
       value: execution.value
     });
     runtime.runtimeDiagnostics.push(...normalized.diagnostics);
     runtime.trace?.capture({
       decision: {
         diagnostics: normalized.diagnostics,
-        policyId: `rule:${rule.id}`,
-        reason: normalized.matched ? `script:${rule.id}` : undefined,
+        policyId: options.policyId,
+        reason: normalized.matched ? routerRuleReason(rule, options.source, options.policyId, "script") : undefined,
         ruleId: rule.id,
         ruleName: rule.name,
-        source: "rule"
+        source: options.source
       },
       durationMs: execution.durationMs,
       kind: "decision",
@@ -1180,16 +1258,16 @@ async function resolveRouterRule(
       ? {
           fallback: normalized.fallback ?? fallback,
           model: normalized.model,
-          reason: `script:${rule.id}`,
+          reason: routerRuleReason(rule, options.source, options.policyId, "script"),
           rewrites: normalized.rewrites,
-          source: "rule"
+          source: options.source
         }
       : undefined;
   }
 
   if (rule.type === "condition") {
-    return rule.condition && routerRuleConditionMatches(rule.condition, request)
-      ? routerRuleRewriteDecision(rule, rewrites, fallback, compiledRule.model)
+    return rule.condition && routerRuleConditionMatches(rule.condition, request, options.auth)
+      ? routerRuleRewriteDecision(rule, rewrites, fallback, compiledRule.model, options.source, options.policyId)
       : undefined;
   }
 
@@ -1197,7 +1275,7 @@ async function resolveRouterRule(
     const pattern = readString(rule.pattern);
     const requestedModel = readString(request.body.model);
     return pattern && requestedModel?.startsWith(pattern)
-      ? routerRuleRewriteDecision(rule, rewrites, fallback, compiledRule.model)
+      ? routerRuleRewriteDecision(rule, rewrites, fallback, compiledRule.model, options.source, options.policyId)
       : undefined;
   }
 
@@ -1208,14 +1286,16 @@ function routerRuleRewriteDecision(
   rule: RouterRule,
   rewrites: CompiledRouteRewrite[],
   fallback: RouterFallbackConfig,
-  model: RouteModelRef | undefined
+  model: RouteModelRef | undefined,
+  source: "profile" | "rule",
+  policyId?: string
 ): ConfiguredRouteDecision {
   return {
     fallback,
     model,
-    reason: routerRuleReason(rule),
+    reason: routerRuleReason(rule, source, policyId),
     rewrites,
-    source: "rule"
+    source
   };
 }
 
@@ -1225,6 +1305,9 @@ function routeDecisionTraceName(decision: ResolvedConfiguredRouteDecision): stri
   }
   if (decision.source === "rule") {
     return "customer.rule-decision";
+  }
+  if (decision.source === "profile") {
+    return "customer.profile-rule-decision";
   }
   if (decision.source === "subagent") {
     return `builtins.${decision.policyId}`;
@@ -1242,11 +1325,15 @@ function builtInAgentPolicyId(decision: ConfiguredRouteDecision): string {
   return `builtin-agent-${builtInRoute}`;
 }
 
-function routerRuleConditionMatches(condition: RouterRuleCondition, request: MutableRequestLike): boolean {
+function routerRuleConditionMatches(
+  condition: RouterRuleCondition,
+  request: MutableRequestLike,
+  auth: RouteAuthContext
+): boolean {
   if (condition.left.trim().startsWith("response.")) {
     return false;
   }
-  const actual = resolveRouterConditionValue(condition.left, request);
+  const actual = resolveRouterConditionValue(condition.left, request, auth);
   const expected = parseConditionLiteral(condition.right);
 
   if (condition.operator === "starts-with") {
@@ -1288,7 +1375,11 @@ function routerRuleConditionMatches(condition: RouterRuleCondition, request: Mut
   return false;
 }
 
-function resolveRouterConditionValue(path: string, request: MutableRequestLike): unknown {
+function resolveRouterConditionValue(
+  path: string,
+  request: MutableRequestLike,
+  auth: RouteAuthContext
+): unknown {
   const parts = path
     .split(".")
     .map((part) => part.trim())
@@ -1307,6 +1398,16 @@ function resolveRouterConditionValue(path: string, request: MutableRequestLike):
 
   if (section === "header" || section === "headers") {
     return readRequestHeader(request.headers, rest.join("."));
+  }
+  if (section === "auth") {
+    const key = rest.join(".").trim();
+    if (key === "apiKeyId" || key === "api_key_id" || key === "keyId" || key === "key_id" || key === "sub") {
+      return auth.apiKeyId;
+    }
+    if (key === "profileId" || key === "profile_id") {
+      return auth.profileId;
+    }
+    return undefined;
   }
   if (section === "body") {
     return readPathValue(request.body, rest);
@@ -1462,7 +1563,18 @@ function singleLineText(value: string, maxLength: number): string {
   return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}...`;
 }
 
-function routerRuleReason(rule: RouterRule): string {
+function routerRuleReason(
+  rule: RouterRule,
+  source: "profile" | "rule" = "rule",
+  policyId?: string,
+  kind: "rule" | "script" = "rule"
+): string {
+  if (source === "profile") {
+    return policyId ?? `profile:${kind}:${rule.id}`;
+  }
+  if (kind === "script") {
+    return `script:${rule.id}`;
+  }
   if (rule.id.startsWith("legacy-")) {
     return rule.id.replace(/^legacy-/, "");
   }
