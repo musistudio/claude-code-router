@@ -64,9 +64,6 @@ const presetCatalogModelOverrides: Record<string, CatalogProviderModelOverride> 
     modelDisplayNames: {
       "kimi-for-coding": "K2.7 Code"
     },
-    metadataModelAliases: {
-      "kimi-for-coding": "k2p7"
-    },
     models: ["kimi-for-coding"],
     provider: "kimi-for-coding",
     providerName: "Kimi Code"
@@ -259,6 +256,7 @@ function providerModelMetadataFromCatalog(
 ): ProviderModelMetadata | undefined {
   const limits = isRecord(modelEntry.limits) ? modelEntry.limits : {};
   const contextWindow = maxPositiveInteger(limits.contextTokens, limits.inputTokens, limits.maxTokens);
+  const maxOutputTokens = maxPositiveInteger(limits.outputTokens, limits.maxTokens);
   const capabilities = isRecord(modelEntry.capabilities) ? modelEntry.capabilities : {};
   const imageInput = booleanValue(capabilities.imageInput);
   const webSearch = booleanValue(capabilities.webSearch);
@@ -275,6 +273,7 @@ function providerModelMetadataFromCatalog(
         }
       : {}),
     ...(contextWindow ? { contextWindow, maxContextWindow: contextWindow } : {}),
+    ...(maxOutputTokens ? { maxOutputTokens } : {}),
     ...(pricing ? { pricing } : {}),
     ...(supportedReasoningLevels.length > 0 ? { supportedReasoningLevels } : {}),
     ...(supportsReasoningSummaries !== undefined ? { supportsReasoningSummaries } : {})

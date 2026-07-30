@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
@@ -39,17 +39,12 @@ test("gateway implementation modules do not depend on the public facade", () => 
   assert.deepEqual(reverseDependencies, []);
 });
 
-test("core config compilation is separated from filesystem persistence", () => {
+test("core config compilation has no filesystem persistence", () => {
   const compiler = readFileSync(
     path.join(gatewayRoot, "core-runtime", "config-compiler.ts"),
     "utf8"
   );
-  const writer = readFileSync(
-    path.join(gatewayRoot, "core-runtime", "config-writer.ts"),
-    "utf8"
-  );
 
   assert.doesNotMatch(compiler, /node:fs|writeFileSync|mkdirSync/);
-  assert.match(writer, /compileCoreGatewayConfig/);
-  assert.match(writer, /writeFileSync/);
+  assert.equal(existsSync(path.join(gatewayRoot, "core-runtime", "config-writer.ts")), false);
 });

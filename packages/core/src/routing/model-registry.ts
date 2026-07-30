@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   availableGatewayModelIds,
+  isGatewayProviderEnabled,
   type AppConfig,
   type GatewayProviderConfig
 } from "@ccr/core/contracts/app";
@@ -75,7 +76,10 @@ export class ModelRegistry {
     if (!normalized) {
       return undefined;
     }
-    return this.config.Providers.find((provider) => providerAliases(provider).has(normalized));
+    return this.config.Providers.find((provider) =>
+      isGatewayProviderEnabled(provider) &&
+      providerAliases(provider).has(normalized)
+    );
   }
 
   resolveProviderModel(value: string | undefined): { model: string; provider: GatewayProviderConfig } | undefined {
@@ -100,6 +104,9 @@ export class ModelRegistry {
     const normalized = caseInsensitive ? model.toLowerCase() : model;
     const matches: Array<{ model: string; provider: GatewayProviderConfig }> = [];
     for (const provider of this.config.Providers) {
+      if (!isGatewayProviderEnabled(provider)) {
+        continue;
+      }
       for (const candidate of provider.models) {
         const configured = candidate.trim();
         const comparable = caseInsensitive ? configured.toLowerCase() : configured;

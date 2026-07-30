@@ -54,6 +54,20 @@ test("model registry accepts known internal provider suffixes only", () => {
   assert.equal(registry.findProvider("Primary::bogus"), undefined);
 });
 
+test("model registry ignores disabled provider models", () => {
+  const registry = new ModelRegistry(routingConfig({
+    Providers: [
+      { enabled: false, models: ["alpha", "disabled-only"], name: "Primary" },
+      { models: ["beta"], name: "Secondary" }
+    ]
+  }));
+
+  assert.equal(registry.findProvider("Primary"), undefined);
+  assert.equal(registry.resolve("Primary/alpha"), undefined);
+  assert.equal(registry.resolve("disabled-only"), undefined);
+  assert.equal(registry.resolve("beta")?.canonicalSelector, "Secondary/beta");
+});
+
 test("router config compilation disables invalid rules and reports their model", () => {
   const config = routingConfig();
   config.Router.rules = [
@@ -233,6 +247,79 @@ test("router config compilation accepts unrestricted Node.js script rules", () =
   assert.deepEqual(compiled.rules[0].diagnostics, []);
   assert.equal(compiled.rules[1].active, false);
   assert.equal(compiled.rules[1].diagnostics[0].code, "script-source-invalid");
+});
+
+test("router config compilation disables Node.js script rules in profile routing", () => {
+  const config = routingConfig({
+    profile: {
+      enabled: true,
+      profiles: [{
+        agent: "claude-code",
+        enabled: true,
+        id: "profile-a",
+        model: "Primary/alpha",
+        name: "Profile A",
+        routing: {
+          enabled: true,
+          enhancedRoute: true,
+          rules: [{
+            enabled: true,
+            id: "profile-script",
+            name: "Profile script",
+            script: {
+              apiVersion: 1,
+              file: "/tmp/profile-route.js",
+              language: "javascript",
+              timeoutMs: 1000
+            },
+            type: "script"
+          }]
+        },
+        scope: "ccr"
+      }]
+    }
+  });
+
+  const compiled = compileRouterConfig(config);
+
+  assert.equal(compiled.profileRoutings[0].rules[0].active, false);
+  assert.equal(compiled.profileRoutings[0].rules[0].diagnostics[0].code, "script-api-unsupported");
+  assert.match(compiled.profileRoutings[0].rules[0].diagnostics[0].message, /does not support Node\.js script rules/);
+});
+
+test("router config compilation ignores rules from disabled profile routing", () => {
+  const config = routingConfig({
+    profile: {
+      enabled: true,
+      profiles: [{
+        agent: "claude-code",
+        enabled: true,
+        id: "profile-a",
+        model: "Primary/alpha",
+        name: "Profile A",
+        routing: {
+          enabled: false,
+          enhancedRoute: true,
+          rules: [{
+            condition: { left: "request.header.x-task", operator: "==", right: "heavy" },
+            enabled: true,
+            id: "disabled-profile-rule",
+            name: "Disabled profile rule",
+            rewrites: [{ key: "request.body.model", operation: "set", value: "Primary/missing" }],
+            type: "condition"
+          }]
+        },
+        scope: "ccr"
+      }]
+    }
+  });
+
+  const compiled = compileRouterConfig(config);
+
+  assert.equal(compiled.profileRoutings[0].active, false);
+  assert.deepEqual(compiled.profileRoutings[0].rules, []);
+  assert.deepEqual(compiled.profileRoutings[0].diagnostics, []);
+  assert.equal(compiled.diagnostics.some((diagnostic) => diagnostic.ruleId === "disabled-profile-rule"), false);
 });
 
 test("dynamic script rewrites cannot mutate protected headers without breaking trusted static config", () => {

@@ -6,7 +6,9 @@ import test from "node:test";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin.ts";
 import { fetchUpstreamWithFallback } from "@ccr/core/gateway/upstream/executor.ts";
 import { RequestRouteTraceRecorder } from "@ccr/core/observability/route-trace.ts";
+import { profileApiKeyId } from "@ccr/core/profiles/api-key.ts";
 import {
+  createClaudeCodeModelsResponseForTest,
   fallbackRetryDelayAfterNetworkErrorForTest,
   fallbackRetryDelayAfterStatusForTest,
   prepareGatewayUpstreamAttemptForTest
@@ -40,7 +42,7 @@ function createRouterPlugin(options = {}) {
         "claude-code": { enabled: options.claudeCodeRuleEnabled ?? true },
         codex: { enabled: options.codexRuleEnabled ?? true }
       },
-      fallback: { mode: "off", models: [], retryCount: 1 },
+      fallback: options.routerFallback ?? { mode: "off", models: [], retryCount: 1 },
       rules: options.routerRules ?? []
     },
     profile: {
@@ -49,6 +51,8 @@ function createRouterPlugin(options = {}) {
     },
     toolHub: options.toolHub,
     virtualModelProfiles: options.virtualModelProfiles ?? []
+  }, {
+    scriptRuntime: options.scriptRuntime
   });
   return {
     routeRequest(input) {
@@ -62,6 +66,72 @@ function createRouterPlugin(options = {}) {
     }
   };
 }
+
+function claudeCodeCompactSupported(config, apiKey) {
+  const response = createClaudeCodeModelsResponseForTest(config, apiKey);
+  return response.data[0]?.capabilities?.context_management?.compact_20260112?.supported;
+}
+
+test("Claude Code model discovery exposes compact only when context archive MCP is enabled", () => {
+  const baseConfig = {
+    Providers: [
+      {
+        models: ["custom-claude-compatible"],
+        name: "Provider",
+        type: "anthropic_messages"
+      }
+    ],
+    contextArchive: {
+      enabled: false,
+      mcpEnabled: true
+    }
+  };
+
+  assert.equal(claudeCodeCompactSupported(baseConfig), false);
+  assert.equal(claudeCodeCompactSupported({
+    ...baseConfig,
+    contextArchive: {
+      enabled: true,
+      mcpEnabled: false
+    }
+  }), false);
+  assert.equal(claudeCodeCompactSupported({
+    ...baseConfig,
+    contextArchive: {
+      enabled: true,
+      mcpEnabled: true
+    }
+  }), true);
+
+  const profileConfig = {
+    ...baseConfig,
+    contextArchive: {
+      enabled: true,
+      mcpEnabled: true
+    },
+    profile: {
+      enabled: true,
+      profiles: [
+        {
+          agent: "claude-code",
+          enabled: true,
+          id: "plain-profile",
+          managedCompact: false,
+          name: "Plain Profile"
+        },
+        {
+          agent: "claude-code",
+          enabled: true,
+          id: "managed-profile",
+          managedCompact: true,
+          name: "Managed Profile"
+        }
+      ]
+    }
+  };
+  assert.equal(claudeCodeCompactSupported(profileConfig, { id: "profile:plain-profile" }), false);
+  assert.equal(claudeCodeCompactSupported(profileConfig, { id: "profile:managed-profile" }), true);
+});
 
 test("fallback retry delay backs off retryable HTTP statuses", () => {
   assert.equal(fallbackRetryDelayAfterStatusForTest({ statusCode: 503 }), 1000);
@@ -423,6 +493,350 @@ test("borrowed route bodies remain isolated from router mutations", async () => 
   assert.equal(body.model, "claude-default");
 });
 
+test("profile routing rules match only the authenticated profile API key", async () => {
+  const plugin = createRouterPlugin({
+    authenticatedProfileId: null,
+    profiles: [
+      {
+        agent: "claude-code",
+        enabled: true,
+        id: "profile-a",
+        model: "Provider/claude-sonnet",
+        name: "Profile A",
+        routing: {
+          enabled: true,
+          enhancedRoute: true,
+          rules: [{
+            condition: { left: "request.header.x-task", operator: "==", right: "heavy" },
+            enabled: true,
+            id: "heavy",
+            name: "Heavy",
+            rewrites: [{ key: "request.body.model", operation: "set", value: "Provider/claude-opus" }],
+            type: "condition"
+          }]
+        },
+        scope: "ccr"
+      },
+      {
+        agent: "claude-code",
+        enabled: true,
+        id: "profile-b",
+        model: "Provider/claude-haiku",
+        name: "Profile B",
+        scope: "ccr"
+      }
+    ]
+  });
+
+  const matched = await plugin.routeRequest({
+    body: { messages: [], model: "claude-default" },
+    headers: {
+      "user-agent": "claude-code/1.0",
+      "x-auth-api-key-id": "profile:profile-a",
+      "x-task": "heavy"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+  const unmatched = await plugin.routeRequest({
+    body: { messages: [], model: "claude-default" },
+    headers: {
+      "user-agent": "claude-code/1.0",
+      "x-auth-api-key-id": "profile:profile-b",
+      "x-task": "heavy"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(matched.body.model, "Provider/claude-opus");
+  assert.equal(matched.decision.reason, "profile:profile-a:rule:heavy");
+  assert.equal(matched.decision.source, "profile");
+  assert.equal(unmatched.body.model, "Provider/claude-haiku");
+  assert.equal(unmatched.decision.reason, "builtin:claude-code");
+});
+
+test("profile routing keeps identical conditions isolated by independent profile API keys", async () => {
+  const profileA = {
+    agent: "claude-code",
+    enabled: true,
+    id: "profile-a",
+    model: "Provider/claude-sonnet",
+    name: "Profile A",
+    routing: {
+      enabled: true,
+      enhancedRoute: true,
+      rules: [{
+        condition: { left: "request.header.x-task", operator: "==", right: "heavy" },
+        enabled: true,
+        id: "heavy-a",
+        name: "Heavy A",
+        rewrites: [{ key: "request.body.model", operation: "set", value: "Provider/claude-opus" }],
+        type: "condition"
+      }]
+    },
+    scope: "ccr"
+  };
+  const profileB = {
+    agent: "claude-code",
+    enabled: true,
+    id: "profile-b",
+    model: "Provider/claude-haiku",
+    name: "Profile B",
+    routing: {
+      enabled: true,
+      enhancedRoute: true,
+      rules: [{
+        condition: { left: "request.header.x-task", operator: "==", right: "heavy" },
+        enabled: true,
+        id: "heavy-b",
+        name: "Heavy B",
+        rewrites: [{ key: "request.body.model", operation: "set", value: "Provider/claude-haiku" }],
+        type: "condition"
+      }]
+    },
+    scope: "ccr"
+  };
+  const plugin = createRouterPlugin({
+    authenticatedProfileId: null,
+    profiles: [profileA, profileB]
+  });
+  const routeForProfile = (profile) => plugin.routeRequest({
+    body: { messages: [], model: "claude-default" },
+    headers: {
+      "user-agent": "claude-code/1.0",
+      "x-auth-api-key-id": profileApiKeyId(profile),
+      "x-task": "heavy"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  const resultA = await routeForProfile(profileA);
+  const resultB = await routeForProfile(profileB);
+  const anonymous = await plugin.routeRequest({
+    body: { messages: [], model: "claude-default" },
+    headers: {
+      "user-agent": "claude-code/1.0",
+      "x-task": "heavy"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(resultA.body.model, "Provider/claude-opus");
+  assert.equal(resultA.decision.reason, "profile:profile-a:rule:heavy-a");
+  assert.equal(resultA.decision.source, "profile");
+  assert.equal(resultB.body.model, "Provider/claude-haiku");
+  assert.equal(resultB.decision.reason, "profile:profile-b:rule:heavy-b");
+  assert.equal(resultB.decision.source, "profile");
+  assert.equal(anonymous.body.model, "claude-default");
+  assert.equal(anonymous.decision.reason, "default");
+  assert.equal(anonymous.decision.source, "default");
+});
+
+test("profile routing uses the global fallback for authenticated profile traffic", async () => {
+  const globalFallback = { mode: "retry", models: [], retryCount: 3 };
+  const plugin = createRouterPlugin({
+    profileModel: "Provider/claude-sonnet",
+    routerFallback: globalFallback,
+    profiles: [{
+      agent: "claude-code",
+      enabled: true,
+      id: "profile-a",
+      model: "Provider/claude-sonnet",
+      name: "Profile A",
+      routing: {
+        enabled: true,
+        enhancedRoute: true,
+        rules: []
+      },
+      scope: "ccr"
+    }]
+  });
+  const result = await plugin.routeRequest({
+    body: { messages: [], model: "Provider/claude-sonnet" },
+    headers: {},
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.deepEqual(result.decision.fallback, globalFallback);
+});
+
+test("profile enhanced route switch disables the built-in Claude Code route when private rules are disabled", async () => {
+  const plugin = createRouterPlugin({
+    profiles: [{
+      agent: "claude-code",
+      enabled: true,
+      id: "profile-a",
+      model: "Provider/claude-sonnet",
+      name: "Profile A",
+      routing: {
+        enabled: false,
+        enhancedRoute: false,
+        rules: []
+      },
+      scope: "ccr"
+    }]
+  });
+  const result = await plugin.routeRequest({
+    body: { messages: [], model: "claude-default" },
+    headers: {
+      "user-agent": "claude-code/1.0"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "claude-default");
+  assert.equal(result.decision.reason, "default");
+  assert.equal(result.decision.source, "default");
+});
+
+test("profile enhanced route switch disables the built-in Claude Code route when private rules are enabled", async () => {
+  const plugin = createRouterPlugin({
+    profiles: [{
+      agent: "claude-code",
+      enabled: true,
+      id: "profile-a",
+      model: "Provider/claude-sonnet",
+      name: "Profile A",
+      routing: {
+        enabled: true,
+        enhancedRoute: false,
+        rules: []
+      },
+      scope: "ccr"
+    }]
+  });
+  const result = await plugin.routeRequest({
+    body: { messages: [], model: "claude-default" },
+    headers: {
+      "user-agent": "claude-code/1.0"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "claude-default");
+  assert.equal(result.decision.reason, "default");
+  assert.equal(result.decision.source, "default");
+});
+
+test("router rules can match the authenticated profile id through request.auth", async () => {
+  const plugin = createRouterPlugin({
+    authenticatedProfileId: "profile-a",
+    profiles: [{
+      agent: "claude-code",
+      enabled: true,
+      id: "profile-a",
+      model: "Provider/claude-sonnet",
+      name: "Profile A",
+      scope: "ccr"
+    }],
+    routerRules: [{
+      condition: { left: "request.auth.profileId", operator: "==", right: "profile-a" },
+      enabled: true,
+      id: "profile-auth",
+      name: "Profile auth",
+      rewrites: [{ key: "request.body.model", operation: "set", value: "Provider/claude-opus" }],
+      type: "condition"
+    }]
+  });
+  const result = await plugin.routeRequest({
+    body: { messages: [], model: "claude-default" },
+    headers: {},
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Provider/claude-opus");
+  assert.equal(result.decision.reason, "rule:profile-auth");
+});
+
+test("router auth profile id uses the configured profile id instead of the API key slug", async () => {
+  const profile = {
+    agent: "claude-code",
+    enabled: true,
+    id: "Claude Work/Profile",
+    model: "Provider/claude-sonnet",
+    name: "Claude Work",
+    scope: "ccr"
+  };
+  const plugin = createRouterPlugin({
+    authenticatedProfileId: null,
+    profiles: [profile],
+    routerRules: [{
+      condition: { left: "request.auth.profileId", operator: "==", right: "Claude Work/Profile" },
+      enabled: true,
+      id: "profile-auth-raw-id",
+      name: "Profile auth raw id",
+      rewrites: [{ key: "request.body.model", operation: "set", value: "Provider/claude-opus" }],
+      type: "condition"
+    }]
+  });
+
+  const result = await plugin.routeRequest({
+    body: { messages: [], model: "claude-default" },
+    headers: {
+      "x-auth-api-key-id": profileApiKeyId(profile)
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(profileApiKeyId(profile), "profile:Claude-Work-Profile");
+  assert.equal(result.body.model, "Provider/claude-opus");
+  assert.equal(result.decision.reason, "rule:profile-auth-raw-id");
+});
+
+test("route scripts receive the configured profile id instead of the API key slug", async () => {
+  const profile = {
+    agent: "claude-code",
+    enabled: true,
+    id: "Claude Work/Profile",
+    model: "Provider/claude-sonnet",
+    name: "Claude Work",
+    scope: "ccr"
+  };
+  let input;
+  const plugin = createRouterPlugin({
+    authenticatedProfileId: null,
+    profiles: [profile],
+    routerRules: [{
+      enabled: true,
+      id: "profile-script-auth",
+      name: "Profile script auth",
+      script: {
+        apiVersion: 1,
+        file: "/tmp/profile-script-auth.js",
+        language: "javascript",
+        timeoutMs: 1000
+      },
+      type: "script"
+    }],
+    scriptRuntime: {
+      execute: async (_ruleId, _script, context) => {
+        input = context;
+        return { durationMs: 1, status: "ok", value: false };
+      }
+    }
+  });
+
+  await plugin.routeRequest({
+    body: { messages: [], model: "claude-default" },
+    headers: {
+      "x-auth-api-key-id": profileApiKeyId(profile)
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(input.apiKeyId, "profile:Claude-Work-Profile");
+  assert.equal(input.profileId, "Claude Work/Profile");
+});
+
 test("built-in Codex route uses the authenticated profile instead of the first Codex profile", async () => {
   const plugin = createRouterPlugin({
     agent: "codex",
@@ -472,6 +886,39 @@ test("built-in Codex route uses the authenticated profile instead of the first C
   assert.equal(result.body.model, "uuroute/gpt-5.5");
   assert.equal(result.decision.model, "uuroute/gpt-5.5");
   assert.equal(result.decision.reason, "builtin:codex");
+});
+
+test("profile enhanced route switch disables the built-in Codex route", async () => {
+  const plugin = createRouterPlugin({
+    agent: "codex",
+    authenticatedProfileId: "codex",
+    profiles: [{
+      agent: "codex",
+      enabled: true,
+      id: "codex",
+      model: "Provider/gpt-5-codex",
+      name: "Codex",
+      routing: {
+        enabled: false,
+        enhancedRoute: false,
+        rules: []
+      },
+      scope: "ccr"
+    }]
+  });
+  const result = await plugin.routeRequest({
+    body: {
+      model: "gpt-5"
+    },
+    headers: {
+      "user-agent": "Codex Desktop/0.144.0"
+    },
+    method: "POST",
+    url: "/v1/responses"
+  });
+
+  assert.equal(result.body.model, "gpt-5");
+  assert.equal(result.decision.reason, "default");
 });
 
 test("built-in Codex route preserves the requested model when the authenticated profile does not match", async () => {
@@ -1569,7 +2016,7 @@ test("built-in Codex route stays inactive when profile model is unset", async ()
   assert.equal(result.decision.reason, "default");
 });
 
-test("built-in agent route stays off after the user disables it", async () => {
+test("global built-in agent preference no longer disables the profile-level built-in route", async () => {
   const plugin = createRouterPlugin({
     claudeCodeRuleEnabled: false,
     profileModel: "Provider/claude-sonnet"
@@ -1586,8 +2033,8 @@ test("built-in agent route stays off after the user disables it", async () => {
     url: "/v1/messages"
   });
 
-  assert.equal(result.body.model, "claude-default");
-  assert.equal(result.decision.reason, "default");
+  assert.equal(result.body.model, "Provider/claude-sonnet");
+  assert.equal(result.decision.reason, "builtin:claude-code");
 });
 
 test("built-in Claude Code route injects subagent model instructions into Agent and Task tools", async () => {
@@ -1905,10 +2352,21 @@ test("built-in Claude Code route skips subagent instruction injection when no mo
   assert.equal(workflowTool.input_schema.properties.script.description, "Workflow script.");
 });
 
-test("disabled built-in Claude Code route does not inject Agent tool instructions", async () => {
+test("disabled profile enhanced route does not inject Agent tool instructions", async () => {
   const plugin = createRouterPlugin({
-    claudeCodeRuleEnabled: false,
-    profileModel: "Provider/claude-sonnet"
+    profiles: [{
+      agent: "claude-code",
+      enabled: true,
+      id: "claude-code-profile",
+      model: "Provider/claude-sonnet",
+      name: "Claude Code",
+      routing: {
+        enabled: false,
+        enhancedRoute: false,
+        rules: []
+      },
+      scope: "global"
+    }]
   });
   const result = await plugin.routeRequest({
     body: {

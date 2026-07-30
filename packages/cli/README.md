@@ -54,7 +54,7 @@ The management token and CCR client API keys are different credentials. The mana
 | `ccr ui` | Reuses or starts the background service and opens the management UI. |
 | `ccr stop` | Stops the detached service started by `ccr start` or `ccr ui`. |
 | `ccr serve` | Runs the management service and gateway in the foreground. `ccr web` is an alias. |
-| `ccr <profile>` | Opens an enabled Agent Config profile by name or ID. |
+| `ccr <profile>` | Opens an enabled Agent Profiles profile by name or ID. |
 
 ### `ccr start`
 
@@ -86,9 +86,9 @@ ccr serve [--host <host>] [--port <port>] [--open|--no-open] [--gateway|--no-gat
 
 If the preferred management port is occupied, CCR tries the next available ports and prints the actual URL. When `start` or `ui` reuses an existing service, new host, port, and `--no-gateway` choices do not reconfigure that process. Run `ccr stop` first when those settings must change.
 
-## Agent Config Profiles
+## Agent Profiles
 
-Create and enable profiles in **Agent Config**, then launch one by name or ID:
+Create and enable profiles in **Agent Profiles**, then launch one by name or ID:
 
 ```sh
 ccr "Codex - Work"
@@ -105,12 +105,12 @@ ccr <profile-name-or-id> [cli|app] [-- <agent arguments>]
 
 - `--cli` and `--app` are accepted alternatives to the positional surface.
 - Put agent-specific arguments after `--` so they cannot be confused with CCR options.
-- If the surface is omitted, CCR uses the first surface allowed by the profile: CLI for Claude Code, Codex, Grok CLI, and Kimi CLI; App for ZCode.
-- Grok supports CLI only. ZCode supports App only. Claude App and ZCode App do not accept trailing agent arguments.
+- If the surface is omitted, CCR uses the first surface allowed by the profile: CLI for Claude Code, Codex, Grok CLI, Kimi CLI, and Pi; App for ZCode.
+- Grok CLI, Kimi CLI, and Pi support CLI only. ZCode supports App only. Claude App and ZCode App do not accept trailing agent arguments.
 - Desktop App launches require that app to be installed and a graphical session to be available.
-- Start the CCR service before opening most profiles. Grok CLI and Kimi CLI profiles can start a temporary shared service automatically and stop it after the last managed session exits.
+- Start the CCR service before opening most profiles. Grok CLI, Kimi CLI, and Pi profiles can start a temporary shared service automatically and stop it after the last managed session exits.
 
-The desktop application installs a related command named `ccr-app`. Commands copied from desktop Agent Config cards use `ccr-app`; the npm package documented here installs `ccr`.
+The desktop application installs a related command named `ccr-app`. Commands copied from desktop Agent Profiles cards use `ccr-app`; the npm package documented here installs `ccr`.
 
 ## Configuration And Runtime Files
 

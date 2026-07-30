@@ -6,6 +6,7 @@ import {
   localAgentProviderApiKey,
   kimiAccessTokenExpired,
   kimiIdentityHeaders,
+  readClaudeCodeOauth,
   readCodexAuth,
   readGrokAuth,
   readKimiAuth,
@@ -20,6 +21,7 @@ import { getUsageTotalsSince } from "@ccr/core/usage/store";
 import { findProviderPresetByBaseUrl, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
 import { normalizeProviderBaseUrl, providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
+import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type {
   AppConfig,
   GatewayProviderConfig,
@@ -116,6 +118,9 @@ export async function getProviderAccountSnapshots(
   pruneProviderAccountCache();
   const normalizedProviderName = normalizeProviderName(providerName);
   const providers = config.Providers.filter((provider) => {
+    if (!isGatewayProviderEnabled(provider)) {
+      return false;
+    }
     if (!normalizedProviderName) {
       return true;
     }
@@ -443,7 +448,10 @@ function providerAccountTargets(provider: GatewayProviderConfig): ProviderAccoun
 
 function codexResetProvider(config: AppConfig, providerName: string, credentialId: string | undefined): GatewayProviderConfig {
   const normalizedProviderName = normalizeProviderName(providerName);
-  const provider = config.Providers.find((candidate) => normalizeProviderName(candidate.name) === normalizedProviderName);
+  const provider = config.Providers.find((candidate) =>
+    isGatewayProviderEnabled(candidate) &&
+    normalizeProviderName(candidate.name) === normalizedProviderName
+  );
   if (!provider) {
     throw new Error("Provider account was not found.");
   }
@@ -1380,7 +1388,7 @@ async function localAgentProviderAccountCredential(
       return await localCodexAccountCredential(plugin);
     }
     if (key.includes("claude-code-oauth")) {
-      return localBearerAccountCredential(plugin);
+      return localClaudeCodeAccountCredential(plugin);
     }
     if (key.includes("grok-cli-oauth")) {
       return await localGrokAccountCredential(plugin);
@@ -1706,6 +1714,16 @@ function codexJwtPayload(token: string | undefined): Record<string, unknown> | u
 function localBearerAccountCredential(plugin: Record<string, unknown>): { apiKey?: string; headers?: Record<string, string> } {
   const headers = localProviderPluginAuthHeaders(plugin);
   const apiKey = readBearerToken(headers.authorization || headers.Authorization);
+  return {
+    apiKey,
+    headers: withoutHeader(headers, "authorization")
+  };
+}
+
+function localClaudeCodeAccountCredential(plugin: Record<string, unknown>): { apiKey?: string; headers?: Record<string, string> } {
+  const headers = localProviderPluginAuthHeaders(plugin);
+  const oauth = readClaudeCodeOauth();
+  const apiKey = oauth?.accessToken || readBearerToken(headers.authorization || headers.Authorization);
   return {
     apiKey,
     headers: withoutHeader(headers, "authorization")

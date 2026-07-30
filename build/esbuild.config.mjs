@@ -47,10 +47,9 @@ export const electronRendererOutDir = path.join(electronDistDir, "renderer");
 export const runtimeRendererOutDirs = [cliRendererOutDir, coreRendererOutDir, electronRendererOutDir];
 export const appAssetsDir = path.join(electronDistDir, "assets");
 export const rendererAssetsDir = path.join(rendererOutDir, "assets");
-export const cliMarketplacePluginsDir = path.join(cliDistDir, "marketplace", "plugins");
-export const coreMarketplacePluginsDir = path.join(coreDistDir, "marketplace", "plugins");
-export const electronMarketplacePluginsDir = path.join(electronDistDir, "marketplace", "plugins");
-export const marketplacePluginsDir = electronMarketplacePluginsDir;
+export const bundledClaudeRuntimePluginIds = ["claude-design", "claude-ship"];
+export const bundledClaudeRuntimePluginsInputDir = path.join(electronRoot, "bundled-plugins");
+export const electronBundledRuntimePluginsDir = path.join(electronDistDir, "bundled-plugins");
 export const appAssetsInput = path.join(electronRoot, "assets");
 export const modelCatalogInput = path.join(coreRoot, "models.json");
 export const cliModelCatalogOutput = path.join(cliDistDir, "models.json");
@@ -104,9 +103,7 @@ export function ensureDist() {
   mkdirSync(electronBotGatewaySdkDistDir, { recursive: true });
   mkdirSync(electronBotGatewaySdkBinDir, { recursive: true });
   mkdirSync(appAssetsDir, { recursive: true });
-  mkdirSync(cliMarketplacePluginsDir, { recursive: true });
-  mkdirSync(coreMarketplacePluginsDir, { recursive: true });
-  mkdirSync(electronMarketplacePluginsDir, { recursive: true });
+  mkdirSync(electronBundledRuntimePluginsDir, { recursive: true });
   mkdirSync(rendererAssetsDir, { recursive: true });
   for (const outputDir of runtimeRendererOutDirs) {
     mkdirSync(path.join(outputDir, "assets"), { recursive: true });
@@ -146,15 +143,10 @@ export function copyBrowserRendererHtml() {
   copyRendererPageHtml(browserRendererHtmlInput, browserRendererHtmlOutput, "browser.js");
 }
 
-export function copyMarketplacePlugins() {
+export function copyBundledClaudeRuntimePlugins() {
   ensureDist();
-  for (const filename of ["claude-design-plugin.cjs", "cursor-proxy-plugin.cjs"]) {
-    const source = path.join(projectRoot, "examples", "plugins", filename);
-    if (existsSync(source)) {
-      cpSync(source, path.join(cliMarketplacePluginsDir, filename));
-      cpSync(source, path.join(coreMarketplacePluginsDir, filename));
-      cpSync(source, path.join(electronMarketplacePluginsDir, filename));
-    }
+  for (const pluginId of bundledClaudeRuntimePluginIds) {
+    copyBundledClaudeRuntimePlugin(pluginId);
   }
 }
 
@@ -190,6 +182,24 @@ function copyRendererPageHtml(input, output, scriptName, options = {}) {
   writeFileSync(output, html, "utf8");
 }
 
+function copyBundledClaudeRuntimePlugin(pluginId) {
+  const inputDir = path.join(bundledClaudeRuntimePluginsInputDir, pluginId);
+  const outputDir = path.join(electronBundledRuntimePluginsDir, pluginId);
+  const moduleInput = path.join(inputDir, "index.cjs");
+  if (!existsSync(moduleInput)) {
+    throw new Error(`Bundled Claude runtime plugin ${pluginId} is missing: ${moduleInput}`);
+  }
+
+  rmSync(outputDir, { force: true, recursive: true });
+  mkdirSync(outputDir, { recursive: true });
+  for (const fileName of ["index.cjs", "plugin.json", "README.md"]) {
+    const input = path.join(inputDir, fileName);
+    if (existsSync(input)) {
+      cpSync(input, path.join(outputDir, fileName));
+    }
+  }
+}
+
 function hasScriptTag(html, scriptTag) {
   const sourceMatch = scriptTag.match(/\bsrc="([^"]+)"/);
   return sourceMatch ? html.includes(sourceMatch[1]) : html.includes(scriptTag);
@@ -216,6 +226,7 @@ export function createMainBuildOptions({ mode = "production", plugins = [] } = {
       path.join(electronSourceRoot, "main", "main.ts"),
       path.join(electronSourceRoot, "main", "browser-preload.ts"),
       gatewayRuntimeInput,
+      path.join(coreSourceRoot, "gateway", "core-runtime", "gateway-bootstrap.ts"),
       path.join(coreSourceRoot, "mcp", "browser-web-search-proxy-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts"),
@@ -248,6 +259,7 @@ export function createCliBuildOptions({ mode = "production", plugins = [] } = {}
     entryNames: "[name]",
     entryPoints: [
       path.join(cliSourceRoot, "cli.ts"),
+      path.join(coreSourceRoot, "gateway", "core-runtime", "gateway-bootstrap.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "media-tools-proxy-mcp.ts"),
@@ -276,6 +288,7 @@ export function createCoreServerBuildOptions({ mode = "production", plugins = []
     entryNames: "[name]",
     entryPoints: [
       path.join(coreSourceRoot, "entrypoints", "server.ts"),
+      path.join(coreSourceRoot, "gateway", "core-runtime", "gateway-bootstrap.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "media-tools-proxy-mcp.ts"),

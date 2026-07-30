@@ -1,7 +1,9 @@
 import path from "node:path";
 import type { AppConfig, ProfileConfig, ProfileOpenSurface } from "@ccr/core/contracts/app";
-import { claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
+import { claudeCodeModelEnv as claudeCodeProfileModelEnv, claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
+import { resolveKiloConfigFile as resolveKiloProfileConfigFile } from "@ccr/core/agents/kilo/profile-config";
 import { resolveOpenCodeConfigFile as resolveOpenCodeProfileConfigFile } from "@ccr/core/agents/opencode/profile-config";
+import { piWrapperFilename, resolvePiAgentDir, resolvePiSessionDir } from "@ccr/core/agents/pi/profile-config";
 import { resolveZcodeConfigFile } from "@ccr/core/agents/zcode/profile-config";
 
 export type ProfileLaunchPlan = {
@@ -47,10 +49,10 @@ export function findProfileForOpen(config: Pick<AppConfig, "profile">, profileRe
 }
 
 export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[] {
-  if (profile.agent === "zcode") {
+  if (profile.agent === "zcode" || profile.agent === "claude-design") {
     return ["app"];
   }
-  if (profile.agent === "grok" || profile.agent === "kimi") {
+  if (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi" || profile.agent === "kilo") {
     return ["cli"];
   }
   const surface = normalizeProfileSurface(profile.surface);
@@ -75,14 +77,14 @@ export function resolveProfileOpenSurface(profile: ProfileConfig, surface?: Prof
 }
 
 export function defaultProfileOpenSurface(profile: Pick<ProfileConfig, "agent">): ProfileOpenSurface {
-  return profile.agent === "zcode" ? "app" : "cli";
+  return profile.agent === "zcode" || profile.agent === "claude-design" ? "app" : "cli";
 }
 
 export function shouldAutoStartProfileGateway(
   profile: Pick<ProfileConfig, "agent">,
   surface: ProfileOpenSurface
 ): boolean {
-  return (profile.agent === "grok" || profile.agent === "kimi") && surface === "cli";
+  return (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi") && surface === "cli";
 }
 
 export function profileOpenCommand(
@@ -106,14 +108,23 @@ export function buildProfileLaunchPlan(
   extraArgs: string[] = []
 ): ProfileLaunchPlan {
   const resolvedSurface = resolveProfileOpenSurface(profile, surface);
+  if (profile.agent === "claude-design") {
+    throw new Error("Claude Design profiles can only be opened from CCR Desktop.");
+  }
   if (profile.agent === "grok") {
     return buildGrokLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
   }
   if (profile.agent === "kimi") {
     return buildKimiLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
   }
+  if (profile.agent === "pi") {
+    return buildPiLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
+  }
   if (profile.agent === "opencode") {
     return buildOpenCodeLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
+  }
+  if (profile.agent === "kilo") {
+    return buildKiloLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
   }
   if (isCodexCompatibleAgent(profile.agent)) {
     return buildCodexLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
@@ -136,6 +147,27 @@ function buildOpenCodeLaunchPlan(
     env: {
       CCR_PROFILE_SURFACE: "cli",
       OPENCODE_CONFIG: resolveOpenCodeProfileConfigFile(configDir, profile)
+    },
+    profile,
+    surface
+  };
+}
+
+function buildKiloLaunchPlan(
+  configDir: string,
+  profile: ProfileConfig,
+  surface: ProfileOpenSurface,
+  extraArgs: string[]
+): ProfileLaunchPlan {
+  if (surface !== "cli") {
+    throw new Error("Kilo CLI profiles only support CLI opening.");
+  }
+  return {
+    args: extraArgs,
+    command: path.join(configDir, "bin", kiloWrapperFilename(profile)),
+    env: {
+      CCR_PROFILE_SURFACE: "cli",
+      KILO_CONFIG: resolveKiloProfileConfigFile(configDir, profile)
     },
     profile,
     surface
@@ -176,6 +208,28 @@ function buildKimiLaunchPlan(
     command: path.join(configDir, "bin", kimiWrapperFilename(profile)),
     env: {
       CCR_PROFILE_SURFACE: "cli"
+    },
+    profile,
+    surface
+  };
+}
+
+function buildPiLaunchPlan(
+  configDir: string,
+  profile: ProfileConfig,
+  surface: ProfileOpenSurface,
+  extraArgs: string[]
+): ProfileLaunchPlan {
+  if (surface !== "cli") {
+    throw new Error("Pi profiles only support CLI opening.");
+  }
+  return {
+    args: extraArgs,
+    command: path.join(configDir, "bin", piWrapperFilename(profile)),
+    env: {
+      CCR_PROFILE_SURFACE: "cli",
+      PI_CODING_AGENT_DIR: resolvePiAgentDir(configDir, profile),
+      PI_CODING_AGENT_SESSION_DIR: resolvePiSessionDir(configDir, profile)
     },
     profile,
     surface
@@ -231,6 +285,10 @@ export function resolveOpenCodeConfigFile(configDir: string, profile: ProfileCon
   return resolveOpenCodeProfileConfigFile(configDir, profile);
 }
 
+export function resolveKiloConfigFile(configDir: string, profile: ProfileConfig): string {
+  return resolveKiloProfileConfigFile(configDir, profile);
+}
+
 function buildCodexLaunchPlan(
   configDir: string,
   profile: ProfileConfig,
@@ -267,7 +325,7 @@ function buildClaudeCodeLaunchPlan(
     env: {
       CLAUDE_CONFIG_DIR: path.dirname(settingsFile),
       CCR_PROFILE_SURFACE: surface,
-      ...claudeCodeModelEnv(profile),
+      ...claudeCodeProfileModelEnv(profile),
       ...claudeCodeUtcTimezoneEnvOverride()
     },
     profile,
@@ -280,7 +338,13 @@ function isCodexCompatibleAgent(agent: ProfileConfig["agent"]): boolean {
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "~/.zcode/cli/config.json" : "~/.codex/config.toml";
+  return agent === "zcode"
+    ? "~/.zcode/cli/config.json"
+    : agent === "pi"
+      ? "~/.pi/agent"
+      : agent === "claude-design"
+        ? "~/.claude-code-router/claude-design"
+        : "~/.codex/config.toml";
 }
 
 function codexConfigSubdir(agent: ProfileConfig["agent"]): string {
@@ -315,6 +379,13 @@ function openCodeWrapperFilename(profile: ProfileConfig): string {
     : `ccr-opencode-wrapper-${slug}`;
 }
 
+function kiloWrapperFilename(profile: ProfileConfig): string {
+  const slug = sanitizePathSegment(profile.id || profile.name || profile.agent) || "kilo";
+  return process.platform === "win32"
+    ? `ccr-kilo-wrapper-${slug}.cmd`
+    : `ccr-kilo-wrapper-${slug}`;
+}
+
 function codexMiddlewareFilename(profile: ProfileConfig, providerId: string): string {
   const slug = sanitizeCodexProviderId(profile.id || profile.name || providerId) || "codex";
   return process.platform === "win32"
@@ -324,35 +395,6 @@ function codexMiddlewareFilename(profile: ProfileConfig, providerId: string): st
 
 function normalizeProfileSurface(value: ProfileConfig["surface"]): "auto" | "cli" | "app" {
   return value === "cli" || value === "app" ? value : "auto";
-}
-
-function claudeCodeModelEnv(profile: ProfileConfig): Record<string, string> {
-  const env: Record<string, string> = {};
-  const model = normalizeClientModel(profile.model);
-  if (model) {
-    env.ANTHROPIC_MODEL = model;
-    env.CCR_CLAUDE_CODE_MODEL = model;
-    env.CODEXL_CLAUDE_CODE_MODEL = model;
-  }
-  const smallFastModel = normalizeClientModel(profile.smallFastModel);
-  if (smallFastModel) {
-    env.ANTHROPIC_SMALL_FAST_MODEL = smallFastModel;
-  }
-  return env;
-}
-
-function normalizeClientModel(value: string | undefined): string {
-  const trimmed = value?.trim() || "";
-  if (!trimmed) {
-    return "";
-  }
-  const commaIndex = trimmed.indexOf(",");
-  if (commaIndex > 0 && commaIndex < trimmed.length - 1) {
-    const provider = trimmed.slice(0, commaIndex).trim();
-    const model = trimmed.slice(commaIndex + 1).trim();
-    return provider && model ? `${provider}/${model}` : "";
-  }
-  return trimmed;
 }
 
 function isGeneratedProfileScope(value: ProfileConfig["scope"]): boolean {
@@ -401,20 +443,4 @@ function windowsCommandQuote(value: string): string {
 
 function isWindowsCommandScript(command: string): boolean {
   return process.platform === "win32" && /\.(?:bat|cmd)$/i.test(path.basename(command));
-}
-
-function windowsCommandScriptInvocation(command: string, args: string[]): string {
-  return [
-    "call",
-    windowsCommandInvocationArg(command),
-    ...args.map(windowsCommandInvocationArg)
-  ].join(" ");
-}
-
-function windowsCommandInvocationArg(value: string): string {
-  const normalized = value.replace(/\r?\n/g, " ");
-  if (!normalized) {
-    return "\"\"";
-  }
-  return `"${normalized.replace(/[\^"%&|<>()]/g, "^$&")}"`;
 }

@@ -8,6 +8,7 @@ import {
   AccountSummaryPanel, AnimatedUsageChart, ChartShell, ModelShareChart, RingMetrics,
   SourceGrid, StatsGrid, TokenActivityPanel, TokenMixPanel, TrayStatusStrip
 } from "./components/index";
+import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 
 type TrayHeaderRange = Exclude<UsageStatsRange, "today">;
 
@@ -53,7 +54,7 @@ export function TrayApp() {
       setSnapshots({ today, "24h": day, "7d": week, "30d": month });
       setAllSnapshots((current) => ({ ...current, "30d": allMonth ?? month }));
       setAccountSnapshots(accounts);
-      setConfiguredProviders(config.Providers.filter((provider) => provider.name.trim()));
+      setConfiguredProviders(config.Providers.filter((provider) => isGatewayProviderEnabled(provider) && provider.name.trim()));
       setTrayWidgets(normalizeTrayWidgets(config.trayWidgets, config.trayWindowModules, config.trayComponentVariants));
       applyTrayThemePreference(config.theme);
     } catch (nextError) {

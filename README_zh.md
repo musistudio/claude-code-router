@@ -19,10 +19,10 @@
   <tr>
     <td align="left">
       <p>
-        <strong>感谢 Kimi 赞助本项目！</strong>Kimi K2.7 Code 是 Moonshot AI 推出的编程专用开源智能体模型，在真实长程编程与复杂软件工程工作流中显著提升端到端任务成功率，同时优化推理效率，相比 K2.6 平均减少约 30% 的推理 token 消耗。在 CCR 中，Kimi 已作为内置供应商预设开箱即用：无论按量付费 API 还是 Kimi Code 订阅，一键导入即可把你的编程 Agent 请求路由到 Kimi，订阅端点原生直通、无需协议转换，API 端点自动适配，账户余额与订阅用量也能直接在 CCR 面板中查看。
+        <strong>感谢 Kimi 赞助本项目！</strong>Kimi K3 是 Moonshot AI 迄今能力最强的模型，也是全球首个开源 3T 级模型。K3 拥有 2.8T 参数、原生视觉能力与 100 万 Token 上下文，在长周期编码、知识工作和推理任务中展现前沿性能。在 CCR 中，Kimi 已作为内置供应商预设开箱即用：无论按量付费 API 还是 Kimi Code 订阅，一键导入即可将编程 Agent 的请求路由到 Kimi；订阅端点原生直通、无需协议转换，API 端点自动适配，账户余额与订阅用量也能直接在 CCR 面板中查看。
       </p>
       <p align="center">
-        CCR 已内置 Kimi 供应商预设。前往 Kimi 开放平台（<a href="https://platform.kimi.com?aff=ccr">中文站</a>｜<a href="https://platform.kimi.ai?aff=ccr">Global</a>）体验 API，或了解高性价比 <a href="https://www.kimi.com/code?aff=ccr">Coding Plan</a> 套餐。
+        CCR 已内置 Kimi 供应商预设。前往 Kimi 开放平台（<a href="https://platform.kimi.com?aff=ccr">中文站</a>｜<a href="https://platform.kimi.ai?aff=ccr">Global</a>）体验 API，或了解 <a href="https://www.kimi.com/code?aff=ccr">Kimi Code 订阅</a>。
       </p>
     </td>
   </tr>
@@ -36,10 +36,10 @@
 
 ### 在一个地方，管理你所有的 Agent 与 Provider
 
-让 Claude Code、Codex、Grok CLI、ZCode 和兼容 API 客户端连接你选择的供应商，并在一个应用里完成每次请求的路由、降级、增强与观测。
+让 Claude Code、Claude Design、Codex、Grok CLI、Kimi CLI、Kilo Code、OpenCode、Pi、ZCode 和兼容 API 客户端连接你选择的供应商，并在一个应用里完成每次请求的路由、降级、增强与观测。
 
 <p>
-  <a href="https://github.com/musistudio/claude-code-router/releases"><img alt="下载桌面端" src="https://img.shields.io/badge/%E7%AB%8B%E5%8D%B3%E4%B8%8B%E8%BD%BD-%E6%A1%8C%E9%9D%A2%E5%AE%A2%E6%88%B7%E7%AB%AF-2563EB?style=for-the-badge&logo=github&logoColor=white" /></a>
+  <a href="#桌面端推荐"><img alt="下载桌面端" src="https://img.shields.io/badge/%E7%AB%8B%E5%8D%B3%E4%B8%8B%E8%BD%BD-%E6%A1%8C%E9%9D%A2%E5%AE%A2%E6%88%B7%E7%AB%AF-2563EB?style=for-the-badge&logo=github&logoColor=white" /></a>
   <a href="#快速开始"><img alt="快速开始" src="https://img.shields.io/badge/%E7%AB%8B%E5%8D%B3%E4%BD%BF%E7%94%A8-%E5%BF%AB%E9%80%9F%E5%BC%80%E5%A7%8B-16A34A?style=for-the-badge&logo=rocket&logoColor=white" /></a>
   <a href="https://ccrdesk.top/"><img alt="查看文档" src="https://img.shields.io/badge/%E6%B7%B1%E5%85%A5%E4%BA%86%E8%A7%A3-%E5%AE%8C%E6%95%B4%E6%96%87%E6%A1%A3-0F172A?style=for-the-badge&logo=readthedocs&logoColor=white" /></a>
 </p>
@@ -59,7 +59,7 @@
 
 ## 为什么使用 Claude Code Router？
 
-Claude Code Router（CCR）是面向编程 Agent 的本地模型网关与控制平面。它为 Claude Code、Codex、Grok CLI、ZCode 和兼容 API 客户端提供**一个稳定的本地入口**，让你在一个地方管理入口背后的供应商、模型、账号、路由规则与工具。
+Claude Code Router（CCR）是面向编程 Agent 的本地模型网关与控制平面。它为 Claude Code、Claude Design、Codex、Grok CLI、Kimi CLI、Kilo Code、OpenCode、Pi、ZCode 和兼容 API 客户端提供**一个稳定的本地入口**，让你在一个地方管理入口背后的供应商、模型、账号、路由规则与工具。
 
 你可以使用 CCR：
 
@@ -71,29 +71,137 @@ Claude Code Router（CCR）是面向编程 Agent 的本地模型网关与控制�
 
 CCR 支持 OpenAI Chat / Responses、Anthropic Messages、Gemini Generate Content / Interactions、OpenRouter、DeepSeek、SiliconFlow、Moonshot、Kimi Code、Mistral、Z.AI、百炼以及自定义兼容供应商。
 
+<details open>
+<summary><strong>支持的 Agent</strong></summary>
+
+<div align="center">
+
+<table width="100%">
+  <tr>
+    <td align="center" width="330">
+      <a href="https://github.com/anthropics/claude-code">
+        <img src="/packages/ui/src/assets/agent-logos/claude-code.png" width="44" height="44" alt="Claude Code 图标" />
+        <br />
+        <strong>Claude Code (CLI & APP)</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://github.com/openai/codex">
+        <img src="/packages/ui/src/assets/agent-logos/codex.png" width="44" height="44" alt="Codex 图标" />
+        <br />
+        <strong>Codex (CLI & APP)</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://github.com/xai-org/grok-build">
+        <img src="/packages/ui/src/assets/agent-logos/grok.ico" width="44" height="44" alt="Grok CLI 图标" />
+        <br />
+        <strong>Grok CLI (CLI)</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://github.com/MoonshotAI/kimi-cli">
+        <img src="/docs/public/provider-icons/moonshot.ico" width="44" height="44" alt="Kimi CLI 图标" />
+        <br />
+        <strong>Kimi CLI (CLI)</strong>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="330">
+      <a href="https://kilo.ai/">
+        <img src="/packages/ui/src/assets/agent-logos/kilo.svg" width="44" height="44" alt="Kilo Code 图标" />
+        <br />
+        <strong>Kilo Code (CLI)</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://github.com/anomalyco/opencode">
+        <img src="/packages/ui/src/assets/agent-logos/opencode.ico" width="44" height="44" alt="OpenCode 图标" />
+        <br />
+        <strong>OpenCode (CLI & APP)</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://github.com/earendil-works/pi">
+        <img src="/packages/ui/src/assets/agent-logos/pi.svg" width="44" height="44" alt="Pi 图标" />
+        <br />
+        <strong>Pi (CLI)</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://zcode.z.ai/cn">
+        <img src="/packages/ui/src/assets/agent-logos/zcode.png" width="44" height="44" alt="ZCode 图标" />
+        <br />
+        <strong>ZCode (APP)</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://www.anthropic.com/news/claude-design-anthropic-labs">
+        <img src="/packages/ui/src/assets/agent-logos/claude-code.png" width="44" height="44" alt="Claude Design 图标" />
+        <br />
+        <strong>Claude Design (APP)</strong>
+      </a>
+    </td>
+  </tr>
+</table>
+
+</div>
+
+</details>
+
 ## 快速开始
 
 ### 桌面端（推荐）
 
-1. **[下载 Claude Code Router](https://github.com/musistudio/claude-code-router/releases)**，选择 macOS、Windows 或 Linux 版本并启动应用。
+1. <details open>
+   <summary><strong>下载 Claude Code Router，选择 macOS、Windows 或 Linux 版本并启动应用。</strong></summary>
+
+   <div align="center">
+
+   <table width="100%">
+     <tr>
+       <td align="center" width="330">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.0.16/Claude-Code-Router_3.0.16.exe">
+           <img src="/docs/public/platform-icons/windows.png" width="44" height="44" alt="Windows 图标" />
+           <br />
+           <strong>Windows</strong>
+         </a>
+       </td>
+       <td align="center" width="330">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.0.16/Claude-Code-Router_3.0.16.AppImage">
+           <img src="/docs/public/platform-icons/linux.png" width="44" height="44" alt="Linux 图标" />
+           <br />
+           <strong>Linux</strong>
+         </a>
+       </td>
+       <td align="center" width="330">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.0.16/Claude-Code-Router_3.0.16-mac-Apple-Silicon-arm64.dmg">
+           <img src="/docs/public/platform-icons/macos.png" width="44" height="44" alt="macOS 图标" />
+           <br />
+           <strong>macOS (Apple Silicon)</strong>
+         </a>
+       </td>
+       <td align="center" width="330">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.0.16/Claude-Code-Router_3.0.16-mac-Intel-x64.dmg">
+           <img src="/docs/public/platform-icons/macos.png" width="44" height="44" alt="macOS 图标" />
+           <br />
+           <strong>macOS (Intel)</strong>
+         </a>
+       </td>
+     </tr>
+   </table>
+
+   </div>
+
+   </details>
+
 2. 打开 **供应商 → 添加供应商**。选择内置预设或自定义端点，填写 API Key，选择协议与模型，然后保存。
 3. 打开 **服务** 并点击 **启动**。本地模型网关默认监听 `http://127.0.0.1:3456`。
-4. 打开 **Agent配置**，选择 Claude Code、Codex、Grok CLI 或 ZCode，指定模型并应用配置档案。
+4. 打开 **Agent配置**，选择 Claude Code、Claude Design、Codex、Grok CLI、Kimi CLI、Kilo Code、OpenCode、Pi 或 ZCode，指定模型并应用配置档案。
 5. 开始使用 Agent。在 **日志** 中确认最终供应商、模型、状态、Token、耗时与错误。
 
 现在 Agent 已经连接到 CCR。如需增加条件规则、自动重试、请求改写或 Fallback 模型，请打开 **路由**。
-
-<details>
-<summary><strong>桌面安装包与本地数据位置</strong></summary>
-
-- macOS Apple 芯片：`Claude-Code-Router_<version>-mac-Apple-Silicon-arm64.dmg` 或 `.zip`
-- macOS Intel 芯片：`Claude-Code-Router_<version>-mac-Intel-x64.dmg` 或 `.zip`
-- Windows：`Claude Code Router_<version>.exe`
-- Linux：`Claude Code Router_<version>.AppImage`
-
-运行配置使用 SQLite 存储：macOS / Linux 位于 `~/.claude-code-router/config.sqlite`，Windows 位于 `%APPDATA%\claude-code-router\config.sqlite`。只有在不存在 SQLite 配置时，CCR 才会读取一次旧版 `config.json` 用于迁移。
-
-</details>
 
 ### CLI
 
@@ -104,7 +212,7 @@ npm install -g @musistudio/claude-code-router
 ccr ui
 ```
 
-打开 `http://127.0.0.1:3458`，然后按照上面的 **供应商 → 服务 → Agent配置** 流程操作。模型网关仍位于 `http://127.0.0.1:3456`。服务模式、鉴权和 Profile 命令见 [CLI 命令参考](https://ccrdesk.top/guides/cli/)。
+打开 `http://127.0.0.1:3458`，然后按照上面的 **供应商 → 服务 → Agent 配置档案** 流程操作。模型网关仍位于 `http://127.0.0.1:3456`。服务模式、鉴权和 Profile 命令见 [CLI 命令参考](https://ccrdesk.top/guides/cli/)。
 
 ### Docker
 
@@ -114,10 +222,21 @@ docker compose up -d --build
 
 Docker 默认通过 `http://127.0.0.1:3458` 提供管理界面与网关路由。远程暴露 CCR 前，请先阅读 [Docker 部署指南](https://ccrdesk.top/guides/docker/)。
 
+## 构建桌面应用
+
+先安装 Node.js 22+，然后执行 `npm ci`。
+
+| 目标 | 命令 | 产物目录 |
+| --- | --- | --- |
+| macOS 本地 DMG/ZIP | `npm run build:app:mac` | `release-local/` |
+| Windows 本地 NSIS 安装包 | `npm run build:app:win` | `release-local/` |
+
+Windows App 打包必须在 Windows x64 上运行，因为 `better-sqlite3` 包含 Electron 原生模块，不能从 macOS 或 Linux 交叉编译。推送 `v*` tag 时，release workflow 会分别在 macOS runner 和 `windows-latest` 上构建 macOS 与 Windows 产物。
+
 ## 工作方式
 
 ```text
-Claude Code · Codex · Grok CLI · ZCode · 兼容 API 客户端
+Claude Code · Claude Design · Codex · Grok CLI · Kimi CLI · Kilo Code · OpenCode · Pi · ZCode · 兼容 API 客户端
                               │
                               ▼
                  Claude Code Router :3456
@@ -131,14 +250,13 @@ Claude Code · Codex · Grok CLI · ZCode · 兼容 API 客户端
 
 | 能力领域 | 功能亮点 |
 | --- | --- |
-| **Agent** | Claude Code、Codex、Grok CLI 和 ZCode 配置档案；模型覆盖；作用范围；环境变量；CLI / App 启动入口；多开工作流 |
+| **Agent** | Claude Code、Claude Design、Codex、Grok CLI、Kimi CLI、Kilo Code、OpenCode、Pi 和 ZCode 配置档案；模型覆盖；作用范围；环境变量；CLI / App 启动入口；多开工作流 |
 | **供应商** | 内置预设和自定义端点；协议探测；模型发现；连通性检测；按支持情况导入本机登录态；单 Key 与凭据池 |
 | **模型与路由** | 可搜索模型目录；用于任务选择的模型描述；Header / Body 条件；模型前缀；请求改写；重试；有序 Fallback |
 | **工具与扩展** | Fusion 模型；ToolHub；内置浏览器自动化；Chrome 登录态导入；wrapper / core gateway plugin；本地路由与虚拟模型 |
 | **访问与额度** | 独立的 CCR 客户端 Key，可设置有效期以及本地请求、Token 和图片限额 |
 | **日志与观测** | 请求 / 响应详情；最终供应商、模型与凭据；状态；耗时；Token；成本估算；工具调用；Agent 执行链路 |
-| **AgentClaw 与接力** | 将本机 Agent 作为 OpenClaw 使用，并通过微信 iLink、企业微信、Slack、Discord、Telegram、LINE、飞书和钉钉接力 |
-| **网络** | 本地 HTTP / HTTPS 代理、可选 CA、网络捕获，以及系统 / 自定义代理模式 |
+| **AgentClaw** | 通过微信 iLink、企业微信、Slack、Discord、Telegram、LINE、飞书和钉钉接力 Agent |
 
 ## 准备好后，继续深入
 
@@ -146,20 +264,10 @@ Claude Code · Codex · Grok CLI · ZCode · 兼容 API 客户端
 
 - [安装并启动 CCR](https://ccrdesk.top/guides/install/)
 - [配置供应商](https://ccrdesk.top/guides/provider/)
-- [了解智能路由](https://ccrdesk.top/routing/)
-- [使用 Fusion 增强模型](https://ccrdesk.top/fusion/)
-- [使用 ToolHub 管理工具](https://ccrdesk.top/toolhub/)
-- [了解完整配置](https://ccrdesk.top/configuration/)
-- [使用 AgentClaw 接入本机 Agent](https://ccrdesk.top/agentclaw/)
-- [一键导入供应商](https://ccrdesk.top/provider-import/)
-- [开发本地扩展](https://ccrdesk.top/extensions/)
+- [了解路由与完整配置](https://ccrdesk.top/configuration/)
 - [使用 CLI](https://ccrdesk.top/guides/cli/)
 - [通过 Docker 部署](https://ccrdesk.top/guides/docker/)
 - [排查常见问题](https://ccrdesk.top/troubleshooting/)
-
-## 致谢
-
-对 Codex 的支持来自 [musistudio/codexl](https://github.com/musistudio/codexl)。
 
 ## 支持与赞助
 
@@ -290,6 +398,13 @@ Claude Code · Codex · Grok CLI · ZCode · 兼容 API 客户端
         <img src="/docs/public/provider-icons/unity2.jpg" width="42" height="42" alt="Unity2.Ai 图标" />
         <br />
         <strong>Unity2.Ai</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://infistar.ai/register?aff=CCRCCR&ref_source=link">
+        <img src="/docs/public/provider-icons/infistar-ai.jpg" width="42" height="42" alt="无限星河图标" />
+        <br />
+        <strong>无限星河</strong>
       </a>
     </td>
   </tr>

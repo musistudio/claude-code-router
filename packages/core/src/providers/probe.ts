@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type {
   GatewayProviderConnectivityCheckReport,
   GatewayProviderConnectivityCheckRequest,
@@ -12,6 +12,8 @@ import type {
   GatewayProviderCapabilityProtocol,
   GatewayProviderProtocol
 } from "@ccr/core/contracts/app";
+import { codexDefaultBaseUrl, readCodexAuth } from "@ccr/core/agents/local-providers/codex";
+import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue } from "@ccr/core/providers/presets/index";
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
@@ -26,6 +28,8 @@ import {
   newApiKeyUsageAccountConfig,
   type DetectedProviderKind
 } from "@ccr/core/providers/new-api";
+import { recordGatewayRequestLog } from "@ccr/core/observability/request-log-store";
+import { requestLogSampled } from "@ccr/core/observability/raw-trace-sync";
 
 type ModelSource = NonNullable<GatewayProviderProbeResult["modelSource"]>;
 
@@ -64,6 +68,15 @@ type ProbeCacheEntry = {
   result: GatewayProviderProbeResult;
 };
 
+type GatewayProviderConnectivityCheckOptions = {
+  requestLog?: {
+    bodyCapturePolicy?: "all" | "errors" | "none";
+    enabled?: boolean;
+    maxBodyBytes?: number;
+    successSampleRate?: number;
+  };
+};
+
 const protocolOrder: GatewayProviderCapabilityProtocol[] = [
   "openai_responses",
   "openai_chat_completions",
@@ -82,8 +95,22 @@ const protocolProbeCacheMs = 60 * 1000;
 const connectivityProbeCacheMs = 15 * 1000;
 const failedProbeCacheMs = 10 * 1000;
 const maxProbeCacheEntries = 500;
+const codexOauthTokenEndpoint = "https://auth.openai.com/oauth/token";
+const codexOauthClientId = "app_EMoamEEZ73f0CkXaXp7hrann";
+const codexOauthDefaultScope = "openid profile email offline_access";
+const codexOauthRequiredScopes = ["api.connectors.read", "api.connectors.invoke"];
+const codexOauthDefaultTimeoutMs = 8_000;
+const codexProbeOauthCache = new Map<string, CodexProbeOauthRefreshResult>();
+const inFlightCodexProbeOauthRefreshes = new Map<string, Promise<CodexProbeOauthRefreshResult>>();
 const probeCache = new Map<string, ProbeCacheEntry>();
 const inFlightProbes = new Map<string, Promise<GatewayProviderProbeResult>>();
+
+type CodexProbeOauthRefreshResult = {
+  accessToken?: string;
+  accountId?: string;
+  expiresAtMs: number;
+  refreshToken?: string;
+};
 
 export async function probeGatewayProvider(request: GatewayProviderProbeRequest): Promise<GatewayProviderProbeResult> {
   pruneProbeCache();
@@ -155,11 +182,14 @@ export async function probeGatewayProviderCandidates(
 }
 
 export async function checkGatewayProviderConnectivity(
-  request: GatewayProviderConnectivityCheckRequest
+  request: GatewayProviderConnectivityCheckRequest,
+  options: GatewayProviderConnectivityCheckOptions = {}
 ): Promise<GatewayProviderConnectivityCheckReport> {
   const models = uniqueStrings(request.models);
   const checks = await Promise.all(
     models.map(async (model) => {
+      const startedAtMs = Date.now();
+      const startedAt = new Date(startedAtMs).toISOString();
       try {
         const result = await probeGatewayProviderCandidates({
           apiKey: request.apiKey,
@@ -172,6 +202,7 @@ export async function checkGatewayProviderConnectivity(
         });
         if (!result) {
           return {
+            durationMs: Date.now() - startedAtMs,
             model,
             probe: undefined,
             report: {
@@ -179,12 +210,14 @@ export async function checkGatewayProviderConnectivity(
               model,
               protocols: [],
               supported: false
-            }
+            },
+            startedAt
           };
         }
 
         const supported = providerProbeHasSupportedProtocol(result.probe);
         return {
+          durationMs: Date.now() - startedAtMs,
           model,
           probe: result.probe,
           report: {
@@ -194,10 +227,12 @@ export async function checkGatewayProviderConnectivity(
             model,
             protocols: result.probe.protocols,
             supported
-          }
+          },
+          startedAt
         };
       } catch (error) {
         return {
+          durationMs: Date.now() - startedAtMs,
           model,
           probe: undefined,
           report: {
@@ -205,11 +240,15 @@ export async function checkGatewayProviderConnectivity(
             model,
             protocols: [],
             supported: false
-          }
+          },
+          startedAt
         };
       }
     })
   );
+  for (const check of checks) {
+    recordProviderConnectivityRequestLog(request, check, options.requestLog);
+  }
   const reports = checks.map((check) => check.report);
   return {
     failed: reports.filter((item) => !item.supported),
@@ -217,6 +256,82 @@ export async function checkGatewayProviderConnectivity(
     probe: checks.find((check) => check.report.supported && check.probe)?.probe,
     results: reports
   };
+}
+
+function recordProviderConnectivityRequestLog(
+  request: GatewayProviderConnectivityCheckRequest,
+  check: {
+    durationMs: number;
+    model: string;
+    report: GatewayProviderConnectivityCheckReport["results"][number];
+    startedAt: string;
+  },
+  options: GatewayProviderConnectivityCheckOptions["requestLog"]
+): void {
+  if (!options?.enabled) {
+    return;
+  }
+
+  const protocol = check.report.protocols.find((item) => item.supported) ?? check.report.protocols[0];
+  const candidate = protocol
+    ? request.candidates.find((item) => item.baseUrl === protocol.baseUrl)
+    : request.candidates[0];
+  const successful = check.report.supported;
+  const requestId = randomUUID();
+  if (successful && !requestLogSampled(requestId, options.successSampleRate ?? 1)) {
+    return;
+  }
+  const bodyCapturePolicy = options.bodyCapturePolicy ?? "all";
+  const captureBody = bodyCapturePolicy === "all" || (bodyCapturePolicy === "errors" && !successful);
+  const responseBodyText = JSON.stringify({
+    message: check.report.message,
+    protocols: check.report.protocols.map((item) => ({
+      endpoint: item.endpoint,
+      message: item.message,
+      protocol: item.protocol,
+      status: item.status,
+      supported: item.supported
+    })),
+    supported: check.report.supported
+  });
+
+  recordGatewayRequestLog({
+    bodyCapturePolicy,
+    captureBody,
+    client: "provider-connectivity-check",
+    completedAt: new Date(new Date(check.startedAt).getTime() + check.durationMs).toISOString(),
+    durationMs: check.durationMs,
+    error: successful ? undefined : check.report.message,
+    maxBodyBytes: options.maxBodyBytes,
+    method: "POST",
+    model: check.model,
+    path: "/__ccr/provider-connectivity",
+    providerName: providerProbeCandidateName(candidate),
+    providerProtocol: protocol?.protocol as GatewayProviderProtocol | undefined,
+    requestedModel: check.model,
+    requestBody: Buffer.from(JSON.stringify({
+      candidates: request.candidates.map((item) => ({
+        baseUrl: item.baseUrl,
+        name: providerProbeCandidateName(item),
+        protocols: item.protocols
+      })),
+      model: check.model,
+      protocols: request.protocols
+    })),
+    requestHeaders: {},
+    requestId,
+    resolvedModel: check.model,
+    responseBodyText,
+    responseHeaders: {},
+    startedAt: check.startedAt,
+    statusCode: protocol?.status ?? (successful ? 200 : 599),
+    url: protocol?.endpoint ?? candidate?.baseUrl ?? "provider-connectivity-check"
+  });
+}
+
+function providerProbeCandidateName(candidate: GatewayProviderProbeCandidate | undefined): string | undefined {
+  const value: unknown = candidate;
+  return isRecord(value) ? readString(value.name) : undefined;
 }
 
 async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest): Promise<GatewayProviderProbeResult> {
@@ -589,10 +704,12 @@ async function probeProtocolConnectivity(
   let firstResult: GatewayProviderProbeProtocolResult | undefined;
 
   for (const candidate of endpoints) {
-    const request = providerProbeAuthRequest(
+    const request = await providerProbeAuthRequest(
       candidate.endpoint,
       requestForProtocol(protocol, model, apiKey),
-      providerPlugins
+      providerPlugins,
+      apiKey,
+      { model }
     );
     const result = await requestJson(request.url, request.init);
     const message = readResponseMessage(result);
@@ -732,18 +849,105 @@ function mediaProbeBody(protocol: GatewayProviderCapabilityProtocol): Record<str
   return {};
 }
 
-function providerProbeAuthRequest(
+async function providerProbeAuthRequest(
   url: string,
   init: RequestInit,
-  providerPlugins: unknown[]
-): { init: RequestInit; url: string } {
+  providerPlugins: unknown[],
+  apiKey: string | undefined,
+  context: { model: string }
+): Promise<{ init: RequestInit; url: string }> {
   const auth = providerPlugins
     .map(providerPluginAuth)
     .find((item): item is Record<string, unknown> => Boolean(item));
-  if (!auth) {
-    return { init, url };
+  let codexOauth = providerPlugins
+    .map(providerPluginCodexOauth)
+    .find((item): item is Record<string, unknown> => Boolean(item));
+  let requestTransform = providerPlugins
+    .map(providerPluginRequest)
+    .find((item): item is Record<string, unknown> => Boolean(item));
+  const liveCodexAuth = providerProbeLiveCodexOauth(url, apiKey);
+  if (codexOauth && liveCodexAuth) {
+    codexOauth = {
+      ...codexOauth,
+      ...liveCodexAuth.codexOauth
+    };
+  } else {
+    codexOauth ??= liveCodexAuth?.codexOauth;
+  }
+  requestTransform ??= liveCodexAuth?.request;
+  if (codexOauth && apiKey === localAgentProviderApiKey && isCodexProbeEndpoint(url)) {
+    requestTransform = withCodexProbeBackendRequestTransform(requestTransform);
+  }
+  let request = { init, url };
+
+  if (auth) {
+    request = providerProbeStaticAuthRequest(request.url, request.init, auth);
   }
 
+  if (codexOauth) {
+    request = await providerProbeCodexOauthRequest(request.url, request.init, codexOauth);
+  }
+
+  if (liveCodexAuth?.isFedrampAccount) {
+    const headers = new Headers(request.init.headers);
+    headers.set("X-OpenAI-Fedramp", "true");
+    request = {
+      ...request,
+      init: {
+        ...request.init,
+        headers
+      }
+    };
+  }
+
+  if (requestTransform) {
+    request = providerProbeRequestTransformRequest(request.url, request.init, requestTransform, context);
+  }
+
+  return request;
+}
+
+function providerProbeLiveCodexOauth(
+  url: string,
+  apiKey: string | undefined
+): { codexOauth: Record<string, unknown>; isFedrampAccount?: boolean; request: Record<string, unknown> } | undefined {
+  if (apiKey !== localAgentProviderApiKey || !isCodexProbeEndpoint(url)) {
+    return undefined;
+  }
+
+  const auth = readCodexAuth();
+  if (!auth?.accessToken && !auth?.refreshToken) {
+    return undefined;
+  }
+  return {
+    codexOauth: {
+      ...(auth.accessToken ? { accessToken: auth.accessToken } : {}),
+      ...(auth.accountId ? { accountId: auth.accountId } : {}),
+      refreshIfMissingAccessToken: true,
+      ...(auth.refreshToken ? { refreshToken: auth.refreshToken } : {}),
+      required: true
+    },
+    isFedrampAccount: auth.isFedrampAccount,
+    request: codexProbeBackendRequestTransform()
+  };
+}
+
+function isCodexProbeEndpoint(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const codexBase = new URL(codexDefaultBaseUrl);
+    return parsed.origin === codexBase.origin &&
+      parsed.pathname.toLowerCase().startsWith(codexBase.pathname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+function providerProbeStaticAuthRequest(
+  url: string,
+  init: RequestInit,
+  auth: Record<string, unknown>
+): { init: RequestInit; url: string } {
   const headers = new Headers(init.headers);
   for (const header of readStringArray(auth.removeHeaders)) {
     headers.delete(header);
@@ -772,6 +976,222 @@ function providerProbeAuthRequest(
   };
 }
 
+function providerProbeRequestTransformRequest(
+  url: string,
+  init: RequestInit,
+  requestTransform: Record<string, unknown>,
+  context: { model: string }
+): { init: RequestInit; url: string } {
+  const headers = new Headers(init.headers);
+  for (const [name, value] of Object.entries(isRecord(requestTransform.headers) ? requestTransform.headers : {})) {
+    const headerValue = renderProviderProbeTemplate(readString(value), context);
+    if (headerValue) {
+      headers.set(name, headerValue);
+    }
+  }
+
+  const nextUrl = new URL(url);
+  for (const [name, value] of Object.entries(isRecord(requestTransform.query) ? requestTransform.query : {})) {
+    const queryValue = renderProviderProbeTemplate(readString(value), context);
+    if (queryValue) {
+      nextUrl.searchParams.set(name, queryValue);
+    }
+  }
+
+  const transformedBody = providerProbeTransformedJsonBody(init.body, requestTransform, context);
+  return {
+    init: {
+      ...init,
+      body: transformedBody ?? init.body,
+      headers
+    },
+    url: nextUrl.toString()
+  };
+}
+
+function providerProbeTransformedJsonBody(
+  body: BodyInit | null | undefined,
+  requestTransform: Record<string, unknown>,
+  context: { model: string }
+): string | undefined {
+  const payload = requestBodyJsonObject(body);
+  if (!payload) {
+    return undefined;
+  }
+
+  let changed = false;
+  for (const path of readStringArray(requestTransform.bodyRemove)) {
+    changed = deleteJsonPath(payload, path) || changed;
+  }
+  const bodyMerge = isRecord(requestTransform.bodyMerge) ? requestTransform.bodyMerge : undefined;
+  if (bodyMerge) {
+    const renderedMerge = renderJsonTemplateValues(bodyMerge, context);
+    if (isRecord(renderedMerge)) {
+      mergeJsonObject(payload, renderedMerge);
+      changed = true;
+    }
+  }
+  const bodySet = isRecord(requestTransform.bodySet) ? requestTransform.bodySet : undefined;
+  if (bodySet) {
+    for (const [path, value] of Object.entries(bodySet)) {
+      setJsonPath(payload, path, renderJsonTemplateValues(value, context));
+      changed = true;
+    }
+  }
+
+  return changed ? JSON.stringify(payload) : undefined;
+}
+
+function requestBodyJsonObject(body: BodyInit | null | undefined): Record<string, unknown> | undefined {
+  if (typeof body !== "string") {
+    return undefined;
+  }
+  const payload = parseJson(body);
+  return isRecord(payload) ? { ...payload } : undefined;
+}
+
+function deleteJsonPath(target: Record<string, unknown>, path: string): boolean {
+  const parts = jsonPathParts(path);
+  if (parts.length === 0) {
+    return false;
+  }
+  const parent = jsonPathParent(target, parts);
+  const key = parts[parts.length - 1];
+  if (!parent || key === undefined || !Object.prototype.hasOwnProperty.call(parent, key)) {
+    return false;
+  }
+  delete parent[key];
+  return true;
+}
+
+function setJsonPath(target: Record<string, unknown>, path: string, value: unknown): void {
+  const parts = jsonPathParts(path);
+  if (parts.length === 0) {
+    return;
+  }
+  let current = target;
+  for (const part of parts.slice(0, -1)) {
+    const next = current[part];
+    if (!isRecord(next)) {
+      current[part] = {};
+    }
+    current = current[part] as Record<string, unknown>;
+  }
+  const key = parts[parts.length - 1];
+  if (key !== undefined) {
+    current[key] = value;
+  }
+}
+
+function jsonPathParent(target: Record<string, unknown>, parts: string[]): Record<string, unknown> | undefined {
+  let current: unknown = target;
+  for (const part of parts.slice(0, -1)) {
+    if (!isRecord(current)) {
+      return undefined;
+    }
+    current = current[part];
+  }
+  return isRecord(current) ? current : undefined;
+}
+
+function jsonPathParts(path: string): string[] {
+  return path.split(".").map((part) => part.trim()).filter(Boolean);
+}
+
+function mergeJsonObject(target: Record<string, unknown>, source: Record<string, unknown>): void {
+  for (const [key, value] of Object.entries(source)) {
+    if (isRecord(value) && isRecord(target[key])) {
+      mergeJsonObject(target[key], value);
+    } else {
+      target[key] = value;
+    }
+  }
+}
+
+function renderJsonTemplateValues(value: unknown, context: { model: string }): unknown {
+  if (typeof value === "string") {
+    return renderProviderProbeTemplate(value, context);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => renderJsonTemplateValues(item, context));
+  }
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, renderJsonTemplateValues(item, context)])
+    );
+  }
+  return value;
+}
+
+function renderProviderProbeTemplate(value: string | undefined, context: { model: string }): string | undefined {
+  return value
+    ?.split("{{ model }}").join(context.model)
+    .split("{{ request.body.model }}").join(context.model)
+    .split("{{ upstreamRequest.body.model }}").join(context.model);
+}
+
+function codexProbeBackendRequestTransform(): Record<string, unknown> {
+  return withCodexProbeBackendRequestTransform();
+}
+
+function withCodexProbeBackendRequestTransform(requestTransform: Record<string, unknown> = {}): Record<string, unknown> {
+  const bodyRemove = readStringArray(requestTransform.bodyRemove);
+  return {
+    ...requestTransform,
+    bodyRemove: uniqueStrings([...bodyRemove, "max_output_tokens", "stop"])
+  };
+}
+
+async function providerProbeCodexOauthRequest(
+  url: string,
+  init: RequestInit,
+  codexOauth: Record<string, unknown>
+): Promise<{ init: RequestInit; url: string }> {
+  const requiredScopes = codexRequiredScopes(codexOauth.requiredScopes);
+  const scope = codexOauthScope(readString(codexOauth.scope), requiredScopes);
+  let accessToken = readString(codexOauth.accessToken) || readString(codexOauth.access_token);
+  let refreshToken = readString(codexOauth.refreshToken) || readString(codexOauth.refresh_token);
+  let accountId = readString(codexOauth.accountId) || readString(codexOauth.account_id);
+
+  if (refreshToken && shouldRefreshCodexProbeToken(accessToken, codexOauth, requiredScopes)) {
+    const refreshed = await refreshCodexProbeAccessToken(codexOauth, refreshToken, scope);
+    accessToken = refreshed.accessToken || accessToken;
+    refreshToken = refreshed.refreshToken || refreshToken;
+    accountId = refreshed.accountId || accountId;
+  }
+
+  const required = readBoolean(codexOauth.required) !== false;
+  if (!accessToken) {
+    if (required) {
+      throw new Error("Codex OAuth access token is required but missing.");
+    }
+    return { init, url };
+  }
+
+  const missingScopes = codexMissingRequiredScopes(accessToken, requiredScopes);
+  if (missingScopes.length > 0 && required) {
+    throw new Error(`Codex OAuth access token is missing required scopes: ${missingScopes.join(", ")}.`);
+  }
+
+  const headers = new Headers(init.headers);
+  const authHeader = readString(codexOauth.authHeader) || "authorization";
+  const authScheme = readString(codexOauth.authScheme) || "Bearer";
+  headers.set(authHeader, authScheme ? `${authScheme} ${accessToken}` : accessToken);
+
+  accountId = accountId || codexAccountIdFromToken(accessToken);
+  if (accountId) {
+    headers.set("ChatGPT-Account-Id", accountId);
+  }
+
+  return {
+    init: {
+      ...init,
+      headers
+    },
+    url
+  };
+}
+
 function providerPluginAuth(plugin: unknown): Record<string, unknown> | undefined {
   if (!isRecord(plugin) || !isRecord(plugin.auth)) {
     return undefined;
@@ -779,10 +1199,136 @@ function providerPluginAuth(plugin: unknown): Record<string, unknown> | undefine
   return plugin.auth;
 }
 
+function providerPluginCodexOauth(plugin: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(plugin) || !isRecord(plugin.codexOauth)) {
+    return undefined;
+  }
+  return plugin.codexOauth;
+}
+
+function providerPluginRequest(plugin: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(plugin) || !isRecord(plugin.request)) {
+    return undefined;
+  }
+  return plugin.request;
+}
+
 function readStringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.map(readString).filter((item): item is string => Boolean(item))
     : [];
+}
+
+async function refreshCodexProbeAccessToken(
+  codexOauth: Record<string, unknown>,
+  refreshToken: string,
+  scope: string
+): Promise<CodexProbeOauthRefreshResult> {
+  const tokenEndpoint =
+    readString(codexOauth.tokenEndpoint) ||
+    readString(process.env.CODEX_REFRESH_TOKEN_URL_OVERRIDE) ||
+    codexOauthTokenEndpoint;
+  const clientId = readString(codexOauth.clientId) || codexOauthClientId;
+  const cacheKey = [
+    tokenEndpoint,
+    clientId,
+    scope,
+    hashSensitiveValue(refreshToken)
+  ].join("\n");
+  const now = Date.now();
+  const cached = codexProbeOauthCache.get(cacheKey);
+  if (cached?.accessToken && cached.expiresAtMs > now + 60_000) {
+    return cached;
+  }
+  const inFlight = inFlightCodexProbeOauthRefreshes.get(cacheKey);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const refresh = refreshCodexProbeAccessTokenUncached(codexOauth, refreshToken, scope, tokenEndpoint, clientId, now)
+    .finally(() => {
+      if (inFlightCodexProbeOauthRefreshes.get(cacheKey) === refresh) {
+        inFlightCodexProbeOauthRefreshes.delete(cacheKey);
+      }
+    });
+  inFlightCodexProbeOauthRefreshes.set(cacheKey, refresh);
+  return refresh;
+}
+
+async function refreshCodexProbeAccessTokenUncached(
+  codexOauth: Record<string, unknown>,
+  refreshToken: string,
+  scope: string,
+  tokenEndpoint: string,
+  clientId: string,
+  now: number
+): Promise<CodexProbeOauthRefreshResult> {
+  const timeoutMs = Math.max(1, Number(codexOauth.timeoutMs) || codexOauthDefaultTimeoutMs);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetchWithSystemProxy(tokenEndpoint, {
+      body: JSON.stringify({
+        client_id: clientId,
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+        scope
+      }),
+      headers: {
+        "content-type": "application/json"
+      },
+      method: "POST",
+      signal: controller.signal
+    });
+    const text = await response.text();
+    const payload = parseJson(text);
+    if (!response.ok) {
+      throw new Error(`Codex OAuth token refresh returned HTTP ${response.status}${codexTokenRefreshErrorMessage(payload, text)}`);
+    }
+    if (!isRecord(payload)) {
+      throw new Error("Codex OAuth token refresh returned an invalid JSON payload.");
+    }
+
+    const accessToken = readString(payload.access_token) || readString(payload.accessToken);
+    if (!accessToken) {
+      throw new Error("Codex OAuth token refresh did not return an access token.");
+    }
+
+    const result = {
+      accessToken,
+      accountId: readString(payload.account_id) || readString(payload.accountId) || codexAccountIdFromToken(accessToken),
+      expiresAtMs: codexTokenExpiresAtMs(accessToken) ?? now + 30 * 60 * 1000,
+      refreshToken: readString(payload.refresh_token) || readString(payload.refreshToken) || refreshToken
+    };
+    codexProbeOauthCache.set([
+      tokenEndpoint,
+      clientId,
+      scope,
+      hashSensitiveValue(refreshToken)
+    ].join("\n"), result);
+    pruneCodexProbeOauthCache();
+    return result;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Codex OAuth token refresh timed out after ${timeoutMs}ms.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function pruneCodexProbeOauthCache(): void {
+  if (codexProbeOauthCache.size <= maxProbeCacheEntries) {
+    return;
+  }
+  const oldestEntries = [...codexProbeOauthCache.entries()]
+    .sort(([, left], [, right]) => left.expiresAtMs - right.expiresAtMs)
+    .slice(0, codexProbeOauthCache.size - maxProbeCacheEntries);
+  for (const [key] of oldestEntries) {
+    codexProbeOauthCache.delete(key);
+  }
 }
 
 async function requestJson(url: string, init: RequestInit): Promise<FetchJsonResult> {
@@ -1217,7 +1763,7 @@ function protocolHints(value: string): GatewayProviderCapabilityProtocol[] {
 function isProtocolSupported(
   status: number | undefined,
   message: string,
-  protocol?: GatewayProviderCapabilityProtocol
+  _protocol?: GatewayProviderCapabilityProtocol
 ): boolean {
   if (status === undefined) {
     return false;
@@ -1317,6 +1863,157 @@ function parseJson(value: string): unknown {
   } catch {
     return undefined;
   }
+}
+
+function codexRequiredScopes(value: unknown): string[] {
+  if (value === undefined) {
+    return [...codexOauthRequiredScopes];
+  }
+  if (!Array.isArray(value)) {
+    return [...codexOauthRequiredScopes];
+  }
+  if (value.length === 0) {
+    return [];
+  }
+
+  const scopes: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== "string" || !item.trim()) {
+      return [...codexOauthRequiredScopes];
+    }
+    for (const scope of item.split(/\s+/)) {
+      const normalized = scope.trim();
+      if (normalized && !seen.has(normalized)) {
+        seen.add(normalized);
+        scopes.push(normalized);
+      }
+    }
+  }
+  return scopes.length > 0 ? scopes : [...codexOauthRequiredScopes];
+}
+
+function codexOauthScope(configuredScope: string | undefined, requiredScopes: string[]): string {
+  return uniqueStrings([
+    ...((configuredScope || codexOauthDefaultScope).split(/\s+/)),
+    ...requiredScopes
+  ]).join(" ");
+}
+
+function shouldRefreshCodexProbeToken(
+  accessToken: string | undefined,
+  codexOauth: Record<string, unknown>,
+  requiredScopes: string[]
+): boolean {
+  if (readBoolean(codexOauth.forceRefresh)) {
+    return true;
+  }
+  if (!accessToken) {
+    return readBoolean(codexOauth.refreshIfMissingAccessToken) !== false;
+  }
+  if (codexAccessTokenExpired(accessToken)) {
+    return true;
+  }
+  return codexMissingRequiredScopes(accessToken, requiredScopes).length > 0;
+}
+
+function codexAccessTokenExpired(token: string | undefined): boolean {
+  const expiresAtMs = codexTokenExpiresAtMs(token);
+  return expiresAtMs !== undefined && Date.now() >= expiresAtMs - 60_000;
+}
+
+function codexTokenExpiresAtMs(token: string | undefined): number | undefined {
+  const payload = codexJwtPayload(token);
+  const exp = typeof payload?.exp === "number" && Number.isFinite(payload.exp) ? payload.exp : undefined;
+  return exp !== undefined ? exp * 1000 : undefined;
+}
+
+function codexMissingRequiredScopes(token: string, requiredScopes: string[]): string[] {
+  if (requiredScopes.length === 0) {
+    return [];
+  }
+  const payload = codexJwtPayload(token);
+  if (!payload) {
+    return [];
+  }
+  const scopes = codexTokenScopes(payload);
+  if (scopes.length === 0) {
+    return [];
+  }
+  return requiredScopes.filter((scope) => !scopes.includes(scope));
+}
+
+function codexTokenScopes(payload: Record<string, unknown>): string[] {
+  const scopes: string[] = [];
+  const pushScope = (value: unknown) => {
+    if (typeof value === "string") {
+      scopes.push(...value.split(/\s+/));
+      return;
+    }
+    if (Array.isArray(value)) {
+      scopes.push(...value.map(readString).filter((item): item is string => Boolean(item)));
+    }
+  };
+  pushScope(payload.scope);
+  pushScope(payload.scopes);
+  pushScope(payload.scp);
+  return uniqueStrings(scopes);
+}
+
+function codexAccountIdFromToken(token: string): string | undefined {
+  const payload = codexJwtPayload(token);
+  if (!payload) {
+    return undefined;
+  }
+  const auth = isRecord(payload["https://api.openai.com/auth"])
+    ? payload["https://api.openai.com/auth"]
+    : {};
+  return readString(auth.chatgpt_account_id) ||
+    readString(auth.account_id) ||
+    readString(auth.accountId) ||
+    readString(payload.account_id) ||
+    readString(payload.accountId);
+}
+
+function codexJwtPayload(token: string | undefined): Record<string, unknown> | undefined {
+  const encoded = token?.split(".")[1];
+  if (!encoded) {
+    return undefined;
+  }
+  try {
+    const padded = encoded.padEnd(encoded.length + ((4 - encoded.length % 4) % 4), "=");
+    const decoded = Buffer.from(padded.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    const payload = JSON.parse(decoded) as unknown;
+    return isRecord(payload) ? payload : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function codexTokenRefreshErrorMessage(payload: unknown, text: string): string {
+  const message = readPayloadMessage(payload);
+  if (message) {
+    return `: ${message}`;
+  }
+  const trimmed = text.trim();
+  return trimmed ? `: ${trimmed.slice(0, 500)}` : "";
+}
+
+function readBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true") {
+    return true;
+  }
+  if (normalized === "false") {
+    return false;
+  }
+  return undefined;
 }
 
 function readString(value: unknown): string | undefined {

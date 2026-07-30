@@ -17,7 +17,9 @@ import { gatewayService } from "@ccr/core/gateway/service";
 import { TOOL_HUB_MCP_RUNTIME_FILE_NAME, bundledToolHubMcpEntryPathCandidates } from "@ccr/core/mcp/toolhub-config";
 import { mediaToolsGatewayEndpoint } from "@ccr/core/mcp/grok-media-config";
 import { buildProfileLaunchPlan, findProfileForOpen, profileLaunchSpawnCommand, profileOpenCommand, profileOpenSurfaces, resolveClaudeCodeSettingsFile, resolveProfileOpenSurface } from "@ccr/core/profiles/launch-core";
+import { profileApiKeyId } from "@ccr/core/profiles/api-key";
 import { applyProfileConfig, cleanupGeneratedBinBackups } from "@ccr/core/profiles/service";
+import { isDesktopAppRuntime } from "@ccr/core/runtime/desktop-app";
 import { windowsEnvironmentChangedPowerShellLines, windowsSystemCommand } from "@ccr/core/platform/windows-system";
 
 const ccrPathBlockStart = "# >>> Claude Code Router CLI >>>";
@@ -29,6 +31,7 @@ export const CCR_CLI_COMPANION_RUNTIME_FILE_NAMES = [
   "browser-web-search-proxy-mcp.js",
   "fusion-tool-fallback-mcp.js",
   "fusion-vision-mcp.js",
+  "gateway-bootstrap.js",
   "media-tools-proxy-mcp.js",
   "next-ai-gateway.js",
   "request-log-worker.js",
@@ -69,7 +72,6 @@ type EnsureCcrCliLauncherOptions = {
 
 type ProfileAppLaunchResult = {
   child: ChildProcess;
-  claudeDesignProxy?: boolean;
   command: string;
   launchSignature?: string;
   pidIsLauncher?: boolean;
@@ -79,7 +81,6 @@ type ProfileAppLaunchResult = {
 
 type RunningProfileApp = ProfileRuntimeEntry & {
   child?: ChildProcess;
-  claudeDesignProxy?: boolean;
   command: string;
   launchSignature?: string;
   monitor?: NodeJS.Timeout;
@@ -101,6 +102,9 @@ export async function getProfileOpenCommand(config: AppConfig, request: ProfileO
   await applyProfileConfig(config);
   const profile = findProfileForOpen(config, request.profileId);
   const surface = resolveProfileOpenSurface(profile, request.surface);
+  if (profile.agent === "claude-design" && !isDesktopAppRuntime()) {
+    throw new Error("Claude Design profiles can only be opened from CCR Desktop.");
+  }
   if (options.ensureLauncher) {
     ensureCcrCliLauncher(config);
   }
@@ -117,6 +121,9 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
   await applyProfileConfig(config);
   const profile = findProfileForOpen(config, request.profileId);
   const surface = resolveProfileOpenSurface(profile, request.surface);
+  if (profile.agent === "claude-design") {
+    throw new Error("Claude Design profiles can only be opened from CCR Desktop.");
+  }
   if (profile.agent === "claude-code" && surface === "app") {
     return openClaudeAppProfile(config, profile);
   }
@@ -318,21 +325,14 @@ async function openClaudeAppProfile(config: AppConfig, profile: ReturnType<typeo
   const profileGatewayConfig = claudeAppGatewayConfigFor(config, profile);
   const existing = runningProfileApp(profile.id, "app");
   if (existing) {
-    if (!claudeAppDesignProxyRequired(profileGatewayConfig) || existing.claudeDesignProxy) {
-      startClaudeAppBotWorker(config, profile);
-      activateProfileAppWindow(existing);
-      return {
-        message: `Claude App is already running with ${profile.name || profile.id}.`,
-        profileId: profile.id,
-        profileName: profile.name,
-        surface: "app"
-      };
-    }
-    const stopped = await stopRunningProfileApp(profileRuntimeKey(profile.id, "app"), existing);
-    if (!stopped) {
-      throw new Error("Claude App is already running without the Claude Design proxy. Close Claude App and try again.");
-    }
-    stopClaudeAppBotWorker(profile.id);
+    startClaudeAppBotWorker(config, profile);
+    activateProfileAppWindow(existing);
+    return {
+      message: `Claude App is already running with ${profile.name || profile.id}.`,
+      profileId: profile.id,
+      profileName: profile.name,
+      surface: "app"
+    };
   }
 
   applyClaudeAppGatewayConfig(profileGatewayConfig);
@@ -397,7 +397,8 @@ async function ensureGatewayConfigRunning(
     }
     if (existingGateway.state === "unavailable") {
       if (!startIfMissing) {
-        throw new ProfileGatewayUnavailableError(`CCR gateway is not running at ${profileGatewayEndpoint(config)}. Start CCR Desktop or run ccr start before opening ${appName}.`);
+        const reason = existingGateway.reason ? `: ${existingGateway.reason}` : "";
+        throw new ProfileGatewayUnavailableError(`CCR gateway is not running at ${profileGatewayEndpoint(config)}${reason}. Start CCR Desktop or run ccr start before opening ${appName}.`);
       }
     } else {
       throw new Error(existingGatewayConflictMessage(existingGateway, appName));
@@ -437,24 +438,26 @@ type ExistingGatewayHttpProbe = {
   status?: number;
 };
 
+const existingGatewayFetchAttempts = 3;
+
 async function probeExistingProfileGateway(
   config: AppConfig,
   profile: ReturnType<typeof findProfileForOpen>,
   candidateConfig: AppConfig = config
 ): Promise<ExistingProfileGatewayProbe> {
   const endpoint = profileGatewayEndpoint(config);
-  const root = await fetchExistingGateway(endpoint, "/");
-  if (root.status === undefined) {
-    return { endpoint, reason: root.reason, state: "unavailable" };
-  }
-
-  let ccrGateway = isCcrGatewayRoot(root.payload);
+  const health = await fetchExistingGateway(endpoint, "/health");
+  let ccrGateway = isCcrGatewayHealth(health.payload);
+  let root: ExistingGatewayHttpProbe | undefined;
   if (!ccrGateway) {
-    const health = await fetchExistingGateway(endpoint, "/health");
-    ccrGateway = isCcrGatewayHealth(health.payload);
+    root = await fetchExistingGateway(endpoint, "/");
+    ccrGateway = isCcrGatewayRoot(root.payload);
   }
   if (!ccrGateway) {
-    return { endpoint, status: root.status, state: "not-ccr" };
+    if (health.status === undefined && root?.status === undefined) {
+      return { endpoint, reason: health.reason || root?.reason, state: "unavailable" };
+    }
+    return { endpoint, status: health.status ?? root?.status, state: "not-ccr" };
   }
 
   let lastUnauthorized: ExistingGatewayHttpProbe | undefined;
@@ -492,22 +495,26 @@ async function fetchExistingGateway(
   pathname: string,
   init: RequestInit = {}
 ): Promise<ExistingGatewayHttpProbe> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 1200);
-  try {
-    const response = await fetch(new URL(pathname, endpoint).toString(), {
-      ...init,
-      signal: controller.signal
-    });
-    return {
-      payload: await readResponseJson(response),
-      status: response.status
-    };
-  } catch (error) {
-    return { reason: formatError(error) };
-  } finally {
-    clearTimeout(timeout);
+  let reason: string | undefined;
+  for (let attempt = 0; attempt < existingGatewayFetchAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1200);
+    try {
+      const response = await fetch(new URL(pathname, endpoint).toString(), {
+        ...init,
+        signal: controller.signal
+      });
+      return {
+        payload: await readResponseJson(response),
+        status: response.status
+      };
+    } catch (error) {
+      reason = formatError(error);
+    } finally {
+      clearTimeout(timeout);
+    }
   }
+  return { reason };
 }
 
 async function readResponseJson(response: Response): Promise<unknown> {
@@ -700,23 +707,7 @@ function profileGatewayConfigWithToken(config: AppConfig, profile: ReturnType<ty
 }
 
 function claudeAppGatewayConfigFor(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): AppConfig {
-  const profileGatewayConfig = profileGatewayConfigFor(config, profile);
-  if (!claudeAppDesignProxyRequired(profileGatewayConfig)) {
-    return profileGatewayConfig;
-  }
-  return {
-    ...profileGatewayConfig,
-    proxy: {
-      ...profileGatewayConfig.proxy,
-      enabled: true,
-      mode: "transparent",
-      systemProxy: false
-    }
-  };
-}
-
-function claudeAppDesignProxyRequired(config: AppConfig): boolean {
-  return config.plugins.some((plugin) => plugin.enabled !== false && plugin.id === "claude-design");
+  return profileGatewayConfigFor(config, profile);
 }
 
 function profileBotRuntimeStatus(profileId: string): ProfileRuntimeEntry["botGateway"] | undefined {
@@ -824,7 +815,6 @@ function registerProfileApp(
   const entry: RunningProfileApp = {
     agent: profile.agent,
     child: launch.child,
-    claudeDesignProxy: launch.claudeDesignProxy,
     command: launch.command,
     launchSignature: launch.launchSignature,
     pid: launch.pid,
@@ -998,11 +988,34 @@ function isProcessAlive(pid: number | undefined): boolean {
   }
 }
 
-function isProfileAppRunning(entry: Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "userDataDir">): boolean {
-  if (profileAppMainPid(entry)) {
+type ProfileAppRunningEntry = Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "userDataDir">;
+
+type ProfileAppProcessProbe = {
+  isProcessAlive: (pid: number | undefined) => boolean;
+  profileAppMainPid: (entry: ProfileAppRunningEntry) => number | undefined;
+};
+
+const defaultProfileAppProcessProbe: ProfileAppProcessProbe = {
+  isProcessAlive,
+  profileAppMainPid
+};
+
+function profileAppRunningWithProbe(entry: ProfileAppRunningEntry, probe: ProfileAppProcessProbe): boolean {
+  if (!entry.pidIsLauncher && probe.isProcessAlive(entry.pid)) {
     return true;
   }
-  return !entry.pidIsLauncher && isProcessAlive(entry.pid);
+  return Boolean(probe.profileAppMainPid(entry));
+}
+
+function isProfileAppRunning(entry: ProfileAppRunningEntry): boolean {
+  return profileAppRunningWithProbe(entry, defaultProfileAppProcessProbe);
+}
+
+export function isProfileAppRunningWithProbeForTest(
+  entry: ProfileAppRunningEntry,
+  probe: ProfileAppProcessProbe
+): boolean {
+  return profileAppRunningWithProbe(entry, probe);
 }
 
 function profileAppMainPid(entry: Pick<RunningProfileApp, "userDataDir">): number | undefined {
@@ -1128,30 +1141,13 @@ function sendProfileProcessSignal(pid: number | undefined, signal: NodeJS.Signal
   }
 }
 
-async function waitForProcessExit(pid: number | undefined, timeoutMs: number): Promise<boolean> {
-  if (!pid) {
-    return true;
-  }
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    if (!isProcessAlive(pid)) {
-      return true;
-    }
-    await sleep(100);
-  }
-  return !isProcessAlive(pid);
-}
-
 async function waitForProfileAppStart(entry: Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "spawnError" | "userDataDir">, timeoutMs: number): Promise<boolean> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     if (entry.spawnError) {
       return false;
     }
-    if (profileAppMainPid(entry)) {
-      return true;
-    }
-    if (!entry.pidIsLauncher && isProcessAlive(entry.pid)) {
+    if (isProfileAppRunning(entry)) {
       return true;
     }
     if (process.platform !== "win32" && !entry.pidIsLauncher && !isProcessAlive(entry.pid)) {
@@ -1159,7 +1155,7 @@ async function waitForProfileAppStart(entry: Pick<RunningProfileApp, "pid" | "pi
     }
     await sleep(100);
   }
-  return !entry.spawnError && (Boolean(profileAppMainPid(entry)) || (!entry.pidIsLauncher && isProcessAlive(entry.pid)));
+  return !entry.spawnError && isProfileAppRunning(entry);
 }
 
 async function waitForStableProfileAppStart(
@@ -1173,7 +1169,7 @@ async function waitForStableProfileAppStart(
     if (entry.spawnError) {
       return false;
     }
-    const running = Boolean(profileAppMainPid(entry)) || (!entry.pidIsLauncher && isProcessAlive(entry.pid));
+    const running = isProfileAppRunning(entry);
     if (running) {
       runningSince ??= Date.now();
       if (Date.now() - runningSince >= stableMs) {
@@ -2066,10 +2062,6 @@ function findProfileApiKey(config: AppConfig, profile: ReturnType<typeof findPro
   const keyId = profileApiKeyId(profile);
   const key = config.APIKEYS.find((apiKey) => apiKey.id === keyId)?.key.trim();
   return key || config.APIKEYS.find((apiKey) => apiKey.key.trim())?.key.trim() || config.APIKEY.trim();
-}
-
-function profileApiKeyId(profile: ReturnType<typeof findProfileForOpen>): string {
-  return `profile:${sanitizeProfilePathSegment(profile.id || profile.name || profile.agent) || "profile"}`;
 }
 
 function sanitizeProfilePathSegment(value: string): string {

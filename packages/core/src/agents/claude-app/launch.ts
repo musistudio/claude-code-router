@@ -5,7 +5,7 @@ import path from "node:path";
 import type { AppConfig, ProfileConfig } from "@ccr/core/contracts/app";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { prepareClaudeAppCdpUserDataDir, reserveClaudeAppCdpPort, scheduleClaudeAppDesignCdp } from "@ccr/core/agents/claude-app/cdp";
-import { claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
+import { claudeCodeModelEnv as claudeCodeProfileModelEnv, claudeCodeUtcTimezoneEnvOverride, isClaudeCodeManagedModelEnvKey } from "@ccr/core/agents/claude-code/environment";
 import { resolveClaudeCodeSettingsFile } from "@ccr/core/profiles/launch-core";
 import { normalizeWindowsDesktopAppCandidate, windowsDesktopAppCandidates } from "@ccr/core/platform/windows-app-discovery";
 
@@ -18,7 +18,6 @@ export type ClaudeAppLaunchResult = {
   child: ChildProcess;
   command: string;
   cdpPort?: number;
-  claudeDesignProxy?: boolean;
   pidIsLauncher?: boolean;
   pid?: number;
   userDataDir: string;
@@ -75,8 +74,7 @@ export async function launchClaudeAppProfile(configDir: string, profile: Profile
   delete env.ELECTRON_RUN_AS_NODE;
 
   const designUrl = claudeAppDesignUrl(config);
-  const proxyUrl = claudeAppProxyUrl(config);
-  const launch = claudeAppLaunchCommand(lookup.executable, userDataDir, cdpPort, proxyUrl, appEnv);
+  const launch = claudeAppLaunchCommand(lookup.executable, userDataDir, cdpPort, appEnv);
   const child = spawn(launch.command, launch.args, {
     detached: true,
     env,
@@ -92,7 +90,6 @@ export async function launchClaudeAppProfile(configDir: string, profile: Profile
 
   return {
     child,
-    claudeDesignProxy: Boolean(proxyUrl),
     command: launch.command,
     ...(cdpPort ? { cdpPort } : {}),
     ...(launch.pidIsLauncher ? { pidIsLauncher: launch.pidIsLauncher } : {}),
@@ -124,45 +121,12 @@ function claudeDesignPluginConfig(config: AppConfig | undefined): AppConfig["plu
   return config?.plugins.find((plugin) => plugin.enabled !== false && plugin.id === "claude-design");
 }
 
-function claudeAppProxyUrl(config: AppConfig | undefined): string | undefined {
-  if (!config?.proxy?.enabled) {
-    return undefined;
-  }
-  const port = Number.isInteger(config.gateway?.port) && config.gateway.port > 0
-    ? config.gateway.port
-    : Number.isInteger(config.PORT) && config.PORT > 0
-      ? config.PORT
-      : undefined;
-  if (!port) {
-    return undefined;
-  }
-  const host = formatLoopbackGatewayHost(config.gateway?.host || "127.0.0.1");
-  return `http://${host}:${port}`;
-}
-
-function formatLoopbackGatewayHost(host: string): string {
-  const trimmed = host.trim();
-  if (!trimmed || trimmed === "0.0.0.0" || trimmed === "::" || trimmed === "[::]") {
-    return "127.0.0.1";
-  }
-  if (trimmed.includes(":") && !trimmed.startsWith("[")) {
-    return `[${trimmed}]`;
-  }
-  return trimmed;
-}
-
-function claudeElectronArgs(userDataDir: string, cdpPort?: number, proxyUrl?: string): string[] {
+function claudeElectronArgs(userDataDir: string, cdpPort?: number): string[] {
   return [
     ...(cdpPort
       ? [
           `--remote-debugging-port=${cdpPort}`,
           "--remote-debugging-address=127.0.0.1"
-        ]
-      : []),
-    ...(proxyUrl
-      ? [
-          `--proxy-server=${proxyUrl}`,
-          "--proxy-bypass-list=localhost;127.0.0.1;[::1]"
         ]
       : []),
     `--user-data-dir=${userDataDir}`,
@@ -177,10 +141,9 @@ export function claudeAppLaunchCommand(
   executable: string,
   userDataDir: string,
   cdpPort: number | undefined,
-  proxyUrl: string | undefined,
   env: Record<string, string>
 ): { args: string[]; command: string; pidIsLauncher?: boolean } {
-  const args = claudeElectronArgs(userDataDir, cdpPort, proxyUrl);
+  const args = claudeElectronArgs(userDataDir, cdpPort);
   const appBundle = process.platform === "darwin" ? macAppBundleFromExecutable(executable) : undefined;
   if (appBundle) {
     return {
@@ -401,7 +364,7 @@ function hasElectronDesktopAppResources(executable: string): boolean {
 
 function profileEnv(profile: ProfileConfig): Record<string, string> {
   return Object.entries(profile.env ?? {}).reduce<Record<string, string>>((result, [key, value]) => {
-    if (isEnvName(key) && typeof value === "string") {
+    if (isEnvName(key) && typeof value === "string" && !isClaudeCodeManagedModelEnvKey(key)) {
       result[key] = value;
     }
     return result;
@@ -409,32 +372,7 @@ function profileEnv(profile: ProfileConfig): Record<string, string> {
 }
 
 function claudeCodeModelEnv(profile: ProfileConfig): Record<string, string> {
-  const env: Record<string, string> = {};
-  const model = normalizeClientModel(profile.model);
-  if (model) {
-    env.ANTHROPIC_MODEL = model;
-    env.CCR_CLAUDE_CODE_MODEL = model;
-    env.CODEXL_CLAUDE_CODE_MODEL = model;
-  }
-  const smallFastModel = normalizeClientModel(profile.smallFastModel);
-  if (smallFastModel) {
-    env.ANTHROPIC_SMALL_FAST_MODEL = smallFastModel;
-  }
-  return env;
-}
-
-function normalizeClientModel(value: string | undefined): string {
-  const trimmed = value?.trim() || "";
-  if (!trimmed) {
-    return "";
-  }
-  const commaIndex = trimmed.indexOf(",");
-  if (commaIndex > 0 && commaIndex < trimmed.length - 1) {
-    const provider = trimmed.slice(0, commaIndex).trim();
-    const model = trimmed.slice(commaIndex + 1).trim();
-    return provider && model ? `${provider}/${model}` : "";
-  }
-  return trimmed;
+  return claudeCodeProfileModelEnv(profile);
 }
 
 function isEnvName(value: string): boolean {

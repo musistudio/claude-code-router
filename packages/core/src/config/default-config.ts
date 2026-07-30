@@ -20,10 +20,9 @@ export const DEFAULT_PROXY_TARGETS: ProxyRouteTarget[] = [
 
 export type DefaultAppConfigOptions = {
   coreHost?: string;
-  generatedConfigFile: string;
 };
 
-export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppConfig {
+export function createDefaultAppConfig(options: DefaultAppConfigOptions = {}): AppConfig {
   const coreHost = options.coreHost ?? "127.0.0.1";
   return {
     APIKEY: "",
@@ -91,11 +90,21 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
       streamReplies: true,
       tenantId: "ccr"
     },
+    contextArchive: {
+      enabled: false,
+      maxBytes: 512 * 1024 * 1024,
+      maxSnapshotBytes: 32 * 1024 * 1024,
+      maxSnapshots: 200,
+      mcpEnabled: true,
+      replayTimeoutMs: 60000,
+      retentionDays: 30,
+      storagePath: "",
+      toolName: "ccr_history_ask"
+    },
     gateway: {
       coreHost,
       corePort: 3457,
       enabled: true,
-      generatedConfigFile: options.generatedConfigFile,
       host: "127.0.0.1",
       port: 3456
     },
@@ -120,8 +129,13 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
     profile: {
       claudeCode: {
         enabled: true,
+        fableModel: "",
+        haikuModel: "",
+        managedCompact: false,
         model: "",
+        opusModel: "",
         settingsFile: "~/.claude/settings.json",
+        sonnetModel: "",
         smallFastModel: ""
       },
       codex: {
@@ -131,6 +145,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
         configFormat: "separate_profile_files",
         configFile: "~/.codex/config.toml",
         enabled: true,
+        managedCompact: false,
         model: "",
         providerId: "claude-code-router",
         providerName: "Claude Code Router",
@@ -142,11 +157,16 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
           agent: "claude-code",
           enabled: true,
           env: { ...CLAUDE_CODE_DEFAULT_ENV },
+          fableModel: "",
+          haikuModel: "",
           id: "default-claude-code",
+          managedCompact: false,
           model: "",
           name: "Claude Code",
+          opusModel: "",
           scope: "global",
           settingsFile: "~/.claude/settings.json",
+          sonnetModel: "",
           smallFastModel: "",
           surface: "auto"
         },
@@ -160,6 +180,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
           enabled: true,
           env: {},
           id: "default-codex",
+          managedCompact: false,
           model: "",
           name: "Codex",
           providerId: "claude-code-router",

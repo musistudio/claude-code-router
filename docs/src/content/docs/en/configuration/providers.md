@@ -33,7 +33,7 @@ After import:
 3. CCR creates Codex OAuth provider plugins and refreshes access credentials when needed.
 4. Account usage reads Codex quota, balance, and token-stat endpoints.
 
-After import, select `Codex API/model-name` in routing or Agent Config. If the model cache is stale, open Codex first so it refreshes the model list, then return to CCR to import again or edit the models.
+After import, select `Codex API/model-name` in routing or Agent Profiles. If the model cache is stale, open Codex first so it refreshes the model list, then return to CCR to import again or edit the models.
 
 ### ZCode
 

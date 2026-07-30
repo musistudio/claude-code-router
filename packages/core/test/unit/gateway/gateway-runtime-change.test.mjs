@@ -5,8 +5,8 @@ import { mediaToolsConfigFromRawForTest, virtualModelProfileFromRawForTest } fro
 import { shouldRestartGatewayForRuntimeConfigChange } from "@ccr/core/gateway/runtime-change.ts";
 
 test("ToolHub config changes restart the gateway runtime", () => {
-  const previous = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
-  const next = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const previous = createDefaultAppConfig();
+  const next = createDefaultAppConfig();
   next.toolHub = {
     ...next.toolHub,
     enabled: true,
@@ -27,8 +27,8 @@ test("ToolHub config changes restart the gateway runtime", () => {
 });
 
 test("media tool policy changes restart the gateway runtime", () => {
-  const previous = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
-  const next = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const previous = createDefaultAppConfig();
+  const next = createDefaultAppConfig();
   next.mediaTools.enabled = true;
 
   assert.equal(shouldRestartGatewayForRuntimeConfigChange(previous, next), true);
@@ -78,8 +78,8 @@ test("legacy virtual model tool loop limits are removed from application config"
 });
 
 test("upstream proxy config changes restart the gateway runtime", () => {
-  const previous = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
-  const next = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const previous = createDefaultAppConfig();
+  const next = createDefaultAppConfig();
   next.proxy.upstream = {
     custom: {
       password: "secret",
@@ -102,16 +102,16 @@ test("raw trace observability config changes restart the gateway runtime", () =>
   ];
 
   for (const mutate of mutations) {
-    const previous = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
-    const next = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+    const previous = createDefaultAppConfig();
+    const next = createDefaultAppConfig();
     mutate(next);
     assert.equal(shouldRestartGatewayForRuntimeConfigChange(previous, next), true);
   }
 });
 
 test("main-process-only observability changes do not restart the gateway runtime", () => {
-  const previous = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
-  const next = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const previous = createDefaultAppConfig();
+  const next = createDefaultAppConfig();
   next.observability.requestLogSuccessSampleRate = 0.25;
 
   assert.equal(shouldRestartGatewayForRuntimeConfigChange(previous, next), false);

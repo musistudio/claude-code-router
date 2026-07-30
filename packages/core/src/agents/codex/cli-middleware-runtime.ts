@@ -5678,8 +5678,9 @@ function bundledBotGatewaySdkModule() {
 function botGatewaySdkImportSpecifier(value) {
   const trimmed = String(value || "").trim();
   if (!trimmed) return "@the-next-ai/bot-gateway-sdk";
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) return trimmed;
   if (path.isAbsolute(trimmed)) return pathToFileURL(trimmed).href;
+  if (path.win32.isAbsolute(trimmed)) return pathToFileURL(trimmed, { windows: true }).href;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) return trimmed;
   return trimmed;
 }
 

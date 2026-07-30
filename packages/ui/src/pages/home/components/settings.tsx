@@ -1,7 +1,7 @@
 import {
   Activity, AppConfig, AppCopy, AppInfo, AppLanguagePreference, Boxes, BotGatewayConfigDraft, botGatewayAuthSpecsForPlatform,
   botGatewayDefaultAuthType, botGatewayFieldsForAuth, botGatewayPickAuthFields, botGatewayPlatformLabel, botGatewayPlatformOptions,
-  botGatewaySavedConfigFromDraft, botGatewaySavedConfigLabel, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitResult, BotGatewayQrWindowOpenResult, BotGatewaySavedConfig, Button,
+  botGatewaySavedConfigFromDraft, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitResult, BotGatewayQrWindowOpenResult, BotGatewaySavedConfig, Button,
   CircleAlert, closestCenter, cn, CSS, Database, Dialog, DialogBody, DialogContent,
   DialogFooter, DialogHeader, DialogTitle, endpointFromHostPort, Field, formatAppError, formatProviderAccountMeterValue, formatSystemOption, Gauge,
   Globe,
@@ -1157,8 +1157,7 @@ function DataSettingsSection({
       </div>
 
       <div className="grid gap-2 rounded-md border border-border bg-background p-3">
-        <DataPathRow label={t("Config database")} value={appInfo.appConfigDbFile} />
-        <DataPathRow label={t("API key database")} value={appInfo.apiKeysDbFile} />
+        <DataPathRow label={t("Config database")} value={appInfo.configDbFile} />
         <DataPathRow label={t("Request log database")} value={appInfo.requestLogsDbFile} />
         <DataPathRow label={t("Usage database")} value={appInfo.usageDbFile} />
       </div>

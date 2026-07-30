@@ -10,6 +10,7 @@ release
 .claude
 .bot-gateway-state
 .agent-data
+.agent-console-remote-mode
 tmp
 release-local
 logs

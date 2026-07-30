@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { grokCandidate, importGrokProvider } from "@ccr/core/agents/local-providers/grok.ts";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
-import { writeCoreGatewayConfig } from "@ccr/core/gateway/core-runtime/config-writer.ts";
+import { compileCoreGatewayConfig } from "@ccr/core/gateway/core-runtime/config-compiler.ts";
 import { isCoreGatewayHealthy, spawnGatewayProcess } from "@ccr/core/gateway/core-runtime/supervisor.ts";
 import { coreGatewayAuthHeader } from "@ccr/core/gateway/internal/shared.ts";
 import { MediaService } from "@ccr/core/media/service.ts";
@@ -38,7 +38,7 @@ test("Fusion generates image and video through the local ai-gateway", { skip: !l
 
   const configRoot = mkdtempSync(path.join(os.tmpdir(), "ccr-fusion-live-config-"));
   const artifactRoot = path.join(os.tmpdir(), `ccr-fusion-live-artifacts-${Date.now()}`);
-  const config = createDefaultAppConfig({ generatedConfigFile: path.join(configRoot, "gateway.config.json") });
+  const config = createDefaultAppConfig({});
   const corePort = await availablePort();
   const coreEndpoint = `http://127.0.0.1:${corePort}`;
   const coreAuthToken = randomBytes(32).toString("base64url");
@@ -120,7 +120,7 @@ test("Fusion generates image and video through the local ai-gateway", { skip: !l
       authToken: coreAuthToken,
       baseUrl: coreEndpoint
     });
-    await writeCoreGatewayConfig(
+    const coreGatewayConfig = await compileCoreGatewayConfig(
       config,
       randomBytes(24).toString("base64url"),
       randomBytes(24).toString("base64url"),
@@ -128,12 +128,20 @@ test("Fusion generates image and video through the local ai-gateway", { skip: !l
       undefined,
       upstreamProxyUrl
     );
-    enableGatewayDiagnostics(config.gateway.generatedConfigFile);
+    enableGatewayDiagnostics(coreGatewayConfig);
 
     const previousEntry = process.env.CCR_GATEWAY_ENTRY;
     process.env.CCR_GATEWAY_ENTRY = localGatewayEntry;
     try {
-      child = spawnGatewayProcess(config, upstreamProxyUrl, randomUUID(), coreAuthToken);
+      const spawnedGateway = spawnGatewayProcess(
+        config,
+        coreGatewayConfig,
+        upstreamProxyUrl,
+        randomUUID(),
+        coreAuthToken
+      );
+      child = spawnedGateway.child;
+      await spawnedGateway.configAccepted;
     } finally {
       restoreEnv("CCR_GATEWAY_ENTRY", previousEntry);
     }
@@ -212,8 +220,7 @@ function materializeProviderPlugins(templates, providerName, providerId, protoco
   return templates.map((template) => replacePlaceholders(template, replacements));
 }
 
-function enableGatewayDiagnostics(file) {
-  const generated = JSON.parse(readFileSync(file, "utf8"));
+function enableGatewayDiagnostics(generated) {
   generated.logging = { accessLog: false, enabled: true, level: "info" };
   const runtimeRoot = path.join(process.cwd(), ".test-dist", "core", "runtime");
   for (const plugin of generated.plugins ?? []) {
@@ -226,7 +233,6 @@ function enableGatewayDiagnostics(file) {
       server.args = [path.join(runtimeRoot, "media-tools-proxy-mcp.js")];
     }
   }
-  writeFileSync(file, `${JSON.stringify(generated, null, 2)}\n`, { mode: 0o600 });
 }
 
 function replacePlaceholders(value, replacements) {

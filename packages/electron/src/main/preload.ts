@@ -136,6 +136,7 @@ contextBridge.exposeInMainWorld("ccr", {
   openBuiltInBrowser: () => invoke(IPC_CHANNELS.appOpenBuiltInBrowser) as Promise<void>,
   openBotGatewayQrWindow: (request: BotGatewayQrWindowOpenRequest) => invoke(IPC_CHANNELS.appBotGatewayQrWindowOpen, request) as Promise<BotGatewayQrWindowOpenResult>,
   openExternal: (url: string) => invoke(IPC_CHANNELS.appOpenExternal, url) as Promise<void>,
+  openPluginApp: (pluginId: string, appId?: string) => invoke(IPC_CHANNELS.appOpenPluginApp, pluginId, appId) as Promise<void>,
   openProfile: (request: ProfileOpenRequest) => invoke(IPC_CHANNELS.appOpenProfile, request) as Promise<ProfileOpenResult>,
   prepareImageExportTarget: (request: AppImageExportTargetRequest) => invoke(IPC_CHANNELS.appPrepareImageExportTarget, request) as Promise<AppImageExportTargetResult>,
   probeLocalAgentProvider: (request: LocalAgentProviderProbeRequest) => invoke(IPC_CHANNELS.appProbeLocalAgentProvider, request) as Promise<LocalAgentProviderProbeResult>,

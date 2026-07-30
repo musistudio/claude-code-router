@@ -1,10 +1,10 @@
-import { buildBrowserRenderer, buildMain, buildRenderer, buildStyles, buildTrayRenderer, buildWebClientBridge, cleanDist, copyAppAssets, copyBrowserRendererHtml, copyMarketplacePlugins, copyModelCatalog, copyRendererHtml, copyTrayRendererHtml, syncUiRendererToRuntimeDists } from "./esbuild.config.mjs";
+import { buildBrowserRenderer, buildMain, buildRenderer, buildStyles, buildTrayRenderer, buildWebClientBridge, cleanDist, copyAppAssets, copyBrowserRendererHtml, copyBundledClaudeRuntimePlugins, copyModelCatalog, copyRendererHtml, copyTrayRendererHtml, syncUiRendererToRuntimeDists } from "./esbuild.config.mjs";
 
 const mode = process.argv.includes("--dev") ? "development" : "production";
 
 cleanDist();
 copyAppAssets();
-copyMarketplacePlugins();
+copyBundledClaudeRuntimePlugins();
 copyModelCatalog();
 copyBrowserRendererHtml();
 copyRendererHtml();

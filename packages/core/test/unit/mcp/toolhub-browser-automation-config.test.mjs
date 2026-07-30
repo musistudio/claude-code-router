@@ -22,7 +22,7 @@ test("ToolHub runtime candidates include the clean Core test build", () => {
 });
 
 test("Media tools are a Fusion MCP backend independent from ToolHub", () => {
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const config = createDefaultAppConfig();
   config.gateway.host = "0.0.0.0";
   config.mediaTools.enabled = true;
   config.mediaTools.jobTimeoutMs = 600000;
@@ -69,7 +69,7 @@ test("Media tools are a Fusion MCP backend independent from ToolHub", () => {
 });
 
 test("ToolHub does not absorb Fusion media tools", () => {
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const config = createDefaultAppConfig();
   config.toolHub.enabled = true;
   config.mediaTools.enabled = true;
 
@@ -77,7 +77,7 @@ test("ToolHub does not absorb Fusion media tools", () => {
 });
 
 test("Core Gateway registers media tools directly for Fusion models", async () => {
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const config = createDefaultAppConfig();
   config.mediaTools.enabled = true;
   config.toolHub.enabled = true;
 
@@ -91,7 +91,7 @@ test("Core Gateway registers media tools directly for Fusion models", async () =
 });
 
 test("Core Gateway compiles one profile for each configured Fusion media model", async () => {
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const config = createDefaultAppConfig();
   config.mediaTools.enabled = true;
   config.Providers = [
     { models: ["base-model"], name: "Provider" },
@@ -127,7 +127,7 @@ test("Core Gateway compiles one profile for each configured Fusion media model",
 });
 
 test("ToolHub runtime includes the built-in browser automation backend", () => {
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const config = createDefaultAppConfig();
   config.toolHub = {
     ...config.toolHub,
     browserAutomation: true,
@@ -154,7 +154,7 @@ test("ToolHub runtime includes the built-in browser automation backend", () => {
 });
 
 test("ToolHub browser automation backend uses a connectable loopback host", () => {
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const config = createDefaultAppConfig();
   config.gateway.host = "0.0.0.0";
   config.toolHub = {
     ...config.toolHub,
@@ -177,7 +177,7 @@ test("ToolHub browser automation backend uses a connectable loopback host", () =
 });
 
 test("ToolHub runtime skips built-in browser automation until enabled", () => {
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const config = createDefaultAppConfig();
   config.toolHub = {
     ...config.toolHub,
     browserAutomation: false,

@@ -19,10 +19,10 @@
   <tr>
     <td align="left">
       <p>
-        <strong>Thanks to Kimi for sponsoring this project!</strong> Kimi K2.7 Code is an open-source, coding-focused agentic model developed by Moonshot AI, with substantial gains on real-world long-horizon coding tasks and higher end-to-end success across complex software engineering workflows. It also cuts thinking-token usage by approximately 30% compared with K2.6. Inside CCR, Kimi ships as built-in provider presets: import the pay-as-you-go API or the Kimi Code subscription in one click and route your coding agent's requests to Kimi, the subscription endpoint passes straight through natively with no protocol conversion, API endpoints are adapted automatically, and your balance and subscription usage show up right in the CCR dashboard.
+        <strong>Thanks to Kimi for sponsoring this project!</strong> Kimi K3 is Moonshot AI's most capable model and the world's first open 3T-class model. With 2.8 trillion parameters, native vision, and a 1-million-token context window, K3 delivers frontier performance across long-horizon coding, knowledge work, and reasoning. Inside CCR, Kimi ships as a built-in provider preset: import the pay-as-you-go API or Kimi Code subscription in one click and route your coding agent's requests to Kimi. The subscription endpoint passes through natively without protocol conversion, API endpoints are adapted automatically, and account balance and subscription usage are visible in the CCR dashboard.
       </p>
       <p align="center">
-        CCR already supports Kimi. Visit the Kimi Open Platform (<a href="https://platform.kimi.com?aff=ccr">中文站</a> | <a href="https://platform.kimi.ai?aff=ccr">Global</a>) to try the API, or explore the <a href="https://www.kimi.com/code?aff=ccr">cost-effective Coding Plan</a>.
+        CCR already includes Kimi provider presets. Visit the Kimi Open Platform (<a href="https://platform.kimi.com?aff=ccr">中文站</a> | <a href="https://platform.kimi.ai?aff=ccr">Global</a>) to try the API, or explore the <a href="https://www.kimi.com/code?aff=ccr">Kimi Code subscription</a>.
       </p>
     </td>
   </tr>
@@ -36,7 +36,7 @@
 
 ### Manage every agent and provider from one place.
 
-Connect Claude Code, Codex, Grok CLI, ZCode, and compatible API clients to the providers you choose—then route, fail over, extend, and observe every request from one app.
+Connect Claude Code, Claude Design, Codex, Grok CLI, Kimi CLI, Kilo Code, OpenCode, Pi, ZCode, and compatible API clients to the providers you choose—then route, fail over, extend, and observe every request from one app.
 
 <p>
   <a href="https://github.com/musistudio/claude-code-router/releases"><img alt="Download Desktop" src="https://img.shields.io/badge/Download-Desktop_App-2563EB?style=for-the-badge&logo=github&logoColor=white" /></a>
@@ -59,7 +59,7 @@ Connect Claude Code, Codex, Grok CLI, ZCode, and compatible API clients to the p
 
 ## Why use Claude Code Router?
 
-Claude Code Router (CCR) is a local model gateway and control plane for coding agents. It gives Claude Code, Codex, Grok CLI, ZCode, and compatible API clients **one stable local endpoint**, while you manage the providers, models, accounts, routing rules, and tools behind it from one place.
+Claude Code Router (CCR) is a local model gateway and control plane for coding agents. It gives Claude Code, Claude Design, Codex, Grok CLI, Kimi CLI, Kilo Code, OpenCode, Pi, ZCode, and compatible API clients **one stable local endpoint**, while you manage the providers, models, accounts, routing rules, and tools behind it from one place.
 
 Use CCR to:
 
@@ -71,29 +71,137 @@ Use CCR to:
 
 CCR supports OpenAI Chat / Responses, Anthropic Messages, Gemini Generate Content / Interactions, OpenRouter, DeepSeek, SiliconFlow, Moonshot, Kimi Code, Mistral, Z.AI, Bailian, and custom compatible providers.
 
+<details open>
+<summary><strong>Supported Agents</strong></summary>
+
+<div align="center">
+
+<table width="100%">
+  <tr>
+    <td align="center" width="330">
+      <a href="https://github.com/anthropics/claude-code">
+        <img src="/packages/ui/src/assets/agent-logos/claude-code.png" width="44" height="44" alt="Claude Code logo" />
+        <br />
+        <strong>Claude Code (CLI & APP)</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://github.com/openai/codex">
+        <img src="/packages/ui/src/assets/agent-logos/codex.png" width="44" height="44" alt="Codex logo" />
+        <br />
+        <strong>Codex (CLI & APP)</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://github.com/xai-org/grok-build">
+        <img src="/packages/ui/src/assets/agent-logos/grok.ico" width="44" height="44" alt="Grok CLI logo" />
+        <br />
+        <strong>Grok CLI (CLI)</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://github.com/MoonshotAI/kimi-cli">
+        <img src="/docs/public/provider-icons/moonshot.ico" width="44" height="44" alt="Kimi CLI logo" />
+        <br />
+        <strong>Kimi CLI (CLI)</strong>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="330">
+      <a href="https://kilo.ai/">
+        <img src="/packages/ui/src/assets/agent-logos/kilo.svg" width="44" height="44" alt="Kilo Code logo" />
+        <br />
+        <strong>Kilo Code (CLI)</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://github.com/anomalyco/opencode">
+        <img src="/packages/ui/src/assets/agent-logos/opencode.ico" width="44" height="44" alt="OpenCode logo" />
+        <br />
+        <strong>OpenCode (CLI & APP)</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://github.com/earendil-works/pi">
+        <img src="/packages/ui/src/assets/agent-logos/pi.svg" width="44" height="44" alt="Pi logo" />
+        <br />
+        <strong>Pi (CLI)</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://zcode.z.ai/en">
+        <img src="/packages/ui/src/assets/agent-logos/zcode.png" width="44" height="44" alt="ZCode logo" />
+        <br />
+        <strong>ZCode (APP)</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://www.anthropic.com/news/claude-design-anthropic-labs">
+        <img src="/packages/ui/src/assets/agent-logos/claude-code.png" width="44" height="44" alt="Claude Design logo" />
+        <br />
+        <strong>Claude Design (APP)</strong>
+      </a>
+    </td>
+  </tr>
+</table>
+
+</div>
+
+</details>
+
 ## Quick Start
 
 ### Desktop app (recommended)
 
-1. **[Download Claude Code Router](https://github.com/musistudio/claude-code-router/releases)** for macOS, Windows, or Linux, then launch the app.
+1. <details open>
+   <summary><strong>Download Claude Code Router for macOS, Windows, or Linux, then launch the app.</strong></summary>
+
+   <div align="center">
+
+   <table width="100%">
+     <tr>
+       <td align="center" width="330">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.0.16/Claude-Code-Router_3.0.16.exe">
+           <img src="/docs/public/platform-icons/windows.png" width="44" height="44" alt="Windows logo" />
+           <br />
+           <strong>Windows</strong>
+         </a>
+       </td>
+       <td align="center" width="330">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.0.16/Claude-Code-Router_3.0.16.AppImage">
+           <img src="/docs/public/platform-icons/linux.png" width="44" height="44" alt="Linux logo" />
+           <br />
+           <strong>Linux</strong>
+         </a>
+       </td>
+       <td align="center" width="330">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.0.16/Claude-Code-Router_3.0.16-mac-Apple-Silicon-arm64.dmg">
+           <img src="/docs/public/platform-icons/macos.png" width="44" height="44" alt="macOS logo" />
+           <br />
+           <strong>macOS (Apple Silicon)</strong>
+         </a>
+       </td>
+       <td align="center" width="330">
+         <a href="https://github.com/musistudio/claude-code-router/releases/download/v3.0.16/Claude-Code-Router_3.0.16-mac-Intel-x64.dmg">
+           <img src="/docs/public/platform-icons/macos.png" width="44" height="44" alt="macOS logo" />
+           <br />
+           <strong>macOS (Intel)</strong>
+         </a>
+       </td>
+     </tr>
+   </table>
+
+   </div>
+
+   </details>
+
 2. Open **Providers → Add Provider**. Choose a built-in preset or a custom endpoint, enter the API key, select the protocol and models, then save.
 3. Open **Server** and click **Start**. The local model gateway listens on `http://127.0.0.1:3456` by default.
-4. Open **Agent Config**, choose Claude Code, Codex, Grok CLI, or ZCode, select a model, and apply the profile.
+4. Open **Agent Config**, choose Claude Code, Claude Design, Codex, Grok CLI, Kimi CLI, Kilo Code, OpenCode, Pi, or ZCode, select a model, and apply the profile.
 5. Start using your agent. Open **Logs** to confirm the resolved provider, model, status, tokens, latency, and errors.
 
 Your agent is now connected to CCR. To add conditions, retries, request rewrites, or fallback models, open **Routing**.
-
-<details>
-<summary><strong>Desktop packages and local data locations</strong></summary>
-
-- macOS Apple Silicon: `Claude-Code-Router_<version>-mac-Apple-Silicon-arm64.dmg` or `.zip`
-- macOS Intel: `Claude-Code-Router_<version>-mac-Intel-x64.dmg` or `.zip`
-- Windows: `Claude Code Router_<version>.exe`
-- Linux: `Claude Code Router_<version>.AppImage`
-
-Runtime configuration is stored in SQLite at `~/.claude-code-router/config.sqlite` on macOS/Linux and `%APPDATA%\claude-code-router\config.sqlite` on Windows. A legacy `config.json` is read once for migration only when no SQLite configuration exists.
-
-</details>
 
 ### CLI
 
@@ -104,7 +212,7 @@ npm install -g @musistudio/claude-code-router
 ccr ui
 ```
 
-Open `http://127.0.0.1:3458`, then follow the same **Providers → Server → Agent Config** flow above. The model gateway remains at `http://127.0.0.1:3456`. See the [CLI reference](https://ccrdesk.top/en/guides/cli/) for service modes, authentication, and profile commands.
+Open `http://127.0.0.1:3458`, then follow the same **Providers → Server → Agent Profiles** flow above. The model gateway remains at `http://127.0.0.1:3456`. See the [CLI reference](https://ccrdesk.top/en/guides/cli/) for service modes, authentication, and profile commands.
 
 ### Docker
 
@@ -114,10 +222,21 @@ docker compose up -d --build
 
 Docker exposes the management UI and gateway routes through `http://127.0.0.1:3458` by default. Read the [Docker deployment guide](https://ccrdesk.top/en/guides/docker/) before exposing CCR remotely.
 
+## Build desktop apps
+
+Install Node.js 22+, then run `npm ci`.
+
+| Target | Command | Output |
+| --- | --- | --- |
+| macOS local DMG/ZIP | `npm run build:app:mac` | `release-local/` |
+| Windows local NSIS installer | `npm run build:app:win` | `release-local/` |
+
+Windows app packaging must run on Windows x64 because `better-sqlite3` ships a native Electron module. The release workflow builds macOS on macOS runners and Windows on `windows-latest` when a `v*` tag is pushed.
+
 ## How it works
 
 ```text
-Claude Code · Codex · Grok CLI · ZCode · Compatible API clients
+Claude Code · Claude Design · Codex · Grok CLI · Kimi CLI · Kilo Code · OpenCode · Pi · ZCode · Compatible API clients
                               │
                               ▼
                  Claude Code Router :3456
@@ -131,14 +250,13 @@ Claude Code · Codex · Grok CLI · ZCode · Compatible API clients
 
 | Area | Highlights |
 | --- | --- |
-| **Agents** | Profiles for Claude Code, Codex, Grok CLI, and ZCode; model overrides; scopes; environment settings; CLI and app launch entries; multi-instance workflows |
+| **Agents** | Profiles for Claude Code, Claude Design, Codex, Grok CLI, Kimi CLI, Kilo Code, OpenCode, Pi, and ZCode; model overrides; scopes; environment settings; CLI and app launch entries; multi-instance workflows |
 | **Providers** | Presets and custom endpoints; protocol probing; model discovery; connectivity checks; local login import where supported; single keys and credential pools |
 | **Models & routing** | Searchable catalog; model descriptions for task selection; conditions on headers and bodies; prefixes; rewrites; retries; ordered fallbacks |
 | **Tools & extensions** | Fusion models; ToolHub; built-in browser automation; Chrome login-state import; wrapper and core gateway plugins; local routes and virtual models |
 | **Access & quotas** | Separate CCR client keys with expiration and local request, token, and image limits |
 | **Observability** | Request and response details; resolved provider, model, and credential; status; latency; tokens; estimated cost; tool calls; agent traces |
-| **AgentClaw & relay** | Use a local agent as OpenClaw, plus bot relay through Weixin iLink, WeCom, Slack, Discord, Telegram, LINE, Feishu, and DingTalk |
-| **Network** | Local HTTP / HTTPS proxy, optional CA, network capture, and system/custom proxy modes |
+| **AgentClaw** | Agent relay through Weixin iLink, WeCom, Slack, Discord, Telegram, LINE, Feishu, and DingTalk |
 
 ## Go deeper when you are ready
 
@@ -146,20 +264,10 @@ The complete documentation lives at **[ccrdesk.top](https://ccrdesk.top/)**.
 
 - [Install and launch CCR](https://ccrdesk.top/en/guides/install/)
 - [Configure providers](https://ccrdesk.top/en/guides/provider/)
-- [Explore routing](https://ccrdesk.top/en/routing/)
-- [Enhance models with Fusion](https://ccrdesk.top/en/fusion/)
-- [Manage tools with ToolHub](https://ccrdesk.top/en/toolhub/)
-- [Explore detailed configuration](https://ccrdesk.top/en/configuration/)
-- [Use AgentClaw with local agents](https://ccrdesk.top/en/agentclaw/)
-- [Import providers in one click](https://ccrdesk.top/en/provider-import/)
-- [Build local extensions](https://ccrdesk.top/en/extensions/)
+- [Explore routing and configuration](https://ccrdesk.top/en/configuration/)
 - [Use the CLI](https://ccrdesk.top/en/guides/cli/)
 - [Deploy with Docker](https://ccrdesk.top/en/guides/docker/)
 - [Troubleshoot common issues](https://ccrdesk.top/en/troubleshooting/)
-
-## Acknowledgements
-
-Codex support is powered by [musistudio/codexl](https://github.com/musistudio/codexl).
 
 ## Support & Sponsoring
 
@@ -290,6 +398,13 @@ Codex support is powered by [musistudio/codexl](https://github.com/musistudio/co
         <img src="/docs/public/provider-icons/unity2.jpg" width="42" height="42" alt="Unity2.Ai icon" />
         <br />
         <strong>Unity2.Ai</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://infistar.ai/register?aff=CCRCCR&ref_source=link">
+        <img src="/docs/public/provider-icons/infistar-ai.jpg" width="42" height="42" alt="无限星河 icon" />
+        <br />
+        <strong>无限星河</strong>
       </a>
     </td>
   </tr>

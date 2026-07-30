@@ -1,7 +1,8 @@
 import {
   GROK_API_DEFAULT_IMAGE_MODEL,
   GROK_API_DEFAULT_VIDEO_MODEL,
-  GROK_CLI_MEDIA_MODEL_SELECTOR
+  GROK_CLI_MEDIA_MODEL_SELECTOR,
+  isGatewayProviderEnabled
 } from "@ccr/core/contracts/app";
 import type { GatewayMediaProtocol, GatewayProviderConfig } from "@ccr/core/contracts/app";
 
@@ -90,10 +91,10 @@ export function createGrokMediaModelOptions(
   providers: GatewayProviderConfig[],
   kind: GrokMediaKind
 ): GrokMediaModelOption[] {
-  return providers.flatMap((provider) => grokMediaModelsForProvider(provider, kind).map((model) => ({
+  return providers.flatMap((provider) => isGatewayProviderEnabled(provider) ? grokMediaModelsForProvider(provider, kind).map((model) => ({
     label: `${provider.name}/${mediaModelDisplayName(model)}`,
     value: `${provider.name}/${model}`
-  })));
+  })) : []);
 }
 
 export function defaultGrokMediaModelSelector(

@@ -1,6 +1,7 @@
 /**
  * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
  */
+import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { AppConfig, GatewayProviderCapability, GatewayProviderCapabilityProtocol, GatewayProviderConfig, GatewayProviderProtocol, ProviderCredentialConfig } from "@ccr/core/contracts/app";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue } from "@ccr/core/providers/presets/index";
 import { normalizeProviderBaseUrl as normalizeProviderBaseUrlInput } from "@ccr/core/providers/url";
@@ -74,15 +75,21 @@ export function findProviderByPublicOrInternalName(config: AppConfig, name: stri
   const credentialInternalName = parseProviderCredentialInternalName(name);
   if (credentialInternalName) {
     const internalProviderId = credentialInternalName.providerId.toLowerCase();
-    return config.Providers.find((provider) =>
-      provider.name.trim().toLowerCase() === internalProviderId ||
-      providerRuntimeId(provider).toLowerCase() === internalProviderId
-    );
+    return config.Providers.find((provider) => {
+      if (!isGatewayProviderEnabled(provider)) {
+        return false;
+      }
+      return provider.name.trim().toLowerCase() === internalProviderId ||
+        providerRuntimeId(provider).toLowerCase() === internalProviderId;
+    });
   }
   return modelRegistryForConfig(config).findProvider(normalized);
 }
 
 export function activeProviderCredentials(provider: GatewayProviderConfig): ProviderCredentialConfig[] {
+  if (!isGatewayProviderEnabled(provider)) {
+    return [];
+  }
   return (provider.credentials ?? []).filter((credential) =>
     credential.enabled !== false &&
     Boolean(providerCredentialApiKey(credential))
@@ -93,8 +100,10 @@ export function providerCredentialPriority(credential: ProviderCredentialConfig,
   return Number.isFinite(credential.priority) ? Number(credential.priority) : index + 1;
 }
 
-
 export function toCoreGatewayProviders(provider: GatewayProviderConfig): CoreGatewayProvider[] {
+  if (!isGatewayProviderEnabled(provider)) {
+    return [];
+  }
   const capabilities = normalizedProviderCapabilities(provider);
   if (capabilities.length === 0) {
     return toCoreGatewayProvidersForCapability(provider);
@@ -104,7 +113,6 @@ export function toCoreGatewayProviders(provider: GatewayProviderConfig): CoreGat
     .flatMap((capability) => toCoreGatewayProvidersForCapability(provider, capability))
     .filter((item): item is CoreGatewayProvider => Boolean(item));
 }
-
 
 function toCoreGatewayProvidersForCapability(
   provider: GatewayProviderConfig,
@@ -120,7 +128,6 @@ function toCoreGatewayProvidersForCapability(
     .map((credential) => toCoreGatewayProvider(provider, capability, credential))
     .filter((item): item is CoreGatewayProvider => Boolean(item));
 }
-
 
 function toCoreGatewayProvider(
   provider: GatewayProviderConfig,
@@ -163,14 +170,12 @@ function toCoreGatewayProvider(
   };
 }
 
-
 export function sortProviderCredentialsForConfig(credentials: ProviderCredentialConfig[]): ProviderCredentialConfig[] {
   return [...credentials].sort((left, right) =>
     providerCredentialPriority(left, 0) - providerCredentialPriority(right, 0) ||
     providerCredentialSortKey(left).localeCompare(providerCredentialSortKey(right))
   );
 }
-
 
 export function normalizedProviderCapabilities(provider: GatewayProviderConfig): GatewayProviderCapability[] {
   const capabilities = Array.isArray(provider.capabilities) ? provider.capabilities : [];
@@ -202,7 +207,6 @@ export function normalizedProviderCapabilities(provider: GatewayProviderConfig):
   return applyPresetProtocolLock(provider, normalized);
 }
 
-
 function applyPresetProtocolLock(
   provider: GatewayProviderConfig,
   capabilities: GatewayProviderCapability[]
@@ -229,7 +233,6 @@ function applyPresetProtocolLock(
     : [];
 }
 
-
 function lockedProviderPresetProtocols(
   provider: GatewayProviderConfig,
   capabilities: GatewayProviderCapability[]
@@ -255,7 +258,6 @@ function lockedProviderPresetProtocols(
   return [];
 }
 
-
 function providerCapabilityPriority(capability: GatewayProviderCapability): number {
   if (capability.source === "preset") {
     return 0;
@@ -266,23 +268,19 @@ function providerCapabilityPriority(capability: GatewayProviderCapability): numb
   return 1;
 }
 
-
 export function providerCapabilityInternalName(provider: GatewayProviderConfig, protocol: GatewayProviderCapabilityProtocol): string {
   return `${providerRuntimeId(provider)}::${protocol}`;
 }
 
-
 function providerCapabilityLegacyInternalName(providerName: string, protocol: GatewayProviderCapabilityProtocol): string {
   return `${providerName}::${protocol}`;
 }
-
 
 export function providerCapabilityNameMatches(provider: GatewayProviderConfig, protocol: GatewayProviderCapabilityProtocol, value: string): boolean {
   const normalized = value.trim().toLowerCase();
   return providerCapabilityInternalName(provider, protocol).toLowerCase() === normalized ||
     providerCapabilityLegacyInternalName(provider.name, protocol).toLowerCase() === normalized;
 }
-
 
 export function sanitizeHeaderValue(value: unknown): string {
   // HTTP header values must be ByteString (code point <= 255). Values derived
@@ -298,7 +296,6 @@ export function sanitizeHeaderValue(value: unknown): string {
   return sanitized || "unknown";
 }
 
-
 export function providerCredentialInternalName(
   provider: GatewayProviderConfig,
   protocol: GatewayProviderCapabilityProtocol,
@@ -306,7 +303,6 @@ export function providerCredentialInternalName(
 ): string {
   return `${providerCapabilityInternalName(provider, protocol)}::cred:${providerCredentialSlug(providerCredentialRuntimeId(provider, credential))}`;
 }
-
 
 export function parseProviderCredentialInternalName(value: string | undefined): {
   credentialSlug: string;
@@ -329,7 +325,6 @@ export function parseProviderCredentialInternalName(value: string | undefined): 
   return protocol && providerId ? { credentialSlug, providerId, protocol } : undefined;
 }
 
-
 export function providerCredentialSlug(value: string | undefined): string {
   return (value ?? "")
     .trim()
@@ -337,7 +332,6 @@ export function providerCredentialSlug(value: string | undefined): string {
     .replace(/[^a-z0-9_.-]+/g, "-")
     .replace(/^-+|-+$/g, "") || "key";
 }
-
 
 export function providerCredentialRuntimeId(
   provider: GatewayProviderConfig,
@@ -353,16 +347,13 @@ export function providerCredentialRuntimeId(
   return label ? `${providerCredentialSlug(label)}-${oneBasedIndex}` : `key-${oneBasedIndex}`;
 }
 
-
 function providerCredentialSortKey(credential: ProviderCredentialConfig): string {
   return providerCredentialSlug(credential.id || credential.name || credential.label);
 }
 
-
 export function providerCredentialApiKey(credential: ProviderCredentialConfig): string {
   return credential.api_key || credential.apiKey || credential.apikey || "";
 }
-
 
 export function findProviderCredentialByRuntimeId(
   provider: GatewayProviderConfig,
@@ -376,7 +367,6 @@ export function findProviderCredentialByRuntimeId(
   });
 }
 
-
 export function findProviderCredentialBySlug(
   provider: GatewayProviderConfig,
   credentialSlug: string
@@ -384,7 +374,6 @@ export function findProviderCredentialBySlug(
   const normalizedSlug = providerCredentialSlug(credentialSlug);
   return (provider.credentials ?? []).find((credential, index) => providerCredentialSlug(providerCredentialRuntimeId(provider, credential, index)) === normalizedSlug);
 }
-
 
 export function normalizeProviderProtocol(value: unknown): GatewayProviderProtocol | undefined {
   if (typeof value !== "string") {
@@ -437,7 +426,6 @@ export function normalizeProviderCapabilityProtocol(value: unknown): GatewayProv
   return undefined;
 }
 
-
 export function inferProtocol(provider: GatewayProviderConfig): GatewayProviderProtocol {
   const url = readBaseUrl(provider)?.toLowerCase() ?? "";
   const transformerNames = JSON.stringify(provider.transformer ?? "").toLowerCase();
@@ -452,7 +440,6 @@ export function inferProtocol(provider: GatewayProviderConfig): GatewayProviderP
   }
   return "openai_chat_completions";
 }
-
 
 export function resolveResponseProviderProtocol(headers: Headers, config: AppConfig | undefined): GatewayProviderProtocol | undefined {
   const ccrProtocol = normalizeProviderProtocol(headers.get("x-ccr-provider-protocol"));
@@ -482,7 +469,6 @@ export function resolveResponseProviderProtocol(headers: Headers, config: AppCon
   return normalizeProviderProtocol(provider.type) ?? normalizeProviderProtocol(provider.provider) ?? inferProtocol(provider);
 }
 
-
 export function resolveProviderLogName(headers: Headers, config: AppConfig | undefined, fallbackModel?: string): string | undefined {
   const providerSelector =
     headers.get("x-gateway-target-provider-name")?.trim() ||
@@ -501,15 +487,6 @@ export function resolveProviderLogName(headers: Headers, config: AppConfig | und
   return modelProvider?.name;
 }
 
-
-function providerMatchesName(provider: GatewayProviderConfig, name: string): boolean {
-  const normalizedName = name.trim().toLowerCase();
-  return [provider.id, provider.name, provider.provider]
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-    .some((value) => value.trim().toLowerCase() === normalizedName);
-}
-
-
 function normalizeProviderRuntimeBaseUrl(value: string | undefined, type: GatewayProviderCapabilityProtocol): string | undefined {
   if (!value) {
     return undefined;
@@ -518,7 +495,6 @@ function normalizeProviderRuntimeBaseUrl(value: string | undefined, type: Gatewa
     ? normalizeProviderBaseUrlInput(value, normalizeProviderProtocol(type)) || undefined
     : normalizeProviderBaseUrlInput(value) || undefined;
 }
-
 
 function readBaseUrl(provider: GatewayProviderConfig): string | undefined {
   return provider.baseurl || provider.baseUrl || provider.api_base_url;

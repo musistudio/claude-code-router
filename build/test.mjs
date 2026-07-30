@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
+const ccrExtensionsRoot = path.resolve(process.env.CCR_EXTENSIONS_DIR || path.join(projectRoot, "..", "ccr-extensions"));
 const testsOutDir = path.join(projectRoot, ".test-dist");
 const packageRoots = {
   cli: path.join(projectRoot, "packages", "cli", "src"),
@@ -25,13 +26,22 @@ const testProjects = {
   core: {
     runtimeEntryPoints: {
       "runtime/fusion-vision-mcp": path.join(packageRoots.core, "mcp", "fusion-vision-mcp.ts"),
+      "runtime/gateway-bootstrap": path.join(packageRoots.core, "gateway", "core-runtime", "gateway-bootstrap.ts"),
       "runtime/media-tools-proxy-mcp": path.join(packageRoots.core, "mcp", "media-tools-proxy-mcp.ts"),
       "runtime/request-log-worker": path.join(packageRoots.core, "observability", "request-log-worker.ts"),
       "runtime/route-script-worker": path.join(packageRoots.core, "routing", "route-script-worker.ts"),
       "runtime/upstream-header-sanitizer": path.join(packageRoots.core, "gateway", "core-runtime", "upstream-header-sanitizer.ts"),
       "runtime/toolhub-mcp": path.join(packageRoots.core, "mcp", "toolhub-mcp.ts")
     },
-    testDir: path.join(projectRoot, "packages", "core", "test")
+    testDirs: [
+      {
+        dir: path.join(projectRoot, "packages", "core", "test")
+      },
+      {
+        dir: path.join(ccrExtensionsRoot, "plugins", "claude-design", "test"),
+        outputPrefix: "plugins/claude-design"
+      }
+    ]
   },
   electron: {
     testDir: path.join(projectRoot, "packages", "electron", "test")
@@ -62,8 +72,11 @@ if (unknownProjects.length > 0) {
 
 for (const [name, project] of selectedProjects) {
   const projectOutDir = path.join(testsOutDir, name);
-  const scopedTestDir = scope ? path.join(project.testDir, scope) : project.testDir;
-  const entryPoints = testEntryPoints(scopedTestDir);
+  const entryPoints = {};
+  for (const testRoot of projectTestRoots(project)) {
+    const scopedTestDir = scope ? path.join(testRoot.dir, scope) : testRoot.dir;
+    Object.assign(entryPoints, testEntryPoints(scopedTestDir, testRoot.outputPrefix));
+  }
   if (!scope || scope === "integration" || scope === "unit") {
     Object.assign(entryPoints, project.runtimeEntryPoints ?? {});
   }
@@ -101,10 +114,24 @@ for (const [name, project] of selectedProjects) {
   });
 }
 
-function testEntryPoints(testDir) {
+function projectTestRoots(project) {
+  if (Array.isArray(project.testDirs)) {
+    return project.testDirs.map((entry) => ({
+      dir: entry.dir,
+      outputPrefix: entry.outputPrefix || ""
+    }));
+  }
+  return [{
+    dir: project.testDir,
+    outputPrefix: ""
+  }];
+}
+
+function testEntryPoints(testDir, outputPrefix = "") {
+  const prefix = outputPrefix ? `${outputPrefix.replace(/^\/+|\/+$/g, "")}/` : "";
   return Object.fromEntries(findTestFiles(testDir).map((file) => {
     const relative = path.relative(testDir, file).replace(/\\/g, "/");
-    const outputName = `test/${relative.replace(/\.(mjs|ts|tsx)$/, "")}`;
+    const outputName = `test/${prefix}${relative.replace(/\.(mjs|ts|tsx)$/, "")}`;
     return [outputName, file];
   }));
 }

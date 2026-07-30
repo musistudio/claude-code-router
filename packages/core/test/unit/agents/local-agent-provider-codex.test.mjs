@@ -80,6 +80,58 @@ test("Codex local provider account config upgrades persisted usage mapping", () 
   assert.ok(upgradedManualResetMeter.remaining.includes("$.rate_limit_reset_credits.available_count"));
 });
 
+test("Codex local provider config caps imported GPT-5 context metadata", () => {
+  const provider = normalizeCodexProviderAccountConfig({
+    api_base_url: codexDefaultBaseUrl,
+    api_key: localAgentProviderApiKey,
+    modelMetadata: {
+      "custom-model": {
+        contextWindow: 64000,
+        maxContextWindow: 64000
+      },
+      "gpt-5.6-sol": {
+        contextWindow: 1050000,
+        maxContextWindow: 1050000
+      }
+    },
+    models: ["gpt-5-codex", "gpt-5.6-sol", "custom-model"],
+    name: "Codex API",
+    protocol: "openai_responses"
+  });
+
+  assert.deepEqual(provider.modelMetadata["gpt-5-codex"], {
+    contextWindow: 256000,
+    maxContextWindow: 256000
+  });
+  assert.deepEqual(provider.modelMetadata["gpt-5.6-sol"], {
+    contextWindow: 368000,
+    maxContextWindow: 368000
+  });
+  assert.deepEqual(provider.modelMetadata["custom-model"], {
+    contextWindow: 64000,
+    maxContextWindow: 64000
+  });
+
+  const nonLocal = normalizeCodexProviderAccountConfig({
+    api_base_url: codexDefaultBaseUrl,
+    api_key: "real-api-key",
+    modelMetadata: {
+      "gpt-5.6-sol": {
+        contextWindow: 1050000,
+        maxContextWindow: 1050000
+      }
+    },
+    models: ["gpt-5.6-sol"],
+    name: "OpenAI",
+    protocol: "openai_responses"
+  });
+
+  assert.deepEqual(nonLocal.modelMetadata["gpt-5.6-sol"], {
+    contextWindow: 1050000,
+    maxContextWindow: 1050000
+  });
+});
+
 test("Codex reset credit details include available effective and expiry times", () => {
   const details = codexRateLimitResetCreditDetails({
     rate_limit_reset_credits: {
@@ -240,10 +292,10 @@ test("Codex model catalog parser accepts live model endpoint shapes", () => {
   });
   assert.deepEqual(catalog.modelMetadata["gpt-5-codex"], {
     additionalSpeedTiers: [{ id: "fast", label: "Fast" }],
-    contextWindow: 272000,
+    contextWindow: 256000,
     defaultReasoningLevel: "high",
     effectiveContextWindowPercent: 95,
-    maxContextWindow: 300000,
+    maxContextWindow: 256000,
     serviceTiers: [{ id: "auto" }],
     supportedReasoningLevels: [
       { description: "Low", effort: "low" },
@@ -251,6 +303,49 @@ test("Codex model catalog parser accepts live model endpoint shapes", () => {
     ],
     supportsReasoningSummaries: true
   });
+  assert.deepEqual(catalog.modelMetadata["gpt-5.1-codex"], {
+    contextWindow: 256000,
+    maxContextWindow: 256000
+  });
+  assert.deepEqual(catalog.modelMetadata["gpt-5.2-codex"], {
+    contextWindow: 256000,
+    maxContextWindow: 256000
+  });
+});
+
+test("Codex model catalog parser overrides imported GPT-5 context windows", () => {
+  const catalog = codexModelCatalogFromPayloadForTest({
+    models: [
+      "gpt-5-codex",
+      "gpt-5.5",
+      "gpt-5.6",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra-2026-07-28",
+      "gpt-50"
+    ]
+  });
+
+  assert.deepEqual(catalog.modelMetadata["gpt-5-codex"], {
+    contextWindow: 256000,
+    maxContextWindow: 256000
+  });
+  assert.deepEqual(catalog.modelMetadata["gpt-5.5"], {
+    contextWindow: 256000,
+    maxContextWindow: 256000
+  });
+  assert.deepEqual(catalog.modelMetadata["gpt-5.6"], {
+    contextWindow: 368000,
+    maxContextWindow: 368000
+  });
+  assert.deepEqual(catalog.modelMetadata["gpt-5.6-sol"], {
+    contextWindow: 368000,
+    maxContextWindow: 368000
+  });
+  assert.deepEqual(catalog.modelMetadata["gpt-5.6-terra-2026-07-28"], {
+    contextWindow: 368000,
+    maxContextWindow: 368000
+  });
+  assert.equal(catalog.modelMetadata?.["gpt-50"], undefined);
 });
 
 test("Codex model catalog parser ignores invalid context metadata", () => {

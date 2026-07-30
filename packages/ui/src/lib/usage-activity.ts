@@ -42,7 +42,7 @@ export function buildTokenActivity(series: UsageSeriesPoint[], options: TokenAct
   let observedEnd: Date | undefined;
 
   for (const point of series) {
-    const date = startOfLocalDay(new Date(point.bucket));
+    const date = startOfLocalDay(parseActivityDate(point.bucket));
     if (!isFiniteDate(date)) {
       continue;
     }
@@ -109,6 +109,22 @@ export function buildTokenActivity(series: UsageSeriesPoint[], options: TokenAct
     totalTokens,
     weekCount
   };
+}
+
+function parseActivityDate(bucket: string): Date {
+  const dateOnly = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(bucket.trim());
+  if (!dateOnly) {
+    return new Date(bucket);
+  }
+
+  const year = Number(dateOnly[1]);
+  const month = Number(dateOnly[2]);
+  const day = Number(dateOnly[3]);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return new Date(Number.NaN);
+  }
+  return date;
 }
 
 export function activityDateKey(date: Date): string {

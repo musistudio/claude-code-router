@@ -84,6 +84,145 @@ test("ChatGPT model catalog write includes patch bridge capabilities", () => {
   }
 });
 
+test("ChatGPT model catalog write includes latest reasoning effort aliases", () => {
+  const configDir = mkdtempSync(path.join(os.tmpdir(), "ccr-codex-app-catalog-"));
+  try {
+    const config = {
+      Providers: [
+        {
+          modelMetadata: {
+            "gpt-5-codex": {
+              defaultReasoningLevel: "high",
+              supportedReasoningLevels: [
+                { description: "Low", effort: "low" },
+                { description: "High", effort: "high" }
+              ],
+              supportsReasoningSummaries: true
+            }
+          },
+          models: ["gpt-5-codex"],
+          name: "Codex API",
+          type: "openai_responses"
+        }
+      ]
+    };
+    const profile = {
+      agent: "codex",
+      enabled: true,
+      id: "codex-main",
+      model: "Codex API/gpt-5-codex",
+      name: "Codex Main",
+      providerId: "openai-codex",
+      scope: "ccr",
+      surface: "app"
+    };
+
+    const result = writeCodexCompatibleAppModelCatalog(configDir, profile, config);
+    const catalog = JSON.parse(readFileSync(result.file, "utf8"));
+    const model = catalog.models.find((item) => item.slug === "Codex API/gpt-5-codex");
+
+    assert.ok(model);
+    assert.equal(model.displayName, "Codex API/gpt-5-codex");
+    assert.equal(model.defaultReasoningEffort, "high");
+    assert.equal(model.default_reasoning_effort, "high");
+    assert.deepEqual(model.supportedReasoningEfforts.map((level) => level.reasoningEffort), ["low", "high"]);
+    assert.deepEqual(model.supported_reasoning_efforts, ["low", "high"]);
+  } finally {
+    rmSync(configDir, { force: true, recursive: true });
+  }
+});
+
+test("ChatGPT model catalog write gives gateway GPT models reasoning effort fallbacks", () => {
+  const configDir = mkdtempSync(path.join(os.tmpdir(), "ccr-codex-app-catalog-"));
+  try {
+    const config = {
+      Providers: [
+        {
+          models: ["gpt-5.5", "gpt-5.6"],
+          name: "uuroute",
+          type: "openai_responses"
+        }
+      ]
+    };
+    const profile = {
+      agent: "codex",
+      enabled: true,
+      id: "codex-main",
+      model: "uuroute/gpt-5.6",
+      name: "Codex Main",
+      providerId: "openai-codex",
+      scope: "ccr",
+      surface: "app"
+    };
+
+    const result = writeCodexCompatibleAppModelCatalog(configDir, profile, config);
+    const catalog = JSON.parse(readFileSync(result.file, "utf8"));
+    const baseModel = catalog.models.find((item) => item.slug === "uuroute/gpt-5.5");
+    const latestModel = catalog.models.find((item) => item.slug === "uuroute/gpt-5.6");
+
+    assert.ok(baseModel);
+    assert.equal(baseModel.defaultReasoningEffort, "medium");
+    assert.deepEqual(baseModel.supportedReasoningEfforts.map((level) => level.reasoningEffort), ["minimal", "low", "medium", "high"]);
+    assert.deepEqual(baseModel.supported_reasoning_efforts, ["minimal", "low", "medium", "high"]);
+    assert.ok(latestModel);
+    assert.equal(latestModel.defaultReasoningEffort, "medium");
+    assert.deepEqual(latestModel.supportedReasoningEfforts.map((level) => level.reasoningEffort), ["minimal", "low", "medium", "high", "xhigh"]);
+    assert.deepEqual(latestModel.supported_reasoning_efforts, ["minimal", "low", "medium", "high", "xhigh"]);
+  } finally {
+    rmSync(configDir, { force: true, recursive: true });
+  }
+});
+
+test("ZCode app model catalog uses the public model context window", () => {
+  const configDir = mkdtempSync(path.join(os.tmpdir(), "ccr-zcode-app-catalog-"));
+  try {
+    const config = {
+      Providers: [{
+        api_base_url: "https://chatgpt.com/backend-api/codex",
+        modelMetadata: {
+          "gpt-5.6-sol": {
+            contextWindow: 272_000,
+            maxContextWindow: 272_000
+          }
+        },
+        models: ["gpt-5.6-sol"],
+        name: "Codex API",
+        type: "openai_responses"
+      }],
+      virtualModelProfiles: [{
+        baseModel: { fixedModel: "Codex API/gpt-5.6-sol", mode: "fixed" },
+        enabled: true,
+        match: { exactAliases: ["catalog-context"], prefixes: [], suffixes: [] },
+        materialization: { enabled: true, includeInGatewayModels: true }
+      }]
+    };
+    const profile = {
+      agent: "zcode",
+      codexHome: configDir,
+      enabled: true,
+      id: "zcode-main",
+      model: "Codex API/gpt-5.6-sol",
+      name: "ZCode Main",
+      providerId: "claude-code-router",
+      scope: "global",
+      surface: "app"
+    };
+
+    const result = writeCodexCompatibleAppModelCatalog(configDir, profile, config);
+    const catalog = JSON.parse(readFileSync(result.file, "utf8"));
+    const fusionModel = catalog.models.find((item) => item.slug === "Fusion/catalog-context");
+    const model = catalog.models.find((item) => item.slug === "Codex API/gpt-5.6-sol");
+
+    assert.equal(path.basename(result.file), "ccr-zcode-model-catalog.json");
+    assert.equal(fusionModel.context_window, 1_050_000);
+    assert.equal(fusionModel.max_context_window, 1_050_000);
+    assert.equal(model.context_window, 1_050_000);
+    assert.equal(model.max_context_window, 1_050_000);
+  } finally {
+    rmSync(configDir, { force: true, recursive: true });
+  }
+});
+
 test("ChatGPT desktop app path override discovers the renamed executable", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "ccr-chatgpt-app-"));
   const previous = process.env.CHATGPT_APP_PATH;

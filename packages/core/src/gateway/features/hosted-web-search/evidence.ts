@@ -604,4 +604,3 @@ function anthropicWebSearchResultSnippet(result: BrowserWebSearchProtocolResult)
 export function sanitizeAnthropicToolUseId(value: string): string {
   return value.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24) || randomBytes(8).toString("hex");
 }
-

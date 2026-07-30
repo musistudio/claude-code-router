@@ -649,7 +649,7 @@ function resolvePlannedProviderCredentialRoutingTarget(
 
 function targetProviderHeaderValue(provider: GatewayProviderConfig, protocol: GatewayProviderProtocol): string {
   const capability = normalizedProviderCapabilities(provider).find((item) => item.type === protocol);
-  return capability ? providerCapabilityInternalName(provider, capability.type) : provider.name || providerRuntimeId(provider);
+  return capability ? providerCapabilityInternalName(provider, capability.type) : providerRuntimeId(provider);
 }
 
 

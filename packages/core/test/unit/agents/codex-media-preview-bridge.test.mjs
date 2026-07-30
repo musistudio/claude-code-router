@@ -10,6 +10,7 @@ import {
   prepareCodexAppCdpUserDataDir,
   shouldEnableCodexMediaPreviewBridge
 } from "@ccr/core/agents/codex/media-preview-bridge.ts";
+import { waitForTcpListener } from "../../support/loopback-listener.mjs";
 
 const token = "A".repeat(32);
 const imageId = "123e4567-e89b-42d3-a456-426614174000";
@@ -118,6 +119,7 @@ test("Codex media loader accepts signed image and video bytes and rejects redire
     server.once("error", reject);
     server.listen(0, "127.0.0.1", resolve);
   });
+  await waitForTcpListener(server);
   t.after(() => server.close());
   const address = server.address();
   assert.ok(address && typeof address === "object");

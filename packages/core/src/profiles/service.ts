@@ -1,27 +1,42 @@
-import { randomBytes } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readlinkSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, availableGatewayModelIds, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "@ccr/core/contracts/app";
-import { replacePersistedApiKeys } from "@ccr/core/config/api-key-store";
+import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, availableGatewayModelIds, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, isGatewayProviderEnabled, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "@ccr/core/contracts/app";
+import { replacePersistedApiKeys } from "@ccr/core/config/config-repository";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import {
   CLAUDE_CODE_MCP_CONFIG_ENV,
   CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV,
+  claudeCodeModelEnv,
   claudeCodeMcpConfigEnv,
-  claudeCodeUtcTimezoneEnvOverride
+  claudeCodeUtcTimezoneEnvOverride,
+  clearClaudeCodeManagedModelEnv,
+  isClaudeCodeManagedModelEnvKey
 } from "@ccr/core/agents/claude-code/environment";
 import { writeCodexCompatibleAppModelCatalog } from "@ccr/core/agents/codex/app-launch";
 import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-middleware-runtime";
 import { codexModelCatalogJson } from "@ccr/core/agents/codex/model-catalog";
+import {
+  isManagedKiloConfigContent,
+  kiloProviderId,
+  resolveKiloConfigFile,
+  writeKiloGatewayConfig
+} from "@ccr/core/agents/kilo/profile-config";
 import {
   isManagedOpenCodeConfigContent,
   openCodeProviderId,
   resolveOpenCodeConfigFile,
   writeOpenCodeGatewayConfig
 } from "@ccr/core/agents/opencode/profile-config";
+import {
+  piWrapperFilename,
+  resolvePiAgentDir,
+  writePiGatewayConfig
+} from "@ccr/core/agents/pi/profile-config";
 import { CONFIGDIR } from "@ccr/core/config/constants";
+import { pruneInactiveProfileApiKeysFromList, syncProfileApiKeys } from "@ccr/core/profiles/api-key";
 import { resolveZcodeConfigFile, writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "@ccr/core/agents/zcode/profile-config";
+import { CONTEXT_ARCHIVE_MCP_SERVER_NAME, contextArchiveConfigForProfile, contextArchiveMcpServer } from "@ccr/core/gateway/context-archive";
 import { normalizeRouteSelector } from "@ccr/core/gateway/claude-code-router-plugin";
 import { findModelCatalogEntry, modelCatalogMaxInputTokens, readCatalogCapability, type ModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
 import {
@@ -30,6 +45,7 @@ import {
   bundledToolHubMcpEntryPathCandidates,
   toolHubClaudeCodeMcpConfig,
   toolHubMcpRuntimeConfig,
+  type ClaudeCodeMcpServerConfig,
   type ToolHubMcpRuntimeConfig
 } from "@ccr/core/mcp/toolhub-config";
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
@@ -41,6 +57,8 @@ const managedProviderStart = "# BEGIN CCR managed Codex provider";
 const managedProviderEnd = "# END CCR managed Codex provider";
 const managedToolHubMcpStart = "# BEGIN CCR managed ToolHub MCP";
 const managedToolHubMcpEnd = "# END CCR managed ToolHub MCP";
+const managedContextArchiveMcpStart = "# BEGIN CCR managed Context Archive MCP";
+const managedContextArchiveMcpEnd = "# END CCR managed Context Archive MCP";
 const managedConfiguredModelPrefix = "# CCR configured model = ";
 const originalBackupSuffix = ".ccr-original";
 const originalMissingSuffix = ".ccr-original-missing";
@@ -50,7 +68,23 @@ const privateDirMode = 0o700;
 const privateExecutableMode = 0o700;
 const privateFileMode = 0o600;
 const publicExecutableMode = 0o755;
+const claudeCodeGatewayEnvKeys = [
+  "ANTHROPIC_BASE_URL",
+  "ANTHROPIC_API_BASE_URL",
+  "CLAUDE_AGENT_API_BASE_URL"
+] as const;
+const claudeCodeRemovedAuthEnvKeys = [
+  "ANTHROPIC_AUTH_TOKEN",
+  "ANTHROPIC_API_KEY"
+] as const;
 let ownedGlobalProfileTakeovers: GlobalProfileTakeoverRecord[] | undefined;
+
+type CodexContextArchiveMcpConfig = {
+  headers: Record<string, string>;
+  requestTimeoutMs: number;
+  startupTimeoutMs: number;
+  url: string;
+};
 
 type GlobalProfileTakeoverRecord = {
   agent: ProfileClientKind;
@@ -76,6 +110,7 @@ export async function applyProfileConfig(
   const allProfiles = profileEntries(config);
   const profiles = allProfiles.filter((profile) => !excludedAgents.has(profile.agent));
   cleanupInactiveOpenCodeWrappers(allProfiles);
+  cleanupInactiveKiloWrappers(allProfiles);
   await pruneInactiveProfileApiKeys(config, allProfiles);
   const result: ProfileApplyResult = {
     appliedAt,
@@ -132,11 +167,17 @@ export async function applyProfileConfig(
           ? applyGrokProfile(config, profile, token, appliedAt)
           : profile.agent === "kimi"
             ? applyKimiProfile(config, profile, token, appliedAt)
-            : profile.agent === "opencode"
-              ? applyOpenCodeProfile(config, profile, token, appliedAt)
+            : profile.agent === "pi"
+              ? applyPiProfile(config, profile, token, appliedAt)
+              : profile.agent === "claude-design"
+                ? applyClaudeDesignProfile(profile, appliedAt)
+                : profile.agent === "opencode"
+                  ? applyOpenCodeProfile(config, profile, token, appliedAt)
+                  : profile.agent === "kilo"
+                ? applyKiloProfile(config, profile, token, appliedAt)
               : profile.agent === "zcode"
                 ? applyZcodeProfile(config, profile, token, appliedAt)
-                : applyCodexProfile(config, profile, token, appliedAt)
+                  : applyCodexProfile(config, profile, token, appliedAt)
     );
   }
   result.clients.push(...takeoverStatuses);
@@ -276,11 +317,28 @@ export function applyProfileRuntimeConfig(config: AppConfig, profile: ProfileCon
       ? applyGrokProfile(config, profile, token, appliedAt)
       : profile.agent === "kimi"
         ? applyKimiProfile(config, profile, token, appliedAt)
-        : profile.agent === "opencode"
-          ? applyOpenCodeProfile(config, profile, token, appliedAt)
-          : profile.agent === "zcode"
-            ? applyZcodeProfile(config, profile, token, appliedAt)
-            : applyCodexProfile(config, profile, token, appliedAt);
+        : profile.agent === "pi"
+          ? applyPiProfile(config, profile, token, appliedAt)
+          : profile.agent === "claude-design"
+            ? applyClaudeDesignProfile(profile, appliedAt)
+            : profile.agent === "opencode"
+              ? applyOpenCodeProfile(config, profile, token, appliedAt)
+              : profile.agent === "kilo"
+                ? applyKiloProfile(config, profile, token, appliedAt)
+                : profile.agent === "zcode"
+                ? applyZcodeProfile(config, profile, token, appliedAt)
+                  : applyCodexProfile(config, profile, token, appliedAt);
+}
+
+function applyClaudeDesignProfile(profile: ProfileConfig, appliedAt: string): ProfileClientApplyStatus {
+  return {
+    appliedAt,
+    client: "claude-design",
+    enabled: profile.enabled,
+    message: "Claude Design profile is managed by CCR Desktop.",
+    ok: true,
+    path: resolveUserPath(CONFIGDIR)
+  };
 }
 
 function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
@@ -291,36 +349,26 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
 
   try {
     const endpoint = gatewayEndpoint(config);
-    const settings = readJsonObject(settingsFile);
+    const settings = readClaudeCodeSettingsObject(settingsFile);
     const settingsEnv = withoutBotGatewayEnv(Object.fromEntries(stringRecord(settings.env)));
     delete settingsEnv[CLAUDE_CODE_MCP_CONFIG_ENV];
     delete settingsEnv[CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV];
+    const profileEnvValues = profileEnv(profile);
     const env = {
       ...settingsEnv,
-      ...profileEnv(profile)
+      ...profileEnvValues
     };
     env.ANTHROPIC_BASE_URL = endpoint;
     env.ANTHROPIC_API_BASE_URL = endpoint;
     env.CLAUDE_AGENT_API_BASE_URL = endpoint;
     delete env.ANTHROPIC_AUTH_TOKEN;
     delete env.ANTHROPIC_API_KEY;
-    if (profile.model.trim()) {
-      const model = normalizeClientModel(profile.model);
-      env.ANTHROPIC_MODEL = model;
-      env.CCR_CLAUDE_CODE_MODEL = model;
-      env.CODEXL_CLAUDE_CODE_MODEL = model;
-    } else {
-      delete env.ANTHROPIC_MODEL;
-      delete env.CCR_CLAUDE_CODE_MODEL;
-      delete env.CODEXL_CLAUDE_CODE_MODEL;
-    }
-    if (profile.smallFastModel?.trim()) {
-      env.ANTHROPIC_SMALL_FAST_MODEL = normalizeClientModel(profile.smallFastModel);
-    } else {
-      delete env.ANTHROPIC_SMALL_FAST_MODEL;
-    }
+    clearClaudeCodeManagedModelEnv(env);
+    Object.assign(env, claudeCodeModelEnv(profile));
     const toolHubMcpConfigResult = writeClaudeCodeToolHubMcpConfig(config, profile, token);
-    Object.assign(env, claudeCodeMcpConfigEnv(toolHubMcpConfigResult.file), claudeCodeUtcTimezoneEnvOverride());
+    const mcpConfigEnv = claudeCodeMcpConfigEnv(toolHubMcpConfigResult.file);
+    const timezoneEnv = claudeCodeUtcTimezoneEnvOverride();
+    Object.assign(env, mcpConfigEnv, timezoneEnv);
 
     const helperResult = writeClaudeCodeApiKeyHelper(profile, token);
     const wrapperResult = writeClaudeCodeWrapper(config, profile, helperResult.file, toolHubMcpConfigResult.file);
@@ -329,7 +377,8 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
       apiKeyHelper: process.platform === "win32" ? `"${helperResult.file}"` : helperResult.file,
       env
     };
-    const writeResult = writeFileWithBackup(settingsFile, `${JSON.stringify(nextSettings, null, 2)}\n`, { mode: privateFileMode });
+    const managedEnvKeys = claudeCodeManagedSettingsEnvKeys(profileEnvValues, mcpConfigEnv, timezoneEnv);
+    const writeResult = writeClaudeCodeSettingsIfManagedChanged(settingsFile, settings, nextSettings, managedEnvKeys);
     const changed = writeResult.changed || helperResult.changed || wrapperResult.changed || toolHubMcpConfigResult.changed;
     return {
       appliedAt,
@@ -377,8 +426,12 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
     const appModelCatalogResult = writeCodexCompatibleAppModelCatalog(CONFIGDIR, { ...profile, model }, config);
     const showAllSessions = profile.agent === "zcode" ? false : Boolean(profile.showAllSessions);
     const toolHubMcpResult = writeCodexToolHubMcpRuntimeConfig(config, token);
+    const contextArchiveMcp = profile.agent === "codex"
+      ? codexContextArchiveMcpConfig(config, profile, token)
+      : undefined;
     const nextConfig = buildCodexConfigToml(source, {
       baseUrl: endpoint,
+      contextArchiveMcp,
       modelCatalogFile,
       configFormat,
       model,
@@ -414,6 +467,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
       modelCatalogFile ? `catalog ${modelCatalogFile}` : "",
       appModelCatalogResult.file ? `app catalog ${appModelCatalogResult.file}` : "",
       toolHubMcpResult.file ? `toolhub runtime ${toolHubMcpResult.file}` : "",
+      contextArchiveMcp ? "context archive MCP" : "",
       separateProfileResult?.file ? `profile ${separateProfileResult.file}` : "",
       middlewareResult?.file ? `middleware ${middlewareResult.file}` : ""
     ].filter(Boolean);
@@ -500,6 +554,36 @@ function applyKimiProfile(config: AppConfig, profile: ProfileConfig, token: stri
   }
 }
 
+function applyPiProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
+  const wrapperFile = piWrapperPath(profile);
+  if (!profile.enabled) {
+    return disabledStatus("pi", wrapperFile, "Pi profile is disabled.");
+  }
+
+  try {
+    const model = normalizeClientModel(profile.model) || defaultClientModel(config);
+    const wrapperResult = writePiWrapper(config, profile, token, model);
+    return {
+      appliedAt,
+      client: "pi",
+      enabled: true,
+      message: wrapperResult.changed
+        ? `Pi is configured to use CCR (config ${wrapperResult.configFile}, wrapper ${wrapperResult.file}).`
+        : "Pi config already matches CCR.",
+      ok: true,
+      path: wrapperResult.configFile
+    };
+  } catch (error) {
+    return {
+      client: "pi",
+      enabled: true,
+      message: formatError(error),
+      ok: false,
+      path: wrapperFile
+    };
+  }
+}
+
 function applyOpenCodeProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
   const configFile = resolveOpenCodeConfigFile(CONFIGDIR, profile);
   const providerId = openCodeProviderId(profile);
@@ -529,6 +613,43 @@ function applyOpenCodeProfile(config: AppConfig, profile: ProfileConfig, token: 
   } catch (error) {
     return {
       client: "opencode",
+      enabled: true,
+      message: formatError(error),
+      ok: false,
+      path: configFile
+    };
+  }
+}
+
+function applyKiloProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
+  const configFile = resolveKiloConfigFile(CONFIGDIR, profile);
+  const providerId = kiloProviderId(profile);
+  if (!profile.enabled) {
+    return restoreDisabledGlobalProfile(
+      profile,
+      configFile,
+      "Kilo CLI profile is disabled.",
+      (content) => isManagedKiloConfigContent(content, providerId)
+    );
+  }
+
+  try {
+    const configResult = writeKiloGatewayConfig(CONFIGDIR, config, profile, token, { backup: true });
+    const wrapperResult = writeKiloWrapper(profile, configResult.file, configResult.inlineConfig);
+    return {
+      appliedAt,
+      backupFile: configResult.backupFile,
+      client: "kilo",
+      enabled: true,
+      message: configResult.changed || wrapperResult.changed
+        ? `Kilo CLI is configured to use CCR (config ${configResult.file}, wrapper ${wrapperResult.file}).`
+        : "Kilo CLI config already matches CCR.",
+      ok: true,
+      path: configResult.file
+    };
+  } catch (error) {
+    return {
+      client: "kilo",
       enabled: true,
       message: formatError(error),
       ok: false,
@@ -583,80 +704,33 @@ function applyZcodeProfile(config: AppConfig, profile: ProfileConfig, token: str
 }
 
 function profileEntries(config: AppConfig): ProfileConfig[] {
-  return enforceSingleEnabledGlobalProfilePerAgent(config.profile.profiles);
+  const profiles = enforceSingleEnabledGlobalProfilePerAgent(config.profile.profiles);
+  if (config.profile.enabled !== false) {
+    return profiles;
+  }
+  return profiles.map((profile) => profile.enabled ? { ...profile, enabled: false } : profile);
 }
 
 async function ensureProfileApiKeys(config: AppConfig, profiles: ProfileConfig[]): Promise<Map<string, string>> {
-  const apiKeys = [...(Array.isArray(config.APIKEYS) ? config.APIKEYS : [])];
-  const byId = new Map(apiKeys.map((apiKey, index) => [apiKey.id || `key-${index + 1}`, { apiKey, index }]));
-  const tokens = new Map<string, string>();
-  let changed = false;
-
-  for (const profile of profiles.filter((candidate) => candidate.enabled)) {
-    const id = profileApiKeyId(profile);
-    const name = profileApiKeyName(profile);
-    const existing = byId.get(id);
-    if (existing?.apiKey.key.trim()) {
-      tokens.set(profile.id, existing.apiKey.key.trim());
-      if (existing.apiKey.name !== name) {
-        apiKeys[existing.index] = {
-          ...existing.apiKey,
-          name
-        };
-        changed = true;
-      }
-      continue;
-    }
-
-    const apiKey: ApiKeyConfig = {
-      createdAt: new Date().toISOString(),
-      id,
-      key: generateProfileApiKey(),
-      name
-    };
-    apiKeys.push(apiKey);
-    byId.set(id, { apiKey, index: apiKeys.length - 1 });
-    tokens.set(profile.id, apiKey.key);
-    changed = true;
-  }
-
-  if (changed) {
-    config.APIKEYS = await replacePersistedApiKeys(apiKeys);
+  const result = syncProfileApiKeys(Array.isArray(config.APIKEYS) ? config.APIKEYS : [], profiles);
+  if (result.changed) {
+    config.APIKEYS = await replacePersistedApiKeys(result.apiKeys);
     config.APIKEY = config.APIKEYS[0]?.key ?? "";
   }
 
-  return tokens;
+  return result.tokens;
 }
 
 async function pruneInactiveProfileApiKeys(config: AppConfig, profiles: ProfileConfig[]): Promise<void> {
-  const activeIds = new Set(profiles
-    .filter((profile) => profile.enabled)
-    .map(profileApiKeyId));
-  const current = Array.isArray(config.APIKEYS) ? config.APIKEYS : [];
-  const retained = current.filter((apiKey) =>
-    !apiKey.id.startsWith("profile:") || activeIds.has(apiKey.id)
+  const result = pruneInactiveProfileApiKeysFromList(
+    Array.isArray(config.APIKEYS) ? config.APIKEYS : [],
+    profiles
   );
-  if (retained.length === current.length) {
+  if (!result.changed) {
     return;
   }
-  config.APIKEYS = await replacePersistedApiKeys(retained);
+  config.APIKEYS = await replacePersistedApiKeys(result.apiKeys);
   config.APIKEY = config.APIKEYS[0]?.key ?? "";
-}
-
-function profileApiKeyId(profile: ProfileConfig): string {
-  return `profile:${sanitizeProfilePathSegment(profile.id || profile.name || profile.agent) || "profile"}`;
-}
-
-function profileApiKeyName(profile: ProfileConfig): string {
-  return `Profile: ${profile.name?.trim() || profile.id || profile.agent}`;
-}
-
-function generateProfileApiKey(): string {
-  return `ccr-profile-${randomBase64Url(24)}`;
-}
-
-function randomBase64Url(byteLength: number): string {
-  return randomBytes(byteLength).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 function profilePath(profile: ProfileConfig): string {
@@ -666,9 +740,15 @@ function profilePath(profile: ProfileConfig): string {
       ? grokWrapperPath(profile)
       : profile.agent === "kimi"
         ? kimiWrapperPath(profile)
-        : profile.agent === "opencode"
-          ? resolveOpenCodeConfigFile(CONFIGDIR, profile)
-          : resolveCodexConfigFile(profile);
+        : profile.agent === "pi"
+          ? path.join(resolvePiAgentDir(CONFIGDIR, profile), "models.json")
+          : profile.agent === "claude-design"
+            ? CONFIGDIR
+            : profile.agent === "opencode"
+              ? resolveOpenCodeConfigFile(CONFIGDIR, profile)
+              : profile.agent === "kilo"
+                ? resolveKiloConfigFile(CONFIGDIR, profile)
+                : resolveCodexConfigFile(profile);
 }
 
 function resolveClaudeCodeSettingsFile(profile: ProfileConfig): string {
@@ -685,7 +765,7 @@ function claudeCodeToolHubMcpConfigFile(profile: ProfileConfig): string {
 function writeClaudeCodeToolHubMcpConfig(config: AppConfig, profile: ProfileConfig, token: string): { changed: boolean; file?: string } {
   const file = claudeCodeToolHubMcpConfigFile(profile);
   const entryPath = path.join(CONFIGDIR, "bin", TOOL_HUB_MCP_RUNTIME_FILE_NAME);
-  const mcpConfig = toolHubClaudeCodeMcpConfig(config, {
+  const toolHubMcpConfig = toolHubClaudeCodeMcpConfig(config, {
     entryPath,
     resolver: {
       apiKey: token,
@@ -693,6 +773,12 @@ function writeClaudeCodeToolHubMcpConfig(config: AppConfig, profile: ProfileConf
       model: toolHubResolverModel(config)
     }
   });
+  const contextArchiveMcpConfig = claudeCodeContextArchiveMcpConfig(config, profile, token);
+  const mcpServers = {
+    ...(toolHubMcpConfig?.mcpServers ?? {}),
+    ...(contextArchiveMcpConfig ? { [CONTEXT_ARCHIVE_MCP_SERVER_NAME]: contextArchiveMcpConfig } : {})
+  };
+  const mcpConfig = Object.keys(mcpServers).length > 0 ? { mcpServers } : undefined;
   if (!mcpConfig) {
     if (existsSync(file)) {
       rmSync(file, { force: true });
@@ -701,9 +787,50 @@ function writeClaudeCodeToolHubMcpConfig(config: AppConfig, profile: ProfileConf
     return { changed: false };
   }
 
-  const runtimeResult = ensureToolHubMcpRuntimeFile(entryPath);
+  const runtimeResult = toolHubMcpConfig ? ensureToolHubMcpRuntimeFile(entryPath) : { changed: false };
   const writeResult = writeGeneratedFileIfChanged(file, `${JSON.stringify(mcpConfig, null, 2)}\n`, { mode: privateFileMode });
   return { changed: runtimeResult.changed || writeResult.changed, file };
+}
+
+function claudeCodeContextArchiveMcpConfig(config: AppConfig, profile: ProfileConfig, token: string): ClaudeCodeMcpServerConfig | undefined {
+  const contextArchiveConfig = contextArchiveConfigForProfile(config, profile);
+  if (!contextArchiveConfig) {
+    return undefined;
+  }
+  const server = contextArchiveMcpServer(contextArchiveConfig, gatewayEndpoint(config), token);
+  if (!server || !("url" in server)) {
+    return undefined;
+  }
+  const headers = {
+    ...(server.headers ?? {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  };
+  return {
+    ...(Object.keys(headers).length > 0 ? { headers } : {}),
+    type: "http",
+    url: server.url
+  };
+}
+
+function codexContextArchiveMcpConfig(config: AppConfig, profile: ProfileConfig, token: string): CodexContextArchiveMcpConfig | undefined {
+  const contextArchiveConfig = contextArchiveConfigForProfile(config, profile);
+  if (!contextArchiveConfig) {
+    return undefined;
+  }
+  const server = contextArchiveMcpServer(contextArchiveConfig, gatewayEndpoint(config), token);
+  if (!server || !("url" in server)) {
+    return undefined;
+  }
+  const headers = {
+    ...(server.headers ?? {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  };
+  return {
+    headers,
+    requestTimeoutMs: server.requestTimeoutMs,
+    startupTimeoutMs: server.startupTimeoutMs,
+    url: server.url
+  };
 }
 
 function writeCodexToolHubMcpRuntimeConfig(config: AppConfig, token: string): { changed: boolean; file?: string; runtime?: ToolHubMcpRuntimeConfig } {
@@ -768,6 +895,7 @@ function buildCodexConfigToml(
   source: string,
   values: {
     baseUrl: string;
+    contextArchiveMcp?: CodexContextArchiveMcpConfig;
     modelCatalogFile: string;
     configFormat: "legacy" | "separate_profile_files";
     model: string;
@@ -784,10 +912,13 @@ function buildCodexConfigToml(
     managedProviderStart,
     managedProviderEnd,
     managedToolHubMcpStart,
-    managedToolHubMcpEnd
+    managedToolHubMcpEnd,
+    managedContextArchiveMcpStart,
+    managedContextArchiveMcpEnd
   ]);
   content = removeCodexProviderTable(content, values.providerId);
   content = removeCodexMcpServerTable(content, TOOL_HUB_MCP_SERVER_NAME);
+  content = removeCodexMcpServerTable(content, CONTEXT_ARCHIVE_MCP_SERVER_NAME);
   if (values.configFormat === "separate_profile_files") {
     content = removeCodexProfileTable(content, values.providerId);
   }
@@ -824,8 +955,9 @@ function buildCodexConfigToml(
     ""
   ].join("\n");
   const toolHubMcpBlock = buildCodexToolHubMcpBlock(values.toolHubMcp);
+  const contextArchiveMcpBlock = buildCodexContextArchiveMcpBlock(values.contextArchiveMcp);
 
-  return `${rootBlock}${trimLeadingBlankLines(cleanedRoot)}${restSource}${providerBlock}${toolHubMcpBlock}`.replace(/\n{4,}/g, "\n\n\n");
+  return `${rootBlock}${trimLeadingBlankLines(cleanedRoot)}${restSource}${providerBlock}${toolHubMcpBlock}${contextArchiveMcpBlock}`.replace(/\n{4,}/g, "\n\n\n");
 }
 
 function buildCodexToolHubMcpBlock(runtime: ToolHubMcpRuntimeConfig | undefined): string {
@@ -844,6 +976,25 @@ function buildCodexToolHubMcpBlock(runtime: ToolHubMcpRuntimeConfig | undefined)
     `[${serverTable}.env]`,
     ...Object.entries(runtime.env).map(([key, value]) => `${tomlKey(key)} = ${tomlString(value)}`),
     managedToolHubMcpEnd,
+    ""
+  ].join("\n");
+}
+
+function buildCodexContextArchiveMcpBlock(config: CodexContextArchiveMcpConfig | undefined): string {
+  if (!config) {
+    return "";
+  }
+
+  const serverTable = `mcp_servers.${tomlKey(CONTEXT_ARCHIVE_MCP_SERVER_NAME)}`;
+  return [
+    "",
+    managedContextArchiveMcpStart,
+    `[${serverTable}]`,
+    `url = ${tomlString(config.url)}`,
+    ...(Object.keys(config.headers).length > 0 ? [`http_headers = ${tomlInlineStringTable(config.headers)}`] : []),
+    `startup_timeout_sec = ${Math.max(1, Math.ceil(config.startupTimeoutMs / 1000))}`,
+    `tool_timeout_sec = ${Math.max(1, Math.ceil(config.requestTimeoutMs / 1000))}`,
+    managedContextArchiveMcpEnd,
     ""
   ].join("\n");
 }
@@ -967,7 +1118,7 @@ function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig,
   const remoteEndpoint = `${gatewayEndpoint(config)}/__ccr/remote`;
   const settingsDir = path.dirname(resolveClaudeCodeSettingsFile(profile));
   const envExports = Object.entries(profileEnv(profile))
-    .filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN")
+    .filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN" && !isClaudeCodeManagedModelEnvKey(key))
     .map(([key, value]) => `export ${key}=${shellQuote(value)}`);
   const botEnvExports = shellBotGatewayEnvExports(config, profile);
   return [
@@ -999,7 +1150,7 @@ function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, r
   const remoteEndpoint = `${gatewayEndpoint(config)}/__ccr/remote`;
   const settingsDir = path.dirname(resolveClaudeCodeSettingsFile(profile));
   const envExports = Object.entries(profileEnv(profile))
-    .filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN")
+    .filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN" && !isClaudeCodeManagedModelEnvKey(key))
     .map(([key, value]) => cmdSetLine(key, value));
   const botEnvExports = cmdBotGatewayEnvExports(config, profile);
   return [
@@ -1090,6 +1241,75 @@ function isOpenCodeManagedEnvKey(key: string): boolean {
     key === "OPENCODE_CLIENT" ||
     key === "OPENCODE_CONFIG" ||
     key === "OPENCODE_CONFIG_CONTENT" ||
+    key === "CCR_PROFILE_SURFACE";
+}
+
+function writeKiloWrapper(
+  profile: ProfileConfig,
+  configFile: string,
+  inlineConfig: string
+): { changed: boolean; file: string } {
+  const binDir = path.join(CONFIGDIR, "bin");
+  mkdirSync(binDir, { mode: privateDirMode, recursive: true });
+  const file = kiloWrapperPath(profile);
+  const content = process.platform === "win32"
+    ? kiloWrapperCmdScript(profile, configFile, inlineConfig)
+    : kiloWrapperShellScript(profile, configFile, inlineConfig);
+  const writeResult = writeGeneratedFileIfChanged(file, content, { mode: privateExecutableMode });
+  return { changed: writeResult.changed, file };
+}
+
+function kiloWrapperPath(profile: ProfileConfig): string {
+  return path.join(CONFIGDIR, "bin", kiloWrapperFilename(profile));
+}
+
+function kiloWrapperFilename(profile: ProfileConfig): string {
+  const slug = sanitizeProfilePathSegment(profile.id || profile.name || profile.agent).toLowerCase() || "kilo";
+  return process.platform === "win32"
+    ? `ccr-kilo-wrapper-${slug}.cmd`
+    : `ccr-kilo-wrapper-${slug}`;
+}
+
+function kiloWrapperShellScript(profile: ProfileConfig, configFile: string, inlineConfig: string): string {
+  const realKilo = profile.env?.CCR_KILO_BIN?.trim() || profile.env?.KILO_BIN?.trim() || "kilo";
+  const envExports = Object.entries(profileEnv(profile))
+    .filter(([key]) => !isKiloManagedEnvKey(key))
+    .map(([key, value]) => `export ${key}=${shellQuote(value)}`);
+  return [
+    "#!/bin/sh",
+    ...envExports,
+    `export KILO_CONFIG=${shellQuote(configFile)}`,
+    `export KILO_CONFIG_CONTENT=${shellQuote(inlineConfig)}`,
+    "export CCR_PROFILE_SURFACE=cli",
+    `exec ${shellQuote(realKilo)} "$@"`,
+    ""
+  ].join("\n");
+}
+
+function kiloWrapperCmdScript(profile: ProfileConfig, configFile: string, inlineConfig: string): string {
+  const realKilo = profile.env?.CCR_KILO_BIN?.trim() || profile.env?.KILO_BIN?.trim() || "kilo";
+  const envExports = Object.entries(profileEnv(profile))
+    .filter(([key]) => !isKiloManagedEnvKey(key))
+    .map(([key, value]) => cmdSetLine(key, value));
+  return [
+    "@echo off",
+    ...envExports,
+    cmdSetLine("KILO_CONFIG", configFile),
+    cmdSetLine("KILO_CONFIG_CONTENT", inlineConfig),
+    cmdSetLine("CCR_PROFILE_SURFACE", "cli"),
+    `${cmdQuote(realKilo)} %*`,
+    "exit /b %ERRORLEVEL%",
+    ""
+  ].join("\r\n");
+}
+
+function isKiloManagedEnvKey(key: string): boolean {
+  return key === "CCR_KILO_BIN" ||
+    key === "KILO_BIN" ||
+    key === "KILO_CONFIG" ||
+    key === "KILO_CONFIG_CONTENT" ||
+    key === "KILO_CONFIG_DIR" ||
+    key === "KILO_PROVIDER" ||
     key === "CCR_PROFILE_SURFACE";
 }
 
@@ -1185,6 +1405,90 @@ function isKimiManagedEnvKey(key: string): boolean {
     key === "CCR_KIMI_SOURCE_HOME" ||
     key === "KIMI_CODE_HOME" ||
     kimiSingleModelEnvNames.some((name) => key === name) ||
+    key === "CCR_PROFILE_SURFACE";
+}
+
+function writePiWrapper(
+  config: AppConfig,
+  profile: ProfileConfig,
+  token: string,
+  defaultModel: string
+): { changed: boolean; configFile: string; file: string } {
+  const binDir = path.join(CONFIGDIR, "bin");
+  mkdirSync(binDir, { mode: privateDirMode, recursive: true });
+  const configResult = writePiGatewayConfig(CONFIGDIR, config, profile, token, defaultModel);
+  const file = piWrapperPath(profile);
+  const content = process.platform === "win32"
+    ? piWrapperCmdScript(config, profile, configResult)
+    : piWrapperShellScript(config, profile, configResult);
+  const writeResult = writeGeneratedFileIfChanged(file, content, { mode: privateExecutableMode });
+  return {
+    changed: configResult.changed || writeResult.changed,
+    configFile: configResult.file,
+    file
+  };
+}
+
+function piWrapperPath(profile: ProfileConfig): string {
+  return path.join(CONFIGDIR, "bin", piWrapperFilename(profile));
+}
+
+function piWrapperShellScript(
+  config: AppConfig,
+  profile: ProfileConfig,
+  piConfig: { model: string; profileHome: string; providerId: string; sessionDir: string }
+): string {
+  const realPi = profile.env?.CCR_PI_BIN?.trim() || profile.env?.PI_BIN?.trim() || "pi";
+  const envExports = Object.entries(profileEnv(profile))
+    .filter(([key]) => !isPiManagedEnvKey(key))
+    .map(([key, value]) => `export ${key}=${shellQuote(value)}`);
+  const noProxyHosts = grokGatewayNoProxyHosts(config);
+  return [
+    "#!/bin/sh",
+    ...envExports,
+    `if [ -n "\${NO_PROXY:-}" ]; then NO_PROXY="$NO_PROXY,${noProxyHosts}"; else NO_PROXY=${shellQuote(noProxyHosts)}; fi`,
+    `if [ -n "\${no_proxy:-}" ]; then no_proxy="$no_proxy,${noProxyHosts}"; else no_proxy=${shellQuote(noProxyHosts)}; fi`,
+    "export NO_PROXY no_proxy",
+    `export PI_CODING_AGENT_DIR=${shellQuote(piConfig.profileHome)}`,
+    `export PI_CODING_AGENT_SESSION_DIR=${shellQuote(piConfig.sessionDir)}`,
+    `export PI_SKIP_VERSION_CHECK=${shellQuote(profile.env?.PI_SKIP_VERSION_CHECK?.trim() || "1")}`,
+    "export CCR_PROFILE_SURFACE=cli",
+    `exec ${shellQuote(realPi)} --provider ${shellQuote(piConfig.providerId)} --model ${shellQuote(piConfig.model)} "$@"`,
+    ""
+  ].join("\n");
+}
+
+function piWrapperCmdScript(
+  config: AppConfig,
+  profile: ProfileConfig,
+  piConfig: { model: string; profileHome: string; providerId: string; sessionDir: string }
+): string {
+  const realPi = profile.env?.CCR_PI_BIN?.trim() || profile.env?.PI_BIN?.trim() || "pi";
+  const envExports = Object.entries(profileEnv(profile))
+    .filter(([key]) => !isPiManagedEnvKey(key))
+    .map(([key, value]) => cmdSetLine(key, value));
+  const noProxyHosts = grokGatewayNoProxyHosts(config);
+  return [
+    "@echo off",
+    ...envExports,
+    `set "NO_PROXY=%NO_PROXY%,${cmdValue(noProxyHosts)}"`,
+    `set "no_proxy=%no_proxy%,${cmdValue(noProxyHosts)}"`,
+    cmdSetLine("PI_CODING_AGENT_DIR", piConfig.profileHome),
+    cmdSetLine("PI_CODING_AGENT_SESSION_DIR", piConfig.sessionDir),
+    cmdSetLine("PI_SKIP_VERSION_CHECK", profile.env?.PI_SKIP_VERSION_CHECK?.trim() || "1"),
+    cmdSetLine("CCR_PROFILE_SURFACE", "cli"),
+    `${cmdQuote(realPi)} --provider ${cmdQuote(piConfig.providerId)} --model ${cmdQuote(piConfig.model)} %*`,
+    "exit /b %ERRORLEVEL%",
+    ""
+  ].join("\r\n");
+}
+
+function isPiManagedEnvKey(key: string): boolean {
+  return key === "CCR_PI_BIN" ||
+    key === "PI_BIN" ||
+    key === "PI_CODING_AGENT_DIR" ||
+    key === "PI_CODING_AGENT_SESSION_DIR" ||
+    key === "PI_SKIP_VERSION_CHECK" ||
     key === "CCR_PROFILE_SURFACE";
 }
 
@@ -1313,6 +1617,7 @@ function kimiProfileModelMetadata(config: AppConfig, selector: string): {
 } {
   const attribution = resolveUsageModelAttribution(config, selector);
   const provider = config.Providers.find((candidate) =>
+    isGatewayProviderEnabled(candidate) &&
     candidate.name.toLowerCase() === attribution.provider?.toLowerCase()
   );
   const model = attribution.model?.trim() || selector;
@@ -1337,6 +1642,7 @@ function kimiProfileModelMetadata(config: AppConfig, selector: string): {
   const reasoning = kimiProfileReasoningMetadata(metadata, catalogEntries[0]);
 
   const logicalProvider = config.Providers.find((candidate) =>
+    isGatewayProviderEnabled(candidate) &&
     selector.toLowerCase().startsWith(`${candidate.name}/`.toLowerCase())
   );
   if (!logicalProvider) {
@@ -1679,16 +1985,7 @@ function claudeCodeRuntimeEnv(config: AppConfig, profile: ProfileConfig, setting
     CLAUDE_AGENT_API_BASE_URL: endpoint,
     CLAUDE_CONFIG_DIR: settingsDir
   };
-  const model = normalizeClientModel(profile.model);
-  if (model) {
-    env.ANTHROPIC_MODEL = model;
-    env.CCR_CLAUDE_CODE_MODEL = model;
-    env.CODEXL_CLAUDE_CODE_MODEL = model;
-  }
-  const smallFastModel = normalizeClientModel(profile.smallFastModel);
-  if (smallFastModel) {
-    env.ANTHROPIC_SMALL_FAST_MODEL = smallFastModel;
-  }
+  Object.assign(env, claudeCodeModelEnv(profile));
   return env;
 }
 
@@ -2032,7 +2329,11 @@ function removeCodexMcpServerTable(source: string, serverName: string): string {
     `[mcp_servers.${serverName}]`,
     `[mcp_servers.${tomlQuotedKey(serverName)}]`,
     `[mcp_servers.${serverName}.env]`,
-    `[mcp_servers.${tomlQuotedKey(serverName)}.env]`
+    `[mcp_servers.${tomlQuotedKey(serverName)}.env]`,
+    `[mcp_servers.${serverName}.http_headers]`,
+    `[mcp_servers.${tomlQuotedKey(serverName)}.http_headers]`,
+    `[mcp_servers.${serverName}.env_http_headers]`,
+    `[mcp_servers.${tomlQuotedKey(serverName)}.env_http_headers]`
   ]);
   const kept: string[] = [];
   for (let index = 0; index < lines.length; index += 1) {
@@ -2118,6 +2419,86 @@ function readJsonObject(file: string): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+function readClaudeCodeSettingsObject(file: string): Record<string, unknown> {
+  if (!existsSync(file)) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as unknown;
+    if (isRecord(parsed)) {
+      return parsed;
+    }
+    throw new Error("root value is not an object");
+  } catch (error) {
+    throw new Error(`Claude Code settings file is not valid JSON: ${file}. ${formatError(error)}`);
+  }
+}
+
+function writeClaudeCodeSettingsIfManagedChanged(
+  file: string,
+  settings: Record<string, unknown>,
+  nextSettings: Record<string, unknown>,
+  managedEnvKeys: Set<string>
+): { backupFile?: string; changed: boolean } {
+  if (!claudeCodeSettingsManagedFieldsChanged(settings, nextSettings, managedEnvKeys)) {
+    chmodFileIfRequested(file, privateFileMode);
+    return { changed: false };
+  }
+  return writeFileWithBackup(file, `${JSON.stringify(nextSettings, null, 2)}\n`, { mode: privateFileMode });
+}
+
+function claudeCodeSettingsManagedFieldsChanged(
+  settings: Record<string, unknown>,
+  nextSettings: Record<string, unknown>,
+  managedEnvKeys: Set<string>
+): boolean {
+  if (settings.apiKeyHelper !== nextSettings.apiKeyHelper) {
+    return true;
+  }
+
+  const settingsEnv = isRecord(settings.env) ? settings.env : {};
+  const nextEnv = isRecord(nextSettings.env) ? nextSettings.env : {};
+  const envKeys = new Set(managedEnvKeys);
+  for (const key of [...Object.keys(settingsEnv), ...Object.keys(nextEnv)]) {
+    if (isManagedClaudeCodeSettingsEnvKey(key)) {
+      envKeys.add(key);
+    }
+  }
+
+  for (const key of envKeys) {
+    if (settingsEnv[key] !== nextEnv[key]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function claudeCodeManagedSettingsEnvKeys(
+  profileEnvValues: Record<string, string>,
+  mcpConfigEnv: Record<string, string>,
+  timezoneEnv: Record<string, string>
+): Set<string> {
+  return new Set([
+    ...claudeCodeGatewayEnvKeys,
+    ...claudeCodeRemovedAuthEnvKeys,
+    ...Object.keys(profileEnvValues),
+    ...Object.keys(mcpConfigEnv),
+    ...Object.keys(timezoneEnv),
+    CLAUDE_CODE_MCP_CONFIG_ENV,
+    CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV
+  ]);
+}
+
+function isManagedClaudeCodeSettingsEnvKey(key: string): boolean {
+  return (claudeCodeGatewayEnvKeys as readonly string[]).includes(key) ||
+    (claudeCodeRemovedAuthEnvKeys as readonly string[]).includes(key) ||
+    key === CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV ||
+    key === CLAUDE_CODE_MCP_CONFIG_ENV ||
+    key === CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV ||
+    isClaudeCodeManagedModelEnvKey(key) ||
+    isBotGatewayEnvKey(key);
 }
 
 function writeFileWithBackup(
@@ -2206,6 +2587,29 @@ function cleanupInactiveOpenCodeWrappers(profiles: ProfileConfig[]): number {
   return removed;
 }
 
+function cleanupInactiveKiloWrappers(profiles: ProfileConfig[]): number {
+  const binDir = path.join(CONFIGDIR, "bin");
+  const activeFiles = new Set(profiles
+    .filter((profile) => profile.agent === "kilo" && profile.enabled)
+    .map(kiloWrapperFilename));
+  let entries: string[];
+  try {
+    entries = readdirSync(binDir);
+  } catch {
+    return 0;
+  }
+
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.startsWith("ccr-kilo-wrapper-") || activeFiles.has(entry)) {
+      continue;
+    }
+    rmSync(path.join(binDir, entry), { force: true });
+    removed += 1;
+  }
+  return removed;
+}
+
 function generatedBinBackupBaseName(entry: string): string | undefined {
   const backupMarker = ".ccr-backup-";
   const backupIndex = entry.indexOf(backupMarker);
@@ -2231,7 +2635,9 @@ function isManagedGeneratedBinFile(fileName: string): boolean {
     normalized.startsWith("ccr-claude-code-wrapper-") ||
     normalized.startsWith("ccr-grok-cli-wrapper-") ||
     normalized.startsWith("ccr-kimi-cli-wrapper-") ||
+    normalized.startsWith("ccr-pi-wrapper-") ||
     normalized.startsWith("ccr-opencode-wrapper-") ||
+    normalized.startsWith("ccr-kilo-wrapper-") ||
     normalized.startsWith("ccr-codex-cli-stdio-");
 }
 
@@ -2270,6 +2676,12 @@ function disabledProfileStatus(profile: ProfileConfig): ProfileClientApplyStatus
   if (profile.agent === "kimi") {
     return disabledStatus("kimi", kimiWrapperPath(profile), "Kimi CLI profile is disabled.");
   }
+  if (profile.agent === "pi") {
+    return disabledStatus("pi", piWrapperPath(profile), "Pi profile is disabled.");
+  }
+  if (profile.agent === "claude-design") {
+    return disabledStatus("claude-design", CONFIGDIR, "Claude Design profile is disabled.");
+  }
   if (profile.agent === "opencode") {
     const providerId = openCodeProviderId(profile);
     return restoreDisabledGlobalProfile(
@@ -2277,6 +2689,15 @@ function disabledProfileStatus(profile: ProfileConfig): ProfileClientApplyStatus
       resolveOpenCodeConfigFile(CONFIGDIR, profile),
       "OpenCode profile is disabled.",
       (content) => isManagedOpenCodeConfigContent(content, providerId)
+    );
+  }
+  if (profile.agent === "kilo") {
+    const providerId = kiloProviderId(profile);
+    return restoreDisabledGlobalProfile(
+      profile,
+      resolveKiloConfigFile(CONFIGDIR, profile),
+      "Kilo CLI profile is disabled.",
+      (content) => isManagedKiloConfigContent(content, providerId)
     );
   }
   const providerId = sanitizeCodexProviderId(profile.providerId || "") || "claude-code-router";
@@ -2337,6 +2758,22 @@ export function restoreInactiveGlobalProfileConfigs(profiles: ProfileConfig[]): 
       }
     }
   }
+  const kiloProfiles = profiles.filter((profile) => profile.agent === "kilo");
+  if (kiloProfiles.length > 0 && !kiloProfiles.some((profile) => profile.enabled && isGlobalProfile(profile))) {
+    const providerIds = [...new Set([
+      "claude-code-router",
+      ...kiloProfiles.map(kiloProviderId)
+    ])];
+    for (const file of uniqueResolvedPaths(kiloProfiles.map(globalKiloConfigCandidate))) {
+      const restoreResult = restoreGlobalConfigFile(file, {
+        isManagedContent: (content) => providerIds.some((providerId) => isManagedKiloConfigContent(content, providerId)),
+        mode: privateFileMode
+      });
+      if (restoreResult.changed || restoreResult.missingBackup) {
+        statuses.push(inactiveGlobalCleanupStatus("kilo", file, restoreResult));
+      }
+    }
+  }
   const zcodeProfiles = profiles.filter((profile) => profile.agent === "zcode");
   if (zcodeProfiles.length > 0 && !zcodeProfiles.some((profile) => profile.enabled && isGlobalProfile(profile))) {
     const providerIds = [...new Set([
@@ -2378,6 +2815,10 @@ function globalOpenCodeConfigCandidate(profile: ProfileConfig): string {
   return resolveOpenCodeConfigFile(CONFIGDIR, { ...profile, scope: "global" });
 }
 
+function globalKiloConfigCandidate(profile: ProfileConfig): string {
+  return resolveKiloConfigFile(CONFIGDIR, { ...profile, scope: "global" });
+}
+
 export function restoreGlobalProfileConfigsOnExit(
   profiles: ProfileConfig[],
   options: { manageMarker?: boolean } = {}
@@ -2404,7 +2845,8 @@ function synchronizeGlobalProfileTakeovers(
   const previous = ownedGlobalProfileTakeovers ?? readGlobalProfileTakeoverMarker();
   const preserved = previous.filter((record) => excludedAgents.has(record.agent));
   const restorable = previous.filter((record) => !excludedAgents.has(record.agent));
-  if (ownedGlobalProfileTakeovers !== undefined && JSON.stringify(restorable) === JSON.stringify(next)) {
+  if (JSON.stringify(restorable) === JSON.stringify(next)) {
+    storeGlobalProfileTakeoverRecords(dedupeGlobalProfileTakeovers([...preserved, ...next]));
     return [];
   }
 
@@ -2412,13 +2854,21 @@ function synchronizeGlobalProfileTakeovers(
   const markerRecords = statuses.every((status) => status.ok)
     ? dedupeGlobalProfileTakeovers([...preserved, ...next])
     : dedupeGlobalProfileTakeovers([...preserved, ...restorable, ...next]);
-  if (markerRecords.length > 0) {
-    writeGlobalProfileTakeoverMarker(markerRecords);
+  storeGlobalProfileTakeoverRecords(markerRecords);
+  return statuses;
+}
+
+function storeGlobalProfileTakeoverRecords(records: GlobalProfileTakeoverRecord[]): void {
+  const previous = ownedGlobalProfileTakeovers;
+  ownedGlobalProfileTakeovers = records;
+  if (JSON.stringify(previous) === JSON.stringify(records)) {
+    return;
+  }
+  if (records.length > 0) {
+    writeGlobalProfileTakeoverMarker(records);
   } else {
     clearGlobalProfileTakeoverMarker();
   }
-  ownedGlobalProfileTakeovers = markerRecords;
-  return statuses;
 }
 
 function globalProfileTakeoverRecords(profiles: ProfileConfig[]): GlobalProfileTakeoverRecord[] {
@@ -2466,7 +2916,7 @@ function readGlobalProfileTakeoverMarker(): GlobalProfileTakeoverRecord[] {
     }
     return parsed.profiles.filter((value): value is GlobalProfileTakeoverRecord =>
       isRecord(value) &&
-      (value.agent === "claude-code" || value.agent === "codex" || value.agent === "opencode" || value.agent === "zcode") &&
+      (value.agent === "claude-code" || value.agent === "codex" || value.agent === "opencode" || value.agent === "kilo" || value.agent === "zcode") &&
       typeof value.id === "string" &&
       typeof value.name === "string"
     );
@@ -2736,22 +3186,6 @@ function unavailableModelStatus(profile: ProfileConfig, file: string): ProfileCl
   };
 }
 
-function disabledProfileMessage(profile: ProfileConfig): string {
-  if (profile.agent === "claude-code") {
-    return "Claude Code profile is disabled.";
-  }
-  if (profile.agent === "grok") {
-    return "Grok CLI profile is disabled.";
-  }
-  if (profile.agent === "kimi") {
-    return "Kimi CLI profile is disabled.";
-  }
-  if (profile.agent === "opencode") {
-    return "OpenCode profile is disabled.";
-  }
-  return `${codexCompatibleClientName(profile.agent)} profile is disabled.`;
-}
-
 function isGlobalProfile(profile: ProfileConfig): boolean {
   return normalizeProfileScope(profile.scope) === "global";
 }
@@ -2759,6 +3193,9 @@ function isGlobalProfile(profile: ProfileConfig): boolean {
 function isManagedClaudeCodeSettingsContent(content: string): boolean {
   const settings = parseJsonContent(content);
   if (!settings) {
+    return false;
+  }
+  if (!isPureManagedClaudeCodeSettings(settings)) {
     return false;
   }
   const apiKeyHelper = typeof settings.apiKeyHelper === "string" ? settings.apiKeyHelper : "";
@@ -2769,6 +3206,23 @@ function isManagedClaudeCodeSettingsContent(content: string): boolean {
   return typeof env.ANTHROPIC_BASE_URL === "string" &&
     typeof env.ANTHROPIC_API_BASE_URL === "string" &&
     typeof env.CLAUDE_AGENT_API_BASE_URL === "string";
+}
+
+function isPureManagedClaudeCodeSettings(settings: Record<string, unknown>): boolean {
+  const rootKeys = Object.keys(settings);
+  if (rootKeys.some((key) => key !== "apiKeyHelper" && key !== "env")) {
+    return false;
+  }
+  if ("apiKeyHelper" in settings && typeof settings.apiKeyHelper !== "string") {
+    return false;
+  }
+  if (!("env" in settings)) {
+    return true;
+  }
+  if (!isRecord(settings.env)) {
+    return false;
+  }
+  return Object.keys(settings.env).every((key) => isManagedClaudeCodeSettingsEnvKey(key));
 }
 
 function isManagedCodexConfigContent(content: string, providerId: string): boolean {
@@ -2817,7 +3271,8 @@ function gatewayEndpoint(config: AppConfig): string {
 }
 
 function defaultClientModel(config: AppConfig): string {
-  const preferred = config.Providers.find((provider) => provider.name === config.preferredProvider) ?? config.Providers[0];
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const preferred = enabledProviders.find((provider) => provider.name === config.preferredProvider) ?? enabledProviders[0];
   if (preferred?.name && preferred.models[0]) {
     return `${preferred.name}/${preferred.models[0]}`;
   }
@@ -2833,10 +3288,11 @@ function toolHubResolverModel(config: AppConfig): string {
     return model;
   }
   const baseUrl = normalizeUrlForMatch(config.toolHub.llm.baseUrl);
-  const provider = config.Providers.find((candidate) =>
+  const enabledProviders = config.Providers.filter(isGatewayProviderEnabled);
+  const provider = enabledProviders.find((candidate) =>
     candidate.models.includes(model) &&
     (!baseUrl || normalizeUrlForMatch(providerBaseUrl(candidate)) === baseUrl)
-  ) ?? config.Providers.find((candidate) => candidate.models.includes(model));
+  ) ?? enabledProviders.find((candidate) => candidate.models.includes(model));
   return provider?.name ? `${provider.name}/${model}` : model;
 }
 
@@ -2904,11 +3360,28 @@ function codexCompatibleClientName(agent: ProfileConfig["agent"]): string {
   if (agent === "opencode") {
     return "OpenCode";
   }
+  if (agent === "kilo") {
+    return "Kilo CLI";
+  }
+  if (agent === "pi") {
+    return "Pi";
+  }
+  if (agent === "claude-design") {
+    return "Claude Design";
+  }
   return agent === "zcode" ? "ZCode" : "Codex";
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "~/.zcode/cli/config.json" : "~/.codex/config.toml";
+  return agent === "zcode"
+    ? "~/.zcode/cli/config.json"
+    : agent === "kilo"
+      ? "~/.config/kilo/kilo.jsonc"
+    : agent === "pi"
+      ? "~/.pi/agent"
+      : agent === "claude-design"
+        ? "~/.claude-code-router/claude-design"
+        : "~/.codex/config.toml";
 }
 
 function codexConfigSubdir(agent: ProfileConfig["agent"]): string {
@@ -2962,8 +3435,11 @@ function tomlStringArray(values: string[]): string {
   return `[${values.map((value) => tomlString(value)).join(", ")}]`;
 }
 
-function tomlStringContent(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+function tomlInlineStringTable(values: Record<string, string>): string {
+  return `{ ${Object.entries(values)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${tomlKey(key)} = ${tomlString(value)}`)
+    .join(", ")} }`;
 }
 
 function shellQuote(value: string): string {

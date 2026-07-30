@@ -5,7 +5,6 @@ import { parseProviderManifestPayload } from "@ccr/core/contracts/deep-link";
 import { findProviderPresetByBaseUrl, providerEndpointCanReceiveProviderApiKey, providerIdentitySafetyIssue } from "@ccr/core/providers/presets/index";
 import { providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
 import type {
-  GatewayProviderConfig,
   ProviderAccountConnectorConfig,
   ProviderAccountHttpJsonConnectorConfig,
   ProviderAccountStandardConnectorConfig,

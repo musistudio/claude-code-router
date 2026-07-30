@@ -630,14 +630,14 @@ const usageTotalsSelect = `
             COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
             COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens,
             COALESCE(SUM(CASE
-              WHEN total_tokens > 0 THEN total_tokens
+              WHEN total_tokens > input_tokens + output_tokens + cache_read_tokens + cache_write_tokens THEN total_tokens
               ELSE input_tokens + output_tokens + cache_read_tokens + cache_write_tokens
             END), 0) AS computed_total_tokens,
             COALESCE(SUM(COALESCE(cost_usd, 0)), 0) AS cost_usd,
             COALESCE(SUM(duration_ms), 0) AS duration_ms,
             COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END), 0) AS success_count,
             COALESCE(SUM(CASE
-              WHEN total_tokens - output_tokens > 0 THEN MAX(input_tokens, total_tokens - output_tokens)
+              WHEN total_tokens - output_tokens > input_tokens + cache_read_tokens + cache_write_tokens THEN total_tokens - output_tokens
               ELSE input_tokens + cache_read_tokens + cache_write_tokens
             END), 0) AS prompt_tokens
 `;
@@ -888,100 +888,6 @@ function buildBuckets(
   });
 }
 
-function buildModelRows(events: StoredUsageEvent[]): UsageComparisonRow[] {
-  const grouped = new Map<string, StoredUsageEvent[]>();
-  for (const event of events) {
-    const key = `${event.provider}::${event.model}`;
-    const bucket = grouped.get(key) ?? [];
-    bucket.push(event);
-    grouped.set(key, bucket);
-  }
-
-  const rows = Array.from(grouped.entries())
-    .map(([key, groupedEvents]) => {
-      const latest = groupedEvents.at(-1);
-      return {
-        ...buildTotals(groupedEvents),
-        caption: latest?.provider || "unknown",
-        credentialId: latest?.credentialId || undefined,
-        key,
-        label: latest?.model || "unknown",
-        maxShare: 0,
-        model: latest?.model,
-        provider: latest?.provider
-      };
-    })
-    .sort((a, b) => b.totalTokens - a.totalTokens || b.requestCount - a.requestCount)
-    .slice(0, 8);
-
-  return applyMaxShare(rows, (row) => row.totalTokens || row.requestCount);
-}
-
-function buildClientModelRows(events: StoredUsageEvent[]): UsageComparisonRow[] {
-  const grouped = new Map<string, StoredUsageEvent[]>();
-  for (const event of events) {
-    const key = `${event.client}::${event.provider}::${event.credentialId}::${event.model}`;
-    const bucket = grouped.get(key) ?? [];
-    bucket.push(event);
-    grouped.set(key, bucket);
-  }
-
-  const rows = Array.from(grouped.entries())
-    .map(([key, groupedEvents]) => {
-      const latest = groupedEvents.at(-1);
-      const model = latest?.model || "unknown";
-      const provider = latest?.provider || "unknown";
-      const credentialId = latest?.credentialId || "";
-      return {
-        ...buildTotals(groupedEvents),
-        caption: credentialId ? `${provider} / ${credentialId} / ${model}` : `${provider} / ${model}`,
-        client: latest?.client,
-        credentialId: credentialId || undefined,
-        key,
-        label: latest?.client || "unknown",
-        maxShare: 0,
-        model,
-        provider
-      };
-    })
-    .sort(compareUsageRows)
-    .slice(0, 25);
-
-  return applyMaxShare(rows, (row) => row.totalTokens || row.requestCount);
-}
-
-function buildProviderModelRows(events: StoredUsageEvent[]): UsageComparisonRow[] {
-  const grouped = new Map<string, StoredUsageEvent[]>();
-  for (const event of events) {
-    const key = `${event.provider}::${event.credentialId}::${event.model}`;
-    const bucket = grouped.get(key) ?? [];
-    bucket.push(event);
-    grouped.set(key, bucket);
-  }
-
-  const rows = Array.from(grouped.entries())
-    .map(([key, groupedEvents]) => {
-      const latest = groupedEvents.at(-1);
-      const model = latest?.model || "unknown";
-      const provider = latest?.provider || "unknown";
-      const credentialId = latest?.credentialId || "";
-      return {
-        ...buildTotals(groupedEvents),
-        caption: credentialId ? `${credentialId} / ${model}` : model,
-        credentialId: credentialId || undefined,
-        key,
-        label: provider,
-        maxShare: 0,
-        model,
-        provider
-      };
-    })
-    .sort(compareUsageRows)
-    .slice(0, 25);
-
-  return applyMaxShare(rows, (row) => row.totalTokens || row.requestCount);
-}
-
 function buildRecentRequestRows(events: StoredUsageEvent[]): UsageComparisonRow[] {
   const recent = events.slice(-10).reverse();
   const rows = recent.map((event) => ({
@@ -998,10 +904,6 @@ function buildRecentRequestRows(events: StoredUsageEvent[]): UsageComparisonRow[
   }));
 
   return applyMaxShare(rows, (row) => row.totalTokens || row.avgDurationMs || 1);
-}
-
-function compareUsageRows(a: UsageComparisonRow, b: UsageComparisonRow): number {
-  return b.totalTokens - a.totalTokens || b.requestCount - a.requestCount || a.label.localeCompare(b.label);
 }
 
 function applyMaxShare<T extends UsageComparisonRow>(
@@ -1025,7 +927,7 @@ function buildTotals(events: StoredUsageEvent[]): UsageTotals {
   const outputTokens = sum(events, (event) => event.outputTokens);
   const cacheTokens = sum(events, (event) => event.cacheReadTokens);
   const costUsd = sum(events, (event) => event.costUsd);
-  const totalTokens = sum(events, (event) => event.totalTokens || event.inputTokens + event.outputTokens + event.cacheReadTokens + event.cacheWriteTokens);
+  const totalTokens = sum(events, totalTokenCount);
   const promptTokens = sum(events, promptTokenCount);
   const successfulRequests = events.filter((event) => event.statusCode >= 200 && event.statusCode < 400).length;
   const errorCount = requestCount - successfulRequests;
@@ -1047,10 +949,14 @@ function buildTotals(events: StoredUsageEvent[]): UsageTotals {
 function promptTokenCount(event: StoredUsageEvent): number {
   const cacheTokens = event.cacheReadTokens + event.cacheWriteTokens;
   const promptTokensFromTotal = event.totalTokens - event.outputTokens;
-  if (promptTokensFromTotal > 0) {
-    return Math.max(event.inputTokens, promptTokensFromTotal);
-  }
-  return event.inputTokens + cacheTokens;
+  return Math.max(event.inputTokens + cacheTokens, promptTokensFromTotal);
+}
+
+function totalTokenCount(event: StoredUsageEvent): number {
+  return Math.max(
+    event.totalTokens,
+    event.inputTokens + event.outputTokens + event.cacheReadTokens + event.cacheWriteTokens
+  );
 }
 
 function extractUsageFromBillingHeaders(headers: Headers): UsageNumbers | undefined {

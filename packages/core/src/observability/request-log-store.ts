@@ -260,6 +260,7 @@ type AgentLogDetails = {
 type AgentTextSignalOptions = {
   allowStandaloneCodex?: boolean;
   allowStandaloneGrok?: boolean;
+  allowStandaloneKilo?: boolean;
   allowStandaloneKimi?: boolean;
   allowStandaloneOpenCode?: boolean;
 };
@@ -1537,6 +1538,7 @@ function inferAgentKind(
   const bodyAgent = inferAgentFromText(haystack, {
     allowStandaloneCodex: false,
     allowStandaloneGrok: false,
+    allowStandaloneKilo: false,
     allowStandaloneKimi: false,
     allowStandaloneOpenCode: false
   });
@@ -1584,6 +1586,7 @@ function inferAgentFromText(value: string, options: AgentTextSignalOptions = {})
   const normalized = value.toLowerCase();
   const allowStandaloneCodex = options.allowStandaloneCodex ?? true;
   const allowStandaloneGrok = options.allowStandaloneGrok ?? true;
+  const allowStandaloneKilo = options.allowStandaloneKilo ?? true;
   const allowStandaloneKimi = options.allowStandaloneKimi ?? true;
   const allowStandaloneOpenCode = options.allowStandaloneOpenCode ?? true;
   if (normalized.includes("claude design") || normalized.includes("claude-design") || normalized.includes("claude.ai/design")) {
@@ -1608,6 +1611,14 @@ function inferAgentFromText(value: string, options: AgentTextSignalOptions = {})
     return "opencode";
   }
   if (
+    normalized === "pi" ||
+    normalized.includes("pi-coding-agent") ||
+    normalized.includes("pi coding agent") ||
+    normalized.includes("pi_coding_agent")
+  ) {
+    return "pi";
+  }
+  if (
     normalized.includes("xai-grok-cli") ||
     (allowStandaloneGrok && (
       normalized.includes("grok-cli") ||
@@ -1627,6 +1638,18 @@ function inferAgentFromText(value: string, options: AgentTextSignalOptions = {})
     ))
   ) {
     return "kimi";
+  }
+  if (
+    normalized.includes("kilo-code-cli") ||
+    normalized.includes("kilo_code_cli") ||
+    normalized.includes("kilocode") ||
+    (allowStandaloneKilo && (
+      normalized.includes("kilo-cli") ||
+      normalized.includes("kilo cli") ||
+      /(^|[^a-z0-9])kilo([/_\s-]|$)/.test(normalized)
+    ))
+  ) {
+    return "kilo";
   }
   if (
     normalized.includes("openai-codex") ||
@@ -1704,8 +1727,18 @@ function readAgentSessionHeader(headers: Record<string, string | string[]>, agen
     "x-z-code-session-id",
     "z-code-session-id"
   ];
+  const piHeaders = [
+    "x-pi-session-id",
+    "pi-session-id",
+    "x-pi-conversation-id",
+    "pi-conversation-id",
+    "x-pi-thread-id",
+    "pi-thread-id"
+  ];
   const orderedHeaders = agent === "zcode"
     ? [...zcodeHeaders, ...codexHeaders, ...commonHeaders, ...claudeCodeHeaders]
+    : agent === "pi"
+      ? [...piHeaders, ...commonHeaders, ...codexHeaders, ...claudeCodeHeaders]
     : agent === "codex"
     ? [...codexHeaders, ...commonHeaders, ...claudeCodeHeaders]
     : agent === "claude-code"
@@ -2864,13 +2897,8 @@ function buildAgentAnalysisTotals(requests: AnalyzedAgentRequest[]): AgentAnalys
   const cacheWriteTokens = sum(requests, (request) => request.cacheWriteTokens);
   const cacheTokens = cacheReadTokens;
   const costUsd = sum(requests, (request) => request.costUsd ?? 0);
-  const totalTokens = sum(requests, (request) => request.totalTokens || request.inputTokens + request.outputTokens + request.cacheReadTokens + request.cacheWriteTokens);
-  const promptTokens = sum(requests, (request) => {
-    const promptTokensFromTotal = request.totalTokens - request.outputTokens;
-    return promptTokensFromTotal > 0
-      ? Math.max(request.inputTokens, promptTokensFromTotal)
-      : request.inputTokens + request.cacheReadTokens + request.cacheWriteTokens;
-  });
+  const totalTokens = sum(requests, agentAnalysisTotalTokenCount);
+  const promptTokens = sum(requests, agentAnalysisPromptTokenCount);
   const successfulRequests = requests.filter((request) => request.ok).length;
   const sessionCount = new Set(requests.map((request) => `${request.agent}:${request.sessionId}`)).size;
   const durations = requests.map((request) => request.durationMs).sort((a, b) => a - b);
@@ -2897,6 +2925,19 @@ function buildAgentAnalysisTotals(requests: AnalyzedAgentRequest[]): AgentAnalys
     toolCallCount: sum(requests, (request) => request.toolCallCount),
     totalTokens
   };
+}
+
+function agentAnalysisPromptTokenCount(request: AnalyzedAgentRequest): number {
+  const cacheTokens = request.cacheReadTokens + request.cacheWriteTokens;
+  const promptTokensFromTotal = request.totalTokens - request.outputTokens;
+  return Math.max(request.inputTokens + cacheTokens, promptTokensFromTotal);
+}
+
+function agentAnalysisTotalTokenCount(request: AnalyzedAgentRequest): number {
+  return Math.max(
+    request.totalTokens,
+    request.inputTokens + request.outputTokens + request.cacheReadTokens + request.cacheWriteTokens
+  );
 }
 
 function buildStatusCodeCounts(requests: AnalyzedAgentRequest[]): Array<{ count: number; statusCode: number }> {
@@ -3051,11 +3092,11 @@ function normalizeAgentAnalysisRange(value: UsageStatsRange | undefined): UsageS
 }
 
 function normalizeAgentFilter(value: AgentAnalysisFilter["agent"] | undefined): AgentKind | "all" {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "opencode" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
 }
 
 function normalizeSessionAgentFilter(value: AgentAnalysisFilter["sessionAgent"] | undefined): AgentKind | undefined {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "opencode" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
 }
 
 function agentDisplayName(agent: AgentKind): string {
@@ -3074,8 +3115,14 @@ function agentDisplayName(agent: AgentKind): string {
   if (agent === "kimi") {
     return "Kimi CLI";
   }
+  if (agent === "kilo") {
+    return "Kilo CLI";
+  }
   if (agent === "opencode") {
     return "OpenCode";
+  }
+  if (agent === "pi") {
+    return "Pi";
   }
   if (agent === "zcode") {
     return "ZCode";

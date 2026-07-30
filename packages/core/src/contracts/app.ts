@@ -1,11 +1,9 @@
 export type AppInfo = {
-  appConfigDbFile: string;
-  apiKeysDbFile: string;
   chatgptAppPath?: string;
+  configDbFile: string;
   configDir: string;
-  configFile: string;
   dataDir: string;
-  gatewayConfigFile: string;
+  desktop: boolean;
   launchAtLoginSupported: boolean;
   requestLogsDbFile: string;
   name: string;
@@ -173,15 +171,21 @@ export type GatewayProviderConfig = {
   extraHeaders?: unknown;
   icon?: string;
   id?: string;
+  enabled?: boolean;
   modelDescriptions?: Record<string, string>;
   modelDisplayNames?: Record<string, string>;
   modelMetadata?: Record<string, ProviderModelMetadata>;
   models: string[];
   name: string;
   provider?: string;
+  protocolDetectionMode?: "auto" | "manual";
   transformer?: unknown;
   type?: GatewayProviderProtocol | string;
 };
+
+export function isGatewayProviderEnabled(provider: Pick<GatewayProviderConfig, "enabled">): boolean {
+  return provider.enabled !== false;
+}
 
 export type ProviderReasoningLevel = {
   description: string;
@@ -211,6 +215,7 @@ export type ProviderModelMetadata = {
   defaultReasoningSummary?: string;
   effectiveContextWindowPercent?: number;
   maxContextWindow?: number;
+  maxOutputTokens?: number;
   pricing?: ProviderModelPricing;
   serviceTiers?: unknown[];
   supportedReasoningLevels?: ProviderReasoningLevel[];
@@ -683,6 +688,12 @@ export type RouterConfig = {
   rules: RouterRule[];
 };
 
+export type ProfileRoutingConfig = {
+  enabled: boolean;
+  enhancedRoute: boolean;
+  rules: RouterRule[];
+};
+
 export type RouteScriptDiagnostic = {
   code: string;
   column?: number;
@@ -722,7 +733,6 @@ export type GatewayRuntimeConfig = {
   coreHost: string;
   corePort: number;
   enabled: boolean;
-  generatedConfigFile: string;
   host: string;
   port: number;
 };
@@ -768,6 +778,90 @@ export type GatewayPluginAppConfig = {
   name: string;
   url: string;
 };
+
+export const CLAUDE_DESIGN_PLUGIN_ID = "claude-design";
+export const CLAUDE_SHIP_PLUGIN_ID = "claude-ship";
+export const DEFAULT_CLAUDE_DESIGN_APP: GatewayPluginAppConfig = {
+  description: "Open Claude Design in a dedicated CCR Electron window.",
+  icon: "palette",
+  id: "claude-design",
+  name: "Claude Design",
+  url: "https://claude-design.ccrdesk.top/design"
+};
+export const DEFAULT_CLAUDE_SHIP_APP: GatewayPluginAppConfig = {
+  description: "Open Claude Ship in a dedicated CCR Electron window.",
+  icon: "rocket",
+  id: "claude-ship",
+  name: "Claude Ship",
+  url: "https://claude.ai/claude-ship"
+};
+
+export const GATEWAY_PLUGIN_SURFACE_IDS = [
+  "apps",
+  "gateway",
+  "provider"
+] as const;
+
+export type GatewayPluginSurface = typeof GATEWAY_PLUGIN_SURFACE_IDS[number];
+
+export type GatewayPluginSurfacesConfig = Partial<Record<GatewayPluginSurface, boolean>>;
+
+export const GATEWAY_PLUGIN_PERMISSION_IDS = [
+  "trusted-code",
+  "apps",
+  "gateway-routes",
+  "proxy-routes",
+  "http-backends",
+  "provider-account-connectors",
+  "core-gateway-config",
+  "core-provider-plugins",
+  "virtual-model-profiles",
+  "sqlite-store",
+  "system-launcher"
+] as const;
+
+export type GatewayPluginPermission = typeof GATEWAY_PLUGIN_PERMISSION_IDS[number];
+
+export type KnownGatewayPluginDefaults = {
+  permissions: GatewayPluginPermission[];
+  surfaces: GatewayPluginSurfacesConfig;
+};
+
+export const KNOWN_GATEWAY_PLUGIN_DEFAULTS: Record<string, KnownGatewayPluginDefaults> = {
+  "claude-design": {
+    permissions: ["trusted-code", "apps", "gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
+    surfaces: { apps: true, gateway: true, provider: false }
+  },
+  "claude-ship": {
+    permissions: ["trusted-code", "apps", "gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
+    surfaces: { apps: true, gateway: true, provider: false }
+  },
+  "cursor-proxy": {
+    permissions: ["trusted-code", "gateway-routes", "proxy-routes", "http-backends"],
+    surfaces: { apps: false, gateway: true, provider: false }
+  }
+};
+
+export function knownGatewayPluginDefaultPermissions(id: string): GatewayPluginPermission[] | undefined {
+  const permissions = KNOWN_GATEWAY_PLUGIN_DEFAULTS[id.trim().toLowerCase()]?.permissions;
+  return permissions ? [...permissions] : undefined;
+}
+
+export function knownGatewayPluginDefaultSurfaces(id: string): GatewayPluginSurfacesConfig | undefined {
+  const surfaces = KNOWN_GATEWAY_PLUGIN_DEFAULTS[id.trim().toLowerCase()]?.surfaces;
+  return surfaces ? { ...surfaces } : undefined;
+}
+
+export function knownGatewayPluginDefaultApps(id: string): GatewayPluginAppConfig[] | undefined {
+  const pluginId = id.trim().toLowerCase();
+  if (pluginId === CLAUDE_DESIGN_PLUGIN_ID) {
+    return [{ ...DEFAULT_CLAUDE_DESIGN_APP }];
+  }
+  if (pluginId === CLAUDE_SHIP_PLUGIN_ID) {
+    return [{ ...DEFAULT_CLAUDE_SHIP_APP }];
+  }
+  return undefined;
+}
 
 export type GatewayMcpServerTransport = "stdio" | "streamable-http" | "sse";
 export type GatewayMcpStdioMessageMode = "content-length" | "newline-json";
@@ -816,6 +910,18 @@ export type ToolHubConfig = {
   mcpServers: GatewayMcpServerConfig[];
   maxTools: number;
   requestTimeoutMs: number;
+};
+
+export type ContextArchiveConfig = {
+  enabled: boolean;
+  maxBytes: number;
+  maxSnapshotBytes: number;
+  maxSnapshots: number;
+  mcpEnabled: boolean;
+  replayTimeoutMs: number;
+  retentionDays: number;
+  storagePath: string;
+  toolName: string;
 };
 
 export type MediaToolsConfig = {
@@ -992,7 +1098,7 @@ export function availableGatewayModelIds(config: Pick<AppConfig, "Providers" | "
 function availableGatewayBaseModelEntries(providers: GatewayProviderConfig[]): Array<{ modelName: string; providerName: string }> {
   return providers.flatMap((provider) => {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       return [];
     }
     return provider.models.flatMap((rawModel) => {
@@ -1039,15 +1145,20 @@ export type GatewayPluginConfig = {
   enabled?: boolean;
   id: string;
   module?: string;
+  permissions?: GatewayPluginPermission[];
   proxy?: {
     routes?: GatewayPluginProxyRouteConfig[];
   };
+  surfaces?: GatewayPluginSurfacesConfig;
 };
 
 export type PluginDependency = {
   id: string;
+  integrity?: string;
   modulePath?: string;
   name?: string;
+  permissions?: GatewayPluginPermission[];
+  surfaces?: GatewayPluginSurfacesConfig;
 };
 
 export type PluginDirectorySelection = {
@@ -1057,6 +1168,8 @@ export type PluginDirectorySelection = {
   id: string;
   modulePath: string;
   name?: string;
+  permissions?: GatewayPluginPermission[];
+  surfaces?: GatewayPluginSurfacesConfig;
 };
 
 export type PluginMarketplaceEntry = {
@@ -1065,8 +1178,11 @@ export type PluginMarketplaceEntry = {
   dependencies: PluginDependency[];
   description: string;
   id: string;
+  integrity?: string;
   modulePath: string;
   name: string;
+  permissions?: GatewayPluginPermission[];
+  surfaces?: GatewayPluginSurfacesConfig;
 };
 
 export type ProxyRuntimeConfig = {
@@ -1260,7 +1376,7 @@ export const DEFAULT_TRAY_WIDGETS: TrayWidgetConfig[] = [
   { id: "model-share", type: "model-share", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.modelShare }
 ];
 
-export type ProfileClientKind = "claude-code" | "codex" | "grok" | "kimi" | "opencode" | "zcode";
+export type ProfileClientKind = "claude-code" | "codex" | "grok" | "kimi" | "kilo" | "opencode" | "pi" | "zcode" | "claude-design";
 export type CodexProfileConfigFormat = "legacy" | "separate_profile_files";
 export type CodexRemoteFrontendMode = "app" | "cli" | "claude-code";
 export type ProfileScope = "ccr" | "global" | "custom";
@@ -1269,8 +1385,13 @@ export type ProfileOpenSurface = "cli" | "app";
 
 export type ClaudeCodeProfileConfig = {
   enabled: boolean;
+  fableModel: string;
+  haikuModel: string;
+  managedCompact: boolean;
   model: string;
+  opusModel: string;
   settingsFile: string;
+  sonnetModel: string;
   smallFastModel: string;
 };
 
@@ -1281,6 +1402,7 @@ export type CodexProfileConfig = {
   configFormat: CodexProfileConfigFormat;
   configFile: string;
   enabled: boolean;
+  managedCompact: boolean;
   model: string;
   providerId: string;
   providerName: string;
@@ -1301,15 +1423,21 @@ export type ProfileConfig = {
   configFormat?: CodexProfileConfigFormat;
   enabled: boolean;
   env?: Record<string, string>;
+  fableModel?: string;
+  haikuModel?: string;
   id: string;
+  managedCompact?: boolean;
   model: string;
   name: string;
+  opusModel?: string;
   providerId?: string;
   providerName?: string;
   remoteFrontendMode?: CodexRemoteFrontendMode;
+  routing?: ProfileRoutingConfig;
   scope?: ProfileScope;
   showAllSessions?: boolean;
   settingsFile?: string;
+  sonnetModel?: string;
   smallFastModel?: string;
   surface?: ProfileSurface;
 };
@@ -1606,6 +1734,7 @@ export type AppConfig = {
   autoStart: boolean;
   botConfigs: BotGatewaySavedConfig[];
   botGateway: BotGatewayRuntimeConfig;
+  contextArchive: ContextArchiveConfig;
   gateway: GatewayRuntimeConfig;
   mediaTools: MediaToolsConfig;
   launchAtLogin: boolean;
@@ -1653,7 +1782,6 @@ export type GatewayStatus = {
   coreEndpoint: string;
   coreManagedExternally?: boolean;
   endpoint: string;
-  generatedConfigFile: string;
   lastError?: string;
   lastStartedAt?: string;
   networkEndpoints: GatewayNetworkEndpoint[];
@@ -2037,7 +2165,7 @@ export type UsageStatsSnapshot = {
   totals: UsageTotals;
 };
 
-export type AgentKind = "claude-code" | "codex" | "grok" | "kimi" | "opencode" | "zcode" | "claude-design" | "unknown";
+export type AgentKind = "claude-code" | "codex" | "grok" | "kimi" | "kilo" | "opencode" | "pi" | "zcode" | "claude-design" | "unknown";
 
 export type AgentAnalysisFilter = {
   agent?: AgentKind | "all";

@@ -1,7 +1,7 @@
 import type { GatewayProviderConfig, RouterFallbackConfig } from "@ccr/core/contracts/app";
 import type { CompiledRouteRewrite } from "@ccr/core/routing/rewrite";
 
-export type RouteSource = "builtin" | "custom" | "default" | "rule" | "subagent";
+export type RouteSource = "builtin" | "custom" | "default" | "profile" | "rule" | "subagent";
 
 export type ProviderModelRef = {
   canonicalSelector: string;

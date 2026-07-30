@@ -8,12 +8,12 @@ import {
   Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle,
   DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, Field, formatAxisNumber, formatBytes,
   formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatProviderAccountDetailDate, formatProviderAccountMeterTitle, formatProviderAccountMeterValue,
-  formatStatusBucketDate, formatStatusCodeCounts, formatSystemStatusRange, formatToolCounts, formatUsdCost, KeyboardSensor,
+  formatStatusBucketDate, formatSystemStatusRange, formatUsdCost, KeyboardSensor,
   LabelList, LayoutGroup, Line, LoaderCircle, MeasuringStrategy, MetricTone,
   motion, normalizeAgentFilterValue, normalizeOverviewWidget, normalizeOverviewWidgets,
   OverviewMetricKind, overviewMetricOptions, overviewWidgetCollisionDetection, OverviewWidgetConfig, OverviewWidgetSize, overviewWidgetSizeOptions,
   OverviewWidgetType, OverviewWidgetVariant, Pencil, Pie, PieChart, Plus,
-  PointerSensor, primaryProviderAccountMeter, providerAccountMeterDetailValidityProgress, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass, isProviderAccountManualResetMeter,
+  PointerSensor, primaryProviderAccountMeter, providerAccountMeterDetailValidityProgress, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass, isGatewayProviderEnabled, isProviderAccountManualResetMeter,
   providerAccountSnapshotKey, providerAccountSnapshotLabel,
   ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ReactPointerEvent, rectSortingStrategy, RefreshCw, Select,
   SelectControl, SortableContext, sortableKeyboardCoordinates, systemStatusPointTooltip,
@@ -28,7 +28,7 @@ import {
   CalendarDays, ChartNoAxesCombined, ChartPie, CreditCard, GripHorizontal, Inbox, Layers3,
   Rocket, Server, UsersRound, WalletCards, Wifi
 } from "lucide-react";
-import { createPortal } from "react-dom";
+import { Tooltip as UiTooltip, TooltipPortal } from "@/components/ui/tooltip";
 
 type OverviewUsageFilters = {
   modelFilter: string;
@@ -39,6 +39,10 @@ type OverviewUsageFilters = {
 };
 
 const emptyOverviewProviders: GatewayProviderConfig[] = [];
+
+function chartTooltipPortal(): HTMLElement | null {
+  return typeof document === "undefined" ? null : document.body;
+}
 
 export function OverviewView({
   onWidgetsChange,
@@ -525,6 +529,9 @@ function OverviewDonutCenter({ label, value }: { label: string; value: string })
 function overviewProviderFilterOptions(providers: GatewayProviderConfig[], translate: (value: string) => string): Array<{ label: string; value: string }> {
   const providerNames = new Set<string>();
   for (const provider of providers) {
+    if (!isGatewayProviderEnabled(provider)) {
+      continue;
+    }
     const name = provider.name.trim();
     if (name) {
       providerNames.add(name);
@@ -543,6 +550,9 @@ function overviewModelFilterOptions(
 ): Array<{ label: string; value: string }> {
   const models = new Set<string>();
   for (const provider of providers) {
+    if (!isGatewayProviderEnabled(provider)) {
+      continue;
+    }
     if (providerFilter && provider.name !== providerFilter) {
       continue;
     }
@@ -561,6 +571,7 @@ function overviewModelFilterOptions(
 
 function overviewProviderHasModel(providers: GatewayProviderConfig[], providerName: string, modelName: string): boolean {
   return providers.some((provider) =>
+    isGatewayProviderEnabled(provider) &&
     provider.name === providerName &&
     provider.models.some((model) => model.trim() === modelName)
   );
@@ -1161,7 +1172,6 @@ function overviewMetricShowsRatio(metric: OverviewMetricKind): boolean {
 
 function UsageTrendWidget({
   dimensions,
-  usageRange,
   usageStats,
   variant
 }: {
@@ -1201,7 +1211,7 @@ function UsageTrendWidget({
               <XAxis axisLine={false} dataKey="label" hide={dimensions.height <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} />
               <YAxis axisLine={false} hide={dimensions.width <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} yAxisId="tokens" />
               <YAxis axisLine={false} hide orientation="right" yAxisId="requests" />
-              <Tooltip content={<UsageTooltip />} />
+              <Tooltip content={<UsageTooltip />} portal={chartTooltipPortal()} />
               {variant === "composed" ? (
                 <>
                   <Area dataKey="totalTokens" fill="#007aff" fillOpacity={0.12} name={t("Total tokens")} stroke="#007aff" strokeWidth={2.25} type="monotone" yAxisId="tokens" />
@@ -1378,21 +1388,25 @@ function OverviewActivityGrid({
               </span>
             )) : null}
             {activity.cells.map((cell) => (
-              <span
+              <UiTooltip
                 aria-label={`${cell.dateLabel}: ${formatActivityTokenCount(cell.totalTokens)} ${t("tokens")}`}
-                className="overview-activity-cell group relative aspect-square w-full rounded-[4px]"
+                align={cell.weekIndex <= 1 ? "start" : cell.weekIndex >= activity.weekCount - 2 ? "end" : "center"}
+                className="overview-activity-cell aspect-square w-full rounded-[4px]"
+                content={(
+                  <>
+                    <span className="block font-semibold">{cell.dateLabel}</span>
+                    <span className="mt-0.5 block text-muted-foreground">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
+                  </>
+                )}
+                contentClassName="min-w-[112px] border-border/70 px-2 py-1.5 text-left text-[11px] font-normal"
                 key={cell.dateKey}
+                side={cell.dayIndex <= 1 ? "bottom" : "top"}
                 style={{
                   backgroundColor: overviewActivityColor(cell.intensity, cell.inObservedRange),
                   gridColumn: cell.weekIndex + (showDayLabels ? 2 : 1),
                   gridRow: cell.dayIndex + 1
                 }}
-              >
-                <span className={`pointer-events-none absolute z-30 hidden min-w-[112px] rounded-md border border-border/70 bg-popover px-2 py-1.5 text-left text-[11px] text-popover-foreground shadow-card-elevated group-hover:block ${overviewActivityTooltipPositionClass(cell, activity.weekCount)}`}>
-                  <span className="block font-semibold">{cell.dateLabel}</span>
-                  <span className="mt-0.5 block text-muted-foreground">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
-                </span>
-              </span>
+              />
             ))}
           </div>
         </div>
@@ -1403,17 +1417,6 @@ function OverviewActivityGrid({
 
 function formatActivityTokenCount(value: number): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Math.round(Math.max(0, value)));
-}
-
-function overviewActivityTooltipPositionClass(cell: TokenActivityCell, weekCount: number): string {
-  const verticalClass = cell.dayIndex <= 1 ? "top-full mt-1" : "bottom-full mb-1";
-  if (cell.weekIndex <= 1) {
-    return `${verticalClass} left-0`;
-  }
-  if (cell.weekIndex >= weekCount - 2) {
-    return `${verticalClass} right-0`;
-  }
-  return `${verticalClass} left-1/2 -translate-x-1/2`;
 }
 
 function overviewActivityColor(intensity: TokenActivityCell["intensity"], inRange: boolean): string {
@@ -1466,7 +1469,7 @@ function TokenMixOverviewWidget({
               <ChartFrame fill>
                 {({ height, width }) => (
                   <PieChart height={height} width={width}>
-                    <Tooltip content={<TokenTooltip />} />
+                    <Tooltip content={<TokenTooltip />} portal={chartTooltipPortal()} />
                     <Pie
                       cx="50%"
                       cy="50%"
@@ -1496,7 +1499,7 @@ function TokenMixOverviewWidget({
                 <CartesianGrid stroke="var(--overview-chart-grid)" strokeDasharray="2 5" horizontal={false} />
                 <XAxis axisLine={false} hide={dimensions.height <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
                 <YAxis axisLine={false} dataKey="name" tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} type="category" width={dimensions.width <= 1 ? 42 : 52} />
-                <Tooltip content={<TokenTooltip />} />
+                <Tooltip content={<TokenTooltip />} portal={chartTooltipPortal()} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                   {tokenMix.map((item) => (
                     <Cell fill={item.color} key={item.name} />
@@ -1549,7 +1552,7 @@ function ModelDistributionOverviewWidget({
               <ChartFrame fill>
                 {({ height, width }) => (
                   <PieChart height={height} width={width}>
-                    <Tooltip content={<TokenTooltip />} />
+                    <Tooltip content={<TokenTooltip />} portal={chartTooltipPortal()} />
                     <Pie
                       cx="50%"
                       cy="50%"
@@ -1578,7 +1581,7 @@ function ModelDistributionOverviewWidget({
               <CartesianGrid stroke="var(--overview-chart-grid)" strokeDasharray="2 5" horizontal={false} />
                 <XAxis axisLine={false} hide={dimensions.height <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
                 <YAxis axisLine={false} dataKey="name" tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} type="category" width={dimensions.width <= 1 ? 58 : 88} />
-                <Tooltip content={<TokenTooltip />} />
+                <Tooltip content={<TokenTooltip />} portal={chartTooltipPortal()} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                   {modelRows.map((item) => (
                     <Cell fill={item.color} key={item.name} />
@@ -2243,10 +2246,9 @@ function SystemStatusBar({
                 />
               </span>
             ))}
-            {statusTooltip ? createPortal(
-              <span
-                className="pointer-events-none fixed z-[150] w-[190px] max-w-[calc(100vw-24px)] rounded-md border border-border/70 bg-popover px-3 py-2 text-left text-[11px] leading-4 text-popover-foreground shadow-card-elevated ring-1 ring-black/5"
-                role="tooltip"
+            {statusTooltip ? (
+              <TooltipPortal
+                className="w-[190px] max-w-[calc(100vw-24px)] px-3 py-2 text-left font-normal leading-4"
                 style={{ left: statusTooltip.left, top: statusTooltip.top }}
               >
                 <span
@@ -2276,8 +2278,7 @@ function SystemStatusBar({
                   <span className="text-muted-foreground">{t("Duration")}</span>
                   <span className="font-medium">{formatDuration(statusTooltip.segment.point.avgDurationMs)}</span>
                 </span>
-              </span>,
-              document.body
+              </TooltipPortal>
             ) : null}
           </div>
         </div>
@@ -3470,194 +3471,6 @@ export function AgentAnalysisView({
   );
 }
 
-function AgentEndpointsCard({ endpoints }: { endpoints: AgentAnalysisSnapshot["endpoints"] }) {
-  const t = useAppText();
-
-  return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>{t("Endpoint Health")}</CardTitle>
-        <Badge variant="outline">{endpoints.length}</Badge>
-      </CardHeader>
-      <CardContent>
-        {endpoints.length === 0 ? (
-          <AnalysisEmptyState label={t("No endpoint activity")} />
-        ) : (
-          <div className={cn("max-h-[380px]", agentListFrameClassName)}>
-            <table className={cn("min-w-[980px]", agentListTableClassName)}>
-              <thead className={agentListHeadClassName}>
-                <tr>
-                  <th className="px-3 py-2 font-semibold">{t("Path")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Success rate")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("P95")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Max concurrent")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Status codes")}</th>
-                </tr>
-              </thead>
-              <tbody className={agentListBodyClassName}>
-                {endpoints.map((endpoint) => (
-                  <tr className={agentListRowClassName()} key={endpoint.key}>
-                    <td className="max-w-[260px] px-3 py-2" title={`${endpoint.method} ${endpoint.path}`}>
-                      <span className="font-mono font-semibold">{endpoint.method}</span> {endpoint.path}
-                    </td>
-                    <td className="px-3 py-2">{t(agentKindLabel(endpoint.agent))}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(endpoint.requestCount)}</td>
-                    <td className="px-3 py-2 text-right">{formatPercent(endpoint.successRate)}</td>
-                    <td className="px-3 py-2 text-right">{formatDuration(endpoint.p95DurationMs)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(endpoint.maxConcurrentRequests)}</td>
-                    <td className="px-3 py-2 text-right">{formatPercent(endpoint.cacheRatio)}</td>
-                    <td className="px-3 py-2">{formatStatusCodeCounts(endpoint.statusCodes)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function AgentClientsCard({ clients }: { clients: AgentAnalysisSnapshot["clients"] }) {
-  const t = useAppText();
-
-  return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>{t("Client Signals")}</CardTitle>
-        <Badge variant="outline">{clients.length}</Badge>
-      </CardHeader>
-      <CardContent>
-        {clients.length === 0 ? (
-          <AnalysisEmptyState label={t("No client signals")} />
-        ) : (
-          <div className={cn("max-h-[380px]", agentListFrameClassName)}>
-            <table className={cn("min-w-[720px]", agentListTableClassName)}>
-              <thead className={agentListHeadClassName}>
-                <tr>
-                  <th className="px-3 py-2 font-semibold">{t("Client")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Sessions")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Success rate")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("P95")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("UA")}</th>
-                </tr>
-              </thead>
-              <tbody className={agentListBodyClassName}>
-                {clients.map((client) => (
-                  <tr className={agentListRowClassName()} key={client.key}>
-                    <td className="max-w-[160px] px-3 py-2 font-semibold" title={client.label}>{client.label}</td>
-                    <td className="px-3 py-2">{t(agentKindLabel(client.agent))}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(client.sessionCount)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(client.requestCount)}</td>
-                    <td className="px-3 py-2 text-right">{formatPercent(client.successRate)}</td>
-                    <td className="px-3 py-2 text-right">{formatDuration(client.p95DurationMs)}</td>
-                    <td className="max-w-[260px] px-3 py-2 font-mono" title={client.userAgent}>{compactUserAgent(client.userAgent)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function AgentRoutesCard({ routes }: { routes: AgentAnalysisSnapshot["routes"] }) {
-  const t = useAppText();
-
-  return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>{t("Route Observability")}</CardTitle>
-        <Badge variant="outline">{routes.length}</Badge>
-      </CardHeader>
-      <CardContent>
-        {routes.length === 0 ? (
-          <AnalysisEmptyState label={t("No route activity")} />
-        ) : (
-          <div className={cn("max-h-[360px]", agentListFrameClassName)}>
-            <table className={cn("min-w-[700px]", agentListTableClassName)}>
-              <thead className={agentListHeadClassName}>
-                <tr>
-                  <th className="px-3 py-2 font-semibold">{t("Route")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Model")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Success rate")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("P95")}</th>
-                </tr>
-              </thead>
-              <tbody className={agentListBodyClassName}>
-                {routes.map((route) => (
-                  <tr className={agentListRowClassName()} key={route.key}>
-                    <td className="max-w-[180px] px-3 py-2 font-semibold" title={formatRouteReason(route.routeReason)}>{formatRouteReason(route.routeReason)}</td>
-                    <td className="px-3 py-2">{t(agentKindLabel(route.agent))}</td>
-                    <td className="max-w-[220px] px-3 py-2" title={`${route.provider}/${route.model}`}>{route.provider}/{route.model}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(route.requestCount)}</td>
-                    <td className="px-3 py-2 text-right">{formatPercent(route.successRate)}</td>
-                    <td className="px-3 py-2 text-right">{formatDuration(route.p95DurationMs)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function AgentErrorsCard({ errors }: { errors: AgentAnalysisSnapshot["errors"] }) {
-  const t = useAppText();
-
-  return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>{t("Recent Errors")}</CardTitle>
-        <Badge variant="outline">{errors.length}</Badge>
-      </CardHeader>
-      <CardContent>
-        {errors.length === 0 ? (
-          <AnalysisEmptyState label={t("No errors")} />
-        ) : (
-          <div className={cn("max-h-[360px]", agentListFrameClassName)}>
-            <table className={cn("min-w-[900px]", agentListTableClassName)}>
-              <thead className={agentListHeadClassName}>
-                <tr>
-                  <th className="px-3 py-2 font-semibold">{t("Time")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Status")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Path")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Route")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
-                </tr>
-              </thead>
-              <tbody className={agentListBodyClassName}>
-                {errors.map((error) => (
-                  <tr className={agentListRowClassName({ danger: true })} key={error.id}>
-                    <td className="px-3 py-2 font-mono">{formatLogDateTime(error.createdAt)}</td>
-                    <td className="px-3 py-2 font-semibold" title={error.error}>{error.statusCode || "-"}</td>
-                    <td className="max-w-[260px] px-3 py-2" title={`${error.method} ${error.path}`}>{error.method} {error.path}</td>
-                    <td className="px-3 py-2">{t(agentKindLabel(error.agent))}</td>
-                    <td className="max-w-[140px] px-3 py-2" title={formatRouteReason(error.routeReason)}>{formatRouteReason(error.routeReason)}</td>
-                    <td className="px-3 py-2 text-right">{formatDuration(error.durationMs)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 function AgentSessionDetailCard({
   clearSession,
   detail,
@@ -4203,32 +4016,6 @@ function traceRunBarClass(run: AgentAnalysisTraceRun): string {
   return "bg-blue-500";
 }
 
-function SessionMetricCell({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0 border-b border-r border-border/60 px-3 py-2 last:border-r-0 xl:border-b-0">
-      <div className="truncate text-muted-foreground">{label}</div>
-      <div className="mt-1 truncate font-mono text-[13px] font-semibold text-foreground" title={value}>{value}</div>
-    </div>
-  );
-}
-
-function SessionInlineList({ title, value }: { title: string; value: string }) {
-  return (
-    <div className="min-w-0 rounded-md border border-border/60 px-3 py-2 text-[11px]">
-      <div className="text-muted-foreground">{title}</div>
-      <div className="mt-1 truncate font-medium" title={value}>{value || "-"}</div>
-    </div>
-  );
-}
-
-function formatToolRows(tools: AgentAnalysisSnapshot["tools"]): string {
-  return tools.slice(0, 5).map((tool) => `${tool.name} (${formatCompactNumber(tool.count)})`).join(", ");
-}
-
-function formatRouteRows(routes: AgentAnalysisSnapshot["routes"]): string {
-  return routes.slice(0, 5).map((route) => `${formatRouteReason(route.routeReason)}: ${formatCompactNumber(route.requestCount)}`).join(", ");
-}
-
 function formatRouteReason(value: string | undefined): string {
   const trimmed = value?.trim();
   if (!trimmed) {
@@ -4306,149 +4093,6 @@ function AgentSessionsCard({
         </div>
       )}
     </div>
-  );
-}
-
-function AgentToolsCard({ tools }: { tools: AgentAnalysisSnapshot["tools"] }) {
-  const t = useAppText();
-
-  return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>{t("Tool Usage")}</CardTitle>
-        <Badge variant="outline">{tools.length}</Badge>
-      </CardHeader>
-      <CardContent>
-        {tools.length === 0 ? (
-          <AnalysisEmptyState label={t("No tool calls")} />
-        ) : (
-          <div className={cn("max-h-[380px]", agentListFrameClassName)}>
-            <table className={cn("min-w-[560px]", agentListTableClassName)}>
-              <thead className={agentListHeadClassName}>
-                <tr>
-                  <th className="px-3 py-2 font-semibold">{t("Tool")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Tool calls")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Sessions")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
-                </tr>
-              </thead>
-              <tbody className={agentListBodyClassName}>
-                {tools.map((tool) => (
-                  <tr className={agentListRowClassName()} key={tool.name}>
-                    <td className="max-w-[220px] px-3 py-2 font-semibold" title={tool.name}>{tool.name}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(tool.count)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(tool.requestCount)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(tool.sessions)}</td>
-                    <td className="px-3 py-2">{tool.agents.map(agentKindLabel).map(t).join(", ")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function AgentSubagentsCard({ subagents }: { subagents: AgentAnalysisSnapshot["subagents"] }) {
-  const t = useAppText();
-
-  return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>{t("Subagent Routing")}</CardTitle>
-        <Badge variant="outline">{subagents.length}</Badge>
-      </CardHeader>
-      <CardContent>
-        {subagents.length === 0 ? (
-          <AnalysisEmptyState label={t("No subagent calls")} />
-        ) : (
-          <div className={cn("max-h-[360px]", agentListFrameClassName)}>
-            <table className={cn("min-w-[620px]", agentListTableClassName)}>
-              <thead className={agentListHeadClassName}>
-                <tr>
-                  <th className="px-3 py-2 font-semibold">{t("Session")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Model")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
-                </tr>
-              </thead>
-              <tbody className={agentListBodyClassName}>
-                {subagents.map((subagent) => (
-                  <tr className={agentListRowClassName()} key={`${subagent.agent}:${subagent.sessionId}:${subagent.provider}:${subagent.model}`}>
-                    <td className="max-w-[160px] px-3 py-2 font-mono font-semibold" title={subagent.sessionId}>{compactId(subagent.sessionId)}</td>
-                    <td className="max-w-[240px] px-3 py-2" title={`${subagent.provider}/${subagent.model}`}>{subagent.provider}/{subagent.model}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(subagent.count)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(subagent.totalTokens)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(subagent.cacheReadTokens + subagent.cacheWriteTokens)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function AgentRecentRequestsCard({ requests }: { requests: AgentAnalysisSnapshot["recentRequests"] }) {
-  const t = useAppText();
-
-  return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>{t("Recent Requests")}</CardTitle>
-        <Badge variant="outline">{requests.length}</Badge>
-      </CardHeader>
-      <CardContent>
-        {requests.length === 0 ? (
-          <AnalysisEmptyState label={t("No recent agent requests")} />
-        ) : (
-          <div className={cn("max-h-[360px]", agentListFrameClassName)}>
-            <table className={cn("min-w-[1240px]", agentListTableClassName)}>
-              <thead className={agentListHeadClassName}>
-                <tr>
-                  <th className="px-3 py-2 font-semibold">{t("Time")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Client")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Status")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Session")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Route")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Model")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Tools")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Subagents")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Concurrency")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
-                </tr>
-              </thead>
-              <tbody className={agentListBodyClassName}>
-                {requests.map((request) => (
-                  <tr className={agentListRowClassName()} key={request.id}>
-                    <td className="px-3 py-2 font-mono">{formatLogDateTime(request.createdAt)}</td>
-                    <td className="px-3 py-2">{t(agentKindLabel(request.agent))}</td>
-                    <td className="max-w-[160px] px-3 py-2" title={request.userAgent || request.client}>{request.client}</td>
-                    <td className="px-3 py-2 font-semibold">{request.statusCode || "-"}</td>
-                    <td className="max-w-[150px] px-3 py-2 font-mono font-semibold" title={request.sessionId}>{compactId(request.sessionId)}</td>
-                    <td className="max-w-[130px] px-3 py-2" title={formatRouteReason(request.routeReason)}>{formatRouteReason(request.routeReason)}</td>
-                    <td className="max-w-[240px] px-3 py-2" title={`${request.provider}/${request.model}`}>{request.provider}/{request.model}</td>
-                    <td className="px-3 py-2 text-right" title={request.tools.join(", ")}>{formatCompactNumber(request.toolCallCount)}</td>
-                    <td className="px-3 py-2 text-right">{request.subagentModel ? request.subagentModel : "-"}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(request.cacheReadTokens + request.cacheWriteTokens)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(request.concurrentRequests)}</td>
-                    <td className="px-3 py-2 text-right">{formatDuration(request.durationMs)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
   );
 }
 

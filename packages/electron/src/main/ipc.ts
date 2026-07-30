@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { deflateSync, inflateSync } from "node:zlib";
-import { loadPersistedAppSetting, replacePersistedAppSetting } from "@ccr/core/config/app-config-store";
+import { loadOnboardingFinished, markOnboardingFinished } from "@ccr/core/config/onboarding-state";
 import { builtInBrowserService } from "./built-in-browser";
 import { scanBotHandoffBluetoothTargets, scanBotHandoffWifiTargets } from "@ccr/core/agents/bot-gateway/handoff-scan-service";
 import { cancelBotGatewayQrLogin, startBotGatewayQrLogin, waitBotGatewayQrLogin } from "@ccr/core/agents/bot-gateway/qr-login-service";
@@ -11,8 +11,22 @@ import { closeBotGatewayQrWindow, openBotGatewayQrWindow } from "./bot-gateway-q
 import { syncClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
 import { findInstalledCodexAppExecutable } from "@ccr/core/agents/codex/app-launch";
 import { findInstalledOpenCodeAppExecutable } from "@ccr/core/agents/opencode/app-launch";
-import { loadAppConfig, saveApiKeysConfig, saveAppConfig, saveAppThemePreference } from "@ccr/core/config/config";
-import { API_KEYS_DB_FILE, APP_CONFIG_DB_FILE, APP_NAME, CONFIGDIR, CONFIG_FILE, DATADIR, GATEWAY_CONFIG_FILE, IPC_CHANNELS, LEGACY_CONFIG_FILE, ONBOARDING_FINISHED_FILE, PROXY_CA_CERT_FILE, REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "@ccr/core/config/constants";
+import { loadAppConfig, saveApiKeysConfig, saveAppConfig, saveAppThemePreference, withClaudeDesignRuntimePluginConfig } from "@ccr/core/config/config";
+import {
+  APP_CONFIG_DB_FILE,
+  APP_NAME,
+  CONFIGDIR,
+  DATADIR,
+  IPC_CHANNELS,
+  LEGACY_ACTIVE_CONFIG_FILE,
+  LEGACY_APP_CONFIG_DB_FILES,
+  LEGACY_API_KEYS_DB_FILES,
+  LEGACY_CONFIG_FILE,
+  LEGACY_WINDOWS_CONFIG_FILE,
+  PROXY_CA_CERT_FILE,
+  REQUEST_LOGS_DB_FILE,
+  USAGE_DB_FILE
+} from "@ccr/core/config/constants";
 import { deepLinkService } from "./deep-link";
 import { gatewayService } from "@ccr/core/gateway/service";
 import { shouldRestartGatewayForRuntimeConfigChange } from "@ccr/core/gateway/runtime-change";
@@ -26,6 +40,8 @@ import { getProviderPresets } from "@ccr/core/providers/presets/index";
 import { checkGatewayProviderConnectivity, probeGatewayProvider, probeGatewayProviderCandidates } from "@ccr/core/providers/probe";
 import { applyProfileConfig } from "@ccr/core/profiles/service";
 import { desktopCliCommandName, getProfileOpenCommand, getProfileRuntimeStatus, openProfileFromCcr, stopProfileFromCcr } from "@ccr/core/profiles/launch-service";
+import { findProfileForOpen, resolveProfileOpenSurface } from "@ccr/core/profiles/launch-core";
+import { getPluginMarketplace } from "@ccr/core/plugins/marketplace";
 import { ensureProxyCertificateAuthority } from "@ccr/core/proxy/certificates";
 import { proxyService } from "@ccr/core/proxy/service";
 import { listMcpServerTools } from "@ccr/core/mcp/tool-discovery";
@@ -35,28 +51,10 @@ import { appUpdateService } from "./update-service";
 import { getUsageStats } from "@ccr/core/usage/store";
 import { applyNativeThemePreference } from "./native-theme";
 import windowsManager from "./windows";
-import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppCaptureElementPngRequest, AppCaptureElementPngResult, AppConfig, AppDataExportResult, AppImageExportTargetRequest, AppImageExportTargetResult, AppInfo, AppRenderHtmlPngRequest, AppRenderHtmlPngResult, AppSaveConfigOptions, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountResetRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, RouteScriptTestRequest, RouteScriptValidationRequest, UsageStatsFilter, UsageStatsRange } from "@ccr/core/contracts/app";
-
-const pluginMarketplace: PluginMarketplaceEntry[] = [
-  {
-    capabilities: ["Wrapper runtime", "Claude App proxy", "Claude Design", "Model routing"],
-    dependencies: [],
-    description: "Routes Claude App Design traffic through the local CCR wrapper backend with configurable model routing.",
-    id: "claude-design",
-    modulePath: path.join(__dirname, "..", "marketplace", "plugins", "claude-design-plugin.cjs"),
-    name: "Claude Design"
-  },
-  {
-    capabilities: ["Wrapper runtime", "Proxy mode", "Cursor", "Model routing", "OpenAI/Anthropic/Gemini forwarding"],
-    dependencies: [],
-    description: "Routes Cursor-compatible LLM traffic captured by proxy mode into the local CCR gateway.",
-    id: "cursor-proxy",
-    modulePath: path.join(__dirname, "..", "marketplace", "plugins", "cursor-proxy-plugin.cjs"),
-    name: "Cursor Proxy"
-  }
-];
-const onboardingFinishedAtSettingKey = "onboardingFinishedAt";
+import { CLAUDE_DESIGN_PLUGIN_ID, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, type AgentAnalysisFilter, type AgentAnalysisTracePayloadRequest, type ApiKeyConfig, type AppCaptureElementPngRequest, type AppCaptureElementPngResult, type AppConfig, type AppDataExportResult, type AppImageExportTargetRequest, type AppImageExportTargetResult, type AppInfo, type AppRenderHtmlPngRequest, type AppRenderHtmlPngResult, type AppSaveConfigOptions, type BotGatewayQrLoginCancelRequest, type BotGatewayQrLoginStartRequest, type BotGatewayQrLoginWaitRequest, type BotGatewayQrWindowCloseRequest, type BotGatewayQrWindowOpenRequest, type GatewayPluginAppConfig, type GatewayPluginPermission, type GatewayPluginSurface, type GatewayProviderConnectivityCheckRequest, type GatewayProviderProbeCandidatesRequest, type GatewayProviderProbeRequest, type GatewayStatus, type LocalAgentProviderImportRequest, type PluginDependency, type PluginDirectorySelection, type ProfileApplyResult, type ProfileOpenRequest, type ProfileOpenResult, type ProviderAccountResetRequest, type ProviderAccountSnapshotRequestOptions, type ProviderAccountTestRequest, type ProviderCatalogModelsRequest, type ProviderIconDetectionRequest, type ProviderManifestFetchRequest, type RequestLogListFilter, type RouteScriptTestRequest, type RouteScriptValidationRequest, type UsageStatsFilter, type UsageStatsRange } from "@ccr/core/contracts/app";
 const imageExportTargets = new Map<string, string>();
+const gatewayPluginPermissionIdSet = new Set<string>(GATEWAY_PLUGIN_PERMISSION_IDS);
+const gatewayPluginSurfaceIdSet = new Set<string>(GATEWAY_PLUGIN_SURFACE_IDS);
 
 function applyAppThemePreference(theme: AppConfig["theme"]): void {
   applyNativeThemePreference(theme);
@@ -67,13 +65,11 @@ ipcMain.handle(IPC_CHANNELS.appGetInfo, () => {
   const chatgptAppPath = findInstalledCodexAppExecutable().executable;
   const opencodeAppPath = findInstalledOpenCodeAppExecutable().executable;
   return {
-    appConfigDbFile: APP_CONFIG_DB_FILE,
-    apiKeysDbFile: API_KEYS_DB_FILE,
     ...(chatgptAppPath ? { chatgptAppPath } : {}),
+    configDbFile: APP_CONFIG_DB_FILE,
     configDir: CONFIGDIR,
-    configFile: CONFIG_FILE,
     dataDir: DATADIR,
-    gatewayConfigFile: GATEWAY_CONFIG_FILE,
+    desktop: true,
     launchAtLoginSupported: isLaunchAtLoginSupported(),
     name: APP_NAME,
     ...(opencodeAppPath ? { opencodeAppPath } : {}),
@@ -98,10 +94,7 @@ ipcMain.handle(IPC_CHANNELS.appRenderHtmlPng, async (event, request: AppRenderHt
 });
 
 ipcMain.handle(IPC_CHANNELS.appGetConfig, () => loadAppConfig());
-ipcMain.handle(IPC_CHANNELS.appGetOnboardingFinished, async () => {
-  const persisted = await loadPersistedAppSetting(onboardingFinishedAtSettingKey);
-  return Boolean(readString(persisted) || existsSync(ONBOARDING_FINISHED_FILE));
-});
+ipcMain.handle(IPC_CHANNELS.appGetOnboardingFinished, () => loadOnboardingFinished());
 ipcMain.handle(IPC_CHANNELS.appGetPendingProviderDeepLinks, () => deepLinkService.consumePendingProviderRequests());
 ipcMain.handle(IPC_CHANNELS.appGetLocalAgentProviderCandidates, () => getLocalAgentProviderCandidates());
 ipcMain.handle(IPC_CHANNELS.appGetProfileOpenCommand, async (_event, request: ProfileOpenRequest) => {
@@ -122,7 +115,7 @@ ipcMain.handle(IPC_CHANNELS.appGetGatewayStatus, () => gatewayService.getStatus(
 ipcMain.handle(IPC_CHANNELS.appGetProxyCertificateStatus, () => proxyService.getCertificateStatus());
 ipcMain.handle(IPC_CHANNELS.appGetProxyNetworkCaptures, () => proxyService.getNetworkCaptures());
 ipcMain.handle(IPC_CHANNELS.appGetProxyStatus, () => proxyService.getStatus());
-ipcMain.handle(IPC_CHANNELS.appGetPluginMarketplace, () => pluginMarketplace);
+ipcMain.handle(IPC_CHANNELS.appGetPluginMarketplace, () => getPluginMarketplace());
 ipcMain.handle(IPC_CHANNELS.appGetRequestLogDetail, (_event, request) => getRequestLogDetail(request));
 ipcMain.handle(IPC_CHANNELS.appGetRequestLogs, (_event, filter?: RequestLogListFilter) => getRequestLogs(filter));
 ipcMain.handle(IPC_CHANNELS.appGetUpdateStatus, () => appUpdateService.getStatus());
@@ -146,6 +139,13 @@ ipcMain.handle(IPC_CHANNELS.appListMcpServerTools, async (_event, serverName: st
 ipcMain.handle(IPC_CHANNELS.appOpenBuiltInBrowser, async () => {
   const config = await loadAppConfig();
   await builtInBrowserService.open(config);
+});
+ipcMain.handle(IPC_CHANNELS.appOpenPluginApp, async (_event, pluginId: string, appId?: string) => {
+  const normalizedPluginId = readString(pluginId);
+  if (!normalizedPluginId) {
+    throw new Error("Plugin id is required.");
+  }
+  await deepLinkService.openPluginApp(normalizedPluginId, readString(appId));
 });
 ipcMain.handle(IPC_CHANNELS.appCloseTray, () => {
   trayController.hidePopover();
@@ -179,12 +179,25 @@ ipcMain.handle(IPC_CHANNELS.appOpenExternal, async (_event, url: string) => {
 });
 ipcMain.handle(IPC_CHANNELS.appOpenProfile, async (_event, request: ProfileOpenRequest) => {
   const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(await loadAppConfig());
-  const config = syncedClaudeAppConfig.config;
+  const profile = findProfileForOpen(syncedClaudeAppConfig.config, request.profileId);
+  const surface = resolveProfileOpenSurface(profile, request.surface);
+  const config = profile.agent === CLAUDE_DESIGN_PLUGIN_ID
+    ? withClaudeDesignRuntimePluginConfig(syncedClaudeAppConfig.config)
+    : syncedClaudeAppConfig.config;
   const status = await gatewayService.start(config);
   if (status.state !== "running") {
     throw new Error(status.lastError || "CCR gateway did not start.");
   }
   logProfileApplyResult(await applyProfileConfig(config));
+  if (profile.agent === CLAUDE_DESIGN_PLUGIN_ID) {
+    await deepLinkService.openPluginApp(CLAUDE_DESIGN_PLUGIN_ID);
+    return {
+      message: `Opened Claude Design with ${profile.name || profile.id}.`,
+      profileId: profile.id,
+      profileName: profile.name,
+      surface
+    } satisfies ProfileOpenResult;
+  }
   return openProfileFromCcr(config, request);
 });
 ipcMain.handle(IPC_CHANNELS.appApplyClaudeAppGateway, async (_event, config?: AppConfig) => {
@@ -325,7 +338,8 @@ ipcMain.handle(IPC_CHANNELS.appSaveApiKeys, async (_event, apiKeys: ApiKeyConfig
   return nextConfig;
 });
 ipcMain.handle(IPC_CHANNELS.appSetOnboardingFinished, async () => {
-  await replacePersistedAppSetting(onboardingFinishedAtSettingKey, new Date().toISOString());
+  await markOnboardingFinished();
+  windowsManager.setOnboardingFinished(true);
   windowsManager.resizeMainWindowToScreenSize();
   return true;
 });
@@ -396,10 +410,7 @@ async function exportAppData(window: BrowserWindow | null): Promise<AppDataExpor
 
   assertExportTargetIsNotInternalDataFile(result.filePath);
   const config = await loadAppConfig();
-  const onboardingFinished = Boolean(
-    readString(await loadPersistedAppSetting(onboardingFinishedAtSettingKey)) ||
-    existsSync(ONBOARDING_FINISHED_FILE)
-  );
+  const onboardingFinished = await loadOnboardingFinished();
   const payload = {
     app: {
       name: APP_NAME,
@@ -927,7 +938,8 @@ function readDataExportFiles(): Array<{ base64: string; name: string; path: stri
 function dataExportCandidateFiles(): string[] {
   return uniqueStrings([
     ...sqliteDataFiles(APP_CONFIG_DB_FILE),
-    ...sqliteDataFiles(API_KEYS_DB_FILE),
+    ...LEGACY_APP_CONFIG_DB_FILES.flatMap(sqliteDataFiles),
+    ...LEGACY_API_KEYS_DB_FILES.flatMap(sqliteDataFiles),
     ...sqliteDataFiles(REQUEST_LOGS_DB_FILE),
     ...sqliteDataFiles(USAGE_DB_FILE)
   ]);
@@ -940,12 +952,9 @@ function sqliteDataFiles(file: string): string[] {
 function assertExportTargetIsNotInternalDataFile(file: string): void {
   const target = path.resolve(file);
   const reserved = new Set([
-    CONFIG_FILE,
+    LEGACY_ACTIVE_CONFIG_FILE,
+    LEGACY_WINDOWS_CONFIG_FILE,
     LEGACY_CONFIG_FILE,
-    APP_CONFIG_DB_FILE,
-    API_KEYS_DB_FILE,
-    REQUEST_LOGS_DB_FILE,
-    USAGE_DB_FILE,
     ...dataExportCandidateFiles()
   ].map((item) => path.resolve(item)));
   if (reserved.has(target)) {
@@ -991,13 +1000,17 @@ function inspectPluginDirectory(directory: string): PluginDirectorySelection {
     "plugin";
   const name = readString(manifest?.name) || readString(packageJson?.displayName) || readString(packageJson?.name);
   const apps = readPluginApps(manifest, packageJson);
+  const permissions = readPluginPermissions(manifest, packageJson);
+  const surfaces = readPluginSurfaces(manifest, packageJson);
   return {
     ...(apps.length ? { apps } : {}),
     dependencies: readPluginDependencies(directory, manifest, packageJson),
     directory,
     id,
-    modulePath: resolvePluginDirectoryModule(directory, moduleValue),
-    ...(name ? { name } : {})
+    modulePath: resolvePluginDirectoryModule(directory, moduleValue, Boolean(manifest || packageJson)),
+    ...(name ? { name } : {}),
+    ...(permissions ? { permissions } : {}),
+    ...(surfaces ? { surfaces } : {})
   };
 }
 
@@ -1038,7 +1051,7 @@ function parsePluginAppItem(value: unknown): GatewayPluginAppConfig | undefined 
 
   const record = value as Record<string, unknown>;
   const name = readString(record.name) || readString(record.title);
-  const url = readString(record.url) || readString(record.href) || readString(record.target);
+  const url = normalizePluginAppUrl(readString(record.url) || readString(record.href) || readString(record.target));
   if (!name || !url) {
     return undefined;
   }
@@ -1052,6 +1065,287 @@ function parsePluginAppItem(value: unknown): GatewayPluginAppConfig | undefined 
     name,
     url
   };
+}
+
+function normalizePluginAppUrl(value: string | undefined): string {
+  const trimmed = value?.trim() || "";
+  if (!trimmed) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    return new URL(trimmed).toString();
+  }
+  if (trimmed.startsWith("//")) {
+    throw new Error("Plugin app URL cannot be protocol-relative.");
+  }
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+    throw new Error("Plugin app URL must be an http(s) URL or a CCR gateway path.");
+  }
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+}
+
+function readPluginPermissions(
+  manifest: Record<string, unknown> | undefined,
+  packageJson: Record<string, unknown> | undefined
+): GatewayPluginPermission[] | undefined {
+  const values = [
+    manifest?.permissions,
+    readRecord(manifest?.ccr)?.permissions,
+    readRecord(manifest?.ccrPlugin)?.permissions,
+    readRecord(packageJson?.ccr)?.permissions,
+    readRecord(packageJson?.ccrPlugin)?.permissions
+  ];
+  const parsedValues = values.map(parsePluginPermissions).filter((value): value is GatewayPluginPermission[] => Boolean(value));
+  return parsedValues.length > 0 ? uniquePluginPermissions(parsedValues.flat()) : undefined;
+}
+
+function parsePluginPermissions(value: unknown): GatewayPluginPermission[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const permissions: GatewayPluginPermission[] = [];
+  const seen = new Set<GatewayPluginPermission>();
+  const add = (rawValue: unknown): void => {
+    const permission = normalizePluginPermission(rawValue);
+    if (!permission || seen.has(permission)) {
+      return;
+    }
+    seen.add(permission);
+    permissions.push(permission);
+  };
+
+  if (typeof value === "string") {
+    add(value);
+  } else if (Array.isArray(value)) {
+    value.forEach(add);
+  } else {
+    const record = readRecord(value);
+    if (!record) {
+      return permissions;
+    }
+    for (const [key, enabled] of Object.entries(record)) {
+      if (enabled === false) {
+        continue;
+      }
+      if (isAllPluginPermissionsKey(key)) {
+        GATEWAY_PLUGIN_PERMISSION_IDS.forEach(add);
+      } else {
+        add(key);
+      }
+    }
+  }
+
+  return permissions;
+}
+
+function readPluginSurfaces(
+  manifest: Record<string, unknown> | undefined,
+  packageJson: Record<string, unknown> | undefined
+): PluginDirectorySelection["surfaces"] | undefined {
+  const values = [
+    manifest?.surfaces,
+    manifest?.surface,
+    readRecord(manifest?.ccr)?.surfaces,
+    readRecord(manifest?.ccr)?.surface,
+    readRecord(manifest?.ccrPlugin)?.surfaces,
+    readRecord(manifest?.ccrPlugin)?.surface,
+    readRecord(packageJson?.ccr)?.surfaces,
+    readRecord(packageJson?.ccr)?.surface,
+    readRecord(packageJson?.ccrPlugin)?.surfaces,
+    readRecord(packageJson?.ccrPlugin)?.surface
+  ];
+  const parsedValues = values.map(parsePluginSurfaces).filter((value): value is PluginDirectorySelection["surfaces"] => Boolean(value));
+  return parsedValues.length > 0 ? Object.assign({}, ...parsedValues) as PluginDirectorySelection["surfaces"] : undefined;
+}
+
+function parsePluginSurfaces(value: unknown): PluginDirectorySelection["surfaces"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const surfaces: PluginDirectorySelection["surfaces"] = {};
+  const setSurface = (rawValue: unknown, enabled = true): boolean => {
+    const surface = normalizePluginSurface(rawValue);
+    if (!surface) {
+      return false;
+    }
+    surfaces[surface] = enabled;
+    return true;
+  };
+
+  if (typeof value === "string") {
+    if (isAllPluginSurfacesKey(value)) {
+      GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+        surfaces[surface] = true;
+      });
+      return surfaces;
+    }
+    if (!setSurface(value)) {
+      return undefined;
+    }
+    GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+      surfaces[surface] ??= false;
+    });
+  } else if (Array.isArray(value)) {
+    let matched = false;
+    for (const item of value) {
+      if (typeof item === "string" && isAllPluginSurfacesKey(item)) {
+        GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+          surfaces[surface] = true;
+        });
+        matched = true;
+      } else {
+        matched = setSurface(item) || matched;
+      }
+    }
+    if (!matched) {
+      return undefined;
+    }
+    GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+      surfaces[surface] ??= false;
+    });
+  } else {
+    const record = readRecord(value);
+    if (!record) {
+      return undefined;
+    }
+    for (const [key, enabled] of Object.entries(record)) {
+      if (isAllPluginSurfacesKey(key)) {
+        GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+          surfaces[surface] = enabled !== false;
+        });
+      } else {
+        setSurface(key, enabled !== false);
+      }
+    }
+  }
+
+  return Object.keys(surfaces).length > 0 ? surfaces : undefined;
+}
+
+function normalizePluginPermission(value: unknown): GatewayPluginPermission | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const mapped = pluginPermissionAlias(normalized);
+  return gatewayPluginPermissionIdSet.has(mapped) ? mapped as GatewayPluginPermission : undefined;
+}
+
+function normalizePluginSurface(value: unknown): GatewayPluginSurface | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const mapped = pluginSurfaceAlias(normalized);
+  return gatewayPluginSurfaceIdSet.has(mapped) ? mapped as GatewayPluginSurface : undefined;
+}
+
+function pluginSurfaceAlias(value: string): string {
+  switch (value) {
+    case "app":
+    case "browser-app":
+    case "browser-apps":
+    case "ui":
+      return "apps";
+    case "gateway-route":
+    case "route":
+    case "routes":
+    case "gateway-routes":
+    case "proxy-route":
+    case "proxy":
+    case "proxy-routes":
+    case "http-backend":
+    case "http-backends":
+    case "backend":
+    case "backends":
+    case "core-gateway":
+    case "core-gateway-config":
+    case "fusion-profile":
+    case "fusion-profiles":
+    case "virtual-model":
+    case "virtual-models":
+    case "virtual-model-profile":
+    case "virtual-model-profiles":
+    case "request":
+    case "requests":
+      return "gateway";
+    case "core-provider-plugin":
+    case "provider-plugin":
+    case "provider-plugins":
+    case "provider-account":
+    case "provider-account-connector":
+    case "provider-account-connectors":
+    case "providers":
+      return "provider";
+    default:
+      return value;
+  }
+}
+
+function pluginPermissionAlias(value: string): string {
+  switch (value) {
+    case "code":
+    case "execute-code":
+    case "trusted":
+    case "trusted-code":
+      return "trusted-code";
+    case "app":
+    case "browser-app":
+    case "browser-apps":
+      return "apps";
+    case "gateway-route":
+    case "route":
+    case "routes":
+      return "gateway-routes";
+    case "proxy":
+    case "proxy-route":
+      return "proxy-routes";
+    case "backend":
+    case "backends":
+    case "http-backend":
+      return "http-backends";
+    case "provider-account":
+    case "provider-account-connector":
+      return "provider-account-connectors";
+    case "core-gateway":
+      return "core-gateway-config";
+    case "provider-plugin":
+    case "provider-plugins":
+    case "core-provider-plugin":
+      return "core-provider-plugins";
+    case "fusion-profile":
+    case "fusion-profiles":
+    case "virtual-model":
+    case "virtual-models":
+    case "virtual-model-profile":
+      return "virtual-model-profiles";
+    case "sqlite":
+    case "data-store":
+    case "store":
+      return "sqlite-store";
+    case "launcher":
+    case "mac-launcher":
+      return "system-launcher";
+    default:
+      return value;
+  }
+}
+
+function uniquePluginPermissions(values: GatewayPluginPermission[]): GatewayPluginPermission[] | undefined {
+  const unique = [...new Set(values)];
+  return unique;
+}
+
+function isAllPluginPermissionsKey(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "*" || normalized === "all";
+}
+
+function isAllPluginSurfacesKey(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "*" || normalized === "all";
 }
 
 function readPluginDependencies(
@@ -1127,10 +1421,12 @@ function parsePluginDependencyItem(value: unknown, directory: string): PluginDep
   const moduleValue = readString(record.module) || readString(record.path) || readString(record.modulePath);
   const modulePath = moduleValue ? resolveDependencyModulePath(directory, moduleValue) : undefined;
   const name = readString(record.name);
+  const permissions = parsePluginPermissions(record.permissions);
   return {
     id,
     ...(modulePath ? { modulePath } : {}),
-    ...(name ? { name } : {})
+    ...(name ? { name } : {}),
+    ...(permissions ? { permissions } : {})
   };
 }
 
@@ -1145,9 +1441,12 @@ function looksLikeDependencyModulePath(value: string): boolean {
   return value.startsWith(".") || value.startsWith("/") || value.startsWith("~");
 }
 
-function resolvePluginDirectoryModule(directory: string, moduleValue: string | undefined): string {
+function resolvePluginDirectoryModule(directory: string, moduleValue: string | undefined, hasManifest = false): string {
   if (moduleValue) {
     return path.isAbsolute(moduleValue) ? moduleValue : path.join(directory, moduleValue);
+  }
+  if (hasManifest) {
+    return "";
   }
 
   for (const filename of ["index.cjs", "index.mjs", "index.js", "plugin.cjs", "plugin.mjs", "plugin.js"]) {
@@ -1157,7 +1456,7 @@ function resolvePluginDirectoryModule(directory: string, moduleValue: string | u
     }
   }
 
-  return directory;
+  return "";
 }
 
 function readFirstJson(files: string[]): Record<string, unknown> | undefined {

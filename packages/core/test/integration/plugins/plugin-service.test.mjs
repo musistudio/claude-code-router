@@ -64,7 +64,7 @@ module.exports = {
 };
 `);
 
-    const config = createDefaultAppConfig({ generatedConfigFile: path.join(dir, "gateway.json") });
+    const config = createDefaultAppConfig();
     config.Providers = [{
       apiKey: "good-key",
       baseUrl: "https://good-provider.example/v1",
@@ -135,3 +135,118 @@ module.exports = {
     rmSync(dir, { force: true, recursive: true });
   }
 });
+
+test("plugin service does not fail startup when every enabled plugin fails", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-plugin-service-all-failed-"));
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.map(String).join(" "));
+
+  try {
+    const brokenPlugin = path.join(dir, "broken-plugin.cjs");
+    writeFileSync(brokenPlugin, `
+module.exports = {
+  setup(context) {
+    context.registerApp({ id: "broken-app", name: "Broken app", url: "/broken" });
+    context.registerGatewayRoute({ id: "broken-route", path: "/broken", handler(_request, response) { response.end("broken"); } });
+    throw new Error("only plugin failed");
+  }
+};
+`);
+
+    const config = createDefaultAppConfig();
+    config.gateway.enabled = false;
+    config.plugins = [{
+      id: "broken",
+      module: brokenPlugin
+    }];
+
+    await pluginService.start(config);
+
+    assert.match(warnings.join("\n"), /plugin:broken.*Disabled after startup failure.*only plugin failed/);
+    assert.deepEqual(pluginService.getApps(), []);
+    assert.equal(pluginService.matchGatewayRoute("GET", "/broken"), undefined);
+    assert.deepEqual(pluginService.getCoreProviderPlugins(), []);
+    assert.deepEqual(pluginService.getVirtualModelProfiles(), []);
+  } finally {
+    console.warn = originalWarn;
+    await pluginService.stop();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("plugin gateway route failures are contained to the plugin response", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-plugin-route-failure-"));
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.map(String).join(" "));
+
+  try {
+    const routePlugin = path.join(dir, "route-plugin.cjs");
+    writeFileSync(routePlugin, `
+module.exports = {
+  setup() {
+    return {
+      gatewayRoutes: [{
+        auth: "none",
+        id: "failing-route",
+        path: "/fails",
+        handler() {
+          throw new Error("route exploded");
+        }
+      }]
+    };
+  }
+};
+`);
+
+    const config = createDefaultAppConfig();
+    config.gateway.enabled = false;
+    config.plugins = [{
+      id: "route-plugin",
+      module: routePlugin
+    }];
+
+    await pluginService.start(config);
+    const route = pluginService.matchGatewayRoute("GET", "/fails");
+    assert.ok(route);
+
+    const response = createMockResponse();
+    await pluginService.handleGatewayRoute(route, {}, response);
+
+    assert.match(warnings.join("\n"), /plugin:route-plugin.*Gateway route failing-route failed.*route exploded/);
+    assert.equal(response.statusCode, 500);
+    assert.deepEqual(response.headers, { "content-type": "application/json" });
+    assert.deepEqual(JSON.parse(response.body), { error: { message: "route exploded" } });
+  } finally {
+    console.warn = originalWarn;
+    await pluginService.stop();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+function createMockResponse() {
+  return {
+    body: "",
+    destroyedWith: undefined,
+    ended: false,
+    headers: undefined,
+    headersSent: false,
+    statusCode: 0,
+    destroy(error) {
+      this.destroyedWith = error;
+      return this;
+    },
+    end(chunk) {
+      this.body += chunk ? String(chunk) : "";
+      this.ended = true;
+      return this;
+    },
+    writeHead(statusCode, headers) {
+      this.statusCode = statusCode;
+      this.headers = headers;
+      this.headersSent = true;
+      return this;
+    }
+  };
+}

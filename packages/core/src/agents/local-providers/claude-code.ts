@@ -138,7 +138,12 @@ function claudeCodeProviderAccountConfig(): ProviderAccountConfig {
   };
 }
 
-function readClaudeCodeOauth(): OAuthTokenSet | undefined {
+export function readClaudeCodeOauth(): OAuthTokenSet | undefined {
+  const keychainOauth = readClaudeCodeKeychainOauth();
+  if (keychainOauth) {
+    return keychainOauth;
+  }
+
   for (const sourceFile of claudeCredentialFiles()) {
     const record = readJsonRecord(sourceFile);
     if (!record) {
@@ -150,18 +155,6 @@ function readClaudeCodeOauth(): OAuthTokenSet | undefined {
       refreshToken: credential?.refreshToken,
       sourceFile
     };
-  }
-
-  const keychainRecord = readClaudeCodeKeychainRecord();
-  if (keychainRecord) {
-    const credential = findOauthTokenSet(keychainRecord);
-    if (credential) {
-      return {
-        accessToken: credential.accessToken,
-        refreshToken: credential.refreshToken,
-        sourceFile: `keychain:${claudeCodeKeychainService}`
-      };
-    }
   }
 
   return undefined;
@@ -179,6 +172,22 @@ function claudeCredentialFiles(): string[] {
 // Keychain instead of ~/.claude/.credentials.json. Reading it triggers the
 // standard macOS keychain access prompt (Allow / Always Allow); the user
 // declining or the item not existing both surface as a non-zero exit here.
+function readClaudeCodeKeychainOauth(): OAuthTokenSet | undefined {
+  const keychainRecord = readClaudeCodeKeychainRecord();
+  if (!keychainRecord) {
+    return undefined;
+  }
+  const credential = findOauthTokenSet(keychainRecord);
+  if (!credential) {
+    return undefined;
+  }
+  return {
+    accessToken: credential.accessToken,
+    refreshToken: credential.refreshToken,
+    sourceFile: `keychain:${claudeCodeKeychainService}`
+  };
+}
+
 function readClaudeCodeKeychainRecord(): Record<string, unknown> | undefined {
   if (process.platform !== "darwin") {
     return undefined;

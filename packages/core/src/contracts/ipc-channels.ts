@@ -30,6 +30,7 @@ export const IPC_CHANNELS = {
   appListMcpServerTools: "ccr:app:list-mcp-server-tools",
   appOpenBuiltInBrowser: "ccr:app:open-built-in-browser",
   appOpenExternal: "ccr:app:open-external",
+  appOpenPluginApp: "ccr:app:open-plugin-app",
   appOpenSettings: "ccr:app:open-settings",
   appOpenUpdate: "ccr:app:open-update",
   appOpenProfile: "ccr:app:open-profile",
