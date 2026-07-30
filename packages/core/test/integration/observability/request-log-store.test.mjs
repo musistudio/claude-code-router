@@ -1014,6 +1014,107 @@ test("RequestLogStore analyzes agent sessions and exposes trace payloads", async
   }
 });
 
+test("RequestLogStore ignores subagent markers in tool definitions and placeholder text", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-subagent-detection-test-"));
+  try {
+    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const baseTime = Date.now() - 5000;
+
+    async function recordClaudeRequest({ body, offsetMs, sessionId }) {
+      const startedAtMs = baseTime + offsetMs;
+      await store.record({
+        completedAt: new Date(startedAtMs + 100).toISOString(),
+        durationMs: 100,
+        method: "POST",
+        path: "/v1/messages",
+        providerName: "test-provider",
+        requestBody: Buffer.from(JSON.stringify({
+          ...body,
+          model: "claude-test"
+        }), "utf8"),
+        requestHeaders: {
+          "content-type": "application/json",
+          "user-agent": "claude-cli test",
+          "x-ccr-route-reason": "default",
+          "x-ccr-routed-model": "test-provider/claude-test",
+          "x-claude-code-session-id": sessionId
+        },
+        requestId: `${sessionId}-request`,
+        responseBodyText: JSON.stringify({ model: "claude-test" }),
+        responseHeaders: { "content-type": "application/json" },
+        startedAt: new Date(startedAtMs).toISOString(),
+        statusCode: 200,
+        url: "http://127.0.0.1:3456/v1/messages"
+      });
+    }
+
+    await recordClaudeRequest({
+      body: {
+        messages: [{ content: "normal main-agent request", role: "user" }],
+        tools: [{
+          description: "Use <CCR-SUBAGENT-MODEL>Provider/claude-opus</CCR-SUBAGENT-MODEL> when spawning an agent.",
+          input_schema: {
+            properties: {
+              prompt: {
+                description: "Start with <CCR-SUBAGENT-MODEL>Provider/model</CCR-SUBAGENT-MODEL>.",
+                type: "string"
+              }
+            },
+            type: "object"
+          },
+          name: "Agent"
+        }]
+      },
+      offsetMs: 0,
+      sessionId: "tool-description-session"
+    });
+    await recordClaudeRequest({
+      body: {
+        messages: [{ content: "normal request", role: "user" }],
+        system: "Example: <CCR-SUBAGENT-MODEL>Provider/model</CCR-SUBAGENT-MODEL>"
+      },
+      offsetMs: 1000,
+      sessionId: "placeholder-session"
+    });
+    await recordClaudeRequest({
+      body: {
+        messages: [{
+          content: "<CCR-SUBAGENT-MODEL>Provider/claude-opus</CCR-SUBAGENT-MODEL>\nInspect the repository.",
+          role: "user"
+        }]
+      },
+      offsetMs: 2000,
+      sessionId: "real-subagent-session"
+    });
+
+    const toolDescription = await store.analyze({
+      range: "30d",
+      sessionAgent: "claude-code",
+      sessionId: "tool-description-session"
+    });
+    assert.equal(toolDescription.selectedSession?.trace.subagentRunCount, 0);
+    assert.equal(toolDescription.selectedSession?.subagents.length, 0);
+
+    const placeholder = await store.analyze({
+      range: "30d",
+      sessionAgent: "claude-code",
+      sessionId: "placeholder-session"
+    });
+    assert.equal(placeholder.selectedSession?.trace.subagentRunCount, 0);
+    assert.equal(placeholder.selectedSession?.subagents.length, 0);
+
+    const realSubagent = await store.analyze({
+      range: "30d",
+      sessionAgent: "claude-code",
+      sessionId: "real-subagent-session"
+    });
+    assert.equal(realSubagent.selectedSession?.trace.subagentRunCount, 1);
+    assert.equal(realSubagent.selectedSession?.subagents[0]?.model, "Provider/claude-opus");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("RequestLogStore distinguishes partial session failures from failed sessions", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-agent-status-test-"));
   try {

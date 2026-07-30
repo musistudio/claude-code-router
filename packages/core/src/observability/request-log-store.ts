@@ -1882,13 +1882,65 @@ function extractSubagentModel(
   }
 
   for (const payload of requestPayloads) {
-    const match = stringifyForSearch(payload).match(/<CCR-SUBAGENT-MODEL>(.*?)<\/CCR-SUBAGENT-MODEL>/s);
-    if (match?.[1]?.trim()) {
-      return match[1].trim();
+    const model = extractPayloadSubagentModel(payload);
+    if (model) {
+      return model;
     }
   }
 
   return undefined;
+}
+
+function extractPayloadSubagentModel(payload: unknown): string | undefined {
+  if (!isRecord(payload)) {
+    return undefined;
+  }
+
+  const systemModel = extractSubagentModelFromContent(payload.system);
+  if (systemModel) {
+    return systemModel;
+  }
+
+  if (!Array.isArray(payload.messages)) {
+    return undefined;
+  }
+  for (const message of payload.messages.slice(0, 2)) {
+    if (!isRecord(message) || message.role !== "user") {
+      continue;
+    }
+    const model = extractSubagentModelFromContent(message.content);
+    if (model) {
+      return model;
+    }
+  }
+  return undefined;
+}
+
+function extractSubagentModelFromContent(content: unknown): string | undefined {
+  if (typeof content === "string") {
+    return extractSubagentModelFromText(content);
+  }
+  if (!Array.isArray(content)) {
+    return undefined;
+  }
+  for (const block of content) {
+    const text = typeof block === "string"
+      ? block
+      : isRecord(block) && typeof block.text === "string"
+        ? block.text
+        : undefined;
+    const model = text ? extractSubagentModelFromText(text) : undefined;
+    if (model) {
+      return model;
+    }
+  }
+  return undefined;
+}
+
+function extractSubagentModelFromText(text: string): string | undefined {
+  const match = text.match(/<CCR-SUBAGENT-MODEL>(.*?)<\/CCR-SUBAGENT-MODEL>/s);
+  const model = match?.[1]?.trim();
+  return model && model.toLowerCase() !== "provider/model" ? model : undefined;
 }
 
 function parseLogBodyPayloads(body: RequestLogBody | undefined): unknown[] {
