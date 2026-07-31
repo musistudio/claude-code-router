@@ -1827,14 +1827,14 @@ function ProviderConnectionStatusRow({
   return (
     <div className={cn(
       "flex min-w-0 items-start gap-2 rounded-md border bg-background px-3 py-2",
-      state === "success" && "border-emerald-200",
-      state === "warning" && "border-amber-200",
+      state === "success" && "border-emerald-500/30",
+      state === "warning" && "border-amber-500/30",
       state === "pending" && "border-border"
     )}>
       <span className={cn(
         "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full",
-        state === "success" && "bg-emerald-50 text-emerald-700",
-        state === "warning" && "bg-amber-50 text-amber-700",
+        state === "success" && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+        state === "warning" && "bg-amber-500/10 text-amber-700 dark:text-amber-300",
         state === "pending" && "bg-muted text-muted-foreground"
       )}>
         {loading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : state === "success" ? <Check className="h-3.5 w-3.5" /> : <Info className="h-3.5 w-3.5" />}
@@ -2532,7 +2532,7 @@ export function AddProviderForm({
         </div>
       </div>
 
-      {error ? <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive"><CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>{error}</span></div> : null}
+      {error ? <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive" role="alert"><CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>{error}</span></div> : null}
     </>
   );
 }
@@ -3174,11 +3174,8 @@ export function AddProviderDialog({
 }) {
   const t = useAppText();
   const [checkConfirmOpen, setCheckConfirmOpen] = useState(false);
-  const [checkConfirmBusy, setCheckConfirmBusy] = useState(false);
   const [iconDetecting, setIconDetecting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [checkModelSelection, setCheckModelSelection] = useState<string[]>([]);
-  const [checkResult, setCheckResult] = useState<ProviderConnectivityCheckReport>();
   const [activeStep, setActiveStep] = useState<ProviderSetupStepId>("provider");
   const checkModels = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
   const submitLoading = probeLoading || connectivityLoading || iconDetecting || submitting;
@@ -3247,33 +3244,6 @@ export function AddProviderDialog({
     setActiveStep(nextStep);
   }
 
-  function openCheckConfirm() {
-    setCheckModelSelection(checkModels);
-    setCheckResult(undefined);
-    setCheckConfirmOpen(true);
-  }
-
-  async function confirmCheck() {
-    if (!onCheck) {
-      return;
-    }
-    setCheckConfirmBusy(true);
-    try {
-      setCheckResult(await onCheck(checkModelSelection));
-    } finally {
-      setCheckConfirmBusy(false);
-    }
-  }
-
-  function toggleCheckModel(model: string) {
-    setCheckModelSelection((current) =>
-      current.includes(model)
-        ? current.filter((item) => item !== model)
-        : mergeProviderModelLists(current, [model])
-    );
-    setCheckResult(undefined);
-  }
-
   async function submit() {
     if (submitDisabled) {
       return;
@@ -3329,7 +3299,7 @@ export function AddProviderDialog({
               hideSetupProgress={!wizardMode}
               importProvider={importProvider}
               mode={mode}
-              onCheck={onCheck ? async () => openCheckConfirm() : undefined}
+              onCheck={onCheck ? async () => setCheckConfirmOpen(true) : undefined}
               onChange={onChange}
               onIconDetectingChange={setIconDetecting}
               onSelectStep={wizardMode ? selectSetupStep : undefined}
@@ -3366,88 +3336,138 @@ export function AddProviderDialog({
         </DialogContent>
       </Dialog>
 
-      {checkConfirmOpen ? (
-        <Dialog className="z-[110]" onOpenChange={(open) => !open && !checkConfirmBusy && setCheckConfirmOpen(false)}>
-          <DialogContent className="max-w-[520px]">
-            <DialogHeader>
-              <div className="min-w-0">
-                <DialogTitle>{t("Check Connection")}</DialogTitle>
-              </div>
-              <Button
-                aria-label={t("Close dialog")}
-                disabled={checkConfirmBusy}
-                onClick={() => setCheckConfirmOpen(false)}
-                size="iconSm"
-                title={t("Close")}
-                type="button"
-                variant="ghost"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </DialogHeader>
-            <DialogBody>
-              <div className="space-y-3">
-                <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5">
-                  <div className="flex items-start gap-2 text-[12px] font-medium text-amber-900 dark:text-amber-100">
-                    <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>{t("This check sends real model requests with your provider API key and may consume account balance.")}</span>
-                  </div>
-                  <div className="mt-2 text-[11px] leading-4 text-muted-foreground">
-                    {t("Generated output is limited to 1 token for connectivity checks.")}
-                  </div>
-                </div>
-
-                <div className="rounded-md border border-border bg-background p-2">
-                  <div className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
-                    <div className="min-w-0 truncate text-[12px] font-semibold">{t("Models to check")}</div>
-                    <div className="flex shrink-0 gap-1">
-                      <Button className="h-6 px-1.5 text-[10px]" disabled={checkConfirmBusy || connectivityLoading || checkModels.length === 0} onClick={() => { setCheckModelSelection(checkModels); setCheckResult(undefined); }} type="button" variant="outline">
-                        {t("All")}
-                      </Button>
-                      <Button className="h-6 px-1.5 text-[10px]" disabled={checkConfirmBusy || connectivityLoading || checkModelSelection.length === 0} onClick={() => { setCheckModelSelection([]); setCheckResult(undefined); }} type="button" variant="outline">
-                        {t("Clear")}
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="max-h-[180px] overflow-auto">
-                    <div className="grid grid-cols-1 gap-2">
-                      {checkModels.map((model) => {
-                        const checked = checkModelSelection.includes(model);
-                        return (
-                          <Label
-                            className={cn(
-                              "flex min-h-8 min-w-0 cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5 text-left text-[12px] transition-colors hover:bg-muted",
-                              checked && "border-primary bg-accent"
-                            )}
-                            key={model}
-                          >
-                            <Checkbox checked={checked} disabled={checkConfirmBusy || connectivityLoading} onCheckedChange={() => toggleCheckModel(model)} />
-                            <span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={model}>{model}</span>
-                          </Label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                {checkResult ? <ProviderConnectivityResultPanel result={checkResult} /> : null}
-              </div>
-            </DialogBody>
-            <DialogFooter>
-              <Button disabled={checkConfirmBusy} onClick={() => setCheckConfirmOpen(false)} type="button" variant="outline">
-                {checkResult ? t("Close") : t("Cancel")}
-              </Button>
-              <Button disabled={checkConfirmBusy || connectivityLoading || checkModelSelection.length === 0} onClick={() => void confirmCheck()} type="button">
-                <AnimatedIconSwap iconKey={checkConfirmBusy || connectivityLoading ? "checking" : "start"}>
-                  {checkConfirmBusy || connectivityLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                </AnimatedIconSwap>
-                {t("Start check")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+      {checkConfirmOpen && onCheck ? (
+        <ProviderConnectivityCheckDialog
+          connectivityLoading={connectivityLoading}
+          models={checkModels}
+          onCheck={onCheck}
+          onClose={() => setCheckConfirmOpen(false)}
+        />
       ) : null}
     </>
+  );
+}
+
+/**
+ * Confirmation step for the connectivity check. The check spends real provider credits, so every
+ * surface that offers "Check Connection" — the add/edit dialog and the onboarding wizard — must go
+ * through this dialog rather than calling onCheck directly.
+ */
+export function ProviderConnectivityCheckDialog({
+  connectivityLoading,
+  models,
+  onCheck,
+  onClose
+}: {
+  connectivityLoading: boolean;
+  models: string[];
+  onCheck: (models: string[]) => Promise<ProviderConnectivityCheckReport>;
+  onClose: () => void;
+}) {
+  const t = useAppText();
+  const [busy, setBusy] = useState(false);
+  const [selection, setSelection] = useState<string[]>(() => mergeProviderModelLists(models));
+  const [result, setResult] = useState<ProviderConnectivityCheckReport>();
+  const running = busy || connectivityLoading;
+
+  async function confirmCheck() {
+    setBusy(true);
+    try {
+      setResult(await onCheck(selection));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function toggleCheckModel(model: string) {
+    setSelection((current) =>
+      current.includes(model)
+        ? current.filter((item) => item !== model)
+        : mergeProviderModelLists(current, [model])
+    );
+    setResult(undefined);
+  }
+
+  return (
+    <Dialog className="z-[110]" onOpenChange={(open) => !open && !busy && onClose()}>
+      <DialogContent className="max-w-[520px]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{t("Check Connection")}</DialogTitle>
+          </div>
+          <Button
+            aria-label={t("Close dialog")}
+            disabled={busy}
+            onClick={onClose}
+            size="iconSm"
+            title={t("Close")}
+            type="button"
+            variant="ghost"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogHeader>
+        <DialogBody>
+          <div className="space-y-3">
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5">
+              <div className="flex items-start gap-2 text-[12px] font-medium text-amber-900 dark:text-amber-100">
+                <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>{t("This check sends real model requests with your provider API key and may consume account balance.")}</span>
+              </div>
+              <div className="mt-2 text-[11px] leading-4 text-muted-foreground">
+                {t("Generated output is limited to 1 token for connectivity checks.")}
+              </div>
+            </div>
+
+            <div className="rounded-md border border-border bg-background p-2">
+              <div className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0 truncate text-[12px] font-semibold">{t("Models to check")}</div>
+                <div className="flex shrink-0 gap-1">
+                  <Button className="h-6 px-1.5 text-[10px]" disabled={running || models.length === 0} onClick={() => { setSelection(mergeProviderModelLists(models)); setResult(undefined); }} type="button" variant="outline">
+                    {t("All")}
+                  </Button>
+                  <Button className="h-6 px-1.5 text-[10px]" disabled={running || selection.length === 0} onClick={() => { setSelection([]); setResult(undefined); }} type="button" variant="outline">
+                    {t("Clear")}
+                  </Button>
+                </div>
+              </div>
+              <div className="max-h-[180px] overflow-auto">
+                <div className="grid grid-cols-1 gap-2">
+                  {models.map((model) => {
+                    const checked = selection.includes(model);
+                    return (
+                      <Label
+                        className={cn(
+                          "flex min-h-8 min-w-0 cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5 text-left text-[12px] transition-colors hover:bg-muted",
+                          checked && "border-primary bg-accent"
+                        )}
+                        key={model}
+                      >
+                        <Checkbox checked={checked} disabled={running} onCheckedChange={() => toggleCheckModel(model)} />
+                        <span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={model}>{model}</span>
+                      </Label>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {result ? <ProviderConnectivityResultPanel result={result} /> : null}
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <Button disabled={busy} onClick={onClose} type="button" variant="outline">
+            {result ? t("Close") : t("Cancel")}
+          </Button>
+          <Button disabled={running || selection.length === 0} onClick={() => void confirmCheck()} type="button">
+            <AnimatedIconSwap iconKey={running ? "checking" : "start"}>
+              {running ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+            </AnimatedIconSwap>
+            {t("Start check")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -3646,7 +3666,7 @@ function ProviderModelPicker({
       observer?.disconnect();
       window.removeEventListener("resize", updateWidth);
     };
-  }, [loading]);
+  }, []);
 
   useEffect(() => {
     if (!customModelEditing) {
@@ -3666,26 +3686,28 @@ function ProviderModelPicker({
           </div>
           <Badge variant="outline">{loading ? <LoaderCircle className="h-3 w-3 animate-spin" /> : catalog.length}</Badge>
         </div>
-        {!loading ? (
-          <div className="border-b border-border p-2">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                aria-label={t("Search provider models")}
-                className="pl-8"
-                onChange={(event) => onQueryChange(event.target.value)}
-                placeholder={t("Search provider models")}
-                value={query}
-              />
-            </div>
+        <div className="border-b border-border p-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              aria-label={t("Search provider models")}
+              className="pl-8"
+              disabled={loading}
+              onChange={(event) => onQueryChange(event.target.value)}
+              placeholder={t("Search provider models")}
+              value={query}
+            />
           </div>
-        ) : null}
+        </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {loading ? (
             <ProviderModelListSkeleton />
           ) : visibleCatalogModels.length === 0 ? (
             <div className="rounded-md border border-dashed border-border bg-muted/20 px-3 py-8 text-center text-[12px] text-muted-foreground">
-              {catalog.length === 0 ? t("No provider models") : t("No matching models")}
+              <div>{catalog.length === 0 ? t("No provider models") : t("No matching models")}</div>
+              {catalog.length === 0 ? (
+                <div className="mt-1 text-[11px] leading-4">{t("This provider did not return a model list. Add model IDs with Custom model.")}</div>
+              ) : null}
             </div>
           ) : (
             <div className="space-y-1.5">
@@ -3738,10 +3760,9 @@ function ProviderModelPicker({
           </div>
           <Badge variant={selectedModels.length > 0 ? "secondary" : "outline"}>{selectedModels.length}</Badge>
         </div>
-        {!loading ? (
-          <div className="border-b border-border p-2">
-            <div className="relative h-9 min-w-0" ref={addedControlsRef}>
-              <AnimatePresence initial={false} mode="wait">
+        <div className="border-b border-border p-2">
+          <div className="relative h-9 min-w-0" ref={addedControlsRef}>
+            <AnimatePresence initial={false} mode="wait">
                 {customModelEditing ? (
                 <motion.div
                   animate={{ opacity: 1, width: customModelEditorWidth }}
@@ -3869,33 +3890,28 @@ function ProviderModelPicker({
                   </button>
                 </motion.div>
                 )}
-              </AnimatePresence>
-            </div>
+            </AnimatePresence>
           </div>
-        ) : null}
+        </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
-          {loading ? (
-            <ProviderModelListSkeleton compact />
-          ) : (
-            <ModelMetadataEditor
-              defaults={defaults}
-              displayNames={displayNames}
-              emptyLabel={selectedModels.length === 0 ? t("No models added") : t("No matching models")}
-              header={false}
-              metadata={metadata}
-              models={visibleAddedModels}
-              onChange={onMetadataChange}
-              onRemoveModel={removeModel}
-              sourceModels={catalog}
-            />
-          )}
+          <ModelMetadataEditor
+            defaults={defaults}
+            displayNames={displayNames}
+            emptyLabel={selectedModels.length === 0 ? t("No models added") : t("No matching models")}
+            header={false}
+            metadata={metadata}
+            models={visibleAddedModels}
+            onChange={onMetadataChange}
+            onRemoveModel={removeModel}
+            sourceModels={catalog}
+          />
         </div>
       </section>
     </div>
   );
 }
 
-function ProviderModelListSkeleton({ compact = false }: { compact?: boolean }) {
+function ProviderModelListSkeleton() {
   const t = useAppText();
 
   return (
@@ -3910,7 +3926,7 @@ function ProviderModelListSkeleton({ compact = false }: { compact?: boolean }) {
               "provider-skeleton-shimmer h-3 rounded-full",
               index % 3 === 0 ? "w-7/12" : index % 3 === 1 ? "w-9/12" : "w-5/12"
             )} />
-            {!compact && index % 2 === 0 ? <div className="provider-skeleton-shimmer h-2 w-4/12 rounded-full" /> : null}
+            {index % 2 === 0 ? <div className="provider-skeleton-shimmer h-2 w-4/12 rounded-full" /> : null}
           </div>
           <div className="provider-skeleton-shimmer h-4 w-4 shrink-0 rounded-full" />
         </div>
