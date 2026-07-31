@@ -25,6 +25,9 @@ import {
   nvidiaProviderPreset
 } from "@ccr/core/providers/presets/nvidia/index.ts";
 import {
+  orcaRouterProviderPreset
+} from "@ccr/core/providers/presets/orcarouter/index.ts";
+import {
   providerPresets
 } from "@ccr/core/providers/presets/index.ts";
 import {
@@ -138,6 +141,21 @@ test("NVIDIA preset exposes the hosted NIM OpenAI-compatible endpoint", () => {
   ]);
   assert.equal(providerPresetMatchesBaseUrl(nvidiaProviderPreset, "https://integrate.api.nvidia.com/v1/chat/completions"), true);
   assert.equal(providerPresetMatchesBaseUrl(nvidiaProviderPreset, "https://build.nvidia.com/models"), false);
+});
+
+test("OrcaRouter preset exposes the gateway endpoint for all three supported protocols", () => {
+  assert.equal(providerPresets.find((preset) => preset.id === "orcarouter"), orcaRouterProviderPreset);
+  assert.equal(orcaRouterProviderPreset.websiteUrl, "https://www.orcarouter.ai/");
+  assert.deepEqual(orcaRouterProviderPreset.endpoints, [
+    {
+      baseUrl: "https://api.orcarouter.ai/v1",
+      protocols: ["anthropic_messages", "openai_chat_completions", "openai_responses"]
+    }
+  ]);
+  assert.equal(providerPresetMatchesBaseUrl(orcaRouterProviderPreset, "https://api.orcarouter.ai/v1/chat/completions"), true);
+  assert.equal(providerPresetMatchesBaseUrl(orcaRouterProviderPreset, "https://api.orcarouter.ai"), true);
+  assert.equal(providerPresetMatchesBaseUrl(orcaRouterProviderPreset, "https://www.orcarouter.ai/"), false);
+  assert.equal(findProviderPresetByIdentityInList(providerPresets, "my OrcaRouter gateway")?.id, "orcarouter");
 });
 
 test("NVIDIA preset ignores stale Responses detection and converts Codex requests to Chat Completions", () => {

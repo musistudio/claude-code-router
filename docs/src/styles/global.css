@@ -1414,6 +1414,12 @@ h1 {
   --provider-brand-3: #9b18ff;
 }
 
+.doc-markdown a.provider-import-button.provider-orcarouter {
+  --provider-brand: #0a2540;
+  --provider-brand-2: #1f7aff;
+  --provider-brand-3: #d6e8ff;
+}
+
 .doc-markdown > pre,
 .doc-markdown > .code-panel {
   margin: 22px 0 32px;
