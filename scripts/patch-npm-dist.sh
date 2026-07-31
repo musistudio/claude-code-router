@@ -2,8 +2,14 @@
 #
 # CCR (claude-code-router) npm 2.1.1 patch script
 #
-# Fixes: Anthropic content block validator rejects thinking/redacted_thinking blocks
-# from Claude Code CLI 2.1.x (interleaved-thinking + redact-thinking).
+# Fixes two bugs in the npm-published dist that affect Claude Code CLI 2.1.x:
+#
+#   1. Validator rejects thinking/redacted_thinking blocks
+#      (interleaved-thinking + redact-thinking beta headers)
+#
+#   2. SSE streaming response never terminates properly
+#      (stop_reason deleted, message_stop filtered → Claude Code retries
+#       indefinitely, causing duplicate/repeated output)
 #
 # Usage:
 #   bash patch-npm-dist.sh          # auto-detect install path
@@ -122,6 +128,87 @@ else
   skipped=$((skipped + 1))
 fi
 
+# --- Patch 3: SSE streaming — filter provider framing events + restore stop_reason/message_stop ---
+echo ""
+echo "--- Patch: SSE streaming termination (stop_reason + message_stop) ---"
+
+if grep -q 'Filtered out message_stop event to allow conversation continuation' "$CLI" 2>/dev/null; then
+  node -e "
+    const fs = require('fs');
+    const f = process.argv[1];
+    let c = fs.readFileSync(f, 'utf8');
+
+    // Patch 3a: Filter provider's framing events instead of stripping stop_reason
+    const old3a = \`        if (chunk.event === \\\"message_delta\\\" && chunk.data?.delta?.stop_reason) {
+          const filteredData = { ...chunk.data };
+          if (filteredData.delta) {
+            filteredData.delta = { ...filteredData.delta };
+            delete filteredData.delta.stop_reason;
+            delete filteredData.delta.stop_sequence;
+          }
+          this.sendSSEEvent(reply, chunk.event, filteredData);
+        } else if (chunk.event === \\\"message_stop\\\") {
+          logger.debug(\\\"Filtered out message_stop event to allow conversation continuation\\\", {}, requestId, \\\"server\\\");
+        } else {
+          this.sendSSEEvent(reply, chunk.event, chunk.data);
+        }\`;
+    const new3a = \`        if (chunk.event === \\\"message_start\\\" || chunk.event === \\\"ping\\\" || chunk.event === \\\"message_delta\\\" || chunk.event === \\\"message_stop\\\") {
+          logger.debug(\\\"Filtered framing event from provider\\\", { event: chunk.event }, requestId, \\\"server\\\");
+        } else if ((chunk.event === \\\"content_block_start\\\" || chunk.event === \\\"content_block_stop\\\") && chunk.data?.index === 0) {
+          logger.debug(\\\"Filtered duplicate text block framing from provider\\\", { event: chunk.event }, requestId, \\\"server\\\");
+        } else {
+          this.sendSSEEvent(reply, chunk.event, chunk.data);
+        }\`;
+
+    if (c.includes(old3a)) {
+      c = c.replace(old3a, new3a);
+      console.log('  OK: Patch 3a applied (filter framing events)');
+    } else {
+      console.log('  SKIP: Patch 3a pattern not found (already patched or version changed)');
+    }
+
+    // Patch 3b: Restore stop_reason and message_stop at end of stream
+    const old3b = \`      this.sendSSEEvent(reply, \\\"message_delta\\\", {
+        type: \\\"message_delta\\\",
+        delta: {
+          // stop_reason: stopReason, // 移除停止原因，但保持HTTP连接正常结束
+          // stop_sequence: null      // 移除停止序列  
+        },
+        usage: {
+          output_tokens: outputTokens
+        }
+      });
+      reply.raw.end();\`;
+    const new3b = \`      this.sendSSEEvent(reply, \\\"message_delta\\\", {
+        type: \\\"message_delta\\\",
+        delta: {
+          stop_reason: \\\"end_turn\\\",
+          stop_sequence: null
+        },
+        usage: {
+          output_tokens: outputTokens
+        }
+      });
+      this.sendSSEEvent(reply, \\\"message_stop\\\", {
+        type: \\\"message_stop\\\"
+      });
+      reply.raw.end();\`;
+
+    if (c.includes(old3b)) {
+      c = c.replace(old3b, new3b);
+      console.log('  OK: Patch 3b applied (restore stop_reason + message_stop)');
+    } else {
+      console.log('  SKIP: Patch 3b pattern not found (already patched or version changed)');
+    }
+
+    fs.writeFileSync(f, c);
+  " "$CLI" 2>/dev/null
+  patched=$((patched + 1))
+else
+  echo "  SKIP (already patched or pattern changed): SSE streaming"
+  skipped=$((skipped + 1))
+fi
+
 # --- Summary ---
 echo ""
 echo "Done. Patched: $patched, Skipped: $skipped"
@@ -143,4 +230,8 @@ if [[ -f "$VALIDATOR" ]] && grep -q 'Unknown content block type' "$VALIDATOR" 2>
   echo "FAIL: validator.js still has 'Unknown content block type'"
   exit 1
 fi
-echo "PASS: No 'Unknown content block type' found — thinking blocks will be accepted"
+if grep -q 'Filtered out message_stop event to allow conversation continuation' "$CLI" 2>/dev/null; then
+  echo "FAIL: cli.js still strips message_stop (SSE streaming patch not applied)"
+  exit 1
+fi
+echo "PASS: All patches verified — thinking blocks accepted, SSE streams terminate correctly"
