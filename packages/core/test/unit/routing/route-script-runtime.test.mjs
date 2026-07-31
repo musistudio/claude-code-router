@@ -134,6 +134,21 @@ test("route script input derives every documented routing summary field", () => 
   });
 });
 
+test("route script input uses the provided profile id instead of parsing the API key slug", () => {
+  const input = buildRouteScriptInput({
+    body: { model: "Provider/alpha" },
+    headers: { "X-Auth-Api-Key-Id": "profile:Claude-Work-Profile" },
+    log: console,
+    method: "POST",
+    url: "/v1/messages"
+  }, {
+    profileId: "Claude Work/Profile"
+  });
+
+  assert.equal(input.apiKeyId, "profile:Claude-Work-Profile");
+  assert.equal(input.profileId, "Claude Work/Profile");
+});
+
 test("route scripts receive frozen per-request input and a stable hash helper", async () => {
   const runtime = new RouteScriptRuntime({ workerCount: 1, workerFile });
   const script = routeScript(`
@@ -501,6 +516,49 @@ test("the route-script test service validates, executes, and previews a custom d
       rewrites: [{ key: "request.body.tested", operation: "set", value: true }]
     });
     assert.ok(result.durationMs >= 0);
+  } finally {
+    await gatewayService.stop();
+  }
+});
+
+test("the route-script test service exposes the configured profile id", async () => {
+  const profile = {
+    agent: "claude-code",
+    enabled: true,
+    id: "Claude Work/Profile",
+    model: "Provider/alpha",
+    name: "Claude Work",
+    scope: "ccr"
+  };
+  const script = routeScript(`
+    return {
+      rewrites: [{ key: "request.body.profileId", operation: "set", value: input.profileId }]
+    };
+  `);
+  try {
+    const result = await gatewayService.testRouteScript({
+      ...routingConfig(),
+      profile: {
+        enabled: true,
+        profiles: [profile]
+      }
+    }, {
+      request: {
+        body: { messages: [], model: "Provider/alpha" },
+        headers: { "x-auth-api-key-id": "profile:Claude-Work-Profile" },
+        method: "POST",
+        url: "/v1/messages"
+      },
+      script
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.matched, true);
+    assert.deepEqual(result.output.rewrites, [{
+      key: "request.body.profileId",
+      operation: "set",
+      value: "Claude Work/Profile"
+    }]);
   } finally {
     await gatewayService.stop();
   }

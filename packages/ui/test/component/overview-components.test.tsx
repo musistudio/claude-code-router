@@ -3,6 +3,7 @@ import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { formatCodexResetCardExpiry, formatCodexResetCardNumber, OverviewView } from "@ccr/ui/pages/home/components/dashboard.tsx";
+import { AppI18nContext, appCopy } from "@ccr/ui/pages/home/shared/i18n.tsx";
 import { parseStatusBucketDate } from "@ccr/ui/pages/home/shared/controls.tsx";
 import { providerAccountMeterDetailValidityProgress } from "@ccr/ui/pages/home/shared/provider-accounts.ts";
 import type { OverviewWidgetConfig, ProviderAccountSnapshot } from "@ccr/core/contracts/app.ts";
@@ -72,6 +73,34 @@ test("OverviewView renders every overview widget type", () => {
   assert.match(html, /AI Fuel Cockpit/);
   assert.match(html, /Token Calendar Poster/);
   assert.match(html, /Spend Receipt/);
+});
+
+test("OverviewView keeps Chinese token copy as Token", () => {
+  const html = renderToStaticMarkup(
+    <AppI18nContext.Provider value={appCopy.zh}>
+      <OverviewView
+        overviewWidgets={[
+          { enabled: true, id: "metric-total", metric: "total-tokens", size: "1:1", type: "metric", variant: "card" },
+          { enabled: true, id: "trend", size: "3:2", type: "usage-trend", variant: "composed" },
+          { enabled: true, id: "activity", size: "4:2", type: "token-activity", variant: "heatmap" },
+          { enabled: true, id: "token-mix", size: "2:2", type: "token-mix", variant: "donut" },
+          { enabled: true, id: "share-usage", size: "1:4", type: "share-usage-wrapped", variant: "card" },
+          { enabled: true, id: "share-receipt", size: "1:4", type: "share-spend-receipt", variant: "card" }
+        ]}
+        providerAccounts={accountSnapshots()}
+        refreshProviderAccounts={() => undefined}
+        setUsageRange={() => undefined}
+        usageRange="30d"
+        usageStats={usageStats("30d")}
+        onWidgetsChange={() => undefined}
+      />
+    </AppI18nContext.Provider>
+  );
+
+  assert.match(html, /Token/);
+  assert.match(html, /Token 构成/);
+  assert.match(html, /总 Token/);
+  assert.doesNotMatch(html, /令牌/);
 });
 
 test("overview status dates accept ISO usage buckets", () => {

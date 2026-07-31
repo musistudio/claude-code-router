@@ -1,12 +1,12 @@
 /**
  * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
  */
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { networkInterfaces } from "node:os";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join as pathJoin, resolve as pathResolve } from "node:path";
+import { delimiter as pathDelimiter, join as pathJoin, resolve as pathResolve } from "node:path";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import {
   deletePersistedRuntimeState,
@@ -24,6 +24,14 @@ import { delay } from "@ccr/core/gateway/internal/clock";
 const gatewayRuntimeStateKey = "gateway";
 const gatewayConfigAcceptanceTimeoutMs = 5_000;
 const gatewayStartupTimeoutMs = 15_000;
+const gatewayChildOutputLimit = 4000;
+
+const gatewayChildOutput = new WeakMap<ChildProcess, { stderr: string; stdout: string }>();
+
+type GatewayNodeRuntime = {
+  command: string;
+  electronRunAsNode: boolean;
+};
 
 export type SpawnedGatewayProcess = {
   child: ChildProcess;
@@ -39,15 +47,17 @@ export function spawnGatewayProcess(
 ): SpawnedGatewayProcess {
   const gatewayEntry = resolveGatewayEntry();
   const proxyPreloadFile = upstreamProxyUrl ? writeGatewayProxyPreloadFile() : undefined;
-  const env = createGatewayProcessEnv(config, upstreamProxyUrl, runtimeId, coreAuthToken);
+  const nodeRuntime = resolveGatewayNodeRuntime();
+  const env = createGatewayProcessEnv(config, upstreamProxyUrl, runtimeId, coreAuthToken, nodeRuntime.electronRunAsNode);
   const gatewayBootstrapEntry = resolveGatewayBootstrapEntry();
   const args = proxyPreloadFile ? ["--require", proxyPreloadFile, gatewayBootstrapEntry] : [gatewayBootstrapEntry];
-  const child = spawn(process.execPath, args, {
+  const child = spawn(nodeRuntime.command, args, {
     cwd: CONFIGDIR,
     env,
     serialization: "advanced",
     stdio: ["ignore", "pipe", "pipe", "ipc"]
   });
+  captureGatewayChildOutput(child);
   if (!child.send) {
     child.kill();
     throw new Error("Gateway runtime did not create an IPC channel.");
@@ -109,10 +119,13 @@ function monitorGatewayConfigAcceptance(child: ChildProcess): {
       }
     };
     const onError = (error: Error) => {
-      finish(new Error(`Core gateway failed before accepting runtime config: ${formatError(error)}`));
+      finish(new Error(appendGatewayChildOutput(
+        child,
+        `Core gateway failed before accepting runtime config: ${formatError(error)}`
+      )));
     };
     const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
-      finish(new Error(`Core gateway exited with ${signal ?? code ?? "unknown status"} before accepting runtime config.`));
+      finish(new Error(formatCoreGatewayChildExit(child, code, signal, "before accepting runtime config")));
     };
     const timer = setTimeout(() => {
       finish(new Error(`Core gateway did not accept runtime config within ${gatewayConfigAcceptanceTimeoutMs}ms.`));
@@ -126,6 +139,17 @@ function monitorGatewayConfigAcceptance(child: ChildProcess): {
     promise,
     reject: (error) => rejectAcceptance(error)
   };
+}
+
+export function formatCoreGatewayChildExit(
+  child: ChildProcess,
+  code: number | null = child.exitCode,
+  signal: NodeJS.Signals | null = child.signalCode,
+  phase?: string
+): string {
+  const status = signal ?? code ?? (child.killed ? "killed" : "unknown status");
+  const phaseSuffix = phase ? ` ${phase}` : "";
+  return appendGatewayChildOutput(child, `Core gateway exited with ${status}${phaseSuffix}.`);
 }
 
 function resolveGatewayBootstrapEntry(): string {
@@ -224,7 +248,13 @@ function resolveBundledUndiciProxyAgentModule(): string | undefined {
   ].find((candidate) => existsSync(candidate));
 }
 
-function createGatewayProcessEnv(config: AppConfig, upstreamProxyUrl: string | undefined, runtimeId: string, coreAuthToken: string): NodeJS.ProcessEnv {
+function createGatewayProcessEnv(
+  config: AppConfig,
+  upstreamProxyUrl: string | undefined,
+  runtimeId: string,
+  coreAuthToken: string,
+  electronRunAsNode: boolean
+): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     AUTH_ENABLED: "true",
@@ -235,10 +265,14 @@ function createGatewayProcessEnv(config: AppConfig, upstreamProxyUrl: string | u
     AUTH_STATIC_API_KEY_HEADER: coreGatewayAuthHeader,
     CCR_GATEWAY_RUNTIME_ID: runtimeId,
     [coreGatewayAuthTokenEnv]: coreAuthToken,
-    ELECTRON_RUN_AS_NODE: "1",
     HOST: config.gateway.coreHost,
     PORT: String(config.gateway.corePort)
   };
+  if (electronRunAsNode) {
+    env.ELECTRON_RUN_AS_NODE = "1";
+  } else {
+    delete env.ELECTRON_RUN_AS_NODE;
+  }
 
   // The managed gateway must use the generated raw-trace policy. Inheriting
   // the upstream gateway's RAW_TRACE_* overrides could bypass CCR privacy,
@@ -270,6 +304,119 @@ function createGatewayProcessEnv(config: AppConfig, upstreamProxyUrl: string | u
   env.CCR_UPSTREAM_PROXY_URL = upstreamProxyUrl;
   env.CCR_UNDICI_MODULE = resolveUndiciProxyAgentModule();
   return env;
+}
+
+function resolveGatewayNodeRuntime(): GatewayNodeRuntime {
+  const candidates = uniqueGatewayNodeRuntimeCandidates([
+    ...configuredGatewayNodeRuntimeCandidates(),
+    ...systemGatewayNodeRuntimeCandidates(),
+    { command: process.execPath, electronRunAsNode: Boolean(process.versions.electron) }
+  ]);
+  const nativeProbe = resolveGatewayNativeProbeModule();
+  if (nativeProbe) {
+    const compatible = candidates.find((candidate) => canLoadGatewayNativeProbe(candidate, nativeProbe));
+    if (compatible) return compatible;
+  }
+  return candidates[0] ?? { command: process.execPath, electronRunAsNode: Boolean(process.versions.electron) };
+}
+
+function configuredGatewayNodeRuntimeCandidates(): GatewayNodeRuntime[] {
+  const configured = process.env.CCR_NODE_BIN?.trim();
+  return configured ? [{ command: configured, electronRunAsNode: false }] : [];
+}
+
+function systemGatewayNodeRuntimeCandidates(): GatewayNodeRuntime[] {
+  if (!process.versions.electron) {
+    return [];
+  }
+  return [
+    process.env.NODE_BINARY?.trim(),
+    process.env.NODE?.trim(),
+    resolvePathExecutable(process.platform === "win32" ? "node.exe" : "node"),
+    process.platform === "darwin" ? "/opt/homebrew/bin/node" : "",
+    process.platform === "darwin" ? "/usr/local/bin/node" : "",
+    process.platform === "win32" ? "" : "/usr/bin/node"
+  ]
+    .filter((candidate): candidate is string => Boolean(candidate && executableExists(candidate)))
+    .map((command) => ({ command, electronRunAsNode: false }));
+}
+
+function uniqueGatewayNodeRuntimeCandidates(candidates: GatewayNodeRuntime[]): GatewayNodeRuntime[] {
+  const seen = new Set<string>();
+  const unique: GatewayNodeRuntime[] = [];
+  for (const candidate of candidates) {
+    const key = `${candidate.electronRunAsNode ? "electron" : "node"}\0${candidate.command}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(candidate);
+  }
+  return unique;
+}
+
+function resolveGatewayNativeProbeModule(): string | undefined {
+  try {
+    return requireFromHere.resolve("better-sqlite3");
+  } catch {
+    return undefined;
+  }
+}
+
+function canLoadGatewayNativeProbe(candidate: GatewayNodeRuntime, modulePath: string): boolean {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  if (candidate.electronRunAsNode) {
+    env.ELECTRON_RUN_AS_NODE = "1";
+  } else {
+    delete env.ELECTRON_RUN_AS_NODE;
+  }
+  const result = spawnSync(candidate.command, ["-e", "require(process.argv[1])", modulePath], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    env,
+    stdio: ["ignore", "ignore", "pipe"],
+    timeout: 3000,
+    windowsHide: true
+  });
+  return result.status === 0;
+}
+
+function resolvePathExecutable(name: string): string {
+  for (const directory of (process.env.PATH ?? "").split(pathDelimiter)) {
+    const candidate = pathJoin(directory, name);
+    if (executableExists(candidate)) {
+      return candidate;
+    }
+  }
+  return "";
+}
+
+function executableExists(candidate: string): boolean {
+  if (!candidate) return false;
+  if (!candidate.includes("/") && !candidate.includes("\\")) return true;
+  return existsSync(candidate);
+}
+
+function captureGatewayChildOutput(child: ChildProcess): void {
+  gatewayChildOutput.set(child, { stderr: "", stdout: "" });
+  child.stdout?.on("data", (chunk) => appendGatewayOutput(child, "stdout", chunk));
+  child.stderr?.on("data", (chunk) => appendGatewayOutput(child, "stderr", chunk));
+}
+
+function appendGatewayOutput(child: ChildProcess, stream: "stderr" | "stdout", chunk: Buffer | string): void {
+  const output = gatewayChildOutput.get(child);
+  if (!output) return;
+  output[stream] = `${output[stream]}${chunk.toString()}`.slice(-gatewayChildOutputLimit);
+}
+
+function appendGatewayChildOutput(child: ChildProcess, message: string): string {
+  const output = gatewayChildOutput.get(child);
+  if (!output) return message;
+  const stderr = output.stderr.trim();
+  const stdout = output.stdout.trim();
+  const details = [
+    stderr ? `stderr:\n${stderr}` : "",
+    stdout ? `stdout:\n${stdout}` : ""
+  ].filter(Boolean).join("\n");
+  return details ? `${message}\n${details}` : message;
 }
 
 export function writeGatewayProxyPreloadFile(): string {

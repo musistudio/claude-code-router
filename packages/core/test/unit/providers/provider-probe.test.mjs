@@ -12,7 +12,8 @@ import { detectedProviderFromHeaders, newApiKeyUsageAccountConfig, newApiUserSel
 import {
   checkGatewayProviderConnectivity,
   isProviderProtocolEndpointSupportedForProbe,
-  probeGatewayProvider
+  probeGatewayProvider,
+  probeGatewayProviderCandidates
 } from "@ccr/core/providers/probe.ts";
 
 test("protocol support probe does not treat Gemini auth errors as every protocol", () => {
@@ -215,6 +216,99 @@ test("provider probe exposes image and video capabilities when their endpoints r
   assert.deepEqual(
     probe.capabilities?.map(({ type }) => type),
     ["openai_image_generations", "openai_video_generations"]
+  );
+});
+
+test("candidate protocol probe carries the entered API key and Authorization fallback", async (t) => {
+  const previousFetch = globalThis.fetch;
+  const calls = [];
+
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    const headers = new Headers(init?.headers);
+    calls.push({
+      authorization: headers.get("authorization"),
+      pathname: url.pathname,
+      protocol: url.pathname.includes("/messages")
+        ? "anthropic"
+        : url.pathname.includes(":generateContent")
+          ? "gemini"
+          : "openai",
+      xApiKey: headers.get("x-api-key"),
+      xGoogApiKey: headers.get("x-goog-api-key")
+    });
+
+    return new Response(JSON.stringify({ error: { message: "Unauthorized" } }), {
+      headers: { "content-type": "application/json" },
+      status: 401
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+
+  await probeGatewayProviderCandidates({
+    apiKey: "sk-probe-key",
+    candidates: [{
+      baseUrl: "http://127.0.0.1:49124",
+      protocols: ["openai_chat_completions", "anthropic_messages", "gemini_generate_content"],
+      source: "custom"
+    }],
+    forceRefresh: true,
+    mode: "protocols",
+    protocols: ["openai_chat_completions", "anthropic_messages", "gemini_generate_content"]
+  });
+
+  assert.deepEqual(
+    calls.map((call) => call.protocol),
+    ["openai", "anthropic", "gemini"]
+  );
+  assert.equal(calls[0]?.authorization, "Bearer sk-probe-key");
+  assert.equal(calls[1]?.authorization, "Bearer sk-probe-key");
+  assert.equal(calls[1]?.xApiKey, "sk-probe-key");
+  assert.equal(calls[2]?.authorization, "Bearer sk-probe-key");
+  assert.equal(calls[2]?.xGoogApiKey, "sk-probe-key");
+});
+
+test("model discovery carries Authorization fallback for protocol-specific API keys", async (t) => {
+  const previousFetch = globalThis.fetch;
+  const calls = [];
+
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    const headers = new Headers(init?.headers);
+    calls.push({
+      authorization: headers.get("authorization"),
+      key: url.searchParams.get("key"),
+      pathname: url.pathname,
+      xApiKey: headers.get("x-api-key"),
+      xGoogApiKey: headers.get("x-goog-api-key")
+    });
+
+    return new Response(JSON.stringify({ data: [] }), {
+      headers: { "content-type": "application/json" },
+      status: 200
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+
+  await probeGatewayProvider({
+    apiKey: "Bearer sk-model-key",
+    baseUrl: "http://127.0.0.1:49124",
+    forceRefresh: true,
+    mode: "models",
+    protocols: ["openai_chat_completions", "anthropic_messages", "gemini_generate_content"]
+  });
+
+  const modelCalls = calls.filter((call) => call.pathname.endsWith("/models"));
+  assert.equal(modelCalls.length >= 3, true);
+  assert.equal(calls.every((call) => call.authorization === "Bearer sk-model-key"), true);
+  assert.equal(modelCalls.some((call) => call.xApiKey === "sk-model-key"), true);
+  assert.equal(
+    modelCalls.some((call) => call.key === "sk-model-key" && call.xGoogApiKey === "sk-model-key"),
+    true
   );
 });
 

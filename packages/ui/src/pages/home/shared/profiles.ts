@@ -19,6 +19,7 @@ import type {
   GatewayProviderConfig,
   ProfileConfig,
   ProfileOpenSurface,
+  ProfileRoutingConfig,
   CodexProfileConfigFormat,
   ProfileScope,
   ProfileSurface,
@@ -30,6 +31,7 @@ import {
 
 import { isPlainRecord, normalizeProviderModelSelector, stringValue, uniqueStrings } from "./common";
 import { virtualModelProfileModelNames } from "./providers";
+import { normalizeRouterRules } from "./routing";
 import { endpointFromHostPort } from "./services";
 import { keyValueRowsFromRecord, recordFromKeyValueRows, stringRecordValue, validateProfileEnvRows } from "./virtual-models";
 import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
@@ -397,6 +399,65 @@ function createBotGatewayDraft(botGateway?: BotGatewayRuntimeConfig) {
   };
 }
 
+function createProfileRoutingDraft(routing?: ProfileConfig["routing"]): Pick<AddProfileDraft, "routingEnabled" | "routingEnhancedRoute" | "routingRules"> {
+  const normalized = normalizeProfileRoutingConfig(routing);
+  return {
+    routingEnabled: Boolean(normalized?.enabled),
+    routingEnhancedRoute: normalized?.enhancedRoute ?? true,
+    routingRules: normalized?.rules ?? []
+  };
+}
+
+export function normalizeProfileRoutingConfig(value: unknown): ProfileRoutingConfig | undefined {
+  if (value === false) {
+    return {
+      enabled: false,
+      enhancedRoute: true,
+      rules: []
+    };
+  }
+  if (value === true) {
+    return {
+      enabled: true,
+      enhancedRoute: true,
+      rules: []
+    };
+  }
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+  return {
+    enabled: typeof value.enabled === "boolean" ? value.enabled : true,
+    enhancedRoute: typeof value.enhancedRoute === "boolean"
+      ? value.enhancedRoute
+      : typeof value.useEnhancedRoute === "boolean"
+        ? value.useEnhancedRoute
+        : typeof value.builtInRoute === "boolean"
+          ? value.builtInRoute
+          : typeof value.builtinRoute === "boolean"
+            ? value.builtinRoute
+            : typeof value.useBuiltInRoute === "boolean"
+              ? value.useBuiltInRoute
+              : true,
+    rules: (normalizeRouterRules(value.rules) ?? []).filter((rule) => rule.type !== "script")
+  };
+}
+
+function profileRoutingConfigFromDraft(draft: AddProfileDraft): ProfileRoutingConfig | undefined {
+  const rules = draft.routingRules.filter((rule) => rule.type !== "script").map((rule) => ({ ...rule }));
+  const supportsEnhancedRoute = draft.agent === "claude-code" || draft.agent === "codex";
+  const hasEnhancedRouteConfig = supportsEnhancedRoute && draft.routingEnhancedRoute === false;
+  const hasRoutingConfig = draft.routingEnabled || rules.length > 0 || hasEnhancedRouteConfig;
+  if (!hasRoutingConfig) {
+    return undefined;
+  }
+  return {
+    enabled: draft.routingEnabled,
+    enhancedRoute: supportsEnhancedRoute ? draft.routingEnhancedRoute : true,
+    rules
+  };
+}
+
 export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code", name?: string): AddProfileDraft {
   const surface = agent === "zcode" || agent === "claude-design" ? "app" : "cli";
   return {
@@ -414,6 +475,7 @@ export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code"
     opusModel: "",
     providerId: "claude-code-router",
     providerName: "Claude Code Router",
+    ...createProfileRoutingDraft(),
     scope: "ccr",
     settingsFile: "~/.claude/settings.json",
     showAllSessions: false,
@@ -447,6 +509,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
     const surface = normalizeProfileSurfaceForForm(profile.surface);
     return {
       ...createProfileDraft("claude-code", profile.name),
+      ...createProfileRoutingDraft(profile.routing),
       ...botDraft,
       appPath: profile.appPath ?? "",
       botConfigId,
@@ -467,6 +530,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
   if (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi") {
     return {
       ...createProfileDraft(profile.agent, profile.name),
+      ...createProfileRoutingDraft(profile.routing),
       availableModels: profile.agent === "kimi"
         ? uniqueStrings([profile.model, ...(profile.availableModels ?? [])].map(normalizeProfileClientModel).filter(Boolean))
         : [],
@@ -479,6 +543,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
   if (profile.agent === "claude-design") {
     return {
       ...createProfileDraft("claude-design", profile.name),
+      ...createProfileRoutingDraft(profile.routing),
       envRows: [],
       model: "",
       scope: "ccr",
@@ -488,6 +553,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
   const surface = profile.agent === "zcode" ? "app" : normalizeProfileSurfaceForForm(profile.surface);
   return {
     ...createProfileDraft(profile.agent, profile.name),
+    ...createProfileRoutingDraft(profile.routing),
     ...botDraft,
     appPath: profile.appPath ?? "",
     botConfigId,
@@ -572,6 +638,7 @@ export function profileConfigFromDraft(
         }
       }
     : {};
+  const routing = profileRoutingConfigFromDraft(draft);
   return normalizeProfileItem({
     agent: draft.agent,
     appPath: draft.appPath,
@@ -593,6 +660,7 @@ export function profileConfigFromDraft(
     opusModel: draft.opusModel,
     providerId: draft.providerId,
     providerName: draft.providerName,
+    ...(routing ? { routing } : {}),
     scope: draft.scope,
     settingsFile: draft.settingsFile,
     showAllSessions: draft.agent === "zcode" || draft.agent === "opencode" || draft.agent === "kilo" || draft.agent === "claude-design" ? false : draft.showAllSessions,
@@ -1133,6 +1201,14 @@ export function profileSummaryItems(
     : profile.managedCompact
       ? [{ label: t("CCR managed compact"), value: t("Enabled") }]
       : [];
+  const routing = normalizeProfileRoutingConfig(profile.routing);
+  const routingParts = [
+    ...(routing?.enabled ? [`${routing.rules.length} ${t(routing.rules.length === 1 ? "route" : "routes")}`] : []),
+    routing?.enhancedRoute === false ? t("Enhanced route off") : ""
+  ].filter(Boolean);
+  const routingSummaryItems = routingParts.length > 0
+    ? [{ label: t("Routing"), value: routingParts.join(" · ") }]
+    : [];
   const displayProfileModel = (value: string) => profileModelDisplayValue(
     value,
     parseProfileModelValue(value, config.Providers, config.virtualModelProfiles ?? []),
@@ -1162,6 +1238,7 @@ export function profileSummaryItems(
       { label: t("Model"), value: modelValue },
       ...aliasItems,
       ...managedCompactItems,
+      ...routingSummaryItems,
       ...botSummaryItems,
       ...appPathSummaryItems,
       ...envSummaryItems
@@ -1177,13 +1254,15 @@ export function profileSummaryItems(
             value: String(uniqueStrings([profile.model, ...(profile.availableModels ?? [])].filter(Boolean)).length)
           }]
         : []),
+      ...routingSummaryItems,
       ...envSummaryItems
     ];
   }
 
   if (profile.agent === "claude-design") {
     return [
-      { label: t("Entry mode"), value: t("App only") }
+      { label: t("Entry mode"), value: t("App only") },
+      ...routingSummaryItems
     ];
   }
 
@@ -1192,6 +1271,7 @@ export function profileSummaryItems(
     { label: t("Provider ID"), value: profile.providerId ?? "claude-code-router" },
     ...(profile.agent === "zcode" || profile.agent === "opencode" || profile.agent === "kilo" || !profile.showAllSessions ? [] : [{ label: t("Show all sessions"), value: t("Enabled") }]),
     ...managedCompactItems,
+    ...routingSummaryItems,
     ...appPathSummaryItems,
     ...botSummaryItems,
     ...envSummaryItems
@@ -1211,6 +1291,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
   const env = isPlainRecord(profile.env) ? stringRecordValue(profile.env) : {};
   const botGateway = surface !== "cli" ? normalizeBotGatewayRuntimeConfig(profile.botGateway) : undefined;
   const botConfigId = surface !== "cli" ? stringValue(profile.botConfigId) : "";
+  const routing = normalizeProfileRoutingConfig(profile.routing);
   if (agent === "claude-code") {
     const appPath = profile.appPath?.trim() || "";
     return {
@@ -1227,6 +1308,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
       model,
       name,
       opusModel: stringValue(profile.opusModel) || "",
+      ...(routing ? { routing } : {}),
       scope,
       settingsFile: profile.settingsFile?.trim() || "~/.claude/settings.json",
       sonnetModel: stringValue(profile.sonnetModel) || "",
@@ -1243,6 +1325,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
       id: profile.id || `profile-${index + 1}`,
       model,
       name,
+      ...(routing ? { routing } : {}),
       scope: "ccr",
       surface: "cli"
     };
@@ -1255,6 +1338,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
       id: profile.id || `profile-${index + 1}`,
       model: "",
       name,
+      ...(routing ? { routing } : {}),
       scope: "ccr",
       surface: "app"
     };
@@ -1277,6 +1361,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
     name,
     providerId: profile.providerId?.trim() || "claude-code-router",
     providerName: profile.providerName?.trim() || "Claude Code Router",
+    ...(routing ? { routing } : {}),
     scope,
     showAllSessions: agent === "zcode" || agent === "opencode" || agent === "kilo" ? false : Boolean(profile.showAllSessions),
     surface
@@ -1413,6 +1498,7 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
         : undefined,
     providerId: typeof value.providerId === "string" ? value.providerId : undefined,
     providerName: typeof value.providerName === "string" ? value.providerName : undefined,
+    routing: normalizeProfileRoutingConfig(value.routing ?? value.route),
     scope: typeof value.scope === "string" ? normalizeProfileScope(value.scope) : "global",
     settingsFile: typeof value.settingsFile === "string" ? value.settingsFile : undefined,
     showAllSessions: typeof value.showAllSessions === "boolean"

@@ -64,9 +64,6 @@ const presetCatalogModelOverrides: Record<string, CatalogProviderModelOverride> 
     modelDisplayNames: {
       "kimi-for-coding": "K2.7 Code"
     },
-    metadataModelAliases: {
-      "kimi-for-coding": "k2p7"
-    },
     models: ["kimi-for-coding"],
     provider: "kimi-for-coding",
     providerName: "Kimi Code"

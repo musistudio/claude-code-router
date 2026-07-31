@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env.ts";
+import { botGatewaySdkImportSpecifier } from "@ccr/core/agents/bot-gateway/sdk-import.ts";
 
 function botGateway(overrides = {}) {
   return {
@@ -128,4 +129,15 @@ test("botGatewayProfileEnv defaults iMessage to local auth", () => {
   assert.equal(env.CCR_BOT_GATEWAY_PLATFORM, "imessage");
   assert.equal(env.CCR_BOT_GATEWAY_AUTH_TYPE, "local");
   assert.equal(JSON.parse(env.CCR_BOT_GATEWAY_CONFIG_JSON).transport, "websocket");
+});
+
+test("botGatewaySdkImportSpecifier converts Windows absolute paths before URL scheme detection", () => {
+  const windowsPath = "C:\\Users\\macao\\AppData\\Local\\Programs\\Claude Code Router\\resources\\app.asar\\dist\\main\\bot-gateway-sdk\\dist\\index.js";
+
+  assert.equal(
+    botGatewaySdkImportSpecifier(windowsPath),
+    "file:///C:/Users/macao/AppData/Local/Programs/Claude%20Code%20Router/resources/app.asar/dist/main/bot-gateway-sdk/dist/index.js"
+  );
+  assert.equal(botGatewaySdkImportSpecifier("file:///tmp/sdk/index.js"), "file:///tmp/sdk/index.js");
+  assert.equal(botGatewaySdkImportSpecifier("@the-next-ai/bot-gateway-sdk"), "@the-next-ai/bot-gateway-sdk");
 });
