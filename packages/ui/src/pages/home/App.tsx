@@ -1263,7 +1263,8 @@ function App() {
   }
 
   useEffect(() => {
-    if (!window.ccr || !providerAddOpen) {
+    const providerFormVisible = providerAddOpen || (activeView === "onboarding" && onboardingStep === "provider");
+    if (!window.ccr || !providerFormVisible) {
       return;
     }
     if (providerDraft.protocolDetectionMode === "manual") {
