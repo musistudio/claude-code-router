@@ -26,6 +26,28 @@ test("generated Codex CLI middleware converts Windows SDK paths before URL schem
   assert.equal(fn("@the-next-ai/bot-gateway-sdk"), "@the-next-ai/bot-gateway-sdk");
 });
 
+test("generated Codex CLI middleware materializes bundled Bot Gateway stdio runner", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-bot-runner-"));
+  const source = path.join(dir, "resources", "app.asar", "dist", "main", "bot-gateway-sdk", "bin", "bot-gateway-stdio.mjs");
+  const configDir = path.join(dir, "config");
+  mkdirSync(path.dirname(source), { recursive: true });
+  writeFileSync(source, "#!/usr/bin/env node\nconsole.log('ok');\n");
+
+  const resolveCommand = evaluateRuntimeFunction(
+    "resolveBundledBotGatewayCommand",
+    ["normalizeDuplicateShebangs", "materializeBotGatewayStdioRunnerPath"],
+    configDir
+  );
+  const command = resolveCommand({ bundledStdioPath: () => source });
+  const expectedRunner = path.join(configDir, "bot-gateway", "runners", "bot-gateway-stdio.mjs");
+
+  assert.equal(command.command, process.execPath);
+  assert.deepEqual(command.args, [expectedRunner]);
+  assert.equal(command.cwd, path.dirname(expectedRunner));
+  assert.notEqual(command.cwd, path.dirname(source));
+  assert.equal(readFileSync(expectedRunner, "utf8"), "#!/usr/bin/env node\nconsole.log('ok');\n");
+});
+
 test("Codex app-server uses ChatGPT's bundled Node as a signed supervisor", { skip: process.platform !== "darwin" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-signed-supervisor-"));
   const runtimeFile = writeRuntimeScript(dir);
@@ -1055,9 +1077,19 @@ function writeRuntimeScript(dir) {
   return file;
 }
 
-function evaluateRuntimeFunction(name) {
-  const source = extractRuntimeFunctionSource(codexCliMiddlewareRuntimeScript(), name);
-  return Function("path", "pathToFileURL", `${source}; return ${name};`)(path, pathToFileURL);
+function evaluateRuntimeFunction(name, dependencies = [], configDir = "") {
+  const runtime = codexCliMiddlewareRuntimeScript();
+  const source = [
+    ...dependencies.map((dependency) => extractRuntimeFunctionSource(runtime, dependency)),
+    extractRuntimeFunctionSource(runtime, name)
+  ].join("\n");
+  const fsRuntime = { existsSync, mkdirSync, readFileSync, writeFileSync };
+  return Function("path", "pathToFileURL", "fs", "CONFIG_DIR", `${source}; return ${name};`)(
+    path,
+    pathToFileURL,
+    fsRuntime,
+    configDir
+  );
 }
 
 function extractRuntimeFunctionSource(source, name) {
