@@ -1691,7 +1691,7 @@ export async function probeProviderCandidates(
 ): Promise<ProviderProbeCandidateResult | undefined> {
   const mode = options.mode ?? "protocols";
   return await window.ccr?.probeProviderCandidates({
-    apiKey: mode === "connectivity" || mode === "models" ? apiKey : undefined,
+    apiKey: apiKey || undefined,
     candidates,
     mode,
     models: mode === "connectivity" ? models : [],

@@ -164,7 +164,7 @@ export async function probeGatewayProviderCandidates(
 
     try {
       const probe = await probeGatewayProvider({
-        apiKey: mode === "connectivity" || mode === "models" ? request.apiKey : undefined,
+        apiKey: request.apiKey,
         baseUrl: candidate.baseUrl,
         forceRefresh: request.forceRefresh,
         mode,
@@ -337,7 +337,7 @@ function providerProbeCandidateName(candidate: GatewayProviderProbeCandidate | u
 async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest): Promise<GatewayProviderProbeResult> {
   const mode = request.mode ?? "protocols";
   const safetyIssue = providerApiKeySafetyIssue({
-    apiKey: mode === "connectivity" || mode === "models" ? request.apiKey : undefined,
+    apiKey: request.apiKey,
     baseUrl: request.baseUrl
   });
   if (safetyIssue) {
@@ -1458,36 +1458,53 @@ function geminiApiEndpoint(baseUrl: string, path: string, defaultVersion: "v1" |
 }
 
 function withGeminiKey(url: string, apiKey: string | undefined): string {
-  if (!apiKey) {
+  const key = apiKeyCredentialValue(apiKey);
+  if (!key) {
     return url;
   }
 
   const parsed = new URL(url);
-  parsed.searchParams.set("key", apiKey);
+  parsed.searchParams.set("key", key);
   return compactProviderUrl(parsed);
 }
 
 function openAiHeaders(apiKey: string | undefined): Record<string, string> {
-  return apiKey
-    ? {
-        authorization: `Bearer ${apiKey}`
-      }
-    : {};
+  return authorizationHeaders(apiKey);
 }
 
 function anthropicHeaders(apiKey: string | undefined): Record<string, string> {
+  const key = apiKeyCredentialValue(apiKey);
   return {
     "anthropic-version": "2023-06-01",
-    ...(apiKey ? { "x-api-key": apiKey } : {})
+    ...authorizationHeaders(apiKey),
+    ...(key ? { "x-api-key": key } : {})
   };
 }
 
 function geminiHeaders(apiKey: string | undefined): Record<string, string> {
-  return apiKey
-    ? {
-        "x-goog-api-key": apiKey
-      }
-    : {};
+  const key = apiKeyCredentialValue(apiKey);
+  return {
+    ...authorizationHeaders(apiKey),
+    ...(key ? { "x-goog-api-key": key } : {})
+  };
+}
+
+function authorizationHeaders(apiKey: string | undefined): Record<string, string> {
+  const trimmed = apiKey?.trim();
+  if (!trimmed) {
+    return {};
+  }
+  return {
+    authorization: /^Bearer\s+/i.test(trimmed) ? trimmed : `Bearer ${trimmed}`
+  };
+}
+
+function apiKeyCredentialValue(apiKey: string | undefined): string | undefined {
+  const trimmed = apiKey?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return trimmed.replace(/^Bearer\s+/i, "");
 }
 
 function headersForProtocol(protocol: GatewayProviderCapabilityProtocol, apiKey: string | undefined): Record<string, string> {
