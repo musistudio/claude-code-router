@@ -7,7 +7,7 @@ import {
   Database, Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle, filterLogText, formatBytes, formatCompactNumber, formatDuration,
   formatLogBodyView, formatLogDateTime, formatLogTokenSummary, formatNetworkRequestRaw, formatNetworkResponseRaw, formatRouteTracePath, formatUsdCost,
   isJsonContainer, jsonChildPath, logRequestModel,
-  logResponseModel, logSelectOptions, motion, MoveRight, Network, networkCodeLabel,
+  logResolvedRouteModel, logSelectOptions, motion, MoveRight, Network, networkCodeLabel,
   networkExchangeMatchesQuery, networkHeaderRows, networkLifecycleLabel, networkQueryRows, networkRowId, networkSummaryRows,
   Pause, Play, ProxyNetworkBody, ProxyNetworkExchange, ProxyNetworkSnapshot, ProxyStatus,
   ReactNode, ReactPointerEvent, RefreshCw, RequestLogBody, RequestLogEntry, RequestLogListFilter,
@@ -842,10 +842,10 @@ function LogMobileCard({
             </div>
             <div className="mt-2 min-w-0 text-[11px] text-muted-foreground">
               <div className="truncate font-mono" title={createdAt}>{createdAt}</div>
-              <div className="mt-1 flex min-w-0 items-center gap-1" title={`${logRequestModel(item)} -> ${logResponseModel(item)}`}>
+              <div className="mt-1 flex min-w-0 items-center gap-1" title={`${logRequestModel(item)} -> ${logResolvedRouteModel(item)}`}>
                 <span className="min-w-0 truncate">{logRequestModel(item)}</span>
                 <MoveRight className="h-3 w-3 shrink-0" aria-hidden="true" />
-                <span className="min-w-0 truncate">{logResponseModel(item)}</span>
+                <span className="min-w-0 truncate">{logResolvedRouteModel(item)}</span>
               </div>
             </div>
             <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
@@ -1378,8 +1378,8 @@ function LogMetric({ label, value }: { label: string; value: string }) {
 
 function LogModelRouteCell({ entry }: { entry: RequestLogEntry }) {
   const requestModel = logRequestModel(entry);
-  const responseModel = logResponseModel(entry);
-  return <LogModelTooltip requestModel={requestModel} responseModel={responseModel} />;
+  const resolvedModel = logResolvedRouteModel(entry);
+  return <LogModelTooltip requestModel={requestModel} resolvedModel={resolvedModel} />;
 }
 
 type LogModelTooltipState = {
@@ -1391,14 +1391,14 @@ type LogModelTooltipState = {
 
 function LogModelTooltip({
   requestModel,
-  responseModel
+  resolvedModel
 }: {
   requestModel: string;
-  responseModel: string;
+  resolvedModel: string;
 }) {
   const triggerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<LogModelTooltipState>();
-  const value = `${requestModel} -> ${responseModel}`;
+  const value = `${requestModel} -> ${resolvedModel}`;
 
   useEffect(() => {
     if (!tooltip) return;
@@ -1443,7 +1443,7 @@ function LogModelTooltip({
       >
         <span className="min-w-0 max-w-[45%] truncate">{requestModel}</span>
         <MoveRight className="mx-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <span className="min-w-0 max-w-[45%] truncate">{responseModel}</span>
+        <span className="min-w-0 max-w-[45%] truncate">{resolvedModel}</span>
       </div>
       {tooltip ? (
         <TooltipPortal
