@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GatewayStartupErrorBanner, groupSidebarNavigation, UpdateEntryButton } from "@ccr/ui/pages/home/components/layout.tsx";
+import { GatewayStartupErrorBanner, groupSidebarNavigation, MainLayout, UpdateEntryButton } from "@ccr/ui/pages/home/components/layout.tsx";
 import { MediaModelConfigurationPanel, VirtualModelsView } from "@ccr/ui/pages/home/components/virtual-models.tsx";
 import { AppI18nContext, appCopy } from "@ccr/ui/pages/home/shared/i18n.tsx";
 import { createVirtualModelDraft } from "@ccr/ui/pages/home/shared/virtual-models.ts";
 import { appConfigFixture } from "../fixtures/index.ts";
-import { fallbackUpdateStatus } from "@ccr/ui/pages/home/shared/fallbacks.ts";
+import { fallbackGatewayStatus, fallbackUpdateStatus } from "@ccr/ui/pages/home/shared/fallbacks.ts";
 import { navigation } from "@ccr/ui/pages/home/shared/options.ts";
 import { shouldCheckForUpdateOnOpen } from "@ccr/ui/pages/home/components/update.tsx";
 
@@ -30,6 +30,41 @@ test("sidebar navigation groups pages and hides networking from the sidebar", ()
     ["logs"],
     ["virtual-models", "models", "api-keys", "extensions"]
   ]);
+});
+
+test("sidebar navigation scrolls vertically without displacing the settings footer", () => {
+  const html = renderToStaticMarkup(
+    <MainLayout
+      activeView="networking"
+      agentAnalysisEnabled={false}
+      compactLayout={false}
+      config={appConfigFixture()}
+      copy={appCopy.en}
+      gatewayActionBusy={false}
+      gatewayEndpoint="http://127.0.0.1:3456"
+      gatewayStatus={fallbackGatewayStatus}
+      isMac={false}
+      needsTrafficLightSafeArea={false}
+      networkCaptureEnabled={false}
+      onOpenServerSettings={() => undefined}
+      onOpenSettings={() => undefined}
+      onOpenUpdate={() => undefined}
+      onSelectNavigationItem={() => undefined}
+      onToggleSidebar={() => undefined}
+      requestLogsEnabled={false}
+      shouldReduceMotion={true}
+      sidebarOpen
+      toggleGatewayService={() => undefined}
+      updateActionBusy={false}
+      updateStatus={fallbackUpdateStatus}
+      viewProps={{} as never}
+      visibleNavigation={navigation}
+    />
+  );
+
+  assert.match(html, /<nav class="[^"]*overflow-y-auto[^"]*max-\[720px\]:overflow-y-hidden[^"]*"/);
+  assert.match(html, /class="grid shrink-0 gap-1 border-t/);
+  assert.ok(html.indexOf("</nav>") < html.indexOf("Settings"));
 });
 
 test("GatewayStartupErrorBanner renders startup failure details", () => {
