@@ -96,6 +96,49 @@ test("Codex OAuth plugins retain the default base URL after runtime identity nor
   assert.equal(compiled.providers[0].baseurl, codexDefaultBaseUrl);
 });
 
+test("Codex OAuth plugins prefer live login credentials over imported snapshots", async (t) => {
+  const home = useTemporaryCodexHome(t, "ccr-codex-runtime-live-credentials-");
+  fs.mkdirSync(path.join(home, ".codex"), { recursive: true });
+  fs.writeFileSync(path.join(home, ".codex", "auth.json"), JSON.stringify({
+    tokens: {
+      access_token: "access-live",
+      account_id: "acct-live",
+      refresh_token: "refresh-live"
+    }
+  }));
+
+  const config = createDefaultAppConfig();
+  config.providerPlugins = [{
+    codexOauth: {
+      accessToken: "access-imported",
+      accountId: "acct-imported",
+      refreshToken: "refresh-imported"
+    },
+    key: "ccr-local-agent-codex-api-codex-oauth",
+    providerName: "Codex API"
+  }];
+  config.Providers = [{
+    api_base_url: codexDefaultBaseUrl,
+    api_key: "ccr-local-agent-login",
+    id: "codex-api",
+    models: ["gpt-5.5"],
+    name: "Codex API",
+    type: "openai_responses"
+  }];
+
+  const compiled = await compileCoreGatewayConfig(
+    config,
+    "raw-trace-token",
+    "billing-usage-token",
+    "core-auth-token"
+  );
+  const codexPlugin = compiled.providerPlugins.find((item) => item.key === "ccr-local-agent-codex-api-codex-oauth");
+
+  assert.equal(codexPlugin.codexOauth.accessToken, "access-live");
+  assert.equal(codexPlugin.codexOauth.refreshToken, "refresh-live");
+  assert.equal(codexPlugin.codexOauth.accountId, "acct-live");
+});
+
 test("Codex local providers synthesize OAuth plugins when persisted plugins are missing", async (t) => {
   const home = useTemporaryCodexHome(t, "ccr-codex-runtime-missing-plugins-");
   fs.mkdirSync(path.join(home, ".codex"), { recursive: true });

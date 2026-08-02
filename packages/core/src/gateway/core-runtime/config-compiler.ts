@@ -448,9 +448,9 @@ function withCodexOauthRuntimeDefaults(providerPlugins: unknown[]): unknown[] {
     const codexOauth = plugin.codexOauth;
     const nextCodexOauth = {
       ...codexOauth,
-      ...(!hasOwn(codexOauth, "accountId") && !hasOwn(codexOauth, "account_id") && codexAuth?.accountId
-        ? { accountId: codexAuth.accountId }
-        : {})
+      ...(codexAuth?.accessToken ? { accessToken: codexAuth.accessToken } : {}),
+      ...(codexAuth?.refreshToken ? { refreshToken: codexAuth.refreshToken } : {}),
+      ...(codexAuth?.accountId ? { accountId: codexAuth.accountId } : {})
     };
     const nextPlugin: Record<string, unknown> = {
       ...plugin,
@@ -786,9 +786,4 @@ function addProviderNameVariants(names: Set<string>, providerName: string | unde
   if (capabilitySeparatorIndex > 0) {
     names.add(providerName.slice(0, capabilitySeparatorIndex));
   }
-}
-
-
-function hasOwn(value: Record<string, unknown>, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(value, key);
 }
