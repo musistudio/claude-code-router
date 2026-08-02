@@ -68,6 +68,23 @@ export function logResponseModel(entry: RequestLogEntry): string {
     "unknown";
 }
 
+export function logResolvedRouteModel(entry: RequestLogEntry): string {
+  const resolvedModel = entry.resolvedModel || entry.model || "unknown";
+  return logRouteModelName(resolvedModel);
+}
+
+function logRouteModelName(value: string): string {
+  const resolvedModel = value.trim();
+  if (!resolvedModel || resolvedModel === "unknown") {
+    return "unknown";
+  }
+  const selectorIndex = resolvedModel.indexOf("::");
+  const routedModel = selectorIndex >= 0 ? resolvedModel.slice(selectorIndex + 2) : resolvedModel;
+  const separator = routedModel.lastIndexOf("/");
+  const model = separator >= 0 ? routedModel.slice(separator + 1) : routedModel;
+  return model || resolvedModel;
+}
+
 export function logBodyModel(body: RequestLogBody | undefined): string | undefined {
   if (!body || body.encoding === "base64" || !body.text.trim()) {
     return undefined;
