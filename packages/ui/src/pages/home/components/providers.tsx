@@ -4,7 +4,7 @@ import {
   Check, Checkbox, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, cn,
   compareProviderAccountSnapshots, copyTextToClipboard, createDefaultProviderAccountDraft, createModelCatalogItems, createProviderAccountDraftFromConfig, createProviderCredentialDraft,
   customProviderPresetId, defaultProviderAccountConfigForPreset, Dialog, DialogBody, DialogContent, DialogFooter,
-  DialogHeader, DialogTitle, ExternalLink, Eye, EyeOff, Field, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
+  DialogHeader, DialogTitle, ExternalLink, Eye, EyeOff, Field, FieldGroup, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
   GatewayProviderProbeResult, getProviderPresets, Globe, inferProviderNameFromBaseUrl, Info, Input, KeyRound, KeyValueRowsControl, Label,
   Layers3, LoaderCircle, localAgentProviderIconUrls, mergeProviderModelLists, modelCatalogItemMatchesQuery, motion,
   Pencil, Plus, PopoverContent, primaryProviderAccountMeter, primaryProviderPresetEndpoint,
@@ -21,11 +21,15 @@ import {
 import { PopoverPortal } from "@/components/ui/popover";
 import { TooltipPortal } from "@/components/ui/tooltip";
 import { providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
-import type { ChromeLoginImportJob, LocalAgentProviderCandidate, ProviderAccountHttpJsonConnectorConfig, ProviderAccountWebContentJsonConnectorConfig } from "@ccr/core/contracts/app";
+import type { ChromeLoginImportJob, GatewayProviderCapability, GatewayProviderCapabilityFeatures, GatewayProviderProtocol, GatewayResponsesReasoningHistoryPolicy, GatewayResponsesReasoningSummaryPolicy, LocalAgentProviderCandidate, ProviderAccountHttpJsonConnectorConfig, ProviderAccountWebContentJsonConnectorConfig } from "@ccr/core/contracts/app";
 import type { ReactNode } from "react";
 
 const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 const emptyProviderPlugins: unknown[] = [];
+const inheritProtocolFeatureValue = "inherit";
+
+type ResponsesReasoningHistoryPolicyControlValue = GatewayResponsesReasoningHistoryPolicy | typeof inheritProtocolFeatureValue;
+type ResponsesReasoningSummaryPolicyControlValue = GatewayResponsesReasoningSummaryPolicy | typeof inheritProtocolFeatureValue;
 
 export function ProvidersView({ accountSnapshots, addProvider, editProvider, notify, providers, removeProvider, setProviderEnabled }: {
   accountSnapshots: ProviderAccountSnapshot[];
@@ -1994,6 +1998,8 @@ export function AddProviderForm({
   const importMode = Boolean(importProvider);
   const showBaseUrl = customEndpoint;
   const selectedDisplayProtocols = uniqueProviderProtocols(draft.selectedProtocols);
+  const responsesProtocolSelected = selectedDisplayProtocols.includes("openai_responses") ||
+    (draft.selectedProtocols.length === 0 && draft.protocol === "openai_responses");
   const detectedProtocol = selectedDisplayProtocols.length === 1
     ? selectedDisplayProtocols[0]
     : probe?.detectedProtocol ?? draft.protocol;
@@ -2013,6 +2019,7 @@ export function AddProviderForm({
     ? providerProtocolOptions.map((option) => option.value)
     : providerSelectableProtocolsFromProbe(probe);
   const protocolProbeRows = useMemo(() => uniqueProviderProbeProtocolRows(probe?.protocols ?? []), [probe]);
+  const responsesProtocolFeatures = providerCapabilityFeaturesForProtocol(draft.capabilities, "openai_responses");
   const configuredModels = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
   const catalogModelIds = new Set(probe?.models ?? []);
   const credentialApiKey = providerConnectivityApiKeyFromDraft(draft);
@@ -2058,6 +2065,17 @@ export function AddProviderForm({
         ? { credentials: [createProviderCredentialDraft(0)] }
         : {})
     }, true);
+  }
+
+  function updateResponsesProtocolFeatures(features: GatewayProviderCapabilityFeatures | undefined) {
+    onChange({
+      capabilities: providerCapabilitiesWithProtocolFeatures(
+        draft.capabilities,
+        "openai_responses",
+        providerCapabilityBaseUrlForProtocol(draft.baseUrl, "openai_responses", probe),
+        features
+      )
+    });
   }
 
   useEffect(() => {
@@ -2351,6 +2369,7 @@ export function AddProviderForm({
                 onMetadataChange={(modelMetadata) => onChange({ modelMetadata })}
                 onQueryChange={(modelSearch) => onChange({ modelSearch })}
                 onSelectedChange={updateConfiguredModels}
+                providerProtocols={selectedDisplayProtocols}
                 query={draft.modelSearch}
                 selected={configuredModels}
               />
@@ -2424,91 +2443,24 @@ export function AddProviderForm({
                   onChange={onChange}
                   probe={probe}
                 />
-                <Field className="sm:col-span-2" label={t("Protocol details")}>
-                  <div className="max-h-[128px] overflow-auto rounded-md border border-border bg-background p-2">
-                    {manualProtocolDetection ? (
-                      <div className="space-y-1.5">
-                        {providerProtocolOptions.map((option) => {
-                          const protocol = option.value;
-                          const checked = draft.selectedProtocols.includes(protocol);
-                          return (
-                            <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={protocol}>
-                              <Checkbox
-                                aria-label={`${t("Add")} ${translatedProviderProtocolLabel(protocol, t)}`}
-                                checked={checked}
-                                onCheckedChange={() => {
-                                  onChange({
-                                    selectedProtocols: checked
-                                      ? draft.selectedProtocols.filter((selected) => selected !== protocol)
-                                      : uniqueProviderProtocols([...draft.selectedProtocols, protocol])
-                                  });
-                                }}
-                              />
-                              <span className="truncate font-medium">{translatedProviderProtocolLabel(protocol, t)}</span>
-                              <span className={cn("inline-flex min-w-0 items-center justify-end", checked ? "text-foreground" : "text-muted-foreground")}>
-                                <span className="truncate">{checked ? t("Selected") : ""}</span>
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : protocolProbeRows.length ? (
-                      <div className="space-y-1.5">
-                        {protocolProbeRows.map((item) => {
-                          const available = item.supported;
-                          const selectableProtocol = selectableProtocols.find((protocol) => protocol === item.protocol);
-                          const selectable = item.supported && Boolean(selectableProtocol);
-                          const checked = Boolean(selectableProtocol && draft.selectedProtocols.includes(selectableProtocol));
-                          const itemKey = `${item.protocol}-${item.endpoint}`;
-                          return (
-                            <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={itemKey}>
-                              <Checkbox
-                                aria-label={`${t("Add")} ${translatedProviderProtocolLabel(item.protocol, t)}`}
-                                checked={checked}
-                                disabled={!selectable}
-                                onCheckedChange={() => {
-                                  if (!selectableProtocol) {
-                                    return;
-                                  }
-                                  onChange({
-                                    selectedProtocols: checked
-                                      ? draft.selectedProtocols.filter((protocol) => protocol !== selectableProtocol)
-                                      : uniqueProviderProtocols([...draft.selectedProtocols, selectableProtocol])
-                                  });
-                                }}
-                              />
-                              <span className="truncate font-medium">{translatedProviderProtocolLabel(item.protocol, t)}</span>
-                              <span className={cn("inline-flex min-w-0 items-center justify-end gap-1.5", available ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground")}>
-                                <span className="truncate">{available ? t("Available") : t("Unavailable")}</span>
-                                <button
-                                  aria-label={t("Protocol detection details")}
-                                  aria-pressed={protocolProbeDetails?.key === itemKey}
-                                  className={cn(
-                                    "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30",
-                                    protocolProbeDetails?.key === itemKey && "bg-muted text-foreground"
-                                  )}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    toggleProtocolProbeDetails(itemKey, item, event.currentTarget);
-                                  }}
-                                  onMouseDown={(event) => event.stopPropagation()}
-                                  title={t("Protocol detection details")}
-                                  type="button"
-                                >
-                                  <Info className="h-3.5 w-3.5" aria-hidden="true" />
-                                </button>
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="text-[11px] text-muted-foreground">
-                        <span>{t("No protocol detection yet")}</span>
-                      </div>
-                    )}
-                  </div>
-                </Field>
+                <ProviderProtocolDetailsField
+                  manualProtocolDetection={manualProtocolDetection}
+                  onChange={onChange}
+                  onToggleDetails={toggleProtocolProbeDetails}
+                  protocolProbeDetailsKey={protocolProbeDetails?.key}
+                  protocolProbeRows={protocolProbeRows}
+                  selectableProtocols={selectableProtocols}
+                  selectedProtocols={draft.selectedProtocols}
+                />
+                {responsesProtocolSelected ? (
+                  <FieldGroup className="sm:col-span-2" label={t("Responses compatibility")}>
+                    <ResponsesProtocolFeaturesControl
+                      features={responsesProtocolFeatures}
+                      inheritLabel={t("Auto")}
+                      onChange={updateResponsesProtocolFeatures}
+                    />
+                  </FieldGroup>
+                ) : null}
                   </div>
                 </AnimatedDisclosure>
               ) : null}
@@ -2580,6 +2532,122 @@ export function uniqueProviderProbeProtocolRows(
   return [...rows.values()];
 }
 
+export function ProviderProtocolDetailsField({
+  manualProtocolDetection,
+  onChange,
+  onToggleDetails,
+  protocolProbeDetailsKey,
+  protocolProbeRows,
+  selectableProtocols,
+  selectedProtocols
+}: {
+  manualProtocolDetection: boolean;
+  onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
+  onToggleDetails?: (
+    key: string,
+    item: GatewayProviderProbeResult["protocols"][number],
+    target: HTMLButtonElement
+  ) => void;
+  protocolProbeDetailsKey?: string;
+  protocolProbeRows: GatewayProviderProbeResult["protocols"];
+  selectableProtocols: GatewayProviderProtocol[];
+  selectedProtocols: GatewayProviderProtocol[];
+}) {
+  const t = useAppText();
+
+  return (
+    <FieldGroup className="sm:col-span-2" label={t("Protocol details")}>
+      <div className="max-h-[128px] overflow-auto rounded-md border border-border bg-background p-2">
+        {manualProtocolDetection ? (
+          <div className="space-y-1.5">
+            {providerProtocolOptions.map((option) => {
+              const protocol = option.value;
+              const checked = selectedProtocols.includes(protocol);
+              const checkboxId = `provider-protocol-${protocol}`;
+              return (
+                <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={protocol}>
+                  <Checkbox
+                    aria-label={`${t("Add")} ${translatedProviderProtocolLabel(protocol, t)}`}
+                    checked={checked}
+                    id={checkboxId}
+                    onCheckedChange={() => {
+                      onChange({
+                        selectedProtocols: checked
+                          ? selectedProtocols.filter((selected) => selected !== protocol)
+                          : uniqueProviderProtocols([...selectedProtocols, protocol])
+                      });
+                    }}
+                  />
+                  <label className="min-w-0 truncate font-medium" htmlFor={checkboxId}>{translatedProviderProtocolLabel(protocol, t)}</label>
+                  <span className={cn("inline-flex min-w-0 items-center justify-end", checked ? "text-foreground" : "text-muted-foreground")}>
+                    <span className="truncate">{checked ? t("Selected") : ""}</span>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ) : protocolProbeRows.length ? (
+          <div className="space-y-1.5">
+            {protocolProbeRows.map((item) => {
+              const available = item.supported;
+              const selectableProtocol = selectableProtocols.find((protocol) => protocol === item.protocol);
+              const selectable = item.supported && Boolean(selectableProtocol);
+              const checked = Boolean(selectableProtocol && selectedProtocols.includes(selectableProtocol));
+              const itemKey = `${item.protocol}-${item.endpoint}`;
+              const checkboxId = `provider-protocol-${item.protocol}`;
+              return (
+                <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={itemKey}>
+                  <Checkbox
+                    aria-label={`${t("Add")} ${translatedProviderProtocolLabel(item.protocol, t)}`}
+                    checked={checked}
+                    disabled={!selectable}
+                    id={checkboxId}
+                    onCheckedChange={() => {
+                      if (!selectableProtocol) {
+                        return;
+                      }
+                      onChange({
+                        selectedProtocols: checked
+                          ? selectedProtocols.filter((protocol) => protocol !== selectableProtocol)
+                          : uniqueProviderProtocols([...selectedProtocols, selectableProtocol])
+                      });
+                    }}
+                  />
+                  <label className="min-w-0 truncate font-medium" htmlFor={checkboxId}>{translatedProviderProtocolLabel(item.protocol, t)}</label>
+                  <span className={cn("inline-flex min-w-0 items-center justify-end gap-1.5", available ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground")}>
+                    <span className="truncate">{available ? t("Available") : t("Unavailable")}</span>
+                    <button
+                      aria-label={t("Protocol detection details")}
+                      aria-pressed={protocolProbeDetailsKey === itemKey}
+                      className={cn(
+                        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30",
+                        protocolProbeDetailsKey === itemKey && "bg-muted text-foreground"
+                      )}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onToggleDetails?.(itemKey, item, event.currentTarget);
+                      }}
+                      onMouseDown={(event) => event.stopPropagation()}
+                      title={t("Protocol detection details")}
+                      type="button"
+                    >
+                      <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-[11px] text-muted-foreground">
+            <span>{t("No protocol detection yet")}</span>
+          </div>
+        )}
+      </div>
+    </FieldGroup>
+  );
+}
+
 function providerProtocolProbeTooltipPosition(rect: DOMRect): { left: number; top: number } {
   const margin = 12;
   const tooltipWidth = 260;
@@ -2627,6 +2695,125 @@ function ProtocolProbeDetailsTooltip({
         <span className="min-w-0 break-words">{message}</span>
       </div>
     </TooltipPortal>
+  );
+}
+
+function providerCapabilityFeaturesForProtocol(
+  capabilities: GatewayProviderCapability[] | undefined,
+  protocol: GatewayProviderProtocol
+): GatewayProviderCapabilityFeatures | undefined {
+  return capabilities?.find((capability) => capability.type === protocol)?.features;
+}
+
+function providerCapabilitiesWithProtocolFeatures(
+  capabilities: GatewayProviderCapability[],
+  protocol: GatewayProviderProtocol,
+  baseUrl: string,
+  features: GatewayProviderCapabilityFeatures | undefined
+): GatewayProviderCapability[] {
+  const nextFeatures = compactProviderCapabilityFeatures(features);
+  let updated = false;
+  const nextCapabilities = capabilities.map((capability) => {
+    if (capability.type !== protocol || updated) {
+      return capability;
+    }
+    updated = true;
+    const nextCapability = { ...capability };
+    if (nextFeatures) {
+      nextCapability.features = nextFeatures;
+    } else {
+      delete nextCapability.features;
+    }
+    return nextCapability;
+  });
+  const trimmedBaseUrl = baseUrl.trim();
+  if (!updated && nextFeatures && trimmedBaseUrl) {
+    nextCapabilities.push({
+      baseUrl: trimmedBaseUrl,
+      features: nextFeatures,
+      type: protocol
+    });
+  }
+  return nextCapabilities;
+}
+
+function compactProviderCapabilityFeatures(
+  features: GatewayProviderCapabilityFeatures | undefined
+): GatewayProviderCapabilityFeatures | undefined {
+  if (!features) {
+    return undefined;
+  }
+  const next = { ...features };
+  if (next.reasoningHistoryPolicy && next.reasoningHistoryPolicy !== "plaintext") {
+    delete next.reasoningSummaryPolicy;
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+function ResponsesProtocolFeaturesControl({
+  className,
+  features,
+  inheritLabel,
+  onChange
+}: {
+  className?: string;
+  features?: GatewayProviderCapabilityFeatures;
+  inheritLabel: string;
+  onChange: (features: GatewayProviderCapabilityFeatures | undefined) => void;
+}) {
+  const t = useAppText();
+  const historyValue: ResponsesReasoningHistoryPolicyControlValue = features?.reasoningHistoryPolicy ?? inheritProtocolFeatureValue;
+  const summaryPolicyValue: ResponsesReasoningSummaryPolicyControlValue = features?.reasoningSummaryPolicy ?? inheritProtocolFeatureValue;
+  const showSummaryPolicy = historyValue === inheritProtocolFeatureValue || historyValue === "plaintext";
+
+  function updateReasoningHistoryPolicy(value: string) {
+    const next = { ...(features ?? {}) };
+    if (value === inheritProtocolFeatureValue) {
+      delete next.reasoningHistoryPolicy;
+    } else {
+      next.reasoningHistoryPolicy = value as GatewayResponsesReasoningHistoryPolicy;
+    }
+    onChange(compactProviderCapabilityFeatures(next));
+  }
+
+  function updateSummaryPolicy(value: string) {
+    const next = { ...(features ?? {}) };
+    if (value === inheritProtocolFeatureValue) {
+      delete next.reasoningSummaryPolicy;
+    } else {
+      next.reasoningSummaryPolicy = value as GatewayResponsesReasoningSummaryPolicy;
+    }
+    onChange(compactProviderCapabilityFeatures(next));
+  }
+
+  return (
+    <div className={cn("grid grid-cols-1 gap-2 sm:grid-cols-2", className)}>
+      <Field label={t("Reasoning history policy")}>
+        <SelectControl
+          onChange={updateReasoningHistoryPolicy}
+          options={[
+            { label: inheritLabel, value: inheritProtocolFeatureValue },
+            { label: t("Encrypted"), value: "encrypted" },
+            { label: t("Plaintext"), value: "plaintext" },
+            { label: t("Strip"), value: "strip" }
+          ]}
+          value={historyValue}
+        />
+      </Field>
+      {showSummaryPolicy ? (
+        <Field label={t("Reasoning summary policy")}>
+          <SelectControl
+            onChange={updateSummaryPolicy}
+            options={[
+              { label: inheritLabel, value: inheritProtocolFeatureValue },
+              { label: t("Drop summary"), value: "drop" },
+              { label: t("Use summary as content"), value: "as_content" }
+            ]}
+            value={summaryPolicyValue}
+          />
+        </Field>
+      ) : null}
+    </div>
   );
 }
 
@@ -3840,6 +4027,7 @@ function ProviderModelPicker({
   onMetadataChange,
   onQueryChange,
   onSelectedChange,
+  providerProtocols,
   query,
   selected
 }: {
@@ -3851,6 +4039,7 @@ function ProviderModelPicker({
   onMetadataChange: (value: AddProviderDraft["modelMetadata"]) => void;
   onQueryChange: (value: string) => void;
   onSelectedChange: (value: string[]) => void;
+  providerProtocols: GatewayProviderProtocol[];
   query: string;
   selected: string[];
 }) {
@@ -4170,6 +4359,7 @@ function ProviderModelPicker({
             models={visibleAddedModels}
             onChange={onMetadataChange}
             onRemoveModel={removeModel}
+            providerProtocols={providerProtocols}
             sourceModels={catalog}
           />
         </div>
@@ -4220,6 +4410,7 @@ function ModelMetadataEditor({
   models,
   onChange,
   onRemoveModel,
+  providerProtocols,
   sourceModels
 }: {
   className?: string;
@@ -4231,6 +4422,7 @@ function ModelMetadataEditor({
   models: string[];
   onChange: (value: AddProviderDraft["modelMetadata"]) => void;
   onRemoveModel?: (model: string) => void;
+  providerProtocols: GatewayProviderProtocol[];
   sourceModels?: string[];
 }) {
   const t = useAppText();
@@ -4248,6 +4440,9 @@ function ModelMetadataEditor({
   type Metadata = NonNullable<AddProviderDraft["modelMetadata"]>[string];
   type CapabilityKey = keyof NonNullable<Metadata["capabilities"]>;
   type PricingKey = keyof NonNullable<Metadata["pricing"]>;
+  const selectableModelProtocols = uniqueProviderProtocols(providerProtocols);
+  const selectableModelProtocolSet = new Set(selectableModelProtocols);
+  const modelProtocolsAvailable = selectableModelProtocols.length > 1;
 
   function updateMetadata(model: string, updater: (current: Metadata) => Metadata) {
     const next = { ...(metadata ?? {}) };
@@ -4360,6 +4555,66 @@ function ModelMetadataEditor({
     });
   }
 
+  function updateModelResponsesProtocolFeatures(
+    model: string,
+    features: GatewayProviderCapabilityFeatures | undefined
+  ) {
+    updateMetadata(model, (current) => {
+      const protocolFeatures = { ...(current.protocolFeatures ?? {}) };
+      if (features) {
+        protocolFeatures.openai_responses = features;
+      } else {
+        delete protocolFeatures.openai_responses;
+      }
+      const next = { ...current };
+      if (Object.keys(protocolFeatures).length > 0) next.protocolFeatures = protocolFeatures;
+      else delete next.protocolFeatures;
+      return next;
+    });
+  }
+
+  function updateModelProtocol(model: string, protocol: GatewayProviderProtocol, checked: boolean) {
+    updateMetadata(model, (current) => {
+      const currentProtocols = current.protocols !== undefined
+        ? current.protocols.filter((item) => selectableModelProtocolSet.has(item))
+        : selectableModelProtocols;
+      const selected = new Set(currentProtocols);
+      if (checked) selected.add(protocol);
+      else selected.delete(protocol);
+      const protocols = selectableModelProtocols.filter((item) => selected.has(item));
+      const next = { ...current };
+      if (protocols.length === selectableModelProtocols.length) {
+        delete next.protocols;
+      } else if (protocols.length > 0) {
+        next.protocols = protocols;
+      } else {
+        next.protocols = [];
+      }
+      if (!protocols.includes("openai_responses") && next.protocolFeatures?.openai_responses) {
+        const protocolFeatures = { ...next.protocolFeatures };
+        delete protocolFeatures.openai_responses;
+        if (Object.keys(protocolFeatures).length > 0) next.protocolFeatures = protocolFeatures;
+        else delete next.protocolFeatures;
+      }
+      return next;
+    });
+  }
+
+  function resetModelProtocols(model: string) {
+    updateMetadata(model, (current) => {
+      const next = { ...current };
+      delete next.protocols;
+      return next;
+    });
+  }
+
+  function effectiveModelProtocols(modelMetadata: Metadata | undefined): GatewayProviderProtocol[] {
+    const protocols = modelMetadata?.protocols !== undefined
+      ? modelMetadata.protocols.filter((protocol) => selectableModelProtocolSet.has(protocol))
+      : selectableModelProtocols;
+    return uniqueProviderProtocols(protocols);
+  }
+
   function toggleExpanded(model: string) {
     setExpandedModels((current) => {
       const next = new Set(current);
@@ -4374,7 +4629,11 @@ function ModelMetadataEditor({
       {header ? (
         <div className="flex min-w-0 items-center justify-between gap-2">
           <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Model settings")}</span>
-          <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">{t("Context, pricing, reasoning, web search, and image")}</span>
+          <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">
+            {modelProtocolsAvailable
+              ? t("Context, pricing, reasoning, protocols, web search, and image")
+              : t("Context, pricing, reasoning, web search, and image")}
+          </span>
         </div>
       ) : null}
       <div className="space-y-2">
@@ -4401,6 +4660,8 @@ function ModelMetadataEditor({
             modelMetadata?.maxContextWindow ||
             modelMetadata?.pricing ||
             modelMetadata?.capabilities ||
+            modelMetadata?.protocols ||
+            modelMetadata?.protocolFeatures ||
             modelMetadata?.supportedReasoningLevels !== undefined ||
             modelMetadata?.supportsReasoningSummaries !== undefined
           );
@@ -4410,6 +4671,9 @@ function ModelMetadataEditor({
           );
           const reasoningConfigured = modelMetadata?.supportedReasoningLevels !== undefined ||
             modelMetadata?.supportsReasoningSummaries !== undefined;
+          const effectiveProtocols = effectiveModelProtocols(modelMetadata);
+          const protocolsConfigured = modelMetadata?.protocols !== undefined;
+          const responsesProtocolEnabled = effectiveProtocols.includes("openai_responses");
           return (
             <div className="overflow-hidden rounded-md border border-border bg-background/70" key={model}>
               <div className="flex min-w-0 items-center">
@@ -4443,7 +4707,11 @@ function ModelMetadataEditor({
                 <div className="space-y-3 border-t border-border/60 p-3">
                   <div className="flex min-w-0 items-center justify-between gap-2">
                     <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Model settings")}</span>
-                    <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">{t("Context, pricing, reasoning, web search, and image")}</span>
+                    <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">
+                      {modelProtocolsAvailable
+                        ? t("Context, pricing, reasoning, protocols, web search, and image")
+                        : t("Context, pricing, reasoning, web search, and image")}
+                    </span>
                   </div>
                   <div className="space-y-2">
                     <div className="flex min-w-0 items-center justify-between gap-2">
@@ -4492,26 +4760,63 @@ function ModelMetadataEditor({
                     </div>
                     <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3">
                       {providerReasoningLevelOptions.map((option) => (
-                        <Label className="flex min-w-0 items-center gap-2 text-[11px] font-normal" key={option.effort}>
-                          <Checkbox
-                            checked={configuredReasoningLevels.has(option.effort)}
-                            onCheckedChange={(checked) => updateReasoningLevel(model, option.effort, checked)}
-                          />
-                          <span className="truncate">{t(option.label)}</span>
-                        </Label>
+                        <CheckboxLabelRow
+                          checked={configuredReasoningLevels.has(option.effort)}
+                          key={option.effort}
+                          label={t(option.label)}
+                          onCheckedChange={(checked) => updateReasoningLevel(model, option.effort, checked)}
+                        />
                       ))}
                     </div>
                     <div className="text-[10px] leading-4 text-muted-foreground/75">{t("Select every reasoning effort supported by this model.")}</div>
                   </div>
+                  {modelProtocolsAvailable ? (
+                    <div className="space-y-2">
+                      <div className="flex min-w-0 items-center justify-between gap-2">
+                        <Label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Supported protocols")}</Label>
+                        {protocolsConfigured ? (
+                          <Button className="h-6 px-2 text-[10px]" onClick={() => resetModelProtocols(model)} type="button" variant="ghost">
+                            {t("Use provider default")}
+                          </Button>
+                        ) : null}
+                      </div>
+                      <div className="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2">
+                        {selectableModelProtocols.map((protocol) => (
+                          <CheckboxLabelRow
+                            checked={effectiveProtocols.includes(protocol)}
+                            key={protocol}
+                            label={translatedProviderProtocolLabel(protocol, t)}
+                            onCheckedChange={(checked) => updateModelProtocol(model, protocol, checked)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {responsesProtocolEnabled ? (
+                    <div className="space-y-2">
+                      <div className="flex min-w-0 items-center justify-between gap-2">
+                        <Label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Responses compatibility")}</Label>
+                        {modelMetadata?.protocolFeatures?.openai_responses ? (
+                          <Button className="h-6 px-2 text-[10px]" onClick={() => updateModelResponsesProtocolFeatures(model, undefined)} type="button" variant="ghost">
+                            {t("Use provider default")}
+                          </Button>
+                        ) : null}
+                      </div>
+                      <ResponsesProtocolFeaturesControl
+                        features={modelMetadata?.protocolFeatures?.openai_responses}
+                        inheritLabel={t("Use provider default")}
+                        onChange={(features) => updateModelResponsesProtocolFeatures(model, features)}
+                      />
+                    </div>
+                  ) : null}
                   <div className="space-y-2">
                     <div className="flex min-w-0 items-center justify-between gap-2">
-                      <Label className="flex min-w-0 items-center gap-2 text-[12px] font-medium">
-                        <Checkbox
-                          checked={modelMetadata?.capabilities?.webSearch ?? modelDefaults?.capabilities?.webSearch ?? false}
-                          onCheckedChange={(checked) => updateCapability(model, "webSearch", checked)}
-                        />
-                        <span>{t("Web search")}</span>
-                      </Label>
+                      <CheckboxLabelRow
+                        checked={modelMetadata?.capabilities?.webSearch ?? modelDefaults?.capabilities?.webSearch ?? false}
+                        className="text-[12px] font-medium"
+                        label={t("Web search")}
+                        onCheckedChange={(checked) => updateCapability(model, "webSearch", checked)}
+                      />
                       {modelMetadata?.capabilities?.webSearch !== undefined ? (
                         <Button className="h-6 px-2 text-[10px]" onClick={() => resetCapability(model, "webSearch")} type="button" variant="ghost">
                           {t("Use preset")}
@@ -4522,13 +4827,12 @@ function ModelMetadataEditor({
                   </div>
                   <div className="space-y-2">
                     <div className="flex min-w-0 items-center justify-between gap-2">
-                      <Label className="flex min-w-0 items-center gap-2 text-[12px] font-medium">
-                        <Checkbox
-                          checked={modelMetadata?.capabilities?.imageInput ?? modelDefaults?.capabilities?.imageInput ?? false}
-                          onCheckedChange={(checked) => updateCapability(model, "imageInput", checked)}
-                        />
-                        <span>{t("Image")}</span>
-                      </Label>
+                      <CheckboxLabelRow
+                        checked={modelMetadata?.capabilities?.imageInput ?? modelDefaults?.capabilities?.imageInput ?? false}
+                        className="text-[12px] font-medium"
+                        label={t("Image")}
+                        onCheckedChange={(checked) => updateCapability(model, "imageInput", checked)}
+                      />
                       {modelMetadata?.capabilities?.imageInput !== undefined ? (
                         <Button className="h-6 px-2 text-[10px]" onClick={() => resetCapability(model, "imageInput")} type="button" variant="ghost">
                           {t("Use preset")}
@@ -4544,6 +4848,28 @@ function ModelMetadataEditor({
         })}
       </div>
     </div>
+  );
+}
+
+function CheckboxLabelRow({
+  checked,
+  className,
+  label,
+  onCheckedChange
+}: {
+  checked: boolean;
+  className?: string;
+  label: string;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className={cn("flex min-w-0 items-center gap-2 text-[11px] font-normal", className)}>
+      <Checkbox
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+      />
+      <span className="min-w-0 truncate">{label}</span>
+    </label>
   );
 }
 

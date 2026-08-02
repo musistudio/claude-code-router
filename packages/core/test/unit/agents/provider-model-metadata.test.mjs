@@ -79,6 +79,44 @@ test("provider model metadata config preserves custom pricing, image, web search
   });
 });
 
+test("provider model metadata config preserves protocol feature overrides", () => {
+  assert.deepEqual(providerModelMetadataFromConfigForTest({
+    protocols: ["openai_responses", "openai_chat_completions", "openai_responses", "openai_images"],
+    protocolFeatures: {
+      openai_responses: {
+        reasoningHistoryPolicy: "plaintext",
+        reasoningSummaryPolicy: "asContent"
+      },
+      unsupported_protocol: {
+        reasoningHistoryPolicy: "encrypted"
+      }
+    }
+  }), {
+    protocols: ["openai_responses", "openai_chat_completions"],
+    protocolFeatures: {
+      openai_responses: {
+        reasoningHistoryPolicy: "plaintext",
+        reasoningSummaryPolicy: "as_content"
+      }
+    }
+  });
+
+  assert.deepEqual(providerModelMetadataFromConfigForTest({
+    protocol_features: {
+      openai_responses: {
+        reasoning_history_policy: "strip",
+        reasoning_summary_policy: "inherit"
+      }
+    }
+  }), {
+    protocolFeatures: {
+      openai_responses: {
+        reasoningHistoryPolicy: "strip"
+      }
+    }
+  });
+});
+
 test("provider model metadata config drops invalid custom prices", () => {
   assert.deepEqual(providerModelMetadataFromConfigForTest({
     pricing: {

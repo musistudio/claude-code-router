@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { gatewayMediaProtocols, gatewayProviderProtocols } from "@ccr/core/contracts/app";
 import type {
   GatewayProviderConnectivityCheckReport,
   GatewayProviderConnectivityCheckRequest,
@@ -78,14 +79,8 @@ type GatewayProviderConnectivityCheckOptions = {
 };
 
 const protocolOrder: GatewayProviderCapabilityProtocol[] = [
-  "openai_responses",
-  "openai_chat_completions",
-  "anthropic_messages",
-  "gemini_generate_content",
-  "gemini_interactions",
-  "openai_image_generations",
-  "openai_video_generations",
-  "xai_video_generations"
+  ...gatewayProviderProtocols,
+  ...gatewayMediaProtocols
 ];
 
 const modelSourceOrder: ModelSource[] = ["openai", "anthropic", "gemini"];

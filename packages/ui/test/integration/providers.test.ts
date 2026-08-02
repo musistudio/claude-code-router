@@ -7,7 +7,7 @@ import { geminiProviderPreset } from "@ccr/core/providers/presets/gemini/index.t
 import { minimaxChinaProviderPreset } from "@ccr/core/providers/presets/minimax/index.ts";
 import { moonshotGlobalProviderPreset } from "@ccr/core/providers/presets/moonshot/index.ts";
 import { qiniuAiProviderPreset } from "@ccr/core/providers/presets/qiniu-ai/index.ts";
-import { AddProviderDialog, AddProviderForm, ProviderConnectivityCheckDialog, ProvidersView, uniqueProviderProbeProtocolRows } from "@ccr/ui/pages/home/components/providers.tsx";
+import { AddProviderDialog, AddProviderForm, ProviderConnectivityCheckDialog, ProviderProtocolDetailsField, ProvidersView, uniqueProviderProbeProtocolRows } from "@ccr/ui/pages/home/components/providers.tsx";
 import {
   applyProviderProbeResult,
   createProviderConfigFromDeepLink,
@@ -29,6 +29,7 @@ import {
   parseProviderAccountDraft,
   providerBrowserConnectorFromDraft,
   providerGlobalBaseUrlForProbe,
+  modelMetadataForProviderProtocols,
   providerPresetIconUrls,
   providerProtocolOptions,
   providerProbeCandidates,
@@ -125,6 +126,44 @@ test("provider save drops capabilities from the previous base URL", () => {
   );
 });
 
+test("provider save carries protocol features across base URL changes", () => {
+  const current = [{
+    baseUrl: "https://new.example/v1",
+    source: "detected" as const,
+    type: "openai_responses" as const
+  }];
+  const previous = [
+    {
+      baseUrl: "https://old.example/v1",
+      features: {
+        reasoningHistoryPolicy: "plaintext" as const,
+        reasoningSummaryPolicy: "as_content" as const
+      },
+      source: "detected" as const,
+      type: "openai_responses" as const
+    },
+    {
+      baseUrl: "https://old-media.example/v1",
+      features: {
+        reasoningHistoryPolicy: "strip" as const
+      },
+      source: "detected" as const,
+      type: "openai_image_generations" as const
+    }
+  ];
+
+  assert.deepEqual(
+    providerCapabilitiesForSave(current, previous, "https://old.example/v1", "https://new.example/v1"),
+    [{
+      ...current[0],
+      features: {
+        reasoningHistoryPolicy: "plaintext",
+        reasoningSummaryPolicy: "as_content"
+      }
+    }]
+  );
+});
+
 test("provider save keeps explicit secondary media origins when the base URL is unchanged", () => {
   const current = [{
     baseUrl: "https://chat.example/v1",
@@ -140,6 +179,46 @@ test("provider save keeps explicit secondary media origins when the base URL is 
   assert.deepEqual(
     providerCapabilitiesForSave(current, media, "https://chat.example/v1/", "https://chat.example/v1"),
     [...current, ...media]
+  );
+});
+
+test("provider model metadata keeps protocol settings within provider protocols", () => {
+  assert.deepEqual(
+    modelMetadataForProviderProtocols({
+      "model-a": {
+        protocols: ["openai_responses", "openai_chat_completions"],
+        protocolFeatures: {
+          openai_responses: { reasoningHistoryPolicy: "plaintext" },
+          anthropic_messages: { reasoningHistoryPolicy: "strip" }
+        }
+      },
+      "model-b": {
+        protocols: ["openai_responses"]
+      }
+    }, ["openai_chat_completions"]),
+    {
+      "model-a": {
+        protocols: ["openai_chat_completions"]
+      },
+      "model-b": {
+        protocols: []
+      }
+    }
+  );
+});
+
+test("provider model metadata keeps explicit empty protocol settings", () => {
+  assert.deepEqual(
+    modelMetadataForProviderProtocols({
+      "model-a": {
+        protocols: []
+      }
+    }, ["openai_responses", "anthropic_messages"]),
+    {
+      "model-a": {
+        protocols: []
+      }
+    }
   );
 });
 
@@ -525,6 +604,26 @@ test("AddProviderForm stacks connection statuses with protocol detection guidanc
   assert.match(html, /grid grid-cols-1 gap-2/);
   assert.doesNotMatch(html, /grid grid-cols-1 gap-2 sm:grid-cols-2/);
   assert.doesNotMatch(html, /Protocol detection checks compatibility; connection verification confirms a real model request succeeds\./);
+});
+
+test("provider protocol details do not wrap multiple checkboxes in one label", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(ProviderProtocolDetailsField, {
+      manualProtocolDetection: true,
+      onChange: () => undefined,
+      protocolProbeRows: [],
+      selectableProtocols: providerProtocolOptions.map((option) => option.value),
+      selectedProtocols: ["openai_responses", "anthropic_messages"]
+    })
+  );
+  const protocolDetailsIndex = html.indexOf("Protocol details");
+  const previousLabelIndex = html.lastIndexOf("<label", protocolDetailsIndex);
+  const previousDivIndex = html.lastIndexOf("<div", protocolDetailsIndex);
+
+  assert.ok(protocolDetailsIndex > 0);
+  assert.ok(previousDivIndex > previousLabelIndex);
+  assert.match(html, /for="provider-protocol-openai_responses"/);
+  assert.match(html, /for="provider-protocol-anthropic_messages"/);
 });
 
 test("AddProviderForm renders a two-column model picker", () => {
