@@ -48,6 +48,16 @@ test("parseProviderDeepLinkPayload reads payload JSON, models, descriptions, dis
           input_usd_per_million_tokens: 2,
           output_usd_per_million_tokens: 8
         },
+        protocols: ["openai_responses", "openai_chat_completions", "unsupported_protocol"],
+        protocol_features: {
+          openai_responses: {
+            reasoning_history_policy: "plaintext",
+            reasoning_summary_policy: "as_content"
+          },
+          unsupported_protocol: {
+            reasoning_history_policy: "encrypted"
+          }
+        },
         supported_reasoning_levels: ["low", "medium", "high", "xhigh", "max", "ultra"],
         supports_reasoning_summaries: true
       },
@@ -87,6 +97,13 @@ test("parseProviderDeepLinkPayload reads payload JSON, models, descriptions, dis
         cacheWrite5mUsdPerMillionTokens: 3.75,
         inputUsdPerMillionTokens: 2,
         outputUsdPerMillionTokens: 8
+      },
+      protocols: ["openai_responses", "openai_chat_completions"],
+      protocolFeatures: {
+        openai_responses: {
+          reasoningHistoryPolicy: "plaintext",
+          reasoningSummaryPolicy: "as_content"
+        }
       },
       supportedReasoningLevels: [
         { description: "low", effort: "low" },

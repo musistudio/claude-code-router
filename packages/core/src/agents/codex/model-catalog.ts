@@ -1,4 +1,4 @@
-import { BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, isGatewayProviderEnabled } from "@ccr/core/contracts/app";
+import { BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, gatewayProviderProtocols, isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, ProviderModelMetadata, ProviderReasoningLevel, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
 import {
   findModelCatalogEntry,
@@ -579,7 +579,7 @@ function findConfiguredProviderForModel(
 
 function codexProviderProtocol(provider: GatewayProviderConfig): GatewayProviderProtocol | undefined {
   const capabilityProtocols = uniqueProviderProtocols((provider.capabilities ?? []).map((capability) => normalizeProviderProtocol(capability.type)));
-  for (const protocol of ["openai_responses", "openai_chat_completions", "anthropic_messages", "gemini_generate_content", "gemini_interactions"] as GatewayProviderProtocol[]) {
+  for (const protocol of gatewayProviderProtocols) {
     if (capabilityProtocols.includes(protocol)) {
       return protocol;
     }

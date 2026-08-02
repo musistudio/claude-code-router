@@ -10,6 +10,42 @@ const retryConfig = {
 };
 const retryFallback = { mode: "retry", models: [], retryCount: 1 };
 
+function responsesConfig(provider) {
+  return {
+    Providers: [
+      {
+        api_base_url: provider.baseUrl,
+        capabilities: [
+          {
+            baseUrl: provider.baseUrl,
+            ...(provider.features ? { features: provider.features } : {}),
+            type: "openai_responses"
+          }
+        ],
+        ...(provider.modelMetadata ? { modelMetadata: provider.modelMetadata } : {}),
+        models: [provider.model],
+        name: provider.name,
+        type: "openai_responses"
+      }
+    ],
+    Router: { fallback: { mode: "off", models: [], retryCount: 0 }, rules: [] },
+    virtualModelProfiles: []
+  };
+}
+
+function prepareResponsesAttempt({ body, features, modelMetadata, name = "Provider", baseUrl = "https://provider.example/v1", model = "model" }) {
+  return prepareGatewayUpstreamAttemptForTest({
+    body: { model, ...body },
+    config: responsesConfig({ baseUrl, features, model, modelMetadata, name }),
+    headers: {
+      "x-target-provider": name
+    },
+    method: "POST",
+    path: "/v1/responses",
+    routedModel: model
+  });
+}
+
 async function assertRetryBackoffStopsAfterAbort(fetchImpl) {
   const originalFetch = globalThis.fetch;
   const originalSetTimeout = globalThis.setTimeout;
@@ -306,4 +342,312 @@ test("model-chain fallback rebuilds every protocol attempt from the canonical re
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("OpenAI responses reasoning history keeps encrypted content and strips plaintext", () => {
+  const attempt = prepareResponsesAttempt({
+    baseUrl: "https://api.openai.com/v1",
+    body: {
+      include: ["reasoning.encrypted_content", "file_search_call.results"],
+      input: [
+        { content: [{ text: "hello", type: "input_text" }], role: "user", type: "message" },
+        {
+          content: [{ text: "raw reasoning", type: "reasoning_text" }],
+          encrypted_content: null,
+          id: "rs_plain",
+          status: "completed",
+          summary: [],
+          type: "reasoning"
+        },
+        {
+          content: [{ text: "raw encrypted reasoning", type: "reasoning_text" }],
+          encrypted_content: "encrypted-state",
+          id: "rs_encrypted",
+          status: "completed",
+          summary: [{ text: "brief summary", type: "summary_text" }],
+          type: "reasoning"
+        }
+      ]
+    },
+    features: { reasoningHistoryPolicy: "encrypted" },
+    model: "gpt-5.5",
+    name: "OpenAI"
+  });
+
+  assert.deepEqual(attempt.body.include, ["reasoning.encrypted_content", "file_search_call.results"]);
+  assert.deepEqual(attempt.body.input, [
+    { content: [{ text: "hello", type: "input_text" }], role: "user", type: "message" },
+    {
+      encrypted_content: "encrypted-state",
+      id: "rs_encrypted",
+      status: "completed",
+      summary: [{ text: "brief summary", type: "summary_text" }],
+      type: "reasoning"
+    }
+  ]);
+});
+
+test("plaintext responses reasoning history can use summary as content fallback", () => {
+  const attempt = prepareResponsesAttempt({
+    baseUrl: "https://api.deepseek.com",
+    body: {
+      include: ["reasoning.encrypted_content", "file_search_call.results"],
+      input: [
+        {
+          content: [],
+          encrypted_content: "encrypted-state",
+          id: "rs_summary",
+          status: "completed",
+          summary: [{ text: "summary fallback", type: "summary_text" }],
+          type: "reasoning"
+        },
+        {
+          content: [{ text: "raw reasoning", type: "reasoning_text" }],
+          encrypted_content: "encrypted-state",
+          id: "rs_plain",
+          status: "completed",
+          summary: [{ text: "unused summary", type: "summary_text" }],
+          type: "reasoning"
+        }
+      ]
+    },
+    features: {
+      reasoningHistoryPolicy: "plaintext",
+      reasoningSummaryPolicy: "as_content"
+    },
+    model: "deepseek-v4-flash",
+    name: "DeepSeek"
+  });
+
+  assert.deepEqual(attempt.body.include, ["file_search_call.results"]);
+  assert.deepEqual(attempt.body.input, [
+    {
+      content: [{ text: "summary fallback", type: "reasoning_text" }],
+      id: "rs_summary",
+      status: "completed",
+      type: "reasoning"
+    },
+    {
+      content: [{ text: "raw reasoning", type: "reasoning_text" }],
+      id: "rs_plain",
+      status: "completed",
+      type: "reasoning"
+    }
+  ]);
+});
+
+test("unknown responses-compatible providers strip reasoning history by default", () => {
+  const attempt = prepareResponsesAttempt({
+    body: {
+      include: ["reasoning.encrypted_content"],
+      input: [
+        {
+          content: [{ text: "raw reasoning", type: "reasoning_text" }],
+          encrypted_content: "encrypted-state",
+          id: "rs_unknown",
+          status: "completed",
+          summary: [{ text: "summary", type: "summary_text" }],
+          type: "reasoning"
+        },
+        { content: [{ text: "hello", type: "input_text" }], role: "user", type: "message" }
+      ]
+    },
+    name: "OpenAI Compatible"
+  });
+
+  assert.equal(attempt.body.include, undefined);
+  assert.deepEqual(attempt.body.input, [
+    { content: [{ text: "hello", type: "input_text" }], role: "user", type: "message" }
+  ]);
+});
+
+test("responses reasoning history auto detection only uses official base URLs", () => {
+  const openAiAttempt = prepareResponsesAttempt({
+    baseUrl: "https://api.openai.com/v1",
+    body: {
+      include: ["reasoning.encrypted_content"],
+      input: [
+        {
+          content: [{ text: "raw reasoning", type: "reasoning_text" }],
+          encrypted_content: "encrypted-state",
+          id: "rs_openai",
+          status: "completed",
+          summary: [{ text: "summary", type: "summary_text" }],
+          type: "reasoning"
+        }
+      ]
+    },
+    model: "gpt-5.5",
+    name: "Any Name"
+  });
+
+  assert.deepEqual(openAiAttempt.body.input, [
+    {
+      encrypted_content: "encrypted-state",
+      id: "rs_openai",
+      status: "completed",
+      summary: [{ text: "summary", type: "summary_text" }],
+      type: "reasoning"
+    }
+  ]);
+
+  const deepSeekAttempt = prepareResponsesAttempt({
+    baseUrl: "https://api.deepseek.com",
+    body: {
+      include: ["reasoning.encrypted_content"],
+      input: [
+        {
+          content: [{ text: "raw reasoning", type: "reasoning_text" }],
+          encrypted_content: "encrypted-state",
+          id: "rs_deepseek",
+          status: "completed",
+          summary: [{ text: "summary", type: "summary_text" }],
+          type: "reasoning"
+        }
+      ]
+    },
+    model: "deepseek-reasoner",
+    name: "Any Name"
+  });
+
+  assert.deepEqual(deepSeekAttempt.body.input, [
+    {
+      content: [{ text: "raw reasoning", type: "reasoning_text" }],
+      id: "rs_deepseek",
+      status: "completed",
+      type: "reasoning"
+    }
+  ]);
+
+  const nameOnlyAttempt = prepareResponsesAttempt({
+    baseUrl: "https://gateway.example/v1",
+    body: {
+      include: ["reasoning.encrypted_content"],
+      input: [
+        {
+          content: [{ text: "raw reasoning", type: "reasoning_text" }],
+          encrypted_content: "encrypted-state",
+          id: "rs_name_only",
+          status: "completed",
+          summary: [{ text: "summary", type: "summary_text" }],
+          type: "reasoning"
+        }
+      ]
+    },
+    model: "model",
+    name: "OpenAI DeepSeek Compatible"
+  });
+
+  assert.equal(nameOnlyAttempt.body.include, undefined);
+  assert.deepEqual(nameOnlyAttempt.body.input, []);
+});
+
+test("responses reasoning history uses model protocol features before provider defaults", () => {
+  const attempt = prepareResponsesAttempt({
+    body: {
+      include: ["reasoning.encrypted_content"],
+      input: [
+        {
+          content: [],
+          encrypted_content: "encrypted-state",
+          id: "rs_model_override",
+          status: "completed",
+          summary: [{ text: "model summary", type: "summary_text" }],
+          type: "reasoning"
+        }
+      ]
+    },
+    features: {
+      reasoningHistoryPolicy: "strip"
+    },
+    model: "custom-gpt-5.5",
+    modelMetadata: {
+      "custom-gpt-5.5": {
+        protocolFeatures: {
+          openai_responses: {
+            reasoningHistoryPolicy: "plaintext",
+            reasoningSummaryPolicy: "as_content"
+          }
+        }
+      }
+    }
+  });
+
+  assert.equal(attempt.body.include, undefined);
+  assert.deepEqual(attempt.body.input, [
+    {
+      content: [{ text: "model summary", type: "reasoning_text" }],
+      id: "rs_model_override",
+      status: "completed",
+      type: "reasoning"
+    }
+  ]);
+});
+
+test("provider model protocols limit capability routing per model", () => {
+  const config = {
+    Providers: [
+      {
+        api_base_url: "https://provider.example/v1",
+        capabilities: [
+          {
+            baseUrl: "https://provider.example/v1",
+            type: "openai_chat_completions"
+          },
+          {
+            baseUrl: "https://provider.example/v1",
+            type: "openai_responses"
+          }
+        ],
+        modelMetadata: {
+          "chat-only": {
+            protocols: ["openai_chat_completions"]
+          },
+          "responses-only": {
+            protocols: ["openai_responses"]
+          },
+          "disabled-model": {
+            protocols: []
+          }
+        },
+        models: ["chat-only", "responses-only", "disabled-model"],
+        name: "Multi Protocol",
+        type: "openai_chat_completions"
+      }
+    ],
+    Router: { fallback: { mode: "off", models: [], retryCount: 0 }, rules: [] },
+    virtualModelProfiles: []
+  };
+
+  const chatAttempt = prepareGatewayUpstreamAttemptForTest({
+    body: { model: "chat-only" },
+    config,
+    headers: {},
+    method: "POST",
+    path: "/v1/responses",
+    routedModel: "chat-only"
+  });
+  assert.equal(chatAttempt.body.model, "chat-only");
+  assert.match(chatAttempt.headers?.["x-target-provider"] ?? "", /::openai_chat_completions$/);
+
+  const responsesAttempt = prepareGatewayUpstreamAttemptForTest({
+    body: { model: "responses-only" },
+    config,
+    headers: {},
+    method: "POST",
+    path: "/v1/responses",
+    routedModel: "responses-only"
+  });
+  assert.equal(responsesAttempt.body.model, "responses-only");
+  assert.match(responsesAttempt.headers?.["x-target-provider"] ?? "", /::openai_responses$/);
+
+  const disabledAttempt = prepareGatewayUpstreamAttemptForTest({
+    body: { model: "disabled-model" },
+    config,
+    headers: {},
+    method: "POST",
+    path: "/v1/responses",
+    routedModel: "disabled-model"
+  });
+  assert.equal(disabledAttempt.headers?.["x-target-provider"], undefined);
 });

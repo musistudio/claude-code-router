@@ -18,6 +18,7 @@ import {
   BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME,
   BUILTIN_FUSION_VISION_TOOL_NAME,
   BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME,
+  gatewayProviderProtocols,
   OVERVIEW_WIDGET_SIZE_VALUES
 } from "@ccr/core/contracts/app";
 import type {
@@ -173,13 +174,16 @@ export const requestLogPageSizeOptions = [
   { label: "100 / page", value: "100" }
 ];
 
-export const providerProtocolOptions: Array<{ label: string; value: GatewayProviderProtocol }> = [
-  { label: "OpenAI Chat", value: "openai_chat_completions" },
-  { label: "OpenAI Responses", value: "openai_responses" },
-  { label: "Anthropic Messages", value: "anthropic_messages" },
-  { label: "Gemini Generate", value: "gemini_generate_content" },
-  { label: "Gemini Interactions", value: "gemini_interactions" }
-];
+const providerProtocolLabels: Record<GatewayProviderProtocol, string> = {
+  anthropic_messages: "Anthropic Messages",
+  gemini_generate_content: "Gemini Generate",
+  gemini_interactions: "Gemini Interactions",
+  openai_chat_completions: "OpenAI Chat",
+  openai_responses: "OpenAI Responses"
+};
+
+export const providerProtocolOptions: Array<{ label: string; value: GatewayProviderProtocol }> =
+  gatewayProviderProtocols.map((value) => ({ label: providerProtocolLabels[value], value }));
 
 export const providerAccountModeOptions: Array<{ label: string; value: ProviderAccountDraftMode }> = [
   { label: "Standard usage endpoint", value: "standard" },
