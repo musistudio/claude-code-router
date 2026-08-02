@@ -527,6 +527,10 @@ export function normalizeProviderPresetCapabilitiesForTest(
   return normalizeProviderPresetCapabilities(provider);
 }
 
+export function parseProvidersForTest(value: unknown): GatewayProviderConfig[] | undefined {
+  return parseProviders(value);
+}
+
 function hasUnsupportedNvidiaCapabilities(value: unknown): boolean {
   if (!Array.isArray(value)) {
     return false;
@@ -1378,7 +1382,8 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         baseUrl: readString(item.baseUrl),
         baseurl: readString(item.baseurl),
         billing: item.billing,
-        capabilities: parseProviderCapabilities(item.capabilities),
+        capabilities: parseProviderCapabilities(item.capabilities)
+          ?? parseProviderProtocolCapability(item),
         credentials: parseProviderCredentials(item.credentials ?? item.keys ?? item.apiKeys),
         extraBody: item.extraBody,
         extraHeaders: item.extraHeaders,
@@ -1685,6 +1690,21 @@ function parseProviderCapabilities(value: unknown): GatewayProviderCapability[] 
     .filter((item): item is GatewayProviderCapability => Boolean(item));
 
   return capabilities.length > 0 ? capabilities : undefined;
+}
+
+// Local-agent login imports (e.g. Codex API) declare their protocol at the top
+// level of the provider payload instead of inside a capabilities array. When no
+// explicit capabilities are configured, translate that protocol into a single
+// capability so the gateway picks the correct upstream adapter. Without this,
+// an openai_responses provider silently falls back to the chat-completions
+// adapter and every request 404s against Responses-only backends.
+function parseProviderProtocolCapability(item: Record<string, unknown>): GatewayProviderCapability[] | undefined {
+  const type = parseProviderCapabilityProtocol(readString(item.protocol));
+  const baseUrl = readString(item.baseUrl) || readString(item.baseurl) || readString(item.api_base_url);
+  if (!type || !baseUrl) {
+    return undefined;
+  }
+  return [{ baseUrl, type }];
 }
 
 function parseProviderCapabilityProtocol(value: string | undefined): GatewayProviderCapabilityProtocol | undefined {
