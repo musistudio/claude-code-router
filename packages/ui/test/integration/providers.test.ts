@@ -33,6 +33,7 @@ import {
   removeLocalAgentProviderPluginsForProvider,
   setProviderPresets
 } from "@ccr/ui/pages/home/shared/index.tsx";
+import { createProviderAccountDraftFromConfig, parseProviderAccountDraft } from "@ccr/ui/pages/home/shared/providers.ts";
 import { installBrowserGlobals } from "../fixtures/index.ts";
 
 installBrowserGlobals();
@@ -1249,3 +1250,101 @@ function providerInstallLinkPayload(link) {
   const bytes = Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
   return JSON.parse(new TextDecoder().decode(bytes));
 }
+
+test("raw account connectors win over stale form URL on save", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    accountConnectorsText: JSON.stringify([
+      {
+        type: "http-json",
+        auth: "provider-api-key",
+        endpoint: "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains",
+        mapping: {
+          meters: [
+            {
+              id: "five_hour_quota",
+              kind: "quota",
+              label: "5H用量",
+              used: "100 - $.model_remains[?(@.model_name==\"general\")].current_interval_remaining_percent",
+              resetAt: "$.model_remains[?(@.model_name==\"general\")].end_time",
+              unit: "%",
+              window: "5h"
+            },
+            {
+              id: "weekly_quota",
+              kind: "quota",
+              label: "7D用量",
+              used: "100 - $.model_remains[?(@.model_name==\"general\")].current_weekly_remaining_percent",
+              resetAt: "$.model_remains[?(@.model_name==\"general\")].weekly_end_time",
+              unit: "%",
+              window: "weekly"
+            }
+          ]
+        },
+        method: "GET"
+      }
+    ], null, 2),
+    accountEnabled: true,
+    accountMode: "raw",
+    usageRequestUrl: "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains"
+  };
+
+  const account = parseProviderAccountDraft(draft);
+  assert.ok(account && typeof account !== "string");
+  const connectors = account.connectors ?? [];
+  assert.equal(connectors.length, 1);
+  assert.equal(connectors[0].type, "http-json");
+  const meters = connectors[0].mapping.meters;
+  assert.equal(meters.length, 2);
+  assert.equal(meters[0].id, "five_hour_quota");
+  assert.equal(meters[0].kind, "quota");
+  assert.equal(meters[0].label, "5H用量");
+  assert.equal(meters[0].window, "5h");
+  assert.equal(meters[1].id, "weekly_quota");
+  assert.equal(meters[1].window, "weekly");
+});
+
+test("quota meter connectors reopen in raw mode without dropping meters", () => {
+  const account = {
+    connectors: [
+      {
+        type: "http-json",
+        auth: "provider-api-key",
+        endpoint: "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains",
+        mapping: {
+          meters: [
+            {
+              id: "five_hour_quota",
+              kind: "quota",
+              label: "5H用量",
+              remaining: "$.model_remains[?(@.model_name==\"general\")].current_interval_remaining_percent",
+              resetAt: "$.model_remains[?(@.model_name==\"general\")].end_time",
+              unit: "%",
+              window: "5h"
+            },
+            {
+              id: "weekly_quota",
+              kind: "quota",
+              label: "7D用量",
+              remaining: "$.model_remains[?(@.model_name==\"general\")].current_weekly_remaining_percent",
+              resetAt: "$.model_remains[?(@.model_name==\"general\")].weekly_end_time",
+              unit: "%",
+              window: "weekly"
+            }
+          ]
+        },
+        method: "GET"
+      }
+    ],
+    enabled: true
+  };
+
+  const draft = createProviderAccountDraftFromConfig(account);
+  assert.equal(draft.accountMode, "raw");
+  const connectors = JSON.parse(draft.accountConnectorsText);
+  assert.equal(connectors.length, 1);
+  assert.equal(connectors[0].mapping.meters.length, 2);
+  assert.equal(connectors[0].mapping.meters[0].id, "five_hour_quota");
+  assert.equal(connectors[0].mapping.meters[0].window, "5h");
+  assert.equal(connectors[0].mapping.meters[1].window, "weekly");
+});

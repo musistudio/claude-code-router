@@ -1087,7 +1087,9 @@ export function parseProviderAccountDraft(draft: AddProviderDraft): GatewayProvi
     };
   }
 
-  if (draft.accountMode === "http-json" || draft.usageRequestUrl.trim()) {
+  // raw 模式必须走 Connectors JSON；若用 ||，表单 URL 残留会让 raw 模式
+  // 误走表单生成分支，用户粘贴的 connectors 被静默丢弃（issue: 5H用量/7D用量 变 Subscription）
+  if (draft.accountMode === "http-json" && draft.usageRequestUrl.trim()) {
     const connector = providerHttpJsonConnectorFromDraft(draft);
     if (typeof connector === "string") {
       return connector;
@@ -1193,9 +1195,22 @@ export function createProviderAccountDraftFromConfig(account: ProviderAccountCon
   }
 
   const balanceMeter = httpJsonConnector.mapping.meters.find((meter) => meter.kind === "balance" || meter.id === "balance");
-  const subscriptionMeter = httpJsonConnector.mapping.meters.find((meter) =>
-    meter.kind === "subscription" || meter.id === "subscription" || meter.kind === "quota" || meter.kind === "tokens" || meter.kind === "time_window"
+  const subscriptionMeter = httpJsonConnector.mapping.meters.find((meter) => meter.kind === "subscription" || meter.id === "subscription");
+  // 仅当所有 meter 都是简单的 balance/subscription 时才展开为表单字段；
+  // 含 quota/tokens/time_window 或自定义结构的 meter（如 MiniMax 的 5H用量/7D用量）
+  // 展开会丢 meter 和 window，必须保留 raw Connectors JSON。
+  const simpleHttpJsonConnector = httpJsonConnector.mapping.meters.every((meter) =>
+    meter.kind === "balance" || meter.id === "balance" || meter.kind === "subscription" || meter.id === "subscription"
   );
+  if (!simpleHttpJsonConnector) {
+    return {
+      ...base,
+      accountConnectorsText: JSON.stringify(connectors, null, 2),
+      accountEnabled: account.enabled === true,
+      accountMode: "raw",
+      accountRefreshIntervalMs: account.refreshIntervalMs ? String(account.refreshIntervalMs) : ""
+    };
+  }
 
   return {
     ...base,
