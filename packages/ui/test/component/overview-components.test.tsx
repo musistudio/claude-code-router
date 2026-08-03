@@ -250,7 +250,7 @@ test("OverviewView prioritizes Codex manual resets before folded balance meters"
   assert.doesNotMatch(html, /Effective/);
   assert.doesNotMatch(html, /Expires/);
   assert.doesNotMatch(html, /Full reset/);
-  assert.match(html, /📆 \d+d\d+h/);
+  assert.match(html, /☀️ \d+d\d+h/);
   assert.match(html, /2 resets/);
   assert.doesNotMatch(html, /Credit balance/);
 });

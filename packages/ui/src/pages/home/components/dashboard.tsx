@@ -2570,15 +2570,16 @@ function ProviderAccountMeterLine({
   const labelText = t(meter.label);
   const resetDuration = meter.resetAt ? formatProviderAccountResetDuration(meter.resetAt) : undefined;
   // 已过期（或非法时间）时回退为「expired」文案；正常时用图标 + 纯时长，不重复「剩余」前缀。
-  // 天级窗口（如 7D/30D，时长含 d 单位）用 📆，小时级（如 5H）用 🕛。
-  const resetIcon = resetDuration?.includes("d") ? "📆" : "🕛";
+  // 天级窗口（如 7D/30D，时长含 d 单位）用 ☀️，小时级（如 5H）用 🕛。
+  const resetIcon = resetDuration?.includes("d") ? "☀️" : "🕛";
   const resetText = resetDuration !== undefined ? `${resetIcon} ${resetDuration}` : (meter.resetAt ? t("expired") : "");
-  // 百分比达到 90 及以上时数字和百分号整体变红（仅针对 % 单位的 meter）
+  // 百分比告警分级：达到 75 用橙色（text-amber-500），达到 90 及以上用红色（text-red-500）
   const meterNumber = meter.remaining ?? meter.used ?? meter.limit;
   const valueDanger = meter.unit === "%" && typeof meterNumber === "number" && meterNumber >= 90;
+  const valueWarning = meter.unit === "%" && typeof meterNumber === "number" && meterNumber >= 75 && !valueDanger;
   const detailsId = `provider-account-meter-${providerAccountSnapshotKey(account)}-${meter.id}-details`.replace(/[^a-zA-Z0-9_-]/g, "-");
   const titleClassName = cn("min-w-0 truncate font-semibold text-muted-foreground", single && dimensions.height >= 2 ? "text-[13px]" : "text-[12px]");
-  const valueClassName = cn("shrink-0 font-semibold tracking-tight tabular-nums", valueDanger && "text-red-500", single && dimensions.height >= 2 ? "text-[14px]" : "text-[13px]");
+  const valueClassName = cn("shrink-0 font-semibold tracking-tight tabular-nums", valueDanger && "text-red-500", valueWarning && "text-amber-500", single && dimensions.height >= 2 ? "text-[14px]" : "text-[13px]");
   const resetClassName = cn("shrink-0 font-mono font-medium text-muted-foreground", single && dimensions.height >= 2 ? "text-[12px]" : "text-[11px]");
   const meterSummary = (
     <>
