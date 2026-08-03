@@ -1263,7 +1263,8 @@ function App() {
   }
 
   useEffect(() => {
-    if (!window.ccr || !providerAddOpen) {
+    const providerFormVisible = providerAddOpen || (activeView === "onboarding" && onboardingStep === "provider");
+    if (!window.ccr || !providerFormVisible) {
       return;
     }
     if (providerDraft.protocolDetectionMode === "manual") {
@@ -1369,7 +1370,11 @@ function App() {
             return applyProviderProbeResult(current, result.probe);
           });
 
-          if (probeMode !== "models" && !providerProbeHasSupportedProtocol(result.probe)) {
+          // In "models" mode the probe still reports protocol support, so a rejected API key
+          // surfaces here as unsupported protocols and an empty catalog. Report it instead of
+          // leaving the model picker silently empty, but stay quiet when models were discovered
+          // (a provider can expose a working catalog while a protocol probe endpoint 404s).
+          if (!providerProbeHasSupportedProtocol(result.probe) && (probeMode !== "models" || result.probe.models.length === 0)) {
             const message = result.probe.protocols.find((item) => item.message)?.message || "Request failed.";
             setProviderProbeError(translateAppErrorMessage(copy, message));
           }
