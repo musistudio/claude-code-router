@@ -7,7 +7,7 @@ import {
   compactUserAgent, compareProviderAccountSnapshots, ComposedChart, CSS, DEFAULT_OVERVIEW_WIDGETS, DndContext,
   Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle,
   DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, Field, formatAxisNumber, formatBytes,
-  formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatProviderAccountDetailDate, formatProviderAccountMeterTitle, formatProviderAccountMeterValue,
+  formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatProviderAccountDetailDate, formatProviderAccountMeterTitle, formatProviderAccountMeterValue, formatProviderAccountResetDuration,
   formatStatusBucketDate, formatSystemStatusRange, formatUsdCost, KeyboardSensor,
   LabelList, LayoutGroup, Line, LoaderCircle, MeasuringStrategy, MetricTone,
   motion, normalizeAgentFilterValue, normalizeOverviewWidget, normalizeOverviewWidgets,
@@ -2347,7 +2347,7 @@ function ProviderAccountsOverview({
             })}
           </div>
         ) : variant === "bars" ? (
-          <div className={cn("h-full min-h-0 overflow-y-auto pr-1", providerAccountStackClass(dimensions))}>
+          <div className={cn("h-full min-h-0 overflow-y-auto pr-1", "space-y-1.5")}>
             {visibleAccounts.map((account) => {
               const meter = primaryProviderAccountDisplayMeter(account);
               const progress = meter && isProviderAccountQuotaMeter(meter) ? providerAccountMeterProgress(meter) : undefined;
@@ -2422,7 +2422,7 @@ function ProviderAccountSinglePanel({
   const showQuotaVisual = providerAccountUsesQuotaVisual(variant) && quotaMeters.length > 0;
 
   return (
-    <div className={cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden", providerAccountStackClass(dimensions))}>
+    <div className={cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden", "space-y-1.5")}>
       <div className="flex min-w-0 shrink-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <div className={cn("truncate font-semibold", dimensions.height <= 1 ? "text-[12px]" : "text-[13px]")}>{providerAccountSnapshotLabel(account)}</div>
@@ -2435,7 +2435,7 @@ function ProviderAccountSinglePanel({
       ) : quotaMeters.length === 0 && balanceMeter ? (
         <ProviderAccountBalanceMetric dimensions={dimensions} meter={balanceMeter} />
       ) : meters.length > 0 ? (
-        <div className={cn("min-h-0 overflow-hidden", providerAccountStackClass(dimensions))}>
+        <div className={cn("min-h-0 overflow-hidden", "space-y-1")}>
           {meters.map((meter) => (
             <ProviderAccountMeterLine account={account} dimensions={dimensions} key={meter.id} meter={meter} single onRefresh={onRefresh} />
           ))}
@@ -2480,15 +2480,15 @@ function ProviderAccountSummaryCard({
         {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
       </div>
       {showQuotaVisual ? (
-        <div className="mt-2 min-h-0 overflow-hidden">
+        <div className="mt-1.5 min-h-0 overflow-hidden">
           <ProviderAccountQuotaVisual account={account} dimensions={dimensions} meters={quotaMeters} variant={variant} />
         </div>
       ) : quotaMeters.length === 0 && balanceMeter ? (
-        <div className="mt-2 min-h-0 overflow-hidden">
+        <div className="mt-1.5 min-h-0 overflow-hidden">
           <ProviderAccountBalanceMetric dimensions={dimensions} meter={balanceMeter} compact />
         </div>
       ) : meters.length > 0 ? (
-        <div className={cn("mt-2 min-h-0", providerAccountStackClass(dimensions))}>
+        <div className={cn("mt-1.5 min-h-0", "space-y-1")}>
           {meters.map((meter) => (
             <ProviderAccountMeterLine account={account} dimensions={dimensions} key={meter.id} meter={meter} onRefresh={onRefresh} />
           ))}
@@ -2567,10 +2567,19 @@ function ProviderAccountMeterLine({
   const canExpandDetails = dimensions.height >= 2 && isProviderAccountManualResetMeter(meter) && (meter.details?.length ?? 0) > 0;
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [resetDialogDetail, setResetDialogDetail] = useState<NonNullable<ProviderAccountMeter["details"]>[number]>();
-  const title = formatProviderAccountMeterTitle(meter, t);
+  const labelText = t(meter.label);
+  const resetDuration = meter.resetAt ? formatProviderAccountResetDuration(meter.resetAt) : undefined;
+  // 已过期（或非法时间）时回退为「expired」文案；正常时用图标 + 纯时长，不重复「剩余」前缀。
+  // 天级窗口（如 7D/30D，时长含 d 单位）用 📆，小时级（如 5H）用 🕛。
+  const resetIcon = resetDuration?.includes("d") ? "📆" : "🕛";
+  const resetText = resetDuration !== undefined ? `${resetIcon} ${resetDuration}` : (meter.resetAt ? t("expired") : "");
+  // 百分比达到 90 及以上时数字和百分号整体变红（仅针对 % 单位的 meter）
+  const meterNumber = meter.remaining ?? meter.used ?? meter.limit;
+  const valueDanger = meter.unit === "%" && typeof meterNumber === "number" && meterNumber >= 90;
   const detailsId = `provider-account-meter-${providerAccountSnapshotKey(account)}-${meter.id}-details`.replace(/[^a-zA-Z0-9_-]/g, "-");
-  const titleClassName = cn("min-w-0 truncate font-medium text-muted-foreground", single && dimensions.height >= 2 ? "text-[13px]" : "text-[12px]");
-  const valueClassName = cn("shrink-0 font-semibold tracking-tight", single && dimensions.height >= 2 ? "text-[18px]" : "text-[15px]");
+  const titleClassName = cn("min-w-0 truncate font-semibold text-muted-foreground", single && dimensions.height >= 2 ? "text-[13px]" : "text-[12px]");
+  const valueClassName = cn("shrink-0 font-semibold tracking-tight tabular-nums", valueDanger && "text-red-500", single && dimensions.height >= 2 ? "text-[14px]" : "text-[13px]");
+  const resetClassName = cn("shrink-0 font-mono font-medium text-muted-foreground", single && dimensions.height >= 2 ? "text-[12px]" : "text-[11px]");
   const meterSummary = (
     <>
       <div className="flex min-w-0 items-center gap-1.5">
@@ -2579,7 +2588,8 @@ function ProviderAccountMeterLine({
             {detailsOpen ? <ChevronDown aria-hidden="true" className="h-3.5 w-3.5" /> : <ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />}
           </AnimatedIconSwap>
         ) : null}
-        <div className={titleClassName}>{title}</div>
+        <div className={titleClassName}>{labelText}</div>
+        {resetText ? <div className={resetClassName}>{resetText}</div> : null}
       </div>
       <div className={valueClassName}>{formatProviderAccountMeterValue(meter, t)}</div>
     </>
@@ -2591,20 +2601,20 @@ function ProviderAccountMeterLine({
         <button
           aria-controls={detailsId}
           aria-expanded={detailsOpen}
-          aria-label={`${t(detailsOpen ? "Collapse" : "Expand")} ${title}`}
-          className="group -mx-1 flex w-[calc(100%+8px)] min-w-0 items-end justify-between gap-3 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+          aria-label={`${t(detailsOpen ? "Collapse" : "Expand")} ${labelText}`}
+          className="group -mx-1 flex w-[calc(100%+8px)] min-w-0 items-center justify-between gap-3 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
           onClick={() => setDetailsOpen((current) => !current)}
           type="button"
         >
           {meterSummary}
         </button>
       ) : (
-        <div className="flex min-w-0 items-end justify-between gap-3">
+        <div className="flex min-w-0 items-center justify-between gap-3">
           {meterSummary}
         </div>
       )}
       {progress !== undefined && providerAccountShowProgress(dimensions) ? (
-        <div className={cn("mt-1.5 overflow-hidden rounded-full", single ? "bg-muted" : "bg-background", dimensions.height <= 1 ? "h-1.5" : "h-2")}>
+        <div className={cn("mt-0.5 overflow-hidden rounded-full", single ? "bg-muted" : "bg-background", dimensions.height <= 1 ? "h-1.5" : "h-2")}>
           <div className={cn("h-full rounded-full", providerAccountProgressClass(account.status))} style={{ width: `${progress}%` }} />
         </div>
       ) : null}
@@ -3357,15 +3367,11 @@ function providerAccountContentPaddingClass(dimensions: OverviewWidgetDimensions
 }
 
 function providerAccountCardPaddingClass(dimensions: OverviewWidgetDimensions): string {
-  return dimensions.height <= 1 || dimensions.width <= 1 ? "p-2" : "p-3";
+  return dimensions.height <= 1 || dimensions.width <= 1 ? "p-1.5" : "p-2";
 }
 
 function providerAccountGapClass(dimensions: OverviewWidgetDimensions): string {
   return dimensions.height <= 1 || dimensions.width <= 1 ? "gap-2" : "gap-3";
-}
-
-function providerAccountStackClass(dimensions: OverviewWidgetDimensions): string {
-  return dimensions.height <= 1 ? "space-y-1.5" : "space-y-2.5";
 }
 
 function providerAccountGridClass(dimensions: OverviewWidgetDimensions, itemCount: number): string {

@@ -184,28 +184,40 @@ export function formatProviderAccountNumber(value: number): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 6 }).format(value);
 }
 
-export function formatProviderAccountReset(value: string, translate: (value: string) => string = (item) => item): string {
+// 仅返回剩余时长（如「3h28m」「1d17h」「05m」）；非法时间或已过期返回 undefined
+// 与 formatProviderAccountReset 的差异：不携带「expires in / expired」文案前缀
+// （dashboard 的 meter 行用 🕛/📆 图标代替文字前缀）。
+// 分钟/小时始终补零两位（05m、3h05m），天/小时首段不补零，配合等宽字体（font-mono）对齐。
+export function formatProviderAccountResetDuration(value: string): string | undefined {
   const timestamp = new Date(value).getTime();
   if (!Number.isFinite(timestamp)) {
-    return value;
+    return undefined;
   }
   const minutes = Math.round((timestamp - Date.now()) / 60000);
   if (minutes <= 0) {
-    return translate("expired");
+    return undefined;
   }
-  const prefix = translate("expires in");
+  const pad2 = (n: number) => String(n).padStart(2, "0");
   if (minutes < 60) {
-    return `${prefix} ${minutes}m`;
+    return `${pad2(minutes)}m`;
   }
-  // 双单位精确显示：< 24h 用「Xh Ym」，>= 24h 用「Xd Yh」
   const totalHours = Math.floor(minutes / 60);
   const mins = minutes % 60;
   if (totalHours < 24) {
-    return mins > 0 ? `${prefix} ${totalHours}h ${mins}m` : `${prefix} ${totalHours}h`;
+    return `${totalHours}h${pad2(mins)}m`;
   }
   const days = Math.floor(totalHours / 24);
   const hours = totalHours % 24;
-  return hours > 0 ? `${prefix} ${days}d ${hours}h` : `${prefix} ${days}d`;
+  return `${days}d${pad2(hours)}h`;
+}
+
+export function formatProviderAccountReset(value: string, translate: (value: string) => string = (item) => item): string {
+  const duration = formatProviderAccountResetDuration(value);
+  if (duration === undefined) {
+    const timestamp = new Date(value).getTime();
+    return Number.isFinite(timestamp) ? translate("expired") : value;
+  }
+  return `${translate("expires in")} ${duration}`;
 }
 
 export function formatProviderAccountMeterTitle(meter: ProviderAccountMeter, translate: (value: string) => string): string {
