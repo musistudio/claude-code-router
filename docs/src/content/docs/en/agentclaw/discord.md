@@ -60,8 +60,9 @@ A Bot Token is usually enough. Only choose OAuth 2.0 if your flow explicitly req
 
 If something asks for Application ID or Public Key:
 
-1. Back in the Developer Portal, open `General Information`.
-2. Copy `Application ID` and `Public Key`.
+1. Go back to the Discord Developer Portal.
+2. Open the app's `General Information`.
+3. Copy `Application ID` and `Public Key`.
 
 ## Wire it up in CCR
 

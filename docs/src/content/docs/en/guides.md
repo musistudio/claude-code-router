@@ -87,4 +87,4 @@ If Claude Code, Codex, OpenCode, Grok CLI, Kimi CLI, or ZCode is already logged 
 
 Open **Settings → Logs & Observability** and enable **Request logs** and **Agent observability**, then send one request to verify: request logs record the request body, response body, resolved model, and errors of each model request, and the Observability page shows the agent's execution trace, tool calls, and timing.
 
-See [Enable logging and observability](guides/observability/) for the full first-run verification steps, and the [logs and observability configuration reference](configuration/observability/) for all switches and page capabilities.
+See [Enable logging and observability](observability/) for the full first-run verification steps, and the [logs and observability configuration reference](../configuration/observability/) for all switches and page capabilities.

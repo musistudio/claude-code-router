@@ -5,6 +5,8 @@ eyebrow: Detailed configuration
 lead: Create reusable launch configs for Claude Code, Codex, OpenCode, Grok CLI, Kimi CLI, and ZCode, and open independent agent instances from different configs. Use this page to run multiple agents side by side or pin different models to different purposes.
 ---
 
+> For a detailed, field-by-field setup guide to a single agent, open its page under **Agents** in the sidebar — for example, [Claude Code](/en/configuration/agents/claude-code/), [Codex](/en/configuration/agents/codex/), or [Grok CLI](/en/configuration/agents/grok/).
+
 ## Configuration flow
 
 1. Add at least one usable provider and model in **Provider Config**, or create the Fusion model you want to use.

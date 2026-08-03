@@ -18,20 +18,18 @@ CCR is a model gateway that runs locally (or on your own server): it receives re
 
 ## Documentation structure
 
-The top-level nav holds Quick start, Detailed configuration, the featured capabilities (Fusion, ToolHub, Routing, One-click import, Extensions, AgentClaw), and Q&A; click the site logo to return to this home page:
+The top-level nav holds Quick start and the featured capabilities (Fusion, ToolHub, Routing, One-click import, Extensions, AgentClaw); detailed configuration and Q&A live in the sidebar. Click the site logo to return to this home page:
 
 | Page | Contents |
 | --- | --- |
 | [Documentation](./) | What CCR does, the doc structure, and the reading path |
-| [Quick start](guides/) | Desktop, CLI, and Docker installation, plus provider and Agent Config setup |
-| [Detailed configuration](configuration/overview/) | Overview dashboard, providers, Agent Config, API keys, logs and observability, server, tray, and config database location |
+| [Quick start](guides/) | Desktop, CLI, and Docker installation, plus provider and Agent Config setup; the sidebar's "Detailed configuration" group covers every settings page |
 | [Fusion](fusion/) | Combine a base model with vision, web search, MCP tools, image generation, or video generation into a new model |
 | [ToolHub](toolhub/) | Collapse many MCP servers into one dynamic tool-resolution entry point |
 | [Routing](routing/) | Control every request with built-in routes, conditional rules, rewrites, retries, and fallback |
 | [One-click import](provider-import/) | Import providers through provider deeplinks, manifests, or embeddable buttons |
 | [Extensions](extensions/) | Build wrapper plugins and core gateway plugins for local routes, providers, and gateway capabilities |
 | [AgentClaw](agentclaw/) | IM access for local agents with an interface styled after [OpenClaw](https://openclaw.ai) (an open-source personal AI assistant that runs on your own machine and interacts through IM platforms); configure the IM bot, handoff modes, Project/Session commands, and platform credentials |
-| [Q&A](troubleshooting/) | Common questions grouped by symptom: onboarding and observability, connection and auth errors, routing and cost, Fusion and tool calls, and Bot messaging |
 
 AgentClaw platform guides are child pages under the AgentClaw section — one page per platform, each covering platform dashboard fields, permissions, event subscriptions, long-connection/Socket/QR login, and FAQs.
 

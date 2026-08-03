@@ -5,6 +5,8 @@ eyebrow: 详细配置
 lead: 为 Claude Code、Codex、OpenCode、Grok CLI、Kimi CLI 和 ZCode 创建可复用的启动配置（Agent 配置），并用不同配置打开相互独立的 Agent 实例。需要多开 Agent 或为不同用途固定不同模型时使用本页。
 ---
 
+> 若需要某个 Agent 的逐字段详细接入指南，可在侧边栏 **Agent 配置** 下打开对应页面，例如 [Claude Code](/configuration/agents/claude-code/)、[Codex](/configuration/agents/codex/) 或 [Grok CLI](/configuration/agents/grok/)。
+
 ## 配置流程
 
 1. 先在 **供应商配置** 中添加至少一个可用供应商和模型，或先创建需要使用的 Fusion 模型。

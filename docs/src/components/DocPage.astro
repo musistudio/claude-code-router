@@ -74,10 +74,21 @@ const navItems = content.navItems.map((item) => {
 });
 // The active top tab follows the section the current page belongs to:
 // documentation/guides share the "docs" tab; feature sections use their feature key.
-const activeFeatureKey = section.feature?.key ?? "docs";
+// Sidebar-only sections (configuration, troubleshooting) have no matching tab, so no tab is active.
+const activeFeatureKey = section.feature?.key ?? (section.key === "documentation" ? "docs" : null);
 const featuredNavItems = (content.featureNavItems ?? navItems).map((item) => ({
   ...item,
   active: item.featureKey ? item.featureKey === activeFeatureKey : item.active,
+}));
+
+// Flat list of every section. On phones the cramped top tab strip is hidden, so
+// the sidebar drawer uses this to switch between any section from any page
+// (including standalone feature pages whose drawer otherwise lists only their
+// own sub-pages).
+const sectionNav = docSections.map((s) => ({
+  label: s.navLabel[locale],
+  href: s.navPath[locale],
+  active: s.key === section.key,
 }));
 const pageGroups = resolveSidebarGroups(pageKey, locale);
 const pageSidebarGroups = pageGroups.map((group) => {
@@ -169,6 +180,7 @@ const pageMarkdown = doc.rawContent();
   languageLabel={content.languageLabel}
   languageOptions={content.languageOptions}
   navItems={featuredNavItems}
+  sectionNav={sectionNav}
   sidebarTree={sidebarTree}
   sidebarGroups={pageSidebarGroups}
   sidebarLinks={sidebarLinks}

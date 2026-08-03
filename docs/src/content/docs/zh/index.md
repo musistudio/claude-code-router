@@ -18,20 +18,18 @@ CCR 是运行在本地（或你自己的服务器上）的模型网关：它接�
 
 ## 文档结构
 
-顶部一级目录包含快速开始、详细配置、各特色功能（Fusion、ToolHub、智能路由、一键导入、扩展、AgentClaw）和 Q&A，点击站点 logo 返回首页：
+顶部一级目录包含快速开始和各特色功能（Fusion、ToolHub、智能路由、一键导入、扩展、AgentClaw）；详细配置和 Q&A 位于侧边目录，点击站点 logo 返回首页：
 
 | 分类 | 内容 |
 | --- | --- |
 | [文档](./) | CCR 能力、文档结构和阅读路径 |
-| [快速开始](guides/) | 桌面版、CLI、Docker 的安装部署，以及供应商和 Agent 配置的接入流程 |
-| [详细配置](configuration/overview/) | 概览仪表盘、供应商、Agent 配置、API 密钥、日志与可观测性、服务、托盘和配置数据库位置 |
+| [快速开始](guides/) | 桌面版、CLI、Docker 的安装部署，供应商和 Agent 配置的接入流程；侧边「详细配置」分组覆盖每个设置页面 |
 | [Fusion](fusion/) | 把基础模型与视觉、联网搜索、MCP 工具、生图或生视频组合成新的可选模型 |
 | [ToolHub](toolhub/) | 将多个 MCP server 收束成一个动态工具检索入口 |
 | [智能路由](routing/) | 通过内置路由、条件规则、请求改写、失败重试和回退控制每次请求 |
 | [一键导入](provider-import/) | 通过供应商深度链接（deeplink）、Manifest 或网页按钮快速导入供应商 |
 | [扩展](extensions/) | 创建 wrapper plugin 和 core gateway plugin，扩展本地路由、供应商和网关能力 |
 | [AgentClaw](agentclaw/) | 为本机 Agent 提供 IM 接入，接口风格与 [OpenClaw](https://openclaw.ai) 一致（OpenClaw 是一个在本机运行、通过 IM 平台交互的开源个人 AI 助手项目），可配置 IM Bot、接力模式、Project/Session 命令和平台凭据 |
-| [Q&A](troubleshooting/) | 按症状分组的常见问题：接入与观测、连接与认证错误、路由与成本、Fusion 与工具调用、Bot 与消息 |
 
 AgentClaw 的平台接入教程是独立的子页面，每个平台一页，各自覆盖平台后台字段、权限、事件订阅、长连接 / Socket / 二维码登录和 FAQ。
 

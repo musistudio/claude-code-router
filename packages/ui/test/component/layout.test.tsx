@@ -9,7 +9,7 @@ import { createVirtualModelDraft } from "@ccr/ui/pages/home/shared/virtual-model
 import { appConfigFixture } from "../fixtures/index.ts";
 import { fallbackUpdateStatus } from "@ccr/ui/pages/home/shared/fallbacks.ts";
 import { navigation } from "@ccr/ui/pages/home/shared/options.ts";
-import { shouldCheckForUpdateOnOpen } from "@ccr/ui/pages/home/components/update.tsx";
+import { formatUpdateReleaseNotes, shouldCheckForUpdateOnOpen, UpdateDialog } from "@ccr/ui/pages/home/components/update.tsx";
 
 test("sidebar navigation groups pages and hides networking from the sidebar", () => {
   const groups = groupSidebarNavigation(navigation);
@@ -118,6 +118,47 @@ test("UpdateEntryButton keeps update-center semantics when an update is availabl
   assert.match(html, /lucide-refresh-cw/);
   assert.match(html, /data-update-available-indicator/);
   assert.doesNotMatch(html, /lucide-download/);
+});
+
+test("UpdateDialog shows a compact action set and sanitized release notes", () => {
+  const html = renderToStaticMarkup(
+    <UpdateDialog
+      actionBusy=""
+      actionError=""
+      copy={appCopy.en}
+      onCheck={async () => undefined}
+      onClose={() => undefined}
+      onDownload={async () => undefined}
+      onInstall={async () => undefined}
+      status={{
+        ...fallbackUpdateStatus,
+        availableVersion: "3.0.17",
+        canDownload: true,
+        currentVersion: "3.0.13",
+        releaseNotes: `3.0.17
+<h2>What's Changed</h2>
+<ul>
+<li>fix(zcode): 保证模型同步正确的上下文长度 by <a class="user-mention" href="https://github.com/jesieleo">@jesieleo</a> in <a href="https://github.com/musistudio/claude-code-router/pull/437">#437</a></li>
+</ul>`,
+        state: "available",
+        supported: true
+      }}
+    />
+  );
+
+  assert.match(html, /Download update/);
+  assert.match(html, /fix\(zcode\): 保证模型同步正确的上下文长度/);
+  assert.doesNotMatch(html, /Check for updates|Install and restart|Feed URL|Last checked/);
+  assert.doesNotMatch(html, /&lt;h2|user-mention|@jesieleo|#437/);
+});
+
+test("formatUpdateReleaseNotes converts GitHub release HTML to concise text", () => {
+  assert.equal(formatUpdateReleaseNotes(`3.0.17
+<h2>What's Changed</h2>
+<ul>
+<li>feat: add &amp; verify update notes by <a class="user-mention" href="https://github.com/a">@author</a> in <a href="https://github.com/musistudio/claude-code-router/pull/1">#1</a></li>
+</ul>
+<p>Full Changelog: <a href="https://github.com/musistudio/claude-code-router/compare/v3.0.13...v3.0.17">v3.0.13...v3.0.17</a></p>`), "- feat: add & verify update notes");
 });
 
 test("opening the update entry only checks when the status is not already actionable", () => {

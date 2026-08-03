@@ -34,6 +34,7 @@ const {
   sidebarTree = [],
   sidebarGroups = [],
   sidebarLinks = {},
+  sectionNav = [],
   tocTitle = "On this page",
   tocItems = [],
   prevPage,
@@ -270,14 +271,6 @@ const featuredNavLabel = locale === "zh" ? "主要入口" : "Primary navigation"
               <div class="search-results" id="docs-search-results" role="listbox" hidden data-search-results></div>
             </div>
             <a
-              class="cta-button"
-              href="https://github.com/musistudio/claude-code-router/releases"
-              aria-label={ui.downloadLabel}
-            >
-              <Download size={16} aria-hidden="true" />
-              <span>{ui.downloadLabel}</span>
-            </a>
-            <a
               class="icon-button github-button hide-small"
               href="https://github.com/musistudio/claude-code-router"
               aria-label={ui.githubLabel}
@@ -293,6 +286,14 @@ const featuredNavLabel = locale === "zh" ? "主要入口" : "Primary navigation"
                 <Moon size={19} />
               </span>
             </button>
+            <a
+              class="cta-button"
+              href="https://github.com/musistudio/claude-code-router/releases"
+              aria-label={ui.downloadLabel}
+            >
+              <Download size={16} aria-hidden="true" />
+              <span>{ui.downloadLabel}</span>
+            </a>
           </div>
         </div>
       </header>
@@ -302,6 +303,27 @@ const featuredNavLabel = locale === "zh" ? "主要入口" : "Primary navigation"
       <div class="content-grid">
         <aside class="sidebar" id="docs-sidebar" aria-label="Documentation sidebar" data-sidebar>
           <div class="sidebar-inner">
+            {
+              sectionNav.length > 0 && (
+                <nav class="sidebar-sections" aria-label={featuredNavLabel}>
+                  <h2 class="sidebar-sections-title">
+                    {locale === "zh" ? "全部栏目" : "All sections"}
+                  </h2>
+                  <ul>
+                    {sectionNav.map((item) => (
+                      <li>
+                        <a
+                          class:list={["sidebar-link", "sidebar-section-link", { active: item.active }]}
+                          href={withBase(item.href)}
+                        >
+                          <span>{item.label}</span>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </nav>
+              )
+            }
             {
               sidebarTree.length > 0 ? (
                 <nav class="sidebar-directory" aria-label="Documentation navigation">
@@ -906,6 +928,81 @@ const featuredNavLabel = locale === "zh" ? "主要入口" : "Primary navigation"
 
         window.addEventListener("scroll", syncTocActive, { passive: true });
         syncTocActive();
+      }
+
+      // Smooth height transition for the mobile "On this page" disclosure.
+      const tocInline = document.querySelector("details.toc-inline");
+      const tocSummary = tocInline ? tocInline.querySelector("summary") : null;
+      const tocPanel = tocInline ? tocInline.querySelector("nav") : null;
+      if (tocInline && tocSummary && tocPanel) {
+        const reduceTocMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        let tocAnimating = false;
+
+        tocSummary.addEventListener("click", (event) => {
+          if (tocAnimating) {
+            event.preventDefault();
+            return;
+          }
+          if (reduceTocMotion) return; // let the browser toggle instantly
+          event.preventDefault();
+          tocAnimating = true;
+          const DURATION = 180;
+
+          const finish = () => {
+            tocPanel.style.transition = "";
+            tocPanel.style.height = "";
+            tocPanel.style.overflow = "";
+            tocAnimating = false;
+          };
+
+          if (!tocInline.open) {
+            // Expanding: reveal at height 0, then animate to the target height
+            // (clamped by the CSS max-height so long lists don't jump at the end).
+            tocPanel.style.overflow = "hidden";
+            tocPanel.style.height = "0px";
+            tocInline.open = true;
+            tocPanel.getBoundingClientRect(); // force reflow before transitioning
+            const max = parseFloat(getComputedStyle(tocPanel).maxHeight);
+            const target = Number.isNaN(max)
+              ? tocPanel.scrollHeight
+              : Math.min(tocPanel.scrollHeight, max);
+            tocPanel.style.transition = `height ${DURATION}ms ease`;
+            tocPanel.style.height = `${target}px`;
+            const onEnd = (e) => {
+              if (e.propertyName !== "height") return;
+              tocPanel.removeEventListener("transitionend", onEnd);
+              finish();
+            };
+            tocPanel.addEventListener("transitionend", onEnd);
+            window.setTimeout(() => {
+              if (tocAnimating) {
+                tocPanel.removeEventListener("transitionend", onEnd);
+                finish();
+              }
+            }, DURATION + 80);
+          } else {
+            // Collapsing: animate the current height down to 0, then close.
+            tocPanel.style.overflow = "hidden";
+            tocPanel.style.height = `${tocPanel.offsetHeight}px`;
+            tocPanel.getBoundingClientRect(); // force reflow before transitioning
+            tocPanel.style.transition = `height ${DURATION}ms ease`;
+            tocPanel.style.height = "0px";
+            const onEnd = (e) => {
+              if (e.propertyName !== "height") return;
+              tocPanel.removeEventListener("transitionend", onEnd);
+              tocInline.open = false;
+              finish();
+            };
+            tocPanel.addEventListener("transitionend", onEnd);
+            window.setTimeout(() => {
+              if (tocAnimating) {
+                tocPanel.removeEventListener("transitionend", onEnd);
+                tocInline.open = false;
+                finish();
+              }
+            }, DURATION + 80);
+          }
+        });
       }
     </script>
   </body>

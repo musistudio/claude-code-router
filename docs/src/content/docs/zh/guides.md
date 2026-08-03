@@ -87,4 +87,4 @@ ZCode 主要关注模型、供应商 ID、供应商名称，以及是否从 CCR 
 
 到 **设置 → 日志与观测** 打开 **请求日志** 和 **Agent 观测**，然后发一条请求验证：请求日志记录单条模型请求的请求体、响应体、命中模型和错误信息，观测面板展示 Agent 的执行链路、工具调用和耗时。
 
-首次验证的完整步骤见 [开启日志与观测](guides/observability/)；各开关和面板能力的配置参考见 [日志与可观测性](configuration/observability/)。
+首次验证的完整步骤见 [开启日志与观测](observability/)；各开关和面板能力的配置参考见 [日志与可观测性](../configuration/observability/)。
