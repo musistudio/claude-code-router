@@ -10,6 +10,7 @@ import { DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WIN
 import { formatLocalizedErrorMessage } from "@ccr/core/contracts/i18n";
 import { findProviderPreset, findProviderPresetByBaseUrl, providerPresets } from "@ccr/core/providers/presets";
 import { providerPresetIconUrls } from "../home/shared/options";
+import { formatProviderAccountMeterTitleCompact } from "../home/shared/provider-accounts";
 import type {
   AppConfig,
   GatewayProviderConfig,
@@ -816,10 +817,6 @@ function meterDetailTimestamp(value: string | undefined): number | undefined {
   return Number.isFinite(timestamp) ? timestamp : undefined;
 }
 
-export function translateAccountMeterLabel(label: string, translate: (value: string) => string): string {
-  return translate(label);
-}
-
 export function formatAccountMeterValue(meter: ProviderAccountMeter, translate: (value: string) => string): string {
   const value = meter.remaining ?? meter.used ?? meter.limit;
   if (value === undefined) {
@@ -855,33 +852,8 @@ export function formatMeterNumber(value: number): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 6 }).format(value);
 }
 
-export function formatAccountReset(value: string, translate: (value: string) => string = (item) => item): string {
-  const timestamp = new Date(value).getTime();
-  if (!Number.isFinite(timestamp)) {
-    return value;
-  }
-  const minutes = Math.round((timestamp - Date.now()) / 60000);
-  if (minutes <= 0) {
-    return translate("expired");
-  }
-  const prefix = translate("expires in");
-  if (minutes < 60) {
-    return `${prefix} ${minutes}m`;
-  }
-  // 双单位精确显示：< 24h 用「Xh Ym」，>= 24h 用「Xd Yh」
-  const totalHours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  if (totalHours < 24) {
-    return mins > 0 ? `${prefix} ${totalHours}h ${mins}m` : `${prefix} ${totalHours}h`;
-  }
-  const days = Math.floor(totalHours / 24);
-  const hours = totalHours % 24;
-  return hours > 0 ? `${prefix} ${days}d ${hours}h` : `${prefix} ${days}d`;
-}
-
 export function formatAccountMeterTitle(meter: ProviderAccountMeter, translate: (value: string) => string): string {
-  const label = translateAccountMeterLabel(meter.label, translate);
-  return meter.resetAt ? `${label} (${formatAccountReset(meter.resetAt, translate)})` : label;
+  return formatProviderAccountMeterTitleCompact(meter, translate);
 }
 
 export function accountStatusClass(status: ProviderAccountSnapshot["status"]): string {

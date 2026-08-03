@@ -7,7 +7,7 @@ import {
   compactUserAgent, compareProviderAccountSnapshots, ComposedChart, CSS, DEFAULT_OVERVIEW_WIDGETS, DndContext,
   Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle,
   DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, Field, formatAxisNumber, formatBytes,
-  formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatProviderAccountDetailDate, formatProviderAccountMeterTitle, formatProviderAccountMeterValue, formatProviderAccountResetDuration,
+  formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatProviderAccountDetailDate, formatProviderAccountMeterTitleCompact, formatProviderAccountMeterValue, formatProviderAccountResetDuration,
   formatStatusBucketDate, formatSystemStatusRange, formatUsdCost, KeyboardSensor,
   LabelList, LayoutGroup, Line, LoaderCircle, MeasuringStrategy, MetricTone,
   motion, normalizeAgentFilterValue, normalizeOverviewWidget, normalizeOverviewWidgets,
@@ -3094,7 +3094,7 @@ function ProviderAccountBalanceMetric({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-col justify-center overflow-hidden">
-      <div className={cn("truncate font-medium text-muted-foreground", large ? "text-[12px]" : "text-[11px]")}>{formatProviderAccountMeterTitle(meter, t)}</div>
+      <div className={cn("truncate font-medium tabular-nums text-muted-foreground", large ? "text-[12px]" : "text-[11px]")}>{formatProviderAccountMeterTitleCompact(meter, t)}</div>
       <div className={cn("truncate font-semibold tracking-tight", large ? "text-[24px]" : "text-[18px]")}>{formatProviderAccountMeterValue(meter)}</div>
     </div>
   );
@@ -3128,7 +3128,7 @@ function ProviderAccountQuotaVisual({
           {displayMeters.slice(0, variant === "nested-rings" ? 2 : 1).map((meter) => {
             return (
               <div className="min-w-0" key={meter.id}>
-                <div className="truncate text-[12px] font-medium text-muted-foreground">{formatProviderAccountMeterTitle(meter, t)}</div>
+                <div className="truncate text-[12px] font-medium tabular-nums text-muted-foreground">{formatProviderAccountMeterTitleCompact(meter, t)}</div>
                 <div className="truncate text-[17px] font-semibold tracking-tight">{formatProviderAccountMeterValue(meter)}</div>
               </div>
             );
@@ -3188,7 +3188,7 @@ function ProviderAccountQuotaGauge({
     <svg aria-hidden="true" className={sizeClass} viewBox="0 0 120 120">
       <ProviderAccountQuotaCircle cx={60} cy={60} ratio={primaryRatio} radius={40} stroke={stroke} strokeWidth={10} />
       <text className="fill-foreground text-[20px] font-semibold" dy="0.35em" textAnchor="middle" x="60" y={dimensions.height >= 2 ? "57" : "60"}>{formatProviderAccountMeterValue(primary)}</text>
-      {dimensions.height >= 2 ? <text className="fill-muted-foreground text-[10px] font-medium" dy="0.35em" textAnchor="middle" x="60" y="75">{formatProviderAccountMeterTitle(primary, t)}</text> : null}
+      {dimensions.height >= 2 ? <text className="fill-muted-foreground text-[10px] font-medium tabular-nums" dy="0.35em" textAnchor="middle" x="60" y="75">{formatProviderAccountMeterTitleCompact(primary, t)}</text> : null}
     </svg>
   );
 }

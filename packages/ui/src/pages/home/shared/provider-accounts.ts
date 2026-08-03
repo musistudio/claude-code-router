@@ -225,6 +225,24 @@ export function formatProviderAccountMeterTitle(meter: ProviderAccountMeter, tra
   return meter.resetAt ? `${label} (${formatProviderAccountReset(meter.resetAt, translate)})` : label;
 }
 
+// 紧凑 meter 标题：`label ☀️ 1d17h` / `label 🕛 3h28m`（无「剩余」前缀，emoji 按天/小时级区分）。
+// 供 tray 状态栏与 dashboard 其他 meter 渲染点复用，与 ProviderAccountMeterLine 行内样式保持一致。
+export function formatProviderAccountMeterTitleCompact(
+  meter: ProviderAccountMeter,
+  translate: (value: string) => string = (item) => item
+): string {
+  const label = translate(meter.label);
+  if (!meter.resetAt) {
+    return label;
+  }
+  const duration = formatProviderAccountResetDuration(meter.resetAt);
+  if (duration === undefined) {
+    return `${label} ${translate("expired")}`;
+  }
+  const icon = duration.includes("d") ? "☀️" : "🕛";
+  return `${label} ${icon} ${duration}`;
+}
+
 export function isProviderAccountManualResetMeter(meter: ProviderAccountMeter): boolean {
   const text = `${meter.id} ${meter.label} ${meter.window ?? ""}`.toLowerCase();
   return text.includes("manual_reset") || text.includes("manual reset") || text.includes("manual-reset");

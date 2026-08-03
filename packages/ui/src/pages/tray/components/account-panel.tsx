@@ -99,7 +99,7 @@ function AccountMeters({
       <div className="grid grid-cols-2 gap-1.5">
         {meters.map((meter) => (
           <div className="tray-stat-cell min-w-0 px-2 py-1" key={meter.id}>
-            <div className="truncate text-[9px] font-medium text-slate-400">{formatAccountMeterTitle(meter, t)}</div>
+            <div className="truncate text-[9px] font-medium font-mono text-slate-400">{formatAccountMeterTitle(meter, t)}</div>
             <div className="truncate text-[12px] font-bold text-slate-50">{formatAccountMeterValue(meter, t)}</div>
           </div>
         ))}
@@ -125,7 +125,7 @@ function AccountMeters({
           return (
             <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_56px] items-center gap-2" key={meter.id}>
               <div className="min-w-0">
-                <div className="truncate text-[10px] font-medium text-slate-400">{formatAccountMeterTitle(meter, t)}</div>
+                <div className="truncate text-[10px] font-medium font-mono text-slate-400">{formatAccountMeterTitle(meter, t)}</div>
                 {progress !== undefined ? (
                   <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
                     <div className={`h-full rounded-full ${progressClass}`} style={{ width: `${progress}%` }} />
@@ -147,7 +147,7 @@ function AccountMeters({
         return (
           <div className="min-w-0" key={meter.id}>
             <div className="flex min-w-0 items-end justify-between gap-2">
-              <div className="min-w-0 truncate text-[10px] font-medium text-slate-400">{formatAccountMeterTitle(meter, t)}</div>
+              <div className="min-w-0 truncate text-[10px] font-medium font-mono text-slate-400">{formatAccountMeterTitle(meter, t)}</div>
               <div className="shrink-0 text-[13px] font-bold text-slate-50">{formatAccountMeterValue(meter, t)}</div>
             </div>
             {progress !== undefined ? (
@@ -177,7 +177,7 @@ function AccountMeterGauge({
   return (
     <div className="min-w-0 text-center">
       <RadialMetric color={color} label={formatAccountMeterValue(meter, t)} value={ratio} variant={variant} />
-      <div className="mt-0.5 truncate text-[9px] font-medium text-slate-400">{formatAccountMeterTitle(meter, t)}</div>
+      <div className="mt-0.5 truncate text-[9px] font-medium font-mono text-slate-400">{formatAccountMeterTitle(meter, t)}</div>
     </div>
   );
 }

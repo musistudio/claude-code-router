@@ -231,7 +231,7 @@ test("AccountSummaryPanel prioritizes Codex manual reset meter with expiration",
 
   assert.match(html, /Primary quota/);
   assert.match(html, /Manual resets/);
-  assert.match(html, /expires in/);
+  assert.match(html, /☀️ \d+d\d+h/);
   assert.match(html, /2 resets/);
   assert.match(html, /width:/);
   assert.doesNotMatch(html, /Secondary quota/);
