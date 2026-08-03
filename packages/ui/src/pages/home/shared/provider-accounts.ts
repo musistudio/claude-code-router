@@ -197,11 +197,15 @@ export function formatProviderAccountReset(value: string, translate: (value: str
   if (minutes < 60) {
     return `${prefix} ${minutes}m`;
   }
-  const hours = Math.round(minutes / 60);
-  if (hours < 48) {
-    return `${prefix} ${hours}h`;
+  // 双单位精确显示：< 24h 用「Xh Ym」，>= 24h 用「Xd Yh」
+  const totalHours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (totalHours < 24) {
+    return mins > 0 ? `${prefix} ${totalHours}h ${mins}m` : `${prefix} ${totalHours}h`;
   }
-  return `${prefix} ${Math.round(hours / 24)}d`;
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  return hours > 0 ? `${prefix} ${days}d ${hours}h` : `${prefix} ${days}d`;
 }
 
 export function formatProviderAccountMeterTitle(meter: ProviderAccountMeter, translate: (value: string) => string): string {

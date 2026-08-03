@@ -2392,6 +2392,15 @@ function ProviderAccountsOverview({
   );
 }
 
+// 定时重渲染：让重置倒计时（formatProviderAccountReset 内部用 Date.now()）每分钟自动刷新，无需手动刷新账户
+function useRerenderEvery(intervalMs: number) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((value) => value + 1), intervalMs);
+    return () => window.clearInterval(id);
+  }, [intervalMs]);
+}
+
 function ProviderAccountSinglePanel({
   account,
   dimensions,
@@ -2405,6 +2414,7 @@ function ProviderAccountSinglePanel({
   refreshing?: boolean;
   variant: OverviewAccountVariant;
 }) {
+  useRerenderEvery(60_000);
   const t = useAppText();
   const quotaMeters = providerAccountQuotaMeters(account);
   const balanceMeter = primaryProviderAccountBalanceMeter(account);
@@ -2453,6 +2463,7 @@ function ProviderAccountSummaryCard({
   refreshing?: boolean;
   variant: OverviewAccountVariant;
 }) {
+  useRerenderEvery(60_000);
   const t = useAppText();
   const quotaMeters = providerAccountQuotaMeters(account);
   const balanceMeter = primaryProviderAccountBalanceMeter(account);

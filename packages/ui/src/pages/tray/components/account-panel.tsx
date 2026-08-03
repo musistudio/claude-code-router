@@ -1,9 +1,19 @@
+import { useEffect, useState } from "react";
 import {
   accountMetersForDisplay, accountProgressClass, accountProgressColor, accountSnapshotLabel, compareAccountSnapshots, formatAccountMeterTitle, formatAccountMeterValue,
   LoaderCircle, meterProgress, meterRemainingRatio, meterValidityProgress, ProviderAccountMeter, ProviderAccountSnapshot, RefreshCw, TrayComponentVariants,
   useTrayText
 } from "../shared";
 import { RadialMetric } from "./widgets";
+
+// 定时重渲染：让重置倒计时每分钟自动刷新
+function useRerenderEvery(intervalMs: number) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((value) => value + 1), intervalMs);
+    return () => window.clearInterval(id);
+  }, [intervalMs]);
+}
 
 export function AccountSummaryPanel({
   onRefresh,
@@ -16,6 +26,7 @@ export function AccountSummaryPanel({
   snapshots: ProviderAccountSnapshot[];
   variant: TrayComponentVariants["account"];
 }) {
+  useRerenderEvery(60_000);
   const t = useTrayText();
   const snapshot = snapshots
     .filter((snapshot) => snapshot.meters.length > 0 || snapshot.status === "error")
