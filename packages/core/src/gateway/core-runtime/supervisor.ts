@@ -184,6 +184,20 @@ export function resolveUpstreamHeaderSanitizerEntry(): string {
   ].find((candidate) => existsSync(candidate)) ?? pathJoin(__dirname, "upstream-header-sanitizer.js");
 }
 
+export function resolveLocalAgentAuthProviderHookEntry(): string {
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  return [
+    pathJoin(__dirname, "local-agent-auth-provider-hook.js"),
+    pathJoin(process.cwd(), ".test-dist", "core", "runtime", "local-agent-auth-provider-hook.js"),
+    ...(resourcesPath
+      ? [
+          pathJoin(resourcesPath, "app.asar", "dist", "main", "local-agent-auth-provider-hook.js"),
+          pathJoin(resourcesPath, "app", "dist", "main", "local-agent-auth-provider-hook.js")
+        ]
+      : [])
+  ].find((candidate) => existsSync(candidate)) ?? pathJoin(__dirname, "local-agent-auth-provider-hook.js");
+}
+
 function resolveGatewayEntry(): string {
   const override = process.env[gatewayEntryOverrideEnv]?.trim();
   if (override) {
