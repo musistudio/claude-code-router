@@ -154,20 +154,54 @@ function toCoreGatewayProvider(
     throw new Error(safetyIssue.message);
   }
 
+  const responsesFeatures = type === "openai_responses" ? capability?.features : undefined;
+  const modelMetadata = coreGatewayProviderModelMetadata(provider, type);
+
   return {
     apikey,
     baseurl,
     billing: provider.billing,
     extraBody: provider.extraBody,
     extraHeaders: provider.extraHeaders,
+    ...(modelMetadata ? { modelMetadata } : {}),
     models: provider.models,
     name: credential
       ? providerCredentialInternalName(provider, type, credential)
       : capability
         ? providerCapabilityInternalName(provider, type)
         : providerRuntimeId(provider),
+    ...(responsesFeatures?.reasoningHistoryPolicy
+      ? { openaiResponsesReasoningHistoryPolicy: responsesFeatures.reasoningHistoryPolicy }
+      : {}),
+    ...(responsesFeatures?.reasoningSummaryPolicy
+      ? { openaiResponsesReasoningSummaryPolicy: responsesFeatures.reasoningSummaryPolicy }
+      : {}),
     type
   };
+}
+
+function coreGatewayProviderModelMetadata(
+  provider: GatewayProviderConfig,
+  protocol: GatewayProviderCapabilityProtocol
+): Record<string, unknown> | undefined {
+  const entries = Object.entries(provider.modelMetadata ?? {}).flatMap(([model, metadata]) => {
+    const responsesFeatures = protocol === "openai_responses"
+      ? metadata.protocolFeatures?.openai_responses
+      : undefined;
+    const compiled = {
+      ...(metadata.supportedReasoningLevels !== undefined
+        ? { supportedReasoningLevels: metadata.supportedReasoningLevels }
+        : {}),
+      ...(responsesFeatures?.reasoningHistoryPolicy
+        ? { openaiResponsesReasoningHistoryPolicy: responsesFeatures.reasoningHistoryPolicy }
+        : {}),
+      ...(responsesFeatures?.reasoningSummaryPolicy
+        ? { openaiResponsesReasoningSummaryPolicy: responsesFeatures.reasoningSummaryPolicy }
+        : {})
+    };
+    return Object.keys(compiled).length > 0 ? [[model, compiled] as const] : [];
+  });
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 export function sortProviderCredentialsForConfig(credentials: ProviderCredentialConfig[]): ProviderCredentialConfig[] {

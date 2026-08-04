@@ -1,4 +1,5 @@
 import type {
+  GatewayProviderCapabilityFeatures,
   GatewayProviderProtocol,
   ProviderAccountConfig,
   ProviderAccountConnectorConfig,
@@ -647,6 +648,7 @@ function normalizeDeepLinkModelMetadata(value: unknown): ProviderModelMetadata |
   const maxContextWindow = positiveInteger(value.maxContextWindow ?? value.max_context_window);
   const maxOutputTokens = positiveInteger(value.maxOutputTokens ?? value.max_output_tokens ?? value.outputTokens ?? value.output_tokens);
   const pricing = normalizeDeepLinkModelPricing(value.pricing);
+  const protocolFeatures = normalizeDeepLinkProtocolFeatures(value.protocolFeatures ?? value.protocol_features);
   const defaultReasoningLevelValue = value.defaultReasoningLevel ?? value.default_reasoning_level;
   const defaultReasoningLevel = defaultReasoningLevelValue === null
     ? null
@@ -665,12 +667,48 @@ function normalizeDeepLinkModelMetadata(value: unknown): ProviderModelMetadata |
     ...(maxContextWindow ? { maxContextWindow } : {}),
     ...(maxOutputTokens ? { maxOutputTokens } : {}),
     ...(pricing ? { pricing } : {}),
+    ...(protocolFeatures ? { protocolFeatures } : {}),
     ...(Array.isArray(value.serviceTiers) ? { serviceTiers: value.serviceTiers } : {}),
     ...(Array.isArray(value.service_tiers) ? { serviceTiers: value.service_tiers } : {}),
     ...(supportedReasoningLevels ? { supportedReasoningLevels } : {}),
     ...(typeof supportsReasoningSummariesValue === "boolean" ? { supportsReasoningSummaries: supportsReasoningSummariesValue } : {})
   };
   return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function normalizeDeepLinkProtocolFeatures(value: unknown): ProviderModelMetadata["protocolFeatures"] {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const responses = normalizeDeepLinkCapabilityFeatures(
+    value.openai_responses ?? value.openaiResponses
+  );
+  return responses ? { openai_responses: responses } : undefined;
+}
+
+function normalizeDeepLinkCapabilityFeatures(
+  value: unknown
+): GatewayProviderCapabilityFeatures | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const history = normalizedString(
+    value.reasoningHistoryPolicy ?? value.reasoning_history_policy
+  )?.toLowerCase().replace(/[-\s]+/g, "_");
+  const summary = normalizedString(
+    value.reasoningSummaryPolicy ?? value.reasoning_summary_policy
+  )?.toLowerCase().replace(/[-\s]+/g, "_");
+  const features: GatewayProviderCapabilityFeatures = {
+    ...(history === "encrypted" || history === "plaintext" || history === "strip"
+      ? { reasoningHistoryPolicy: history }
+      : {}),
+    ...(summary === "drop"
+      ? { reasoningSummaryPolicy: "drop" }
+      : summary === "as_content" || summary === "ascontent"
+        ? { reasoningSummaryPolicy: "as_content" }
+        : {})
+  };
+  return Object.keys(features).length > 0 ? features : undefined;
 }
 
 function normalizeDeepLinkReasoningLevels(value: unknown): ProviderModelMetadata["supportedReasoningLevels"] {

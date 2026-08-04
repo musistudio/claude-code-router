@@ -156,6 +156,14 @@ export type GatewayMediaProtocol =
 
 export type GatewayProviderCapabilityProtocol = GatewayProviderProtocol | GatewayMediaProtocol;
 
+export type GatewayResponsesReasoningHistoryPolicy = "encrypted" | "plaintext" | "strip";
+export type GatewayResponsesReasoningSummaryPolicy = "drop" | "as_content";
+
+export type GatewayProviderCapabilityFeatures = {
+  reasoningHistoryPolicy?: GatewayResponsesReasoningHistoryPolicy;
+  reasoningSummaryPolicy?: GatewayResponsesReasoningSummaryPolicy;
+};
+
 export type GatewayProviderConfig = {
   account?: ProviderAccountConfig;
   api_base_url?: string;
@@ -217,6 +225,7 @@ export type ProviderModelMetadata = {
   maxContextWindow?: number;
   maxOutputTokens?: number;
   pricing?: ProviderModelPricing;
+  protocolFeatures?: Partial<Record<GatewayProviderProtocol, GatewayProviderCapabilityFeatures>>;
   serviceTiers?: unknown[];
   supportedReasoningLevels?: ProviderReasoningLevel[];
   supportsReasoningSummaries?: boolean;
@@ -518,6 +527,7 @@ export type ProviderDeepLinkRequest = {
 export type GatewayProviderCapability = {
   baseUrl: string;
   endpoint?: string;
+  features?: GatewayProviderCapabilityFeatures;
   source?: "detected" | "preset";
   type: GatewayProviderCapabilityProtocol;
 };

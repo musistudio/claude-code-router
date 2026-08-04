@@ -15,8 +15,11 @@ export type CoreGatewayProvider = {
   billing?: unknown;
   extraBody?: unknown;
   extraHeaders?: unknown;
+  modelMetadata?: Record<string, unknown>;
   models: string[];
   name: string;
+  openaiResponsesReasoningHistoryPolicy?: "encrypted" | "plaintext" | "strip";
+  openaiResponsesReasoningSummaryPolicy?: "drop" | "as_content";
   type: GatewayProviderCapabilityProtocol;
 };
 

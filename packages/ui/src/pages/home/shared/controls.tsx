@@ -104,16 +104,18 @@ export function AgentLogo({ agent, className }: { agent: ProfileConfig["agent"];
 
 export function SelectControl({
   className,
+  disabled,
   onChange,
   options,
   value
 }: {
   className?: string;
+  disabled?: boolean;
   onChange: (value: string) => void;
   options: Array<{ disabled?: boolean; label: string; value: string }>;
   value: string;
 }) {
-  return <Select className={className} onValueChange={onChange} options={options} value={value} />;
+  return <Select className={className} disabled={disabled} onValueChange={onChange} options={options} value={value} />;
 }
 
 export function RouteTargetControl({

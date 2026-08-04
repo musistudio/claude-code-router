@@ -13,9 +13,11 @@ import type {
   ApiKeyLimitConfig,
   GatewayProviderConfig,
   GatewayProviderCapability,
+  GatewayProviderCapabilityFeatures,
   GatewayProviderCapabilityProtocol,
   GatewayProviderProbeResult,
   GatewayProviderProtocol,
+  GatewayResponsesReasoningHistoryPolicy,
   LocalAgentProviderKind,
   ProviderAccountConfig,
   ProviderAccountConnectorConfig,
@@ -1926,7 +1928,7 @@ export function uniqueProviderProtocols(values: Array<GatewayProviderProtocol | 
 }
 
 export function mergeProviderCapabilities(...groups: GatewayProviderCapability[][]): GatewayProviderCapability[] {
-  const seen = new Set<string>();
+  const indexes = new Map<string, number>();
   const capabilities: GatewayProviderCapability[] = [];
   for (const group of groups) {
     for (const capability of group) {
@@ -1935,10 +1937,15 @@ export function mergeProviderCapabilities(...groups: GatewayProviderCapability[]
         continue;
       }
       const key = `${capability.type}\n${baseUrl}`;
-      if (seen.has(key)) {
+      const existingIndex = indexes.get(key);
+      if (existingIndex !== undefined) {
+        capabilities[existingIndex] = mergeProviderCapability(
+          capabilities[existingIndex],
+          capability
+        );
         continue;
       }
-      seen.add(key);
+      indexes.set(key, capabilities.length);
       capabilities.push({
         ...capability,
         baseUrl
@@ -1946,6 +1953,20 @@ export function mergeProviderCapabilities(...groups: GatewayProviderCapability[]
     }
   }
   return capabilities;
+}
+
+function mergeProviderCapability(
+  current: GatewayProviderCapability,
+  preserved: GatewayProviderCapability
+): GatewayProviderCapability {
+  const features: GatewayProviderCapabilityFeatures = {
+    ...(preserved.features ?? {}),
+    ...(current.features ?? {})
+  };
+  return {
+    ...current,
+    ...(Object.keys(features).length > 0 ? { features } : {})
+  };
 }
 
 export function providerCapabilitiesForSave(
@@ -1960,10 +1981,80 @@ export function providerCapabilitiesForSave(
   const normalizedNextBaseUrl = normalizeProviderBaseUrl(nextBaseUrl) || nextBaseUrl.trim();
   const preserveExisting = normalizedExistingBaseUrl === undefined ||
     normalizedExistingBaseUrl === normalizedNextBaseUrl;
-  return mergeProviderCapabilities(
+  const capabilities = mergeProviderCapabilities(
     currentCapabilities,
     ...(preserveExisting ? [preservedCapabilities] : [])
   );
+  if (preserveExisting) {
+    return capabilities;
+  }
+
+  const preservedFeatures = new Map<GatewayProviderCapabilityProtocol, GatewayProviderCapabilityFeatures>();
+  for (const capability of preservedCapabilities) {
+    if (capability.features && Object.keys(capability.features).length > 0) {
+      preservedFeatures.set(capability.type, capability.features);
+    }
+  }
+  return capabilities.map((capability) => {
+    const features = preservedFeatures.get(capability.type);
+    return features ? mergeProviderCapability(capability, { ...capability, features }) : capability;
+  });
+}
+
+export function providerCapabilityFeaturesForProtocol(
+  capabilities: GatewayProviderCapability[],
+  protocol: GatewayProviderProtocol
+): GatewayProviderCapabilityFeatures | undefined {
+  return capabilities.find((capability) => capability.type === protocol)?.features;
+}
+
+export function providerCapabilitiesWithProtocolFeatures(
+  capabilities: GatewayProviderCapability[],
+  protocol: GatewayProviderProtocol,
+  baseUrl: string,
+  features: GatewayProviderCapabilityFeatures | undefined
+): GatewayProviderCapability[] {
+  let found = false;
+  const next = capabilities.map((capability) => {
+    if (capability.type !== protocol) {
+      return capability;
+    }
+    found = true;
+    const updated = { ...capability };
+    if (features && Object.keys(features).length > 0) {
+      updated.features = features;
+    } else {
+      delete updated.features;
+    }
+    return updated;
+  });
+  const normalizedBaseUrl = normalizeProviderBaseUrl(baseUrl, protocol) || baseUrl.trim();
+  if (!found && normalizedBaseUrl && features && Object.keys(features).length > 0) {
+    next.push({ baseUrl: normalizedBaseUrl, features, type: protocol });
+  }
+  return next;
+}
+
+export function inferredResponsesReasoningHistoryPolicy(
+  baseUrl: string
+): GatewayResponsesReasoningHistoryPolicy {
+  try {
+    const url = new URL(providerUrlWithDefaultScheme(baseUrl));
+    const hostname = url.hostname.toLowerCase();
+    const pathname = url.pathname.replace(/\/+$/, "").toLowerCase();
+    if (hostname === "api.openai.com") {
+      return "encrypted";
+    }
+    if (hostname === "chatgpt.com" && pathname.startsWith("/backend-api/codex")) {
+      return "encrypted";
+    }
+    if (hostname === "api.deepseek.com") {
+      return "plaintext";
+    }
+  } catch {
+    // Unknown endpoints use the same safe default as ai-gateway.
+  }
+  return "strip";
 }
 
 export function providerGlobalBaseUrlForProbe(

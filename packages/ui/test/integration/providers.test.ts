@@ -7,7 +7,7 @@ import { geminiProviderPreset } from "@ccr/core/providers/presets/gemini/index.t
 import { minimaxChinaProviderPreset } from "@ccr/core/providers/presets/minimax/index.ts";
 import { moonshotGlobalProviderPreset } from "@ccr/core/providers/presets/moonshot/index.ts";
 import { qiniuAiProviderPreset } from "@ccr/core/providers/presets/qiniu-ai/index.ts";
-import { AddProviderDialog, AddProviderForm, ProviderConnectivityCheckDialog, ProvidersView, uniqueProviderProbeProtocolRows } from "@ccr/ui/pages/home/components/providers.tsx";
+import { AddProviderDialog, AddProviderForm, ProviderConnectivityCheckDialog, ProvidersView, ProtocolReasoningInlineControl, ResponsesProtocolFeaturesControl, uniqueProviderProbeProtocolRows } from "@ccr/ui/pages/home/components/providers.tsx";
 import {
   applyProviderProbeResult,
   createProviderConfigFromDeepLink,
@@ -18,9 +18,11 @@ import {
   createProviderInstallLinkFromDraft,
   customProviderPresetId,
   FieldGroup,
+  inferredResponsesReasoningHistoryPolicy,
   localAgentProviderIconUrls,
   providerCapabilitiesForProtocols,
   providerCapabilitiesForSave,
+  providerCapabilitiesWithProtocolFeatures,
   providerCapabilityBaseUrlForProtocol,
   providerConnectivityApiKeyFromDraft,
   providerConnectivityProviderPlugins,
@@ -141,6 +143,155 @@ test("provider save keeps explicit secondary media origins when the base URL is 
     providerCapabilitiesForSave(current, media, "https://chat.example/v1/", "https://chat.example/v1"),
     [...current, ...media]
   );
+});
+
+test("provider save keeps Responses reasoning features when the base URL changes", () => {
+  const current = [{
+    baseUrl: "https://new.example/v1",
+    source: "detected" as const,
+    type: "openai_responses" as const
+  }];
+  const previous = [{
+    baseUrl: "https://old.example/v1",
+    features: {
+      reasoningHistoryPolicy: "plaintext" as const,
+      reasoningSummaryPolicy: "as_content" as const
+    },
+    source: "detected" as const,
+    type: "openai_responses" as const
+  }];
+
+  assert.deepEqual(
+    providerCapabilitiesForSave(current, previous, "https://old.example/v1", "https://new.example/v1"),
+    [{
+      ...current[0],
+      features: {
+        reasoningHistoryPolicy: "plaintext",
+        reasoningSummaryPolicy: "as_content"
+      }
+    }]
+  );
+});
+
+test("Responses feature helpers update one protocol and infer safe endpoint defaults", () => {
+  const updated = providerCapabilitiesWithProtocolFeatures(
+    [{ baseUrl: "https://chat.example/v1", type: "openai_chat_completions" }],
+    "openai_responses",
+    "https://api.deepseek.com/v1",
+    { reasoningHistoryPolicy: "plaintext" }
+  );
+  assert.deepEqual(updated[1], {
+    baseUrl: "https://api.deepseek.com/v1",
+    features: { reasoningHistoryPolicy: "plaintext" },
+    type: "openai_responses"
+  });
+  assert.equal(inferredResponsesReasoningHistoryPolicy("https://api.openai.com/v1"), "encrypted");
+  assert.equal(
+    inferredResponsesReasoningHistoryPolicy("https://chatgpt.com/backend-api/codex"),
+    "encrypted"
+  );
+  assert.equal(inferredResponsesReasoningHistoryPolicy("https://api.deepseek.com/v1"), "plaintext");
+  assert.equal(inferredResponsesReasoningHistoryPolicy("https://unknown.example/v1"), "strip");
+});
+
+test("Responses policy control shows summary options only for effective plaintext mode", () => {
+  const plaintext = renderToStaticMarkup(
+    React.createElement(ResponsesProtocolFeaturesControl, {
+      autoBaseUrl: "https://api.deepseek.com/v1",
+      historyInheritLabel: "Auto",
+      onChange: () => undefined,
+      summaryInheritLabel: "Default: drop summaries"
+    })
+  );
+  assert.match(plaintext, /Auto \(Replay readable reasoning\)/);
+  assert.doesNotMatch(plaintext, /Auto: /);
+  assert.match(plaintext, /Reasoning summary/);
+  assert.match(plaintext, /Send summaries as reasoning text/);
+
+  const encrypted = renderToStaticMarkup(
+    React.createElement(ResponsesProtocolFeaturesControl, {
+      autoBaseUrl: "https://api.openai.com/v1",
+      features: { reasoningHistoryPolicy: "encrypted" },
+      historyInheritLabel: "Auto",
+      onChange: () => undefined,
+      summaryInheritLabel: "Default: drop summaries"
+    })
+  );
+  assert.match(encrypted, /Native history \(including encrypted reasoning\)/);
+  assert.doesNotMatch(encrypted, /Reasoning summary/);
+  assert.doesNotMatch(encrypted, /Send summaries as reasoning text/);
+
+  const inheritedPlaintext = renderToStaticMarkup(
+    React.createElement(ResponsesProtocolFeaturesControl, {
+      autoBaseUrl: "https://unknown.example/v1",
+      historyInheritLabel: "Use provider default",
+      inheritedFeatures: { reasoningHistoryPolicy: "plaintext" },
+      onChange: () => undefined,
+      summaryInheritLabel: "Use provider default"
+    })
+  );
+  assert.match(inheritedPlaintext, /Use provider default \(Replay readable reasoning\)/);
+  assert.match(inheritedPlaintext, /Reasoning summary/);
+
+  const explicitStrip = renderToStaticMarkup(
+    React.createElement(ResponsesProtocolFeaturesControl, {
+      autoBaseUrl: "https://unknown.example/v1",
+      features: { reasoningHistoryPolicy: "strip" },
+      historyInheritLabel: "Auto",
+      onChange: () => undefined,
+      summaryInheritLabel: "Default: drop summaries"
+    })
+  );
+  assert.match(explicitStrip, /Stripping may discard compacted context/);
+});
+
+test("readonly reasoning note renders inline automatic text per protocol", () => {
+  const cases: Array<[Parameters<typeof ProtocolReasoningInlineControl>[0]["protocol"], RegExp, RegExp]> = [
+    ["anthropic_messages", /Automatic handling \(replay signed thinking\)/, /signed thinking blocks replay verbatim/],
+    ["gemini_generate_content", /Automatic handling \(replay thought signatures\)/, /thought signatures replay when the model matches/],
+    ["gemini_interactions", /Automatic handling \(replay signed steps\)/, /only official signed thought\/tool steps replay/],
+    ["openai_chat_completions", /Automatic handling \(map vendor reasoning fields\)/, /readable reasoning is mapped to the fields supported by each vendor adapter/]
+  ];
+  for (const [protocol, labelPattern, notePattern] of cases) {
+    const html = renderToStaticMarkup(
+      React.createElement(ProtocolReasoningInlineControl, { protocol })
+    );
+    assert.match(html, labelPattern);
+    assert.match(html, /title="/);
+    assert.match(html, notePattern);
+    assert.match(html, /No configuration needed/);
+    assert.doesNotMatch(html, /Reasoning summary/);
+    assert.doesNotMatch(html, /<select/);
+  }
+});
+
+test("Responses policy control inline layout renders bare selects without field labels", () => {
+  const plaintext = renderToStaticMarkup(
+    React.createElement(ResponsesProtocolFeaturesControl, {
+      autoBaseUrl: "https://api.deepseek.com/v1",
+      historyInheritLabel: "Auto",
+      layout: "inline",
+      onChange: () => undefined,
+      summaryInheritLabel: "Default: drop summaries"
+    })
+  );
+  assert.match(plaintext, /Auto \(Replay readable reasoning\)/);
+  assert.match(plaintext, /Send summaries as reasoning text/);
+  assert.doesNotMatch(plaintext, /Reasoning history</);
+  assert.doesNotMatch(plaintext, /Reasoning summary</);
+
+  const encrypted = renderToStaticMarkup(
+    React.createElement(ResponsesProtocolFeaturesControl, {
+      autoBaseUrl: "https://api.openai.com/v1",
+      features: { reasoningHistoryPolicy: "encrypted" },
+      historyInheritLabel: "Auto",
+      layout: "inline",
+      onChange: () => undefined,
+      summaryInheritLabel: "Default: drop summaries"
+    })
+  );
+  assert.match(encrypted, /Native history \(including encrypted reasoning\)/);
+  assert.doesNotMatch(encrypted, /Send summaries as reasoning text/);
 });
 
 test("provider probe result drops unavailable selected protocols", () => {

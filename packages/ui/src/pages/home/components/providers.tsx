@@ -13,19 +13,37 @@ import {
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
   providerBrowserConnectorFromDraft, providerBrowserCredentialsOptions,
   ProviderConnectivityCheckReport, providerCapabilityBaseUrlForProtocol, providerConnectivityApiKeyFromDraft, providerDeepLinkDisplayIcon, providerDraftHasReadyCredentialPool, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
-  providerDisplayIcon, providerGlobalBaseUrlForProbe, providerModelDisplayName, providerModelDisplayTitle, providerProtocolOptions, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
+  providerCapabilityFeaturesForProtocol, providerCapabilitiesWithProtocolFeatures, providerDisplayIcon, providerGlobalBaseUrlForProbe, providerModelDisplayName, providerModelDisplayTitle, providerProtocolOptions, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
   resolveProviderDeepLinkPreset, ShieldCheck, splitLines, Switch, Tabs, TabsList, TabsTrigger, Textarea, Toggle, translatedProviderProtocolLabel, translateOptions,
-  translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppErrorText, useAppText, useEffect, useLayoutEffect, useMemo,
+  inferredResponsesReasoningHistoryPolicy, translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppErrorText, useAppText, useEffect, useLayoutEffect, useMemo,
   useRef, useState, X, isGatewayProviderEnabled, isPlainRecord
 } from "../shared/index";
 import { PopoverPortal } from "@/components/ui/popover";
 import { TooltipPortal } from "@/components/ui/tooltip";
 import { providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
-import type { ChromeLoginImportJob, LocalAgentProviderCandidate, ProviderAccountHttpJsonConnectorConfig, ProviderAccountWebContentJsonConnectorConfig } from "@ccr/core/contracts/app";
+import type { ChromeLoginImportJob, GatewayProviderCapabilityFeatures, GatewayProviderProtocol, GatewayResponsesReasoningHistoryPolicy, GatewayResponsesReasoningSummaryPolicy, LocalAgentProviderCandidate, ProviderAccountHttpJsonConnectorConfig, ProviderAccountWebContentJsonConnectorConfig } from "@ccr/core/contracts/app";
 import type { ReactNode } from "react";
 
 const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 const emptyProviderPlugins: unknown[] = [];
+const inheritProtocolFeatureValue = "inherit";
+
+const protocolReasoningBehaviorShortKey: Partial<Record<GatewayProviderProtocol, string>> = {
+  anthropic_messages: "replay signed thinking",
+  gemini_generate_content: "replay thought signatures",
+  gemini_interactions: "replay signed steps",
+  openai_chat_completions: "map vendor reasoning fields"
+};
+
+const protocolReasoningBehaviorNoteKey: Partial<Record<GatewayProviderProtocol, string>> = {
+  anthropic_messages: "Handled automatically by CCR protocol rules: complete signed thinking blocks replay verbatim (official requirement); same-endpoint and same-account checks are CCR-added isolation; switching models drops old thinking per official rules; an unrecoverable active tool turn returns an error. No configuration needed.",
+  gemini_generate_content: "Handled automatically by CCR protocol rules: thought signatures replay when the model matches and the signature is complete (same-endpoint and same-account checks are CCR-added isolation); a native Gemini 3 call that lost its signature rejects the active tool group and drops closed groups. No configuration needed.",
+  gemini_interactions: "Handled automatically by CCR protocol rules: only official signed thought/tool steps replay; cross-model replay between Gemini models on the same service is officially supported (same-endpoint and same-account checks are CCR-added isolation). No configuration needed.",
+  openai_chat_completions: "Handled automatically: readable reasoning is mapped to the fields supported by each vendor adapter; native structures replay only when the vendor adapter explicitly supports them, the state is valid, and the route is unchanged; otherwise they are removed. No configuration needed."
+};
+
+type ResponsesReasoningHistoryPolicyControlValue = GatewayResponsesReasoningHistoryPolicy | typeof inheritProtocolFeatureValue;
+type ResponsesReasoningSummaryPolicyControlValue = GatewayResponsesReasoningSummaryPolicy | typeof inheritProtocolFeatureValue;
 
 export function ProvidersView({ accountSnapshots, addProvider, editProvider, notify, providers, removeProvider, setProviderEnabled }: {
   accountSnapshots: ProviderAccountSnapshot[];
@@ -1994,6 +2012,17 @@ export function AddProviderForm({
   const importMode = Boolean(importProvider);
   const showBaseUrl = customEndpoint;
   const selectedDisplayProtocols = uniqueProviderProtocols(draft.selectedProtocols);
+  const responsesProtocolSelected = selectedDisplayProtocols.includes("openai_responses") ||
+    (selectedDisplayProtocols.length === 0 && draft.protocol === "openai_responses");
+  const responsesBaseUrl = providerCapabilityBaseUrlForProtocol(
+    draft.baseUrl,
+    "openai_responses",
+    probe
+  );
+  const responsesProtocolFeatures = providerCapabilityFeaturesForProtocol(
+    draft.capabilities,
+    "openai_responses"
+  );
   const detectedProtocol = selectedDisplayProtocols.length === 1
     ? selectedDisplayProtocols[0]
     : probe?.detectedProtocol ?? draft.protocol;
@@ -2046,6 +2075,17 @@ export function AddProviderForm({
         ? [draft.protocol]
         : draft.selectedProtocols
     }, true);
+  }
+
+  function updateResponsesProtocolFeatures(features: GatewayProviderCapabilityFeatures | undefined) {
+    onChange({
+      capabilities: providerCapabilitiesWithProtocolFeatures(
+        draft.capabilities,
+        "openai_responses",
+        responsesBaseUrl,
+        features
+      )
+    });
   }
 
   function updateCredentialMode(credentialMode: AddProviderDraft["credentialMode"]) {
@@ -2351,7 +2391,10 @@ export function AddProviderForm({
                 onMetadataChange={(modelMetadata) => onChange({ modelMetadata })}
                 onQueryChange={(modelSearch) => onChange({ modelSearch })}
                 onSelectedChange={updateConfiguredModels}
+                providerResponsesFeatures={responsesProtocolFeatures}
                 query={draft.modelSearch}
+                responsesBaseUrl={responsesBaseUrl}
+                responsesProtocolAvailable={responsesProtocolSelected}
                 selected={configuredModels}
               />
             </div>
@@ -2426,13 +2469,22 @@ export function AddProviderForm({
                 />
                 <Field className="sm:col-span-2" label={t("Protocol details")}>
                   <div className="max-h-[128px] overflow-auto rounded-md border border-border bg-background p-2">
+                    {manualProtocolDetection || protocolProbeRows.length ? (
+                      <div className="mb-1.5 grid grid-cols-[20px_minmax(110px,max-content)_minmax(0,1fr)_minmax(0,1fr)_max-content] items-center gap-2 rounded-[4px] bg-muted/50 px-1.5 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        <span />
+                        <span className="truncate">{t("Protocol")}</span>
+                        <span className="truncate">{t("Reasoning history")}</span>
+                        <span className="truncate">{t("Reasoning summary")}</span>
+                        <span className="truncate text-right">{t("Status")}</span>
+                      </div>
+                    ) : null}
                     {manualProtocolDetection ? (
                       <div className="space-y-1.5">
                         {providerProtocolOptions.map((option) => {
                           const protocol = option.value;
                           const checked = draft.selectedProtocols.includes(protocol);
                           return (
-                            <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={protocol}>
+                            <div className="grid grid-cols-[20px_minmax(110px,max-content)_minmax(0,1fr)_minmax(0,1fr)_max-content] items-center gap-2 text-[11px]" key={protocol}>
                               <Checkbox
                                 aria-label={`${t("Add")} ${translatedProviderProtocolLabel(protocol, t)}`}
                                 checked={checked}
@@ -2445,6 +2497,23 @@ export function AddProviderForm({
                                 }}
                               />
                               <span className="truncate font-medium">{translatedProviderProtocolLabel(protocol, t)}</span>
+                              {checked && protocol === "openai_responses" ? (
+                                <ResponsesProtocolFeaturesControl
+                                  autoBaseUrl={responsesBaseUrl}
+                                  features={responsesProtocolFeatures}
+                                  historyInheritLabel={t("Auto")}
+                                  layout="inline"
+                                  onChange={updateResponsesProtocolFeatures}
+                                  summaryInheritLabel={t("Default: drop summaries")}
+                                />
+                              ) : (
+                                <>
+                                  <span className="inline-flex min-w-0 items-center">
+                                    {checked ? <ProtocolReasoningInlineControl protocol={protocol} /> : null}
+                                  </span>
+                                  <span />
+                                </>
+                              )}
                               <span className={cn("inline-flex min-w-0 items-center justify-end", checked ? "text-foreground" : "text-muted-foreground")}>
                                 <span className="truncate">{checked ? t("Selected") : ""}</span>
                               </span>
@@ -2461,7 +2530,7 @@ export function AddProviderForm({
                           const checked = Boolean(selectableProtocol && draft.selectedProtocols.includes(selectableProtocol));
                           const itemKey = `${item.protocol}-${item.endpoint}`;
                           return (
-                            <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={itemKey}>
+                            <div className="grid grid-cols-[20px_minmax(110px,max-content)_minmax(0,1fr)_minmax(0,1fr)_max-content] items-center gap-2 text-[11px]" key={itemKey}>
                               <Checkbox
                                 aria-label={`${t("Add")} ${translatedProviderProtocolLabel(item.protocol, t)}`}
                                 checked={checked}
@@ -2478,6 +2547,25 @@ export function AddProviderForm({
                                 }}
                               />
                               <span className="truncate font-medium">{translatedProviderProtocolLabel(item.protocol, t)}</span>
+                              {checked && selectableProtocol === "openai_responses" ? (
+                                <ResponsesProtocolFeaturesControl
+                                  autoBaseUrl={responsesBaseUrl}
+                                  features={responsesProtocolFeatures}
+                                  historyInheritLabel={t("Auto")}
+                                  layout="inline"
+                                  onChange={updateResponsesProtocolFeatures}
+                                  summaryInheritLabel={t("Default: drop summaries")}
+                                />
+                              ) : (
+                                <>
+                                  <span className="inline-flex min-w-0 items-center">
+                                    {checked && selectableProtocol ? (
+                                      <ProtocolReasoningInlineControl protocol={selectableProtocol} />
+                                    ) : null}
+                                  </span>
+                                  <span />
+                                </>
+                              )}
                               <span className={cn("inline-flex min-w-0 items-center justify-end gap-1.5", available ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground")}>
                                 <span className="truncate">{available ? t("Available") : t("Unavailable")}</span>
                                 <button
@@ -2507,6 +2595,11 @@ export function AddProviderForm({
                         <span>{t("No protocol detection yet")}</span>
                       </div>
                     )}
+                    {responsesProtocolSelected && responsesProtocolFeatures?.reasoningHistoryPolicy === "strip" ? (
+                      <div className="mt-1.5 rounded-[5px] border border-amber-500/35 bg-amber-500/8 px-2.5 py-2 text-[10px] leading-4 text-amber-800 dark:text-amber-200">
+                        {t("Stripping may discard compacted context. Select this only if context loss is acceptable.")}
+                      </div>
+                    ) : null}
                   </div>
                 </Field>
                   </div>
@@ -2556,6 +2649,153 @@ function AutoDetectProtocolsTooltip({
       <div className="mb-1.5 font-semibold">{t("Auto detect protocols")}</div>
       <div className="text-muted-foreground">{t("Auto detect protocols description")}</div>
     </TooltipPortal>
+  );
+}
+
+function responsesReasoningPolicyShortLabel(
+  policy: GatewayResponsesReasoningHistoryPolicy,
+  t: (value: string) => string
+): string {
+  if (policy === "encrypted") {
+    return t("Native history");
+  }
+  if (policy === "plaintext") {
+    return t("Replay readable reasoning");
+  }
+  return t("Do not send");
+}
+
+export function ResponsesProtocolFeaturesControl({
+  autoBaseUrl,
+  className,
+  features,
+  historyInheritLabel,
+  inheritedFeatures,
+  layout = "stacked",
+  onChange,
+  summaryInheritLabel
+}: {
+  autoBaseUrl: string;
+  className?: string;
+  features?: GatewayProviderCapabilityFeatures;
+  historyInheritLabel: string;
+  inheritedFeatures?: GatewayProviderCapabilityFeatures;
+  layout?: "stacked" | "inline";
+  onChange: (features: GatewayProviderCapabilityFeatures | undefined) => void;
+  summaryInheritLabel: string;
+}) {
+  const t = useAppText();
+  const historyValue: ResponsesReasoningHistoryPolicyControlValue =
+    features?.reasoningHistoryPolicy ?? inheritProtocolFeatureValue;
+  const summaryValue: ResponsesReasoningSummaryPolicyControlValue =
+    features?.reasoningSummaryPolicy ?? inheritProtocolFeatureValue;
+  const inheritedHistoryPolicy = inheritedFeatures?.reasoningHistoryPolicy ??
+    inferredResponsesReasoningHistoryPolicy(autoBaseUrl);
+  const effectiveHistoryPolicy = features?.reasoningHistoryPolicy ?? inheritedHistoryPolicy;
+  const showSummaryPolicy = effectiveHistoryPolicy === "plaintext";
+
+  function compact(next: GatewayProviderCapabilityFeatures): GatewayProviderCapabilityFeatures | undefined {
+    return Object.keys(next).length > 0 ? next : undefined;
+  }
+
+  function updateHistoryPolicy(value: string) {
+    const next = { ...(features ?? {}) };
+    const selected = value === inheritProtocolFeatureValue
+      ? undefined
+      : value as GatewayResponsesReasoningHistoryPolicy;
+    if (selected) {
+      next.reasoningHistoryPolicy = selected;
+    } else {
+      delete next.reasoningHistoryPolicy;
+    }
+    const effective = selected ?? inheritedHistoryPolicy;
+    if (effective !== "plaintext") {
+      delete next.reasoningSummaryPolicy;
+    }
+    onChange(compact(next));
+  }
+
+  function updateSummaryPolicy(value: string) {
+    const next = { ...(features ?? {}) };
+    if (value === inheritProtocolFeatureValue) {
+      delete next.reasoningSummaryPolicy;
+    } else {
+      next.reasoningSummaryPolicy = value as GatewayResponsesReasoningSummaryPolicy;
+    }
+    onChange(compact(next));
+  }
+
+  const historyOptions = [
+    { label: `${historyInheritLabel} (${responsesReasoningPolicyShortLabel(effectiveHistoryPolicy, t)})`, value: inheritProtocolFeatureValue },
+    { label: t("Native history (including encrypted reasoning)"), value: "encrypted" },
+    { label: t("Replay readable reasoning (compatible services)"), value: "plaintext" },
+    { label: t("Do not send reasoning history (safest)"), value: "strip" }
+  ];
+  const summaryOptions = [
+    { label: summaryInheritLabel, value: inheritProtocolFeatureValue },
+    { label: t("Drop summaries"), value: "drop" },
+    { label: t("Send summaries as reasoning text"), value: "as_content" }
+  ];
+
+  if (layout === "inline") {
+    return (
+      <>
+        <SelectControl className="h-7 w-full min-w-0 text-[11px]" onChange={updateHistoryPolicy} options={historyOptions} value={historyValue} />
+        {showSummaryPolicy ? (
+          <SelectControl className="h-7 w-full min-w-0 bg-muted/60 text-[11px]" onChange={updateSummaryPolicy} options={summaryOptions} value={summaryValue} />
+        ) : (
+          <span />
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div className={cn("space-y-2", className)}>
+      <div className={cn("grid grid-cols-1 gap-2", showSummaryPolicy && "sm:grid-cols-2")}>
+        <Field label={t("Reasoning history")}>
+          <SelectControl
+            onChange={updateHistoryPolicy}
+            options={historyOptions}
+            value={historyValue}
+          />
+        </Field>
+        {showSummaryPolicy ? (
+          <Field label={t("Reasoning summary")}>
+            <SelectControl
+              onChange={updateSummaryPolicy}
+              options={summaryOptions}
+              value={summaryValue}
+            />
+          </Field>
+        ) : null}
+      </div>
+      {historyValue === "strip" ? (
+        <div className="rounded-[5px] border border-amber-500/35 bg-amber-500/8 px-2.5 py-2 text-[10px] leading-4 text-amber-800 dark:text-amber-200">
+          {t("Stripping may discard compacted context. Select this only if context loss is acceptable.")}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function ProtocolReasoningInlineControl({
+  className,
+  protocol
+}: {
+  className?: string;
+  protocol: GatewayProviderProtocol;
+}) {
+  const t = useAppText();
+  const noteKey = protocolReasoningBehaviorNoteKey[protocol];
+  const shortKey = protocolReasoningBehaviorShortKey[protocol];
+  if (!noteKey || !shortKey) {
+    return null;
+  }
+  return (
+    <span className={cn("truncate text-[11px] text-muted-foreground", className)} title={t(noteKey)}>
+      {`${t("Automatic handling")} (${t(shortKey)})`}
+    </span>
   );
 }
 
@@ -3840,7 +4080,10 @@ function ProviderModelPicker({
   onMetadataChange,
   onQueryChange,
   onSelectedChange,
+  providerResponsesFeatures,
   query,
+  responsesBaseUrl,
+  responsesProtocolAvailable,
   selected
 }: {
   catalogModels: string[];
@@ -3851,7 +4094,10 @@ function ProviderModelPicker({
   onMetadataChange: (value: AddProviderDraft["modelMetadata"]) => void;
   onQueryChange: (value: string) => void;
   onSelectedChange: (value: string[]) => void;
+  providerResponsesFeatures?: GatewayProviderCapabilityFeatures;
   query: string;
+  responsesBaseUrl: string;
+  responsesProtocolAvailable: boolean;
   selected: string[];
 }) {
   const t = useAppText();
@@ -4170,6 +4416,9 @@ function ProviderModelPicker({
             models={visibleAddedModels}
             onChange={onMetadataChange}
             onRemoveModel={removeModel}
+            providerResponsesFeatures={providerResponsesFeatures}
+            responsesBaseUrl={responsesBaseUrl}
+            responsesProtocolAvailable={responsesProtocolAvailable}
             sourceModels={catalog}
           />
         </div>
@@ -4220,6 +4469,9 @@ function ModelMetadataEditor({
   models,
   onChange,
   onRemoveModel,
+  providerResponsesFeatures,
+  responsesBaseUrl,
+  responsesProtocolAvailable,
   sourceModels
 }: {
   className?: string;
@@ -4231,6 +4483,9 @@ function ModelMetadataEditor({
   models: string[];
   onChange: (value: AddProviderDraft["modelMetadata"]) => void;
   onRemoveModel?: (model: string) => void;
+  providerResponsesFeatures?: GatewayProviderCapabilityFeatures;
+  responsesBaseUrl: string;
+  responsesProtocolAvailable: boolean;
   sourceModels?: string[];
 }) {
   const t = useAppText();
@@ -4342,6 +4597,27 @@ function ModelMetadataEditor({
     });
   }
 
+  function updateModelResponsesFeatures(
+    model: string,
+    features: GatewayProviderCapabilityFeatures | undefined
+  ) {
+    updateMetadata(model, (current) => {
+      const protocolFeatures = { ...(current.protocolFeatures ?? {}) };
+      if (features) {
+        protocolFeatures.openai_responses = features;
+      } else {
+        delete protocolFeatures.openai_responses;
+      }
+      const next = { ...current };
+      if (Object.keys(protocolFeatures).length > 0) {
+        next.protocolFeatures = protocolFeatures;
+      } else {
+        delete next.protocolFeatures;
+      }
+      return next;
+    });
+  }
+
   function updateCapability(model: string, key: CapabilityKey, checked: boolean) {
     updateMetadata(model, (current) => ({
       ...current,
@@ -4401,6 +4677,7 @@ function ModelMetadataEditor({
             modelMetadata?.maxContextWindow ||
             modelMetadata?.pricing ||
             modelMetadata?.capabilities ||
+            modelMetadata?.protocolFeatures ||
             modelMetadata?.supportedReasoningLevels !== undefined ||
             modelMetadata?.supportsReasoningSummaries !== undefined
           );
@@ -4503,6 +4780,33 @@ function ModelMetadataEditor({
                     </div>
                     <div className="text-[10px] leading-4 text-muted-foreground/75">{t("Select every reasoning effort supported by this model.")}</div>
                   </div>
+                  {responsesProtocolAvailable ? (
+                    <div className="space-y-2">
+                      <div className="flex min-w-0 items-center justify-between gap-2">
+                        <Label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                          {t("Reasoning history compatibility")}
+                        </Label>
+                        {modelMetadata?.protocolFeatures?.openai_responses ? (
+                          <Button
+                            className="h-6 px-2 text-[10px]"
+                            onClick={() => updateModelResponsesFeatures(model, undefined)}
+                            type="button"
+                            variant="ghost"
+                          >
+                            {t("Use provider default")}
+                          </Button>
+                        ) : null}
+                      </div>
+                      <ResponsesProtocolFeaturesControl
+                        autoBaseUrl={responsesBaseUrl}
+                        features={modelMetadata?.protocolFeatures?.openai_responses}
+                        historyInheritLabel={t("Use provider default")}
+                        inheritedFeatures={providerResponsesFeatures}
+                        onChange={(features) => updateModelResponsesFeatures(model, features)}
+                        summaryInheritLabel={t("Use provider default")}
+                      />
+                    </div>
+                  ) : null}
                   <div className="space-y-2">
                     <div className="flex min-w-0 items-center justify-between gap-2">
                       <Label className="flex min-w-0 items-center gap-2 text-[12px] font-medium">

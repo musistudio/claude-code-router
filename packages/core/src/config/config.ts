@@ -36,6 +36,7 @@ import type {
   GatewayPluginPermission,
   GatewayPluginSurface,
   GatewayProviderCapability,
+  GatewayProviderCapabilityFeatures,
   GatewayProviderCapabilityProtocol,
   GatewayProviderConfig,
   MediaToolsConfig,
@@ -1515,6 +1516,7 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
   const maxContextWindow = readPositiveInteger(value.maxContextWindow ?? value.max_context_window);
   const maxOutputTokens = readPositiveInteger(value.maxOutputTokens ?? value.max_output_tokens ?? value.outputTokens ?? value.output_tokens);
   const pricing = parseProviderModelPricing(value.pricing);
+  const protocolFeatures = parseProviderModelProtocolFeatures(value.protocolFeatures ?? value.protocol_features);
   const metadata: ProviderModelMetadata = {
     ...(Array.isArray(value.additionalSpeedTiers) ? { additionalSpeedTiers: value.additionalSpeedTiers } : {}),
     ...(Array.isArray(value.additional_speed_tiers) ? { additionalSpeedTiers: value.additional_speed_tiers } : {}),
@@ -1530,6 +1532,7 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
     ...(maxContextWindow ? { maxContextWindow } : {}),
     ...(maxOutputTokens ? { maxOutputTokens } : {}),
     ...(pricing ? { pricing } : {}),
+    ...(protocolFeatures ? { protocolFeatures } : {}),
     ...(Array.isArray(value.serviceTiers) ? { serviceTiers: value.serviceTiers } : {}),
     ...(Array.isArray(value.service_tiers) ? { serviceTiers: value.service_tiers } : {}),
     ...(supportedReasoningLevels ? { supportedReasoningLevels } : {}),
@@ -1723,9 +1726,11 @@ function parseProviderCapabilities(value: unknown): GatewayProviderCapability[] 
         return undefined;
       }
       const source = readString(item.source);
+      const features = parseProviderCapabilityFeatures(item.features);
       return {
         baseUrl,
         endpoint: readString(item.endpoint),
+        ...(features ? { features } : {}),
         source: source === "preset" || source === "detected" ? source : undefined,
         type
       };
@@ -1748,6 +1753,62 @@ function parseProviderProtocolCapability(item: Record<string, unknown>): Gateway
     return undefined;
   }
   return [{ baseUrl, type }];
+}
+
+function parseProviderModelProtocolFeatures(value: unknown): ProviderModelMetadata["protocolFeatures"] {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const responsesFeatures = parseProviderCapabilityFeatures(
+    value.openai_responses ?? value.openaiResponses
+  );
+  return responsesFeatures ? { openai_responses: responsesFeatures } : undefined;
+}
+
+function parseProviderCapabilityFeatures(value: unknown): GatewayProviderCapabilityFeatures | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const reasoningHistoryPolicy = parseResponsesReasoningHistoryPolicy(
+    value.reasoningHistoryPolicy ?? value.reasoning_history_policy
+  );
+  const reasoningSummaryPolicy = parseResponsesReasoningSummaryPolicy(
+    value.reasoningSummaryPolicy ?? value.reasoning_summary_policy
+  );
+  const features: GatewayProviderCapabilityFeatures = {
+    ...(reasoningHistoryPolicy ? { reasoningHistoryPolicy } : {}),
+    ...(reasoningSummaryPolicy ? { reasoningSummaryPolicy } : {})
+  };
+  return Object.keys(features).length > 0 ? features : undefined;
+}
+
+export function providerCapabilityFeaturesFromConfigForTest(
+  value: unknown
+): GatewayProviderCapabilityFeatures | undefined {
+  return parseProviderCapabilityFeatures(value);
+}
+
+function parseResponsesReasoningHistoryPolicy(
+  value: unknown
+): GatewayProviderCapabilityFeatures["reasoningHistoryPolicy"] {
+  const normalized = readString(value)?.toLowerCase().replace(/[-\s]+/g, "_");
+  if (normalized === "encrypted" || normalized === "plaintext" || normalized === "strip") {
+    return normalized;
+  }
+  return undefined;
+}
+
+function parseResponsesReasoningSummaryPolicy(
+  value: unknown
+): GatewayProviderCapabilityFeatures["reasoningSummaryPolicy"] {
+  const normalized = readString(value)?.toLowerCase().replace(/[-\s]+/g, "_");
+  if (normalized === "drop") {
+    return "drop";
+  }
+  if (normalized === "as_content" || normalized === "ascontent") {
+    return "as_content";
+  }
+  return undefined;
 }
 
 function parseProviderCapabilityProtocol(value: string | undefined): GatewayProviderCapabilityProtocol | undefined {

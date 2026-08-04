@@ -28,8 +28,42 @@ The protocol decides which request format CCR uses to talk to the upstream. It i
 
 If auto-detection misses the mark, turn it off in **Advanced settings**, choose a protocol manually, and confirm with a connectivity check.
 
-## Verify connectivity
 
+## Responses Reasoning History
+
+For an OpenAI Responses capability, **Reasoning history** controls what CCR asks ai-gateway to send on later turns:
+
+- **Native history (including encrypted reasoning)** keeps the complete provider-native workflow when the route remains compatible. The saved configuration value is still `encrypted` for backward compatibility.
+- **Replay readable reasoning** removes ciphertext and signatures and sends only text or summaries to compatible services.
+- **Do not send reasoning history** explicitly accepts removing reasoning-dependent history. This can discard context for which a compaction item is the only remaining representation, so use it only when that context loss is acceptable.
+- **Auto** selects a policy from the endpoint. If Auto safely degrades to strip, it does not count as explicit permission to discard unique compacted context.
+
+Provider-native carriers are intended for trusted local clients and single-tenant deployments. Their source fields are compatibility provenance, not credentials. Do not expose carrier replay to untrusted clients through a public multi-tenant proxy.
+
+For other protocols (Anthropic Messages, Gemini generateContent, Gemini Interactions, OpenAI Chat Completions), reasoning history is handled automatically by CCR protocol rules; the provider card shows this as a read-only note and no configuration is needed.
+
+### Reasoning history handling matrix
+
+How reasoning state from each source protocol is treated when the upstream target uses a given protocol:
+
+| Source ↓ / Target → | Responses (native policy) | Responses (plaintext policy) | Anthropic Messages | Gemini generateContent | Gemini Interactions | Plaintext Chat vendors |
+| --- | --- | --- | --- | --- | --- | --- |
+| Responses native state | Native replay¹ | Readable text/summary only | Dropped² | Dropped² | Dropped² | Readable text/summary only |
+| Responses plaintext reasoning | Discarded (encrypted items are never fabricated) | Sent as plaintext | Dropped² | Dropped² | Dropped² | Sent as plaintext |
+| Anthropic thinking + signature | Dropped² | Readable text extracted | Native replay¹ | Dropped² | Dropped² | Readable text only |
+| Gemini generateContent part + signature | Dropped² | Readable text extracted | Dropped² | Native replay¹ | Dropped² | Readable text only |
+| Gemini Interactions signed steps | Dropped² | Text/summary extracted | Dropped² | Dropped² | Native replay¹ ³ | Text/summary sent |
+| Plaintext Chat reasoning | Discarded (encrypted items are never constructed) | Sent as plaintext | Dropped² | Dropped² | Dropped² | Sent per vendor adapter |
+| Reasoning of unknown origin | Never | Never by default | Never | Never | Never | Never by default |
+
+Notes:
+
+1. Native replay requires the same provider family, endpoint, account credential scope, and model, plus a complete capture of the original state.
+2. "Dropped" is atomic at the dependency-group level: when reasoning is grouped with tool calls, a closed historical group is dropped as a whole and an active group fails the request with an explicit error — partial tool call/result pairs are never sent upstream.
+3. Gemini Interactions is the exception: official cross-model replay between Gemini models on the same service is allowed.
+4. A same-protocol request without any carrier may pass through unchanged only while the route is unchanged (compatibility passthrough — this does not count as verified same-origin replay).
+
+## Verify connectivity
 Once credentials and models are in place, click **Check Connection**: CCR sends a real request with the current API endpoint, key, protocol, and selected models to confirm the full path works. Output is length-limited, but it may still consume a few tokens or count toward provider-side request limits, so select only the models you need to confirm.
 
 Save the provider once the check passes.
