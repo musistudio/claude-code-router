@@ -5,7 +5,7 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { networkInterfaces } from "node:os";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { delimiter as pathDelimiter, join as pathJoin, resolve as pathResolve } from "node:path";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import {
@@ -46,11 +46,11 @@ export function spawnGatewayProcess(
   coreAuthToken: string
 ): SpawnedGatewayProcess {
   const gatewayEntry = resolveGatewayEntry();
-  const proxyPreloadFile = upstreamProxyUrl ? writeGatewayProxyPreloadFile() : undefined;
+  const fetchPreloadFile = writeGatewayFetchPreloadFile();
   const nodeRuntime = resolveGatewayNodeRuntime();
   const env = createGatewayProcessEnv(config, upstreamProxyUrl, runtimeId, coreAuthToken, nodeRuntime.electronRunAsNode);
   const gatewayBootstrapEntry = resolveGatewayBootstrapEntry();
-  const args = proxyPreloadFile ? ["--require", proxyPreloadFile, gatewayBootstrapEntry] : [gatewayBootstrapEntry];
+  const args = ["--require", fetchPreloadFile, gatewayBootstrapEntry];
   const child = spawn(nodeRuntime.command, args, {
     cwd: CONFIGDIR,
     env,
@@ -264,6 +264,8 @@ function createGatewayProcessEnv(
     AUTH_STATIC_API_KEY_ENV: coreGatewayAuthTokenEnv,
     AUTH_STATIC_API_KEY_HEADER: coreGatewayAuthHeader,
     CCR_GATEWAY_RUNTIME_ID: runtimeId,
+    CCR_UNDICI_MODULE: resolveUndiciProxyAgentModule(),
+    CCR_UPSTREAM_TIMEOUT_MS: String(gatewayUpstreamTimeoutMs(config)),
     [coreGatewayAuthTokenEnv]: coreAuthToken,
     HOST: config.gateway.coreHost,
     PORT: String(config.gateway.corePort)
@@ -302,8 +304,12 @@ function createGatewayProcessEnv(
   env.https_proxy = upstreamProxyUrl;
   env.all_proxy = upstreamProxyUrl;
   env.CCR_UPSTREAM_PROXY_URL = upstreamProxyUrl;
-  env.CCR_UNDICI_MODULE = resolveUndiciProxyAgentModule();
   return env;
+}
+
+function gatewayUpstreamTimeoutMs(config: AppConfig): number {
+  const value = Number(config.API_TIMEOUT_MS);
+  return Number.isFinite(value) && value >= 0 ? Math.trunc(value) : 0;
 }
 
 function resolveGatewayNodeRuntime(): GatewayNodeRuntime {
@@ -419,56 +425,75 @@ function appendGatewayChildOutput(child: ChildProcess, message: string): string 
   return details ? `${message}\n${details}` : message;
 }
 
-export function writeGatewayProxyPreloadFile(): string {
+export function writeGatewayFetchPreloadFile(): string {
   const file = pathJoin(CONFIGDIR, "gateway-proxy-preload.cjs");
-  writeFileSync(
-    file,
-    [
-      "\"use strict\";",
-      "const up = process.env.CCR_UPSTREAM_PROXY_URL;",
-      "const um = process.env.CCR_UNDICI_MODULE;",
-      "if (up && um) {",
-      "  const { ProxyAgent } = require(um);",
-      "  const agent = new ProxyAgent(up);",
-      "  const realFetch = globalThis.fetch.bind(globalThis);",
-      "  const raw = (process.env.NO_PROXY || process.env.no_proxy || '').toLowerCase();",
-      "  const byp = raw.split(',').map((s) => s.trim()).filter(Boolean);",
-      "  const norm = (h) => h.replace(/^\\[/, '').replace(/\\]$/, '').replace(/\\.$/, '');",
-      "  const isLP = (h) => h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '0:0:0:0:0:0:0:1' || h === '0.0.0.0' || h.startsWith('127.');",
-      "  const shouldBypass = (input) => {",
-      "    let h;",
-      "    try {",
-      "      const u = typeof input === 'string' ? new URL(input) : input instanceof URL ? input : new URL(input && input.url ? input.url : String(input));",
-      "      h = norm(u.hostname);",
-      "    } catch { return true; }",
-      "    if (!h) return false;",
-      "    if (isLP(h)) return true;",
-      "    return byp.some((p) => {",
-      "      if (p === '*') return true;",
-      "      const s = p.split(':');",
-      "      const ph = norm(s[0]);",
-      "      if (s.length === 2 && s[1]) {",
-      "        if (h !== ph) return false;",
-      "        try { return new URL(input).port === s[1]; } catch { return false; }",
-      "      }",
-      "      if (ph.startsWith('*.')) return h.endsWith(ph.slice(1));",
-      "      if (ph.startsWith('.')) return h.endsWith(ph) || h === ph.slice(1);",
-      "      return h === ph;",
-      "    });",
-      "  };",
-      "  const patched = function(input, init) {",
-      "    if (init && init.dispatcher) return realFetch(input, init);",
-      "    if (shouldBypass(input)) return realFetch(input, init);",
-      "    return realFetch(input, Object.assign({}, init, { dispatcher: agent }));",
-      "  };",
-      "  if (Object.getOwnPropertyDescriptor(globalThis, 'fetch')?.writable) {",
-      "    globalThis.fetch = patched;",
-      "  }",
-      "}"
-    ].join("\n"),
-    "utf8"
-  );
+  mkdirSync(CONFIGDIR, { recursive: true });
+  writeFileSync(file, gatewayFetchPreloadScript(), "utf8");
   return file;
+}
+
+export function writeGatewayProxyPreloadFile(): string {
+  return writeGatewayFetchPreloadFile();
+}
+
+function gatewayFetchPreloadScript(): string {
+  return [
+    "\"use strict\";",
+    "const up = process.env.CCR_UPSTREAM_PROXY_URL;",
+    "const um = process.env.CCR_UNDICI_MODULE;",
+    "const rawTimeout = process.env.CCR_UPSTREAM_TIMEOUT_MS;",
+    "const parsedTimeout = rawTimeout === undefined || rawTimeout === '' ? NaN : Number(rawTimeout);",
+    "const hasTimeout = Number.isFinite(parsedTimeout) && parsedTimeout >= 0;",
+    "if ((up || hasTimeout) && um) {",
+    "  const { Agent, ProxyAgent } = require(um);",
+    "  const timeoutOptions = hasTimeout ? { headersTimeout: Math.trunc(parsedTimeout), bodyTimeout: Math.trunc(parsedTimeout) } : {};",
+    "  const directAgent = hasTimeout ? new Agent(timeoutOptions) : undefined;",
+    "  const proxyAgent = up ? new ProxyAgent(Object.assign({ uri: up }, timeoutOptions)) : undefined;",
+    "  const realFetch = globalThis.fetch.bind(globalThis);",
+    "  const raw = (process.env.NO_PROXY || process.env.no_proxy || '').toLowerCase();",
+    "  const byp = raw.split(',').map((s) => s.trim()).filter(Boolean);",
+    "  const norm = (h) => h.replace(/^\\[/, '').replace(/\\]$/, '').replace(/\\.$/, '');",
+    "  const isLP = (h) => h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '0:0:0:0:0:0:0:1' || h === '0.0.0.0' || h.startsWith('127.');",
+    "  const requestUrl = (input) => {",
+    "    try {",
+    "      return typeof input === 'string' ? new URL(input) : input instanceof URL ? input : new URL(input && input.url ? input.url : String(input));",
+    "    } catch { return undefined; }",
+    "  };",
+    "  const shouldBypass = (input) => {",
+    "    const u = requestUrl(input);",
+    "    if (!u) return true;",
+    "    const h = norm(u.hostname);",
+    "    if (!h) return false;",
+    "    if (isLP(h)) return true;",
+    "    return byp.some((p) => {",
+    "      if (p === '*') return true;",
+    "      const s = p.split(':');",
+    "      const ph = norm(s[0]);",
+    "      if (s.length === 2 && s[1]) return h === ph && u.port === s[1];",
+    "      if (ph.startsWith('*.')) return h.endsWith(ph.slice(1));",
+    "      if (ph.startsWith('.')) return h.endsWith(ph) || h === ph.slice(1);",
+    "      return h === ph;",
+    "    });",
+    "  };",
+    "  const dispatcherFor = (input) => {",
+    "    if (!proxyAgent) return directAgent;",
+    "    return shouldBypass(input) ? directAgent : proxyAgent;",
+    "  };",
+    "  const patched = function(input, init) {",
+    "    if (init && init.dispatcher) return realFetch(input, init);",
+    "    const dispatcher = dispatcherFor(input);",
+    "    if (!dispatcher) return realFetch(input, init);",
+    "    return realFetch(input, Object.assign({}, init, { dispatcher }));",
+    "  };",
+    "  if (Object.getOwnPropertyDescriptor(globalThis, 'fetch')?.writable) {",
+    "    globalThis.fetch = patched;",
+    "  }",
+    "}"
+  ].join("\n");
+}
+
+export function gatewayFetchPreloadScriptForTest(): string {
+  return gatewayFetchPreloadScript();
 }
 
 function mergeNoProxy(current: string | undefined, values: string[]): string {

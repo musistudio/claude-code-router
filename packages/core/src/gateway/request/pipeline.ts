@@ -41,7 +41,7 @@ import { coreGatewayUsageAttributionConfig } from "@ccr/core/gateway/core-runtim
 import { providerModelPricingForUsage } from "@ccr/core/models/pricing-service";
 import { clientClosedRequestStatusCode, clientDisconnectMessage, resolveStreamRequestLogOutcome, UpstreamRequestError } from "@ccr/core/gateway/internal/shared";
 import type { BrowserWebSearchMcpIntegration, BrowserWebSearchProtocolRecord, UpstreamFetchResult } from "@ccr/core/gateway/internal/shared";
-import { applyProviderCapabilityRouting, cancelResponseBody, destroyResponseStreams, fetchUpstreamWithFallback, mergeFallbackResponseHeaders, rewriteCapabilityResponseHeaders, uniqueStreams, upstreamResponseHeaders } from "@ccr/core/gateway/upstream/executor";
+import { cancelResponseBody, destroyResponseStreams, fetchUpstreamWithFallback, mergeFallbackResponseHeaders, rewriteCapabilityResponseHeaders, uniqueStreams, upstreamResponseHeaders } from "@ccr/core/gateway/upstream/executor";
 import { requestProtocolForPath, shouldApplyGatewayRouting } from "@ccr/core/routing/protocol-endpoints";
 import { createClaudeCodeWebSearchContinuationContext, createHostedWebSearchProtocolContext, hostedWebSearchProtocolResponseStream, hostedWebSearchUnavailableMessage, prepareClaudeCodeWebSearchContinuationRequestBody, prepareHostedWebSearchProtocolRequestBody, selectClaudeCodeWebSearchContinuationRecords, selectHostedWebSearchProtocolRecords } from "@ccr/core/gateway/features/hosted-web-search/index";
 
@@ -379,43 +379,6 @@ export class GatewayRequestPipeline {
           startedAtMs: codexBridgeStartedAt
         });
       }
-
-      const capabilityRoutingStartedAt = Date.now();
-      const capabilityBodyBefore = bodyToForward;
-      const capabilityFallbackBefore = routeFallback;
-      const capabilityModelBefore = routedModel;
-      const capabilityProviderHeadersBefore = {
-        gateway: headers["x-gateway-target-provider"],
-        list: headers["x-target-providers"],
-        target: headers["x-target-provider"]
-      };
-      const providerCapabilityRouting = applyProviderCapabilityRouting({
-        body: bodyToForward,
-        config: this.config,
-        fallback: routeFallback,
-        headers,
-        path,
-        routedModel
-      });
-      bodyToForward = providerCapabilityRouting.body;
-      routeFallback = providerCapabilityRouting.fallback;
-      routedModel = providerCapabilityRouting.routedModel;
-      routeTrace?.capture({
-        changes: [
-          ...(capabilityBodyBefore === bodyToForward ? [] : [{ operation: "replace" as const, path: "/body/model", scope: "body" as const }]),
-          reportedRouteChange("routing", "/routing/model", capabilityModelBefore, routedModel),
-          ...(capabilityFallbackBefore === routeFallback ? [] : [{ after: routeFallback, before: capabilityFallbackBefore, operation: "replace" as const, path: "/routing/fallback", scope: "routing" as const }]),
-          reportedRouteChange("headers", "/headers/x-target-provider", capabilityProviderHeadersBefore.target, headers["x-target-provider"]),
-          reportedRouteChange("headers", "/headers/x-target-providers", capabilityProviderHeadersBefore.list, headers["x-target-providers"]),
-          reportedRouteChange("headers", "/headers/x-gateway-target-provider", capabilityProviderHeadersBefore.gateway, headers["x-gateway-target-provider"])
-        ].filter(isReportedRouteChange),
-        durationMs: Date.now() - capabilityRoutingStartedAt,
-        kind: "mutation",
-        name: "provider.capability-routing",
-        phase: "capability",
-        startedAtMs: capabilityRoutingStartedAt,
-        target: routedModel ? { model: routedModel } : undefined
-      });
 
       const hostedWebSearchProtocolContext = createHostedWebSearchProtocolContext({
         body: bodyToForward,

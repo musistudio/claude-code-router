@@ -2,6 +2,7 @@ import type { AppConfig } from "@ccr/core/contracts/app";
 import { isRecord, rawStringValue, stringValue } from "@ccr/core/gateway/internal/value";
 import type { AnthropicWebSearchProtocolContext, BrowserWebSearchProtocolRecord, ClaudeCodeWebSearchContinuationContext, HostedWebSearchProtocolContext } from "@ccr/core/gateway/internal/shared";
 import { parseJsonObjectSafe, serializeJsonBody } from "@ccr/core/gateway/http/body";
+import { resolveGatewayPublicModelId } from "@ccr/core/gateway/features/model-discovery";
 import { uniqueStrings } from "@ccr/core/gateway/internal/collections";
 import { requestProtocolForPath } from "@ccr/core/routing/protocol-endpoints";
 import { claudeCodeWebSearchToolResultTexts, extractAnthropicWebSearchQueryHint, extractClaudeCodeWebSearchToolResultQuery, extractHostedWebSearchQueryHint, fusionWebSearchToolNameForRequest, hasHostedWebSearchDeclaration, isAnthropicHostedWebSearchTool, isOpenAiHostedWebSearchTool, openAiToolChoiceNamesWebSearch, readHostedWebSearchMaxUses } from "@ccr/core/gateway/features/hosted-web-search/discovery";
@@ -24,7 +25,10 @@ export function createHostedWebSearchProtocolContext(input: {
   if (!body || !hasHostedWebSearchDeclaration(body, protocol)) {
     return undefined;
   }
-  const toolName = fusionWebSearchToolNameForRequest(input.config, stringValue(body.model) || input.routedModel);
+  const toolName = fusionWebSearchToolNameForRequest(
+    input.config,
+    hostedWebSearchModelForRequest(input.config, stringValue(body.model) || input.routedModel)
+  );
   if (!toolName) {
     return undefined;
   }
@@ -53,7 +57,10 @@ export function createClaudeCodeWebSearchContinuationContext(input: {
   if (!body || claudeCodeWebSearchToolResultTexts(body).length === 0) {
     return undefined;
   }
-  const toolName = fusionWebSearchToolNameForRequest(input.config, stringValue(body.model) || input.routedModel);
+  const toolName = fusionWebSearchToolNameForRequest(
+    input.config,
+    hostedWebSearchModelForRequest(input.config, stringValue(body.model) || input.routedModel)
+  );
   if (!toolName) {
     return undefined;
   }
@@ -62,6 +69,11 @@ export function createClaudeCodeWebSearchContinuationContext(input: {
     sinceMs: input.sinceMs,
     toolName
   };
+}
+
+
+function hostedWebSearchModelForRequest(config: AppConfig, model: string | undefined): string | undefined {
+  return resolveGatewayPublicModelId(model, config) ?? model;
 }
 
 export function prepareHostedWebSearchProtocolRequestBody(
