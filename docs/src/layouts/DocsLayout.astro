@@ -3,17 +3,14 @@ import "../styles/global.css";
 import {
   ArrowLeft,
   ArrowRight,
-  BookOpen,
   ChevronDown,
   Download,
   Github,
   List,
   Moon,
   PenLine,
-  Rocket,
   Search,
   Sun,
-  WandSparkles,
 } from "lucide-astro";
 
 import { enToZhPath, zhToEnPath } from "../docs-structure";
@@ -123,12 +120,6 @@ const resolvedNavItems = navItems.map((item, index) => {
 const homeHref = withBase(locale === "en" ? "/en/" : "/");
 const faviconHref = withBase("/ccr-icon.png");
 const logoSrc = withBase("/logo.png");
-const sidebarIcons = {
-  rocket: Rocket,
-  book: BookOpen,
-  wand: WandSparkles,
-  pen: PenLine,
-};
 const pageDescription =
   description ??
   (locale === "zh"
@@ -385,14 +376,9 @@ const featuredNavLabel = locale === "zh" ? "主要入口" : "Primary navigation"
                 </nav>
               ) : (
                 sidebarGroups.map((group) => {
-                  const GroupIcon = sidebarIcons[group.icon] ?? BookOpen;
-
                   return (
                     <section class="sidebar-group">
-                      <h2>
-                        <GroupIcon class="group-icon" size={16} aria-hidden="true" />
-                        {group.label}
-                      </h2>
+                      <h2>{group.label}</h2>
                       <ul>
                         {group.items.map((item) => (
                           <li>

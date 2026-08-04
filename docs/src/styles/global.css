@@ -858,13 +858,6 @@ pre {
   color: var(--sidebar-heading);
 }
 
-.group-icon {
-  width: 16px;
-  height: 16px;
-  color: var(--sidebar-icon);
-  flex: 0 0 auto;
-}
-
 .sidebar-group ul {
   display: grid;
   gap: 1px;

@@ -48,6 +48,18 @@ ZCode 导入会读取本机 ZCode 配置中的供应商 API Key、API 地址和�
 
 如果只检测到 ZCode 登录态，但没有检测到可用供应商 API Key，导入入口会显示不可导入。此时需要先在 ZCode 中配置可用模型供应商，再回到 CCR 添加供应商。
 
+### Kimi CLI
+
+Kimi CLI 导入会读取本机 Kimi 配置（默认 `~/.kimi-code/config.toml`）中的受管 OAuth 登录态或 API Key。检测到可用凭据时，可以导入为 `Kimi CLI API` 供应商。
+
+导入后：
+
+1. 协议使用 `openai_chat_completions`。
+2. 模型优先来自 Kimi 配置中的模型列表，没有时回退到默认模型 `kimi-for-coding`。
+3. CCR 会按凭据类型创建 OAuth 或 API Key provider plugin，复用 Kimi 登录态访问上游服务。
+
+如果只检测到登录痕迹但没有可用的 OAuth token，导入入口会显示原因。此时先在 Kimi CLI 中运行 `/login`，再回到 CCR 重新扫描。
+
 ## 主字段
 
 | 字段 | 代表的能力 |

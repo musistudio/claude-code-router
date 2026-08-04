@@ -24,34 +24,38 @@ A provider is the upstream model service CCR forwards requests to, such as OpenR
 ### Add the provider
 
 1. Open **Providers** and click **Add Provider**.
-2. Choose a built-in preset under **Preset providers**. Presets fill common Base URLs, protocols, and icons automatically.
-3. If the service is not listed, choose **Other / custom API endpoint**.
-4. Fill in **Name**, **Base URL**, **Protocol**, **API Key**, and **Models**.
+2. Choose a built-in preset under **Select preset provider**. Presets fill common API endpoints, protocols, and icons automatically.
+3. If the service is not listed, choose **Other / custom API endpoint** and enter a **Name** and **API endpoint**.
+4. In the **Add credentials** step, enter the **API key**.
 
-### Choose a protocol
+After you enter the API endpoint and key, CCR automatically detects the protocols and models the endpoint supports.
+
+### Protocols
 
 | Protocol | Best for |
 | --- | --- |
-| OpenAI Chat Completions | Most OpenAI-compatible services |
+| OpenAI Chat | Most OpenAI-compatible services |
 | OpenAI Responses | Services that support the Responses API |
 | Anthropic Messages | Anthropic official or Anthropic-compatible services |
-| Gemini Generate Content | Gemini official or Gemini-compatible services |
+| Gemini Generate | Gemini official or Gemini-compatible services |
 
-If you are unsure, run protocol probing in the app first, then use the model connectivity check to confirm.
+If auto-detection misses the mark, turn it off in Advanced settings, choose a protocol manually, and confirm with a connectivity check.
 
-### Run these checks before saving
+### Verify connectivity
 
-1. **Protocol probing**: confirm which protocols the Base URL supports.
-2. **Model connectivity check**: send test requests to one or two models.
-3. **Account usage test**: if you want balance or quota display, confirm the usage API and field mapping.
+Once credentials and models are in place, click **Check Connection** to send a real request that confirms the API endpoint, key, protocol, and models all work. Select only the models you need to confirm to avoid unnecessary usage.
 
-Save the provider after these checks pass.
+### Multiple keys and usage
 
-### Multiple keys and the usage panel
+For teams or high-frequency usage, switch to the **Credential pool** tab, add multiple upstream keys, and configure priority, weight, and limits. After saving, filter request logs by credential to verify rotation.
 
-For teams or high-frequency usage, add multiple credentials in the provider form and configure priority, weight, and limits. After saving, filter request logs by credential to verify rotation.
+If you want the overview to show balance or remaining quota, turn on **Fetch usage** in the form, choose a usage mode, and test the field mapping.
 
-If you want the overview to show balance or remaining quota, open the provider's **Account / Usage** section, configure the usage integration, and test field mapping.
+### Reuse a locally logged-in agent
+
+If Claude Code, Codex, OpenCode, Grok CLI, Kimi CLI, or ZCode is already logged in on this machine, import it as a **Local Agent Provider** from **Providers** to reuse the existing authorization without applying for another key.
+
+For the full walkthrough and field reference, see [Add a provider](provider/).
 
 ## Connect Agent Config
 
@@ -77,11 +81,7 @@ Choose Grok CLI and select a default model, then run the copied `ccr-app <profil
 
 ### ZCode
 
-ZCode mainly uses model, Provider ID, Provider Name, and whether it is launched from CCR. It launches as an app rather than a CLI and does not need Codex CLI path fields.
-
-### Reuse a locally logged-in agent
-
-If Claude Code, Codex, OpenCode, Grok CLI, Kimi CLI, or ZCode is already logged in on this machine, import it as a **Local Agent Provider** from **Providers** to reuse the existing authorization without applying for another key.
+Choose ZCode and set the **ZCode model**, **Provider ID**, and **Provider Name**. ZCode is a desktop-app agent (entry fixed to **App only**): CCR writes its CLI config and model cache, then launches the app with this profile's model, provider, and an isolated user-data directory; open it from the play button on the profile card.
 
 ## Logs and observability
 

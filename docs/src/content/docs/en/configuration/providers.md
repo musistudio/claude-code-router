@@ -48,6 +48,18 @@ After import:
 
 If CCR detects ZCode login state but no usable provider API key, the import entry remains unavailable. Configure a usable model provider in ZCode first, then return to CCR and add the provider.
 
+### Kimi CLI
+
+Kimi CLI import reads a managed OAuth login or API key from local Kimi config (default `~/.kimi-code/config.toml`). When a usable credential is available, CCR can import it as a `Kimi CLI API` provider.
+
+After import:
+
+1. The protocol is `openai_chat_completions`.
+2. Models come from the Kimi config first; if none are configured, CCR falls back to the default model `kimi-for-coding`.
+3. CCR creates an OAuth or API-key provider plugin based on the credential type, reusing the Kimi login to access the upstream service.
+
+If CCR detects login traces but no usable OAuth token, the import entry shows why. Run `/login` in Kimi CLI, then return to CCR and rescan.
+
 ## Main fields
 
 | Field | Capability |
