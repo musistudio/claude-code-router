@@ -219,7 +219,7 @@ export function scanClaudeCodeLogin(): ClaudeCodeLoginScan {
   return scan;
 }
 
-function claudeCredentialFiles(): string[] {
+export function claudeCredentialFiles(): string[] {
   return uniqueStrings([
     path.join(claudeCodeStorageDir(), ".credentials.json"),
     path.join(os.homedir(), ".claude", ".credentials.json"),

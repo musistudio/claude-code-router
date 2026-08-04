@@ -12,6 +12,9 @@ import { pluginService } from "@ccr/core/plugins/service";
 import { proxyService } from "@ccr/core/proxy/service";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin";
 import { compileCoreGatewayConfig } from "@ccr/core/gateway/core-runtime/config-compiler";
+import { startLocalOauthCredentialWatch } from "@ccr/core/gateway/core-runtime/local-oauth-watch";
+import { claudeCredentialFiles, readClaudeCodeOauth } from "@ccr/core/agents/local-providers/claude-code";
+import { isLocalClaudeCodeOauthProviderPlugin } from "@ccr/core/providers/oauth-plugin";
 import { closeServer, formatError } from "@ccr/core/gateway/http/io";
 import { RawTraceSynchronizer } from "@ccr/core/observability/raw-trace-sync";
 import { GatewayBillingSynchronizer } from "@ccr/core/usage/billing-sync";
@@ -82,6 +85,7 @@ class GatewayService {
 
   private browserAutomationMcpIntegration?: BrowserAutomationMcpIntegration;
   private browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration;
+  private oauthCredentialWatchStop?: () => void;
   private readonly billingSynchronizer = new GatewayBillingSynchronizer({
     getConfig: () => this.config,
     getGlobalBillingConfig: () => pluginService.getCoreGatewayConfig().billing
@@ -214,6 +218,7 @@ class GatewayService {
         pid: this.child?.pid,
         state: "running"
       };
+      this.startOauthCredentialWatchIfNeeded(config);
       return this.status;
     } catch (error) {
       await this.stop();
@@ -227,6 +232,8 @@ class GatewayService {
   }
 
   async stop(options: GatewayStopOptions = {}): Promise<GatewayStatus> {
+    this.oauthCredentialWatchStop?.();
+    this.oauthCredentialWatchStop = undefined;
     const child = this.child;
     this.child = undefined;
     this.coreAuthToken = "";
@@ -272,6 +279,34 @@ class GatewayService {
         ? gatewayNetworkEndpoints(this.config.gateway.host, this.config.gateway.port)
         : this.status.networkEndpoints
     };
+  }
+
+  private startOauthCredentialWatchIfNeeded(config: AppConfig): void {
+    this.oauthCredentialWatchStop?.();
+    this.oauthCredentialWatchStop = undefined;
+    if (!(config.providerPlugins ?? []).some(isLocalClaudeCodeOauthProviderPlugin)) {
+      return;
+    }
+    // The spawned gateway's Anthropic auth is stamped from the credentials file
+    // at compile time (withClaudeCodeOauthRuntimeDefaults) and applied statically
+    // per request. Claude Code rotates that file on its own schedule, so without
+    // a live refresh the provider starts 401ing between restarts. Restart on
+    // rotation; the restart recompiles and stamps the fresh token (#1628).
+    this.oauthCredentialWatchStop = startLocalOauthCredentialWatch({
+      files: claudeCredentialFiles(),
+      readAccessToken: () => readClaudeCodeOauth()?.accessToken,
+      onAccessTokenChanged: () => {
+        const currentConfig = this.config;
+        if (!currentConfig || this.status.state !== "running") {
+          return;
+        }
+        console.info("[gateway] Claude Code OAuth credentials rotated; restarting with refreshed token.");
+        void this.start(currentConfig).catch((error: unknown) => {
+          console.warn(`[gateway] OAuth-rotation restart failed: ${formatError(error)}`);
+        });
+      },
+      log: (message) => console.info(message)
+    });
   }
 
   async updateConfig(config: AppConfig): Promise<void> {
