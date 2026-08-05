@@ -221,6 +221,48 @@ oauth = { storage = "file", key = "oauth/kimi-code", oauth_host = "http://127.0.
   });
 });
 
+test("Kimi CLI OAuth does not adopt a rotated credential without an access token", async (t) => {
+  await withKimiHome(async (kimiHome) => {
+    writeFileSync(path.join(kimiHome, "config.toml"), `
+[providers."managed:kimi-code"]
+type = "kimi"
+base_url = "https://api.kimi.com/coding/v1"
+oauth = { storage = "file", key = "oauth/kimi-code", oauth_host = "http://127.0.0.1" }
+`);
+    const credentialsDir = path.join(kimiHome, "credentials");
+    mkdirSync(credentialsDir, { recursive: true });
+    const credentialFile = path.join(credentialsDir, "kimi-code.json");
+    writeFileSync(credentialFile, JSON.stringify({
+      access_token: "expired-token",
+      expires_at: 1,
+      expires_in: 3600,
+      refresh_token: "stale-refresh-token"
+    }));
+
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async () => {
+      // Partial write: a new refresh token landed without an access token.
+      writeFileSync(credentialFile, JSON.stringify({
+        expires_at: 1,
+        expires_in: 7200,
+        refresh_token: "peer-refresh-token"
+      }));
+      return new Response(JSON.stringify({ error: "invalid_grant" }), {
+        headers: { "content-type": "application/json" },
+        status: 401
+      });
+    };
+    t.after(() => {
+      globalThis.fetch = previousFetch;
+    });
+
+    await assert.rejects(
+      () => resolveKimiAuth({ key: "oauth/kimi-code", oauthHost: "http://127.0.0.1" }),
+      /HTTP 401/
+    );
+  });
+});
+
 async function withKimiHome(run) {
   const kimiHome = mkdtempSync(path.join(os.tmpdir(), "ccr-kimi-provider-"));
   const previous = {

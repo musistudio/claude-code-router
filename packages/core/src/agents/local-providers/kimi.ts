@@ -54,7 +54,7 @@ type KimiConfiguredProvider = {
   sourceFile: string;
 };
 
-export class KimiRefreshAuthError extends Error {
+class KimiRefreshAuthError extends Error {
   readonly status: number;
 
   constructor(status: number, message: string) {
@@ -224,7 +224,7 @@ function adoptPeerRotatedKimiAuth(auth: KimiTokenSet, error: unknown): KimiToken
   // is stale and the server rejects it, but the file on disk already holds
   // the newer credential. Adopt it instead of failing the request.
   const latest = readKimiAuthFromFile(auth.sourceFile, auth.oauthHost);
-  if (latest?.refreshToken && latest.refreshToken !== auth.refreshToken) {
+  if (latest?.refreshToken && latest.accessToken && latest.refreshToken !== auth.refreshToken) {
     return latest;
   }
   throw error;
