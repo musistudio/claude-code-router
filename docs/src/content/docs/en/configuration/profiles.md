@@ -45,6 +45,10 @@ This lets you create multiple configs for the same agent, such as "Claude Code -
 | Bot | App entry | Bot forwarding only works for App mode opened from CCR. CLI does not forward Bot messages yet. |
 | Environment variables | All | Extra environment variables injected into this config. Claude Code includes `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1` by default so gateway model discovery is enabled. |
 
+## Enhanced Routing
+
+Claude Code and Codex profiles show **Use enhanced route** as its own advanced setting. It controls CCR's built-in Claude Code / Codex routing enhancements and is independent from the private profile rule list. Turning profile routing off does not change this switch; turn **Use enhanced route** off to disable the built-in route for that profile.
+
 ## Profile Routing
 
 Each Agent Profiles entry can carry its own routing policy:
@@ -52,7 +56,6 @@ Each Agent Profiles entry can carry its own routing policy:
 | Option | Behavior |
 | --- | --- |
 | Enable profile routing | Turns on the profile's private rule list. Disabled profile routing keeps the profile usable but skips its private rules. |
-| Use enhanced route | Claude Code and Codex only. A profile-level switch for CCR's built-in Claude Code / Codex routing enhancements. It is independent from the private rule list, so each profile can enable or disable the built-in route separately. |
 | Profile routes | Uses condition-based rules. Rules can match `request.header`, `request.body`, or `request.auth`, and can rewrite the request model or other fields. Node.js script rules are only supported on the global Routing page. |
 
 Profile rules are evaluated before the global Routing page rules. They only see traffic from their own profile API key, so two profiles can use the same client model name and still route differently. For example, a "Claude Code - Work" profile can send image-heavy requests to a Fusion vision model while a "Claude Code - Low Cost" profile sends the same request shape to a cheaper provider.

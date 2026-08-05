@@ -45,6 +45,10 @@ lead: 为 Claude Code、Codex、Grok CLI、Kimi CLI、Pi、ZCode 创建可复用
 | Bot | App 入口 | 只有从 CCR 打开的 App 模式会转发 Bot 消息。CLI 当前不转发 Bot 消息。 |
 | 环境变量 | 全部 | 为该配置注入额外环境变量。Claude Code 默认带 `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1`，用于启用网关模型发现。 |
 
+## 增强路由
+
+Claude Code 和 Codex 配置会把 **使用增强路由** 显示为独立的高级设置。它只控制 CCR 内置的 Claude Code / Codex 路由增强，和配置级私有规则列表互相独立。关闭配置级路由不会改变这个开关；如果要关闭该配置的内置路由增强，需要单独关闭 **使用增强路由**。
+
 ## 配置级路由
 
 每个 Agent 配置档案都可以带自己的路由策略：
@@ -52,7 +56,6 @@ lead: 为 Claude Code、Codex、Grok CLI、Kimi CLI、Pi、ZCode 创建可复用
 | 配置项 | 行为 |
 | --- | --- |
 | 启用配置级路由 | 打开该配置的私有规则列表。关闭后配置仍可使用，但不会执行私有规则。 |
-| 使用增强路由 | 仅 Claude Code 和 Codex 显示。它是配置档案级别的内置 Claude Code / Codex 路由增强开关，独立于私有规则列表，因此每个配置档案都可以单独开启或关闭内置路由。 |
 | 配置级路由规则 | 使用条件规则。规则可以匹配 `request.header`、`request.body` 或 `request.auth`，并改写请求模型或其他字段。Node.js 脚本规则只在全局路由页支持。 |
 
 配置级规则会先于全局路由页规则执行。它们只看到自己的配置 API Key 发来的流量，因此两个配置即使用同一个客户端模型名，也可以走不同分流。例如，“Claude Code - 工作”可以把带图片的请求发到 Fusion 视觉模型，而“Claude Code - 低成本”可以把同样形态的请求发到更便宜的供应商。
