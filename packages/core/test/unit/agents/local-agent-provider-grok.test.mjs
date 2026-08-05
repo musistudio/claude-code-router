@@ -11,7 +11,8 @@ import {
   grokModelCatalogFromPayloadForTest,
   importGrokProvider,
   normalizeGrokProviderAccountConfig,
-  normalizeGrokProviderMediaCapabilities
+  normalizeGrokProviderMediaCapabilities,
+  resolveGrokAuth
 } from "@ccr/core/agents/local-providers/grok.ts";
 import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared.ts";
 
@@ -292,6 +293,69 @@ test("persisted Grok Agent providers migrate legacy xAI video capabilities", () 
 
   assert.equal(provider.capabilities?.some((capability) => capability.type === "openai_video_generations"), false);
   assert.equal(provider.capabilities?.some((capability) => capability.type === "xai_video_generations"), true);
+});
+
+test("Grok local provider adopts a credential rotated by a peer process on refresh 401", async (t) => {
+  await withGrokHome(async (grokHome) => {
+    writeGrokAuth(grokHome, {
+      key: "expired-token",
+      refresh_token: "stale-refresh-token",
+      expires_at: "2000-01-01T00:00:00Z",
+      oidc_client_id: "grok-client-id",
+      oidc_issuer: "https://auth.x.ai"
+    });
+    writeGrokModels(grokHome);
+
+    const previousFetch = globalThis.fetch;
+    process.env.GROK_OIDC_TOKEN_ENDPOINT = "http://127.0.0.1/grok/oauth/token";
+    globalThis.fetch = async () => {
+      // The Grok CLI refreshed first: it persisted the rotated credential and
+      // invalidated the refresh token this process still holds.
+      writeGrokAuth(grokHome, {
+        key: "peer-access-token",
+        refresh_token: "peer-refresh-token",
+        expires_at: "2999-01-01T00:00:00Z",
+        oidc_client_id: "grok-client-id",
+        oidc_issuer: "https://auth.x.ai"
+      });
+      return new Response(JSON.stringify({ error: "invalid_grant" }), {
+        headers: { "content-type": "application/json" },
+        status: 401
+      });
+    };
+    t.after(() => {
+      globalThis.fetch = previousFetch;
+    });
+
+    const auth = await resolveGrokAuth();
+    assert.equal(auth.accessToken, "peer-access-token");
+    assert.equal(auth.refreshToken, "peer-refresh-token");
+  });
+});
+
+test("Grok local provider surfaces refresh 401 when no peer rotation is on disk", async (t) => {
+  await withGrokHome(async (grokHome) => {
+    writeGrokAuth(grokHome, {
+      key: "expired-token",
+      refresh_token: "stale-refresh-token",
+      expires_at: "2000-01-01T00:00:00Z",
+      oidc_client_id: "grok-client-id",
+      oidc_issuer: "https://auth.x.ai"
+    });
+    writeGrokModels(grokHome);
+
+    const previousFetch = globalThis.fetch;
+    process.env.GROK_OIDC_TOKEN_ENDPOINT = "http://127.0.0.1/grok/oauth/token";
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: "invalid_grant" }), {
+      headers: { "content-type": "application/json" },
+      status: 401
+    });
+    t.after(() => {
+      globalThis.fetch = previousFetch;
+    });
+
+    await assert.rejects(() => resolveGrokAuth(), /HTTP 401/);
+  });
 });
 
 async function withGrokHome(run) {

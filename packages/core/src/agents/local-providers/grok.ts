@@ -182,6 +182,16 @@ const grokBillingMapping: ProviderAccountMappingConfig = {
   ]
 };
 
+export class GrokRefreshAuthError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "GrokRefreshAuthError";
+    this.status = status;
+  }
+}
+
 export type GrokTokenSet = OAuthTokenSet & {
   authRecordKey?: string;
   oidcClientId?: string;
@@ -255,7 +265,26 @@ export async function resolveGrokAuth(): Promise<GrokTokenSet | undefined> {
   if (!auth?.refreshToken || (auth.accessToken && !grokAccessTokenExpired(auth))) {
     return auth;
   }
-  return refreshGrokAuth(auth);
+  try {
+    return await refreshGrokAuth(auth);
+  } catch (error) {
+    return adoptPeerRotatedGrokAuth(auth, error);
+  }
+}
+
+function adoptPeerRotatedGrokAuth(auth: GrokTokenSet, error: unknown): GrokTokenSet {
+  if (!(error instanceof GrokRefreshAuthError)) {
+    throw error;
+  }
+  // The refresh token rotates on every refresh. When a peer process sharing
+  // this credential file (for example the Grok CLI) refreshes first, our copy
+  // is stale and the server rejects it, but the file on disk already holds
+  // the newer credential. Adopt it instead of failing the request.
+  const latest = readGrokAuth();
+  if (latest?.refreshToken && latest.refreshToken !== auth.refreshToken) {
+    return latest;
+  }
+  throw error;
 }
 
 export function readGrokLocalModelCatalog(): GrokModelCatalog {
@@ -651,7 +680,11 @@ async function refreshGrokAuth(auth: GrokTokenSet): Promise<GrokTokenSet> {
     const text = await response.text();
     const payload = parseJsonRecord(text);
     if (!response.ok) {
-      throw new Error(`Grok CLI OAuth token refresh returned HTTP ${response.status}${tokenRefreshErrorMessage(payload, text)}`);
+      const message = `Grok CLI OAuth token refresh returned HTTP ${response.status}${tokenRefreshErrorMessage(payload, text)}`;
+      if (response.status === 401 || response.status === 403) {
+        throw new GrokRefreshAuthError(response.status, message);
+      }
+      throw new Error(message);
     }
     const accessToken = readString(payload?.access_token) || readString(payload?.accessToken);
     if (!accessToken) {
