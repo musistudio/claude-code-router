@@ -13,14 +13,16 @@ import { mediaToolsMcpServer } from "@ccr/core/mcp/grok-media-config";
 import { resolveGatewayPublicModelId } from "@ccr/core/gateway/features/model-discovery";
 import { activeProviderCredentials, inferProtocol, normalizedProviderCapabilities, normalizeProviderProtocol, providerCapabilityForClientProtocol, providerCapabilityInternalName, providerCapabilityNameMatches, providerCredentialInternalName, providerProtocolForClientProtocol, sortProviderCredentialsForConfig, toCoreGatewayProviders } from "@ccr/core/providers/runtime-topology";
 import { buildRawTraceConfig } from "@ccr/core/observability/raw-trace-sync";
-import { endpoint, resolveUndiciProxyAgentModule, resolveUpstreamHeaderSanitizerEntry, writeGatewayProxyPreloadFile } from "@ccr/core/gateway/core-runtime/supervisor";
+import { endpoint, resolveLocalAgentAuthProviderHookEntry, resolveUndiciProxyAgentModule, resolveUpstreamHeaderSanitizerEntry, writeGatewayProxyPreloadFile } from "@ccr/core/gateway/core-runtime/supervisor";
 import { billingUsageSyncHeader, billingUsageSyncPath, claudeCodeOauthBetaHeader, claudeCodeOauthRequiredBeta, coreGatewayAuthHeader, coreGatewayAuthTokenEnv } from "@ccr/core/gateway/internal/shared";
 import type { BrowserWebSearchMcpIntegration, CoreGatewayProvider } from "@ccr/core/gateway/internal/shared";
 import { uniqueStrings } from "@ccr/core/gateway/internal/collections";
 import { isLocalClaudeCodeOauthProviderPlugin, mergeAnthropicBetaValues } from "@ccr/core/providers/oauth-plugin";
+import { isLocalAgentOauthProviderPlugin } from "@ccr/core/gateway/core-runtime/local-agent-auth-provider-hook";
 import { resolveConfiguredProviderModelSelector, resolveUniqueConfiguredProviderModelSelector } from "@ccr/core/routing/model-resolution";
 
 const upstreamHeaderSanitizerPluginKey = "ccr-upstream-header-sanitizer";
+const localAgentAuthProviderHookPluginKey = "ccr-local-agent-auth-provider-hooks";
 export const unlimitedVirtualModelToolCalls = Number.MAX_SAFE_INTEGER;
 export const unlimitedVirtualModelToolTurns = Number.MAX_SAFE_INTEGER;
 
@@ -36,7 +38,8 @@ export async function compileCoreGatewayConfig(
   const pluginCoreGatewayConfig = pluginService.getCoreGatewayConfig();
   const configuredGatewayPlugins = Array.isArray(pluginCoreGatewayConfig.plugins)
     ? pluginCoreGatewayConfig.plugins.filter((plugin) =>
-        !isRecord(plugin) || stringValue(plugin.key) !== upstreamHeaderSanitizerPluginKey
+        !isRecord(plugin) ||
+        ![localAgentAuthProviderHookPluginKey, upstreamHeaderSanitizerPluginKey].includes(stringValue(plugin.key) ?? "")
       )
     : [];
   const pluginBillingConfig = isRecord(pluginCoreGatewayConfig.billing) ? pluginCoreGatewayConfig.billing : {};
@@ -82,6 +85,7 @@ export async function compileCoreGatewayConfig(
       .filter((provider): provider is CoreGatewayProvider => Boolean(provider)),
     ...builtinToolArtifacts.providers
   ];
+  const localAgentAuthProviderHookPlugin = localAgentAuthProviderHookPluginConfig(providerPluginsWithCapabilityAliases);
   const pluginAgentConfig = isRecord(pluginCoreGatewayConfig.agent) ? pluginCoreGatewayConfig.agent : {};
   const pluginMcpServers = Array.isArray(pluginAgentConfig.mcpServers) ? pluginAgentConfig.mcpServers : [];
   const externalMcpServers = [
@@ -138,6 +142,7 @@ export async function compileCoreGatewayConfig(
     port: config.gateway.corePort,
     plugins: [
       ...configuredGatewayPlugins,
+      ...(localAgentAuthProviderHookPlugin ? [localAgentAuthProviderHookPlugin] : []),
       {
         enabled: true,
         key: upstreamHeaderSanitizerPluginKey,
@@ -153,6 +158,17 @@ export async function compileCoreGatewayConfig(
     providerPlugins: providerPluginsWithCapabilityAliases,
     providers,
     virtualModelProfiles
+  };
+}
+
+function localAgentAuthProviderHookPluginConfig(providerPlugins: unknown[]): Record<string, unknown> | undefined {
+  if (!providerPlugins.some(isLocalAgentOauthProviderPlugin)) {
+    return undefined;
+  }
+  return {
+    enabled: true,
+    key: localAgentAuthProviderHookPluginKey,
+    modulePath: resolveLocalAgentAuthProviderHookEntry()
   };
 }
 
@@ -518,6 +534,7 @@ async function withGrokOauthRuntimeDefaults(providerPlugins: unknown[]): Promise
     const currentHeaders = isRecord(currentAuth.headers) ? currentAuth.headers : {};
     const currentRequest = isRecord(plugin.request) ? plugin.request : {};
     const currentRequestHeaders = isRecord(currentRequest.headers) ? currentRequest.headers : {};
+    const currentBodyRemove = Array.isArray(currentRequest.bodyRemove) ? currentRequest.bodyRemove : [];
     return {
       ...plugin,
       auth: {
@@ -529,6 +546,12 @@ async function withGrokOauthRuntimeDefaults(providerPlugins: unknown[]): Promise
       },
       request: {
         ...currentRequest,
+        bodyRemove: uniqueStrings([
+          ...currentBodyRemove
+            .map((value) => stringValue(value))
+            .filter((value): value is string => Boolean(value)),
+          "external_web_access"
+        ]),
         headers: {
           ...currentRequestHeaders,
           "x-grok-client-identifier": "xai-grok-cli",

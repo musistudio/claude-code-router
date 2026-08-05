@@ -137,7 +137,7 @@ function codexModelCatalogItem(
     default_reasoning_level: profile.defaultReasoningLevel,
     default_reasoning_effort: profile.defaultReasoningLevel,
     default_reasoning_summary: profile.defaultReasoningSummary,
-    description: `CCR gateway model ${model}`,
+    description: profile.description ?? `CCR gateway model ${model}`,
     displayName: model,
     display_name: model,
     effective_context_window_percent: effectiveContextWindowPercent,
@@ -179,6 +179,7 @@ type CodexCapabilityProfile = {
   applyPatchToolType: string | null;
   catalogEntry?: ModelCatalogEntry;
   contextWindow?: number;
+  description?: string;
   defaultReasoningLevel: string | null;
   defaultReasoningSummary: string;
   effectiveContextWindowPercent?: number;
@@ -250,6 +251,9 @@ function codexModelCapabilityProfile(
     applyPatchToolType,
     catalogEntry,
     contextWindow: providerModelMetadata?.contextWindow,
+    description: provider
+      ? providerModelDescriptionFor(provider, providerModel)
+      : undefined,
     defaultReasoningLevel: resolveDefaultReasoningLevel(
       providerModelMetadata?.defaultReasoningLevel !== undefined
         ? providerModelMetadata.defaultReasoningLevel
@@ -279,6 +283,17 @@ function providerModelMetadataFor(provider: GatewayProviderConfig, model: string
   const normalized = model.trim().toLowerCase();
   const match = Object.entries(metadata).find(([candidate]) => candidate.trim().toLowerCase() === normalized);
   return match?.[1];
+}
+
+function providerModelDescriptionFor(provider: GatewayProviderConfig, model: string): string | undefined {
+  const descriptions = provider.modelDescriptions ?? {};
+  const direct = descriptions[model]?.trim();
+  if (direct) {
+    return direct;
+  }
+  const normalized = model.trim().toLowerCase();
+  const match = Object.entries(descriptions).find(([candidate]) => candidate.trim().toLowerCase() === normalized);
+  return match?.[1]?.trim() || undefined;
 }
 
 function codexProviderModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {

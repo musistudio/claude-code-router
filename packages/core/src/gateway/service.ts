@@ -6,6 +6,7 @@
  */
 export { gatewayService } from "@ccr/core/gateway/application/gateway-service";
 export { prepareCodexApplyPatchBridgeRequest, transformCodexApplyPatchBridgeRequestBody, transformCodexApplyPatchBridgeResponseValue, transformCodexApplyPatchBridgeSseEvent } from "@ccr/core/gateway/features/codex-patch-bridge";
+export { prepareCodexMultiAgentBridgeRequest, transformCodexMultiAgentBridgeRequestBody, transformCodexMultiAgentBridgeResponseValue, transformCodexMultiAgentBridgeSseEvent } from "@ccr/core/gateway/features/codex-multi-agent-bridge";
 export { appendContextArchiveToolOutputsForTest, contextArchiveFunctionCallsForTest, parseContextArchiveToolResponseBodyForTest, prepareCodexCompactCompatRequest, prepareContextArchiveToolContinuationRequestForTest } from "@ccr/core/gateway/features/context-archive-continuation";
 export { normalizeClaudeCodeOauthProviderPlugins, normalizeCoreGatewayVirtualModelProfiles } from "@ccr/core/gateway/core-runtime/config-compiler";
 export { fusionBuiltinToolArtifactsForTest, fusionFallbackToolDefinitions, fusionToolNamesBackedByMcpServers } from "@ccr/core/mcp/fusion-config";

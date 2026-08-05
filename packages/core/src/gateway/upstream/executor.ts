@@ -265,16 +265,50 @@ export async function fetchUpstreamWithFallback(input: {
   upstreamUrl: string;
 }): Promise<UpstreamFetchResult> {
   const fallbackMode = input.fallback.mode;
+  const planningHeaders = { ...input.headers };
+  const planningRouting = applyProviderCapabilityRouting({
+    body: input.body,
+    config: input.config,
+    fallback: input.fallback,
+    headers: planningHeaders,
+    path: input.path,
+    routedModel: input.routedModel
+  });
   const attempts = buildUpstreamAttempts(
     input.config,
-    input.fallback,
+    planningRouting.fallback,
     input.method,
     input.path,
-    input.body,
-    input.routedModel
+    planningRouting.body,
+    planningRouting.routedModel
   );
   const failedAttempts: UpstreamFailedAttempt[] = [];
+  const attemptRoutingCache = new Map<string | undefined, {
+    body?: Buffer;
+    headers: Record<string, string>;
+    routedModel?: string;
+    sourceBody?: Buffer;
+    sourceRoutedModel?: string;
+  }>();
+  const primaryAttempt = attempts[0];
+  const parsedInputBody = parseJsonObjectSafe(input.body);
+  const planningBodyCanSeedPrimary = requestProtocolForPath(input.path) === "gemini_generate_content" ||
+    !parsedInputBody ||
+    !primaryAttempt?.model ||
+    stringValue(parsedInputBody.model) !== undefined;
+  if (primaryAttempt && planningBodyCanSeedPrimary) {
+    attemptRoutingCache.set(primaryAttempt.model, {
+      body: planningRouting.body,
+      headers: planningHeaders,
+      routedModel: primaryAttempt.model,
+      sourceBody: input.body,
+      sourceRoutedModel: input.routedModel
+    });
+  }
   input.trace?.capture({
+    changes: [
+      routeTraceChange("routing", "/routing/fallback", input.fallback, planningRouting.fallback)
+    ].filter(isRouteTraceChange),
     decision: { reason: `fallback:${fallbackMode}`, source: "execution-plan" },
     kind: "decision",
     name: "fallback.execution-plan",
@@ -290,17 +324,69 @@ export async function fetchUpstreamWithFallback(input: {
     }
 
     const attemptNumber = index + 1;
+    const plannedAttempt = attempts[index];
+    const capabilityRoutingStartedAt = Date.now();
+    let cachedAttemptRouting = attemptRoutingCache.get(plannedAttempt.model);
+    if (!cachedAttemptRouting) {
+      const routedHeaders = { ...input.headers };
+      const sourceBody = buildAttemptBody(input.body, input.path, plannedAttempt.model);
+      const routing = applyProviderCapabilityRouting({
+        body: sourceBody,
+        config: input.config,
+        fallback: input.fallback,
+        headers: routedHeaders,
+        path: input.path,
+        routedModel: plannedAttempt.model
+      });
+      cachedAttemptRouting = {
+        body: routing.body,
+        headers: routedHeaders,
+        routedModel: routing.routedModel,
+        sourceBody,
+        sourceRoutedModel: plannedAttempt.model
+      };
+      attemptRoutingCache.set(plannedAttempt.model, cachedAttemptRouting);
+    }
+    const attemptHeaders = { ...cachedAttemptRouting.headers };
+    const attemptSourceBody = cachedAttemptRouting.sourceBody;
+    const capabilityProviderHeadersBefore = {
+      gateway: input.headers["x-gateway-target-provider"],
+      list: input.headers["x-target-providers"],
+      target: input.headers["x-target-provider"]
+    };
+    input.trace?.capture({
+      attempt: attemptNumber,
+      changes: [
+        ...(attemptSourceBody === cachedAttemptRouting.body
+          ? []
+          : [{ operation: "replace" as const, path: "/body/model", scope: "body" as const }]),
+        routeTraceChange("routing", "/routing/model", cachedAttemptRouting.sourceRoutedModel, cachedAttemptRouting.routedModel),
+        routeTraceChange("headers", "/headers/x-target-provider", capabilityProviderHeadersBefore.target, attemptHeaders["x-target-provider"]),
+        routeTraceChange("headers", "/headers/x-target-providers", capabilityProviderHeadersBefore.list, attemptHeaders["x-target-providers"]),
+        routeTraceChange("headers", "/headers/x-gateway-target-provider", capabilityProviderHeadersBefore.gateway, attemptHeaders["x-gateway-target-provider"])
+      ].filter(isRouteTraceChange),
+      durationMs: Date.now() - capabilityRoutingStartedAt,
+      kind: "mutation",
+      name: "provider.capability-routing",
+      phase: "capability",
+      startedAtMs: capabilityRoutingStartedAt,
+      target: cachedAttemptRouting.routedModel ? { model: cachedAttemptRouting.routedModel } : undefined
+    });
     const attemptPreparationStartedAt = Date.now();
     const attempt = prepareUpstreamCredentialAttempt({
-      attempt: attempts[index],
+      attempt: {
+        ...plannedAttempt,
+        body: cachedAttemptRouting.body,
+        model: cachedAttemptRouting.routedModel ?? plannedAttempt.model
+      },
       config: input.config,
-      headers: input.headers,
+      headers: attemptHeaders,
       method: input.method,
       path: input.path
     });
     const hasNextAttempt = index < attempts.length - 1;
     const attemptUrl = rewriteRouteModelInUrl(input.upstreamUrl, attempt.model);
-    const attemptHeaders = {
+    const upstreamHeaders = {
       ...withCoreGatewayAuthHeader(
         omitLocalObservabilityHeaders(attempt.headers ?? input.headers),
         input.coreAuthToken
@@ -346,13 +432,13 @@ export async function fetchUpstreamWithFallback(input: {
     });
 
     releaseJsonObject(attempt.body);
-    releaseJsonObject(attempts[index].body);
+    releaseJsonObject(attemptSourceBody);
     releaseJsonObject(input.body);
 
     try {
       const response = await fetchWithSystemProxy(attemptUrl, {
         body: shouldSendBody(input.method) ? attempt.body?.toString("utf8") : undefined,
-        headers: attemptHeaders,
+        headers: upstreamHeaders,
         method: input.method,
         signal: input.signal
       });
@@ -904,13 +990,50 @@ function buildUpstreamAttempts(
     primaryModel: routedModel
   });
   return plan.attempts.map((attempt) => ({
-    body: parsedBody && !modelInPath && fallback.mode === "model-chain" && attempt.model
-      ? serializeJsonBodyWithModel(parsedBody, attempt.model)
-      : body,
     index: attempt.index,
     model: attempt.model,
     target: attempt.target
   }));
+}
+
+
+function buildAttemptBody(
+  body: Buffer | undefined,
+  path: string,
+  model: string | undefined
+): Buffer | undefined {
+  if (!body || !model || requestProtocolForPath(path) === "gemini_generate_content") {
+    return body;
+  }
+  const parsedBody = parseJsonObjectSafe(body);
+  if (!parsedBody || stringValue(parsedBody.model) === model) {
+    return body;
+  }
+  return serializeJsonBodyWithModel(parsedBody, model);
+}
+
+
+function routeTraceChange(
+  scope: RequestRouteTraceChange["scope"],
+  path: string,
+  before: unknown,
+  after: unknown
+): RequestRouteTraceChange | undefined {
+  if (before === after) {
+    return undefined;
+  }
+  return {
+    ...(before === undefined ? {} : { before }),
+    ...(after === undefined ? {} : { after }),
+    operation: before === undefined ? "add" : after === undefined ? "remove" : "replace",
+    path,
+    scope
+  };
+}
+
+
+function isRouteTraceChange(value: RequestRouteTraceChange | undefined): value is RequestRouteTraceChange {
+  return Boolean(value);
 }
 
 

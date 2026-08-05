@@ -39,6 +39,23 @@ test("codex catalog treats unknown models as text-only while enabling apply_patc
   assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
+test("codex catalog publishes configured provider model descriptions", () => {
+  const model = catalogModelFor({
+    Providers: [
+      {
+        modelDescriptions: {
+          "MODEL-A": "Fast sidecar model for simple code search."
+        },
+        models: ["model-a"],
+        name: "Custom",
+        type: "openai_chat_completions"
+      }
+    ]
+  }, "Custom/model-a");
+
+  assert.equal(model.description, "Fast sidecar model for simple code search.");
+});
+
 test("codex catalog uses model catalog capabilities for known text models", () => {
   const model = catalogModelFor({
     Providers: [
