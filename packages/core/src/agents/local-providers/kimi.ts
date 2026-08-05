@@ -54,6 +54,16 @@ type KimiConfiguredProvider = {
   sourceFile: string;
 };
 
+export class KimiRefreshAuthError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "KimiRefreshAuthError";
+    this.status = status;
+  }
+}
+
 export type KimiTokenSet = {
   accessToken?: string;
   expiresAt?: number;
@@ -163,7 +173,13 @@ export function readKimiAuth(reference?: KimiOauthReference): KimiTokenSet | und
   if (!oauthKey) {
     return undefined;
   }
-  const sourceFile = kimiCredentialFile(oauthKey);
+  return readKimiAuthFromFile(
+    kimiCredentialFile(oauthKey),
+    reference?.oauthHost?.trim() || provider?.oauthHost
+  );
+}
+
+function readKimiAuthFromFile(sourceFile: string, oauthHost?: string): KimiTokenSet | undefined {
   const record = readJsonRecord(sourceFile);
   if (!record) {
     return undefined;
@@ -173,7 +189,7 @@ export function readKimiAuth(reference?: KimiOauthReference): KimiTokenSet | und
     accessToken: readString(record.access_token) || readString(record.accessToken),
     expiresAt,
     expiresIn: numberValue(record.expires_in) ?? numberValue(record.expiresIn),
-    oauthHost: reference?.oauthHost?.trim() || provider?.oauthHost,
+    oauthHost,
     refreshToken: readString(record.refresh_token) || readString(record.refreshToken),
     scope: readString(record.scope),
     sourceFile,
@@ -189,12 +205,29 @@ export async function resolveKimiAuth(reference?: KimiOauthReference): Promise<K
   const key = auth.sourceFile;
   let refresh = kimiRefreshInFlight.get(key);
   if (!refresh) {
-    refresh = refreshKimiAuth(auth).finally(() => {
-      kimiRefreshInFlight.delete(key);
-    });
+    refresh = refreshKimiAuth(auth)
+      .catch((error: unknown) => adoptPeerRotatedKimiAuth(auth, error))
+      .finally(() => {
+        kimiRefreshInFlight.delete(key);
+      });
     kimiRefreshInFlight.set(key, refresh);
   }
   return refresh;
+}
+
+function adoptPeerRotatedKimiAuth(auth: KimiTokenSet, error: unknown): KimiTokenSet {
+  if (!(error instanceof KimiRefreshAuthError)) {
+    throw error;
+  }
+  // The refresh token rotates on every refresh. When a peer process sharing
+  // this credential file (for example the Kimi CLI) refreshes first, our copy
+  // is stale and the server rejects it, but the file on disk already holds
+  // the newer credential. Adopt it instead of failing the request.
+  const latest = readKimiAuthFromFile(auth.sourceFile, auth.oauthHost);
+  if (latest?.refreshToken && latest.refreshToken !== auth.refreshToken) {
+    return latest;
+  }
+  throw error;
 }
 
 export function kimiAccessTokenExpired(auth: KimiTokenSet): boolean {
@@ -386,7 +419,11 @@ async function refreshKimiAuth(auth: KimiTokenSet): Promise<KimiTokenSet> {
     const text = await response.text();
     const payload = parseJsonRecord(text);
     if (!response.ok) {
-      throw new Error(`Kimi CLI OAuth token refresh returned HTTP ${response.status}${tokenRefreshErrorMessage(payload, text)}`);
+      const message = `Kimi CLI OAuth token refresh returned HTTP ${response.status}${tokenRefreshErrorMessage(payload, text)}`;
+      if (response.status === 401 || response.status === 403) {
+        throw new KimiRefreshAuthError(response.status, message);
+      }
+      throw new Error(message);
     }
     const accessToken = readString(payload?.access_token) || readString(payload?.accessToken);
     const refreshToken = readString(payload?.refresh_token) || readString(payload?.refreshToken);

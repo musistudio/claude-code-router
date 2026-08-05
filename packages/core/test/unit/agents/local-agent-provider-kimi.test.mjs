@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { importKimiProvider, kimiCandidates } from "@ccr/core/agents/local-providers/kimi.ts";
+import { importKimiProvider, kimiCandidates, resolveKimiAuth } from "@ccr/core/agents/local-providers/kimi.ts";
 
 test("Kimi CLI OAuth login is discovered from inline TOML and imported", async () => {
   await withKimiHome(async (kimiHome) => {
@@ -141,6 +141,83 @@ oauth = { storage = "file", key = "oauth/kimi-code", oauth_host = "http://127.0.
     assert.equal(persisted.access_token, "refreshed-access-token");
     assert.equal(persisted.refresh_token, "refreshed-refresh-token");
     assert.equal(persisted.expires_in, 7200);
+  });
+});
+
+test("Kimi CLI OAuth adopts a credential rotated by a peer process on refresh 401", async (t) => {
+  await withKimiHome(async (kimiHome) => {
+    writeFileSync(path.join(kimiHome, "config.toml"), `
+[providers."managed:kimi-code"]
+type = "kimi"
+base_url = "https://api.kimi.com/coding/v1"
+oauth = { storage = "file", key = "oauth/kimi-code", oauth_host = "http://127.0.0.1" }
+`);
+    const credentialsDir = path.join(kimiHome, "credentials");
+    mkdirSync(credentialsDir, { recursive: true });
+    const credentialFile = path.join(credentialsDir, "kimi-code.json");
+    writeFileSync(credentialFile, JSON.stringify({
+      access_token: "expired-token",
+      expires_at: 1,
+      expires_in: 3600,
+      refresh_token: "stale-refresh-token"
+    }));
+
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async () => {
+      // The Kimi CLI refreshed first: it persisted the rotated credential and
+      // invalidated the refresh token this process still holds.
+      writeFileSync(credentialFile, JSON.stringify({
+        access_token: "peer-access-token",
+        expires_at: 32503680000,
+        expires_in: 7200,
+        refresh_token: "peer-refresh-token",
+        token_type: "Bearer"
+      }));
+      return new Response(JSON.stringify({ error: "invalid_grant" }), {
+        headers: { "content-type": "application/json" },
+        status: 401
+      });
+    };
+    t.after(() => {
+      globalThis.fetch = previousFetch;
+    });
+
+    const auth = await resolveKimiAuth({ key: "oauth/kimi-code", oauthHost: "http://127.0.0.1" });
+    assert.equal(auth.accessToken, "peer-access-token");
+    assert.equal(auth.refreshToken, "peer-refresh-token");
+  });
+});
+
+test("Kimi CLI OAuth surfaces refresh 401 when no peer rotation is on disk", async (t) => {
+  await withKimiHome(async (kimiHome) => {
+    writeFileSync(path.join(kimiHome, "config.toml"), `
+[providers."managed:kimi-code"]
+type = "kimi"
+base_url = "https://api.kimi.com/coding/v1"
+oauth = { storage = "file", key = "oauth/kimi-code", oauth_host = "http://127.0.0.1" }
+`);
+    const credentialsDir = path.join(kimiHome, "credentials");
+    mkdirSync(credentialsDir, { recursive: true });
+    writeFileSync(path.join(credentialsDir, "kimi-code.json"), JSON.stringify({
+      access_token: "expired-token",
+      expires_at: 1,
+      expires_in: 3600,
+      refresh_token: "stale-refresh-token"
+    }));
+
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: "invalid_grant" }), {
+      headers: { "content-type": "application/json" },
+      status: 401
+    });
+    t.after(() => {
+      globalThis.fetch = previousFetch;
+    });
+
+    await assert.rejects(
+      () => resolveKimiAuth({ key: "oauth/kimi-code", oauthHost: "http://127.0.0.1" }),
+      /HTTP 401/
+    );
   });
 });
 
