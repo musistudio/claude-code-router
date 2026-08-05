@@ -756,7 +756,14 @@ test("profile service injects ToolHub MCP into Codex config", { skip: !process.e
     separateProfileFile,
     initialSeparateProfile
       .replace('model = "Provider/model"', 'model = "User/selected-in-cli"')
-      .replace(/\s*$/, '\nmodel_reasoning_effort = "ultra"\n')
+      .replace(/\s*$/, [
+        "",
+        'model_reasoning_effort = "ultra"',
+        "",
+        '[mcp_servers.ccr-toolhub.tools."tool_hub.resolve"]',
+        'approval_mode = "approve"',
+        ""
+      ].join("\n"))
   );
 
   await applyProfileConfig(config);
@@ -773,6 +780,7 @@ test("profile service injects ToolHub MCP into Codex config", { skip: !process.e
   const preservedSeparateProfile = readFileSync(separateProfileFile, "utf8");
   assert.match(preservedSeparateProfile, /model = "User\/selected-in-cli"/);
   assert.match(preservedSeparateProfile, /model_reasoning_effort = "ultra"/);
+  assert.equal(preservedSeparateProfile.includes("[mcp_servers.ccr-toolhub"), false);
 
   config.Providers[0].models.push("model-2");
   config.profile.profiles[0].model = "Provider/model-2";

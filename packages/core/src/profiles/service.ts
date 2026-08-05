@@ -917,8 +917,8 @@ function buildCodexConfigToml(
     managedContextArchiveMcpEnd
   ]);
   content = removeCodexProviderTable(content, values.providerId);
-  content = removeCodexMcpServerTable(content, TOOL_HUB_MCP_SERVER_NAME);
-  content = removeCodexMcpServerTable(content, CONTEXT_ARCHIVE_MCP_SERVER_NAME);
+  content = removeCodexMcpServerTable(content, TOOL_HUB_MCP_SERVER_NAME, { includeChildTables: !values.toolHubMcp });
+  content = removeCodexMcpServerTable(content, CONTEXT_ARCHIVE_MCP_SERVER_NAME, { includeChildTables: !values.contextArchiveMcp });
   if (values.configFormat === "separate_profile_files") {
     content = removeCodexProfileTable(content, values.providerId);
   }
@@ -1034,7 +1034,9 @@ function buildSeparateCodexProfileToml(
 ): string {
   const firstTableIndex = firstTomlTableIndex(source);
   const rootSource = firstTableIndex === -1 ? source : source.slice(0, firstTableIndex);
-  const restSource = firstTableIndex === -1 ? "" : source.slice(firstTableIndex);
+  let restSource = firstTableIndex === -1 ? "" : source.slice(firstTableIndex);
+  restSource = removeCodexMcpServerTable(restSource, TOOL_HUB_MCP_SERVER_NAME, { includeChildTables: true });
+  restSource = removeCodexMcpServerTable(restSource, CONTEXT_ARCHIVE_MCP_SERVER_NAME, { includeChildTables: true });
   const modelAssignment = managedModelAssignment(rootSource, values.model);
   const showAllSessionsAssignment = rootTomlAssignment(rootSource, "show_all_sessions")
     ?? (values.showAllSessions ? "show_all_sessions = true" : undefined);
@@ -2323,7 +2325,11 @@ function removeCodexProfileTable(source: string, providerId: string): string {
   return removeTomlTable(source, "profiles", providerId);
 }
 
-function removeCodexMcpServerTable(source: string, serverName: string): string {
+function removeCodexMcpServerTable(
+  source: string,
+  serverName: string,
+  options: { includeChildTables?: boolean } = {}
+): string {
   const lines = source.split(/(?<=\n)/);
   const headers = new Set([
     `[mcp_servers.${serverName}]`,
@@ -2338,7 +2344,8 @@ function removeCodexMcpServerTable(source: string, serverName: string): string {
   const kept: string[] = [];
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    if (!headers.has(line.trim())) {
+    const trimmed = line.trim();
+    if (!headers.has(trimmed) && !isCodexMcpServerChildTable(trimmed, serverName, Boolean(options.includeChildTables))) {
       kept.push(line);
       continue;
     }
@@ -2350,6 +2357,14 @@ function removeCodexMcpServerTable(source: string, serverName: string): string {
     index -= 1;
   }
   return kept.join("");
+}
+
+function isCodexMcpServerChildTable(trimmedLine: string, serverName: string, enabled: boolean): boolean {
+  if (!enabled) {
+    return false;
+  }
+  return trimmedLine.startsWith(`[mcp_servers.${serverName}.`) ||
+    trimmedLine.startsWith(`[mcp_servers.${tomlQuotedKey(serverName)}.`);
 }
 
 function removeTomlTable(source: string, section: string, name: string): string {
