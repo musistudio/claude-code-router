@@ -17,6 +17,7 @@ import {
   copyModelCatalog,
   copyRendererHtml,
   copyTrayRendererHtml,
+  createRequestLogBodyWorkerBuildOptions,
   createBrowserRendererBuildOptions,
   createCliBuildOptions,
   createMainBuildOptions,
@@ -51,6 +52,7 @@ let queuedStyleBuildReason = null;
 const ready = {
   browser: false,
   cli: false,
+  logWorker: false,
   main: false,
   renderer: false,
   tray: false,
@@ -66,6 +68,7 @@ const coreSharedSourceRoot = path.join(coreSourceRoot, "shared");
 const styleWatchRoots = [rendererRoot, coreSharedSourceRoot].filter((watchRoot) => existsSync(watchRoot));
 const activeReadyNames = new Set([
   ...(enabled.ui ? ["browser", "renderer", "tray", "webBridge"] : []),
+  ...(enabled.ui ? ["logWorker"] : []),
   ...(enabled.cli ? ["cli"] : []),
   ...(enabled.electron ? ["main"] : [])
 ]);
@@ -295,7 +298,7 @@ function pollSourceWatchTargets() {
 }
 
 function markReady(name, reason = `${name} esbuild completed`) {
-  if (name === "browser" || name === "cli" || name === "main" || name === "renderer" || name === "tray" || name === "webBridge") {
+  if (name === "browser" || name === "cli" || name === "logWorker" || name === "main" || name === "renderer" || name === "tray" || name === "webBridge") {
     ready[name] = true;
   }
   logDev(`build ready: ${reason}; ${readyState()}`);
@@ -504,6 +507,17 @@ if (enabled.ui) {
         mode: "development",
         plugins: [
           watchPlugin("webBridge", (name) => {
+            syncUiRendererToRuntimeDists();
+            markReady(name);
+          })
+        ]
+      })
+    ),
+    await esbuild.context(
+      createRequestLogBodyWorkerBuildOptions({
+        mode: "development",
+        plugins: [
+          watchPlugin("logWorker", (name) => {
             syncUiRendererToRuntimeDists();
             markReady(name);
           })

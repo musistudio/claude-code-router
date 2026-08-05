@@ -66,6 +66,8 @@ export const trayRendererHtmlOutput = path.join(rendererOutDir, "pages", "tray",
 export const cssInput = path.join(rendererRoot, "styles", "globals.css");
 export const cssOutput = path.join(rendererAssetsDir, "main.css");
 export const webClientBridgeOutput = path.join(rendererAssetsDir, "web-client-bridge.js");
+export const requestLogBodyWorkerOutput = path.join(rendererAssetsDir, "log-body.worker.js");
+export const requestLogBodyWorkerInput = path.join(rendererRoot, "pages", "home", "shared", "log-body.worker.ts");
 export const electronUndiciProxyAgentInput = path.join(coreSourceRoot, "proxy", "undici-proxy-agent.ts");
 export const localAgentAuthProviderHookInput = path.join(coreSourceRoot, "gateway", "core-runtime", "local-agent-auth-provider-hook.ts");
 export const upstreamHeaderSanitizerInput = path.join(coreSourceRoot, "gateway", "core-runtime", "upstream-header-sanitizer.ts");
@@ -379,6 +381,26 @@ export function createWebClientBridgeBuildOptions({ mode = "production", plugins
   };
 }
 
+export function createRequestLogBodyWorkerBuildOptions({ mode = "production", plugins = [] } = {}) {
+  return {
+    absWorkingDir: projectRoot,
+    bundle: true,
+    define: {
+      "process.env.NODE_ENV": JSON.stringify(mode)
+    },
+    entryPoints: [requestLogBodyWorkerInput],
+    format: "esm",
+    legalComments: "none",
+    logLevel: "info",
+    minify: mode === "production",
+    outfile: requestLogBodyWorkerOutput,
+    platform: "browser",
+    plugins: [rendererAliasPlugin(), packageAliasPlugin(), ...plugins],
+    sourcemap: mode !== "production",
+    target: "chrome120"
+  };
+}
+
 export function createBotGatewaySdkBuildOptions({ mode = "production", plugins = [] } = {}) {
   return {
     absWorkingDir: projectRoot,
@@ -462,6 +484,10 @@ export async function buildBrowserRenderer(options = {}) {
 
 export async function buildWebClientBridge(options = {}) {
   await esbuild.build(createWebClientBridgeBuildOptions(options));
+}
+
+export async function buildRequestLogBodyWorker(options = {}) {
+  await esbuild.build(createRequestLogBodyWorkerBuildOptions(options));
 }
 
 export function copyCliRuntimeToElectronDist() {
