@@ -279,9 +279,13 @@ function adoptPeerRotatedGrokAuth(auth: GrokTokenSet, error: unknown): GrokToken
   // The refresh token rotates on every refresh. When a peer process sharing
   // this credential file (for example the Grok CLI) refreshes first, our copy
   // is stale and the server rejects it, but the file on disk already holds
-  // the newer credential. Adopt it instead of failing the request.
-  const latest = readGrokAuth();
-  if (latest?.refreshToken && latest.refreshToken !== auth.refreshToken) {
+  // the newer credential. Adopt it instead of failing the request. Only the
+  // same account record is considered: in a multi-account file a different
+  // record says nothing about the token that was rejected.
+  const latest = readGrokAuthRecords(auth.sourceFile).find(
+    (item) => item.authRecordKey === auth.authRecordKey
+  );
+  if (latest?.refreshToken && latest.accessToken && latest.refreshToken !== auth.refreshToken) {
     return latest;
   }
   throw error;

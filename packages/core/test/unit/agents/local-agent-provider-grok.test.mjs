@@ -358,6 +358,51 @@ test("Grok local provider surfaces refresh 401 when no peer rotation is on disk"
   });
 });
 
+test("Grok local provider does not adopt a different account record on refresh 401", async (t) => {
+  await withGrokHome(async (grokHome) => {
+    writeGrokAuth(grokHome, {
+      key: "expired-token",
+      refresh_token: "stale-refresh-token",
+      expires_at: "2000-01-01T00:00:00Z",
+      oidc_client_id: "grok-client-id",
+      oidc_issuer: "https://auth.x.ai"
+    });
+    writeGrokModels(grokHome);
+
+    const previousFetch = globalThis.fetch;
+    process.env.GROK_OIDC_TOKEN_ENDPOINT = "http://127.0.0.1/grok/oauth/token";
+    globalThis.fetch = async () => {
+      // A peer rotated a DIFFERENT account in the same file; the record being
+      // refreshed here was not touched, so there is nothing to adopt.
+      writeFileSync(path.join(grokHome, "auth.json"), JSON.stringify({
+        "https://auth.x.ai::test-account": {
+          key: "expired-token",
+          refresh_token: "stale-refresh-token",
+          expires_at: "2000-01-01T00:00:00Z",
+          oidc_client_id: "grok-client-id",
+          oidc_issuer: "https://auth.x.ai"
+        },
+        "https://auth.x.ai::other-account": {
+          key: "other-access-token",
+          refresh_token: "other-refresh-token",
+          expires_at: "2999-01-01T00:00:00Z",
+          oidc_client_id: "grok-client-id",
+          oidc_issuer: "https://auth.x.ai"
+        }
+      }, null, 2));
+      return new Response(JSON.stringify({ error: "invalid_grant" }), {
+        headers: { "content-type": "application/json" },
+        status: 401
+      });
+    };
+    t.after(() => {
+      globalThis.fetch = previousFetch;
+    });
+
+    await assert.rejects(() => resolveGrokAuth(), /HTTP 401/);
+  });
+});
+
 async function withGrokHome(run) {
   const previousGrokHome = process.env.GROK_HOME;
   const previousGrokAuthFile = process.env.GROK_AUTH_FILE;
