@@ -349,7 +349,12 @@ const rpcHandlers: Record<string, RpcHandler> = {
       opened: true
     };
   },
-  openBuiltInBrowser: async () => {
+  openBuiltInBrowser: async (url) => {
+    const targetUrl = readString(url);
+    if (targetUrl) {
+      await openSystemExternal(targetUrl);
+      return;
+    }
     const config = await loadAppConfig();
     const appUrl = firstConfiguredBrowserAppUrl(config) || "about:blank";
     if (appUrl === "about:blank") {

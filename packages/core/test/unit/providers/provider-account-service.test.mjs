@@ -122,11 +122,14 @@ test("webcontent-json connector uses browser-session handler without provider AP
     baseUrl: "https://vendor.example.com/v1",
     connector: {
       browser: {
+        headerTemplates: {
+          authorization: "Bearer ${localStorage.accessToken}"
+        },
         loginUrl: "https://vendor.example.com/login",
         requestOrigin: "https://vendor.example.com",
         timeoutMs: 12000
       },
-      endpoint: "https://vendor.example.com/api/account",
+      endpoint: "https://api.vendor.example.com/account",
       headers: {
         "x-csrf-token": "csrf"
       },
@@ -147,10 +150,12 @@ test("webcontent-json connector uses browser-session handler without provider AP
     providerName: "Vendor"
   });
 
-  assert.equal(captured.endpoint, "https://vendor.example.com/api/account");
+  assert.equal(captured.endpoint, "https://api.vendor.example.com/account");
+  assert.equal(captured.credentials, "omit");
   assert.equal(captured.method, "GET");
   assert.equal(captured.requestOrigin, "https://vendor.example.com");
   assert.equal(captured.loginUrl, "https://vendor.example.com/login");
+  assert.equal(captured.headerTemplates.authorization, "Bearer ${localStorage.accessToken}");
   assert.equal(captured.provider.api_key, "");
   assert.equal(captured.provider.apiKey, undefined);
   assert.equal(captured.headers["x-csrf-token"], "csrf");
@@ -159,32 +164,47 @@ test("webcontent-json connector uses browser-session handler without provider AP
   assert.equal(result.meters[0].source, "webcontent-json");
 });
 
-test("webcontent-json connector rejects cross-origin browser requests before invoking handler", async (t) => {
-  let called = false;
-  setProviderAccountWebContentFetchHandler(async () => {
-    called = true;
-    return { payload: {} };
+test("webcontent-json connector defaults browser request origin to login URL origin", async (t) => {
+  let captured;
+  setProviderAccountWebContentFetchHandler(async (request) => {
+    captured = request;
+    return {
+      payload: {
+        balance: 7
+      }
+    };
   });
   t.after(() => {
     setProviderAccountWebContentFetchHandler(undefined);
   });
 
-  await assert.rejects(
-    () => testProviderAccountConnector({
-      baseUrl: "https://vendor.example.com/v1",
-      connector: {
-        browser: {
-          requestOrigin: "https://app.vendor.example.com"
-        },
-        endpoint: "https://api.vendor.example.com/account",
-        mapping: { meters: [] },
-        type: "webcontent-json"
+  const result = await testProviderAccountConnector({
+    baseUrl: "https://vendor.example.com/v1",
+    connector: {
+      browser: {
+        loginUrl: "https://app.vendor.example.com/login"
       },
-      providerName: "Vendor"
-    }),
-    /origin must match/
-  );
-  assert.equal(called, false);
+      endpoint: "https://api.vendor.example.com/account",
+      mapping: {
+        meters: [
+          {
+            id: "balance",
+            kind: "balance",
+            label: "Balance",
+            remaining: "$.balance",
+            unit: "USD"
+          }
+        ]
+      },
+      type: "webcontent-json"
+    },
+    providerName: "Vendor"
+  });
+
+  assert.equal(captured.endpoint, "https://api.vendor.example.com/account");
+  assert.equal(captured.credentials, "include");
+  assert.equal(captured.requestOrigin, "https://app.vendor.example.com");
+  assert.equal(result.meters[0].remaining, 7);
 });
 
 test("webcontent-json connector reports unsupported outside CCR Desktop", async () => {

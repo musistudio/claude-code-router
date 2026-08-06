@@ -243,6 +243,7 @@ export type ProviderAccountMeterKind = "balance" | "subscription" | "quota" | "t
 export type ProviderAccountMeterUnit = "USD" | "CNY" | "hours" | "minutes" | "tokens" | "requests" | string;
 export type ProviderAccountMeterWindow = "5h" | "daily" | "weekly" | "monthly" | string;
 export type ProviderAccountHttpJsonParser = "grok-subscription" | "kimi-code-usages" | "new-api-key-usage" | "new-api-user-self";
+export type ProviderAccountBrowserCredentialsMode = "include" | "omit" | "same-origin";
 
 export type ProviderAccountConfig = {
   connectors?: ProviderAccountConnectorConfig[];
@@ -284,6 +285,8 @@ export type ProviderAccountHttpJsonConnectorConfig = ProviderAccountConnectorBas
 export type ProviderAccountWebContentJsonConnectorConfig = ProviderAccountConnectorBaseConfig & {
   body?: unknown;
   browser?: {
+    credentials?: ProviderAccountBrowserCredentialsMode;
+    headerTemplates?: Record<string, string>;
     loginUrl?: string;
     partition?: "built-in-browser";
     requestOrigin?: string;

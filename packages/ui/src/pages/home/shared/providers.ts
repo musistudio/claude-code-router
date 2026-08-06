@@ -21,6 +21,7 @@ import type {
   ProviderAccountConnectorConfig,
   ProviderAccountHttpJsonConnectorConfig,
   ProviderAccountStandardConnectorConfig,
+  ProviderAccountWebContentJsonConnectorConfig,
   ProviderCredentialConfig,
   ProviderDeepLinkPayload,
   ProviderModelMetadata,
@@ -1087,7 +1088,19 @@ export function parseProviderAccountDraft(draft: AddProviderDraft): GatewayProvi
     };
   }
 
-  if (draft.accountMode === "http-json" || draft.usageRequestUrl.trim()) {
+  if (draft.accountMode === "browser") {
+    const connector = providerBrowserConnectorFromDraft(draft);
+    if (typeof connector === "string") {
+      return connector;
+    }
+    return {
+      connectors: [connector],
+      enabled: true,
+      refreshIntervalMs: refreshIntervalMs && refreshIntervalMs > 0 ? refreshIntervalMs : undefined
+    };
+  }
+
+  if (draft.accountMode === "http-json") {
     const connector = providerHttpJsonConnectorFromDraft(draft);
     if (typeof connector === "string") {
       return connector;
@@ -1130,6 +1143,11 @@ export function createDefaultProviderAccountDraft(): Pick<
   | "usageBalanceRemainingPath"
   | "usageBalanceUnit"
   | "usageBalanceUsedPath"
+  | "usageBrowserCredentials"
+  | "usageBrowserHeaderTemplates"
+  | "usageBrowserLoginUrl"
+  | "usageBrowserRequestOrigin"
+  | "usageBrowserTimeoutMs"
   | "usageMessagePath"
   | "usageRequestBodyText"
   | "usageRequestHeaders"
@@ -1150,6 +1168,11 @@ export function createDefaultProviderAccountDraft(): Pick<
     usageBalanceRemainingPath: "",
     usageBalanceUnit: "USD",
     usageBalanceUsedPath: "",
+    usageBrowserCredentials: "omit",
+    usageBrowserHeaderTemplates: [],
+    usageBrowserLoginUrl: "",
+    usageBrowserRequestOrigin: "",
+    usageBrowserTimeoutMs: "",
     usageMessagePath: "",
     usageRequestBodyText: "",
     usageRequestHeaders: [],
@@ -1173,7 +1196,11 @@ export function createProviderAccountDraftFromConfig(account: ProviderAccountCon
   const httpJsonConnector = connectors.length === 1 && connectors[0]?.type === "http-json"
     ? connectors[0] as ProviderAccountHttpJsonConnectorConfig
     : undefined;
-  if (!httpJsonConnector) {
+  const browserConnector = connectors.length === 1 && connectors[0]?.type === "webcontent-json"
+    ? connectors[0] as ProviderAccountWebContentJsonConnectorConfig
+    : undefined;
+  const jsonConnector = httpJsonConnector ?? browserConnector;
+  if (!jsonConnector) {
     return {
       ...base,
       accountConnectorsText: JSON.stringify(connectors, null, 2),
@@ -1182,7 +1209,7 @@ export function createProviderAccountDraftFromConfig(account: ProviderAccountCon
       accountRefreshIntervalMs: account.refreshIntervalMs ? String(account.refreshIntervalMs) : ""
     };
   }
-  if (httpJsonConnector.parser) {
+  if (jsonConnector.parser) {
     return {
       ...base,
       accountConnectorsText: JSON.stringify(connectors, null, 2),
@@ -1192,27 +1219,33 @@ export function createProviderAccountDraftFromConfig(account: ProviderAccountCon
     };
   }
 
-  const balanceMeter = httpJsonConnector.mapping.meters.find((meter) => meter.kind === "balance" || meter.id === "balance");
-  const subscriptionMeter = httpJsonConnector.mapping.meters.find((meter) =>
+  const balanceMeter = jsonConnector.mapping.meters.find((meter) => meter.kind === "balance" || meter.id === "balance");
+  const subscriptionMeter = jsonConnector.mapping.meters.find((meter) =>
     meter.kind === "subscription" || meter.id === "subscription" || meter.kind === "quota" || meter.kind === "tokens" || meter.kind === "time_window"
   );
+  const browser = browserConnector?.browser;
 
   return {
     ...base,
     accountConnectorsText: JSON.stringify(connectors, null, 2),
     accountEnabled: account.enabled === true,
-    accountMode: "http-json",
+    accountMode: browserConnector ? "browser" : "http-json",
     accountRefreshIntervalMs: account.refreshIntervalMs ? String(account.refreshIntervalMs) : "",
     usageBalanceLimitPath: stringValue(balanceMeter?.limit) || "",
     usageBalanceRemainingPath: stringValue(balanceMeter?.remaining) || "",
     usageBalanceUnit: stringValue(balanceMeter?.unit) || "USD",
     usageBalanceUsedPath: stringValue(balanceMeter?.used) || "",
-    usageMessagePath: httpJsonConnector.mapping.message ?? "",
-    usageRequestBodyText: httpJsonConnector.body === undefined ? "" : formatEditableJson(httpJsonConnector.body),
-    usageRequestHeaders: keyValueRowsFromRecord(httpJsonConnector.headers ?? {}),
-    usageRequestMethod: httpJsonConnector.method === "POST" ? "POST" : "GET",
-    usageRequestUrl: httpJsonConnector.endpoint,
-    usageStatusPath: httpJsonConnector.mapping.status ?? "",
+    usageBrowserCredentials: browserCredentialsDraftValue(browser?.credentials, browser?.headerTemplates),
+    usageBrowserHeaderTemplates: keyValueRowsFromRecord(browser?.headerTemplates ?? {}),
+    usageBrowserLoginUrl: browser?.loginUrl ?? "",
+    usageBrowserRequestOrigin: browser?.requestOrigin ?? "",
+    usageBrowserTimeoutMs: browser?.timeoutMs ? String(browser.timeoutMs) : "",
+    usageMessagePath: mappedStringDraftValue(jsonConnector.mapping.message),
+    usageRequestBodyText: jsonConnector.body === undefined ? "" : formatEditableJson(jsonConnector.body),
+    usageRequestHeaders: keyValueRowsFromRecord(jsonConnector.headers ?? {}),
+    usageRequestMethod: jsonConnector.method === "POST" ? "POST" : "GET",
+    usageRequestUrl: jsonConnector.endpoint,
+    usageStatusPath: mappedStringDraftValue(jsonConnector.mapping.status),
     usageSubscriptionLimitPath: stringValue(subscriptionMeter?.limit) || "",
     usageSubscriptionRemainingPath: stringValue(subscriptionMeter?.remaining) || "",
     usageSubscriptionResetPath: stringValue(subscriptionMeter?.resetAt) || "",
@@ -1220,7 +1253,25 @@ export function createProviderAccountDraftFromConfig(account: ProviderAccountCon
   };
 }
 
-export function providerHttpJsonConnectorFromDraft(draft: AddProviderDraft, options: { requireMeters?: boolean } = { requireMeters: true }): ProviderAccountHttpJsonConnectorConfig | string {
+function mappedStringDraftValue(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) {
+    return value.find((item) => stringValue(item)) ?? "";
+  }
+  return stringValue(value) || "";
+}
+
+type ProviderJsonConnectorDraftParts = {
+  body?: unknown;
+  endpoint: string;
+  headers: Record<string, string>;
+  mapping: ProviderAccountHttpJsonConnectorConfig["mapping"];
+  method: "GET" | "POST";
+};
+
+function providerJsonConnectorDraftPartsFromDraft(
+  draft: AddProviderDraft,
+  options: { requireMeters?: boolean } = { requireMeters: true }
+): ProviderJsonConnectorDraftParts | string {
   const endpoint = draft.usageRequestUrl.trim();
   if (!endpoint) {
     return "Usage request URL is required.";
@@ -1274,7 +1325,6 @@ export function providerHttpJsonConnectorFromDraft(draft: AddProviderDraft, opti
   }
 
   return {
-    auth: "provider-api-key",
     ...(body !== undefined ? { body } : {}),
     endpoint,
     headers: recordFromKeyValueRows(draft.usageRequestHeaders),
@@ -1283,9 +1333,65 @@ export function providerHttpJsonConnectorFromDraft(draft: AddProviderDraft, opti
       meters,
       ...(draft.usageStatusPath.trim() ? { status: draft.usageStatusPath.trim() } : {})
     },
-    method: draft.usageRequestMethod,
+    method: draft.usageRequestMethod
+  };
+}
+
+export function providerHttpJsonConnectorFromDraft(draft: AddProviderDraft, options: { requireMeters?: boolean } = { requireMeters: true }): ProviderAccountHttpJsonConnectorConfig | string {
+  const parts = providerJsonConnectorDraftPartsFromDraft(draft, options);
+  if (typeof parts === "string") {
+    return parts;
+  }
+
+  return {
+    auth: "provider-api-key",
+    ...parts,
     type: "http-json"
   };
+}
+
+export function providerBrowserConnectorFromDraft(draft: AddProviderDraft, options: { requireMeters?: boolean } = { requireMeters: true }): ProviderAccountWebContentJsonConnectorConfig | string {
+  const parts = providerJsonConnectorDraftPartsFromDraft(draft, options);
+  if (typeof parts === "string") {
+    return parts;
+  }
+
+  const loginUrl = draft.usageBrowserLoginUrl.trim();
+  if (loginUrl && !/^https?:\/\//i.test(loginUrl)) {
+    return "Browser login URL must use http or https.";
+  }
+  const requestOrigin = draft.usageBrowserRequestOrigin.trim();
+  if (requestOrigin && !/^https?:\/\//i.test(requestOrigin)) {
+    return "Browser storage origin must use http or https.";
+  }
+  if (!validateKeyValueRows(draft.usageBrowserHeaderTemplates)) {
+    return "Browser header template rows require keys.";
+  }
+
+  const headerTemplates = recordFromKeyValueRows(draft.usageBrowserHeaderTemplates);
+  const timeoutMs = positiveInteger(draft.usageBrowserTimeoutMs);
+  return {
+    ...parts,
+    browser: {
+      credentials: draft.usageBrowserCredentials,
+      ...(Object.keys(headerTemplates).length > 0 ? { headerTemplates } : {}),
+      ...(loginUrl ? { loginUrl } : {}),
+      partition: "built-in-browser",
+      ...(requestOrigin ? { requestOrigin } : {}),
+      ...(timeoutMs && timeoutMs > 0 ? { timeoutMs } : {})
+    },
+    type: "webcontent-json"
+  };
+}
+
+function browserCredentialsDraftValue(
+  credentials: unknown,
+  headerTemplates: Record<string, string> | undefined
+): AddProviderDraft["usageBrowserCredentials"] {
+  if (credentials === "include" || credentials === "omit" || credentials === "same-origin") {
+    return credentials;
+  }
+  return headerTemplates && Object.keys(headerTemplates).length > 0 ? "omit" : "include";
 }
 
 export type ProviderApiKeyTargetSafetyInput = {
@@ -1528,11 +1634,15 @@ export function providerAccountConnectorExample(): string {
     },
     {
       type: "webcontent-json",
-      endpoint: "https://vendor.example.com/api/account/usage",
+      endpoint: "https://api.vendor.example.com/account/usage",
       browser: {
+        credentials: "omit",
+        headerTemplates: {
+          authorization: "Bearer ${localStorage.accessToken}"
+        },
         loginUrl: "https://vendor.example.com/login",
-        requestOrigin: "https://vendor.example.com",
         partition: "built-in-browser",
+        requestOrigin: "https://vendor.example.com",
         timeoutMs: 15000
       },
       mapping: {

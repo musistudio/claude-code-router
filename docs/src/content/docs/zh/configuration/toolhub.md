@@ -61,8 +61,9 @@ ToolHub 会合并 **ToolHub 页面配置的 MCP servers** 和兼容旧配置中�
 
 1. 当任务需要复用 Chrome 登录状态时，Agent 会请求导入；用户也可以在 CCR 内置浏览器工具栏点击钥匙按钮主动发起。
 2. CCR 创建一次性导入任务，并打开确认页。请使用已安装扩展的 Chrome 打开确认页 URL。
-3. 用户在确认页检查要导入的域名，点击 **Confirm and Import**。
-4. Chrome 扩展读取这些域名的 cookies 和 localStorage，提交给 CCR；完成后 Agent 可以继续使用内置浏览器执行任务。
+3. 如果确认页没有在 Chrome 中打开，请复制 CCR 弹窗里的 **Extension import URL**，打开 Chrome 里的 CCR Login Import 扩展弹窗，粘贴该 URL 后点击 **Import Selected Domains**。
+4. 用户在确认页检查要导入的域名，点击 **Confirm and Import**，或在扩展弹窗中确认导入。
+5. Chrome 扩展读取这些域名的 cookies 和 localStorage，提交给 CCR；完成后 Agent 可以继续使用内置浏览器执行任务。
 
 扩展只读取 CCR 导入任务列出的域名，不会枚举 Chrome 中的全部 cookies。读取 localStorage 时，扩展会临时打开对应 origin 的非激活标签页，读取后自动关闭。若确认页提示扩展没有站点访问权限，请在 Chrome 扩展设置中允许该扩展访问目标域名，然后重新加载解包扩展再重试。
 

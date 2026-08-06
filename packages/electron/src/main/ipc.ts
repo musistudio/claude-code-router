@@ -28,6 +28,7 @@ import {
   USAGE_DB_FILE
 } from "@ccr/core/config/constants";
 import { deepLinkService } from "./deep-link";
+import { chromeLoginImportService } from "./chrome-login-import";
 import { gatewayService } from "@ccr/core/gateway/service";
 import { shouldRestartGatewayForRuntimeConfigChange } from "@ccr/core/gateway/runtime-change";
 import { getProviderAccountSnapshots, invalidateProviderAccountSnapshotCache, resetCodexRateLimitCredit, testProviderAccountConnector } from "@ccr/core/providers/account-service";
@@ -52,7 +53,7 @@ import { getUsageStats } from "@ccr/core/usage/store";
 import { applyNativeThemePreference } from "./native-theme";
 import { registerProviderAccountWebContentFetchHandler } from "./provider-account-webcontent";
 import windowsManager from "./windows";
-import { CLAUDE_DESIGN_PLUGIN_ID, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, type AgentAnalysisFilter, type AgentAnalysisTracePayloadRequest, type ApiKeyConfig, type AppCaptureElementPngRequest, type AppCaptureElementPngResult, type AppConfig, type AppDataExportResult, type AppImageExportTargetRequest, type AppImageExportTargetResult, type AppInfo, type AppRenderHtmlPngRequest, type AppRenderHtmlPngResult, type AppSaveConfigOptions, type BotGatewayQrLoginCancelRequest, type BotGatewayQrLoginStartRequest, type BotGatewayQrLoginWaitRequest, type BotGatewayQrWindowCloseRequest, type BotGatewayQrWindowOpenRequest, type GatewayPluginAppConfig, type GatewayPluginPermission, type GatewayPluginSurface, type GatewayProviderConnectivityCheckRequest, type GatewayProviderProbeCandidatesRequest, type GatewayProviderProbeRequest, type GatewayStatus, type LocalAgentProviderImportRequest, type PluginDependency, type PluginDirectorySelection, type ProfileApplyResult, type ProfileOpenRequest, type ProfileOpenResult, type ProviderAccountResetRequest, type ProviderAccountSnapshotRequestOptions, type ProviderAccountTestRequest, type ProviderCatalogModelsRequest, type ProviderIconDetectionRequest, type ProviderManifestFetchRequest, type RequestLogListFilter, type RouteScriptTestRequest, type RouteScriptValidationRequest, type UsageStatsFilter, type UsageStatsRange } from "@ccr/core/contracts/app";
+import { CLAUDE_DESIGN_PLUGIN_ID, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, type AgentAnalysisFilter, type AgentAnalysisTracePayloadRequest, type ApiKeyConfig, type AppCaptureElementPngRequest, type AppCaptureElementPngResult, type AppConfig, type AppDataExportResult, type AppImageExportTargetRequest, type AppImageExportTargetResult, type AppInfo, type AppRenderHtmlPngRequest, type AppRenderHtmlPngResult, type AppSaveConfigOptions, type BotGatewayQrLoginCancelRequest, type BotGatewayQrLoginStartRequest, type BotGatewayQrLoginWaitRequest, type BotGatewayQrWindowCloseRequest, type BotGatewayQrWindowOpenRequest, type ChromeLoginImportRequest, type GatewayPluginAppConfig, type GatewayPluginPermission, type GatewayPluginSurface, type GatewayProviderConnectivityCheckRequest, type GatewayProviderProbeCandidatesRequest, type GatewayProviderProbeRequest, type GatewayStatus, type LocalAgentProviderImportRequest, type PluginDependency, type PluginDirectorySelection, type ProfileApplyResult, type ProfileOpenRequest, type ProfileOpenResult, type ProviderAccountResetRequest, type ProviderAccountSnapshotRequestOptions, type ProviderAccountTestRequest, type ProviderCatalogModelsRequest, type ProviderIconDetectionRequest, type ProviderManifestFetchRequest, type RequestLogListFilter, type RouteScriptTestRequest, type RouteScriptValidationRequest, type UsageStatsFilter, type UsageStatsRange } from "@ccr/core/contracts/app";
 const imageExportTargets = new Map<string, string>();
 const gatewayPluginPermissionIdSet = new Set<string>(GATEWAY_PLUGIN_PERMISSION_IDS);
 const gatewayPluginSurfaceIdSet = new Set<string>(GATEWAY_PLUGIN_SURFACE_IDS);
@@ -139,9 +140,15 @@ ipcMain.handle(IPC_CHANNELS.appListMcpServerTools, async (_event, serverName: st
   }
   return listMcpServerTools(server);
 });
-ipcMain.handle(IPC_CHANNELS.appOpenBuiltInBrowser, async () => {
+ipcMain.handle(IPC_CHANNELS.appStartChromeLoginImport, async (_event, request: ChromeLoginImportRequest) => {
+  return await chromeLoginImportService.createJob(request);
+});
+ipcMain.handle(IPC_CHANNELS.appGetChromeLoginImport, (_event, id: string) => {
+  return chromeLoginImportService.getJob(typeof id === "string" ? id : "");
+});
+ipcMain.handle(IPC_CHANNELS.appOpenBuiltInBrowser, async (_event, url?: string) => {
   const config = await loadAppConfig();
-  await builtInBrowserService.open(config);
+  await builtInBrowserService.open(config, url);
 });
 ipcMain.handle(IPC_CHANNELS.appOpenPluginApp, async (_event, pluginId: string, appId?: string) => {
   const normalizedPluginId = readString(pluginId);

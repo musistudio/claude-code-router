@@ -116,7 +116,9 @@ export function createProviderAccountWebContentFetchHandler(
 function webContentFetchScript(request: ProviderAccountWebContentFetchRequest, timeoutMs: number): string {
   const serializedRequest = JSON.stringify({
     bodyJson: request.method === "POST" ? JSON.stringify(request.body ?? {}) : undefined,
+    credentials: normalizeRequestCredentials(request.credentials),
     endpoint: request.endpoint,
+    headerTemplates: normalizeHeaderTemplates(request.headerTemplates),
     headers: normalizeRequestHeaders(request.headers),
     maxResponseBytes,
     method: request.method,
@@ -127,16 +129,35 @@ function webContentFetchScript(request: ProviderAccountWebContentFetchRequest, t
     (async () => {
       const request = ${serializedRequest};
       const headers = { ...request.headers };
+      const storagePattern = /\\$\\{(localStorage|sessionStorage)(?:\\.([A-Za-z_$][\\w$]*)|\\[['"]([^'"]+)['"]\\])\\}/g;
+      const readStorageValue = (source, key) => {
+        const storage = source === "sessionStorage" ? sessionStorage : localStorage;
+        const value = storage.getItem(key);
+        if (value === null) {
+          throw new Error(source + " item " + JSON.stringify(key) + " is missing.");
+        }
+        return value;
+      };
+      const renderHeaderTemplate = (template) => {
+        const rendered = String(template).replace(storagePattern, (_match, source, dotKey, quotedKey) => readStorageValue(source, dotKey || quotedKey));
+        if (rendered.includes("\${localStorage") || rendered.includes("\${sessionStorage")) {
+          throw new Error("Unsupported browser header template expression.");
+        }
+        return rendered;
+      };
       if (request.method === "POST" && !Object.keys(headers).some((key) => key.toLowerCase() === "content-type")) {
         headers["content-type"] = "application/json";
       }
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), request.timeoutMs);
       try {
+        for (const [key, template] of Object.entries(request.headerTemplates || {})) {
+          headers[key] = renderHeaderTemplate(template);
+        }
         const response = await fetch(request.endpoint, {
           body: request.method === "POST" ? request.bodyJson : undefined,
           cache: "no-store",
-          credentials: "include",
+          credentials: request.credentials,
           headers,
           method: request.method,
           signal: controller.signal
@@ -177,6 +198,24 @@ function normalizeRequestHeaders(headers: Record<string, string> | undefined): R
     }
   }
   return output;
+}
+
+function normalizeHeaderTemplates(headerTemplates: Record<string, string> | undefined): Record<string, string> {
+  const output: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headerTemplates ?? {})) {
+    const normalizedKey = key.trim();
+    if (!normalizedKey || blockedHeaderNames.has(normalizedKey.toLowerCase())) {
+      continue;
+    }
+    if (typeof value === "string") {
+      output[normalizedKey] = value;
+    }
+  }
+  return output;
+}
+
+function normalizeRequestCredentials(value: ProviderAccountWebContentFetchRequest["credentials"]): NonNullable<ProviderAccountWebContentFetchRequest["credentials"]> {
+  return value === "omit" || value === "same-origin" || value === "include" ? value : "include";
 }
 
 function parseWebContentFetchResult(value: unknown): unknown {
@@ -273,7 +312,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export const providerAccountWebContentInternalsForTest = {
   maxResponseBytes,
+  normalizeHeaderTemplates,
   normalizeRequestHeaders,
+  normalizeRequestCredentials,
   parseWebContentFetchResult,
   webContentFetchScript
 };

@@ -30,6 +30,7 @@ import type {
   ProviderAccountConnectorError,
   ProviderAccountConnectorSource,
   ProviderAccountAuthMode,
+  ProviderAccountBrowserCredentialsMode,
   ProviderAccountHttpJsonConnectorConfig,
   ProviderAccountLocalEstimateConnectorConfig,
   ProviderAccountLocalWindowConfig,
@@ -96,8 +97,10 @@ type CodexOauthRefreshResult = {
 
 export type ProviderAccountWebContentFetchRequest = {
   body?: unknown;
+  credentials?: ProviderAccountBrowserCredentialsMode;
   endpoint: string;
   headers?: Record<string, string>;
+  headerTemplates?: Record<string, string>;
   loginUrl?: string;
   method: "GET" | "POST";
   provider: GatewayProviderConfig;
@@ -1922,20 +1925,19 @@ async function fetchWebContentJson(
     throw new Error("Browser session account requests currently support only the built-in-browser partition.");
   }
 
-  const requestOrigin = normalizeWebContentRequestOrigin(browser.requestOrigin, endpointUrl);
-  if (requestOrigin !== endpointUrl.origin) {
-    throw new Error("Browser session account request origin must match the endpoint origin.");
-  }
-
   const loginUrl = browser.loginUrl?.trim();
-  if (loginUrl) {
-    parseHttpUrl(loginUrl, "Browser session account login URL");
-  }
+  const loginOrigin = loginUrl
+    ? parseHttpUrl(loginUrl, "Browser session account login URL").origin
+    : undefined;
+  const requestOrigin = normalizeWebContentRequestOrigin(browser.requestOrigin, loginOrigin ?? endpointUrl.origin);
+  const credentials = normalizeWebContentCredentials(browser.credentials, browser.headerTemplates);
 
   const response = await providerAccountWebContentFetchHandler({
     body: connector.method === "POST" ? connector.body : undefined,
+    credentials,
     endpoint: endpointUrl.toString(),
     headers: connector.headers,
+    headerTemplates: browser.headerTemplates,
     loginUrl,
     method: connector.method ?? "GET",
     provider: providerWithoutApiKey(provider),
@@ -2077,11 +2079,24 @@ function absoluteAccountEndpoint(provider: GatewayProviderConfig, endpoint: stri
   return url.toString();
 }
 
-function normalizeWebContentRequestOrigin(requestOrigin: string | undefined, endpointUrl: URL): string {
+function normalizeWebContentRequestOrigin(requestOrigin: string | undefined, fallbackOrigin: string): string {
   if (!requestOrigin?.trim()) {
-    return endpointUrl.origin;
+    return fallbackOrigin;
   }
   return parseHttpUrl(requestOrigin, "Browser session account request origin").origin;
+}
+
+function normalizeWebContentCredentials(
+  credentials: ProviderAccountBrowserCredentialsMode | undefined,
+  headerTemplates: Record<string, string> | undefined
+): ProviderAccountBrowserCredentialsMode {
+  if (!credentials) {
+    return headerTemplates && Object.keys(headerTemplates).length > 0 ? "omit" : "include";
+  }
+  if (credentials === "include" || credentials === "omit" || credentials === "same-origin") {
+    return credentials;
+  }
+  throw new Error("Browser session account credentials must be include, omit, or same-origin.");
 }
 
 function parseHttpUrl(value: string, label: string): URL {

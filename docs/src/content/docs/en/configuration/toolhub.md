@@ -61,8 +61,9 @@ Import flow:
 
 1. When a task needs existing Chrome login state, the agent can request an import; the user can also click the key button in CCR's in-app browser toolbar.
 2. CCR creates a one-time import job and opens a confirmation page. Open the confirmation URL in Chrome with the extension installed.
-3. Review the requested domains on the confirmation page, then click **Confirm and Import**.
-4. The Chrome extension reads cookies and localStorage for those domains and submits them to CCR. After it completes, the agent can continue the task in the built-in browser.
+3. If the confirmation page does not open in Chrome, copy the **Extension import URL** from the CCR dialog, open the CCR Login Import extension popup in Chrome, paste that URL, and click **Import Selected Domains**.
+4. Review the requested domains on the confirmation page and click **Confirm and Import**, or confirm the import from the extension popup.
+5. The Chrome extension reads cookies and localStorage for those domains and submits them to CCR. After it completes, the agent can continue the task in the built-in browser.
 
 The extension reads only the domains listed in the CCR import job. It does not enumerate every Chrome cookie. For localStorage, the extension temporarily opens non-active tabs for the selected origins, reads `localStorage`, and closes those tabs. If the confirmation page says the extension does not have site access, allow the extension to access the target domains in Chrome extension settings, reload the unpacked extension, and try again.
 

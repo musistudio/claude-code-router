@@ -28,6 +28,7 @@ import type {
   GatewayProviderProtocol,
   OverviewMetricKind,
   OverviewWidgetSize,
+  ProviderAccountBrowserCredentialsMode,
   ProfileConfig,
   ProfileScope,
   ProfileSurface,
@@ -72,7 +73,7 @@ import trayVioletIconUrl from "@/assets/tray-violet.png";
 type ViewId = "onboarding" | "overview" | "observability" | "api-keys" | "server" | "profile" | "networking" | "logs" | "providers" | "models" | "routing" | "virtual-models" | "extensions";
 type NavigationId = ViewId;
 type OnboardingStepId = "provider" | "profile" | "enter";
-type ProviderAccountDraftMode = "standard" | "http-json" | "raw";
+type ProviderAccountDraftMode = "standard" | "http-json" | "browser" | "raw";
 type ApiKeyLimitMetric = "images" | "requests" | "tokens";
 type ApiKeyExpirationPreset = "7d" | "30d" | "90d" | "custom" | "never";
 type LimitWindowPreset = "day" | "hour" | "minute";
@@ -180,12 +181,19 @@ export const providerProtocolOptions: Array<{ label: string; value: GatewayProvi
 export const providerAccountModeOptions: Array<{ label: string; value: ProviderAccountDraftMode }> = [
   { label: "Standard usage endpoint", value: "standard" },
   { label: "HTTP JSON request", value: "http-json" },
+  { label: "Browser JSON request", value: "browser" },
   { label: "Raw connector JSON", value: "raw" }
 ];
 
 export const providerUsageMethodOptions: Array<{ label: string; value: "GET" | "POST" }> = [
   { label: "GET", value: "GET" },
   { label: "POST", value: "POST" }
+];
+
+export const providerBrowserCredentialsOptions: Array<{ label: string; value: ProviderAccountBrowserCredentialsMode }> = [
+  { label: "Do not send credentials", value: "omit" },
+  { label: "Include cookies", value: "include" },
+  { label: "Same-origin only", value: "same-origin" }
 ];
 
 export const apiKeyExpirationOptions: Array<{ label: string; value: ApiKeyExpirationPreset }> = [

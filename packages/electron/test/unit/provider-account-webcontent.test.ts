@@ -70,7 +70,12 @@ test("browser account fetch handler uses built-in browser partition and sanitize
   });
 
   const result = await handler({
+    credentials: "omit",
     endpoint: "https://vendor.example.com/api/account",
+    headerTemplates: {
+      authorization: "Bearer ${localStorage.accessToken}",
+      cookie: "ignored"
+    },
     headers: {
       cookie: "session=secret",
       "x-csrf-token": "csrf"
@@ -88,10 +93,67 @@ test("browser account fetch handler uses built-in browser partition and sanitize
   assert.equal(closed, true);
   assert.equal(browserWindowOptions.show, false);
   assert.equal(viewOptions.webPreferences.partition, "persist:ccr-built-in-browser");
+  assert.equal(scriptRequest.credentials, "omit");
   assert.equal(scriptRequest.endpoint, "https://vendor.example.com/api/account");
+  assert.equal(scriptRequest.headerTemplates.authorization, "Bearer ${localStorage.accessToken}");
+  assert.equal(scriptRequest.headerTemplates.cookie, undefined);
   assert.equal(scriptRequest.headers.accept, "application/json");
   assert.equal(scriptRequest.headers.cookie, undefined);
   assert.equal(scriptRequest.headers["x-csrf-token"], "csrf");
+});
+
+test("browser account fetch script renders storage header templates", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousLocalStorage = (globalThis as any).localStorage;
+  const previousSessionStorage = (globalThis as any).sessionStorage;
+  let fetchInit: any;
+
+  (globalThis as any).localStorage = {
+    getItem: (key: string) => key === "accessToken" ? "access-123" : null
+  };
+  (globalThis as any).sessionStorage = {
+    getItem: (key: string) => key === "csrf-token" ? "csrf-456" : null
+  };
+  (globalThis as any).fetch = async (_url: string, init: any) => {
+    fetchInit = init;
+    return {
+      headers: {
+        get: () => "application/json"
+      },
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: async () => "{\"balance\":12}"
+    };
+  };
+
+  try {
+    const script = providerAccountWebContentInternalsForTest.webContentFetchScript({
+      credentials: "omit",
+      endpoint: "https://vendor.example.com/api/account",
+      headerTemplates: {
+        authorization: "Bearer ${localStorage.accessToken}",
+        "x-csrf-token": "${sessionStorage['csrf-token']}"
+      },
+      method: "GET",
+      provider: {
+        models: [],
+        name: "Vendor"
+      },
+      requestOrigin: "https://vendor.example.com"
+    }, 5000);
+    const result = await (0, eval)(script) as any;
+
+    assert.equal(result.ok, true);
+    assert.equal(result.text, "{\"balance\":12}");
+    assert.equal(fetchInit?.credentials, "omit");
+    assert.equal((fetchInit?.headers as Record<string, string>).authorization, "Bearer access-123");
+    assert.equal((fetchInit?.headers as Record<string, string>)["x-csrf-token"], "csrf-456");
+  } finally {
+    (globalThis as any).fetch = previousFetch;
+    (globalThis as any).localStorage = previousLocalStorage;
+    (globalThis as any).sessionStorage = previousSessionStorage;
+  }
 });
 
 test("browser account fetch parser reports HTTP JSON errors", () => {

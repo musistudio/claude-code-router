@@ -127,7 +127,7 @@ Kimi CLI 导入会读取本机 Kimi 配置（默认 `~/.kimi-code/config.toml`�
 | 字段 | 代表的能力 |
 | --- | --- |
 | 获取用量 | 启用或关闭该供应商的账号用量读取。关闭后不请求用量接口。 |
-| 用量模式 | 用量读取方式。`标准用量端点` 使用 CCR 标准账号端点；`HTTP JSON 请求` 手动配置一个 JSON 接口；`原始连接器 JSON` 直接编辑 connector 数组。 |
+| 用量模式 | 用量读取方式。`标准用量端点` 使用 CCR 标准账号端点；`HTTP JSON 请求` 手动配置一个 JSON 接口；`浏览器 JSON 请求` 使用 CCR 内置浏览器登录态执行浏览器侧 JSON 请求；`原始连接器 JSON` 直接编辑 connector 数组。 |
 | 刷新间隔（毫秒） | 用量刷新间隔，单位毫秒。未填写时使用默认刷新间隔，最小有效间隔为 30000ms。 |
 
 ### 标准用量端点
@@ -157,6 +157,53 @@ Kimi CLI 导入会读取本机 Kimi 配置（默认 `~/.kimi-code/config.toml`�
 | 测试用量请求 | 立即请求用量接口并解析映射结果，方便在保存前验证字段路径。 |
 | 响应字段 | 测试后列出响应 JSON 中可选字段。点击 `余额剩余`、`余额总额`、`余额已用`、`订阅剩余`、`订阅上限`、`重置时间` 可以把该路径快速填入对应字段。 |
 
+### 浏览器 JSON 请求
+
+该模式适合用量接口依赖网页登录态、Cookie 或 localStorage 的情况。它保存为底层 `webcontent-json` connector，只在 CCR Desktop 可用。
+
+| 字段 | 代表的能力 |
+| --- | --- |
+| 浏览器登录 URL | 点击 `打开登录浏览器` 时打开的登录页。登录态会保存在 CCR 内置浏览器分区。 |
+| 浏览器存储 Origin | 隐藏浏览器请求前加载的 origin。它决定读取哪个 origin 下的 `localStorage` 和 `sessionStorage`。未填写时优先使用浏览器登录 URL 的 origin，其次使用用量请求 URL 的 origin。 |
+| Fetch 凭据模式 | 浏览器 `fetch` 的 credentials 模式：`omit`、`include` 或 `same-origin`。认证通过 token 请求头发送且 API 返回 `Access-Control-Allow-Origin: *` 时使用 `omit`；只有接口需要 Cookie 且服务端返回精确网站 origin 时才使用 `include`。 |
+| 浏览器超时（毫秒） | 加载 origin 和执行账号请求的超时时间。未填写时使用默认值。 |
+| 浏览器请求头模板 | 隐藏浏览器执行 `fetch` 前动态渲染的请求头。值可以引用 `${localStorage.key}`、`${sessionStorage.key}`，或 `${localStorage["access-token"]}` 这种带特殊字符的 key。 |
+| 打开登录浏览器 | 打开 CCR 内置浏览器，让用户在测试前完成登录。 |
+| 从 Chrome 导入 | 为登录 URL、存储 Origin 和用量请求 URL 的域名创建 Chrome 登录态导入任务，并把 Cookie/localStorage 写入 CCR 内置浏览器分区。 |
+
+浏览器 JSON 请求不会携带供应商 API Key。请求会从浏览器存储 Origin 在内置浏览器执行 `fetch`，在那里渲染动态请求头，并按所选 Fetch 凭据模式处理 Cookie 等浏览器凭据。用量请求 URL 可以是另一个 origin，前提是目标 API 允许该网站 origin 跨域访问。
+
+如果 `browser.credentials` 未配置，CCR 在配置了 `browser.headerTemplates` 时默认使用 `omit`，否则保持面向 Cookie 场景的旧默认值 `include`。
+
+如果站点把 access token 存在 `localStorage`，raw connector 可以这样写：
+
+```json
+{
+  "type": "webcontent-json",
+  "endpoint": "https://api.vendor.example.com/account",
+  "browser": {
+    "credentials": "omit",
+    "loginUrl": "https://vendor.example.com/login",
+    "partition": "built-in-browser",
+    "requestOrigin": "https://vendor.example.com",
+    "headerTemplates": {
+      "authorization": "Bearer ${localStorage.accessToken}"
+    }
+  },
+  "mapping": {
+    "meters": [
+      {
+        "id": "balance",
+        "kind": "balance",
+        "label": "Balance",
+        "remaining": "$.balance.remaining",
+        "unit": "USD"
+      }
+    ]
+  }
+}
+```
+
 字段路径支持 CCR 的轻量 JSONPath 语法：
 
 | 写法 | 说明 |
@@ -176,7 +223,8 @@ Kimi CLI 导入会读取本机 Kimi 配置（默认 `~/.kimi-code/config.toml`�
 | --- | --- |
 | `standard` | 使用 CCR 标准账号端点。 |
 | `http-json` | 请求一个 JSON 接口，并用 mapping 字段映射余额、套餐、状态和消息。 |
+| `webcontent-json` | 使用 CCR Desktop 内置浏览器登录态执行浏览器侧 JSON 请求。UI 中对应 `浏览器 JSON 请求`。 |
 | `plugin` | 调用已安装插件注册的账号用量 connector。 |
 | `local-estimate` | 不请求远程接口，基于本地窗口配置展示估算额度。 |
 
-点击 `插入示例` 会填入一个包含 `standard`、`http-json`、`plugin` 和 `local-estimate` 的示例 connector 数组。
+点击 `插入示例` 会填入一个包含 `standard`、`http-json`、`webcontent-json`、`plugin` 和 `local-estimate` 的示例 connector 数组。

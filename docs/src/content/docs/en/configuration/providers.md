@@ -127,7 +127,7 @@ The credential pool is an upstream provider key pool. It is separate from the cl
 | Field | Capability |
 | --- | --- |
 | Fetch usage | Enables or disables account usage fetching for this provider. |
-| Usage mode | Usage connector mode. `Standard usage endpoint` uses CCR standard account endpoints; `HTTP JSON request` maps a custom JSON endpoint; `Raw connector JSON` edits the connector array directly. |
+| Usage mode | Usage connector mode. `Standard usage endpoint` uses CCR standard account endpoints; `HTTP JSON request` maps a custom JSON endpoint; `Browser JSON request` uses CCR's in-app browser login state for a browser-executed JSON endpoint; `Raw connector JSON` edits the connector array directly. |
 | Refresh interval ms | Usage refresh interval in milliseconds. Empty uses the default interval. The minimum effective interval is 30000ms. |
 
 ### Standard usage endpoint
@@ -157,6 +157,53 @@ Use this mode when the provider has a balance or quota endpoint that returns a c
 | Test usage request | Requests and parses the usage endpoint before saving. |
 | Response fields | Lists selectable paths from the response. Buttons such as `Balance rem`, `Balance total`, `Balance used`, `Sub rem`, `Sub limit`, and `Reset` fill the matching field. |
 
+### Browser JSON request
+
+Use this mode when the usage endpoint depends on a website login session, cookies, or localStorage. It is saved as the underlying `webcontent-json` connector and is available only in CCR Desktop.
+
+| Field | Capability |
+| --- | --- |
+| Browser login URL | Login page opened by `Open login browser`. The session is stored in CCR's in-app browser partition. |
+| Browser storage origin | Origin loaded by the hidden browser before the request. This is the origin used to read `localStorage` and `sessionStorage`. Empty uses the browser login URL origin, then falls back to the usage request URL origin. |
+| Fetch credentials | Browser `fetch` credentials mode: `omit`, `include`, or `same-origin`. Use `omit` when authentication is sent through token headers and the API returns `Access-Control-Allow-Origin: *`; use `include` only when cookies are required and the API returns the exact website origin. |
+| Browser timeout ms | Timeout for loading the origin and running the account request. Empty uses the default. |
+| Browser header templates | Dynamic headers rendered in the hidden browser before `fetch`. Values can reference `${localStorage.key}`, `${sessionStorage.key}`, or bracket keys such as `${localStorage["access-token"]}`. |
+| Open login browser | Opens CCR's in-app browser so the user can sign in before testing. |
+| Import from Chrome | Creates a Chrome login-state import job for the login URL, storage origin, and usage request URL domains, then writes cookies/localStorage into CCR's in-app browser partition. |
+
+Browser JSON requests do not send the provider API key. CCR runs `fetch` inside the in-app browser from the browser storage origin, renders dynamic headers there, and applies the selected browser credentials mode. The usage request URL may be on another origin when that API allows the website origin through CORS.
+
+When `browser.credentials` is omitted, CCR defaults to `omit` if `browser.headerTemplates` is configured, otherwise it keeps the legacy cookie-oriented default `include`.
+
+Example raw connector for a site that stores an access token in `localStorage`:
+
+```json
+{
+  "type": "webcontent-json",
+  "endpoint": "https://api.vendor.example.com/account",
+  "browser": {
+    "credentials": "omit",
+    "loginUrl": "https://vendor.example.com/login",
+    "partition": "built-in-browser",
+    "requestOrigin": "https://vendor.example.com",
+    "headerTemplates": {
+      "authorization": "Bearer ${localStorage.accessToken}"
+    }
+  },
+  "mapping": {
+    "meters": [
+      {
+        "id": "balance",
+        "kind": "balance",
+        "label": "Balance",
+        "remaining": "$.balance.remaining",
+        "unit": "USD"
+      }
+    ]
+  }
+}
+```
+
 Field paths use CCR's lightweight JSONPath syntax:
 
 | Syntax | Meaning |
@@ -176,7 +223,8 @@ Field paths use CCR's lightweight JSONPath syntax:
 | --- | --- |
 | `standard` | Uses CCR standard account endpoints. |
 | `http-json` | Requests a JSON endpoint and maps balance, subscription, status, and message fields. |
+| `webcontent-json` | Uses CCR Desktop's in-app browser login state for a browser-executed JSON endpoint. The UI exposes this as `Browser JSON request`. |
 | `plugin` | Calls an account usage connector registered by an installed plugin. |
 | `local-estimate` | Shows estimated quota from local time-window config without a remote request. |
 
-`Insert example` fills an example connector array containing `standard`, `http-json`, `plugin`, and `local-estimate` connectors.
+`Insert example` fills an example connector array containing `standard`, `http-json`, `webcontent-json`, `plugin`, and `local-estimate` connectors.
