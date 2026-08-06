@@ -2,7 +2,7 @@
 title: Connect Agent Config
 pageTitle: Connect Agent Config
 eyebrow: Quick start
-lead: "After connecting a provider, use this page to connect your agent to CCR: add a profile in Agent Config, pick a model, then open the agent from CCR and verify it in request logs. Covers Claude Code, Codex, Grok CLI, Kimi CLI, ZCode, and more."
+lead: "The interactive panel at the top of this page connects to your running CCR to set a default model for Claude Code / Codex. The steps below cover adding a profile in Agent Config, picking a model, opening the agent from CCR, and verifying it in request logs."
 ---
 
 ## General guidance

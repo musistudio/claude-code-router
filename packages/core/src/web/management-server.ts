@@ -176,6 +176,20 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
     return;
   }
 
+  // CORS: allow cross-origin browsers (e.g. the docs setup wizard) to call the
+  // RPC endpoint. Origin-gated to loopback + CCR_WEB_ALLOWED_ORIGINS. This only
+  // relaxes the browser same-origin policy; the x-ccr-web-auth token still
+  // authorizes /api/ccr/rpc, so no credential is exposed.
+  const corsOrigin = allowedWebCorsOrigin(request);
+  if (corsOrigin) {
+    applyWebCorsHeaders(response, corsOrigin);
+  }
+  if (request.method === "OPTIONS") {
+    response.writeHead(204);
+    response.end();
+    return;
+  }
+
   const url = requestUrl(request);
   if (url.pathname === "/api/ccr/rpc") {
     await handleRpcRequest(request, response, security);
@@ -596,6 +610,43 @@ function urlWithWebAuthToken(value: string, authToken: string): string {
 function isAllowedWebRequestHost(request: IncomingMessage, security: WebManagementSecurityContext): boolean {
   const hostname = requestHostname(request);
   return Boolean(hostname && isAllowedWebHostname(hostname, security));
+}
+
+const loopbackWebCorsHosts = new Set(["localhost", "127.0.0.1", "::1", "0:0:0:0:0:0:0:1"]);
+
+/**
+ * Returns the request `Origin` if cross-origin callers are permitted, else
+ * undefined. Permits loopback origins (any port) unconditionally so local tools
+ * like the docs setup wizard work, plus any exact origin listed in the
+ * `CCR_WEB_ALLOWED_ORIGINS` env var (comma-separated) for remote deployments.
+ */
+function allowedWebCorsOrigin(request: IncomingMessage): string | undefined {
+  const origin = readHeaderValue(request.headers.origin);
+  if (!origin) return undefined;
+  const normalizedOrigin = origin.replace(/\/$/, "");
+  const configured = readEnvString("CCR_WEB_ALLOWED_ORIGINS");
+  if (configured) {
+    const allow = new Set(
+      configured
+        .split(",")
+        .map((value) => value.trim().replace(/\/$/, ""))
+        .filter(Boolean)
+    );
+    if (allow.has(normalizedOrigin)) return origin;
+  }
+  try {
+    if (loopbackWebCorsHosts.has(normalizeHostname(new URL(origin).hostname))) return origin;
+  } catch {
+    /* malformed origin — treat as not allowed */
+  }
+  return undefined;
+}
+
+function applyWebCorsHeaders(response: ServerResponse, origin: string): void {
+  response.setHeader("Access-Control-Allow-Origin", origin);
+  response.setHeader("Vary", "Origin");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type, x-ccr-web-auth");
+  response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
 }
 
 function isAllowedWebHostname(hostname: string, security: WebManagementSecurityContext): boolean {

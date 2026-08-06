@@ -1118,6 +1118,40 @@ h1 {
   line-height: 1.75;
 }
 
+.interactive-frame,
+.interactive-stack {
+  margin: 0 0 38px;
+}
+
+.interactive-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.interactive-frame {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--border) 78%, transparent);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow:
+    0 18px 42px rgba(24, 24, 27, 0.09),
+    0 2px 7px rgba(24, 24, 27, 0.04);
+}
+
+.interactive-frame--manager {
+  height: 840px;
+}
+
+.interactive-frame--logs {
+  height: 980px;
+}
+
+.interactive-frame--observability {
+  height: 1120px;
+}
+
 .doc-article > p,
 .doc-article section > p,
 .doc-markdown > p {
@@ -2310,6 +2344,19 @@ pre code span {
 
   .doc-main {
     padding-inline: 18px;
+  }
+
+  .interactive-frame {
+    border-radius: 14px;
+  }
+
+  .interactive-frame--manager {
+    height: 780px;
+  }
+
+  .interactive-frame--logs,
+  .interactive-frame--observability {
+    height: 860px;
   }
 
   .doc-markdown > table {

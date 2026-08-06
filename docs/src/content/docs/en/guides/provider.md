@@ -2,7 +2,7 @@
 title: Add a provider
 pageTitle: Add a provider
 eyebrow: Quick start
-lead: "Add an upstream model provider to CCR: pick a preset or custom endpoint, enter the API endpoint and credentials, let CCR auto-detect protocols and models, then verify the full path with a connectivity check."
+lead: "The interactive panel at the top of this page connects to your running CCR to add a provider directly. Prefer the desktop app? The steps below cover choosing a preset or custom endpoint, entering credentials, letting CCR auto-detect protocols and models, and verifying with a connectivity check."
 ---
 
 ## Add the provider

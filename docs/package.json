@@ -12,7 +12,21 @@
   },
   "devDependencies": {
     "@astrojs/sitemap": "^3.7.3",
+    "@tailwindcss/vite": "^4.3.3",
     "astro": "7.0.0",
-    "lucide-astro": "^0.556.0"
+    "lucide-astro": "^0.556.0",
+    "tailwindcss": "^4.3.3"
+  },
+  "dependencies": {
+    "@astrojs/react": "^6.0.2",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "baseui": "^16.1.1",
+    "clsx": "^2.1.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "styletron-engine-atomic": "^1.6.2",
+    "styletron-react": "^6.1.1",
+    "tailwind-merge": "^3.6.0"
   }
 }

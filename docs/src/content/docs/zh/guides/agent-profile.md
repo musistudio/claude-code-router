@@ -2,7 +2,7 @@
 title: 接入 Agent 配置
 pageTitle: 接入 Agent 配置
 eyebrow: 快速开始
-lead: "供应商配置完成后，用本页把你的 Agent 接入 CCR：在 Agent 配置里添加配置、选择模型，再从 CCR 打开并在请求日志中验证。覆盖 Claude Code、Codex、Grok CLI、Kimi CLI、ZCode 等。"
+lead: "页面顶部的交互式面板可直接连到你正在运行的 CCR，为 Claude Code / Codex 设置默认模型；或按下方说明在 Agent 配置里添加配置、从 CCR 打开并在请求日志中验证。"
 ---
 
 ## 通用建议
