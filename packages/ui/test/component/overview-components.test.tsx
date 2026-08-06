@@ -6,7 +6,7 @@ import { formatCodexResetCardExpiry, formatCodexResetCardNumber, OverviewView } 
 import { AppI18nContext, appCopy } from "@ccr/ui/pages/home/shared/i18n.tsx";
 import { parseStatusBucketDate } from "@ccr/ui/pages/home/shared/controls.tsx";
 import { formatProviderAccountMeterValue, providerAccountMeterDetailValidityProgress } from "@ccr/ui/pages/home/shared/provider-accounts.ts";
-import type { OverviewWidgetConfig, ProviderAccountSnapshot } from "@ccr/core/contracts/app.ts";
+import type { GatewayProviderConfig, OverviewWidgetConfig, ProviderAccountSnapshot } from "@ccr/core/contracts/app.ts";
 import { accountSnapshots, installBrowserGlobals, usageStats } from "../fixtures/index.ts";
 
 installBrowserGlobals();
@@ -161,6 +161,35 @@ test("OverviewView keeps multi-provider account cards at their content height", 
   assert.match(html, /content-start/);
   assert.match(html, /scrollbar-gutter:stable/);
   assert.match(html, /h-fit/);
+});
+
+test("OverviewView renders provider logos in account balance widgets", () => {
+  const providers: GatewayProviderConfig[] = [
+    { icon: "https://cdn.example.test/openai.png", models: ["gpt-4.1"], name: "openai" },
+    { icon: "https://cdn.example.test/anthropic.png", models: ["claude-sonnet"], name: "anthropic" }
+  ];
+
+  const html = renderToStaticMarkup(
+    <OverviewView
+      overviewWidgets={[{ enabled: true, id: "account", size: "4:2", type: "account-balance", variant: "cards" }]}
+      providerAccounts={accountSnapshots()}
+      refreshProviderAccounts={() => undefined}
+      setUsageRange={() => undefined}
+      usageFilters={{
+        modelFilter: "",
+        providerFilter: "",
+        providers,
+        setModelFilter: () => undefined,
+        setProviderFilter: () => undefined
+      }}
+      usageRange="30d"
+      usageStats={usageStats("30d")}
+      onWidgetsChange={() => undefined}
+    />
+  );
+
+  assert.match(html, /src="https:\/\/cdn\.example\.test\/openai\.png"/);
+  assert.match(html, /src="https:\/\/cdn\.example\.test\/anthropic\.png"/);
 });
 
 test("OverviewView prioritizes Codex manual resets before folded balance meters", () => {

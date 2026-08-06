@@ -14,7 +14,7 @@ import {
   OverviewMetricKind, overviewMetricOptions, overviewWidgetCollisionDetection, OverviewWidgetConfig, OverviewWidgetSize, overviewWidgetSizeOptions,
   OverviewWidgetType, OverviewWidgetVariant, Pencil, Pie, PieChart, Plus,
   PointerSensor, primaryProviderAccountMeter, providerAccountMeterDetailValidityProgress, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass, isGatewayProviderEnabled, isProviderAccountManualResetMeter,
-  providerAccountSnapshotKey, providerAccountSnapshotLabel,
+  providerAccountSnapshotKey, providerAccountSnapshotLabel, providerDisplayIcon,
   ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ReactPointerEvent, rectSortingStrategy, RefreshCw, Select,
   SelectControl, SortableContext, sortableKeyboardCoordinates, systemStatusPointTooltip,
   Tooltip, translateOptions, Trash2, UsageComparisonRow, usageRangeOptions,
@@ -304,6 +304,7 @@ export function OverviewView({
                   <OverviewWidgetRenderer
                     providerAccounts={providerAccounts}
                     providerAccountRefreshing={providerAccountRefreshing}
+                    providers={filterProviders}
                     refreshProviderAccounts={refreshProviderAccounts}
                     usageRange={usageRange}
                     usageStats={usageStats}
@@ -323,6 +324,7 @@ export function OverviewView({
           <OverviewWidgetDragOverlay
             providerAccounts={providerAccounts}
             providerAccountRefreshing={providerAccountRefreshing}
+            providers={filterProviders}
             refreshProviderAccounts={refreshProviderAccounts}
             usageRange={usageRange}
             usageStats={usageStats}
@@ -754,6 +756,7 @@ function SortableOverviewWidget({
 function OverviewWidgetDragOverlay({
   providerAccounts,
   providerAccountRefreshing = false,
+  providers,
   refreshProviderAccounts,
   usageRange,
   usageStats,
@@ -761,6 +764,7 @@ function OverviewWidgetDragOverlay({
 }: {
   providerAccounts: ProviderAccountSnapshot[];
   providerAccountRefreshing?: boolean;
+  providers: GatewayProviderConfig[];
   refreshProviderAccounts?: () => void | Promise<void>;
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
@@ -771,6 +775,7 @@ function OverviewWidgetDragOverlay({
       <OverviewWidgetRenderer
         providerAccounts={providerAccounts}
         providerAccountRefreshing={providerAccountRefreshing}
+        providers={providers}
         refreshProviderAccounts={refreshProviderAccounts}
         usageRange={usageRange}
         usageStats={usageStats}
@@ -1013,6 +1018,7 @@ function overviewWidgetResizeCursor(axis: OverviewWidgetResizeAxis): string {
 function OverviewWidgetRenderer({
   providerAccounts,
   providerAccountRefreshing = false,
+  providers,
   refreshProviderAccounts,
   usageRange,
   usageStats,
@@ -1020,6 +1026,7 @@ function OverviewWidgetRenderer({
 }: {
   providerAccounts: ProviderAccountSnapshot[];
   providerAccountRefreshing?: boolean;
+  providers: GatewayProviderConfig[];
   refreshProviderAccounts?: () => void | Promise<void>;
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
@@ -1030,7 +1037,7 @@ function OverviewWidgetRenderer({
   if (widget.type === "system-status") {
     content = <SystemStatusBar usageRange={usageRange} usageStats={usageStats} variant={widget.variant === "compact" ? "compact" : "timeline"} />;
   } else if (widget.type === "account-balance") {
-    content = <ProviderAccountsOverview accountProvider={widget.accountProvider} accounts={providerAccounts} dimensions={dimensions} refreshing={providerAccountRefreshing} variant={overviewAccountVariant(widget.variant)} onRefresh={refreshProviderAccounts} />;
+    content = <ProviderAccountsOverview accountProvider={widget.accountProvider} accounts={providerAccounts} dimensions={dimensions} providers={providers} refreshing={providerAccountRefreshing} variant={overviewAccountVariant(widget.variant)} onRefresh={refreshProviderAccounts} />;
   } else if (widget.type === "metric") {
     content = <OverviewMetricWidget metric={widget.metric ?? "requests"} totals={usageStats.totals} variant={overviewMetricVariant(widget.variant)} />;
   } else if (widget.type === "usage-trend") {
@@ -2292,6 +2299,7 @@ function ProviderAccountsOverview({
   accounts,
   dimensions,
   onRefresh,
+  providers,
   refreshing = false,
   variant = "cards"
 }: {
@@ -2299,6 +2307,7 @@ function ProviderAccountsOverview({
   accounts: ProviderAccountSnapshot[];
   dimensions: OverviewWidgetDimensions;
   onRefresh?: () => void | Promise<void>;
+  providers: GatewayProviderConfig[];
   refreshing?: boolean;
   variant?: OverviewAccountVariant;
 }) {
@@ -2326,17 +2335,20 @@ function ProviderAccountsOverview({
         {visibleAccounts.length === 0 ? (
           <OverviewEmptyState className="h-full py-4" compact label={t("No account balance connectors configured")} />
         ) : isSingleAccount ? (
-          <ProviderAccountSinglePanel account={visibleAccounts[0]} dimensions={dimensions} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />
+          <ProviderAccountSinglePanel account={visibleAccounts[0]} dimensions={dimensions} providers={providers} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />
         ) : variant === "compact" ? (
           <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions, visibleAccounts.length))}>
             {visibleAccounts.map((account) => {
               const meter = primaryProviderAccountDisplayMeter(account);
               return (
                 <div className="overview-nested-surface flex min-h-0 min-w-0 items-center justify-between gap-3 overflow-hidden border px-3 py-2" key={providerAccountSnapshotKey(account)}>
-                  <div className="min-w-0">
-                    <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
-                    {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
-                    {providerAccountShowRefreshTime(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+                  <div className="flex min-w-0 items-center gap-2">
+                    <ProviderAccountLogo account={account} className="h-7 w-7 rounded-md" providers={providers} />
+                    <div className="min-w-0">
+                      <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
+                      {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
+                      {providerAccountShowRefreshTime(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+                    </div>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1 text-right">
                     {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
@@ -2354,10 +2366,13 @@ function ProviderAccountsOverview({
               return (
                 <div className="min-w-0 overflow-hidden" key={providerAccountSnapshotKey(account)}>
                   <div className="flex min-w-0 items-end justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
-                      {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
-                      {providerAccountShowRefreshTime(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+                    <div className="flex min-w-0 items-center gap-2">
+                      <ProviderAccountLogo account={account} className="h-6 w-6 rounded-md" providers={providers} />
+                      <div className="min-w-0">
+                        <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
+                        {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
+                        {providerAccountShowRefreshTime(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+                      </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-2 text-[12px] font-semibold">
                       {meter ? <span>{formatProviderAccountMeterValue(meter)}</span> : null}
@@ -2383,7 +2398,7 @@ function ProviderAccountsOverview({
             data-provider-account-grid="true"
           >
             {visibleAccounts.map((account) => {
-              return <ProviderAccountSummaryCard account={account} dimensions={dimensions} key={providerAccountSnapshotKey(account)} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />;
+              return <ProviderAccountSummaryCard account={account} dimensions={dimensions} key={providerAccountSnapshotKey(account)} providers={providers} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />;
             })}
           </div>
         )}
@@ -2396,12 +2411,14 @@ function ProviderAccountSinglePanel({
   account,
   dimensions,
   onRefresh,
+  providers,
   refreshing = false,
   variant
 }: {
   account: ProviderAccountSnapshot;
   dimensions: OverviewWidgetDimensions;
   onRefresh?: () => void | Promise<void>;
+  providers: GatewayProviderConfig[];
   refreshing?: boolean;
   variant: OverviewAccountVariant;
 }) {
@@ -2414,9 +2431,12 @@ function ProviderAccountSinglePanel({
   return (
     <div className={cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden", providerAccountStackClass(dimensions))}>
       <div className="flex min-w-0 shrink-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className={cn("truncate font-semibold", dimensions.height <= 1 ? "text-[12px]" : "text-[13px]")}>{providerAccountSnapshotLabel(account)}</div>
-          {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+        <div className="flex min-w-0 items-start gap-2">
+          <ProviderAccountLogo account={account} className={cn("rounded-md", dimensions.height <= 1 ? "h-7 w-7" : "h-9 w-9")} providers={providers} />
+          <div className="min-w-0">
+            <div className={cn("truncate font-semibold", dimensions.height <= 1 ? "text-[12px]" : "text-[13px]")}>{providerAccountSnapshotLabel(account)}</div>
+            {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+          </div>
         </div>
         {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
       </div>
@@ -2444,12 +2464,14 @@ function ProviderAccountSummaryCard({
   account,
   dimensions,
   onRefresh,
+  providers,
   refreshing = false,
   variant
 }: {
   account: ProviderAccountSnapshot;
   dimensions: OverviewWidgetDimensions;
   onRefresh?: () => void | Promise<void>;
+  providers: GatewayProviderConfig[];
   refreshing?: boolean;
   variant: OverviewAccountVariant;
 }) {
@@ -2462,9 +2484,12 @@ function ProviderAccountSummaryCard({
   return (
     <div className={cn("overview-nested-surface h-fit min-w-0 self-start overflow-hidden border", providerAccountCardPaddingClass(dimensions))}>
       <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate text-[13px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
-          {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+        <div className="flex min-w-0 items-start gap-2">
+          <ProviderAccountLogo account={account} className="h-8 w-8 rounded-md" providers={providers} />
+          <div className="min-w-0">
+            <div className="truncate text-[13px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
+            {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+          </div>
         </div>
         {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
       </div>
@@ -2490,6 +2515,48 @@ function ProviderAccountSummaryCard({
       )}
     </div>
   );
+}
+
+function ProviderAccountLogo({
+  account,
+  className,
+  providers
+}: {
+  account: ProviderAccountSnapshot;
+  className?: string;
+  providers: GatewayProviderConfig[];
+}) {
+  const iconUrl = providerAccountIconUrl(account, providers);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [iconUrl]);
+  const fallbackLabel = account.provider.trim().slice(0, 1).toUpperCase();
+
+  if (iconUrl && !failed) {
+    return (
+      <span className={cn("flex shrink-0 items-center justify-center overflow-hidden border border-border bg-background p-0.5", className)}>
+        <img alt="" className="h-full w-full object-contain" draggable={false} src={iconUrl} onError={() => setFailed(true)} />
+      </span>
+    );
+  }
+
+  return (
+    <span className={cn("flex shrink-0 items-center justify-center border border-border bg-muted text-[10px] font-semibold text-muted-foreground", className)}>
+      {fallbackLabel || <WalletCards className="h-3.5 w-3.5" />}
+    </span>
+  );
+}
+
+function providerAccountIconUrl(account: ProviderAccountSnapshot, providers: GatewayProviderConfig[]): string {
+  const providerName = account.provider.trim().toLowerCase();
+  if (!providerName) {
+    return "";
+  }
+  const provider = providers.find((item) => (
+    item.name.trim().toLowerCase() === providerName
+      || item.id?.trim().toLowerCase() === providerName
+      || item.provider?.trim().toLowerCase() === providerName
+  ));
+  return provider ? providerDisplayIcon(provider) : "";
 }
 
 function ProviderAccountRefreshButton({
