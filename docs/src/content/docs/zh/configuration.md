@@ -29,4 +29,4 @@ lead: 详细配置按应用内的实际顺序拆成独立页面，覆盖概览�
 
 ## 内容关系
 
-概览仪表盘用于查看系统状态和用量；供应商配置覆盖上游模型服务如何进入 CCR；Agent 配置页面覆盖 Claude Code、Codex、OpenCode、Grok CLI、Kimi CLI 和 ZCode 的启动、多开与模型选择；API 密钥控制客户端访问 CCR；日志与可观测性覆盖请求日志和 Agent 执行链路；服务配置控制本地网关监听和代理能力。配置数据库位置和托盘配置对应设置弹窗中的同名配置页。需要配置特色能力时，进入顶部的 [AgentClaw](/agentclaw/)、[Fusion](/fusion/)、[ToolHub](/toolhub/)、[智能路由](/routing/)、[一键导入](/provider-import/) 或 [扩展](/extensions/)。
+概览仪表盘用于查看系统状态和用量；供应商配置覆盖上游模型服务如何进入 CCR；Agent 配置页面覆盖 Claude Code、Codex、OpenCode、Grok CLI、Kimi CLI、Kilo CLI、Pi、ZCode 和 Claude Design 的启动、多开与模型选择；API 密钥控制客户端访问 CCR；日志与可观测性覆盖请求日志和 Agent 执行链路；服务配置控制本地网关监听和代理能力。配置数据库位置和托盘配置对应设置弹窗中的同名配置页。需要配置特色能力时，进入顶部的 [AgentClaw](/agentclaw/)、[Fusion](/fusion/)、[ToolHub](/toolhub/)、[智能路由](/routing/)、[一键导入](/provider-import/) 或 [扩展](/extensions/)。

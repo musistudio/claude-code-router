@@ -33,11 +33,9 @@ When the gateway starts, CCR reads the `plugins` array and processes each extens
 1. It first applies config per enabled surface: `apps` for the App surface; `proxy.routes`, `coreGateway.virtualModelProfiles`, and `coreGateway.config` for the Gateway surface; and `coreGateway.providerPlugins` for the Provider surface.
 2. When any enabled surface needs JavaScript to register capabilities, the extension module is loaded. `module` must resolve to a concrete local JavaScript file path — for example an absolute path, a `~/` path, or a `./...` path relative to the CCR config directory.
 3. Any extension that loads JavaScript through `module` must explicitly declare the `trusted-code` permission. The permission is not an OS-level sandbox; it scopes the CCR plugin API and makes the "executing local code" trust boundary explicit.
-4. If no `module` is configured, CCR no longer loads a built-in fallback extension. Plugin-marketplace installs that include a JavaScript module download the selected plugin from the GitHub marketplace manifest into the CCR data directory and write the locally cached module path into the config.
+4. If no `module` is configured, CCR no longer loads a built-in fallback extension.
 5. A module can export a function, or an object containing `setup(ctx)` or `activate(ctx)`.
 6. On stop, CCR runs `stop` and `onStop` hooks in reverse order, then closes the HTTP backends and SQLite stores registered by that extension.
-
-The extension marketplace is fetched from GitHub. The default manifest URL is `https://raw.githubusercontent.com/musistudio/claude-code-router/main/marketplace/plugins.json`; you can point `CCR_PLUGIN_MARKETPLACE_URL` at another compatible HTTPS manifest. Marketplace module URLs must use HTTPS, and entries can provide a SHA-256 digest via `integrity`, `sha256`, or `hash`.
 
 Common module shapes:
 

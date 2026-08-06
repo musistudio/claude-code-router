@@ -25,3 +25,13 @@ Request logs record model request details passing through CCR, including request
 The Logs page supports filtering by status, provider, model, credential, request ID, model name, request body, or response body. A single record shows the main request and response fields, including `request model`, `resolved provider`, `resolved model`, status code, response body, errors, duration, tokens, and cost estimate.
 
 Regular request logs are kept locally for the current day. When the local date changes, the next request-log read or write cleans up the previous day's regular logs. They are useful for same-day troubleshooting, not long-term audit archiving.
+
+## Body capture and sampling
+
+Request body / response body logging is governed by three low-level config options (the defaults fit most cases):
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `requestLogBodyCapture` | `all` | Whether to record request and response bodies: `all` records all, `errors` records bodies only for failed requests, `none` records no bodies. |
+| `requestLogMaxBodyBytes` | `52428800` (50 MiB) | Maximum bytes for a single request or response body; anything larger is truncated. The hard cap is also 50 MiB. |
+| `requestLogSuccessSampleRate` | `1` | Sampling rate for successful requests, between `0` and `1`. `1` records all, `0.1` records roughly one in ten. |

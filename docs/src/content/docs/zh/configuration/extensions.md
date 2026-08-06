@@ -33,11 +33,9 @@ CCR 的扩展分为两层：
 1. 先按启用的运行面应用配置：App 运行面的 `apps`，Gateway 运行面的 `proxy.routes`、`coreGateway.virtualModelProfiles` 和 `coreGateway.config`，以及 Provider 运行面的 `coreGateway.providerPlugins`。
 2. 当任一启用的运行面需要 JavaScript 注册能力时，会加载扩展模块。`module` 必须解析到明确的本地 JavaScript 文件路径，例如绝对路径、`~/` 开头路径，或相对 CCR 配置目录的 `./...` 路径。
 3. 任何通过 `module` 加载 JavaScript 的扩展都必须显式声明 `trusted-code` 权限。权限不是操作系统级沙箱；它用于限制 CCR 插件 API，并把“执行本地代码”的信任边界显式化。
-4. 如果没有配置 `module`，CCR 不会再加载内置兜底扩展。带 JavaScript 模块的插件市场安装会从 GitHub 市场 manifest 下载选中的插件到 CCR 数据目录，并把本地缓存后的模块路径写入配置。
+4. 如果没有配置 `module`，CCR 不会再加载内置兜底扩展。
 5. 模块可以导出函数，也可以导出包含 `setup(ctx)` 或 `activate(ctx)` 的对象。
 6. 扩展停止时，CCR 会反向执行 `stop`、`onStop` 钩子，并关闭该扩展注册的 HTTP 后端和 SQLite store。
-
-扩展市场会从 GitHub 获取。默认 manifest 地址是 `https://raw.githubusercontent.com/musistudio/claude-code-router/main/marketplace/plugins.json`；可以通过 `CCR_PLUGIN_MARKETPLACE_URL` 指向另一个兼容的 HTTPS manifest。市场模块 URL 必须使用 HTTPS，市场条目可以通过 `integrity`、`sha256` 或 `hash` 提供 SHA-256 摘要。
 
 扩展模块常见导出形式：
 

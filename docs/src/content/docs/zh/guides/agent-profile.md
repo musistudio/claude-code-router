@@ -66,3 +66,14 @@ CCR 会用配置专属的 `KIMI_CODE_HOME` 启动 Kimi，并复用源 home 中�
 4. 发一条消息确认能正常回复，到 **请求日志** 核对请求是否经过网关。
 
 字段逐项说明和多实例、机器人绑定等进阶用法见 [ZCode 接入与配置](../../configuration/agents/zcode/)。
+
+## OpenCode
+
+支持 OpenCode CLI 和桌面应用两种形态。
+
+1. **添加配置** → 选择 **OpenCode**，填写 **配置名称**，选择 **生效范围** 与 **入口模式**。
+2. 确认 **供应商 ID**、**供应商名称** 和 **OpenCode 模型**。
+3. **保存**，然后用终端按钮打开 CLI，或播放按钮通过 CCR Desktop 打开 OpenCode 桌面应用。
+4. 发一条消息确认能正常回复，到 **请求日志** 核对请求是否经过网关。
+
+`opencode.jsonc` 字段、CLI 路径和配置写入见 [OpenCode 接入与配置](../../configuration/agents/opencode/)。

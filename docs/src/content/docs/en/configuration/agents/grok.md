@@ -23,7 +23,7 @@ Use this page to route Grok CLI to any CCR provider or Fusion model, or to run s
 
 When you save a Grok CLI profile, CCR generates a launch **wrapper** in its `bin` directory that exports:
 
-- `GROK_MODELS_BASE_URL` and `GROK_MODELS_LIST_URL` → the CCR gateway `/v1` endpoints.
+- `GROK_MODELS_BASE_URL` → the CCR gateway `/v1` endpoint; `GROK_MODELS_LIST_URL` → the `/v1/models` endpoint (model list).
 - `XAI_API_KEY` → this profile's CCR API key.
 - `GROK_DEFAULT_MODEL` → your selected model.
 - `GROK_HOME` → a profile-specific directory.

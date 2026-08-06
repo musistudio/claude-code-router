@@ -16,7 +16,7 @@ Claude Code 导入会读取本机 Claude Code OAuth 凭据。检测到可用 acc
 导入后：
 
 1. 协议使用 `anthropic_messages`。
-2. 默认模型包含 `claude-sonnet-4-20250514`，后续可以在供应商模型列表中增减模型。
+2. 默认模型包含 `claude-sonnet-5`，后续可以在供应商模型列表中增减模型。
 3. CCR 会创建 OAuth provider plugin，把请求认证转换为 Claude Code 登录态。
 4. 账号用量会使用 Anthropic OAuth 用量接口，适合在供应商列表、托盘或账号面板里查看额度状态。
 

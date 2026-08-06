@@ -106,6 +106,14 @@ Choose a provider below to get started. CCR shows what will be added before savi
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/infistar-ai.jpg" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">无限星河</span><span class="provider-import-meta">OpenAI compatible gateway</span></span>
   </a>
+  <a class="provider-import-button provider-minimax" href="ccr://provider?name=MiniMax+%28Global%29&amp;base_url=https%3A%2F%2Fapi.minimax.io%2Fv1&amp;protocol=openai_chat_completions&amp;models=MiniMax-M3&amp;source=https%3A%2F%2Fplatform.minimax.io%2Fdocs" aria-label="Import MiniMax global provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/minimax.ico" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">MiniMax (Global)</span><span class="provider-import-meta">Chat Completions</span></span>
+  </a>
+  <a class="provider-import-button provider-minimax" href="ccr://provider?name=MiniMax+%28China%29&amp;base_url=https%3A%2F%2Fapi.minimaxi.com%2Fv1&amp;protocol=openai_chat_completions&amp;models=MiniMax-M3&amp;source=https%3A%2F%2Fplatform.minimaxi.com%2Fdocs" aria-label="Import MiniMax China provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/minimax.ico" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">MiniMax (China)</span><span class="provider-import-meta">Chat Completions</span></span>
+  </a>
 </div>
 
 ## Embeddable button component

@@ -23,7 +23,7 @@ Grok CLI 是 xAI 的编码 Agent。在 CCR 中它 **仅支持 CLI**，且始终�
 
 保存一个 Grok CLI 配置时，CCR 会在其 `bin` 目录生成启动 **包装器**，导出：
 
-- `GROK_MODELS_BASE_URL`、`GROK_MODELS_LIST_URL` → CCR 网关的 `/v1` 端点。
+- `GROK_MODELS_BASE_URL` → CCR 网关的 `/v1` 端点；`GROK_MODELS_LIST_URL` → `/v1/models` 端点（模型列表）。
 - `XAI_API_KEY` → 该配置的 CCR API Key。
 - `GROK_DEFAULT_MODEL` → 你选择的模型。
 - `GROK_HOME` → 配置专属目录。

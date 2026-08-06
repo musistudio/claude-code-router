@@ -106,6 +106,14 @@ lead: 通过预设按钮或 ccr://provider 深度链接（deeplink）一键导�
     <span class="provider-import-icon-shell"><img src="../../provider-icons/infistar-ai.jpg" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">无限星河</span><span class="provider-import-meta">OpenAI 兼容网关</span></span>
   </a>
+  <a class="provider-import-button provider-minimax" href="ccr://provider?name=MiniMax+%28Global%29&amp;base_url=https%3A%2F%2Fapi.minimax.io%2Fv1&amp;protocol=openai_chat_completions&amp;models=MiniMax-M3&amp;source=https%3A%2F%2Fplatform.minimax.io%2Fdocs" aria-label="导入 MiniMax 全球供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/minimax.ico" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">MiniMax（全球）</span><span class="provider-import-meta">Chat Completions</span></span>
+  </a>
+  <a class="provider-import-button provider-minimax" href="ccr://provider?name=MiniMax+%28China%29&amp;base_url=https%3A%2F%2Fapi.minimaxi.com%2Fv1&amp;protocol=openai_chat_completions&amp;models=MiniMax-M3&amp;source=https%3A%2F%2Fplatform.minimaxi.com%2Fdocs" aria-label="导入 MiniMax 国内供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/minimax.ico" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">MiniMax（国内）</span><span class="provider-import-meta">Chat Completions</span></span>
+  </a>
 </div>
 
 ## 嵌入式按钮组件

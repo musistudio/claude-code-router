@@ -16,7 +16,7 @@ Claude Code import reads local Claude Code OAuth credentials. When a usable acce
 After import:
 
 1. The protocol is `anthropic_messages`.
-2. The default model list includes `claude-sonnet-4-20250514`; you can later add or remove models in the provider model list.
+2. The default model list includes `claude-sonnet-5`; you can later add or remove models in the provider model list.
 3. CCR creates OAuth provider plugins that convert requests to use the Claude Code login state.
 4. Account usage uses the Anthropic OAuth usage endpoint, so quota state can appear in the provider list, tray, and account panels.
 
