@@ -1527,6 +1527,27 @@ export function providerAccountConnectorExample(): string {
       }
     },
     {
+      type: "webcontent-json",
+      endpoint: "https://vendor.example.com/api/account/usage",
+      browser: {
+        loginUrl: "https://vendor.example.com/login",
+        requestOrigin: "https://vendor.example.com",
+        partition: "built-in-browser",
+        timeoutMs: 15000
+      },
+      mapping: {
+        meters: [
+          {
+            id: "browser_balance",
+            label: "Browser balance",
+            kind: "balance",
+            unit: "USD",
+            remaining: "$.balance"
+          }
+        ]
+      }
+    },
+    {
       type: "plugin",
       pluginId: "vendor-plugin",
       connectorId: "account"

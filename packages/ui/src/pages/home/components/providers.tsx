@@ -20,7 +20,7 @@ import {
 import { PopoverPortal } from "@/components/ui/popover";
 import { TooltipPortal } from "@/components/ui/tooltip";
 import { providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
-import type { LocalAgentProviderCandidate } from "@ccr/core/contracts/app";
+import type { LocalAgentProviderCandidate, ProviderAccountHttpJsonConnectorConfig, ProviderAccountWebContentJsonConnectorConfig } from "@ccr/core/contracts/app";
 import type { ReactNode } from "react";
 
 const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
@@ -2850,14 +2850,16 @@ function ProviderUsageSettings({
   useEffect(() => {
     setTestResult(undefined);
     setTestError("");
-  }, [draft.accountMode, draft.usageRequestUrl, draft.usageRequestMethod]);
+  }, [draft.accountConnectorsText, draft.accountMode, draft.usageRequestUrl, draft.usageRequestMethod]);
 
   async function testUsageRequest() {
     if (!window.ccr?.testProviderAccountConnector) {
       setTestError(t("Request failed."));
       return;
     }
-    const connector = providerHttpJsonConnectorFromDraft(draft, { requireMeters: false });
+    const connector = draft.accountMode === "raw"
+      ? providerRawAccountTestConnector(draft.accountConnectorsText)
+      : providerHttpJsonConnectorFromDraft(draft, { requireMeters: false });
     if (typeof connector === "string") {
       setTestError(formatError(new Error(connector)));
       return;
@@ -2877,7 +2879,7 @@ function ProviderUsageSettings({
     setTestError("");
     try {
       const result = await window.ccr.testProviderAccountConnector({
-        apiKey: usageApiKey,
+        apiKey: connector.type === "http-json" ? usageApiKey : undefined,
         baseUrl: draft.baseUrl.trim(),
         connector,
         providerName: draft.name.trim()
@@ -3031,7 +3033,7 @@ function ProviderUsageSettings({
                   onChange={(event) => onChange({ accountConnectorsText: event.target.value })}
                 />
                 <div className="flex min-w-0 items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                  <span className="min-w-0 truncate">{t("Supports standard, http-json, plugin, and local-estimate connectors.")}</span>
+                  <span className="min-w-0 truncate">{t("Supports standard, http-json, webcontent-json, plugin, and local-estimate connectors.")}</span>
                   <button
                     className="shrink-0 text-primary hover:underline"
                     type="button"
@@ -3056,6 +3058,18 @@ function ProviderUsageSettings({
                   </Button>
                 </div>
               ) : null}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button disabled={testLoading} onClick={() => void testUsageRequest()} size="sm" type="button" variant="outline">
+                  <AnimatedIconSwap iconKey={testLoading ? "testing" : "check"}>
+                    {testLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                  </AnimatedIconSwap>
+                  {t("Test first JSON connector")}
+                </Button>
+                {testResult ? <Badge variant={testResult.meters.length > 0 ? "success" : "outline"}>{testResult.meters.length} {t("meters")}</Badge> : null}
+              </div>
+              {testResult ? (
+                <ProviderUsageTestResultPanel result={testResult} onSelectPath={() => undefined} />
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -3069,6 +3083,39 @@ function ProviderUsageSettings({
       ) : null}
     </div>
   );
+}
+
+function providerRawAccountTestConnector(
+  connectorsText: string
+): ProviderAccountHttpJsonConnectorConfig | ProviderAccountWebContentJsonConnectorConfig | string {
+  let connectors: unknown;
+  try {
+    connectors = JSON.parse(connectorsText.trim() || "[]");
+  } catch (error) {
+    return `Account connectors JSON is invalid: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  if (!Array.isArray(connectors)) {
+    return "Account connectors must be a JSON array.";
+  }
+  const connector = connectors.find((item) =>
+    isPlainRecord(item) && (item.type === "http-json" || item.type === "webcontent-json")
+  );
+  if (!isPlainRecord(connector)) {
+    return "Add an http-json or webcontent-json connector to test.";
+  }
+  if (connector.type === "webcontent-json") {
+    return {
+      ...(connector as ProviderAccountWebContentJsonConnectorConfig),
+      method: connector.method === "POST" ? "POST" : "GET",
+      type: "webcontent-json"
+    };
+  }
+  return {
+    ...(connector as ProviderAccountHttpJsonConnectorConfig),
+    auth: connector.auth === "provider-api-key-raw" || connector.auth === "none" ? connector.auth : "provider-api-key",
+    method: connector.method === "POST" ? "POST" : "GET",
+    type: "http-json"
+  };
 }
 
 function ProviderUsageTestResultPanel({

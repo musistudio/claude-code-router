@@ -237,7 +237,7 @@ export type ProviderCredentialConfig = {
 };
 
 export type ProviderAccountAuthMode = "provider-api-key" | "provider-api-key-raw" | "none";
-export type ProviderAccountConnectorSource = "standard" | "http-json" | "plugin" | "local-estimate" | "merged" | "unsupported";
+export type ProviderAccountConnectorSource = "standard" | "http-json" | "webcontent-json" | "plugin" | "local-estimate" | "merged" | "unsupported";
 export type ProviderAccountStatus = "ok" | "warning" | "critical" | "error" | "unsupported";
 export type ProviderAccountMeterKind = "balance" | "subscription" | "quota" | "time_window" | "tokens" | "requests";
 export type ProviderAccountMeterUnit = "USD" | "CNY" | "hours" | "minutes" | "tokens" | "requests" | string;
@@ -253,6 +253,7 @@ export type ProviderAccountConfig = {
 export type ProviderAccountConnectorConfig =
   | ProviderAccountStandardConnectorConfig
   | ProviderAccountHttpJsonConnectorConfig
+  | ProviderAccountWebContentJsonConnectorConfig
   | ProviderAccountPluginConnectorConfig
   | ProviderAccountLocalEstimateConnectorConfig;
 
@@ -278,6 +279,22 @@ export type ProviderAccountHttpJsonConnectorConfig = ProviderAccountConnectorBas
   method?: "GET" | "POST";
   parser?: ProviderAccountHttpJsonParser;
   type: "http-json";
+};
+
+export type ProviderAccountWebContentJsonConnectorConfig = ProviderAccountConnectorBaseConfig & {
+  body?: unknown;
+  browser?: {
+    loginUrl?: string;
+    partition?: "built-in-browser";
+    requestOrigin?: string;
+    timeoutMs?: number;
+  };
+  endpoint: string;
+  headers?: Record<string, string>;
+  mapping: ProviderAccountMappingConfig;
+  method?: "GET" | "POST";
+  parser?: ProviderAccountHttpJsonParser;
+  type: "webcontent-json";
 };
 
 export type ProviderAccountPluginConnectorConfig = ProviderAccountConnectorBaseConfig & {
@@ -456,7 +473,7 @@ export type ProviderCatalogModelsResult = {
 export type ProviderAccountTestRequest = {
   apiKey?: string;
   baseUrl: string;
-  connector: ProviderAccountHttpJsonConnectorConfig;
+  connector: ProviderAccountHttpJsonConnectorConfig | ProviderAccountWebContentJsonConnectorConfig;
   providerName?: string;
 };
 

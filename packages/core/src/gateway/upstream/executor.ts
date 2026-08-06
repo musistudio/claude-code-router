@@ -47,9 +47,10 @@ export function applyProviderCapabilityRouting(input: {
   rewriteProviderListHeader(input.headers, "x-target-providers", input.config, protocol);
   rewriteProviderHeader(input.headers, "x-gateway-target-provider", input.config, protocol);
 
-  const routedModel = rewriteModelSelectorForProtocol(input.routedModel, input.config, protocol);
+  const targetProviderName = firstTargetProviderHeader(input.headers);
+  const routedModel = rewriteModelSelectorForProtocol(input.routedModel, input.config, protocol, targetProviderName);
   const fallback = rewriteFallbackForProtocol(input.fallback, input.config, protocol);
-  const body = rewriteBodyModelForProtocol(input.body, input.config, protocol);
+  const body = rewriteBodyModelForProtocol(input.body, input.config, protocol, targetProviderName);
   clearTargetProviderHeadersForModelSelector(input.headers, input.config, body, routedModel);
 
   return {
@@ -163,13 +164,18 @@ function rewriteFallbackForProtocol(fallback: RouterFallbackConfig, config: AppC
 }
 
 
-function rewriteBodyModelForProtocol(body: Buffer | undefined, config: AppConfig, protocol: GatewayProviderProtocol): Buffer | undefined {
+function rewriteBodyModelForProtocol(
+  body: Buffer | undefined,
+  config: AppConfig,
+  protocol: GatewayProviderProtocol,
+  targetProviderName?: string
+): Buffer | undefined {
   const parsedBody = parseJsonObjectSafe(body);
   if (!parsedBody) {
     return body;
   }
   const model = stringValue(parsedBody.model);
-  const rewrittenModel = rewriteModelSelectorForProtocol(model, config, protocol);
+  const rewrittenModel = rewriteModelSelectorForProtocol(model, config, protocol, targetProviderName);
   if (!rewrittenModel || rewrittenModel === model) {
     return body;
   }
@@ -198,16 +204,21 @@ function clearTargetProviderHeadersForModelSelector(
 function rewriteModelSelectorForProtocol(
   model: string | undefined,
   config: AppConfig,
-  protocol: GatewayProviderProtocol
+  protocol: GatewayProviderProtocol,
+  targetProviderName?: string
 ): string | undefined {
   const normalized = normalizeRouteSelector(model);
   if (!normalized) {
     return model;
   }
   const publicModel = resolveGatewayPublicModelId(normalized, config) ?? normalized;
-  const selector =
-    resolveConfiguredProviderModelSelector(publicModel, config) ??
-    resolveUniqueConfiguredProviderModelSelector(publicModel, config);
+  const resolved = modelRegistryForConfig(config).resolve(
+    publicModel,
+    targetProviderName ? { providerName: targetProviderName } : {}
+  );
+  const selector = resolved?.kind === "provider"
+    ? { model: resolved.model, provider: resolved.provider }
+    : undefined;
   const capability = selector ? providerCapabilityForClientProtocol(selector.provider, protocol) : undefined;
   return selector && capability
     ? `${providerCapabilityInternalName(selector.provider, capability.type)}/${selector.model}`

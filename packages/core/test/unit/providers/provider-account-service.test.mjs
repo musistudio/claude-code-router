@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   localAgentProviderAccountCredentialForTest,
   localCodexAccountCredentialForTest,
+  setProviderAccountWebContentFetchHandler,
   testProviderAccountConnector
 } from "@ccr/core/providers/account-service.ts";
 import {
@@ -99,6 +100,108 @@ test("Grok subscription connector maps access status payload", async (t) => {
   assert.equal(result.status, "ok");
   assert.equal(result.message, "SuperGrok Heavy");
   assert.equal(result.meters.find((meter) => meter.id === "grok_subscription_access")?.remaining, 100);
+});
+
+test("webcontent-json connector uses browser-session handler without provider API key", async (t) => {
+  let captured;
+  setProviderAccountWebContentFetchHandler(async (request) => {
+    captured = request;
+    return {
+      payload: {
+        balance: 42,
+        message: "Signed in"
+      }
+    };
+  });
+  t.after(() => {
+    setProviderAccountWebContentFetchHandler(undefined);
+  });
+
+  const result = await testProviderAccountConnector({
+    apiKey: "should-not-reach-handler",
+    baseUrl: "https://vendor.example.com/v1",
+    connector: {
+      browser: {
+        loginUrl: "https://vendor.example.com/login",
+        requestOrigin: "https://vendor.example.com",
+        timeoutMs: 12000
+      },
+      endpoint: "https://vendor.example.com/api/account",
+      headers: {
+        "x-csrf-token": "csrf"
+      },
+      mapping: {
+        meters: [
+          {
+            id: "balance",
+            kind: "balance",
+            label: "Balance",
+            remaining: "$.balance",
+            unit: "USD"
+          }
+        ],
+        message: "$.message"
+      },
+      type: "webcontent-json"
+    },
+    providerName: "Vendor"
+  });
+
+  assert.equal(captured.endpoint, "https://vendor.example.com/api/account");
+  assert.equal(captured.method, "GET");
+  assert.equal(captured.requestOrigin, "https://vendor.example.com");
+  assert.equal(captured.loginUrl, "https://vendor.example.com/login");
+  assert.equal(captured.provider.api_key, "");
+  assert.equal(captured.provider.apiKey, undefined);
+  assert.equal(captured.headers["x-csrf-token"], "csrf");
+  assert.equal(result.message, "Signed in");
+  assert.equal(result.meters[0].remaining, 42);
+  assert.equal(result.meters[0].source, "webcontent-json");
+});
+
+test("webcontent-json connector rejects cross-origin browser requests before invoking handler", async (t) => {
+  let called = false;
+  setProviderAccountWebContentFetchHandler(async () => {
+    called = true;
+    return { payload: {} };
+  });
+  t.after(() => {
+    setProviderAccountWebContentFetchHandler(undefined);
+  });
+
+  await assert.rejects(
+    () => testProviderAccountConnector({
+      baseUrl: "https://vendor.example.com/v1",
+      connector: {
+        browser: {
+          requestOrigin: "https://app.vendor.example.com"
+        },
+        endpoint: "https://api.vendor.example.com/account",
+        mapping: { meters: [] },
+        type: "webcontent-json"
+      },
+      providerName: "Vendor"
+    }),
+    /origin must match/
+  );
+  assert.equal(called, false);
+});
+
+test("webcontent-json connector reports unsupported outside CCR Desktop", async () => {
+  setProviderAccountWebContentFetchHandler(undefined);
+
+  await assert.rejects(
+    () => testProviderAccountConnector({
+      baseUrl: "https://vendor.example.com/v1",
+      connector: {
+        endpoint: "https://vendor.example.com/account",
+        mapping: { meters: [] },
+        type: "webcontent-json"
+      },
+      providerName: "Vendor"
+    }),
+    /only available in CCR Desktop/
+  );
 });
 
 test("Codex local account credential refreshes when only a refresh token is available", async (t) => {

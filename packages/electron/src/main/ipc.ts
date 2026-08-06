@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell, type OpenDialogOptions, type Rectangle, type SaveDialogOptions } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, session, shell, WebContentsView, type OpenDialogOptions, type Rectangle, type SaveDialogOptions } from "electron";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -50,11 +50,14 @@ import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
 import { getUsageStats } from "@ccr/core/usage/store";
 import { applyNativeThemePreference } from "./native-theme";
+import { registerProviderAccountWebContentFetchHandler } from "./provider-account-webcontent";
 import windowsManager from "./windows";
 import { CLAUDE_DESIGN_PLUGIN_ID, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, type AgentAnalysisFilter, type AgentAnalysisTracePayloadRequest, type ApiKeyConfig, type AppCaptureElementPngRequest, type AppCaptureElementPngResult, type AppConfig, type AppDataExportResult, type AppImageExportTargetRequest, type AppImageExportTargetResult, type AppInfo, type AppRenderHtmlPngRequest, type AppRenderHtmlPngResult, type AppSaveConfigOptions, type BotGatewayQrLoginCancelRequest, type BotGatewayQrLoginStartRequest, type BotGatewayQrLoginWaitRequest, type BotGatewayQrWindowCloseRequest, type BotGatewayQrWindowOpenRequest, type GatewayPluginAppConfig, type GatewayPluginPermission, type GatewayPluginSurface, type GatewayProviderConnectivityCheckRequest, type GatewayProviderProbeCandidatesRequest, type GatewayProviderProbeRequest, type GatewayStatus, type LocalAgentProviderImportRequest, type PluginDependency, type PluginDirectorySelection, type ProfileApplyResult, type ProfileOpenRequest, type ProfileOpenResult, type ProviderAccountResetRequest, type ProviderAccountSnapshotRequestOptions, type ProviderAccountTestRequest, type ProviderCatalogModelsRequest, type ProviderIconDetectionRequest, type ProviderManifestFetchRequest, type RequestLogListFilter, type RouteScriptTestRequest, type RouteScriptValidationRequest, type UsageStatsFilter, type UsageStatsRange } from "@ccr/core/contracts/app";
 const imageExportTargets = new Map<string, string>();
 const gatewayPluginPermissionIdSet = new Set<string>(GATEWAY_PLUGIN_PERMISSION_IDS);
 const gatewayPluginSurfaceIdSet = new Set<string>(GATEWAY_PLUGIN_SURFACE_IDS);
+
+registerProviderAccountWebContentFetchHandler({ BrowserWindow, WebContentsView, session });
 
 function applyAppThemePreference(theme: AppConfig["theme"]): void {
   applyNativeThemePreference(theme);
