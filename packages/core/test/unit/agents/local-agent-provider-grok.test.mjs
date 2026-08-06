@@ -403,6 +403,43 @@ test("Grok local provider does not adopt a different account record on refresh 4
   });
 });
 
+test("Grok local provider coalesces concurrent refreshes of the same credential", async (t) => {
+  await withGrokHome(async (grokHome) => {
+    writeGrokAuth(grokHome, {
+      key: "expired-token",
+      refresh_token: "stale-refresh-token",
+      expires_at: "2000-01-01T00:00:00Z",
+      oidc_client_id: "grok-client-id",
+      oidc_issuer: "https://auth.x.ai"
+    });
+    writeGrokModels(grokHome);
+
+    const previousFetch = globalThis.fetch;
+    process.env.GROK_OIDC_TOKEN_ENDPOINT = "http://127.0.0.1/grok/oauth/token";
+    let refreshCalls = 0;
+    globalThis.fetch = async () => {
+      refreshCalls += 1;
+      // Keep the refresh pending so the concurrent callers must share it.
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      return new Response(JSON.stringify({
+        access_token: "refreshed-grok-access-token",
+        expires_in: 3600,
+        refresh_token: "refreshed-grok-refresh-token"
+      }), { headers: { "content-type": "application/json" }, status: 200 });
+    };
+    t.after(() => {
+      globalThis.fetch = previousFetch;
+    });
+
+    const results = await Promise.all([resolveGrokAuth(), resolveGrokAuth(), resolveGrokAuth()]);
+    assert.equal(refreshCalls, 1);
+    for (const auth of results) {
+      assert.equal(auth.accessToken, "refreshed-grok-access-token");
+      assert.equal(auth.refreshToken, "refreshed-grok-refresh-token");
+    }
+  });
+});
+
 async function withGrokHome(run) {
   const previousGrokHome = process.env.GROK_HOME;
   const previousGrokAuthFile = process.env.GROK_AUTH_FILE;

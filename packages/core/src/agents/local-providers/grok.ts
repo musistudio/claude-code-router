@@ -47,6 +47,8 @@ const grokDefaultOidcIssuer = "https://auth.x.ai";
 const grokOauthDefaultTimeoutMs = 8_000;
 const grokFallbackClientVersion = "0.2.93";
 
+const grokRefreshInFlight = new Map<string, Promise<GrokTokenSet>>();
+
 const grokBillingResetPaths = [
   "$.billingPeriodEnd",
   "$.currentPeriod.end",
@@ -182,7 +184,7 @@ const grokBillingMapping: ProviderAccountMappingConfig = {
   ]
 };
 
-export class GrokRefreshAuthError extends Error {
+class GrokRefreshAuthError extends Error {
   readonly status: number;
 
   constructor(status: number, message: string) {
@@ -265,11 +267,25 @@ export async function resolveGrokAuth(): Promise<GrokTokenSet | undefined> {
   if (!auth?.refreshToken || (auth.accessToken && !grokAccessTokenExpired(auth))) {
     return auth;
   }
-  try {
-    return await refreshGrokAuth(auth);
-  } catch (error) {
-    return adoptPeerRotatedGrokAuth(auth, error);
+  // Coalesce concurrent refreshes of the same credential: the refresh token
+  // rotates on every refresh, so every in-process caller must share a single
+  // refresh attempt (and its peer-rotation adoption outcome) instead of
+  // submitting the same stale token in parallel.
+  const key = `${auth.sourceFile}::${auth.authRecordKey ?? ""}`;
+  let refresh = grokRefreshInFlight.get(key);
+  if (!refresh) {
+    refresh = (async () => {
+      try {
+        return await refreshGrokAuth(auth);
+      } catch (error) {
+        return adoptPeerRotatedGrokAuth(auth, error);
+      }
+    })().finally(() => {
+      grokRefreshInFlight.delete(key);
+    });
+    grokRefreshInFlight.set(key, refresh);
   }
+  return refresh;
 }
 
 function adoptPeerRotatedGrokAuth(auth: GrokTokenSet, error: unknown): GrokTokenSet {
