@@ -17,6 +17,7 @@ import {
   createProviderDraftFromProvider,
   createProviderInstallLinkFromDraft,
   customProviderPresetId,
+  Field,
   FieldGroup,
   localAgentProviderIconUrls,
   providerCapabilitiesForProtocols,
@@ -54,6 +55,23 @@ test("composite field groups do not label their nested controls", () => {
   assert.doesNotMatch(html, /^<label/);
   assert.match(html, /Search models/);
   assert.match(html, /Model settings/);
+});
+
+test("fields never wrap nested controls in a label element", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      Field,
+      { label: "Protocol details" },
+      React.createElement("input", { "aria-label": "First option" }),
+      React.createElement("input", { "aria-label": "Second option" })
+    )
+  );
+
+  assert.match(html, /^<div/);
+  assert.doesNotMatch(html, /<label/);
+  assert.match(html, /Protocol details/);
+  assert.match(html, /First option/);
+  assert.match(html, /Second option/);
 });
 
 test("Gemini preset keeps full protocol probing candidates", () => {
