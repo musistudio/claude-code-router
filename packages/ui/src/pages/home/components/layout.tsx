@@ -195,7 +195,7 @@ export function MainLayout({
         }}
         aria-hidden={!sidebarOpen}
         className={cn(
-          "app-sidebar flex shrink-0 flex-col overflow-hidden bg-sidebar/95 max-[720px]:h-auto",
+          "app-sidebar flex min-h-0 shrink-0 flex-col overflow-hidden bg-sidebar/95 max-[720px]:h-auto",
           sidebarOpen && compactLayout && "border-b border-border"
         )}
         id="primary-sidebar"
@@ -217,7 +217,7 @@ export function MainLayout({
               <div className="app-drag min-w-0 flex-1" />
             </div>
 
-            <nav className="flex min-h-0 flex-1 flex-col gap-4 px-2 py-3 max-[720px]:flex-none max-[720px]:flex-row max-[720px]:gap-1 max-[720px]:overflow-x-auto max-[720px]:py-2" aria-label={copy.sidebar.primaryNavigation}>
+            <nav className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 py-3 max-[720px]:flex-none max-[720px]:flex-row max-[720px]:gap-1 max-[720px]:overflow-x-auto max-[720px]:overflow-y-hidden max-[720px]:py-2" aria-label={copy.sidebar.primaryNavigation}>
               {navigationGroups.map((group) => (
                 <div className="grid min-w-0 gap-1 max-[720px]:contents" key={group.id}>
                   <div className="px-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/65 max-[720px]:hidden">

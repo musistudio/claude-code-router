@@ -11,6 +11,7 @@ export * from "./profiles";
 export * from "./services";
 export * from "./provider-accounts";
 export * from "./logs";
+export * from "./log-body-worker-protocol";
 export * from "./common";
 export * from "./config";
 export * from "./api-keys";

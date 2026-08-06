@@ -30,6 +30,8 @@ import { adaptRouteRequestBody, restoreRouteRequestBody } from "@ccr/core/routin
 import { reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
 import { recordProviderCredentialOutcome } from "@ccr/core/providers/credential-pool";
 import { codexApplyPatchBridgeResponseStream, prepareCodexApplyPatchBridgeRequest } from "@ccr/core/gateway/features/codex-patch-bridge";
+import { codexMultiAgentBridgeResponseStream, prepareCodexMultiAgentBridgeRequest } from "@ccr/core/gateway/features/codex-multi-agent-bridge";
+import { rewriteAnthropicMessageStartModelStream, shouldRewriteAnthropicMessageStartModel } from "@ccr/core/gateway/features/anthropic-response-model";
 import { prepareCursorOpenAICompatChatBody } from "@ccr/core/gateway/features/cursor-compat";
 import { filteredResponseHeaders, formatError, formatUpstreamErrorForLog, forwardHeaders, inferGatewayClient, readRequestBody, sendJson, shouldCaptureGatewayUsage, shouldSendBody, stripLocalGatewayAuthHeaders } from "@ccr/core/gateway/http/io";
 import { serializeJsonBody, takeJsonObject } from "@ccr/core/gateway/http/body";
@@ -41,7 +43,7 @@ import { coreGatewayUsageAttributionConfig } from "@ccr/core/gateway/core-runtim
 import { providerModelPricingForUsage } from "@ccr/core/models/pricing-service";
 import { clientClosedRequestStatusCode, clientDisconnectMessage, resolveStreamRequestLogOutcome, UpstreamRequestError } from "@ccr/core/gateway/internal/shared";
 import type { BrowserWebSearchMcpIntegration, BrowserWebSearchProtocolRecord, UpstreamFetchResult } from "@ccr/core/gateway/internal/shared";
-import { applyProviderCapabilityRouting, cancelResponseBody, destroyResponseStreams, fetchUpstreamWithFallback, mergeFallbackResponseHeaders, rewriteCapabilityResponseHeaders, uniqueStreams, upstreamResponseHeaders } from "@ccr/core/gateway/upstream/executor";
+import { cancelResponseBody, destroyResponseStreams, fetchUpstreamWithFallback, mergeFallbackResponseHeaders, rewriteCapabilityResponseHeaders, uniqueStreams, upstreamResponseHeaders } from "@ccr/core/gateway/upstream/executor";
 import { requestProtocolForPath, shouldApplyGatewayRouting } from "@ccr/core/routing/protocol-endpoints";
 import { createClaudeCodeWebSearchContinuationContext, createHostedWebSearchProtocolContext, hostedWebSearchProtocolResponseStream, hostedWebSearchUnavailableMessage, prepareClaudeCodeWebSearchContinuationRequestBody, prepareHostedWebSearchProtocolRequestBody, selectClaudeCodeWebSearchContinuationRecords, selectHostedWebSearchProtocolRecords } from "@ccr/core/gateway/features/hosted-web-search/index";
 
@@ -155,6 +157,7 @@ export class GatewayRequestPipeline {
       let routeFallback = this.config.Router.fallback;
       let routedModel: string | undefined;
       let codexApplyPatchBridgeActive = false;
+      let codexMultiAgentBridgeActive = false;
       const claudeModelRewriteStartedAt = Date.now();
       const claudeModelRewrite = prepareClaudeCodeDiscoveredModelRequest(this.config, request.headers, method, path, bodyToForward);
       if (claudeModelRewrite) {
@@ -380,42 +383,33 @@ export class GatewayRequestPipeline {
         });
       }
 
-      const capabilityRoutingStartedAt = Date.now();
-      const capabilityBodyBefore = bodyToForward;
-      const capabilityFallbackBefore = routeFallback;
-      const capabilityModelBefore = routedModel;
-      const capabilityProviderHeadersBefore = {
-        gateway: headers["x-gateway-target-provider"],
-        list: headers["x-target-providers"],
-        target: headers["x-target-provider"]
-      };
-      const providerCapabilityRouting = applyProviderCapabilityRouting({
+      const codexMultiAgentBridgeStartedAt = Date.now();
+      const codexMultiAgentBridgeRequest = prepareCodexMultiAgentBridgeRequest({
         body: bodyToForward,
         config: this.config,
-        fallback: routeFallback,
-        headers,
+        headers: request.headers,
+        method,
         path,
         routedModel
       });
-      bodyToForward = providerCapabilityRouting.body;
-      routeFallback = providerCapabilityRouting.fallback;
-      routedModel = providerCapabilityRouting.routedModel;
-      routeTrace?.capture({
-        changes: [
-          ...(capabilityBodyBefore === bodyToForward ? [] : [{ operation: "replace" as const, path: "/body/model", scope: "body" as const }]),
-          reportedRouteChange("routing", "/routing/model", capabilityModelBefore, routedModel),
-          ...(capabilityFallbackBefore === routeFallback ? [] : [{ after: routeFallback, before: capabilityFallbackBefore, operation: "replace" as const, path: "/routing/fallback", scope: "routing" as const }]),
-          reportedRouteChange("headers", "/headers/x-target-provider", capabilityProviderHeadersBefore.target, headers["x-target-provider"]),
-          reportedRouteChange("headers", "/headers/x-target-providers", capabilityProviderHeadersBefore.list, headers["x-target-providers"]),
-          reportedRouteChange("headers", "/headers/x-gateway-target-provider", capabilityProviderHeadersBefore.gateway, headers["x-gateway-target-provider"])
-        ].filter(isReportedRouteChange),
-        durationMs: Date.now() - capabilityRoutingStartedAt,
-        kind: "mutation",
-        name: "provider.capability-routing",
-        phase: "capability",
-        startedAtMs: capabilityRoutingStartedAt,
-        target: routedModel ? { model: routedModel } : undefined
-      });
+      if (codexMultiAgentBridgeRequest) {
+        bodyToForward = codexMultiAgentBridgeRequest.body;
+        codexMultiAgentBridgeActive = true;
+        headers["x-ccr-codex-multi-agent-bridge"] = sanitizeHeaderValue(codexMultiAgentBridgeRequest.diagnostic);
+        headers["content-type"] = "application/json";
+        routeTrace?.capture({
+          changes: [
+            { operation: "replace", path: "/body", scope: "body" },
+            { after: headers["x-ccr-codex-multi-agent-bridge"], operation: "add", path: "/headers/x-ccr-codex-multi-agent-bridge", scope: "headers" },
+            { after: headers["content-type"], operation: "replace", path: "/headers/content-type", scope: "headers" }
+          ],
+          durationMs: Date.now() - codexMultiAgentBridgeStartedAt,
+          kind: "mutation",
+          name: "compatibility.codex-multi-agent",
+          phase: "compatibility",
+          startedAtMs: codexMultiAgentBridgeStartedAt
+        });
+      }
 
       const hostedWebSearchProtocolContext = createHostedWebSearchProtocolContext({
         body: bodyToForward,
@@ -670,6 +664,7 @@ export class GatewayRequestPipeline {
         throw error;
       }
 
+      const clientVisibleResponseModel = requestedModel ?? routedModel;
       bodyToForward = upstreamResult.attempt.body ?? bodyToForward;
       routedModel = upstreamResult.attempt.model ?? routedModel;
       if (contextArchiveToolContinuation && upstreamResult.response.ok) {
@@ -719,9 +714,8 @@ export class GatewayRequestPipeline {
       const appendContextArchiveFooter = Boolean(contextArchiveRecord && upstreamResponse.ok);
       const transformCodexCompactResponse = Boolean(!contextArchiveRecord && codexCompactCompatResponseMode && upstreamResponse.ok);
       const contextArchiveSourceContentType = responseHeaders.get("content-type") ?? undefined;
-      if (codexApplyPatchBridgeActive || appendContextArchiveFooter || transformCodexCompactResponse) {
-        responseHeaders.delete("content-length");
-      }
+      const responseProtocol = requestProtocolForPath(upstreamPath) ?? requestProtocol;
+      const archiveResponseProtocol = responseProtocol ?? "anthropic_messages";
       if ((appendContextArchiveFooter || transformCodexCompactResponse) && contextArchiveResponseContentType) {
         responseHeaders.set("content-type", contextArchiveResponseContentType);
       }
@@ -737,6 +731,14 @@ export class GatewayRequestPipeline {
           this.browserWebSearchMcpIntegration?.recentBrowserWebSearchResults ||
           this.browserWebSearchMcpIntegration?.runBrowserWebSearch)
       ) {
+        responseHeaders.delete("content-length");
+      }
+      const rewriteAnthropicResponseModel = upstreamResponse.ok && shouldRewriteAnthropicMessageStartModel({
+        contentType: responseHeaders.get("content-type") ?? undefined,
+        model: clientVisibleResponseModel,
+        protocol: responseProtocol
+      });
+      if (codexApplyPatchBridgeActive || codexMultiAgentBridgeActive || appendContextArchiveFooter || transformCodexCompactResponse || rewriteAnthropicResponseModel) {
         responseHeaders.delete("content-length");
       }
       recordProviderCredentialOutcome(this.config, method, upstreamResult.attempt, upstreamResponse.status, responseHeaders);
@@ -771,15 +773,17 @@ export class GatewayRequestPipeline {
       const patchedResponseBody = codexApplyPatchBridgeActive
         ? codexApplyPatchBridgeResponseStream(upstreamBody, responseHeaders)
         : upstreamBody;
+      const multiAgentResponseBody = codexMultiAgentBridgeActive
+        ? codexMultiAgentBridgeResponseStream(patchedResponseBody, responseHeaders)
+        : patchedResponseBody;
       const hostedWebSearchResponseBody = hostedWebSearchProtocolContext
         ? hostedWebSearchProtocolResponseStream(
-            patchedResponseBody,
+            multiAgentResponseBody,
             responseHeaders,
             hostedWebSearchProtocolContext,
             this.browserWebSearchMcpIntegration
           )
-        : patchedResponseBody;
-      const archiveResponseProtocol = requestProtocolForPath(upstreamPath) ?? requestProtocol ?? "anthropic_messages";
+        : multiAgentResponseBody;
       const responseBody = appendContextArchiveFooter && contextArchiveRecord
         ? contextArchiveHandoffResponseStream(
             hostedWebSearchResponseBody,
@@ -796,7 +800,10 @@ export class GatewayRequestPipeline {
               codexCompactCompatResponseMode
             )
           : hostedWebSearchResponseBody;
-      const responseStreams = uniqueStreams([upstreamBody, patchedResponseBody, hostedWebSearchResponseBody, responseBody]);
+      const clientResponseBody = rewriteAnthropicResponseModel && clientVisibleResponseModel
+        ? rewriteAnthropicMessageStartModelStream(responseBody, clientVisibleResponseModel)
+        : responseBody;
+      const responseStreams = uniqueStreams([upstreamBody, patchedResponseBody, multiAgentResponseBody, hostedWebSearchResponseBody, responseBody, clientResponseBody]);
       const sampler = createBodySampler();
       const sseErrorDetector = createSseErrorDetector(responseHeaders.get("content-type") ?? undefined);
       let streamDetectedError: string | undefined;
@@ -826,7 +833,7 @@ export class GatewayRequestPipeline {
       onClientDisconnect = () => {
         streamDetectedError ??= sseErrorDetector.finish();
         writeStreamLog();
-        responseBody.unpipe(response);
+        clientResponseBody.unpipe(response);
         destroyResponseStreams(responseStreams);
       };
       onResponseFinish = () => {
@@ -852,11 +859,11 @@ export class GatewayRequestPipeline {
       for (const stream of responseStreams) {
         stream.on("error", onResponseStreamError);
       }
-      responseBody.on("data", (chunk) => {
+      clientResponseBody.on("data", (chunk) => {
         sampler.append(chunk);
         streamDetectedError ??= sseErrorDetector.append(chunk);
       });
-      responseBody.once("end", () => {
+      clientResponseBody.once("end", () => {
         upstreamStreamEnded = true;
         streamDetectedError ??= sseErrorDetector.finish();
         if (responseCompleted || response.writableEnded) {
@@ -864,7 +871,7 @@ export class GatewayRequestPipeline {
         }
       });
       if (shouldCaptureUsage) {
-        responseBody.once("end", () => {
+        clientResponseBody.once("end", () => {
           recordUsage({
             bodyText: sampler.read(),
             client,
@@ -884,7 +891,7 @@ export class GatewayRequestPipeline {
         onClientDisconnect();
         return;
       }
-      responseBody.pipe(response);
+      clientResponseBody.pipe(response);
     }
 
   async replayContextArchive(input: ContextArchiveReplayInput): Promise<ContextArchiveReplayResult> {

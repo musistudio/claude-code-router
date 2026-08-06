@@ -6,7 +6,7 @@ import {
   useState,
   UserRound, X
 } from "../shared/index";
-import { AddProviderForm, providerSetupStepIds, type ProviderSetupStepId } from "./providers";
+import { AddProviderForm, ProviderConnectivityCheckDialog, providerSetupStepIds, type ProviderSetupStepId } from "./providers";
 import { AddProfileForm } from "./profiles";
 
 type OnboardingMascotTone = "cyan" | "orange" | "violet";
@@ -69,7 +69,7 @@ export function OnboardingView({
   config: AppConfig;
   endpoint: string;
   gatewayStatus: GatewayStatus;
-  onCheckProvider: () => Promise<ProviderConnectivityCheckReport>;
+  onCheckProvider: (models?: string[]) => Promise<ProviderConnectivityCheckReport>;
   onChangeProfile: (patch: Partial<AddProfileDraft>) => void;
   onChangeProvider: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
   onComplete: () => void | Promise<void>;
@@ -88,6 +88,7 @@ export function OnboardingView({
 }) {
   const t = useAppText();
   const shouldReduceMotion = useReducedMotion();
+  const [providerCheckOpen, setProviderCheckOpen] = useState(false);
   const [providerIconDetecting, setProviderIconDetecting] = useState(false);
   const [providerSetupStep, setProviderSetupStep] = useState<ProviderSetupStepId>("provider");
   const providerReady = isOnboardingProviderReady(config);
@@ -105,7 +106,8 @@ export function OnboardingView({
       ? providerDraftHasReadyCredentialPool(providerDraft)
       : providerDraft.apiKey.trim()
   );
-  const providerModelsReady = mergeProviderModelLists(providerDraft.selectedModels, splitLines(providerDraft.modelsText)).length > 0;
+  const providerCheckModels = mergeProviderModelLists(providerDraft.selectedModels, splitLines(providerDraft.modelsText));
+  const providerModelsReady = providerCheckModels.length > 0;
   const providerSetupIndex = Math.max(0, providerSetupStepIds.indexOf(providerSetupStep));
   const previousProviderSetupStep = activeStep === "provider" ? providerSetupStepIds[providerSetupIndex - 1] : undefined;
   const nextProviderSetupStep = activeStep === "provider" ? providerSetupStepIds[providerSetupIndex + 1] : undefined;
@@ -260,7 +262,7 @@ export function OnboardingView({
                       error={providerError}
                       activeStep={providerSetupStep}
                       mode={providerReady ? "edit" : "add"}
-                      onCheck={onCheckProvider}
+                      onCheck={async () => setProviderCheckOpen(true)}
                       onChange={onChangeProvider}
                       onIconDetectingChange={setProviderIconDetecting}
                       onSelectStep={(step) => {
@@ -330,6 +332,15 @@ export function OnboardingView({
           </motion.div>
         </div>
       </div>
+
+      {providerCheckOpen ? (
+        <ProviderConnectivityCheckDialog
+          connectivityLoading={providerConnectivityLoading}
+          models={providerCheckModels}
+          onCheck={onCheckProvider}
+          onClose={() => setProviderCheckOpen(false)}
+        />
+      ) : null}
     </motion.div>
   );
 }

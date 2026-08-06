@@ -7,7 +7,7 @@ import { geminiProviderPreset } from "@ccr/core/providers/presets/gemini/index.t
 import { minimaxChinaProviderPreset } from "@ccr/core/providers/presets/minimax/index.ts";
 import { moonshotGlobalProviderPreset } from "@ccr/core/providers/presets/moonshot/index.ts";
 import { qiniuAiProviderPreset } from "@ccr/core/providers/presets/qiniu-ai/index.ts";
-import { AddProviderDialog, AddProviderForm, ProvidersView, uniqueProviderProbeProtocolRows } from "@ccr/ui/pages/home/components/providers.tsx";
+import { AddProviderDialog, AddProviderForm, ProviderConnectivityCheckDialog, ProvidersView, uniqueProviderProbeProtocolRows } from "@ccr/ui/pages/home/components/providers.tsx";
 import {
   applyProviderProbeResult,
   createProviderConfigFromDeepLink,
@@ -627,9 +627,66 @@ test("AddProviderForm shows skeleton rows while provider models load", () => {
   assert.match(html, /aria-busy="true"/);
   assert.match(html, /Loading provider models/);
   assert.match(html, /provider-skeleton-shimmer/);
-  assert.doesNotMatch(html, /Custom model/);
-  assert.doesNotMatch(html, /No models added/);
   assert.doesNotMatch(html, /No provider models/);
+  // The added-models panel holds local draft state, so it keeps rendering its real contents and
+  // controls while the provider catalog probe is still running.
+  assert.match(html, /Custom model/);
+  assert.match(html, /No models added/);
+});
+
+test("AddProviderForm explains an empty provider catalog once the probe settles", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-test",
+    baseUrl: "https://api.example/v1",
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      activeStep: "models",
+      draft,
+      error: "",
+      mode: "add",
+      onChange: () => undefined,
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /No provider models/);
+  assert.match(html, /Add model IDs with Custom model/);
+});
+
+test("connectivity check confirmation warns about spending provider credits", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(ProviderConnectivityCheckDialog, {
+      connectivityLoading: false,
+      models: ["example-model", "example-model-mini"],
+      onCheck: async () => ({ failed: [], passed: [], results: [] }),
+      onClose: () => undefined
+    })
+  );
+
+  assert.match(html, /This check sends real model requests with your provider API key and may consume account balance\./);
+  assert.match(html, /Models to check/);
+  assert.match(html, /example-model-mini/);
+  assert.match(html, /Start check/);
+});
+
+test("AddProviderForm marks the provider error banner as an alert", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      draft: createProviderDraft([]),
+      error: "Invalid API key.",
+      mode: "add",
+      onChange: () => undefined,
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /role="alert"[^>]*>[\s\S]*Invalid API key\./);
 });
 
 test("provider connectivity API key follows selected credential mode", () => {

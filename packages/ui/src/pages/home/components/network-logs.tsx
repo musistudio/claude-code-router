@@ -4,10 +4,12 @@ import type { RequestRouteTrace, RequestRouteTraceChange, RequestRouteTraceHop }
 import {
   AnimatedIconSwap, Check, ChevronDown, ChevronLeft,
   ChevronRight, clampNumber, clientInitial, cn, Copy, copyTextToClipboard,
-  Database, Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle, filterLogText, formatBytes, formatCompactNumber, formatDuration,
-  formatLogBodyView, formatLogDateTime, formatLogTokenSummary, formatNetworkRequestRaw, formatNetworkResponseRaw, formatRouteTracePath, formatUsdCost,
-  isJsonContainer, jsonChildPath, logRequestModel,
-  logResponseModel, logSelectOptions, motion, MoveRight, Network, networkCodeLabel,
+  createLogBodyPreviewText, Database, Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle, formatBytes, formatCompactNumber, formatDuration,
+  formatLogDateTime, formatLogTokenSummary, formatNetworkRequestRaw, formatNetworkResponseRaw, formatRouteTracePath, formatUsdCost,
+  FormattedLogBody,
+  isJsonContainer, isLargeLogBody, jsonChildPath, logRequestModel,
+  LogBodyFormatMode, logBodyLargeTextThreshold, logBodyPreviewTextLimit, LogBodyWorkerResponse,
+  logResolvedRouteModel, logSelectOptions, motion, MoveRight, Network, networkCodeLabel,
   networkExchangeMatchesQuery, networkHeaderRows, networkLifecycleLabel, networkQueryRows, networkRowId, networkSummaryRows,
   Pause, Play, ProxyNetworkBody, ProxyNetworkExchange, ProxyNetworkSnapshot, ProxyStatus,
   ReactNode, ReactPointerEvent, RefreshCw, RequestLogBody, RequestLogEntry, RequestLogListFilter,
@@ -19,11 +21,10 @@ import { TooltipPortal } from "@/components/ui/tooltip";
 type NetworkRequestTab = "body" | "header" | "query" | "raw" | "summary";
 type NetworkResponseTab = "body" | "header" | "raw";
 
-const logBodyViewCacheLimit = 12;
 const logJsonAutoExpandEntryLimit = 60;
 const logJsonContainerPreviewLimit = 80;
 const logJsonAutoExpandTextLimit = 160 * 1024;
-const logBodyViewCache = new Map<string, ReturnType<typeof formatLogBodyView>>();
+const logBodyWorkerFilterDebounceMs = 180;
 type LogTableColumnId = "time" | "status" | "stream" | "model" | "credential" | "tokens" | "duration";
 type LogTableColumn = {
   id: LogTableColumnId;
@@ -842,10 +843,10 @@ function LogMobileCard({
             </div>
             <div className="mt-2 min-w-0 text-[11px] text-muted-foreground">
               <div className="truncate font-mono" title={createdAt}>{createdAt}</div>
-              <div className="mt-1 flex min-w-0 items-center gap-1" title={`${logRequestModel(item)} -> ${logResponseModel(item)}`}>
+              <div className="mt-1 flex min-w-0 items-center gap-1" title={`${logRequestModel(item)} -> ${logResolvedRouteModel(item)}`}>
                 <span className="min-w-0 truncate">{logRequestModel(item)}</span>
                 <MoveRight className="h-3 w-3 shrink-0" aria-hidden="true" />
-                <span className="min-w-0 truncate">{logResponseModel(item)}</span>
+                <span className="min-w-0 truncate">{logResolvedRouteModel(item)}</span>
               </div>
             </div>
             <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
@@ -1378,8 +1379,8 @@ function LogMetric({ label, value }: { label: string; value: string }) {
 
 function LogModelRouteCell({ entry }: { entry: RequestLogEntry }) {
   const requestModel = logRequestModel(entry);
-  const responseModel = logResponseModel(entry);
-  return <LogModelTooltip requestModel={requestModel} responseModel={responseModel} />;
+  const resolvedModel = logResolvedRouteModel(entry);
+  return <LogModelTooltip requestModel={requestModel} resolvedModel={resolvedModel} />;
 }
 
 type LogModelTooltipState = {
@@ -1391,14 +1392,14 @@ type LogModelTooltipState = {
 
 function LogModelTooltip({
   requestModel,
-  responseModel
+  resolvedModel
 }: {
   requestModel: string;
-  responseModel: string;
+  resolvedModel: string;
 }) {
   const triggerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<LogModelTooltipState>();
-  const value = `${requestModel} -> ${responseModel}`;
+  const value = `${requestModel} -> ${resolvedModel}`;
 
   useEffect(() => {
     if (!tooltip) return;
@@ -1443,7 +1444,7 @@ function LogModelTooltip({
       >
         <span className="min-w-0 max-w-[45%] truncate">{requestModel}</span>
         <MoveRight className="mx-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <span className="min-w-0 max-w-[45%] truncate">{responseModel}</span>
+        <span className="min-w-0 max-w-[45%] truncate">{resolvedModel}</span>
       </div>
       {tooltip ? (
         <TooltipPortal
@@ -1496,6 +1497,247 @@ function LogStreamCell({ entry }: { entry: RequestLogEntry }) {
 
 type LogPayloadTab = "body" | "header";
 
+type LogBodyPanelView = FormattedLogBody & {
+  bodyKey: string;
+  error: string;
+  formattedTextLength: number;
+  large: boolean;
+  loading: boolean;
+  mode: LogBodyFormatMode;
+  preview: boolean;
+  query: string;
+  sourceSizeBytes: number;
+  visible: string;
+};
+
+function useLogBodyWorkerView(
+  body: RequestLogBody | undefined,
+  bodyKey: string,
+  mode: LogBodyFormatMode,
+  query: string
+): LogBodyPanelView {
+  const debouncedQuery = useDebouncedValue(query, logBodyWorkerFilterDebounceMs);
+  const latestQueryRef = useRef(debouncedQuery);
+  const workerRef = useRef<Worker>();
+  const formatRequestIdRef = useRef(0);
+  const filterRequestIdRef = useRef(0);
+  const [bodyView, setBodyView] = useState<LogBodyPanelView>(() => createInitialLogBodyPanelView(body, bodyKey, mode, query));
+
+  useEffect(() => {
+    latestQueryRef.current = debouncedQuery;
+  }, [debouncedQuery]);
+
+  useEffect(() => {
+    const initial = createInitialLogBodyPanelView(body, bodyKey, mode, latestQueryRef.current);
+    setBodyView(initial);
+
+    workerRef.current?.terminate();
+    workerRef.current = undefined;
+
+    if (isStaticLogBody(body)) {
+      setBodyView(createStaticLogBodyPanelView(body, bodyKey, mode, latestQueryRef.current));
+      return;
+    }
+
+    if (typeof Worker === "undefined") {
+      setBodyView({
+        ...initial,
+        error: "Body formatter worker is unavailable.",
+        loading: false,
+        visible: initial.visible || "Body formatter worker is unavailable."
+      });
+      return;
+    }
+
+    const worker = createLogBodyFormatterWorker();
+    const formatRequestId = formatRequestIdRef.current + 1;
+    formatRequestIdRef.current = formatRequestId;
+    filterRequestIdRef.current += 1;
+    workerRef.current = worker;
+
+    worker.onmessage = (event: MessageEvent<LogBodyWorkerResponse>) => {
+      const response = event.data;
+      if (response.kind === "format-result") {
+        if (response.id !== formatRequestIdRef.current || response.bodyKey !== bodyKey || response.mode !== mode) {
+          return;
+        }
+        setBodyView(logBodyPanelViewFromWorkerResult(response));
+        if (response.query !== latestQueryRef.current) {
+          postLogBodyFilter(worker, bodyKey, mode, latestQueryRef.current, filterRequestIdRef);
+        }
+        return;
+      }
+
+      if (response.kind === "filter-result") {
+        if (response.id !== filterRequestIdRef.current || response.bodyKey !== bodyKey || response.mode !== mode) {
+          return;
+        }
+        setBodyView((current) => current.bodyKey === bodyKey && current.mode === mode
+          ? { ...current, query: response.query, visible: response.visible }
+          : current);
+        return;
+      }
+
+      if (
+        (response.operation === "format" && response.id === formatRequestIdRef.current) ||
+        (response.operation === "filter" && response.id === filterRequestIdRef.current)
+      ) {
+        setBodyView((current) => current.bodyKey === bodyKey && current.mode === mode
+          ? { ...current, error: response.message, loading: false, visible: current.visible || response.message }
+          : current);
+      }
+    };
+
+    worker.onerror = (event) => {
+      setBodyView((current) => current.bodyKey === bodyKey && current.mode === mode
+        ? { ...current, error: event.message || "Body formatter worker failed.", loading: false }
+        : current);
+    };
+
+    worker.postMessage({
+      body,
+      bodyKey,
+      id: formatRequestId,
+      kind: "format",
+      largeTextThreshold: logBodyLargeTextThreshold,
+      mode,
+      previewTextLimit: logBodyPreviewTextLimit,
+      query: latestQueryRef.current
+    });
+
+    return () => {
+      if (workerRef.current === worker) {
+        workerRef.current = undefined;
+      }
+      worker.terminate();
+    };
+  }, [body, bodyKey, mode]);
+
+  useEffect(() => {
+    const worker = workerRef.current;
+    if (!worker || bodyView.loading || bodyView.bodyKey !== bodyKey || bodyView.mode !== mode || bodyView.query === debouncedQuery) {
+      return;
+    }
+    postLogBodyFilter(worker, bodyKey, mode, debouncedQuery, filterRequestIdRef);
+  }, [bodyKey, bodyView.bodyKey, bodyView.loading, bodyView.mode, bodyView.query, debouncedQuery, mode]);
+
+  return bodyView;
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs, value]);
+
+  return debounced;
+}
+
+function createLogBodyFormatterWorker(): Worker {
+  return new Worker(new URL("../../assets/log-body.worker.js", window.location.href), { type: "module" });
+}
+
+function postLogBodyFilter(
+  worker: Worker,
+  bodyKey: string,
+  mode: LogBodyFormatMode,
+  query: string,
+  idRef: { current: number }
+) {
+  const id = idRef.current + 1;
+  idRef.current = id;
+  worker.postMessage({
+    bodyKey,
+    id,
+    kind: "filter",
+    mode,
+    query
+  });
+}
+
+function createInitialLogBodyPanelView(
+  body: RequestLogBody | undefined,
+  bodyKey: string,
+  mode: LogBodyFormatMode,
+  query: string
+): LogBodyPanelView {
+  if (isStaticLogBody(body)) {
+    return createStaticLogBodyPanelView(body, bodyKey, mode, query);
+  }
+
+  const large = isLargeLogBody(body, logBodyLargeTextThreshold);
+  const preview = large && mode !== "full";
+  const text = preview
+    ? createLogBodyPreviewText(body, logBodyPreviewTextLimit)
+    : "Loading body...";
+  return {
+    bodyKey,
+    error: "",
+    formattedTextLength: text.length,
+    large,
+    loading: true,
+    mode,
+    preview,
+    query,
+    sourceSizeBytes: body?.sizeBytes ?? 0,
+    text,
+    visible: text
+  };
+}
+
+function createStaticLogBodyPanelView(
+  body: RequestLogBody | undefined,
+  bodyKey: string,
+  mode: LogBodyFormatMode,
+  query: string
+): LogBodyPanelView {
+  const text = body?.text || "No body";
+  return {
+    bodyKey,
+    error: "",
+    formattedTextLength: text.length,
+    large: false,
+    loading: false,
+    mode,
+    preview: false,
+    query,
+    sourceSizeBytes: body?.sizeBytes ?? 0,
+    text,
+    visible: filterStaticLogBodyText(text, query)
+  };
+}
+
+function logBodyPanelViewFromWorkerResult(result: Extract<LogBodyWorkerResponse, { kind: "format-result" }>): LogBodyPanelView {
+  return {
+    bodyKey: result.bodyKey,
+    error: "",
+    formattedTextLength: result.formattedTextLength,
+    json: result.json,
+    large: result.large,
+    loading: false,
+    mode: result.mode,
+    preview: result.preview,
+    query: result.query,
+    sourceSizeBytes: result.sourceSizeBytes,
+    text: result.text,
+    visible: result.visible
+  };
+}
+
+function isStaticLogBody(body: RequestLogBody | undefined): boolean {
+  return !body || (!body.text && body.sizeBytes === 0);
+}
+
+function filterStaticLogBodyText(text: string, query: string): string {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return text;
+  }
+  return text.toLowerCase().includes(normalized) ? text : "No matching lines";
+}
+
 function LogJsonPanel({
   body,
   className,
@@ -1514,20 +1756,25 @@ function LogJsonPanel({
   const t = useAppText();
   const [selectedTab, setSelectedTab] = useState<LogPayloadTab>("body");
   const [preferTextBody, setPreferTextBody] = useState(false);
+  const [bodyMode, setBodyMode] = useState<LogBodyFormatMode>("preview");
   const [fullscreenOpen, setFullscreenOpen] = useState(false);
   const [query, setQuery] = useState("");
   const bodyKey = logBodyCacheKey(body);
-  const bodyView = useMemo(() => cachedFormatLogBodyView(bodyKey, body), [bodyKey]);
+  const bodyView = useLogBodyWorkerView(body, bodyKey, bodyMode, query);
   const formatted = bodyView.text;
-  const visible = useMemo(() => filterLogText(formatted, query), [formatted, query]);
+  const visible = bodyView.visible;
   const headerRows = useMemo(() => networkHeaderRows(headers ?? {}), [headers]);
   const [expandedJsonPaths, setExpandedJsonPaths] = useState<Set<string>>(() => createInitialVisibleJsonPaths(bodyView));
-  const showJsonTree = bodyView.json !== undefined && query.trim() === "" && !preferTextBody;
+  const showJsonTree = bodyView.json !== undefined && query.trim() === "" && !preferTextBody && !bodyView.preview;
+
+  useEffect(() => {
+    setPreferTextBody(false);
+    setBodyMode("preview");
+  }, [bodyKey]);
 
   useEffect(() => {
     setExpandedJsonPaths(createInitialVisibleJsonPaths(bodyView));
-    setPreferTextBody(false);
-  }, [bodyKey]);
+  }, [bodyView.bodyKey, bodyView.json, bodyView.text]);
 
   useEffect(() => {
     if (!fullscreenOpen) {
@@ -1582,6 +1829,7 @@ function LogJsonPanel({
             <LogJsonBodyToolbar
               body={body}
               bodyView={bodyView}
+              onLoadFullBody={() => setBodyMode("full")}
               onQueryChange={setQuery}
               onToggleTextBody={() => setPreferTextBody((current) => !current)}
               preferTextBody={preferTextBody}
@@ -1610,6 +1858,7 @@ function LogJsonPanel({
                 copyText={formatted}
                 expandedJsonPaths={expandedJsonPaths}
                 onClose={() => setFullscreenOpen(false)}
+                onLoadFullBody={() => setBodyMode("full")}
                 onQueryChange={setQuery}
                 onToggleJsonPath={toggleJsonPath}
                 onToggleTextBody={() => setPreferTextBody((current) => !current)}
@@ -1636,6 +1885,7 @@ function LogJsonPanel({
 function LogJsonBodyToolbar({
   body,
   bodyView,
+  onLoadFullBody,
   onQueryChange,
   onToggleTextBody,
   preferTextBody,
@@ -1643,7 +1893,8 @@ function LogJsonBodyToolbar({
   title
 }: {
   body?: RequestLogBody;
-  bodyView: ReturnType<typeof formatLogBodyView>;
+  bodyView: LogBodyPanelView;
+  onLoadFullBody: () => void;
   onQueryChange: (value: string) => void;
   onToggleTextBody: () => void;
   preferTextBody: boolean;
@@ -1651,6 +1902,12 @@ function LogJsonBodyToolbar({
   title: string;
 }) {
   const t = useAppText();
+  const canLoadFullBody = bodyView.preview && bodyView.large && query.trim() === "";
+  const canToggleJsonText = bodyView.json !== undefined && query.trim() === "";
+  const showToggleButton = canLoadFullBody || canToggleJsonText;
+  const toggleLabel = canLoadFullBody
+    ? bodyView.loading && bodyView.mode === "full" ? t("Loading full payload...") : t("Show full content")
+    : preferTextBody ? "JSON" : t("Show full content");
 
   return (
     <div className="network-body-meta flex min-h-9 shrink-0 items-center gap-2 border-b px-3 py-1.5">
@@ -1664,15 +1921,20 @@ function LogJsonBodyToolbar({
           value={query}
         />
       </div>
-      {bodyView.json !== undefined && query.trim() === "" ? (
+      {showToggleButton ? (
         <button
           className="network-tab shrink-0 border-0 bg-transparent p-0 text-[11px] font-semibold outline-none"
-          onClick={onToggleTextBody}
+          disabled={bodyView.loading && bodyView.mode === "full"}
+          onClick={canLoadFullBody ? onLoadFullBody : onToggleTextBody}
           type="button"
         >
-          {preferTextBody ? "JSON" : t("Show full content")}
+          {toggleLabel}
         </button>
       ) : null}
+      {bodyView.loading ? <span className="network-muted shrink-0 text-[11px] font-semibold">{t("Loading full payload...")}</span> : null}
+      {bodyView.error ? <span className="network-error-box shrink-0 rounded px-2 py-0.5 text-[11px] font-semibold">{bodyView.error}</span> : null}
+      {bodyView.preview ? <span className="network-service-paused rounded-full px-2 py-0.5 text-[11px] font-semibold">{t("preview")}</span> : null}
+      {bodyView.sourceSizeBytes > 0 ? <span className="network-muted hidden shrink-0 text-[11px] font-semibold sm:inline">{formatBytes(bodyView.sourceSizeBytes)}</span> : null}
       {body?.contentType ? <span className="network-muted hidden shrink-0 text-[11px] font-semibold sm:inline">{body.contentType}</span> : null}
       {body?.truncated ? <span className="network-service-paused rounded-full px-2 py-0.5 text-[11px] font-semibold">{t("truncated")}</span> : null}
     </div>
@@ -1706,6 +1968,7 @@ function LogJsonFullscreenViewer({
   copyText,
   expandedJsonPaths,
   onClose,
+  onLoadFullBody,
   onQueryChange,
   onToggleJsonPath,
   onToggleTextBody,
@@ -1718,11 +1981,12 @@ function LogJsonFullscreenViewer({
   visible
 }: {
   body?: RequestLogBody;
-  bodyView: ReturnType<typeof formatLogBodyView>;
+  bodyView: LogBodyPanelView;
   copyLabel: string;
   copyText: string;
   expandedJsonPaths: Set<string>;
   onClose: () => void;
+  onLoadFullBody: () => void;
   onQueryChange: (value: string) => void;
   onToggleJsonPath: (path: string) => void;
   onToggleTextBody: () => void;
@@ -1760,6 +2024,7 @@ function LogJsonFullscreenViewer({
         <LogJsonBodyToolbar
           body={body}
           bodyView={bodyView}
+          onLoadFullBody={onLoadFullBody}
           onQueryChange={onQueryChange}
           onToggleTextBody={onToggleTextBody}
           preferTextBody={preferTextBody}
@@ -1798,27 +2063,7 @@ function logBodyCacheKey(body: RequestLogBody | undefined): string {
   ].join("\u001f");
 }
 
-function cachedFormatLogBodyView(key: string, body: RequestLogBody | undefined): ReturnType<typeof formatLogBodyView> {
-  const cached = logBodyViewCache.get(key);
-  if (cached) {
-    logBodyViewCache.delete(key);
-    logBodyViewCache.set(key, cached);
-    return cached;
-  }
-
-  const value = formatLogBodyView(body);
-  logBodyViewCache.set(key, value);
-  while (logBodyViewCache.size > logBodyViewCacheLimit) {
-    const oldest = logBodyViewCache.keys().next().value;
-    if (!oldest) {
-      break;
-    }
-    logBodyViewCache.delete(oldest);
-  }
-  return value;
-}
-
-function createInitialVisibleJsonPaths(bodyView: ReturnType<typeof formatLogBodyView>): Set<string> {
+function createInitialVisibleJsonPaths(bodyView: FormattedLogBody): Set<string> {
   if (!isJsonContainer(bodyView.json)) {
     return new Set();
   }

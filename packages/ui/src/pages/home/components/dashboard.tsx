@@ -2374,7 +2374,14 @@ function ProviderAccountsOverview({
             })}
           </div>
         ) : (
-          <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions, visibleAccounts.length))}>
+          <div
+            className={cn(
+              "grid h-full min-h-0 auto-rows-max content-start grid-cols-1 overflow-y-auto pb-2 pr-2 [scrollbar-gutter:stable]",
+              providerAccountGapClass(dimensions),
+              providerAccountGridClass(dimensions, visibleAccounts.length)
+            )}
+            data-provider-account-grid="true"
+          >
             {visibleAccounts.map((account) => {
               return <ProviderAccountSummaryCard account={account} dimensions={dimensions} key={providerAccountSnapshotKey(account)} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />;
             })}
@@ -2406,7 +2413,7 @@ function ProviderAccountSinglePanel({
 
   return (
     <div className={cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden", providerAccountStackClass(dimensions))}>
-      <div className="flex min-w-0 items-start justify-between gap-3">
+      <div className="flex min-w-0 shrink-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <div className={cn("truncate font-semibold", dimensions.height <= 1 ? "text-[12px]" : "text-[13px]")}>{providerAccountSnapshotLabel(account)}</div>
           {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
@@ -2453,7 +2460,7 @@ function ProviderAccountSummaryCard({
   const showQuotaVisual = providerAccountUsesQuotaVisual(variant) && quotaMeters.length > 0;
 
   return (
-    <div className={cn("overview-nested-surface min-h-0 min-w-0 overflow-hidden border", providerAccountCardPaddingClass(dimensions))}>
+    <div className={cn("overview-nested-surface h-fit min-w-0 self-start overflow-hidden border", providerAccountCardPaddingClass(dimensions))}>
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate text-[13px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
@@ -2470,7 +2477,7 @@ function ProviderAccountSummaryCard({
           <ProviderAccountBalanceMetric dimensions={dimensions} meter={balanceMeter} compact />
         </div>
       ) : meters.length > 0 ? (
-        <div className={cn("mt-2 min-h-0 overflow-hidden", providerAccountStackClass(dimensions))}>
+        <div className={cn("mt-2 min-h-0", providerAccountStackClass(dimensions))}>
           {meters.map((meter) => (
             <ProviderAccountMeterLine account={account} dimensions={dimensions} key={meter.id} meter={meter} onRefresh={onRefresh} />
           ))}
@@ -2563,7 +2570,7 @@ function ProviderAccountMeterLine({
         ) : null}
         <div className={titleClassName}>{title}</div>
       </div>
-      <div className={valueClassName}>{formatProviderAccountMeterValue(meter)}</div>
+      <div className={valueClassName}>{formatProviderAccountMeterValue(meter, t)}</div>
     </>
   );
 

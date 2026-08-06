@@ -5,6 +5,7 @@ import path from "node:path";
 import type { AppConfig, ProfileConfig } from "@ccr/core/contracts/app";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { prepareClaudeAppCdpUserDataDir, reserveClaudeAppCdpPort, scheduleClaudeAppDesignCdp } from "@ccr/core/agents/claude-app/cdp";
+import { prepareClaudeAppVmStorage } from "@ccr/core/agents/claude-app/vm-storage";
 import { claudeCodeModelEnv as claudeCodeProfileModelEnv, claudeCodeUtcTimezoneEnvOverride, isClaudeCodeManagedModelEnvKey } from "@ccr/core/agents/claude-code/environment";
 import { resolveClaudeCodeSettingsFile } from "@ccr/core/profiles/launch-core";
 import { normalizeWindowsDesktopAppCandidate, windowsDesktopAppCandidates } from "@ccr/core/platform/windows-app-discovery";
@@ -52,6 +53,10 @@ export async function launchClaudeAppProfile(configDir: string, profile: Profile
   const settingsDir = path.dirname(settingsFile);
   const userDataDir = resolveClaudeAppProfileUserDataDir(configDir, profile);
   mkdirSync(userDataDir, { recursive: true });
+  const vmStorage = prepareClaudeAppVmStorage(configDir, userDataDir);
+  if (vmStorage.action === "skipped" && vmStorage.reason === "clone-failed") {
+    console.warn(`[profile] Failed to clone Claude App VM seed for ${profile.name || profile.id}. Claude App may rebuild its VM in ${vmStorage.targetBundleDir}.`);
+  }
   prepareClaudeAppCdpUserDataDir(userDataDir);
   const shouldOpenDesign = shouldOpenClaudeAppDesign(config);
   const cdpPort = await reserveClaudeAppCdpPort(console, shouldOpenDesign);

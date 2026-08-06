@@ -145,7 +145,10 @@ export function providerAccountProgressClass(status: ProviderAccountSnapshot["st
   return "bg-emerald-500";
 }
 
-export function formatProviderAccountMeterValue(meter: ProviderAccountMeter): string {
+export function formatProviderAccountMeterValue(
+  meter: ProviderAccountMeter,
+  translate: (value: string) => string = (value) => value
+): string {
   const value = meter.remaining ?? meter.used ?? meter.limit;
   if (value === undefined) {
     return "-";
@@ -170,10 +173,11 @@ export function formatProviderAccountMeterValue(meter: ProviderAccountMeter): st
   if (unit === "minutes") {
     return `${formatProviderAccountNumber(value)}m`;
   }
+  const displayUnit = translate(unit);
   if (meter.kind === "balance") {
-    return `${formatProviderAccountNumber(value)} ${unit}`;
+    return `${formatProviderAccountNumber(value)} ${displayUnit}`;
   }
-  return `${formatCompactNumber(value)} ${unit}`;
+  return `${formatCompactNumber(value)} ${displayUnit}`;
 }
 
 export function formatProviderAccountNumber(value: number): string {

@@ -5498,6 +5498,7 @@ class BotGatewayBridge {
     });
     const clientOptions = botGatewaySdkClientOptions(this.config, env, sdk);
     this.client = sdk.createBotGatewayClient(clientOptions);
+    attachBotGatewayStdioErrorHandler(this.client);
     await withTimeout(this.client.health(), this.config.startupTimeoutMs, "Bot Gateway health check timed out.");
     this.updateDiagnostics({ state: "connected", connectedAt: new Date().toISOString(), lastError: "" });
     await this.ensureIntegration();
@@ -5686,10 +5687,13 @@ function botGatewaySdkImportSpecifier(value) {
 
 function botGatewaySdkClientOptions(config, env, sdk) {
   const command = resolveBotGatewayCommand(config) || resolveBundledBotGatewayCommand(sdk);
+  const commandOptions = Object.assign({}, command || {});
+  const electronRunAsNode = Boolean(commandOptions.electronRunAsNode);
+  delete commandOptions.electronRunAsNode;
   return {
     transport: "stdio",
-    ...(command || {}),
-    env
+    ...commandOptions,
+    env: electronRunAsNode ? { ...env, ELECTRON_RUN_AS_NODE: "1" } : env
   };
 }
 
@@ -5709,20 +5713,18 @@ function resolveBundledBotGatewayCommand(sdk) {
     return undefined;
   }
   const bundledPath = sdk.bundledStdioPath();
+  const runnerPath = materializeBotGatewayStdioRunnerPath(bundledPath);
   return {
     command: process.execPath,
-    args: [sanitizedBotGatewayStdioRunnerPath(bundledPath)],
-    cwd: path.dirname(bundledPath)
+    args: [runnerPath],
+    cwd: path.dirname(runnerPath),
+    electronRunAsNode: Boolean(process.versions && process.versions.electron)
   };
 }
 
-function sanitizedBotGatewayStdioRunnerPath(sourcePath) {
+function materializeBotGatewayStdioRunnerPath(sourcePath) {
   const source = fs.readFileSync(sourcePath, "utf8");
   const normalized = normalizeDuplicateShebangs(source);
-  if (normalized === source) {
-    return sourcePath;
-  }
-
   const targetDir = path.join(CONFIG_DIR, "bot-gateway", "runners");
   const targetPath = path.join(targetDir, "bot-gateway-stdio.mjs");
   fs.mkdirSync(targetDir, { recursive: true });
@@ -5742,6 +5744,35 @@ function normalizeDuplicateShebangs(source) {
     index += 1;
   }
   return [lines[0], ...lines.slice(index)].join("\n");
+}
+
+function attachBotGatewayStdioErrorHandler(client) {
+  const attach = () => {
+    const child = client && client.child;
+    if (!child || typeof child.once !== "function") return;
+    const listenerCount = typeof child.listenerCount === "function" ? child.listenerCount("error") : 0;
+    if (listenerCount > 0) return;
+    child.once("error", (error) => {
+      const pending = client && client.pending instanceof Map ? client.pending : null;
+      if (!pending) return;
+      for (const request of pending.values()) {
+        if (request && typeof request.reject === "function") request.reject(error);
+      }
+      pending.clear();
+    });
+  };
+  if (!client || typeof client.request !== "function") {
+    return;
+  }
+  const originalRequest = client.request.bind(client);
+  client.request = (method, params) => {
+    try {
+      return originalRequest(method, params);
+    } finally {
+      attach();
+    }
+  };
+  attach();
 }
 
 function botGatewayClientRequest(client, method, params, timeoutMs) {

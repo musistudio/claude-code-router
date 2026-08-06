@@ -276,6 +276,61 @@ test("Claude Code exposes a configured 1M context window as a visible model vari
   assert.equal(rewrite?.routedModel, "Zhipu AI (China) - Coding Plan/aaa");
 });
 
+test("issue 1632 Claude discovery inherits Fusion fixed model provider context", () => {
+  const config = createConfig({
+    providers: [
+      {
+        modelMetadata: {
+          "glm-5.2": {
+            contextWindow: 1_000_000,
+            maxContextWindow: 1_000_000
+          }
+        },
+        models: ["glm-5.2"],
+        name: "Zhipu AI (China) - Coding Plan",
+        type: "openai_chat_completions"
+      }
+    ],
+    virtualModelProfiles: [
+      {
+        baseModel: { fixedModel: "Zhipu AI (China) - Coding Plan/glm-5.2", mode: "fixed" },
+        displayName: "GLM 5.2 Fusion",
+        enabled: true,
+        execution: { clientToolsPolicy: "allow", mode: "tool_loop", streamMode: "optimistic" },
+        id: "glm-5-2-fusion",
+        key: "glm-5.2-fusion",
+        match: { exactAliases: ["glm-5.2-fusion"], prefixes: [], suffixes: [] },
+        materialization: { enabled: true, includeInGatewayModels: true },
+        tools: []
+      }
+    ]
+  });
+  const route = buildClaudeAppGatewayModelRoutes(config).find((item) => item.targetModel === "Fusion/glm-5.2-fusion");
+  const inferenceModel = buildClaudeAppGatewayInferenceModels(config).find((item) => item.name === route?.id);
+  const appModel = createClaudeModelsResponse(config).data.find((item) => item.id === route?.id);
+  const codeModel = createClaudeCodeModelsResponse(config).data.find((item) =>
+    item.display_name === "Fusion/glm-5.2-fusion (1M context)"
+  );
+
+  assert.ok(route);
+  assert.equal(route.oneMillionContext, true);
+  assert.equal(inferenceModel?.supports1m, true);
+  assert.equal(appModel?.max_input_tokens, 1_000_000);
+  assert.equal(appModel?.capabilities.context_window.max_input_tokens, 1_000_000);
+  assert.equal(appModel?.capabilities.context_window.supports_1m_context, true);
+  assert.ok(codeModel);
+  assert.match(codeModel.id, /\[1m\]$/);
+  assert.equal(codeModel.max_input_tokens, 1_000_000);
+
+  const rewrite = prepareClaudeAppDiscoveredModelRequest(
+    config,
+    "POST",
+    "/v1/messages",
+    Buffer.from(JSON.stringify({ messages: [], model: codeModel.id }))
+  );
+  assert.equal(rewrite?.routedModel, "Fusion/glm-5.2-fusion");
+});
+
 test("Claude App discovery publishes the effective provider context for uncatalogued models", () => {
   const config = createConfig({
     providers: [

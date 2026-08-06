@@ -954,7 +954,10 @@ export function AddProfileForm({
         {showAdvancedSettings ? (
           <div className="sm:col-span-2">
             <button
-              className="flex min-h-9 w-full min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-left outline-none transition-colors hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring/25"
+              className={cn(
+                "flex min-h-9 w-full min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-left outline-none transition-colors hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring/25",
+                advancedOpen && "rounded-b-none"
+              )}
               onClick={() => setAdvancedOpen((current) => !current)}
               type="button"
             >
@@ -978,26 +981,15 @@ export function AddProfileForm({
                   initial={{ height: 0, opacity: 0 }}
                   transition={{ duration: 0.16 }}
                 >
-                  <div className="mt-3 grid grid-cols-1 gap-3 rounded-md border border-border bg-background/60 p-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-3 rounded-b-md border border-t-0 border-border bg-background/60 p-3 sm:grid-cols-2">
+                    {draft.agent === "claude-code" || draft.agent === "codex" ? (
+                      <ProfileEnhancedRouteSetting draft={draft} onChange={onChange} />
+                    ) : null}
                     <ProfileRoutingSettings
                       draft={draft}
                       onChange={onChange}
                       providers={providers}
                     />
-                    {showAppPathField && appPathLabel ? (
-                      <Field className="sm:col-span-2" label={t(appPathLabel)} requirement="optional" requirementLabel={optionalFieldLabel}>
-                        <div className={cn(
-                          "rounded-md border border-border bg-background p-1 transition-colors",
-                          appPathDragActive ? "border-primary bg-primary/5" : "border-border"
-                        )}>
-                          <Input
-                            placeholder={t("Drop the app here or paste the executable path")}
-                            value={draft.appPath}
-                            onChange={(event) => onChange({ appPath: event.target.value })}
-                          />
-                        </div>
-                      </Field>
-                    ) : null}
                     {draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" && draft.agent !== "pi" ? (
                       <>
                         <Field label={t("Provider ID")} requirement="required" requirementLabel={requiredFieldLabel}>
@@ -1031,6 +1023,16 @@ export function AddProfileForm({
                         {validation.bot ? <ProfileFieldHint>{t(validation.bot)}</ProfileFieldHint> : null}
                         {validation.handoff ? <ProfileFieldHint>{t(validation.handoff)}</ProfileFieldHint> : null}
                       </div>
+                    ) : null}
+                    {showAppPathField && appPathLabel ? (
+                      <Field className="sm:col-span-2" label={t(appPathLabel)} requirement="optional" requirementLabel={optionalFieldLabel}>
+                        <Input
+                          className={appPathDragActive ? "border-primary bg-primary/5" : undefined}
+                          placeholder={t("Drop the app here or paste the executable path")}
+                          value={draft.appPath}
+                          onChange={(event) => onChange({ appPath: event.target.value })}
+                        />
+                      </Field>
                     ) : null}
                     <Field className="sm:col-span-2" label={t("Environment variables")} requirement="optional" requirementLabel={optionalFieldLabel}>
                       <KeyValueRowsControl
@@ -1074,11 +1076,6 @@ function ProfileRoutingSettings({
   const t = useAppText();
   const [ruleDialog, setRuleDialog] = useState<{ draft: AddRoutingRuleDraft; index?: number }>();
   const canSubmitRule = ruleDialog ? isRoutingRuleDraftSubmittable(ruleDialog.draft) : false;
-  const showEnhancedRoute = draft.agent === "claude-code" || draft.agent === "codex";
-  const showRoutingControls = draft.routingEnabled || showEnhancedRoute;
-  const enhancedRouteDescription = draft.agent === "codex"
-    ? t("Enhanced route description Codex")
-    : t("Enhanced route description Claude Code");
 
   function openAddRuleDialog() {
     setRuleDialog({
@@ -1142,37 +1139,9 @@ function ProfileRoutingSettings({
           onChange={(routingEnabled) => onChange({ routingEnabled })}
         />
       </div>
-      {showRoutingControls ? (
+      {draft.routingEnabled ? (
         <div className="mt-3 grid grid-cols-1 gap-3 border-t border-border/70 pt-3">
-          {showEnhancedRoute ? (
-            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background px-3 py-2">
-              <span className="flex min-w-0 items-center gap-1.5">
-                <span className="text-[12px] font-medium">{t("Enhanced route")}</span>
-                <Tooltip
-                  aria-label={enhancedRouteDescription}
-                  className="h-5 w-5 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-                  content={enhancedRouteDescription}
-                  contentClassName="w-[260px] max-w-[calc(100vw-64px)] whitespace-normal px-2.5 py-2 text-left font-medium leading-4"
-                  side="right"
-                  tabIndex={0}
-                >
-                  <button
-                    aria-label={enhancedRouteDescription}
-                    className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
-                    type="button"
-                  >
-                    <Info className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
-                </Tooltip>
-              </span>
-              <Toggle
-                checked={draft.routingEnhancedRoute}
-                onChange={(routingEnhancedRoute) => onChange({ routingEnhancedRoute })}
-              />
-            </div>
-          ) : null}
-          {draft.routingEnabled ? (
-            <div className="rounded-md border border-border bg-background p-3">
+          <div className="rounded-md border border-border bg-background p-3">
             <div className="flex min-w-0 items-center justify-between gap-3">
               <span className="text-[12px] font-medium">{t("Profile routes")}</span>
               <Button onClick={openAddRuleDialog} size="sm" type="button" variant="outline">
@@ -1216,7 +1185,6 @@ function ProfileRoutingSettings({
               ))}
             </div>
           </div>
-          ) : null}
         </div>
       ) : null}
       {ruleDialog ? (
@@ -1231,6 +1199,49 @@ function ProfileRoutingSettings({
           providers={providers}
         />
       ) : null}
+    </div>
+  );
+}
+
+function ProfileEnhancedRouteSetting({
+  draft,
+  onChange
+}: {
+  draft: AddProfileDraft;
+  onChange: (patch: Partial<AddProfileDraft>) => void;
+}) {
+  const t = useAppText();
+  const enhancedRouteDescription = draft.agent === "codex"
+    ? t("Enhanced route description Codex")
+    : t("Enhanced route description Claude Code");
+
+  return (
+    <div className="sm:col-span-2 rounded-md border border-border bg-muted/20 p-3">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="text-[12px] font-semibold">{t("Enhanced route")}</span>
+          <Tooltip
+            aria-label={enhancedRouteDescription}
+            className="h-5 w-5 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+            content={enhancedRouteDescription}
+            contentClassName="w-[260px] max-w-[calc(100vw-64px)] whitespace-normal px-2.5 py-2 text-left font-medium leading-4"
+            side="right"
+            tabIndex={0}
+          >
+            <button
+              aria-label={enhancedRouteDescription}
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
+              type="button"
+            >
+              <Info className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </Tooltip>
+        </span>
+        <Toggle
+          checked={draft.routingEnhancedRoute}
+          onChange={(routingEnhancedRoute) => onChange({ routingEnhancedRoute })}
+        />
+      </div>
     </div>
   );
 }

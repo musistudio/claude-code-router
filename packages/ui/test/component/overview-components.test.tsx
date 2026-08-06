@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { formatCodexResetCardExpiry, formatCodexResetCardNumber, OverviewView } from "@ccr/ui/pages/home/components/dashboard.tsx";
 import { AppI18nContext, appCopy } from "@ccr/ui/pages/home/shared/i18n.tsx";
 import { parseStatusBucketDate } from "@ccr/ui/pages/home/shared/controls.tsx";
-import { providerAccountMeterDetailValidityProgress } from "@ccr/ui/pages/home/shared/provider-accounts.ts";
+import { formatProviderAccountMeterValue, providerAccountMeterDetailValidityProgress } from "@ccr/ui/pages/home/shared/provider-accounts.ts";
 import type { OverviewWidgetConfig, ProviderAccountSnapshot } from "@ccr/core/contracts/app.ts";
 import { accountSnapshots, installBrowserGlobals, usageStats } from "../fixtures/index.ts";
 
@@ -141,6 +141,26 @@ test("OverviewView renders the empty widget layout state", () => {
   assert.match(html, /All models/);
   assert.match(html, /No widgets configured/);
   assert.match(html, /aria-label="Edit widgets"/);
+});
+
+test("OverviewView keeps multi-provider account cards at their content height", () => {
+  const html = renderToStaticMarkup(
+    <OverviewView
+      overviewWidgets={[{ enabled: true, id: "account", size: "4:2", type: "account-balance", variant: "cards" }]}
+      providerAccounts={accountSnapshots()}
+      refreshProviderAccounts={() => undefined}
+      setUsageRange={() => undefined}
+      usageRange="30d"
+      usageStats={usageStats("30d")}
+      onWidgetsChange={() => undefined}
+    />
+  );
+
+  assert.match(html, /data-provider-account-grid="true"/);
+  assert.match(html, /auto-rows-max/);
+  assert.match(html, /content-start/);
+  assert.match(html, /scrollbar-gutter:stable/);
+  assert.match(html, /h-fit/);
 });
 
 test("OverviewView prioritizes Codex manual resets before folded balance meters", () => {
@@ -280,6 +300,21 @@ test("OverviewView does not render an outer progress bar for Codex manual resets
   assert.match(html, /aria-expanded="false"/);
   assert.doesNotMatch(html, /style="width:[^"]*%"/);
   assert.doesNotMatch(html, /Full reset/);
+});
+
+test("provider account meter values localize textual units", () => {
+  const value = formatProviderAccountMeterValue(
+    {
+      id: "codex_manual_resets",
+      kind: "requests",
+      label: "Manual resets",
+      remaining: 0,
+      unit: "resets"
+    },
+    (unit) => appCopy.zh.text[unit] ?? unit
+  );
+
+  assert.equal(value, `0 ${appCopy.zh.text.resets}`);
 });
 
 test("provider account reset credit detail progress uses each validity window", () => {
