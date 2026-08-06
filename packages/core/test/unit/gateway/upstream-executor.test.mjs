@@ -156,6 +156,51 @@ test("target-provider routing keeps vendor-prefixed model ids even when the pref
   assert.equal(attempt.logicalProvider, "Groq");
 });
 
+test("target-provider routing preserves slash model ids for providers without explicit capabilities", () => {
+  const config = {
+    Providers: [
+      {
+        api_base_url: "https://api.openai.example/v1",
+        credentials: [{ apiKey: "openai-key", id: "openai-main" }],
+        id: "openai",
+        models: ["gpt-oss-20b"],
+        name: "OpenAI",
+        type: "openai_chat_completions"
+      },
+      {
+        api_base_url: "https://api.groq.example/openai/v1",
+        credentials: [{ apiKey: "groq-key", id: "groq-main" }],
+        id: "groq",
+        models: ["openai/gpt-oss-20b"],
+        name: "Groq",
+        provider: "openai",
+        type: "openai_chat_completions"
+      }
+    ],
+    Router: { fallback: { mode: "off", models: [], retryCount: 0 }, rules: [] },
+    virtualModelProfiles: []
+  };
+
+  const attempt = prepareGatewayUpstreamAttemptForTest({
+    body: {
+      messages: [],
+      model: "openai/gpt-oss-20b"
+    },
+    config,
+    headers: {
+      "x-target-provider": "Groq"
+    },
+    method: "POST",
+    path: "/v1/chat/completions",
+    routedModel: "openai/gpt-oss-20b"
+  });
+
+  assert.equal(attempt.body.model, "openai/gpt-oss-20b");
+  assert.equal(attempt.logicalProvider, "Groq");
+  assert.equal(attempt.credentialProtocol, "openai_chat_completions");
+  assert.equal(attempt.headers["x-target-providers"], "groq::openai_chat_completions::cred:groq-main");
+});
+
 test("model-chain fallback rebuilds every protocol attempt from the canonical request", async () => {
   const config = {
     Providers: [

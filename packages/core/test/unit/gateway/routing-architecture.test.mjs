@@ -45,6 +45,21 @@ test("model registry canonicalizes provider models and rejects ambiguous bare mo
   assert.equal(registry.resolve("Primary/not-configured"), undefined);
 });
 
+test("model registry prefers target-provider exact slash models over provider selectors", () => {
+  const registry = new ModelRegistry(routingConfig({
+    Providers: [
+      { id: "openai", models: ["gpt-oss-20b"], name: "OpenAI" },
+      { id: "groq", models: ["openai/gpt-oss-20b"], name: "Groq" }
+    ]
+  }));
+
+  const resolved = registry.resolve("openai/gpt-oss-20b", { providerName: "Groq" });
+
+  assert.equal(resolved?.kind, "provider");
+  assert.equal(resolved?.canonicalSelector, "Groq/openai/gpt-oss-20b");
+  assert.equal(resolved?.model, "openai/gpt-oss-20b");
+});
+
 test("model registry accepts known internal provider suffixes only", () => {
   const registry = new ModelRegistry(routingConfig());
 
@@ -150,6 +165,32 @@ test("router config compilation rejects conflicting provider and model targets",
 
   assert.equal(compiled.rules[0].active, false);
   assert.equal(compiled.rules[0].diagnostics[0].code, "rule-provider-model-conflict");
+});
+
+test("router config compilation accepts target-provider slash-namespaced model ids", () => {
+  const config = routingConfig({
+    Providers: [
+      { id: "openai", models: ["gpt-oss-20b"], name: "OpenAI" },
+      { id: "groq", models: ["openai/gpt-oss-20b"], name: "Groq" }
+    ]
+  });
+  config.Router.rules = [{
+    condition: { left: "request.url", operator: "contains", right: "/v1" },
+    enabled: true,
+    id: "slash-model",
+    name: "Slash model",
+    rewrites: [
+      { key: "request.header.x-target-provider", operation: "set", value: "Groq" },
+      { key: "request.body.model", operation: "set", value: "openai/gpt-oss-20b" }
+    ],
+    type: "condition"
+  }];
+
+  const compiled = compileRouterConfig(config);
+
+  assert.equal(compiled.rules[0].active, true);
+  assert.deepEqual(compiled.rules[0].diagnostics, []);
+  assert.equal(compiled.rules[0].model?.canonicalSelector, "Groq/openai/gpt-oss-20b");
 });
 
 test("router config compilation validates provider conflicts against final header rewrites", () => {

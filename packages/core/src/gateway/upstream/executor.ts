@@ -219,10 +219,25 @@ function rewriteModelSelectorForProtocol(
   const selector = resolved?.kind === "provider"
     ? { model: resolved.model, provider: resolved.provider }
     : undefined;
-  const capability = selector ? providerCapabilityForClientProtocol(selector.provider, protocol) : undefined;
-  return selector && capability
-    ? `${providerCapabilityInternalName(selector.provider, capability.type)}/${selector.model}`
+  const providerName = selector ? providerSelectorNameForProtocol(selector.provider, protocol, Boolean(targetProviderName)) : undefined;
+  return selector && providerName
+    ? `${providerName}/${selector.model}`
     : publicModel;
+}
+
+
+function providerSelectorNameForProtocol(
+  provider: GatewayProviderConfig,
+  protocol: GatewayProviderProtocol,
+  allowRuntimeProvider: boolean
+): string | undefined {
+  const capability = providerCapabilityForClientProtocol(provider, protocol);
+  if (capability) {
+    return providerCapabilityInternalName(provider, capability.type);
+  }
+  return allowRuntimeProvider && providerProtocolForClientProtocol(provider, protocol)
+    ? providerRuntimeId(provider)
+    : undefined;
 }
 
 
@@ -841,6 +856,22 @@ function resolveProviderCredentialRoutingTarget(
 
   const parsedBody = parseJsonObjectSafe(body);
   const bodyModel = stringValue(parsedBody?.model);
+  const targetProviderName = firstTargetProviderHeader(headers);
+  const headerProvider = targetProviderName ? findProviderByPublicOrInternalName(config, targetProviderName) : undefined;
+  const headerProviderProtocol = headerProvider ? providerProtocolForClientProtocol(headerProvider, protocol) : undefined;
+  const exactHeaderProviderModel = headerProvider ? resolveExactModelForProvider(bodyModel, headerProvider) : undefined;
+  if (headerProvider && headerProviderProtocol && exactHeaderProviderModel) {
+    return {
+      body: parsedBody && exactHeaderProviderModel !== bodyModel
+        ? serializeJsonBodyWithModel(parsedBody, exactHeaderProviderModel)
+        : body,
+      model: exactHeaderProviderModel,
+      provider: headerProvider,
+      protocol: headerProviderProtocol,
+      source: "header"
+    };
+  }
+
   const modelSelector = resolveConfiguredProviderModelSelector(bodyModel, config) ??
     resolveUniqueConfiguredProviderModelSelector(bodyModel, config);
   if (modelSelector) {
@@ -857,16 +888,15 @@ function resolveProviderCredentialRoutingTarget(
     }
   }
 
-  const targetProviderName = firstTargetProviderHeader(headers);
   if (!targetProviderName) {
     return undefined;
   }
 
-  const provider = findProviderByPublicOrInternalName(config, targetProviderName);
+  const provider = headerProvider ?? findProviderByPublicOrInternalName(config, targetProviderName);
   if (!provider) {
     return undefined;
   }
-  const providerProtocol = providerProtocolForClientProtocol(provider, protocol);
+  const providerProtocol = headerProviderProtocol ?? providerProtocolForClientProtocol(provider, protocol);
   if (!providerProtocol) {
     return undefined;
   }
@@ -881,6 +911,15 @@ function resolveProviderCredentialRoutingTarget(
     protocol: providerProtocol,
     source: "header"
   };
+}
+
+
+function resolveExactModelForProvider(
+  value: string | undefined,
+  provider: GatewayProviderConfig
+): string | undefined {
+  const normalized = normalizeRouteSelector(value);
+  return normalized && providerHasModel(provider, normalized) ? normalized : undefined;
 }
 
 
