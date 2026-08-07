@@ -7,8 +7,10 @@ import {
   resolveClaudeAppGatewayRouteModel
 } from "@ccr/core/agents/claude-app/gateway-routes.ts";
 import {
+  createClaudeCliBootstrapResponse,
   createGatewayModelsResponse,
   prepareClaudeAppDiscoveredModelRequest,
+  shouldServeClaudeCliBootstrapResponse,
   shouldServeGatewayModelsResponse
 } from "@ccr/core/gateway/features/model-discovery.ts";
 import { ModelRegistry } from "@ccr/core/routing/model-registry.ts";
@@ -61,6 +63,12 @@ test("gateway model discovery supports the /models alias", () => {
   assert.equal(shouldServeGatewayModelsResponse("GET", "/models"), true);
   assert.equal(shouldServeGatewayModelsResponse("GET", "/v1/models"), true);
   assert.equal(shouldServeGatewayModelsResponse("POST", "/models"), false);
+});
+
+test("Claude CLI bootstrap is exposed at the first-party bootstrap path", () => {
+  assert.equal(shouldServeClaudeCliBootstrapResponse("GET", "/api/claude_cli/bootstrap"), true);
+  assert.equal(shouldServeClaudeCliBootstrapResponse("GET", "/api/claude_cli/bootstrap/"), true);
+  assert.equal(shouldServeClaudeCliBootstrapResponse("POST", "/api/claude_cli/bootstrap"), false);
 });
 
 test("issue 1535 Claude App discovery defaults to the first configured provider model", () => {
@@ -267,6 +275,19 @@ test("Claude Code exposes a configured 1M context window as a visible model vari
   assert.equal(discoveredModel.max_input_tokens, 1_000_000);
   assert.equal(discoveredModel.capabilities.context_window.one_million_context_variant, true);
 
+  const bootstrap = createClaudeCliBootstrapResponse(config);
+  assert.equal(bootstrap.auto_compact_windows[discoveredModel.id], 1_000_000);
+  assert.equal(bootstrap.client_data.rowan_thicket[discoveredModel.id], 1_000_000);
+  assert.equal(bootstrap.additional_model_options[0].description, "1M context window");
+  assert.equal(bootstrap.additional_model_options[0].display_name, "Zhipu AI (China) - Coding Plan/aaa (1M context)");
+  assert.equal(bootstrap.additional_model_options[0].id, discoveredModel.id);
+  assert.equal(bootstrap.additional_model_options[0].max_input_tokens, 1_000_000);
+  assert.equal(bootstrap.additional_model_options[0].model, discoveredModel.id);
+  assert.equal(bootstrap.additional_model_options[0].name, "Zhipu AI (China) - Coding Plan/aaa (1M context)");
+  assert.equal(bootstrap.additional_model_options[0].type, "model");
+  assert.equal(bootstrap.additional_model_options[0].capabilities.context_window.max_input_tokens, 1_000_000);
+  assert.equal(bootstrap.additional_model_options[0].capabilities.context_window.one_million_context_variant, true);
+
   const rewrite = prepareClaudeAppDiscoveredModelRequest(
     config,
     "POST",
@@ -274,6 +295,38 @@ test("Claude Code exposes a configured 1M context window as a visible model vari
     Buffer.from(JSON.stringify({ messages: [], model: discoveredModel.id }))
   );
   assert.equal(rewrite?.routedModel, "Zhipu AI (China) - Coding Plan/aaa");
+});
+
+test("Claude CLI bootstrap returns catalog-derived model configuration from models.json", () => {
+  const config = createConfig({
+    providers: [
+      {
+        models: ["glm-5.2"],
+        name: "Zhipu AI (China) - Coding Plan",
+        type: "openai_chat_completions"
+      }
+    ]
+  });
+  const route = buildClaudeAppGatewayModelRoutes(config)[0];
+  const bootstrap = createClaudeCliBootstrapResponse(config);
+  const option = bootstrap.additional_model_options[0];
+
+  assert.ok(route);
+  assert.equal(option.id, `${route.id}[1m]`);
+  assert.equal(option.model, `${route.id}[1m]`);
+  assert.equal(option.display_name, "Zhipu AI (China) - Coding Plan/GLM-5.2 (1M context)");
+  assert.equal(option.max_input_tokens, 1_049_000);
+  assert.equal(option.max_tokens, 1_048_560);
+  assert.equal(option.capabilities.context_window.max_input_tokens, 1_049_000);
+  assert.equal(option.capabilities.context_management.max_input_tokens, 1_049_000);
+  assert.equal(option.capabilities.context_window.supports_1m_context, true);
+  assert.equal(option.capabilities.context_window.one_million_context_variant, true);
+  assert.equal(option.capabilities.image_input.supported, false);
+  assert.equal(option.capabilities.structured_outputs.supported, true);
+  assert.equal(option.capabilities.tool_use.supported, true);
+  assert.equal(option.capabilities.thinking.supported, true);
+  assert.equal(bootstrap.auto_compact_windows[option.model], 1_000_000);
+  assert.equal(bootstrap.client_data.rowan_thicket[option.model], 1_000_000);
 });
 
 test("issue 1632 Claude discovery inherits Fusion fixed model provider context", () => {
@@ -356,6 +409,72 @@ test("Claude App discovery publishes the effective provider context for uncatalo
   assert.equal(model.max_input_tokens, 258400);
   assert.equal(model.capabilities.context_management.max_input_tokens, 258400);
   assert.equal(model.capabilities.context_window.max_input_tokens, 258400);
+
+  const bootstrap = createClaudeCliBootstrapResponse(config);
+  assert.equal(bootstrap.auto_compact_windows[model.id], 258400);
+  assert.equal(bootstrap.client_data.rowan_thicket[model.id], 258400);
+});
+
+test("Claude CLI bootstrap includes suffixed compact window keys for uncatalogued 1M models", () => {
+  const config = createConfig({
+    providers: [
+      {
+        modelMetadata: {
+          long: {
+            contextWindow: 1_000_000
+          }
+        },
+        models: ["long"],
+        name: "Provider",
+        type: "openai_responses"
+      }
+    ]
+  });
+  const bootstrap = createClaudeCliBootstrapResponse(config);
+
+  assert.equal(bootstrap.auto_compact_windows["Provider/long"], 1_000_000);
+  assert.equal(bootstrap.auto_compact_windows["provider/long"], 1_000_000);
+  assert.equal(bootstrap.auto_compact_windows["Provider/long[1m]"], 1_000_000);
+  assert.equal(bootstrap.auto_compact_windows["provider/long[1m]"], 1_000_000);
+  assert.equal(bootstrap.client_data.rowan_thicket["Provider/long[1m]"], 1_000_000);
+});
+
+test("Claude CLI bootstrap clamps compact windows to Claude Code's accepted range", () => {
+  const lowConfig = createConfig({
+    providers: [
+      {
+        modelMetadata: {
+          "custom-model": {
+            contextWindow: 64000
+          }
+        },
+        models: ["custom-model"],
+        name: "Custom",
+        type: "openai_responses"
+      }
+    ]
+  });
+  const lowModel = createClaudeCodeModelsResponse(lowConfig).data[0];
+  const lowBootstrap = createClaudeCliBootstrapResponse(lowConfig);
+  assert.equal(lowBootstrap.auto_compact_windows[lowModel.id], 100000);
+
+  const highConfig = createConfig({
+    providers: [
+      {
+        modelMetadata: {
+          huge: {
+            contextWindow: 1_500_000
+          }
+        },
+        models: ["huge"],
+        name: "Huge",
+        type: "openai_responses"
+      }
+    ]
+  });
+  const highModel = createClaudeCodeModelsResponse(highConfig).data[0];
+  const highBootstrap = createClaudeCliBootstrapResponse(highConfig);
+  assert.equal(highBootstrap.auto_compact_windows[highModel.id], 1_000_000);
 });
 
 test("Claude App discovery honors configured reasoning levels for uncatalogued models", () => {
@@ -393,6 +512,45 @@ test("Claude App discovery honors configured reasoning levels for uncatalogued m
   assert.equal(model.capabilities.effort.xhigh.supported, false);
   assert.equal(model.capabilities.effort.max.supported, false);
   assert.equal(model.capabilities.effort.ultra.supported, true);
+});
+
+test("Claude CLI bootstrap honors configured provider metadata over defaults", () => {
+  const config = createConfig({
+    providers: [
+      {
+        modelMetadata: {
+          "custom-model": {
+            capabilities: { imageInput: false },
+            contextWindow: 500000,
+            maxOutputTokens: 12345,
+            supportedReasoningLevels: [
+              { description: "Low", effort: "low" },
+              { description: "High", effort: "high" }
+            ]
+          }
+        },
+        models: ["custom-model"],
+        name: "Custom",
+        type: "openai_responses"
+      }
+    ]
+  });
+  const response = createClaudeModelsResponse(config);
+  const bootstrap = createClaudeCliBootstrapResponse(config);
+  const option = bootstrap.additional_model_options[0];
+
+  assert.equal(response.data[0].max_input_tokens, 500000);
+  assert.equal(response.data[0].max_tokens, 12345);
+  assert.equal(option.max_input_tokens, 500000);
+  assert.equal(option.max_tokens, 12345);
+  assert.equal(option.capabilities.context_window.max_input_tokens, 500000);
+  assert.equal(option.capabilities.context_management.max_input_tokens, 500000);
+  assert.equal(option.capabilities.image_input.supported, false);
+  assert.equal(option.capabilities.thinking.supported, true);
+  assert.equal(option.capabilities.effort.low.supported, true);
+  assert.equal(option.capabilities.effort.medium.supported, false);
+  assert.equal(option.capabilities.effort.high.supported, true);
+  assert.equal(option.capabilities.effort.ultra.supported, false);
 });
 
 test("Claude App discovery prefers provider context metadata over the static catalog", () => {

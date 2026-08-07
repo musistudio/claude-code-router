@@ -6,6 +6,7 @@ import { LEGACY_GROK_MEDIA_MCP_PATH, MEDIA_TOOLS_MCP_PATH } from "@ccr/core/mcp/
 import { BROWSER_AUTOMATION_MCP_PATH, browserAutomationMcpEnabled } from "@ccr/core/mcp/toolhub-config";
 import { pluginService } from "@ccr/core/plugins/service";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin";
+import { createClaudeCliBootstrapResponse, shouldServeClaudeCliBootstrapResponse } from "@ccr/core/gateway/features/model-discovery";
 import {
   contextArchiveConfigForApiKey,
   handleContextArchiveMcpRequest,
@@ -13,7 +14,7 @@ import {
   type ContextArchiveReplayExecutor
 } from "@ccr/core/gateway/context-archive";
 import { ccrRemoteControlPathPrefix, ccrRemoteControlService } from "@ccr/core/gateway/remote-control-service";
-import { authorize, reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
+import { authorize, claudeCodeWifTokenPath, handleClaudeCodeWifTokenRequest, reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
 import { parseJsonObject, readRequestBody, sendJson } from "@ccr/core/gateway/http/io";
 import { shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
 import { applyCors, shouldServeGatewayRequest } from "@ccr/core/gateway/core-runtime/supervisor";
@@ -191,7 +192,7 @@ export class GatewayHttpRequestHandler {
       if (path === "/") {
         sendJson(response, 200, {
           core: "next-ai-gateway",
-          endpoints: ["POST /mcp", "POST /v1/messages", "POST /v1/messages/count_tokens", "GET /models", "GET /v1/models"],
+          endpoints: ["POST /v1/oauth/token", "GET /api/claude_cli/bootstrap", "POST /mcp", "POST /v1/messages", "POST /v1/messages/count_tokens", "GET /models", "GET /v1/models"],
           name: "claude-code-router",
           plugin: "claude-code-router",
           wrapperPlugins: this.config.plugins.filter((plugin) => plugin.enabled !== false).map((plugin) => plugin.id)
@@ -199,8 +200,19 @@ export class GatewayHttpRequestHandler {
         return;
       }
 
+      if (request.method === "POST" && (path === claudeCodeWifTokenPath || path === `${claudeCodeWifTokenPath}/`)) {
+        await handleClaudeCodeWifTokenRequest(request, response, this.config);
+        return;
+      }
+
+      const claudeCliBootstrapRequest = shouldServeClaudeCliBootstrapResponse(request.method ?? "GET", path);
       const authorization = await authorize(request, response, this.config);
       if (!authorization.ok) {
+        return;
+      }
+
+      if (claudeCliBootstrapRequest) {
+        sendJson(response, 200, createClaudeCliBootstrapResponse(this.config));
         return;
       }
 
