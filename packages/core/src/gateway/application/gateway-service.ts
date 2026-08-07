@@ -339,7 +339,7 @@ class GatewayService {
       }
       this.lastAppliedGatewayConfig = serialized;
     } catch (error) {
-      console.warn(`[gateway] Hot config push failed, restarting the core gateway: ${formatError(error)}`);
+      console.warn(`[gateway] Restarting the core gateway to apply the config change (hot push unavailable: ${formatError(error)})`);
       this.lastAppliedGatewayConfig = undefined;
       await this.start(config);
     }
