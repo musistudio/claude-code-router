@@ -2871,34 +2871,50 @@ function migratedClaudeShipPluginConfig(source: GatewayPluginConfig): GatewayPlu
 }
 
 export function claudeDesignRuntimePluginConfig(): GatewayPluginConfig | undefined {
+  return claudeProductRuntimePluginConfig(CLAUDE_DESIGN_PLUGIN_ID);
+}
+
+export function claudeShipRuntimePluginConfig(): GatewayPluginConfig | undefined {
+  return claudeProductRuntimePluginConfig(CLAUDE_SHIP_PLUGIN_ID);
+}
+
+function claudeProductRuntimePluginConfig(pluginId: string): GatewayPluginConfig | undefined {
   if (!isDesktopAppRuntime()) {
     return undefined;
   }
-  const modulePath = resolveBundledOrExternalizedPluginModule(CLAUDE_DESIGN_PLUGIN_ID, undefined);
+  const modulePath = resolveBundledOrExternalizedPluginModule(pluginId, undefined);
   if (!modulePath) {
     return undefined;
   }
   return {
-    apps: knownGatewayPluginDefaultApps(CLAUDE_DESIGN_PLUGIN_ID),
+    apps: knownGatewayPluginDefaultApps(pluginId),
     enabled: true,
-    id: CLAUDE_DESIGN_PLUGIN_ID,
+    id: pluginId,
     module: modulePath,
-    permissions: knownGatewayPluginDefaultPermissions(CLAUDE_DESIGN_PLUGIN_ID),
-    surfaces: knownGatewayPluginDefaultSurfaces(CLAUDE_DESIGN_PLUGIN_ID)
+    permissions: knownGatewayPluginDefaultPermissions(pluginId),
+    surfaces: knownGatewayPluginDefaultSurfaces(pluginId)
   };
 }
 
 export function withClaudeDesignRuntimePluginConfig(config: AppConfig): AppConfig {
-  const existingIndex = config.plugins.findIndex((plugin) => plugin.enabled !== false && plugin.id === CLAUDE_DESIGN_PLUGIN_ID);
+  return withClaudeProductRuntimePluginConfig(config, CLAUDE_DESIGN_PLUGIN_ID, "Claude Design");
+}
+
+export function withClaudeShipRuntimePluginConfig(config: AppConfig): AppConfig {
+  return withClaudeProductRuntimePluginConfig(config, CLAUDE_SHIP_PLUGIN_ID, "Claude Ship");
+}
+
+function withClaudeProductRuntimePluginConfig(config: AppConfig, pluginId: string, productName: string): AppConfig {
+  const existingIndex = config.plugins.findIndex((plugin) => plugin.enabled !== false && plugin.id === pluginId);
   if (existingIndex >= 0 && config.plugins[existingIndex]?.module?.trim()) {
     return config;
   }
   if (!isDesktopAppRuntime()) {
-    throw new Error("Claude Design is only available in CCR Desktop.");
+    throw new Error(`${productName} is only available in CCR Desktop.`);
   }
-  const plugin = claudeDesignRuntimePluginConfig();
+  const plugin = claudeProductRuntimePluginConfig(pluginId);
   if (!plugin) {
-    throw new Error("Claude Design runtime module was not found. Rebuild app assets so the bundled Claude Design plugin is copied into the Electron dist.");
+    throw new Error(`${productName} runtime module was not found. Rebuild app assets so the bundled ${productName} plugin is copied into the Electron dist.`);
   }
   if (existingIndex >= 0) {
     const existing = config.plugins[existingIndex];
