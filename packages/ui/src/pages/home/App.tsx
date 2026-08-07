@@ -702,9 +702,22 @@ function App() {
   }, [draftConfig.plugins, pluginRoutingConfigTarget]);
   const providers = useMemo(() => draftConfig.Providers.map((provider, index) => ({ provider, index })), [draftConfig.Providers]);
   const gatewayEndpoint = gatewayStatus.endpoint || draftConfig.routerEndpoint;
-  const gatewayStartupError = gatewayStatus.state === "error"
+  // 重启/适配窗口内状态可能瞬时落到 error；4 秒内视为"适配中"过渡,
+  // 只有持续的错误才弹出失败横幅。
+  const gatewayErrorSinceRef = useRef<number>();
+  if (gatewayStatus.state === "error") {
+    gatewayErrorSinceRef.current ??= Date.now();
+  } else {
+    gatewayErrorSinceRef.current = undefined;
+  }
+  const gatewayErrorPersistent = gatewayStatus.state === "error" &&
+    gatewayErrorSinceRef.current !== undefined &&
+    Date.now() - gatewayErrorSinceRef.current >= 4000;
+  const gatewayStartupError = gatewayErrorPersistent
     ? translateAppErrorMessage(copy, gatewayStatus.lastError || "Service did not start.")
     : "";
+  const gatewayAdapting = !gatewayErrorPersistent &&
+    (gatewayStatus.state === "starting" || gatewayStatus.state === "error");
   const networkCaptureEnabled = draftConfig.proxy.enabled && draftConfig.proxy.captureNetwork;
   const visibleNavigation = useMemo(
     () => navigation.filter((item) =>
@@ -2921,6 +2934,7 @@ function App() {
         <div className="relative flex h-full min-h-0 w-full min-w-0 overflow-hidden bg-background text-foreground max-[720px]:flex-col">
           {activeView === "onboarding" ? (
             <OnboardingLayout
+              gatewayAdapting={gatewayAdapting}
               gatewayStartupError={gatewayStartupError}
               loaded={configLoaded && onboardingStatusLoaded && providerPresetsLoaded}
               onboarding={{
@@ -2957,6 +2971,7 @@ function App() {
               config={draftConfig}
               copy={copy}
               gatewayActionBusy={gatewayActionBusy}
+              gatewayAdapting={gatewayAdapting}
               gatewayEndpoint={gatewayEndpoint}
               gatewayStartupError={gatewayStartupError}
               gatewayStatus={gatewayStatus}

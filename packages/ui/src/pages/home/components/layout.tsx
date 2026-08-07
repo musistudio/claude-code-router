@@ -68,10 +68,12 @@ type MainViewProps = {
 };
 
 export function OnboardingLayout({
+  gatewayAdapting,
   gatewayStartupError,
   loaded,
   onboarding
 }: {
+  gatewayAdapting?: boolean;
   gatewayStartupError?: string;
   loaded: boolean;
   onboarding: ComponentProps<typeof OnboardingView>;
@@ -81,6 +83,9 @@ export function OnboardingLayout({
       <div className="app-drag absolute inset-x-0 top-0 z-10 h-10" />
       <div className="pointer-events-none absolute inset-x-0 top-12 z-30 px-5 max-[720px]:top-10 max-[720px]:px-3">
         <GatewayStartupErrorBanner className="pointer-events-auto mx-auto max-w-2xl shadow-lg" message={gatewayStartupError} />
+        {gatewayAdapting && !gatewayStartupError ? (
+          <GatewayAdaptingBanner className="pointer-events-auto mx-auto max-w-2xl shadow-lg" />
+        ) : null}
       </div>
       {loaded ? <OnboardingView {...onboarding} /> : null}
     </main>
@@ -93,6 +98,7 @@ export function MainLayout({
   config,
   copy,
   gatewayActionBusy,
+  gatewayAdapting,
   gatewayEndpoint,
   gatewayStartupError,
   gatewayStatus,
@@ -120,6 +126,7 @@ export function MainLayout({
   config: AppConfig;
   copy: AppCopy;
   gatewayActionBusy: boolean;
+  gatewayAdapting?: boolean;
   gatewayEndpoint: string;
   gatewayStartupError?: string;
   gatewayStatus: GatewayStatus;
@@ -281,6 +288,9 @@ export function MainLayout({
           message={gatewayStartupError}
           onOpenServerSettings={onOpenServerSettings}
         />
+        {gatewayAdapting && !gatewayStartupError ? (
+          <GatewayAdaptingBanner className="mx-5 mt-3 max-[720px]:mx-3" />
+        ) : null}
         <div
           className={cn(
             "min-h-0 flex-1 px-5 pb-5 pt-5 max-[720px]:px-3 max-[720px]:pb-3 max-[720px]:pt-3",
@@ -386,6 +396,23 @@ export function UpdateEntryButton({
         />
       ) : null}
     </Button>
+  );
+}
+
+export function GatewayAdaptingBanner({ className }: { className?: string }) {
+  const t = useAppText();
+  return (
+    <div
+      aria-live="polite"
+      className={cn(
+        "app-no-drag flex min-w-0 items-center gap-3 rounded-md border border-border bg-muted/60 px-3 py-2 text-[12px] text-muted-foreground",
+        className
+      )}
+      role="status"
+    >
+      <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin" />
+      <div className="min-w-0 flex-1 font-medium">{t("Adapting the gateway, please wait…")}</div>
+    </div>
   );
 }
 
