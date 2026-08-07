@@ -1022,12 +1022,7 @@ async function writeDurableJsonFile(
   const filePath = join(directory, fileName);
   const temporaryPath = join(directory, `.${fileName}-${randomUUID()}.tmp`);
   await writeFile(temporaryPath, JSON.stringify(value));
-  const temporaryFile = await open(temporaryPath, "r");
-  try {
-    await temporaryFile.sync();
-  } finally {
-    await temporaryFile.close();
-  }
+  await syncFile(temporaryPath);
   await rename(temporaryPath, filePath);
   await syncDirectory(directory);
 }
@@ -1049,14 +1044,7 @@ async function syncRawTracePartFiles(
       throw new Error(`Raw trace part is shorter than its manifest: ${filePath}`);
     }
     if (syncPartFile) await syncPartFile(filePath);
-    else {
-      const handle = await open(filePath, "r");
-      try {
-        await handle.sync();
-      } finally {
-        await handle.close();
-      }
-    }
+    else await syncFile(filePath);
   }
   await syncDirectory(directory);
 }
@@ -1096,14 +1084,47 @@ async function readRawTraceDeliveryState(
   };
 }
 
+// Windows maps fsync to FlushFileBuffers, which requires the handle to carry
+// write access: flushing a handle opened read-only fails with EPERM. Every
+// file flushed here was just written by this process, so reopening it as "r+"
+// keeps the barrier real on Windows instead of trading it for a tolerated
+// error. POSIX accepts a read-write handle for fsync just as readily.
+async function syncFile(filePath: string): Promise<void> {
+  const handle = await open(filePath, "r+");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+// Flushing a directory entry is a best-effort durability barrier: POSIX never
+// required it to succeed, and platforms are free to reject the request. Linux
+// and macOS answer with EINVAL/ENOTSUP/EISDIR depending on the filesystem;
+// Windows rejects fsync on a directory handle with EPERM. All of those mean
+// "this platform will not flush a directory", not "this spool is broken", so
+// the rename that precedes the call still stands and we continue. Any other
+// code (EACCES, EIO, ENOSPC, EBADF, ...) is a real storage failure and must
+// keep propagating, so the caller can refuse the bundle instead of reporting a
+// durability guarantee it never obtained.
+const toleratedDirectorySyncErrorCodes = new Set(["EINVAL", "EISDIR", "ENOTSUP", "EPERM"]);
+
+function isToleratedDirectorySyncError(error: unknown): boolean {
+  const code = nodeErrorCode(error);
+  return code !== undefined && toleratedDirectorySyncErrorCodes.has(code);
+}
+
+export function isToleratedDirectorySyncErrorForTest(error: unknown): boolean {
+  return isToleratedDirectorySyncError(error);
+}
+
 async function syncDirectory(directory: string): Promise<void> {
   let handle;
   try {
     handle = await open(directory, "r");
     await handle.sync();
   } catch (error) {
-    const code = nodeErrorCode(error);
-    if (code !== "EINVAL" && code !== "ENOTSUP" && code !== "EISDIR") throw error;
+    if (!isToleratedDirectorySyncError(error)) throw error;
   } finally {
     await handle?.close().catch(() => undefined);
   }
