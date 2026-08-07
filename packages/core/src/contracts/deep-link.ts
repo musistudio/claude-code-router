@@ -1,4 +1,6 @@
+import { isGatewayProviderProtocol } from "@ccr/core/contracts/app";
 import type {
+  GatewayProviderCapabilityFeatures,
   GatewayProviderProtocol,
   ProviderAccountConfig,
   ProviderAccountConnectorConfig,
@@ -25,14 +27,6 @@ const maxSourceLength = 2_048;
 const maxModelLength = 256;
 const maxModelDescriptionLength = 1_000;
 const maxModels = 300;
-
-const providerProtocols = new Set<GatewayProviderProtocol>([
-  "anthropic_messages",
-  "gemini_generate_content",
-  "gemini_interactions",
-  "openai_chat_completions",
-  "openai_responses"
-]);
 
 export function isAppDeepLinkUrl(value: string): boolean {
   return value.trim().toLowerCase().startsWith(`${appDeepLinkProtocol}://`);
@@ -493,10 +487,10 @@ function normalizeProviderProtocol(value: string | undefined): GatewayProviderPr
     return undefined;
   }
   const protocol = value.trim();
-  if (!providerProtocols.has(protocol as GatewayProviderProtocol)) {
+  if (!isGatewayProviderProtocol(protocol)) {
     throw new Error(`Unsupported provider protocol: ${value}`);
   }
-  return protocol as GatewayProviderProtocol;
+  return protocol;
 }
 
 function readDeepLinkModels(params: URLSearchParams, payload: Record<string, unknown> | undefined): string[] {
@@ -647,6 +641,8 @@ function normalizeDeepLinkModelMetadata(value: unknown): ProviderModelMetadata |
   const maxContextWindow = positiveInteger(value.maxContextWindow ?? value.max_context_window);
   const maxOutputTokens = positiveInteger(value.maxOutputTokens ?? value.max_output_tokens ?? value.outputTokens ?? value.output_tokens);
   const pricing = normalizeDeepLinkModelPricing(value.pricing);
+  const protocols = normalizeDeepLinkModelProtocols(value.protocols);
+  const protocolFeatures = normalizeDeepLinkModelProtocolFeatures(value.protocolFeatures ?? value.protocol_features);
   const defaultReasoningLevelValue = value.defaultReasoningLevel ?? value.default_reasoning_level;
   const defaultReasoningLevel = defaultReasoningLevelValue === null
     ? null
@@ -665,12 +661,83 @@ function normalizeDeepLinkModelMetadata(value: unknown): ProviderModelMetadata |
     ...(maxContextWindow ? { maxContextWindow } : {}),
     ...(maxOutputTokens ? { maxOutputTokens } : {}),
     ...(pricing ? { pricing } : {}),
+    ...(protocols ? { protocols } : {}),
+    ...(protocolFeatures ? { protocolFeatures } : {}),
     ...(Array.isArray(value.serviceTiers) ? { serviceTiers: value.serviceTiers } : {}),
     ...(Array.isArray(value.service_tiers) ? { serviceTiers: value.service_tiers } : {}),
     ...(supportedReasoningLevels ? { supportedReasoningLevels } : {}),
     ...(typeof supportsReasoningSummariesValue === "boolean" ? { supportsReasoningSummaries: supportsReasoningSummariesValue } : {})
   };
   return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function normalizeDeepLinkModelProtocols(value: unknown): ProviderModelMetadata["protocols"] {
+  const values = Array.isArray(value) ? value : [];
+  const protocols: GatewayProviderProtocol[] = [];
+  const seen = new Set<GatewayProviderProtocol>();
+  for (const item of values) {
+    const protocol = typeof item === "string" ? normalizeOptionalProviderProtocol(item) : undefined;
+    if (!protocol || seen.has(protocol)) {
+      continue;
+    }
+    seen.add(protocol);
+    protocols.push(protocol);
+  }
+  return protocols.length > 0 ? protocols : undefined;
+}
+
+function normalizeDeepLinkModelProtocolFeatures(value: unknown): ProviderModelMetadata["protocolFeatures"] {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const entries = Object.entries(value)
+    .map(([rawProtocol, rawFeatures]) => {
+      const protocol = normalizeOptionalProviderProtocol(rawProtocol);
+      const features = normalizeDeepLinkCapabilityFeatures(rawFeatures);
+      return protocol && features ? [protocol, features] as const : undefined;
+    })
+    .filter((entry): entry is [GatewayProviderProtocol, GatewayProviderCapabilityFeatures] => Boolean(entry));
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function normalizeOptionalProviderProtocol(value: string | undefined): GatewayProviderProtocol | undefined {
+  try {
+    return normalizeProviderProtocol(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeDeepLinkCapabilityFeatures(value: unknown): GatewayProviderCapabilityFeatures | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const reasoningHistoryPolicy = normalizeDeepLinkReasoningHistoryPolicy(value.reasoningHistoryPolicy ?? value.reasoning_history_policy);
+  const reasoningSummaryPolicy = normalizeDeepLinkReasoningSummaryPolicy(value.reasoningSummaryPolicy ?? value.reasoning_summary_policy);
+  const features: GatewayProviderCapabilityFeatures = {
+    ...(reasoningHistoryPolicy ? { reasoningHistoryPolicy } : {}),
+    ...(reasoningSummaryPolicy ? { reasoningSummaryPolicy } : {})
+  };
+  return Object.keys(features).length > 0 ? features : undefined;
+}
+
+function normalizeDeepLinkReasoningHistoryPolicy(value: unknown): GatewayProviderCapabilityFeatures["reasoningHistoryPolicy"] {
+  const normalized = normalizedString(value)?.toLowerCase().replace(/-/g, "_");
+  if (normalized === "encrypted" || normalized === "plaintext" || normalized === "strip") {
+    return normalized;
+  }
+  return undefined;
+}
+
+function normalizeDeepLinkReasoningSummaryPolicy(value: unknown): GatewayProviderCapabilityFeatures["reasoningSummaryPolicy"] {
+  const normalized = normalizedString(value)?.toLowerCase().replace(/-/g, "_");
+  if (normalized === "drop") {
+    return "drop";
+  }
+  if (normalized === "as_content" || normalized === "ascontent") {
+    return "as_content";
+  }
+  return undefined;
 }
 
 function normalizeDeepLinkReasoningLevels(value: unknown): ProviderModelMetadata["supportedReasoningLevels"] {

@@ -142,19 +142,39 @@ export const GROK_MEDIA_FUSION_TOOL_NAMES = [
   GROK_MEDIA_CAPABILITIES_TOOL_NAME
 ] as const;
 
-export type GatewayProviderProtocol =
-  | "openai_responses"
-  | "openai_chat_completions"
-  | "anthropic_messages"
-  | "gemini_generate_content"
-  | "gemini_interactions";
+export const gatewayProviderProtocols = [
+  "openai_responses",
+  "openai_chat_completions",
+  "anthropic_messages",
+  "gemini_generate_content",
+  "gemini_interactions"
+] as const;
 
-export type GatewayMediaProtocol =
-  | "openai_image_generations"
-  | "openai_video_generations"
-  | "xai_video_generations";
+export type GatewayProviderProtocol = typeof gatewayProviderProtocols[number];
+
+const gatewayProviderProtocolSet = new Set<string>(gatewayProviderProtocols);
+
+export function isGatewayProviderProtocol(value: unknown): value is GatewayProviderProtocol {
+  return typeof value === "string" && gatewayProviderProtocolSet.has(value);
+}
+
+export const gatewayMediaProtocols = [
+  "openai_image_generations",
+  "openai_video_generations",
+  "xai_video_generations"
+] as const;
+
+export type GatewayMediaProtocol = typeof gatewayMediaProtocols[number];
 
 export type GatewayProviderCapabilityProtocol = GatewayProviderProtocol | GatewayMediaProtocol;
+
+export type GatewayResponsesReasoningHistoryPolicy = "encrypted" | "plaintext" | "strip";
+export type GatewayResponsesReasoningSummaryPolicy = "drop" | "as_content";
+
+export type GatewayProviderCapabilityFeatures = {
+  reasoningHistoryPolicy?: GatewayResponsesReasoningHistoryPolicy;
+  reasoningSummaryPolicy?: GatewayResponsesReasoningSummaryPolicy;
+};
 
 export type GatewayProviderConfig = {
   account?: ProviderAccountConfig;
@@ -217,6 +237,8 @@ export type ProviderModelMetadata = {
   maxContextWindow?: number;
   maxOutputTokens?: number;
   pricing?: ProviderModelPricing;
+  protocols?: GatewayProviderProtocol[];
+  protocolFeatures?: Partial<Record<GatewayProviderProtocol, GatewayProviderCapabilityFeatures>>;
   serviceTiers?: unknown[];
   supportedReasoningLevels?: ProviderReasoningLevel[];
   supportsReasoningSummaries?: boolean;
@@ -518,6 +540,7 @@ export type ProviderDeepLinkRequest = {
 export type GatewayProviderCapability = {
   baseUrl: string;
   endpoint?: string;
+  features?: GatewayProviderCapabilityFeatures;
   source?: "detected" | "preset";
   type: GatewayProviderCapabilityProtocol;
 };

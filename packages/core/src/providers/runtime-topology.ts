@@ -10,10 +10,16 @@ import { gatewayProviderProtocolFallbackOrder, type CoreGatewayProvider } from "
 
 export function providerCapabilityForClientProtocol(
   provider: GatewayProviderConfig,
-  clientProtocol: GatewayProviderProtocol
+  clientProtocol: GatewayProviderProtocol,
+  model?: string
 ): (GatewayProviderCapability & { type: GatewayProviderProtocol }) | undefined {
   const capabilities = normalizedProviderCapabilities(provider);
   for (const protocol of providerProtocolPreferenceForClient(clientProtocol)) {
+    // A provider may expose several compatible protocols, but individual
+    // models can opt into a smaller subset.
+    if (!providerModelSupportsProtocol(provider, model, protocol)) {
+      continue;
+    }
     const capability = capabilities.find(
       (item): item is GatewayProviderCapability & { type: GatewayProviderProtocol } => item.type === protocol
     );
@@ -26,9 +32,10 @@ export function providerCapabilityForClientProtocol(
 
 export function providerProtocolForClientProtocol(
   provider: GatewayProviderConfig,
-  clientProtocol: GatewayProviderProtocol
+  clientProtocol: GatewayProviderProtocol,
+  model?: string
 ): GatewayProviderProtocol | undefined {
-  const capability = providerCapabilityForClientProtocol(provider, clientProtocol);
+  const capability = providerCapabilityForClientProtocol(provider, clientProtocol, model);
   if (capability) {
     return capability.type;
   }
@@ -36,9 +43,64 @@ export function providerProtocolForClientProtocol(
     normalizeProviderProtocol(provider.type) ??
     normalizeProviderProtocol(provider.provider) ??
     inferProtocol(provider);
-  return providerProtocolPreferenceForClient(clientProtocol).includes(directProtocol)
+  return providerProtocolPreferenceForClient(clientProtocol).includes(directProtocol) &&
+    providerModelSupportsProtocol(provider, model, directProtocol)
     ? directProtocol
     : undefined;
+}
+
+export function providerProtocols(provider: GatewayProviderConfig): GatewayProviderProtocol[] {
+  const capabilities = normalizedProviderCapabilities(provider)
+    .map((capability) => normalizeProviderProtocol(capability.type))
+    .filter((protocol): protocol is GatewayProviderProtocol => Boolean(protocol));
+  if (capabilities.length > 0) {
+    return uniqueProviderProtocols(capabilities);
+  }
+  return uniqueProviderProtocols([
+    normalizeProviderProtocol(provider.type) ??
+    normalizeProviderProtocol(provider.provider) ??
+    inferProtocol(provider)
+  ]);
+}
+
+export function providerModelProtocols(
+  provider: GatewayProviderConfig,
+  model: string | undefined
+): GatewayProviderProtocol[] {
+  const providerProtocolList = providerProtocols(provider);
+  const metadata = providerModelMetadataFor(provider, model);
+  // Missing model-level protocols means "inherit every provider protocol".
+  // An explicit empty array is different: the model supports none.
+  if (!metadata?.protocols?.length) {
+    return metadata?.protocols ? [] : providerProtocolList;
+  }
+  const providerProtocolSet = new Set(providerProtocolList);
+  return uniqueProviderProtocols(metadata.protocols).filter((protocol) => providerProtocolSet.has(protocol));
+}
+
+export function providerModelSupportsProtocol(
+  provider: GatewayProviderConfig,
+  model: string | undefined,
+  protocol: GatewayProviderProtocol
+): boolean {
+  return providerModelProtocols(provider, model).includes(protocol);
+}
+
+export function providerModelMetadataFor(
+  provider: GatewayProviderConfig,
+  model: string | undefined
+) {
+  if (!model) {
+    return undefined;
+  }
+  const metadata = provider.modelMetadata ?? {};
+  const direct = metadata[model];
+  if (direct) {
+    return direct;
+  }
+  const normalized = model.trim().toLowerCase();
+  const match = Object.entries(metadata).find(([candidate]) => candidate.trim().toLowerCase() === normalized);
+  return match?.[1];
 }
 
 function providerProtocolPreferenceForClient(clientProtocol: GatewayProviderProtocol): GatewayProviderProtocol[] {

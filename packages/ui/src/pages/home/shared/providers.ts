@@ -5,6 +5,7 @@ import openCodeLogoUrl from "@/assets/agent-logos/opencode.ico";
 import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
 import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
 import {
+  isGatewayProviderProtocol,
   ROUTER_SCRIPT_API_VERSION,
   ROUTER_SCRIPT_MAX_TIMEOUT_MS
 } from "@ccr/core/contracts/app";
@@ -13,6 +14,7 @@ import type {
   ApiKeyLimitConfig,
   GatewayProviderConfig,
   GatewayProviderCapability,
+  GatewayProviderCapabilityFeatures,
   GatewayProviderCapabilityProtocol,
   GatewayProviderProbeResult,
   GatewayProviderProtocol,
@@ -1703,7 +1705,7 @@ function isNewApiUserSelfConnector(value: unknown): boolean {
 }
 
 export function toProviderProtocol(value: string | undefined): GatewayProviderProtocol | undefined {
-  return providerProtocolOptions.some((option) => option.value === value) ? value as GatewayProviderProtocol : undefined;
+  return isGatewayProviderProtocol(value) ? value : undefined;
 }
 
 export function shouldAutoProbeProviderBaseUrl(value: string): boolean {
@@ -1904,20 +1906,18 @@ function selectedProtocolsMatchPresetDefault(
 }
 
 export function uniqueProviderProtocols(values: Array<GatewayProviderProtocol | string | undefined>): GatewayProviderProtocol[] {
-  const allowed = new Set(providerProtocolOptions.map((option) => option.value));
   const seen = new Set<GatewayProviderProtocol>();
   const selected: GatewayProviderProtocol[] = [];
 
   for (const value of values) {
-    if (!value || !allowed.has(value as GatewayProviderProtocol)) {
+    if (!isGatewayProviderProtocol(value)) {
       continue;
     }
-    const protocol = value as GatewayProviderProtocol;
-    if (seen.has(protocol)) {
+    if (seen.has(value)) {
       continue;
     }
-    seen.add(protocol);
-    selected.push(protocol);
+    seen.add(value);
+    selected.push(value);
   }
 
   return providerProtocolOptions
@@ -1926,7 +1926,7 @@ export function uniqueProviderProtocols(values: Array<GatewayProviderProtocol | 
 }
 
 export function mergeProviderCapabilities(...groups: GatewayProviderCapability[][]): GatewayProviderCapability[] {
-  const seen = new Set<string>();
+  const indexes = new Map<string, number>();
   const capabilities: GatewayProviderCapability[] = [];
   for (const group of groups) {
     for (const capability of group) {
@@ -1935,10 +1935,12 @@ export function mergeProviderCapabilities(...groups: GatewayProviderCapability[]
         continue;
       }
       const key = `${capability.type}\n${baseUrl}`;
-      if (seen.has(key)) {
+      const existingIndex = indexes.get(key);
+      if (existingIndex !== undefined) {
+        capabilities[existingIndex] = mergeProviderCapability(capabilities[existingIndex], capability);
         continue;
       }
-      seen.add(key);
+      indexes.set(key, capabilities.length);
       capabilities.push({
         ...capability,
         baseUrl
@@ -1946,6 +1948,28 @@ export function mergeProviderCapabilities(...groups: GatewayProviderCapability[]
     }
   }
   return capabilities;
+}
+
+function mergeProviderCapability(
+  current: GatewayProviderCapability,
+  preserved: GatewayProviderCapability
+): GatewayProviderCapability {
+  const features = mergeProviderCapabilityFeatures(current.features, preserved.features);
+  return {
+    ...current,
+    ...(features ? { features } : {})
+  };
+}
+
+function mergeProviderCapabilityFeatures(
+  current: GatewayProviderCapabilityFeatures | undefined,
+  preserved: GatewayProviderCapabilityFeatures | undefined
+): GatewayProviderCapabilityFeatures | undefined {
+  const features: GatewayProviderCapabilityFeatures = {
+    ...(preserved ?? {}),
+    ...(current ?? {})
+  };
+  return Object.keys(features).length > 0 ? features : undefined;
 }
 
 export function providerCapabilitiesForSave(
@@ -1960,10 +1984,36 @@ export function providerCapabilitiesForSave(
   const normalizedNextBaseUrl = normalizeProviderBaseUrl(nextBaseUrl) || nextBaseUrl.trim();
   const preserveExisting = normalizedExistingBaseUrl === undefined ||
     normalizedExistingBaseUrl === normalizedNextBaseUrl;
-  return mergeProviderCapabilities(
+  const capabilities = mergeProviderCapabilities(
     currentCapabilities,
     ...(preserveExisting ? [preservedCapabilities] : [])
   );
+  return preserveExisting
+    ? capabilities
+    : applyPreservedCapabilityFeatures(capabilities, preservedCapabilities);
+}
+
+function applyPreservedCapabilityFeatures(
+  currentCapabilities: GatewayProviderCapability[],
+  preservedCapabilities: GatewayProviderCapability[]
+): GatewayProviderCapability[] {
+  const preservedFeaturesByType = new Map<GatewayProviderCapabilityProtocol, GatewayProviderCapabilityFeatures>();
+  for (const capability of preservedCapabilities) {
+    const features = mergeProviderCapabilityFeatures(undefined, capability.features);
+    if (features) {
+      preservedFeaturesByType.set(capability.type, features);
+    }
+  }
+  if (preservedFeaturesByType.size === 0) {
+    return currentCapabilities;
+  }
+  return currentCapabilities.map((capability) => {
+    const preservedFeatures = preservedFeaturesByType.get(capability.type);
+    const features = mergeProviderCapabilityFeatures(capability.features, preservedFeatures);
+    return features
+      ? { ...capability, features }
+      : capability;
+  });
 }
 
 export function providerGlobalBaseUrlForProbe(
@@ -2134,6 +2184,41 @@ export function modelMetadataForModels(
     .map(([rawModel, metadata]) => [rawModel.trim(), metadata] as const)
     .filter(([model, metadata]) => model && modelIds.has(model) && metadata && typeof metadata === "object");
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+export function modelMetadataForProviderProtocols(
+  value: Record<string, ProviderModelMetadata> | undefined,
+  protocols: GatewayProviderProtocol[]
+): Record<string, ProviderModelMetadata> | undefined {
+  const protocolSet = new Set(uniqueProviderProtocols(protocols));
+  if (protocolSet.size === 0) {
+    return value;
+  }
+  // Model protocol settings are a subset of provider protocols. When provider
+  // protocols change, prune stale model protocols/features before persisting.
+  const entries = Object.entries(value ?? {})
+    .map(([model, metadata]) => [model, modelMetadataForProviderProtocolsEntry(metadata, protocolSet)] as const)
+    .filter((entry): entry is [string, ProviderModelMetadata] => Boolean(entry[1]));
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function modelMetadataForProviderProtocolsEntry(
+  metadata: ProviderModelMetadata,
+  protocolSet: Set<GatewayProviderProtocol>
+): ProviderModelMetadata | undefined {
+  const protocols = uniqueProviderProtocols(metadata.protocols ?? []).filter((protocol) => protocolSet.has(protocol));
+  const protocolFeatures = Object.fromEntries(
+    Object.entries(metadata.protocolFeatures ?? {}).filter(([protocol]) => protocolSet.has(protocol as GatewayProviderProtocol))
+  ) as ProviderModelMetadata["protocolFeatures"];
+  const next: ProviderModelMetadata = {
+    ...metadata,
+    ...(metadata.protocols !== undefined ? { protocols } : {}),
+    ...(protocolFeatures && Object.keys(protocolFeatures).length > 0 ? { protocolFeatures } : {})
+  };
+  if (!protocolFeatures || Object.keys(protocolFeatures).length === 0) {
+    delete next.protocolFeatures;
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
 }
 
 export function modelDisplayNamesForModels(
