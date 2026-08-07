@@ -325,19 +325,35 @@ class GatewayService {
       return;
     }
     try {
-      const response = await fetch(`${endpoint(config.gateway.coreHost, config.gateway.corePort)}/manager/config`, {
-        body: serialized,
-        headers: {
-          "content-type": "application/json",
-          [coreGatewayAuthHeader]: this.coreAuthToken
-        },
-        method: "PUT"
-      });
-      if (!response.ok) {
-        const detail = (await response.text().catch(() => "")).slice(0, 300);
-        throw new Error(`Core gateway rejected the config update with HTTP ${response.status}: ${detail}`);
+      // 子进程可能正在启动（上一次重启还没就绪），连接级失败做短暂重试;
+      // 只有收到明确拒绝(4xx)或重试耗尽才回退完整重启。
+      let lastError: unknown;
+      let responded = false;
+      for (let attempt = 0; attempt < 6 && !responded; attempt += 1) {
+        try {
+          const response = await fetch(`${endpoint(config.gateway.coreHost, config.gateway.corePort)}/manager/config`, {
+            body: serialized,
+            headers: {
+              "content-type": "application/json",
+              [coreGatewayAuthHeader]: this.coreAuthToken
+            },
+            method: "PUT"
+          });
+          responded = true;
+          if (!response.ok) {
+            const detail = (await response.text().catch(() => "")).slice(0, 300);
+            throw new Error(`Core gateway rejected the config update with HTTP ${response.status}: ${detail}`);
+          }
+          this.lastAppliedGatewayConfig = serialized;
+          return;
+        } catch (error) {
+          lastError = error;
+          if (!responded) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+          }
+        }
       }
-      this.lastAppliedGatewayConfig = serialized;
+      throw lastError instanceof Error ? lastError : new Error(String(lastError));
     } catch (error) {
       console.warn(`[gateway] Restarting the core gateway to apply the config change (hot push unavailable: ${formatError(error)})`);
       this.lastAppliedGatewayConfig = undefined;
