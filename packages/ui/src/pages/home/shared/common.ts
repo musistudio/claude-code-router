@@ -9,6 +9,7 @@ import {
 } from "@ccr/core/contracts/app";
 import type {
   AppConfig,
+  OverviewAccountCardSize,
   OverviewMetricKind,
   OverviewWidgetConfig,
   OverviewWidgetSize,
@@ -44,6 +45,16 @@ export function isPlainRecord(value: unknown): value is Record<string, unknown> 
 
 export function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function overviewAccountProviderListValue(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return uniqueStrings(value.map((item) => stringValue(item)).filter((item): item is string => Boolean(item)));
+  }
+  if (typeof value === "string") {
+    return uniqueStrings(value.split(/\r?\n|,/g).map((item) => item.trim()).filter(Boolean));
+  }
+  return [];
 }
 
 export function normalizeProviderModelSelector(value: string | undefined): string {
@@ -323,15 +334,20 @@ export function normalizeOverviewWidget(value: unknown): OverviewWidgetConfig | 
   }
   const metric = type === "metric" ? normalizeOverviewMetricKind(value.metric) ?? "requests" : undefined;
   const variant = normalizeOverviewWidgetVariant(type, value.variant);
-  const accountProvider = type === "account-balance" ? stringValue(value.accountProvider) : undefined;
+  const accountProviders = type === "account-balance" ? normalizeOverviewAccountProviders(value) : [];
+  const accountCardOrder = type === "account-balance" ? normalizeOverviewAccountCardOrder(value.accountCardOrder) : [];
+  const accountCardSizes = type === "account-balance" ? normalizeOverviewAccountCardSizes(value.accountCardSizes) : undefined;
   const size = constrainOverviewWidgetSize(
     normalizeOverviewWidgetSize(value.size, type) ?? defaultOverviewWidgetSize(type),
     type,
     variant,
-    accountProvider
+    accountProviders
   );
   return {
-    ...(accountProvider ? { accountProvider } : {}),
+    ...(accountCardOrder.length > 0 ? { accountCardOrder } : {}),
+    ...(accountCardSizes ? { accountCardSizes } : {}),
+    ...(accountProviders.length === 1 ? { accountProvider: accountProviders[0] } : {}),
+    ...(accountProviders.length > 0 ? { accountProviders } : {}),
     enabled: typeof value.enabled === "boolean" ? value.enabled : true,
     id: stringValue(value.id) || overviewWidgetId(type, metric),
     ...(metric ? { metric } : {}),
@@ -339,6 +355,45 @@ export function normalizeOverviewWidget(value: unknown): OverviewWidgetConfig | 
     type,
     variant
   };
+}
+
+export function normalizeOverviewAccountProviders(value: Record<string, unknown>): string[] {
+  const accountProvider = stringValue(value.accountProvider);
+  return uniqueStrings([
+    ...overviewAccountProviderListValue(value.accountProviders),
+    ...(accountProvider ? [accountProvider] : [])
+  ]);
+}
+
+export function normalizeOverviewAccountCardOrder(value: unknown): string[] {
+  return overviewAccountProviderListValue(value);
+}
+
+export function normalizeOverviewAccountCardSizes(value: unknown): Record<string, OverviewAccountCardSize> | undefined {
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+  const sizes: Record<string, OverviewAccountCardSize> = {};
+  for (const [key, rawSize] of Object.entries(value)) {
+    const accountKey = key.trim();
+    const size = overviewAccountCardSizeValue(rawSize);
+    if (accountKey && size) {
+      sizes[accountKey] = size;
+    }
+  }
+  return Object.keys(sizes).length > 0 ? sizes : undefined;
+}
+
+function overviewAccountCardSizeValue(value: unknown): OverviewAccountCardSize | undefined {
+  if (value === "small") {
+    return "1:1";
+  }
+  if (value === "large") {
+    return "1:2";
+  }
+  return typeof value === "string" && ["1:1", "1:2", "2:1", "2:2"].includes(value)
+    ? value as OverviewAccountCardSize
+    : undefined;
 }
 
 export function normalizeOverviewWidgetType(value: unknown): OverviewWidgetType | undefined {
@@ -468,12 +523,15 @@ export function constrainOverviewWidgetSize(
   size: OverviewWidgetSize,
   type: OverviewWidgetType,
   variant: OverviewWidgetVariant,
-  accountProvider?: string
+  accountProviders: readonly string[] | string | undefined
 ): OverviewWidgetSize {
   if (isShareOverviewWidgetType(type)) {
     return overviewWidgetSizeAtLeast(size, 1, 4);
   }
-  if (type !== "account-balance" || variant !== "compact" || accountProvider?.trim()) {
+  const hasAccountFilter = Array.isArray(accountProviders)
+    ? accountProviders.length > 0
+    : typeof accountProviders === "string" && accountProviders.trim().length > 0;
+  if (type !== "account-balance" || variant !== "compact" || hasAccountFilter) {
     return size;
   }
   return overviewWidgetSizeAtLeast(size, 2, 2);

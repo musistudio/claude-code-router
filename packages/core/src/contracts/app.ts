@@ -1333,8 +1333,13 @@ export type OverviewMetricKind =
   | "success-rate"
   | "total-tokens";
 
+export type OverviewAccountCardSize = "1:1" | "1:2" | "2:1" | "2:2";
+
 export type OverviewWidgetConfig = {
+  accountCardOrder?: string[];
+  accountCardSizes?: Record<string, OverviewAccountCardSize>;
   accountProvider?: string;
+  accountProviders?: string[];
   enabled: boolean;
   id: string;
   metric?: OverviewMetricKind;
