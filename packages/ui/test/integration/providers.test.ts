@@ -161,6 +161,31 @@ test("provider save keeps explicit secondary media origins when the base URL is 
   );
 });
 
+test("provider save drops an unchecked selectable protocol capability", () => {
+  const current = [{
+    baseUrl: "https://chat.example/v1",
+    source: "detected" as const,
+    type: "openai_chat_completions" as const
+  }];
+  const previous = [
+    {
+      baseUrl: "https://chat.example/v1",
+      source: "detected" as const,
+      type: "openai_chat_completions" as const
+    },
+    {
+      baseUrl: "https://chat.example/anthropic",
+      source: "detected" as const,
+      type: "anthropic_messages" as const
+    }
+  ];
+
+  assert.deepEqual(
+    providerCapabilitiesForSave(current, previous, "https://chat.example/v1", "https://chat.example/v1"),
+    current
+  );
+});
+
 test("provider probe result drops unavailable selected protocols", () => {
   const draft = {
     ...createProviderDraft([]),
