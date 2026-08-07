@@ -716,8 +716,11 @@ function App() {
   const gatewayStartupError = gatewayErrorPersistent
     ? translateAppErrorMessage(copy, gatewayStatus.lastError || "Service did not start.")
     : "";
+  const [gatewayAdaptingUntil, setGatewayAdaptingUntil] = useState(0);
   const gatewayAdapting = !gatewayErrorPersistent &&
-    (gatewayStatus.state === "starting" || gatewayStatus.state === "error");
+    (gatewayStatus.state === "starting" ||
+      gatewayStatus.state === "error" ||
+      Date.now() < gatewayAdaptingUntil);
   const networkCaptureEnabled = draftConfig.proxy.enabled && draftConfig.proxy.captureNetwork;
   const visibleNavigation = useMemo(
     () => navigation.filter((item) =>
@@ -1012,6 +1015,8 @@ function App() {
       const saved = await window.ccr.saveConfig(configWithTheme, saveOptions);
       syncConfigState(saved);
       setError("");
+      // 配置已变更，展示"适配中"提示一段时间（覆盖网关热推送/重启窗口）
+      setGatewayAdaptingUntil(Date.now() + 4000);
       return true;
     } catch (error) {
       setError(formatError(error));
