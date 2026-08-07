@@ -991,6 +991,9 @@ async function stopRunningProfileApp(key: string, entry: RunningProfileApp): Pro
     return true;
   }
 
+  // Stop failed: clear the flag so the runtime status keeps reporting this
+  // still-running app instead of hiding it behind a start button.
+  entry.stopRequested = false;
   return false;
 }
 
