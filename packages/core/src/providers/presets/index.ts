@@ -13,6 +13,7 @@ import { moonshotChinaProviderPreset, moonshotGlobalProviderPreset } from "@ccr/
 import { nvidiaProviderPreset } from "@ccr/core/providers/presets/nvidia/index";
 import { openaiProviderPreset } from "@ccr/core/providers/presets/openai/index";
 import { openRouterProviderPreset } from "@ccr/core/providers/presets/openrouter/index";
+import { orcaRouterProviderPreset } from "@ccr/core/providers/presets/orcarouter/index";
 import { qiniuAiProviderPreset } from "@ccr/core/providers/presets/qiniu-ai/index";
 import { runApiProviderPreset } from "@ccr/core/providers/presets/runapi/index";
 import { siliconFlowProviderPreset } from "@ccr/core/providers/presets/siliconflow/index";
@@ -59,7 +60,8 @@ export const providerPresets: ProviderPreset[] = [
   teamoRouterProviderPreset,
   unity2ProviderPreset,
   code0ProviderPreset,
-  claudeApiProviderPreset
+  claudeApiProviderPreset,
+  orcaRouterProviderPreset
 ];
 
 export function getProviderPresets(): ProviderPreset[] {

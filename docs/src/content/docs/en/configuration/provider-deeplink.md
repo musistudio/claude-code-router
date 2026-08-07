@@ -106,6 +106,10 @@ Choose a provider below to get started. CCR shows what will be added before savi
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/infistar-ai.jpg" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">无限星河</span><span class="provider-import-meta">OpenAI compatible gateway</span></span>
   </a>
+  <a class="provider-import-button provider-orcarouter" href="ccr://provider?name=OrcaRouter&amp;base_url=https%3A%2F%2Fapi.orcarouter.ai%2Fv1&amp;protocol=openai_chat_completions&amp;models=anthropic%2Fclaude-opus-4.8%2Canthropic%2Fclaude-sonnet-4.6%2Copenai%2Fgpt-5.5%2Cgoogle%2Fgemini-3.5-flash&amp;source=https%3A%2F%2Fwww.orcarouter.ai%2F" aria-label="Import OrcaRouter provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/orcarouter.png" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">OrcaRouter</span><span class="provider-import-meta">Anthropic / Chat / Responses</span></span>
+  </a>
 </div>
 
 ## Embeddable Button Component
