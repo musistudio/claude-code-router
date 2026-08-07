@@ -69,7 +69,7 @@ Claude Code Router（CCR）是面向编程 Agent 的本地模型网关与控制�
 - **通过 Fusion 视觉、联网搜索、MCP 工具和 ToolHub 扩展现有模型**。
 - **通过请求日志、最终路由、耗时、Token、成本估算和账号状态了解真实运行情况**。
 
-CCR 支持 OpenAI Chat / Responses、Anthropic Messages、Gemini Generate Content / Interactions、OpenRouter、DeepSeek、SiliconFlow、Moonshot、Kimi Code、Mistral、Z.AI、百炼以及自定义兼容供应商。
+CCR 支持 OpenAI Chat / Responses、Anthropic Messages、Gemini Generate Content / Interactions、OpenRouter、apiToken.sale、DeepSeek、SiliconFlow、Moonshot、Kimi Code、Mistral、Z.AI、百炼以及自定义兼容供应商。
 
 <details open>
 <summary><strong>支持的 Agent</strong></summary>

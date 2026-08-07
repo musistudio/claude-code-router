@@ -43,6 +43,7 @@ import type {
   VirtualModelToolVisibility
 } from "@ccr/core/contracts/app";
 import anthropicProviderIconUrl from "@/assets/provider-icons/anthropic.png";
+import apiTokenProviderIconUrl from "@/assets/provider-icons/apitoken.svg";
 import bailianProviderIconUrl from "@/assets/provider-icons/bailian.ico";
 import claudeapiProviderIconUrl from "@/assets/provider-icons/claudeapi.png";
 import code0ProviderIconUrl from "@/assets/provider-icons/code0.png";
@@ -358,6 +359,7 @@ export const mcpStdioMessageModeOptions: Array<{ label: string; value: GatewayMc
 
 export const providerPresetIconUrls: Record<string, string> = {
   anthropic: anthropicProviderIconUrl,
+  apitoken: apiTokenProviderIconUrl,
   bailian: bailianProviderIconUrl,
   claudeapi: claudeapiProviderIconUrl,
   code0: code0ProviderIconUrl,

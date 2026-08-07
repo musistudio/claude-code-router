@@ -18,6 +18,10 @@ lead: 快速添加常见模型供应商，确认无误后即可保存，减少�
     <span class="provider-import-icon-shell"><img src="../../provider-icons/anthropic.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">Anthropic 官方</span><span class="provider-import-meta">Anthropic Messages</span></span>
   </a>
+  <a class="provider-import-button provider-apitoken" href="ccr://provider?name=apiToken.sale&amp;base_url=https%3A%2F%2Fapi.apitoken.sale&amp;protocol=anthropic_messages&amp;models=claude-opus-4-8%2Cclaude-opus-4-7%2Cclaude-sonnet-5%2Cclaude-sonnet-4-6%2Cclaude-haiku-4-5&amp;source=https%3A%2F%2Fapitoken.sale" aria-label="导入 apiToken.sale 供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/apitoken.svg" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">apiToken.sale</span><span class="provider-import-meta">Anthropic 兼容 API</span></span>
+  </a>
   <a class="provider-import-button provider-gemini" href="ccr://provider?name=Google+Gemini&amp;base_url=https%3A%2F%2Fgenerativelanguage.googleapis.com&amp;protocol=gemini_generate_content&amp;models=gemini-3.5-flash%2Cgemini-3.1-pro-preview%2Cgemini-3-flash-preview" aria-label="导入谷歌 Gemini 供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/gemini.svg" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">谷歌 Gemini</span><span class="provider-import-meta">Gemini Generate Content</span></span>

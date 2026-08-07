@@ -69,7 +69,7 @@ Use CCR to:
 - **Add capabilities to existing models** with Fusion vision, web search, MCP tools, and ToolHub.
 - **See what actually happened** through request logs, resolved routes, latency, token usage, cost estimates, and account status.
 
-CCR supports OpenAI Chat / Responses, Anthropic Messages, Gemini Generate Content / Interactions, OpenRouter, DeepSeek, SiliconFlow, Moonshot, Kimi Code, Mistral, Z.AI, Bailian, and custom compatible providers.
+CCR supports OpenAI Chat / Responses, Anthropic Messages, Gemini Generate Content / Interactions, OpenRouter, apiToken.sale, DeepSeek, SiliconFlow, Moonshot, Kimi Code, Mistral, Z.AI, Bailian, and custom compatible providers.
 
 <details open>
 <summary><strong>Supported Agents</strong></summary>
