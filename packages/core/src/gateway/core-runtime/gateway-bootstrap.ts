@@ -42,7 +42,7 @@ process.on("message", (message: unknown) => {
 
 function installVirtualConfigFile(config: Record<string, unknown>): void {
   const fs = requireFromHere("node:fs") as MutableFs;
-  const content = `${JSON.stringify(config)}\n`;
+  let content = `${JSON.stringify(config)}\n`;
   const originalExistsSync = fs.existsSync.bind(fs);
   const originalReadFileSync = fs.readFileSync.bind(fs);
   const originalRenameSync = fs.renameSync.bind(fs);
@@ -57,13 +57,18 @@ function installVirtualConfigFile(config: Record<string, unknown>): void {
   };
   fs.writeFileSync = (file, data, options) => {
     if (isManagedConfigPath(file)) {
-      throw new Error("Gateway configuration is managed by Claude Code Router.");
+      // Embedded mode keeps the config in memory. Writing through (instead of
+      // throwing) lets the gateway's own /manager/config hot-reload apply.
+      content = typeof data === "string" ? data : Buffer.from(data as Uint8Array).toString("utf8");
+      return;
     }
     originalWriteFileSync(file, data, options);
   };
   fs.renameSync = (oldPath, newPath) => {
     if (isManagedConfigPath(oldPath) || isManagedConfigPath(newPath)) {
-      throw new Error("Gateway configuration is managed by Claude Code Router.");
+      // writeJsonFile 先写 <path>.tmp 再改名覆盖；内容已在 writeFileSync 时
+      // 进入内存，这里无需动作。
+      return;
     }
     originalRenameSync(oldPath, newPath);
   };
