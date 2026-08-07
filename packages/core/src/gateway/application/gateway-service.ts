@@ -334,7 +334,8 @@ class GatewayService {
         method: "PUT"
       });
       if (!response.ok) {
-        throw new Error(`Core gateway rejected the config update with HTTP ${response.status}.`);
+        const detail = (await response.text().catch(() => "")).slice(0, 300);
+        throw new Error(`Core gateway rejected the config update with HTTP ${response.status}: ${detail}`);
       }
       this.lastAppliedGatewayConfig = serialized;
     } catch (error) {
