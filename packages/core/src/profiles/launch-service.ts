@@ -82,6 +82,7 @@ type ProfileAppLaunchResult = {
 type RunningProfileApp = ProfileRuntimeEntry & {
   child?: ChildProcess;
   command: string;
+  external?: boolean;
   launchSignature?: string;
   monitor?: NodeJS.Timeout;
   pidIsLauncher?: boolean;
@@ -789,6 +790,16 @@ export async function stopProfileFromCcr(config: AppConfig, request: ProfileOpen
     };
   }
 
+  if (entry.external && profile.agent === "zcode") {
+    return {
+      message: "This ZCode instance was started outside CCR. Exit it from its tray menu (right-click the tray icon and choose Quit).",
+      profileId: profile.id,
+      profileName: profile.name,
+      stopped: false,
+      surface
+    };
+  }
+
   const stopped = await stopRunningProfileApp(key, entry);
   if (stopped) {
     if (profile.agent === "claude-code") {
@@ -874,6 +885,8 @@ function registerExistingProfileApp(
     agent: profile.agent,
     command: existing.command,
     pid: existing.pid,
+    // Registered from an already-running instance that CCR did not launch.
+    external: true,
     // The registered pid belongs to the already-running app itself, so
     // liveness must be checked by pid — the userDataDir marker probe cannot
     // see instances whose command line carries no user-data-dir argument.
