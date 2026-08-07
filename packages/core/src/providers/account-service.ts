@@ -30,6 +30,7 @@ import type {
   ProviderAccountConnectorError,
   ProviderAccountConnectorSource,
   ProviderAccountAuthMode,
+  ProviderAccountBrowserCredentialsMode,
   ProviderAccountHttpJsonConnectorConfig,
   ProviderAccountLocalEstimateConnectorConfig,
   ProviderAccountLocalWindowConfig,
@@ -49,6 +50,7 @@ import type {
   ProviderAccountTestRequest,
   ProviderAccountTestResult,
   ProviderAccountStandardConnectorConfig,
+  ProviderAccountWebContentJsonConnectorConfig,
   ProviderCredentialConfig,
   ProviderAccountStatus
 } from "@ccr/core/contracts/app";
@@ -93,6 +95,27 @@ type CodexOauthRefreshResult = {
   scope?: string;
 };
 
+export type ProviderAccountWebContentFetchRequest = {
+  body?: unknown;
+  credentials?: ProviderAccountBrowserCredentialsMode;
+  endpoint: string;
+  headers?: Record<string, string>;
+  headerTemplates?: Record<string, string>;
+  loginUrl?: string;
+  method: "GET" | "POST";
+  provider: GatewayProviderConfig;
+  requestOrigin: string;
+  timeoutMs?: number;
+};
+
+export type ProviderAccountWebContentFetchResponse = {
+  payload: unknown;
+};
+
+export type ProviderAccountWebContentFetchHandler = (
+  request: ProviderAccountWebContentFetchRequest
+) => Promise<ProviderAccountWebContentFetchResponse>;
+
 const defaultRefreshIntervalMs = 5 * 60 * 1000;
 const minRefreshIntervalMs = 30 * 1000;
 const maxErrorRefreshIntervalMs = 60 * 1000;
@@ -109,6 +132,11 @@ const cache = new Map<string, CacheEntry>();
 const codexOauthCache = new Map<string, CodexOauthRefreshResult>();
 const inFlightRefreshes = new Map<string, Promise<ProviderAccountSnapshot | undefined>>();
 let cacheGeneration = 0;
+let providerAccountWebContentFetchHandler: ProviderAccountWebContentFetchHandler | undefined;
+
+export function setProviderAccountWebContentFetchHandler(handler: ProviderAccountWebContentFetchHandler | undefined): void {
+  providerAccountWebContentFetchHandler = handler;
+}
 
 export async function getProviderAccountSnapshots(
   providerName?: string,
@@ -168,15 +196,13 @@ export async function testProviderAccountConnector(request: ProviderAccountTestR
     models: [],
     name: request.providerName?.trim() || "Provider"
   };
-  const connector: ProviderAccountHttpJsonConnectorConfig = {
-    ...request.connector,
-    auth: request.connector.auth ?? "provider-api-key",
-    method: request.connector.method ?? "GET",
-    type: "http-json"
-  };
-  const payload = await fetchJson(connector.endpoint, provider, connector.auth, connector.headers, connector.method, connector.body);
+  const connector = normalizeProviderAccountTestConnector(request.connector);
+  const payload = connector.type === "webcontent-json"
+    ? await fetchWebContentJson(provider, connector)
+    : await fetchJson(connector.endpoint, provider, connector.auth, connector.headers, connector.method, connector.body);
+  const source = connector.type;
   if (connector.parser === "grok-subscription") {
-    const meters = grokSubscriptionMeters(payload);
+    const meters = grokSubscriptionMeters(payload, source);
     return {
       meters,
       message: grokSubscriptionMessage(payload),
@@ -186,7 +212,7 @@ export async function testProviderAccountConnector(request: ProviderAccountTestR
     };
   }
   if (connector.parser === "kimi-code-usages") {
-    const meters = kimiCodeUsageMeters(payload);
+    const meters = kimiCodeUsageMeters(payload, source);
     return {
       meters,
       message: meters.length === 0 ? "No usage data available." : undefined,
@@ -196,7 +222,7 @@ export async function testProviderAccountConnector(request: ProviderAccountTestR
     };
   }
   if (connector.parser === "new-api-key-usage") {
-    const meters = newApiKeyUsageMeters(payload);
+    const meters = newApiKeyUsageMeters(payload, source);
     return {
       meters,
       message: meters.length === 0 ? newApiKeyUsageFallbackMessage(payload) : readMappedString(connector.mapping.message, payload),
@@ -206,7 +232,7 @@ export async function testProviderAccountConnector(request: ProviderAccountTestR
     };
   }
   if (connector.parser === "new-api-user-self") {
-    const meters = newApiUserSelfMeters(payload);
+    const meters = newApiUserSelfMeters(payload, source);
     return {
       meters,
       message: meters.length === 0 ? readMappedString(connector.mapping.message, payload) ?? "No user balance data available." : readMappedString(connector.mapping.message, payload),
@@ -216,7 +242,7 @@ export async function testProviderAccountConnector(request: ProviderAccountTestR
     };
   }
 
-  const meters = mappedMetersFromPayload(connector, payload);
+  const meters = mappedMetersFromPayload(connector, payload, source);
 
   return {
     meters,
@@ -224,6 +250,24 @@ export async function testProviderAccountConnector(request: ProviderAccountTestR
     paths: flattenJsonPaths(payload),
     payload,
     status: normalizeStatus(readMappedString(connector.mapping.status, payload))
+  };
+}
+
+function normalizeProviderAccountTestConnector(
+  connector: ProviderAccountHttpJsonConnectorConfig | ProviderAccountWebContentJsonConnectorConfig
+): ProviderAccountHttpJsonConnectorConfig | ProviderAccountWebContentJsonConnectorConfig {
+  if (connector.type === "webcontent-json") {
+    return {
+      ...connector,
+      method: connector.method ?? "GET",
+      type: "webcontent-json"
+    };
+  }
+  return {
+    ...connector,
+    auth: connector.auth ?? "provider-api-key",
+    method: connector.method ?? "GET",
+    type: "http-json"
   };
 }
 
@@ -613,6 +657,9 @@ async function resolveConnector(
     if (connector.type === "http-json") {
       return await resolveHttpJsonConnector(config, provider, connector);
     }
+    if (connector.type === "webcontent-json") {
+      return await resolveWebContentJsonConnector(provider, connector);
+    }
     if (connector.type === "plugin") {
       return await resolvePluginConnector(config, provider, connector, now);
     }
@@ -715,6 +762,58 @@ async function resolveHttpJsonConnector(
     meters,
     message: readMappedString(connector.mapping.message, payload),
     source: "http-json",
+    status: normalizeStatus(readMappedString(connector.mapping.status, payload))
+  };
+}
+
+async function resolveWebContentJsonConnector(
+  provider: GatewayProviderConfig,
+  connector: ProviderAccountWebContentJsonConnectorConfig
+): Promise<ConnectorResult> {
+  const payload = await fetchWebContentJson(provider, connector);
+  const source: ProviderAccountConnectorSource = "webcontent-json";
+  if (connector.parser === "grok-subscription") {
+    return {
+      errors: [],
+      message: grokSubscriptionMessage(payload),
+      meters: grokSubscriptionMeters(payload, source),
+      source,
+      status: grokSubscriptionStatus(payload)
+    };
+  }
+  if (connector.parser === "kimi-code-usages") {
+    const meters = kimiCodeUsageMeters(payload, source);
+    return {
+      errors: [],
+      message: meters.length === 0 ? "No usage data available." : undefined,
+      meters,
+      source
+    };
+  }
+  if (connector.parser === "new-api-key-usage") {
+    const meters = newApiKeyUsageMeters(payload, source);
+    return {
+      errors: [],
+      message: meters.length === 0 ? newApiKeyUsageFallbackMessage(payload) : readMappedString(connector.mapping.message, payload),
+      meters,
+      source
+    };
+  }
+  if (connector.parser === "new-api-user-self") {
+    const meters = newApiUserSelfMeters(payload, source);
+    return {
+      errors: [],
+      message: meters.length === 0 ? readMappedString(connector.mapping.message, payload) ?? "No user balance data available." : readMappedString(connector.mapping.message, payload),
+      meters,
+      source
+    };
+  }
+
+  return {
+    errors: [],
+    meters: mappedMetersFromPayload(connector, payload, source),
+    message: readMappedString(connector.mapping.message, payload),
+    source,
     status: normalizeStatus(readMappedString(connector.mapping.status, payload))
   };
 }
@@ -880,7 +979,7 @@ function normalizeRemoteSnapshot(
   };
 }
 
-function grokSubscriptionMeters(payload: unknown): ProviderAccountMeter[] {
+function grokSubscriptionMeters(payload: unknown, source: ProviderAccountConnectorSource = "http-json"): ProviderAccountMeter[] {
   const allowAccess = grokSubscriptionBoolean(payload, [
     "allow_access",
     "allowAccess",
@@ -897,7 +996,7 @@ function grokSubscriptionMeters(payload: unknown): ProviderAccountMeter[] {
       label: "Subscription access",
       limit: 100,
       remaining: allowAccess ? 100 : 0,
-      source: "http-json",
+      source,
       unit: "%",
       used: allowAccess ? 0 : 100,
       window: "subscription"
@@ -984,12 +1083,12 @@ function grokSubscriptionRecords(payload: unknown): Record<string, unknown>[] {
   return records;
 }
 
-function newApiKeyUsageMeters(payload: unknown): ProviderAccountMeter[] {
-  const meter = newApiKeyUsageMeter(payload);
+function newApiKeyUsageMeters(payload: unknown, source: ProviderAccountConnectorSource = "http-json"): ProviderAccountMeter[] {
+  const meter = newApiKeyUsageMeter(payload, source);
   return meter ? [meter] : [];
 }
 
-function newApiKeyUsageMeter(payload: unknown): ProviderAccountMeter | undefined {
+function newApiKeyUsageMeter(payload: unknown, source: ProviderAccountConnectorSource): ProviderAccountMeter | undefined {
   const data = newApiKeyUsageData(payload);
   if (!data) {
     return undefined;
@@ -1009,7 +1108,7 @@ function newApiKeyUsageMeter(payload: unknown): ProviderAccountMeter | undefined
     label: "API key quota",
     limit,
     remaining,
-    source: "http-json",
+    source,
     unit: "quota",
     used
   };
@@ -1023,12 +1122,12 @@ function newApiKeyUsageFallbackMessage(payload: unknown): string {
   return readMappedString("$.message", payload) ?? "No API key quota data available.";
 }
 
-function newApiUserSelfMeters(payload: unknown): ProviderAccountMeter[] {
-  const meter = newApiUserSelfMeter(payload);
+function newApiUserSelfMeters(payload: unknown, source: ProviderAccountConnectorSource = "http-json"): ProviderAccountMeter[] {
+  const meter = newApiUserSelfMeter(payload, source);
   return meter ? [meter] : [];
 }
 
-function newApiUserSelfMeter(payload: unknown): ProviderAccountMeter | undefined {
+function newApiUserSelfMeter(payload: unknown, source: ProviderAccountConnectorSource): ProviderAccountMeter | undefined {
   const data = newApiUserSelfData(payload);
   if (!data) {
     return undefined;
@@ -1046,7 +1145,7 @@ function newApiUserSelfMeter(payload: unknown): ProviderAccountMeter | undefined
     label: "User balance",
     limit: remaining !== undefined && used !== undefined ? remaining + used : undefined,
     remaining,
-    source: "http-json",
+    source,
     unit: "quota",
     used
   };
@@ -1068,13 +1167,13 @@ function newApiUserSelfData(payload: unknown): Record<string, unknown> | undefin
   return isRecord(data) ? data : payload;
 }
 
-function kimiCodeUsageMeters(payload: unknown): ProviderAccountMeter[] {
+function kimiCodeUsageMeters(payload: unknown, source: ProviderAccountConnectorSource = "http-json"): ProviderAccountMeter[] {
   if (!isRecord(payload)) {
     return [];
   }
 
   const meters: ProviderAccountMeter[] = [];
-  const usage = isRecord(payload.usage) ? kimiCodeUsageMeter(payload.usage, "weekly_quota", "Weekly quota") : undefined;
+  const usage = isRecord(payload.usage) ? kimiCodeUsageMeter(payload.usage, "weekly_quota", "Weekly quota", source) : undefined;
   if (usage) {
     meters.push(usage);
   }
@@ -1088,7 +1187,7 @@ function kimiCodeUsageMeters(payload: unknown): ProviderAccountMeter[] {
       const detail = isRecord(item.detail) ? item.detail : item;
       const window = isRecord(item.window) ? item.window : {};
       const label = kimiCodeUsageLimitLabel(item, detail, window, index);
-      const meter = kimiCodeUsageMeter(detail, uniqueKimiCodeUsageMeterId(kimiCodeUsageMeterId(item, detail, label, index), seenIds), label, item);
+      const meter = kimiCodeUsageMeter(detail, uniqueKimiCodeUsageMeterId(kimiCodeUsageMeterId(item, detail, label, index), seenIds), label, source, item);
       if (meter) {
         seenIds.add(meter.id);
         meters.push(meter);
@@ -1103,6 +1202,7 @@ function kimiCodeUsageMeter(
   data: Record<string, unknown>,
   id: string,
   defaultLabel: string,
+  source: ProviderAccountConnectorSource,
   fallbackData?: Record<string, unknown>
 ): ProviderAccountMeter | undefined {
   const limit = normalizeNumber(data.limit);
@@ -1134,7 +1234,7 @@ function kimiCodeUsageMeter(
       limit: 100,
       remaining: remainingPercent,
       resetAt,
-      source: "http-json",
+      source,
       unit: "%",
       used: remainingPercent === undefined ? undefined : 100 - remainingPercent
     };
@@ -1147,7 +1247,7 @@ function kimiCodeUsageMeter(
     limit,
     remaining,
     resetAt,
-    source: "http-json",
+    source,
     unit: "quota",
     used
   };
@@ -1257,7 +1357,11 @@ function normalizeRemoteErrors(value: unknown, source: ProviderAccountConnectorS
   return errors.length > 0 ? errors : undefined;
 }
 
-function mappedMeterFromPayload(config: ProviderAccountMappedMeterConfig, payload: unknown): ProviderAccountMeter | undefined {
+function mappedMeterFromPayload(
+  config: ProviderAccountMappedMeterConfig,
+  payload: unknown,
+  source: ProviderAccountConnectorSource = "http-json"
+): ProviderAccountMeter | undefined {
   const id = config.id.trim();
   const label = config.label.trim();
   if (!id || !label) {
@@ -1280,12 +1384,16 @@ function mappedMeterFromPayload(config: ProviderAccountMappedMeterConfig, payloa
     unit,
     used,
     window: config.window
-  }, "http-json");
+  }, source);
 }
 
-function mappedMetersFromPayload(connector: ProviderAccountHttpJsonConnectorConfig, payload: unknown): ProviderAccountMeter[] {
+function mappedMetersFromPayload(
+  connector: ProviderAccountHttpJsonConnectorConfig | ProviderAccountWebContentJsonConnectorConfig,
+  payload: unknown,
+  source: ProviderAccountConnectorSource = "http-json"
+): ProviderAccountMeter[] {
   const meters = connector.mapping.meters
-    .map((meter) => mappedMeterFromPayload(meter, payload))
+    .map((meter) => mappedMeterFromPayload(meter, payload, source))
     .filter((meter): meter is ProviderAccountMeter => Boolean(meter));
   return attachCodexRateLimitResetCreditDetails(meters, payload);
 }
@@ -1802,6 +1910,52 @@ function readBearerToken(value: string | undefined): string | undefined {
   return match?.[1]?.trim() || undefined;
 }
 
+async function fetchWebContentJson(
+  provider: GatewayProviderConfig,
+  connector: ProviderAccountWebContentJsonConnectorConfig
+): Promise<unknown> {
+  if (!providerAccountWebContentFetchHandler) {
+    throw new Error("Browser session account requests are only available in CCR Desktop. Use HTTP JSON in CLI or Docker.");
+  }
+
+  const endpoint = absoluteAccountEndpoint(provider, connector.endpoint);
+  const endpointUrl = parseHttpUrl(endpoint, "Browser session account endpoint");
+  const browser = connector.browser ?? {};
+  if (browser.partition && browser.partition !== "built-in-browser") {
+    throw new Error("Browser session account requests currently support only the built-in-browser partition.");
+  }
+
+  const loginUrl = browser.loginUrl?.trim();
+  const loginOrigin = loginUrl
+    ? parseHttpUrl(loginUrl, "Browser session account login URL").origin
+    : undefined;
+  const requestOrigin = normalizeWebContentRequestOrigin(browser.requestOrigin, loginOrigin ?? endpointUrl.origin);
+  const credentials = normalizeWebContentCredentials(browser.credentials, browser.headerTemplates);
+
+  const response = await providerAccountWebContentFetchHandler({
+    body: connector.method === "POST" ? connector.body : undefined,
+    credentials,
+    endpoint: endpointUrl.toString(),
+    headers: connector.headers,
+    headerTemplates: browser.headerTemplates,
+    loginUrl,
+    method: connector.method ?? "GET",
+    provider: providerWithoutApiKey(provider),
+    requestOrigin,
+    timeoutMs: browser.timeoutMs
+  });
+  return response.payload;
+}
+
+function providerWithoutApiKey(provider: GatewayProviderConfig): GatewayProviderConfig {
+  return {
+    ...provider,
+    api_key: "",
+    apiKey: undefined,
+    apikey: undefined
+  };
+}
+
 async function fetchJson(
   endpoint: string,
   provider: GatewayProviderConfig,
@@ -1923,6 +2077,39 @@ function absoluteAccountEndpoint(provider: GatewayProviderConfig, endpoint: stri
   url.search = "";
   url.hash = "";
   return url.toString();
+}
+
+function normalizeWebContentRequestOrigin(requestOrigin: string | undefined, fallbackOrigin: string): string {
+  if (!requestOrigin?.trim()) {
+    return fallbackOrigin;
+  }
+  return parseHttpUrl(requestOrigin, "Browser session account request origin").origin;
+}
+
+function normalizeWebContentCredentials(
+  credentials: ProviderAccountBrowserCredentialsMode | undefined,
+  headerTemplates: Record<string, string> | undefined
+): ProviderAccountBrowserCredentialsMode {
+  if (!credentials) {
+    return headerTemplates && Object.keys(headerTemplates).length > 0 ? "omit" : "include";
+  }
+  if (credentials === "include" || credentials === "omit" || credentials === "same-origin") {
+    return credentials;
+  }
+  throw new Error("Browser session account credentials must be include, omit, or same-origin.");
+}
+
+function parseHttpUrl(value: string, label: string): URL {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${label} must be an absolute HTTP or HTTPS URL.`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`${label} must use HTTP or HTTPS.`);
+  }
+  return url;
 }
 
 function providerBaseUrl(provider: GatewayProviderConfig): string {
@@ -2056,7 +2243,7 @@ function connectorError(source: ProviderAccountConnectorSource, message: string,
 }
 
 function connectorSource(connector: ProviderAccountConnectorConfig): ProviderAccountConnectorSource {
-  return connector.type === "standard" || connector.type === "http-json" || connector.type === "plugin" || connector.type === "local-estimate"
+  return connector.type === "standard" || connector.type === "http-json" || connector.type === "webcontent-json" || connector.type === "plugin" || connector.type === "local-estimate"
     ? connector.type
     : "unsupported";
 }

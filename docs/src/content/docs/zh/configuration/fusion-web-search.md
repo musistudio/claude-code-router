@@ -2,7 +2,7 @@
 title: 内置联网搜索
 pageTitle: 内置联网搜索
 eyebrow: Fusion
-lead: 使用 CCR 内置 Web Search 工具为模型提供联网检索能力。
+lead: 为不支持联网的模型添加实时检索能力：选择 CCR 内置 web_search 能力，并配置 In-app Browser 或 Brave、Bing、Tavily 等搜索服务。
 ---
 
 ## 选择能力

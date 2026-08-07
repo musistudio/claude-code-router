@@ -81,7 +81,7 @@ test("AddProfileForm keeps profile routing inside Advanced settings", () => {
   assert.doesNotMatch(html, /Enhanced route/);
 });
 
-test("AddProfileForm shows profile-level enhanced route controls when private routing is disabled", () => {
+test("AddProfileForm shows enhanced route as a sibling of profile routing", () => {
   const config = appConfigFixture();
   const html = renderToStaticMarkup(
     <AddProfileForm
@@ -96,12 +96,18 @@ test("AddProfileForm shows profile-level enhanced route controls when private ro
     />
   );
   const advancedSettingsIndex = html.indexOf("Advanced settings");
+  const enhancedRouteIndex = html.indexOf("Enhanced route");
   const profileRoutingIndex = html.indexOf("Profile routing");
 
   assert.ok(advancedSettingsIndex >= 0);
+  assert.ok(enhancedRouteIndex > advancedSettingsIndex);
   assert.ok(profileRoutingIndex > advancedSettingsIndex);
+  assert.ok(enhancedRouteIndex < profileRoutingIndex);
   assert.doesNotMatch(html, /Routing disabled/);
   assert.match(html, /Enhanced route/);
+  assert.match(html, /rounded-b-none/);
+  assert.match(html, /rounded-b-md border border-t-0/);
+  assert.doesNotMatch(html, /Profile routes/);
   assert.match(html, /CCR built-in Claude Code routing optimizes requests to third-party models for this profile\./);
 });
 
@@ -123,6 +129,7 @@ test("AddProfileForm shows private profile routes when profile routing is enable
   assert.match(html, /Profile routing/);
   assert.match(html, /Enhanced route/);
   assert.match(html, /Profile routes/);
+  assert.ok(html.indexOf("Enhanced route") < html.indexOf("Profile routing"));
   assert.match(html, /CCR built-in Claude Code routing optimizes requests to third-party models for this profile\./);
   assert.match(html, /data-ui-tooltip-trigger/);
 });
@@ -144,6 +151,30 @@ test("AddProfileForm uses Codex-specific enhanced route info for Codex profiles"
 
   assert.match(html, /Enhanced route/);
   assert.match(html, /CCR built-in Codex routing optimizes requests to third-party models for this profile\./);
+});
+
+test("AddProfileForm places CLAUDE_APP_PATH below Bot settings", () => {
+  const config = appConfigFixture();
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={config.botConfigs ?? []}
+      draft={{ ...createProfileDraft("claude-code"), surface: "app" }}
+      error=""
+      mode="edit"
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={config.Providers}
+      virtualModelProfiles={config.virtualModelProfiles}
+    />
+  );
+  const botIndex = html.indexOf(">Bot</span>");
+  const appPathIndex = html.indexOf("CLAUDE_APP_PATH");
+  const envIndex = html.indexOf("Environment variables");
+
+  assert.ok(botIndex >= 0);
+  assert.ok(appPathIndex > botIndex);
+  assert.ok(envIndex > appPathIndex);
+  assert.doesNotMatch(html, /rounded-md border border-border bg-background p-1 transition-colors/);
 });
 
 test("AddProfileForm marks required and optional fields", () => {

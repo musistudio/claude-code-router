@@ -1,11 +1,11 @@
 ---
-title: API Keys
-pageTitle: API Keys
-eyebrow: Detailed Configuration
+title: API keys
+pageTitle: API keys
+eyebrow: Detailed configuration
 lead: Manage API keys that clients use to access the CCR gateway, with expiration and local limits.
 ---
 
-## List Fields
+## List fields
 
 | Field | Capability |
 | --- | --- |
@@ -18,7 +18,7 @@ lead: Manage API keys that clients use to access the CCR gateway, with expiratio
 | Edit API key | Edits expiration and limits. The key value itself is not shown again. |
 | Remove API key | Deletes the client access key. Deleted keys stop working immediately. |
 
-## Create And Edit
+## Create and edit
 
 | Field | Capability |
 | --- | --- |
@@ -28,7 +28,7 @@ lead: Manage API keys that clients use to access the CCR gateway, with expiratio
 | API key created | Confirmation dialog after creation. It displays the full key. |
 | Copy this key now. It may not be shown again. | Reminder to copy the key immediately because CCR will not show it again after the dialog closes. |
 
-## Advanced Settings
+## Advanced settings
 
 `Advanced settings` adds local limits to a client key. When a limit is reached, requests using that key are rejected or limited; provider-side quota is not changed.
 

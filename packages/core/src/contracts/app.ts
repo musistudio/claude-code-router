@@ -237,12 +237,13 @@ export type ProviderCredentialConfig = {
 };
 
 export type ProviderAccountAuthMode = "provider-api-key" | "provider-api-key-raw" | "none";
-export type ProviderAccountConnectorSource = "standard" | "http-json" | "plugin" | "local-estimate" | "merged" | "unsupported";
+export type ProviderAccountConnectorSource = "standard" | "http-json" | "webcontent-json" | "plugin" | "local-estimate" | "merged" | "unsupported";
 export type ProviderAccountStatus = "ok" | "warning" | "critical" | "error" | "unsupported";
 export type ProviderAccountMeterKind = "balance" | "subscription" | "quota" | "time_window" | "tokens" | "requests";
 export type ProviderAccountMeterUnit = "USD" | "CNY" | "hours" | "minutes" | "tokens" | "requests" | string;
 export type ProviderAccountMeterWindow = "5h" | "daily" | "weekly" | "monthly" | string;
 export type ProviderAccountHttpJsonParser = "grok-subscription" | "kimi-code-usages" | "new-api-key-usage" | "new-api-user-self";
+export type ProviderAccountBrowserCredentialsMode = "include" | "omit" | "same-origin";
 
 export type ProviderAccountConfig = {
   connectors?: ProviderAccountConnectorConfig[];
@@ -253,6 +254,7 @@ export type ProviderAccountConfig = {
 export type ProviderAccountConnectorConfig =
   | ProviderAccountStandardConnectorConfig
   | ProviderAccountHttpJsonConnectorConfig
+  | ProviderAccountWebContentJsonConnectorConfig
   | ProviderAccountPluginConnectorConfig
   | ProviderAccountLocalEstimateConnectorConfig;
 
@@ -278,6 +280,24 @@ export type ProviderAccountHttpJsonConnectorConfig = ProviderAccountConnectorBas
   method?: "GET" | "POST";
   parser?: ProviderAccountHttpJsonParser;
   type: "http-json";
+};
+
+export type ProviderAccountWebContentJsonConnectorConfig = ProviderAccountConnectorBaseConfig & {
+  body?: unknown;
+  browser?: {
+    credentials?: ProviderAccountBrowserCredentialsMode;
+    headerTemplates?: Record<string, string>;
+    loginUrl?: string;
+    partition?: "built-in-browser";
+    requestOrigin?: string;
+    timeoutMs?: number;
+  };
+  endpoint: string;
+  headers?: Record<string, string>;
+  mapping: ProviderAccountMappingConfig;
+  method?: "GET" | "POST";
+  parser?: ProviderAccountHttpJsonParser;
+  type: "webcontent-json";
 };
 
 export type ProviderAccountPluginConnectorConfig = ProviderAccountConnectorBaseConfig & {
@@ -456,7 +476,7 @@ export type ProviderCatalogModelsResult = {
 export type ProviderAccountTestRequest = {
   apiKey?: string;
   baseUrl: string;
-  connector: ProviderAccountHttpJsonConnectorConfig;
+  connector: ProviderAccountHttpJsonConnectorConfig | ProviderAccountWebContentJsonConnectorConfig;
   providerName?: string;
 };
 
@@ -1313,8 +1333,13 @@ export type OverviewMetricKind =
   | "success-rate"
   | "total-tokens";
 
+export type OverviewAccountCardSize = "1:1" | "1:2" | "2:1" | "2:2";
+
 export type OverviewWidgetConfig = {
+  accountCardOrder?: string[];
+  accountCardSizes?: Record<string, OverviewAccountCardSize>;
   accountProvider?: string;
+  accountProviders?: string[];
   enabled: boolean;
   id: string;
   metric?: OverviewMetricKind;

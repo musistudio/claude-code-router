@@ -168,11 +168,11 @@ class AppUpdateService {
       autoUpdater.quitAndInstall(false, true);
     } catch (error) {
       this.installingUpdate = false;
-      this.publishStatus({
+      const status = this.publishStatus({
         lastError: formatError(error),
         state: "error"
       });
-      throw error;
+      throw new Error(status.lastError);
     }
   }
 
@@ -358,7 +358,18 @@ function formatReleaseNotes(notes: UpdateInfo["releaseNotes"]): string | undefin
 }
 
 function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? error.message : String(error);
+  if (isCodeSignatureValidationError(message)) {
+    return "Downloaded update failed code-signature validation. Download the latest installer manually, or try again after the package is re-signed.";
+  }
+  return message;
+}
+
+function isCodeSignatureValidationError(message: string): boolean {
+  return (
+    /code signature at url\b/i.test(message) &&
+    /did not pass validation/i.test(message)
+  ) || /code failed to satisfy specified code requirement/i.test(message);
 }
 
 function readEnvString(name: string): string | undefined {

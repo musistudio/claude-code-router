@@ -104,6 +104,7 @@ const BOOTSTRAP_ROUTE_PATHS = ["/_bootstrap", "/api/bootstrap", "/edge-api/boots
 const TOKENIZED_PREVIEW_ROUTE_PATHS = ["/_t", "/design/_t"];
 const DESIGN_ONLINE_REQUIRED_ROUTE_PATHS = [CCR_RESOURCE_RUNTIME_PATH, "/design", CLAUDE_APP_LEGACY_DESIGN_PATH, OMELETTE_RPC_PATH_PREFIX, "/design/v1/design", "/v1/design", ...PRIVACY_CONSENT_ROUTE_PATHS, ...TOKENIZED_PREVIEW_ROUTE_PATHS, ...BOOTSTRAP_ROUTE_PATHS];
 const DESIGN_LOCAL_REQUIRED_ROUTE_PATHS = [CCR_RESOURCE_RUNTIME_PATH, OMELETTE_RPC_PATH_PREFIX, "/design/v1/design", "/v1/design", ...PRIVACY_CONSENT_ROUTE_PATHS, ...TOKENIZED_PREVIEW_ROUTE_PATHS, ...CLAUDE_APP_SPA_ROUTE_PATHS, ...BOOTSTRAP_ROUTE_PATHS, ...AUTH_ESCAPE_ROUTE_PATHS, ...AUTH_API_ROUTE_PATHS];
+const PARKED_MESSAGE_STATE_NOT_FOUND = 1;
 const ORGANIZATION_ROUTE_PATHS = ["/api/organizations", "/organizations"];
 const SHIP_API_ROUTE_PATHS = ["/api/billing/promotion/claude-ship", ...ORGANIZATION_ROUTE_PATHS];
 const SHIP_ONLINE_REQUIRED_ROUTE_PATHS = [CCR_RESOURCE_RUNTIME_PATH, "/v1/code", "/v1/sessions", ...SHIP_API_ROUTE_PATHS, ...PRIVACY_CONSENT_ROUTE_PATHS, ...BOOTSTRAP_ROUTE_PATHS, ...AUTH_ESCAPE_ROUTE_PATHS, ...AUTH_API_ROUTE_PATHS];
@@ -513,6 +514,15 @@ const DEFAULT_ME = {
 
 module.exports = createClaudeProductPlugin("design");
 module.exports.createClaudeProductPlugin = createClaudeProductPlugin;
+if (process.env.CCR_CLAUDE_DESIGN_PLUGIN_TEST_EXPORTS === "1") {
+  module.exports.__test = {
+    discoverLocalDesignIndexAssets,
+    injectDesignMeIntoHtml,
+    mergeDesignShellMe,
+    readLocalAsset,
+    routeMockRequest
+  };
+}
 
 function createClaudeProductPlugin(productName = "design") {
   const product = CLAUDE_PLUGIN_PRODUCTS[productName] || CLAUDE_PLUGIN_PRODUCTS.design;
@@ -937,6 +947,10 @@ async function routeMockRequest(runtime, method, url, request, requestBody) {
   }
 
   if (method === "GET" && path.startsWith("/design/assets/")) {
+    return serveAsset(runtime, path, request);
+  }
+
+  if (method === "GET" && path.startsWith("/design/design-systems/")) {
     return serveAsset(runtime, path, request);
   }
 
@@ -2229,6 +2243,7 @@ async function handleOmeletteConnectRpc(runtime, method, path, request, requestB
 
   const rpcName = path.split("/").pop();
   const isConnectProtoRequest = headerIncludes(request.headers["content-type"], "application/connect+proto");
+  const isJsonRpcRequest = headerIncludes(request.headers["content-type"], "application/json") && !isConnectProtoRequest;
   const rpcBody = rpcName === "Chat" || isConnectProtoRequest
     ? decodeConnectEnvelope(requestBody)
     : requestBody;
@@ -2341,6 +2356,16 @@ async function handleOmeletteConnectRpc(runtime, method, path, request, requestB
       return protoResponse(encodeListUserSkillsResponse(runtime));
     case "GetUsageStatus":
       return protoResponse(encodeUsageStatusResponse(runtime));
+    case "GetPrepaidBalance":
+      if (isJsonRpcRequest) {
+        return jsonResponse(200, prepaidBalancePayload(runtime));
+      }
+      return protoResponse(encodePrepaidBalanceResponse(runtime));
+    case "GetProjectPresence":
+      if (isJsonRpcRequest) {
+        return jsonResponse(200, projectPresencePayload(runtime));
+      }
+      return protoResponse(encodeProjectPresenceResponse(runtime, rpcBody));
     case "UpdateOrgSettings":
       updateOrgSettings(runtime, rpcBody);
       return protoResponse(Buffer.alloc(0));
@@ -2357,6 +2382,16 @@ async function handleOmeletteConnectRpc(runtime, method, path, request, requestB
       return protoResponse(encodeTokenResponse());
     case "CountTokens":
       return protoResponse(await countGatewayTokens(runtime, rpcBody));
+    case "GetParkedMessage":
+      if (isJsonRpcRequest) {
+        return jsonResponse(200, parkedMessagePayload());
+      }
+      return protoResponse(encodeParkedMessageResponse());
+    case "CancelChat":
+      if (isJsonRpcRequest) {
+        return jsonResponse(200, {});
+      }
+      return protoResponse(Buffer.alloc(0));
     case "Chat":
       return await chatWithGateway(runtime, rpcBody);
     case "TrackEvent":
@@ -2411,7 +2446,11 @@ async function handleOmeletteConnectRpc(runtime, method, path, request, requestB
     case "ExecuteExperienceAction":
     case "LintFiles":
     case "FigmaGetStatus":
+    case "GoogleGetStatus":
     case "GithubGetStatus":
+      if (isJsonRpcRequest) {
+        return jsonResponse(200, integrationStatusPayload(rpcName));
+      }
       return protoResponse(encodeIntegrationStatusResponse(rpcName));
     case "McpListConnected":
     case "McpListConnectors":
@@ -2972,19 +3011,23 @@ async function resolveDesignIndexAssets(runtime, request, options = {}) {
     return current;
   }
 
-  const fromRequests = discoverRequestedDesignIndexAssets(runtime.store);
   const fromLocal = discoverLocalDesignIndexAssets(runtime.assetDir);
+  if (fromLocal) {
+    return updateDesignIndexAssets(runtime, fromLocal, fromLocal.source || "local", { checkedAt: now });
+  }
+
+  const fromRequests = discoverRequestedDesignIndexAssets(runtime.store);
   const fromCache = discoverCachedDesignIndexAssets(runtime.store);
   const fromRemote = await discoverRemoteDesignIndexAssets(runtime, request);
   const fromRemoteCache = await cacheRemoteDesignIndexAssets(runtime, fromRemote, request);
-  const fallback = mergeDesignIndexAssetPartials(fromLocal, fromCache) || {};
+  const fallback = mergeDesignIndexAssetPartials(fromCache) || {};
   const seeded = {
-    html: isUsableDesignShellHtml(fromLocal?.html) ? fromLocal.html : current.html,
+    html: current.html,
     scriptPath: fallback.scriptPath || current.scriptPath,
     source: fallback.source || current.source || "current",
     stylePath: fallback.stylePath || current.stylePath
   };
-  const discovered = mergeDesignIndexAssets(seeded, fromRequests, fromRemoteCache || fromRemote, fromLocal);
+  const discovered = mergeDesignIndexAssets(seeded, fromRequests, fromRemoteCache || fromRemote);
   const safeDiscovered = selectUsableDesignIndexAssets(runtime, discovered, fallback, current);
   return updateDesignIndexAssets(runtime, safeDiscovered, safeDiscovered.source || "discovered", { checkedAt: now });
 }
@@ -3377,37 +3420,99 @@ function discoverLocalDesignIndexAssets(assetDir) {
   const assetRoot = pathModule.resolve(expandHomePath(assetDir));
   const scripts = [];
   const styles = [];
-  for (const entry of listLocalAssetFiles(assetRoot)) {
-    const requestPath = `/design/assets/${entry.relativePath}`;
-    if (!isDesignIndexScriptPath(requestPath) && !isDesignIndexStylePath(requestPath)) {
-      continue;
+  for (const root of localDesignAssetRoots(assetRoot)) {
+    for (const entry of listLocalAssetFiles(root)) {
+      const requestPath = `/design/assets/${entry.relativePath}`;
+      if (!isDesignIndexScriptPath(requestPath) && !isDesignIndexStylePath(requestPath)) {
+        continue;
+      }
+      if (isDesignIndexStylePath(requestPath)) {
+        styles.push({ mtimeMs: entry.stat.mtimeMs, path: requestPath, size: entry.stat.size });
+        continue;
+      }
+      let body;
+      try {
+        body = fs.readFileSync(entry.file);
+      } catch {
+        continue;
+      }
+      scripts.push({
+        mtimeMs: entry.stat.mtimeMs,
+        path: requestPath,
+        score: designEntryScriptScore(requestPath, body, entry.stat),
+        size: entry.stat.size
+      });
     }
-    if (isDesignIndexStylePath(requestPath)) {
-      styles.push({ mtimeMs: entry.stat.mtimeMs, path: requestPath, size: entry.stat.size });
-      continue;
-    }
-    let body;
-    try {
-      body = fs.readFileSync(entry.file);
-    } catch {
-      continue;
-    }
-    scripts.push({
-      mtimeMs: entry.stat.mtimeMs,
-      path: requestPath,
-      score: designEntryScriptScore(requestPath, body, entry.stat),
-      size: entry.stat.size
-    });
   }
   scripts.sort((a, b) => b.score - a.score || b.mtimeMs - a.mtimeMs || b.size - a.size);
   styles.sort((a, b) => b.mtimeMs - a.mtimeMs || b.size - a.size);
   const assets = {
-    html: "",
+    html: readLocalDesignIndexHtml(assetRoot),
     scriptPath: scripts[0]?.path,
     source: "local",
     stylePath: styles[0]?.path
   };
   return assets.html || assets.scriptPath || assets.stylePath ? assets : undefined;
+}
+
+function localDesignAssetRoots(assetRoot) {
+  return uniqueExistingDirectories([
+    assetRoot,
+    pathModule.join(assetRoot, "assets"),
+    pathModule.join(assetRoot, "design", "assets")
+  ]);
+}
+
+function readLocalDesignIndexHtml(assetRoot) {
+  for (const file of uniquePaths(localDesignIndexHtmlCandidates(assetRoot))) {
+    try {
+      if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+        continue;
+      }
+      const html = fs.readFileSync(file, "utf8");
+      if (isUsableDesignShellHtml(html)) {
+        return html;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return "";
+}
+
+function localDesignIndexHtmlCandidates(assetRoot) {
+  const candidates = [
+    pathModule.join(assetRoot, "index.html"),
+    pathModule.join(assetRoot, "design", "index.html")
+  ];
+  if (pathModule.basename(assetRoot) === "assets") {
+    candidates.push(pathModule.join(pathModule.dirname(assetRoot), "index.html"));
+  }
+  return candidates;
+}
+
+function uniqueExistingDirectories(paths) {
+  return uniquePaths(paths).filter((directory) => {
+    try {
+      return fs.existsSync(directory) && fs.statSync(directory).isDirectory();
+    } catch {
+      return false;
+    }
+  });
+}
+
+function uniquePaths(paths) {
+  const seen = new Set();
+  const result = [];
+  for (const file of paths) {
+    const normalized = pathModule.resolve(file);
+    if (seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
 }
 
 function localAssetDirExists(assetDir) {
@@ -9564,8 +9669,61 @@ function encodeUsageStatusResponse() {
   return Buffer.alloc(0);
 }
 
+function encodePrepaidBalanceResponse() {
+  return Buffer.alloc(0);
+}
+
+function encodeProjectPresenceResponse() {
+  return Buffer.concat([
+    protoInt32(1, 1)
+  ]);
+}
+
+function encodeParkedMessageResponse() {
+  return protoEnum(1, PARKED_MESSAGE_STATE_NOT_FOUND);
+}
+
 function encodeIntegrationStatusResponse() {
   return Buffer.alloc(0);
+}
+
+function projectPresencePayload(runtime) {
+  return {
+    accounts: [
+      {
+        accountUuid: runtime.me.accountUuid,
+        displayName: runtime.me.displayName,
+        email: runtime.me.email
+      }
+    ],
+    totalCount: 1
+  };
+}
+
+function prepaidBalancePayload() {
+  return {
+    balance: 0,
+    currency: "USD",
+    prepaidBalance: 0
+  };
+}
+
+function parkedMessagePayload() {
+  return {
+    doneEvent: "",
+    remainingMs: 0,
+    state: "NOT_FOUND",
+    turnEpoch: "0"
+  };
+}
+
+function integrationStatusPayload(rpcName) {
+  const name = String(rpcName || "").replace(/GetStatus$/, "").toLowerCase() || "integration";
+  return {
+    connected: false,
+    integration: name,
+    status: "disconnected"
+  };
 }
 
 function encodeModelPreset(preset) {
@@ -9704,6 +9862,11 @@ async function handleDesignRestApi(runtime, method, path, request, requestBody) 
     }
   }
 
+  const projectEventsMatch = restPath.match(/^\/v1\/design\/projects\/([^/]+)\/events$/);
+  if (method === "GET" && projectEventsMatch) {
+    return designProjectEventsResponse(decodeURIComponent(projectEventsMatch[1]));
+  }
+
   if ((method === "GET" || method === "POST") && restPath === "/v1/design/files") {
     return handleDesignRestFiles(runtime, method, requestBody);
   }
@@ -9767,6 +9930,9 @@ async function handleDesignRestApi(runtime, method, path, request, requestBody) 
     const filePath = sanitizeProjectFilePath(decodeURIComponent(serveMatch[2]));
     const row = getProjectFileRow(runtime, projectId, filePath);
     if (!row) {
+      if (filePath === DEFAULT_PROJECT_FILE_PATH) {
+        return servePendingDesignPreviewResponse(runtime, projectId, filePath);
+      }
       return jsonResponse(404, { error: { message: `File not found: ${filePath}` } });
     }
     if (method === "HEAD") {
@@ -9946,6 +10112,62 @@ function isDesignRestApiRoutePath(path) {
     path.startsWith("/v1/design/") ||
     /^\/_t\/[^/]+\/v1\/design\//.test(path) ||
     /^\/design\/_t\/[^/]+\/v1\/design\//.test(path);
+}
+
+function designProjectEventsResponse(projectId) {
+  return eventStreamResponse(200, async (response) => {
+    await writeResponseChunk(response, Buffer.from("retry: 30000\n\n", "utf8"));
+    await writeResponseChunk(response, Buffer.from(`event: presence\ndata: ${JSON.stringify({ accounts: [], projectId, totalCount: 0 })}\n\n`, "utf8"));
+    await new Promise((resolve) => {
+      let closed = false;
+      let timer;
+      const finish = () => {
+        if (closed) {
+          return;
+        }
+        closed = true;
+        if (timer) {
+          clearInterval(timer);
+        }
+        resolve();
+      };
+      response.on("close", finish);
+      response.on("error", finish);
+      timer = setInterval(() => {
+        if (!closed) {
+          response.write(": keep-alive\n\n");
+        }
+      }, 25_000);
+      setTimeout(finish, 5 * 60 * 1000);
+    });
+  }, {
+    "connection": "keep-alive",
+    "x-accel-buffering": "no"
+  });
+}
+
+function servePendingDesignPreviewResponse(runtime, projectId, filePath) {
+  const previewVersion = projectPreviewVersion(runtime, projectId);
+  const html = injectOmelettePreviewScripts(renderClaudeDesignPendingPreviewHtml(), previewVersion, previewPollUrl(projectId, filePath));
+  return textResponse(200, html, {
+    "cache-control": "no-store",
+    "content-type": "text/html; charset=utf-8",
+    etag: `"ccr-preview-${previewVersion}"`,
+    "x-ccr-preview-version": previewVersion
+  });
+}
+
+function renderClaudeDesignPendingPreviewHtml() {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Claude Design preview pending</title>
+  <style>html,body{margin:0;min-height:100%;background:transparent;color:transparent}</style>
+</head>
+<body></body>
+</html>`;
 }
 
 function serveProjectFileResponse(runtime, projectId, row, filePath) {
@@ -13885,15 +14107,59 @@ function readLocalAsset(assetDir, requestPath) {
 
 function localAssetRelativePathCandidates(localRoot, requestPath) {
   const normalizedPath = normalizePath(requestPath);
-  const relativePath = normalizedPath
-    .replace(/^\/ship\//, "")
-    .replace(/^\/design\/assets\//, "")
-    .replace(/^\/assets\//, "")
-    .replace(/^\/design\//, "");
-  if (normalizedPath.startsWith("/design/assets/") && relativePath && !relativePath.includes("/")) {
-    return [relativePath, `v1/${relativePath}`];
+  if (normalizedPath.startsWith("/design/assets/")) {
+    return localAssetPathCandidatesForAssetPath(normalizedPath.slice("/design/assets/".length), "design");
   }
+  if (normalizedPath.startsWith("/ship/assets/")) {
+    return localAssetPathCandidatesForAssetPath(normalizedPath.slice("/ship/assets/".length), "ship");
+  }
+  if (normalizedPath.startsWith("/assets/")) {
+    const assetPath = normalizedPath.slice("/assets/".length);
+    return uniqueRelativePathCandidates([
+      ...localAssetPathCandidatesForAssetPath(assetPath, "design"),
+      ...localAssetPathCandidatesForAssetPath(assetPath, "ship")
+    ]);
+  }
+  if (normalizedPath.startsWith("/ship/")) {
+    const shipPath = normalizedPath.slice("/ship/".length);
+    return uniqueRelativePathCandidates([
+      `ship/${shipPath}`,
+      shipPath
+    ]);
+  }
+  if (normalizedPath.startsWith("/design/")) {
+    const designPath = normalizedPath.slice("/design/".length);
+    return uniqueRelativePathCandidates([
+      `design/${designPath}`,
+      designPath
+    ]);
+  }
+  const relativePath = normalizedPath.replace(/^\//, "");
   return [relativePath];
+}
+
+function localAssetPathCandidatesForAssetPath(assetPath, product) {
+  const normalizedAssetPath = String(assetPath || "").replace(/^\/+/, "");
+  if (!normalizedAssetPath) {
+    return [];
+  }
+  const candidates = [
+    `${product}/assets/${normalizedAssetPath}`,
+    `assets/${normalizedAssetPath}`,
+    normalizedAssetPath
+  ];
+  if (!normalizedAssetPath.includes("/")) {
+    candidates.push(
+      `${product}/assets/v1/${normalizedAssetPath}`,
+      "assets/v1/" + normalizedAssetPath,
+      "v1/" + normalizedAssetPath
+    );
+  }
+  return uniqueRelativePathCandidates(candidates);
+}
+
+function uniqueRelativePathCandidates(candidates) {
+  return Array.from(new Set(candidates.filter(Boolean)));
 }
 
 function isClaudeAppStaticRoutePath(path) {
@@ -14679,8 +14945,9 @@ function renderModulePreloadLinks(paths, lowPriority = false) {
 
 function injectDesignMeIntoHtml(html, me) {
   let nextHtml = html;
-  const meJsonScript = designMeJsonScript(me);
   const meJsonPattern = /<script\b(?=[^>]*\bid=["']omelette-me["'])[^>]*>[\s\S]*?<\/script>/i;
+  const designMe = mergeDesignShellMe(readDesignMePayloadFromHtml(nextHtml), me);
+  const meJsonScript = designMeJsonScript(designMe);
   if (meJsonPattern.test(nextHtml)) {
     nextHtml = nextHtml.replace(meJsonPattern, meJsonScript);
   }
@@ -14697,10 +14964,10 @@ function injectDesignMeIntoHtml(html, me) {
     snippets.push(meJsonScript);
   }
   if (!nextHtml.includes("ccr-claude-design-model-reset")) {
-    snippets.push(designModelPreferenceResetScript(me));
+    snippets.push(designModelPreferenceResetScript(designMe));
   }
   if (!nextHtml.includes("__OMELETTE_ME__")) {
-    snippets.push(designMeGlobalScript(me));
+    snippets.push(designMeGlobalScript(designMe));
   }
   if (earlySnippets.length) {
     nextHtml = injectHtmlAfterHeadOpen(nextHtml, earlySnippets.join("\n        "));
@@ -14709,6 +14976,67 @@ function injectDesignMeIntoHtml(html, me) {
     return nextHtml;
   }
   return injectHtmlAfterBodyOpen(nextHtml, snippets.join("\n        "));
+}
+
+function readDesignMePayloadFromHtml(html) {
+  const match = /<script\b(?=[^>]*\bid=["']omelette-me["'])[^>]*>([\s\S]*?)<\/script>/i.exec(String(html || ""));
+  if (!match) {
+    return undefined;
+  }
+  const text = decodeHtmlJsonText(match[1] || "").trim();
+  const value = parseMaybeJson(text, undefined);
+  return isRecord(value) ? value : undefined;
+}
+
+function mergeDesignShellMe(shellMe, runtimeMe) {
+  const merged = isRecord(runtimeMe) ? { ...runtimeMe } : {};
+  if (!isRecord(shellMe)) {
+    return merged;
+  }
+  if (typeof shellMe.hasProjects === "boolean" && merged.hasProjects === undefined) {
+    merged.hasProjects = shellMe.hasProjects;
+  }
+  const shellGrowthbookPayload = stringValue(shellMe.growthbookPayload);
+  const runtimeGrowthbookPayload = stringValue(merged.growthbookPayload);
+  if (shellGrowthbookPayload) {
+    merged.growthbookPayload = mergeGrowthbookPayloads(shellGrowthbookPayload, runtimeGrowthbookPayload);
+  }
+  return merged;
+}
+
+function mergeGrowthbookPayloads(shellPayload, runtimePayload) {
+  const shell = parseMaybeJson(shellPayload, {});
+  const runtime = parseMaybeJson(runtimePayload, {});
+  if (!isRecord(shell)) {
+    return stringValue(runtimePayload) || "{}";
+  }
+  if (!isRecord(runtime)) {
+    return JSON.stringify(shell);
+  }
+  return JSON.stringify({
+    ...shell,
+    ...runtime,
+    features: {
+      ...(isRecord(shell.features) ? shell.features : {}),
+      ...(isRecord(runtime.features) ? runtime.features : {})
+    }
+  });
+}
+
+function decodeHtmlJsonText(value) {
+  return String(value || "")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#34;/g, "\"")
+    .replace(/&#x22;/gi, "\"")
+    .replace(/&amp;/g, "&")
+    .replace(/&#38;/g, "&")
+    .replace(/&#x26;/gi, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&#60;/g, "<")
+    .replace(/&#x3c;/gi, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#62;/g, ">")
+    .replace(/&#x3e;/gi, ">");
 }
 
 function injectClaudeShipEntrypointIntoHtml(html) {

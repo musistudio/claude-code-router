@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { claudeDesignRuntimePluginConfig, migrateKnownGatewayPluginConfigsForTest, withClaudeDesignRuntimePluginConfig } from "@ccr/core/config/config.ts";
+import { claudeDesignRuntimePluginConfig, claudeShipRuntimePluginConfig, migrateKnownGatewayPluginConfigsForTest, withClaudeDesignRuntimePluginConfig } from "@ccr/core/config/config.ts";
 import { CCR_DESKTOP_APP_ENV } from "@ccr/core/runtime/desktop-app.ts";
 
 test("legacy combined Claude Design plugin config migrates to split Design and Ship plugins", () => {
@@ -103,9 +103,13 @@ test("Claude Design runtime plugin config resolves from the bundled plugin in CC
     process.env[CCR_DESKTOP_APP_ENV] = "1";
 
     const plugin = claudeDesignRuntimePluginConfig();
+    const shipPlugin = claudeShipRuntimePluginConfig();
     assert.equal(plugin?.id, "claude-design");
     assert.equal(plugin?.module, bundledPluginModule("claude-design"));
     assert.deepEqual(plugin?.apps?.map((app) => app.id), ["claude-design"]);
+    assert.equal(shipPlugin?.id, "claude-ship");
+    assert.equal(shipPlugin?.module, bundledPluginModule("claude-ship"));
+    assert.deepEqual(shipPlugin?.apps?.map((app) => app.id), ["claude-ship"]);
 
     const config = { plugins: [] };
     const runtimeConfig = withClaudeDesignRuntimePluginConfig(config);

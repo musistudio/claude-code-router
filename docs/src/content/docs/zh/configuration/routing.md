@@ -1,13 +1,11 @@
 ---
-title: 路由配置
-pageTitle: 路由配置
-eyebrow: 详细配置
-lead: 设置请求如何选择模型，并在失败时通过 Fallback 自动重试或切换到备用模型。
+title: 智能路由
+pageTitle: 智能路由
+eyebrow: 智能路由
+lead: 配置请求如何选择模型：内置路由识别 Claude Code 和 Codex 请求，自定义规则按条件改写模型，失败时通过回退自动重试或切换到备用模型。
 ---
 
 ## 内置路由
-
-Claude Code 和 Codex 内置路由通过 Agent 配置档案里的 **使用增强路由** 单独控制，不会出现在全局路由页的规则列表中。
 
 ### Claude Code
 
@@ -41,11 +39,11 @@ Claude Code 的 Agent / Task / Workflow 可以派生新的模型请求。CCR 使
 
 1. 在 **供应商** 中添加可用模型，确认模型 ID 可以真实请求。
 2. 打开 **模型** 页面，为希望 Subagent 自动选择的模型填写 Description。说明要写清模型适合的任务、速度、成本和限制。
-3. 在 **Agent 配置档案** 中启用 Claude Code 配置，并设置默认模型。Claude Code 未选择可识别模型时会使用它。
-4. 在 **Agent 配置档案** 中保持该 Claude Code 配置的 **使用增强路由** 开启。
+3. 在 **Agent 配置** 中启用 Claude Code 配置，并设置默认模型。Claude Code 未选择可识别模型时会使用它。
+4. 在 **路由** 页面确认 **Claude Code** 内置路由已启用。
 5. 在 Claude Code 中使用 Agent、Task 或 Workflow。需要派生 Agent 时，Claude Code 会根据模型 Description 选择一个 CCR 模型并写入标签。
 
-Description 建议写成任务导向，而不是只写模型厂商名。例如：
+Description 建议围绕模型适合的任务来写，例如：
 
 | 模型用途 | Description 示例 |
 | --- | --- |
@@ -57,19 +55,17 @@ Description 建议写成任务导向，而不是只写模型厂商名。例如�
 
 ### Codex
 
-CCR 会自动为第三方或非 GPT 模型适配 Codex 的 `apply_patch` 文件编辑工具。目标是让这些模型通过 patch 工具完成文件修改，而不是生成 `cat >`、`sed -i`、`python`、`node` 等命令或脚本来编辑文件。
+CCR 会自动为第三方或非 GPT 模型适配 Codex 的 `apply_patch` 文件编辑工具，让这些模型通过 patch 工具完成文件修改。
 
 技术原理是做一次工具协议桥接：Codex 原生的 `apply_patch` 是 custom/freeform 工具，入参是原始 patch 文本；很多 OpenAI-compatible 三方模型更擅长普通 function tool。CCR 会在上游请求中把 `apply_patch` 转成 `virtual_apply_patch` function tool，并在工具说明里注入完整的 `apply_patch.lark` 语法，要求模型把 patch 写入 `patch` 字段。
 
-模型返回 `virtual_apply_patch` 后，CCR 会把它转换回 Codex 期望的 `custom_tool_call`：`name = apply_patch`，`input = 原始 patch 文本`。CCR 不直接修改文件，真正执行 patch 的仍然是 Codex 客户端。这个适配会对非 GPT 模型自动启用，不受配置档案级 **使用增强路由** 开关影响；GPT 命名模型以及实际基模为 GPT 的 Fusion 模型继续使用 Codex 原生 freeform `apply_patch` 路径。
+模型返回 `virtual_apply_patch` 后，CCR 会把它转换回 Codex 期望的 `custom_tool_call`：`name = apply_patch`，`input = 原始 patch 文本`。CCR 不直接修改文件，真正执行 patch 的仍然是 Codex 客户端。这个适配会对非 GPT 模型自动启用，不受 **Codex** 内置路由开关影响；GPT 命名模型以及实际基模为 GPT 的 Fusion 模型继续使用 Codex 原生 freeform `apply_patch` 路径。
 
 ## 自定义路由
 
 自定义路由在路由页的规则列表中配置。页面顶部的 **搜索路由规则** 可以按名称、条件、请求动作等文本过滤列表；右上角 **添加** 按钮打开 **添加路由规则** 弹窗。规则表格按 **名称**、**条件**、**请求动作**、**状态**、**操作** 展示每条规则。
 
 自定义规则按列表顺序匹配，第一条命中的启用规则会改写请求。表格右侧的上移、下移按钮用来调整优先级，编辑按钮打开 **编辑路由规则**，删除按钮会先弹出确认框。**状态** 列的开关关闭后，规则保留在列表里，但不会参与匹配。
-
-Agent 配置档案也可以定义私有路由规则。配置级规则使用同一套规则结构，但 CCR 会先于全局规则列表执行它们，并且只对使用该配置生成的 API Key 鉴权的请求生效。需要显式匹配调用方配置时，可以在规则条件或脚本中使用 `request.auth.apiKeyId` 或 `request.auth.profileId`。
 
 ### 添加或编辑规则
 
@@ -78,14 +74,14 @@ Agent 配置档案也可以定义私有路由规则。配置级规则使用同�
 | UI 字段 | 填写方式 | 保存后的含义 |
 | --- | --- | --- |
 | **名称** | 填一个便于识别的规则名。该字段不能为空。 | 显示在列表 **名称** 列，也参与搜索。 |
-| **条件** | 选择 `request.header`、`request.body` 或 `request.auth`，填写字段名、操作符和值。 | 生成 `condition.left`、`condition.operator` 和 `condition.right`。 |
-| **改写请求参数** | 至少保留一行 rewrite。每行选择操作、目标 key 和需要的值。 | 生成 `rewrites`，规则命中后按行改写请求。 |
+| **条件** | 选择 `request.header` 或 `request.body`，填写字段名、操作符和值。 | 生成 `condition.left`、`condition.operator` 和 `condition.right`。 |
+| **改写请求参数** | 至少保留一行改写。每行选择操作、目标 key 和需要的值。 | 生成 `rewrites`，规则命中后按行改写请求。 |
 | **启用** | 打开或关闭规则。 | 控制 `enabled`，关闭时不会匹配。 |
-| **失败时** | 配置这条规则自己的 Fallback。 | 规则命中后覆盖页面顶部的 **默认失败处理**。 |
+| **失败时** | 配置这条规则自己的回退策略。 | 规则命中后覆盖页面顶部的 **默认失败处理**。 |
 
-**添加** 或 **保存** 按钮只有在表单有效时才可点击：名称、条件字段、条件值都必须填写；每条 rewrite 都必须有 key。`删除` 操作只需要 key；`替换数组元素` 需要同时填写 **匹配值** 和 **值**；其他操作需要填写 **值**。
+**添加** 或 **保存** 按钮只有在表单有效时才可点击：名称、条件字段、条件值都必须填写；每条改写都必须有 key。`删除` 操作只需要 key；`替换数组元素` 需要同时填写 **匹配值** 和 **值**；其他操作需要填写 **值**。
 
-单个条件无法表达需求时，可把规则类型改成 **Node.js 脚本**。选择本地脚本文件后，脚本可以动态返回目标模型、rewrite 和 fallback。编辑器会在保存前读取并编译文件，并提供 JSON 测试请求，可在不发起真实上游模型请求的情况下试跑。
+单个条件无法表达需求时，可把规则类型改成 **Node.js 脚本**。选择本地脚本文件后，脚本可以动态返回目标模型、改写和回退策略。编辑器会在保存前读取并编译文件，并提供 JSON 测试请求，可在不发起真实上游模型请求的情况下试跑。
 
 ### Node.js 脚本规则
 
@@ -102,7 +98,7 @@ Agent 配置档案也可以定义私有路由规则。配置级规则使用同�
 
 桌面版文件选择器保存绝对路径。Web UI 不能获得浏览器所选文件的真实路径，需要手动填写 CCR 服务所在机器上的绝对路径、相对路径或 `~/...` 路径；相对路径以 CCR 进程的工作目录为基准。单个脚本文件最大 64 KiB。
 
-脚本文件是一个 **异步函数体**，不是 CommonJS 或 ES Module。直接使用已注入的 `input`、`api` 和 `return`：
+脚本文件是一个 **异步函数体**。直接使用已注入的 `input`、`api` 和 `return`；不需要写 `module.exports`、`export default` 或 `import`：
 
 ```js
 if (input.body.model !== "供应商/原模型") {
@@ -114,7 +110,7 @@ return {
 };
 ```
 
-顶层可以使用 `await`。不要添加 `module.exports`、`export default` 或 `import`，也不能使用 `require`、`process`、`Buffer` 或原生 `fetch`；网络和文件操作使用下文的 `api`。`input` 和 `api` 都被冻结，脚本应通过返回 `rewrites` 改写请求，而不是直接修改 `input.body` 或 `input.headers`。
+脚本环境只暴露 `input`、`api`、`return` 和顶层 `await`。网络和文件操作使用下文 `api` 中的 API；`input` 和 `api` 都被冻结，脚本通过返回 `rewrites` 来改写请求。
 
 #### `input`：请求参数
 
@@ -129,8 +125,7 @@ return {
 | `input.model` | `string \| undefined` | `input.body.model` 为字符串时的快捷字段。 |
 | `input.tokenCount` | `number` | CCR 估算的输入 Token 数；无法估算时为 `0`。 |
 | `input.sessionId` | `string \| undefined` | CCR 能解析到的会话 ID。 |
-| `input.apiKeyId` | `string \| undefined` | `x-auth-api-key-id` Header 中的 CCR API Key 标识，不是原始密钥。 |
-| `input.profileId` | `string \| undefined` | 已鉴权 Agent 配置档案中配置的 `id`，例如 `claude-work`。 |
+| `input.apiKeyId` | `string \| undefined` | `x-auth-api-key-id` Header 中的 CCR API Key 标识符，用于区分不同 Key。 |
 | `input.builtInSubagentModel` | `string \| undefined` | CCR 能识别到的内置子代理模型。 |
 | `input.summary.lastUserText` | `string` | 最后一条用户消息的文本，最多 16 KiB 字符。 |
 | `input.summary.systemText` | `string` | System 内容的文本，最多 8 KiB 字符。 |
@@ -232,7 +227,7 @@ const response = await api.fetch(url, {
 | API | 返回值 | 说明 |
 | --- | --- | --- |
 | `api.env(name)` | `string \| undefined` | 读取 CCR 进程中的任意环境变量。 |
-| `api.hash(value)` | `number` | 根据字符串形式返回稳定的 32 位无符号哈希，适合稳定灰度分桶；它不是加密哈希。 |
+| `api.hash(value)` | `number` | 根据字符串形式返回稳定的 32 位无符号哈希，适合稳定灰度分桶；仅用于分桶，不用于安全场景。 |
 
 #### 返回值
 
@@ -242,7 +237,7 @@ const response = await api.fetch(url, {
 | --- | --- |
 | `null`、`undefined`、`false` | 当前规则不命中，继续下一条规则。 |
 | `{ match: false }` | 当前规则不命中；对象中的其他字段被忽略。 |
-| `true` | 当前规则命中，使用规则或全局默认 fallback。 |
+| `true` | 当前规则命中，使用规则级或全局默认回退策略。 |
 | `{ match?, model?, rewrites?, fallback? }` | 当前规则命中并使用对象中的动态决策。 |
 
 动态决策对象支持：
@@ -256,7 +251,7 @@ const response = await api.fetch(url, {
 
 字符串、数字或数组不能直接作为路由结果。未识别的对象字段不会参与路由。
 
-##### Rewrite 结构
+##### 改写结构
 
 ```js
 {
@@ -272,14 +267,14 @@ const response = await api.fetch(url, {
 | --- | --- | --- |
 | `set` | `value` | 设置或创建字段；省略 `operation` 时默认为 `set`。 |
 | `delete` | 无 | 删除字段或数组下标。 |
-| `array-append` | `value` | 在数组末尾添加元素；原值不是数组时从空数组开始。 |
+| `array-append` | `value` | 在数组末尾添加元素；原值已是数组时直接追加，否则先创建空数组再追加。 |
 | `array-prepend` | `value` | 在数组开头添加元素。 |
 | `array-remove` | `value` | 删除与 `value` 匹配的数组元素。 |
 | `array-replace` | `match`、`value` | 把与 `match` 匹配的数组元素替换为 `value`。 |
 
-Rewrite 的 `value` 和 `match` 必须是 JSON 值。`__proto__`、`constructor`、`prototype` 等不安全路径会被拒绝。脚本不能改写鉴权、Cookie、Host、Content-Length、连接控制 Header、`x-auth-*` 或 `x-ccr-*` 等受保护 Header。
+改写的 `value` 和 `match` 必须是 JSON 值。`__proto__`、`constructor`、`prototype` 等不安全路径会被拒绝。脚本不能改写鉴权、Cookie、Host、Content-Length、连接控制 Header、`x-auth-*` 或 `x-ccr-*` 等受保护 Header。
 
-##### Fallback 结构
+##### 回退结构
 
 ```js
 {
@@ -412,7 +407,7 @@ return {
 
 Worker 对堆内存、栈、等待队列和硬超时设有资源限制。同一规则在 60 秒内失败 3 次后会熔断 30 秒；脚本文件内容变化后会重新编译，并按新的脚本版本进行熔断计数。
 
-Worker 隔离不是操作系统级安全沙箱。`api.fetch`、`api.fs` 和 `api.env` 没有白名单，脚本继承 CCR 进程可访问的网络、文件和环境变量权限，只应运行可信脚本。
+Worker 隔离在执行层面隔离脚本；脚本仍继承 CCR 进程可访问的网络、文件和环境变量权限，只应运行可信脚本。
 
 旧配置中的内联 `source` 仍可继续运行；为规则选择脚本文件并保存后，会改为上述本地 `file` 结构。旧的 `readPaths`、`permissions` 和脚本规则静态 `rewrites` 不再需要，脚本需要改写请求时直接返回 `model` 或 `rewrites`。
 
@@ -424,11 +419,8 @@ Worker 隔离不是操作系统级安全沙箱。`api.fetch`、`api.fs` 和 `api
 | --- | --- | --- |
 | `request.header` | `user-agent`、`x-api-key`、`x-client-name` | `request.header.user-agent` |
 | `request.body` | `model`、`messages`、`messages.0.role`、`tools` | `request.body.model` |
-| `request.auth` | `apiKeyId`、`profileId` | `request.auth.profileId` |
 
 Header 名不区分大小写。Body 字段按点号路径读取，数字片段表示数组下标；例如 `messages.0.role` 读取第一条 message 的 role。对于 messages、tools 这类嵌套数组，通常用 `contains deep` 比固定下标更稳。
-
-`request.auth.apiKeyId` 是 CCR 的内部鉴权 key id，不是原始 API Key。Agent 配置档案生成的 key 使用 `profile:<sanitized-profile-id>` 形式，而 `request.auth.profileId` 会暴露已鉴权配置档案中配置的原始 `id`。这样可以按配置分流，而不需要匹配密钥值。
 
 值输入框会按常见字面量解析：`true`、`false`、`null`、数字、JSON 对象或数组会按对应类型比较；其他内容按字符串处理。需要强制作为字符串时，可以写成 `"123"` 或 `'123'`。
 
@@ -445,18 +437,18 @@ Header 名不区分大小写。Body 字段按点号路径读取，数字片段�
 
 **改写请求参数** 区域默认给出一行 `request.body.model`。这也是最常用的模型路由写法：选择 **设置**，key 填 `request.body.model`，值填目标 `供应商/模型` 或 Fusion 模型。
 
-点击 **添加参数** 可以追加多行 rewrite；垃圾桶按钮删除当前行，最后一行不能删除。规则命中后，CCR 会按列表顺序应用这些 rewrite。
+点击 **添加参数** 可以追加多行改写；垃圾桶按钮删除当前行，最后一行不能删除。规则命中后，CCR 会按列表顺序应用这些改写。
 
 | 操作 | 需要填写 | 行为 |
 | --- | --- | --- |
 | **设置** | key、值 | 设置请求里的字段，例如 `request.body.model = provider/model` 或 `request.body.temperature = 0.2`。 |
 | **删除** | key | 删除请求字段。删除 `request.header.x-test` 会移除对应 Header；删除 `request.body.foo` 会移除 body 字段。 |
-| **追加到数组** | key、值 | 把值追加到目标数组末尾。目标不是数组时按空数组开始。 |
+| **追加到数组** | key、值 | 把值追加到目标数组末尾。目标已是数组时直接追加，否则先创建空数组再追加。 |
 | **插入到数组开头** | key、值 | 把值插到目标数组开头。 |
 | **从数组移除** | key、值 | 从目标数组中移除等于该值的元素。 |
 | **替换数组元素** | key、匹配值、值 | 把数组中匹配 **匹配值** 的元素替换为新值。 |
 
-Rewrite 的值也会按字面量解析，所以 `0.2` 会变成数字，`true` 会变成布尔值，`{"type":"web_search"}` 会变成对象。只有 `request.body.model` 的值会额外按 CCR 的模型选择器格式规范化。
+改写的值也会按字面量解析，所以 `0.2` 会变成数字，`true` 会变成布尔值，`{"type":"web_search"}` 会变成对象。只有 `request.body.model` 的值会额外按 CCR 的模型选择器格式规范化。
 
 ### 失败时
 
@@ -469,20 +461,19 @@ Rewrite 的值也会按字面量解析，所以 `0.2` 会变成数字，`true` �
 | 目标 | 条件来源 | 字段 | 操作符 | 值 | 改写请求参数 |
 | --- | --- | --- | --- | --- | --- |
 | 按客户端 Header 分流 | `request.header` | `x-client-name` | `==` | `claude-code` | **设置** `request.body.model = 供应商/模型` |
-| 按单个配置分流 | `request.auth` | `profileId` | `==` | `claude-work` | **设置** `request.body.model = 供应商/模型` |
 | 按原始模型前缀分流 | `request.body` | `model` | `starts with` | `claude-` | **设置** `request.body.model = 供应商/模型` |
 | 按消息内容分流到视觉模型 | `request.body` | `messages` | `contains deep` | `image` | **设置** `request.body.model = 视觉供应商/模型` |
 | 删除调试 Header | `request.header` | `x-debug-route` | `==` | `1` | **删除** `request.header.x-debug-route` |
 
 保存后，规则会出现在列表中。请求日志里的 `request model`、`resolved provider`、`resolved model` 和路由原因可以用来确认规则是否命中。
 
-## Fallback 处理
+## 回退处理
 
-Fallback 处理请求失败后的降级。第一次选模型由路由完成；当前模型或上游失败时，Fallback 决定是否继续尝试。
+回退决定请求失败后的降级策略。第一次选模型由路由完成；当前模型或上游失败时，回退决定是否继续尝试。
 
-路由页面顶部的 **默认失败处理** 是全局 Fallback。每条路由规则里的 **失败时** 是规则级 Fallback：当某条规则命中时，规则级配置会覆盖全局配置。Agent 配置档案的配置级路由不再定义单独的配置级 Fallback。
+路由页面顶部的 **默认失败处理** 是全局回退。每条路由规则里的 **失败时** 是规则级回退：当某条规则命中时，规则级配置会覆盖全局配置。
 
-## Fallback 模式
+## 回退模式
 
 | 模式 | 行为 |
 | --- | --- |
@@ -494,14 +485,14 @@ Fallback 处理请求失败后的降级。第一次选模型由路由完成；�
 
 ## 失败触发条件
 
-网络错误会进入下一次尝试。状态码是否触发 Fallback 取决于模式：
+网络错误会进入下一次尝试。状态码是否触发回退取决于模式：
 
 | 模式 | 触发状态码 |
 | --- | --- |
 | 继续重试 | `408`、`409`、`429`、`5xx` |
 | 失败降级目标 | 任意 `4xx` 或 `5xx` |
 
-进入下一次尝试前，CCR 会对每个触发 Fallback 的失败进行等待，包括网络错误。上游提供正数 `Retry-After` 时会优先遵守；否则使用从 1 秒开始、单次最多 30 秒的指数退避。
+进入下一次尝试前，CCR 会对每个触发回退的失败进行等待，包括网络错误。上游提供正数 `Retry-After` 时会优先遵守；否则使用从 1 秒开始、单次最多 30 秒的指数退避。
 
 **失败降级目标** 对 `4xx` 也会切换，是因为模型不存在、鉴权或供应商侧拒绝等错误可能只影响当前目标。切换后如果备用模型可用，请求仍然可以成功。
 
@@ -515,13 +506,13 @@ Fallback 处理请求失败后的降级。第一次选模型由路由完成；�
 2. 如果选择 **继续重试**，填写 `Retries`。
 3. 如果选择 **失败降级目标**，按优先级添加备用模型。
 
-全局 Fallback 会应用到没有单独配置 Fallback 的规则。
+全局回退会应用到没有单独配置回退策略的规则。
 
 ### 规则级失败降级
 
-添加或编辑路由规则时，可以在 **失败时** 中配置这条规则自己的 Fallback。
+添加或编辑路由规则时，可以在 **失败时** 中配置这条规则自己的回退策略。
 
-规则级 Fallback 适合高风险或高成本模型。例如：图片任务先走 Fusion 视觉模型，失败后切到另一个多模态模型；复杂任务先走强模型，失败后切到稳定模型。
+规则级回退适合高风险或高成本模型。例如：图片任务先走 Fusion 视觉模型，失败后切到另一个多模态模型；复杂任务先走强模型，失败后切到稳定模型。
 
 ## 验证方式
 
@@ -532,4 +523,4 @@ Fallback 处理请求失败后的降级。第一次选模型由路由完成；�
 - `resolved model`：最终请求的模型。
 - 状态码和错误信息。
 
-如果发生了 Fallback，响应头里会带有 `x-ccr-fallback-attempts`、`x-ccr-fallback-failures`、延迟尝试的 `x-ccr-fallback-delays-ms`，以及最终命中的 `x-ccr-fallback-model`。请求日志详情里也会显示关联的重试尝试列表。
+如果发生了回退，响应头里会带有 `x-ccr-fallback-attempts`、`x-ccr-fallback-failures`、延迟尝试的 `x-ccr-fallback-delays-ms`，以及最终命中的 `x-ccr-fallback-model`。请求日志详情里也会显示关联的重试尝试列表。

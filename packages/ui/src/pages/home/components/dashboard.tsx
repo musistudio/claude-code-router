@@ -4,17 +4,17 @@ import {
   Area, arrayMove, Badge, Bar, BarChart, Button,
   Card, CardContent, CardHeader, CardTitle, CartesianGrid, Cell, constrainOverviewWidgetSize,
   Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, cn, codexLogoUrl, compactId,
-  compactUserAgent, compareProviderAccountSnapshots, ComposedChart, CSS, DEFAULT_OVERVIEW_WIDGETS, DndContext,
+  compactUserAgent, compareProviderAccountSnapshots, ComposedChart, CSS, Checkbox, DEFAULT_OVERVIEW_WIDGETS, DndContext,
   Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle,
   DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, Field, formatAxisNumber, formatBytes,
   formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatProviderAccountDetailDate, formatProviderAccountMeterTitle, formatProviderAccountMeterValue,
   formatStatusBucketDate, formatSystemStatusRange, formatUsdCost, KeyboardSensor,
   LabelList, LayoutGroup, Line, LoaderCircle, MeasuringStrategy, MetricTone,
   motion, normalizeAgentFilterValue, normalizeOverviewWidget, normalizeOverviewWidgets,
-  OverviewMetricKind, overviewMetricOptions, overviewWidgetCollisionDetection, OverviewWidgetConfig, OverviewWidgetSize, overviewWidgetSizeOptions,
+  OverviewAccountCardSize, OverviewMetricKind, overviewMetricOptions, overviewWidgetCollisionDetection, OverviewWidgetConfig, OverviewWidgetSize, overviewWidgetSizeOptions,
   OverviewWidgetType, OverviewWidgetVariant, Pencil, Pie, PieChart, Plus,
   PointerSensor, primaryProviderAccountMeter, providerAccountMeterDetailValidityProgress, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass, isGatewayProviderEnabled, isProviderAccountManualResetMeter,
-  providerAccountSnapshotKey, providerAccountSnapshotLabel,
+  providerAccountSnapshotKey, providerAccountSnapshotLabel, providerDisplayIcon,
   ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ReactPointerEvent, rectSortingStrategy, RefreshCw, Select,
   SelectControl, SortableContext, sortableKeyboardCoordinates, systemStatusPointTooltip,
   Tooltip, translateOptions, Trash2, UsageComparisonRow, usageRangeOptions,
@@ -263,6 +263,35 @@ export function OverviewView({
     });
   }
 
+  function changeWidgetAccountProviders(id: string, accountProviders: string[]) {
+    updateWidget(id, {
+      accountProvider: accountProviders.length === 1 ? accountProviders[0] : undefined,
+      accountProviders: accountProviders.length > 0 ? accountProviders : undefined
+    });
+  }
+
+  function changeWidgetAccountCardSize(id: string, accountKey: string, size: OverviewAccountCardSize | undefined) {
+    const current = widgets.find((widget) => widget.id === id);
+    if (!current) {
+      return;
+    }
+    const accountCardSizes = { ...(current.accountCardSizes ?? {}) };
+    if (size) {
+      accountCardSizes[accountKey] = size;
+    } else {
+      delete accountCardSizes[accountKey];
+    }
+    updateWidget(id, {
+      accountCardSizes: Object.keys(accountCardSizes).length > 0 ? accountCardSizes : undefined
+    });
+  }
+
+  function changeWidgetAccountCardOrder(id: string, accountCardOrder: string[]) {
+    updateWidget(id, {
+      accountCardOrder: accountCardOrder.length > 0 ? accountCardOrder : undefined
+    });
+  }
+
   function changeWidgetShareData(id: string, type: ShareOverviewWidgetType) {
     const current = widgets.find((widget) => widget.id === id);
     if (!current) {
@@ -302,8 +331,12 @@ export function OverviewView({
                   onSelect={() => setSelectedWidgetId(widget.id)}
                 >
                   <OverviewWidgetRenderer
+                    editing={editing}
+                    onChangeAccountCardOrder={(accountKeys) => changeWidgetAccountCardOrder(widget.id, accountKeys)}
+                    onChangeAccountCardSize={(accountKey, size) => changeWidgetAccountCardSize(widget.id, accountKey, size)}
                     providerAccounts={providerAccounts}
                     providerAccountRefreshing={providerAccountRefreshing}
+                    providers={filterProviders}
                     refreshProviderAccounts={refreshProviderAccounts}
                     usageRange={usageRange}
                     usageStats={usageStats}
@@ -323,6 +356,7 @@ export function OverviewView({
           <OverviewWidgetDragOverlay
             providerAccounts={providerAccounts}
             providerAccountRefreshing={providerAccountRefreshing}
+            providers={filterProviders}
             refreshProviderAccounts={refreshProviderAccounts}
             usageRange={usageRange}
             usageStats={usageStats}
@@ -403,7 +437,7 @@ export function OverviewView({
             <OverviewWidgetProperties
               providerAccounts={providerAccounts}
               widget={selectedWidget}
-              onChangeAccountProvider={(accountProvider) => selectedWidget ? updateWidget(selectedWidget.id, { accountProvider }) : undefined}
+              onChangeAccountProviders={(accountProviders) => selectedWidget ? changeWidgetAccountProviders(selectedWidget.id, accountProviders) : undefined}
               onChangeAnalysisData={(type) => selectedWidget ? changeWidgetAnalysisData(selectedWidget.id, type) : undefined}
               onChangeBreakdownData={(type) => selectedWidget ? changeWidgetBreakdownData(selectedWidget.id, type) : undefined}
               onChangeCategory={(category) => selectedWidget ? changeWidgetCategory(selectedWidget.id, category) : undefined}
@@ -621,7 +655,7 @@ function OverviewWidgetPalette({
 function OverviewWidgetProperties({
   providerAccounts,
   widget,
-  onChangeAccountProvider,
+  onChangeAccountProviders,
   onChangeAnalysisData,
   onChangeBreakdownData,
   onChangeCategory,
@@ -633,7 +667,7 @@ function OverviewWidgetProperties({
 }: {
   providerAccounts: ProviderAccountSnapshot[];
   widget: OverviewWidgetConfig | undefined;
-  onChangeAccountProvider: (accountProvider: string | undefined) => void;
+  onChangeAccountProviders: (accountProviders: string[]) => void;
   onChangeAnalysisData: (type: "client-analysis" | "provider-analysis") => void;
   onChangeBreakdownData: (type: "model-distribution" | "token-mix") => void;
   onChangeCategory: (category: OverviewWidgetCategory) => void;
@@ -652,13 +686,11 @@ function OverviewWidgetProperties({
   const category = overviewWidgetCategory(widget.type);
   const dataOptions = overviewWidgetDataOptions(widget, providerAccounts);
   const dataValue = overviewWidgetDataValue(widget);
+  const accountProviderValues = overviewWidgetAccountProviderValues(widget);
   const sizeOptions = overviewWidgetSizeOptions.filter((option) => (
-    constrainOverviewWidgetSize(option.value, widget.type, widget.variant, widget.accountProvider) === option.value
+    constrainOverviewWidgetSize(option.value, widget.type, widget.variant, accountProviderValues) === option.value
   ));
   const changeData = (value: string) => {
-    if (category === "account-balance") {
-      onChangeAccountProvider(value || undefined);
-    }
     if (category === "metric") {
       onChangeMetric(value as OverviewMetricKind);
     }
@@ -685,7 +717,15 @@ function OverviewWidgetProperties({
       </Field>
 
       <Field label={t("Data")}>
-        <SelectControl onChange={changeData} options={translateOptions(dataOptions, t)} value={dataValue} />
+        {category === "account-balance" ? (
+          <OverviewAccountDataSelector
+            options={dataOptions}
+            value={accountProviderValues}
+            onChange={onChangeAccountProviders}
+          />
+        ) : (
+          <SelectControl onChange={changeData} options={translateOptions(dataOptions, t)} value={dataValue} />
+        )}
       </Field>
 
       <Field label={t("Widget size")}>
@@ -700,6 +740,51 @@ function OverviewWidgetProperties({
         <Trash2 className="h-3.5 w-3.5" />
         {t("Remove widget")}
       </Button>
+    </div>
+  );
+}
+
+function OverviewAccountDataSelector({
+  onChange,
+  options,
+  value
+}: {
+  onChange: (value: string[]) => void;
+  options: Array<{ label: string; value: string }>;
+  value: string[];
+}) {
+  const t = useAppText();
+  const selected = new Set(value);
+  const accountOptions = options.filter((option) => option.value);
+  const allSelected = selected.size === 0;
+
+  function toggleAccount(account: string, checked: boolean) {
+    const next = new Set(selected);
+    if (checked) {
+      next.add(account);
+    } else {
+      next.delete(account);
+    }
+    onChange([...next]);
+  }
+
+  return (
+    <div className="overview-account-data-picker min-w-0 overflow-hidden rounded-md border border-border/70 bg-card/50 p-1.5">
+      <label className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[12px] font-medium transition-colors hover:bg-muted/50">
+        <Checkbox checked={allSelected} onCheckedChange={(checked) => checked ? onChange([]) : undefined} />
+        <span className="min-w-0 flex-1 truncate">{t("All accounts")}</span>
+      </label>
+      <div className="mt-1 max-h-44 space-y-0.5 overflow-y-auto pr-1">
+        {accountOptions.map((option) => (
+          <label className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[12px] transition-colors hover:bg-muted/50" key={option.value}>
+            <Checkbox
+              checked={selected.has(option.value)}
+              onCheckedChange={(checked) => toggleAccount(option.value, checked)}
+            />
+            <span className="min-w-0 flex-1 truncate">{option.label}</span>
+          </label>
+        ))}
+      </div>
     </div>
   );
 }
@@ -726,6 +811,7 @@ function SortableOverviewWidget({
     disabled: !editing,
     id: widget.id
   });
+  const { onKeyDown, onPointerDown, ...dragListeners } = listeners ?? {};
 
   return (
     <motion.div
@@ -744,16 +830,33 @@ function SortableOverviewWidget({
         transition
       }}
       {...attributes}
-      {...listeners}
+      {...dragListeners}
+      onKeyDown={(event) => {
+        if (overviewWidgetSortShouldIgnoreTarget(event.target)) {
+          return;
+        }
+        onKeyDown?.(event);
+      }}
+      onPointerDown={(event) => {
+        if (overviewWidgetSortShouldIgnoreTarget(event.target)) {
+          return;
+        }
+        onPointerDown?.(event);
+      }}
     >
       {children}
     </motion.div>
   );
 }
 
+function overviewWidgetSortShouldIgnoreTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest("[data-overview-widget-drag-lock='true']"));
+}
+
 function OverviewWidgetDragOverlay({
   providerAccounts,
   providerAccountRefreshing = false,
+  providers,
   refreshProviderAccounts,
   usageRange,
   usageStats,
@@ -761,6 +864,7 @@ function OverviewWidgetDragOverlay({
 }: {
   providerAccounts: ProviderAccountSnapshot[];
   providerAccountRefreshing?: boolean;
+  providers: GatewayProviderConfig[];
   refreshProviderAccounts?: () => void | Promise<void>;
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
@@ -771,6 +875,7 @@ function OverviewWidgetDragOverlay({
       <OverviewWidgetRenderer
         providerAccounts={providerAccounts}
         providerAccountRefreshing={providerAccountRefreshing}
+        providers={providers}
         refreshProviderAccounts={refreshProviderAccounts}
         usageRange={usageRange}
         usageStats={usageStats}
@@ -1011,15 +1116,23 @@ function overviewWidgetResizeCursor(axis: OverviewWidgetResizeAxis): string {
 }
 
 function OverviewWidgetRenderer({
+  editing,
+  onChangeAccountCardOrder,
+  onChangeAccountCardSize,
   providerAccounts,
   providerAccountRefreshing = false,
+  providers,
   refreshProviderAccounts,
   usageRange,
   usageStats,
   widget
 }: {
+  editing?: boolean;
+  onChangeAccountCardOrder?: (accountKeys: string[]) => void;
+  onChangeAccountCardSize?: (accountKey: string, size: OverviewAccountCardSize) => void;
   providerAccounts: ProviderAccountSnapshot[];
   providerAccountRefreshing?: boolean;
+  providers: GatewayProviderConfig[];
   refreshProviderAccounts?: () => void | Promise<void>;
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
@@ -1030,7 +1143,7 @@ function OverviewWidgetRenderer({
   if (widget.type === "system-status") {
     content = <SystemStatusBar usageRange={usageRange} usageStats={usageStats} variant={widget.variant === "compact" ? "compact" : "timeline"} />;
   } else if (widget.type === "account-balance") {
-    content = <ProviderAccountsOverview accountProvider={widget.accountProvider} accounts={providerAccounts} dimensions={dimensions} refreshing={providerAccountRefreshing} variant={overviewAccountVariant(widget.variant)} onRefresh={refreshProviderAccounts} />;
+    content = <ProviderAccountsOverview accountCardOrder={widget.accountCardOrder} accountCardSizes={widget.accountCardSizes} accountProviders={overviewWidgetAccountProviderValues(widget)} accounts={providerAccounts} dimensions={dimensions} editing={editing} providers={providers} refreshing={providerAccountRefreshing} variant={overviewAccountVariant(widget.variant)} onChangeAccountCardOrder={onChangeAccountCardOrder} onChangeAccountCardSize={onChangeAccountCardSize} onRefresh={refreshProviderAccounts} />;
   } else if (widget.type === "metric") {
     content = <OverviewMetricWidget metric={widget.metric ?? "requests"} totals={usageStats.totals} variant={overviewMetricVariant(widget.variant)} />;
   } else if (widget.type === "usage-trend") {
@@ -1764,12 +1877,15 @@ function overviewWidgetDataOptions(widget: OverviewWidgetConfig, providerAccount
     return overviewAnalysisDataOptions();
   }
   if (category === "account-balance") {
+    const selectedValues = overviewWidgetAccountProviderValues(widget);
     const options = providerAccounts
       .filter((account) => account.provider)
       .sort(compareProviderAccountSnapshots)
       .map((account) => ({ label: providerAccountSnapshotLabel(account), value: providerAccountSnapshotKey(account) }));
-    if (widget.accountProvider && !options.some((option) => option.value === widget.accountProvider)) {
-      options.push({ label: widget.accountProvider, value: widget.accountProvider });
+    for (const accountProvider of selectedValues) {
+      if (!options.some((option) => option.value === accountProvider)) {
+        options.push({ label: accountProvider, value: accountProvider });
+      }
     }
     return [{ label: "All accounts", value: "" }, ...options];
   }
@@ -1800,7 +1916,7 @@ function overviewWidgetDataValue(widget: OverviewWidgetConfig): string {
     return widget.type;
   }
   if (category === "account-balance") {
-    return widget.accountProvider ?? "";
+    return overviewWidgetAccountProviderValues(widget)[0] ?? "";
   }
   if (category === "activity") {
     return "token-activity";
@@ -1809,6 +1925,27 @@ function overviewWidgetDataValue(widget: OverviewWidgetConfig): string {
     return widget.type;
   }
   return category;
+}
+
+function overviewWidgetAccountProviderValues(widget: OverviewWidgetConfig): string[] {
+  return uniqueOverviewStrings([
+    ...(widget.accountProviders ?? []),
+    ...(widget.accountProvider ? [widget.accountProvider] : [])
+  ]);
+}
+
+function uniqueOverviewStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const item = value.trim();
+    if (!item || seen.has(item)) {
+      continue;
+    }
+    seen.add(item);
+    result.push(item);
+  }
+  return result;
 }
 
 function overviewWidgetCategory(type: OverviewWidgetType): OverviewWidgetCategory {
@@ -2288,29 +2425,74 @@ function SystemStatusBar({
 }
 
 function ProviderAccountsOverview({
-  accountProvider,
+  accountCardOrder,
+  accountCardSizes,
+  accountProviders,
   accounts,
   dimensions,
+  editing = false,
+  onChangeAccountCardOrder,
+  onChangeAccountCardSize,
   onRefresh,
+  providers,
   refreshing = false,
   variant = "cards"
 }: {
-  accountProvider?: string;
+  accountCardOrder?: string[];
+  accountCardSizes?: Record<string, OverviewAccountCardSize>;
+  accountProviders?: string[];
   accounts: ProviderAccountSnapshot[];
   dimensions: OverviewWidgetDimensions;
+  editing?: boolean;
+  onChangeAccountCardOrder?: (accountKeys: string[]) => void;
+  onChangeAccountCardSize?: (accountKey: string, size: OverviewAccountCardSize) => void;
   onRefresh?: () => void | Promise<void>;
+  providers: GatewayProviderConfig[];
   refreshing?: boolean;
   variant?: OverviewAccountVariant;
 }) {
   const t = useAppText();
-  const selectedAccountProvider = accountProvider?.trim();
+  const selectedAccountProviders = new Set((accountProviders ?? []).map((provider) => provider.trim()).filter(Boolean));
   const sortedAccounts = [...accounts].sort(compareProviderAccountSnapshots);
-  const visibleAccounts = selectedAccountProvider
-    ? sortedAccounts.filter((account) => providerAccountSelectionMatches(account, selectedAccountProvider)).slice(0, 1)
+  const filteredAccounts = selectedAccountProviders.size > 0
+    ? sortedAccounts.filter((account) => providerAccountSelectionMatches(account, selectedAccountProviders))
     : sortedAccounts
       .filter((account) => account.meters.length > 0 || account.status === "error");
+  const visibleAccounts = providerAccountOrderAccounts(filteredAccounts, accountCardOrder);
   const isSingleAccount = visibleAccounts.length === 1;
   const showHeading = dimensions.height >= 2 && dimensions.width >= 2;
+  const bentoLayout = !isSingleAccount && variant === "cards"
+    ? providerAccountBentoLayout(visibleAccounts, dimensions, accountCardSizes)
+    : undefined;
+  const accountGridItems = bentoLayout?.items ?? visibleAccounts.map((account) => ({ account, span: undefined }));
+  const accountCardSortSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 6
+      }
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates
+    })
+  );
+
+  function finishAccountCardSort(event: DragEndEvent) {
+    if (!onChangeAccountCardOrder) {
+      return;
+    }
+    const activeId = String(event.active.id);
+    const overId = event.over ? String(event.over.id) : "";
+    if (!overId || activeId === overId) {
+      return;
+    }
+    const currentOrder = visibleAccounts.map(providerAccountSnapshotKey);
+    const activeIndex = currentOrder.indexOf(activeId);
+    const overIndex = currentOrder.indexOf(overId);
+    if (activeIndex < 0 || overIndex < 0 || activeIndex === overIndex) {
+      return;
+    }
+    onChangeAccountCardOrder(arrayMove(currentOrder, activeIndex, overIndex));
+  }
 
   return (
     <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
@@ -2326,17 +2508,20 @@ function ProviderAccountsOverview({
         {visibleAccounts.length === 0 ? (
           <OverviewEmptyState className="h-full py-4" compact label={t("No account balance connectors configured")} />
         ) : isSingleAccount ? (
-          <ProviderAccountSinglePanel account={visibleAccounts[0]} dimensions={dimensions} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />
+          <ProviderAccountSinglePanel account={visibleAccounts[0]} dimensions={dimensions} providers={providers} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />
         ) : variant === "compact" ? (
           <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions, visibleAccounts.length))}>
             {visibleAccounts.map((account) => {
               const meter = primaryProviderAccountDisplayMeter(account);
               return (
                 <div className="overview-nested-surface flex min-h-0 min-w-0 items-center justify-between gap-3 overflow-hidden border px-3 py-2" key={providerAccountSnapshotKey(account)}>
-                  <div className="min-w-0">
-                    <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
-                    {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
-                    {providerAccountShowRefreshTime(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+                  <div className="flex min-w-0 items-center gap-2">
+                    <ProviderAccountLogo account={account} className="h-7 w-7 rounded-md" providers={providers} />
+                    <div className="min-w-0">
+                      <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
+                      {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
+                      {providerAccountShowRefreshTime(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+                    </div>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1 text-right">
                     {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
@@ -2354,10 +2539,13 @@ function ProviderAccountsOverview({
               return (
                 <div className="min-w-0 overflow-hidden" key={providerAccountSnapshotKey(account)}>
                   <div className="flex min-w-0 items-end justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
-                      {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
-                      {providerAccountShowRefreshTime(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+                    <div className="flex min-w-0 items-center gap-2">
+                      <ProviderAccountLogo account={account} className="h-6 w-6 rounded-md" providers={providers} />
+                      <div className="min-w-0">
+                        <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
+                        {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
+                        {providerAccountShowRefreshTime(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+                      </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-2 text-[12px] font-semibold">
                       {meter ? <span>{formatProviderAccountMeterValue(meter)}</span> : null}
@@ -2373,6 +2561,34 @@ function ProviderAccountsOverview({
               );
             })}
           </div>
+        ) : variant === "cards" ? (
+          <DndContext sensors={accountCardSortSensors} onDragEnd={finishAccountCardSort}>
+            <SortableContext items={accountGridItems.map(({ account }) => providerAccountSnapshotKey(account))} strategy={rectSortingStrategy}>
+              <div
+                className={cn(
+                  "grid h-full min-h-0 grid-flow-dense items-stretch overflow-hidden",
+                  providerAccountBentoGridRowClass(),
+                  providerAccountGapClass(dimensions),
+                  providerAccountBentoGridClass(dimensions, visibleAccounts.length)
+                )}
+                data-provider-account-grid="true"
+              >
+                {accountGridItems.map(({ account, span }) => {
+                  const accountKey = providerAccountSnapshotKey(account);
+                  return (
+                    <SortableProviderAccountCard account={account} disabled={!editing || !onChangeAccountCardOrder} key={accountKey} span={span}>
+                      {(dragHandle) => (
+                        <ProviderAccountSummaryCard account={account} bentoSpan={span} dimensions={dimensions} dragHandle={dragHandle} editing={editing} providers={providers} refreshing={refreshing} variant={variant} onChangeCardSize={onChangeAccountCardSize} onRefresh={onRefresh} />
+                      )}
+                    </SortableProviderAccountCard>
+                  );
+                })}
+                {(bentoLayout?.hiddenCount ?? 0) > 0 ? (
+                  <ProviderAccountBentoOverflowTile count={bentoLayout?.hiddenCount ?? 0} />
+                ) : null}
+              </div>
+            </SortableContext>
+          </DndContext>
         ) : (
           <div
             className={cn(
@@ -2382,8 +2598,8 @@ function ProviderAccountsOverview({
             )}
             data-provider-account-grid="true"
           >
-            {visibleAccounts.map((account) => {
-              return <ProviderAccountSummaryCard account={account} dimensions={dimensions} key={providerAccountSnapshotKey(account)} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />;
+            {accountGridItems.map(({ account, span }) => {
+              return <ProviderAccountSummaryCard account={account} bentoSpan={span} dimensions={dimensions} editing={editing} key={providerAccountSnapshotKey(account)} providers={providers} refreshing={refreshing} variant={variant} onChangeCardSize={onChangeAccountCardSize} onRefresh={onRefresh} />;
             })}
           </div>
         )}
@@ -2392,16 +2608,101 @@ function ProviderAccountsOverview({
   );
 }
 
+function SortableProviderAccountCard({
+  account,
+  children,
+  disabled,
+  span
+}: {
+  account: ProviderAccountSnapshot;
+  children: (dragHandle: ReactNode) => ReactNode;
+  disabled: boolean;
+  span?: ProviderAccountBentoSpan;
+}) {
+  const t = useAppText();
+  const accountKey = providerAccountSnapshotKey(account);
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition
+  } = useSortable({
+    disabled,
+    id: accountKey
+  });
+  const { onKeyDown, onPointerDown, ...dragListeners } = listeners ?? {};
+  const dragHandle = disabled ? null : (
+    <button
+      {...attributes}
+      {...dragListeners}
+      aria-label={t("Move account card")}
+      className="shrink-0 cursor-grab rounded-md p-1 text-muted-foreground/75 opacity-0 transition-[background-color,color,opacity] hover:bg-muted hover:text-foreground active:cursor-grabbing focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 group-hover/account-card:opacity-100"
+      data-account-card-drag-handle="true"
+      data-overview-widget-drag-lock="true"
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        onKeyDown?.(event);
+      }}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        onPointerDown?.(event);
+      }}
+      ref={setActivatorNodeRef}
+      title={t("Move account card")}
+      type="button"
+    >
+      <GripHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
+    </button>
+  );
+
+  return (
+    <div
+      className={cn(
+        "min-h-0 min-w-0",
+        span ? providerAccountBentoSpanClass(span) : undefined,
+        !disabled && "cursor-grab active:cursor-grabbing",
+        isDragging && "relative z-30 opacity-70"
+      )}
+      data-provider-account-sortable-id={accountKey}
+      data-overview-widget-drag-lock="true"
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        if (providerAccountCardSortShouldIgnoreTarget(event.target)) {
+          return;
+        }
+        onPointerDown?.(event);
+      }}
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition
+      }}
+    >
+      {children(dragHandle)}
+    </div>
+  );
+}
+
+function providerAccountCardSortShouldIgnoreTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest("button,a,input,select,textarea,[contenteditable='true'],[data-account-card-resize-handle]"));
+}
+
 function ProviderAccountSinglePanel({
   account,
   dimensions,
   onRefresh,
+  providers,
   refreshing = false,
   variant
 }: {
   account: ProviderAccountSnapshot;
   dimensions: OverviewWidgetDimensions;
   onRefresh?: () => void | Promise<void>;
+  providers: GatewayProviderConfig[];
   refreshing?: boolean;
   variant: OverviewAccountVariant;
 }) {
@@ -2414,9 +2715,12 @@ function ProviderAccountSinglePanel({
   return (
     <div className={cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden", providerAccountStackClass(dimensions))}>
       <div className="flex min-w-0 shrink-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className={cn("truncate font-semibold", dimensions.height <= 1 ? "text-[12px]" : "text-[13px]")}>{providerAccountSnapshotLabel(account)}</div>
-          {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+        <div className="flex min-w-0 items-start gap-2">
+          <ProviderAccountLogo account={account} className={cn("rounded-md", dimensions.height <= 1 ? "h-7 w-7" : "h-9 w-9")} providers={providers} />
+          <div className="min-w-0">
+            <div className={cn("truncate font-semibold", dimensions.height <= 1 ? "text-[12px]" : "text-[13px]")}>{providerAccountSnapshotLabel(account)}</div>
+            {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+          </div>
         </div>
         {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
       </div>
@@ -2442,14 +2746,24 @@ function ProviderAccountSinglePanel({
 
 function ProviderAccountSummaryCard({
   account,
+  bentoSpan,
   dimensions,
+  dragHandle,
+  editing = false,
+  onChangeCardSize,
   onRefresh,
+  providers,
   refreshing = false,
   variant
 }: {
   account: ProviderAccountSnapshot;
+  bentoSpan?: ProviderAccountBentoSpan;
   dimensions: OverviewWidgetDimensions;
+  dragHandle?: ReactNode;
+  editing?: boolean;
+  onChangeCardSize?: (accountKey: string, size: OverviewAccountCardSize) => void;
   onRefresh?: () => void | Promise<void>;
+  providers: GatewayProviderConfig[];
   refreshing?: boolean;
   variant: OverviewAccountVariant;
 }) {
@@ -2458,13 +2772,121 @@ function ProviderAccountSummaryCard({
   const balanceMeter = primaryProviderAccountBalanceMeter(account);
   const meters = providerAccountMetersForDisplayOrdered(account, providerAccountMeterLimit(dimensions, false, variant));
   const showQuotaVisual = providerAccountUsesQuotaVisual(variant) && quotaMeters.length > 0;
+  const primaryMeter = primaryProviderAccountDisplayMeter(account);
+  const secondaryMeters = primaryMeter
+    ? meters.filter((meter) => meter !== primaryMeter).slice(0, providerAccountBentoSecondaryLimit(dimensions))
+    : [];
+  const extraMeterCount = primaryMeter
+    ? Math.max(0, account.meters.length - 1 - secondaryMeters.length)
+    : Math.max(0, account.meters.length - meters.length);
+  const primaryProgress = primaryMeter && isProviderAccountQuotaMeter(primaryMeter) ? providerAccountMeterProgress(primaryMeter) : undefined;
+  const cardBentoSpan = bentoSpan ?? providerAccountBentoSpan(account, dimensions);
+  const compactBento = cardBentoSpan.height === 1;
+  const resizeHandle = editing && onChangeCardSize
+    ? <ProviderAccountCardResizeHandle account={account} currentSize={providerAccountBentoSizeFromSpan(cardBentoSpan)} maxHeight={providerAccountBentoRowCount(dimensions) >= 2 ? 2 : 1} maxWidth={providerAccountBentoColumnCount(dimensions, 2) >= 2 ? 2 : 1} onResize={onChangeCardSize} />
+    : null;
+
+  if (variant === "cards") {
+    if (compactBento) {
+      return (
+        <div className={cn("overview-account-bento-tile overview-nested-surface group/account-card relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden border", providerAccountBentoSpanClass(cardBentoSpan), providerAccountCardPaddingClass(dimensions))} data-account-status={account.status}>
+          <div className="flex min-w-0 items-start justify-between gap-2">
+            <div className="flex min-w-0 items-start gap-2">
+              <ProviderAccountLogo account={account} className="h-7 w-7 rounded-md" providers={providers} />
+              <div className="min-w-0">
+                <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
+              </div>
+            </div>
+            {dragHandle || providerAccountShowRefresh(dimensions) ? (
+              <div className="flex shrink-0 items-center gap-1">
+                {dragHandle}
+                {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
+              </div>
+            ) : null}
+          </div>
+          <div className="mt-2 min-w-0">
+            <div className="truncate text-[10px] font-medium text-muted-foreground">
+              {primaryMeter ? formatProviderAccountMeterTitle(primaryMeter, t) : account.message || account.errors?.[0]?.message || t("Unavailable")}
+            </div>
+            {primaryMeter ? <div className="mt-0.5 truncate text-[18px] font-semibold leading-tight tracking-tight">{formatProviderAccountMeterValue(primaryMeter, t)}</div> : null}
+          </div>
+          {primaryProgress !== undefined && providerAccountShowProgress(dimensions) ? (
+            <div className="overview-account-bento-track mt-auto h-1.5 overflow-hidden rounded-full">
+              <div className="overview-account-bento-fill h-full rounded-full" style={{ width: `${primaryProgress}%` }} />
+            </div>
+          ) : null}
+          {resizeHandle}
+        </div>
+      );
+    }
+
+    return (
+      <div className={cn("overview-account-bento-tile overview-nested-surface group/account-card relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden border", providerAccountBentoSpanClass(cardBentoSpan), providerAccountCardPaddingClass(dimensions))} data-account-status={account.status}>
+        <div className="flex min-w-0 shrink-0 items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-2">
+            <ProviderAccountLogo account={account} className="h-8 w-8 rounded-md" providers={providers} />
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
+              {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+            </div>
+          </div>
+          {dragHandle || providerAccountShowRefresh(dimensions) ? (
+            <div className="flex shrink-0 items-center gap-1">
+              {dragHandle}
+              {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
+            </div>
+          ) : null}
+        </div>
+
+        {primaryMeter ? (
+          <>
+            <div className="mt-3 min-w-0">
+              <div className="flex min-w-0 items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate text-[11px] font-medium text-muted-foreground">{formatProviderAccountMeterTitle(primaryMeter, t)}</div>
+                  <div className={cn("truncate font-semibold tracking-tight", dimensions.height >= 3 ? "text-[22px]" : "text-[20px]")}>{formatProviderAccountMeterValue(primaryMeter, t)}</div>
+                </div>
+                {primaryProgress !== undefined && primaryMeter.unit.trim() !== "%" ? (
+                  <div className="overview-account-bento-badge shrink-0">{primaryProgress}%</div>
+                ) : null}
+              </div>
+              {primaryProgress !== undefined && providerAccountShowProgress(dimensions) ? (
+                <div className="overview-account-bento-track mt-2 h-2 overflow-hidden rounded-full">
+                  <div className="overview-account-bento-fill h-full rounded-full" style={{ width: `${primaryProgress}%` }} />
+                </div>
+              ) : null}
+            </div>
+
+            {secondaryMeters.length > 0 || (providerAccountShowExtraCount(dimensions) && extraMeterCount > 0) ? (
+              <div className="mt-auto min-h-0 space-y-1.5 border-t border-border/45 pt-2">
+                {secondaryMeters.map((meter) => (
+                  <ProviderAccountMeterLine account={account} compact dimensions={dimensions} key={meter.id} meter={meter} onRefresh={onRefresh} />
+                ))}
+                {providerAccountShowExtraCount(dimensions) && extraMeterCount > 0 ? (
+                  <div className="truncate text-[10px] text-muted-foreground">+{extraMeterCount}</div>
+                ) : null}
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div className="mt-3 flex min-h-0 flex-1 items-center overflow-hidden text-[12px] text-muted-foreground">
+            <span className="min-w-0 truncate">{account.message || account.errors?.[0]?.message || t("Unavailable")}</span>
+          </div>
+        )}
+        {resizeHandle}
+      </div>
+    );
+  }
 
   return (
-    <div className={cn("overview-nested-surface h-fit min-w-0 self-start overflow-hidden border", providerAccountCardPaddingClass(dimensions))}>
+    <div className={cn("overview-nested-surface flex h-full min-w-0 flex-col overflow-hidden border", providerAccountCardPaddingClass(dimensions))}>
       <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate text-[13px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
-          {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+        <div className="flex min-w-0 items-start gap-2">
+          <ProviderAccountLogo account={account} className="h-8 w-8 rounded-md" providers={providers} />
+          <div className="min-w-0">
+            <div className="truncate text-[13px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
+            {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+          </div>
         </div>
         {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
       </div>
@@ -2490,6 +2912,291 @@ function ProviderAccountSummaryCard({
       )}
     </div>
   );
+}
+
+function ProviderAccountCardResizeHandle({
+  account,
+  currentSize,
+  maxHeight,
+  maxWidth,
+  onResize
+}: {
+  account: ProviderAccountSnapshot;
+  currentSize: OverviewAccountCardSize;
+  maxHeight: 1 | 2;
+  maxWidth: 1 | 2;
+  onResize: (accountKey: string, size: OverviewAccountCardSize) => void;
+}) {
+  const t = useAppText();
+  const size = overviewAccountCardSizeDimensions(currentSize);
+
+  function startResize(handle: OverviewAccountCardResizeHandle, event: ReactPointerEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const accountKey = providerAccountSnapshotKey(account);
+    const startSize = size;
+    const startY = event.clientY;
+    const startX = event.clientX;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    let activeSize = currentSize;
+    document.body.style.cursor = providerAccountCardResizeCursor(handle);
+    document.body.style.userSelect = "none";
+
+    const update = (pointerEvent: PointerEvent) => {
+      const nextWidth = providerAccountNextResizeDimension(
+        startSize.width,
+        maxWidth,
+        providerAccountCardResizeWidthDelta(handle, pointerEvent.clientX - startX)
+      );
+      const nextHeight = providerAccountNextResizeDimension(
+        startSize.height,
+        maxHeight,
+        providerAccountCardResizeHeightDelta(handle, pointerEvent.clientY - startY)
+      );
+      const nextSize = overviewAccountCardSize(nextWidth, nextHeight);
+      if (nextSize === activeSize) {
+        return;
+      }
+      activeSize = nextSize;
+      onResize(accountKey, nextSize);
+    };
+    const stop = () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("pointermove", update);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+
+    window.addEventListener("pointermove", update);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  }
+
+  return (
+    <>
+      {overviewAccountCardResizeHandles.map((handle) => (
+        <button
+          aria-label={t("Resize account card")}
+          className={providerAccountCardResizeHandleClass(handle)}
+          data-account-card-resize-handle={handle}
+          key={handle}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onPointerDown={(event) => startResize(handle, event)}
+          title={t("Resize account card")}
+          type="button"
+        >
+          {providerAccountCardResizeHandleIcon(handle)}
+        </button>
+      ))}
+    </>
+  );
+}
+
+type OverviewAccountCardResizeHandle = "bottom" | "bottom-left" | "bottom-right" | "left" | "right" | "top" | "top-left" | "top-right";
+
+const overviewAccountCardResizeHandles: OverviewAccountCardResizeHandle[] = [
+  "top",
+  "right",
+  "bottom",
+  "left",
+  "top-left",
+  "top-right",
+  "bottom-right",
+  "bottom-left"
+];
+
+function overviewAccountCardSizeDimensions(size: OverviewAccountCardSize): ProviderAccountBentoSpan {
+  const [widthText, heightText] = size.split(":");
+  return {
+    height: heightText === "2" ? 2 : 1,
+    width: widthText === "2" ? 2 : 1
+  };
+}
+
+function overviewAccountCardSize(width: 1 | 2, height: 1 | 2): OverviewAccountCardSize {
+  return `${width}:${height}` as OverviewAccountCardSize;
+}
+
+function providerAccountNextResizeDimension(start: 1 | 2, max: 1 | 2, delta: number): 1 | 2 {
+  if (max === 1) {
+    return 1;
+  }
+  if (delta >= 18) {
+    return 2;
+  }
+  if (delta <= -18) {
+    return 1;
+  }
+  return start;
+}
+
+function providerAccountCardResizeWidthDelta(handle: OverviewAccountCardResizeHandle, deltaX: number): number {
+  if (handle.includes("right")) {
+    return deltaX;
+  }
+  if (handle.includes("left")) {
+    return -deltaX;
+  }
+  return 0;
+}
+
+function providerAccountCardResizeHeightDelta(handle: OverviewAccountCardResizeHandle, deltaY: number): number {
+  if (handle.includes("bottom")) {
+    return deltaY;
+  }
+  if (handle.includes("top")) {
+    return -deltaY;
+  }
+  return 0;
+}
+
+function providerAccountCardResizeCursor(handle: OverviewAccountCardResizeHandle): string {
+  if (handle === "left" || handle === "right") {
+    return "ew-resize";
+  }
+  if (handle === "top" || handle === "bottom") {
+    return "ns-resize";
+  }
+  if (handle === "top-left" || handle === "bottom-right") {
+    return "nwse-resize";
+  }
+  return "nesw-resize";
+}
+
+function providerAccountCardResizeHandleClass(handle: OverviewAccountCardResizeHandle): string {
+  const base = "group/account-resize absolute z-20 touch-none border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring/20";
+  if (handle === "top") {
+    return cn(base, "left-10 right-10 top-0 h-4 cursor-ns-resize");
+  }
+  if (handle === "bottom") {
+    return cn(base, "bottom-0 left-10 right-10 h-4 cursor-ns-resize");
+  }
+  if (handle === "left") {
+    return cn(base, "bottom-10 left-0 top-10 w-4 cursor-ew-resize");
+  }
+  if (handle === "right") {
+    return cn(base, "bottom-10 right-0 top-10 w-4 cursor-ew-resize");
+  }
+  const cornerClass = "h-8 w-8";
+  if (handle === "top-left") {
+    return cn(base, cornerClass, "left-0 top-0 cursor-nwse-resize");
+  }
+  if (handle === "top-right") {
+    return cn(base, cornerClass, "right-0 top-0 cursor-nesw-resize");
+  }
+  if (handle === "bottom-left") {
+    return cn(base, cornerClass, "bottom-0 left-0 cursor-nesw-resize");
+  }
+  return cn(base, cornerClass, "bottom-0 right-0 cursor-nwse-resize");
+}
+
+function providerAccountCardResizeHandleIcon(handle: OverviewAccountCardResizeHandle): ReactNode {
+  const markerClass = "pointer-events-none absolute rounded-full bg-muted-foreground/35 opacity-0 transition-[background-color,opacity] group-hover/account-card:opacity-100 group-hover/account-resize:bg-primary/55 group-focus-visible/account-resize:opacity-100 group-focus-visible/account-resize:bg-primary/55";
+  if (handle === "top" || handle === "bottom" || handle === "left" || handle === "right") {
+    return (
+      <span
+        aria-hidden="true"
+        className={cn(
+          markerClass,
+          (handle === "top" || handle === "bottom")
+            ? "left-1/2 h-0.5 w-12 -translate-x-1/2"
+            : "top-1/2 h-12 w-0.5 -translate-y-1/2",
+          handle === "top" && "top-1.5",
+          handle === "bottom" && "bottom-1.5",
+          handle === "left" && "left-1.5",
+          handle === "right" && "right-1.5"
+        )}
+      />
+    );
+  }
+  const cornerLineClass = "absolute rounded-full bg-muted-foreground/35 transition-colors group-hover/account-resize:bg-primary/55 group-focus-visible/account-resize:bg-primary/55";
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "pointer-events-none absolute h-3.5 w-3.5 opacity-0 transition-opacity group-hover/account-card:opacity-100 group-focus-visible/account-resize:opacity-100",
+        handle === "top-left" && "left-2 top-2",
+        handle === "top-right" && "right-2 top-2",
+        handle === "bottom-left" && "bottom-2 left-2",
+        handle === "bottom-right" && "bottom-2 right-2"
+      )}
+    >
+      <span
+        className={cn(
+          cornerLineClass,
+          "h-0.5 w-3.5",
+          handle.includes("top") ? "top-0" : "bottom-0",
+          handle.includes("left") ? "left-0" : "right-0"
+        )}
+      />
+      <span
+        className={cn(
+          cornerLineClass,
+          "h-3.5 w-0.5",
+          handle.includes("top") ? "top-0" : "bottom-0",
+          handle.includes("left") ? "left-0" : "right-0"
+        )}
+      />
+    </span>
+  );
+}
+
+function ProviderAccountBentoOverflowTile({ count }: { count: number }) {
+  const t = useAppText();
+  return (
+    <div className="overview-account-bento-more overview-account-bento-tile overview-nested-surface row-span-1 flex min-h-0 min-w-0 flex-col justify-center overflow-hidden border p-3 text-center" data-account-status="unknown">
+      <div className="truncate text-[22px] font-semibold tracking-tight">+{count}</div>
+      <div className="truncate text-[11px] font-medium text-muted-foreground">{t("More")}</div>
+    </div>
+  );
+}
+
+function ProviderAccountLogo({
+  account,
+  className,
+  providers
+}: {
+  account: ProviderAccountSnapshot;
+  className?: string;
+  providers: GatewayProviderConfig[];
+}) {
+  const iconUrl = providerAccountIconUrl(account, providers);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [iconUrl]);
+  const fallbackLabel = account.provider.trim().slice(0, 1).toUpperCase();
+
+  if (iconUrl && !failed) {
+    return (
+      <span className={cn("flex shrink-0 items-center justify-center overflow-hidden border border-border bg-background p-0.5", className)}>
+        <img alt="" className="h-full w-full object-contain" draggable={false} src={iconUrl} onError={() => setFailed(true)} />
+      </span>
+    );
+  }
+
+  return (
+    <span className={cn("flex shrink-0 items-center justify-center border border-border bg-muted text-[10px] font-semibold text-muted-foreground", className)}>
+      {fallbackLabel || <WalletCards className="h-3.5 w-3.5" />}
+    </span>
+  );
+}
+
+function providerAccountIconUrl(account: ProviderAccountSnapshot, providers: GatewayProviderConfig[]): string {
+  const providerName = account.provider.trim().toLowerCase();
+  if (!providerName) {
+    return "";
+  }
+  const provider = providers.find((item) => (
+    item.name.trim().toLowerCase() === providerName
+      || item.id?.trim().toLowerCase() === providerName
+      || item.provider?.trim().toLowerCase() === providerName
+  ));
+  return provider ? providerDisplayIcon(provider) : "";
 }
 
 function ProviderAccountRefreshButton({
@@ -2540,12 +3247,14 @@ function formatProviderAccountUpdatedAt(value: string): string {
 
 function ProviderAccountMeterLine({
   account,
+  compact = false,
   dimensions,
   meter,
   onRefresh,
   single = false
 }: {
   account: ProviderAccountSnapshot;
+  compact?: boolean;
   dimensions: OverviewWidgetDimensions;
   meter: ReturnType<typeof providerAccountMetersForDisplay>[number];
   onRefresh?: () => void | Promise<void>;
@@ -2558,8 +3267,8 @@ function ProviderAccountMeterLine({
   const [resetDialogDetail, setResetDialogDetail] = useState<NonNullable<ProviderAccountMeter["details"]>[number]>();
   const title = formatProviderAccountMeterTitle(meter, t);
   const detailsId = `provider-account-meter-${providerAccountSnapshotKey(account)}-${meter.id}-details`.replace(/[^a-zA-Z0-9_-]/g, "-");
-  const titleClassName = cn("min-w-0 truncate font-medium text-muted-foreground", single && dimensions.height >= 2 ? "text-[13px]" : "text-[12px]");
-  const valueClassName = cn("shrink-0 font-semibold tracking-tight", single && dimensions.height >= 2 ? "text-[18px]" : "text-[15px]");
+  const titleClassName = cn("min-w-0 truncate font-medium text-muted-foreground", compact ? "text-[10px]" : single && dimensions.height >= 2 ? "text-[13px]" : "text-[12px]");
+  const valueClassName = cn("shrink-0 font-semibold tracking-tight", compact ? "text-[12px]" : single && dimensions.height >= 2 ? "text-[18px]" : "text-[15px]");
   const meterSummary = (
     <>
       <div className="flex min-w-0 items-center gap-1.5">
@@ -2581,7 +3290,7 @@ function ProviderAccountMeterLine({
           aria-controls={detailsId}
           aria-expanded={detailsOpen}
           aria-label={`${t(detailsOpen ? "Collapse" : "Expand")} ${title}`}
-          className="group -mx-1 flex w-[calc(100%+8px)] min-w-0 items-end justify-between gap-3 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+          className={cn("group -mx-1 flex w-[calc(100%+8px)] min-w-0 items-end justify-between gap-3 rounded-md px-1 text-left transition-colors hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25", compact ? "py-0" : "py-0.5")}
           onClick={() => setDetailsOpen((current) => !current)}
           type="button"
         >
@@ -2593,7 +3302,7 @@ function ProviderAccountMeterLine({
         </div>
       )}
       {progress !== undefined && providerAccountShowProgress(dimensions) ? (
-        <div className={cn("mt-1.5 overflow-hidden rounded-full", single ? "bg-muted" : "bg-background", dimensions.height <= 1 ? "h-1.5" : "h-2")}>
+        <div className={cn("mt-1.5 overflow-hidden rounded-full", single ? "bg-muted" : "bg-background", compact || dimensions.height <= 1 ? "h-1.5" : "h-2")}>
           <div className={cn("h-full rounded-full", providerAccountProgressClass(account.status))} style={{ width: `${progress}%` }} />
         </div>
       ) : null}
@@ -3212,8 +3921,33 @@ function primaryProviderAccountDisplayMeter(account: ProviderAccountSnapshot): P
   return providerAccountQuotaMeters(account)[0] ?? primaryProviderAccountBalanceMeter(account) ?? primaryProviderAccountMeter(account);
 }
 
-function providerAccountSelectionMatches(account: ProviderAccountSnapshot, value: string): boolean {
-  return providerAccountSnapshotKey(account) === value || account.provider === value;
+function providerAccountSelectionMatches(account: ProviderAccountSnapshot, values: ReadonlySet<string>): boolean {
+  return values.has(providerAccountSnapshotKey(account)) || values.has(account.provider);
+}
+
+function providerAccountOrderAccounts(accounts: ProviderAccountSnapshot[], order: string[] | undefined): ProviderAccountSnapshot[] {
+  const accountOrder = uniqueOverviewStrings(order ?? []);
+  if (accountOrder.length === 0) {
+    return accounts;
+  }
+  const accountsByKey = new Map(accounts.map((account) => [providerAccountSnapshotKey(account), account]));
+  const used = new Set<string>();
+  const orderedAccounts: ProviderAccountSnapshot[] = [];
+  for (const accountKey of accountOrder) {
+    const account = accountsByKey.get(accountKey);
+    if (!account || used.has(accountKey)) {
+      continue;
+    }
+    used.add(accountKey);
+    orderedAccounts.push(account);
+  }
+  for (const account of accounts) {
+    const accountKey = providerAccountSnapshotKey(account);
+    if (!used.has(accountKey)) {
+      orderedAccounts.push(account);
+    }
+  }
+  return orderedAccounts;
 }
 
 function primaryProviderAccountBalanceMeter(account: ProviderAccountSnapshot): ProviderAccountMeter | undefined {
@@ -3347,6 +4081,134 @@ function providerAccountContentPaddingClass(dimensions: OverviewWidgetDimensions
 
 function providerAccountCardPaddingClass(dimensions: OverviewWidgetDimensions): string {
   return dimensions.height <= 1 || dimensions.width <= 1 ? "p-2" : "p-3";
+}
+
+function providerAccountBentoGridRowClass(): string {
+  return "auto-rows-fr";
+}
+
+function providerAccountBentoSecondaryLimit(dimensions: OverviewWidgetDimensions): number {
+  if (dimensions.height <= 1 || dimensions.width <= 1) return 0;
+  if (dimensions.height === 2) return 1;
+  return 2;
+}
+
+type ProviderAccountBentoSpan = {
+  height: 1 | 2;
+  width: 1 | 2;
+};
+
+function providerAccountBentoLayout(accounts: ProviderAccountSnapshot[], dimensions: OverviewWidgetDimensions, cardSizes: Record<string, OverviewAccountCardSize> | undefined): {
+  hiddenCount: number;
+  items: Array<{ account: ProviderAccountSnapshot; span: ProviderAccountBentoSpan }>;
+} {
+  const maxUnits = providerAccountBentoMaxUnits(dimensions, accounts.length);
+  const items = accounts.map((account) => ({
+    account,
+    manual: providerAccountConfiguredCardSize(account, cardSizes) !== undefined,
+    span: providerAccountBentoSpan(account, dimensions, cardSizes)
+  }));
+  let usedUnits = providerAccountBentoUsedUnits(items);
+
+  for (let index = items.length - 1; index >= 0 && usedUnits > maxUnits; index -= 1) {
+    if (items[index].span.height === 2 && !items[index].manual) {
+      usedUnits -= items[index].span.width;
+      items[index] = { ...items[index], span: { ...items[index].span, height: 1 } };
+    }
+  }
+
+  if (usedUnits <= maxUnits) {
+    return { hiddenCount: 0, items };
+  }
+
+  const visibleBudget = Math.max(0, maxUnits - 1);
+  const visibleItems: Array<{ account: ProviderAccountSnapshot; span: ProviderAccountBentoSpan }> = [];
+  let visibleUnits = 0;
+
+  for (const item of items) {
+    const itemUnits = providerAccountBentoSpanUnits(item.span);
+    if (visibleUnits + itemUnits > visibleBudget) {
+      break;
+    }
+    visibleItems.push(item);
+    visibleUnits += itemUnits;
+  }
+
+  return {
+    hiddenCount: accounts.length - visibleItems.length,
+    items: visibleItems
+  };
+}
+
+function providerAccountBentoUsedUnits(items: Array<{ span: ProviderAccountBentoSpan }>): number {
+  return items.reduce((total, item) => total + providerAccountBentoSpanUnits(item.span), 0);
+}
+
+function providerAccountBentoSpanUnits(span: ProviderAccountBentoSpan): number {
+  return span.width * span.height;
+}
+
+function providerAccountBentoMaxUnits(dimensions: OverviewWidgetDimensions, itemCount: number): number {
+  return Math.max(1, providerAccountBentoColumnCount(dimensions, itemCount) * providerAccountBentoRowCount(dimensions));
+}
+
+function providerAccountBentoColumnCount(dimensions: OverviewWidgetDimensions, itemCount: number): 1 | 2 | 3 {
+  if (dimensions.width >= 3) return itemCount <= 2 ? 2 : 3;
+  if (dimensions.width >= 2) return 2;
+  return 1;
+}
+
+function providerAccountBentoRowCount(dimensions: OverviewWidgetDimensions): number {
+  if (dimensions.height <= 1) return 1;
+  if (dimensions.height === 2) return 3;
+  if (dimensions.height === 3) return 4;
+  return 5;
+}
+
+function providerAccountBentoGridClass(dimensions: OverviewWidgetDimensions, itemCount: number): string {
+  const columns = providerAccountBentoColumnCount(dimensions, itemCount);
+  if (columns === 3) return "grid-cols-3";
+  if (columns === 2) return "grid-cols-2";
+  return "grid-cols-1";
+}
+
+function providerAccountBentoSpan(account: ProviderAccountSnapshot, dimensions: OverviewWidgetDimensions, cardSizes?: Record<string, OverviewAccountCardSize>): ProviderAccountBentoSpan {
+  const configuredSize = providerAccountConfiguredCardSize(account, cardSizes);
+  if (configuredSize) {
+    return providerAccountBentoSpanFromSize(configuredSize, dimensions);
+  }
+  if (dimensions.height <= 1) return { height: 1, width: 1 };
+  if (dimensions.width <= 1) return { height: 1, width: 1 };
+  if (providerAccountQuotaMeters(account).length > 0) return { height: 2, width: 1 };
+  if (dimensions.height >= 3 && account.meters.length > 2) return { height: 2, width: 1 };
+  return { height: 1, width: 1 };
+}
+
+function providerAccountConfiguredCardSize(account: ProviderAccountSnapshot, cardSizes?: Record<string, OverviewAccountCardSize>): OverviewAccountCardSize | undefined {
+  return cardSizes?.[providerAccountSnapshotKey(account)] ?? cardSizes?.[account.provider];
+}
+
+function providerAccountBentoSpanFromSize(size: OverviewAccountCardSize, dimensions: OverviewWidgetDimensions): ProviderAccountBentoSpan {
+  const [widthText, heightText] = size.split(":");
+  return {
+    height: providerAccountClampBentoSpanDimension(heightText === "2" ? 2 : 1, providerAccountBentoRowCount(dimensions) >= 2 ? 2 : 1),
+    width: providerAccountClampBentoSpanDimension(widthText === "2" ? 2 : 1, providerAccountBentoColumnCount(dimensions, 2) >= 2 ? 2 : 1)
+  };
+}
+
+function providerAccountBentoSizeFromSpan(span: ProviderAccountBentoSpan): OverviewAccountCardSize {
+  return `${span.width}:${span.height}` as OverviewAccountCardSize;
+}
+
+function providerAccountClampBentoSpanDimension(value: 1 | 2, max: 1 | 2): 1 | 2 {
+  return max === 1 ? 1 : value;
+}
+
+function providerAccountBentoSpanClass(span: ProviderAccountBentoSpan): string {
+  return cn(
+    span.width === 2 ? "col-span-2" : "col-span-1",
+    span.height === 2 ? "row-span-2" : "row-span-1"
+  );
 }
 
 function providerAccountGapClass(dimensions: OverviewWidgetDimensions): string {

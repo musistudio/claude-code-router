@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { CLAUDE_DESIGN_PLUGIN_ID } from "@ccr/core/contracts/app.ts";
+import { CLAUDE_DESIGN_PLUGIN_ID, CLAUDE_SHIP_PLUGIN_ID } from "@ccr/core/contracts/app.ts";
 import { CCR_DESKTOP_APP_ENV } from "@ccr/core/runtime/desktop-app.ts";
 import { builtInPluginAppForOpen, configForPluginAppOpen, isLegacyClaudeDesignUrl, pluginAppUrlForOpen } from "@ccr/electron/main/plugin-app-url.ts";
 
@@ -56,6 +56,74 @@ test("Claude Design app opening keeps current and non-Design app URLs unchanged"
   );
 });
 
+test("Claude Design app opening uses configured local frontend URL", () => {
+  const config = {
+    plugins: [{
+      config: {
+        frontendUrl: "http://127.0.0.1:6173/design"
+      },
+      enabled: true,
+      id: CLAUDE_DESIGN_PLUGIN_ID
+    }]
+  } as any;
+
+  assert.equal(
+    pluginAppUrlForOpen(
+      config,
+      CLAUDE_DESIGN_PLUGIN_ID,
+      "https://claude-design.ccrdesk.top/design"
+    ),
+    "http://127.0.0.1:6173/design"
+  );
+});
+
+test("Claude Design app opening derives local frontend URL from configured assets origin", () => {
+  const config = {
+    plugins: [{
+      config: {
+        frontendAssetsOrigin: "http://127.0.0.1:6173/"
+      },
+      enabled: true,
+      id: CLAUDE_DESIGN_PLUGIN_ID
+    }]
+  } as any;
+
+  assert.equal(
+    pluginAppUrlForOpen(
+      config,
+      CLAUDE_DESIGN_PLUGIN_ID,
+      "https://claude-design.ccrdesk.top/design"
+    ),
+    "http://127.0.0.1:6173/design"
+  );
+});
+
+test("Claude Design app opening uses local frontend URL from environment", () => {
+  withEnv("CCR_CLAUDE_DESIGN_FRONTEND_URL", "http://127.0.0.1:6173/design", () => {
+    assert.equal(
+      pluginAppUrlForOpen(
+        configWithIgnoredSavedDesignHtml,
+        CLAUDE_DESIGN_PLUGIN_ID,
+        "https://claude-design.ccrdesk.top/design"
+      ),
+      "http://127.0.0.1:6173/design"
+    );
+  });
+});
+
+test("Claude Ship app opening derives local frontend URL from environment", () => {
+  withEnv("CCR_CLAUDE_SHIP_FRONTEND_ORIGIN", "http://127.0.0.1:6173", () => {
+    assert.equal(
+      pluginAppUrlForOpen(
+        { plugins: [] } as any,
+        CLAUDE_SHIP_PLUGIN_ID,
+        "https://claude.ai/claude-ship"
+      ),
+      "http://127.0.0.1:6173/claude-ship"
+    );
+  });
+});
+
 test("Claude Design resolves to the built-in app without installed plugin config", () => {
   const pluginApp = builtInPluginAppForOpen(CLAUDE_DESIGN_PLUGIN_ID);
 
@@ -70,12 +138,16 @@ test("Claude Design app opening injects the runtime plugin config", () => {
   withDesktopRuntime(() => {
     const config = { plugins: [] } as any;
     const runtimeConfig = configForPluginAppOpen(config, CLAUDE_DESIGN_PLUGIN_ID);
+    const shipConfig = configForPluginAppOpen(config, CLAUDE_SHIP_PLUGIN_ID);
 
     assert.equal(config.plugins.length, 0);
     assert.equal(runtimeConfig.plugins.length, 1);
     assert.equal(runtimeConfig.plugins[0].id, CLAUDE_DESIGN_PLUGIN_ID);
     assert.equal(runtimeConfig.plugins[0].module, bundledPluginModule("claude-design"));
-    assert.equal(configForPluginAppOpen(config, "claude-ship"), config);
+    assert.equal(shipConfig.plugins.length, 1);
+    assert.equal(shipConfig.plugins[0].id, CLAUDE_SHIP_PLUGIN_ID);
+    assert.equal(shipConfig.plugins[0].module, bundledPluginModule("claude-ship"));
+    assert.equal(configForPluginAppOpen(config, "unknown-plugin"), config);
   });
 });
 
@@ -115,6 +187,20 @@ function withDesktopRuntime(run: () => void): void {
       delete process.env[CCR_DESKTOP_APP_ENV];
     } else {
       process.env[CCR_DESKTOP_APP_ENV] = previousDesktopApp;
+    }
+  }
+}
+
+function withEnv(name: string, value: string, run: () => void): void {
+  const previousValue = process.env[name];
+  try {
+    process.env[name] = value;
+    run();
+  } finally {
+    if (previousValue === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = previousValue;
     }
   }
 }

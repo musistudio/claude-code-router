@@ -40,6 +40,7 @@ import type {
   GatewayProviderConfig,
   MediaToolsConfig,
   ObservabilityConfig,
+  OverviewAccountCardSize,
   OverviewMetricKind,
   OverviewWidgetConfig,
   OverviewWidgetSize,
@@ -1089,9 +1090,14 @@ function parseOverviewWidget(value: unknown): OverviewWidgetConfig | undefined {
     return undefined;
   }
   const metric = type === "metric" ? parseOverviewMetricKind(value.metric) ?? "requests" : undefined;
-  const accountProvider = type === "account-balance" ? readString(value.accountProvider) : undefined;
+  const accountProviders = type === "account-balance" ? parseOverviewAccountProviders(value) : [];
+  const accountCardOrder = type === "account-balance" ? parseOverviewAccountCardOrder(value.accountCardOrder) : [];
+  const accountCardSizes = type === "account-balance" ? parseOverviewAccountCardSizes(value.accountCardSizes) : undefined;
   return {
-    ...(accountProvider ? { accountProvider } : {}),
+    ...(accountCardOrder.length > 0 ? { accountCardOrder } : {}),
+    ...(accountCardSizes ? { accountCardSizes } : {}),
+    ...(accountProviders.length === 1 ? { accountProvider: accountProviders[0] } : {}),
+    ...(accountProviders.length > 0 ? { accountProviders } : {}),
     enabled: typeof value.enabled === "boolean" ? value.enabled : true,
     id: readString(value.id) || overviewWidgetId(type, metric),
     ...(metric ? { metric } : {}),
@@ -1099,6 +1105,43 @@ function parseOverviewWidget(value: unknown): OverviewWidgetConfig | undefined {
     type,
     variant: parseOverviewWidgetVariant(value.variant) ?? defaultOverviewWidgetVariant(type)
   };
+}
+
+function parseOverviewAccountProviders(value: Record<string, unknown>): string[] {
+  const accountProvider = readString(value.accountProvider);
+  return uniqueStrings([
+    ...parseStringList(value.accountProviders),
+    ...(accountProvider ? [accountProvider] : [])
+  ]);
+}
+
+function parseOverviewAccountCardOrder(value: unknown): string[] {
+  return uniqueStrings(parseStringList(value));
+}
+
+function parseOverviewAccountCardSizes(value: unknown): Record<string, OverviewAccountCardSize> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const sizes: Record<string, OverviewAccountCardSize> = {};
+  for (const [key, rawSize] of Object.entries(value)) {
+    const accountKey = key.trim();
+    const size = parseOverviewAccountCardSize(rawSize);
+    if (accountKey && size) {
+      sizes[accountKey] = size;
+    }
+  }
+  return Object.keys(sizes).length > 0 ? sizes : undefined;
+}
+
+function parseOverviewAccountCardSize(value: unknown): OverviewAccountCardSize | undefined {
+  if (value === "small") {
+    return "1:1";
+  }
+  if (value === "large") {
+    return "1:2";
+  }
+  return parseEnumValue(value, ["1:1", "1:2", "2:1", "2:2"], undefined);
 }
 
 function parseOverviewWidgetType(value: unknown): OverviewWidgetType | undefined {
@@ -2871,34 +2914,50 @@ function migratedClaudeShipPluginConfig(source: GatewayPluginConfig): GatewayPlu
 }
 
 export function claudeDesignRuntimePluginConfig(): GatewayPluginConfig | undefined {
+  return claudeProductRuntimePluginConfig(CLAUDE_DESIGN_PLUGIN_ID);
+}
+
+export function claudeShipRuntimePluginConfig(): GatewayPluginConfig | undefined {
+  return claudeProductRuntimePluginConfig(CLAUDE_SHIP_PLUGIN_ID);
+}
+
+function claudeProductRuntimePluginConfig(pluginId: string): GatewayPluginConfig | undefined {
   if (!isDesktopAppRuntime()) {
     return undefined;
   }
-  const modulePath = resolveBundledOrExternalizedPluginModule(CLAUDE_DESIGN_PLUGIN_ID, undefined);
+  const modulePath = resolveBundledOrExternalizedPluginModule(pluginId, undefined);
   if (!modulePath) {
     return undefined;
   }
   return {
-    apps: knownGatewayPluginDefaultApps(CLAUDE_DESIGN_PLUGIN_ID),
+    apps: knownGatewayPluginDefaultApps(pluginId),
     enabled: true,
-    id: CLAUDE_DESIGN_PLUGIN_ID,
+    id: pluginId,
     module: modulePath,
-    permissions: knownGatewayPluginDefaultPermissions(CLAUDE_DESIGN_PLUGIN_ID),
-    surfaces: knownGatewayPluginDefaultSurfaces(CLAUDE_DESIGN_PLUGIN_ID)
+    permissions: knownGatewayPluginDefaultPermissions(pluginId),
+    surfaces: knownGatewayPluginDefaultSurfaces(pluginId)
   };
 }
 
 export function withClaudeDesignRuntimePluginConfig(config: AppConfig): AppConfig {
-  const existingIndex = config.plugins.findIndex((plugin) => plugin.enabled !== false && plugin.id === CLAUDE_DESIGN_PLUGIN_ID);
+  return withClaudeProductRuntimePluginConfig(config, CLAUDE_DESIGN_PLUGIN_ID, "Claude Design");
+}
+
+export function withClaudeShipRuntimePluginConfig(config: AppConfig): AppConfig {
+  return withClaudeProductRuntimePluginConfig(config, CLAUDE_SHIP_PLUGIN_ID, "Claude Ship");
+}
+
+function withClaudeProductRuntimePluginConfig(config: AppConfig, pluginId: string, productName: string): AppConfig {
+  const existingIndex = config.plugins.findIndex((plugin) => plugin.enabled !== false && plugin.id === pluginId);
   if (existingIndex >= 0 && config.plugins[existingIndex]?.module?.trim()) {
     return config;
   }
   if (!isDesktopAppRuntime()) {
-    throw new Error("Claude Design is only available in CCR Desktop.");
+    throw new Error(`${productName} is only available in CCR Desktop.`);
   }
-  const plugin = claudeDesignRuntimePluginConfig();
+  const plugin = claudeProductRuntimePluginConfig(pluginId);
   if (!plugin) {
-    throw new Error("Claude Design runtime module was not found. Rebuild app assets so the bundled Claude Design plugin is copied into the Electron dist.");
+    throw new Error(`${productName} runtime module was not found. Rebuild app assets so the bundled ${productName} plugin is copied into the Electron dist.`);
   }
   if (existingIndex >= 0) {
     const existing = config.plugins[existingIndex];

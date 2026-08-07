@@ -1,6 +1,7 @@
 import type { AppConfig } from "@ccr/core/contracts/app";
 import { availableGatewayModelIds, normalizeProfileScopeValue } from "@ccr/core/contracts/app";
 import { modelRegistryForConfig } from "@ccr/core/routing/model-registry";
+import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
 
 export const CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX = "[1m]";
 const CLAUDE_APP_ENCODED_ROUTE_PREFIX = "anthropic/claude-ccr-h";
@@ -165,14 +166,21 @@ function claudeAppGatewaySupportsOneMillionContext(
   }
 
   const providerOverride = claudeAppGatewayProviderSupportsOneMillionContext(baseModel, config);
-  return providerOverride ?? Boolean(options.supportsOneMillionContext?.(baseModel));
+  if (providerOverride !== undefined) {
+    return providerOverride;
+  }
+  const physicalSelector = claudeAppGatewayPhysicalModelSelector(baseModel, config);
+  return Boolean(
+    options.supportsOneMillionContext?.(physicalSelector ?? baseModel) ||
+    (physicalSelector && physicalSelector !== baseModel && options.supportsOneMillionContext?.(baseModel))
+  );
 }
 
 function claudeAppGatewayProviderSupportsOneMillionContext(
   model: string,
   config: Pick<AppConfig, "Providers" | "virtualModelProfiles">
 ): boolean | undefined {
-  const resolved = modelRegistryForConfig(config).resolveProviderModel(model);
+  const resolved = claudeAppGatewayResolvedProviderModel(model, config);
   if (!resolved) {
     return undefined;
   }
@@ -186,6 +194,34 @@ function claudeAppGatewayProviderSupportsOneMillionContext(
   }
   const effectivePercent = percentage(metadata?.effectiveContextWindowPercent) ?? 100;
   return Math.floor((contextWindow * effectivePercent) / 100) >= 1_000_000;
+}
+
+function claudeAppGatewayPhysicalModelSelector(
+  model: string,
+  config: Pick<AppConfig, "Providers" | "virtualModelProfiles">
+): string | undefined {
+  const resolved = claudeAppGatewayResolvedProviderModel(model, config);
+  return resolved ? `${resolved.provider.name}/${resolved.model}` : undefined;
+}
+
+function claudeAppGatewayResolvedProviderModel(
+  model: string,
+  config: Pick<AppConfig, "Providers" | "virtualModelProfiles">
+) {
+  const registry = modelRegistryForConfig(config);
+  const direct = registry.resolveProviderModel(model);
+  if (direct) {
+    return direct;
+  }
+
+  const attribution = resolveUsageModelAttribution(config, model);
+  if (!attribution.provider || !attribution.model) {
+    return undefined;
+  }
+  const resolved = registry.resolve(`${attribution.provider}/${attribution.model}`);
+  return resolved?.kind === "provider"
+    ? { model: resolved.model, provider: resolved.provider }
+    : undefined;
 }
 
 function positiveInteger(value: number | undefined): number | undefined {

@@ -5,12 +5,13 @@ import {
   compareProviderAccountSnapshots, copyTextToClipboard, createDefaultProviderAccountDraft, createModelCatalogItems, createProviderAccountDraftFromConfig, createProviderCredentialDraft,
   customProviderPresetId, defaultProviderAccountConfigForPreset, Dialog, DialogBody, DialogContent, DialogFooter,
   DialogHeader, DialogTitle, ExternalLink, Eye, EyeOff, Field, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
-  GatewayProviderProbeResult, getProviderPresets, Globe, inferProviderNameFromBaseUrl, Info, Input, KeyValueRowsControl, Label,
+  GatewayProviderProbeResult, getProviderPresets, Globe, inferProviderNameFromBaseUrl, Info, Input, KeyRound, KeyValueRowsControl, Label,
   Layers3, LoaderCircle, localAgentProviderIconUrls, mergeProviderModelLists, modelCatalogItemMatchesQuery, motion,
   Pencil, Plus, PopoverContent, primaryProviderAccountMeter, primaryProviderPresetEndpoint,
   providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountSnapshot,
   providerAccountConnectorsTextWithNewApiUserBalanceTemplate, providerAccountSnapshotCredentialLabel, providerAccountSnapshotLabel, ProviderAccountTestPath,
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
+  providerBrowserConnectorFromDraft, providerBrowserCredentialsOptions,
   ProviderConnectivityCheckReport, providerCapabilityBaseUrlForProtocol, providerConnectivityApiKeyFromDraft, providerDeepLinkDisplayIcon, providerDraftHasReadyCredentialPool, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
   providerDisplayIcon, providerGlobalBaseUrlForProbe, providerModelDisplayName, providerModelDisplayTitle, providerProtocolOptions, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
   resolveProviderDeepLinkPreset, ShieldCheck, splitLines, Switch, Tabs, TabsList, TabsTrigger, Textarea, Toggle, translatedProviderProtocolLabel, translateOptions,
@@ -20,7 +21,7 @@ import {
 import { PopoverPortal } from "@/components/ui/popover";
 import { TooltipPortal } from "@/components/ui/tooltip";
 import { providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
-import type { LocalAgentProviderCandidate } from "@ccr/core/contracts/app";
+import type { ChromeLoginImportJob, LocalAgentProviderCandidate, ProviderAccountHttpJsonConnectorConfig, ProviderAccountWebContentJsonConnectorConfig } from "@ccr/core/contracts/app";
 import type { ReactNode } from "react";
 
 const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
@@ -2839,10 +2840,14 @@ function ProviderUsageSettings({
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState<ProviderAccountTestResult>();
   const [testError, setTestError] = useState("");
+  const [chromeImportJob, setChromeImportJob] = useState<ChromeLoginImportJob>();
+  const [chromeImportLoading, setChromeImportLoading] = useState(false);
+  const [chromeImportMessage, setChromeImportMessage] = useState("");
   const [newApiUserId, setNewApiUserId] = useState("");
   const modeOptions = translateOptions(providerAccountModeOptions, t);
   const globalBaseUrl = providerGlobalBaseUrlForProbe(draft.baseUrl, probe, draft.selectedProtocols);
   const usageApiKey = providerConnectivityApiKeyFromDraft(draft);
+  const isJsonUsageMode = draft.accountMode === "http-json" || draft.accountMode === "browser";
   const showNewApiUserBalanceTemplate = probe?.detectedProvider === "new-api" ||
     draft.accountConnectorsText.includes("new-api-key-usage") ||
     draft.accountConnectorsText.includes("new-api-user-self");
@@ -2850,14 +2855,37 @@ function ProviderUsageSettings({
   useEffect(() => {
     setTestResult(undefined);
     setTestError("");
-  }, [draft.accountMode, draft.usageRequestUrl, draft.usageRequestMethod]);
+  }, [draft.accountConnectorsText, draft.accountMode, draft.usageBrowserCredentials, draft.usageBrowserHeaderTemplates, draft.usageBrowserLoginUrl, draft.usageBrowserRequestOrigin, draft.usageRequestUrl, draft.usageRequestMethod]);
+
+  useEffect(() => {
+    setChromeImportJob(undefined);
+    setChromeImportMessage("");
+  }, [draft.accountMode, draft.usageBrowserLoginUrl, draft.usageBrowserRequestOrigin, draft.usageRequestUrl]);
+
+  useEffect(() => {
+    if (!chromeImportJob || chromeImportJob.status !== "pending" || !window.ccr?.getChromeLoginImport) {
+      return;
+    }
+    const interval = window.setInterval(() => {
+      void window.ccr?.getChromeLoginImport?.(chromeImportJob.id).then((job) => {
+        if (job) {
+          setChromeImportJob(job);
+        }
+      });
+    }, 2000);
+    return () => window.clearInterval(interval);
+  }, [chromeImportJob]);
 
   async function testUsageRequest() {
     if (!window.ccr?.testProviderAccountConnector) {
       setTestError(t("Request failed."));
       return;
     }
-    const connector = providerHttpJsonConnectorFromDraft(draft, { requireMeters: false });
+    const connector = draft.accountMode === "raw"
+      ? providerRawAccountTestConnector(draft.accountConnectorsText)
+      : draft.accountMode === "browser"
+        ? providerBrowserConnectorFromDraft(draft, { requireMeters: false })
+        : providerHttpJsonConnectorFromDraft(draft, { requireMeters: false });
     if (typeof connector === "string") {
       setTestError(formatError(new Error(connector)));
       return;
@@ -2877,7 +2905,7 @@ function ProviderUsageSettings({
     setTestError("");
     try {
       const result = await window.ccr.testProviderAccountConnector({
-        apiKey: usageApiKey,
+        apiKey: connector.type === "http-json" ? usageApiKey : undefined,
         baseUrl: draft.baseUrl.trim(),
         connector,
         providerName: draft.name.trim()
@@ -2889,6 +2917,62 @@ function ProviderUsageSettings({
     } finally {
       setTestLoading(false);
     }
+  }
+
+  async function openBrowserLogin() {
+    if (!window.ccr?.openBuiltInBrowser) {
+      setTestError(t("Built-in browser is unavailable."));
+      return;
+    }
+    const targetUrl = browserLoginTargetUrl(draft);
+    if (!targetUrl) {
+      setTestError(t("Browser login URL or usage request URL is required."));
+      return;
+    }
+    setTestError("");
+    try {
+      await window.ccr.openBuiltInBrowser(targetUrl);
+    } catch (error) {
+      setTestError(formatError(error));
+    }
+  }
+
+  async function startChromeImportFromBrowserConfig() {
+    if (!window.ccr?.startChromeLoginImport) {
+      setTestError(t("Chrome login import is unavailable."));
+      return;
+    }
+    const domains = browserChromeImportDomains(draft);
+    if (domains.length === 0) {
+      setTestError(t("Browser login URL or usage request URL is required."));
+      return;
+    }
+    setChromeImportLoading(true);
+    setChromeImportMessage("");
+    setTestError("");
+    try {
+      const job = await window.ccr.startChromeLoginImport({
+        domains,
+        openConfirmationPage: true,
+        target: "browser"
+      });
+      setChromeImportJob(job);
+      setChromeImportMessage(t("Chrome import started. If the page did not open in Chrome, copy the extension import URL into the Chrome extension popup."));
+    } catch (error) {
+      setChromeImportJob(undefined);
+      setTestError(formatError(error));
+    } finally {
+      setChromeImportLoading(false);
+    }
+  }
+
+  async function copyChromeImportUrl(kind: "confirm" | "import") {
+    const url = kind === "confirm" ? chromeImportJob?.confirmUrl : chromeImportJob?.importUrl;
+    if (!url) {
+      return;
+    }
+    await copyTextToClipboard(url);
+    setChromeImportMessage(t(kind === "confirm" ? "Confirmation page URL copied." : "Extension import URL copied."));
   }
 
   function selectPath(target: ProviderUsageFieldTarget, path: string) {
@@ -2943,7 +3027,7 @@ function ProviderUsageSettings({
             </div>
           ) : null}
 
-          {draft.accountMode === "http-json" ? (
+          {isJsonUsageMode ? (
             <div className="sm:col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label={t("Method")}>
                 <SelectControl
@@ -2959,6 +3043,92 @@ function ProviderUsageSettings({
                   onChange={(event) => onChange({ usageRequestUrl: event.target.value })}
                 />
               </Field>
+              {draft.accountMode === "browser" ? (
+                <>
+                  <div className="sm:col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px] leading-4 text-muted-foreground">
+                    {t("Browser request uses CCR Desktop's built-in browser login state. Sign in in the in-app browser before testing.")}
+                  </div>
+                  <Field className="sm:col-span-2" label={t("Browser login URL")}>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                      <Input
+                        placeholder="https://vendor.example.com/login"
+                        value={draft.usageBrowserLoginUrl}
+                        onChange={(event) => onChange({ usageBrowserLoginUrl: event.target.value })}
+                      />
+                      <Button size="sm" type="button" variant="outline" onClick={() => void openBrowserLogin()}>
+                        <KeyRound className="h-3.5 w-3.5" />
+                        {t("Open login browser")}
+                      </Button>
+                      <Button disabled={chromeImportLoading} size="sm" type="button" variant="outline" onClick={() => void startChromeImportFromBrowserConfig()}>
+                        {chromeImportLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <KeyRound className="h-3.5 w-3.5" />}
+                        {t("Import from Chrome")}
+                      </Button>
+                    </div>
+                  </Field>
+                  <Field label={t("Browser storage origin")}>
+                    <Input
+                      placeholder={browserEndpointOrigin(draft.usageBrowserLoginUrl) || browserEndpointOrigin(draft.usageRequestUrl) || "https://vendor.example.com"}
+                      value={draft.usageBrowserRequestOrigin}
+                      onChange={(event) => onChange({ usageBrowserRequestOrigin: event.target.value })}
+                    />
+                    <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                      {t("Origin used to read browser storage before fetching the usage URL.")}
+                    </div>
+                  </Field>
+                  <Field label={t("Fetch credentials")}>
+                    <SelectControl
+                      onChange={(usageBrowserCredentials) => onChange({ usageBrowserCredentials: usageBrowserCredentials as AddProviderDraft["usageBrowserCredentials"] })}
+                      options={translateOptions(providerBrowserCredentialsOptions, t)}
+                      value={draft.usageBrowserCredentials}
+                    />
+                    <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                      {t("Use omit for token headers when the API returns Access-Control-Allow-Origin: *.")}
+                    </div>
+                  </Field>
+                  <Field label={t("Browser timeout ms")}>
+                    <Input
+                      min={1000}
+                      placeholder="15000"
+                      type="number"
+                      value={draft.usageBrowserTimeoutMs}
+                      onChange={(event) => onChange({ usageBrowserTimeoutMs: event.target.value })}
+                    />
+                  </Field>
+                  <Field className="sm:col-span-2" label={t("Browser header templates")}>
+                    <KeyValueRowsControl
+                      addLabel={t("Add browser header template")}
+                      rows={draft.usageBrowserHeaderTemplates}
+                      onChange={(usageBrowserHeaderTemplates) => onChange({ usageBrowserHeaderTemplates })}
+                    />
+                    <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                      {t("Use ${localStorage.token} or ${sessionStorage.token} in values.")}
+                    </div>
+                  </Field>
+                  {chromeImportJob || chromeImportMessage ? (
+                    <div className="sm:col-span-2 rounded-md border border-border bg-muted/20 px-3 py-2">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        {chromeImportJob ? <Badge variant={chromeImportJob.status === "completed" ? "success" : "outline"}>{t("Chrome import")} · {chromeImportJob.status}</Badge> : null}
+                        {chromeImportJob?.result ? (
+                          <span className="text-[11px] text-muted-foreground">
+                            {chromeImportJob.result.imported} {t("imported")}, {chromeImportJob.result.skipped} {t("skipped")}
+                          </span>
+                        ) : null}
+                        {chromeImportJob?.status === "pending" ? (
+                          <>
+                            <Button size="sm" type="button" variant="outline" onClick={() => void copyChromeImportUrl("import")}>
+                              {t("Copy import URL")}
+                            </Button>
+                            <Button size="sm" type="button" variant="outline" onClick={() => void copyChromeImportUrl("confirm")}>
+                              {t("Copy page URL")}
+                            </Button>
+                          </>
+                        ) : null}
+                      </div>
+                      {chromeImportMessage ? <div className="mt-1 text-[11px] leading-4 text-muted-foreground">{chromeImportMessage}</div> : null}
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
               <Field className="sm:col-span-2" label={t("Headers")}>
                 <KeyValueRowsControl
                   addLabel={t("Add header")}
@@ -3011,7 +3181,7 @@ function ProviderUsageSettings({
                   <AnimatedIconSwap iconKey={testLoading ? "testing" : "check"}>
                     {testLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
                   </AnimatedIconSwap>
-                  {t("Test usage request")}
+                  {t(draft.accountMode === "browser" ? "Test browser request" : "Test usage request")}
                 </Button>
                 {testResult ? <Badge variant={testResult.meters.length > 0 ? "success" : "outline"}>{testResult.meters.length} {t("meters")}</Badge> : null}
               </div>
@@ -3031,7 +3201,7 @@ function ProviderUsageSettings({
                   onChange={(event) => onChange({ accountConnectorsText: event.target.value })}
                 />
                 <div className="flex min-w-0 items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                  <span className="min-w-0 truncate">{t("Supports standard, http-json, plugin, and local-estimate connectors.")}</span>
+                  <span className="min-w-0 truncate">{t("Supports standard, http-json, webcontent-json, plugin, and local-estimate connectors.")}</span>
                   <button
                     className="shrink-0 text-primary hover:underline"
                     type="button"
@@ -3056,6 +3226,18 @@ function ProviderUsageSettings({
                   </Button>
                 </div>
               ) : null}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button disabled={testLoading} onClick={() => void testUsageRequest()} size="sm" type="button" variant="outline">
+                  <AnimatedIconSwap iconKey={testLoading ? "testing" : "check"}>
+                    {testLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                  </AnimatedIconSwap>
+                  {t("Test first JSON connector")}
+                </Button>
+                {testResult ? <Badge variant={testResult.meters.length > 0 ? "success" : "outline"}>{testResult.meters.length} {t("meters")}</Badge> : null}
+              </div>
+              {testResult ? (
+                <ProviderUsageTestResultPanel result={testResult} onSelectPath={() => undefined} />
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -3069,6 +3251,91 @@ function ProviderUsageSettings({
       ) : null}
     </div>
   );
+}
+
+function providerRawAccountTestConnector(
+  connectorsText: string
+): ProviderAccountHttpJsonConnectorConfig | ProviderAccountWebContentJsonConnectorConfig | string {
+  let connectors: unknown;
+  try {
+    connectors = JSON.parse(connectorsText.trim() || "[]");
+  } catch (error) {
+    return `Account connectors JSON is invalid: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  if (!Array.isArray(connectors)) {
+    return "Account connectors must be a JSON array.";
+  }
+  const connector = connectors.find((item) =>
+    isPlainRecord(item) && (item.type === "http-json" || item.type === "webcontent-json")
+  );
+  if (!isPlainRecord(connector)) {
+    return "Add an http-json or webcontent-json connector to test.";
+  }
+  if (connector.type === "webcontent-json") {
+    return {
+      ...(connector as ProviderAccountWebContentJsonConnectorConfig),
+      method: connector.method === "POST" ? "POST" : "GET",
+      type: "webcontent-json"
+    };
+  }
+  return {
+    ...(connector as ProviderAccountHttpJsonConnectorConfig),
+    auth: connector.auth === "provider-api-key-raw" || connector.auth === "none" ? connector.auth : "provider-api-key",
+    method: connector.method === "POST" ? "POST" : "GET",
+    type: "http-json"
+  };
+}
+
+function browserLoginTargetUrl(draft: AddProviderDraft): string {
+  return [
+    draft.usageBrowserLoginUrl,
+    draft.usageBrowserRequestOrigin,
+    browserEndpointOrigin(draft.usageRequestUrl),
+    draft.usageRequestUrl
+  ].map((item) => item.trim()).find(isHttpBrowserUrl) ?? "";
+}
+
+function browserChromeImportDomains(draft: AddProviderDraft): string[] {
+  return [...new Set([
+    draft.usageBrowserLoginUrl,
+    draft.usageBrowserRequestOrigin,
+    draft.usageRequestUrl
+  ].flatMap(browserImportDomainCandidates).filter(Boolean))];
+}
+
+function browserImportDomainCandidates(value: string): string[] {
+  try {
+    const host = new URL(value.trim()).hostname.toLowerCase();
+    if (!host || host === "localhost" || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) || host.includes(":")) {
+      return host ? [host] : [];
+    }
+    const parts = host.split(".");
+    const candidates = [host];
+    if (parts.length > 2) {
+      candidates.push(parts.slice(-2).join("."));
+    }
+    return candidates;
+  } catch {
+    return [];
+  }
+}
+
+function browserEndpointOrigin(endpoint: string): string {
+  try {
+    const url = new URL(endpoint.trim());
+    return url.protocol === "http:" || url.protocol === "https:" ? url.origin : "";
+  } catch {
+    return "";
+  }
+}
+
+function isHttpBrowserUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function ProviderUsageTestResultPanel({

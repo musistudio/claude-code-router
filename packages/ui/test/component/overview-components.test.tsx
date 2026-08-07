@@ -6,7 +6,7 @@ import { formatCodexResetCardExpiry, formatCodexResetCardNumber, OverviewView } 
 import { AppI18nContext, appCopy } from "@ccr/ui/pages/home/shared/i18n.tsx";
 import { parseStatusBucketDate } from "@ccr/ui/pages/home/shared/controls.tsx";
 import { formatProviderAccountMeterValue, providerAccountMeterDetailValidityProgress } from "@ccr/ui/pages/home/shared/provider-accounts.ts";
-import type { OverviewWidgetConfig, ProviderAccountSnapshot } from "@ccr/core/contracts/app.ts";
+import type { GatewayProviderConfig, OverviewWidgetConfig, ProviderAccountSnapshot } from "@ccr/core/contracts/app.ts";
 import { accountSnapshots, installBrowserGlobals, usageStats } from "../fixtures/index.ts";
 
 installBrowserGlobals();
@@ -143,7 +143,7 @@ test("OverviewView renders the empty widget layout state", () => {
   assert.match(html, /aria-label="Edit widgets"/);
 });
 
-test("OverviewView keeps multi-provider account cards at their content height", () => {
+test("OverviewView renders multi-provider account cards as staggered bento tiles without inner scrolling", () => {
   const html = renderToStaticMarkup(
     <OverviewView
       overviewWidgets={[{ enabled: true, id: "account", size: "4:2", type: "account-balance", variant: "cards" }]}
@@ -157,10 +157,276 @@ test("OverviewView keeps multi-provider account cards at their content height", 
   );
 
   assert.match(html, /data-provider-account-grid="true"/);
-  assert.match(html, /auto-rows-max/);
-  assert.match(html, /content-start/);
-  assert.match(html, /scrollbar-gutter:stable/);
-  assert.match(html, /h-fit/);
+  assert.match(html, /auto-rows-fr/);
+  assert.match(html, /grid-flow-dense/);
+  assert.match(html, /grid-cols-2/);
+  assert.match(html, /items-stretch/);
+  assert.match(html, /row-span-1/);
+  assert.match(html, /row-span-2/);
+  assert.match(html, /overview-account-bento-tile/);
+  assert.match(html, /data-account-status="warning"/);
+  assert.doesNotMatch(html, /overflow-y-auto/);
+  assert.doesNotMatch(html, /scrollbar-gutter/);
+});
+
+test("OverviewView folds overflowing account bento cards into a summary tile", () => {
+  const accounts = Array.from({ length: 10 }, (_, index): ProviderAccountSnapshot => ({
+    credentialId: `key-${index}`,
+    meters: [
+      {
+        id: "balance",
+        kind: "balance",
+        label: "Balance",
+        remaining: index + 1,
+        unit: "USD"
+      }
+    ],
+    provider: `provider-${index}`,
+    source: "standard",
+    status: "ok",
+    updatedAt: "2026-06-30T00:00:00.000Z"
+  }));
+
+  const html = renderToStaticMarkup(
+    <OverviewView
+      overviewWidgets={[{ enabled: true, id: "account", size: "4:2", type: "account-balance", variant: "cards" }]}
+      providerAccounts={accounts}
+      refreshProviderAccounts={() => undefined}
+      setUsageRange={() => undefined}
+      usageRange="30d"
+      usageStats={usageStats("30d")}
+      onWidgetsChange={() => undefined}
+    />
+  );
+
+  assert.match(html, /grid-cols-3/);
+  assert.match(html, /overview-account-bento-more/);
+  assert.match(html, /\+2/);
+});
+
+test("OverviewView compacts large account bento cards before showing a summary tile", () => {
+  const accounts = Array.from({ length: 5 }, (_, index): ProviderAccountSnapshot => ({
+    credentialId: `quota-${index}`,
+    meters: [
+      {
+        id: "quota",
+        kind: "quota",
+        label: "Subscription",
+        limit: 100,
+        remaining: 90 - index,
+        unit: "%",
+        window: "daily"
+      }
+    ],
+    provider: `quota-provider-${index}`,
+    source: "standard",
+    status: "ok",
+    updatedAt: "2026-06-30T00:00:00.000Z"
+  }));
+
+  const html = renderToStaticMarkup(
+    <OverviewView
+      overviewWidgets={[{ enabled: true, id: "account", size: "4:2", type: "account-balance", variant: "cards" }]}
+      providerAccounts={accounts}
+      refreshProviderAccounts={() => undefined}
+      setUsageRange={() => undefined}
+      usageRange="30d"
+      usageStats={usageStats("30d")}
+      onWidgetsChange={() => undefined}
+    />
+  );
+
+  assert.match(html, /quota-provider-4/);
+  assert.match(html, /row-span-1/);
+  assert.match(html, /row-span-2/);
+  assert.doesNotMatch(html, /overview-account-bento-more/);
+});
+
+test("OverviewView places compact bento account values below the meter label", () => {
+  const html = renderToStaticMarkup(
+    <OverviewView
+      overviewWidgets={[{ enabled: true, id: "account", size: "4:2", type: "account-balance", variant: "cards" }]}
+      providerAccounts={[
+        {
+          credentialId: "deepseek",
+          meters: [
+            {
+              id: "balance",
+              kind: "balance",
+              label: "Balance",
+              remaining: 21.59,
+              unit: "CNY"
+            }
+          ],
+          provider: "DeepSeek",
+          source: "standard",
+          status: "ok",
+          updatedAt: "2026-06-30T00:00:00.000Z"
+        },
+        ...accountSnapshots()
+      ]}
+      refreshProviderAccounts={() => undefined}
+      setUsageRange={() => undefined}
+      usageRange="30d"
+      usageStats={usageStats("30d")}
+      onWidgetsChange={() => undefined}
+    />
+  );
+
+  assert.match(html, /Balance<\/div><div class="mt-0\.5 truncate text-\[18px\][^"]*">¥21\.59<\/div>/);
+});
+
+test("OverviewView applies manual bento account card sizes", () => {
+  const html = renderToStaticMarkup(
+    <OverviewView
+      overviewWidgets={[{
+        accountCardSizes: {
+          "anthropic::secondary": "1:2",
+          "openai::primary": "2:1"
+        },
+        enabled: true,
+        id: "account",
+        size: "4:2",
+        type: "account-balance",
+        variant: "cards"
+      }]}
+      providerAccounts={accountSnapshots()}
+      refreshProviderAccounts={() => undefined}
+      setUsageRange={() => undefined}
+      usageRange="30d"
+      usageStats={usageStats("30d")}
+      onWidgetsChange={() => undefined}
+    />
+  );
+
+  assert.match(html, /overview-account-bento-tile[^"]*col-span-2[^"]*row-span-1[^"]*" data-account-status="warning"/);
+  assert.match(html, /overview-account-bento-tile[^"]*col-span-1[^"]*row-span-2[^"]*" data-account-status="ok"/);
+});
+
+test("OverviewView applies manual bento account card order", () => {
+  const html = renderToStaticMarkup(
+    <OverviewView
+      overviewWidgets={[{
+        accountCardOrder: ["anthropic::secondary", "openai::primary"],
+        enabled: true,
+        id: "account",
+        size: "4:2",
+        type: "account-balance",
+        variant: "cards"
+      }]}
+      providerAccounts={accountSnapshots()}
+      refreshProviderAccounts={() => undefined}
+      setUsageRange={() => undefined}
+      usageRange="30d"
+      usageStats={usageStats("30d")}
+      onWidgetsChange={() => undefined}
+    />
+  );
+  const anthropicIndex = html.indexOf("anthropic / Secondary Key");
+  const openaiIndex = html.indexOf("openai / Primary Key");
+
+  assert.ok(anthropicIndex >= 0);
+  assert.ok(openaiIndex >= 0);
+  assert.ok(anthropicIndex < openaiIndex);
+});
+
+test("OverviewView filters account balance widgets by multiple selected accounts", () => {
+  const accounts = [
+    ...accountSnapshots(),
+    {
+      credentialId: "third",
+      credentialLabel: "Third Key",
+      meters: [
+        {
+          id: "balance",
+          kind: "balance",
+          label: "Balance",
+          remaining: 9,
+          unit: "USD"
+        }
+      ],
+      provider: "third-provider",
+      source: "standard",
+      status: "ok",
+      updatedAt: "2026-06-30T00:00:00.000Z"
+    } satisfies ProviderAccountSnapshot
+  ];
+
+  const html = renderToStaticMarkup(
+    <OverviewView
+      overviewWidgets={[{
+        accountProviders: ["openai::primary", "third-provider::third"],
+        enabled: true,
+        id: "account",
+        size: "4:2",
+        type: "account-balance",
+        variant: "cards"
+      }]}
+      providerAccounts={accounts}
+      refreshProviderAccounts={() => undefined}
+      setUsageRange={() => undefined}
+      usageRange="30d"
+      usageStats={usageStats("30d")}
+      onWidgetsChange={() => undefined}
+    />
+  );
+
+  assert.match(html, /openai \/ Primary Key/);
+  assert.match(html, /third-provider \/ Third Key/);
+  assert.doesNotMatch(html, /anthropic \/ Secondary Key/);
+});
+
+test("OverviewView keeps legacy single accountProvider filters working", () => {
+  const html = renderToStaticMarkup(
+    <OverviewView
+      overviewWidgets={[{
+        accountProvider: "anthropic::secondary",
+        enabled: true,
+        id: "account",
+        size: "4:2",
+        type: "account-balance",
+        variant: "cards"
+      }]}
+      providerAccounts={accountSnapshots()}
+      refreshProviderAccounts={() => undefined}
+      setUsageRange={() => undefined}
+      usageRange="30d"
+      usageStats={usageStats("30d")}
+      onWidgetsChange={() => undefined}
+    />
+  );
+
+  assert.match(html, /anthropic \/ Secondary Key/);
+  assert.doesNotMatch(html, /openai \/ Primary Key/);
+});
+
+test("OverviewView renders provider logos in account balance widgets", () => {
+  const providers: GatewayProviderConfig[] = [
+    { icon: "https://cdn.example.test/openai.png", models: ["gpt-4.1"], name: "openai" },
+    { icon: "https://cdn.example.test/anthropic.png", models: ["claude-sonnet"], name: "anthropic" }
+  ];
+
+  const html = renderToStaticMarkup(
+    <OverviewView
+      overviewWidgets={[{ enabled: true, id: "account", size: "4:2", type: "account-balance", variant: "cards" }]}
+      providerAccounts={accountSnapshots()}
+      refreshProviderAccounts={() => undefined}
+      setUsageRange={() => undefined}
+      usageFilters={{
+        modelFilter: "",
+        providerFilter: "",
+        providers,
+        setModelFilter: () => undefined,
+        setProviderFilter: () => undefined
+      }}
+      usageRange="30d"
+      usageStats={usageStats("30d")}
+      onWidgetsChange={() => undefined}
+    />
+  );
+
+  assert.match(html, /src="https:\/\/cdn\.example\.test\/openai\.png"/);
+  assert.match(html, /src="https:\/\/cdn\.example\.test\/anthropic\.png"/);
 });
 
 test("OverviewView prioritizes Codex manual resets before folded balance meters", () => {

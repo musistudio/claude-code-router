@@ -31,6 +31,7 @@ import { reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
 import { recordProviderCredentialOutcome } from "@ccr/core/providers/credential-pool";
 import { codexApplyPatchBridgeResponseStream, prepareCodexApplyPatchBridgeRequest } from "@ccr/core/gateway/features/codex-patch-bridge";
 import { codexMultiAgentBridgeResponseStream, prepareCodexMultiAgentBridgeRequest } from "@ccr/core/gateway/features/codex-multi-agent-bridge";
+import { rewriteAnthropicMessageStartModelStream, shouldRewriteAnthropicMessageStartModel } from "@ccr/core/gateway/features/anthropic-response-model";
 import { prepareCursorOpenAICompatChatBody } from "@ccr/core/gateway/features/cursor-compat";
 import { filteredResponseHeaders, formatError, formatUpstreamErrorForLog, forwardHeaders, inferGatewayClient, readRequestBody, sendJson, shouldCaptureGatewayUsage, shouldSendBody, stripLocalGatewayAuthHeaders } from "@ccr/core/gateway/http/io";
 import { serializeJsonBody, takeJsonObject } from "@ccr/core/gateway/http/body";
@@ -663,6 +664,7 @@ export class GatewayRequestPipeline {
         throw error;
       }
 
+      const clientVisibleResponseModel = requestedModel ?? routedModel;
       bodyToForward = upstreamResult.attempt.body ?? bodyToForward;
       routedModel = upstreamResult.attempt.model ?? routedModel;
       if (contextArchiveToolContinuation && upstreamResult.response.ok) {
@@ -712,9 +714,8 @@ export class GatewayRequestPipeline {
       const appendContextArchiveFooter = Boolean(contextArchiveRecord && upstreamResponse.ok);
       const transformCodexCompactResponse = Boolean(!contextArchiveRecord && codexCompactCompatResponseMode && upstreamResponse.ok);
       const contextArchiveSourceContentType = responseHeaders.get("content-type") ?? undefined;
-      if (codexApplyPatchBridgeActive || codexMultiAgentBridgeActive || appendContextArchiveFooter || transformCodexCompactResponse) {
-        responseHeaders.delete("content-length");
-      }
+      const responseProtocol = requestProtocolForPath(upstreamPath) ?? requestProtocol;
+      const archiveResponseProtocol = responseProtocol ?? "anthropic_messages";
       if ((appendContextArchiveFooter || transformCodexCompactResponse) && contextArchiveResponseContentType) {
         responseHeaders.set("content-type", contextArchiveResponseContentType);
       }
@@ -730,6 +731,14 @@ export class GatewayRequestPipeline {
           this.browserWebSearchMcpIntegration?.recentBrowserWebSearchResults ||
           this.browserWebSearchMcpIntegration?.runBrowserWebSearch)
       ) {
+        responseHeaders.delete("content-length");
+      }
+      const rewriteAnthropicResponseModel = upstreamResponse.ok && shouldRewriteAnthropicMessageStartModel({
+        contentType: responseHeaders.get("content-type") ?? undefined,
+        model: clientVisibleResponseModel,
+        protocol: responseProtocol
+      });
+      if (codexApplyPatchBridgeActive || codexMultiAgentBridgeActive || appendContextArchiveFooter || transformCodexCompactResponse || rewriteAnthropicResponseModel) {
         responseHeaders.delete("content-length");
       }
       recordProviderCredentialOutcome(this.config, method, upstreamResult.attempt, upstreamResponse.status, responseHeaders);
@@ -775,7 +784,6 @@ export class GatewayRequestPipeline {
             this.browserWebSearchMcpIntegration
           )
         : multiAgentResponseBody;
-      const archiveResponseProtocol = requestProtocolForPath(upstreamPath) ?? requestProtocol ?? "anthropic_messages";
       const responseBody = appendContextArchiveFooter && contextArchiveRecord
         ? contextArchiveHandoffResponseStream(
             hostedWebSearchResponseBody,
@@ -792,7 +800,10 @@ export class GatewayRequestPipeline {
               codexCompactCompatResponseMode
             )
           : hostedWebSearchResponseBody;
-      const responseStreams = uniqueStreams([upstreamBody, patchedResponseBody, multiAgentResponseBody, hostedWebSearchResponseBody, responseBody]);
+      const clientResponseBody = rewriteAnthropicResponseModel && clientVisibleResponseModel
+        ? rewriteAnthropicMessageStartModelStream(responseBody, clientVisibleResponseModel)
+        : responseBody;
+      const responseStreams = uniqueStreams([upstreamBody, patchedResponseBody, multiAgentResponseBody, hostedWebSearchResponseBody, responseBody, clientResponseBody]);
       const sampler = createBodySampler();
       const sseErrorDetector = createSseErrorDetector(responseHeaders.get("content-type") ?? undefined);
       let streamDetectedError: string | undefined;
@@ -822,7 +833,7 @@ export class GatewayRequestPipeline {
       onClientDisconnect = () => {
         streamDetectedError ??= sseErrorDetector.finish();
         writeStreamLog();
-        responseBody.unpipe(response);
+        clientResponseBody.unpipe(response);
         destroyResponseStreams(responseStreams);
       };
       onResponseFinish = () => {
@@ -848,11 +859,11 @@ export class GatewayRequestPipeline {
       for (const stream of responseStreams) {
         stream.on("error", onResponseStreamError);
       }
-      responseBody.on("data", (chunk) => {
+      clientResponseBody.on("data", (chunk) => {
         sampler.append(chunk);
         streamDetectedError ??= sseErrorDetector.append(chunk);
       });
-      responseBody.once("end", () => {
+      clientResponseBody.once("end", () => {
         upstreamStreamEnded = true;
         streamDetectedError ??= sseErrorDetector.finish();
         if (responseCompleted || response.writableEnded) {
@@ -860,7 +871,7 @@ export class GatewayRequestPipeline {
         }
       });
       if (shouldCaptureUsage) {
-        responseBody.once("end", () => {
+        clientResponseBody.once("end", () => {
           recordUsage({
             bodyText: sampler.read(),
             client,
@@ -880,7 +891,7 @@ export class GatewayRequestPipeline {
         onClientDisconnect();
         return;
       }
-      responseBody.pipe(response);
+      clientResponseBody.pipe(response);
     }
 
   async replayContextArchive(input: ContextArchiveReplayInput): Promise<ContextArchiveReplayResult> {

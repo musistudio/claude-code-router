@@ -11,6 +11,7 @@ import { AddProviderDialog, AddProviderForm, ProviderConnectivityCheckDialog, Pr
 import {
   applyProviderProbeResult,
   createProviderConfigFromDeepLink,
+  createProviderAccountDraftFromConfig,
   createProviderCredentialDraft,
   createProviderDraft,
   createProviderDraftFromProvider,
@@ -25,6 +26,8 @@ import {
   providerConnectivityProviderPlugins,
   providerDisplayIcon,
   providerAccountConnectorsTextWithNewApiUserBalanceTemplate,
+  parseProviderAccountDraft,
+  providerBrowserConnectorFromDraft,
   providerGlobalBaseUrlForProbe,
   providerPresetIconUrls,
   providerProtocolOptions,
@@ -861,6 +864,95 @@ test("provider probe result applies detected New API key quota account connector
   assert.equal(connectors[0].mapping.meters[0].id, "new_api_key_quota");
   assert.equal(connectors[0].mapping.meters[0].kind, "quota");
   assert.equal(connectors[0].mapping.meters[0].remaining, "$.data.total_available");
+});
+
+test("browser account draft creates webcontent-json connector", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    accountEnabled: true,
+    accountMode: "browser" as const,
+    accountRefreshIntervalMs: "300000",
+    usageBalanceRemainingPath: "$.balance.remaining",
+    usageBrowserCredentials: "omit" as const,
+    usageBrowserHeaderTemplates: [
+      {
+        id: "header-template-auth",
+        key: "authorization",
+        value: "Bearer ${localStorage.accessToken}"
+      }
+    ],
+    usageBrowserLoginUrl: "https://vendor.example.com/login",
+    usageBrowserRequestOrigin: "https://vendor.example.com",
+    usageBrowserTimeoutMs: "12000",
+    usageRequestUrl: "https://api.vendor.example.com/account"
+  };
+
+  const connector = providerBrowserConnectorFromDraft(draft);
+  assert.notEqual(typeof connector, "string");
+  if (typeof connector === "string") {
+    return;
+  }
+  assert.equal(connector.type, "webcontent-json");
+  assert.equal(connector.browser?.credentials, "omit");
+  assert.equal(connector.browser?.headerTemplates?.authorization, "Bearer ${localStorage.accessToken}");
+  assert.equal(connector.browser?.loginUrl, "https://vendor.example.com/login");
+  assert.equal(connector.browser?.requestOrigin, "https://vendor.example.com");
+  assert.equal(connector.browser?.partition, "built-in-browser");
+  assert.equal(connector.browser?.timeoutMs, 12000);
+  assert.equal(connector.mapping.meters[0].remaining, "$.balance.remaining");
+
+  const account = parseProviderAccountDraft(draft);
+  assert.notEqual(typeof account, "string");
+  if (!account || typeof account === "string") {
+    assert.fail("Expected browser account config.");
+  }
+  assert.equal(account?.connectors?.[0]?.type, "webcontent-json");
+});
+
+test("webcontent-json account config opens as browser draft", () => {
+  const draft = createProviderAccountDraftFromConfig({
+    connectors: [
+      {
+        browser: {
+          credentials: "omit",
+          headerTemplates: {
+            authorization: "Bearer ${localStorage.accessToken}"
+          },
+          loginUrl: "https://vendor.example.com/login",
+          requestOrigin: "https://vendor.example.com",
+          timeoutMs: 15000
+        },
+        endpoint: "https://api.vendor.example.com/account",
+        mapping: {
+          meters: [
+            {
+              id: "balance",
+              kind: "balance",
+              label: "Balance",
+              remaining: "$.balance.remaining",
+              unit: "USD"
+            }
+          ],
+          message: "$.message"
+        },
+        type: "webcontent-json"
+      }
+    ],
+    enabled: true,
+    refreshIntervalMs: 300000
+  });
+
+  assert.equal(draft.accountEnabled, true);
+  assert.equal(draft.accountMode, "browser");
+  assert.equal(draft.usageRequestUrl, "https://api.vendor.example.com/account");
+  assert.equal(draft.usageBrowserCredentials, "omit");
+  assert.equal(draft.usageBrowserHeaderTemplates[0]?.key, "authorization");
+  assert.equal(draft.usageBrowserHeaderTemplates[0]?.value, "Bearer ${localStorage.accessToken}");
+  assert.equal(draft.usageBrowserLoginUrl, "https://vendor.example.com/login");
+  assert.equal(draft.usageBrowserRequestOrigin, "https://vendor.example.com");
+  assert.equal(draft.usageBrowserTimeoutMs, "15000");
+  assert.equal(draft.usageBalanceRemainingPath, "$.balance.remaining");
+  assert.equal(draft.usageMessagePath, "$.message");
 });
 
 test("provider probe keeps anthropic prefix on the protocol capability", () => {

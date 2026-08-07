@@ -145,7 +145,7 @@ const webClientBridge: CcrApi = {
   onProviderDeepLink: noopSubscription,
   onUpdateStatusChanged: noopSubscription,
   openBotGatewayQrWindow: (request) => rpc("openBotGatewayQrWindow", [request]) as ReturnType<CcrApi["openBotGatewayQrWindow"]>,
-  openBuiltInBrowser: () => rpc("openBuiltInBrowser") as ReturnType<CcrApi["openBuiltInBrowser"]>,
+  openBuiltInBrowser: (url) => rpc("openBuiltInBrowser", [url]) as ReturnType<CcrApi["openBuiltInBrowser"]>,
   openExternal: async (url) => {
     window.open(normalizeExternalHttpUrl(url), "_blank", "noopener,noreferrer");
   },

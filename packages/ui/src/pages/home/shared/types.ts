@@ -23,6 +23,7 @@ import type {
   GatewayMcpStdioMessageMode,
   PluginDependency,
   PluginMarketplaceEntry,
+  ProviderAccountBrowserCredentialsMode,
   ProviderModelMetadata,
   ProfileConfig,
   ProfileScope,
@@ -114,6 +115,11 @@ export type AddProviderDraft = {
   usageBalanceRemainingPath: string;
   usageBalanceUnit: string;
   usageBalanceUsedPath: string;
+  usageBrowserCredentials: ProviderAccountBrowserCredentialsMode;
+  usageBrowserHeaderTemplates: KeyValueDraftRow[];
+  usageBrowserLoginUrl: string;
+  usageBrowserRequestOrigin: string;
+  usageBrowserTimeoutMs: string;
   usageMessagePath: string;
   usageRequestBodyText: string;
   usageRequestHeaders: KeyValueDraftRow[];
@@ -136,7 +142,7 @@ export type ProviderCredentialDraft = {
   weight: string;
 };
 
-export type ProviderAccountDraftMode = "standard" | "http-json" | "raw";
+export type ProviderAccountDraftMode = "standard" | "http-json" | "browser" | "raw";
 export type ProviderUsageFieldTarget =
   | "balance"
   | "balanceLimit"

@@ -26,6 +26,14 @@ export class ModelRegistry {
       return undefined;
     }
 
+    if (options.providerName) {
+      const provider = this.findProvider(options.providerName);
+      const model = provider ? configuredProviderModel(provider, normalized) : undefined;
+      if (provider && model) {
+        return providerModelRef(provider, model, normalized);
+      }
+    }
+
     const parsed = parseProviderModelSelector(normalized);
     if (parsed) {
       const provider = this.findProvider(parsed.provider);
@@ -43,14 +51,6 @@ export class ModelRegistry {
         model: gatewayModel,
         selector: gatewayModel
       };
-    }
-
-    if (options.providerName) {
-      const provider = this.findProvider(options.providerName);
-      const model = provider ? configuredProviderModel(provider, normalized) : undefined;
-      if (provider && model) {
-        return providerModelRef(provider, model, normalized);
-      }
     }
 
     const exactMatches = this.providerModelMatches(normalized, false);

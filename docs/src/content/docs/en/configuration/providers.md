@@ -1,11 +1,11 @@
 ---
-title: Provider Config
-pageTitle: Provider Config
-eyebrow: Detailed Configuration
-lead: Configure upstream model services, credentials, protocols, base URLs, and model lists.
+title: Provider config
+pageTitle: Provider config
+eyebrow: Detailed configuration
+lead: "Add and manage upstream model providers in CCR: import local agent sign-ins, configure the protocol, API endpoint, model list, and credential pool, and set up account usage fetching. Use this page when adding or adjusting a provider."
 ---
 
-## Import Local Agent Login
+## Import local agent login
 
 When you add a provider, CCR scans for reusable local agent login state. If usable credentials are found, the add dialog shows the matching import entry. Importing creates a normal provider plus provider plugins, so CCR can reuse the local agent authorization without requiring a pasted API key.
 
@@ -16,7 +16,7 @@ Claude Code import reads local Claude Code OAuth credentials. When a usable acce
 After import:
 
 1. The protocol is `anthropic_messages`.
-2. The default model list includes `claude-sonnet-4-20250514`; you can later add or remove models in the provider model list.
+2. The default model list includes `claude-sonnet-5`; you can later add or remove models in the provider model list.
 3. CCR creates OAuth provider plugins that convert requests to use the Claude Code login state.
 4. Account usage uses the Anthropic OAuth usage endpoint, so quota state can appear in the provider list, tray, and account panels.
 
@@ -48,7 +48,19 @@ After import:
 
 If CCR detects ZCode login state but no usable provider API key, the import entry remains unavailable. Configure a usable model provider in ZCode first, then return to CCR and add the provider.
 
-## Main Fields
+### Kimi CLI
+
+Kimi CLI import reads a managed OAuth login or API key from local Kimi config (default `~/.kimi-code/config.toml`). When a usable credential is available, CCR can import it as a `Kimi CLI API` provider.
+
+After import:
+
+1. The protocol is `openai_chat_completions`.
+2. Models come from the Kimi config first; if none are configured, CCR falls back to the default model `kimi-for-coding`.
+3. CCR creates an OAuth or API-key provider plugin based on the credential type, reusing the Kimi login to access the upstream service.
+
+If CCR detects login traces but no usable OAuth token, the import entry shows why. Run `/login` in Kimi CLI, then return to CCR and rescan.
+
+## Main fields
 
 | Field | Capability |
 | --- | --- |
@@ -56,14 +68,14 @@ If CCR detects ZCode login state but no usable provider API key, the import entr
 | Name | Internal CCR display name. It is also used by routing, model selectors, logs, and config references. Names must be unique. |
 | API endpoint | Upstream API base URL. It controls where requests are sent, and is also used for protocol probing, model discovery, icon detection, and safety checks. Preset providers hide it by default while adding, but it can be overridden in Advanced settings. Custom providers must provide it. |
 | API key | Default provider credential. When the credential pool is empty, model requests use this key. Protocol probing, model discovery, connection checks, and default usage fetching also use it. Only use a key issued for the selected endpoint. |
-| Models | Model IDs exposed by CCR. Routing rules, profile model selectors, the model catalog, and client `/models` responses all use this list. |
+| Models | Model IDs exposed by CCR. Routing rules, Agent Config model selectors, the model catalog, and client `/models` responses all use this list. |
 | Search models / All / Clear | When CCR can discover models from the upstream or catalog, you can search, select all, clear, and choose models. Selected models are saved to the provider. |
 | Custom models | Manually adds model IDs that discovery did not return. Use this when the provider lacks a `/models` endpoint or a new model is not in the catalog yet. |
 | Check Connection | Sends real test requests with the current endpoint, API key, protocol, and selected models. It verifies key, model name, and protocol usability. |
 | Models to check | Model selection inside the connection-check confirmation dialog. Use it to test only some models. |
 | Check results | Shows whether each model is available, which protocol matched, and the upstream diagnostic message. Results are diagnostic. Add models through the main model selection when you want them saved. |
 
-## Connectivity Checks
+## Connectivity checks
 
 `Check Connection` sends real model requests for the models you select. It verifies whether the endpoint, API key, protocol, and model IDs are usable. The check limits generated output, but it can still create extra token usage or count against provider-side request limits.
 
@@ -108,21 +120,21 @@ Example:
 
 The credential pool is an upstream provider key pool. It is separate from the client access keys configured on the API Keys page.
 
-## Usage Fetching
+## Usage fetching
 
 `Fetch usage` lets CCR show balance, subscription quota, status, and messages in the provider list, tray, and account panels. It does not affect whether models can be requested.
 
 | Field | Capability |
 | --- | --- |
 | Fetch usage | Enables or disables account usage fetching for this provider. |
-| Usage mode | Usage connector mode. `Standard usage endpoint` uses CCR standard account endpoints; `HTTP JSON request` maps a custom JSON endpoint; `Raw connector JSON` edits the connector array directly. |
+| Usage mode | Usage connector mode. `Standard usage endpoint` uses CCR standard account endpoints; `HTTP JSON request` maps a custom JSON endpoint; `Browser request` uses CCR's in-app browser login state to run a browser-side request and map the JSON response; `Raw connector JSON` edits the connector array directly. |
 | Refresh interval ms | Usage refresh interval in milliseconds. Empty uses the default interval. The minimum effective interval is 30000ms. |
 
-### Standard Usage Endpoint
+### Standard usage endpoint
 
 This mode tries provider-hosted CCR account endpoints such as `/.well-known/ccr/account` and `/v1/account/limits`. It is best for providers or presets that already implement CCR's standard account format.
 
-### HTTP JSON Request
+### HTTP JSON request
 
 Use this mode when the provider has a balance or quota endpoint that returns a custom JSON shape.
 
@@ -145,6 +157,53 @@ Use this mode when the provider has a balance or quota endpoint that returns a c
 | Test usage request | Requests and parses the usage endpoint before saving. |
 | Response fields | Lists selectable paths from the response. Buttons such as `Balance rem`, `Balance total`, `Balance used`, `Sub rem`, `Sub limit`, and `Reset` fill the matching field. |
 
+### Browser request
+
+Use this mode when the usage endpoint depends on a website login session, cookies, or localStorage. It is saved as the underlying `webcontent-json` connector and is available only in CCR Desktop. The endpoint response must still be JSON so the fields below can map it with CCR's lightweight JSONPath syntax.
+
+| Field | Capability |
+| --- | --- |
+| Browser login URL | Login page opened by `Open login browser`. The session is stored in CCR's in-app browser partition. |
+| Browser storage origin | Origin loaded by the hidden browser before the request. This is the origin used to read `localStorage` and `sessionStorage`. Empty uses the browser login URL origin, then falls back to the usage request URL origin. |
+| Fetch credentials | Browser `fetch` credentials mode: `omit`, `include`, or `same-origin`. Use `omit` when authentication is sent through token headers and the API returns `Access-Control-Allow-Origin: *`; use `include` only when cookies are required and the API returns the exact website origin. |
+| Browser timeout ms | Timeout for loading the origin and running the account request. Empty uses the default. |
+| Browser header templates | Dynamic headers rendered in the hidden browser before `fetch`. Values can reference `${localStorage.key}`, `${sessionStorage.key}`, or bracket keys such as `${localStorage["access-token"]}`. |
+| Open login browser | Opens CCR's in-app browser so the user can sign in before testing. |
+| Import from Chrome | Creates a Chrome login-state import job for the login URL, storage origin, and usage request URL domains, then writes cookies/localStorage into CCR's in-app browser partition. |
+
+Browser requests do not send the provider API key. CCR runs `fetch` inside the in-app browser from the browser storage origin, renders dynamic headers there, and applies the selected browser credentials mode. The usage request URL may be on another origin when that API allows the website origin through CORS.
+
+When `browser.credentials` is omitted, CCR defaults to `omit` if `browser.headerTemplates` is configured, otherwise it keeps the legacy cookie-oriented default `include`.
+
+Example raw connector for a site that stores an access token in `localStorage`:
+
+```json
+{
+  "type": "webcontent-json",
+  "endpoint": "https://api.vendor.example.com/account",
+  "browser": {
+    "credentials": "omit",
+    "loginUrl": "https://vendor.example.com/login",
+    "partition": "built-in-browser",
+    "requestOrigin": "https://vendor.example.com",
+    "headerTemplates": {
+      "authorization": "Bearer ${localStorage.accessToken}"
+    }
+  },
+  "mapping": {
+    "meters": [
+      {
+        "id": "balance",
+        "kind": "balance",
+        "label": "Balance",
+        "remaining": "$.balance.remaining",
+        "unit": "USD"
+      }
+    ]
+  }
+}
+```
+
 Field paths use CCR's lightweight JSONPath syntax:
 
 | Syntax | Meaning |
@@ -156,7 +215,7 @@ Field paths use CCR's lightweight JSONPath syntax:
 | `$.limits[?(@.type=="TOKENS")].remaining` | First array item matching simple equality filters |
 | `100 - $.data.percentage` | Numeric subtraction expression, often used to convert used percent into remaining percent |
 
-### Raw Connector JSON
+### Raw connector JSON
 
 `Connectors JSON` edits the `account.connectors` array directly for more complex provider setups.
 
@@ -164,7 +223,8 @@ Field paths use CCR's lightweight JSONPath syntax:
 | --- | --- |
 | `standard` | Uses CCR standard account endpoints. |
 | `http-json` | Requests a JSON endpoint and maps balance, subscription, status, and message fields. |
+| `webcontent-json` | Uses CCR Desktop's in-app browser login state to run a browser-side request and map the JSON response. The UI exposes this as `Browser request`. |
 | `plugin` | Calls an account usage connector registered by an installed plugin. |
 | `local-estimate` | Shows estimated quota from local time-window config without a remote request. |
 
-`Insert example` fills an example connector array containing `standard`, `http-json`, `plugin`, and `local-estimate` connectors.
+`Insert example` fills an example connector array containing `standard`, `http-json`, `webcontent-json`, `plugin`, and `local-estimate` connectors.

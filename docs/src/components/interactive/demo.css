@@ -1,0 +1,297 @@
+html.interactive-demo-html {
+  min-height: 100%;
+  overflow: auto;
+  background: var(--background);
+}
+
+body.interactive-demo-page {
+  min-height: 100%;
+  margin: 0;
+  overflow: auto;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.docs-demo-shell {
+  display: flex;
+  min-height: 100vh;
+  min-width: 320px;
+  padding: clamp(12px, 2.3vw, 22px);
+  background:
+    linear-gradient(180deg, color-mix(in oklab, var(--card) 52%, transparent), transparent 34%),
+    radial-gradient(circle at 12% 0%, color-mix(in oklab, var(--primary) 9%, transparent), transparent 32%),
+    var(--background);
+}
+
+.docs-demo-window {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--border) 72%, transparent);
+  border-radius: 18px;
+  background: color-mix(in oklab, var(--card) 92%, var(--background));
+  box-shadow:
+    0 22px 54px rgba(15, 23, 42, 0.13),
+    0 2px 8px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+  flex-direction: column;
+}
+
+.docs-demo-title {
+  display: flex;
+  min-height: 66px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px clamp(16px, 2.2vw, 24px);
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 62%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in oklab, var(--card) 98%, var(--background)), color-mix(in oklab, var(--card) 86%, var(--background)));
+}
+
+.docs-demo-title-copy {
+  min-width: 0;
+  color: var(--foreground);
+  font-size: clamp(14px, 1.35vw, 18px);
+  font-weight: 720;
+  line-height: 1.35;
+}
+
+.docs-demo-play-button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 15px;
+  border: 1px solid color-mix(in oklab, var(--primary) 84%, transparent);
+  border-radius: 9px;
+  background:
+    linear-gradient(180deg, color-mix(in oklab, var(--primary) 92%, white), var(--primary));
+  color: var(--primary-foreground);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow:
+    0 7px 18px color-mix(in oklab, var(--primary) 20%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+}
+
+.docs-demo-play-button:hover:not(:disabled) {
+  border-color: var(--primary);
+  box-shadow:
+    0 9px 22px color-mix(in oklab, var(--primary) 26%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  transform: translateY(-1px);
+}
+
+.docs-demo-play-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.docs-demo-play-button:disabled {
+  cursor: default;
+  opacity: 0.62;
+}
+
+.docs-demo-notice {
+  position: relative;
+  z-index: 50;
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px clamp(16px, 2.2vw, 24px);
+  border-bottom: 1px solid color-mix(in oklab, #f4b740 32%, var(--border));
+  background:
+    linear-gradient(90deg, color-mix(in oklab, #f4b740 13%, var(--card)), color-mix(in oklab, #f4b740 7%, var(--card)));
+  color: color-mix(in oklab, #8a4b00 88%, var(--foreground));
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.docs-demo-notice-icon {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.docs-demo-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  padding: clamp(14px, 2vw, 20px);
+  background:
+    linear-gradient(180deg, color-mix(in oklab, var(--background) 86%, var(--card)), var(--background));
+}
+
+.docs-demo-content--data {
+  padding: clamp(12px, 1.8vw, 18px);
+}
+
+.docs-demo-app-surface {
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.docs-demo-app-surface--manager,
+.docs-demo-app-surface--logs,
+.docs-demo-app-surface--observability {
+  display: flex;
+  flex: 1;
+  height: 100%;
+}
+
+.docs-demo-app-surface--logs {
+  min-height: 780px;
+}
+
+.docs-demo-app-surface--observability {
+  min-height: 910px;
+}
+
+.docs-demo-app-surface :where(.bg-card) {
+  background-color: color-mix(in oklab, var(--card) 94%, var(--background));
+}
+
+.docs-demo-app-surface :where(.border-border, .border-border\/60, .border-border\/50) {
+  border-color: color-mix(in oklab, var(--border) 72%, transparent);
+}
+
+.docs-demo-app-surface :where(.shadow-card, .shadow-card-hover, .shadow-card-elevated) {
+  box-shadow: none;
+}
+
+.docs-demo-app-surface :where(input, select, textarea) {
+  border-color: color-mix(in oklab, var(--input) 86%, transparent);
+}
+
+.docs-demo-app-surface :where(button, input, select, textarea):focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--ring) 58%, transparent);
+  outline-offset: 2px;
+}
+
+.docs-demo-app-surface--manager > div,
+.docs-demo-app-surface--logs > div,
+.docs-demo-app-surface--observability > div {
+  width: 100%;
+}
+
+.docs-demo-app-surface--logs .network-shell,
+.docs-demo-app-surface--observability .network-shell {
+  border-radius: 12px;
+  box-shadow:
+    0 14px 38px rgba(15, 23, 42, 0.12),
+    0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+:root[data-theme="dark"] .docs-demo-window {
+  box-shadow:
+    0 22px 64px rgba(0, 0, 0, 0.42),
+    0 2px 8px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+:root[data-theme="dark"] .docs-demo-title {
+  background:
+    linear-gradient(180deg, color-mix(in oklab, var(--card) 96%, #20242b), color-mix(in oklab, var(--card) 88%, var(--background)));
+}
+
+:root[data-theme="dark"] .docs-demo-notice {
+  border-bottom-color: color-mix(in oklab, #f4b740 18%, var(--border));
+  background:
+    linear-gradient(90deg, color-mix(in oklab, #f4b740 16%, var(--card)), color-mix(in oklab, #f4b740 8%, var(--card)));
+  color: #f8d48a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .docs-demo-window {
+    box-shadow:
+      0 22px 64px rgba(0, 0, 0, 0.42),
+      0 2px 8px rgba(0, 0, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  :root:not([data-theme="light"]) .docs-demo-title {
+    background:
+      linear-gradient(180deg, color-mix(in oklab, var(--card) 96%, #20242b), color-mix(in oklab, var(--card) 88%, var(--background)));
+  }
+
+  :root:not([data-theme="light"]) .docs-demo-notice {
+    border-bottom-color: color-mix(in oklab, #f4b740 18%, var(--border));
+    background:
+      linear-gradient(90deg, color-mix(in oklab, #f4b740 16%, var(--card)), color-mix(in oklab, #f4b740 8%, var(--card)));
+    color: #f8d48a;
+  }
+}
+
+@media (max-width: 720px) {
+  .docs-demo-shell {
+    padding: 10px;
+  }
+
+  .docs-demo-window {
+    border-radius: 14px;
+  }
+
+  .docs-demo-title {
+    min-height: auto;
+    align-items: stretch;
+    flex-direction: column;
+    padding: 13px;
+  }
+
+  .docs-demo-play-button {
+    width: 100%;
+  }
+
+  .docs-demo-notice,
+  .docs-demo-content {
+    padding-inline: 13px;
+  }
+
+  .docs-demo-app-surface--manager article {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .docs-demo-app-surface--manager .grid > * {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .docs-demo-app-surface--logs,
+  .docs-demo-app-surface--observability {
+    min-height: 720px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .docs-demo-play-button {
+    transition: none;
+  }
+
+  .docs-demo-play-button:hover:not(:disabled) {
+    transform: none;
+  }
+}
