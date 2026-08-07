@@ -15,6 +15,9 @@ import {
   fennoProviderPreset
 } from "@ccr/core/providers/presets/fenno/index.ts";
 import {
+  atlasCloudProviderPreset
+} from "@ccr/core/providers/presets/atlascloud/index.ts";
+import {
   infistarAiProviderPreset
 } from "@ccr/core/providers/presets/infistar-ai/index.ts";
 import {
@@ -138,6 +141,21 @@ test("NVIDIA preset exposes the hosted NIM OpenAI-compatible endpoint", () => {
   ]);
   assert.equal(providerPresetMatchesBaseUrl(nvidiaProviderPreset, "https://integrate.api.nvidia.com/v1/chat/completions"), true);
   assert.equal(providerPresetMatchesBaseUrl(nvidiaProviderPreset, "https://build.nvidia.com/models"), false);
+});
+
+test("Atlas Cloud preset exposes its OpenAI-compatible chat endpoint", () => {
+  assert.equal(providerPresets.find((preset) => preset.id === "atlascloud"), atlasCloudProviderPreset);
+  assert.deepEqual(atlasCloudProviderPreset.defaultModels, ["deepseek-ai/deepseek-v4-pro"]);
+  assert.deepEqual(atlasCloudProviderPreset.endpoints, [
+    {
+      baseUrl: "https://api.atlascloud.ai/v1",
+      protocols: ["openai_chat_completions"]
+    }
+  ]);
+  assert.equal(
+    providerPresetMatchesBaseUrl(atlasCloudProviderPreset, "https://api.atlascloud.ai/v1/chat/completions"),
+    true
+  );
 });
 
 test("NVIDIA preset ignores stale Responses detection and converts Codex requests to Chat Completions", () => {
