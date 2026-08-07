@@ -7,7 +7,7 @@ import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { applyClaudeAppGatewayConfig, readClaudeAppGatewayApiKeyCandidates } from "@ccr/core/agents/claude-app/gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "@ccr/core/agents/claude-app/launch";
 import { claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
-import { codexDesktopAppName, launchCodexAppProfile, launchZcodeAppProfile, refreshCodexCompatibleAppProfileFiles } from "@ccr/core/agents/codex/app-launch";
+import { codexDesktopAppName, findInstalledZcodeAppExecutable, launchCodexAppProfile, launchZcodeAppProfile, refreshCodexCompatibleAppProfileFiles } from "@ccr/core/agents/codex/app-launch";
 import { CodexAppMediaPreviewBridge, shouldEnableCodexMediaPreviewBridge } from "@ccr/core/agents/codex/media-preview-bridge";
 import { findRunningOpenCodeAppPid, launchOpenCodeAppProfile, openCodeAppLaunchSignature } from "@ccr/core/agents/opencode/app-launch";
 import { writeOpenCodeGatewayConfig } from "@ccr/core/agents/opencode/profile-config";
@@ -259,9 +259,19 @@ async function openOpenCodeAppProfile(config: AppConfig, profile: ReturnType<typ
   };
 }
 
+function zcodeRunningAppMarker(profile: ReturnType<typeof findProfileForOpen>): string {
+  return findInstalledZcodeAppExecutable(profile.appPath).executable ?? "zcode.exe";
+}
+
 async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): Promise<ProfileOpenResult> {
   const appName = profile.agent === "zcode" ? "ZCode App" : codexDesktopAppName;
   const profileGatewayConfig = await ensureProfileGateway(config, profile, appName);
+  // ZCode is a pure frontend: when it is already running, spawning another
+  // instance only trips the window-start check. Refresh the on-disk config
+  // and point the user at the in-app refresh instead.
+  const alreadyRunningMessage = () => profile.agent === "zcode"
+    ? "ZCode is already running. Open ZCode > Settings > Model Settings and click Refresh to apply the latest configuration."
+    : `${appName} is already running with ${profile.name || profile.id}.`;
   const existing = runningProfileApp(profile.id, "app");
   if (existing) {
     refreshCodexCompatibleAppProfileFiles(CONFIGDIR, profile, profileGatewayConfig);
@@ -269,31 +279,33 @@ async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof
     startCodexAppMediaPreviewBridge(profileGatewayConfig, profile, existing.userDataDir);
     activateProfileAppWindow(existing);
     return {
-      message: `${appName} is already running with ${profile.name || profile.id}.`,
+      message: alreadyRunningMessage(),
       profileId: profile.id,
       profileName: profile.name,
       surface: "app"
     };
   }
-  if (profile.agent === "codex") {
-    const files = refreshCodexCompatibleAppProfileFiles(CONFIGDIR, profile, profileGatewayConfig);
-    const unmanagedPid = profileAppMainPid({ userDataDir: files.userDataDir });
-    if (unmanagedPid) {
-      const entry = registerExistingProfileApp(profile, "app", {
-        command: appName,
-        pid: unmanagedPid,
-        userDataDir: files.userDataDir
-      });
-      startCodexAppBotWorker(profileGatewayConfig, profile);
-      startCodexAppMediaPreviewBridge(profileGatewayConfig, profile, entry.userDataDir);
-      activateProfileAppWindow(entry);
-      return {
-        message: `${appName} is already running with ${profile.name || profile.id}.`,
-        profileId: profile.id,
-        profileName: profile.name,
-        surface: "app"
-      };
-    }
+  const files = refreshCodexCompatibleAppProfileFiles(CONFIGDIR, profile, profileGatewayConfig);
+  // ZCode's main process usually carries no user-data-dir argument, so the
+  // generic userDataDir probe cannot see it; identify it by executable path.
+  const unmanagedPid = profile.agent === "zcode"
+    ? profileAppMainPid({ userDataDir: zcodeRunningAppMarker(profile) })
+    : profileAppMainPid({ userDataDir: files.userDataDir });
+  if (unmanagedPid) {
+    const entry = registerExistingProfileApp(profile, "app", {
+      command: appName,
+      pid: unmanagedPid,
+      userDataDir: files.userDataDir
+    });
+    startCodexAppBotWorker(profileGatewayConfig, profile);
+    startCodexAppMediaPreviewBridge(profileGatewayConfig, profile, entry.userDataDir);
+    activateProfileAppWindow(entry);
+    return {
+      message: alreadyRunningMessage(),
+      profileId: profile.id,
+      profileName: profile.name,
+      surface: "app"
+    };
   }
   const launch = profile.agent === "zcode"
     ? launchZcodeAppProfile(CONFIGDIR, profile, profileGatewayConfig)
@@ -791,7 +803,9 @@ export async function stopProfileFromCcr(config: AppConfig, request: ProfileOpen
   return {
     message: stopped
       ? `Stopped ${profile.name || profile.id}.`
-      : `Stop requested for ${profile.name || profile.id}. It may take a moment to close.`,
+      : profile.agent === "zcode"
+        ? "ZCode did not close automatically. Quit it from its tray menu (right-click the tray icon and choose Quit)."
+        : `Stop requested for ${profile.name || profile.id}. It may take a moment to close.`,
     profileId: profile.id,
     profileName: profile.name,
     stopped,
@@ -860,7 +874,10 @@ function registerExistingProfileApp(
     agent: profile.agent,
     command: existing.command,
     pid: existing.pid,
-    pidIsLauncher: true,
+    // The registered pid belongs to the already-running app itself, so
+    // liveness must be checked by pid — the userDataDir marker probe cannot
+    // see instances whose command line carries no user-data-dir argument.
+    pidIsLauncher: false,
     profileId: profile.id,
     profileName: profile.name,
     startedAt: new Date().toISOString(),
@@ -963,13 +980,35 @@ async function stopRunningProfileApp(key: string, entry: RunningProfileApp): Pro
   }
 
   entry.stopRequested = true;
-  sendProfileProcessSignal(profileAppMainPid(entry) ?? entry.pid, "SIGTERM");
-  if (await waitForProfileAppExit(entry, 5000)) {
+  // Ask the main process to close itself (same self-shutdown path as the
+  // tray Quit action) before falling back to taskkill /T, which stubborn
+  // Electron helper processes ignore. Never force-kill.
+  if (!closeProfileAppMainWindow(profileAppMainPid(entry) ?? entry.pid)) {
+    sendProfileProcessSignal(profileAppMainPid(entry) ?? entry.pid, "SIGTERM");
+  }
+  if (await waitForProfileAppExit(entry, 8000)) {
     cleanupProfileAppEntry(key, entry);
     return true;
   }
 
   return false;
+}
+
+function closeProfileAppMainWindow(pid: number | undefined): boolean {
+  if (!pid || process.platform !== "win32") {
+    return false;
+  }
+  const script = `$p = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($p) { $p.CloseMainWindow() }`;
+  const result = spawnSync(windowsSystemCommand("powershell.exe"), [
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    script
+  ], {
+    encoding: "utf8",
+    windowsHide: true
+  });
+  return !result.error && /true/i.test(result.stdout);
 }
 
 function profileRuntimeKey(profileId: string, surface: ProfileOpenRequest["surface"]): string {

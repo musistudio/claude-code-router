@@ -879,15 +879,15 @@ function App() {
     setThemePreference(normalized.theme || "system");
   }
 
-  function showToast(message: string) {
+  function showToast(message: string, options?: { durationMs?: number; prominent?: boolean }) {
     if (toastTimer.current !== undefined) {
       window.clearTimeout(toastTimer.current);
     }
-    setToast({ id: Date.now(), message });
+    setToast({ id: Date.now(), message, prominent: options?.prominent });
     toastTimer.current = window.setTimeout(() => {
       setToast(undefined);
       toastTimer.current = undefined;
-    }, 1800);
+    }, options?.durationMs ?? 1800);
   }
 
   function openUpdateDialog() {
@@ -2607,7 +2607,7 @@ function App() {
       }
       const result = await window.ccr.openProfile({ profileId: profile.id, surface: "app" });
       await refreshProfileRuntimeStatus();
-      showToast(translateAppErrorMessage(copy, result.message));
+      showToast(translateAppErrorMessage(copy, result.message), { durationMs: 6000, prominent: true });
     } catch (error) {
       setProfileActionError(formatError(error));
     } finally {
@@ -2631,9 +2631,11 @@ function App() {
         return;
       }
       const result = await window.ccr.stopProfile({ profileId: profile.id, surface: "app" });
-      removeProfileRuntimeEntry(result.profileId, result.surface);
+      if (result.stopped) {
+        removeProfileRuntimeEntry(result.profileId, result.surface);
+      }
       await refreshProfileRuntimeStatus();
-      showToast(translateAppErrorMessage(copy, result.message));
+      showToast(translateAppErrorMessage(copy, result.message), { durationMs: 6000, prominent: true });
     } catch (error) {
       setProfileActionError(formatError(error));
     } finally {
@@ -2696,7 +2698,7 @@ function App() {
       const result = await window.ccr.openProfile({ profileId: profile.id, surface: "app" });
       await refreshProfileRuntimeStatus();
       setProfileOpenDialog(undefined);
-      showToast(translateAppErrorMessage(copy, result.message));
+      showToast(translateAppErrorMessage(copy, result.message), { durationMs: 6000, prominent: true });
     } catch (error) {
       setProfileOpenDialog((current) => current?.profile.id === profile.id
         ? { ...current, busy: "", error: formatError(error) }
