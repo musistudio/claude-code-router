@@ -3046,7 +3046,7 @@ function ProviderUsageSettings({
               {draft.accountMode === "browser" ? (
                 <>
                   <div className="sm:col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px] leading-4 text-muted-foreground">
-                    {t("Browser JSON request uses CCR Desktop's built-in browser login state. Sign in in the in-app browser before testing.")}
+                    {t("Browser request uses CCR Desktop's built-in browser login state. Sign in in the in-app browser before testing.")}
                   </div>
                   <Field className="sm:col-span-2" label={t("Browser login URL")}>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">

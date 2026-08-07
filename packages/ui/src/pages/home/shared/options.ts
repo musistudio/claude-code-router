@@ -181,7 +181,7 @@ export const providerProtocolOptions: Array<{ label: string; value: GatewayProvi
 export const providerAccountModeOptions: Array<{ label: string; value: ProviderAccountDraftMode }> = [
   { label: "Standard usage endpoint", value: "standard" },
   { label: "HTTP JSON request", value: "http-json" },
-  { label: "Browser JSON request", value: "browser" },
+  { label: "Browser request", value: "browser" },
   { label: "Raw connector JSON", value: "raw" }
 ];
 
