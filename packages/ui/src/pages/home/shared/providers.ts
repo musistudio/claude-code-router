@@ -1960,17 +1960,18 @@ export function providerCapabilitiesForSave(
   const normalizedNextBaseUrl = normalizeProviderBaseUrl(nextBaseUrl) || nextBaseUrl.trim();
   const preserveExisting = normalizedExistingBaseUrl === undefined ||
     normalizedExistingBaseUrl === normalizedNextBaseUrl;
-  // Selectable protocols (the LLM checkboxes) only keep capabilities the user
-  // still has selected — otherwise an unchecked capability silently merges
-  // back on every save. Non-selectable media protocols are always preserved.
+  // The capabilities rebuilt from the current form are authoritative for
+  // selectable protocols. Preserving an older capability for the same
+  // protocol can keep a stale endpoint alive beside the newly detected one.
+  // Non-selectable media protocols may use independent origins, so keep them
+  // while the provider's global base URL is unchanged.
   const selectableTypes = new Set(providerProtocolOptions.map((option) => option.value));
-  const selectedTypes = new Set(currentCapabilities.map((capability) => capability.type));
-  const preservedSelectedCapabilities = preservedCapabilities.filter((capability) =>
-    !selectableTypes.has(capability.type as GatewayProviderProtocol) || selectedTypes.has(capability.type)
+  const preservedMediaCapabilities = preservedCapabilities.filter((capability) =>
+    !selectableTypes.has(capability.type as GatewayProviderProtocol)
   );
   return mergeProviderCapabilities(
     currentCapabilities,
-    ...(preserveExisting ? [preservedSelectedCapabilities] : [])
+    ...(preserveExisting ? [preservedMediaCapabilities] : [])
   );
 }
 

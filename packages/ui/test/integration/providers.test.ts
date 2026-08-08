@@ -161,6 +161,30 @@ test("provider save keeps explicit secondary media origins when the base URL is 
   );
 });
 
+test("provider save replaces a stale selectable capability for the same protocol", () => {
+  const current = [{
+    baseUrl: "https://gateway.example/anthropic",
+    endpoint: "https://gateway.example/anthropic/v1/messages",
+    source: "detected" as const,
+    type: "anthropic_messages" as const
+  }];
+  const stale = [{
+    baseUrl: "https://gateway.example",
+    source: "preset" as const,
+    type: "anthropic_messages" as const
+  }];
+
+  assert.deepEqual(
+    providerCapabilitiesForSave(
+      current,
+      stale,
+      "https://gateway.example/v1",
+      "https://gateway.example/v1"
+    ),
+    current
+  );
+});
+
 test("provider save drops an unchecked selectable protocol capability", () => {
   const current = [{
     baseUrl: "https://chat.example/v1",
