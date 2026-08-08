@@ -363,6 +363,68 @@ export function DeleteProfileDialog({
   );
 }
 
+export function ForceStopZcodeDialog({
+  busy = false,
+  error,
+  external = false,
+  onClose,
+  onConfirm,
+  profile
+}: {
+  busy?: boolean;
+  error?: string;
+  external?: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  profile: ProfileConfig;
+}) {
+  const t = useAppText();
+
+  return (
+    <Dialog onOpenChange={(open) => !open && !busy && onClose()} open>
+      <DialogContent className="max-w-[520px]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{t("Force quit ZCode?")}</DialogTitle>
+          </div>
+          <Button aria-label={t("Close dialog")} disabled={busy} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogHeader>
+
+        <DialogBody>
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5">
+            <div className="flex items-start gap-2 text-[12px] font-medium text-destructive">
+              <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{t("Unsaved work may be lost.")}</span>
+            </div>
+            <div className="mt-2 space-y-1.5 text-[11px] leading-5 text-muted-foreground">
+              <div>{external
+                ? t("This ZCode instance was started outside CCR.")
+                : t("Closing the ZCode window only sends it to the system tray.")}</div>
+              <div>{t("Force quitting immediately ends ZCode and its child processes.")}</div>
+              <div className="truncate" title={profile.name || profile.id}>
+                <span className="font-medium text-foreground">{t("Name")}:</span> {profile.name || profile.id}
+              </div>
+            </div>
+          </div>
+          {error ? <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">{error}</div> : null}
+        </DialogBody>
+
+        <DialogFooter>
+          <Button autoFocus disabled={busy} onClick={onClose} type="button" variant="outline">
+            {t("Cancel")}
+          </Button>
+          <Button disabled={busy} onClick={onConfirm} type="button" variant="destructive">
+            {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+            {t("Force quit")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function ProfileOpenDialog({
   appRunning = false,
   busy,

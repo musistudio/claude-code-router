@@ -2,7 +2,7 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { assertAvailableGatewayModels, type AppConfig, type ProfileConfig, type ProfileOpenCommandResult, type ProfileOpenRequest, type ProfileOpenResult, type ProfileRuntimeEntry, type ProfileRuntimeStatus, type ProfileStopResult } from "@ccr/core/contracts/app";
+import { assertAvailableGatewayModels, type AppConfig, type ProfileConfig, type ProfileOpenCommandResult, type ProfileOpenRequest, type ProfileOpenResult, type ProfileRuntimeEntry, type ProfileRuntimeStatus, type ProfileStopRequest, type ProfileStopResult } from "@ccr/core/contracts/app";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { applyClaudeAppGatewayConfig, readClaudeAppGatewayApiKeyCandidates } from "@ccr/core/agents/claude-app/gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "@ccr/core/agents/claude-app/launch";
@@ -771,7 +771,7 @@ export function getProfileRuntimeStatus(): ProfileRuntimeStatus {
   };
 }
 
-export async function stopProfileFromCcr(config: AppConfig, request: ProfileOpenRequest): Promise<ProfileStopResult> {
+export async function stopProfileFromCcr(config: AppConfig, request: ProfileStopRequest): Promise<ProfileStopResult> {
   const profile = findProfileForOpen(config, request.profileId);
   const surface = resolveProfileOpenSurface(profile, request.surface);
   if (surface !== "app") {
@@ -790,17 +790,20 @@ export async function stopProfileFromCcr(config: AppConfig, request: ProfileOpen
     };
   }
 
-  if (entry.external && profile.agent === "zcode") {
+  const stopPlan = profileStopPlan(profile.agent, Boolean(entry.external), request.force === true);
+  if (stopPlan.requiresForceConfirmation) {
     return {
-      message: "This ZCode instance was started outside CCR. Exit it from its tray menu (right-click the tray icon and choose Quit).",
+      external: stopPlan.external,
+      message: "Force quit ZCode? Unsaved work may be lost.",
       profileId: profile.id,
       profileName: profile.name,
+      requiresForceConfirmation: true,
       stopped: false,
       surface
     };
   }
 
-  const stopped = await stopRunningProfileApp(key, entry);
+  const stopped = await stopRunningProfileApp(key, entry, stopPlan.signal);
   if (stopped) {
     if (profile.agent === "claude-code") {
       stopClaudeAppBotWorker(profile.id);
@@ -815,7 +818,7 @@ export async function stopProfileFromCcr(config: AppConfig, request: ProfileOpen
     message: stopped
       ? `Stopped ${profile.name || profile.id}.`
       : profile.agent === "zcode"
-        ? "ZCode did not close automatically. Quit it from its tray menu (right-click the tray icon and choose Quit)."
+        ? "ZCode could not be force quit. Close it in Task Manager and try again."
         : `Stop requested for ${profile.name || profile.id}. It may take a moment to close.`,
     profileId: profile.id,
     profileName: profile.name,
@@ -986,19 +989,47 @@ function cleanupProfileAppEntry(key: string, entry: RunningProfileApp): void {
   }
 }
 
-async function stopRunningProfileApp(key: string, entry: RunningProfileApp): Promise<boolean> {
+type ProfileStopPlan =
+  | {
+      external: boolean;
+      requiresForceConfirmation: true;
+    }
+  | {
+      external: boolean;
+      requiresForceConfirmation?: false;
+      signal: "SIGKILL" | "SIGTERM";
+    };
+
+function profileStopPlan(agent: ProfileConfig["agent"], external: boolean, force: boolean): ProfileStopPlan {
+  if (agent === "zcode" && !force) {
+    return { external, requiresForceConfirmation: true };
+  }
+  return {
+    external,
+    signal: agent === "zcode" ? "SIGKILL" : "SIGTERM"
+  };
+}
+
+export function profileStopPlanForTest(
+  agent: ProfileConfig["agent"],
+  external: boolean,
+  force: boolean
+): ProfileStopPlan {
+  return profileStopPlan(agent, external, force);
+}
+
+async function stopRunningProfileApp(
+  key: string,
+  entry: RunningProfileApp,
+  signal: "SIGKILL" | "SIGTERM" = "SIGTERM"
+): Promise<boolean> {
   if (!isProfileAppRunning(entry)) {
     cleanupProfileAppEntry(key, entry);
     return false;
   }
 
   entry.stopRequested = true;
-  // Ask the main process to close itself (same self-shutdown path as the
-  // tray Quit action) before falling back to taskkill /T, which stubborn
-  // Electron helper processes ignore. Never force-kill.
-  if (!closeProfileAppMainWindow(profileAppMainPid(entry) ?? entry.pid)) {
-    sendProfileProcessSignal(profileAppMainPid(entry) ?? entry.pid, "SIGTERM");
-  }
+  sendProfileProcessSignal(profileAppMainPid(entry) ?? entry.pid, signal);
   if (await waitForProfileAppExit(entry, 8000)) {
     cleanupProfileAppEntry(key, entry);
     return true;
@@ -1008,23 +1039,6 @@ async function stopRunningProfileApp(key: string, entry: RunningProfileApp): Pro
   // still-running app instead of hiding it behind a start button.
   entry.stopRequested = false;
   return false;
-}
-
-function closeProfileAppMainWindow(pid: number | undefined): boolean {
-  if (!pid || process.platform !== "win32") {
-    return false;
-  }
-  const script = `$p = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($p) { $p.CloseMainWindow() }`;
-  const result = spawnSync(windowsSystemCommand("powershell.exe"), [
-    "-NoProfile",
-    "-NonInteractive",
-    "-Command",
-    script
-  ], {
-    encoding: "utf8",
-    windowsHide: true
-  });
-  return !result.error && /true/i.test(result.stdout);
 }
 
 function profileRuntimeKey(profileId: string, surface: ProfileOpenRequest["surface"]): string {
@@ -1178,10 +1192,7 @@ function sendProfileProcessSignal(pid: number | undefined, signal: NodeJS.Signal
     return;
   }
   if (process.platform === "win32") {
-    const args = ["/PID", String(pid), "/T"];
-    if (signal === "SIGKILL") {
-      args.push("/F");
-    }
+    const args = windowsProfileProcessSignalArgs(pid, signal);
     spawnSync(windowsSystemCommand("taskkill.exe"), args, {
       stdio: "ignore",
       windowsHide: true
@@ -1194,6 +1205,18 @@ function sendProfileProcessSignal(pid: number | undefined, signal: NodeJS.Signal
   } catch {
     // The app process may have already exited.
   }
+}
+
+function windowsProfileProcessSignalArgs(pid: number, signal: NodeJS.Signals): string[] {
+  const args = ["/PID", String(pid), "/T"];
+  if (signal === "SIGKILL") {
+    args.push("/F");
+  }
+  return args;
+}
+
+export function windowsProfileProcessSignalArgsForTest(pid: number, signal: NodeJS.Signals): string[] {
+  return windowsProfileProcessSignalArgs(pid, signal);
 }
 
 async function waitForProfileAppStart(entry: Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "spawnError" | "userDataDir">, timeoutMs: number): Promise<boolean> {

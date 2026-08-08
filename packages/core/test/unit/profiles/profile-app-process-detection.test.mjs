@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   isProfileAppMainProcessCommandForTest,
-  isProfileAppRunningWithProbeForTest
+  isProfileAppRunningWithProbeForTest,
+  profileStopPlanForTest,
+  windowsProfileProcessSignalArgsForTest
 } from "@ccr/core/profiles/launch-service.ts";
 
 const userDataDir = "/Users/example/.claude-code-router/profiles/codex/codex/.claude-code-router/codex-app-user-data/codex";
@@ -72,4 +74,44 @@ test("profile app liveness uses process discovery for launcher pids", () => {
   assert.equal(running, false);
   assert.equal(pidChecks, 0);
   assert.equal(discoveryCalls, 1);
+});
+
+test("ZCode stop requires confirmation for CCR-owned and external instances", () => {
+  assert.deepEqual(profileStopPlanForTest("zcode", false, false), {
+    external: false,
+    requiresForceConfirmation: true
+  });
+  assert.deepEqual(profileStopPlanForTest("zcode", true, false), {
+    external: true,
+    requiresForceConfirmation: true
+  });
+});
+
+test("confirmed ZCode stop force-kills only the tracked process tree", () => {
+  assert.deepEqual(profileStopPlanForTest("zcode", false, true), {
+    external: false,
+    signal: "SIGKILL"
+  });
+  assert.deepEqual(profileStopPlanForTest("zcode", true, true), {
+    external: true,
+    signal: "SIGKILL"
+  });
+  assert.deepEqual(windowsProfileProcessSignalArgsForTest(4321, "SIGKILL"), [
+    "/PID",
+    "4321",
+    "/T",
+    "/F"
+  ]);
+});
+
+test("force flag does not change the stop signal for other apps", () => {
+  assert.deepEqual(profileStopPlanForTest("codex", false, true), {
+    external: false,
+    signal: "SIGTERM"
+  });
+  assert.deepEqual(windowsProfileProcessSignalArgsForTest(4321, "SIGTERM"), [
+    "/PID",
+    "4321",
+    "/T"
+  ]);
 });
