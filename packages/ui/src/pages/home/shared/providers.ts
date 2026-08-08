@@ -1960,9 +1960,18 @@ export function providerCapabilitiesForSave(
   const normalizedNextBaseUrl = normalizeProviderBaseUrl(nextBaseUrl) || nextBaseUrl.trim();
   const preserveExisting = normalizedExistingBaseUrl === undefined ||
     normalizedExistingBaseUrl === normalizedNextBaseUrl;
+  // The capabilities rebuilt from the current form are authoritative for
+  // selectable protocols. Preserving an older capability for the same
+  // protocol can keep a stale endpoint alive beside the newly detected one.
+  // Non-selectable media protocols may use independent origins, so keep them
+  // while the provider's global base URL is unchanged.
+  const selectableTypes = new Set(providerProtocolOptions.map((option) => option.value));
+  const preservedMediaCapabilities = preservedCapabilities.filter((capability) =>
+    !selectableTypes.has(capability.type as GatewayProviderProtocol)
+  );
   return mergeProviderCapabilities(
     currentCapabilities,
-    ...(preserveExisting ? [preservedCapabilities] : [])
+    ...(preserveExisting ? [preservedMediaCapabilities] : [])
   );
 }
 

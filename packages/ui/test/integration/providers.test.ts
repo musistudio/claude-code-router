@@ -17,6 +17,7 @@ import {
   createProviderDraftFromProvider,
   createProviderInstallLinkFromDraft,
   customProviderPresetId,
+  Field,
   FieldGroup,
   localAgentProviderIconUrls,
   providerCapabilitiesForProtocols,
@@ -54,6 +55,23 @@ test("composite field groups do not label their nested controls", () => {
   assert.doesNotMatch(html, /^<label/);
   assert.match(html, /Search models/);
   assert.match(html, /Model settings/);
+});
+
+test("fields never wrap nested controls in a label element", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      Field,
+      { label: "Protocol details" },
+      React.createElement("input", { "aria-label": "First option" }),
+      React.createElement("input", { "aria-label": "Second option" })
+    )
+  );
+
+  assert.match(html, /^<div/);
+  assert.doesNotMatch(html, /<label/);
+  assert.match(html, /Protocol details/);
+  assert.match(html, /First option/);
+  assert.match(html, /Second option/);
 });
 
 test("Gemini preset keeps full protocol probing candidates", () => {
@@ -140,6 +158,55 @@ test("provider save keeps explicit secondary media origins when the base URL is 
   assert.deepEqual(
     providerCapabilitiesForSave(current, media, "https://chat.example/v1/", "https://chat.example/v1"),
     [...current, ...media]
+  );
+});
+
+test("provider save replaces a stale selectable capability for the same protocol", () => {
+  const current = [{
+    baseUrl: "https://gateway.example/anthropic",
+    endpoint: "https://gateway.example/anthropic/v1/messages",
+    source: "detected" as const,
+    type: "anthropic_messages" as const
+  }];
+  const stale = [{
+    baseUrl: "https://gateway.example",
+    source: "preset" as const,
+    type: "anthropic_messages" as const
+  }];
+
+  assert.deepEqual(
+    providerCapabilitiesForSave(
+      current,
+      stale,
+      "https://gateway.example/v1",
+      "https://gateway.example/v1"
+    ),
+    current
+  );
+});
+
+test("provider save drops an unchecked selectable protocol capability", () => {
+  const current = [{
+    baseUrl: "https://chat.example/v1",
+    source: "detected" as const,
+    type: "openai_chat_completions" as const
+  }];
+  const previous = [
+    {
+      baseUrl: "https://chat.example/v1",
+      source: "detected" as const,
+      type: "openai_chat_completions" as const
+    },
+    {
+      baseUrl: "https://chat.example/anthropic",
+      source: "detected" as const,
+      type: "anthropic_messages" as const
+    }
+  ];
+
+  assert.deepEqual(
+    providerCapabilitiesForSave(current, previous, "https://chat.example/v1", "https://chat.example/v1"),
+    current
   );
 });
 

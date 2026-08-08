@@ -20,7 +20,7 @@ import {
 } from "@ccr/ui/pages/tray/components/index.ts";
 import { TrayApp } from "@ccr/ui/pages/tray/TrayApp.tsx";
 import { TrayDetailApp } from "@ccr/ui/pages/tray/TrayDetailApp.tsx";
-import { applyTrayThemePreference, createSourceTabs } from "@ccr/ui/pages/tray/shared.tsx";
+import { applyTrayThemePreference, createSourceTabs, formatCompactNumber } from "@ccr/ui/pages/tray/shared.tsx";
 import { accountSnapshots, installBrowserGlobals, usageStats, usageTotals } from "../fixtures/index.ts";
 
 installBrowserGlobals();
@@ -119,7 +119,7 @@ test("TrayStatusStrip renders open and quit actions", () => {
 
   assert.match(html, /aria-label="Open CCR"/);
   assert.match(html, /title="Open CCR"/);
-  assert.match(html, /12\.5K tokens/);
+  assert.ok(html.includes(`${formatCompactNumber(12500)} tokens`));
   assert.match(html, /CCR/);
   assert.match(html, /aria-label="Quit"/);
 });

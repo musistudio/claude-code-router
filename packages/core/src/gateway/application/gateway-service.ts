@@ -89,6 +89,7 @@ class GatewayService {
   private child?: ChildProcess;
   private config?: AppConfig;
   private coreAuthToken = "";
+  private lastAppliedGatewayConfig?: string;
   private plugin?: ClaudeCodeRouterPlugin;
   private readonly rawTraceSynchronizer = new RawTraceSynchronizer({
     getConfig: () => this.config
@@ -205,6 +206,9 @@ class GatewayService {
         assertManagedGatewayStartupContinues(managedChild, startupFailure);
         await waitForManagedCoreGatewayReady(this.status.coreEndpoint, runtimeId, managedChild);
         assertManagedGatewayStartupContinues(managedChild, startupFailure);
+        this.lastAppliedGatewayConfig = JSON.stringify(coreGatewayConfig);
+      } else {
+        this.lastAppliedGatewayConfig = undefined;
       }
 
       this.status = {
@@ -230,6 +234,7 @@ class GatewayService {
     const child = this.child;
     this.child = undefined;
     this.coreAuthToken = "";
+    this.lastAppliedGatewayConfig = undefined;
     if (child && !child.killed) {
       child.kill();
     }
@@ -295,6 +300,65 @@ class GatewayService {
       endpoint: endpoint(config.gateway.host, config.gateway.port),
       networkEndpoints: gatewayNetworkEndpoints(config.gateway.host, config.gateway.port)
     };
+    await this.pushConfigToManagedCoreGateway(config);
+  }
+
+  // The managed core gateway child receives its config once over IPC at spawn
+  // time. Without this push, any config save that does not trigger a full
+  // restart leaves the child running stale providers/models/keys until the
+  // next launch.
+  private async pushConfigToManagedCoreGateway(config: AppConfig): Promise<void> {
+    if (!this.child || !this.coreAuthToken) {
+      return;
+    }
+    const upstreamProxyUrl = proxyService.getUpstreamProxyUrl("https") ?? await getSystemProxyUrlForProtocol("https", config);
+    const coreGatewayConfig = await compileCoreGatewayConfig(
+      config,
+      this.rawTraceSynchronizer.token,
+      this.billingSynchronizer.token,
+      this.coreAuthToken,
+      this.browserWebSearchMcpIntegration,
+      upstreamProxyUrl
+    );
+    const serialized = JSON.stringify(coreGatewayConfig);
+    if (serialized === this.lastAppliedGatewayConfig) {
+      return;
+    }
+    try {
+      // 子进程可能正在启动（上一次重启还没就绪），连接级失败做短暂重试;
+      // 只有收到明确拒绝(4xx)或重试耗尽才回退完整重启。
+      let lastError: unknown;
+      let responded = false;
+      for (let attempt = 0; attempt < 6 && !responded; attempt += 1) {
+        try {
+          const response = await fetch(`${endpoint(config.gateway.coreHost, config.gateway.corePort)}/manager/config`, {
+            body: serialized,
+            headers: {
+              "content-type": "application/json",
+              [coreGatewayAuthHeader]: this.coreAuthToken
+            },
+            method: "PUT"
+          });
+          responded = true;
+          if (!response.ok) {
+            const detail = (await response.text().catch(() => "")).slice(0, 300);
+            throw new Error(`Core gateway rejected the config update with HTTP ${response.status}: ${detail}`);
+          }
+          this.lastAppliedGatewayConfig = serialized;
+          return;
+        } catch (error) {
+          lastError = error;
+          if (!responded) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+          }
+        }
+      }
+      throw lastError instanceof Error ? lastError : new Error(String(lastError));
+    } catch (error) {
+      console.warn(`[gateway] Restarting the core gateway to apply the config change (hot push unavailable: ${formatError(error)})`);
+      this.lastAppliedGatewayConfig = undefined;
+      await this.start(config);
+    }
   }
 
   validateRouteScript(request: RouteScriptValidationRequest): Promise<RouteScriptValidationResult> {
