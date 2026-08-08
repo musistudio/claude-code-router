@@ -124,7 +124,7 @@ export const providerReasoningCopyKeys = {
   },
   responses: {
     history: {
-      autoDescription: "Chosen from the API address: OpenAI/Codex sends full history; DeepSeek and Xiaomi MiMo send plaintext only; other services send no reasoning history. Answers and tool calls are kept.",
+      autoDescription: "Chosen from the API address: OpenAI/Codex sends full history; other Responses-compatible services send plaintext only. Answers and tool calls are kept.",
       fullDescription: "Sends all Responses reasoning data, including encrypted data, compacted context, and internal steps. Use only with official OpenAI/Codex.",
       fullLabel: "Full history (OpenAI/Codex only)",
       fullShort: "Full history",
@@ -967,7 +967,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       [providerReasoningCopyKeys.protocol.geminiInteractions.short]: "检查 step 签名",
       [providerReasoningCopyKeys.protocol.openAIChatCompletions.note]: "自动按服务支持处理 reasoning。\n· 服务支持时，明文 reasoning 会放到对应字段中，例如 reasoning_content。\n· 厂商自己的推理格式，只有在服务支持、数据完整，且 API 地址、模型和账号未变时才发送。\n· 其他情况下不发送旧 reasoning。\n回答和工具调用不受影响。无需配置。",
       [providerReasoningCopyKeys.protocol.openAIChatCompletions.short]: "按服务支持发送 reasoning",
-      [providerReasoningCopyKeys.responses.history.autoDescription]: "按 API 地址选择：OpenAI/Codex 发送完整历史；DeepSeek、小米 MiMo 只发送明文；其他服务不发送推理历史。回答和工具调用会保留。",
+      [providerReasoningCopyKeys.responses.history.autoDescription]: "按 API 地址选择：OpenAI/Codex 发送完整历史；其他 Responses 兼容服务只发送明文。回答和工具调用会保留。",
       [providerReasoningCopyKeys.responses.history.fullDescription]: "发送全部 Responses 推理数据，包括加密内容、压缩上下文和内部步骤。仅用于官方 OpenAI/Codex。",
       [providerReasoningCopyKeys.responses.history.fullLabel]: "完整历史（仅 OpenAI/Codex）",
       [providerReasoningCopyKeys.responses.history.fullShort]: "完整历史",

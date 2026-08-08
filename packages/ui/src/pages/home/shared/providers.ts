@@ -2057,9 +2057,9 @@ export function inferredResponsesReasoningHistoryPolicy(
       return "plaintext";
     }
   } catch {
-    // Unknown endpoints use the same safe default as ai-gateway.
+    // Unknown endpoints use the same plaintext-only default as ai-gateway.
   }
-  return "strip";
+  return "plaintext";
 }
 
 export function providerGlobalBaseUrlForProbe(

@@ -199,13 +199,14 @@ test("Responses feature helpers update one protocol and infer safe endpoint defa
     inferredResponsesReasoningHistoryPolicy("https://token-plan-sgp.xiaomimimo.com/v1"),
     "plaintext"
   );
-  assert.equal(inferredResponsesReasoningHistoryPolicy("https://unknown.example/v1"), "strip");
+  assert.equal(inferredResponsesReasoningHistoryPolicy("https://unknown.example/v1"), "plaintext");
+  assert.equal(inferredResponsesReasoningHistoryPolicy("not a valid URL"), "plaintext");
 });
 
 test("Responses policy control shows summary options only for effective plaintext mode", () => {
   const plaintext = renderToStaticMarkup(
     React.createElement(ResponsesProtocolFeaturesControl, {
-      autoBaseUrl: "https://api.deepseek.com/v1",
+      autoBaseUrl: "https://unknown.example/v1",
       onChange: () => undefined
     })
   );
@@ -303,7 +304,7 @@ test("Responses reasoning options stay concise and fully localized", () => {
     "不发送"
   ]);
   assert.deepEqual(automatic.historyOptions.map((option) => option.description), [
-    "按 API 地址选择：OpenAI/Codex 发送完整历史；DeepSeek、小米 MiMo 只发送明文；其他服务不发送推理历史。回答和工具调用会保留。",
+    "按 API 地址选择：OpenAI/Codex 发送完整历史；其他 Responses 兼容服务只发送明文。回答和工具调用会保留。",
     "发送全部 Responses 推理数据，包括加密内容、压缩上下文和内部步骤。仅用于官方 OpenAI/Codex。",
     "只发送可读的推理文字，不发送加密内容或签名。用于 DeepSeek、小米 MiMo 等兼容服务。回答和工具调用会保留。",
     "不发送以前的推理内容。回答和工具调用会保留，但压缩上下文可能丢失。"
