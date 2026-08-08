@@ -103,6 +103,53 @@ export type AppCopy = {
 
 export const languagePreferenceStorageKey = "ccr.ui.language";
 
+export const providerReasoningCopyKeys = {
+  protocol: {
+    anthropicMessages: {
+      note: "Signed and plaintext thinking are handled separately.\n· Signed Anthropic thinking is sent unchanged when it is complete and the model, API address, and account have not changed.\n· If those checks fail, only old signed thinking is removed.\n· Plaintext thinking from compatible services such as DeepSeek is not removed just because it has no Anthropic signature.\n· If the current tool call cannot continue safely, the request returns an error.\nAnswers and normal tool calls are kept. No setup is needed.",
+      short: "signed/plaintext thinking handled separately"
+    },
+    geminiGenerateContent: {
+      note: "thoughtSignature is handled automatically.\n· A complete signature is sent unchanged when the model, API address, and account have not changed.\n· For Gemini 3, a current tool call without its signature returns an error.\n· An older completed tool group without its signature is removed as a group.\nExcept for that group removal, only thinking is removed. Answers and normal tool calls are kept. No setup is needed.",
+      short: "check thoughtSignature"
+    },
+    geminiInteractions: {
+      note: "Signed steps are handled automatically.\n· Only thought and tool steps with a usable signature are sent.\n· Steps can still be used after switching Gemini models on the same Gemini service.\n· Old signed steps are not sent after changing the API address or account.\nAnswers and normal tool calls are kept. No setup is needed.",
+      short: "check step signatures"
+    },
+    openAIChatCompletions: {
+      note: "Reasoning is sent in fields supported by the service.\n· Readable reasoning uses the service's field, such as reasoning_content.\n· A vendor-specific reasoning format is sent only when the service supports it, the data is complete, and the API address, model, and account have not changed.\n· Otherwise, old reasoning is not sent.\nAnswers and tool calls are kept. No setup is needed.",
+      short: "use supported reasoning fields"
+    }
+  },
+  responses: {
+    history: {
+      autoDescription: "Chosen from the API address: OpenAI/Codex sends full history; other Responses-compatible services send plaintext only. Answers and tool calls are kept.",
+      fullDescription: "Sends all Responses reasoning data, including encrypted data, compacted context, and internal steps. Use only with official OpenAI/Codex.",
+      fullLabel: "Full history (OpenAI/Codex only)",
+      fullShort: "Full history",
+      noneDescription: "Sends no past reasoning. Answers and tool calls are kept, but compacted context may be lost.",
+      plaintextDescription: "Sends readable reasoning only. Encrypted data and signatures are not sent. Use with compatible services such as DeepSeek and Xiaomi MiMo. Answers and tool calls are kept.",
+      plaintextLabel: "Plaintext only (compatible services)",
+      plaintextShort: "Plaintext only",
+      providerFullDescription: "Uses the provider setting. Current choice: full history.",
+      providerNoneDescription: "Uses the provider setting. Current choice: do not send.",
+      providerPlaintextDescription: "Uses the provider setting. Current choice: plaintext only."
+    },
+    summary: {
+      defaultDescription: "The default is to send no reasoning summary.",
+      defaultLabel: "Default",
+      noneDescription: "Sends no reasoning summary.",
+      providerLabel: "Use provider setting",
+      providerNoneDescription: "Uses the provider setting. Current choice: do not send.",
+      providerPlaintextDescription: "Uses the provider setting. Current choice: send as plaintext.",
+      plaintextDescription: "Sends the reasoning summary as plaintext reasoning.",
+      plaintextLabel: "Send as plaintext"
+    },
+    warning: "Compacted context may be lost when reasoning history is not sent."
+  }
+} as const;
+
 export const appCopy: Record<ResolvedLanguage, AppCopy> = {
   en: {
     navigation: {
@@ -266,6 +313,37 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Available models": "Available models",
       "Available after saving": "Available after saving",
       "Automatic": "Automatic",
+      "Do not send": "Do not send",
+      [providerReasoningCopyKeys.protocol.anthropicMessages.note]: providerReasoningCopyKeys.protocol.anthropicMessages.note,
+      [providerReasoningCopyKeys.protocol.anthropicMessages.short]: providerReasoningCopyKeys.protocol.anthropicMessages.short,
+      [providerReasoningCopyKeys.protocol.geminiGenerateContent.note]: providerReasoningCopyKeys.protocol.geminiGenerateContent.note,
+      [providerReasoningCopyKeys.protocol.geminiGenerateContent.short]: providerReasoningCopyKeys.protocol.geminiGenerateContent.short,
+      [providerReasoningCopyKeys.protocol.geminiInteractions.note]: providerReasoningCopyKeys.protocol.geminiInteractions.note,
+      [providerReasoningCopyKeys.protocol.geminiInteractions.short]: providerReasoningCopyKeys.protocol.geminiInteractions.short,
+      [providerReasoningCopyKeys.protocol.openAIChatCompletions.note]: providerReasoningCopyKeys.protocol.openAIChatCompletions.note,
+      [providerReasoningCopyKeys.protocol.openAIChatCompletions.short]: providerReasoningCopyKeys.protocol.openAIChatCompletions.short,
+      [providerReasoningCopyKeys.responses.history.autoDescription]: providerReasoningCopyKeys.responses.history.autoDescription,
+      [providerReasoningCopyKeys.responses.history.fullDescription]: providerReasoningCopyKeys.responses.history.fullDescription,
+      [providerReasoningCopyKeys.responses.history.fullLabel]: providerReasoningCopyKeys.responses.history.fullLabel,
+      [providerReasoningCopyKeys.responses.history.fullShort]: providerReasoningCopyKeys.responses.history.fullShort,
+      [providerReasoningCopyKeys.responses.history.noneDescription]: providerReasoningCopyKeys.responses.history.noneDescription,
+      [providerReasoningCopyKeys.responses.history.plaintextDescription]: providerReasoningCopyKeys.responses.history.plaintextDescription,
+      [providerReasoningCopyKeys.responses.history.plaintextLabel]: providerReasoningCopyKeys.responses.history.plaintextLabel,
+      [providerReasoningCopyKeys.responses.history.plaintextShort]: providerReasoningCopyKeys.responses.history.plaintextShort,
+      [providerReasoningCopyKeys.responses.history.providerFullDescription]: providerReasoningCopyKeys.responses.history.providerFullDescription,
+      [providerReasoningCopyKeys.responses.history.providerNoneDescription]: providerReasoningCopyKeys.responses.history.providerNoneDescription,
+      [providerReasoningCopyKeys.responses.history.providerPlaintextDescription]: providerReasoningCopyKeys.responses.history.providerPlaintextDescription,
+      [providerReasoningCopyKeys.responses.summary.defaultDescription]: providerReasoningCopyKeys.responses.summary.defaultDescription,
+      [providerReasoningCopyKeys.responses.summary.noneDescription]: providerReasoningCopyKeys.responses.summary.noneDescription,
+      [providerReasoningCopyKeys.responses.summary.plaintextDescription]: providerReasoningCopyKeys.responses.summary.plaintextDescription,
+      [providerReasoningCopyKeys.responses.summary.plaintextLabel]: providerReasoningCopyKeys.responses.summary.plaintextLabel,
+      [providerReasoningCopyKeys.responses.summary.providerLabel]: providerReasoningCopyKeys.responses.summary.providerLabel,
+      [providerReasoningCopyKeys.responses.summary.providerPlaintextDescription]: providerReasoningCopyKeys.responses.summary.providerPlaintextDescription,
+      [providerReasoningCopyKeys.responses.warning]: providerReasoningCopyKeys.responses.warning,
+      "Reasoning history": "Reasoning history",
+      "Reasoning history compatibility": "Reasoning history compatibility",
+      "Reasoning summary": "Reasoning summary",
+      "Use provider default": "Use provider default",
       "Add credentials": "Add credentials",
       "Add the API key CCR will use for model requests.": "Add the API key CCR will use for model requests.",
       "A real model request succeeded with the selected provider settings.": "A real model request succeeded with the selected provider settings.",
@@ -880,6 +958,37 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Auto detect protocols description": "开启后，CCR 会在编辑时探测接口，并用探测到的协议和模型更新此供应商。关闭后，手动选择的协议和自定义模型 ID 会保持不变。",
       "Auto detect protocols info": "自动探测协议说明",
       "Automatic": "自动",
+      "Do not send": "不发送",
+      [providerReasoningCopyKeys.protocol.anthropicMessages.note]: "签名 thinking 和明文 thinking 会分开处理。\n· Anthropic 官方 thinking：签名完整，且模型、API 地址和账号未变时，旧 thinking 会原样发送。\n· 条件不满足时，只移除旧的签名 thinking。\n· DeepSeek 等兼容服务的明文 thinking，不会因为没有 Anthropic 签名而被删除。\n· 当前工具调用无法安全继续时，请求会报错。\n回答和普通工具调用不受影响。无需配置。",
+      [providerReasoningCopyKeys.protocol.anthropicMessages.short]: "签名/明文 thinking 分别处理",
+      [providerReasoningCopyKeys.protocol.geminiGenerateContent.note]: "自动处理 thoughtSignature。\n· 签名完整，且模型、API 地址和账号未变时，会原样发送。\n· Gemini 3 当前工具调用缺少签名时，请求会报错。\n· 已经结束的旧工具记录缺少签名时，会整组删除。\n除上述整组删除外，只清理思考内容。回答和普通工具调用不受影响。无需配置。",
+      [providerReasoningCopyKeys.protocol.geminiGenerateContent.short]: "检查 thoughtSignature",
+      [providerReasoningCopyKeys.protocol.geminiInteractions.note]: "自动处理带签名的 step。\n· 只发送带有效签名的 thought 和 tool step。\n· 同一 Gemini 服务内，即使切换 Gemini 模型，也可以继续使用。\n· 更换 API 地址或账号后，不发送旧的签名 step。\n回答和普通工具调用不受影响。无需配置。",
+      [providerReasoningCopyKeys.protocol.geminiInteractions.short]: "检查 step 签名",
+      [providerReasoningCopyKeys.protocol.openAIChatCompletions.note]: "自动按服务支持处理 reasoning。\n· 服务支持时，明文 reasoning 会放到对应字段中，例如 reasoning_content。\n· 厂商自己的推理格式，只有在服务支持、数据完整，且 API 地址、模型和账号未变时才发送。\n· 其他情况下不发送旧 reasoning。\n回答和工具调用不受影响。无需配置。",
+      [providerReasoningCopyKeys.protocol.openAIChatCompletions.short]: "按服务支持发送 reasoning",
+      [providerReasoningCopyKeys.responses.history.autoDescription]: "按 API 地址选择：OpenAI/Codex 发送完整历史；其他 Responses 兼容服务只发送明文。回答和工具调用会保留。",
+      [providerReasoningCopyKeys.responses.history.fullDescription]: "发送全部 Responses 推理数据，包括加密内容、压缩上下文和内部步骤。仅用于官方 OpenAI/Codex。",
+      [providerReasoningCopyKeys.responses.history.fullLabel]: "完整历史（仅 OpenAI/Codex）",
+      [providerReasoningCopyKeys.responses.history.fullShort]: "完整历史",
+      [providerReasoningCopyKeys.responses.history.noneDescription]: "不发送以前的推理内容。回答和工具调用会保留，但压缩上下文可能丢失。",
+      [providerReasoningCopyKeys.responses.history.plaintextDescription]: "只发送可读的推理文字，不发送加密内容或签名。用于 DeepSeek、小米 MiMo 等兼容服务。回答和工具调用会保留。",
+      [providerReasoningCopyKeys.responses.history.plaintextLabel]: "仅明文（兼容服务）",
+      [providerReasoningCopyKeys.responses.history.plaintextShort]: "仅明文",
+      [providerReasoningCopyKeys.responses.history.providerFullDescription]: "使用供应商设置。当前选择：完整历史。",
+      [providerReasoningCopyKeys.responses.history.providerNoneDescription]: "使用供应商设置。当前选择：不发送。",
+      [providerReasoningCopyKeys.responses.history.providerPlaintextDescription]: "使用供应商设置。当前选择：仅明文。",
+      [providerReasoningCopyKeys.responses.summary.defaultDescription]: "默认不发送推理摘要。",
+      [providerReasoningCopyKeys.responses.summary.noneDescription]: "不发送推理摘要。",
+      [providerReasoningCopyKeys.responses.summary.plaintextDescription]: "把推理摘要作为明文推理发送。",
+      [providerReasoningCopyKeys.responses.summary.plaintextLabel]: "作为明文发送",
+      [providerReasoningCopyKeys.responses.summary.providerLabel]: "使用供应商设置",
+      [providerReasoningCopyKeys.responses.summary.providerPlaintextDescription]: "使用供应商设置。当前选择：作为明文发送。",
+      [providerReasoningCopyKeys.responses.warning]: "不发送推理历史时，压缩上下文可能丢失。",
+      "Reasoning history": "推理历史",
+      "Reasoning history compatibility": "推理历史兼容",
+      "Reasoning summary": "推理摘要",
+      "Use provider default": "使用供应商默认值",
       "Back": "返回",
       "Backup": "备份",
       "Cache": "缓存",

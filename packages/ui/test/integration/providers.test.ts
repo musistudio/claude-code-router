@@ -7,8 +7,10 @@ import { geminiProviderPreset } from "@ccr/core/providers/presets/gemini/index.t
 import { minimaxChinaProviderPreset } from "@ccr/core/providers/presets/minimax/index.ts";
 import { moonshotGlobalProviderPreset } from "@ccr/core/providers/presets/moonshot/index.ts";
 import { qiniuAiProviderPreset } from "@ccr/core/providers/presets/qiniu-ai/index.ts";
-import { AddProviderDialog, AddProviderForm, ProviderConnectivityCheckDialog, ProvidersView, uniqueProviderProbeProtocolRows } from "@ccr/ui/pages/home/components/providers.tsx";
+import { AddProviderDialog, AddProviderForm, ProviderConnectivityCheckDialog, ProvidersView, ProtocolReasoningInlineControl, ResponsesProtocolFeaturesControl, responsesReasoningPolicyOptionsForDisplay, uniqueProviderProbeProtocolRows } from "@ccr/ui/pages/home/components/providers.tsx";
 import {
+  AppI18nContext,
+  appCopy,
   applyProviderProbeResult,
   createProviderConfigFromDeepLink,
   createProviderAccountDraftFromConfig,
@@ -18,9 +20,11 @@ import {
   createProviderInstallLinkFromDraft,
   customProviderPresetId,
   FieldGroup,
+  inferredResponsesReasoningHistoryPolicy,
   localAgentProviderIconUrls,
   providerCapabilitiesForProtocols,
   providerCapabilitiesForSave,
+  providerCapabilitiesWithProtocolFeatures,
   providerCapabilityBaseUrlForProtocol,
   providerConnectivityApiKeyFromDraft,
   providerConnectivityProviderPlugins,
@@ -30,6 +34,7 @@ import {
   providerBrowserConnectorFromDraft,
   providerGlobalBaseUrlForProbe,
   providerPresetIconUrls,
+  providerReasoningCopyKeys,
   providerProtocolOptions,
   providerProbeCandidates,
   providerSelectableProtocolsFromProbe,
@@ -141,6 +146,226 @@ test("provider save keeps explicit secondary media origins when the base URL is 
     providerCapabilitiesForSave(current, media, "https://chat.example/v1/", "https://chat.example/v1"),
     [...current, ...media]
   );
+});
+
+test("provider save keeps Responses reasoning features when the base URL changes", () => {
+  const current = [{
+    baseUrl: "https://new.example/v1",
+    source: "detected" as const,
+    type: "openai_responses" as const
+  }];
+  const previous = [{
+    baseUrl: "https://old.example/v1",
+    features: {
+      reasoningHistoryPolicy: "plaintext" as const,
+      reasoningSummaryPolicy: "as_content" as const
+    },
+    source: "detected" as const,
+    type: "openai_responses" as const
+  }];
+
+  assert.deepEqual(
+    providerCapabilitiesForSave(current, previous, "https://old.example/v1", "https://new.example/v1"),
+    [{
+      ...current[0],
+      features: {
+        reasoningHistoryPolicy: "plaintext",
+        reasoningSummaryPolicy: "as_content"
+      }
+    }]
+  );
+});
+
+test("Responses feature helpers update one protocol and infer safe endpoint defaults", () => {
+  const updated = providerCapabilitiesWithProtocolFeatures(
+    [{ baseUrl: "https://chat.example/v1", type: "openai_chat_completions" }],
+    "openai_responses",
+    "https://api.deepseek.com/v1",
+    { reasoningHistoryPolicy: "plaintext" }
+  );
+  assert.deepEqual(updated[1], {
+    baseUrl: "https://api.deepseek.com/v1",
+    features: { reasoningHistoryPolicy: "plaintext" },
+    type: "openai_responses"
+  });
+  assert.equal(inferredResponsesReasoningHistoryPolicy("https://api.openai.com/v1"), "encrypted");
+  assert.equal(
+    inferredResponsesReasoningHistoryPolicy("https://chatgpt.com/backend-api/codex"),
+    "encrypted"
+  );
+  assert.equal(inferredResponsesReasoningHistoryPolicy("https://api.deepseek.com/v1"), "plaintext");
+  assert.equal(inferredResponsesReasoningHistoryPolicy("https://api.xiaomimimo.com/v1"), "plaintext");
+  assert.equal(
+    inferredResponsesReasoningHistoryPolicy("https://token-plan-sgp.xiaomimimo.com/v1"),
+    "plaintext"
+  );
+  assert.equal(inferredResponsesReasoningHistoryPolicy("https://unknown.example/v1"), "plaintext");
+  assert.equal(inferredResponsesReasoningHistoryPolicy("not a valid URL"), "plaintext");
+});
+
+test("Responses policy control shows summary options only for effective plaintext mode", () => {
+  const plaintext = renderToStaticMarkup(
+    React.createElement(ResponsesProtocolFeaturesControl, {
+      autoBaseUrl: "https://unknown.example/v1",
+      onChange: () => undefined
+    })
+  );
+  assert.match(plaintext, /Auto \(Plaintext only\)/);
+  assert.match(plaintext, /Reasoning summary/);
+  assert.match(plaintext, /Default \(Do not send\)/);
+  assert.doesNotMatch(plaintext, /Send as plaintext/);
+
+  const encrypted = renderToStaticMarkup(
+    React.createElement(ResponsesProtocolFeaturesControl, {
+      autoBaseUrl: "https://api.openai.com/v1",
+      features: { reasoningHistoryPolicy: "encrypted" },
+      onChange: () => undefined
+    })
+  );
+  assert.match(encrypted, /Full history \(OpenAI\/Codex only\)/);
+  assert.doesNotMatch(encrypted, /Reasoning summary/);
+  assert.doesNotMatch(encrypted, /Send as plaintext/);
+
+  const inheritedPlaintext = renderToStaticMarkup(
+    React.createElement(ResponsesProtocolFeaturesControl, {
+      autoBaseUrl: "https://unknown.example/v1",
+      inheritSource: "provider",
+      inheritedFeatures: { reasoningHistoryPolicy: "plaintext" },
+      onChange: () => undefined
+    })
+  );
+  assert.match(inheritedPlaintext, /Use provider setting \(Plaintext only\)/);
+  assert.match(inheritedPlaintext, /Use provider setting \(Do not send\)/);
+  assert.match(inheritedPlaintext, /Reasoning summary/);
+
+  const explicitStrip = renderToStaticMarkup(
+    React.createElement(ResponsesProtocolFeaturesControl, {
+      autoBaseUrl: "https://unknown.example/v1",
+      features: { reasoningHistoryPolicy: "strip" },
+      onChange: () => undefined
+    })
+  );
+  assert.match(explicitStrip, /Compacted context may be lost when reasoning history is not sent/);
+});
+
+test("readonly reasoning note renders inline automatic text per protocol", () => {
+  const cases: Array<[Parameters<typeof ProtocolReasoningInlineControl>[0]["protocol"], RegExp, string]> = [
+    ["anthropic_messages", /Auto \(signed\/plaintext thinking handled separately\)/, providerReasoningCopyKeys.protocol.anthropicMessages.note],
+    ["gemini_generate_content", /Auto \(check thoughtSignature\)/, providerReasoningCopyKeys.protocol.geminiGenerateContent.note],
+    ["gemini_interactions", /Auto \(check step signatures\)/, providerReasoningCopyKeys.protocol.geminiInteractions.note],
+    ["openai_chat_completions", /Auto \(use supported reasoning fields\)/, providerReasoningCopyKeys.protocol.openAIChatCompletions.note]
+  ];
+  for (const [protocol, labelPattern, noteKey] of cases) {
+    const html = renderToStaticMarkup(
+      React.createElement(ProtocolReasoningInlineControl, { protocol })
+    );
+    assert.match(html, labelPattern);
+    assert.doesNotMatch(html, /title="/);
+    assert.doesNotMatch(html, /Reasoning summary/);
+    assert.doesNotMatch(html, /<select/);
+    assert.equal(appCopy.en.text[noteKey], noteKey);
+    const localized = appCopy.zh.text[noteKey];
+    assert.ok(localized && localized !== noteKey, `missing Chinese note copy for ${protocol}`);
+  }
+  assert.match(appCopy.zh.text[providerReasoningCopyKeys.protocol.anthropicMessages.note] ?? "", /DeepSeek.*不会因为没有 Anthropic 签名而被删除/);
+});
+
+test("reasoning copy keys used by the UI are localized in both languages", () => {
+  function stringLeaves(value: unknown): string[] {
+    if (typeof value === "string") {
+      return [value];
+    }
+    if (!value || typeof value !== "object") {
+      return [];
+    }
+    return Object.values(value).flatMap(stringLeaves);
+  }
+
+  for (const key of new Set(stringLeaves(providerReasoningCopyKeys))) {
+    assert.equal(appCopy.en.text[key], key);
+    const localized = appCopy.zh.text[key];
+    assert.ok(localized && localized !== key, `missing Chinese reasoning copy: ${key}`);
+  }
+});
+
+test("Responses reasoning options stay concise and fully localized", () => {
+  const zh = (value: string) => appCopy.zh.text[value] ?? value;
+  const automatic = responsesReasoningPolicyOptionsForDisplay({
+    inheritSource: "auto",
+    inheritedHistoryPolicy: "plaintext",
+    inheritedSummaryPolicy: "drop",
+    t: zh
+  });
+
+  assert.deepEqual(automatic.historyOptions.map((option) => option.label), [
+    "自动 (仅明文)",
+    "完整历史（仅 OpenAI/Codex）",
+    "仅明文（兼容服务）",
+    "不发送"
+  ]);
+  assert.deepEqual(automatic.historyOptions.map((option) => option.description), [
+    "按 API 地址选择：OpenAI/Codex 发送完整历史；其他 Responses 兼容服务只发送明文。回答和工具调用会保留。",
+    "发送全部 Responses 推理数据，包括加密内容、压缩上下文和内部步骤。仅用于官方 OpenAI/Codex。",
+    "只发送可读的推理文字，不发送加密内容或签名。用于 DeepSeek、小米 MiMo 等兼容服务。回答和工具调用会保留。",
+    "不发送以前的推理内容。回答和工具调用会保留，但压缩上下文可能丢失。"
+  ]);
+  assert.deepEqual(automatic.summaryOptions.map((option) => option.label), [
+    "默认 (不发送)",
+    "不发送",
+    "作为明文发送"
+  ]);
+
+  const provider = responsesReasoningPolicyOptionsForDisplay({
+    inheritSource: "provider",
+    inheritedHistoryPolicy: "encrypted",
+    inheritedSummaryPolicy: "as_content",
+    t: zh
+  });
+  assert.equal(provider.historyOptions[0]?.label, "使用供应商设置 (完整历史)");
+  assert.equal(provider.historyOptions[0]?.description, "使用供应商设置。当前选择：完整历史。");
+  assert.equal(provider.summaryOptions[0]?.label, "使用供应商设置 (作为明文发送)");
+  assert.equal(provider.summaryOptions[0]?.description, "使用供应商设置。当前选择：作为明文发送。");
+
+  const html = renderToStaticMarkup(
+    React.createElement(
+      AppI18nContext.Provider,
+      { value: appCopy.zh },
+      React.createElement(ResponsesProtocolFeaturesControl, {
+        autoBaseUrl: "https://api.deepseek.com/v1",
+        onChange: () => undefined
+      })
+    )
+  );
+  assert.match(html, /自动 \(仅明文\)/);
+  assert.match(html, /默认 \(不发送\)/);
+  assert.doesNotMatch(html, /Plaintext only|Default \(Do not send\)/);
+});
+
+test("Responses policy control inline layout renders described dropdowns without field labels", () => {
+  const plaintext = renderToStaticMarkup(
+    React.createElement(ResponsesProtocolFeaturesControl, {
+      autoBaseUrl: "https://api.deepseek.com/v1",
+      layout: "inline",
+      onChange: () => undefined
+    })
+  );
+  assert.match(plaintext, /Auto \(Plaintext only\)/);
+  assert.match(plaintext, /aria-haspopup="listbox"/);
+  assert.doesNotMatch(plaintext, /<select/);
+  assert.doesNotMatch(plaintext, /Send as plaintext/);
+  assert.doesNotMatch(plaintext, /Reasoning history</);
+  assert.doesNotMatch(plaintext, /Reasoning summary</);
+
+  const encrypted = renderToStaticMarkup(
+    React.createElement(ResponsesProtocolFeaturesControl, {
+      autoBaseUrl: "https://api.openai.com/v1",
+      features: { reasoningHistoryPolicy: "encrypted" },
+      layout: "inline",
+      onChange: () => undefined
+    })
+  );
+  assert.match(encrypted, /Full history \(OpenAI\/Codex only\)/);
+  assert.doesNotMatch(encrypted, /Send as plaintext/);
 });
 
 test("provider probe result drops unavailable selected protocols", () => {
