@@ -18,6 +18,12 @@ import { runApiProviderPreset } from "@ccr/core/providers/presets/runapi/index";
 import { siliconFlowProviderPreset } from "@ccr/core/providers/presets/siliconflow/index";
 import { teamoRouterProviderPreset } from "@ccr/core/providers/presets/teamorouter/index";
 import { unity2ProviderPreset } from "@ccr/core/providers/presets/unity2/index";
+import {
+  xiaomiMimoProviderPreset,
+  xiaomiMimoTokenPlanChinaProviderPreset,
+  xiaomiMimoTokenPlanEuropeProviderPreset,
+  xiaomiMimoTokenPlanSingaporeProviderPreset
+} from "@ccr/core/providers/presets/xiaomi/index";
 import { zaiGlobalCodingProviderPreset } from "@ccr/core/providers/presets/zai-global-coding/index";
 import { zaiGlobalGeneralProviderPreset } from "@ccr/core/providers/presets/zai-global-general/index";
 import { zhipuCnCodingProviderPreset } from "@ccr/core/providers/presets/zhipu-cn-coding/index";
@@ -40,6 +46,10 @@ export const providerPresets: ProviderPreset[] = [
   openRouterProviderPreset,
   nvidiaProviderPreset,
   deepSeekProviderPreset,
+  xiaomiMimoProviderPreset,
+  xiaomiMimoTokenPlanChinaProviderPreset,
+  xiaomiMimoTokenPlanSingaporeProviderPreset,
+  xiaomiMimoTokenPlanEuropeProviderPreset,
   kimiCodingProviderPreset,
   zhipuCnCodingProviderPreset,
   zhipuCnGeneralProviderPreset,

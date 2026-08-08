@@ -37,6 +37,12 @@ import {
 import {
   unity2ProviderPreset
 } from "@ccr/core/providers/presets/unity2/index.ts";
+import {
+  xiaomiMimoProviderPreset,
+  xiaomiMimoTokenPlanChinaProviderPreset,
+  xiaomiMimoTokenPlanEuropeProviderPreset,
+  xiaomiMimoTokenPlanSingaporeProviderPreset
+} from "@ccr/core/providers/presets/xiaomi/index.ts";
 
 const openAiPreset = {
   aliases: ["OpenAI", "ChatGPT"],
@@ -138,6 +144,50 @@ test("NVIDIA preset exposes the hosted NIM OpenAI-compatible endpoint", () => {
   ]);
   assert.equal(providerPresetMatchesBaseUrl(nvidiaProviderPreset, "https://integrate.api.nvidia.com/v1/chat/completions"), true);
   assert.equal(providerPresetMatchesBaseUrl(nvidiaProviderPreset, "https://build.nvidia.com/models"), false);
+});
+
+test("Xiaomi MiMo presets expose official Responses, Chat, and Anthropic endpoints", () => {
+  const cases = [
+    [
+      xiaomiMimoProviderPreset,
+      "https://api.xiaomimimo.com/v1",
+      "https://api.xiaomimimo.com/anthropic"
+    ],
+    [
+      xiaomiMimoTokenPlanChinaProviderPreset,
+      "https://token-plan-cn.xiaomimimo.com/v1",
+      "https://token-plan-cn.xiaomimimo.com/anthropic"
+    ],
+    [
+      xiaomiMimoTokenPlanSingaporeProviderPreset,
+      "https://token-plan-sgp.xiaomimimo.com/v1",
+      "https://token-plan-sgp.xiaomimimo.com/anthropic"
+    ],
+    [
+      xiaomiMimoTokenPlanEuropeProviderPreset,
+      "https://token-plan-ams.xiaomimimo.com/v1",
+      "https://token-plan-ams.xiaomimimo.com/anthropic"
+    ]
+  ];
+
+  for (const [preset, openAiBaseUrl, anthropicBaseUrl] of cases) {
+    assert.equal(providerPresets.find((candidate) => candidate.id === preset.id), preset);
+    assert.deepEqual(preset.defaultModels, ["mimo-v2.5-pro", "mimo-v2.5"]);
+    assert.deepEqual(preset.endpoints, [
+      {
+        baseUrl: openAiBaseUrl,
+        label: "OpenAI",
+        protocols: ["openai_responses", "openai_chat_completions"]
+      },
+      {
+        baseUrl: anthropicBaseUrl,
+        label: "Anthropic",
+        protocols: ["anthropic_messages"]
+      }
+    ]);
+    assert.equal(providerPresetMatchesBaseUrl(preset, `${openAiBaseUrl}/responses`), true);
+    assert.equal(providerPresetMatchesBaseUrl(preset, `${anthropicBaseUrl}/v1/messages`), true);
+  }
 });
 
 test("NVIDIA preset ignores stale Responses detection and converts Codex requests to Chat Completions", () => {
