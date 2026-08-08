@@ -1527,6 +1527,10 @@ export type ProfileOpenRequest = {
   surface: ProfileOpenSurface;
 };
 
+export type ProfileStopRequest = ProfileOpenRequest & {
+  force?: boolean;
+};
+
 export type ProfileOpenCommandResult = {
   command: string;
   profileId: string;
@@ -1569,9 +1573,11 @@ export type ProfileRuntimeStatus = {
 };
 
 export type ProfileStopResult = {
+  external?: boolean;
   message: string;
   profileId: string;
   profileName: string;
+  requiresForceConfirmation?: boolean;
   stopped: boolean;
   surface: ProfileOpenSurface;
 };

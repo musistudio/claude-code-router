@@ -52,6 +52,14 @@ type ProfileActionBusy = {
   surface: ProfileOpenSurface;
 };
 
+type ProfileForceStopDialogState = {
+  busy: boolean;
+  error: string;
+  external: boolean;
+  origin: "list" | "open-dialog";
+  profile: ProfileConfig;
+};
+
 const providerNamePlaceholder = "__CCR_PROVIDER_NAME__";
 const providerNameSlugPlaceholder = "__CCR_PROVIDER_NAME_SLUG__";
 const providerInternalNamePlaceholder = "__CCR_PROVIDER_INTERNAL_NAME__";
@@ -180,6 +188,7 @@ function App() {
   const [profileEditIndex, setProfileEditIndex] = useState<number>();
   const [profileDeleteIndex, setProfileDeleteIndex] = useState<number>();
   const [profileOpenDialog, setProfileOpenDialog] = useState<ProfileOpenDialogState>();
+  const [profileForceStopDialog, setProfileForceStopDialog] = useState<ProfileForceStopDialogState>();
   const [profileActionBusy, setProfileActionBusy] = useState<ProfileActionBusy>();
   const [profileRuntimeStatus, setProfileRuntimeStatus] = useState<ProfileRuntimeStatus>({ profiles: [] });
   const [profileSubmitBusy, setProfileSubmitBusy] = useState<"" | "add" | "edit">("");
@@ -879,15 +888,15 @@ function App() {
     setThemePreference(normalized.theme || "system");
   }
 
-  function showToast(message: string) {
+  function showToast(message: string, options?: { durationMs?: number; prominent?: boolean }) {
     if (toastTimer.current !== undefined) {
       window.clearTimeout(toastTimer.current);
     }
-    setToast({ id: Date.now(), message });
+    setToast({ id: Date.now(), message, prominent: options?.prominent });
     toastTimer.current = window.setTimeout(() => {
       setToast(undefined);
       toastTimer.current = undefined;
-    }, 1800);
+    }, options?.durationMs ?? 1800);
   }
 
   function openUpdateDialog() {
@@ -2607,7 +2616,7 @@ function App() {
       }
       const result = await window.ccr.openProfile({ profileId: profile.id, surface: "app" });
       await refreshProfileRuntimeStatus();
-      showToast(translateAppErrorMessage(copy, result.message));
+      showToast(translateAppErrorMessage(copy, result.message), { durationMs: 6000, prominent: true });
     } catch (error) {
       setProfileActionError(formatError(error));
     } finally {
@@ -2631,9 +2640,21 @@ function App() {
         return;
       }
       const result = await window.ccr.stopProfile({ profileId: profile.id, surface: "app" });
-      removeProfileRuntimeEntry(result.profileId, result.surface);
+      if (result.requiresForceConfirmation) {
+        setProfileForceStopDialog({
+          busy: false,
+          error: "",
+          external: Boolean(result.external),
+          origin: "list",
+          profile
+        });
+        return;
+      }
+      if (result.stopped) {
+        removeProfileRuntimeEntry(result.profileId, result.surface);
+      }
       await refreshProfileRuntimeStatus();
-      showToast(translateAppErrorMessage(copy, result.message));
+      showToast(translateAppErrorMessage(copy, result.message), { durationMs: 6000, prominent: true });
     } catch (error) {
       setProfileActionError(formatError(error));
     } finally {
@@ -2696,7 +2717,7 @@ function App() {
       const result = await window.ccr.openProfile({ profileId: profile.id, surface: "app" });
       await refreshProfileRuntimeStatus();
       setProfileOpenDialog(undefined);
-      showToast(translateAppErrorMessage(copy, result.message));
+      showToast(translateAppErrorMessage(copy, result.message), { durationMs: 6000, prominent: true });
     } catch (error) {
       setProfileOpenDialog((current) => current?.profile.id === profile.id
         ? { ...current, busy: "", error: formatError(error) }
@@ -2716,6 +2737,19 @@ function App() {
     }
     try {
       const result = await window.ccr.stopProfile({ profileId: profile.id, surface: "app" });
+      if (result.requiresForceConfirmation) {
+        setProfileOpenDialog((current) => current?.profile.id === profile.id
+          ? { ...current, busy: "", error: "" }
+          : current);
+        setProfileForceStopDialog({
+          busy: false,
+          error: "",
+          external: Boolean(result.external),
+          origin: "open-dialog",
+          profile
+        });
+        return;
+      }
       removeProfileRuntimeEntry(result.profileId, result.surface);
       await refreshProfileRuntimeStatus();
       setProfileOpenDialog(undefined);
@@ -2723,6 +2757,53 @@ function App() {
     } catch (error) {
       setProfileOpenDialog((current) => current?.profile.id === profile.id
         ? { ...current, busy: "", error: formatError(error) }
+        : current);
+    }
+  }
+
+  async function confirmForceStopProfile() {
+    const target = profileForceStopDialog;
+    if (!target || target.busy) {
+      return;
+    }
+    if (!window.ccr?.stopProfile) {
+      setProfileForceStopDialog((current) => current?.profile.id === target.profile.id
+        ? { ...current, error: t("Profile stopping is only available in the Electron app.") }
+        : current);
+      return;
+    }
+
+    setProfileForceStopDialog((current) => current?.profile.id === target.profile.id
+      ? { ...current, busy: true, error: "" }
+      : current);
+    setProfileActionBusy({ profileId: target.profile.id, surface: "app" });
+    try {
+      const result = await window.ccr.stopProfile({
+        force: true,
+        profileId: target.profile.id,
+        surface: "app"
+      });
+      await refreshProfileRuntimeStatus();
+      if (!result.stopped) {
+        setProfileForceStopDialog((current) => current?.profile.id === target.profile.id
+          ? { ...current, busy: false, error: translateAppErrorMessage(copy, result.message) }
+          : current);
+        return;
+      }
+
+      removeProfileRuntimeEntry(result.profileId, result.surface);
+      setProfileForceStopDialog(undefined);
+      if (target.origin === "open-dialog") {
+        setProfileOpenDialog(undefined);
+      }
+      showToast(translateAppErrorMessage(copy, result.message), { durationMs: 6000, prominent: true });
+    } catch (error) {
+      setProfileForceStopDialog((current) => current?.profile.id === target.profile.id
+        ? { ...current, busy: false, error: formatError(error) }
+        : current);
+    } finally {
+      setProfileActionBusy((current) => current?.profileId === target.profile.id && current.surface === "app"
+        ? undefined
         : current);
     }
   }
@@ -3202,6 +3283,18 @@ function App() {
               submitting: profileSubmitBusy === "edit",
               virtualModelProfiles: draftConfig.virtualModelProfiles ?? [],
               onSubmit: submitProfileEditDraft
+            } : undefined}
+            profileForceStop={profileForceStopDialog ? {
+              busy: profileForceStopDialog.busy,
+              error: profileForceStopDialog.error,
+              external: profileForceStopDialog.external,
+              onClose: () => {
+                if (!profileForceStopDialog.busy) {
+                  setProfileForceStopDialog(undefined);
+                }
+              },
+              onConfirm: () => void confirmForceStopProfile(),
+              profile: profileForceStopDialog.profile
             } : undefined}
             profileOpen={profileOpenDialog ? {
               appRunning: profileRuntimeStatus.profiles.some((entry) =>

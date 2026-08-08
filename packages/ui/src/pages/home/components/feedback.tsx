@@ -10,7 +10,9 @@ export function LightToast({ toast }: { toast?: AppToast }) {
       {toast ? (
         <motion.div
           animate={{ opacity: 1, y: 0 }}
-          className="pointer-events-none fixed left-1/2 top-5 z-[10000] flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-popover px-3 py-2 text-[12px] font-medium text-popover-foreground shadow-lg"
+          className={toast.prominent
+            ? "pointer-events-none fixed left-1/2 top-5 z-[10000] flex max-w-[min(560px,calc(100vw-24px))] -translate-x-1/2 items-center gap-2.5 rounded-xl border border-border bg-popover px-4 py-3 text-[13px] font-medium leading-5 text-popover-foreground shadow-lg"
+            : "pointer-events-none fixed left-1/2 top-5 z-[10000] flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-popover px-3 py-2 text-[12px] font-medium text-popover-foreground shadow-lg"}
           exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
           initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
           key={toast.id}
@@ -18,7 +20,7 @@ export function LightToast({ toast }: { toast?: AppToast }) {
           transition={shouldReduceMotion ? reducedMotionTransition : { duration: 0.16, ease: motionEase }}
         >
           <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
-          <span className="truncate">{toast.message}</span>
+          <span className={toast.prominent ? undefined : "truncate"}>{toast.message}</span>
         </motion.div>
       ) : null}
     </AnimatePresence>
