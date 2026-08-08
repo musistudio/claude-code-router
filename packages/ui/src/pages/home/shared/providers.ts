@@ -2051,6 +2051,11 @@ export function inferredResponsesReasoningHistoryPolicy(
     if (hostname === "api.deepseek.com") {
       return "plaintext";
     }
+    // Keep in sync with ai-gateway: Xiaomi MiMo is a plaintext reasoning
+    // vendor; subdomains cover the regional Token Plan endpoints.
+    if (hostname === "xiaomimimo.com" || hostname.endsWith(".xiaomimimo.com")) {
+      return "plaintext";
+    }
   } catch {
     // Unknown endpoints use the same safe default as ai-gateway.
   }

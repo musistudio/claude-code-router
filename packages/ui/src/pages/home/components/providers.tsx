@@ -13,13 +13,13 @@ import {
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
   providerBrowserConnectorFromDraft, providerBrowserCredentialsOptions,
   ProviderConnectivityCheckReport, providerCapabilityBaseUrlForProtocol, providerConnectivityApiKeyFromDraft, providerDeepLinkDisplayIcon, providerDraftHasReadyCredentialPool, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
-  providerCapabilityFeaturesForProtocol, providerCapabilitiesWithProtocolFeatures, providerDisplayIcon, providerGlobalBaseUrlForProbe, providerModelDisplayName, providerModelDisplayTitle, providerProtocolOptions, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
+  providerCapabilityFeaturesForProtocol, providerCapabilitiesWithProtocolFeatures, providerDisplayIcon, providerGlobalBaseUrlForProbe, providerModelDisplayName, providerModelDisplayTitle, providerProtocolOptions, providerReasoningCopyKeys, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
   resolveProviderDeepLinkPreset, ShieldCheck, splitLines, Switch, Tabs, TabsList, TabsTrigger, Textarea, Toggle, translatedProviderProtocolLabel, translateOptions,
   inferredResponsesReasoningHistoryPolicy, translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppErrorText, useAppText, useEffect, useLayoutEffect, useMemo,
   useRef, useState, X, isGatewayProviderEnabled, isPlainRecord
 } from "../shared/index";
 import { PopoverPortal } from "@/components/ui/popover";
-import { TooltipPortal } from "@/components/ui/tooltip";
+import { Tooltip, TooltipPortal } from "@/components/ui/tooltip";
 import { providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
 import type { ChromeLoginImportJob, GatewayProviderCapabilityFeatures, GatewayProviderProtocol, GatewayResponsesReasoningHistoryPolicy, GatewayResponsesReasoningSummaryPolicy, LocalAgentProviderCandidate, ProviderAccountHttpJsonConnectorConfig, ProviderAccountWebContentJsonConnectorConfig } from "@ccr/core/contracts/app";
 import type { ReactNode } from "react";
@@ -29,17 +29,17 @@ const emptyProviderPlugins: unknown[] = [];
 const inheritProtocolFeatureValue = "inherit";
 
 const protocolReasoningBehaviorShortKey: Partial<Record<GatewayProviderProtocol, string>> = {
-  anthropic_messages: "replay signed thinking",
-  gemini_generate_content: "replay thought signatures",
-  gemini_interactions: "replay signed steps",
-  openai_chat_completions: "map vendor reasoning fields"
+  anthropic_messages: providerReasoningCopyKeys.protocol.anthropicMessages.short,
+  gemini_generate_content: providerReasoningCopyKeys.protocol.geminiGenerateContent.short,
+  gemini_interactions: providerReasoningCopyKeys.protocol.geminiInteractions.short,
+  openai_chat_completions: providerReasoningCopyKeys.protocol.openAIChatCompletions.short
 };
 
 const protocolReasoningBehaviorNoteKey: Partial<Record<GatewayProviderProtocol, string>> = {
-  anthropic_messages: "Handled automatically by CCR protocol rules: complete signed thinking blocks replay verbatim (official requirement); same-endpoint and same-account checks are CCR-added isolation; switching models drops old thinking per official rules; an unrecoverable active tool turn returns an error. No configuration needed.",
-  gemini_generate_content: "Handled automatically by CCR protocol rules: thought signatures replay when the model matches and the signature is complete (same-endpoint and same-account checks are CCR-added isolation); a native Gemini 3 call that lost its signature rejects the active tool group and drops closed groups. No configuration needed.",
-  gemini_interactions: "Handled automatically by CCR protocol rules: only official signed thought/tool steps replay; cross-model replay between Gemini models on the same service is officially supported (same-endpoint and same-account checks are CCR-added isolation). No configuration needed.",
-  openai_chat_completions: "Handled automatically: readable reasoning is mapped to the fields supported by each vendor adapter; native structures replay only when the vendor adapter explicitly supports them, the state is valid, and the route is unchanged; otherwise they are removed. No configuration needed."
+  anthropic_messages: providerReasoningCopyKeys.protocol.anthropicMessages.note,
+  gemini_generate_content: providerReasoningCopyKeys.protocol.geminiGenerateContent.note,
+  gemini_interactions: providerReasoningCopyKeys.protocol.geminiInteractions.note,
+  openai_chat_completions: providerReasoningCopyKeys.protocol.openAIChatCompletions.note
 };
 
 type ResponsesReasoningHistoryPolicyControlValue = GatewayResponsesReasoningHistoryPolicy | typeof inheritProtocolFeatureValue;
@@ -2501,10 +2501,9 @@ export function AddProviderForm({
                                 <ResponsesProtocolFeaturesControl
                                   autoBaseUrl={responsesBaseUrl}
                                   features={responsesProtocolFeatures}
-                                  historyInheritLabel={t("Auto")}
+                                  inheritSource="auto"
                                   layout="inline"
                                   onChange={updateResponsesProtocolFeatures}
-                                  summaryInheritLabel={t("Default: drop summaries")}
                                 />
                               ) : (
                                 <>
@@ -2551,10 +2550,9 @@ export function AddProviderForm({
                                 <ResponsesProtocolFeaturesControl
                                   autoBaseUrl={responsesBaseUrl}
                                   features={responsesProtocolFeatures}
-                                  historyInheritLabel={t("Auto")}
+                                  inheritSource="auto"
                                   layout="inline"
                                   onChange={updateResponsesProtocolFeatures}
-                                  summaryInheritLabel={t("Default: drop summaries")}
                                 />
                               ) : (
                                 <>
@@ -2597,7 +2595,7 @@ export function AddProviderForm({
                     )}
                     {responsesProtocolSelected && responsesProtocolFeatures?.reasoningHistoryPolicy === "strip" ? (
                       <div className="mt-1.5 rounded-[5px] border border-amber-500/35 bg-amber-500/8 px-2.5 py-2 text-[10px] leading-4 text-amber-800 dark:text-amber-200">
-                        {t("Stripping may discard compacted context. Select this only if context loss is acceptable.")}
+                        {t(providerReasoningCopyKeys.responses.warning)}
                       </div>
                     ) : null}
                   </div>
@@ -2652,37 +2650,251 @@ function AutoDetectProtocolsTooltip({
   );
 }
 
-function responsesReasoningPolicyShortLabel(
+type DescribedSelectOption = { description?: string; disabled?: boolean; label: string; value: string };
+
+export type ResponsesReasoningInheritSource = "auto" | "provider";
+
+function responsesReasoningHistoryShortLabel(
   policy: GatewayResponsesReasoningHistoryPolicy,
   t: (value: string) => string
 ): string {
   if (policy === "encrypted") {
-    return t("Native history");
+    return t(providerReasoningCopyKeys.responses.history.fullShort);
   }
   if (policy === "plaintext") {
-    return t("Replay readable reasoning");
+    return t(providerReasoningCopyKeys.responses.history.plaintextShort);
   }
   return t("Do not send");
+}
+
+function responsesReasoningSummaryShortLabel(
+  policy: GatewayResponsesReasoningSummaryPolicy,
+  t: (value: string) => string
+): string {
+  return policy === "as_content"
+    ? t(providerReasoningCopyKeys.responses.summary.plaintextLabel)
+    : t("Do not send");
+}
+
+function providerHistoryDescriptionKey(policy: GatewayResponsesReasoningHistoryPolicy): string {
+  if (policy === "encrypted") {
+    return providerReasoningCopyKeys.responses.history.providerFullDescription;
+  }
+  if (policy === "plaintext") {
+    return providerReasoningCopyKeys.responses.history.providerPlaintextDescription;
+  }
+  return providerReasoningCopyKeys.responses.history.providerNoneDescription;
+}
+
+function providerSummaryDescriptionKey(policy: GatewayResponsesReasoningSummaryPolicy): string {
+  return policy === "as_content"
+    ? providerReasoningCopyKeys.responses.summary.providerPlaintextDescription
+    : providerReasoningCopyKeys.responses.summary.providerNoneDescription;
+}
+
+export function responsesReasoningPolicyOptionsForDisplay({
+  inheritSource,
+  inheritedHistoryPolicy,
+  inheritedSummaryPolicy,
+  t
+}: {
+  inheritSource: ResponsesReasoningInheritSource;
+  inheritedHistoryPolicy: GatewayResponsesReasoningHistoryPolicy;
+  inheritedSummaryPolicy: GatewayResponsesReasoningSummaryPolicy;
+  t: (value: string) => string;
+}): { historyOptions: DescribedSelectOption[]; summaryOptions: DescribedSelectOption[] } {
+  const historyInheritLabel = inheritSource === "provider"
+    ? t(providerReasoningCopyKeys.responses.summary.providerLabel)
+    : t("Auto");
+  const summaryInheritLabel = inheritSource === "provider"
+    ? t(providerReasoningCopyKeys.responses.summary.providerLabel)
+    : t(providerReasoningCopyKeys.responses.summary.defaultLabel);
+
+  return {
+    historyOptions: [
+      {
+        description: t(
+          inheritSource === "provider"
+            ? providerHistoryDescriptionKey(inheritedHistoryPolicy)
+            : providerReasoningCopyKeys.responses.history.autoDescription
+        ),
+        label: `${historyInheritLabel} (${responsesReasoningHistoryShortLabel(inheritedHistoryPolicy, t)})`,
+        value: inheritProtocolFeatureValue
+      },
+      {
+        description: t(providerReasoningCopyKeys.responses.history.fullDescription),
+        label: t(providerReasoningCopyKeys.responses.history.fullLabel),
+        value: "encrypted"
+      },
+      {
+        description: t(providerReasoningCopyKeys.responses.history.plaintextDescription),
+        label: t(providerReasoningCopyKeys.responses.history.plaintextLabel),
+        value: "plaintext"
+      },
+      {
+        description: t(providerReasoningCopyKeys.responses.history.noneDescription),
+        label: t("Do not send"),
+        value: "strip"
+      }
+    ],
+    summaryOptions: [
+      {
+        description: t(
+          inheritSource === "provider"
+            ? providerSummaryDescriptionKey(inheritedSummaryPolicy)
+            : providerReasoningCopyKeys.responses.summary.defaultDescription
+        ),
+        label: `${summaryInheritLabel} (${responsesReasoningSummaryShortLabel(inheritedSummaryPolicy, t)})`,
+        value: inheritProtocolFeatureValue
+      },
+      {
+        description: t(providerReasoningCopyKeys.responses.summary.noneDescription),
+        label: t("Do not send"),
+        value: "drop"
+      },
+      {
+        description: t(providerReasoningCopyKeys.responses.summary.plaintextDescription),
+        label: t(providerReasoningCopyKeys.responses.summary.plaintextLabel),
+        value: "as_content"
+      }
+    ]
+  };
+}
+
+function DescribedSelectControl({
+  buttonClassName,
+  className,
+  onChange,
+  options,
+  value
+}: {
+  buttonClassName?: string;
+  className?: string;
+  onChange: (value: string) => void;
+  options: DescribedSelectOption[];
+  value: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<{ left: number; top: number; width: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const selected = options.find((option) => option.value === value) ?? options[0];
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (triggerRef.current?.contains(target) || contentRef.current?.contains(target)) {
+        return;
+      }
+      setOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  function toggleOpen() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) {
+      const width = Math.max(rect.width, 420);
+      const left = Math.min(rect.left, Math.max(12, window.innerWidth - width - 12));
+      const below = rect.bottom + 4;
+      const top = window.innerHeight - below < 300 && rect.top > 340 ? Math.max(12, rect.top - 304) : below;
+      setPosition({ left, top, width });
+    }
+    setOpen(true);
+  }
+
+  return (
+    <span className={cn("relative block min-w-0", className)}>
+      <button
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        className={cn(
+          "theme-aware-select relative flex h-8 w-full min-w-0 appearance-none items-center rounded-md border border-input bg-background px-3 pr-8 text-left text-[12px] text-foreground shadow-[inset_0_1px_1px_rgba(0,0,0,0.03)] outline-none transition-[background-color,border-color,box-shadow,color] hover:border-muted-foreground/45 focus:border-primary/60 focus:ring-2 focus:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50",
+          buttonClassName
+        )}
+        onClick={toggleOpen}
+        ref={triggerRef}
+        type="button"
+      >
+        <span className="truncate">{selected?.label}</span>
+        <ChevronDown
+          aria-hidden="true"
+          className={cn("pointer-events-none absolute right-2.5 h-3.5 w-3.5 text-muted-foreground transition-transform", open && "rotate-180")}
+        />
+      </button>
+      {open && position ? (
+        <PopoverPortal>
+          <PopoverContent
+            className="fixed z-[210] max-h-[300px] overflow-y-auto p-1"
+            ref={contentRef}
+            role="listbox"
+            style={{ left: position.left, top: position.top, width: position.width, maxWidth: "calc(100vw - 24px)" }}
+          >
+            {options.map((option) => (
+              <button
+                aria-selected={option.value === value}
+                className={cn(
+                  "flex w-full items-start justify-between gap-4 rounded-[5px] px-2.5 py-2 text-left outline-none transition-colors hover:bg-muted focus-visible:bg-muted disabled:opacity-50",
+                  option.value === value && "bg-muted/70"
+                )}
+                disabled={option.disabled}
+                key={option.value}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                role="option"
+                type="button"
+              >
+                <span className="shrink-0 text-[12px] font-medium leading-4">{option.label}</span>
+                {option.description ? (
+                  <span className="max-w-[240px] text-right text-[10px] leading-4 text-muted-foreground">{option.description}</span>
+                ) : null}
+              </button>
+            ))}
+          </PopoverContent>
+        </PopoverPortal>
+      ) : null}
+    </span>
+  );
 }
 
 export function ResponsesProtocolFeaturesControl({
   autoBaseUrl,
   className,
   features,
-  historyInheritLabel,
+  inheritSource = "auto",
   inheritedFeatures,
   layout = "stacked",
-  onChange,
-  summaryInheritLabel
+  onChange
 }: {
   autoBaseUrl: string;
   className?: string;
   features?: GatewayProviderCapabilityFeatures;
-  historyInheritLabel: string;
+  inheritSource?: ResponsesReasoningInheritSource;
   inheritedFeatures?: GatewayProviderCapabilityFeatures;
   layout?: "stacked" | "inline";
   onChange: (features: GatewayProviderCapabilityFeatures | undefined) => void;
-  summaryInheritLabel: string;
 }) {
   const t = useAppText();
   const historyValue: ResponsesReasoningHistoryPolicyControlValue =
@@ -2691,8 +2903,15 @@ export function ResponsesProtocolFeaturesControl({
     features?.reasoningSummaryPolicy ?? inheritProtocolFeatureValue;
   const inheritedHistoryPolicy = inheritedFeatures?.reasoningHistoryPolicy ??
     inferredResponsesReasoningHistoryPolicy(autoBaseUrl);
+  const inheritedSummaryPolicy = inheritedFeatures?.reasoningSummaryPolicy ?? "drop";
   const effectiveHistoryPolicy = features?.reasoningHistoryPolicy ?? inheritedHistoryPolicy;
   const showSummaryPolicy = effectiveHistoryPolicy === "plaintext";
+  const { historyOptions, summaryOptions } = responsesReasoningPolicyOptionsForDisplay({
+    inheritSource,
+    inheritedHistoryPolicy,
+    inheritedSummaryPolicy,
+    t
+  });
 
   function compact(next: GatewayProviderCapabilityFeatures): GatewayProviderCapabilityFeatures | undefined {
     return Object.keys(next).length > 0 ? next : undefined;
@@ -2725,24 +2944,12 @@ export function ResponsesProtocolFeaturesControl({
     onChange(compact(next));
   }
 
-  const historyOptions = [
-    { label: `${historyInheritLabel} (${responsesReasoningPolicyShortLabel(effectiveHistoryPolicy, t)})`, value: inheritProtocolFeatureValue },
-    { label: t("Native history (including encrypted reasoning)"), value: "encrypted" },
-    { label: t("Replay readable reasoning (compatible services)"), value: "plaintext" },
-    { label: t("Do not send reasoning history (safest)"), value: "strip" }
-  ];
-  const summaryOptions = [
-    { label: summaryInheritLabel, value: inheritProtocolFeatureValue },
-    { label: t("Drop summaries"), value: "drop" },
-    { label: t("Send summaries as reasoning text"), value: "as_content" }
-  ];
-
   if (layout === "inline") {
     return (
       <>
-        <SelectControl className="h-7 w-full min-w-0 text-[11px]" onChange={updateHistoryPolicy} options={historyOptions} value={historyValue} />
+        <DescribedSelectControl buttonClassName="h-7 text-[11px]" className="w-full min-w-0" onChange={updateHistoryPolicy} options={historyOptions} value={historyValue} />
         {showSummaryPolicy ? (
-          <SelectControl className="h-7 w-full min-w-0 bg-muted/60 text-[11px]" onChange={updateSummaryPolicy} options={summaryOptions} value={summaryValue} />
+          <DescribedSelectControl buttonClassName="h-7 bg-muted/60 text-[11px]" className="w-full min-w-0" onChange={updateSummaryPolicy} options={summaryOptions} value={summaryValue} />
         ) : (
           <span />
         )}
@@ -2754,25 +2961,17 @@ export function ResponsesProtocolFeaturesControl({
     <div className={cn("space-y-2", className)}>
       <div className={cn("grid grid-cols-1 gap-2", showSummaryPolicy && "sm:grid-cols-2")}>
         <Field label={t("Reasoning history")}>
-          <SelectControl
-            onChange={updateHistoryPolicy}
-            options={historyOptions}
-            value={historyValue}
-          />
+          <DescribedSelectControl onChange={updateHistoryPolicy} options={historyOptions} value={historyValue} />
         </Field>
         {showSummaryPolicy ? (
           <Field label={t("Reasoning summary")}>
-            <SelectControl
-              onChange={updateSummaryPolicy}
-              options={summaryOptions}
-              value={summaryValue}
-            />
+            <DescribedSelectControl onChange={updateSummaryPolicy} options={summaryOptions} value={summaryValue} />
           </Field>
         ) : null}
       </div>
       {historyValue === "strip" ? (
         <div className="rounded-[5px] border border-amber-500/35 bg-amber-500/8 px-2.5 py-2 text-[10px] leading-4 text-amber-800 dark:text-amber-200">
-          {t("Stripping may discard compacted context. Select this only if context loss is acceptable.")}
+          {t(providerReasoningCopyKeys.responses.warning)}
         </div>
       ) : null}
     </div>
@@ -2793,9 +2992,17 @@ export function ProtocolReasoningInlineControl({
     return null;
   }
   return (
-    <span className={cn("truncate text-[11px] text-muted-foreground", className)} title={t(noteKey)}>
-      {`${t("Automatic handling")} (${t(shortKey)})`}
-    </span>
+    <Tooltip
+      align="start"
+      className={cn("min-w-0", className)}
+      content={<span className="whitespace-pre-line">{t(noteKey)}</span>}
+      contentClassName="w-[300px] max-w-[min(300px,calc(100vw-24px))] p-2.5 text-left font-normal leading-4"
+      side="bottom"
+    >
+      <span className="truncate text-[11px] text-muted-foreground">
+        {`${t("Auto")} (${t(shortKey)})`}
+      </span>
+    </Tooltip>
   );
 }
 
@@ -4800,10 +5007,9 @@ function ModelMetadataEditor({
                       <ResponsesProtocolFeaturesControl
                         autoBaseUrl={responsesBaseUrl}
                         features={modelMetadata?.protocolFeatures?.openai_responses}
-                        historyInheritLabel={t("Use provider default")}
+                        inheritSource="provider"
                         inheritedFeatures={providerResponsesFeatures}
                         onChange={(features) => updateModelResponsesFeatures(model, features)}
-                        summaryInheritLabel={t("Use provider default")}
                       />
                     </div>
                   ) : null}
