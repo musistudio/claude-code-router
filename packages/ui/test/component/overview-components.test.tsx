@@ -143,7 +143,7 @@ test("OverviewView renders the empty widget layout state", () => {
   assert.match(html, /aria-label="Edit widgets"/);
 });
 
-test("OverviewView renders multi-provider account cards as staggered bento tiles without inner scrolling", () => {
+test("OverviewView renders account cards at a uniform height in a scrollable grid", () => {
   const html = renderToStaticMarkup(
     <OverviewView
       overviewWidgets={[{ enabled: true, id: "account", size: "4:2", type: "account-balance", variant: "cards" }]}
@@ -157,19 +157,20 @@ test("OverviewView renders multi-provider account cards as staggered bento tiles
   );
 
   assert.match(html, /data-provider-account-grid="true"/);
-  assert.match(html, /auto-rows-fr/);
-  assert.match(html, /grid-flow-dense/);
+  assert.match(html, /data-provider-account-grid-layout="uniform-scroll"/);
+  assert.match(html, /auto-rows-\[176px\]/);
+  assert.match(html, /grid-flow-row/);
   assert.match(html, /grid-cols-2/);
   assert.match(html, /items-stretch/);
-  assert.match(html, /row-span-1/);
-  assert.match(html, /row-span-2/);
+  assert.match(html, /overflow-y-auto/);
+  assert.match(html, /scrollbar-gutter:stable/);
   assert.match(html, /overview-account-bento-tile/);
   assert.match(html, /data-account-status="warning"/);
-  assert.doesNotMatch(html, /overflow-y-auto/);
-  assert.doesNotMatch(html, /scrollbar-gutter/);
+  assert.equal(html.match(/data-provider-account-uniform-card="true"/g)?.length, accountSnapshots().length);
+  assert.doesNotMatch(html, /data-provider-account-compact-card="true"/);
 });
 
-test("OverviewView folds overflowing account bento cards into a summary tile", () => {
+test("OverviewView keeps every account card available through scrolling", () => {
   const accounts = Array.from({ length: 10 }, (_, index): ProviderAccountSnapshot => ({
     credentialId: `key-${index}`,
     meters: [
@@ -200,11 +201,13 @@ test("OverviewView folds overflowing account bento cards into a summary tile", (
   );
 
   assert.match(html, /grid-cols-3/);
-  assert.match(html, /overview-account-bento-more/);
-  assert.match(html, /\+2/);
+  assert.match(html, /provider-0/);
+  assert.match(html, /provider-9/);
+  assert.equal(html.match(/data-provider-account-uniform-card="true"/g)?.length, accounts.length);
+  assert.doesNotMatch(html, /overview-account-bento-more/);
 });
 
-test("OverviewView compacts large account bento cards before showing a summary tile", () => {
+test("OverviewView gives quota account cards the same fixed row height", () => {
   const accounts = Array.from({ length: 5 }, (_, index): ProviderAccountSnapshot => ({
     credentialId: `quota-${index}`,
     meters: [
@@ -237,12 +240,13 @@ test("OverviewView compacts large account bento cards before showing a summary t
   );
 
   assert.match(html, /quota-provider-4/);
-  assert.match(html, /row-span-1/);
-  assert.match(html, /row-span-2/);
+  assert.match(html, /auto-rows-\[176px\]/);
+  assert.equal(html.match(/data-provider-account-uniform-card="true"/g)?.length, accounts.length);
+  assert.doesNotMatch(html, /data-provider-account-compact-card="true"/);
   assert.doesNotMatch(html, /overview-account-bento-more/);
 });
 
-test("OverviewView places compact bento account values below the meter label", () => {
+test("OverviewView shows only the total DeepSeek balance in uniform cards", () => {
   const html = renderToStaticMarkup(
     <OverviewView
       overviewWidgets={[{ enabled: true, id: "account", size: "4:2", type: "account-balance", variant: "cards" }]}
@@ -255,6 +259,20 @@ test("OverviewView places compact bento account values below the meter label", (
               kind: "balance",
               label: "Balance",
               remaining: 21.59,
+              unit: "CNY"
+            },
+            {
+              id: "granted_balance",
+              kind: "balance",
+              label: "Granted balance",
+              remaining: 20,
+              unit: "CNY"
+            },
+            {
+              id: "topped_up_balance",
+              kind: "balance",
+              label: "Topped-up balance",
+              remaining: 1.59,
               unit: "CNY"
             }
           ],
@@ -273,10 +291,64 @@ test("OverviewView places compact bento account values below the meter label", (
     />
   );
 
-  assert.match(html, /Balance<\/div><div class="mt-0\.5 truncate text-\[18px\][^"]*">¥21\.59<\/div>/);
+  assert.match(html, /data-provider-account-uniform-card="true"/);
+  assert.match(html, /overview-account-bento-tile[^"]*overflow-hidden/);
+  assert.match(html, /DeepSeek/);
+  assert.match(html, /Last updated:/);
+  assert.match(html, /Balance/);
+  assert.match(html, /¥21\.59/);
+  assert.doesNotMatch(html, /Granted balance/);
+  assert.doesNotMatch(html, /Topped-up balance/);
+  assert.doesNotMatch(html, /¥20/);
+  assert.doesNotMatch(html, /¥1\.59/);
 });
 
-test("OverviewView applies manual bento account card sizes", () => {
+test("OverviewView keeps all Codex meters rendered when the widget is short", () => {
+  const html = renderToStaticMarkup(
+    <OverviewView
+      overviewWidgets={[{ enabled: true, id: "account", size: "4:1", type: "account-balance", variant: "cards" }]}
+      providerAccounts={[{
+        credentialId: "codex-api",
+        meters: [
+          {
+            id: "codex_primary_quota",
+            kind: "quota",
+            label: "Primary quota",
+            limit: 100,
+            remaining: 74,
+            unit: "%",
+            window: "weekly"
+          },
+          {
+            id: "codex_manual_resets",
+            kind: "requests",
+            label: "Manual resets",
+            remaining: 2,
+            unit: "resets"
+          }
+        ],
+        provider: "Codex API",
+        source: "standard",
+        status: "ok",
+        updatedAt: "2026-08-09T00:53:01.000Z"
+      }]}
+      refreshProviderAccounts={() => undefined}
+      setUsageRange={() => undefined}
+      usageRange="30d"
+      usageStats={usageStats("30d")}
+      onWidgetsChange={() => undefined}
+    />
+  );
+
+  assert.match(html, /data-provider-account-uniform-card="true"/);
+  assert.match(html, /Codex API/);
+  assert.match(html, /Primary quota/);
+  assert.match(html, /74%/);
+  assert.match(html, /Manual resets/);
+  assert.match(html, /2 resets/);
+});
+
+test("OverviewView keeps saved account widths but normalizes card heights", () => {
   const html = renderToStaticMarkup(
     <OverviewView
       overviewWidgets={[{
@@ -299,8 +371,8 @@ test("OverviewView applies manual bento account card sizes", () => {
     />
   );
 
-  assert.match(html, /overview-account-bento-tile[^"]*col-span-2[^"]*row-span-1[^"]*" data-account-status="warning"/);
-  assert.match(html, /overview-account-bento-tile[^"]*col-span-1[^"]*row-span-2[^"]*" data-account-status="ok"/);
+  assert.match(html, /class="[^"]*col-span-2[^"]*row-span-1[^"]*" data-provider-account-sortable-id="openai::primary"/);
+  assert.match(html, /class="[^"]*col-span-1[^"]*row-span-1[^"]*" data-provider-account-sortable-id="anthropic::secondary"/);
 });
 
 test("OverviewView applies manual bento account card order", () => {
@@ -429,7 +501,7 @@ test("OverviewView renders provider logos in account balance widgets", () => {
   assert.match(html, /src="https:\/\/cdn\.example\.test\/anthropic\.png"/);
 });
 
-test("OverviewView prioritizes Codex manual resets before folded balance meters", () => {
+test("OverviewView keeps every Codex meter rendered and prioritizes manual resets", () => {
   const resetAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
   const resetEffectiveAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const codexAccount: ProviderAccountSnapshot = {
@@ -518,7 +590,9 @@ test("OverviewView prioritizes Codex manual resets before folded balance meters"
   assert.doesNotMatch(html, /Full reset/);
   assert.match(html, /expires in/);
   assert.match(html, /2 resets/);
-  assert.doesNotMatch(html, /Credit balance/);
+  assert.match(html, /Credit balance/);
+  assert.match(html, /Individual limit/);
+  assert.ok(html.indexOf("Manual resets") < html.indexOf("Credit balance"));
 });
 
 test("OverviewView does not render an outer progress bar for Codex manual resets", () => {

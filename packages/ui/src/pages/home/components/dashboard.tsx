@@ -2453,7 +2453,7 @@ function ProviderAccountsOverview({
 }) {
   const t = useAppText();
   const selectedAccountProviders = new Set((accountProviders ?? []).map((provider) => provider.trim()).filter(Boolean));
-  const sortedAccounts = [...accounts].sort(compareProviderAccountSnapshots);
+  const sortedAccounts = accounts.map(providerAccountSnapshotForOverview).sort(compareProviderAccountSnapshots);
   const filteredAccounts = selectedAccountProviders.size > 0
     ? sortedAccounts.filter((account) => providerAccountSelectionMatches(account, selectedAccountProviders))
     : sortedAccounts
@@ -2461,10 +2461,12 @@ function ProviderAccountsOverview({
   const visibleAccounts = providerAccountOrderAccounts(filteredAccounts, accountCardOrder);
   const isSingleAccount = visibleAccounts.length === 1;
   const showHeading = dimensions.height >= 2 && dimensions.width >= 2;
-  const bentoLayout = !isSingleAccount && variant === "cards"
-    ? providerAccountBentoLayout(visibleAccounts, dimensions, accountCardSizes)
-    : undefined;
-  const accountGridItems = bentoLayout?.items ?? visibleAccounts.map((account) => ({ account, span: undefined }));
+  const accountGridItems = variant === "cards"
+    ? visibleAccounts.map((account) => ({
+        account,
+        span: providerAccountUniformSpan(account, dimensions, accountCardSizes)
+      }))
+    : visibleAccounts.map((account) => ({ account, span: undefined }));
   const accountCardSortSensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -2507,7 +2509,7 @@ function ProviderAccountsOverview({
       <CardContent className={cn("min-h-0 flex-1 overflow-hidden", providerAccountContentPaddingClass(dimensions))}>
         {visibleAccounts.length === 0 ? (
           <OverviewEmptyState className="h-full py-4" compact label={t("No account balance connectors configured")} />
-        ) : isSingleAccount ? (
+        ) : isSingleAccount && variant !== "cards" ? (
           <ProviderAccountSinglePanel account={visibleAccounts[0]} dimensions={dimensions} providers={providers} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />
         ) : variant === "compact" ? (
           <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions, visibleAccounts.length))}>
@@ -2566,26 +2568,24 @@ function ProviderAccountsOverview({
             <SortableContext items={accountGridItems.map(({ account }) => providerAccountSnapshotKey(account))} strategy={rectSortingStrategy}>
               <div
                 className={cn(
-                  "grid h-full min-h-0 grid-flow-dense items-stretch overflow-hidden",
-                  providerAccountBentoGridRowClass(),
+                  "grid h-full min-h-0 grid-flow-row content-start items-stretch overflow-x-hidden overflow-y-auto pb-2 pr-2 [scrollbar-gutter:stable]",
+                  providerAccountUniformGridRowClass(),
                   providerAccountGapClass(dimensions),
                   providerAccountBentoGridClass(dimensions, visibleAccounts.length)
                 )}
                 data-provider-account-grid="true"
+                data-provider-account-grid-layout="uniform-scroll"
               >
                 {accountGridItems.map(({ account, span }) => {
                   const accountKey = providerAccountSnapshotKey(account);
                   return (
                     <SortableProviderAccountCard account={account} disabled={!editing || !onChangeAccountCardOrder} key={accountKey} span={span}>
                       {(dragHandle) => (
-                        <ProviderAccountSummaryCard account={account} bentoSpan={span} dimensions={dimensions} dragHandle={dragHandle} editing={editing} providers={providers} refreshing={refreshing} variant={variant} onChangeCardSize={onChangeAccountCardSize} onRefresh={onRefresh} />
+                        <ProviderAccountSummaryCard account={account} bentoSpan={span} dimensions={dimensions} dragHandle={dragHandle} editing={editing} providers={providers} refreshing={refreshing} uniformHeight variant={variant} onChangeCardSize={onChangeAccountCardSize} onRefresh={onRefresh} />
                       )}
                     </SortableProviderAccountCard>
                   );
                 })}
-                {(bentoLayout?.hiddenCount ?? 0) > 0 ? (
-                  <ProviderAccountBentoOverflowTile count={bentoLayout?.hiddenCount ?? 0} />
-                ) : null}
               </div>
             </SortableContext>
           </DndContext>
@@ -2754,6 +2754,7 @@ function ProviderAccountSummaryCard({
   onRefresh,
   providers,
   refreshing = false,
+  uniformHeight = false,
   variant
 }: {
   account: ProviderAccountSnapshot;
@@ -2765,37 +2766,44 @@ function ProviderAccountSummaryCard({
   onRefresh?: () => void | Promise<void>;
   providers: GatewayProviderConfig[];
   refreshing?: boolean;
+  uniformHeight?: boolean;
   variant: OverviewAccountVariant;
 }) {
   const t = useAppText();
   const quotaMeters = providerAccountQuotaMeters(account);
   const balanceMeter = primaryProviderAccountBalanceMeter(account);
-  const meters = providerAccountMetersForDisplayOrdered(account, providerAccountMeterLimit(dimensions, false, variant));
+  const meters = providerAccountMetersForDisplayOrdered(account, uniformHeight ? Math.max(1, account.meters.length) : providerAccountMeterLimit(dimensions, false, variant));
   const showQuotaVisual = providerAccountUsesQuotaVisual(variant) && quotaMeters.length > 0;
   const primaryMeter = primaryProviderAccountDisplayMeter(account);
   const secondaryMeters = primaryMeter
-    ? meters.filter((meter) => meter !== primaryMeter).slice(0, providerAccountBentoSecondaryLimit(dimensions))
+    ? meters.filter((meter) => meter !== primaryMeter).slice(0, uniformHeight ? meters.length : providerAccountBentoSecondaryLimit(dimensions))
     : [];
   const extraMeterCount = primaryMeter
     ? Math.max(0, account.meters.length - 1 - secondaryMeters.length)
     : Math.max(0, account.meters.length - meters.length);
   const primaryProgress = primaryMeter && isProviderAccountQuotaMeter(primaryMeter) ? providerAccountMeterProgress(primaryMeter) : undefined;
   const cardBentoSpan = bentoSpan ?? providerAccountBentoSpan(account, dimensions);
-  const compactBento = cardBentoSpan.height === 1;
-  const resizeHandle = editing && onChangeCardSize
+  const compactBento = !uniformHeight && cardBentoSpan.height === 1;
+  const resizeHandle = !uniformHeight && editing && onChangeCardSize
     ? <ProviderAccountCardResizeHandle account={account} currentSize={providerAccountBentoSizeFromSpan(cardBentoSpan)} maxHeight={providerAccountBentoRowCount(dimensions) >= 2 ? 2 : 1} maxWidth={providerAccountBentoColumnCount(dimensions, 2) >= 2 ? 2 : 1} onResize={onChangeCardSize} />
     : null;
 
   if (variant === "cards") {
     if (compactBento) {
       return (
-        <div className={cn("overview-account-bento-tile overview-nested-surface group/account-card relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden border", providerAccountBentoSpanClass(cardBentoSpan), providerAccountCardPaddingClass(dimensions))} data-account-status={account.status}>
-          <div className="flex min-w-0 items-start justify-between gap-2">
-            <div className="flex min-w-0 items-start gap-2">
+        <div className={cn("overview-account-bento-tile overview-nested-surface group/account-card relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden border p-2", providerAccountBentoSpanClass(cardBentoSpan))} data-account-status={account.status} data-provider-account-compact-card="true">
+          <div className="flex min-h-0 min-w-0 flex-1 items-center gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
               <ProviderAccountLogo account={account} className="h-7 w-7 rounded-md" providers={providers} />
               <div className="min-w-0">
                 <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
               </div>
+            </div>
+            <div className="min-w-0 max-w-[45%] shrink-0 text-right" data-provider-account-compact-meter="true">
+              <div className="truncate text-[10px] font-medium leading-none text-muted-foreground">
+                {primaryMeter ? formatProviderAccountMeterTitle(primaryMeter, t) : account.message || account.errors?.[0]?.message || t("Unavailable")}
+              </div>
+              {primaryMeter ? <div className="mt-0.5 truncate text-[18px] font-semibold leading-none tracking-tight">{formatProviderAccountMeterValue(primaryMeter, t)}</div> : null}
             </div>
             {dragHandle || providerAccountShowRefresh(dimensions) ? (
               <div className="flex shrink-0 items-center gap-1">
@@ -2804,14 +2812,8 @@ function ProviderAccountSummaryCard({
               </div>
             ) : null}
           </div>
-          <div className="mt-2 min-w-0">
-            <div className="truncate text-[10px] font-medium text-muted-foreground">
-              {primaryMeter ? formatProviderAccountMeterTitle(primaryMeter, t) : account.message || account.errors?.[0]?.message || t("Unavailable")}
-            </div>
-            {primaryMeter ? <div className="mt-0.5 truncate text-[18px] font-semibold leading-tight tracking-tight">{formatProviderAccountMeterValue(primaryMeter, t)}</div> : null}
-          </div>
           {primaryProgress !== undefined && providerAccountShowProgress(dimensions) ? (
-            <div className="overview-account-bento-track mt-auto h-1.5 overflow-hidden rounded-full">
+            <div className="overview-account-bento-track mt-1.5 h-1.5 shrink-0 overflow-hidden rounded-full">
               <div className="overview-account-bento-fill h-full rounded-full" style={{ width: `${primaryProgress}%` }} />
             </div>
           ) : null}
@@ -2821,13 +2823,21 @@ function ProviderAccountSummaryCard({
     }
 
     return (
-      <div className={cn("overview-account-bento-tile overview-nested-surface group/account-card relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden border", providerAccountBentoSpanClass(cardBentoSpan), providerAccountCardPaddingClass(dimensions))} data-account-status={account.status}>
+      <div
+        className={cn(
+          "overview-account-bento-tile overview-nested-surface group/account-card relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden border",
+          !uniformHeight && providerAccountBentoSpanClass(cardBentoSpan),
+          providerAccountCardPaddingClass(dimensions)
+        )}
+        data-account-status={account.status}
+        data-provider-account-uniform-card={uniformHeight ? "true" : undefined}
+      >
         <div className="flex min-w-0 shrink-0 items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2">
             <ProviderAccountLogo account={account} className="h-8 w-8 rounded-md" providers={providers} />
             <div className="min-w-0">
               <div className="truncate text-[13px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
-              {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+              {uniformHeight || providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
             </div>
           </div>
           {dragHandle || providerAccountShowRefresh(dimensions) ? (
@@ -2840,25 +2850,31 @@ function ProviderAccountSummaryCard({
 
         {primaryMeter ? (
           <>
-            <div className="mt-3 min-w-0">
-              <div className="flex min-w-0 items-end justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="truncate text-[11px] font-medium text-muted-foreground">{formatProviderAccountMeterTitle(primaryMeter, t)}</div>
-                  <div className={cn("truncate font-semibold tracking-tight", dimensions.height >= 3 ? "text-[22px]" : "text-[20px]")}>{formatProviderAccountMeterValue(primaryMeter, t)}</div>
+            {isProviderAccountManualResetMeter(primaryMeter) ? (
+              <div className={cn("mt-3 min-w-0", uniformHeight && "shrink-0")}>
+                <ProviderAccountMeterLine account={account} dimensions={dimensions} meter={primaryMeter} single onRefresh={onRefresh} />
+              </div>
+            ) : (
+              <div className={cn("mt-3 min-w-0", uniformHeight && "shrink-0")}>
+                <div className="flex min-w-0 items-end justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-[11px] font-medium text-muted-foreground">{formatProviderAccountMeterTitle(primaryMeter, t)}</div>
+                    <div className={cn("truncate font-semibold tracking-tight", dimensions.height >= 3 ? "text-[22px]" : "text-[20px]")}>{formatProviderAccountMeterValue(primaryMeter, t)}</div>
+                  </div>
+                  {primaryProgress !== undefined && primaryMeter.unit.trim() !== "%" ? (
+                    <div className="overview-account-bento-badge shrink-0">{primaryProgress}%</div>
+                  ) : null}
                 </div>
-                {primaryProgress !== undefined && primaryMeter.unit.trim() !== "%" ? (
-                  <div className="overview-account-bento-badge shrink-0">{primaryProgress}%</div>
+                {primaryProgress !== undefined && providerAccountShowProgress(dimensions) ? (
+                  <div className="overview-account-bento-track mt-2 h-2 overflow-hidden rounded-full">
+                    <div className="overview-account-bento-fill h-full rounded-full" style={{ width: `${primaryProgress}%` }} />
+                  </div>
                 ) : null}
               </div>
-              {primaryProgress !== undefined && providerAccountShowProgress(dimensions) ? (
-                <div className="overview-account-bento-track mt-2 h-2 overflow-hidden rounded-full">
-                  <div className="overview-account-bento-fill h-full rounded-full" style={{ width: `${primaryProgress}%` }} />
-                </div>
-              ) : null}
-            </div>
+            )}
 
             {secondaryMeters.length > 0 || (providerAccountShowExtraCount(dimensions) && extraMeterCount > 0) ? (
-              <div className="mt-auto min-h-0 space-y-1.5 border-t border-border/45 pt-2">
+              <div className={cn("mt-auto space-y-1.5 border-t border-border/45 pt-2", uniformHeight ? "shrink-0" : "min-h-0")}>
                 {secondaryMeters.map((meter) => (
                   <ProviderAccountMeterLine account={account} compact dimensions={dimensions} key={meter.id} meter={meter} onRefresh={onRefresh} />
                 ))}
@@ -3144,16 +3160,6 @@ function providerAccountCardResizeHandleIcon(handle: OverviewAccountCardResizeHa
         )}
       />
     </span>
-  );
-}
-
-function ProviderAccountBentoOverflowTile({ count }: { count: number }) {
-  const t = useAppText();
-  return (
-    <div className="overview-account-bento-more overview-account-bento-tile overview-nested-surface row-span-1 flex min-h-0 min-w-0 flex-col justify-center overflow-hidden border p-3 text-center" data-account-status="unknown">
-      <div className="truncate text-[22px] font-semibold tracking-tight">+{count}</div>
-      <div className="truncate text-[11px] font-medium text-muted-foreground">{t("More")}</div>
-    </div>
   );
 }
 
@@ -3921,6 +3927,19 @@ function primaryProviderAccountDisplayMeter(account: ProviderAccountSnapshot): P
   return providerAccountQuotaMeters(account)[0] ?? primaryProviderAccountBalanceMeter(account) ?? primaryProviderAccountMeter(account);
 }
 
+const providerAccountBalanceBreakdownMeterIds = new Set(["granted_balance", "topped_up_balance"]);
+
+function providerAccountSnapshotForOverview(account: ProviderAccountSnapshot): ProviderAccountSnapshot {
+  const hasTotalBalance = account.meters.some((meter) => meter.kind === "balance" && meter.id.trim().toLowerCase() === "balance");
+  if (!hasTotalBalance) {
+    return account;
+  }
+  const meters = account.meters.filter((meter) => (
+    meter.kind !== "balance" || !providerAccountBalanceBreakdownMeterIds.has(meter.id.trim().toLowerCase())
+  ));
+  return meters.length === account.meters.length ? account : { ...account, meters };
+}
+
 function providerAccountSelectionMatches(account: ProviderAccountSnapshot, values: ReadonlySet<string>): boolean {
   return values.has(providerAccountSnapshotKey(account)) || values.has(account.provider);
 }
@@ -4083,8 +4102,8 @@ function providerAccountCardPaddingClass(dimensions: OverviewWidgetDimensions): 
   return dimensions.height <= 1 || dimensions.width <= 1 ? "p-2" : "p-3";
 }
 
-function providerAccountBentoGridRowClass(): string {
-  return "auto-rows-fr";
+function providerAccountUniformGridRowClass(): string {
+  return "auto-rows-[176px]";
 }
 
 function providerAccountBentoSecondaryLimit(dimensions: OverviewWidgetDimensions): number {
@@ -4098,58 +4117,13 @@ type ProviderAccountBentoSpan = {
   width: 1 | 2;
 };
 
-function providerAccountBentoLayout(accounts: ProviderAccountSnapshot[], dimensions: OverviewWidgetDimensions, cardSizes: Record<string, OverviewAccountCardSize> | undefined): {
-  hiddenCount: number;
-  items: Array<{ account: ProviderAccountSnapshot; span: ProviderAccountBentoSpan }>;
-} {
-  const maxUnits = providerAccountBentoMaxUnits(dimensions, accounts.length);
-  const items = accounts.map((account) => ({
-    account,
-    manual: providerAccountConfiguredCardSize(account, cardSizes) !== undefined,
-    span: providerAccountBentoSpan(account, dimensions, cardSizes)
-  }));
-  let usedUnits = providerAccountBentoUsedUnits(items);
-
-  for (let index = items.length - 1; index >= 0 && usedUnits > maxUnits; index -= 1) {
-    if (items[index].span.height === 2 && !items[index].manual) {
-      usedUnits -= items[index].span.width;
-      items[index] = { ...items[index], span: { ...items[index].span, height: 1 } };
-    }
-  }
-
-  if (usedUnits <= maxUnits) {
-    return { hiddenCount: 0, items };
-  }
-
-  const visibleBudget = Math.max(0, maxUnits - 1);
-  const visibleItems: Array<{ account: ProviderAccountSnapshot; span: ProviderAccountBentoSpan }> = [];
-  let visibleUnits = 0;
-
-  for (const item of items) {
-    const itemUnits = providerAccountBentoSpanUnits(item.span);
-    if (visibleUnits + itemUnits > visibleBudget) {
-      break;
-    }
-    visibleItems.push(item);
-    visibleUnits += itemUnits;
-  }
-
+function providerAccountUniformSpan(account: ProviderAccountSnapshot, dimensions: OverviewWidgetDimensions, cardSizes?: Record<string, OverviewAccountCardSize>): ProviderAccountBentoSpan {
+  const configuredSize = providerAccountConfiguredCardSize(account, cardSizes);
+  const configuredSpan = configuredSize ? providerAccountBentoSpanFromSize(configuredSize, dimensions) : undefined;
   return {
-    hiddenCount: accounts.length - visibleItems.length,
-    items: visibleItems
+    height: 1,
+    width: configuredSpan?.width ?? 1
   };
-}
-
-function providerAccountBentoUsedUnits(items: Array<{ span: ProviderAccountBentoSpan }>): number {
-  return items.reduce((total, item) => total + providerAccountBentoSpanUnits(item.span), 0);
-}
-
-function providerAccountBentoSpanUnits(span: ProviderAccountBentoSpan): number {
-  return span.width * span.height;
-}
-
-function providerAccountBentoMaxUnits(dimensions: OverviewWidgetDimensions, itemCount: number): number {
-  return Math.max(1, providerAccountBentoColumnCount(dimensions, itemCount) * providerAccountBentoRowCount(dimensions));
 }
 
 function providerAccountBentoColumnCount(dimensions: OverviewWidgetDimensions, itemCount: number): 1 | 2 | 3 {
