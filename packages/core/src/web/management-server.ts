@@ -267,7 +267,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
     if (synced.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig) || runtimeStatus.state !== "running") {
       runtimeStatus = await gatewayService.start(savedConfig);
     } else {
-      await gatewayService.updateConfig(savedConfig);
+      runtimeStatus = await gatewayService.updateConfig(savedConfig);
     }
     if (config || synced.configChanged) {
       invalidateProviderAccountSnapshotCache();
@@ -422,7 +422,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
     if (syncedClaudeAppConfig.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig)) {
       runtimeStatus = await gatewayService.start(savedConfig);
     } else {
-      await gatewayService.updateConfig(savedConfig);
+      runtimeStatus = await gatewayService.updateConfig(savedConfig);
     }
     if ((options as AppSaveConfigOptions | undefined)?.applyProfile !== false) {
       await applyProfileIfServiceRunning(savedConfig, runtimeStatus);

@@ -279,7 +279,7 @@ class GatewayService {
     };
   }
 
-  async updateConfig(config: AppConfig): Promise<void> {
+  async updateConfig(config: AppConfig): Promise<GatewayStatus> {
     assertLoopbackCoreHost(config.gateway.coreHost);
     const scriptValidationErrors = await this.routeScriptRuntime.prepare(config.Router.rules);
     const nextPlugin = new ClaudeCodeRouterPlugin(config, {
@@ -300,16 +300,16 @@ class GatewayService {
       endpoint: endpoint(config.gateway.host, config.gateway.port),
       networkEndpoints: gatewayNetworkEndpoints(config.gateway.host, config.gateway.port)
     };
-    await this.pushConfigToManagedCoreGateway(config);
+    return this.pushConfigToManagedCoreGateway(config);
   }
 
   // The managed core gateway child receives its config once over IPC at spawn
   // time. Without this push, any config save that does not trigger a full
   // restart leaves the child running stale providers/models/keys until the
   // next launch.
-  private async pushConfigToManagedCoreGateway(config: AppConfig): Promise<void> {
+  private async pushConfigToManagedCoreGateway(config: AppConfig): Promise<GatewayStatus> {
     if (!this.child || !this.coreAuthToken) {
-      return;
+      return this.getStatus();
     }
     const upstreamProxyUrl = proxyService.getUpstreamProxyUrl("https") ?? await getSystemProxyUrlForProtocol("https", config);
     const coreGatewayConfig = await compileCoreGatewayConfig(
@@ -322,7 +322,7 @@ class GatewayService {
     );
     const serialized = JSON.stringify(coreGatewayConfig);
     if (serialized === this.lastAppliedGatewayConfig) {
-      return;
+      return this.getStatus();
     }
     try {
       // 子进程可能正在启动（上一次重启还没就绪），连接级失败做短暂重试;
@@ -345,7 +345,7 @@ class GatewayService {
             throw new Error(`Core gateway rejected the config update with HTTP ${response.status}: ${detail}`);
           }
           this.lastAppliedGatewayConfig = serialized;
-          return;
+          return this.getStatus();
         } catch (error) {
           lastError = error;
           if (!responded) {
@@ -357,7 +357,7 @@ class GatewayService {
     } catch (error) {
       console.warn(`[gateway] Restarting the core gateway to apply the config change (hot push unavailable: ${formatError(error)})`);
       this.lastAppliedGatewayConfig = undefined;
-      await this.start(config);
+      return this.start(config);
     }
   }
 

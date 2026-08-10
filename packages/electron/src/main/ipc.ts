@@ -221,7 +221,7 @@ ipcMain.handle(IPC_CHANNELS.appApplyClaudeAppGateway, async (_event, config?: Ap
   if (synced.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig) || runtimeStatus.state !== "running") {
     runtimeStatus = await gatewayService.start(savedConfig);
   } else {
-    await gatewayService.updateConfig(savedConfig);
+    runtimeStatus = await gatewayService.updateConfig(savedConfig);
   }
 
   await builtInBrowserService.syncProxy(savedConfig);
@@ -323,7 +323,7 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, opt
   if (syncedClaudeAppConfig.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig)) {
     runtimeStatus = await gatewayService.start(savedConfig);
   } else {
-    await gatewayService.updateConfig(savedConfig);
+    runtimeStatus = await gatewayService.updateConfig(savedConfig);
   }
   if (options?.applyProfile !== false) {
     await applyProfileIfServiceRunning(savedConfig, runtimeStatus);

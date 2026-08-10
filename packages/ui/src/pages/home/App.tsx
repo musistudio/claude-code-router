@@ -4,7 +4,7 @@ import {
   AppLanguagePreference, applyProviderProbeResult, AppToast, BotGatewaySavedConfig, buildExtensionList, claudeDesignRoutingConfigFromDraft,
   ClaudeDesignRoutingDraft, ClaudeDesignRoutingRuleDraft, cloneConfig, createApiKeyDraft, createApiKeyEditDraft,
   createApiKeyList, createClaudeDesignRoutingDraft, createClaudeDesignRoutingRuleDraft, createCursorProxyRoutingDraft, createCursorProxyRoutingRuleDraft, createEmptyAgentAnalysis,
-  copyTextToClipboard, createEmptyRequestLogPage, createEmptyUsageStats, createExtensionInstallDraft, createGeneratedApiKey, createPluginSettingsDraft, createProfileDraft,
+  copyTextToClipboard, createEmptyRequestLogPage, createEmptyUsageStats, createExtensionInstallDraft, createGeneratedApiKey, createPluginSettingsDraft, createProfileDraft, createRestartableTimer,
   createProfileDraftFromProfile, createProviderDraft, createProviderDraftFromDeepLinkPayload, createProviderDraftFromProvider, createRoutingRuleDraft, createRoutingRuleDraftFromRule,
   createVirtualModelDraft, createVirtualModelDraftFromProfile, DEFAULT_TRAY_WIDGETS, detectSystemLanguage, detectSystemTheme,
   enforceSingleEnabledGlobalProfilePerAgent,
@@ -702,25 +702,34 @@ function App() {
   }, [draftConfig.plugins, pluginRoutingConfigTarget]);
   const providers = useMemo(() => draftConfig.Providers.map((provider, index) => ({ provider, index })), [draftConfig.Providers]);
   const gatewayEndpoint = gatewayStatus.endpoint || draftConfig.routerEndpoint;
-  // 重启/适配窗口内状态可能瞬时落到 error；4 秒内视为"适配中"过渡,
-  // 只有持续的错误才弹出失败横幅。
-  const gatewayErrorSinceRef = useRef<number>();
-  if (gatewayStatus.state === "error") {
-    gatewayErrorSinceRef.current ??= Date.now();
-  } else {
-    gatewayErrorSinceRef.current = undefined;
-  }
-  const gatewayErrorPersistent = gatewayStatus.state === "error" &&
-    gatewayErrorSinceRef.current !== undefined &&
-    Date.now() - gatewayErrorSinceRef.current >= 4000;
-  const gatewayStartupError = gatewayErrorPersistent
+  // 重启/适配窗口内状态可能瞬时落到 error；只有持续 4 秒的错误才弹出失败横幅。
+  const [gatewayErrorPersistent, setGatewayErrorPersistent] = useState(false);
+  const gatewayErrorTimerRef = useRef<ReturnType<typeof createRestartableTimer>>();
+  useEffect(() => {
+    gatewayErrorTimerRef.current ??= createRestartableTimer(
+      () => setGatewayErrorPersistent(true),
+      4000
+    );
+    if (gatewayStatus.state === "error") {
+      setGatewayErrorPersistent(false);
+      gatewayErrorTimerRef.current.restart();
+    } else {
+      gatewayErrorTimerRef.current.cancel();
+      setGatewayErrorPersistent(false);
+    }
+    return () => gatewayErrorTimerRef.current?.cancel();
+  }, [gatewayStatus.state]);
+  const gatewayErrorVisible = gatewayStatus.state === "error" && gatewayErrorPersistent;
+  const gatewayStartupError = gatewayErrorVisible
     ? translateAppErrorMessage(copy, gatewayStatus.lastError || "Service did not start.")
     : "";
-  const [gatewayAdaptingUntil, setGatewayAdaptingUntil] = useState(0);
-  const gatewayAdapting = !gatewayErrorPersistent &&
+  const [gatewayConfigAdapting, setGatewayConfigAdapting] = useState(false);
+  const gatewayConfigAdaptingTimerRef = useRef<ReturnType<typeof createRestartableTimer>>();
+  useEffect(() => () => gatewayConfigAdaptingTimerRef.current?.cancel(), []);
+  const gatewayAdapting = !gatewayErrorVisible &&
     (gatewayStatus.state === "starting" ||
       gatewayStatus.state === "error" ||
-      Date.now() < gatewayAdaptingUntil);
+      gatewayConfigAdapting);
   const networkCaptureEnabled = draftConfig.proxy.enabled && draftConfig.proxy.captureNetwork;
   const visibleNavigation = useMemo(
     () => navigation.filter((item) =>
@@ -1015,8 +1024,13 @@ function App() {
       const saved = await window.ccr.saveConfig(configWithTheme, saveOptions);
       syncConfigState(saved);
       setError("");
-      // 配置已变更，展示"适配中"提示一段时间（覆盖网关热推送/重启窗口）
-      setGatewayAdaptingUntil(Date.now() + 4000);
+      // 配置已变更，展示"适配中"提示一段时间（覆盖网关热推送/重启窗口）。
+      setGatewayConfigAdapting(true);
+      gatewayConfigAdaptingTimerRef.current ??= createRestartableTimer(
+        () => setGatewayConfigAdapting(false),
+        4000
+      );
+      gatewayConfigAdaptingTimerRef.current.restart();
       return true;
     } catch (error) {
       setError(formatError(error));
