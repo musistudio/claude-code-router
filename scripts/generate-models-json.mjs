@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -47,6 +47,9 @@ const canonicalModelOverrides = new Map([
     pricing: { cacheRead: 0.06, cacheWrite: 0.375, input: 0.3, output: 1.2 }
   }]
 ]);
+const fetchAttempts = 3;
+const fetchRetryDelayMs = 500;
+const fetchTimeoutMs = 15_000;
 
 const firstPartyProviderAliases = new Map(Object.entries({
   ai21: "ai21",
@@ -99,11 +102,33 @@ const providerHints = [
 ];
 
 async function main() {
-  const [modelsDevPayload, liteLlmPayload, openRouterPayload] = await Promise.all([
-    fetchJson(sources.modelsDev.url),
-    fetchJson(sources.litellm.url),
-    fetchJson(sources.openrouter.url)
-  ]);
+  const sourceRequests = [
+    sources.modelsDev,
+    sources.litellm,
+    sources.openrouter
+  ];
+  const sourceResults = await Promise.allSettled(
+    sourceRequests.map((source) => fetchJson(source.url))
+  );
+  const failures = sourceResults.flatMap((result, index) =>
+    result.status === "rejected"
+      ? [`${sourceRequests[index].id}: ${formatError(result.reason)}`]
+      : []
+  );
+  if (failures.length > 0) {
+    const existingCatalog = await readExistingCatalog();
+    if (existingCatalog) {
+      console.warn(`[models] Refresh failed (${failures.join("; ")}).`);
+      console.warn(
+        `[models] Keeping the checked-in catalog with ${existingCatalog.models.length} model records.`
+      );
+      return;
+    }
+    throw new Error(`Failed to refresh the model catalog: ${failures.join("; ")}`);
+  }
+  const [modelsDevPayload, liteLlmPayload, openRouterPayload] = sourceResults.map(
+    (result) => result.value
+  );
 
   const entries = new Map();
   ingestModelsDev(entries, modelsDevPayload);
@@ -135,11 +160,49 @@ async function main() {
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url, { headers: { accept: "application/json" } });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${url}: HTTP ${response.status}`);
+  let lastError;
+  for (let attempt = 1; attempt <= fetchAttempts; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(fetchTimeoutMs)
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      lastError = error;
+      if (attempt < fetchAttempts) {
+        await delay(fetchRetryDelayMs * attempt);
+      }
+    }
   }
-  return response.json();
+  throw new Error(
+    `Failed to fetch ${url} after ${fetchAttempts} attempts: ${formatError(lastError)}`
+  );
+}
+
+async function readExistingCatalog() {
+  try {
+    const payload = JSON.parse(await readFile(outputPath, "utf8"));
+    return isRecord(payload) &&
+      payload.schemaVersion === schemaVersion &&
+      Array.isArray(payload.models) &&
+      payload.models.length > 0
+      ? payload
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function delay(milliseconds) {
+  return new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
+}
+
+function formatError(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function ingestModelsDev(entries, payload) {

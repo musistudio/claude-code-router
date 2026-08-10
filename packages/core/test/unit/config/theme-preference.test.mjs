@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadPersistedAppConfig, replacePersistedAppConfig } from "@ccr/core/config/app-config-store.ts";
+import { loadPersistedAppConfig, replacePersistedAppConfig } from "@ccr/core/config/config-repository.ts";
 import { loadAppConfig, saveAppConfig, saveAppThemePreference } from "@ccr/core/config/config.ts";
 
 test("theme preference persistence changes only the theme field", async () => {

@@ -6,21 +6,25 @@ test("provider model metadata config preserves context fields", () => {
   assert.deepEqual(providerModelMetadataFromConfigForTest({
     contextWindow: 272000,
     effectiveContextWindowPercent: 95,
-    maxContextWindow: 300000
+    maxContextWindow: 300000,
+    maxOutputTokens: 64000
   }), {
     contextWindow: 272000,
     effectiveContextWindowPercent: 95,
-    maxContextWindow: 300000
+    maxContextWindow: 300000,
+    maxOutputTokens: 64000
   });
 
   assert.deepEqual(providerModelMetadataFromConfigForTest({
     context_window: 128000,
     effective_context_window_percent: 90,
-    max_context_window: 200000
+    max_context_window: 200000,
+    output_tokens: 32000
   }), {
     contextWindow: 128000,
     effectiveContextWindowPercent: 90,
-    maxContextWindow: 200000
+    maxContextWindow: 200000,
+    maxOutputTokens: 32000
   });
 });
 
@@ -28,7 +32,8 @@ test("provider model metadata config ignores invalid context fields", () => {
   assert.equal(providerModelMetadataFromConfigForTest({
     context_window: 0,
     effective_context_window_percent: 101,
-    max_context_window: -1
+    max_context_window: -1,
+    max_output_tokens: 0
   }), undefined);
 });
 

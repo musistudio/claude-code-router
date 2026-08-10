@@ -5,7 +5,7 @@ import { compileCoreGatewayConfig } from "@ccr/core/gateway/core-runtime/config-
 import { shouldRunGatewayRuntime } from "@ccr/core/gateway/core-runtime/supervisor.ts";
 
 test("media tools start their internal gateway runtime when the public gateway is disabled", () => {
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const config = createDefaultAppConfig();
   config.gateway.enabled = false;
   config.proxy.enabled = false;
   config.mediaTools.enabled = true;
@@ -14,7 +14,7 @@ test("media tools start their internal gateway runtime when the public gateway i
 });
 
 test("core gateway compiles media capabilities and provider plugin aliases for credentials", async () => {
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const config = createDefaultAppConfig();
   config.Providers = [{
     api_base_url: "https://chat.example/v1",
     capabilities: [

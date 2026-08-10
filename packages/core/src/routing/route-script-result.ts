@@ -3,7 +3,7 @@ import {
   type RouterFallbackConfig
 } from "@ccr/core/contracts/app";
 import type { CompiledRouterRule } from "@ccr/core/routing/config-compiler";
-import type { RouteDiagnostic, RouteModelRef } from "@ccr/core/routing/contracts";
+import type { RouteDiagnostic, RouteModelRef, RouteSource } from "@ccr/core/routing/contracts";
 import type { ModelRegistry } from "@ccr/core/routing/model-registry";
 import {
   compileScriptRouteRewrite,
@@ -28,32 +28,34 @@ export function normalizeRouteScriptResult(input: {
   compiledRule: CompiledRouterRule;
   defaultFallback: RouterFallbackConfig;
   modelRegistry: ModelRegistry;
+  source?: RouteSource;
   value: unknown;
 }): NormalizedRouteScriptResult {
   const { compiledRule, defaultFallback, modelRegistry, value } = input;
+  const source = input.source ?? "rule";
   const rule = compiledRule.rule;
   if (value === undefined || value === null || value === false) {
     return { diagnostics: [], matched: false, rewrites: [] };
   }
   if (value !== true && !isRecord(value)) {
-    return invalid(rule.id, "Script result must be null, false, true, or an object.");
+    return invalid(rule.id, "Script result must be null, false, true, or an object.", source);
   }
   if (isRecord(value) && value.match === false) {
     return { diagnostics: [], matched: false, rewrites: [] };
   }
   const resultBytes = Buffer.byteLength(JSON.stringify(value), "utf8");
   if (resultBytes > maxScriptResultBytes) {
-    return invalid(rule.id, `Script result is ${resultBytes} bytes; the limit is ${maxScriptResultBytes} bytes.`);
+    return invalid(rule.id, `Script result is ${resultBytes} bytes; the limit is ${maxScriptResultBytes} bytes.`, source);
   }
 
   const result = isRecord(value) ? value : {};
   const rawRewrites = result.rewrites;
   if (rawRewrites !== undefined && (!Array.isArray(rawRewrites) || rawRewrites.length > maxScriptRewrites)) {
-    return invalid(rule.id, `Script result rewrites must be an array with at most ${maxScriptRewrites} entries.`);
+    return invalid(rule.id, `Script result rewrites must be an array with at most ${maxScriptRewrites} entries.`, source);
   }
   const dynamicResults = Array.isArray(rawRewrites) ? rawRewrites.map(compileScriptRouteRewrite) : [];
   const rewriteError = dynamicResults.find((entry) => entry.error)?.error;
-  if (rewriteError) return invalid(rule.id, rewriteError);
+  if (rewriteError) return invalid(rule.id, rewriteError, source);
   const rewrites = [
     ...compiledRule.rewrites,
     ...dynamicResults.flatMap((entry) => entry.rewrite ? [entry.rewrite] : [])
@@ -61,7 +63,7 @@ export function normalizeRouteScriptResult(input: {
 
   const providerName = effectiveTargetProviderName(rewrites);
   const dynamicModel = typeof result.model === "string" ? result.model.trim() : undefined;
-  if (result.model !== undefined && !dynamicModel) return invalid(rule.id, "Script result model must be a non-empty string.");
+  if (result.model !== undefined && !dynamicModel) return invalid(rule.id, "Script result model must be a non-empty string.", source);
   const rewrittenModel = effectiveBodyModelRewriteValue(rewrites);
   const hasModelRewrite = rewrites.some(isBodyModelCompiledRewrite);
   const selectedModel = dynamicModel ?? rewrittenModel;
@@ -77,7 +79,7 @@ export function normalizeRouteScriptResult(input: {
         message: `Router script returned unconfigured model "${selectedModel}".`,
         model: selectedModel,
         ruleId: rule.id,
-        source: "rule"
+        source
       }],
       matched: false,
       rewrites: []
@@ -85,11 +87,11 @@ export function normalizeRouteScriptResult(input: {
   }
   const targetProvider = providerName ? modelRegistry.findProvider(providerName) : undefined;
   if (targetProvider && model?.kind === "provider" && model.provider !== targetProvider) {
-    return invalid(rule.id, `Script model "${model.selector}" conflicts with target provider "${providerName}".`);
+    return invalid(rule.id, `Script model "${model.selector}" conflicts with target provider "${providerName}".`, source);
   }
 
   const fallbackResult = normalizeScriptFallback(result.fallback, rule.fallback ?? defaultFallback, modelRegistry);
-  if (fallbackResult.error) return invalid(rule.id, fallbackResult.error);
+  if (fallbackResult.error) return invalid(rule.id, fallbackResult.error, source);
   return {
     diagnostics: [],
     fallback: fallbackResult.fallback,
@@ -135,13 +137,13 @@ function normalizeScriptFallback(
   };
 }
 
-function invalid(ruleId: string, message: string): NormalizedRouteScriptResult {
+function invalid(ruleId: string, message: string, source: RouteSource = "rule"): NormalizedRouteScriptResult {
   return {
     diagnostics: [{
       code: "script-invalid-result",
       message,
       ruleId,
-      source: "rule"
+      source
     }],
     matched: false,
     rewrites: []

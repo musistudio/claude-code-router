@@ -31,20 +31,32 @@ export function UpdateDialog({
   const t = (value: string) => copy.text[value] ?? value;
   const busy = Boolean(actionBusy) || status.state === "checking" || status.state === "downloading" || status.state === "installing";
   const canDownload = status.canDownload || status.state === "available";
+  const canRetryDownload = status.state === "error" && status.supported && Boolean(status.availableVersion);
   const canInstall = status.canInstall || status.state === "downloaded";
   const progressPercent = clampPercent(status.progress?.percent);
   const error = actionError || status.lastError || "";
+  const displayedError = error ? t(error) : "";
   const installing = actionBusy === "install" || status.state === "installing";
+  const primaryAction = updatePrimaryAction({
+    actionBusy,
+    canDownload: canDownload || canRetryDownload,
+    canInstall,
+    onCheck,
+    onDownload,
+    onInstall,
+    status,
+    t
+  });
+  const releaseNotes = formatUpdateReleaseNotes(status.releaseNotes);
   const showStateBadge = status.state === "error" ||
     status.state === "not-available" ||
     status.state === "available" ||
     status.state === "downloaded" ||
     status.state === "downloading";
-  const stateDescription = updateStateDescription(status, t);
 
   return (
     <Dialog onOpenChange={(open) => !open && !installing && onClose()} open>
-      <DialogContent className="max-w-[560px]">
+      <DialogContent className="max-w-[520px]">
         <DialogHeader>
           <div className="flex min-w-0 flex-1 items-center gap-2 pr-2">
             <DialogTitle>{t("Online updates")}</DialogTitle>
@@ -60,19 +72,13 @@ export function UpdateDialog({
           </Button>
         </DialogHeader>
 
-        <DialogBody className="grid gap-4">
-          {stateDescription ? (
-            <div className="text-[12px] leading-5 text-muted-foreground">{stateDescription}</div>
-          ) : null}
-
+        <DialogBody className="grid gap-3">
           <div className="grid grid-cols-2 gap-2 max-[520px]:grid-cols-1">
             <UpdateInfoRow label={t("Current version")} value={status.currentVersion} />
             <UpdateInfoRow
               label={t("Latest version")}
               value={status.availableVersion || (status.state === "not-available" ? status.currentVersion : "-")}
             />
-            <UpdateInfoRow label={t("Last checked")} value={formatUpdateDate(status.lastCheckedAt) || "-"} />
-            <UpdateInfoRow label={t("Feed URL")} scroll value={status.feedUrl || "-"} />
           </div>
 
           {status.state === "downloading" ? (
@@ -107,17 +113,17 @@ export function UpdateDialog({
             </div>
           ) : null}
 
-          {error ? (
+          {displayedError ? (
             <div className="flex min-w-0 items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
               <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span className="min-w-0 break-words">{error}</span>
+              <span className="min-w-0 break-words">{displayedError}</span>
             </div>
           ) : null}
 
-          {status.releaseNotes ? (
+          {releaseNotes ? (
             <div className="grid gap-1 rounded-md border border-border bg-background px-3 py-2">
               <div className="text-[11px] font-semibold text-muted-foreground">{t("Release notes")}</div>
-              <div className="max-h-36 overflow-auto whitespace-pre-wrap text-[12px] leading-5 text-foreground">{status.releaseNotes}</div>
+              <div className="max-h-44 overflow-auto whitespace-pre-wrap text-[12px] leading-5 text-foreground">{releaseNotes}</div>
             </div>
           ) : null}
         </DialogBody>
@@ -126,37 +132,82 @@ export function UpdateDialog({
           <Button disabled={installing} onClick={onClose} type="button" variant="outline">
             {t("Close")}
           </Button>
-          <Button disabled={busy || !status.canCheck} onClick={() => void onCheck()} type="button" variant="outline">
-            {actionBusy === "check" || status.state === "checking" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {t("Check for updates")}
-          </Button>
-          <Button disabled={busy || !canDownload} onClick={() => void onDownload()} type="button" variant="outline">
-            {actionBusy === "download" || status.state === "downloading" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            {t("Download update")}
-          </Button>
-          <Button disabled={busy || !canInstall} onClick={() => void onInstall()} type="button">
-            {installing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            {t("Install and restart")}
-          </Button>
+          {primaryAction ? (
+            <Button disabled={primaryAction.disabled || busy} onClick={() => void primaryAction.onClick()} type="button">
+              {primaryAction.icon}
+              {primaryAction.label}
+            </Button>
+          ) : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-function UpdateInfoRow({ label, scroll = false, value }: { label: string; scroll?: boolean; value: string }) {
+function UpdateInfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded-md border border-border/70 bg-muted/20 px-3 py-2">
       <div className="text-[10px] font-medium uppercase text-muted-foreground">{label}</div>
       <div
-        className={cn("mt-1 min-w-0 text-[12px] font-medium text-foreground", scroll ? "overflow-x-auto whitespace-nowrap" : "truncate")}
-        tabIndex={scroll ? 0 : undefined}
+        className={cn("mt-1 min-w-0 truncate text-[12px] font-medium text-foreground")}
         title={value}
       >
         {value}
       </div>
     </div>
   );
+}
+
+function updatePrimaryAction({
+  actionBusy,
+  canDownload,
+  canInstall,
+  onCheck,
+  onDownload,
+  onInstall,
+  status,
+  t
+}: {
+  actionBusy: UpdateActionBusy;
+  canDownload: boolean;
+  canInstall: boolean;
+  onCheck: () => Promise<void>;
+  onDownload: () => Promise<void>;
+  onInstall: () => Promise<void>;
+  status: AppUpdateStatus;
+  t: (value: string) => string;
+}): { disabled: boolean; icon: JSX.Element; label: string; onClick: () => Promise<void> } | undefined {
+  if (canInstall || status.state === "installing" || actionBusy === "install") {
+    const installing = status.state === "installing" || actionBusy === "install";
+    return {
+      disabled: installing || !canInstall,
+      icon: installing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />,
+      label: t("Install and restart"),
+      onClick: onInstall
+    };
+  }
+
+  if (canDownload || status.state === "downloading" || actionBusy === "download") {
+    const downloading = status.state === "downloading" || actionBusy === "download";
+    return {
+      disabled: downloading || !canDownload,
+      icon: downloading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />,
+      label: status.state === "error" ? t("Retry download") : downloading ? t("Downloading update") : t("Download update"),
+      onClick: onDownload
+    };
+  }
+
+  if (status.canCheck || status.state === "checking" || actionBusy === "check") {
+    const checking = status.state === "checking" || actionBusy === "check";
+    return {
+      disabled: checking || !status.canCheck,
+      icon: checking ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />,
+      label: checking ? t("Checking for updates") : t("Check for updates"),
+      onClick: onCheck
+    };
+  }
+
+  return undefined;
 }
 
 function UpdateStateBadge({ label, status }: { label: string; status: AppUpdateStatus }) {
@@ -188,13 +239,88 @@ function updateStateLabel(status: AppUpdateStatus, t: (value: string) => string)
   return t("Check for updates");
 }
 
-function updateStateDescription(status: AppUpdateStatus, t: (value: string) => string): string {
-  if (!status.supported) return t("Updates are only available in packaged builds.");
-  if (status.state === "available" && status.availableVersion) return `${t("Available version")}: ${status.availableVersion}`;
-  if (status.state === "downloaded") return t("Update downloaded");
-  if (status.state === "not-available") return "";
-  if (status.state === "downloading") return t("Downloading update");
-  return "";
+export function formatUpdateReleaseNotes(notes: string | undefined): string {
+  if (!notes?.trim()) {
+    return "";
+  }
+
+  const text = decodeHtmlEntities(notes
+    .replace(/<\s*style\b[^>]*>[\s\S]*?<\s*\/\s*style\s*>/gi, "\n")
+    .replace(/<\s*script\b[^>]*>[\s\S]*?<\s*\/\s*script\s*>/gi, "\n")
+    .replace(/<\s*li\b[^>]*>/gi, "\n- ")
+    .replace(/<\s*\/\s*li\s*>/gi, "\n")
+    .replace(/<\s*br\s*\/?\s*>/gi, "\n")
+    .replace(/<\s*\/\s*(?:p|div|section|h[1-6]|ul|ol)\s*>/gi, "\n")
+    .replace(/<\s*(?:p|div|section|h[1-6]|ul|ol)\b[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, ""));
+
+  const lines: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const cleaned = cleanReleaseNoteLine(line);
+    if (cleaned && cleaned !== lines[lines.length - 1]) {
+      lines.push(cleaned);
+    }
+  }
+
+  const maxLines = 14;
+  return [
+    ...lines.slice(0, maxLines),
+    ...(lines.length > maxLines ? ["..."] : [])
+  ].join("\n");
+}
+
+function cleanReleaseNoteLine(value: string): string {
+  const line = value
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\s+by\s+@[\w-]+(?:\s+in\s+#\d+)?$/i, "")
+    .replace(/\s+in\s+#\d+$/i, "")
+    .trim();
+
+  if (!line || line === "-") {
+    return "";
+  }
+  if (/^v?\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/i.test(line)) {
+    return "";
+  }
+  if (/^(what'?s changed|full changelog|new contributors)$/i.test(line)) {
+    return "";
+  }
+  if (/^full changelog\s*:/i.test(line)) {
+    return "";
+  }
+  return line;
+}
+
+function decodeHtmlEntities(value: string): string {
+  if (typeof document !== "undefined") {
+    const textarea = document.createElement("textarea");
+    textarea.innerHTML = value;
+    return textarea.value;
+  }
+  return value.replace(/&(#x?[0-9a-f]+|amp|lt|gt|quot|apos|nbsp);/gi, (match, entity: string) => {
+    const normalized = entity.toLowerCase();
+    if (normalized === "amp") return "&";
+    if (normalized === "lt") return "<";
+    if (normalized === "gt") return ">";
+    if (normalized === "quot") return "\"";
+    if (normalized === "apos") return "'";
+    if (normalized === "nbsp") return " ";
+    if (normalized.startsWith("#x")) {
+      const codePoint = Number.parseInt(normalized.slice(2), 16);
+      return validCodePoint(codePoint) ? String.fromCodePoint(codePoint) : match;
+    }
+    if (normalized.startsWith("#")) {
+      const codePoint = Number.parseInt(normalized.slice(1), 10);
+      return validCodePoint(codePoint) ? String.fromCodePoint(codePoint) : match;
+    }
+    return match;
+  });
+}
+
+function validCodePoint(value: number): boolean {
+  return Number.isInteger(value) && value >= 0 && value <= 0x10ffff;
 }
 
 function clampPercent(value: number | undefined): number | undefined {
@@ -229,15 +355,4 @@ function formatBytes(value: number | undefined): string {
     unitIndex += 1;
   }
   return `${current >= 10 || unitIndex === 0 ? current.toFixed(0) : current.toFixed(1)} ${units[unitIndex]}`;
-}
-
-function formatUpdateDate(value: string | undefined): string {
-  if (!value) {
-    return "";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-  return date.toLocaleString();
 }

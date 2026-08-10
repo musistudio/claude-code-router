@@ -1,6 +1,7 @@
+import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ApiKeyConfig, AppConfig } from "@ccr/core/contracts/app";
-import { loadPersistedApiKeys } from "@ccr/core/config/api-key-store";
+import { loadPersistedApiKeys } from "@ccr/core/config/config-repository";
 import { formatError, readAuthToken, readRemoteControlQueryAuthToken, sendJson } from "@ccr/core/gateway/http/io";
 import { estimateLimitUsage, limitRules, readWindowCounter } from "@ccr/core/gateway/limits/window-limiter";
 import type { ApiKeyAuthorizationResult, ApiKeyLimitRule, ApiKeyLimitUsage } from "@ccr/core/gateway/internal/shared";
@@ -24,10 +25,10 @@ export async function authorize(
   }
 
   const token = readAuthToken(request.headers) || readRemoteControlQueryAuthToken(request);
-  let apiKey = token ? apiKeys.find((item) => item.key === token) : undefined;
+  let apiKey = token ? findApiKeyByToken(apiKeys, token) : undefined;
   if (!apiKey && token) {
     apiKeys = await configuredApiKeys(config, { refresh: true });
-    apiKey = apiKeys.find((item) => item.key === token);
+    apiKey = findApiKeyByToken(apiKeys, token);
   }
   if (apiKey) {
     if (isApiKeyExpired(apiKey)) {
@@ -119,6 +120,16 @@ async function loadPersistedApiKeysCached(options: { refresh?: boolean } = {}): 
     console.warn(`[gateway] Failed to load persisted API keys: ${formatError(error)}`);
     return [];
   }
+}
+
+function findApiKeyByToken(apiKeys: ApiKeyConfig[], token: string): ApiKeyConfig | undefined {
+  return apiKeys.find((item) => constantTimeEqual(item.key, token));
+}
+
+function constantTimeEqual(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 function isApiKeyExpired(apiKey: ApiKeyConfig): boolean {

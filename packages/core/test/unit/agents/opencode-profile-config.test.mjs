@@ -17,8 +17,26 @@ import {
 } from "@ccr/core/agents/opencode/app-launch.ts";
 
 function testConfig(root) {
-  const config = createDefaultAppConfig({ generatedConfigFile: path.join(root, "gateway.config.json") });
-  config.Providers = [{ api_base_url: "https://example.test/v1", api_key: "provider-key", models: ["model-a", "model-b"], name: "Provider" }];
+  const config = createDefaultAppConfig();
+  config.Providers = [{
+    api_base_url: "https://example.test/v1",
+    api_key: "provider-key",
+    modelMetadata: {
+      "model-a": {
+        capabilities: { imageInput: true },
+        contextWindow: 64_000,
+        maxContextWindow: 64_000,
+        maxOutputTokens: 16_000
+      },
+      "model-b": {
+        contextWindow: 32_000,
+        maxContextWindow: 32_000,
+        maxOutputTokens: 4_096
+      }
+    },
+    models: ["model-a", "model-b"],
+    name: "Provider"
+  }];
   config.preferredProvider = "Provider";
   config.gateway.host = "127.0.0.1";
   config.gateway.port = 4567;
@@ -56,8 +74,84 @@ test("OpenCode profile config routes primary and small models through CCR", () =
     assert.equal(config.provider["claude-code-router"].options.apiKey, "ccr-profile-key");
     assert.equal(config.provider["claude-code-router"].options.headers["x-ccr-client"], "opencode");
     assert.ok(config.provider["claude-code-router"].models["Provider/model-a"]);
+    assert.deepEqual(config.provider["claude-code-router"].models["Provider/model-a"].modalities, {
+      input: ["text", "image"],
+      output: ["text"]
+    });
+    assert.deepEqual(config.provider["claude-code-router"].models["Provider/model-a"].limit, {
+      context: 64_000,
+      output: 16_000
+    });
+    assert.deepEqual(config.provider["claude-code-router"].models["Provider/model-b"].modalities, {
+      input: ["text"],
+      output: ["text"]
+    });
+    assert.deepEqual(config.provider["claude-code-router"].models["Provider/model-b"].limit, {
+      context: 32_000,
+      output: 4_096
+    });
     assert.equal(JSON.parse(result.inlineConfig).model, config.model);
     assert.equal(isManagedOpenCodeConfigContent(readFileSync(result.file, "utf8"), "claude-code-router"), true);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("OpenCode profile config writes Fusion vision model metadata and resolved context", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-opencode-fusion-profile-"));
+  try {
+    const config = createDefaultAppConfig();
+    config.Providers = [{
+      api_base_url: "https://example.test/v1",
+      modelMetadata: {
+        "gpt-5.6-sol": {
+          capabilities: { imageInput: true },
+          contextWindow: 272_000,
+          maxContextWindow: 272_000
+        }
+      },
+      models: ["gpt-5.6-sol"],
+      name: "Codex API",
+      type: "openai_responses"
+    }];
+    config.virtualModelProfiles = [{
+      baseModel: { fixedModel: "Codex API/gpt-5.6-sol", mode: "fixed" },
+      enabled: true,
+      execution: { matchMultimodal: true },
+      match: { exactAliases: ["fusion-basic-vision"], prefixes: [], suffixes: [] },
+      materialization: { enabled: true, includeInGatewayModels: true },
+      tools: []
+    }];
+    config.gateway.host = "127.0.0.1";
+    config.gateway.port = 4567;
+
+    const result = writeOpenCodeGatewayConfig(
+      root,
+      config,
+      testProfile({ model: "Fusion/fusion-basic-vision" }),
+      "ccr-profile-key",
+      { backup: false }
+    );
+    const written = JSON.parse(readFileSync(result.file, "utf8"));
+    const models = written.provider["claude-code-router"].models;
+
+    assert.equal(written.model, "claude-code-router/Fusion/fusion-basic-vision");
+    assert.deepEqual(models["Fusion/fusion-basic-vision"].modalities, {
+      input: ["text", "image"],
+      output: ["text"]
+    });
+    assert.deepEqual(models["Fusion/fusion-basic-vision"].limit, {
+      context: 1_050_000,
+      output: 128_000
+    });
+    assert.deepEqual(models["Codex API/gpt-5.6-sol"].modalities, {
+      input: ["text", "image"],
+      output: ["text"]
+    });
+    assert.deepEqual(models["Codex API/gpt-5.6-sol"].limit, {
+      context: 1_050_000,
+      output: 128_000
+    });
   } finally {
     rmSync(root, { force: true, recursive: true });
   }

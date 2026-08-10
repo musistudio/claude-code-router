@@ -987,6 +987,10 @@ test("RequestLogStore analyzes agent sessions and exposes trace payloads", async
     assert.equal(selected.selectedSession?.trace.toolRunCount, 1);
     assert.equal(selected.selectedSession?.trace.llmRunCount, 1);
     assert.equal(selected.selectedSession?.trace.runs.some((run) => run.toolName === "read_file"), true);
+    assert.equal(
+      selected.selectedSession?.trace.runs.find((run) => run.id === selected.selectedSession?.trace.rootRunId)?.status,
+      "success"
+    );
 
     const inputPayload = await store.getTracePayload({
       callId: "call-read",
@@ -1005,6 +1009,241 @@ test("RequestLogStore analyzes agent sessions and exposes trace payloads", async
     assert.equal(resultPayload.found, true);
     assert.equal(resultPayload.kind, "json");
     assert.match(resultPayload.content, /files/);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore ignores subagent markers in tool definitions and placeholder text", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-subagent-detection-test-"));
+  try {
+    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const baseTime = Date.now() - 5000;
+
+    async function recordClaudeRequest({ body, offsetMs, sessionId }) {
+      const startedAtMs = baseTime + offsetMs;
+      await store.record({
+        completedAt: new Date(startedAtMs + 100).toISOString(),
+        durationMs: 100,
+        method: "POST",
+        path: "/v1/messages",
+        providerName: "test-provider",
+        requestBody: Buffer.from(JSON.stringify({
+          ...body,
+          model: "claude-test"
+        }), "utf8"),
+        requestHeaders: {
+          "content-type": "application/json",
+          "user-agent": "claude-cli test",
+          "x-ccr-route-reason": "default",
+          "x-ccr-routed-model": "test-provider/claude-test",
+          "x-claude-code-session-id": sessionId
+        },
+        requestId: `${sessionId}-request`,
+        responseBodyText: JSON.stringify({ model: "claude-test" }),
+        responseHeaders: { "content-type": "application/json" },
+        startedAt: new Date(startedAtMs).toISOString(),
+        statusCode: 200,
+        url: "http://127.0.0.1:3456/v1/messages"
+      });
+    }
+
+    await recordClaudeRequest({
+      body: {
+        messages: [{ content: "normal main-agent request", role: "user" }],
+        tools: [{
+          description: "Use <CCR-SUBAGENT-MODEL>Provider/claude-opus</CCR-SUBAGENT-MODEL> when spawning an agent.",
+          input_schema: {
+            properties: {
+              prompt: {
+                description: "Start with <CCR-SUBAGENT-MODEL>Provider/model</CCR-SUBAGENT-MODEL>.",
+                type: "string"
+              }
+            },
+            type: "object"
+          },
+          name: "Agent"
+        }]
+      },
+      offsetMs: 0,
+      sessionId: "tool-description-session"
+    });
+    await recordClaudeRequest({
+      body: {
+        messages: [{ content: "normal request", role: "user" }],
+        system: "Example: <CCR-SUBAGENT-MODEL>Provider/model</CCR-SUBAGENT-MODEL>"
+      },
+      offsetMs: 1000,
+      sessionId: "placeholder-session"
+    });
+    await recordClaudeRequest({
+      body: {
+        messages: [{
+          content: "<CCR-SUBAGENT-MODEL>Provider/claude-opus</CCR-SUBAGENT-MODEL>\nInspect the repository.",
+          role: "user"
+        }]
+      },
+      offsetMs: 2000,
+      sessionId: "real-subagent-session"
+    });
+
+    const toolDescription = await store.analyze({
+      range: "30d",
+      sessionAgent: "claude-code",
+      sessionId: "tool-description-session"
+    });
+    assert.equal(toolDescription.selectedSession?.trace.subagentRunCount, 0);
+    assert.equal(toolDescription.selectedSession?.subagents.length, 0);
+
+    const placeholder = await store.analyze({
+      range: "30d",
+      sessionAgent: "claude-code",
+      sessionId: "placeholder-session"
+    });
+    assert.equal(placeholder.selectedSession?.trace.subagentRunCount, 0);
+    assert.equal(placeholder.selectedSession?.subagents.length, 0);
+
+    const realSubagent = await store.analyze({
+      range: "30d",
+      sessionAgent: "claude-code",
+      sessionId: "real-subagent-session"
+    });
+    assert.equal(realSubagent.selectedSession?.trace.subagentRunCount, 1);
+    assert.equal(realSubagent.selectedSession?.subagents[0]?.model, "Provider/claude-opus");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore distinguishes partial session failures from failed sessions", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-agent-status-test-"));
+  try {
+    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const baseTime = Date.now() - 5000;
+
+    async function recordAgentRequest({ offsetMs, requestId, sessionId, statusCode }) {
+      const startedAtMs = baseTime + offsetMs;
+      await store.record({
+        completedAt: new Date(startedAtMs + 100).toISOString(),
+        durationMs: 100,
+        ...(statusCode >= 400 ? { error: "upstream request failed" } : {}),
+        method: "POST",
+        path: "/v1/chat/completions",
+        providerName: "test-provider",
+        providerProtocol: "openai_chat_completions",
+        requestBody: Buffer.from(JSON.stringify({
+          messages: [{ content: "continue task", role: "user" }],
+          model: "gpt-test",
+          session_id: sessionId
+        }), "utf8"),
+        requestHeaders: {
+          "content-type": "application/json",
+          "user-agent": "openai-codex test",
+          "x-codex-session-id": sessionId
+        },
+        requestId,
+        responseBodyText: JSON.stringify({ model: "gpt-test" }),
+        responseHeaders: { "content-type": "application/json" },
+        startedAt: new Date(startedAtMs).toISOString(),
+        statusCode,
+        url: "http://127.0.0.1:3456/v1/chat/completions"
+      });
+    }
+
+    await recordAgentRequest({
+      offsetMs: 0,
+      requestId: "mixed-failed",
+      sessionId: "session-mixed",
+      statusCode: 502
+    });
+    await recordAgentRequest({
+      offsetMs: 1000,
+      requestId: "mixed-recovered",
+      sessionId: "session-mixed",
+      statusCode: 200
+    });
+    await recordAgentRequest({
+      offsetMs: 2000,
+      requestId: "failed-only",
+      sessionId: "session-failed",
+      statusCode: 502
+    });
+
+    const mixed = await store.analyze({
+      range: "30d",
+      sessionAgent: "codex",
+      sessionId: "session-mixed"
+    });
+    const mixedTrace = mixed.selectedSession?.trace;
+    assert.equal(
+      mixedTrace?.runs.find((run) => run.id === mixedTrace.rootRunId)?.status,
+      "partial"
+    );
+    assert.equal(mixedTrace?.runs.some((run) => run.kind === "llm" && run.status === "error"), true);
+    assert.equal(mixedTrace?.runs.some((run) => run.kind === "llm" && run.status === "success"), true);
+
+    const failed = await store.analyze({
+      range: "30d",
+      sessionAgent: "codex",
+      sessionId: "session-failed"
+    });
+    const failedTrace = failed.selectedSession?.trace;
+    assert.equal(
+      failedTrace?.runs.find((run) => run.id === failedTrace.rootRunId)?.status,
+      "error"
+    );
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore agent analysis cache ratio denominator includes cache tokens when total tokens omit cache", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-cache-ratio-test-"));
+  try {
+    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const startedAt = new Date(Date.now() - 1000).toISOString();
+    const completedAt = new Date().toISOString();
+
+    await store.record({
+      completedAt,
+      durationMs: 100,
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "zhipu",
+      providerProtocol: "anthropic_messages",
+      requestBody: Buffer.from(JSON.stringify({
+        messages: [{ content: "hello", role: "user" }],
+        model: "glm-cache",
+        session_id: "cache-session"
+      }), "utf8"),
+      requestHeaders: {
+        "content-type": "application/json",
+        "user-agent": "openai-codex test",
+        "x-ccr-route-reason": "default",
+        "x-codex-session-id": "cache-session"
+      },
+      requestId: "request-log-cache-ratio",
+      responseBodyText: JSON.stringify({
+        model: "glm-cache",
+        usage: {
+          cache_read_tokens: 90,
+          input_tokens: 10,
+          output_tokens: 5,
+          total_tokens: 15
+        }
+      }),
+      responseHeaders: { "content-type": "application/json" },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    const analysis = await store.analyze({ range: "30d" });
+    assert.equal(analysis.totals.totalTokens, 105);
+    assert.equal(analysis.totals.cacheRatio, 0.9);
+    assert.equal(analysis.sessions[0]?.cacheRatio, 0.9);
+    assert.equal(analysis.agents[0]?.cacheRatio, 0.9);
+    assert.equal(analysis.routes[0]?.cacheRatio, 0.9);
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }
@@ -1278,6 +1517,41 @@ test("RequestLogStore identifies OpenCode from its explicit client header", asyn
     assert.equal(analysis.scannedRequestCount, 1);
     assert.equal(analysis.agents[0]?.agent, "opencode");
     assert.equal(analysis.agents[0]?.label, "OpenCode");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore identifies Kilo CLI from its explicit client header", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-kilo-agent-test-"));
+  try {
+    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const startedAt = new Date().toISOString();
+    await store.record({
+      completedAt: startedAt,
+      durationMs: 25,
+      method: "POST",
+      path: "/v1/chat/completions",
+      providerName: "test-provider",
+      providerProtocol: "openai_chat_completions",
+      requestBody: Buffer.from(JSON.stringify({ messages: [{ content: "hello", role: "user" }], model: "Provider/model" }), "utf8"),
+      requestHeaders: {
+        "content-type": "application/json",
+        "user-agent": "generic-openai-client/1.0",
+        "x-ccr-client": "kilo"
+      },
+      requestId: "kilo-agent-request",
+      responseBodyText: JSON.stringify({ choices: [], model: "Provider/model" }),
+      responseHeaders: { "content-type": "application/json" },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/chat/completions"
+    });
+
+    const analysis = await store.analyze({ agent: "kilo", range: "30d" });
+    assert.equal(analysis.scannedRequestCount, 1);
+    assert.equal(analysis.agents[0]?.agent, "kilo");
+    assert.equal(analysis.agents[0]?.label, "Kilo CLI");
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }

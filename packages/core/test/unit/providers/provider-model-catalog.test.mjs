@@ -11,6 +11,7 @@ test("provider model catalog exposes models.json settings as editable defaults",
 
   assert.ok(catalog.models.includes("claude-sonnet-4-20250514"));
   assert.equal(metadata?.contextWindow, 1_000_000);
+  assert.equal(metadata?.maxOutputTokens, 64_000);
   assert.equal(metadata?.capabilities?.imageInput, true);
   assert.equal(metadata?.pricing?.inputUsdPerMillionTokens, 3);
   assert.equal(metadata?.pricing?.outputUsdPerMillionTokens, 15);

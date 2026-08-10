@@ -47,6 +47,8 @@ const grokDefaultOidcIssuer = "https://auth.x.ai";
 const grokOauthDefaultTimeoutMs = 8_000;
 const grokFallbackClientVersion = "0.2.93";
 
+const grokRefreshInFlight = new Map<string, Promise<GrokTokenSet>>();
+
 const grokBillingResetPaths = [
   "$.billingPeriodEnd",
   "$.currentPeriod.end",
@@ -182,6 +184,16 @@ const grokBillingMapping: ProviderAccountMappingConfig = {
   ]
 };
 
+class GrokRefreshAuthError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "GrokRefreshAuthError";
+    this.status = status;
+  }
+}
+
 export type GrokTokenSet = OAuthTokenSet & {
   authRecordKey?: string;
   oidcClientId?: string;
@@ -255,7 +267,44 @@ export async function resolveGrokAuth(): Promise<GrokTokenSet | undefined> {
   if (!auth?.refreshToken || (auth.accessToken && !grokAccessTokenExpired(auth))) {
     return auth;
   }
-  return refreshGrokAuth(auth);
+  // Coalesce concurrent refreshes of the same credential: the refresh token
+  // rotates on every refresh, so every in-process caller must share a single
+  // refresh attempt (and its peer-rotation adoption outcome) instead of
+  // submitting the same stale token in parallel.
+  const key = `${auth.sourceFile}::${auth.authRecordKey ?? ""}`;
+  let refresh = grokRefreshInFlight.get(key);
+  if (!refresh) {
+    refresh = (async () => {
+      try {
+        return await refreshGrokAuth(auth);
+      } catch (error) {
+        return adoptPeerRotatedGrokAuth(auth, error);
+      }
+    })().finally(() => {
+      grokRefreshInFlight.delete(key);
+    });
+    grokRefreshInFlight.set(key, refresh);
+  }
+  return refresh;
+}
+
+function adoptPeerRotatedGrokAuth(auth: GrokTokenSet, error: unknown): GrokTokenSet {
+  if (!(error instanceof GrokRefreshAuthError)) {
+    throw error;
+  }
+  // The refresh token rotates on every refresh. When a peer process sharing
+  // this credential file (for example the Grok CLI) refreshes first, our copy
+  // is stale and the server rejects it, but the file on disk already holds
+  // the newer credential. Adopt it instead of failing the request. Only the
+  // same account record is considered: in a multi-account file a different
+  // record says nothing about the token that was rejected.
+  const latest = readGrokAuthRecords(auth.sourceFile).find(
+    (item) => item.authRecordKey === auth.authRecordKey
+  );
+  if (latest?.refreshToken && latest.accessToken && latest.refreshToken !== auth.refreshToken) {
+    return latest;
+  }
+  throw error;
 }
 
 export function readGrokLocalModelCatalog(): GrokModelCatalog {
@@ -651,7 +700,11 @@ async function refreshGrokAuth(auth: GrokTokenSet): Promise<GrokTokenSet> {
     const text = await response.text();
     const payload = parseJsonRecord(text);
     if (!response.ok) {
-      throw new Error(`Grok CLI OAuth token refresh returned HTTP ${response.status}${tokenRefreshErrorMessage(payload, text)}`);
+      const message = `Grok CLI OAuth token refresh returned HTTP ${response.status}${tokenRefreshErrorMessage(payload, text)}`;
+      if (response.status === 401 || response.status === 403) {
+        throw new GrokRefreshAuthError(response.status, message);
+      }
+      throw new Error(message);
     }
     const accessToken = readString(payload?.access_token) || readString(payload?.accessToken);
     if (!accessToken) {

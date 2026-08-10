@@ -2,7 +2,7 @@ import type { AppConfig, GatewayProviderProtocol, VirtualModelFusionWebSearchPro
 import { isRecord, numberValue, stringListValue, stringValue } from "@ccr/core/gateway/internal/value";
 import { normalizeCoreGatewayVirtualModelProfiles } from "@ccr/core/gateway/core-runtime/config-compiler";
 import { browserWebSearchUnavailableMessage, fusionModelNameFromSelector, readFusionWebSearchConfig, withCodexCompatibleVirtualModelProfiles, withFusionVirtualModelAliases } from "@ccr/core/mcp/fusion-config";
-import type { AnthropicWebSearchProtocolContext, BrowserWebSearchMcpIntegration, BrowserWebSearchProtocolRecord, ClaudeCodeWebSearchContinuationContext, HostedWebSearchProtocolContext } from "@ccr/core/gateway/internal/shared";
+import type { BrowserWebSearchMcpIntegration, BrowserWebSearchProtocolRecord, ClaudeCodeWebSearchContinuationContext, HostedWebSearchProtocolContext } from "@ccr/core/gateway/internal/shared";
 import { clampNumber, uniqueStrings } from "@ccr/core/gateway/internal/collections";
 import { defaultFusionWebSearchProvider } from "@ccr/core/gateway/internal/shared";
 import { queryMatchScore } from "@ccr/core/gateway/features/hosted-web-search/evidence";
@@ -29,16 +29,12 @@ type WebSearchProviderInput = {
 
 type WebSearchProviderResult = BrowserWebSearchProtocolRecord["results"][number];
 
-
-
 function hasAnthropicHostedWebSearchTool(tools: unknown): boolean {
   if (!Array.isArray(tools)) {
     return false;
   }
   return tools.some(isAnthropicHostedWebSearchTool);
 }
-
-
 
 export function hasHostedWebSearchDeclaration(body: Record<string, unknown>, protocol: GatewayProviderProtocol): boolean {
   if (protocol === "anthropic_messages") {
@@ -53,16 +49,12 @@ export function hasHostedWebSearchDeclaration(body: Record<string, unknown>, pro
   return false;
 }
 
-
-
 function hasOpenAiHostedWebSearchDeclaration(body: Record<string, unknown>): boolean {
   if (body.web_search_options !== undefined || body.webSearchOptions !== undefined) {
     return true;
   }
   return Array.isArray(body.tools) && body.tools.some(isOpenAiHostedWebSearchTool);
 }
-
-
 
 function hasGeminiHostedWebSearchTool(tools: unknown): boolean {
   if (!Array.isArray(tools)) {
@@ -79,8 +71,6 @@ function hasGeminiHostedWebSearchTool(tools: unknown): boolean {
   });
 }
 
-
-
 export function isAnthropicHostedWebSearchTool(tool: unknown): boolean {
   if (!isRecord(tool)) {
     return false;
@@ -88,16 +78,12 @@ export function isAnthropicHostedWebSearchTool(tool: unknown): boolean {
   return anthropicHostedWebSearchType(stringValue(tool.type));
 }
 
-
-
 export function isOpenAiHostedWebSearchTool(tool: unknown): boolean {
   if (!isRecord(tool)) {
     return false;
   }
   return openAiHostedWebSearchType(stringValue(tool.type));
 }
-
-
 
 export function openAiToolChoiceNamesWebSearch(value: unknown): boolean {
   if (typeof value === "string") {
@@ -109,14 +95,10 @@ export function openAiToolChoiceNamesWebSearch(value: unknown): boolean {
   return openAiHostedWebSearchType(stringValue(value.type));
 }
 
-
-
 function anthropicHostedWebSearchType(value: string | undefined): boolean {
   const normalized = normalizedToolProtocolName(value);
   return normalized === "web_search" || normalized === "web_search_20250305";
 }
-
-
 
 function openAiHostedWebSearchType(value: string | undefined): boolean {
   const normalized = normalizedToolProtocolName(value);
@@ -125,13 +107,9 @@ function openAiHostedWebSearchType(value: string | undefined): boolean {
     normalized.startsWith("web_search_preview_");
 }
 
-
-
 function normalizedToolProtocolName(value: string | undefined): string {
   return value?.trim().toLowerCase().replace(/[-.]/g, "_") ?? "";
 }
-
-
 
 function readAnthropicWebSearchMaxUses(tools: unknown): number | undefined {
   if (!Array.isArray(tools)) {
@@ -140,8 +118,6 @@ function readAnthropicWebSearchMaxUses(tools: unknown): number | undefined {
   const tool = tools.find((item) => isRecord(item) && stringValue(item.type)?.toLowerCase() === "web_search_20250305");
   return isRecord(tool) ? numberValue(tool.max_uses ?? tool.maxUses) : undefined;
 }
-
-
 
 export function readHostedWebSearchMaxUses(body: Record<string, unknown>, protocol: GatewayProviderProtocol): number | undefined {
   if (protocol === "anthropic_messages") {
@@ -153,8 +129,6 @@ export function readHostedWebSearchMaxUses(body: Record<string, unknown>, protoc
   }
   return undefined;
 }
-
-
 
 export function extractHostedWebSearchQueryHint(body: Record<string, unknown>, protocol: GatewayProviderProtocol): string | undefined {
   if (protocol === "anthropic_messages") {
@@ -172,8 +146,6 @@ export function extractHostedWebSearchQueryHint(body: Record<string, unknown>, p
   return undefined;
 }
 
-
-
 export function extractAnthropicWebSearchQueryHint(body: Record<string, unknown>): string | undefined {
   const userTexts = Array.isArray(body.messages)
     ? body.messages.flatMap((message) => {
@@ -185,8 +157,6 @@ export function extractAnthropicWebSearchQueryHint(body: Record<string, unknown>
     : [];
   return normalizedWebSearchQueryHintFromParts(userTexts);
 }
-
-
 
 export function extractClaudeCodeWebSearchToolResultQuery(body: Record<string, unknown>): string | undefined {
   for (const text of claudeCodeWebSearchToolResultTexts(body)) {
@@ -201,8 +171,6 @@ export function extractClaudeCodeWebSearchToolResultQuery(body: Record<string, u
   }
   return undefined;
 }
-
-
 
 function normalizedWebSearchQueryHintFromParts(parts: string[]): string | undefined {
   const candidates = parts
@@ -223,8 +191,6 @@ function normalizedWebSearchQueryHintFromParts(parts: string[]): string | undefi
   return normalizedWebSearchQueryHint(candidates.join("\n"));
 }
 
-
-
 function normalizedWebSearchQueryHint(value: string | undefined): string | undefined {
   if (!value) {
     return undefined;
@@ -236,22 +202,16 @@ function normalizedWebSearchQueryHint(value: string | undefined): string | undef
   return joined.trim().slice(0, 500);
 }
 
-
-
 function extractExplicitWebSearchQuery(value: string): string | undefined {
   const explicit = /perform\s+a\s+web\s+search\s+for\s+the\s+query:\s*([\s\S]+)$/i.exec(value.trim());
   return normalizedWebSearchQueryHint(explicit?.[1]);
 }
-
-
 
 function stripSearchIntentPrefix(value: string): string {
   const trimmed = value.trim();
   const match = /^(?:请)?(?:帮我)?(?:搜索|查询|查一下|帮我查一下|搜一下)\s*[:：]?\s*([\s\S]+)$/i.exec(trimmed);
   return (match?.[1] || trimmed).trim();
 }
-
-
 
 function isRuntimeContextText(value: string): boolean {
   const trimmed = value.trim();
@@ -270,8 +230,6 @@ function isRuntimeContextText(value: string): boolean {
   );
 }
 
-
-
 function textPartsFromAnthropicContent(content: unknown): string[] {
   if (typeof content === "string") {
     return [content];
@@ -281,8 +239,6 @@ function textPartsFromAnthropicContent(content: unknown): string[] {
   }
   return content.flatMap((part) => isRecord(part) && typeof part.text === "string" ? [part.text] : []);
 }
-
-
 
 export function claudeCodeWebSearchToolResultTexts(body: Record<string, unknown>): string[] {
   if (!Array.isArray(body.messages)) {
@@ -333,8 +289,6 @@ export function claudeCodeWebSearchToolResultTexts(body: Record<string, unknown>
   return texts;
 }
 
-
-
 function anthropicToolResultContentText(content: unknown): string {
   if (typeof content === "string") {
     return content;
@@ -355,8 +309,6 @@ function anthropicToolResultContentText(content: unknown): string {
   }).join("\n");
 }
 
-
-
 function textPartsFromOpenAiChatMessages(messages: unknown): string[] {
   if (!Array.isArray(messages)) {
     return [];
@@ -368,8 +320,6 @@ function textPartsFromOpenAiChatMessages(messages: unknown): string[] {
     return textPartsFromOpenAiContent(message.content);
   });
 }
-
-
 
 function textPartsFromOpenAiContent(content: unknown): string[] {
   if (typeof content === "string") {
@@ -390,8 +340,6 @@ function textPartsFromOpenAiContent(content: unknown): string[] {
   });
 }
 
-
-
 function textPartsFromOpenAiResponsesInput(input: unknown): string[] {
   if (typeof input === "string") {
     return [input];
@@ -411,8 +359,6 @@ function textPartsFromOpenAiResponsesInput(input: unknown): string[] {
   });
 }
 
-
-
 function textPartsFromGeminiContents(contents: unknown): string[] {
   if (!Array.isArray(contents)) {
     return [];
@@ -430,8 +376,6 @@ function textPartsFromGeminiContents(contents: unknown): string[] {
   });
 }
 
-
-
 export function fusionWebSearchToolNameForRequest(config: AppConfig, model: string | undefined): string | undefined {
   const normalizedModel = model ? fusionModelNameFromSelector(model) : "";
   for (const candidate of fusionWebSearchToolCandidates(config)) {
@@ -442,13 +386,9 @@ export function fusionWebSearchToolNameForRequest(config: AppConfig, model: stri
   return undefined;
 }
 
-
-
 export function fusionWebSearchProviderForToolName(config: AppConfig, toolName: string): VirtualModelFusionWebSearchProvider | undefined {
   return fusionWebSearchToolCandidateForToolName(config, toolName)?.provider;
 }
-
-
 
 export function hostedWebSearchUnavailableMessage(config: AppConfig, toolName: string): string {
   const provider = fusionWebSearchProviderForToolName(config, toolName);
@@ -461,13 +401,9 @@ export function hostedWebSearchUnavailableMessage(config: AppConfig, toolName: s
   return browserWebSearchUnavailableMessage(toolName);
 }
 
-
-
 function fusionWebSearchToolCandidateForToolName(config: AppConfig, toolName: string): FusionWebSearchToolCandidate | undefined {
   return fusionWebSearchToolCandidates(config).find((candidate) => candidate.toolName === toolName);
 }
-
-
 
 function fusionWebSearchToolCandidates(config: AppConfig): FusionWebSearchToolCandidate[] {
   const rawProfiles = Array.isArray(config.virtualModelProfiles) ? config.virtualModelProfiles : [];
@@ -506,8 +442,6 @@ function fusionWebSearchToolCandidates(config: AppConfig): FusionWebSearchToolCa
   return candidates;
 }
 
-
-
 export async function selectHostedWebSearchProtocolRecords(
   context: HostedWebSearchProtocolContext,
   integration?: BrowserWebSearchMcpIntegration,
@@ -542,8 +476,6 @@ export async function selectHostedWebSearchProtocolRecords(
   }
   return config ? selectConfiguredWebSearchProtocolRecords(context, config) : [];
 }
-
-
 
 async function selectConfiguredWebSearchProtocolRecords(
   context: HostedWebSearchProtocolContext,
@@ -584,8 +516,6 @@ async function selectConfiguredWebSearchProtocolRecords(
   }
 }
 
-
-
 async function runConfiguredWebSearch(input: WebSearchProviderInput): Promise<WebSearchProviderResult[]> {
   switch (input.provider) {
     case "brave":
@@ -605,8 +535,6 @@ async function runConfiguredWebSearch(input: WebSearchProviderInput): Promise<We
   }
 }
 
-
-
 async function searchBrave(input: WebSearchProviderInput): Promise<WebSearchProviderResult[]> {
   const apiKey = searchEnv(input, "BRAVE_SEARCH_API_KEY");
   if (!apiKey) {
@@ -623,8 +551,6 @@ async function searchBrave(input: WebSearchProviderInput): Promise<WebSearchProv
   const items = isRecord(raw) && isRecord(raw.web) && Array.isArray(raw.web.results) ? raw.web.results : [];
   return items.map((item) => webSearchResult(item, "title", "url", "description")).filter(isWebSearchProviderResult);
 }
-
-
 
 async function searchBing(input: WebSearchProviderInput): Promise<WebSearchProviderResult[]> {
   const apiKey = searchEnv(input, "BING_SEARCH_API_KEY");
@@ -644,8 +570,6 @@ async function searchBing(input: WebSearchProviderInput): Promise<WebSearchProvi
   return items.map((item) => webSearchResult(item, "name", "url", "snippet")).filter(isWebSearchProviderResult);
 }
 
-
-
 async function searchGoogleCse(input: WebSearchProviderInput): Promise<WebSearchProviderResult[]> {
   const apiKey = searchEnv(input, "GOOGLE_SEARCH_API_KEY");
   const cx = searchEnv(input, "GOOGLE_SEARCH_CX");
@@ -662,8 +586,6 @@ async function searchGoogleCse(input: WebSearchProviderInput): Promise<WebSearch
   const items = isRecord(raw) && Array.isArray(raw.items) ? raw.items : [];
   return items.map((item) => webSearchResult(item, "title", "link", "snippet")).filter(isWebSearchProviderResult);
 }
-
-
 
 async function searchSerper(input: WebSearchProviderInput): Promise<WebSearchProviderResult[]> {
   const apiKey = searchEnv(input, "SERPER_API_KEY");
@@ -684,8 +606,6 @@ async function searchSerper(input: WebSearchProviderInput): Promise<WebSearchPro
   return items.map((item) => webSearchResult(item, "title", "link", "snippet")).filter(isWebSearchProviderResult);
 }
 
-
-
 async function searchSerpApi(input: WebSearchProviderInput): Promise<WebSearchProviderResult[]> {
   const apiKey = searchEnv(input, "SERPAPI_API_KEY");
   if (!apiKey) {
@@ -701,8 +621,6 @@ async function searchSerpApi(input: WebSearchProviderInput): Promise<WebSearchPr
   const items = isRecord(raw) && Array.isArray(raw.organic_results) ? raw.organic_results : [];
   return items.map((item) => webSearchResult(item, "title", "link", "snippet")).filter(isWebSearchProviderResult);
 }
-
-
 
 async function searchTavily(input: WebSearchProviderInput): Promise<WebSearchProviderResult[]> {
   const apiKey = searchEnv(input, "TAVILY_API_KEY");
@@ -724,8 +642,6 @@ async function searchTavily(input: WebSearchProviderInput): Promise<WebSearchPro
   const items = isRecord(raw) && Array.isArray(raw.results) ? raw.results : [];
   return items.map((item) => webSearchResult(item, "title", "url", "content")).filter(isWebSearchProviderResult);
 }
-
-
 
 async function searchExa(input: WebSearchProviderInput): Promise<WebSearchProviderResult[]> {
   const apiKey = searchEnv(input, "EXA_API_KEY");
@@ -749,8 +665,6 @@ async function searchExa(input: WebSearchProviderInput): Promise<WebSearchProvid
   return items.map((item) => webSearchResult(item, "title", "url", "text")).filter(isWebSearchProviderResult);
 }
 
-
-
 async function fetchJson(input: string, init: RequestInit): Promise<unknown> {
   const response = await fetchWithSystemProxy(input, init);
   if (!response.ok) {
@@ -759,13 +673,9 @@ async function fetchJson(input: string, init: RequestInit): Promise<unknown> {
   return response.json() as Promise<unknown>;
 }
 
-
-
 function searchEnv(input: WebSearchProviderInput, key: string): string | undefined {
   return input.env?.[key]?.trim() || process.env[key]?.trim() || undefined;
 }
-
-
 
 function webSearchResult(item: unknown, titleKey: string, urlKey: string, snippetKey: string): WebSearchProviderResult | undefined {
   if (!isRecord(item)) {
@@ -784,13 +694,9 @@ function webSearchResult(item: unknown, titleKey: string, urlKey: string, snippe
   };
 }
 
-
-
 function isWebSearchProviderResult(value: WebSearchProviderResult | undefined): value is WebSearchProviderResult {
   return Boolean(value);
 }
-
-
 
 function searchProviderUrl(provider: VirtualModelFusionWebSearchProvider, query: string): string {
   const encoded = encodeURIComponent(query);
@@ -814,8 +720,6 @@ function searchProviderUrl(provider: VirtualModelFusionWebSearchProvider, query:
   }
 }
 
-
-
 export function selectClaudeCodeWebSearchContinuationRecords(
   context: ClaudeCodeWebSearchContinuationContext,
   integration: BrowserWebSearchMcpIntegration
@@ -833,17 +737,6 @@ export function selectClaudeCodeWebSearchContinuationRecords(
     })
     .slice(0, 3);
 }
-
-
-
-async function selectAnthropicWebSearchProtocolRecords(
-  context: AnthropicWebSearchProtocolContext,
-  integration: BrowserWebSearchMcpIntegration
-): Promise<BrowserWebSearchProtocolRecord[]> {
-  return selectHostedWebSearchProtocolRecords(context, integration);
-}
-
-
 
 function uniqueSearchRecordFilter(): (record: BrowserWebSearchProtocolRecord) => boolean {
   const seen = new Set<string>();

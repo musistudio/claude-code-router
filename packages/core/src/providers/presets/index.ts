@@ -5,6 +5,7 @@ import { code0ProviderPreset } from "@ccr/core/providers/presets/code0/index";
 import { deepSeekProviderPreset } from "@ccr/core/providers/presets/deepseek/index";
 import { fennoProviderPreset } from "@ccr/core/providers/presets/fenno/index";
 import { geminiProviderPreset } from "@ccr/core/providers/presets/gemini/index";
+import { infistarAiProviderPreset } from "@ccr/core/providers/presets/infistar-ai/index";
 import { kimiCodingProviderPreset } from "@ccr/core/providers/presets/kimi-coding/index";
 import { minimaxChinaProviderPreset, minimaxGlobalProviderPreset } from "@ccr/core/providers/presets/minimax/index";
 import { mistralProviderPreset } from "@ccr/core/providers/presets/mistral/index";
@@ -17,6 +18,12 @@ import { runApiProviderPreset } from "@ccr/core/providers/presets/runapi/index";
 import { siliconFlowProviderPreset } from "@ccr/core/providers/presets/siliconflow/index";
 import { teamoRouterProviderPreset } from "@ccr/core/providers/presets/teamorouter/index";
 import { unity2ProviderPreset } from "@ccr/core/providers/presets/unity2/index";
+import {
+  xiaomiMimoProviderPreset,
+  xiaomiMimoTokenPlanChinaProviderPreset,
+  xiaomiMimoTokenPlanEuropeProviderPreset,
+  xiaomiMimoTokenPlanSingaporeProviderPreset
+} from "@ccr/core/providers/presets/xiaomi/index";
 import { zaiGlobalCodingProviderPreset } from "@ccr/core/providers/presets/zai-global-coding/index";
 import { zaiGlobalGeneralProviderPreset } from "@ccr/core/providers/presets/zai-global-general/index";
 import { zhipuCnCodingProviderPreset } from "@ccr/core/providers/presets/zhipu-cn-coding/index";
@@ -39,6 +46,10 @@ export const providerPresets: ProviderPreset[] = [
   openRouterProviderPreset,
   nvidiaProviderPreset,
   deepSeekProviderPreset,
+  xiaomiMimoProviderPreset,
+  xiaomiMimoTokenPlanChinaProviderPreset,
+  xiaomiMimoTokenPlanSingaporeProviderPreset,
+  xiaomiMimoTokenPlanEuropeProviderPreset,
   kimiCodingProviderPreset,
   zhipuCnCodingProviderPreset,
   zhipuCnGeneralProviderPreset,
@@ -53,6 +64,7 @@ export const providerPresets: ProviderPreset[] = [
   siliconFlowProviderPreset,
   qiniuAiProviderPreset,
   fennoProviderPreset,
+  infistarAiProviderPreset,
   runApiProviderPreset,
   teamoRouterProviderPreset,
   unity2ProviderPreset,

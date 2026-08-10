@@ -2,12 +2,11 @@ import type { AppConfig } from "@ccr/core/contracts/app";
 import { isRecord, rawStringValue, stringValue } from "@ccr/core/gateway/internal/value";
 import type { AnthropicWebSearchProtocolContext, BrowserWebSearchProtocolRecord, ClaudeCodeWebSearchContinuationContext, HostedWebSearchProtocolContext } from "@ccr/core/gateway/internal/shared";
 import { parseJsonObjectSafe, serializeJsonBody } from "@ccr/core/gateway/http/body";
+import { resolveGatewayPublicModelId } from "@ccr/core/gateway/features/model-discovery";
 import { uniqueStrings } from "@ccr/core/gateway/internal/collections";
 import { requestProtocolForPath } from "@ccr/core/routing/protocol-endpoints";
 import { claudeCodeWebSearchToolResultTexts, extractAnthropicWebSearchQueryHint, extractClaudeCodeWebSearchToolResultQuery, extractHostedWebSearchQueryHint, fusionWebSearchToolNameForRequest, hasHostedWebSearchDeclaration, isAnthropicHostedWebSearchTool, isOpenAiHostedWebSearchTool, openAiToolChoiceNamesWebSearch, readHostedWebSearchMaxUses } from "@ccr/core/gateway/features/hosted-web-search/discovery";
 import { normalizeSearchComparisonText } from "@ccr/core/gateway/features/hosted-web-search/evidence";
-
-
 
 export function createHostedWebSearchProtocolContext(input: {
   body: Buffer | undefined;
@@ -26,7 +25,10 @@ export function createHostedWebSearchProtocolContext(input: {
   if (!body || !hasHostedWebSearchDeclaration(body, protocol)) {
     return undefined;
   }
-  const toolName = fusionWebSearchToolNameForRequest(input.config, stringValue(body.model) || input.routedModel);
+  const toolName = fusionWebSearchToolNameForRequest(
+    input.config,
+    hostedWebSearchModelForRequest(input.config, stringValue(body.model) || input.routedModel)
+  );
   if (!toolName) {
     return undefined;
   }
@@ -39,22 +41,6 @@ export function createHostedWebSearchProtocolContext(input: {
     toolName
   };
 }
-
-
-
-function createAnthropicWebSearchProtocolContext(input: {
-  body: Buffer | undefined;
-  config: AppConfig;
-  method: string;
-  path: string;
-  requestId: string;
-  sinceMs: number;
-}): AnthropicWebSearchProtocolContext | undefined {
-  const context = createHostedWebSearchProtocolContext(input);
-  return context?.protocol === "anthropic_messages" ? context : undefined;
-}
-
-
 
 export function createClaudeCodeWebSearchContinuationContext(input: {
   body: Buffer | undefined;
@@ -71,7 +57,10 @@ export function createClaudeCodeWebSearchContinuationContext(input: {
   if (!body || claudeCodeWebSearchToolResultTexts(body).length === 0) {
     return undefined;
   }
-  const toolName = fusionWebSearchToolNameForRequest(input.config, stringValue(body.model) || input.routedModel);
+  const toolName = fusionWebSearchToolNameForRequest(
+    input.config,
+    hostedWebSearchModelForRequest(input.config, stringValue(body.model) || input.routedModel)
+  );
   if (!toolName) {
     return undefined;
   }
@@ -83,6 +72,9 @@ export function createClaudeCodeWebSearchContinuationContext(input: {
 }
 
 
+function hostedWebSearchModelForRequest(config: AppConfig, model: string | undefined): string | undefined {
+  return resolveGatewayPublicModelId(model, config) ?? model;
+}
 
 export function prepareHostedWebSearchProtocolRequestBody(
   body: Buffer | undefined,
@@ -111,8 +103,6 @@ export function prepareHostedWebSearchProtocolRequestBody(
   return next ? serializeJsonBody(next) : undefined;
 }
 
-
-
 export function prepareAnthropicWebSearchProtocolRequestBody(
   body: Buffer | undefined,
   records: BrowserWebSearchProtocolRecord[],
@@ -132,8 +122,6 @@ export function prepareAnthropicWebSearchProtocolRequestBody(
   }));
   return serializeJsonBody(next);
 }
-
-
 
 export function prepareClaudeCodeWebSearchContinuationRequestBody(
   body: Buffer | undefined,
@@ -160,8 +148,6 @@ export function prepareClaudeCodeWebSearchContinuationRequestBody(
   return serializeJsonBody(next);
 }
 
-
-
 function applyAnthropicWebSearchSynthesisControls(body: Record<string, unknown>): Record<string, unknown> {
   const next = { ...body };
   const outputConfig = isRecord(next.output_config) ? { ...next.output_config } : {};
@@ -172,8 +158,6 @@ function applyAnthropicWebSearchSynthesisControls(body: Record<string, unknown>)
   return next;
 }
 
-
-
 function prepareOpenAiChatHostedWebSearchRequestBody(body: Record<string, unknown>, evidence: string): Record<string, unknown> {
   const next = stripOpenAiHostedWebSearchTools({
     ...body,
@@ -181,8 +165,6 @@ function prepareOpenAiChatHostedWebSearchRequestBody(body: Record<string, unknow
   });
   return applyOpenAiHostedWebSearchSynthesisControls(next);
 }
-
-
 
 function prepareOpenAiResponsesHostedWebSearchRequestBody(body: Record<string, unknown>, evidence: string): Record<string, unknown> {
   const next = stripOpenAiHostedWebSearchTools({
@@ -192,16 +174,12 @@ function prepareOpenAiResponsesHostedWebSearchRequestBody(body: Record<string, u
   return applyOpenAiHostedWebSearchSynthesisControls(next);
 }
 
-
-
 function prepareGeminiHostedWebSearchRequestBody(body: Record<string, unknown>, evidence: string): Record<string, unknown> {
   return stripGeminiHostedWebSearchTools({
     ...body,
     systemInstruction: appendGeminiSystemInstruction(body.systemInstruction, evidence)
   });
 }
-
-
 
 function applyOpenAiHostedWebSearchSynthesisControls(body: Record<string, unknown>): Record<string, unknown> {
   const next = { ...body };
@@ -213,8 +191,6 @@ function applyOpenAiHostedWebSearchSynthesisControls(body: Record<string, unknow
   }
   return next;
 }
-
-
 
 function stripAnthropicHostedWebSearchTools(body: Record<string, unknown>): Record<string, unknown> {
   if (!Array.isArray(body.tools)) {
@@ -238,8 +214,6 @@ function stripAnthropicHostedWebSearchTools(body: Record<string, unknown>): Reco
   return next;
 }
 
-
-
 function stripClaudeCodeWebSearchContinuationTools(body: Record<string, unknown>): Record<string, unknown> {
   if (!Array.isArray(body.tools)) {
     return body;
@@ -249,8 +223,6 @@ function stripClaudeCodeWebSearchContinuationTools(body: Record<string, unknown>
   delete next.tool_choice;
   return next;
 }
-
-
 
 function stripOpenAiHostedWebSearchTools(body: Record<string, unknown>): Record<string, unknown> {
   const next = { ...body };
@@ -276,8 +248,6 @@ function stripOpenAiHostedWebSearchTools(body: Record<string, unknown>): Record<
   return next;
 }
 
-
-
 function stripGeminiHostedWebSearchTools(body: Record<string, unknown>): Record<string, unknown> {
   if (!Array.isArray(body.tools)) {
     return body;
@@ -300,8 +270,6 @@ function stripGeminiHostedWebSearchTools(body: Record<string, unknown>): Record<
   return next;
 }
 
-
-
 function stripGeminiHostedWebSearchTool(tool: unknown): { changed: boolean; value?: unknown } {
   if (!isRecord(tool)) {
     return { changed: false, value: tool };
@@ -317,8 +285,6 @@ function stripGeminiHostedWebSearchTool(tool: unknown): { changed: boolean; valu
   return Object.keys(next).length === 0 ? { changed, value: undefined } : { changed, value: next };
 }
 
-
-
 function appendAnthropicSystemText(system: unknown, text: string): unknown {
   if (typeof system === "string") {
     return `${system.trimEnd()}\n\n${text}`;
@@ -330,21 +296,15 @@ function appendAnthropicSystemText(system: unknown, text: string): unknown {
   return [block];
 }
 
-
-
 function appendOpenAiChatSystemText(messages: unknown, text: string): unknown[] {
   const message = { content: text, role: "system" };
   return Array.isArray(messages) ? [message, ...messages] : [message];
 }
 
-
-
 function appendStringInstruction(value: unknown, text: string): string {
   const existing = rawStringValue(value);
   return existing ? `${existing.trimEnd()}\n\n${text}` : text;
 }
-
-
 
 function appendGeminiSystemInstruction(value: unknown, text: string): Record<string, unknown> {
   const part = { text };
@@ -360,8 +320,6 @@ function appendGeminiSystemInstruction(value: unknown, text: string): Record<str
   }
   return { parts: [part] };
 }
-
-
 
 function hostedWebSearchEvidenceText(records: BrowserWebSearchProtocolRecord[], queryHint: string | undefined): string {
   const sections = records.flatMap((record, recordIndex) => {
@@ -403,8 +361,6 @@ function hostedWebSearchEvidenceText(records: BrowserWebSearchProtocolRecord[], 
   ].filter(Boolean).join("\n\n").slice(0, 10_000);
 }
 
-
-
 function claudeCodeWebSearchContinuationEvidenceText(
   records: BrowserWebSearchProtocolRecord[],
   queryHint: string | undefined,
@@ -427,8 +383,6 @@ function claudeCodeWebSearchContinuationEvidenceText(
     toolResultEvidence ? `Previous WebSearch tool result:\n\n${toolResultEvidence}` : ""
   ].filter(Boolean).join("\n\n");
 }
-
-
 
 function focusedWebSearchContent(content: string | undefined, queryHint: string | undefined): string | undefined {
   const text = content?.replace(/\s+/g, " ").trim();

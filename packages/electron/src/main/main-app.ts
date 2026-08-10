@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, shell } from "electron";
 import { setupApplicationMenu } from "./app-menu";
 import { loadAppConfig } from "@ccr/core/config/config";
+import { loadOnboardingFinished } from "@ccr/core/config/onboarding-state";
 import { restoreClaudeAppGatewayConfig, syncClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
 import { deepLinkService } from "./deep-link";
 import { gatewayService } from "@ccr/core/gateway/service";
@@ -44,7 +45,9 @@ function startPrimaryInstance(): void {
   });
 
   void app.whenReady().then(async () => {
-    applyNativeThemePreference((await loadAppConfig()).theme);
+    const config = await loadAppConfig();
+    applyNativeThemePreference(config.theme);
+    windowsManager.setOnboardingFinished(await loadOnboardingFinished());
     configureProxyDesktopIntegration();
     let ccrLauncherPreparation: CcrCliLauncherPreparation | undefined;
     try {

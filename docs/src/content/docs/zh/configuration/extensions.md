@@ -1,7 +1,7 @@
 ---
 title: 扩展机制
 pageTitle: 扩展机制
-eyebrow: 详细配置
+eyebrow: 扩展
 lead: 了解 CCR 扩展如何加载、能注册哪些能力，并从零创建、安装和调试自己的扩展。
 ---
 
@@ -11,20 +11,31 @@ CCR 的扩展分为两层：
 
 | 类型 | 配置位置 | 运行位置 | 适合做什么 |
 | --- | --- | --- | --- |
-| Wrapper plugin | `plugins` | CCR Desktop 的 Electron wrapper 进程 | 注册本地 HTTP 路由、启动本地后端、拦截代理流量、添加内置浏览器入口、连接 Provider 账号用量 |
-| Core gateway plugin | `providerPlugins` 或 `plugins[].coreGateway.providerPlugins` | core gateway runtime | 扩展上游 Provider、认证方式或 core gateway 内部能力 |
+| Wrapper plugin | `plugins` | CCR Desktop 的 Electron wrapper 进程 | 注册本地 HTTP 路由、启动本地后端、拦截代理流量、添加内置浏览器入口、连接供应商账号用量 |
+| Core gateway plugin | `providerPlugins` 或 `plugins[].coreGateway.providerPlugins` | core gateway runtime | 扩展上游供应商、认证方式或 core gateway 内部能力 |
 
 多数用户自定义扩展应从 Wrapper plugin 开始。它能拿到 CCR 配置、私有数据目录和日志对象，并通过 `ctx` 注册能力。
+
+`plugins[]` 是扩展包的安装单位。一个扩展包可以分别暴露三个运行面：
+
+| 运行面 | 配置键 | 启用内容 |
+| --- | --- | --- |
+| App | `surfaces.apps` | 来自 `apps` 或 `ctx.registerApp` 的内置浏览器入口 |
+| Gateway | `surfaces.gateway` | 网关路由、代理路由、HTTP 后端、core gateway 配置和虚拟模型配置 |
+| Provider | `surfaces.provider` | Core provider plugins 和 Provider 账号连接器 |
+
+为了兼容旧配置，三个运行面默认都启用。可以把某个运行面设为 `false`，保留扩展包但禁用对应能力。静态 App 入口可以只声明 `apps` 且不配置 `module`；动态 App 入口仍可通过 App 运行面从 JavaScript 注册，并且必须声明 `trusted-code`。
 
 ## 加载机制
 
 启动网关时，CCR 会读取配置里的 `plugins` 数组，并按顺序处理每个 `enabled !== false` 的扩展：
 
-1. 先应用配置中声明的 `apps`、`proxy.routes`、`coreGateway.providerPlugins`、`coreGateway.virtualModelProfiles` 和 `coreGateway.config`。
-2. 再加载扩展模块。`module` 可以是绝对路径、`~/` 开头路径、相对配置目录的 `./...` 路径，或 Node 可以解析到的包名。
-3. 如果没有配置 `module`，CCR 会尝试用扩展 `id` 匹配内置市场扩展，例如 `claude-design` 和 `cursor-proxy`。
-4. 模块可以导出函数，也可以导出包含 `setup(ctx)` 或 `activate(ctx)` 的对象。
-5. 扩展停止时，CCR 会反向执行 `stop`、`onStop` 钩子，并关闭该扩展注册的 HTTP 后端和 SQLite store。
+1. 先按启用的运行面应用配置：App 运行面的 `apps`，Gateway 运行面的 `proxy.routes`、`coreGateway.virtualModelProfiles` 和 `coreGateway.config`，以及 Provider 运行面的 `coreGateway.providerPlugins`。
+2. 当任一启用的运行面需要 JavaScript 注册能力时，会加载扩展模块。`module` 必须解析到明确的本地 JavaScript 文件路径，例如绝对路径、`~/` 开头路径，或相对 CCR 配置目录的 `./...` 路径。
+3. 任何通过 `module` 加载 JavaScript 的扩展都必须显式声明 `trusted-code` 权限。权限不是操作系统级沙箱；它用于限制 CCR 插件 API，并把“执行本地代码”的信任边界显式化。
+4. 如果没有配置 `module`，CCR 不会再加载内置兜底扩展。
+5. 模块可以导出函数，也可以导出包含 `setup(ctx)` 或 `activate(ctx)` 的对象。
+6. 扩展停止时，CCR 会反向执行 `stop`、`onStop` 钩子，并关闭该扩展注册的 HTTP 后端和 SQLite store。
 
 扩展模块常见导出形式：
 
@@ -71,7 +82,7 @@ module.exports = async function setup(ctx) {
 | `ctx.registerProxyRoute(route)` | 把代理模式捕获到的某个 host/path 转发到扩展后端或其他 upstream |
 | `ctx.registerApp(app)` | 在内置浏览器应用列表里添加入口 |
 | `ctx.openSqliteStore(options)` | 在扩展数据目录打开 SQLite store |
-| `ctx.registerProviderAccountConnector(connector)` | 注册 Provider 账号余额或额度读取器 |
+| `ctx.registerProviderAccountConnector(connector)` | 注册供应商账号余额或额度读取器 |
 | `ctx.registerCoreGatewayProviderPlugin(plugin)` | 向 core gateway 注入 provider plugin |
 | `ctx.registerCoreGatewayVirtualModelProfile(profile)` | 向 core gateway 注入虚拟模型配置 |
 
@@ -102,6 +113,8 @@ hello-extension/
   "id": "hello-extension",
   "name": "Hello Extension",
   "module": "index.cjs",
+  "surfaces": ["apps", "gateway"],
+  "permissions": ["trusted-code", "apps", "gateway-routes", "http-backends", "proxy-routes"],
   "apps": [
     {
       "id": "hello-status",
@@ -186,6 +199,8 @@ CCR 的运行配置存储在 SQLite 中。请通过 UI 添加扩展；旧版 JSO
       "id": "hello-extension",
       "enabled": true,
       "module": "/Users/you/ccr-extensions/hello-extension/index.cjs",
+      "surfaces": { "apps": true, "gateway": true, "provider": false },
+      "permissions": ["trusted-code", "apps", "gateway-routes", "http-backends", "proxy-routes"],
       "config": {
         "message": "hello from my config"
       }
@@ -194,7 +209,7 @@ CCR 的运行配置存储在 SQLite 中。请通过 UI 添加扩展；旧版 JSO
 }
 ```
 
-保存扩展配置后需要重启网关。配置数据库位置见 [配置数据库位置](/configuration/config-file/)。
+保存扩展配置后需要重启网关。配置数据库位置见 [配置数据库位置](/configuration/configuration-file/)。
 
 本地目录选择器会按顺序识别这些入口信息：
 
@@ -268,7 +283,7 @@ curl -H "x-api-key: <CCR_API_KEY>" http://127.0.0.1:3456/plugins/hello
 | 扩展没有加载 | 检查 `plugins[].enabled`、`plugins[].module` 路径和终端里的 `[plugin:<id>]` 报错 |
 | `GET /plugins/hello` 返回 404 | 确认网关已重启，路由 `path` 或 `pathPrefix` 是否以 `/` 开头 |
 | 返回 401 | 路由默认需要 gateway API Key；调试路由可显式设置 `auth: "none"` |
-| 修改代码不生效 | Wrapper plugin 不会热重载，修改后需要重启网关或重启 CCR |
+| 修改代码不生效 | Wrapper plugin 会在网关重启时重新加载；只有进程卡住时才需要重启 CCR |
 | 端口被占用 | `registerHttpBackend` 不传 `port` 会自动分配端口；固定端口冲突时改回自动分配 |
 | 代理规则不命中 | 检查代理模式是否开启、证书是否安装、host 是否匹配真实请求的 hostname |
 

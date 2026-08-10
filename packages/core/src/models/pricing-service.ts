@@ -1,5 +1,5 @@
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
-import type { AppConfig, ProviderModelPricing } from "@ccr/core/contracts/app";
+import { isGatewayProviderEnabled, type AppConfig, type ProviderModelPricing } from "@ccr/core/contracts/app";
 
 type ModelPricingSource = "litellm" | "models.dev" | "openrouter";
 type UsagePricingSource = ModelPricingSource | "custom";
@@ -111,7 +111,10 @@ export function providerModelPricingForUsage(
   if (!config || !normalizedProvider || !normalizedModel) {
     return undefined;
   }
-  const provider = config.Providers.find((candidate) => candidate.name?.trim().toLowerCase() === normalizedProvider);
+  const provider = config.Providers.find((candidate) =>
+    isGatewayProviderEnabled(candidate) &&
+    candidate.name?.trim().toLowerCase() === normalizedProvider
+  );
   if (!provider) {
     return undefined;
   }

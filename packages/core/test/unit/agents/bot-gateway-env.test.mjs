@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env.ts";
+import { materializeBotGatewayStdioRunnerPath } from "@ccr/core/agents/bot-gateway/qr-login-service.ts";
+import { botGatewaySdkImportSpecifier } from "@ccr/core/agents/bot-gateway/sdk-import.ts";
 
 function botGateway(overrides = {}) {
   return {
@@ -128,4 +133,29 @@ test("botGatewayProfileEnv defaults iMessage to local auth", () => {
   assert.equal(env.CCR_BOT_GATEWAY_PLATFORM, "imessage");
   assert.equal(env.CCR_BOT_GATEWAY_AUTH_TYPE, "local");
   assert.equal(JSON.parse(env.CCR_BOT_GATEWAY_CONFIG_JSON).transport, "websocket");
+});
+
+test("botGatewaySdkImportSpecifier converts Windows absolute paths before URL scheme detection", () => {
+  const windowsPath = "C:\\Users\\macao\\AppData\\Local\\Programs\\Claude Code Router\\resources\\app.asar\\dist\\main\\bot-gateway-sdk\\dist\\index.js";
+
+  assert.equal(
+    botGatewaySdkImportSpecifier(windowsPath),
+    "file:///C:/Users/macao/AppData/Local/Programs/Claude%20Code%20Router/resources/app.asar/dist/main/bot-gateway-sdk/dist/index.js"
+  );
+  assert.equal(botGatewaySdkImportSpecifier("file:///tmp/sdk/index.js"), "file:///tmp/sdk/index.js");
+  assert.equal(botGatewaySdkImportSpecifier("@the-next-ai/bot-gateway-sdk"), "@the-next-ai/bot-gateway-sdk");
+});
+
+test("materializeBotGatewayStdioRunnerPath copies bundled runner out of app.asar paths", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-bot-runner-"));
+  const source = path.join(dir, "resources", "app.asar", "dist", "main", "bot-gateway-sdk", "bin", "bot-gateway-stdio.mjs");
+  const configDir = path.join(dir, "config");
+  mkdirSync(path.dirname(source), { recursive: true });
+  writeFileSync(source, "#!/usr/bin/env node\n#!/usr/bin/env node\nconsole.log('ok');\n");
+
+  const materialized = materializeBotGatewayStdioRunnerPath(source, configDir);
+
+  assert.equal(materialized, path.join(configDir, "bot-gateway", "runners", "bot-gateway-stdio.mjs"));
+  assert.notEqual(path.dirname(materialized), path.dirname(source));
+  assert.equal(readFileSync(materialized, "utf8"), "#!/usr/bin/env node\nconsole.log('ok');\n");
 });

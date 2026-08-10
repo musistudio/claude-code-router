@@ -1,14 +1,15 @@
 import { memo } from "react";
-import { createPortal } from "react-dom";
 import { Maximize2, Route, X } from "lucide-react";
 import type { RequestRouteTrace, RequestRouteTraceChange, RequestRouteTraceHop } from "@ccr/core/contracts/app";
 import {
   AnimatedIconSwap, Check, ChevronDown, ChevronLeft,
   ChevronRight, clampNumber, clientInitial, cn, Copy, copyTextToClipboard,
-  Database, Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle, filterLogText, formatBytes, formatCompactNumber, formatDuration,
-  formatLogBodyView, formatLogDateTime, formatLogTokenSummary, formatNetworkRequestRaw, formatNetworkResponseRaw, formatRouteTracePath, formatUsdCost,
-  isJsonContainer, jsonChildPath, logRequestModel,
-  logResponseModel, logSelectOptions, motion, MoveRight, Network, networkCodeLabel,
+  createLogBodyPreviewText, Database, Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle, formatBytes, formatCompactNumber, formatDuration,
+  formatLogDateTime, formatLogTokenSummary, formatNetworkRequestRaw, formatNetworkResponseRaw, formatRouteTracePath, formatUsdCost,
+  FormattedLogBody,
+  isJsonContainer, isLargeLogBody, jsonChildPath, logRequestModel,
+  LogBodyFormatMode, logBodyLargeTextThreshold, logBodyPreviewTextLimit, LogBodyWorkerResponse,
+  logResolvedRouteModel, logSelectOptions, motion, MoveRight, Network, networkCodeLabel,
   networkExchangeMatchesQuery, networkHeaderRows, networkLifecycleLabel, networkQueryRows, networkRowId, networkSummaryRows,
   Pause, Play, ProxyNetworkBody, ProxyNetworkExchange, ProxyNetworkSnapshot, ProxyStatus,
   ReactNode, ReactPointerEvent, RefreshCw, RequestLogBody, RequestLogEntry, RequestLogListFilter,
@@ -16,14 +17,14 @@ import {
   translateOptions, Trash2, useAppNumberLocale, useAppText, useCallback, useEffect, useMemo, useRef,
   useState
 } from "../shared/index";
+import { TooltipPortal } from "@/components/ui/tooltip";
 type NetworkRequestTab = "body" | "header" | "query" | "raw" | "summary";
 type NetworkResponseTab = "body" | "header" | "raw";
 
-const logBodyViewCacheLimit = 12;
 const logJsonAutoExpandEntryLimit = 60;
 const logJsonContainerPreviewLimit = 80;
 const logJsonAutoExpandTextLimit = 160 * 1024;
-const logBodyViewCache = new Map<string, ReturnType<typeof formatLogBodyView>>();
+const logBodyWorkerFilterDebounceMs = 180;
 type LogTableColumnId = "time" | "status" | "stream" | "model" | "credential" | "tokens" | "duration";
 type LogTableColumn = {
   id: LogTableColumnId;
@@ -149,8 +150,8 @@ export function NetworkingView({
       transition={{ duration: 0.15 }}
     >
       <div className="network-shell flex min-h-0 flex-col overflow-hidden rounded-lg border">
-        <div className="network-toolbar flex h-10 min-w-0 shrink-0 items-center gap-2 border-b px-3">
-          <div className="relative min-w-[220px] flex-1">
+        <div className="network-toolbar flex h-10 min-w-0 shrink-0 items-center gap-2 border-b px-3 max-[720px]:h-auto max-[720px]:flex-wrap max-[720px]:py-2">
+          <div className="relative min-w-[220px] flex-1 max-[720px]:min-w-0 max-[720px]:basis-full">
             <Search className="network-search-icon pointer-events-none absolute left-2.5 top-1/2 z-[1] h-3.5 w-3.5 -translate-y-1/2" />
             <input
               aria-label={t("Search network captures")}
@@ -195,7 +196,18 @@ export function NetworkingView({
             className="network-table-scroll min-h-0 overflow-auto border-b"
             style={{ flex: selected ? `0 0 ${listHeightPercent}%` : "1 1 auto" }}
           >
-            <div className="min-w-[1180px]">
+            <div className="grid gap-2 p-2 min-[721px]:hidden">
+              {captures.map((item, index) => (
+                <NetworkCaptureCard
+                  exchange={item}
+                  key={item.id}
+                  onSelect={() => setSelectedId(item.id)}
+                  rowId={networkRowId(item, index, captures.length)}
+                  selected={selected?.id === item.id}
+                />
+              ))}
+            </div>
+            <div className="min-w-[1180px] max-[720px]:hidden">
               <div className="network-table-header sticky top-0 z-10 grid h-9 grid-cols-[34px_64px_minmax(460px,1fr)_220px_104px_116px_88px] items-center border-b text-[12px] font-semibold">
                 <NetworkHeaderCell label="" />
                 <NetworkHeaderCell label="ID" />
@@ -251,7 +263,7 @@ export function NetworkingView({
                 type="button"
               />
               <div className="network-detail flex min-h-0 flex-1 flex-col">
-                <div className="network-detail-bar flex h-12 min-w-0 shrink-0 items-center gap-2 border-b px-3">
+                <div className="network-detail-bar flex h-12 min-w-0 shrink-0 items-center gap-2 border-b px-3 max-[720px]:h-auto max-[720px]:flex-wrap max-[720px]:py-2">
                   <span className="network-method-pill rounded-full px-3 py-1 text-[12px] font-bold">{selected.method}</span>
                   <span className={cn(
                     "rounded-full px-3 py-1 text-[12px] font-bold uppercase",
@@ -266,13 +278,13 @@ export function NetworkingView({
                   </span>
                 </div>
 
-                <div className="network-detail-panes flex min-h-0 flex-1" ref={networkDetailPanesRef}>
+                <div className="network-detail-panes flex min-h-0 flex-1 max-[720px]:flex-col" ref={networkDetailPanesRef}>
                   <div className="min-w-0" style={{ flex: `0 0 ${requestWidthPercent}%` }}>
                     <NetworkRequestInspector exchange={selected} selectedTab={requestTab} setSelectedTab={setRequestTab} />
                   </div>
                   <button
                     aria-label={t("Resize request and response panels")}
-                    className="network-resize-handle-x shrink-0"
+                    className="network-resize-handle-x shrink-0 max-[720px]:hidden"
                     onPointerDown={startDetailResize}
                     title={t("Resize request/response")}
                     type="button"
@@ -290,17 +302,71 @@ export function NetworkingView({
   );
 }
 
+function NetworkCaptureCard({
+  exchange,
+  onSelect,
+  rowId,
+  selected
+}: {
+  exchange: ProxyNetworkExchange;
+  onSelect: () => void;
+  rowId: string;
+  selected: boolean;
+}) {
+  return (
+    <button
+      className={cn(
+        "network-row rounded-md border px-3 py-2 text-left text-[12px] outline-none transition-colors",
+        selected && "network-row-selected"
+      )}
+      onClick={onSelect}
+      type="button"
+    >
+      <div className="flex min-w-0 items-start gap-2">
+        <span className="mt-1 shrink-0"><NetworkStatusDot exchange={exchange} /></span>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="network-row-id shrink-0 font-mono text-[11px]">#{rowId}</span>
+            <span className="min-w-0 truncate font-mono font-semibold" title={exchange.url}>{exchange.host}{exchange.path}</span>
+          </div>
+          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
+            <span className="network-method-pill rounded-full px-2 py-0.5 text-[11px] font-bold">{exchange.method}</span>
+            <span className={cn(
+              "rounded-full px-2 py-0.5 text-[11px] font-bold uppercase",
+              exchange.state === "pending" ? "network-state-pill-active" : exchange.state === "error" ? "network-state-pill-error" : "network-state-pill-completed"
+            )}>
+              {networkLifecycleLabel(exchange)}
+            </span>
+            <span className="network-row-secondary rounded-full px-2 py-0.5 text-[11px] font-semibold">{networkCodeLabel(exchange)}</span>
+          </div>
+          <div className="mt-2 min-w-0">
+            <NetworkClientCell client={exchange.client} />
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
 export function LogsView({
+  enabled = true,
   error,
   filter,
+  focusedRequestId,
   loading,
+  onEnable,
+  onFocusedRequestHandled,
   page,
   refreshLogs,
   updateFilter
 }: {
+  enabled?: boolean;
   error: string;
   filter: RequestLogListFilter;
+  focusedRequestId?: number;
   loading: boolean;
+  onEnable?: () => void;
+  onFocusedRequestHandled?: () => void;
   page: RequestLogPage;
   refreshLogs: () => void;
   updateFilter: (patch: RequestLogListFilter, resetPage?: boolean) => void;
@@ -325,6 +391,7 @@ export function LogsView({
     () => createLogTableGridStyle(visibleLogColumns, logColumnWidths),
     [logColumnWidths, visibleLogColumns]
   );
+  const hasActiveFilters = logFilterHasActiveValues(filter);
   const loadLogDetail = useCallback((id: number) => {
     if (detailById[id] || detailLoadingId === id || !window.ccr?.getRequestLogDetail) {
       return;
@@ -362,6 +429,15 @@ export function LogsView({
     }
     setExpandedId(undefined);
   }, [expandedId, page.items]);
+
+  useEffect(() => {
+    if (!focusedRequestId || !page.items.some((item) => item.id === focusedRequestId)) {
+      return;
+    }
+    setExpandedId(focusedRequestId);
+    loadLogDetail(focusedRequestId);
+    onFocusedRequestHandled?.();
+  }, [focusedRequestId, loadLogDetail, onFocusedRequestHandled, page.items]);
 
   function startLogColumnResize(columnIndex: number, event: ReactPointerEvent<HTMLButtonElement>) {
     const header = logTableHeaderRef.current;
@@ -410,6 +486,18 @@ export function LogsView({
     window.addEventListener("pointermove", update);
     window.addEventListener("pointerup", stop);
     window.addEventListener("pointercancel", stop);
+  }
+
+  if (!enabled) {
+    return (
+      <MonitorDisabledView
+        actionLabel="Enable request logs"
+        description="Request logs record gateway requests and make payload inspection available."
+        icon={<Database className="h-8 w-8" />}
+        onEnable={onEnable}
+        title="Request logs are off"
+      />
+    );
   }
 
   return (
@@ -489,7 +577,7 @@ export function LogsView({
               aria-label={t("Request log page size")}
               className="h-7 w-[92px] bg-[length:14px] px-2 pr-7 text-[11px]"
               onValueChange={(value) => updateFilter({ pageSize: Number(value) })}
-              options={requestLogPageSizeOptions}
+              options={translateOptions(requestLogPageSizeOptions, t)}
               value={String(page.pageSize)}
             />
           </div>
@@ -512,7 +600,7 @@ export function LogsView({
           <div className="network-table-scroll min-h-0 flex-1 overflow-auto">
             <div className="w-full min-w-0">
               <div
-                className={cn("network-table-header sticky top-0 z-10 grid h-9 items-center border-b text-[12px] font-semibold", logTableGridClass)}
+                className={cn("network-table-header sticky top-0 z-10 grid h-9 items-center border-b text-[12px] font-semibold max-[720px]:hidden", logTableGridClass)}
                 ref={logTableHeaderRef}
                 style={logTableGridStyle}
               >
@@ -529,30 +617,131 @@ export function LogsView({
               {page.items.length === 0 ? (
                 <div className="network-empty flex h-[240px] flex-col items-center justify-center gap-2 text-center text-[12px]">
                   <Database className="network-empty-icon h-7 w-7" />
-                  <div>{loading ? t("正在加载日志") : t("暂无日志")}</div>
+                  <div>{loading ? t("正在加载日志") : t(hasActiveFilters ? "No request logs match the current filters." : "No request logs yet.")}</div>
+                  {!loading ? (
+                    <div className="max-w-[360px] px-4 text-[11px] leading-4 text-muted-foreground">
+                      {t(hasActiveFilters
+                        ? "Clear filters or broaden the search to find more request logs."
+                        : "Send a request through CCR, then refresh this page to inspect it.")}
+                    </div>
+                  ) : null}
+                  {!loading && hasActiveFilters ? (
+                    <button
+                      className="network-control-button mt-1 rounded-md border px-3 py-1.5 text-[11px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                      onClick={() => updateFilter(clearRequestLogFilters())}
+                      type="button"
+                    >
+                      {t("Clear filters")}
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
 
-              {page.items.map((item, index) => (
-                <LogRow
-                  detailError={detailErrorById[item.id]}
-                  detailLoading={detailLoadingId === item.id}
-                  expanded={expandedId === item.id}
-                  hasCredentialInfo={hasAnyCredentialInfo}
-                  index={index}
-                  item={expandedId === item.id ? detailById[item.id] ?? item : item}
-                  key={item.id}
-                  logTableGridClass={logTableGridClass}
-                  logTableGridStyle={logTableGridStyle}
-                  onToggle={toggleExpandedLog}
-                />
-              ))}
+              {page.items.length > 0 ? (
+                <>
+                  <div className="grid gap-2 p-2 min-[721px]:hidden">
+                    {page.items.map((item, index) => (
+                      <LogMobileCard
+                        detailError={detailErrorById[item.id]}
+                        detailLoading={detailLoadingId === item.id}
+                        expanded={expandedId === item.id}
+                        hasCredentialInfo={hasAnyCredentialInfo}
+                        index={index}
+                        item={expandedId === item.id ? detailById[item.id] ?? item : item}
+                        key={item.id}
+                        onToggle={toggleExpandedLog}
+                      />
+                    ))}
+                  </div>
+                  <div className="max-[720px]:hidden">
+                    {page.items.map((item, index) => (
+                      <LogRow
+                        detailError={detailErrorById[item.id]}
+                        detailLoading={detailLoadingId === item.id}
+                        expanded={expandedId === item.id}
+                        hasCredentialInfo={hasAnyCredentialInfo}
+                        index={index}
+                        item={expandedId === item.id ? detailById[item.id] ?? item : item}
+                        key={item.id}
+                        logTableGridClass={logTableGridClass}
+                        logTableGridStyle={logTableGridStyle}
+                        onToggle={toggleExpandedLog}
+                      />
+                    ))}
+                  </div>
+                </>
+              ) : null}
             </div>
           </div>
         </div>
       </div>
     </motion.div>
   );
+}
+
+export function MonitorDisabledView({
+  actionLabel,
+  description,
+  icon,
+  onEnable,
+  title
+}: {
+  actionLabel: string;
+  description: string;
+  icon: ReactNode;
+  onEnable?: () => void;
+  title: string;
+}) {
+  const t = useAppText();
+
+  return (
+    <motion.div
+      animate={{ opacity: 1 }}
+      className="network-view min-w-0"
+      initial={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+    >
+      <div className="network-shell flex min-h-[360px] items-center justify-center rounded-lg border px-4 py-8">
+        <div className="max-w-[440px] text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-border bg-muted/40 text-muted-foreground">
+            {icon}
+          </div>
+          <div className="mt-4 text-[15px] font-semibold text-foreground">{t(title)}</div>
+          <div className="mt-2 text-[12px] leading-5 text-muted-foreground">{t(description)}</div>
+          {onEnable ? (
+            <button
+              className="network-control-button mt-4 rounded-md border px-3 py-2 text-[12px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+              onClick={onEnable}
+              type="button"
+            >
+              {t(actionLabel)}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function logFilterHasActiveValues(filter: RequestLogListFilter): boolean {
+  return Boolean(
+    filter.query?.trim() ||
+    filter.provider?.trim() ||
+    filter.model?.trim() ||
+    filter.credential?.trim() ||
+    (filter.status && filter.status !== "all")
+  );
+}
+
+function clearRequestLogFilters(): RequestLogListFilter {
+  return {
+    credential: undefined,
+    model: undefined,
+    page: 1,
+    provider: undefined,
+    query: "",
+    status: "all"
+  };
 }
 
 function getLogTableColumns(hasCredentialColumn: boolean): LogTableColumn[] {
@@ -594,10 +783,93 @@ function logTableColumnLabel(columnId: LogTableColumnId, t: (value: string) => s
     case "credential":
       return t("Credential");
     case "tokens":
-      return t("令牌");
+      return t("Token");
     case "duration":
       return t("持续时间");
   }
+}
+
+function LogMobileCard({
+  detailError,
+  detailLoading,
+  expanded,
+  hasCredentialInfo,
+  index,
+  item,
+  onToggle
+}: {
+  detailError?: string;
+  detailLoading?: boolean;
+  expanded: boolean;
+  hasCredentialInfo: boolean;
+  index: number;
+  item: RequestLogEntry;
+  onToggle: (id: number) => void;
+}) {
+  const t = useAppText();
+  const numberLocale = useAppNumberLocale();
+  const createdAt = useMemo(() => formatLogDateTime(item.createdAt), [item.createdAt]);
+  const tokenSummary = useMemo(() => formatLogTokenSummary(item, t, numberLocale), [item, numberLocale, t]);
+
+  return (
+    <div className={cn("network-row rounded-md border text-[12px]", expanded && "network-row-selected")}>
+      <button
+        aria-expanded={expanded}
+        className="w-full px-3 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+        onClick={() => onToggle(item.id)}
+        type="button"
+      >
+        <div className="flex min-w-0 items-start gap-2">
+          <span className="mt-1 shrink-0"><LogStatusDot entry={item} /></span>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="network-row-id shrink-0 font-mono text-[11px]">#{index + 1}</span>
+              <span className="min-w-0 truncate font-mono font-semibold" title={`${item.method} ${item.path}`}>{item.method} {item.path}</span>
+              <ChevronDown className={cn("ml-auto h-3.5 w-3.5 shrink-0 transition-transform", expanded && "rotate-180")} />
+            </div>
+            <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
+              <span className={cn(
+                "rounded-full px-2 py-0.5 text-[11px] font-bold uppercase",
+                item.ok ? "network-state-pill-completed" : "network-state-pill-error"
+              )}>
+                HTTP {item.statusCode || "-"}
+              </span>
+              <span className="network-row-secondary rounded-full px-2 py-0.5 text-[11px] font-semibold">{item.isStream ? t("Streaming") : t("Non-streaming")}</span>
+              {item.retryAttempts.length > 0 ? (
+                <span className="network-service-paused rounded px-1.5 py-0.5 text-[10px] font-bold">
+                  R{item.retryAttempts.length}
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-2 min-w-0 text-[11px] text-muted-foreground">
+              <div className="truncate font-mono" title={createdAt}>{createdAt}</div>
+              <div className="mt-1 flex min-w-0 items-center gap-1" title={`${logRequestModel(item)} -> ${logResolvedRouteModel(item)}`}>
+                <span className="min-w-0 truncate">{logRequestModel(item)}</span>
+                <MoveRight className="h-3 w-3 shrink-0" aria-hidden="true" />
+                <span className="min-w-0 truncate">{logResolvedRouteModel(item)}</span>
+              </div>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+              <LogCompactMetric label={t("Token")} value={tokenSummary} />
+              <LogCompactMetric label={t("持续时间")} value={formatDuration(item.durationMs)} />
+              {hasCredentialInfo ? <LogCompactMetric label={t("Credential")} value={logCredentialCellLabel(item)} /> : null}
+              <LogCompactMetric label={t("Provider")} value={item.provider || "-"} />
+            </div>
+          </div>
+        </div>
+      </button>
+      {expanded ? <LogExpandedDetails detailError={detailError} detailLoading={detailLoading} entry={item} /> : null}
+    </div>
+  );
+}
+
+function LogCompactMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded border border-border/60 px-2 py-1">
+      <div className="truncate text-[10px] text-muted-foreground">{label}</div>
+      <div className="mt-0.5 min-w-0 break-words font-mono font-semibold leading-4" title={value}>{value}</div>
+    </div>
+  );
 }
 
 const LogRow = memo(function LogRow({
@@ -696,6 +968,10 @@ function LogExpandedDetails({
       <div className={cn("network-body-meta grid grid-cols-2 gap-y-2 border-b px-3 py-2 text-[12px] sm:grid-cols-4", hasCredentialInfo ? "lg:grid-cols-12" : "lg:grid-cols-9")}>
         <LogMetric label={t("持续时间")} value={formatDuration(entry.durationMs)} />
         <LogMetric label={t("Stream")} value={entry.isStream ? t("Streaming") : t("Non-streaming")} />
+        <LogMetric label={t("Request ID")} value={entry.requestId || "-"} />
+        <LogMetric label={t("Client")} value={entry.client || "-"} />
+        <LogMetric label={t("Provider")} value={entry.provider || "-"} />
+        <LogMetric label={t("Model")} value={entry.model || "-"} />
         {entry.credentialId ? <LogMetric label={t("Credential")} value={entry.credentialId} /> : null}
         {entry.credentialChain.length ? <LogMetric label={t("Credential chain")} value={entry.credentialChain.join(" > ")} /> : null}
         {hasCredentialInfo ? <LogMetric label={t("Credential saturated")} value={entry.credentialSaturated ? t("Yes") : t("No")} /> : null}
@@ -813,7 +1089,7 @@ function LogRouteTraceDialog({
         </DialogHeader>
         <DialogBody className="flex min-h-0 flex-col overflow-hidden p-0">
           <div className="network-body-meta shrink-0 border-b px-4 py-3">
-            <div className="network-muted text-[11px] font-semibold">{t("Hover a node to inspect routing operations")}</div>
+            <div className="network-muted text-[11px] font-semibold">{t("Select a route node to inspect routing operations")}</div>
             <div className="mt-3 overflow-x-auto rounded-md border border-[color:var(--network-border)] bg-card/40">
               {hops.length === 0 ? (
                 <div className="network-muted flex min-h-40 items-center justify-center px-4 text-[12px]">{t("No route activity")}</div>
@@ -833,6 +1109,7 @@ function LogRouteTraceDialog({
                           "flex h-[116px] w-[184px] shrink-0 flex-col rounded-md border border-border bg-card p-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/40",
                           activeHopSequence === hop.seq && "border-primary/60 bg-primary/5 ring-2 ring-primary/10"
                         )}
+                        onClick={() => setActiveHopSequence(hop.seq)}
                         onFocus={() => setActiveHopSequence(hop.seq)}
                         onMouseEnter={() => setActiveHopSequence(hop.seq)}
                         type="button"
@@ -865,7 +1142,7 @@ function LogRouteTraceDialog({
               <LogRouteHopDetails hop={activeHop} index={activeHopIndex} />
             ) : (
               <div className="network-muted flex min-h-52 items-center justify-center rounded-md border border-dashed border-border px-4 text-center text-[12px]">
-                {t("Hover over a route node to inspect its operations.")}
+                {t("Select a route node to inspect its operations.")}
               </div>
             )}
           </div>
@@ -1102,8 +1379,8 @@ function LogMetric({ label, value }: { label: string; value: string }) {
 
 function LogModelRouteCell({ entry }: { entry: RequestLogEntry }) {
   const requestModel = logRequestModel(entry);
-  const responseModel = logResponseModel(entry);
-  return <LogModelTooltip requestModel={requestModel} responseModel={responseModel} />;
+  const resolvedModel = logResolvedRouteModel(entry);
+  return <LogModelTooltip requestModel={requestModel} resolvedModel={resolvedModel} />;
 }
 
 type LogModelTooltipState = {
@@ -1115,14 +1392,14 @@ type LogModelTooltipState = {
 
 function LogModelTooltip({
   requestModel,
-  responseModel
+  resolvedModel
 }: {
   requestModel: string;
-  responseModel: string;
+  resolvedModel: string;
 }) {
   const triggerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<LogModelTooltipState>();
-  const value = `${requestModel} -> ${responseModel}`;
+  const value = `${requestModel} -> ${resolvedModel}`;
 
   useEffect(() => {
     if (!tooltip) return;
@@ -1167,12 +1444,11 @@ function LogModelTooltip({
       >
         <span className="min-w-0 max-w-[45%] truncate">{requestModel}</span>
         <MoveRight className="mx-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <span className="min-w-0 max-w-[45%] truncate">{responseModel}</span>
+        <span className="min-w-0 max-w-[45%] truncate">{resolvedModel}</span>
       </div>
-      {tooltip ? createPortal(
-        <div
-          className="pointer-events-none fixed z-[100] break-all rounded-md border border-border bg-popover px-2.5 py-1.5 font-mono text-[11px] font-medium text-popover-foreground shadow-card-elevated"
-          role="tooltip"
+      {tooltip ? (
+        <TooltipPortal
+          className="break-all px-2.5 py-1.5 font-mono"
           style={{
             left: tooltip.left,
             top: tooltip.top,
@@ -1181,8 +1457,7 @@ function LogModelTooltip({
           }}
         >
           {value}
-        </div>,
-        document.body
+        </TooltipPortal>
       ) : null}
     </>
   );
@@ -1222,6 +1497,247 @@ function LogStreamCell({ entry }: { entry: RequestLogEntry }) {
 
 type LogPayloadTab = "body" | "header";
 
+type LogBodyPanelView = FormattedLogBody & {
+  bodyKey: string;
+  error: string;
+  formattedTextLength: number;
+  large: boolean;
+  loading: boolean;
+  mode: LogBodyFormatMode;
+  preview: boolean;
+  query: string;
+  sourceSizeBytes: number;
+  visible: string;
+};
+
+function useLogBodyWorkerView(
+  body: RequestLogBody | undefined,
+  bodyKey: string,
+  mode: LogBodyFormatMode,
+  query: string
+): LogBodyPanelView {
+  const debouncedQuery = useDebouncedValue(query, logBodyWorkerFilterDebounceMs);
+  const latestQueryRef = useRef(debouncedQuery);
+  const workerRef = useRef<Worker>();
+  const formatRequestIdRef = useRef(0);
+  const filterRequestIdRef = useRef(0);
+  const [bodyView, setBodyView] = useState<LogBodyPanelView>(() => createInitialLogBodyPanelView(body, bodyKey, mode, query));
+
+  useEffect(() => {
+    latestQueryRef.current = debouncedQuery;
+  }, [debouncedQuery]);
+
+  useEffect(() => {
+    const initial = createInitialLogBodyPanelView(body, bodyKey, mode, latestQueryRef.current);
+    setBodyView(initial);
+
+    workerRef.current?.terminate();
+    workerRef.current = undefined;
+
+    if (isStaticLogBody(body)) {
+      setBodyView(createStaticLogBodyPanelView(body, bodyKey, mode, latestQueryRef.current));
+      return;
+    }
+
+    if (typeof Worker === "undefined") {
+      setBodyView({
+        ...initial,
+        error: "Body formatter worker is unavailable.",
+        loading: false,
+        visible: initial.visible || "Body formatter worker is unavailable."
+      });
+      return;
+    }
+
+    const worker = createLogBodyFormatterWorker();
+    const formatRequestId = formatRequestIdRef.current + 1;
+    formatRequestIdRef.current = formatRequestId;
+    filterRequestIdRef.current += 1;
+    workerRef.current = worker;
+
+    worker.onmessage = (event: MessageEvent<LogBodyWorkerResponse>) => {
+      const response = event.data;
+      if (response.kind === "format-result") {
+        if (response.id !== formatRequestIdRef.current || response.bodyKey !== bodyKey || response.mode !== mode) {
+          return;
+        }
+        setBodyView(logBodyPanelViewFromWorkerResult(response));
+        if (response.query !== latestQueryRef.current) {
+          postLogBodyFilter(worker, bodyKey, mode, latestQueryRef.current, filterRequestIdRef);
+        }
+        return;
+      }
+
+      if (response.kind === "filter-result") {
+        if (response.id !== filterRequestIdRef.current || response.bodyKey !== bodyKey || response.mode !== mode) {
+          return;
+        }
+        setBodyView((current) => current.bodyKey === bodyKey && current.mode === mode
+          ? { ...current, query: response.query, visible: response.visible }
+          : current);
+        return;
+      }
+
+      if (
+        (response.operation === "format" && response.id === formatRequestIdRef.current) ||
+        (response.operation === "filter" && response.id === filterRequestIdRef.current)
+      ) {
+        setBodyView((current) => current.bodyKey === bodyKey && current.mode === mode
+          ? { ...current, error: response.message, loading: false, visible: current.visible || response.message }
+          : current);
+      }
+    };
+
+    worker.onerror = (event) => {
+      setBodyView((current) => current.bodyKey === bodyKey && current.mode === mode
+        ? { ...current, error: event.message || "Body formatter worker failed.", loading: false }
+        : current);
+    };
+
+    worker.postMessage({
+      body,
+      bodyKey,
+      id: formatRequestId,
+      kind: "format",
+      largeTextThreshold: logBodyLargeTextThreshold,
+      mode,
+      previewTextLimit: logBodyPreviewTextLimit,
+      query: latestQueryRef.current
+    });
+
+    return () => {
+      if (workerRef.current === worker) {
+        workerRef.current = undefined;
+      }
+      worker.terminate();
+    };
+  }, [body, bodyKey, mode]);
+
+  useEffect(() => {
+    const worker = workerRef.current;
+    if (!worker || bodyView.loading || bodyView.bodyKey !== bodyKey || bodyView.mode !== mode || bodyView.query === debouncedQuery) {
+      return;
+    }
+    postLogBodyFilter(worker, bodyKey, mode, debouncedQuery, filterRequestIdRef);
+  }, [bodyKey, bodyView.bodyKey, bodyView.loading, bodyView.mode, bodyView.query, debouncedQuery, mode]);
+
+  return bodyView;
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs, value]);
+
+  return debounced;
+}
+
+function createLogBodyFormatterWorker(): Worker {
+  return new Worker(new URL("../../assets/log-body.worker.js", window.location.href), { type: "module" });
+}
+
+function postLogBodyFilter(
+  worker: Worker,
+  bodyKey: string,
+  mode: LogBodyFormatMode,
+  query: string,
+  idRef: { current: number }
+) {
+  const id = idRef.current + 1;
+  idRef.current = id;
+  worker.postMessage({
+    bodyKey,
+    id,
+    kind: "filter",
+    mode,
+    query
+  });
+}
+
+function createInitialLogBodyPanelView(
+  body: RequestLogBody | undefined,
+  bodyKey: string,
+  mode: LogBodyFormatMode,
+  query: string
+): LogBodyPanelView {
+  if (isStaticLogBody(body)) {
+    return createStaticLogBodyPanelView(body, bodyKey, mode, query);
+  }
+
+  const large = isLargeLogBody(body, logBodyLargeTextThreshold);
+  const preview = large && mode !== "full";
+  const text = preview
+    ? createLogBodyPreviewText(body, logBodyPreviewTextLimit)
+    : "Loading body...";
+  return {
+    bodyKey,
+    error: "",
+    formattedTextLength: text.length,
+    large,
+    loading: true,
+    mode,
+    preview,
+    query,
+    sourceSizeBytes: body?.sizeBytes ?? 0,
+    text,
+    visible: text
+  };
+}
+
+function createStaticLogBodyPanelView(
+  body: RequestLogBody | undefined,
+  bodyKey: string,
+  mode: LogBodyFormatMode,
+  query: string
+): LogBodyPanelView {
+  const text = body?.text || "No body";
+  return {
+    bodyKey,
+    error: "",
+    formattedTextLength: text.length,
+    large: false,
+    loading: false,
+    mode,
+    preview: false,
+    query,
+    sourceSizeBytes: body?.sizeBytes ?? 0,
+    text,
+    visible: filterStaticLogBodyText(text, query)
+  };
+}
+
+function logBodyPanelViewFromWorkerResult(result: Extract<LogBodyWorkerResponse, { kind: "format-result" }>): LogBodyPanelView {
+  return {
+    bodyKey: result.bodyKey,
+    error: "",
+    formattedTextLength: result.formattedTextLength,
+    json: result.json,
+    large: result.large,
+    loading: false,
+    mode: result.mode,
+    preview: result.preview,
+    query: result.query,
+    sourceSizeBytes: result.sourceSizeBytes,
+    text: result.text,
+    visible: result.visible
+  };
+}
+
+function isStaticLogBody(body: RequestLogBody | undefined): boolean {
+  return !body || (!body.text && body.sizeBytes === 0);
+}
+
+function filterStaticLogBodyText(text: string, query: string): string {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return text;
+  }
+  return text.toLowerCase().includes(normalized) ? text : "No matching lines";
+}
+
 function LogJsonPanel({
   body,
   className,
@@ -1240,20 +1756,25 @@ function LogJsonPanel({
   const t = useAppText();
   const [selectedTab, setSelectedTab] = useState<LogPayloadTab>("body");
   const [preferTextBody, setPreferTextBody] = useState(false);
+  const [bodyMode, setBodyMode] = useState<LogBodyFormatMode>("preview");
   const [fullscreenOpen, setFullscreenOpen] = useState(false);
   const [query, setQuery] = useState("");
   const bodyKey = logBodyCacheKey(body);
-  const bodyView = useMemo(() => cachedFormatLogBodyView(bodyKey, body), [bodyKey]);
+  const bodyView = useLogBodyWorkerView(body, bodyKey, bodyMode, query);
   const formatted = bodyView.text;
-  const visible = useMemo(() => filterLogText(formatted, query), [formatted, query]);
+  const visible = bodyView.visible;
   const headerRows = useMemo(() => networkHeaderRows(headers ?? {}), [headers]);
   const [expandedJsonPaths, setExpandedJsonPaths] = useState<Set<string>>(() => createInitialVisibleJsonPaths(bodyView));
-  const showJsonTree = bodyView.json !== undefined && query.trim() === "" && !preferTextBody;
+  const showJsonTree = bodyView.json !== undefined && query.trim() === "" && !preferTextBody && !bodyView.preview;
+
+  useEffect(() => {
+    setPreferTextBody(false);
+    setBodyMode("preview");
+  }, [bodyKey]);
 
   useEffect(() => {
     setExpandedJsonPaths(createInitialVisibleJsonPaths(bodyView));
-    setPreferTextBody(false);
-  }, [bodyKey]);
+  }, [bodyView.bodyKey, bodyView.json, bodyView.text]);
 
   useEffect(() => {
     if (!fullscreenOpen) {
@@ -1308,6 +1829,7 @@ function LogJsonPanel({
             <LogJsonBodyToolbar
               body={body}
               bodyView={bodyView}
+              onLoadFullBody={() => setBodyMode("full")}
               onQueryChange={setQuery}
               onToggleTextBody={() => setPreferTextBody((current) => !current)}
               preferTextBody={preferTextBody}
@@ -1336,6 +1858,7 @@ function LogJsonPanel({
                 copyText={formatted}
                 expandedJsonPaths={expandedJsonPaths}
                 onClose={() => setFullscreenOpen(false)}
+                onLoadFullBody={() => setBodyMode("full")}
                 onQueryChange={setQuery}
                 onToggleJsonPath={toggleJsonPath}
                 onToggleTextBody={() => setPreferTextBody((current) => !current)}
@@ -1362,6 +1885,7 @@ function LogJsonPanel({
 function LogJsonBodyToolbar({
   body,
   bodyView,
+  onLoadFullBody,
   onQueryChange,
   onToggleTextBody,
   preferTextBody,
@@ -1369,7 +1893,8 @@ function LogJsonBodyToolbar({
   title
 }: {
   body?: RequestLogBody;
-  bodyView: ReturnType<typeof formatLogBodyView>;
+  bodyView: LogBodyPanelView;
+  onLoadFullBody: () => void;
   onQueryChange: (value: string) => void;
   onToggleTextBody: () => void;
   preferTextBody: boolean;
@@ -1377,6 +1902,12 @@ function LogJsonBodyToolbar({
   title: string;
 }) {
   const t = useAppText();
+  const canLoadFullBody = bodyView.preview && bodyView.large && query.trim() === "";
+  const canToggleJsonText = bodyView.json !== undefined && query.trim() === "";
+  const showToggleButton = canLoadFullBody || canToggleJsonText;
+  const toggleLabel = canLoadFullBody
+    ? bodyView.loading && bodyView.mode === "full" ? t("Loading full payload...") : t("Show full content")
+    : preferTextBody ? "JSON" : t("Show full content");
 
   return (
     <div className="network-body-meta flex min-h-9 shrink-0 items-center gap-2 border-b px-3 py-1.5">
@@ -1390,15 +1921,20 @@ function LogJsonBodyToolbar({
           value={query}
         />
       </div>
-      {bodyView.json !== undefined && query.trim() === "" ? (
+      {showToggleButton ? (
         <button
           className="network-tab shrink-0 border-0 bg-transparent p-0 text-[11px] font-semibold outline-none"
-          onClick={onToggleTextBody}
+          disabled={bodyView.loading && bodyView.mode === "full"}
+          onClick={canLoadFullBody ? onLoadFullBody : onToggleTextBody}
           type="button"
         >
-          {preferTextBody ? "JSON" : t("Show full content")}
+          {toggleLabel}
         </button>
       ) : null}
+      {bodyView.loading ? <span className="network-muted shrink-0 text-[11px] font-semibold">{t("Loading full payload...")}</span> : null}
+      {bodyView.error ? <span className="network-error-box shrink-0 rounded px-2 py-0.5 text-[11px] font-semibold">{bodyView.error}</span> : null}
+      {bodyView.preview ? <span className="network-service-paused rounded-full px-2 py-0.5 text-[11px] font-semibold">{t("preview")}</span> : null}
+      {bodyView.sourceSizeBytes > 0 ? <span className="network-muted hidden shrink-0 text-[11px] font-semibold sm:inline">{formatBytes(bodyView.sourceSizeBytes)}</span> : null}
       {body?.contentType ? <span className="network-muted hidden shrink-0 text-[11px] font-semibold sm:inline">{body.contentType}</span> : null}
       {body?.truncated ? <span className="network-service-paused rounded-full px-2 py-0.5 text-[11px] font-semibold">{t("truncated")}</span> : null}
     </div>
@@ -1432,6 +1968,7 @@ function LogJsonFullscreenViewer({
   copyText,
   expandedJsonPaths,
   onClose,
+  onLoadFullBody,
   onQueryChange,
   onToggleJsonPath,
   onToggleTextBody,
@@ -1444,11 +1981,12 @@ function LogJsonFullscreenViewer({
   visible
 }: {
   body?: RequestLogBody;
-  bodyView: ReturnType<typeof formatLogBodyView>;
+  bodyView: LogBodyPanelView;
   copyLabel: string;
   copyText: string;
   expandedJsonPaths: Set<string>;
   onClose: () => void;
+  onLoadFullBody: () => void;
   onQueryChange: (value: string) => void;
   onToggleJsonPath: (path: string) => void;
   onToggleTextBody: () => void;
@@ -1486,6 +2024,7 @@ function LogJsonFullscreenViewer({
         <LogJsonBodyToolbar
           body={body}
           bodyView={bodyView}
+          onLoadFullBody={onLoadFullBody}
           onQueryChange={onQueryChange}
           onToggleTextBody={onToggleTextBody}
           preferTextBody={preferTextBody}
@@ -1524,27 +2063,7 @@ function logBodyCacheKey(body: RequestLogBody | undefined): string {
   ].join("\u001f");
 }
 
-function cachedFormatLogBodyView(key: string, body: RequestLogBody | undefined): ReturnType<typeof formatLogBodyView> {
-  const cached = logBodyViewCache.get(key);
-  if (cached) {
-    logBodyViewCache.delete(key);
-    logBodyViewCache.set(key, cached);
-    return cached;
-  }
-
-  const value = formatLogBodyView(body);
-  logBodyViewCache.set(key, value);
-  while (logBodyViewCache.size > logBodyViewCacheLimit) {
-    const oldest = logBodyViewCache.keys().next().value;
-    if (!oldest) {
-      break;
-    }
-    logBodyViewCache.delete(oldest);
-  }
-  return value;
-}
-
-function createInitialVisibleJsonPaths(bodyView: ReturnType<typeof formatLogBodyView>): Set<string> {
+function createInitialVisibleJsonPaths(bodyView: FormattedLogBody): Set<string> {
   if (!isJsonContainer(bodyView.json)) {
     return new Set();
   }

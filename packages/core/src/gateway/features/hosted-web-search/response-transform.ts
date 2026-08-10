@@ -8,8 +8,6 @@ import { parseSseEventBlock, parseSseEvents, serializeSseEvent, shiftSseContentB
 import type { ParsedSseEvent } from "@ccr/core/gateway/features/hosted-web-search/sse";
 import { anthropicSseTextBlockStartIndex, anthropicWebSearchProtocolBlocks, anthropicWebSearchSseEventsForBlock, mergeAnthropicWebSearchUsage, responseValueContainsAnthropicClientToolUse, responseValueContainsAnthropicWebSearchBlocks, responseValueContainsVisibleText, sanitizeAnthropicToolUseId, shouldEndAnthropicHostedWebSearchTurn, sseEventContainsAnthropicClientToolUse, sseEventContainsAnthropicWebSearchBlock, sseEventContainsVisibleText, sseEventIsAnthropicMessageEnd, sseEventsContainAnthropicClientToolUse, sseEventsContainAnthropicWebSearchBlocks, sseEventsContainVisibleText, synthesizeWebSearchAnswer, updateAnthropicWebSearchSseUsage, webSearchProtocolInsertIndex } from "@ccr/core/gateway/features/hosted-web-search/evidence";
 
-
-
 export function hostedWebSearchProtocolResponseStream(
   input: Readable,
   headers: Headers,
@@ -58,8 +56,6 @@ export function hostedWebSearchProtocolResponseStream(
     }
   }));
 }
-
-
 
 function hostedWebSearchProtocolSseStream(
   input: Readable,
@@ -127,15 +123,11 @@ function hostedWebSearchProtocolSseStream(
   }));
 }
 
-
-
 type HostedWebSearchSseState = {
   done: boolean;
   maxOutputIndex: number;
   visibleText: boolean;
 };
-
-
 
 function drainHostedWebSearchSseBlocks(
   stream: Transform,
@@ -168,8 +160,6 @@ function drainHostedWebSearchSseBlocks(
   }
 }
 
-
-
 function writeHostedWebSearchSseEvent(
   stream: Transform,
   event: ParsedSseEvent,
@@ -193,8 +183,6 @@ function writeHostedWebSearchSseEvent(
       : event;
   stream.push(`${serializeSseEvent(nextEvent)}${delimiter}`);
 }
-
-
 
 function updateHostedWebSearchSseState(
   event: ParsedSseEvent,
@@ -220,8 +208,6 @@ function updateHostedWebSearchSseState(
   }
 }
 
-
-
 function writeHostedWebSearchSseFallback(
   stream: Transform,
   state: HostedWebSearchSseState,
@@ -242,8 +228,6 @@ function writeHostedWebSearchSseFallback(
   state.visibleText = true;
   state.done = true;
 }
-
-
 
 function hostedWebSearchSseFallbackEvents(
   answer: string,
@@ -270,8 +254,6 @@ function hostedWebSearchSseFallbackEvents(
   }
   return [];
 }
-
-
 
 function anthropicHostedWebSearchProtocolSseStream(
   input: Readable,
@@ -343,8 +325,6 @@ function anthropicHostedWebSearchProtocolSseStream(
   }));
 }
 
-
-
 type AnthropicHostedWebSearchSseState = {
   answerInjected: boolean;
   hasClientToolUse: boolean;
@@ -355,8 +335,6 @@ type AnthropicHostedWebSearchSseState = {
   maxIndex: number;
   visibleText: boolean;
 };
-
-
 
 function drainAnthropicHostedWebSearchSseBlocks(
   stream: Transform,
@@ -402,8 +380,6 @@ function drainAnthropicHostedWebSearchSseBlocks(
   }
 }
 
-
-
 function sseTrailingPartialBlock(text: string): string {
   let cursor = 0;
   for (const match of text.matchAll(/\r?\n\r?\n/g)) {
@@ -411,8 +387,6 @@ function sseTrailingPartialBlock(text: string): string {
   }
   return text.slice(cursor);
 }
-
-
 
 function writeAnthropicHostedWebSearchSseEvent(
   stream: Transform,
@@ -447,8 +421,6 @@ function writeAnthropicHostedWebSearchSseEvent(
   stream.push(`${serializeSseEvent(nextEvent)}${delimiter}`);
 }
 
-
-
 function updateAnthropicHostedWebSearchSseState(event: ParsedSseEvent, state: AnthropicHostedWebSearchSseState): void {
   if (isRecord(event.data) && Number.isFinite(event.data.index)) {
     state.maxIndex = Math.max(state.maxIndex, Number(event.data.index));
@@ -457,8 +429,6 @@ function updateAnthropicHostedWebSearchSseState(event: ParsedSseEvent, state: An
   state.hasClientToolUse ||= sseEventContainsAnthropicClientToolUse(event);
   state.visibleText ||= sseEventContainsVisibleText(event);
 }
-
-
 
 function insertAnthropicHostedWebSearchSseBlocks(
   stream: Transform,
@@ -479,8 +449,6 @@ function insertAnthropicHostedWebSearchSseBlocks(
   state.injectedBlockCount += blocks.length;
 }
 
-
-
 function insertAnthropicHostedWebSearchSseAnswer(
   stream: Transform,
   state: AnthropicHostedWebSearchSseState,
@@ -493,8 +461,6 @@ function insertAnthropicHostedWebSearchSseAnswer(
   }
 }
 
-
-
 function shiftAnthropicHostedWebSearchSseEvent(
   event: ParsedSseEvent,
   state: AnthropicHostedWebSearchSseState
@@ -504,8 +470,6 @@ function shiftAnthropicHostedWebSearchSseEvent(
   }
   return shiftSseContentBlockIndex(event, state.insertIndex, state.injectedBlockCount);
 }
-
-
 
 function transformHostedWebSearchProtocolResponseValue(
   value: unknown,
@@ -526,30 +490,6 @@ function transformHostedWebSearchProtocolResponseValue(
   }
   return { changed: false, value };
 }
-
-
-
-function transformHostedWebSearchProtocolSseText(
-  body: string,
-  records: BrowserWebSearchProtocolRecord[],
-  context: Pick<HostedWebSearchProtocolContext, "protocol" | "queryHint" | "requestId">
-): string {
-  if (context.protocol === "anthropic_messages") {
-    return transformAnthropicWebSearchProtocolSseText(body, records, context.requestId, context.queryHint);
-  }
-  if (context.protocol === "openai_chat_completions") {
-    return transformOpenAiChatHostedWebSearchSseText(body, records, context.queryHint);
-  }
-  if (context.protocol === "openai_responses") {
-    return transformOpenAiResponsesHostedWebSearchSseText(body, records, context.requestId, context.queryHint);
-  }
-  if (context.protocol === "gemini_generate_content") {
-    return transformGeminiHostedWebSearchSseText(body, records, context.queryHint);
-  }
-  return body;
-}
-
-
 
 export function transformAnthropicWebSearchProtocolResponseValue(
   value: unknown,
@@ -592,8 +532,6 @@ export function transformAnthropicWebSearchProtocolResponseValue(
     value: nextValue
   };
 }
-
-
 
 export function transformAnthropicWebSearchProtocolSseText(
   body: string,
@@ -653,8 +591,6 @@ export function transformAnthropicWebSearchProtocolSseText(
   return `${shiftedEvents.map(serializeSseEvent).join("\n\n")}\n\n`;
 }
 
-
-
 export function transformOpenAiChatHostedWebSearchResponseValue(
   value: unknown,
   records: BrowserWebSearchProtocolRecord[],
@@ -691,8 +627,6 @@ export function transformOpenAiChatHostedWebSearchResponseValue(
   };
 }
 
-
-
 export function transformOpenAiChatHostedWebSearchSseText(
   body: string,
   records: BrowserWebSearchProtocolRecord[],
@@ -725,8 +659,6 @@ export function transformOpenAiChatHostedWebSearchSseText(
   return `${shifted.map(serializeSseEvent).join("\n\n")}\n\n`;
 }
 
-
-
 export function transformOpenAiResponsesHostedWebSearchResponseValue(
   value: unknown,
   records: BrowserWebSearchProtocolRecord[],
@@ -757,8 +689,6 @@ export function transformOpenAiResponsesHostedWebSearchResponseValue(
   return { changed: true, value: next };
 }
 
-
-
 export function transformOpenAiResponsesHostedWebSearchSseText(
   body: string,
   records: BrowserWebSearchProtocolRecord[],
@@ -784,8 +714,6 @@ export function transformOpenAiResponsesHostedWebSearchSseText(
   shifted.splice(insertAt >= 0 ? insertAt : doneSseEventIndex(shifted) >= 0 ? doneSseEventIndex(shifted) : shifted.length, 0, ...injected);
   return serializeOpenAiResponsesSseEvents(normalizeOpenAiResponsesSseEvents(shifted, answer));
 }
-
-
 
 export function transformGeminiHostedWebSearchResponseValue(
   value: unknown,
@@ -829,8 +757,6 @@ export function transformGeminiHostedWebSearchResponseValue(
   };
 }
 
-
-
 export function transformGeminiHostedWebSearchSseText(
   body: string,
   records: BrowserWebSearchProtocolRecord[],
@@ -850,8 +776,6 @@ export function transformGeminiHostedWebSearchSseText(
   return `${events.map(serializeSseEvent).join("\n\n")}\n\n`;
 }
 
-
-
 function openAiChatResponseContainsVisibleText(value: Record<string, unknown>): boolean {
   if (!Array.isArray(value.choices)) {
     return false;
@@ -862,8 +786,6 @@ function openAiChatResponseContainsVisibleText(value: Record<string, unknown>): 
   });
 }
 
-
-
 function openAiChatSseContainsVisibleText(events: ParsedSseEvent[]): boolean {
   return events.some((event) => {
     const choices = isRecord(event.data) && Array.isArray(event.data.choices) ? event.data.choices : [];
@@ -873,8 +795,6 @@ function openAiChatSseContainsVisibleText(events: ParsedSseEvent[]): boolean {
     });
   });
 }
-
-
 
 function updateOpenAiChatSseFinishReason(event: ParsedSseEvent): ParsedSseEvent {
   if (!isRecord(event.data) || !Array.isArray(event.data.choices)) {
@@ -891,13 +811,9 @@ function updateOpenAiChatSseFinishReason(event: ParsedSseEvent): ParsedSseEvent 
   return changed ? { ...event, data: { ...event.data, choices } } : event;
 }
 
-
-
 function openAiResponsesValueContainsVisibleText(value: Record<string, unknown>): boolean {
   return Array.isArray(value.output) && value.output.some(openAiResponsesItemContainsVisibleText);
 }
-
-
 
 function openAiResponsesItemContainsVisibleText(item: unknown): boolean {
   if (!isRecord(item)) {
@@ -909,13 +825,9 @@ function openAiResponsesItemContainsVisibleText(item: unknown): boolean {
   return Boolean(stringValue(item.text)?.trim());
 }
 
-
-
 function openAiResponsesSseContainsVisibleText(events: ParsedSseEvent[]): boolean {
   return Boolean(openAiResponsesSseVisibleText(events));
 }
-
-
 
 function openAiResponsesSseVisibleText(events: ParsedSseEvent[]): string | undefined {
   let deltaText = "";
@@ -943,8 +855,6 @@ function openAiResponsesSseVisibleText(events: ParsedSseEvent[]): string | undef
   return nonEmptyText(deltaText) ?? nonEmptyText(doneText) ?? nonEmptyText(itemText);
 }
 
-
-
 function openAiResponsesItemText(item: unknown): string | undefined {
   if (!isRecord(item)) {
     return undefined;
@@ -958,13 +868,9 @@ function openAiResponsesItemText(item: unknown): string | undefined {
   return stringValue(item.text);
 }
 
-
-
 function nonEmptyText(value: string | undefined): string | undefined {
   return value && value.trim() ? value : undefined;
 }
-
-
 
 function openAiResponsesWebSearchCallItems(records: BrowserWebSearchProtocolRecord[], requestId: string): Record<string, unknown>[] {
   return records.map((record, index) => ({
@@ -978,8 +884,6 @@ function openAiResponsesWebSearchCallItems(records: BrowserWebSearchProtocolReco
   }));
 }
 
-
-
 function openAiResponsesMessageItem(answer: string, requestId: string): Record<string, unknown> {
   return {
     content: [{ annotations: [], text: answer, type: "output_text" }],
@@ -990,8 +894,6 @@ function openAiResponsesMessageItem(answer: string, requestId: string): Record<s
   };
 }
 
-
-
 function nextOpenAiResponsesOutputIndex(events: ParsedSseEvent[]): number {
   const indexes = events.flatMap((event) => {
     const data = isRecord(event.data) ? event.data : undefined;
@@ -1000,8 +902,6 @@ function nextOpenAiResponsesOutputIndex(events: ParsedSseEvent[]): number {
   });
   return indexes.length === 0 ? 0 : Math.max(...indexes) + 1;
 }
-
-
 
 function openAiResponsesSseAnswerEvents(answer: string, requestId: string, outputIndex: number): ParsedSseEvent[] {
   const itemId = `msg_${sanitizeAnthropicToolUseId(requestId)}_web_search_answer`;
@@ -1059,8 +959,6 @@ function openAiResponsesSseAnswerEvents(answer: string, requestId: string, outpu
   ];
 }
 
-
-
 function updateOpenAiResponsesCompletedStatus(event: ParsedSseEvent): ParsedSseEvent {
   if (!isRecord(event.data) || stringValue(event.data.type) !== "response.completed") {
     return event;
@@ -1080,8 +978,6 @@ function updateOpenAiResponsesCompletedStatus(event: ParsedSseEvent): ParsedSseE
   };
 }
 
-
-
 function normalizeOpenAiResponsesSseEvents(events: ParsedSseEvent[], visibleText?: string): ParsedSseEvent[] {
   const outputIndexMap = openAiResponsesOutputIndexMap(events);
   return events.flatMap((event) => {
@@ -1095,13 +991,9 @@ function normalizeOpenAiResponsesSseEvents(events: ParsedSseEvent[], visibleText
   });
 }
 
-
-
 function serializeOpenAiResponsesSseEvents(events: ParsedSseEvent[]): string {
   return `${events.map(serializeSseEvent).join("\n\n")}\n\n`;
 }
-
-
 
 function openAiResponsesOutputIndexMap(events: ParsedSseEvent[]): Map<number, number> {
   const indexes: number[] = [];
@@ -1117,8 +1009,6 @@ function openAiResponsesOutputIndexMap(events: ParsedSseEvent[]): Map<number, nu
   }
   return new Map(indexes.sort((left, right) => left - right).map((index, nextIndex) => [index, nextIndex]));
 }
-
-
 
 function remapOpenAiResponsesOutputIndex(event: ParsedSseEvent, outputIndexMap: Map<number, number>): ParsedSseEvent {
   if (!isRecord(event.data)) {
@@ -1136,8 +1026,6 @@ function remapOpenAiResponsesOutputIndex(event: ParsedSseEvent, outputIndexMap: 
     }
   };
 }
-
-
 
 function updateOpenAiResponsesCompletedOutput(event: ParsedSseEvent, visibleText?: string): ParsedSseEvent {
   if (!isRecord(event.data) || stringValue(event.data.type) !== "response.completed") {
@@ -1167,8 +1055,6 @@ function updateOpenAiResponsesCompletedOutput(event: ParsedSseEvent, visibleText
   };
 }
 
-
-
 function isOpenAiResponsesReasoningSseEvent(event: ParsedSseEvent): boolean {
   const data = isRecord(event.data) ? event.data : undefined;
   if (!data) {
@@ -1186,19 +1072,13 @@ function isOpenAiResponsesReasoningSseEvent(event: ParsedSseEvent): boolean {
   return stringValue(part?.type) === "reasoning_text";
 }
 
-
-
 function geminiResponseValueContainsVisibleText(value: Record<string, unknown>): boolean {
   return Array.isArray(value.candidates) && value.candidates.some(geminiCandidateContainsVisibleText);
 }
 
-
-
 function geminiResponseArrayContainsVisibleText(values: unknown[]): boolean {
   return values.some((value) => isRecord(value) && geminiResponseValueContainsVisibleText(value));
 }
-
-
 
 function geminiCandidateContainsVisibleText(candidate: unknown): boolean {
   const content = isRecord(candidate) && isRecord(candidate.content) ? candidate.content : undefined;
@@ -1206,13 +1086,9 @@ function geminiCandidateContainsVisibleText(candidate: unknown): boolean {
   return parts.some((part) => isRecord(part) && Boolean(stringValue(part.text)?.trim()));
 }
 
-
-
 function geminiSseContainsVisibleText(events: ParsedSseEvent[]): boolean {
   return events.some((event) => isRecord(event.data) && geminiResponseValueContainsVisibleText(event.data));
 }
-
-
 
 function geminiAnswerCandidate(answer: string): Record<string, unknown> {
   return {
@@ -1225,27 +1101,19 @@ function geminiAnswerCandidate(answer: string): Record<string, unknown> {
   };
 }
 
-
-
 function geminiAnswerCandidateChunk(answer: string): Record<string, unknown> {
   return {
     candidates: [geminiAnswerCandidate(answer)]
   };
 }
 
-
-
 function firstSseDataRecord(events: ParsedSseEvent[]): Record<string, unknown> | undefined {
   return events.map((event) => isRecord(event.data) ? event.data : undefined).find(Boolean);
 }
 
-
-
 function doneSseEventIndex(events: ParsedSseEvent[]): number {
   return events.findIndex((event) => event.raw?.includes("[DONE]"));
 }
-
-
 
 function sseEventIsDone(event: ParsedSseEvent): boolean {
   return Boolean(event.raw?.includes("[DONE]"));

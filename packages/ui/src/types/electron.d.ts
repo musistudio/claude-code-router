@@ -28,6 +28,8 @@ import type {
   BotGatewayQrWindowOpenRequest,
   BotGatewayQrWindowOpenResult,
   BotHandoffScanTarget,
+  ChromeLoginImportJob,
+  ChromeLoginImportRequest,
   ClaudeAppGatewayApplyResult,
   GatewayMcpToolInfo,
   GatewayProviderConnectivityCheckReport,
@@ -98,6 +100,7 @@ declare global {
       getAgentAnalysis: (filter?: AgentAnalysisFilter) => Promise<AgentAnalysisSnapshot>;
       getAgentTracePayload: (request: AgentAnalysisTracePayloadRequest) => Promise<AgentAnalysisTracePayloadFullResult>;
       getAppInfo: () => Promise<AppInfo>;
+      getChromeLoginImport?: (id: string) => Promise<ChromeLoginImportJob | undefined>;
       getConfig: () => Promise<AppConfig>;
       getFilePath?: (file: File) => string;
       getGatewayStatus: () => Promise<GatewayStatus>;
@@ -120,9 +123,10 @@ declare global {
       installProxyCertificate: () => Promise<ProxyCertificateInstallResult>;
       importLocalAgentProvider: (request: LocalAgentProviderImportRequest) => Promise<LocalAgentProviderImportResult>;
       listMcpServerTools: (serverName: string) => Promise<GatewayMcpToolInfo[]>;
-      openBuiltInBrowser: () => Promise<void>;
+      openBuiltInBrowser: (url?: string) => Promise<void>;
       openBotGatewayQrWindow: (request: BotGatewayQrWindowOpenRequest) => Promise<BotGatewayQrWindowOpenResult>;
       openExternal: (url: string) => Promise<void>;
+      openPluginApp?: (pluginId: string, appId?: string) => Promise<void>;
       openProfile: (request: ProfileOpenRequest) => Promise<ProfileOpenResult>;
       prepareImageExportTarget?: (request: AppImageExportTargetRequest) => Promise<AppImageExportTargetResult>;
       probeLocalAgentProvider?: (request: LocalAgentProviderProbeRequest) => Promise<LocalAgentProviderProbeResult>;
@@ -142,6 +146,7 @@ declare global {
       setThemePreference?: (theme: AppConfig["theme"]) => Promise<AppConfig["theme"]>;
       setTrayDetailOpen: (open: boolean, provider?: string) => Promise<void>;
       showMainWindow: () => Promise<void>;
+      startChromeLoginImport?: (request: ChromeLoginImportRequest) => Promise<ChromeLoginImportJob>;
       startGateway: () => Promise<GatewayStatus>;
       startBotGatewayQrLogin: (request: BotGatewayQrLoginStartRequest) => Promise<BotGatewayQrLoginStartResult>;
       stopGateway: () => Promise<GatewayStatus>;

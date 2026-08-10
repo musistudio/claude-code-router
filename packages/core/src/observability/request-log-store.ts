@@ -260,6 +260,7 @@ type AgentLogDetails = {
 type AgentTextSignalOptions = {
   allowStandaloneCodex?: boolean;
   allowStandaloneGrok?: boolean;
+  allowStandaloneKilo?: boolean;
   allowStandaloneKimi?: boolean;
   allowStandaloneOpenCode?: boolean;
 };
@@ -1537,6 +1538,7 @@ function inferAgentKind(
   const bodyAgent = inferAgentFromText(haystack, {
     allowStandaloneCodex: false,
     allowStandaloneGrok: false,
+    allowStandaloneKilo: false,
     allowStandaloneKimi: false,
     allowStandaloneOpenCode: false
   });
@@ -1584,6 +1586,7 @@ function inferAgentFromText(value: string, options: AgentTextSignalOptions = {})
   const normalized = value.toLowerCase();
   const allowStandaloneCodex = options.allowStandaloneCodex ?? true;
   const allowStandaloneGrok = options.allowStandaloneGrok ?? true;
+  const allowStandaloneKilo = options.allowStandaloneKilo ?? true;
   const allowStandaloneKimi = options.allowStandaloneKimi ?? true;
   const allowStandaloneOpenCode = options.allowStandaloneOpenCode ?? true;
   if (normalized.includes("claude design") || normalized.includes("claude-design") || normalized.includes("claude.ai/design")) {
@@ -1608,6 +1611,14 @@ function inferAgentFromText(value: string, options: AgentTextSignalOptions = {})
     return "opencode";
   }
   if (
+    normalized === "pi" ||
+    normalized.includes("pi-coding-agent") ||
+    normalized.includes("pi coding agent") ||
+    normalized.includes("pi_coding_agent")
+  ) {
+    return "pi";
+  }
+  if (
     normalized.includes("xai-grok-cli") ||
     (allowStandaloneGrok && (
       normalized.includes("grok-cli") ||
@@ -1627,6 +1638,18 @@ function inferAgentFromText(value: string, options: AgentTextSignalOptions = {})
     ))
   ) {
     return "kimi";
+  }
+  if (
+    normalized.includes("kilo-code-cli") ||
+    normalized.includes("kilo_code_cli") ||
+    normalized.includes("kilocode") ||
+    (allowStandaloneKilo && (
+      normalized.includes("kilo-cli") ||
+      normalized.includes("kilo cli") ||
+      /(^|[^a-z0-9])kilo([/_\s-]|$)/.test(normalized)
+    ))
+  ) {
+    return "kilo";
   }
   if (
     normalized.includes("openai-codex") ||
@@ -1704,8 +1727,18 @@ function readAgentSessionHeader(headers: Record<string, string | string[]>, agen
     "x-z-code-session-id",
     "z-code-session-id"
   ];
+  const piHeaders = [
+    "x-pi-session-id",
+    "pi-session-id",
+    "x-pi-conversation-id",
+    "pi-conversation-id",
+    "x-pi-thread-id",
+    "pi-thread-id"
+  ];
   const orderedHeaders = agent === "zcode"
     ? [...zcodeHeaders, ...codexHeaders, ...commonHeaders, ...claudeCodeHeaders]
+    : agent === "pi"
+      ? [...piHeaders, ...commonHeaders, ...codexHeaders, ...claudeCodeHeaders]
     : agent === "codex"
     ? [...codexHeaders, ...commonHeaders, ...claudeCodeHeaders]
     : agent === "claude-code"
@@ -1849,13 +1882,65 @@ function extractSubagentModel(
   }
 
   for (const payload of requestPayloads) {
-    const match = stringifyForSearch(payload).match(/<CCR-SUBAGENT-MODEL>(.*?)<\/CCR-SUBAGENT-MODEL>/s);
-    if (match?.[1]?.trim()) {
-      return match[1].trim();
+    const model = extractPayloadSubagentModel(payload);
+    if (model) {
+      return model;
     }
   }
 
   return undefined;
+}
+
+function extractPayloadSubagentModel(payload: unknown): string | undefined {
+  if (!isRecord(payload)) {
+    return undefined;
+  }
+
+  const systemModel = extractSubagentModelFromContent(payload.system);
+  if (systemModel) {
+    return systemModel;
+  }
+
+  if (!Array.isArray(payload.messages)) {
+    return undefined;
+  }
+  for (const message of payload.messages.slice(0, 2)) {
+    if (!isRecord(message) || message.role !== "user") {
+      continue;
+    }
+    const model = extractSubagentModelFromContent(message.content);
+    if (model) {
+      return model;
+    }
+  }
+  return undefined;
+}
+
+function extractSubagentModelFromContent(content: unknown): string | undefined {
+  if (typeof content === "string") {
+    return extractSubagentModelFromText(content);
+  }
+  if (!Array.isArray(content)) {
+    return undefined;
+  }
+  for (const block of content) {
+    const text = typeof block === "string"
+      ? block
+      : isRecord(block) && typeof block.text === "string"
+        ? block.text
+        : undefined;
+    const model = text ? extractSubagentModelFromText(text) : undefined;
+    if (model) {
+      return model;
+    }
+  }
+  return undefined;
+}
+
+function extractSubagentModelFromText(text: string): string | undefined {
+  const match = text.match(/<CCR-SUBAGENT-MODEL>(.*?)<\/CCR-SUBAGENT-MODEL>/s);
+  const model = match?.[1]?.trim();
+  return model && model.toLowerCase() !== "provider/model" ? model : undefined;
 }
 
 function parseLogBodyPayloads(body: RequestLogBody | undefined): unknown[] {
@@ -2535,6 +2620,7 @@ function buildAgentTrace(requests: AnalyzedAgentRequest[]): AgentAnalysisTrace {
       cacheReadTokens: totals.cacheReadTokens,
       cacheWriteTokens: totals.cacheWriteTokens,
       concurrentRequests: totals.maxConcurrentRequests,
+      costUsd: totals.costUsd,
       depth: 0,
       durationMs,
       endedAt: isoFromMs(endMs),
@@ -2546,7 +2632,11 @@ function buildAgentTrace(requests: AnalyzedAgentRequest[]): AgentAnalysisTrace {
       outputTokens: totals.outputTokens,
       sessionId,
       startedAt: isoFromMs(startMs),
-      status: totals.errorCount > 0 ? "error" : "success",
+      status: totals.errorCount === 0
+        ? "success"
+        : totals.errorCount === totals.requestCount
+          ? "error"
+          : "partial",
       totalTokens: totals.totalTokens
     }
   ];
@@ -2671,6 +2761,7 @@ function requestTraceRun({
     cacheReadTokens: request.cacheReadTokens,
     cacheWriteTokens: request.cacheWriteTokens,
     concurrentRequests: request.concurrentRequests,
+    costUsd: request.costUsd,
     depth,
     durationMs: request.durationMs,
     endedAt: isoFromMs(request.endedAtMs),
@@ -2864,13 +2955,8 @@ function buildAgentAnalysisTotals(requests: AnalyzedAgentRequest[]): AgentAnalys
   const cacheWriteTokens = sum(requests, (request) => request.cacheWriteTokens);
   const cacheTokens = cacheReadTokens;
   const costUsd = sum(requests, (request) => request.costUsd ?? 0);
-  const totalTokens = sum(requests, (request) => request.totalTokens || request.inputTokens + request.outputTokens + request.cacheReadTokens + request.cacheWriteTokens);
-  const promptTokens = sum(requests, (request) => {
-    const promptTokensFromTotal = request.totalTokens - request.outputTokens;
-    return promptTokensFromTotal > 0
-      ? Math.max(request.inputTokens, promptTokensFromTotal)
-      : request.inputTokens + request.cacheReadTokens + request.cacheWriteTokens;
-  });
+  const totalTokens = sum(requests, agentAnalysisTotalTokenCount);
+  const promptTokens = sum(requests, agentAnalysisPromptTokenCount);
   const successfulRequests = requests.filter((request) => request.ok).length;
   const sessionCount = new Set(requests.map((request) => `${request.agent}:${request.sessionId}`)).size;
   const durations = requests.map((request) => request.durationMs).sort((a, b) => a - b);
@@ -2897,6 +2983,19 @@ function buildAgentAnalysisTotals(requests: AnalyzedAgentRequest[]): AgentAnalys
     toolCallCount: sum(requests, (request) => request.toolCallCount),
     totalTokens
   };
+}
+
+function agentAnalysisPromptTokenCount(request: AnalyzedAgentRequest): number {
+  const cacheTokens = request.cacheReadTokens + request.cacheWriteTokens;
+  const promptTokensFromTotal = request.totalTokens - request.outputTokens;
+  return Math.max(request.inputTokens + cacheTokens, promptTokensFromTotal);
+}
+
+function agentAnalysisTotalTokenCount(request: AnalyzedAgentRequest): number {
+  return Math.max(
+    request.totalTokens,
+    request.inputTokens + request.outputTokens + request.cacheReadTokens + request.cacheWriteTokens
+  );
 }
 
 function buildStatusCodeCounts(requests: AnalyzedAgentRequest[]): Array<{ count: number; statusCode: number }> {
@@ -3051,11 +3150,11 @@ function normalizeAgentAnalysisRange(value: UsageStatsRange | undefined): UsageS
 }
 
 function normalizeAgentFilter(value: AgentAnalysisFilter["agent"] | undefined): AgentKind | "all" {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "opencode" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
 }
 
 function normalizeSessionAgentFilter(value: AgentAnalysisFilter["sessionAgent"] | undefined): AgentKind | undefined {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "opencode" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
 }
 
 function agentDisplayName(agent: AgentKind): string {
@@ -3074,8 +3173,14 @@ function agentDisplayName(agent: AgentKind): string {
   if (agent === "kimi") {
     return "Kimi CLI";
   }
+  if (agent === "kilo") {
+    return "Kilo CLI";
+  }
   if (agent === "opencode") {
     return "OpenCode";
+  }
+  if (agent === "pi") {
+    return "Pi";
   }
   if (agent === "zcode") {
     return "ZCode";

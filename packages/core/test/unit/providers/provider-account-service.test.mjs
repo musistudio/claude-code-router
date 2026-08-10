@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
   localAgentProviderAccountCredentialForTest,
   localCodexAccountCredentialForTest,
+  setProviderAccountWebContentFetchHandler,
   testProviderAccountConnector
 } from "@ccr/core/providers/account-service.ts";
 import {
@@ -99,6 +100,128 @@ test("Grok subscription connector maps access status payload", async (t) => {
   assert.equal(result.status, "ok");
   assert.equal(result.message, "SuperGrok Heavy");
   assert.equal(result.meters.find((meter) => meter.id === "grok_subscription_access")?.remaining, 100);
+});
+
+test("webcontent-json connector uses browser-session handler without provider API key", async (t) => {
+  let captured;
+  setProviderAccountWebContentFetchHandler(async (request) => {
+    captured = request;
+    return {
+      payload: {
+        balance: 42,
+        message: "Signed in"
+      }
+    };
+  });
+  t.after(() => {
+    setProviderAccountWebContentFetchHandler(undefined);
+  });
+
+  const result = await testProviderAccountConnector({
+    apiKey: "should-not-reach-handler",
+    baseUrl: "https://vendor.example.com/v1",
+    connector: {
+      browser: {
+        headerTemplates: {
+          authorization: "Bearer ${localStorage.accessToken}"
+        },
+        loginUrl: "https://vendor.example.com/login",
+        requestOrigin: "https://vendor.example.com",
+        timeoutMs: 12000
+      },
+      endpoint: "https://api.vendor.example.com/account",
+      headers: {
+        "x-csrf-token": "csrf"
+      },
+      mapping: {
+        meters: [
+          {
+            id: "balance",
+            kind: "balance",
+            label: "Balance",
+            remaining: "$.balance",
+            unit: "USD"
+          }
+        ],
+        message: "$.message"
+      },
+      type: "webcontent-json"
+    },
+    providerName: "Vendor"
+  });
+
+  assert.equal(captured.endpoint, "https://api.vendor.example.com/account");
+  assert.equal(captured.credentials, "omit");
+  assert.equal(captured.method, "GET");
+  assert.equal(captured.requestOrigin, "https://vendor.example.com");
+  assert.equal(captured.loginUrl, "https://vendor.example.com/login");
+  assert.equal(captured.headerTemplates.authorization, "Bearer ${localStorage.accessToken}");
+  assert.equal(captured.provider.api_key, "");
+  assert.equal(captured.provider.apiKey, undefined);
+  assert.equal(captured.headers["x-csrf-token"], "csrf");
+  assert.equal(result.message, "Signed in");
+  assert.equal(result.meters[0].remaining, 42);
+  assert.equal(result.meters[0].source, "webcontent-json");
+});
+
+test("webcontent-json connector defaults browser request origin to login URL origin", async (t) => {
+  let captured;
+  setProviderAccountWebContentFetchHandler(async (request) => {
+    captured = request;
+    return {
+      payload: {
+        balance: 7
+      }
+    };
+  });
+  t.after(() => {
+    setProviderAccountWebContentFetchHandler(undefined);
+  });
+
+  const result = await testProviderAccountConnector({
+    baseUrl: "https://vendor.example.com/v1",
+    connector: {
+      browser: {
+        loginUrl: "https://app.vendor.example.com/login"
+      },
+      endpoint: "https://api.vendor.example.com/account",
+      mapping: {
+        meters: [
+          {
+            id: "balance",
+            kind: "balance",
+            label: "Balance",
+            remaining: "$.balance",
+            unit: "USD"
+          }
+        ]
+      },
+      type: "webcontent-json"
+    },
+    providerName: "Vendor"
+  });
+
+  assert.equal(captured.endpoint, "https://api.vendor.example.com/account");
+  assert.equal(captured.credentials, "include");
+  assert.equal(captured.requestOrigin, "https://app.vendor.example.com");
+  assert.equal(result.meters[0].remaining, 7);
+});
+
+test("webcontent-json connector reports unsupported outside CCR Desktop", async () => {
+  setProviderAccountWebContentFetchHandler(undefined);
+
+  await assert.rejects(
+    () => testProviderAccountConnector({
+      baseUrl: "https://vendor.example.com/v1",
+      connector: {
+        endpoint: "https://vendor.example.com/account",
+        mapping: { meters: [] },
+        type: "webcontent-json"
+      },
+      providerName: "Vendor"
+    }),
+    /only available in CCR Desktop/
+  );
 });
 
 test("Codex local account credential refreshes when only a refresh token is available", async (t) => {
@@ -226,6 +349,43 @@ test("Codex local account credential falls back to the live auth file when plugi
   assert.equal(credential?.headers?.["ChatGPT-Account-Id"], "acct-live");
 });
 
+test("Claude Code local account credential prefers live macOS Keychain token", { skip: process.platform === "win32" }, async (t) => {
+  const home = useTemporaryHome(t, "ccr-claude-code-account-live-keychain-");
+  usePlatform(t, "darwin");
+  useFakeSecurityOutput(t, {
+    access_token: "keychain-account-token",
+    refresh_token: "keychain-refresh-token"
+  });
+  process.env.HOME = home;
+
+  const credential = await localAgentProviderAccountCredentialForTest({
+    providerPlugins: [
+      {
+        auth: {
+          headers: {
+            authorization: "Bearer imported-stale-token",
+            "anthropic-beta": "oauth-2025-04-20"
+          },
+          strict: true
+        },
+        key: "ccr-local-agent-claude-code-api-claude-code-oauth-internal",
+        providerName: "claude-code-api::anthropic_messages"
+      }
+    ]
+  }, {
+    api_base_url: "https://api.anthropic.com",
+    api_key: localAgentProviderApiKey,
+    id: "claude-code-api",
+    models: ["claude-sonnet-5"],
+    name: "Renamed Claude Code API",
+    type: "anthropic_messages"
+  });
+
+  assert.equal(credential?.apiKey, "keychain-account-token");
+  assert.equal(credential?.headers?.authorization, undefined);
+  assert.equal(credential?.headers?.["anthropic-beta"], "oauth-2025-04-20");
+});
+
 test("Kimi local account credential carries its API key and CLI identity", async (t) => {
   const home = useTemporaryCodexHome(t, "ccr-kimi-account-plugin-");
   const previousVersion = process.env.KIMI_CODE_VERSION;
@@ -323,11 +483,17 @@ test("ZCode local account credential falls back to the live config when plugin i
 });
 
 function useTemporaryCodexHome(t, prefix) {
+  const home = useTemporaryHome(t, prefix);
+  mkdirSync(path.join(home, ".codex"), { recursive: true });
+  return home;
+}
+
+function useTemporaryHome(t, prefix) {
   const previousHome = process.env.CCR_INTERNAL_HOME_DIR;
+  const previousOsHome = process.env.HOME;
   const previousZcodeHome = process.env.ZCODE_HOME;
   const previousZcodeStorageDir = process.env.ZCODE_STORAGE_DIR;
   const home = mkdtempSync(path.join(os.tmpdir(), prefix));
-  mkdirSync(path.join(home, ".codex"), { recursive: true });
   process.env.CCR_INTERNAL_HOME_DIR = home;
   delete process.env.ZCODE_HOME;
   delete process.env.ZCODE_STORAGE_DIR;
@@ -336,6 +502,11 @@ function useTemporaryCodexHome(t, prefix) {
       delete process.env.CCR_INTERNAL_HOME_DIR;
     } else {
       process.env.CCR_INTERNAL_HOME_DIR = previousHome;
+    }
+    if (previousOsHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousOsHome;
     }
     if (previousZcodeHome === undefined) {
       delete process.env.ZCODE_HOME;
@@ -347,8 +518,37 @@ function useTemporaryCodexHome(t, prefix) {
     } else {
       process.env.ZCODE_STORAGE_DIR = previousZcodeStorageDir;
     }
+    rmSync(home, { force: true, recursive: true });
   });
   return home;
+}
+
+function usePlatform(t, platform) {
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", {
+    configurable: true,
+    value: platform
+  });
+  t.after(() => {
+    Object.defineProperty(process, "platform", descriptor);
+  });
+}
+
+function useFakeSecurityOutput(t, output) {
+  const binDir = mkdtempSync(path.join(os.tmpdir(), "ccr-security-bin-"));
+  const securityPath = path.join(binDir, "security");
+  const previousPath = process.env.PATH;
+  writeFileSync(securityPath, `#!/bin/sh\ncat <<'CCR_KEYCHAIN_JSON'\n${JSON.stringify(output)}\nCCR_KEYCHAIN_JSON\n`);
+  chmodSync(securityPath, 0o755);
+  process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+  t.after(() => {
+    if (previousPath === undefined) {
+      delete process.env.PATH;
+    } else {
+      process.env.PATH = previousPath;
+    }
+    rmSync(binDir, { force: true, recursive: true });
+  });
 }
 
 function jwt(payload) {

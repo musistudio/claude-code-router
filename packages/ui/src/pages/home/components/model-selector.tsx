@@ -29,6 +29,9 @@ import {
   X,
   type VirtualModelProfileConfig
 } from "../shared/index";
+import { PopoverPortal } from "@/components/ui/popover";
+
+const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 export function ModelSelector({
   onChange,
@@ -61,6 +64,7 @@ export function ModelSelector({
     [providerOptions, query]
   );
   const [activeProviderName, setActiveProviderName] = useState("");
+  const panelRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const activeProvider =
     filteredProviders.find((provider) => provider.name === activeProviderName) ??
@@ -71,7 +75,7 @@ export function ModelSelector({
     : [];
   const displayValue = profileModelDisplayValue(value, parsedValue, providers, placeholder, virtualModelProfiles);
 
-  useLayoutEffect(() => {
+  useClientLayoutEffect(() => {
     if (!open) {
       setPopoverLayout(undefined);
       return;
@@ -121,7 +125,8 @@ export function ModelSelector({
     }
 
     function handlePointerDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !panelRef.current?.contains(target)) {
         setOpen(false);
       }
     }
@@ -211,98 +216,98 @@ export function ModelSelector({
         </button>
       </div>
 
-      <AnimatePresence initial={false}>
-        {open ? (
-          <AnimatedPopover
-            className="fixed z-[70]"
-            placement={popoverLayout?.placement ?? "below"}
-            style={popoverLayout
-              ? {
+      <PopoverPortal open={open && Boolean(popoverLayout)}>
+        <AnimatePresence initial={false}>
+          {open && popoverLayout ? (
+            <AnimatedPopover
+              className="fixed z-[140]"
+              placement={popoverLayout.placement}
+              style={{
                 left: `${popoverLayout.left}px`,
                 maxHeight: `${popoverLayout.maxHeight}px`,
                 width: `${popoverLayout.width}px`,
                 ...(popoverLayout.placement === "above"
                   ? { bottom: `${popoverLayout.offset}px` }
                   : { top: `${popoverLayout.offset}px` })
-              }
-              : undefined}
-          >
-            <PopoverContent className="w-full overflow-hidden p-2">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  autoFocus
-                  aria-label={t("Search models")}
-                  className="h-9 pl-8"
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={t("Search providers or models")}
-                  value={query}
-                />
-              </div>
+              }}
+            >
+              <PopoverContent className="w-full overflow-hidden p-2" ref={panelRef}>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    autoFocus
+                    aria-label={t("Search models")}
+                    className="h-9 pl-8"
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder={t("Search providers or models")}
+                    value={query}
+                  />
+                </div>
 
-              {providerOptions.length === 0 ? (
-                <div className="mt-2 rounded-md border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-[12px] text-muted-foreground">
-                  {t("No models configured")}
-                </div>
-              ) : (
-                <div
-                  className="mt-2 grid grid-cols-[minmax(112px,0.38fr)_minmax(0,1fr)] overflow-hidden rounded-md border border-border"
-                  style={{ height: `${popoverLayout?.gridHeight ?? 220}px` }}
-                >
-                  <div className="min-w-0 overflow-auto border-r border-border bg-muted/30 p-1">
-                    {filteredProviders.length === 0 ? (
-                      <div className="px-2 py-6 text-center text-[11px] text-muted-foreground">{t("No matching providers")}</div>
-                    ) : null}
-                    {filteredProviders.map((provider) => {
-                      const active = provider.name === activeProvider?.name;
-                      return (
-                        <button
-                          className={cn(
-                            "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] outline-none transition-colors hover:bg-background focus-visible:ring-2 focus-visible:ring-ring/25",
-                            active && "bg-background text-primary"
-                          )}
-                          key={provider.name}
-                          onClick={() => setActiveProviderName(provider.name)}
-                          type="button"
-                        >
-                          <span className="min-w-0 flex-1 truncate">{provider.name}</span>
-                          <Badge className="shrink-0" variant="outline">{provider.models.length}</Badge>
-                        </button>
-                      );
-                    })}
+                {providerOptions.length === 0 ? (
+                  <div className="mt-2 rounded-md border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-[12px] text-muted-foreground">
+                    {t("No models configured")}
                   </div>
-                  <div className="min-w-0 overflow-auto bg-background p-1">
-                    {!activeProvider ? (
-                      <div className="px-2 py-10 text-center text-[12px] text-muted-foreground">{t("No matching models")}</div>
-                    ) : null}
-                    {activeProvider && filteredModels.length === 0 ? (
-                      <div className="px-2 py-10 text-center text-[12px] text-muted-foreground">{t("No matching models")}</div>
-                    ) : null}
-                    {activeProvider && filteredModels.map((model) => {
-                      const selected = parsedValue.provider === activeProvider.name && parsedValue.model === model;
-                      const displayName = profileModelOptionDisplayName(activeProvider, model);
-                      return (
-                        <button
-                          className={cn(
-                            "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/25",
-                            selected && "bg-primary/10 text-primary"
-                          )}
-                          key={`${activeProvider.name}/${model}`}
-                          onClick={() => chooseModel(activeProvider.name, model)}
-                          type="button"
-                        >
-                          <span className="min-w-0 flex-1 truncate" title={displayName}>{displayName}</span>
-                          {selected ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
-                        </button>
-                      );
-                    })}
+                ) : (
+                  <div
+                    className="mt-2 grid grid-cols-[minmax(112px,0.38fr)_minmax(0,1fr)] overflow-hidden rounded-md border border-border"
+                    style={{ height: `${popoverLayout?.gridHeight ?? 220}px` }}
+                  >
+                    <div className="min-w-0 overflow-auto border-r border-border bg-muted/30 p-1">
+                      {filteredProviders.length === 0 ? (
+                        <div className="px-2 py-6 text-center text-[11px] text-muted-foreground">{t("No matching providers")}</div>
+                      ) : null}
+                      {filteredProviders.map((provider) => {
+                        const active = provider.name === activeProvider?.name;
+                        return (
+                          <button
+                            className={cn(
+                              "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] outline-none transition-colors hover:bg-background focus-visible:ring-2 focus-visible:ring-ring/25",
+                              active && "bg-background text-primary"
+                            )}
+                            key={provider.name}
+                            onClick={() => setActiveProviderName(provider.name)}
+                            type="button"
+                          >
+                            <span className="min-w-0 flex-1 truncate">{provider.name}</span>
+                            <Badge className="shrink-0" variant="outline">{provider.models.length}</Badge>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="min-w-0 overflow-auto bg-background p-1">
+                      {!activeProvider ? (
+                        <div className="px-2 py-10 text-center text-[12px] text-muted-foreground">{t("No matching models")}</div>
+                      ) : null}
+                      {activeProvider && filteredModels.length === 0 ? (
+                        <div className="px-2 py-10 text-center text-[12px] text-muted-foreground">{t("No matching models")}</div>
+                      ) : null}
+                      {activeProvider && filteredModels.map((model) => {
+                        const selected = parsedValue.provider === activeProvider.name && parsedValue.model === model;
+                        const displayName = profileModelOptionDisplayName(activeProvider, model);
+                        return (
+                          <button
+                            className={cn(
+                              "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/25",
+                              selected && "bg-primary/10 text-primary"
+                            )}
+                            key={`${activeProvider.name}/${model}`}
+                            onClick={() => chooseModel(activeProvider.name, model)}
+                            type="button"
+                          >
+                            <span className="min-w-0 flex-1 truncate" title={displayName}>{displayName}</span>
+                            {selected ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              )}
-            </PopoverContent>
-          </AnimatedPopover>
-        ) : null}
-      </AnimatePresence>
+                )}
+              </PopoverContent>
+            </AnimatedPopover>
+          ) : null}
+        </AnimatePresence>
+      </PopoverPortal>
     </div>
   );
 }

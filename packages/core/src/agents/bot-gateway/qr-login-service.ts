@@ -1,7 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import type {
   BotGatewayQrLoginCancelRequest,
@@ -12,6 +11,7 @@ import type {
   BotGatewayQrLoginWaitResult,
   BotGatewayRuntimeConfig
 } from "@ccr/core/contracts/app";
+import { botGatewaySdkImportSpecifier } from "./sdk-import";
 
 type BotGatewayClientWithRequest = {
   close?: () => Promise<void> | void;
@@ -22,6 +22,13 @@ type BotGatewayClientWithRequest = {
 type BotGatewaySdkModule = {
   bundledStdioPath?: () => string;
   createBotGatewayClient: (options?: unknown) => unknown;
+};
+
+type BotGatewayCommand = {
+  args?: string[];
+  command: string;
+  cwd?: string;
+  electronRunAsNode?: boolean;
 };
 
 type QrSession = {
@@ -172,22 +179,25 @@ export function cancelBotGatewayQrLogin(
 async function createQrClient(bot: BotGatewayRuntimeConfig, stateDir: string): Promise<BotGatewayClientWithRequest> {
   const sdk = await loadBotGatewaySdk();
   const command = resolveBotGatewayCommand(sdk, bot);
+  const { electronRunAsNode, ...commandOptions } = command ?? {};
   const client = sdk.createBotGatewayClient({
     transport: "stdio",
     env: {
       ...process.env,
+      ...(electronRunAsNode ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
       BOT_GATEWAY_STATE_DIR: stateDir,
       CODEXL_HOME: CONFIGDIR
     },
-    ...command
+    ...commandOptions
   }) as BotGatewayClientWithRequest;
   if (!client || typeof client.request !== "function" || typeof client.health !== "function") {
     throw new Error("Bot Gateway SDK client does not expose request().");
   }
+  attachBotGatewayStdioErrorHandler(client);
   return client;
 }
 
-function resolveBotGatewayCommand(sdk: BotGatewaySdkModule, bot: BotGatewayRuntimeConfig): { args?: string[]; command: string; cwd?: string } | undefined {
+function resolveBotGatewayCommand(sdk: BotGatewaySdkModule, bot: BotGatewayRuntimeConfig): BotGatewayCommand | undefined {
   if (bot.command) {
     return {
       args: bot.args,
@@ -199,21 +209,19 @@ function resolveBotGatewayCommand(sdk: BotGatewaySdkModule, bot: BotGatewayRunti
     return undefined;
   }
   const bundledPath = sdk.bundledStdioPath();
+  const runnerPath = materializeBotGatewayStdioRunnerPath(bundledPath);
   return {
-    args: [sanitizedBotGatewayStdioRunnerPath(bundledPath)],
+    args: [runnerPath],
     command: process.execPath,
-    cwd: path.dirname(bundledPath)
+    cwd: path.dirname(runnerPath),
+    electronRunAsNode: Boolean(process.versions.electron)
   };
 }
 
-function sanitizedBotGatewayStdioRunnerPath(sourcePath: string): string {
+export function materializeBotGatewayStdioRunnerPath(sourcePath: string, configDir = CONFIGDIR): string {
   const source = readFileSync(sourcePath, "utf8");
   const normalized = normalizeDuplicateShebangs(source);
-  if (normalized === source) {
-    return sourcePath;
-  }
-
-  const targetDir = path.join(CONFIGDIR, "bot-gateway", "runners");
+  const targetDir = path.join(configDir, "bot-gateway", "runners");
   const targetPath = path.join(targetDir, "bot-gateway-stdio.mjs");
   mkdirSync(targetDir, { recursive: true });
   if (!existsSync(targetPath) || readFileSync(targetPath, "utf8") !== normalized) {
@@ -232,6 +240,44 @@ function normalizeDuplicateShebangs(source: string): string {
     index += 1;
   }
   return [lines[0], ...lines.slice(index)].join("\n");
+}
+
+function attachBotGatewayStdioErrorHandler(client: BotGatewayClientWithRequest): void {
+  const stdioClient = client as BotGatewayClientWithRequest & {
+    child?: {
+      listenerCount?: (eventName: string) => number;
+      once: (eventName: string, listener: (error: Error) => void) => unknown;
+    };
+    pending?: Map<unknown, { reject?: (error: Error) => void }>;
+  };
+  const attach = () => {
+    const child = stdioClient.child;
+    if (!child || typeof child.once !== "function") {
+      return;
+    }
+    const listenerCount = typeof child.listenerCount === "function" ? child.listenerCount("error") : 0;
+    if (listenerCount > 0) {
+      return;
+    }
+    child.once("error", (error: Error) => {
+      const pending = stdioClient.pending instanceof Map ? stdioClient.pending : undefined;
+      if (pending) {
+        for (const request of pending.values()) {
+          request.reject?.(error);
+        }
+        pending.clear();
+      }
+    });
+  };
+  const originalRequest = client.request.bind(client);
+  client.request = <T = unknown>(method: string, params?: unknown): Promise<T> => {
+    try {
+      return originalRequest<T>(method, params);
+    } finally {
+      attach();
+    }
+  };
+  attach();
 }
 
 async function loadBotGatewaySdk(): Promise<BotGatewaySdkModule> {
@@ -274,17 +320,6 @@ function resolveBundledBotGatewaySdkModule(): string {
       : [])
   ];
   return candidates.find((candidate) => existsSync(candidate)) ?? "";
-}
-
-function botGatewaySdkImportSpecifier(value: string): string {
-  const trimmed = value.trim();
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
-    return trimmed;
-  }
-  if (path.isAbsolute(trimmed)) {
-    return pathToFileURL(trimmed).href;
-  }
-  return trimmed;
 }
 
 async function resolveWeixinQrIntegrationId(

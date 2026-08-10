@@ -11,6 +11,7 @@ export type RouteScriptInput = {
   headers: Record<string, string | string[]>;
   method: string;
   model?: string;
+  profileId?: string;
   sessionId?: string;
   summary: {
     hasImage: boolean;
@@ -23,7 +24,14 @@ export type RouteScriptInput = {
   url: string;
 };
 
-export function buildRouteScriptInput(request: RouteRequest): RouteScriptInput {
+export type BuildRouteScriptInputOptions = {
+  profileId?: string;
+};
+
+export function buildRouteScriptInput(
+  request: RouteRequest,
+  options: BuildRouteScriptInputOptions = {}
+): RouteScriptInput {
   const apiKeyId = readHeader(request.headers, "x-auth-api-key-id");
   const input: RouteScriptInput = {
     ...(apiKeyId ? { apiKeyId } : {}),
@@ -32,6 +40,7 @@ export function buildRouteScriptInput(request: RouteRequest): RouteScriptInput {
     headers: requestHeaders(request.headers),
     method: request.method,
     ...(typeof request.body.model === "string" ? { model: request.body.model } : {}),
+    ...(options.profileId ? { profileId: options.profileId } : {}),
     ...(request.sessionId ? { sessionId: request.sessionId } : {}),
     summary: {
       hasImage: containsImage(request.body),

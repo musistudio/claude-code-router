@@ -1,11 +1,11 @@
 ---
-title: Claude Code Router Quick Start
-pageTitle: Quick Start
-eyebrow: Getting Started
-lead: Start from installation, connect a provider, let agents send requests through CCR, and confirm the path through logs and observability.
+title: Claude Code Router quick start
+pageTitle: Quick start
+eyebrow: Getting started
+lead: "The first-run path for CCR: install and start the service, connect a provider, point an agent at the CCR gateway, then confirm requests in logs and on the Observability page."
 ---
 
-## Install And Start CCR
+## Install and start CCR
 
 CCR is available as a desktop app, a Node.js 22+ npm CLI, and a single-entrypoint Docker deployment.
 
@@ -15,47 +15,51 @@ CCR is available as a desktop app, a Node.js 22+ npm CLI, and a single-entrypoin
 | npm CLI | `ccr ui` / `ccr serve` | `http://127.0.0.1:3458` | `http://127.0.0.1:3456` |
 | Docker | `docker compose up -d --build` | Shared `http://127.0.0.1:3458` | Shared Nginx endpoint |
 
-Use the [installation page](install/) to choose a distribution. See the [CLI reference](cli/) for terminal commands and [Docker Deployment](docker/) for container ports, authentication, persistence, and upgrades.
+Use the [installation page](install/) to choose a distribution. See the [CLI reference](cli/) for terminal commands and [Docker deployment](docker/) for container ports, authentication, persistence, and upgrades.
 
-## Add A Provider
+## Add a provider
 
 A provider is the upstream model service CCR forwards requests to, such as OpenRouter, DeepSeek, Z.AI, or any service compatible with the OpenAI, Anthropic, or Gemini protocols.
 
-### Add The Provider
+### Add the provider
 
 1. Open **Providers** and click **Add Provider**.
-2. Choose a built-in preset under **Preset providers**. Presets fill common Base URLs, protocols, and icons automatically.
-3. If the service is not listed, choose **Other / custom API endpoint**.
-4. Fill in **Name**, **Base URL**, **Protocol**, **API Key**, and **Models**.
+2. Choose a built-in preset under **Select preset provider**. Presets fill common API endpoints, protocols, and icons automatically.
+3. If the service is not listed, choose **Other / custom API endpoint** and enter a **Name** and **API endpoint**.
+4. In the **Add credentials** step, enter the **API key**.
 
-### Choose A Protocol
+After you enter the API endpoint and key, CCR automatically detects the protocols and models the endpoint supports.
 
-| Protocol | Best For |
+### Protocols
+
+| Protocol | Best for |
 | --- | --- |
-| OpenAI Chat Completions | Most OpenAI-compatible services |
+| OpenAI Chat | Most OpenAI-compatible services |
 | OpenAI Responses | Services that support the Responses API |
 | Anthropic Messages | Anthropic official or Anthropic-compatible services |
-| Gemini Generate Content | Gemini official or Gemini-compatible services |
+| Gemini Generate | Gemini official or Gemini-compatible services |
 
-If you are unsure, run protocol probing in the app first, then use the model connectivity check to confirm.
+If auto-detection misses the mark, turn it off in Advanced settings, choose a protocol manually, and confirm with a connectivity check.
 
-### Check These Before Saving
+### Verify connectivity
 
-1. **Protocol probing**: confirm which protocols the Base URL supports.
-2. **Model connectivity check**: send test requests to one or two models.
-3. **Account usage test**: if you want balance or quota display, confirm the usage API and field mapping.
+Once credentials and models are in place, click **Check Connection** to send a real request that confirms the API endpoint, key, protocol, and models all work. Select only the models you need to confirm to avoid unnecessary usage.
 
-Save the provider after these checks pass.
+### Multiple keys and usage
 
-### Multiple Keys And Usage Panel
+For teams or high-frequency usage, switch to the **Credential pool** tab, add multiple upstream keys, and configure priority, weight, and limits. After saving, filter request logs by credential to verify rotation.
 
-For teams or high-frequency usage, add multiple credentials in the provider form and configure priority, weight, and limits. After saving, filter request logs by credential to verify rotation.
+If you want the overview to show balance or remaining quota, turn on **Fetch usage** in the form, choose a usage mode, and test the field mapping.
 
-If you want the overview to show balance or remaining quota, open the provider's **Account / Usage** section, configure the usage integration, and test field mapping.
+### Reuse a locally logged-in agent
+
+If Claude Code, Codex, OpenCode, Grok CLI, Kimi CLI, or ZCode is already logged in on this machine, import it as a **Local Agent Provider** from **Providers** to reuse the existing authorization without applying for another key.
+
+For the full walkthrough and field reference, see [Add a provider](provider/).
 
 ## Connect Agent Config
 
-Agent Config lets Claude Code, Codex, Grok CLI, ZCode, and other agents use CCR's providers, routing, and model selection.
+Agent Config lets Claude Code, Codex, OpenCode, Grok CLI, Kimi CLI, ZCode, and other agents use CCR's providers, routing, and model selection.
 
 General guidance:
 
@@ -77,31 +81,10 @@ Choose Grok CLI and select a default model, then run the copied `ccr-app <profil
 
 ### ZCode
 
-ZCode mainly uses model, Provider ID, Provider Name, and whether it is launched from CCR. It uses the App surface and does not need Codex CLI path fields.
+Choose ZCode and set the **ZCode model**, **Provider ID**, and **Provider Name**. ZCode is a desktop-app agent (entry fixed to **App only**): CCR writes its CLI config and model cache, then launches the app with this profile's model, provider, and an isolated user-data directory; open it from the play button on the profile card.
 
-### Reuse A Locally Logged-In Agent
+## Logs and observability
 
-If Claude Code, Codex, Grok CLI, or ZCode is already logged in on this machine, import it as a **Local Agent Provider** from **Providers** to reuse the existing authorization without applying for another key.
+Open **Settings → Logs & Observability** and enable **Request logs** and **Agent observability**, then send one request to verify: request logs record the request body, response body, resolved model, and errors of each model request, and the Observability page shows the agent's execution trace, tool calls, and timing.
 
-## Logs & Observability
-
-### Enable The Switches
-
-Open **Settings → Logs & Observability**:
-
-1. Enable **Request logs**.
-2. Enable **Agent observability**.
-
-### View The Observability Panel
-
-The observability panel is for inspecting an agent's execution trace and performance: when each step happened, which tool it called, what result the tool returned, how long it took, whether it failed, and how the following steps continued.
-
-It helps diagnose stuck agents, unexpected tool results, slow steps, or context flow that does not match expectations. Request logs provide request bodies, response bodies, and error details for individual model requests.
-
-### Request Logs
-
-Request logs record model request details passing through CCR, including request time, request ID, client, path, requested model, final provider and model, credential, status code, duration, tokens, cost estimate, request body, response body, and errors.
-
-The Logs page supports filtering by status, provider, model, credential, request ID, model name, request body, or response body. A single record shows the main request and response fields, including `request model`, `resolved provider`, `resolved model`, status code, response body, errors, duration, tokens, and cost estimate.
-
-Regular request logs are kept locally for the current day. When the local date changes, the next request-log read or write cleans up the previous day's regular logs.
+See [Enable logging and observability](observability/) for the full first-run verification steps, and the [logs and observability configuration reference](../configuration/observability/) for all switches and page capabilities.

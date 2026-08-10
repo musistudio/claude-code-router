@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   availableGatewayModelIds,
+  isGatewayProviderEnabled,
   type AppConfig,
   type GatewayProviderConfig
 } from "@ccr/core/contracts/app";
@@ -25,6 +26,14 @@ export class ModelRegistry {
       return undefined;
     }
 
+    if (options.providerName) {
+      const provider = this.findProvider(options.providerName);
+      const model = provider ? configuredProviderModel(provider, normalized) : undefined;
+      if (provider && model) {
+        return providerModelRef(provider, model, normalized);
+      }
+    }
+
     const parsed = parseProviderModelSelector(normalized);
     if (parsed) {
       const provider = this.findProvider(parsed.provider);
@@ -42,14 +51,6 @@ export class ModelRegistry {
         model: gatewayModel,
         selector: gatewayModel
       };
-    }
-
-    if (options.providerName) {
-      const provider = this.findProvider(options.providerName);
-      const model = provider ? configuredProviderModel(provider, normalized) : undefined;
-      if (provider && model) {
-        return providerModelRef(provider, model, normalized);
-      }
     }
 
     const exactMatches = this.providerModelMatches(normalized, false);
@@ -75,7 +76,10 @@ export class ModelRegistry {
     if (!normalized) {
       return undefined;
     }
-    return this.config.Providers.find((provider) => providerAliases(provider).has(normalized));
+    return this.config.Providers.find((provider) =>
+      isGatewayProviderEnabled(provider) &&
+      providerAliases(provider).has(normalized)
+    );
   }
 
   resolveProviderModel(value: string | undefined): { model: string; provider: GatewayProviderConfig } | undefined {
@@ -100,6 +104,9 @@ export class ModelRegistry {
     const normalized = caseInsensitive ? model.toLowerCase() : model;
     const matches: Array<{ model: string; provider: GatewayProviderConfig }> = [];
     for (const provider of this.config.Providers) {
+      if (!isGatewayProviderEnabled(provider)) {
+        continue;
+      }
       for (const candidate of provider.models) {
         const configured = candidate.trim();
         const comparable = caseInsensitive ? configured.toLowerCase() : configured;

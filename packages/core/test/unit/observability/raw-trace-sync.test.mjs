@@ -11,6 +11,7 @@ import {
   applyRawTraceRequestLogPolicy,
   buildRawTraceConfig,
   createBodySampler,
+  isToleratedDirectorySyncErrorForTest,
   readRawTraceRequestLogBundle,
   RawTraceSynchronizer
 } from "@ccr/core/observability/raw-trace-sync.ts";
@@ -874,8 +875,50 @@ test("fallback raw bundles keep unique bundle ids while sharing the logical requ
   }
 });
 
+// A real directory handle cannot drive these cases: on Linux and macOS the
+// fsync either succeeds or fails with a code that depends on the filesystem
+// under the temp directory, and on Windows it always fails. The predicate is
+// the only place where the platform-independent contract can be pinned down.
+test("raw trace tolerates every directory fsync rejection a platform may return", () => {
+  // Node rejects fsync on a directory handle with EPERM on Windows
+  // (errno -4048, verified on Node 24.14.1 win32) and with EINVAL, ENOTSUP or
+  // EISDIR across POSIX filesystems. Flushing a directory is a best-effort
+  // barrier, so none of these may fail the spool.
+  for (const code of ["EINVAL", "EISDIR", "ENOTSUP", "EPERM"]) {
+    assert.equal(
+      isToleratedDirectorySyncErrorForTest(directorySyncError(code)),
+      true,
+      `expected a directory fsync ${code} to be tolerated`
+    );
+  }
+});
+
+test("raw trace still propagates real storage failures from a directory fsync", () => {
+  // The tolerated set must stay a set. If it ever degrades into a blanket
+  // catch, an unwritable or failing spool would be acknowledged as durable.
+  for (const code of ["EACCES", "EIO", "ENOSPC", "EROFS", "EBADF", "EMFILE"]) {
+    assert.equal(
+      isToleratedDirectorySyncErrorForTest(directorySyncError(code)),
+      false,
+      `expected a directory fsync ${code} to keep propagating`
+    );
+  }
+  assert.equal(isToleratedDirectorySyncErrorForTest(new Error("fsync failed")), false);
+  assert.equal(isToleratedDirectorySyncErrorForTest(directorySyncError("")), false);
+  assert.equal(isToleratedDirectorySyncErrorForTest(undefined), false);
+});
+
+function directorySyncError(code) {
+  // Shaped like the rejection Node produces for fsync on a directory handle,
+  // e.g. "EPERM: operation not permitted, fsync" on Windows.
+  const error = new Error(`${code}: directory fsync rejected, fsync`);
+  error.code = code;
+  error.syscall = "fsync";
+  return error;
+}
+
 function createConfig() {
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-generated-config.json" });
+  const config = createDefaultAppConfig();
   config.observability.requestLogs = true;
   config.observability.requestLogBodyCapture = "all";
   config.observability.requestLogSuccessSampleRate = 1;

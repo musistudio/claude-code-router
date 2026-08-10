@@ -1,384 +1,55 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import {
-  closestCenter,
-  DndContext,
-  DragOverlay,
-  getFirstCollision,
-  KeyboardSensor,
-  MeasuringStrategy,
-  pointerWithin,
-  PointerSensor,
-  rectIntersection,
-  useSensor,
-  useSensors,
-  type CollisionDetection,
-  type DragEndEvent,
-  type DragOverEvent,
-  type DragStartEvent
-} from "@dnd-kit/core";
-import { arrayMove, rectSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
-import {
-  Activity,
-  ArrowDown,
-  ArrowUp,
-  Box,
-  Boxes,
-  Braces,
-  Check,
-  CheckCircle2,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  CircleAlert,
-  Copy,
-  Database,
-  ExternalLink,
-  FolderOpen,
-  Gauge,
-  Globe,
-  Info,
-  KeyRound,
-  Layers3,
-  LoaderCircle,
-  MoveRight,
-  Network,
-  Palette,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Pause,
-  Pencil,
-  Play,
-  Plus,
-  Power,
-  QrCode,
-  RefreshCw,
-  Route,
-  Search,
-  Server,
-  Settings,
-  ShieldCheck,
-  Terminal,
-  Trash2,
-  UserRound,
-  X,
-  type LucideIcon
-} from "lucide-react";
-import {
-  Area,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ComposedChart,
-  LabelList,
-  Line,
-  Pie,
-  PieChart,
-  Tooltip,
-  XAxis,
-  YAxis
-} from "recharts";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { PopoverContent } from "@/components/ui/popover";
-import { Select } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
-import appLogoUrl from "@/assets/logo.png";
 import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
 import codexLogoUrl from "@/assets/agent-logos/codex.png";
 import grokLogoUrl from "@/assets/agent-logos/grok.ico";
 import openCodeLogoUrl from "@/assets/agent-logos/opencode.ico";
 import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
-import onboardingMascotSpriteUrl from "@/assets/onboarding/mascot-transition.svg";
-import anthropicProviderIconUrl from "@/assets/provider-icons/anthropic.png";
-import bailianProviderIconUrl from "@/assets/provider-icons/bailian.ico";
-import deepseekProviderIconUrl from "@/assets/provider-icons/deepseek.ico";
-import geminiProviderIconUrl from "@/assets/provider-icons/gemini.svg";
-import mistralProviderIconUrl from "@/assets/provider-icons/mistral.webp";
 import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
-import openaiProviderIconUrl from "@/assets/provider-icons/openai.png";
-import openrouterProviderIconUrl from "@/assets/provider-icons/openrouter.ico";
-import siliconflowProviderIconUrl from "@/assets/provider-icons/siliconflow.png";
-import zaiGlobalCodingProviderIconUrl from "@/assets/provider-icons/zai-global-coding.svg";
-import zaiGlobalGeneralProviderIconUrl from "@/assets/provider-icons/zai-global-general.svg";
-import zhipuCnCodingProviderIconUrl from "@/assets/provider-icons/zhipu-cn-coding.png";
-import zhipuCnGeneralProviderIconUrl from "@/assets/provider-icons/zhipu-cn-general.png";
-import trayCyanIconUrl from "@/assets/tray-cyan.png";
-import trayOrangeIconUrl from "@/assets/tray-orange.png";
-import trayVioletIconUrl from "@/assets/tray-violet.png";
 import {
-  BUILTIN_FUSION_TOOL_SERVER_NAME,
-  BUILTIN_FUSION_VISION_TOOL_NAME,
-  BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME,
-  CLAUDE_CODE_DEFAULT_ENV,
-  DEFAULT_OVERVIEW_WIDGETS,
-  DEFAULT_TRAY_COMPONENT_VARIANTS,
-  DEFAULT_TRAY_WIDGETS,
-  DEFAULT_TRAY_WINDOW_MODULES,
-  enforceSingleEnabledGlobalProfilePerAgent,
-  normalizeProfileScopeValue,
-  OVERVIEW_WIDGET_SIZE_VALUES,
-  ROUTER_SCRIPT_MAX_TIMEOUT_MS,
-  TRAY_SINGLETON_WIDGET_TYPES,
-  TRAY_TOP_WIDGET_TYPES,
-  TRAY_WINDOW_MODULE_IDS
+  ROUTER_SCRIPT_API_VERSION,
+  ROUTER_SCRIPT_MAX_TIMEOUT_MS
 } from "@ccr/core/contracts/app";
 import type {
-  AgentAnalysisFilter,
-  AgentAnalysisSessionSelection,
-  AgentAnalysisSnapshot,
-  AgentKind,
   AppConfig,
-  AppInfo,
-  AppUpdateStatus,
-  ApiKeyConfig,
   ApiKeyLimitConfig,
-  BotGatewayQrLoginCancelRequest,
-  BotGatewayQrLoginCancelResult,
-  BotGatewayQrLoginStartRequest,
-  BotGatewayQrLoginStartResult,
-  BotGatewayQrLoginWaitRequest,
-  BotGatewayQrLoginWaitResult,
-  BotGatewayQrWindowOpenResult,
-  BotGatewayRuntimeConfig,
-  BotGatewaySavedConfig,
-  BotHandoffScanTarget,
   GatewayProviderConfig,
   GatewayProviderCapability,
   GatewayProviderCapabilityProtocol,
-  GatewayPluginAppConfig,
-  GatewayProviderConnectivityCheckModelResult,
-  GatewayProviderConnectivityCheckReport,
-  GatewayProviderProbeCandidate,
-  GatewayProviderProbeCandidateResult,
   GatewayProviderProbeResult,
   GatewayProviderProtocol,
-  GatewayMcpServerConfig,
-  GatewayMcpServerTransport,
-  GatewayMcpStdioMessageMode,
-  GatewayMcpToolInfo,
-  GatewayStatus,
   LocalAgentProviderKind,
-  OverviewMetricKind,
-  OverviewWidgetConfig,
-  OverviewWidgetSize,
-  OverviewWidgetType,
-  OverviewWidgetVariant,
-  PluginDependency,
-  PluginDirectorySelection,
-  PluginMarketplaceEntry,
   ProviderAccountConfig,
   ProviderAccountConnectorConfig,
   ProviderAccountHttpJsonConnectorConfig,
-  ProviderAccountMeter,
   ProviderAccountStandardConnectorConfig,
-  ProviderAccountSnapshot,
-  ProviderAccountTestPath,
-  ProviderAccountTestResult,
+  ProviderAccountWebContentJsonConnectorConfig,
   ProviderCredentialConfig,
   ProviderDeepLinkPayload,
-  ProviderDeepLinkRequest,
   ProviderModelMetadata,
-  ProfileConfig,
-  ProfileOpenSurface,
-  CodexProfileConfigFormat,
-  ProfileScope,
-  ProfileSurface,
-  ProxyCertificateInstallResult,
-  ProxyCertificateStatus,
-  ProxyNetworkBody,
-  ProxyNetworkExchange,
-  ProxyNetworkSnapshot,
-  ProxyStatus,
-  RequestLogBody,
-  RequestLogEntry,
-  RequestLogListFilter,
-  RequestLogPage,
-  RequestLogStatusFilter,
-  RouterConfig,
   RouterFallbackConfig,
-  RouterFallbackMode,
   RouterRule,
   RouterRuleCondition,
-  RouterRuleOperator,
   RouterRuleRewrite,
-  RouterRuleRewriteOperation,
   RouterRuleType,
-  TrayBalanceProgressConfig,
-  TrayComponentVariants,
-  TrayWidgetConfig,
-  TrayWidgetType,
-  TrayWidgetVariant,
-  TrayWindowModuleId,
-  UsageComparisonRow,
-  UsageSeriesPoint,
-  UsageStatsFilter,
-  UsageStatsRange,
-  UsageStatsSnapshot,
-  UsageTotals,
-  VirtualModelBaseModelMode,
-  VirtualModelExecutionMode,
-  VirtualModelFusionCustomToolConfig,
-  VirtualModelFusionVisionConfig,
-  VirtualModelFusionWebSearchConfig,
-  VirtualModelFusionWebSearchProvider,
-  VirtualModelProfileConfig,
-  VirtualModelToolVisibility
+  VirtualModelProfileConfig
 } from "@ccr/core/contracts/app";
 import {
   customProviderPresetId,
   defaultProviderAccountConfig,
   standardProviderAccountConfig,
   type ProviderIdentitySafetyIssue,
-  type ProviderPreset,
-  type ProviderPresetEndpoint
+  type ProviderPreset
 } from "@ccr/core/providers/presets/types";
 import {
-  findProviderPresetByBaseUrlInList,
-  findProviderPresetInList,
-  primaryProviderPresetEndpoint as primaryProviderPresetEndpointFromPreset,
-  providerApiKeySafetyIssueInList,
-  providerEndpointCanReceiveProviderApiKeyInList,
-  providerIdentitySafetyIssueInList
+  primaryProviderPresetEndpoint as primaryProviderPresetEndpointFromPreset
 } from "@ccr/core/providers/presets/utils";
 import { newApiUserSelfConnectorConfig } from "@ccr/core/providers/new-api";
 import { normalizeProviderBaseUrl, providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
 import {
-  fallbackConfig,
-  fallbackGatewayStatus,
-  fallbackInfo,
-  fallbackProxyCertificateStatus,
-  fallbackProxyNetworkSnapshot,
-  fallbackProxyStatus,
-  fallbackUpdateStatus
-} from "./fallbacks";
-import {
-  AppI18nContext,
-  appCopy,
-  languagePreferenceStorageKey,
-  translateOptions,
-  translateText,
-  useAppText,
-  type AppCopy
-} from "./i18n";
-import {
-  AnimatedDisclosure,
-  AnimatedFieldSlot,
-  AnimatedListItem,
-  disclosureSpringTransition,
-  listSpringTransition,
-  motionEase,
-  pageSpringTransition,
-  reducedMotionTransition,
-  ViewMotionShell
-} from "./motion";
-import {
-  clientInitial,
-  formatBytes,
-  formatDuration,
-  formatHeaderName,
-  formatNetworkDateTime,
-  formatNetworkHeaders,
-  formatNetworkRequestRaw,
-  formatNetworkResponseRaw,
-  formatNetworkTime,
-  networkCodeLabel,
-  networkExchangeMatchesQuery,
-  networkHeaderRows,
-  networkLifecycleLabel,
-  networkQueryRows,
-  networkRowId,
-  networkStatusLabel,
-  networkStatusVariant,
-  networkSummaryRows
-} from "./network";
-import {
-  agentKindLabel,
-  compactId,
-  compactUserAgent,
-  createEmptyAgentAnalysis,
-  createEmptyAgentConcurrencySeries,
-  createEmptyRequestLogPage,
-  createEmptyUsageSeries,
-  createEmptyUsageStats,
-  emptyUsageTotals,
-  formatAxisNumber,
-  formatCompactNumber,
-  formatPercent,
-  formatStatusCodeCounts,
-  formatToolCounts,
-  formatUsdCost,
-  logSelectOptions,
-  normalizeAgentFilterValue
-} from "./usage";
-import {
-  agentAnalysisRangeOptions,
-  agentFilterOptions,
-  apiKeyExpirationOptions,
-  apiKeyLimitMetricOptions,
-  claudeDesignRouteRuleTypeOptions,
-  customFusionToolName,
-  defaultFusionWebSearchProvider,
-  fusionToolOptions,
-  fusionWebSearchEnvKeysByProvider,
-  fusionWebSearchProviderOptions,
-  getDefaultOnboardingStep,
-  getNextOnboardingStep,
-  isOnboardingProfileReady,
-  isOnboardingProviderReady,
-  legacyRouterRuleTypes,
-  legacyUnimcpPackageName,
-  legacyUnimcpServerName,
-  limitWindowOptions,
-  mcpServerStartupTimeoutMs,
-  mcpServerTransportOptions,
-  mcpStdioMessageModeOptions,
-  navigation,
-  onboardingStepOrder,
-  overviewMetricOptions,
-  overviewWidgetSizeOptions,
-  profileAgentOptions,
-  profileScopeOptions,
-  profileSurfaceOptions,
-  providerAccountModeOptions,
   providerPresetIconUrls,
   providerProtocolOptions,
-  providerUsageMethodOptions,
-  requestLogPageSizeOptions,
-  requestLogStatusOptions,
-  removedLegacyRouterRuleIds,
-  routerConditionSourceOptions,
-  routerFallbackModeOptions,
-  routerRewriteOperationOptions,
-  routerRuleOperatorOptions,
-  routerRuleTypeOptions,
-  trayMascotIconUrls,
-  usageRangeOptions,
-  virtualModelBaseModeOptions,
-  virtualModelClientToolsPolicyOptions,
-  virtualModelExecutionModeOptions,
-  virtualModelMatchModeOptions,
-  virtualModelToolVisibilityOptions
+  routerConditionSourceOptions
 } from "./options";
-import type { AgentFilterValue, RouterConditionSource } from "./options";
-import type { MotionSafeDivAttributes } from "./motion";
-
+import type { RouterConditionSource } from "./options";
 
 import { normalizeApiKeyLimits, positiveInteger } from "./api-keys";
 import { isPlainRecord, normalizeProviderModelSelector, stringValue, uniqueStrings } from "./common";
@@ -387,6 +58,7 @@ import { findProviderPreset, findProviderPresetByBaseUrl, findProviderPresetById
 import { fusionModelProviderName } from "./profiles";
 import { normalizeRouterFallbackConfig } from "./routing";
 import { keyValueRowsFromRecord, recordFromKeyValueRows, validateKeyValueRows, virtualModelMatchSummary } from "./virtual-models";
+import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { AddProviderDraft, AddRoutingRuleDraft, ModelCatalogItem, ProviderCredentialDraft, ProviderProbeCandidate, ProviderProbeCandidateResult, ProviderUsageFieldTarget, RoutingRewriteDraftRow, RoutingRuleRow, ViewId } from "./types";
 
 export const localAgentProviderIconUrls: Record<LocalAgentProviderKind, string> = {
@@ -404,7 +76,7 @@ export function createModelCatalogItems(config: AppConfig): ModelCatalogItem[] {
   const rows: ModelCatalogItem[] = [];
   config.Providers.forEach((provider, providerIndex) => {
     const providerName = provider.name?.trim();
-    if (!providerName) {
+    if (!isGatewayProviderEnabled(provider) || !providerName) {
       return;
     }
     for (const model of mergeProviderModelLists(provider.models)) {
@@ -491,7 +163,7 @@ export function modelCatalogItemMatchesQuery(row: ModelCatalogItem, query: strin
 
 export function createRouteModelOptions(providers: GatewayProviderConfig[]): Array<{ label: string; value: string }> {
   return providers.flatMap((provider) => {
-    if (!provider.name || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !provider.name || !Array.isArray(provider.models)) {
       return [];
     }
     return provider.models
@@ -529,7 +201,7 @@ export function formatRouterRuleCondition(rule: RouterRule): string {
   return "condition unset";
 }
 
-export function routerRuleConditionFromRule(rule: RouterRule, config?: AppConfig): RouterRuleCondition | undefined {
+export function routerRuleConditionFromRule(rule: RouterRule, _config?: AppConfig): RouterRuleCondition | undefined {
   if (rule.condition) {
     return rule.condition;
   }
@@ -750,6 +422,40 @@ export function routingRewriteFromDraftRow(row: RoutingRewriteDraftRow): RouterR
   };
 }
 
+export function routingRuleFromDraft(
+  draft: AddRoutingRuleDraft,
+  existingRules: RouterRule[],
+  existingRule?: RouterRule
+): RouterRule {
+  const commonRule = {
+    enabled: draft.enabled,
+    fallback: normalizeRouterFallbackConfig(draft.fallback),
+    id: existingRule?.id ?? uniqueRoutingRuleId(existingRules),
+    name: draft.name.trim()
+  };
+  return draft.type === "script"
+    ? {
+        ...commonRule,
+        script: {
+          apiVersion: ROUTER_SCRIPT_API_VERSION,
+          file: draft.scriptFile.trim(),
+          language: "javascript" as const,
+          timeoutMs: Number(draft.scriptTimeoutMs)
+        },
+        type: "script"
+      }
+    : {
+        ...commonRule,
+        condition: {
+          left: buildRouterConditionPath(draft.conditionSource, draft.conditionField),
+          operator: draft.conditionOperator,
+          right: draft.conditionRight.trim()
+        },
+        rewrites: draft.rewrites.map(routingRewriteFromDraftRow),
+        type: "condition"
+      };
+}
+
 function normalizeRouterModelRewrite(rewrite: RouterRuleRewrite): RouterRuleRewrite {
   return isModelRewriteKey(rewrite.key) && rewrite.value
     ? { ...rewrite, value: normalizeProviderModelSelector(rewrite.value) }
@@ -934,6 +640,7 @@ export function createProviderDraftFromDeepLinkPayload(
     baseUrl,
     capabilities: payload.capabilities ?? [],
     catalogModelMetadata: undefined,
+    credentialMode: "apiKey",
     credentials: [],
     icon: payload.icon?.trim() || "",
     modelDescriptions: modelDescriptionsForModels(payload.modelDescriptions, models),
@@ -1029,6 +736,7 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
     baseUrl: "",
     capabilities: [],
     catalogModelMetadata: undefined,
+    credentialMode: "apiKey",
     credentials: [],
     icon: "",
     modelDescriptions: undefined,
@@ -1051,13 +759,15 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
   const preset = findProviderPresetByBaseUrl(baseUrl);
   const accountDraft = createProviderAccountDraftFromConfig(provider.account);
   const protocol = toProviderProtocol(provider.type) ?? toProviderProtocol(provider.provider) ?? "openai_chat_completions";
+  const credentials = (provider.credentials ?? []).map(providerCredentialDraftFromConfig);
   return {
     ...accountDraft,
     apiKey: providerApiKey(provider),
     baseUrl,
     capabilities: provider.capabilities ?? [],
     catalogModelMetadata: undefined,
-    credentials: (provider.credentials ?? []).map(providerCredentialDraftFromConfig),
+    credentialMode: providerDraftHasReadyCredentialPool({ credentials }) ? "pool" : "apiKey",
+    credentials,
     icon: provider.icon ?? "",
     modelDescriptions: modelDescriptionsForModels(provider.modelDescriptions, provider.models),
     modelDisplayNames: modelDisplayNamesForModels(
@@ -1077,6 +787,113 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
   };
 }
 
+export function providerConnectivityProviderPlugins(
+  draft: AddProviderDraft,
+  providerPlugins: unknown[] | undefined,
+  existingProvider?: GatewayProviderConfig
+): unknown[] {
+  if (draft.providerPlugins.length > 0) {
+    return draft.providerPlugins.filter(providerPluginEnabled);
+  }
+  if (providerConnectivityApiKeyFromDraft(draft) !== localAgentProviderApiKeyValue) {
+    return [];
+  }
+
+  const names = localAgentProviderPluginNamesForDraft(draft, existingProvider);
+  return (providerPlugins ?? []).filter((plugin) =>
+    providerPluginEnabled(plugin) &&
+    localAgentProviderPluginMatchesNames(plugin, names)
+  );
+}
+
+export function removeLocalAgentProviderPluginsForProvider(
+  current: unknown[] | undefined,
+  provider: GatewayProviderConfig | undefined
+): unknown[] | undefined {
+  if (!provider || providerApiKey(provider) !== localAgentProviderApiKeyValue) {
+    return current;
+  }
+
+  const names = localAgentProviderPluginNamesForProvider(provider);
+  return (current ?? []).filter((plugin) => !localAgentProviderPluginMatchesNames(plugin, names));
+}
+
+function localAgentProviderPluginNamesForDraft(
+  draft: AddProviderDraft,
+  existingProvider: GatewayProviderConfig | undefined
+): Set<string> {
+  const existingProviderIdOrName = existingProvider?.id || existingProvider?.name;
+  return providerPluginMatchNames([
+    draft.name,
+    existingProvider?.name,
+    existingProvider?.id,
+    existingProviderIdOrName ? providerNameSlug(existingProviderIdOrName) : undefined
+  ], draft.protocol);
+}
+
+function localAgentProviderPluginNamesForProvider(provider: GatewayProviderConfig): Set<string> {
+  const protocol = toProviderProtocol(provider.type) ?? toProviderProtocol(provider.provider);
+  const providerIdOrName = provider.id || provider.name;
+  return providerPluginMatchNames([
+    provider.name,
+    provider.id,
+    providerIdOrName ? providerNameSlug(providerIdOrName) : undefined
+  ], protocol);
+}
+
+function providerPluginMatchNames(
+  names: Array<string | undefined>,
+  protocol: GatewayProviderProtocol | undefined
+): Set<string> {
+  const values = new Set<string>();
+  for (const name of names) {
+    const normalized = normalizeProviderPluginName(name);
+    if (!normalized) {
+      continue;
+    }
+    values.add(normalized);
+    if (protocol) {
+      values.add(normalizeProviderPluginName(`${normalized}::${protocol}`) || "");
+    }
+  }
+  values.delete("");
+  return values;
+}
+
+function localAgentProviderPluginMatchesNames(plugin: unknown, names: Set<string>): boolean {
+  if (!isPlainRecord(plugin)) {
+    return false;
+  }
+  const key = typeof plugin.key === "string" ? plugin.key.trim().toLowerCase() : "";
+  if (!key.startsWith("ccr-local-agent-")) {
+    return false;
+  }
+  const pluginProviderName = typeof plugin.providerName === "string"
+    ? plugin.providerName
+    : typeof plugin.provider === "string"
+      ? plugin.provider
+      : "";
+  const normalizedProviderName = normalizeProviderPluginName(pluginProviderName);
+  return Boolean(normalizedProviderName && names.has(normalizedProviderName));
+}
+
+function providerPluginEnabled(plugin: unknown): boolean {
+  return !isPlainRecord(plugin) || plugin.enabled !== false;
+}
+
+function normalizeProviderPluginName(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.toLowerCase() : undefined;
+}
+
+export function providerNameSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "provider";
+}
+
 export function createProviderCredentialDraft(index = 0): ProviderCredentialDraft {
   return {
     apiKey: "",
@@ -1087,6 +904,17 @@ export function createProviderCredentialDraft(index = 0): ProviderCredentialDraf
     priority: "",
     weight: ""
   };
+}
+
+export function providerDraftHasReadyCredentialPool(draft: Pick<AddProviderDraft, "credentials">): boolean {
+  return draft.credentials.some((credential) => credential.enabled && credential.apiKey.trim());
+}
+
+export function providerConnectivityApiKeyFromDraft(draft: Pick<AddProviderDraft, "apiKey" | "credentialMode" | "credentials">): string {
+  if (draft.credentialMode === "pool") {
+    return draft.credentials.find((credential) => credential.enabled && credential.apiKey.trim())?.apiKey.trim() ?? "";
+  }
+  return draft.apiKey.trim();
 }
 
 export function providerCredentialDraftFromConfig(credential: ProviderCredentialConfig, index: number): ProviderCredentialDraft {
@@ -1178,6 +1006,7 @@ export function providerCredentialDraftPatchFromJson(text: string): Partial<AddP
   }
 
   return {
+    credentialMode: "pool",
     credentials
   };
 }
@@ -1259,7 +1088,19 @@ export function parseProviderAccountDraft(draft: AddProviderDraft): GatewayProvi
     };
   }
 
-  if (draft.accountMode === "http-json" || draft.usageRequestUrl.trim()) {
+  if (draft.accountMode === "browser") {
+    const connector = providerBrowserConnectorFromDraft(draft);
+    if (typeof connector === "string") {
+      return connector;
+    }
+    return {
+      connectors: [connector],
+      enabled: true,
+      refreshIntervalMs: refreshIntervalMs && refreshIntervalMs > 0 ? refreshIntervalMs : undefined
+    };
+  }
+
+  if (draft.accountMode === "http-json") {
     const connector = providerHttpJsonConnectorFromDraft(draft);
     if (typeof connector === "string") {
       return connector;
@@ -1302,6 +1143,11 @@ export function createDefaultProviderAccountDraft(): Pick<
   | "usageBalanceRemainingPath"
   | "usageBalanceUnit"
   | "usageBalanceUsedPath"
+  | "usageBrowserCredentials"
+  | "usageBrowserHeaderTemplates"
+  | "usageBrowserLoginUrl"
+  | "usageBrowserRequestOrigin"
+  | "usageBrowserTimeoutMs"
   | "usageMessagePath"
   | "usageRequestBodyText"
   | "usageRequestHeaders"
@@ -1322,6 +1168,11 @@ export function createDefaultProviderAccountDraft(): Pick<
     usageBalanceRemainingPath: "",
     usageBalanceUnit: "USD",
     usageBalanceUsedPath: "",
+    usageBrowserCredentials: "omit",
+    usageBrowserHeaderTemplates: [],
+    usageBrowserLoginUrl: "",
+    usageBrowserRequestOrigin: "",
+    usageBrowserTimeoutMs: "",
     usageMessagePath: "",
     usageRequestBodyText: "",
     usageRequestHeaders: [],
@@ -1345,7 +1196,11 @@ export function createProviderAccountDraftFromConfig(account: ProviderAccountCon
   const httpJsonConnector = connectors.length === 1 && connectors[0]?.type === "http-json"
     ? connectors[0] as ProviderAccountHttpJsonConnectorConfig
     : undefined;
-  if (!httpJsonConnector) {
+  const browserConnector = connectors.length === 1 && connectors[0]?.type === "webcontent-json"
+    ? connectors[0] as ProviderAccountWebContentJsonConnectorConfig
+    : undefined;
+  const jsonConnector = httpJsonConnector ?? browserConnector;
+  if (!jsonConnector) {
     return {
       ...base,
       accountConnectorsText: JSON.stringify(connectors, null, 2),
@@ -1354,7 +1209,7 @@ export function createProviderAccountDraftFromConfig(account: ProviderAccountCon
       accountRefreshIntervalMs: account.refreshIntervalMs ? String(account.refreshIntervalMs) : ""
     };
   }
-  if (httpJsonConnector.parser) {
+  if (jsonConnector.parser) {
     return {
       ...base,
       accountConnectorsText: JSON.stringify(connectors, null, 2),
@@ -1364,27 +1219,33 @@ export function createProviderAccountDraftFromConfig(account: ProviderAccountCon
     };
   }
 
-  const balanceMeter = httpJsonConnector.mapping.meters.find((meter) => meter.kind === "balance" || meter.id === "balance");
-  const subscriptionMeter = httpJsonConnector.mapping.meters.find((meter) =>
+  const balanceMeter = jsonConnector.mapping.meters.find((meter) => meter.kind === "balance" || meter.id === "balance");
+  const subscriptionMeter = jsonConnector.mapping.meters.find((meter) =>
     meter.kind === "subscription" || meter.id === "subscription" || meter.kind === "quota" || meter.kind === "tokens" || meter.kind === "time_window"
   );
+  const browser = browserConnector?.browser;
 
   return {
     ...base,
     accountConnectorsText: JSON.stringify(connectors, null, 2),
     accountEnabled: account.enabled === true,
-    accountMode: "http-json",
+    accountMode: browserConnector ? "browser" : "http-json",
     accountRefreshIntervalMs: account.refreshIntervalMs ? String(account.refreshIntervalMs) : "",
     usageBalanceLimitPath: stringValue(balanceMeter?.limit) || "",
     usageBalanceRemainingPath: stringValue(balanceMeter?.remaining) || "",
     usageBalanceUnit: stringValue(balanceMeter?.unit) || "USD",
     usageBalanceUsedPath: stringValue(balanceMeter?.used) || "",
-    usageMessagePath: httpJsonConnector.mapping.message ?? "",
-    usageRequestBodyText: httpJsonConnector.body === undefined ? "" : formatEditableJson(httpJsonConnector.body),
-    usageRequestHeaders: keyValueRowsFromRecord(httpJsonConnector.headers ?? {}),
-    usageRequestMethod: httpJsonConnector.method === "POST" ? "POST" : "GET",
-    usageRequestUrl: httpJsonConnector.endpoint,
-    usageStatusPath: httpJsonConnector.mapping.status ?? "",
+    usageBrowserCredentials: browserCredentialsDraftValue(browser?.credentials, browser?.headerTemplates),
+    usageBrowserHeaderTemplates: keyValueRowsFromRecord(browser?.headerTemplates ?? {}),
+    usageBrowserLoginUrl: browser?.loginUrl ?? "",
+    usageBrowserRequestOrigin: browser?.requestOrigin ?? "",
+    usageBrowserTimeoutMs: browser?.timeoutMs ? String(browser.timeoutMs) : "",
+    usageMessagePath: mappedStringDraftValue(jsonConnector.mapping.message),
+    usageRequestBodyText: jsonConnector.body === undefined ? "" : formatEditableJson(jsonConnector.body),
+    usageRequestHeaders: keyValueRowsFromRecord(jsonConnector.headers ?? {}),
+    usageRequestMethod: jsonConnector.method === "POST" ? "POST" : "GET",
+    usageRequestUrl: jsonConnector.endpoint,
+    usageStatusPath: mappedStringDraftValue(jsonConnector.mapping.status),
     usageSubscriptionLimitPath: stringValue(subscriptionMeter?.limit) || "",
     usageSubscriptionRemainingPath: stringValue(subscriptionMeter?.remaining) || "",
     usageSubscriptionResetPath: stringValue(subscriptionMeter?.resetAt) || "",
@@ -1392,7 +1253,25 @@ export function createProviderAccountDraftFromConfig(account: ProviderAccountCon
   };
 }
 
-export function providerHttpJsonConnectorFromDraft(draft: AddProviderDraft, options: { requireMeters?: boolean } = { requireMeters: true }): ProviderAccountHttpJsonConnectorConfig | string {
+function mappedStringDraftValue(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) {
+    return value.find((item) => stringValue(item)) ?? "";
+  }
+  return stringValue(value) || "";
+}
+
+type ProviderJsonConnectorDraftParts = {
+  body?: unknown;
+  endpoint: string;
+  headers: Record<string, string>;
+  mapping: ProviderAccountHttpJsonConnectorConfig["mapping"];
+  method: "GET" | "POST";
+};
+
+function providerJsonConnectorDraftPartsFromDraft(
+  draft: AddProviderDraft,
+  options: { requireMeters?: boolean } = { requireMeters: true }
+): ProviderJsonConnectorDraftParts | string {
   const endpoint = draft.usageRequestUrl.trim();
   if (!endpoint) {
     return "Usage request URL is required.";
@@ -1446,7 +1325,6 @@ export function providerHttpJsonConnectorFromDraft(draft: AddProviderDraft, opti
   }
 
   return {
-    auth: "provider-api-key",
     ...(body !== undefined ? { body } : {}),
     endpoint,
     headers: recordFromKeyValueRows(draft.usageRequestHeaders),
@@ -1455,9 +1333,65 @@ export function providerHttpJsonConnectorFromDraft(draft: AddProviderDraft, opti
       meters,
       ...(draft.usageStatusPath.trim() ? { status: draft.usageStatusPath.trim() } : {})
     },
-    method: draft.usageRequestMethod,
+    method: draft.usageRequestMethod
+  };
+}
+
+export function providerHttpJsonConnectorFromDraft(draft: AddProviderDraft, options: { requireMeters?: boolean } = { requireMeters: true }): ProviderAccountHttpJsonConnectorConfig | string {
+  const parts = providerJsonConnectorDraftPartsFromDraft(draft, options);
+  if (typeof parts === "string") {
+    return parts;
+  }
+
+  return {
+    auth: "provider-api-key",
+    ...parts,
     type: "http-json"
   };
+}
+
+export function providerBrowserConnectorFromDraft(draft: AddProviderDraft, options: { requireMeters?: boolean } = { requireMeters: true }): ProviderAccountWebContentJsonConnectorConfig | string {
+  const parts = providerJsonConnectorDraftPartsFromDraft(draft, options);
+  if (typeof parts === "string") {
+    return parts;
+  }
+
+  const loginUrl = draft.usageBrowserLoginUrl.trim();
+  if (loginUrl && !/^https?:\/\//i.test(loginUrl)) {
+    return "Browser login URL must use http or https.";
+  }
+  const requestOrigin = draft.usageBrowserRequestOrigin.trim();
+  if (requestOrigin && !/^https?:\/\//i.test(requestOrigin)) {
+    return "Browser storage origin must use http or https.";
+  }
+  if (!validateKeyValueRows(draft.usageBrowserHeaderTemplates)) {
+    return "Browser header template rows require keys.";
+  }
+
+  const headerTemplates = recordFromKeyValueRows(draft.usageBrowserHeaderTemplates);
+  const timeoutMs = positiveInteger(draft.usageBrowserTimeoutMs);
+  return {
+    ...parts,
+    browser: {
+      credentials: draft.usageBrowserCredentials,
+      ...(Object.keys(headerTemplates).length > 0 ? { headerTemplates } : {}),
+      ...(loginUrl ? { loginUrl } : {}),
+      partition: "built-in-browser",
+      ...(requestOrigin ? { requestOrigin } : {}),
+      ...(timeoutMs && timeoutMs > 0 ? { timeoutMs } : {})
+    },
+    type: "webcontent-json"
+  };
+}
+
+function browserCredentialsDraftValue(
+  credentials: unknown,
+  headerTemplates: Record<string, string> | undefined
+): AddProviderDraft["usageBrowserCredentials"] {
+  if (credentials === "include" || credentials === "omit" || credentials === "same-origin") {
+    return credentials;
+  }
+  return headerTemplates && Object.keys(headerTemplates).length > 0 ? "omit" : "include";
 }
 
 export type ProviderApiKeyTargetSafetyInput = {
@@ -1587,6 +1521,7 @@ export function createProviderInstallLinkFromDraft(draft: AddProviderDraft, prob
     : probe?.detectedProtocol ?? draft.protocol;
   const baseUrl = providerGlobalBaseUrlForProbe(draft.baseUrl, probe, selectedProtocols.length > 0 ? selectedProtocols : [protocol]);
   const models = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
+  const apiKey = providerConnectivityApiKeyFromDraft(draft);
   if (!providerName || !baseUrl) {
     return "Provider name and Base URL are required.";
   }
@@ -1594,7 +1529,7 @@ export function createProviderInstallLinkFromDraft(draft: AddProviderDraft, prob
     return "Select or enter at least one model.";
   }
   const keySafetyIssue = providerApiKeySafetyIssue({
-    apiKey: draft.apiKey,
+    apiKey,
     baseUrl,
     name: providerName,
     presetId: draft.presetId
@@ -1616,7 +1551,7 @@ export function createProviderInstallLinkFromDraft(draft: AddProviderDraft, prob
     return account;
   }
   const accountKeySafetyIssue = providerAccountApiKeySafetyIssue(account, {
-    apiKey: draft.apiKey,
+    apiKey,
     baseUrl,
     providerName,
     providerPresetId: draft.presetId
@@ -1698,6 +1633,31 @@ export function providerAccountConnectorExample(): string {
       }
     },
     {
+      type: "webcontent-json",
+      endpoint: "https://api.vendor.example.com/account/usage",
+      browser: {
+        credentials: "omit",
+        headerTemplates: {
+          authorization: "Bearer ${localStorage.accessToken}"
+        },
+        loginUrl: "https://vendor.example.com/login",
+        partition: "built-in-browser",
+        requestOrigin: "https://vendor.example.com",
+        timeoutMs: 15000
+      },
+      mapping: {
+        meters: [
+          {
+            id: "browser_balance",
+            label: "Browser balance",
+            kind: "balance",
+            unit: "USD",
+            remaining: "$.balance"
+          }
+        ]
+      }
+    },
+    {
       type: "plugin",
       pluginId: "vendor-plugin",
       connectorId: "account"
@@ -1766,8 +1726,9 @@ export function providerDraftSafetyIssue(draft: AddProviderDraft, baseUrl = draf
   if (!targetBaseUrl) {
     return undefined;
   }
+  const apiKey = providerConnectivityApiKeyFromDraft(draft);
   const issue = providerApiKeySafetyIssue({
-    apiKey: draft.apiKey,
+    apiKey,
     baseUrl: targetBaseUrl,
     name: draft.name,
     presetId: draft.presetId
@@ -1781,7 +1742,7 @@ export function providerDraftSafetyIssue(draft: AddProviderDraft, baseUrl = draf
     return undefined;
   }
   return providerAccountApiKeySafetyIssue(account, {
-    apiKey: draft.apiKey,
+    apiKey,
     baseUrl: targetBaseUrl,
     providerName: draft.name,
     providerPresetId: draft.presetId
@@ -1861,7 +1822,7 @@ export async function probeProviderCandidates(
 ): Promise<ProviderProbeCandidateResult | undefined> {
   const mode = options.mode ?? "protocols";
   return await window.ccr?.probeProviderCandidates({
-    apiKey: mode === "connectivity" || mode === "models" ? apiKey : undefined,
+    apiKey: apiKey || undefined,
     candidates,
     mode,
     models: mode === "connectivity" ? models : [],
@@ -1910,7 +1871,7 @@ export function selectedProviderProtocolsFromCapabilities(
 export function selectedProviderProtocolsForProbe(
   selectedProtocols: GatewayProviderProtocol[],
   probe: GatewayProviderProbeResult,
-  fallback: GatewayProviderProtocol,
+  _fallback: GatewayProviderProtocol,
   presetId?: string
 ): GatewayProviderProtocol[] {
   const selectable = providerSelectableProtocolsFromProbe(probe);
@@ -2294,14 +2255,15 @@ export function providerMatchesQuery(provider: GatewayProviderConfig, query: str
   if (!query) {
     return true;
   }
+  const searchableModels = isGatewayProviderEnabled(provider) ? provider.models : [];
 
   return [
     provider.name,
     providerBaseUrl(provider),
     providerCapabilitiesSummary(provider),
     ...(provider.capabilities ?? []).map((capability) => capability.baseUrl),
-    ...provider.models,
-    ...provider.models.map((model) => providerModelDisplayName(provider, model))
+    ...searchableModels,
+    ...searchableModels.map((model) => providerModelDisplayName(provider, model))
   ]
     .filter(Boolean)
     .some((value) => value.toLowerCase().includes(query));

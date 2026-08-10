@@ -28,6 +28,7 @@ import type {
   GatewayProviderProtocol,
   OverviewMetricKind,
   OverviewWidgetSize,
+  ProviderAccountBrowserCredentialsMode,
   ProfileConfig,
   ProfileScope,
   ProfileSurface,
@@ -49,6 +50,8 @@ import code0ProviderIconUrl from "@/assets/provider-icons/code0.png";
 import deepseekProviderIconUrl from "@/assets/provider-icons/deepseek.ico";
 import fennoProviderIconUrl from "@/assets/provider-icons/fenno.jpg";
 import geminiProviderIconUrl from "@/assets/provider-icons/gemini.svg";
+import infistarAiProviderIconUrl from "@/assets/provider-icons/infistar-ai.jpg";
+import minimaxProviderIconUrl from "@/assets/provider-icons/minimax.ico";
 import mistralProviderIconUrl from "@/assets/provider-icons/mistral.webp";
 import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
 import nvidiaProviderIconUrl from "@/assets/provider-icons/nvidia.svg";
@@ -59,6 +62,7 @@ import runapiProviderIconUrl from "@/assets/provider-icons/runapi.jpg";
 import siliconflowProviderIconUrl from "@/assets/provider-icons/siliconflow.png";
 import teamorouterProviderIconUrl from "@/assets/provider-icons/teamorouter.png";
 import unity2ProviderIconUrl from "@/assets/provider-icons/unity2.jpg";
+import xiaomiMimoProviderIconUrl from "@/assets/provider-icons/xiaomi-mimo.png";
 import zaiGlobalCodingProviderIconUrl from "@/assets/provider-icons/zai-global-coding.svg";
 import zaiGlobalGeneralProviderIconUrl from "@/assets/provider-icons/zai-global-general.svg";
 import zhipuCnCodingProviderIconUrl from "@/assets/provider-icons/zhipu-cn-coding.png";
@@ -70,7 +74,7 @@ import trayVioletIconUrl from "@/assets/tray-violet.png";
 type ViewId = "onboarding" | "overview" | "observability" | "api-keys" | "server" | "profile" | "networking" | "logs" | "providers" | "models" | "routing" | "virtual-models" | "extensions";
 type NavigationId = ViewId;
 type OnboardingStepId = "provider" | "profile" | "enter";
-type ProviderAccountDraftMode = "standard" | "http-json" | "raw";
+type ProviderAccountDraftMode = "standard" | "http-json" | "browser" | "raw";
 type ApiKeyLimitMetric = "images" | "requests" | "tokens";
 type ApiKeyExpirationPreset = "7d" | "30d" | "90d" | "custom" | "never";
 type LimitWindowPreset = "day" | "hour" | "minute";
@@ -115,20 +119,33 @@ export const agentFilterOptions: Array<{ label: string; value: AgentFilterValue 
   { label: "Codex", value: "codex" },
   { label: "Grok CLI", value: "grok" },
   { label: "Kimi CLI", value: "kimi" },
+  { label: "Kilo CLI", value: "kilo" },
   { label: "OpenCode", value: "opencode" },
+  { label: "Pi", value: "pi" },
   { label: "ZCode", value: "zcode" },
   { label: "Claude Design", value: "claude-design" },
   { label: "Unknown", value: "unknown" }
 ];
 
-export const profileAgentOptions: Array<{ label: string; value: ProfileConfig["agent"] }> = [
+export type ProfileAgentOption = { label: string; value: ProfileConfig["agent"] };
+
+export const profileAgentOptions: ProfileAgentOption[] = [
   { label: "Claude Code", value: "claude-code" },
   { label: "Codex", value: "codex" },
   { label: "Grok CLI", value: "grok" },
   { label: "Kimi CLI", value: "kimi" },
+  { label: "Kilo CLI", value: "kilo" },
   { label: "OpenCode", value: "opencode" },
-  { label: "ZCode", value: "zcode" }
+  { label: "Pi", value: "pi" },
+  { label: "ZCode", value: "zcode" },
+  { label: "Claude Design", value: "claude-design" }
 ];
+
+export function profileAgentOptionsForRuntime(desktop: boolean): ProfileAgentOption[] {
+  return desktop
+    ? profileAgentOptions
+    : profileAgentOptions.filter((option) => option.value !== "claude-design");
+}
 
 export const profileScopeOptions: Array<{ label: string; value: ProfileScope }> = [
   { label: "Only opened from CCR", value: "ccr" },
@@ -148,10 +165,10 @@ export const requestLogStatusOptions: Array<{ label: string; value: RequestLogSt
 ];
 
 export const requestLogPageSizeOptions = [
-  { label: "10 / 页", value: "10" },
-  { label: "25 / 页", value: "25" },
-  { label: "50 / 页", value: "50" },
-  { label: "100 / 页", value: "100" }
+  { label: "10 / page", value: "10" },
+  { label: "25 / page", value: "25" },
+  { label: "50 / page", value: "50" },
+  { label: "100 / page", value: "100" }
 ];
 
 export const providerProtocolOptions: Array<{ label: string; value: GatewayProviderProtocol }> = [
@@ -165,12 +182,19 @@ export const providerProtocolOptions: Array<{ label: string; value: GatewayProvi
 export const providerAccountModeOptions: Array<{ label: string; value: ProviderAccountDraftMode }> = [
   { label: "Standard usage endpoint", value: "standard" },
   { label: "HTTP JSON request", value: "http-json" },
+  { label: "Browser request", value: "browser" },
   { label: "Raw connector JSON", value: "raw" }
 ];
 
 export const providerUsageMethodOptions: Array<{ label: string; value: "GET" | "POST" }> = [
   { label: "GET", value: "GET" },
   { label: "POST", value: "POST" }
+];
+
+export const providerBrowserCredentialsOptions: Array<{ label: string; value: ProviderAccountBrowserCredentialsMode }> = [
+  { label: "Do not send credentials", value: "omit" },
+  { label: "Include cookies", value: "include" },
+  { label: "Same-origin only", value: "same-origin" }
 ];
 
 export const apiKeyExpirationOptions: Array<{ label: string; value: ApiKeyExpirationPreset }> = [
@@ -198,11 +222,12 @@ export const routerRuleTypeOptions: Array<{ label: string; value: RouterRuleType
   { label: "Node.js script", value: "script" }
 ];
 
-export type RouterConditionSource = "request.header" | "request.body";
+export type RouterConditionSource = "request.header" | "request.body" | "request.auth";
 
 export const routerConditionSourceOptions: Array<{ label: string; value: RouterConditionSource }> = [
   { label: "request.header", value: "request.header" },
-  { label: "request.body", value: "request.body" }
+  { label: "request.body", value: "request.body" },
+  { label: "request.auth", value: "request.auth" }
 ];
 
 export const routerRuleOperatorOptions: Array<{ label: string; value: RouterRuleOperator }> = [
@@ -348,7 +373,10 @@ export const providerPresetIconUrls: Record<string, string> = {
   deepseek: deepseekProviderIconUrl,
   fenno: fennoProviderIconUrl,
   gemini: geminiProviderIconUrl,
+  "infistar-ai": infistarAiProviderIconUrl,
   "kimi-coding": moonshotProviderIconUrl,
+  "minimax-cn": minimaxProviderIconUrl,
+  "minimax-global": minimaxProviderIconUrl,
   mistral: mistralProviderIconUrl,
   moonshot: moonshotProviderIconUrl,
   "moonshot-global": moonshotProviderIconUrl,
@@ -360,6 +388,10 @@ export const providerPresetIconUrls: Record<string, string> = {
   siliconflow: siliconflowProviderIconUrl,
   teamorouter: teamorouterProviderIconUrl,
   unity2: unity2ProviderIconUrl,
+  xiaomi: xiaomiMimoProviderIconUrl,
+  "xiaomi-token-plan-ams": xiaomiMimoProviderIconUrl,
+  "xiaomi-token-plan-cn": xiaomiMimoProviderIconUrl,
+  "xiaomi-token-plan-sgp": xiaomiMimoProviderIconUrl,
   "zai-global-coding": zaiGlobalCodingProviderIconUrl,
   "zai-global-general": zaiGlobalGeneralProviderIconUrl,
   "zhipu-cn-coding": zhipuCnCodingProviderIconUrl,

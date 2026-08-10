@@ -16,7 +16,8 @@ The confirmation-page flow uses the site access declared in `manifest.json`; it 
 
 1. An agent calls CCR's Chrome login import browser tool, or the user clicks the key button in CCR's in-app browser.
 2. CCR opens a one-time confirmation page in the system browser.
-3. Review the requested domains and click **Confirm and Import**.
+3. If the confirmation page opens in Chrome with this extension installed, review the requested domains and click **Confirm and Import**.
+4. If the confirmation page opens in another browser, copy the **Extension import URL** from CCR, open the CCR Login Import extension popup in Chrome, paste that URL, and click **Import Selected Domains**.
 
 The extension reads only the domains listed in the CCR job. It does not enumerate all Chrome cookies.
 

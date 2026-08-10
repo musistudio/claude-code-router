@@ -14,7 +14,7 @@ function claudeProfileConfig() {
     scope: "ccr",
     surface: "cli"
   };
-  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const config = createDefaultAppConfig();
   config.APIKEY = "profile-token";
   config.APIKEYS = [
     {

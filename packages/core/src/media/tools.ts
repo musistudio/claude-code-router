@@ -4,7 +4,8 @@ import {
   GROK_MEDIA_IMAGE_GENERATE_TOOL_NAME,
   GROK_MEDIA_JOB_CANCEL_TOOL_NAME,
   GROK_MEDIA_JOB_GET_TOOL_NAME,
-  GROK_MEDIA_VIDEO_START_TOOL_NAME
+  GROK_MEDIA_VIDEO_START_TOOL_NAME,
+  isGatewayProviderEnabled
 } from "@ccr/core/contracts/app";
 import type { AppConfig, GatewayMediaProtocol } from "@ccr/core/contracts/app";
 import type { MediaOperation } from "@ccr/core/media/contracts";
@@ -24,7 +25,7 @@ export type MediaMcpToolDefinition = {
 };
 
 export function mediaToolBindingsForConfig(config: Pick<AppConfig, "Providers" | "virtualModelProfiles">): MediaToolBinding[] {
-  const providers = config.Providers ?? [];
+  const providers = (config.Providers ?? []).filter(isGatewayProviderEnabled);
   const bindings: MediaToolBinding[] = [];
   const seen = new Set<string>();
   const add = (binding: MediaToolBinding) => {

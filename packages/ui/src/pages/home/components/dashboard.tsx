@@ -4,17 +4,17 @@ import {
   Area, arrayMove, Badge, Bar, BarChart, Button,
   Card, CardContent, CardHeader, CardTitle, CartesianGrid, Cell, constrainOverviewWidgetSize,
   Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, cn, codexLogoUrl, compactId,
-  compactUserAgent, compareProviderAccountSnapshots, ComposedChart, CSS, DEFAULT_OVERVIEW_WIDGETS, DndContext,
+  compactUserAgent, compareProviderAccountSnapshots, ComposedChart, CSS, Checkbox, DEFAULT_OVERVIEW_WIDGETS, DndContext,
   Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle,
   DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, Field, formatAxisNumber, formatBytes,
   formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatProviderAccountDetailDate, formatProviderAccountMeterTitle, formatProviderAccountMeterValue,
-  formatStatusBucketDate, formatStatusCodeCounts, formatSystemStatusRange, formatToolCounts, formatUsdCost, KeyboardSensor,
+  formatStatusBucketDate, formatSystemStatusRange, formatUsdCost, KeyboardSensor,
   LabelList, LayoutGroup, Line, LoaderCircle, MeasuringStrategy, MetricTone,
   motion, normalizeAgentFilterValue, normalizeOverviewWidget, normalizeOverviewWidgets,
-  OverviewMetricKind, overviewMetricOptions, overviewWidgetCollisionDetection, OverviewWidgetConfig, OverviewWidgetSize, overviewWidgetSizeOptions,
+  OverviewAccountCardSize, OverviewMetricKind, overviewMetricOptions, overviewWidgetCollisionDetection, OverviewWidgetConfig, OverviewWidgetSize, overviewWidgetSizeOptions,
   OverviewWidgetType, OverviewWidgetVariant, Pencil, Pie, PieChart, Plus,
-  PointerSensor, primaryProviderAccountMeter, providerAccountMeterDetailValidityProgress, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass, isProviderAccountManualResetMeter,
-  providerAccountSnapshotKey, providerAccountSnapshotLabel,
+  PointerSensor, primaryProviderAccountMeter, providerAccountMeterDetailValidityProgress, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass, isGatewayProviderEnabled, isProviderAccountManualResetMeter,
+  providerAccountSnapshotKey, providerAccountSnapshotLabel, providerDisplayIcon,
   ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ReactPointerEvent, rectSortingStrategy, RefreshCw, Select,
   SelectControl, SortableContext, sortableKeyboardCoordinates, systemStatusPointTooltip,
   Tooltip, translateOptions, Trash2, UsageComparisonRow, usageRangeOptions,
@@ -28,7 +28,7 @@ import {
   CalendarDays, ChartNoAxesCombined, ChartPie, CreditCard, GripHorizontal, Inbox, Layers3,
   Rocket, Server, UsersRound, WalletCards, Wifi
 } from "lucide-react";
-import { createPortal } from "react-dom";
+import { Tooltip as UiTooltip, TooltipPortal } from "@/components/ui/tooltip";
 
 type OverviewUsageFilters = {
   modelFilter: string;
@@ -39,6 +39,10 @@ type OverviewUsageFilters = {
 };
 
 const emptyOverviewProviders: GatewayProviderConfig[] = [];
+
+function chartTooltipPortal(): HTMLElement | null {
+  return typeof document === "undefined" ? null : document.body;
+}
 
 export function OverviewView({
   onWidgetsChange,
@@ -259,6 +263,35 @@ export function OverviewView({
     });
   }
 
+  function changeWidgetAccountProviders(id: string, accountProviders: string[]) {
+    updateWidget(id, {
+      accountProvider: accountProviders.length === 1 ? accountProviders[0] : undefined,
+      accountProviders: accountProviders.length > 0 ? accountProviders : undefined
+    });
+  }
+
+  function changeWidgetAccountCardSize(id: string, accountKey: string, size: OverviewAccountCardSize | undefined) {
+    const current = widgets.find((widget) => widget.id === id);
+    if (!current) {
+      return;
+    }
+    const accountCardSizes = { ...(current.accountCardSizes ?? {}) };
+    if (size) {
+      accountCardSizes[accountKey] = size;
+    } else {
+      delete accountCardSizes[accountKey];
+    }
+    updateWidget(id, {
+      accountCardSizes: Object.keys(accountCardSizes).length > 0 ? accountCardSizes : undefined
+    });
+  }
+
+  function changeWidgetAccountCardOrder(id: string, accountCardOrder: string[]) {
+    updateWidget(id, {
+      accountCardOrder: accountCardOrder.length > 0 ? accountCardOrder : undefined
+    });
+  }
+
   function changeWidgetShareData(id: string, type: ShareOverviewWidgetType) {
     const current = widgets.find((widget) => widget.id === id);
     if (!current) {
@@ -298,8 +331,12 @@ export function OverviewView({
                   onSelect={() => setSelectedWidgetId(widget.id)}
                 >
                   <OverviewWidgetRenderer
+                    editing={editing}
+                    onChangeAccountCardOrder={(accountKeys) => changeWidgetAccountCardOrder(widget.id, accountKeys)}
+                    onChangeAccountCardSize={(accountKey, size) => changeWidgetAccountCardSize(widget.id, accountKey, size)}
                     providerAccounts={providerAccounts}
                     providerAccountRefreshing={providerAccountRefreshing}
+                    providers={filterProviders}
                     refreshProviderAccounts={refreshProviderAccounts}
                     usageRange={usageRange}
                     usageStats={usageStats}
@@ -319,6 +356,7 @@ export function OverviewView({
           <OverviewWidgetDragOverlay
             providerAccounts={providerAccounts}
             providerAccountRefreshing={providerAccountRefreshing}
+            providers={filterProviders}
             refreshProviderAccounts={refreshProviderAccounts}
             usageRange={usageRange}
             usageStats={usageStats}
@@ -399,7 +437,7 @@ export function OverviewView({
             <OverviewWidgetProperties
               providerAccounts={providerAccounts}
               widget={selectedWidget}
-              onChangeAccountProvider={(accountProvider) => selectedWidget ? updateWidget(selectedWidget.id, { accountProvider }) : undefined}
+              onChangeAccountProviders={(accountProviders) => selectedWidget ? changeWidgetAccountProviders(selectedWidget.id, accountProviders) : undefined}
               onChangeAnalysisData={(type) => selectedWidget ? changeWidgetAnalysisData(selectedWidget.id, type) : undefined}
               onChangeBreakdownData={(type) => selectedWidget ? changeWidgetBreakdownData(selectedWidget.id, type) : undefined}
               onChangeCategory={(category) => selectedWidget ? changeWidgetCategory(selectedWidget.id, category) : undefined}
@@ -525,6 +563,9 @@ function OverviewDonutCenter({ label, value }: { label: string; value: string })
 function overviewProviderFilterOptions(providers: GatewayProviderConfig[], translate: (value: string) => string): Array<{ label: string; value: string }> {
   const providerNames = new Set<string>();
   for (const provider of providers) {
+    if (!isGatewayProviderEnabled(provider)) {
+      continue;
+    }
     const name = provider.name.trim();
     if (name) {
       providerNames.add(name);
@@ -543,6 +584,9 @@ function overviewModelFilterOptions(
 ): Array<{ label: string; value: string }> {
   const models = new Set<string>();
   for (const provider of providers) {
+    if (!isGatewayProviderEnabled(provider)) {
+      continue;
+    }
     if (providerFilter && provider.name !== providerFilter) {
       continue;
     }
@@ -561,6 +605,7 @@ function overviewModelFilterOptions(
 
 function overviewProviderHasModel(providers: GatewayProviderConfig[], providerName: string, modelName: string): boolean {
   return providers.some((provider) =>
+    isGatewayProviderEnabled(provider) &&
     provider.name === providerName &&
     provider.models.some((model) => model.trim() === modelName)
   );
@@ -610,7 +655,7 @@ function OverviewWidgetPalette({
 function OverviewWidgetProperties({
   providerAccounts,
   widget,
-  onChangeAccountProvider,
+  onChangeAccountProviders,
   onChangeAnalysisData,
   onChangeBreakdownData,
   onChangeCategory,
@@ -622,7 +667,7 @@ function OverviewWidgetProperties({
 }: {
   providerAccounts: ProviderAccountSnapshot[];
   widget: OverviewWidgetConfig | undefined;
-  onChangeAccountProvider: (accountProvider: string | undefined) => void;
+  onChangeAccountProviders: (accountProviders: string[]) => void;
   onChangeAnalysisData: (type: "client-analysis" | "provider-analysis") => void;
   onChangeBreakdownData: (type: "model-distribution" | "token-mix") => void;
   onChangeCategory: (category: OverviewWidgetCategory) => void;
@@ -641,13 +686,11 @@ function OverviewWidgetProperties({
   const category = overviewWidgetCategory(widget.type);
   const dataOptions = overviewWidgetDataOptions(widget, providerAccounts);
   const dataValue = overviewWidgetDataValue(widget);
+  const accountProviderValues = overviewWidgetAccountProviderValues(widget);
   const sizeOptions = overviewWidgetSizeOptions.filter((option) => (
-    constrainOverviewWidgetSize(option.value, widget.type, widget.variant, widget.accountProvider) === option.value
+    constrainOverviewWidgetSize(option.value, widget.type, widget.variant, accountProviderValues) === option.value
   ));
   const changeData = (value: string) => {
-    if (category === "account-balance") {
-      onChangeAccountProvider(value || undefined);
-    }
     if (category === "metric") {
       onChangeMetric(value as OverviewMetricKind);
     }
@@ -674,7 +717,15 @@ function OverviewWidgetProperties({
       </Field>
 
       <Field label={t("Data")}>
-        <SelectControl onChange={changeData} options={translateOptions(dataOptions, t)} value={dataValue} />
+        {category === "account-balance" ? (
+          <OverviewAccountDataSelector
+            options={dataOptions}
+            value={accountProviderValues}
+            onChange={onChangeAccountProviders}
+          />
+        ) : (
+          <SelectControl onChange={changeData} options={translateOptions(dataOptions, t)} value={dataValue} />
+        )}
       </Field>
 
       <Field label={t("Widget size")}>
@@ -689,6 +740,51 @@ function OverviewWidgetProperties({
         <Trash2 className="h-3.5 w-3.5" />
         {t("Remove widget")}
       </Button>
+    </div>
+  );
+}
+
+function OverviewAccountDataSelector({
+  onChange,
+  options,
+  value
+}: {
+  onChange: (value: string[]) => void;
+  options: Array<{ label: string; value: string }>;
+  value: string[];
+}) {
+  const t = useAppText();
+  const selected = new Set(value);
+  const accountOptions = options.filter((option) => option.value);
+  const allSelected = selected.size === 0;
+
+  function toggleAccount(account: string, checked: boolean) {
+    const next = new Set(selected);
+    if (checked) {
+      next.add(account);
+    } else {
+      next.delete(account);
+    }
+    onChange([...next]);
+  }
+
+  return (
+    <div className="overview-account-data-picker min-w-0 overflow-hidden rounded-md border border-border/70 bg-card/50 p-1.5">
+      <label className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[12px] font-medium transition-colors hover:bg-muted/50">
+        <Checkbox checked={allSelected} onCheckedChange={(checked) => checked ? onChange([]) : undefined} />
+        <span className="min-w-0 flex-1 truncate">{t("All accounts")}</span>
+      </label>
+      <div className="mt-1 max-h-44 space-y-0.5 overflow-y-auto pr-1">
+        {accountOptions.map((option) => (
+          <label className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[12px] transition-colors hover:bg-muted/50" key={option.value}>
+            <Checkbox
+              checked={selected.has(option.value)}
+              onCheckedChange={(checked) => toggleAccount(option.value, checked)}
+            />
+            <span className="min-w-0 flex-1 truncate">{option.label}</span>
+          </label>
+        ))}
+      </div>
     </div>
   );
 }
@@ -715,6 +811,7 @@ function SortableOverviewWidget({
     disabled: !editing,
     id: widget.id
   });
+  const { onKeyDown, onPointerDown, ...dragListeners } = listeners ?? {};
 
   return (
     <motion.div
@@ -733,16 +830,33 @@ function SortableOverviewWidget({
         transition
       }}
       {...attributes}
-      {...listeners}
+      {...dragListeners}
+      onKeyDown={(event) => {
+        if (overviewWidgetSortShouldIgnoreTarget(event.target)) {
+          return;
+        }
+        onKeyDown?.(event);
+      }}
+      onPointerDown={(event) => {
+        if (overviewWidgetSortShouldIgnoreTarget(event.target)) {
+          return;
+        }
+        onPointerDown?.(event);
+      }}
     >
       {children}
     </motion.div>
   );
 }
 
+function overviewWidgetSortShouldIgnoreTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest("[data-overview-widget-drag-lock='true']"));
+}
+
 function OverviewWidgetDragOverlay({
   providerAccounts,
   providerAccountRefreshing = false,
+  providers,
   refreshProviderAccounts,
   usageRange,
   usageStats,
@@ -750,6 +864,7 @@ function OverviewWidgetDragOverlay({
 }: {
   providerAccounts: ProviderAccountSnapshot[];
   providerAccountRefreshing?: boolean;
+  providers: GatewayProviderConfig[];
   refreshProviderAccounts?: () => void | Promise<void>;
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
@@ -760,6 +875,7 @@ function OverviewWidgetDragOverlay({
       <OverviewWidgetRenderer
         providerAccounts={providerAccounts}
         providerAccountRefreshing={providerAccountRefreshing}
+        providers={providers}
         refreshProviderAccounts={refreshProviderAccounts}
         usageRange={usageRange}
         usageStats={usageStats}
@@ -1000,15 +1116,23 @@ function overviewWidgetResizeCursor(axis: OverviewWidgetResizeAxis): string {
 }
 
 function OverviewWidgetRenderer({
+  editing,
+  onChangeAccountCardOrder,
+  onChangeAccountCardSize,
   providerAccounts,
   providerAccountRefreshing = false,
+  providers,
   refreshProviderAccounts,
   usageRange,
   usageStats,
   widget
 }: {
+  editing?: boolean;
+  onChangeAccountCardOrder?: (accountKeys: string[]) => void;
+  onChangeAccountCardSize?: (accountKey: string, size: OverviewAccountCardSize) => void;
   providerAccounts: ProviderAccountSnapshot[];
   providerAccountRefreshing?: boolean;
+  providers: GatewayProviderConfig[];
   refreshProviderAccounts?: () => void | Promise<void>;
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
@@ -1019,7 +1143,7 @@ function OverviewWidgetRenderer({
   if (widget.type === "system-status") {
     content = <SystemStatusBar usageRange={usageRange} usageStats={usageStats} variant={widget.variant === "compact" ? "compact" : "timeline"} />;
   } else if (widget.type === "account-balance") {
-    content = <ProviderAccountsOverview accountProvider={widget.accountProvider} accounts={providerAccounts} dimensions={dimensions} refreshing={providerAccountRefreshing} variant={overviewAccountVariant(widget.variant)} onRefresh={refreshProviderAccounts} />;
+    content = <ProviderAccountsOverview accountCardOrder={widget.accountCardOrder} accountCardSizes={widget.accountCardSizes} accountProviders={overviewWidgetAccountProviderValues(widget)} accounts={providerAccounts} dimensions={dimensions} editing={editing} providers={providers} refreshing={providerAccountRefreshing} variant={overviewAccountVariant(widget.variant)} onChangeAccountCardOrder={onChangeAccountCardOrder} onChangeAccountCardSize={onChangeAccountCardSize} onRefresh={refreshProviderAccounts} />;
   } else if (widget.type === "metric") {
     content = <OverviewMetricWidget metric={widget.metric ?? "requests"} totals={usageStats.totals} variant={overviewMetricVariant(widget.variant)} />;
   } else if (widget.type === "usage-trend") {
@@ -1161,7 +1285,6 @@ function overviewMetricShowsRatio(metric: OverviewMetricKind): boolean {
 
 function UsageTrendWidget({
   dimensions,
-  usageRange,
   usageStats,
   variant
 }: {
@@ -1201,7 +1324,7 @@ function UsageTrendWidget({
               <XAxis axisLine={false} dataKey="label" hide={dimensions.height <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} />
               <YAxis axisLine={false} hide={dimensions.width <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} yAxisId="tokens" />
               <YAxis axisLine={false} hide orientation="right" yAxisId="requests" />
-              <Tooltip content={<UsageTooltip />} />
+              <Tooltip content={<UsageTooltip />} portal={chartTooltipPortal()} />
               {variant === "composed" ? (
                 <>
                   <Area dataKey="totalTokens" fill="#007aff" fillOpacity={0.12} name={t("Total tokens")} stroke="#007aff" strokeWidth={2.25} type="monotone" yAxisId="tokens" />
@@ -1378,21 +1501,25 @@ function OverviewActivityGrid({
               </span>
             )) : null}
             {activity.cells.map((cell) => (
-              <span
+              <UiTooltip
                 aria-label={`${cell.dateLabel}: ${formatActivityTokenCount(cell.totalTokens)} ${t("tokens")}`}
-                className="overview-activity-cell group relative aspect-square w-full rounded-[4px]"
+                align={cell.weekIndex <= 1 ? "start" : cell.weekIndex >= activity.weekCount - 2 ? "end" : "center"}
+                className="overview-activity-cell aspect-square w-full rounded-[4px]"
+                content={(
+                  <>
+                    <span className="block font-semibold">{cell.dateLabel}</span>
+                    <span className="mt-0.5 block text-muted-foreground">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
+                  </>
+                )}
+                contentClassName="min-w-[112px] border-border/70 px-2 py-1.5 text-left text-[11px] font-normal"
                 key={cell.dateKey}
+                side={cell.dayIndex <= 1 ? "bottom" : "top"}
                 style={{
                   backgroundColor: overviewActivityColor(cell.intensity, cell.inObservedRange),
                   gridColumn: cell.weekIndex + (showDayLabels ? 2 : 1),
                   gridRow: cell.dayIndex + 1
                 }}
-              >
-                <span className={`pointer-events-none absolute z-30 hidden min-w-[112px] rounded-md border border-border/70 bg-popover px-2 py-1.5 text-left text-[11px] text-popover-foreground shadow-card-elevated group-hover:block ${overviewActivityTooltipPositionClass(cell, activity.weekCount)}`}>
-                  <span className="block font-semibold">{cell.dateLabel}</span>
-                  <span className="mt-0.5 block text-muted-foreground">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
-                </span>
-              </span>
+              />
             ))}
           </div>
         </div>
@@ -1403,17 +1530,6 @@ function OverviewActivityGrid({
 
 function formatActivityTokenCount(value: number): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Math.round(Math.max(0, value)));
-}
-
-function overviewActivityTooltipPositionClass(cell: TokenActivityCell, weekCount: number): string {
-  const verticalClass = cell.dayIndex <= 1 ? "top-full mt-1" : "bottom-full mb-1";
-  if (cell.weekIndex <= 1) {
-    return `${verticalClass} left-0`;
-  }
-  if (cell.weekIndex >= weekCount - 2) {
-    return `${verticalClass} right-0`;
-  }
-  return `${verticalClass} left-1/2 -translate-x-1/2`;
 }
 
 function overviewActivityColor(intensity: TokenActivityCell["intensity"], inRange: boolean): string {
@@ -1466,7 +1582,7 @@ function TokenMixOverviewWidget({
               <ChartFrame fill>
                 {({ height, width }) => (
                   <PieChart height={height} width={width}>
-                    <Tooltip content={<TokenTooltip />} />
+                    <Tooltip content={<TokenTooltip />} portal={chartTooltipPortal()} />
                     <Pie
                       cx="50%"
                       cy="50%"
@@ -1496,7 +1612,7 @@ function TokenMixOverviewWidget({
                 <CartesianGrid stroke="var(--overview-chart-grid)" strokeDasharray="2 5" horizontal={false} />
                 <XAxis axisLine={false} hide={dimensions.height <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
                 <YAxis axisLine={false} dataKey="name" tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} type="category" width={dimensions.width <= 1 ? 42 : 52} />
-                <Tooltip content={<TokenTooltip />} />
+                <Tooltip content={<TokenTooltip />} portal={chartTooltipPortal()} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                   {tokenMix.map((item) => (
                     <Cell fill={item.color} key={item.name} />
@@ -1549,7 +1665,7 @@ function ModelDistributionOverviewWidget({
               <ChartFrame fill>
                 {({ height, width }) => (
                   <PieChart height={height} width={width}>
-                    <Tooltip content={<TokenTooltip />} />
+                    <Tooltip content={<TokenTooltip />} portal={chartTooltipPortal()} />
                     <Pie
                       cx="50%"
                       cy="50%"
@@ -1578,7 +1694,7 @@ function ModelDistributionOverviewWidget({
               <CartesianGrid stroke="var(--overview-chart-grid)" strokeDasharray="2 5" horizontal={false} />
                 <XAxis axisLine={false} hide={dimensions.height <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
                 <YAxis axisLine={false} dataKey="name" tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} type="category" width={dimensions.width <= 1 ? 58 : 88} />
-                <Tooltip content={<TokenTooltip />} />
+                <Tooltip content={<TokenTooltip />} portal={chartTooltipPortal()} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                   {modelRows.map((item) => (
                     <Cell fill={item.color} key={item.name} />
@@ -1761,12 +1877,15 @@ function overviewWidgetDataOptions(widget: OverviewWidgetConfig, providerAccount
     return overviewAnalysisDataOptions();
   }
   if (category === "account-balance") {
+    const selectedValues = overviewWidgetAccountProviderValues(widget);
     const options = providerAccounts
       .filter((account) => account.provider)
       .sort(compareProviderAccountSnapshots)
       .map((account) => ({ label: providerAccountSnapshotLabel(account), value: providerAccountSnapshotKey(account) }));
-    if (widget.accountProvider && !options.some((option) => option.value === widget.accountProvider)) {
-      options.push({ label: widget.accountProvider, value: widget.accountProvider });
+    for (const accountProvider of selectedValues) {
+      if (!options.some((option) => option.value === accountProvider)) {
+        options.push({ label: accountProvider, value: accountProvider });
+      }
     }
     return [{ label: "All accounts", value: "" }, ...options];
   }
@@ -1797,7 +1916,7 @@ function overviewWidgetDataValue(widget: OverviewWidgetConfig): string {
     return widget.type;
   }
   if (category === "account-balance") {
-    return widget.accountProvider ?? "";
+    return overviewWidgetAccountProviderValues(widget)[0] ?? "";
   }
   if (category === "activity") {
     return "token-activity";
@@ -1806,6 +1925,27 @@ function overviewWidgetDataValue(widget: OverviewWidgetConfig): string {
     return widget.type;
   }
   return category;
+}
+
+function overviewWidgetAccountProviderValues(widget: OverviewWidgetConfig): string[] {
+  return uniqueOverviewStrings([
+    ...(widget.accountProviders ?? []),
+    ...(widget.accountProvider ? [widget.accountProvider] : [])
+  ]);
+}
+
+function uniqueOverviewStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const item = value.trim();
+    if (!item || seen.has(item)) {
+      continue;
+    }
+    seen.add(item);
+    result.push(item);
+  }
+  return result;
 }
 
 function overviewWidgetCategory(type: OverviewWidgetType): OverviewWidgetCategory {
@@ -2243,10 +2383,9 @@ function SystemStatusBar({
                 />
               </span>
             ))}
-            {statusTooltip ? createPortal(
-              <span
-                className="pointer-events-none fixed z-[150] w-[190px] max-w-[calc(100vw-24px)] rounded-md border border-border/70 bg-popover px-3 py-2 text-left text-[11px] leading-4 text-popover-foreground shadow-card-elevated ring-1 ring-black/5"
-                role="tooltip"
+            {statusTooltip ? (
+              <TooltipPortal
+                className="w-[190px] max-w-[calc(100vw-24px)] px-3 py-2 text-left font-normal leading-4"
                 style={{ left: statusTooltip.left, top: statusTooltip.top }}
               >
                 <span
@@ -2276,8 +2415,7 @@ function SystemStatusBar({
                   <span className="text-muted-foreground">{t("Duration")}</span>
                   <span className="font-medium">{formatDuration(statusTooltip.segment.point.avgDurationMs)}</span>
                 </span>
-              </span>,
-              document.body
+              </TooltipPortal>
             ) : null}
           </div>
         </div>
@@ -2287,29 +2425,74 @@ function SystemStatusBar({
 }
 
 function ProviderAccountsOverview({
-  accountProvider,
+  accountCardOrder,
+  accountCardSizes,
+  accountProviders,
   accounts,
   dimensions,
+  editing = false,
+  onChangeAccountCardOrder,
+  onChangeAccountCardSize,
   onRefresh,
+  providers,
   refreshing = false,
   variant = "cards"
 }: {
-  accountProvider?: string;
+  accountCardOrder?: string[];
+  accountCardSizes?: Record<string, OverviewAccountCardSize>;
+  accountProviders?: string[];
   accounts: ProviderAccountSnapshot[];
   dimensions: OverviewWidgetDimensions;
+  editing?: boolean;
+  onChangeAccountCardOrder?: (accountKeys: string[]) => void;
+  onChangeAccountCardSize?: (accountKey: string, size: OverviewAccountCardSize) => void;
   onRefresh?: () => void | Promise<void>;
+  providers: GatewayProviderConfig[];
   refreshing?: boolean;
   variant?: OverviewAccountVariant;
 }) {
   const t = useAppText();
-  const selectedAccountProvider = accountProvider?.trim();
+  const selectedAccountProviders = new Set((accountProviders ?? []).map((provider) => provider.trim()).filter(Boolean));
   const sortedAccounts = [...accounts].sort(compareProviderAccountSnapshots);
-  const visibleAccounts = selectedAccountProvider
-    ? sortedAccounts.filter((account) => providerAccountSelectionMatches(account, selectedAccountProvider)).slice(0, 1)
+  const filteredAccounts = selectedAccountProviders.size > 0
+    ? sortedAccounts.filter((account) => providerAccountSelectionMatches(account, selectedAccountProviders))
     : sortedAccounts
       .filter((account) => account.meters.length > 0 || account.status === "error");
+  const visibleAccounts = providerAccountOrderAccounts(filteredAccounts, accountCardOrder);
   const isSingleAccount = visibleAccounts.length === 1;
   const showHeading = dimensions.height >= 2 && dimensions.width >= 2;
+  const bentoLayout = !isSingleAccount && variant === "cards"
+    ? providerAccountBentoLayout(visibleAccounts, dimensions, accountCardSizes)
+    : undefined;
+  const accountGridItems = bentoLayout?.items ?? visibleAccounts.map((account) => ({ account, span: undefined }));
+  const accountCardSortSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 6
+      }
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates
+    })
+  );
+
+  function finishAccountCardSort(event: DragEndEvent) {
+    if (!onChangeAccountCardOrder) {
+      return;
+    }
+    const activeId = String(event.active.id);
+    const overId = event.over ? String(event.over.id) : "";
+    if (!overId || activeId === overId) {
+      return;
+    }
+    const currentOrder = visibleAccounts.map(providerAccountSnapshotKey);
+    const activeIndex = currentOrder.indexOf(activeId);
+    const overIndex = currentOrder.indexOf(overId);
+    if (activeIndex < 0 || overIndex < 0 || activeIndex === overIndex) {
+      return;
+    }
+    onChangeAccountCardOrder(arrayMove(currentOrder, activeIndex, overIndex));
+  }
 
   return (
     <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
@@ -2325,17 +2508,20 @@ function ProviderAccountsOverview({
         {visibleAccounts.length === 0 ? (
           <OverviewEmptyState className="h-full py-4" compact label={t("No account balance connectors configured")} />
         ) : isSingleAccount ? (
-          <ProviderAccountSinglePanel account={visibleAccounts[0]} dimensions={dimensions} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />
+          <ProviderAccountSinglePanel account={visibleAccounts[0]} dimensions={dimensions} providers={providers} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />
         ) : variant === "compact" ? (
           <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions, visibleAccounts.length))}>
             {visibleAccounts.map((account) => {
               const meter = primaryProviderAccountDisplayMeter(account);
               return (
                 <div className="overview-nested-surface flex min-h-0 min-w-0 items-center justify-between gap-3 overflow-hidden border px-3 py-2" key={providerAccountSnapshotKey(account)}>
-                  <div className="min-w-0">
-                    <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
-                    {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
-                    {providerAccountShowRefreshTime(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+                  <div className="flex min-w-0 items-center gap-2">
+                    <ProviderAccountLogo account={account} className="h-7 w-7 rounded-md" providers={providers} />
+                    <div className="min-w-0">
+                      <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
+                      {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
+                      {providerAccountShowRefreshTime(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+                    </div>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1 text-right">
                     {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
@@ -2353,10 +2539,13 @@ function ProviderAccountsOverview({
               return (
                 <div className="min-w-0 overflow-hidden" key={providerAccountSnapshotKey(account)}>
                   <div className="flex min-w-0 items-end justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
-                      {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
-                      {providerAccountShowRefreshTime(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+                    <div className="flex min-w-0 items-center gap-2">
+                      <ProviderAccountLogo account={account} className="h-6 w-6 rounded-md" providers={providers} />
+                      <div className="min-w-0">
+                        <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
+                        {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
+                        {providerAccountShowRefreshTime(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+                      </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-2 text-[12px] font-semibold">
                       {meter ? <span>{formatProviderAccountMeterValue(meter)}</span> : null}
@@ -2372,10 +2561,45 @@ function ProviderAccountsOverview({
               );
             })}
           </div>
+        ) : variant === "cards" ? (
+          <DndContext sensors={accountCardSortSensors} onDragEnd={finishAccountCardSort}>
+            <SortableContext items={accountGridItems.map(({ account }) => providerAccountSnapshotKey(account))} strategy={rectSortingStrategy}>
+              <div
+                className={cn(
+                  "grid h-full min-h-0 grid-flow-dense items-stretch overflow-hidden",
+                  providerAccountBentoGridRowClass(),
+                  providerAccountGapClass(dimensions),
+                  providerAccountBentoGridClass(dimensions, visibleAccounts.length)
+                )}
+                data-provider-account-grid="true"
+              >
+                {accountGridItems.map(({ account, span }) => {
+                  const accountKey = providerAccountSnapshotKey(account);
+                  return (
+                    <SortableProviderAccountCard account={account} disabled={!editing || !onChangeAccountCardOrder} key={accountKey} span={span}>
+                      {(dragHandle) => (
+                        <ProviderAccountSummaryCard account={account} bentoSpan={span} dimensions={dimensions} dragHandle={dragHandle} editing={editing} providers={providers} refreshing={refreshing} variant={variant} onChangeCardSize={onChangeAccountCardSize} onRefresh={onRefresh} />
+                      )}
+                    </SortableProviderAccountCard>
+                  );
+                })}
+                {(bentoLayout?.hiddenCount ?? 0) > 0 ? (
+                  <ProviderAccountBentoOverflowTile count={bentoLayout?.hiddenCount ?? 0} />
+                ) : null}
+              </div>
+            </SortableContext>
+          </DndContext>
         ) : (
-          <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions, visibleAccounts.length))}>
-            {visibleAccounts.map((account) => {
-              return <ProviderAccountSummaryCard account={account} dimensions={dimensions} key={providerAccountSnapshotKey(account)} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />;
+          <div
+            className={cn(
+              "grid h-full min-h-0 auto-rows-max content-start grid-cols-1 overflow-y-auto pb-2 pr-2 [scrollbar-gutter:stable]",
+              providerAccountGapClass(dimensions),
+              providerAccountGridClass(dimensions, visibleAccounts.length)
+            )}
+            data-provider-account-grid="true"
+          >
+            {accountGridItems.map(({ account, span }) => {
+              return <ProviderAccountSummaryCard account={account} bentoSpan={span} dimensions={dimensions} editing={editing} key={providerAccountSnapshotKey(account)} providers={providers} refreshing={refreshing} variant={variant} onChangeCardSize={onChangeAccountCardSize} onRefresh={onRefresh} />;
             })}
           </div>
         )}
@@ -2384,16 +2608,101 @@ function ProviderAccountsOverview({
   );
 }
 
+function SortableProviderAccountCard({
+  account,
+  children,
+  disabled,
+  span
+}: {
+  account: ProviderAccountSnapshot;
+  children: (dragHandle: ReactNode) => ReactNode;
+  disabled: boolean;
+  span?: ProviderAccountBentoSpan;
+}) {
+  const t = useAppText();
+  const accountKey = providerAccountSnapshotKey(account);
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition
+  } = useSortable({
+    disabled,
+    id: accountKey
+  });
+  const { onKeyDown, onPointerDown, ...dragListeners } = listeners ?? {};
+  const dragHandle = disabled ? null : (
+    <button
+      {...attributes}
+      {...dragListeners}
+      aria-label={t("Move account card")}
+      className="shrink-0 cursor-grab rounded-md p-1 text-muted-foreground/75 opacity-0 transition-[background-color,color,opacity] hover:bg-muted hover:text-foreground active:cursor-grabbing focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 group-hover/account-card:opacity-100"
+      data-account-card-drag-handle="true"
+      data-overview-widget-drag-lock="true"
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        onKeyDown?.(event);
+      }}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        onPointerDown?.(event);
+      }}
+      ref={setActivatorNodeRef}
+      title={t("Move account card")}
+      type="button"
+    >
+      <GripHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
+    </button>
+  );
+
+  return (
+    <div
+      className={cn(
+        "min-h-0 min-w-0",
+        span ? providerAccountBentoSpanClass(span) : undefined,
+        !disabled && "cursor-grab active:cursor-grabbing",
+        isDragging && "relative z-30 opacity-70"
+      )}
+      data-provider-account-sortable-id={accountKey}
+      data-overview-widget-drag-lock="true"
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        if (providerAccountCardSortShouldIgnoreTarget(event.target)) {
+          return;
+        }
+        onPointerDown?.(event);
+      }}
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition
+      }}
+    >
+      {children(dragHandle)}
+    </div>
+  );
+}
+
+function providerAccountCardSortShouldIgnoreTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest("button,a,input,select,textarea,[contenteditable='true'],[data-account-card-resize-handle]"));
+}
+
 function ProviderAccountSinglePanel({
   account,
   dimensions,
   onRefresh,
+  providers,
   refreshing = false,
   variant
 }: {
   account: ProviderAccountSnapshot;
   dimensions: OverviewWidgetDimensions;
   onRefresh?: () => void | Promise<void>;
+  providers: GatewayProviderConfig[];
   refreshing?: boolean;
   variant: OverviewAccountVariant;
 }) {
@@ -2405,10 +2714,13 @@ function ProviderAccountSinglePanel({
 
   return (
     <div className={cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden", providerAccountStackClass(dimensions))}>
-      <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className={cn("truncate font-semibold", dimensions.height <= 1 ? "text-[12px]" : "text-[13px]")}>{providerAccountSnapshotLabel(account)}</div>
-          {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+      <div className="flex min-w-0 shrink-0 items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
+          <ProviderAccountLogo account={account} className={cn("rounded-md", dimensions.height <= 1 ? "h-7 w-7" : "h-9 w-9")} providers={providers} />
+          <div className="min-w-0">
+            <div className={cn("truncate font-semibold", dimensions.height <= 1 ? "text-[12px]" : "text-[13px]")}>{providerAccountSnapshotLabel(account)}</div>
+            {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+          </div>
         </div>
         {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
       </div>
@@ -2434,14 +2746,24 @@ function ProviderAccountSinglePanel({
 
 function ProviderAccountSummaryCard({
   account,
+  bentoSpan,
   dimensions,
+  dragHandle,
+  editing = false,
+  onChangeCardSize,
   onRefresh,
+  providers,
   refreshing = false,
   variant
 }: {
   account: ProviderAccountSnapshot;
+  bentoSpan?: ProviderAccountBentoSpan;
   dimensions: OverviewWidgetDimensions;
+  dragHandle?: ReactNode;
+  editing?: boolean;
+  onChangeCardSize?: (accountKey: string, size: OverviewAccountCardSize) => void;
   onRefresh?: () => void | Promise<void>;
+  providers: GatewayProviderConfig[];
   refreshing?: boolean;
   variant: OverviewAccountVariant;
 }) {
@@ -2450,13 +2772,121 @@ function ProviderAccountSummaryCard({
   const balanceMeter = primaryProviderAccountBalanceMeter(account);
   const meters = providerAccountMetersForDisplayOrdered(account, providerAccountMeterLimit(dimensions, false, variant));
   const showQuotaVisual = providerAccountUsesQuotaVisual(variant) && quotaMeters.length > 0;
+  const primaryMeter = primaryProviderAccountDisplayMeter(account);
+  const secondaryMeters = primaryMeter
+    ? meters.filter((meter) => meter !== primaryMeter).slice(0, providerAccountBentoSecondaryLimit(dimensions))
+    : [];
+  const extraMeterCount = primaryMeter
+    ? Math.max(0, account.meters.length - 1 - secondaryMeters.length)
+    : Math.max(0, account.meters.length - meters.length);
+  const primaryProgress = primaryMeter && isProviderAccountQuotaMeter(primaryMeter) ? providerAccountMeterProgress(primaryMeter) : undefined;
+  const cardBentoSpan = bentoSpan ?? providerAccountBentoSpan(account, dimensions);
+  const compactBento = cardBentoSpan.height === 1;
+  const resizeHandle = editing && onChangeCardSize
+    ? <ProviderAccountCardResizeHandle account={account} currentSize={providerAccountBentoSizeFromSpan(cardBentoSpan)} maxHeight={providerAccountBentoRowCount(dimensions) >= 2 ? 2 : 1} maxWidth={providerAccountBentoColumnCount(dimensions, 2) >= 2 ? 2 : 1} onResize={onChangeCardSize} />
+    : null;
+
+  if (variant === "cards") {
+    if (compactBento) {
+      return (
+        <div className={cn("overview-account-bento-tile overview-nested-surface group/account-card relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden border", providerAccountBentoSpanClass(cardBentoSpan), providerAccountCardPaddingClass(dimensions))} data-account-status={account.status}>
+          <div className="flex min-w-0 items-start justify-between gap-2">
+            <div className="flex min-w-0 items-start gap-2">
+              <ProviderAccountLogo account={account} className="h-7 w-7 rounded-md" providers={providers} />
+              <div className="min-w-0">
+                <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
+              </div>
+            </div>
+            {dragHandle || providerAccountShowRefresh(dimensions) ? (
+              <div className="flex shrink-0 items-center gap-1">
+                {dragHandle}
+                {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
+              </div>
+            ) : null}
+          </div>
+          <div className="mt-2 min-w-0">
+            <div className="truncate text-[10px] font-medium text-muted-foreground">
+              {primaryMeter ? formatProviderAccountMeterTitle(primaryMeter, t) : account.message || account.errors?.[0]?.message || t("Unavailable")}
+            </div>
+            {primaryMeter ? <div className="mt-0.5 truncate text-[18px] font-semibold leading-tight tracking-tight">{formatProviderAccountMeterValue(primaryMeter, t)}</div> : null}
+          </div>
+          {primaryProgress !== undefined && providerAccountShowProgress(dimensions) ? (
+            <div className="overview-account-bento-track mt-auto h-1.5 overflow-hidden rounded-full">
+              <div className="overview-account-bento-fill h-full rounded-full" style={{ width: `${primaryProgress}%` }} />
+            </div>
+          ) : null}
+          {resizeHandle}
+        </div>
+      );
+    }
+
+    return (
+      <div className={cn("overview-account-bento-tile overview-nested-surface group/account-card relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden border", providerAccountBentoSpanClass(cardBentoSpan), providerAccountCardPaddingClass(dimensions))} data-account-status={account.status}>
+        <div className="flex min-w-0 shrink-0 items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-2">
+            <ProviderAccountLogo account={account} className="h-8 w-8 rounded-md" providers={providers} />
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
+              {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+            </div>
+          </div>
+          {dragHandle || providerAccountShowRefresh(dimensions) ? (
+            <div className="flex shrink-0 items-center gap-1">
+              {dragHandle}
+              {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
+            </div>
+          ) : null}
+        </div>
+
+        {primaryMeter ? (
+          <>
+            <div className="mt-3 min-w-0">
+              <div className="flex min-w-0 items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate text-[11px] font-medium text-muted-foreground">{formatProviderAccountMeterTitle(primaryMeter, t)}</div>
+                  <div className={cn("truncate font-semibold tracking-tight", dimensions.height >= 3 ? "text-[22px]" : "text-[20px]")}>{formatProviderAccountMeterValue(primaryMeter, t)}</div>
+                </div>
+                {primaryProgress !== undefined && primaryMeter.unit.trim() !== "%" ? (
+                  <div className="overview-account-bento-badge shrink-0">{primaryProgress}%</div>
+                ) : null}
+              </div>
+              {primaryProgress !== undefined && providerAccountShowProgress(dimensions) ? (
+                <div className="overview-account-bento-track mt-2 h-2 overflow-hidden rounded-full">
+                  <div className="overview-account-bento-fill h-full rounded-full" style={{ width: `${primaryProgress}%` }} />
+                </div>
+              ) : null}
+            </div>
+
+            {secondaryMeters.length > 0 || (providerAccountShowExtraCount(dimensions) && extraMeterCount > 0) ? (
+              <div className="mt-auto min-h-0 space-y-1.5 border-t border-border/45 pt-2">
+                {secondaryMeters.map((meter) => (
+                  <ProviderAccountMeterLine account={account} compact dimensions={dimensions} key={meter.id} meter={meter} onRefresh={onRefresh} />
+                ))}
+                {providerAccountShowExtraCount(dimensions) && extraMeterCount > 0 ? (
+                  <div className="truncate text-[10px] text-muted-foreground">+{extraMeterCount}</div>
+                ) : null}
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div className="mt-3 flex min-h-0 flex-1 items-center overflow-hidden text-[12px] text-muted-foreground">
+            <span className="min-w-0 truncate">{account.message || account.errors?.[0]?.message || t("Unavailable")}</span>
+          </div>
+        )}
+        {resizeHandle}
+      </div>
+    );
+  }
 
   return (
-    <div className={cn("overview-nested-surface min-h-0 min-w-0 overflow-hidden border", providerAccountCardPaddingClass(dimensions))}>
+    <div className={cn("overview-nested-surface flex h-full min-w-0 flex-col overflow-hidden border", providerAccountCardPaddingClass(dimensions))}>
       <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate text-[13px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
-          {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+        <div className="flex min-w-0 items-start gap-2">
+          <ProviderAccountLogo account={account} className="h-8 w-8 rounded-md" providers={providers} />
+          <div className="min-w-0">
+            <div className="truncate text-[13px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
+            {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
+          </div>
         </div>
         {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
       </div>
@@ -2469,7 +2899,7 @@ function ProviderAccountSummaryCard({
           <ProviderAccountBalanceMetric dimensions={dimensions} meter={balanceMeter} compact />
         </div>
       ) : meters.length > 0 ? (
-        <div className={cn("mt-2 min-h-0 overflow-hidden", providerAccountStackClass(dimensions))}>
+        <div className={cn("mt-2 min-h-0", providerAccountStackClass(dimensions))}>
           {meters.map((meter) => (
             <ProviderAccountMeterLine account={account} dimensions={dimensions} key={meter.id} meter={meter} onRefresh={onRefresh} />
           ))}
@@ -2482,6 +2912,291 @@ function ProviderAccountSummaryCard({
       )}
     </div>
   );
+}
+
+function ProviderAccountCardResizeHandle({
+  account,
+  currentSize,
+  maxHeight,
+  maxWidth,
+  onResize
+}: {
+  account: ProviderAccountSnapshot;
+  currentSize: OverviewAccountCardSize;
+  maxHeight: 1 | 2;
+  maxWidth: 1 | 2;
+  onResize: (accountKey: string, size: OverviewAccountCardSize) => void;
+}) {
+  const t = useAppText();
+  const size = overviewAccountCardSizeDimensions(currentSize);
+
+  function startResize(handle: OverviewAccountCardResizeHandle, event: ReactPointerEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const accountKey = providerAccountSnapshotKey(account);
+    const startSize = size;
+    const startY = event.clientY;
+    const startX = event.clientX;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    let activeSize = currentSize;
+    document.body.style.cursor = providerAccountCardResizeCursor(handle);
+    document.body.style.userSelect = "none";
+
+    const update = (pointerEvent: PointerEvent) => {
+      const nextWidth = providerAccountNextResizeDimension(
+        startSize.width,
+        maxWidth,
+        providerAccountCardResizeWidthDelta(handle, pointerEvent.clientX - startX)
+      );
+      const nextHeight = providerAccountNextResizeDimension(
+        startSize.height,
+        maxHeight,
+        providerAccountCardResizeHeightDelta(handle, pointerEvent.clientY - startY)
+      );
+      const nextSize = overviewAccountCardSize(nextWidth, nextHeight);
+      if (nextSize === activeSize) {
+        return;
+      }
+      activeSize = nextSize;
+      onResize(accountKey, nextSize);
+    };
+    const stop = () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("pointermove", update);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+
+    window.addEventListener("pointermove", update);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  }
+
+  return (
+    <>
+      {overviewAccountCardResizeHandles.map((handle) => (
+        <button
+          aria-label={t("Resize account card")}
+          className={providerAccountCardResizeHandleClass(handle)}
+          data-account-card-resize-handle={handle}
+          key={handle}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onPointerDown={(event) => startResize(handle, event)}
+          title={t("Resize account card")}
+          type="button"
+        >
+          {providerAccountCardResizeHandleIcon(handle)}
+        </button>
+      ))}
+    </>
+  );
+}
+
+type OverviewAccountCardResizeHandle = "bottom" | "bottom-left" | "bottom-right" | "left" | "right" | "top" | "top-left" | "top-right";
+
+const overviewAccountCardResizeHandles: OverviewAccountCardResizeHandle[] = [
+  "top",
+  "right",
+  "bottom",
+  "left",
+  "top-left",
+  "top-right",
+  "bottom-right",
+  "bottom-left"
+];
+
+function overviewAccountCardSizeDimensions(size: OverviewAccountCardSize): ProviderAccountBentoSpan {
+  const [widthText, heightText] = size.split(":");
+  return {
+    height: heightText === "2" ? 2 : 1,
+    width: widthText === "2" ? 2 : 1
+  };
+}
+
+function overviewAccountCardSize(width: 1 | 2, height: 1 | 2): OverviewAccountCardSize {
+  return `${width}:${height}` as OverviewAccountCardSize;
+}
+
+function providerAccountNextResizeDimension(start: 1 | 2, max: 1 | 2, delta: number): 1 | 2 {
+  if (max === 1) {
+    return 1;
+  }
+  if (delta >= 18) {
+    return 2;
+  }
+  if (delta <= -18) {
+    return 1;
+  }
+  return start;
+}
+
+function providerAccountCardResizeWidthDelta(handle: OverviewAccountCardResizeHandle, deltaX: number): number {
+  if (handle.includes("right")) {
+    return deltaX;
+  }
+  if (handle.includes("left")) {
+    return -deltaX;
+  }
+  return 0;
+}
+
+function providerAccountCardResizeHeightDelta(handle: OverviewAccountCardResizeHandle, deltaY: number): number {
+  if (handle.includes("bottom")) {
+    return deltaY;
+  }
+  if (handle.includes("top")) {
+    return -deltaY;
+  }
+  return 0;
+}
+
+function providerAccountCardResizeCursor(handle: OverviewAccountCardResizeHandle): string {
+  if (handle === "left" || handle === "right") {
+    return "ew-resize";
+  }
+  if (handle === "top" || handle === "bottom") {
+    return "ns-resize";
+  }
+  if (handle === "top-left" || handle === "bottom-right") {
+    return "nwse-resize";
+  }
+  return "nesw-resize";
+}
+
+function providerAccountCardResizeHandleClass(handle: OverviewAccountCardResizeHandle): string {
+  const base = "group/account-resize absolute z-20 touch-none border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring/20";
+  if (handle === "top") {
+    return cn(base, "left-10 right-10 top-0 h-4 cursor-ns-resize");
+  }
+  if (handle === "bottom") {
+    return cn(base, "bottom-0 left-10 right-10 h-4 cursor-ns-resize");
+  }
+  if (handle === "left") {
+    return cn(base, "bottom-10 left-0 top-10 w-4 cursor-ew-resize");
+  }
+  if (handle === "right") {
+    return cn(base, "bottom-10 right-0 top-10 w-4 cursor-ew-resize");
+  }
+  const cornerClass = "h-8 w-8";
+  if (handle === "top-left") {
+    return cn(base, cornerClass, "left-0 top-0 cursor-nwse-resize");
+  }
+  if (handle === "top-right") {
+    return cn(base, cornerClass, "right-0 top-0 cursor-nesw-resize");
+  }
+  if (handle === "bottom-left") {
+    return cn(base, cornerClass, "bottom-0 left-0 cursor-nesw-resize");
+  }
+  return cn(base, cornerClass, "bottom-0 right-0 cursor-nwse-resize");
+}
+
+function providerAccountCardResizeHandleIcon(handle: OverviewAccountCardResizeHandle): ReactNode {
+  const markerClass = "pointer-events-none absolute rounded-full bg-muted-foreground/35 opacity-0 transition-[background-color,opacity] group-hover/account-card:opacity-100 group-hover/account-resize:bg-primary/55 group-focus-visible/account-resize:opacity-100 group-focus-visible/account-resize:bg-primary/55";
+  if (handle === "top" || handle === "bottom" || handle === "left" || handle === "right") {
+    return (
+      <span
+        aria-hidden="true"
+        className={cn(
+          markerClass,
+          (handle === "top" || handle === "bottom")
+            ? "left-1/2 h-0.5 w-12 -translate-x-1/2"
+            : "top-1/2 h-12 w-0.5 -translate-y-1/2",
+          handle === "top" && "top-1.5",
+          handle === "bottom" && "bottom-1.5",
+          handle === "left" && "left-1.5",
+          handle === "right" && "right-1.5"
+        )}
+      />
+    );
+  }
+  const cornerLineClass = "absolute rounded-full bg-muted-foreground/35 transition-colors group-hover/account-resize:bg-primary/55 group-focus-visible/account-resize:bg-primary/55";
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "pointer-events-none absolute h-3.5 w-3.5 opacity-0 transition-opacity group-hover/account-card:opacity-100 group-focus-visible/account-resize:opacity-100",
+        handle === "top-left" && "left-2 top-2",
+        handle === "top-right" && "right-2 top-2",
+        handle === "bottom-left" && "bottom-2 left-2",
+        handle === "bottom-right" && "bottom-2 right-2"
+      )}
+    >
+      <span
+        className={cn(
+          cornerLineClass,
+          "h-0.5 w-3.5",
+          handle.includes("top") ? "top-0" : "bottom-0",
+          handle.includes("left") ? "left-0" : "right-0"
+        )}
+      />
+      <span
+        className={cn(
+          cornerLineClass,
+          "h-3.5 w-0.5",
+          handle.includes("top") ? "top-0" : "bottom-0",
+          handle.includes("left") ? "left-0" : "right-0"
+        )}
+      />
+    </span>
+  );
+}
+
+function ProviderAccountBentoOverflowTile({ count }: { count: number }) {
+  const t = useAppText();
+  return (
+    <div className="overview-account-bento-more overview-account-bento-tile overview-nested-surface row-span-1 flex min-h-0 min-w-0 flex-col justify-center overflow-hidden border p-3 text-center" data-account-status="unknown">
+      <div className="truncate text-[22px] font-semibold tracking-tight">+{count}</div>
+      <div className="truncate text-[11px] font-medium text-muted-foreground">{t("More")}</div>
+    </div>
+  );
+}
+
+function ProviderAccountLogo({
+  account,
+  className,
+  providers
+}: {
+  account: ProviderAccountSnapshot;
+  className?: string;
+  providers: GatewayProviderConfig[];
+}) {
+  const iconUrl = providerAccountIconUrl(account, providers);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [iconUrl]);
+  const fallbackLabel = account.provider.trim().slice(0, 1).toUpperCase();
+
+  if (iconUrl && !failed) {
+    return (
+      <span className={cn("flex shrink-0 items-center justify-center overflow-hidden border border-border bg-background p-0.5", className)}>
+        <img alt="" className="h-full w-full object-contain" draggable={false} src={iconUrl} onError={() => setFailed(true)} />
+      </span>
+    );
+  }
+
+  return (
+    <span className={cn("flex shrink-0 items-center justify-center border border-border bg-muted text-[10px] font-semibold text-muted-foreground", className)}>
+      {fallbackLabel || <WalletCards className="h-3.5 w-3.5" />}
+    </span>
+  );
+}
+
+function providerAccountIconUrl(account: ProviderAccountSnapshot, providers: GatewayProviderConfig[]): string {
+  const providerName = account.provider.trim().toLowerCase();
+  if (!providerName) {
+    return "";
+  }
+  const provider = providers.find((item) => (
+    item.name.trim().toLowerCase() === providerName
+      || item.id?.trim().toLowerCase() === providerName
+      || item.provider?.trim().toLowerCase() === providerName
+  ));
+  return provider ? providerDisplayIcon(provider) : "";
 }
 
 function ProviderAccountRefreshButton({
@@ -2532,12 +3247,14 @@ function formatProviderAccountUpdatedAt(value: string): string {
 
 function ProviderAccountMeterLine({
   account,
+  compact = false,
   dimensions,
   meter,
   onRefresh,
   single = false
 }: {
   account: ProviderAccountSnapshot;
+  compact?: boolean;
   dimensions: OverviewWidgetDimensions;
   meter: ReturnType<typeof providerAccountMetersForDisplay>[number];
   onRefresh?: () => void | Promise<void>;
@@ -2550,8 +3267,8 @@ function ProviderAccountMeterLine({
   const [resetDialogDetail, setResetDialogDetail] = useState<NonNullable<ProviderAccountMeter["details"]>[number]>();
   const title = formatProviderAccountMeterTitle(meter, t);
   const detailsId = `provider-account-meter-${providerAccountSnapshotKey(account)}-${meter.id}-details`.replace(/[^a-zA-Z0-9_-]/g, "-");
-  const titleClassName = cn("min-w-0 truncate font-medium text-muted-foreground", single && dimensions.height >= 2 ? "text-[13px]" : "text-[12px]");
-  const valueClassName = cn("shrink-0 font-semibold tracking-tight", single && dimensions.height >= 2 ? "text-[18px]" : "text-[15px]");
+  const titleClassName = cn("min-w-0 truncate font-medium text-muted-foreground", compact ? "text-[10px]" : single && dimensions.height >= 2 ? "text-[13px]" : "text-[12px]");
+  const valueClassName = cn("shrink-0 font-semibold tracking-tight", compact ? "text-[12px]" : single && dimensions.height >= 2 ? "text-[18px]" : "text-[15px]");
   const meterSummary = (
     <>
       <div className="flex min-w-0 items-center gap-1.5">
@@ -2562,7 +3279,7 @@ function ProviderAccountMeterLine({
         ) : null}
         <div className={titleClassName}>{title}</div>
       </div>
-      <div className={valueClassName}>{formatProviderAccountMeterValue(meter)}</div>
+      <div className={valueClassName}>{formatProviderAccountMeterValue(meter, t)}</div>
     </>
   );
 
@@ -2573,7 +3290,7 @@ function ProviderAccountMeterLine({
           aria-controls={detailsId}
           aria-expanded={detailsOpen}
           aria-label={`${t(detailsOpen ? "Collapse" : "Expand")} ${title}`}
-          className="group -mx-1 flex w-[calc(100%+8px)] min-w-0 items-end justify-between gap-3 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+          className={cn("group -mx-1 flex w-[calc(100%+8px)] min-w-0 items-end justify-between gap-3 rounded-md px-1 text-left transition-colors hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25", compact ? "py-0" : "py-0.5")}
           onClick={() => setDetailsOpen((current) => !current)}
           type="button"
         >
@@ -2585,7 +3302,7 @@ function ProviderAccountMeterLine({
         </div>
       )}
       {progress !== undefined && providerAccountShowProgress(dimensions) ? (
-        <div className={cn("mt-1.5 overflow-hidden rounded-full", single ? "bg-muted" : "bg-background", dimensions.height <= 1 ? "h-1.5" : "h-2")}>
+        <div className={cn("mt-1.5 overflow-hidden rounded-full", single ? "bg-muted" : "bg-background", compact || dimensions.height <= 1 ? "h-1.5" : "h-2")}>
           <div className={cn("h-full rounded-full", providerAccountProgressClass(account.status))} style={{ width: `${progress}%` }} />
         </div>
       ) : null}
@@ -3204,8 +3921,33 @@ function primaryProviderAccountDisplayMeter(account: ProviderAccountSnapshot): P
   return providerAccountQuotaMeters(account)[0] ?? primaryProviderAccountBalanceMeter(account) ?? primaryProviderAccountMeter(account);
 }
 
-function providerAccountSelectionMatches(account: ProviderAccountSnapshot, value: string): boolean {
-  return providerAccountSnapshotKey(account) === value || account.provider === value;
+function providerAccountSelectionMatches(account: ProviderAccountSnapshot, values: ReadonlySet<string>): boolean {
+  return values.has(providerAccountSnapshotKey(account)) || values.has(account.provider);
+}
+
+function providerAccountOrderAccounts(accounts: ProviderAccountSnapshot[], order: string[] | undefined): ProviderAccountSnapshot[] {
+  const accountOrder = uniqueOverviewStrings(order ?? []);
+  if (accountOrder.length === 0) {
+    return accounts;
+  }
+  const accountsByKey = new Map(accounts.map((account) => [providerAccountSnapshotKey(account), account]));
+  const used = new Set<string>();
+  const orderedAccounts: ProviderAccountSnapshot[] = [];
+  for (const accountKey of accountOrder) {
+    const account = accountsByKey.get(accountKey);
+    if (!account || used.has(accountKey)) {
+      continue;
+    }
+    used.add(accountKey);
+    orderedAccounts.push(account);
+  }
+  for (const account of accounts) {
+    const accountKey = providerAccountSnapshotKey(account);
+    if (!used.has(accountKey)) {
+      orderedAccounts.push(account);
+    }
+  }
+  return orderedAccounts;
 }
 
 function primaryProviderAccountBalanceMeter(account: ProviderAccountSnapshot): ProviderAccountMeter | undefined {
@@ -3341,6 +4083,134 @@ function providerAccountCardPaddingClass(dimensions: OverviewWidgetDimensions): 
   return dimensions.height <= 1 || dimensions.width <= 1 ? "p-2" : "p-3";
 }
 
+function providerAccountBentoGridRowClass(): string {
+  return "auto-rows-fr";
+}
+
+function providerAccountBentoSecondaryLimit(dimensions: OverviewWidgetDimensions): number {
+  if (dimensions.height <= 1 || dimensions.width <= 1) return 0;
+  if (dimensions.height === 2) return 1;
+  return 2;
+}
+
+type ProviderAccountBentoSpan = {
+  height: 1 | 2;
+  width: 1 | 2;
+};
+
+function providerAccountBentoLayout(accounts: ProviderAccountSnapshot[], dimensions: OverviewWidgetDimensions, cardSizes: Record<string, OverviewAccountCardSize> | undefined): {
+  hiddenCount: number;
+  items: Array<{ account: ProviderAccountSnapshot; span: ProviderAccountBentoSpan }>;
+} {
+  const maxUnits = providerAccountBentoMaxUnits(dimensions, accounts.length);
+  const items = accounts.map((account) => ({
+    account,
+    manual: providerAccountConfiguredCardSize(account, cardSizes) !== undefined,
+    span: providerAccountBentoSpan(account, dimensions, cardSizes)
+  }));
+  let usedUnits = providerAccountBentoUsedUnits(items);
+
+  for (let index = items.length - 1; index >= 0 && usedUnits > maxUnits; index -= 1) {
+    if (items[index].span.height === 2 && !items[index].manual) {
+      usedUnits -= items[index].span.width;
+      items[index] = { ...items[index], span: { ...items[index].span, height: 1 } };
+    }
+  }
+
+  if (usedUnits <= maxUnits) {
+    return { hiddenCount: 0, items };
+  }
+
+  const visibleBudget = Math.max(0, maxUnits - 1);
+  const visibleItems: Array<{ account: ProviderAccountSnapshot; span: ProviderAccountBentoSpan }> = [];
+  let visibleUnits = 0;
+
+  for (const item of items) {
+    const itemUnits = providerAccountBentoSpanUnits(item.span);
+    if (visibleUnits + itemUnits > visibleBudget) {
+      break;
+    }
+    visibleItems.push(item);
+    visibleUnits += itemUnits;
+  }
+
+  return {
+    hiddenCount: accounts.length - visibleItems.length,
+    items: visibleItems
+  };
+}
+
+function providerAccountBentoUsedUnits(items: Array<{ span: ProviderAccountBentoSpan }>): number {
+  return items.reduce((total, item) => total + providerAccountBentoSpanUnits(item.span), 0);
+}
+
+function providerAccountBentoSpanUnits(span: ProviderAccountBentoSpan): number {
+  return span.width * span.height;
+}
+
+function providerAccountBentoMaxUnits(dimensions: OverviewWidgetDimensions, itemCount: number): number {
+  return Math.max(1, providerAccountBentoColumnCount(dimensions, itemCount) * providerAccountBentoRowCount(dimensions));
+}
+
+function providerAccountBentoColumnCount(dimensions: OverviewWidgetDimensions, itemCount: number): 1 | 2 | 3 {
+  if (dimensions.width >= 3) return itemCount <= 2 ? 2 : 3;
+  if (dimensions.width >= 2) return 2;
+  return 1;
+}
+
+function providerAccountBentoRowCount(dimensions: OverviewWidgetDimensions): number {
+  if (dimensions.height <= 1) return 1;
+  if (dimensions.height === 2) return 3;
+  if (dimensions.height === 3) return 4;
+  return 5;
+}
+
+function providerAccountBentoGridClass(dimensions: OverviewWidgetDimensions, itemCount: number): string {
+  const columns = providerAccountBentoColumnCount(dimensions, itemCount);
+  if (columns === 3) return "grid-cols-3";
+  if (columns === 2) return "grid-cols-2";
+  return "grid-cols-1";
+}
+
+function providerAccountBentoSpan(account: ProviderAccountSnapshot, dimensions: OverviewWidgetDimensions, cardSizes?: Record<string, OverviewAccountCardSize>): ProviderAccountBentoSpan {
+  const configuredSize = providerAccountConfiguredCardSize(account, cardSizes);
+  if (configuredSize) {
+    return providerAccountBentoSpanFromSize(configuredSize, dimensions);
+  }
+  if (dimensions.height <= 1) return { height: 1, width: 1 };
+  if (dimensions.width <= 1) return { height: 1, width: 1 };
+  if (providerAccountQuotaMeters(account).length > 0) return { height: 2, width: 1 };
+  if (dimensions.height >= 3 && account.meters.length > 2) return { height: 2, width: 1 };
+  return { height: 1, width: 1 };
+}
+
+function providerAccountConfiguredCardSize(account: ProviderAccountSnapshot, cardSizes?: Record<string, OverviewAccountCardSize>): OverviewAccountCardSize | undefined {
+  return cardSizes?.[providerAccountSnapshotKey(account)] ?? cardSizes?.[account.provider];
+}
+
+function providerAccountBentoSpanFromSize(size: OverviewAccountCardSize, dimensions: OverviewWidgetDimensions): ProviderAccountBentoSpan {
+  const [widthText, heightText] = size.split(":");
+  return {
+    height: providerAccountClampBentoSpanDimension(heightText === "2" ? 2 : 1, providerAccountBentoRowCount(dimensions) >= 2 ? 2 : 1),
+    width: providerAccountClampBentoSpanDimension(widthText === "2" ? 2 : 1, providerAccountBentoColumnCount(dimensions, 2) >= 2 ? 2 : 1)
+  };
+}
+
+function providerAccountBentoSizeFromSpan(span: ProviderAccountBentoSpan): OverviewAccountCardSize {
+  return `${span.width}:${span.height}` as OverviewAccountCardSize;
+}
+
+function providerAccountClampBentoSpanDimension(value: 1 | 2, max: 1 | 2): 1 | 2 {
+  return max === 1 ? 1 : value;
+}
+
+function providerAccountBentoSpanClass(span: ProviderAccountBentoSpan): string {
+  return cn(
+    span.width === 2 ? "col-span-2" : "col-span-1",
+    span.height === 2 ? "row-span-2" : "row-span-1"
+  );
+}
+
 function providerAccountGapClass(dimensions: OverviewWidgetDimensions): string {
   return dimensions.height <= 1 || dimensions.width <= 1 ? "gap-2" : "gap-3";
 }
@@ -3470,194 +4340,6 @@ export function AgentAnalysisView({
   );
 }
 
-function AgentEndpointsCard({ endpoints }: { endpoints: AgentAnalysisSnapshot["endpoints"] }) {
-  const t = useAppText();
-
-  return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>{t("Endpoint Health")}</CardTitle>
-        <Badge variant="outline">{endpoints.length}</Badge>
-      </CardHeader>
-      <CardContent>
-        {endpoints.length === 0 ? (
-          <AnalysisEmptyState label={t("No endpoint activity")} />
-        ) : (
-          <div className={cn("max-h-[380px]", agentListFrameClassName)}>
-            <table className={cn("min-w-[980px]", agentListTableClassName)}>
-              <thead className={agentListHeadClassName}>
-                <tr>
-                  <th className="px-3 py-2 font-semibold">{t("Path")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Success rate")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("P95")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Max concurrent")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Status codes")}</th>
-                </tr>
-              </thead>
-              <tbody className={agentListBodyClassName}>
-                {endpoints.map((endpoint) => (
-                  <tr className={agentListRowClassName()} key={endpoint.key}>
-                    <td className="max-w-[260px] px-3 py-2" title={`${endpoint.method} ${endpoint.path}`}>
-                      <span className="font-mono font-semibold">{endpoint.method}</span> {endpoint.path}
-                    </td>
-                    <td className="px-3 py-2">{t(agentKindLabel(endpoint.agent))}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(endpoint.requestCount)}</td>
-                    <td className="px-3 py-2 text-right">{formatPercent(endpoint.successRate)}</td>
-                    <td className="px-3 py-2 text-right">{formatDuration(endpoint.p95DurationMs)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(endpoint.maxConcurrentRequests)}</td>
-                    <td className="px-3 py-2 text-right">{formatPercent(endpoint.cacheRatio)}</td>
-                    <td className="px-3 py-2">{formatStatusCodeCounts(endpoint.statusCodes)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function AgentClientsCard({ clients }: { clients: AgentAnalysisSnapshot["clients"] }) {
-  const t = useAppText();
-
-  return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>{t("Client Signals")}</CardTitle>
-        <Badge variant="outline">{clients.length}</Badge>
-      </CardHeader>
-      <CardContent>
-        {clients.length === 0 ? (
-          <AnalysisEmptyState label={t("No client signals")} />
-        ) : (
-          <div className={cn("max-h-[380px]", agentListFrameClassName)}>
-            <table className={cn("min-w-[720px]", agentListTableClassName)}>
-              <thead className={agentListHeadClassName}>
-                <tr>
-                  <th className="px-3 py-2 font-semibold">{t("Client")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Sessions")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Success rate")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("P95")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("UA")}</th>
-                </tr>
-              </thead>
-              <tbody className={agentListBodyClassName}>
-                {clients.map((client) => (
-                  <tr className={agentListRowClassName()} key={client.key}>
-                    <td className="max-w-[160px] px-3 py-2 font-semibold" title={client.label}>{client.label}</td>
-                    <td className="px-3 py-2">{t(agentKindLabel(client.agent))}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(client.sessionCount)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(client.requestCount)}</td>
-                    <td className="px-3 py-2 text-right">{formatPercent(client.successRate)}</td>
-                    <td className="px-3 py-2 text-right">{formatDuration(client.p95DurationMs)}</td>
-                    <td className="max-w-[260px] px-3 py-2 font-mono" title={client.userAgent}>{compactUserAgent(client.userAgent)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function AgentRoutesCard({ routes }: { routes: AgentAnalysisSnapshot["routes"] }) {
-  const t = useAppText();
-
-  return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>{t("Route Observability")}</CardTitle>
-        <Badge variant="outline">{routes.length}</Badge>
-      </CardHeader>
-      <CardContent>
-        {routes.length === 0 ? (
-          <AnalysisEmptyState label={t("No route activity")} />
-        ) : (
-          <div className={cn("max-h-[360px]", agentListFrameClassName)}>
-            <table className={cn("min-w-[700px]", agentListTableClassName)}>
-              <thead className={agentListHeadClassName}>
-                <tr>
-                  <th className="px-3 py-2 font-semibold">{t("Route")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Model")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Success rate")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("P95")}</th>
-                </tr>
-              </thead>
-              <tbody className={agentListBodyClassName}>
-                {routes.map((route) => (
-                  <tr className={agentListRowClassName()} key={route.key}>
-                    <td className="max-w-[180px] px-3 py-2 font-semibold" title={formatRouteReason(route.routeReason)}>{formatRouteReason(route.routeReason)}</td>
-                    <td className="px-3 py-2">{t(agentKindLabel(route.agent))}</td>
-                    <td className="max-w-[220px] px-3 py-2" title={`${route.provider}/${route.model}`}>{route.provider}/{route.model}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(route.requestCount)}</td>
-                    <td className="px-3 py-2 text-right">{formatPercent(route.successRate)}</td>
-                    <td className="px-3 py-2 text-right">{formatDuration(route.p95DurationMs)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function AgentErrorsCard({ errors }: { errors: AgentAnalysisSnapshot["errors"] }) {
-  const t = useAppText();
-
-  return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>{t("Recent Errors")}</CardTitle>
-        <Badge variant="outline">{errors.length}</Badge>
-      </CardHeader>
-      <CardContent>
-        {errors.length === 0 ? (
-          <AnalysisEmptyState label={t("No errors")} />
-        ) : (
-          <div className={cn("max-h-[360px]", agentListFrameClassName)}>
-            <table className={cn("min-w-[900px]", agentListTableClassName)}>
-              <thead className={agentListHeadClassName}>
-                <tr>
-                  <th className="px-3 py-2 font-semibold">{t("Time")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Status")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Path")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Route")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
-                </tr>
-              </thead>
-              <tbody className={agentListBodyClassName}>
-                {errors.map((error) => (
-                  <tr className={agentListRowClassName({ danger: true })} key={error.id}>
-                    <td className="px-3 py-2 font-mono">{formatLogDateTime(error.createdAt)}</td>
-                    <td className="px-3 py-2 font-semibold" title={error.error}>{error.statusCode || "-"}</td>
-                    <td className="max-w-[260px] px-3 py-2" title={`${error.method} ${error.path}`}>{error.method} {error.path}</td>
-                    <td className="px-3 py-2">{t(agentKindLabel(error.agent))}</td>
-                    <td className="max-w-[140px] px-3 py-2" title={formatRouteReason(error.routeReason)}>{formatRouteReason(error.routeReason)}</td>
-                    <td className="px-3 py-2 text-right">{formatDuration(error.durationMs)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 function AgentSessionDetailCard({
   clearSession,
   detail,
@@ -3704,7 +4386,7 @@ function AgentSessionDetailCard({
                 <AnalysisEmptyState label={t("No session requests")} />
               ) : (
                 <div className={cn("max-h-[260px]", agentListFrameClassName)}>
-                  <table className={cn("min-w-[980px]", agentListTableClassName)}>
+                  <table className={cn("min-w-[1060px]", agentListTableClassName)}>
                     <thead className={agentListHeadClassName}>
                       <tr>
                         <th className="px-3 py-2 font-semibold">{t("Time")}</th>
@@ -3712,7 +4394,8 @@ function AgentSessionDetailCard({
                         <th className="px-3 py-2 font-semibold">{t("Route")}</th>
                         <th className="px-3 py-2 font-semibold">{t("Model")}</th>
                         <th className="px-3 py-2 text-right font-semibold">{t("Tools")}</th>
-                        <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
+                        <th className="px-3 py-2 text-right font-semibold">{t("Token")}</th>
+                        <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th>
                         <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
                       </tr>
                     </thead>
@@ -3725,6 +4408,7 @@ function AgentSessionDetailCard({
                           <td className="max-w-[300px] px-3 py-2" title={`${request.provider}/${request.model}`}>{request.provider}/{request.model}</td>
                           <td className="px-3 py-2 text-right" title={request.tools.join(", ")}>{formatCompactNumber(request.toolCallCount)}</td>
                           <td className="px-3 py-2 text-right">{formatCompactNumber(request.totalTokens)}</td>
+                          <td className="px-3 py-2 text-right">{formatUsdCost(request.costUsd ?? 0)}</td>
                           <td className="px-3 py-2 text-right">{formatDuration(request.durationMs)}</td>
                         </tr>
                       ))}
@@ -3744,19 +4428,22 @@ function AgentSessionDetailCard({
 const agentListSurfaceClassName = "rounded-md border border-border/70 bg-card/70 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
 const agentListFrameClassName = cn("overflow-auto", agentListSurfaceClassName);
 const agentListTableClassName = "w-full border-collapse text-left text-[11px]";
-const agentListHeadClassName = "sticky top-0 z-10 border-b border-border/70 bg-muted/80 text-muted-foreground backdrop-blur";
+const agentListHeadClassName = "sticky top-0 z-10 border-b border-border/70 bg-muted/80 text-muted-foreground backdrop-blur [&_th]:min-w-[64px] [&_th]:whitespace-nowrap";
 const agentListBodyClassName = "divide-y divide-border/50";
 
 function agentListRowClassName({
   danger,
-  selected
+  selected,
+  warning
 }: {
   danger?: boolean;
   selected?: boolean;
+  warning?: boolean;
 } = {}) {
   return cn(
     "bg-card/40 transition-colors hover:bg-muted/30",
     danger && "bg-rose-500/5 hover:bg-rose-500/10",
+    warning && "bg-amber-500/5 hover:bg-amber-500/10",
     selected && "bg-teal-500/10 shadow-[inset_2px_0_0_rgba(20,184,166,0.7)] hover:bg-teal-500/15"
   );
 }
@@ -3785,22 +4472,26 @@ function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
         <AnalysisEmptyState label={t("No trace runs")} />
       ) : (
         <div className={cn("max-h-[420px]", agentListFrameClassName)}>
-          <table className={cn("min-w-[1180px]", agentListTableClassName)}>
+          <table className={cn("min-w-[1260px]", agentListTableClassName)}>
             <thead className={agentListHeadClassName}>
               <tr>
                 <th className="px-3 py-2 font-semibold">{t("Run")}</th>
                 <th className="px-3 py-2 font-semibold">{t("Timeline")}</th>
                 <th className="px-3 py-2 font-semibold">{t("Status")}</th>
                 <th className="px-3 py-2 font-semibold">{t("Target")}</th>
-                <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Token")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Concurrency")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
               </tr>
             </thead>
             <tbody className={agentListBodyClassName}>
               {trace.runs.map((run) => (
-                <tr className={agentListRowClassName({ danger: run.status === "error" })} key={run.id}>
+                <tr className={agentListRowClassName({
+                  danger: run.status === "error",
+                  warning: run.status === "partial"
+                })} key={run.id}>
                   <td className="max-w-[360px] px-3 py-2">
                     <div className="flex min-w-0 items-center gap-2" style={{ paddingLeft: `${Math.min(run.depth, 8) * 16}px` }}>
                       <span className={cn("h-2 w-2 shrink-0 rounded-full", traceRunDotClass(run))} />
@@ -3823,8 +4514,8 @@ function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
                     </div>
                   </td>
                   <td className="px-3 py-2">
-                    <Badge className={cn("border", run.status === "error" ? "border-rose-200 bg-rose-50 text-rose-700" : "border-emerald-200 bg-emerald-50 text-emerald-700")} variant="outline">
-                      {t(run.status === "error" ? "Error" : "Success")}
+                    <Badge className={cn("border", traceRunStatusBadgeClass(run.status))} variant="outline">
+                      {t(traceRunStatusLabel(run.status))}
                     </Badge>
                   </td>
                   <td className="max-w-[260px] px-3 py-2" title={traceRunTarget(run)}>
@@ -3832,6 +4523,7 @@ function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
                   </td>
                   <td className="px-3 py-2 text-right">{run.totalTokens > 0 ? formatCompactNumber(run.totalTokens) : "-"}</td>
                   <td className="px-3 py-2 text-right">{run.cacheReadTokens + run.cacheWriteTokens > 0 ? formatCompactNumber(run.cacheReadTokens + run.cacheWriteTokens) : "-"}</td>
+                  <td className="px-3 py-2 text-right">{run.costUsd !== undefined ? formatUsdCost(run.costUsd) : "-"}</td>
                   <td className="px-3 py-2 text-right">{formatCompactNumber(run.concurrentRequests)}</td>
                   <td className="px-3 py-2 text-right">{formatDuration(run.durationMs)}</td>
                 </tr>
@@ -4187,6 +4879,7 @@ function traceRunBarStyle(run: AgentAnalysisTraceRun, traceDurationMs: number): 
 
 function traceRunDotClass(run: AgentAnalysisTraceRun): string {
   if (run.status === "error") return "bg-rose-500";
+  if (run.status === "partial") return "bg-amber-500";
   if (run.kind === "agent") return "bg-teal-500";
   if (run.kind === "route") return "bg-cyan-500";
   if (run.kind === "subagent") return "bg-amber-500";
@@ -4196,6 +4889,7 @@ function traceRunDotClass(run: AgentAnalysisTraceRun): string {
 
 function traceRunBarClass(run: AgentAnalysisTraceRun): string {
   if (run.status === "error") return "bg-rose-500";
+  if (run.status === "partial") return "bg-amber-500";
   if (run.kind === "agent") return "bg-teal-500";
   if (run.kind === "route") return "bg-cyan-500";
   if (run.kind === "subagent") return "bg-amber-500";
@@ -4203,30 +4897,16 @@ function traceRunBarClass(run: AgentAnalysisTraceRun): string {
   return "bg-blue-500";
 }
 
-function SessionMetricCell({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0 border-b border-r border-border/60 px-3 py-2 last:border-r-0 xl:border-b-0">
-      <div className="truncate text-muted-foreground">{label}</div>
-      <div className="mt-1 truncate font-mono text-[13px] font-semibold text-foreground" title={value}>{value}</div>
-    </div>
-  );
+function traceRunStatusBadgeClass(status: AgentAnalysisTraceRun["status"]): string {
+  if (status === "error") return "border-rose-200 bg-rose-50 text-rose-700";
+  if (status === "partial") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-emerald-200 bg-emerald-50 text-emerald-700";
 }
 
-function SessionInlineList({ title, value }: { title: string; value: string }) {
-  return (
-    <div className="min-w-0 rounded-md border border-border/60 px-3 py-2 text-[11px]">
-      <div className="text-muted-foreground">{title}</div>
-      <div className="mt-1 truncate font-medium" title={value}>{value || "-"}</div>
-    </div>
-  );
-}
-
-function formatToolRows(tools: AgentAnalysisSnapshot["tools"]): string {
-  return tools.slice(0, 5).map((tool) => `${tool.name} (${formatCompactNumber(tool.count)})`).join(", ");
-}
-
-function formatRouteRows(routes: AgentAnalysisSnapshot["routes"]): string {
-  return routes.slice(0, 5).map((route) => `${formatRouteReason(route.routeReason)}: ${formatCompactNumber(route.requestCount)}`).join(", ");
+function traceRunStatusLabel(status: AgentAnalysisTraceRun["status"]): string {
+  if (status === "error") return "Error";
+  if (status === "partial") return "Partial failure";
+  return "Success";
 }
 
 function formatRouteReason(value: string | undefined): string {
@@ -4254,7 +4934,7 @@ function AgentSessionsCard({
         <AnalysisEmptyState label={t("No session activity")} />
       ) : (
         <div className={cn("h-full", agentListFrameClassName)}>
-          <table className={cn("min-w-[1260px]", agentListTableClassName)}>
+          <table className={cn("min-w-[1420px]", agentListTableClassName)}>
             <thead className={agentListHeadClassName}>
               <tr>
                 <th className="px-3 py-2 font-semibold">{t("Session")}</th>
@@ -4267,6 +4947,8 @@ function AgentSessionsCard({
                 <th className="px-3 py-2 text-right font-semibold">{t("Tools")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Subagents")}</th>
                 <th className="px-3 py-2 text-right font-semibold">{t("Errors")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Cache rate")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th>
                 <th className="px-3 py-2 font-semibold">{t("Models")}</th>
                 <th className="px-3 py-2 font-semibold">{t("Providers")}</th>
                 <th className="px-3 py-2 font-semibold">{t("UA")}</th>
@@ -4290,6 +4972,8 @@ function AgentSessionsCard({
                     <td className="px-3 py-2 text-right">{formatCompactNumber(session.toolCallCount)}</td>
                     <td className="px-3 py-2 text-right">{formatCompactNumber(session.subagentCallCount)}</td>
                     <td className="px-3 py-2 text-right">{formatCompactNumber(session.errorCount)}</td>
+                    <td className="px-3 py-2 text-right">{formatPercent(session.cacheRatio)}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{formatUsdCost(session.costUsd)}</td>
                     <td className="max-w-[240px] px-3 py-2" title={session.models.join(", ")}>{session.models.join(", ") || "-"}</td>
                     <td className="max-w-[220px] px-3 py-2" title={session.providers.join(", ")}>{session.providers.join(", ") || "-"}</td>
                     <td className="max-w-[220px] px-3 py-2 font-mono" title={session.userAgent}>{compactUserAgent(session.userAgent)}</td>
@@ -4306,149 +4990,6 @@ function AgentSessionsCard({
         </div>
       )}
     </div>
-  );
-}
-
-function AgentToolsCard({ tools }: { tools: AgentAnalysisSnapshot["tools"] }) {
-  const t = useAppText();
-
-  return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>{t("Tool Usage")}</CardTitle>
-        <Badge variant="outline">{tools.length}</Badge>
-      </CardHeader>
-      <CardContent>
-        {tools.length === 0 ? (
-          <AnalysisEmptyState label={t("No tool calls")} />
-        ) : (
-          <div className={cn("max-h-[380px]", agentListFrameClassName)}>
-            <table className={cn("min-w-[560px]", agentListTableClassName)}>
-              <thead className={agentListHeadClassName}>
-                <tr>
-                  <th className="px-3 py-2 font-semibold">{t("Tool")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Tool calls")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Sessions")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
-                </tr>
-              </thead>
-              <tbody className={agentListBodyClassName}>
-                {tools.map((tool) => (
-                  <tr className={agentListRowClassName()} key={tool.name}>
-                    <td className="max-w-[220px] px-3 py-2 font-semibold" title={tool.name}>{tool.name}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(tool.count)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(tool.requestCount)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(tool.sessions)}</td>
-                    <td className="px-3 py-2">{tool.agents.map(agentKindLabel).map(t).join(", ")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function AgentSubagentsCard({ subagents }: { subagents: AgentAnalysisSnapshot["subagents"] }) {
-  const t = useAppText();
-
-  return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>{t("Subagent Routing")}</CardTitle>
-        <Badge variant="outline">{subagents.length}</Badge>
-      </CardHeader>
-      <CardContent>
-        {subagents.length === 0 ? (
-          <AnalysisEmptyState label={t("No subagent calls")} />
-        ) : (
-          <div className={cn("max-h-[360px]", agentListFrameClassName)}>
-            <table className={cn("min-w-[620px]", agentListTableClassName)}>
-              <thead className={agentListHeadClassName}>
-                <tr>
-                  <th className="px-3 py-2 font-semibold">{t("Session")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Model")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
-                </tr>
-              </thead>
-              <tbody className={agentListBodyClassName}>
-                {subagents.map((subagent) => (
-                  <tr className={agentListRowClassName()} key={`${subagent.agent}:${subagent.sessionId}:${subagent.provider}:${subagent.model}`}>
-                    <td className="max-w-[160px] px-3 py-2 font-mono font-semibold" title={subagent.sessionId}>{compactId(subagent.sessionId)}</td>
-                    <td className="max-w-[240px] px-3 py-2" title={`${subagent.provider}/${subagent.model}`}>{subagent.provider}/{subagent.model}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(subagent.count)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(subagent.totalTokens)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(subagent.cacheReadTokens + subagent.cacheWriteTokens)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function AgentRecentRequestsCard({ requests }: { requests: AgentAnalysisSnapshot["recentRequests"] }) {
-  const t = useAppText();
-
-  return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>{t("Recent Requests")}</CardTitle>
-        <Badge variant="outline">{requests.length}</Badge>
-      </CardHeader>
-      <CardContent>
-        {requests.length === 0 ? (
-          <AnalysisEmptyState label={t("No recent agent requests")} />
-        ) : (
-          <div className={cn("max-h-[360px]", agentListFrameClassName)}>
-            <table className={cn("min-w-[1240px]", agentListTableClassName)}>
-              <thead className={agentListHeadClassName}>
-                <tr>
-                  <th className="px-3 py-2 font-semibold">{t("Time")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Client")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Status")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Session")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Route")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Model")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Tools")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Subagents")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Concurrency")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
-                </tr>
-              </thead>
-              <tbody className={agentListBodyClassName}>
-                {requests.map((request) => (
-                  <tr className={agentListRowClassName()} key={request.id}>
-                    <td className="px-3 py-2 font-mono">{formatLogDateTime(request.createdAt)}</td>
-                    <td className="px-3 py-2">{t(agentKindLabel(request.agent))}</td>
-                    <td className="max-w-[160px] px-3 py-2" title={request.userAgent || request.client}>{request.client}</td>
-                    <td className="px-3 py-2 font-semibold">{request.statusCode || "-"}</td>
-                    <td className="max-w-[150px] px-3 py-2 font-mono font-semibold" title={request.sessionId}>{compactId(request.sessionId)}</td>
-                    <td className="max-w-[130px] px-3 py-2" title={formatRouteReason(request.routeReason)}>{formatRouteReason(request.routeReason)}</td>
-                    <td className="max-w-[240px] px-3 py-2" title={`${request.provider}/${request.model}`}>{request.provider}/{request.model}</td>
-                    <td className="px-3 py-2 text-right" title={request.tools.join(", ")}>{formatCompactNumber(request.toolCallCount)}</td>
-                    <td className="px-3 py-2 text-right">{request.subagentModel ? request.subagentModel : "-"}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(request.cacheReadTokens + request.cacheWriteTokens)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(request.concurrentRequests)}</td>
-                    <td className="px-3 py-2 text-right">{formatDuration(request.durationMs)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
   );
 }
 
@@ -4499,7 +5040,7 @@ function UsageAnalysisCard({
                   {visibleColumns.map((column) => (
                     <th className="px-3 py-2 font-semibold" key={column.key}>{column.label}</th>
                   ))}
-                  <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
+                  <th className="px-3 py-2 text-right font-semibold">{t("Token")}</th>
                   {showCost ? <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th> : null}
                   <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
                   {showTokenBreakdown ? <th className="px-3 py-2 text-right font-semibold">{t("Input")}</th> : null}

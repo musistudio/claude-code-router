@@ -1,4 +1,4 @@
-import { BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME } from "@ccr/core/contracts/app";
+import { BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, ProviderModelMetadata, ProviderReasoningLevel, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
 import {
   findModelCatalogEntry,
@@ -6,7 +6,7 @@ import {
   readCatalogCapability,
   type ModelCatalogEntry
 } from "@ccr/core/gateway/model-catalog";
-import { codexDefaultBaseUrl, readCodexLocalModelCatalog } from "@ccr/core/agents/local-providers/codex";
+import { codexDefaultBaseUrl, codexImportedModelContextWindow, readCodexLocalModelCatalog } from "@ccr/core/agents/local-providers/codex";
 import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared";
 import { normalizeProviderBaseUrl } from "@ccr/core/providers/url";
 import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
@@ -25,20 +25,27 @@ export type CodexModelCatalogItem = {
   availability_nux: null;
   base_instructions: string;
   context_window: number;
+  defaultReasoningEffort: string | null;
   default_reasoning_level: string | null;
+  default_reasoning_effort: string | null;
   default_reasoning_summary: string;
   description: string;
+  displayName: string;
   display_name: string;
   effective_context_window_percent: number;
   experimental_supported_tools: unknown[];
+  id: string;
   input_modalities: string[];
   max_context_window: number;
+  model: string;
   priority: number;
   service_tiers: unknown[];
   shell_type: string;
   slug: string;
   support_verbosity: boolean;
   supported_in_api: boolean;
+  supportedReasoningEfforts: Array<{ description: string; reasoningEffort: string; reasoning_effort: string }>;
+  supported_reasoning_efforts: string[];
   supported_reasoning_levels: Array<{ description: string; effort: string }>;
   supports_image_detail_original: boolean;
   supports_parallel_tool_calls: boolean;
@@ -63,7 +70,7 @@ export function buildCodexModelCatalogIds(config?: Partial<Pick<AppConfig, "Prov
   const baseEntries: Array<{ modelName: string; providerName: string }> = [];
   for (const provider of config?.Providers ?? []) {
     const providerName = provider.name?.trim();
-    if (!providerName || !Array.isArray(provider.models)) {
+    if (!isGatewayProviderEnabled(provider) || !providerName || !Array.isArray(provider.models)) {
       continue;
     }
     for (const rawModel of provider.models) {
@@ -126,20 +133,27 @@ function codexModelCatalogItem(
     availability_nux: null,
     base_instructions: "You are Codex, a coding agent.",
     context_window: contextWindow,
+    defaultReasoningEffort: profile.defaultReasoningLevel,
     default_reasoning_level: profile.defaultReasoningLevel,
+    default_reasoning_effort: profile.defaultReasoningLevel,
     default_reasoning_summary: profile.defaultReasoningSummary,
-    description: `CCR gateway model ${model}`,
+    description: profile.description ?? `CCR gateway model ${model}`,
+    displayName: model,
     display_name: model,
     effective_context_window_percent: effectiveContextWindowPercent,
     experimental_supported_tools: [],
+    id: model,
     input_modalities: profile.inputModalities,
     max_context_window: maxContextWindow,
+    model,
     priority,
     service_tiers: profile.serviceTiers,
     shell_type: "shell_command",
     slug: model,
     support_verbosity: true,
     supported_in_api: true,
+    supportedReasoningEfforts: profile.supportedReasoningLevels.map(reasoningEffortOption),
+    supported_reasoning_efforts: profile.supportedReasoningLevels.map((level) => level.effort),
     supported_reasoning_levels: profile.supportedReasoningLevels,
     supports_image_detail_original: profile.supportsImageInput,
     supports_parallel_tool_calls: profile.supportsParallelToolCalls,
@@ -152,11 +166,20 @@ function codexModelCatalogItem(
   };
 }
 
+function reasoningEffortOption(level: { description: string; effort: string }): { description: string; reasoningEffort: string; reasoning_effort: string } {
+  return {
+    description: level.description,
+    reasoningEffort: level.effort,
+    reasoning_effort: level.effort
+  };
+}
+
 type CodexCapabilityProfile = {
   additionalSpeedTiers: unknown[];
   applyPatchToolType: string | null;
   catalogEntry?: ModelCatalogEntry;
   contextWindow?: number;
+  description?: string;
   defaultReasoningLevel: string | null;
   defaultReasoningSummary: string;
   effectiveContextWindowPercent?: number;
@@ -189,7 +212,7 @@ function codexModelCapabilityProfile(
       : findConfiguredProviderForModel(config, attribution.model ?? model);
   const providerModel = attribution.model ?? selector?.model ?? model;
   const providerModelMetadata = provider
-    ? providerModelMetadataFor(provider, providerModel) ?? localCodexModelMetadataFor(provider, providerModel)
+    ? codexProviderModelMetadataFor(provider, providerModel)
     : undefined;
   const physicalModelSelector = provider ? `${provider.name}/${providerModel}` : providerModel;
   const catalogEntry = findModelCatalogEntry(physicalModelSelector);
@@ -228,6 +251,9 @@ function codexModelCapabilityProfile(
     applyPatchToolType,
     catalogEntry,
     contextWindow: providerModelMetadata?.contextWindow,
+    description: provider
+      ? providerModelDescriptionFor(provider, providerModel)
+      : undefined,
     defaultReasoningLevel: resolveDefaultReasoningLevel(
       providerModelMetadata?.defaultReasoningLevel !== undefined
         ? providerModelMetadata.defaultReasoningLevel
@@ -257,6 +283,33 @@ function providerModelMetadataFor(provider: GatewayProviderConfig, model: string
   const normalized = model.trim().toLowerCase();
   const match = Object.entries(metadata).find(([candidate]) => candidate.trim().toLowerCase() === normalized);
   return match?.[1];
+}
+
+function providerModelDescriptionFor(provider: GatewayProviderConfig, model: string): string | undefined {
+  const descriptions = provider.modelDescriptions ?? {};
+  const direct = descriptions[model]?.trim();
+  if (direct) {
+    return direct;
+  }
+  const normalized = model.trim().toLowerCase();
+  const match = Object.entries(descriptions).find(([candidate]) => candidate.trim().toLowerCase() === normalized);
+  return match?.[1]?.trim() || undefined;
+}
+
+function codexProviderModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {
+  const metadata = providerModelMetadataFor(provider, model) ?? localCodexModelMetadataFor(provider, model);
+  if (!isLocalCodexProvider(provider)) {
+    return metadata;
+  }
+  const contextWindow = codexImportedModelContextWindow(model);
+  if (!contextWindow) {
+    return metadata;
+  }
+  return {
+    ...(metadata ?? {}),
+    contextWindow,
+    maxContextWindow: contextWindow
+  };
 }
 
 function localCodexModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {
@@ -476,7 +529,10 @@ function findConfiguredProvider(
   if (!normalized) {
     return undefined;
   }
-  return (config?.Providers ?? []).find((provider) => provider.name.trim().toLowerCase() === normalized);
+  return (config?.Providers ?? []).find((provider) =>
+    isGatewayProviderEnabled(provider) &&
+    provider.name.trim().toLowerCase() === normalized
+  );
 }
 
 function findConfiguredProviderForModel(
@@ -488,6 +544,7 @@ function findConfiguredProviderForModel(
     return undefined;
   }
   return (config?.Providers ?? []).find((provider) =>
+    isGatewayProviderEnabled(provider) &&
     provider.models.some((candidate) => candidate.trim().toLowerCase() === normalized)
   );
 }

@@ -4,6 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-middleware-runtime.ts";
 
 test("generated Codex CLI middleware runtime is valid JavaScript", () => {
@@ -11,6 +12,40 @@ test("generated Codex CLI middleware runtime is valid JavaScript", () => {
   const file = path.join(dir, "ccr-codex-cli-middleware.js");
   writeFileSync(file, codexCliMiddlewareRuntimeScript());
   execFileSync(process.execPath, ["--check", file], { stdio: "pipe" });
+});
+
+test("generated Codex CLI middleware converts Windows SDK paths before URL scheme detection", () => {
+  const fn = evaluateRuntimeFunction("botGatewaySdkImportSpecifier");
+  const windowsPath = "C:\\Users\\macao\\AppData\\Local\\Programs\\Claude Code Router\\resources\\app.asar\\dist\\main\\bot-gateway-sdk\\dist\\index.js";
+
+  assert.equal(
+    fn(windowsPath),
+    "file:///C:/Users/macao/AppData/Local/Programs/Claude%20Code%20Router/resources/app.asar/dist/main/bot-gateway-sdk/dist/index.js"
+  );
+  assert.equal(fn("file:///tmp/sdk/index.js"), "file:///tmp/sdk/index.js");
+  assert.equal(fn("@the-next-ai/bot-gateway-sdk"), "@the-next-ai/bot-gateway-sdk");
+});
+
+test("generated Codex CLI middleware materializes bundled Bot Gateway stdio runner", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-bot-runner-"));
+  const source = path.join(dir, "resources", "app.asar", "dist", "main", "bot-gateway-sdk", "bin", "bot-gateway-stdio.mjs");
+  const configDir = path.join(dir, "config");
+  mkdirSync(path.dirname(source), { recursive: true });
+  writeFileSync(source, "#!/usr/bin/env node\nconsole.log('ok');\n");
+
+  const resolveCommand = evaluateRuntimeFunction(
+    "resolveBundledBotGatewayCommand",
+    ["normalizeDuplicateShebangs", "materializeBotGatewayStdioRunnerPath"],
+    configDir
+  );
+  const command = resolveCommand({ bundledStdioPath: () => source });
+  const expectedRunner = path.join(configDir, "bot-gateway", "runners", "bot-gateway-stdio.mjs");
+
+  assert.equal(command.command, process.execPath);
+  assert.deepEqual(command.args, [expectedRunner]);
+  assert.equal(command.cwd, path.dirname(expectedRunner));
+  assert.notEqual(command.cwd, path.dirname(source));
+  assert.equal(readFileSync(expectedRunner, "utf8"), "#!/usr/bin/env node\nconsole.log('ok');\n");
 });
 
 test("Codex app-server uses ChatGPT's bundled Node as a signed supervisor", { skip: process.platform !== "darwin" }, () => {
@@ -1040,6 +1075,43 @@ function writeRuntimeScript(dir) {
   writeFileSync(file, codexCliMiddlewareRuntimeScript());
   chmodSync(file, 0o700);
   return file;
+}
+
+function evaluateRuntimeFunction(name, dependencies = [], configDir = "") {
+  const runtime = codexCliMiddlewareRuntimeScript();
+  const source = [
+    ...dependencies.map((dependency) => extractRuntimeFunctionSource(runtime, dependency)),
+    extractRuntimeFunctionSource(runtime, name)
+  ].join("\n");
+  const fsRuntime = { existsSync, mkdirSync, readFileSync, writeFileSync };
+  return Function("path", "pathToFileURL", "fs", "CONFIG_DIR", `${source}; return ${name};`)(
+    path,
+    pathToFileURL,
+    fsRuntime,
+    configDir
+  );
+}
+
+function extractRuntimeFunctionSource(source, name) {
+  const start = source.indexOf(`function ${name}(`);
+  assert.notEqual(start, -1);
+  const openBrace = source.indexOf("{", start);
+  assert.notEqual(openBrace, -1);
+
+  let depth = 0;
+  for (let index = openBrace; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(start, index + 1);
+      }
+    }
+  }
+
+  throw new Error(`Unable to extract runtime function ${name}.`);
 }
 
 function writeFakeClaudeCli(dir) {

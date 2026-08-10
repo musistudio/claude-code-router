@@ -7,7 +7,6 @@ import {
   buildWebClientBridge,
   cleanDist,
   copyBrowserRendererHtml,
-  copyMarketplacePlugins,
   copyModelCatalog,
   copyRendererHtml,
   copyTrayRendererHtml,
@@ -17,7 +16,6 @@ import {
 const mode = process.argv.includes("--dev") ? "development" : "production";
 
 cleanDist();
-copyMarketplacePlugins();
 copyModelCatalog();
 copyBrowserRendererHtml();
 copyRendererHtml();

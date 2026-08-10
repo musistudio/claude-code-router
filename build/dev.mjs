@@ -12,11 +12,12 @@ import {
   coreSourceRoot,
   copyAppAssets,
   copyBrowserRendererHtml,
+  copyBundledClaudeRuntimePlugins,
   copyCliRuntimeToElectronDist,
-  copyMarketplacePlugins,
   copyModelCatalog,
   copyRendererHtml,
   copyTrayRendererHtml,
+  createRequestLogBodyWorkerBuildOptions,
   createBrowserRendererBuildOptions,
   createCliBuildOptions,
   createMainBuildOptions,
@@ -24,6 +25,7 @@ import {
   createTrayRendererBuildOptions,
   createWebClientBridgeBuildOptions,
   appAssetsInput,
+  bundledClaudeRuntimePluginsInputDir,
   modelCatalogInput,
   projectRoot,
   rendererRoot,
@@ -50,6 +52,7 @@ let queuedStyleBuildReason = null;
 const ready = {
   browser: false,
   cli: false,
+  logWorker: false,
   main: false,
   renderer: false,
   tray: false,
@@ -65,6 +68,7 @@ const coreSharedSourceRoot = path.join(coreSourceRoot, "shared");
 const styleWatchRoots = [rendererRoot, coreSharedSourceRoot].filter((watchRoot) => existsSync(watchRoot));
 const activeReadyNames = new Set([
   ...(enabled.ui ? ["browser", "renderer", "tray", "webBridge"] : []),
+  ...(enabled.ui ? ["logWorker"] : []),
   ...(enabled.cli ? ["cli"] : []),
   ...(enabled.electron ? ["main"] : [])
 ]);
@@ -286,6 +290,7 @@ function pollSourceWatchTargets() {
   });
   if (enabled.electron) {
     pollWatchedInput("app assets", appAssetsInput, copyAppAssets);
+    pollWatchedInput("bundled Claude runtime plugins", bundledClaudeRuntimePluginsInputDir, copyBundledClaudeRuntimePlugins);
   }
   if ((enabled.cli || enabled.electron) && existsSync(modelCatalogInput)) {
     pollWatchedInput("model catalog", modelCatalogInput, copyModelCatalog, { metadataOnly: true });
@@ -293,7 +298,7 @@ function pollSourceWatchTargets() {
 }
 
 function markReady(name, reason = `${name} esbuild completed`) {
-  if (name === "browser" || name === "cli" || name === "main" || name === "renderer" || name === "tray" || name === "webBridge") {
+  if (name === "browser" || name === "cli" || name === "logWorker" || name === "main" || name === "renderer" || name === "tray" || name === "webBridge") {
     ready[name] = true;
   }
   logDev(`build ready: ${reason}; ${readyState()}`);
@@ -398,9 +403,9 @@ logDev(`starting dev build target=${devTarget} ui=${enabled.ui ? "on" : "off"} c
 cleanDist();
 if (enabled.electron) {
   copyAppAssets();
+  copyBundledClaudeRuntimePlugins();
 }
 if (enabled.cli || enabled.electron) {
-  copyMarketplacePlugins();
   copyModelCatalog();
 }
 copyBrowserRendererHtml();
@@ -417,6 +422,7 @@ for (const styleWatchRoot of styleWatchRoots) {
 }
 if (enabled.electron) {
   rememberWatchSignature("app assets", appAssetsInput);
+  rememberWatchSignature("bundled Claude runtime plugins", bundledClaudeRuntimePluginsInputDir);
 }
 if ((enabled.cli || enabled.electron) && existsSync(modelCatalogInput)) {
   rememberWatchSignature("model catalog", modelCatalogInput, { metadataOnly: true });
@@ -501,6 +507,17 @@ if (enabled.ui) {
         mode: "development",
         plugins: [
           watchPlugin("webBridge", (name) => {
+            syncUiRendererToRuntimeDists();
+            markReady(name);
+          })
+        ]
+      })
+    ),
+    await esbuild.context(
+      createRequestLogBodyWorkerBuildOptions({
+        mode: "development",
+        plugins: [
+          watchPlugin("logWorker", (name) => {
             syncUiRendererToRuntimeDists();
             markReady(name);
           })

@@ -361,4 +361,3 @@ export function shouldSendBody(method: string | undefined): boolean {
 export function shouldCaptureGatewayUsage(method: string, _path: string): boolean {
   return shouldSendBody(method);
 }
-

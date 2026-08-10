@@ -1,32 +1,43 @@
 ---
-title: Extension Mechanism
-pageTitle: Extension Mechanism
-eyebrow: Detailed Configuration
+title: Extension mechanism
+pageTitle: Extension mechanism
+eyebrow: Extensions
 lead: Learn how CCR extensions are loaded, what they can register, and how to create, install, and debug your own extension.
 ---
 
-## Extension Types
+## Extension types
 
 CCR has two extension layers:
 
 | Type | Config location | Runtime | Good for |
 | --- | --- | --- | --- |
 | Wrapper plugin | `plugins` | CCR Desktop's Electron wrapper process | Local HTTP routes, local backends, proxy capture routing, built-in browser entries, provider account meters |
-| Core gateway plugin | `providerPlugins` or `plugins[].coreGateway.providerPlugins` | core gateway runtime | Provider, auth, or internal core gateway behavior |
+| Core gateway plugin | `providerPlugins` or `plugins[].coreGateway.providerPlugins` | core gateway runtime | Upstream providers, auth methods, or internal core gateway behavior |
 
 Most custom extensions should start as a Wrapper plugin. It receives CCR config, a private data directory, a logger, and registration helpers through `ctx`.
 
-## Loading Flow
+`plugins[]` is the install unit for an extension package. One package can expose three independent runtime surfaces:
 
-When the gateway starts, CCR reads the `plugins` array and processes each plugin whose `enabled !== false`:
+| Surface | Config key | What it enables |
+| --- | --- | --- |
+| App | `surfaces.apps` | Built-in browser entries from `apps` or `ctx.registerApp` |
+| Gateway | `surfaces.gateway` | Gateway routes, proxy routes, HTTP backends, core gateway config, and virtual model config |
+| Provider | `surfaces.provider` | Core provider plugins and provider account connectors |
 
-1. It first applies `apps`, `proxy.routes`, `coreGateway.providerPlugins`, `coreGateway.virtualModelProfiles`, and `coreGateway.config` declared in config.
-2. It then loads the plugin module. `module` can be an absolute path, a `~/` path, a `./...` path relative to the CCR config directory, or a Node-resolvable package name.
-3. If `module` is missing, CCR tries to match the plugin `id` with built-in marketplace plugins such as `claude-design` and `cursor-proxy`.
-4. A module can export a function or an object with `setup(ctx)` or `activate(ctx)`.
-5. On stop, CCR runs `stop` and `onStop` hooks in reverse order, then closes HTTP backends and SQLite stores registered by the plugin.
+For backward compatibility, all three surfaces are enabled by default. You can set a surface to `false` to keep the package installed but disable that capability. A static App entry can declare only `apps` without configuring `module`; a dynamic App entry can still be registered from JavaScript through the App surface, and must declare `trusted-code`.
 
-Common module shape:
+## Loading flow
+
+When the gateway starts, CCR reads the `plugins` array and processes each extension whose `enabled !== false` in order:
+
+1. It first applies config per enabled surface: `apps` for the App surface; `proxy.routes`, `coreGateway.virtualModelProfiles`, and `coreGateway.config` for the Gateway surface; and `coreGateway.providerPlugins` for the Provider surface.
+2. When any enabled surface needs JavaScript to register capabilities, the extension module is loaded. `module` must resolve to a concrete local JavaScript file path — for example an absolute path, a `~/` path, or a `./...` path relative to the CCR config directory.
+3. Any extension that loads JavaScript through `module` must explicitly declare the `trusted-code` permission. The permission is not an OS-level sandbox; it scopes the CCR plugin API and makes the "executing local code" trust boundary explicit.
+4. If no `module` is configured, CCR no longer loads a built-in fallback extension.
+5. A module can export a function, or an object containing `setup(ctx)` or `activate(ctx)`.
+6. On stop, CCR runs `stop` and `onStop` hooks in reverse order, then closes the HTTP backends and SQLite stores registered by that extension.
+
+Common module shapes:
 
 ```js
 "use strict";
@@ -53,7 +64,7 @@ module.exports = async function setup(ctx) {
 
 `setup(ctx)` or `activate(ctx)` can call `ctx.register...` methods directly, or return a registration object. Returned registrations support `apps`, `gatewayRoutes`, `proxyRoutes`, `providerAccountConnectors`, `coreGateway`, `virtualModelProfiles`, `stop`, and `onStop`.
 
-## ctx Reference
+## ctx reference
 
 `setup(ctx)` receives these common fields and helpers:
 
@@ -85,7 +96,7 @@ Gateway route handlers also receive helper functions:
 
 `registerGatewayRoute` defaults to `auth: "gateway"`. If CCR has API keys configured, requests must include `Authorization: Bearer <key>` or `x-api-key: <key>`. Use `auth: "none"` only for debugging or local public status routes.
 
-## Create Your First Extension
+## Create your first extension
 
 Create a directory such as `~/ccr-extensions/hello-extension`:
 
@@ -102,6 +113,8 @@ hello-extension/
   "id": "hello-extension",
   "name": "Hello Extension",
   "module": "index.cjs",
+  "surfaces": ["apps", "gateway"],
+  "permissions": ["trusted-code", "apps", "gateway-routes", "http-backends", "proxy-routes"],
   "apps": [
     {
       "id": "hello-status",
@@ -167,7 +180,7 @@ This exposes:
 - A local echo backend: CCR assigns a free port automatically.
 - A proxy rule: proxy-captured `api.example.local/v1...` traffic is forwarded to the echo backend.
 
-## Install The Extension
+## Install the extension
 
 The recommended flow is through the desktop UI:
 
@@ -186,6 +199,8 @@ CCR stores runtime configuration in SQLite. Add extensions through the UI; the l
       "id": "hello-extension",
       "enabled": true,
       "module": "/Users/you/ccr-extensions/hello-extension/index.cjs",
+      "surfaces": { "apps": true, "gateway": true, "provider": false },
+      "permissions": ["trusted-code", "apps", "gateway-routes", "http-backends", "proxy-routes"],
       "config": {
         "message": "hello from my config"
       }
@@ -194,7 +209,7 @@ CCR stores runtime configuration in SQLite. Add extensions through the UI; the l
 }
 ```
 
-Restart the gateway after saving the extension config. See [Config Database Location](/en/configuration/configuration-file/).
+Restart the gateway after saving the extension config. See [Config database location](/en/configuration/configuration-file/).
 
 The local directory picker recognizes entry metadata from:
 
@@ -206,7 +221,7 @@ The local directory picker recognizes entry metadata from:
 
 If no entrypoint is declared, CCR tries `index.cjs`, `index.mjs`, `index.js`, `plugin.cjs`, `plugin.mjs`, or `plugin.js` in the selected directory.
 
-## Debug Extensions
+## Debug extensions
 
 ### 1. Check syntax first
 
@@ -261,18 +276,18 @@ Proxy route matching rules:
 - `stripPathPrefix` removes the matched prefix from the forwarded path.
 - `rewritePathPrefix` replaces the matched prefix with a configured prefix.
 
-### 5. Common Issues
+### 5. Common issues
 
 | Symptom | What to check |
 | --- | --- |
 | Extension does not load | Check `plugins[].enabled`, `plugins[].module`, and terminal errors prefixed with `[plugin:<id>]` |
 | `GET /plugins/hello` returns 404 | Restart the gateway and confirm `path` or `pathPrefix` starts with `/` |
 | Response is 401 | Routes require gateway API key by default; set `auth: "none"` for debug routes |
-| Code changes do not apply | Wrapper plugins are not hot reloaded; restart the gateway or CCR |
+| Code changes do not apply | Wrapper plugins reload when the gateway restarts; only restart CCR if the process is stuck |
 | Port is already in use | Omit `port` in `registerHttpBackend` so CCR can allocate one automatically |
 | Proxy route misses requests | Confirm proxy mode is enabled, the certificate is installed, and host matches the real request hostname |
 
-## Security Notes
+## Security notes
 
 - Use `auth: "none"` only for status pages, health checks, or local debugging routes.
 - Do not log API keys, OAuth tokens, cookies, or complete request headers.

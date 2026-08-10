@@ -65,7 +65,7 @@ test("gateway treats downstream client aborts as expected stream cleanup", async
     }
     await waitForTcpListener(upstream);
     const upstreamPort = serverPort(upstream);
-    const config = createDefaultAppConfig({ generatedConfigFile: path.join(dir, "gateway.config.json") });
+    const config = createDefaultAppConfig();
     config.APIKEY = "test-api-key";
     config.gateway.coreHost = "127.0.0.1";
     config.gateway.corePort = upstreamPort;

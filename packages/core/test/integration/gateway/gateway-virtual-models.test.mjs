@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { PassThrough, Readable } from "node:stream";
 import test from "node:test";
+import { createHostedWebSearchProtocolContext } from "@ccr/core/gateway/features/hosted-web-search/index.ts";
 import {
   fusionFallbackToolDefinitions,
   fusionWebSearchToolNameForRequest,
@@ -502,6 +503,51 @@ test("gateway resolves normalized Fusion web search tool names for Anthropic pro
   };
 
   assert.equal(fusionWebSearchToolNameForRequest(config, "Fusion/kimisearch"), "fusion_2_web_search");
+});
+
+test("gateway resolves Claude discovery aliases before hosted web search matching", () => {
+  const config = {
+    Providers: [],
+    Router: { fallback: { mode: "off", models: [], retryCount: 0 } },
+    gateway: {},
+    virtualModelProfiles: [
+      {
+        displayName: "Kimisearch",
+        enabled: true,
+        execution: {
+          clientToolsPolicy: "allow",
+          matchWebSearch: true,
+          maxToolCalls: 8,
+          maxTurns: 6,
+          mode: "tool_loop",
+          streamMode: "optimistic"
+        },
+        id: "fusion-2",
+        key: "kimisearch",
+        match: { exactAliases: ["kimisearch", "Fusion/kimisearch"], prefixes: [], suffixes: [] },
+        materialization: { enabled: true, includeInGatewayModels: true },
+        metadata: {
+          fusionWebSearch: { provider: "browser", toolName: "web_search_fusion_2" }
+        },
+        tools: [{ name: "web_search_fusion_2", visibility: "internal" }]
+      }
+    ]
+  };
+  const context = createHostedWebSearchProtocolContext({
+    body: Buffer.from(JSON.stringify({
+      messages: [{ content: "weather", role: "user" }],
+      model: "claude-Fusion/kimisearch",
+      tools: [{ name: "web_search", type: "web_search_20250305" }]
+    })),
+    config,
+    method: "POST",
+    path: "/v1/messages",
+    requestId: "request-1",
+    routedModel: "claude-Fusion/kimisearch",
+    sinceMs: 0
+  });
+
+  assert.equal(context?.toolName, "fusion_2_web_search");
 });
 
 test("gateway does not route hosted web search through an unrelated Fusion search profile", () => {

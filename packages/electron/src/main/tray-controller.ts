@@ -32,7 +32,6 @@ const trayMascotIconPaths: Record<TrayMascotIconId, string> = {
 };
 
 class TrayController {
-  private activeDetailProvider?: string;
   private detailCloseTimer?: NodeJS.Timeout;
   private detailOpen = false;
   private detailPopover?: BrowserWindow;
@@ -82,7 +81,6 @@ class TrayController {
   hidePopover(): void {
     this.clearDetailCloseTimer();
     this.detailOpen = false;
-    this.activeDetailProvider = undefined;
     this.hideDetailPopover();
     if (this.popover && !this.popover.isDestroyed()) {
       this.popover.hide();
@@ -184,7 +182,6 @@ class TrayController {
     const popover = this.ensurePopover();
     this.clearDetailCloseTimer();
     this.detailOpen = false;
-    this.activeDetailProvider = undefined;
     this.hideDetailPopover();
     const { menu } = resolvePopoverLayout(this.tray?.getBounds(), false);
 
@@ -240,52 +237,6 @@ class TrayController {
     return this.popover;
   }
 
-  private ensureDetailPopover(provider?: string): BrowserWindow {
-    if (this.detailPopover && !this.detailPopover.isDestroyed()) {
-      return this.detailPopover;
-    }
-
-    this.detailPopover = new BrowserWindow({
-      acceptFirstMouse: true,
-      alwaysOnTop: true,
-      frame: false,
-      fullscreenable: false,
-      hasShadow: true,
-      height: popoverPreferredHeight - popoverDetailTopOffset,
-      maximizable: false,
-      minimizable: false,
-      movable: false,
-      roundedCorners: true,
-      resizable: false,
-      show: false,
-      skipTaskbar: true,
-      title: `${APP_NAME} Usage Detail`,
-      ...trayWindowMaterialOptions(),
-      webPreferences: {
-        contextIsolation: true,
-        nodeIntegration: false,
-        preload: path.join(__dirname, "preload.js"),
-        sandbox: true,
-        webSecurity: true,
-        zoomFactor: 1
-      },
-      width: popoverDetailWidth
-    });
-
-    reinforceTrayWindowMaterial(this.detailPopover);
-    prepareTrayWindowForSharpRendering(this.detailPopover);
-    this.detailPopover.setAlwaysOnTop(true, "pop-up-menu");
-    this.detailPopover.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    this.detailPopover.on("blur", () => this.handlePopoverBlur());
-    this.detailPopover.on("closed", () => {
-      this.detailPopover = undefined;
-    });
-
-    this.activeDetailProvider = normalizeDetailProvider(provider);
-    void this.detailPopover.loadURL(createTrayPageUrl("detail", this.activeDetailProvider));
-    return this.detailPopover;
-  }
-
   private showContextMenu(): void {
     const menu = Menu.buildFromTemplate([
       {
@@ -314,35 +265,6 @@ class TrayController {
   private showMainWindow(): void {
     this.hidePopover();
     windowsManager.showMainWindow();
-  }
-
-  private showDetailPopover(provider?: string): void {
-    if (!this.popover || this.popover.isDestroyed() || !this.popover.isVisible()) {
-      return;
-    }
-
-    this.clearDetailCloseTimer();
-    this.detailOpen = true;
-
-    const { detail, menu } = resolvePopoverLayout(this.tray?.getBounds(), true);
-    if (detail.width < 320) {
-      this.detailOpen = false;
-      return;
-    }
-
-    this.popover.setBounds(menu, false);
-
-    const detailPopover = this.ensureDetailPopover(provider);
-    const nextProvider = normalizeDetailProvider(provider);
-    if (this.activeDetailProvider !== nextProvider) {
-      this.activeDetailProvider = nextProvider;
-      void detailPopover.loadURL(createTrayPageUrl("detail", nextProvider));
-    }
-
-    detailPopover.setBounds(detail, false);
-    this.ignorePopoverBlurUntil = Date.now() + 120;
-    detailPopover.showInactive();
-    detailPopover.moveTop();
   }
 
   private scheduleDetailClose(): void {
@@ -569,11 +491,6 @@ function createTrayPageUrl(mode: "detail" | "menu", provider?: string): string {
     url.searchParams.set("provider", provider);
   }
   return url.toString();
-}
-
-function normalizeDetailProvider(provider?: string): string | undefined {
-  const trimmed = provider?.trim();
-  return trimmed ? trimmed : undefined;
 }
 
 function reinforceTrayWindowMaterial(window: BrowserWindow): void {
