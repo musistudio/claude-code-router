@@ -7,6 +7,7 @@ import { geminiProviderPreset } from "@ccr/core/providers/presets/gemini/index.t
 import { minimaxChinaProviderPreset } from "@ccr/core/providers/presets/minimax/index.ts";
 import { moonshotGlobalProviderPreset } from "@ccr/core/providers/presets/moonshot/index.ts";
 import { qiniuAiProviderPreset } from "@ccr/core/providers/presets/qiniu-ai/index.ts";
+import { xiaomiMimoProviderPreset } from "@ccr/core/providers/presets/xiaomi/index.ts";
 import { AddProviderDialog, AddProviderForm, ProviderConnectivityCheckDialog, ProvidersView, uniqueProviderProbeProtocolRows } from "@ccr/ui/pages/home/components/providers.tsx";
 import {
   applyProviderProbeResult,
@@ -1199,7 +1200,7 @@ test("provider deep link config saves anthropic probe prefix as capability URL",
 });
 
 test("provider display icon prefers custom icons and falls back to preset icons", () => {
-  setProviderPresets([geminiProviderPreset, minimaxChinaProviderPreset]);
+  setProviderPresets([geminiProviderPreset, minimaxChinaProviderPreset, xiaomiMimoProviderPreset]);
 
   assert.equal(
     providerDisplayIcon({
@@ -1229,6 +1230,18 @@ test("provider display icon prefers custom icons and falls back to preset icons"
     }),
     providerPresetIconUrls["minimax-cn"]
   );
+  assert.equal(
+    providerDisplayIcon({
+      api_base_url: "https://api.xiaomimimo.com/v1",
+      models: [],
+      name: "Xiaomi MiMo",
+      type: "openai_responses"
+    }),
+    providerPresetIconUrls.xiaomi
+  );
+  assert.equal(providerPresetIconUrls["xiaomi-token-plan-cn"], providerPresetIconUrls.xiaomi);
+  assert.equal(providerPresetIconUrls["xiaomi-token-plan-sgp"], providerPresetIconUrls.xiaomi);
+  assert.equal(providerPresetIconUrls["xiaomi-token-plan-ams"], providerPresetIconUrls.xiaomi);
   assert.equal(
     providerDisplayIcon({
       api_base_url: "https://cli-chat-proxy.grok.com/v1",
