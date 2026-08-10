@@ -1433,6 +1433,8 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         icon: readString(item.icon),
         id: readString(item.id),
         enabled: item.enabled === false ? false : undefined,
+        autoFetchModels: readBoolean(item.autoFetchModels ?? item.auto_fetch_models ?? item.autoRefreshModels ?? item.auto_refresh_models),
+        autoFetchKnownModels: parseStringArray(item.autoFetchKnownModels ?? item.auto_fetch_known_models ?? item.autoRefreshKnownModels ?? item.auto_refresh_known_models),
         modelDescriptions,
         modelDisplayNames,
         modelMetadata,

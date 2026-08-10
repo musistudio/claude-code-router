@@ -17,6 +17,8 @@ import { browserWebSearchMcpService } from "./electron-web-search-mcp";
 import { applyNativeThemePreference } from "./native-theme";
 import windowsManager from "./windows";
 import { closeRequestLogRuntime } from "@ccr/core/observability/request-log-store";
+import { stopProviderModelAutoRefreshService, syncProviderModelAutoRefreshService } from "@ccr/core/providers/model-auto-refresh";
+import type { AppConfig } from "@ccr/core/contracts/app";
 
 const gotTheLock = app.requestSingleInstanceLock();
 const quitProxyRestoreTimeoutMs = 30_000;
@@ -176,6 +178,7 @@ function handleTerminationSignal(signal: NodeJS.Signals): void {
 
 function stopServicesForQuit(): Promise<void> {
   if (!stopForQuitPromise) {
+    stopProviderModelAutoRefreshService();
     stopForQuitPromise = gatewayService
       .stop({ proxyRestoreTimeoutMs: quitProxyRestoreTimeoutMs })
       .then(() => undefined)
@@ -242,6 +245,7 @@ function startConfiguredServices(reason: string): Promise<void> {
           const proxyStatus = await proxyService.ensureSystemProxyActive();
           logProxySystemProxyIssue(reason, proxyStatus);
         }
+        syncProviderModelAutoRefresh(config);
       })
       .catch((error) => {
         console.error(`Failed to start configured services during ${reason}: ${formatError(error)}`);
@@ -252,6 +256,24 @@ function startConfiguredServices(reason: string): Promise<void> {
       });
   }
   return startServicesPromise;
+}
+
+function syncProviderModelAutoRefresh(config: AppConfig): void {
+  syncProviderModelAutoRefreshService(config, {
+    logger: console,
+    onConfigChanged: async (nextConfig) => {
+      await gatewayService.updateConfig(nextConfig);
+      if (gatewayService.getStatus().state === "running") {
+        const profileResult = await applyProfileConfig(nextConfig);
+        for (const client of profileResult.clients) {
+          if (!client.ok) {
+            console.error(`Failed to apply ${client.client} profile during provider model refresh: ${client.message}`);
+          }
+        }
+      }
+      trayController.refreshUsageTitle();
+    }
+  });
 }
 
 function queueEnsureConfiguredProxyModeActive(reason: string): void {

@@ -19,7 +19,7 @@ import {
   useRef, useState, X, isGatewayProviderEnabled, isPlainRecord
 } from "../shared/index";
 import { PopoverPortal } from "@/components/ui/popover";
-import { TooltipPortal } from "@/components/ui/tooltip";
+import { Tooltip, TooltipPortal } from "@/components/ui/tooltip";
 import { providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
 import type { ChromeLoginImportJob, LocalAgentProviderCandidate, ProviderAccountHttpJsonConnectorConfig, ProviderAccountWebContentJsonConnectorConfig } from "@ccr/core/contracts/app";
 import type { ReactNode } from "react";
@@ -1983,7 +1983,7 @@ export function AddProviderForm({
   providers: GatewayProviderConfig[];
 }) {
   const t = useAppText();
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(() => Boolean(draft.autoFetchModels));
   const [iconDetecting, setIconDetecting] = useState(false);
   const [autoDetectInfoPosition, setAutoDetectInfoPosition] = useState<{ left: number; top: number }>();
   const [protocolProbeDetails, setProtocolProbeDetails] = useState<ProviderProtocolProbeDetailsState>();
@@ -2391,124 +2391,144 @@ export function AddProviderForm({
               {advancedOpen ? (
                 <AnimatedDisclosure className="sm:col-span-2" key="provider-advanced">
                   <div className="grid grid-cols-1 gap-3 rounded-md border border-border bg-muted/20 p-3 sm:grid-cols-2">
-                <div className="sm:col-span-2 flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-background px-3 py-2 text-[12px] font-semibold">
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="min-w-0 truncate">{t("Auto detect protocols")}</span>
-                    <button
-                      aria-label={t("Auto detect protocols info")}
-                      aria-pressed={Boolean(autoDetectInfoPosition)}
-                      className={cn(
-                        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30",
-                        autoDetectInfoPosition && "bg-muted text-foreground"
-                      )}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        toggleAutoDetectInfo(event.currentTarget);
-                      }}
-                      onMouseDown={(event) => event.stopPropagation()}
-                      title={t("Auto detect protocols info")}
-                      type="button"
-                    >
-                      <Info className="h-3.5 w-3.5" aria-hidden="true" />
-                    </button>
-                  </span>
-                  <Switch
-                    aria-label={t("Auto detect protocols")}
-                    checked={!manualProtocolDetection}
-                    onCheckedChange={updateAutoProtocolDetection}
-                  />
-                </div>
-                <ProviderUsageSettings
-                  customEndpoint={customEndpoint}
-                  draft={draft}
-                  onChange={onChange}
-                  probe={probe}
-                />
-                <Field className="sm:col-span-2" label={t("Protocol details")}>
-                  <div className="max-h-[128px] overflow-auto rounded-md border border-border bg-background p-2">
-                    {manualProtocolDetection ? (
-                      <div className="space-y-1.5">
-                        {providerProtocolOptions.map((option) => {
-                          const protocol = option.value;
-                          const checked = draft.selectedProtocols.includes(protocol);
-                          return (
-                            <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={protocol}>
-                              <Checkbox
-                                aria-label={`${t("Add")} ${translatedProviderProtocolLabel(protocol, t)}`}
-                                checked={checked}
-                                onCheckedChange={() => {
-                                  onChange({
-                                    selectedProtocols: checked
-                                      ? draft.selectedProtocols.filter((selected) => selected !== protocol)
-                                      : uniqueProviderProtocols([...draft.selectedProtocols, protocol])
-                                  });
-                                }}
-                              />
-                              <span className="truncate font-medium">{translatedProviderProtocolLabel(protocol, t)}</span>
-                              <span className={cn("inline-flex min-w-0 items-center justify-end", checked ? "text-foreground" : "text-muted-foreground")}>
-                                <span className="truncate">{checked ? t("Selected") : ""}</span>
-                              </span>
-                            </div>
-                          );
-                        })}
+                    <div className="sm:col-span-2 flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-background px-3 py-2 text-[12px] font-semibold">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="min-w-0 truncate">{t("Auto fetch latest models")}</span>
+                        <Tooltip
+                          aria-label={t("Poll the provider models endpoint every 10 minutes and add newly discovered models automatically.")}
+                          className="h-5 w-5 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                          content={t("Poll the provider models endpoint every 10 minutes and add newly discovered models automatically.")}
+                          contentClassName="w-[260px] max-w-[calc(100vw-64px)] whitespace-normal px-2.5 py-2 text-left font-medium leading-4"
+                          side="right"
+                          tabIndex={0}
+                        >
+                          <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                        </Tooltip>
+                      </span>
+                      <Switch
+                        aria-label={t("Auto fetch latest models")}
+                        checked={draft.autoFetchModels}
+                        onCheckedChange={(autoFetchModels) => onChange({ autoFetchModels })}
+                      />
+                    </div>
+                    <div className="sm:col-span-2 flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-background px-3 py-2 text-[12px] font-semibold">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="min-w-0 truncate">{t("Auto detect protocols")}</span>
+                        <button
+                          aria-label={t("Auto detect protocols info")}
+                          aria-pressed={Boolean(autoDetectInfoPosition)}
+                          className={cn(
+                            "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30",
+                            autoDetectInfoPosition && "bg-muted text-foreground"
+                          )}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toggleAutoDetectInfo(event.currentTarget);
+                          }}
+                          onMouseDown={(event) => event.stopPropagation()}
+                          title={t("Auto detect protocols info")}
+                          type="button"
+                        >
+                          <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
+                      </span>
+                      <Switch
+                        aria-label={t("Auto detect protocols")}
+                        checked={!manualProtocolDetection}
+                        onCheckedChange={updateAutoProtocolDetection}
+                      />
+                    </div>
+                    <ProviderUsageSettings
+                      customEndpoint={customEndpoint}
+                      draft={draft}
+                      onChange={onChange}
+                      probe={probe}
+                    />
+                    <Field className="sm:col-span-2" label={t("Protocol details")}>
+                      <div className="max-h-[128px] overflow-auto rounded-md border border-border bg-background p-2">
+                        {manualProtocolDetection ? (
+                          <div className="space-y-1.5">
+                            {providerProtocolOptions.map((option) => {
+                              const protocol = option.value;
+                              const checked = draft.selectedProtocols.includes(protocol);
+                              return (
+                                <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={protocol}>
+                                  <Checkbox
+                                    aria-label={`${t("Add")} ${translatedProviderProtocolLabel(protocol, t)}`}
+                                    checked={checked}
+                                    onCheckedChange={() => {
+                                      onChange({
+                                        selectedProtocols: checked
+                                          ? draft.selectedProtocols.filter((selected) => selected !== protocol)
+                                          : uniqueProviderProtocols([...draft.selectedProtocols, protocol])
+                                      });
+                                    }}
+                                  />
+                                  <span className="truncate font-medium">{translatedProviderProtocolLabel(protocol, t)}</span>
+                                  <span className={cn("inline-flex min-w-0 items-center justify-end", checked ? "text-foreground" : "text-muted-foreground")}>
+                                    <span className="truncate">{checked ? t("Selected") : ""}</span>
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : protocolProbeRows.length ? (
+                          <div className="space-y-1.5">
+                            {protocolProbeRows.map((item) => {
+                              const available = item.supported;
+                              const selectableProtocol = selectableProtocols.find((protocol) => protocol === item.protocol);
+                              const selectable = item.supported && Boolean(selectableProtocol);
+                              const checked = Boolean(selectableProtocol && draft.selectedProtocols.includes(selectableProtocol));
+                              const itemKey = `${item.protocol}-${item.endpoint}`;
+                              return (
+                                <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={itemKey}>
+                                  <Checkbox
+                                    aria-label={`${t("Add")} ${translatedProviderProtocolLabel(item.protocol, t)}`}
+                                    checked={checked}
+                                    disabled={!selectable}
+                                    onCheckedChange={() => {
+                                      if (!selectableProtocol) {
+                                        return;
+                                      }
+                                      onChange({
+                                        selectedProtocols: checked
+                                          ? draft.selectedProtocols.filter((protocol) => protocol !== selectableProtocol)
+                                          : uniqueProviderProtocols([...draft.selectedProtocols, selectableProtocol])
+                                      });
+                                    }}
+                                  />
+                                  <span className="truncate font-medium">{translatedProviderProtocolLabel(item.protocol, t)}</span>
+                                  <span className={cn("inline-flex min-w-0 items-center justify-end gap-1.5", available ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground")}>
+                                    <span className="truncate">{available ? t("Available") : t("Unavailable")}</span>
+                                    <button
+                                      aria-label={t("Protocol detection details")}
+                                      aria-pressed={protocolProbeDetails?.key === itemKey}
+                                      className={cn(
+                                        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30",
+                                        protocolProbeDetails?.key === itemKey && "bg-muted text-foreground"
+                                      )}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        toggleProtocolProbeDetails(itemKey, item, event.currentTarget);
+                                      }}
+                                      onMouseDown={(event) => event.stopPropagation()}
+                                      title={t("Protocol detection details")}
+                                      type="button"
+                                    >
+                                      <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                                    </button>
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-muted-foreground">
+                            <span>{t("No protocol detection yet")}</span>
+                          </div>
+                        )}
                       </div>
-                    ) : protocolProbeRows.length ? (
-                      <div className="space-y-1.5">
-                        {protocolProbeRows.map((item) => {
-                          const available = item.supported;
-                          const selectableProtocol = selectableProtocols.find((protocol) => protocol === item.protocol);
-                          const selectable = item.supported && Boolean(selectableProtocol);
-                          const checked = Boolean(selectableProtocol && draft.selectedProtocols.includes(selectableProtocol));
-                          const itemKey = `${item.protocol}-${item.endpoint}`;
-                          return (
-                            <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={itemKey}>
-                              <Checkbox
-                                aria-label={`${t("Add")} ${translatedProviderProtocolLabel(item.protocol, t)}`}
-                                checked={checked}
-                                disabled={!selectable}
-                                onCheckedChange={() => {
-                                  if (!selectableProtocol) {
-                                    return;
-                                  }
-                                  onChange({
-                                    selectedProtocols: checked
-                                      ? draft.selectedProtocols.filter((protocol) => protocol !== selectableProtocol)
-                                      : uniqueProviderProtocols([...draft.selectedProtocols, selectableProtocol])
-                                  });
-                                }}
-                              />
-                              <span className="truncate font-medium">{translatedProviderProtocolLabel(item.protocol, t)}</span>
-                              <span className={cn("inline-flex min-w-0 items-center justify-end gap-1.5", available ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground")}>
-                                <span className="truncate">{available ? t("Available") : t("Unavailable")}</span>
-                                <button
-                                  aria-label={t("Protocol detection details")}
-                                  aria-pressed={protocolProbeDetails?.key === itemKey}
-                                  className={cn(
-                                    "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30",
-                                    protocolProbeDetails?.key === itemKey && "bg-muted text-foreground"
-                                  )}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    toggleProtocolProbeDetails(itemKey, item, event.currentTarget);
-                                  }}
-                                  onMouseDown={(event) => event.stopPropagation()}
-                                  title={t("Protocol detection details")}
-                                  type="button"
-                                >
-                                  <Info className="h-3.5 w-3.5" aria-hidden="true" />
-                                </button>
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="text-[11px] text-muted-foreground">
-                        <span>{t("No protocol detection yet")}</span>
-                      </div>
-                    )}
-                  </div>
-                </Field>
+                    </Field>
                   </div>
                 </AnimatedDisclosure>
               ) : null}

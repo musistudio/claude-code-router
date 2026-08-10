@@ -13,6 +13,16 @@ type MotionSafeSectionAttributes = Omit<
 >;
 
 const DialogStackContext = React.createContext(0);
+const dialogRootSelector = "[data-ui-dialog-root]";
+
+function isTopMostDialogRoot(dialogElement: HTMLElement | null | undefined): boolean {
+  if (!dialogElement) {
+    return false;
+  }
+
+  const dialogRoots = Array.from(dialogElement.ownerDocument.querySelectorAll<HTMLElement>(dialogRootSelector));
+  return dialogRoots[dialogRoots.length - 1] === dialogElement;
+}
 
 function DialogStackLayer({
   children,
@@ -38,6 +48,32 @@ function Dialog({
   ...props
 }: DialogProps) {
   const shouldReduceMotion = useReducedMotion();
+  const stackDepth = React.useContext(DialogStackContext);
+  const rootRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!open || !onOpenChange || stackDepth > 0) {
+      return;
+    }
+
+    const dialogElement = rootRef.current;
+    const ownerDocument = dialogElement?.ownerDocument ?? (typeof document === "undefined" ? undefined : document);
+    if (!ownerDocument) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || !isTopMostDialogRoot(dialogElement)) {
+        return;
+      }
+
+      event.preventDefault();
+      onOpenChange(false);
+    };
+
+    ownerDocument.addEventListener("keydown", handleKeyDown);
+    return () => ownerDocument.removeEventListener("keydown", handleKeyDown);
+  }, [onOpenChange, open, stackDepth]);
 
   if (!open) {
     return null;
@@ -56,6 +92,8 @@ function Dialog({
         }
       }}
       transition={shouldReduceMotion ? { duration: 0.12, ease: "easeOut" } : { duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+      data-ui-dialog-root=""
+      ref={rootRef}
       {...props}
     >
       {children}
@@ -138,4 +176,13 @@ const DialogDescription = React.forwardRef<HTMLDivElement, React.HTMLAttributes<
 
 DialogDescription.displayName = "DialogDescription";
 
-export { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogStackLayer, DialogTitle };
+export {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogStackLayer,
+  DialogTitle
+};

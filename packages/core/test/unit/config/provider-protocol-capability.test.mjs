@@ -18,6 +18,31 @@ test("top-level provider protocol becomes a capability when none are configured"
   ]);
 });
 
+test("provider auto model refresh flag is parsed from camel and snake case config", async () => {
+  const { parseProvidersForTest } = await import("@ccr/core/config/config.ts");
+  const providers = parseProvidersForTest([
+    {
+      autoFetchKnownModels: ["model-a", "model-hidden"],
+      autoFetchModels: true,
+      baseUrl: "https://api.example.test/v1",
+      models: ["model-a"],
+      name: "Camel"
+    },
+    {
+      auto_fetch_known_models: "model-b,model-hidden",
+      auto_fetch_models: true,
+      baseUrl: "https://api.example.test/v1",
+      models: ["model-b"],
+      name: "Snake"
+    }
+  ]);
+
+  assert.equal(providers[0].autoFetchModels, true);
+  assert.deepEqual(providers[0].autoFetchKnownModels, ["model-a", "model-hidden"]);
+  assert.equal(providers[1].autoFetchModels, true);
+  assert.deepEqual(providers[1].autoFetchKnownModels, ["model-b", "model-hidden"]);
+});
+
 test("explicit capabilities win over the top-level protocol", async () => {
   const { parseProvidersForTest } = await import("@ccr/core/config/config.ts");
   const providers = parseProvidersForTest([

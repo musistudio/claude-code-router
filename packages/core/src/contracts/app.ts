@@ -172,6 +172,8 @@ export type GatewayProviderConfig = {
   icon?: string;
   id?: string;
   enabled?: boolean;
+  autoFetchModels?: boolean;
+  autoFetchKnownModels?: string[];
   modelDescriptions?: Record<string, string>;
   modelDisplayNames?: Record<string, string>;
   modelMetadata?: Record<string, ProviderModelMetadata>;

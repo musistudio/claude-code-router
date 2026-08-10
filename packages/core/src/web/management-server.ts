@@ -33,6 +33,7 @@ import { getLocalAgentProviderCandidates, importLocalAgentProvider, probeLocalAg
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
 import { getProviderPresets } from "@ccr/core/providers/presets/index";
 import { checkGatewayProviderConnectivity, probeGatewayProvider, probeGatewayProviderCandidates } from "@ccr/core/providers/probe";
+import { stopProviderModelAutoRefreshService, syncProviderModelAutoRefreshService } from "@ccr/core/providers/model-auto-refresh";
 import { applyProfileConfig } from "@ccr/core/profiles/service";
 import { getProfileOpenCommand, getProfileRuntimeStatus, openProfileFromCcr, stopProfileFromCcr } from "@ccr/core/profiles/launch-service";
 import { getPluginMarketplace } from "@ccr/core/plugins/marketplace";
@@ -428,6 +429,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
       await applyProfileIfServiceRunning(savedConfig, runtimeStatus);
     }
     invalidateProviderAccountSnapshotCache();
+    syncProviderModelAutoRefresh(savedConfig);
     return savedConfig;
   },
   scanBotHandoffBluetoothTargets: () => scanBotHandoffBluetoothTargets(),
@@ -482,12 +484,14 @@ async function startConfiguredServices(reason: string): Promise<void> {
         console.error(`Proxy mode is enabled, but system proxy is ${proxyStatus.systemProxy.state} during ${reason}${details}`);
       }
     }
+    syncProviderModelAutoRefresh(config);
   } catch (error) {
     console.error(`Failed to start configured services during ${reason}: ${formatError(error)}`);
   }
 }
 
 async function stopConfiguredServices(): Promise<void> {
+  stopProviderModelAutoRefreshService();
   await gatewayService.stop({ proxyRestoreTimeoutMs: 30_000 }).catch((error) => {
     console.error(`Failed to stop gateway: ${formatError(error)}`);
   });
@@ -503,6 +507,17 @@ async function applyProfileIfServiceRunning(config: AppConfig, status: GatewaySt
     return;
   }
   logProfileApplyResult(await applyProfileConfig(config));
+}
+
+function syncProviderModelAutoRefresh(config: AppConfig): void {
+  syncProviderModelAutoRefreshService(config, {
+    logger: console,
+    onConfigChanged: async (nextConfig) => {
+      await gatewayService.updateConfig(nextConfig);
+      await applyProfileIfServiceRunning(nextConfig, gatewayService.getStatus());
+      invalidateProviderAccountSnapshotCache();
+    }
+  });
 }
 
 function logProfileApplyResult(result: ProfileApplyResult): void {

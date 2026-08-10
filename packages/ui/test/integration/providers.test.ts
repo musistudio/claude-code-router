@@ -26,6 +26,7 @@ import {
   providerConnectivityProviderPlugins,
   providerDisplayIcon,
   providerAccountConnectorsTextWithNewApiUserBalanceTemplate,
+  providerAutoFetchKnownModelsForSave,
   parseProviderAccountDraft,
   providerBrowserConnectorFromDraft,
   providerGlobalBaseUrlForProbe,
@@ -196,6 +197,8 @@ test("provider probe result keeps only supported selected protocols", () => {
 test("provider draft restores manual protocol detection mode", () => {
   const draft = createProviderDraftFromProvider({
     api_base_url: "https://local.example/v1",
+    autoFetchModels: true,
+    autoFetchKnownModels: ["custom-model", "excluded-model"],
     capabilities: [{
       baseUrl: "https://local.example/v1",
       source: "preset",
@@ -208,7 +211,71 @@ test("provider draft restores manual protocol detection mode", () => {
   });
 
   assert.equal(draft.protocolDetectionMode, "manual");
+  assert.equal(draft.autoFetchModels, true);
+  assert.deepEqual(draft.autoFetchKnownModels, ["custom-model", "excluded-model"]);
   assert.deepEqual(draft.selectedProtocols, ["openai_chat_completions"]);
+});
+
+test("provider auto fetch known model baseline preserves excluded and removed models", () => {
+  assert.deepEqual(providerAutoFetchKnownModelsForSave({
+    currentModels: ["alpha"],
+    detectedModels: ["alpha", "beta"],
+    existingProvider: undefined,
+    nextBaseUrl: "https://api.provider.test/v1"
+  }), ["alpha", "beta"]);
+
+  assert.deepEqual(providerAutoFetchKnownModelsForSave({
+    currentModels: ["alpha", "gamma"],
+    detectedModels: ["alpha", "beta", "gamma"],
+    existingProvider: {
+      api_base_url: "https://api.provider.test/v1",
+      autoFetchKnownModels: ["alpha", "beta"],
+      models: ["alpha", "beta"],
+      name: "Provider"
+    },
+    nextBaseUrl: "https://api.provider.test/v1"
+  }), ["alpha", "beta", "gamma"]);
+
+  assert.deepEqual(providerAutoFetchKnownModelsForSave({
+    currentModels: ["alpha", "beta"],
+    detectedModels: ["alpha", "beta"],
+    existingProvider: undefined,
+    nextBaseUrl: "https://api.provider.test/v1"
+  }), ["alpha", "beta"]);
+
+  assert.equal(providerAutoFetchKnownModelsForSave({
+    currentModels: ["alpha", "beta"],
+    existingProvider: undefined,
+    nextBaseUrl: "https://api.provider.test/v1"
+  }), undefined);
+});
+
+test("AddProviderForm renders auto model refresh in advanced settings", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    autoFetchModels: true,
+    baseUrl: "https://local.example/v1",
+    modelsText: "custom-model",
+    name: "Local OpenAI",
+    selectedProtocols: ["openai_chat_completions" as const]
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      activeStep: "verify",
+      draft,
+      error: "",
+      mode: "edit",
+      onChange: () => undefined,
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /Auto fetch latest models/);
+  assert.match(html, /aria-label="Auto fetch latest models"/);
+  assert.match(html, /data-ui-tooltip-trigger/);
+  assert.match(html, /aria-label="Poll the provider models endpoint every 10 minutes and add newly discovered models automatically\."/);
+  assert.match(html, /aria-checked="true"/);
 });
 
 test("edit provider dialog keeps advanced settings collapsed by default", () => {

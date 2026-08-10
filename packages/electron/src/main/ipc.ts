@@ -39,6 +39,7 @@ import { isLaunchAtLoginSupported, syncLaunchAtLogin } from "./launch-at-login";
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
 import { getProviderPresets } from "@ccr/core/providers/presets/index";
 import { checkGatewayProviderConnectivity, probeGatewayProvider, probeGatewayProviderCandidates } from "@ccr/core/providers/probe";
+import { syncProviderModelAutoRefreshService } from "@ccr/core/providers/model-auto-refresh";
 import { applyProfileConfig } from "@ccr/core/profiles/service";
 import { desktopCliCommandName, getProfileOpenCommand, getProfileRuntimeStatus, openProfileFromCcr, stopProfileFromCcr } from "@ccr/core/profiles/launch-service";
 import { findProfileForOpen, resolveProfileOpenSurface } from "@ccr/core/profiles/launch-core";
@@ -331,6 +332,7 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, opt
   await builtInBrowserService.syncProxy(savedConfig);
   await trayController.refreshIconFromConfig(savedConfig);
   invalidateProviderAccountSnapshotCache();
+  syncProviderModelAutoRefresh(savedConfig);
   return savedConfig;
 });
 ipcMain.handle(IPC_CHANNELS.appSetThemePreference, async (_event, theme: unknown) => {
@@ -398,6 +400,18 @@ async function applyProfileIfServiceRunning(config: AppConfig, status: GatewaySt
     return;
   }
   logProfileApplyResult(await applyProfileConfig(config));
+}
+
+function syncProviderModelAutoRefresh(config: AppConfig): void {
+  syncProviderModelAutoRefreshService(config, {
+    logger: console,
+    onConfigChanged: async (nextConfig) => {
+      await gatewayService.updateConfig(nextConfig);
+      await applyProfileIfServiceRunning(nextConfig, gatewayService.getStatus());
+      invalidateProviderAccountSnapshotCache();
+      trayController.refreshUsageTitle();
+    }
+  });
 }
 
 function logProfileApplyResult(result: ProfileApplyResult): void {
