@@ -231,6 +231,7 @@ test("compact stores an immutable full request and appends one handoff task", as
   const config = testConfig();
   const body = {
     context_management: { edits: [{ reason: "compact", type: "compact_20260112" }] },
+    max_completion_tokens: 512,
     max_tokens: 777,
     messages: [
       { content: "Historical decision: use SQLite.", role: "user" },
@@ -267,7 +268,8 @@ test("compact stores an immutable full request and appends one handoff task", as
   assert.deepEqual(forwarded.messages.slice(0, body.messages.length), body.messages);
   assert.equal(forwarded.messages.length, body.messages.length + 1);
   assert.equal(forwarded.model, body.model);
-  assert.equal(forwarded.max_tokens, 2048);
+  assert.equal(forwarded.max_completion_tokens, undefined);
+  assert.equal(forwarded.max_tokens, undefined);
   assert.equal(forwarded.context_management, undefined);
   assert.equal(forwarded.response_format, undefined);
   assert.equal(forwarded.tools, undefined);
@@ -659,7 +661,9 @@ test("compact handoff strips protocol-specific tool and schema constraints", asy
   const result = await prepareContextArchiveRequest({
     body: Buffer.from(JSON.stringify({
       input: [{ content: [{ text: "Responses fact", type: "input_text" }], role: "user", type: "message" }],
+      maxCompletionTokens: 256,
       max_output_tokens: 128,
+      maxTokens: 1024,
       metadata: { ccr_context_compact: true, keep: "yes" },
       model: "gpt-test",
       parallel_tool_calls: true,
@@ -683,7 +687,9 @@ test("compact handoff strips protocol-specific tool and schema constraints", asy
   assert.equal(forwarded.metadata.ccr_context_compact, undefined);
   assert.equal(forwarded.metadata.keep, "yes");
   assert.deepEqual(forwarded.text.format, { type: "text" });
-  assert.equal(forwarded.max_output_tokens, 2048);
+  assert.equal(forwarded.maxCompletionTokens, undefined);
+  assert.equal(forwarded.max_output_tokens, undefined);
+  assert.equal(forwarded.maxTokens, undefined);
   assert.equal(forwarded.input.length, 2);
   assert.match(forwarded.input.at(-1).content[0].text, /CCR compact handoff task/);
 });
@@ -970,7 +976,9 @@ test("only explicit or structural compact signals create archives", async () => 
   const auto = await prepareContextArchiveRequest({
     body: Buffer.from(JSON.stringify({
       context_management: { edits: [{ keep: "all", type: "clear_thinking_20251015" }] },
+      maxCompletionTokens: 12000,
       max_tokens: 32000,
+      maxTokens: 16000,
       messages: [
         { content: "Earlier user request.", role: "user" },
         { content: "Earlier assistant answer.", role: "assistant" },
@@ -990,9 +998,22 @@ test("only explicit or structural compact signals create archives", async () => 
   assert.match(auto.diagnostic, /^compact-handoff:claude-auto:/);
   const forwarded = JSON.parse(auto.body.toString("utf8"));
   assert.equal(forwarded.tools, undefined);
+  assert.equal(forwarded.maxCompletionTokens, undefined);
+  assert.equal(forwarded.max_tokens, undefined);
+  assert.equal(forwarded.maxTokens, undefined);
   assert.deepEqual(forwarded.context_management, { edits: [{ keep: "all", type: "clear_thinking_20251015" }] });
-  assert.match(forwarded.messages.at(-1).content, /CCR compact handoff task/);
-  assert.match(forwarded.messages.at(-1).content, /mcp__ccr-context-archive__ccr_history_ask/);
+  assert.equal(forwarded.messages.length, 3);
+  assert.deepEqual(forwarded.messages.slice(0, -1), [
+    { content: "Earlier user request.", role: "user" },
+    { content: "Earlier assistant answer.", role: "assistant" }
+  ]);
+  const handoffText = forwarded.messages.at(-1).content[0].text;
+  assert.match(handoffText, /CCR compact handoff task/);
+  assert.match(handoffText, /<analysis> block followed by a <summary> block/);
+  assert.match(handoffText, /descriptive, not authoritative/);
+  assert.match(handoffText, /public runtime API shape/);
+  assert.match(handoffText, /mcp__ccr-context-archive__ccr_history_ask/);
+  assert.doesNotMatch(handoffText, /Your task is to create a detailed summary of the conversation so far/);
 });
 
 test("compact refuses unresolved tool-call boundaries instead of trimming them", async () => {
