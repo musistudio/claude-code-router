@@ -289,6 +289,42 @@ test("UsageStore keeps the Fusion logical model while grouping by the upstream m
   }
 });
 
+test("UsageStore attributes Claude App encoded response model IDs to the routed upstream model", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-claude-app-encoded-model-test-"));
+  try {
+    const store = new UsageStore(path.join(dir, "usage.sqlite"));
+    const encodedModel = `anthropic/claude-ccr-h${Buffer.from("Fusion/kimisearch", "utf8").toString("hex")}`;
+
+    await store.recordCapture({
+      bodyText: [
+        "event: message_start",
+        `data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"${encodedModel}","usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}}`,
+        "",
+        "data: [DONE]",
+        ""
+      ].join("\n"),
+      client: "Claude Code",
+      config: fusionUsageConfig,
+      durationMs: 100,
+      fallbackModel: "Fusion/kimisearch",
+      method: "POST",
+      path: "/v1/messages",
+      providerProtocol: "anthropic_messages",
+      requestId: "encoded-claude-app-model",
+      responseHeaders: new Headers({ "content-type": "text/event-stream; charset=utf-8" }),
+      statusCode: 200
+    });
+
+    const stats = await store.getStats("today", { includeProxy: true });
+    assert.equal(stats.models[0]?.model, "kimi-for-coding");
+    assert.equal(stats.models[0]?.provider, "Kimi Code - Coding Plan");
+    assert.equal(stats.recentRequests[0]?.logicalModel, "Fusion/kimisearch");
+    assert.notEqual(stats.models[0]?.model, encodedModel);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("lightweight usage synchronization records and deduplicates Fusion internal upstream calls", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-fusion-internal-test-"));
   try {
