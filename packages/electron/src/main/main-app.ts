@@ -1,10 +1,12 @@
 import { app, BrowserWindow, dialog, shell } from "electron";
 import { setupApplicationMenu } from "./app-menu";
 import { loadAppConfig } from "@ccr/core/config/config";
+import type { AppConfig, GatewayStatus } from "@ccr/core/contracts/app";
 import { loadOnboardingFinished } from "@ccr/core/config/onboarding-state";
 import { restoreClaudeAppGatewayConfig, syncClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
 import { deepLinkService } from "./deep-link";
 import { gatewayService } from "@ccr/core/gateway/service";
+import { gatewayStartRetryDelaysMs, startGatewayWithRetry } from "./gateway-start-retry";
 import "./ipc";
 import { applyProfileConfig, restoreGlobalProfileConfigsOnExit } from "@ccr/core/profiles/service";
 import { ensureCcrCliLauncher, persistPreparedCcrCliPath, prepareCcrCliLauncherRuntime, type CcrCliLauncherPreparation } from "@ccr/core/profiles/launch-service";
@@ -71,7 +73,7 @@ function startPrimaryInstance(): void {
     trayController.start();
     appUpdateService.start();
     appUpdateService.setInstallPreparation(prepareForUpdateInstall);
-    void startConfiguredServices("startup");
+    void startConfiguredServices("startup", { retryGatewayStart: true });
 
     app.on("activate", () => {
       const mainWindow = windowsManager.getWindow("main");
@@ -207,7 +209,7 @@ function stopServicesForQuit(): Promise<void> {
   return stopForQuitPromise;
 }
 
-function startConfiguredServices(reason: string): Promise<void> {
+function startConfiguredServices(reason: string, options: { retryGatewayStart?: boolean } = {}): Promise<void> {
   if (!startServicesPromise) {
     startServicesPromise = loadAppConfig()
       .then(async (config) => {
@@ -226,7 +228,7 @@ function startConfiguredServices(reason: string): Promise<void> {
         } catch (error) {
           console.error(`Failed to sync launch-at-login setting during ${reason}: ${formatError(error)}`);
         }
-        const status = await gatewayService.start(config);
+        const status = await startGateway(config, reason, Boolean(options.retryGatewayStart));
         if (status.state === "error") {
           console.error(`Failed to start gateway during ${reason}: ${status.lastError}`);
         }
@@ -252,6 +254,23 @@ function startConfiguredServices(reason: string): Promise<void> {
       });
   }
   return startServicesPromise;
+}
+
+function startGateway(config: AppConfig, reason: string, retry: boolean): Promise<GatewayStatus> {
+  if (!retry) {
+    return gatewayService.start(config);
+  }
+
+  return startGatewayWithRetry(config, {
+    getStatus: () => gatewayService.getStatus(),
+    onRetry: (attempt, delayMs, lastError) => {
+      console.warn(
+        `Gateway did not start during ${reason} (${lastError}). Retrying in ${delayMs}ms (attempt ${attempt} of ${gatewayStartRetryDelaysMs.length}).`
+      );
+    },
+    shouldAbort: () => stoppingForQuit,
+    start: (startConfig) => gatewayService.start(startConfig)
+  });
 }
 
 function queueEnsureConfiguredProxyModeActive(reason: string): void {
