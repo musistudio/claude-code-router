@@ -38,6 +38,7 @@ import {
 } from "@ccr/core/agents/pi/profile-config";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { pruneInactiveProfileApiKeysFromList, syncProfileApiKeys } from "@ccr/core/profiles/api-key";
+import { profileAllowedModels } from "@ccr/core/profiles/model-allowlist";
 import { resolveZcodeConfigFile, writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "@ccr/core/agents/zcode/profile-config";
 import { CONTEXT_ARCHIVE_MCP_SERVER_NAME, contextArchiveConfigForProfile, contextArchiveMcpServer } from "@ccr/core/gateway/context-archive";
 import { createClaudeCliAutoCompactWindows } from "@ccr/core/gateway/features/model-discovery";
@@ -477,8 +478,12 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
     const source = existsSync(configFile) ? readFileSync(configFile, "utf8") : "";
     const configFormat = normalizeCodexConfigFormat(profile.configFormat);
     const modelCatalogFile = codexModelCatalogFile(configFile);
-    const modelCatalogResult = writeFileWithBackup(modelCatalogFile, codexModelCatalogJson(config, model));
-    const appModelCatalogResult = writeCodexCompatibleAppModelCatalog(CONFIGDIR, { ...profile, model }, config);
+    const profileWithResolvedModel = { ...profile, model };
+    const modelCatalogResult = writeFileWithBackup(
+      modelCatalogFile,
+      codexModelCatalogJson(config, model, { allowedModels: profileAllowedModels(profileWithResolvedModel) })
+    );
+    const appModelCatalogResult = writeCodexCompatibleAppModelCatalog(CONFIGDIR, profileWithResolvedModel, config);
     const showAllSessions = profile.agent === "zcode" ? false : Boolean(profile.showAllSessions);
     const toolHubMcpResult = writeCodexToolHubMcpRuntimeConfig(config, token);
     const contextArchiveMcp = profile.agent === "codex"

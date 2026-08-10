@@ -98,13 +98,17 @@ test("AddProfileForm shows enhanced route as a sibling of profile routing", () =
   const advancedSettingsIndex = html.indexOf("Advanced settings");
   const enhancedRouteIndex = html.indexOf("Enhanced route");
   const profileRoutingIndex = html.indexOf("Profile routing");
+  const allowedModelListIndex = html.indexOf("Allowed model list");
 
   assert.ok(advancedSettingsIndex >= 0);
   assert.ok(enhancedRouteIndex > advancedSettingsIndex);
   assert.ok(profileRoutingIndex > advancedSettingsIndex);
+  assert.ok(allowedModelListIndex > advancedSettingsIndex);
+  assert.ok(allowedModelListIndex > profileRoutingIndex);
   assert.ok(enhancedRouteIndex < profileRoutingIndex);
   assert.doesNotMatch(html, /Routing disabled/);
   assert.match(html, /Enhanced route/);
+  assert.match(html, /Allowed model list/);
   assert.match(html, /rounded-b-none/);
   assert.match(html, /rounded-b-md border border-t-0/);
   assert.doesNotMatch(html, /Profile routes/);
@@ -136,10 +140,11 @@ test("AddProfileForm shows private profile routes when profile routing is enable
 
 test("AddProfileForm uses Codex-specific enhanced route info for Codex profiles", () => {
   const config = appConfigFixture();
+  const draft = { ...createProfileDraft("codex"), providerId: "", providerName: "", routingEnabled: true };
   const html = renderToStaticMarkup(
     <AddProfileForm
       botConfigs={config.botConfigs}
-      draft={{ ...createProfileDraft("codex"), routingEnabled: true }}
+      draft={draft}
       error=""
       mode="edit"
       onChange={() => undefined}
@@ -151,6 +156,107 @@ test("AddProfileForm uses Codex-specific enhanced route info for Codex profiles"
 
   assert.match(html, /Enhanced route/);
   assert.match(html, /CCR built-in Codex routing optimizes requests to third-party models for this profile\./);
+  assert.doesNotMatch(html, /Provider ID/);
+  assert.doesNotMatch(html, /Provider name/);
+  assert.equal(isProfileDraftSubmittable(draft), true);
+  assert.equal(profileConfigFromDraft(draft, []).providerId, "claude-code-router");
+  assert.equal(profileConfigFromDraft(draft, []).providerName, "Claude Code Router");
+});
+
+test("explicit allowed model lists require a default model", () => {
+  const config = appConfigFixture();
+  config.Providers = [{
+    models: ["alpha", "beta"],
+    name: "Provider"
+  }];
+  const draft = {
+    ...createProfileDraft("codex"),
+    availableModels: ["Provider/alpha"]
+  };
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={config.botConfigs}
+      draft={draft}
+      error=""
+      mode="edit"
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={config.Providers}
+      virtualModelProfiles={config.virtualModelProfiles}
+    />
+  );
+
+  assert.equal(isProfileDraftSubmittable(draft), false);
+  assert.match(html, /Advanced settings need attention/);
+  assert.match(html, /Default model is required when allowed model list is set\./);
+});
+
+test("AddProfileForm does not render unrestricted allowed models as selected without a default model", () => {
+  const config = appConfigFixture();
+  config.Providers = [{
+    models: ["alpha", "beta"],
+    name: "Provider"
+  }];
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={config.botConfigs}
+      draft={createProfileDraft("codex")}
+      error=""
+      mode="edit"
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={config.Providers}
+      virtualModelProfiles={config.virtualModelProfiles}
+    />
+  );
+  const alphaIndex = html.indexOf('title="Provider/alpha"');
+  const betaIndex = html.indexOf('title="Provider/beta"');
+  const alphaLabel = html.slice(alphaIndex, betaIndex);
+  const betaLabel = html.slice(betaIndex, html.indexOf("</label>", betaIndex));
+  const clearIndex = html.indexOf(">Clear</button>");
+  const clearButton = html.slice(html.lastIndexOf("<button", clearIndex), clearIndex);
+
+  assert.ok(alphaIndex >= 0);
+  assert.ok(betaIndex > alphaIndex);
+  assert.match(alphaLabel, /aria-checked="false"/);
+  assert.match(betaLabel, /aria-checked="false"/);
+  assert.match(clearButton, /disabled=""/);
+});
+
+test("AddProfileForm keeps the default model locked in allowed model lists", () => {
+  const config = appConfigFixture();
+  config.Providers = [{
+    models: ["alpha", "beta"],
+    name: "Provider"
+  }];
+  const draft = {
+    ...createProfileDraft("codex"),
+    availableModels: ["Provider/alpha"],
+    model: "Provider/alpha"
+  };
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={config.botConfigs}
+      draft={draft}
+      error=""
+      mode="edit"
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={config.Providers}
+      virtualModelProfiles={config.virtualModelProfiles}
+    />
+  );
+  const defaultIndex = html.indexOf('title="Provider/alpha"');
+  const otherIndex = html.indexOf('title="Provider/beta"');
+  const defaultLabel = html.slice(defaultIndex, otherIndex);
+  const otherLabel = html.slice(otherIndex, html.indexOf("</label>", otherIndex));
+
+  assert.ok(defaultIndex >= 0);
+  assert.ok(otherIndex > defaultIndex);
+  assert.match(defaultLabel, /aria-checked="true"/);
+  assert.match(defaultLabel, /disabled=""/);
+  assert.match(otherLabel, /aria-checked="false"/);
+  assert.doesNotMatch(otherLabel, /disabled=""/);
 });
 
 test("AddProfileForm places CLAUDE_APP_PATH below Bot settings", () => {
@@ -199,6 +305,7 @@ test("AddProfileForm marks required and optional fields", () => {
   assert.match(html, /Opus model/);
   assert.match(html, /Sonnet model/);
   assert.match(html, /Haiku model/);
+  assert.doesNotMatch(html, /Allowed model list/);
 });
 
 test("Claude Code profiles require a default model before submission", () => {
@@ -210,10 +317,11 @@ test("Claude Code profiles require a default model before submission", () => {
 
 test("AddProfileForm labels Kimi CLI model fields with Kimi-specific copy", () => {
   const config = appConfigFixture();
+  const draft = createProfileDraft("kimi");
   const html = renderToStaticMarkup(
     <AddProfileForm
       botConfigs={config.botConfigs}
-      draft={createProfileDraft("kimi")}
+      draft={draft}
       error=""
       onChange={() => undefined}
       onCreateBot={() => undefined}
@@ -223,9 +331,40 @@ test("AddProfileForm labels Kimi CLI model fields with Kimi-specific copy", () =
   );
 
   assert.match(html, /Kimi model/);
-  assert.match(html, /Allowed models/);
+  assert.doesNotMatch(html, /Advanced settings need attention/);
+  assert.doesNotMatch(html, /Allowed model list/);
   assert.doesNotMatch(html, /Default model/);
   assert.doesNotMatch(html, /Available models/);
+  assert.equal(isProfileDraftSubmittable(draft), false);
+  const defaultOnlyDraft = { ...draft, model: "kimi/k2", availableModels: [] };
+  assert.equal(isProfileDraftSubmittable(defaultOnlyDraft), true);
+  assert.equal(profileConfigFromDraft(defaultOnlyDraft, []).availableModels, undefined);
+});
+
+test("AddProfileForm shows Kimi allowed models as selected by default", () => {
+  const config = appConfigFixture();
+  config.Providers = [{
+    models: ["k2", "k3"],
+    name: "Kimi"
+  }];
+  const draft = { ...createProfileDraft("kimi"), model: "Kimi/k2" };
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={config.botConfigs}
+      draft={draft}
+      error=""
+      mode="edit"
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={config.Providers}
+      virtualModelProfiles={config.virtualModelProfiles}
+    />
+  );
+
+  assert.match(html, /Allowed model list/);
+  assert.match(html, /title="Kimi\/k2"[\s\S]*?aria-checked="true"/);
+  assert.match(html, /title="Kimi\/k3"[\s\S]*?aria-checked="true"/);
+  assert.equal(profileConfigFromDraft(draft, []).availableModels, undefined);
 });
 
 test("AddProfileForm treats Pi as a CCR-only CLI profile", () => {
@@ -247,7 +386,7 @@ test("AddProfileForm treats Pi as a CCR-only CLI profile", () => {
   assert.match(html, /Pi model/);
   assert.doesNotMatch(html, /Provider ID/);
   assert.doesNotMatch(html, /Provider name/);
-  assert.doesNotMatch(html, /Allowed models/);
+  assert.doesNotMatch(html, /Allowed model list/);
 });
 
 test("AddProfileForm treats Claude Design as a CCR-only App profile", () => {
@@ -346,7 +485,7 @@ test("profileSummaryItems uses Kimi-specific model labels", () => {
   }, config, (value) => value);
 
   assert.equal(items[0]?.label, "Kimi model");
-  assert.equal(items[1]?.label, "Allowed models");
+  assert.equal(items[1]?.label, "Allowed model list");
   assert.equal(items[1]?.value, "2");
 });
 
@@ -381,7 +520,7 @@ test("profileSummaryItems omits disabled profile properties from cards", () => {
     surface: "auto"
   }, config, (value) => value);
 
-  assert.deepEqual(disabledItems.map((item) => item.label), ["Model", "Provider ID"]);
+  assert.deepEqual(disabledItems.map((item) => item.label), ["Model"]);
   assert.doesNotMatch(disabledItems.map((item) => item.value).join(" "), /Disabled/);
 
   const enabledItems = profileSummaryItems({
@@ -399,6 +538,7 @@ test("profileSummaryItems omits disabled profile properties from cards", () => {
 
   assert.match(enabledItems.map((item) => item.label).join(" "), /Show all sessions/);
   assert.match(enabledItems.map((item) => item.label).join(" "), /CCR managed compact/);
+  assert.doesNotMatch(enabledItems.map((item) => item.label).join(" "), /Provider ID/);
 });
 
 test("profileSummaryItems shows disabled profile enhanced route without private routing status", () => {

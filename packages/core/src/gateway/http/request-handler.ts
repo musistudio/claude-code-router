@@ -17,6 +17,8 @@ import { ccrRemoteControlPathPrefix, ccrRemoteControlService } from "@ccr/core/g
 import { authorize, claudeCodeWifTokenPath, handleClaudeCodeWifTokenRequest, reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
 import { parseJsonObject, readRequestBody, sendJson } from "@ccr/core/gateway/http/io";
 import { shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
+import { requestLogRequestedModel } from "@ccr/core/observability/request-log-model";
+import { isModelAllowedForProfile, profileForApiKey } from "@ccr/core/profiles/model-allowlist";
 import { applyCors, shouldServeGatewayRequest } from "@ccr/core/gateway/core-runtime/supervisor";
 import { billingUsageSyncPath, rawTraceSyncPath } from "@ccr/core/gateway/internal/shared";
 import type { BrowserAutomationMcpIntegration } from "@ccr/core/gateway/internal/shared";
@@ -212,13 +214,24 @@ export class GatewayHttpRequestHandler {
       }
 
       if (claudeCliBootstrapRequest) {
-        sendJson(response, 200, createClaudeCliBootstrapResponse(this.config));
+        sendJson(response, 200, createClaudeCliBootstrapResponse(this.config, authorization.apiKey));
         return;
       }
 
       if (request.method === "POST" && path === "/v1/messages/count_tokens") {
         const requestBody = await readRequestBody(request);
         const body = parseJsonObject(requestBody);
+        const requestedModel = requestLogRequestedModel(requestBody, path);
+        const profile = profileForApiKey(this.config, authorization.apiKey);
+        if (requestedModel && !isModelAllowedForProfile(this.config, profile, requestedModel)) {
+          sendJson(response, 403, {
+            error: {
+              code: "profile_model_not_allowed",
+              message: `Model "${requestedModel}" is not allowed for this profile.`
+            }
+          });
+          return;
+        }
         if (!reserveApiKeyLimits(authorization.apiKey, request, response, requestBody)) {
           return;
         }

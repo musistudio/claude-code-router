@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { buildCodexModelCatalogIds } from "@ccr/core/agents/codex/model-catalog";
 import type { AppConfig, ProfileConfig } from "@ccr/core/contracts/app";
+import { profileAllowedModels } from "@ccr/core/profiles/model-allowlist";
 
 export type PiProfileConfigWriteResult = {
   changed: boolean;
@@ -49,7 +50,7 @@ export function writePiGatewayConfig(
   const sessionDir = resolvePiSessionDir(configDir, profile);
   const file = path.join(profileHome, "models.json");
   const providerId = sanitizeProviderId(profile.providerId || "") || "claude-code-router";
-  const models = piProfileModels(config, defaultModel);
+  const models = piProfileModels(config, profile, defaultModel);
   const model = models.includes(defaultModel) ? defaultModel : models[0] || defaultModel || "default";
   const content = `${JSON.stringify(piModelsJson(config, profile, providerId, token, models), null, 2)}\n`;
   const changed = writeJsonFileIfChanged(file, content);
@@ -97,10 +98,10 @@ function piModelConfig(model: string): Record<string, unknown> {
   };
 }
 
-function piProfileModels(config: AppConfig, defaultModel: string): string[] {
+function piProfileModels(config: AppConfig, profile: ProfileConfig, defaultModel: string): string[] {
   return uniqueStrings([
     defaultModel,
-    ...buildCodexModelCatalogIds(config, defaultModel)
+    ...buildCodexModelCatalogIds(config, defaultModel, { allowedModels: profileAllowedModels({ ...profile, model: defaultModel }) })
   ].filter(Boolean));
 }
 

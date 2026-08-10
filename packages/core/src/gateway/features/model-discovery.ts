@@ -3,7 +3,7 @@
  */
 import type { IncomingHttpHeaders } from "node:http";
 import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
-import type { ApiKeyConfig, AppConfig, ProviderModelMetadata } from "@ccr/core/contracts/app";
+import type { ApiKeyConfig, AppConfig, ProfileConfig, ProviderModelMetadata } from "@ccr/core/contracts/app";
 import { buildClaudeAppGatewayModelRoutes, resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
 import { modelRegistryForConfig, normalizeRouteSelector } from "@ccr/core/routing/model-registry";
 import { findModelCatalogEntry, modelCatalogMaxInputTokens, modelCatalogMaxOutputTokens, readCatalogCapability, type ModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
@@ -16,6 +16,7 @@ import { parseJsonObjectSafe, serializeJsonBodyWithModel } from "@ccr/core/gatew
 import { uniqueStrings } from "@ccr/core/gateway/internal/collections";
 import { contextArchiveConfigForApiKey, contextArchiveMcpEnabled } from "@ccr/core/gateway/context-archive";
 import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
+import { filterModelIdsForProfile, isModelAllowedForProfile, profileForApiKey } from "@ccr/core/profiles/model-allowlist";
 
 
 export function shouldServeGatewayModelsResponse(method: string, path: string): boolean {
@@ -98,20 +99,22 @@ export function prepareClaudeAppDiscoveredModelRequest(
 export function createGatewayModelsResponse(config: AppConfig, headers: IncomingHttpHeaders, apiKey?: ApiKeyConfig): Record<string, unknown> {
   const contextArchiveConfig = contextArchiveConfigForApiKey(config, apiKey);
   const contextArchiveCompact = Boolean(contextArchiveConfig && contextArchiveMcpEnabled(contextArchiveConfig));
+  const profile = profileForApiKey(config, apiKey);
   if (isClaudeAppApiKey(apiKey)) {
-    return createClaudeAppGatewayModelsResponse(config, { contextArchiveCompact });
+    return createClaudeAppGatewayModelsResponse(config, { contextArchiveCompact, profile });
   }
   if (isClaudeCodeUserAgent(headers)) {
-    return createClaudeAppGatewayModelsResponse(config, { claudeCode: true, contextArchiveCompact });
+    return createClaudeAppGatewayModelsResponse(config, { claudeCode: true, contextArchiveCompact, profile });
   }
-  return createOpenAICompatibleGatewayModelsResponse(config);
+  return createOpenAICompatibleGatewayModelsResponse(config, profile);
 }
 
 
-export function createClaudeCliBootstrapResponse(config: AppConfig): Record<string, unknown> {
-  const windows = createClaudeCliAutoCompactWindows(config);
+export function createClaudeCliBootstrapResponse(config: AppConfig, apiKey?: ApiKeyConfig): Record<string, unknown> {
+  const profile = profileForApiKey(config, apiKey);
+  const windows = createClaudeCliAutoCompactWindows(config, profile);
   return {
-    additional_model_options: createClaudeCliAdditionalModelOptions(config),
+    additional_model_options: createClaudeCliAdditionalModelOptions(config, profile),
     auto_compact_windows: windows,
     client_data: {
       rowan_thicket: { ...windows }
@@ -134,11 +137,14 @@ type ClaudeCliAdditionalModelOption = {
 };
 
 
-function createClaudeCliAdditionalModelOptions(config: AppConfig): ClaudeCliAdditionalModelOption[] {
+function createClaudeCliAdditionalModelOptions(config: AppConfig, profile?: ProfileConfig): ClaudeCliAdditionalModelOption[] {
   const options: ClaudeCliAdditionalModelOption[] = [];
   const seen = new Set<string>();
   const routes = buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions);
   for (const route of routes) {
+    if (!isModelAllowedForProfile(config, profile, route.targetModel)) {
+      continue;
+    }
     const id = route.oneMillionContext ? claudeCodeOneMillionContextModelId(route.id) : route.id;
     const normalized = id.trim();
     const key = normalized.toLowerCase();
@@ -197,8 +203,8 @@ function formatCompactTokenCount(tokens: number): string {
 }
 
 
-function createOpenAICompatibleGatewayModelsResponse(config: AppConfig): Record<string, unknown> {
-  const data = buildGatewayDiscoverableModelIds(config).map((id) => {
+function createOpenAICompatibleGatewayModelsResponse(config: AppConfig, profile?: ProfileConfig): Record<string, unknown> {
+  const data = buildGatewayDiscoverableModelIds(config, profile).map((id) => {
     const catalogEntry = findModelCatalogEntry(id);
     return {
       id,
@@ -217,10 +223,13 @@ function createOpenAICompatibleGatewayModelsResponse(config: AppConfig): Record<
 }
 
 
-export function createClaudeCliAutoCompactWindows(config: AppConfig): Record<string, number> {
+export function createClaudeCliAutoCompactWindows(config: AppConfig, profile?: ProfileConfig): Record<string, number> {
   const windows: Record<string, number> = {};
   const routes = buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions);
   for (const route of routes) {
+    if (!isModelAllowedForProfile(config, profile, route.targetModel)) {
+      continue;
+    }
     const catalogId = stripClaudeCodeOneMillionContextSuffix(route.targetModel);
     const modelDiscovery = providerModelDiscoveryForSelector(config, catalogId);
     const maxInputTokens = claudeGatewayModelContextWindow(
@@ -271,9 +280,10 @@ function claudeCliAutoCompactWindow(maxInputTokens: number): number | undefined 
 
 function createClaudeAppGatewayModelsResponse(
   config: AppConfig,
-  options: { claudeCode?: boolean; contextArchiveCompact?: boolean } = {}
+  options: { claudeCode?: boolean; contextArchiveCompact?: boolean; profile?: ProfileConfig } = {}
 ): Record<string, unknown> {
-  const routes = buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions);
+  const routes = buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions)
+    .filter((route) => isModelAllowedForProfile(config, options.profile, route.targetModel));
   const data = routes.map((route) => {
     const catalogId = stripClaudeCodeOneMillionContextSuffix(route.targetModel);
     const modelDiscovery = providerModelDiscoveryForSelector(config, catalogId);
@@ -309,8 +319,12 @@ function createClaudeAppGatewayModelsResponse(
 }
 
 
-function createClaudeCodeModelsResponse(config: AppConfig, contextArchiveCompact = false): Record<string, unknown> {
-  const models = buildClaudeCodeDiscoverableModels(config);
+function createClaudeCodeModelsResponse(
+  config: AppConfig,
+  contextArchiveCompact = false,
+  profile?: ProfileConfig
+): Record<string, unknown> {
+  const models = buildClaudeCodeDiscoverableModels(config, profile);
   const data = models.map((model) => {
     const claudeId = claudeCodeDiscoveryModelId(model.id);
     const catalogId = stripClaudeCodeOneMillionContextSuffix(model.id);
@@ -345,7 +359,11 @@ function createClaudeCodeModelsResponse(config: AppConfig, contextArchiveCompact
 
 export function createClaudeCodeModelsResponseForTest(config: AppConfig, apiKey?: ApiKeyConfig): Record<string, unknown> {
   const contextArchiveConfig = contextArchiveConfigForApiKey(config, apiKey);
-  return createClaudeCodeModelsResponse(config, Boolean(contextArchiveConfig && contextArchiveMcpEnabled(contextArchiveConfig)));
+  return createClaudeCodeModelsResponse(
+    config,
+    Boolean(contextArchiveConfig && contextArchiveMcpEnabled(contextArchiveConfig)),
+    profileForApiKey(config, apiKey)
+  );
 }
 
 
@@ -457,12 +475,12 @@ function positiveInteger(value: number | undefined): number | undefined {
 }
 
 
-function buildClaudeCodeDiscoverableModelIds(config: AppConfig): string[] {
-  return buildGatewayDiscoverableModelIds(config);
+function buildClaudeCodeDiscoverableModelIds(config: AppConfig, profile?: ProfileConfig): string[] {
+  return buildGatewayDiscoverableModelIds(config, profile);
 }
 
 
-function buildGatewayDiscoverableModelIds(config: AppConfig): string[] {
+function buildGatewayDiscoverableModelIds(config: AppConfig, profile?: ProfileConfig): string[] {
   const baseEntries: Array<{ modelName: string; providerName: string }> = [];
   for (const provider of config.Providers) {
     const providerName = provider.name?.trim();
@@ -479,19 +497,19 @@ function buildGatewayDiscoverableModelIds(config: AppConfig): string[] {
   }
 
   const ids = baseEntries.map((entry) => `${entry.providerName}/${entry.modelName}`);
-  for (const profile of config.virtualModelProfiles ?? []) {
-    if (!isVisibleVirtualModelProfile(profile)) {
+  for (const virtualProfile of config.virtualModelProfiles ?? []) {
+    if (!isVisibleVirtualModelProfile(virtualProfile)) {
       continue;
     }
 
     for (const entry of baseEntries) {
-      for (const prefix of profile.match?.prefixes ?? []) {
+      for (const prefix of virtualProfile.match?.prefixes ?? []) {
         const normalizedPrefix = prefix.trim();
         if (normalizedPrefix) {
           ids.push(`${entry.providerName}/${normalizedPrefix}${entry.modelName}`);
         }
       }
-      for (const suffix of profile.match?.suffixes ?? []) {
+      for (const suffix of virtualProfile.match?.suffixes ?? []) {
         const normalizedSuffix = suffix.trim();
         if (normalizedSuffix) {
           ids.push(`${entry.providerName}/${entry.modelName}${normalizedSuffix}`);
@@ -499,7 +517,7 @@ function buildGatewayDiscoverableModelIds(config: AppConfig): string[] {
       }
     }
 
-    for (const alias of profile.match?.exactAliases ?? []) {
+    for (const alias of virtualProfile.match?.exactAliases ?? []) {
       const normalizedAlias = alias.trim();
       if (!normalizedAlias) {
         continue;
@@ -508,7 +526,7 @@ function buildGatewayDiscoverableModelIds(config: AppConfig): string[] {
     }
   }
 
-  return uniqueStrings(ids);
+  return filterModelIdsForProfile(config, uniqueStrings(ids), profile);
 }
 
 
@@ -518,7 +536,7 @@ function gatewayModelOwner(id: string): string {
 }
 
 
-function buildClaudeCodeDiscoverableModels(config: AppConfig): ClaudeCodeDiscoverableModel[] {
+function buildClaudeCodeDiscoverableModels(config: AppConfig, profile?: ProfileConfig): ClaudeCodeDiscoverableModel[] {
   const seen = new Set<string>();
   const models: ClaudeCodeDiscoverableModel[] = [];
 
@@ -535,7 +553,7 @@ function buildClaudeCodeDiscoverableModels(config: AppConfig): ClaudeCodeDiscove
     models.push({ id: normalized, oneMillionContext });
   };
 
-  for (const id of buildClaudeCodeDiscoverableModelIds(config)) {
+  for (const id of buildClaudeCodeDiscoverableModelIds(config, profile)) {
     pushModel(id, hasClaudeCodeOneMillionContextSuffix(id));
     const baseId = stripClaudeCodeOneMillionContextSuffix(id);
     if (!hasClaudeCodeOneMillionContextSuffix(id) && gatewayModelSupportsOneMillionContext(config, baseId)) {

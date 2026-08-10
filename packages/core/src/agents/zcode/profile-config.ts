@@ -4,6 +4,7 @@ import path from "node:path";
 import { isGatewayProviderEnabled, type AppConfig, type ProfileConfig } from "@ccr/core/contracts/app";
 import { normalizeRouteSelector } from "@ccr/core/gateway/claude-code-router-plugin";
 import { buildZcodeModelCatalog } from "@ccr/core/agents/zcode/model-catalog";
+import { profileAllowedModels } from "@ccr/core/profiles/model-allowlist";
 
 export type ZcodeProfileConfigWriteResult = {
   backupFile?: string;
@@ -53,7 +54,7 @@ export function writeZcodeGatewayConfig(
   const file = resolveZcodeConfigFile(profile);
   const model = normalizeClientModel(profile.model) || defaultClientModel(config);
   const providerId = sanitizeZcodeProviderId(profile.providerId || "") || "claude-code-router";
-  const modelCatalog = buildZcodeModelCatalog(config, model);
+  const modelCatalog = buildZcodeModelCatalog(config, model, { allowedModels: profileAllowedModels({ ...profile, model }) });
   const values: ZcodeGatewayConfigValues = {
     baseUrl: gatewayEndpoint(config),
     model,

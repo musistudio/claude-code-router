@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
-import type { ApiKeyConfig, AppConfig, RequestRouteTraceChange } from "@ccr/core/contracts/app";
+import type { ApiKeyConfig, AppConfig, ProfileConfig, RequestRouteTraceChange, RouterFallbackConfig } from "@ccr/core/contracts/app";
 import {
   createSseErrorDetector,
   markGatewayRequestLogDropped,
@@ -46,6 +46,7 @@ import type { BrowserWebSearchMcpIntegration, BrowserWebSearchProtocolRecord, Up
 import { cancelResponseBody, destroyResponseStreams, fetchUpstreamWithFallback, mergeFallbackResponseHeaders, rewriteCapabilityResponseHeaders, uniqueStreams, upstreamResponseHeaders } from "@ccr/core/gateway/upstream/executor";
 import { requestProtocolForPath, shouldApplyGatewayRouting } from "@ccr/core/routing/protocol-endpoints";
 import { createClaudeCodeWebSearchContinuationContext, createHostedWebSearchProtocolContext, hostedWebSearchProtocolResponseStream, hostedWebSearchUnavailableMessage, prepareClaudeCodeWebSearchContinuationRequestBody, prepareHostedWebSearchProtocolRequestBody, selectClaudeCodeWebSearchContinuationRecords, selectHostedWebSearchProtocolRecords } from "@ccr/core/gateway/features/hosted-web-search/index";
+import { isModelAllowedForProfile, profileForApiKey } from "@ccr/core/profiles/model-allowlist";
 
 export type GatewayRequestPipelineDependencies = {
   getBrowserWebSearchMcpIntegration: () => BrowserWebSearchMcpIntegration | undefined;
@@ -91,6 +92,7 @@ export class GatewayRequestPipeline {
         sendJson(response, 503, { error: { message: "Gateway service is not configured." } });
         return;
       }
+      const activeConfig = this.config;
 
       const method = request.method ?? "GET";
       const requestBody = await readRequestBody(request);
@@ -158,6 +160,7 @@ export class GatewayRequestPipeline {
       let routedModel: string | undefined;
       let codexApplyPatchBridgeActive = false;
       let codexMultiAgentBridgeActive = false;
+      const authenticatedProfile = profileForApiKey(activeConfig, apiKey);
       const claudeModelRewriteStartedAt = Date.now();
       const claudeModelRewrite = prepareClaudeCodeDiscoveredModelRequest(this.config, request.headers, method, path, bodyToForward);
       if (claudeModelRewrite) {
@@ -194,9 +197,7 @@ export class GatewayRequestPipeline {
           target: routedModel ? { model: routedModel } : undefined
         });
       }
-      if (!reserveApiKeyLimits(apiKey, request, response, bodyToForward)) {
-        return;
-      }
+      const modelBeforeRouting = requestLogRequestedModel(bodyToForward ?? requestBody, path);
       const usageAttributionConfig = coreGatewayUsageAttributionConfig(this.config);
       const recordUsage = (input: Omit<UsageCaptureInput, "config">) => {
         void recordGatewayUsageCapture({ ...input, config: usageAttributionConfig });
@@ -288,6 +289,9 @@ export class GatewayRequestPipeline {
 
       const shouldCaptureUsage = shouldCaptureGatewayUsage(method, path);
       if (shouldServeGatewayModelsResponse(method, path)) {
+        if (!reserveApiKeyLimits(apiKey, request, response, bodyToForward)) {
+          return;
+        }
         const responseText = `${JSON.stringify(createGatewayModelsResponse(this.config, request.headers, apiKey))}\n`;
         const modelHeaders = new Headers({
           "cache-control": "no-store, max-age=0",
@@ -353,6 +357,22 @@ export class GatewayRequestPipeline {
           phase: "routing",
           target: routedModel ? { model: routedModel } : undefined
         });
+      }
+
+      routeFallback = profileAllowedRouteFallback(activeConfig, authenticatedProfile, routeFallback);
+      const effectiveModel = routedModel ?? requestLogRequestedModel(bodyToForward ?? requestBody, path);
+      const deniedModel = profileDeniedModel(activeConfig, authenticatedProfile, modelBeforeRouting, effectiveModel);
+      if (deniedModel) {
+        sendJson(response, 403, {
+          error: {
+            code: "profile_model_not_allowed",
+            message: `Model "${deniedModel}" is not allowed for this profile.`
+          }
+        });
+        return;
+      }
+      if (!reserveApiKeyLimits(apiKey, request, response, bodyToForward)) {
+        return;
       }
 
       const codexBridgeStartedAt = Date.now();
@@ -937,3 +957,34 @@ export class GatewayRequestPipeline {
     };
   }
 }
+
+function profileDeniedModel(
+  config: AppConfig,
+  profile: ProfileConfig | undefined,
+  modelBeforeRouting: string | undefined,
+  effectiveModel: string | undefined
+): string | undefined {
+  const modelToAuthorize = effectiveModel ?? modelBeforeRouting;
+  return modelToAuthorize && !isModelAllowedForProfile(config, profile, modelToAuthorize)
+    ? modelToAuthorize
+    : undefined;
+}
+
+function profileAllowedRouteFallback(
+  config: AppConfig,
+  profile: ProfileConfig | undefined,
+  fallback: RouterFallbackConfig
+): RouterFallbackConfig {
+  if (fallback.mode !== "model-chain") {
+    return fallback;
+  }
+  const models = fallback.models.filter((model) =>
+    isModelAllowedForProfile(config, profile, model)
+  );
+  return models.length === fallback.models.length
+    ? fallback
+    : { ...fallback, models };
+}
+
+export const profileDeniedModelForTest = profileDeniedModel;
+export const profileAllowedRouteFallbackForTest = profileAllowedRouteFallback;

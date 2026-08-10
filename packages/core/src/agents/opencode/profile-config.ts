@@ -7,6 +7,7 @@ import { isGatewayProviderEnabled, type AppConfig, type GatewayProviderConfig, t
 import { findModelCatalogEntry, type ModelCatalogEntry, modelCatalogMaxInputTokens, modelCatalogMaxOutputTokens } from "@ccr/core/gateway/model-catalog";
 import { modelRegistryForConfig } from "@ccr/core/routing/model-registry";
 import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
+import { profileAllowedModels } from "@ccr/core/profiles/model-allowlist";
 
 export type OpenCodeProfileConfigWriteResult = {
   backupFile?: string;
@@ -97,7 +98,7 @@ function openCodeGatewayOverrides(config: AppConfig, profile: ProfileConfig, tok
   const providerName = profile.providerName?.trim() || "Claude Code Router";
   const model = normalizeClientModel(profile.model) || defaultClientModel(config);
   const modelRef = `${providerId}/${model}`;
-  const models = openCodeModelConfigs(config, model);
+  const models = openCodeModelConfigs(config, { ...profile, model }, model);
   return {
     $schema: "https://opencode.ai/config.json",
     model: modelRef,
@@ -120,8 +121,8 @@ function openCodeGatewayOverrides(config: AppConfig, profile: ProfileConfig, tok
   };
 }
 
-function openCodeModelConfigs(config: AppConfig, selectedModel: string): Record<string, unknown> {
-  const catalog = buildCodexModelCatalog(config, selectedModel);
+function openCodeModelConfigs(config: AppConfig, profile: ProfileConfig, selectedModel: string): Record<string, unknown> {
+  const catalog = buildCodexModelCatalog(config, selectedModel, { allowedModels: profileAllowedModels(profile) });
   const resolutionConfig: OpenCodeModelResolutionConfig = {
     Providers: config.Providers ?? [],
     virtualModelProfiles: config.virtualModelProfiles ?? []

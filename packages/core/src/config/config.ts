@@ -3562,10 +3562,10 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       const id = readString(item.id) || `profile-${index + 1}`;
       const name = readString(item.name) || defaultProfileAgentName(agent);
       const model = readString(item.model) ?? "";
-      const availableModels = uniqueStrings([
-        model,
-        ...parseStringList(item.availableModels ?? item.available_models ?? item.models)
-      ]);
+      const parsedAvailableModels = parseStringList(item.availableModels ?? item.available_models ?? item.models);
+      const availableModels = parsedAvailableModels.length > 0
+        ? uniqueStrings([model, ...parsedAvailableModels].filter(Boolean))
+        : undefined;
       const env = parseStringRecord(item.env) ?? {};
       const parsedSurface = parseProfileSurface(readString(item.surface) || readString(item.entry) || readString(item.frontend)) || "auto";
       const surface = agent === "zcode" || agent === CLAUDE_DESIGN_PLUGIN_ID
@@ -3594,6 +3594,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
           haikuModel: readString(item.haikuModel) || readString(item.defaultHaikuModel) || readString(item.smallFastModel) || readString(item.smallModel) || "",
           id,
           ...(managedCompact !== undefined ? { managedCompact } : {}),
+          ...(availableModels ? { availableModels } : {}),
           model,
           name,
           opusModel: readString(item.opusModel) || readString(item.defaultOpusModel) || "",
@@ -3609,7 +3610,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       if (agent === "grok" || agent === "kimi" || agent === "pi") {
         return {
           agent,
-          ...(agent === "kimi" ? { availableModels } : {}),
+          ...(availableModels ? { availableModels } : {}),
           enabled,
           env: codexCompatibleProfileEnv(env),
           id,
@@ -3657,6 +3658,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         env: codexCompatibleProfileEnv(env),
         id,
         ...(managedCompact !== undefined ? { managedCompact } : {}),
+        ...(availableModels ? { availableModels } : {}),
         model,
         name,
         providerId: readString(item.providerId) || readString(item.provider) || "claude-code-router",

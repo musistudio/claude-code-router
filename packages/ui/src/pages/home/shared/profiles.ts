@@ -515,6 +515,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
       botConfigId,
       botEnabled: surface !== "cli" && Boolean(selectedBot || profile.botGateway?.enabled),
       envRows: keyValueRowsFromRecord(claudeCodeProfileEnv(profile.env ?? {})),
+      availableModels: profileDraftAvailableModels(profile),
       fableModel: profile.fableModel ?? "",
       haikuModel: profile.haikuModel ?? profile.smallFastModel ?? "",
       managedCompact: Boolean(profile.managedCompact),
@@ -531,9 +532,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
     return {
       ...createProfileDraft(profile.agent, profile.name),
       ...createProfileRoutingDraft(profile.routing),
-      availableModels: profile.agent === "kimi"
-        ? uniqueStrings([profile.model, ...(profile.availableModels ?? [])].map(normalizeProfileClientModel).filter(Boolean))
-        : [],
+      availableModels: profileDraftAvailableModels(profile),
       envRows: keyValueRowsFromRecord(codexCompatibleProfileEnv(profile.env ?? {})),
       model: profile.model,
       scope: "ccr",
@@ -556,6 +555,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
     ...createProfileRoutingDraft(profile.routing),
     ...botDraft,
     appPath: profile.appPath ?? "",
+    availableModels: profileDraftAvailableModels(profile),
     botConfigId,
     botEnabled: surface !== "cli" && Boolean(selectedBot || profile.botGateway?.enabled),
     configFile: profile.configFile ?? defaultCodexConfigFile(profile.agent),
@@ -584,6 +584,9 @@ export function isProfileDraftSubmittable(draft: AddProfileDraft): boolean {
   if (botAllowed && draft.botEnabled && draft.botHandoffEnabled && !isNumberDraftValid(draft.botHandoffIdleSeconds, 30, 86_400)) {
     return false;
   }
+  if (draft.availableModels.length > 0 && !draft.model.trim()) {
+    return false;
+  }
   if (draft.agent === "claude-code") {
     return Boolean(draft.model.trim());
   }
@@ -597,12 +600,9 @@ export function isProfileDraftSubmittable(draft: AddProfileDraft): boolean {
     return true;
   }
   if (draft.agent === "kimi") {
-    return Boolean(draft.model.trim()) && draft.availableModels.length > 0;
+    return Boolean(draft.model.trim());
   }
-  return (
-    Boolean(draft.providerId.trim()) &&
-    Boolean(draft.providerName.trim())
-  );
+  return true;
 }
 
 function matchingBotConfigId(botGateway: BotGatewayRuntimeConfig | undefined, botConfigs: BotGatewaySavedConfig[]): string {
@@ -642,7 +642,7 @@ export function profileConfigFromDraft(
   return normalizeProfileItem({
     agent: draft.agent,
     appPath: draft.appPath,
-    availableModels: draft.agent === "kimi" ? draft.availableModels : undefined,
+    availableModels: profileConfigAvailableModelsFromDraft(draft),
     ...botGateway,
     configFile: draft.configFile,
     enabled: existingProfile?.enabled ?? true,
@@ -658,8 +658,8 @@ export function profileConfigFromDraft(
     model: draft.model,
     name: draft.name,
     opusModel: draft.opusModel,
-    providerId: draft.providerId,
-    providerName: draft.providerName,
+    providerId: draft.providerId.trim() || "claude-code-router",
+    providerName: draft.providerName.trim() || "Claude Code Router",
     ...(routing ? { routing } : {}),
     scope: draft.scope,
     settingsFile: draft.settingsFile,
@@ -668,6 +668,19 @@ export function profileConfigFromDraft(
     smallFastModel: draft.haikuModel || draft.smallFastModel,
     surface: draft.surface
   }, existingProfiles.length);
+}
+
+function profileDraftAvailableModels(profile: ProfileConfig): string[] {
+  return profile.availableModels?.length
+    ? uniqueStrings([profile.model, ...profile.availableModels].map(normalizeProfileClientModel).filter(Boolean))
+    : [];
+}
+
+function profileConfigAvailableModelsFromDraft(draft: AddProfileDraft): string[] | undefined {
+  const availableModels = uniqueStrings(draft.availableModels.map(normalizeProfileClientModel).filter(Boolean));
+  return availableModels.length > 0
+    ? uniqueStrings([draft.model, ...availableModels].map(normalizeProfileClientModel).filter(Boolean))
+    : undefined;
 }
 
 function botGatewayHandoffFromProfileDraft(
@@ -1221,6 +1234,12 @@ export function profileSummaryItems(
     : profile.agent === "claude-code"
       ? t("Keep Claude Code default")
       : defaultProfileClientModel(config);
+  const allowedModelSummaryItems = profile.availableModels?.length
+    ? [{
+        label: t("Allowed model list"),
+        value: String(uniqueStrings([profile.model, ...profile.availableModels].filter(Boolean)).length)
+      }]
+    : [];
 
   if (profile.agent === "claude-code") {
     const aliasItems = [
@@ -1236,6 +1255,7 @@ export function profileSummaryItems(
       }));
     return [
       { label: t("Model"), value: modelValue },
+      ...allowedModelSummaryItems,
       ...aliasItems,
       ...managedCompactItems,
       ...routingSummaryItems,
@@ -1248,12 +1268,7 @@ export function profileSummaryItems(
   if (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi") {
     return [
       { label: t(profile.agent === "kimi" ? "Kimi model" : profile.agent === "pi" ? "Pi model" : "Model"), value: modelValue },
-      ...(profile.agent === "kimi"
-        ? [{
-            label: t("Allowed models"),
-            value: String(uniqueStrings([profile.model, ...(profile.availableModels ?? [])].filter(Boolean)).length)
-          }]
-        : []),
+      ...allowedModelSummaryItems,
       ...routingSummaryItems,
       ...envSummaryItems
     ];
@@ -1268,7 +1283,7 @@ export function profileSummaryItems(
 
   return [
     { label: t(profile.agent === "kilo" ? "Kilo model" : "Model"), value: modelValue },
-    { label: t("Provider ID"), value: profile.providerId ?? "claude-code-router" },
+    ...allowedModelSummaryItems,
     ...(profile.agent === "zcode" || profile.agent === "opencode" || profile.agent === "kilo" || !profile.showAllSessions ? [] : [{ label: t("Show all sessions"), value: t("Enabled") }]),
     ...managedCompactItems,
     ...routingSummaryItems,
@@ -1282,10 +1297,10 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
   const agent = normalizeProfileAgent(profile.agent);
   const name = profile.name.trim() || profileAgentLabel(profile.agent);
   const model = profile.model.trim();
-  const availableModels = uniqueStrings([
-    model,
-    ...(profile.availableModels ?? []).map(normalizeProfileClientModel)
-  ].filter(Boolean));
+  const explicitAvailableModels = uniqueStrings((profile.availableModels ?? []).map(normalizeProfileClientModel).filter(Boolean));
+  const availableModels = explicitAvailableModels.length > 0
+    ? uniqueStrings([model, ...explicitAvailableModels].filter(Boolean))
+    : undefined;
   const scope = normalizeProfileScope(profile.scope);
   const surface = normalizeProfileSurfaceForAgent(agent, profile.surface);
   const env = isPlainRecord(profile.env) ? stringRecordValue(profile.env) : {};
@@ -1299,6 +1314,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
       ...(surface !== "cli" && appPath ? { appPath } : {}),
       ...(botConfigId ? { botConfigId } : {}),
       ...(botGateway ? { botGateway } : {}),
+      ...(availableModels ? { availableModels } : {}),
       enabled: profile.enabled,
       env: claudeCodeProfileEnv(env),
       fableModel: stringValue(profile.fableModel) || "",
@@ -1319,7 +1335,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
   if (agent === "grok" || agent === "kimi" || agent === "pi") {
     return {
       agent,
-      ...(agent === "kimi" ? { availableModels } : {}),
+      ...(availableModels ? { availableModels } : {}),
       enabled: profile.enabled,
       env: codexCompatibleProfileEnv(env),
       id: profile.id || `profile-${index + 1}`,
@@ -1348,6 +1364,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
     ...(surface !== "cli" && agent !== "zcode" && profile.appPath?.trim() ? { appPath: profile.appPath.trim() } : {}),
     ...(botConfigId ? { botConfigId } : {}),
     ...(botGateway ? { botGateway } : {}),
+    ...(availableModels ? { availableModels } : {}),
     cliMiddleware: true,
     codexCliPath: "",
     codexHome: "",

@@ -10,6 +10,7 @@ import { buildProfileLaunchPlan, resolveCodexConfigFile } from "@ccr/core/profil
 import { normalizeWindowsDesktopAppCandidate, windowsDesktopAppCandidates } from "@ccr/core/platform/windows-app-discovery";
 import { buildZcodeModelCatalog } from "@ccr/core/agents/zcode/model-catalog";
 import { writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "@ccr/core/agents/zcode/profile-config";
+import { profileAllowedModels } from "@ccr/core/profiles/model-allowlist";
 
 export type CodexAppLookupResult = {
   checked: string[];
@@ -204,7 +205,7 @@ export function writeCodexCompatibleAppModelCatalog(
   const userDataDir = codexElectronUserDataDir(codexHome, profile, spec);
   mkdirSync(userDataDir, { recursive: true });
   const file = codexAppModelCatalogFile(userDataDir, spec);
-  const content = codexCompatibleAppModelCatalogJson(config, profile.model, spec.kind);
+  const content = codexCompatibleAppModelCatalogJson(config, profile.model, spec.kind, profileAllowedModels(profile));
   const previous = existsSync(file) ? readFileSync(file, "utf8") : undefined;
   if (previous !== content) {
     writeFileSync(file, content, "utf8");
@@ -215,19 +216,21 @@ export function writeCodexCompatibleAppModelCatalog(
 function codexCompatibleAppModelCatalogJson(
   config?: CodexCompatibleAppModelCatalogConfig,
   selectedModel?: string,
-  kind: CodexCompatibleAppKind = "codex"
+  kind: CodexCompatibleAppKind = "codex",
+  allowedModels?: string[]
 ): string {
-  return `${JSON.stringify(codexCompatibleAppModelCatalog(config, selectedModel, kind), null, 2)}\n`;
+  return `${JSON.stringify(codexCompatibleAppModelCatalog(config, selectedModel, kind, allowedModels), null, 2)}\n`;
 }
 
 function codexCompatibleAppModelCatalog(
   config?: CodexCompatibleAppModelCatalogConfig,
   selectedModel?: string,
-  kind: CodexCompatibleAppKind = "codex"
+  kind: CodexCompatibleAppKind = "codex",
+  allowedModels?: string[]
 ): CodexModelCatalog {
   const catalog = kind === "zcode"
-    ? buildZcodeModelCatalog(config, selectedModel)
-    : buildCodexModelCatalog(config, selectedModel);
+    ? buildZcodeModelCatalog(config, selectedModel, { allowedModels })
+    : buildCodexModelCatalog(config, selectedModel, { allowedModels });
   return {
     models: catalog.models.map((model) => codexCompatibleAppModelCatalogItem(model, config))
   };

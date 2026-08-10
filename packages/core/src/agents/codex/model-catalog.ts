@@ -10,6 +10,7 @@ import { codexDefaultBaseUrl, codexImportedModelContextWindow, readCodexLocalMod
 import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared";
 import { normalizeProviderBaseUrl } from "@ccr/core/providers/url";
 import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
+import { filterModelIdsByAllowedModels } from "@ccr/core/profiles/model-allowlist";
 
 const fusionModelProviderName = "Fusion";
 const codexDefaultContextWindow = 128_000;
@@ -17,6 +18,10 @@ const codexEffectiveContextWindowPercent = 95;
 
 export type CodexModelCatalog = {
   models: CodexModelCatalogItem[];
+};
+
+export type CodexModelCatalogOptions = {
+  allowedModels?: string[];
 };
 
 export type CodexModelCatalogItem = {
@@ -57,13 +62,21 @@ export type CodexModelCatalogItem = {
   web_search_tool_type: string;
 };
 
-export function buildCodexModelCatalog(config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>, selectedModel?: string): CodexModelCatalog {
+export function buildCodexModelCatalog(
+  config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>,
+  selectedModel?: string,
+  options: CodexModelCatalogOptions = {}
+): CodexModelCatalog {
   return {
-    models: buildCodexModelCatalogIds(config, selectedModel).map((model, index) => codexModelCatalogItem(model, index, config))
+    models: buildCodexModelCatalogIds(config, selectedModel, options).map((model, index) => codexModelCatalogItem(model, index, config))
   };
 }
 
-export function buildCodexModelCatalogIds(config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>, selectedModel?: string): string[] {
+export function buildCodexModelCatalogIds(
+  config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>,
+  selectedModel?: string,
+  options: CodexModelCatalogOptions = {}
+): string[] {
   const ids: string[] = [];
   pushUniqueModel(ids, normalizeModelSelector(selectedModel));
 
@@ -106,15 +119,30 @@ export function buildCodexModelCatalogIds(config?: Partial<Pick<AppConfig, "Prov
     }
   }
 
-  return ids;
+  return filterModelIdsByAllowedModels(
+    config ? {
+      Providers: config.Providers ?? [],
+      virtualModelProfiles: config.virtualModelProfiles ?? []
+    } : undefined,
+    ids,
+    options.allowedModels
+  );
 }
 
-export function codexModelCatalogJson(config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>, selectedModel?: string): string {
-  return `${JSON.stringify(buildCodexModelCatalog(config, selectedModel), null, 2)}\n`;
+export function codexModelCatalogJson(
+  config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>,
+  selectedModel?: string,
+  options: CodexModelCatalogOptions = {}
+): string {
+  return `${JSON.stringify(buildCodexModelCatalog(config, selectedModel, options), null, 2)}\n`;
 }
 
-export function codexModelCatalogBase64(config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>, selectedModel?: string): string {
-  const catalog = buildCodexModelCatalog(config, selectedModel);
+export function codexModelCatalogBase64(
+  config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>,
+  selectedModel?: string,
+  options: CodexModelCatalogOptions = {}
+): string {
+  const catalog = buildCodexModelCatalog(config, selectedModel, options);
   return Buffer.from(JSON.stringify(catalog), "utf8").toString("base64");
 }
 
