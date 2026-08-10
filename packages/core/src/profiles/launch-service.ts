@@ -287,6 +287,21 @@ async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof
     };
   }
   const files = refreshCodexCompatibleAppProfileFiles(CONFIGDIR, profile, profileGatewayConfig);
+  if (profile.agent === "zcode") {
+    const otherProfile = runningProfileAppForAgent("zcode", "app", profile.id);
+    if (otherProfile) {
+      const entry = rebindRunningProfileApp(otherProfile, profile, "app", files.userDataDir);
+      startCodexAppBotWorker(profileGatewayConfig, profile);
+      startCodexAppMediaPreviewBridge(profileGatewayConfig, profile, entry.userDataDir);
+      activateProfileAppWindow(entry);
+      return {
+        message: `ZCode is already running. Switched CCR to ${profile.name || profile.id}. Open ZCode > Settings > Model Settings and click Refresh to apply the latest configuration.`,
+        profileId: profile.id,
+        profileName: profile.name,
+        surface: "app"
+      };
+    }
+  }
   // ZCode's main process usually carries no user-data-dir argument, so the
   // generic userDataDir probe cannot see it; identify it by executable path.
   const unmanagedPid = profile.agent === "zcode"
@@ -818,7 +833,7 @@ export async function stopProfileFromCcr(config: AppConfig, request: ProfileStop
     message: stopped
       ? `Stopped ${profile.name || profile.id}.`
       : profile.agent === "zcode"
-        ? "ZCode could not be force quit. Close it in Task Manager and try again."
+        ? "ZCode could not be force quit. Close it manually and try again."
         : `Stop requested for ${profile.name || profile.id}. It may take a moment to close.`,
     profileId: profile.id,
     profileName: profile.name,
@@ -862,18 +877,18 @@ function registerProfileApp(
         if (isProfileAppRunning(entry)) {
           return;
         }
-        cleanupProfileAppEntry(key, entry);
+        cleanupProfileAppEntry(profileRuntimeKey(entry.profileId, entry.surface), entry);
       }, 1500).unref();
       return;
     }
     if (entry.pidIsLauncher && isProfileAppRunning(entry)) {
       return;
     }
-    cleanupProfileAppEntry(key, entry);
+    cleanupProfileAppEntry(profileRuntimeKey(entry.profileId, entry.surface), entry);
   });
   launch.child.once("error", (error) => {
     entry.spawnError = formatError(error);
-    cleanupProfileAppEntry(key, entry);
+    cleanupProfileAppEntry(profileRuntimeKey(entry.profileId, entry.surface), entry);
   });
   return entry;
 }
@@ -902,11 +917,93 @@ function registerExistingProfileApp(
     userDataDir: existing.userDataDir
   };
   entry.monitor = setInterval(() => {
-    if (!isProfileAppRunning(entry)) cleanupProfileAppEntry(key, entry);
+    if (!isProfileAppRunning(entry)) {
+      cleanupProfileAppEntry(profileRuntimeKey(entry.profileId, entry.surface), entry);
+    }
   }, 2_000);
   entry.monitor.unref?.();
   runningProfileApps.set(key, entry);
   return entry;
+}
+
+function rebindRunningProfileApp(
+  entry: RunningProfileApp,
+  profile: ReturnType<typeof findProfileForOpen>,
+  surface: ProfileOpenRequest["surface"],
+  userDataDir: string,
+  options: {
+    registry?: Map<string, RunningProfileApp>;
+    stopProfileResources?: (profileId: string) => void;
+  } = {}
+): RunningProfileApp {
+  const registry = options.registry ?? runningProfileApps;
+  const stopProfileResources = options.stopProfileResources ?? stopCodexAppProfileResources;
+  const previousProfileId = entry.profileId;
+  const previousKey = profileRuntimeKey(previousProfileId, entry.surface);
+  const nextKey = profileRuntimeKey(profile.id, surface);
+
+  const replaced = registry.get(nextKey);
+  if (replaced && replaced !== entry) {
+    if (replaced.monitor) clearInterval(replaced.monitor);
+    registry.delete(nextKey);
+    stopProfileResources(replaced.profileId);
+  }
+  if (registry.get(previousKey) === entry) {
+    registry.delete(previousKey);
+  }
+  if (previousProfileId !== profile.id) {
+    stopProfileResources(previousProfileId);
+  }
+
+  entry.profileId = profile.id;
+  entry.profileName = profile.name;
+  entry.stopRequested = false;
+  entry.surface = surface;
+  entry.userDataDir = userDataDir;
+  registry.set(nextKey, entry);
+  return entry;
+}
+
+function stopCodexAppProfileResources(profileId: string): void {
+  stopCodexAppBotWorker(profileId);
+  stopCodexAppMediaPreviewBridge(profileId);
+}
+
+export function rebindRunningProfileAppForTest(
+  entries: Array<Pick<RunningProfileApp, "agent" | "command" | "pid" | "profileId" | "profileName" | "startedAt" | "state" | "surface" | "userDataDir">>,
+  activeProfileId: string,
+  nextProfile: { id: string; name: string; userDataDir: string }
+): { keys: string[]; pid: number | undefined; profileId: string; startedAt: string; stoppedProfileIds: string[] } {
+  const registry = new Map<string, RunningProfileApp>();
+  for (const value of entries) {
+    registry.set(profileRuntimeKey(value.profileId, value.surface), { ...value } as RunningProfileApp);
+  }
+  const entry = registry.get(profileRuntimeKey(activeProfileId, "app"));
+  if (!entry) {
+    throw new Error(`Missing test runtime entry: ${activeProfileId}`);
+  }
+  const stoppedProfileIds: string[] = [];
+  const rebound = rebindRunningProfileApp(
+    entry,
+    {
+      agent: "zcode",
+      id: nextProfile.id,
+      name: nextProfile.name
+    } as ReturnType<typeof findProfileForOpen>,
+    "app",
+    nextProfile.userDataDir,
+    {
+      registry,
+      stopProfileResources: (profileId) => stoppedProfileIds.push(profileId)
+    }
+  );
+  return {
+    keys: [...registry.keys()].sort(),
+    pid: rebound.pid,
+    profileId: rebound.profileId,
+    startedAt: rebound.startedAt,
+    stoppedProfileIds
+  };
 }
 
 function activateProfileAppWindow(entry: Pick<RunningProfileApp, "pid" | "userDataDir">): void {

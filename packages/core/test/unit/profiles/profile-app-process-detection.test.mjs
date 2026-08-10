@@ -4,6 +4,7 @@ import {
   isProfileAppMainProcessCommandForTest,
   isProfileAppRunningWithProbeForTest,
   profileStopPlanForTest,
+  rebindRunningProfileAppForTest,
   windowsProfileProcessSignalArgsForTest
 } from "@ccr/core/profiles/launch-service.ts";
 
@@ -114,4 +115,37 @@ test("force flag does not change the stop signal for other apps", () => {
     "4321",
     "/T"
   ]);
+});
+
+test("switching ZCode profiles reuses one process and removes the old runtime entry", () => {
+  const startedAt = "2026-08-11T00:00:00.000Z";
+  const result = rebindRunningProfileAppForTest(
+    [
+      {
+        agent: "zcode",
+        command: "ZCode App",
+        pid: 4321,
+        profileId: "zcode-a",
+        profileName: "ZCode A",
+        startedAt,
+        state: "running",
+        surface: "app",
+        userDataDir: "/profiles/zcode-a"
+      }
+    ],
+    "zcode-a",
+    {
+      id: "zcode-b",
+      name: "ZCode B",
+      userDataDir: "/profiles/zcode-b"
+    }
+  );
+
+  assert.deepEqual(result, {
+    keys: ["app:zcode-b"],
+    pid: 4321,
+    profileId: "zcode-b",
+    startedAt,
+    stoppedProfileIds: ["zcode-a"]
+  });
 });
