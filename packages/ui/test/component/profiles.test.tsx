@@ -259,7 +259,7 @@ test("AddProfileForm keeps the default model locked in allowed model lists", () 
   assert.doesNotMatch(otherLabel, /disabled=""/);
 });
 
-test("AddProfileForm places CLAUDE_APP_PATH below Bot settings", () => {
+test("AddProfileForm places APP_PATH below Bot settings", () => {
   const config = appConfigFixture();
   const html = renderToStaticMarkup(
     <AddProfileForm
@@ -274,7 +274,7 @@ test("AddProfileForm places CLAUDE_APP_PATH below Bot settings", () => {
     />
   );
   const botIndex = html.indexOf(">Bot</span>");
-  const appPathIndex = html.indexOf("CLAUDE_APP_PATH");
+  const appPathIndex = html.indexOf("APP_PATH");
   const envIndex = html.indexOf("Environment variables");
 
   assert.ok(botIndex >= 0);
@@ -502,6 +502,23 @@ test("profileSummaryItems uses Pi-specific model labels", () => {
   }, config, (value) => value);
 
   assert.equal(items[0]?.label, "Pi model");
+});
+
+test("profileSummaryItems uses a generic App path label", () => {
+  const config = appConfigFixture();
+  const items = profileSummaryItems({
+    agent: "workbuddy",
+    appPath: "/Applications/WorkBuddy AI.app/Contents/MacOS/Electron",
+    enabled: true,
+    id: "workbuddy-main",
+    model: "openai/gpt-5.2",
+    name: "Workbuddy Main",
+    scope: "ccr",
+    surface: "app"
+  }, config, (value) => value);
+
+  assert.equal(items.find((item) => item.value.includes("WorkBuddy AI.app"))?.label, "APP_PATH");
+  assert.doesNotMatch(items.map((item) => item.label).join(" "), /CHATGPT_APP_PATH|WORKBUDDY_APP_PATH/);
 });
 
 test("profileSummaryItems omits disabled profile properties from cards", () => {
@@ -745,7 +762,8 @@ test("Workbuddy profiles support local App configuration", () => {
   );
   assert.match(html, /App only/);
   assert.doesNotMatch(html, /CLI only/);
-  assert.match(html, /WORKBUDDY_APP_PATH/);
+  assert.match(html, /APP_PATH/);
+  assert.doesNotMatch(html, /WORKBUDDY_APP_PATH/);
 
   const profile = normalizeUnknownProfileItem({
     agent: "work-buddy",

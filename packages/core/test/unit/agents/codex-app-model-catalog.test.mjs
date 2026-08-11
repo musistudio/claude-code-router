@@ -397,6 +397,69 @@ test("WorkBuddy AI app profile writes the virtual desktop auth session", () => {
   }
 });
 
+test("WorkBuddy AI app profile writes every allowed model to models.json", () => {
+  const configDir = mkdtempSync(path.join(os.tmpdir(), "ccr-workbuddy-app-models-"));
+  try {
+    const profile = {
+      agent: "workbuddy",
+      availableModels: ["Codex API/gpt-5-codex", "Codex API/gpt-5.1-codex"],
+      enabled: true,
+      id: "workbuddy-main",
+      model: "Codex API/gpt-5-codex",
+      name: "WorkBuddy Main",
+      providerId: "claude-code-router",
+      scope: "ccr",
+      surface: "app"
+    };
+
+    const result = writeCodexCompatibleAppModelCatalog(configDir, profile, {
+      Providers: [{
+        models: ["gpt-5-codex", "gpt-5.1-codex", "gpt-4.1"],
+        name: "Codex API",
+        type: "openai_responses"
+      }]
+    });
+
+    const modelsConfig = JSON.parse(readFileSync(result.workbuddyModelsConfig.file, "utf8"));
+    assert.deepEqual(modelsConfig.availableModels, ["Codex API/gpt-5-codex", "Codex API/gpt-5.1-codex"]);
+    assert.deepEqual(modelsConfig.models.map((item) => item.id), ["Codex API/gpt-5-codex", "Codex API/gpt-5.1-codex"]);
+    assert.deepEqual(modelsConfig.models.map((item) => item.name), ["Codex API/gpt-5-codex", "Codex API/gpt-5.1-codex"]);
+    assert.deepEqual(modelsConfig.models.map((item) => item.isDefault), [true, false]);
+  } finally {
+    rmSync(configDir, { force: true, recursive: true });
+  }
+});
+
+test("WorkBuddy AI app profile writes every catalog model when the allowlist is unrestricted", () => {
+  const configDir = mkdtempSync(path.join(os.tmpdir(), "ccr-workbuddy-app-unrestricted-models-"));
+  try {
+    const profile = {
+      agent: "workbuddy",
+      enabled: true,
+      id: "workbuddy-main",
+      model: "Codex API/gpt-5-codex",
+      name: "WorkBuddy Main",
+      providerId: "claude-code-router",
+      scope: "ccr",
+      surface: "app"
+    };
+
+    const result = writeCodexCompatibleAppModelCatalog(configDir, profile, {
+      Providers: [{
+        models: ["gpt-5-codex", "gpt-5.1-codex", "gpt-4.1"],
+        name: "Codex API",
+        type: "openai_responses"
+      }]
+    });
+
+    const modelsConfig = JSON.parse(readFileSync(result.workbuddyModelsConfig.file, "utf8"));
+    assert.deepEqual(modelsConfig.availableModels, ["Codex API/gpt-5-codex", "Codex API/gpt-5.1-codex", "Codex API/gpt-4.1"]);
+    assert.deepEqual(modelsConfig.models.map((item) => item.isDefault), [true, false, false]);
+  } finally {
+    rmSync(configDir, { force: true, recursive: true });
+  }
+});
+
 function withPlatform(platform, callback) {
   const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
   Object.defineProperty(process, "platform", {

@@ -315,7 +315,7 @@ export function writeCodexCompatibleAppModelCatalog(
 
 export function writeWorkbuddyModelsConfig(
   workbuddyConfigDir: string,
-  profile: Pick<ProfileConfig, "model" | "name" | "providerName">,
+  profile: ProfileConfig,
   config?: AppConfig
 ): WorkbuddyModelsConfigWriteResult {
   const file = path.join(workbuddyConfigDir, "models.json");
@@ -341,21 +341,38 @@ function workbuddySelectedModel(
 }
 
 function workbuddyModelsConfig(
-  model: string,
-  profile: Pick<ProfileConfig, "name" | "providerName">,
+  defaultModel: string,
+  profile: ProfileConfig,
   config?: AppConfig
 ): Record<string, unknown> {
-  const catalogItem = codexCompatibleAppModelCatalog(config, model, "workbuddy")
-    .models.find((item) => item.slug === model || item.id === model || item.model === model);
+  const allowedModels = profileAllowedModels(profile);
+  const catalogItems = codexCompatibleAppModelCatalog(config, defaultModel, "workbuddy", allowedModels).models;
+  const models = catalogItems.map((catalogItem) =>
+    workbuddyModelConfig(catalogItem.slug || catalogItem.id || catalogItem.model, defaultModel, profile, catalogItem, config)
+  );
+  if (models.length === 0) {
+    models.push(workbuddyModelConfig(defaultModel, defaultModel, profile, undefined, config));
+  }
+  return {
+    availableModels: models.map((item) => String(item.id || "")),
+    models
+  };
+}
+
+function workbuddyModelConfig(
+  model: string,
+  defaultModel: string,
+  profile: Pick<ProfileConfig, "name" | "providerName">,
+  catalogItem: CodexModelCatalogItem | undefined,
+  config?: AppConfig
+): Record<string, unknown> {
   const vendor = workbuddyModelVendor(model, profile.providerName);
-  const displayName = profile.name?.trim()
-    ? `${profile.name.trim()} / ${model}`
-    : `${vendor} / ${model}`;
+  const displayName = model.includes("/") ? model : `${vendor} / ${model}`;
   const workbuddyModel: Record<string, unknown> = {
     apiKey: "${CCR_PROFILE_API_KEY}",
     disabled: false,
     id: model,
-    isDefault: true,
+    isDefault: model === defaultModel,
     name: displayName,
     supportsImages: Boolean(catalogItem?.supports_image_detail_original),
     supportsReasoning: Boolean(catalogItem?.supports_reasoning_summaries),
@@ -375,10 +392,7 @@ function workbuddyModelsConfig(
       supportedEfforts: reasoningEfforts
     };
   }
-  return {
-    availableModels: [model],
-    models: [workbuddyModel]
-  };
+  return workbuddyModel;
 }
 
 function workbuddyModelVendor(model: string, providerName?: string): string {

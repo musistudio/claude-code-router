@@ -1316,18 +1316,9 @@ function profileNumberDraftValid(value: string, min: number, max: number): boole
   return Number.isFinite(numeric) && numeric >= min && numeric <= max;
 }
 
-function profileAppPathLabel(agent: ProfileConfig["agent"]): "CLAUDE_APP_PATH" | "CHATGPT_APP_PATH" | "OPENCODE_APP_PATH" | "WORKBUDDY_APP_PATH" | undefined {
-  if (agent === "claude-code") {
-    return "CLAUDE_APP_PATH";
-  }
-  if (agent === "codex") {
-    return "CHATGPT_APP_PATH";
-  }
-  if (agent === "opencode") {
-    return "OPENCODE_APP_PATH";
-  }
-  if (agent === "workbuddy") {
-    return "WORKBUDDY_APP_PATH";
+function profileAppPathLabel(agent: ProfileConfig["agent"]): "APP_PATH" | undefined {
+  if (agent === "claude-code" || agent === "codex" || agent === "opencode" || agent === "workbuddy") {
+    return "APP_PATH";
   }
   return undefined;
 }

@@ -1204,7 +1204,7 @@ export function profileSummaryItems(
     : [];
   const appPath = profile.appPath?.trim() || "";
   const appPathSummaryItems = appPath && surface !== "cli" && profile.agent !== "zcode"
-    ? [{ label: t(profile.agent === "claude-code" ? "CLAUDE_APP_PATH" : profile.agent === "opencode" ? "OPENCODE_APP_PATH" : "CHATGPT_APP_PATH"), value: appPath }]
+    ? [{ label: t("APP_PATH"), value: appPath }]
     : [];
   const savedBot = profile.botConfigId
     ? config.botConfigs.find((item) => item.id === profile.botConfigId)
