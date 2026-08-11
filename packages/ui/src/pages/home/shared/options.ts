@@ -62,6 +62,7 @@ import runapiProviderIconUrl from "@/assets/provider-icons/runapi.jpg";
 import siliconflowProviderIconUrl from "@/assets/provider-icons/siliconflow.png";
 import teamorouterProviderIconUrl from "@/assets/provider-icons/teamorouter.png";
 import unity2ProviderIconUrl from "@/assets/provider-icons/unity2.jpg";
+import xiaomiMimoProviderIconUrl from "@/assets/provider-icons/xiaomi-mimo.png";
 import zaiGlobalCodingProviderIconUrl from "@/assets/provider-icons/zai-global-coding.svg";
 import zaiGlobalGeneralProviderIconUrl from "@/assets/provider-icons/zai-global-general.svg";
 import zhipuCnCodingProviderIconUrl from "@/assets/provider-icons/zhipu-cn-coding.png";
@@ -389,6 +390,10 @@ export const providerPresetIconUrls: Record<string, string> = {
   siliconflow: siliconflowProviderIconUrl,
   teamorouter: teamorouterProviderIconUrl,
   unity2: unity2ProviderIconUrl,
+  xiaomi: xiaomiMimoProviderIconUrl,
+  "xiaomi-token-plan-ams": xiaomiMimoProviderIconUrl,
+  "xiaomi-token-plan-cn": xiaomiMimoProviderIconUrl,
+  "xiaomi-token-plan-sgp": xiaomiMimoProviderIconUrl,
   "zai-global-coding": zaiGlobalCodingProviderIconUrl,
   "zai-global-general": zaiGlobalGeneralProviderIconUrl,
   "zhipu-cn-coding": zhipuCnCodingProviderIconUrl,
