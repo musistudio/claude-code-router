@@ -17,7 +17,7 @@ export type CodexAppLookupResult = {
   executable?: string;
 };
 
-type CodexCompatibleAppKind = "codex" | "zcode";
+type CodexCompatibleAppKind = "codex" | "workbuddy" | "zcode";
 
 type CodexCompatibleAppSpec = {
   bundledCliNames: string[];
@@ -50,9 +50,31 @@ export type CodexCompatibleAppModelCatalogWriteResult = {
   changed: boolean;
   file: string;
   userDataDir: string;
+  workbuddyModelsConfig?: WorkbuddyModelsConfigWriteResult;
+  workbuddyVirtualAuth?: WorkbuddyVirtualAuthResult;
+};
+
+export type WorkbuddyModelsConfigWriteResult = {
+  changed: boolean;
+  file: string;
+  model: string;
+};
+
+export type WorkbuddyVirtualAuthResult = {
+  authFile: string;
+  changed: boolean;
+  configDir: string;
+  homeDir: string;
+  userDataDir: string;
 };
 
 export const codexDesktopAppName = "ChatGPT";
+export const workbuddyDesktopAppName = "WorkBuddy AI";
+
+const workbuddyVirtualAuthId = "workbuddy-desktop-ai";
+const workbuddyVirtualAuthUserId = "ccr-local-profile";
+const workbuddyVirtualAuthToken = "ccr-local-profile";
+const workbuddyVirtualAuthExpiresAt = 1_999_999_999_999;
 
 const codexAppSpec: CodexCompatibleAppSpec = {
   bundledCliNames: ["codex", "Codex", "OpenAI Codex"],
@@ -158,6 +180,56 @@ const zcodeAppSpec: CodexCompatibleAppSpec = {
   ]
 };
 
+const workbuddyAppSpec: CodexCompatibleAppSpec = {
+  bundledCliNames: [
+    "app.asar.unpacked/cli/bin/codebuddy",
+    "app.asar.unpacked/cli/bin/cbc",
+    "app.asar.unpacked/cli/bin/cbc-prewarm",
+    "codebuddy",
+    "CodeBuddy",
+    "workbuddy",
+    "WorkBuddy"
+  ],
+  defaultCliCommand: "codebuddy",
+  displayName: workbuddyDesktopAppName,
+  envPathKeys: ["CCR_WORKBUDDY_APP_PATH", "WORKBUDDY_APP_PATH", "CODEXL_WORKBUDDY_PATH"],
+  kind: "workbuddy",
+  linuxCandidates: [
+    "/opt/WorkBuddy AI/workbuddy-ai",
+    "/opt/WorkBuddy AI/WorkBuddyAI",
+    "/opt/WorkBuddy/workbuddy",
+    "/opt/WorkBuddy/WorkBuddy",
+    "/usr/local/bin/workbuddy-ai",
+    "/usr/bin/workbuddy-ai",
+    "/usr/local/bin/workbuddy",
+    "/usr/bin/workbuddy"
+  ],
+  macAppNames: ["WorkBuddy AI.app", "WorkBuddy.app", "WorkBuddyAI.app", "Workbuddy.app"],
+  modelCatalogFilename: "ccr-workbuddy-model-catalog.json",
+  userDataDirName: "workbuddy-app-user-data",
+  windowsAppDirs: ["WorkBuddy AI", "WorkBuddyAI", "WorkBuddy", "Workbuddy", "CodeBuddy"],
+  windowsExeNames: [
+    "WorkBuddy AI.exe",
+    "WorkBuddyAI.exe",
+    "WorkBuddy.exe",
+    "workbuddy-ai.exe",
+    "workbuddy.exe",
+    "CodeBuddy.exe",
+    "codebuddy.exe"
+  ],
+  windowsPackageKeywords: ["workbuddy", "workbuddyai", "workbuddy-ai", "codebuddy"],
+  windowsVendorDirs: ["WorkBuddy", "WorkBuddy AI", "CodeBuddy"],
+  windowsWhereNames: [
+    "WorkBuddy AI",
+    "WorkBuddyAI",
+    "WorkBuddy",
+    "workbuddy-ai",
+    "workbuddy",
+    "CodeBuddy",
+    "codebuddy"
+  ]
+};
+
 export function launchCodexAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): CodexAppLaunchResult {
   return launchCodexCompatibleAppProfile(configDir, profile, codexAppSpec, config);
 }
@@ -174,12 +246,26 @@ export function launchZcodeAppProfile(configDir: string, profile: ProfileConfig,
   return launchCodexCompatibleAppProfile(configDir, profile, zcodeAppSpec, config);
 }
 
+export function findInstalledWorkbuddyAppExecutable(profileAppPath?: string): CodexAppLookupResult {
+  return findInstalledCodexCompatibleAppExecutable(workbuddyAppSpec, profileAppPath);
+}
+
+export function launchWorkbuddyAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): CodexAppLaunchResult {
+  return launchCodexCompatibleAppProfile(configDir, profile, workbuddyAppSpec, config);
+}
+
 export function refreshCodexCompatibleAppProfileFiles(
   configDir: string,
   profile: ProfileConfig,
   config?: AppConfig
-): { modelCatalogChanged: boolean; modelCatalogFile: string; userDataDir: string } {
-  const spec = profile.agent === "zcode" ? zcodeAppSpec : codexAppSpec;
+): {
+  modelCatalogChanged: boolean;
+  modelCatalogFile: string;
+  userDataDir: string;
+  workbuddyModelsConfig?: WorkbuddyModelsConfigWriteResult;
+  workbuddyVirtualAuth?: WorkbuddyVirtualAuthResult;
+} {
+  const spec = codexCompatibleAppSpecForProfile(profile);
   if (spec.kind === "zcode" && config?.APIKEY) {
     writeZcodeGatewayConfig(config, profile, config.APIKEY, { backup: false });
   }
@@ -187,7 +273,9 @@ export function refreshCodexCompatibleAppProfileFiles(
   return {
     modelCatalogChanged: modelCatalog.changed,
     modelCatalogFile: modelCatalog.file,
-    userDataDir: modelCatalog.userDataDir
+    userDataDir: modelCatalog.userDataDir,
+    workbuddyModelsConfig: modelCatalog.workbuddyModelsConfig,
+    workbuddyVirtualAuth: modelCatalog.workbuddyVirtualAuth
   };
 }
 
@@ -196,7 +284,7 @@ export function writeCodexCompatibleAppModelCatalog(
   profile: ProfileConfig,
   config?: AppConfig
 ): CodexCompatibleAppModelCatalogWriteResult {
-  const spec = profile.agent === "zcode" ? zcodeAppSpec : codexAppSpec;
+  const spec = codexCompatibleAppSpecForProfile(profile);
   const configFile = resolveCodexConfigFile(configDir, profile);
   const codexHome = codexCompatibleHomeFromConfigFile(spec, configFile);
   if (spec.kind === "codex") {
@@ -210,7 +298,119 @@ export function writeCodexCompatibleAppModelCatalog(
   if (previous !== content) {
     writeFileSync(file, content, "utf8");
   }
-  return { changed: previous !== content, file, userDataDir };
+  const workbuddyModelsConfig = spec.kind === "workbuddy"
+    ? writeWorkbuddyModelsConfig(codexHome, profile, config)
+    : undefined;
+  const workbuddyVirtualAuth = spec.kind === "workbuddy"
+    ? prepareWorkbuddyAppVirtualAuth(codexHome, userDataDir, profile)
+    : undefined;
+  return {
+    changed: previous !== content || Boolean(workbuddyModelsConfig?.changed),
+    file,
+    userDataDir,
+    workbuddyModelsConfig,
+    workbuddyVirtualAuth
+  };
+}
+
+export function writeWorkbuddyModelsConfig(
+  workbuddyConfigDir: string,
+  profile: Pick<ProfileConfig, "model" | "name" | "providerName">,
+  config?: AppConfig
+): WorkbuddyModelsConfigWriteResult {
+  const file = path.join(workbuddyConfigDir, "models.json");
+  const model = workbuddySelectedModel(profile, config);
+  const content = `${JSON.stringify(workbuddyModelsConfig(model, profile, config), null, 2)}\n`;
+  mkdirSync(path.dirname(file), { recursive: true });
+  const previous = existsSync(file) ? readFileSync(file, "utf8") : undefined;
+  if (previous !== content) {
+    writeFileSync(file, content, "utf8");
+  }
+  return { changed: previous !== content, file, model };
+}
+
+function workbuddySelectedModel(
+  profile: Pick<ProfileConfig, "model">,
+  config?: CodexCompatibleAppModelCatalogConfig
+): string {
+  const configured = profile.model?.trim();
+  if (configured) {
+    return configured;
+  }
+  return codexCompatibleAppModelCatalog(config, undefined, "workbuddy").models[0]?.slug || "gpt-5-codex";
+}
+
+function workbuddyModelsConfig(
+  model: string,
+  profile: Pick<ProfileConfig, "name" | "providerName">,
+  config?: AppConfig
+): Record<string, unknown> {
+  const catalogItem = codexCompatibleAppModelCatalog(config, model, "workbuddy")
+    .models.find((item) => item.slug === model || item.id === model || item.model === model);
+  const vendor = workbuddyModelVendor(model, profile.providerName);
+  const displayName = profile.name?.trim()
+    ? `${profile.name.trim()} / ${model}`
+    : `${vendor} / ${model}`;
+  const workbuddyModel: Record<string, unknown> = {
+    apiKey: "${CCR_PROFILE_API_KEY}",
+    disabled: false,
+    id: model,
+    isDefault: true,
+    name: displayName,
+    supportsImages: Boolean(catalogItem?.supports_image_detail_original),
+    supportsReasoning: Boolean(catalogItem?.supports_reasoning_summaries),
+    supportsToolCall: true,
+    tags: ["chat", "custom"],
+    url: workbuddyGatewayBaseUrl(config),
+    vendor
+  };
+  const maxInputTokens = catalogItem?.context_window;
+  if (typeof maxInputTokens === "number" && Number.isFinite(maxInputTokens) && maxInputTokens > 0) {
+    workbuddyModel.maxInputTokens = Math.trunc(maxInputTokens);
+  }
+  const reasoningEfforts = catalogItem?.supported_reasoning_efforts;
+  if (Array.isArray(reasoningEfforts) && reasoningEfforts.length > 0) {
+    workbuddyModel.reasoning = {
+      ...(catalogItem?.default_reasoning_effort ? { defaultEffort: catalogItem.default_reasoning_effort } : {}),
+      supportedEfforts: reasoningEfforts
+    };
+  }
+  return {
+    availableModels: [model],
+    models: [workbuddyModel]
+  };
+}
+
+function workbuddyModelVendor(model: string, providerName?: string): string {
+  const slashIndex = model.indexOf("/");
+  if (slashIndex > 0) {
+    const provider = model.slice(0, slashIndex).trim();
+    if (provider) {
+      return provider;
+    }
+  }
+  return providerName?.trim() || "Claude Code Router";
+}
+
+function workbuddyGatewayBaseUrl(config?: Pick<AppConfig, "gateway">): string {
+  if (!config?.gateway) {
+    return "${CCR_WORKBUDDY_GATEWAY_BASE_URL}";
+  }
+  const host = config.gateway.host === "0.0.0.0" || config.gateway.host === "::"
+    ? "127.0.0.1"
+    : config.gateway.host || "127.0.0.1";
+  const formattedHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+  return `http://${formattedHost}:${config.gateway.port}/v1`;
+}
+
+function codexCompatibleAppSpecForProfile(profile: Pick<ProfileConfig, "agent">): CodexCompatibleAppSpec {
+  if (profile.agent === "zcode") {
+    return zcodeAppSpec;
+  }
+  if (profile.agent === "workbuddy") {
+    return workbuddyAppSpec;
+  }
+  return codexAppSpec;
 }
 
 function codexCompatibleAppModelCatalogJson(
@@ -369,7 +569,7 @@ function launchCodexCompatibleAppProfile(
 
   const configFile = resolveCodexConfigFile(configDir, profile);
   const codexHome = codexCompatibleHomeFromConfigFile(spec, configFile);
-  const { modelCatalogFile, userDataDir } = refreshCodexCompatibleAppProfileFiles(configDir, profile, config);
+  const { modelCatalogFile, userDataDir, workbuddyVirtualAuth } = refreshCodexCompatibleAppProfileFiles(configDir, profile, config);
   if (spec.kind === "codex") prepareCodexAppCdpUserDataDir(userDataDir);
 
   const appEnv: Record<string, string> = {
@@ -378,7 +578,8 @@ function launchCodexCompatibleAppProfile(
     ...codexProfileEnv(profile, lookup.executable, spec),
     CODEXL_PROFILE_SURFACE: "app",
     CCR_PROFILE_SURFACE: "app",
-    ...codexAppAgentEnv(spec, plan.command, codexHome, userDataDir, modelCatalogFile),
+    ...codexAppAgentEnv(spec, plan.command, codexHome, userDataDir, modelCatalogFile, workbuddyVirtualAuth),
+    ...codexCompatibleAppGatewayEnv(spec, config),
     ELECTRON_ENABLE_LOGGING: "1"
   };
   const env: NodeJS.ProcessEnv = {
@@ -409,6 +610,19 @@ function launchCodexCompatibleAppProfile(
   };
 }
 
+function codexCompatibleAppGatewayEnv(spec: CodexCompatibleAppSpec, config?: AppConfig): Record<string, string> {
+  if (spec.kind !== "workbuddy" || !config) {
+    return {};
+  }
+  const baseUrl = workbuddyGatewayBaseUrl(config);
+  const apiKey = config.APIKEY?.trim() || "";
+  return {
+    ...(apiKey ? { CCR_PROFILE_API_KEY: apiKey, CODEXL_PROFILE_API_KEY: apiKey } : {}),
+    CCR_WORKBUDDY_GATEWAY_BASE_URL: baseUrl,
+    CODEXL_WORKBUDDY_GATEWAY_BASE_URL: baseUrl
+  };
+}
+
 function codexProfileEnv(profile: ProfileConfig, appExecutable: string, spec: CodexCompatibleAppSpec): Record<string, string> {
   const providerId = sanitizeCodexProviderId(profile.providerId || "") || "claude-code-router";
   const realCliPath = profile.codexCliPath?.trim() || bundledCodexCliPath(appExecutable, spec) || spec.defaultCliCommand;
@@ -427,7 +641,7 @@ function codexProfileEnv(profile: ProfileConfig, appExecutable: string, spec: Co
       CODEXL_ZCODE_WORKSPACE_NAME: profile.name || providerId
     };
   }
-  return {
+  const codexEnv = {
     ...(profile.model.trim() ? { CCR_CODEX_MODEL: profile.model.trim() } : {}),
     ...(process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG?.trim()
       ? { CCR_CODEX_CLI_MIDDLEWARE_LOG: process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG.trim() }
@@ -444,6 +658,22 @@ function codexProfileEnv(profile: ProfileConfig, appExecutable: string, spec: Co
     CODEXL_CODEX_PROFILE: providerId,
     CODEXL_CODEX_WORKSPACE_NAME: profile.name || providerId,
     CODEXL_REAL_CODEX_CLI_PATH: realCliPath
+  };
+  if (spec.kind !== "workbuddy") {
+    return codexEnv;
+  }
+  return {
+    ...codexEnv,
+    ...(profile.model.trim() ? { CCR_WORKBUDDY_MODEL: profile.model.trim() } : {}),
+    CCR_REAL_WORKBUDDY_CLI_PATH: realCliPath,
+    CCR_WORKBUDDY_MODEL_PROVIDER: providerId,
+    CCR_WORKBUDDY_PROFILE: providerId,
+    CCR_WORKBUDDY_REMOTE_FRONTEND_MODE: remoteFrontendMode,
+    CODEXL_REAL_WORKBUDDY_CLI_PATH: realCliPath,
+    CODEXL_WORKBUDDY_CORE_MODE: remoteFrontendMode,
+    CODEXL_WORKBUDDY_MODEL_PROVIDER: providerId,
+    CODEXL_WORKBUDDY_PROFILE: providerId,
+    CODEXL_WORKBUDDY_WORKSPACE_NAME: profile.name || providerId
   };
 }
 
@@ -471,28 +701,136 @@ function codexAppAgentEnv(
   launcher: string,
   home: string,
   userDataDir: string,
-  modelCatalogFile: string
+  modelCatalogFile: string,
+  workbuddyVirtualAuth?: WorkbuddyVirtualAuthResult
 ): Record<string, string> {
-  return spec.kind === "zcode"
-    ? {
+  if (spec.kind === "zcode") {
+    return {
         CCR_ZCODE_MODEL_CATALOG_FILE: modelCatalogFile,
         CODEXL_ZCODE_MODEL_CATALOG_FILE: modelCatalogFile,
         ZCODE_CLI_PATH: launcher,
         ZCODE_ELECTRON_USER_DATA_PATH: userDataDir,
         ZCODE_HOME: home,
         ZCODE_STORAGE_DIR: home
-      }
-    : {
-        CCR_CODEX_MODEL_CATALOG_FILE: modelCatalogFile,
-        CODEX_CLI_PATH: launcher,
-        CODEX_ELECTRON_USER_DATA_PATH: userDataDir,
-        CODEX_HOME: home,
-        CODEXL_CODEX_MODEL_CATALOG_FILE: modelCatalogFile
       };
+  }
+  const codexEnv = {
+    CCR_CODEX_MODEL_CATALOG_FILE: modelCatalogFile,
+    CODEX_CLI_PATH: launcher,
+    CODEX_ELECTRON_USER_DATA_PATH: userDataDir,
+    CODEX_HOME: home,
+    CODEXL_CODEX_MODEL_CATALOG_FILE: modelCatalogFile
+  };
+  if (spec.kind !== "workbuddy") {
+    return codexEnv;
+  }
+  return {
+    ...codexEnv,
+    CCR_WORKBUDDY_MODEL_CATALOG_FILE: modelCatalogFile,
+    ...(workbuddyVirtualAuth ? workbuddyVirtualAuthEnv(workbuddyVirtualAuth) : {}),
+    CODEBUDDY_CLI_PATH: launcher,
+    CODEBUDDY_CONFIG_DIR: home,
+    CODEBUDDY_ELECTRON_USER_DATA_PATH: userDataDir,
+    CODEBUDDY_HOME: home,
+    CODEXL_WORKBUDDY_MODEL_CATALOG_FILE: modelCatalogFile,
+    WORKBUDDY_CLI_PATH: launcher,
+    WORKBUDDY_CONFIG_DIR: home,
+    WORKBUDDY_ELECTRON_USER_DATA_PATH: userDataDir,
+    WORKBUDDY_HOME: home
+  };
+}
+
+export function prepareWorkbuddyAppVirtualAuth(
+  configDir: string,
+  userDataDir: string,
+  profile: Pick<ProfileConfig, "id" | "name">
+): WorkbuddyVirtualAuthResult {
+  const homeDir = workbuddyAppVirtualHomeDir(configDir);
+  const authFile = workbuddyAppVirtualAuthFile(homeDir);
+  const account = workbuddyVirtualAuthAccount(profile);
+  const session = {
+    account,
+    accounts: [account],
+    allAccounts: [account],
+    auth: {
+      accessToken: workbuddyVirtualAuthToken,
+      domain: "www.workbuddy.ai",
+      expiresAt: workbuddyVirtualAuthExpiresAt,
+      expiresIn: workbuddyVirtualAuthExpiresAt,
+      lastRefreshTime: Date.now(),
+      refreshExpiresAt: workbuddyVirtualAuthExpiresAt,
+      refreshExpiresIn: workbuddyVirtualAuthExpiresAt,
+      refreshToken: "",
+      scope: "",
+      tokenType: "Bearer"
+    }
+  };
+  const content = `${JSON.stringify(session, null, 2)}\n`;
+  mkdirSync(path.dirname(authFile), { recursive: true });
+  const logoutMarker = `${authFile}.logged-out`;
+  if (existsSync(logoutMarker)) {
+    unlinkSync(logoutMarker);
+  }
+  const previous = existsSync(authFile) ? readFileSync(authFile, "utf8") : undefined;
+  if (previous !== content) {
+    writeFileSync(authFile, content, "utf8");
+  }
+  return {
+    authFile,
+    changed: previous !== content,
+    configDir,
+    homeDir,
+    userDataDir
+  };
+}
+
+function workbuddyVirtualAuthAccount(profile: Pick<ProfileConfig, "id" | "name">): Record<string, unknown> {
+  return {
+    avatarUrl: "",
+    lastLogin: true,
+    nickname: profile.name?.trim() || "Claude Code Router",
+    pluginEnabled: true,
+    type: "personal",
+    uid: workbuddyVirtualAuthUserId
+  };
+}
+
+function workbuddyVirtualAuthEnv(result: WorkbuddyVirtualAuthResult): Record<string, string> {
+  return {
+    APPDATA: path.join(result.homeDir, "AppData", "Roaming"),
+    CCR_WORKBUDDY_VIRTUAL_AUTH_FILE: result.authFile,
+    CODEXL_WORKBUDDY_VIRTUAL_AUTH_FILE: result.authFile,
+    HOME: result.homeDir,
+    LOCALAPPDATA: path.join(result.homeDir, "AppData", "Local"),
+    USERPROFILE: result.homeDir,
+    WORKBUDDY_USER_DATA_DIR: result.userDataDir
+  };
+}
+
+function workbuddyAppVirtualHomeDir(configDir: string): string {
+  return path.join(configDir, ".claude-code-router", "workbuddy-app-home");
+}
+
+function workbuddyAppVirtualAuthFile(homeDir: string): string {
+  return path.join(workbuddySharedAuthDir(homeDir), `${workbuddyVirtualAuthId}.info`);
+}
+
+function workbuddySharedAuthDir(homeDir: string): string {
+  if (process.platform === "darwin") {
+    return path.join(homeDir, "Library", "Application Support", "CodeBuddyExtension", "Data", "Public", "auth");
+  }
+  if (process.platform === "win32") {
+    return path.join(homeDir, "AppData", "Local", "CodeBuddyExtension", "Data", "Public", "auth");
+  }
+  return path.join(homeDir, ".local", "share", "CodeBuddyExtension", "Data", "Public", "auth");
 }
 
 function sanitizeCodexCompatibleAppEnv(env: NodeJS.ProcessEnv, kind: CodexCompatibleAppKind): void {
-  const blockedPrefixes = kind === "zcode" ? ["CCR_CODEX_", "CODEXL_CODEX_"] : ["CCR_ZCODE_", "CODEXL_ZCODE_"];
+  const blockedPrefixes = kind === "zcode"
+    ? ["CCR_CODEX_", "CODEXL_CODEX_", "CCR_WORKBUDDY_", "CODEXL_WORKBUDDY_"]
+    : kind === "workbuddy"
+      ? ["CCR_ZCODE_", "CODEXL_ZCODE_"]
+      : ["CCR_ZCODE_", "CODEXL_ZCODE_", "CCR_WORKBUDDY_", "CODEXL_WORKBUDDY_"];
   for (const key of Object.keys(env)) {
     if (blockedPrefixes.some((prefix) => key.startsWith(prefix))) {
       delete env[key];
@@ -502,12 +840,28 @@ function sanitizeCodexCompatibleAppEnv(env: NodeJS.ProcessEnv, kind: CodexCompat
     delete env.CODEX_CLI_PATH;
     delete env.CODEX_ELECTRON_USER_DATA_PATH;
     delete env.CODEX_HOME;
+    delete env.WORKBUDDY_CLI_PATH;
+    delete env.WORKBUDDY_ELECTRON_USER_DATA_PATH;
+    delete env.WORKBUDDY_HOME;
+    delete env.CODEBUDDY_CLI_PATH;
+    delete env.CODEBUDDY_CONFIG_DIR;
+    delete env.CODEBUDDY_ELECTRON_USER_DATA_PATH;
+    delete env.CODEBUDDY_HOME;
     return;
   }
   delete env.ZCODE_CLI_PATH;
   delete env.ZCODE_ELECTRON_USER_DATA_PATH;
   delete env.ZCODE_HOME;
   delete env.ZCODE_STORAGE_DIR;
+  if (kind === "codex") {
+    delete env.WORKBUDDY_CLI_PATH;
+    delete env.WORKBUDDY_ELECTRON_USER_DATA_PATH;
+    delete env.WORKBUDDY_HOME;
+    delete env.CODEBUDDY_CLI_PATH;
+    delete env.CODEBUDDY_CONFIG_DIR;
+    delete env.CODEBUDDY_ELECTRON_USER_DATA_PATH;
+    delete env.CODEBUDDY_HOME;
+  }
 }
 
 function bundledCodexCliPath(appExecutable: string, spec: CodexCompatibleAppSpec): string | undefined {

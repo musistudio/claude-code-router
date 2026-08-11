@@ -180,7 +180,7 @@ export function logSelectOptions(label: string, values: string[], selected: stri
 }
 
 export function normalizeAgentFilterValue(value: string): AgentFilterValue {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "workbuddy" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
 }
 
 export function agentKindLabel(agent: AgentKind): string {
@@ -207,6 +207,9 @@ export function agentKindLabel(agent: AgentKind): string {
   }
   if (agent === "pi") {
     return "Pi";
+  }
+  if (agent === "workbuddy") {
+    return "Workbuddy";
   }
   if (agent === "zcode") {
     return "ZCode";

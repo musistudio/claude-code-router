@@ -484,7 +484,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
       codexModelCatalogJson(config, model, { allowedModels: profileAllowedModels(profileWithResolvedModel) })
     );
     const appModelCatalogResult = writeCodexCompatibleAppModelCatalog(CONFIGDIR, profileWithResolvedModel, config);
-    const showAllSessions = profile.agent === "zcode" ? false : Boolean(profile.showAllSessions);
+    const showAllSessions = profile.agent === "zcode" || profile.agent === "workbuddy" ? false : Boolean(profile.showAllSessions);
     const toolHubMcpResult = writeCodexToolHubMcpRuntimeConfig(config, token);
     const contextArchiveMcp = profile.agent === "codex"
       ? codexContextArchiveMcpConfig(config, profile, token)
@@ -526,6 +526,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
     const extras = [
       modelCatalogFile ? `catalog ${modelCatalogFile}` : "",
       appModelCatalogResult.file ? `app catalog ${appModelCatalogResult.file}` : "",
+      appModelCatalogResult.workbuddyModelsConfig?.file ? `workbuddy models ${appModelCatalogResult.workbuddyModelsConfig.file}` : "",
       toolHubMcpResult.file ? `toolhub runtime ${toolHubMcpResult.file}` : "",
       contextArchiveMcp ? "context archive MCP" : "",
       separateProfileResult?.file ? `profile ${separateProfileResult.file}` : "",
@@ -2264,7 +2265,7 @@ function codexMiddlewareShellScript(
   const codexHome = profile.codexHome?.trim() || defaultCodexCompatibleHome(profile.agent, values.configFile);
   const resolvedCodexHome = resolveUserPath(codexHome);
   const remoteFrontendMode = normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode);
-  const surface = profile.agent === "zcode" ? "app" : normalizeProfileSurface(profile.surface);
+  const surface = profile.agent === "workbuddy" || profile.agent === "zcode" ? "app" : normalizeProfileSurface(profile.surface);
   const envExports = Object.entries(profileEnv(profile)).map(([key, value]) => `export ${key}=${shellQuote(value)}`);
   const botEnvExports = shellBotGatewayEnvExports(config, profile);
   const agentEnvExports = profile.agent === "zcode"
@@ -2295,6 +2296,14 @@ function codexMiddlewareShellScript(
       ]
     : [
         `export CODEX_HOME=${shellQuote(resolvedCodexHome)}`,
+        ...(profile.agent === "workbuddy"
+          ? [
+              `export WORKBUDDY_HOME=${shellQuote(resolvedCodexHome)}`,
+              `export WORKBUDDY_CONFIG_DIR=${shellQuote(resolvedCodexHome)}`,
+              `export CODEBUDDY_CONFIG_DIR=${shellQuote(resolvedCodexHome)}`,
+              `export CODEBUDDY_HOME=${shellQuote(resolvedCodexHome)}`
+            ]
+          : []),
         "if [ -z \"${CCR_REAL_CODEX_CLI_PATH:-}\" ]; then",
         `  CCR_REAL_CODEX_CLI_PATH=${shellQuote(codexCli)}`,
         "fi",
@@ -2403,7 +2412,7 @@ function codexMiddlewareCmdScript(
   const codexHome = profile.codexHome?.trim() || defaultCodexCompatibleHome(profile.agent, values.configFile);
   const resolvedCodexHome = resolveUserPath(codexHome);
   const remoteFrontendMode = normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode);
-  const surface = profile.agent === "zcode" ? "app" : normalizeProfileSurface(profile.surface);
+  const surface = profile.agent === "workbuddy" || profile.agent === "zcode" ? "app" : normalizeProfileSurface(profile.surface);
   const workspaceName = profile.name || values.providerId;
   const envExports = Object.entries(profileEnv(profile)).map(([key, value]) => cmdSetLine(key, value));
   const botEnvExports = cmdBotGatewayEnvExports(config, profile);
@@ -2429,6 +2438,14 @@ function codexMiddlewareCmdScript(
       ]
     : [
         cmdSetLine("CODEX_HOME", resolvedCodexHome),
+        ...(profile.agent === "workbuddy"
+          ? [
+              cmdSetLine("WORKBUDDY_HOME", resolvedCodexHome),
+              cmdSetLine("WORKBUDDY_CONFIG_DIR", resolvedCodexHome),
+              cmdSetLine("CODEBUDDY_CONFIG_DIR", resolvedCodexHome),
+              cmdSetLine("CODEBUDDY_HOME", resolvedCodexHome)
+            ]
+          : []),
         `if not defined CCR_REAL_CODEX_CLI_PATH ${cmdSetLine("CCR_REAL_CODEX_CLI_PATH", codexCli)}`,
         "if not defined CCR_BUNDLED_CODEX_CLI_PATH set \"CCR_BUNDLED_CODEX_CLI_PATH=%CCR_REAL_CODEX_CLI_PATH%\"",
         cmdSetLine("CCR_CODEX_PROFILE", values.providerId),
@@ -2987,10 +3004,11 @@ function disabledProfileStatus(profile: ProfileConfig): ProfileClientApplyStatus
     );
   }
   const providerId = sanitizeCodexProviderId(profile.providerId || "") || "claude-code-router";
+  const clientName = codexCompatibleClientName(profile.agent);
   return restoreDisabledGlobalProfile(
     profile,
     resolveCodexConfigFile(profile),
-    "Codex profile is disabled.",
+    `${clientName} profile is disabled.`,
     (content) => isManagedCodexConfigContent(content, providerId)
   );
 }
@@ -3016,15 +3034,31 @@ export function restoreInactiveGlobalProfileConfigs(profiles: ProfileConfig[]): 
   }
   const codexProfiles = profiles.filter((profile) => profile.agent === "codex");
   if (codexProfiles.length > 0 && !codexProfiles.some((profile) => profile.enabled && isGlobalProfile(profile))) {
+    const providerIds = codexCompatibleProviderIds(codexProfiles);
     for (const file of uniqueResolvedPaths([
       ...codexProfiles.map(globalCodexConfigCandidate)
     ])) {
       const restoreResult = restoreGlobalConfigFile(file, {
-        isManagedContent: (content) => isManagedCodexConfigContent(content, "claude-code-router"),
+        isManagedContent: (content) => providerIds.some((providerId) => isManagedCodexConfigContent(content, providerId)),
         mode: privateFileMode
       });
       if (restoreResult.changed || restoreResult.missingBackup) {
         statuses.push(inactiveGlobalCleanupStatus("codex", file, restoreResult));
+      }
+    }
+  }
+  const workbuddyProfiles = profiles.filter((profile) => profile.agent === "workbuddy");
+  if (workbuddyProfiles.length > 0 && !workbuddyProfiles.some((profile) => profile.enabled && isGlobalProfile(profile))) {
+    const providerIds = codexCompatibleProviderIds(workbuddyProfiles);
+    for (const file of uniqueResolvedPaths([
+      ...workbuddyProfiles.map(globalCodexConfigCandidate)
+    ])) {
+      const restoreResult = restoreGlobalConfigFile(file, {
+        isManagedContent: (content) => providerIds.some((providerId) => isManagedCodexConfigContent(content, providerId)),
+        mode: privateFileMode
+      });
+      if (restoreResult.changed || restoreResult.missingBackup) {
+        statuses.push(inactiveGlobalCleanupStatus("workbuddy", file, restoreResult));
       }
     }
   }
@@ -3094,7 +3128,14 @@ function globalCodexConfigCandidate(profile: ProfileConfig): string {
   if (codexHome) {
     return path.join(resolveUserPath(codexHome), "config.toml");
   }
-  return profile.configFile || "~/.codex/config.toml";
+  return profile.configFile || defaultCodexConfigFile(profile.agent);
+}
+
+function codexCompatibleProviderIds(profiles: ProfileConfig[]): string[] {
+  return [...new Set([
+    "claude-code-router",
+    ...profiles.map((profile) => sanitizeCodexProviderId(profile.providerId || "")).filter(Boolean)
+  ])];
 }
 
 function globalOpenCodeConfigCandidate(profile: ProfileConfig): string {
@@ -3202,7 +3243,7 @@ function readGlobalProfileTakeoverMarker(): GlobalProfileTakeoverRecord[] {
     }
     return parsed.profiles.filter((value): value is GlobalProfileTakeoverRecord =>
       isRecord(value) &&
-      (value.agent === "claude-code" || value.agent === "codex" || value.agent === "opencode" || value.agent === "kilo" || value.agent === "zcode") &&
+      (value.agent === "claude-code" || value.agent === "codex" || value.agent === "opencode" || value.agent === "kilo" || value.agent === "workbuddy" || value.agent === "zcode") &&
       typeof value.id === "string" &&
       typeof value.name === "string"
     );
@@ -3651,6 +3692,9 @@ function codexCompatibleClientName(agent: ProfileConfig["agent"]): string {
   if (agent === "pi") {
     return "Pi";
   }
+  if (agent === "workbuddy") {
+    return "Workbuddy";
+  }
   if (agent === "claude-design") {
     return "Claude Design";
   }
@@ -3662,6 +3706,8 @@ function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
     ? "~/.zcode/cli/config.json"
     : agent === "kilo"
       ? "~/.config/kilo/kilo.jsonc"
+      : agent === "workbuddy"
+        ? "~/.workbuddy/config.toml"
     : agent === "pi"
       ? "~/.pi/agent"
       : agent === "claude-design"
@@ -3670,11 +3716,11 @@ function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
 }
 
 function codexConfigSubdir(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "zcode" : "codex";
+  return agent === "zcode" ? "zcode" : agent === "workbuddy" ? "workbuddy" : "codex";
 }
 
 function defaultCodexCliCommand(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "zcode" : "codex";
+  return agent === "zcode" ? "zcode" : agent === "workbuddy" ? "codebuddy" : "codex";
 }
 
 function defaultCodexCompatibleHome(agent: ProfileConfig["agent"], configFile: string): string {

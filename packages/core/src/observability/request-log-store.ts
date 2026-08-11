@@ -1659,6 +1659,14 @@ function inferAgentFromText(value: string, options: AgentTextSignalOptions = {})
     return "kilo";
   }
   if (
+    normalized.includes("workbuddy") ||
+    normalized.includes("work-buddy") ||
+    normalized.includes("work buddy") ||
+    /(^|[^a-z0-9])workbuddy([/_\s-]|$)/.test(normalized)
+  ) {
+    return "workbuddy";
+  }
+  if (
     normalized.includes("openai-codex") ||
     normalized.includes("codex_cli") ||
     normalized.includes("codex-cli") ||
@@ -1734,6 +1742,16 @@ function readAgentSessionHeader(headers: Record<string, string | string[]>, agen
     "x-z-code-session-id",
     "z-code-session-id"
   ];
+  const workbuddyHeaders = [
+    "x-workbuddy-session-id",
+    "workbuddy-session-id",
+    "x-workbuddy-conversation-id",
+    "workbuddy-conversation-id",
+    "x-workbuddy-thread-id",
+    "workbuddy-thread-id",
+    "x-work-buddy-session-id",
+    "work-buddy-session-id"
+  ];
   const piHeaders = [
     "x-pi-session-id",
     "pi-session-id",
@@ -1744,6 +1762,8 @@ function readAgentSessionHeader(headers: Record<string, string | string[]>, agen
   ];
   const orderedHeaders = agent === "zcode"
     ? [...zcodeHeaders, ...codexHeaders, ...commonHeaders, ...claudeCodeHeaders]
+    : agent === "workbuddy"
+      ? [...workbuddyHeaders, ...codexHeaders, ...commonHeaders, ...claudeCodeHeaders]
     : agent === "pi"
       ? [...piHeaders, ...commonHeaders, ...codexHeaders, ...claudeCodeHeaders]
     : agent === "codex"
@@ -3157,11 +3177,11 @@ function normalizeAgentAnalysisRange(value: UsageStatsRange | undefined): UsageS
 }
 
 function normalizeAgentFilter(value: AgentAnalysisFilter["agent"] | undefined): AgentKind | "all" {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "workbuddy" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
 }
 
 function normalizeSessionAgentFilter(value: AgentAnalysisFilter["sessionAgent"] | undefined): AgentKind | undefined {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "workbuddy" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
 }
 
 function agentDisplayName(agent: AgentKind): string {
@@ -3188,6 +3208,9 @@ function agentDisplayName(agent: AgentKind): string {
   }
   if (agent === "pi") {
     return "Pi";
+  }
+  if (agent === "workbuddy") {
+    return "Workbuddy";
   }
   if (agent === "zcode") {
     return "ZCode";

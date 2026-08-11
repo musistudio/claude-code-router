@@ -740,7 +740,7 @@ function sanitizeProfileConfigForDisk(profile: AppConfig["profile"]): AppConfig[
     ...synchronizedProfile,
     codex,
     profiles: synchronizedProfile.profiles.map((profileItem) => {
-      if (profileItem.agent !== "codex" && profileItem.agent !== "opencode" && profileItem.agent !== "kilo" && profileItem.agent !== "zcode") {
+      if (profileItem.agent !== "codex" && profileItem.agent !== "opencode" && profileItem.agent !== "kilo" && profileItem.agent !== "workbuddy" && profileItem.agent !== "zcode") {
         return profileItem;
       }
       const {
@@ -3570,7 +3570,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         : undefined;
       const env = parseStringRecord(item.env) ?? {};
       const parsedSurface = parseProfileSurface(readString(item.surface) || readString(item.entry) || readString(item.frontend)) || "auto";
-      const surface = agent === "zcode" || agent === CLAUDE_DESIGN_PLUGIN_ID
+      const surface = agent === "workbuddy" || agent === "zcode" || agent === CLAUDE_DESIGN_PLUGIN_ID
         ? "app"
         : agent === "pi" || agent === "kilo"
           ? "cli"
@@ -3639,7 +3639,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       }
 
       const appPath = readProfileAppPath(item, agent);
-      const showAllSessions = agent === "zcode" || agent === "opencode" || agent === "kilo"
+      const showAllSessions = agent === "zcode" || agent === "opencode" || agent === "kilo" || agent === "workbuddy"
         ? false
         : typeof item.showAllSessions === "boolean"
           ? item.showAllSessions
@@ -3724,7 +3724,9 @@ function readProfileAppPath(item: Record<string, unknown>, agent: ProfileConfig[
         ? readString(item.chatgptAppPath) || readString(item.chatgpt_app_path) || readString(item.codexAppPath) || readString(item.codex_app_path)
         : agent === "opencode"
           ? readString(item.openCodeAppPath) || readString(item.opencodeAppPath) || readString(item.opencode_app_path)
-          : readString(item.zcodeAppPath) || readString(item.zcode_app_path));
+          : agent === "workbuddy"
+            ? readString(item.workbuddyAppPath) || readString(item.workbuddy_app_path) || readString(item.workBuddyAppPath) || readString(item.work_buddy_app_path)
+            : readString(item.zcodeAppPath) || readString(item.zcode_app_path));
 }
 
 function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
@@ -3752,6 +3754,9 @@ function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
   }
   if (normalized === "pi" || normalized === "pi-agent" || normalized === "pi agent" || normalized === "pi-coding-agent" || normalized === "pi coding agent") {
     return "pi";
+  }
+  if (normalized === "workbuddy" || normalized === "work-buddy" || normalized === "work buddy" || normalized === "workbuddy-agent" || normalized === "workbuddy agent") {
+    return "workbuddy";
   }
   if (normalized === "zcode" || normalized === "z-code" || normalized === "z code") {
     return "zcode";
@@ -3794,6 +3799,9 @@ function defaultProfileAgentName(agent: ProfileConfig["agent"]): string {
   if (agent === "pi") {
     return "Pi";
   }
+  if (agent === "workbuddy") {
+    return "Workbuddy";
+  }
   if (agent === CLAUDE_DESIGN_PLUGIN_ID) {
     return "Claude Design";
   }
@@ -3807,6 +3815,8 @@ function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
       ? "~/.config/opencode/opencode.jsonc"
       : agent === "kilo"
         ? "~/.config/kilo/kilo.jsonc"
+        : agent === "workbuddy"
+          ? "~/.workbuddy/config.toml"
         : agent === "pi"
           ? "~/.pi/agent"
           : agent === CLAUDE_DESIGN_PLUGIN_ID
