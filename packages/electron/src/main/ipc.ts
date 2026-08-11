@@ -220,8 +220,18 @@ ipcMain.handle(IPC_CHANNELS.appApplyClaudeAppGateway, async (_event, config?: Ap
   const synced = await syncClaudeAppGatewayConfig(baseConfig);
   const savedConfig = synced.config;
   let runtimeStatus = gatewayService.getStatus();
+  const restartRequired = synced.configChanged ||
+    shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig) ||
+    runtimeStatus.state !== "running";
 
-  if (synced.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig) || runtimeStatus.state !== "running") {
+  if (runtimeStatus.gatewayManagedExternally) {
+    if (restartRequired) {
+      runtimeStatus = await gatewayService.restart(savedConfig);
+    } else {
+      await gatewayService.updateConfig(savedConfig);
+      runtimeStatus = gatewayService.getStatus();
+    }
+  } else if (restartRequired) {
     runtimeStatus = await gatewayService.start(savedConfig);
   } else {
     await gatewayService.updateConfig(savedConfig);
@@ -323,7 +333,16 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, opt
   const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(savedConfig);
   savedConfig = syncedClaudeAppConfig.config;
   let runtimeStatus = gatewayService.getStatus();
-  if (syncedClaudeAppConfig.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig)) {
+  const restartRequired = syncedClaudeAppConfig.configChanged ||
+    shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig);
+  if (runtimeStatus.gatewayManagedExternally) {
+    if (restartRequired) {
+      runtimeStatus = await gatewayService.restart(savedConfig);
+    } else {
+      await gatewayService.updateConfig(savedConfig);
+      runtimeStatus = gatewayService.getStatus();
+    }
+  } else if (restartRequired) {
     runtimeStatus = await gatewayService.start(savedConfig);
   } else {
     await gatewayService.updateConfig(savedConfig);
@@ -360,7 +379,7 @@ ipcMain.handle(IPC_CHANNELS.appSetOnboardingFinished, async () => {
 ipcMain.handle(IPC_CHANNELS.appRestartGateway, async () => {
   const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(await loadAppConfig());
   const config = syncedClaudeAppConfig.config;
-  const status = await gatewayService.start(config);
+  const status = await gatewayService.restart(config);
   await applyProfileIfServiceRunning(config, status);
   await builtInBrowserService.syncProxy(config);
   return status;
@@ -391,7 +410,7 @@ ipcMain.handle(IPC_CHANNELS.appShowMainWindow, () => {
 ipcMain.handle(IPC_CHANNELS.appRestartProxy, async () => {
   const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(await loadAppConfig());
   const config = syncedClaudeAppConfig.config;
-  const status = await gatewayService.start(config);
+  const status = await gatewayService.restart(config);
   await applyProfileIfServiceRunning(config, status);
   await builtInBrowserService.syncProxy(config);
   return proxyService.getStatus();

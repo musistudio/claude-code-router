@@ -78,7 +78,8 @@
     "electron-updater": "^6.8.9",
     "node-forge": "^1.4.0",
     "openai": "^6.27.0",
-    "undici": "^7.27.2"
+    "pm2": "^7.0.3",
+    "undici": "^7.29.0"
   },
   "devDependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -96,7 +97,7 @@
     "electron": "^42.3.3",
     "electron-builder": "^26.8.1",
     "esbuild": "^0.27.7",
-    "js-yaml": "^4.2.0",
+    "js-yaml": "^4.3.1",
     "lucide-react": "^1.17.0",
     "motion": "^12.40.0",
     "react": "^18.3.1",
@@ -109,6 +110,18 @@
     "typescript": "^5.9.3"
   },
   "overrides": {
-    "@types/react": "$@types/react"
+    "@types/react": "$@types/react",
+    "fast-uri@3.1.2": "3.1.5",
+    "find-my-way@9.6.0": "9.7.0",
+    "js-yaml": "$js-yaml",
+    "minimatch@10.2.5": {
+      "brace-expansion": "5.0.9"
+    },
+    "pm2": {
+      "js-yaml": "4.3.1"
+    },
+    "socks": {
+      "ip-address": "10.5.0"
+    }
   }
 }

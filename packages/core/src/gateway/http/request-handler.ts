@@ -14,6 +14,7 @@ import {
   type ContextArchiveReplayExecutor
 } from "@ccr/core/gateway/context-archive";
 import { ccrRemoteControlPathPrefix, ccrRemoteControlService } from "@ccr/core/gateway/remote-control-service";
+import { gatewayRuntimeConfigControlPath } from "@ccr/core/gateway/runtime-config-control";
 import { authorize, claudeCodeWifTokenPath, handleClaudeCodeWifTokenRequest, reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
 import { parseJsonObject, readRequestBody, sendJson } from "@ccr/core/gateway/http/io";
 import { shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
@@ -27,10 +28,12 @@ export type GatewayHttpRequestHandlerDependencies = {
   getBrowserAutomationMcpIntegration: () => BrowserAutomationMcpIntegration | undefined;
   getConfig: () => AppConfig | undefined;
   getPlugin: () => ClaudeCodeRouterPlugin | undefined;
+  getRuntimeConfigControlStatus: () => { lastError?: string; revision?: string };
   getStatus: () => { coreEndpoint: string; coreManagedExternally?: boolean; endpoint: string; state: string };
   handleBillingUsageSync: (request: IncomingMessage, response: ServerResponse) => Promise<void>;
   handleRawTraceSync: (request: IncomingMessage, response: ServerResponse) => Promise<void>;
   proxyRequest: (request: IncomingMessage, response: ServerResponse, path: string, apiKey?: ApiKeyConfig) => Promise<void>;
+  requestRuntimeConfigReload: (expectedRevision: string, forceRestart: boolean) => void;
   replayContextArchive: ContextArchiveReplayExecutor;
 };
 
@@ -40,10 +43,12 @@ export class GatewayHttpRequestHandler {
   private get browserAutomationMcpIntegration() { return this.dependencies.getBrowserAutomationMcpIntegration(); }
   private get config() { return this.dependencies.getConfig(); }
   private get plugin() { return this.dependencies.getPlugin(); }
+  private get runtimeConfigControlStatus() { return this.dependencies.getRuntimeConfigControlStatus(); }
   private get status() { return this.dependencies.getStatus(); }
   private handleBillingUsageSync(request: IncomingMessage, response: ServerResponse) { return this.dependencies.handleBillingUsageSync(request, response); }
   private handleRawTraceSync(request: IncomingMessage, response: ServerResponse) { return this.dependencies.handleRawTraceSync(request, response); }
   private proxyRequest(request: IncomingMessage, response: ServerResponse, path: string, apiKey?: ApiKeyConfig) { return this.dependencies.proxyRequest(request, response, path, apiKey); }
+  private requestRuntimeConfigReload(expectedRevision: string, forceRestart: boolean) { return this.dependencies.requestRuntimeConfigReload(expectedRevision, forceRestart); }
   private replayContextArchive(input: Parameters<ContextArchiveReplayExecutor>[0]) { return this.dependencies.replayContextArchive(input); }
 
   async handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -72,6 +77,46 @@ export class GatewayHttpRequestHandler {
           return;
         }
         await this.handleRawTraceSync(request, response);
+        return;
+      }
+
+      if (path === gatewayRuntimeConfigControlPath) {
+        const authorization = await authorize(request, response, this.config);
+        if (!authorization.ok) {
+          return;
+        }
+        if (!this.config.APIKEY || authorization.apiKey?.key !== this.config.APIKEY) {
+          sendJson(response, 403, { error: { message: "The primary CCR API key is required for runtime configuration control." } });
+          return;
+        }
+        if (request.method === "GET") {
+          sendJson(response, 200, {
+            ...this.runtimeConfigControlStatus,
+            state: this.status.state
+          });
+          return;
+        }
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: { message: "Method not allowed." } });
+          return;
+        }
+        const body = parseJsonObject(await readRequestBody(request));
+        const expectedRevision = typeof body.configRevision === "string"
+          ? body.configRevision.trim()
+          : "";
+        if (!/^[a-f0-9]{64}$/i.test(expectedRevision)) {
+          sendJson(response, 400, { error: { message: "A valid configRevision is required." } });
+          return;
+        }
+        const forceRestart = body.forceRestart === true;
+        response.once("finish", () => {
+          this.requestRuntimeConfigReload(expectedRevision, forceRestart);
+        });
+        sendJson(response, 202, {
+          accepted: true,
+          configRevision: expectedRevision,
+          restarting: forceRestart
+        });
         return;
       }
 

@@ -14,6 +14,7 @@ import { findRunningOpenCodeAppPid, launchOpenCodeAppProfile, openCodeAppLaunchS
 import { writeOpenCodeGatewayConfig } from "@ccr/core/agents/opencode/profile-config";
 import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-middleware-runtime";
 import { CONFIGDIR } from "@ccr/core/config/constants";
+import { endpoint } from "@ccr/core/gateway/core-runtime/supervisor";
 import { gatewayService } from "@ccr/core/gateway/service";
 import { TOOL_HUB_MCP_RUNTIME_FILE_NAME, bundledToolHubMcpEntryPathCandidates } from "@ccr/core/mcp/toolhub-config";
 import { mediaToolsGatewayEndpoint } from "@ccr/core/mcp/grok-media-config";
@@ -737,7 +738,7 @@ function isAddressInUseError(message: string | undefined): boolean {
 
 function profileGatewayEndpoint(config: AppConfig): string {
   const host = probeGatewayHost(config.gateway.host);
-  return `http://${formatEndpointHost(host)}:${config.gateway.port}/`;
+  return endpoint(host, config.gateway.port);
 }
 
 function probeGatewayHost(host: string): string {
@@ -748,10 +749,6 @@ function probeGatewayHost(host: string): string {
     return "::1";
   }
   return host;
-}
-
-function formatEndpointHost(host: string): string {
-  return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }
 
 function profileGatewayConfigFor(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): AppConfig {

@@ -11,7 +11,15 @@ import {
   replacePersistedRuntimeState
 } from "@ccr/core/config/config-repository.ts";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
+import { endpoint } from "@ccr/core/gateway/core-runtime/supervisor.ts";
 import { gatewayService } from "@ccr/core/gateway/service.ts";
+
+test("gateway endpoints normalize wildcard and IPv6 hosts", () => {
+  assert.equal(endpoint("0.0.0.0", 3456), "http://127.0.0.1:3456");
+  assert.equal(endpoint("::", 3456), "http://[::1]:3456");
+  assert.equal(endpoint("::1", 3456), "http://[::1]:3456");
+  assert.equal(endpoint("[::1]", 3456), "http://[::1]:3456");
+});
 
 test("gateway start persists preflight validation failures for status polling", async () => {
   await gatewayService.stop();

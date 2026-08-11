@@ -997,7 +997,7 @@ export function AddProfileForm({
                       />
                       {validation.allowedModels ? <ProfileFieldHint>{t(validation.allowedModels)}</ProfileFieldHint> : null}
                     </Field>
-                    {draft.agent === "codex" && draft.agent !== "workbuddy" ? (
+                    {draft.agent === "codex" ? (
                       <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
                         <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
                         <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />

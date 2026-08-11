@@ -1,4 +1,6 @@
 import type { ApiKeyConfig, AppConfig } from "@ccr/core/contracts/app";
+import { endpoint as gatewayEndpoint } from "@ccr/core/gateway/core-runtime/supervisor";
+import { gatewayRuntimeConfigControlPath, gatewayRuntimeConfigRevision } from "@ccr/core/gateway/runtime-config-control";
 
 export type ExistingCcrGatewayProbe =
   | { endpoint: string; reason?: string; state: "unavailable" }
@@ -14,6 +16,7 @@ type ExistingGatewayHttpProbe = {
 };
 
 const existingGatewayFetchAttempts = 3;
+const runtimeConfigReloadTimeoutMs = 20_000;
 
 export async function probeExistingCcrGateway(
   config: Pick<AppConfig, "APIKEY" | "APIKEYS" | "gateway">
@@ -71,7 +74,78 @@ export async function probeExistingCcrGateway(
 
 export function publicGatewayEndpoint(config: Pick<AppConfig, "gateway">): string {
   const host = probeGatewayHost(config.gateway.host);
-  return `http://${formatEndpointHost(host)}:${config.gateway.port}/`;
+  return gatewayEndpoint(host, config.gateway.port);
+}
+
+export async function reloadExistingCcrGatewayConfig(
+  currentEndpoint: string,
+  config: AppConfig,
+  currentApiKey: string | undefined,
+  options: { forceRestart?: boolean } = {}
+): Promise<{ apiKey: string; endpoint: string }> {
+  const configRevision = gatewayRuntimeConfigRevision(config);
+  if (!configRevision) {
+    throw new Error("Cannot determine the saved CCR configuration revision.");
+  }
+  const currentKey = currentApiKey?.trim();
+  if (!currentKey) {
+    throw new Error("The API key accepted by the externally managed CCR gateway is unavailable.");
+  }
+
+  if (options.forceRestart !== true) {
+    const currentStatus = await fetchExistingGateway(currentEndpoint, gatewayRuntimeConfigControlPath, {
+      headers: { authorization: `Bearer ${currentKey}` }
+    }, 1, 700);
+    if (currentStatus.status === 200 && isRecord(currentStatus.payload) &&
+        currentStatus.payload.revision === configRevision) {
+      return { apiKey: currentKey, endpoint: publicGatewayEndpoint(config) };
+    }
+  }
+
+  const submission = await fetchExistingGateway(currentEndpoint, gatewayRuntimeConfigControlPath, {
+    body: JSON.stringify({
+      configRevision,
+      forceRestart: options.forceRestart === true
+    }),
+    headers: {
+      authorization: `Bearer ${currentKey}`,
+      "content-type": "application/json"
+    },
+    method: "POST"
+  });
+  if (submission.status === 404) {
+    throw new Error("The running CCR gateway does not support runtime configuration reloads. Restart that gateway process once, then try again.");
+  }
+  if (submission.status !== 200 && submission.status !== 202) {
+    const detail = readGatewayErrorMessage(submission.payload) || submission.reason ||
+      `HTTP ${submission.status ?? 0}`;
+    throw new Error(`The running CCR gateway rejected the configuration reload request: ${detail}`);
+  }
+
+  const expectedEndpoint = publicGatewayEndpoint(config);
+  const apiKeys = externalGatewayReloadApiKeys(config, currentKey);
+  const deadline = Date.now() + runtimeConfigReloadTimeoutMs;
+  let lastReason: string | undefined;
+  while (Date.now() < deadline) {
+    for (const apiKey of apiKeys) {
+      const status = await fetchExistingGateway(expectedEndpoint, gatewayRuntimeConfigControlPath, {
+        headers: { authorization: `Bearer ${apiKey}` }
+      }, 1, 700);
+      if (status.status === 200 && isRecord(status.payload)) {
+        if (status.payload.revision === configRevision) {
+          return { apiKey, endpoint: expectedEndpoint };
+        }
+        if (typeof status.payload.lastError === "string" && status.payload.lastError.trim()) {
+          throw new Error(`The running CCR gateway could not apply the saved configuration: ${status.payload.lastError}`);
+        }
+      }
+      if (status.status !== 401 && status.status !== 403) {
+        lastReason = status.reason || (status.status ? `HTTP ${status.status}` : lastReason);
+      }
+    }
+    await wait(100);
+  }
+  throw new Error(`Timed out waiting for the running CCR gateway to load configuration revision ${configRevision}${lastReason ? ` (${lastReason})` : ""}.`);
 }
 
 export function isAddressInUseMessage(message: string | undefined): boolean {
@@ -81,12 +155,14 @@ export function isAddressInUseMessage(message: string | undefined): boolean {
 async function fetchExistingGateway(
   endpoint: string,
   pathname: string,
-  init: RequestInit = {}
+  init: RequestInit = {},
+  attempts = existingGatewayFetchAttempts,
+  timeoutMs = 1200
 ): Promise<ExistingGatewayHttpProbe> {
   let reason: string | undefined;
-  for (let attempt = 0; attempt < existingGatewayFetchAttempts; attempt += 1) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 1200);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(new URL(pathname, endpoint).toString(), {
         ...init,
@@ -103,6 +179,17 @@ async function fetchExistingGateway(
     }
   }
   return { reason };
+}
+
+function externalGatewayReloadApiKeys(
+  config: Pick<AppConfig, "APIKEY" | "APIKEYS">,
+  currentApiKey: string
+): string[] {
+  const apiKeys = existingGatewayApiKeyCandidates(config).map((candidate) => candidate.key);
+  if (!apiKeys.includes(currentApiKey)) {
+    apiKeys.push(currentApiKey);
+  }
+  return apiKeys;
 }
 
 function existingGatewayApiKeyCandidates(config: Pick<AppConfig, "APIKEY" | "APIKEYS">): ApiKeyConfig[] {
@@ -175,14 +262,14 @@ function probeGatewayHost(host: string): string {
   return host;
 }
 
-function formatEndpointHost(host: string): string {
-  return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function wait(milliseconds: number): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 }

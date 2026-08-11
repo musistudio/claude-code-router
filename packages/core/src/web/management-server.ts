@@ -265,7 +265,17 @@ const rpcHandlers: Record<string, RpcHandler> = {
     const synced = await syncClaudeAppGatewayConfig(baseConfig);
     const savedConfig = synced.config;
     let runtimeStatus = gatewayService.getStatus();
-    if (synced.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig) || runtimeStatus.state !== "running") {
+    const restartRequired = synced.configChanged ||
+      shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig) ||
+      runtimeStatus.state !== "running";
+    if (runtimeStatus.gatewayManagedExternally) {
+      if (restartRequired) {
+        runtimeStatus = await gatewayService.restart(savedConfig);
+      } else {
+        await gatewayService.updateConfig(savedConfig);
+        runtimeStatus = gatewayService.getStatus();
+      }
+    } else if (restartRequired) {
       runtimeStatus = await gatewayService.start(savedConfig);
     } else {
       await gatewayService.updateConfig(savedConfig);
@@ -382,14 +392,14 @@ const rpcHandlers: Record<string, RpcHandler> = {
   restartGateway: async () => {
     const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(await loadAppConfig());
     const config = syncedClaudeAppConfig.config;
-    const status = await gatewayService.start(config);
+    const status = await gatewayService.restart(config);
     await applyProfileIfServiceRunning(config, status);
     return status;
   },
   restartProxy: async () => {
     const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(await loadAppConfig());
     const config = syncedClaudeAppConfig.config;
-    const status = await gatewayService.start(config);
+    const status = await gatewayService.restart(config);
     await applyProfileIfServiceRunning(config, status);
     return proxyService.getStatus();
   },
@@ -420,7 +430,16 @@ const rpcHandlers: Record<string, RpcHandler> = {
     const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(savedConfig);
     savedConfig = syncedClaudeAppConfig.config;
     let runtimeStatus = gatewayService.getStatus();
-    if (syncedClaudeAppConfig.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig)) {
+    const restartRequired = syncedClaudeAppConfig.configChanged ||
+      shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig);
+    if (runtimeStatus.gatewayManagedExternally) {
+      if (restartRequired) {
+        runtimeStatus = await gatewayService.restart(savedConfig);
+      } else {
+        await gatewayService.updateConfig(savedConfig);
+        runtimeStatus = gatewayService.getStatus();
+      }
+    } else if (restartRequired) {
       runtimeStatus = await gatewayService.start(savedConfig);
     } else {
       await gatewayService.updateConfig(savedConfig);

@@ -11,6 +11,8 @@ import { waitForTcpListener } from "../../support/loopback-listener.mjs";
 test("gateway HTTP model discovery and request access honor profile model allowlists", async (t) => {
   const config = createProfileAllowlistHttpTestConfig();
   const plugin = new ClaudeCodeRouterPlugin(config);
+  const runtimeConfigRevision = "a".repeat(64);
+  const runtimeConfigReloads = [];
   const status = {
     coreEndpoint: "http://127.0.0.1:1",
     endpoint: "http://127.0.0.1:0",
@@ -27,10 +29,14 @@ test("gateway HTTP model discovery and request access honor profile model allowl
     getBrowserAutomationMcpIntegration: () => undefined,
     getConfig: () => config,
     getPlugin: () => plugin,
+    getRuntimeConfigControlStatus: () => ({ revision: runtimeConfigRevision }),
     getStatus: () => status,
     handleBillingUsageSync: unsupportedHandler,
     handleRawTraceSync: unsupportedHandler,
     proxyRequest: (request, response, path, apiKey) => pipeline.proxyRequest(request, response, path, apiKey),
+    requestRuntimeConfigReload: (expectedRevision, forceRestart) => {
+      runtimeConfigReloads.push({ expectedRevision, forceRestart });
+    },
     replayContextArchive: async () => ({ ok: false, statusCode: 404, message: "not configured" })
   });
   const server = createServer((request, response) => {
@@ -55,6 +61,29 @@ test("gateway HTTP model discovery and request access honor profile model allowl
     await waitForTcpListener(server);
     const endpoint = `http://127.0.0.1:${serverPort(server)}`;
     status.endpoint = endpoint;
+
+    const runtimeConfigStatus = await fetchJson(`${endpoint}/__ccr/runtime/config`, {
+      headers: authHeaders("gateway-key")
+    });
+    assert.equal(runtimeConfigStatus.revision, runtimeConfigRevision);
+    assert.equal(runtimeConfigStatus.state, "running");
+
+    const deniedRuntimeConfigStatus = await fetch(`${endpoint}/__ccr/runtime/config`, {
+      headers: authHeaders("profile-alpha-key")
+    });
+    assert.equal(deniedRuntimeConfigStatus.status, 403);
+
+    const runtimeConfigReload = await fetch(`${endpoint}/__ccr/runtime/config`, {
+      body: JSON.stringify({ configRevision: runtimeConfigRevision, forceRestart: true }),
+      headers: {
+        ...authHeaders("gateway-key"),
+        "content-type": "application/json"
+      },
+      method: "POST"
+    });
+    assert.equal(runtimeConfigReload.status, 202, await runtimeConfigReload.text());
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(runtimeConfigReloads, [{ expectedRevision: runtimeConfigRevision, forceRestart: true }]);
 
     const alphaModels = await fetchJson(`${endpoint}/v1/models`, {
       headers: authHeaders("profile-alpha-key")

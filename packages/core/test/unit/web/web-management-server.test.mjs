@@ -69,6 +69,7 @@ test("web RPC ignores Origin and Referer when the auth token is valid", async ()
 test("startGateway reuses an already healthy CCR gateway on the configured port", async () => {
   const { saveAppConfig } = await import("@ccr/core/config/config.ts");
   const { createDefaultAppConfig } = await import("@ccr/core/config/default-config.ts");
+  const { gatewayRuntimeConfigRevision } = await import("@ccr/core/gateway/runtime-config-control.ts");
   const { gatewayService } = await import("@ccr/core/gateway/service.ts");
   const { startWebManagementServer } = await import("@ccr/core/web/management-server.ts");
   await gatewayService.stop();
@@ -86,7 +87,11 @@ test("startGateway reuses an already healthy CCR gateway on the configured port"
     type: "openai_chat_completions"
   }];
   const savedConfig = await saveAppConfig(config);
-  const externalGateway = createHealthyCcrGateway(savedConfig.APIKEY);
+  const externalGatewayState = {
+    reloadRequests: [],
+    revision: gatewayRuntimeConfigRevision(savedConfig)
+  };
+  const externalGateway = createHealthyCcrGateway(savedConfig.APIKEY, externalGatewayState);
   await listen(externalGateway, gatewayPort);
   const runtime = await startWebManagementServer({
     authToken: webAuthToken,
@@ -100,9 +105,24 @@ test("startGateway reuses an already healthy CCR gateway on the configured port"
 
     assert.equal(payload.ok, true);
     assert.equal(payload.value.state, "running", payload.value.lastError);
-    assert.equal(payload.value.endpoint, `http://127.0.0.1:${gatewayPort}/`);
+    assert.equal(payload.value.endpoint, `http://127.0.0.1:${gatewayPort}`);
     assert.equal(payload.value.gatewayManagedExternally, true);
     assert.equal(gatewayService.getStatus().state, "running");
+    assert.equal(gatewayService.getStatus().gatewayManagedExternally, true);
+
+    const secondStart = await rpc(runtime.url, webAuthToken, "startGateway");
+    assert.equal(secondStart.ok, true);
+    assert.equal(secondStart.value.endpoint, `http://127.0.0.1:${gatewayPort}`);
+    assert.equal(secondStart.value.gatewayManagedExternally, true);
+
+    const nextConfig = structuredClone(savedConfig);
+    nextConfig.Providers[0].name = "Updated Test Provider";
+    const reloadCountBeforeSave = externalGatewayState.reloadRequests.length;
+    const saveResult = await rpc(runtime.url, webAuthToken, "saveConfig", [nextConfig, { applyProfile: false }]);
+    assert.equal(saveResult.ok, true);
+    assert.equal(externalGatewayState.reloadRequests.length, reloadCountBeforeSave + 1);
+    assert.equal(externalGatewayState.reloadRequests.at(-1).forceRestart, true);
+    assert.equal(externalGatewayState.revision, gatewayRuntimeConfigRevision(saveResult.value));
     assert.equal(gatewayService.getStatus().gatewayManagedExternally, true);
   } finally {
     await runtime.close();
@@ -124,7 +144,7 @@ async function rpc(baseUrl, authToken, method, args = []) {
   return response.json();
 }
 
-function createHealthyCcrGateway(apiKey) {
+function createHealthyCcrGateway(apiKey, state) {
   return createServer((request, response) => {
     const url = new URL(request.url || "/", "http://127.0.0.1");
     if (url.pathname === "/health") {
@@ -152,8 +172,38 @@ function createHealthyCcrGateway(apiKey) {
       sendJson(response, 200, { data: [{ id: "test-model", object: "model" }], object: "list" });
       return;
     }
+    if (url.pathname === "/__ccr/runtime/config") {
+      if (request.headers.authorization !== `Bearer ${apiKey}`) {
+        sendJson(response, 401, { error: { message: "Invalid API key." } });
+        return;
+      }
+      if (request.method === "GET") {
+        sendJson(response, 200, { revision: state.revision, state: "running" });
+        return;
+      }
+      if (request.method === "POST") {
+        void readJsonRequest(request).then((body) => {
+          state.reloadRequests.push(body);
+          state.revision = body.configRevision;
+          sendJson(response, 202, {
+            accepted: true,
+            configRevision: body.configRevision,
+            restarting: body.forceRestart === true
+          });
+        });
+        return;
+      }
+    }
     sendJson(response, 404, { error: { message: "Not found." } });
   });
+}
+
+async function readJsonRequest(request) {
+  const chunks = [];
+  for await (const chunk of request) {
+    chunks.push(Buffer.from(chunk));
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
 function sendJson(response, statusCode, payload) {

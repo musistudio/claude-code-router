@@ -45,6 +45,6 @@
     "@the-next-ai/bot-gateway-sdk": "^0.1.0",
     "better-sqlite3": "^12.11.1",
     "node-forge": "^1.4.0",
-    "undici": "^7.27.2"
+    "undici": "^7.29.0"
   }
 }
