@@ -229,7 +229,7 @@ function startConfiguredServices(reason: string): Promise<void> {
         } catch (error) {
           console.error(`Failed to sync launch-at-login setting during ${reason}: ${formatError(error)}`);
         }
-        const status = await gatewayService.start(config);
+        const status = await gatewayService.ensureStarted(config);
         if (status.state === "error") {
           console.error(`Failed to start gateway during ${reason}: ${status.lastError}`);
         }

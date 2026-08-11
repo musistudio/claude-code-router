@@ -12,6 +12,7 @@ import { pluginService } from "@ccr/core/plugins/service";
 import { proxyService } from "@ccr/core/proxy/service";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin";
 import { compileCoreGatewayConfig } from "@ccr/core/gateway/core-runtime/config-compiler";
+import { isAddressInUseMessage, probeExistingCcrGateway } from "@ccr/core/gateway/existing-gateway-probe";
 import { closeServer, formatError } from "@ccr/core/gateway/http/io";
 import { RawTraceSynchronizer } from "@ccr/core/observability/raw-trace-sync";
 import { GatewayBillingSynchronizer } from "@ccr/core/usage/billing-sync";
@@ -210,6 +211,7 @@ class GatewayService {
       this.status = {
         ...this.status,
         coreManagedExternally: this.status.coreManagedExternally,
+        gatewayManagedExternally: undefined,
         lastStartedAt: new Date().toISOString(),
         pid: this.child?.pid,
         state: "running"
@@ -224,6 +226,37 @@ class GatewayService {
       };
       return this.status;
     }
+  }
+
+  async ensureStarted(config: AppConfig): Promise<GatewayStatus> {
+    const desiredEndpoint = endpoint(config.gateway.host, config.gateway.port);
+    const currentStatus = this.getStatus();
+    if (currentStatus.state === "running" && currentStatus.endpoint === desiredEndpoint) {
+      if (currentStatus.gatewayManagedExternally) {
+        const existingGateway = await probeExistingCcrGateway(config);
+        if (existingGateway.state === "usable") {
+          this.markExternalGatewayRunning(config, existingGateway.endpoint);
+          return this.getStatus();
+        }
+      }
+      if (!currentStatus.gatewayManagedExternally) {
+        await this.updateConfig(config);
+        return this.getStatus();
+      }
+    }
+
+    const status = await this.start(config);
+    if (status.state !== "error" || !isAddressInUseMessage(status.lastError)) {
+      return status;
+    }
+
+    const existingGateway = await probeExistingCcrGateway(config);
+    if (existingGateway.state !== "usable") {
+      return status;
+    }
+
+    this.markExternalGatewayRunning(config, existingGateway.endpoint);
+    return this.getStatus();
   }
 
   async stop(options: GatewayStopOptions = {}): Promise<GatewayStatus> {
@@ -259,6 +292,7 @@ class GatewayService {
     this.status = {
       ...this.status,
       coreManagedExternally: undefined,
+      gatewayManagedExternally: undefined,
       pid: undefined,
       state: "stopped"
     };
@@ -276,6 +310,11 @@ class GatewayService {
 
   async updateConfig(config: AppConfig): Promise<void> {
     assertLoopbackCoreHost(config.gateway.coreHost);
+    if (this.status.gatewayManagedExternally) {
+      this.markExternalGatewayRunning(config, endpoint(config.gateway.host, config.gateway.port));
+      return;
+    }
+
     const scriptValidationErrors = await this.routeScriptRuntime.prepare(config.Router.rules);
     const nextPlugin = new ClaudeCodeRouterPlugin(config, {
       scriptRuntime: this.routeScriptRuntime,
@@ -293,6 +332,7 @@ class GatewayService {
       ...this.status,
       coreEndpoint: endpoint(config.gateway.coreHost, config.gateway.corePort),
       endpoint: endpoint(config.gateway.host, config.gateway.port),
+      gatewayManagedExternally: undefined,
       networkEndpoints: gatewayNetworkEndpoints(config.gateway.host, config.gateway.port)
     };
   }
@@ -410,6 +450,20 @@ class GatewayService {
 
   private async proxyRequest(request: IncomingMessage, response: ServerResponse, path: string, apiKey?: ApiKeyConfig): Promise<void> {
     return this.requestPipeline.proxyRequest(request, response, path, apiKey);
+  }
+
+  private markExternalGatewayRunning(config: AppConfig, externalEndpoint: string): void {
+    this.config = config;
+    this.child = undefined;
+    this.server = undefined;
+    this.coreAuthToken = "";
+    this.status = {
+      coreEndpoint: endpoint(config.gateway.coreHost, config.gateway.corePort),
+      endpoint: externalEndpoint,
+      gatewayManagedExternally: true,
+      networkEndpoints: gatewayNetworkEndpoints(config.gateway.host, config.gateway.port),
+      state: "running"
+    };
   }
 
 }

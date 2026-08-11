@@ -366,7 +366,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
   openProfile: async (request) => {
     const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(await loadAppConfig());
     const config = syncedClaudeAppConfig.config;
-    const status = await gatewayService.start(config);
+    const status = await gatewayService.ensureStarted(config);
     if (status.state !== "running") {
       throw new Error(status.lastError || "CCR gateway did not start.");
     }
@@ -444,7 +444,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
   startGateway: async () => {
     const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(await loadAppConfig());
     const config = syncedClaudeAppConfig.config;
-    const status = await gatewayService.start(config);
+    const status = await gatewayService.ensureStarted(config);
     await applyProfileIfServiceRunning(config, status);
     return status;
   },
@@ -469,7 +469,7 @@ async function startConfiguredServices(reason: string): Promise<void> {
     } catch (error) {
       console.error(`Failed to sync Claude App gateway config during ${reason}: ${formatError(error)}`);
     }
-    const status = await gatewayService.start(config);
+    const status = await gatewayService.ensureStarted(config);
     if (status.state === "error") {
       console.error(`Failed to start gateway during ${reason}: ${status.lastError}`);
     }

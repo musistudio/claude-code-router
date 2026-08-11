@@ -195,7 +195,7 @@ ipcMain.handle(IPC_CHANNELS.appOpenProfile, async (_event, request: ProfileOpenR
   const config = profile.agent === CLAUDE_DESIGN_PLUGIN_ID
     ? withClaudeDesignRuntimePluginConfig(syncedClaudeAppConfig.config)
     : syncedClaudeAppConfig.config;
-  const status = await gatewayService.start(config);
+  const status = await gatewayService.ensureStarted(config);
   if (status.state !== "running") {
     throw new Error(status.lastError || "CCR gateway did not start.");
   }
@@ -366,7 +366,7 @@ ipcMain.handle(IPC_CHANNELS.appRestartGateway, async () => {
 ipcMain.handle(IPC_CHANNELS.appStartGateway, async () => {
   const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(await loadAppConfig());
   const config = syncedClaudeAppConfig.config;
-  const status = await gatewayService.start(config);
+  const status = await gatewayService.ensureStarted(config);
   await applyProfileIfServiceRunning(config, status);
   await builtInBrowserService.syncProxy(config);
   return status;

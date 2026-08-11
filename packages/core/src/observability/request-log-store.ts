@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { REQUEST_LOGS_DB_FILE } from "@ccr/core/config/constants";
+import { decodeClaudeAppGatewayRouteId } from "@ccr/core/agents/claude-app/gateway-routes";
 import {
   estimateUsageCostUsd,
   estimateUsageCostUsdFromLoadedCatalog,
@@ -518,9 +519,12 @@ export class RequestLogStore {
       providerProtocol: input.providerProtocol,
       usageHint: bodyUsage
     }) ?? {};
-    const route = splitRouteSelector(input.fallbackModel);
+    const route = splitRequestLogRouteSelector(input.fallbackModel);
     const bodyModel = requestLogRequestedModel(input.requestBody, input.path);
     const requestModel = normalizeFilterValue(input.model) ?? bodyModel;
+    const requestModelForStorage = requestLogStorageModel(requestModel);
+    const usageRoute = decodedClaudeAppGatewayRouteParts(usage.model);
+    const usageModelForStorage = usageRoute?.model ?? normalizeFilterValue(usage.model);
     const requestedModel = normalizeFilterValue(input.requestedModel) ?? bodyModel ?? "";
     const resolvedModel = normalizeFilterValue(input.resolvedModel) ??
       normalizeFilterValue(input.model) ??
@@ -535,7 +539,8 @@ export class RequestLogStore {
       normalizeFilterValue(input.providerName) ??
       readResponseHeader(input.responseHeaders, "x-gateway-target-provider-name") ??
       readResponseHeader(input.responseHeaders, "x-gateway-target-provider") ??
-      route.provider;
+      route.provider ??
+      usageRoute?.provider;
     const inputTokens = normalizeCount(usage.inputTokens);
     const outputTokens = normalizeCount(usage.outputTokens);
     const reasoningTokens = normalizeCount(usage.reasoningTokens);
@@ -546,7 +551,7 @@ export class RequestLogStore {
     const totalTokens =
       normalizeCount(usage.totalTokens) ||
       inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens;
-    const model = normalizeLabel(usage.model ?? route.model ?? requestModel ?? input.fallbackModel, "unknown");
+    const model = normalizeLabel(usageModelForStorage ?? route.model ?? requestModelForStorage ?? input.fallbackModel, "unknown");
     const providerName = normalizeLabel(provider, "unknown");
     // CCR credential IDs are structured metadata, but their header names also
     // match the fail-closed secret classifier. Extract them before sanitizing;
@@ -785,7 +790,9 @@ export class RequestLogStore {
     const url = normalizeFilterValue(input.url);
     const path = normalizeFilterValue(input.path) ?? pathFromUrl(url);
     const usagePath = path ?? existingUsageContext.path;
-    const modelFromTrace = normalizeFilterValue(input.model);
+    const rawModelFromTrace = normalizeFilterValue(input.model);
+    const modelFromTrace = requestLogStorageModel(rawModelFromTrace);
+    const resolvedModelFromTrace = requestLogStorageModelSelector(rawModelFromTrace);
     const responseModelFromTrace = rawInput.responseBodyText === undefined
       ? undefined
       : requestLogResponseModel(rawInput.responseBodyText);
@@ -806,7 +813,7 @@ export class RequestLogStore {
     pushValue("url", url);
     pushValue("provider", providerFromTrace);
     pushValue("model", modelFromTrace);
-    pushValue("resolved_model", modelFromTrace);
+    pushValue("resolved_model", resolvedModelFromTrace);
     pushValue("response_model", responseModelFromTrace);
     // The gateway's terminal failure is authoritative, even when it has only
     // an HTTP error status and no error string. A final-attempt raw failure may
@@ -847,7 +854,7 @@ export class RequestLogStore {
         const totalTokens =
           normalizeCount(usage.totalTokens) ||
           inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens;
-        const model = normalizeLabel(usage.model ?? modelFromTrace ?? existingUsageContext.model, "unknown");
+        const model = normalizeLabel(requestLogStorageModel(usage.model) ?? modelFromTrace ?? existingUsageContext.model, "unknown");
         const provider = normalizeLabel(providerFromTrace ?? existingUsageContext.provider, "unknown");
         const costInput = {
           cacheReadTokens,
@@ -4984,6 +4991,23 @@ function parseJson(value: string): unknown | undefined {
   } catch {
     return undefined;
   }
+}
+
+function decodedClaudeAppGatewayRouteParts(value: string | undefined): { model?: string; provider?: string } | undefined {
+  const decoded = decodeClaudeAppGatewayRouteId(value ?? "");
+  return decoded ? splitRouteSelector(decoded) : undefined;
+}
+
+function requestLogStorageModel(value: string | undefined): string | undefined {
+  return decodedClaudeAppGatewayRouteParts(value)?.model ?? normalizeFilterValue(value);
+}
+
+function requestLogStorageModelSelector(value: string | undefined): string | undefined {
+  return normalizeFilterValue(decodeClaudeAppGatewayRouteId(value ?? "") ?? value);
+}
+
+function splitRequestLogRouteSelector(value: string | undefined): { model?: string; provider?: string } {
+  return splitRouteSelector(decodeClaudeAppGatewayRouteId(value ?? "") ?? value);
 }
 
 function splitRouteSelector(value: string | undefined): { model?: string; provider?: string } {

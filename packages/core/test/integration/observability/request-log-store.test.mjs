@@ -316,6 +316,85 @@ test("RequestLogStore keeps list rows lightweight and detail rows complete", asy
   }
 });
 
+test("RequestLogStore stores decoded Claude App route models for observability", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-claude-app-model-test-"));
+  try {
+    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const sessionId = "claude-app-hex-session";
+    const routedModel = "Provider/real-model";
+    const encodedModel = `anthropic/claude-ccr-h${Buffer.from(routedModel, "utf8").toString("hex")}`;
+    const startedAt = new Date().toISOString();
+    const responseBodyText = [
+      "event: message_start",
+      `data: ${JSON.stringify({
+        message: {
+          model: encodedModel,
+          usage: {
+            input_tokens: 3,
+            output_tokens: 5,
+            total_tokens: 8
+          }
+        },
+        type: "message_start"
+      })}`,
+      "",
+      "event: message_stop",
+      "data: {\"type\":\"message_stop\"}",
+      ""
+    ].join("\n");
+
+    await store.record({
+      completedAt: startedAt,
+      durationMs: 42,
+      fallbackModel: routedModel,
+      method: "POST",
+      model: routedModel,
+      path: "/v1/messages",
+      providerName: "Provider",
+      providerProtocol: "anthropic_messages",
+      requestedModel: encodedModel,
+      requestBody: Buffer.from(JSON.stringify({
+        messages: [{ content: "hello", role: "user" }],
+        model: routedModel
+      }), "utf8"),
+      requestHeaders: {
+        "content-type": "application/json",
+        "user-agent": "openai-codex test",
+        "x-codex-session-id": sessionId
+      },
+      requestId: "claude-app-hex-request",
+      resolvedModel: routedModel,
+      responseBodyText,
+      responseHeaders: { "content-type": "text/event-stream" },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    const page = await store.list({ pageSize: 25 });
+    assert.equal(page.items.length, 1);
+    assert.equal(page.items[0].provider, "Provider");
+    assert.equal(page.items[0].model, "real-model");
+    assert.equal(page.items[0].requestedModel, encodedModel);
+    assert.equal(page.items[0].resolvedModel, routedModel);
+    assert.equal(page.items[0].responseModel, encodedModel);
+
+    const selected = await store.analyze({
+      range: "30d",
+      sessionAgent: "codex",
+      sessionId
+    });
+    assert.equal(selected.selectedSession?.requests[0]?.model, "real-model");
+    assert.deepEqual(selected.selectedSession?.session.models, ["real-model"]);
+    assert.equal(
+      selected.selectedSession?.trace.runs.find((run) => run.kind === "llm")?.model,
+      "real-model"
+    );
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("RequestLogStore persists actively reported route hops without synthesizing Core diffs", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-route-trace-test-"));
   try {

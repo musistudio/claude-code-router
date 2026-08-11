@@ -1809,6 +1809,7 @@ export type GatewayStatus = {
   coreEndpoint: string;
   coreManagedExternally?: boolean;
   endpoint: string;
+  gatewayManagedExternally?: boolean;
   lastError?: string;
   lastStartedAt?: string;
   networkEndpoints: GatewayNetworkEndpoint[];

@@ -1,8 +1,30 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { normalizeExternalHttpTarget, startWebManagementServer } from "@ccr/core/web/management-server.ts";
+import { mkdtempSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
+import net from "node:net";
+import os from "node:os";
+import path from "node:path";
+import test, { after } from "node:test";
 
-test("normalizeExternalHttpTarget accepts absolute http, https, and CCR plugin URLs only", () => {
+const previousRuntimeEnv = {
+  appData: process.env.CCR_INTERNAL_APP_DATA_DIR,
+  home: process.env.CCR_INTERNAL_HOME_DIR,
+  userData: process.env.CCR_INTERNAL_USER_DATA_DIR
+};
+const runtimeRoot = mkdtempSync(path.join(os.tmpdir(), "ccr-web-management-test-"));
+process.env.CCR_INTERNAL_APP_DATA_DIR = path.join(runtimeRoot, "app-data");
+process.env.CCR_INTERNAL_HOME_DIR = path.join(runtimeRoot, "home");
+process.env.CCR_INTERNAL_USER_DATA_DIR = path.join(runtimeRoot, "user-data");
+
+after(() => {
+  setOptionalEnv("CCR_INTERNAL_APP_DATA_DIR", previousRuntimeEnv.appData);
+  setOptionalEnv("CCR_INTERNAL_HOME_DIR", previousRuntimeEnv.home);
+  setOptionalEnv("CCR_INTERNAL_USER_DATA_DIR", previousRuntimeEnv.userData);
+  rmSync(runtimeRoot, { force: true, recursive: true });
+});
+
+test("normalizeExternalHttpTarget accepts absolute http, https, and CCR plugin URLs only", async () => {
+  const { normalizeExternalHttpTarget } = await import("@ccr/core/web/management-server.ts");
   assert.equal(normalizeExternalHttpTarget(""), undefined);
   assert.equal(normalizeExternalHttpTarget(undefined), undefined);
   assert.equal(normalizeExternalHttpTarget("about:blank"), undefined);
@@ -14,6 +36,7 @@ test("normalizeExternalHttpTarget accepts absolute http, https, and CCR plugin U
 });
 
 test("web RPC ignores Origin and Referer when the auth token is valid", async () => {
+  const { startWebManagementServer } = await import("@ccr/core/web/management-server.ts");
   const authToken = "test-web-auth-token";
   const runtime = await startWebManagementServer({
     authToken,
@@ -42,3 +65,149 @@ test("web RPC ignores Origin and Referer when the auth token is valid", async ()
     await runtime.close();
   }
 });
+
+test("startGateway reuses an already healthy CCR gateway on the configured port", async () => {
+  const { saveAppConfig } = await import("@ccr/core/config/config.ts");
+  const { createDefaultAppConfig } = await import("@ccr/core/config/default-config.ts");
+  const { gatewayService } = await import("@ccr/core/gateway/service.ts");
+  const { startWebManagementServer } = await import("@ccr/core/web/management-server.ts");
+  await gatewayService.stop();
+  const gatewayPort = await findAvailablePort();
+  const webAuthToken = "test-web-auth-token";
+  const config = createDefaultAppConfig();
+  config.gateway.port = gatewayPort;
+  config.gateway.corePort = await findAvailablePort();
+  config.Providers = [{
+    api_base_url: "http://127.0.0.1:9/v1",
+    api_key: "test-provider-key",
+    id: "test-provider",
+    models: ["test-model"],
+    name: "Test Provider",
+    type: "openai_chat_completions"
+  }];
+  const savedConfig = await saveAppConfig(config);
+  const externalGateway = createHealthyCcrGateway(savedConfig.APIKEY);
+  await listen(externalGateway, gatewayPort);
+  const runtime = await startWebManagementServer({
+    authToken: webAuthToken,
+    host: "127.0.0.1",
+    port: 0,
+    startGateway: false
+  });
+
+  try {
+    const payload = await rpc(runtime.url, webAuthToken, "startGateway");
+
+    assert.equal(payload.ok, true);
+    assert.equal(payload.value.state, "running", payload.value.lastError);
+    assert.equal(payload.value.endpoint, `http://127.0.0.1:${gatewayPort}/`);
+    assert.equal(payload.value.gatewayManagedExternally, true);
+    assert.equal(gatewayService.getStatus().state, "running");
+    assert.equal(gatewayService.getStatus().gatewayManagedExternally, true);
+  } finally {
+    await runtime.close();
+    await gatewayService.stop();
+    await closeServer(externalGateway);
+  }
+});
+
+async function rpc(baseUrl, authToken, method, args = []) {
+  const response = await fetch(new URL("/api/ccr/rpc", baseUrl), {
+    body: JSON.stringify({ args, method }),
+    headers: {
+      "content-type": "application/json",
+      "x-ccr-web-auth": authToken
+    },
+    method: "POST"
+  });
+  assert.equal(response.status, 200);
+  return response.json();
+}
+
+function createHealthyCcrGateway(apiKey) {
+  return createServer((request, response) => {
+    const url = new URL(request.url || "/", "http://127.0.0.1");
+    if (url.pathname === "/health") {
+      sendJson(response, 200, {
+        core: "http://127.0.0.1:3457",
+        status: "running",
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+    if (url.pathname === "/") {
+      sendJson(response, 200, {
+        core: "next-ai-gateway",
+        endpoints: ["GET /v1/models"],
+        name: "claude-code-router",
+        plugin: "claude-code-router"
+      });
+      return;
+    }
+    if (url.pathname === "/v1/models") {
+      if (request.headers.authorization !== `Bearer ${apiKey}`) {
+        sendJson(response, 401, { error: { message: "Invalid API key." } });
+        return;
+      }
+      sendJson(response, 200, { data: [{ id: "test-model", object: "model" }], object: "list" });
+      return;
+    }
+    sendJson(response, 404, { error: { message: "Not found." } });
+  });
+}
+
+function sendJson(response, statusCode, payload) {
+  response.writeHead(statusCode, { "content-type": "application/json" });
+  response.end(JSON.stringify(payload));
+}
+
+async function findAvailablePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : undefined;
+      server.close(() => {
+        if (port) {
+          resolve(port);
+        } else {
+          reject(new Error("Failed to allocate a web management test port."));
+        }
+      });
+    });
+  });
+}
+
+function setOptionalEnv(key, value) {
+  if (value === undefined) {
+    delete process.env[key];
+    return;
+  }
+  process.env[key] = value;
+}
+
+async function listen(server, port) {
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+}
+
+async function closeServer(server) {
+  if (!server.listening) {
+    return;
+  }
+  await new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+}

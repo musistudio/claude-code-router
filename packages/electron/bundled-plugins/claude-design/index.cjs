@@ -991,7 +991,7 @@ async function routeMockRequest(runtime, method, url, request, requestBody) {
   }
 
   if (isDesignRestApiRoutePath(path)) {
-    return await handleDesignRestApi(runtime, method, path, request, requestBody);
+    return await handleDesignRestApi(runtime, method, path, url, request, requestBody);
   }
 
   if (path.startsWith("/v1/code/")) {
@@ -9812,7 +9812,7 @@ function upsertGenericRecord(store, collection, uuid, title, model, data) {
   store.persist();
 }
 
-async function handleDesignRestApi(runtime, method, path, request, requestBody) {
+async function handleDesignRestApi(runtime, method, path, url, request, requestBody) {
   const restPath = normalizeDesignRestPath(path);
 
   if (method === "GET" && restPath === "/v1/design/agents") {
@@ -9991,19 +9991,18 @@ async function handleDesignRestApi(runtime, method, path, request, requestBody) 
     });
   }
 
-  const downloadMatch = restPath.match(/^\/v1\/design\/projects\/([^/]+)\/download$/);
-  if (method === "GET" && downloadMatch) {
+  const downloadMatch = restPath.match(/^\/v1\/design\/projects\/([^/]+)\/download(?:\/(.+))?$/);
+  if ((method === "GET" || method === "HEAD") && downloadMatch) {
     const projectId = decodeURIComponent(downloadMatch[1]);
-    const manifest = listProjectFileRows(runtime, projectId, "").map((row) => ({
-      content_type: row.content_type,
-      path: row.path,
-      size: Buffer.from(row.body_base64 || "", "base64").length,
-      version: row.version
-    }));
-    return textResponse(200, JSON.stringify({ files: manifest, project_id: projectId }, null, 2), {
-      "content-disposition": `attachment; filename="${projectId}.json"`,
-      "content-type": "application/json; charset=utf-8"
-    });
+    const filePath = designDownloadFilePath(downloadMatch[2], url);
+    if (filePath) {
+      const row = getProjectFileRow(runtime, projectId, filePath);
+      if (!row) {
+        return jsonResponse(404, { error: { message: `File not found: ${filePath}` } });
+      }
+      return serveProjectFileDownloadResponse(method, row, filePath);
+    }
+    return serveProjectArchiveDownloadResponse(method, runtime, projectId);
   }
 
   if (method === "POST" && restPath === "/v1/design/drop-suggestions") {
@@ -10168,6 +10167,56 @@ function renderClaudeDesignPendingPreviewHtml() {
 </head>
 <body></body>
 </html>`;
+}
+
+function designDownloadFilePath(pathSuffix, url) {
+  const suffixPath = safelyDecodeDesignPath(pathSuffix);
+  if (suffixPath) {
+    return suffixPath;
+  }
+  for (const key of ["path", "file", "file_path", "download_path", "asset_path"]) {
+    const queryPath = safelyDecodeDesignPath(url.searchParams.get(key));
+    if (queryPath) {
+      return queryPath;
+    }
+  }
+  return "";
+}
+
+function safelyDecodeDesignPath(value) {
+  const raw = stringValue(value);
+  if (!raw) {
+    return "";
+  }
+  try {
+    return sanitizeProjectFilePath(decodeURIComponent(raw));
+  } catch {
+    return sanitizeProjectFilePath(raw);
+  }
+}
+
+function serveProjectFileDownloadResponse(method, row, filePath) {
+  const body = method === "HEAD" ? Buffer.alloc(0) : Buffer.from(row.body_base64 || "", "base64");
+  const contentType = row.content_type || guessContentType(filePath);
+  return binaryResponse(200, body, {
+    "cache-control": "no-store",
+    "content-disposition": attachmentContentDisposition(pathModule.posix.basename(filePath) || "download"),
+    "content-type": contentType
+  });
+}
+
+function serveProjectArchiveDownloadResponse(method, runtime, projectId) {
+  const rows = listProjectFileRows(runtime, projectId, "");
+  const files = rows.map((row) => ({
+    body: Buffer.from(row.body_base64 || "", "base64"),
+    path: row.path
+  }));
+  const archive = method === "HEAD" ? Buffer.alloc(0) : createZipArchive(files);
+  return binaryResponse(200, archive, {
+    "cache-control": "no-store",
+    "content-disposition": attachmentContentDisposition(`${projectId || "claude-design-project"}.zip`),
+    "content-type": "application/zip"
+  });
 }
 
 function serveProjectFileResponse(runtime, projectId, row, filePath) {
@@ -16650,6 +16699,21 @@ function escapeJsonForScript(value) {
 
 function escapeHtmlAttribute(value) {
   return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+function attachmentContentDisposition(fileName) {
+  const basename = pathModule.posix.basename(sanitizeProjectFilePath(fileName) || "download") || "download";
+  const fallback = basename
+    .replace(/[^\x20-\x7e]+/g, "_")
+    .replace(/["\\;\r\n]/g, "_")
+    .trim() || "download";
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeRfc5987ValueChars(basename)}`;
+}
+
+function encodeRfc5987ValueChars(value) {
+  return encodeURIComponent(value).replace(/['()*]/g, (char) =>
+    `%${char.charCodeAt(0).toString(16).toUpperCase()}`
+  );
 }
 
 function escapeRegExp(value) {

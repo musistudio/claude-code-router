@@ -196,7 +196,70 @@ test("Claude Design mock covers local frontend project runtime routes", async ()
   assert.equal(typeof events.stream, "function");
 });
 
-function fakeClaudeDesignRuntime() {
+test("Claude Design downloads return concrete files or a project zip", async () => {
+  const projectId = "project-download-test";
+  const pngBody = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01]);
+  const runtime = fakeClaudeDesignRuntime([
+    {
+      body: Buffer.from("<!doctype html><title>Test</title>", "utf8"),
+      contentType: "text/html; charset=utf-8",
+      path: "index.html",
+      projectId
+    },
+    {
+      body: pngBody,
+      contentType: "image/png",
+      path: "分享大纲.png",
+      projectId
+    }
+  ]);
+
+  const image = await claudeDesignPlugin.__test.routeMockRequest(
+    runtime,
+    "GET",
+    new URL("http://127.0.0.1/v1/design/projects/project-download-test/download?path=%E5%88%86%E4%BA%AB%E5%A4%A7%E7%BA%B2.png"),
+    { headers: {} },
+    Buffer.alloc(0)
+  );
+  assert.equal(image.status, 200);
+  assert.equal(image.headers["content-type"], "image/png");
+  assert.match(image.headers["content-disposition"], /attachment/);
+  assert.match(image.headers["content-disposition"], /filename\*=UTF-8''%E5%88%86%E4%BA%AB%E5%A4%A7%E7%BA%B2\.png/);
+  assert.deepEqual(image.body, pngBody);
+
+  const archive = await claudeDesignPlugin.__test.routeMockRequest(
+    runtime,
+    "GET",
+    new URL("http://127.0.0.1/v1/design/projects/project-download-test/download"),
+    { headers: {} },
+    Buffer.alloc(0)
+  );
+  assert.equal(archive.status, 200);
+  assert.equal(archive.headers["content-type"], "application/zip");
+  assert.match(archive.headers["content-disposition"], /project-download-test\.zip/);
+  assert.deepEqual(archive.body.subarray(0, 4), Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+  assert.match(archive.body.toString("utf8"), /index\.html/);
+  assert.match(archive.body.toString("utf8"), /分享大纲\.png/);
+});
+
+type FakeProjectFile = {
+  body: Buffer;
+  contentType: string;
+  path: string;
+  projectId: string;
+};
+
+function fakeClaudeDesignRuntime(files: FakeProjectFile[] = []) {
+  const fileRows = files.map((file, index) => ({
+    body_base64: file.body.toString("base64"),
+    content_type: file.contentType,
+    created_at: "2026-08-10T00:00:00.000Z",
+    path: file.path,
+    project_id: file.projectId,
+    updated_at: `2026-08-10T00:00:${String(index).padStart(2, "0")}.000Z`,
+    version: 1
+  }));
+
   return {
     assetDir: "",
     frontendUrl: "http://127.0.0.1:6173/design",
@@ -209,23 +272,49 @@ function fakeClaudeDesignRuntime() {
     pluginId: "claude-design",
     store: {
       database: {
-        prepare() {
-          return {
-            bind() {
-              return this;
+        prepare(sql: string) {
+          let rows = fakeClaudeDesignRows(sql, [], fileRows);
+          let index = -1;
+          const statement = {
+            bind(params: unknown[]) {
+              rows = fakeClaudeDesignRows(sql, Array.from(params || []), fileRows);
+              index = -1;
+              return statement;
             },
             free() {},
             getAsObject() {
-              return {};
+              return rows[index] || {};
             },
             step() {
-              return false;
+              if (index + 1 >= rows.length) {
+                return false;
+              }
+              index += 1;
+              return true;
             }
           };
+          return statement;
         },
         run() {}
       },
       persist() {}
     }
   };
+}
+
+function fakeClaudeDesignRows(sql: string, params: unknown[], fileRows: Record<string, unknown>[]) {
+  if (!sql.includes("FROM claude_design_files")) {
+    return [];
+  }
+  if (sql.includes("WHERE project_id = ? AND path = ?")) {
+    const [projectId, filePath] = params;
+    return fileRows.filter((row) => row.project_id === projectId && row.path === filePath);
+  }
+  if (sql.includes("WHERE project_id = ?")) {
+    const [projectId] = params;
+    return fileRows.filter((row) => row.project_id === projectId).sort((left, right) =>
+      String(left.path).localeCompare(String(right.path))
+    );
+  }
+  return [];
 }
