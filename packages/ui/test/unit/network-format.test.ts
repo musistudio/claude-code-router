@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { RequestLogBody } from "@ccr/core/contracts/app";
+import { formatLogBodyForWorker } from "@ccr/ui/pages/home/shared/log-body-worker-protocol.ts";
 import { formatRouteTracePath } from "@ccr/ui/pages/home/shared/network.ts";
 
 test("route trace paths use request and response dotted notation", () => {
@@ -27,4 +29,24 @@ test("route trace paths use request and response dotted notation", () => {
     formatRouteTracePath({ path: "/url", scope: "url" }),
     "request.url"
   );
+});
+
+test("request log preview bodies still format parseable JSON as JSON", () => {
+  const body: RequestLogBody = {
+    bodyRef: "preview-json-body",
+    contentType: "application/json",
+    encoding: "utf8",
+    preview: true,
+    sizeBytes: 512 * 1024,
+    text: JSON.stringify({ messages: [{ role: "user", content: "hello" }], model: "test-model" }),
+    truncated: false
+  };
+
+  const view = formatLogBodyForWorker(body, "preview", 256 * 1024, 160 * 1024);
+  assert.equal(view.preview, true);
+  assert.deepEqual(view.json, {
+    messages: [{ role: "user", content: "hello" }],
+    model: "test-model"
+  });
+  assert.match(view.text, /"model": "test-model"/);
 });

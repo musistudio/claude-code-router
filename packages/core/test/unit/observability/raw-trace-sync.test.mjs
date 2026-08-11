@@ -6,7 +6,7 @@ import { Readable } from "node:stream";
 import test from "node:test";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 import { rawTraceSyncHeader } from "@ccr/core/gateway/internal/shared.ts";
-import { rawTraceHardMaxBodyBytes } from "@ccr/core/observability/request-log-limits.ts";
+import { rawTraceHardMaxBodyBytes, rawTraceMaxPartBytes } from "@ccr/core/observability/request-log-limits.ts";
 import {
   applyRawTraceRequestLogPolicy,
   buildRawTraceConfig,
@@ -117,15 +117,16 @@ test("raw trace defers body persistence when the upstream status is unknown", ()
   assert.equal(policy.update.requestBodyText, "private request body");
 });
 
-test("raw trace source defaults to the 50 MB hard body ceiling", () => {
+test("raw trace source keeps raw body parts unbounded for sidecar storage", () => {
   const config = createConfig();
   const previous = process.env.CCR_RAW_TRACE_ENABLED;
   process.env.CCR_RAW_TRACE_ENABLED = "1";
   try {
     const rawTrace = buildRawTraceConfig(config, "sync-token");
-    assert.equal(rawTrace.maxPartBytes, rawTraceHardMaxBodyBytes);
+    assert.equal(rawTrace.maxPartBytes, rawTraceMaxPartBytes);
+    assert.ok(rawTrace.maxPartBytes > rawTraceHardMaxBodyBytes);
     config.observability.requestLogMaxBodyBytes = Number.MAX_SAFE_INTEGER;
-    assert.equal(buildRawTraceConfig(config, "sync-token").maxPartBytes, rawTraceHardMaxBodyBytes);
+    assert.equal(buildRawTraceConfig(config, "sync-token").maxPartBytes, rawTraceMaxPartBytes);
   } finally {
     if (previous === undefined) delete process.env.CCR_RAW_TRACE_ENABLED;
     else process.env.CCR_RAW_TRACE_ENABLED = previous;

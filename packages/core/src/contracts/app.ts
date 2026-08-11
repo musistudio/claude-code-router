@@ -1935,10 +1935,12 @@ export type ProxyCertificateInstallResult = {
 export type ProxyNetworkCaptureState = "complete" | "error" | "pending";
 
 export type ProxyNetworkBody = {
+  bodyRef?: string;
   contentType?: string;
   decodedFrom?: string;
   encoding: "base64" | "utf8";
   error?: string;
+  preview?: boolean;
   sizeBytes: number;
   text: string;
   truncated: boolean;
@@ -1992,6 +1994,28 @@ export type RequestLogDetailRequest = {
 };
 
 export type RequestLogBody = ProxyNetworkBody;
+
+export type RequestLogBodySide = "request" | "response";
+
+export type RequestLogBodyChunkRequest = {
+  id: number;
+  length?: number;
+  offset?: number;
+  side: RequestLogBodySide;
+};
+
+export type RequestLogBodyChunk = {
+  bodyRef?: string;
+  contentType?: string;
+  encoding: "base64" | "utf8";
+  eof: boolean;
+  length: number;
+  nextOffset?: number;
+  offset: number;
+  sizeBytes: number;
+  text: string;
+  truncated: boolean;
+};
 
 export type RequestLogRetryAttempt = {
   attempt: number;

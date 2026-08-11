@@ -316,6 +316,104 @@ test("RequestLogStore keeps list rows lightweight and detail rows complete", asy
   }
 });
 
+test("RequestLogStore keeps large request bodies in sidecar storage and reads them by chunk", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-sidecar-test-"));
+  let store;
+  try {
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const body = JSON.stringify({
+      messages: [{ content: "hello", role: "user" }],
+      model: "request-model",
+      padding: "中🙂".repeat(40 * 1024),
+      tail: "request-tail"
+    });
+    const response = JSON.stringify({
+      model: "response-model",
+      padding: "y".repeat(220 * 1024),
+      tail: "response-tail",
+      usage: {
+        input_tokens: 3,
+        output_tokens: 4,
+        total_tokens: 7
+      }
+    });
+
+    await store.record({
+      completedAt: new Date().toISOString(),
+      durationMs: 42,
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "test-provider",
+      requestBody: Buffer.from(body, "utf8"),
+      requestHeaders: { "content-type": "application/json" },
+      requestId: "request-log-sidecar-test",
+      responseBodyText: response,
+      responseHeaders: { "content-type": "application/json" },
+      startedAt: new Date().toISOString(),
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    const page = await store.list({ pageSize: 25 });
+    assert.equal(page.items.length, 1);
+    assert.equal(page.items[0].requestBody.text, "");
+    assert.equal(page.items[0].requestBody.preview, true);
+    assert.ok(page.items[0].requestBody.bodyRef);
+
+    const detail = await store.getDetail({ id: page.items[0].id });
+    assert.ok(detail);
+    assert.equal(detail.requestBody.preview, true);
+    assert.equal(detail.requestBody.truncated, false);
+    assert.match(detail.requestBody.text, /bytes omitted from preview/);
+    assert.match(detail.requestBody.text, /request-tail/);
+    assert.equal(detail.responseBody?.preview, true);
+    assert.equal(detail.responseBody?.truncated, false);
+    assert.match(detail.responseBody?.text ?? "", /response-tail/);
+
+    const requestChunk = await store.getBodyChunk({
+      id: detail.id,
+      length: 512 * 1024,
+      offset: 0,
+      side: "request"
+    });
+    assert.ok(requestChunk);
+    assert.equal(requestChunk.eof, true);
+    assert.equal(requestChunk.truncated, false);
+    assert.equal(requestChunk.text, body);
+
+    let unicodeOffset = 0;
+    const unicodeChunks = [];
+    while (true) {
+      const unicodeChunk = await store.getBodyChunk({
+        id: detail.id,
+        length: 4097,
+        offset: unicodeOffset,
+        side: "request"
+      });
+      assert.ok(unicodeChunk);
+      unicodeChunks.push(unicodeChunk.text);
+      if (unicodeChunk.eof) break;
+      assert.ok(unicodeChunk.nextOffset > unicodeOffset);
+      unicodeOffset = unicodeChunk.nextOffset;
+    }
+    assert.equal(unicodeChunks.join(""), body);
+
+    const responseChunk = await store.getBodyChunk({
+      id: detail.id,
+      length: 512 * 1024,
+      offset: 0,
+      side: "response"
+    });
+    assert.ok(responseChunk);
+    assert.equal(responseChunk.eof, true);
+    assert.equal(responseChunk.truncated, false);
+    assert.equal(responseChunk.text, response);
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("RequestLogStore stores decoded Claude App route models for observability", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-claude-app-model-test-"));
   try {

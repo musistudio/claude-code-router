@@ -47,7 +47,7 @@ import { getPluginMarketplace } from "@ccr/core/plugins/marketplace";
 import { ensureProxyCertificateAuthority } from "@ccr/core/proxy/certificates";
 import { proxyService } from "@ccr/core/proxy/service";
 import { listMcpServerTools } from "@ccr/core/mcp/tool-discovery";
-import { getAgentAnalysis, getAgentTracePayload, getRequestLogDetail, getRequestLogs } from "@ccr/core/observability/request-log-store";
+import { getAgentAnalysis, getAgentTracePayload, getRequestLogBodyChunk, getRequestLogDetail, getRequestLogs } from "@ccr/core/observability/request-log-store";
 import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
 import { getUsageStats } from "@ccr/core/usage/store";
@@ -124,6 +124,7 @@ ipcMain.handle(IPC_CHANNELS.appGetProxyNetworkCaptures, () => proxyService.getNe
 ipcMain.handle(IPC_CHANNELS.appGetProxyStatus, () => proxyService.getStatus());
 ipcMain.handle(IPC_CHANNELS.appGetPluginMarketplace, () => getPluginMarketplace());
 ipcMain.handle(IPC_CHANNELS.appGetRequestLogDetail, (_event, request) => getRequestLogDetail(request));
+ipcMain.handle(IPC_CHANNELS.appGetRequestLogBodyChunk, (_event, request) => getRequestLogBodyChunk(request));
 ipcMain.handle(IPC_CHANNELS.appGetRequestLogs, (_event, filter?: RequestLogListFilter) => getRequestLogs(filter));
 ipcMain.handle(IPC_CHANNELS.appGetUpdateStatus, () => appUpdateService.getStatus());
 ipcMain.handle(IPC_CHANNELS.appGetUsageStats, (_event, range?: UsageStatsRange, filter?: UsageStatsFilter) => getUsageStats(range, filter));

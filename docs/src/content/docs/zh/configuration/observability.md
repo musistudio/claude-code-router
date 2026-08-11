@@ -33,5 +33,5 @@ lead: 本页是日志与观测相关开关和面板能力的配置参考：在�
 | 配置项 | 默认值 | 说明 |
 | --- | --- | --- |
 | `requestLogBodyCapture` | `all` | 控制是否记录请求体和响应体：`all` 记录全部，`errors` 只记录失败请求的 body，`none` 不记录任何 body。 |
-| `requestLogMaxBodyBytes` | `52428800`（50 MiB） | 单个请求体或响应体的最大字节数，超出部分会被截断；硬上限同样是 50 MiB。 |
+| `requestLogMaxBodyBytes` | `52428800`（50 MiB） | 单个请求体或响应体的内存捕获与预览预算。基于文件的 raw trace body 可以超过该限制；完整 body 会保存到 sidecar 存储，并在日志页按需加载。 |
 | `requestLogSuccessSampleRate` | `1` | 成功请求的采样率，取 `0` 到 `1` 之间，`1` 表示全部记录，`0.1` 表示记录约十分之一。 |

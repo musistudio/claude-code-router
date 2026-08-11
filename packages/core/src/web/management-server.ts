@@ -40,7 +40,7 @@ import { getPluginMarketplace } from "@ccr/core/plugins/marketplace";
 import { ensureProxyCertificateAuthority } from "@ccr/core/proxy/certificates";
 import { proxyService } from "@ccr/core/proxy/service";
 import { listMcpServerTools } from "@ccr/core/mcp/tool-discovery";
-import { closeRequestLogRuntime, getAgentAnalysis, getAgentTracePayload, getRequestLogDetail, getRequestLogs } from "@ccr/core/observability/request-log-store";
+import { closeRequestLogRuntime, getAgentAnalysis, getAgentTracePayload, getRequestLogBodyChunk, getRequestLogDetail, getRequestLogs } from "@ccr/core/observability/request-log-store";
 import { shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
 import { getUsageStats } from "@ccr/core/usage/store";
 import { gatewayService } from "@ccr/core/gateway/service";
@@ -78,6 +78,7 @@ import type {
   ProviderCatalogModelsRequest,
   ProviderIconDetectionRequest,
   ProviderManifestFetchRequest,
+  RequestLogBodyChunkRequest,
   RequestLogDetailRequest,
   RequestLogListFilter,
   RouteScriptTestRequest,
@@ -334,6 +335,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
   getProxyNetworkCaptures: () => proxyService.getNetworkCaptures(),
   getProxyStatus: () => proxyService.getStatus(),
   getRequestLogDetail: (request) => getRequestLogDetail(request as RequestLogDetailRequest),
+  getRequestLogBodyChunk: (request) => getRequestLogBodyChunk(request as RequestLogBodyChunkRequest),
   getRequestLogs: (filter) => getRequestLogs(filter as RequestLogListFilter | undefined),
   getUpdateStatus: () => unsupportedUpdateStatus,
   getUsageStats: (range, filter) => getUsageStats(range as UsageStatsRange | undefined, filter as UsageStatsFilter | undefined),
