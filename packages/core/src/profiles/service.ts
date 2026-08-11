@@ -16,6 +16,7 @@ import {
 import { writeCodexCompatibleAppModelCatalog } from "@ccr/core/agents/codex/app-launch";
 import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-middleware-runtime";
 import { codexModelCatalogJson } from "@ccr/core/agents/codex/model-catalog";
+import { writeCodeBuddyModelsConfig } from "@ccr/core/agents/codebuddy/models-config";
 import {
   isManagedKiloConfigContent,
   kiloProviderId,
@@ -536,6 +537,10 @@ function applyCodeBuddyProfile(config: AppConfig, profile: ProfileConfig, token:
   try {
     const model = normalizeClientModel(profile.model) || defaultClientModel(config);
     const wrapperResult = writeCodeBuddyWrapper(config, profile, token, model);
+    // The CLI wrapper exposes a single model through CODEBUDDY_MODEL, but the
+    // CodeBuddy model picker reads ~/.codebuddy/models.json. Publish every CCR
+    // gateway model there so /model lists them all and switches route to CCR.
+    writeCodeBuddyModelsConfig(config, profile, token, { backup: false });
     return {
       appliedAt,
       client: "codebuddy",

@@ -168,7 +168,7 @@ export async function probeGatewayProviderCandidates(
         baseUrl: candidate.baseUrl,
         forceRefresh: request.forceRefresh,
         mode,
-        models: mode === "connectivity" ? request.models ?? [] : [],
+        models: mode === "connectivity" || mode === "models" ? request.models ?? [] : [],
         providerPlugins: request.providerPlugins,
         protocols
       });
@@ -634,8 +634,10 @@ async function probeProtocols(
   const results: GatewayProviderProbeProtocolResult[] = [];
 
   for (const protocol of orderedProtocols(parsed, allowedProtocols)) {
+    const connectivityProbe = isChatProtocol(protocol) &&
+      (mode === "connectivity" || (mode === "models" && pickProbeModel(models, protocol)));
     results.push(
-      mode === "connectivity" && isChatProtocol(protocol)
+      connectivityProbe
         ? await probeProtocolConnectivity(parsed, apiKey, models, protocol, providerPlugins)
         : await probeProtocolSupport(parsed, apiKey, protocol)
     );
@@ -1669,6 +1671,13 @@ function orderedProtocolFallback(allowedProtocols: GatewayProviderCapabilityProt
     return undefined;
   }
   const allowed = new Set(chatProtocols);
+  // When no endpoint reported support and no hint/model source narrowed the
+  // choice, prefer Chat Completions over Responses. Many OpenAI-compatible
+  // aggregator/proxy APIs 404 an empty-body protocol probe, and hard-defaulting
+  // to Responses can steer connectivity checks at a non-existent endpoint.
+  if (allowed.has("openai_chat_completions")) {
+    return "openai_chat_completions";
+  }
   return protocolOrder.find((protocol): protocol is GatewayProviderProtocol => isChatProtocol(protocol) && allowed.has(protocol))
     ?? chatProtocols[0];
 }

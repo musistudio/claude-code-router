@@ -16,7 +16,7 @@ function testConfig(root) {
         maxContextWindow: 272_000
       }
     },
-    models: ["gpt-5.6-sol"],
+    models: ["gpt-5.6-sol", "gpt-5.6-terra"],
     name: "Codex API",
     type: "openai_responses"
   }];
@@ -57,7 +57,8 @@ test("CodeBuddy models.json points models at the CCR OpenAI chat/completions end
     assert.equal(entry.apiKey, "ccr-token");
     assert.equal(entry.supportsToolCall, true);
     assert.ok(entry.maxInputTokens > 0);
-    assert.ok(content.availableModels.includes("Codex API/gpt-5.6-sol"));
+    assert.equal(content.availableModels, undefined, "availableModels must be omitted so all models show in the picker");
+    assert.ok(content.models.some((model) => model.id === "Codex API/gpt-5.6-terra"));
   } finally {
     process.env.HOME = previousHome;
     rmSync(root, { recursive: true, force: true });
@@ -85,6 +86,7 @@ test("CodeBuddy models.json preserves user-managed model entries", () => {
     assert.ok(kept, "user-managed model should be preserved");
     assert.equal(kept.url, "https://user.example/v1/chat/completions");
     assert.ok(content.models.some((model) => model.id === "Codex API/gpt-5.6-sol"));
+    assert.equal(content.availableModels, undefined, "availableModels must not be written so all models show");
   } finally {
     process.env.HOME = previousHome;
     rmSync(root, { recursive: true, force: true });

@@ -940,7 +940,7 @@ export function AddProfileForm({
           </>
         ) : draft.agent === "claude-design" ? null : (
           <>
-            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : draft.agent === "kilo" ? "Kilo model" : "Codex model")} requirement="optional" requirementLabel={optionalFieldLabel}>
+            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : draft.agent === "kilo" ? "Kilo model" : draft.agent === "codebuddy" ? "CodeBuddy model" : "Codex model")} requirement="optional" requirementLabel={optionalFieldLabel}>
               <ModelSelector
                 placeholder={modelPlaceholder}
                 providers={providers}

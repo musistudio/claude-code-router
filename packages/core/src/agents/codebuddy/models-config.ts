@@ -59,28 +59,24 @@ type CodeBuddyModelsConfigValues = {
 
 function buildCodeBuddyModelsConfig(source: Record<string, unknown>, values: CodeBuddyModelsConfigValues): Record<string, unknown> {
   const previousModels = Array.isArray(source.models) ? source.models.filter(isRecord) : [];
-  const previousAvailableModels = Array.isArray(source.availableModels)
-    ? source.availableModels.filter((value): value is string => typeof value === "string")
-    : [];
-  const ccrModelId = values.model || values.models[0];
-  const ccrEntry = ccrModelId ? codeBuddyModelEntry(ccrModelId, values) : undefined;
+  const gatewayModelIds = uniqueStrings(values.models);
+  const ccrModelIds = new Set(gatewayModelIds);
+  const ccrEntries = gatewayModelIds.map((model) => codeBuddyModelEntry(model, values));
 
   const models = [
-    ...(ccrEntry ? [ccrEntry] : []),
+    ...ccrEntries,
     ...previousModels.filter((entry) => {
       const id = entry.id;
-      return typeof id !== "string" || !ccrModelId || id !== ccrModelId;
+      return typeof id !== "string" || !ccrModelIds.has(id);
     })
   ];
 
-  const availableModels = uniqueStrings([
-    ...(ccrModelId ? [ccrModelId] : []),
-    ...previousAvailableModels.filter((id) => id !== ccrModelId)
-  ]);
-
+  // Intentionally do NOT write `availableModels`. Per the CodeBuddy docs, an
+  // absent/empty availableModels shows *all* models, so leaving it out keeps
+  // built-in models alongside the CCR gateway models in the picker.
+  const { availableModels: _ignored, ...rest } = source;
   return {
-    ...source,
-    availableModels,
+    ...rest,
     models
   };
 }
