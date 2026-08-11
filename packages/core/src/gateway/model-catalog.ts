@@ -140,11 +140,14 @@ export function claudeCodeEffectiveMaxInputTokens(entry: ModelCatalogEntry | und
 }
 
 export function modelCatalogMaxOutputTokens(entry: ModelCatalogEntry | undefined): number {
-  return Math.max(
-    0,
-    entry?.limits?.outputTokens ?? 0,
-    entry?.limits?.maxTokens ?? 0
-  );
+  // `maxTokens` is the authoritative per-response output cap. `outputTokens` often
+  // carries the full context/output budget (e.g. 1M tokens) which providers reject
+  // when sent as `max_tokens`. Prefer the smaller, provider-accepted cap.
+  const maxTokens = Math.max(0, entry?.limits?.maxTokens ?? 0);
+  if (maxTokens > 0) {
+    return maxTokens;
+  }
+  return Math.max(0, entry?.limits?.outputTokens ?? 0);
 }
 
 export function readCatalogCapability(capabilities: ModelCatalogCapabilities, key: string): boolean {

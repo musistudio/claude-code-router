@@ -3150,11 +3150,11 @@ function normalizeAgentAnalysisRange(value: UsageStatsRange | undefined): UsageS
 }
 
 function normalizeAgentFilter(value: AgentAnalysisFilter["agent"] | undefined): AgentKind | "all" {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "codebuddy" || value === "unknown" ? value : "all";
 }
 
 function normalizeSessionAgentFilter(value: AgentAnalysisFilter["sessionAgent"] | undefined): AgentKind | undefined {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "zcode" || value === "claude-design" || value === "codebuddy" || value === "unknown" ? value : undefined;
 }
 
 function agentDisplayName(agent: AgentKind): string {
@@ -3184,6 +3184,9 @@ function agentDisplayName(agent: AgentKind): string {
   }
   if (agent === "zcode") {
     return "ZCode";
+  }
+  if (agent === "codebuddy") {
+    return "CodeBuddy";
   }
   return "Unknown";
 }

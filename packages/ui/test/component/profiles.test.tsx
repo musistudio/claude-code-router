@@ -448,6 +448,25 @@ test("Grok CLI profile defaults to a CCR-scoped CLI entry", () => {
   assert.equal(draft.surface, "cli");
 });
 
+test("CodeBuddy profile defaults to a CCR-scoped CLI entry and is submittable without a model", () => {
+  const draft = createProfileDraft("codebuddy");
+
+  assert.equal(draft.name, "CodeBuddy");
+  assert.equal(draft.scope, "ccr");
+  assert.equal(draft.surface, "cli");
+  assert.equal(isProfileDraftSubmittable(draft), true);
+});
+
+test("CodeBuddy draft round-trips without being rewritten to a codex-compatible agent", () => {
+  const draft = createProfileDraft("codebuddy");
+  draft.model = "Provider/model";
+  const saved = profileConfigFromDraft(draft, [], undefined);
+
+  assert.equal(saved.agent, "codebuddy");
+  assert.equal(saved.configFile, "~/.codebuddy");
+  assert.equal(saved.surface, "cli");
+});
+
 test("persisted Grok profiles are normalized to the supported launch scope", () => {
   const profile = normalizeUnknownProfileItem({
     agent: "grok-cli",

@@ -11,6 +11,7 @@ import { codexDesktopAppName, launchCodexAppProfile, launchZcodeAppProfile, refr
 import { CodexAppMediaPreviewBridge, shouldEnableCodexMediaPreviewBridge } from "@ccr/core/agents/codex/media-preview-bridge";
 import { findRunningOpenCodeAppPid, launchOpenCodeAppProfile, openCodeAppLaunchSignature } from "@ccr/core/agents/opencode/app-launch";
 import { writeOpenCodeGatewayConfig } from "@ccr/core/agents/opencode/profile-config";
+import { launchCodeBuddyAppProfile, refreshCodeBuddyAppProfileFiles } from "@ccr/core/agents/codebuddy/app-launch";
 import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-middleware-runtime";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { gatewayService } from "@ccr/core/gateway/service";
@@ -133,6 +134,9 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
   if (profile.agent === "opencode" && surface === "app") {
     return await openOpenCodeAppProfile(config, profile);
   }
+  if (profile.agent === "codebuddy" && surface === "app") {
+    return await openCodeBuddyAppProfile(config, profile);
+  }
   const plan = buildProfileLaunchPlan(CONFIGDIR, profile, surface);
   if (path.isAbsolute(plan.command) && !existsSync(plan.command)) {
     throw new Error(`Profile launcher was not found: ${plan.command}. Re-save the profile and try again.`);
@@ -251,6 +255,54 @@ async function openOpenCodeAppProfile(config: AppConfig, profile: ReturnType<typ
     configResult.inlineConfig,
     launchSignature
   );
+  return {
+    message: `Opened ${appName} with ${profile.name || profile.id}.`,
+    profileId: profile.id,
+    profileName: profile.name,
+    surface: "app"
+  };
+}
+
+async function openCodeBuddyAppProfile(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): Promise<ProfileOpenResult> {
+  const appName = "CodeBuddy App";
+  const profileGatewayConfig = await ensureProfileGateway(config, profile, appName);
+  refreshCodeBuddyAppProfileFiles(profile, profileGatewayConfig);
+  const existing = runningProfileApp(profile.id, "app");
+  if (existing) {
+    refreshCodeBuddyAppProfileFiles(profile, profileGatewayConfig);
+    activateProfileAppWindow(existing);
+    return {
+      message: `${appName} is already running with ${profile.name || profile.id}.`,
+      profileId: profile.id,
+      profileName: profile.name,
+      surface: "app"
+    };
+  }
+  const otherProfile = runningProfileAppForAgent("codebuddy", "app", profile.id);
+  if (otherProfile) {
+    const stopped = await stopRunningProfileApp(profileRuntimeKey(otherProfile.profileId, "app"), otherProfile);
+    if (!stopped && isProfileAppRunning(otherProfile)) {
+      throw new Error(
+        `${appName} is already running with ${otherProfile.profileName || otherProfile.profileId}. ` +
+        "Close it before switching CodeBuddy App profiles."
+      );
+    }
+  }
+  const launch = launchCodeBuddyAppProfile(profile, profileGatewayConfig);
+  const entry = registerProfileApp(profile, "app", launch);
+  const started = await waitForStableProfileAppStart(entry, 12000, 1000);
+  if (!started) {
+    cleanupProfileAppEntry(profileRuntimeKey(profile.id, "app"), entry);
+    sendProfileProcessSignal(entry.pid, "SIGTERM");
+    throw new Error([
+      `${appName} did not stay open for ${profile.name || profile.id}.`,
+      ...(entry.spawnError ? [`Error: ${entry.spawnError}`] : []),
+      "Close any CodeBuddy instance that was not opened by CCR, then try again.",
+      `Command: ${entry.command}`,
+      `User data: ${entry.userDataDir}`
+    ].join(" "));
+  }
+  activateProfileAppWindow(entry);
   return {
     message: `Opened ${appName} with ${profile.name || profile.id}.`,
     profileId: profile.id,

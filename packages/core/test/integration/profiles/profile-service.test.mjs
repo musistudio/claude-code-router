@@ -1037,6 +1037,58 @@ test("profile service writes a Grok CLI wrapper that points model discovery and 
   assert.equal(existsSync(path.join(profileGrokHome, "auth.json")), false);
 });
 
+test("profile service writes a CodeBuddy wrapper that points inference to CCR", async () => {
+  const profileId = "codebuddy-gateway-test";
+  const config = createDefaultAppConfig();
+  config.Providers = [
+    {
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model"],
+      name: "Provider"
+    }
+  ];
+  config.preferredProvider = "Provider";
+  config.APIKEY = "ccr-codebuddy-profile-test";
+  config.APIKEYS = [
+    {
+      id: `profile:${profileId}`,
+      key: "ccr-codebuddy-profile-test",
+      name: "Profile: CodeBuddy Gateway Test"
+    }
+  ];
+  config.profile.profiles = [
+    {
+      agent: "codebuddy",
+      enabled: true,
+      env: {
+        CCR_CODEBUDDY_BIN: "/custom/bin/codebuddy",
+        USER_VALUE: "kept"
+      },
+      id: profileId,
+      model: "Provider/model",
+      name: "CodeBuddy Gateway Test",
+      scope: "ccr",
+      surface: "cli"
+    }
+  ];
+
+  const result = await applyProfileConfig(config);
+  assert.equal(result.clients.length, 1);
+  assert.equal(result.clients[0].client, "codebuddy");
+  assert.equal(result.clients[0].ok, true);
+
+  const commandExtension = process.platform === "win32" ? ".cmd" : "";
+  const wrapperFile = path.join(CONFIGDIR, "bin", `ccr-codebuddy-wrapper-${profileId}${commandExtension}`);
+  const content = readFileSync(wrapperFile, "utf8");
+  assert.match(content, new RegExp(`CODEBUDDY_BASE_URL.*http://127\\.0\\.0\\.1:${config.gateway.port}/v1`));
+  assert.match(content, /CODEBUDDY_API_KEY.*ccr-codebuddy-profile-test/);
+  assert.match(content, /CODEBUDDY_MODEL.*Provider\/model/);
+  assert.match(content, /CCR_PROFILE_SURFACE.*cli/);
+  assert.match(content, /USER_VALUE.*kept/);
+  assert.match(content, /\/custom\/bin\/codebuddy/);
+});
+
 test("profile service writes a multi-model Kimi CLI home that points inference to CCR", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "kimi-gateway-test";
   const sourceKimiHome = path.join(process.env.CCR_INTERNAL_HOME_DIR, ".kimi-code");

@@ -5,6 +5,7 @@ import kiloLogoUrl from "@/assets/agent-logos/kilo.svg";
 import openCodeLogoUrl from "@/assets/agent-logos/opencode.ico";
 import piLogoUrl from "@/assets/agent-logos/pi.svg";
 import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
+import codebuddyLogoUrl from "@/assets/agent-logos/codebuddy.svg";
 import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
 import {
   CLAUDE_CODE_DEFAULT_ENV,
@@ -588,6 +589,9 @@ export function isProfileDraftSubmittable(draft: AddProfileDraft): boolean {
     return Boolean(draft.model.trim());
   }
   if (draft.agent === "grok") {
+    return true;
+  }
+  if (draft.agent === "codebuddy") {
     return true;
   }
   if (draft.agent === "pi") {
@@ -1343,6 +1347,23 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
       surface: "app"
     };
   }
+  if (agent === "codebuddy") {
+    return {
+      agent,
+      ...(surface !== "cli" && profile.appPath?.trim() ? { appPath: profile.appPath.trim() } : {}),
+      ...(botConfigId ? { botConfigId } : {}),
+      ...(botGateway ? { botGateway } : {}),
+      configFile: profile.configFile?.trim() || "~/.codebuddy",
+      enabled: profile.enabled,
+      env: codexCompatibleProfileEnv(env),
+      id: profile.id || `profile-${index + 1}`,
+      model,
+      name,
+      ...(routing ? { routing } : {}),
+      scope,
+      surface
+    };
+  }
   return {
     agent: normalizeCodexCompatibleAgent(agent),
     ...(surface !== "cli" && agent !== "zcode" && profile.appPath?.trim() ? { appPath: profile.appPath.trim() } : {}),
@@ -1436,6 +1457,8 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
         ? "pi"
         : rawAgent === "zcode" || rawAgent === "z-code" || rawAgent === "z code"
           ? "zcode"
+        : rawAgent === "codebuddy" || rawAgent === "codebuddy-cli" || rawAgent === "codebuddy cli" || rawAgent === "codebuddy-ide" || rawAgent === "codebuddy ide"
+          ? "codebuddy"
         : rawAgent === "claude-design" || rawAgent === "claude design" || rawAgent === "design"
           ? "claude-design"
           : undefined;
@@ -1583,6 +1606,9 @@ export function profileAgentLabel(agent: ProfileConfig["agent"]): string {
   if (agent === "claude-design") {
     return "Claude Design";
   }
+  if (agent === "codebuddy") {
+    return "CodeBuddy";
+  }
   return "Codex";
 }
 
@@ -1659,6 +1685,9 @@ export function profileAgentLogoUrl(agent: ProfileConfig["agent"]): string {
   if (agent === "kilo") {
     return kiloLogoUrl;
   }
+  if (agent === "codebuddy") {
+    return codebuddyLogoUrl;
+  }
   return codexLogoUrl;
 }
 
@@ -1667,13 +1696,12 @@ function normalizeCodexCompatibleAgent(agent: ProfileConfig["agent"]): "codex" |
 }
 
 function normalizeProfileAgent(agent: ProfileConfig["agent"]): ProfileConfig["agent"] {
-  return agent === "claude-design" ? "claude-design" : agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : agent === "kilo" ? "kilo" : agent === "pi" ? "pi" : agent === "grok" ? "grok" : agent === "kimi" ? "kimi" : agent === "codex" ? "codex" : "claude-code";
+  return agent === "claude-design" ? "claude-design" : agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : agent === "kilo" ? "kilo" : agent === "pi" ? "pi" : agent === "grok" ? "grok" : agent === "kimi" ? "kimi" : agent === "codebuddy" ? "codebuddy" : agent === "codex" ? "codex" : "claude-code";
 }
 
 function normalizeProfileSurfaceForAgent(agent: ProfileConfig["agent"], surface: unknown): ProfileSurface {
   return agent === "zcode" || agent === "claude-design" ? "app" : agent === "grok" || agent === "kimi" || agent === "pi" || agent === "kilo" ? "cli" : normalizeProfileSurface(surface);
 }
-
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
   return agent === "zcode"
     ? "~/.zcode/cli/config.json"
@@ -1685,7 +1713,9 @@ function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
           ? "~/.pi/agent"
           : agent === "claude-design"
             ? "~/.claude-code-router/claude-design"
-            : "~/.codex/config.toml";
+            : agent === "codebuddy"
+              ? "~/.codebuddy"
+              : "~/.codex/config.toml";
 }
 
 function normalizeCodexConfigFileForAgent(agent: ProfileConfig["agent"], value: string | undefined): string {

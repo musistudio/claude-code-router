@@ -1290,7 +1290,7 @@ function profileDraftValidation(
       issues.kimiAvailableModels = "Select at least one allowed model.";
     }
   }
-  if (draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" && draft.agent !== "pi" && draft.agent !== "claude-design") {
+  if (draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" && draft.agent !== "pi" && draft.agent !== "claude-design" && draft.agent !== "codebuddy") {
     if (!draft.providerId.trim()) {
       issues.providerId = "Provider ID is required.";
     }
@@ -1315,7 +1315,7 @@ function profileNumberDraftValid(value: string, min: number, max: number): boole
   return Number.isFinite(numeric) && numeric >= min && numeric <= max;
 }
 
-function profileAppPathLabel(agent: ProfileConfig["agent"]): "CLAUDE_APP_PATH" | "CHATGPT_APP_PATH" | "OPENCODE_APP_PATH" | undefined {
+function profileAppPathLabel(agent: ProfileConfig["agent"]): "CLAUDE_APP_PATH" | "CHATGPT_APP_PATH" | "OPENCODE_APP_PATH" | "CODEBUDDY_APP_PATH" | undefined {
   if (agent === "claude-code") {
     return "CLAUDE_APP_PATH";
   }
@@ -1324,6 +1324,9 @@ function profileAppPathLabel(agent: ProfileConfig["agent"]): "CLAUDE_APP_PATH" |
   }
   if (agent === "opencode") {
     return "OPENCODE_APP_PATH";
+  }
+  if (agent === "codebuddy") {
+    return "CODEBUDDY_APP_PATH";
   }
   return undefined;
 }

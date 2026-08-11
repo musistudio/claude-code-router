@@ -177,6 +177,8 @@ export async function applyProfileConfig(
                 ? applyKiloProfile(config, profile, token, appliedAt)
               : profile.agent === "zcode"
                 ? applyZcodeProfile(config, profile, token, appliedAt)
+                  : profile.agent === "codebuddy"
+                    ? applyCodeBuddyProfile(config, profile, token, appliedAt)
                   : applyCodexProfile(config, profile, token, appliedAt)
     );
   }
@@ -327,6 +329,8 @@ export function applyProfileRuntimeConfig(config: AppConfig, profile: ProfileCon
                 ? applyKiloProfile(config, profile, token, appliedAt)
                 : profile.agent === "zcode"
                 ? applyZcodeProfile(config, profile, token, appliedAt)
+                  : profile.agent === "codebuddy"
+                    ? applyCodeBuddyProfile(config, profile, token, appliedAt)
                   : applyCodexProfile(config, profile, token, appliedAt);
 }
 
@@ -521,6 +525,105 @@ function applyGrokProfile(config: AppConfig, profile: ProfileConfig, token: stri
       path: wrapperFile
     };
   }
+}
+
+function applyCodeBuddyProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
+  const wrapperFile = codeBuddyWrapperPath(profile);
+  if (!profile.enabled) {
+    return disabledStatus("codebuddy", wrapperFile, "CodeBuddy profile is disabled.");
+  }
+
+  try {
+    const model = normalizeClientModel(profile.model) || defaultClientModel(config);
+    const wrapperResult = writeCodeBuddyWrapper(config, profile, token, model);
+    return {
+      appliedAt,
+      client: "codebuddy",
+      enabled: true,
+      message: wrapperResult.changed
+        ? `CodeBuddy is configured to use CCR (wrapper ${wrapperResult.file}).`
+        : "CodeBuddy already points to CCR.",
+      ok: true,
+      path: wrapperResult.file
+    };
+  } catch (error) {
+    return {
+      client: "codebuddy",
+      enabled: true,
+      message: formatError(error),
+      ok: false,
+      path: wrapperFile
+    };
+  }
+}
+
+function writeCodeBuddyWrapper(config: AppConfig, profile: ProfileConfig, token: string, model: string): { changed: boolean; file: string } {
+  const binDir = path.join(CONFIGDIR, "bin");
+  mkdirSync(binDir, { mode: privateDirMode, recursive: true });
+  const file = codeBuddyWrapperPath(profile);
+  const content = process.platform === "win32"
+    ? codeBuddyWrapperCmdScript(config, profile, token, model)
+    : codeBuddyWrapperShellScript(config, profile, token, model);
+  const writeResult = writeGeneratedFileIfChanged(file, content, { mode: privateExecutableMode });
+  return {
+    changed: writeResult.changed,
+    file
+  };
+}
+
+function codeBuddyWrapperPath(profile: ProfileConfig): string {
+  return path.join(CONFIGDIR, "bin", codeBuddyWrapperFilename(profile));
+}
+
+function codeBuddyWrapperFilename(profile: ProfileConfig): string {
+  const slug = sanitizeProfilePathSegment(profile.id || profile.name || profile.agent).toLowerCase() || "codebuddy";
+  return process.platform === "win32"
+    ? `ccr-codebuddy-wrapper-${slug}.cmd`
+    : `ccr-codebuddy-wrapper-${slug}`;
+}
+
+function codeBuddyWrapperShellScript(config: AppConfig, profile: ProfileConfig, token: string, model: string): string {
+  const realCodebuddy = profile.env?.CCR_CODEBUDDY_BIN?.trim() || "codebuddy";
+  const envExports = Object.entries(profileEnv(profile))
+    .filter(([key]) => key !== "CCR_CODEBUDDY_BIN" && !isCodeBuddyManagedEnvKey(key))
+    .map(([key, value]) => `export ${key}=${shellQuote(value)}`);
+  const gatewayBaseUrl = `${gatewayEndpoint(config).replace(/\/+$/g, "")}/v1`;
+  return [
+    "#!/bin/sh",
+    ...envExports,
+    `export CODEBUDDY_BASE_URL=${shellQuote(gatewayBaseUrl)}`,
+    `export CODEBUDDY_API_KEY=${shellQuote(token)}`,
+    ...(model ? [`export CODEBUDDY_MODEL=${shellQuote(model)}`] : []),
+    `export CCR_PROFILE_SURFACE=cli`,
+    `exec ${shellQuote(realCodebuddy)} "$@"`,
+    ""
+  ].join("\n");
+}
+
+function codeBuddyWrapperCmdScript(config: AppConfig, profile: ProfileConfig, token: string, model: string): string {
+  const realCodebuddy = profile.env?.CCR_CODEBUDDY_BIN?.trim() || "codebuddy";
+  const envExports = Object.entries(profileEnv(profile))
+    .filter(([key]) => key !== "CCR_CODEBUDDY_BIN" && !isCodeBuddyManagedEnvKey(key))
+    .map(([key, value]) => cmdSetLine(key, value));
+  const gatewayBaseUrl = `${gatewayEndpoint(config).replace(/\/+$/g, "")}/v1`;
+  return [
+    "@echo off",
+    ...envExports,
+    cmdSetLine("CODEBUDDY_BASE_URL", gatewayBaseUrl),
+    cmdSetLine("CODEBUDDY_API_KEY", token),
+    ...(model ? [cmdSetLine("CODEBUDDY_MODEL", model)] : []),
+    cmdSetLine("CCR_PROFILE_SURFACE", "cli"),
+    `${cmdQuote(realCodebuddy)} %*`,
+    "exit /b %ERRORLEVEL%",
+    ""
+  ].join("\r\n");
+}
+
+function isCodeBuddyManagedEnvKey(key: string): boolean {
+  return key === "CODEBUDDY_BASE_URL" ||
+    key === "CODEBUDDY_API_KEY" ||
+    key === "CODEBUDDY_MODEL" ||
+    key === "CCR_PROFILE_SURFACE";
 }
 
 function applyKimiProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
@@ -748,6 +851,8 @@ function profilePath(profile: ProfileConfig): string {
               ? resolveOpenCodeConfigFile(CONFIGDIR, profile)
               : profile.agent === "kilo"
                 ? resolveKiloConfigFile(CONFIGDIR, profile)
+                : profile.agent === "codebuddy"
+                  ? codeBuddyWrapperPath(profile)
                 : resolveCodexConfigFile(profile);
 }
 

@@ -124,9 +124,9 @@ export const agentFilterOptions: Array<{ label: string; value: AgentFilterValue 
   { label: "Pi", value: "pi" },
   { label: "ZCode", value: "zcode" },
   { label: "Claude Design", value: "claude-design" },
+  { label: "CodeBuddy", value: "codebuddy" },
   { label: "Unknown", value: "unknown" }
 ];
-
 export type ProfileAgentOption = { label: string; value: ProfileConfig["agent"] };
 
 export const profileAgentOptions: ProfileAgentOption[] = [
@@ -138,7 +138,8 @@ export const profileAgentOptions: ProfileAgentOption[] = [
   { label: "OpenCode", value: "opencode" },
   { label: "Pi", value: "pi" },
   { label: "ZCode", value: "zcode" },
-  { label: "Claude Design", value: "claude-design" }
+  { label: "Claude Design", value: "claude-design" },
+  { label: "CodeBuddy", value: "codebuddy" }
 ];
 
 export function profileAgentOptionsForRuntime(desktop: boolean): ProfileAgentOption[] {

@@ -126,6 +126,9 @@ export function buildProfileLaunchPlan(
   if (profile.agent === "kilo") {
     return buildKiloLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
   }
+  if (profile.agent === "codebuddy") {
+    return buildCodeBuddyLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
+  }
   if (isCodexCompatibleAgent(profile.agent)) {
     return buildCodexLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
   }
@@ -168,6 +171,26 @@ function buildKiloLaunchPlan(
     env: {
       CCR_PROFILE_SURFACE: "cli",
       KILO_CONFIG: resolveKiloProfileConfigFile(configDir, profile)
+    },
+    profile,
+    surface
+  };
+}
+
+function buildCodeBuddyLaunchPlan(
+  configDir: string,
+  profile: ProfileConfig,
+  surface: ProfileOpenSurface,
+  extraArgs: string[]
+): ProfileLaunchPlan {
+  if (surface !== "cli") {
+    throw new Error("CodeBuddy App profiles must be opened through CCR Desktop.");
+  }
+  return {
+    args: extraArgs,
+    command: path.join(configDir, "bin", codeBuddyWrapperFilename(profile)),
+    env: {
+      CCR_PROFILE_SURFACE: "cli"
     },
     profile,
     surface
@@ -384,6 +407,13 @@ function kiloWrapperFilename(profile: ProfileConfig): string {
   return process.platform === "win32"
     ? `ccr-kilo-wrapper-${slug}.cmd`
     : `ccr-kilo-wrapper-${slug}`;
+}
+
+function codeBuddyWrapperFilename(profile: ProfileConfig): string {
+  const slug = sanitizePathSegment(profile.id || profile.name || profile.agent) || "codebuddy";
+  return process.platform === "win32"
+    ? `ccr-codebuddy-wrapper-${slug}.cmd`
+    : `ccr-codebuddy-wrapper-${slug}`;
 }
 
 function codexMiddlewareFilename(profile: ProfileConfig, providerId: string): string {
