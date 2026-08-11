@@ -1051,6 +1051,7 @@ export class RequestLogStore {
     const since = getAgentAnalysisSince(range, now);
     const requestedAgent = normalizeAgentFilter(filter.agent);
     const analyzed: AnalyzedAgentRequest[] = [];
+    let requestScanTruncated = false;
     let scannedRequestCount = 0;
     const rows = iterateRows(
       database,
@@ -1103,10 +1104,14 @@ export class RequestLogStore {
           ORDER BY created_at DESC, id DESC
           LIMIT ?
         `,
-        ["%/count_tokens%", since.toISOString(), maxAgentAnalysisRows]
+        ["%/count_tokens%", since.toISOString(), maxAgentAnalysisRows + 1]
     );
     // Consume and compact each body before advancing so the query never retains all body text at once.
     for (const row of rows) {
+      if (scannedRequestCount >= maxAgentAnalysisRows) {
+        requestScanTruncated = true;
+        continue;
+      }
       scannedRequestCount += 1;
       const request = toAnalyzedAgentRequest(toRequestLogEntry(row));
       if (requestedAgent === "all" || request.agent === requestedAgent) {
@@ -1134,6 +1139,8 @@ export class RequestLogStore {
       range,
       recentRequests: analysisRequests.slice(-50).reverse().map(stripAnalysisInternals),
       routes: buildAgentRouteRows(analysisRequests),
+      requestScanLimit: maxAgentAnalysisRows,
+      requestScanTruncated,
       scannedRequestCount,
       ...(selectedSession ? { selectedSession } : {}),
       sessions: buildAgentSessionRows(requests),
@@ -2686,7 +2693,7 @@ function buildAgentTrace(requests: AnalyzedAgentRequest[]): AgentAnalysisTrace {
       depth += 1;
     }
 
-    if (request.routeReason && !isInlineModelRouteReason(request.routeReason)) {
+    if (shouldCreateRouteTraceRun(request.routeReason)) {
       const run = requestTraceRun({
         depth,
         kind: "route",
@@ -2740,8 +2747,9 @@ function buildAgentTrace(requests: AnalyzedAgentRequest[]): AgentAnalysisTrace {
   };
 }
 
-function isInlineModelRouteReason(value: string | undefined): boolean {
-  return value?.trim().toLowerCase() === "inline-model";
+function shouldCreateRouteTraceRun(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return Boolean(normalized && normalized !== "default" && normalized !== "inline-model");
 }
 
 function buildToolResultMap(requests: AnalyzedAgentRequest[]): Map<string, AgentToolResultDetail> {

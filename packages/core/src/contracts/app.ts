@@ -2467,6 +2467,8 @@ export type AgentAnalysisSnapshot = {
   range: UsageStatsRange;
   recentRequests: AgentAnalysisRequestRow[];
   routes: AgentObservabilityRouteRow[];
+  requestScanLimit: number;
+  requestScanTruncated: boolean;
   scannedRequestCount: number;
   selectedSession?: AgentAnalysisSessionDetail;
   sessions: AgentAnalysisSessionRow[];

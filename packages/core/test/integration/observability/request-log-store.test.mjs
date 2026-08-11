@@ -1065,6 +1065,7 @@ test("RequestLogStore analyzes agent sessions and exposes trace payloads", async
     });
     assert.equal(selected.selectedSession?.trace.toolRunCount, 1);
     assert.equal(selected.selectedSession?.trace.llmRunCount, 1);
+    assert.equal(selected.selectedSession?.trace.runs.some((run) => run.kind === "route"), false);
     assert.equal(selected.selectedSession?.trace.runs.some((run) => run.toolName === "read_file"), true);
     assert.equal(
       selected.selectedSession?.trace.runs.find((run) => run.id === selected.selectedSession?.trace.rootRunId)?.status,
@@ -1380,7 +1381,7 @@ test("RequestLogStore streams more body text than the bounded worker heap", {
   }
 });
 
-test("RequestLogStore keeps analysis bounded by the maximum row count", {
+test("RequestLogStore reports when analysis is bounded by the maximum row count", {
   skip: isBoundedHeapWorker,
   timeout: 30000
 }, async () => {
@@ -1388,7 +1389,7 @@ test("RequestLogStore keeps analysis bounded by the maximum row count", {
   try {
     const dbFile = path.join(dir, "request-logs.sqlite");
     const store = new RequestLogStore(dbFile);
-    const requestCount = 5000;
+    const requestCount = 5001;
     const startedAt = new Date().toISOString();
     await store.list({ pageSize: 1 });
     const database = createBetterSqliteDatabase(dbFile);
@@ -1427,8 +1428,10 @@ test("RequestLogStore keeps analysis bounded by the maximum row count", {
     }
 
     const analysis = await store.analyze({ range: "30d" });
-    assert.equal(analysis.scannedRequestCount, requestCount);
-    assert.equal(analysis.totals.requestCount, requestCount);
+    assert.equal(analysis.requestScanLimit, 5000);
+    assert.equal(analysis.requestScanTruncated, true);
+    assert.equal(analysis.scannedRequestCount, 5000);
+    assert.equal(analysis.totals.requestCount, 5000);
     assert.equal(analysis.sessions[0]?.id, "max-row-session");
   } finally {
     rmSync(dir, { force: true, recursive: true });

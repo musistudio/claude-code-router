@@ -4321,10 +4321,17 @@ export function AgentAnalysisView({
         </div>
       ) : null}
 
+      {snapshot.requestScanTruncated ? (
+        <AnalysisNotice>
+          {t("Analysis is limited to the newest")} {formatCompactNumber(snapshot.requestScanLimit)} {t("requests in the selected range.")}
+        </AnalysisNotice>
+      ) : null}
+
       {selectedSession || snapshot.selectedSession ? (
         <AgentSessionDetailCard
           clearSession={() => setSelectedSession(undefined)}
           detail={snapshot.selectedSession}
+          loading={loading}
           selectedSession={selectedSession}
         />
       ) : null}
@@ -4343,14 +4350,19 @@ export function AgentAnalysisView({
 function AgentSessionDetailCard({
   clearSession,
   detail,
+  loading,
   selectedSession
 }: {
   clearSession: () => void;
   detail?: AgentAnalysisSnapshot["selectedSession"];
+  loading: boolean;
   selectedSession?: AgentAnalysisSessionSelection;
 }) {
   const t = useAppText();
   const session = detail?.session;
+  const sessionRequestCount = session?.requestCount ?? 0;
+  const visibleRequestCount = detail?.requests.length ?? 0;
+  const requestsTruncated = sessionRequestCount > visibleRequestCount;
   const headerLabel = session
     ? `${t(agentKindLabel(session.agent))} / ${compactId(session.id)}`
     : selectedSession
@@ -4373,9 +4385,15 @@ function AgentSessionDetailCard({
         </DialogHeader>
         <DialogBody>
         {!detail ? (
-          <AnalysisEmptyState label={t("Loading session metrics")} />
+          <AnalysisEmptyState label={t(loading ? "Loading session metrics" : "Session not found or outside the selected range")} />
         ) : (
           <div className="space-y-4">
+            {requestsTruncated ? (
+              <AnalysisNotice>
+                {t("Session detail shows the newest")} {formatCompactNumber(visibleRequestCount)} {t("of")} {formatCompactNumber(sessionRequestCount)} {t("requests.")}
+              </AnalysisNotice>
+            ) : null}
+
             <AgentTracePanel trace={detail.trace} />
 
             <div className="min-w-0">
@@ -4997,6 +5015,15 @@ function AnalysisEmptyState({ label }: { label: string }) {
   return (
     <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-[12px] text-muted-foreground">
       {label}
+    </div>
+  );
+}
+
+function AnalysisNotice({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex shrink-0 items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+      <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      <span>{children}</span>
     </div>
   );
 }

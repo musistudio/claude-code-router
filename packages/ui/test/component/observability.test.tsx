@@ -248,8 +248,41 @@ test("AgentAnalysisView keeps session headings horizontal and shows cache rate a
   assert.match(html, /\$1\.25/);
   assert.match(html, /\$0\.25/);
   assert.match(html, /\$0\.75/);
+  assert.match(html, /会话详情仅展示最新的/);
+  assert.match(html, /1 \/ 2 条请求/);
   assert.match(html, /部分失败/);
   assert.match(html, /border-amber-200/);
   assert.match(html, /min-w-\[64px\]/);
   assert.match(html, /whitespace-nowrap/);
+});
+
+test("AgentAnalysisView surfaces bounded analysis and missing session states", () => {
+  const snapshot = {
+    ...createEmptyAgentAnalysis("30d"),
+    requestScanLimit: 5000,
+    requestScanTruncated: true,
+    scannedRequestCount: 5000
+  };
+
+  const html = renderToStaticMarkup(
+    <AppI18nContext.Provider value={appCopy.zh}>
+      <AgentAnalysisView
+        agentFilter="all"
+        error=""
+        loading={false}
+        range="30d"
+        refreshAnalysis={() => undefined}
+        selectedSession={{ agent: "codex", id: "missing-session" }}
+        setAgentFilter={() => undefined}
+        setRange={() => undefined}
+        setSelectedSession={() => undefined}
+        snapshot={snapshot}
+      />
+    </AppI18nContext.Provider>
+  );
+
+  assert.match(html, /分析结果仅包含最新的/);
+  assert.match(html, /5,000/);
+  assert.match(html, /未找到该会话，或它不在当前时间范围内/);
+  assert.doesNotMatch(html, /正在加载会话指标/);
 });

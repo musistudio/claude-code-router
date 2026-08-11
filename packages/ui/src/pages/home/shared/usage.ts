@@ -38,6 +38,8 @@ export function createEmptyAgentAnalysis(range: UsageStatsRange): AgentAnalysisS
     range,
     recentRequests: [],
     routes: [],
+    requestScanLimit: 0,
+    requestScanTruncated: false,
     scannedRequestCount: 0,
     sessions: [],
     subagents: [],
