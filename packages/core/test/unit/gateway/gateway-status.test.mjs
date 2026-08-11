@@ -166,6 +166,74 @@ test("gateway start completes the IPC and health handshake with the bundled runt
   }
 });
 
+test("gateway startup never serves a request with an uninitialized core auth token", async () => {
+  const previousGatewayEntry = process.env.CCR_GATEWAY_ENTRY;
+  try {
+    await gatewayService.stop();
+    delete process.env.CCR_GATEWAY_ENTRY;
+    const config = gatewayTestConfig(await findAvailablePort());
+    config.gateway.port = await findAvailablePort();
+    config.APIKEY = "test-api-key";
+    // Capabilities-based provider keeps the child config compilation on the
+    // critical path between listen() and the core auth token assignment,
+    // reliably widening the startup window this test guards.
+    config.Providers = [{
+      baseUrl: "http://127.0.0.1:9/v1",
+      capabilities: [{ baseUrl: "http://127.0.0.1:9/v1", type: "openai_chat_completions" }],
+      api_key: "test-provider-key",
+      id: "readiness-provider",
+      models: ["readiness-model"],
+      name: "Readiness Provider"
+    }];
+
+    // Start the gateway without awaiting it and fire concurrent requests the
+    // moment the port accepts. The core auth token must be exposed before the
+    // HTTP server binds; otherwise a request that lands between listen() and
+    // the token assignment reaches the executor with an empty token and the
+    // pipeline returns a misleading "Core gateway auth token is not
+    // initialized." 502.
+    const startPromise = gatewayService.start(config);
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      if (await canConnect(config.gateway.port)) {
+        break;
+      }
+      await delay(5);
+    }
+
+    const request = () => fetch(`http://127.0.0.1:${config.gateway.port}/v1/messages`, {
+      body: JSON.stringify({
+        max_tokens: 64,
+        messages: [{ content: "ping", role: "user" }],
+        model: "Readiness Provider/readiness-model"
+      }),
+      headers: {
+        authorization: "Bearer test-api-key",
+        "content-type": "application/json"
+      },
+      method: "POST"
+    }).then(async (res) => ({ status: res.status, text: await res.text() }))
+      .catch(() => ({ status: -1, text: "connection refused" }));
+
+    const resultsPromise = Promise.all(Array.from({ length: 8 }, () => request()));
+    const status = await startPromise;
+    assert.equal(status.state, "running", status.lastError);
+
+    const results = await resultsPromise;
+    for (const result of results) {
+      assert.equal(
+        result.text.includes("Core gateway auth token is not initialized."),
+        false,
+        `request returned misleading auth error: ${result.status} ${result.text}`
+      );
+    }
+  } finally {
+    restoreEnv("CCR_GATEWAY_ENTRY", previousGatewayEntry);
+    await gatewayService.stop();
+    await deletePersistedRuntimeState("gateway");
+  }
+});
+
 test("gateway start rejects healthy endpoints owned by a different runtime", async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-gateway-runtime-identity-test-"));
   const gatewayEntry = path.join(dir, "gateway-entry.cjs");
@@ -261,6 +329,20 @@ async function findAvailablePort() {
           reject(new Error("Failed to allocate a gateway test port."));
         }
       });
+    });
+  });
+}
+
+function canConnect(port) {
+  return new Promise((resolve) => {
+    const socket = net.connect(port, "127.0.0.1");
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once("error", () => {
+      socket.destroy();
+      resolve(false);
     });
   });
 }
