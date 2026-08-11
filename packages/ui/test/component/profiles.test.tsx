@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ProfileConfig } from "@ccr/core/contracts/app.ts";
 import { AddProfileForm, DeleteProfileDialog, ProfileView } from "@ccr/ui/pages/home/components/profiles.tsx";
 import { AppI18nContext, appCopy } from "@ccr/ui/pages/home/shared/i18n.tsx";
-import { createProfileDraft, createProfileDraftFromProfile, isProfileDraftSubmittable, normalizeUnknownProfileItem, profileConfigFromDraft, profileDraftWithDetectedAppPath, profileSummaryItems } from "@ccr/ui/pages/home/shared/profiles.ts";
+import { createProfileDraft, createProfileDraftFromProfile, isProfileDraftSubmittable, normalizeUnknownProfileItem, profileAgentLogoUrl, profileConfigFromDraft, profileDraftWithDetectedAppPath, profileSummaryItems } from "@ccr/ui/pages/home/shared/profiles.ts";
 import { appConfigFixture } from "../fixtures/index.ts";
 
 const profile: ProfileConfig = {
@@ -440,6 +440,13 @@ test("detected OPENCODE_APP_PATH is used as the OpenCode profile default", () =>
   assert.equal(profileDraftWithDetectedAppPath({ ...draft, appPath: "/custom/opencode" }, undefined, detectedPath).appPath, "/custom/opencode");
 });
 
+test("detected WORKBUDDY_APP_PATH is used as the Workbuddy profile default", () => {
+  const detectedPath = "/Applications/WorkBuddy AI.app/Contents/MacOS/Electron";
+  const draft = profileDraftWithDetectedAppPath(createProfileDraft("workbuddy"), undefined, undefined, detectedPath);
+  assert.equal(draft.appPath, detectedPath);
+  assert.equal(profileDraftWithDetectedAppPath({ ...draft, appPath: "/custom/workbuddy" }, undefined, undefined, detectedPath).appPath, "/custom/workbuddy");
+});
+
 test("Grok CLI profile defaults to a CCR-scoped CLI entry", () => {
   const draft = createProfileDraft("grok");
 
@@ -574,4 +581,47 @@ test("Kilo CLI profiles support local CLI configuration", () => {
   assert.equal(profile?.scope, "global");
   assert.equal(profile?.showAllSessions, false);
   assert.equal(profile?.surface, "cli");
+});
+
+test("Workbuddy profiles support local App configuration", () => {
+  const config = appConfigFixture();
+  const draft = createProfileDraft("workbuddy");
+  assert.equal(draft.name, "Workbuddy");
+  assert.equal(draft.configFile, "~/.workbuddy/config.toml");
+  assert.equal(draft.surface, "app");
+  assert.equal(isProfileDraftSubmittable(draft), true);
+
+  const html = renderToStaticMarkup(
+    <AddProfileForm
+      botConfigs={config.botConfigs ?? []}
+      draft={draft}
+      error=""
+      mode="edit"
+      onChange={() => undefined}
+      onCreateBot={() => undefined}
+      providers={config.Providers}
+      virtualModelProfiles={config.virtualModelProfiles}
+    />
+  );
+  assert.match(html, /App only/);
+  assert.doesNotMatch(html, /CLI only/);
+  assert.match(html, /WORKBUDDY_APP_PATH/);
+
+  const profile = normalizeUnknownProfileItem({
+    agent: "work-buddy",
+    enabled: true,
+    id: "workbuddy-work",
+    model: "Provider/model",
+    name: "Workbuddy Work",
+    providerId: "claude-code-router",
+    scope: "global",
+    showAllSessions: true,
+    surface: "app"
+  }, 0);
+  assert.equal(profile?.agent, "workbuddy");
+  assert.equal(profile?.configFile, "~/.workbuddy/config.toml");
+  assert.equal(profile?.showAllSessions, false);
+  assert.equal(profile?.surface, "app");
+  assert.match(profileAgentLogoUrl("workbuddy"), /workbuddy/i);
+  assert.notEqual(profileAgentLogoUrl("workbuddy"), profileAgentLogoUrl("codex"));
 });

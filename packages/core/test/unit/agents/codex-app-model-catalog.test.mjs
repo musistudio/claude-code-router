@@ -7,6 +7,7 @@ import {
   codexDesktopAppName,
   codexSharedChatGptAuthEnvForTest,
   findInstalledCodexAppExecutable,
+  findInstalledWorkbuddyAppExecutable,
   removeLegacyCodexVirtualAuthMarker,
   writeCodexCompatibleAppModelCatalog
 } from "@ccr/core/agents/codex/app-launch.ts";
@@ -285,6 +286,114 @@ test("ChatGPT profile appPath overrides process env discovery", () => {
       process.env.CHATGPT_APP_PATH = previous;
     }
     rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("WorkBuddy AI app path override discovers the Electron executable", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-workbuddy-app-"));
+  try {
+    let configuredPath;
+    let expectedExecutable;
+    if (process.platform === "darwin") {
+      configuredPath = path.join(root, "WorkBuddy AI.app");
+      const macosDir = path.join(configuredPath, "Contents", "MacOS");
+      mkdirSync(macosDir, { recursive: true });
+      expectedExecutable = path.join(macosDir, "Electron");
+      writeFileSync(expectedExecutable, "");
+      writeFileSync(
+        path.join(configuredPath, "Contents", "Info.plist"),
+        "<plist><dict><key>CFBundleExecutable</key><string>Electron</string></dict></plist>"
+      );
+    } else {
+      expectedExecutable = path.join(root, process.platform === "win32" ? "WorkBuddyAI.exe" : "workbuddy-ai");
+      configuredPath = expectedExecutable;
+      writeFileSync(expectedExecutable, "");
+    }
+
+    const result = findInstalledWorkbuddyAppExecutable(configuredPath);
+    assert.equal(result.executable, expectedExecutable);
+    assert.equal(result.checked[0], configuredPath);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("WorkBuddy AI app profile writes the virtual desktop auth session", () => {
+  const configDir = mkdtempSync(path.join(os.tmpdir(), "ccr-workbuddy-app-auth-"));
+  try {
+    const profile = {
+      agent: "workbuddy",
+      enabled: true,
+      id: "workbuddy-main",
+      model: "Codex API/gpt-5-codex",
+      name: "WorkBuddy Main",
+      providerId: "claude-code-router",
+      scope: "ccr",
+      surface: "app"
+    };
+
+    const workbuddyConfig = {
+      gateway: {
+        enabled: true,
+        host: "0.0.0.0",
+        mode: "process",
+        port: 48765
+      },
+      Providers: [{
+        modelMetadata: {
+          "gpt-5-codex": {
+            contextWindow: 272_000,
+            defaultReasoningLevel: "medium",
+            supportedReasoningLevels: [
+              { description: "Medium", effort: "medium" },
+              { description: "High", effort: "high" }
+            ],
+            supportsReasoningSummaries: true
+          }
+        },
+        models: ["gpt-5-codex"],
+        name: "Codex API",
+        type: "openai_responses"
+      }]
+    };
+    const result = writeCodexCompatibleAppModelCatalog(configDir, profile, workbuddyConfig);
+
+    assert.equal(path.basename(result.file), "ccr-workbuddy-model-catalog.json");
+    assert.ok(result.workbuddyModelsConfig);
+    assert.equal(path.basename(result.workbuddyModelsConfig.file), "models.json");
+    assert.equal(result.workbuddyModelsConfig.model, "Codex API/gpt-5-codex");
+    const modelsConfig = JSON.parse(readFileSync(result.workbuddyModelsConfig.file, "utf8"));
+    assert.deepEqual(modelsConfig.availableModels, ["Codex API/gpt-5-codex"]);
+    assert.equal(modelsConfig.models.length, 1);
+    assert.equal(modelsConfig.models[0].id, "Codex API/gpt-5-codex");
+    assert.equal(modelsConfig.models[0].vendor, "Codex API");
+    assert.equal(modelsConfig.models[0].url, "http://127.0.0.1:48765/v1");
+    assert.equal(modelsConfig.models[0].apiKey, "${CCR_PROFILE_API_KEY}");
+    assert.equal(modelsConfig.models[0].supportsToolCall, true);
+    assert.equal(modelsConfig.models[0].supportsReasoning, true);
+    assert.equal(modelsConfig.models[0].maxInputTokens, 272_000);
+    assert.deepEqual(modelsConfig.models[0].reasoning.supportedEfforts, ["medium", "high"]);
+
+    assert.ok(result.workbuddyVirtualAuth);
+    assert.equal(path.basename(result.workbuddyVirtualAuth.authFile), "workbuddy-desktop-ai.info");
+    assert.ok(result.workbuddyVirtualAuth.authFile.includes(path.join("CodeBuddyExtension", "Data", "Public", "auth")));
+    assert.equal(existsSync(result.workbuddyVirtualAuth.authFile), true);
+
+    const session = JSON.parse(readFileSync(result.workbuddyVirtualAuth.authFile, "utf8"));
+    assert.equal(session.auth.accessToken, "ccr-local-profile");
+    assert.equal(session.auth.domain, "www.workbuddy.ai");
+    assert.equal(session.auth.refreshToken, "");
+    assert.ok(Date.now() - session.auth.lastRefreshTime < 5_000);
+    assert.equal(session.account.uid, "ccr-local-profile");
+    assert.equal(session.account.nickname, "WorkBuddy Main");
+    assert.equal(session.account.type, "personal");
+    assert.deepEqual(session.accounts, [session.account]);
+    assert.deepEqual(session.allAccounts, [session.account]);
+
+    const second = writeCodexCompatibleAppModelCatalog(configDir, profile, workbuddyConfig);
+    assert.equal(second.workbuddyModelsConfig.changed, false);
+  } finally {
+    rmSync(configDir, { force: true, recursive: true });
   }
 });
 

@@ -354,12 +354,12 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!appInfo.chatgptAppPath && !appInfo.opencodeAppPath) {
+    if (!appInfo.chatgptAppPath && !appInfo.opencodeAppPath && !appInfo.workbuddyAppPath) {
       return;
     }
-    setProfileDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath, appInfo.opencodeAppPath));
-    setProfileEditDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath, appInfo.opencodeAppPath));
-  }, [appInfo.chatgptAppPath, appInfo.opencodeAppPath]);
+    setProfileDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath));
+    setProfileEditDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath));
+  }, [appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath]);
 
   useEffect(() => {
     if (!isProfileAgentAvailable(profileAgentTab)) {
@@ -807,10 +807,11 @@ function App() {
     setProfileDraft(profileDraftWithDetectedAppPath(
       createProfileDraftFromProfile(profile, draftConfig.botConfigs),
       appInfo.chatgptAppPath,
-      appInfo.opencodeAppPath
+      appInfo.opencodeAppPath,
+      appInfo.workbuddyAppPath
     ));
     setProfileActionError("");
-  }, [activeView, onboardingStep, onboardingProfileConfirmed, configLoaded, draftConfig.profile.profiles, draftConfig.botConfigs, profileDraft.agent, appInfo.chatgptAppPath, appInfo.opencodeAppPath]);
+  }, [activeView, onboardingStep, onboardingProfileConfirmed, configLoaded, draftConfig.profile.profiles, draftConfig.botConfigs, profileDraft.agent, appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath]);
 
   useEffect(() => {
     if (activeView !== "onboarding" || !configLoaded || !onboardingStatusLoaded || !providerPresetsLoaded || providerAddOpen) {
@@ -2523,7 +2524,7 @@ function App() {
   function openAddProfileDialog(agent: ProfileConfig["agent"] = profileAgentTab) {
     const resolvedAgent = isProfileAgentAvailable(agent) ? agent : defaultAvailableProfileAgent;
     setProfileAgentTab(resolvedAgent);
-    setProfileDraft(profileDraftWithDetectedAppPath(createProfileDraft(resolvedAgent), appInfo.chatgptAppPath, appInfo.opencodeAppPath));
+    setProfileDraft(profileDraftWithDetectedAppPath(createProfileDraft(resolvedAgent), appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath));
     setProfileActionError("");
     setProfileAddOpen(true);
   }
@@ -2537,7 +2538,8 @@ function App() {
     setProfileEditDraft(profileDraftWithDetectedAppPath(
       createProfileDraftFromProfile(profile, draftConfig.botConfigs),
       appInfo.chatgptAppPath,
-      appInfo.opencodeAppPath
+      appInfo.opencodeAppPath,
+      appInfo.workbuddyAppPath
     ));
     setProfileActionError("");
   }
@@ -2754,7 +2756,7 @@ function App() {
         return profileDraftWithDetectedAppPath({
           ...createProfileDraft(patch.agent, name),
           envRows: profileEnvRowsForAgent(patch.agent, current.envRows)
-        }, appInfo.chatgptAppPath, appInfo.opencodeAppPath);
+        }, appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath);
       }
       return next;
     });
@@ -2769,7 +2771,7 @@ function App() {
         return profileDraftWithDetectedAppPath({
           ...createProfileDraft(patch.agent, name),
           envRows: profileEnvRowsForAgent(patch.agent, current.envRows)
-        }, appInfo.chatgptAppPath, appInfo.opencodeAppPath);
+        }, appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath);
       }
       return next;
     });

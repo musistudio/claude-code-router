@@ -792,7 +792,7 @@ export function AddProfileForm({
                     scope: "ccr",
                     surface: "app"
                   }
-              : agent === "zcode"
+              : agent === "workbuddy" || agent === "zcode"
                   ? { agent, surface: "app" }
                   : { agent })}
             value={draft.agent}
@@ -829,7 +829,7 @@ export function AddProfileForm({
                   });
             }}
             options={translateOptions(
-              draft.agent === "zcode" || draft.agent === "claude-design"
+              draft.agent === "workbuddy" || draft.agent === "zcode" || draft.agent === "claude-design"
                 ? profileSurfaceOptions.filter((option) => option.value === "app")
                 : draft.agent === "grok" || draft.agent === "kimi" || draft.agent === "pi" || draft.agent === "kilo"
                     ? profileSurfaceOptions.filter((option) => option.value === "cli")
@@ -940,7 +940,7 @@ export function AddProfileForm({
           </>
         ) : draft.agent === "claude-design" ? null : (
           <>
-            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : draft.agent === "kilo" ? "Kilo model" : "Codex model")} requirement="optional" requirementLabel={optionalFieldLabel}>
+            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : draft.agent === "kilo" ? "Kilo model" : draft.agent === "workbuddy" ? "Workbuddy model" : "Codex model")} requirement="optional" requirementLabel={optionalFieldLabel}>
               <ModelSelector
                 placeholder={modelPlaceholder}
                 providers={providers}
@@ -1000,7 +1000,7 @@ export function AddProfileForm({
                           <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
                           {validation.providerName ? <ProfileFieldHint>{t(validation.providerName)}</ProfileFieldHint> : null}
                         </Field>
-                        {draft.agent !== "zcode" && draft.agent !== "opencode" && draft.agent !== "kilo" ? (
+                        {draft.agent !== "zcode" && draft.agent !== "opencode" && draft.agent !== "kilo" && draft.agent !== "workbuddy" ? (
                           <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
                             <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
                             <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
@@ -1315,7 +1315,7 @@ function profileNumberDraftValid(value: string, min: number, max: number): boole
   return Number.isFinite(numeric) && numeric >= min && numeric <= max;
 }
 
-function profileAppPathLabel(agent: ProfileConfig["agent"]): "CLAUDE_APP_PATH" | "CHATGPT_APP_PATH" | "OPENCODE_APP_PATH" | undefined {
+function profileAppPathLabel(agent: ProfileConfig["agent"]): "CLAUDE_APP_PATH" | "CHATGPT_APP_PATH" | "OPENCODE_APP_PATH" | "WORKBUDDY_APP_PATH" | undefined {
   if (agent === "claude-code") {
     return "CLAUDE_APP_PATH";
   }
@@ -1324,6 +1324,9 @@ function profileAppPathLabel(agent: ProfileConfig["agent"]): "CLAUDE_APP_PATH" |
   }
   if (agent === "opencode") {
     return "OPENCODE_APP_PATH";
+  }
+  if (agent === "workbuddy") {
+    return "WORKBUDDY_APP_PATH";
   }
   return undefined;
 }

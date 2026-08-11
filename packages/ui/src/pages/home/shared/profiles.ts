@@ -4,6 +4,7 @@ import grokLogoUrl from "@/assets/agent-logos/grok.ico";
 import kiloLogoUrl from "@/assets/agent-logos/kilo.svg";
 import openCodeLogoUrl from "@/assets/agent-logos/opencode.ico";
 import piLogoUrl from "@/assets/agent-logos/pi.svg";
+import workbuddyLogoUrl from "@/assets/agent-logos/workbuddy.png";
 import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
 import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
 import {
@@ -459,7 +460,7 @@ function profileRoutingConfigFromDraft(draft: AddProfileDraft): ProfileRoutingCo
 }
 
 export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code", name?: string): AddProfileDraft {
-  const surface = agent === "zcode" || agent === "claude-design" ? "app" : "cli";
+  const surface = agent === "workbuddy" || agent === "zcode" || agent === "claude-design" ? "app" : "cli";
   return {
     agent,
     appPath: "",
@@ -488,12 +489,15 @@ export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code"
 export function profileDraftWithDetectedAppPath(
   draft: AddProfileDraft,
   chatgptAppPath?: string,
-  opencodeAppPath?: string
+  opencodeAppPath?: string,
+  workbuddyAppPath?: string
 ): AddProfileDraft {
   const detectedPath = (draft.agent === "codex"
     ? chatgptAppPath
     : draft.agent === "opencode"
       ? opencodeAppPath
+      : draft.agent === "workbuddy"
+        ? workbuddyAppPath
       : "")?.trim() || "";
   if (draft.appPath.trim() || !detectedPath) {
     return draft;
@@ -550,7 +554,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
       surface: "app"
     };
   }
-  const surface = profile.agent === "zcode" ? "app" : normalizeProfileSurfaceForForm(profile.surface);
+  const surface = profile.agent === "workbuddy" || profile.agent === "zcode" ? "app" : normalizeProfileSurfaceForForm(profile.surface);
   return {
     ...createProfileDraft(profile.agent, profile.name),
     ...createProfileRoutingDraft(profile.routing),
@@ -565,7 +569,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
     providerId: profile.providerId ?? "claude-code-router",
     providerName: profile.providerName ?? "Claude Code Router",
     scope: normalizeProfileFormScope(profile.scope),
-    showAllSessions: profile.agent === "zcode" || profile.agent === "opencode" || profile.agent === "kilo" ? false : Boolean(profile.showAllSessions),
+    showAllSessions: profile.agent === "zcode" || profile.agent === "opencode" || profile.agent === "kilo" || profile.agent === "workbuddy" ? false : Boolean(profile.showAllSessions),
     surface
   };
 }
@@ -663,7 +667,7 @@ export function profileConfigFromDraft(
     ...(routing ? { routing } : {}),
     scope: draft.scope,
     settingsFile: draft.settingsFile,
-    showAllSessions: draft.agent === "zcode" || draft.agent === "opencode" || draft.agent === "kilo" || draft.agent === "claude-design" ? false : draft.showAllSessions,
+    showAllSessions: draft.agent === "zcode" || draft.agent === "opencode" || draft.agent === "kilo" || draft.agent === "workbuddy" || draft.agent === "claude-design" ? false : draft.showAllSessions,
     sonnetModel: draft.sonnetModel,
     smallFastModel: draft.haikuModel || draft.smallFastModel,
     surface: draft.surface
@@ -1267,9 +1271,9 @@ export function profileSummaryItems(
   }
 
   return [
-    { label: t(profile.agent === "kilo" ? "Kilo model" : "Model"), value: modelValue },
+    { label: t(profile.agent === "kilo" ? "Kilo model" : profile.agent === "workbuddy" ? "Workbuddy model" : "Model"), value: modelValue },
     { label: t("Provider ID"), value: profile.providerId ?? "claude-code-router" },
-    ...(profile.agent === "zcode" || profile.agent === "opencode" || profile.agent === "kilo" || !profile.showAllSessions ? [] : [{ label: t("Show all sessions"), value: t("Enabled") }]),
+    ...(profile.agent === "zcode" || profile.agent === "opencode" || profile.agent === "kilo" || profile.agent === "workbuddy" || !profile.showAllSessions ? [] : [{ label: t("Show all sessions"), value: t("Enabled") }]),
     ...managedCompactItems,
     ...routingSummaryItems,
     ...appPathSummaryItems,
@@ -1363,7 +1367,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
     providerName: profile.providerName?.trim() || "Claude Code Router",
     ...(routing ? { routing } : {}),
     scope,
-    showAllSessions: agent === "zcode" || agent === "opencode" || agent === "kilo" ? false : Boolean(profile.showAllSessions),
+    showAllSessions: agent === "zcode" || agent === "opencode" || agent === "kilo" || agent === "workbuddy" ? false : Boolean(profile.showAllSessions),
     surface
   };
 }
@@ -1434,6 +1438,8 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
         ? "kilo"
       : rawAgent === "pi" || rawAgent === "pi-agent" || rawAgent === "pi agent" || rawAgent === "pi-coding-agent" || rawAgent === "pi coding agent"
         ? "pi"
+      : rawAgent === "workbuddy" || rawAgent === "work-buddy" || rawAgent === "work buddy" || rawAgent === "workbuddy-agent" || rawAgent === "workbuddy agent"
+        ? "workbuddy"
         : rawAgent === "zcode" || rawAgent === "z-code" || rawAgent === "z code"
           ? "zcode"
         : rawAgent === "claude-design" || rawAgent === "claude design" || rawAgent === "design"
@@ -1530,6 +1536,9 @@ function readUnknownProfileAppPath(value: Record<string, unknown>, agent: Profil
   if (agent === "opencode") {
     return readUnknownString(value, "openCodeAppPath", "opencodeAppPath", "opencode_app_path");
   }
+  if (agent === "workbuddy") {
+    return readUnknownString(value, "workbuddyAppPath", "workbuddy_app_path", "workBuddyAppPath", "work_buddy_app_path");
+  }
   return undefined;
 }
 
@@ -1577,6 +1586,9 @@ export function profileAgentLabel(agent: ProfileConfig["agent"]): string {
   if (agent === "pi") {
     return "Pi";
   }
+  if (agent === "workbuddy") {
+    return "Workbuddy";
+  }
   if (agent === "opencode") {
     return "OpenCode";
   }
@@ -1607,7 +1619,7 @@ export function profileSurfaceLabel(surface: ProfileSurface): string {
 }
 
 export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[] {
-  if (profile.agent === "zcode" || profile.agent === "claude-design") {
+  if (profile.agent === "workbuddy" || profile.agent === "zcode" || profile.agent === "claude-design") {
     return ["app"];
   }
   if (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi" || profile.agent === "kilo") {
@@ -1623,7 +1635,7 @@ export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[
   return ["cli", "app"];
 }
 
-export function profileOpenCommandFallback(profile: ProfileConfig, surface: ProfileOpenSurface = profile.agent === "zcode" || profile.agent === "claude-design" ? "app" : "cli"): string {
+export function profileOpenCommandFallback(profile: ProfileConfig, surface: ProfileOpenSurface = profile.agent === "workbuddy" || profile.agent === "zcode" || profile.agent === "claude-design" ? "app" : "cli"): string {
   const profileRef = profile.name.trim() || profile.id;
   return ["ccr", shellCommandQuote(profileRef), ...(surface === "app" ? ["app"] : [])].join(" ");
 }
@@ -1659,19 +1671,22 @@ export function profileAgentLogoUrl(agent: ProfileConfig["agent"]): string {
   if (agent === "kilo") {
     return kiloLogoUrl;
   }
+  if (agent === "workbuddy") {
+    return workbuddyLogoUrl;
+  }
   return codexLogoUrl;
 }
 
-function normalizeCodexCompatibleAgent(agent: ProfileConfig["agent"]): "codex" | "kilo" | "opencode" | "zcode" {
-  return agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : agent === "kilo" ? "kilo" : "codex";
+function normalizeCodexCompatibleAgent(agent: ProfileConfig["agent"]): "codex" | "kilo" | "opencode" | "workbuddy" | "zcode" {
+  return agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : agent === "kilo" ? "kilo" : agent === "workbuddy" ? "workbuddy" : "codex";
 }
 
 function normalizeProfileAgent(agent: ProfileConfig["agent"]): ProfileConfig["agent"] {
-  return agent === "claude-design" ? "claude-design" : agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : agent === "kilo" ? "kilo" : agent === "pi" ? "pi" : agent === "grok" ? "grok" : agent === "kimi" ? "kimi" : agent === "codex" ? "codex" : "claude-code";
+  return agent === "claude-design" ? "claude-design" : agent === "zcode" ? "zcode" : agent === "workbuddy" ? "workbuddy" : agent === "opencode" ? "opencode" : agent === "kilo" ? "kilo" : agent === "pi" ? "pi" : agent === "grok" ? "grok" : agent === "kimi" ? "kimi" : agent === "codex" ? "codex" : "claude-code";
 }
 
 function normalizeProfileSurfaceForAgent(agent: ProfileConfig["agent"], surface: unknown): ProfileSurface {
-  return agent === "zcode" || agent === "claude-design" ? "app" : agent === "grok" || agent === "kimi" || agent === "pi" || agent === "kilo" ? "cli" : normalizeProfileSurface(surface);
+  return agent === "workbuddy" || agent === "zcode" || agent === "claude-design" ? "app" : agent === "grok" || agent === "kimi" || agent === "pi" || agent === "kilo" ? "cli" : normalizeProfileSurface(surface);
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
@@ -1680,7 +1695,9 @@ function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
     : agent === "opencode"
       ? "~/.config/opencode/opencode.jsonc"
       : agent === "kilo"
-        ? "~/.config/kilo/kilo.jsonc"
+      ? "~/.config/kilo/kilo.jsonc"
+      : agent === "workbuddy"
+        ? "~/.workbuddy/config.toml"
         : agent === "pi"
           ? "~/.pi/agent"
           : agent === "claude-design"

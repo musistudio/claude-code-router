@@ -10,7 +10,7 @@ import { loadOnboardingFinished, markOnboardingFinished } from "@ccr/core/config
 import { scanBotHandoffBluetoothTargets, scanBotHandoffWifiTargets } from "@ccr/core/agents/bot-gateway/handoff-scan-service";
 import { cancelBotGatewayQrLogin, startBotGatewayQrLogin, waitBotGatewayQrLogin } from "@ccr/core/agents/bot-gateway/qr-login-service";
 import { syncClaudeAppGatewayConfig, restoreClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
-import { findInstalledCodexAppExecutable } from "@ccr/core/agents/codex/app-launch";
+import { findInstalledCodexAppExecutable, findInstalledWorkbuddyAppExecutable } from "@ccr/core/agents/codex/app-launch";
 import { findInstalledOpenCodeAppExecutable } from "@ccr/core/agents/opencode/app-launch";
 import { loadAppConfig, saveApiKeysConfig, saveAppConfig } from "@ccr/core/config/config";
 import {
@@ -516,6 +516,7 @@ function logProfileApplyResult(result: ProfileApplyResult): void {
 function getCliAppInfo(): AppInfo {
   const chatgptAppPath = findInstalledCodexAppExecutable().executable;
   const opencodeAppPath = findInstalledOpenCodeAppExecutable().executable;
+  const workbuddyAppPath = findInstalledWorkbuddyAppExecutable().executable;
   return {
     ...(chatgptAppPath ? { chatgptAppPath } : {}),
     configDbFile: APP_CONFIG_DB_FILE,
@@ -528,7 +529,8 @@ function getCliAppInfo(): AppInfo {
     platform: process.platform,
     requestLogsDbFile: REQUEST_LOGS_DB_FILE,
     usageDbFile: USAGE_DB_FILE,
-    version: packageJson.version
+    version: packageJson.version,
+    ...(workbuddyAppPath ? { workbuddyAppPath } : {})
   };
 }
 

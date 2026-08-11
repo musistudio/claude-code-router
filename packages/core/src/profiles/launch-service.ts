@@ -7,7 +7,7 @@ import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { applyClaudeAppGatewayConfig, readClaudeAppGatewayApiKeyCandidates } from "@ccr/core/agents/claude-app/gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "@ccr/core/agents/claude-app/launch";
 import { claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
-import { codexDesktopAppName, launchCodexAppProfile, launchZcodeAppProfile, refreshCodexCompatibleAppProfileFiles } from "@ccr/core/agents/codex/app-launch";
+import { codexDesktopAppName, launchCodexAppProfile, launchWorkbuddyAppProfile, launchZcodeAppProfile, refreshCodexCompatibleAppProfileFiles, workbuddyDesktopAppName } from "@ccr/core/agents/codex/app-launch";
 import { CodexAppMediaPreviewBridge, shouldEnableCodexMediaPreviewBridge } from "@ccr/core/agents/codex/media-preview-bridge";
 import { findRunningOpenCodeAppPid, launchOpenCodeAppProfile, openCodeAppLaunchSignature } from "@ccr/core/agents/opencode/app-launch";
 import { writeOpenCodeGatewayConfig } from "@ccr/core/agents/opencode/profile-config";
@@ -127,7 +127,7 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
   if (profile.agent === "claude-code" && surface === "app") {
     return openClaudeAppProfile(config, profile);
   }
-  if ((profile.agent === "codex" || profile.agent === "zcode") && surface === "app") {
+  if ((profile.agent === "codex" || profile.agent === "workbuddy" || profile.agent === "zcode") && surface === "app") {
     return await openCodexAppProfile(config, profile);
   }
   if (profile.agent === "opencode" && surface === "app") {
@@ -260,7 +260,11 @@ async function openOpenCodeAppProfile(config: AppConfig, profile: ReturnType<typ
 }
 
 async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): Promise<ProfileOpenResult> {
-  const appName = profile.agent === "zcode" ? "ZCode App" : codexDesktopAppName;
+  const appName = profile.agent === "zcode"
+    ? "ZCode App"
+    : profile.agent === "workbuddy"
+      ? workbuddyDesktopAppName
+      : codexDesktopAppName;
   const profileGatewayConfig = await ensureProfileGateway(config, profile, appName);
   const existing = runningProfileApp(profile.id, "app");
   if (existing) {
@@ -297,7 +301,9 @@ async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof
   }
   const launch = profile.agent === "zcode"
     ? launchZcodeAppProfile(CONFIGDIR, profile, profileGatewayConfig)
-    : launchCodexAppProfile(CONFIGDIR, profile, profileGatewayConfig);
+    : profile.agent === "workbuddy"
+      ? launchWorkbuddyAppProfile(CONFIGDIR, profile, profileGatewayConfig)
+      : launchCodexAppProfile(CONFIGDIR, profile, profileGatewayConfig);
   const entry = registerProfileApp(profile, "app", launch);
   const started = await waitForProfileAppStart(entry, 12000);
   if (!started) {
