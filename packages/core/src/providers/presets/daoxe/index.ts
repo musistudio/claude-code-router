@@ -12,5 +12,5 @@ export const daoxeProviderPreset: ProviderPreset = {
   ],
   id: "daoxe",
   name: "DaoXE",
-  websiteUrl: "https://daoxe.com/?utm_source=github&utm_medium=organic&utm_campaign=ccr_provider"
+  websiteUrl: "https://daoxe.com/"
 };
