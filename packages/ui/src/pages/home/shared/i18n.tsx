@@ -266,6 +266,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Available models": "Available models",
       "Available after saving": "Available after saving",
       "Automatic": "Automatic",
+
+"Adapting the gateway, please wait…": "Adapting the gateway, please wait…",
       "Add credentials": "Add credentials",
       "Add the API key CCR will use for model requests.": "Add the API key CCR will use for model requests.",
       "A real model request succeeded with the selected provider settings.": "A real model request succeeded with the selected provider settings.",
@@ -782,6 +784,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Add API key": "添加 API 密钥",
       "Add key": "添加 Key",
       "Add credentials": "添加凭据",
+      "Adapting the gateway, please wait…": "正在适配网关，请稍候…",
       "Add the API key CCR will use for model requests.": "填写 CCR 发起模型请求时使用的 API Key。",
       "Add limit": "添加限制",
       "Add parameter": "添加参数",

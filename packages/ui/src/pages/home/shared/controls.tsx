@@ -10,7 +10,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { PopoverContent } from "@/components/ui/popover";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -61,7 +60,7 @@ export function Field({
   requirementLabel?: string;
 }) {
   return (
-    <Label className={cn("block min-w-0 space-y-1", className)}>
+    <div className={cn("block min-w-0 space-y-1", className)}>
       <span className="flex min-w-0 items-center gap-1.5">
         <span className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
         {requirement ? (
@@ -76,7 +75,7 @@ export function Field({
         ) : null}
       </span>
       {children}
-    </Label>
+    </div>
   );
 }
 

@@ -4,7 +4,7 @@ import {
   AppLanguagePreference, applyProviderProbeResult, AppToast, BotGatewaySavedConfig, buildExtensionList, claudeDesignRoutingConfigFromDraft,
   ClaudeDesignRoutingDraft, ClaudeDesignRoutingRuleDraft, cloneConfig, createApiKeyDraft, createApiKeyEditDraft,
   createApiKeyList, createClaudeDesignRoutingDraft, createClaudeDesignRoutingRuleDraft, createCursorProxyRoutingDraft, createCursorProxyRoutingRuleDraft, createEmptyAgentAnalysis,
-  copyTextToClipboard, createEmptyRequestLogPage, createEmptyUsageStats, createExtensionInstallDraft, createGeneratedApiKey, createPluginSettingsDraft, createProfileDraft,
+  copyTextToClipboard, createEmptyRequestLogPage, createEmptyUsageStats, createExtensionInstallDraft, createGeneratedApiKey, createPluginSettingsDraft, createProfileActionError, createProfileDraft, createRestartableTimer,
   createProfileDraftFromProfile, createProviderDraft, createProviderDraftFromDeepLinkPayload, createProviderDraftFromProvider, createRoutingRuleDraft, createRoutingRuleDraftFromRule,
   createVirtualModelDraft, createVirtualModelDraftFromProfile, DEFAULT_TRAY_WIDGETS, detectSystemLanguage, detectSystemTheme,
   enforceSingleEnabledGlobalProfilePerAgent,
@@ -23,7 +23,7 @@ import {
   OverviewWidgetConfig, parseProviderAccountDraft, pluginConfigPatchFromSettingsDraft,
   providerCredentialsFromDraft,
   persistLanguagePreference, PluginInstallCandidate, PluginMarketplaceEntry, PluginRoutingConfigTarget, PluginSettingsDraft, presetCapabilitiesFromDraft,
-  probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileAgentOptionsForRuntime, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
+  probeProviderCandidates, probeProviderDeepLinkPayload, profileActionErrorAfterGatewayStatus, profileAgentLabel, profileAgentOptionsForRuntime, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
   providerBaseUrl, providerCapabilitiesForProtocols, providerCapabilitiesForSave, providerConnectivityApiKeyFromDraft, providerConnectivityProviderPlugins, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerProtocolOptions, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
@@ -172,7 +172,11 @@ function App() {
   const [gatewayActionTargetActive, setGatewayActionTargetActive] = useState<boolean>();
   const [, setActionMessage] = useState("");
   const [, setActionError] = useState("");
-  const [profileActionError, setProfileActionError] = useState("");
+  const [profileActionErrorState, setProfileActionErrorState] = useState(() => createProfileActionError(""));
+  const profileActionError = profileActionErrorState?.message ?? "";
+  const setProfileActionError = (message: string) => {
+    setProfileActionErrorState(createProfileActionError(message));
+  };
   const [profileAddOpen, setProfileAddOpen] = useState(false);
   const [profileAgentTab, setProfileAgentTab] = useState<ProfileConfig["agent"]>("claude-code");
   const [profileDraft, setProfileDraft] = useState<AddProfileDraft>(() => createProfileDraft());
@@ -702,9 +706,37 @@ function App() {
   }, [draftConfig.plugins, pluginRoutingConfigTarget]);
   const providers = useMemo(() => draftConfig.Providers.map((provider, index) => ({ provider, index })), [draftConfig.Providers]);
   const gatewayEndpoint = gatewayStatus.endpoint || draftConfig.routerEndpoint;
-  const gatewayStartupError = gatewayStatus.state === "error"
+  // 重启/适配窗口内状态可能瞬时落到 error；只有持续 4 秒的错误才弹出失败横幅。
+  const [gatewayErrorPersistent, setGatewayErrorPersistent] = useState(false);
+  const gatewayErrorTimerRef = useRef<ReturnType<typeof createRestartableTimer>>();
+  useEffect(() => {
+    gatewayErrorTimerRef.current ??= createRestartableTimer(
+      () => setGatewayErrorPersistent(true),
+      4000
+    );
+    if (gatewayStatus.state === "error") {
+      setGatewayErrorPersistent(false);
+      gatewayErrorTimerRef.current.restart();
+    } else {
+      gatewayErrorTimerRef.current.cancel();
+      setGatewayErrorPersistent(false);
+    }
+    return () => gatewayErrorTimerRef.current?.cancel();
+  }, [gatewayStatus.state]);
+  useEffect(() => {
+    setProfileActionErrorState((current) => profileActionErrorAfterGatewayStatus(current, gatewayStatus.state));
+  }, [gatewayStatus.state]);
+  const gatewayErrorVisible = gatewayStatus.state === "error" && gatewayErrorPersistent;
+  const gatewayStartupError = gatewayErrorVisible
     ? translateAppErrorMessage(copy, gatewayStatus.lastError || "Service did not start.")
     : "";
+  const [gatewayConfigAdapting, setGatewayConfigAdapting] = useState(false);
+  const gatewayConfigAdaptingTimerRef = useRef<ReturnType<typeof createRestartableTimer>>();
+  useEffect(() => () => gatewayConfigAdaptingTimerRef.current?.cancel(), []);
+  const gatewayAdapting = !gatewayErrorVisible &&
+    (gatewayStatus.state === "starting" ||
+      gatewayStatus.state === "error" ||
+      gatewayConfigAdapting);
   const networkCaptureEnabled = draftConfig.proxy.enabled && draftConfig.proxy.captureNetwork;
   const visibleNavigation = useMemo(
     () => navigation.filter((item) =>
@@ -999,6 +1031,13 @@ function App() {
       const saved = await window.ccr.saveConfig(configWithTheme, saveOptions);
       syncConfigState(saved);
       setError("");
+      // 配置已变更，展示"适配中"提示一段时间（覆盖网关热推送/重启窗口）。
+      setGatewayConfigAdapting(true);
+      gatewayConfigAdaptingTimerRef.current ??= createRestartableTimer(
+        () => setGatewayConfigAdapting(false),
+        4000
+      );
+      gatewayConfigAdaptingTimerRef.current.restart();
       return true;
     } catch (error) {
       setError(formatError(error));
@@ -2609,11 +2648,29 @@ function App() {
       await refreshProfileRuntimeStatus();
       showToast(translateAppErrorMessage(copy, result.message));
     } catch (error) {
-      setProfileActionError(formatError(error));
+      await recordProfileOpenError(error);
     } finally {
       setProfileActionBusy((current) =>
         current?.profileId === profile.id && current.surface === "app" ? undefined : current
       );
+    }
+  }
+
+  async function recordProfileOpenError(error: unknown): Promise<void> {
+    const message = formatError(error);
+    if (!window.ccr?.getGatewayStatus) {
+      setProfileActionError(message);
+      return;
+    }
+    try {
+      const latestStatus = await window.ccr.getGatewayStatus();
+      setGatewayStatus((current) => preserveEqualPollingSnapshot(current, latestStatus));
+      setProfileActionErrorState(createProfileActionError(
+        message,
+        latestStatus.state === "running" ? "profile" : "gateway"
+      ));
+    } catch {
+      setProfileActionError(message);
     }
   }
 
@@ -2921,6 +2978,7 @@ function App() {
         <div className="relative flex h-full min-h-0 w-full min-w-0 overflow-hidden bg-background text-foreground max-[720px]:flex-col">
           {activeView === "onboarding" ? (
             <OnboardingLayout
+              gatewayAdapting={gatewayAdapting}
               gatewayStartupError={gatewayStartupError}
               loaded={configLoaded && onboardingStatusLoaded && providerPresetsLoaded}
               onboarding={{
@@ -2957,6 +3015,7 @@ function App() {
               config={draftConfig}
               copy={copy}
               gatewayActionBusy={gatewayActionBusy}
+              gatewayAdapting={gatewayAdapting}
               gatewayEndpoint={gatewayEndpoint}
               gatewayStartupError={gatewayStartupError}
               gatewayStatus={gatewayStatus}
