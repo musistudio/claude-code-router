@@ -4,7 +4,7 @@ import {
   AppLanguagePreference, applyProviderProbeResult, AppToast, BotGatewaySavedConfig, buildExtensionList, claudeDesignRoutingConfigFromDraft,
   ClaudeDesignRoutingDraft, ClaudeDesignRoutingRuleDraft, cloneConfig, createApiKeyDraft, createApiKeyEditDraft,
   createApiKeyList, createClaudeDesignRoutingDraft, createClaudeDesignRoutingRuleDraft, createCursorProxyRoutingDraft, createCursorProxyRoutingRuleDraft, createEmptyAgentAnalysis,
-  copyTextToClipboard, createEmptyRequestLogPage, createEmptyUsageStats, createExtensionInstallDraft, createGeneratedApiKey, createPluginSettingsDraft, createProfileDraft, createRestartableTimer,
+  copyTextToClipboard, createEmptyRequestLogPage, createEmptyUsageStats, createExtensionInstallDraft, createGeneratedApiKey, createPluginSettingsDraft, createProfileActionError, createProfileDraft, createRestartableTimer,
   createProfileDraftFromProfile, createProviderDraft, createProviderDraftFromDeepLinkPayload, createProviderDraftFromProvider, createRoutingRuleDraft, createRoutingRuleDraftFromRule,
   createVirtualModelDraft, createVirtualModelDraftFromProfile, DEFAULT_TRAY_WIDGETS, detectSystemLanguage, detectSystemTheme,
   enforceSingleEnabledGlobalProfilePerAgent,
@@ -23,7 +23,7 @@ import {
   OverviewWidgetConfig, parseProviderAccountDraft, pluginConfigPatchFromSettingsDraft,
   providerCredentialsFromDraft,
   persistLanguagePreference, PluginInstallCandidate, PluginMarketplaceEntry, PluginRoutingConfigTarget, PluginSettingsDraft, presetCapabilitiesFromDraft,
-  probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileAgentOptionsForRuntime, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
+  probeProviderCandidates, probeProviderDeepLinkPayload, profileActionErrorAfterGatewayStatus, profileAgentLabel, profileAgentOptionsForRuntime, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
   providerBaseUrl, providerCapabilitiesForProtocols, providerCapabilitiesForSave, providerConnectivityApiKeyFromDraft, providerConnectivityProviderPlugins, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerProtocolOptions, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
@@ -172,7 +172,11 @@ function App() {
   const [gatewayActionTargetActive, setGatewayActionTargetActive] = useState<boolean>();
   const [, setActionMessage] = useState("");
   const [, setActionError] = useState("");
-  const [profileActionError, setProfileActionError] = useState("");
+  const [profileActionErrorState, setProfileActionErrorState] = useState(() => createProfileActionError(""));
+  const profileActionError = profileActionErrorState?.message ?? "";
+  const setProfileActionError = (message: string) => {
+    setProfileActionErrorState(createProfileActionError(message));
+  };
   const [profileAddOpen, setProfileAddOpen] = useState(false);
   const [profileAgentTab, setProfileAgentTab] = useState<ProfileConfig["agent"]>("claude-code");
   const [profileDraft, setProfileDraft] = useState<AddProfileDraft>(() => createProfileDraft());
@@ -718,6 +722,9 @@ function App() {
       setGatewayErrorPersistent(false);
     }
     return () => gatewayErrorTimerRef.current?.cancel();
+  }, [gatewayStatus.state]);
+  useEffect(() => {
+    setProfileActionErrorState((current) => profileActionErrorAfterGatewayStatus(current, gatewayStatus.state));
   }, [gatewayStatus.state]);
   const gatewayErrorVisible = gatewayStatus.state === "error" && gatewayErrorPersistent;
   const gatewayStartupError = gatewayErrorVisible
@@ -2641,11 +2648,29 @@ function App() {
       await refreshProfileRuntimeStatus();
       showToast(translateAppErrorMessage(copy, result.message));
     } catch (error) {
-      setProfileActionError(formatError(error));
+      await recordProfileOpenError(error);
     } finally {
       setProfileActionBusy((current) =>
         current?.profileId === profile.id && current.surface === "app" ? undefined : current
       );
+    }
+  }
+
+  async function recordProfileOpenError(error: unknown): Promise<void> {
+    const message = formatError(error);
+    if (!window.ccr?.getGatewayStatus) {
+      setProfileActionError(message);
+      return;
+    }
+    try {
+      const latestStatus = await window.ccr.getGatewayStatus();
+      setGatewayStatus((current) => preserveEqualPollingSnapshot(current, latestStatus));
+      setProfileActionErrorState(createProfileActionError(
+        message,
+        latestStatus.state === "running" ? "profile" : "gateway"
+      ));
+    } catch {
+      setProfileActionError(message);
     }
   }
 

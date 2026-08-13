@@ -16,6 +16,7 @@ import type {
   AppConfig,
   BotGatewayRuntimeConfig,
   BotGatewaySavedConfig,
+  GatewayStatus,
   GatewayProviderConfig,
   ProfileConfig,
   ProfileOpenSurface,
@@ -36,6 +37,29 @@ import { endpointFromHostPort } from "./services";
 import { keyValueRowsFromRecord, recordFromKeyValueRows, stringRecordValue, validateProfileEnvRows } from "./virtual-models";
 import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { AddProfileDraft, BotGatewayConfigDraft } from "./types";
+
+export type ProfileActionErrorSource = "gateway" | "profile";
+
+export type ProfileActionErrorState = {
+  message: string;
+  source: ProfileActionErrorSource;
+};
+
+export function createProfileActionError(
+  message: string,
+  source: ProfileActionErrorSource = "profile"
+): ProfileActionErrorState | undefined {
+  return message ? { message, source } : undefined;
+}
+
+export function profileActionErrorAfterGatewayStatus(
+  current: ProfileActionErrorState | undefined,
+  gatewayState: GatewayStatus["state"]
+): ProfileActionErrorState | undefined {
+  return gatewayState === "running" && current?.source === "gateway"
+    ? undefined
+    : current;
+}
 
 export function gatewayEndpointFromConfig(config: AppConfig): string {
   if (config.routerEndpoint) {
