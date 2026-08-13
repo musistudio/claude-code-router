@@ -242,38 +242,79 @@ test("OverviewView compacts large account bento cards before showing a summary t
   assert.doesNotMatch(html, /overview-account-bento-more/);
 });
 
-test("OverviewView places compact bento account values below the meter label", () => {
-  const html = renderToStaticMarkup(
-    <OverviewView
-      overviewWidgets={[{ enabled: true, id: "account", size: "4:2", type: "account-balance", variant: "cards" }]}
-      providerAccounts={[
-        {
-          credentialId: "deepseek",
-          meters: [
-            {
-              id: "balance",
-              kind: "balance",
-              label: "Balance",
-              remaining: 21.59,
-              unit: "CNY"
-            }
-          ],
-          provider: "DeepSeek",
-          source: "standard",
-          status: "ok",
-          updatedAt: "2026-06-30T00:00:00.000Z"
-        },
-        ...accountSnapshots()
-      ]}
-      refreshProviderAccounts={() => undefined}
-      setUsageRange={() => undefined}
-      usageRange="30d"
-      usageStats={usageStats("30d")}
-      onWidgetsChange={() => undefined}
-    />
-  );
+test("OverviewView uses height-aware balance layouts at every account card size", () => {
+  const deepSeekAccount: ProviderAccountSnapshot = {
+    credentialId: "deepseek",
+    meters: [
+      {
+        id: "balance",
+        kind: "balance",
+        label: "Balance",
+        remaining: 21.59,
+        unit: "CNY"
+      },
+      {
+        id: "granted_balance",
+        kind: "balance",
+        label: "Granted balance",
+        remaining: 20,
+        unit: "CNY"
+      },
+      {
+        id: "topped_up_balance",
+        kind: "balance",
+        label: "Topped-up balance",
+        remaining: 1.59,
+        unit: "CNY"
+      }
+    ],
+    provider: "DeepSeek",
+    source: "standard",
+    status: "ok",
+    updatedAt: "2026-06-30T00:00:00.000Z"
+  };
+  const cardSizes = [
+    { columnClass: "col-span-1", layout: "compact", rowClass: "row-span-1", size: "1:1" },
+    { columnClass: "col-span-2", layout: "compact", rowClass: "row-span-1", size: "2:1" },
+    { columnClass: "col-span-1", layout: "expanded", rowClass: "row-span-2", size: "1:2" },
+    { columnClass: "col-span-2", layout: "expanded", rowClass: "row-span-2", size: "2:2" }
+  ] as const;
 
-  assert.match(html, /Balance<\/div><div class="mt-0\.5 truncate text-\[18px\][^"]*">¥21\.59<\/div>/);
+  for (const cardSize of cardSizes) {
+    const html = renderToStaticMarkup(
+      <OverviewView
+        overviewWidgets={[{
+          accountCardSizes: { "DeepSeek::deepseek": cardSize.size },
+          enabled: true,
+          id: "account",
+          size: "4:2",
+          type: "account-balance",
+          variant: "cards"
+        }]}
+        providerAccounts={[deepSeekAccount, accountSnapshots()[1]]}
+        refreshProviderAccounts={() => undefined}
+        setUsageRange={() => undefined}
+        usageRange="30d"
+        usageStats={usageStats("30d")}
+        onWidgetsChange={() => undefined}
+      />
+    );
+    const cardStart = html.indexOf('data-provider-account-sortable-id="DeepSeek::deepseek"');
+    assert.ok(cardStart >= 0, `DeepSeek card should render at size ${cardSize.size}`);
+    const nextCardStart = html.indexOf('data-provider-account-sortable-id=', cardStart + 1);
+    const cardHtml = html.slice(cardStart, nextCardStart >= 0 ? nextCardStart : undefined);
+
+    assert.match(cardHtml, new RegExp(`overview-account-bento-tile[^"]*${cardSize.columnClass}[^"]*${cardSize.rowClass}[^"]*" data-account-status="ok" data-provider-account-card-layout="${cardSize.layout}"`));
+    assert.match(cardHtml, /Balance/);
+    assert.match(cardHtml, /¥21\.59/);
+    assert.doesNotMatch(html, /Granted balance|Topped-up balance/);
+    assert.doesNotMatch(cardHtml, /overflow-y-auto|176px/);
+    if (cardSize.layout === "compact") {
+      assert.match(cardHtml, /data-provider-account-compact-meter="true"/);
+    } else {
+      assert.doesNotMatch(cardHtml, /data-provider-account-compact-meter="true"/);
+    }
+  }
 });
 
 test("OverviewView applies manual bento account card sizes", () => {
