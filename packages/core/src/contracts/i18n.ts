@@ -127,6 +127,10 @@ const zhPatternErrorMessages: PatternTranslator[] = [
     translate: (appName, profile) => `${appName} 已使用 ${profile} 运行。`
   },
   {
+    pattern: /^ZCode is already running\. Switched CCR to (.+)\. Open ZCode > Settings > Model Settings and click Refresh to apply the latest configuration\.$/,
+    translate: (profile) => `ZCode 已在运行。CCR 已切换到 ${profile}。请在 ZCode 中打开「设置 → 模型设置」，点击「刷新」以应用最新配置。`
+  },
+  {
     pattern: /^Opened (.+ App) with (.+)\.$/,
     translate: (appName, profile) => `已使用 ${profile} 打开 ${appName}。`
   },
