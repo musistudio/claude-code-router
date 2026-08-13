@@ -5,7 +5,9 @@ import {
   isProfileAppRunningWithProbeForTest,
   profileStopPlanForTest,
   rebindRunningProfileAppForTest,
-  windowsProfileProcessSignalArgsForTest
+  windowsProfileProcessSignalArgsForTest,
+  windowsProfileProcessSignalFailureForTest,
+  zcodeForceStopFailureMessageForTest
 } from "@ccr/core/profiles/launch-service.ts";
 
 const userDataDir = "/Users/example/.claude-code-router/profiles/codex/codex/.claude-code-router/codex-app-user-data/codex";
@@ -115,6 +117,36 @@ test("force flag does not change the stop signal for other apps", () => {
     "4321",
     "/T"
   ]);
+});
+
+test("Windows process stop captures taskkill failures instead of discarding them", () => {
+  assert.equal(windowsProfileProcessSignalFailureForTest({
+    status: 0,
+    stderr: "",
+    stdout: "SUCCESS"
+  }), undefined);
+  assert.deepEqual(windowsProfileProcessSignalFailureForTest({
+    status: 1,
+    stderr: "ERROR: Access is denied.\r\n",
+    stdout: ""
+  }), {
+    detail: "ERROR: Access is denied.",
+    exitCode: 1
+  });
+  assert.deepEqual(windowsProfileProcessSignalFailureForTest({
+    error: new Error("spawn taskkill failed"),
+    status: null,
+    stderr: "",
+    stdout: ""
+  }), {
+    detail: "spawn taskkill failed"
+  });
+});
+
+test("ZCode force-stop failure guidance matches the operating system", () => {
+  assert.match(zcodeForceStopFailureMessageForTest("win32"), /Task Manager/);
+  assert.match(zcodeForceStopFailureMessageForTest("darwin"), /Activity Monitor/);
+  assert.match(zcodeForceStopFailureMessageForTest("linux"), /system monitor/);
 });
 
 test("switching ZCode profiles reuses one process and removes the old runtime entry", () => {

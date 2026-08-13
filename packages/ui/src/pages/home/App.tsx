@@ -21,7 +21,7 @@ import {
   normalizeProfileItem, normalizeProviderBaseUrl, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
   OverviewWidgetConfig, parseProviderAccountDraft, pluginConfigPatchFromSettingsDraft,
-  providerCredentialsFromDraft,
+  profileStopFailureDetail, providerCredentialsFromDraft,
   persistLanguagePreference, PluginInstallCandidate, PluginMarketplaceEntry, PluginRoutingConfigTarget, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileAgentOptionsForRuntime, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
@@ -2785,8 +2785,13 @@ function App() {
       });
       await refreshProfileRuntimeStatus();
       if (!result.stopped) {
+        const failureDetail = profileStopFailureDetail(result.failure, (value) => translateText(copy, value));
         setProfileForceStopDialog((current) => current?.profile.id === target.profile.id
-          ? { ...current, busy: false, error: translateAppErrorMessage(copy, result.message) }
+          ? {
+              ...current,
+              busy: false,
+              error: [translateAppErrorMessage(copy, result.message), failureDetail].filter(Boolean).join(" ")
+            }
           : current);
         return;
       }

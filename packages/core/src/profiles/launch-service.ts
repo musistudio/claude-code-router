@@ -2,7 +2,7 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { assertAvailableGatewayModels, type AppConfig, type ProfileConfig, type ProfileOpenCommandResult, type ProfileOpenRequest, type ProfileOpenResult, type ProfileRuntimeEntry, type ProfileRuntimeStatus, type ProfileStopRequest, type ProfileStopResult } from "@ccr/core/contracts/app";
+import { assertAvailableGatewayModels, type AppConfig, type ProfileConfig, type ProfileOpenCommandResult, type ProfileOpenRequest, type ProfileOpenResult, type ProfileRuntimeEntry, type ProfileRuntimeStatus, type ProfileStopFailure, type ProfileStopRequest, type ProfileStopResult } from "@ccr/core/contracts/app";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { applyClaudeAppGatewayConfig, readClaudeAppGatewayApiKeyCandidates } from "@ccr/core/agents/claude-app/gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "@ccr/core/agents/claude-app/launch";
@@ -194,7 +194,7 @@ async function openOpenCodeAppProfile(config: AppConfig, profile: ReturnType<typ
         surface: "app"
       };
     }
-    const stopped = await stopRunningProfileApp(profileRuntimeKey(profile.id, "app"), existing);
+    const { stopped } = await stopRunningProfileApp(profileRuntimeKey(profile.id, "app"), existing);
     if (!stopped && isProfileAppRunning(existing)) {
       throw new Error(
         `${appName} is still running with stale settings for ${profile.name || profile.id}. ` +
@@ -205,7 +205,7 @@ async function openOpenCodeAppProfile(config: AppConfig, profile: ReturnType<typ
   }
   const otherProfile = runningProfileAppForAgent("opencode", "app", profile.id);
   if (otherProfile) {
-    const stopped = await stopRunningProfileApp(profileRuntimeKey(otherProfile.profileId, "app"), otherProfile);
+    const { stopped } = await stopRunningProfileApp(profileRuntimeKey(otherProfile.profileId, "app"), otherProfile);
     if (!stopped && isProfileAppRunning(otherProfile)) {
       throw new Error(
         `OpenCode App is already running with ${otherProfile.profileName || otherProfile.profileId}. ` +
@@ -818,7 +818,8 @@ export async function stopProfileFromCcr(config: AppConfig, request: ProfileStop
     };
   }
 
-  const stopped = await stopRunningProfileApp(key, entry, stopPlan.signal);
+  const stopAttempt = await stopRunningProfileApp(key, entry, stopPlan.signal);
+  const { stopped } = stopAttempt;
   if (stopped) {
     if (profile.agent === "claude-code") {
       stopClaudeAppBotWorker(profile.id);
@@ -833,8 +834,9 @@ export async function stopProfileFromCcr(config: AppConfig, request: ProfileStop
     message: stopped
       ? `Stopped ${profile.name || profile.id}.`
       : profile.agent === "zcode"
-        ? "ZCode could not be force quit. Close it manually and try again."
+        ? zcodeForceStopFailureMessage(process.platform)
         : `Stop requested for ${profile.name || profile.id}. It may take a moment to close.`,
+    ...(stopAttempt.failure ? { failure: stopAttempt.failure } : {}),
     profileId: profile.id,
     profileName: profile.name,
     stopped,
@@ -1097,6 +1099,30 @@ type ProfileStopPlan =
       signal: "SIGKILL" | "SIGTERM";
     };
 
+type ProfileProcessSignalResult = {
+  detail?: string;
+  exitCode?: number;
+  ok: boolean;
+  pid?: number;
+};
+
+type ProfileAppStopAttempt = {
+  failure?: ProfileStopFailure;
+  stopped: boolean;
+};
+
+type WindowsProfileProcessCommandResult = {
+  error?: Error;
+  status: number | null;
+  stderr?: Buffer | string | null;
+  stdout?: Buffer | string | null;
+};
+
+type WindowsProfileProcessCommandFailure = {
+  detail: string;
+  exitCode?: number;
+};
+
 function profileStopPlan(agent: ProfileConfig["agent"], external: boolean, force: boolean): ProfileStopPlan {
   if (agent === "zcode" && !force) {
     return { external, requiresForceConfirmation: true };
@@ -1119,23 +1145,40 @@ async function stopRunningProfileApp(
   key: string,
   entry: RunningProfileApp,
   signal: "SIGKILL" | "SIGTERM" = "SIGTERM"
-): Promise<boolean> {
+): Promise<ProfileAppStopAttempt> {
   if (!isProfileAppRunning(entry)) {
     cleanupProfileAppEntry(key, entry);
-    return false;
+    return { stopped: true };
   }
 
   entry.stopRequested = true;
-  sendProfileProcessSignal(profileAppMainPid(entry) ?? entry.pid, signal);
+  const signalResult = sendProfileProcessSignal(profileAppMainPid(entry) ?? entry.pid, signal);
   if (await waitForProfileAppExit(entry, 8000)) {
     cleanupProfileAppEntry(key, entry);
-    return true;
+    return { stopped: true };
   }
 
   // Stop failed: clear the flag so the runtime status keeps reporting this
   // still-running app instead of hiding it behind a start button.
   entry.stopRequested = false;
-  return false;
+  const failure: ProfileStopFailure = signalResult.ok
+    ? {
+        code: "process_still_running",
+        ...(signalResult.exitCode !== undefined ? { exitCode: signalResult.exitCode } : {}),
+        ...(signalResult.pid ? { pid: signalResult.pid } : {})
+      }
+    : {
+        code: signalResult.pid ? "process_signal_failed" : "process_id_unavailable",
+        ...(signalResult.detail ? { detail: signalResult.detail } : {}),
+        ...(signalResult.exitCode !== undefined ? { exitCode: signalResult.exitCode } : {}),
+        ...(signalResult.pid ? { pid: signalResult.pid } : {})
+      };
+  console.warn(
+    `[profile] Failed to stop process: signal=${signal} pid=${failure.pid ?? "unknown"}` +
+    `${failure.exitCode !== undefined ? ` exitCode=${failure.exitCode}` : ""}` +
+    `${failure.detail ? ` detail=${failure.detail}` : " process remained running after 8000ms"}`
+  );
+  return { failure, stopped: false };
 }
 
 function profileRuntimeKey(profileId: string, surface: ProfileOpenRequest["surface"]): string {
@@ -1284,24 +1327,58 @@ function windowsProfileAppMainPid(marker: string): number | undefined {
   }
 }
 
-function sendProfileProcessSignal(pid: number | undefined, signal: NodeJS.Signals): void {
+function sendProfileProcessSignal(pid: number | undefined, signal: NodeJS.Signals): ProfileProcessSignalResult {
   if (!pid) {
-    return;
+    return { detail: "No process ID was available.", ok: false };
   }
   if (process.platform === "win32") {
     const args = windowsProfileProcessSignalArgs(pid, signal);
-    spawnSync(windowsSystemCommand("taskkill.exe"), args, {
-      stdio: "ignore",
+    const result = spawnSync(windowsSystemCommand("taskkill.exe"), args, {
+      encoding: "utf8",
       windowsHide: true
     });
-    return;
+    const failure = windowsProfileProcessSignalFailure(result);
+    return failure
+      ? { ...failure, ok: false, pid }
+      : { exitCode: 0, ok: true, pid };
   }
 
   try {
     process.kill(pid, signal);
-  } catch {
-    // The app process may have already exited.
+    return { ok: true, pid };
+  } catch (error) {
+    return { detail: formatError(error), ok: false, pid };
   }
+}
+
+function windowsProfileProcessSignalFailure(
+  result: WindowsProfileProcessCommandResult
+): WindowsProfileProcessCommandFailure | undefined {
+  if (result.error) {
+    return {
+      detail: formatError(result.error),
+      ...(typeof result.status === "number" ? { exitCode: result.status } : {})
+    };
+  }
+  if (result.status === 0) {
+    return undefined;
+  }
+  const detail = compactProcessCommandOutput(result.stderr) || compactProcessCommandOutput(result.stdout) ||
+    (result.status === null ? "taskkill did not return an exit code." : `taskkill exited with code ${result.status}.`);
+  return {
+    detail,
+    ...(typeof result.status === "number" ? { exitCode: result.status } : {})
+  };
+}
+
+function compactProcessCommandOutput(value: Buffer | string | null | undefined): string | undefined {
+  const normalized = (Buffer.isBuffer(value) ? value.toString("utf8") : value || "")
+    .trim()
+    .replace(/\s+/g, " ");
+  if (!normalized) {
+    return undefined;
+  }
+  return normalized.length <= 500 ? normalized : `${normalized.slice(0, 499)}…`;
 }
 
 function windowsProfileProcessSignalArgs(pid: number, signal: NodeJS.Signals): string[] {
@@ -1314,6 +1391,26 @@ function windowsProfileProcessSignalArgs(pid: number, signal: NodeJS.Signals): s
 
 export function windowsProfileProcessSignalArgsForTest(pid: number, signal: NodeJS.Signals): string[] {
   return windowsProfileProcessSignalArgs(pid, signal);
+}
+
+export function windowsProfileProcessSignalFailureForTest(
+  result: WindowsProfileProcessCommandResult
+): WindowsProfileProcessCommandFailure | undefined {
+  return windowsProfileProcessSignalFailure(result);
+}
+
+function zcodeForceStopFailureMessage(platform: NodeJS.Platform): string {
+  if (platform === "win32") {
+    return "ZCode could not be force quit. Close it in Task Manager and try again.";
+  }
+  if (platform === "darwin") {
+    return "ZCode could not be force quit. Close it in Activity Monitor and try again.";
+  }
+  return "ZCode could not be force quit. Close it in your system monitor and try again.";
+}
+
+export function zcodeForceStopFailureMessageForTest(platform: NodeJS.Platform): string {
+  return zcodeForceStopFailureMessage(platform);
 }
 
 async function waitForProfileAppStart(entry: Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "spawnError" | "userDataDir">, timeoutMs: number): Promise<boolean> {
