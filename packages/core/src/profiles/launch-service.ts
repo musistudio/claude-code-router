@@ -86,6 +86,7 @@ type RunningProfileApp = ProfileRuntimeEntry & {
   launchSignature?: string;
   monitor?: NodeJS.Timeout;
   pidIsLauncher?: boolean;
+  processMarker?: string;
   spawnError?: string;
   stopRequested?: boolean;
   userDataDir: string;
@@ -864,6 +865,7 @@ function registerProfileApp(
     launchSignature: launch.launchSignature,
     pid: launch.pid,
     pidIsLauncher: launch.pidIsLauncher,
+    ...(profile.agent === "zcode" ? { processMarker: zcodeRunningAppMarker(profile) } : {}),
     profileId: profile.id,
     profileName: profile.name,
     startedAt: new Date().toISOString(),
@@ -911,6 +913,7 @@ function registerExistingProfileApp(
     // liveness must be checked by pid — the userDataDir marker probe cannot
     // see instances whose command line carries no user-data-dir argument.
     pidIsLauncher: false,
+    ...(profile.agent === "zcode" ? { processMarker: zcodeRunningAppMarker(profile) } : {}),
     profileId: profile.id,
     profileName: profile.name,
     startedAt: new Date().toISOString(),
@@ -972,10 +975,10 @@ function stopCodexAppProfileResources(profileId: string): void {
 }
 
 export function rebindRunningProfileAppForTest(
-  entries: Array<Pick<RunningProfileApp, "agent" | "command" | "pid" | "profileId" | "profileName" | "startedAt" | "state" | "surface" | "userDataDir">>,
+  entries: Array<Pick<RunningProfileApp, "agent" | "command" | "pid" | "profileId" | "profileName" | "startedAt" | "state" | "surface" | "userDataDir"> & Partial<Pick<RunningProfileApp, "processMarker">>>,
   activeProfileId: string,
   nextProfile: { id: string; name: string; userDataDir: string }
-): { keys: string[]; pid: number | undefined; profileId: string; startedAt: string; stoppedProfileIds: string[] } {
+): { keys: string[]; pid: number | undefined; processMarker?: string; profileId: string; startedAt: string; stoppedProfileIds: string[] } {
   const registry = new Map<string, RunningProfileApp>();
   for (const value of entries) {
     registry.set(profileRuntimeKey(value.profileId, value.surface), { ...value } as RunningProfileApp);
@@ -1002,6 +1005,7 @@ export function rebindRunningProfileAppForTest(
   return {
     keys: [...registry.keys()].sort(),
     pid: rebound.pid,
+    ...(rebound.processMarker ? { processMarker: rebound.processMarker } : {}),
     profileId: rebound.profileId,
     startedAt: rebound.startedAt,
     stoppedProfileIds
@@ -1197,7 +1201,7 @@ function isProcessAlive(pid: number | undefined): boolean {
   }
 }
 
-type ProfileAppRunningEntry = Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "userDataDir">;
+type ProfileAppRunningEntry = Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "processMarker" | "userDataDir">;
 
 type ProfileAppProcessProbe = {
   isProcessAlive: (pid: number | undefined) => boolean;
@@ -1227,11 +1231,12 @@ export function isProfileAppRunningWithProbeForTest(
   return profileAppRunningWithProbe(entry, probe);
 }
 
-function profileAppMainPid(entry: Pick<RunningProfileApp, "userDataDir">): number | undefined {
-  if (!entry.userDataDir) {
+function profileAppMainPid(entry: Pick<RunningProfileApp, "processMarker" | "userDataDir">): number | undefined {
+  const rawMarker = entry.processMarker || entry.userDataDir;
+  if (!rawMarker) {
     return undefined;
   }
-  const marker = normalizeProcessPath(entry.userDataDir);
+  const marker = normalizeProcessPath(rawMarker);
   if (process.platform === "win32") {
     return windowsProfileAppMainPid(marker);
   }
@@ -1274,6 +1279,7 @@ function isProfileAppMainProcessCommand(command: string, marker: string): boolea
   // directory in --database. They are helpers, not evidence of a live window.
   if (/(?:^|[\\/])(?:browser_)?crashpad_handler(?:\.exe)?(?:\s|$)/i.test(command)) return false;
   if (/\bptype=crashpad-handler\b/i.test(command)) return false;
+  if (new RegExp(profileAppServerCommandPattern, "i").test(command)) return false;
   return normalizeProcessPath(command).includes(marker);
 }
 
@@ -1284,6 +1290,8 @@ export function isProfileAppMainProcessCommandForTest(command: string, userDataD
 function normalizeProcessPath(value: string): string {
   return process.platform === "win32" ? value.replace(/\\/g, "/").toLowerCase() : value;
 }
+
+const profileAppServerCommandPattern = "(?:^|[\\\\/])(?:zcode|codex)\\.cjs[\\\"']?\\s+app-server(?:\\s|$)";
 
 function windowsProfileAppMainPid(marker: string): number | undefined {
   const script = [
@@ -1298,7 +1306,8 @@ function windowsProfileAppMainPid(marker: string): number | undefined {
     "  (($_.CommandLine -replace '\\\\', '/').ToLowerInvariant().Contains($marker)) -and",
     "  ($_.CommandLine -notmatch '\\s--type=') -and",
     "  ($_.CommandLine -notmatch '(?i)(?:browser_)?crashpad_handler(?:\\.exe)?(?:\\s|$)') -and",
-    "  ($_.CommandLine -notmatch '(?i)ptype=crashpad-handler')",
+    "  ($_.CommandLine -notmatch '(?i)ptype=crashpad-handler') -and",
+    `  ($_.CommandLine -notmatch ${powershellString(profileAppServerCommandPattern)})`,
     "} | Sort-Object ProcessId | Select-Object -First 1 -ExpandProperty ProcessId"
   ].join("\n");
   try {

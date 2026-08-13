@@ -23,6 +23,15 @@ test("profile app process detection ignores persistent Chromium helper processes
   assert.equal(isProfileAppMainProcessCommandForTest("/Applications/ChatGPT.app/Contents/MacOS/ChatGPT", userDataDir), false);
 });
 
+test("ZCode process detection ignores app-server workers that share the executable", () => {
+  const executable = "D:/zcode/ZCode.exe";
+  const main = `${executable} --remote-debugging-port=0 --user-data-dir=C:/Users/example/.zcode`;
+  const appServer = `${executable} D:/zcode/resources/glm/zcode.cjs app-server --stdio`;
+
+  assert.equal(isProfileAppMainProcessCommandForTest(main, executable), true);
+  assert.equal(isProfileAppMainProcessCommandForTest(appServer, executable), false);
+});
+
 test("profile app liveness prefers a tracked application pid before process discovery", () => {
   let discoveryCalls = 0;
   const running = isProfileAppRunningWithProbeForTest(
@@ -157,6 +166,7 @@ test("switching ZCode profiles reuses one process and removes the old runtime en
         agent: "zcode",
         command: "ZCode App",
         pid: 4321,
+        processMarker: "C:/Apps/ZCode/ZCode.exe",
         profileId: "zcode-a",
         profileName: "ZCode A",
         startedAt,
@@ -176,6 +186,7 @@ test("switching ZCode profiles reuses one process and removes the old runtime en
   assert.deepEqual(result, {
     keys: ["app:zcode-b"],
     pid: 4321,
+    processMarker: "C:/Apps/ZCode/ZCode.exe",
     profileId: "zcode-b",
     startedAt,
     stoppedProfileIds: ["zcode-a"]
