@@ -2709,7 +2709,11 @@ function ProviderAccountSinglePanel({
   const t = useAppText();
   const quotaMeters = providerAccountQuotaMeters(account);
   const balanceMeter = primaryProviderAccountBalanceMeter(account);
-  const meters = providerAccountMetersForDisplayOrdered(account, providerAccountMeterLimit(dimensions, true, variant));
+  const meterLimit = providerAccountMeterLimitAvoidingOrphanExtra(
+    account,
+    providerAccountMeterLimit(dimensions, true, variant)
+  );
+  const meters = providerAccountMetersForDisplayOrdered(account, meterLimit);
   const showQuotaVisual = providerAccountUsesQuotaVisual(variant) && quotaMeters.length > 0;
 
   return (
@@ -2733,9 +2737,6 @@ function ProviderAccountSinglePanel({
           {meters.map((meter) => (
             <ProviderAccountMeterLine account={account} dimensions={dimensions} key={meter.id} meter={meter} single onRefresh={onRefresh} />
           ))}
-          {providerAccountShowExtraCount(dimensions) && account.meters.length > meters.length ? (
-            <div className="truncate text-[10px] text-muted-foreground">+{account.meters.length - meters.length}</div>
-          ) : null}
         </div>
       ) : (
         <div className="truncate text-[12px] text-muted-foreground">{account.message || account.errors?.[0]?.message || t("Unavailable")}</div>
@@ -2770,18 +2771,22 @@ function ProviderAccountSummaryCard({
   const t = useAppText();
   const quotaMeters = providerAccountQuotaMeters(account);
   const balanceMeter = primaryProviderAccountBalanceMeter(account);
-  const meters = providerAccountMetersForDisplayOrdered(account, providerAccountMeterLimit(dimensions, false, variant));
   const showQuotaVisual = providerAccountUsesQuotaVisual(variant) && quotaMeters.length > 0;
   const primaryMeter = primaryProviderAccountDisplayMeter(account);
-  const secondaryMeters = primaryMeter
-    ? meters.filter((meter) => meter !== primaryMeter).slice(0, providerAccountBentoSecondaryLimit(dimensions))
-    : [];
-  const extraMeterCount = primaryMeter
-    ? Math.max(0, account.meters.length - 1 - secondaryMeters.length)
-    : Math.max(0, account.meters.length - meters.length);
-  const primaryProgress = primaryMeter && isProviderAccountQuotaMeter(primaryMeter) ? providerAccountMeterProgress(primaryMeter) : undefined;
   const cardBentoSpan = bentoSpan ?? providerAccountBentoSpan(account, dimensions);
   const compactBento = cardBentoSpan.height === 1;
+  const baseBentoSecondaryLimit = providerAccountBentoSecondaryLimit(dimensions, cardBentoSpan);
+  const bentoSecondaryLimit = compactBento
+    ? baseBentoSecondaryLimit
+    : Math.max(baseBentoSecondaryLimit, providerAccountMeterLimitAvoidingOrphanExtra(account, 1 + baseBentoSecondaryLimit) - 1);
+  const meterLimit = variant === "cards" && !compactBento
+    ? Math.max(providerAccountMeterLimit(dimensions, false, variant), 1 + bentoSecondaryLimit)
+    : providerAccountMeterLimit(dimensions, false, variant);
+  const meters = providerAccountMetersForDisplayOrdered(account, meterLimit);
+  const secondaryMeters = primaryMeter
+    ? meters.filter((meter) => meter !== primaryMeter).slice(0, bentoSecondaryLimit)
+    : [];
+  const primaryProgress = primaryMeter && isProviderAccountQuotaMeter(primaryMeter) ? providerAccountMeterProgress(primaryMeter) : undefined;
   const resizeHandle = editing && onChangeCardSize
     ? <ProviderAccountCardResizeHandle account={account} currentSize={providerAccountBentoSizeFromSpan(cardBentoSpan)} maxHeight={providerAccountBentoRowCount(dimensions) >= 2 ? 2 : 1} maxWidth={providerAccountBentoColumnCount(dimensions, 2) >= 2 ? 2 : 1} onResize={onChangeCardSize} />
     : null;
@@ -2789,26 +2794,34 @@ function ProviderAccountSummaryCard({
   if (variant === "cards") {
     if (compactBento) {
       return (
-        <div className={cn("overview-account-bento-tile overview-nested-surface group/account-card relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden border p-2", providerAccountBentoSpanClass(cardBentoSpan))} data-account-status={account.status} data-provider-account-card-layout="compact">
-          <div className="flex min-h-0 min-w-0 flex-1 items-center gap-2">
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <ProviderAccountLogo account={account} className="h-7 w-7 rounded-md" providers={providers} />
+        <div className={cn("overview-account-bento-tile overview-nested-surface group/account-card relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden border p-2.5", providerAccountBentoSpanClass(cardBentoSpan))} data-account-status={account.status} data-provider-account-card-layout="compact">
+          <div className="flex min-w-0 shrink-0 items-start justify-between gap-2.5">
+            <div className="flex min-w-0 flex-1 items-center gap-2.5" data-provider-account-compact-brand="true">
+              <ProviderAccountLogo account={account} className="h-8 w-8 rounded-md shadow-sm" providers={providers} />
               <div className="min-w-0">
-                <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
+                <div className="truncate text-[13px] font-semibold leading-tight">{providerAccountSnapshotLabel(account)}</div>
               </div>
-            </div>
-            <div className="min-w-0 max-w-[45%] shrink-0 text-right" data-provider-account-compact-meter="true">
-              <div className="truncate text-[10px] font-medium leading-none text-muted-foreground">
-                {primaryMeter ? formatProviderAccountMeterTitle(primaryMeter, t) : account.message || account.errors?.[0]?.message || t("Unavailable")}
-              </div>
-              {primaryMeter ? <div className="mt-0.5 truncate text-[18px] font-semibold leading-none tracking-tight">{formatProviderAccountMeterValue(primaryMeter, t)}</div> : null}
             </div>
             {dragHandle || providerAccountShowRefresh(dimensions) ? (
-              <div className="flex shrink-0 items-center gap-1">
+              <div className="flex shrink-0 items-center gap-1" data-provider-account-compact-actions="true">
                 {dragHandle}
-                {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
+                {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} className="h-7 w-7" iconClassName="h-4 w-4" refreshing={refreshing} onRefresh={onRefresh} /> : null}
               </div>
             ) : null}
+          </div>
+          <div className="mt-auto min-h-0 min-w-0 pt-2">
+            {primaryMeter ? (
+              <div className="min-w-0 text-right" data-provider-account-compact-meter="true">
+                <div className="truncate text-[10px] font-semibold leading-none text-muted-foreground">
+                  {formatProviderAccountMeterTitle(primaryMeter, t)}
+                </div>
+                <div className="mt-1 truncate text-[19px] font-semibold leading-none tracking-tight">{formatProviderAccountMeterValue(primaryMeter, t)}</div>
+              </div>
+            ) : (
+              <div className="line-clamp-2 min-w-0 text-[11px] font-medium leading-snug text-muted-foreground" data-provider-account-compact-message="true">
+                {account.message || account.errors?.[0]?.message || t("Unavailable")}
+              </div>
+            )}
           </div>
           {primaryProgress !== undefined && providerAccountShowProgress(dimensions) ? (
             <div className="overview-account-bento-track mt-1.5 h-1.5 shrink-0 overflow-hidden rounded-full">
@@ -2857,14 +2870,11 @@ function ProviderAccountSummaryCard({
               ) : null}
             </div>
 
-            {secondaryMeters.length > 0 || (providerAccountShowExtraCount(dimensions) && extraMeterCount > 0) ? (
+            {secondaryMeters.length > 0 ? (
               <div className="mt-auto min-h-0 space-y-1.5 border-t border-border/45 pt-2">
                 {secondaryMeters.map((meter) => (
                   <ProviderAccountMeterLine account={account} compact dimensions={dimensions} key={meter.id} meter={meter} onRefresh={onRefresh} />
                 ))}
-                {providerAccountShowExtraCount(dimensions) && extraMeterCount > 0 ? (
-                  <div className="truncate text-[10px] text-muted-foreground">+{extraMeterCount}</div>
-                ) : null}
               </div>
             ) : null}
           </>
@@ -2903,9 +2913,6 @@ function ProviderAccountSummaryCard({
           {meters.map((meter) => (
             <ProviderAccountMeterLine account={account} dimensions={dimensions} key={meter.id} meter={meter} onRefresh={onRefresh} />
           ))}
-          {providerAccountShowExtraCount(dimensions) && account.meters.length > meters.length ? (
-            <div className="truncate text-[10px] text-muted-foreground">+{account.meters.length - meters.length}</div>
-          ) : null}
         </div>
       ) : (
         <div className="mt-2 truncate text-[12px] text-muted-foreground">{account.message || account.errors?.[0]?.message || t("Unavailable")}</div>
@@ -3201,10 +3208,14 @@ function providerAccountIconUrl(account: ProviderAccountSnapshot, providers: Gat
 
 function ProviderAccountRefreshButton({
   account,
+  className,
+  iconClassName,
   onRefresh,
   refreshing = false
 }: {
   account: ProviderAccountSnapshot;
+  className?: string;
+  iconClassName?: string;
   onRefresh?: () => void | Promise<void>;
   refreshing?: boolean;
 }) {
@@ -3213,7 +3224,7 @@ function ProviderAccountRefreshButton({
   return (
     <button
       aria-label={label}
-      className="m-0 inline-flex shrink-0 appearance-none items-center justify-center border-0 bg-transparent p-0 text-muted-foreground shadow-none transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-45"
+      className={cn("m-0 inline-flex h-6 w-6 shrink-0 appearance-none items-center justify-center rounded-md border-0 bg-transparent p-0 text-muted-foreground shadow-none transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-45", className)}
       disabled={refreshing || !onRefresh}
       title={`${label} (${account.status})`}
       type="button"
@@ -3222,7 +3233,7 @@ function ProviderAccountRefreshButton({
         void onRefresh?.();
       }}
     >
-      {refreshing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+      {refreshing ? <LoaderCircle className={cn("h-3.5 w-3.5 animate-spin", iconClassName)} /> : <RefreshCw className={cn("h-3.5 w-3.5", iconClassName)} />}
     </button>
   );
 }
@@ -4090,6 +4101,10 @@ function providerAccountMeterLimit(dimensions: OverviewWidgetDimensions, single:
   return 2;
 }
 
+function providerAccountMeterLimitAvoidingOrphanExtra(account: ProviderAccountSnapshot, maxCount: number): number {
+  return account.meters.length - maxCount === 1 ? maxCount + 1 : maxCount;
+}
+
 function providerAccountContentPaddingClass(dimensions: OverviewWidgetDimensions): string {
   return dimensions.height <= 1 || dimensions.width <= 1 ? "p-2" : "p-3";
 }
@@ -4102,8 +4117,10 @@ function providerAccountBentoGridRowClass(): string {
   return "auto-rows-fr";
 }
 
-function providerAccountBentoSecondaryLimit(dimensions: OverviewWidgetDimensions): number {
-  if (dimensions.height <= 1 || dimensions.width <= 1) return 0;
+function providerAccountBentoSecondaryLimit(dimensions: OverviewWidgetDimensions, span?: ProviderAccountBentoSpan): number {
+  if (span?.height === 1 || dimensions.height <= 1) return 0;
+  if (span?.height === 2) return dimensions.height >= 3 || dimensions.width >= 2 ? 2 : 1;
+  if (dimensions.width <= 1) return 1;
   if (dimensions.height === 2) return 1;
   return 2;
 }
@@ -4254,10 +4271,6 @@ function providerAccountShowRefresh(dimensions: OverviewWidgetDimensions): boole
 
 function providerAccountShowProgress(dimensions: OverviewWidgetDimensions): boolean {
   return dimensions.height >= 1;
-}
-
-function providerAccountShowExtraCount(dimensions: OverviewWidgetDimensions): boolean {
-  return dimensions.height >= 3;
 }
 
 export function AgentAnalysisView({
