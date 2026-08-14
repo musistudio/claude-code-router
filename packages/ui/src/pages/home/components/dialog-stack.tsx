@@ -2,7 +2,7 @@ import type { ComponentProps, ReactElement } from "react";
 import { AnimatePresence, DialogStackLayer } from "../shared/index";
 import { AddApiKeyDialog, ApiKeyCreatedDialog, EditApiKeyDialog } from "./api-keys";
 import { ConfigureClaudeDesignDialog, DeleteExtensionDialog, PluginSettingsDialog } from "./extensions";
-import { AddProfileDialog, DeleteProfileDialog, ProfileOpenDialog } from "./profiles";
+import { AddProfileDialog, DeleteProfileDialog, ForceStopZcodeDialog, ProfileOpenDialog } from "./profiles";
 import { AddProviderDialog, DeleteProviderDialog, ProviderDeepLinkDialog } from "./providers";
 import { AddRoutingRuleDialog, DeleteRoutingRuleDialog } from "./routing";
 import { AppSettingsDialog } from "./settings";
@@ -21,6 +21,7 @@ export function AppDialogStack({
   profileAdd,
   profileDelete,
   profileEdit,
+  profileForceStop,
   profileOpen,
   providerDeepLink,
   providerDelete,
@@ -42,6 +43,7 @@ export function AppDialogStack({
   profileAdd?: ComponentProps<typeof AddProfileDialog>;
   profileDelete?: ComponentProps<typeof DeleteProfileDialog>;
   profileEdit?: ComponentProps<typeof AddProfileDialog>;
+  profileForceStop?: ComponentProps<typeof ForceStopZcodeDialog>;
   profileOpen?: ComponentProps<typeof ProfileOpenDialog>;
   providerDeepLink?: ComponentProps<typeof ProviderDeepLinkDialog>;
   providerDelete?: ComponentProps<typeof DeleteProviderDialog>;
@@ -58,6 +60,7 @@ export function AppDialogStack({
     profileAdd ? { key: "profile-add", node: <AddProfileDialog {...profileAdd} /> } : null,
     profileEdit ? { key: "profile-edit", node: <AddProfileDialog {...profileEdit} /> } : null,
     profileOpen ? { key: "profile-open", node: <ProfileOpenDialog {...profileOpen} /> } : null,
+    profileForceStop ? { key: "profile-force-stop", node: <ForceStopZcodeDialog {...profileForceStop} /> } : null,
     profileDelete ? { key: "profile-delete", node: <DeleteProfileDialog {...profileDelete} /> } : null,
     apiKeyEdit ? { key: "api-key-edit", node: <EditApiKeyDialog {...apiKeyEdit} /> } : null,
     providerDeepLink ? { key: "provider-deep-link", node: <ProviderDeepLinkDialog {...providerDeepLink} /> } : null,

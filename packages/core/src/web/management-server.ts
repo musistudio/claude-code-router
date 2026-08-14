@@ -71,6 +71,7 @@ import type {
   PluginDirectorySelection,
   ProfileApplyResult,
   ProfileOpenRequest,
+  ProfileStopRequest,
   ProviderAccountResetRequest,
   ProviderAccountSnapshotRequestOptions,
   ProviderAccountTestRequest,
@@ -447,7 +448,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
     return status;
   },
   stopGateway: () => gatewayService.stop(),
-  stopProfile: async (request) => stopProfileFromCcr(await loadAppConfig(), request as ProfileOpenRequest),
+  stopProfile: async (request) => stopProfileFromCcr(await loadAppConfig(), request as ProfileStopRequest),
   testProviderAccountConnector: (request) => testProviderAccountConnector(request as ProviderAccountTestRequest),
   testRouteScript: async (request) => gatewayService.testRouteScript(await loadAppConfig(), request as RouteScriptTestRequest),
   validateRouteScript: (request) => gatewayService.validateRouteScript(request as RouteScriptValidationRequest),

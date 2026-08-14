@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   isProfileAppMainProcessCommandForTest,
-  isProfileAppRunningWithProbeForTest
+  isProfileAppRunningWithProbeForTest,
+  profileStopPlanForTest,
+  rebindRunningProfileAppForTest,
+  windowsProfileProcessSignalArgsForTest,
+  windowsProfileProcessSignalFailureForTest,
+  zcodeForceStopFailureMessageForTest
 } from "@ccr/core/profiles/launch-service.ts";
 
 const userDataDir = "/Users/example/.claude-code-router/profiles/codex/codex/.claude-code-router/codex-app-user-data/codex";
@@ -16,6 +21,15 @@ test("profile app process detection ignores persistent Chromium helper processes
   assert.equal(isProfileAppMainProcessCommandForTest(renderer, userDataDir), false);
   assert.equal(isProfileAppMainProcessCommandForTest(crashpad, userDataDir), false);
   assert.equal(isProfileAppMainProcessCommandForTest("/Applications/ChatGPT.app/Contents/MacOS/ChatGPT", userDataDir), false);
+});
+
+test("ZCode process detection ignores app-server workers that share the executable", () => {
+  const executable = "D:/zcode/ZCode.exe";
+  const main = `${executable} --remote-debugging-port=0 --user-data-dir=C:/Users/example/.zcode`;
+  const appServer = `${executable} D:/zcode/resources/glm/zcode.cjs app-server --stdio`;
+
+  assert.equal(isProfileAppMainProcessCommandForTest(main, executable), true);
+  assert.equal(isProfileAppMainProcessCommandForTest(appServer, executable), false);
 });
 
 test("profile app liveness prefers a tracked application pid before process discovery", () => {
@@ -72,4 +86,109 @@ test("profile app liveness uses process discovery for launcher pids", () => {
   assert.equal(running, false);
   assert.equal(pidChecks, 0);
   assert.equal(discoveryCalls, 1);
+});
+
+test("ZCode stop requires confirmation for CCR-owned and external instances", () => {
+  assert.deepEqual(profileStopPlanForTest("zcode", false, false), {
+    external: false,
+    requiresForceConfirmation: true
+  });
+  assert.deepEqual(profileStopPlanForTest("zcode", true, false), {
+    external: true,
+    requiresForceConfirmation: true
+  });
+});
+
+test("confirmed ZCode stop force-kills only the tracked process tree", () => {
+  assert.deepEqual(profileStopPlanForTest("zcode", false, true), {
+    external: false,
+    signal: "SIGKILL"
+  });
+  assert.deepEqual(profileStopPlanForTest("zcode", true, true), {
+    external: true,
+    signal: "SIGKILL"
+  });
+  assert.deepEqual(windowsProfileProcessSignalArgsForTest(4321, "SIGKILL"), [
+    "/PID",
+    "4321",
+    "/T",
+    "/F"
+  ]);
+});
+
+test("force flag does not change the stop signal for other apps", () => {
+  assert.deepEqual(profileStopPlanForTest("codex", false, true), {
+    external: false,
+    signal: "SIGTERM"
+  });
+  assert.deepEqual(windowsProfileProcessSignalArgsForTest(4321, "SIGTERM"), [
+    "/PID",
+    "4321",
+    "/T"
+  ]);
+});
+
+test("Windows process stop captures taskkill failures instead of discarding them", () => {
+  assert.equal(windowsProfileProcessSignalFailureForTest({
+    status: 0,
+    stderr: "",
+    stdout: "SUCCESS"
+  }), undefined);
+  assert.deepEqual(windowsProfileProcessSignalFailureForTest({
+    status: 1,
+    stderr: "ERROR: Access is denied.\r\n",
+    stdout: ""
+  }), {
+    detail: "ERROR: Access is denied.",
+    exitCode: 1
+  });
+  assert.deepEqual(windowsProfileProcessSignalFailureForTest({
+    error: new Error("spawn taskkill failed"),
+    status: null,
+    stderr: "",
+    stdout: ""
+  }), {
+    detail: "spawn taskkill failed"
+  });
+});
+
+test("ZCode force-stop failure guidance matches the operating system", () => {
+  assert.match(zcodeForceStopFailureMessageForTest("win32"), /Task Manager/);
+  assert.match(zcodeForceStopFailureMessageForTest("darwin"), /Activity Monitor/);
+  assert.match(zcodeForceStopFailureMessageForTest("linux"), /system monitor/);
+});
+
+test("switching ZCode profiles reuses one process and removes the old runtime entry", () => {
+  const startedAt = "2026-08-11T00:00:00.000Z";
+  const result = rebindRunningProfileAppForTest(
+    [
+      {
+        agent: "zcode",
+        command: "ZCode App",
+        pid: 4321,
+        processMarker: "C:/Apps/ZCode/ZCode.exe",
+        profileId: "zcode-a",
+        profileName: "ZCode A",
+        startedAt,
+        state: "running",
+        surface: "app",
+        userDataDir: "/profiles/zcode-a"
+      }
+    ],
+    "zcode-a",
+    {
+      id: "zcode-b",
+      name: "ZCode B",
+      userDataDir: "/profiles/zcode-b"
+    }
+  );
+
+  assert.deepEqual(result, {
+    keys: ["app:zcode-b"],
+    pid: 4321,
+    processMarker: "C:/Apps/ZCode/ZCode.exe",
+    profileId: "zcode-b",
+    startedAt,
+    stoppedProfileIds: ["zcode-a"]
+  });
 });

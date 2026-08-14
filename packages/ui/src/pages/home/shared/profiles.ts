@@ -20,6 +20,7 @@ import type {
   ProfileConfig,
   ProfileOpenSurface,
   ProfileRoutingConfig,
+  ProfileStopFailure,
   CodexProfileConfigFormat,
   ProfileScope,
   ProfileSurface,
@@ -36,6 +37,28 @@ import { endpointFromHostPort } from "./services";
 import { keyValueRowsFromRecord, recordFromKeyValueRows, stringRecordValue, validateProfileEnvRows } from "./virtual-models";
 import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { AddProfileDraft, BotGatewayConfigDraft } from "./types";
+
+export function profileStopFailureDetail(
+  failure: ProfileStopFailure | undefined,
+  translate: (value: string) => string = (value) => value
+): string {
+  if (!failure) {
+    return "";
+  }
+  const summary = translate(
+    failure.code === "process_id_unavailable"
+      ? "CCR could not identify the ZCode process."
+      : failure.code === "process_signal_failed"
+        ? "The system rejected the force-quit command."
+        : "ZCode is still running after the force-quit command."
+  );
+  const metadata = [
+    failure.pid === undefined ? "" : `PID: ${failure.pid}`,
+    failure.exitCode === undefined ? "" : `${translate("Exit code")}: ${failure.exitCode}`,
+    failure.detail ? `${translate("System message")}: ${failure.detail}` : ""
+  ].filter(Boolean);
+  return metadata.length > 0 ? `${summary} ${metadata.join(" · ")}` : summary;
+}
 
 export function gatewayEndpointFromConfig(config: AppConfig): string {
   if (config.routerEndpoint) {

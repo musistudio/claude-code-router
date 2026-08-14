@@ -50,6 +50,7 @@ import type {
   ProfileOpenRequest,
   ProfileOpenResult,
   ProfileRuntimeStatus,
+  ProfileStopRequest,
   ProfileStopResult,
   ProviderAccountResetRequest,
   ProviderAccountResetResult,
@@ -150,7 +151,7 @@ declare global {
       startGateway: () => Promise<GatewayStatus>;
       startBotGatewayQrLogin: (request: BotGatewayQrLoginStartRequest) => Promise<BotGatewayQrLoginStartResult>;
       stopGateway: () => Promise<GatewayStatus>;
-      stopProfile: (request: ProfileOpenRequest) => Promise<ProfileStopResult>;
+      stopProfile: (request: ProfileStopRequest) => Promise<ProfileStopResult>;
       scanBotHandoffBluetoothTargets: () => Promise<BotHandoffScanTarget[]>;
       scanBotHandoffWifiTargets: () => Promise<BotHandoffScanTarget[]>;
       testProviderAccountConnector: (request: ProviderAccountTestRequest) => Promise<ProviderAccountTestResult>;

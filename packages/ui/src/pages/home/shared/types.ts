@@ -460,6 +460,7 @@ export type PluginRoutingConfigItem = {
 export type AppToast = {
   id: number;
   message: string;
+  prominent?: boolean;
 };
 
 export type ServerActionBusy = "" | "cert" | "proxy";

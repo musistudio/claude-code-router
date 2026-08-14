@@ -2,12 +2,12 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { assertAvailableGatewayModels, type AppConfig, type ProfileConfig, type ProfileOpenCommandResult, type ProfileOpenRequest, type ProfileOpenResult, type ProfileRuntimeEntry, type ProfileRuntimeStatus, type ProfileStopResult } from "@ccr/core/contracts/app";
+import { assertAvailableGatewayModels, type AppConfig, type ProfileConfig, type ProfileOpenCommandResult, type ProfileOpenRequest, type ProfileOpenResult, type ProfileRuntimeEntry, type ProfileRuntimeStatus, type ProfileStopFailure, type ProfileStopRequest, type ProfileStopResult } from "@ccr/core/contracts/app";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { applyClaudeAppGatewayConfig, readClaudeAppGatewayApiKeyCandidates } from "@ccr/core/agents/claude-app/gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "@ccr/core/agents/claude-app/launch";
 import { claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
-import { codexDesktopAppName, launchCodexAppProfile, launchZcodeAppProfile, refreshCodexCompatibleAppProfileFiles } from "@ccr/core/agents/codex/app-launch";
+import { codexDesktopAppName, findInstalledZcodeAppExecutable, launchCodexAppProfile, launchZcodeAppProfile, refreshCodexCompatibleAppProfileFiles } from "@ccr/core/agents/codex/app-launch";
 import { CodexAppMediaPreviewBridge, shouldEnableCodexMediaPreviewBridge } from "@ccr/core/agents/codex/media-preview-bridge";
 import { findRunningOpenCodeAppPid, launchOpenCodeAppProfile, openCodeAppLaunchSignature } from "@ccr/core/agents/opencode/app-launch";
 import { writeOpenCodeGatewayConfig } from "@ccr/core/agents/opencode/profile-config";
@@ -82,9 +82,11 @@ type ProfileAppLaunchResult = {
 type RunningProfileApp = ProfileRuntimeEntry & {
   child?: ChildProcess;
   command: string;
+  external?: boolean;
   launchSignature?: string;
   monitor?: NodeJS.Timeout;
   pidIsLauncher?: boolean;
+  processMarker?: string;
   spawnError?: string;
   stopRequested?: boolean;
   userDataDir: string;
@@ -193,7 +195,7 @@ async function openOpenCodeAppProfile(config: AppConfig, profile: ReturnType<typ
         surface: "app"
       };
     }
-    const stopped = await stopRunningProfileApp(profileRuntimeKey(profile.id, "app"), existing);
+    const { stopped } = await stopRunningProfileApp(profileRuntimeKey(profile.id, "app"), existing);
     if (!stopped && isProfileAppRunning(existing)) {
       throw new Error(
         `${appName} is still running with stale settings for ${profile.name || profile.id}. ` +
@@ -204,7 +206,7 @@ async function openOpenCodeAppProfile(config: AppConfig, profile: ReturnType<typ
   }
   const otherProfile = runningProfileAppForAgent("opencode", "app", profile.id);
   if (otherProfile) {
-    const stopped = await stopRunningProfileApp(profileRuntimeKey(otherProfile.profileId, "app"), otherProfile);
+    const { stopped } = await stopRunningProfileApp(profileRuntimeKey(otherProfile.profileId, "app"), otherProfile);
     if (!stopped && isProfileAppRunning(otherProfile)) {
       throw new Error(
         `OpenCode App is already running with ${otherProfile.profileName || otherProfile.profileId}. ` +
@@ -259,9 +261,19 @@ async function openOpenCodeAppProfile(config: AppConfig, profile: ReturnType<typ
   };
 }
 
+function zcodeRunningAppMarker(profile: ReturnType<typeof findProfileForOpen>): string {
+  return findInstalledZcodeAppExecutable(profile.appPath).executable ?? "zcode.exe";
+}
+
 async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): Promise<ProfileOpenResult> {
   const appName = profile.agent === "zcode" ? "ZCode App" : codexDesktopAppName;
   const profileGatewayConfig = await ensureProfileGateway(config, profile, appName);
+  // ZCode is a pure frontend: when it is already running, spawning another
+  // instance only trips the window-start check. Refresh the on-disk config
+  // and point the user at the in-app refresh instead.
+  const alreadyRunningMessage = () => profile.agent === "zcode"
+    ? "ZCode is already running. Open ZCode > Settings > Model Settings and click Refresh to apply the latest configuration."
+    : `${appName} is already running with ${profile.name || profile.id}.`;
   const existing = runningProfileApp(profile.id, "app");
   if (existing) {
     refreshCodexCompatibleAppProfileFiles(CONFIGDIR, profile, profileGatewayConfig);
@@ -269,31 +281,48 @@ async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof
     startCodexAppMediaPreviewBridge(profileGatewayConfig, profile, existing.userDataDir);
     activateProfileAppWindow(existing);
     return {
-      message: `${appName} is already running with ${profile.name || profile.id}.`,
+      message: alreadyRunningMessage(),
       profileId: profile.id,
       profileName: profile.name,
       surface: "app"
     };
   }
-  if (profile.agent === "codex") {
-    const files = refreshCodexCompatibleAppProfileFiles(CONFIGDIR, profile, profileGatewayConfig);
-    const unmanagedPid = profileAppMainPid({ userDataDir: files.userDataDir });
-    if (unmanagedPid) {
-      const entry = registerExistingProfileApp(profile, "app", {
-        command: appName,
-        pid: unmanagedPid,
-        userDataDir: files.userDataDir
-      });
+  const files = refreshCodexCompatibleAppProfileFiles(CONFIGDIR, profile, profileGatewayConfig);
+  if (profile.agent === "zcode") {
+    const otherProfile = runningProfileAppForAgent("zcode", "app", profile.id);
+    if (otherProfile) {
+      const entry = rebindRunningProfileApp(otherProfile, profile, "app", files.userDataDir);
       startCodexAppBotWorker(profileGatewayConfig, profile);
       startCodexAppMediaPreviewBridge(profileGatewayConfig, profile, entry.userDataDir);
       activateProfileAppWindow(entry);
       return {
-        message: `${appName} is already running with ${profile.name || profile.id}.`,
+        message: `ZCode is already running. Switched CCR to ${profile.name || profile.id}. Open ZCode > Settings > Model Settings and click Refresh to apply the latest configuration.`,
         profileId: profile.id,
         profileName: profile.name,
         surface: "app"
       };
     }
+  }
+  // ZCode's main process usually carries no user-data-dir argument, so the
+  // generic userDataDir probe cannot see it; identify it by executable path.
+  const unmanagedPid = profile.agent === "zcode"
+    ? profileAppMainPid({ userDataDir: zcodeRunningAppMarker(profile) })
+    : profileAppMainPid({ userDataDir: files.userDataDir });
+  if (unmanagedPid) {
+    const entry = registerExistingProfileApp(profile, "app", {
+      command: appName,
+      pid: unmanagedPid,
+      userDataDir: files.userDataDir
+    });
+    startCodexAppBotWorker(profileGatewayConfig, profile);
+    startCodexAppMediaPreviewBridge(profileGatewayConfig, profile, entry.userDataDir);
+    activateProfileAppWindow(entry);
+    return {
+      message: alreadyRunningMessage(),
+      profileId: profile.id,
+      profileName: profile.name,
+      surface: "app"
+    };
   }
   const launch = profile.agent === "zcode"
     ? launchZcodeAppProfile(CONFIGDIR, profile, profileGatewayConfig)
@@ -758,7 +787,7 @@ export function getProfileRuntimeStatus(): ProfileRuntimeStatus {
   };
 }
 
-export async function stopProfileFromCcr(config: AppConfig, request: ProfileOpenRequest): Promise<ProfileStopResult> {
+export async function stopProfileFromCcr(config: AppConfig, request: ProfileStopRequest): Promise<ProfileStopResult> {
   const profile = findProfileForOpen(config, request.profileId);
   const surface = resolveProfileOpenSurface(profile, request.surface);
   if (surface !== "app") {
@@ -777,7 +806,21 @@ export async function stopProfileFromCcr(config: AppConfig, request: ProfileOpen
     };
   }
 
-  const stopped = await stopRunningProfileApp(key, entry);
+  const stopPlan = profileStopPlan(profile.agent, Boolean(entry.external), request.force === true);
+  if (stopPlan.requiresForceConfirmation) {
+    return {
+      external: stopPlan.external,
+      message: "Force quit ZCode? Unsaved work may be lost.",
+      profileId: profile.id,
+      profileName: profile.name,
+      requiresForceConfirmation: true,
+      stopped: false,
+      surface
+    };
+  }
+
+  const stopAttempt = await stopRunningProfileApp(key, entry, stopPlan.signal);
+  const { stopped } = stopAttempt;
   if (stopped) {
     if (profile.agent === "claude-code") {
       stopClaudeAppBotWorker(profile.id);
@@ -791,7 +834,10 @@ export async function stopProfileFromCcr(config: AppConfig, request: ProfileOpen
   return {
     message: stopped
       ? `Stopped ${profile.name || profile.id}.`
-      : `Stop requested for ${profile.name || profile.id}. It may take a moment to close.`,
+      : profile.agent === "zcode"
+        ? zcodeForceStopFailureMessage(process.platform)
+        : `Stop requested for ${profile.name || profile.id}. It may take a moment to close.`,
+    ...(stopAttempt.failure ? { failure: stopAttempt.failure } : {}),
     profileId: profile.id,
     profileName: profile.name,
     stopped,
@@ -819,6 +865,7 @@ function registerProfileApp(
     launchSignature: launch.launchSignature,
     pid: launch.pid,
     pidIsLauncher: launch.pidIsLauncher,
+    ...(profile.agent === "zcode" ? { processMarker: zcodeRunningAppMarker(profile) } : {}),
     profileId: profile.id,
     profileName: profile.name,
     startedAt: new Date().toISOString(),
@@ -834,18 +881,18 @@ function registerProfileApp(
         if (isProfileAppRunning(entry)) {
           return;
         }
-        cleanupProfileAppEntry(key, entry);
+        cleanupProfileAppEntry(profileRuntimeKey(entry.profileId, entry.surface), entry);
       }, 1500).unref();
       return;
     }
     if (entry.pidIsLauncher && isProfileAppRunning(entry)) {
       return;
     }
-    cleanupProfileAppEntry(key, entry);
+    cleanupProfileAppEntry(profileRuntimeKey(entry.profileId, entry.surface), entry);
   });
   launch.child.once("error", (error) => {
     entry.spawnError = formatError(error);
-    cleanupProfileAppEntry(key, entry);
+    cleanupProfileAppEntry(profileRuntimeKey(entry.profileId, entry.surface), entry);
   });
   return entry;
 }
@@ -860,7 +907,13 @@ function registerExistingProfileApp(
     agent: profile.agent,
     command: existing.command,
     pid: existing.pid,
-    pidIsLauncher: true,
+    // Registered from an already-running instance that CCR did not launch.
+    external: true,
+    // The registered pid belongs to the already-running app itself, so
+    // liveness must be checked by pid — the userDataDir marker probe cannot
+    // see instances whose command line carries no user-data-dir argument.
+    pidIsLauncher: false,
+    ...(profile.agent === "zcode" ? { processMarker: zcodeRunningAppMarker(profile) } : {}),
     profileId: profile.id,
     profileName: profile.name,
     startedAt: new Date().toISOString(),
@@ -869,11 +922,94 @@ function registerExistingProfileApp(
     userDataDir: existing.userDataDir
   };
   entry.monitor = setInterval(() => {
-    if (!isProfileAppRunning(entry)) cleanupProfileAppEntry(key, entry);
+    if (!isProfileAppRunning(entry)) {
+      cleanupProfileAppEntry(profileRuntimeKey(entry.profileId, entry.surface), entry);
+    }
   }, 2_000);
   entry.monitor.unref?.();
   runningProfileApps.set(key, entry);
   return entry;
+}
+
+function rebindRunningProfileApp(
+  entry: RunningProfileApp,
+  profile: ReturnType<typeof findProfileForOpen>,
+  surface: ProfileOpenRequest["surface"],
+  userDataDir: string,
+  options: {
+    registry?: Map<string, RunningProfileApp>;
+    stopProfileResources?: (profileId: string) => void;
+  } = {}
+): RunningProfileApp {
+  const registry = options.registry ?? runningProfileApps;
+  const stopProfileResources = options.stopProfileResources ?? stopCodexAppProfileResources;
+  const previousProfileId = entry.profileId;
+  const previousKey = profileRuntimeKey(previousProfileId, entry.surface);
+  const nextKey = profileRuntimeKey(profile.id, surface);
+
+  const replaced = registry.get(nextKey);
+  if (replaced && replaced !== entry) {
+    if (replaced.monitor) clearInterval(replaced.monitor);
+    registry.delete(nextKey);
+    stopProfileResources(replaced.profileId);
+  }
+  if (registry.get(previousKey) === entry) {
+    registry.delete(previousKey);
+  }
+  if (previousProfileId !== profile.id) {
+    stopProfileResources(previousProfileId);
+  }
+
+  entry.profileId = profile.id;
+  entry.profileName = profile.name;
+  entry.stopRequested = false;
+  entry.surface = surface;
+  entry.userDataDir = userDataDir;
+  registry.set(nextKey, entry);
+  return entry;
+}
+
+function stopCodexAppProfileResources(profileId: string): void {
+  stopCodexAppBotWorker(profileId);
+  stopCodexAppMediaPreviewBridge(profileId);
+}
+
+export function rebindRunningProfileAppForTest(
+  entries: Array<Pick<RunningProfileApp, "agent" | "command" | "pid" | "profileId" | "profileName" | "startedAt" | "state" | "surface" | "userDataDir"> & Partial<Pick<RunningProfileApp, "processMarker">>>,
+  activeProfileId: string,
+  nextProfile: { id: string; name: string; userDataDir: string }
+): { keys: string[]; pid: number | undefined; processMarker?: string; profileId: string; startedAt: string; stoppedProfileIds: string[] } {
+  const registry = new Map<string, RunningProfileApp>();
+  for (const value of entries) {
+    registry.set(profileRuntimeKey(value.profileId, value.surface), { ...value } as RunningProfileApp);
+  }
+  const entry = registry.get(profileRuntimeKey(activeProfileId, "app"));
+  if (!entry) {
+    throw new Error(`Missing test runtime entry: ${activeProfileId}`);
+  }
+  const stoppedProfileIds: string[] = [];
+  const rebound = rebindRunningProfileApp(
+    entry,
+    {
+      agent: "zcode",
+      id: nextProfile.id,
+      name: nextProfile.name
+    } as ReturnType<typeof findProfileForOpen>,
+    "app",
+    nextProfile.userDataDir,
+    {
+      registry,
+      stopProfileResources: (profileId) => stoppedProfileIds.push(profileId)
+    }
+  );
+  return {
+    keys: [...registry.keys()].sort(),
+    pid: rebound.pid,
+    ...(rebound.processMarker ? { processMarker: rebound.processMarker } : {}),
+    profileId: rebound.profileId,
+    startedAt: rebound.startedAt,
+    stoppedProfileIds
+  };
 }
 
 function activateProfileAppWindow(entry: Pick<RunningProfileApp, "pid" | "userDataDir">): void {
@@ -956,20 +1092,97 @@ function cleanupProfileAppEntry(key: string, entry: RunningProfileApp): void {
   }
 }
 
-async function stopRunningProfileApp(key: string, entry: RunningProfileApp): Promise<boolean> {
+type ProfileStopPlan =
+  | {
+      external: boolean;
+      requiresForceConfirmation: true;
+    }
+  | {
+      external: boolean;
+      requiresForceConfirmation?: false;
+      signal: "SIGKILL" | "SIGTERM";
+    };
+
+type ProfileProcessSignalResult = {
+  detail?: string;
+  exitCode?: number;
+  ok: boolean;
+  pid?: number;
+};
+
+type ProfileAppStopAttempt = {
+  failure?: ProfileStopFailure;
+  stopped: boolean;
+};
+
+type WindowsProfileProcessCommandResult = {
+  error?: Error;
+  status: number | null;
+  stderr?: Buffer | string | null;
+  stdout?: Buffer | string | null;
+};
+
+type WindowsProfileProcessCommandFailure = {
+  detail: string;
+  exitCode?: number;
+};
+
+function profileStopPlan(agent: ProfileConfig["agent"], external: boolean, force: boolean): ProfileStopPlan {
+  if (agent === "zcode" && !force) {
+    return { external, requiresForceConfirmation: true };
+  }
+  return {
+    external,
+    signal: agent === "zcode" ? "SIGKILL" : "SIGTERM"
+  };
+}
+
+export function profileStopPlanForTest(
+  agent: ProfileConfig["agent"],
+  external: boolean,
+  force: boolean
+): ProfileStopPlan {
+  return profileStopPlan(agent, external, force);
+}
+
+async function stopRunningProfileApp(
+  key: string,
+  entry: RunningProfileApp,
+  signal: "SIGKILL" | "SIGTERM" = "SIGTERM"
+): Promise<ProfileAppStopAttempt> {
   if (!isProfileAppRunning(entry)) {
     cleanupProfileAppEntry(key, entry);
-    return false;
+    return { stopped: true };
   }
 
   entry.stopRequested = true;
-  sendProfileProcessSignal(profileAppMainPid(entry) ?? entry.pid, "SIGTERM");
-  if (await waitForProfileAppExit(entry, 5000)) {
+  const signalResult = sendProfileProcessSignal(profileAppMainPid(entry) ?? entry.pid, signal);
+  if (await waitForProfileAppExit(entry, 8000)) {
     cleanupProfileAppEntry(key, entry);
-    return true;
+    return { stopped: true };
   }
 
-  return false;
+  // Stop failed: clear the flag so the runtime status keeps reporting this
+  // still-running app instead of hiding it behind a start button.
+  entry.stopRequested = false;
+  const failure: ProfileStopFailure = signalResult.ok
+    ? {
+        code: "process_still_running",
+        ...(signalResult.exitCode !== undefined ? { exitCode: signalResult.exitCode } : {}),
+        ...(signalResult.pid ? { pid: signalResult.pid } : {})
+      }
+    : {
+        code: signalResult.pid ? "process_signal_failed" : "process_id_unavailable",
+        ...(signalResult.detail ? { detail: signalResult.detail } : {}),
+        ...(signalResult.exitCode !== undefined ? { exitCode: signalResult.exitCode } : {}),
+        ...(signalResult.pid ? { pid: signalResult.pid } : {})
+      };
+  console.warn(
+    `[profile] Failed to stop process: signal=${signal} pid=${failure.pid ?? "unknown"}` +
+    `${failure.exitCode !== undefined ? ` exitCode=${failure.exitCode}` : ""}` +
+    `${failure.detail ? ` detail=${failure.detail}` : " process remained running after 8000ms"}`
+  );
+  return { failure, stopped: false };
 }
 
 function profileRuntimeKey(profileId: string, surface: ProfileOpenRequest["surface"]): string {
@@ -988,7 +1201,7 @@ function isProcessAlive(pid: number | undefined): boolean {
   }
 }
 
-type ProfileAppRunningEntry = Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "userDataDir">;
+type ProfileAppRunningEntry = Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "processMarker" | "userDataDir">;
 
 type ProfileAppProcessProbe = {
   isProcessAlive: (pid: number | undefined) => boolean;
@@ -1018,11 +1231,12 @@ export function isProfileAppRunningWithProbeForTest(
   return profileAppRunningWithProbe(entry, probe);
 }
 
-function profileAppMainPid(entry: Pick<RunningProfileApp, "userDataDir">): number | undefined {
-  if (!entry.userDataDir) {
+function profileAppMainPid(entry: Pick<RunningProfileApp, "processMarker" | "userDataDir">): number | undefined {
+  const rawMarker = entry.processMarker || entry.userDataDir;
+  if (!rawMarker) {
     return undefined;
   }
-  const marker = normalizeProcessPath(entry.userDataDir);
+  const marker = normalizeProcessPath(rawMarker);
   if (process.platform === "win32") {
     return windowsProfileAppMainPid(marker);
   }
@@ -1065,6 +1279,7 @@ function isProfileAppMainProcessCommand(command: string, marker: string): boolea
   // directory in --database. They are helpers, not evidence of a live window.
   if (/(?:^|[\\/])(?:browser_)?crashpad_handler(?:\.exe)?(?:\s|$)/i.test(command)) return false;
   if (/\bptype=crashpad-handler\b/i.test(command)) return false;
+  if (new RegExp(profileAppServerCommandPattern, "i").test(command)) return false;
   return normalizeProcessPath(command).includes(marker);
 }
 
@@ -1075,6 +1290,8 @@ export function isProfileAppMainProcessCommandForTest(command: string, userDataD
 function normalizeProcessPath(value: string): string {
   return process.platform === "win32" ? value.replace(/\\/g, "/").toLowerCase() : value;
 }
+
+const profileAppServerCommandPattern = "(?:^|[\\\\/])(?:zcode|codex)\\.cjs[\\\"']?\\s+app-server(?:\\s|$)";
 
 function windowsProfileAppMainPid(marker: string): number | undefined {
   const script = [
@@ -1089,7 +1306,8 @@ function windowsProfileAppMainPid(marker: string): number | undefined {
     "  (($_.CommandLine -replace '\\\\', '/').ToLowerInvariant().Contains($marker)) -and",
     "  ($_.CommandLine -notmatch '\\s--type=') -and",
     "  ($_.CommandLine -notmatch '(?i)(?:browser_)?crashpad_handler(?:\\.exe)?(?:\\s|$)') -and",
-    "  ($_.CommandLine -notmatch '(?i)ptype=crashpad-handler')",
+    "  ($_.CommandLine -notmatch '(?i)ptype=crashpad-handler') -and",
+    `  ($_.CommandLine -notmatch ${powershellString(profileAppServerCommandPattern)})`,
     "} | Sort-Object ProcessId | Select-Object -First 1 -ExpandProperty ProcessId"
   ].join("\n");
   try {
@@ -1118,27 +1336,90 @@ function windowsProfileAppMainPid(marker: string): number | undefined {
   }
 }
 
-function sendProfileProcessSignal(pid: number | undefined, signal: NodeJS.Signals): void {
+function sendProfileProcessSignal(pid: number | undefined, signal: NodeJS.Signals): ProfileProcessSignalResult {
   if (!pid) {
-    return;
+    return { detail: "No process ID was available.", ok: false };
   }
   if (process.platform === "win32") {
-    const args = ["/PID", String(pid), "/T"];
-    if (signal === "SIGKILL") {
-      args.push("/F");
-    }
-    spawnSync(windowsSystemCommand("taskkill.exe"), args, {
-      stdio: "ignore",
+    const args = windowsProfileProcessSignalArgs(pid, signal);
+    const result = spawnSync(windowsSystemCommand("taskkill.exe"), args, {
+      encoding: "utf8",
       windowsHide: true
     });
-    return;
+    const failure = windowsProfileProcessSignalFailure(result);
+    return failure
+      ? { ...failure, ok: false, pid }
+      : { exitCode: 0, ok: true, pid };
   }
 
   try {
     process.kill(pid, signal);
-  } catch {
-    // The app process may have already exited.
+    return { ok: true, pid };
+  } catch (error) {
+    return { detail: formatError(error), ok: false, pid };
   }
+}
+
+function windowsProfileProcessSignalFailure(
+  result: WindowsProfileProcessCommandResult
+): WindowsProfileProcessCommandFailure | undefined {
+  if (result.error) {
+    return {
+      detail: formatError(result.error),
+      ...(typeof result.status === "number" ? { exitCode: result.status } : {})
+    };
+  }
+  if (result.status === 0) {
+    return undefined;
+  }
+  const detail = compactProcessCommandOutput(result.stderr) || compactProcessCommandOutput(result.stdout) ||
+    (result.status === null ? "taskkill did not return an exit code." : `taskkill exited with code ${result.status}.`);
+  return {
+    detail,
+    ...(typeof result.status === "number" ? { exitCode: result.status } : {})
+  };
+}
+
+function compactProcessCommandOutput(value: Buffer | string | null | undefined): string | undefined {
+  const normalized = (Buffer.isBuffer(value) ? value.toString("utf8") : value || "")
+    .trim()
+    .replace(/\s+/g, " ");
+  if (!normalized) {
+    return undefined;
+  }
+  return normalized.length <= 500 ? normalized : `${normalized.slice(0, 499)}…`;
+}
+
+function windowsProfileProcessSignalArgs(pid: number, signal: NodeJS.Signals): string[] {
+  const args = ["/PID", String(pid), "/T"];
+  if (signal === "SIGKILL") {
+    args.push("/F");
+  }
+  return args;
+}
+
+export function windowsProfileProcessSignalArgsForTest(pid: number, signal: NodeJS.Signals): string[] {
+  return windowsProfileProcessSignalArgs(pid, signal);
+}
+
+export function windowsProfileProcessSignalFailureForTest(
+  result: WindowsProfileProcessCommandResult
+): WindowsProfileProcessCommandFailure | undefined {
+  return windowsProfileProcessSignalFailure(result);
+}
+
+function zcodeForceStopFailureMessage(platform: NodeJS.Platform): string {
+  if (platform === "win32") {
+    return "ZCode could not be force quit. Close it in Task Manager and try again.";
+  }
+  if (platform === "darwin") {
+    return "ZCode could not be force quit. Close it in Activity Monitor and try again.";
+  }
+  return "ZCode could not be force quit. Close it in your system monitor and try again.";
+}
+
+export function zcodeForceStopFailureMessageForTest(platform: NodeJS.Platform): string {
+  return zcodeForceStopFailureMessage(platform);
 }
 
 async function waitForProfileAppStart(entry: Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "spawnError" | "userDataDir">, timeoutMs: number): Promise<boolean> {

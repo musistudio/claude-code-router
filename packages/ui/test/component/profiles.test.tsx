@@ -3,7 +3,7 @@ import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ProfileConfig } from "@ccr/core/contracts/app.ts";
-import { AddProfileForm, DeleteProfileDialog, ProfileView } from "@ccr/ui/pages/home/components/profiles.tsx";
+import { AddProfileForm, DeleteProfileDialog, ForceStopZcodeDialog, ProfileView } from "@ccr/ui/pages/home/components/profiles.tsx";
 import { AppI18nContext, appCopy } from "@ccr/ui/pages/home/shared/i18n.tsx";
 import { createProfileDraft, createProfileDraftFromProfile, isProfileDraftSubmittable, normalizeUnknownProfileItem, profileConfigFromDraft, profileDraftWithDetectedAppPath, profileSummaryItems } from "@ccr/ui/pages/home/shared/profiles.ts";
 import { appConfigFixture } from "../fixtures/index.ts";
@@ -40,6 +40,47 @@ test("DeleteProfileDialog renders the Chinese confirmation copy", () => {
   assert.match(html, /从配置中删除这个 Agent 配置档案？/);
   assert.match(html, />取消<\/button>/);
   assert.match(html, />删除<\/button>/);
+});
+
+test("ForceStopZcodeDialog warns before force-killing a CCR-owned instance", () => {
+  const zcodeProfile: ProfileConfig = {
+    agent: "zcode",
+    enabled: true,
+    id: "zcode-main",
+    model: "zcode/glm-5",
+    name: "ZCode Main"
+  };
+  const html = renderToStaticMarkup(
+    <ForceStopZcodeDialog onClose={() => undefined} onConfirm={() => undefined} profile={zcodeProfile} />
+  );
+
+  assert.match(html, /Force quit ZCode\?/);
+  assert.match(html, /Unsaved work may be lost\./);
+  assert.match(html, /Closing the ZCode window only sends it to the system tray\./);
+  assert.match(html, /Force quitting immediately ends ZCode and its child processes\./);
+  assert.match(html, />Cancel<\/button>/);
+  assert.match(html, />Force quit<\/button>/);
+});
+
+test("ForceStopZcodeDialog identifies an external instance in Chinese", () => {
+  const zcodeProfile: ProfileConfig = {
+    agent: "zcode",
+    enabled: true,
+    id: "zcode-main",
+    model: "zcode/glm-5",
+    name: "ZCode Main"
+  };
+  const html = renderToStaticMarkup(
+    <AppI18nContext.Provider value={appCopy.zh}>
+      <ForceStopZcodeDialog external onClose={() => undefined} onConfirm={() => undefined} profile={zcodeProfile} />
+    </AppI18nContext.Provider>
+  );
+
+  assert.match(html, /强制退出 ZCode？/);
+  assert.match(html, /未保存的内容可能会丢失。/);
+  assert.match(html, /该 ZCode 不是由 CCR 启动的。/);
+  assert.match(html, />取消<\/button>/);
+  assert.match(html, />强制退出<\/button>/);
 });
 
 test("AddProfileForm does not show the profile requirements panel", () => {

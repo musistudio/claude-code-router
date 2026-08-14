@@ -1527,6 +1527,10 @@ export type ProfileOpenRequest = {
   surface: ProfileOpenSurface;
 };
 
+export type ProfileStopRequest = ProfileOpenRequest & {
+  force?: boolean;
+};
+
 export type ProfileOpenCommandResult = {
   command: string;
   profileId: string;
@@ -1568,10 +1572,20 @@ export type ProfileRuntimeStatus = {
   profiles: ProfileRuntimeEntry[];
 };
 
+export type ProfileStopFailure = {
+  code: "process_id_unavailable" | "process_signal_failed" | "process_still_running";
+  detail?: string;
+  exitCode?: number;
+  pid?: number;
+};
+
 export type ProfileStopResult = {
+  external?: boolean;
+  failure?: ProfileStopFailure;
   message: string;
   profileId: string;
   profileName: string;
+  requiresForceConfirmation?: boolean;
   stopped: boolean;
   surface: ProfileOpenSurface;
 };
