@@ -133,6 +133,7 @@ const webClientBridge: CcrApi = {
   getProxyNetworkCaptures: () => rpc("getProxyNetworkCaptures") as ReturnType<CcrApi["getProxyNetworkCaptures"]>,
   getProxyStatus: () => rpc("getProxyStatus") as ReturnType<CcrApi["getProxyStatus"]>,
   getRequestLogDetail: (request) => rpc("getRequestLogDetail", [request]) as ReturnType<CcrApi["getRequestLogDetail"]>,
+  getRequestLogBodyChunk: (request) => rpc("getRequestLogBodyChunk", [request]) as ReturnType<CcrApi["getRequestLogBodyChunk"]>,
   getRequestLogs: (filter) => rpc("getRequestLogs", [filter]) as ReturnType<CcrApi["getRequestLogs"]>,
   getUpdateStatus: () => rpc("getUpdateStatus") as ReturnType<CcrApi["getUpdateStatus"]>,
   getUsageStats: (range, filter) => rpc("getUsageStats", [range, filter]) as ReturnType<CcrApi["getUsageStats"]>,

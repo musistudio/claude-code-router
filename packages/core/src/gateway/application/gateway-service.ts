@@ -6,12 +6,14 @@ import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { ApiKeyConfig, AppConfig, GatewayStatus, RouteScriptTestRequest, RouteScriptTestResult, RouteScriptValidationRequest, RouteScriptValidationResult, RouterRule } from "@ccr/core/contracts/app";
 import { NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, hasAvailableGatewayModels } from "@ccr/core/contracts/app";
+import { loadAppConfig } from "@ccr/core/config/config";
 import { backendService } from "@ccr/core/plugins/backend-service";
 import { getSystemProxyUrlForProtocol } from "@ccr/core/proxy/system-proxy-fetch";
 import { pluginService } from "@ccr/core/plugins/service";
 import { proxyService } from "@ccr/core/proxy/service";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin";
 import { compileCoreGatewayConfig } from "@ccr/core/gateway/core-runtime/config-compiler";
+import { isAddressInUseMessage, probeExistingCcrGateway, reloadExistingCcrGatewayConfig } from "@ccr/core/gateway/existing-gateway-probe";
 import { closeServer, formatError } from "@ccr/core/gateway/http/io";
 import { RawTraceSynchronizer } from "@ccr/core/observability/raw-trace-sync";
 import { GatewayBillingSynchronizer } from "@ccr/core/usage/billing-sync";
@@ -20,6 +22,8 @@ import { coreGatewayAuthHeader } from "@ccr/core/gateway/internal/shared";
 import type { BrowserAutomationMcpIntegration, BrowserWebSearchMcpIntegration, GatewayStopOptions } from "@ccr/core/gateway/internal/shared";
 import { GatewayRequestPipeline } from "@ccr/core/gateway/request/pipeline";
 import { GatewayHttpRequestHandler } from "@ccr/core/gateway/http/request-handler";
+import { gatewayRuntimeConfigRevision } from "@ccr/core/gateway/runtime-config-control";
+import { shouldRestartGatewayForRuntimeConfigChange } from "@ccr/core/gateway/runtime-change";
 import { RouteScriptRuntime } from "@ccr/core/routing/route-script-runtime";
 import { buildRouteScriptInput } from "@ccr/core/routing/route-script-context";
 import { compileRouterConfig } from "@ccr/core/routing/config-compiler";
@@ -60,6 +64,10 @@ class GatewayService {
     getBrowserAutomationMcpIntegration: () => this.browserAutomationMcpIntegration,
     getConfig: () => this.config,
     getPlugin: () => this.plugin,
+    getRuntimeConfigControlStatus: () => ({
+      ...(this.runtimeConfigReloadError ? { lastError: this.runtimeConfigReloadError } : {}),
+      revision: gatewayRuntimeConfigRevision(this.config)
+    }),
     getStatus: () => ({
       coreEndpoint: this.status.coreEndpoint,
       coreManagedExternally: this.status.coreManagedExternally,
@@ -69,6 +77,9 @@ class GatewayService {
     handleRawTraceSync: (request, response) => this.rawTraceSynchronizer.handle(request, response),
     handleBillingUsageSync: (request, response) => this.billingSynchronizer.handle(request, response),
     proxyRequest: (request, response, path, apiKey) => this.proxyRequest(request, response, path, apiKey),
+    requestRuntimeConfigReload: (expectedRevision, forceRestart) => {
+      this.schedulePersistedRuntimeConfigReload(expectedRevision, forceRestart);
+    },
     replayContextArchive: (input) => this.requestPipeline.replayContextArchive(input)
   });
 
@@ -89,11 +100,14 @@ class GatewayService {
   private child?: ChildProcess;
   private config?: AppConfig;
   private coreAuthToken = "";
+  private externalGatewayApiKey?: string;
   private plugin?: ClaudeCodeRouterPlugin;
   private readonly rawTraceSynchronizer = new RawTraceSynchronizer({
     getConfig: () => this.config
   });
   private readonly routeScriptRuntime = new RouteScriptRuntime();
+  private runtimeConfigReloadError?: string;
+  private runtimeConfigReloadQueue: Promise<void> = Promise.resolve();
   private server?: Server;
   private status: GatewayStatus = {
     coreEndpoint: "",
@@ -210,10 +224,12 @@ class GatewayService {
       this.status = {
         ...this.status,
         coreManagedExternally: this.status.coreManagedExternally,
+        gatewayManagedExternally: undefined,
         lastStartedAt: new Date().toISOString(),
         pid: this.child?.pid,
         state: "running"
       };
+      this.runtimeConfigReloadError = undefined;
       return this.status;
     } catch (error) {
       await this.stop();
@@ -226,10 +242,60 @@ class GatewayService {
     }
   }
 
+  async ensureStarted(config: AppConfig): Promise<GatewayStatus> {
+    const desiredEndpoint = endpoint(config.gateway.host, config.gateway.port);
+    const currentStatus = this.getStatus();
+    if (currentStatus.state === "running" && currentStatus.endpoint === desiredEndpoint) {
+      if (currentStatus.gatewayManagedExternally) {
+        const existingGateway = await probeExistingCcrGateway(config);
+        if (existingGateway.state === "usable") {
+          this.markExternalGatewayRunning(config, existingGateway.endpoint, existingGateway.apiKey);
+          try {
+            await this.reloadExternalGatewayConfig(config, false);
+          } catch {
+            return this.getStatus();
+          }
+          return this.getStatus();
+        }
+      }
+      if (!currentStatus.gatewayManagedExternally) {
+        await this.updateConfig(config);
+        return this.getStatus();
+      }
+    }
+
+    const status = await this.start(config);
+    if (status.state !== "error" || !isAddressInUseMessage(status.lastError)) {
+      return status;
+    }
+
+    const existingGateway = await probeExistingCcrGateway(config);
+    if (existingGateway.state !== "usable") {
+      return status;
+    }
+
+    this.markExternalGatewayRunning(config, existingGateway.endpoint, existingGateway.apiKey);
+    try {
+      await this.reloadExternalGatewayConfig(config, false);
+    } catch {
+      return this.getStatus();
+    }
+    return this.getStatus();
+  }
+
+  async restart(config: AppConfig): Promise<GatewayStatus> {
+    if (this.status.gatewayManagedExternally) {
+      await this.reloadExternalGatewayConfig(config, true);
+      return this.getStatus();
+    }
+    return this.start(config);
+  }
+
   async stop(options: GatewayStopOptions = {}): Promise<GatewayStatus> {
     const child = this.child;
     this.child = undefined;
     this.coreAuthToken = "";
+    this.externalGatewayApiKey = undefined;
     if (child && !child.killed) {
       child.kill();
     }
@@ -259,6 +325,7 @@ class GatewayService {
     this.status = {
       ...this.status,
       coreManagedExternally: undefined,
+      gatewayManagedExternally: undefined,
       pid: undefined,
       state: "stopped"
     };
@@ -276,6 +343,11 @@ class GatewayService {
 
   async updateConfig(config: AppConfig): Promise<void> {
     assertLoopbackCoreHost(config.gateway.coreHost);
+    if (this.status.gatewayManagedExternally) {
+      await this.reloadExternalGatewayConfig(config, false);
+      return;
+    }
+
     const scriptValidationErrors = await this.routeScriptRuntime.prepare(config.Router.rules);
     const nextPlugin = new ClaudeCodeRouterPlugin(config, {
       scriptRuntime: this.routeScriptRuntime,
@@ -293,6 +365,7 @@ class GatewayService {
       ...this.status,
       coreEndpoint: endpoint(config.gateway.coreHost, config.gateway.corePort),
       endpoint: endpoint(config.gateway.host, config.gateway.port),
+      gatewayManagedExternally: undefined,
       networkEndpoints: gatewayNetworkEndpoints(config.gateway.host, config.gateway.port)
     };
   }
@@ -410,6 +483,74 @@ class GatewayService {
 
   private async proxyRequest(request: IncomingMessage, response: ServerResponse, path: string, apiKey?: ApiKeyConfig): Promise<void> {
     return this.requestPipeline.proxyRequest(request, response, path, apiKey);
+  }
+
+  private async reloadExternalGatewayConfig(config: AppConfig, forceRestart: boolean): Promise<void> {
+    const currentEndpoint = this.status.endpoint || endpoint(config.gateway.host, config.gateway.port);
+    try {
+      const externalGateway = await reloadExistingCcrGatewayConfig(
+        currentEndpoint,
+        config,
+        this.externalGatewayApiKey,
+        { forceRestart }
+      );
+      this.markExternalGatewayRunning(config, externalGateway.endpoint, externalGateway.apiKey);
+    } catch (error) {
+      const message = `Failed to update the externally managed CCR gateway: ${formatError(error)}`;
+      this.status = {
+        ...this.status,
+        lastError: message,
+        state: "error"
+      };
+      throw new Error(message, { cause: error });
+    }
+  }
+
+  private schedulePersistedRuntimeConfigReload(expectedRevision: string, forceRestart: boolean): void {
+    this.runtimeConfigReloadError = undefined;
+    this.runtimeConfigReloadQueue = this.runtimeConfigReloadQueue.then(
+      () => this.reloadPersistedRuntimeConfig(expectedRevision, forceRestart),
+      () => this.reloadPersistedRuntimeConfig(expectedRevision, forceRestart)
+    );
+  }
+
+  private async reloadPersistedRuntimeConfig(expectedRevision: string, forceRestart: boolean): Promise<void> {
+    try {
+      const nextConfig = await loadAppConfig();
+      const actualRevision = gatewayRuntimeConfigRevision(nextConfig);
+      if (actualRevision !== expectedRevision) {
+        throw new Error(`Persisted configuration revision ${actualRevision || "(missing)"} does not match the requested revision ${expectedRevision}.`);
+      }
+      const restartRequired = forceRestart || !this.config ||
+        shouldRestartGatewayForRuntimeConfigChange(this.config, nextConfig);
+      if (restartRequired) {
+        const status = await this.start(nextConfig);
+        if (status.state === "error") {
+          throw new Error(status.lastError || "CCR gateway failed to restart with the updated configuration.");
+        }
+      } else {
+        await this.updateConfig(nextConfig);
+      }
+      this.runtimeConfigReloadError = undefined;
+    } catch (error) {
+      this.runtimeConfigReloadError = formatError(error);
+      console.error(`[gateway] Failed to reload persisted runtime configuration: ${this.runtimeConfigReloadError}`);
+    }
+  }
+
+  private markExternalGatewayRunning(config: AppConfig, externalEndpoint: string, apiKey?: string): void {
+    this.config = config;
+    this.child = undefined;
+    this.server = undefined;
+    this.coreAuthToken = "";
+    this.externalGatewayApiKey = apiKey;
+    this.status = {
+      coreEndpoint: endpoint(config.gateway.coreHost, config.gateway.corePort),
+      endpoint: externalEndpoint,
+      gatewayManagedExternally: true,
+      networkEndpoints: gatewayNetworkEndpoints(config.gateway.host, config.gateway.port),
+      state: "running"
+    };
   }
 
 }

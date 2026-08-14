@@ -93,6 +93,8 @@ export type AddProviderDraft = {
   accountMode: ProviderAccountDraftMode;
   accountRefreshIntervalMs: string;
   apiKey: string;
+  autoFetchModels: boolean;
+  autoFetchKnownModels: string[];
   baseUrl: string;
   capabilities: GatewayProviderCapability[];
   catalogModelMetadata?: Record<string, ProviderModelMetadata>;

@@ -1,7 +1,8 @@
 import type { AppConfig } from "@ccr/core/contracts/app";
 import {
   buildCodexModelCatalog,
-  type CodexModelCatalog
+  type CodexModelCatalog,
+  type CodexModelCatalogOptions
 } from "@ccr/core/agents/codex/model-catalog";
 import {
   findModelCatalogEntry,
@@ -23,9 +24,10 @@ type ZcodeModelResolutionConfig = Pick<
 
 export function buildZcodeModelCatalog(
   config?: ZcodeModelCatalogConfig,
-  selectedModel?: string
+  selectedModel?: string,
+  options: CodexModelCatalogOptions = {}
 ): CodexModelCatalog {
-  const catalog = buildCodexModelCatalog(config, selectedModel);
+  const catalog = buildCodexModelCatalog(config, selectedModel, options);
   const resolutionConfig = config
     ? {
         Providers: config.Providers ?? [],
@@ -74,7 +76,8 @@ function zcodeModelCatalogEntry(
 
 export function zcodeModelCatalogJson(
   config?: ZcodeModelCatalogConfig,
-  selectedModel?: string
+  selectedModel?: string,
+  options: CodexModelCatalogOptions = {}
 ): string {
-  return `${JSON.stringify(buildZcodeModelCatalog(config, selectedModel), null, 2)}\n`;
+  return `${JSON.stringify(buildZcodeModelCatalog(config, selectedModel, options), null, 2)}\n`;
 }

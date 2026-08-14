@@ -1,6 +1,5 @@
 import {
-  createLogBodyPreviewText,
-  isLargeLogBody,
+  formatLogBodyForWorker,
   logBodyLargeTextThreshold,
   logBodyPreviewTextLimit,
   type LogBodyFilterRequest,
@@ -9,7 +8,7 @@ import {
   type LogBodyWorkerRequest,
   type LogBodyWorkerResponse
 } from "./log-body-worker-protocol";
-import { filterLogText, formatLogBodyView, type FormattedLogBody } from "./logs";
+import { filterLogText, type FormattedLogBody } from "./logs";
 
 type CachedFormattedBody = FormattedLogBody & {
   bodyKey: string;
@@ -50,12 +49,12 @@ worker.onmessage = (event: MessageEvent<LogBodyWorkerRequest>) => {
 function formatBody(request: LogBodyFormatRequest): LogBodyFormatResult {
   const threshold = request.largeTextThreshold ?? logBodyLargeTextThreshold;
   const previewLimit = request.previewTextLimit ?? logBodyPreviewTextLimit;
-  const large = isLargeLogBody(request.body, threshold);
-  const preview = large && request.mode !== "full";
-  const bodyView = preview
-    ? { text: createLogBodyPreviewText(request.body, previewLimit) }
-    : formatLogBodyView(request.body);
-  const sourceSizeBytes = request.body?.sizeBytes ?? 0;
+  const { large, preview, sourceSizeBytes, ...bodyView } = formatLogBodyForWorker(
+    request.body,
+    request.mode,
+    threshold,
+    previewLimit
+  );
   const visible = filterLogText(bodyView.text, request.query);
 
   cachedBody = {

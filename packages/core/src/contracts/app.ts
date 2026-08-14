@@ -11,6 +11,7 @@ export type AppInfo = {
   platform: string;
   usageDbFile: string;
   version: string;
+  workbuddyAppPath?: string;
 };
 
 export type AppDataExportResult = {
@@ -172,6 +173,8 @@ export type GatewayProviderConfig = {
   icon?: string;
   id?: string;
   enabled?: boolean;
+  autoFetchModels?: boolean;
+  autoFetchKnownModels?: string[];
   modelDescriptions?: Record<string, string>;
   modelDisplayNames?: Record<string, string>;
   modelMetadata?: Record<string, ProviderModelMetadata>;
@@ -656,7 +659,7 @@ export type RouterRuleRewrite = {
 };
 
 export const ROUTER_SCRIPT_API_VERSION = 1 as const;
-export const ROUTER_SCRIPT_MAX_SOURCE_BYTES = 64 * 1024;
+export const ROUTER_SCRIPT_MAX_SOURCE_BYTES = 5 * 1024 * 1024;
 export const ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS = 2_000;
 export const ROUTER_SCRIPT_MAX_TIMEOUT_MS = 30_000;
 
@@ -1401,7 +1404,7 @@ export const DEFAULT_TRAY_WIDGETS: TrayWidgetConfig[] = [
   { id: "model-share", type: "model-share", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.modelShare }
 ];
 
-export type ProfileClientKind = "claude-code" | "codex" | "grok" | "kimi" | "kilo" | "opencode" | "pi" | "zcode" | "claude-design";
+export type ProfileClientKind = "claude-code" | "codex" | "grok" | "kimi" | "kilo" | "opencode" | "pi" | "workbuddy" | "zcode" | "claude-design";
 export type CodexProfileConfigFormat = "legacy" | "separate_profile_files";
 export type CodexRemoteFrontendMode = "app" | "cli" | "claude-code";
 export type ProfileScope = "ccr" | "global" | "custom";
@@ -1807,6 +1810,7 @@ export type GatewayStatus = {
   coreEndpoint: string;
   coreManagedExternally?: boolean;
   endpoint: string;
+  gatewayManagedExternally?: boolean;
   lastError?: string;
   lastStartedAt?: string;
   networkEndpoints: GatewayNetworkEndpoint[];
@@ -1931,10 +1935,12 @@ export type ProxyCertificateInstallResult = {
 export type ProxyNetworkCaptureState = "complete" | "error" | "pending";
 
 export type ProxyNetworkBody = {
+  bodyRef?: string;
   contentType?: string;
   decodedFrom?: string;
   encoding: "base64" | "utf8";
   error?: string;
+  preview?: boolean;
   sizeBytes: number;
   text: string;
   truncated: boolean;
@@ -1988,6 +1994,28 @@ export type RequestLogDetailRequest = {
 };
 
 export type RequestLogBody = ProxyNetworkBody;
+
+export type RequestLogBodySide = "request" | "response";
+
+export type RequestLogBodyChunkRequest = {
+  id: number;
+  length?: number;
+  offset?: number;
+  side: RequestLogBodySide;
+};
+
+export type RequestLogBodyChunk = {
+  bodyRef?: string;
+  contentType?: string;
+  encoding: "base64" | "utf8";
+  eof: boolean;
+  length: number;
+  nextOffset?: number;
+  offset: number;
+  sizeBytes: number;
+  text: string;
+  truncated: boolean;
+};
 
 export type RequestLogRetryAttempt = {
   attempt: number;
@@ -2190,7 +2218,7 @@ export type UsageStatsSnapshot = {
   totals: UsageTotals;
 };
 
-export type AgentKind = "claude-code" | "codex" | "grok" | "kimi" | "kilo" | "opencode" | "pi" | "zcode" | "claude-design" | "unknown";
+export type AgentKind = "claude-code" | "codex" | "grok" | "kimi" | "kilo" | "opencode" | "pi" | "workbuddy" | "zcode" | "claude-design" | "unknown";
 
 export type AgentAnalysisFilter = {
   agent?: AgentKind | "all";
@@ -2463,6 +2491,8 @@ export type AgentAnalysisSnapshot = {
   range: UsageStatsRange;
   recentRequests: AgentAnalysisRequestRow[];
   routes: AgentObservabilityRouteRow[];
+  requestScanLimit: number;
+  requestScanTruncated: boolean;
   scannedRequestCount: number;
   selectedSession?: AgentAnalysisSessionDetail;
   sessions: AgentAnalysisSessionRow[];

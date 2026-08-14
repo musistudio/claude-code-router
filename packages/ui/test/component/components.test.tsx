@@ -6,6 +6,7 @@ import { Badge } from "@ccr/ui/components/ui/badge.tsx";
 import { Button } from "@ccr/ui/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@ccr/ui/components/ui/card.tsx";
 import { Checkbox } from "@ccr/ui/components/ui/checkbox.tsx";
+import { Dialog, DialogContent } from "@ccr/ui/components/ui/dialog.tsx";
 import { Input } from "@ccr/ui/components/ui/input.tsx";
 import { Label } from "@ccr/ui/components/ui/label.tsx";
 import { PopoverPortal } from "@ccr/ui/components/ui/popover.tsx";
@@ -143,6 +144,17 @@ test("PopoverPortal renders outside the server tree", () => {
   );
 
   assert.equal(html, "");
+});
+
+test("Dialog marks its root for top-level keyboard handling", () => {
+  const html = renderToStaticMarkup(
+    <Dialog>
+      <DialogContent>Confirm action</DialogContent>
+    </Dialog>
+  );
+
+  assert.match(html, /data-ui-dialog-root=""/);
+  assert.match(html, /role="dialog"/);
 });
 
 test("form primitives preserve native semantics, state, and caller styling", () => {

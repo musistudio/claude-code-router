@@ -311,10 +311,222 @@ test("OverviewView uses height-aware balance layouts at every account card size"
     assert.doesNotMatch(cardHtml, /overflow-y-auto|176px/);
     if (cardSize.layout === "compact") {
       assert.match(cardHtml, /data-provider-account-compact-meter="true"/);
+      assert.match(cardHtml, /data-provider-account-compact-brand="true"/);
+      assert.doesNotMatch(cardHtml, /overview-account-bento-compact-meter/);
     } else {
       assert.doesNotMatch(cardHtml, /data-provider-account-compact-meter="true"/);
+      assert.doesNotMatch(cardHtml, /overview-account-bento-compact-meter/);
     }
   }
+});
+
+test("OverviewView pins compact account card identity and refresh above long errors", () => {
+  const errorAccount: ProviderAccountSnapshot = {
+    message: "Account endpoint returned HTTP 403: {\"code\":\"permission_denied\"}",
+    meters: [],
+    provider: "DeepSeek",
+    source: "standard",
+    status: "error",
+    updatedAt: "2026-06-30T00:00:00.000Z"
+  };
+  const html = renderToStaticMarkup(
+    <OverviewView
+      overviewWidgets={[{
+        accountCardSizes: { DeepSeek: "2:1" },
+        enabled: true,
+        id: "account",
+        size: "4:2",
+        type: "account-balance",
+        variant: "cards"
+      }]}
+      providerAccounts={[errorAccount, accountSnapshots()[1]]}
+      refreshProviderAccounts={() => undefined}
+      setUsageRange={() => undefined}
+      usageRange="30d"
+      usageStats={usageStats("30d")}
+      onWidgetsChange={() => undefined}
+    />
+  );
+  const cardStart = html.indexOf('data-provider-account-sortable-id="DeepSeek"');
+  assert.ok(cardStart >= 0);
+  const nextCardStart = html.indexOf('data-provider-account-sortable-id=', cardStart + 1);
+  const cardHtml = html.slice(cardStart, nextCardStart >= 0 ? nextCardStart : undefined);
+  const brandStart = cardHtml.indexOf('data-provider-account-compact-brand="true"');
+  const actionsStart = cardHtml.indexOf('data-provider-account-compact-actions="true"');
+  const messageStart = cardHtml.indexOf('data-provider-account-compact-message="true"');
+
+  assert.ok(brandStart >= 0);
+  assert.ok(actionsStart >= 0);
+  assert.ok(messageStart >= 0);
+  assert.ok(brandStart < actionsStart);
+  assert.ok(actionsStart < messageStart);
+  assert.match(cardHtml.slice(brandStart, actionsStart), /DeepSeek/);
+  assert.doesNotMatch(cardHtml.slice(brandStart, actionsStart), /Account endpoint returned HTTP 403/);
+  assert.match(cardHtml.slice(messageStart), /Account endpoint returned HTTP 403/);
+  assert.doesNotMatch(cardHtml, /data-provider-account-compact-meter="true"/);
+});
+
+test("OverviewView shows secondary meters on tall account cards instead of folding to plus one", () => {
+  const account: ProviderAccountSnapshot = {
+    credentialId: "test",
+    meters: [
+      {
+        id: "5h",
+        kind: "quota",
+        label: "5 hour quota",
+        limit: 100,
+        remaining: 96,
+        unit: "%",
+        window: "5h"
+      },
+      {
+        id: "weekly",
+        kind: "quota",
+        label: "Weekly quota",
+        limit: 100,
+        remaining: 91,
+        unit: "%",
+        window: "weekly"
+      }
+    ],
+    provider: "Zhipu AI (China) - Coding Plan",
+    source: "standard",
+    status: "ok",
+    updatedAt: "2026-08-14T14:04:44.000Z"
+  };
+  const html = renderToStaticMarkup(
+    <OverviewView
+      overviewWidgets={[{
+        accountCardSizes: { "Zhipu AI (China) - Coding Plan::test": "1:2" },
+        enabled: true,
+        id: "account",
+        size: "1:2",
+        type: "account-balance",
+        variant: "cards"
+      }]}
+      providerAccounts={[account, accountSnapshots()[1]]}
+      refreshProviderAccounts={() => undefined}
+      setUsageRange={() => undefined}
+      usageRange="30d"
+      usageStats={usageStats("30d")}
+      onWidgetsChange={() => undefined}
+    />
+  );
+  const cardStart = html.indexOf('data-provider-account-sortable-id="Zhipu AI (China) - Coding Plan::test"');
+  assert.ok(cardStart >= 0);
+  const nextCardStart = html.indexOf('data-provider-account-sortable-id=', cardStart + 1);
+  const cardHtml = html.slice(cardStart, nextCardStart >= 0 ? nextCardStart : undefined);
+
+  assert.match(cardHtml, /5 hour quota/);
+  assert.match(cardHtml, /Weekly quota/);
+  assert.doesNotMatch(cardHtml, />\+1</);
+});
+
+test("OverviewView expands a single leftover account meter instead of showing plus one", () => {
+  const account: ProviderAccountSnapshot = {
+    credentialId: "test",
+    meters: [
+      {
+        id: "5h",
+        kind: "quota",
+        label: "5 hour quota",
+        limit: 100,
+        remaining: 95,
+        unit: "%",
+        window: "5h"
+      },
+      {
+        id: "weekly",
+        kind: "quota",
+        label: "Weekly quota",
+        limit: 100,
+        remaining: 91,
+        unit: "%",
+        window: "weekly"
+      },
+      {
+        id: "daily",
+        kind: "quota",
+        label: "Daily quota",
+        limit: 100,
+        remaining: 88,
+        unit: "%",
+        window: "daily"
+      },
+      {
+        id: "monthly",
+        kind: "quota",
+        label: "Monthly quota",
+        limit: 100,
+        remaining: 82,
+        unit: "%",
+        window: "monthly"
+      }
+    ],
+    provider: "Zhipu AI (China) - Coding Plan",
+    source: "standard",
+    status: "ok",
+    updatedAt: "2026-08-14T14:07:49.000Z"
+  };
+  const html = renderToStaticMarkup(
+    <OverviewView
+      overviewWidgets={[{
+        enabled: true,
+        id: "account",
+        size: "1:3",
+        type: "account-balance",
+        variant: "cards"
+      }]}
+      providerAccounts={[account]}
+      refreshProviderAccounts={() => undefined}
+      setUsageRange={() => undefined}
+      usageRange="30d"
+      usageStats={usageStats("30d")}
+      onWidgetsChange={() => undefined}
+    />
+  );
+
+  assert.match(html, /5 hour quota/);
+  assert.match(html, /Monthly quota/);
+  assert.doesNotMatch(html, />\+1</);
+});
+
+test("OverviewView does not render folded account meter counts", () => {
+  const account: ProviderAccountSnapshot = {
+    credentialId: "test",
+    meters: [
+      { id: "5h", kind: "quota", label: "5 hour quota", limit: 100, remaining: 95, unit: "%", window: "5h" },
+      { id: "weekly", kind: "quota", label: "Weekly quota", limit: 100, remaining: 91, unit: "%", window: "weekly" },
+      { id: "daily", kind: "quota", label: "Daily quota", limit: 100, remaining: 88, unit: "%", window: "daily" },
+      { id: "monthly", kind: "quota", label: "Monthly quota", limit: 100, remaining: 82, unit: "%", window: "monthly" },
+      { id: "yearly", kind: "quota", label: "Yearly quota", limit: 100, remaining: 80, unit: "%", window: "yearly" },
+      { id: "credits", kind: "requests", label: "Request credits", remaining: 12, unit: "credits" }
+    ],
+    provider: "Zhipu AI (China) - Coding Plan",
+    source: "standard",
+    status: "ok",
+    updatedAt: "2026-08-14T14:07:49.000Z"
+  };
+  const html = renderToStaticMarkup(
+    <OverviewView
+      overviewWidgets={[{
+        enabled: true,
+        id: "account",
+        size: "1:3",
+        type: "account-balance",
+        variant: "cards"
+      }]}
+      providerAccounts={[account]}
+      refreshProviderAccounts={() => undefined}
+      setUsageRange={() => undefined}
+      usageRange="30d"
+      usageStats={usageStats("30d")}
+      onWidgetsChange={() => undefined}
+    />
+  );
+
+  assert.match(html, /5 hour quota/);
+  assert.doesNotMatch(html, />\+\d+</);
 });
 
 test("OverviewView applies manual bento account card sizes", () => {

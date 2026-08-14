@@ -6,12 +6,18 @@ import { RAW_TRACE_SPOOL_DIR } from "@ccr/core/config/constants";
 import {
   RequestLogStore,
   type RequestLogRawTraceFile,
+  type RequestLogRawTraceFiles,
   type RequestLogRecordInput,
   type RequestLogStoreWriteCommand
 } from "@ccr/core/observability/request-log-store";
 import { resolveRawTraceBodyLimit } from "@ccr/core/observability/request-log-limits";
 import { compactBase64ImagePayloads } from "@ccr/core/observability/request-log-body";
 import { preloadUsagePriceCatalog } from "@ccr/core/models/pricing-service";
+
+type RevivedRawTraceBody = RequestLogRawTraceFile & {
+  text: string;
+  textTruncated: boolean;
+};
 
 type WorkerConfiguration = {
   dbFile: string;
@@ -80,6 +86,9 @@ async function handleMessage(message: WorkerMessage): Promise<void> {
     case "getDetail":
       result = await store.getDetail(args[0] as Parameters<RequestLogStore["getDetail"]>[0]);
       break;
+    case "getBodyChunk":
+      result = await store.getBodyChunk(args[0] as Parameters<RequestLogStore["getBodyChunk"]>[0]);
+      break;
     case "getTracePayload":
       result = await store.getTracePayload(args[0] as Parameters<RequestLogStore["getTracePayload"]>[0]);
       break;
@@ -140,9 +149,16 @@ function reviveCommand(command: RequestLogStoreWriteCommand): RequestLogStoreWri
   if (command.kind === "raw-trace-update") {
     const input = { ...command.input };
     const maxBodyBytes = resolveRawTraceBodyLimit(command.rawTraceFiles?.maxBodyBytes);
+    const rawTraceFiles: RequestLogRawTraceFiles | undefined = command.rawTraceFiles
+      ? {
+          cleanupDirectory: command.rawTraceFiles.cleanupDirectory,
+          maxBodyBytes: command.rawTraceFiles.maxBodyBytes
+        }
+      : undefined;
     if (command.rawTraceFiles?.requestBody) {
       const body = readRawTraceBody(command.rawTraceFiles.requestBody, maxBodyBytes);
       if (body) {
+        if (rawTraceFiles) rawTraceFiles.requestBody = fileMetadataFromRawTraceBody(body);
         input.requestBodyContentType = body.contentType ?? input.requestBodyContentType;
         input.requestBodySizeBytes = body.sizeBytes;
         input.requestBodyTruncated = body.truncated;
@@ -152,6 +168,7 @@ function reviveCommand(command: RequestLogStoreWriteCommand): RequestLogStoreWri
     if (command.rawTraceFiles?.responseBody) {
       const body = readRawTraceBody(command.rawTraceFiles.responseBody, maxBodyBytes);
       if (body) {
+        if (rawTraceFiles) rawTraceFiles.responseBody = fileMetadataFromRawTraceBody(body);
         input.responseBodyContentType = body.contentType ?? input.responseBodyContentType;
         input.responseBodySizeBytes = body.sizeBytes;
         input.responseBodyTruncated = body.truncated;
@@ -161,6 +178,7 @@ function reviveCommand(command: RequestLogStoreWriteCommand): RequestLogStoreWri
     return {
       input,
       kind: "raw-trace-update",
+      ...(rawTraceFiles ? { rawTraceFiles } : {}),
       sequence: command.sequence
     };
   }
@@ -174,10 +192,19 @@ function reviveCommand(command: RequestLogStoreWriteCommand): RequestLogStoreWri
   };
 }
 
+function fileMetadataFromRawTraceBody(body: RevivedRawTraceBody): RequestLogRawTraceFile {
+  return {
+    contentType: body.contentType,
+    filePath: body.filePath,
+    sizeBytes: body.sizeBytes,
+    truncated: body.truncated
+  };
+}
+
 function readRawTraceBody(
   file: RequestLogRawTraceFile,
   maxBodyBytes: number
-): (RequestLogRawTraceFile & { text: string }) | undefined {
+): RevivedRawTraceBody | undefined {
   let descriptor: number | undefined;
   try {
     const filePath = verifiedRawTracePath(file.filePath);
@@ -193,13 +220,14 @@ function readRawTraceBody(
     }
     const captured = offset === buffer.byteLength ? buffer : buffer.subarray(0, offset);
     const compacted = compactBase64ImagePayloads(captured);
+    const sourceSizeBytes = Math.max(file.sizeBytes, storedBytes);
     return {
       ...file,
       filePath,
-      sizeBytes: Math.max(file.sizeBytes, storedBytes),
+      sizeBytes: sourceSizeBytes,
       text: new StringDecoder("utf8").write(compacted.buffer),
-      truncated: Boolean(file.truncated) || compacted.compacted ||
-        offset < Math.max(file.sizeBytes, storedBytes)
+      textTruncated: offset < storedBytes,
+      truncated: Boolean(file.truncated) || storedBytes < sourceSizeBytes
     };
   } catch (error) {
     if (errorCode(error) === "ENOENT") return undefined;
@@ -209,8 +237,8 @@ function readRawTraceBody(
   }
 }
 
-function shouldApplyRawTraceBodyText(body: RequestLogRawTraceFile & { text: string }): boolean {
-  if (!body.truncated) return true;
+function shouldApplyRawTraceBodyText(body: RevivedRawTraceBody): boolean {
+  if (!body.truncated && !body.textTruncated) return true;
   const contentType = body.contentType?.split(";", 1)[0].trim().toLowerCase() ?? "";
   const firstContentIndex = skipJsonWhitespace(body.text, 0);
   const firstContent = body.text.charCodeAt(firstContentIndex);

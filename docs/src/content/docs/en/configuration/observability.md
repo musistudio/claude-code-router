@@ -33,5 +33,5 @@ Request body / response body logging is governed by three low-level config optio
 | Option | Default | Description |
 | --- | --- | --- |
 | `requestLogBodyCapture` | `all` | Whether to record request and response bodies: `all` records all, `errors` records bodies only for failed requests, `none` records no bodies. |
-| `requestLogMaxBodyBytes` | `52428800` (50 MiB) | Maximum bytes for a single request or response body; anything larger is truncated. The hard cap is also 50 MiB. |
+| `requestLogMaxBodyBytes` | `52428800` (50 MiB) | In-memory body capture and preview budget for a single request or response body. File-backed raw trace bodies can exceed this limit; the full body is stored in sidecar storage and loaded on demand from the Logs page. |
 | `requestLogSuccessSampleRate` | `1` | Sampling rate for successful requests, between `0` and `1`. `1` records all, `0.1` records roughly one in ten. |

@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { ROUTER_SCRIPT_MAX_SOURCE_BYTES } from "@ccr/core/contracts/app.ts";
 import { gatewayService } from "@ccr/core/gateway/application/gateway-service.ts";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin.ts";
 import { buildRouteScriptInput } from "@ccr/core/routing/route-script-context.ts";
@@ -249,13 +250,13 @@ test("route script validation rejects invalid metadata, paths, content, and limi
   const cases = [
     [{ ...valid, apiVersion: 2 }, /unsupported route script api or language/i],
     [{ ...valid, language: "typescript" }, /unsupported route script api or language/i],
-    [{ ...valid, file: undefined, source: " " }, /between 1 and 65536 bytes/i],
+    [{ ...valid, file: undefined, source: " " }, new RegExp(`between 1 and ${ROUTER_SCRIPT_MAX_SOURCE_BYTES} bytes`, "i")],
     [{ ...valid, file: `${valid.file}.txt` }, /\.js, \.mjs, or \.cjs extension/i],
     [{ ...valid, timeoutMs: 9 }, /between 10 and 30000 ms/i],
     [{ ...valid, timeoutMs: 30001 }, /between 10 and 30000 ms/i],
     [{ ...valid, file: path.join(routeScriptDirectory, "missing.js") }, /unable to read route script file/i],
     [{ ...valid, file: directoryFile }, /is not a file/i],
-    [routeScript("x".repeat(64 * 1024 + 1)), /exceeds 65536 bytes/i]
+    [routeScript("x".repeat(ROUTER_SCRIPT_MAX_SOURCE_BYTES + 1)), new RegExp(`exceeds ${ROUTER_SCRIPT_MAX_SOURCE_BYTES} bytes`, "i")]
   ];
   try {
     for (const [script, expectedMessage] of cases) {

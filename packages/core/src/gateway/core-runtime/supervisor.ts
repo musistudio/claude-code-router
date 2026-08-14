@@ -522,7 +522,15 @@ function mergeNoProxy(current: string | undefined, values: string[]): string {
 }
 
 export function endpoint(host: string, port: number): string {
-  const endpointHost = host === "0.0.0.0" ? "127.0.0.1" : host;
+  const unwrappedHost = host.startsWith("[") && host.endsWith("]")
+    ? host.slice(1, -1)
+    : host;
+  const connectHost = !unwrappedHost || unwrappedHost === "0.0.0.0"
+    ? "127.0.0.1"
+    : unwrappedHost === "::"
+      ? "::1"
+      : unwrappedHost;
+  const endpointHost = connectHost.includes(":") ? `[${connectHost}]` : connectHost;
   return `http://${endpointHost}:${port}`;
 }
 

@@ -25,7 +25,7 @@ import {
   persistLanguagePreference, PluginInstallCandidate, PluginMarketplaceEntry, PluginRoutingConfigTarget, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileAgentOptionsForRuntime, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
-  providerBaseUrl, providerCapabilitiesForProtocols, providerCapabilitiesForSave, providerConnectivityApiKeyFromDraft, providerConnectivityProviderPlugins, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerProtocolOptions, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
+  providerAutoFetchKnownModelsForSave, providerBaseUrl, providerCapabilitiesForProtocols, providerCapabilitiesForSave, providerConnectivityApiKeyFromDraft, providerConnectivityProviderPlugins, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerProtocolOptions, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
   ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, removeLocalAgentProviderPluginsForProvider, RouterRule, routingRuleFromDraft, SettingsPageId,
   setProviderPresets, splitLines, translateAppErrorMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
@@ -140,6 +140,22 @@ async function loadProviderAccountSnapshots(forceRefresh = false): Promise<Provi
     return [];
   }
   return window.ccr.getProviderAccountSnapshots(undefined, forceRefresh ? { forceRefresh: true } : undefined);
+}
+
+function providerRefreshModelsInputKey(
+  draft: AddProviderDraft,
+  protocols: GatewayProviderProtocol[] | undefined
+): string {
+  return JSON.stringify([
+    providerProbeInputKey(
+      providerProbeCandidates(draft).filter(isProviderProbeCandidateReady),
+      providerConnectivityApiKeyFromDraft(draft),
+      []
+    ),
+    protocols ?? [],
+    draft.protocolDetectionMode,
+    draft.providerPlugins
+  ]);
 }
 
 function extensionActionIndexes(index: number, groupIndexes?: number[]): number[] {
@@ -354,12 +370,12 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!appInfo.chatgptAppPath && !appInfo.opencodeAppPath) {
+    if (!appInfo.chatgptAppPath && !appInfo.opencodeAppPath && !appInfo.workbuddyAppPath) {
       return;
     }
-    setProfileDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath, appInfo.opencodeAppPath));
-    setProfileEditDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath, appInfo.opencodeAppPath));
-  }, [appInfo.chatgptAppPath, appInfo.opencodeAppPath]);
+    setProfileDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath));
+    setProfileEditDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath));
+  }, [appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath]);
 
   useEffect(() => {
     if (!isProfileAgentAvailable(profileAgentTab)) {
@@ -807,10 +823,11 @@ function App() {
     setProfileDraft(profileDraftWithDetectedAppPath(
       createProfileDraftFromProfile(profile, draftConfig.botConfigs),
       appInfo.chatgptAppPath,
-      appInfo.opencodeAppPath
+      appInfo.opencodeAppPath,
+      appInfo.workbuddyAppPath
     ));
     setProfileActionError("");
-  }, [activeView, onboardingStep, onboardingProfileConfirmed, configLoaded, draftConfig.profile.profiles, draftConfig.botConfigs, profileDraft.agent, appInfo.chatgptAppPath, appInfo.opencodeAppPath]);
+  }, [activeView, onboardingStep, onboardingProfileConfirmed, configLoaded, draftConfig.profile.profiles, draftConfig.botConfigs, profileDraft.agent, appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath]);
 
   useEffect(() => {
     if (activeView !== "onboarding" || !configLoaded || !onboardingStatusLoaded || !providerPresetsLoaded || providerAddOpen) {
@@ -1401,6 +1418,103 @@ function App() {
     };
   }, [activeView, onboardingStep, providerAddOpen, providerDraft.apiKey, providerDraft.baseUrl, providerDraft.credentialMode, providerDraft.credentials, providerDraft.presetId, providerDraft.protocol, providerDraft.protocolDetectionMode, providerDraft.providerPlugins]);
 
+  async function refreshProviderModels(): Promise<void> {
+    if (providerProbeLoading) {
+      return;
+    }
+    if (!window.ccr) {
+      setProviderProbeError(t("Request failed."));
+      return;
+    }
+
+    providerProbeRequestId.current += 1;
+    providerConnectivityRequestId.current += 1;
+    const requestId = providerProbeRequestId.current;
+    const existingProvider = providerEditIndex === undefined ? undefined : draftConfig.Providers[providerEditIndex];
+    const refreshProtocols = providerDraft.protocolDetectionMode === "manual"
+      ? uniqueProviderProtocols(providerDraft.selectedProtocols.length > 0 ? providerDraft.selectedProtocols : [providerDraft.protocol])
+      : undefined;
+    const refreshInputKey = providerRefreshModelsInputKey(providerDraft, refreshProtocols);
+
+    setProviderProbeError("");
+    setProviderConnectivityProbe(undefined);
+    setProviderConnectivityLoading(false);
+    setProviderProbeLoading(true);
+
+    try {
+      if (isLocalCodexProviderDraft(providerDraft)) {
+        if (!window.ccr.probeLocalAgentProvider) {
+          setProviderProbe(undefined);
+          return;
+        }
+        const result = await window.ccr.probeLocalAgentProvider({ forceRefresh: true, id: localCodexProviderId });
+        if (providerProbeRequestId.current !== requestId) {
+          return;
+        }
+        setProviderProbe(result.probe);
+        setProviderDraft((current) => {
+          const currentProtocols = current.protocolDetectionMode === "manual"
+            ? uniqueProviderProtocols(current.selectedProtocols.length > 0 ? current.selectedProtocols : [current.protocol])
+            : undefined;
+          if (!isLocalCodexProviderDraft(current) || providerRefreshModelsInputKey(current, currentProtocols) !== refreshInputKey) {
+            return current;
+          }
+          return applyProviderProbeResult(current, result.probe);
+        });
+        return;
+      }
+
+      const candidates = providerProbeCandidates(providerDraft).filter(isProviderProbeCandidateReady);
+      if (candidates.length === 0) {
+        setProviderProbe(undefined);
+        setProviderProbeError(t("No endpoint candidates available."));
+        return;
+      }
+
+      const apiKey = providerConnectivityApiKeyFromDraft(providerDraft);
+      const providerPlugins = providerConnectivityProviderPlugins(providerDraft, draftConfig.providerPlugins, existingProvider);
+      const result = await probeProviderCandidates(candidates, apiKey, [], {
+        forceRefresh: true,
+        mode: "models",
+        providerPlugins,
+        protocols: refreshProtocols
+      });
+      if (providerProbeRequestId.current !== requestId) {
+        return;
+      }
+      if (!result) {
+        setProviderProbe(undefined);
+        setProviderProbeError(t("Request failed."));
+        return;
+      }
+
+      setProviderProbe(result.probe);
+      setProviderDraft((current) => {
+        const currentProtocols = current.protocolDetectionMode === "manual"
+          ? uniqueProviderProtocols(current.selectedProtocols.length > 0 ? current.selectedProtocols : [current.protocol])
+          : undefined;
+        if (providerRefreshModelsInputKey(current, currentProtocols) !== refreshInputKey) {
+          return current;
+        }
+        return applyProviderProbeResult(current, result.probe);
+      });
+
+      if (result.probe.models.length === 0 && !providerProbeHasSupportedProtocol(result.probe)) {
+        const message = result.probe.protocols.find((item) => item.message)?.message || "Request failed.";
+        setProviderProbeError(translateAppErrorMessage(copy, message));
+      }
+    } catch (error) {
+      if (providerProbeRequestId.current === requestId) {
+        setProviderProbe(undefined);
+        setProviderProbeError(formatError(error));
+      }
+    } finally {
+      if (providerProbeRequestId.current === requestId) {
+        setProviderProbeLoading(false);
+      }
+    }
+  }
+
   async function checkProviderDraft(modelsToCheck?: string[]): Promise<ProviderConnectivityCheckReport> {
     const emptyReport: ProviderConnectivityCheckReport = { failed: [], passed: [], results: [] };
     providerConnectivityRequestId.current += 1;
@@ -1587,9 +1701,18 @@ function App() {
     }
 
     const providerId = existingProvider?.id ?? providerNameSlug(providerName);
+    const autoFetchKnownModels = providerAutoFetchKnownModelsForSave({
+      currentModels: models,
+      detectedModels: saveProbe?.models ?? probe?.models ?? [],
+      draftKnownModels: providerDraft.autoFetchKnownModels,
+      existingProvider,
+      nextBaseUrl: baseUrl
+    });
     const provider: GatewayProviderConfig = {
       api_base_url: normalizeProviderBaseUrl(baseUrl),
       api_key: primaryApiKey,
+      autoFetchModels: providerDraft.autoFetchModels || undefined,
+      autoFetchKnownModels,
       capabilities: capabilities.length > 0 ? capabilities : undefined,
       account: accountConfig,
       credentials: credentials.length > 0 ? credentials : undefined,
@@ -2523,7 +2646,7 @@ function App() {
   function openAddProfileDialog(agent: ProfileConfig["agent"] = profileAgentTab) {
     const resolvedAgent = isProfileAgentAvailable(agent) ? agent : defaultAvailableProfileAgent;
     setProfileAgentTab(resolvedAgent);
-    setProfileDraft(profileDraftWithDetectedAppPath(createProfileDraft(resolvedAgent), appInfo.chatgptAppPath, appInfo.opencodeAppPath));
+    setProfileDraft(profileDraftWithDetectedAppPath(createProfileDraft(resolvedAgent), appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath));
     setProfileActionError("");
     setProfileAddOpen(true);
   }
@@ -2537,7 +2660,8 @@ function App() {
     setProfileEditDraft(profileDraftWithDetectedAppPath(
       createProfileDraftFromProfile(profile, draftConfig.botConfigs),
       appInfo.chatgptAppPath,
-      appInfo.opencodeAppPath
+      appInfo.opencodeAppPath,
+      appInfo.workbuddyAppPath
     ));
     setProfileActionError("");
   }
@@ -2754,7 +2878,7 @@ function App() {
         return profileDraftWithDetectedAppPath({
           ...createProfileDraft(patch.agent, name),
           envRows: profileEnvRowsForAgent(patch.agent, current.envRows)
-        }, appInfo.chatgptAppPath, appInfo.opencodeAppPath);
+        }, appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath);
       }
       return next;
     });
@@ -2769,7 +2893,7 @@ function App() {
         return profileDraftWithDetectedAppPath({
           ...createProfileDraft(patch.agent, name),
           envRows: profileEnvRowsForAgent(patch.agent, current.envRows)
-        }, appInfo.chatgptAppPath, appInfo.opencodeAppPath);
+        }, appInfo.chatgptAppPath, appInfo.opencodeAppPath, appInfo.workbuddyAppPath);
       }
       return next;
     });
@@ -3249,6 +3373,7 @@ function App() {
                 setProviderImportPayload(undefined);
               },
               onCheck: checkProviderDraft,
+              onRefreshModels: refreshProviderModels,
               onSubmit: submitProviderDraft,
               probe: providerProbe,
               probeLoading: providerProbeLoading,

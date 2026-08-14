@@ -318,6 +318,185 @@ test("RequestLogStore keeps list rows lightweight and detail rows complete", asy
   }
 });
 
+test("RequestLogStore keeps large request bodies in sidecar storage and reads them by chunk", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-sidecar-test-"));
+  let store;
+  try {
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const body = JSON.stringify({
+      messages: [{ content: "hello", role: "user" }],
+      model: "request-model",
+      padding: "中🙂".repeat(40 * 1024),
+      tail: "request-tail"
+    });
+    const response = JSON.stringify({
+      model: "response-model",
+      padding: "y".repeat(220 * 1024),
+      tail: "response-tail",
+      usage: {
+        input_tokens: 3,
+        output_tokens: 4,
+        total_tokens: 7
+      }
+    });
+
+    await store.record({
+      completedAt: new Date().toISOString(),
+      durationMs: 42,
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "test-provider",
+      requestBody: Buffer.from(body, "utf8"),
+      requestHeaders: { "content-type": "application/json" },
+      requestId: "request-log-sidecar-test",
+      responseBodyText: response,
+      responseHeaders: { "content-type": "application/json" },
+      startedAt: new Date().toISOString(),
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    const page = await store.list({ pageSize: 25 });
+    assert.equal(page.items.length, 1);
+    assert.equal(page.items[0].requestBody.text, "");
+    assert.equal(page.items[0].requestBody.preview, true);
+    assert.ok(page.items[0].requestBody.bodyRef);
+
+    const detail = await store.getDetail({ id: page.items[0].id });
+    assert.ok(detail);
+    assert.equal(detail.requestBody.preview, true);
+    assert.equal(detail.requestBody.truncated, false);
+    assert.match(detail.requestBody.text, /bytes omitted from preview/);
+    assert.match(detail.requestBody.text, /request-tail/);
+    assert.equal(detail.responseBody?.preview, true);
+    assert.equal(detail.responseBody?.truncated, false);
+    assert.match(detail.responseBody?.text ?? "", /response-tail/);
+
+    const requestChunk = await store.getBodyChunk({
+      id: detail.id,
+      length: 512 * 1024,
+      offset: 0,
+      side: "request"
+    });
+    assert.ok(requestChunk);
+    assert.equal(requestChunk.eof, true);
+    assert.equal(requestChunk.truncated, false);
+    assert.equal(requestChunk.text, body);
+
+    let unicodeOffset = 0;
+    const unicodeChunks = [];
+    while (true) {
+      const unicodeChunk = await store.getBodyChunk({
+        id: detail.id,
+        length: 4097,
+        offset: unicodeOffset,
+        side: "request"
+      });
+      assert.ok(unicodeChunk);
+      unicodeChunks.push(unicodeChunk.text);
+      if (unicodeChunk.eof) break;
+      assert.ok(unicodeChunk.nextOffset > unicodeOffset);
+      unicodeOffset = unicodeChunk.nextOffset;
+    }
+    assert.equal(unicodeChunks.join(""), body);
+
+    const responseChunk = await store.getBodyChunk({
+      id: detail.id,
+      length: 512 * 1024,
+      offset: 0,
+      side: "response"
+    });
+    assert.ok(responseChunk);
+    assert.equal(responseChunk.eof, true);
+    assert.equal(responseChunk.truncated, false);
+    assert.equal(responseChunk.text, response);
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore stores decoded Claude App route models for observability", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-claude-app-model-test-"));
+  let store;
+  try {
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const sessionId = "claude-app-hex-session";
+    const routedModel = "Provider/real-model";
+    const encodedModel = `anthropic/claude-ccr-h${Buffer.from(routedModel, "utf8").toString("hex")}`;
+    const startedAt = new Date().toISOString();
+    const responseBodyText = [
+      "event: message_start",
+      `data: ${JSON.stringify({
+        message: {
+          model: encodedModel,
+          usage: {
+            input_tokens: 3,
+            output_tokens: 5,
+            total_tokens: 8
+          }
+        },
+        type: "message_start"
+      })}`,
+      "",
+      "event: message_stop",
+      "data: {\"type\":\"message_stop\"}",
+      ""
+    ].join("\n");
+
+    await store.record({
+      completedAt: startedAt,
+      durationMs: 42,
+      fallbackModel: routedModel,
+      method: "POST",
+      model: routedModel,
+      path: "/v1/messages",
+      providerName: "Provider",
+      providerProtocol: "anthropic_messages",
+      requestedModel: encodedModel,
+      requestBody: Buffer.from(JSON.stringify({
+        messages: [{ content: "hello", role: "user" }],
+        model: routedModel
+      }), "utf8"),
+      requestHeaders: {
+        "content-type": "application/json",
+        "user-agent": "openai-codex test",
+        "x-codex-session-id": sessionId
+      },
+      requestId: "claude-app-hex-request",
+      resolvedModel: routedModel,
+      responseBodyText,
+      responseHeaders: { "content-type": "text/event-stream" },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    const page = await store.list({ pageSize: 25 });
+    assert.equal(page.items.length, 1);
+    assert.equal(page.items[0].provider, "Provider");
+    assert.equal(page.items[0].model, "real-model");
+    assert.equal(page.items[0].requestedModel, encodedModel);
+    assert.equal(page.items[0].resolvedModel, routedModel);
+    assert.equal(page.items[0].responseModel, encodedModel);
+
+    const selected = await store.analyze({
+      range: "30d",
+      sessionAgent: "codex",
+      sessionId
+    });
+    assert.equal(selected.selectedSession?.requests[0]?.model, "real-model");
+    assert.deepEqual(selected.selectedSession?.session.models, ["real-model"]);
+    assert.equal(
+      selected.selectedSession?.trace.runs.find((run) => run.kind === "llm")?.model,
+      "real-model"
+    );
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("RequestLogStore persists actively reported route hops without synthesizing Core diffs", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-route-trace-test-"));
   let store;
@@ -997,6 +1176,7 @@ test("RequestLogStore analyzes agent sessions and exposes trace payloads", async
     });
     assert.equal(selected.selectedSession?.trace.toolRunCount, 1);
     assert.equal(selected.selectedSession?.trace.llmRunCount, 1);
+    assert.equal(selected.selectedSession?.trace.runs.some((run) => run.kind === "route"), false);
     assert.equal(selected.selectedSession?.trace.runs.some((run) => run.toolName === "read_file"), true);
     assert.equal(
       selected.selectedSession?.trace.runs.find((run) => run.id === selected.selectedSession?.trace.rootRunId)?.status,
@@ -1323,7 +1503,7 @@ test("RequestLogStore streams more body text than the bounded worker heap", {
   }
 });
 
-test("RequestLogStore keeps analysis bounded by the maximum row count", {
+test("RequestLogStore reports when analysis is bounded by the maximum row count", {
   skip: isBoundedHeapWorker,
   timeout: 30000
 }, async () => {
@@ -1332,7 +1512,7 @@ test("RequestLogStore keeps analysis bounded by the maximum row count", {
   try {
     const dbFile = path.join(dir, "request-logs.sqlite");
     store = new RequestLogStore(dbFile);
-    const requestCount = 5000;
+    const requestCount = 5001;
     const startedAt = new Date().toISOString();
     await store.list({ pageSize: 1 });
     const database = createBetterSqliteDatabase(dbFile);
@@ -1371,8 +1551,10 @@ test("RequestLogStore keeps analysis bounded by the maximum row count", {
     }
 
     const analysis = await store.analyze({ range: "30d" });
-    assert.equal(analysis.scannedRequestCount, requestCount);
-    assert.equal(analysis.totals.requestCount, requestCount);
+    assert.equal(analysis.requestScanLimit, 5000);
+    assert.equal(analysis.requestScanTruncated, true);
+    assert.equal(analysis.scannedRequestCount, 5000);
+    assert.equal(analysis.totals.requestCount, 5000);
     assert.equal(analysis.sessions[0]?.id, "max-row-session");
   } finally {
     await store?.close();

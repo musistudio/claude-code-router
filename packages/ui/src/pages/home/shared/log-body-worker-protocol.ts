@@ -1,5 +1,5 @@
 import type { RequestLogBody } from "@ccr/core/contracts/app";
-import type { FormattedLogBody } from "./logs";
+import { formatLogBodyView, type FormattedLogBody } from "./logs";
 
 export const logBodyLargeTextThreshold = 256 * 1024;
 export const logBodyPreviewTextLimit = 160 * 1024;
@@ -69,7 +69,7 @@ export function isLargeLogBody(
   if (!body) {
     return false;
   }
-  return Math.max(body.sizeBytes, body.text.length) > threshold;
+  return Boolean(body.preview) || Math.max(body.sizeBytes, body.text.length) > threshold;
 }
 
 export function createLogBodyPreviewText(
@@ -100,4 +100,28 @@ export function createLogBodyPreviewText(
     "",
     tail
   ].join("\n");
+}
+
+export function formatLogBodyForWorker(
+  body: RequestLogBody | undefined,
+  mode: LogBodyFormatMode,
+  largeTextThreshold = logBodyLargeTextThreshold,
+  previewTextLimit = logBodyPreviewTextLimit
+): FormattedLogBody & {
+  large: boolean;
+  preview: boolean;
+  sourceSizeBytes: number;
+} {
+  const large = isLargeLogBody(body, largeTextThreshold);
+  const preview = large && mode !== "full";
+  const formattedBodyView = formatLogBodyView(body);
+  const bodyView = preview && formattedBodyView.json === undefined
+    ? { text: createLogBodyPreviewText(body, previewTextLimit) }
+    : formattedBodyView;
+  return {
+    ...bodyView,
+    large,
+    preview,
+    sourceSizeBytes: body?.sizeBytes ?? 0
+  };
 }

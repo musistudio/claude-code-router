@@ -4941,6 +4941,15 @@ class RemoteSyncClient {
 async function readRemoteSyncApiKey() {
   const direct = nonEmptyEnv("CCR_REMOTE_SYNC_API_KEY");
   if (direct) return direct;
+  const file = nonEmptyEnv("CCR_REMOTE_SYNC_API_KEY_FILE");
+  if (file) {
+    try {
+      const content = fs.readFileSync(expandHome(file), "utf8");
+      return String(content || "").split(/\r?\n/).map((line) => line.trim()).find(Boolean) || "";
+    } catch (error) {
+      log("remote_sync_api_key_file_failed", { error: formatError(error), file });
+    }
+  }
   const helper = nonEmptyEnv("CCR_REMOTE_SYNC_API_KEY_HELPER");
   if (!helper) return "";
   return new Promise((resolve) => {

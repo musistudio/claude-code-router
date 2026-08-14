@@ -9,7 +9,7 @@ import { scanBotHandoffBluetoothTargets, scanBotHandoffWifiTargets } from "@ccr/
 import { cancelBotGatewayQrLogin, startBotGatewayQrLogin, waitBotGatewayQrLogin } from "@ccr/core/agents/bot-gateway/qr-login-service";
 import { closeBotGatewayQrWindow, openBotGatewayQrWindow } from "./bot-gateway-qr-window-service";
 import { syncClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
-import { findInstalledCodexAppExecutable } from "@ccr/core/agents/codex/app-launch";
+import { findInstalledCodexAppExecutable, findInstalledWorkbuddyAppExecutable } from "@ccr/core/agents/codex/app-launch";
 import { findInstalledOpenCodeAppExecutable } from "@ccr/core/agents/opencode/app-launch";
 import { loadAppConfig, saveApiKeysConfig, saveAppConfig, saveAppThemePreference, withClaudeDesignRuntimePluginConfig } from "@ccr/core/config/config";
 import {
@@ -39,6 +39,7 @@ import { isLaunchAtLoginSupported, syncLaunchAtLogin } from "./launch-at-login";
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
 import { getProviderPresets } from "@ccr/core/providers/presets/index";
 import { checkGatewayProviderConnectivity, probeGatewayProvider, probeGatewayProviderCandidates } from "@ccr/core/providers/probe";
+import { syncProviderModelAutoRefreshService } from "@ccr/core/providers/model-auto-refresh";
 import { applyProfileConfig } from "@ccr/core/profiles/service";
 import { desktopCliCommandName, getProfileOpenCommand, getProfileRuntimeStatus, openProfileFromCcr, stopProfileFromCcr } from "@ccr/core/profiles/launch-service";
 import { findProfileForOpen, resolveProfileOpenSurface } from "@ccr/core/profiles/launch-core";
@@ -46,7 +47,7 @@ import { getPluginMarketplace } from "@ccr/core/plugins/marketplace";
 import { ensureProxyCertificateAuthority } from "@ccr/core/proxy/certificates";
 import { proxyService } from "@ccr/core/proxy/service";
 import { listMcpServerTools } from "@ccr/core/mcp/tool-discovery";
-import { getAgentAnalysis, getAgentTracePayload, getRequestLogDetail, getRequestLogs } from "@ccr/core/observability/request-log-store";
+import { getAgentAnalysis, getAgentTracePayload, getRequestLogBodyChunk, getRequestLogDetail, getRequestLogs } from "@ccr/core/observability/request-log-store";
 import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
 import { getUsageStats } from "@ccr/core/usage/store";
@@ -68,6 +69,7 @@ function applyAppThemePreference(theme: AppConfig["theme"]): void {
 ipcMain.handle(IPC_CHANNELS.appGetInfo, () => {
   const chatgptAppPath = findInstalledCodexAppExecutable().executable;
   const opencodeAppPath = findInstalledOpenCodeAppExecutable().executable;
+  const workbuddyAppPath = findInstalledWorkbuddyAppExecutable().executable;
   return {
     ...(chatgptAppPath ? { chatgptAppPath } : {}),
     configDbFile: APP_CONFIG_DB_FILE,
@@ -80,7 +82,8 @@ ipcMain.handle(IPC_CHANNELS.appGetInfo, () => {
     platform: process.platform,
     requestLogsDbFile: REQUEST_LOGS_DB_FILE,
     usageDbFile: USAGE_DB_FILE,
-    version: app.getVersion()
+    version: app.getVersion(),
+    ...(workbuddyAppPath ? { workbuddyAppPath } : {})
   } satisfies AppInfo;
 });
 
@@ -121,6 +124,7 @@ ipcMain.handle(IPC_CHANNELS.appGetProxyNetworkCaptures, () => proxyService.getNe
 ipcMain.handle(IPC_CHANNELS.appGetProxyStatus, () => proxyService.getStatus());
 ipcMain.handle(IPC_CHANNELS.appGetPluginMarketplace, () => getPluginMarketplace());
 ipcMain.handle(IPC_CHANNELS.appGetRequestLogDetail, (_event, request) => getRequestLogDetail(request));
+ipcMain.handle(IPC_CHANNELS.appGetRequestLogBodyChunk, (_event, request) => getRequestLogBodyChunk(request));
 ipcMain.handle(IPC_CHANNELS.appGetRequestLogs, (_event, filter?: RequestLogListFilter) => getRequestLogs(filter));
 ipcMain.handle(IPC_CHANNELS.appGetUpdateStatus, () => appUpdateService.getStatus());
 ipcMain.handle(IPC_CHANNELS.appGetUsageStats, (_event, range?: UsageStatsRange, filter?: UsageStatsFilter) => getUsageStats(range, filter));
@@ -194,7 +198,7 @@ ipcMain.handle(IPC_CHANNELS.appOpenProfile, async (_event, request: ProfileOpenR
   const config = profile.agent === CLAUDE_DESIGN_PLUGIN_ID
     ? withClaudeDesignRuntimePluginConfig(syncedClaudeAppConfig.config)
     : syncedClaudeAppConfig.config;
-  const status = await gatewayService.start(config);
+  const status = await gatewayService.ensureStarted(config);
   if (status.state !== "running") {
     throw new Error(status.lastError || "CCR gateway did not start.");
   }
@@ -217,8 +221,18 @@ ipcMain.handle(IPC_CHANNELS.appApplyClaudeAppGateway, async (_event, config?: Ap
   const synced = await syncClaudeAppGatewayConfig(baseConfig);
   const savedConfig = synced.config;
   let runtimeStatus = gatewayService.getStatus();
+  const restartRequired = synced.configChanged ||
+    shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig) ||
+    runtimeStatus.state !== "running";
 
-  if (synced.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig) || runtimeStatus.state !== "running") {
+  if (runtimeStatus.gatewayManagedExternally) {
+    if (restartRequired) {
+      runtimeStatus = await gatewayService.restart(savedConfig);
+    } else {
+      await gatewayService.updateConfig(savedConfig);
+      runtimeStatus = gatewayService.getStatus();
+    }
+  } else if (restartRequired) {
     runtimeStatus = await gatewayService.start(savedConfig);
   } else {
     await gatewayService.updateConfig(savedConfig);
@@ -320,7 +334,16 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, opt
   const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(savedConfig);
   savedConfig = syncedClaudeAppConfig.config;
   let runtimeStatus = gatewayService.getStatus();
-  if (syncedClaudeAppConfig.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig)) {
+  const restartRequired = syncedClaudeAppConfig.configChanged ||
+    shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig);
+  if (runtimeStatus.gatewayManagedExternally) {
+    if (restartRequired) {
+      runtimeStatus = await gatewayService.restart(savedConfig);
+    } else {
+      await gatewayService.updateConfig(savedConfig);
+      runtimeStatus = gatewayService.getStatus();
+    }
+  } else if (restartRequired) {
     runtimeStatus = await gatewayService.start(savedConfig);
   } else {
     await gatewayService.updateConfig(savedConfig);
@@ -331,6 +354,7 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, opt
   await builtInBrowserService.syncProxy(savedConfig);
   await trayController.refreshIconFromConfig(savedConfig);
   invalidateProviderAccountSnapshotCache();
+  syncProviderModelAutoRefresh(savedConfig);
   return savedConfig;
 });
 ipcMain.handle(IPC_CHANNELS.appSetThemePreference, async (_event, theme: unknown) => {
@@ -356,7 +380,7 @@ ipcMain.handle(IPC_CHANNELS.appSetOnboardingFinished, async () => {
 ipcMain.handle(IPC_CHANNELS.appRestartGateway, async () => {
   const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(await loadAppConfig());
   const config = syncedClaudeAppConfig.config;
-  const status = await gatewayService.start(config);
+  const status = await gatewayService.restart(config);
   await applyProfileIfServiceRunning(config, status);
   await builtInBrowserService.syncProxy(config);
   return status;
@@ -364,7 +388,7 @@ ipcMain.handle(IPC_CHANNELS.appRestartGateway, async () => {
 ipcMain.handle(IPC_CHANNELS.appStartGateway, async () => {
   const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(await loadAppConfig());
   const config = syncedClaudeAppConfig.config;
-  const status = await gatewayService.start(config);
+  const status = await gatewayService.ensureStarted(config);
   await applyProfileIfServiceRunning(config, status);
   await builtInBrowserService.syncProxy(config);
   return status;
@@ -387,7 +411,7 @@ ipcMain.handle(IPC_CHANNELS.appShowMainWindow, () => {
 ipcMain.handle(IPC_CHANNELS.appRestartProxy, async () => {
   const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(await loadAppConfig());
   const config = syncedClaudeAppConfig.config;
-  const status = await gatewayService.start(config);
+  const status = await gatewayService.restart(config);
   await applyProfileIfServiceRunning(config, status);
   await builtInBrowserService.syncProxy(config);
   return proxyService.getStatus();
@@ -398,6 +422,18 @@ async function applyProfileIfServiceRunning(config: AppConfig, status: GatewaySt
     return;
   }
   logProfileApplyResult(await applyProfileConfig(config));
+}
+
+function syncProviderModelAutoRefresh(config: AppConfig): void {
+  syncProviderModelAutoRefreshService(config, {
+    logger: console,
+    onConfigChanged: async (nextConfig) => {
+      await gatewayService.updateConfig(nextConfig);
+      await applyProfileIfServiceRunning(nextConfig, gatewayService.getStatus());
+      invalidateProviderAccountSnapshotCache();
+      trayController.refreshUsageTitle();
+    }
+  });
 }
 
 function logProfileApplyResult(result: ProfileApplyResult): void {

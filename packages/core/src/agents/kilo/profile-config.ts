@@ -4,6 +4,7 @@ import path from "node:path";
 import { buildCodexModelCatalogIds } from "@ccr/core/agents/codex/model-catalog";
 import { parseJsoncRecord } from "@ccr/core/agents/local-providers/shared";
 import { isGatewayProviderEnabled, type AppConfig, type ProfileConfig } from "@ccr/core/contracts/app";
+import { profileAllowedModels } from "@ccr/core/profiles/model-allowlist";
 
 export type KiloProfileConfigWriteResult = {
   backupFile?: string;
@@ -93,7 +94,7 @@ function kiloGatewayOverrides(config: AppConfig, profile: ProfileConfig, token: 
   const providerName = profile.providerName?.trim() || "Claude Code Router";
   const model = normalizeClientModel(profile.model) || defaultClientModel(config);
   const modelRef = `${providerId}/${model}`;
-  const models = buildCodexModelCatalogIds(config, model);
+  const models = buildCodexModelCatalogIds(config, model, { allowedModels: profileAllowedModels({ ...profile, model }) });
   return {
     $schema: "https://app.kilo.ai/config.json",
     model: modelRef,
