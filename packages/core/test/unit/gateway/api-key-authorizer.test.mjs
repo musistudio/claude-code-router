@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
-import { authorize } from "@ccr/core/gateway/auth/api-key-authorizer.ts";
+import { authorize, exchangeClaudeCodeWifToken } from "@ccr/core/gateway/auth/api-key-authorizer.ts";
 
 const authorizerSourceFile = path.join(
   process.cwd(),
@@ -103,6 +103,40 @@ test("gateway authorization separates a missing token from an expired key", asyn
   assert.equal(expired.result.ok, false);
   assert.equal(expired.response.statusCode, 401);
   assert.equal(expired.response.payload.error.message, "API key is expired.");
+});
+
+test("Claude Code WIF token exchange returns a bearer token for a configured profile key", async () => {
+  const config = configWithApiKeys([
+    { createdAt: new Date(0).toISOString(), id: "profile:claude", key: gatewayApiKey }
+  ]);
+
+  const result = await exchangeClaudeCodeWifToken(config, Buffer.from(JSON.stringify({
+    assertion: gatewayApiKey,
+    federation_rule_id: "ccr-local",
+    grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+    organization_id: "ccr-local"
+  })));
+
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(result.payload, {
+    access_token: gatewayApiKey,
+    expires_in: 3600,
+    token_type: "Bearer"
+  });
+});
+
+test("Claude Code WIF token exchange rejects invalid assertions", async () => {
+  const config = configWithApiKeys([
+    { createdAt: new Date(0).toISOString(), id: "profile:claude", key: gatewayApiKey }
+  ]);
+
+  const result = await exchangeClaudeCodeWifToken(config, Buffer.from(new URLSearchParams({
+    assertion: `${gatewayApiKey}-wrong`,
+    grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer"
+  }).toString()));
+
+  assert.equal(result.statusCode, 401);
+  assert.equal(result.payload.error, "invalid_grant");
 });
 
 // A constant-time comparison is behaviour-preserving by construction, so the

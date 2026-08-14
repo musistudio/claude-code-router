@@ -126,7 +126,9 @@ export function logBodyKey(body: RequestLogBody | undefined): string {
     return "missing";
   }
   return JSON.stringify([
+    body.bodyRef ?? "",
     body.encoding ?? "",
+    body.preview ? "preview" : "full",
     body.sizeBytes,
     body.text ?? ""
   ]);

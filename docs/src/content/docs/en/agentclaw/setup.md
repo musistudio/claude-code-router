@@ -9,7 +9,7 @@ lead: "The full setup flow: create an IM bot, bind it to an Agent Config, and ch
 
 1. CCR Desktop is running and the gateway service is available.
 2. A usable model is configured in **Provider Config**, or the Fusion model you want is ready.
-3. An **Agent Config** exists whose **entry mode** includes App. Full AgentClaw relay currently supports Claude App, Codex/ChatGPT App, OpenCode App, and ZCode App; CLI-only agents do not forward Bot messages.
+3. An **Agent Config** exists whose **entry mode** includes App. Full AgentClaw relay currently supports Claude App, Codex/ChatGPT App, OpenCode App, ZCode App, and WorkBuddy App; CLI-only agents do not forward Bot messages.
 4. The target IM platform has Bot credentials, app permissions, or QR login ready.
 
 ## Configuration flow
@@ -22,7 +22,7 @@ lead: "The full setup flow: create an IM bot, bind it to an Agent Config, and ch
 6. Turn on **Bot** and select the Bot you saved.
 7. Configure forwarding, handoff, language, timeout, attachments, streaming, and **Allow Agent shell tools** as needed.
 8. Save the Agent Config.
-9. Reopen Claude App, Codex/ChatGPT App, OpenCode App, or ZCode App from CCR. AgentClaw is online only while the managed App is alive.
+9. Reopen Claude App, Codex/ChatGPT App, OpenCode App, ZCode App, or WorkBuddy App from CCR. AgentClaw is online only while the managed App is alive.
 
 ## Choose a mode
 

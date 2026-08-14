@@ -7,7 +7,7 @@ import {
   normalizeProfileScope, normalizeProfileSurface, Pencil, Plus, PopoverContent,
   profileAgentLabel, profileAgentOptions, ProfileConfig, type ProfileAgentOption, profileModelProviderOptions, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
   Play, Power, RefreshCw, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, useLayoutEffect, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactDragEvent, type ReactNode, type VirtualModelProfileConfig,
-  copyTextToClipboard, formatRouterRuleCondition, formatRouterRuleTarget, isRoutingRuleDraftSubmittable, routerRuleTypeLabel, routingRuleFromDraft, type RouterRule, validateProfileEnvRows,
+  copyTextToClipboard, formatRouterRuleCondition, formatRouterRuleTarget, isRoutingRuleDraftSubmittable, normalizeProviderModelSelector, routerRuleTypeLabel, routingRuleFromDraft, type RouterRule, uniqueStrings, validateProfileEnvRows,
   useCallback, useEffect, useMemo, useRef, useState, X
 } from "../shared/index";
 import { PopoverPortal } from "@/components/ui/popover";
@@ -710,6 +710,15 @@ export function AddProfileForm({
     [providers, virtualModelProfiles]
   );
   const availableModelCount = modelProviderOptions.reduce((count, provider) => count + provider.models.length, 0);
+  const allAllowedModelValues = useMemo(
+    () => profileAllowedModelValues(modelProviderOptions),
+    [modelProviderOptions]
+  );
+  const allowedModelSelectorValue = draft.availableModels.length > 0
+    ? draft.availableModels
+    : draft.model.trim()
+      ? allAllowedModelValues
+      : [];
   const modelPlaceholder = firstProfileModelPlaceholder(modelProviderOptions);
   const validation = profileDraftValidation(draft, botConfigs, availableModelCount);
   const isClaudeDesignProfile = draft.agent === "claude-design";
@@ -717,15 +726,14 @@ export function AddProfileForm({
   const optionalFieldLabel = t("Optional");
   const requiredFieldLabel = t("Required");
   const advancedIssueCount = [
-    validation.providerId,
-    validation.providerName,
+    validation.allowedModels,
     validation.bot,
     validation.handoff,
     validation.env
   ].filter(Boolean).length;
   const advancedSummary = advancedIssueCount > 0
     ? t("Advanced settings need attention")
-    : t("Paths, routing, bot, compact, and env");
+    : t("Models, paths, routing, bot, compact, and env");
   const handleAppPathDrop = useCallback((event: ReactDragEvent<HTMLElement>) => {
     if (!showAppPathField) {
       return;
@@ -792,7 +800,7 @@ export function AddProfileForm({
                     scope: "ccr",
                     surface: "app"
                   }
-              : agent === "zcode"
+              : agent === "workbuddy" || agent === "zcode"
                   ? { agent, surface: "app" }
                   : { agent })}
             value={draft.agent}
@@ -829,7 +837,7 @@ export function AddProfileForm({
                   });
             }}
             options={translateOptions(
-              draft.agent === "zcode" || draft.agent === "claude-design"
+              draft.agent === "workbuddy" || draft.agent === "zcode" || draft.agent === "claude-design"
                 ? profileSurfaceOptions.filter((option) => option.value === "app")
                 : draft.agent === "grok" || draft.agent === "kimi" || draft.agent === "pi" || draft.agent === "kilo"
                     ? profileSurfaceOptions.filter((option) => option.value === "cli")
@@ -916,31 +924,14 @@ export function AddProfileForm({
                 providers={providers}
                 value={draft.model}
                 virtualModelProfiles={virtualModelProfiles}
-                onChange={(model) => onChange({
-                  availableModels: model && !draft.availableModels.includes(model)
-                    ? [model, ...draft.availableModels]
-                    : draft.availableModels,
-                  model
-                })}
+                onChange={(model) => onChange({ model })}
               />
               {validation.kimiModel ? <ProfileFieldHint>{t(validation.kimiModel)}</ProfileFieldHint> : null}
-            </Field>
-            <Field className="sm:col-span-2" label={t("Allowed models")} requirement="required" requirementLabel={requiredFieldLabel}>
-              <ModelMultiSelector
-                providers={providers}
-                value={draft.availableModels}
-                virtualModelProfiles={virtualModelProfiles}
-                onChange={(availableModels) => onChange({
-                  availableModels,
-                  model: availableModels.includes(draft.model) ? draft.model : availableModels[0] ?? ""
-                })}
-              />
-              {validation.kimiAvailableModels ? <ProfileFieldHint>{t(validation.kimiAvailableModels)}</ProfileFieldHint> : null}
             </Field>
           </>
         ) : draft.agent === "claude-design" ? null : (
           <>
-            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : draft.agent === "kilo" ? "Kilo model" : draft.agent === "codebuddy" ? "CodeBuddy model" : "Codex model")} requirement="optional" requirementLabel={optionalFieldLabel}>
+            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : draft.agent === "kilo" ? "Kilo model" : draft.agent === "codebuddy" ? "CodeBuddy model" : draft.agent === "workbuddy" ? "Workbuddy model" : "Codex model")} requirement="optional" requirementLabel={optionalFieldLabel}>
               <ModelSelector
                 placeholder={modelPlaceholder}
                 providers={providers}
@@ -990,23 +981,27 @@ export function AddProfileForm({
                       onChange={onChange}
                       providers={providers}
                     />
-                    {draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" && draft.agent !== "pi" ? (
-                      <>
-                        <Field label={t("Provider ID")} requirement="required" requirementLabel={requiredFieldLabel}>
-                          <Input value={draft.providerId} onChange={(event) => onChange({ providerId: event.target.value })} />
-                          {validation.providerId ? <ProfileFieldHint>{t(validation.providerId)}</ProfileFieldHint> : null}
-                        </Field>
-                        <Field label={t("Provider name")} requirement="required" requirementLabel={requiredFieldLabel}>
-                          <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
-                          {validation.providerName ? <ProfileFieldHint>{t(validation.providerName)}</ProfileFieldHint> : null}
-                        </Field>
-                        {draft.agent !== "zcode" && draft.agent !== "opencode" && draft.agent !== "kilo" ? (
-                          <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
-                            <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
-                            <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
-                          </div>
-                        ) : null}
-                      </>
+                    <Field className="sm:col-span-2" label={t("Allowed model list")} requirement="optional" requirementLabel={optionalFieldLabel}>
+                      <ModelMultiSelector
+                        providers={providers}
+                        requiredValues={draft.model.trim() ? [draft.model] : []}
+                        value={allowedModelSelectorValue}
+                        virtualModelProfiles={virtualModelProfiles}
+                        onChange={(availableModels) => {
+                          const nextAvailableModels = normalizeAllowedModelSelection(availableModels, allAllowedModelValues);
+                          onChange({
+                            availableModels: nextAvailableModels,
+                            model: nextAvailableModels.length === 0 || nextAvailableModels.includes(draft.model) ? draft.model : nextAvailableModels[0] ?? ""
+                          });
+                        }}
+                      />
+                      {validation.allowedModels ? <ProfileFieldHint>{t(validation.allowedModels)}</ProfileFieldHint> : null}
+                    </Field>
+                    {draft.agent === "codex" ? (
+                      <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
+                        <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
+                        <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
+                      </div>
                     ) : null}
                     {draft.agent === "claude-code" || draft.agent === "codex" ? (
                       <div className="sm:col-span-2">
@@ -1267,12 +1262,26 @@ function firstProfileModelPlaceholder(providers: ReturnType<typeof profileModelP
   return provider && model ? `${provider.name}/${model}` : "";
 }
 
+function profileAllowedModelValues(providers: ReturnType<typeof profileModelProviderOptions>): string[] {
+  return uniqueStrings(providers.flatMap((provider) =>
+    provider.models.map((model) => normalizeProviderModelSelector(`${provider.name}/${model}`))
+  ).filter(Boolean));
+}
+
+function normalizeAllowedModelSelection(value: string[], allValues: string[]): string[] {
+  const selected = uniqueStrings(value.map(normalizeProviderModelSelector).filter(Boolean));
+  const allSelected = allValues.length > 0 &&
+    selected.length === allValues.length &&
+    selected.every((model) => allValues.includes(model));
+  return allSelected ? [] : selected;
+}
+
 function profileDraftValidation(
   draft: AddProfileDraft,
   botConfigs: BotGatewaySavedConfig[],
   availableModelCount: number
-): Partial<Record<"bot" | "defaultModel" | "env" | "handoff" | "kimiAvailableModels" | "kimiModel" | "models" | "name" | "providerId" | "providerName", string>> {
-  const issues: Partial<Record<"bot" | "defaultModel" | "env" | "handoff" | "kimiAvailableModels" | "kimiModel" | "models" | "name" | "providerId" | "providerName", string>> = {};
+): Partial<Record<"allowedModels" | "bot" | "defaultModel" | "env" | "handoff" | "kimiModel" | "models" | "name", string>> {
+  const issues: Partial<Record<"allowedModels" | "bot" | "defaultModel" | "env" | "handoff" | "kimiModel" | "models" | "name", string>> = {};
   if (!draft.name.trim()) {
     issues.name = "Profile name is required.";
   }
@@ -1282,20 +1291,12 @@ function profileDraftValidation(
   if (draft.agent === "claude-code" && !draft.model.trim()) {
     issues.defaultModel = "Default model is required.";
   }
+  if (draft.availableModels.length > 0 && !draft.model.trim()) {
+    issues.allowedModels = "Default model is required when allowed model list is set.";
+  }
   if (draft.agent === "kimi") {
     if (!draft.model.trim()) {
       issues.kimiModel = "Kimi model is required.";
-    }
-    if (draft.availableModels.length === 0) {
-      issues.kimiAvailableModels = "Select at least one allowed model.";
-    }
-  }
-  if (draft.agent !== "claude-code" && draft.agent !== "grok" && draft.agent !== "kimi" && draft.agent !== "pi" && draft.agent !== "claude-design" && draft.agent !== "codebuddy") {
-    if (!draft.providerId.trim()) {
-      issues.providerId = "Provider ID is required.";
-    }
-    if (!draft.providerName.trim()) {
-      issues.providerName = "Provider name is required.";
     }
   }
   if (draft.surface !== "cli" && draft.botEnabled && !botConfigs.some((config) => config.id === draft.botConfigId.trim())) {
@@ -1315,18 +1316,9 @@ function profileNumberDraftValid(value: string, min: number, max: number): boole
   return Number.isFinite(numeric) && numeric >= min && numeric <= max;
 }
 
-function profileAppPathLabel(agent: ProfileConfig["agent"]): "CLAUDE_APP_PATH" | "CHATGPT_APP_PATH" | "OPENCODE_APP_PATH" | "CODEBUDDY_APP_PATH" | undefined {
-  if (agent === "claude-code") {
-    return "CLAUDE_APP_PATH";
-  }
-  if (agent === "codex") {
-    return "CHATGPT_APP_PATH";
-  }
-  if (agent === "opencode") {
-    return "OPENCODE_APP_PATH";
-  }
-  if (agent === "codebuddy") {
-    return "CODEBUDDY_APP_PATH";
+function profileAppPathLabel(agent: ProfileConfig["agent"]): "APP_PATH" | undefined {
+  if (agent === "claude-code" || agent === "codex" || agent === "opencode" || agent === "workbuddy" || agent === "codebuddy") {
+    return "APP_PATH";
   }
   return undefined;
 }

@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { CLAUDE_CODE_AUTH_MODE_ENV } from "@ccr/core/agents/claude-code/auth-mode.ts";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 import { ensureProfileGateway } from "@ccr/core/profiles/launch-service.ts";
 
-function claudeProfileConfig() {
+function claudeProfileConfig(authMode = "api-key-helper") {
   const profile = {
     agent: "claude-code",
     enabled: true,
-    env: {},
+    env: {
+      [CLAUDE_CODE_AUTH_MODE_ENV]: authMode
+    },
     id: "claude-main",
     model: "Provider/model",
     name: "Claude Main",
@@ -94,6 +97,47 @@ test("existing profile gateway falls back to the root identity response", async 
 
     assert.equal(result.APIKEY, "profile-token");
     assert.deepEqual(paths, ["/health", "/", "/v1/models"]);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("existing profile gateway rejects WIF profiles when the root identity lacks the token endpoint", async () => {
+  const previousFetch = globalThis.fetch;
+  const paths = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    paths.push(url.pathname);
+    if (url.pathname === "/health") {
+      return Response.json({
+        core: "http://127.0.0.1:3467",
+        status: "running",
+        timestamp: "2026-01-01T00:00:00.000Z"
+      });
+    }
+    if (url.pathname === "/v1/models") {
+      return Response.json({ data: [], object: "list" });
+    }
+    if (url.pathname === "/") {
+      return Response.json({
+        endpoints: ["GET /v1/models"],
+        name: "claude-code-router"
+      });
+    }
+    throw new Error(`Unexpected gateway probe: ${url.pathname}`);
+  };
+
+  try {
+    const { config, profile } = claudeProfileConfig("wif");
+    await assert.rejects(
+      ensureProfileGateway(config, profile, "Local subscription router", {
+        reuseExisting: true,
+        startIfMissing: false
+      }),
+      /does not advertise the Claude Code WIF token endpoint/
+    );
+
+    assert.deepEqual(paths, ["/health", "/v1/models", "/"]);
   } finally {
     globalThis.fetch = previousFetch;
   }

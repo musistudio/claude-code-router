@@ -12,7 +12,7 @@ import {
   logResolvedRouteModel, logSelectOptions, motion, MoveRight, Network, networkCodeLabel,
   networkExchangeMatchesQuery, networkHeaderRows, networkLifecycleLabel, networkQueryRows, networkRowId, networkSummaryRows,
   Pause, Play, ProxyNetworkBody, ProxyNetworkExchange, ProxyNetworkSnapshot, ProxyStatus,
-  ReactNode, ReactPointerEvent, RefreshCw, RequestLogBody, RequestLogEntry, RequestLogListFilter,
+  ReactNode, ReactPointerEvent, RefreshCw, RequestLogBody, RequestLogBodyChunk, RequestLogEntry, RequestLogListFilter,
   RequestLogPage, requestLogPageSizeOptions, RequestLogStatusFilter, requestLogStatusOptions, Search, Select,
   translateOptions, Trash2, useAppNumberLocale, useAppText, useCallback, useEffect, useMemo, useRef,
   useState
@@ -24,6 +24,7 @@ type NetworkResponseTab = "body" | "header" | "raw";
 const logJsonAutoExpandEntryLimit = 60;
 const logJsonContainerPreviewLimit = 80;
 const logJsonAutoExpandTextLimit = 160 * 1024;
+const logBodyAutoLoadJsonBytes = 2 * 1024 * 1024;
 const logBodyWorkerFilterDebounceMs = 180;
 type LogTableColumnId = "time" | "status" | "stream" | "model" | "credential" | "tokens" | "duration";
 type LogTableColumn = {
@@ -992,12 +993,14 @@ function LogExpandedDetails({
         </div>
       ) : null}
       <div className="network-detail-panes grid h-[440px] min-h-0 grid-cols-1 lg:grid-cols-2">
-        <LogJsonPanel body={entry.requestBody} headerEmptyLabel="No request headers" headers={entry.requestHeaders} title={t("请求")} />
+        <LogJsonPanel body={entry.requestBody} headerEmptyLabel="No request headers" headers={entry.requestHeaders} requestLogId={entry.id} side="request" title={t("请求")} />
         <LogJsonPanel
           body={entry.responseBody}
           className="border-t lg:border-l lg:border-t-0"
           headerEmptyLabel="No response headers"
           headers={entry.responseHeaders}
+          requestLogId={entry.id}
+          side="response"
           subtitle={`HTTP ${entry.statusCode || "-"}`}
           title={t("响应")}
         />
@@ -1510,6 +1513,14 @@ type LogBodyPanelView = FormattedLogBody & {
   visible: string;
 };
 
+type LogBodyChunkPanelView = {
+  bodyKey: string;
+  chunk?: RequestLogBodyChunk;
+  error: string;
+  loading: boolean;
+  previousOffsets: number[];
+};
+
 function useLogBodyWorkerView(
   body: RequestLogBody | undefined,
   bodyKey: string,
@@ -1743,6 +1754,8 @@ function LogJsonPanel({
   className,
   headerEmptyLabel = "No values",
   headers,
+  requestLogId,
+  side,
   subtitle,
   title
 }: {
@@ -1750,6 +1763,8 @@ function LogJsonPanel({
   className?: string;
   headerEmptyLabel?: string;
   headers?: Record<string, string | string[]>;
+  requestLogId: number;
+  side: "request" | "response";
   subtitle?: string;
   title: string;
 }) {
@@ -1758,23 +1773,55 @@ function LogJsonPanel({
   const [preferTextBody, setPreferTextBody] = useState(false);
   const [bodyMode, setBodyMode] = useState<LogBodyFormatMode>("preview");
   const [fullscreenOpen, setFullscreenOpen] = useState(false);
+  const [loadedBody, setLoadedBody] = useState<RequestLogBody>();
+  const [chunkView, setChunkView] = useState<LogBodyChunkPanelView>();
+  const [fullBodyLoading, setFullBodyLoading] = useState(false);
+  const [fullBodyError, setFullBodyError] = useState("");
   const [query, setQuery] = useState("");
-  const bodyKey = logBodyCacheKey(body);
-  const bodyView = useLogBodyWorkerView(body, bodyKey, bodyMode, query);
+  const fullBodyLoadIdRef = useRef(0);
+  const sourceBodyKey = logBodyCacheKey(body);
+  const effectiveBody = loadedBody && loadedBody.bodyRef && loadedBody.bodyRef === body?.bodyRef
+    ? loadedBody
+    : body;
+  const bodyKey = logBodyCacheKey(effectiveBody);
+  const bodyView = useLogBodyWorkerView(effectiveBody, bodyKey, bodyMode, query);
+  const chunkViewActive = chunkView?.bodyKey === sourceBodyKey;
+  const toolbarBodyView = fullBodyLoading || fullBodyError
+    ? {
+        ...bodyView,
+        error: fullBodyError || bodyView.error,
+        loading: fullBodyLoading || bodyView.loading,
+        mode: fullBodyLoading ? "full" as const : bodyView.mode
+      }
+    : bodyView;
+  const displayedToolbarBodyView = chunkViewActive
+    ? {
+        ...toolbarBodyView,
+        error: chunkView.error || toolbarBodyView.error,
+        loading: chunkView.loading,
+        mode: "full" as const,
+        preview: false
+      }
+    : toolbarBodyView;
   const formatted = bodyView.text;
   const visible = bodyView.visible;
   const headerRows = useMemo(() => networkHeaderRows(headers ?? {}), [headers]);
-  const [expandedJsonPaths, setExpandedJsonPaths] = useState<Set<string>>(() => createInitialVisibleJsonPaths(bodyView));
-  const showJsonTree = bodyView.json !== undefined && query.trim() === "" && !preferTextBody && !bodyView.preview;
+  const [expandedJsonPaths, setExpandedJsonPaths] = useState<Set<string>>(() => createInitialVisibleJsonPaths(bodyView, side));
+  const showJsonTree = bodyView.json !== undefined && query.trim() === "" && !preferTextBody;
 
   useEffect(() => {
+    fullBodyLoadIdRef.current += 1;
+    setLoadedBody(undefined);
+    setChunkView(undefined);
+    setFullBodyLoading(false);
+    setFullBodyError("");
     setPreferTextBody(false);
     setBodyMode("preview");
-  }, [bodyKey]);
+  }, [sourceBodyKey]);
 
   useEffect(() => {
-    setExpandedJsonPaths(createInitialVisibleJsonPaths(bodyView));
-  }, [bodyView.bodyKey, bodyView.json, bodyView.text]);
+    setExpandedJsonPaths(createInitialVisibleJsonPaths(bodyView, side));
+  }, [bodyView.bodyKey, bodyView.json, bodyView.text, side]);
 
   useEffect(() => {
     if (!fullscreenOpen) {
@@ -1800,6 +1847,134 @@ function LogJsonPanel({
       return next;
     });
   }
+
+  async function loadBodyChunk(offset: number) {
+    if (!effectiveBody?.bodyRef || !window.ccr?.getRequestLogBodyChunk) {
+      setBodyMode("full");
+      return;
+    }
+    const loadId = fullBodyLoadIdRef.current + 1;
+    fullBodyLoadIdRef.current = loadId;
+    setBodyMode("full");
+    setChunkView((current) => ({
+      bodyKey: sourceBodyKey,
+      chunk: current?.bodyKey === sourceBodyKey ? current.chunk : undefined,
+      error: "",
+      loading: true,
+      previousOffsets: nextChunkPreviousOffsets(current, sourceBodyKey, offset)
+    }));
+    try {
+      const chunk = await window.ccr.getRequestLogBodyChunk({
+        id: requestLogId,
+        length: 1024 * 1024,
+        offset,
+        side
+      });
+      if (fullBodyLoadIdRef.current !== loadId) {
+        return;
+      }
+      if (!chunk) {
+        throw new Error(t("Request log body is not available."));
+      }
+      setChunkView({
+        bodyKey: sourceBodyKey,
+        chunk,
+        error: "",
+        loading: false,
+        previousOffsets: nextChunkPreviousOffsets(chunkView, sourceBodyKey, offset)
+      });
+    } catch (error) {
+      if (fullBodyLoadIdRef.current === loadId) {
+        setChunkView((current) => ({
+          bodyKey: sourceBodyKey,
+          chunk: current?.bodyKey === sourceBodyKey ? current.chunk : undefined,
+          error: error instanceof Error ? error.message : String(error),
+          loading: false,
+          previousOffsets: current?.bodyKey === sourceBodyKey ? current.previousOffsets : []
+        }));
+      }
+    }
+  }
+
+  async function loadInlineFullBody() {
+    if (!effectiveBody?.bodyRef || !window.ccr?.getRequestLogBodyChunk) {
+      return;
+    }
+    const loadId = fullBodyLoadIdRef.current + 1;
+    fullBodyLoadIdRef.current = loadId;
+    setFullBodyLoading(true);
+    setFullBodyError("");
+    try {
+      const chunks: string[] = [];
+      let offset = 0;
+      let lastChunk: RequestLogBodyChunk | undefined;
+      while (true) {
+        const chunk = await window.ccr.getRequestLogBodyChunk({
+          id: requestLogId,
+          length: 1024 * 1024,
+          offset,
+          side
+        });
+        if (fullBodyLoadIdRef.current !== loadId) {
+          return;
+        }
+        if (!chunk) {
+          throw new Error(t("Request log body is not available."));
+        }
+        chunks.push(chunk.text);
+        lastChunk = chunk;
+        if (chunk.eof) {
+          break;
+        }
+        offset = chunk.nextOffset ?? offset + chunk.length;
+        await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+      }
+      setLoadedBody({
+        ...effectiveBody,
+        ...(lastChunk?.bodyRef ? { bodyRef: lastChunk.bodyRef } : {}),
+        contentType: lastChunk?.contentType ?? effectiveBody.contentType,
+        encoding: lastChunk?.encoding ?? effectiveBody.encoding,
+        preview: false,
+        sizeBytes: lastChunk?.sizeBytes ?? effectiveBody.sizeBytes,
+        text: chunks.join(""),
+        truncated: Boolean(lastChunk?.truncated)
+      });
+      setBodyMode("full");
+    } catch (error) {
+      if (fullBodyLoadIdRef.current === loadId) {
+        setFullBodyError(error instanceof Error ? error.message : String(error));
+      }
+    } finally {
+      if (fullBodyLoadIdRef.current === loadId) setFullBodyLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (
+      !effectiveBody?.bodyRef ||
+      !effectiveBody.preview ||
+      loadedBody ||
+      fullBodyLoading ||
+      fullBodyError ||
+      bodyMode !== "preview"
+    ) {
+      return;
+    }
+    if (effectiveBody.sizeBytes <= logBodyAutoLoadJsonBytes && isJsonLikeLogBody(effectiveBody)) {
+      void loadInlineFullBody();
+      return;
+    }
+    if (!chunkViewActive && !chunkView?.loading) {
+      void loadBodyChunk(0);
+    }
+  }, [bodyMode, chunkView, chunkViewActive, effectiveBody, fullBodyError, fullBodyLoading, loadedBody]);
+
+  const displayedCopyText = chunkViewActive
+    ? chunkView.chunk?.text ?? ""
+    : formatted;
+  const displayedVisible = chunkViewActive
+    ? filterStaticLogBodyText(chunkView.chunk?.text ?? "", query)
+    : visible;
 
   return (
     <div className={cn("network-pane-split flex min-h-0 min-w-0 flex-col", className)}>
@@ -1827,9 +2002,8 @@ function LogJsonPanel({
         {selectedTab === "body" ? (
           <>
             <LogJsonBodyToolbar
-              body={body}
-              bodyView={bodyView}
-              onLoadFullBody={() => setBodyMode("full")}
+              body={effectiveBody}
+              bodyView={displayedToolbarBodyView}
               onQueryChange={setQuery}
               onToggleTextBody={() => setPreferTextBody((current) => !current)}
               preferTextBody={preferTextBody}
@@ -1838,27 +2012,32 @@ function LogJsonPanel({
             />
             <LogBodyViewer
               copyLabel={`${t("Copy")} ${title} ${t("body")}`}
-              copyText={formatted}
+              copyText={displayedCopyText}
               fullscreenLabel={t("Open fullscreen JSON viewer")}
               onFullscreen={() => setFullscreenOpen(true)}
             >
-              <LogJsonBodyContent
-                expandedJsonPaths={expandedJsonPaths}
-                onToggleJsonPath={toggleJsonPath}
-                showJsonTree={showJsonTree}
-                value={bodyView.json}
-                visible={visible}
-              />
+              {chunkViewActive ? (
+                <LogBodyChunkContent chunkView={chunkView} onLoadChunk={loadBodyChunk} query={query} visible={displayedVisible} />
+              ) : (
+                <LogJsonBodyContent
+                  expandedJsonPaths={expandedJsonPaths}
+                  onToggleJsonPath={toggleJsonPath}
+                  showJsonTree={showJsonTree}
+                  value={bodyView.json}
+                  visible={visible}
+                />
+              )}
             </LogBodyViewer>
             {fullscreenOpen ? (
               <LogJsonFullscreenViewer
-                body={body}
-                bodyView={bodyView}
+                body={effectiveBody}
+                bodyView={displayedToolbarBodyView}
+                chunkView={chunkViewActive ? chunkView : undefined}
                 copyLabel={`${t("Copy")} ${title} ${t("body")}`}
-                copyText={formatted}
+                copyText={displayedCopyText}
                 expandedJsonPaths={expandedJsonPaths}
                 onClose={() => setFullscreenOpen(false)}
-                onLoadFullBody={() => setBodyMode("full")}
+                onLoadChunk={loadBodyChunk}
                 onQueryChange={setQuery}
                 onToggleJsonPath={toggleJsonPath}
                 onToggleTextBody={() => setPreferTextBody((current) => !current)}
@@ -1867,7 +2046,7 @@ function LogJsonPanel({
                 showJsonTree={showJsonTree}
                 subtitle={subtitle}
                 title={title}
-                visible={visible}
+                visible={displayedVisible}
                 value={bodyView.json}
               />
             ) : null}
@@ -1885,7 +2064,6 @@ function LogJsonPanel({
 function LogJsonBodyToolbar({
   body,
   bodyView,
-  onLoadFullBody,
   onQueryChange,
   onToggleTextBody,
   preferTextBody,
@@ -1894,7 +2072,6 @@ function LogJsonBodyToolbar({
 }: {
   body?: RequestLogBody;
   bodyView: LogBodyPanelView;
-  onLoadFullBody: () => void;
   onQueryChange: (value: string) => void;
   onToggleTextBody: () => void;
   preferTextBody: boolean;
@@ -1902,12 +2079,8 @@ function LogJsonBodyToolbar({
   title: string;
 }) {
   const t = useAppText();
-  const canLoadFullBody = bodyView.preview && bodyView.large && query.trim() === "";
   const canToggleJsonText = bodyView.json !== undefined && query.trim() === "";
-  const showToggleButton = canLoadFullBody || canToggleJsonText;
-  const toggleLabel = canLoadFullBody
-    ? bodyView.loading && bodyView.mode === "full" ? t("Loading full payload...") : t("Show full content")
-    : preferTextBody ? "JSON" : t("Show full content");
+  const toggleLabel = preferTextBody ? "JSON" : t("Text");
 
   return (
     <div className="network-body-meta flex min-h-9 shrink-0 items-center gap-2 border-b px-3 py-1.5">
@@ -1921,11 +2094,10 @@ function LogJsonBodyToolbar({
           value={query}
         />
       </div>
-      {showToggleButton ? (
+      {canToggleJsonText ? (
         <button
           className="network-tab shrink-0 border-0 bg-transparent p-0 text-[11px] font-semibold outline-none"
-          disabled={bodyView.loading && bodyView.mode === "full"}
-          onClick={canLoadFullBody ? onLoadFullBody : onToggleTextBody}
+          onClick={onToggleTextBody}
           type="button"
         >
           {toggleLabel}
@@ -1933,7 +2105,6 @@ function LogJsonBodyToolbar({
       ) : null}
       {bodyView.loading ? <span className="network-muted shrink-0 text-[11px] font-semibold">{t("Loading full payload...")}</span> : null}
       {bodyView.error ? <span className="network-error-box shrink-0 rounded px-2 py-0.5 text-[11px] font-semibold">{bodyView.error}</span> : null}
-      {bodyView.preview ? <span className="network-service-paused rounded-full px-2 py-0.5 text-[11px] font-semibold">{t("preview")}</span> : null}
       {bodyView.sourceSizeBytes > 0 ? <span className="network-muted hidden shrink-0 text-[11px] font-semibold sm:inline">{formatBytes(bodyView.sourceSizeBytes)}</span> : null}
       {body?.contentType ? <span className="network-muted hidden shrink-0 text-[11px] font-semibold sm:inline">{body.contentType}</span> : null}
       {body?.truncated ? <span className="network-service-paused rounded-full px-2 py-0.5 text-[11px] font-semibold">{t("truncated")}</span> : null}
@@ -1961,14 +2132,72 @@ function LogJsonBodyContent({
   );
 }
 
+function LogBodyChunkContent({
+  chunkView,
+  onLoadChunk,
+  query,
+  visible
+}: {
+  chunkView: LogBodyChunkPanelView;
+  onLoadChunk: (offset: number) => void | Promise<void>;
+  query: string;
+  visible: string;
+}) {
+  const t = useAppText();
+  const chunk = chunkView.chunk;
+  const previousOffset = chunkView.previousOffsets.at(-1) ?? Math.max(0, (chunk?.offset ?? 0) - 1024 * 1024);
+  const hasPrevious = Boolean(chunk && (chunkView.previousOffsets.length > 0 || chunk.offset > 0));
+  const hasNext = Boolean(chunk && !chunk.eof && chunk.nextOffset !== undefined);
+  const rangeLabel = chunk
+    ? `${formatBytes(chunk.offset)}-${formatBytes(chunk.offset + chunk.length)} / ${formatBytes(chunk.sizeBytes)}`
+    : "";
+  const content = chunkView.loading && !chunk
+    ? t("Loading full payload...")
+    : chunkView.error && !chunk
+      ? chunkView.error
+      : visible || (query.trim() ? "No matching lines" : "");
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="network-body-meta flex min-h-9 shrink-0 items-center gap-2 border-b px-3 py-1.5 pr-24">
+        <button
+          aria-label={t("Previous")}
+          className="network-control-button flex h-7 w-7 shrink-0 items-center justify-center rounded border outline-none focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-40"
+          disabled={!hasPrevious || chunkView.loading}
+          onClick={() => void onLoadChunk(previousOffset)}
+          title={t("Previous")}
+          type="button"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </button>
+        <button
+          aria-label={t("Next")}
+          className="network-control-button flex h-7 w-7 shrink-0 items-center justify-center rounded border outline-none focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-40"
+          disabled={!hasNext || chunkView.loading}
+          onClick={() => chunk?.nextOffset !== undefined && void onLoadChunk(chunk.nextOffset)}
+          title={t("Next")}
+          type="button"
+        >
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
+        {rangeLabel ? <span className="network-muted min-w-0 truncate text-[11px] font-semibold">{rangeLabel}</span> : null}
+        {chunkView.loading ? <span className="network-muted shrink-0 text-[11px] font-semibold">{t("Loading full payload...")}</span> : null}
+        {chunkView.error ? <span className="network-error-box shrink-0 rounded px-2 py-0.5 text-[11px] font-semibold">{chunkView.error}</span> : null}
+      </div>
+      <pre className="network-code min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-3 pr-20 font-mono text-[11px] leading-5">{content}</pre>
+    </div>
+  );
+}
+
 function LogJsonFullscreenViewer({
   body,
   bodyView,
+  chunkView,
   copyLabel,
   copyText,
   expandedJsonPaths,
   onClose,
-  onLoadFullBody,
+  onLoadChunk,
   onQueryChange,
   onToggleJsonPath,
   onToggleTextBody,
@@ -1982,11 +2211,12 @@ function LogJsonFullscreenViewer({
 }: {
   body?: RequestLogBody;
   bodyView: LogBodyPanelView;
+  chunkView?: LogBodyChunkPanelView;
   copyLabel: string;
   copyText: string;
   expandedJsonPaths: Set<string>;
   onClose: () => void;
-  onLoadFullBody: () => void;
+  onLoadChunk: (offset: number) => void | Promise<void>;
   onQueryChange: (value: string) => void;
   onToggleJsonPath: (path: string) => void;
   onToggleTextBody: () => void;
@@ -2024,7 +2254,6 @@ function LogJsonFullscreenViewer({
         <LogJsonBodyToolbar
           body={body}
           bodyView={bodyView}
-          onLoadFullBody={onLoadFullBody}
           onQueryChange={onQueryChange}
           onToggleTextBody={onToggleTextBody}
           preferTextBody={preferTextBody}
@@ -2033,13 +2262,17 @@ function LogJsonFullscreenViewer({
         />
         <div className="network-json-fullscreen-body flex min-h-0 flex-1">
           <LogBodyViewer copyLabel={copyLabel} copyText={copyText}>
-            <LogJsonBodyContent
-              expandedJsonPaths={expandedJsonPaths}
-              onToggleJsonPath={onToggleJsonPath}
-              showJsonTree={showJsonTree}
-              value={value}
-              visible={visible}
-            />
+            {chunkView ? (
+              <LogBodyChunkContent chunkView={chunkView} onLoadChunk={onLoadChunk} query={query} visible={visible} />
+            ) : (
+              <LogJsonBodyContent
+                expandedJsonPaths={expandedJsonPaths}
+                onToggleJsonPath={onToggleJsonPath}
+                showJsonTree={showJsonTree}
+                value={value}
+                visible={visible}
+              />
+            )}
           </LogBodyViewer>
         </div>
       </div>
@@ -2053,9 +2286,11 @@ function logBodyCacheKey(body: RequestLogBody | undefined): string {
   }
   const text = body.text ?? "";
   return [
+    body.bodyRef ?? "",
     body.encoding ?? "",
     body.contentType ?? "",
     body.sizeBytes,
+    body.preview ? "preview" : "full",
     body.truncated ? "truncated" : "complete",
     text.length,
     text.slice(0, 96),
@@ -2063,9 +2298,41 @@ function logBodyCacheKey(body: RequestLogBody | undefined): string {
   ].join("\u001f");
 }
 
-function createInitialVisibleJsonPaths(bodyView: FormattedLogBody): Set<string> {
+function isJsonLikeLogBody(body: RequestLogBody | undefined): boolean {
+  if (!body || body.encoding === "base64") {
+    return false;
+  }
+  const contentType = body.contentType?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  if (contentType === "application/json" || contentType.endsWith("+json")) {
+    return true;
+  }
+  const first = body.text.trimStart().charAt(0);
+  return first === "{" || first === "[";
+}
+
+function nextChunkPreviousOffsets(
+  current: LogBodyChunkPanelView | undefined,
+  bodyKey: string,
+  nextOffset: number
+): number[] {
+  if (!current || current.bodyKey !== bodyKey || !current.chunk) {
+    return [];
+  }
+  if (nextOffset > current.chunk.offset) {
+    return [...current.previousOffsets, current.chunk.offset];
+  }
+  if (nextOffset < current.chunk.offset) {
+    return current.previousOffsets.slice(0, -1);
+  }
+  return current.previousOffsets;
+}
+
+function createInitialVisibleJsonPaths(bodyView: FormattedLogBody, side?: "request" | "response"): Set<string> {
   if (!isJsonContainer(bodyView.json)) {
     return new Set();
+  }
+  if (side === "request") {
+    return new Set(["$"]);
   }
   if (
     bodyView.text.length > logJsonAutoExpandTextLimit ||

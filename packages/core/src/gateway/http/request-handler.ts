@@ -6,6 +6,7 @@ import { LEGACY_GROK_MEDIA_MCP_PATH, MEDIA_TOOLS_MCP_PATH } from "@ccr/core/mcp/
 import { BROWSER_AUTOMATION_MCP_PATH, browserAutomationMcpEnabled } from "@ccr/core/mcp/toolhub-config";
 import { pluginService } from "@ccr/core/plugins/service";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin";
+import { createClaudeCliBootstrapResponse, shouldServeClaudeCliBootstrapResponse } from "@ccr/core/gateway/features/model-discovery";
 import {
   contextArchiveConfigForApiKey,
   handleContextArchiveMcpRequest,
@@ -13,9 +14,12 @@ import {
   type ContextArchiveReplayExecutor
 } from "@ccr/core/gateway/context-archive";
 import { ccrRemoteControlPathPrefix, ccrRemoteControlService } from "@ccr/core/gateway/remote-control-service";
-import { authorize, reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
+import { gatewayRuntimeConfigControlPath } from "@ccr/core/gateway/runtime-config-control";
+import { authorize, claudeCodeWifTokenPath, handleClaudeCodeWifTokenRequest, reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
 import { parseJsonObject, readRequestBody, sendJson } from "@ccr/core/gateway/http/io";
 import { shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
+import { requestLogRequestedModel } from "@ccr/core/observability/request-log-model";
+import { isModelAllowedForProfile, profileForApiKey } from "@ccr/core/profiles/model-allowlist";
 import { applyCors, shouldServeGatewayRequest } from "@ccr/core/gateway/core-runtime/supervisor";
 import { billingUsageSyncPath, rawTraceSyncPath } from "@ccr/core/gateway/internal/shared";
 import type { BrowserAutomationMcpIntegration } from "@ccr/core/gateway/internal/shared";
@@ -24,10 +28,12 @@ export type GatewayHttpRequestHandlerDependencies = {
   getBrowserAutomationMcpIntegration: () => BrowserAutomationMcpIntegration | undefined;
   getConfig: () => AppConfig | undefined;
   getPlugin: () => ClaudeCodeRouterPlugin | undefined;
+  getRuntimeConfigControlStatus: () => { lastError?: string; revision?: string };
   getStatus: () => { coreEndpoint: string; coreManagedExternally?: boolean; endpoint: string; state: string };
   handleBillingUsageSync: (request: IncomingMessage, response: ServerResponse) => Promise<void>;
   handleRawTraceSync: (request: IncomingMessage, response: ServerResponse) => Promise<void>;
   proxyRequest: (request: IncomingMessage, response: ServerResponse, path: string, apiKey?: ApiKeyConfig) => Promise<void>;
+  requestRuntimeConfigReload: (expectedRevision: string, forceRestart: boolean) => void;
   replayContextArchive: ContextArchiveReplayExecutor;
 };
 
@@ -37,10 +43,12 @@ export class GatewayHttpRequestHandler {
   private get browserAutomationMcpIntegration() { return this.dependencies.getBrowserAutomationMcpIntegration(); }
   private get config() { return this.dependencies.getConfig(); }
   private get plugin() { return this.dependencies.getPlugin(); }
+  private get runtimeConfigControlStatus() { return this.dependencies.getRuntimeConfigControlStatus(); }
   private get status() { return this.dependencies.getStatus(); }
   private handleBillingUsageSync(request: IncomingMessage, response: ServerResponse) { return this.dependencies.handleBillingUsageSync(request, response); }
   private handleRawTraceSync(request: IncomingMessage, response: ServerResponse) { return this.dependencies.handleRawTraceSync(request, response); }
   private proxyRequest(request: IncomingMessage, response: ServerResponse, path: string, apiKey?: ApiKeyConfig) { return this.dependencies.proxyRequest(request, response, path, apiKey); }
+  private requestRuntimeConfigReload(expectedRevision: string, forceRestart: boolean) { return this.dependencies.requestRuntimeConfigReload(expectedRevision, forceRestart); }
   private replayContextArchive(input: Parameters<ContextArchiveReplayExecutor>[0]) { return this.dependencies.replayContextArchive(input); }
 
   async handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -69,6 +77,46 @@ export class GatewayHttpRequestHandler {
           return;
         }
         await this.handleRawTraceSync(request, response);
+        return;
+      }
+
+      if (path === gatewayRuntimeConfigControlPath) {
+        const authorization = await authorize(request, response, this.config);
+        if (!authorization.ok) {
+          return;
+        }
+        if (!this.config.APIKEY || authorization.apiKey?.key !== this.config.APIKEY) {
+          sendJson(response, 403, { error: { message: "The primary CCR API key is required for runtime configuration control." } });
+          return;
+        }
+        if (request.method === "GET") {
+          sendJson(response, 200, {
+            ...this.runtimeConfigControlStatus,
+            state: this.status.state
+          });
+          return;
+        }
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: { message: "Method not allowed." } });
+          return;
+        }
+        const body = parseJsonObject(await readRequestBody(request));
+        const expectedRevision = typeof body.configRevision === "string"
+          ? body.configRevision.trim()
+          : "";
+        if (!/^[a-f0-9]{64}$/i.test(expectedRevision)) {
+          sendJson(response, 400, { error: { message: "A valid configRevision is required." } });
+          return;
+        }
+        const forceRestart = body.forceRestart === true;
+        response.once("finish", () => {
+          this.requestRuntimeConfigReload(expectedRevision, forceRestart);
+        });
+        sendJson(response, 202, {
+          accepted: true,
+          configRevision: expectedRevision,
+          restarting: forceRestart
+        });
         return;
       }
 
@@ -191,7 +239,7 @@ export class GatewayHttpRequestHandler {
       if (path === "/") {
         sendJson(response, 200, {
           core: "next-ai-gateway",
-          endpoints: ["POST /mcp", "POST /v1/messages", "POST /v1/messages/count_tokens", "GET /models", "GET /v1/models"],
+          endpoints: ["POST /v1/oauth/token", "GET /api/claude_cli/bootstrap", "POST /mcp", "POST /v1/messages", "POST /v1/messages/count_tokens", "GET /models", "GET /v1/models"],
           name: "claude-code-router",
           plugin: "claude-code-router",
           wrapperPlugins: this.config.plugins.filter((plugin) => plugin.enabled !== false).map((plugin) => plugin.id)
@@ -199,14 +247,36 @@ export class GatewayHttpRequestHandler {
         return;
       }
 
+      if (request.method === "POST" && (path === claudeCodeWifTokenPath || path === `${claudeCodeWifTokenPath}/`)) {
+        await handleClaudeCodeWifTokenRequest(request, response, this.config);
+        return;
+      }
+
+      const claudeCliBootstrapRequest = shouldServeClaudeCliBootstrapResponse(request.method ?? "GET", path);
       const authorization = await authorize(request, response, this.config);
       if (!authorization.ok) {
+        return;
+      }
+
+      if (claudeCliBootstrapRequest) {
+        sendJson(response, 200, createClaudeCliBootstrapResponse(this.config, authorization.apiKey));
         return;
       }
 
       if (request.method === "POST" && path === "/v1/messages/count_tokens") {
         const requestBody = await readRequestBody(request);
         const body = parseJsonObject(requestBody);
+        const requestedModel = requestLogRequestedModel(requestBody, path);
+        const profile = profileForApiKey(this.config, authorization.apiKey);
+        if (requestedModel && !isModelAllowedForProfile(this.config, profile, requestedModel)) {
+          sendJson(response, 403, {
+            error: {
+              code: "profile_model_not_allowed",
+              message: `Model "${requestedModel}" is not allowed for this profile.`
+            }
+          });
+          return;
+        }
         if (!reserveApiKeyLimits(authorization.apiKey, request, response, requestBody)) {
           return;
         }

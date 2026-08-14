@@ -2,12 +2,12 @@
 title: ZCode setup and configuration
 pageTitle: ZCode
 eyebrow: Detailed configuration
-lead: "Connect ZCode to CCR. ZCode is App-only in CCR. This page covers every Agent Config field: how to set it and what effect it has."
+lead: "Connect ZCode to CCR. ZCode is App-only in CCR."
 ---
 
 ## Who this is for
 
-ZCode is a coding agent that runs as a desktop app. In CCR it is **App only**: CCR writes the ZCode CLI config, v2 config, and model cache, then starts the App with this profile's model, provider, and an isolated user-data directory.
+ZCode is a coding agent that runs as a desktop app. In CCR it is **App only**.
 
 Use this page to route ZCode to any CCR provider or Fusion model, or to attach an IM bot.
 
@@ -19,20 +19,12 @@ Use this page to route ZCode to any CCR provider or Fusion model, or to attach a
 2. The ZCode desktop app is installed and logged in on this machine.
 3. You are on **Agent Config** and click **Add profile**.
 
-## How CCR connects ZCode
-
-When you save a ZCode profile, CCR:
-
-- Writes the ZCode **CLI config** (`~/.zcode/cli/config.json` by default), plus the ZCode v2 config and model cache, based on ZCode home or your custom config file.
-- Generates a **middleware launcher** that sets `ZCODE_HOME`/`ZCODE_STORAGE_DIR`, the provider, model, and model catalog, then hands off to the App.
-- Starts the App with the current profile's model, provider, and a separate user-data directory.
-
 ## Create the profile
 
 1. On **Agent Config**, click **Add profile** and choose **ZCode**.
 2. Enter a **Config name** (for example `ZCode - Work`).
 3. Confirm **Provider ID**, **Provider name**, and **ZCode model**.
-4. Adjust the **Config file** and environment variables as needed.
+4. Adjust advanced settings only if your local setup needs them.
 5. If you use AgentClaw, bind a **Bot**.
 6. **Save**, then open ZCode from CCR with the play button.
 
@@ -42,41 +34,40 @@ ZCode is fixed to **App only**, so the entry mode is not editable. The fields yo
 
 | Field | How to set it | Effect |
 | --- | --- | --- |
-| Agent | Choose **ZCode** | Tells CCR to write the ZCode config and start the App. |
-| Config name | Free text, e.g. `ZCode - Work` | Identifies the profile and is used in `ccr-app "<name>" app`. |
+| Agent | Choose **ZCode** | Creates a ZCode App launch entry in CCR. |
+| Config name | Free text, e.g. `ZCode - Work` | Identifies the profile. Desktop commands use `ccr-app "<name>" app`; CLI commands use `ccr "<name>" app`. |
 | Enabled | Toggle on/off | Disabled profiles are not applied and not offered as launch entries. |
-| Effect scope | `Only opened from CCR` / `System default` | Isolated CCR-managed config vs. the real ZCode home config. Only one enabled system-default ZCode profile is allowed. |
-| Provider ID | Default `claude-code-router` | The provider reference CCR writes into the ZCode config. |
+| Effect scope | `Only opened from CCR` / `System default` | Keeps the profile limited to CCR launches, or makes it the system-default ZCode profile. Only one enabled system-default ZCode profile is allowed. |
+| Provider ID | Default `claude-code-router` | Provider reference for this ZCode profile. |
 | Provider name | Free text; default `Claude Code Router` | Display name shown in ZCode. |
 | ZCode model | A provider model or Fusion model | Default model when ZCode App opens. |
-| Config file | Path, default `~/.zcode/cli/config.json` | CCR also writes the ZCode v2 config and model cache alongside it. |
-| Environment variables | Key/value rows | Injected into the ZCode App and the middleware launcher. |
+| Config file | Path | Used for the system-default ZCode profile. |
+| Environment variables | Key/value rows | Optional advanced overrides; leave empty for normal use. |
 | Bot | Select a saved Bot | Binds an AgentClaw IM bot to the ZCode App entry. |
-
-> **Show all sessions** and **CCR managed compact** are not exposed for ZCode.
-
-## Environment variables
-
-- Any rows are injected into the ZCode App and the middleware launcher.
-- Variables CCR manages itself (`ZCODE_HOME`, `ZCODE_STORAGE_DIR`, the `CCR_ZCODE_*` and `CODEXL_ZCODE_*` variables, `CCR_PROFILE_SURFACE`) are reserved — setting them manually has no effect.
 
 ## Open and use
 
-Click the play button on the profile card to open ZCode with this profile's model, provider, and isolated user-data directory. Reopening the same profile activates the existing window.
+Click the play button on the profile card to open ZCode with this profile's model and provider. Reopening the same profile activates the existing window.
 
-You can also copy the App command from the card:
+Desktop App command copied from the profile card:
 
 ```text
 ccr-app "ZCode - Work" app
 ```
 
+For CLI, run:
+
+```text
+ccr "ZCode - Work" app
+```
+
 ## Multi-instance
 
-Each profile has its own `id` and a separate user-data directory, so multiple ZCode profiles can run at once with different models or providers.
+Create separate ZCode profiles when you want different models or providers.
 
 ## AgentClaw (Bot)
 
-With a Bot bound and ZCode opened from CCR, the Codex-compatible companion worker exposes native Session discovery, Project/Session browsing and continuation, queueing, cancellation, model settings, usage, attachments, and diagnostics. Closing ZCode App immediately takes the relay offline. See [AgentClaw](/en/agentclaw/).
+With a Bot bound and ZCode opened from CCR, ZCode can relay conversations through the selected IM channel. Closing ZCode App immediately takes the relay offline. See [AgentClaw](/en/agentclaw/).
 
 ## Verify
 

@@ -16,7 +16,7 @@ import {
   suppressRequestLogRawTraceBodies,
   type RequestLogEnqueueResult
 } from "@ccr/core/observability/request-log-runtime";
-import { resolveRawTraceBodyLimit } from "@ccr/core/observability/request-log-limits";
+import { rawTraceMaxPartBytes, resolveRawTraceBodyLimit } from "@ccr/core/observability/request-log-limits";
 import { isRecord, numberValue, stringValue } from "@ccr/core/gateway/internal/value";
 import { formatError, parseJsonObject, readHeader, readRequestBody, sendJson } from "@ccr/core/gateway/http/io";
 import { endpoint } from "@ccr/core/gateway/core-runtime/supervisor";
@@ -1415,7 +1415,7 @@ export function buildRawTraceConfig(config: AppConfig, rawTraceSyncToken: string
   return {
     deleteLocalAfterUpload: false,
     enabled,
-    maxPartBytes: maxBodyBytes,
+    maxPartBytes: rawTraceMaxPartBytes,
     mode: "wire_raw",
     spoolDir: RAW_TRACE_SPOOL_DIR,
     sync: {

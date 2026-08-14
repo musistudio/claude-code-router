@@ -49,7 +49,7 @@ export function findProfileForOpen(config: Pick<AppConfig, "profile">, profileRe
 }
 
 export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[] {
-  if (profile.agent === "zcode" || profile.agent === "claude-design") {
+  if (profile.agent === "workbuddy" || profile.agent === "zcode" || profile.agent === "claude-design") {
     return ["app"];
   }
   if (profile.agent === "grok" || profile.agent === "kimi" || profile.agent === "pi" || profile.agent === "kilo") {
@@ -77,7 +77,7 @@ export function resolveProfileOpenSurface(profile: ProfileConfig, surface?: Prof
 }
 
 export function defaultProfileOpenSurface(profile: Pick<ProfileConfig, "agent">): ProfileOpenSurface {
-  return profile.agent === "zcode" || profile.agent === "claude-design" ? "app" : "cli";
+  return profile.agent === "workbuddy" || profile.agent === "zcode" || profile.agent === "claude-design" ? "app" : "cli";
 }
 
 export function shouldAutoStartProfileGateway(
@@ -357,12 +357,14 @@ function buildClaudeCodeLaunchPlan(
 }
 
 function isCodexCompatibleAgent(agent: ProfileConfig["agent"]): boolean {
-  return agent === "codex" || agent === "zcode";
+  return agent === "codex" || agent === "workbuddy" || agent === "zcode";
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
   return agent === "zcode"
     ? "~/.zcode/cli/config.json"
+    : agent === "workbuddy"
+      ? "~/.workbuddy/config.toml"
     : agent === "pi"
       ? "~/.pi/agent"
       : agent === "claude-design"
@@ -371,7 +373,7 @@ function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
 }
 
 function codexConfigSubdir(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "zcode" : "codex";
+  return agent === "zcode" ? "zcode" : agent === "workbuddy" ? "workbuddy" : "codex";
 }
 
 function claudeCodeWrapperFilename(profile: ProfileConfig): string {

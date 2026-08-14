@@ -122,6 +122,7 @@ export const agentFilterOptions: Array<{ label: string; value: AgentFilterValue 
   { label: "Kilo CLI", value: "kilo" },
   { label: "OpenCode", value: "opencode" },
   { label: "Pi", value: "pi" },
+  { label: "Workbuddy", value: "workbuddy" },
   { label: "ZCode", value: "zcode" },
   { label: "Claude Design", value: "claude-design" },
   { label: "CodeBuddy", value: "codebuddy" },
@@ -137,6 +138,7 @@ export const profileAgentOptions: ProfileAgentOption[] = [
   { label: "Kilo CLI", value: "kilo" },
   { label: "OpenCode", value: "opencode" },
   { label: "Pi", value: "pi" },
+  { label: "Workbuddy", value: "workbuddy" },
   { label: "ZCode", value: "zcode" },
   { label: "Claude Design", value: "claude-design" },
   { label: "CodeBuddy", value: "codebuddy" }

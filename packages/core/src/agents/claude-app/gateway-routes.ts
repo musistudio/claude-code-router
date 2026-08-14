@@ -299,7 +299,7 @@ function encodeClaudeAppGatewayRouteModel(model: string): string {
   return Buffer.from(stripClaudeAppGatewayOneMillionContextSuffix(model), "utf8").toString("hex");
 }
 
-function decodeClaudeAppGatewayRouteId(routeId: string): string | undefined {
+export function decodeClaudeAppGatewayRouteId(routeId: string): string | undefined {
   const normalized = stripClaudeAppGatewayOneMillionContextSuffix(routeId).toLowerCase();
   const match = /^anthropic\/claude-ccr(?:\d+)?-h([0-9a-f]+)$/.exec(normalized);
   const encoded = match?.[1];

@@ -637,6 +637,8 @@ export function createProviderDraftFromDeepLinkPayload(
   return {
     ...accountDraft,
     apiKey: payload.apiKey?.trim() || "",
+    autoFetchModels: false,
+    autoFetchKnownModels: [],
     baseUrl,
     capabilities: payload.capabilities ?? [],
     catalogModelMetadata: undefined,
@@ -733,6 +735,8 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
   return {
     ...accountDraft,
     apiKey: "",
+    autoFetchModels: false,
+    autoFetchKnownModels: [],
     baseUrl: "",
     capabilities: [],
     catalogModelMetadata: undefined,
@@ -763,6 +767,8 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
   return {
     ...accountDraft,
     apiKey: providerApiKey(provider),
+    autoFetchModels: Boolean(provider.autoFetchModels),
+    autoFetchKnownModels: mergeProviderModelLists(provider.autoFetchKnownModels ?? []),
     baseUrl,
     capabilities: provider.capabilities ?? [],
     catalogModelMetadata: undefined,
@@ -1816,7 +1822,9 @@ export async function probeProviderCandidates(
   apiKey: string,
   models: string[],
   options: {
+    forceRefresh?: boolean;
     mode?: "connectivity" | "models" | "protocols";
+    providerPlugins?: unknown[];
     protocols?: GatewayProviderProtocol[];
   } = {}
 ): Promise<ProviderProbeCandidateResult | undefined> {
@@ -1824,8 +1832,10 @@ export async function probeProviderCandidates(
   return await window.ccr?.probeProviderCandidates({
     apiKey: apiKey || undefined,
     candidates,
+    forceRefresh: options.forceRefresh,
     mode,
     models: mode === "connectivity" ? models : [],
+    providerPlugins: options.providerPlugins,
     protocols: options.protocols
   });
 }
@@ -2164,6 +2174,43 @@ export function providerModelDisplayName(provider: GatewayProviderConfig, model:
 
 export function providerModelDisplayTitle(provider: GatewayProviderConfig, model: string): string {
   return providerModelDisplayName(provider, model);
+}
+
+export function providerAutoFetchKnownModelsForSave({
+  currentModels,
+  detectedModels = [],
+  draftKnownModels = [],
+  existingProvider,
+  nextBaseUrl
+}: {
+  currentModels: string[];
+  detectedModels?: string[];
+  draftKnownModels?: string[];
+  existingProvider?: GatewayProviderConfig;
+  nextBaseUrl: string;
+}): string[] | undefined {
+  const current = mergeProviderModelLists(currentModels);
+  const matchedExistingProvider = existingProvider && providerModelSourceMatches(existingProvider, nextBaseUrl)
+    ? existingProvider
+    : undefined;
+  const existingKnown = matchedExistingProvider
+    ? mergeProviderModelLists(matchedExistingProvider.autoFetchKnownModels ?? [], matchedExistingProvider.models)
+    : [];
+  const draftKnown = matchedExistingProvider ? mergeProviderModelLists(draftKnownModels) : [];
+  const detected = mergeProviderModelLists(detectedModels);
+  const known = mergeProviderModelLists(existingKnown, draftKnown, detected, current);
+  const currentKeys = new Set(current.map((model) => model.toLowerCase()));
+  const hasKnownModelsOutsideCurrentSelection = known.some((model) => !currentKeys.has(model.toLowerCase()));
+  const hasObservedCatalogBaseline = detected.length > 0;
+  const hasExistingBaseline = existingKnown.length > 0 || draftKnown.length > 0;
+
+  return hasKnownModelsOutsideCurrentSelection || hasObservedCatalogBaseline || hasExistingBaseline ? known : undefined;
+}
+
+function providerModelSourceMatches(provider: GatewayProviderConfig, nextBaseUrl: string): boolean {
+  const currentBaseUrl = normalizeProviderBaseUrl(providerBaseUrl(provider)).toLowerCase();
+  const nextNormalizedBaseUrl = normalizeProviderBaseUrl(nextBaseUrl).toLowerCase();
+  return Boolean(currentBaseUrl && nextNormalizedBaseUrl && currentBaseUrl === nextNormalizedBaseUrl);
 }
 
 export function pickRecommendedProviderModels(models: string[], protocol?: GatewayProviderProtocol): string[] {

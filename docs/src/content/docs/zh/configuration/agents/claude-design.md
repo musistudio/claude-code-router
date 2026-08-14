@@ -2,12 +2,12 @@
 title: Claude Design 接入与配置
 pageTitle: Claude Design
 eyebrow: 详细配置
-lead: "把 Claude Design 接入 CCR。Claude Design 仅支持 App，且完全由 CCR Desktop 托管。本页说明适用的少量字段，以及它的路由方式。"
+lead: "把 Claude Design 接入 CCR。Claude Design 仅支持 App。"
 ---
 
 ## 适用场景
 
-Claude Design 是 Anthropic 的设计 Agent，以桌面应用形态运行。在 CCR 中它 **仅支持 App**，且始终限定为从 CCR 打开：从 CCR Desktop 打开，由 CCR 为你托管其运行时。与各编码 Agent 不同，Claude Design 没有需要填写的模型/供应商/配置文件字段——这些都由 CCR 自动处理。
+Claude Design 是 Anthropic 的设计 Agent，以桌面应用形态运行。在 CCR 中它 **仅支持 App**，且始终从 CCR Desktop 打开。
 
 当你想注册一个 Claude Design 配置，或可选地添加路由规则时，使用本页。
 
@@ -18,10 +18,6 @@ Claude Design 是 Anthropic 的设计 Agent，以桌面应用形态运行。在 
 1. CCR Desktop 正在运行，且已配置至少一个供应商与模型。
 2. Claude Design 可通过 CCR Desktop 使用。
 3. 进入 **Agent 配置**，点击 **添加配置**。
-
-## CCR 如何接入 Claude Design
-
-Claude Design **由 CCR Desktop 托管**——应用配置时，CCR 不会像对待 Claude Code 或 Codex 那样写入独立的 Agent 配置文件。该配置是一个启动入口，CCR Desktop 用它来以当前的网关、供应商、路由和模型选择打开并运行 Claude Design。它只能从 CCR Desktop 打开（不能用 `ccr-app` 终端命令）。
 
 ## 创建配置
 
@@ -36,12 +32,10 @@ Claude Design 固定为 **仅 App** 和 **仅从 CCR 打开时生效**。多数 
 
 | 字段 | 如何配置 | 效果 |
 | --- | --- | --- |
-| Agent | 选择 **Claude Design** | 注册一个仅 App、由 CCR 托管的配置。 |
+| Agent | 选择 **Claude Design** | 在 CCR 中创建 Claude Design App 启动入口。 |
 | 配置名称 | 自由文本，例如 `Claude Design` | 在 CCR 中标识该配置。 |
 | 启用 | 开关 | 关闭的配置不会被应用，也不会出现在启动入口。 |
 | 路由 | 可选的路由规则 | 影响该配置请求路由方式的规则。参见[智能路由](/routing/)。 |
-
-> Claude Design 不暴露模型、供应商、配置文件、环境变量与入口模式——这些都由 CCR Desktop 托管。
 
 ## 路由
 
@@ -49,7 +43,7 @@ Claude Design 固定为 **仅 App** 和 **仅从 CCR 打开时生效**。多数 
 
 ## 打开与使用
 
-从 CCR Desktop 打开 Claude Design。它无法用 `ccr-app` 终端命令启动。
+从 CCR Desktop 打开 Claude Design。它无法用终端配置命令启动。
 
 ## 验证
 
@@ -59,6 +53,6 @@ Claude Design 固定为 **仅 App** 和 **仅从 CCR 打开时生效**。多数 
 
 ## 常见问题
 
-- **无法从终端打开**：Claude Design 仅支持 App，需从 CCR Desktop 打开，而非 `ccr-app`。
+- **无法从终端打开**：Claude Design 仅支持 App，需从 CCR Desktop 打开。
 - **请求绕过了 CCR**：确认配置已 **启用**，且你是从 CCR Desktop 打开 Claude Design。
 - **路由规则无效**：只有显式规则生效；增强路由开关对 Claude Design 始终开启。

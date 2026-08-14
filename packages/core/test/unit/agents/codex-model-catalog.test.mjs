@@ -22,6 +22,19 @@ test("codex catalog removes duplicate model IDs case-insensitively without reord
   assert.deepEqual(ids, ["provider/model-a", "Provider/MODEL-B"]);
 });
 
+test("codex catalog filters model IDs with a profile allowlist", () => {
+  const ids = buildCodexModelCatalogIds({
+    Providers: [
+      { name: "Provider", type: "openai_responses", models: ["alpha", "beta"] },
+      { name: "Other", type: "openai_responses", models: ["gamma"] }
+    ]
+  }, "Provider/alpha", {
+    allowedModels: ["Provider/alpha"]
+  });
+
+  assert.deepEqual(ids, ["Provider/alpha"]);
+});
+
 test("codex catalog treats unknown models as text-only while enabling apply_patch", () => {
   const model = catalogModelFor({
     Providers: [

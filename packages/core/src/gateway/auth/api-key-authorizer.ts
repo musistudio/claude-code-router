@@ -2,10 +2,13 @@ import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ApiKeyConfig, AppConfig } from "@ccr/core/contracts/app";
 import { loadPersistedApiKeys } from "@ccr/core/config/config-repository";
-import { formatError, readAuthToken, readRemoteControlQueryAuthToken, sendJson } from "@ccr/core/gateway/http/io";
+import { formatError, readAuthToken, readRemoteControlQueryAuthToken, readRequestBody, sendJson } from "@ccr/core/gateway/http/io";
 import { estimateLimitUsage, limitRules, readWindowCounter } from "@ccr/core/gateway/limits/window-limiter";
 import type { ApiKeyAuthorizationResult, ApiKeyLimitRule, ApiKeyLimitUsage } from "@ccr/core/gateway/internal/shared";
 
+export const claudeCodeWifTokenPath = "/v1/oauth/token";
+const claudeCodeWifGrantType = "urn:ietf:params:oauth:grant-type:jwt-bearer";
+const claudeCodeWifTokenExpiresInSeconds = 3600;
 const persistedApiKeyCacheTtlMs = 1000;
 let persistedApiKeyCache: { loadedAt: number; values: ApiKeyConfig[] } | undefined;
 
@@ -40,6 +43,50 @@ export async function authorize(
 
   sendJson(response, 401, { error: { message: token ? "Invalid API key." : "API key is missing." } });
   return { ok: false };
+}
+
+export async function handleClaudeCodeWifTokenRequest(
+  request: IncomingMessage,
+  response: ServerResponse,
+  config: AppConfig
+): Promise<void> {
+  const result = await exchangeClaudeCodeWifToken(config, await readRequestBody(request));
+  sendJson(response, result.statusCode, result.payload);
+}
+
+export async function exchangeClaudeCodeWifToken(
+  config: AppConfig,
+  requestBody: Buffer
+): Promise<{ payload: Record<string, unknown>; statusCode: number }> {
+  const body = parseClaudeCodeWifTokenRequestBody(requestBody);
+  const grantType = stringField(body.grant_type);
+  if (grantType !== claudeCodeWifGrantType) {
+    return oauthTokenError(400, "unsupported_grant_type", "Claude Code WIF requires the JWT bearer grant type.");
+  }
+
+  const assertion = stringField(body.assertion);
+  if (!assertion) {
+    return oauthTokenError(400, "invalid_request", "Claude Code WIF assertion is missing.");
+  }
+
+  let apiKeys = await configuredApiKeys(config);
+  let apiKey = findApiKeyByToken(apiKeys, assertion);
+  if (!apiKey) {
+    apiKeys = await configuredApiKeys(config, { refresh: true });
+    apiKey = findApiKeyByToken(apiKeys, assertion);
+  }
+  if (!apiKey || isApiKeyExpired(apiKey)) {
+    return oauthTokenError(401, "invalid_grant", "Claude Code WIF assertion is invalid or expired.");
+  }
+
+  return {
+    payload: {
+      access_token: apiKey.key,
+      expires_in: claudeCodeWifTokenExpiresInSeconds,
+      token_type: "Bearer"
+    },
+    statusCode: 200
+  };
 }
 
 export function reserveApiKeyLimits(
@@ -105,6 +152,48 @@ async function configuredApiKeys(config: AppConfig, options: { refresh?: boolean
     result.push({ ...value, key });
   }
   return result;
+}
+
+function parseClaudeCodeWifTokenRequestBody(buffer: Buffer): Record<string, unknown> {
+  const text = buffer.toString("utf8").trim();
+  if (!text) {
+    return {};
+  }
+  if (text.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(text) as unknown;
+      return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : {};
+    } catch {
+      return {};
+    }
+  }
+
+  const params = new URLSearchParams(text);
+  const result: Record<string, string> = {};
+  params.forEach((value, key) => {
+    result[key] = value;
+  });
+  return result;
+}
+
+function stringField(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function oauthTokenError(
+  statusCode: number,
+  error: string,
+  errorDescription: string
+): { payload: Record<string, unknown>; statusCode: number } {
+  return {
+    payload: {
+      error,
+      error_description: errorDescription
+    },
+    statusCode
+  };
 }
 
 async function loadPersistedApiKeysCached(options: { refresh?: boolean } = {}): Promise<ApiKeyConfig[]> {

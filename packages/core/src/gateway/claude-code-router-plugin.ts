@@ -17,6 +17,7 @@ import { buildRouteScriptInput } from "@ccr/core/routing/route-script-context";
 import { normalizeRouteScriptResult } from "@ccr/core/routing/route-script-result";
 import type { RouteScriptRuntime } from "@ccr/core/routing/route-script-runtime";
 import { profileApiKeyId } from "@ccr/core/profiles/api-key";
+import { isModelAllowedForProfile } from "@ccr/core/profiles/model-allowlist";
 
 export { normalizeRouteSelector } from "@ccr/core/routing/model-registry";
 
@@ -76,7 +77,8 @@ export class ClaudeCodeRouterPlugin {
     };
     applyAgentRequestEnrichers(request, [{
       enrich: (matchedRequest) => {
-        injectClaudeCodeAgentToolDescription(matchedRequest.body, this.config);
+        const profile = resolveBuiltInAgentProfile(matchedRequest, this.config, "claude-code");
+        injectClaudeCodeAgentToolDescription(matchedRequest.body, this.config, profile);
         injectClaudeCodeToolHubInstructions(matchedRequest.body, this.config);
         matchedRequest.builtInClaudeCodeSubagent = removeClaudeCodeBillingSystemHeader(matchedRequest.body);
         matchedRequest.builtInSubagentModel = extractAndRemoveClaudeCodeSubagentModelTag(matchedRequest.body);
@@ -842,12 +844,12 @@ function systemContainsInstruction(system: unknown, marker: string): boolean {
     : isRecord(block) && typeof block.text === "string" && block.text.includes(marker));
 }
 
-function injectClaudeCodeAgentToolDescription(body: Record<string, unknown>, config: AppConfig): void {
+function injectClaudeCodeAgentToolDescription(body: Record<string, unknown>, config: AppConfig, profile?: ProfileConfig): void {
   if (!Array.isArray(body.tools)) {
     return;
   }
 
-  const instructions = claudeCodeAgentToolInstructions(config);
+  const instructions = claudeCodeAgentToolInstructions(config, profile);
   if (!instructions) {
     return;
   }
@@ -914,8 +916,8 @@ function appendDescriptionInstruction(description: string | undefined, instructi
   return existing ? `${existing}\n\n${instruction}` : instruction;
 }
 
-function claudeCodeAgentToolInstructions(config: AppConfig): { prompt: string; tool: string; workflow: string } | undefined {
-  const modelRows = configuredSubagentModelDescriptionRows(config);
+function claudeCodeAgentToolInstructions(config: AppConfig, profile?: ProfileConfig): { prompt: string; tool: string; workflow: string } | undefined {
+  const modelRows = configuredSubagentModelDescriptionRows(config, profile);
   if (modelRows.length === 0) {
     return undefined;
   }
@@ -942,9 +944,12 @@ function claudeCodeAgentToolInstructions(config: AppConfig): { prompt: string; t
   };
 }
 
-function configuredSubagentModelDescriptionRows(config: AppConfig): string[] {
+function configuredSubagentModelDescriptionRows(config: AppConfig, profile?: ProfileConfig): string[] {
   const routeByTarget = new Map<string, ClaudeAppGatewayModelRoute>();
   for (const route of buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions)) {
+    if (!isModelAllowedForProfile(config, profile, route.targetModel)) {
+      continue;
+    }
     const key = route.targetModel.toLowerCase();
     const current = routeByTarget.get(key);
     if (!current || (current.oneMillionContext && !route.oneMillionContext)) {

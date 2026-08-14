@@ -104,6 +104,17 @@ const kiloProfile = {
   surface: "cli"
 };
 
+const workbuddyProfile = {
+  agent: "workbuddy",
+  enabled: true,
+  id: "workbuddy-main",
+  model: "provider,model",
+  name: "Workbuddy Main",
+  providerId: "claude-code-router",
+  scope: "ccr",
+  surface: "app"
+};
+
 const claudeDesignProfile = {
   agent: "claude-design",
   enabled: true,
@@ -142,6 +153,7 @@ test("profile open surfaces enforce agent capabilities", () => {
   assert.deepEqual(profileOpenSurfaces(kimiProfile), ["cli"]);
   assert.deepEqual(profileOpenSurfaces(piProfile), ["cli"]);
   assert.deepEqual(profileOpenSurfaces(kiloProfile), ["cli"]);
+  assert.deepEqual(profileOpenSurfaces(workbuddyProfile), ["app"]);
   assert.deepEqual(profileOpenSurfaces(openCodeProfile), ["cli", "app"]);
   assert.deepEqual(profileOpenSurfaces(claudeDesignProfile), ["app"]);
   assert.equal(resolveProfileOpenSurface(codexProfile, "app"), "app");
@@ -150,6 +162,7 @@ test("profile open surfaces enforce agent capabilities", () => {
   assert.throws(() => resolveProfileOpenSurface(kimiProfile, "app"), /does not support APP/);
   assert.throws(() => resolveProfileOpenSurface(piProfile, "app"), /does not support APP/);
   assert.throws(() => resolveProfileOpenSurface(kiloProfile, "app"), /does not support APP/);
+  assert.throws(() => resolveProfileOpenSurface(workbuddyProfile, "cli"), /does not support CLI/);
   assert.throws(() => resolveProfileOpenSurface(claudeDesignProfile, "cli"), /does not support CLI/);
 });
 
@@ -157,6 +170,7 @@ test("default profile command surface is CLI unless the agent is app-only", () =
   assert.equal(defaultProfileOpenSurface(claudeProfile), "cli");
   assert.equal(defaultProfileOpenSurface(codexProfile), "cli");
   assert.equal(defaultProfileOpenSurface({ ...codexProfile, surface: "app" }), "cli");
+  assert.equal(defaultProfileOpenSurface(workbuddyProfile), "app");
   assert.equal(defaultProfileOpenSurface({ ...codexProfile, agent: "zcode" }), "app");
   assert.equal(defaultProfileOpenSurface(claudeDesignProfile), "app");
 });
@@ -165,6 +179,7 @@ test("Grok and Kimi CLI start a temporary CCR gateway when none is already runni
   assert.equal(shouldAutoStartProfileGateway(grokProfile, "cli"), true);
   assert.equal(shouldAutoStartProfileGateway(kimiProfile, "cli"), true);
   assert.equal(shouldAutoStartProfileGateway(piProfile, "cli"), true);
+  assert.equal(shouldAutoStartProfileGateway(workbuddyProfile, "app"), false);
   assert.equal(shouldAutoStartProfileGateway(kiloProfile, "cli"), false);
   assert.equal(shouldAutoStartProfileGateway(codexProfile, "cli"), false);
   assert.equal(shouldAutoStartProfileGateway(claudeProfile, "app"), false);
@@ -180,6 +195,7 @@ test("buildProfileLaunchPlan creates CCR-managed launcher paths", () => {
   const piPlan = buildProfileLaunchPlan(configDir, piProfile, "cli", ["--debug"]);
   const openCodePlan = buildProfileLaunchPlan(configDir, openCodeProfile, "cli", ["--debug"]);
   const kiloPlan = buildProfileLaunchPlan(configDir, kiloProfile, "cli", ["--debug"]);
+  const workbuddyPlan = buildProfileLaunchPlan(configDir, workbuddyProfile, "app");
 
   assert.equal(codexPlan.surface, "app");
   assert.deepEqual(codexPlan.args, ["app"]);
@@ -236,6 +252,12 @@ test("buildProfileLaunchPlan creates CCR-managed launcher paths", () => {
   assert.match(kiloPlan.env.KILO_CONFIG, /kilo[\\/]kilo\.jsonc$/);
   assert.throws(() => buildProfileLaunchPlan(configDir, kiloProfile, "app"), /does not support APP/);
 
+  assert.equal(workbuddyPlan.surface, "app");
+  assert.deepEqual(workbuddyPlan.args, ["app"]);
+  assert.equal(path.basename(workbuddyPlan.command), process.platform === "win32" ? "ccr-codex-cli-stdio-workbuddy-main.cmd" : "ccr-codex-cli-stdio-workbuddy-main");
+  assert.equal(workbuddyPlan.env.CCR_PROFILE_SURFACE, "app");
+  assert.throws(() => buildProfileLaunchPlan(configDir, workbuddyProfile, "cli"), /does not support CLI/);
+
   assert.throws(() => buildProfileLaunchPlan(configDir, claudeProfile, "app"), /Claude App opening/);
   assert.throws(() => buildProfileLaunchPlan(configDir, claudeDesignProfile, "app"), /Claude Design profiles can only be opened from CCR Desktop/);
 });
@@ -257,6 +279,10 @@ test("profile config paths honor CCR, custom, and global scopes", () => {
     resolveCodexConfigFile(configDir, customProfile),
     path.join(configDir, "profiles", "custom-profile", "custom", "codex", "config.toml")
   );
+  assert.equal(
+    resolveCodexConfigFile(configDir, workbuddyProfile),
+    path.join(configDir, "profiles", "workbuddy-main", "workbuddy", "config.toml")
+  );
   assert.equal(resolveCodexConfigFile(configDir, globalCodex), path.join(process.env.HOME, "codex-home", "config.toml"));
   assert.equal(
     resolveOpenCodeConfigFile(configDir, openCodeProfile),
@@ -271,9 +297,11 @@ test("profile config paths honor CCR, custom, and global scopes", () => {
 test("profileOpenCommand quotes profile references for shell usage", () => {
   const cliCommand = profileOpenCommand(claudeProfile, "cli", "ccr", "Claude Main");
   const appCommand = profileOpenCommand(codexProfile, "app", "ccr", "Codex Main");
+  const workbuddyCommand = profileOpenCommand(workbuddyProfile, undefined, "ccr", "Workbuddy Main");
 
   assert.match(cliCommand, /Claude/);
   assert.match(cliCommand, /Main/);
   assert.equal(cliCommand.endsWith(" cli"), false);
   assert.match(appCommand, / app$/);
+  assert.match(workbuddyCommand, / app$/);
 });

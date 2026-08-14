@@ -678,6 +678,14 @@
     --overview-account-accent: #8e8e93;
   }
 
+  .overview-account-bento-tile[data-provider-account-card-layout="compact"] {
+    background:
+      linear-gradient(90deg, color-mix(in oklab, var(--overview-account-accent) 5%, transparent), transparent 48%),
+      linear-gradient(180deg, color-mix(in oklab, var(--card) 84%, var(--muted)), color-mix(in oklab, var(--muted) 54%, var(--card)));
+    border-color: color-mix(in oklab, var(--overview-account-accent) 16%, var(--border));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .46);
+  }
+
   .overview-account-bento-more {
     background:
       linear-gradient(135deg, color-mix(in oklab, var(--overview-account-accent) 9%, transparent), transparent 50%),
