@@ -418,8 +418,9 @@ test("RequestLogStore keeps large request bodies in sidecar storage and reads th
 
 test("RequestLogStore stores decoded Claude App route models for observability", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-claude-app-model-test-"));
+  let store;
   try {
-    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
     const sessionId = "claude-app-hex-session";
     const routedModel = "Provider/real-model";
     const encodedModel = `anthropic/claude-ccr-h${Buffer.from(routedModel, "utf8").toString("hex")}`;
@@ -491,6 +492,7 @@ test("RequestLogStore stores decoded Claude App route models for observability",
       "real-model"
     );
   } finally {
+    await store?.close();
     rmSync(dir, { force: true, recursive: true });
   }
 });
@@ -1510,7 +1512,7 @@ test("RequestLogStore reports when analysis is bounded by the maximum row count"
   try {
     const dbFile = path.join(dir, "request-logs.sqlite");
     store = new RequestLogStore(dbFile);
-    const requestCount = 5000;
+    const requestCount = 5001;
     const startedAt = new Date().toISOString();
     await store.list({ pageSize: 1 });
     const database = createBetterSqliteDatabase(dbFile);
