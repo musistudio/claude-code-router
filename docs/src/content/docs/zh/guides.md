@@ -81,7 +81,7 @@ Agent 配置让 Claude Code、Codex、OpenCode、Grok CLI、Kimi CLI、ZCode 等
 
 ### ZCode
 
-选择 ZCode 并设置 **ZCode 模型**、**供应商 ID** 和 **供应商名称**。ZCode 是以桌面应用形态运行的 Agent（入口固定为 **仅 App**）：CCR 写入它的 CLI 配置和模型缓存后，用该配置的模型、供应商和独立的用户数据目录启动 App，从配置卡片上的播放按钮打开。
+选择 ZCode 并设置 **ZCode 模型**、**供应商 ID** 和 **供应商名称**。ZCode 是以桌面应用形态运行的 Agent，入口固定为 **仅 App**，从配置卡片上的播放按钮打开。
 
 ## 日志与观测
 

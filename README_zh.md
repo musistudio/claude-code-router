@@ -36,7 +36,7 @@
 
 ### 在一个地方，管理你所有的 Agent 与 Provider
 
-让 Claude Code、Claude Design、Codex、Grok CLI、Kimi CLI、Kilo Code、OpenCode、Pi、ZCode 和兼容 API 客户端连接你选择的供应商，并在一个应用里完成每次请求的路由、降级、增强与观测。
+让 Claude Code、Claude Design、Codex、Grok CLI、Kimi CLI、Kilo Code、OpenCode、Pi、ZCode、WorkBuddy 和兼容 API 客户端连接你选择的供应商，并在一个应用里完成每次请求的路由、降级、增强与观测。
 
 <p>
   <a href="#桌面端推荐"><img alt="下载桌面端" src="https://img.shields.io/badge/%E7%AB%8B%E5%8D%B3%E4%B8%8B%E8%BD%BD-%E6%A1%8C%E9%9D%A2%E5%AE%A2%E6%88%B7%E7%AB%AF-2563EB?style=for-the-badge&logo=github&logoColor=white" /></a>
@@ -59,7 +59,7 @@
 
 ## 为什么使用 Claude Code Router？
 
-Claude Code Router（CCR）是面向编程 Agent 的本地模型网关与控制平面。它为 Claude Code、Claude Design、Codex、Grok CLI、Kimi CLI、Kilo Code、OpenCode、Pi、ZCode 和兼容 API 客户端提供**一个稳定的本地入口**，让你在一个地方管理入口背后的供应商、模型、账号、路由规则与工具。
+Claude Code Router（CCR）是面向编程 Agent 的本地模型网关与控制平面。它为 Claude Code、Claude Design、Codex、Grok CLI、Kimi CLI、Kilo Code、OpenCode、Pi、ZCode、WorkBuddy 和兼容 API 客户端提供**一个稳定的本地入口**，让你在一个地方管理入口背后的供应商、模型、账号、路由规则与工具。
 
 你可以使用 CCR：
 
@@ -78,69 +78,76 @@ CCR 支持 OpenAI Chat / Responses、Anthropic Messages、Gemini Generate Conten
 
 <table width="100%">
   <tr>
-    <td align="center" width="330">
+    <td align="center" width="20%">
       <a href="https://github.com/anthropics/claude-code">
         <img src="/packages/ui/src/assets/agent-logos/claude-code.png" width="44" height="44" alt="Claude Code 图标" />
         <br />
         <strong>Claude Code (CLI & APP)</strong>
       </a>
     </td>
-    <td align="center" width="330">
+    <td align="center" width="20%">
       <a href="https://github.com/openai/codex">
         <img src="/packages/ui/src/assets/agent-logos/codex.png" width="44" height="44" alt="Codex 图标" />
         <br />
         <strong>Codex (CLI & APP)</strong>
       </a>
     </td>
-    <td align="center" width="330">
+    <td align="center" width="20%">
       <a href="https://github.com/xai-org/grok-build">
         <img src="/packages/ui/src/assets/agent-logos/grok.ico" width="44" height="44" alt="Grok CLI 图标" />
         <br />
         <strong>Grok CLI (CLI)</strong>
       </a>
     </td>
-    <td align="center" width="330">
+    <td align="center" width="20%">
       <a href="https://github.com/MoonshotAI/kimi-cli">
         <img src="/docs/public/provider-icons/moonshot.ico" width="44" height="44" alt="Kimi CLI 图标" />
         <br />
         <strong>Kimi CLI (CLI)</strong>
       </a>
     </td>
-  </tr>
-  <tr>
-    <td align="center" width="330">
+    <td align="center" width="20%">
       <a href="https://kilo.ai/">
         <img src="/packages/ui/src/assets/agent-logos/kilo.svg" width="44" height="44" alt="Kilo Code 图标" />
         <br />
         <strong>Kilo Code (CLI)</strong>
       </a>
     </td>
-    <td align="center" width="330">
+  </tr>
+  <tr>
+    <td align="center" width="20%">
       <a href="https://github.com/anomalyco/opencode">
         <img src="/packages/ui/src/assets/agent-logos/opencode.ico" width="44" height="44" alt="OpenCode 图标" />
         <br />
         <strong>OpenCode (CLI & APP)</strong>
       </a>
     </td>
-    <td align="center" width="330">
+    <td align="center" width="20%">
       <a href="https://github.com/earendil-works/pi">
         <img src="/packages/ui/src/assets/agent-logos/pi.svg" width="44" height="44" alt="Pi 图标" />
         <br />
         <strong>Pi (CLI)</strong>
       </a>
     </td>
-    <td align="center" width="330">
+    <td align="center" width="20%">
       <a href="https://zcode.z.ai/cn">
         <img src="/packages/ui/src/assets/agent-logos/zcode.png" width="44" height="44" alt="ZCode 图标" />
         <br />
         <strong>ZCode (APP)</strong>
       </a>
     </td>
-    <td align="center" width="330">
+    <td align="center" width="20%">
       <a href="https://www.anthropic.com/news/claude-design-anthropic-labs">
         <img src="/packages/ui/src/assets/agent-logos/claude-code.png" width="44" height="44" alt="Claude Design 图标" />
         <br />
         <strong>Claude Design (APP)</strong>
+      </a>
+    </td>
+    <td align="center" width="20%">
+      <a href="https://www.workbuddy.ai/">
+        <img src="/packages/ui/src/assets/agent-logos/workbuddy.png" width="44" height="44" alt="WorkBuddy 图标" />
+        <br />
+        <strong>WorkBuddy (APP)</strong>
       </a>
     </td>
   </tr>
@@ -198,7 +205,7 @@ CCR 支持 OpenAI Chat / Responses、Anthropic Messages、Gemini Generate Conten
 
 2. 打开 **供应商 → 添加供应商**。选择内置预设或自定义端点，填写 API Key，选择协议与模型，然后保存。
 3. 打开 **服务** 并点击 **启动**。本地模型网关默认监听 `http://127.0.0.1:3456`。
-4. 打开 **Agent配置**，选择 Claude Code、Claude Design、Codex、Grok CLI、Kimi CLI、Kilo Code、OpenCode、Pi 或 ZCode，指定模型并应用配置档案。
+4. 打开 **Agent配置**，选择 Claude Code、Claude Design、Codex、Grok CLI、Kimi CLI、Kilo Code、OpenCode、Pi、ZCode 或 WorkBuddy，指定模型并应用配置档案。
 5. 开始使用 Agent。在 **日志** 中确认最终供应商、模型、状态、Token、耗时与错误。
 
 现在 Agent 已经连接到 CCR。如需增加条件规则、自动重试、请求改写或 Fallback 模型，请打开 **路由**。
@@ -236,7 +243,7 @@ Windows App 打包必须在 Windows x64 上运行，因为 `better-sqlite3` 包�
 ## 工作方式
 
 ```text
-Claude Code · Claude Design · Codex · Grok CLI · Kimi CLI · Kilo Code · OpenCode · Pi · ZCode · 兼容 API 客户端
+Claude Code · Claude Design · Codex · Grok CLI · Kimi CLI · Kilo Code · OpenCode · Pi · ZCode · WorkBuddy · 兼容 API 客户端
                               │
                               ▼
                  Claude Code Router :3456
@@ -250,7 +257,7 @@ Claude Code · Claude Design · Codex · Grok CLI · Kimi CLI · Kilo Code · Op
 
 | 能力领域 | 功能亮点 |
 | --- | --- |
-| **Agent** | Claude Code、Claude Design、Codex、Grok CLI、Kimi CLI、Kilo Code、OpenCode、Pi 和 ZCode 配置档案；模型覆盖；作用范围；环境变量；CLI / App 启动入口；多开工作流 |
+| **Agent** | Claude Code、Claude Design、Codex、Grok CLI、Kimi CLI、Kilo Code、OpenCode、Pi、ZCode 和 WorkBuddy 配置档案；模型覆盖；作用范围；环境变量；CLI / App 启动入口；多开工作流 |
 | **供应商** | 内置预设和自定义端点；协议探测；模型发现；连通性检测；按支持情况导入本机登录态；单 Key 与凭据池 |
 | **模型与路由** | 可搜索模型目录；用于任务选择的模型描述；Header / Body 条件；模型前缀；请求改写；重试；有序 Fallback |
 | **工具与扩展** | Fusion 模型；ToolHub；内置浏览器自动化；Chrome 登录态导入；wrapper / core gateway plugin；本地路由与虚拟模型 |

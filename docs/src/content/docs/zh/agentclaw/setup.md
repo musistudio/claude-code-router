@@ -9,7 +9,7 @@ lead: 从创建 IM Bot 到绑定 Agent 配置、选择转发或接力模式的�
 
 1. CCR 桌面 App 已运行，网关服务可用。
 2. 已在 **供应商配置** 中添加可用模型，或准备好要使用的 Fusion 模型。
-3. 已创建一个 **Agent 配置**，且 **入口模式** 包含 App。完整 AgentClaw 接力目前支持 Claude App、Codex/ChatGPT App、OpenCode App 和 ZCode App；CLI-only Agent 不转发 Bot 消息。
+3. 已创建一个 **Agent 配置**，且 **入口模式** 包含 App。完整 AgentClaw 接力目前支持 Claude App、Codex/ChatGPT App、OpenCode App、ZCode App 和 WorkBuddy App；CLI-only Agent 不转发 Bot 消息。
 4. 目标 IM 平台已准备好 Bot 凭据、应用权限或二维码登录条件。
 
 ## 配置流程
@@ -22,7 +22,7 @@ lead: 从创建 IM Bot 到绑定 Agent 配置、选择转发或接力模式的�
 6. 打开 **Bot** 开关，选择刚保存的 Bot。
 7. 按需配置转发、接力、语言、超时、附件、流式回复和 **允许 Agent 使用 Shell 工具**。
 8. 保存 Agent 配置。
-9. 从 CCR 重新打开 Claude App、Codex/ChatGPT App、OpenCode App 或 ZCode App。AgentClaw 只在受管 App 存活期间在线。
+9. 从 CCR 重新打开 Claude App、Codex/ChatGPT App、OpenCode App、ZCode App 或 WorkBuddy App。AgentClaw 只在受管 App 存活期间在线。
 
 ## 模式选择
 
