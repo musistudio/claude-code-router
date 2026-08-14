@@ -659,7 +659,7 @@ export type RouterRuleRewrite = {
 };
 
 export const ROUTER_SCRIPT_API_VERSION = 1 as const;
-export const ROUTER_SCRIPT_MAX_SOURCE_BYTES = 64 * 1024;
+export const ROUTER_SCRIPT_MAX_SOURCE_BYTES = 5 * 1024 * 1024;
 export const ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS = 2_000;
 export const ROUTER_SCRIPT_MAX_TIMEOUT_MS = 30_000;
 
