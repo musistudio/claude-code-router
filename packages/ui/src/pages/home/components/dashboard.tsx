@@ -2453,7 +2453,7 @@ function ProviderAccountsOverview({
 }) {
   const t = useAppText();
   const selectedAccountProviders = new Set((accountProviders ?? []).map((provider) => provider.trim()).filter(Boolean));
-  const sortedAccounts = [...accounts].sort(compareProviderAccountSnapshots);
+  const sortedAccounts = accounts.map(providerAccountSnapshotForOverview).sort(compareProviderAccountSnapshots);
   const filteredAccounts = selectedAccountProviders.size > 0
     ? sortedAccounts.filter((account) => providerAccountSelectionMatches(account, selectedAccountProviders))
     : sortedAccounts
@@ -2789,13 +2789,19 @@ function ProviderAccountSummaryCard({
   if (variant === "cards") {
     if (compactBento) {
       return (
-        <div className={cn("overview-account-bento-tile overview-nested-surface group/account-card relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden border", providerAccountBentoSpanClass(cardBentoSpan), providerAccountCardPaddingClass(dimensions))} data-account-status={account.status}>
-          <div className="flex min-w-0 items-start justify-between gap-2">
-            <div className="flex min-w-0 items-start gap-2">
+        <div className={cn("overview-account-bento-tile overview-nested-surface group/account-card relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden border p-2", providerAccountBentoSpanClass(cardBentoSpan))} data-account-status={account.status} data-provider-account-card-layout="compact">
+          <div className="flex min-h-0 min-w-0 flex-1 items-center gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
               <ProviderAccountLogo account={account} className="h-7 w-7 rounded-md" providers={providers} />
               <div className="min-w-0">
                 <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
               </div>
+            </div>
+            <div className="min-w-0 max-w-[45%] shrink-0 text-right" data-provider-account-compact-meter="true">
+              <div className="truncate text-[10px] font-medium leading-none text-muted-foreground">
+                {primaryMeter ? formatProviderAccountMeterTitle(primaryMeter, t) : account.message || account.errors?.[0]?.message || t("Unavailable")}
+              </div>
+              {primaryMeter ? <div className="mt-0.5 truncate text-[18px] font-semibold leading-none tracking-tight">{formatProviderAccountMeterValue(primaryMeter, t)}</div> : null}
             </div>
             {dragHandle || providerAccountShowRefresh(dimensions) ? (
               <div className="flex shrink-0 items-center gap-1">
@@ -2804,14 +2810,8 @@ function ProviderAccountSummaryCard({
               </div>
             ) : null}
           </div>
-          <div className="mt-2 min-w-0">
-            <div className="truncate text-[10px] font-medium text-muted-foreground">
-              {primaryMeter ? formatProviderAccountMeterTitle(primaryMeter, t) : account.message || account.errors?.[0]?.message || t("Unavailable")}
-            </div>
-            {primaryMeter ? <div className="mt-0.5 truncate text-[18px] font-semibold leading-tight tracking-tight">{formatProviderAccountMeterValue(primaryMeter, t)}</div> : null}
-          </div>
           {primaryProgress !== undefined && providerAccountShowProgress(dimensions) ? (
-            <div className="overview-account-bento-track mt-auto h-1.5 overflow-hidden rounded-full">
+            <div className="overview-account-bento-track mt-1.5 h-1.5 shrink-0 overflow-hidden rounded-full">
               <div className="overview-account-bento-fill h-full rounded-full" style={{ width: `${primaryProgress}%` }} />
             </div>
           ) : null}
@@ -2821,7 +2821,7 @@ function ProviderAccountSummaryCard({
     }
 
     return (
-      <div className={cn("overview-account-bento-tile overview-nested-surface group/account-card relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden border", providerAccountBentoSpanClass(cardBentoSpan), providerAccountCardPaddingClass(dimensions))} data-account-status={account.status}>
+      <div className={cn("overview-account-bento-tile overview-nested-surface group/account-card relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden border", providerAccountBentoSpanClass(cardBentoSpan), providerAccountCardPaddingClass(dimensions))} data-account-status={account.status} data-provider-account-card-layout="expanded">
         <div className="flex min-w-0 shrink-0 items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2">
             <ProviderAccountLogo account={account} className="h-8 w-8 rounded-md" providers={providers} />
@@ -3919,6 +3919,21 @@ function ProviderAccountQuotaCircle({
 
 function primaryProviderAccountDisplayMeter(account: ProviderAccountSnapshot): ProviderAccountMeter | undefined {
   return providerAccountQuotaMeters(account)[0] ?? primaryProviderAccountBalanceMeter(account) ?? primaryProviderAccountMeter(account);
+}
+
+const providerAccountBalanceBreakdownMeterIds = new Set(["granted_balance", "topped_up_balance"]);
+
+function providerAccountSnapshotForOverview(account: ProviderAccountSnapshot): ProviderAccountSnapshot {
+  const hasTotalBalance = account.meters.some(
+    (meter) => meter.kind === "balance" && meter.id.trim().toLowerCase() === "balance"
+  );
+  if (!hasTotalBalance) {
+    return account;
+  }
+  const meters = account.meters.filter(
+    (meter) => meter.kind !== "balance" || !providerAccountBalanceBreakdownMeterIds.has(meter.id.trim().toLowerCase())
+  );
+  return meters.length === account.meters.length ? account : { ...account, meters };
 }
 
 function providerAccountSelectionMatches(account: ProviderAccountSnapshot, values: ReadonlySet<string>): boolean {
