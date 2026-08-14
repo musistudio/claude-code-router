@@ -81,7 +81,7 @@ Choose Grok CLI and select a default model, then run the copied `ccr-app <profil
 
 ### ZCode
 
-Choose ZCode and set the **ZCode model**, **Provider ID**, and **Provider Name**. ZCode is a desktop-app agent (entry fixed to **App only**): CCR writes its CLI config and model cache, then launches the app with this profile's model, provider, and an isolated user-data directory; open it from the play button on the profile card.
+Choose ZCode and set the **ZCode model**, **Provider ID**, and **Provider Name**. ZCode is a desktop-app agent with entry fixed to **App only**; open it from the play button on the profile card.
 
 ## Logs and observability
 

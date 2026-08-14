@@ -7,7 +7,7 @@ lead: "AgentClaw connects an agent running locally under CCR to your IM apps: th
 
 AgentClaw is CCR's agent relay capability. A local agent managed by CCR keeps its workspace, login state, config files, model routing, and tool permissions; AgentClaw exposes a remote entry point for it through an IM bot. From Slack, Discord, Telegram, LINE, Weixin, WeCom, Feishu, or DingTalk, you can watch agent output, continue the conversation, answer permission requests, or take over after your computer locks.
 
-Handoff means that after your screen locks and the idle threshold passes, further agent interaction moves to IM, where you can continue from your phone or another device. Handoff relies on a companion worker that follows the App lifecycle: opening an Agent App from CCR starts its worker, and closing the App stops the worker and the Bot connection. CLI-only agents can still route model requests through CCR, but they do not forward messages to IM.
+Handoff means that after your screen locks and the idle threshold passes, further agent interaction moves to IM, where you can continue from your phone or another device. Keep the Agent App open while using IM relay. CLI-only agents can still route model requests through CCR, but they do not forward messages to IM.
 
 ## When to use it
 
@@ -29,7 +29,7 @@ Handoff means that after your screen locks and the idle threshold passes, furthe
 | Session | An agent-native conversation inside a Project |
 | Companion worker | The relay process that follows the managed Agent App lifecycle and handles IM messages, Projects/Sessions, queueing, attachments, and diagnostics |
 
-AgentClaw shares the lifecycle of the Agent App opened by CCR. Opening Claude, Codex, ZCode, or OpenCode App starts its companion worker; closing the App stops both the worker and the Bot connection. CLI-only agents can route model requests through CCR but do not forward Bot messages.
+AgentClaw follows the Agent App opened by CCR. Closing the App stops the Bot connection. CLI-only agents can route model requests through CCR but do not forward Bot messages.
 
 ## Support matrix
 
@@ -39,9 +39,10 @@ AgentClaw shares the lifecycle of the Agent App opened by CCR. Opening Claude, C
 | Codex / ChatGPT App | Full Bot forwarding, handoff, Projects/Sessions, queueing, model settings, usage, and attachments |
 | OpenCode App | Full Bot forwarding, handoff, and Projects/Sessions; messages run through OpenCode CLI under the same config |
 | ZCode App | Full Bot forwarding, handoff, and native Session discovery |
+| WorkBuddy App | Full Bot forwarding, handoff, and WorkBuddy companion relay |
 | Claude Code, Codex CLI | Can use CCR model routing; Bot forwarding is not active yet |
 | Grok CLI, Kimi CLI | Can use CCR model routing; these are CLI-only and do not enter AgentClaw relay |
-| Other local agents | They need a CCR-managed App entry plus a companion worker before they can act as AgentClaw executors |
+| Other local agents | They need a CCR-managed App entry before they can act as AgentClaw executors |
 
 ## Three modes
 
@@ -78,7 +79,7 @@ AgentClaw exposes only `/project` and `/session` as public command domains. Othe
 | `/session name <label>` | Rename the current Session |
 | `/session archive <n>`, `restore <n>`, `delete <n> confirm` | Archive, restore, or permanently delete with confirmation |
 | `/session history [count]`, `usage` | Show recent history and token/cache/cost summaries |
-| `/session models`, `model`, `effort`, `mode` | Inspect or change this conversation's Session runtime settings |
+| `/session models`, `model`, `effort`, `mode` | Inspect or change this conversation's model settings |
 | `/session memory ...`, `skills`, `skill`, `shortcut ...` | Manage persistent context, Agent Skills, and shortcuts |
 | `/session doctor`, `deliveries` | Show connection, outbox, recent-delivery, and redacted-error diagnostics |
 

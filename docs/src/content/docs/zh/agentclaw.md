@@ -7,7 +7,7 @@ lead: AgentClaw 把你在本机通过 CCR 运行的 Agent 接入 IM：Agent 继�
 
 AgentClaw 是 CCR 的 Agent 接力能力。由 CCR 管理的本机 Agent 保留原有的工作区、登录态、配置文件、模型路由和工具权限；AgentClaw 通过 IM Bot 为它暴露一个远程入口。你可以在 Slack、Discord、Telegram、LINE、微信、企业微信、飞书或钉钉里查看 Agent 输出、继续对话、处理权限请求，或在电脑锁屏后接管当前任务。
 
-接力（handoff）指电脑锁屏并超过空闲阈值后，Agent 的后续交互自动转到 IM，你可以在手机或另一台设备上继续。接力依赖跟随 App 启停的 companion worker：从 CCR 打开 Agent App 时 worker 随之启动，App 退出时 worker 和 Bot 连接一起停止。CLI-only Agent 可以继续通过 CCR 路由模型请求，但不会把消息转发到 IM。
+接力（handoff）指电脑锁屏并超过空闲阈值后，Agent 的后续交互自动转到 IM，你可以在手机或另一台设备上继续。使用 IM 接力时请保持 Agent App 打开；App 退出后 Bot 连接会停止。CLI-only Agent 可以继续通过 CCR 路由模型请求，但不会把消息转发到 IM。
 
 ## 适合场景
 
@@ -29,7 +29,7 @@ AgentClaw 是 CCR 的 Agent 接力能力。由 CCR 管理的本机 Agent 保留�
 | Session | Project 下的 Agent 原生会话 |
 | Companion worker | 跟随受管 Agent App 启停的接力进程，负责 IM 消息、Project/Session、队列、附件和诊断 |
 
-AgentClaw 的生命周期跟从 CCR 打开的 Agent App 一致。打开 Claude、Codex、ZCode 或 OpenCode App 时，CCR 启动对应的 companion worker；App 退出时 worker 和 Bot 连接同步停止。CLI-only Agent 当前可以通过 CCR 路由模型请求，但不转发 Bot 消息。
+AgentClaw 跟随从 CCR 打开的 Agent App。App 退出时 Bot 连接会停止。CLI-only Agent 当前可以通过 CCR 路由模型请求，但不转发 Bot 消息。
 
 ## 支持范围
 
@@ -39,9 +39,10 @@ AgentClaw 的生命周期跟从 CCR 打开的 Agent App 一致。打开 Claude�
 | Codex / ChatGPT App | 完整支持 Bot 转发、接力、Project/Session、队列、模型设置、用量和附件能力 |
 | OpenCode App | 完整支持 Bot 转发、接力和 Project/Session；消息由 OpenCode CLI 在同一配置下执行 |
 | ZCode App | 完整支持 Bot 转发、接力和原生 Session 扫描 |
+| WorkBuddy App | 完整支持 Bot 转发、接力和 WorkBuddy 伴生中继 |
 | Claude Code、Codex CLI | 可以通过 CCR 配置模型路由；当前不转发 Bot 消息 |
 | Grok CLI、Kimi CLI | 可以通过 CCR 配置模型路由；当前是 CLI-only，不进入 AgentClaw 接力 |
-| 其他本机 Agent | 需要先能被 CCR 以 App 入口管理，并实现对应 companion worker，才能作为 AgentClaw 执行体 |
+| 其他本机 Agent | 需要先能被 CCR 以 App 入口管理，才能作为 AgentClaw 执行体 |
 
 ## 三种模式
 

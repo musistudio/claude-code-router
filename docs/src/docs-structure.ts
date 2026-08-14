@@ -190,6 +190,13 @@ export const docPages: DocPageDef[] = [
     source: { zh: "configuration/agents/zcode.md", en: "configuration/agents/zcode.md" },
   },
   {
+    key: "configuration/agents/workbuddy",
+    section: "configuration",
+    label: { zh: "WorkBuddy", en: "WorkBuddy" },
+    path: { zh: "/configuration/agents/workbuddy/", en: "/en/configuration/agents/workbuddy/" },
+    source: { zh: "configuration/agents/workbuddy.md", en: "configuration/agents/workbuddy.md" },
+  },
+  {
     key: "configuration/agents/claude-design",
     section: "configuration",
     label: { zh: "Claude Design", en: "Claude Design" },
@@ -472,6 +479,7 @@ export const docSections: DocSectionDef[] = [
           pageItem("configuration/agents/opencode"),
           pageItem("configuration/agents/pi"),
           pageItem("configuration/agents/zcode"),
+          pageItem("configuration/agents/workbuddy"),
           pageItem("configuration/agents/claude-design"),
         ],
       },
