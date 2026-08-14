@@ -640,6 +640,68 @@ test("AddProviderForm renders a two-column model picker", () => {
   assert.doesNotMatch(html, /Select models/);
 });
 
+test("AddProviderForm renders provider model refresh control when available", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    apiKey: "sk-test",
+    baseUrl: "https://api.example/v1",
+    name: "Example",
+    presetId: customProviderPresetId
+  };
+  const probe = {
+    capabilities: [],
+    detectedProtocol: "openai_chat_completions" as const,
+    models: ["model-a", "model-b"],
+    normalizedBaseUrl: "https://api.example/v1",
+    protocols: []
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      activeStep: "models",
+      draft,
+      error: "",
+      mode: "edit",
+      onChange: () => undefined,
+      onRefreshModels: async () => undefined,
+      probe,
+      probeLoading: false,
+      providers: []
+    })
+  );
+  const loadingHtml = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      activeStep: "models",
+      draft,
+      error: "",
+      mode: "edit",
+      onChange: () => undefined,
+      onRefreshModels: async () => undefined,
+      probe,
+      probeLoading: true,
+      providers: []
+    })
+  );
+  const withoutRefreshHtml = renderToStaticMarkup(
+    React.createElement(AddProviderForm, {
+      activeStep: "models",
+      draft,
+      error: "",
+      mode: "edit",
+      onChange: () => undefined,
+      probe,
+      probeLoading: false,
+      providers: []
+    })
+  );
+
+  assert.match(html, /aria-label="Refresh provider models"/);
+  assert.match(html, /title="Refresh provider models"/);
+  assert.match(html, /lucide-refresh-cw/);
+  assert.match(loadingHtml, /aria-label="Refreshing provider models"[^>]*disabled/);
+  assert.match(loadingHtml, /lucide-refresh-cw[^"]*animate-spin/);
+  assert.doesNotMatch(withoutRefreshHtml, /Refresh provider models/);
+});
+
 test("AddProviderForm keeps edit model lists scrollable without blocking dialog scroll chaining", () => {
   const draft = {
     ...createProviderDraft([]),

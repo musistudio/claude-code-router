@@ -1822,7 +1822,9 @@ export async function probeProviderCandidates(
   apiKey: string,
   models: string[],
   options: {
+    forceRefresh?: boolean;
     mode?: "connectivity" | "models" | "protocols";
+    providerPlugins?: unknown[];
     protocols?: GatewayProviderProtocol[];
   } = {}
 ): Promise<ProviderProbeCandidateResult | undefined> {
@@ -1830,8 +1832,10 @@ export async function probeProviderCandidates(
   return await window.ccr?.probeProviderCandidates({
     apiKey: apiKey || undefined,
     candidates,
+    forceRefresh: options.forceRefresh,
     mode,
     models: mode === "connectivity" ? models : [],
+    providerPlugins: options.providerPlugins,
     protocols: options.protocols
   });
 }

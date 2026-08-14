@@ -142,6 +142,22 @@ async function loadProviderAccountSnapshots(forceRefresh = false): Promise<Provi
   return window.ccr.getProviderAccountSnapshots(undefined, forceRefresh ? { forceRefresh: true } : undefined);
 }
 
+function providerRefreshModelsInputKey(
+  draft: AddProviderDraft,
+  protocols: GatewayProviderProtocol[] | undefined
+): string {
+  return JSON.stringify([
+    providerProbeInputKey(
+      providerProbeCandidates(draft).filter(isProviderProbeCandidateReady),
+      providerConnectivityApiKeyFromDraft(draft),
+      []
+    ),
+    protocols ?? [],
+    draft.protocolDetectionMode,
+    draft.providerPlugins
+  ]);
+}
+
 function extensionActionIndexes(index: number, groupIndexes?: number[]): number[] {
   const indexes = groupIndexes?.length ? groupIndexes : [index];
   return [...new Set(indexes.filter((item) => Number.isInteger(item) && item >= 0))];
@@ -1401,6 +1417,103 @@ function App() {
       }
     };
   }, [activeView, onboardingStep, providerAddOpen, providerDraft.apiKey, providerDraft.baseUrl, providerDraft.credentialMode, providerDraft.credentials, providerDraft.presetId, providerDraft.protocol, providerDraft.protocolDetectionMode, providerDraft.providerPlugins]);
+
+  async function refreshProviderModels(): Promise<void> {
+    if (providerProbeLoading) {
+      return;
+    }
+    if (!window.ccr) {
+      setProviderProbeError(t("Request failed."));
+      return;
+    }
+
+    providerProbeRequestId.current += 1;
+    providerConnectivityRequestId.current += 1;
+    const requestId = providerProbeRequestId.current;
+    const existingProvider = providerEditIndex === undefined ? undefined : draftConfig.Providers[providerEditIndex];
+    const refreshProtocols = providerDraft.protocolDetectionMode === "manual"
+      ? uniqueProviderProtocols(providerDraft.selectedProtocols.length > 0 ? providerDraft.selectedProtocols : [providerDraft.protocol])
+      : undefined;
+    const refreshInputKey = providerRefreshModelsInputKey(providerDraft, refreshProtocols);
+
+    setProviderProbeError("");
+    setProviderConnectivityProbe(undefined);
+    setProviderConnectivityLoading(false);
+    setProviderProbeLoading(true);
+
+    try {
+      if (isLocalCodexProviderDraft(providerDraft)) {
+        if (!window.ccr.probeLocalAgentProvider) {
+          setProviderProbe(undefined);
+          return;
+        }
+        const result = await window.ccr.probeLocalAgentProvider({ forceRefresh: true, id: localCodexProviderId });
+        if (providerProbeRequestId.current !== requestId) {
+          return;
+        }
+        setProviderProbe(result.probe);
+        setProviderDraft((current) => {
+          const currentProtocols = current.protocolDetectionMode === "manual"
+            ? uniqueProviderProtocols(current.selectedProtocols.length > 0 ? current.selectedProtocols : [current.protocol])
+            : undefined;
+          if (!isLocalCodexProviderDraft(current) || providerRefreshModelsInputKey(current, currentProtocols) !== refreshInputKey) {
+            return current;
+          }
+          return applyProviderProbeResult(current, result.probe);
+        });
+        return;
+      }
+
+      const candidates = providerProbeCandidates(providerDraft).filter(isProviderProbeCandidateReady);
+      if (candidates.length === 0) {
+        setProviderProbe(undefined);
+        setProviderProbeError(t("No endpoint candidates available."));
+        return;
+      }
+
+      const apiKey = providerConnectivityApiKeyFromDraft(providerDraft);
+      const providerPlugins = providerConnectivityProviderPlugins(providerDraft, draftConfig.providerPlugins, existingProvider);
+      const result = await probeProviderCandidates(candidates, apiKey, [], {
+        forceRefresh: true,
+        mode: "models",
+        providerPlugins,
+        protocols: refreshProtocols
+      });
+      if (providerProbeRequestId.current !== requestId) {
+        return;
+      }
+      if (!result) {
+        setProviderProbe(undefined);
+        setProviderProbeError(t("Request failed."));
+        return;
+      }
+
+      setProviderProbe(result.probe);
+      setProviderDraft((current) => {
+        const currentProtocols = current.protocolDetectionMode === "manual"
+          ? uniqueProviderProtocols(current.selectedProtocols.length > 0 ? current.selectedProtocols : [current.protocol])
+          : undefined;
+        if (providerRefreshModelsInputKey(current, currentProtocols) !== refreshInputKey) {
+          return current;
+        }
+        return applyProviderProbeResult(current, result.probe);
+      });
+
+      if (result.probe.models.length === 0 && !providerProbeHasSupportedProtocol(result.probe)) {
+        const message = result.probe.protocols.find((item) => item.message)?.message || "Request failed.";
+        setProviderProbeError(translateAppErrorMessage(copy, message));
+      }
+    } catch (error) {
+      if (providerProbeRequestId.current === requestId) {
+        setProviderProbe(undefined);
+        setProviderProbeError(formatError(error));
+      }
+    } finally {
+      if (providerProbeRequestId.current === requestId) {
+        setProviderProbeLoading(false);
+      }
+    }
+  }
 
   async function checkProviderDraft(modelsToCheck?: string[]): Promise<ProviderConnectivityCheckReport> {
     const emptyReport: ProviderConnectivityCheckReport = { failed: [], passed: [], results: [] };
@@ -3260,6 +3373,7 @@ function App() {
                 setProviderImportPayload(undefined);
               },
               onCheck: checkProviderDraft,
+              onRefreshModels: refreshProviderModels,
               onSubmit: submitProviderDraft,
               probe: providerProbe,
               probeLoading: providerProbeLoading,

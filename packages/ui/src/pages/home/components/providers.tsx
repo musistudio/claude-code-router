@@ -14,7 +14,7 @@ import {
   providerBrowserConnectorFromDraft, providerBrowserCredentialsOptions,
   ProviderConnectivityCheckReport, providerCapabilityBaseUrlForProtocol, providerConnectivityApiKeyFromDraft, providerDeepLinkDisplayIcon, providerDraftHasReadyCredentialPool, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
   providerDisplayIcon, providerGlobalBaseUrlForProbe, providerModelDisplayName, providerModelDisplayTitle, providerProtocolOptions, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
-  resolveProviderDeepLinkPreset, ShieldCheck, splitLines, Switch, Tabs, TabsList, TabsTrigger, Textarea, Toggle, translatedProviderProtocolLabel, translateOptions,
+  RefreshCw, resolveProviderDeepLinkPreset, ShieldCheck, splitLines, Switch, Tabs, TabsList, TabsTrigger, Textarea, Toggle, translatedProviderProtocolLabel, translateOptions,
   translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppErrorText, useAppText, useEffect, useLayoutEffect, useMemo,
   useRef, useState, X, isGatewayProviderEnabled, isPlainRecord
 } from "../shared/index";
@@ -1958,6 +1958,7 @@ export function AddProviderForm({
   mode,
   onCheck,
   onChange,
+  onRefreshModels,
   onIconDetectingChange,
   onSelectStep,
   probe,
@@ -1975,6 +1976,7 @@ export function AddProviderForm({
   mode: "add" | "edit";
   onCheck?: () => Promise<unknown>;
   onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
+  onRefreshModels?: () => Promise<unknown>;
   onIconDetectingChange?: (detecting: boolean) => void;
   onSelectStep?: (step: ProviderSetupStepId) => void;
   probe?: GatewayProviderProbeResult;
@@ -2350,6 +2352,7 @@ export function AddProviderForm({
                 metadata={draft.modelMetadata}
                 onMetadataChange={(modelMetadata) => onChange({ modelMetadata })}
                 onQueryChange={(modelSearch) => onChange({ modelSearch })}
+                onRefresh={onRefreshModels}
                 onSelectedChange={updateConfiguredModels}
                 query={draft.modelSearch}
                 selected={configuredModels}
@@ -3433,6 +3436,7 @@ export function AddProviderDialog({
   onCheck,
   onChange,
   onClose,
+  onRefreshModels,
   onSubmit,
   probe,
   probeLoading,
@@ -3451,6 +3455,7 @@ export function AddProviderDialog({
   onCheck?: (models: string[]) => Promise<ProviderConnectivityCheckReport>;
   onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
   onClose: () => void;
+  onRefreshModels?: () => Promise<unknown>;
   onSubmit: () => Promise<boolean>;
   probe?: GatewayProviderProbeResult;
   probeLoading: boolean;
@@ -3589,6 +3594,7 @@ export function AddProviderDialog({
               onCheck={onCheck ? async () => setCheckConfirmOpen(true) : undefined}
               onChange={onChange}
               onIconDetectingChange={setIconDetecting}
+              onRefreshModels={onRefreshModels}
               onSelectStep={wizardMode ? selectSetupStep : undefined}
               probe={probe}
               probeLoading={probeLoading}
@@ -3859,6 +3865,7 @@ function ProviderModelPicker({
   metadata,
   onMetadataChange,
   onQueryChange,
+  onRefresh,
   onSelectedChange,
   query,
   selected
@@ -3870,6 +3877,7 @@ function ProviderModelPicker({
   metadata?: NonNullable<AddProviderDraft["modelMetadata"]>;
   onMetadataChange: (value: AddProviderDraft["modelMetadata"]) => void;
   onQueryChange: (value: string) => void;
+  onRefresh?: () => void | Promise<unknown>;
   onSelectedChange: (value: string[]) => void;
   query: string;
   selected: string[];
@@ -3900,6 +3908,7 @@ function ProviderModelPicker({
   const customModelControlGap = 8;
   const customModelEditorWidth = Math.max(customModelButtonWidth, addedControlsWidth);
   const returningSearchWidth = Math.max(0, customModelEditorWidth - customModelButtonWidth - customModelControlGap);
+  const refreshLabel = loading ? t("Refreshing provider models") : t("Refresh provider models");
 
   function addCatalogModel(model: string) {
     if (selectedModelSet.has(model)) {
@@ -3971,7 +3980,23 @@ function ProviderModelPicker({
             <div className="truncate text-[12px] font-semibold">{t("Provider models")}</div>
             <div className="truncate text-[11px] text-muted-foreground">{t("Models detected from this provider")}</div>
           </div>
-          <Badge variant="outline">{loading ? <LoaderCircle className="h-3 w-3 animate-spin" /> : catalog.length}</Badge>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {onRefresh ? (
+              <Button
+                aria-label={refreshLabel}
+                className="h-6 w-6"
+                disabled={loading}
+                onClick={() => void onRefresh()}
+                size="iconSm"
+                title={refreshLabel}
+                type="button"
+                variant="ghost"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+              </Button>
+            ) : null}
+            <Badge variant="outline">{loading ? <LoaderCircle className="h-3 w-3 animate-spin" /> : catalog.length}</Badge>
+          </div>
         </div>
         <div className="border-b border-border p-2">
           <div className="relative">
