@@ -610,12 +610,19 @@ function prepareUpstreamCredentialAttempt(input: {
   const credentials = activeProviderCredentials(target.provider);
   if (credentials.length === 0) {
     const preserveModelSelector = shouldPreserveCapabilityModelSelector(input.attempt.body, target);
+    const targetHeaders = targetProviderFallbackHeaders(attemptHeaders, target.provider, target.protocol);
+    const targetBody = target.body ?? normalizedBody?.body ?? input.attempt.body;
+    const providerQualifiedTargetBody = providerQualifiedTargetModelBody(
+      targetBody,
+      target.model,
+      targetHeaders["x-target-provider"]
+    );
     return {
       ...input.attempt,
-      body: attemptBody(preserveModelSelector ? input.attempt.body : target.body ?? normalizedBody?.body ?? input.attempt.body),
+      body: attemptBody(preserveModelSelector ? input.attempt.body : providerQualifiedTargetBody ?? targetBody),
       headers: preserveModelSelector
         ? clearTargetProviderHeaders(attemptHeaders)
-        : targetProviderFallbackHeaders(attemptHeaders, target.provider, target.protocol)
+        : targetHeaders
     };
   }
 
@@ -729,6 +736,22 @@ function shouldPreserveCapabilityModelSelector(body: Buffer | undefined, target:
     return false;
   }
   return Boolean(parseProviderModelSelector(stringValue(parseJsonObjectSafe(body)?.model)));
+}
+
+
+function providerQualifiedTargetModelBody(
+  body: Buffer | undefined,
+  model: string | undefined,
+  providerSelector: string | undefined
+): Buffer | undefined {
+  if (!model || !providerSelector || !parseProviderModelSelector(model)) {
+    return undefined;
+  }
+  const parsedBody = parseJsonObjectSafe(body);
+  if (!parsedBody) {
+    return undefined;
+  }
+  return serializeJsonBodyWithModel(parsedBody, `${providerSelector}/${model}`);
 }
 
 
