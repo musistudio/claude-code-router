@@ -118,6 +118,41 @@ test("media gateway errors expose the concrete failed provider attempt", async (
   );
 });
 
+test("media gateway sanitizes target model header while preserving unicode body model", async (t) => {
+  const rawModel = "「中文模型」image-model";
+  let requestBody;
+  let targetModelHeader;
+  const server = createServer(async (request, response) => {
+    if (request.method === "POST" && request.url === "/v1/images/generations") {
+      targetModelHeader = request.headers["x-target-model"];
+      requestBody = JSON.parse((await consume(request)).toString("utf8"));
+      json(response, { data: [{ url: "https://media.example/artifact.png" }] });
+      return;
+    }
+    response.writeHead(404).end();
+  });
+  if (!await listenOrSkip(t, server)) return;
+  await waitForTcpListener(server);
+  t.after(() => server.close());
+
+  const executor = new GatewayMediaExecutor({
+    model: rawModel,
+    protocol: "openai_image_generations",
+    providerBaseUrl: "https://media.example/v1",
+    providerName: "Unicode Media Provider",
+    providerSelector: "unicode-media::openai_image_generations"
+  }, { baseUrl: baseUrl(server) });
+
+  await executor.imageGenerate({ prompt: "A blue cup" }, {
+    job: { id: "unicode-model-header-test" },
+    onRemoteRequestId() {},
+    signal: new AbortController().signal
+  });
+
+  assert.equal(targetModelHeader, "image-model");
+  assert.equal(requestBody.model, rawModel);
+});
+
 test("implicit media input roots reject the filesystem root and home directory", () => {
   const home = path.resolve(os.homedir());
   assert.equal(mediaServiceForTest.isSafeImplicitWorkingDirectory(path.parse(home).root, home), false);

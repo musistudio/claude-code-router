@@ -8,6 +8,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { GatewayMediaProtocol } from "@ccr/core/contracts/app";
 import type { ImageEditRequest, ImageGenerateRequest, MediaExecutionContext, MediaExecutionResult, VideoGenerateRequest } from "@ccr/core/media/contracts";
 import { detectMediaType } from "@ccr/core/media/storage";
+import { sanitizeHeaderValue } from "@ccr/core/providers/runtime-topology";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
 
 const maxApiArtifactBytes = 250 * 1024 * 1024;
@@ -185,7 +186,7 @@ export class GatewayMediaExecutor {
         : {}),
       ...(jsonBody ? { "content-type": "application/json" } : {}),
       ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}),
-      "x-target-model": this.target.model,
+      "x-target-model": sanitizeHeaderValue(this.target.model),
       "x-target-provider": this.target.providerSelector
     };
   }
