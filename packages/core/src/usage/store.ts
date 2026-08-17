@@ -220,11 +220,20 @@ export class UsageStore {
   async recordCapture(input: UsageCaptureInput): Promise<void> {
     const headersUsage = extractUsageFromBillingHeaders(input.responseHeaders);
     const bodyUsage = extractUsageFromBody(input.bodyText);
-    const usage = normalizeUsageInputTokens(mergeUsageSnapshots(headersUsage, bodyUsage), {
-      path: input.path,
-      providerProtocol: input.providerProtocol,
-      usageHint: bodyUsage
-    });
+    // Normalize each source under its own convention before merging them: on a
+    // translated response the billing headers and the body state input tokens
+    // differently, and one shared rule is wrong for one of them.
+    const usage = mergeUsageSnapshots(
+      normalizeUsageInputTokens(headersUsage, {
+        path: input.path,
+        providerProtocol: input.providerProtocol,
+        source: "providerBilling"
+      }),
+      normalizeUsageInputTokens(bodyUsage, {
+        path: input.path,
+        source: "responseBody"
+      })
+    );
     const fallbackAttribution = resolveUsageModelAttribution(input.config, input.fallbackModel);
     const responseAttribution = resolveUsageResponseModelAttribution(input.config, bodyUsage?.model);
     const route = splitRouteSelector(input.fallbackModel);
