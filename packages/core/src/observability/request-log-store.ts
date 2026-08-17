@@ -533,11 +533,19 @@ export class RequestLogStore {
     const responseError = normalizeFilterValue(input.error) ??
       detectSseError(responseBodyText, headerValue(responseHeaders, "content-type"));
     const bodyUsage = extractUsageFromBody(responseBodyText);
-    const usage: UsageSnapshot = normalizeUsageInputTokens(mergeUsageSnapshots(extractUsageFromBillingHeaders(input.responseHeaders), bodyUsage), {
-      path: input.path,
-      providerProtocol: input.providerProtocol,
-      usageHint: bodyUsage
-    }) ?? {};
+    // Each source carries its own cache-inclusion convention; normalize before
+    // merging (see UsageConventionSource).
+    const usage: UsageSnapshot = mergeUsageSnapshots(
+      normalizeUsageInputTokens(extractUsageFromBillingHeaders(input.responseHeaders), {
+        path: input.path,
+        providerProtocol: input.providerProtocol,
+        source: "providerBilling"
+      }),
+      normalizeUsageInputTokens(bodyUsage, {
+        path: input.path,
+        source: "responseBody"
+      })
+    ) ?? {};
     const route = splitRequestLogRouteSelector(input.fallbackModel);
     const bodyModel = requestLogRequestedModel(input.requestBody, input.path);
     const requestModel = normalizeFilterValue(input.model) ?? bodyModel;
@@ -868,10 +876,20 @@ export class RequestLogStore {
       const bodyUsage = input.responseBodyText === undefined
         ? undefined
         : extractUsageFromBody(input.responseBodyText);
-      const usage: UsageSnapshot = normalizeUsageInputTokens<UsageSnapshot>(mergeUsageSnapshots(extractUsageFromBillingHeaders(responseHeaders), bodyUsage), {
-        path: usagePath,
-        usageHint: bodyUsage
-      }) ?? {};
+      // As in record(), each source is normalized under its own convention.
+      // Raw-trace updates carry no provider protocol — it is not part of the
+      // gateway's raw-trace sync contract — so the billing headers fall back to
+      // the request path, which is only a proxy for the upstream's convention.
+      const usage: UsageSnapshot = mergeUsageSnapshots(
+        normalizeUsageInputTokens(extractUsageFromBillingHeaders(responseHeaders), {
+          path: usagePath,
+          source: "providerBilling"
+        }),
+        normalizeUsageInputTokens<UsageSnapshot>(bodyUsage, {
+          path: usagePath,
+          source: "responseBody"
+        })
+      ) ?? {};
       if (hasUsageNumbers(usage)) {
         const inputTokens = normalizeCount(usage.inputTokens);
         const outputTokens = normalizeCount(usage.outputTokens);
