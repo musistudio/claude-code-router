@@ -20,7 +20,7 @@ import {
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets, normalizeProxyConfig,
   normalizeProfileItem, normalizeProviderBaseUrl, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
-  OverviewWidgetConfig, parseProviderAccountDraft, pluginConfigPatchFromSettingsDraft,
+  OverviewWidgetConfig, parseProviderAccountDraft, parseProviderExtraJsonDraft, pluginConfigPatchFromSettingsDraft,
   providerCredentialsFromDraft,
   persistLanguagePreference, PluginInstallCandidate, PluginMarketplaceEntry, PluginRoutingConfigTarget, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileAgentOptionsForRuntime, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
@@ -1700,6 +1700,17 @@ function App() {
       return false;
     }
 
+    const extraBody = parseProviderExtraJsonDraft(providerDraft.extraBodyText, "extraBody");
+    if (typeof extraBody === "string") {
+      setProviderProbeError(translateAppErrorMessage(copy, extraBody));
+      return false;
+    }
+    const extraHeaders = parseProviderExtraJsonDraft(providerDraft.extraHeadersText, "extraHeaders");
+    if (typeof extraHeaders === "string") {
+      setProviderProbeError(translateAppErrorMessage(copy, extraHeaders));
+      return false;
+    }
+
     const providerId = existingProvider?.id ?? providerNameSlug(providerName);
     const autoFetchKnownModels = providerAutoFetchKnownModelsForSave({
       currentModels: models,
@@ -1716,6 +1727,8 @@ function App() {
       autoFetchKnownModels,
       capabilities: capabilities.length > 0 ? capabilities : undefined,
       account: accountConfig,
+      extraBody,
+      extraHeaders,
       credentials: credentials.length > 0 ? credentials : undefined,
       enabled: existingProvider?.enabled === false ? false : undefined,
       icon: providerDraft.icon.trim() || undefined,

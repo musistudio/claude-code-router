@@ -75,6 +75,68 @@ test("keeps config-only provider fields when the provider is saved from the dial
   });
 });
 
+test("edits extraBody from the advanced settings section", async ({ page }) => {
+  const current = requireRuntime();
+
+  await page.goto(`${current.baseUrl}/?ccr_web_token=${current.token}`);
+  await waitForBridge(page);
+  await page.evaluate(async (provider) => {
+    const config = await window.ccr!.getConfig();
+    config.Providers = [provider];
+    await window.ccr!.saveConfig(config);
+    await window.ccr!.setOnboardingFinished?.();
+  }, configOnlyProvider);
+
+  await page.reload();
+  await waitForBridge(page);
+
+  await page.getByRole("button", { name: "Providers", exact: true }).click();
+  await page.locator(`button[aria-label="Edit ${configOnlyProvider.name}"]:visible`).first().click();
+  await page.getByRole("button", { name: /^(Advanced settings|高级设置)$/ }).click();
+
+  // The box opens pre-filled with what the config already carries.
+  const extraBodyBox = page.getByLabel(/Extra request body|附加请求体/);
+  await expect(extraBodyBox).toHaveValue(JSON.stringify(configOnlyProvider.extraBody, null, 2));
+
+  await extraBodyBox.fill('{ "default": { "reasoning_effort": "max" } }');
+  const saveButton = page.getByRole("button", { name: /^(Save|保存)$/ });
+  await saveButton.click();
+  await expect(saveButton).toBeHidden();
+
+  await expect.poll(async () => page.evaluate(async () => {
+    const config = await window.ccr!.getConfig();
+    return config.Providers[0]?.extraBody;
+  })).toEqual({ default: { reasoning_effort: "max" } });
+});
+
+test("refuses to save a malformed advanced JSON box", async ({ page }) => {
+  const current = requireRuntime();
+
+  await page.goto(`${current.baseUrl}/?ccr_web_token=${current.token}`);
+  await waitForBridge(page);
+  await page.evaluate(async (provider) => {
+    const config = await window.ccr!.getConfig();
+    config.Providers = [provider];
+    await window.ccr!.saveConfig(config);
+    await window.ccr!.setOnboardingFinished?.();
+  }, configOnlyProvider);
+
+  await page.reload();
+  await waitForBridge(page);
+
+  await page.getByRole("button", { name: "Providers", exact: true }).click();
+  await page.locator(`button[aria-label="Edit ${configOnlyProvider.name}"]:visible`).first().click();
+  await page.getByRole("button", { name: /^(Advanced settings|高级设置)$/ }).click();
+  await page.getByLabel(/Extra request body|附加请求体/).fill("{ not json");
+  await page.getByRole("button", { name: /^(Save|保存)$/ }).click();
+
+  await expect(page.getByText(/Extra request body JSON is invalid|附加请求体不是合法的 JSON/)).toBeVisible();
+  await expect.poll(async () => page.evaluate(async () => {
+    const config = await window.ccr!.getConfig();
+    return config.Providers[0]?.extraBody;
+  })).toEqual(configOnlyProvider.extraBody);
+});
+
 async function waitForBridge(page: Page): Promise<void> {
   await page.waitForFunction(() => Boolean(window.ccr?.getConfig), undefined, { timeout: 20_000 });
 }
