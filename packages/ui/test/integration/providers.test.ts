@@ -31,6 +31,7 @@ import {
   parseProviderAccountDraft,
   providerBrowserConnectorFromDraft,
   providerGlobalBaseUrlForProbe,
+  providerManualFieldsForSave,
   providerPresetIconUrls,
   providerProtocolOptions,
   providerProbeCandidates,
@@ -142,6 +143,54 @@ test("provider save keeps explicit secondary media origins when the base URL is 
   assert.deepEqual(
     providerCapabilitiesForSave(current, media, "https://chat.example/v1/", "https://chat.example/v1"),
     [...current, ...media]
+  );
+});
+
+test("provider save keeps hand-written fields the dialog cannot edit", () => {
+  const existing = {
+    api_base_url: "https://example.test/v1",
+    api_key: "sk-old",
+    billing: { currency: "USD" },
+    extraBody: { default: { reasoning_effort: "high" } },
+    extraHeaders: { "x-tenant": "acme" },
+    models: ["model-a"],
+    name: "example",
+    provider: "openai",
+    transformer: { use: ["openrouter"] },
+    type: "openai_chat_completions"
+  };
+
+  assert.deepEqual(providerManualFieldsForSave(existing), {
+    billing: existing.billing,
+    extraBody: existing.extraBody,
+    extraHeaders: existing.extraHeaders,
+    provider: existing.provider,
+    transformer: existing.transformer
+  });
+});
+
+test("provider save drops legacy credential aliases so the edited values win", () => {
+  const existing = {
+    apiKey: "sk-legacy",
+    apikey: "sk-legacy",
+    baseUrl: "https://legacy.test/v1",
+    baseurl: "https://legacy.test/v1",
+    models: ["model-a"],
+    name: "example"
+  };
+
+  const preserved = providerManualFieldsForSave(existing) as Record<string, unknown>;
+
+  for (const alias of ["apiKey", "apikey", "baseUrl", "baseurl"]) {
+    assert.equal(alias in preserved, false, `${alias} must not survive a dialog save`);
+  }
+});
+
+test("provider save does not invent keys the provider never had", () => {
+  assert.deepEqual(providerManualFieldsForSave(undefined), {});
+  assert.deepEqual(
+    providerManualFieldsForSave({ models: ["model-a"], name: "example" }),
+    {}
   );
 });
 

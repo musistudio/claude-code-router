@@ -1993,6 +1993,47 @@ export function providerCapabilitiesForSave(
   );
 }
 
+export type ProviderManualFields = Pick<
+  GatewayProviderConfig,
+  "billing" | "extraBody" | "extraHeaders" | "provider" | "transformer"
+>;
+
+/**
+ * Provider fields the setup dialog cannot edit.
+ *
+ * Saving rebuilds the provider from the dialog draft, so a field the form does
+ * not know about is dropped unless it is carried over explicitly. These fields
+ * only ever come from a hand-written config, and losing them is silent: the
+ * provider keeps working, just without the upstream body, headers or
+ * transformers it was configured with.
+ *
+ * The legacy `apiKey` / `apikey` / `baseUrl` / `baseurl` aliases are deliberately
+ * not carried over — the form writes the canonical `api_key` / `api_base_url`,
+ * and a stale alias would shadow the value the user just typed.
+ */
+export function providerManualFieldsForSave(
+  existingProvider: GatewayProviderConfig | undefined
+): ProviderManualFields {
+  if (!existingProvider) {
+    return {};
+  }
+  const preserved: ProviderManualFields = {
+    billing: existingProvider.billing,
+    extraBody: existingProvider.extraBody,
+    extraHeaders: existingProvider.extraHeaders,
+    provider: existingProvider.provider,
+    transformer: existingProvider.transformer
+  };
+  // Keep the saved provider free of keys it never had, so an unrelated edit does
+  // not show up as a config change.
+  for (const field of Object.keys(preserved) as Array<keyof ProviderManualFields>) {
+    if (preserved[field] === undefined) {
+      delete preserved[field];
+    }
+  }
+  return preserved;
+}
+
 export function providerGlobalBaseUrlForProbe(
   inputBaseUrl: string,
   _probe: GatewayProviderProbeResult | undefined,
