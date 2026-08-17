@@ -29,6 +29,7 @@ import {
   providerAccountConnectorsTextWithNewApiUserBalanceTemplate,
   providerAutoFetchKnownModelsForSave,
   parseProviderAccountDraft,
+  parseProviderExtraJsonDraft,
   providerBrowserConnectorFromDraft,
   providerGlobalBaseUrlForProbe,
   providerManualFieldsForSave,
@@ -160,13 +161,53 @@ test("provider save keeps hand-written fields the dialog cannot edit", () => {
     type: "openai_chat_completions"
   };
 
+  // extraBody and extraHeaders are absent on purpose: the Advanced settings
+  // section edits them, so they round-trip through the draft instead.
   assert.deepEqual(providerManualFieldsForSave(existing), {
     billing: existing.billing,
-    extraBody: existing.extraBody,
-    extraHeaders: existing.extraHeaders,
     provider: existing.provider,
     transformer: existing.transformer
   });
+});
+
+test("provider draft round-trips the advanced JSON boxes", () => {
+  const provider = {
+    api_base_url: "https://example.test/v1",
+    extraBody: { byModel: { "model-a": { reasoning_effort: "high" } } },
+    extraHeaders: { "x-tenant": "acme" },
+    models: ["model-a"],
+    name: "example"
+  };
+
+  const draft = createProviderDraftFromProvider(provider);
+
+  assert.deepEqual(parseProviderExtraJsonDraft(draft.extraBodyText, "extraBody"), provider.extraBody);
+  assert.deepEqual(parseProviderExtraJsonDraft(draft.extraHeadersText, "extraHeaders"), provider.extraHeaders);
+});
+
+test("provider draft leaves the advanced JSON boxes empty when unset", () => {
+  const draft = createProviderDraftFromProvider({ models: ["model-a"], name: "example" });
+
+  assert.equal(draft.extraBodyText, "");
+  assert.equal(draft.extraHeadersText, "");
+  assert.equal(parseProviderExtraJsonDraft(draft.extraBodyText, "extraBody"), undefined);
+  assert.equal(parseProviderExtraJsonDraft(draft.extraHeadersText, "extraHeaders"), undefined);
+});
+
+test("advanced JSON boxes reject malformed input instead of saving it", () => {
+  assert.equal(
+    parseProviderExtraJsonDraft("{ not json", "extraBody"),
+    "Extra request body JSON is invalid."
+  );
+  assert.equal(
+    parseProviderExtraJsonDraft("[1, 2]", "extraBody"),
+    "Extra request body must be a JSON object."
+  );
+  assert.equal(
+    parseProviderExtraJsonDraft("\"x-tenant\"", "extraHeaders"),
+    "Extra request headers must be a JSON object."
+  );
+  assert.equal(parseProviderExtraJsonDraft("   \n  ", "extraBody"), undefined);
 });
 
 test("provider save drops legacy credential aliases so the edited values win", () => {

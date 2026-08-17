@@ -2447,6 +2447,28 @@ export function AddProviderForm({
                       onChange={onChange}
                       probe={probe}
                     />
+                    <Field className="sm:col-span-2" label={t("Extra request body")} requirement="optional" requirementLabel={t("Optional")}>
+                      <Textarea
+                        className="min-h-[92px] font-mono text-[11px]"
+                        onChange={(event) => onChange({ extraBodyText: event.target.value })}
+                        placeholder={`{\n  "default": { "reasoning_effort": "high" }\n}`}
+                        value={draft.extraBodyText}
+                      />
+                      <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                        {t("Merged into every upstream request for this provider. Use \"default\" for all models, or \"byModel\" to target one.")}
+                      </div>
+                    </Field>
+                    <Field className="sm:col-span-2" label={t("Extra request headers")} requirement="optional" requirementLabel={t("Optional")}>
+                      <Textarea
+                        className="min-h-[68px] font-mono text-[11px]"
+                        onChange={(event) => onChange({ extraHeadersText: event.target.value })}
+                        placeholder={`{\n  "x-tenant": "acme"\n}`}
+                        value={draft.extraHeadersText}
+                      />
+                      <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                        {t("Sent with every upstream request for this provider, alongside the API key header.")}
+                      </div>
+                    </Field>
                     <Field className="sm:col-span-2" label={t("Protocol details")}>
                       <div className="max-h-[128px] overflow-auto rounded-md border border-border bg-background p-2">
                         {manualProtocolDetection ? (
