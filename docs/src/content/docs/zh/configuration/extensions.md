@@ -86,6 +86,8 @@ module.exports = async function setup(ctx) {
 | `ctx.registerCoreGatewayProviderPlugin(plugin)` | 向 core gateway 注入 provider plugin |
 | `ctx.registerCoreGatewayVirtualModelProfile(profile)` | 向 core gateway 注入虚拟模型配置 |
 
+Provider account connector 的 `resolve(request)` 会收到 `request.fetchProviderAccountJson({ endpoint, method, requestOrigin, credentials, headers, body, timeoutMs })`。它通过 CCR Desktop 的内置浏览器会话发请求，因此 `credentials: "include"` 可以为同源账号 API 带上浏览器 Cookie。
+
 Gateway route handler 会额外收到 helper：
 
 | Helper | 说明 |

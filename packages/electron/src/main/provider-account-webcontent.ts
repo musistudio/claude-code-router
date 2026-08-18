@@ -2,7 +2,7 @@ import {
   setProviderAccountWebContentFetchHandler,
   type ProviderAccountWebContentFetchHandler,
   type ProviderAccountWebContentFetchRequest
-} from "@ccr/core/providers/account-service";
+} from "@ccr/core/providers/account-webcontent";
 
 type WebContentBrowserWindow = {
   close: () => void;

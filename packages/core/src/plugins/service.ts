@@ -25,6 +25,7 @@ import {
 import { backendService, type RegisteredHttpBackend, type SqliteStore, type SqliteStoreOptions } from "@ccr/core/plugins/backend-service";
 import { CONFIGDIR, DATADIR } from "@ccr/core/config/constants";
 import { isDesktopAppRuntime } from "@ccr/core/runtime/desktop-app";
+import type { ProviderAccountWebContentFetchRequest } from "@ccr/core/providers/account-webcontent";
 
 type MaybePromise<T> = T | Promise<T>;
 type PluginLogger = {
@@ -64,8 +65,13 @@ export type GatewayPluginHttpBackendRegistration = {
 export type GatewayPluginProviderAccountRequest = {
   config: AppConfig;
   connector: ProviderAccountPluginConnectorConfig;
+  fetchProviderAccountJson: (request: GatewayPluginProviderAccountJsonFetchRequest) => Promise<unknown>;
   now: string;
   provider: GatewayProviderConfig;
+};
+
+export type GatewayPluginProviderAccountJsonFetchRequest = Omit<ProviderAccountWebContentFetchRequest, "provider"> & {
+  provider?: GatewayProviderConfig;
 };
 
 export type GatewayPluginProviderAccountConnector = {

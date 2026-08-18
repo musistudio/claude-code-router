@@ -86,6 +86,8 @@ module.exports = async function setup(ctx) {
 | `ctx.registerCoreGatewayProviderPlugin(plugin)` | Inject a provider plugin into the core gateway |
 | `ctx.registerCoreGatewayVirtualModelProfile(profile)` | Inject a virtual model profile into the core gateway |
 
+Provider account connector `resolve(request)` receives `request.fetchProviderAccountJson({ endpoint, method, requestOrigin, credentials, headers, body, timeoutMs })`. It runs the request through CCR Desktop's built-in browser session, so `credentials: "include"` can send browser cookies for same-origin account APIs.
+
 Gateway route handlers also receive helper functions:
 
 | Helper | Description |
