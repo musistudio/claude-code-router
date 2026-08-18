@@ -653,6 +653,7 @@ function normalizeDeepLinkModelMetadata(value: unknown): ProviderModelMetadata |
     : normalizedString(defaultReasoningLevelValue);
   const defaultReasoningSummary = normalizedString(value.defaultReasoningSummary ?? value.default_reasoning_summary);
   const supportedReasoningLevels = normalizeDeepLinkReasoningLevels(value.supportedReasoningLevels ?? value.supported_reasoning_levels);
+  const supportsFastModeValue = value.supportsFastMode ?? value.supports_fast_mode;
   const supportsReasoningSummariesValue = value.supportsReasoningSummaries ?? value.supports_reasoning_summaries;
   const metadata: ProviderModelMetadata = {
     ...(Array.isArray(value.additionalSpeedTiers) ? { additionalSpeedTiers: value.additionalSpeedTiers } : {}),
@@ -667,6 +668,7 @@ function normalizeDeepLinkModelMetadata(value: unknown): ProviderModelMetadata |
     ...(pricing ? { pricing } : {}),
     ...(Array.isArray(value.serviceTiers) ? { serviceTiers: value.serviceTiers } : {}),
     ...(Array.isArray(value.service_tiers) ? { serviceTiers: value.service_tiers } : {}),
+    ...(typeof supportsFastModeValue === "boolean" ? { supportsFastMode: supportsFastModeValue } : {}),
     ...(supportedReasoningLevels ? { supportedReasoningLevels } : {}),
     ...(typeof supportsReasoningSummariesValue === "boolean" ? { supportsReasoningSummaries: supportsReasoningSummariesValue } : {})
   };

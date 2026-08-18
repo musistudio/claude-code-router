@@ -344,6 +344,26 @@ test("codex catalog uses provider model metadata for reasoning effort and speed 
   assert.equal(model.supports_reasoning_summaries, true);
 });
 
+test("codex catalog synthesizes Fast Mode tiers from provider model metadata", () => {
+  const model = catalogModelFor({
+    Providers: [
+      {
+        modelMetadata: {
+          "fast-model": {
+            supportsFastMode: true
+          }
+        },
+        models: ["fast-model"],
+        name: "Provider",
+        type: "openai_responses"
+      }
+    ]
+  }, "Provider/fast-model");
+
+  assert.deepEqual(model.additional_speed_tiers, ["fast"]);
+  assert.deepEqual(model.service_tiers, [{ id: "priority", name: "Fast", description: "1.5x speed, increased usage" }]);
+});
+
 test("codex catalog caps persisted local Codex GPT-5 context metadata", () => {
   const cases = [
     ["gpt-5-codex", 256000],

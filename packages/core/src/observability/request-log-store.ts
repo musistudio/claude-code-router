@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { closeSync, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { REQUEST_LOG_BODIES_DIR, REQUEST_LOGS_DB_FILE } from "@ccr/core/config/constants";
@@ -22,6 +22,10 @@ import { requestLogRequestedModel, requestLogResponseModel } from "@ccr/core/obs
 import { isSensitiveRequestLogHeaderName } from "@ccr/core/observability/sensitive-headers";
 import type {
   AgentAnalysisAgentRow,
+  AgentAnalysisConversationItem,
+  AgentAnalysisConversationMessage,
+  AgentAnalysisConversationRole,
+  AgentAnalysisConversationTurn,
   AgentAnalysisFilter,
   AgentAnalysisRequestRow,
   AgentAnalysisSessionDetail,
@@ -247,7 +251,10 @@ type StoredRequestLogEntry = {
 type AnalyzedAgentRequest = AgentAnalysisRequestRow & {
   client: string;
   completedAt: string;
+  conversation?: AgentAnalysisConversationTurn;
   endedAtMs: number;
+  requestBody: RequestLogBody;
+  responseBody?: RequestLogBody;
   startedAtMs: number;
   toolCalls: AgentToolCallDetail[];
   toolResults: AgentToolResultDetail[];
@@ -255,6 +262,7 @@ type AnalyzedAgentRequest = AgentAnalysisRequestRow & {
 
 type AgentLogDetails = {
   agent: AgentKind;
+  conversationMessages?: AgentConversationMessages;
   routeReason?: string;
   sessionId: string;
   subagentModel?: string;
@@ -285,6 +293,22 @@ type AgentToolResultDetail = {
   result?: AgentAnalysisTracePayloadPreview;
 };
 
+type AgentToolResultSource = {
+  id: number;
+  requestId: string;
+};
+
+type AgentToolResultLookup = {
+  byId: Map<string, AgentToolResultDetail>;
+  ordered: AgentToolResultDetail[];
+};
+
+type AgentConversationMessages = {
+  assistant?: AgentAnalysisConversationMessage;
+  messages?: AgentAnalysisConversationItem[];
+  user?: AgentAnalysisConversationMessage;
+};
+
 type StreamedToolCallInput = {
   fragments: string[];
   id: string;
@@ -308,7 +332,6 @@ const maxBodyBytes = maxRequestLogBodyBytes;
 const requestLogInlineBodyBytes = 160 * 1024;
 const requestLogBodyChunkMaxBytes = 1024 * 1024;
 const maxAgentAnalysisRows = 5000;
-const maxAgentSessionDetailRequests = 250;
 const maxTracePayloadPreviewChars = 1600;
 const maxPendingRawTraceEntries = 200;
 const maxPendingRawTraceEntryBytes = 2 * 1024 * 1024;
@@ -1232,7 +1255,7 @@ export class RequestLogStore {
       ? applyRequestConcurrency(sessionScopedRequests)
       : requests;
     const selectedSession = sessionScopedRequests
-      ? buildAgentSessionDetail(analysisRequests)
+      ? buildAgentSessionDetail(analysisRequests, this.bodyDir)
       : undefined;
 
     const snapshot: AgentAnalysisSnapshot = {
@@ -1273,7 +1296,7 @@ export class RequestLogStore {
       return emptyTracePayloadResult();
     }
 
-    const body = request.part === "tool-input" ? entry.responseBody : entry.requestBody;
+    const body = hydrateRequestLogBodyFromRef(this.bodyDir, request.part === "tool-input" ? entry.responseBody : entry.requestBody);
     if (!body || body.encoding !== "utf8") {
       return emptyTracePayloadResult(Boolean(body?.truncated));
     }
@@ -1646,6 +1669,7 @@ function toAnalyzedAgentRequest(entry: StoredRequestLogEntry): AnalyzedAgentRequ
     client: entry.client,
     completedAt: entry.completedAt,
     concurrentRequests: 1,
+    ...(details.conversationMessages ? { conversation: buildAgentConversationTurn(entry, details) } : {}),
     costUsd: entry.costUsd,
     createdAt: entry.createdAt,
     durationMs: entry.durationMs,
@@ -1659,11 +1683,13 @@ function toAnalyzedAgentRequest(entry: StoredRequestLogEntry): AnalyzedAgentRequ
     outputTokens: entry.outputTokens,
     path: entry.path,
     provider: entry.provider,
+    requestBody: bodyMetaForAnalysis(entry.requestBody) ?? emptyBody(),
     requestId: entry.requestId,
     routeReason: details.routeReason,
     sessionId: details.sessionId,
     startedAtMs,
     statusCode: entry.statusCode,
+    responseBody: bodyMetaForAnalysis(entry.responseBody),
     subagentModel: details.subagentModel,
     toolCallCount: details.tools.length,
     toolCalls: details.toolCalls,
@@ -1691,10 +1717,12 @@ function extractAgentLogDetails(entry: StoredRequestLogEntry): AgentLogDetails {
   const subagentModel = extractSubagentModel(entry, requestPayloads, routeReason, routedModel);
   const agent = inferAgentKind(entry, requestPayloads, responsePayloads);
   const toolCalls = extractToolCalls(responsePayloads);
-  const toolResults = extractToolResults(requestPayloads, entry);
+  const toolResults = extractToolResults([...requestPayloads, ...responsePayloads], entry);
+  const conversationMessages = extractConversationMessages(entry, requestPayloads, responsePayloads, toolCalls);
 
   return {
     agent,
+    conversationMessages,
     routeReason,
     sessionId: extractAgentSessionId(entry, requestPayloads, agent),
     subagentModel,
@@ -1702,6 +1730,26 @@ function extractAgentLogDetails(entry: StoredRequestLogEntry): AgentLogDetails {
     toolResults,
     tools: toolCalls.map((tool) => tool.name),
     userAgent: readAgentUserAgent(entry.requestHeaders)
+  };
+}
+
+function buildAgentConversationTurn(
+  entry: StoredRequestLogEntry,
+  details: AgentLogDetails
+): AgentAnalysisConversationTurn {
+  return {
+    agent: details.agent,
+    ...(details.conversationMessages?.assistant ? { assistant: details.conversationMessages.assistant } : {}),
+    createdAt: entry.createdAt,
+    durationMs: entry.durationMs,
+    id: entry.id,
+    ...(details.conversationMessages?.messages ? { messages: details.conversationMessages.messages } : {}),
+    model: entry.model,
+    provider: entry.provider,
+    requestId: entry.requestId,
+    sessionId: details.sessionId,
+    statusCode: entry.statusCode,
+    ...(details.conversationMessages?.user ? { user: details.conversationMessages.user } : {})
   };
 }
 
@@ -2164,6 +2212,503 @@ function parseLogBodyPayloads(body: RequestLogBody | undefined): unknown[] {
   return parseStreamPayloads(body.text);
 }
 
+function extractConversationMessages(
+  entry: StoredRequestLogEntry,
+  requestPayloads: unknown[],
+  responsePayloads: unknown[],
+  toolCalls: AgentToolCallDetail[]
+): AgentConversationMessages | undefined {
+  const userText = latestUserText(requestPayloads);
+  const assistantText = assistantTextFromPayloads(responsePayloads) ?? toolCallConversationText(toolCalls);
+  const user = conversationMessagePreview(userText, entry.requestBody);
+  const assistant = conversationMessagePreview(assistantText, entry.responseBody);
+  const messages = conversationItemsFromPayloads(entry, requestPayloads, assistantText);
+  if (!user && !assistant && messages.length === 0) {
+    return undefined;
+  }
+  return {
+    ...(assistant ? { assistant } : {}),
+    ...(messages.length > 0 ? { messages } : {}),
+    ...(user ? { user } : {})
+  };
+}
+
+function latestUserText(payloads: unknown[]): string | undefined {
+  const candidates = payloads.flatMap(userTextCandidates);
+  for (let index = candidates.length - 1; index >= 0; index -= 1) {
+    const candidate = normalizeConversationText(candidates[index]);
+    if (candidate) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function userTextCandidates(payload: unknown): string[] {
+  if (!isRecord(payload)) {
+    return [];
+  }
+
+  const candidates: string[] = [];
+  if (Array.isArray(payload.messages)) {
+    for (const message of payload.messages) {
+      if (!isRecord(message) || asString(message.role) !== "user") {
+        continue;
+      }
+      const text = contentText(message.content ?? message.text);
+      if (text) candidates.push(text);
+    }
+  }
+
+  if (typeof payload.input === "string") {
+    candidates.push(payload.input);
+  } else if (Array.isArray(payload.input)) {
+    for (const item of payload.input) {
+      if (typeof item === "string") {
+        candidates.push(item);
+      } else if (isRecord(item) && asString(item.role) === "user") {
+        const text = contentText(item.content ?? item.text ?? item.input);
+        if (text) candidates.push(text);
+      }
+    }
+  }
+
+  if (Array.isArray(payload.contents)) {
+    candidates.push(...geminiContentTexts(payload.contents, "user"));
+  }
+
+  const prompt = asString(payload.prompt);
+  if (prompt) {
+    candidates.push(prompt);
+  }
+  return candidates;
+}
+
+function conversationItemsFromPayloads(
+  entry: StoredRequestLogEntry,
+  requestPayloads: unknown[],
+  assistantText: string | undefined
+): AgentAnalysisConversationItem[] {
+  const items: AgentAnalysisConversationItem[] = [];
+
+  requestPayloads.forEach((payload, payloadIndex) => {
+    items.push(...requestConversationItems(payload, entry.requestBody, `request:${payloadIndex}`));
+  });
+
+  if (items.length === 0) {
+    const latestUser = latestUserText(requestPayloads);
+    const user = conversationItemPreview("user", latestUser, entry.requestBody, "request:fallback:user");
+    if (user) {
+      items.push(user);
+    }
+  }
+
+  const assistant = conversationItemPreview("assistant", assistantText, entry.responseBody, "response:assistant");
+  if (assistant) {
+    items.push(assistant);
+  }
+
+  return dedupeConversationItems(items);
+}
+
+function requestConversationItems(
+  payload: unknown,
+  body: RequestLogBody | undefined,
+  idPrefix: string
+): AgentAnalysisConversationItem[] {
+  if (!isRecord(payload)) {
+    return [];
+  }
+
+  const items: AgentAnalysisConversationItem[] = [];
+  const systemText = contentText(payload.system ?? payload.system_prompt ?? payload.systemPrompt ?? payload.instructions);
+  const system = conversationItemPreview("system", systemText, body, `${idPrefix}:system`);
+  if (system) {
+    items.push(system);
+  }
+
+  if (Array.isArray(payload.messages)) {
+    payload.messages.forEach((message, index) => {
+      const item = conversationItemFromMessage(message, body, `${idPrefix}:messages:${index}`);
+      if (item) {
+        items.push(item);
+      }
+    });
+  }
+
+  if (Array.isArray(payload.input)) {
+    payload.input.forEach((message, index) => {
+      const item = conversationItemFromMessage(message, body, `${idPrefix}:input:${index}`);
+      if (item) {
+        items.push(item);
+      }
+    });
+  } else if (typeof payload.input === "string") {
+    const item = conversationItemPreview("user", payload.input, body, `${idPrefix}:input`);
+    if (item) {
+      items.push(item);
+    }
+  }
+
+  if (Array.isArray(payload.contents)) {
+    payload.contents.forEach((message, index) => {
+      const item = conversationItemFromGeminiContent(message, body, `${idPrefix}:contents:${index}`);
+      if (item) {
+        items.push(item);
+      }
+    });
+  }
+
+  const prompt = asString(payload.prompt);
+  if (prompt) {
+    const item = conversationItemPreview("user", prompt, body, `${idPrefix}:prompt`);
+    if (item) {
+      items.push(item);
+    }
+  }
+
+  return items;
+}
+
+function conversationItemFromMessage(
+  value: unknown,
+  body: RequestLogBody | undefined,
+  id: string
+): AgentAnalysisConversationItem | undefined {
+  if (typeof value === "string") {
+    return conversationItemPreview("user", value, body, id);
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const role = normalizeConversationRole(asString(value.role) ?? asString(value.type));
+  const content = contentText(value.content ?? value.text ?? value.input ?? value.output);
+  return conversationItemPreview(conversationRoleForContent(role, content), content, body, id);
+}
+
+function conversationItemFromGeminiContent(
+  value: unknown,
+  body: RequestLogBody | undefined,
+  id: string
+): AgentAnalysisConversationItem | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const role = normalizeConversationRole(asString(value.role));
+  const content = contentText(value.parts ?? value.content ?? value.text);
+  return conversationItemPreview(conversationRoleForContent(role, content), content, body, id);
+}
+
+function conversationItemPreview(
+  role: AgentAnalysisConversationRole,
+  value: string | undefined,
+  body: RequestLogBody | undefined,
+  id: string
+): AgentAnalysisConversationItem | undefined {
+  const normalized = normalizeConversationText(value);
+  if (!normalized) {
+    return undefined;
+  }
+  return {
+    content: normalized,
+    id,
+    role,
+    sourcePreview: Boolean(body?.preview),
+    sourceTruncated: Boolean(body?.truncated),
+    truncated: false
+  };
+}
+
+function normalizeConversationRole(value: string | undefined): AgentAnalysisConversationRole {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "assistant" || normalized === "model") return "assistant";
+  if (normalized === "developer") return "developer";
+  if (normalized === "system") return "system";
+  if (normalized === "tool" || normalized === "function" || normalized === "function_call_output" || normalized === "tool_result") return "tool";
+  if (normalized === "context" || normalized === "system-reminder") return "context";
+  return "user";
+}
+
+function conversationRoleForContent(role: AgentAnalysisConversationRole, content: string | undefined): AgentAnalysisConversationRole {
+  if (role !== "user") {
+    return role;
+  }
+  const normalized = content?.trim().toLowerCase() ?? "";
+  if (
+    normalized.startsWith("<system-reminder>") ||
+    normalized.startsWith("current runtime context.") ||
+    normalized.startsWith("this snapshot supersedes earlier runtime-context snapshots.")
+  ) {
+    return "context";
+  }
+  return role;
+}
+
+function dedupeConversationItems(items: AgentAnalysisConversationItem[]): AgentAnalysisConversationItem[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = `${item.role}\n${item.content}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function assistantTextFromPayloads(payloads: unknown[]): string | undefined {
+  let streamed = "";
+  const fullTexts: string[] = [];
+  for (const payload of payloads) {
+    streamed += assistantStreamText(payload);
+    fullTexts.push(...assistantFullTextCandidates(payload));
+  }
+
+  const streamedText = normalizeConversationText(streamed);
+  if (streamedText) {
+    return streamedText;
+  }
+  return normalizeConversationText(fullTexts.join("\n\n")) || undefined;
+}
+
+function assistantStreamText(payload: unknown): string {
+  if (Array.isArray(payload)) {
+    return payload.map(assistantStreamText).join("");
+  }
+  if (!isRecord(payload)) {
+    return "";
+  }
+
+  const chunks: string[] = [];
+  const type = asString(payload.type);
+  const delta = isRecord(payload.delta) ? payload.delta : undefined;
+  if ((type === "content_block_start" || type === "content_block_delta") && delta) {
+    const text = asString(delta.text) || asString(delta.partial_json);
+    if (text && asString(delta.type) !== "input_json_delta") {
+      chunks.push(text);
+    }
+  }
+  if (type === "content_block_start" && isRecord(payload.content_block)) {
+    const text = contentText(payload.content_block);
+    if (text) chunks.push(text);
+  }
+  if (
+    type === "response.output_text.delta" ||
+    type === "response.refusal.delta" ||
+    type === "response.output_text.done" ||
+    type === "response.refusal.done"
+  ) {
+    const text = asString(payload.delta) || asString(payload.text);
+    if (text) chunks.push(text);
+  }
+  if (type === "response.content_part.done" && isRecord(payload.part)) {
+    const text = contentText(payload.part);
+    if (text) chunks.push(text);
+  }
+  if (type === "response.output_item.done" && isRecord(payload.item)) {
+    chunks.push(...assistantFullTextCandidates(payload.item));
+  }
+
+  if (Array.isArray(payload.choices)) {
+    for (const choice of payload.choices) {
+      if (!isRecord(choice)) continue;
+      const choiceDelta = isRecord(choice.delta) ? choice.delta : undefined;
+      const text = contentText(choiceDelta?.content ?? choiceDelta?.text);
+      if (text) chunks.push(text);
+    }
+  }
+  return chunks.join("");
+}
+
+function assistantFullTextCandidates(payload: unknown): string[] {
+  if (Array.isArray(payload)) {
+    return payload.flatMap(assistantFullTextCandidates);
+  }
+  if (!isRecord(payload)) {
+    return [];
+  }
+
+  const candidates: string[] = [];
+  const payloadType = asString(payload.type);
+  const outputText = asString(payload.output_text);
+  if (outputText) {
+    candidates.push(outputText);
+    return candidates;
+  }
+  if (payloadType === "response.output_text.done" || payloadType === "response.refusal.done") {
+    const text = asString(payload.text);
+    if (text) candidates.push(text);
+  }
+
+  if (Array.isArray(payload.choices)) {
+    for (const choice of payload.choices) {
+      if (!isRecord(choice)) continue;
+      const message = isRecord(choice.message) ? choice.message : undefined;
+      const text = contentText(message?.content ?? message?.text);
+      if (text) candidates.push(text);
+    }
+  }
+
+  const message = isRecord(payload.message) ? payload.message : undefined;
+  if (message && (asString(message.role) === "assistant" || message.content !== undefined || message.text !== undefined)) {
+    const text = contentText(message.content ?? message.text);
+    if (text) candidates.push(text);
+  }
+
+  const role = asString(payload.role);
+  if (role === "assistant") {
+    const text = contentText(payload.content ?? payload.text);
+    if (text) candidates.push(text);
+  } else if (payload.content !== undefined && !Array.isArray(payload.messages)) {
+    const text = contentText(payload.content);
+    if (text) candidates.push(text);
+  }
+
+  if (Array.isArray(payload.output)) {
+    for (const item of payload.output) {
+      if (!isRecord(item)) continue;
+      const itemType = asString(item.type);
+      const itemRole = asString(item.role);
+      if (itemType === "message" || itemRole === "assistant") {
+        const text = contentText(item.content ?? item.text);
+        if (text) candidates.push(text);
+      } else if (itemType === "output_text") {
+        const text = contentText(item.text ?? item.content);
+        if (text) candidates.push(text);
+      }
+    }
+  }
+
+  if (isRecord(payload.response)) {
+    const responseText = asString(payload.response.output_text);
+    if (responseText) {
+      candidates.push(responseText);
+    } else {
+      candidates.push(...assistantFullTextCandidates(payload.response));
+    }
+  }
+
+  if (isRecord(payload.part)) {
+    const text = contentText(payload.part);
+    if (text) candidates.push(text);
+  }
+
+  if (isRecord(payload.item)) {
+    candidates.push(...assistantFullTextCandidates(payload.item));
+  }
+
+  if (Array.isArray(payload.candidates)) {
+    for (const candidate of payload.candidates) {
+      if (!isRecord(candidate)) continue;
+      const content = isRecord(candidate.content) ? candidate.content : undefined;
+      const text = contentText(content?.parts ?? content?.content ?? content);
+      if (text) candidates.push(text);
+    }
+  }
+
+  return candidates;
+}
+
+function geminiContentTexts(contents: unknown[], role: "model" | "user"): string[] {
+  const texts: string[] = [];
+  for (const content of contents) {
+    if (!isRecord(content) || asString(content.role) !== role) {
+      continue;
+    }
+    const text = contentText(content.parts ?? content.content ?? content.text);
+    if (text) texts.push(text);
+  }
+  return texts;
+}
+
+function contentText(value: unknown): string | undefined {
+  const parts: string[] = [];
+  collectContentText(value, parts);
+  return normalizeConversationText(parts.join("\n"));
+}
+
+function collectContentText(value: unknown, parts: string[]): void {
+  if (typeof value === "string") {
+    parts.push(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectContentText(item, parts);
+    }
+    return;
+  }
+  if (!isRecord(value)) {
+    return;
+  }
+
+  const type = asString(value.type)?.toLowerCase() ?? "";
+  if (type === "tool_result" || type === "function_call_output" || type === "tool_call_output") {
+    return;
+  }
+  if (type.includes("image")) {
+    parts.push("[image]");
+    return;
+  }
+  if (type.includes("audio")) {
+    parts.push("[audio]");
+    return;
+  }
+  if (isRecord(value.inline_data) || isRecord(value.inlineData)) {
+    parts.push("[media]");
+    return;
+  }
+
+  const text =
+    asString(value.text) ??
+    asString(value.input_text) ??
+    asString(value.output_text);
+  if (text) {
+    parts.push(text);
+    return;
+  }
+  if (value.content !== undefined) {
+    collectContentText(value.content, parts);
+    return;
+  }
+  if (Array.isArray(value.parts)) {
+    collectContentText(value.parts, parts);
+  }
+}
+
+function toolCallConversationText(toolCalls: AgentToolCallDetail[]): string | undefined {
+  if (toolCalls.length === 0) {
+    return undefined;
+  }
+  return toolCalls.map((tool) => {
+    const input = tool.input?.preview.trim();
+    return input ? `Tool call: ${tool.name}\n${input}` : `Tool call: ${tool.name}`;
+  }).join("\n\n");
+}
+
+function conversationMessagePreview(
+  value: string | undefined,
+  body: RequestLogBody | undefined
+): AgentAnalysisConversationMessage | undefined {
+  const normalized = normalizeConversationText(value);
+  if (!normalized) {
+    return undefined;
+  }
+  return {
+    content: normalized,
+    sourcePreview: Boolean(body?.preview),
+    sourceTruncated: Boolean(body?.truncated),
+    truncated: false
+  };
+}
+
+function normalizeConversationText(value: string | undefined): string {
+  return (value ?? "")
+    .replace(/\r\n/g, "\n")
+    .trim();
+}
+
 function extractToolCalls(payloads: unknown[]): AgentToolCallDetail[] {
   const calls = new Map<string, AgentToolCallDetail>();
   for (const payload of payloads) {
@@ -2381,7 +2926,7 @@ function remapStreamedToolCall(state: ToolCallStreamState, index: string, id: st
   state.calls.delete(previousId);
 }
 
-function extractToolResults(payloads: unknown[], entry: StoredRequestLogEntry): AgentToolResultDetail[] {
+function extractToolResults(payloads: unknown[], entry: AgentToolResultSource): AgentToolResultDetail[] {
   const results = new Map<string, AgentToolResultDetail>();
   for (const payload of payloads) {
     collectToolResults(payload, entry, results);
@@ -2391,7 +2936,7 @@ function extractToolResults(payloads: unknown[], entry: StoredRequestLogEntry): 
 
 function collectToolResults(
   value: unknown,
-  entry: StoredRequestLogEntry,
+  entry: AgentToolResultSource,
   results: Map<string, AgentToolResultDetail>
 ): void {
   if (Array.isArray(value)) {
@@ -2412,23 +2957,35 @@ function collectToolResults(
     asString(value.call_id) ||
     asString(value.id);
   const looksLikeToolResult =
-    type === "tool_result" ||
-    type === "function_call_output" ||
-    type === "tool_call_output" ||
+    isToolResultPayloadType(type) ||
     (role === "tool" && Boolean(value.tool_call_id));
 
-  if (looksLikeToolResult && id) {
-    results.set(id, {
-      id,
-      requestId: entry.requestId,
-      requestLogId: entry.id,
-      result: payloadPreview(value.content ?? value.output ?? value.result ?? value.text)
-    });
+  if (looksLikeToolResult) {
+    const result = payloadPreview(value.content ?? value.output ?? value.result ?? value.text);
+    if (result) {
+      const key = id || `tool-result:${results.size}`;
+      results.set(key, {
+        id: key,
+        requestId: entry.requestId,
+        requestLogId: entry.id,
+        result
+      });
+    }
   }
 
   for (const item of Object.values(value)) {
     collectToolResults(item, entry, results);
   }
+}
+
+function isToolResultPayloadType(value: string | undefined): boolean {
+  const type = value?.trim().toLowerCase();
+  return (
+    type === "tool_result" ||
+    type === "function_call_output" ||
+    type === "tool_call_output" ||
+    type === "custom_tool_call_output"
+  );
 }
 
 function payloadPreview(value: unknown): AgentAnalysisTracePayloadPreview | undefined {
@@ -2556,7 +3113,7 @@ function findToolResultPayload(payloads: unknown[], callId: string | undefined):
   if (callId && results.has(callId)) {
     return { found: true, value: results.get(callId) };
   }
-  if (!callId && results.size === 1) {
+  if (results.size === 1) {
     return { found: true, value: Array.from(results.values())[0] };
   }
   return { found: false };
@@ -2581,13 +3138,14 @@ function collectToolResultPayloads(value: unknown, results: Map<string, unknown>
     asString(value.call_id) ||
     asString(value.id);
   const looksLikeToolResult =
-    type === "tool_result" ||
-    type === "function_call_output" ||
-    type === "tool_call_output" ||
+    isToolResultPayloadType(type) ||
     (role === "tool" && Boolean(value.tool_call_id));
 
-  if (looksLikeToolResult && id) {
-    results.set(id, value.content ?? value.output ?? value.result ?? value.text);
+  if (looksLikeToolResult) {
+    const result = value.content ?? value.output ?? value.result ?? value.text;
+    if (result !== undefined) {
+      results.set(id || `tool-result:${results.size}`, result);
+    }
   }
 
   for (const item of Object.values(value)) {
@@ -2791,28 +3349,85 @@ function selectAgentSessionRequests(
 }
 
 function buildAgentSessionDetail(
-  sessionRequests: AnalyzedAgentRequest[]
+  sessionRequests: AnalyzedAgentRequest[],
+  bodyDir?: string
 ): AgentAnalysisSessionDetail | undefined {
   if (sessionRequests.length === 0) {
     return undefined;
   }
+  const extraToolResults = bodyDir
+    ? collectSessionToolResultsFromFullBodies(sessionRequests, bodyDir)
+    : [];
 
   return {
+    conversation: buildAgentConversationTurns(sessionRequests),
     endpoints: buildAgentEndpointRows(sessionRequests),
     errors: buildAgentErrorRows(sessionRequests),
     models: buildAgentSessionModelRows(sessionRequests),
-    requests: sessionRequests.slice(-maxAgentSessionDetailRequests).reverse().map(stripAnalysisInternals),
+    requests: [...sessionRequests].reverse().map(stripAnalysisInternals),
     routes: buildAgentRouteRows(sessionRequests),
     session: buildAgentSessionRow(sessionRequests),
     statusCodes: buildStatusCodeCounts(sessionRequests),
     subagents: buildAgentSubagentRows(sessionRequests),
     tools: buildAgentToolRows(sessionRequests),
     totals: buildAgentAnalysisTotals(sessionRequests),
-    trace: buildAgentTrace(sessionRequests)
+    trace: buildAgentTrace(sessionRequests, extraToolResults)
   };
 }
 
-function buildAgentTrace(requests: AnalyzedAgentRequest[]): AgentAnalysisTrace {
+function collectSessionToolResultsFromFullBodies(
+  requests: AnalyzedAgentRequest[],
+  bodyDir: string
+): AgentToolResultDetail[] {
+  const neededCallIds = new Set(
+    requests.flatMap((request) => request.toolCalls.map((tool) => tool.id).filter((id): id is string => Boolean(id)))
+  );
+  if (neededCallIds.size === 0) {
+    return [];
+  }
+
+  const results = new Map<string, AgentToolResultDetail>();
+  const orderedRequests = [...requests]
+    .filter((request) => Boolean(request.requestBody.bodyRef))
+    .sort((a, b) => b.startedAtMs - a.startedAtMs || b.id - a.id);
+
+  for (const request of orderedRequests) {
+    const body = hydrateRequestLogBodyFromRef(bodyDir, request.requestBody);
+    if (!body || body === request.requestBody || body.encoding !== "utf8") {
+      continue;
+    }
+
+    const payloads = parseLogBodyPayloads(body);
+    const extracted = extractToolResults(payloads, {
+      id: request.id,
+      requestId: request.requestId
+    });
+    for (const result of extracted) {
+      const existing = results.get(result.id);
+      if (!existing || (!existing.result && result.result)) {
+        results.set(result.id, result);
+      }
+      neededCallIds.delete(result.id);
+    }
+    if (neededCallIds.size === 0) {
+      break;
+    }
+  }
+
+  return Array.from(results.values());
+}
+
+function buildAgentConversationTurns(requests: AnalyzedAgentRequest[]): AgentAnalysisConversationTurn[] {
+  return [...requests]
+    .sort((a, b) => a.startedAtMs - b.startedAtMs || a.id - b.id)
+    .map((request) => request.conversation)
+    .filter((turn): turn is AgentAnalysisConversationTurn => Boolean(turn));
+}
+
+function buildAgentTrace(
+  requests: AnalyzedAgentRequest[],
+  extraToolResults: AgentToolResultDetail[] = []
+): AgentAnalysisTrace {
   const ordered = [...requests].sort((a, b) => a.startedAtMs - b.startedAtMs || a.id - b.id);
   const first = ordered[0];
   const sessionId = first.sessionId;
@@ -2821,7 +3436,8 @@ function buildAgentTrace(requests: AnalyzedAgentRequest[]): AgentAnalysisTrace {
   const durationMs = Math.max(0, endMs - startMs);
   const totals = buildAgentAnalysisTotals(ordered);
   const rootRunId = `agent:${first.agent}:${sessionId}`;
-  const toolResults = buildToolResultMap(ordered);
+  const toolResults = buildToolResultLookup(ordered, extraToolResults);
+  let toolCallSequenceIndex = 0;
   const runs: AgentAnalysisTraceRun[] = [
     {
       agent: first.agent,
@@ -2898,8 +3514,9 @@ function buildAgentTrace(requests: AnalyzedAgentRequest[]): AgentAnalysisTrace {
         parentId: llmRun.id,
         request,
         startMs,
-        tool: toolDetailForCall(toolCall, toolResults)
+        tool: toolDetailForCall(toolCall, toolResults, toolCallSequenceIndex)
       }));
+      toolCallSequenceIndex += 1;
     });
   }
 
@@ -2926,21 +3543,36 @@ function shouldCreateRouteTraceRun(value: string | undefined): boolean {
   return Boolean(normalized && normalized !== "default" && normalized !== "inline-model");
 }
 
-function buildToolResultMap(requests: AnalyzedAgentRequest[]): Map<string, AgentToolResultDetail> {
-  const results = new Map<string, AgentToolResultDetail>();
-  for (const request of requests) {
-    for (const result of request.toolResults) {
-      results.set(result.id, result);
+function buildToolResultLookup(
+  requests: AnalyzedAgentRequest[],
+  extraResults: AgentToolResultDetail[] = []
+): AgentToolResultLookup {
+  const byId = new Map<string, AgentToolResultDetail>();
+  const ordered: AgentToolResultDetail[] = [];
+  const seenOrderedResults = new Set<string>();
+  const allResults = [
+    ...requests.flatMap((request) => request.toolResults),
+    ...extraResults
+  ];
+  for (const result of allResults) {
+    byId.set(result.id, result);
+    const orderedKey = result.id.startsWith("tool-result:")
+      ? `${result.result?.kind ?? "empty"}:${result.result?.preview ?? ""}`
+      : result.id;
+    if (!seenOrderedResults.has(orderedKey)) {
+      seenOrderedResults.add(orderedKey);
+      ordered.push(result);
     }
   }
-  return results;
+  return { byId, ordered };
 }
 
 function toolDetailForCall(
   call: AgentToolCallDetail,
-  results: Map<string, AgentToolResultDetail>
+  results: AgentToolResultLookup,
+  sequenceIndex: number
 ): AgentAnalysisTraceToolDetail {
-  const result = call.id ? results.get(call.id) : undefined;
+  const result = (call.id ? results.byId.get(call.id) : undefined) ?? results.ordered[sequenceIndex];
   return {
     callId: call.id,
     input: call.input,
@@ -3251,7 +3883,10 @@ function maxConcurrentRequests(requests: AnalyzedAgentRequest[]): number {
 function stripAnalysisInternals(request: AnalyzedAgentRequest): AgentAnalysisRequestRow {
   const {
     completedAt: _completedAt,
+    conversation: _conversation,
     endedAtMs: _endedAtMs,
+    requestBody: _requestBody,
+    responseBody: _responseBody,
     startedAtMs: _startedAtMs,
     toolCalls: _toolCalls,
     toolResults: _toolResults,
@@ -4312,6 +4947,37 @@ function bodyFromRow(row: Record<string, SqlValue>, prefix: "request" | "respons
     sizeBytes,
     text,
     truncated: normalizeCount(row[`${prefix}_body_truncated`]) === 1
+  };
+}
+
+function hydrateRequestLogBodyFromRef(bodyDir: string, body: RequestLogBody | undefined): RequestLogBody | undefined {
+  if (!body?.bodyRef || body.encoding !== "utf8") {
+    return body;
+  }
+  const filePath = requestLogBodyPath(bodyDir, body.bodyRef);
+  if (!filePath || !existsSync(filePath)) {
+    return body;
+  }
+  const buffer = readFileSync(filePath);
+  return {
+    ...body,
+    preview: false,
+    sizeBytes: Math.max(body.sizeBytes, buffer.byteLength),
+    text: new StringDecoder("utf8").write(buffer)
+  };
+}
+
+function bodyMetaForAnalysis(body: RequestLogBody | undefined): RequestLogBody | undefined {
+  if (!body) {
+    return undefined;
+  }
+  return {
+    ...(body.bodyRef ? { bodyRef: body.bodyRef, preview: true } : {}),
+    contentType: body.contentType,
+    encoding: body.encoding,
+    sizeBytes: body.sizeBytes,
+    text: "",
+    truncated: body.truncated
   };
 }
 

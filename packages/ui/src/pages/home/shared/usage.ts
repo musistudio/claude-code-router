@@ -170,6 +170,10 @@ export function formatPercent(value: number): string {
   return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
 }
 
+export function formatPercentFixed(value: number, fractionDigits = 2): string {
+  return `${(Math.max(0, Math.min(1, value)) * 100).toFixed(fractionDigits)}%`;
+}
+
 export function logSelectOptions(label: string, values: string[], selected: string | undefined): Array<{ label: string; value: string }> {
   const merged = new Set(values);
   if (selected) {

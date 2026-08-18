@@ -221,6 +221,7 @@ export type ProviderModelMetadata = {
   maxOutputTokens?: number;
   pricing?: ProviderModelPricing;
   serviceTiers?: unknown[];
+  supportsFastMode?: boolean;
   supportedReasoningLevels?: ProviderReasoningLevel[];
   supportsReasoningSummaries?: boolean;
 };
@@ -2467,7 +2468,37 @@ export type AgentObservabilityErrorRow = {
   userAgent?: string;
 };
 
+export type AgentAnalysisConversationRole = "assistant" | "context" | "developer" | "system" | "tool" | "user";
+
+export type AgentAnalysisConversationMessage = {
+  content: string;
+  sourcePreview: boolean;
+  sourceTruncated: boolean;
+  truncated: boolean;
+};
+
+export type AgentAnalysisConversationItem = AgentAnalysisConversationMessage & {
+  id: string;
+  role: AgentAnalysisConversationRole;
+};
+
+export type AgentAnalysisConversationTurn = {
+  agent: AgentKind;
+  assistant?: AgentAnalysisConversationMessage;
+  createdAt: string;
+  durationMs: number;
+  id: number;
+  messages?: AgentAnalysisConversationItem[];
+  model: string;
+  provider: string;
+  requestId: string;
+  sessionId: string;
+  statusCode: number;
+  user?: AgentAnalysisConversationMessage;
+};
+
 export type AgentAnalysisSessionDetail = {
+  conversation: AgentAnalysisConversationTurn[];
   endpoints: AgentObservabilityEndpointRow[];
   errors: AgentObservabilityErrorRow[];
   models: AgentAnalysisSessionModelRow[];

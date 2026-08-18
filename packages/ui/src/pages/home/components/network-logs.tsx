@@ -940,7 +940,7 @@ const LogRow = memo(function LogRow({
   );
 });
 
-function LogExpandedDetails({
+export function LogExpandedDetails({
   detailError,
   detailLoading,
   entry

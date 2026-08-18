@@ -270,6 +270,7 @@ test("Codex model catalog parser accepts live model endpoint shapes", () => {
         max_context_window: 300000,
         service_tiers: [{ id: "auto" }],
         slug: "gpt-5-codex",
+        supports_fast_mode: true,
         supported_reasoning_levels: [
           { description: "Low", effort: "low" },
           { description: "High", effort: "high" }
@@ -297,6 +298,7 @@ test("Codex model catalog parser accepts live model endpoint shapes", () => {
     effectiveContextWindowPercent: 95,
     maxContextWindow: 256000,
     serviceTiers: [{ id: "auto" }],
+    supportsFastMode: true,
     supportedReasoningLevels: [
       { description: "Low", effort: "low" },
       { description: "High", effort: "high" }

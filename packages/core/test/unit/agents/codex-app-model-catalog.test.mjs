@@ -12,19 +12,26 @@ import {
   writeCodexCompatibleAppModelCatalog
 } from "@ccr/core/agents/codex/app-launch.ts";
 
-test("ChatGPT app launch shares Codex login only when an auth file is explicitly configured", () => {
+test("ChatGPT app launch shares explicit or default Codex login when available", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "ccr-chatgpt-shared-auth-"));
+  const defaultAuthDir = path.join(root, ".codex");
+  const defaultAuthFile = path.join(defaultAuthDir, "auth.json");
   const authFile = path.join(root, "auth.json");
   const previousCcr = process.env.CCR_CODEX_CHATGPT_AUTH_FILE;
   const previousCodexl = process.env.CODEXL_CODEX_CHATGPT_AUTH_FILE;
   try {
     writeFileSync(authFile, JSON.stringify({ auth_mode: "chatgpt", tokens: { access_token: "token" } }));
+    mkdirSync(defaultAuthDir, { recursive: true });
+    writeFileSync(defaultAuthFile, JSON.stringify({ auth_mode: "chatgpt", tokens: { access_token: "default-token" } }));
     delete process.env.CCR_CODEX_CHATGPT_AUTH_FILE;
     delete process.env.CODEXL_CODEX_CHATGPT_AUTH_FILE;
-    assert.deepEqual(codexSharedChatGptAuthEnvForTest(), {});
+    assert.deepEqual(codexSharedChatGptAuthEnvForTest(root), {
+      CCR_CODEX_CHATGPT_AUTH_FILE: defaultAuthFile,
+      CODEXL_CODEX_CHATGPT_AUTH_FILE: defaultAuthFile
+    });
 
     process.env.CCR_CODEX_CHATGPT_AUTH_FILE = authFile;
-    assert.deepEqual(codexSharedChatGptAuthEnvForTest(), {
+    assert.deepEqual(codexSharedChatGptAuthEnvForTest(root), {
       CCR_CODEX_CHATGPT_AUTH_FILE: authFile,
       CODEXL_CODEX_CHATGPT_AUTH_FILE: authFile
     });

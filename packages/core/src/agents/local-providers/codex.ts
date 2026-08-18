@@ -791,6 +791,7 @@ function codexModelMetadataFromItem(item: Record<string, unknown>): ProviderMode
     readReasoningEfforts(item.reasoningEfforts);
   const defaultReasoningLevel = readNullableString(item.default_reasoning_level) ?? readNullableString(item.defaultReasoningLevel);
   const defaultReasoningSummary = readString(item.default_reasoning_summary) || readString(item.defaultReasoningSummary);
+  const supportsFastMode = readBoolean(item.supports_fast_mode) ?? readBoolean(item.supportsFastMode);
   const supportsReasoningSummaries = readBoolean(item.supports_reasoning_summaries) ?? readBoolean(item.supportsReasoningSummaries);
   const metadata: ProviderModelMetadata = {
     ...(additionalSpeedTiers ? { additionalSpeedTiers } : {}),
@@ -801,6 +802,7 @@ function codexModelMetadataFromItem(item: Record<string, unknown>): ProviderMode
     ...(maxContextWindow ? { maxContextWindow } : {}),
     ...(maxOutputTokens ? { maxOutputTokens } : {}),
     ...(serviceTiers ? { serviceTiers } : {}),
+    ...(supportsFastMode !== undefined ? { supportsFastMode } : {}),
     ...(supportedReasoningLevels ? { supportedReasoningLevels } : {}),
     ...(supportsReasoningSummaries !== undefined ? { supportsReasoningSummaries } : {})
   };

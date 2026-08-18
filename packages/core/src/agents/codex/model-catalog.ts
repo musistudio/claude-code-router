@@ -15,6 +15,8 @@ import { filterModelIdsByAllowedModels } from "@ccr/core/profiles/model-allowlis
 const fusionModelProviderName = "Fusion";
 const codexDefaultContextWindow = 128_000;
 const codexEffectiveContextWindowPercent = 95;
+const codexFastModeAdditionalSpeedTiers = ["fast"];
+const codexFastModeServiceTiers = [{ id: "priority", name: "Fast", description: "1.5x speed, increased usage" }];
 
 export type CodexModelCatalog = {
   models: CodexModelCatalogItem[];
@@ -275,7 +277,7 @@ function codexModelCapabilityProfile(
     );
 
   return {
-    additionalSpeedTiers: providerModelMetadata?.additionalSpeedTiers ?? [],
+    additionalSpeedTiers: codexAdditionalSpeedTiers(providerModelMetadata),
     applyPatchToolType,
     catalogEntry,
     contextWindow: providerModelMetadata?.contextWindow,
@@ -292,7 +294,7 @@ function codexModelCapabilityProfile(
     defaultReasoningSummary: providerModelMetadata?.defaultReasoningSummary ?? "none",
     effectiveContextWindowPercent: providerModelMetadata?.effectiveContextWindowPercent,
     inputModalities: supportsImageInput ? ["text", "image"] : ["text"],
-    serviceTiers: providerModelMetadata?.serviceTiers ?? [],
+    serviceTiers: codexServiceTiers(providerModelMetadata),
     maxContextWindow: providerModelMetadata?.maxContextWindow,
     supportedReasoningLevels: resolvedReasoningLevels,
     supportsImageInput,
@@ -300,6 +302,20 @@ function codexModelCapabilityProfile(
     supportsReasoning,
     supportsSearchTool
   };
+}
+
+function codexAdditionalSpeedTiers(metadata?: ProviderModelMetadata): unknown[] {
+  if (Array.isArray(metadata?.additionalSpeedTiers)) {
+    return metadata.additionalSpeedTiers;
+  }
+  return metadata?.supportsFastMode ? codexFastModeAdditionalSpeedTiers : [];
+}
+
+function codexServiceTiers(metadata?: ProviderModelMetadata): unknown[] {
+  if (Array.isArray(metadata?.serviceTiers)) {
+    return metadata.serviceTiers;
+  }
+  return metadata?.supportsFastMode ? codexFastModeServiceTiers : [];
 }
 
 function providerModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {

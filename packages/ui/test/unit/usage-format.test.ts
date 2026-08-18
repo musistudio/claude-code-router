@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { formatLogTokenSummary, logRequestModel, logResponseModel } from "@ccr/ui/pages/home/shared/logs.ts";
-import { formatCompactNumber, formatUsdCost as formatHomeUsdCost } from "@ccr/ui/pages/home/shared/usage.ts";
+import { formatCompactNumber, formatPercentFixed, formatUsdCost as formatHomeUsdCost } from "@ccr/ui/pages/home/shared/usage.ts";
 import { formatUsdCost as formatTrayUsdCost } from "@ccr/ui/pages/tray/shared.tsx";
 import type { RequestLogEntry } from "@ccr/core/contracts/app.ts";
 
@@ -15,6 +15,12 @@ test("formatUsdCost formats large values without conflicting fraction digits", (
   assert.doesNotThrow(() => formatTrayUsdCost(100));
   assert.doesNotMatch(formatHomeUsdCost(123.45), /[.,]45/);
   assert.doesNotMatch(formatTrayUsdCost(123.45), /[.,]45/);
+});
+
+test("formatPercentFixed keeps two decimal places for ratios", () => {
+  assert.equal(formatPercentFixed(0.375), "37.50%");
+  assert.equal(formatPercentFixed(0), "0.00%");
+  assert.equal(formatPercentFixed(1), "100.00%");
 });
 
 test("formatLogTokenSummary uses the provided locale for token counts", () => {

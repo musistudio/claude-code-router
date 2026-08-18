@@ -52,6 +52,7 @@ test("provider model metadata config preserves custom pricing, image, web search
       input_usd_per_million_tokens: 2,
       outputUsdPerMillionTokens: 8
     },
+    supports_fast_mode: true,
     supported_reasoning_levels: ["low", "medium", "high", "xhigh", "max", "ultra"],
     supports_reasoning_summaries: true
   }), {
@@ -67,6 +68,7 @@ test("provider model metadata config preserves custom pricing, image, web search
       inputUsdPerMillionTokens: 2,
       outputUsdPerMillionTokens: 8
     },
+    supportsFastMode: true,
     supportedReasoningLevels: [
       { description: "low", effort: "low" },
       { description: "medium", effort: "medium" },

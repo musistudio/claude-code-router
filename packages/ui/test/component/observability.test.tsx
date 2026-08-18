@@ -139,7 +139,7 @@ test("AgentAnalysisView keeps session headings horizontal and shows cache rate a
     requestCount: 2,
     sessionCount: 1,
     startedAt: "2026-07-23T00:00:00.000Z",
-    subagentCallCount: 0,
+    subagentCallCount: 1,
     successRate: 1,
     toolCallCount: 1,
     topTools: [{ count: 1, name: "Read" }],
@@ -149,6 +149,29 @@ test("AgentAnalysisView keeps session headings horizontal and shows cache rate a
     ...createEmptyAgentAnalysis("24h"),
     scannedRequestCount: 2,
     selectedSession: {
+      conversation: [{
+        agent: session.agent,
+        assistant: {
+          content: "I inspected the repo and found the README.",
+          sourcePreview: false,
+          sourceTruncated: false,
+          truncated: false
+        },
+        createdAt: session.startedAt,
+        durationMs: 420,
+        id: 42,
+        model: "claude-sonnet-4",
+        provider: "anthropic",
+        requestId: "request-with-cost",
+        sessionId: session.id,
+        statusCode: 200,
+        user: {
+          content: "inspect repo",
+          sourcePreview: false,
+          sourceTruncated: false,
+          truncated: false
+        }
+      }],
       endpoints: [],
       errors: [],
       models: [],
@@ -189,34 +212,127 @@ test("AgentAnalysisView keeps session headings horizontal and shows cache rate a
         endedAt: session.lastSeenAt,
         errorCount: 1,
         id: `${session.agent}:${session.id}`,
-        llmRunCount: 0,
-        maxDepth: 0,
+        llmRunCount: 1,
+        maxDepth: 3,
         rootRunId: `agent:${session.agent}:${session.id}`,
-        runCount: 1,
-        runs: [{
-          agent: session.agent,
-          cacheReadTokens: session.cacheReadTokens,
-          cacheWriteTokens: session.cacheWriteTokens,
-          concurrentRequests: session.maxConcurrentRequests,
-          costUsd: 0.75,
-          depth: 0,
-          durationMs: session.durationMs,
-          endedAt: session.lastSeenAt,
-          id: `agent:${session.agent}:${session.id}`,
-          inputTokens: session.inputTokens,
-          kind: "agent",
-          name: "Claude Code session",
-          offsetMs: 0,
-          outputTokens: session.outputTokens,
-          sessionId: session.id,
-          startedAt: session.startedAt,
-          status: "partial",
-          totalTokens: session.totalTokens
-        } satisfies AgentAnalysisTraceRun],
+        runCount: 4,
+        runs: [
+          {
+            agent: session.agent,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            concurrentRequests: 1,
+            depth: 1,
+            durationMs: 80,
+            endedAt: session.lastSeenAt,
+            id: "tool:42:Read",
+            inputTokens: 0,
+            kind: "tool",
+            name: "Read repository file",
+            offsetMs: 120,
+            outputTokens: 0,
+            parentId: "llm:42",
+            requestId: "request-with-cost",
+            requestLogId: 42,
+            sessionId: session.id,
+            startedAt: session.startedAt,
+            status: "success",
+            statusCode: 200,
+            tool: {
+              callId: "call-read",
+              input: {
+                kind: "json",
+                preview: "{\"path\":\"README.md\"}",
+                sizeBytes: 20,
+                truncated: false
+              },
+              result: {
+                kind: "json",
+                preview: "{\"ok\":true,\"files\":[\"README.md\"]}",
+                sizeBytes: 33,
+                truncated: false
+              },
+              resultRequestLogId: 42
+            },
+            toolName: "Read",
+            totalTokens: 0
+          },
+          {
+            agent: session.agent,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            concurrentRequests: 1,
+            depth: 2,
+            durationMs: 340,
+            endedAt: session.lastSeenAt,
+            id: "llm:42",
+            inputTokens: 500,
+            kind: "llm",
+            model: "claude-sonnet-4",
+            name: "Model run: claude-sonnet-4",
+            offsetMs: 80,
+            outputTokens: 100,
+            parentId: "subagent:42",
+            provider: "anthropic",
+            requestId: "request-with-cost",
+            requestLogId: 42,
+            sessionId: session.id,
+            startedAt: session.startedAt,
+            status: "success",
+            statusCode: 200,
+            totalTokens: 1000
+          },
+          {
+            agent: session.agent,
+            cacheReadTokens: 300,
+            cacheWriteTokens: 100,
+            concurrentRequests: 1,
+            costUsd: 0.25,
+            depth: 1,
+            durationMs: 420,
+            endedAt: session.lastSeenAt,
+            id: "subagent:42",
+            inputTokens: 500,
+            kind: "subagent",
+            model: "claude-sonnet-4",
+            name: "Subagent: repo-inspector",
+            offsetMs: 0,
+            outputTokens: 100,
+            parentId: `agent:${session.agent}:${session.id}`,
+            provider: "anthropic",
+            requestId: "request-with-cost",
+            requestLogId: 42,
+            sessionId: session.id,
+            startedAt: session.startedAt,
+            status: "success",
+            statusCode: 200,
+            totalTokens: 1000
+          },
+          {
+            agent: session.agent,
+            cacheReadTokens: session.cacheReadTokens,
+            cacheWriteTokens: session.cacheWriteTokens,
+            concurrentRequests: session.maxConcurrentRequests,
+            costUsd: 0.75,
+            depth: 0,
+            durationMs: session.durationMs,
+            endedAt: session.lastSeenAt,
+            id: `agent:${session.agent}:${session.id}`,
+            inputTokens: session.inputTokens,
+            kind: "agent",
+            name: "Claude Code session",
+            offsetMs: 0,
+            outputTokens: session.outputTokens,
+            sessionId: session.id,
+            startedAt: session.startedAt,
+            status: "partial",
+            totalTokens: session.totalTokens
+          }
+        ] satisfies AgentAnalysisTraceRun[],
         sessionId: session.id,
         startedAt: session.startedAt,
-        subagentRunCount: 0,
-        toolRunCount: 0
+        subagentRunCount: 1,
+        toolRunCount: 1
       }
     },
     sessions: [session]
@@ -241,16 +357,24 @@ test("AgentAnalysisView keeps session headings horizontal and shows cache rate a
   assert.match(html, /持续时间/);
   assert.match(html, /子代理/);
   assert.match(html, /缓存率/);
-  assert.match(html, /38%/);
+  assert.match(html, /37\.50%/);
   assert.match(html, /成本/);
+  assert.match(html, /会话记录/);
+  assert.match(html, /调用链路/);
+  assert.match(html, /会话轨迹/);
+  assert.ok(html.indexOf("调用链路") >= 0);
+  assert.ok(html.indexOf("调用链路") < html.indexOf("会话轨迹"));
+  assert.ok(html.indexOf("会话轨迹") < html.indexOf("会话记录"));
+  assert.ok(html.indexOf("Claude Code session") < html.indexOf("Subagent: repo-inspector"));
+  assert.ok(html.indexOf("Subagent: repo-inspector") < html.indexOf("Model run: claude-sonnet-4"));
+  assert.ok(html.indexOf("Model run: claude-sonnet-4") < html.indexOf("Read repository file"));
+  assert.match(html, /部分失败/);
   assert.match(html, /Token/);
   assert.doesNotMatch(html, /令牌/);
   assert.match(html, /\$1\.25/);
-  assert.match(html, /\$0\.25/);
   assert.match(html, /\$0\.75/);
-  assert.match(html, /会话详情仅展示最新的/);
-  assert.match(html, /1 \/ 2 条请求/);
-  assert.match(html, /部分失败/);
+  assert.doesNotMatch(html, /会话详情仅展示最新的/);
+  assert.doesNotMatch(html, /1 \/ 2 条请求/);
   assert.match(html, /border-amber-200/);
   assert.match(html, /min-w-\[64px\]/);
   assert.match(html, /whitespace-nowrap/);

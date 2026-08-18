@@ -1534,6 +1534,8 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
     ...(pricing ? { pricing } : {}),
     ...(Array.isArray(value.serviceTiers) ? { serviceTiers: value.serviceTiers } : {}),
     ...(Array.isArray(value.service_tiers) ? { serviceTiers: value.service_tiers } : {}),
+    ...(typeof value.supportsFastMode === "boolean" ? { supportsFastMode: value.supportsFastMode } : {}),
+    ...(typeof value.supports_fast_mode === "boolean" ? { supportsFastMode: value.supports_fast_mode } : {}),
     ...(supportedReasoningLevels ? { supportedReasoningLevels } : {}),
     ...(typeof value.supportsReasoningSummaries === "boolean" ? { supportsReasoningSummaries: value.supportsReasoningSummaries } : {}),
     ...(typeof value.supports_reasoning_summaries === "boolean" ? { supportsReasoningSummaries: value.supports_reasoning_summaries } : {})

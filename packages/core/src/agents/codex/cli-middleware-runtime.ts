@@ -604,11 +604,13 @@ function rewriteCodexStdoutLine(line, requestMap, chatGptAuth) {
   } else if (request.method === "thread/list") {
     value = mergeForeignThreadList(value, request.params);
   } else if (request.method === "model/list") {
+    value.result = modelList(request.params, value.result);
     log("app_server_model_list_response", {
       count: extractModelListItems(value.result).length,
       nextCursor: value.result && value.result.nextCursor
     });
-    return line;
+  } else if (request.method === "configRequirements/read") {
+    value.result = configRequirementsRead(value.result);
   } else if (request.method === "plugin/list") {
     const marketplaces = value.result && Array.isArray(value.result.marketplaces) ? value.result.marketplaces : [];
     log("app_server_plugin_list_response", {
@@ -986,7 +988,7 @@ function trackRequestLine(line, requestMap, current) {
   if (!id || !method) return;
   const cwd = requestWorkspaceCwd(value, method);
   if (cwd) current.cwd = cwd;
-  if (!["account/read", "getAuthStatus", "thread/list", "config/read", "model/list", "plugin/list"].includes(method)) return;
+  if (!["account/read", "getAuthStatus", "thread/list", "config/read", "model/list", "plugin/list", "configRequirements/read"].includes(method)) return;
   const params = clone(value.params || {});
   if (method === "thread/list" && current.cwd && !params.codexlWorkspaceCwd) {
     params.codexlWorkspaceCwd = current.cwd;
@@ -4318,7 +4320,7 @@ function modelList(params, existingResult) {
   const fallbackIds = isClaudeCodeRuntime
     ? [configured].filter(Boolean)
     : [configured].filter((model) => model && !isClaudeCodeOnlyModel(model));
-  const models = mergeModelListItems(extractModelListItems(existingResult), [...catalogModelIds(), ...fallbackIds], selected);
+  const models = mergeModelListItems(extractModelListItems(existingResult), catalogModelItems(), fallbackIds, selected);
   const offset = Number(params.cursor || 0) || 0;
   const limit = Number(params.limit || models.length) || models.length;
   const data = models.slice(offset, offset + limit);
@@ -4332,7 +4334,13 @@ function modelList(params, existingResult) {
 
 function catalogModelIds() {
   const values = parseModelCatalogEnv();
-  return values.map(normalizeModelSelector).filter(Boolean);
+  return values.map((value) => normalizeModelSelector(modelItemId(value))).filter(Boolean);
+}
+
+function catalogModelItems() {
+  return parseModelCatalogEnv()
+    .map((value) => codexModelListItemFromCatalog(value, agentEnv(codexRuntimeAgent(), "MODEL") || ""))
+    .filter(Boolean);
 }
 
 function parseModelCatalogEnv() {
@@ -4340,14 +4348,14 @@ function parseModelCatalogEnv() {
   if (file) {
     const parsed = readJsonFile(file);
     if (parsed) {
-      return modelIdsFromJson(parsed);
+      return modelItemsFromJson(parsed);
     }
     log("model_catalog_parse_error", { source: "file", file });
   }
   const encoded = agentEnv(codexRuntimeAgent(), "MODEL_CATALOG_B64");
   if (encoded) {
     try {
-      return modelIdsFromJson(JSON.parse(Buffer.from(encoded, "base64").toString("utf8")));
+      return modelItemsFromJson(JSON.parse(Buffer.from(encoded, "base64").toString("utf8")));
     } catch (error) {
       log("model_catalog_parse_error", { source: "base64", error: formatError(error) });
     }
@@ -4355,7 +4363,7 @@ function parseModelCatalogEnv() {
   const raw = agentEnv(codexRuntimeAgent(), "MODEL_CATALOG");
   if (raw) {
     try {
-      return modelIdsFromJson(JSON.parse(raw));
+      return modelItemsFromJson(JSON.parse(raw));
     } catch (error) {
       log("model_catalog_parse_error", { source: "json", error: formatError(error) });
     }
@@ -4363,16 +4371,16 @@ function parseModelCatalogEnv() {
   return [];
 }
 
-function modelIdsFromJson(value) {
+function modelItemsFromJson(value) {
   const output = [];
-  collectModelIdsFromJson(value, output);
+  collectModelItemsFromJson(value, output);
   return output;
 }
 
-function collectModelIdsFromJson(value, output) {
+function collectModelItemsFromJson(value, output) {
   if (Array.isArray(value)) {
     for (const item of value) {
-      collectModelIdFromJsonItem(item, output);
+      collectModelItemFromJsonItem(item, output);
     }
     return;
   }
@@ -4381,42 +4389,149 @@ function collectModelIdsFromJson(value, output) {
     for (const key of ["models", "data", "items", "results", "model_list"]) {
       if (Array.isArray(value[key])) {
         foundList = true;
-        collectModelIdsFromJson(value[key], output);
+        collectModelItemsFromJson(value[key], output);
       }
     }
     if (!foundList) {
-      collectModelIdFromJsonItem(value, output);
+      collectModelItemFromJsonItem(value, output);
     }
   }
 }
 
-function collectModelIdFromJsonItem(item, output) {
+function collectModelItemFromJsonItem(item, output) {
   if (typeof item === "string") {
     output.push(item);
     return;
   }
   if (item && typeof item === "object") {
     const id = firstString(item, ["/model", "/id", "/slug", "/display_name", "/displayName", "/name", "/label"]);
-    if (id) output.push(id);
+    if (id) output.push(item);
   }
 }
 
-function mergeModelListItems(existingItems, catalogIds, selectedModel) {
+function mergeModelListItems(existingItems, catalogItems, fallbackIds, selectedModel) {
   const seen = new Set();
   const output = [];
+  const catalogById = new Map();
+  for (const item of catalogItems) {
+    const id = normalizeModelSelector(modelItemId(item));
+    if (!id) continue;
+    catalogById.set(id.toLowerCase(), item);
+  }
   for (const item of existingItems) {
     const id = normalizeModelSelector(modelItemId(item));
     if (!id || seen.has(id.toLowerCase())) continue;
     seen.add(id.toLowerCase());
-    output.push(typeof item === "object" && item !== null ? { ...item, id: item.id || id, model: item.model || id } : codexModelItem(id, selectedModel));
+    const existingItem = typeof item === "object" && item !== null ? { ...item, id: item.id || id, model: item.model || id } : codexModelItem(id, selectedModel);
+    output.push(mergeCatalogModelListItem(existingItem, catalogById.get(id.toLowerCase())));
   }
-  for (const rawId of catalogIds) {
+  for (const item of catalogItems) {
+    const id = normalizeModelSelector(modelItemId(item));
+    if (!id || seen.has(id.toLowerCase())) continue;
+    seen.add(id.toLowerCase());
+    output.push(item);
+  }
+  for (const rawId of fallbackIds) {
     const id = normalizeModelSelector(rawId);
     if (!id || seen.has(id.toLowerCase())) continue;
     seen.add(id.toLowerCase());
     output.push(codexModelItem(id, selectedModel));
   }
   return output;
+}
+
+function codexModelListItemFromCatalog(item, selectedModel) {
+  const id = normalizeModelSelector(modelItemId(item));
+  if (!id) return undefined;
+  if (!item || typeof item !== "object") {
+    return codexModelItem(id, selectedModel);
+  }
+  const base = codexModelItem(id, selectedModel);
+  const displayName = stringValue(item.displayName) || stringValue(item.display_name) || base.displayName;
+  const additionalSpeedTiers = readArrayValue(item.additionalSpeedTiers) ??
+    readArrayValue(item.additional_speed_tiers) ??
+    readArrayValue(item.speedTiers) ??
+    readArrayValue(item.speed_tiers) ??
+    (item.supportsFastMode === true || item.supports_fast_mode === true ? codexFastModeAdditionalSpeedTiers() : []);
+  const serviceTiers = readArrayValue(item.serviceTiers) ??
+    readArrayValue(item.service_tiers) ??
+    (item.supportsFastMode === true || item.supports_fast_mode === true ? codexFastModeServiceTiers() : []);
+  const defaultServiceTier = item.defaultServiceTier !== undefined
+    ? item.defaultServiceTier
+    : item.default_service_tier !== undefined
+      ? item.default_service_tier
+      : base.defaultServiceTier;
+  const contextWindow = positiveInteger(item.contextWindow ?? item.context_window) ?? base.contextWindow;
+  const inputModalities = readArrayValue(item.inputModalities) ?? readArrayValue(item.input_modalities) ?? base.inputModalities;
+  const supportedReasoningEfforts = readArrayValue(item.supportedReasoningEfforts) ?? readArrayValue(item.supported_reasoning_efforts) ?? base.supportedReasoningEfforts;
+  return {
+    ...base,
+    ...item,
+    id: stringValue(item.id) || id,
+    model: stringValue(item.model) || stringValue(item.slug) || id,
+    name: stringValue(item.name) || displayName,
+    label: stringValue(item.label) || displayName,
+    provider: stringValue(item.provider) || base.provider,
+    providerName: stringValue(item.providerName) || stringValue(item.provider_name) || base.providerName,
+    modelProvider: stringValue(item.modelProvider) || stringValue(item.model_provider) || base.modelProvider,
+    displayName,
+    description: stringValue(item.description) || base.description,
+    contextWindow,
+    inputModalities,
+    supportedReasoningEfforts,
+    defaultReasoningEffort: item.defaultReasoningEffort !== undefined
+      ? item.defaultReasoningEffort
+      : item.default_reasoning_effort !== undefined
+        ? item.default_reasoning_effort
+        : base.defaultReasoningEffort,
+    additionalSpeedTiers,
+    additional_speed_tiers: additionalSpeedTiers,
+    serviceTiers,
+    service_tiers: serviceTiers,
+    defaultServiceTier,
+    default_service_tier: defaultServiceTier
+  };
+}
+
+function mergeCatalogModelListItem(existingItem, catalogItem) {
+  if (!catalogItem || typeof catalogItem !== "object") return existingItem;
+  const output = { ...catalogItem, ...existingItem };
+  for (const [camelKey, snakeKey] of [
+    ["additionalSpeedTiers", "additional_speed_tiers"],
+    ["serviceTiers", "service_tiers"]
+  ]) {
+    const catalogValue = readArrayValue(catalogItem[camelKey]) ?? readArrayValue(catalogItem[snakeKey]);
+    const existingValue = readArrayValue(existingItem[camelKey]) ?? readArrayValue(existingItem[snakeKey]);
+    if (catalogValue && catalogValue.length > 0 && (!existingValue || existingValue.length === 0)) {
+      output[camelKey] = catalogValue;
+      output[snakeKey] = catalogValue;
+    }
+  }
+  if (catalogItem.defaultServiceTier !== undefined && existingItem.defaultServiceTier === undefined) {
+    output.defaultServiceTier = catalogItem.defaultServiceTier;
+    output.default_service_tier = catalogItem.defaultServiceTier;
+  } else if (catalogItem.default_service_tier !== undefined && existingItem.default_service_tier === undefined) {
+    output.defaultServiceTier = catalogItem.default_service_tier;
+    output.default_service_tier = catalogItem.default_service_tier;
+  }
+  return output;
+}
+
+function readArrayValue(value) {
+  return Array.isArray(value) ? value : undefined;
+}
+
+function positiveInteger(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function codexFastModeAdditionalSpeedTiers() {
+  return ["fast"];
+}
+
+function codexFastModeServiceTiers() {
+  return [{ id: "priority", name: "Fast", description: "1.5x speed, increased usage" }];
 }
 
 function extractModelListItems(result) {
@@ -4431,7 +4546,7 @@ function extractModelListItems(result) {
 function modelItemId(item) {
   if (typeof item === "string") return item;
   if (!item || typeof item !== "object") return "";
-  return firstString(item, ["/model", "/id", "/slug", "/name", "/label"]) || "";
+  return firstString(item, ["/model", "/id", "/slug", "/display_name", "/displayName", "/name", "/label"]) || "";
 }
 
 function codexModelItem(model, selectedModel) {
@@ -4673,6 +4788,37 @@ function codexAppAuthStatus(auth, includeToken) {
     requiresOpenaiAuth: true
   };
   if (includeToken) result.authToken = auth.authToken || null;
+  return result;
+}
+
+function codexAppFastModeShimEnabled() {
+  return catalogModelItems().some((item) => modelListItemHasFastMode(item));
+}
+
+function modelListItemHasFastMode(item) {
+  if (!item || typeof item !== "object") return false;
+  if (item.supportsFastMode === true || item.supports_fast_mode === true) return true;
+  const additionalSpeedTiers = readArrayValue(item.additionalSpeedTiers) ?? readArrayValue(item.additional_speed_tiers);
+  const serviceTiers = readArrayValue(item.serviceTiers) ?? readArrayValue(item.service_tiers);
+  return Boolean((additionalSpeedTiers && additionalSpeedTiers.length > 0) || (serviceTiers && serviceTiers.length > 0));
+}
+
+function configRequirementsRead(existingResult) {
+  if (!codexAppFastModeShimEnabled()) {
+    return existingResult;
+  }
+  const result = existingResult && typeof existingResult === "object" && !Array.isArray(existingResult)
+    ? { ...existingResult }
+    : {};
+  const requirements = result.requirements && typeof result.requirements === "object" && !Array.isArray(result.requirements)
+    ? { ...result.requirements }
+    : {};
+  const featureRequirements = requirements.featureRequirements && typeof requirements.featureRequirements === "object" && !Array.isArray(requirements.featureRequirements)
+    ? { ...requirements.featureRequirements }
+    : {};
+  featureRequirements.fast_mode = true;
+  requirements.featureRequirements = featureRequirements;
+  result.requirements = requirements;
   return result;
 }
 

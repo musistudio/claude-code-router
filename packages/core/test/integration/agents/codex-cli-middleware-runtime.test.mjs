@@ -401,7 +401,7 @@ test("Codex app-server delegates public Git marketplaces and leaves account-priv
   });
 });
 
-test("Codex app-server delegates the native model catalog unchanged", { skip: process.platform === "win32" }, () => {
+test("Codex app-server merges CCR Fast Mode catalog metadata without spoofing auth", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-native-models-"));
   const runtimeFile = writeRuntimeScript(dir);
   const fakeCodex = path.join(dir, "fake-codex");
@@ -413,7 +413,10 @@ test("Codex app-server delegates the native model catalog unchanged", { skip: pr
     "const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });",
     "input.on('line', (line) => {",
     "  const request = JSON.parse(line);",
-    "  process.stdout.write(JSON.stringify({ id: request.id, result: { data: [{ id: 'native-model', hidden: true }], nextCursor: null } }) + '\\n');",
+    "  let result = {};",
+    "  if (request.method === 'model/list') result = { data: [{ id: 'native-model', hidden: true }], nextCursor: null };",
+    "  else if (request.method === 'configRequirements/read') result = { requirements: { featureRequirements: { fast_mode: false, other_feature: false } } };",
+    "  process.stdout.write(JSON.stringify({ id: request.id, result }) + '\\n');",
     "});",
     ""
   ].join("\n"));
@@ -423,18 +426,49 @@ test("Codex app-server delegates the native model catalog unchanged", { skip: pr
     encoding: "utf8",
     env: {
       ...process.env,
-      CCR_CODEX_MODEL_CATALOG: JSON.stringify({ models: [{ slug: "must-not-be-merged" }] }),
+      CCR_CODEX_CHATGPT_AUTH_FILE: "",
+      CCR_CODEX_MODEL_CATALOG: JSON.stringify({
+        models: [
+          { display_name: "Native Fast", slug: "native-model", supports_fast_mode: true },
+          { display_name: "Plain Model", slug: "plain-model" }
+        ]
+      }),
       CCR_CODEX_REMOTE_FRONTEND_MODE: "app",
       CCR_REAL_CODEX_CLI_PATH: fakeCodex,
-      CODEX_HOME: codexHome
+      CODEX_HOME: codexHome,
+      CODEXL_CODEX_CHATGPT_AUTH_FILE: ""
     },
-    input: JSON.stringify({ id: 1, method: "model/list", params: {} }) + "\n"
+    input: [
+      JSON.stringify({ id: 1, method: "model/list", params: {} }),
+      JSON.stringify({ id: 2, method: "getAuthStatus", params: { includeToken: true } }),
+      JSON.stringify({ id: 3, method: "account/read", params: {} }),
+      JSON.stringify({ id: 4, method: "configRequirements/read", params: {} }),
+      ""
+    ].join("\n")
   });
 
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(JSON.parse(result.stdout.trim()).result, {
-    data: [{ id: "native-model", hidden: true }],
-    nextCursor: null
+  const responses = new Map(result.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line)).map((response) => [response.id, response]));
+  const models = responses.get(1).result.data;
+  const nativeModel = models.find((model) => model.id === "native-model");
+  const plainModel = models.find((model) => model.id === "plain-model");
+  assert.equal(nativeModel.hidden, true);
+  assert.deepEqual(nativeModel.additionalSpeedTiers, ["fast"]);
+  assert.deepEqual(nativeModel.serviceTiers, [{ id: "priority", name: "Fast", description: "1.5x speed, increased usage" }]);
+  assert.deepEqual(plainModel.additionalSpeedTiers, []);
+  assert.deepEqual(plainModel.serviceTiers, []);
+  assert.deepEqual(responses.get(2).result, {
+    authMethod: "amazonBedrock",
+    authToken: "ccr-local-profile",
+    requiresOpenaiAuth: false
+  });
+  assert.deepEqual(responses.get(3).result, {
+    account: { type: "amazonBedrock", credentialSource: "codexManaged" },
+    requiresOpenaiAuth: false
+  });
+  assert.deepEqual(responses.get(4).result.requirements.featureRequirements, {
+    fast_mode: true,
+    other_feature: false
   });
 });
 

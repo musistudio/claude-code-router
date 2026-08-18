@@ -691,23 +691,75 @@ function codexProfileEnv(profile: ProfileConfig, appExecutable: string, spec: Co
   };
 }
 
-function codexSharedChatGptAuthEnv(): Record<string, string> {
-  const configured = [
-    process.env.CCR_CODEX_CHATGPT_AUTH_FILE,
-    process.env.CODEXL_CODEX_CHATGPT_AUTH_FILE
-  ].map((value) => value?.trim()).find((value) => value && isFile(resolveUserPath(value)));
-  if (!configured) {
+function codexSharedChatGptAuthEnv(homeDir = os.homedir()): Record<string, string> {
+  const authFile = codexSharedChatGptAuthFile(homeDir);
+  if (!authFile) {
     return {};
   }
-  const authFile = resolveUserPath(configured);
   return {
     CCR_CODEX_CHATGPT_AUTH_FILE: authFile,
     CODEXL_CODEX_CHATGPT_AUTH_FILE: authFile
   };
 }
 
-export function codexSharedChatGptAuthEnvForTest(): Record<string, string> {
-  return codexSharedChatGptAuthEnv();
+function codexSharedChatGptAuthFile(homeDir: string): string | undefined {
+  for (const configured of [
+    process.env.CCR_CODEX_CHATGPT_AUTH_FILE,
+    process.env.CODEXL_CODEX_CHATGPT_AUTH_FILE
+  ]) {
+    const resolved = configured?.trim() ? resolveUserPath(configured) : "";
+    if (resolved && isUsableChatGptAuthFile(resolved)) {
+      return resolved;
+    }
+  }
+
+  const defaultAuthFile = path.join(homeDir, ".codex", "auth.json");
+  return isUsableChatGptAuthFile(defaultAuthFile) ? defaultAuthFile : undefined;
+}
+
+function isUsableChatGptAuthFile(authFile: string): boolean {
+  if (!isFile(authFile)) return false;
+  try {
+    const value = JSON.parse(readFileSync(authFile, "utf8")) as Record<string, unknown>;
+    if (value.auth_mode !== undefined && value.auth_mode !== "chatgpt") return false;
+    const tokens = isRecord(value.tokens) ? value.tokens : undefined;
+    const authToken = stringValue(tokens?.access_token) || stringValue(tokens?.accessToken);
+    return usableChatGptAuthToken(authToken);
+  } catch {
+    return false;
+  }
+}
+
+function usableChatGptAuthToken(token: string | undefined): boolean {
+  if (!token) return false;
+  const claims = jwtPayloadClaims(token);
+  const expiresAt = Number(claims?.exp);
+  return !Number.isFinite(expiresAt) || expiresAt > Math.floor(Date.now() / 1000) + 30;
+}
+
+function jwtPayloadClaims(token: string): Record<string, unknown> | undefined {
+  const payload = token.split(".")[1];
+  if (!payload) return undefined;
+  try {
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+    const value = JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+    return isRecord(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+export function codexSharedChatGptAuthEnvForTest(homeDir?: string): Record<string, string> {
+  return codexSharedChatGptAuthEnv(homeDir);
 }
 
 function codexAppAgentEnv(

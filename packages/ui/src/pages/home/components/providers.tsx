@@ -4387,6 +4387,21 @@ function ModelMetadataEditor({
     });
   }
 
+  function updateFastMode(model: string, checked: boolean) {
+    updateMetadata(model, (current) => ({
+      ...current,
+      supportsFastMode: checked
+    }));
+  }
+
+  function resetFastMode(model: string) {
+    updateMetadata(model, (current) => {
+      const next = { ...current };
+      delete next.supportsFastMode;
+      return next;
+    });
+  }
+
   function updateCapability(model: string, key: CapabilityKey, checked: boolean) {
     updateMetadata(model, (current) => ({
       ...current,
@@ -4419,7 +4434,7 @@ function ModelMetadataEditor({
       {header ? (
         <div className="flex min-w-0 items-center justify-between gap-2">
           <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Model settings")}</span>
-          <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">{t("Context, pricing, reasoning, web search, and image")}</span>
+          <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">{t("Context, pricing, reasoning, Fast Mode, web search, and image")}</span>
         </div>
       ) : null}
       <div className="space-y-2">
@@ -4446,6 +4461,7 @@ function ModelMetadataEditor({
             modelMetadata?.maxContextWindow ||
             modelMetadata?.pricing ||
             modelMetadata?.capabilities ||
+            modelMetadata?.supportsFastMode !== undefined ||
             modelMetadata?.supportedReasoningLevels !== undefined ||
             modelMetadata?.supportsReasoningSummaries !== undefined
           );
@@ -4488,7 +4504,7 @@ function ModelMetadataEditor({
                 <div className="space-y-3 border-t border-border/60 p-3">
                   <div className="flex min-w-0 items-center justify-between gap-2">
                     <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Model settings")}</span>
-                    <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">{t("Context, pricing, reasoning, web search, and image")}</span>
+                    <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">{t("Context, pricing, reasoning, Fast Mode, web search, and image")}</span>
                   </div>
                   <div className="space-y-2">
                     <div className="flex min-w-0 items-center justify-between gap-2">
@@ -4547,6 +4563,23 @@ function ModelMetadataEditor({
                       ))}
                     </div>
                     <div className="text-[10px] leading-4 text-muted-foreground/75">{t("Select every reasoning effort supported by this model.")}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <Label className="flex min-w-0 items-center gap-2 text-[12px] font-medium">
+                        <Checkbox
+                          checked={modelMetadata?.supportsFastMode ?? modelDefaults?.supportsFastMode ?? false}
+                          onCheckedChange={(checked) => updateFastMode(model, checked)}
+                        />
+                        <span>{t("Fast Mode")}</span>
+                      </Label>
+                      {modelMetadata?.supportsFastMode !== undefined ? (
+                        <Button className="h-6 px-2 text-[10px]" onClick={() => resetFastMode(model)} type="button" variant="ghost">
+                          {t("Use preset")}
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="text-[10px] leading-4 text-muted-foreground/75">{t("Declare whether Codex app should expose the Speed control for this model.")}</div>
                   </div>
                   <div className="space-y-2">
                     <div className="flex min-w-0 items-center justify-between gap-2">

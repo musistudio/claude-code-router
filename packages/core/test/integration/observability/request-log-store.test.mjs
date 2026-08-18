@@ -1100,6 +1100,7 @@ test("RequestLogStore analyzes agent sessions and exposes trace payloads", async
     const completedAt = new Date().toISOString();
     const requestBody = {
       messages: [
+        { content: "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.", role: "user" },
         { content: "inspect repo", role: "user" },
         {
           content: JSON.stringify({ ok: true, files: ["README.md"] }),
@@ -1108,12 +1109,14 @@ test("RequestLogStore analyzes agent sessions and exposes trace payloads", async
         }
       ],
       model: "gpt-test",
-      session_id: "session-1"
+      session_id: "session-1",
+      system: "Initial System Prompt"
     };
     const responseBody = {
       choices: [
         {
           message: {
+            content: "I will inspect README.md.",
             role: "assistant",
             tool_calls: [
               {
@@ -1176,6 +1179,15 @@ test("RequestLogStore analyzes agent sessions and exposes trace payloads", async
     });
     assert.equal(selected.selectedSession?.trace.toolRunCount, 1);
     assert.equal(selected.selectedSession?.trace.llmRunCount, 1);
+    assert.equal(selected.selectedSession?.conversation.length, 1);
+    assert.equal(selected.selectedSession?.conversation[0]?.user?.content, "inspect repo");
+    assert.equal(selected.selectedSession?.conversation[0]?.assistant?.content, "I will inspect README.md.");
+    assert.deepEqual(
+      selected.selectedSession?.conversation[0]?.messages?.map((message) => message.role),
+      ["system", "context", "user", "tool", "assistant"]
+    );
+    assert.equal(selected.selectedSession?.conversation[0]?.messages?.[0]?.content, "Initial System Prompt");
+    assert.equal(selected.selectedSession?.conversation[0]?.messages?.[2]?.content, "inspect repo");
     assert.equal(selected.selectedSession?.trace.runs.some((run) => run.kind === "route"), false);
     assert.equal(selected.selectedSession?.trace.runs.some((run) => run.toolName === "read_file"), true);
     assert.equal(
@@ -1200,6 +1212,222 @@ test("RequestLogStore analyzes agent sessions and exposes trace payloads", async
     assert.equal(resultPayload.found, true);
     assert.equal(resultPayload.kind, "json");
     assert.match(resultPayload.content, /files/);
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore pairs tool results without stable call ids", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-tool-result-fallback-test-"));
+  let store;
+  try {
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const startedAt = new Date(Date.now() - 1000).toISOString();
+    const completedAt = new Date().toISOString();
+    const requestBody = {
+      input: [
+        { content: "run diagnostic", role: "user" },
+        {
+          output: "diagnostic ok\npid=42",
+          type: "custom_tool_call_output"
+        }
+      ],
+      model: "gpt-test"
+    };
+    const responseBody = {
+      output: [
+        {
+          arguments: JSON.stringify({ command: "pwd" }),
+          name: "Shell",
+          type: "function_call"
+        }
+      ],
+      output_text: "I will run the diagnostic.",
+      usage: {
+        input_tokens: 9,
+        output_tokens: 4,
+        total_tokens: 13
+      }
+    };
+
+    await store.record({
+      completedAt,
+      durationMs: 90,
+      method: "POST",
+      path: "/v1/responses",
+      providerName: "test-provider",
+      providerProtocol: "openai_responses",
+      requestBody: Buffer.from(JSON.stringify(requestBody), "utf8"),
+      requestHeaders: {
+        "content-type": "application/json",
+        "user-agent": "openai-codex test",
+        "x-codex-session-id": "session-tool-result-fallback"
+      },
+      requestId: "agent-tool-result-fallback",
+      responseBodyText: JSON.stringify(responseBody),
+      responseHeaders: { "content-type": "application/json" },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/responses"
+    });
+
+    const page = await store.list({ pageSize: 25 });
+    const detail = await store.getDetail({ id: page.items[0].id });
+    assert.ok(detail);
+
+    const selected = await store.analyze({
+      range: "30d",
+      sessionAgent: "codex",
+      sessionId: "session-tool-result-fallback"
+    });
+    const toolRun = selected.selectedSession?.trace.runs.find((run) => run.kind === "tool" && run.toolName === "Shell");
+    assert.ok(toolRun);
+    assert.match(toolRun.tool?.result?.preview ?? "", /diagnostic ok/);
+
+    const resultPayload = await store.getTracePayload({
+      callId: toolRun.tool?.callId,
+      part: "tool-result",
+      requestLogId: detail.id
+    });
+    assert.equal(resultPayload.found, true);
+    assert.match(resultPayload.content, /pid=42/);
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore reads sidecar bodies when pairing session tool results", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-tool-result-sidecar-test-"));
+  let store;
+  try {
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const startedAt = new Date(Date.now() - 1000).toISOString();
+    const completedAt = new Date().toISOString();
+    const requestBody = {
+      model: "claude-test",
+      prefix: "p".repeat(130 * 1024),
+      messages: [
+        { content: "run probe", role: "user" },
+        {
+          content: [{ id: "call-probe", input: { command: "probe" }, name: "Bash", type: "tool_use" }],
+          role: "assistant"
+        },
+        {
+          content: [{ content: "sidecar probe result\nok=true", tool_use_id: "call-probe", type: "tool_result" }],
+          role: "user"
+        }
+      ],
+      suffix: "s".repeat(130 * 1024)
+    };
+    const responseBody = {
+      content: [
+        { text: "I will run the probe.", type: "text" },
+        { id: "call-probe", input: { command: "probe" }, name: "Bash", type: "tool_use" }
+      ],
+      model: "claude-test",
+      role: "assistant",
+      usage: {
+        input_tokens: 12,
+        output_tokens: 5,
+        total_tokens: 17
+      }
+    };
+
+    await store.record({
+      completedAt,
+      durationMs: 120,
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "test-provider",
+      providerProtocol: "anthropic_messages",
+      requestBody: Buffer.from(JSON.stringify(requestBody), "utf8"),
+      requestHeaders: {
+        "content-type": "application/json",
+        "user-agent": "claude-code test",
+        "x-claude-session-id": "session-tool-result-sidecar"
+      },
+      requestId: "agent-tool-result-sidecar",
+      responseBodyText: JSON.stringify(responseBody),
+      responseHeaders: { "content-type": "application/json" },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    const page = await store.list({ pageSize: 25 });
+    assert.equal(page.items[0].requestBody.preview, true);
+    assert.doesNotMatch(page.items[0].requestBody.text, /sidecar probe result/);
+
+    const detail = await store.getDetail({ id: page.items[0].id });
+    assert.ok(detail);
+
+    const selected = await store.analyze({
+      range: "30d",
+      sessionAgent: "claude-code",
+      sessionId: "session-tool-result-sidecar"
+    });
+    const toolRun = selected.selectedSession?.trace.runs.find((run) => run.kind === "tool" && run.toolName === "Bash");
+    assert.ok(toolRun);
+    assert.match(toolRun.tool?.result?.preview ?? "", /sidecar probe result/);
+
+    const resultPayload = await store.getTracePayload({
+      callId: "call-probe",
+      part: "tool-result",
+      requestLogId: detail.id
+    });
+    assert.equal(resultPayload.found, true);
+    assert.match(resultPayload.content, /ok=true/);
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore extracts assistant text from nested responses completion payloads", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-agent-response-text-test-"));
+  let store;
+  try {
+    store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const startedAt = new Date(Date.now() - 1000).toISOString();
+    const completedAt = new Date().toISOString();
+    await store.record({
+      completedAt,
+      durationMs: 120,
+      method: "POST",
+      path: "/v1/responses",
+      providerName: "test-provider",
+      providerProtocol: "openai_responses",
+      requestBody: Buffer.from(JSON.stringify({
+        input: [{ content: [{ text: "write status", type: "input_text" }], role: "user" }],
+        model: "gpt-test",
+        session_id: "session-response-text"
+      }), "utf8"),
+      requestHeaders: {
+        "content-type": "application/json",
+        "user-agent": "openai-codex test",
+        "x-codex-session-id": "session-response-text"
+      },
+      requestId: "agent-response-text-1",
+      responseBodyText: [
+        "event: response.completed",
+        'data: {"type":"response.completed","response":{"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Nested final answer."}]}],"usage":{"input_tokens":4,"output_tokens":3,"total_tokens":7}}}',
+        ""
+      ].join("\n"),
+      responseHeaders: { "content-type": "text/event-stream" },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/responses"
+    });
+
+    const selected = await store.analyze({
+      range: "30d",
+      sessionAgent: "codex",
+      sessionId: "session-response-text"
+    });
+    assert.equal(selected.selectedSession?.conversation[0]?.user?.content, "write status");
+    assert.equal(selected.selectedSession?.conversation[0]?.assistant?.content, "Nested final answer.");
   } finally {
     await store?.close();
     rmSync(dir, { force: true, recursive: true });
