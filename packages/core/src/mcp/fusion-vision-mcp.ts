@@ -757,7 +757,15 @@ async function buildImageParts(args: Record<string, unknown>, detail: "auto" | "
 
 async function imageInputToUrl(input: { base64?: string; mimeType?: string; path?: string; url?: string }): Promise<string | undefined> {
   if (input.url) {
-    return input.url;
+    const url = input.url.trim();
+    if (!url.startsWith("data:") && !/^https?:\/\//i.test(url)) {
+      // The virtual-model tool loop emits images as bare base64 in imageUrl.
+      // Strict OpenAI-compatible gateways reject that as an invalid URL (HTTP
+      // 400) while lenient ones silently accept it. Normalize to a data: URI
+      // the way the imageBase64 field already does.
+      return toDataUrl(url, input.mimeType || "image/png");
+    }
+    return url;
   }
   if (input.base64) {
     return toDataUrl(input.base64, input.mimeType || "image/png");
