@@ -52,6 +52,16 @@ const grokProfile = {
   surface: "cli"
 };
 
+const codebuddyProfile = {
+  agent: "codebuddy",
+  enabled: true,
+  id: "codebuddy-main",
+  model: "provider,model",
+  name: "CodeBuddy Main",
+  scope: "ccr",
+  surface: "cli"
+};
+
 const kimiProfile = {
   agent: "kimi",
   enabled: true,
@@ -138,6 +148,8 @@ test("profile open surfaces enforce agent capabilities", () => {
   assert.deepEqual(profileOpenSurfaces({ ...claudeProfile, surface: "cli" }), ["cli"]);
   assert.deepEqual(profileOpenSurfaces({ ...codexProfile, agent: "zcode" }), ["app"]);
   assert.deepEqual(profileOpenSurfaces(grokProfile), ["cli"]);
+  assert.deepEqual(profileOpenSurfaces(codebuddyProfile), ["cli"]);
+  assert.deepEqual(profileOpenSurfaces({ ...codebuddyProfile, surface: "auto" }), ["cli", "app"]);
   assert.deepEqual(profileOpenSurfaces(kimiProfile), ["cli"]);
   assert.deepEqual(profileOpenSurfaces(piProfile), ["cli"]);
   assert.deepEqual(profileOpenSurfaces(kiloProfile), ["cli"]);
@@ -208,6 +220,12 @@ test("buildProfileLaunchPlan creates CCR-managed launcher paths", () => {
   assert.deepEqual(grokPlan.args, ["--debug"]);
   assert.equal(path.basename(grokPlan.command), process.platform === "win32" ? "ccr-grok-cli-wrapper-grok-main.cmd" : "ccr-grok-cli-wrapper-grok-main");
   assert.equal(grokPlan.env.CCR_PROFILE_SURFACE, "cli");
+
+  const codebuddyPlan = buildProfileLaunchPlan(configDir, codebuddyProfile, "cli", ["--debug"]);
+  assert.equal(codebuddyPlan.surface, "cli");
+  assert.deepEqual(codebuddyPlan.args, ["--debug"]);
+  assert.equal(path.basename(codebuddyPlan.command), process.platform === "win32" ? "ccr-codebuddy-wrapper-codebuddy-main.cmd" : "ccr-codebuddy-wrapper-codebuddy-main");
+  assert.equal(codebuddyPlan.env.CCR_PROFILE_SURFACE, "cli");
 
   assert.equal(kimiPlan.surface, "cli");
   assert.deepEqual(kimiPlan.args, ["--debug"]);

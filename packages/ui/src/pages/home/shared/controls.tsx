@@ -91,13 +91,28 @@ export function FieldGroup({ children, className, label }: { children: React.Rea
 
 export function AgentLogo({ agent, className }: { agent: ProfileConfig["agent"]; className?: string }) {
   const label = profileAgentLabel(agent);
+  const logoUrl = profileAgentLogoUrl(agent);
+
+  if (!logoUrl) {
+    return (
+      <span
+        className={cn(
+          "flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[5px] bg-muted text-xs font-semibold text-foreground",
+          className
+        )}
+        title={label}
+      >
+        {label.slice(0, 2)}
+      </span>
+    );
+  }
 
   return (
     <span
       className={cn("flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[5px]", className)}
       title={label}
     >
-      <img alt={`${label} icon`} className="h-full w-full rounded-[inherit] object-cover" src={profileAgentLogoUrl(agent)} />
+      <img alt={`${label} icon`} className="h-full w-full rounded-[inherit] object-cover" src={logoUrl} />
     </span>
   );
 }

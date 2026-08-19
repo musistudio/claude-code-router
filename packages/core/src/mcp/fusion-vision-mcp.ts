@@ -465,6 +465,9 @@ function readVisionUsage(response: Response | undefined, payload: unknown): Reco
   return {
     cache_read_tokens:
       headerNumber("x-gateway-billing-cache-read-tokens") ??
+      // Prefer prompt_cache_hit_tokens (DeepSeek-style) when present; it wins
+      // over zero placeholders such as cache_read_input_tokens: 0.
+      readNumber(usage.prompt_cache_hit_tokens) ??
       readNumber(usage.cache_read_tokens) ??
       readNumber(usage.cache_read_input_tokens) ??
       readNumber(inputDetails.cached_tokens),

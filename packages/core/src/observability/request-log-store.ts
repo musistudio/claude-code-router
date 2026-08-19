@@ -3377,11 +3377,11 @@ function normalizeAgentAnalysisRange(value: UsageStatsRange | undefined): UsageS
 }
 
 function normalizeAgentFilter(value: AgentAnalysisFilter["agent"] | undefined): AgentKind | "all" {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "workbuddy" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "workbuddy" || value === "zcode" || value === "claude-design" || value === "codebuddy" || value === "unknown" ? value : "all";
 }
 
 function normalizeSessionAgentFilter(value: AgentAnalysisFilter["sessionAgent"] | undefined): AgentKind | undefined {
-  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "workbuddy" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "kimi" || value === "kilo" || value === "opencode" || value === "pi" || value === "workbuddy" || value === "zcode" || value === "claude-design" || value === "codebuddy" || value === "unknown" ? value : undefined;
 }
 
 function agentDisplayName(agent: AgentKind): string {
@@ -3414,6 +3414,9 @@ function agentDisplayName(agent: AgentKind): string {
   }
   if (agent === "zcode") {
     return "ZCode";
+  }
+  if (agent === "codebuddy") {
+    return "CodeBuddy";
   }
   return "Unknown";
 }
@@ -5420,7 +5423,11 @@ function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
   const cacheWrite1hTokens = asNumber(cacheCreation?.ephemeral_1h_input_tokens);
 
   return {
+    // Prefer prompt_cache_hit_tokens (DeepSeek-style) when present; it is the
+    // authoritative cache-read figure and wins over zero placeholders such as
+    // cache_read_input_tokens: 0 or cached_tokens: 0 that DeepSeek also returns.
     cacheReadTokens:
+      asNumber(usage.prompt_cache_hit_tokens) ??
       asNumber(usage.cache_read_tokens) ??
       asNumber(usage.cache_read_input_tokens) ??
       asNumber(usage.cached_tokens) ??

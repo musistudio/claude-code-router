@@ -1102,7 +1102,11 @@ function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
   const cacheWrite1hTokens = asNumber(cacheCreation?.ephemeral_1h_input_tokens);
 
   return {
+    // Prefer prompt_cache_hit_tokens (DeepSeek-style) when present; it is the
+    // authoritative cache-read figure and wins over zero placeholders such as
+    // cache_read_input_tokens: 0 or cached_tokens: 0 that DeepSeek also returns.
     cacheReadTokens:
+      asNumber(usage.prompt_cache_hit_tokens) ??
       asNumber(usage.cache_read_tokens) ??
       asNumber(usage.cache_read_input_tokens) ??
       asNumber(usage.cached_tokens) ??
