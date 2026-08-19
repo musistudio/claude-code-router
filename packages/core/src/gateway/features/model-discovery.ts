@@ -2,12 +2,12 @@
  * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
  */
 import type { IncomingHttpHeaders } from "node:http";
-import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
-import type { ApiKeyConfig, AppConfig, ProfileConfig, ProviderModelMetadata } from "@ccr/core/contracts/app";
+import { BUILTIN_FUSION_VISION_TOOL_NAME, isGatewayProviderEnabled } from "@ccr/core/contracts/app";
+import type { ApiKeyConfig, AppConfig, ProfileConfig, ProviderModelMetadata, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
 import { buildClaudeAppGatewayModelRoutes, resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
-import { modelRegistryForConfig, normalizeRouteSelector } from "@ccr/core/routing/model-registry";
+import { modelRegistryForConfig, normalizeRouteSelector, parseProviderModelSelector } from "@ccr/core/routing/model-registry";
 import { findModelCatalogEntry, modelCatalogMaxInputTokens, modelCatalogMaxOutputTokens, readCatalogCapability, type ModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
-import { stringValue } from "@ccr/core/gateway/internal/value";
+import { isRecord, stringValue } from "@ccr/core/gateway/internal/value";
 import { fusionModelSelector } from "@ccr/core/mcp/fusion-config";
 import { readHeader } from "@ccr/core/gateway/http/io";
 import { claudeAppGatewayModelRouteOptions, claudeCodeOneMillionContextSuffix } from "@ccr/core/gateway/internal/shared";
@@ -166,7 +166,7 @@ function createClaudeCliAdditionalModelOptions(config: AppConfig, profile?: Prof
       capabilities: createClaudeCodeModelCapabilities(modelDiscovery.catalogEntry, {
         maxInputTokens,
         oneMillionContext: route.oneMillionContext,
-        ...providerModelCapabilityOverrides(modelDiscovery.metadata)
+        ...gatewayModelCapabilityOverrides(config, route.targetModel, modelDiscovery.metadata)
       }),
       created_at: "1970-01-01T00:00:00Z",
       description: formatClaudeCliAdditionalModelDescription(maxInputTokens),
@@ -298,7 +298,7 @@ function createClaudeAppGatewayModelsResponse(
         contextArchiveCompact: options.contextArchiveCompact,
         maxInputTokens,
         oneMillionContext: route.oneMillionContext,
-        ...providerModelCapabilityOverrides(modelMetadata)
+        ...gatewayModelCapabilityOverrides(config, route.targetModel, modelMetadata)
       }),
       created_at: "1970-01-01T00:00:00Z",
       display_name: exposeOneMillionContextVariant
@@ -339,7 +339,7 @@ function createClaudeCodeModelsResponse(
         contextArchiveCompact,
         maxInputTokens,
         oneMillionContext: model.oneMillionContext,
-        ...providerModelCapabilityOverrides(modelMetadata)
+        ...gatewayModelCapabilityOverrides(config, catalogId, modelMetadata)
       }),
       created_at: "1970-01-01T00:00:00Z",
       display_name: formatClaudeCodeModelDisplayName(claudeId, catalogEntry, model.oneMillionContext),
@@ -844,6 +844,116 @@ function providerModelCapabilityOverrides(
   return metadata?.supportsReasoningSummaries === undefined
     ? imageOverride
     : { ...imageOverride, reasoning: metadata.supportsReasoningSummaries };
+}
+
+
+function gatewayModelCapabilityOverrides(
+  config: AppConfig,
+  selector: string,
+  metadata: ProviderModelMetadata | undefined
+): { imageInput?: boolean; reasoning?: boolean; reasoningLevels?: string[] } {
+  const overrides = providerModelCapabilityOverrides(metadata);
+  return gatewayModelSupportsFusionVisionInput(config, selector)
+    ? { ...overrides, imageInput: true }
+    : overrides;
+}
+
+
+function gatewayModelSupportsFusionVisionInput(config: AppConfig, selector: string): boolean {
+  const normalizedSelector = normalizeRouteSelector(stripClaudeCodeOneMillionContextSuffix(selector));
+  if (!normalizedSelector) {
+    return false;
+  }
+
+  return (config.virtualModelProfiles ?? []).some((profile) =>
+    isVisibleVirtualModelProfile(profile) &&
+    virtualModelProfileSupportsFusionVision(profile) &&
+    virtualModelProfileMatchesSelector(profile, normalizedSelector, config)
+  );
+}
+
+
+function virtualModelProfileSupportsFusionVision(profile: VirtualModelProfileConfig): boolean {
+  const fusionVision = isRecord(profile.metadata?.fusionVision) ? profile.metadata.fusionVision : undefined;
+  if (stringValue(fusionVision?.toolName)) {
+    return true;
+  }
+
+  if (profile.execution?.matchMultimodal === true) {
+    return true;
+  }
+
+  return (profile.tools ?? []).some((tool) => fusionVisionToolNameMatches(tool.name.trim()));
+}
+
+
+function virtualModelProfileMatchesSelector(
+  profile: VirtualModelProfileConfig,
+  selector: string,
+  config: AppConfig
+): boolean {
+  const selectorLower = selector.toLowerCase();
+
+  for (const alias of profile.match?.exactAliases ?? []) {
+    if (virtualModelExactAliasMatchesSelector(alias, selectorLower)) {
+      return true;
+    }
+  }
+
+  const parsed = parseProviderModelSelector(selector);
+  if (!parsed) {
+    return false;
+  }
+
+  const provider = modelRegistryForConfig(config).findProvider(parsed.provider);
+  if (!provider) {
+    return false;
+  }
+  const configuredModels = new Set(provider.models.map((item) => item.trim().toLowerCase()).filter(Boolean));
+  const selectedModel = parsed.model.trim();
+  const selectedModelLower = selectedModel.toLowerCase();
+
+  for (const prefix of profile.match?.prefixes ?? []) {
+    const normalizedPrefix = prefix.trim();
+    if (!normalizedPrefix || !selectedModelLower.startsWith(normalizedPrefix.toLowerCase())) {
+      continue;
+    }
+    const baseModel = selectedModel.slice(normalizedPrefix.length).trim().toLowerCase();
+    if (configuredModels.has(baseModel)) {
+      return true;
+    }
+  }
+
+  for (const suffix of profile.match?.suffixes ?? []) {
+    const normalizedSuffix = suffix.trim();
+    if (!normalizedSuffix || !selectedModelLower.endsWith(normalizedSuffix.toLowerCase())) {
+      continue;
+    }
+    const baseModel = selectedModel.slice(0, selectedModel.length - normalizedSuffix.length).trim().toLowerCase();
+    if (configuredModels.has(baseModel)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+
+function virtualModelExactAliasMatchesSelector(alias: string, selectorLower: string): boolean {
+  const normalizedAlias = normalizeRouteSelector(alias);
+  if (!normalizedAlias) {
+    return false;
+  }
+
+  return normalizedAlias.toLowerCase() === selectorLower ||
+    fusionModelSelector(normalizedAlias).toLowerCase() === selectorLower;
+}
+
+
+function fusionVisionToolNameMatches(name: string): boolean {
+  const normalized = name.toLowerCase().replace(/[-.]/g, "_");
+  return normalized === BUILTIN_FUSION_VISION_TOOL_NAME ||
+    normalized.startsWith(`${BUILTIN_FUSION_VISION_TOOL_NAME}_`);
 }
 
 

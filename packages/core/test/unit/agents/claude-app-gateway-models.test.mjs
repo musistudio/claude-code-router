@@ -384,6 +384,128 @@ test("issue 1632 Claude discovery inherits Fusion fixed model provider context",
   assert.equal(rewrite?.routedModel, "Fusion/glm-5.2-fusion");
 });
 
+test("Claude Code discovery marks Fusion vision aliases as image capable", () => {
+  const config = createConfig({
+    providers: [
+      {
+        modelMetadata: {
+          "base-model": {
+            capabilities: { imageInput: false },
+            contextWindow: 128000
+          }
+        },
+        models: ["base-model"],
+        name: "Text",
+        type: "openai_chat_completions"
+      }
+    ],
+    virtualModelProfiles: [
+      {
+        baseModel: { fixedModel: "Text/base-model", mode: "fixed" },
+        displayName: "Vision Fusion",
+        enabled: true,
+        execution: {
+          clientToolsPolicy: "allow",
+          matchMultimodal: true,
+          mode: "tool_loop",
+          streamMode: "optimistic"
+        },
+        id: "vision-fusion",
+        key: "vision",
+        match: { exactAliases: ["vision"], prefixes: [], suffixes: [] },
+        materialization: { enabled: true, includeInGatewayModels: true },
+        metadata: {
+          fusionVision: { modelSelector: "Vision/vision-model", toolName: "vision_understand_vision" }
+        },
+        tools: [{ name: "vision_understand_vision", visibility: "internal" }]
+      }
+    ]
+  });
+
+  const response = createClaudeCodeModelsResponse(config);
+  const baseModel = response.data.find((item) => item.display_name === "Text/base-model");
+  const fusionModel = response.data.find((item) => item.display_name === "Fusion/vision");
+  const bootstrap = createClaudeCliBootstrapResponse(config);
+  const fusionOption = bootstrap.additional_model_options.find((item) => item.display_name === "Fusion/vision");
+
+  assert.ok(baseModel);
+  assert.equal(baseModel.capabilities.image_input.supported, false);
+  assert.ok(fusionModel);
+  assert.equal(fusionModel.capabilities.image_input.supported, true);
+  assert.ok(fusionOption);
+  assert.equal(fusionOption.capabilities.image_input.supported, true);
+});
+
+test("Claude Code discovery only marks valid prefixed and suffixed Fusion vision models as image capable", () => {
+  const config = createConfig({
+    providers: [
+      {
+        modelMetadata: {
+          "fast-model": {
+            capabilities: { imageInput: false },
+            contextWindow: 128000
+          },
+          "model-fast": {
+            capabilities: { imageInput: false },
+            contextWindow: 128000
+          }
+        },
+        models: ["fast-model", "model-fast"],
+        name: "Text",
+        type: "openai_chat_completions"
+      }
+    ],
+    virtualModelProfiles: [
+      {
+        baseModel: { mode: "strip_prefix" },
+        displayName: "Vision Prefix",
+        enabled: true,
+        execution: {
+          clientToolsPolicy: "allow",
+          matchMultimodal: true,
+          mode: "tool_loop",
+          streamMode: "optimistic"
+        },
+        id: "vision-prefix",
+        key: "vision-prefix",
+        match: { exactAliases: [], prefixes: ["fast-"], suffixes: [] },
+        materialization: { enabled: true, includeInGatewayModels: true },
+        metadata: {
+          fusionVision: { modelSelector: "Vision/vision-model", toolName: "vision_understand_prefix" }
+        },
+        tools: [{ name: "vision_understand_prefix", visibility: "internal" }]
+      },
+      {
+        baseModel: { mode: "strip_suffix" },
+        displayName: "Vision Suffix",
+        enabled: true,
+        execution: {
+          clientToolsPolicy: "allow",
+          matchMultimodal: true,
+          mode: "tool_loop",
+          streamMode: "optimistic"
+        },
+        id: "vision-suffix",
+        key: "vision-suffix",
+        match: { exactAliases: [], prefixes: [], suffixes: ["-fast"] },
+        materialization: { enabled: true, includeInGatewayModels: true },
+        metadata: {
+          fusionVision: { modelSelector: "Vision/vision-model", toolName: "vision_understand_suffix" }
+        },
+        tools: [{ name: "vision_understand_suffix", visibility: "internal" }]
+      }
+    ]
+  });
+
+  const response = createClaudeCodeModelsResponse(config);
+  const byDisplayName = new Map(response.data.map((item) => [item.display_name, item]));
+
+  assert.equal(byDisplayName.get("Text/fast-model")?.capabilities.image_input.supported, false);
+  assert.equal(byDisplayName.get("Text/model-fast")?.capabilities.image_input.supported, false);
+  assert.equal(byDisplayName.get("Text/fast-fast-model")?.capabilities.image_input.supported, true);
+  assert.equal(byDisplayName.get("Text/model-fast-fast")?.capabilities.image_input.supported, true);
+});
+
 test("Claude App discovery publishes the effective provider context for uncatalogued models", () => {
   const config = createConfig({
     providers: [

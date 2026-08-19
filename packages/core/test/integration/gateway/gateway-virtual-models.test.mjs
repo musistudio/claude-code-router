@@ -234,6 +234,44 @@ test("issue 1480 Fusion vision config injects core auth token into MCP gateway r
   );
 });
 
+test("gateway config injects Fusion vision media_ref tool instructions", () => {
+  const profiles = [
+    {
+      baseModel: { fixedModel: "Text/base-model", mode: "fixed" },
+      displayName: "Vision Fusion",
+      enabled: true,
+      execution: {
+        clientToolsPolicy: "allow",
+        matchMultimodal: true,
+        maxToolCalls: 8,
+        maxTurns: 6,
+        mode: "tool_loop",
+        streamMode: "optimistic"
+      },
+      id: "vision-fusion",
+      key: "vision-fusion",
+      match: { exactAliases: ["vision-fusion"], prefixes: [], suffixes: [] },
+      materialization: { enabled: true, includeInGatewayModels: true },
+      metadata: {
+        fusionVision: { modelSelector: "Vision/vision-model", toolName: "vision_understand_vision" }
+      },
+      tools: [{ name: "vision_understand_vision", visibility: "internal" }]
+    }
+  ];
+
+  const [profile] = normalizeCoreGatewayVirtualModelProfiles(profiles, {
+    Providers: [],
+    Router: { fallback: { mode: "off", models: [], retryCount: 0 } },
+    gateway: {}
+  });
+
+  assert.match(profile.instructions.append, /call the vision_understand_vision function tool before answering visual questions/);
+  assert.match(profile.instructions.append, /Use imageUrl or images\[\]\.url for refs listed as url/);
+  assert.match(profile.instructions.append, /Use imageBase64 or images\[\]\.base64 for refs listed as base64/);
+  assert.match(profile.instructions.append, /original media URL or base64 payload/);
+  assert.match(profile.instructions.append, /Do not search the filesystem for the media_ref/);
+});
+
 test("gateway config does not inject core auth token into external Fusion vision MCP runtime", async () => {
   const profiles = [
     {

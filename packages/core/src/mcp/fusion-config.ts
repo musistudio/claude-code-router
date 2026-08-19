@@ -590,6 +590,43 @@ export function withFusionWebSearchToolInstructions(profile: Record<string, unkn
 }
 
 
+export function withFusionVisionToolInstructions(profile: Record<string, unknown>): Record<string, unknown> | undefined {
+  const metadata = isRecord(profile.metadata) ? profile.metadata : undefined;
+  const fusionVision = isRecord(metadata?.fusionVision) ? metadata.fusionVision : undefined;
+  const toolName = stringValue(fusionVision?.toolName) || legacyFusionVisionConfig(profile)?.toolName;
+  if (!toolName) {
+    return undefined;
+  }
+  const execution = isRecord(profile.execution) ? profile.execution : {};
+  if (execution.matchMultimodal !== true) {
+    return undefined;
+  }
+
+  const instruction = [
+    `When the request includes image media references such as [media_ref:...], call the ${toolName} function tool before answering visual questions.`,
+    "Pass the user's image question in the prompt field.",
+    "Pass the exact media_ref token string, including brackets, in the field that matches the media reference source type. Use imageUrl or images[].url for refs listed as url. Use imageBase64 or images[].base64 for refs listed as base64.",
+    "The gateway replaces media_ref tokens with the original media URL or base64 payload during tool execution.",
+    "Do not search the filesystem for the media_ref or claim that the image is unavailable unless this function tool returns an error."
+  ].join(" ");
+  const instructions = isRecord(profile.instructions) ? profile.instructions : {};
+  if ([instructions.prepend, instructions.append, instructions.replace].some((value) => stringValue(value)?.includes(instruction))) {
+    return undefined;
+  }
+  const replace = stringValue(instructions.replace);
+  const append = stringValue(instructions.append);
+  return {
+    ...profile,
+    instructions: {
+      ...instructions,
+      ...(replace
+        ? { replace: `${replace.trim()}\n\n${instruction}` }
+        : { append: [append, instruction].filter(Boolean).join("\n\n") })
+    }
+  };
+}
+
+
 function coreGatewayCompatibleWebSearchToolName(toolName: string, fallbackName?: string): string {
   if (coreGatewayWebSearchToolNameMatches(toolName)) {
     return toolName;
