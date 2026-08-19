@@ -114,7 +114,16 @@ export function formatLogBodyForWorker(
 } {
   const large = isLargeLogBody(body, largeTextThreshold);
   const preview = large && mode !== "full";
-  const formattedBodyView = formatLogBodyView(body);
+  // Large-body preview: only skip the full JSON parse/pretty-print when the actual
+  // text is over-length. Otherwise the worker does JSON.parse on a huge object graph
+  // and pretty-prints + structured-clones it back, blowing up memory/CPU and surfacing
+  // "Body formatter worker failed." (issue #1694).
+  // The judge is the real body.text length, not sizeBytes (sizeBytes may be inflated
+  // storage metadata; a preview:true lightweight JSON should still show its JSON tree).
+  const previewText: FormattedLogBody | undefined = preview && (body?.text?.length ?? 0) > previewTextLimit
+    ? { text: createLogBodyPreviewText(body, previewTextLimit) }
+    : undefined;
+  const formattedBodyView = previewText ?? formatLogBodyView(body);
   const bodyView = preview && formattedBodyView.json === undefined
     ? { text: createLogBodyPreviewText(body, previewTextLimit) }
     : formattedBodyView;
