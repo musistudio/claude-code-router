@@ -50,3 +50,32 @@ test("request log preview bodies still format parseable JSON as JSON", () => {
   });
   assert.match(view.text, /"model": "test-model"/);
 });
+
+test("preview mode truncates an over-large JSON text body instead of parsing it", () => {
+  const hugeText = JSON.stringify({
+    model: "test-model",
+    messages: Array.from({ length: 4000 }, (_, i) => ({
+      role: i % 2 === 0 ? "user" : "assistant",
+      content: `message body number ${i} `.repeat(20)
+    }))
+  });
+  // Far beyond previewTextLimit, simulating a real ~308KB request body (issue #1694)
+  assert.ok(hugeText.length > 300 * 1024, "fixture should exceed 300KB");
+
+  const body: RequestLogBody = {
+    bodyRef: "large-json-body",
+    contentType: "application/json",
+    encoding: "utf8",
+    preview: true,
+    sizeBytes: hugeText.length,
+    text: hugeText,
+    truncated: false
+  };
+
+  const view = formatLogBodyForWorker(body, "preview", 256 * 1024, 160 * 1024);
+  assert.equal(view.preview, true);
+  // Over-length text is truncated instead of fully parsed/pretty-printed, avoiding the worker crash
+  assert.equal(view.json, undefined);
+  assert.ok(view.text.length < hugeText.length, "should be truncated");
+  assert.match(view.text, /characters omitted from preview/);
+});
