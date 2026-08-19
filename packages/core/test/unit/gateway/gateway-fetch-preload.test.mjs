@@ -58,10 +58,49 @@ test("gateway fetch preload preserves explicit fetch dispatchers", async () => {
   assert.equal(harness.fetchCalls[0].init.dispatcher, dispatcher);
 });
 
-function executePreload(env) {
+test("gateway fetch preload pairs dispatchers with bundled undici fetch on major mismatch", async () => {
+  const harness = executePreload(
+    {
+      CCR_UNDICI_MODULE: "mock-undici",
+      CCR_UPSTREAM_TIMEOUT_MS: "600000"
+    },
+    { bundledUndiciVersion: "7.29.0" }
+  );
+  const dispatcher = { kind: "caller" };
+
+  await harness.context.fetch("https://api.example.test/v1/messages", { dispatcher });
+  await harness.context.fetch("https://api.example.test/v1/messages", {});
+
+  assert.equal(harness.fetchCalls.length, 0);
+  assert.equal(harness.bundledFetchCalls.length, 2);
+  assert.equal(harness.bundledFetchCalls[0].init.dispatcher, dispatcher);
+  assert.equal(harness.bundledFetchCalls[1].init.dispatcher.kind, "direct");
+});
+
+test("gateway fetch preload falls back to bundled undici fetch when version lookup fails", async () => {
+  const harness = executePreload(
+    {
+      CCR_UNDICI_MODULE: "mock-undici",
+      CCR_UPSTREAM_TIMEOUT_MS: "600000"
+    },
+    { bundledUndiciVersion: null }
+  );
+
+  await harness.context.fetch("https://api.example.test/v1/messages", {});
+
+  assert.equal(harness.fetchCalls.length, 0);
+  assert.equal(harness.bundledFetchCalls.length, 1);
+  assert.equal(harness.bundledFetchCalls[0].init.dispatcher.kind, "direct");
+});
+
+function executePreload(env, options = {}) {
+  const runtimeUndiciVersion = options.runtimeUndiciVersion ?? "8.9.0";
+  const bundledUndiciVersion =
+    options.bundledUndiciVersion !== undefined ? options.bundledUndiciVersion : runtimeUndiciVersion;
   const agentOptions = [];
   const proxyAgentOptions = [];
   const fetchCalls = [];
+  const bundledFetchCalls = [];
 
   class Agent {
     constructor(options) {
@@ -79,16 +118,33 @@ function executePreload(env) {
     }
   }
 
+  const undiciModule = {
+    Agent,
+    ProxyAgent,
+    fetch: async (input, init) => {
+      bundledFetchCalls.push({ init, input });
+      return { ok: true };
+    }
+  };
+
   const context = {
     URL,
     fetch: async (input, init) => {
       fetchCalls.push({ init, input });
       return { ok: true };
     },
-    process: { env },
+    process: { env, versions: { undici: runtimeUndiciVersion } },
     require: (moduleName) => {
-      assert.equal(moduleName, "mock-undici");
-      return { Agent, ProxyAgent };
+      if (moduleName === "mock-undici") {
+        return undiciModule;
+      }
+      if (moduleName === "package.json") {
+        if (bundledUndiciVersion === null) {
+          throw new Error("undici package.json not found");
+        }
+        return { version: bundledUndiciVersion };
+      }
+      throw new Error(`unexpected require: ${moduleName}`);
     }
   };
   vm.createContext(context);
@@ -96,6 +152,7 @@ function executePreload(env) {
 
   return {
     agentOptions,
+    bundledFetchCalls,
     context,
     fetchCalls,
     proxyAgentOptions
