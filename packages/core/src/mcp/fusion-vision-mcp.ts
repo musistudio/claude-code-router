@@ -736,9 +736,11 @@ async function buildImageParts(args: Record<string, unknown>, detail: "auto" | "
   }
 
   const parts: JsonValue[] = [];
+  const skipped: string[] = [];
   for (const input of inputs) {
-    const url = await imageInputToUrl(input);
-    if (!url) {
+    const result = await imageInputToUrl(input);
+    if ("skip" in result) {
+      skipped.push(result.skip);
       continue;
     }
     if (input.label) {
@@ -747,36 +749,121 @@ async function buildImageParts(args: Record<string, unknown>, detail: "auto" | "
     parts.push({
       image_url: {
         detail,
-        url
+        url: result.url
       },
       type: "image_url"
     });
   }
+  // Dropping bad images must not look like dropping the argument: surface every
+  // reason to the caller instead of silently proceeding without the image.
+  if (parts.length === 0) {
+    if (skipped.length === 0) {
+      throw new Error(`${toolName} requires imageUrl, imagePath, imageBase64, or images.`);
+    }
+    throw new Error(`${toolName} found no usable image. Skipped: ${skipped.join("; ")}.`);
+  }
   return parts;
 }
 
-async function imageInputToUrl(input: { base64?: string; mimeType?: string; path?: string; url?: string }): Promise<string | undefined> {
+type ImageInputToUrlResult = { url: string } | { skip: string };
+
+/**
+ * Turn one image input into a data URL ready for the upstream, or say why it cannot
+ * be used. The upstream (commonly litellm in front of a strict vision provider)
+ * rejects any image whose payload is not strictly valid base64 and reports that as
+ * a 400 which surfaces to the caller as a raw provider error -- so anything that
+ * cannot be made into a well-formed data URL is dropped here instead of forwarded.
+ *
+ * Failure shapes seen in production: a local file path passed as imageUrl, a bare
+ * [media_ref:...] id passed verbatim, a base64 payload whose length mod 4 is 1
+ * (irreparably truncated mid-image), and an XML/SVG payload -- which the typical
+ * upstream rejects outright (supported formats are jpeg/png/gif/webp), so
+ * relabeling it buys nothing. A remainder of 2 or 3 is repairable by padding.
+ */
+async function imageInputToUrl(input: { base64?: string; mimeType?: string; path?: string; url?: string }): Promise<ImageInputToUrlResult> {
   if (input.url) {
-    return input.url;
+    const url = input.url.trim();
+    if (/^https?:\/\//i.test(url)) {
+      return { url };
+    }
+    if (url.startsWith("data:")) {
+      const comma = url.indexOf(",");
+      if (comma < 1) {
+        return { skip: `malformed data URL (${preview(url)})` };
+      }
+      const header = url.slice(5, comma);
+      if (!/;base64/i.test(header)) {
+        return { skip: `data URL is not base64 (${preview(url)})` };
+      }
+      const mimeType = header.split(";")[0] || undefined;
+      const normalized = normalizeImagePayload(url.slice(comma + 1));
+      if (!normalized) {
+        return { skip: `data URL payload is not usable base64 (${preview(url)})` };
+      }
+      return imageDataUrlOrSkip(normalized, mimeType);
+    }
+    // Not an HTTP(S) URL and not a data URL. Either a bare base64 payload (the
+    // virtual-model tool loop's usual shape; wrapped here because strict gateways
+    // reject it as an invalid URL) or garbage that must not be forwarded as-is.
+    const normalized = normalizeImagePayload(url);
+    if (!normalized) {
+      return { skip: `imageUrl is neither an HTTP(S) URL, a data URL, nor base64 (${preview(url)})` };
+    }
+    return imageDataUrlOrSkip(normalized, "image/png");
   }
   if (input.base64) {
-    return toDataUrl(input.base64, input.mimeType || "image/png");
+    const normalized = normalizeImagePayload(input.base64);
+    if (!normalized) {
+      return { skip: "imageBase64 is not usable base64" };
+    }
+    return imageDataUrlOrSkip(normalized, input.mimeType || "image/png");
   }
   if (!input.path) {
-    return undefined;
+    return { skip: "image entry has no url, base64, or path" };
   }
   const buffer = await readFile(input.path);
   if (buffer.byteLength > maxLocalImageBytes) {
     throw new Error(`Local image exceeds ${maxLocalImageBytes} bytes: ${input.path}`);
   }
-  return toDataUrl(buffer.toString("base64"), input.mimeType || mimeTypeFromPath(input.path));
+  return imageDataUrlOrSkip({ payload: buffer.toString("base64"), svg: false }, input.mimeType || mimeTypeFromPath(input.path));
 }
 
-function toDataUrl(value: string, mimeType: string): string {
-  return value.startsWith("data:") ? value : `data:${mimeType};base64,${value}`;
+const base64PayloadPattern = /^[A-Za-z0-9+/]*={0,2}$/;
+const svgHeadPattern = /^(?:﻿)?\s*(?:<\?xml|<svg)/i;
+
+/**
+ * Validate and repair a base64 image payload. Returns undefined when the bytes are
+ * not usable: non-base64 characters, an empty decode, or a length mod 4 of 1, which
+ * means the image was cut off mid-stream and padding cannot restore it. A remainder
+ * of 2 or 3 is fixed by adding `=` padding. SVG/XML payloads are flagged from the
+ * decoded head so the caller can reject them with a precise reason.
+ */
+function normalizeImagePayload(value: string): { payload: string; svg: boolean } | undefined {
+  if (!value || !base64PayloadPattern.test(value) || value.length % 4 === 1) {
+    return undefined;
+  }
+  const padded = value.padEnd(value.length + ((4 - value.length % 4) % 4), "=");
+  const buffer = Buffer.from(padded, "base64");
+  if (buffer.byteLength === 0) {
+    return undefined;
+  }
+  return {
+    payload: padded,
+    svg: svgHeadPattern.test(buffer.subarray(0, 64).toString("utf8"))
+  };
 }
 
-function mimeTypeFromPath(path: string): string {
+function imageDataUrlOrSkip(image: { payload: string; svg: boolean }, mimeType: string | undefined): ImageInputToUrlResult {
+  if (image.svg) {
+    return { skip: "SVG/XML image payload is not supported by the vision upstream (supported: image/jpeg, image/png, image/gif, image/webp)" };
+  }
+  return { url: `data:${mimeType || "image/png"};base64,${image.payload}` };
+}
+
+/** Short, quoted head of a value for skip reasons and error messages. */
+function preview(value: string): string {
+  return JSON.stringify(value.length > 40 ? `${value.slice(0, 37)}…` : value);
+}function mimeTypeFromPath(path: string): string {
   const ext = extname(path).toLowerCase();
   if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
   if (ext === ".webp") return "image/webp";
