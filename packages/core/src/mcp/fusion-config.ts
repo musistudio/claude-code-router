@@ -3,7 +3,7 @@
  */
 import { join as pathJoin } from "node:path";
 import type { AppConfig, GatewayMcpServerConfig, VirtualModelFusionVisionConfig, VirtualModelFusionWebSearchConfig, VirtualModelFusionWebSearchProvider } from "@ccr/core/contracts/app";
-import { BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, GROK_MEDIA_FUSION_TOOL_NAMES, MEDIA_TOOLS_MCP_SERVER_NAME, MEDIA_IMAGE_EDIT_TOOL_PREFIX, MEDIA_IMAGE_GENERATE_TOOL_PREFIX, MEDIA_JOB_CANCEL_TOOL_PREFIX, MEDIA_JOB_GET_TOOL_PREFIX, MEDIA_VIDEO_START_TOOL_PREFIX } from "@ccr/core/contracts/app";
+import { BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, GROK_MEDIA_FUSION_TOOL_NAMES, MEDIA_TOOLS_MCP_SERVER_NAME, MEDIA_IMAGE_EDIT_TOOL_PREFIX, MEDIA_IMAGE_GENERATE_TOOL_PREFIX, MEDIA_JOB_CANCEL_TOOL_PREFIX, MEDIA_JOB_GET_TOOL_PREFIX, MEDIA_VIDEO_START_TOOL_PREFIX, ROUTER_FALLBACK_MAX_RETRY_COUNT } from "@ccr/core/contracts/app";
 import { TOOL_HUB_MCP_SERVER_NAME, toolHubBuiltInBackendServers, toolHubMcpRuntimeConfig, toolHubRequestTimeoutMs } from "@ccr/core/mcp/toolhub-config";
 import { isRecord, numberValue, stringListValue, stringValue } from "@ccr/core/gateway/internal/value";
 import { defaultFusionWebSearchProvider, fusionModelProviderName } from "@ccr/core/gateway/internal/shared";
@@ -54,6 +54,8 @@ export async function fusionBuiltinToolArtifacts(
             ...(useGatewayVisionRuntime ? { VISION_GATEWAY_BASE_URL: `${coreEndpoint}/v1` } : { VISION_BASE_URL: visionConfig.baseUrl || "" }),
             ...(useGatewayVisionRuntime && coreAuthToken ? { VISION_GATEWAY_API_KEY: coreAuthToken } : {}),
             ...(resolvedVision.model ? { VISION_MODEL: resolvedVision.model } : {}),
+            ...(resolvedVision.fallbackModels.length ? { VISION_FALLBACK_MODELS_JSON: JSON.stringify(resolvedVision.fallbackModels) } : {}),
+            ...(visionConfig.retryCount !== undefined ? { VISION_RETRY_COUNT: String(visionConfig.retryCount) } : {}),
             ...(visionConfig.baseUrl && visionConfig.apiKey ? { VISION_API_KEY: visionConfig.apiKey } : {}),
             ...(visionConfig.timeoutMs ? { VISION_TIMEOUT_MS: String(visionConfig.timeoutMs) } : {}),
             ...(usageSync ? {
@@ -682,9 +684,14 @@ function readFusionVisionConfig(value: unknown): VirtualModelFusionVisionConfig 
     toolName,
     apiKey: stringValue(value.apiKey),
     baseUrl: stringValue(value.baseUrl),
+    fallbackModels: stringListValue(value.fallbackModels),
     model: stringValue(value.model),
     modelSelector: stringValue(value.modelSelector)
   };
+  const retryCount = numberValue(value.retryCount);
+  if (retryCount !== undefined) {
+    config.retryCount = Math.min(ROUTER_FALLBACK_MAX_RETRY_COUNT, Math.max(0, Math.trunc(retryCount)));
+  }
   const timeoutMs = numberValue(value.timeoutMs);
   if (timeoutMs) {
     config.timeoutMs = timeoutMs;
@@ -720,27 +727,27 @@ export function readFusionWebSearchConfig(value: unknown): VirtualModelFusionWeb
 
 function resolveFusionVisionRuntime(
   config: VirtualModelFusionVisionConfig
-): { model?: string; providers: CoreGatewayProvider[] } {
+): { fallbackModels: string[]; model?: string; providers: CoreGatewayProvider[] } {
   const selector = config.modelSelector || config.model;
   if (config.baseUrl) {
     return {
+      fallbackModels: uniqueStrings(config.fallbackModels ?? []),
       model: config.model || config.modelSelector,
       providers: []
     };
   }
 
-  const parsed = parseFusionModelSelector(selector);
-  if (!parsed) {
-    return {
-      model: selector ? normalizeGatewayModelSelector(selector) : undefined,
-      providers: []
-    };
-  }
-
   return {
-    model: `${parsed.providerName}/${parsed.model}`,
+    fallbackModels: uniqueStrings((config.fallbackModels ?? []).map(normalizeFusionVisionRuntimeModel)),
+    model: selector ? normalizeFusionVisionRuntimeModel(selector) : undefined,
     providers: []
   };
+}
+
+
+function normalizeFusionVisionRuntimeModel(selector: string): string {
+  const parsed = parseFusionModelSelector(selector);
+  return parsed ? `${parsed.providerName}/${parsed.model}` : normalizeGatewayModelSelector(selector);
 }
 
 

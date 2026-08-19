@@ -5,6 +5,7 @@ import {
   GROK_MEDIA_JOB_CANCEL_TOOL_NAME,
   GROK_MEDIA_JOB_GET_TOOL_NAME,
   GROK_MEDIA_VIDEO_START_TOOL_NAME,
+  ROUTER_FALLBACK_MAX_RETRY_COUNT,
   isGatewayProviderEnabled
 } from "@ccr/core/contracts/app";
 import type { AppConfig, GatewayMediaProtocol } from "@ccr/core/contracts/app";
@@ -12,10 +13,12 @@ import type { MediaOperation } from "@ccr/core/media/contracts";
 import { defaultGrokMediaModelSelector, migrateLegacyGrokMediaModelSelector, videoGenerationConstraints } from "@ccr/core/media/models";
 
 export type MediaToolBinding = {
+  fallbackModelSelectors?: string[];
   modelSelector: string;
   name: string;
   operation: MediaOperation | "capabilities" | "job-cancel" | "job-get";
   protocol?: GatewayMediaProtocol;
+  retryCount?: number;
 };
 
 export type MediaMcpToolDefinition = {
@@ -40,12 +43,20 @@ export function mediaToolBindingsForConfig(config: Pick<AppConfig, "Providers" |
     if (!media) continue;
     const imageModelSelector = migrateLegacyGrokMediaModelSelector(providers, media.imageModelSelector, "image");
     const videoModelSelector = migrateLegacyGrokMediaModelSelector(providers, media.videoModelSelector, "video");
+    const imageFallbackModelSelectors = normalizedFusionMediaFallbacks(providers, media.imageFallbackModelSelectors, imageModelSelector, "image");
+    const videoFallbackModelSelectors = normalizedFusionMediaFallbacks(providers, media.videoFallbackModelSelectors, videoModelSelector, "video");
     if (imageModelSelector) {
-      if (media.imageGenerateToolName) add({ modelSelector: imageModelSelector, name: media.imageGenerateToolName, operation: "image-generate" });
-      if (media.imageEditToolName) add({ modelSelector: imageModelSelector, name: media.imageEditToolName, operation: "image-edit" });
+      const mediaRetry = media.imageRetryCount;
+      const mediaFallback = imageFallbackModelSelectors.length ? { fallbackModelSelectors: imageFallbackModelSelectors } : {};
+      const mediaRetryConfig = mediaRetry ? { retryCount: mediaRetry } : {};
+      if (media.imageGenerateToolName) add({ ...mediaFallback, ...mediaRetryConfig, modelSelector: imageModelSelector, name: media.imageGenerateToolName, operation: "image-generate" });
+      if (media.imageEditToolName) add({ ...mediaFallback, ...mediaRetryConfig, modelSelector: imageModelSelector, name: media.imageEditToolName, operation: "image-edit" });
     }
     if (videoModelSelector) {
-      if (media.videoStartToolName) add({ modelSelector: videoModelSelector, name: media.videoStartToolName, operation: "video-generate" });
+      const mediaRetry = media.videoRetryCount;
+      const mediaFallback = videoFallbackModelSelectors.length ? { fallbackModelSelectors: videoFallbackModelSelectors } : {};
+      const mediaRetryConfig = mediaRetry ? { retryCount: mediaRetry } : {};
+      if (media.videoStartToolName) add({ ...mediaFallback, ...mediaRetryConfig, modelSelector: videoModelSelector, name: media.videoStartToolName, operation: "video-generate" });
       if (media.jobGetToolName) add({ modelSelector: videoModelSelector, name: media.jobGetToolName, operation: "job-get" });
       if (media.jobCancelToolName) add({ modelSelector: videoModelSelector, name: media.jobCancelToolName, operation: "job-cancel" });
     }
@@ -130,14 +141,59 @@ export function mediaMcpToolDefinition(binding: MediaToolBinding): MediaMcpToolD
   };
 }
 
-function readFusionMediaConfig(value: unknown): Record<string, string> | undefined {
+type FusionMediaToolConfig = {
+  imageEditToolName?: string;
+  imageFallbackModelSelectors?: string[];
+  imageGenerateToolName?: string;
+  imageModelSelector?: string;
+  imageRetryCount?: number;
+  jobCancelToolName?: string;
+  jobGetToolName?: string;
+  videoFallbackModelSelectors?: string[];
+  videoModelSelector?: string;
+  videoRetryCount?: number;
+  videoStartToolName?: string;
+};
+type FusionMediaStringKey =
+  | "imageEditToolName"
+  | "imageGenerateToolName"
+  | "imageModelSelector"
+  | "jobCancelToolName"
+  | "jobGetToolName"
+  | "videoModelSelector"
+  | "videoStartToolName";
+
+function readFusionMediaConfig(value: unknown): FusionMediaToolConfig | undefined {
   if (!isRecord(value)) return undefined;
-  const result: Record<string, string> = {};
-  for (const key of ["imageEditToolName", "imageGenerateToolName", "imageModelSelector", "jobCancelToolName", "jobGetToolName", "videoModelSelector", "videoStartToolName"]) {
+  const result: FusionMediaToolConfig = {};
+  const stringKeys: FusionMediaStringKey[] = ["imageEditToolName", "imageGenerateToolName", "imageModelSelector", "jobCancelToolName", "jobGetToolName", "videoModelSelector", "videoStartToolName"];
+  for (const key of stringKeys) {
     const item = readString(value[key]);
     if (item) result[key] = item;
   }
+  const imageFallbackModelSelectors = stringListValue(value.imageFallbackModelSelectors);
+  if (imageFallbackModelSelectors.length) result.imageFallbackModelSelectors = imageFallbackModelSelectors;
+  const videoFallbackModelSelectors = stringListValue(value.videoFallbackModelSelectors);
+  if (videoFallbackModelSelectors.length) result.videoFallbackModelSelectors = videoFallbackModelSelectors;
+  const imageRetryCount = numberValue(value.imageRetryCount);
+  if (imageRetryCount !== undefined) result.imageRetryCount = clampInteger(imageRetryCount, 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
+  const videoRetryCount = numberValue(value.videoRetryCount);
+  if (videoRetryCount !== undefined) result.videoRetryCount = clampInteger(videoRetryCount, 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
   return Object.keys(result).length ? result : undefined;
+}
+
+function normalizedFusionMediaFallbacks(
+  providers: AppConfig["Providers"],
+  selectors: string[] | undefined,
+  primarySelector: string | undefined,
+  kind: "image" | "video"
+): string[] {
+  const primary = primarySelector?.trim();
+  return uniqueStrings(
+    (selectors ?? [])
+      .map((selector) => migrateLegacyGrokMediaModelSelector(providers, selector, kind))
+      .filter((selector): selector is string => Boolean(selector && selector !== primary))
+  );
 }
 
 function objectSchema(properties: Record<string, unknown>, required: string[] = []): Record<string, unknown> {
@@ -146,6 +202,35 @@ function objectSchema(properties: Record<string, unknown>, required: string[] = 
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function stringListValue(value: unknown): string[] {
+  if (typeof value === "string") {
+    return value.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map(readString).filter((item): item is string => Boolean(item));
+}
+
+function numberValue(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function clampInteger(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

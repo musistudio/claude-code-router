@@ -15,7 +15,8 @@ import {
   MEDIA_IMAGE_GENERATE_TOOL_PREFIX,
   MEDIA_JOB_CANCEL_TOOL_PREFIX,
   MEDIA_JOB_GET_TOOL_PREFIX,
-  MEDIA_VIDEO_START_TOOL_PREFIX
+  MEDIA_VIDEO_START_TOOL_PREFIX,
+  ROUTER_FALLBACK_MAX_RETRY_COUNT
 } from "@ccr/core/contracts/app";
 import type {
   AppConfig,
@@ -67,7 +68,9 @@ export function createVirtualModelDraft(config: AppConfig): VirtualModelDraft {
     fixedModel: defaultModel,
     id: uniqueVirtualModelId(profiles, key),
     includeInGatewayModels: true,
+    imageGenerationFallbackModels: [],
     imageGenerationModel: defaultImageModel,
+    imageGenerationRetryCount: "0",
     instructionsAppend: "",
     instructionsPrepend: "",
     instructionsReplace: "",
@@ -81,8 +84,12 @@ export function createVirtualModelDraft(config: AppConfig): VirtualModelDraft {
     toolChoiceText: "",
     tools: [],
     toolsText: BUILTIN_FUSION_VISION_TOOL_NAME,
+    visionFallbackModels: [],
     visionModel: defaultModel,
+    visionRetryCount: "0",
+    videoGenerationFallbackModels: [],
     videoGenerationModel: defaultVideoModel,
+    videoGenerationRetryCount: "0",
     webSearchEnvRows: createFusionWebSearchEnvRows(defaultFusionWebSearchProvider),
     webSearchProvider: defaultFusionWebSearchProvider,
     executionMode: "tool_loop"
@@ -130,7 +137,9 @@ export function createVirtualModelDraftFromProfile(profile: VirtualModelProfileC
     fixedModel: profile.baseModel?.fixedModel ?? "",
     id: profile.id,
     includeInGatewayModels: profile.materialization?.includeInGatewayModels !== false,
+    imageGenerationFallbackModels: normalizeMediaFallbackModelSelectors(providers, mediaConfig?.imageFallbackModelSelectors, "image"),
     imageGenerationModel: migrateLegacyGrokMediaModelSelector(providers, mediaConfig?.imageModelSelector, "image") ?? "",
+    imageGenerationRetryCount: String(mediaConfig?.imageRetryCount ?? 0),
     instructionsAppend: profile.instructions?.append ?? "",
     instructionsPrepend: profile.instructions?.prepend ?? "",
     instructionsReplace: profile.instructions?.replace ?? "",
@@ -144,8 +153,12 @@ export function createVirtualModelDraftFromProfile(profile: VirtualModelProfileC
     toolChoiceText: formatVirtualModelToolChoice(profile.toolChoice),
     tools: toolDrafts,
     toolsText: selectedToolNames.join(", "),
+    visionFallbackModels: visionConfig?.fallbackModels ?? [],
     visionModel: visionConfig?.modelSelector ?? visionConfig?.model ?? defaultVisionModel,
+    visionRetryCount: String(visionConfig?.retryCount ?? 0),
+    videoGenerationFallbackModels: normalizeMediaFallbackModelSelectors(providers, mediaConfig?.videoFallbackModelSelectors, "video"),
     videoGenerationModel: migrateLegacyGrokMediaModelSelector(providers, mediaConfig?.videoModelSelector, "video") ?? "",
+    videoGenerationRetryCount: String(mediaConfig?.videoRetryCount ?? 0),
     webSearchEnvRows: createFusionWebSearchEnvRows(webSearchConfig?.provider ?? defaultFusionWebSearchProvider, keyValueRowsFromRecord(webSearchConfig?.env ?? {})),
     webSearchProvider: webSearchConfig?.provider ?? defaultFusionWebSearchProvider,
     executionMode: "tool_loop"
@@ -218,10 +231,21 @@ export function fusionVisionConfigFromProfile(profile: VirtualModelProfileConfig
   const config: VirtualModelFusionVisionConfig = {
     apiKey: stringValue(value.apiKey),
     baseUrl: stringValue(value.baseUrl),
+    fallbackModels: Array.isArray(value.fallbackModels)
+      ? uniqueStrings(value.fallbackModels.map((model) => normalizeProviderModelSelector(stringValue(model))).filter(Boolean))
+      : [],
     model: stringValue(value.model),
     modelSelector: stringValue(value.modelSelector),
     toolName: stringValue(value.toolName)
   };
+  const retryCount = typeof value.retryCount === "number"
+    ? value.retryCount
+    : typeof value.retryCount === "string"
+      ? numberValue(value.retryCount)
+      : 0;
+  if (retryCount) {
+    config.retryCount = clampNumber(retryCount, 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
+  }
   const timeoutMs = typeof value.timeoutMs === "number"
     ? value.timeoutMs
     : typeof value.timeoutMs === "string"
@@ -230,7 +254,7 @@ export function fusionVisionConfigFromProfile(profile: VirtualModelProfileConfig
   if (timeoutMs) {
     config.timeoutMs = timeoutMs;
   }
-  return config.apiKey || config.baseUrl || config.model || config.modelSelector || config.toolName || config.timeoutMs ? config : undefined;
+  return config.apiKey || config.baseUrl || config.model || config.modelSelector || config.toolName || config.timeoutMs || config.retryCount || config.fallbackModels?.length ? config : undefined;
 }
 
 export function fusionVisionConfigFromDraft(draft: VirtualModelDraft, key: string): VirtualModelFusionVisionConfig | undefined {
@@ -241,8 +265,16 @@ export function fusionVisionConfigFromDraft(draft: VirtualModelDraft, key: strin
   if (!model) {
     return undefined;
   }
+  const fallbackModels = uniqueStrings(
+    draft.visionFallbackModels
+      .map((fallbackModel) => normalizeProviderModelSelector(fallbackModel))
+      .filter(Boolean)
+  );
+  const retryCount = clampNumber(numberValue(draft.visionRetryCount), 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
   return {
+    ...(fallbackModels.length ? { fallbackModels } : {}),
     ...(model ? { modelSelector: model } : {}),
+    ...(retryCount > 0 ? { retryCount } : {}),
     toolName: fusionVisionToolName(key)
   };
 }
@@ -307,14 +339,18 @@ export function fusionMediaConfigFromProfile(profile: VirtualModelProfileConfig)
   }
   const config: VirtualModelFusionMediaConfig = {
     imageEditToolName: stringValue(value.imageEditToolName),
+    imageFallbackModelSelectors: modelSelectorListValue(value.imageFallbackModelSelectors),
     imageGenerateToolName: stringValue(value.imageGenerateToolName),
     imageModelSelector: stringValue(value.imageModelSelector),
+    imageRetryCount: retryCountValue(value.imageRetryCount),
     jobCancelToolName: stringValue(value.jobCancelToolName),
     jobGetToolName: stringValue(value.jobGetToolName),
+    videoFallbackModelSelectors: modelSelectorListValue(value.videoFallbackModelSelectors),
     videoModelSelector: stringValue(value.videoModelSelector),
+    videoRetryCount: retryCountValue(value.videoRetryCount),
     videoStartToolName: stringValue(value.videoStartToolName)
   };
-  return Object.values(config).some(Boolean) ? config : undefined;
+  return Object.values(config).some((value) => Array.isArray(value) ? value.length > 0 : Boolean(value)) ? config : undefined;
 }
 
 export function fusionMediaConfigFromDraft(draft: VirtualModelDraft, key: string): VirtualModelFusionMediaConfig | undefined {
@@ -324,19 +360,68 @@ export function fusionMediaConfigFromDraft(draft: VirtualModelDraft, key: string
   if (!imageEnabled && !videoEnabled) {
     return undefined;
   }
+  const imageModelSelector = normalizeProviderModelSelector(draft.imageGenerationModel);
+  const videoModelSelector = normalizeProviderModelSelector(draft.videoGenerationModel);
+  const imageFallbackModelSelectors = uniqueStrings(
+    draft.imageGenerationFallbackModels
+      .map((model) => normalizeProviderModelSelector(model))
+      .filter((model) => Boolean(model && model !== imageModelSelector))
+  );
+  const videoFallbackModelSelectors = uniqueStrings(
+    draft.videoGenerationFallbackModels
+      .map((model) => normalizeProviderModelSelector(model))
+      .filter((model) => Boolean(model && model !== videoModelSelector))
+  );
+  const imageRetryCount = clampNumber(numberValue(draft.imageGenerationRetryCount), 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
+  const videoRetryCount = clampNumber(numberValue(draft.videoGenerationRetryCount), 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
   return {
     ...(imageEnabled ? {
       imageEditToolName: fusionMediaToolName(MEDIA_IMAGE_EDIT_TOOL_PREFIX, key),
+      ...(imageFallbackModelSelectors.length ? { imageFallbackModelSelectors } : {}),
       imageGenerateToolName: fusionMediaToolName(MEDIA_IMAGE_GENERATE_TOOL_PREFIX, key),
-      imageModelSelector: draft.imageGenerationModel.trim()
+      imageModelSelector,
+      ...(imageRetryCount > 0 ? { imageRetryCount } : {})
     } : {}),
     ...(videoEnabled ? {
       jobCancelToolName: fusionMediaToolName(MEDIA_JOB_CANCEL_TOOL_PREFIX, key),
       jobGetToolName: fusionMediaToolName(MEDIA_JOB_GET_TOOL_PREFIX, key),
-      videoModelSelector: draft.videoGenerationModel.trim(),
+      ...(videoFallbackModelSelectors.length ? { videoFallbackModelSelectors } : {}),
+      videoModelSelector,
+      ...(videoRetryCount > 0 ? { videoRetryCount } : {}),
       videoStartToolName: fusionMediaToolName(MEDIA_VIDEO_START_TOOL_PREFIX, key)
     } : {})
   };
+}
+
+function modelSelectorListValue(value: unknown): string[] {
+  if (typeof value === "string") {
+    return uniqueStrings(value.split(/\r?\n|,/g).map((item) => normalizeProviderModelSelector(item)).filter(Boolean));
+  }
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return uniqueStrings(value.map((item) => normalizeProviderModelSelector(stringValue(item))).filter(Boolean));
+}
+
+function normalizeMediaFallbackModelSelectors(
+  providers: AppConfig["Providers"],
+  selectors: string[] | undefined,
+  kind: "image" | "video"
+): string[] {
+  return uniqueStrings(
+    (selectors ?? [])
+      .map((selector) => migrateLegacyGrokMediaModelSelector(providers, selector, kind) ?? normalizeProviderModelSelector(selector))
+      .filter(Boolean)
+  );
+}
+
+function retryCountValue(value: unknown): number | undefined {
+  const retryCount = typeof value === "number" && Number.isFinite(value)
+    ? value
+    : typeof value === "string"
+      ? numberValue(value)
+      : undefined;
+  return retryCount === undefined ? undefined : clampNumber(retryCount, 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
 }
 
 export function fusionMediaToolName(prefix: string, key: string): string {

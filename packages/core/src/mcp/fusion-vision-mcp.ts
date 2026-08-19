@@ -52,11 +52,17 @@ type SearchResult = {
   title?: string;
   url?: string;
 };
+type VisionAttemptFailure = {
+  error: string;
+  model: string;
+  statusCode?: number;
+};
 
 const protocolVersion = "2024-11-05";
 const defaultVisionBaseUrl = "https://api.openai.com/v1";
 const defaultVisionModel = "gpt-4o-mini";
 const defaultTimeoutMs = 30000;
+const maxVisionRetryCount = 9999;
 const maxLocalImageBytes = 20 * 1024 * 1024;
 const fusionUsageEventSchema = "ccr.fusion-usage.v1";
 const fusionUsageSyncBaseDelayMs = 100;
@@ -250,7 +256,10 @@ async function analyzeVision(args: Record<string, unknown>): Promise<string> {
   if (!gatewayBaseUrl && !apiKey) {
     throw new Error("Missing vision API key. Set VISION_API_KEY.");
   }
-  const model = env("VISION_MODEL") || env("OPENAI_MODEL") || defaultVisionModel;
+  const primaryModel = env("VISION_MODEL") || env("OPENAI_MODEL") || defaultVisionModel;
+  const retryCount = clampInteger(readNumber(env("VISION_RETRY_COUNT")) ?? 0, 0, maxVisionRetryCount);
+  const models = uniqueStrings([primaryModel, ...readJsonStringArrayEnv("VISION_FALLBACK_MODELS_JSON")]);
+  const attempts = visionModelAttempts(models.length ? models : [primaryModel], retryCount);
   const detail = readString(args.detail);
   const imageParts = await buildImageParts(args, detail === "low" || detail === "high" ? detail : "auto");
   if (imageParts.length === 0) {
@@ -269,46 +278,63 @@ async function analyzeVision(args: Record<string, unknown>): Promise<string> {
     }
   ];
   const timeoutMs = clampInteger(readNumber(args.timeoutMs) ?? readNumber(env("VISION_TIMEOUT_MS")) ?? defaultTimeoutMs, 100, 600000);
-  const startedAt = Date.now();
-  let response: Response | undefined;
-  let usageScheduled = false;
-  try {
-    response = await fetch(resolveChatCompletionsUrl(baseUrl), {
-      body: JSON.stringify({ model, messages }),
-      headers: {
-        ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
-        "content-type": "application/json"
-      },
-      method: "POST",
-      signal: AbortSignal.timeout(timeoutMs)
-    });
-    const rawText = await response.text();
-    const payload = parseJson(rawText);
-    scheduleVisionUsageSync({
-      durationMs: Date.now() - startedAt,
-      gatewayRuntime: Boolean(gatewayBaseUrl),
-      model,
-      payload,
-      response
-    });
-    usageScheduled = true;
-    if (!response.ok) {
-      throw new Error(`Vision request failed (${response.status}): ${extractProviderError(rawText, payload)}`);
-    }
 
-    return extractResponseText(payload) || rawText;
-  } catch (error) {
-    if (!usageScheduled) {
+  const failures: VisionAttemptFailure[] = [];
+  let lastError: unknown;
+  for (let index = 0; index < attempts.length; index += 1) {
+    const model = attempts[index];
+    const startedAt = Date.now();
+    let response: Response | undefined;
+    let usageScheduled = false;
+    try {
+      response = await fetch(resolveChatCompletionsUrl(baseUrl), {
+        body: JSON.stringify({ model, messages }),
+        headers: {
+          ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+          "content-type": "application/json"
+        },
+        method: "POST",
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      const rawText = await response.text();
+      const payload = parseJson(rawText);
       scheduleVisionUsageSync({
         durationMs: Date.now() - startedAt,
         gatewayRuntime: Boolean(gatewayBaseUrl),
         model,
-        response,
-        statusCode: 502
+        payload,
+        response
       });
+      usageScheduled = true;
+      if (!response.ok) {
+        throw new Error(`Vision request failed (${response.status}): ${extractProviderError(rawText, payload)}`);
+      }
+
+      return extractResponseText(payload) || rawText;
+    } catch (error) {
+      if (!usageScheduled) {
+        scheduleVisionUsageSync({
+          durationMs: Date.now() - startedAt,
+          gatewayRuntime: Boolean(gatewayBaseUrl),
+          model,
+          response,
+          statusCode: visionFailureStatusCode(error)
+        });
+      }
+      lastError = error;
+      failures.push({
+        error: formatError(error),
+        model,
+        ...(response ? { statusCode: response.status } : {})
+      });
+      if (index < attempts.length - 1) {
+        await wait(visionRetryDelayMs(response, failures.length - 1));
+        continue;
+      }
     }
-    throw error;
   }
+
+  throwVisionError(lastError, failures);
 }
 
 function scheduleVisionUsageSync(input: {
@@ -451,6 +477,71 @@ async function shutdownAfterUsageSyncDrain(exitCode: number): Promise<void> {
 
 function wait(delayMs: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+function readJsonStringArrayEnv(name: string): string[] {
+  const raw = env(name);
+  if (!raw) {
+    return [];
+  }
+  try {
+    const value = JSON.parse(raw) as unknown;
+    return readStringArray(value);
+  } catch {
+    return [];
+  }
+}
+
+function visionModelAttempts(models: string[], retryCount: number): string[] {
+  const attempts: string[] = [];
+  for (const model of models) {
+    for (let index = 0; index <= retryCount; index += 1) {
+      attempts.push(model);
+    }
+  }
+  return attempts;
+}
+
+function visionRetryDelayMs(response: Response | undefined, failedAttemptIndex: number): number {
+  const retryAfterMs = parseRetryAfterHeaderMs(response?.headers.get("retry-after") ?? null);
+  if (retryAfterMs !== undefined && retryAfterMs > 0) {
+    return clampInteger(retryAfterMs, 1, 60000);
+  }
+  const exponent = Math.min(10, Math.max(0, failedAttemptIndex));
+  return Math.min(30000, 1000 * 2 ** exponent);
+}
+
+function parseRetryAfterHeaderMs(value: string | null): number | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  const seconds = Number(trimmed);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const retryAt = Date.parse(trimmed);
+  return Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : undefined;
+}
+
+function visionFailureStatusCode(error: unknown): number {
+  const name = error instanceof Error ? error.name : "";
+  return name === "AbortError" || name === "TimeoutError" ? 504 : 502;
+}
+
+function throwVisionError(lastError: unknown, failures: VisionAttemptFailure[]): never {
+  if (failures.length <= 1) {
+    if (lastError instanceof Error) {
+      throw lastError;
+    }
+    throw new Error(formatError(lastError));
+  }
+  throw new Error(
+    `Vision request failed after ${failures.length} attempts. ` +
+    `${formatVisionAttemptFailures(failures)} Last error: ${formatError(lastError)}`
+  );
+}
+
+function formatVisionAttemptFailures(failures: VisionAttemptFailure[]): string {
+  return `Failures: ${failures.map((failure) =>
+    `${failure.model} ${failure.statusCode ? `HTTP ${failure.statusCode}` : "network"}`
+  ).join("; ")}.`;
 }
 
 function readVisionUsage(response: Response | undefined, payload: unknown): Record<string, number | undefined> {

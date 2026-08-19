@@ -1016,8 +1016,10 @@ export type VirtualModelMaterializationConfig = {
 export type VirtualModelFusionVisionConfig = {
   apiKey?: string;
   baseUrl?: string;
+  fallbackModels?: string[];
   model?: string;
   modelSelector?: string;
+  retryCount?: number;
   timeoutMs?: number;
   toolName?: string;
 };
@@ -1042,11 +1044,15 @@ export type VirtualModelFusionWebSearchConfig = {
 
 export type VirtualModelFusionMediaConfig = {
   imageEditToolName?: string;
+  imageFallbackModelSelectors?: string[];
   imageGenerateToolName?: string;
   imageModelSelector?: string;
+  imageRetryCount?: number;
   jobCancelToolName?: string;
   jobGetToolName?: string;
+  videoFallbackModelSelectors?: string[];
   videoModelSelector?: string;
+  videoRetryCount?: number;
   videoStartToolName?: string;
 };
 

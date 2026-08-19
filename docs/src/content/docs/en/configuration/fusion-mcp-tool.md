@@ -21,11 +21,11 @@ Media is exposed as two ordinary built-in Fusion tools: **Image generation** and
 
 Fusion tool loops do not have a turn-count or tool-call-count limit. Request timeout and client cancellation still apply.
 
-Each tool has one model selector:
+Each tool has one primary model selector, with optional retries and fallback model selectors:
 
 - Selecting `Provider/model` sends the request through ai-gateway, which applies the configured endpoint, active credential, extra headers, and extra body. The media tool never asks for a separate xAI API key.
 - An imported Grok Agent automatically contributes `grok-imagine-image-quality` and `grok-imagine-video`. ai-gateway reuses its existing OAuth login to access `api.x.ai`; Grok CLI is not started.
-- Image and video models are independent, and separate Fusion profiles may bind different media models.
+- Image and video models are independent. Their retry counts and fallback models are also independent, and separate Fusion profiles may bind different media models.
 
 To configure media:
 

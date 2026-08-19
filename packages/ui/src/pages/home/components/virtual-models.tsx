@@ -1,20 +1,21 @@
 import {
   AnimatedListItem, AnimatedPopover, AnimatePresence, Boxes, Button,
   Card, CardContent, CardHeader, CardTitle, Check, ChevronDown, ChevronRight,
-  cn, createMcpServerDraftFromConfig, createRouteModelOptions, defaultFusionWebSearchProvider, Dialog, DialogBody, DialogContent, DialogFooter,
+  clampNumber, cn, createMcpServerDraftFromConfig, createRouteModelOptions, defaultFusionWebSearchProvider, Dialog, DialogBody, DialogContent, DialogFooter,
   DialogHeader, DialogTitle, ExtensionInstallDraft, Field, FolderOpen, formatPluginDependencies,
   createFusionWebSearchEnvRows, createKeyValueDraftRow, customFusionToolName, fusionToolExecutionFlagsFromTools, fusionToolOptions,
   fusionWebSearchProviderOptions, GatewayMcpServerConfig, GatewayMcpToolInfo, GatewayProviderConfig, Input, isBuiltInFusionToolName, isFusionImageGenerationToolName, isFusionVideoGenerationToolName, isFusionVisionToolName, isFusionWebSearchToolName, KeyValueRowsControl, LoaderCircle,
   mcpServerConfigFromDraft, mcpServerEndpointSummary, mcpServerTransportOptions,
   mcpStdioMessageModeOptions, motion, normalizeFusionToolName, Pencil,
   PluginMarketplaceEntry, pluginSurfaceSummary, Plus, PopoverContent, RouteTargetControl, Search, selectedFusionToolNames,
-  SelectControl, Toggle, Trash2, translateOptions, useAppErrorText, useAppText, useEffect, useLayoutEffect, useMemo,
+  SelectControl, Toggle, Trash2, translateOptions, uniqueStrings, useAppErrorText, useAppText, useEffect, useLayoutEffect, useMemo,
   useRef, useState, validateMcpServerDraft, virtualModelBaseModelSummary, VirtualModelDraft, virtualModelMatchesQuery, virtualModelMatchSummary,
   type KeyValueDraftRow,
   VirtualModelProfileConfig, virtualModelToolSummary, X
 } from "../shared/index";
 import { PopoverPortal } from "@/components/ui/popover";
 import { createGrokMediaModelOptions } from "@ccr/core/media/models";
+import { ROUTER_FALLBACK_MAX_RETRY_COUNT } from "@ccr/core/contracts/app";
 
 const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
@@ -191,16 +192,36 @@ export function MediaModelConfigurationPanel({
 }) {
   const t = useAppText();
   const value = kind === "image" ? draft.imageGenerationModel : draft.videoGenerationModel;
+  const fallbackModels = kind === "image" ? draft.imageGenerationFallbackModels : draft.videoGenerationFallbackModels;
+  const retryCount = kind === "image" ? draft.imageGenerationRetryCount : draft.videoGenerationRetryCount;
+  const [fallbackModelDraft, setFallbackModelDraft] = useState("");
   const options = useMemo(() => {
     const values = [...modelOptions];
-    if (value && !values.some((option) => option.value === value)) {
-      values.push({ label: value, value });
+    for (const model of [value, fallbackModelDraft, ...fallbackModels]) {
+      if (model && !values.some((option) => option.value === model)) {
+        values.push({ label: model, value: model });
+      }
     }
     return values;
-  }, [modelOptions, t, value]);
+  }, [fallbackModelDraft, fallbackModels, modelOptions, value]);
+
+  function patchFallbackModels(models: string[]): Partial<VirtualModelDraft> {
+    return kind === "image"
+      ? { imageGenerationFallbackModels: models }
+      : { videoGenerationFallbackModels: models };
+  }
+
+  function addFallbackModel() {
+    const model = fallbackModelDraft.trim();
+    if (!model) {
+      return;
+    }
+    onChange(patchFallbackModels(uniqueStrings([...fallbackModels, model])));
+    setFallbackModelDraft("");
+  }
 
   return (
-    <div className="grid grid-cols-1 gap-2 rounded-md border border-border/70 bg-muted/25 p-3">
+    <div className="grid grid-cols-1 gap-3 rounded-md border border-border/70 bg-muted/25 p-3">
       <Field label={t(kind === "image" ? "Image model" : "Video model")}>
         <SelectControl
           onChange={(model) => onChange(kind === "image" ? { imageGenerationModel: model } : { videoGenerationModel: model })}
@@ -208,6 +229,44 @@ export function MediaModelConfigurationPanel({
           value={value}
         />
       </Field>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(96px,140px)_minmax(0,1fr)_auto]">
+        <Field label={t("Retries")}>
+          <Input
+            max={ROUTER_FALLBACK_MAX_RETRY_COUNT}
+            min={0}
+            onChange={(event) => onChange(kind === "image"
+              ? { imageGenerationRetryCount: String(clampNumber(Number(event.target.value), 0, ROUTER_FALLBACK_MAX_RETRY_COUNT)) }
+              : { videoGenerationRetryCount: String(clampNumber(Number(event.target.value), 0, ROUTER_FALLBACK_MAX_RETRY_COUNT)) })}
+            type="number"
+            value={retryCount}
+          />
+        </Field>
+        <Field label={t(kind === "image" ? "Image fallback model" : "Video fallback model")}>
+          <SelectControl
+            onChange={setFallbackModelDraft}
+            options={[{ label: t("Select model"), value: "" }, ...options]}
+            value={fallbackModelDraft}
+          />
+        </Field>
+        <Button disabled={!fallbackModelDraft.trim()} onClick={addFallbackModel} type="button">
+          <Plus className="h-4 w-4" />
+          {t("Add")}
+        </Button>
+      </div>
+      <div className="flex min-w-0 flex-wrap gap-2">
+        {fallbackModels.length === 0 ? (
+          <div className="text-[12px] text-muted-foreground">{t(kind === "image" ? "No image fallback models configured" : "No video fallback models configured")}</div>
+        ) : (
+          fallbackModels.map((model, index) => (
+            <div className="flex max-w-full items-center gap-1 rounded-md border border-border bg-background px-2 py-1" key={`${model}-${index}`}>
+              <span className="min-w-0 truncate font-mono text-[11px]" title={model}>{model}</span>
+              <Button aria-label={`${t("Remove")} ${model}`} onClick={() => onChange(patchFallbackModels(fallbackModels.filter((_, modelIndex) => modelIndex !== index)))} size="iconSm" title={t("Remove")} type="button" variant="ghost">
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ))
+        )}
+      </div>
       <p className="text-[11px] leading-4 text-muted-foreground">{t("CCR routes media through the selected ai-gateway provider. Imported Grok Agents reuse their existing login automatically.")}</p>
     </div>
   );
@@ -783,12 +842,54 @@ function VisionToolConfigurationPanel({
   onChange: (patch: Partial<VirtualModelDraft>) => void;
 }) {
   const t = useAppText();
+  const [fallbackModelDraft, setFallbackModelDraft] = useState("");
+
+  function addFallbackModel() {
+    const model = fallbackModelDraft.trim();
+    if (!model) {
+      return;
+    }
+    onChange({ visionFallbackModels: uniqueStrings([...draft.visionFallbackModels, model]) });
+    setFallbackModelDraft("");
+  }
 
   return (
     <div className="grid grid-cols-1 gap-3 rounded-md border border-border/70 bg-muted/25 p-3">
       <Field label={t("Vision model")}>
         <RouteTargetControl modelOptions={modelOptions} onChange={(visionModel) => onChange({ visionModel })} value={draft.visionModel} />
       </Field>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(96px,140px)_minmax(0,1fr)_auto]">
+        <Field label={t("Retries")}>
+          <Input
+            max={ROUTER_FALLBACK_MAX_RETRY_COUNT}
+            min={0}
+            onChange={(event) => onChange({ visionRetryCount: String(clampNumber(Number(event.target.value), 0, ROUTER_FALLBACK_MAX_RETRY_COUNT)) })}
+            type="number"
+            value={draft.visionRetryCount}
+          />
+        </Field>
+        <Field label={t("Vision fallback model")}>
+          <RouteTargetControl modelOptions={modelOptions} onChange={setFallbackModelDraft} value={fallbackModelDraft} />
+        </Field>
+        <Button disabled={!fallbackModelDraft.trim()} onClick={addFallbackModel} type="button">
+          <Plus className="h-4 w-4" />
+          {t("Add")}
+        </Button>
+      </div>
+      <div className="flex min-w-0 flex-wrap gap-2">
+        {draft.visionFallbackModels.length === 0 ? (
+          <div className="text-[12px] text-muted-foreground">{t("No vision fallback models configured")}</div>
+        ) : (
+          draft.visionFallbackModels.map((model, index) => (
+            <div className="flex max-w-full items-center gap-1 rounded-md border border-border bg-background px-2 py-1" key={`${model}-${index}`}>
+              <span className="min-w-0 truncate font-mono text-[11px]" title={model}>{model}</span>
+              <Button aria-label={`${t("Remove")} ${model}`} onClick={() => onChange({ visionFallbackModels: draft.visionFallbackModels.filter((_, modelIndex) => modelIndex !== index) })} size="iconSm" title={t("Remove")} type="button" variant="ghost">
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

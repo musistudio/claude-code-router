@@ -26,6 +26,8 @@ It is different from **Built-in vision**:
 
 After importing a Grok Agent, CCR automatically provides `grok-imagine-image-quality`. ai-gateway reuses the existing OAuth login to access `api.x.ai`; it does not start Grok CLI.
 
+Image generation has its own retry count and fallback image models. If the selected image model fails with a retryable media-provider error, CCR retries that image model first, then tries the configured fallback image models. The base text model remains unchanged.
+
 ## Supported requests
 
 CCR calls providers through ai-gateway's generic media protocol:
@@ -61,5 +63,6 @@ When image generation fails, check:
 
 - Whether the provider model declares or actually supports image generation.
 - Whether the Fusion tool is bound to the correct image model.
+- The configured image retry count and fallback image models.
 - The ai-gateway status code and error in request logs.
 - Whether image editing inputs are inside allowed read roots.

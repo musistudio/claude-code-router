@@ -133,6 +133,106 @@ test("Fusion vision MCP sends the core API key and retries a body-free lightweig
   assert.ok(Buffer.byteLength(seen.usageRawBody, "utf8") < 1_024);
 });
 
+test("Fusion vision MCP retries and falls back between configured vision models", async (t) => {
+  const primaryModel = "provider-zhipu::openai_chat_completions::cred:primary/glm-5v-turbo";
+  const fallbackModel = "provider-qwen::openai_chat_completions::cred:backup/qwen-vl-plus";
+  const seen = {
+    providerBodies: [],
+    usageBodies: []
+  };
+  const server = http.createServer(async (request, response) => {
+    const body = await readRequestBody(request);
+    if (request.url === "/usage") {
+      seen.usageBodies.push(JSON.parse(body));
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ applied: true, ok: true }));
+      return;
+    }
+
+    seen.providerBodies.push(JSON.parse(body));
+    if (seen.providerBodies.length < 3) {
+      response.writeHead(503, {
+        "content-type": "application/json",
+        "retry-after": "0.001"
+      });
+      response.end(JSON.stringify({ error: { message: "vision temporarily unavailable" } }));
+      return;
+    }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      choices: [{ message: { content: "fallback vision ok" } }],
+      usage: { completion_tokens: 3, prompt_tokens: 10, total_tokens: 13 }
+    }));
+  });
+
+  try {
+    await listen(server);
+  } catch (error) {
+    if (isLocalListenUnavailable(error)) {
+      t.skip(`Local HTTP listen is unavailable: ${formatError(error)}`);
+      return;
+    }
+    throw error;
+  }
+  t.after(() => server.close());
+
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const child = spawn(process.execPath, [path.join(process.cwd(), ".test-dist", "core", "runtime", "fusion-vision-mcp.js")], {
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: "1",
+      FUSION_BUILTIN_TOOL_KIND: "vision",
+      FUSION_TOOL_NAME: "vision_understand_with_fallback",
+      CCR_FUSION_USAGE_SYNC_ENDPOINT: `http://127.0.0.1:${address.port}/usage`,
+      CCR_FUSION_USAGE_SYNC_HEADER: "x-ccr-billing-usage-token",
+      CCR_FUSION_USAGE_SYNC_TOKEN: "usage-token",
+      VISION_FALLBACK_MODELS_JSON: JSON.stringify([fallbackModel]),
+      VISION_GATEWAY_API_KEY: "core-token",
+      VISION_GATEWAY_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
+      VISION_MODEL: primaryModel,
+      VISION_RETRY_COUNT: "1"
+    },
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  t.after(() => {
+    if (!child.killed) {
+      child.kill();
+    }
+  });
+
+  const response = await sendJsonRpc(child, {
+    id: 1,
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: {
+      arguments: {
+        imageBase64: "iVBORw0KGgo=",
+        mimeType: "image/png",
+        prompt: "Describe this image."
+      },
+      name: "vision_understand_with_fallback"
+    }
+  });
+
+  assert.equal(response.error, undefined);
+  assert.equal(response.result?.isError, undefined);
+  assert.equal(response.result?.content?.[0]?.text, "fallback vision ok");
+  assert.deepEqual(seen.providerBodies.map((body) => body.model), [
+    primaryModel,
+    primaryModel,
+    fallbackModel
+  ]);
+
+  await waitFor(() => seen.usageBodies.length === 3);
+  assert.deepEqual(seen.usageBodies.map((body) => body.outcome?.statusCode), [503, 503, 200]);
+  assert.deepEqual(seen.usageBodies.map((body) => body.target?.model), [
+    "glm-5v-turbo",
+    "glm-5v-turbo",
+    "qwen-vl-plus"
+  ]);
+});
+
 test("Fusion vision MCP preserves billing headers and status from non-JSON provider errors", async (t) => {
   const seen = {
     usageBody: undefined

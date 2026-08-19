@@ -318,7 +318,9 @@ export type VirtualModelDraft = {
   fixedModel: string;
   id: string;
   includeInGatewayModels: boolean;
+  imageGenerationFallbackModels: string[];
   imageGenerationModel: string;
+  imageGenerationRetryCount: string;
   instructionsAppend: string;
   instructionsPrepend: string;
   instructionsReplace: string;
@@ -334,8 +336,12 @@ export type VirtualModelDraft = {
   toolsText: string;
   customMcpServer: McpServerDraft;
   customToolName: string;
+  visionFallbackModels: string[];
   visionModel: string;
+  visionRetryCount: string;
+  videoGenerationFallbackModels: string[];
   videoGenerationModel: string;
+  videoGenerationRetryCount: string;
   webSearchEnvRows: KeyValueDraftRow[];
   webSearchProvider: VirtualModelFusionWebSearchProvider;
   executionMode: VirtualModelExecutionMode;

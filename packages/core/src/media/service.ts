@@ -2,10 +2,12 @@ import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync, realpathSync, rmSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { CONFIGDIR } from "@ccr/core/config/constants";
+import { ROUTER_FALLBACK_MAX_RETRY_COUNT } from "@ccr/core/contracts/app";
 import type { AppConfig, GatewayMediaProtocol, MediaToolsConfig } from "@ccr/core/contracts/app";
 import type { ImageEditRequest, ImageGenerateRequest, MediaArtifact, MediaExecutionContext, MediaExecutionResult, MediaJob, MediaJobError, MediaOperation, MediaRequest, PublicMediaArtifact, PublicMediaJob, VideoGenerateRequest } from "@ccr/core/media/contracts";
-import { GatewayMediaExecutor } from "@ccr/core/media/executors";
+import { GatewayMediaExecutor, mediaError } from "@ccr/core/media/executors";
 import type { GatewayMediaTarget, GatewayMediaTransport } from "@ccr/core/media/executors";
 import { grokMediaModelKind, isImportedGrokAgentProvider, migrateLegacyGrokMediaModelSelector, providerSupportsMediaKind, videoGenerationConstraints } from "@ccr/core/media/models";
 import { detectMediaType, MediaArtifactStore, MediaJobStore } from "@ccr/core/media/storage";
@@ -16,6 +18,7 @@ import { modelRegistryForConfig, parseProviderModelSelector, providerRuntimeId }
 
 type QueueItem = {
   jobId: string;
+  modelAttempts?: string[];
   request?: MediaRequest;
   resumeRemoteRequestId?: string;
 };
@@ -23,6 +26,19 @@ type QueueItem = {
 type Completion = {
   promise: Promise<MediaJob>;
   resolve: (job: MediaJob) => void;
+};
+
+type MediaModelInput = string | Pick<MediaToolBinding, "fallbackModelSelectors" | "modelSelector" | "retryCount">;
+
+type MediaModelPlan = {
+  fallbackModelSelectors: string[];
+  modelSelector: string;
+  retryCount: number;
+};
+
+type MediaAttemptFailure = {
+  error: MediaJobError;
+  modelSelector: string;
 };
 
 const mediaRoot = path.join(CONFIGDIR, "grok-media");
@@ -111,25 +127,28 @@ export class MediaService {
     return Boolean(this.running && this.config?.mediaTools.enabled);
   }
 
-  async imageGenerate(args: Record<string, unknown>, modelSelector: string): Promise<PublicMediaJob> {
+  async imageGenerate(args: Record<string, unknown>, modelInput: MediaModelInput): Promise<PublicMediaJob> {
     const request: ImageGenerateRequest = {
       aspectRatio: optionalString(args.aspect_ratio),
       prompt: requiredPrompt(args.prompt)
     };
-    return this.submitAndWait("image-generate", request, modelSelector, optionalString(args.idempotency_key));
+    const modelPlan = this.mediaModelPlan("image-generate", modelInput);
+    return this.submitAndWait("image-generate", request, modelPlan, optionalString(args.idempotency_key));
   }
 
-  async imageEdit(args: Record<string, unknown>, modelSelector: string): Promise<PublicMediaJob> {
+  async imageEdit(args: Record<string, unknown>, modelInput: MediaModelInput): Promise<PublicMediaJob> {
     const request: ImageEditRequest = {
       aspectRatio: optionalString(args.aspect_ratio),
       images: this.validateImages(args.images ?? args.image, 1, 3),
       prompt: requiredPrompt(args.prompt)
     };
-    return this.submitAndWait("image-edit", request, modelSelector, optionalString(args.idempotency_key));
+    const modelPlan = this.mediaModelPlan("image-edit", modelInput);
+    return this.submitAndWait("image-edit", request, modelPlan, optionalString(args.idempotency_key));
   }
 
-  videoStart(args: Record<string, unknown>, modelSelector: string): PublicMediaJob {
-    const target = resolveProviderMediaTarget(this.requireConfig(), modelSelector, "video-generate");
+  videoStart(args: Record<string, unknown>, modelInput: MediaModelInput): PublicMediaJob {
+    const modelPlan = this.mediaModelPlan("video-generate", modelInput);
+    const target = resolveProviderMediaTarget(this.requireConfig(), modelPlan.modelSelector, "video-generate");
     const constraints = videoGenerationConstraints(target.protocol);
     const durationValue = numberValue(args.duration) ?? constraints.defaultDuration;
     if (durationValue === undefined) throw new Error(`duration is required for ${target.protocol}.`);
@@ -160,7 +179,7 @@ export class MediaService {
       prompt: requiredPrompt(args.prompt),
       resolution
     };
-    const job = this.submit("video-generate", request, modelSelector, optionalString(args.idempotency_key));
+    const job = this.submit("video-generate", request, modelPlan, optionalString(args.idempotency_key));
     return this.publicJob(job);
   }
 
@@ -207,7 +226,7 @@ export class MediaService {
   toolBindings(): MediaToolBinding[] {
     return mediaToolBindingsForConfig(this.requireConfig()).map((binding) =>
       binding.operation === "video-generate"
-        ? { ...binding, protocol: resolveProviderMediaTarget(this.requireConfig(), binding.modelSelector, binding.operation).protocol }
+        ? this.videoToolBindingForRuntime(binding)
         : binding
     );
   }
@@ -223,17 +242,76 @@ export class MediaService {
     return { artifact, state: "ok" };
   }
 
-  private async submitAndWait(operation: MediaOperation, request: MediaRequest, modelSelector: string, idempotencyKey: string | undefined): Promise<PublicMediaJob> {
-    const job = this.submit(operation, request, modelSelector, idempotencyKey);
+  private mediaModelPlan(operation: MediaOperation, modelInput: MediaModelInput, options: { dropIncompatibleVideoFallbacks?: boolean } = {}): MediaModelPlan {
+    const config = this.requireConfig();
+    const source = typeof modelInput === "string" ? { modelSelector: modelInput } : modelInput;
+    const modelSelector = normalizeMediaModelSelector(config, source.modelSelector, operation);
+    const primaryTarget = resolveProviderMediaTarget(config, modelSelector, operation);
+    const fallbackModelSelectors: string[] = [];
+    const retryCount = clampInteger(source.retryCount ?? 0, 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
+    for (const sourceSelector of source.fallbackModelSelectors ?? []) {
+      const selector = normalizeMediaModelSelector(config, sourceSelector, operation);
+      if (selector === modelSelector || fallbackModelSelectors.includes(selector)) {
+        continue;
+      }
+      const target = resolveProviderMediaTarget(config, selector, operation);
+      if (operation === "video-generate" && target.protocol !== primaryTarget.protocol) {
+        if (options.dropIncompatibleVideoFallbacks) {
+          continue;
+        }
+        throw new Error(
+          `Video fallback model ${selector} uses ${target.protocol}, but primary model ${modelSelector} uses ${primaryTarget.protocol}. ` +
+          "Configure video fallback models with the same media protocol."
+        );
+      }
+      fallbackModelSelectors.push(selector);
+    }
+    return {
+      fallbackModelSelectors,
+      modelSelector,
+      retryCount
+    };
+  }
+
+  private videoToolBindingForRuntime(binding: MediaToolBinding): MediaToolBinding {
+    const config = this.requireConfig();
+    const modelSelector = normalizeMediaModelSelector(config, binding.modelSelector, "video-generate");
+    const primaryTarget = resolveProviderMediaTarget(config, modelSelector, "video-generate");
+    const fallbackModelSelectors: string[] = [];
+    for (const sourceSelector of binding.fallbackModelSelectors ?? []) {
+      try {
+        const selector = normalizeMediaModelSelector(config, sourceSelector, "video-generate");
+        if (selector === modelSelector || fallbackModelSelectors.includes(selector)) {
+          continue;
+        }
+        const target = resolveProviderMediaTarget(config, selector, "video-generate");
+        if (target.protocol === primaryTarget.protocol) {
+          fallbackModelSelectors.push(selector);
+        }
+      } catch {
+        continue;
+      }
+    }
+    return {
+      modelSelector,
+      name: binding.name,
+      operation: binding.operation,
+      protocol: primaryTarget.protocol,
+      ...(fallbackModelSelectors.length ? { fallbackModelSelectors } : {}),
+      ...(binding.retryCount ? { retryCount: binding.retryCount } : {})
+    };
+  }
+
+  private async submitAndWait(operation: MediaOperation, request: MediaRequest, modelPlan: MediaModelPlan, idempotencyKey: string | undefined): Promise<PublicMediaJob> {
+    const job = this.submit(operation, request, modelPlan, idempotencyKey);
     if (job.status !== "queued" && job.status !== "running") return this.publicJob(job);
     const completion = this.completions.get(job.id);
     return this.publicJob(completion ? await completion.promise : this.jobStore.get(job.id) ?? job);
   }
 
-  private submit(operation: MediaOperation, request: MediaRequest, modelSelector: string, idempotencyKey?: string): MediaJob {
+  private submit(operation: MediaOperation, request: MediaRequest, modelPlan: MediaModelPlan, idempotencyKey?: string): MediaJob {
     this.requireEnabledConfig();
-    const normalizedModelSelector = normalizeMediaModelSelector(this.requireConfig(), modelSelector, operation);
-    resolveProviderMediaTarget(this.requireConfig(), normalizedModelSelector, operation);
+    const normalizedModelSelector = modelPlan.modelSelector;
     const idempotencyKeyHash = idempotencyKey ? createHash("sha256").update(`${normalizedModelSelector}\n${idempotencyKey}`).digest("hex") : undefined;
     if (idempotencyKeyHash) {
       const existing = this.jobStore.list().find((job) => job.operation === operation && job.idempotencyKeyHash === idempotencyKeyHash);
@@ -252,7 +330,7 @@ export class MediaService {
     };
     this.jobStore.put(job);
     this.completions.set(job.id, createCompletion());
-    this.queue.push({ jobId: job.id, request });
+    this.queue.push({ jobId: job.id, modelAttempts: mediaModelAttempts(modelPlan), request });
     this.schedule();
     return job;
   }
@@ -285,17 +363,17 @@ export class MediaService {
     this.active.set(initialJob.id, controller);
     let job = this.jobStore.update(initialJob.id, { startedAt: initialJob.startedAt ?? new Date().toISOString(), status: "running" });
     try {
-      const context: MediaExecutionContext = {
-        job,
-        onRemoteRequestId: (remoteRequestId) => {
-          job = this.jobStore.update(job.id, { remoteRequestId });
-        },
-        signal: controller.signal
-      };
-      const result = item.resumeRemoteRequestId
-        ? await this.executor(jobModelSelector(job), job.operation).resumeVideo(item.resumeRemoteRequestId, controller.signal)
-        : await this.execute(job, item.request!, context);
-      const artifact = await this.importResult(result, controller.signal, config.artifactTtlHours, jobModelSelector(job));
+      let resultModelSelector = jobModelSelector(job);
+      let result: MediaExecutionResult;
+      if (item.resumeRemoteRequestId) {
+        result = await this.executor(resultModelSelector, job.operation).resumeVideo(item.resumeRemoteRequestId, controller.signal);
+      } else {
+        const execution = await this.executeWithAttempts(item, job, controller);
+        job = execution.job;
+        result = execution.result;
+        resultModelSelector = execution.modelSelector;
+      }
+      const artifact = await this.importResult(result, controller.signal, config.artifactTtlHours, resultModelSelector);
       job = this.jobStore.update(job.id, {
         artifact,
         error: undefined,
@@ -330,6 +408,59 @@ export class MediaService {
       this.completions.delete(job.id);
       this.schedule();
     }
+  }
+
+  private async executeWithAttempts(
+    item: QueueItem,
+    initialJob: MediaJob,
+    controller: AbortController
+  ): Promise<{ job: MediaJob; modelSelector: string; result: MediaExecutionResult }> {
+    let job = initialJob;
+    const attempts = item.modelAttempts?.length ? item.modelAttempts : [jobModelSelector(job)];
+    const failures: MediaAttemptFailure[] = [];
+
+    for (let index = 0; index < attempts.length; index += 1) {
+      const modelSelector = attempts[index];
+      if (jobModelSelector(job, false) !== modelSelector || index > 0) {
+        job = this.jobStore.update(job.id, {
+          error: undefined,
+          modelSelector,
+          remoteRequestId: undefined,
+          status: "running"
+        });
+      }
+
+      const context: MediaExecutionContext = {
+        job,
+        onRemoteRequestId: (remoteRequestId) => {
+          job = this.jobStore.update(job.id, { remoteRequestId });
+        },
+        signal: controller.signal
+      };
+
+      try {
+        const result = await this.execute(job, item.request!, context);
+        return {
+          job,
+          modelSelector,
+          result
+        };
+      } catch (error) {
+        const current = this.jobStore.get(job.id) ?? job;
+        if (current.status === "canceled" || this.stopping || controller.signal.aborted) {
+          throw error;
+        }
+        const normalized = normalizeJobError(error, false);
+        failures.push({ error: normalized, modelSelector });
+        job = this.jobStore.update(job.id, { error: normalized, status: "running" });
+        if (!normalized.retryable || index >= attempts.length - 1) {
+          throw mediaAttemptsError(failures, error);
+        }
+        await delay(mediaRetryDelayMs(failures.length - 1), undefined, { signal: controller.signal });
+      }
+    }
+
+    throw mediaAttemptsError(failures, new Error("Media request did not run."));
   }
 
   private execute(job: MediaJob, request: MediaRequest, context: MediaExecutionContext): Promise<MediaExecutionResult> {
@@ -468,6 +599,45 @@ function optionalString(value: unknown): string | undefined {
 
 function numberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function mediaModelAttempts(plan: MediaModelPlan): string[] {
+  const attempts: string[] = [];
+  for (const modelSelector of [plan.modelSelector, ...plan.fallbackModelSelectors]) {
+    for (let index = 0; index <= plan.retryCount; index += 1) {
+      attempts.push(modelSelector);
+    }
+  }
+  return attempts;
+}
+
+function mediaRetryDelayMs(failedAttemptIndex: number): number {
+  const exponent = Math.min(6, Math.max(0, failedAttemptIndex));
+  return Math.min(2000, 100 * 2 ** exponent);
+}
+
+function mediaAttemptsError(failures: MediaAttemptFailure[], lastError: unknown): unknown {
+  if (failures.length <= 1) {
+    return lastError;
+  }
+  const lastFailure = failures[failures.length - 1];
+  return mediaError(
+    lastFailure?.error.code ?? "media_error",
+    `Media request failed after ${failures.length} attempts. ${formatMediaAttemptFailures(failures)} Last error: ${formatError(lastError)}`,
+    lastFailure?.error.retryable ?? false
+  );
+}
+
+function formatMediaAttemptFailures(failures: MediaAttemptFailure[]): string {
+  return `Failures: ${failures.map((failure) => `${failure.modelSelector} ${failure.error.code}`).join("; ")}.`;
+}
+
+function clampInteger(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function normalizeJobError(error: unknown, aborted: boolean): MediaJobError {

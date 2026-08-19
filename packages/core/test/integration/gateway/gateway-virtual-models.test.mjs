@@ -36,7 +36,7 @@ test("gateway config rewrites Fusion fixed base and vision models to core provid
           { baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", type: "anthropic_messages" }
         ],
         credentials: [{ apiKey: "test-key", id: "test-1" }],
-        models: ["glm-5.2", "glm-5v-turbo"],
+        models: ["glm-5.2", "glm-4.5-air", "glm-5v-turbo"],
         name: providerName,
         type: "openai_chat_completions"
       }
@@ -62,7 +62,9 @@ test("gateway config rewrites Fusion fixed base and vision models to core provid
       materialization: { enabled: true, includeInGatewayModels: true },
       metadata: {
         fusionVision: {
+          fallbackModels: [`${providerName}/glm-4.5-air`],
           modelSelector: `${providerName}/glm-5v-turbo`,
+          retryCount: 2,
           toolName: "vision_understand_glm_fusion"
         }
       },
@@ -80,6 +82,11 @@ test("gateway config rewrites Fusion fixed base and vision models to core provid
     profile.metadata.fusionVision.modelSelector,
     /^provider-zhipu-ai-china---coding-plan-[a-f0-9]{10}::openai_chat_completions::cred:test-1\/glm-5v-turbo$/
   );
+  assert.match(
+    profile.metadata.fusionVision.fallbackModels[0],
+    /^provider-zhipu-ai-china---coding-plan-[a-f0-9]{10}::openai_chat_completions::cred:test-1\/glm-4\.5-air$/
+  );
+  assert.equal(profile.metadata.fusionVision.retryCount, 2);
   assert.equal(profile.execution.maxToolCalls, Number.MAX_SAFE_INTEGER);
   assert.equal(profile.execution.maxTurns, Number.MAX_SAFE_INTEGER);
   assert.equal(profiles[0].baseModel.fixedModel, `${providerName}/glm-5.2`);
@@ -196,7 +203,9 @@ test("issue 1480 Fusion vision config injects core auth token into MCP gateway r
         materialization: { enabled: true, includeInGatewayModels: true },
         metadata: {
           fusionVision: {
+            fallbackModels: [`${providerName}/glm-4.5-air`],
             modelSelector: `${providerName}/glm-5v-turbo`,
+            retryCount: 1,
             toolName: "vision_understand_glm_5_2v"
           }
         },
@@ -231,6 +240,13 @@ test("issue 1480 Fusion vision config injects core auth token into MCP gateway r
   assert.match(
     server.env.VISION_MODEL,
     /^provider-zhipu-ai-china---coding-plan-[a-f0-9]{10}::openai_chat_completions::cred:test-1\/glm-5v-turbo$/
+  );
+  assert.equal(server.env.VISION_RETRY_COUNT, "1");
+  const fallbackModels = JSON.parse(server.env.VISION_FALLBACK_MODELS_JSON);
+  assert.equal(fallbackModels.length, 1);
+  assert.match(
+    fallbackModels[0],
+    /^provider-zhipu-ai-china---coding-plan-[a-f0-9]{10}::openai_chat_completions::cred:test-1\/glm-4\.5-air$/
   );
 });
 

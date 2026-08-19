@@ -23,10 +23,12 @@ This also applies to Codex computer use. After combining GLM-5.2 with GLM-5V-Tur
 
 Select `ccr-fusion-builtins / vision_understand`, and choose a Vision model that actually supports image understanding.
 
+You can also configure Vision retries and Vision fallback models. These retries apply to the built-in vision tool call itself: if the Vision model fails while preparing image context, CCR retries that Vision model first, then tries the configured fallback Vision models. The base text model remains unchanged.
+
 ## Model requirement
 
 The Vision model determines image, screenshot, chart, and OCR understanding quality. The base model determines the final answer style, reasoning ability, and coding ability.
 
 ## Troubleshooting
 
-When image requests fail, relevant details include whether the Vision model supports visual input and any Fusion tool errors in Logs.
+When image requests fail, relevant details include whether the Vision model supports visual input, the configured Vision retry count and fallback models, and any Fusion tool errors in Logs.

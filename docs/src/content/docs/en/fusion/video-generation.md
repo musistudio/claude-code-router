@@ -21,6 +21,8 @@ Video generation always runs asynchronously. The start call returns a job ID imm
 
 After importing a Grok Agent, CCR automatically provides `grok-imagine-video`. ai-gateway reuses the existing OAuth login to access `api.x.ai`; it does not start Grok CLI.
 
+Video generation has its own retry count and fallback video models. If the selected video model fails with a retryable media-provider error, CCR retries that video model first, then tries the configured fallback video models. The base text model remains unchanged.
+
 ## Supported requests
 
 CCR calls providers through ai-gateway's generic media protocol:
@@ -61,5 +63,6 @@ When video generation fails, check:
 
 - Whether the provider model declares or actually supports video generation.
 - Whether the Fusion tool is bound to the correct video model.
+- The configured video retry count and fallback video models.
 - The ai-gateway status code and error in request logs.
 - Whether image-to-video or reference-to-video inputs are inside allowed read roots.

@@ -377,15 +377,28 @@ function normalizeCoreGatewayVirtualModelProfile(profile: unknown, config: AppCo
   const rewrittenVisionSelector = fusionVision && !visionBaseUrl && visionSelector
     ? rewriteModelSelectorForCoreGatewayProfile(visionSelector, config, "openai_chat_completions")
     : undefined;
+  const visionFallbackModels = stringListValue(fusionVision?.fallbackModels);
+  const rewrittenVisionFallbackModels = fusionVision && !visionBaseUrl
+    ? uniqueStrings(visionFallbackModels.map((model) => rewriteModelSelectorForCoreGatewayProfile(model, config, "openai_chat_completions")))
+    : visionFallbackModels;
+  const visionFallbackModelsChanged = !stringArraysEqual(rewrittenVisionFallbackModels, visionFallbackModels);
 
-  if (metadata && fusionVision && visionSelectorField && rewrittenVisionSelector && rewrittenVisionSelector !== visionSelector) {
+  if (
+    metadata &&
+    fusionVision &&
+    (
+      (visionSelectorField && rewrittenVisionSelector && rewrittenVisionSelector !== visionSelector) ||
+      visionFallbackModelsChanged
+    )
+  ) {
     nextProfile = {
       ...sourceProfile,
       metadata: {
         ...metadata,
         fusionVision: {
           ...fusionVision,
-          [visionSelectorField]: rewrittenVisionSelector
+          ...(visionSelectorField && rewrittenVisionSelector ? { [visionSelectorField]: rewrittenVisionSelector } : {}),
+          ...(visionFallbackModelsChanged ? { fallbackModels: rewrittenVisionFallbackModels } : {})
         }
       }
     };
@@ -452,6 +465,10 @@ function coreGatewayProviderSelectorName(
   }
 
   return capability ? providerCapabilityInternalName(provider, protocol) : providerRuntimeId(provider);
+}
+
+function stringArraysEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 

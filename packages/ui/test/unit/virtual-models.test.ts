@@ -64,13 +64,38 @@ test("Fusion default editing keeps client tools allowed", () => {
   assert.equal(savedProfile.execution.clientToolsPolicy, "allow");
 });
 
+test("Fusion vision fallback and retry settings round trip through profile metadata", () => {
+  const config = appConfigFixture();
+  const draft = createVirtualModelDraft(config);
+  draft.exactAliasesText = "fusion-vision-fallback";
+  draft.fixedModel = "provider/base-model";
+  draft.visionModel = "provider/vision-primary";
+  draft.visionFallbackModels = ["provider/vision-backup", "provider/vision-backup"];
+  draft.visionRetryCount = "2";
+
+  const profile = virtualModelProfileFromDraft(draft, [], undefined);
+
+  assert.equal(metadataString(profile.metadata, "fusionVision", "modelSelector"), "provider/vision-primary");
+  assert.deepEqual(metadataStringArray(profile.metadata, "fusionVision", "fallbackModels"), ["provider/vision-backup"]);
+  assert.equal(metadataNumber(profile.metadata, "fusionVision", "retryCount"), 2);
+
+  const editDraft = createVirtualModelDraftFromProfile(profile, config);
+  assert.equal(editDraft.visionModel, "provider/vision-primary");
+  assert.deepEqual(editDraft.visionFallbackModels, ["provider/vision-backup"]);
+  assert.equal(editDraft.visionRetryCount, "2");
+});
+
 test("image and video generation are generic Fusion tools with independent model bindings", () => {
   const config = appConfigFixture();
   const draft = createVirtualModelDraft(config);
   draft.exactAliasesText = "fusion-media";
   draft.fixedModel = "provider/base-model";
   draft.imageGenerationModel = "Media Provider/grok-imagine-image-quality";
+  draft.imageGenerationFallbackModels = ["Media Provider/grok-imagine-image-backup", "Media Provider/grok-imagine-image-backup"];
+  draft.imageGenerationRetryCount = "2";
   draft.videoGenerationModel = "Media Provider/grok-imagine-video";
+  draft.videoGenerationFallbackModels = ["Media Provider/grok-imagine-video-backup"];
+  draft.videoGenerationRetryCount = "1";
   draft.toolsText = `${BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME}, ${BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME}`;
 
   assert.deepEqual(fusionToolOptions.slice(-2).map((option) => option.value), [BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME, BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME]);
@@ -90,11 +115,19 @@ test("image and video generation are generic Fusion tools with independent model
   assert.equal(profile.execution.matchWebSearch, false);
   assert.equal(profile.metadata?.fusionTool, undefined);
   assert.equal(metadataString(profile.metadata, "fusionMedia", "imageModelSelector"), "Media Provider/grok-imagine-image-quality");
+  assert.deepEqual(metadataStringArray(profile.metadata, "fusionMedia", "imageFallbackModelSelectors"), ["Media Provider/grok-imagine-image-backup"]);
+  assert.equal(metadataNumber(profile.metadata, "fusionMedia", "imageRetryCount"), 2);
   assert.equal(metadataString(profile.metadata, "fusionMedia", "videoModelSelector"), "Media Provider/grok-imagine-video");
+  assert.deepEqual(metadataStringArray(profile.metadata, "fusionMedia", "videoFallbackModelSelectors"), ["Media Provider/grok-imagine-video-backup"]);
+  assert.equal(metadataNumber(profile.metadata, "fusionMedia", "videoRetryCount"), 1);
   const editDraft = createVirtualModelDraftFromProfile(profile, config);
   assert.equal(editDraft.toolsText, `${BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME}, ${BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME}`);
   assert.equal(editDraft.imageGenerationModel, "Media Provider/grok-imagine-image-quality");
+  assert.deepEqual(editDraft.imageGenerationFallbackModels, ["Media Provider/grok-imagine-image-backup"]);
+  assert.equal(editDraft.imageGenerationRetryCount, "2");
   assert.equal(editDraft.videoGenerationModel, "Media Provider/grok-imagine-video");
+  assert.deepEqual(editDraft.videoGenerationFallbackModels, ["Media Provider/grok-imagine-video-backup"]);
+  assert.equal(editDraft.videoGenerationRetryCount, "1");
   assert.equal(virtualModelProfilesUseMediaTools([profile]), true);
   assert.equal(virtualModelToolSummary(profile), "Image generation (Media Provider/grok-imagine-image-quality), Video generation (Media Provider/grok-imagine-video)");
   assert.deepEqual(selectedFusionToolNamesFromProfile(editDraft.tools, profile), [BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME, BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME]);
@@ -120,4 +153,22 @@ function metadataString(metadata: Record<string, unknown> | undefined, key: stri
   }
   const fieldValue = (value as Record<string, unknown>)[field];
   return typeof fieldValue === "string" ? fieldValue : undefined;
+}
+
+function metadataStringArray(metadata: Record<string, unknown> | undefined, key: string, field: string): string[] | undefined {
+  const value = metadata?.[key];
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const fieldValue = (value as Record<string, unknown>)[field];
+  return Array.isArray(fieldValue) ? fieldValue.filter((item): item is string => typeof item === "string") : undefined;
+}
+
+function metadataNumber(metadata: Record<string, unknown> | undefined, key: string, field: string): number | undefined {
+  const value = metadata?.[key];
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const fieldValue = (value as Record<string, unknown>)[field];
+  return typeof fieldValue === "number" ? fieldValue : undefined;
 }
