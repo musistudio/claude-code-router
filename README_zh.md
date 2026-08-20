@@ -552,7 +552,7 @@ Claude Code · Claude Design · Codex · Grok CLI · Kimi CLI · Kilo Code · Op
     <td align="center" width="220">*知</td>
     <td align="center" width="220">*语</td>
     <td align="center" width="220">*瓜</td>
-    <td align="center" width="220"></td>
+    <td align="center" width="220">**新</td>
     <td align="center" width="220"></td>
     <td align="center" width="220"></td>
   </tr>
