@@ -77,7 +77,7 @@ const visionTool = {
     detail: { enum: ["auto", "low", "high"], type: "string" },
     imageBase64: { description: "Single raw base64 image payload or data URL.", type: "string" },
     imagePath: { description: "Single local image path.", type: "string" },
-    imageUrl: { description: "Single HTTP(S) image URL or data URL.", type: "string" },
+    imageUrl: { description: "Single HTTP(S) image URL, data URL, or bare base64 payload.", type: "string" },
     images: {
       items: objectSchema({
         base64: { type: "string" },
