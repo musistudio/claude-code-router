@@ -173,6 +173,13 @@ class GatewayService {
         return this.status;
       }
 
+      // The HTTP server starts accepting requests as soon as listen() binds, but
+      // the managed core gateway child is spawned later in this method. Expose
+      // the auth token before binding so a request that lands in that startup
+      // window is not rejected with a misleading "core gateway auth token is not
+      // initialized" 502. The token is cleared again by stop() if the child
+      // fails to spawn, and by handleCoreGatewayTermination if it exits later.
+      this.coreAuthToken = coreAuthToken;
       await this.rawTraceSynchronizer.start();
       await this.listen(config);
       if (this.server) {
@@ -200,7 +207,6 @@ class GatewayService {
         const runtimeId = randomUUID();
         const spawnedGateway = spawnGatewayProcess(config, coreGatewayConfig, upstreamProxyUrl, runtimeId, coreAuthToken);
         this.child = spawnedGateway.child;
-        this.coreAuthToken = coreAuthToken;
         const managedChild = this.child;
         let markerWritePromise: Promise<void> | undefined;
         let startupFailure: Error | undefined;
