@@ -779,6 +779,7 @@ type ImageInputToUrlResult = { url: string } | { skip: string };
  * (irreparably truncated mid-image), and an XML/SVG payload -- which the typical
  * upstream rejects outright (supported formats are jpeg/png/gif/webp), so
  * relabeling it buys nothing. A remainder of 2 or 3 is repairable by padding.
+ * Local files (imagePath/images[].path) go through the same content checks.
  */
 async function imageInputToUrl(input: { base64?: string; mimeType?: string; path?: string; url?: string }): Promise<ImageInputToUrlResult> {
   if (input.url) {
@@ -787,20 +788,7 @@ async function imageInputToUrl(input: { base64?: string; mimeType?: string; path
       return { url };
     }
     if (url.startsWith("data:")) {
-      const comma = url.indexOf(",");
-      if (comma < 1) {
-        return { skip: `malformed data URL (${preview(url)})` };
-      }
-      const header = url.slice(5, comma);
-      if (!/;base64/i.test(header)) {
-        return { skip: `data URL is not base64 (${preview(url)})` };
-      }
-      const mimeType = header.split(";")[0] || undefined;
-      const normalized = normalizeImagePayload(url.slice(comma + 1));
-      if (!normalized) {
-        return { skip: `data URL payload is not usable base64 (${preview(url)})` };
-      }
-      return imageDataUrlOrSkip(normalized, mimeType);
+      return dataUrlResult(url, input.mimeType);
     }
     // Not an HTTP(S) URL and not a data URL. Either a bare base64 payload (the
     // virtual-model tool loop's usual shape; wrapped here because strict gateways
@@ -812,11 +800,18 @@ async function imageInputToUrl(input: { base64?: string; mimeType?: string; path
     return imageDataUrlOrSkip(normalized, "image/png");
   }
   if (input.base64) {
-    const normalized = normalizeImagePayload(input.base64);
+    const value = input.base64.trim();
+    if (value.startsWith("data:")) {
+      // The schema documents imageBase64 as "Single raw base64 image payload or
+      // data URL"; both shapes must behave alike, so a data URL takes the same
+      // path as imageUrl above.
+      return dataUrlResult(value, input.mimeType);
+    }
+    const normalized = normalizeImagePayload(value);
     if (!normalized) {
       return { skip: "imageBase64 is not usable base64" };
     }
-    return imageDataUrlOrSkip(normalized, input.mimeType || "image/png");
+    return imageDataUrlOrSkip(normalized, input.mimeType);
   }
   if (!input.path) {
     return { skip: "image entry has no url, base64, or path" };
@@ -825,20 +820,53 @@ async function imageInputToUrl(input: { base64?: string; mimeType?: string; path
   if (buffer.byteLength > maxLocalImageBytes) {
     throw new Error(`Local image exceeds ${maxLocalImageBytes} bytes: ${input.path}`);
   }
-  return imageDataUrlOrSkip({ payload: buffer.toString("base64"), svg: false }, input.mimeType || mimeTypeFromPath(input.path));
+  // File contents get the same checks as every other input: a .svg on disk must
+  // not be forwarded as a fake raster data URL.
+  const normalized = normalizeImagePayload(buffer.toString("base64"));
+  if (!normalized) {
+    return { skip: `file at ${preview(input.path)} is not usable image data` };
+  }
+  return imageDataUrlOrSkip(normalized, input.mimeType || mimeTypeFromPath(input.path));
+}
+
+/** Only these media types are ever emitted on a data URL; strict upstreams validate them. */
+const supportedImageMimeTypes = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+
+/**
+ * Parse and validate a full `data:...;base64,...` URL. Shared by the imageUrl and
+ * imageBase64 fields so both accept the same shapes. Non-base64 data URLs are
+ * rejected; a header media type outside the supported set is dropped and the
+ * payload's sniffed type is used instead.
+ */
+function dataUrlResult(value: string, fallbackMimeType: string | undefined): ImageInputToUrlResult {
+  const comma = value.indexOf(",");
+  if (comma < 1) {
+    return { skip: `malformed data URL (${preview(value)})` };
+  }
+  const header = value.slice(5, comma);
+  if (!/;base64/i.test(header)) {
+    return { skip: `data URL is not base64 (${preview(value)})` };
+  }
+  const headerMimeType = header.split(";")[0] || undefined;
+  const normalized = normalizeImagePayload(value.slice(comma + 1));
+  if (!normalized) {
+    return { skip: `data URL payload is not usable base64 (${preview(value)})` };
+  }
+  return imageDataUrlOrSkip(normalized, headerMimeType || fallbackMimeType);
 }
 
 const base64PayloadPattern = /^[A-Za-z0-9+/]*={0,2}$/;
-const svgHeadPattern = /^(?:﻿)?\s*(?:<\?xml|<svg)/i;
+const svgHeadPattern = /^(?:\uFEFF)?\s*(?:<\?xml|<svg)/i;
 
 /**
  * Validate and repair a base64 image payload. Returns undefined when the bytes are
  * not usable: non-base64 characters, an empty decode, or a length mod 4 of 1, which
  * means the image was cut off mid-stream and padding cannot restore it. A remainder
  * of 2 or 3 is fixed by adding `=` padding. SVG/XML payloads are flagged from the
- * decoded head so the caller can reject them with a precise reason.
+ * decoded head so the caller can reject them with a precise reason, and the raster
+ * format is sniffed so the caller can label the data URL with a supported type.
  */
-function normalizeImagePayload(value: string): { payload: string; svg: boolean } | undefined {
+function normalizeImagePayload(value: string): { payload: string; svg: boolean; sniffedType?: string } | undefined {
   if (!value || !base64PayloadPattern.test(value) || value.length % 4 === 1) {
     return undefined;
   }
@@ -849,15 +877,48 @@ function normalizeImagePayload(value: string): { payload: string; svg: boolean }
   }
   return {
     payload: padded,
-    svg: svgHeadPattern.test(buffer.subarray(0, 64).toString("utf8"))
+    svg: svgHeadPattern.test(buffer.subarray(0, 64).toString("utf8")),
+    sniffedType: sniffImageType(buffer)
   };
 }
 
-function imageDataUrlOrSkip(image: { payload: string; svg: boolean }, mimeType: string | undefined): ImageInputToUrlResult {
+/** Detect a raster format from its leading bytes; only the supported types are returned. */
+function sniffImageType(buffer: Buffer): string | undefined {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (buffer.length >= 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
+    return "image/png";
+  }
+  if (buffer.length >= 6 && buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38 && (buffer[4] === 0x37 || buffer[4] === 0x39) && buffer[5] === 0x61) {
+    return "image/gif";
+  }
+  if (buffer.length >= 12 && buffer.subarray(0, 4).toString("latin1") === "RIFF" && buffer.subarray(8, 12).toString("latin1") === "WEBP") {
+    return "image/webp";
+  }
+  return undefined;
+}
+
+/**
+ * Pick the media-type label for the data URL. Only the supported raster types are
+ * ever emitted: an explicit label in that set wins, otherwise the sniffed format,
+ * otherwise image/png. The label is validated for its own sake -- it is part of the
+ * data URL a strict upstream checks -- while the bytes decide whether the image is
+ * decodable at all.
+ */
+function imageLabel(mimeType: string | undefined, image: { sniffedType?: string }): string {
+  const explicit = mimeType?.trim().toLowerCase();
+  if (explicit && supportedImageMimeTypes.has(explicit)) {
+    return explicit;
+  }
+  return image.sniffedType ?? "image/png";
+}
+
+function imageDataUrlOrSkip(image: { payload: string; svg: boolean; sniffedType?: string }, mimeType: string | undefined): ImageInputToUrlResult {
   if (image.svg) {
     return { skip: "SVG/XML image payload is not supported by the vision upstream (supported: image/jpeg, image/png, image/gif, image/webp)" };
   }
-  return { url: `data:${mimeType || "image/png"};base64,${image.payload}` };
+  return { url: `data:${imageLabel(mimeType, image)};base64,${image.payload}` };
 }
 
 /** Short, quoted head of a value for skip reasons and error messages. */
