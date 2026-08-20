@@ -5,7 +5,7 @@ import path from "node:path";
 import { isGatewayProviderEnabled, type AppConfig, type ProfileClientKind, type ProfileConfig, type RequestRouteTraceChange, type RouterBuiltInAgentRuleId, type RouterFallbackConfig, type RouterRule, type RouterRuleCondition } from "@ccr/core/contracts/app";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { applyAgentRequestEnrichers } from "@ccr/core/agents/request-enricher";
-import { buildClaudeAppGatewayModelRoutes, type ClaudeAppGatewayModelRoute, resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
+import { buildClaudeAppGatewayModelRoutes, type ClaudeAppGatewayModelRoute, resolveClaudeAppGatewayRouteModel, stripClaudeAppGatewayOneMillionContextSuffix } from "@ccr/core/agents/claude-app/gateway-routes";
 import { claudeAppGatewayModelRouteOptions } from "@ccr/core/gateway/internal/shared";
 import { compileRouterConfig, type CompiledProfileRoutingConfig, type CompiledRouterConfig, type CompiledRouterRule } from "@ccr/core/routing/config-compiler";
 import type { RouteDecision, RouteDiagnostic, RouteModelRef, RouteRequest, RouteSource } from "@ccr/core/routing/contracts";
@@ -545,7 +545,33 @@ function resolveConfiguredClaudeCodeModel(
   const discoveredTarget = target
     ? resolveClaudeAppGatewayRouteModel(target, config, claudeAppGatewayModelRouteOptions)
     : undefined;
-  return modelRegistry.resolve(discoveredTarget ?? target);
+  const strippedTarget = target
+    ? stripClaudeAppGatewayOneMillionContextSuffix(target)
+    : undefined;
+  const targetHasOneMillionContextSuffix = Boolean(target && strippedTarget && target !== strippedTarget);
+  const candidates: Array<{ canonicalize?: boolean; selector?: string }> = [
+    { selector: discoveredTarget },
+    { canonicalize: targetHasOneMillionContextSuffix, selector: strippedTarget },
+    { selector: target }
+  ];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    if (!candidate.selector) {
+      continue;
+    }
+    const key = candidate.selector.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    const resolved = modelRegistry.resolve(candidate.selector);
+    if (resolved) {
+      return candidate.canonicalize
+        ? { ...resolved, selector: resolved.canonicalSelector }
+        : resolved;
+    }
+  }
+  return undefined;
 }
 
 function explicitClientModelCanOverrideBuiltInClaudeCodeRoute(
@@ -584,7 +610,9 @@ function resolveBuiltInAgentRouteDecision(
     if (!builtInAgentRouteMatches(request, config, agent)) {
       continue;
     }
-    const target = modelRegistry.resolve(resolveBuiltInAgentRouteTarget(request, config, agent));
+    const target = agent === "claude-code"
+      ? resolveBuiltInClaudeCodeRouteTarget(request, config, modelRegistry)
+      : modelRegistry.resolve(resolveBuiltInAgentRouteTarget(request, config, agent));
     if (!target) {
       continue;
     }
@@ -707,6 +735,18 @@ function resolveBuiltInAgentRouteTarget(
   agent: RouterBuiltInAgentRuleId
 ): string | undefined {
   return normalizeRouteSelector(resolveBuiltInAgentProfile(request, config, agent)?.model);
+}
+
+function resolveBuiltInClaudeCodeRouteTarget(
+  request: MutableRequestLike,
+  config: AppConfig,
+  modelRegistry: ModelRegistry
+): RouteModelRef | undefined {
+  return resolveConfiguredClaudeCodeModel(
+    resolveBuiltInAgentRouteTarget(request, config, "claude-code"),
+    config,
+    modelRegistry
+  );
 }
 
 function builtInAgentUserAgentNeedle(agent: RouterBuiltInAgentRuleId): string {
