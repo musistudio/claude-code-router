@@ -20,6 +20,7 @@ import type {
   ProviderAccountConfig,
   ProviderAccountConnectorConfig,
   ProviderAccountHttpJsonConnectorConfig,
+  ProviderAccountMappedMeterConfig,
   ProviderAccountStandardConnectorConfig,
   ProviderAccountWebContentJsonConnectorConfig,
   ProviderCredentialConfig,
@@ -1215,7 +1216,7 @@ export function createProviderAccountDraftFromConfig(account: ProviderAccountCon
       accountRefreshIntervalMs: account.refreshIntervalMs ? String(account.refreshIntervalMs) : ""
     };
   }
-  if (jsonConnector.parser) {
+  if (jsonConnector.parser || flatDraftDropsMeters(jsonConnector.mapping.meters)) {
     return {
       ...base,
       accountConnectorsText: JSON.stringify(connectors, null, 2),
@@ -1257,6 +1258,22 @@ export function createProviderAccountDraftFromConfig(account: ProviderAccountCon
     usageSubscriptionResetPath: stringValue(subscriptionMeter?.resetAt) || "",
     usageSubscriptionUnit: stringValue(subscriptionMeter?.unit) || "tokens"
   };
+}
+
+function isBalanceDraftMeter(meter: ProviderAccountMappedMeterConfig): boolean {
+  return meter.kind === "balance" || meter.id === "balance";
+}
+
+function isSubscriptionDraftMeter(meter: ProviderAccountMappedMeterConfig): boolean {
+  return meter.kind === "subscription" || meter.id === "subscription" || meter.kind === "quota" || meter.kind === "tokens" || meter.kind === "time_window";
+}
+
+function flatDraftDropsMeters(meters: ProviderAccountMappedMeterConfig[]): boolean {
+  const balanceMeters = meters.filter(isBalanceDraftMeter);
+  const subscriptionMeters = meters.filter((meter) => !isBalanceDraftMeter(meter) && isSubscriptionDraftMeter(meter));
+  return balanceMeters.length > 1
+    || subscriptionMeters.length > 1
+    || balanceMeters.length + subscriptionMeters.length !== meters.length;
 }
 
 function mappedStringDraftValue(value: string | string[] | undefined): string {

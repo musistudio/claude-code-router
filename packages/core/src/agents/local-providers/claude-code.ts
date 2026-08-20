@@ -55,10 +55,10 @@ const percentLimitMapping = (id: string, label: string, path: string, window: st
 const claudeCodeAccountMapping: ProviderAccountMappingConfig = {
   meters: [
     percentLimitMapping("claude_five_hour_quota", "5h quota", "$.five_hour", "5h"),
-    percentLimitMapping("claude_seven_day_quota", "7d quota", "$.seven_day", "7d"),
-    percentLimitMapping("claude_oauth_apps_quota", "OAuth apps quota", "$.seven_day_oauth_apps", "7d"),
-    percentLimitMapping("claude_opus_quota", "Opus quota", "$.seven_day_opus", "7d"),
-    percentLimitMapping("claude_sonnet_quota", "Sonnet quota", "$.seven_day_sonnet", "7d"),
+    percentLimitMapping("claude_seven_day_quota", "7d quota", "$.seven_day", "weekly"),
+    percentLimitMapping("claude_oauth_apps_quota", "OAuth apps quota", "$.seven_day_oauth_apps", "weekly"),
+    percentLimitMapping("claude_opus_quota", "Opus quota", "$.seven_day_opus", "weekly"),
+    percentLimitMapping("claude_sonnet_quota", "Sonnet quota", "$.seven_day_sonnet", "weekly"),
     {
       id: "claude_extra_usage",
       kind: "quota",
