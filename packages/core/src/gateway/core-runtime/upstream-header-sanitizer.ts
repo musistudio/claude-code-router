@@ -1,3 +1,6 @@
+import { dropNonReplayableReasoningItems } from "@ccr/core/gateway/core-runtime/responses-reasoning-filter";
+import type { ResponsesReasoningFilterInput } from "@ccr/core/gateway/core-runtime/responses-reasoning-filter";
+
 type UpstreamRequest = {
   body: unknown;
   bodyEncoding?: "bytes" | "form" | "json" | "none" | "text";
@@ -194,6 +197,14 @@ export function createGatewayPlugin() {
             headers: mergeUpstreamProviderHeaders(input.request?.headers, input.upstreamRequest.headers),
             url: rewriteUpstreamProviderUrl(input.upstreamRequest.url, input.targetProviderConfig, input.config)
           }
+        };
+      }
+    }, {
+      key: "ccr-responses-reasoning-filter",
+      transformRequest(input: ResponsesReasoningFilterInput) {
+        return {
+          ok: true as const,
+          value: dropNonReplayableReasoningItems(input)
         };
       }
     }]
