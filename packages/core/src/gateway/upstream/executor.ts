@@ -16,6 +16,7 @@ import { isLocalClaudeCodeOauthProviderPlugin, mergeAnthropicBetaValues } from "
 import { abortSignalMessage, formatError, omitLocalObservabilityHeaders, shouldSendBody, withCoreGatewayAuthHeader } from "@ccr/core/gateway/http/io";
 import { parseJsonObjectSafe, releaseJsonObject, serializeJsonBody, serializeJsonBodyWithModel } from "@ccr/core/gateway/http/body";
 import { resolveGatewayPublicModelId } from "@ccr/core/gateway/features/model-discovery";
+import { translateBodyForProtocol } from "@ccr/core/gateway/upstream/body-translate";
 import { activeProviderCredentials, findProviderByPublicOrInternalName, findProviderCredentialBySlug, normalizedProviderCapabilities, parseProviderCredentialInternalName, providerCapabilityForClientProtocol, providerCapabilityInternalName, providerCapabilityNameMatches, providerCredentialInternalName, providerCredentialPriority, providerCredentialRuntimeId, providerCredentialSlug, providerProtocolForClientProtocol, sanitizeHeaderValue } from "@ccr/core/providers/runtime-topology";
 import { delay } from "@ccr/core/gateway/internal/clock";
 import { retryDelayAfterNetworkError, retryDelayAfterStatus, shouldFallbackAfterStatus } from "@ccr/core/gateway/upstream/retry-policy";
@@ -590,12 +591,20 @@ function prepareUpstreamCredentialAttempt(input: {
   const normalizedBody = normalizeConfiguredProviderModelBody(input.attempt.body, input.config);
   const target = resolvePlannedProviderCredentialRoutingTarget(input.attempt, input.path) ??
     resolveProviderCredentialRoutingTarget(input.config, input.headers, input.path, input.attempt.body);
-  const attemptBody = (body: Buffer | undefined) => usageAwareOpenAiChatAttemptBody({
-    body,
-    config: input.config,
-    path: input.path,
-    target
-  });
+  const clientProtocol = requestProtocolForPath(input.path);
+  const targetProtocol = target?.protocol;
+  const attemptBody = (body: Buffer | undefined) => {
+    // Cross-protocol fallback (#1615): translate the body from the client protocol to the
+    // target provider protocol before any OpenAI-specific sanitization. No-op when both
+    // protocols match or the pair is unsupported.
+    const translated = translateBodyForProtocol(body, clientProtocol, targetProtocol);
+    return usageAwareOpenAiChatAttemptBody({
+      body: translated,
+      config: input.config,
+      path: input.path,
+      target
+    });
+  };
   if (!target) {
     const body = normalizedBody?.body ?? input.attempt.body;
     return {
