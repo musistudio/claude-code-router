@@ -198,12 +198,12 @@ ipcMain.handle(IPC_CHANNELS.appOpenProfile, async (_event, request: ProfileOpenR
   const config = profile.agent === CLAUDE_DESIGN_PLUGIN_ID
     ? withClaudeDesignRuntimePluginConfig(syncedClaudeAppConfig.config)
     : syncedClaudeAppConfig.config;
-  const status = await gatewayService.ensureStarted(config);
-  if (status.state !== "running") {
-    throw new Error(status.lastError || "CCR gateway did not start.");
-  }
-  logProfileApplyResult(await applyProfileConfig(config));
   if (profile.agent === CLAUDE_DESIGN_PLUGIN_ID) {
+    const status = await gatewayService.ensureStarted(config);
+    if (status.state !== "running") {
+      throw new Error(status.lastError || "CCR gateway did not start.");
+    }
+    logProfileApplyResult(await applyProfileConfig(config));
     await deepLinkService.openPluginApp(CLAUDE_DESIGN_PLUGIN_ID);
     return {
       message: `Opened Claude Design with ${profile.name || profile.id}.`,

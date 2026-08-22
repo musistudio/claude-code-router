@@ -179,7 +179,9 @@ export class GatewayRequestPipeline {
         });
       }
       const claudeAppModelRewriteStartedAt = Date.now();
-      const claudeAppModelRewrite = prepareClaudeAppDiscoveredModelRequest(this.config, method, path, bodyToForward);
+      const claudeAppModelRewrite = prepareClaudeAppDiscoveredModelRequest(this.config, method, path, bodyToForward, {
+        profile: authenticatedProfile
+      });
       if (claudeAppModelRewrite) {
         headers["x-ccr-claude-app-model-rewrite"] = sanitizeHeaderValue(claudeAppModelRewrite.diagnostic);
         bodyToForward = claudeAppModelRewrite.body;

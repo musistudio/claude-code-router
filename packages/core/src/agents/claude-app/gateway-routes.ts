@@ -16,6 +16,7 @@ export type ClaudeAppGatewayModelRoute = {
 };
 
 export type ClaudeAppGatewayModelRouteOptions = {
+  defaultTargetModel?: string;
   displayName?: (model: string) => string | undefined;
   supportsOneMillionContext?: (model: string) => boolean;
 };
@@ -27,20 +28,25 @@ export type ClaudeAppGatewayInferenceModel = {
 };
 
 export function inferClaudeAppGatewayTargetModel(
-  config: Pick<AppConfig, "Providers" | "profile" | "virtualModelProfiles">
+  config: Pick<AppConfig, "Providers" | "profile" | "virtualModelProfiles">,
+  options: Pick<ClaudeAppGatewayModelRouteOptions, "defaultTargetModel"> = {}
 ): string | undefined {
+  const defaultModel = options.defaultTargetModel?.trim();
+  const resolvedDefaultModel = defaultModel
+    ? canonicalClaudeAppGatewayTargetModel(defaultModel, config)
+    : undefined;
   const profileModel = inferGlobalClaudeProfileModel(config);
   const resolvedProfileModel = profileModel
     ? canonicalClaudeAppGatewayTargetModel(profileModel, config)
     : undefined;
-  return resolvedProfileModel ?? availableGatewayModelIds(config)[0];
+  return resolvedDefaultModel ?? resolvedProfileModel ?? availableGatewayModelIds(config)[0];
 }
 
 export function buildClaudeAppGatewayModelRoutes(
   config: Pick<AppConfig, "Providers" | "profile" | "virtualModelProfiles">,
   options: ClaudeAppGatewayModelRouteOptions = {}
 ): ClaudeAppGatewayModelRoute[] {
-  const targetModels = claudeAppGatewayTargetModels(config);
+  const targetModels = claudeAppGatewayTargetModels(config, options);
   const displayNames = claudeAppGatewayDisplayNames(targetModels, options);
   const configuredTargetKeys = new Set(targetModels.map((model) =>
     stripClaudeAppGatewayOneMillionContextSuffix(model).toLowerCase()
@@ -85,7 +91,7 @@ export function resolveClaudeAppGatewayRouteModel(
   const normalized = model.trim().toLowerCase();
   const decodedRouteModel = decodeClaudeAppGatewayRouteId(normalized);
   if (decodedRouteModel) {
-    const decodedTarget = claudeAppGatewayTargetModels(config).find((targetModel) =>
+    const decodedTarget = claudeAppGatewayTargetModels(config, options).find((targetModel) =>
       stripClaudeAppGatewayOneMillionContextSuffix(targetModel).toLowerCase() === decodedRouteModel.toLowerCase()
     );
     if (decodedTarget) {
@@ -132,8 +138,11 @@ function inferGlobalClaudeProfileModel(config: Pick<AppConfig, "profile">): stri
   )?.model.trim() ?? "";
 }
 
-function claudeAppGatewayTargetModels(config: Pick<AppConfig, "Providers" | "profile" | "virtualModelProfiles">): string[] {
-  const defaultTargetModel = inferClaudeAppGatewayTargetModel(config);
+function claudeAppGatewayTargetModels(
+  config: Pick<AppConfig, "Providers" | "profile" | "virtualModelProfiles">,
+  options: Pick<ClaudeAppGatewayModelRouteOptions, "defaultTargetModel"> = {}
+): string[] {
+  const defaultTargetModel = inferClaudeAppGatewayTargetModel(config, options);
 
   return uniqueStrings([
     ...(defaultTargetModel ? [defaultTargetModel] : []),

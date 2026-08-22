@@ -64,7 +64,8 @@ export function prepareClaudeAppDiscoveredModelRequest(
   config: AppConfig,
   method: string,
   path: string,
-  body: Buffer | undefined
+  body: Buffer | undefined,
+  options: { profile?: ProfileConfig } = {}
 ): { body: Buffer; diagnostic: string; routedModel: string } | undefined {
   if (
     (method || "GET").toUpperCase() !== "POST" ||
@@ -83,7 +84,10 @@ export function prepareClaudeAppDiscoveredModelRequest(
   const routedModel = resolveClaudeAppGatewayRouteModel(
     normalizedModel,
     config,
-    claudeAppGatewayModelRouteOptions
+    {
+      ...claudeAppGatewayModelRouteOptions,
+      defaultTargetModel: options.profile?.model
+    }
   );
   if (!routedModel || routedModel.toLowerCase() === normalizedModel.toLowerCase()) {
     return undefined;
@@ -282,7 +286,10 @@ function createClaudeAppGatewayModelsResponse(
   config: AppConfig,
   options: { claudeCode?: boolean; contextArchiveCompact?: boolean; profile?: ProfileConfig } = {}
 ): Record<string, unknown> {
-  const routes = buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions)
+  const routes = buildClaudeAppGatewayModelRoutes(config, {
+    ...claudeAppGatewayModelRouteOptions,
+    defaultTargetModel: options.profile?.model
+  })
     .filter((route) => isModelAllowedForProfile(config, options.profile, route.targetModel));
   const data = routes.map((route) => {
     const catalogId = stripClaudeCodeOneMillionContextSuffix(route.targetModel);

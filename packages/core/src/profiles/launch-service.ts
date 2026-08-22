@@ -343,10 +343,13 @@ async function openClaudeAppProfile(config: AppConfig, profile: ReturnType<typeo
     };
   }
 
-  applyClaudeAppGatewayConfig(profileGatewayConfig);
+  applyClaudeAppGatewayConfig(profileGatewayConfig, {
+    defaultModel: profile.model
+  });
   applyClaudeAppGatewayConfig(profileGatewayConfig, {
     backup: false,
     dataDir: resolveClaudeAppProfileUserDataDir(CONFIGDIR, profile),
+    defaultModel: profile.model,
     refreshModelDiscoveryCache: true
   });
   await ensureGatewayConfigRunning(profileGatewayConfig, profile, "Claude App");

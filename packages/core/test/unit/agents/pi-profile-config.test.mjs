@@ -59,3 +59,46 @@ test("Pi profile config writes a CCR OpenAI Responses provider", () => {
     rmSync(root, { force: true, recursive: true });
   }
 });
+
+test("Pi profile config writes catalog token limits for known models", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-pi-profile-limits-"));
+  try {
+    const config = createDefaultAppConfig();
+    config.gateway.host = "127.0.0.1";
+    config.gateway.port = 3459;
+    config.Providers = [
+      {
+        api_key: "sk-test",
+        baseUrl: "https://api.deepseek.example/v1",
+        models: ["deepseek-v4-flash", "unknown-model"],
+        name: "DeepSeek",
+        type: "openai_chat_completions"
+      }
+    ];
+    const profile = {
+      agent: "pi",
+      enabled: true,
+      id: "pi-main",
+      model: "DeepSeek/deepseek-v4-flash",
+      name: "Pi Main",
+      providerId: "ccr-pi",
+      scope: "ccr",
+      surface: "cli"
+    };
+
+    const result = writePiGatewayConfig(root, config, profile, "ccr-profile-token", "DeepSeek/deepseek-v4-flash");
+    const payload = JSON.parse(readFileSync(result.file, "utf8"));
+    const models = payload.providers["ccr-pi"].models;
+    const deepseek = models.find((model) => model.id === "DeepSeek/deepseek-v4-flash");
+    const unknown = models.find((model) => model.id === "DeepSeek/unknown-model");
+
+    assert.equal(deepseek.contextWindow, 1_050_000);
+    assert.equal(deepseek.maxTokens, 384_000);
+    assert.deepEqual(unknown, {
+      id: "DeepSeek/unknown-model",
+      name: "DeepSeek/unknown-model"
+    });
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});

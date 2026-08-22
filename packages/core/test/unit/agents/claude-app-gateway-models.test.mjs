@@ -13,6 +13,7 @@ import {
   shouldServeClaudeCliBootstrapResponse,
   shouldServeGatewayModelsResponse
 } from "@ccr/core/gateway/features/model-discovery.ts";
+import { profileApiKeyId } from "@ccr/core/profiles/api-key.ts";
 import { ModelRegistry } from "@ccr/core/routing/model-registry.ts";
 
 function createConfig({ profileModel, providers = [], virtualModelProfiles = [] } = {}) {
@@ -138,6 +139,47 @@ test("issue 1535 Claude App discovery canonicalizes a uniquely configured bare p
   assert.equal(inferClaudeAppGatewayTargetModel(config), "Provider-2/claude-sonnet-4-5");
   assert.equal(routes[0].targetModel, "Provider-2/claude-sonnet-4-5");
   assertPublishedRoutesResolveUniquely(config);
+});
+
+test("Claude App discovery prioritizes the authenticated profile default model", () => {
+  const config = createConfig({
+    providers: [
+      { models: ["gpt-4.1"], name: "Provider-1" },
+      { models: ["claude-sonnet-4-5"], name: "Provider-2" }
+    ]
+  });
+  const profile = {
+    agent: "claude-code",
+    enabled: true,
+    id: "claude-code-work",
+    model: "claude-sonnet-4-5",
+    name: "Work",
+    scope: "ccr"
+  };
+  config.profile.profiles = [profile];
+  const apiKey = {
+    createdAt: "2026-01-01T00:00:00.000Z",
+    id: profileApiKeyId(profile),
+    key: "profile-key",
+    name: "Profile: Work"
+  };
+  const routes = buildClaudeAppGatewayModelRoutes(config, {
+    defaultTargetModel: profile.model
+  });
+  const response = createGatewayModelsResponse(config, { "user-agent": "claude-app/1.0" }, apiKey);
+
+  assert.equal(inferClaudeAppGatewayTargetModel(config, { defaultTargetModel: profile.model }), "Provider-2/claude-sonnet-4-5");
+  assert.equal(routes[0].targetModel, "Provider-2/claude-sonnet-4-5");
+  assert.equal(response.first_id, routes[0].id);
+
+  const rewritten = prepareClaudeAppDiscoveredModelRequest(
+    config,
+    "POST",
+    "/v1/messages",
+    Buffer.from(JSON.stringify({ messages: [], model: response.first_id })),
+    { profile }
+  );
+  assert.equal(rewritten?.routedModel, "Provider-2/claude-sonnet-4-5");
 });
 
 test("issue 1535 duplicate provider model names keep distinct deterministic Claude App routes", () => {

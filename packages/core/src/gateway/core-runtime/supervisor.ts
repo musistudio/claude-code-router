@@ -716,7 +716,7 @@ function managedCoreGatewayMarkerPath(): string {
   return pathJoin(CONFIGDIR, gatewayRuntimeMarkerFile);
 }
 
-async function waitForCoreGatewayStop(coreEndpoint: string): Promise<boolean> {
+export async function waitForCoreGatewayStop(coreEndpoint: string): Promise<boolean> {
   for (let index = 0; index < 20; index += 1) {
     if (!(await isCoreGatewayHealthy(coreEndpoint))) {
       return true;

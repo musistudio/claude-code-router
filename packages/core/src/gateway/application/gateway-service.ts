@@ -17,7 +17,7 @@ import { isAddressInUseMessage, probeExistingCcrGateway, reloadExistingCcrGatewa
 import { closeServer, formatError } from "@ccr/core/gateway/http/io";
 import { RawTraceSynchronizer } from "@ccr/core/observability/raw-trace-sync";
 import { GatewayBillingSynchronizer } from "@ccr/core/usage/billing-sync";
-import { assertLoopbackCoreHost, endpoint, formatCoreGatewayChildExit, gatewayNetworkEndpoints, generateCoreGatewayAuthToken, isCoreGatewayHealthy, loopbackCoreHostError, removeManagedCoreGatewayMarker, shouldRunGatewayRuntime, shouldRunUnifiedServer, spawnGatewayProcess, stopPreviousManagedCoreGateway, waitForManagedCoreGatewayReady, writeManagedCoreGatewayMarker } from "@ccr/core/gateway/core-runtime/supervisor";
+import { assertLoopbackCoreHost, endpoint, formatCoreGatewayChildExit, gatewayNetworkEndpoints, generateCoreGatewayAuthToken, isCoreGatewayHealthy, loopbackCoreHostError, removeManagedCoreGatewayMarker, shouldRunGatewayRuntime, shouldRunUnifiedServer, spawnGatewayProcess, stopPreviousManagedCoreGateway, waitForCoreGatewayStop, waitForManagedCoreGatewayReady, writeManagedCoreGatewayMarker } from "@ccr/core/gateway/core-runtime/supervisor";
 import { coreGatewayAuthHeader } from "@ccr/core/gateway/internal/shared";
 import type { BrowserAutomationMcpIntegration, BrowserWebSearchMcpIntegration, GatewayStopOptions } from "@ccr/core/gateway/internal/shared";
 import { GatewayRequestPipeline } from "@ccr/core/gateway/request/pipeline";
@@ -293,6 +293,7 @@ class GatewayService {
 
   async stop(options: GatewayStopOptions = {}): Promise<GatewayStatus> {
     const child = this.child;
+    const childCoreEndpoint = child ? this.status.coreEndpoint : "";
     this.child = undefined;
     this.coreAuthToken = "";
     this.externalGatewayApiKey = undefined;
@@ -300,6 +301,7 @@ class GatewayService {
       child.kill();
     }
     if (child) {
+      await waitForCoreGatewayStop(childCoreEndpoint);
       await removeManagedCoreGatewayMarkerBestEffort();
     }
 

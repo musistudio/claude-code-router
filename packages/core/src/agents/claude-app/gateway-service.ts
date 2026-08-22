@@ -25,6 +25,10 @@ const claudeAppGatewayModelRouteOptions: ClaudeAppGatewayModelRouteOptions = {
 };
 
 type ClaudeAppGatewayConfig = {
+  authentication: {
+    disableClaudeAiSignIn: true;
+  };
+  bootstrapEnabled: false;
   inferenceCredentialKind: "static";
   inferenceGatewayApiKey: string;
   inferenceGatewayAuthScheme: "x-api-key";
@@ -67,6 +71,7 @@ type ClaudeAppGatewayBackup = {
 type ClaudeAppGatewayApplyOptions = {
   backup?: boolean;
   dataDir?: string;
+  defaultModel?: string;
   refreshModelDiscoveryCache?: boolean;
 };
 
@@ -122,11 +127,19 @@ export function applyClaudeAppGatewayConfig(config: AppConfig, options: ClaudeAp
 
   const state = ensureClaudeAppGatewayState(config);
   const paths = getClaudeAppGatewayPaths(options.dataDir);
+  const activePaths = getClaudeAppActiveGatewayPaths(options.dataDir, paths);
   const endpoint = gatewayEndpoint(state.config);
-  const models = buildClaudeAppGatewayInferenceModels(state.config, claudeAppGatewayModelRouteOptions);
+  const models = buildClaudeAppGatewayInferenceModels(state.config, {
+    ...claudeAppGatewayModelRouteOptions,
+    defaultTargetModel: options.defaultModel
+  });
   const model = models[0]?.name ?? "";
   const modelsVersion = claudeAppGatewayModelsVersion(endpoint, models);
   const gatewayConfig: ClaudeAppGatewayConfig = {
+    authentication: {
+      disableClaudeAiSignIn: true
+    },
+    bootstrapEnabled: false,
     inferenceCredentialKind: "static",
     inferenceGatewayApiKey: state.apiKey,
     inferenceGatewayAuthScheme: "x-api-key",
@@ -142,21 +155,23 @@ export function applyClaudeAppGatewayConfig(config: AppConfig, options: ClaudeAp
   if (options.backup !== false) {
     backupClaudeAppGatewayConfig(paths);
   }
-  mkdirSync(paths.libraryDir, { mode: 0o700, recursive: true });
-  writeJsonFile(paths.configLibraryFile, gatewayConfig);
-  applyClaudeAppConfigMeta(paths.metaFile);
-  applyClaudeAppDeploymentMode(paths.rootConfigFile);
-  if (options.refreshModelDiscoveryCache) {
-    refreshClaudeAppModelDiscoveryCache(paths.dataDir);
+  for (const targetPaths of uniqueClaudeAppGatewayPaths([paths, activePaths])) {
+    mkdirSync(targetPaths.libraryDir, { mode: 0o700, recursive: true });
+    writeJsonFile(targetPaths.configLibraryFile, gatewayConfig);
+    applyClaudeAppConfigMeta(targetPaths.metaFile);
+    applyClaudeAppDeploymentMode(targetPaths.rootConfigFile);
+    if (options.refreshModelDiscoveryCache) {
+      refreshClaudeAppModelDiscoveryCache(targetPaths.dataDir);
+    }
   }
 
   return {
     config: state.config,
     result: {
       apiKeyGenerated: state.apiKeyGenerated,
-      configFile: paths.rootConfigFile,
-      configLibraryFile: paths.configLibraryFile,
-      dataDir: paths.dataDir,
+      configFile: activePaths.rootConfigFile,
+      configLibraryFile: activePaths.configLibraryFile,
+      dataDir: activePaths.dataDir,
       endpoint,
       message: `Claude App is configured for CCR gateway at ${endpoint}. Restart Claude App if it is already open.`,
       model,
@@ -285,6 +300,34 @@ function getClaudeAppGatewayPaths(dataDir = getClaudeApp3pDataDir()): ClaudeAppG
     metaFile: path.join(libraryDir, CLAUDE_APP_CONFIG_META_FILE),
     rootConfigFile: path.join(dataDir, CLAUDE_APP_CONFIG_FILE)
   };
+}
+
+function getClaudeAppActiveGatewayPaths(dataDir: string | undefined, paths: ClaudeAppGatewayPaths): ClaudeAppGatewayPaths {
+  if (!dataDir) {
+    return paths;
+  }
+  const activeDataDir = claudeApp3pDataDirForLaunchDataDir(dataDir);
+  return activeDataDir === paths.dataDir
+    ? paths
+    : getClaudeAppGatewayPaths(activeDataDir);
+}
+
+function claudeApp3pDataDirForLaunchDataDir(dataDir: string): string {
+  const normalized = path.normalize(dataDir);
+  return normalized.endsWith("-3p") ? normalized : `${normalized}-3p`;
+}
+
+function uniqueClaudeAppGatewayPaths(pathsList: ClaudeAppGatewayPaths[]): ClaudeAppGatewayPaths[] {
+  const seen = new Set<string>();
+  const result: ClaudeAppGatewayPaths[] = [];
+  for (const paths of pathsList) {
+    if (seen.has(paths.dataDir)) {
+      continue;
+    }
+    seen.add(paths.dataDir);
+    result.push(paths);
+  }
+  return result;
 }
 
 function getClaudeApp3pDataDir(): string {

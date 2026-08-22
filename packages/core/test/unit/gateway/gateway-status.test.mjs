@@ -174,6 +174,48 @@ test("gateway start completes the IPC and health handshake with the bundled runt
   }
 });
 
+test("gateway restart waits for the previous core runtime to stop", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-gateway-restart-stop-test-"));
+  const slowGatewayEntry = path.join(dir, "slow-gateway-entry.cjs");
+  const replacementGatewayEntry = path.join(dir, "replacement-gateway-entry.cjs");
+  const readySentinel = path.join(dir, "replacement-ready");
+  const previousGatewayEntry = process.env.CCR_GATEWAY_ENTRY;
+  const previousTermDelay = process.env.CCR_GATEWAY_TERM_DELAY_MS;
+  const previousReadyDelay = process.env.CCR_GATEWAY_READY_DELAY_MS;
+  const previousReadySentinel = process.env.CCR_GATEWAY_READY_SENTINEL;
+  writeFileSync(slowGatewayEntry, slowTerminatingGatewayEntry(), "utf8");
+  writeFileSync(replacementGatewayEntry, delayedHealthyGatewayEntry(), "utf8");
+
+  try {
+    await gatewayService.stop();
+    process.env.CCR_GATEWAY_ENTRY = slowGatewayEntry;
+    process.env.CCR_GATEWAY_TERM_DELAY_MS = "300";
+
+    const config = gatewayTestConfig(await findAvailablePort());
+    const firstStatus = await gatewayService.start(config);
+    assert.equal(firstStatus.state, "running", firstStatus.lastError);
+
+    process.env.CCR_GATEWAY_ENTRY = replacementGatewayEntry;
+    process.env.CCR_GATEWAY_READY_DELAY_MS = "0";
+    process.env.CCR_GATEWAY_READY_SENTINEL = readySentinel;
+    const startedAt = Date.now();
+    const secondStatus = await gatewayService.start(config);
+    const elapsedMs = Date.now() - startedAt;
+
+    assert.equal(secondStatus.state, "running", secondStatus.lastError);
+    assert.equal(existsSync(readySentinel), true);
+    assert.ok(elapsedMs >= 200, `gateway restart returned before the old runtime stopped (${elapsedMs}ms)`);
+  } finally {
+    restoreEnv("CCR_GATEWAY_ENTRY", previousGatewayEntry);
+    restoreEnv("CCR_GATEWAY_TERM_DELAY_MS", previousTermDelay);
+    restoreEnv("CCR_GATEWAY_READY_DELAY_MS", previousReadyDelay);
+    restoreEnv("CCR_GATEWAY_READY_SENTINEL", previousReadySentinel);
+    await gatewayService.stop();
+    await deletePersistedRuntimeState("gateway");
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("gateway start rejects healthy endpoints owned by a different runtime", async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-gateway-runtime-identity-test-"));
   const gatewayEntry = path.join(dir, "gateway-entry.cjs");
@@ -235,6 +277,35 @@ function delayedHealthyGatewayEntry() {
     "    writeFileSync(process.env.CCR_GATEWAY_READY_SENTINEL, 'ready\\n');",
     "  });",
     "}, delayMs);",
+    ""
+  ].join("\n");
+}
+
+function slowTerminatingGatewayEntry() {
+  return [
+    'const { createServer } = require("node:http");',
+    "const server = createServer((request, response) => {",
+    "  if (request.url === '/health') {",
+    "    response.writeHead(200, { 'content-type': 'application/json' });",
+    "    response.end(JSON.stringify({",
+    "      runtimeId: process.env.CCR_GATEWAY_RUNTIME_ID,",
+    "      status: 'ok'",
+    "    }));",
+    "    return;",
+    "  }",
+    "  response.writeHead(404);",
+    "  response.end();",
+    "});",
+    "server.listen(Number(process.env.PORT), process.env.HOST);",
+    "let stopping = false;",
+    "process.on('SIGTERM', () => {",
+    "  if (stopping) return;",
+    "  stopping = true;",
+    "  setTimeout(() => {",
+    "    server.close(() => process.exit(0));",
+    "    server.closeAllConnections?.();",
+    "  }, Number(process.env.CCR_GATEWAY_TERM_DELAY_MS || 300));",
+    "});",
     ""
   ].join("\n");
 }
