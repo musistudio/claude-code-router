@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -102,6 +102,57 @@ test("Grok local agent auth hook refreshes live login state before authenticatin
 
     const persisted = JSON.parse(readFileSync(path.join(grokHome, "auth.json"), "utf8"));
     assert.equal(persisted["https://auth.x.ai::test-account"].key, "refreshed-grok-access-token");
+  });
+});
+
+// Regression for musistudio/claude-code-router#1628: the imported plugin's
+// auth.headers carry a token snapshot from import time, but the hook must
+// resolve the current on-disk token on every call so a rotation picked up by
+// the interactive Claude Code CLI is honored without a gateway restart.
+test("Claude Code local agent auth hook re-reads the on-disk access token on every request", { skip: process.platform === "win32" }, async () => {
+  await withClaudeCodeHome(async (home) => {
+    await withPlatform("darwin", async () => {
+      await withFakeSecurityFailure(async () => {
+        writeClaudeCredentials(home, {
+          accessToken: "stale-imported-access-token",
+          refreshToken: "stale-refresh-token"
+        });
+
+        const [hook] = createGatewayPlugin({
+          config: {
+            providerPlugins: [claudeCodeOauthProviderPlugin()]
+          }
+        }).providerHooks;
+        assert.equal(hook.key, "config:ccr-local-agent-claude-code-api-claude-code-oauth");
+
+        const upstreamRequest = {
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": "client-key"
+          },
+          method: "POST",
+          url: "https://api.anthropic.com/v1/messages"
+        };
+
+        const staleAuth = await hook.authenticate({ upstreamRequest });
+        assert.equal(staleAuth.ok, true);
+        assert.equal(staleAuth.value.headers.authorization, "Bearer stale-imported-access-token");
+        assert.equal(staleAuth.value.headers["x-api-key"], undefined);
+        assert.equal(upstreamRequest.headers["x-api-key"], "client-key");
+
+        // Simulate the interactive Claude Code CLI rotating the shared token
+        // family on disk -- no gateway restart, no re-import.
+        writeClaudeCredentials(home, {
+          accessToken: "rotated-access-token",
+          refreshToken: "rotated-refresh-token"
+        });
+
+        const rotatedAuth = await hook.authenticate({ upstreamRequest });
+        assert.equal(rotatedAuth.ok, true);
+        assert.equal(rotatedAuth.value.headers.authorization, "Bearer rotated-access-token");
+        assert.equal(rotatedAuth.value.headers["anthropic-beta"], "oauth-2025-04-20");
+      });
+    });
   });
 });
 
@@ -230,6 +281,78 @@ function grokOauthProviderPlugin() {
       strict: true
     }
   };
+}
+
+function claudeCodeOauthProviderPlugin() {
+  return {
+    auth: {
+      headers: {
+        authorization: "Bearer stale-imported-access-token",
+        "anthropic-beta": "oauth-2025-04-20"
+      },
+      removeHeaders: ["x-api-key"],
+      strict: true
+    },
+    key: "ccr-local-agent-claude-code-api-claude-code-oauth",
+    providerName: "Claude Code API"
+  };
+}
+
+async function withClaudeCodeHome(run) {
+  const home = mkdtempSync(path.join(os.tmpdir(), "ccr-claude-code-hook-test-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    await run(home);
+  } finally {
+    restoreEnv("HOME", previousHome);
+    rmSync(home, { force: true, recursive: true });
+  }
+}
+
+async function withPlatform(platform, run) {
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", {
+    configurable: true,
+    value: platform
+  });
+  try {
+    await run();
+  } finally {
+    Object.defineProperty(process, "platform", descriptor);
+  }
+}
+
+// Forces the macOS Keychain lookup to miss so the scan falls back to the file
+// credentials this test controls, regardless of the host's real Keychain state.
+async function withFakeSecurityFailure(run) {
+  await withFakeSecurityScript("exit 44\n", run);
+}
+
+async function withFakeSecurityScript(body, run) {
+  const binDir = mkdtempSync(path.join(os.tmpdir(), "ccr-claude-code-security-bin-"));
+  const securityPath = path.join(binDir, "security");
+  const previousPath = process.env.PATH;
+  const previousUser = process.env.USER;
+  writeFileSync(securityPath, `#!/bin/sh\n${body}`);
+  chmodSync(securityPath, 0o755);
+  process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+  process.env.USER = "ccr-test-user";
+  try {
+    await run();
+  } finally {
+    restoreEnv("PATH", previousPath);
+    restoreEnv("USER", previousUser);
+    rmSync(binDir, { force: true, recursive: true });
+  }
+}
+
+function writeClaudeCredentials(home, credentials) {
+  const directory = path.join(home, ".claude");
+  const credentialFile = path.join(directory, ".credentials.json");
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(credentialFile, JSON.stringify(credentials, null, 2));
+  return credentialFile;
 }
 
 async function withGrokHome(t, run) {
