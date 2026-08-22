@@ -6,7 +6,7 @@ import { BUILTIN_FUSION_VISION_TOOL_NAME, isGatewayProviderEnabled } from "@ccr/
 import type { ApiKeyConfig, AppConfig, ProfileConfig, ProviderModelMetadata, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
 import { buildClaudeAppGatewayModelRoutes, resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
 import { modelRegistryForConfig, normalizeRouteSelector, parseProviderModelSelector } from "@ccr/core/routing/model-registry";
-import { findModelCatalogEntry, modelCatalogMaxInputTokens, modelCatalogMaxOutputTokens, readCatalogCapability, type ModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
+import { findModelCatalogEntry, findProviderModelCatalogEntry, modelCatalogMaxInputTokens, modelCatalogMaxOutputTokens, readCatalogCapability, type ModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
 import { isRecord, stringValue } from "@ccr/core/gateway/internal/value";
 import { fusionModelSelector } from "@ccr/core/mcp/fusion-config";
 import { readHeader } from "@ccr/core/gateway/http/io";
@@ -419,9 +419,8 @@ function providerModelDiscoveryForSelector(
       catalogEntry: findModelCatalogEntry(selector)
     };
   }
-  const physicalSelector = `${resolved.provider.name}/${resolved.model}`;
   return {
-    catalogEntry: findModelCatalogEntry(physicalSelector) ?? findModelCatalogEntry(selector),
+    catalogEntry: findProviderModelCatalogEntry(resolved.provider, resolved.model, [selector]),
     metadata: providerModelMetadataForResolvedModel(resolved)
   };
 }

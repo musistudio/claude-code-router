@@ -142,7 +142,7 @@ test("OpenCode profile config writes Fusion vision model metadata and resolved c
     });
     assert.deepEqual(models["Fusion/fusion-basic-vision"].limit, {
       context: 1_050_000,
-      output: 128_000
+      output: 1_050_000
     });
     assert.deepEqual(models["Codex API/gpt-5.6-sol"].modalities, {
       input: ["text", "image"],
@@ -150,7 +150,7 @@ test("OpenCode profile config writes Fusion vision model metadata and resolved c
     });
     assert.deepEqual(models["Codex API/gpt-5.6-sol"].limit, {
       context: 1_050_000,
-      output: 128_000
+      output: 1_050_000
     });
   } finally {
     rmSync(root, { force: true, recursive: true });

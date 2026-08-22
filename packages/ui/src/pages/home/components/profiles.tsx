@@ -714,11 +714,10 @@ export function AddProfileForm({
     () => profileAllowedModelValues(modelProviderOptions),
     [modelProviderOptions]
   );
+  const hasExplicitAllowedModelSelection = draft.availableModels.length > 0;
   const allowedModelSelectorValue = draft.availableModels.length > 0
     ? draft.availableModels
-    : draft.model.trim()
-      ? allAllowedModelValues
-      : [];
+    : allAllowedModelValues;
   const modelPlaceholder = firstProfileModelPlaceholder(modelProviderOptions);
   const validation = profileDraftValidation(draft, botConfigs, availableModelCount);
   const isClaudeDesignProfile = draft.agent === "claude-design";
@@ -984,6 +983,7 @@ export function AddProfileForm({
                     <Field className="sm:col-span-2" label={t("Allowed model list")} requirement="optional" requirementLabel={optionalFieldLabel}>
                       <ModelMultiSelector
                         providers={providers}
+                        hasExplicitSelection={hasExplicitAllowedModelSelection}
                         requiredValues={draft.model.trim() ? [draft.model] : []}
                         value={allowedModelSelectorValue}
                         virtualModelProfiles={virtualModelProfiles}

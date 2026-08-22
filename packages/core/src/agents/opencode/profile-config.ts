@@ -4,7 +4,7 @@ import path from "node:path";
 import { buildCodexModelCatalog, type CodexModelCatalogItem } from "@ccr/core/agents/codex/model-catalog";
 import { parseJsoncRecord } from "@ccr/core/agents/local-providers/shared";
 import { isGatewayProviderEnabled, type AppConfig, type GatewayProviderConfig, type ProfileConfig, type ProviderModelMetadata } from "@ccr/core/contracts/app";
-import { findModelCatalogEntry, type ModelCatalogEntry, modelCatalogMaxInputTokens, modelCatalogMaxOutputTokens } from "@ccr/core/gateway/model-catalog";
+import { findModelCatalogEntry, findProviderModelCatalogEntry, type ModelCatalogEntry, modelCatalogMaxInputTokens, modelCatalogMaxOutputTokens } from "@ccr/core/gateway/model-catalog";
 import { modelRegistryForConfig } from "@ccr/core/routing/model-registry";
 import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
 import { profileAllowedModels } from "@ccr/core/profiles/model-allowlist";
@@ -168,7 +168,7 @@ function openCodeResolvedModelMetadata(
   const physicalProvider = registry.findProvider(attribution.provider);
   if (physicalProvider && physicalModel) {
     return {
-      catalogEntry: findModelCatalogEntry(`${physicalProvider.name}/${physicalModel}`),
+      catalogEntry: findProviderModelCatalogEntry(physicalProvider, physicalModel, [model]),
       providerMetadata: providerModelMetadataFor(physicalProvider, physicalModel)
     };
   }

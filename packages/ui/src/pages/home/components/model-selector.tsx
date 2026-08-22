@@ -313,12 +313,14 @@ export function ModelSelector({
 }
 
 export function ModelMultiSelector({
+  hasExplicitSelection = true,
   onChange,
   providers,
   requiredValues = [],
   value,
   virtualModelProfiles = []
 }: {
+  hasExplicitSelection?: boolean;
   onChange: (value: string[]) => void;
   providers: GatewayProviderConfig[];
   requiredValues?: string[];
@@ -344,7 +346,7 @@ export function ModelMultiSelector({
       model.displayName.toLowerCase().includes(normalizedQuery));
   const required = new Set(requiredValues.map(modelSelectionKey).filter(Boolean));
   const selected = new Set([...value, ...requiredValues].map(modelSelectionKey).filter(Boolean));
-  const hasOptionalSelection = Array.from(selected).some((key) => !required.has(key));
+  const canClearSelection = hasExplicitSelection && Array.from(selected).some((key) => !required.has(key));
 
   function toggleModel(model: string) {
     const key = modelSelectionKey(model);
@@ -384,7 +386,7 @@ export function ModelMultiSelector({
         <Button disabled={models.length === 0} onClick={selectVisibleModels} size="sm" type="button" variant="outline">
           {t("All")}
         </Button>
-        <Button disabled={!hasOptionalSelection} onClick={clearOptionalModels} size="sm" type="button" variant="outline">
+        <Button disabled={!canClearSelection} onClick={clearOptionalModels} size="sm" type="button" variant="outline">
           {t("Clear")}
         </Button>
       </div>

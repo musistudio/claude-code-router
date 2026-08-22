@@ -86,7 +86,7 @@ test("NVIDIA probe never requests or persists the Responses protocol", async (t)
   assert.equal(probe.detectedProtocol, "openai_chat_completions");
   assert.equal(
     probe.catalogModelMetadata?.["qwen/qwen2.5-coder-32b-instruct"]?.contextWindow,
-    128000
+    131072
   );
 });
 

@@ -5,6 +5,7 @@ import { buildCodexModelCatalogIds } from "@ccr/core/agents/codex/model-catalog"
 import type { AppConfig, GatewayProviderConfig, ProfileConfig, ProviderModelMetadata } from "@ccr/core/contracts/app";
 import {
   findModelCatalogEntry,
+  findProviderModelCatalogEntry,
   modelCatalogMaxInputTokens,
   type ModelCatalogEntry
 } from "@ccr/core/gateway/model-catalog";
@@ -131,7 +132,7 @@ function piResolvedModelMetadata(config: PiModelResolutionConfig, model: string)
   const physicalProvider = registry.findProvider(attribution.provider);
   if (physicalProvider && physicalModel) {
     return {
-      catalogEntry: findModelCatalogEntry(`${physicalProvider.name}/${physicalModel}`),
+      catalogEntry: findProviderModelCatalogEntry(physicalProvider, physicalModel, [model]),
       providerMetadata: providerModelMetadataFor(physicalProvider, physicalModel)
     };
   }

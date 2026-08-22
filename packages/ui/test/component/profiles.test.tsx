@@ -191,7 +191,7 @@ test("explicit allowed model lists require a default model", () => {
   assert.match(html, /Default model is required when allowed model list is set\./);
 });
 
-test("AddProfileForm does not render unrestricted allowed models as selected without a default model", () => {
+test("AddProfileForm renders unrestricted allowed models as selected without a default model", () => {
   const config = appConfigFixture();
   config.Providers = [{
     models: ["alpha", "beta"],
@@ -218,8 +218,8 @@ test("AddProfileForm does not render unrestricted allowed models as selected wit
 
   assert.ok(alphaIndex >= 0);
   assert.ok(betaIndex > alphaIndex);
-  assert.match(alphaLabel, /aria-checked="false"/);
-  assert.match(betaLabel, /aria-checked="false"/);
+  assert.match(alphaLabel, /aria-checked="true"/);
+  assert.match(betaLabel, /aria-checked="true"/);
   assert.match(clearButton, /disabled=""/);
 });
 

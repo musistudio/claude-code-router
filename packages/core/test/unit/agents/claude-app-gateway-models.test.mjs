@@ -358,12 +358,12 @@ test("Claude CLI bootstrap returns catalog-derived model configuration from mode
   assert.equal(option.model, `${route.id}[1m]`);
   assert.equal(option.display_name, "Zhipu AI (China) - Coding Plan/GLM-5.2 (1M context)");
   assert.equal(option.max_input_tokens, 1_049_000);
-  assert.equal(option.max_tokens, 1_048_560);
+  assert.equal(option.max_tokens, 1_048_576);
   assert.equal(option.capabilities.context_window.max_input_tokens, 1_049_000);
   assert.equal(option.capabilities.context_management.max_input_tokens, 1_049_000);
   assert.equal(option.capabilities.context_window.supports_1m_context, true);
   assert.equal(option.capabilities.context_window.one_million_context_variant, true);
-  assert.equal(option.capabilities.image_input.supported, false);
+  assert.equal(option.capabilities.image_input.supported, true);
   assert.equal(option.capabilities.structured_outputs.supported, true);
   assert.equal(option.capabilities.tool_use.supported, true);
   assert.equal(option.capabilities.thinking.supported, true);
