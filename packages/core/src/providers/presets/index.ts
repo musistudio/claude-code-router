@@ -6,6 +6,7 @@ import { deepSeekProviderPreset } from "@ccr/core/providers/presets/deepseek/ind
 import { fennoProviderPreset } from "@ccr/core/providers/presets/fenno/index";
 import { geminiProviderPreset } from "@ccr/core/providers/presets/gemini/index";
 import { infistarAiProviderPreset } from "@ccr/core/providers/presets/infistar-ai/index";
+import { kenariProviderPreset } from "@ccr/core/providers/presets/kenari/index";
 import { kimiCodingProviderPreset } from "@ccr/core/providers/presets/kimi-coding/index";
 import { minimaxChinaProviderPreset, minimaxGlobalProviderPreset } from "@ccr/core/providers/presets/minimax/index";
 import { mistralProviderPreset } from "@ccr/core/providers/presets/mistral/index";
@@ -67,6 +68,7 @@ export const providerPresets: ProviderPreset[] = [
   infistarAiProviderPreset,
   runApiProviderPreset,
   teamoRouterProviderPreset,
+  kenariProviderPreset,
   unity2ProviderPreset,
   code0ProviderPreset,
   claudeApiProviderPreset
