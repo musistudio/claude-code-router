@@ -13,7 +13,7 @@ import { LEGACY_ACTIVE_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FI
 import { normalizeCodexProviderAccountConfig } from "@ccr/core/agents/local-providers/codex";
 import { normalizeGrokProviderAccountConfig, normalizeGrokProviderMediaCapabilities } from "@ccr/core/agents/local-providers/grok";
 import { removeOpenCodeProviderAccountConfig } from "@ccr/core/agents/local-providers/opencode";
-import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, CLAUDE_DESIGN_PLUGIN_ID, CLAUDE_SHIP_PLUGIN_ID, DEFAULT_TRAY_COMPONENT_VARIANTS, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, ROUTER_SCRIPT_API_VERSION, ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS, ROUTER_SCRIPT_MAX_TIMEOUT_MS, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent, isEnabledGlobalProfile, knownGatewayPluginDefaultApps, knownGatewayPluginDefaultPermissions, knownGatewayPluginDefaultSurfaces } from "@ccr/core/contracts/app";
+import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, CLAUDE_DESIGN_PLUGIN_ID, CLAUDE_SHIP_PLUGIN_ID, DEFAULT_TRAY_COMPONENT_VARIANTS, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, ROUTER_SCRIPT_API_VERSION, ROUTER_SCRIPT_DEFAULT_TIMEOUT_MS, ROUTER_SCRIPT_MAX_TIMEOUT_MS, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent, isEnabledGlobalProfile, isGatewayProviderProtocol, knownGatewayPluginDefaultApps, knownGatewayPluginDefaultPermissions, knownGatewayPluginDefaultSurfaces } from "@ccr/core/contracts/app";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config";
 import { maxRequestLogBodyBytes } from "@ccr/core/observability/request-log-limits";
 import { findProviderPresetByBaseUrl, primaryProviderPresetEndpoint, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
@@ -36,8 +36,10 @@ import type {
   GatewayPluginPermission,
   GatewayPluginSurface,
   GatewayProviderCapability,
+  GatewayProviderCapabilityFeatures,
   GatewayProviderCapabilityProtocol,
   GatewayProviderConfig,
+  GatewayProviderProtocol,
   MediaToolsConfig,
   ObservabilityConfig,
   OverviewAccountCardSize,
@@ -1517,6 +1519,8 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
   const maxContextWindow = readPositiveInteger(value.maxContextWindow ?? value.max_context_window);
   const maxOutputTokens = readPositiveInteger(value.maxOutputTokens ?? value.max_output_tokens ?? value.outputTokens ?? value.output_tokens);
   const pricing = parseProviderModelPricing(value.pricing);
+  const protocols = parseProviderModelProtocols(value.protocols);
+  const protocolFeatures = parseProviderModelProtocolFeatures(value.protocolFeatures ?? value.protocol_features);
   const metadata: ProviderModelMetadata = {
     ...(Array.isArray(value.additionalSpeedTiers) ? { additionalSpeedTiers: value.additionalSpeedTiers } : {}),
     ...(Array.isArray(value.additional_speed_tiers) ? { additionalSpeedTiers: value.additional_speed_tiers } : {}),
@@ -1532,6 +1536,8 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
     ...(maxContextWindow ? { maxContextWindow } : {}),
     ...(maxOutputTokens ? { maxOutputTokens } : {}),
     ...(pricing ? { pricing } : {}),
+    ...(protocols ? { protocols } : {}),
+    ...(protocolFeatures ? { protocolFeatures } : {}),
     ...(Array.isArray(value.serviceTiers) ? { serviceTiers: value.serviceTiers } : {}),
     ...(Array.isArray(value.service_tiers) ? { serviceTiers: value.service_tiers } : {}),
     ...(supportedReasoningLevels ? { supportedReasoningLevels } : {}),
@@ -1539,6 +1545,39 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
     ...(typeof value.supports_reasoning_summaries === "boolean" ? { supportsReasoningSummaries: value.supports_reasoning_summaries } : {})
   };
   return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function parseProviderModelProtocols(value: unknown): GatewayProviderProtocol[] | undefined {
+  const values = Array.isArray(value) ? value : [];
+  const protocols: GatewayProviderProtocol[] = [];
+  const seen = new Set<GatewayProviderProtocol>();
+  for (const item of values) {
+    const protocol = parseProviderCapabilityProtocol(item);
+    if (!isGatewayProviderProtocol(protocol)) {
+      continue;
+    }
+    if (seen.has(protocol)) {
+      continue;
+    }
+    seen.add(protocol);
+    protocols.push(protocol);
+  }
+  return protocols.length > 0 ? protocols : undefined;
+}
+
+function parseProviderModelProtocolFeatures(value: unknown): ProviderModelMetadata["protocolFeatures"] {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const entries = Object.entries(value)
+    .map(([rawProtocol, rawFeatures]) => {
+      const protocol = parseProviderCapabilityProtocol(rawProtocol);
+      const features = parseProviderCapabilityFeatures(rawFeatures);
+      return protocol && features ? [protocol, features] as const : undefined;
+    })
+    .filter((entry): entry is [GatewayProviderCapabilityProtocol, GatewayProviderCapabilityFeatures] => Boolean(entry))
+    .filter((entry): entry is [GatewayProviderProtocol, GatewayProviderCapabilityFeatures] => isGatewayProviderProtocol(entry[0]));
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 function parseProviderModelCapabilities(value: unknown): ProviderModelCapabilities | undefined {
@@ -1725,9 +1764,11 @@ function parseProviderCapabilities(value: unknown): GatewayProviderCapability[] 
         return undefined;
       }
       const source = readString(item.source);
+      const features = parseProviderCapabilityFeatures(item.features);
       return {
         baseUrl,
         endpoint: readString(item.endpoint),
+        ...(features ? { features } : {}),
         source: source === "preset" || source === "detected" ? source : undefined,
         type
       };
@@ -1750,6 +1791,42 @@ function parseProviderProtocolCapability(item: Record<string, unknown>): Gateway
     return undefined;
   }
   return [{ baseUrl, type }];
+}
+
+function parseProviderCapabilityFeatures(value: unknown): GatewayProviderCapabilityFeatures | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const reasoningHistoryPolicy = parseResponsesReasoningHistoryPolicy(value.reasoningHistoryPolicy ?? value.reasoning_history_policy);
+  const reasoningSummaryPolicy = parseResponsesReasoningSummaryPolicy(value.reasoningSummaryPolicy ?? value.reasoning_summary_policy);
+  const features: GatewayProviderCapabilityFeatures = {
+    ...(reasoningHistoryPolicy ? { reasoningHistoryPolicy } : {}),
+    ...(reasoningSummaryPolicy ? { reasoningSummaryPolicy } : {})
+  };
+  return Object.keys(features).length > 0 ? features : undefined;
+}
+
+export function providerCapabilityFeaturesFromConfigForTest(value: unknown): GatewayProviderCapabilityFeatures | undefined {
+  return parseProviderCapabilityFeatures(value);
+}
+
+function parseResponsesReasoningHistoryPolicy(value: unknown): GatewayProviderCapabilityFeatures["reasoningHistoryPolicy"] {
+  const normalized = readString(value)?.toLowerCase().replace(/-/g, "_");
+  if (normalized === "encrypted" || normalized === "plaintext" || normalized === "strip") {
+    return normalized;
+  }
+  return undefined;
+}
+
+function parseResponsesReasoningSummaryPolicy(value: unknown): GatewayProviderCapabilityFeatures["reasoningSummaryPolicy"] {
+  const normalized = readString(value)?.toLowerCase().replace(/-/g, "_");
+  if (normalized === "drop") {
+    return "drop";
+  }
+  if (normalized === "as_content" || normalized === "ascontent") {
+    return "as_content";
+  }
+  return undefined;
 }
 
 function parseProviderCapabilityProtocol(value: string | undefined): GatewayProviderCapabilityProtocol | undefined {

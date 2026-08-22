@@ -143,7 +143,7 @@ server {
   index pages/home/index.html;
   absolute_redirect off;
 
-  client_max_body_size 8m;
+  client_max_body_size 100m;
 
   location = / {
     return 302 /pages/home/index.html?ccr_web_token=${CCR_WEB_AUTH_TOKEN_QUERY};

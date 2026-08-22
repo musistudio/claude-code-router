@@ -429,18 +429,19 @@ function rewriteModelSelectorForCoreGatewayProfile(
     return publicModel;
   }
 
-  const providerName = coreGatewayProviderSelectorName(selector.provider, clientProtocol);
+  const providerName = coreGatewayProviderSelectorName(selector.provider, clientProtocol, selector.model);
   return providerName ? `${providerName}/${selector.model}` : publicModel;
 }
 
 
 function coreGatewayProviderSelectorName(
   provider: GatewayProviderConfig,
-  clientProtocol: GatewayProviderProtocol
+  clientProtocol: GatewayProviderProtocol,
+  model?: string
 ): string | undefined {
-  const capability = providerCapabilityForClientProtocol(provider, clientProtocol);
+  const capability = providerCapabilityForClientProtocol(provider, clientProtocol, model);
   const explicitCapabilities = normalizedProviderCapabilities(provider);
-  const protocol = capability?.type ?? (explicitCapabilities.length === 0 ? providerProtocolForClientProtocol(provider, clientProtocol) : undefined);
+  const protocol = capability?.type ?? (explicitCapabilities.length === 0 ? providerProtocolForClientProtocol(provider, clientProtocol, model) : undefined);
   if (!protocol) {
     return undefined;
   }
