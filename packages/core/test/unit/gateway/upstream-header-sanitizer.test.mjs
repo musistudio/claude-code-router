@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createGatewayPlugin,
+  normalizeOpenAIResponsesToolOutputOrder,
   rewriteUpstreamProviderUrl,
   sanitizeUpstreamProviderHeaders
 } from "@ccr/core/gateway/core-runtime/upstream-header-sanitizer.ts";
@@ -43,6 +44,78 @@ test("gateway sanitizer hook runs on the final upstream request shape", async ()
     headers: { "content-type": "application/json" }
   });
   assert.equal(upstreamRequest.headers["x-ccr-provider-credential-id"], "credential-id");
+});
+
+test("Responses tool outputs are moved before intervening user messages", () => {
+  const functionCall = {
+    type: "function_call",
+    call_id: "call_docx",
+    name: "Skill",
+    arguments: '{"skill":"docx"}'
+  };
+  const userMessage = {
+    type: "message",
+    role: "user",
+    content: [{ type: "input_text", text: "Continue." }]
+  };
+  const functionOutput = {
+    type: "function_call_output",
+    call_id: "call_docx",
+    output: "Launching skill: docx"
+  };
+  const body = {
+    model: "deepseek-v4-flash",
+    input: [functionCall, userMessage, functionOutput]
+  };
+
+  const normalized = normalizeOpenAIResponsesToolOutputOrder(body, {
+    type: "openai_responses"
+  });
+
+  assert.deepEqual(normalized.input, [functionCall, functionOutput, userMessage]);
+  assert.deepEqual(body.input, [functionCall, userMessage, functionOutput]);
+});
+
+test("Responses parallel tool outputs keep their relative order", () => {
+  const callA = { type: "function_call", call_id: "call_a", name: "A", arguments: "{}" };
+  const callB = { type: "function_call", call_id: "call_b", name: "B", arguments: "{}" };
+  const message = { type: "message", role: "user", content: [] };
+  const outputA = { type: "function_call_output", call_id: "call_a", output: "A" };
+  const outputB = { type: "function_call_output", call_id: "call_b", output: "B" };
+
+  const normalized = normalizeOpenAIResponsesToolOutputOrder({
+    input: [callA, callB, message, outputA, outputB]
+  }, {
+    type: "openai_responses"
+  });
+
+  assert.deepEqual(normalized.input, [callA, callB, outputA, outputB, message]);
+});
+
+test("Responses tool output ordering leaves valid and non-Responses bodies unchanged", () => {
+  const validBody = {
+    input: [
+      { type: "function_call", call_id: "call_a", name: "A", arguments: "{}" },
+      { type: "function_call_output", call_id: "call_a", output: "A" },
+      { type: "message", role: "user", content: [] }
+    ]
+  };
+  const invalidOrderBody = {
+    input: [
+      validBody.input[0],
+      validBody.input[2],
+      validBody.input[1]
+    ]
+  };
+
+  assert.equal(
+    normalizeOpenAIResponsesToolOutputOrder(validBody, { type: "openai_responses" }),
+    validBody
+  );
+  assert.equal(
+    normalizeOpenAIResponsesToolOutputOrder(invalidOrderBody, { type: "openai_chat_completions" }),
+    invalidOrderBody
+  );
 });
 
 test("gateway sanitizer hook forwards client headers without overriding provider headers", async () => {
