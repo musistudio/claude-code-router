@@ -1,4 +1,5 @@
 import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readlinkSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, availableGatewayModelIds, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, isGatewayProviderEnabled, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "@ccr/core/contracts/app";
@@ -38,7 +39,9 @@ import {
 } from "@ccr/core/agents/pi/profile-config";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { pruneInactiveProfileApiKeysFromList, syncProfileApiKeys } from "@ccr/core/profiles/api-key";
-import { profileAllowedModels } from "@ccr/core/profiles/model-allowlist";
+import { filterModelIdsForProfile, profileAllowedModels } from "@ccr/core/profiles/model-allowlist";
+import { refreshClaudeAppModelDiscoveryCache } from "@ccr/core/agents/claude-app/gateway-service";
+import { resolveClaudeAppProfileUserDataDir } from "@ccr/core/agents/claude-app/launch";
 import { resolveZcodeConfigFile, writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "@ccr/core/agents/zcode/profile-config";
 import { CONTEXT_ARCHIVE_MCP_SERVER_NAME, contextArchiveConfigForProfile, contextArchiveMcpServer } from "@ccr/core/gateway/context-archive";
 import { createClaudeCliAutoCompactWindows } from "@ccr/core/gateway/features/model-discovery";
@@ -76,6 +79,7 @@ const privateFileMode = 0o600;
 const publicExecutableMode = 0o755;
 const claudeCodeWifFederationRuleId = "ccr-local";
 const claudeCodeWifOrganizationId = "ccr-local";
+const claudeModelDiscoveryFingerprintStateFile = path.join(CONFIGDIR, "claude-model-discovery-fingerprint.json");
 const claudeCodeGatewayEnvKeys = [
   "ANTHROPIC_BASE_URL",
   "ANTHROPIC_API_BASE_URL",
@@ -387,6 +391,12 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
     return restoreDisabledGlobalProfile(profile, settingsFile, "Claude Code profile is disabled.", isManagedClaudeCodeSettingsContent);
   }
 
+  if (claudeProfileModelDiscoveryChanged(config, profile)) {
+    invalidateClaudeCodeGatewayModelCache(settingsFile);
+    invalidateClaudeAppModelDiscoveryCache(profile);
+    rememberClaudeProfileModelDiscoveryFingerprint(config, profile);
+  }
+
   try {
     const endpoint = gatewayEndpoint(config);
     const settings = readClaudeCodeSettingsObject(settingsFile);
@@ -456,6 +466,65 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
       path: settingsFile
     };
   }
+}
+
+function invalidateClaudeCodeGatewayModelCache(settingsFile: string): void {
+  const cacheFile = path.join(path.dirname(settingsFile), "cache", "gateway-models.json");
+  rmSync(cacheFile, { force: true });
+}
+
+function invalidateClaudeAppModelDiscoveryCache(profile: ProfileConfig): void {
+  refreshClaudeAppModelDiscoveryCache(resolveClaudeAppProfileUserDataDir(CONFIGDIR, profile));
+}
+
+function claudeProfileModelDiscoveryChanged(config: AppConfig, profile: ProfileConfig): boolean {
+  const fingerprint = claudeProfileModelDiscoveryFingerprint(config, profile);
+  if (fingerprint === claudeProfileModelDiscoveryFingerprintState(profile.id)) {
+    return false;
+  }
+  return true;
+}
+
+function claudeProfileModelDiscoveryFingerprint(config: AppConfig, profile: ProfileConfig): string {
+  const discoverableModels = filterModelIdsForProfile(
+    config,
+    availableGatewayModelIds(config),
+    profile
+  );
+  return createHash("sha256")
+    .update(JSON.stringify(discoverableModels))
+    .digest("hex");
+}
+
+function claudeProfileModelDiscoveryFingerprintState(profileId: string): string | undefined {
+  const state = readClaudeModelDiscoveryFingerprintState();
+  return isRecord(state) && typeof state[profileId] === "string" ? state[profileId] : undefined;
+}
+
+function rememberClaudeProfileModelDiscoveryFingerprint(config: AppConfig, profile: ProfileConfig): void {
+  const state = readClaudeModelDiscoveryFingerprintState();
+  const next = {
+    ...(isRecord(state) ? state : {}),
+    [profile.id]: claudeProfileModelDiscoveryFingerprint(config, profile)
+  };
+  writeClaudeModelDiscoveryFingerprintState(next);
+}
+
+function readClaudeModelDiscoveryFingerprintState(): Record<string, unknown> {
+  if (!existsSync(claudeModelDiscoveryFingerprintStateFile)) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(claudeModelDiscoveryFingerprintStateFile, "utf8")) as unknown;
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeClaudeModelDiscoveryFingerprintState(state: Record<string, unknown>): void {
+  mkdirSync(path.dirname(claudeModelDiscoveryFingerprintStateFile), { recursive: true });
+  writeFileSync(claudeModelDiscoveryFingerprintStateFile, `${JSON.stringify(state, null, 2)}\n`, { mode: privateFileMode });
 }
 
 function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {

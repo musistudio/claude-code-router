@@ -172,7 +172,7 @@ function claudeAppGatewayModelsVersion(endpoint: string, models: ClaudeAppGatewa
     .slice(0, 16);
 }
 
-function refreshClaudeAppModelDiscoveryCache(dataDir: string): void {
+export function refreshClaudeAppModelDiscoveryCache(dataDir: string): void {
   for (const relativePath of [
     "Cache",
     "Code Cache",
