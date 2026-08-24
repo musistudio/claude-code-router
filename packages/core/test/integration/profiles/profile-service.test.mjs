@@ -1804,7 +1804,7 @@ test("profile service restores global agent configs on exit", () => {
   }
 });
 
-test("profile service invalidates Claude gateway model discovery cache only when the allowlist changes", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+test("profile service invalidates Claude gateway model discovery cache only when the discovery payload changes", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "claude-model-discovery-cache";
   const settingsFile = path.join(CONFIGDIR, "profiles", profileId, "claude", "settings.json");
   const gatewayCacheFile = path.join(CONFIGDIR, "profiles", profileId, "claude", "cache", "gateway-models.json");
@@ -1856,6 +1856,11 @@ test("profile service invalidates Claude gateway model discovery cache only when
   await applyProfileConfig(config);
   assert.equal(existsSync(gatewayCacheFile), true, "unchanged allowlist must not invalidate the cache");
 
+  config.Providers[0].modelMetadata = { alpha: { contextWindow: 400000 } };
+  await applyProfileConfig(config);
+  assert.equal(existsSync(gatewayCacheFile), false, "model metadata change must invalidate the cache even with an unchanged allowlist");
+
+  writeFileSync(gatewayCacheFile, "{}");
   config.profile.profiles[0].availableModels = ["Provider/alpha", "Provider/beta"];
   await applyProfileConfig(config);
   assert.equal(existsSync(gatewayCacheFile), false, "allowlist change must invalidate the cache");

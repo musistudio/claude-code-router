@@ -111,7 +111,11 @@ export function createGatewayModelsResponse(config: AppConfig, headers: Incoming
 
 
 export function createClaudeCliBootstrapResponse(config: AppConfig, apiKey?: ApiKeyConfig): Record<string, unknown> {
-  const profile = profileForApiKey(config, apiKey);
+  return createClaudeCliBootstrapPayload(config, profileForApiKey(config, apiKey));
+}
+
+
+function createClaudeCliBootstrapPayload(config: AppConfig, profile?: ProfileConfig): Record<string, unknown> {
   const windows = createClaudeCliAutoCompactWindows(config, profile);
   return {
     additional_model_options: createClaudeCliAdditionalModelOptions(config, profile),
@@ -119,6 +123,19 @@ export function createClaudeCliBootstrapResponse(config: AppConfig, apiKey?: Api
     client_data: {
       rowan_thicket: { ...windows }
     }
+  };
+}
+
+
+export function claudeClientDiscoveryPayloads(
+  config: AppConfig,
+  options: { contextArchiveCompact?: boolean; profile?: ProfileConfig } = {}
+): Record<string, unknown> {
+  const { contextArchiveCompact, profile } = options;
+  return {
+    bootstrap: createClaudeCliBootstrapPayload(config, profile),
+    claudeApp: createClaudeAppGatewayModelsResponse(config, { contextArchiveCompact, profile }),
+    claudeCode: createClaudeAppGatewayModelsResponse(config, { claudeCode: true, contextArchiveCompact, profile })
   };
 }
 
