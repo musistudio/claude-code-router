@@ -3,6 +3,7 @@
  */
 import type { IncomingHttpHeaders } from "node:http";
 import { Readable, Transform } from "node:stream";
+import { StringDecoder } from "node:string_decoder";
 import type { AppConfig } from "@ccr/core/contracts/app";
 import { normalizeRouteSelector } from "@ccr/core/routing/model-registry";
 import { isRecord, rawStringValue, stringValue } from "@ccr/core/gateway/internal/value";
@@ -416,9 +417,17 @@ function patchInputFromVirtualApplyPatchArguments(value: unknown): string | unde
 }
 
 
+type CodexPatchBridgeSseTransform = Transform & {
+  __ccrCodexPatchBridgeSseDecoder?: StringDecoder;
+  __ccrCodexPatchBridgeSsePending?: string;
+};
+
 function transformSseChunk(stream: Transform, chunk: Buffer | string): void {
-  const state = stream as Transform & { __ccrCodexPatchBridgeSsePending?: string };
-  state.__ccrCodexPatchBridgeSsePending = (state.__ccrCodexPatchBridgeSsePending ?? "") + chunk.toString();
+  const state = stream as CodexPatchBridgeSseTransform;
+  const decoder = state.__ccrCodexPatchBridgeSseDecoder ?? new StringDecoder("utf8");
+  state.__ccrCodexPatchBridgeSseDecoder = decoder;
+  state.__ccrCodexPatchBridgeSsePending = (state.__ccrCodexPatchBridgeSsePending ?? "") +
+    decoder.write(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   while (state.__ccrCodexPatchBridgeSsePending) {
     const match = /\r?\n\r?\n/.exec(state.__ccrCodexPatchBridgeSsePending);
     if (!match || match.index === undefined) {
@@ -433,7 +442,9 @@ function transformSseChunk(stream: Transform, chunk: Buffer | string): void {
 
 
 function flushSseTransform(stream: Transform): void {
-  const state = stream as Transform & { __ccrCodexPatchBridgeSsePending?: string };
+  const state = stream as CodexPatchBridgeSseTransform;
+  state.__ccrCodexPatchBridgeSsePending = (state.__ccrCodexPatchBridgeSsePending ?? "") +
+    (state.__ccrCodexPatchBridgeSseDecoder?.end() ?? "");
   if (state.__ccrCodexPatchBridgeSsePending) {
     stream.push(transformCodexApplyPatchBridgeSseEvent(state.__ccrCodexPatchBridgeSsePending));
     state.__ccrCodexPatchBridgeSsePending = "";

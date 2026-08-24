@@ -166,8 +166,11 @@ export class GatewayBillingSynchronizer {
       outputTokens: numberValue(usage.output_tokens),
       totalTokens: numberValue(usage.total_tokens)
     }, {
+      // The gateway's own billing event, so these are the upstream provider's
+      // counters in the upstream's convention.
       path,
-      providerProtocol
+      providerProtocol,
+      source: "providerBilling"
     });
     const reportedCost = finiteNumber(cost.total);
     const input: UsageEventInput = {

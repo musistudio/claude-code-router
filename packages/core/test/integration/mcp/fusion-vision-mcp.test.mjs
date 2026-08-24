@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import http from "node:http";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+
+const pngA = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 test("Fusion vision MCP sends the core API key and retries a body-free lightweight usage event", async (t) => {
   const seen = {
@@ -401,6 +405,173 @@ test("Fusion vision MCP preserves slash-containing model IDs for external runtim
   assert.deepEqual(seen.usageBody?.target, { model });
 });
 
+test("Fusion vision MCP accepts a full data URL in imageBase64", async (t) => {
+  const provider = await serveVision(t);
+  if (!provider) {
+    return;
+  }
+  const child = spawnVision(t, provider.port);
+  const response = await sendJsonRpc(child, {
+    id: 1,
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: {
+      arguments: { imageBase64: `data:image/png;base64,${pngA}`, prompt: "Read it." },
+      name: "vision_understand"
+    }
+  });
+
+  assert.equal(response.error, undefined);
+  assert.equal(response.result?.isError, undefined);
+  assert.equal(provider.requests, 1);
+  assert.equal(provider.lastBody?.messages?.[0]?.content?.[1]?.image_url?.url, `data:image/png;base64,${pngA}`);
+});
+
+test("Fusion vision MCP refuses a local SVG file instead of forwarding it as a fake PNG", async (t) => {
+  const provider = await serveVision(t);
+  if (!provider) {
+    return;
+  }
+  const dir = await mkdtemp(path.join(os.tmpdir(), "fusion-vision-svg-"));
+  t.after(() => rm(dir, { force: true, recursive: true }));
+  const svgPath = path.join(dir, "logo.svg");
+  await writeFile(svgPath, '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/>', "utf8");
+
+  const child = spawnVision(t, provider.port);
+  const response = await sendJsonRpc(child, {
+    id: 1,
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: {
+      arguments: { images: [{ path: svgPath }], prompt: "Read it." },
+      name: "vision_understand"
+    }
+  });
+
+  assert.equal(response.result?.isError, true);
+  assert.match(response.result?.content?.[0]?.text, /SVG\/XML/);
+  assert.equal(provider.requests, 0, "the SVG must never reach the upstream");
+});
+
+test("Fusion vision MCP restricts the forwarded media-type label to supported raster types", async (t) => {
+  const provider = await serveVision(t);
+  if (!provider) {
+    return;
+  }
+  const child = spawnVision(t, provider.port);
+
+  const octetStream = await sendJsonRpc(child, {
+    id: 1,
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: {
+      arguments: { imageBase64: pngA, mimeType: "application/octet-stream", prompt: "Read it." },
+      name: "vision_understand"
+    }
+  });
+  assert.equal(provider.lastBody?.messages?.[0]?.content?.[1]?.image_url?.url, `data:image/png;base64,${pngA}`);
+
+  const textPlain = await sendJsonRpc(child, {
+    id: 2,
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: {
+      arguments: { imageUrl: `data:text/plain;base64,${pngA}`, prompt: "Read it." },
+      name: "vision_understand"
+    }
+  });
+  assert.equal(provider.lastBody?.messages?.[0]?.content?.[1]?.image_url?.url, `data:image/png;base64,${pngA}`);
+
+  const webp = await sendJsonRpc(child, {
+    id: 3,
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: {
+      arguments: { imageUrl: `data:image/webp;base64,${pngA}`, prompt: "Read it." },
+      name: "vision_understand"
+    }
+  });
+  assert.equal(provider.lastBody?.messages?.[0]?.content?.[1]?.image_url?.url, `data:image/webp;base64,${pngA}`);
+});
+
+test("Fusion vision MCP forwards a local PNG file with a supported label", async (t) => {
+  const provider = await serveVision(t);
+  if (!provider) {
+    return;
+  }
+  const dir = await mkdtemp(path.join(os.tmpdir(), "fusion-vision-png-"));
+  t.after(() => rm(dir, { force: true, recursive: true }));
+  const pngPath = path.join(dir, "img.png");
+  await writeFile(pngPath, Buffer.from(pngA, "base64"));
+
+  const child = spawnVision(t, provider.port);
+  const response = await sendJsonRpc(child, {
+    id: 1,
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: {
+      arguments: { images: [{ path: pngPath }], prompt: "Read it." },
+      name: "vision_understand"
+    }
+  });
+
+  assert.equal(response.error, undefined);
+  assert.equal(response.result?.isError, undefined);
+  assert.equal(provider.requests, 1);
+  assert.equal(provider.lastBody?.messages?.[0]?.content?.[1]?.image_url?.url, `data:image/png;base64,${pngA}`);
+});
+
+async function serveVision(t, respond) {
+  let requests = 0;
+  let lastBody;
+  const server = http.createServer(async (request, response) => {
+    const body = readRequestBody(request);
+    requests += 1;
+    lastBody = JSON.parse(await body);
+    if (respond) {
+      respond(lastBody);
+    }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      choices: [{ message: { content: "vision ok" } }],
+      usage: { completion_tokens: 3, prompt_tokens: 10, total_tokens: 13 }
+    }));
+  });
+  try {
+    await listen(server);
+  } catch (error) {
+    if (isLocalListenUnavailable(error)) {
+      t.skip(`Local HTTP listen is unavailable: ${formatError(error)}`);
+      return undefined;
+    }
+    throw error;
+  }
+  t.after(() => server.close());
+  assert.ok(server.address() && typeof server.address() === "object");
+  return { port: server.address().port, get requests() { return requests; }, get lastBody() { return lastBody; } };
+}
+
+function spawnVision(t, port, env = {}) {
+  const child = spawn(process.execPath, [path.join(process.cwd(), ".test-dist", "core", "runtime", "fusion-vision-mcp.js")], {
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: "1",
+      FUSION_BUILTIN_TOOL_KIND: "vision",
+      FUSION_TOOL_NAME: "vision_understand",
+      VISION_API_KEY: "external-key",
+      VISION_BASE_URL: `http://127.0.0.1:${port}/v1`,
+      VISION_MODEL: "test-vision",
+      ...env
+    },
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  t.after(() => {
+    if (!child.killed) {
+      child.kill();
+    }
+  });
+  return child;
+}
 function listen(server) {
   return new Promise((resolve, reject) => {
     const onError = (error) => {
