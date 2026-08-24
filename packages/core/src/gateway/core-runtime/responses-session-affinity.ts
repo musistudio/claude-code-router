@@ -16,12 +16,15 @@ export type ResponsesSessionAffinityInput = {
     headers?: Record<string, HeaderValue>;
   };
   targetProviderConfig?: {
+    baseurl?: string;
+    name?: string;
     type?: string;
   };
   upstreamRequest: UpstreamRequest;
 };
 
 const sessionIdHeaderNames = ["x-claude-code-session-id", "x-claude-session-id"];
+const codexUpstreamUrlMarkers = ["chatgpt.com/backend-api/codex", "/backend-api/codex"];
 
 /**
  * Copies the Claude Code session identity onto outbound OpenAI Responses
@@ -30,12 +33,16 @@ const sessionIdHeaderNames = ["x-claude-code-session-id", "x-claude-session-id"]
  * on body fields hash each turn onto a different channel and the next hop
  * rejects channel-bound `encrypted_content` continuations. A caller-supplied
  * non-empty `prompt_cache_key` always wins; other protocols and non-JSON
- * bodies pass through untouched.
+ * bodies pass through untouched. Codex upstreams reject unknown body fields
+ * with `400 Unsupported parameter`, so affinity is skipped for them.
  */
 export function applyResponsesSessionAffinity(input: ResponsesSessionAffinityInput): UpstreamRequest {
   const upstreamRequest = input.upstreamRequest;
   const providerType = input.targetProviderConfig?.type?.trim().toLowerCase();
   if (providerType !== "openai_responses") {
+    return upstreamRequest;
+  }
+  if (isCodexResponsesUpstream(upstreamRequest.url, input.targetProviderConfig)) {
     return upstreamRequest;
   }
   const body = upstreamRequest.body;
@@ -78,6 +85,22 @@ export function resolveResponsesSessionKey(
     }
   }
   return inboundUserId;
+}
+
+/**
+ * Codex backend detection: the outbound URL is authoritative (it carries the
+ * final rewritten base), with the configured provider base URL as a fallback
+ * for requests that bypass URL rewriting.
+ */
+export function isCodexResponsesUpstream(
+  upstreamUrl: string,
+  providerConfig?: { baseurl?: string }
+): boolean {
+  const candidates = [upstreamUrl, providerConfig?.baseurl];
+  return candidates.some((candidate) => {
+    const normalized = candidate?.trim().toLowerCase();
+    return Boolean(normalized && codexUpstreamUrlMarkers.some((marker) => normalized.includes(marker)));
+  });
 }
 
 function inboundMetadataUserId(body: unknown): string | undefined {
