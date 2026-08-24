@@ -5,7 +5,7 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { networkInterfaces } from "node:os";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { delimiter as pathDelimiter, join as pathJoin, resolve as pathResolve } from "node:path";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import {
@@ -25,6 +25,8 @@ const gatewayRuntimeStateKey = "gateway";
 const gatewayConfigAcceptanceTimeoutMs = 5_000;
 const gatewayStartupTimeoutMs = 15_000;
 const gatewayChildOutputLimit = 4000;
+const privateDirMode = 0o700;
+const privateFileMode = 0o600;
 
 const gatewayChildOutput = new WeakMap<ChildProcess, { stderr: string; stdout: string }>();
 
@@ -439,15 +441,28 @@ function appendGatewayChildOutput(child: ChildProcess, message: string): string 
   return details ? `${message}\n${details}` : message;
 }
 
-export function writeGatewayFetchPreloadFile(): string {
-  const file = pathJoin(CONFIGDIR, "gateway-proxy-preload.cjs");
-  mkdirSync(CONFIGDIR, { recursive: true });
-  writeFileSync(file, gatewayFetchPreloadScript(), "utf8");
+export function writeGatewayFetchPreloadFile(configDir = CONFIGDIR): string {
+  const file = pathJoin(configDir, "gateway-proxy-preload.cjs");
+  mkdirSync(configDir, { mode: privateDirMode, recursive: true });
+  securePathPermissions(configDir, privateDirMode);
+  writeFileSync(file, gatewayFetchPreloadScript(), { encoding: "utf8", mode: privateFileMode });
+  securePathPermissions(file, privateFileMode);
   return file;
 }
 
 export function writeGatewayProxyPreloadFile(): string {
   return writeGatewayFetchPreloadFile();
+}
+
+function securePathPermissions(file: string, mode: number): void {
+  if (process.platform === "win32" || !existsSync(file)) {
+    return;
+  }
+  try {
+    chmodSync(file, mode);
+  } catch {
+    // Best effort for filesystems that do not support chmod.
+  }
 }
 
 function gatewayFetchPreloadScript(): string {

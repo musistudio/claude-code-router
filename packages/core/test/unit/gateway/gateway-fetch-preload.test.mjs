@@ -1,7 +1,31 @@
 import assert from "node:assert/strict";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import vm from "node:vm";
-import { gatewayFetchPreloadScriptForTest } from "@ccr/core/gateway/core-runtime/supervisor.ts";
+import { gatewayFetchPreloadScriptForTest, writeGatewayFetchPreloadFile } from "@ccr/core/gateway/core-runtime/supervisor.ts";
+
+test("gateway fetch preload file is stored with private permissions", { skip: process.platform === "win32" }, () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-gateway-preload-permissions-"));
+  const configDir = path.join(root, ".claude-code-router");
+  const preloadFile = path.join(configDir, "gateway-proxy-preload.cjs");
+
+  try {
+    mkdirSync(configDir, { mode: 0o755 });
+    writeFileSync(preloadFile, "stale preload\n", { encoding: "utf8", mode: 0o644 });
+    chmodSync(configDir, 0o755);
+    chmodSync(preloadFile, 0o644);
+
+    const file = writeGatewayFetchPreloadFile(configDir);
+
+    assert.equal(file, preloadFile);
+    assert.equal(statSync(configDir).mode & 0o777, 0o700);
+    assert.equal(statSync(preloadFile).mode & 0o777, 0o600);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
 
 test("gateway fetch preload applies API_TIMEOUT_MS to direct upstream fetches", async () => {
   const harness = executePreload({
