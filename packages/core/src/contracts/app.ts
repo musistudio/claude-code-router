@@ -1068,7 +1068,8 @@ export type VirtualModelFusionWebSearchProvider =
   | "serper"
   | "serpapi"
   | "tavily"
-  | "exa";
+  | "exa"
+  | "xquik";
 
 export type VirtualModelFusionWebSearchConfig = {
   env?: Record<string, string>;

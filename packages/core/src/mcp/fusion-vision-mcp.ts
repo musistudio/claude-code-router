@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
+import { xquikSearchResults, xquikSearchUrl } from "@ccr/core/mcp/xquik-search";
 
 type JsonPrimitive = boolean | null | number | string;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -34,7 +35,7 @@ type ToolCallResult = {
 };
 
 type FusionBuiltinToolKind = "vision" | "web_search";
-type SearchProvider = "auto" | "bing" | "brave" | "exa" | "google_cse" | "serpapi" | "serper" | "tavily";
+type SearchProvider = "auto" | "bing" | "brave" | "exa" | "google_cse" | "serpapi" | "serper" | "tavily" | "xquik";
 type SearchInput = {
   count: number;
   country?: string;
@@ -682,6 +683,7 @@ async function searchWithProvider(
   if (provider === "serper") return searchSerper(input);
   if (provider === "serpapi") return searchSerpApi(input);
   if (provider === "tavily") return searchTavily(input);
+  if (provider === "xquik") return searchXquik(input);
   return searchExa(input);
 }
 
@@ -801,6 +803,21 @@ async function searchExa(input: SearchInput): Promise<SearchResult[]> {
   });
   const items = isRecord(raw) && Array.isArray(raw.results) ? raw.results : [];
   return items.map((item) => normalizeSearchResult(item, "title", "url", "text")).filter(isSearchResult);
+}
+
+async function searchXquik(input: SearchInput): Promise<SearchResult[]> {
+  const apiKey = requireEnv("XQUIK_API_KEY", "Xquik API key");
+  const raw = await fetchJson(xquikSearchUrl(
+    env("XQUIK_SEARCH_ENDPOINT"),
+    input.prompt,
+    input.count,
+    input.language
+  ), {
+    headers: { "x-api-key": apiKey },
+    redirect: "error",
+    signal: AbortSignal.timeout(input.timeoutMs)
+  });
+  return xquikSearchResults(raw, input.count);
 }
 
 async function buildImageParts(args: Record<string, unknown>, detail: "auto" | "high" | "low"): Promise<JsonValue[]> {
@@ -1076,7 +1093,7 @@ function resolveSearchProvider(): Exclude<SearchProvider, "auto"> {
   if (configured !== "auto") {
     return configured;
   }
-  const candidates: Array<Exclude<SearchProvider, "auto">> = ["brave", "bing", "google_cse", "serper", "serpapi", "tavily", "exa"];
+  const candidates: Array<Exclude<SearchProvider, "auto">> = ["brave", "bing", "google_cse", "serper", "serpapi", "tavily", "exa", "xquik"];
   const provider = candidates.find(searchProviderIsConfigured);
   if (!provider) {
     throw new Error("No search provider configured. Set SEARCH_PROVIDER and its API key.");
@@ -1093,7 +1110,8 @@ function parseSearchProvider(value: string | undefined): SearchProvider | undefi
     value === "serper" ||
     value === "serpapi" ||
     value === "tavily" ||
-    value === "exa"
+    value === "exa" ||
+    value === "xquik"
   ) {
     return value;
   }
@@ -1107,7 +1125,8 @@ function searchProviderIsConfigured(provider: Exclude<SearchProvider, "auto">): 
   if (provider === "serper") return Boolean(env("SERPER_API_KEY"));
   if (provider === "serpapi") return Boolean(env("SERPAPI_API_KEY"));
   if (provider === "tavily") return Boolean(env("TAVILY_API_KEY"));
-  return Boolean(env("EXA_API_KEY"));
+  if (provider === "exa") return Boolean(env("EXA_API_KEY"));
+  return Boolean(env("XQUIK_API_KEY"));
 }
 
 function requireEnv(name: string, label: string): string {

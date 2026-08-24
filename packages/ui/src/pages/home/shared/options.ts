@@ -308,7 +308,7 @@ export const fusionToolOptions: Array<{ description: string; label: string; valu
     value: BUILTIN_FUSION_VISION_TOOL_NAME
   },
   {
-    description: "Generic web search tool supporting hidden in-app browser search plus Brave, Bing, Google CSE, Serper, SerpAPI, Tavily, and Exa.",
+    description: "Search the web with the in-app browser or a configured provider. Xquik searches recent X posts.",
     label: `${BUILTIN_FUSION_TOOL_SERVER_NAME} / ${BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME}`,
     value: BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME
   },
@@ -337,7 +337,8 @@ export const fusionWebSearchProviderOptions: Array<{ label: string; value: Virtu
   { label: "Serper", value: "serper" },
   { label: "SerpAPI", value: "serpapi" },
   { label: "Tavily", value: "tavily" },
-  { label: "Exa", value: "exa" }
+  { label: "Exa", value: "exa" },
+  { label: "Xquik (X search)", value: "xquik" }
 ];
 
 export const fusionWebSearchEnvKeysByProvider: Record<VirtualModelFusionWebSearchProvider, string[]> = {
@@ -348,7 +349,8 @@ export const fusionWebSearchEnvKeysByProvider: Record<VirtualModelFusionWebSearc
   google_cse: ["GOOGLE_SEARCH_API_KEY", "GOOGLE_SEARCH_CX", "GOOGLE_SEARCH_ENDPOINT"],
   serper: ["SERPER_API_KEY", "SERPER_SEARCH_ENDPOINT"],
   serpapi: ["SERPAPI_API_KEY", "SERPAPI_SEARCH_ENDPOINT"],
-  tavily: ["TAVILY_API_KEY", "TAVILY_SEARCH_ENDPOINT"]
+  tavily: ["TAVILY_API_KEY", "TAVILY_SEARCH_ENDPOINT"],
+  xquik: ["XQUIK_API_KEY", "XQUIK_SEARCH_ENDPOINT"]
 };
 
 export const virtualModelClientToolsPolicyOptions: Array<{ label: string; value: VirtualModelClientToolsPolicy }> = [

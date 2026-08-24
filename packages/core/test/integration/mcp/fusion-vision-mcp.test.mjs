@@ -8,6 +8,132 @@ import test from "node:test";
 
 const pngA = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
+test("Fusion web search MCP retrieves cited X posts through Xquik", async (t) => {
+  let requestUrl;
+  let apiKey;
+  const server = http.createServer((request, response) => {
+    requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+    apiKey = request.headers["x-api-key"];
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      tweets: [{ author: { username: "ccrouter" }, id: "123456789", text: "A recent X post" }]
+    }));
+  });
+  try {
+    await listen(server);
+  } catch (error) {
+    if (isLocalListenUnavailable(error)) {
+      t.skip(`Local HTTP listen is unavailable: ${formatError(error)}`);
+      return;
+    }
+    throw error;
+  }
+  t.after(() => server.close());
+
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const child = spawn(process.execPath, [path.join(process.cwd(), ".test-dist", "core", "runtime", "fusion-vision-mcp.js")], {
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: "1",
+      FUSION_BUILTIN_TOOL_KIND: "web_search",
+      FUSION_TOOL_NAME: "recent_x_web_search",
+      SEARCH_PROVIDER: "xquik",
+      XQUIK_API_KEY: "xq_test_key",
+      XQUIK_SEARCH_ENDPOINT: `http://127.0.0.1:${address.port}/tweets/search`
+    },
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  t.after(() => {
+    if (!child.killed) {
+      child.kill();
+    }
+  });
+
+  const response = await sendJsonRpc(child, {
+    id: 1,
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: {
+      arguments: { count: 4, language: "en", prompt: "claude code router" },
+      name: "recent_x_web_search"
+    }
+  });
+
+  assert.equal(response.error, undefined);
+  assert.equal(response.result?.isError, undefined);
+  assert.equal(apiKey, "xq_test_key");
+  assert.equal(requestUrl?.pathname, "/tweets/search");
+  assert.equal(requestUrl?.searchParams.get("q"), "claude code router");
+  assert.equal(requestUrl?.searchParams.get("queryType"), "Latest");
+  assert.equal(requestUrl?.searchParams.get("limit"), "4");
+  assert.equal(requestUrl?.searchParams.get("language"), "en");
+  assert.equal(requestUrl?.searchParams.get("replies"), "exclude");
+  assert.equal(requestUrl?.searchParams.get("retweets"), "exclude");
+  assert.equal(requestUrl?.searchParams.get("quotes"), "exclude");
+  assert.match(response.result?.content?.[0]?.text, /Search provider: xquik/);
+  assert.match(response.result?.content?.[0]?.text, /https:\/\/x\.com\/ccrouter\/status\/123456789/);
+  assert.match(response.result?.content?.[0]?.text, /Snippet: A recent X post/);
+});
+
+test("Fusion web search MCP rejects Xquik redirects", async (t) => {
+  let redirectTargetHit = false;
+  const server = http.createServer((request, response) => {
+    if (request.url?.startsWith("/redirected")) {
+      redirectTargetHit = true;
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ tweets: [] }));
+      return;
+    }
+    response.writeHead(302, { location: "/redirected" });
+    response.end();
+  });
+  try {
+    await listen(server);
+  } catch (error) {
+    if (isLocalListenUnavailable(error)) {
+      t.skip(`Local HTTP listen is unavailable: ${formatError(error)}`);
+      return;
+    }
+    throw error;
+  }
+  t.after(() => server.close());
+
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const child = spawn(process.execPath, [path.join(process.cwd(), ".test-dist", "core", "runtime", "fusion-vision-mcp.js")], {
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: "1",
+      FUSION_BUILTIN_TOOL_KIND: "web_search",
+      FUSION_TOOL_NAME: "recent_x_web_search",
+      SEARCH_PROVIDER: "xquik",
+      XQUIK_API_KEY: "xq_test_key",
+      XQUIK_SEARCH_ENDPOINT: `http://127.0.0.1:${address.port}/tweets/search`
+    },
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  t.after(() => {
+    if (!child.killed) {
+      child.kill();
+    }
+  });
+
+  const response = await sendJsonRpc(child, {
+    id: 1,
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: {
+      arguments: { count: 4, prompt: "claude code router" },
+      name: "recent_x_web_search"
+    }
+  });
+
+  assert.equal(response.error, undefined);
+  assert.equal(response.result?.isError, true);
+  assert.equal(redirectTargetHit, false);
+});
+
 test("Fusion vision MCP sends the core API key and retries a body-free lightweight usage event", async (t) => {
   const seen = {
     providerAuthorization: "",
