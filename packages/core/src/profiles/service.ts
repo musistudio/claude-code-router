@@ -391,13 +391,13 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
     return restoreDisabledGlobalProfile(profile, settingsFile, "Claude Code profile is disabled.", isManagedClaudeCodeSettingsContent);
   }
 
-  if (claudeProfileModelDiscoveryChanged(config, profile)) {
-    invalidateClaudeCodeGatewayModelCache(settingsFile);
-    invalidateClaudeAppModelDiscoveryCache(profile);
-    rememberClaudeProfileModelDiscoveryFingerprint(config, profile);
-  }
-
   try {
+    if (claudeProfileModelDiscoveryChanged(config, profile)) {
+      invalidateClaudeCodeGatewayModelCache(settingsFile);
+      invalidateClaudeAppModelDiscoveryCache(profile);
+      rememberClaudeProfileModelDiscoveryFingerprint(config, profile);
+    }
+
     const endpoint = gatewayEndpoint(config);
     const settings = readClaudeCodeSettingsObject(settingsFile);
     const settingsEnv = withoutBotGatewayEnv(Object.fromEntries(stringRecord(settings.env)));

@@ -1867,3 +1867,70 @@ test("profile service invalidates Claude gateway model discovery cache only when
 
   rmSync(fingerprintFile, { force: true });
 });
+
+test("profile service reports a failed model discovery cache invalidation without aborting the remaining profiles", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "claude-model-discovery-cache-failure";
+  const followingProfileId = "codex-after-claude-failure";
+  const settingsFile = path.join(CONFIGDIR, "profiles", profileId, "claude", "settings.json");
+  const codexConfigFile = path.join(CONFIGDIR, "profiles", followingProfileId, "codex", "config.toml");
+  const fingerprintFile = path.join(CONFIGDIR, "claude-model-discovery-fingerprint.json");
+  rmSync(fingerprintFile, { force: true, recursive: true });
+  mkdirSync(fingerprintFile, { recursive: true });
+
+  const config = createDefaultAppConfig();
+  config.Providers = [
+    {
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["alpha"],
+      name: "Provider"
+    }
+  ];
+  config.preferredProvider = "Provider";
+  config.APIKEY = "ccr-claude-model-discovery-cache-failure-test";
+  config.APIKEYS = [
+    {
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profileId}`,
+      key: "ccr-claude-model-discovery-cache-failure-test",
+      name: "Profile: Claude Model Discovery Cache Failure Test"
+    }
+  ];
+  config.profile.profiles = [
+    {
+      agent: "claude-code",
+      availableModels: ["Provider/alpha"],
+      enabled: true,
+      env: {},
+      id: profileId,
+      model: "Provider/alpha",
+      name: "Claude Code",
+      scope: "ccr",
+      settingsFile,
+      smallFastModel: "",
+      surface: "cli"
+    },
+    {
+      agent: "codex",
+      availableModels: ["Provider/alpha"],
+      configFile: codexConfigFile,
+      enabled: true,
+      env: {},
+      id: followingProfileId,
+      model: "Provider/alpha",
+      name: "Codex",
+      scope: "ccr",
+      smallFastModel: "",
+      surface: "cli"
+    }
+  ];
+
+  try {
+    const result = await applyProfileConfig(config);
+    const claudeStatus = result.clients.find((client) => client.client === "claude-code");
+    assert.equal(claudeStatus?.ok, false, "a failed cache invalidation must be reported as a contained Claude Code error");
+    assert.ok(result.clients.some((client) => client.client === "codex"), "profiles after the failing one must still be applied");
+  } finally {
+    rmSync(fingerprintFile, { force: true, recursive: true });
+  }
+});
