@@ -68,6 +68,68 @@ test("retry backoff stops after client aborts a network error", async () => {
   });
 });
 
+test("OpenRouter discount provider constraints are removed from different fallback model attempts", async () => {
+  const originalFetch = globalThis.fetch;
+  const bodies = [];
+  try {
+    globalThis.fetch = async (_url, init) => {
+      bodies.push(JSON.parse(String(init.body)));
+      return new Response("{}", {
+        headers: { "content-type": "application/json" },
+        status: bodies.length === 1 ? 503 : 200
+      });
+    };
+
+    const result = await fetchUpstreamWithFallback({
+      body: Buffer.from(JSON.stringify({
+        messages: [],
+        model: "OpenRouter/z-ai/glm-primary",
+        provider: {
+          ignore: ["legacy"],
+          order: ["cheap"]
+        }
+      })),
+      config: {
+        Providers: [],
+        Router: {
+          fallback: {
+            mode: "model-chain",
+            models: ["OpenRouter/z-ai/glm-fallback"],
+            retryCount: 0
+          },
+          rules: []
+        },
+        virtualModelProfiles: []
+      },
+      coreAuthToken: "core-token",
+      fallback: {
+        mode: "model-chain",
+        models: ["OpenRouter/z-ai/glm-fallback"],
+        retryCount: 0
+      },
+      headers: {
+        "x-ccr-openrouter-discount-model": "z-ai/glm-primary",
+        "x-ccr-openrouter-discount-provider-id": "openrouter"
+      },
+      method: "POST",
+      path: "/v1/chat/completions",
+      routedModel: "OpenRouter/z-ai/glm-primary",
+      upstreamUrl: "http://127.0.0.1:3456/v1/chat/completions"
+    });
+
+    assert.equal(result.response.status, 200);
+    assert.equal(result.failedAttempts.length, 1);
+    assert.deepEqual(bodies[0].provider, {
+      ignore: ["legacy"],
+      order: ["cheap"]
+    });
+    assert.equal(bodies[1].model, "OpenRouter/z-ai/glm-fallback");
+    assert.equal(bodies[1].provider, undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("target-provider routing preserves slash-namespaced model ids", () => {
   const cases = [
     {

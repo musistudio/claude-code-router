@@ -210,6 +210,21 @@ export type ProviderModelPricing = {
   outputUsdPerMillionTokens?: number;
 };
 
+export type ProviderModelOpenRouterDiscountRoutingConfig = {
+  allowFallbacks?: boolean;
+  cacheHitRate?: number;
+  enabled?: boolean;
+  endpointTtlMs?: number;
+  minOutputTokens?: number;
+  minSavingsRatio?: number;
+  minSavingsUsd?: number;
+  minUptime5m?: number;
+  outputTokenRatio?: number;
+  providerBlacklist?: string[];
+  requireParameters?: boolean;
+  respectExistingProviderOrder?: boolean;
+};
+
 export type ProviderModelMetadata = {
   additionalSpeedTiers?: unknown[];
   capabilities?: ProviderModelCapabilities;
@@ -219,6 +234,7 @@ export type ProviderModelMetadata = {
   effectiveContextWindowPercent?: number;
   maxContextWindow?: number;
   maxOutputTokens?: number;
+  openRouterDiscountRouting?: ProviderModelOpenRouterDiscountRoutingConfig;
   pricing?: ProviderModelPricing;
   serviceTiers?: unknown[];
   supportsFastMode?: boolean;
@@ -475,6 +491,25 @@ export type ProviderCatalogModelsResult = {
   models: string[];
   provider?: string;
   providerName?: string;
+};
+
+export type OpenRouterProviderCatalogRequest = {
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
+};
+
+export type OpenRouterProviderCatalogItem = {
+  name: string;
+  quantizations?: string[];
+  slug: string;
+  tokensYesterday?: number;
+  uptimePercent?: number;
+};
+
+export type OpenRouterProviderCatalogResult = {
+  loadedFrom?: string;
+  providers: OpenRouterProviderCatalogItem[];
 };
 
 export type ProviderAccountTestRequest = {
@@ -837,6 +872,7 @@ export const GATEWAY_PLUGIN_PERMISSION_IDS = [
   "proxy-routes",
   "http-backends",
   "provider-account-connectors",
+  "gateway-request-transforms",
   "core-gateway-config",
   "core-provider-plugins",
   "virtual-model-profiles",

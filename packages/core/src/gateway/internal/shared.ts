@@ -263,6 +263,8 @@ export const localObservabilityHeaderNames = new Set([
   "x-ccr-claude-app-model-rewrite",
   "x-ccr-codex-patch-bridge",
   "x-ccr-claude-model-discovery",
+  "x-ccr-openrouter-discount-model",
+  "x-ccr-openrouter-discount-provider-id",
   "x-ccr-cursor-openai-compat",
   "x-ccr-logical-provider",
   "x-ccr-provider-credential-chain",

@@ -646,6 +646,7 @@ function normalizeDeepLinkModelMetadata(value: unknown): ProviderModelMetadata |
   const effectiveContextWindowPercent = percentage(value.effectiveContextWindowPercent ?? value.effective_context_window_percent);
   const maxContextWindow = positiveInteger(value.maxContextWindow ?? value.max_context_window);
   const maxOutputTokens = positiveInteger(value.maxOutputTokens ?? value.max_output_tokens ?? value.outputTokens ?? value.output_tokens);
+  const openRouterDiscountRouting = normalizeDeepLinkOpenRouterDiscountRouting(value.openRouterDiscountRouting ?? value.open_router_discount_routing);
   const pricing = normalizeDeepLinkModelPricing(value.pricing);
   const defaultReasoningLevelValue = value.defaultReasoningLevel ?? value.default_reasoning_level;
   const defaultReasoningLevel = defaultReasoningLevelValue === null
@@ -665,6 +666,7 @@ function normalizeDeepLinkModelMetadata(value: unknown): ProviderModelMetadata |
     ...(effectiveContextWindowPercent ? { effectiveContextWindowPercent } : {}),
     ...(maxContextWindow ? { maxContextWindow } : {}),
     ...(maxOutputTokens ? { maxOutputTokens } : {}),
+    ...(openRouterDiscountRouting ? { openRouterDiscountRouting } : {}),
     ...(pricing ? { pricing } : {}),
     ...(Array.isArray(value.serviceTiers) ? { serviceTiers: value.serviceTiers } : {}),
     ...(Array.isArray(value.service_tiers) ? { serviceTiers: value.service_tiers } : {}),
@@ -673,6 +675,59 @@ function normalizeDeepLinkModelMetadata(value: unknown): ProviderModelMetadata |
     ...(typeof supportsReasoningSummariesValue === "boolean" ? { supportsReasoningSummaries: supportsReasoningSummariesValue } : {})
   };
   return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function normalizeDeepLinkOpenRouterDiscountRouting(value: unknown): ProviderModelMetadata["openRouterDiscountRouting"] {
+  if (value === true) {
+    return { enabled: true };
+  }
+  if (value === false || !isRecord(value)) {
+    return undefined;
+  }
+  const routing: NonNullable<ProviderModelMetadata["openRouterDiscountRouting"]> = {};
+  for (const [camelKey, snakeKey] of [
+    ["allowFallbacks", "allow_fallbacks"],
+    ["enabled", "enabled"],
+    ["requireParameters", "require_parameters"],
+    ["respectExistingProviderOrder", "respect_existing_provider_order"]
+  ] as const) {
+    const raw = value[camelKey] ?? value[snakeKey];
+    if (typeof raw === "boolean") {
+      routing[camelKey] = raw;
+    }
+  }
+  for (const [camelKey, snakeKey] of [
+    ["cacheHitRate", "cache_hit_rate"],
+    ["minSavingsRatio", "min_savings_ratio"],
+    ["minSavingsUsd", "min_savings_usd"],
+    ["minUptime5m", "min_uptime_5m"],
+    ["outputTokenRatio", "output_token_ratio"]
+  ] as const) {
+    const raw = value[camelKey] ?? value[snakeKey];
+    const parsed = nonNegativeNumber(raw);
+    if (parsed !== undefined) {
+      routing[camelKey] = parsed;
+    }
+  }
+  for (const [camelKey, snakeKey] of [
+    ["endpointTtlMs", "endpoint_ttl_ms"],
+    ["minOutputTokens", "min_output_tokens"]
+  ] as const) {
+    const raw = value[camelKey] ?? value[snakeKey];
+    const parsed = positiveInteger(raw);
+    if (parsed !== undefined) {
+      routing[camelKey] = parsed;
+    }
+  }
+  const priceTtlMs = positiveInteger(value.priceTtlMs ?? value.price_ttl_ms);
+  if (routing.endpointTtlMs === undefined && priceTtlMs !== undefined) {
+    routing.endpointTtlMs = priceTtlMs;
+  }
+  const providerBlacklist = normalizedStringList(value.providerBlacklist ?? value.provider_blacklist ?? value.ignoredProviders ?? value.ignored_providers ?? value.ignore);
+  if (providerBlacklist.length > 0) {
+    routing.providerBlacklist = providerBlacklist;
+  }
+  return Object.keys(routing).length > 0 ? routing : undefined;
 }
 
 function normalizeDeepLinkReasoningLevels(value: unknown): ProviderModelMetadata["supportedReasoningLevels"] {
@@ -698,6 +753,14 @@ function normalizeDeepLinkReasoningLevels(value: unknown): ProviderModelMetadata
 
 function normalizedString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function normalizedStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => normalizedStringList(item));
+  }
+  const text = normalizedString(value);
+  return text ? splitModelValue(text) : [];
 }
 
 function normalizeDeepLinkModelCapabilities(value: unknown): ProviderModelCapabilities | undefined {

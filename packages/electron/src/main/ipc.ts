@@ -37,6 +37,7 @@ import { fetchProviderManifest } from "@ccr/core/providers/manifest-service";
 import { getLocalAgentProviderCandidates, importLocalAgentProvider, probeLocalAgentProvider } from "@ccr/core/agents/local-providers/service";
 import { isLaunchAtLoginSupported, syncLaunchAtLogin } from "./launch-at-login";
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
+import { getOpenRouterProviderCatalog } from "@ccr/core/providers/openrouter-provider-catalog";
 import { getProviderPresets } from "@ccr/core/providers/presets/index";
 import { checkGatewayProviderConnectivity, probeGatewayProvider, probeGatewayProviderCandidates } from "@ccr/core/providers/probe";
 import { syncProviderModelAutoRefreshService } from "@ccr/core/providers/model-auto-refresh";
@@ -54,7 +55,7 @@ import { getUsageStats } from "@ccr/core/usage/store";
 import { applyNativeThemePreference } from "./native-theme";
 import { registerProviderAccountWebContentFetchHandler } from "./provider-account-webcontent";
 import windowsManager from "./windows";
-import { CLAUDE_DESIGN_PLUGIN_ID, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, type AgentAnalysisFilter, type AgentAnalysisTracePayloadRequest, type ApiKeyConfig, type AppCaptureElementPngRequest, type AppCaptureElementPngResult, type AppConfig, type AppDataExportResult, type AppImageExportTargetRequest, type AppImageExportTargetResult, type AppInfo, type AppRenderHtmlPngRequest, type AppRenderHtmlPngResult, type AppSaveConfigOptions, type BotGatewayQrLoginCancelRequest, type BotGatewayQrLoginStartRequest, type BotGatewayQrLoginWaitRequest, type BotGatewayQrWindowCloseRequest, type BotGatewayQrWindowOpenRequest, type ChromeLoginImportRequest, type GatewayPluginAppConfig, type GatewayPluginPermission, type GatewayPluginSurface, type GatewayProviderConnectivityCheckRequest, type GatewayProviderProbeCandidatesRequest, type GatewayProviderProbeRequest, type GatewayStatus, type LocalAgentProviderImportRequest, type PluginDependency, type PluginDirectorySelection, type ProfileApplyResult, type ProfileOpenRequest, type ProfileOpenResult, type ProviderAccountResetRequest, type ProviderAccountSnapshotRequestOptions, type ProviderAccountTestRequest, type ProviderCatalogModelsRequest, type ProviderIconDetectionRequest, type ProviderManifestFetchRequest, type RequestLogListFilter, type RouteScriptTestRequest, type RouteScriptValidationRequest, type UsageStatsFilter, type UsageStatsRange } from "@ccr/core/contracts/app";
+import { CLAUDE_DESIGN_PLUGIN_ID, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, type AgentAnalysisFilter, type AgentAnalysisTracePayloadRequest, type ApiKeyConfig, type AppCaptureElementPngRequest, type AppCaptureElementPngResult, type AppConfig, type AppDataExportResult, type AppImageExportTargetRequest, type AppImageExportTargetResult, type AppInfo, type AppRenderHtmlPngRequest, type AppRenderHtmlPngResult, type AppSaveConfigOptions, type BotGatewayQrLoginCancelRequest, type BotGatewayQrLoginStartRequest, type BotGatewayQrLoginWaitRequest, type BotGatewayQrWindowCloseRequest, type BotGatewayQrWindowOpenRequest, type ChromeLoginImportRequest, type GatewayPluginAppConfig, type GatewayPluginPermission, type GatewayPluginSurface, type GatewayProviderConnectivityCheckRequest, type GatewayProviderProbeCandidatesRequest, type GatewayProviderProbeRequest, type GatewayStatus, type LocalAgentProviderImportRequest, type OpenRouterProviderCatalogRequest, type PluginDependency, type PluginDirectorySelection, type ProfileApplyResult, type ProfileOpenRequest, type ProfileOpenResult, type ProviderAccountResetRequest, type ProviderAccountSnapshotRequestOptions, type ProviderAccountTestRequest, type ProviderCatalogModelsRequest, type ProviderIconDetectionRequest, type ProviderManifestFetchRequest, type RequestLogListFilter, type RouteScriptTestRequest, type RouteScriptValidationRequest, type UsageStatsFilter, type UsageStatsRange } from "@ccr/core/contracts/app";
 const imageExportTargets = new Map<string, string>();
 const gatewayPluginPermissionIdSet = new Set<string>(GATEWAY_PLUGIN_PERMISSION_IDS);
 const gatewayPluginSurfaceIdSet = new Set<string>(GATEWAY_PLUGIN_SURFACE_IDS);
@@ -115,6 +116,7 @@ ipcMain.handle(IPC_CHANNELS.appGetProfileRuntimeStatus, () => {
 });
 ipcMain.handle(IPC_CHANNELS.appGetProviderAccountSnapshots, (_event, provider?: string, options?: ProviderAccountSnapshotRequestOptions) => getProviderAccountSnapshots(provider, options));
 ipcMain.handle(IPC_CHANNELS.appGetProviderCatalogModels, (_event, request: ProviderCatalogModelsRequest) => getProviderCatalogModels(request));
+ipcMain.handle(IPC_CHANNELS.appGetOpenRouterProviderCatalog, (_event, request: OpenRouterProviderCatalogRequest) => getOpenRouterProviderCatalog(request));
 ipcMain.handle(IPC_CHANNELS.appGetProviderPresets, () => getProviderPresets());
 ipcMain.handle(IPC_CHANNELS.appGetAgentAnalysis, (_event, filter?: AgentAnalysisFilter) => getAgentAnalysis(filter));
 ipcMain.handle(IPC_CHANNELS.appGetAgentTracePayload, (_event, request: AgentAnalysisTracePayloadRequest) => getAgentTracePayload(request));
@@ -1345,6 +1347,11 @@ function pluginPermissionAlias(value: string): string {
     case "route":
     case "routes":
       return "gateway-routes";
+    case "gateway-request-transform":
+    case "gateway-request-transforms":
+    case "request-transform":
+    case "request-transforms":
+      return "gateway-request-transforms";
     case "proxy":
     case "proxy-route":
       return "proxy-routes";

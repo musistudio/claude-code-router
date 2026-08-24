@@ -197,6 +197,11 @@ function pluginPermissionAlias(value: string): string {
     case "route":
     case "routes":
       return "gateway-routes";
+    case "gateway-request-transform":
+    case "gateway-request-transforms":
+    case "request-transform":
+    case "request-transforms":
+      return "gateway-request-transforms";
     case "proxy":
     case "proxy-route":
       return "proxy-routes";

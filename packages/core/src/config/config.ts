@@ -1516,6 +1516,7 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
   const effectiveContextWindowPercent = readPercentage(value.effectiveContextWindowPercent ?? value.effective_context_window_percent);
   const maxContextWindow = readPositiveInteger(value.maxContextWindow ?? value.max_context_window);
   const maxOutputTokens = readPositiveInteger(value.maxOutputTokens ?? value.max_output_tokens ?? value.outputTokens ?? value.output_tokens);
+  const openRouterDiscountRouting = parseOpenRouterDiscountRouting(value.openRouterDiscountRouting ?? value.open_router_discount_routing);
   const pricing = parseProviderModelPricing(value.pricing);
   const metadata: ProviderModelMetadata = {
     ...(Array.isArray(value.additionalSpeedTiers) ? { additionalSpeedTiers: value.additionalSpeedTiers } : {}),
@@ -1531,6 +1532,7 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
     ...(effectiveContextWindowPercent ? { effectiveContextWindowPercent } : {}),
     ...(maxContextWindow ? { maxContextWindow } : {}),
     ...(maxOutputTokens ? { maxOutputTokens } : {}),
+    ...(openRouterDiscountRouting ? { openRouterDiscountRouting } : {}),
     ...(pricing ? { pricing } : {}),
     ...(Array.isArray(value.serviceTiers) ? { serviceTiers: value.serviceTiers } : {}),
     ...(Array.isArray(value.service_tiers) ? { serviceTiers: value.service_tiers } : {}),
@@ -1541,6 +1543,34 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
     ...(typeof value.supports_reasoning_summaries === "boolean" ? { supportsReasoningSummaries: value.supports_reasoning_summaries } : {})
   };
   return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function parseOpenRouterDiscountRouting(value: unknown): ProviderModelMetadata["openRouterDiscountRouting"] {
+  if (value === true) {
+    return { enabled: true };
+  }
+  if (value === false || !isObject(value)) {
+    return undefined;
+  }
+  const providerBlacklist = parseStringList(value.providerBlacklist ?? value.provider_blacklist ?? value.ignoredProviders ?? value.ignored_providers ?? value.ignore);
+  const routing: NonNullable<ProviderModelMetadata["openRouterDiscountRouting"]> = {
+    ...(typeof value.allowFallbacks === "boolean" ? { allowFallbacks: value.allowFallbacks } : {}),
+    ...(typeof value.allow_fallbacks === "boolean" ? { allowFallbacks: value.allow_fallbacks } : {}),
+    ...(readNonNegativeNumber(value.cacheHitRate ?? value.cache_hit_rate) !== undefined ? { cacheHitRate: readNonNegativeNumber(value.cacheHitRate ?? value.cache_hit_rate) } : {}),
+    ...(typeof value.enabled === "boolean" ? { enabled: value.enabled } : {}),
+    ...(readPositiveInteger(value.endpointTtlMs ?? value.endpoint_ttl_ms ?? value.priceTtlMs ?? value.price_ttl_ms) ? { endpointTtlMs: readPositiveInteger(value.endpointTtlMs ?? value.endpoint_ttl_ms ?? value.priceTtlMs ?? value.price_ttl_ms) } : {}),
+    ...(readPositiveInteger(value.minOutputTokens ?? value.min_output_tokens) ? { minOutputTokens: readPositiveInteger(value.minOutputTokens ?? value.min_output_tokens) } : {}),
+    ...(readNonNegativeNumber(value.minSavingsRatio ?? value.min_savings_ratio) !== undefined ? { minSavingsRatio: readNonNegativeNumber(value.minSavingsRatio ?? value.min_savings_ratio) } : {}),
+    ...(readNonNegativeNumber(value.minSavingsUsd ?? value.min_savings_usd) !== undefined ? { minSavingsUsd: readNonNegativeNumber(value.minSavingsUsd ?? value.min_savings_usd) } : {}),
+    ...(readNonNegativeNumber(value.minUptime5m ?? value.min_uptime_5m) !== undefined ? { minUptime5m: readNonNegativeNumber(value.minUptime5m ?? value.min_uptime_5m) } : {}),
+    ...(readNonNegativeNumber(value.outputTokenRatio ?? value.output_token_ratio) !== undefined ? { outputTokenRatio: readNonNegativeNumber(value.outputTokenRatio ?? value.output_token_ratio) } : {}),
+    ...(providerBlacklist.length > 0 ? { providerBlacklist } : {}),
+    ...(typeof value.requireParameters === "boolean" ? { requireParameters: value.requireParameters } : {}),
+    ...(typeof value.require_parameters === "boolean" ? { requireParameters: value.require_parameters } : {}),
+    ...(typeof value.respectExistingProviderOrder === "boolean" ? { respectExistingProviderOrder: value.respectExistingProviderOrder } : {}),
+    ...(typeof value.respect_existing_provider_order === "boolean" ? { respectExistingProviderOrder: value.respect_existing_provider_order } : {})
+  };
+  return Object.keys(routing).length > 0 ? routing : undefined;
 }
 
 function parseProviderModelCapabilities(value: unknown): ProviderModelCapabilities | undefined {
@@ -3287,6 +3317,11 @@ function gatewayPluginPermissionAlias(value: string): string {
     case "route":
     case "routes":
       return "gateway-routes";
+    case "gateway-request-transform":
+    case "gateway-request-transforms":
+    case "request-transform":
+    case "request-transforms":
+      return "gateway-request-transforms";
     case "proxy":
     case "proxy-route":
       return "proxy-routes";

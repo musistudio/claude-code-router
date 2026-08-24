@@ -34,7 +34,7 @@ import { codexMultiAgentBridgeResponseStream, prepareCodexMultiAgentBridgeReques
 import { rewriteAnthropicMessageStartModelStream, shouldRewriteAnthropicMessageStartModel } from "@ccr/core/gateway/features/anthropic-response-model";
 import { prepareCursorOpenAICompatChatBody } from "@ccr/core/gateway/features/cursor-compat";
 import { filteredResponseHeaders, formatError, formatUpstreamErrorForLog, forwardHeaders, inferGatewayClient, readRequestBody, sendJson, shouldCaptureGatewayUsage, shouldSendBody, stripLocalGatewayAuthHeaders } from "@ccr/core/gateway/http/io";
-import { serializeJsonBody, takeJsonObject } from "@ccr/core/gateway/http/body";
+import { parseJsonObjectSafe, serializeJsonBody, takeJsonObject } from "@ccr/core/gateway/http/body";
 import { createGatewayModelsResponse, prepareClaudeAppDiscoveredModelRequest, prepareClaudeCodeDiscoveredModelRequest, shouldServeGatewayModelsResponse } from "@ccr/core/gateway/features/model-discovery";
 import { resolveProviderLogName, resolveResponseProviderProtocol, sanitizeHeaderValue } from "@ccr/core/providers/runtime-topology";
 import { createBodySampler, requestLogSampled, shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
@@ -47,6 +47,8 @@ import { cancelResponseBody, destroyResponseStreams, fetchUpstreamWithFallback, 
 import { requestProtocolForPath, shouldApplyGatewayRouting } from "@ccr/core/routing/protocol-endpoints";
 import { createClaudeCodeWebSearchContinuationContext, createHostedWebSearchProtocolContext, hostedWebSearchProtocolResponseStream, hostedWebSearchUnavailableMessage, prepareClaudeCodeWebSearchContinuationRequestBody, prepareHostedWebSearchProtocolRequestBody, selectClaudeCodeWebSearchContinuationRecords, selectHostedWebSearchProtocolRecords } from "@ccr/core/gateway/features/hosted-web-search/index";
 import { isModelAllowedForProfile, profileForApiKey } from "@ccr/core/profiles/model-allowlist";
+import { pluginService } from "@ccr/core/plugins/service";
+import { finalizeOpenRouterDiscountProviderRouterSelection } from "@ccr/core/plugins/built-ins/openrouter-discount-provider-router";
 
 export type GatewayRequestPipelineDependencies = {
   getBrowserWebSearchMcpIntegration: () => BrowserWebSearchMcpIntegration | undefined;
@@ -158,8 +160,24 @@ export class GatewayRequestPipeline {
       }
       let routeFallback = this.config.Router.fallback;
       let routedModel: string | undefined;
+      let routedSessionId: string | undefined;
+      let routedTokenCount: number | undefined;
       let codexApplyPatchBridgeActive = false;
       let codexMultiAgentBridgeActive = false;
+      const pluginResponseHeaders = new Headers();
+      let openRouterDiscountSelectionFinalized = false;
+      let openRouterDiscountUsedCcrFallback = false;
+      const finalizeOpenRouterDiscountSelection = (ok: boolean) => {
+        if (openRouterDiscountSelectionFinalized) {
+          return;
+        }
+        openRouterDiscountSelectionFinalized = true;
+        finalizeOpenRouterDiscountProviderRouterSelection(requestId, {
+          ok,
+          routedModel,
+          usedCcrFallback: openRouterDiscountUsedCcrFallback
+        });
+      };
       const authenticatedProfile = profileForApiKey(activeConfig, apiKey);
       const claudeModelRewriteStartedAt = Date.now();
       const claudeModelRewrite = prepareClaudeCodeDiscoveredModelRequest(this.config, request.headers, method, path, bodyToForward);
@@ -336,6 +354,8 @@ export class GatewayRequestPipeline {
           headers["x-ccr-route-diagnostics"] = String(routed.decision.diagnostics.length);
         }
         routeFallback = routed.decision.fallback ?? routeFallback;
+        routedSessionId = routed.decision.sessionId;
+        routedTokenCount = routed.decision.tokenCount;
         if (routed.decision.model) {
           headers["x-ccr-routed-model"] = sanitizeHeaderValue(routed.decision.model);
           routedModel = routed.decision.model;
@@ -625,6 +645,62 @@ export class GatewayRequestPipeline {
         });
       }
 
+      const pluginTransformStartedAt = Date.now();
+      const pluginTransform = await pluginService.applyGatewayRequestTransforms({
+        body: parseJsonObjectSafe(bodyToForward),
+        headers,
+        method,
+        path: upstreamPath,
+        requestId,
+        ...(routedModel ? { routedModel } : {}),
+        ...(routedSessionId ? { sessionId: routedSessionId } : {}),
+        ...(routedTokenCount !== undefined ? { tokenCount: routedTokenCount } : {}),
+        url: request.url ?? path
+      });
+      if (pluginTransform.applied.length > 0) {
+        if (pluginTransform.body) {
+          bodyToForward = serializeJsonBody(pluginTransform.body);
+        }
+        for (const name of Object.keys(headers)) {
+          delete headers[name];
+        }
+        Object.assign(headers, pluginTransform.headers);
+        if (pluginTransform.body) {
+          headers["content-type"] = "application/json";
+        }
+        routedModel = pluginTransform.routedModel ?? routedModel;
+        for (const [name, value] of Object.entries(pluginTransform.responseHeaders)) {
+          pluginResponseHeaders.set(name, value);
+        }
+        for (const applied of pluginTransform.applied) {
+          routeTrace?.capture({
+            changes: applied.changes,
+            decision: {
+              reason: `plugin:${applied.id}`,
+              source: "plugin"
+            },
+            durationMs: Date.now() - pluginTransformStartedAt,
+            kind: "mutation",
+            name: `plugin.request-transform:${applied.pluginId}:${applied.id}`,
+            phase: "routing",
+            startedAtMs: pluginTransformStartedAt,
+            target: pluginTransform.routedModel ? { model: pluginTransform.routedModel } : undefined
+          });
+        }
+      }
+      const effectiveModelAfterPlugin = routedModel ?? requestLogRequestedModel(bodyToForward ?? requestBody, path);
+      const deniedPluginModel = profileDeniedModel(activeConfig, authenticatedProfile, modelBeforeRouting, effectiveModelAfterPlugin);
+      if (deniedPluginModel) {
+        finalizeOpenRouterDiscountSelection(false);
+        sendJson(response, 403, {
+          error: {
+            code: "profile_model_not_allowed",
+            message: `Model "${deniedPluginModel}" is not allowed for this profile.`
+          }
+        });
+        return;
+      }
+
       const contentLengthHeader = headers["content-length"];
       delete headers["content-length"];
       const upstreamPreparationChanges: RequestRouteTraceChange[] = contentLengthHeader === undefined
@@ -649,6 +725,7 @@ export class GatewayRequestPipeline {
           upstreamUrl
         });
       } catch (error) {
+        finalizeOpenRouterDiscountSelection(false);
         failContextArchiveRequest(contextArchiveRecord, contextArchiveRequestConfig);
         const failedAttempts = error instanceof UpstreamRequestError ? error.failedAttempts : [];
         const message = formatUpstreamErrorForLog(error, {
@@ -664,9 +741,10 @@ export class GatewayRequestPipeline {
           routedModel = error.attempt?.model ?? routedModel;
         }
         if (clientDisconnected || upstreamAbortController.signal.aborted) {
-          writeRequestLog(clientClosedRequestStatusCode, new Headers(), "", false, clientDisconnectMessage);
+          writeRequestLog(clientClosedRequestStatusCode, new Headers(pluginResponseHeaders), "", false, clientDisconnectMessage);
           return;
         }
+        const errorResponseHeaders = new Headers(pluginResponseHeaders);
         if (shouldCaptureUsage) {
           recordUsage({
             bodyText: "",
@@ -675,14 +753,14 @@ export class GatewayRequestPipeline {
             fallbackModel: routedModel,
             method,
             path,
-            providerName: resolveProviderLogName(new Headers(), this.config, routedModel),
-            providerProtocol: resolveResponseProviderProtocol(new Headers(), this.config),
+            providerName: resolveProviderLogName(errorResponseHeaders, this.config, routedModel),
+            providerProtocol: resolveResponseProviderProtocol(errorResponseHeaders, this.config),
             requestId,
-            responseHeaders: new Headers(),
+            responseHeaders: errorResponseHeaders,
             statusCode: 502
           });
         }
-        writeRequestLog(502, new Headers(), "", false, message);
+        writeRequestLog(502, errorResponseHeaders, "", false, message);
         throw error;
       }
 
@@ -706,6 +784,7 @@ export class GatewayRequestPipeline {
         bodyToForward = upstreamResult.attempt.body ?? bodyToForward;
         routedModel = upstreamResult.attempt.model ?? routedModel;
       }
+      openRouterDiscountUsedCcrFallback = upstreamResult.failedAttempts.length > 0;
       const responseHeaders = rewriteCapabilityResponseHeaders(
         // Copy into a mutable Headers instance: upstream fetch Response.headers
         // can be immutable (TypeError: immutable on .delete/.set), and
@@ -716,6 +795,7 @@ export class GatewayRequestPipeline {
         new Headers(mergeFallbackResponseHeaders(upstreamResponseHeaders(upstreamResult), upstreamResult)),
         this.config
       );
+      pluginResponseHeaders.forEach((value, name) => responseHeaders.set(name, value));
       const upstreamResponse = upstreamResult.response;
       if (upstreamResponse.ok) {
         finalizeContextArchiveRequest(contextArchiveRecord, {
@@ -730,6 +810,7 @@ export class GatewayRequestPipeline {
       }
       if (clientDisconnected || upstreamAbortController.signal.aborted) {
         await cancelResponseBody(upstreamResponse);
+        finalizeOpenRouterDiscountSelection(false);
         writeRequestLog(clientClosedRequestStatusCode, responseHeaders, "", false, clientDisconnectMessage);
         return;
       }
@@ -766,11 +847,13 @@ export class GatewayRequestPipeline {
       recordProviderCredentialOutcome(this.config, method, upstreamResult.attempt, upstreamResponse.status, responseHeaders);
       if (clientDisconnected || response.destroyed) {
         await cancelResponseBody(upstreamResponse);
+        finalizeOpenRouterDiscountSelection(false);
         writeRequestLog(clientClosedRequestStatusCode, responseHeaders, "", false, clientDisconnectMessage);
         return;
       }
       response.writeHead(upstreamResponse.status, Object.fromEntries(filteredResponseHeaders(responseHeaders)));
       if (!upstreamResponse.body) {
+        finalizeOpenRouterDiscountSelection(upstreamResponse.ok);
         if (shouldCaptureUsage) {
           recordUsage({
             bodyText: "",
@@ -843,6 +926,7 @@ export class GatewayRequestPipeline {
           terminalEventSeen: sseErrorDetector.hasTerminalEvent(),
           upstreamStatus: upstreamResponse.status
         });
+        finalizeOpenRouterDiscountSelection(outcome.statusCode >= 200 && outcome.statusCode < 400 && !outcome.error);
         writeRequestLog(
           outcome.statusCode,
           responseHeaders,

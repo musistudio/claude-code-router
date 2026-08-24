@@ -21,7 +21,7 @@ import {
 import { PopoverPortal } from "@/components/ui/popover";
 import { Tooltip, TooltipPortal } from "@/components/ui/tooltip";
 import { providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
-import type { ChromeLoginImportJob, LocalAgentProviderCandidate, ProviderAccountHttpJsonConnectorConfig, ProviderAccountWebContentJsonConnectorConfig } from "@ccr/core/contracts/app";
+import type { ChromeLoginImportJob, LocalAgentProviderCandidate, OpenRouterProviderCatalogItem, OpenRouterProviderCatalogRequest, ProviderAccountHttpJsonConnectorConfig, ProviderAccountWebContentJsonConnectorConfig } from "@ccr/core/contracts/app";
 import type { ReactNode } from "react";
 
 const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
@@ -2354,6 +2354,13 @@ export function AddProviderForm({
                 onQueryChange={(modelSearch) => onChange({ modelSearch })}
                 onRefresh={onRefreshModels}
                 onSelectedChange={updateConfiguredModels}
+                openRouterDiscountRouting={draft.presetId === "openrouter"}
+                openRouterProviderCatalogRequest={draft.presetId === "openrouter"
+                  ? {
+                    apiKey: providerConnectivityApiKeyFromDraft(draft),
+                    baseUrl: draft.baseUrl
+                  }
+                  : undefined}
                 query={draft.modelSearch}
                 selected={configuredModels}
               />
@@ -3867,6 +3874,8 @@ function ProviderModelPicker({
   onQueryChange,
   onRefresh,
   onSelectedChange,
+  openRouterDiscountRouting = false,
+  openRouterProviderCatalogRequest,
   query,
   selected
 }: {
@@ -3879,6 +3888,8 @@ function ProviderModelPicker({
   onQueryChange: (value: string) => void;
   onRefresh?: () => void | Promise<unknown>;
   onSelectedChange: (value: string[]) => void;
+  openRouterDiscountRouting?: boolean;
+  openRouterProviderCatalogRequest?: OpenRouterProviderCatalogRequest;
   query: string;
   selected: string[];
 }) {
@@ -4215,12 +4226,377 @@ function ProviderModelPicker({
             models={visibleAddedModels}
             onChange={onMetadataChange}
             onRemoveModel={removeModel}
+            openRouterDiscountRouting={openRouterDiscountRouting}
+            openRouterProviderCatalogRequest={openRouterProviderCatalogRequest}
             sourceModels={catalog}
           />
         </div>
       </section>
     </div>
   );
+}
+
+function OpenRouterProviderBlacklistSelect({
+  onChange,
+  request,
+  value
+}: {
+  onChange: (value: string[]) => void;
+  request?: OpenRouterProviderCatalogRequest;
+  value: string[];
+}) {
+  const t = useAppText();
+  const formatError = useAppErrorText();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [providers, setProviders] = useState<OpenRouterProviderCatalogItem[]>([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [popoverLayout, setPopoverLayout] = useState<{
+    left: number;
+    listHeight: number;
+    maxHeight: number;
+    offset: number;
+    placement: "above" | "below";
+    width: number;
+  }>();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const selectedValues = normalizeOpenRouterProviderValues(value);
+  const selectedSet = new Set(selectedValues);
+  const options = useMemo(() => openRouterProviderOptions(providers, selectedValues), [providers, selectedValues.join("\n")]);
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredOptions = normalizedQuery
+    ? options.filter((option) => openRouterProviderOptionMatchesQuery(option, normalizedQuery))
+    : options;
+  const label = selectedValues.length === 0
+    ? t("No providers blocked")
+    : `${selectedValues.length} ${t("blocked")}`;
+  const requestKey = `${request?.baseUrl ?? ""}\n${request?.apiKey ?? ""}\n${request?.model ?? ""}`;
+
+  useEffect(() => {
+    setProviders([]);
+    setError("");
+    setLoading(false);
+  }, [requestKey]);
+
+  useClientLayoutEffect(() => {
+    if (!open) {
+      setPopoverLayout(undefined);
+      return;
+    }
+
+    function updatePopoverLayout() {
+      const root = rootRef.current;
+      if (!root) {
+        return;
+      }
+      const anchor = root.getBoundingClientRect();
+      const margin = 12;
+      const gap = 6;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const availableWidth = Math.max(240, viewportWidth - margin * 2);
+      const width = Math.min(Math.max(anchor.width, 280), availableWidth);
+      const left = Math.min(Math.max(margin, anchor.left), viewportWidth - margin - width);
+      const below = Math.max(0, viewportHeight - anchor.bottom - margin - gap);
+      const above = Math.max(0, anchor.top - margin - gap);
+      const placement = below < 280 && above > below ? "above" : "below";
+      const availableHeight = Math.max(144, placement === "above" ? above : below);
+      const maxHeight = Math.min(360, availableHeight);
+      const listHeight = Math.max(120, Math.min(260, maxHeight - 82));
+
+      setPopoverLayout({
+        left,
+        listHeight,
+        maxHeight,
+        offset: placement === "above" ? viewportHeight - anchor.top + gap : anchor.bottom + gap,
+        placement,
+        width
+      });
+    }
+
+    updatePopoverLayout();
+    window.addEventListener("resize", updatePopoverLayout);
+    window.addEventListener("scroll", updatePopoverLayout, true);
+    return () => {
+      window.removeEventListener("resize", updatePopoverLayout);
+      window.removeEventListener("scroll", updatePopoverLayout, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    void loadProviders(false);
+  }, [open, requestKey]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 0);
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !panelRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  function toggleProvider(slug: string) {
+    const normalized = normalizeOpenRouterProviderValue(slug);
+    if (!normalized) {
+      return;
+    }
+    const next = selectedSet.has(normalized)
+      ? selectedValues.filter((item) => item !== normalized)
+      : [...selectedValues, normalized].sort((left, right) => left.localeCompare(right));
+    onChange(next);
+  }
+
+  async function loadProviders(force = false) {
+    if (!window.ccr?.getOpenRouterProviderCatalog) {
+      return;
+    }
+    if (!force && (providers.length > 0 || loading)) {
+      return;
+    }
+    if (!request?.model?.trim()) {
+      setError(t("Select a model to load its OpenRouter providers."));
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const result = await window.ccr.getOpenRouterProviderCatalog(request);
+      setProviders(result.providers);
+    } catch (errorValue) {
+      setProviders([]);
+      setError(formatError(errorValue));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <Label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Provider blacklist")}</Label>
+        {selectedValues.length > 0 ? (
+          <Button className="h-6 px-2 text-[10px]" onClick={() => onChange([])} type="button" variant="ghost">
+            {t("Clear blacklist")}
+          </Button>
+        ) : null}
+      </div>
+      <div className="relative min-w-0" ref={rootRef}>
+        <button
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          className={cn(
+            "flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-2.5 text-left text-[12px] outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/25",
+            open && "border-ring/35 bg-muted/30"
+          )}
+          onClick={() => {
+            setQuery("");
+            setOpen((current) => !current);
+          }}
+          type="button"
+        >
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          {loading ? <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" /> : null}
+          <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+        </button>
+        <PopoverPortal open={open}>
+          <AnimatedPopover
+            className="fixed z-[150]"
+            placement={popoverLayout?.placement ?? "below"}
+            style={popoverLayout
+              ? {
+                left: `${popoverLayout.left}px`,
+                maxHeight: `${popoverLayout.maxHeight}px`,
+                width: `${popoverLayout.width}px`,
+                ...(popoverLayout.placement === "above"
+                  ? { bottom: `${popoverLayout.offset}px` }
+                  : { top: `${popoverLayout.offset}px` })
+              }
+              : undefined}
+          >
+            <PopoverContent className="w-full overflow-hidden p-1" ref={panelRef}>
+              <div className="mb-1 flex items-center gap-1">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    aria-label={t("Search providers")}
+                    className="h-8 pl-8"
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder={t("Search providers")}
+                    ref={inputRef}
+                    value={query}
+                  />
+                </div>
+                <Button
+                  aria-label={t("Refresh providers")}
+                  className="h-8 w-8 shrink-0"
+                  disabled={loading}
+                  onClick={() => void loadProviders(true)}
+                  size="iconSm"
+                  title={t("Refresh providers")}
+                  type="button"
+                  variant="ghost"
+                >
+                  <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+                </Button>
+              </div>
+              {error ? (
+                <div className="mb-1 rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 text-[11px] leading-4 text-amber-700 dark:text-amber-300">
+                  {error}
+                </div>
+              ) : null}
+              <div className="overflow-auto" role="listbox" style={{ maxHeight: `${popoverLayout?.listHeight ?? 240}px` }}>
+                {loading && options.length === 0 ? (
+                  <div className="flex items-center justify-center gap-2 px-2 py-6 text-[12px] text-muted-foreground">
+                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                    <span>{t("Loading providers")}</span>
+                  </div>
+                ) : filteredOptions.length > 0 ? (
+                  filteredOptions.map((option) => {
+                    const checked = selectedSet.has(option.slug);
+                    const metricText = openRouterProviderMetricText(option, t);
+                    return (
+                      <button
+                        aria-selected={checked}
+                        className={cn(
+                          "flex min-h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 py-1.5 text-left text-[12px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
+                          checked ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+                        )}
+                        key={option.slug}
+                        onClick={() => toggleProvider(option.slug)}
+                        role="option"
+                        type="button"
+                      >
+                        <Checkbox checked={checked} readOnly tabIndex={-1} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium">{option.name}</span>
+                          {metricText ? <span className="block truncate text-[10px] text-muted-foreground">{metricText}</span> : null}
+                        </span>
+                        {checked ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="px-2 py-6 text-center text-[12px] text-muted-foreground">{t("No providers found")}</div>
+                )}
+              </div>
+            </PopoverContent>
+          </AnimatedPopover>
+        </PopoverPortal>
+      </div>
+      <div className="text-[10px] leading-4 text-muted-foreground/75">{t("Excluded OpenRouter providers will be skipped by discount routing and OpenRouter fallbacks.")}</div>
+    </div>
+  );
+}
+
+function openRouterProviderOptions(
+  providers: OpenRouterProviderCatalogItem[],
+  selectedValues: string[]
+): OpenRouterProviderCatalogItem[] {
+  const bySlug = new Map<string, OpenRouterProviderCatalogItem>();
+  for (const provider of providers) {
+    const slug = normalizeOpenRouterProviderValue(provider.slug);
+    if (slug) {
+      bySlug.set(slug, { ...provider, name: provider.name || slug, slug });
+    }
+  }
+  for (const value of selectedValues) {
+    if (!bySlug.has(value)) {
+      bySlug.set(value, { name: value, slug: value });
+    }
+  }
+  return [...bySlug.values()].sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function openRouterProviderOptionMatchesQuery(option: OpenRouterProviderCatalogItem, query: string): boolean {
+  return option.name.toLowerCase().includes(query) ||
+    option.slug.toLowerCase().includes(query) ||
+    (option.quantizations ?? []).some((value) => value.toLowerCase().includes(query));
+}
+
+function openRouterProviderMetricText(option: OpenRouterProviderCatalogItem, t: (key: string) => string): string {
+  const parts = [
+    formatOpenRouterQuantizations(option.quantizations, t),
+    formatOpenRouterUptime(option.uptimePercent, t),
+    formatOpenRouterTokens(option.tokensYesterday, t)
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
+
+function formatOpenRouterQuantizations(values: string[] | undefined, t: (key: string) => string): string {
+  const quantizations = [...new Map((values ?? [])
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map((value) => [value.toLowerCase(), value])).values()]
+    .sort((left, right) => left.localeCompare(right));
+  return quantizations.length > 0 ? `${t("Quantization")} ${quantizations.join(", ")}` : "";
+}
+
+function formatOpenRouterUptime(value: number | undefined, t: (key: string) => string): string {
+  if (value === undefined || !Number.isFinite(value)) {
+    return "";
+  }
+  const percent = value <= 1 ? value * 100 : value;
+  return `${t("Uptime")} ${percent.toLocaleString(undefined, {
+    maximumFractionDigits: percent >= 99 ? 2 : 1,
+    minimumFractionDigits: 0
+  })}%`;
+}
+
+function formatOpenRouterTokens(value: number | undefined, t: (key: string) => string): string {
+  if (value === undefined || !Number.isFinite(value) || value < 0) {
+    return "";
+  }
+  return `${t("Yesterday")} ${formatCompactNumber(value)} ${t("tokens")}`;
+}
+
+function formatCompactNumber(value: number): string {
+  return value.toLocaleString(undefined, {
+    maximumFractionDigits: value >= 1_000 ? 1 : 0,
+    notation: value >= 10_000 ? "compact" : "standard"
+  });
+}
+
+function normalizeOpenRouterProviderValues(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const normalized = normalizeOpenRouterProviderValue(value);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function normalizeOpenRouterProviderValue(value: string): string {
+  return value.trim().toLowerCase();
 }
 
 function ProviderModelListSkeleton() {
@@ -4265,6 +4641,8 @@ function ModelMetadataEditor({
   models,
   onChange,
   onRemoveModel,
+  openRouterDiscountRouting = false,
+  openRouterProviderCatalogRequest,
   sourceModels
 }: {
   className?: string;
@@ -4276,6 +4654,8 @@ function ModelMetadataEditor({
   models: string[];
   onChange: (value: AddProviderDraft["modelMetadata"]) => void;
   onRemoveModel?: (model: string) => void;
+  openRouterDiscountRouting?: boolean;
+  openRouterProviderCatalogRequest?: OpenRouterProviderCatalogRequest;
   sourceModels?: string[];
 }) {
   const t = useAppText();
@@ -4420,6 +4800,36 @@ function ModelMetadataEditor({
     });
   }
 
+  function updateOpenRouterDiscountRouting(model: string, checked: boolean) {
+    updateMetadata(model, (current) => {
+      const next = { ...current };
+      if (checked) {
+        next.openRouterDiscountRouting = {
+          ...(current.openRouterDiscountRouting ?? {}),
+          enabled: true
+        };
+      } else {
+        delete next.openRouterDiscountRouting;
+      }
+      return next;
+    });
+  }
+
+  function updateOpenRouterProviderBlacklist(model: string, providerBlacklist: string[]) {
+    updateMetadata(model, (current) => {
+      const routing = { ...(current.openRouterDiscountRouting ?? {}), enabled: true };
+      if (providerBlacklist.length > 0) {
+        routing.providerBlacklist = providerBlacklist;
+      } else {
+        delete routing.providerBlacklist;
+      }
+      return {
+        ...current,
+        openRouterDiscountRouting: routing
+      };
+    });
+  }
+
   function toggleExpanded(model: string) {
     setExpandedModels((current) => {
       const next = new Set(current);
@@ -4461,6 +4871,7 @@ function ModelMetadataEditor({
             modelMetadata?.maxContextWindow ||
             modelMetadata?.pricing ||
             modelMetadata?.capabilities ||
+            modelMetadata?.openRouterDiscountRouting ||
             modelMetadata?.supportsFastMode !== undefined ||
             modelMetadata?.supportedReasoningLevels !== undefined ||
             modelMetadata?.supportsReasoningSummaries !== undefined
@@ -4506,6 +4917,27 @@ function ModelMetadataEditor({
                     <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Model settings")}</span>
                     <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">{t("Context, pricing, reasoning, Fast Mode, web search, and image")}</span>
                   </div>
+                  {openRouterDiscountRouting ? (
+                    <div className="space-y-2">
+                      <Label className="flex min-w-0 items-center gap-2 text-[12px] font-medium">
+                        <Checkbox
+                          checked={modelMetadata?.openRouterDiscountRouting?.enabled ?? false}
+                          onCheckedChange={(checked) => updateOpenRouterDiscountRouting(model, checked)}
+                        />
+                        <span>{t("OpenRouter discount routing")}</span>
+                      </Label>
+                      <div className="text-[10px] leading-4 text-muted-foreground/75">{t("Automatically choose the cheapest live OpenRouter provider endpoint when savings exceed estimated cache loss.")}</div>
+                      {modelMetadata?.openRouterDiscountRouting?.enabled ? (
+                        <OpenRouterProviderBlacklistSelect
+                          onChange={(providerBlacklist) => updateOpenRouterProviderBlacklist(model, providerBlacklist)}
+                          request={openRouterProviderCatalogRequest
+                            ? { ...openRouterProviderCatalogRequest, model }
+                            : undefined}
+                          value={modelMetadata.openRouterDiscountRouting.providerBlacklist ?? []}
+                        />
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="space-y-2">
                     <div className="flex min-w-0 items-center justify-between gap-2">
                       <Label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Context window (tokens)")}</Label>

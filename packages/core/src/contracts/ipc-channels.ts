@@ -16,6 +16,7 @@ export const IPC_CHANNELS = {
   appGetLocalAgentProviderCandidates: "ccr:app:get-local-agent-provider-candidates",
   appGetProviderAccountSnapshots: "ccr:app:get-provider-account-snapshots",
   appGetProviderCatalogModels: "ccr:app:get-provider-catalog-models",
+  appGetOpenRouterProviderCatalog: "ccr:app:get-openrouter-provider-catalog",
   appGetProviderPresets: "ccr:app:get-provider-presets",
   appGetProxyCertificateStatus: "ccr:app:get-proxy-certificate-status",
   appGetProxyNetworkCaptures: "ccr:app:get-proxy-network-captures",

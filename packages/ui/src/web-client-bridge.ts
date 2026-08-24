@@ -128,6 +128,7 @@ const webClientBridge: CcrApi = {
   getProfileRuntimeStatus: () => rpc("getProfileRuntimeStatus") as ReturnType<CcrApi["getProfileRuntimeStatus"]>,
   getProviderAccountSnapshots: (provider, options) => rpc("getProviderAccountSnapshots", [provider, options]) as ReturnType<CcrApi["getProviderAccountSnapshots"]>,
   getProviderCatalogModels: (request) => rpc("getProviderCatalogModels", [request]) as ReturnType<CcrApi["getProviderCatalogModels"]>,
+  getOpenRouterProviderCatalog: (request) => rpc("getOpenRouterProviderCatalog", [request]) as ReturnType<CcrApi["getOpenRouterProviderCatalog"]>,
   getProviderPresets: () => rpc("getProviderPresets") as ReturnType<CcrApi["getProviderPresets"]>,
   getProxyCertificateStatus: () => rpc("getProxyCertificateStatus") as ReturnType<CcrApi["getProxyCertificateStatus"]>,
   getProxyNetworkCaptures: () => rpc("getProxyNetworkCaptures") as ReturnType<CcrApi["getProxyNetworkCaptures"]>,

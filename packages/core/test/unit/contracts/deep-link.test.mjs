@@ -42,6 +42,14 @@ test("parseProviderDeepLinkPayload reads payload JSON, models, descriptions, dis
         capabilities: { image_input: true, web_search: true },
         context_window: 128000,
         max_output_tokens: 64000,
+        open_router_discount_routing: {
+          enabled: true,
+          min_savings_ratio: 0.1,
+          min_savings_usd: 0.0002,
+          price_ttl_ms: 120000,
+          provider_blacklist: ["cheap-provider", "other-provider"],
+          require_parameters: false
+        },
         pricing: {
           cache_write_1h_usd_per_million_tokens: 6,
           cache_write_5m_usd_per_million_tokens: 3.75,
@@ -83,6 +91,14 @@ test("parseProviderDeepLinkPayload reads payload JSON, models, descriptions, dis
       capabilities: { imageInput: true, webSearch: true },
       contextWindow: 128000,
       maxOutputTokens: 64000,
+      openRouterDiscountRouting: {
+        enabled: true,
+        endpointTtlMs: 120000,
+        minSavingsRatio: 0.1,
+        minSavingsUsd: 0.0002,
+        providerBlacklist: ["cheap-provider", "other-provider"],
+        requireParameters: false
+      },
       pricing: {
         cacheWrite1hUsdPerMillionTokens: 6,
         cacheWrite5mUsdPerMillionTokens: 3.75,
