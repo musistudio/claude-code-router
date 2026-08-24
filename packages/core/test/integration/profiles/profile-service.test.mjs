@@ -1314,11 +1314,11 @@ test("profile service writes a multi-model Kimi CLI home that points inference t
   assert.match(legacyProfileConfigContent, /\[models\."Provider\/model"\]/);
   assert.match(legacyProfileConfigContent, /\[models\."Provider\/fast"\]/);
   assert.match(legacyProfileConfigContent, /\[models\."Provider\/gpt-5\.6-sol"\]\nprovider = "claude-code-router"\nmodel = "Provider\/gpt-5\.6-sol"\nmax_context_size = 1050000\ncapabilities = \["tool_use", "image_in", "thinking"\]/);
-  assert.match(legacyProfileConfigContent, /\[models\."Provider\/gpt-5\.5-pro"\][\s\S]*?capabilities = \["tool_use", "image_in", "always_thinking"\]/);
+  assert.match(legacyProfileConfigContent, /\[models\."Provider\/gpt-5\.5-pro"\][\s\S]*?capabilities = \["tool_use", "image_in", "thinking"\]/);
   assert.match(legacyProfileConfigContent, /\[models\."Provider\/legacy-extra"\]/);
   assert.match(legacyProfileConfigContent, /\[models\."Custom Gemini\/gemini-2\.5-pro"\]\nprovider = "claude-code-router"\nmodel = "Custom Gemini\/gemini-2\.5-pro"\nmax_context_size = 1065535/);
   assert.match(legacyProfileConfigContent, /\[models\."DeepSeek\/deepseek-v4-flash"\]\nprovider = "claude-code-router"\nmodel = "DeepSeek\/deepseek-v4-flash"\nmax_context_size = 1050000\ncapabilities = \["tool_use", "thinking"\]/);
-  assert.match(legacyProfileConfigContent, /\[models\."Zhipu Coding\/glm-5\.2"\]\nprovider = "claude-code-router"\nmodel = "Zhipu Coding\/glm-5\.2"\nmax_context_size = 1049000\ncapabilities = \["tool_use", "thinking"\]/);
+  assert.match(legacyProfileConfigContent, /\[models\."Zhipu Coding\/glm-5\.2"\]\nprovider = "claude-code-router"\nmodel = "Zhipu Coding\/glm-5\.2"\nmax_context_size = 1049000\ncapabilities = \["tool_use", "image_in", "thinking"\]/);
   assert.match(legacyProfileConfigContent, /\[models\."Fusion\/catalog-context"\]\nprovider = "claude-code-router"\nmodel = "Fusion\/catalog-context"\nmax_context_size = 1050000\ncapabilities = \["tool_use", "image_in", "thinking"\]/);
 });
 
