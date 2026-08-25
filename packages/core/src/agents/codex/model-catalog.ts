@@ -346,7 +346,7 @@ function codexProviderModelMetadataFor(provider: GatewayProviderConfig, model: s
     return metadata;
   }
   const contextWindow = codexImportedModelContextWindow(model);
-  if (!contextWindow) {
+  if (!contextWindow || metadata?.contextWindowPinned) {
     return metadata;
   }
   return {

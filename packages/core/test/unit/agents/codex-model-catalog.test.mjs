@@ -395,6 +395,30 @@ test("codex catalog caps persisted local Codex GPT-5 context metadata", () => {
   }
 });
 
+test("codex catalog keeps pinned context windows above imported caps", () => {
+  const model = catalogModelFor({
+    Providers: [
+      {
+        api_base_url: "https://chatgpt.com/backend-api/codex",
+        api_key: "ccr-local-agent-login",
+        modelMetadata: {
+          "gpt-5-codex": {
+            contextWindow: 1000000,
+            contextWindowPinned: true,
+            maxContextWindow: 1000000
+          }
+        },
+        models: ["gpt-5-codex"],
+        name: "Codex API",
+        type: "openai_responses"
+      }
+    ]
+  }, "Codex API/gpt-5-codex");
+
+  assert.equal(model.context_window, 1000000);
+  assert.equal(model.max_context_window, 1000000);
+});
+
 test("codex catalog falls back to local Codex model cache metadata", () => {
   const previousCcrHome = process.env.CCR_INTERNAL_HOME_DIR;
   const previousHome = process.env.HOME;

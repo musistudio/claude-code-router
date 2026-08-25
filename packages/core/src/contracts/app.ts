@@ -228,6 +228,8 @@ export type ProviderModelOpenRouterDiscountRoutingConfig = {
 export type ProviderModelMetadata = {
   additionalSpeedTiers?: unknown[];
   capabilities?: ProviderModelCapabilities;
+  /** Marks a user-entered contextWindow so imported Codex caps must not overwrite it. */
+  contextWindowPinned?: boolean;
   contextWindow?: number;
   defaultReasoningLevel?: string | null;
   defaultReasoningSummary?: string;

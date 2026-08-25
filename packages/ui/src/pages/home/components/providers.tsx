@@ -4691,9 +4691,11 @@ function ModelMetadataEditor({
       const parsed = optionalPositiveInteger(rawValue);
       if (parsed === undefined) {
         delete next.contextWindow;
+        delete next.contextWindowPinned;
         delete next.maxContextWindow;
       } else {
         next.contextWindow = parsed;
+        next.contextWindowPinned = true;
         next.maxContextWindow = parsed;
       }
       return next;
@@ -4704,6 +4706,7 @@ function ModelMetadataEditor({
     updateMetadata(model, (current) => {
       const next = { ...current };
       delete next.contextWindow;
+      delete next.contextWindowPinned;
       delete next.maxContextWindow;
       return next;
     });

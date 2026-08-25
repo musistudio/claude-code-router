@@ -751,7 +751,7 @@ function codexImportedModelMetadataWithContextOverrides(
   let changed = false;
   for (const model of models) {
     const contextWindow = codexImportedModelContextWindow(model);
-    if (!contextWindow) {
+    if (!contextWindow || metadata[model]?.contextWindowPinned) {
       continue;
     }
     metadata[model] = {

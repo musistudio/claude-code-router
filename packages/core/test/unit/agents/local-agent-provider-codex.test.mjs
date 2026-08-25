@@ -132,6 +132,29 @@ test("Codex local provider config caps imported GPT-5 context metadata", () => {
   });
 });
 
+test("Codex local provider config keeps pinned context metadata above caps", () => {
+  const provider = normalizeCodexProviderAccountConfig({
+    api_base_url: codexDefaultBaseUrl,
+    api_key: localAgentProviderApiKey,
+    modelMetadata: {
+      "gpt-5-codex": {
+        contextWindow: 1000000,
+        contextWindowPinned: true,
+        maxContextWindow: 1000000
+      }
+    },
+    models: ["gpt-5-codex"],
+    name: "Codex API",
+    protocol: "openai_responses"
+  });
+
+  assert.deepEqual(provider.modelMetadata["gpt-5-codex"], {
+    contextWindow: 1000000,
+    contextWindowPinned: true,
+    maxContextWindow: 1000000
+  });
+});
+
 test("Codex reset credit details include available effective and expiry times", () => {
   const details = codexRateLimitResetCreditDetails({
     rate_limit_reset_credits: {
