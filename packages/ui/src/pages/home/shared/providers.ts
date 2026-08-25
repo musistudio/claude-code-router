@@ -2146,7 +2146,15 @@ export function mergeModelMetadata(
       if (!model || !metadata || typeof metadata !== "object") {
         continue;
       }
-      merged[model] = metadata;
+      const pinned = merged[model]?.contextWindowPinned ? merged[model] : undefined;
+      merged[model] = pinned
+        ? {
+            ...metadata,
+            contextWindow: pinned.contextWindow,
+            contextWindowPinned: true,
+            maxContextWindow: pinned.maxContextWindow
+          }
+        : metadata;
     }
   }
   return Object.keys(merged).length > 0 ? merged : undefined;

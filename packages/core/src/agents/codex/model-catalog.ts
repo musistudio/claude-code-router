@@ -156,7 +156,9 @@ function codexModelCatalogItem(
   const profile = codexModelCapabilityProfile(model, config);
   const contextWindow = positiveInteger(profile.contextWindow) ?? positiveInteger(profile.maxContextWindow) ?? codexModelContextWindow(model, profile.catalogEntry);
   const maxContextWindow = Math.max(contextWindow, positiveInteger(profile.maxContextWindow) ?? contextWindow);
-  const effectiveContextWindowPercent = percentage(profile.effectiveContextWindowPercent) ?? codexEffectiveContextWindowPercent;
+  const effectiveContextWindowPercent = profile.contextWindowPinned
+    ? 100
+    : percentage(profile.effectiveContextWindowPercent) ?? codexEffectiveContextWindowPercent;
   return {
     additional_speed_tiers: profile.additionalSpeedTiers,
     apply_patch_tool_type: profile.applyPatchToolType,
@@ -209,6 +211,7 @@ type CodexCapabilityProfile = {
   applyPatchToolType: string | null;
   catalogEntry?: ModelCatalogEntry;
   contextWindow?: number;
+  contextWindowPinned?: boolean;
   description?: string;
   defaultReasoningLevel: string | null;
   defaultReasoningSummary: string;
@@ -281,6 +284,7 @@ function codexModelCapabilityProfile(
     applyPatchToolType,
     catalogEntry,
     contextWindow: providerModelMetadata?.contextWindow,
+    contextWindowPinned: providerModelMetadata?.contextWindowPinned,
     description: provider
       ? providerModelDescriptionFor(provider, providerModel)
       : undefined,

@@ -638,9 +638,17 @@ function mergeProviderModelMetadata(
 ): Record<string, ProviderModelMetadata> | undefined {
   const metadataByModel: Record<string, ProviderModelMetadata> = {};
   for (const model of models) {
+    const currentMetadata = current?.[model] ?? {};
     const metadata = {
-      ...(current?.[model] ?? {}),
-      ...(discovered?.[model] ?? {})
+      ...currentMetadata,
+      ...(discovered?.[model] ?? {}),
+      ...(currentMetadata.contextWindowPinned
+        ? {
+            contextWindow: currentMetadata.contextWindow,
+            contextWindowPinned: true,
+            maxContextWindow: currentMetadata.maxContextWindow
+          }
+        : {})
     };
     if (Object.keys(metadata).length > 0) {
       metadataByModel[model] = metadata;

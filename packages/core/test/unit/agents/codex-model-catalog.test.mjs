@@ -395,6 +395,31 @@ test("codex catalog caps persisted local Codex GPT-5 context metadata", () => {
   }
 });
 
+test("codex catalog reports pinned context windows in full", () => {
+  const model = catalogModelFor({
+    Providers: [
+      {
+        api_base_url: "https://chatgpt.com/backend-api/codex",
+        api_key: "ccr-local-agent-login",
+        modelMetadata: {
+          "gpt-5.6-sol": {
+            contextWindow: 1000000,
+            contextWindowPinned: true,
+            effectiveContextWindowPercent: 95,
+            maxContextWindow: 1000000
+          }
+        },
+        models: ["gpt-5.6-sol"],
+        name: "Codex API",
+        type: "openai_responses"
+      }
+    ]
+  }, "Codex API/gpt-5.6-sol");
+
+  assert.equal(model.context_window, 1000000);
+  assert.equal(model.effective_context_window_percent, 100);
+});
+
 test("codex catalog keeps pinned context windows above imported caps", () => {
   const model = catalogModelFor({
     Providers: [

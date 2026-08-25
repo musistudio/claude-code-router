@@ -404,7 +404,9 @@ function effectiveProviderContextWindow(metadata: ProviderModelMetadata | undefi
   if (!contextWindow) {
     return undefined;
   }
-  const effectivePercent = percentage(metadata?.effectiveContextWindowPercent) ?? 100;
+  const effectivePercent = metadata?.contextWindowPinned
+    ? 100
+    : percentage(metadata?.effectiveContextWindowPercent) ?? 100;
   return Math.max(1, Math.floor((contextWindow * effectivePercent) / 100));
 }
 
