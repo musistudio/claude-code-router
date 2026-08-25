@@ -408,7 +408,7 @@ The complete documentation lives at **[ccrdesk.top](https://ccrdesk.top/)**.
       </a>
     </td>
     <td align="center" width="330">
-      <a href="https://infistar.ai/register?aff=CCRCCR&ref_source=link">
+      <a href="https://www.infistar.cc/register?aff=CCRCCR&ref_source=link">
         <img src="/docs/public/provider-icons/infistar-ai.jpg" width="42" height="42" alt="无限星河 icon" />
         <br />
         <strong>无限星河</strong>
