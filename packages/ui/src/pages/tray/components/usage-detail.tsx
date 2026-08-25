@@ -61,7 +61,7 @@ export function UsageDetailPanel({
             );
           }
           if (widget.type === "account") {
-            return <AccountSummaryPanel key={`${widget.id}-${index}`} refreshing={accountRefreshing} snapshots={accountSnapshots} variant={(widget.variant ?? defaultTrayWidgetVariant("account")) as TrayComponentVariants["account"]} onRefresh={onRefreshAccount} />;
+            return <AccountSummaryPanel accountProviders={trayWidgetAccountProviderValues(widget)} key={`${widget.id}-${index}`} refreshing={accountRefreshing} snapshots={accountSnapshots} variant={(widget.variant ?? defaultTrayWidgetVariant("account")) as TrayComponentVariants["account"]} onRefresh={onRefreshAccount} />;
           }
           if (widget.type === "token-flow") {
             return (
@@ -71,7 +71,7 @@ export function UsageDetailPanel({
             );
           }
           if (widget.type === "activity") {
-            return <TokenActivityPanel key={`${widget.id}-${index}`} series={activeStats.series} />;
+            return <TokenActivityPanel generatedAt={activeStats.generatedAt} key={`${widget.id}-${index}`} range={activeStats.range} series={activeStats.series} />;
           }
           if (widget.type === "token-mix") {
             return <TokenMixPanel key={`${widget.id}-${index}`} totals={totals} variant={(widget.variant ?? defaultTrayWidgetVariant("token-mix")) as TrayComponentVariants["tokenMix"]} />;
@@ -89,4 +89,12 @@ export function UsageDetailPanel({
       ) : null}
     </>
   );
+}
+
+function trayWidgetAccountProviderValues(widget: TrayWidgetConfig): string[] | undefined {
+  const values = [
+    ...(widget.accountProviders ?? []),
+    ...(widget.accountProvider ? [widget.accountProvider] : [])
+  ].map((value) => value.trim()).filter(Boolean);
+  return values.length > 0 ? Array.from(new Set(values)) : undefined;
 }

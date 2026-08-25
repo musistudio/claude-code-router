@@ -35,6 +35,25 @@ test("activityDateKey formats local calendar dates", () => {
   assert.equal(activityDateKey(new Date(2026, 0, 5, 14, 30)), "2026-01-05");
 });
 
+test("buildTokenActivity averages sparse data over the selected range window", () => {
+  withTimezone("America/New_York", () => {
+    const summary = buildTokenActivity(
+      [
+        { bucket: "2026-06-29", totalTokens: 10 },
+        { bucket: "2026-06-30", totalTokens: 30 }
+      ],
+      { now: "2026-06-30T12:00:00.000Z", range: "30d" }
+    );
+
+    assert.equal(summary.totalTokens, 40);
+    assert.equal(summary.activeDays, 2);
+    assert.equal(summary.dayCount, 30);
+    assert.equal(summary.longestStreak, 2);
+    assert.equal(Math.round(summary.avgPerDay * 100) / 100, 1.33);
+    assert.equal(Math.round(summary.avgPerWeek * 100) / 100, 9.33);
+  });
+});
+
 function withTimezone(timezone, run) {
   const previousTimezone = process.env.TZ;
   process.env.TZ = timezone;

@@ -1,4 +1,4 @@
-import type { UsageSeriesPoint } from "@ccr/core/contracts/app";
+import type { UsageSeriesPoint, UsageStatsRange } from "@ccr/core/contracts/app";
 
 export type TokenActivityCell = {
   date: Date;
@@ -32,6 +32,8 @@ export type TokenActivitySummary = {
 type TokenActivityOptions = {
   maxWeeks?: number;
   minWeeks?: number;
+  now?: Date | string;
+  range?: UsageStatsRange;
 };
 
 const dayMs = 24 * 60 * 60 * 1000;
@@ -53,8 +55,9 @@ export function buildTokenActivity(series: UsageSeriesPoint[], options: TokenAct
   }
 
   const today = startOfLocalDay(new Date());
-  observedStart = observedStart ?? today;
-  observedEnd = observedEnd ?? today;
+  const rangeWindow = activityRangeWindow(options.range, options.now);
+  observedStart = rangeWindow?.start ?? observedStart ?? today;
+  observedEnd = rangeWindow?.end ?? observedEnd ?? today;
 
   let gridStart = startOfActivityWeek(observedStart);
   const gridEnd = endOfActivityWeek(observedEnd);
@@ -74,7 +77,7 @@ export function buildTokenActivity(series: UsageSeriesPoint[], options: TokenAct
 
   const dayCount = Math.max(1, daysBetween(observedStart, observedEnd) + 1);
   const totalTokens = sumObservedTokens(totalsByDay, observedStart, observedEnd);
-  const maxTokens = Math.max(...Array.from(totalsByDay.values()), 0);
+  const maxTokens = maxObservedTokens(totalsByDay, observedStart, observedEnd);
   const cells: TokenActivityCell[] = [];
 
   for (let weekIndex = 0; weekIndex < weekCount; weekIndex += 1) {
@@ -127,6 +130,39 @@ function parseActivityDate(bucket: string): Date {
   return date;
 }
 
+function activityRangeWindow(range: UsageStatsRange | undefined, nowInput: Date | string | undefined): { end: Date; start: Date } | undefined {
+  if (!range) {
+    return undefined;
+  }
+  const now = normalizeActivityNow(nowInput);
+  if (!isFiniteDate(now)) {
+    return undefined;
+  }
+  const end = startOfLocalDay(now);
+  if (range === "today") {
+    return { end, start: end };
+  }
+  if (range === "24h") {
+    const start = new Date(now);
+    start.setHours(start.getHours() - 24);
+    return { end, start: startOfLocalDay(start) };
+  }
+  return {
+    end,
+    start: addDays(end, range === "7d" ? -6 : -29)
+  };
+}
+
+function normalizeActivityNow(value: Date | string | undefined): Date {
+  if (value instanceof Date) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    return new Date(value);
+  }
+  return new Date();
+}
+
 export function activityDateKey(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -172,6 +208,14 @@ function sumObservedTokens(totalsByDay: Map<string, number>, start: Date, end: D
     total += totalsByDay.get(activityDateKey(date)) ?? 0;
   });
   return total;
+}
+
+function maxObservedTokens(totalsByDay: Map<string, number>, start: Date, end: Date): number {
+  let max = 0;
+  walkDays(start, end, (date) => {
+    max = Math.max(max, totalsByDay.get(activityDateKey(date)) ?? 0);
+  });
+  return max;
 }
 
 function countObservedDays(totalsByDay: Map<string, number>, start: Date, end: Date, predicate: (value: number) => boolean): number {

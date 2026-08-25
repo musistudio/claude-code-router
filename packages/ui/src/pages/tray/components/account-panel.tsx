@@ -1,28 +1,27 @@
 import {
-  accountMetersForDisplay, accountProgressClass, accountProgressColor, accountSnapshotLabel, compareAccountSnapshots, formatAccountMeterTitle, formatAccountMeterValue,
+  accountMetersForDisplay, accountProgressClass, accountProgressColor, accountSnapshotKey, accountSnapshotLabel, compareAccountSnapshots, formatAccountMeterTitle, formatAccountMeterValue,
   LoaderCircle, meterProgress, meterRemainingRatio, meterValidityProgress, ProviderAccountMeter, ProviderAccountSnapshot, RefreshCw, TrayComponentVariants,
   useTrayText
 } from "../shared";
 import { RadialMetric } from "./widgets";
 
 export function AccountSummaryPanel({
+  accountProviders,
   onRefresh,
   refreshing = false,
   snapshots,
   variant
 }: {
+  accountProviders?: string[];
   onRefresh?: () => void | Promise<void>;
   refreshing?: boolean;
   snapshots: ProviderAccountSnapshot[];
   variant: TrayComponentVariants["account"];
 }) {
   const t = useTrayText();
-  const snapshot = snapshots
-    .filter((snapshot) => snapshot.meters.length > 0 || snapshot.status === "error")
-    .sort(compareAccountSnapshots)
-    [0];
+  const selectedSnapshots = accountSnapshotsForDisplay(snapshots, accountProviders);
 
-  if (!snapshot) {
+  if (selectedSnapshots.length === 0) {
     return (
       <div className="tray-panel-subtle px-3 py-2 text-[11px] font-medium text-slate-400">
         {t("No account data configured")}
@@ -30,15 +29,22 @@ export function AccountSummaryPanel({
     );
   }
 
-  const meters = accountMetersForDisplay(snapshot, variant === "stacked" ? 3 : 2);
+  const title = selectedSnapshots.length === 1
+    ? accountSnapshotLabel(selectedSnapshots[0])
+    : t("Account");
 
   return (
     <div className="tray-panel p-2.5">
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
-        <h3 className="truncate text-[11px] font-bold text-slate-100">{accountSnapshotLabel(snapshot)}</h3>
+        <div className="min-w-0">
+          <h3 className="truncate text-[11px] font-bold text-slate-100">{title}</h3>
+          {selectedSnapshots.length > 1 ? (
+            <div className="mt-0.5 truncate text-[9px] font-medium text-slate-400">{selectedSnapshots.length} {t("accounts selected")}</div>
+          ) : null}
+        </div>
         <button
           aria-label={t("Refresh")}
-          className={`inline-flex h-5 w-5 shrink-0 appearance-none items-center justify-center rounded-md border-0 bg-transparent p-0 shadow-none transition-colors hover:bg-white/[.07] disabled:cursor-not-allowed disabled:opacity-50 ${accountStatusButtonClass(snapshot.status)}`}
+          className={`inline-flex h-5 w-5 shrink-0 appearance-none items-center justify-center rounded-md border-0 bg-transparent p-0 shadow-none transition-colors hover:bg-white/[.07] disabled:cursor-not-allowed disabled:opacity-50 ${accountStatusButtonClass(highestAccountStatus(selectedSnapshots))}`}
           disabled={refreshing || !onRefresh}
           onClick={() => {
             void onRefresh?.();
@@ -49,6 +55,50 @@ export function AccountSummaryPanel({
           {refreshing ? <LoaderCircle className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
         </button>
       </div>
+      <div className={selectedSnapshots.length > 1 ? "space-y-2" : ""}>
+        {selectedSnapshots.map((snapshot) => (
+          <AccountSnapshotBlock
+            key={accountSnapshotKey(snapshot)}
+            showLabel={selectedSnapshots.length > 1}
+            snapshot={snapshot}
+            variant={variant}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function accountSnapshotsForDisplay(
+  snapshots: ProviderAccountSnapshot[],
+  accountProviders: string[] | undefined
+): ProviderAccountSnapshot[] {
+  const selected = new Set((accountProviders ?? []).map((provider) => provider.trim()).filter(Boolean));
+  return snapshots
+    .filter((snapshot) => snapshot.meters.length > 0 || snapshot.status === "error")
+    .filter((snapshot) => selected.size === 0 || selected.has(accountSnapshotKey(snapshot)) || selected.has(snapshot.provider))
+    .sort(compareAccountSnapshots);
+}
+
+function highestAccountStatus(snapshots: ProviderAccountSnapshot[]): ProviderAccountSnapshot["status"] {
+  return [...snapshots].sort(compareAccountSnapshots)[0]?.status ?? "unsupported";
+}
+
+function AccountSnapshotBlock({
+  showLabel,
+  snapshot,
+  variant
+}: {
+  showLabel: boolean;
+  snapshot: ProviderAccountSnapshot;
+  variant: TrayComponentVariants["account"];
+}) {
+  const t = useTrayText();
+  const meters = accountMetersForDisplay(snapshot, variant === "stacked" ? 3 : 2);
+
+  return (
+    <div className={showLabel ? "border-t border-white/10 pt-2 first:border-t-0 first:pt-0" : undefined}>
+      {showLabel ? <div className="mb-1.5 truncate text-[10px] font-semibold text-slate-100">{accountSnapshotLabel(snapshot)}</div> : null}
       {meters.length > 0 ? (
         <AccountMeters meters={meters} status={snapshot.status} variant={variant} />
       ) : (

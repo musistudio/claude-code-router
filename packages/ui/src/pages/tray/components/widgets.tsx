@@ -144,12 +144,16 @@ export function AnimatedUsageChart({
 }
 
 export function TokenActivityPanel({
+  generatedAt,
+  range,
   series
 }: {
+  generatedAt?: string;
+  range?: UsageStatsRange;
   series: UsageStatsSnapshot["series"];
 }) {
   const t = useTrayText();
-  const activity = buildTokenActivity(series, { maxWeeks: 14, minWeeks: 10 });
+  const activity = buildTokenActivity(series, { maxWeeks: 30, minWeeks: 30, now: generatedAt, range });
 
   return (
     <div className="tray-panel min-w-0 p-2.5">
@@ -211,25 +215,25 @@ function TokenActivityGrid({
   const t = useTrayText();
   const dayLabels = [t("M"), "", t("W"), "", t("F"), "", ""];
   const cellGap = 3;
-  const cellSize = 9;
   const labelColumnWidth = 14;
+  const gridTemplateColumns = `${labelColumnWidth}px repeat(${activity.weekCount}, minmax(0, 1fr))`;
 
   return (
     <div className="min-w-0 overflow-visible">
-      <div className="w-max">
+      <div className="w-full">
         <div
           className="mb-1 grid text-[8px] font-medium text-slate-500"
           style={{
             columnGap: `${cellGap}px`,
-            gridTemplateColumns: `repeat(${activity.weekCount}, ${cellSize}px)`,
-            marginLeft: `${labelColumnWidth + cellGap}px`
+            gridTemplateColumns
           }}
         >
+          <span aria-hidden="true" />
           {activity.months.map((month) => (
             <span
               className="truncate"
               key={`${month.label}-${month.weekIndex}`}
-              style={{ gridColumn: `${month.weekIndex + 1} / span ${Math.min(3, activity.weekCount - month.weekIndex)}` }}
+              style={{ gridColumn: `${month.weekIndex + 2} / span ${Math.min(3, activity.weekCount - month.weekIndex)}` }}
             >
               {month.label}
             </span>
@@ -241,8 +245,8 @@ function TokenActivityGrid({
           aria-label={`${t("Activity")} ${t("Tokens")}`}
           style={{
             gap: `${cellGap}px`,
-            gridTemplateColumns: `${labelColumnWidth}px repeat(${activity.weekCount}, ${cellSize}px)`,
-            gridTemplateRows: `repeat(7, ${cellSize}px)`
+            gridTemplateColumns,
+            gridTemplateRows: "repeat(7, auto)"
           }}
         >
           {dayLabels.map((label, index) => (
@@ -254,27 +258,27 @@ function TokenActivityGrid({
               {label}
             </span>
           ))}
-        {activity.cells.map((cell) => (
-          <Tooltip
-            aria-label={`${cell.dateLabel}: ${formatActivityTokenCount(cell.totalTokens)} ${t("tokens")}`}
-            align={cell.weekIndex <= 1 ? "start" : cell.weekIndex >= activity.weekCount - 2 ? "end" : "center"}
-            className="rounded-[3px]"
-            content={(
-              <>
-                <span className="block font-bold">{cell.dateLabel}</span>
-                <span className="tray-activity-tooltip-detail mt-0.5 block font-medium">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
-              </>
-            )}
-            contentClassName="tray-activity-tooltip min-w-[96px] px-2 py-1.5 text-left text-[10px] font-normal"
-            key={cell.dateKey}
-            side={cell.dayIndex <= 1 ? "bottom" : "top"}
-            style={{
-              backgroundColor: trayActivityColor(cell.intensity, cell.inObservedRange),
-              gridColumn: cell.weekIndex + 2,
-              gridRow: cell.dayIndex + 1
-            }}
-          />
-        ))}
+          {activity.cells.map((cell) => (
+            <Tooltip
+              aria-label={`${cell.dateLabel}: ${formatActivityTokenCount(cell.totalTokens)} ${t("tokens")}`}
+              align={cell.weekIndex <= 1 ? "start" : cell.weekIndex >= activity.weekCount - 2 ? "end" : "center"}
+              className="aspect-square w-full rounded-[3px]"
+              content={(
+                <>
+                  <span className="block font-bold">{cell.dateLabel}</span>
+                  <span className="tray-activity-tooltip-detail mt-0.5 block font-medium">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
+                </>
+              )}
+              contentClassName="tray-activity-tooltip min-w-[96px] px-2 py-1.5 text-left text-[10px] font-normal"
+              key={cell.dateKey}
+              side={cell.dayIndex <= 1 ? "bottom" : "top"}
+              style={{
+                backgroundColor: trayActivityColor(cell.intensity, cell.inObservedRange),
+                gridColumn: cell.weekIndex + 2,
+                gridRow: cell.dayIndex + 1
+              }}
+            />
+          ))}
         </div>
       </div>
     </div>

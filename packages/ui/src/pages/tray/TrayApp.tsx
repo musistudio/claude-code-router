@@ -218,7 +218,7 @@ function TrayRuntimeWidget({
   }
 
   if (widget.type === "account") {
-    return <AccountSummaryPanel refreshing={accountRefreshing} snapshots={accountSnapshots} variant={(widget.variant ?? defaultTrayWidgetVariant("account")) as TrayComponentVariants["account"]} onRefresh={onRefreshAccount} />;
+    return <AccountSummaryPanel accountProviders={trayWidgetAccountProviderValues(widget)} refreshing={accountRefreshing} snapshots={accountSnapshots} variant={(widget.variant ?? defaultTrayWidgetVariant("account")) as TrayComponentVariants["account"]} onRefresh={onRefreshAccount} />;
   }
 
   if (widget.type === "token-flow") {
@@ -230,7 +230,7 @@ function TrayRuntimeWidget({
   }
 
   if (widget.type === "activity") {
-    return <TokenActivityPanel series={activeStats.series} />;
+    return <TokenActivityPanel generatedAt={activeStats.generatedAt} range={activeStats.range} series={activeStats.series} />;
   }
 
   if (widget.type === "stats") {
@@ -256,6 +256,14 @@ function TrayRuntimeWidget({
   }
 
   return <ModelShareChart rows={activeStats.models} variant={(widget.variant ?? defaultTrayWidgetVariant("model-share")) as TrayComponentVariants["modelShare"]} />;
+}
+
+function trayWidgetAccountProviderValues(widget: TrayWidgetConfig): string[] | undefined {
+  const values = [
+    ...(widget.accountProviders ?? []),
+    ...(widget.accountProvider ? [widget.accountProvider] : [])
+  ].map((value) => value.trim()).filter(Boolean);
+  return values.length > 0 ? Array.from(new Set(values)) : undefined;
 }
 
 function TrayHeaderRangeSwitch({

@@ -39,7 +39,7 @@ test("tray component variants retain valid values and fall back independently", 
 
 test("tray widgets normalize ids and variants, pin top widgets, and dedupe singletons", () => {
   const widgets = normalizeTrayWidgets([
-    { id: " custom-account ", type: "account", variant: "arc" },
+    { accountProvider: "openai::primary", accountProviders: ["anthropic::secondary", "openai::primary", " "], id: " custom-account ", type: "account", variant: "arc" },
     { id: "", type: "header", variant: "ignored" },
     { id: "duplicate-header", type: "header" },
     { type: "source-tabs" },
@@ -51,7 +51,7 @@ test("tray widgets normalize ids and variants, pin top widgets, and dedupe singl
   assert.deepEqual(widgets, [
     { id: "header", type: "header" },
     { id: "source-tabs", type: "source-tabs" },
-    { id: "custom-account", type: "account", variant: "arc" },
+    { accountProviders: ["anthropic::secondary", "openai::primary"], id: "custom-account", type: "account", variant: "arc" },
     { id: "invalid-variant", type: "stats", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.stats }
   ]);
 });

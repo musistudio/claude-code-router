@@ -1429,6 +1429,8 @@ export const TRAY_SINGLETON_WIDGET_TYPES = ["source-tabs", "header"] as const sa
 export const TRAY_TOP_WIDGET_TYPES = ["source-tabs", "header"] as const satisfies readonly TrayWidgetType[];
 
 export type TrayWidgetConfig = {
+  accountProvider?: string;
+  accountProviders?: string[];
   id: string;
   type: TrayWidgetType;
   variant?: TrayWidgetVariant;

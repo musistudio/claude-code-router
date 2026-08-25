@@ -2,7 +2,7 @@ import {
   Activity, AppConfig, AppCopy, AppInfo, AppLanguagePreference, Boxes, BotGatewayConfigDraft, botGatewayAuthSpecsForPlatform,
   botGatewayDefaultAuthType, botGatewayFieldsForAuth, botGatewayPickAuthFields, botGatewayPlatformLabel, botGatewayPlatformOptions,
   botGatewaySavedConfigFromDraft, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitResult, BotGatewayQrWindowOpenResult, BotGatewaySavedConfig, Button,
-  CircleAlert, closestCenter, cn, CSS, Database, Dialog, DialogBody, DialogContent,
+  Checkbox, ChevronDown, CircleAlert, closestCenter, cn, compareProviderAccountSnapshots, CSS, Database, Dialog, DialogBody, DialogContent,
   DialogFooter, DialogHeader, DialogTitle, endpointFromHostPort, Field, formatAppError, formatProviderAccountMeterValue, formatSystemOption, Gauge,
   Globe,
   createBotGatewayConfigDraft, createMcpServerDraft, createMcpServerDraftFromConfig, createMcpServerDraftFromUnknown, DndContext, DragEndEvent, GatewayMcpServerConfig, GatewayProviderConfig, Input, isBotGatewayConfigDraftSubmittable, KeyboardSensor, KeyRound, KeyValueRowsControl, languageDisplayName, Layers3, LoaderCircle,
@@ -11,7 +11,7 @@ import {
   PointerSensor, rectSortingStrategy, Settings, SettingsPageId, SortableContext, sortableKeyboardCoordinates, themeDisplayName,
   translateOptions, TrayBalanceProgressConfig, TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant,
   appLogoUrl, trayMascotIconUrls, arrayMove, defaultTrayWidgetVariant, isTraySingletonWidgetType, normalizeTrayWidget, normalizeTrayWidgets, Switch, Textarea, Trash2, trayWidgetVariantOptions, useAppText, useEffect, useMemo, useRef, useSensor, useSensors, useSortable, useState, validateMcpServerDraft,
-  X
+  providerAccountSnapshotKey, providerAccountSnapshotLabel, uniqueStrings, X
 } from "../shared/index";
 import { ModelSelector } from "./model-selector";
 
@@ -1921,6 +1921,11 @@ function TraySettingsPage({
   const selectedCategory = selectedWidget ? trayComponentCategoryForType(selectedWidget.type) : "provider-tabs";
   const selectedCategoryOption = paletteItems.find((item) => item.value === selectedCategory) ?? paletteItems[0];
   const selectedStyleOptions = selectedWidget ? trayWidgetVariantOptions(selectedWidget.type) : [];
+  const selectedAccountProviderValues = selectedWidget ? trayWidgetAccountProviderValues(selectedWidget) : [];
+  const accountDataOptions = useMemo(
+    () => trayAccountDataOptions(providerAccountSnapshots, selectedAccountProviderValues),
+    [providerAccountSnapshots, selectedAccountProviderValues]
+  );
   const SelectedTrayCategoryIcon = selectedCategoryOption.icon;
   const trayPreviewSensors = useSensors(
     useSensor(PointerSensor, {
@@ -2013,6 +2018,16 @@ function TraySettingsPage({
       return;
     }
     updateTrayWidget(selectedWidget.id, { variant });
+  }
+
+  function changeTrayWidgetAccountProviders(accountProviders: string[]) {
+    if (!selectedWidget || selectedWidget.type !== "account") {
+      return;
+    }
+    updateTrayWidget(selectedWidget.id, {
+      accountProvider: accountProviders.length === 1 ? accountProviders[0] : undefined,
+      accountProviders: accountProviders.length > 0 ? accountProviders : undefined
+    });
   }
 
   function removeSelectedTrayWidget() {
@@ -2220,6 +2235,16 @@ function TraySettingsPage({
                 </Field>
               ) : null}
 
+              {selectedWidget.type === "account" ? (
+                <Field label={trayT("Accounts")}>
+                  <TrayAccountDataSelector
+                    options={accountDataOptions}
+                    value={selectedAccountProviderValues}
+                    onChange={changeTrayWidgetAccountProviders}
+                  />
+                </Field>
+              ) : null}
+
               <Button className="w-full justify-center" onClick={removeSelectedTrayWidget} size="sm" type="button" variant="outline">
                 {trayT("Remove widget")}
               </Button>
@@ -2354,6 +2379,129 @@ function uniqueTrayWidgetId(widgets: TrayWidgetConfig[], baseId: string): string
     index += 1;
   }
   return `${baseId}-${index}`;
+}
+
+function trayWidgetAccountProviderValues(widget: TrayWidgetConfig): string[] {
+  return uniqueStrings([
+    ...(widget.accountProviders ?? []),
+    ...(widget.accountProvider ? [widget.accountProvider] : [])
+  ]);
+}
+
+function trayAccountDataOptions(
+  providerAccountSnapshots: ProviderAccountSnapshot[],
+  selectedValues: string[]
+): Array<{ label: string; value: string }> {
+  const options = providerAccountSnapshots
+    .filter((account) => account.provider)
+    .sort(compareProviderAccountSnapshots)
+    .map((account) => ({ label: providerAccountSnapshotLabel(account), value: providerAccountSnapshotKey(account) }));
+  for (const selectedValue of selectedValues) {
+    if (!options.some((option) => option.value === selectedValue)) {
+      options.push({ label: selectedValue, value: selectedValue });
+    }
+  }
+  return [{ label: "All accounts", value: "" }, ...options];
+}
+
+function TrayAccountDataSelector({
+  onChange,
+  options,
+  value
+}: {
+  onChange: (value: string[]) => void;
+  options: Array<{ label: string; value: string }>;
+  value: string[];
+}) {
+  const t = useAppText();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const selected = new Set(value);
+  const accountOptions = options.filter((option) => option.value);
+  const allSelected = selected.size === 0;
+  const selectedLabels = accountOptions
+    .filter((option) => selected.has(option.value))
+    .map((option) => option.label);
+  const summary = allSelected
+    ? t("All accounts")
+    : selected.size === 1
+      ? selectedLabels[0] ?? value[0] ?? t("Select account")
+      : `${selected.size} ${t("accounts selected")}`;
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && rootRef.current?.contains(target)) {
+        return;
+      }
+      setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  function toggleAccount(account: string, checked: boolean) {
+    const next = new Set(selected);
+    if (checked) {
+      next.add(account);
+    } else {
+      next.delete(account);
+    }
+    onChange([...next]);
+  }
+
+  return (
+    <div className="relative min-w-0" ref={rootRef}>
+      <button
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-[12px] text-foreground shadow-[inset_0_1px_1px_rgba(0,0,0,0.03)] outline-none transition-[background-color,border-color,box-shadow,color] hover:border-muted-foreground/45 focus:border-primary/60 focus:ring-2 focus:ring-ring/25"
+        onClick={() => setOpen((current) => !current)}
+        type="button"
+      >
+        <span className="min-w-0 flex-1 truncate">{summary}</span>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      </button>
+      {open ? (
+        <div
+          aria-multiselectable="true"
+          className="absolute left-0 top-[calc(100%+4px)] z-50 max-h-56 w-full min-w-[220px] overflow-y-auto rounded-md border border-border bg-popover p-1.5 text-popover-foreground shadow-card-elevated"
+          role="listbox"
+        >
+          <label className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[12px] font-medium transition-colors hover:bg-muted/50">
+            <Checkbox checked={allSelected} onCheckedChange={(checked) => checked ? onChange([]) : undefined} />
+            <span className="min-w-0 flex-1 truncate">{t("All accounts")}</span>
+          </label>
+          <div className="my-1 h-px bg-border/70" />
+          {accountOptions.length > 0 ? (
+            accountOptions.map((option) => (
+              <label className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[12px] transition-colors hover:bg-muted/50" key={option.value} role="option" aria-selected={selected.has(option.value)}>
+                <Checkbox
+                  checked={selected.has(option.value)}
+                  onCheckedChange={(checked) => toggleAccount(option.value, checked)}
+                />
+                <span className="min-w-0 flex-1 truncate">{option.label}</span>
+              </label>
+            ))
+          ) : (
+            <div className="px-2 py-1.5 text-[12px] text-muted-foreground">{t("No account data configured")}</div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function TrayIconSelect({

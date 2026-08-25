@@ -47,7 +47,7 @@ export function UsageOverviewPanel({
       </ChartShell>
       ) : null}
 
-      {modules.has("activity") ? <TokenActivityPanel series={activeStats.series} /> : null}
+      {modules.has("activity") ? <TokenActivityPanel generatedAt={activeStats.generatedAt} range={activeStats.range} series={activeStats.series} /> : null}
 
       {modules.has("stats") ? (
       <StatsGrid

@@ -167,12 +167,18 @@ test("AccountSummaryPanel covers empty and metered account states", () => {
   const meteredHtml = renderToStaticMarkup(
     <AccountSummaryPanel snapshots={accountSnapshots()} variant="stacked" onRefresh={() => undefined} />
   );
+  const selectedHtml = renderToStaticMarkup(
+    <AccountSummaryPanel accountProviders={["anthropic::secondary"]} snapshots={accountSnapshots()} variant="compact" />
+  );
 
   assert.match(emptyHtml, /No account data configured/);
   assert.match(meteredHtml, /openai \/ Primary Key/);
+  assert.match(meteredHtml, /anthropic \/ Secondary Key/);
   assert.match(meteredHtml, /5h quota/);
   assert.match(meteredHtml, /42 requests/);
   assert.match(meteredHtml, /style="\s*width:42%"/);
+  assert.match(selectedHtml, /anthropic \/ Secondary Key/);
+  assert.doesNotMatch(selectedHtml, /openai \/ Primary Key/);
 });
 
 test("AccountSummaryPanel prioritizes Codex manual reset meter with expiration", () => {
@@ -297,6 +303,7 @@ test("TokenActivityPanel renders summary, grid, and legend", () => {
   assert.match(html, /Longest streak/);
   assert.match(html, /aria-label="Activity Tokens"/);
   assert.match(html, /data-ui-tooltip-trigger/);
+  assert.equal(html.match(/data-ui-tooltip-trigger/g)?.length, 210);
   assert.doesNotMatch(html, /tray-activity-tooltip/);
   assert.doesNotMatch(html, /bg-slate-950/);
   assert.match(html, /Less/);

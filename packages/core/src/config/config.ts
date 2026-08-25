@@ -1288,11 +1288,22 @@ function parseTrayWidget(value: unknown): TrayWidgetConfig | undefined {
     return undefined;
   }
   const variant = parseTrayWidgetVariant(type, value.variant);
+  const accountProviders = type === "account" ? parseTrayWidgetAccountProviders(value) : [];
   return {
+    ...(accountProviders.length === 1 ? { accountProvider: accountProviders[0] } : {}),
+    ...(accountProviders.length > 0 ? { accountProviders } : {}),
     id: readString(value.id) || trayWidgetId(type),
     type,
     ...(variant ? { variant } : {})
   };
+}
+
+function parseTrayWidgetAccountProviders(value: Record<string, unknown>): string[] {
+  const accountProvider = readString(value.accountProvider);
+  return uniqueStrings([
+    ...parseStringList(value.accountProviders),
+    ...(accountProvider ? [accountProvider] : [])
+  ]);
 }
 
 function parseTrayWidgetType(value: unknown): TrayWidgetType | undefined {

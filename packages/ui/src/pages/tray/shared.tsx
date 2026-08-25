@@ -58,7 +58,9 @@ export const trayText: Record<ResolvedLanguage, Record<string, string>> = {
     "7d": "7 天",
     "30d": "30 天",
     "All": "全部",
+    "accounts selected": "个账户已选择",
     "Account": "账户",
+    "Accounts": "账户",
     "All providers": "全部供应商",
     "Activity": "活跃度",
     "Avg / day": "日均",
@@ -390,11 +392,22 @@ export function normalizeTrayWidget(value: unknown): TrayWidgetConfig | undefine
     return undefined;
   }
   const variant = normalizeTrayWidgetVariant(type, value.variant);
+  const accountProviders = type === "account" ? normalizeTrayWidgetAccountProviders(value) : [];
   return {
+    ...(accountProviders.length === 1 ? { accountProvider: accountProviders[0] } : {}),
+    ...(accountProviders.length > 0 ? { accountProviders } : {}),
     id: typeof value.id === "string" && value.id.trim() ? value.id.trim() : trayWidgetId(type),
     type,
     ...(variant ? { variant } : {})
   };
+}
+
+export function normalizeTrayWidgetAccountProviders(value: Record<string, unknown>): string[] {
+  const accountProvider = stringValue(value.accountProvider);
+  return uniqueTrayStrings([
+    ...trayStringListValue(value.accountProviders),
+    ...(accountProvider ? [accountProvider] : [])
+  ]);
 }
 
 export function normalizeTrayWidgetType(value: unknown): TrayWidgetType | undefined {
@@ -525,6 +538,34 @@ export function normalizeEnumValue<T extends string>(value: unknown, allowed: re
 
 export function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function trayStringListValue(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return uniqueTrayStrings(value.map((item) => stringValue(item)).filter((item): item is string => Boolean(item)));
+  }
+  if (typeof value === "string") {
+    return uniqueTrayStrings(value.split(/\r?\n|,/g).map((item) => item.trim()).filter(Boolean));
+  }
+  return [];
+}
+
+function uniqueTrayStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const item = value.trim();
+    if (!item || seen.has(item)) {
+      continue;
+    }
+    seen.add(item);
+    result.push(item);
+  }
+  return result;
 }
 
 export function normalizeTrayIconPreference(value: AppConfig["trayIcon"] | undefined): AppConfig["trayIcon"] {
@@ -739,6 +780,10 @@ export function compareAccountSnapshots(a: ProviderAccountSnapshot, b: ProviderA
 export function accountSnapshotLabel(snapshot: ProviderAccountSnapshot): string {
   const credential = accountSnapshotCredentialLabel(snapshot);
   return credential ? `${snapshot.provider} / ${credential}` : snapshot.provider;
+}
+
+export function accountSnapshotKey(snapshot: ProviderAccountSnapshot): string {
+  return snapshot.credentialId ? `${snapshot.provider}::${snapshot.credentialId}` : snapshot.provider;
 }
 
 export function accountSnapshotCredentialLabel(snapshot: ProviderAccountSnapshot): string {
