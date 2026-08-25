@@ -1,6 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 import { disposeCliWebRuntime, startCliWebServer, type CliWebRuntime } from "./cli-web-runtime";
 
+// The web UI defaults to the system language, and this suite asserts strings
+// that are localized ("Providers" nav, the "Edit <name>" provider button
+// aria-label). Pin the context to English so the spec is independent of the
+// host's locale instead of hard-coding dual-language selectors.
+test.use({ locale: "en-US" });
+
 const cliWebAuthToken = "playwright-provider-edit-token";
 
 // A provider shaped like a hand-written config entry: the dialog renders none of
