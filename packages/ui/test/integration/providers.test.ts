@@ -173,7 +173,9 @@ test("provider save keeps hand-written fields the dialog cannot edit", () => {
 test("provider draft round-trips the advanced JSON boxes", () => {
   const provider = {
     api_base_url: "https://example.test/v1",
-    extraBody: { byModel: { "model-a": { reasoning_effort: "high" } } },
+    // Raw ai-gateway shape: "default" plus top-level model-name keys (the
+    // normalized byModel form is internal to ai-gateway and never saved).
+    extraBody: { default: { reasoning_effort: "low" }, "model-a": { reasoning_effort: "high" } },
     extraHeaders: { "x-tenant": "acme" },
     models: ["model-a"],
     name: "example"

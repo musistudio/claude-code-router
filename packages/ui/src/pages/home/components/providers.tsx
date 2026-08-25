@@ -2462,7 +2462,7 @@ export function AddProviderForm({
                         value={draft.extraBodyText}
                       />
                       <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
-                        {t("Merged into every upstream request for this provider. Use \"default\" for all models, or \"byModel\" to target one.")}
+                        {t("Merged into every upstream request for this provider. Use \"default\" for all models, or a model name as the key to target one.")}
                       </div>
                     </Field>
                     <Field className="sm:col-span-2" label={t("Extra request headers")} requirement="optional" requirementLabel={t("Optional")}>
