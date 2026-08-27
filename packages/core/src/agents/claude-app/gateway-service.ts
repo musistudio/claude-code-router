@@ -24,6 +24,9 @@ const claudeAppGatewayModelRouteOptions: ClaudeAppGatewayModelRouteOptions = {
   supportsOneMillionContext: (model) => Boolean(findModelCatalogEntry(model)?.limits?.supports1MContext)
 };
 
+export const NO_CLAUDE_APP_ENTRY_PROFILE_MESSAGE =
+  "No enabled claude-code profile can open the Claude App. Set a profile's Entry mode to App or Auto to configure the Claude App for CCR.";
+
 type ClaudeAppGatewayConfig = {
   authentication: {
     disableClaudeAiSignIn: true;
@@ -81,7 +84,19 @@ export type ClaudeAppGatewaySyncResult = {
   result: ClaudeAppGatewayApplyResult;
 };
 
+export function hasClaudeAppEntryProfile(config: Pick<AppConfig, "profile">): boolean {
+  return config.profile.profiles.some((profile) => profile.enabled && profile.agent === "claude-code" && profile.surface !== "cli");
+}
+
 export async function syncClaudeAppGatewayConfig(config: AppConfig): Promise<ClaudeAppGatewaySyncResult> {
+  if (!hasClaudeAppEntryProfile(config)) {
+    restoreClaudeAppGatewayConfig();
+    return {
+      config,
+      configChanged: false,
+      result: skippedClaudeAppGatewayResult(config, NO_CLAUDE_APP_ENTRY_PROFILE_MESSAGE)
+    };
+  }
   if (!hasAvailableGatewayModels(config)) {
     return {
       config,
@@ -106,7 +121,10 @@ export async function syncClaudeAppGatewayConfig(config: AppConfig): Promise<Cla
   };
 }
 
-function skippedClaudeAppGatewayResult(config: AppConfig): ClaudeAppGatewayApplyResult {
+function skippedClaudeAppGatewayResult(
+  config: AppConfig,
+  message: string = NO_AVAILABLE_GATEWAY_MODELS_MESSAGE
+): ClaudeAppGatewayApplyResult {
   const paths = getClaudeAppGatewayPaths();
   return {
     apiKeyGenerated: false,
@@ -114,7 +132,7 @@ function skippedClaudeAppGatewayResult(config: AppConfig): ClaudeAppGatewayApply
     configLibraryFile: paths.configLibraryFile,
     dataDir: paths.dataDir,
     endpoint: gatewayEndpoint(config),
-    message: NO_AVAILABLE_GATEWAY_MODELS_MESSAGE,
+    message,
     model: "",
     requiresRestart: false
   };
