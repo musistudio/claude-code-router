@@ -474,11 +474,19 @@ function gatewayFetchPreloadScript(): string {
     "const parsedTimeout = rawTimeout === undefined || rawTimeout === '' ? NaN : Number(rawTimeout);",
     "const hasTimeout = Number.isFinite(parsedTimeout) && parsedTimeout >= 0;",
     "if ((up || hasTimeout) && um) {",
-    "  const { Agent, ProxyAgent } = require(um);",
+    "  const { Agent, ProxyAgent, fetch: bundledFetch } = require(um);",
     "  const timeoutOptions = hasTimeout ? { headersTimeout: Math.trunc(parsedTimeout), bodyTimeout: Math.trunc(parsedTimeout) } : {};",
     "  const directAgent = hasTimeout ? new Agent(timeoutOptions) : undefined;",
     "  const proxyAgent = up ? new ProxyAgent(Object.assign({ uri: up }, timeoutOptions)) : undefined;",
     "  const realFetch = globalThis.fetch.bind(globalThis);",
+    // The injected Agent/ProxyAgent come from the bundled undici module, so
+    // they must be paired with that module's own fetch: Node's built-in fetch
+    // can use a different undici major (Node >= 25 ships undici 8 while CCR
+    // bundles undici 7), and a dispatcher from one major fails inside the
+    // other's fetch with UND_ERR_INVALID_ARG ("invalid onError method").
+    // Calls that already carry a caller-provided dispatcher stay on the
+    // global fetch; pairing those is the caller's responsibility
+    // (@the-next-ai/ai-gateway >= 1.0.18 pairs its own dispatchers).
     "  const raw = (process.env.NO_PROXY || process.env.no_proxy || '').toLowerCase();",
     "  const byp = raw.split(',').map((s) => s.trim()).filter(Boolean);",
     "  const norm = (h) => h.replace(/^\\[/, '').replace(/\\]$/, '').replace(/\\.$/, '');",
@@ -512,7 +520,7 @@ function gatewayFetchPreloadScript(): string {
     "    if (init && init.dispatcher) return realFetch(input, init);",
     "    const dispatcher = dispatcherFor(input);",
     "    if (!dispatcher) return realFetch(input, init);",
-    "    return realFetch(input, Object.assign({}, init, { dispatcher }));",
+    "    return bundledFetch(input, Object.assign({}, init, { dispatcher }));",
     "  };",
     "  if (Object.getOwnPropertyDescriptor(globalThis, 'fetch')?.writable) {",
     "    globalThis.fetch = patched;",

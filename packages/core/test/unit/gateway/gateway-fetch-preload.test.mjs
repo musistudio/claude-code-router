@@ -40,8 +40,9 @@ test("gateway fetch preload applies API_TIMEOUT_MS to direct upstream fetches", 
 
   await harness.context.fetch("https://api.example.test/v1/chat/completions", { method: "POST" });
 
-  assert.equal(harness.fetchCalls.length, 1);
-  assert.equal(harness.fetchCalls[0].init.dispatcher.kind, "direct");
+  assert.equal(harness.fetchCalls.length, 0);
+  assert.equal(harness.bundledFetchCalls.length, 1);
+  assert.equal(harness.bundledFetchCalls[0].init.dispatcher.kind, "direct");
 });
 
 test("gateway fetch preload combines proxy routing with timeout dispatcher options", async () => {
@@ -63,10 +64,12 @@ test("gateway fetch preload combines proxy routing with timeout dispatcher optio
   await harness.context.fetch("http://127.0.0.1:3456/health", {});
   await harness.context.fetch("https://service.bypass.test/v1/messages", {});
 
-  assert.equal(harness.fetchCalls[0].init.dispatcher.kind, "proxy");
-  assert.equal(harness.fetchCalls[1].init.dispatcher.kind, "direct");
-  assert.equal(harness.fetchCalls[2].init.dispatcher.kind, "direct");
-  assert.equal(harness.fetchCalls[3].init.dispatcher.kind, "direct");
+  assert.equal(harness.fetchCalls.length, 0);
+  assert.equal(harness.bundledFetchCalls.length, 4);
+  assert.equal(harness.bundledFetchCalls[0].init.dispatcher.kind, "proxy");
+  assert.equal(harness.bundledFetchCalls[1].init.dispatcher.kind, "direct");
+  assert.equal(harness.bundledFetchCalls[2].init.dispatcher.kind, "direct");
+  assert.equal(harness.bundledFetchCalls[3].init.dispatcher.kind, "direct");
 });
 
 test("gateway fetch preload preserves explicit fetch dispatchers", async () => {
@@ -80,12 +83,14 @@ test("gateway fetch preload preserves explicit fetch dispatchers", async () => {
 
   assert.equal(harness.fetchCalls.length, 1);
   assert.equal(harness.fetchCalls[0].init.dispatcher, dispatcher);
+  assert.equal(harness.bundledFetchCalls.length, 0);
 });
 
 function executePreload(env) {
   const agentOptions = [];
   const proxyAgentOptions = [];
   const fetchCalls = [];
+  const bundledFetchCalls = [];
 
   class Agent {
     constructor(options) {
@@ -112,7 +117,14 @@ function executePreload(env) {
     process: { env },
     require: (moduleName) => {
       assert.equal(moduleName, "mock-undici");
-      return { Agent, ProxyAgent };
+      return {
+        Agent,
+        ProxyAgent,
+        fetch: async (input, init) => {
+          bundledFetchCalls.push({ init, input });
+          return { ok: true };
+        }
+      };
     }
   };
   vm.createContext(context);
@@ -120,6 +132,7 @@ function executePreload(env) {
 
   return {
     agentOptions,
+    bundledFetchCalls,
     context,
     fetchCalls,
     proxyAgentOptions
