@@ -2,7 +2,7 @@
  * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
  */
 import type { IncomingHttpHeaders } from "node:http";
-import { BUILTIN_FUSION_VISION_TOOL_NAME, isGatewayProviderEnabled } from "@ccr/core/contracts/app";
+import { BUILTIN_FUSION_VISION_TOOL_NAME, effectiveContextWindowPercentFor, isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { ApiKeyConfig, AppConfig, ProfileConfig, ProviderModelMetadata, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
 import { buildClaudeAppGatewayModelRoutes, resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
 import { modelRegistryForConfig, normalizeRouteSelector, parseProviderModelSelector } from "@ccr/core/routing/model-registry";
@@ -404,9 +404,7 @@ function effectiveProviderContextWindow(metadata: ProviderModelMetadata | undefi
   if (!contextWindow) {
     return undefined;
   }
-  const effectivePercent = metadata?.contextWindowPinned
-    ? 100
-    : percentage(metadata?.effectiveContextWindowPercent) ?? 100;
+  const effectivePercent = effectiveContextWindowPercentFor(metadata) ?? 100;
   return Math.max(1, Math.floor((contextWindow * effectivePercent) / 100));
 }
 
@@ -466,13 +464,6 @@ function gatewayModelSupportsOneMillionContext(config: AppConfig, selector: stri
     (metadataContextWindow && metadataContextWindow >= 1_000_000) ||
     discovery.catalogEntry?.limits?.supports1MContext
   );
-}
-
-
-function percentage(value: number | undefined): number | undefined {
-  return value !== undefined && Number.isFinite(value) && value > 0 && value <= 100
-    ? value
-    : undefined;
 }
 
 

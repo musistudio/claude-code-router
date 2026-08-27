@@ -1,4 +1,4 @@
-import { BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, isGatewayProviderEnabled } from "@ccr/core/contracts/app";
+import { BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, effectiveContextWindowPercentFor, isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, ProviderModelMetadata, ProviderReasoningLevel, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
 import {
   findModelCatalogEntry,
@@ -156,9 +156,10 @@ function codexModelCatalogItem(
   const profile = codexModelCapabilityProfile(model, config);
   const contextWindow = positiveInteger(profile.contextWindow) ?? positiveInteger(profile.maxContextWindow) ?? codexModelContextWindow(model, profile.catalogEntry);
   const maxContextWindow = Math.max(contextWindow, positiveInteger(profile.maxContextWindow) ?? contextWindow);
-  const effectiveContextWindowPercent = profile.contextWindowPinned
-    ? 100
-    : percentage(profile.effectiveContextWindowPercent) ?? codexEffectiveContextWindowPercent;
+  const effectiveContextWindowPercent = effectiveContextWindowPercentFor({
+    contextWindowPinned: profile.contextWindowPinned,
+    effectiveContextWindowPercent: profile.effectiveContextWindowPercent
+  }) ?? codexEffectiveContextWindowPercent;
   return {
     additional_speed_tiers: profile.additionalSpeedTiers,
     apply_patch_tool_type: profile.applyPatchToolType,
@@ -438,12 +439,6 @@ function effortDescription(effort: string): string {
 
 function codexModelContextWindow(model: string, entry = findModelCatalogEntry(model)): number {
   return modelCatalogMaxInputTokens(entry) || codexDefaultContextWindow;
-}
-
-function percentage(value: number | undefined): number | undefined {
-  return value !== undefined && Number.isFinite(value) && value > 0 && value <= 100
-    ? value
-    : undefined;
 }
 
 function positiveInteger(value: number | undefined): number | undefined {
