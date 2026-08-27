@@ -37,8 +37,6 @@ export const codexDefaultBaseUrl = "https://chatgpt.com/backend-api/codex";
 
 const codexAccountBaseUrl = "https://chatgpt.com/backend-api";
 const codexDefaultModels = ["gpt-5-codex"];
-const codexImportedGpt56ContextWindow = 368_000;
-const codexImportedGpt5ContextWindow = 256_000;
 const codexProbeTimeoutMs = 8_000;
 
 export type LocalAgentModelCatalog = {
@@ -384,28 +382,17 @@ export function codexRateLimitResetCreditDetails(payload: unknown): ProviderAcco
 }
 
 export function normalizeCodexProviderAccountConfig(provider: GatewayProviderConfig): GatewayProviderConfig {
-  const normalizedProvider = normalizeCodexImportedProviderModelMetadata(provider);
-  if (!isLocalCodexProvider(normalizedProvider) || !shouldUseCurrentCodexAccountConfig(normalizedProvider.account)) {
-    return normalizedProvider;
+  if (!isLocalCodexProvider(provider) || !shouldUseCurrentCodexAccountConfig(provider.account)) {
+    return provider;
   }
   const account = codexProviderAccountConfig();
   return {
-    ...normalizedProvider,
+    ...provider,
     account: {
       ...account,
-      refreshIntervalMs: normalizedProvider.account?.refreshIntervalMs ?? account.refreshIntervalMs
+      refreshIntervalMs: provider.account?.refreshIntervalMs ?? account.refreshIntervalMs
     }
   };
-}
-
-function normalizeCodexImportedProviderModelMetadata(provider: GatewayProviderConfig): GatewayProviderConfig {
-  if (!isLocalCodexProvider(provider)) {
-    return provider;
-  }
-  const modelMetadata = codexImportedModelMetadataWithContextOverrides(provider.modelMetadata, provider.models ?? []);
-  return modelMetadata === provider.modelMetadata
-    ? provider
-    : { ...provider, modelMetadata };
 }
 
 function isLocalCodexProvider(provider: GatewayProviderConfig): boolean {
@@ -625,7 +612,7 @@ export function readCodexLocalModelCatalog(): LocalAgentModelCatalog {
   const uniqueModels = uniqueStrings([...catalog.models, ...codexDefaultModels]);
   return {
     modelDisplayNames: modelDisplayNamesForModels(catalog.modelDisplayNames, uniqueModels),
-    modelMetadata: codexImportedModelMetadataForModels(catalog.modelMetadata, uniqueModels),
+    modelMetadata: modelMetadataForModels(catalog.modelMetadata, uniqueModels),
     models: uniqueModels
   };
 }
@@ -731,48 +718,9 @@ function codexModelCatalogFromPayload(payload: unknown): LocalAgentModelCatalog 
   const uniqueModels = uniqueStrings(models);
   return {
     modelDisplayNames: modelDisplayNamesForModels(modelDisplayNames, uniqueModels),
-    modelMetadata: codexImportedModelMetadataForModels(modelMetadata, uniqueModels),
+    modelMetadata: modelMetadataForModels(modelMetadata, uniqueModels),
     models: uniqueModels
   };
-}
-
-function codexImportedModelMetadataForModels(
-  value: Record<string, ProviderModelMetadata> | undefined,
-  models: string[]
-): Record<string, ProviderModelMetadata> | undefined {
-  return modelMetadataForModels(codexImportedModelMetadataWithContextOverrides(value, models), models);
-}
-
-function codexImportedModelMetadataWithContextOverrides(
-  value: Record<string, ProviderModelMetadata> | undefined,
-  models: string[]
-): Record<string, ProviderModelMetadata> | undefined {
-  const metadata: Record<string, ProviderModelMetadata> = { ...(value ?? {}) };
-  let changed = false;
-  for (const model of models) {
-    const contextWindow = codexImportedModelContextWindow(model);
-    if (!contextWindow || metadata[model]?.contextWindowPinned) {
-      continue;
-    }
-    metadata[model] = {
-      ...(metadata[model] ?? {}),
-      contextWindow,
-      maxContextWindow: contextWindow
-    };
-    changed = true;
-  }
-  return changed ? metadata : value;
-}
-
-export function codexImportedModelContextWindow(model: string): number | undefined {
-  const name = model.trim().toLowerCase().split("/").at(-1) ?? "";
-  if (/^gpt-5\.6(?:[.-]|$)/.test(name)) {
-    return codexImportedGpt56ContextWindow;
-  }
-  if (/^gpt-5(?:[.-]|$)/.test(name)) {
-    return codexImportedGpt5ContextWindow;
-  }
-  return undefined;
 }
 
 function codexModelMetadataFromItem(item: Record<string, unknown>): ProviderModelMetadata | undefined {

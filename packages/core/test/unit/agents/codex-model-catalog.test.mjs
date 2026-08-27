@@ -364,14 +364,10 @@ test("codex catalog synthesizes Fast Mode tiers from provider model metadata", (
   assert.deepEqual(model.service_tiers, [{ id: "priority", name: "Fast", description: "1.5x speed, increased usage" }]);
 });
 
-test("codex catalog caps persisted local Codex GPT-5 context metadata", () => {
-  const cases = [
-    ["gpt-5-codex", 256000],
-    ["gpt-5.5", 256000],
-    ["gpt-5.6-sol", 368000]
-  ];
+test("codex catalog preserves persisted local Codex GPT-5 context metadata", () => {
+  const cases = ["gpt-5-codex", "gpt-5.5", "gpt-5.6-sol"];
 
-  for (const [modelName, expectedContextWindow] of cases) {
+  for (const modelName of cases) {
     const model = catalogModelFor({
       Providers: [
         {
@@ -390,8 +386,8 @@ test("codex catalog caps persisted local Codex GPT-5 context metadata", () => {
       ]
     }, `Codex API/${modelName}`);
 
-    assert.equal(model.context_window, expectedContextWindow);
-    assert.equal(model.max_context_window, expectedContextWindow);
+    assert.equal(model.context_window, 272000);
+    assert.equal(model.max_context_window, 300000);
   }
 });
 
@@ -420,7 +416,7 @@ test("codex catalog reports pinned context windows in full", () => {
   assert.equal(model.effective_context_window_percent, 100);
 });
 
-test("codex catalog keeps pinned context windows above imported caps", () => {
+test("codex catalog preserves pinned context windows", () => {
   const model = catalogModelFor({
     Providers: [
       {
@@ -485,10 +481,10 @@ test("codex catalog falls back to local Codex model cache metadata", () => {
     }, "Codex API/gpt-5-codex");
 
     assert.deepEqual(model.additional_speed_tiers, [{ id: "fast", label: "Fast" }]);
-    assert.equal(model.context_window, 256000);
+    assert.equal(model.context_window, 272000);
     assert.equal(model.default_reasoning_level, "high");
     assert.equal(model.effective_context_window_percent, 92);
-    assert.equal(model.max_context_window, 256000);
+    assert.equal(model.max_context_window, 300000);
     assert.deepEqual(model.service_tiers, [{ id: "auto" }]);
     assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), ["low", "high"]);
   } finally {

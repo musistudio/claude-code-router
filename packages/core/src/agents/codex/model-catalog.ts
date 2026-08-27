@@ -6,7 +6,7 @@ import {
   readCatalogCapability,
   type ModelCatalogEntry
 } from "@ccr/core/gateway/model-catalog";
-import { codexDefaultBaseUrl, codexImportedModelContextWindow, readCodexLocalModelCatalog } from "@ccr/core/agents/local-providers/codex";
+import { codexDefaultBaseUrl, readCodexLocalModelCatalog } from "@ccr/core/agents/local-providers/codex";
 import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared";
 import { normalizeProviderBaseUrl } from "@ccr/core/providers/url";
 import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
@@ -345,19 +345,7 @@ function providerModelDescriptionFor(provider: GatewayProviderConfig, model: str
 }
 
 function codexProviderModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {
-  const metadata = providerModelMetadataFor(provider, model) ?? localCodexModelMetadataFor(provider, model);
-  if (!isLocalCodexProvider(provider)) {
-    return metadata;
-  }
-  const contextWindow = codexImportedModelContextWindow(model);
-  if (!contextWindow || metadata?.contextWindowPinned) {
-    return metadata;
-  }
-  return {
-    ...(metadata ?? {}),
-    contextWindow,
-    maxContextWindow: contextWindow
-  };
+  return providerModelMetadataFor(provider, model) ?? localCodexModelMetadataFor(provider, model);
 }
 
 function localCodexModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {

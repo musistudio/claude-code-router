@@ -80,7 +80,7 @@ test("Codex local provider account config upgrades persisted usage mapping", () 
   assert.ok(upgradedManualResetMeter.remaining.includes("$.rate_limit_reset_credits.available_count"));
 });
 
-test("Codex local provider config caps imported GPT-5 context metadata", () => {
+test("Codex local provider config preserves imported GPT-5 context metadata", () => {
   const provider = normalizeCodexProviderAccountConfig({
     api_base_url: codexDefaultBaseUrl,
     api_key: localAgentProviderApiKey,
@@ -89,23 +89,28 @@ test("Codex local provider config caps imported GPT-5 context metadata", () => {
         contextWindow: 64000,
         maxContextWindow: 64000
       },
+      "gpt-5-codex": {
+        contextWindow: 640000,
+        maxContextWindow: 720000
+      },
       "gpt-5.6-sol": {
         contextWindow: 1050000,
         maxContextWindow: 1050000
       }
     },
-    models: ["gpt-5-codex", "gpt-5.6-sol", "custom-model"],
+    models: ["gpt-5-codex", "gpt-5.5", "gpt-5.6-sol", "custom-model"],
     name: "Codex API",
     protocol: "openai_responses"
   });
 
   assert.deepEqual(provider.modelMetadata["gpt-5-codex"], {
-    contextWindow: 256000,
-    maxContextWindow: 256000
+    contextWindow: 640000,
+    maxContextWindow: 720000
   });
+  assert.equal(provider.modelMetadata["gpt-5.5"], undefined);
   assert.deepEqual(provider.modelMetadata["gpt-5.6-sol"], {
-    contextWindow: 368000,
-    maxContextWindow: 368000
+    contextWindow: 1050000,
+    maxContextWindow: 1050000
   });
   assert.deepEqual(provider.modelMetadata["custom-model"], {
     contextWindow: 64000,
@@ -132,7 +137,7 @@ test("Codex local provider config caps imported GPT-5 context metadata", () => {
   });
 });
 
-test("Codex local provider config keeps pinned context metadata above caps", () => {
+test("Codex local provider config preserves pinned context metadata", () => {
   const provider = normalizeCodexProviderAccountConfig({
     api_base_url: codexDefaultBaseUrl,
     api_key: localAgentProviderApiKey,
@@ -316,10 +321,10 @@ test("Codex model catalog parser accepts live model endpoint shapes", () => {
   });
   assert.deepEqual(catalog.modelMetadata["gpt-5-codex"], {
     additionalSpeedTiers: [{ id: "fast", label: "Fast" }],
-    contextWindow: 256000,
+    contextWindow: 272000,
     defaultReasoningLevel: "high",
     effectiveContextWindowPercent: 95,
-    maxContextWindow: 256000,
+    maxContextWindow: 300000,
     serviceTiers: [{ id: "auto" }],
     supportsFastMode: true,
     supportedReasoningLevels: [
@@ -328,17 +333,11 @@ test("Codex model catalog parser accepts live model endpoint shapes", () => {
     ],
     supportsReasoningSummaries: true
   });
-  assert.deepEqual(catalog.modelMetadata["gpt-5.1-codex"], {
-    contextWindow: 256000,
-    maxContextWindow: 256000
-  });
-  assert.deepEqual(catalog.modelMetadata["gpt-5.2-codex"], {
-    contextWindow: 256000,
-    maxContextWindow: 256000
-  });
+  assert.equal(catalog.modelMetadata["gpt-5.1-codex"], undefined);
+  assert.equal(catalog.modelMetadata["gpt-5.2-codex"], undefined);
 });
 
-test("Codex model catalog parser overrides imported GPT-5 context windows", () => {
+test("Codex model catalog parser does not synthesize context metadata", () => {
   const catalog = codexModelCatalogFromPayloadForTest({
     models: [
       "gpt-5-codex",
@@ -350,27 +349,7 @@ test("Codex model catalog parser overrides imported GPT-5 context windows", () =
     ]
   });
 
-  assert.deepEqual(catalog.modelMetadata["gpt-5-codex"], {
-    contextWindow: 256000,
-    maxContextWindow: 256000
-  });
-  assert.deepEqual(catalog.modelMetadata["gpt-5.5"], {
-    contextWindow: 256000,
-    maxContextWindow: 256000
-  });
-  assert.deepEqual(catalog.modelMetadata["gpt-5.6"], {
-    contextWindow: 368000,
-    maxContextWindow: 368000
-  });
-  assert.deepEqual(catalog.modelMetadata["gpt-5.6-sol"], {
-    contextWindow: 368000,
-    maxContextWindow: 368000
-  });
-  assert.deepEqual(catalog.modelMetadata["gpt-5.6-terra-2026-07-28"], {
-    contextWindow: 368000,
-    maxContextWindow: 368000
-  });
-  assert.equal(catalog.modelMetadata?.["gpt-50"], undefined);
+  assert.equal(catalog.modelMetadata, undefined);
 });
 
 test("Codex model catalog parser ignores invalid context metadata", () => {
