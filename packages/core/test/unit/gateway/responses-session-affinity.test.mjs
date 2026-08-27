@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyResponsesSessionAffinity, resolveResponsesSessionKey } from "@ccr/core/gateway/core-runtime/responses-session-affinity.ts";
+import { applyResponsesSessionAffinity, isCodexResponsesUpstream, resolveResponsesSessionKey } from "@ccr/core/gateway/core-runtime/responses-session-affinity.ts";
 import { createGatewayPlugin } from "@ccr/core/gateway/core-runtime/upstream-header-sanitizer.ts";
 
 function responsesInput(overrides = {}) {
@@ -89,6 +89,41 @@ test("x-claude-session-id and inbound metadata.user_id are fallback key sources"
   );
   assert.equal(resolveResponsesSessionKey({}, "metadata-user"), "metadata-user");
   assert.equal(resolveResponsesSessionKey(undefined, undefined), undefined);
+});
+
+test("codex upstreams receive neither prompt_cache_key nor metadata", () => {
+  const input = responsesInput({
+    targetProviderConfig: {
+      name: "codex-api::openai_responses",
+      type: "openai_responses"
+    }
+  });
+  input.upstreamRequest.url = "https://chatgpt.com/backend-api/codex/responses";
+
+  const result = applyResponsesSessionAffinity(input);
+
+  assert.equal(result, input.upstreamRequest);
+  assert.equal(result.body.prompt_cache_key, undefined);
+  assert.equal(result.body.metadata, undefined);
+});
+
+test("non-codex openai_responses upstreams keep the affinity injection", () => {
+  const input = responsesInput();
+
+  const result = applyResponsesSessionAffinity(input);
+
+  assert.equal(result.body.prompt_cache_key, "session-1111-2222");
+  assert.deepEqual(result.body.metadata, { user_id: "user_abc123_account__session_11112222" });
+});
+
+test("isCodexResponsesUpstream matches the outbound url and provider baseurl", () => {
+  assert.equal(isCodexResponsesUpstream("https://chatgpt.com/backend-api/codex/responses"), true);
+  assert.equal(isCodexResponsesUpstream("https://api.openai.com/v1/responses"), false);
+  assert.equal(
+    isCodexResponsesUpstream("https://api.openai.com/v1/responses", { baseurl: "https://chatgpt.com/backend-api/codex" }),
+    true
+  );
+  assert.equal(isCodexResponsesUpstream("https://mirror.example/backend-api/codex/responses"), true);
 });
 
 test("non-Responses providers and non-JSON bodies pass through untouched", () => {
