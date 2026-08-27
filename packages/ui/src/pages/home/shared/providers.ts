@@ -645,6 +645,8 @@ export function createProviderDraftFromDeepLinkPayload(
     catalogModelMetadata: undefined,
     credentialMode: "apiKey",
     credentials: [],
+    extraBodyText: "",
+    extraHeadersText: "",
     icon: payload.icon?.trim() || "",
     modelDescriptions: modelDescriptionsForModels(payload.modelDescriptions, models),
     modelDisplayNames: modelDisplayNamesForModels(
@@ -743,6 +745,8 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
     catalogModelMetadata: undefined,
     credentialMode: "apiKey",
     credentials: [],
+    extraBodyText: "",
+    extraHeadersText: "",
     icon: "",
     modelDescriptions: undefined,
     modelDisplayNames: undefined,
@@ -775,6 +779,8 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
     catalogModelMetadata: undefined,
     credentialMode: providerDraftHasReadyCredentialPool({ credentials }) ? "pool" : "apiKey",
     credentials,
+    extraBodyText: providerExtraJsonDraftText(provider.extraBody),
+    extraHeadersText: providerExtraJsonDraftText(provider.extraHeaders),
     icon: provider.icon ?? "",
     modelDescriptions: modelDescriptionsForModels(provider.modelDescriptions, provider.models),
     modelDisplayNames: modelDisplayNamesForModels(
@@ -1991,6 +1997,92 @@ export function providerCapabilitiesForSave(
     currentCapabilities,
     ...(preserveExisting ? [preservedCapabilities] : [])
   );
+}
+
+export type ProviderManualFields = Pick<
+  GatewayProviderConfig,
+  "billing" | "provider" | "transformer"
+>;
+
+/**
+ * Provider fields the setup dialog cannot edit.
+ *
+ * Saving rebuilds the provider from the dialog draft, so a field the form does
+ * not know about is dropped unless it is carried over explicitly. These fields
+ * only ever come from a hand-written config, and losing them is silent: the
+ * provider keeps working, just without the billing metadata or transformers it
+ * was configured with.
+ *
+ * `extraBody` and `extraHeaders` are not listed here — the Advanced settings
+ * section edits them, so they round-trip through the draft instead.
+ *
+ * The legacy `apiKey` / `apikey` / `baseUrl` / `baseurl` aliases are deliberately
+ * not carried over — the form writes the canonical `api_key` / `api_base_url`,
+ * and a stale alias would shadow the value the user just typed.
+ */
+export function providerManualFieldsForSave(
+  existingProvider: GatewayProviderConfig | undefined
+): ProviderManualFields {
+  if (!existingProvider) {
+    return {};
+  }
+  const preserved: ProviderManualFields = {
+    billing: existingProvider.billing,
+    provider: existingProvider.provider,
+    transformer: existingProvider.transformer
+  };
+  // Keep the saved provider free of keys it never had, so an unrelated edit does
+  // not show up as a config change.
+  for (const field of Object.keys(preserved) as Array<keyof ProviderManualFields>) {
+    if (preserved[field] === undefined) {
+      delete preserved[field];
+    }
+  }
+  return preserved;
+}
+
+export type ProviderExtraJsonField = "extraBody" | "extraHeaders";
+
+const providerExtraJsonInvalidMessages: Record<ProviderExtraJsonField, string> = {
+  extraBody: "Extra request body JSON is invalid.",
+  extraHeaders: "Extra request headers JSON is invalid."
+};
+
+const providerExtraJsonShapeMessages: Record<ProviderExtraJsonField, string> = {
+  extraBody: "Extra request body must be a JSON object.",
+  extraHeaders: "Extra request headers must be a JSON object."
+};
+
+export function providerExtraJsonDraftText(value: unknown): string {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  return JSON.stringify(value, null, 2);
+}
+
+/**
+ * Parses one of the Advanced settings JSON boxes.
+ *
+ * Returns the parsed object, `undefined` when the box is empty, or an error
+ * message string the caller surfaces the same way as the other draft issues.
+ */
+export function parseProviderExtraJsonDraft(
+  text: string,
+  field: ProviderExtraJsonField
+): Record<string, unknown> | undefined | string {
+  if (!text.trim()) {
+    return undefined;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return providerExtraJsonInvalidMessages[field];
+  }
+  if (!isPlainRecord(parsed)) {
+    return providerExtraJsonShapeMessages[field];
+  }
+  return parsed;
 }
 
 export function providerGlobalBaseUrlForProbe(

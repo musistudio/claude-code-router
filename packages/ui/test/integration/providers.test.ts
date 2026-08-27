@@ -29,8 +29,10 @@ import {
   providerAccountConnectorsTextWithNewApiUserBalanceTemplate,
   providerAutoFetchKnownModelsForSave,
   parseProviderAccountDraft,
+  parseProviderExtraJsonDraft,
   providerBrowserConnectorFromDraft,
   providerGlobalBaseUrlForProbe,
+  providerManualFieldsForSave,
   providerPresetIconUrls,
   providerProtocolOptions,
   providerProbeCandidates,
@@ -142,6 +144,96 @@ test("provider save keeps explicit secondary media origins when the base URL is 
   assert.deepEqual(
     providerCapabilitiesForSave(current, media, "https://chat.example/v1/", "https://chat.example/v1"),
     [...current, ...media]
+  );
+});
+
+test("provider save keeps hand-written fields the dialog cannot edit", () => {
+  const existing = {
+    api_base_url: "https://example.test/v1",
+    api_key: "sk-old",
+    billing: { currency: "USD" },
+    extraBody: { default: { reasoning_effort: "high" } },
+    extraHeaders: { "x-tenant": "acme" },
+    models: ["model-a"],
+    name: "example",
+    provider: "openai",
+    transformer: { use: ["openrouter"] },
+    type: "openai_chat_completions"
+  };
+
+  // extraBody and extraHeaders are absent on purpose: the Advanced settings
+  // section edits them, so they round-trip through the draft instead.
+  assert.deepEqual(providerManualFieldsForSave(existing), {
+    billing: existing.billing,
+    provider: existing.provider,
+    transformer: existing.transformer
+  });
+});
+
+test("provider draft round-trips the advanced JSON boxes", () => {
+  const provider = {
+    api_base_url: "https://example.test/v1",
+    // Raw ai-gateway shape: "default" plus top-level model-name keys (the
+    // normalized byModel form is internal to ai-gateway and never saved).
+    extraBody: { default: { reasoning_effort: "low" }, "model-a": { reasoning_effort: "high" } },
+    extraHeaders: { "x-tenant": "acme" },
+    models: ["model-a"],
+    name: "example"
+  };
+
+  const draft = createProviderDraftFromProvider(provider);
+
+  assert.deepEqual(parseProviderExtraJsonDraft(draft.extraBodyText, "extraBody"), provider.extraBody);
+  assert.deepEqual(parseProviderExtraJsonDraft(draft.extraHeadersText, "extraHeaders"), provider.extraHeaders);
+});
+
+test("provider draft leaves the advanced JSON boxes empty when unset", () => {
+  const draft = createProviderDraftFromProvider({ models: ["model-a"], name: "example" });
+
+  assert.equal(draft.extraBodyText, "");
+  assert.equal(draft.extraHeadersText, "");
+  assert.equal(parseProviderExtraJsonDraft(draft.extraBodyText, "extraBody"), undefined);
+  assert.equal(parseProviderExtraJsonDraft(draft.extraHeadersText, "extraHeaders"), undefined);
+});
+
+test("advanced JSON boxes reject malformed input instead of saving it", () => {
+  assert.equal(
+    parseProviderExtraJsonDraft("{ not json", "extraBody"),
+    "Extra request body JSON is invalid."
+  );
+  assert.equal(
+    parseProviderExtraJsonDraft("[1, 2]", "extraBody"),
+    "Extra request body must be a JSON object."
+  );
+  assert.equal(
+    parseProviderExtraJsonDraft("\"x-tenant\"", "extraHeaders"),
+    "Extra request headers must be a JSON object."
+  );
+  assert.equal(parseProviderExtraJsonDraft("   \n  ", "extraBody"), undefined);
+});
+
+test("provider save drops legacy credential aliases so the edited values win", () => {
+  const existing = {
+    apiKey: "sk-legacy",
+    apikey: "sk-legacy",
+    baseUrl: "https://legacy.test/v1",
+    baseurl: "https://legacy.test/v1",
+    models: ["model-a"],
+    name: "example"
+  };
+
+  const preserved = providerManualFieldsForSave(existing) as Record<string, unknown>;
+
+  for (const alias of ["apiKey", "apikey", "baseUrl", "baseurl"]) {
+    assert.equal(alias in preserved, false, `${alias} must not survive a dialog save`);
+  }
+});
+
+test("provider save does not invent keys the provider never had", () => {
+  assert.deepEqual(providerManualFieldsForSave(undefined), {});
+  assert.deepEqual(
+    providerManualFieldsForSave({ models: ["model-a"], name: "example" }),
+    {}
   );
 });
 
