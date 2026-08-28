@@ -63,5 +63,5 @@ test("Codex OAuth providers remove unsupported Responses request fields", async 
   );
   const plugin = compiled.providerPlugins.find((item) => item.key === "ccr-local-agent-codex-oauth-test");
 
-  assert.deepEqual(plugin.request.bodyRemove, ["custom-field", "max_output_tokens", "stop"]);
+  assert.deepEqual(plugin.request.bodyRemove, ["custom-field", "max_output_tokens", "stop", "metadata"]);
 });

@@ -614,7 +614,7 @@ function codexOauthPlugin(suffix: string, providerName = providerNamePlaceholder
 
 function codexBackendRequestTransform(): Record<string, unknown> {
   return {
-    bodyRemove: ["max_output_tokens"]
+    bodyRemove: ["max_output_tokens", "metadata"]
   };
 }
 

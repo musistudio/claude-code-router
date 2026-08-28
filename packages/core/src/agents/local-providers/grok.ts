@@ -651,6 +651,7 @@ function grokOauthPlugin(suffix: string, token: string, providerName?: string): 
   return {
     ...bearerAuthPlugin(suffix, token, {}, providerName),
     request: {
+      bodyRemove: ["metadata"],
       headers: {
         "x-grok-client-identifier": "xai-grok-cli",
         "x-grok-client-version": grokClientVersion(),

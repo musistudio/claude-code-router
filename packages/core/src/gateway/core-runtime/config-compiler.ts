@@ -568,6 +568,7 @@ async function withGrokOauthRuntimeDefaults(providerPlugins: unknown[]): Promise
           ...currentBodyRemove
             .map((value) => stringValue(value))
             .filter((value): value is string => Boolean(value)),
+          "metadata",
           "external_web_access"
         ]),
         headers: {
@@ -813,7 +814,7 @@ function withCodexBackendRequestTransform(request: unknown): Record<string, unkn
     : [];
   return {
     ...currentRequest,
-    bodyRemove: uniqueStrings([...bodyRemove, "max_output_tokens", "stop"])
+    bodyRemove: uniqueStrings([...bodyRemove, "max_output_tokens", "stop", "metadata"])
   };
 }
 
