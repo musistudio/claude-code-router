@@ -25,7 +25,6 @@ export type ResponsesSessionAffinityInput = {
 
 const sessionIdHeaderNames = ["x-claude-code-session-id", "x-claude-session-id"];
 const codexUpstreamUrlMarkers = ["chatgpt.com/backend-api/codex", "/backend-api/codex"];
-const grokCliUpstreamUrlMarkers = ["cli-chat-proxy.grok.com"];
 
 /**
  * Copies the Claude Code session identity onto outbound OpenAI Responses
@@ -36,10 +35,11 @@ const grokCliUpstreamUrlMarkers = ["cli-chat-proxy.grok.com"];
  * non-empty `prompt_cache_key` always wins; other protocols and non-JSON
  * bodies pass through untouched.
  *
- * Codex backends reject unknown body fields (`400 Unsupported parameter`),
- * so affinity is skipped for them. Grok CLI's chat-proxy rejects
- * `metadata` (`Argument not supported: metadata`) but accepts
- * `prompt_cache_key`, so only the metadata copy is skipped there.
+ * Codex backends reject unknown body fields, so affinity is skipped for
+ * them. Anthropic `metadata` is only copied onto the public OpenAI
+ * Responses API (`api.openai.com`), which documents that field. Other
+ * openai_responses proxies (Grok CLI, custom endpoints, …) inherit Claude
+ * Code's `user_id` and 400 if they do not implement it.
  */
 export function applyResponsesSessionAffinity(input: ResponsesSessionAffinityInput): UpstreamRequest {
   const upstreamRequest = input.upstreamRequest;
@@ -66,7 +66,7 @@ export function applyResponsesSessionAffinity(input: ResponsesSessionAffinityInp
   if (
     inboundUserId &&
     body.metadata === undefined &&
-    !isGrokCliResponsesUpstream(upstreamRequest.url, input.targetProviderConfig)
+    isOfficialOpenAIResponsesUpstream(upstreamRequest.url, input.targetProviderConfig)
   ) {
     changes.metadata = { user_id: inboundUserId };
   }
@@ -110,20 +110,32 @@ export function isCodexResponsesUpstream(
   );
 }
 
-/** Grok CLI chat-proxy. Rejects `metadata`; accepts `prompt_cache_key`. */
-export function isGrokCliResponsesUpstream(
+/**
+ * Public OpenAI Responses (`api.openai.com`) is the documented home of
+ * `metadata`. Claude Code's Anthropic `user_id` is only replayed there.
+ */
+export function isOfficialOpenAIResponsesUpstream(
   upstreamUrl: string,
   providerConfig?: { baseurl?: string }
 ): boolean {
-  return urlCandidates(upstreamUrl, providerConfig).some((normalized) =>
-    grokCliUpstreamUrlMarkers.some((marker) => normalized.includes(marker))
-  );
+  return urlCandidates(upstreamUrl, providerConfig).some((normalized) => {
+    const host = hostnameFromCandidate(normalized);
+    return host === "api.openai.com" || host.endsWith(".api.openai.com");
+  });
 }
 
 function urlCandidates(upstreamUrl: string, providerConfig?: { baseurl?: string }): string[] {
   return [upstreamUrl, providerConfig?.baseurl]
     .map((candidate) => candidate?.trim().toLowerCase())
     .filter((candidate): candidate is string => Boolean(candidate));
+}
+
+function hostnameFromCandidate(candidate: string): string {
+  try {
+    return new URL(candidate.includes("://") ? candidate : `https://${candidate}`).hostname;
+  } catch {
+    return "";
+  }
 }
 
 function inboundMetadataUserId(body: unknown): string | undefined {
