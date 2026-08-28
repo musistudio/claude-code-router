@@ -36,11 +36,10 @@ const grokCliUpstreamUrlMarkers = ["cli-chat-proxy.grok.com"];
  * non-empty `prompt_cache_key` always wins; other protocols and non-JSON
  * bodies pass through untouched.
  *
- * Strict subscription proxies (Codex CLI, Grok CLI) reject unknown body
- * fields with 400, so affinity is skipped for them. Anthropic `metadata` is
- * only copied onto the public OpenAI Responses API, which documents that
- * field; every other openai_responses preset would otherwise inherit Claude
- * Code's `metadata.user_id` and fail the same way.
+ * Codex backends reject unknown body fields (`400 Unsupported parameter`),
+ * so affinity is skipped for them. Grok CLI's chat-proxy rejects
+ * `metadata` (`Argument not supported: metadata`) but accepts
+ * `prompt_cache_key`, so only the metadata copy is skipped there.
  */
 export function applyResponsesSessionAffinity(input: ResponsesSessionAffinityInput): UpstreamRequest {
   const upstreamRequest = input.upstreamRequest;
@@ -48,7 +47,7 @@ export function applyResponsesSessionAffinity(input: ResponsesSessionAffinityInp
   if (providerType !== "openai_responses") {
     return upstreamRequest;
   }
-  if (isStrictResponsesUpstream(upstreamRequest.url, input.targetProviderConfig)) {
+  if (isCodexResponsesUpstream(upstreamRequest.url, input.targetProviderConfig)) {
     return upstreamRequest;
   }
   const body = upstreamRequest.body;
@@ -67,7 +66,7 @@ export function applyResponsesSessionAffinity(input: ResponsesSessionAffinityInp
   if (
     inboundUserId &&
     body.metadata === undefined &&
-    isOfficialOpenAIResponsesUpstream(upstreamRequest.url, input.targetProviderConfig)
+    !isGrokCliResponsesUpstream(upstreamRequest.url, input.targetProviderConfig)
   ) {
     changes.metadata = { user_id: inboundUserId };
   }
@@ -111,10 +110,7 @@ export function isCodexResponsesUpstream(
   );
 }
 
-/**
- * Grok CLI chat-proxy: same strict Responses contract as Codex. Unknown
- * fields such as `metadata` return `Argument not supported`.
- */
+/** Grok CLI chat-proxy. Rejects `metadata`; accepts `prompt_cache_key`. */
 export function isGrokCliResponsesUpstream(
   upstreamUrl: string,
   providerConfig?: { baseurl?: string }
@@ -124,40 +120,10 @@ export function isGrokCliResponsesUpstream(
   );
 }
 
-export function isStrictResponsesUpstream(
-  upstreamUrl: string,
-  providerConfig?: { baseurl?: string }
-): boolean {
-  return isCodexResponsesUpstream(upstreamUrl, providerConfig) ||
-    isGrokCliResponsesUpstream(upstreamUrl, providerConfig);
-}
-
-/**
- * Public OpenAI Responses (`api.openai.com`) is the documented home of
- * `metadata`. Claude Code's Anthropic `user_id` is only replayed there.
- */
-export function isOfficialOpenAIResponsesUpstream(
-  upstreamUrl: string,
-  providerConfig?: { baseurl?: string }
-): boolean {
-  return urlCandidates(upstreamUrl, providerConfig).some((normalized) => {
-    const host = hostnameFromCandidate(normalized);
-    return host === "api.openai.com" || host.endsWith(".api.openai.com");
-  });
-}
-
 function urlCandidates(upstreamUrl: string, providerConfig?: { baseurl?: string }): string[] {
   return [upstreamUrl, providerConfig?.baseurl]
     .map((candidate) => candidate?.trim().toLowerCase())
     .filter((candidate): candidate is string => Boolean(candidate));
-}
-
-function hostnameFromCandidate(candidate: string): string {
-  try {
-    return new URL(candidate.includes("://") ? candidate : `https://${candidate}`).hostname;
-  } catch {
-    return "";
-  }
 }
 
 function inboundMetadataUserId(body: unknown): string | undefined {
