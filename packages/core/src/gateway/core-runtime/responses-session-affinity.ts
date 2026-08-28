@@ -25,6 +25,7 @@ export type ResponsesSessionAffinityInput = {
 
 const sessionIdHeaderNames = ["x-claude-code-session-id", "x-claude-session-id"];
 const codexUpstreamUrlMarkers = ["chatgpt.com/backend-api/codex", "/backend-api/codex"];
+const grokCliUpstreamUrlMarkers = ["cli-chat-proxy.grok.com"];
 
 /**
  * Copies the Claude Code session identity onto outbound OpenAI Responses
@@ -33,8 +34,13 @@ const codexUpstreamUrlMarkers = ["chatgpt.com/backend-api/codex", "/backend-api/
  * on body fields hash each turn onto a different channel and the next hop
  * rejects channel-bound `encrypted_content` continuations. A caller-supplied
  * non-empty `prompt_cache_key` always wins; other protocols and non-JSON
- * bodies pass through untouched. Codex upstreams reject unknown body fields
- * with `400 Unsupported parameter`, so affinity is skipped for them.
+ * bodies pass through untouched.
+ *
+ * Strict subscription proxies (Codex CLI, Grok CLI) reject unknown body
+ * fields with 400, so affinity is skipped for them. Anthropic `metadata` is
+ * only copied onto the public OpenAI Responses API, which documents that
+ * field; every other openai_responses preset would otherwise inherit Claude
+ * Code's `metadata.user_id` and fail the same way.
  */
 export function applyResponsesSessionAffinity(input: ResponsesSessionAffinityInput): UpstreamRequest {
   const upstreamRequest = input.upstreamRequest;
@@ -42,7 +48,7 @@ export function applyResponsesSessionAffinity(input: ResponsesSessionAffinityInp
   if (providerType !== "openai_responses") {
     return upstreamRequest;
   }
-  if (isCodexResponsesUpstream(upstreamRequest.url, input.targetProviderConfig)) {
+  if (isStrictResponsesUpstream(upstreamRequest.url, input.targetProviderConfig)) {
     return upstreamRequest;
   }
   const body = upstreamRequest.body;
@@ -58,7 +64,11 @@ export function applyResponsesSessionAffinity(input: ResponsesSessionAffinityInp
       changes.prompt_cache_key = sessionKey;
     }
   }
-  if (inboundUserId && body.metadata === undefined) {
+  if (
+    inboundUserId &&
+    body.metadata === undefined &&
+    isOfficialOpenAIResponsesUpstream(upstreamRequest.url, input.targetProviderConfig)
+  ) {
     changes.metadata = { user_id: inboundUserId };
   }
   if (Object.keys(changes).length === 0) {
@@ -96,11 +106,58 @@ export function isCodexResponsesUpstream(
   upstreamUrl: string,
   providerConfig?: { baseurl?: string }
 ): boolean {
-  const candidates = [upstreamUrl, providerConfig?.baseurl];
-  return candidates.some((candidate) => {
-    const normalized = candidate?.trim().toLowerCase();
-    return Boolean(normalized && codexUpstreamUrlMarkers.some((marker) => normalized.includes(marker)));
+  return urlCandidates(upstreamUrl, providerConfig).some((normalized) =>
+    codexUpstreamUrlMarkers.some((marker) => normalized.includes(marker))
+  );
+}
+
+/**
+ * Grok CLI chat-proxy: same strict Responses contract as Codex. Unknown
+ * fields such as `metadata` return `Argument not supported`.
+ */
+export function isGrokCliResponsesUpstream(
+  upstreamUrl: string,
+  providerConfig?: { baseurl?: string }
+): boolean {
+  return urlCandidates(upstreamUrl, providerConfig).some((normalized) =>
+    grokCliUpstreamUrlMarkers.some((marker) => normalized.includes(marker))
+  );
+}
+
+export function isStrictResponsesUpstream(
+  upstreamUrl: string,
+  providerConfig?: { baseurl?: string }
+): boolean {
+  return isCodexResponsesUpstream(upstreamUrl, providerConfig) ||
+    isGrokCliResponsesUpstream(upstreamUrl, providerConfig);
+}
+
+/**
+ * Public OpenAI Responses (`api.openai.com`) is the documented home of
+ * `metadata`. Claude Code's Anthropic `user_id` is only replayed there.
+ */
+export function isOfficialOpenAIResponsesUpstream(
+  upstreamUrl: string,
+  providerConfig?: { baseurl?: string }
+): boolean {
+  return urlCandidates(upstreamUrl, providerConfig).some((normalized) => {
+    const host = hostnameFromCandidate(normalized);
+    return host === "api.openai.com" || host.endsWith(".api.openai.com");
   });
+}
+
+function urlCandidates(upstreamUrl: string, providerConfig?: { baseurl?: string }): string[] {
+  return [upstreamUrl, providerConfig?.baseurl]
+    .map((candidate) => candidate?.trim().toLowerCase())
+    .filter((candidate): candidate is string => Boolean(candidate));
+}
+
+function hostnameFromCandidate(candidate: string): string {
+  try {
+    return new URL(candidate.includes("://") ? candidate : `https://${candidate}`).hostname;
+  } catch {
+    return "";
+  }
 }
 
 function inboundMetadataUserId(body: unknown): string | undefined {
