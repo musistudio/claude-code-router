@@ -3,7 +3,7 @@ import { defaultProviderAccountConfig, type ProviderPreset } from "@ccr/core/pro
 export const anthropicProviderPreset: ProviderPreset = {
   account: defaultProviderAccountConfig,
   aliases: ["anthropic", "claude"],
-  defaultModels: ["claude-sonnet-4-20250514"],
+  defaultModels: ["claude-sonnet-4-6"],
   endpoints: [
     {
       baseUrl: "https://api.anthropic.com",
