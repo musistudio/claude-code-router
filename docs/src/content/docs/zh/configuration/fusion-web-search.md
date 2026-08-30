@@ -2,7 +2,7 @@
 title: 内置联网搜索
 pageTitle: 内置联网搜索
 eyebrow: Fusion
-lead: 为不支持联网的模型添加实时检索能力：选择 CCR 内置 web_search 能力，并配置 In-app Browser 或 Brave、Bing、Tavily 等搜索服务。
+lead: 为模型添加实时检索能力：选择 CCR 内置 web_search，并配置 In-app Browser、网络搜索服务，或使用 Xquik 搜索 X 上的近期帖子。
 ---
 
 ## 选择能力
@@ -11,7 +11,7 @@ lead: 为不支持联网的模型添加实时检索能力：选择 CCR 内置 we
 
 ## 搜索服务
 
-支持 In-app Browser、Brave、Bing、Google CSE、Serper、SerpAPI、Tavily、Exa 等搜索服务。
+支持 In-app Browser、Brave、Bing、Google CSE、Serper、SerpAPI、Tavily、Exa 和 Xquik。
 
 ## In-app Browser
 
@@ -24,7 +24,13 @@ lead: 为不支持联网的模型添加实时检索能力：选择 CCR 内置 we
 - 地区：例如 `US`、`CN`。
 - 安全搜索：默认、中等、严格或关闭。
 
-> 注意：`In-app Browser` 依赖 CCR Desktop 的 Electron 内置浏览器能力，只在桌面端可用。CLI、服务器部署或纯 Web 环境没有内置浏览器集成，请改用 Brave、Bing、Google CSE、Serper、SerpAPI、Tavily 或 Exa 等搜索服务。
+> 注意：`In-app Browser` 依赖 CCR Desktop 的 Electron 内置浏览器能力，只在桌面端可用。CLI、服务器部署或纯 Web 环境没有内置浏览器集成，请改用 Brave、Bing、Google CSE、Serper、SerpAPI、Tavily、Exa 或 Xquik。
+
+## Xquik
+
+`Xquik (X search)` 检索 X 上的近期公开帖子，并保留每条帖子的来源链接。当模型需要了解 X 上的最新讨论，而不是搜索普通网页时，请选择它。
+
+在服务配置中设置 `XQUIK_API_KEY`。使用兼容端点时，也可以设置 `XQUIK_SEARCH_ENDPOINT`。适配器会发送查询词、结果数量和可选语言。它会排除回复、转帖和引用帖，让结果集中在原始帖子上。
 
 ## 排查要点
 

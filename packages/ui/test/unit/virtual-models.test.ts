@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  createFusionWebSearchEnvRows,
   createVirtualModelDraft,
   createVirtualModelDraftFromProfile,
   isBuiltInFusionToolName,
@@ -11,7 +12,7 @@ import {
   virtualModelToolSummary
 } from "@ccr/ui/pages/home/shared/virtual-models.ts";
 import { BUILTIN_FUSION_IMAGE_GENERATION_TOOL_NAME, BUILTIN_FUSION_VIDEO_GENERATION_TOOL_NAME } from "@ccr/core/contracts/app.ts";
-import { fusionToolOptions } from "@ccr/ui/pages/home/shared/options.ts";
+import { fusionToolOptions, fusionWebSearchProviderOptions } from "@ccr/ui/pages/home/shared/options.ts";
 import { appConfigFixture } from "../fixtures/index.ts";
 
 test("Fusion draft saves multiple selected tools into one profile", () => {
@@ -83,6 +84,28 @@ test("Fusion vision fallback and retry settings round trip through profile metad
   assert.equal(editDraft.visionModel, "provider/vision-primary");
   assert.deepEqual(editDraft.visionFallbackModels, ["provider/vision-backup"]);
   assert.equal(editDraft.visionRetryCount, "2");
+});
+
+test("Xquik web search settings round trip through profile metadata", () => {
+  const config = appConfigFixture();
+  const draft = createVirtualModelDraft(config);
+  draft.exactAliasesText = "x-research";
+  draft.fixedModel = "provider/base-model";
+  draft.toolsText = "web_search";
+  draft.webSearchProvider = "xquik";
+  draft.webSearchEnvRows = createFusionWebSearchEnvRows("xquik");
+  draft.webSearchEnvRows[0].value = "xq_test_key";
+
+  const profile = virtualModelProfileFromDraft(draft, [], undefined);
+  const webSearch = profile.metadata?.fusionWebSearch as Record<string, unknown>;
+  assert.equal(fusionWebSearchProviderOptions.at(-1)?.label, "Xquik (X search)");
+  assert.equal(webSearch.provider, "xquik");
+  assert.deepEqual(webSearch.env, { XQUIK_API_KEY: "xq_test_key", XQUIK_SEARCH_ENDPOINT: "" });
+
+  const editDraft = createVirtualModelDraftFromProfile(profile, config);
+  assert.equal(editDraft.webSearchProvider, "xquik");
+  assert.deepEqual(editDraft.webSearchEnvRows.map((row) => row.key), ["XQUIK_API_KEY", "XQUIK_SEARCH_ENDPOINT"]);
+  assert.equal(editDraft.webSearchEnvRows[0].value, "xq_test_key");
 });
 
 test("image and video generation are generic Fusion tools with independent model bindings", () => {

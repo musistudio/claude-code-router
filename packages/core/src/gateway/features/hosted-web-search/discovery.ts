@@ -8,6 +8,7 @@ import { defaultFusionWebSearchProvider } from "@ccr/core/gateway/internal/share
 import { queryMatchScore } from "@ccr/core/gateway/features/hosted-web-search/evidence";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
 import { formatError } from "@ccr/core/gateway/http/io";
+import { xquikSearchResults, xquikSearchUrl } from "@ccr/core/mcp/xquik-search";
 
 type FusionWebSearchToolCandidate = {
   aliases: string[];
@@ -532,6 +533,8 @@ async function runConfiguredWebSearch(input: WebSearchProviderInput): Promise<We
       return searchTavily(input);
     case "exa":
       return searchExa(input);
+    case "xquik":
+      return searchXquik(input);
   }
 }
 
@@ -665,6 +668,24 @@ async function searchExa(input: WebSearchProviderInput): Promise<WebSearchProvid
   return items.map((item) => webSearchResult(item, "title", "url", "text")).filter(isWebSearchProviderResult);
 }
 
+async function searchXquik(input: WebSearchProviderInput): Promise<WebSearchProviderResult[]> {
+  const apiKey = searchEnv(input, "XQUIK_API_KEY");
+  if (!apiKey) {
+    console.warn("[gateway] Xquik API key is not configured.");
+    return [];
+  }
+  const raw = await fetchJson(xquikSearchUrl(
+    searchEnv(input, "XQUIK_SEARCH_ENDPOINT"),
+    input.query,
+    input.count
+  ), {
+    headers: { "x-api-key": apiKey },
+    redirect: "error",
+    signal: AbortSignal.timeout(input.timeoutMs)
+  });
+  return xquikSearchResults(raw, input.count);
+}
+
 async function fetchJson(input: string, init: RequestInit): Promise<unknown> {
   const response = await fetchWithSystemProxy(input, init);
   if (!response.ok) {
@@ -715,6 +736,8 @@ function searchProviderUrl(provider: VirtualModelFusionWebSearchProvider, query:
       return "https://tavily.com";
     case "exa":
       return "https://exa.ai";
+    case "xquik":
+      return `https://x.com/search?q=${encoded}`;
     case "browser":
       return `https://www.google.com/search?q=${encoded}`;
   }

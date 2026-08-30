@@ -766,6 +766,72 @@ test("gateway prefetches non-browser Fusion web search records without browser i
   }
 });
 
+test("gateway prefetches recent X posts through Xquik", async () => {
+  const endpoint = "https://example.test/xquik-search";
+  const previousFetch = globalThis.fetch;
+  let request;
+  globalThis.fetch = async (input, init) => {
+    request = { headers: init.headers, redirect: init.redirect, url: new URL(String(input)) };
+    return new Response(JSON.stringify({
+      tweets: [
+        { author: { username: "ccrouter" }, id: "123456789", text: "Recent router news" },
+        { author: { username: "invalid-name!" }, id: "987654321", text: "Another update" }
+      ]
+    }), { headers: { "content-type": "application/json" }, status: 200 });
+  };
+  try {
+    const config = {
+      Providers: [],
+      Router: { fallback: { mode: "off", models: [], retryCount: 0 } },
+      gateway: {},
+      virtualModelProfiles: [
+        {
+          displayName: "X Research",
+          enabled: true,
+          id: "x-research",
+          key: "x-research",
+          match: { exactAliases: ["Fusion/x-research"], prefixes: [], suffixes: [] },
+          metadata: {
+            fusionWebSearch: {
+              env: { XQUIK_API_KEY: "xq_test_key", XQUIK_SEARCH_ENDPOINT: endpoint },
+              provider: "xquik",
+              resultCount: 2,
+              toolName: "recent_x_web_search"
+            }
+          }
+        }
+      ]
+    };
+
+    const records = await selectHostedWebSearchProtocolRecords({
+      protocol: "anthropic_messages",
+      queryHint: "claude code router",
+      requestId: "req-x",
+      sinceMs: Date.now() - 1000,
+      toolName: "recent_x_web_search"
+    }, undefined, config);
+
+    assert.equal(records.length, 1);
+    assert.equal(records[0].engine, "xquik");
+    assert.equal(records[0].searchUrl, "https://x.com/search?q=claude%20code%20router");
+    assert.deepEqual(records[0].results, [
+      { snippet: "Recent router news", title: "Post by @ccrouter on X", url: "https://x.com/ccrouter/status/123456789" },
+      { snippet: "Another update", title: "Post on X", url: "https://x.com/i/web/status/987654321" }
+    ]);
+    assert.equal(request.headers["x-api-key"], "xq_test_key");
+    assert.equal(request.redirect, "error");
+    assert.equal(request.url.origin + request.url.pathname, endpoint);
+    assert.equal(request.url.searchParams.get("q"), "claude code router");
+    assert.equal(request.url.searchParams.get("queryType"), "Latest");
+    assert.equal(request.url.searchParams.get("limit"), "2");
+    assert.equal(request.url.searchParams.get("replies"), "exclude");
+    assert.equal(request.url.searchParams.get("retweets"), "exclude");
+    assert.equal(request.url.searchParams.get("quotes"), "exclude");
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test("gateway config does not create fallback tools for MCP-backed Fusion tools", () => {
   const profiles = [
     {
