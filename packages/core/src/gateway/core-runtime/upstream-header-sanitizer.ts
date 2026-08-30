@@ -1,5 +1,7 @@
 import { applyResponsesSessionAffinity } from "@ccr/core/gateway/core-runtime/responses-session-affinity";
 import type { ResponsesSessionAffinityInput } from "@ccr/core/gateway/core-runtime/responses-session-affinity";
+import { applyResponsesToolStrictness } from "@ccr/core/gateway/core-runtime/responses-tool-strictness";
+import type { ResponsesToolStrictnessInput } from "@ccr/core/gateway/core-runtime/responses-tool-strictness";
 
 type UpstreamRequest = {
   body: unknown;
@@ -205,6 +207,14 @@ export function createGatewayPlugin() {
         return {
           ok: true as const,
           value: applyResponsesSessionAffinity(input)
+        };
+      }
+    }, {
+      key: "ccr-responses-tool-strictness",
+      transformRequest(input: ResponsesToolStrictnessInput) {
+        return {
+          ok: true as const,
+          value: applyResponsesToolStrictness(input)
         };
       }
     }]
