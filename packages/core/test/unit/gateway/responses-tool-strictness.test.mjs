@@ -42,6 +42,8 @@ function readTool(overrides = {}) {
 
 function responsesInput(overrides = {}) {
   return {
+    sourceAdapterKey: "anthropic_messages",
+    sourceProvider: "anthropic",
     targetProviderConfig: {
       name: "multi-channel::openai_responses",
       type: "openai_responses"
@@ -145,6 +147,49 @@ test("requests without tools pass through untouched", () => {
   const result = applyResponsesToolStrictness(input);
 
   assert.equal(result, input.upstreamRequest);
+});
+
+test("native Responses requests leave omitted strict unchanged", () => {
+  const tool = monitorTool();
+  const body = {
+    input: [],
+    model: "gpt-5.1-codex",
+    stream: true,
+    tools: [tool]
+  };
+
+  const input = responsesInput({
+    sourceAdapterKey: undefined,
+    sourceProvider: undefined,
+    request: {
+      body,
+      headers: { "content-type": "application/json" }
+    },
+    upstreamRequest: {
+      body,
+      bodyEncoding: "json",
+      headers: { "content-type": "application/json" },
+      method: "POST",
+      url: "https://provider.example/v1/responses"
+    }
+  });
+
+  const result = applyResponsesToolStrictness(input);
+
+  assert.equal(result, input.upstreamRequest);
+  assert.equal(result.body.tools[0].strict, undefined);
+});
+
+test("Chat Completions conversions leave omitted strict unchanged", () => {
+  const input = responsesInput({
+    sourceAdapterKey: "openai_chat",
+    sourceProvider: "openai"
+  });
+
+  const result = applyResponsesToolStrictness(input);
+
+  assert.equal(result, input.upstreamRequest);
+  assert.equal(result.body.tools[0].strict, undefined);
 });
 
 test("gateway boundary plugin registers the tool strictness hook", async () => {

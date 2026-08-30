@@ -9,6 +9,8 @@ type UpstreamRequest = {
 };
 
 export type ResponsesToolStrictnessInput = {
+  sourceAdapterKey?: string;
+  sourceProvider?: string;
   targetProviderConfig?: {
     type?: string;
   };
@@ -18,12 +20,19 @@ export type ResponsesToolStrictnessInput = {
 /**
  * OpenAI Responses treats omitted `strict` as "try to make this schema strict".
  * Claude Code tools leave `strict` unset, so optional fields get forced on.
+ * Only converted Anthropic/Claude Code requests are stamped. Native
+ * `/v1/responses` pass-through keeps omitted `strict` as API semantics.
  * Explicit boolean strictness is left alone. Other protocols pass through.
  */
 export function applyResponsesToolStrictness(input: ResponsesToolStrictnessInput): UpstreamRequest {
   const upstreamRequest = input.upstreamRequest;
   const providerType = input.targetProviderConfig?.type?.trim().toLowerCase();
   if (providerType !== "openai_responses") {
+    return upstreamRequest;
+  }
+  const sourceKey = input.sourceAdapterKey?.trim().toLowerCase();
+  const sourceProvider = input.sourceProvider?.trim().toLowerCase();
+  if (sourceKey !== "anthropic_messages" && sourceProvider !== "anthropic") {
     return upstreamRequest;
   }
   const body = upstreamRequest.body;
