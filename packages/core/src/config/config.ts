@@ -1523,6 +1523,7 @@ function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | und
     ...(Array.isArray(value.additional_speed_tiers) ? { additionalSpeedTiers: value.additional_speed_tiers } : {}),
     ...(capabilities ? { capabilities } : {}),
     ...(contextWindow ? { contextWindow } : {}),
+    ...(value.contextWindowPinned === true || value.context_window_pinned === true ? { contextWindowPinned: true } : {}),
     ...(value.defaultReasoningLevel === null ? { defaultReasoningLevel: null } : {}),
     ...(readString(value.defaultReasoningLevel) ? { defaultReasoningLevel: readString(value.defaultReasoningLevel) } : {}),
     ...(value.default_reasoning_level === null ? { defaultReasoningLevel: null } : {}),

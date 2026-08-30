@@ -1,5 +1,5 @@
 import type { AppConfig } from "@ccr/core/contracts/app";
-import { availableGatewayModelIds, normalizeProfileScopeValue } from "@ccr/core/contracts/app";
+import { availableGatewayModelIds, effectiveContextWindowPercentFor, normalizeProfileScopeValue } from "@ccr/core/contracts/app";
 import { findModelCatalogEntry, findProviderModelCatalogEntry, type ModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
 import { modelRegistryForConfig } from "@ccr/core/routing/model-registry";
 import { resolveUsageModelAttribution } from "@ccr/core/usage/model-attribution";
@@ -215,7 +215,7 @@ function claudeAppGatewayProviderSupportsOneMillionContext(
   if (!contextWindow) {
     return undefined;
   }
-  const effectivePercent = percentage(metadata?.effectiveContextWindowPercent) ?? 100;
+  const effectivePercent = effectiveContextWindowPercentFor(metadata) ?? 100;
   return Math.floor((contextWindow * effectivePercent) / 100) >= 1_000_000;
 }
 
@@ -250,12 +250,6 @@ function claudeAppGatewayResolvedProviderModel(
 function positiveInteger(value: number | undefined): number | undefined {
   return value !== undefined && Number.isFinite(value) && value > 0
     ? Math.trunc(value)
-    : undefined;
-}
-
-function percentage(value: number | undefined): number | undefined {
-  return value !== undefined && Number.isFinite(value) && value > 0 && value <= 100
-    ? value
     : undefined;
 }
 

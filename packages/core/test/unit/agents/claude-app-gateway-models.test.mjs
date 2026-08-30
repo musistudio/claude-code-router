@@ -294,6 +294,56 @@ test("Claude App marks a custom model with a configured 1M context window", () =
   assert.equal(discoveredModel.capabilities.context_window.one_million_context_variant, true);
 });
 
+test("Claude App keeps a pinned 1M context window above the advertised effective percent", () => {
+  const config = createConfig({
+    providers: [
+      {
+        modelMetadata: {
+          "gpt-5.6-sol": {
+            contextWindow: 1_000_000,
+            contextWindowPinned: true,
+            effectiveContextWindowPercent: 95,
+            maxContextWindow: 1_000_000
+          }
+        },
+        models: ["gpt-5.6-sol"],
+        name: "Codex API",
+        type: "openai_responses"
+      }
+    ]
+  });
+  const route = buildClaudeAppGatewayModelRoutes(config)[0];
+  const discoveredModel = createClaudeModelsResponse(config).data[0];
+
+  assert.equal(route.oneMillionContext, true);
+  assert.equal(discoveredModel.max_input_tokens, 1_000_000);
+  assert.equal(discoveredModel.capabilities.context_window.supports_1m_context, true);
+});
+
+test("Claude App applies the advertised effective percent when the context window is not pinned", () => {
+  const config = createConfig({
+    providers: [
+      {
+        modelMetadata: {
+          "gpt-5.6-sol": {
+            contextWindow: 1_000_000,
+            effectiveContextWindowPercent: 95,
+            maxContextWindow: 1_000_000
+          }
+        },
+        models: ["gpt-5.6-sol"],
+        name: "Codex API",
+        type: "openai_responses"
+      }
+    ]
+  });
+  const route = buildClaudeAppGatewayModelRoutes(config)[0];
+  const discoveredModel = createClaudeModelsResponse(config).data[0];
+
+  assert.equal(route.oneMillionContext, false);
+  assert.equal(discoveredModel.max_input_tokens, 950_000);
+});
+
 test("Claude Code exposes a configured 1M context window as a visible model variant", () => {
   const config = createConfig({
     providers: [

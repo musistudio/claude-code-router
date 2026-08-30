@@ -661,6 +661,7 @@ function normalizeDeepLinkModelMetadata(value: unknown): ProviderModelMetadata |
     ...(Array.isArray(value.additional_speed_tiers) ? { additionalSpeedTiers: value.additional_speed_tiers } : {}),
     ...(capabilities ? { capabilities } : {}),
     ...(contextWindow ? { contextWindow } : {}),
+    ...(value.contextWindowPinned === true || value.context_window_pinned === true ? { contextWindowPinned: true } : {}),
     ...(defaultReasoningLevel !== undefined ? { defaultReasoningLevel } : {}),
     ...(defaultReasoningSummary ? { defaultReasoningSummary } : {}),
     ...(effectiveContextWindowPercent ? { effectiveContextWindowPercent } : {}),

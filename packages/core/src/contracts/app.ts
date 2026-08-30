@@ -228,6 +228,7 @@ export type ProviderModelOpenRouterDiscountRoutingConfig = {
 export type ProviderModelMetadata = {
   additionalSpeedTiers?: unknown[];
   capabilities?: ProviderModelCapabilities;
+  contextWindowPinned?: boolean;
   contextWindow?: number;
   defaultReasoningLevel?: string | null;
   defaultReasoningSummary?: string;
@@ -241,6 +242,16 @@ export type ProviderModelMetadata = {
   supportedReasoningLevels?: ProviderReasoningLevel[];
   supportsReasoningSummaries?: boolean;
 };
+
+export function effectiveContextWindowPercentFor(metadata: ProviderModelMetadata | undefined): number | undefined {
+  if (metadata?.contextWindowPinned) {
+    return 100;
+  }
+  const percent = metadata?.effectiveContextWindowPercent;
+  return percent !== undefined && Number.isFinite(percent) && percent > 0 && percent <= 100
+    ? percent
+    : undefined;
+}
 
 export type ProviderCredentialConfig = {
   account?: ProviderAccountConfig;
