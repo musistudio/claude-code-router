@@ -2149,6 +2149,7 @@ export function AddProviderForm({
         modelSearch: "",
         presetId,
         providerPlugins: [],
+        protocolsManuallyEdited: false,
         selectedModels: [],
         selectedProtocols: []
       }, true);
@@ -2167,6 +2168,7 @@ export function AddProviderForm({
         modelSearch: "",
         presetId,
         providerPlugins: [],
+        protocolsManuallyEdited: false,
         selectedModels: [],
         selectedProtocols: []
       }, true);
@@ -2192,6 +2194,7 @@ export function AddProviderForm({
       presetId,
       providerPlugins: [],
       protocol: endpoint?.protocols[0] ?? draft.protocol,
+      protocolsManuallyEdited: false,
       selectedModels: [],
       selectedProtocols: uniqueProviderProtocols(preset?.endpoints.flatMap((item) => item.protocols) ?? endpoint?.protocols ?? [])
     }, true);
@@ -2490,6 +2493,7 @@ export function AddProviderForm({
                                     checked={checked}
                                     onCheckedChange={() => {
                                       onChange({
+                                        protocolsManuallyEdited: true,
                                         selectedProtocols: checked
                                           ? draft.selectedProtocols.filter((selected) => selected !== protocol)
                                           : uniqueProviderProtocols([...draft.selectedProtocols, protocol])
@@ -2523,6 +2527,7 @@ export function AddProviderForm({
                                         return;
                                       }
                                       onChange({
+                                        protocolsManuallyEdited: true,
                                         selectedProtocols: checked
                                           ? draft.selectedProtocols.filter((protocol) => protocol !== selectableProtocol)
                                           : uniqueProviderProtocols([...draft.selectedProtocols, selectableProtocol])
