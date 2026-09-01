@@ -145,6 +145,84 @@ test("provider save keeps explicit secondary media origins when the base URL is 
     providerCapabilitiesForSave(current, media, "https://chat.example/v1/", "https://chat.example/v1"),
     [...current, ...media]
   );
+  assert.deepEqual(
+    providerCapabilitiesForSave(current, media, "https://chat.example/v1/", "https://chat.example/v1", ["openai_chat_completions"]),
+    [...current, ...media]
+  );
+});
+
+test("provider save drops deselected protocol capabilities on edit", () => {
+  const current = [{
+    baseUrl: "https://gateway.example/v1",
+    source: "detected" as const,
+    type: "openai_chat_completions" as const
+  }];
+  const previous = [
+    {
+      baseUrl: "https://gateway.example/v1",
+      source: "detected" as const,
+      type: "openai_chat_completions" as const
+    },
+    {
+      baseUrl: "https://gateway.example/anthropic",
+      source: "detected" as const,
+      type: "anthropic_messages" as const
+    }
+  ];
+
+  assert.deepEqual(
+    providerCapabilitiesForSave(
+      current,
+      previous,
+      "https://gateway.example/v1",
+      "https://gateway.example/v1",
+      ["openai_chat_completions"]
+    ),
+    current
+  );
+});
+
+test("provider probe keeps manual protocol deselection across auto-detect probes", () => {
+  setProviderPresets([moonshotGlobalProviderPreset]);
+  const draft = {
+    ...createProviderDraft([]),
+    baseUrl: "https://api.moonshot.ai/v1",
+    presetId: "moonshot-global",
+    protocol: "openai_chat_completions",
+    protocolsManuallyEdited: true,
+    selectedProtocols: ["openai_chat_completions"]
+  };
+  const probe = {
+    capabilities: [
+      {
+        baseUrl: "https://api.moonshot.ai/anthropic",
+        endpoint: "https://api.moonshot.ai/anthropic/v1/messages",
+        source: "detected" as const,
+        type: "anthropic_messages" as const
+      },
+      {
+        baseUrl: "https://api.moonshot.ai/v1",
+        source: "preset" as const,
+        type: "openai_chat_completions" as const
+      }
+    ],
+    detectedProtocol: "anthropic_messages" as const,
+    models: [],
+    normalizedBaseUrl: "https://api.moonshot.ai/anthropic",
+    protocols: [
+      {
+        endpoint: "https://api.moonshot.ai/anthropic/v1/messages",
+        message: "HTTP 400: model is required",
+        protocol: "anthropic_messages" as const,
+        status: 400,
+        supported: true
+      }
+    ]
+  };
+
+  const next = applyProviderProbeResult(draft, probe);
+
+  assert.deepEqual(next.selectedProtocols, ["openai_chat_completions"]);
 });
 
 test("provider save keeps hand-written fields the dialog cannot edit", () => {

@@ -661,6 +661,7 @@ export function createProviderDraftFromDeepLinkPayload(
     protocolDetectionMode: "auto",
     providerPlugins: [],
     protocol,
+    protocolsManuallyEdited: false,
     selectedModels: [],
     selectedProtocols: uniqueProviderProtocols(preset?.endpoints.flatMap((item) => item.protocols) ?? [protocol])
   };
@@ -758,6 +759,7 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
     protocolDetectionMode: "auto",
     providerPlugins: [],
     protocol: "openai_chat_completions",
+    protocolsManuallyEdited: false,
     selectedModels: [],
     selectedProtocols: []
   };
@@ -795,6 +797,7 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
     protocolDetectionMode: provider.protocolDetectionMode === "manual" ? "manual" : "auto",
     providerPlugins: [],
     protocol,
+    protocolsManuallyEdited: true,
     selectedModels: [],
     selectedProtocols: selectedProviderProtocolsFromCapabilities(provider.capabilities, protocol)
   };
@@ -1905,14 +1908,15 @@ export function selectedProviderProtocolsForProbe(
   selectedProtocols: GatewayProviderProtocol[],
   probe: GatewayProviderProbeResult,
   _fallback: GatewayProviderProtocol,
-  presetId?: string
+  presetId?: string,
+  protocolsManuallyEdited = false
 ): GatewayProviderProtocol[] {
   const selectable = providerSelectableProtocolsFromProbe(probe);
   if (selectable.length === 0) {
     return [];
   }
 
-  if (selectedProtocolsMatchPresetDefault(selectedProtocols, presetId)) {
+  if (!protocolsManuallyEdited && selectedProtocolsMatchPresetDefault(selectedProtocols, presetId)) {
     return selectable;
   }
 
@@ -1981,11 +1985,28 @@ export function mergeProviderCapabilities(...groups: GatewayProviderCapability[]
   return capabilities;
 }
 
+const secondaryMediaProviderProtocols = new Set<GatewayProviderProtocol>([
+  "openai_image_generations",
+  "openai_video_generations",
+  "xai_video_generations"
+]);
+
+function preservedCapabilitiesForSelectedProtocols(
+  preservedCapabilities: GatewayProviderCapability[],
+  selectedProtocols: GatewayProviderProtocol[]
+): GatewayProviderCapability[] {
+  const selected = new Set(uniqueProviderProtocols(selectedProtocols));
+  return preservedCapabilities.filter((capability) =>
+    secondaryMediaProviderProtocols.has(capability.type) || selected.has(capability.type)
+  );
+}
+
 export function providerCapabilitiesForSave(
   currentCapabilities: GatewayProviderCapability[],
   preservedCapabilities: GatewayProviderCapability[],
   existingBaseUrl: string | undefined,
-  nextBaseUrl: string
+  nextBaseUrl: string,
+  selectedProtocols?: GatewayProviderProtocol[]
 ): GatewayProviderCapability[] {
   const normalizedExistingBaseUrl = existingBaseUrl === undefined
     ? undefined
@@ -1993,9 +2014,14 @@ export function providerCapabilitiesForSave(
   const normalizedNextBaseUrl = normalizeProviderBaseUrl(nextBaseUrl) || nextBaseUrl.trim();
   const preserveExisting = normalizedExistingBaseUrl === undefined ||
     normalizedExistingBaseUrl === normalizedNextBaseUrl;
+  const capabilitiesToPreserve = preserveExisting
+    ? selectedProtocols === undefined
+      ? preservedCapabilities
+      : preservedCapabilitiesForSelectedProtocols(preservedCapabilities, selectedProtocols)
+    : [];
   return mergeProviderCapabilities(
     currentCapabilities,
-    ...(preserveExisting ? [preservedCapabilities] : [])
+    ...(capabilitiesToPreserve.length > 0 ? [capabilitiesToPreserve] : [])
   );
 }
 
@@ -2149,7 +2175,13 @@ export function providerCapabilitiesForProtocols(
 
 export function applyProviderProbeResult(draft: AddProviderDraft, probe: GatewayProviderProbeResult): AddProviderDraft {
   const detectedProtocol = probe.detectedProtocol ?? draft.protocol;
-  const selectedProtocols = selectedProviderProtocolsForProbe(draft.selectedProtocols, probe, detectedProtocol, draft.presetId);
+  const selectedProtocols = selectedProviderProtocolsForProbe(
+    draft.selectedProtocols,
+    probe,
+    detectedProtocol,
+    draft.presetId,
+    draft.protocolsManuallyEdited
+  );
   const protocol = selectedProtocols.includes(draft.protocol)
     ? draft.protocol
     : selectedProtocols.includes(detectedProtocol)

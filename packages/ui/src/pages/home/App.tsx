@@ -1647,7 +1647,8 @@ function App() {
       providerCapabilitiesForProtocols(providerDraft.baseUrl, protocolsToSave, saveProbe, presetCapabilitiesFromDraft(providerDraft)),
       providerDraft.capabilities,
       existingProvider ? providerBaseUrl(existingProvider) : undefined,
-      providerDraft.baseUrl
+      providerDraft.baseUrl,
+      protocolsToSave
     );
     const primaryCapability =
       capabilities.find((capability) => capability.type === fallbackProtocol) ??

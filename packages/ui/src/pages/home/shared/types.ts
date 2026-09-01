@@ -113,6 +113,7 @@ export type AddProviderDraft = {
   protocolDetectionMode: "auto" | "manual";
   providerPlugins: unknown[];
   protocol: GatewayProviderProtocol;
+  protocolsManuallyEdited: boolean;
   selectedModels: string[];
   selectedProtocols: GatewayProviderProtocol[];
   usageBalanceLimitPath: string;
