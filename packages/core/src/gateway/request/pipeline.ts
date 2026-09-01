@@ -33,6 +33,7 @@ import { codexApplyPatchBridgeResponseStream, prepareCodexApplyPatchBridgeReques
 import { codexMultiAgentBridgeResponseStream, prepareCodexMultiAgentBridgeRequest } from "@ccr/core/gateway/features/codex-multi-agent-bridge";
 import { rewriteAnthropicMessageStartModelStream, shouldRewriteAnthropicMessageStartModel } from "@ccr/core/gateway/features/anthropic-response-model";
 import { prepareCursorOpenAICompatChatBody } from "@ccr/core/gateway/features/cursor-compat";
+import { prepareDeepSeekRequestAdapter } from "@ccr/core/gateway/features/deepseek-request-adapter";
 import { filteredResponseHeaders, formatError, formatUpstreamErrorForLog, forwardHeaders, inferGatewayClient, readRequestBody, sendJson, shouldCaptureGatewayUsage, shouldSendBody, stripLocalGatewayAuthHeaders } from "@ccr/core/gateway/http/io";
 import { parseJsonObjectSafe, serializeJsonBody, takeJsonObject } from "@ccr/core/gateway/http/body";
 import { createGatewayModelsResponse, prepareClaudeAppDiscoveredModelRequest, prepareClaudeCodeDiscoveredModelRequest, shouldServeGatewayModelsResponse } from "@ccr/core/gateway/features/model-discovery";
@@ -450,6 +451,33 @@ export class GatewayRequestPipeline {
           name: "compatibility.codex-multi-agent",
           phase: "compatibility",
           startedAtMs: codexMultiAgentBridgeStartedAt
+        });
+      }
+
+      const deepSeekAdapterStartedAt = Date.now();
+      const deepSeekAdapterRequest = prepareDeepSeekRequestAdapter({
+        body: bodyToForward,
+        config: this.config,
+        headers: request.headers,
+        method,
+        path,
+        routedModel
+      });
+      if (deepSeekAdapterRequest) {
+        bodyToForward = deepSeekAdapterRequest.body;
+        headers["x-ccr-deepseek-adapter"] = sanitizeHeaderValue(deepSeekAdapterRequest.diagnostic);
+        headers["content-type"] = "application/json";
+        routeTrace?.capture({
+          changes: [
+            { operation: "replace", path: "/body", scope: "body" },
+            { after: headers["x-ccr-deepseek-adapter"], operation: "add", path: "/headers/x-ccr-deepseek-adapter", scope: "headers" },
+            { after: headers["content-type"], operation: "replace", path: "/headers/content-type", scope: "headers" }
+          ],
+          durationMs: Date.now() - deepSeekAdapterStartedAt,
+          kind: "mutation",
+          name: "compatibility.deepseek-adapter",
+          phase: "compatibility",
+          startedAtMs: deepSeekAdapterStartedAt
         });
       }
 
