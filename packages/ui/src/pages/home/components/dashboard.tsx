@@ -4135,6 +4135,8 @@ function providerAccountBentoLayout(accounts: ProviderAccountSnapshot[], dimensi
   hiddenCount: number;
   items: Array<{ account: ProviderAccountSnapshot; span: ProviderAccountBentoSpan }>;
 } {
+  const columns = providerAccountBentoColumnCount(dimensions, accounts.length);
+  const maxRows = providerAccountBentoRowCount(dimensions);
   const maxUnits = providerAccountBentoMaxUnits(dimensions, accounts.length);
   const items = accounts.map((account) => ({
     account,
@@ -4150,27 +4152,92 @@ function providerAccountBentoLayout(accounts: ProviderAccountSnapshot[], dimensi
     }
   }
 
-  if (usedUnits <= maxUnits) {
-    return { hiddenCount: 0, items };
+  let visibleItems = items;
+  if (usedUnits > maxUnits) {
+    const visibleBudget = Math.max(0, maxUnits - 1);
+    visibleItems = [];
+    let visibleUnits = 0;
+
+    for (const item of items) {
+      const itemUnits = providerAccountBentoSpanUnits(item.span);
+      if (visibleUnits + itemUnits > visibleBudget) {
+        break;
+      }
+      visibleItems.push(item);
+      visibleUnits += itemUnits;
+    }
   }
 
-  const visibleBudget = Math.max(0, maxUnits - 1);
-  const visibleItems: Array<{ account: ProviderAccountSnapshot; span: ProviderAccountBentoSpan }> = [];
-  let visibleUnits = 0;
-
-  for (const item of items) {
-    const itemUnits = providerAccountBentoSpanUnits(item.span);
-    if (visibleUnits + itemUnits > visibleBudget) {
+  // 格子预算挡不住「行数超限」：双行卡片会把 dense 排布撑出额外行，
+  // auto-rows-fr 会把组件高度均分给实际用到的每一行，行数超过组件高度档位时
+  // 行高会被压到卡片最小内容高度以下，单行卡片内容被裁切。
+  // 这里按真实 dense 排布模拟行数，超限时先降级双行卡片（跳过手动尺寸），再从尾部隐藏。
+  for (let guard = 0; guard <= items.length * 2 + 1; guard += 1) {
+    const rowsUsed = providerAccountBentoPackedRowCount(visibleItems, columns, visibleItems.length < items.length);
+    if (rowsUsed <= maxRows || visibleItems.length === 0) {
       break;
     }
-    visibleItems.push(item);
-    visibleUnits += itemUnits;
+    let demotableIndex = -1;
+    for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
+      if (visibleItems[index].span.height === 2 && !visibleItems[index].manual) {
+        demotableIndex = index;
+        break;
+      }
+    }
+    if (demotableIndex >= 0) {
+      visibleItems = visibleItems.map((item, index) => index === demotableIndex
+        ? { ...item, span: { ...item.span, height: 1 as const } }
+        : item);
+      continue;
+    }
+    if (visibleItems.length <= 1) {
+      break;
+    }
+    visibleItems = visibleItems.slice(0, -1);
   }
 
   return {
     hiddenCount: accounts.length - visibleItems.length,
     items: visibleItems
   };
+}
+
+function providerAccountBentoPackedRowCount(items: Array<{ span: ProviderAccountBentoSpan }>, columns: number, includeOverflowTile: boolean): number {
+  const occupied = new Set<string>();
+  let rowCount = 0;
+  const place = (itemWidth: number, itemHeight: number) => {
+    const width = Math.max(1, Math.min(itemWidth, columns));
+    const height = Math.max(1, itemHeight);
+    for (let row = 0; ; row += 1) {
+      for (let column = 0; column + width <= columns; column += 1) {
+        let fits = true;
+        for (let offsetY = 0; offsetY < height && fits; offsetY += 1) {
+          for (let offsetX = 0; offsetX < width; offsetX += 1) {
+            if (occupied.has(`${row + offsetY}:${column + offsetX}`)) {
+              fits = false;
+              break;
+            }
+          }
+        }
+        if (fits) {
+          for (let offsetY = 0; offsetY < height; offsetY += 1) {
+            for (let offsetX = 0; offsetX < width; offsetX += 1) {
+              occupied.add(`${row + offsetY}:${column + offsetX}`);
+            }
+          }
+          rowCount = Math.max(rowCount, row + height);
+          return;
+        }
+      }
+    }
+  };
+  for (const item of items) {
+    place(item.span.width, item.span.height);
+  }
+  if (includeOverflowTile) {
+    place(1, 1);
+  }
+  return rowCount;
 }
 
 function providerAccountBentoUsedUnits(items: Array<{ span: ProviderAccountBentoSpan }>): number {
@@ -4192,10 +4259,10 @@ function providerAccountBentoColumnCount(dimensions: OverviewWidgetDimensions, i
 }
 
 function providerAccountBentoRowCount(dimensions: OverviewWidgetDimensions): number {
-  if (dimensions.height <= 1) return 1;
-  if (dimensions.height === 2) return 3;
-  if (dimensions.height === 3) return 4;
-  return 5;
+  // Bento 行高由 auto-rows-fr 在组件内容高度内均分，单行卡片的最小内容高度约 100px，
+  // 组件每个高度档位（overview 网格一行约 148px）只够容纳等量的 bento 行；
+  // 行数一旦超过组件高度档位，行高会被均分压缩到卡片最小高度以下，内容被裁切。
+  return dimensions.height;
 }
 
 function providerAccountBentoGridClass(dimensions: OverviewWidgetDimensions, itemCount: number): string {
