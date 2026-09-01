@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -75,6 +75,48 @@ test("Claude App gateway config writes the selected default model first", () => 
   }
 });
 
+test("Claude App gateway config preserves unknown keys when rewriting config library", () => {
+  const dataDir = mkdtempSync(path.join(os.tmpdir(), "ccr-claude-app-gateway-preserve-"));
+  const activeDataDir = `${dataDir}-3p`;
+  const configId = "8f69f2f1-3275-4ad8-9317-4aa7e972f311.json";
+  const applyOptions = { backup: false, dataDir };
+
+  try {
+    const { result } = applyClaudeAppGatewayConfig(createConfig(), applyOptions);
+    const launchLibraryFile = path.join(dataDir, "configLibrary", configId);
+    const activeLibraryFile = result.configLibraryFile;
+
+    for (const file of [launchLibraryFile, activeLibraryFile]) {
+      writeJson(file, {
+        ...readJson(file),
+        coworkEgressAllowedHosts: ["*"],
+        extraUnknownKey: "keep-me"
+      });
+    }
+
+    applyClaudeAppGatewayConfig(createConfig({
+      PORT: 3457,
+      gateway: {
+        enabled: false,
+        host: "0.0.0.0",
+        port: 3457
+      }
+    }), applyOptions);
+
+    for (const file of [launchLibraryFile, activeLibraryFile]) {
+      const rewritten = readJson(file);
+      assert.deepEqual(rewritten.coworkEgressAllowedHosts, ["*"]);
+      assert.equal(rewritten.extraUnknownKey, "keep-me");
+      assert.equal(rewritten.inferenceGatewayBaseUrl, "http://127.0.0.1:3457");
+      assert.equal(rewritten.inferenceProvider, "gateway");
+      assert.equal(rewritten.inferenceGatewayApiKey, "existing-test-key");
+    }
+  } finally {
+    rmSync(dataDir, { force: true, recursive: true });
+    rmSync(activeDataDir, { force: true, recursive: true });
+  }
+});
+
 function createConfig(overrides = {}) {
   return {
     APIKEY: "existing-test-key",
@@ -100,4 +142,8 @@ function createConfig(overrides = {}) {
 
 function readJson(file) {
   return JSON.parse(readFileSync(file, "utf8"));
+}
+
+function writeJson(file, value) {
+  writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 }

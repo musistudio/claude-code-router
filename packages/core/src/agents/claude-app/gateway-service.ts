@@ -175,7 +175,7 @@ export function applyClaudeAppGatewayConfig(config: AppConfig, options: ClaudeAp
   }
   for (const targetPaths of uniqueClaudeAppGatewayPaths([paths, activePaths])) {
     mkdirSync(targetPaths.libraryDir, { mode: 0o700, recursive: true });
-    writeJsonFile(targetPaths.configLibraryFile, gatewayConfig);
+    applyClaudeAppGatewayLibraryConfig(targetPaths.configLibraryFile, gatewayConfig);
     applyClaudeAppConfigMeta(targetPaths.metaFile);
     applyClaudeAppDeploymentMode(targetPaths.rootConfigFile);
     if (options.refreshModelDiscoveryCache) {
@@ -445,6 +445,14 @@ function gatewayEndpoint(config: AppConfig): string {
   const formattedHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
   const port = Number.isInteger(config.gateway.port) && config.gateway.port > 0 ? config.gateway.port : config.PORT;
   return `http://${formattedHost}:${port}`;
+}
+
+function applyClaudeAppGatewayLibraryConfig(file: string, gatewayConfig: ClaudeAppGatewayConfig): void {
+  const current = readJsonRecord(file);
+  writeJsonFile(file, {
+    ...(current ?? {}),
+    ...gatewayConfig
+  });
 }
 
 function applyClaudeAppConfigMeta(metaFile: string): void {
