@@ -5,6 +5,7 @@ import {
   isGatewayProviderEnabled
 } from "@ccr/core/contracts/app";
 import type { GatewayMediaProtocol, GatewayProviderConfig } from "@ccr/core/contracts/app";
+import { registeredMediaCapabilities } from "@ccr/core/media/provider-registry";
 
 const localAgentProviderApiKey = "ccr-local-agent-login";
 
@@ -63,7 +64,8 @@ export function providerSupportsMediaKind(provider: GatewayProviderConfig, kind:
     ? ["openai_image_generations"]
     : ["xai_video_generations", "openai_video_generations"];
   return isImportedGrokAgentProvider(provider) ||
-    (provider.capabilities ?? []).some((item) => capabilities.includes(item.type)) ||
+    [...(provider.capabilities ?? []), ...registeredMediaCapabilities(provider)]
+      .some((item) => capabilities.includes(item.type)) ||
     (provider.models ?? []).some((model) => grokMediaModelKind(model) === kind);
 }
 

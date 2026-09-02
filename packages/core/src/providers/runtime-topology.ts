@@ -4,6 +4,7 @@
 import { isGatewayProviderEnabled } from "@ccr/core/contracts/app";
 import type { AppConfig, GatewayProviderCapability, GatewayProviderCapabilityProtocol, GatewayProviderConfig, GatewayProviderProtocol, ProviderCredentialConfig } from "@ccr/core/contracts/app";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue } from "@ccr/core/providers/presets/index";
+import { registeredMediaCapabilities } from "@ccr/core/media/provider-registry";
 import { normalizeProviderBaseUrl as normalizeProviderBaseUrlInput } from "@ccr/core/providers/url";
 import { modelRegistryForConfig, parseProviderModelSelector, providerRuntimeId } from "@ccr/core/routing/model-registry";
 import { gatewayProviderProtocolFallbackOrder, type CoreGatewayProvider } from "@ccr/core/gateway/internal/shared";
@@ -178,7 +179,10 @@ export function sortProviderCredentialsForConfig(credentials: ProviderCredential
 }
 
 export function normalizedProviderCapabilities(provider: GatewayProviderConfig): GatewayProviderCapability[] {
-  const capabilities = Array.isArray(provider.capabilities) ? provider.capabilities : [];
+  const capabilities = [
+    ...(Array.isArray(provider.capabilities) ? provider.capabilities : []),
+    ...registeredMediaCapabilities(provider)
+  ];
   const normalized: GatewayProviderCapability[] = [];
   const byProtocol = new Map<GatewayProviderCapabilityProtocol, GatewayProviderCapability>();
   for (const capability of capabilities) {

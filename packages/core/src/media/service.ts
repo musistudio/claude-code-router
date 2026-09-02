@@ -13,7 +13,7 @@ import { grokMediaModelKind, isImportedGrokAgentProvider, migrateLegacyGrokMedia
 import { detectMediaType, MediaArtifactStore, MediaJobStore } from "@ccr/core/media/storage";
 import { mediaToolBindingsForConfig } from "@ccr/core/media/tools";
 import type { MediaToolBinding } from "@ccr/core/media/tools";
-import { activeProviderCredentials, inferProtocol, providerCapabilityInternalName, providerCredentialInternalName, sortProviderCredentialsForConfig } from "@ccr/core/providers/runtime-topology";
+import { activeProviderCredentials, inferProtocol, normalizedProviderCapabilities, providerCapabilityInternalName, providerCredentialInternalName, sortProviderCredentialsForConfig } from "@ccr/core/providers/runtime-topology";
 import { modelRegistryForConfig, parseProviderModelSelector, providerRuntimeId } from "@ccr/core/routing/model-registry";
 
 type QueueItem = {
@@ -736,14 +736,15 @@ export function resolveProviderMediaTarget(config: AppConfig, selector: string, 
   if (!kind || !providerSupportsMediaKind(provider, kind)) {
     throw new Error(`Provider ${provider.name} does not declare ${kind ?? "media"} generation support.`);
   }
+  const capabilities = normalizedProviderCapabilities(provider);
   const protocol: GatewayMediaProtocol = kind === "video"
-    ? provider.capabilities?.some((item) => item.type === "xai_video_generations") || isImportedGrokAgentProvider(provider)
+    ? capabilities.some((item) => item.type === "xai_video_generations") || isImportedGrokAgentProvider(provider)
       ? "xai_video_generations"
       : "openai_video_generations"
     : "openai_image_generations";
-  const capability = provider.capabilities?.find((item) => item.type === protocol) ??
+  const capability = capabilities.find((item) => item.type === protocol) ??
     (protocol === "xai_video_generations" && isImportedGrokAgentProvider(provider)
-      ? provider.capabilities?.find((item) => item.type === "openai_video_generations")
+      ? capabilities.find((item) => item.type === "openai_video_generations")
       : undefined);
   const providerBaseUrl = capability?.baseUrl ?? provider.baseurl ?? provider.baseUrl ?? provider.api_base_url;
   if (!providerBaseUrl?.trim()) {

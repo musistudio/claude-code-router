@@ -2,6 +2,7 @@ import { applyResponsesSessionAffinity } from "@ccr/core/gateway/core-runtime/re
 import type { ResponsesSessionAffinityInput } from "@ccr/core/gateway/core-runtime/responses-session-affinity";
 import { applyResponsesToolStrictness } from "@ccr/core/gateway/core-runtime/responses-tool-strictness";
 import type { ResponsesToolStrictnessInput } from "@ccr/core/gateway/core-runtime/responses-tool-strictness";
+import { fusionImageProviderSchemaForUrl } from "@ccr/core/media/provider-registry";
 
 type UpstreamRequest = {
   body: unknown;
@@ -22,7 +23,12 @@ type ProviderPluginRequestInput = {
     baseurl?: string;
     type?: string;
   };
+  sourceAdapterKey?: string;
   upstreamRequest: UpstreamRequest;
+};
+
+type ProviderPluginResponseInput = ProviderPluginRequestInput & {
+  upstreamPayload: unknown;
 };
 
 const ccrAuthHeaderNames = new Set([
@@ -138,6 +144,30 @@ export function rewriteUpstreamProviderUrl(
   return rewriteUrlBase(upstreamUrl, config?.anthropicBaseUrl, targetProviderConfig?.baseurl);
 }
 
+export function rewriteFusionMediaProviderRequest(input: ProviderPluginRequestInput): UpstreamRequest {
+  if (input.sourceAdapterKey !== "openai_image_generations") return input.upstreamRequest;
+  const match = fusionImageProviderSchemaForUrl(input.targetProviderConfig?.baseurl ?? input.upstreamRequest.url);
+  if (!match) return input.upstreamRequest;
+  const url = new URL(input.upstreamRequest.url);
+  if (!url.pathname.endsWith("/images/generations")) return input.upstreamRequest;
+  url.pathname = match.endpoint.generationPath;
+  return { ...input.upstreamRequest, url: url.toString() };
+}
+
+export function normalizeFusionMediaProviderResponse(input: ProviderPluginResponseInput): unknown {
+  if (input.sourceAdapterKey !== "openai_image_generations") return input.upstreamPayload;
+  if (!fusionImageProviderSchemaForUrl(input.targetProviderConfig?.baseurl ?? input.upstreamRequest.url)) {
+    return input.upstreamPayload;
+  }
+  if (!isRecord(input.upstreamPayload) || !isRecord(input.upstreamPayload.data)) return input.upstreamPayload;
+  const imageUrls = input.upstreamPayload.data.image_urls;
+  if (!Array.isArray(imageUrls)) return input.upstreamPayload;
+  const data = imageUrls
+    .filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
+    .map((url) => ({ url }));
+  return { ...input.upstreamPayload, data };
+}
+
 function headerValues(value: string | string[] | undefined): string[] {
   if (value === undefined) return [];
   return Array.isArray(value) ? value : [value];
@@ -187,18 +217,29 @@ function joinUrlPath(base: string, remainder: string): string {
   return `${base}/${normalizedRemainder}`;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export function createGatewayPlugin() {
   return {
     providerHooks: [{
       key: "ccr-upstream-header-sanitizer",
       transformRequest(input: ProviderPluginRequestInput) {
+        const upstreamRequest = rewriteFusionMediaProviderRequest(input);
         return {
           ok: true as const,
           value: {
-            ...input.upstreamRequest,
-            headers: mergeUpstreamProviderHeaders(input.request?.headers, input.upstreamRequest.headers),
-            url: rewriteUpstreamProviderUrl(input.upstreamRequest.url, input.targetProviderConfig, input.config)
+            ...upstreamRequest,
+            headers: mergeUpstreamProviderHeaders(input.request?.headers, upstreamRequest.headers),
+            url: rewriteUpstreamProviderUrl(upstreamRequest.url, input.targetProviderConfig, input.config)
           }
+        };
+      },
+      transformResponse(input: ProviderPluginResponseInput) {
+        return {
+          ok: true as const,
+          value: normalizeFusionMediaProviderResponse(input)
         };
       }
     }, {
