@@ -15,6 +15,7 @@ import {
   grokDefaultSubscriptionEndpoint,
   grokProviderAccountConfig
 } from "@ccr/core/agents/local-providers/grok.ts";
+import { claudeCodeProviderAccountConfig } from "@ccr/core/agents/local-providers/claude-code.ts";
 
 const localAgentProviderApiKey = "ccr-local-agent-login";
 const codexDefaultBaseUrl = "https://chatgpt.com/backend-api/codex";
@@ -205,6 +206,79 @@ test("webcontent-json connector defaults browser request origin to login URL ori
   assert.equal(captured.credentials, "include");
   assert.equal(captured.requestOrigin, "https://app.vendor.example.com");
   assert.equal(result.meters[0].remaining, 7);
+});
+
+test("Claude Code connector maps weekly Fable scoped limit from limits payload", async (t) => {
+  const previousFetch = globalThis.fetch;
+  let authorization = "";
+  let betaHeader = "";
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), "https://api.anthropic.com/api/oauth/usage");
+    authorization = init?.headers?.authorization ?? "";
+    betaHeader = init?.headers?.["anthropic-beta"] ?? "";
+    return new Response(JSON.stringify({
+      five_hour: { utilization: 54, resets_at: "2026-09-02T05:09:59.710911+00:00" },
+      seven_day: { utilization: 15, resets_at: "2026-09-05T10:00:00.710935+00:00" },
+      limits: [
+        { kind: "session", group: "session", percent: 54, severity: "normal", resets_at: "2026-09-02T05:09:59.710911+00:00", scope: null, is_active: true },
+        { kind: "weekly_all", group: "weekly", percent: 15, severity: "normal", resets_at: "2026-09-05T10:00:00.710935+00:00", scope: null, is_active: false },
+        { kind: "weekly_scoped", group: "weekly", percent: 25, severity: "normal", resets_at: "2026-09-05T09:59:59.711185+00:00", scope: { model: { id: null, display_name: "Fable" } }, is_active: false }
+      ]
+    }), { headers: { "content-type": "application/json" }, status: 200 });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+
+  const connector = claudeCodeProviderAccountConfig().connectors?.[0];
+  assert.equal(connector?.type, "http-json");
+  const result = await testProviderAccountConnector({
+    apiKey: "claude-code-access-token",
+    baseUrl: "https://api.anthropic.com",
+    connector,
+    providerName: "Claude Code API"
+  });
+
+  assert.equal(authorization, "Bearer claude-code-access-token");
+  assert.equal(betaHeader, "oauth-2025-04-20");
+  assert.equal(result.meters.find((meter) => meter.id === "claude_five_hour_quota")?.remaining, 46);
+  assert.equal(result.meters.find((meter) => meter.id === "claude_seven_day_quota")?.remaining, 85);
+  assert.equal(result.meters.find((meter) => meter.id === "claude_fable_quota")?.remaining, 75);
+  assert.equal(result.meters.find((meter) => meter.id === "claude_fable_quota")?.used, 25);
+  assert.equal(result.meters.find((meter) => meter.id === "claude_fable_quota")?.resetAt, "2026-09-05T09:59:59.711185+00:00");
+  assert.equal(result.meters.find((meter) => meter.id === "claude_fable_quota")?.window, "weekly");
+});
+
+test("Claude Code connector omits Fable meter when payload has no weekly scoped limit", async (t) => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    assert.equal(String(input), "https://api.anthropic.com/api/oauth/usage");
+    return new Response(JSON.stringify({
+      five_hour: { utilization: 54, resets_at: "2026-09-02T05:09:59.710911+00:00" },
+      seven_day: { utilization: 15, resets_at: "2026-09-05T10:00:00.710935+00:00" },
+      limits: [
+        { kind: "session", group: "session", percent: 54, severity: "normal", resets_at: "2026-09-02T05:09:59.710911+00:00", scope: null, is_active: true },
+        { kind: "weekly_all", group: "weekly", percent: 15, severity: "normal", resets_at: "2026-09-05T10:00:00.710935+00:00", scope: null, is_active: false }
+      ]
+    }), { headers: { "content-type": "application/json" }, status: 200 });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+
+  const connector = claudeCodeProviderAccountConfig().connectors?.[0];
+  const result = await testProviderAccountConnector({
+    apiKey: "claude-code-access-token",
+    baseUrl: "https://api.anthropic.com",
+    connector,
+    providerName: "Claude Code API"
+  });
+
+  const fableMeter = result.meters.find((meter) => meter.id === "claude_fable_quota");
+  assert.equal(fableMeter?.remaining, undefined);
+  assert.equal(fableMeter?.used, undefined);
+  assert.equal(fableMeter?.resetAt, undefined);
+  assert.equal(result.meters.find((meter) => meter.id === "claude_seven_day_quota")?.remaining, 85);
 });
 
 test("webcontent-json connector reports unsupported outside CCR Desktop", async () => {
