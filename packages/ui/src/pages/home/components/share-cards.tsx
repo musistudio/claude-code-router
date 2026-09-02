@@ -731,34 +731,30 @@ async function browserExportElementAsPng(element: HTMLElement, fileName: string)
     `<foreignObject width="100%" height="100%">${serialized}</foreignObject>`,
     "</svg>"
   ].join("");
-  const svgUrl = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+  const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 
+  const image = await loadImage(svgUrl);
+  const scale = 3;
+  const canvas = document.createElement("canvas");
+  canvas.width = width * scale;
+  canvas.height = height * scale;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Canvas rendering is unavailable.");
+  }
+  context.scale(scale, scale);
+  context.drawImage(image, 0, 0, width, height);
+  const pngBlob = await canvasToBlob(canvas);
+  const pngUrl = URL.createObjectURL(pngBlob);
   try {
-    const image = await loadImage(svgUrl);
-    const scale = 3;
-    const canvas = document.createElement("canvas");
-    canvas.width = width * scale;
-    canvas.height = height * scale;
-    const context = canvas.getContext("2d");
-    if (!context) {
-      throw new Error("Canvas rendering is unavailable.");
-    }
-    context.scale(scale, scale);
-    context.drawImage(image, 0, 0, width, height);
-    const pngBlob = await canvasToBlob(canvas);
-    const pngUrl = URL.createObjectURL(pngBlob);
-    try {
-      const link = document.createElement("a");
-      link.href = pngUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } finally {
-      URL.revokeObjectURL(pngUrl);
-    }
+    const link = document.createElement("a");
+    link.href = pngUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   } finally {
-    URL.revokeObjectURL(svgUrl);
+    URL.revokeObjectURL(pngUrl);
   }
 }
 
