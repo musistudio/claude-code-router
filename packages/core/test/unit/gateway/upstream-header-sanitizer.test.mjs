@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createGatewayPlugin,
+  normalizeFusionMediaProviderResponse,
+  rewriteFusionMediaProviderRequest,
   rewriteUpstreamProviderUrl,
   sanitizeUpstreamProviderHeaders
 } from "@ccr/core/gateway/core-runtime/upstream-header-sanitizer.ts";
@@ -168,6 +170,68 @@ test("provider URL rewrite ignores unrelated providers and upstream hosts", () =
     ),
     "https://other.example/v1/messages"
   );
+});
+
+test("MiniMax image generation uses the official endpoint and response schema", () => {
+  const input = {
+    sourceAdapterKey: "openai_image_generations",
+    targetProviderConfig: {
+      baseurl: "https://api.minimax.io/v1",
+      type: "openai_image_generations"
+    },
+    upstreamRequest: {
+      body: {
+        aspect_ratio: "16:9",
+        model: "image-01",
+        prompt: "A blue cup",
+        response_format: "url"
+      },
+      headers: { "content-type": "application/json" },
+      method: "POST",
+      url: "https://api.minimax.io/v1/images/generations"
+    }
+  };
+
+  const request = rewriteFusionMediaProviderRequest(input);
+  assert.equal(request.url, "https://api.minimax.io/v1/image_generation");
+  assert.deepEqual(request.body, input.upstreamRequest.body);
+
+  assert.deepEqual(normalizeFusionMediaProviderResponse({
+    ...input,
+    upstreamPayload: {
+      base_resp: { status_code: 0 },
+      data: { image_urls: ["https://cdn.example/one.png", "https://cdn.example/two.png"] },
+      metadata: { failed_count: 0, success_count: 2 }
+    }
+  }), {
+    base_resp: { status_code: 0 },
+    data: [
+      { url: "https://cdn.example/one.png" },
+      { url: "https://cdn.example/two.png" }
+    ],
+    metadata: { failed_count: 0, success_count: 2 }
+  });
+});
+
+test("MiniMax image schema handling does not affect unrelated providers", () => {
+  const upstreamRequest = {
+    body: { model: "image-model", prompt: "A blue cup" },
+    headers: { "content-type": "application/json" },
+    method: "POST",
+    url: "https://images.example/v1/images/generations"
+  };
+  const input = {
+    sourceAdapterKey: "openai_image_generations",
+    targetProviderConfig: {
+      baseurl: "https://images.example/v1",
+      type: "openai_image_generations"
+    },
+    upstreamRequest
+  };
+
+  assert.equal(rewriteFusionMediaProviderRequest(input), upstreamRequest);
+  const upstreamPayload = { data: [{ url: "https://cdn.example/image.png" }] };
+  assert.equal(normalizeFusionMediaProviderResponse({ ...input, upstreamPayload }), upstreamPayload);
 });
 
 test("gateway sanitizer hook does not forward reverse proxy metadata to providers", async () => {
