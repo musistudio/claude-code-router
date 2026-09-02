@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyResponsesSessionAffinity, isCodexResponsesUpstream, resolveResponsesSessionKey } from "@ccr/core/gateway/core-runtime/responses-session-affinity.ts";
+import {
+  applyResponsesSessionAffinity,
+  isCodexResponsesUpstream,
+  isOfficialOpenAIResponsesUpstream,
+  resolveResponsesSessionKey
+} from "@ccr/core/gateway/core-runtime/responses-session-affinity.ts";
 import { createGatewayPlugin } from "@ccr/core/gateway/core-runtime/upstream-header-sanitizer.ts";
 
 function responsesInput(overrides = {}) {
@@ -46,10 +51,17 @@ test("openai_responses bodies gain prompt_cache_key from the Claude Code session
   assert.equal(input.upstreamRequest.body.prompt_cache_key, undefined);
 });
 
-test("inbound metadata.user_id is carried onto the outbound Responses body", () => {
-  const result = applyResponsesSessionAffinity(responsesInput());
+test("inbound metadata.user_id is carried only onto the public OpenAI Responses API", () => {
+  const official = responsesInput();
+  official.upstreamRequest.url = "https://api.openai.com/v1/responses";
 
-  assert.deepEqual(result.body.metadata, { user_id: "user_abc123_account__session_11112222" });
+  const officialResult = applyResponsesSessionAffinity(official);
+  assert.deepEqual(officialResult.body.metadata, { user_id: "user_abc123_account__session_11112222" });
+  assert.equal(officialResult.body.prompt_cache_key, "session-1111-2222");
+
+  const genericResult = applyResponsesSessionAffinity(responsesInput());
+  assert.equal(genericResult.body.metadata, undefined);
+  assert.equal(genericResult.body.prompt_cache_key, "session-1111-2222");
 });
 
 test("caller-supplied prompt_cache_key is never overwritten", () => {
@@ -107,13 +119,19 @@ test("codex upstreams receive neither prompt_cache_key nor metadata", () => {
   assert.equal(result.body.metadata, undefined);
 });
 
-test("non-codex openai_responses upstreams keep the affinity injection", () => {
-  const input = responsesInput();
+test("non-OpenAI openai_responses upstreams keep prompt_cache_key without Anthropic metadata", () => {
+  for (const url of [
+    "https://provider.example/v1/responses",
+    "https://cli-chat-proxy.grok.com/v1/responses"
+  ]) {
+    const input = responsesInput();
+    input.upstreamRequest.url = url;
 
-  const result = applyResponsesSessionAffinity(input);
+    const result = applyResponsesSessionAffinity(input);
 
-  assert.equal(result.body.prompt_cache_key, "session-1111-2222");
-  assert.deepEqual(result.body.metadata, { user_id: "user_abc123_account__session_11112222" });
+    assert.equal(result.body.prompt_cache_key, "session-1111-2222");
+    assert.equal(result.body.metadata, undefined);
+  }
 });
 
 test("isCodexResponsesUpstream matches the outbound url and provider baseurl", () => {
@@ -124,6 +142,13 @@ test("isCodexResponsesUpstream matches the outbound url and provider baseurl", (
     true
   );
   assert.equal(isCodexResponsesUpstream("https://mirror.example/backend-api/codex/responses"), true);
+});
+
+test("isOfficialOpenAIResponsesUpstream matches api.openai.com only", () => {
+  assert.equal(isOfficialOpenAIResponsesUpstream("https://api.openai.com/v1/responses"), true);
+  assert.equal(isOfficialOpenAIResponsesUpstream("https://chatgpt.com/backend-api/codex/responses"), false);
+  assert.equal(isOfficialOpenAIResponsesUpstream("https://cli-chat-proxy.grok.com/v1/responses"), false);
+  assert.equal(isOfficialOpenAIResponsesUpstream("https://provider.example/v1/responses"), false);
 });
 
 test("non-Responses providers and non-JSON bodies pass through untouched", () => {
