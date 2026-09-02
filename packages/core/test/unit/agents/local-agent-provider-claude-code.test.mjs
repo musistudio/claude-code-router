@@ -4,7 +4,8 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { claudeCodeCandidate, importClaudeCodeProvider } from "@ccr/core/agents/local-providers/claude-code.ts";
+import { claudeCodeCandidate, claudeCodeProviderAccountConfig, importClaudeCodeProvider, normalizeClaudeCodeProviderAccountConfig } from "@ccr/core/agents/local-providers/claude-code.ts";
+import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared.ts";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 import { compileCoreGatewayConfig } from "@ccr/core/gateway/core-runtime/config-compiler.ts";
 
@@ -280,6 +281,49 @@ test("Claude Code local provider reads the config-dir-suffixed keychain service"
       });
     });
   });
+});
+
+test("Claude Code local provider account config upgrades persisted usage mapping", () => {
+  const oldAccount = JSON.parse(JSON.stringify(claudeCodeProviderAccountConfig()));
+  oldAccount.refreshIntervalMs = 45000;
+  const usageConnector = oldAccount.connectors[0];
+  usageConnector.mapping.meters = usageConnector.mapping.meters.filter((meter) => meter.id !== "claude_fable_quota");
+
+  const provider = normalizeClaudeCodeProviderAccountConfig({
+    account: oldAccount,
+    api_base_url: "https://api.anthropic.com",
+    api_key: localAgentProviderApiKey,
+    models: ["claude-sonnet-5"],
+    name: "Claude Code API",
+    protocol: "anthropic_messages"
+  });
+
+  assert.equal(provider.account.refreshIntervalMs, 45000);
+  assert.ok(provider.account.connectors[0].mapping.meters.some((meter) => meter.id === "claude_fable_quota"));
+});
+
+test("Claude Code local provider account config preserves custom connectors", () => {
+  const customAccount = {
+    connectors: [
+      {
+        auth: "provider-api-key",
+        endpoint: "https://proxy.example.com/usage",
+        mapping: { meters: [] },
+        type: "http-json"
+      }
+    ],
+    enabled: true
+  };
+  const provider = normalizeClaudeCodeProviderAccountConfig({
+    account: customAccount,
+    api_base_url: "https://api.anthropic.com",
+    api_key: localAgentProviderApiKey,
+    models: ["claude-sonnet-5"],
+    name: "Claude Code API",
+    protocol: "anthropic_messages"
+  });
+
+  assert.equal(provider.account.connectors[0].endpoint, "https://proxy.example.com/usage");
 });
 
 test("Claude Code local provider explains login state that carries no OAuth token", { skip: process.platform === "win32" }, async () => {
