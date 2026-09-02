@@ -10,6 +10,7 @@ import {
   replacePersistedConfigSnapshot
 } from "@ccr/core/config/config-repository";
 import { LEGACY_ACTIVE_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE } from "@ccr/core/config/constants";
+import { normalizeClaudeCodeProviderAccountConfig } from "@ccr/core/agents/local-providers/claude-code";
 import { normalizeCodexProviderAccountConfig } from "@ccr/core/agents/local-providers/codex";
 import { normalizeGrokProviderAccountConfig, normalizeGrokProviderMediaCapabilities } from "@ccr/core/agents/local-providers/grok";
 import { removeOpenCodeProviderAccountConfig } from "@ccr/core/agents/local-providers/opencode";
@@ -1448,7 +1449,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
       return removeOpenCodeProviderAccountConfig(
         normalizeProviderPresetCapabilities(
           normalizeGrokProviderMediaCapabilities(
-            normalizeGrokProviderAccountConfig(normalizeCodexProviderAccountConfig(provider))
+            normalizeGrokProviderAccountConfig(normalizeCodexProviderAccountConfig(normalizeClaudeCodeProviderAccountConfig(provider)))
           )
         )
       );
