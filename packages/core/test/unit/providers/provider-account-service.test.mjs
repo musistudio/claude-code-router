@@ -247,6 +247,8 @@ test("Claude Code connector maps weekly Fable scoped limit from limits payload",
   assert.equal(result.meters.find((meter) => meter.id === "claude_fable_quota")?.used, 25);
   assert.equal(result.meters.find((meter) => meter.id === "claude_fable_quota")?.resetAt, "2026-09-05T09:59:59.711185+00:00");
   assert.equal(result.meters.find((meter) => meter.id === "claude_fable_quota")?.window, "weekly");
+  assert.equal(result.meters.find((meter) => meter.id === "claude_opus_quota"), undefined);
+  assert.equal(result.meters.find((meter) => meter.id === "claude_sonnet_quota"), undefined);
 });
 
 test("Claude Code connector omits Fable meter when payload has no weekly scoped limit", async (t) => {
@@ -274,10 +276,7 @@ test("Claude Code connector omits Fable meter when payload has no weekly scoped 
     providerName: "Claude Code API"
   });
 
-  const fableMeter = result.meters.find((meter) => meter.id === "claude_fable_quota");
-  assert.equal(fableMeter?.remaining, undefined);
-  assert.equal(fableMeter?.used, undefined);
-  assert.equal(fableMeter?.resetAt, undefined);
+  assert.equal(result.meters.find((meter) => meter.id === "claude_fable_quota"), undefined);
   assert.equal(result.meters.find((meter) => meter.id === "claude_seven_day_quota")?.remaining, 85);
 });
 
