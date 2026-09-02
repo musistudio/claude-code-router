@@ -6,7 +6,7 @@ import {
 } from "../shared/index";
 import { buildTokenActivity, type TokenActivityCell } from "@/lib/usage-activity";
 
-type ShareCardTone = "amber" | "blue" | "emerald" | "indigo" | "rose" | "slate" | "teal";
+type ShareCardTone = "blue" | "emerald" | "indigo" | "rose" | "slate" | "teal";
 
 type ShareCardWidgetProps = {
   providerAccounts: ProviderAccountSnapshot[];
@@ -34,61 +34,53 @@ const shareCardExportPixelWidth = 1080;
 const shareCardExportPixelHeight = 1350;
 
 const shareCardTones: Record<ShareCardTone, { accent: string; background: string; border: string; glow: string; muted: string; text: string }> = {
-  amber: {
-    accent: "#f59e0b",
-    background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 42%, #fff7ed 100%)",
-    border: "border-amber-200",
-    glow: "bg-amber-300/28",
-    muted: "text-amber-900/62",
-    text: "text-amber-950"
-  },
   blue: {
-    accent: "#2563eb",
-    background: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 44%, #ecfeff 100%)",
-    border: "border-blue-200",
-    glow: "bg-blue-300/30",
-    muted: "text-blue-950/62",
-    text: "text-blue-950"
+    accent: "var(--share-blue-accent)",
+    background: "var(--share-blue-bg)",
+    border: "var(--share-blue-border)",
+    glow: "var(--share-blue-glow)",
+    muted: "var(--share-blue-muted)",
+    text: "var(--share-blue-text)"
   },
   emerald: {
-    accent: "#059669",
-    background: "linear-gradient(135deg, #ecfdf5 0%, #d1fae5 42%, #f0fdfa 100%)",
-    border: "border-emerald-200",
-    glow: "bg-emerald-300/28",
-    muted: "text-emerald-950/62",
-    text: "text-emerald-950"
+    accent: "var(--share-emerald-accent)",
+    background: "var(--share-emerald-bg)",
+    border: "var(--share-emerald-border)",
+    glow: "var(--share-emerald-glow)",
+    muted: "var(--share-emerald-muted)",
+    text: "var(--share-emerald-text)"
   },
   indigo: {
-    accent: "#4f46e5",
-    background: "linear-gradient(135deg, #eef2ff 0%, #e0e7ff 46%, #f5f3ff 100%)",
-    border: "border-indigo-200",
-    glow: "bg-indigo-300/30",
-    muted: "text-indigo-950/62",
-    text: "text-indigo-950"
+    accent: "var(--share-indigo-accent)",
+    background: "var(--share-indigo-bg)",
+    border: "var(--share-indigo-border)",
+    glow: "var(--share-indigo-glow)",
+    muted: "var(--share-indigo-muted)",
+    text: "var(--share-indigo-text)"
   },
   rose: {
-    accent: "#e11d48",
-    background: "linear-gradient(135deg, #fff1f2 0%, #ffe4e6 45%, #fff7ed 100%)",
-    border: "border-rose-200",
-    glow: "bg-rose-300/28",
-    muted: "text-rose-950/62",
-    text: "text-rose-950"
+    accent: "var(--share-rose-accent)",
+    background: "var(--share-rose-bg)",
+    border: "var(--share-rose-border)",
+    glow: "var(--share-rose-glow)",
+    muted: "var(--share-rose-muted)",
+    text: "var(--share-rose-text)"
   },
   slate: {
-    accent: "#475569",
-    background: "linear-gradient(135deg, #f8fafc 0%, #e2e8f0 48%, #f1f5f9 100%)",
-    border: "border-slate-200",
-    glow: "bg-slate-300/32",
-    muted: "text-slate-700",
-    text: "text-slate-950"
+    accent: "var(--share-slate-accent)",
+    background: "var(--share-slate-bg)",
+    border: "var(--share-slate-border)",
+    glow: "var(--share-slate-glow)",
+    muted: "var(--share-slate-muted)",
+    text: "var(--share-slate-text)"
   },
   teal: {
-    accent: "#0f766e",
-    background: "linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 42%, #ecfeff 100%)",
-    border: "border-teal-200",
-    glow: "bg-teal-300/30",
-    muted: "text-teal-950/62",
-    text: "text-teal-950"
+    accent: "var(--share-teal-accent)",
+    background: "var(--share-teal-bg)",
+    border: "var(--share-teal-border)",
+    glow: "var(--share-teal-glow)",
+    muted: "var(--share-teal-muted)",
+    text: "var(--share-teal-text)"
   }
 };
 
@@ -231,8 +223,8 @@ function UsageWrappedCard({ usageStats }: { usageStats: UsageStatsSnapshot }) {
     <SharePoster tone="teal">
       <SharePosterHeader title={t("AI Usage Wrapped")} tone="teal" />
       <div className="mt-8">
-        <div className="text-[60px] font-black leading-none tracking-normal text-teal-950">{formatCompactNumber(totals.totalTokens)}</div>
-        <div className="mt-2 text-[17px] font-semibold text-teal-950/70">{t("tokens routed through CCR")}</div>
+        <div className="text-[60px] font-black leading-none tracking-normal text-[var(--share-teal-text)]">{formatCompactNumber(totals.totalTokens)}</div>
+        <div className="mt-2 text-[17px] font-semibold text-[var(--share-teal-muted)]">{t("tokens routed through CCR")}</div>
       </div>
       <div className="mt-8 grid grid-cols-2 gap-3">
         <PosterStat label={t("Requests")} value={formatCompactNumber(totals.requestCount)} />
@@ -258,8 +250,8 @@ function RouteMapCard({ usageStats }: { usageStats: UsageStatsSnapshot }) {
   return (
     <SharePoster tone="indigo">
       <SharePosterHeader title={t("CCR Route Map")} tone="indigo" />
-      <div className="mt-7 rounded-[22px] border border-indigo-200/80 bg-white/62 p-4 shadow-[0_16px_34px_rgba(79,70,229,0.10)]">
-        <div className="grid grid-cols-[1fr_64px_1fr] items-center gap-3 text-center text-[10px] font-bold uppercase text-indigo-950/55">
+      <div className="mt-7 rounded-[22px] border border-[var(--share-indigo-border)] bg-[var(--share-surface)] p-4 shadow-[0_16px_34px_var(--share-shadow)]">
+        <div className="grid grid-cols-[1fr_64px_1fr] items-center gap-3 text-center text-[10px] font-bold uppercase text-[var(--share-indigo-muted)]">
           <span>{t("Client")}</span>
           <span>CCR</span>
           <span>{t("Model")}</span>
@@ -271,15 +263,15 @@ function RouteMapCard({ usageStats }: { usageStats: UsageStatsSnapshot }) {
               <div className="grid grid-cols-[1fr_64px_1fr] items-center gap-3" key={`${route.client}-${route.provider}-${route.model}-${index}`}>
                 <RoutePill label={route.client} />
                 <div className="relative flex h-9 items-center justify-center">
-                  <span className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-indigo-200" />
-                  <span className="absolute left-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-indigo-500" style={{ width: `${share}%` }} />
-                  <span className="relative flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-black text-white shadow-[0_8px_18px_rgba(79,70,229,0.32)]">{index + 1}</span>
+                  <span className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-[var(--share-indigo-border)]" />
+                  <span className="absolute left-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-[var(--share-indigo-accent)]" style={{ width: `${share}%` }} />
+                  <span className="relative flex h-9 w-9 items-center justify-center rounded-full bg-[var(--share-indigo-accent)] text-[10px] font-black text-[var(--share-on-accent)] shadow-[0_8px_18px_color-mix(in_srgb,var(--share-indigo-accent)_32%,transparent)]">{index + 1}</span>
                 </div>
                 <RoutePill label={`${route.provider} / ${route.model}`} align="right" />
               </div>
             );
           }) : (
-            <div className="rounded-[18px] border border-dashed border-indigo-300 bg-indigo-50/60 px-4 py-12 text-center text-[14px] font-semibold text-indigo-950/55">
+            <div className="rounded-[18px] border border-dashed border-[var(--share-indigo-border)] bg-[var(--share-surface-soft)] px-4 py-12 text-center text-[14px] font-semibold text-[var(--share-indigo-muted)]">
               {t("No route activity")}
             </div>
           )}
@@ -305,20 +297,20 @@ function ModelLeaderboardCard({ usageStats }: { usageStats: UsageStatsSnapshot }
       <SharePosterHeader title={t("Model Leaderboard")} tone="blue" />
       <div className="mt-7 space-y-3">
         {rows.length > 0 ? rows.map((row, index) => (
-          <div className="rounded-[20px] border border-blue-200/80 bg-white/66 p-3 shadow-[0_12px_28px_rgba(37,99,235,0.10)]" key={row.key}>
+          <div className="rounded-[20px] border border-[var(--share-blue-border)] bg-[var(--share-surface)] p-3 shadow-[0_12px_28px_var(--share-shadow)]" key={row.key}>
             <div className="flex min-w-0 items-center gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-blue-600 text-[17px] font-black text-white">{index + 1}</span>
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-[var(--share-blue-accent)] text-[17px] font-black text-[var(--share-on-accent)]">{index + 1}</span>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[15px] font-black text-blue-950">{row.label}</div>
-                <div className="mt-0.5 truncate text-[11px] font-semibold text-blue-950/55">{row.provider ?? t("All providers")}</div>
+                <div className="truncate text-[15px] font-black text-[var(--share-blue-text)]">{row.label}</div>
+                <div className="mt-0.5 truncate text-[11px] font-semibold text-[var(--share-blue-muted)]">{row.provider ?? t("All providers")}</div>
               </div>
               <div className="shrink-0 text-right">
-                <div className="text-[16px] font-black text-blue-950">{formatPercent(row.maxShare)}</div>
-                <div className="text-[10px] font-semibold text-blue-950/52">{formatCompactNumber(row.totalTokens)}</div>
+                <div className="text-[16px] font-black text-[var(--share-blue-text)]">{formatPercent(row.maxShare)}</div>
+                <div className="text-[10px] font-semibold text-[var(--share-blue-muted)]">{formatCompactNumber(row.totalTokens)}</div>
               </div>
             </div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-blue-100">
-              <div className="h-full rounded-full bg-blue-600" style={{ width: `${Math.max(4, (row.totalTokens / max) * 100)}%` }} />
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--share-surface-strong)]">
+              <div className="h-full rounded-full bg-[var(--share-blue-accent)]" style={{ width: `${Math.max(4, (row.totalTokens / max) * 100)}%` }} />
             </div>
           </div>
         )) : (
@@ -348,12 +340,12 @@ function FuelCockpitCard({ providerAccounts }: { providerAccounts: ProviderAccou
         {accountRows.length > 0 ? accountRows.map(({ account, meter }, index) => {
           const ratio = providerAccountMeterRemainingRatio(meter) ?? (meter.kind === "balance" ? 1 : 0);
           return (
-            <div className="grid grid-cols-[112px_minmax(0,1fr)] items-center gap-4 rounded-[22px] border border-emerald-200/80 bg-white/66 p-4 shadow-[0_14px_30px_rgba(5,150,105,0.10)]" key={providerAccountSnapshotKey(account)}>
-              <CircularGauge color={index === 0 ? "#059669" : index === 1 ? "#2563eb" : "#d97706"} ratio={ratio} value={formatPercent(ratio)} />
+            <div className="grid grid-cols-[112px_minmax(0,1fr)] items-center gap-4 rounded-[22px] border border-[var(--share-emerald-border)] bg-[var(--share-surface)] p-4 shadow-[0_14px_30px_var(--share-shadow)]" key={providerAccountSnapshotKey(account)}>
+              <CircularGauge color={`var(--share-gauge-${index + 1})`} ratio={ratio} value={formatPercent(ratio)} />
               <div className="min-w-0">
-                <div className="truncate text-[16px] font-black text-emerald-950">{safeProviderName(account.provider, t)}</div>
-                <div className="mt-1 truncate text-[12px] font-semibold text-emerald-950/58">{formatProviderAccountMeterTitle(meter, t)}</div>
-                <div className="mt-3 text-[26px] font-black leading-none text-emerald-950">{formatProviderAccountMeterValue(meter)}</div>
+                <div className="truncate text-[16px] font-black text-[var(--share-emerald-text)]">{safeProviderName(account.provider, t)}</div>
+                <div className="mt-1 truncate text-[12px] font-semibold text-[var(--share-emerald-muted)]">{formatProviderAccountMeterTitle(meter, t)}</div>
+                <div className="mt-3 text-[26px] font-black leading-none text-[var(--share-emerald-text)]">{formatProviderAccountMeterValue(meter)}</div>
               </div>
             </div>
           );
@@ -373,7 +365,7 @@ function TokenCalendarPosterCard({ usageStats }: { usageStats: UsageStatsSnapsho
   return (
     <SharePoster tone="rose">
       <SharePosterHeader title={t("Token Calendar Poster")} tone="rose" />
-      <div className="mt-7 rounded-[22px] border border-rose-200/80 bg-white/66 p-4 shadow-[0_14px_30px_rgba(225,29,72,0.10)]">
+      <div className="mt-7 rounded-[22px] border border-[var(--share-rose-border)] bg-[var(--share-surface)] p-4 shadow-[0_14px_30px_var(--share-shadow)]">
         <div
           className="grid"
           style={{
@@ -400,7 +392,7 @@ function TokenCalendarPosterCard({ usageStats }: { usageStats: UsageStatsSnapsho
         <PosterStat label={t("Avg / day")} value={formatCompactNumber(Math.round(activity.avgPerDay))} />
         <PosterStat label={t("Total")} value={formatCompactNumber(activity.totalTokens)} />
       </div>
-      <div className="mt-5 flex items-center gap-2 text-[12px] font-bold text-rose-950/62">
+      <div className="mt-5 flex items-center gap-2 text-[12px] font-bold text-[var(--share-rose-muted)]">
         <span>{t("Less")}</span>
         {[0, 1, 2, 3, 4].map((intensity) => (
           <span
@@ -438,22 +430,22 @@ function SpendReceiptCard({
   return (
     <SharePoster tone="slate">
       <SharePosterHeader title={t("Spend Receipt")} tone="slate" />
-      <div className="mt-7 rounded-[22px] border border-slate-300 bg-white/74 p-5 shadow-[0_16px_34px_rgba(71,85,105,0.12)]">
-        <div className="border-b border-dashed border-slate-300 pb-4 text-center">
-          <div className="text-[40px] font-black leading-none text-slate-950">{formatUsdCost(totals.costUsd)}</div>
-          <div className="mt-2 text-[12px] font-bold uppercase text-slate-500">{t("Estimated cost")}</div>
+      <div className="mt-7 rounded-[22px] border border-[var(--share-slate-border)] bg-[var(--share-surface-strong)] p-5 shadow-[0_16px_34px_var(--share-shadow)]">
+        <div className="border-b border-dashed border-[var(--share-slate-border)] pb-4 text-center">
+          <div className="text-[40px] font-black leading-none text-[var(--share-slate-text)]">{formatUsdCost(totals.costUsd)}</div>
+          <div className="mt-2 text-[12px] font-bold uppercase text-[var(--share-slate-muted)]">{t("Estimated cost")}</div>
         </div>
-        <div className="mt-4 space-y-2 border-b border-dashed border-slate-300 pb-4">
+        <div className="mt-4 space-y-2 border-b border-dashed border-[var(--share-slate-border)] pb-4">
           {rows.map((row) => (
             <div className="flex min-w-0 items-center justify-between gap-4 text-[13px]" key={row.label}>
-              <span className="truncate font-semibold text-slate-500">{row.label}</span>
-              <span className="shrink-0 font-black text-slate-950">{row.value}</span>
+              <span className="truncate font-semibold text-[var(--share-slate-muted)]">{row.label}</span>
+              <span className="shrink-0 font-black text-[var(--share-slate-text)]">{row.value}</span>
             </div>
           ))}
         </div>
         <div className="mt-4 flex items-center justify-between gap-4">
-          <div className="text-[11px] font-bold uppercase text-slate-500">{t("Total tokens")}</div>
-          <div className="text-[30px] font-black leading-none text-slate-950">{formatCompactNumber(totals.totalTokens)}</div>
+          <div className="text-[11px] font-bold uppercase text-[var(--share-slate-muted)]">{t("Total tokens")}</div>
+          <div className="text-[30px] font-black leading-none text-[var(--share-slate-text)]">{formatCompactNumber(totals.totalTokens)}</div>
         </div>
       </div>
       <SharePosterFooter tone="slate" />
@@ -496,7 +488,7 @@ function SharePosterHeader({
       <div className="min-w-0">
         <h4 className="text-[30px] font-black leading-[1.02] tracking-normal">{title}</h4>
       </div>
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border border-white/70 bg-white/58 shadow-[0_12px_28px_rgba(15,23,42,0.10)]">
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border border-[var(--share-card-border)] bg-[var(--share-surface)] shadow-[0_12px_28px_var(--share-shadow)]">
         <span className="text-[16px] font-black" style={{ color: theme.accent }}>CCR</span>
       </div>
     </div>
@@ -516,18 +508,18 @@ function SharePosterFooter({ tone }: { tone: ShareCardTone }) {
 
 function PosterStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-[18px] border border-white/70 bg-white/54 px-3 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
-      <div className="truncate text-[11px] font-bold text-slate-600">{label}</div>
-      <div className="mt-1 truncate text-[22px] font-black leading-none text-slate-950">{value}</div>
+    <div className="min-w-0 rounded-[18px] border border-[var(--share-card-border)] bg-[var(--share-surface)] px-3 py-3 shadow-[0_10px_24px_var(--share-shadow)]">
+      <div className="truncate text-[11px] font-bold text-[var(--share-neutral-muted)]">{label}</div>
+      <div className="mt-1 truncate text-[22px] font-black leading-none text-[var(--share-neutral-text)]">{value}</div>
     </div>
   );
 }
 
 function PosterHighlight({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex min-w-0 items-center justify-between gap-3 rounded-[18px] border border-white/70 bg-white/48 px-4 py-3">
-      <span className="truncate text-[12px] font-bold text-slate-600">{label}</span>
-      <span className="min-w-0 truncate text-right text-[14px] font-black text-slate-950">{value}</span>
+    <div className="flex min-w-0 items-center justify-between gap-3 rounded-[18px] border border-[var(--share-card-border)] bg-[var(--share-surface-soft)] px-4 py-3">
+      <span className="truncate text-[12px] font-bold text-[var(--share-neutral-muted)]">{label}</span>
+      <span className="min-w-0 truncate text-right text-[14px] font-black text-[var(--share-neutral-text)]">{value}</span>
     </div>
   );
 }
@@ -535,7 +527,7 @@ function PosterHighlight({ label, value }: { label: string; value: string }) {
 function EmptyPosterState({ label, tone }: { label: string; tone: ShareCardTone }) {
   const theme = shareCardTones[tone];
   return (
-    <div className={cn("rounded-[22px] border border-dashed bg-white/52 px-4 py-16 text-center text-[14px] font-bold", theme.border, theme.muted)}>
+    <div className={cn("rounded-[22px] border border-dashed bg-[var(--share-surface-soft)] px-4 py-16 text-center text-[14px] font-bold", theme.border, theme.muted)}>
       {label}
     </div>
   );
@@ -543,17 +535,17 @@ function EmptyPosterState({ label, tone }: { label: string; tone: ShareCardTone 
 
 function RoutePill({ align = "left", label }: { align?: "left" | "right"; label: string }) {
   return (
-    <div className={cn("min-w-0 rounded-[16px] border border-indigo-200 bg-white/72 px-3 py-2 shadow-[0_8px_18px_rgba(79,70,229,0.08)]", align === "right" && "text-right")}>
-      <div className="truncate text-[12px] font-black text-indigo-950">{label}</div>
+    <div className={cn("min-w-0 rounded-[16px] border border-[var(--share-indigo-border)] bg-[var(--share-surface-strong)] px-3 py-2 shadow-[0_8px_18px_var(--share-shadow)]", align === "right" && "text-right")}>
+      <div className="truncate text-[12px] font-black text-[var(--share-indigo-text)]">{label}</div>
     </div>
   );
 }
 
 function MiniRouteMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[16px] border border-indigo-200/80 bg-white/58 px-3 py-2 text-center">
-      <div className="text-[20px] font-black leading-none text-indigo-950">{value}</div>
-      <div className="mt-1 truncate text-[10px] font-bold uppercase text-indigo-950/50">{label}</div>
+    <div className="rounded-[16px] border border-[var(--share-indigo-border)] bg-[var(--share-surface)] px-3 py-2 text-center">
+      <div className="text-[20px] font-black leading-none text-[var(--share-indigo-text)]">{value}</div>
+      <div className="mt-1 truncate text-[10px] font-bold uppercase text-[var(--share-indigo-muted)]">{label}</div>
     </div>
   );
 }
@@ -565,8 +557,8 @@ function CircularGauge({ color, ratio, value }: { color: string; ratio: number; 
 
   return (
     <svg className="h-[112px] w-[112px]" role="img" viewBox="0 0 112 112" aria-label={value}>
-      <circle cx="56" cy="56" fill="rgba(255,255,255,.55)" r="48" />
-      <circle cx="56" cy="56" fill="none" r={radius} stroke="rgba(15,23,42,.10)" strokeWidth="10" />
+      <circle cx="56" cy="56" fill="var(--share-gauge-face)" r="48" />
+      <circle cx="56" cy="56" fill="none" r={radius} stroke="var(--share-gauge-track)" strokeWidth="10" />
       <circle
         cx="56"
         cy="56"
@@ -579,7 +571,7 @@ function CircularGauge({ color, ratio, value }: { color: string; ratio: number; 
         strokeWidth="10"
         transform="rotate(-90 56 56)"
       />
-      <text fill="#064e3b" fontSize="18" fontWeight="900" textAnchor="middle" x="56" y="61">{value}</text>
+      <text fill="var(--share-gauge-text)" fontSize="18" fontWeight="900" textAnchor="middle" x="56" y="61">{value}</text>
     </svg>
   );
 }
@@ -636,12 +628,12 @@ function rangeLabel(range: UsageStatsRange, translate: (value: string) => string
 }
 
 function calendarColor(intensity: TokenActivityCell["intensity"], inRange: boolean): string {
-  if (!inRange) return "rgba(225,29,72,.08)";
-  if (intensity === 0) return "rgba(225,29,72,.13)";
-  if (intensity === 1) return "rgba(225,29,72,.30)";
-  if (intensity === 2) return "rgba(225,29,72,.50)";
-  if (intensity === 3) return "rgba(225,29,72,.72)";
-  return "rgba(225,29,72,.94)";
+  if (!inRange) return "var(--share-calendar-off)";
+  if (intensity === 0) return "var(--share-calendar-0)";
+  if (intensity === 1) return "var(--share-calendar-1)";
+  if (intensity === 2) return "var(--share-calendar-2)";
+  if (intensity === 3) return "var(--share-calendar-3)";
+  return "var(--share-calendar-4)";
 }
 
 async function saveElementAsPng(element: HTMLElement, fileName: string, options: ShareCardPngExportOptions = {}): Promise<void> {
@@ -731,34 +723,30 @@ async function browserExportElementAsPng(element: HTMLElement, fileName: string)
     `<foreignObject width="100%" height="100%">${serialized}</foreignObject>`,
     "</svg>"
   ].join("");
-  const svgUrl = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+  const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 
+  const image = await loadImage(svgUrl);
+  const scale = 3;
+  const canvas = document.createElement("canvas");
+  canvas.width = width * scale;
+  canvas.height = height * scale;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Canvas rendering is unavailable.");
+  }
+  context.scale(scale, scale);
+  context.drawImage(image, 0, 0, width, height);
+  const pngBlob = await canvasToBlob(canvas);
+  const pngUrl = URL.createObjectURL(pngBlob);
   try {
-    const image = await loadImage(svgUrl);
-    const scale = 3;
-    const canvas = document.createElement("canvas");
-    canvas.width = width * scale;
-    canvas.height = height * scale;
-    const context = canvas.getContext("2d");
-    if (!context) {
-      throw new Error("Canvas rendering is unavailable.");
-    }
-    context.scale(scale, scale);
-    context.drawImage(image, 0, 0, width, height);
-    const pngBlob = await canvasToBlob(canvas);
-    const pngUrl = URL.createObjectURL(pngBlob);
-    try {
-      const link = document.createElement("a");
-      link.href = pngUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } finally {
-      URL.revokeObjectURL(pngUrl);
-    }
+    const link = document.createElement("a");
+    link.href = pngUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   } finally {
-    URL.revokeObjectURL(svgUrl);
+    URL.revokeObjectURL(pngUrl);
   }
 }
 
