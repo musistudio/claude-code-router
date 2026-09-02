@@ -43,7 +43,7 @@ import { proxyService } from "@ccr/core/proxy/service";
 import { listMcpServerTools } from "@ccr/core/mcp/tool-discovery";
 import { closeRequestLogRuntime, getAgentAnalysis, getAgentTracePayload, getRequestLogBodyChunk, getRequestLogDetail, getRequestLogs } from "@ccr/core/observability/request-log-store";
 import { shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
-import { getUsageStats } from "@ccr/core/usage/store";
+import { getUsageStats, resetOverviewStatistics } from "@ccr/core/usage/store";
 import { gatewayService } from "@ccr/core/gateway/service";
 import { shouldRestartGatewayForRuntimeConfigChange } from "@ccr/core/gateway/runtime-change";
 import { getProviderAccountSnapshots, invalidateProviderAccountSnapshotCache, resetCodexRateLimitCredit, testProviderAccountConnector } from "@ccr/core/providers/account-service";
@@ -413,6 +413,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
     await revealFile(PROXY_CA_CERT_FILE);
   },
   resetCodexRateLimitCredit: (request) => resetCodexRateLimitCredit(request as ProviderAccountResetRequest),
+  resetOverviewStatistics: () => resetOverviewStatistics(),
   saveApiKeys: async (apiKeys) => {
     const savedConfig = await saveApiKeysConfig(apiKeys as ApiKeyConfig[]);
     const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(savedConfig);

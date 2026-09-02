@@ -51,7 +51,7 @@ import { listMcpServerTools } from "@ccr/core/mcp/tool-discovery";
 import { getAgentAnalysis, getAgentTracePayload, getRequestLogBodyChunk, getRequestLogDetail, getRequestLogs } from "@ccr/core/observability/request-log-store";
 import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
-import { getUsageStats } from "@ccr/core/usage/store";
+import { getUsageStats, resetOverviewStatistics } from "@ccr/core/usage/store";
 import { applyNativeThemePreference } from "./native-theme";
 import { registerProviderAccountWebContentFetchHandler } from "./provider-account-webcontent";
 import windowsManager from "./windows";
@@ -291,6 +291,9 @@ ipcMain.handle(IPC_CHANNELS.appProbeProviderCandidates, (_event, request: Gatewa
 });
 ipcMain.handle(IPC_CHANNELS.appResetCodexRateLimitCredit, (_event, request: ProviderAccountResetRequest) => {
   return resetCodexRateLimitCredit(request);
+});
+ipcMain.handle(IPC_CHANNELS.appResetOverviewStatistics, () => {
+  return resetOverviewStatistics();
 });
 ipcMain.handle(IPC_CHANNELS.appTestProviderAccountConnector, (_event, request: ProviderAccountTestRequest) => {
   return testProviderAccountConnector(request);

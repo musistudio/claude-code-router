@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { formatCodexResetCardExpiry, formatCodexResetCardNumber, OverviewView } from "@ccr/ui/pages/home/components/dashboard.tsx";
+import { formatCodexResetCardExpiry, formatCodexResetCardNumber, OverviewStatisticsResetDialog, OverviewView } from "@ccr/ui/pages/home/components/dashboard.tsx";
 import { AppI18nContext, appCopy } from "@ccr/ui/pages/home/shared/i18n.tsx";
 import { parseStatusBucketDate } from "@ccr/ui/pages/home/shared/controls.tsx";
 import { formatProviderAccountMeterValue, providerAccountMeterDetailValidityProgress } from "@ccr/ui/pages/home/shared/provider-accounts.ts";
@@ -47,6 +47,7 @@ test("OverviewView renders every overview widget type", () => {
   assert.doesNotMatch(html, /<h2 class="[^"]*">Overview<\/h2>/);
   assert.match(html, /All providers/);
   assert.match(html, /All models/);
+  assert.match(html, /Reset statistics/);
   assert.match(html, /aria-label="Edit widgets"/);
   assert.match(html, /aria-pressed="true"/);
   assert.match(html, /overview-heading-icon/);
@@ -73,6 +74,44 @@ test("OverviewView renders every overview widget type", () => {
   assert.match(html, /AI Fuel Cockpit/);
   assert.match(html, /Token Calendar Poster/);
   assert.match(html, /Spend Receipt/);
+});
+
+test("OverviewStatisticsResetDialog warns before deleting statistics", () => {
+  const html = renderToStaticMarkup(
+    <OverviewStatisticsResetDialog
+      error=""
+      open
+      onClose={() => undefined}
+      onConfirm={() => undefined}
+    />
+  );
+
+  assert.match(html, /Reset overview statistics/);
+  assert.match(html, /Reset Overview statistics\?/);
+  assert.match(html, /Overview statistics data will be deleted and cannot be recovered\./);
+  assert.match(html, /Request logs and configuration are not deleted\./);
+  assert.match(html, />Cancel<\/button>/);
+  assert.match(html, />Reset<\/button>/);
+});
+
+test("OverviewStatisticsResetDialog renders Chinese warning copy", () => {
+  const html = renderToStaticMarkup(
+    <AppI18nContext.Provider value={appCopy.zh}>
+      <OverviewStatisticsResetDialog
+        error=""
+        open
+        onClose={() => undefined}
+        onConfirm={() => undefined}
+      />
+    </AppI18nContext.Provider>
+  );
+
+  assert.match(html, /重置概览统计/);
+  assert.match(html, /要重置概览统计数据吗？/);
+  assert.match(html, /概览统计数据将被删除且无法恢复。/);
+  assert.match(html, /请求日志和配置不会被删除。/);
+  assert.match(html, />取消<\/button>/);
+  assert.match(html, />重置<\/button>/);
 });
 
 test("OverviewView keeps Chinese token copy as Token", () => {

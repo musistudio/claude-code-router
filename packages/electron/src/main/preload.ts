@@ -84,6 +84,7 @@ import type {
   RouteScriptValidationResult,
   UsageStatsFilter,
   UsageStatsRange,
+  UsageStatsResetResult,
   UsageStatsSnapshot
 } from "@ccr/core/contracts/app";
 import type { ProviderPreset } from "@ccr/core/providers/presets/types";
@@ -155,6 +156,7 @@ contextBridge.exposeInMainWorld("ccr", {
   revealProxyCertificate: () => invoke(IPC_CHANNELS.appRevealProxyCertificate) as Promise<void>,
   renderHtmlPng: (request: AppRenderHtmlPngRequest) => invoke(IPC_CHANNELS.appRenderHtmlPng, request) as Promise<AppRenderHtmlPngResult>,
   resetCodexRateLimitCredit: (request: ProviderAccountResetRequest) => invoke(IPC_CHANNELS.appResetCodexRateLimitCredit, request) as Promise<ProviderAccountResetResult>,
+  resetOverviewStatistics: () => invoke(IPC_CHANNELS.appResetOverviewStatistics) as Promise<UsageStatsResetResult>,
   restartGateway: () => invoke(IPC_CHANNELS.appRestartGateway) as Promise<GatewayStatus>,
   restartProxy: () => invoke(IPC_CHANNELS.appRestartProxy) as Promise<ProxyStatus>,
   saveApiKeys: (apiKeys: ApiKeyConfig[]) => invoke(IPC_CHANNELS.appSaveApiKeys, apiKeys) as Promise<AppConfig>,

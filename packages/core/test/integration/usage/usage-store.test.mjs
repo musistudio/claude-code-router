@@ -639,3 +639,79 @@ test("UsageStore backfills missing events from request logs", async () => {
     rmSync(dir, { force: true, recursive: true });
   }
 });
+
+test("UsageStore reset clears overview stats and does not backfill old request logs", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-reset-test-"));
+  try {
+    const requestLogDbFile = path.join(dir, "request-logs.sqlite");
+    const requestLogStore = new RequestLogStore(requestLogDbFile);
+    const usageStore = new UsageStore(path.join(dir, "usage.sqlite"), { requestLogDbFile });
+    const beforeResetAt = new Date().toISOString();
+
+    await requestLogStore.record({
+      client: "Claude Code",
+      completedAt: beforeResetAt,
+      durationMs: 25,
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "alpha",
+      requestBody: Buffer.from(JSON.stringify({ model: "alpha-model" })),
+      requestHeaders: { "content-type": "application/json" },
+      requestId: "req-reset-before",
+      responseBodyText: JSON.stringify({
+        model: "alpha-model",
+        usage: {
+          input_tokens: 12,
+          output_tokens: 5,
+          total_tokens: 17
+        }
+      }),
+      responseHeaders: new Headers({ "content-type": "application/json" }),
+      startedAt: beforeResetAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    const before = await usageStore.getStats("today", { includeProxy: true });
+    assert.equal(before.totals.requestCount, 1);
+
+    const reset = await usageStore.resetStatistics();
+    assert.equal(reset.deletedEvents, 1);
+
+    const afterReset = await usageStore.getStats("today", { includeProxy: true });
+    assert.equal(afterReset.totals.requestCount, 0);
+    assert.equal(afterReset.totals.totalTokens, 0);
+
+    const afterResetAt = new Date(Date.parse(reset.resetAt) + 1000).toISOString();
+    await requestLogStore.record({
+      client: "Claude Code",
+      completedAt: afterResetAt,
+      durationMs: 40,
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "beta",
+      requestBody: Buffer.from(JSON.stringify({ model: "beta-model" })),
+      requestHeaders: { "content-type": "application/json" },
+      requestId: "req-reset-after",
+      responseBodyText: JSON.stringify({
+        model: "beta-model",
+        usage: {
+          input_tokens: 7,
+          output_tokens: 3,
+          total_tokens: 10
+        }
+      }),
+      responseHeaders: new Headers({ "content-type": "application/json" }),
+      startedAt: afterResetAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    const afterNewRequest = await usageStore.getStats("today", { includeProxy: true });
+    assert.equal(afterNewRequest.totals.requestCount, 1);
+    assert.equal(afterNewRequest.totals.totalTokens, 10);
+    assert.equal(afterNewRequest.providerModels[0]?.provider, "beta");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});

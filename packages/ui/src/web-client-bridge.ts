@@ -160,6 +160,7 @@ const webClientBridge: CcrApi = {
   restartProxy: () => rpc("restartProxy") as ReturnType<CcrApi["restartProxy"]>,
   revealProxyCertificate: () => rpc("revealProxyCertificate") as ReturnType<CcrApi["revealProxyCertificate"]>,
   resetCodexRateLimitCredit: (request) => rpc("resetCodexRateLimitCredit", [request]) as ReturnType<CcrApi["resetCodexRateLimitCredit"]>,
+  resetOverviewStatistics: () => rpc("resetOverviewStatistics") as ReturnType<CcrApi["resetOverviewStatistics"]>,
   saveApiKeys: (apiKeys) => rpc("saveApiKeys", [apiKeys]) as ReturnType<CcrApi["saveApiKeys"]>,
   saveConfig: (config, options) => rpc("saveConfig", [config, options]) as ReturnType<CcrApi["saveConfig"]>,
   scanBotHandoffBluetoothTargets: () => rpc("scanBotHandoffBluetoothTargets") as ReturnType<CcrApi["scanBotHandoffBluetoothTargets"]>,

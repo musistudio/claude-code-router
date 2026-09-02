@@ -74,6 +74,14 @@ function localCodexProviderDraftProbeKey(draft: AddProviderDraft): string {
   ]);
 }
 
+function overviewUsageStatsFilter(range: UsageStatsRange, providerFilter: string, modelFilter: string): UsageStatsFilter {
+  return {
+    ...(range === "today" ? { includeProxy: true } : {}),
+    ...(providerFilter ? { provider: providerFilter } : {}),
+    ...(modelFilter ? { model: modelFilter } : {})
+  };
+}
+
 function materializeProviderPluginTemplates(
   templates: unknown[],
   providerName: string,
@@ -277,6 +285,7 @@ function App() {
   const [providerAccountSnapshots, setProviderAccountSnapshots] = useState<ProviderAccountSnapshot[]>([]);
   const [providerAccountRefreshing, setProviderAccountRefreshing] = useState(false);
   const updateActionBusyRef = useRef(false);
+  const usageStatsRequestId = useRef(0);
   const resolvedLanguage = languagePreference === "system" ? systemLanguage : languagePreference;
   const copy = appCopy[resolvedLanguage];
   const t = useMemo(() => (value: string) => translateText(copy, value), [copy]);
@@ -472,16 +481,13 @@ function App() {
 
     let cancelled = false;
     const refreshUsageStats = () => {
-      const filter: UsageStatsFilter = {
-        ...(usageRange === "today" ? { includeProxy: true } : {}),
-        ...(usageProviderFilter ? { provider: usageProviderFilter } : {}),
-        ...(usageModelFilter ? { model: usageModelFilter } : {})
-      };
+      const requestId = ++usageStatsRequestId.current;
+      const filter = overviewUsageStatsFilter(usageRange, usageProviderFilter, usageModelFilter);
       void window.ccr?.getUsageStats(usageRange, filter).then((snapshot) => {
-        if (!cancelled) {
+        if (!cancelled && requestId === usageStatsRequestId.current) {
           setUsageStats(snapshot);
         }
-      });
+      }).catch(() => undefined);
     };
     const stopPolling = startVisiblePolling(refreshUsageStats, 5000);
     return () => {
@@ -905,6 +911,24 @@ function App() {
       setToast(undefined);
       toastTimer.current = undefined;
     }, 1800);
+  }
+
+  async function resetOverviewStatistics() {
+    if (!window.ccr?.resetOverviewStatistics) {
+      throw new Error(t("Overview statistics reset is unavailable."));
+    }
+
+    usageStatsRequestId.current += 1;
+    await window.ccr.resetOverviewStatistics();
+    const requestId = ++usageStatsRequestId.current;
+    const snapshot = await window.ccr.getUsageStats(
+      usageRange,
+      overviewUsageStatsFilter(usageRange, usageProviderFilter, usageModelFilter)
+    );
+    if (requestId === usageStatsRequestId.current) {
+      setUsageStats(snapshot);
+    }
+    showToast(t("Overview statistics reset."));
   }
 
   function openUpdateDialog() {
@@ -3160,6 +3184,7 @@ function App() {
                     setModelFilter: setUsageModelFilter,
                     setProviderFilter: setUsageProviderFilter
                   },
+                  resetOverviewStatistics,
                   onWidgetsChange: changeOverviewWidgets,
                   overviewWidgets: normalizeOverviewWidgets(draftConfig.overviewWidgets),
                   providerAccounts: providerAccountSnapshots,

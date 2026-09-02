@@ -59,6 +59,7 @@ export const IPC_CHANNELS = {
   appRestartProxy: "ccr:app:restart-proxy",
   appRestartGateway: "ccr:app:restart-gateway",
   appResetCodexRateLimitCredit: "ccr:app:reset-codex-rate-limit-credit",
+  appResetOverviewStatistics: "ccr:app:reset-overview-statistics",
   appSaveApiKeys: "ccr:app:save-api-keys",
   appClearProxyNetworkCaptures: "ccr:app:clear-proxy-network-captures",
   appStartGateway: "ccr:app:start-gateway",

@@ -5,7 +5,7 @@ import {
   Card, CardContent, CardHeader, CardTitle, CartesianGrid, Cell, constrainOverviewWidgetSize,
   Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, cn, codexLogoUrl, compactId,
   compactUserAgent, compareProviderAccountSnapshots, ComposedChart, CSS, Checkbox, DEFAULT_OVERVIEW_WIDGETS, DndContext,
-  Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle,
   DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, Field, formatAxisNumber, formatBytes,
   formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatPercentFixed, formatProviderAccountDetailDate, formatProviderAccountMeterTitle, formatProviderAccountMeterValue,
   formatStatusBucketDate, formatSystemStatusRange, formatUsdCost, KeyboardSensor,
@@ -51,6 +51,7 @@ export function OverviewView({
   providerAccounts,
   providerAccountRefreshing = false,
   refreshProviderAccounts,
+  resetOverviewStatistics,
   setUsageRange,
   usageFilters,
   usageRange,
@@ -61,6 +62,7 @@ export function OverviewView({
   providerAccounts: ProviderAccountSnapshot[];
   providerAccountRefreshing?: boolean;
   refreshProviderAccounts?: () => void | Promise<void>;
+  resetOverviewStatistics?: () => void | Promise<void>;
   setUsageRange: (range: UsageStatsRange) => void;
   usageFilters?: OverviewUsageFilters;
   usageRange: UsageStatsRange;
@@ -73,6 +75,9 @@ export function OverviewView({
   const [dragPreviewWidgets, setDragPreviewWidgets] = useState<OverviewWidgetConfig[]>();
   const [pendingScrollWidgetId, setPendingScrollWidgetId] = useState<string>();
   const [editing, setEditing] = useState(false);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetError, setResetError] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -309,6 +314,32 @@ export function OverviewView({
     setSelectedWidgetId(undefined);
   }
 
+  function openResetDialog() {
+    setResetError("");
+    setResetDialogOpen(true);
+  }
+
+  async function confirmResetStatistics() {
+    if (resetBusy) {
+      return;
+    }
+    if (!resetOverviewStatistics) {
+      setResetError(t("Overview statistics reset is unavailable."));
+      return;
+    }
+
+    setResetBusy(true);
+    setResetError("");
+    try {
+      await resetOverviewStatistics();
+      setResetDialogOpen(false);
+    } catch (error) {
+      setResetError(formatDialogError(error));
+    } finally {
+      setResetBusy(false);
+    }
+  }
+
   const widgetGrid = (
     <DndContext
       collisionDetection={overviewWidgetCollisionDetection}
@@ -396,6 +427,17 @@ export function OverviewView({
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={openResetDialog}
+            size="sm"
+            title={t("Reset statistics")}
+            type="button"
+            variant="outline"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            {t("Reset statistics")}
+          </Button>
           {editing ? (
             <Button onClick={resetLayout} size="sm" type="button" variant="outline">
               <RefreshCw className="h-3.5 w-3.5" />
@@ -454,7 +496,73 @@ export function OverviewView({
         widgetGrid
       )}
 
+      <OverviewStatisticsResetDialog
+        busy={resetBusy}
+        error={resetError}
+        open={resetDialogOpen}
+        onClose={() => {
+          if (!resetBusy) {
+            setResetDialogOpen(false);
+          }
+        }}
+        onConfirm={() => void confirmResetStatistics()}
+      />
     </motion.div>
+  );
+}
+
+export function OverviewStatisticsResetDialog({
+  busy,
+  error,
+  onClose,
+  onConfirm,
+  open
+}: {
+  busy?: boolean;
+  error?: string;
+  onClose: () => void;
+  onConfirm: () => void;
+  open: boolean;
+}) {
+  const t = useAppText();
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen && !busy) onClose(); }}>
+      <DialogContent className="max-w-[520px]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{t("Reset overview statistics")}</DialogTitle>
+          </div>
+          <Button aria-label={t("Close dialog")} disabled={busy} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogHeader>
+
+        <DialogBody>
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5">
+            <div className="flex items-start gap-2 text-[12px] font-medium text-destructive">
+              <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{t("Reset Overview statistics?")}</span>
+            </div>
+            <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+              <div>{t("Overview statistics data will be deleted and cannot be recovered.")}</div>
+              <div>{t("This clears the usage events used by the Overview page. Request logs and configuration are not deleted.")}</div>
+            </div>
+          </div>
+          {error ? <div className="mt-3 rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">{error}</div> : null}
+        </DialogBody>
+
+        <DialogFooter>
+          <Button autoFocus disabled={busy} onClick={onClose} type="button" variant="outline">
+            {t("Cancel")}
+          </Button>
+          <Button disabled={busy} onClick={onConfirm} type="button" variant="destructive">
+            {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            {busy ? t("Resetting") : t("Reset")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
