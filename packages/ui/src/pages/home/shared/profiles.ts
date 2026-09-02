@@ -795,6 +795,7 @@ function botGatewayHandoffFromProfileDraft(
 export function createBotGatewayConfigDraft(config?: BotGatewaySavedConfig): BotGatewayConfigDraft {
   const botDraft = createBotGatewayDraft(config?.botGateway);
   const bot = normalizeBotGatewayRuntimeConfig(config?.botGateway) ?? fallbackConfig.botGateway;
+  const platform = botDraft.botPlatform === "none" ? "weixin-ilink" : botDraft.botPlatform;
   return {
     botAuthFields: botDraft.botAuthFields,
     botAuthType: botDraft.botAuthType,
@@ -808,10 +809,10 @@ export function createBotGatewayConfigDraft(config?: BotGatewaySavedConfig): Bot
     botMaxTurnMinutes: String(Math.max(1, Math.round(bot.maxTurnTimeMs / 60_000))),
     botMediaEnabled: bot.mediaEnabled,
     botMessageChunkChars: String(bot.messageChunkChars),
-    botPlatform: botDraft.botPlatform === "none" ? "weixin-ilink" : botDraft.botPlatform,
+    botPlatform: platform,
     botSessionIdleMinutes: String(bot.sessionIdleMinutes),
     botShellEnabled: bot.shellEnabled,
-    botStreamReplies: bot.streamReplies,
+    botStreamReplies: platform === "weixin-ilink" ? false : bot.streamReplies,
     name: config?.name ?? ""
   };
 }
@@ -892,7 +893,7 @@ function botGatewayConfigFromDraft(
     sourceDir: "",
     startupTimeoutMs: fallbackConfig.botGateway.startupTimeoutMs,
     stateDir: existingBotGateway?.stateDir?.trim() || createBotGatewayStateDir(configId),
-    streamReplies: draft.botStreamReplies,
+    streamReplies: platform === "weixin-ilink" ? false : draft.botStreamReplies,
     tenantId: existingBotGateway?.tenantId?.trim() || createBotGatewayTenantId(configName || configId)
   };
   return config;

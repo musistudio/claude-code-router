@@ -87,7 +87,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions = {}): A
       sourceDir: "",
       startupTimeoutMs: 10000,
       stateDir: "",
-      streamReplies: true,
+      streamReplies: false,
       tenantId: "ccr"
     },
     contextArchive: {

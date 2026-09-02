@@ -6,6 +6,7 @@ import test from "node:test";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env.ts";
 import { materializeBotGatewayStdioRunnerPath } from "@ccr/core/agents/bot-gateway/qr-login-service.ts";
 import { botGatewaySdkImportSpecifier } from "@ccr/core/agents/bot-gateway/sdk-import.ts";
+import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 
 function botGateway(overrides = {}) {
   return {
@@ -59,6 +60,10 @@ test("botGatewayProfileEnv disables bot gateway outside app surface", () => {
   });
 });
 
+test("default bot gateway config disables stream replies", () => {
+  assert.equal(createDefaultAppConfig().botGateway.streamReplies, false);
+});
+
 test("botGatewayProfileEnv merges saved config and normalizes websocket integration", () => {
   const env = botGatewayProfileEnv(
     {
@@ -102,7 +107,8 @@ test("botGatewayProfileEnv disables create integration for QR login platforms", 
       botConfigs: [],
       botGateway: botGateway({
         authType: "qr",
-        platform: "weixin"
+        platform: "weixin",
+        streamReplies: true
       })
     },
     { ...profile, botConfigId: undefined },
@@ -112,7 +118,25 @@ test("botGatewayProfileEnv disables create integration for QR login platforms", 
   assert.equal(env.CCR_BOT_GATEWAY_PLATFORM, "weixin-ilink");
   assert.equal(env.CCR_BOT_GATEWAY_AUTH_TYPE, "qr_login");
   assert.equal(env.CCR_BOT_GATEWAY_CREATE_INTEGRATION, "false");
+  assert.equal(env.CCR_BOT_GATEWAY_STREAM_REPLIES, "false");
   assert.equal(JSON.parse(env.CCR_BOT_GATEWAY_CONFIG_JSON).transport, "websocket");
+});
+
+test("botGatewayProfileEnv preserves stream replies for non-Weixin platforms", () => {
+  const env = botGatewayProfileEnv(
+    {
+      botConfigs: [],
+      botGateway: botGateway({
+        platform: "slack",
+        streamReplies: true
+      })
+    },
+    { ...profile, botConfigId: undefined },
+    "app"
+  );
+
+  assert.equal(env.CCR_BOT_GATEWAY_PLATFORM, "slack");
+  assert.equal(env.CCR_BOT_GATEWAY_STREAM_REPLIES, "true");
 });
 
 test("botGatewayProfileEnv defaults iMessage to local auth", () => {

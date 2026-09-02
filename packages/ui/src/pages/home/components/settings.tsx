@@ -1451,6 +1451,7 @@ function BotConfigDialog({
   const platformOptions = botGatewayPlatformOptions.map((option) => ({ ...option, label: t(option.label) }));
   const authOptions = authSpecs.map((option) => ({ label: t(option.label), value: option.value }));
   const qrLoginSupported = platform === "weixin-ilink" && authType === "qr_login";
+  const streamRepliesSupported = platform !== "weixin-ilink";
   const busy = saving || qrLogin.loading;
   const shouldCompleteQrLoginOnSave = qrLoginSupported && !canReuseExistingQrConfig();
 
@@ -1465,7 +1466,8 @@ function BotConfigDialog({
     update({
       botAuthFields: botGatewayPickAuthFields(draft.botAuthFields, nextPlatform, nextAuthType),
       botAuthType: nextAuthType,
-      botPlatform: nextPlatform
+      botPlatform: nextPlatform,
+      ...(nextPlatform === "weixin-ilink" ? { botStreamReplies: false } : {})
     });
   }
 
@@ -1778,10 +1780,12 @@ function BotConfigDialog({
             <Field label={t("Maximum attachment size (MB)")}>
               <Input min="1" max="100" type="number" value={draft.botMaxAttachmentMb} onChange={(event) => update({ botMaxAttachmentMb: event.target.value })} />
             </Field>
-            <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
-              <span className="text-[12px] font-medium">{t("Stream replies and progress")}</span>
-              <Switch checked={draft.botStreamReplies} onCheckedChange={(checked) => update({ botStreamReplies: checked })} />
-            </div>
+            {streamRepliesSupported ? (
+              <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+                <span className="text-[12px] font-medium">{t("Stream replies and progress")}</span>
+                <Switch checked={draft.botStreamReplies} onCheckedChange={(checked) => update({ botStreamReplies: checked })} />
+              </div>
+            ) : null}
             <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
               <span className="text-[12px] font-medium">{t("Send and receive attachments")}</span>
               <Switch checked={draft.botMediaEnabled} onCheckedChange={(checked) => update({ botMediaEnabled: checked })} />

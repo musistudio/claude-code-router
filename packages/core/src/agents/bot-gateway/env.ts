@@ -22,6 +22,7 @@ export function botGatewayProfileEnv(config: AppConfig, profile: ProfileConfig, 
     userIdle: true
   };
   const stateDir = resolveBotGatewayStateDir(bot, profile);
+  const streamReplies = effectiveBotGatewayStreamReplies(bot);
   const env: Record<string, string> = {
     BOT_GATEWAY_STATE_DIR: stateDir,
     CCR_BOT_GATEWAY_ACK_EVENTS: boolEnv(bot.acknowledgeEvents),
@@ -50,7 +51,7 @@ export function botGatewayProfileEnv(config: AppConfig, profile: ProfileConfig, 
     ...botGatewaySdkEnv(),
     CCR_BOT_GATEWAY_STARTUP_TIMEOUT_MS: String(bot.startupTimeoutMs ?? 10000),
     CCR_BOT_GATEWAY_STATE_DIR: stateDir,
-    CCR_BOT_GATEWAY_STREAM_REPLIES: boolEnv(bot.streamReplies),
+    CCR_BOT_GATEWAY_STREAM_REPLIES: boolEnv(streamReplies),
     CCR_BOT_GATEWAY_TENANT_ID: bot.tenantId ?? "ccr",
     CCR_BOT_HANDOFF_ENABLED: boolEnv(handoff.enabled),
     CCR_BOT_HANDOFF_IDLE_SECONDS: String(handoff.idleSeconds ?? 30),
@@ -80,6 +81,13 @@ export function botGatewayProfileEnv(config: AppConfig, profile: ProfileConfig, 
   }
 
   return env;
+}
+
+function effectiveBotGatewayStreamReplies(bot: BotGatewayRuntimeConfig): boolean {
+  if (bot.platform === "weixin-ilink") {
+    return false;
+  }
+  return Boolean(bot.streamReplies);
 }
 
 function resolveBotGatewayConfig(config: AppConfig, profile: ProfileConfig, surface?: ProfileOpenSurface): BotGatewayRuntimeConfig {
